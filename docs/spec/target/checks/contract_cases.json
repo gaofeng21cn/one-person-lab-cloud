@@ -54,7 +54,8 @@
       "schema": "CreateBuildRequest",
       "value": {
         "packageVersionId": "pv-1",
-        "webuiVersionId": "ui-1"
+        "webuiVersionId": "ui-1",
+        "runtimeVersionId": "runtime-1"
       },
       "valid": true
     },
@@ -62,17 +63,17 @@
       "name": "build_missing_webui",
       "schema": "CreateBuildRequest",
       "value": {
-        "packageVersionId": "pv-1"
+        "packageVersionId": "pv-1",
+        "runtimeVersionId": "runtime-1"
       },
       "valid": false
     },
     {
-      "name": "build_forbids_customer_runtime",
+      "name": "build_requires_explicit_runtime",
       "schema": "CreateBuildRequest",
       "value": {
         "packageVersionId": "pv-1",
-        "webuiVersionId": "ui-1",
-        "runtimeVersionId": "my-runtime"
+        "webuiVersionId": "ui-1"
       },
       "valid": false
     },
@@ -82,7 +83,8 @@
       "value": {
         "packageVersionId": "pv-1",
         "webuiVersionId": "ui-1",
-        "tenantId": "victim"
+        "tenantId": "victim",
+        "runtimeVersionId": "runtime-1"
       },
       "valid": false
     },

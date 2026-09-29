@@ -15,7 +15,7 @@ import (
 // Start configures the target gRPC surface in the existing Fabric process.
 // Its database is explicitly separate from the legacy operation-store setting;
 // absence disables this surface without changing the legacy HTTP lifecycle.
-func Start(ctx context.Context, getenv func(string) string, dispatchers ...LocalResourceDispatcher) (*ownerservice.Bootstrap, error) {
+func Start(ctx context.Context, getenv func(string) string, dispatcher ResourceDispatcher) (*ownerservice.Bootstrap, error) {
 	if strings.TrimSpace(getenv("OPL_FABRIC_DATABASE_URL")) == "" {
 		return nil, nil
 	}
@@ -67,10 +67,10 @@ func Start(ctx context.Context, getenv func(string) string, dispatchers ...Local
 		if err != nil {
 			return err
 		}
-		if len(dispatchers) == 1 && dispatchers[0] != nil {
+		if dispatcher != nil {
 			ledgerAddr := strings.TrimSpace(getenv("OPL_LEDGER_ADDR"))
 			if ledgerAddr == "" {
-				return errors.New("OPL_LEDGER_ADDR is required for local resource dispatch")
+				return errors.New("OPL_LEDGER_ADDR is required for provider resource dispatch")
 			}
 			options, err := config.TLS.DialOptions(owneridentity.Fabric.Service(), owneridentity.Ledger.Service(), getenv("OPL_LEDGER_TOKEN"))
 			if err != nil {
@@ -84,7 +84,7 @@ func Start(ctx context.Context, getenv func(string) string, dispatchers ...Local
 				ledger.Close()
 				return err
 			}
-			service.Dispatcher, service.Ledger = dispatchers[0], api.NewLedgerCoordinationClient(ledger)
+			service.Dispatcher, service.Ledger = dispatcher, api.NewLedgerCoordinationClient(ledger)
 		}
 		return service.Register(server)
 	})

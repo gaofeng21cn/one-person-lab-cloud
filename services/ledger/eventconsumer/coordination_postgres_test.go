@@ -36,12 +36,25 @@ type coordinationOwners struct {
 	api.UnimplementedCloudIdentityAuthorizationServer
 	api.UnimplementedCatalogCoordinationServer
 	api.UnimplementedOwnerCommitReadbackServer
+	api.UnimplementedGatewayCoordinationServer
 	mu                      sync.Mutex
 	quote                   *api.QuoteAcceptance
 	commit                  *api.OwnerCommitEvidence
+	wallet                  *api.WalletOperation
+	walletReads             int
 	deny                    bool
 	quoteReads, commitReads int
 	authorizations          int
+}
+
+func (o *coordinationOwners) ReadWalletAction(_ context.Context, r *api.WalletReadbackRequest) (*api.WalletOperation, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.walletReads++
+	if o.wallet == nil || r.GetWalletOperationId() != o.wallet.GetId() {
+		return nil, status.Error(codes.NotFound, "wallet operation absent")
+	}
+	return proto.Clone(o.wallet).(*api.WalletOperation), nil
 }
 
 func (o *coordinationOwners) AuthorizeAction(_ context.Context, r *api.AuthorizationRequest) (*api.AuthorizationDecision, error) {
@@ -178,6 +191,7 @@ func coordinatedService(t *testing.T) (*sql.DB, *Server, *coordinationOwners, ap
 	api.RegisterCloudIdentityAuthorizationServer(wire, owners)
 	api.RegisterCatalogCoordinationServer(wire, owners)
 	api.RegisterOwnerCommitReadbackServer(wire, owners)
+	api.RegisterGatewayCoordinationServer(wire, owners)
 	peerAddress := startCoordinationWire(t, wire)
 	config := ownerservice.Config{Owner: owneridentity.Ledger, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: map[owneridentity.Service]string{owneridentity.Workspace.Service(): coordinationToken, owneridentity.Fabric.Service(): coordinationToken, owneridentity.Build.Service(): coordinationToken}, CloudIdentityAddr: peerAddress, CloudIdentityToken: coordinationToken}
 	close, err := s.ConfigureCoordination(config, func(name string) string {
@@ -477,5 +491,84 @@ func TestLocalNoChargeReceiptReauthorizesAfterPostgresLockWait(t *testing.T) {
 	owners.mu.Unlock()
 	if _, err = client.AppendReceipt(ctx, r); err != nil {
 		t.Fatalf("authorized retry after rollback=%v", err)
+	}
+}
+
+// paidCoordinationRequest builds a paid Workspace order's WALLET_ACTION evidence:
+// a nonzero accepted quote, the Gateway charge that moved the money, and the same
+// owner commit. It is the only shape that may be recorded as a funded obligation.
+func paidCoordinationRequest() *api.AppendReceiptRequest {
+	r := coordinationFixtureRequest()
+	r.QuoteAcceptance.Quote.TotalUsdMicros = 52_580_000
+	r.QuoteAcceptance.Quote.LineItems = []*api.QuoteLine{{Kind: api.QuoteLineKindEnum_QUOTE_LINE_KIND_ENUM_COMPUTE, AmountUsdMicros: 52_580_000}}
+	r.QuoteAcceptance.ResourcePlan.Provider = "tencent"
+	r.QuoteAcceptance.ResourcePlan.BillingMode = "PREPAID_MONTHLY"
+	r.Receipt.Kind = api.ReceiptKindEnum_RECEIPT_KIND_ENUM_WALLET_ACTION
+	r.Receipt.EvidenceSummary = "Gateway wallet charge confirmed"
+	r.WalletOperation = &api.WalletOperation{Id: "wallet-operation-local", WorkspaceId: proto.String("workspace-local"), Kind: api.WalletOperationKindEnum_WALLET_OPERATION_KIND_ENUM_CHARGE, AmountUsdMicros: 52_580_000, Status: api.WalletOperationStatusEnum_WALLET_OPERATION_STATUS_ENUM_CONFIRMED, ReceiptId: proto.String("receipt-wallet-local"), CreatedAt: timestamppb.Now()}
+	r.Context.IdempotencyKey = "append-wallet"
+	return r
+}
+
+// TestWalletActionReceiptPostgresWirePersistence proves the paid funding path end
+// to end against real Ledger persistence: the confirmed Gateway charge is recorded
+// as a WALLET_ACTION receipt, read back by reference by both Fabric and the public
+// reader, replays identically, and cannot be forged or routed to the generic writer.
+func TestWalletActionReceiptPostgresWirePersistence(t *testing.T) {
+	db, s, owners, client, fabric := coordinatedService(t)
+	ctx := context.Background()
+	request := paidCoordinationRequest()
+	owners.quote = proto.Clone(request.QuoteAcceptance).(*api.QuoteAcceptance)
+	owners.wallet = proto.Clone(request.WalletOperation).(*api.WalletOperation)
+	owners.commit = proto.Clone(request.OwnerCommitEvidence).(*api.OwnerCommitEvidence)
+	request.OwnerCommitEvidence = proto.Clone(owners.commit).(*api.OwnerCommitEvidence)
+
+	first, err := client.AppendReceipt(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.GetId() != "receipt-wallet-local" || first.GetKind() != api.ReceiptKindEnum_RECEIPT_KIND_ENUM_WALLET_ACTION || first.GetOwner() != api.OwnerEnum_OWNER_ENUM_WORKSPACE || first.GetCreatedAt() == nil {
+		t.Fatalf("receipt=%v", first)
+	}
+	if owners.walletReads != 1 {
+		t.Fatalf("the Gateway charge was read back %d times", owners.walletReads)
+	}
+	// Replaying by a new key returns the identical receipt rather than a second one.
+	replay := proto.Clone(request).(*api.AppendReceiptRequest)
+	replay.Context.IdempotencyKey = "append-wallet-retry"
+	second, err := client.AppendReceipt(ctx, replay)
+	if err != nil || !proto.Equal(first, second) {
+		t.Fatalf("replay differs: %v %v", second, err)
+	}
+	read := &api.GetReceiptByReferenceRequest{Context: replay.Context, Owner: "workspace", OwnerEvidenceReference: request.OwnerEvidenceReference}
+	evidence, err := fabric.ReadWalletActionReceipt(ctx, read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !proto.Equal(evidence.GetReceipt(), first) || !proto.Equal(evidence.GetWalletOperation(), request.WalletOperation) || evidence.GetEvidenceDigest() != request.EvidenceDigest {
+		t.Fatalf("typed Wallet action evidence differs")
+	}
+	// The public read-by-reference resolves the same reference to the wallet receipt.
+	public, err := client.ReadReceiptByReference(ctx, read)
+	if err != nil || !proto.Equal(public, first) {
+		t.Fatalf("public read=%v %v", public, err)
+	}
+	// A restart reads the same persisted evidence.
+	restarted := ledger.NewPostgresStore(db)
+	stored, err := restarted.ReadWalletActionReceipt(ctx, request.OwnerEvidenceReference)
+	if err != nil || !proto.Equal(stored.Evidence, evidence) {
+		t.Fatalf("restart read=%v", err)
+	}
+	// A receipt whose charge the wallet owner did not authorise is refused, and the
+	// generic writer may never mint this type.
+	foreign := paidCoordinationRequest()
+	owners.quote = proto.Clone(foreign.QuoteAcceptance).(*api.QuoteAcceptance)
+	owners.wallet = proto.Clone(foreign.WalletOperation).(*api.WalletOperation)
+	owners.wallet.AmountUsdMicros++
+	if _, err = client.AppendReceipt(ctx, foreign); err == nil {
+		t.Fatal("a charge that differs from the wallet owner's amount was recorded")
+	}
+	if _, err = s.store.RecordReceipt(ctx, ledger.ReceiptInput{Type: ledger.WalletActionReceiptType, Status: "completed", Surface: "cloud", WorkspaceID: "workspace-local", IdempotencyKey: "forged-wallet"}); err != ledger.ErrInvalidReceiptInput {
+		t.Fatalf("generic writer accepted the wallet type: %v", err)
 	}
 }

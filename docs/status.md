@@ -9,6 +9,306 @@ is not a work log. Target architecture lives in
 [architecture.md](./architecture.md); open outcomes live in
 [roadmap.md](./roadmap.md).
 
+## September 29 Four-Domain Source Handoff And Serial Integration
+
+The four domain threads completed their bounded current-contract preparations
+and are idle. The [integration audit](evidence/source-checks/2026-09-29-tke-serial-integration-audit.json)
+binds the exact inherited dirty worktree: 50 per-file hashes match the four
+owner receipts, and the Artifact tracked diff matches its receipt. The audit
+reran ordinary tests in eight affected modules without production configuration;
+all passed, but database-dependent tests may skip. The Serve and Workspace
+`livebuild` compilation checks both fail on missing COS dependency sums.
+These are source facts, not end-to-end acceptance.
+
+Completed source surfaces: Artifact COS storage/recovery and Registry redirects;
+Workspace funded-order client and identity authorization corrections; Fabric
+Tencent resource dispatch/readback; Serve observation and route-state-machine
+scaffolding. The full W packages and two-mode TKE business outcome remain open.
+
+Blocking connections remain: W01 application union/consumers; shared identity
+readiness/policy; a real registered GatewayCoordination service; paid-charge
+Ledger production and exact readback; Secret delivery; Serve-owned TKE execution
+rather than its current call to the old Fabric application endpoint; an actual
+configured RouteProvider and deployment-to-route orchestration; actual model
+configuration readback rather than copying the requested version; lifecycle
+and credentials; real BFF/Console, packaging and Instance installation.
+The WALLET_ACTION enum already exists; the missing paid-charge behavior is not
+fixed by adding a duplicate kind. Fabric's old Local-only dispatch gap has been
+addressed by C; B's earlier observation of that gap is not the final source state.
+
+The user requested one new sequential integration/deployment window using
+`deepseek-v4.1-flash/high`. [Work package 14 section 11](spec/target/14_implementation_work_packages.md#11-四领域交付后的串行集成与上线)
+now owns that execution order. It must retain all uncommitted domain work,
+complete the missing producer/consumer paths and integrated checks, then build
+an exact canonical Candidate and use the Instance owner's protected deployment
+and acceptance workflows. Old domain windows must not resume concurrent writes.
+The Instance checkout inspected locally is dirty and not remote `main`; its
+state must not be mistaken for the deployment workflow source. No new Candidate,
+production deployment, customer migration, financial/provider action or release
+was performed by this audit. Actual rollout requires fresh owner evidence.
+
+## September 30 Serial Integration Stage 7 Source Progress (Runnable Candidate Image)
+
+**Stage 7 (W27 runnable Candidate asset):** the roadmap gap "the missing buildx
+in the product image" is closed. The Build owner runs `docker buildx build` for
+every Agent OCI (`services/build/internal/build/runner.go:511`), but the product
+image copied only the `docker` binary from the pinned `docker:27.5.1-cli` stage;
+buildx is a separate CLI plugin the CLI only discovers at
+`/usr/local/libexec/docker/cli-plugins/docker-buildx`, so every in-image Agent
+build would have failed with `unknown command: buildx`. The Dockerfile now copies
+that plugin, and a Dockerfile assertion plus a real local image probe
+(`RUN docker buildx version` succeeded after the same copy) prove it
+([receipt](evidence/source-checks/2026-09-30-tke-serial-product-image-buildx.json)).
+No full product image build, Agent build, Candidate, deployment or provider
+action was performed.
+
+The shared verification gate `npm run verify:local:full` now passes on the merged
+serial branch with a temporary PostgreSQL container and Docker integration and
+zero Postgres test skips, so the Stage-6 ordinary/full acceptance is green for the
+current source. `npm run verify:local`, `npm run validate:product-boundary` and
+`npm run verify:local:full` all pass again on the current HEAD after the
+default-OPL-App Serve/Workspace tests were added
+([receipt](evidence/source-checks/2026-09-30-tke-serial-full-verification-green.json)). It still does not substitute for the Instance TKE acceptance.
+
+## September 30 Serial Integration Stage 5 Source Progress (Serve Model Applied Fact)
+
+**Stage 5 (I08, model applied fact):** the section-11 red line that Serve must not
+write the requested `modelConfigurationVersion` as the applied fact is now
+closed. `RuntimeObservation` carries an `AppliedModelConfigurationVersion` — the
+version the executing runtime independently reported — and
+`recordDeploymentObservation` persists that observed value instead of
+`command.GetModelConfigurationVersion()`. The `serve.agent_readiness_observed.v1`
+event and the `StartRuntime` readback likewise carry the observed value, so a
+runtime that has not read a version back reports applied `0` rather than the
+desired version. A focused isolated-PostgreSQL test proves a requested version
+leaves applied `0` until the runtime reports it
+([receipt](evidence/source-checks/2026-09-30-tke-serial-serve-model-applied.json)).
+
+The Workspace launch path is now proven to resolve the default OPL App order
+source from the approved Runtime Release: `resolveApplicationSource` stamps
+`runtime_release` provenance on the descriptor, never `build`, carries the
+release's own artifact and application revision template, and refuses an
+unapproved release instead of substituting one
+([source receipt](evidence/source-checks/2026-09-30-tke-serial-workspace-default-app-source.json)).
+
+The default OPL App is now proven deployable end to end inside Serve's own owner
+store: after reservation it reaches a committed `active` deployment through the
+real runtime adapter, `GetWorkspaceAccess` returns the confirmed entry, exactly
+one `serve.agent_readiness_observed.v1` event is emitted, and the applied model
+version honestly stays 0 — with no Package, Build or CapabilityVersion anywhere
+([deploy receipt](evidence/source-checks/2026-09-30-tke-serial-serve-default-app-deploy.json)).
+
+The default OPL App first-delivery path is now proven against Serve's real owner
+store: `Reserve` accepts an explicit `opl_app` selection backed by an approved
+Runtime Release with no Package, Build or CapabilityVersion, records
+`application_kind='opl_app'` with an empty `capability_version_id`, acquires
+exactly one Runtime Release reference claim, and rejects a mixed source that also
+names a CapabilityVersion (§11.2 acceptance "default App has no
+Package/Build/CapabilityVersion")
+([receipt](evidence/source-checks/2026-09-30-tke-serial-serve-default-app-reservation.json)).
+
+Still open in Stage 5: driving the publisher `opl-model-config/v1` apply/readback
+(`PUT applyPath` / `GET readbackPath`) so the adapter can actually obtain an
+applied version; the real `RouteProvider` wiring and Deploy-to-Fence/Activate
+orchestration (I07); moving TKE application execution and its real caller from
+Fabric to Serve and retiring the old Fabric HTTP writer (I06). No Candidate,
+deployment or provider action was performed.
+
+I06 and I07 each depend on a not-yet-frozen external contract, established by
+read-only review and recorded rather than fabricated
+([boundary receipt](evidence/source-checks/2026-09-30-tke-serial-serve-exec-route-boundary.json)).
+The exact decision for each is now pinned: I06 needs the typed
+application-execution owner boundary between Serve and Fabric (FabricCoordination
+has only resource/Secret RPCs); I07 needs the installation route object's
+conditional-revision CAS performer, and the Instance source already shows the
+object — one `Ingress` in `opl-instance-medopl/deploy/tke/opl-cloud.k8s.json`
+serving `cloud/workspace/*.<application domain>` — but no Cloud source mutates it.
+I08's Serving half is the same kind of boundary: the publisher
+`opl-model-config/v1` apply/readback wire is not carried by
+`WorkspaceApplicationRuntimeInput`. No other requisite for I06/I07 is missing in
+Cloud source ([confirmation](evidence/source-checks/2026-09-30-tke-serial-i06-i07-blocker-confirmation.json)).
+I06 needs a typed application-execution owner boundary between Serve and Fabric
+(`FabricCoordination` has no application-execution RPC, so Serve still reaches
+execution over Fabric's signed `/fabric/workspace-application-runtimes` HTTP
+route). I07 needs the installation route object and its conditional-revision CAS
+performer to be named (Serve's `RouteProvider` interface has no implementation,
+and no Cloud source produces a routing Ingress; grep finds only NetworkPolicy
+Ingress rules). The publisher model-config apply/readback wire is likewise not
+admitted by the adapter's `WorkspaceApplicationRuntimeInput`.
+
+## September 30 Serial Integration Stage 1 Generator Reproducibility
+
+**Stage 1 (reproducible generators):** the canonical CloudIdentity authorization
+generator (`services/gateway-integration/identity/generate_policy.py`) did not
+reproduce its committed output: it omitted the two workspace-audience
+administrative-operation rows (`listAdminOperations`, `reconcileOperation`) and all
+five `runtime_control` rows, because `bff` and `runtime_control` were missing from
+its scanned owner set. It now reproduces the committed
+`policy_generated.go` byte-for-byte, and the focused policy tests pass
+([receipt](evidence/source-checks/2026-09-30-tke-serial-policy-generator-reproducible.json)).
+Only the generator source changed; the committed generated tables are unchanged and
+no machine contract/schema/spec-validation input was touched.
+
+## September 30 Serial Integration Stage 1 Merge And Capability Overlay
+
+Under the section-11 serial window (`codex/tke-serial-integration`), the branch
+first reconciled `origin/main` before continuing: PRs #684 (build registry blob
+redirect), #686 (deployment-unit docs), #688 (CloudIdentity owner readiness) and
+#689 (Capability COS storage/storage-provider) were merged at `336da3dd`. Two of
+them (`services/internal/ownerservice/bootstrap.go`, `services/build/internal/build/runner.go`)
+were byte-identical on both sides, so they merged as a single copy.
+
+The capability byte plane required a real reconciliation, not a blind side pick:
+`origin/main` (#689, canonical) keeps `Storage.Assemble` plus a separate,
+archive-validated `Promote`, while this branch's pre-final capture did the
+content-addressed copy inside `Assemble`. The merge kept #689's
+validation-before-promote model as the base and overlaid only the W08
+acceptance behaviours it lacked: the upload **resume** seam
+(`Storage.ListParts` + `ProviderParts`, implemented for the local and COS
+providers, so `GetUpload` reports exactly the shards the provider holds and only
+the missing ones are re-sent) and the COS **crash-recovery** window (when the
+multipart is gone, `Assemble` re-verifies the content-addressed immutable object
+instead of failing or starting a second upload identity). The merge also kept
+main's peer loop and re-added the branch's `GatewayStore` wiring in
+`services/gateway-integration/cmd/server/main.go`. Focused module builds and an
+isolated-PostgreSQL Capability COS-provider test pass
+([receipt](evidence/source-checks/2026-09-30-tke-serial-merge-interleaving.json)).
+No `docs/spec/target` checks or `npm run verify:local:full` were rerun, because no
+machine contract/schema/spec-validation input changed in this merge.
+
+## September 30 Serial Integration Stage 4 Source Progress (Secret Injection)
+
+**Stage 4 (I05 Secret injection):** the default OPL App's platform Gateway
+credential can now reach the Agent uncorrupted. The deploy wire gained an opaque
+managed-key binding (`RuntimeManagedKeyBinding`) so a `SecretBindingCommand`
+carries the exact approved-store fingerprint and a `SecretBindingReadback`
+returns the confirmed version. `FabricCoordination.BindSecret` is implemented in
+`services/fabric/coordination`: it authorizes the caller with the same
+CloudIdentity `BINDMANAGEDSECRET` action, resolves Fabric's own confirmed
+execution resource, has the provider confirm the exact approved-store Secret
+(`TencentProvider`/`LocalDockerProvider` `BindWorkspaceApplicationSecret`), and
+writes one immutable `fabric.secret_bindings` row per runtime+purpose that a
+retry replays rather than duplicates. `Serve`'s deployment resolves the managed
+key (`GatewayCoordination.CreateManagedKey`) and the Fabric binding before it
+freezes its snapshot, the adapter now injects the confirmed binding into the
+runtime input instead of refusing, and the runtime readiness event reports
+`credential_injection_verified` only from a confirmed binding. The raw Gateway
+Key still never enters Serve or any owner database. An isolated real-gRPC,
+real-PostgreSQL test proves confirmation, replay without a second confirmation,
+conflicting-reference refusal and authorization denial; the Serve adapter tests
+prove injection and refusal of an unbound declared Secret. Serving a managed key
+whose issuer writes over Fabric's HTTP secret boundary, route execution, model
+readback, two-mode Console, Candidate and Instance rollout remain open.
+
+## September 30 Serial Integration Stage 4 Serving-Half Boundary (I05)
+
+**Stage 4 (I05 served half):** the remaining half of I05 — a production
+`ManagedKeyIssuer`/`SecretStore` on the Gateway owner that mints the Workspace
+managed key and writes it to the approved store — is blocked by an external
+authority gap, verified against upstream Sub2API v0.2.4 source. Sub2API exposes no
+admin/service-authorized key-issuance endpoint: creation is `POST /api/v1/keys`
+gated by the user's own JWT, and the admin surface only reads a user's keys and
+updates a key's group. Fabric's `/fabric/gateway-secrets` write additionally
+requires the Sub2API `WorkspaceAPIKeyID`, which only the missing issuer would
+return. The existing production default-App path already creates the key and
+writes the Secret, but does so inside Control Plane while it still holds the
+user's delegated bearer; that authority does not exist on the Gateway owner.
+Per section 11 this was **not bypassed**: `CreateManagedKey` keeps failing closed,
+no raw key was written anywhere, and no fallback table, log or receipt fakes a
+passing path. Closing it needs an approved Sub2API service-issuance capability or
+an explicit owner decision on where the delegated authority lives. See the
+[boundary receipt](evidence/source-checks/2026-09-30-tke-serial-managed-key-serving-boundary.json).
+
+A second, verified defect in the same slice is recorded there too: Serve currently
+drives `CreateManagedKey` with its own gRPC identity, but the Gateway owner admits
+only the Workspace peer (Fabric's `BindSecret` admits Serve and Workspace, and F08
+row 6 names `workspace->gateway`). Reconciliation of the driver belongs with the
+external authority decision rather than as a speculative allowlist change.
+
+## September 30 Serial Integration Stage 2-3 Source Progress
+
+Under the section-11 serial window (`codex/tke-serial-integration`), two stages
+now have source, consumer and evidence. **Stage 2 (W01 application union):** the
+approved 2026-09-29 delta is in the executable canonical schema — `QuoteRequest`
+carries the explicit `applicationSelection`, `Quote`/`Workspace` carry
+`runtimeVersionId`, and `resource_catalog.quotes` has the mutually exclusive
+`application_kind`/`runtime_version_id` columns. Resource Catalog, Workspace
+`CreateWorkspace`/readback, the Console BFF and Console UI all consume the two
+combinations; the strict browser suite (115 tests) and a real PostgreSQL
+round-trip pass. `RuntimeReadbackRequirement` stays `required` for the default App.
+
+**Stage 3 (funding, partially):** the paid-charge funding gate is closed. The
+Ledger records a real `WALLET_ACTION` receipt for a paid Workspace order — it
+re-reads the accepting Catalog quote, the Workspace owner commit and the Gateway
+wallet operation before persisting, then serves it by reference so Fabric's
+existing `readConfirmedWalletCharge` receives `kind=WALLET_ACTION` with a
+confirmed outcome. Workspace appends and reads that receipt after a confirmed
+Gateway charge and releases resources with the receipt the Ledger returns. A real
+isolated-PostgreSQL test proves persistence, replay, restart readback, amount
+tamper refusal and that the generic HTTP writer cannot mint the type.
+
+**Stage 3 (GatewayCoordination):** the production settlement surface is now
+implemented and registered in `services/gateway-integration`. The gateway data
+owner has its own database (`opl_gateway`/schema `gateway`), opened, migrated and
+readiness-checked from `OPL_GATEWAY_DATABASE_URL` alongside the tenant database in
+the same deployment unit. `BindWallet`, `Debit`, `Refund`, `ReadWalletAction`,
+`CreateManagedKey` and `RevokeManagedKey` are served; a charge/refund persists its
+original intent before dispatch, issues at most one Sub2API admin balance
+adjustment per business code, and confirms only from the native positive balance
+history. An isolated real-PostgreSQL, real-gRPC test proves one charge per
+obligation, replay idempotency, changed-amount refusal, an unconfirmed response
+that is never re-issued, and cross-tenant read refusal. See the
+[source receipt](evidence/source-checks/2026-09-30-tke-serial-gateway-coordination.json).
+
+Still open in Stage 3: `CreateManagedKey` fails closed until an approved Secret
+store and a Sub2API key issuer are wired (stage 4 / I05), and the Gateway wallet is
+exercised through a stub Sub2API in isolated tests only. Stages 4-8 (Secret
+injection, Serve-owned TKE execution, real RouteProvider, model readback,
+two-mode Console chain, Candidate build, Instance install) remain open, and no
+Candidate, production deployment, customer migration, financial or provider
+action was performed.
+
+## September 29 Tencent/TKE Planning And Task Dispatch
+
+The adopted product now includes default OPL App/native UI without a customer
+Package, Build or CapabilityVersion, plus custom Agent built from Package, Runtime and an independent WebUI.
+These are exactly two combinations; Agent with built-in UI is not supported.
+[The decision](decisions.md#2026-09-29-default-opl-app-and-optional-agent) is
+product intent. [Work package 14 section 9](spec/target/14_implementation_work_packages.md#9-tencenttke可直接开发的切片与窗口)
+contains executable work slices and window boundaries, not implementation claims.
+
+The inspected production baseline is `bf9027253dd852383c6069e7dad9fc7d436efbe3`.
+Its Quote/Build/Serve contracts still have mandatory CapabilityVersion or WebUI
+assumptions. The new default path is **not implemented**. Target 03/02 explicitly
+record W01's grouped contract/SQL/consumer migration; the historical schema/UI
+receipts do not validate that delta. The new strict target-selection and slice
+planning checks prove only their specification/planning layer.
+
+The [source/planning receipt](evidence/source-checks/2026-09-29-tke-default-app-planning.json)
+records actual local checks, exact changed-source hashes, and unperformed
+verification. No production access, purchase, deployment, publication, runtime
+contract generation or service behavior change is claimed by this reconciliation.
+
+The final two-combination correction and four-window preparation are recorded
+in [the current preparation evidence](evidence/source-checks/2026-09-29-tke-two-modes-preparation.json).
+The earlier planning receipt remains immutable provenance, including its
+superseded Agent-with-built-in-UI proposal. Current product intent is only the
+two combinations above; Agent keeps all three Build inputs mandatory.
+
+Four local domain tasks have been dispatched with `deepseek-v4.1-flash` and
+`high`, under [work package 14 section 10](spec/target/14_implementation_work_packages.md#10-四领域窗口派发与共享合同交接).
+Their first actions use existing contracts and disjoint owner write sets.
+[Dispatch evidence](evidence/source-checks/2026-09-29-tke-four-window-dispatch.json)
+records exact thread identities and observed startup, not domain completion.
+W01 executable application-selection migration, W02 shared readiness, W05
+receipt producers/consumers and BFF/Console integration remain integration
+obligations. The new App wire and TKE delivery are not yet qualified.
+No domain result from these ongoing tasks is covered by the planning checks.
+
+The historical three-service migration start point below is a dated source
+snapshot, not the current owner-module inventory. Later implementation receipts
+remain valid only for their own sources and tested layers.
+
 ## target architecture Migration Start Point
 
 The target architecture is adopted in

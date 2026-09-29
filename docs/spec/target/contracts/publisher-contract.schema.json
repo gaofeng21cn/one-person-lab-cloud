@@ -700,7 +700,8 @@
           "type": "string",
           "enum": [
             "build",
-            "legacy_application"
+            "legacy_application",
+            "runtime_release"
           ]
         },
         "legacyApplicationRevisionId": {

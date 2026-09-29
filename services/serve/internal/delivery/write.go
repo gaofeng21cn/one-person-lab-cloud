@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	contracts "opl-cloud/packages/contracts/go"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/packages/contracts/go/publicjson"
@@ -28,6 +29,13 @@ import (
 type RuntimeAdapter interface {
 	Start(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (RuntimeObservation, error)
 	Observe(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (RuntimeObservation, error)
+	// Lifecycle applies a desired lifecycle state (running, suspended, absent) to
+	// the exact reserved runtime. It reports only what the provider confirmed.
+	Lifecycle(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding, string) error
+	// Reload applies the command's model configuration to the exact runtime.
+	Reload(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) error
+	// Credentials reads the platform-issued WebUI credential for the exact runtime.
+	Credentials(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (*api.WorkspaceApplicationCredentials, error)
 }
 
 type reservationInput struct {
@@ -86,15 +94,39 @@ func (s *Service) Reserve(ctx context.Context, r *api.RuntimeReservationCommand)
 	}
 	call := r.GetContext()
 	tid := call.GetScope().GetTenant().GetTenantId()
-	if tid == "" || call.GetIdempotencyKey() == "" || r.GetDeploymentId() != "" || r.GetCapabilityVersionId() == "" || r.GetResourceSetId() == "" || r.GetDataAttachmentId() == "" || r.GetDeploymentDescriptor() == nil || r.GetDeploymentDescriptorObjectRef() == "" {
-		return nil, status.Error(codes.InvalidArgument, "tenant, idempotency key, capability, resource set, attachment and descriptor are required; Serve allocates deployment identity")
+	if tid == "" || call.GetIdempotencyKey() == "" || r.GetDeploymentId() != "" || r.GetResourceSetId() == "" || r.GetDataAttachmentId() == "" || r.GetDeploymentDescriptor() == nil || r.GetDeploymentDescriptorObjectRef() == "" {
+		return nil, status.Error(codes.InvalidArgument, "tenant, idempotency key, resource set, attachment and descriptor are required; Serve allocates deployment identity")
+	}
+	// Exactly one application source: the default OPL App names an approved Runtime
+	// Release with no CapabilityVersion, while a built Agent names a
+	// CapabilityVersion. The two never coexist and neither is implicit.
+	selection := r.GetApplicationSelection()
+	if selection == nil {
+		if r.GetCapabilityVersionId() == "" {
+			return nil, status.Error(codes.InvalidArgument, "an application selection or a capability version is required")
+		}
+		selection = &api.WorkspaceApplicationSelection{
+			Kind:                api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_AGENT,
+			CapabilityVersionId: proto.String(r.GetCapabilityVersionId()),
+		}
+	} else if r.GetCapabilityVersionId() != "" {
+		return nil, status.Error(codes.InvalidArgument, "application selection and capability version are mutually exclusive")
+	}
+	if err := contracts.ValidateWorkspaceApplicationSelection(selection); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	expected, err := descriptorDigest(r.GetDeploymentDescriptor())
 	if err != nil || expected != r.GetDeploymentDescriptorDigest() || !proto.Equal(r.GetArtifact(), r.GetDeploymentDescriptor().GetArtifact()) {
 		return nil, status.Error(codes.InvalidArgument, "descriptor identity differs from its artifact or digest")
 	}
-	if s.Capability == nil || s.References == nil {
+	if s.References == nil {
+		return nil, status.Error(codes.Unavailable, "Capability reference coordination is not configured")
+	}
+	if selection.GetKind() == api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_AGENT && s.Capability == nil {
 		return nil, status.Error(codes.Unavailable, "Capability is not configured")
+	}
+	if selection.GetKind() == api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP && s.RuntimeReleases == nil {
+		return nil, status.Error(codes.Unavailable, "Runtime Control is not configured")
 	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -143,35 +175,73 @@ func (s *Service) Reserve(ctx context.Context, r *api.RuntimeReservationCommand)
 		return nil, err
 	}
 	peerCall := nextOwnerCall(call)
-	version, err := s.Capability.GetCapabilityVersion(ctx, &api.GetCapabilityVersionRpcRequest{Context: peerCall, CapabilityVersionId: r.CapabilityVersionId})
-	if err != nil {
-		return nil, err
-	}
-	if version.GetId() != r.CapabilityVersionId || version.GetStatus() != api.CapabilityVersionStatusEnum_CAPABILITY_VERSION_STATUS_ENUM_READY || !proto.Equal(version.GetArtifact(), r.Artifact) || !proto.Equal(version.GetDeploymentDescriptor(), r.DeploymentDescriptor) || version.GetDeploymentDescriptorDigest() != expected || version.GetDeploymentDescriptorObjectRef() != r.DeploymentDescriptorObjectRef {
-		return nil, status.Error(codes.FailedPrecondition, "Capability did not confirm the exact deployable descriptor")
+	applicationKind := "agent"
+	capabilityVersionID := r.GetCapabilityVersionId()
+	runtimeVersionID := ""
+	var dataCompatibility *api.DataCompatibility
+	switch selection.GetKind() {
+	case api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_AGENT:
+		version, err := s.Capability.GetCapabilityVersion(ctx, &api.GetCapabilityVersionRpcRequest{Context: peerCall, CapabilityVersionId: capabilityVersionID})
+		if err != nil {
+			return nil, err
+		}
+		if version.GetId() != capabilityVersionID || version.GetStatus() != api.CapabilityVersionStatusEnum_CAPABILITY_VERSION_STATUS_ENUM_READY || !proto.Equal(version.GetArtifact(), r.Artifact) || !proto.Equal(version.GetDeploymentDescriptor(), r.DeploymentDescriptor) || version.GetDeploymentDescriptorDigest() != expected || version.GetDeploymentDescriptorObjectRef() != r.DeploymentDescriptorObjectRef {
+			return nil, status.Error(codes.FailedPrecondition, "Capability did not confirm the exact deployable descriptor")
+		}
+		dataCompatibility = version.GetDataCompatibility()
+	case api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP:
+		applicationKind = "opl_app"
+		capabilityVersionID = ""
+		release, err := s.runtimeRelease(ctx, peerCall, selection.GetRuntimeVersionId())
+		if err != nil {
+			return nil, err
+		}
+		runtimeVersionID = release.GetId()
+		// The default App has no Build lineage; its descriptor must be the release's
+		// own immutable OCI and application revision template, not a caller image.
+		if !proto.Equal(release.GetPublisherContract().GetImage(), r.GetArtifact()) || !proto.Equal(release.GetPublisherContract().GetApplicationRevisionTemplate(), r.GetDeploymentDescriptor().GetApplicationRevision()) {
+			return nil, status.Error(codes.FailedPrecondition, "Runtime Release does not match the default App descriptor")
+		}
+		// The default App's data contract is the release's own upgrade/rollback
+		// contract, declared at admission; the runtime stores an empty compatibility
+		// for the first delivery and reconciles it on replacement.
+	default:
+		return nil, status.Error(codes.InvalidArgument, "unknown application selection kind")
 	}
 	deploymentID := stableID("dep_", tid, r.WorkspaceId, call.ActorId, call.IdempotencyKey)
 	operationID := stableID("op_", deploymentID)
 	runtimeID := stableID("rti_", deploymentID)
-	claim, err := s.References.AcquireReference(ctx, &api.ReferenceClaimRequest{Context: peerCall, Target: &api.ReferenceTarget{Target: &api.ReferenceTarget_CapabilityVersionId{CapabilityVersionId: r.CapabilityVersionId}}, ClaimantOwner: api.OwnerEnum_OWNER_ENUM_SERVE, ClaimantResourceId: deploymentID})
+	claimTarget := &api.ReferenceTarget{}
+	if applicationKind == "agent" {
+		claimTarget.Target = &api.ReferenceTarget_CapabilityVersionId{CapabilityVersionId: capabilityVersionID}
+	} else {
+		claimTarget.Target = &api.ReferenceTarget_RuntimeVersionId{RuntimeVersionId: runtimeVersionID}
+	}
+	claim, err := s.References.AcquireReference(ctx, &api.ReferenceClaimRequest{Context: peerCall, Target: claimTarget, ClaimantOwner: api.OwnerEnum_OWNER_ENUM_SERVE, ClaimantResourceId: deploymentID})
 	if err != nil {
 		return nil, err
 	}
-	if claim.GetId() == "" || claim.GetClaimantOwner() != api.OwnerEnum_OWNER_ENUM_SERVE || claim.GetClaimantResourceId() != deploymentID || claim.GetTarget().GetCapabilityVersionId() != r.CapabilityVersionId || claim.GetState() == api.ReferenceClaimState_REFERENCE_CLAIM_STATE_RELEASED {
+	if claim.GetId() == "" || claim.GetClaimantOwner() != api.OwnerEnum_OWNER_ENUM_SERVE || claim.GetClaimantResourceId() != deploymentID || claim.GetState() == api.ReferenceClaimState_REFERENCE_CLAIM_STATE_RELEASED {
+		return nil, status.Error(codes.FailedPrecondition, "reference claim identity mismatch")
+	}
+	if applicationKind == "agent" && claim.GetTarget().GetCapabilityVersionId() != capabilityVersionID {
 		return nil, status.Error(codes.FailedPrecondition, "Capability claim identity mismatch")
+	}
+	if applicationKind == "opl_app" && claim.GetTarget().GetRuntimeVersionId() != runtimeVersionID {
+		return nil, status.Error(codes.FailedPrecondition, "Runtime Release claim identity mismatch")
 	}
 	accepted, _ := json.Marshal(reservationInput{Request: reservationBytes(r), Actor: call.ActorId, Scope: wire(call.Scope), AuthorizationContextID: call.GetAuthorizationContextId(), Digest: "sha256:" + input.RequestSHA256})
 	_, err = s.Store.CreateOperation(ctx, tx, ownerstore.OperationInput{ID: operationID, TenantID: tid, ActorID: call.ActorId, Kind: "runtime_deploy", ResourceID: deploymentID, Stage: "runtime", RequestID: call.RequestId, AcceptedInput: accepted})
 	if err != nil {
 		return nil, dbError(err)
 	}
-	compatibility, _ := publicjson.Marshal(version.GetDataCompatibility())
+	compatibility, _ := publicjson.Marshal(dataCompatibility)
 	if string(compatibility) == "null" || len(compatibility) == 0 {
 		compatibility = []byte(`{}`)
 	}
 	descriptor, _ := publicjson.Marshal(r.DeploymentDescriptor)
 	attachment, _ := json.Marshal(map[string]string{"attachmentId": r.DataAttachmentId})
-	_, err = tx.ExecContext(ctx, `INSERT INTO serve.agent_deployments(id,workspace_id,capability_version_id,artifact_digest,reference_claim_id,runtime_instance_id,operation_id,status,data_compatibility,execution_epoch) VALUES($1,$2,$3,$4,$5,$6,$7,'queued',$8,1)`, deploymentID, r.WorkspaceId, r.CapabilityVersionId, r.Artifact.Digest, claim.Id, runtimeID, operationID, compatibility)
+	_, err = tx.ExecContext(ctx, `INSERT INTO serve.agent_deployments(id,workspace_id,capability_version_id,application_kind,runtime_version_id,artifact_digest,reference_claim_id,runtime_instance_id,operation_id,status,data_compatibility,execution_epoch) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'queued',$10,1)`, deploymentID, r.WorkspaceId, capabilityVersionID, applicationKind, nullable(runtimeVersionID), r.Artifact.Digest, claim.Id, runtimeID, operationID, compatibility)
 	if err != nil {
 		return nil, dbError(err)
 	}
@@ -273,6 +343,9 @@ func (s *Service) Deploy(ctx context.Context, r *api.RuntimeDeployCommand) (*api
 	}
 	if s.Runtime == nil || s.Resources == nil || s.References == nil {
 		return nil, status.Error(codes.Unavailable, "runtime adapter, Fabric readback and Capability must be configured")
+	}
+	if err := s.resolveManagedKeyBinding(ctx, r); err != nil {
+		return nil, err
 	}
 	if err := s.acceptDeploy(ctx, r); err != nil {
 		return nil, err
@@ -382,11 +455,11 @@ func appendReadinessEvent(ctx context.Context, tx *sql.Tx, store *ownerstore.Sto
 		DeploymentId:         r.GetDeploymentId(),
 		Outcome:              outcome,
 		ApplicationAvailable: o.State == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY,
-		// The current Fabric adapter rejects secret/model configuration and does
-		// not return a credential-injection readback. Absence of a binding is not
-		// proof that injection happened, so keep this explicitly false.
-		CredentialInjectionVerified:      false,
-		AppliedModelConfigurationVersion: r.GetModelConfigurationVersion(),
+		// Injection is proven only by a confirmed managed-key Secret binding that
+		// the execution boundary was given; an application that declares no Secret
+		// needs none, and absence of a binding is never treated as proof.
+		CredentialInjectionVerified:      r.GetManagedKeyBinding() != nil && strings.TrimSpace(r.GetManagedKeyBinding().GetSecretBindingId()) != "" && strings.TrimSpace(r.GetManagedKeyBinding().GetSecretVersion()) != "",
+		AppliedModelConfigurationVersion: o.AppliedModelConfigurationVersion,
 		ReceiptId: func() *string {
 			if o.ReadinessEvidenceRef == "" {
 				return nil

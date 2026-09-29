@@ -13,7 +13,8 @@ import type {
   WorkspaceOwnerOperationDTO,
   WorkspaceOwnerDTO,
   WorkspaceOwnerAccessDTO,
-  GatewayWalletReadbackDTO
+  GatewayWalletReadbackDTO,
+  RuntimeVersionDTO
 } from "../api/dtos.ts";
 import {
   createAgentWorkspace,
@@ -26,6 +27,7 @@ import {
   listAvailableComputePlans,
   listAvailableLaunchModels,
   listAvailableStoragePlans,
+  listApprovedRuntimeVersions,
   listReadyCapabilityVersions,
   workspaceLaunchIdempotencyKey
 } from "../api/workspaces-api.ts";
@@ -49,6 +51,11 @@ interface PersistedAgentIntent {
 
 export interface AgentWorkspaceLaunchController extends WorkspaceLaunchController {
   agentCapabilityVersions: CapabilityVersionDTO[];
+  agentRuntimeVersions: RuntimeVersionDTO[];
+  agentApplicationKind: "opl_app" | "agent";
+  setAgentApplicationKind: (value: "opl_app" | "agent") => void;
+  agentRuntimeVersionId: string;
+  setAgentRuntimeVersionId: (value: string) => void;
   agentComputePlans: ComputePlanDTO[];
   agentStoragePlans: StoragePlanDTO[];
   agentModels: LaunchModelDTO[];
@@ -126,6 +133,9 @@ export function useWorkspaceLaunchController({
   const [launchStep, setLaunchStep] = useState<WorkspaceLaunchStep>("configure");
   const [launchConfirmed, setLaunchConfirmed] = useState(false);
   const [agentCapabilityVersions, setAgentCapabilityVersions] = useState<CapabilityVersionDTO[]>([]);
+  const [agentRuntimeVersions, setAgentRuntimeVersions] = useState<RuntimeVersionDTO[]>([]);
+  const [agentApplicationKind, setAgentApplicationKindState] = useState<"opl_app" | "agent">("opl_app");
+  const [agentRuntimeVersionId, setAgentRuntimeVersionIdState] = useState("");
   const [agentComputePlans, setAgentComputePlans] = useState<ComputePlanDTO[]>([]);
   const [agentStoragePlans, setAgentStoragePlans] = useState<StoragePlanDTO[]>([]);
   const [agentModels, setAgentModels] = useState<LaunchModelDTO[]>([]);
@@ -159,6 +169,9 @@ export function useWorkspaceLaunchController({
     setLaunchStep("configure");
     setLaunchConfirmed(false);
     setAgentCapabilityVersions([]);
+    setAgentRuntimeVersions([]);
+    setAgentApplicationKindState("opl_app");
+    setAgentRuntimeVersionIdState("");
     setAgentComputePlans([]);
     setAgentStoragePlans([]);
     setAgentModels([]);
@@ -183,22 +196,30 @@ export function useWorkspaceLaunchController({
     setAgentSourceLoading(true);
     setAgentSourceError("");
     try {
-      const [versions, compute, storage, models, wallet] = await Promise.all([
-        listReadyCapabilityVersions(), listAvailableComputePlans(), listAvailableStoragePlans(), listAvailableLaunchModels(), getLaunchWallet()
+      const [versions, releases, compute, storage, models, wallet] = await Promise.all([
+        listReadyCapabilityVersions(), listApprovedRuntimeVersions(), listAvailableComputePlans(), listAvailableStoragePlans(), listAvailableLaunchModels(), getLaunchWallet()
       ]);
       if (!isRequestCurrent(generation, activeSession.user.id)) return;
       const availableVersions = versions.filter((version) => version.status === "ready");
+      const availableReleases = releases.filter((release) => release.status === "approved");
       const availableCompute = compute.filter((plan) => plan.availability === "available");
       const availableStorage = storage.filter((plan) => plan.availability === "available");
       const availableModels = models.filter((model) => model.available);
-      if (!availableVersions.length || !availableCompute.length || !availableStorage.length || !availableModels.length) {
+      // Two application combinations share one launch: the default OPL App needs
+      // an approved Runtime Release, a built Agent needs a ready CapabilityVersion.
+      // Resource plans and models are required for both, but neither application
+      // combination is fabricated to satisfy the other.
+      if ((!availableReleases.length && !availableVersions.length) || !availableCompute.length || !availableStorage.length || !availableModels.length) {
         throw new Error("agent_launch_catalog_empty");
       }
       setAgentCapabilityVersions(availableVersions);
+      setAgentRuntimeVersions(availableReleases);
       setAgentComputePlans(availableCompute);
       setAgentStoragePlans(availableStorage);
       setAgentModels(availableModels);
       setAgentWallet(wallet);
+      setAgentApplicationKindState((current) => current === "agent" ? (availableVersions.length ? "agent" : "opl_app") : (availableReleases.length ? "opl_app" : "agent"));
+      setAgentRuntimeVersionIdState((current) => current && availableReleases.some((r) => r.id === current) ? current : (availableReleases[0]?.id ?? ""));
       setAgentCapabilityVersionIdState((current) => current && availableVersions.some((v) => v.id === current) ? current : availableVersions[0].id);
       setAgentComputePlanIdState((current) => current && availableCompute.some((p) => p.id === current) ? current : availableCompute[0].id);
       setAgentStoragePlanIdState((current) => current && availableStorage.some((p) => p.id === current) ? current : availableStorage[0].id);
@@ -291,21 +312,30 @@ export function useWorkspaceLaunchController({
     }
   };
 
+  const setAgentApplicationKind = (value: "opl_app" | "agent") => { setAgentApplicationKindState(value); invalidateQuote(); };
+  const setAgentRuntimeVersionId = (value: string) => { setAgentRuntimeVersionIdState(value); invalidateQuote(); };
   const setAgentCapabilityVersionId = (value: string) => { setAgentCapabilityVersionIdState(value); invalidateQuote(); };
   const setAgentComputePlanId = (value: string) => { setAgentComputePlanIdState(value); invalidateQuote(); };
   const setAgentStoragePlanId = (value: string) => { setAgentStoragePlanIdState(value); invalidateQuote(); };
   const setAgentModelSelection = (slot: string, modelId: string) => { setAgentModelSelections((current) => ({ ...current, [slot]: modelId })); invalidateQuote(); };
 
   const selectedCapability = agentCapabilityVersions.find((version) => version.id === agentCapabilityVersionId) || null;
-  const modelSelections = selectedCapability ? selectionList(selectedCapability.modelRequirements, agentModelSelections) : [];
-  const modelSelectionsReady = Boolean(selectedCapability) && selectedCapability.modelRequirements.every((requirement) => {
-    const selection = modelSelections.find((item) => item.slot === requirement.slot);
-    return !requirement.required && !selection || Boolean(selection && requirement.allowedModelIds.length > 0 && requirement.allowedModelIds.includes(selection.modelId));
-  });
+  const selectedRelease = agentRuntimeVersions.find((release) => release.id === agentRuntimeVersionId) || null;
+  const isDefaultApp = agentApplicationKind === "opl_app";
+  // A built Agent declares its model requirement slots, so every required slot must
+  // be chosen from its allowed models. The default OPL App ships its own model
+  // configuration, so it carries no per-slot requirement and selects no models.
+  const modelSelections = isDefaultApp || !selectedCapability ? [] : selectionList(selectedCapability.modelRequirements, agentModelSelections);
+  const modelSelectionsReady = isDefaultApp
+    ? Boolean(selectedRelease)
+    : Boolean(selectedCapability) && selectedCapability.modelRequirements.every((requirement) => {
+      const selection = modelSelections.find((item) => item.slot === requirement.slot);
+      return !requirement.required && !selection || Boolean(selection && requirement.allowedModelIds.length > 0 && requirement.allowedModelIds.includes(selection.modelId));
+    });
   const readiness: AgentLaunchReadiness = {
     sourceReady: !agentSourceLoading && !agentSourceError && !agentRecoveryPending,
     hasName: Boolean(launchName.trim()),
-    hasCapabilityVersion: Boolean(selectedCapability),
+    hasCapabilityVersion: isDefaultApp ? Boolean(selectedRelease) : Boolean(selectedCapability),
     hasComputePlan: Boolean(agentComputePlanId),
     hasStoragePlan: Boolean(agentStoragePlanId),
     modelSelectionsReady,
@@ -316,10 +346,13 @@ export function useWorkspaceLaunchController({
   };
 
   const reviewAgentLaunch = () => {
-    if (!session || intent.current || !selectedCapability || !canCreateAgentQuote(readiness)) return;
+    if (!session || intent.current || !canCreateAgentQuote(readiness) || (isDefaultApp ? !selectedRelease : !selectedCapability)) return;
     setAgentBusy(true);
+    const applicationSelection = isDefaultApp
+      ? { kind: "opl_app" as const, runtimeVersionId: selectedRelease!.id }
+      : { kind: "agent" as const, capabilityVersionId: selectedCapability!.id };
     void createWorkspaceQuote({
-      purpose: "deploy", capabilityVersionId: selectedCapability.id, computePlanId: agentComputePlanId,
+      purpose: "deploy", applicationSelection, computePlanId: agentComputePlanId,
       storagePlanId: agentStoragePlanId, modelSelections, periodMonths: 1
     }, session.csrfToken, `workspace-quote:${crypto.randomUUID()}`).then((quote) => {
       setAgentQuote(quote);
@@ -439,6 +472,11 @@ export function useWorkspaceLaunchController({
     openLaunchBilling: () => navigate("/console/billing"),
     prepareNewWorkspaceLaunch: () => { if (agentRecoveryPending) return; setAgentOperation(null); setAgentWorkspace(null); setAgentAccess(null); setLaunchStep("configure"); setAgentConfirmed(false); },
     agentCapabilityVersions,
+    agentRuntimeVersions,
+    agentApplicationKind,
+    setAgentApplicationKind,
+    agentRuntimeVersionId,
+    setAgentRuntimeVersionId,
     agentComputePlans,
     agentStoragePlans,
     agentModels,

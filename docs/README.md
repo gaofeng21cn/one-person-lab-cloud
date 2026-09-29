@@ -56,7 +56,9 @@ cannot yet follow is an explicit roadmap gap, not a competing SSOT.
 
 ## Active Navigation
 
-- [target architecture target development specification](./spec/target/00_master_index.md)
+- [target architecture development specification](./spec/target/00_master_index.md)
+- [Tencent/TKE delivery slices and work-window handoff](./spec/target/14_implementation_work_packages.md#9-tencenttke可直接开发的切片与窗口)
+- [Default OPL App and optional Agent product combinations](./spec/target/12_product_spec.md#11-明确的产品组合与默认行为2026-09-29采用)
 - [Workspace application delivery plan](./roadmap.md#workspace-application-decoupling)
 - [Final deliverables and owner handoff](./roadmap.md#required-deliverables)
 - [Workspace current capability baseline](./status.md#current-capability-baseline)

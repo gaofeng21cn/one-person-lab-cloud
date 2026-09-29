@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-09-29T12:56:23.152220+00:00",
+  "status": "needs_correction",
+  "technicalClosureVerified": false,
+  "approvedPendingContractMigrations": [
+    "2026-09-29-default-opl-app-and-optional-agent"
+  ],
+  "implementationEntry": "W01.application-contracts",
+  "planningEntryReady": true,
+  "pendingUserDecisions": [],
+  "issues": [
+    "static receipt stale: 14_implementation_work_packages.md",
+    "static receipt stale: checks/development_plan.json",
+    "static receipt stale: checks/development_plan_validation.json",
+    "static receipt stale: checks/render_development_plan.py",
+    "UI source changed after verification: 03_api_contract_complete.yaml",
+    "UI source changed after verification: contracts/ui_inventory.json",
+    "UI source changed after verification: 04_frontend_interaction_spec.md",
+    "UI source changed after verification: 11_ui_ux_design.md",
+    "approved application-selection contract migration has not reached executable schemas/consumers (W01)"
+  ],
+  "scope": "development specification + interactive prototype + isolated contract/DB tests; NOT implemented services or production qualification",
+  "reviewFindings": {
+    "R01": "evidence_failed",
+    "R02": "evidence_failed",
+    "R03": "evidence_failed",
+    "R04": "evidence_failed",
+    "R05": "evidence_failed",
+    "R06": "evidence_failed",
+    "R07": "evidence_failed",
+    "R08": "evidence_failed",
+    "R09": "evidence_failed",
+    "R10": "evidence_failed"
+  },
+  "evidence": {
+    "static": "checks/runs/20260929T125459876305Z.json",
+    "crossDomain": "checks/runs/cross-domain-20260929T124756.560585Z.json",
+    "publisherSource": "checks/runs/publisher-source-20260921T175446754962Z.json",
+    "contractSemantics": "checks/handoff_contract_semantics.json",
+    "d17ContractSemantics": "checks/d17_contract_results.json",
+    "developmentPlan": "checks/development_plan_validation.json",
+    "ui": "checks/ui_prototype_verification.json"
+  },
+  "counts": {
+    "features": 17,
+    "typedFlowSteps": 89,
+    "restOperations": 108,
+    "crossDomainCases": 101,
+    "contractCases": 60,
+    "d17ContractCases": 56,
+    "implementationWorkPackages": 32
+  }
+}

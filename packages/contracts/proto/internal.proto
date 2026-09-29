@@ -519,16 +519,32 @@ message ModelSelection {
  string model_id = 2;
 }
 
+// WorkspaceApplicationSelection is the explicit, immutable application source the
+// customer chooses before a quote. The default OPL App selects an approved
+// Runtime Release and never carries a CapabilityVersion; a built Agent selects a
+// CapabilityVersion. kind is a required discriminator: a decoder rejects a mixed
+// selection (both ids set), a missing/unspecified kind, or a kind that disagrees
+// with the id it carries. A selection is never an implicit default.
+message WorkspaceApplicationSelection {
+ WorkspaceApplicationSelectionKindEnum kind = 1;
+ optional string runtime_version_id = 2;
+ optional string capability_version_id = 3;
+}
+
 message QuoteRequest {
  // Discriminator/required validation follows the matching OpenAPI schema; reject invalid variants.
  QuoteRequestPurposeEnum purpose = 1;
  optional string workspace_id = 2;
+ // capability_version_id is the agent branch selection. For the default OPL App
+ // the caller presents application_selection.runtime_version_id instead; the two
+ // are mutually exclusive and a deploy with neither is rejected.
  optional string capability_version_id = 3;
  string compute_plan_id = 4;
  string storage_plan_id = 5;
  repeated ModelSelection model_selections = 6;
  int32 period_months = 7;
  optional string scheduled_plan_change_id = 8;
+ WorkspaceApplicationSelection application_selection = 9;
 }
 
 message QuoteLine {
@@ -567,6 +583,9 @@ message Quote {
  PlanChangeCalculation plan_change_calculation = 23;
  optional string scheduled_plan_change_id = 24;
  QuoteRuntimeReadbackRequirementEnum runtime_readback_requirement = 25;
+ // runtime_version_id is set only for the default OPL App selection; it names the
+ // exact approved Runtime Release whose immutable OCI the quote froze.
+ optional string runtime_version_id = 26;
 }
 
 message Workspace {
@@ -587,6 +606,9 @@ message Workspace {
  google.protobuf.Timestamp updated_at = 14;
  WorkspaceDeliveryModelEnum delivery_model = 15;
  int64 version = 16;
+ // runtime_version_id names the accepted default OPL App Runtime Release when the
+ // accepted application source is the default App; it is empty for a built Agent.
+ optional string runtime_version_id = 17;
 }
 
 message CreateWorkspaceRequest {
@@ -1087,6 +1109,11 @@ message DeploymentDescriptor {
  DeploymentDescriptorProvenanceEnum provenance = 9;
  optional string legacy_application_revision_id = 10;
  WorkspaceApplicationRevision application_revision = 11;
+ // application_selection preserves the explicit immutable application source the
+ // customer accepted. It is required for the RUNTIME_RELEASE provenance (default
+ // OPL App) and for the BUILD provenance (built Agent); it is absent only for the
+ // retained legacy provenance.
+ WorkspaceApplicationSelection application_selection = 12;
 }
 
 message PublisherNamespace {
@@ -2399,8 +2426,8 @@ message ResourceFact { string id = 1; string kind = 2; string opaque_provider_re
 // Execution bindings exist only after the Fabric adapter confirms actual resources.
 message ResourceExecutionBinding { string compute_allocation_id = 1; string storage_volume_id = 2; string data_attachment_id = 3; string data_attachment_operation_id = 4; string account_id = 5; }
 message ResourceReadback { string resource_set_id = 1; string workspace_id = 2; string resource_version = 3; Observation outcome = 4; repeated ResourceFact resources = 5; bool absence_confirmed = 6; string deletion_receipt_id = 7; google.protobuf.Timestamp observed_at = 8; string error_code = 9; ResourceExecutionBinding execution_resources = 10; }
-message SecretBindingCommand { CallContext context = 1; string workspace_id = 2; string runtime_instance_id = 3; string key_binding_id = 4; string secret_delivery_reference = 5; string target_slot = 6; }
-message SecretBindingReadback { string secret_binding_id = 1; string runtime_instance_id = 2; string fingerprint = 3; Observation outcome = 4; string receipt_id = 5; }
+message SecretBindingCommand { CallContext context = 1; string workspace_id = 2; string runtime_instance_id = 3; string key_binding_id = 4; string secret_delivery_reference = 5; string target_slot = 6; string fingerprint = 7; }
+message SecretBindingReadback { string secret_binding_id = 1; string runtime_instance_id = 2; string fingerprint = 3; Observation outcome = 4; string receipt_id = 5; string version = 6; }
 service FabricCoordination {
  rpc AdmitResources(ResourceAdmissionRequest) returns (AdmissionResult);
  rpc EnsureResources(EnsureResourcesCommand) returns (Operation);
@@ -2412,10 +2439,11 @@ service FabricCoordination {
  rpc ReadResources(ResourceReadbackRequest) returns (ResourceReadback);
  rpc BindSecret(SecretBindingCommand) returns (SecretBindingReadback);
 }
-message RuntimeReservationCommand { CallContext context = 1; string workspace_id = 2; string deployment_id = 3; string capability_version_id = 4; ArtifactReference artifact = 5; string deployment_descriptor_digest = 6; string deployment_descriptor_object_ref = 7; DeploymentDescriptor deployment_descriptor = 8; string resource_set_id = 9; string data_attachment_id = 10; }
+message RuntimeReservationCommand { CallContext context = 1; string workspace_id = 2; string deployment_id = 3; string capability_version_id = 4; ArtifactReference artifact = 5; string deployment_descriptor_digest = 6; string deployment_descriptor_object_ref = 7; DeploymentDescriptor deployment_descriptor = 8; string resource_set_id = 9; string data_attachment_id = 10; WorkspaceApplicationSelection application_selection = 11; }
 message RuntimeReservation { string runtime_instance_id = 1; string workspace_id = 2; string deployment_id = 3; ArtifactReference artifact = 4; string deployment_descriptor_digest = 5; string deployment_descriptor_object_ref = 6; int64 execution_epoch = 7; string operation_id = 8; }
 enum AgentRuntimeObservationState { RUNTIME_INSTANCE_STATE_UNSPECIFIED = 0; RUNTIME_INSTANCE_STATE_PENDING = 1; RUNTIME_INSTANCE_STATE_STARTING = 2; RUNTIME_INSTANCE_STATE_READY = 3; RUNTIME_INSTANCE_STATE_STOPPED = 4; RUNTIME_INSTANCE_STATE_FAILED = 5; RUNTIME_INSTANCE_STATE_TERMINATING = 6; RUNTIME_INSTANCE_STATE_TERMINATED = 7; }
-message RuntimeDeployCommand { CallContext context = 1; string workspace_id = 2; string deployment_id = 3; string capability_version_id = 4; DeploymentDescriptor deployment_descriptor = 5; string resource_set_id = 6; string data_attachment_id = 7; string secret_binding_id = 8; int64 model_configuration_version = 9; repeated ModelSelection model_selections = 10; DataCompatibility data_compatibility = 11; string runtime_instance_id = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; }
+message RuntimeManagedKeyBinding { string key_binding_id = 1; string secret_delivery_reference = 2; string fingerprint = 3; string target_slot = 4; string secret_binding_id = 5; string secret_version = 6; }
+message RuntimeDeployCommand { CallContext context = 1; string workspace_id = 2; string deployment_id = 3; string capability_version_id = 4; DeploymentDescriptor deployment_descriptor = 5; string resource_set_id = 6; string data_attachment_id = 7; string secret_binding_id = 8; int64 model_configuration_version = 9; repeated ModelSelection model_selections = 10; DataCompatibility data_compatibility = 11; string runtime_instance_id = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; WorkspaceApplicationSelection application_selection = 16; RuntimeManagedKeyBinding managed_key_binding = 17; }
 message RuntimeReadbackRequest { CallContext context = 1; string runtime_instance_id = 2; string deployment_id = 3; }
 message RuntimeReadback { string runtime_instance_id = 1; string workspace_id = 2; string deployment_id = 3; AgentRuntimeObservationState state = 4; bool process_ready = 5; bool application_available = 6; bool credential_injection_verified = 7; ArtifactReference artifact = 8; int64 applied_model_configuration_version = 9; string readiness_receipt_id = 10; Observation outcome = 11; google.protobuf.Timestamp observed_at = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; WorkspaceApplicationEntry application_entry = 16; string access_url = 17; }
 message RuntimeReloadCommand { CallContext context = 1; string runtime_instance_id = 2; int64 expected_applied_version = 3; int64 target_version = 4; repeated ModelSelection selections = 5; }
@@ -2478,13 +2506,19 @@ service TenantWorkspaceCoordination {
  rpc DeleteTenantWorkspaces(TenantWorkspaceLifecycleCommand) returns (TenantWorkspaceLifecycleReadback);
  rpc ResumeTenantWorkspaces(ResumeTenantWorkspacesRequest) returns (TenantWorkspaceLifecycleReadback);
 }
-message AppendReceiptRequest { CallContext context = 1; Receipt receipt = 2; string evidence_digest = 3; string owner_evidence_reference = 4; QuoteAcceptance quote_acceptance = 5; OwnerCommitEvidence owner_commit_evidence = 6; }
+message AppendReceiptRequest { CallContext context = 1; Receipt receipt = 2; string evidence_digest = 3; string owner_evidence_reference = 4; QuoteAcceptance quote_acceptance = 5; OwnerCommitEvidence owner_commit_evidence = 6; WalletOperation wallet_operation = 7; }
 message GetReceiptByReferenceRequest { CallContext context = 1; string owner = 2; string owner_evidence_reference = 3; }
 message LocalNoChargeReceiptEvidence { Receipt receipt = 1; QuoteAcceptance quote_acceptance = 2; OwnerCommitEvidence owner_commit_evidence = 3; string evidence_digest = 4; }
+// WalletActionReceiptEvidence is the owner-authoritative funded-charge proof the
+// Ledger records for a paid Workspace order. It binds the exact accepted quote,
+// the Gateway wallet operation that moved the money, and the Workspace owner
+// commit that accepted the obligation. It names a receipt, never a raw key.
+message WalletActionReceiptEvidence { Receipt receipt = 1; QuoteAcceptance quote_acceptance = 2; WalletOperation wallet_operation = 3; OwnerCommitEvidence owner_commit_evidence = 4; string evidence_digest = 5; }
 service LedgerCoordination {
  rpc AppendReceipt(AppendReceiptRequest) returns (Receipt);
  rpc ReadReceiptByReference(GetReceiptByReferenceRequest) returns (Receipt);
  rpc ReadLocalNoChargeReceipt(GetReceiptByReferenceRequest) returns (LocalNoChargeReceiptEvidence);
+ rpc ReadWalletActionReceipt(GetReceiptByReferenceRequest) returns (WalletActionReceiptEvidence);
 }
 
 // D17: fixed approved policy-v1. RPC groups below live in the existing Workspace,
@@ -3449,6 +3483,12 @@ enum QuoteLineKindEnum {
  QUOTE_LINE_KIND_ENUM_ADJUSTMENT_CREDIT = 4;
 }
 
+enum WorkspaceApplicationSelectionKindEnum {
+ WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_UNSPECIFIED = 0;
+ WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP = 1;
+ WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_AGENT = 2;
+}
+
 enum QuotePurposeEnum {
  QUOTE_PURPOSE_ENUM_UNSPECIFIED = 0;
  QUOTE_PURPOSE_ENUM_DEPLOY = 1;
@@ -3794,6 +3834,10 @@ enum DeploymentDescriptorProvenanceEnum {
  DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_UNSPECIFIED = 0;
  DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_BUILD = 1;
  DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_LEGACY_APPLICATION = 2;
+ // DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_RUNTIME_RELEASE is the default OPL App:
+ // an approved Runtime Release's immutable OCI with no Build, Package or
+ // CapabilityVersion.
+ DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_RUNTIME_RELEASE = 3;
 }
 
 enum PublisherNamespaceKindEnum {

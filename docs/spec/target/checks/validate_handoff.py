@@ -2,7 +2,7 @@
 """Join evidence layers without upgrading a draft business decision into full READY."""
 from pathlib import Path
 from datetime import datetime,timezone
-import hashlib,json,re,sys
+import hashlib,json,re,sys,yaml
 root=Path(__file__).resolve().parents[1]
 issues=[]
 def need(ok,msg):
@@ -63,8 +63,14 @@ devplan=read('checks/development_plan_validation.json')
 need(devplan['passed'] is True,'development work-package coverage/DAG checks failed')
 for name,digest in devplan['sourceHashes'].items():need(hashlib.sha256((root/name).read_bytes()).hexdigest()==digest,'development plan evidence stale: '+name)
 decisions=read('checks/decision_status.json')['decisions'];pending=[d['id'] for d in decisions if d['status']!='accepted']
+wire=yaml.safe_load((root/'03_api_contract_complete.yaml').read_text())
+migration=wire.get('x-approved-wire-migration')
+migrations=[migration['decision']] if migration and migration.get('status')=='approved_pending_W01_consumer_migration' else []
+need(not migrations,'approved application-selection contract migration has not reached executable schemas/consumers (W01)')
 status='needs_correction' if issues else ('awaiting_business_decision' if pending else 'ready_for_implementation')
-report={'schemaVersion':1,'timestamp':datetime.now(timezone.utc).isoformat(),'status':status,'technicalClosureVerified':not issues,'pendingUserDecisions':pending,'issues':issues,'scope':'development specification + interactive prototype + isolated contract/DB tests; NOT implemented services or production qualification','reviewFindings':{r:('pending_user' if r=='R06' and 'D17' in pending else ('evidence_failed' if issues else 'closed_in_spec')) for r in ['R01','R02','R03','R04','R05','R06','R07','R08','R09','R10']},'evidence':{'static':static['report'],'crossDomain':str(cross_paths[-1].relative_to(root)) if cross_paths else None,'publisherSource':str(go_paths[-1].relative_to(root)) if go_paths else None,'contractSemantics':'checks/handoff_contract_semantics.json','d17ContractSemantics':'checks/d17_contract_results.json','developmentPlan':'checks/development_plan_validation.json','ui':'checks/ui_prototype_verification.json'},'counts':{'features':len(flows),'typedFlowSteps':sum(len(f['steps']) for f in flows),'restOperations':len(ops),'crossDomainCases':len(cross.get('cases',[])),'contractCases':len(semantic['cases']),'d17ContractCases':len(d17['cases']),'implementationWorkPackages':devplan['counts']['workPackages']}}
+report={'schemaVersion':1,'timestamp':datetime.now(timezone.utc).isoformat(),'status':status,'technicalClosureVerified':not issues,'approvedPendingContractMigrations':migrations,'implementationEntry':('W01.application-contracts' if migrations else None),'planningEntryReady':bool(migrations) and not pending and devplan['passed'] is True,'pendingUserDecisions':pending,'issues':issues,'scope':'development specification + interactive prototype + isolated contract/DB tests; NOT implemented services or production qualification','reviewFindings':{r:('pending_user' if r=='R06' and 'D17' in pending else ('evidence_failed' if issues else 'closed_in_spec')) for r in ['R01','R02','R03','R04','R05','R06','R07','R08','R09','R10']},'evidence':{'static':static['report'],'crossDomain':str(cross_paths[-1].relative_to(root)) if cross_paths else None,'publisherSource':str(go_paths[-1].relative_to(root)) if go_paths else None,'contractSemantics':'checks/handoff_contract_semantics.json','d17ContractSemantics':'checks/d17_contract_results.json','developmentPlan':'checks/development_plan_validation.json','ui':'checks/ui_prototype_verification.json'},'counts':{'features':len(flows),'typedFlowSteps':sum(len(f['steps']) for f in flows),'restOperations':len(ops),'crossDomainCases':len(cross.get('cases',[])),'contractCases':len(semantic['cases']),'d17ContractCases':len(d17['cases']),'implementationWorkPackages':devplan['counts']['workPackages']}}
+stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+(root/'checks/runs'/('handoff-'+stamp+'.json')).write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
 (root/'checks/handoff_readiness.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
 print(json.dumps(report,ensure_ascii=False,indent=2))
 # Pending explicit business approval is not a technical test failure, but never yields READY.

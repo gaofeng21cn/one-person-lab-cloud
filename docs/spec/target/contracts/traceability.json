@@ -127,8 +127,8 @@
         "workspace.outbox_events"
       ],
       "owners": [
-        "tenant",
-        "workspace"
+        "bff",
+        "tenant"
       ],
       "documents": [
         "00_master_index.md",
@@ -642,7 +642,8 @@
       "owners": [
         "capability",
         "gateway",
-        "resource_catalog"
+        "resource_catalog",
+        "runtime_control"
       ],
       "documents": [
         "00_master_index.md",
@@ -841,9 +842,9 @@
         "workspace.outbox_events"
       ],
       "owners": [
+        "bff",
         "build",
-        "capability",
-        "workspace"
+        "capability"
       ],
       "documents": [
         "00_master_index.md",
@@ -1194,9 +1195,9 @@
         "workspace.outbox_events"
       ],
       "owners": [
+        "bff",
         "build",
-        "capability",
-        "workspace"
+        "capability"
       ],
       "documents": [
         "00_master_index.md",
@@ -1508,8 +1509,8 @@
         "workspace.operations"
       ],
       "owners": [
-        "capability",
-        "workspace"
+        "bff",
+        "capability"
       ],
       "documents": [
         "00_master_index.md",
@@ -1923,7 +1924,8 @@
       "owners": [
         "capability",
         "gateway",
-        "resource_catalog"
+        "resource_catalog",
+        "runtime_control"
       ],
       "documents": [
         "00_master_index.md",
@@ -2110,6 +2112,7 @@
         "workspace.workspaces"
       ],
       "owners": [
+        "bff",
         "gateway",
         "serve",
         "workspace"
@@ -2262,6 +2265,7 @@
         "workspace.workspaces"
       ],
       "owners": [
+        "bff",
         "gateway",
         "serve",
         "workspace"
@@ -2649,7 +2653,9 @@
         "workspace.workspaces"
       ],
       "owners": [
+        "bff",
         "capability",
+        "runtime_control",
         "serve",
         "workspace"
       ],
@@ -3009,6 +3015,7 @@
         "workspace.workspaces"
       ],
       "owners": [
+        "bff",
         "gateway",
         "resource_catalog",
         "workspace"
@@ -3286,6 +3293,7 @@
         "workspace.workspaces"
       ],
       "owners": [
+        "bff",
         "gateway",
         "resource_catalog",
         "workspace"
@@ -3563,6 +3571,7 @@
         "workspace.workspaces"
       ],
       "owners": [
+        "bff",
         "gateway",
         "resource_catalog",
         "workspace"
@@ -3880,8 +3889,8 @@
         "workspace.saga_steps"
       ],
       "owners": [
-        "tenant",
-        "workspace"
+        "bff",
+        "tenant"
       ],
       "documents": [
         "00_master_index.md",
@@ -4269,6 +4278,7 @@
         "workspace.workspaces"
       ],
       "owners": [
+        "bff",
         "capability",
         "gateway",
         "serve",
@@ -4428,9 +4438,9 @@
         "workspace.outbox_events"
       ],
       "owners": [
+        "bff",
         "ledger",
-        "tenant",
-        "workspace"
+        "tenant"
       ],
       "documents": [
         "00_master_index.md",

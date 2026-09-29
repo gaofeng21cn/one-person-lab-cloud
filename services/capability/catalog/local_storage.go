@@ -102,6 +102,35 @@ func (l *localStorage) PutPart(ctx context.Context, upload string, part int, bod
 	return strings.TrimPrefix(digest, "sha256:"), nil
 }
 
+// ListParts reports the part files the local provider holds. The local provider
+// has no separate provider etag: its etag is the registered part digest, so it
+// leaves Etag empty and the reconciler reuses the registered identity.
+func (l *localStorage) ListParts(ctx context.Context, upload, providerUploadRef, digest string) (ProviderParts, error) {
+	out := ProviderParts{Parts: map[int32]ProviderPart{}}
+	entries, e := os.ReadDir(filepath.Join(l.root, "parts", upload))
+	if e != nil {
+		if os.IsNotExist(e) {
+			return out, nil
+		}
+		return ProviderParts{}, ErrStorageUnavailable
+	}
+	for _, entry := range entries {
+		number, e := strconv.Atoi(entry.Name())
+		if e != nil || number <= 0 {
+			continue
+		}
+		info, e := entry.Info()
+		if e != nil {
+			return ProviderParts{}, ErrStorageUnavailable
+		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		out.Parts[int32(number)] = ProviderPart{SizeBytes: info.Size()}
+	}
+	return out, nil
+}
+
 func (l *localStorage) Assemble(ctx context.Context, upload, providerUploadRef, digest string, size int64, parts []ConfirmedPart) (*AssembledObject, error) {
 	f, e := os.CreateTemp(filepath.Join(l.root, "pending"), "complete-")
 	if e != nil {

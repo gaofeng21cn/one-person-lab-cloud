@@ -9,8 +9,8 @@
   └─ Console UI（React/TypeScript；Serve交付体验入口）
       └─ Console BFF（REST、会话、CSRF、DTO聚合；无业务库）
           ├─ Capability：Package身份/上传/版本、WebUI目录
-          ├─ Runtime Control：获准Runtime Release目录与兼容契约
-          ├─ Build：固定Package+WebUI+Runtime Release → 不可变OCI
+          ├─ Runtime Control：获准Runtime Release目录与兼容契约；默认App准入和Build使用
+          ├─ Build：Package+精确Runtime Release+精确独立WebUI三输入 → 不可变OCI（默认App直接用Release）
           ├─ Workspace：Tenant/成员/权益/资源方案/报价与购买Saga
           │    ├─ Resource Catalog：批准资源套餐和价格
           │    ├─ Gateway Integration：身份/钱包主体/Key/扣退款调用
@@ -33,16 +33,24 @@ Cloud产品仓库负责可移植服务和发布，Instance负责真实实例配�
 | Console UI | 路由/表单；只读model；异步Operation展示；会话生命周期 | 只保存UI草稿与非秘密轮询身份 | 客户/管理员 | 钱包事实、业务状态机、provider、业务库 |
 | Console BFF | Gateway认证会话；CSRF/请求上下文；产品DTO聚合 | 仅服务端session安全存储，无业务operation登记表 | Console UI | 扣费决定、Saga、跨域表查询 |
 | Capability | Namespace可见性；Package身份、元数据、上传/字节校验、PackageVersion；WebUI准入与版本；Package/Build结果的CapabilityVersion登记 | Package、PackageVersion、WebUI目录、reference claims及本域事件 | BFF/Build/Workspace/Serve | OCI构建、Runtime Release目录、Workspace部署/运行事实、钱包、Registry执行 |
-| Runtime Control | OPL App/Agent Runtime实现的准入与获批Release目录；精确OCI引用、ABI/Package兼容信息、退役状态 | RuntimeRelease目录及本域审计/Operation | BFF/管理员、Build读取 | Build执行、Workspace Runtime实例/部署、Agent运行状态 |
+| Runtime Control | OPL App/Agent Runtime实现的准入与获批Release目录；精确OCI引用、ABI/Package兼容信息、退役状态 | RuntimeRelease目录及本域审计/Operation | BFF/管理员、Build/Workspace/Serve读取 | Build执行、Workspace Runtime实例/部署、Agent运行状态 |
 | Build | 固定PackageVersion+WebUI Version+Runtime Release输入；隔离构建；推送并读回OCI；向Capability交接构建完成证据 | BuildJob/输入摘要/步骤/OCI产物/日志索引 | BFF/Capability/Runtime Control | Package元数据writer、运行资源购买、Agent部署状态、Runtime/WebUI目录writer |
 | Workspace | Workspace身份、Tenant成员授权、权益/订阅、资源方案、报价接受、购买/资源/续费/删除/退款Saga；校验Agent交付目标授权 | Workspace/周期义务/业务Operation/steps；不存Agent Deployment/active字段 | BFF/Serve/到期worker/管理员命令 | Agent Package、OCI、Agent部署/运行事实、可消费余额、provider资源事实 |
-| Serve | 按Workspace执行Agent Package/OCI交付；异步部署/替换/回滚；唯一当前Agent、readiness和对外访问路由；API/Embed/Hosted UI | Agent deployments、deploy operations、runtime observations/access bindings及本域事件 | BFF/Workspace/外部消费者 | Package/Runtime版本元数据writer、Workspace权益/成员writer、Fabric资源writer |
+| Serve | 按Workspace执行默认App或Agent OCI交付；异步部署/替换/回滚；唯一当前应用、readiness和对外访问路由；API/Embed/Hosted UI | Agent deployments、deploy operations、runtime observations/access bindings及本域事件 | BFF/Workspace/外部消费者 | Package/Runtime版本元数据writer、Workspace权益/成员writer、Fabric资源writer |
 | Fabric | Provider适配；Compute/Storage/Network等资源开通、绑定、资源状态读回；所需资源Secret引用绑定 | provider resource set/resources/attachments/resource actions | Workspace/Serve/受保护operator | Agent OCI部署、Agent Runtime启停/readiness、Serve路由、套餐销售价格、客户余额 |
 | Gateway Integration | Gateway身份适配；Cloud主体/Tenant权限映射；钱包主体委托；Key；扣退款一次性调用与回读 | 映射/授权上下文/交易请求身份及观察结果 | BFF/Workspace | 可花费余额缓存、密码、第二套资金流水权威 |
 | Resource Catalog | provider-neutral套餐；价格版本；兼容性/可售性；报价生成 | 套餐/价格策略/不可变报价及有效期限 | BFF/Workspace/Fabric preflight读取 | 资源执行、钱包记账、已接受订阅义务writer |
 | Ledger | 类型化receipt验证；append-only保存；索引；对账证据 | Receipt/证据索引/对账报告 | 所有业务owner | provider mutation、业务Saga、付款重试 |
 
 BFF鉴权不意味着拥有Identity。Tenant权限属于Cloud业务映射，认证结果来自Gateway。一个Tenant的钱包主体与成员登录身份显式区分，不能把“知道用户ID”当成跨用户扣费授权。
+
+### 2.1 默认App不增加领域或第二份资产目录
+
+默认App通过Runtime Control取得批准Release与发布合同的不可变引用；自定义Agent通过Capability取得Build已确认的CapabilityVersion。Workspace接受的是应用选择与资源订单意图；Serve统一接收精确制品/descriptor并执行。默认App不经过Build、不生成CapabilityVersion，也不把Runtime目录复制到Capability。
+
+Runtime引用保护沿既有Capability `reference_claims`的`runtime_version`分支，使用Runtime Control准入/精确readback和claimant owner提交证据；不得跨库锁Runtime表。默认App的Serve claim消费必须纳入同一W01调用/撤销/物理删除互斥合同。默认App的内置UI是该Runtime发布合同的一部分，无单独WebUI目录ID/claim；Agent的独立WebUI才登记`webui_version`claim并构成Build第三项输入。两种产品组合只形成typed分支，不形成第二个Saga/访问服务。
+
+BFF按明确owner路由Operation；同origin静态资源与API可以确定性分流，不要求BFF进程承担静态文件才能满足DDD。部署所有必要进程不自动构成双writer；真正限制是同一对象写权、命令路由、操作epoch和历史迁移屏障。
 
 ## 3. 单仓库内的物理边界与代码落点
 

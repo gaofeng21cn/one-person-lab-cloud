@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_resources_development_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-29T13:50:22Z",
+  "result": "owner_source_implemented_focused_tests_passed_shared_contract_gap_open",
+  "window": "resources",
+  "windowTitle": "TKE C - Fabric Tencent resources",
+  "taskSlice": "W12.tke-resources",
+  "coordinatorThreadId": "01a0ecd7-2472-7810-b244-dc19505de019",
+  "sourceBaseSha": "bf9027253dd852383c6069e7dad9fc7d436efbe3",
+  "workspace": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#10",
+  "ownerWriteSet": [
+    "services/fabric",
+    "docs/evidence/source-checks/2026-09-29-tke-resources-development.json"
+  ],
+  "ownerDiffSha256": {
+    "algorithm": "sha256 over (path + sha256(file)) for each owner file, in the listed order",
+    "aggregate": "31cfa603d2e383d11a5ddcff916ca78f58575da1014c99eefadb9410327da560",
+    "files": {
+      "services/fabric/cmd/fabric/main.go": "8c1e0d4e3f8b38f8e8aa111ba64b8520cb3fdde6f4a1e885ade509880934a168",
+      "services/fabric/coordination/dispatch.go": "b74c9d5a646440f4913be23282ab87070dcab2f2418afa1566bfb2dff10621e7",
+      "services/fabric/coordination/local_dispatch.go": "381ad86c12f6280326c730bdecb592085ea384df60d02d157e4dce94146087f9",
+      "services/fabric/coordination/local_dispatch_host_test.go": "9c93994fe2fd05d1649995b40db9c495efb99875b215706a111332bdd26b612c",
+      "services/fabric/coordination/process.go": "78795fa2a8230dfdc515af41aba38a2a01ba06a20405119a8de7e2ba0ccb9ae8",
+      "services/fabric/coordination/process_postgres_test.go": "7d2a9c4af09245e79e38632d32a3fe03c9833294074cf76c5f3991ef46d06973",
+      "services/fabric/coordination/process_test.go": "26e93001597a60ee57115b299f1ea67a24f51b12e89e42af701743667fee1270",
+      "services/fabric/coordination/read.go": "5e798354efa4526b17d1ae5e86f916ad75c751c7fb72d1cc5ec6301a3633be6e",
+      "services/fabric/coordination/resume.go": "980adedaf708a84b8ba919342631c39948dd7a6891dad23330002c5e6c23e649",
+      "services/fabric/coordination/service.go": "3de20dc699408884761236f6b3112d55208095f349576bfcc8ae64a9c8eda1bc",
+      "services/fabric/coordination/service_postgres_test.go": "d0cdbbc7dc45c4e0021875b0976bee8158fab8e6ef645a54f1d617080fba7262",
+      "services/fabric/coordination/tencent_dispatch.go": "ddf36450de6693f443476f06de65a07e1587bea8b27575833db338271a644ea8",
+      "services/fabric/coordination/tencent_dispatch_test.go": "cd84fd1b35eb30e1eb105004f85f6b660cf4118ced82d7302a53e84c044d7c97",
+      "services/fabric/coordination/tencent_resume_postgres_test.go": "3bf4c9ec5e673cbdafb0edb94f196cd60bfd947b1e0b2be5d83d3873ae77e0b4",
+      "services/fabric/internal/fabric/tencent_accepted_plan.go": "3fdaadff3bcd63a0f168470cb445e170e6f50d8498c802d3c62bfd2091379be8",
+      "services/fabric/internal/fabric/tencent_accepted_plan_test.go": "78c5d10aaa46002fe720f4ae33c9a83c44f5fc332ab52079681a9523a5b7c758",
+      "services/fabric/internal/fabric/tencent_provider.go": "df47aa050ffd22ec74d6f9766184056c737034bab0b5d3b1b0a91469ee1eec36"
+    }
+  },
+  "scope": "Cloud source and focused isolated verification for the Fabric Tencent resources window only. The Tencent dispatcher was exercised through fake and in-process provider adapters; no Tencent API was called, no instance was deployed, no production network was reached, no real charge, purchase or deletion ran, and no candidate or release was published.",
+  "implemented": [
+    {
+      "id": "C1",
+      "name": "Provider-neutral resource dispatch surface",
+      "files": [
+        "services/fabric/coordination/dispatch.go",
+        "services/fabric/coordination/service.go",
+        "services/fabric/coordination/read.go",
+        "services/fabric/coordination/process.go",
+        "services/fabric/cmd/fabric/main.go",
+        "services/fabric/coordination/local_dispatch.go"
+      ],
+      "change": "The coordination Service now dispatches through a ResourceDispatcher interface (Provider()/EnsureResources) instead of the Local-only LocalResourceDispatcher/EnsureLocal pair. NewResourceIntent/ResourceResult/NetworkFact and validResourceResult replace the previous Local-named types, and read.go reads the provider-neutral result. cmd/fabric/main.go builds the dispatcher from the process's actual provider: local-docker -> NewLocalDispatcher, tencent-tke -> NewTencentDispatcher, both only when a coordination database is configured. Start now takes exactly one dispatcher argument."
+    },
+    {
+      "id": "C2",
+      "name": "Accepted Tencent resource plan resolution and tenant-account binding",
+      "files": [
+        "services/fabric/internal/fabric/tencent_accepted_plan.go",
+        "services/fabric/internal/fabric/tencent_provider.go",
+        "services/fabric/internal/fabric/tencent_accepted_plan_test.go"
+      ],
+      "change": "TencentProvider.ResolveAcceptedResourcePlan maps one accepted Catalog ResourcePlanSnapshot back to this deployment's single provider profile entry: it requires provider/providerProfileId 'tencent-tke', BillingMode PREPAID_MONTHLY, prepaidMonths>0, the configured region, and an exact SKU/CPU/memory/capacity/period/renew match against a profile package, and it must not be ambiguous. The tenant is resolved to a provider account through a new explicit profile accountBindings list; a missing or duplicated tenant binding is rejected (tencent_account_binding_required/_ambiguous) before any capacity check or mutation. Binding decode rejects empty/duplicate tenants."
+    },
+    {
+      "id": "C3",
+      "name": "Tencent resource orchestration with prepaid readback and network fact",
+      "files": [
+        "services/fabric/coordination/tencent_dispatch.go",
+        "services/fabric/coordination/tencent_dispatch_test.go"
+      ],
+      "change": "NewTencentDispatcher runs read-only prepaid monthly preflight (compute and storage) before any mutation, then drives CreateComputeAllocation -> GetComputeAllocation poll -> provider ReadComputeAllocation, CreateStorageVolume -> ReadStorageVolume, CreateStorageAttachment -> ReadStorageAttachment. Every readback is validated against the original intent: exact compute/storage IDs, account, workspace, PREPAID chargeType, NOTIFY_AND_MANUAL_RENEW renewFlag, non-empty prepaid deadline, ins-/disk-/pv- provider references, matching zone/region and package. It returns a NetworkFact of tke-node-pool/<pool> plus zone/region from the provider readback. An unconfirmed state returns errResourceDispatchPending (unknown, never absent) and never reports success. Application deployment is not reachable: no CreateWorkspaceRuntime call exists in the path, and the fake provider's runtime methods fail the test if reached."
+    },
+    {
+      "id": "C4",
+      "name": "Durable resume: funded dispatch, replayed identity, no re-purchase",
+      "files": [
+        "services/fabric/coordination/resume.go",
+        "services/fabric/coordination/tencent_resume_postgres_test.go",
+        "services/fabric/coordination/service_postgres_test.go",
+        "services/fabric/coordination/process_postgres_test.go",
+        "services/fabric/coordination/process_test.go",
+        "services/fabric/coordination/local_dispatch_host_test.go"
+      ],
+      "change": "resume dispatches through the configured provider only after the owning funding evidence for that provider's approved billing mode is verified, under a workspace advisory lock that re-reads the original operation status. Every attempt reuses the original committed resource IDs, provider keys and operation, so a lost response or restart replays the same purchase and readback instead of minting a second one. On success it persists the original provider effect identity (fabric.resource_actions.approved_input->resourceEffectIdentity) with compute/storage/attachment/network provider references and request ids, records the funding evidence, derives the network fact row by deterministic id (ON CONFLICT), sets provider_expires_at from the provider prepaid deadline, and confirms the resource set. readResourceResult supplies the execution binding Serve reads; a confirmed replay never dispatches again."
+    }
+  ],
+  "fundingVerification": {
+    "localDocker": "Verified through Ledger.ReadLocalNoChargeReceipt (owner readback), unchanged behavior: receipt id/owner/kind/outcome/operation and quote/commit evidence must all match the original command.",
+    "tencentPrepaidMonthly": "Fabric re-reads the exact confirmed wallet charge through LedgerCoordination.ReadReceiptByReference(owner=workspace, ownerEvidenceReference=obligationId) and requires receipt owner workspace, operationId == obligationId, kind WALLET_ACTION, outcome CONFIRMED, and id == ConfirmedChargeReceiptId. When the owner does not return that exact confirmed charge the intent stays unknown and no provider mutation runs. The owner-read receipt is persisted as fundingEvidence {source: ledger_confirmed_wallet_charge, receipt}."
+  },
+  "focusedAuthorizationChain": {
+    "note": "The Tencent resource path is a strict PREPAID monthly purchase chain. Nothing below purchases, renews, refunds or deletes a resource.",
+    "steps": [
+      "Workspace accepted an exact Catalog quote and created the funded obligation (TKE B window).",
+      "Workspace submits EnsureResources with the frozen ResourcePlanSnapshot and confirmedChargeReceiptId.",
+      "Fabric re-reads the accepted quote from Catalog and, for Tencent, re-reads the confirmed wallet charge from Ledger.",
+      "Only then does Fabric resolve the provider package and tenant account, run prepaid preflight, and drive the provider create/readback under the original operation keys."
+    ]
+  },
+  "commands": [
+    {
+      "command": "go -C services/fabric build ./...",
+      "result": "pass"
+    },
+    {
+      "command": "go -C services/fabric vet ./coordination/... ./internal/fabric/... ./cmd/...",
+      "result": "pass"
+    },
+    {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated loopback postgres> go -C services/fabric test ./coordination/... ./internal/fabric/... ./cmd/...",
+      "result": "pass",
+      "detail": "coordination (PostgreSQL-backed, includes TestTencentPrepaidResourcesConfirmOnlyWithVerifiedOwnerFunding, TestTencentDispatcher* and TestResourceAcceptanceAndReadback), internal/fabric (accepted-plan resolver tests) and cmd/fabric all pass. Without OPL_OWNER_MIGRATION_TEST_ADMIN_DSN the three PostgreSQL-backed coordination tests (TestProcessServesAcceptedResourcesAndOwnerOperation, TestResourceAcceptanceAndReadback, TestTencentPrepaidResourcesConfirmOnlyWithVerifiedOwnerFunding) self-skip; the Tencent dispatcher unit tests run either way."
+    }
+  ],
+  "verificationBoundaries": [
+    "All Tencent coverage uses fake or in-process provider adapters; no live Tencent API, CVM/CBS purchase, renewal or deletion was performed.",
+    "No instance was deployed, no protected production network was reached, and no candidate or release was produced.",
+    "The old Fabric TKE application writer (CreateWorkspaceRuntime and its HTTP routes) is deliberately retained: it may only be retired once Serve takes over the real caller and its obligations are verified. This window did not remove or change it."
+  ],
+  "sharedContractGaps": [
+    {
+      "id": "C-G1",
+      "owner": "coordinator (Ledger receipt contract)",
+      "problem": "Fabric verifies a Tencent prepaid charge only through LedgerCoordination.ReadReceiptByReference, whose server handler (services/ledger/eventconsumer/coordination.go) delegates to ReadLocalNoChargeReceipt and therefore serves only local_no_charge receipts: it rejects with not-found for a wallet-action receipt. The Tencent funding gate in services/fabric/coordination/resume.go reads kind WALLET_ACTION through that same RPC, so against the current Ledger implementation it can never return owner evidence and a Tencent intent would stay unknown forever.",
+      "exactChange": "Give Fabric one owner-verifiable read of the confirmed prepaid charge by obligation: either extend ReadReceiptByReference (or a new Ledger RPC) so a wallet-action receipt is returned for owner=workspace with ownerEvidenceReference=obligationId, or provide the confirmed charge through an equivalent owner readback Fabric may call. consumer = services/fabric/coordination/resume.go readConfirmedWalletCharge; field needed = id/owner/operationId/kind/outcome of the confirmed wallet-action charge (plus amount/obligation if the owner exposes them).",
+      "rejectionCases": "missing receipt; receipt for another obligation; wrong kind; UNCONFIRMED/REJECTED outcome; id not equal to ConfirmedChargeReceiptId - all must remain unknown and dispatch nothing.",
+      "note": "This window implemented the honest, contract-shaped owner readback rather than trusting an unverified reference; the local_no_charge path is unaffected."
+    }
+  ],
+  "claimBoundary": "This receipt claims Cloud source changes in services/fabric and an isolated in-process focused test across the coordination, internal/fabric and cmd/fabric packages. It does not claim a deployable Tencent chain, an instance deployment, a candidate, a release, or any charge, purchase, renewal or deletion. The shared contract gap above is an explicit coordinator obligation.",
+  "secrets": "none: the receipt contains no credentials, tokens, keys, customer data or private addresses; the isolated test database is a loopback container created for this run."
+}

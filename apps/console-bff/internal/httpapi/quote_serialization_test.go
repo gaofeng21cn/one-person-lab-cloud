@@ -93,3 +93,34 @@ func TestQuoteRouteSerializesTheContractSpelling(t *testing.T) {
 		t.Fatalf("decoded totalUSDMicros=%v", decoded["totalUSDMicros"])
 	}
 }
+
+// TestQuoteRouteCarriesDefaultAppSelection proves the real catalog boundary accepts
+// and forwards the explicit default-OPL-App applicationSelection, so the Console
+// default-App path is not silently coerced to the agent capabilityVersionId branch.
+func TestQuoteRouteCarriesDefaultAppSelection(t *testing.T) {
+	identity := allowedIdentity()
+	identity.decision.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEQUOTE
+	identity.decision.AudienceOwner = api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG
+	identity.decision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG}
+	probe := &quoteProbe{}
+	handler := NewCatalogHandler(probe, identity)
+
+	request := sessionRequest(http.MethodPost, "/api/v2/quotes")
+	request.Body = io.NopCloser(strings.NewReader(`{"purpose":"deploy","applicationSelection":{"kind":"opl_app","runtimeVersionId":"runtime-1"},"computePlanId":"compute-1","storagePlanId":"storage-1","modelSelections":[],"periodMonths":1}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-CSRF-Token", "csrf-1")
+	request.Header.Set("Idempotency-Key", "quote-request-default-app")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if probe.request == nil || probe.request.Body == nil {
+		t.Fatalf("owner did not receive the create-quote request")
+	}
+	selection := probe.request.Body.GetApplicationSelection()
+	if selection.GetKind() != api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP || selection.GetRuntimeVersionId() != "runtime-1" || selection.GetCapabilityVersionId() != "" {
+		t.Fatalf("forwarded selection = %v", selection)
+	}
+}

@@ -3,11 +3,11 @@
   "scope": "D17 F11 and related F12/F13 offline prototype regression only; no backend/provider/real charges",
   "sourceHashes": {
     "ui-prototype/index.html": "4ceab69310fefd5966d40345beaee2415d52de6966ba94654ae87c0adb5ed41d",
-    "03_api_contract_complete.yaml": "48438b5d5499494fb6099433c7530ce68305a7198ab0af310f8e534c18e56db6",
-    "contracts/ui_inventory.json": "af55056b8b5ec0da5802b82b9683fb66e09831eea4ce63585bda52d0251e7415",
-    "04_frontend_interaction_spec.md": "4c0d5fa04e7d51582cd1c79b181c7d8939d2d0875cefe333751f26e332cff269",
+    "03_api_contract_complete.yaml": "962d1896455a6b343091cd5e5f7faecce50db4866941025c49780bd8f527c7aa",
+    "contracts/ui_inventory.json": "a27d1e5b218c63941127851ed563ff25cd3b90d20db1b791a82b5fbd051c8a3d",
+    "04_frontend_interaction_spec.md": "dc5152aa029e935cf0286936f9ab2e52269c2a3ee6924e4126219bfec8578b88",
     "07_error_handling_matrix.md": "be8ab84544cfe7e323d26bb956e4f670cf107b59d1ebabee3f08f9637fb24b66",
-    "11_ui_ux_design.md": "c819e9c5a38baccfce44a5861bb9284b6c2027e1ecbd3d45ad2c2a4b5045cc94",
+    "11_ui_ux_design.md": "bb653c620767e534d2540136d9feb1cc5daebaea4e3d112274c60be19717b175",
     "13_plan_change_policy.md": "43f1ac890fbab9b2c26da4937dbcce1389f3153ad56451af0b91cddb1473f686",
     "contracts/plan-change-policy.json": "d2f9282bf450e2fbcf3f82f706cebccce335db6fdff51d3489ab78ba653698f6"
   },

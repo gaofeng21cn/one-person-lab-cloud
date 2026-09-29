@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_serial_full_local_verification_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T10:05:00Z",
+  "result": "npm_run_verify_local_and_verify_local_full_are_green_on_the_serial_branch_head_with_zero_postgres_skips",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 6 - ordinary and full local verification on the current serial branch HEAD",
+  "sourceBaseSha": "ae125613959d837d8f4f17d840cf240561ffb5a1",
+  "branch": "codex/tke-serial-integration",
+  "workspace": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.6",
+  "scope": "Record the acceptance-gate results for the current serial branch HEAD after the default-OPL-App Serve/Workspace tests were added. No production source changed; the worktree was clean at the recorded SHA when both gates ran.",
+  "verification": {
+    "commands": [
+      "node tools/validate-product-boundary.mjs",
+      "npm run verify:local",
+      "npm run verify:local:full",
+      "npm run test:source",
+      "npm run test:browser:workspace-lifecycle"
+    ],
+    "environment": "local loopback PostgreSQL containers and Docker integration for the owner-migration and PostgreSQL test gates",
+    "result": "PASS",
+    "cases": [
+      "validate-product-boundary: 'OPL Cloud product distribution boundary is valid'.",
+      "verify:local: 'Local verification passed.'",
+      "verify:local:full: 'Local verification passed with PostgreSQL and Docker integration.' with control-plane and fabric PostgreSQL test packages reporting 8 passed and 0 skipped each.",
+      "test:source: 245 tests, 245 pass, 0 fail, 0 skipped (contracts, tools and Console controller-model source tests).",
+      "test:browser:workspace-lifecycle: 22 tests, 22 pass, 0 fail (real browser Workspace journey at desktop and mobile widths, launch fail-closed and Serve-access gating)."
+    ]
+  },
+  "notRun": [
+    "No real browser two-mode E2E, live TCR/COS/BuildKit, Candidate build, Instance deployment, provider action or production readback.",
+    "Real route activation (I07), publisher model-config readback (I08 serving half) and the Serve->Fabric typed application-execution boundary (I06) remain open on their frozen external contracts."
+  ],
+  "claimBoundary": "This receipt claims the Cloud source-level ordinary and full local verification gates pass on the recorded SHA with zero PostgreSQL skips. It does not claim a Candidate, deployment, production acceptance or any behavior that depends on the still-unfrozen I06/I07/I08 external contracts.",
+  "secrets": "none"
+}

@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_serial_serve_exec_route_boundary_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T07:35:00Z",
+  "result": "i06_i07_require_a_frozen_installation_execution_and_route_contract_recorded_not_fabricated",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 5 - I06/I07 boundary: which contract must freeze before execution/route ownership can move",
+  "branch": "codex/tke-serial-integration",
+  "workspace": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.5",
+  "scope": "Read-only source review of the Serve execution/route surfaces, Fabric's application-execution and K8s route handling, and the canonical contracts. No code change, no provider or production action. This records an authority/contract boundary, not a passing path.",
+  "findings": [
+    {
+      "id": "I06.execution-ownership",
+      "owner": "Serve + Fabric",
+      "fact": "Serve's TKEApplicationAdapter reaches Agent execution by signing and POSTing the Fabric HTTP management routes (/fabric/workspace-application-runtimes[/readback|/lifecycle|/credentials], services/serve/internal/delivery/tke_adapter.go:116,323,344). Fabric executes those by building Kubernetes manifests and calling kubectl inside services/fabric/internal/fabric/tencent_provider_application_runtime.go (callKubectl apply). FabricCoordination in packages/contracts/proto/internal.proto:2431 has no application-execution RPC; only resource/secret RPCs.",
+      "consequence": "'Moving TKE application execution to Serve' cannot mean Serve holds the cluster credentials and rebuilds manifests without moving Fabric's provider adapter, which would contradict Fabric owning provider adapters. It must mean Serve reaches the execution owner over a typed boundary instead of the legacy signed HTTP route. That typed application-execution RPC does not exist in the frozen contract.",
+      "blocks": "I06"
+    },
+    {
+      "id": "I07.route-object",
+      "owner": "Serve + institution route provider",
+      "fact": "Serve's RouteProvider is an interface (route.go:65) with no production implementation and no assignment in Configure (service.go:75 'Route' is never set). The route object's provider revision is not defined anywhere: no Ingress/route object is produced by the Cloud source (grep finds only NetworkPolicy Ingress rules, not routing Ingress), and no RouteProvider is implemented. Deploy's flow (write.go:337) never calls Fence/Activate/Observe; Serve's own FenceRouteEpoch/ActivateRoute are never called by another Cloud component in production code.",
+      "consequence": "Implementing a real RouteProvider and wiring Deploy->Fence/Activate/Observe requires first freezing which object the provider CASes (an installation Ingress with epoch/target metadata, or another controller object), its conditional-revision contract, and which module (Fabric, holding kubectl, vs a standing route controller) performs the CAS. Choosing one now would be a guess that could conflict with the installation owner.",
+      "blocks": "I07"
+    }
+  ],
+  "decision": "Recorded, not fabricated. No RouteProvider was invented and no Deploy->route orchestration was wired against an undefined object. I08's fail-closed correction (the requested model version is no longer recorded as applied) was delivered this window because it is unambiguous and needed no new external contract.",
+  "externalConditionRequired": {
+    "kind": "contract",
+    "description": "A frozen decision on (a) the typed application-execution owner boundary between Serve and Fabric, and (b) the installation route object and its conditional-revision CAS performer, before I06/I07 implementation.",
+    "whoOwnsResolution": "Product owner / installation owner (frozen typed contract)"
+  },
+  "notRun": [
+    "no RouteProvider implementation or wiring",
+    "no Serve->Fabric typed application-execution RPC",
+    "no Candidate build, Instance deployment, provider action or production readback"
+  ],
+  "claimBoundary": "This receipt records the verified contract boundary that blocks I06 and I07. It claims no runtime code, no route activation, no execution ownership move and no deployment.",
+  "secrets": "none"
+}

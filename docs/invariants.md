@@ -265,23 +265,26 @@ implementation and remaining gaps are reported separately in status/roadmap.
   does not imply a higher layer.
 
 
-## Proposed Agent delivery invariants under product review
+## Adopted Application Delivery Invariants
 
-The following target invariants are proposed for approval and are not a claim
-that the migration is complete:
+The September 22 and September 29 decisions adopt these target invariants.
+They are not a claim that the current contracts or migration implement them:
 
 - Capability is the sole writer of uploaded Package bytes, Package identity,
   metadata, immutable versions, and Package reference claims.
 - Runtime Control is the sole writer of the approved Runtime Release catalog;
   it does not deploy Workspace instances or report their readiness.
-- Build fixes exact Package, WebUI, and Runtime Release identifiers and emits a
-  single immutable OCI digest; consumers do not reconstruct it from mutable tags.
+- The default App uses an exact approved Runtime Release with its built-in UI;
+  it needs no synthetic Package, Build or CapabilityVersion. A custom Agent uses
+  Build with exact Package, Runtime and independent WebUI inputs. These are the
+  only two new-product combinations; half-selected Agent inputs are rejected.
+  Both deploy by immutable OCI identity, never by a re-resolved mutable tag.
 - Workspace owns business identity, membership, entitlement, resource plan,
   quote/purchase obligations, and target authorization; it does not persist a
   second Agent deployment or current-selection fact.
 - Fabric owns infrastructure resource mutation and readback only. Resource
   readiness cannot substitute for Agent readiness.
-- Serve is the sole writer of Agent deployment history, current deployment,
+- Serve is the sole writer of default-App and Agent deployment history, current deployment,
   Runtime instance readiness evidence, and access bindings for a Workspace.
   API, Embed, and Hosted UI address that same current Agent.
 - Console/BFF composes owner readbacks and does not persist a business copy;

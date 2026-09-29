@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "cloud_serial_integration_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T05:34:00Z",
+  "result": "i05_serving_half_blocked_by_external_authority_gap_recorded_not_bypassed",
+  "window": "serial",
+  "windowTitle": "Serial integration - I05 managed-key serving half boundary",
+  "baseSha": "59c3118b919b09958076ff551d14ddc719e22f16",
+  "branch": "codex/tke-serial-integration",
+  "domain": "gateway+sub2api+fabric",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.4",
+  "scope": "Read-only source review of the Cloud Gateway owner, the Control Plane delegated-session key path and the upstream Sub2API v0.2.4 route surface. No code change, no provider or wallet mutation, no production access.",
+  "questionsAnswered": [
+    "Does Sub2API expose an admin/service-authorized endpoint to mint an API key on behalf of a subject?",
+    "Does Fabric already expose an approved-store write the Gateway owner could call without holding Control-Plane-only identities?"
+  ],
+  "findings": [
+    {
+      "id": "I05.gateway-key-issuer",
+      "owner": "Sub2API (external authority)",
+      "fact": "Upstream Sub2API v0.2.4 has no admin or service-authorized key-issuance endpoint. Key creation is POST /api/v1/keys gated by the user's own JWT (backend/internal/server/routes/user.go:78-80, backend/internal/handler/api_key_handler.go:182-221). The admin key surface only reads a user's keys (GET /api/v1/admin/users/:id/api-keys, backend/internal/server/routes/admin.go:310) and updates a key's group (PUT /api/v1/admin/api-keys/:id, admin.go:185-188). The Cloud-side workspace-revocation patch also only adds a POST /api/v1/admin/api-keys/:id/workspace-revocation (revoke), never a create.",
+      "consequence": "A ManagedKeyIssuer running under the Gateway owner's own administrative identity cannot mint a user's Workspace key. The Gateway owner does not hold the user's delegated JWT bearer; only the Control Plane session vault does (services/gateway-integration/identity/service.go credentials map is a process-local cache of the logged-in subject's token, not exposed cross-owner)."
+    },
+    {
+      "id": "I05.secret-store-writer",
+      "owner": "Fabric + Gateway",
+      "fact": "Fabric's approved-store write POST /fabric/gateway-secrets (services/fabric/internal/http/server.go:735-742) requires AccountID, WorkspaceID, WorkspaceAPIKeyID and the raw key (services/fabric/internal/fabric/types.go:457-464); its idempotency claim, provider readback and risk controls all key on WorkspaceAPIKeyID. The Gateway owner holds none of AccountID, WorkspaceAPIKeyID after minting.",
+      "consequence": "A SecretStore implementation on the Gateway side cannot write the approved Secret without first acquiring the Sub2API key ID, which the missing issuer would have returned. The two halves share one blocking dependency."
+    },
+    {
+      "id": "I05.existing-real-path",
+      "owner": "Control Plane",
+      "fact": "The current production default-App path already creates the Workspace key and writes the Secret end to end, but it does so inside Control Plane while it still holds the user's delegated bearer: services/control-plane/internal/server/workspace_default_application.go:123 calls service.CreateGatewayUserKey(ctx, credential, ...) then :133 calls service.SyncWorkspaceGatewaySecretWithKey(...). The credential is the session-delegated bearer the Control Plane received at login.",
+      "consequence": "The target-architecture move of this capability to the Gateway owner (GatewayCoordination.CreateManagedKey driven by Serve) cannot preserve the one owner that actually holds the issuance authority. Closing it needs either a new approved Sub2API service-issuance capability or an explicit owner decision to keep Control Plane as the key issuer."
+    },
+    {
+      "id": "I05.caller-allowlist-mismatch",
+      "owner": "Gateway + Serve",
+      "fact": "The committed Stage 4 slice resolves the managed key inside Serve's Deploy (services/serve/internal/delivery/secret.go resolveManagedKeyBinding calls s.Gateway.CreateManagedKey with Serve's own gRPC identity). The Gateway owner admits only the Workspace peer for this RPC: coordination.go:300 coordinationCaller(ctx, owneridentity.Workspace.Service()) for CreateManagedKey and :361 for RevokeManagedKey. The canonical F08 flow names workspace->gateway for CreateManagedKey (docs/spec/target/06_data_flow_and_state_machine.md row 6), and Workspace's own continuation action set already carries the gateway-audience bindManagedSecret (services/workspace/internal/launch/recovery.go:103).",
+      "consequence": "Even if the external issuer existed, the current Serve-driven caller would be refused with PermissionDenied before key minting, because Serve is not in the Gateway owner's accepted caller list (nor is a Serve peer token configured for the tenant/gateway unit). The Stage 4 Serve test passed only because it injected a stub GatewayCoordinationClient that bypasses the owner's inbound caller check.",
+      "status": "recorded, not silently changed: reconciling the driver (Serve vs Workspace) changes the accepted-operation grant design and must match the canonical F08 owner, so it is resolved together with the external authority decision."
+    }
+  ],
+  "decision": "Not bypassed. The Gateway owner's ManagedKeyIssuer and SecretStore stay unwired (CreateManagedKey fails closed as designed). No raw key was written anywhere and no fallback table, log or receipt was introduced to simulate success. This is the minimal honest scope for the serving half of I05.",
+  "externalConditionRequired": {
+    "kind": "authority",
+    "description": "An approved Sub2API capability (or an explicit owner decision on where the delegated issuance authority lives) is required before the Gateway owner can mint a Workspace-managed key. Cloud cannot obtain it by patching the upstream authority.",
+    "whoOwnsResolution": "Product owner / Sub2API authority owner"
+  },
+  "verification": {
+    "method": "source review only",
+    "cloudSources": [
+      "services/gateway-integration/identity/coordination.go:293-355 CreateManagedKey requires KeyIssuer and SecretStore",
+      "services/gateway-integration/identity/managed_key.go:157-163 ManagedKeyIssuer interface",
+      "services/gateway-integration/identity/service.go:62-63 SecretStore/KeyIssuer fields, unwired",
+      "services/gateway-integration/cmd/server/main.go: never assigns SecretStore/KeyIssuer",
+      "services/control-plane/internal/server/workspace_default_application.go:123,133 existing Control Plane key+secret path",
+      "services/fabric/internal/http/server.go:735-742 /fabric/gateway-secrets requires WorkspaceAPIKeyID"
+    ],
+    "upstreamSources": [
+      "backend/internal/server/routes/user.go:76-82 user JWT keys group (Create)",
+      "backend/internal/server/routes/admin.go:184-189,310,353 admin key surface (read/update only)",
+      "backend/internal/handler/api_key_handler.go:182-221 Create uses subject.UserID from JWT"
+    ],
+    "result": "boundary confirmed; no deployable Cloud-side ManagedKeyIssuer/SecretStore path exists without the external authority"
+  },
+  "notRun": [
+    "any Gateway managed-key mint against a real or stubbed Sub2API issuing endpoint",
+    "any approved-store Secret write from the Gateway owner",
+    "provider purchase, real charge, route/provider mutation, production network",
+    "end-to-end default-App deploy through Serve against the real Gateway owner caller check"
+  ],
+  "claimBoundary": "This receipt records a verified external authority gap and the decision not to fabricate a passing path. It claims no new runtime code, no key issuance, no Secret write and no deployment."
+}

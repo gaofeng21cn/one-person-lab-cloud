@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/services/gateway-integration/gatewaymigrations"
 	"opl-cloud/services/gateway-integration/identity"
 	"opl-cloud/services/gateway-integration/migrations"
 	"opl-cloud/services/internal/ownerservice"
@@ -64,6 +65,37 @@ func main() {
 		s.ConfigureRegistry(registryHost, registryNamespace)
 		if err := s.BackfillTenantRepositoryBindings(ctx); err != nil {
 			return err
+		}
+		// The gateway data owner is a second, distinct database in the same
+		// deployment unit. It is optional: an absent OPL_GATEWAY_DATABASE_URL leaves
+		// the settlement/key surface unregistered rather than serving a money path
+		// with no writer.
+		if gatewayDSN := strings.TrimSpace(os.Getenv("OPL_GATEWAY_DATABASE_URL")); gatewayDSN != "" {
+			gatewayDB, e := ownerservice.OpenDatabase(ctx, owneridentity.Gateway, gatewayDSN)
+			if e != nil {
+				return e
+			}
+			gatewaySource, e := gatewaymigrations.Source()
+			if e != nil {
+				gatewayDB.Close()
+				return e
+			}
+			if e = gatewayDB.Migrate(ctx, gatewaySource); e != nil {
+				gatewayDB.Close()
+				return e
+			}
+			if e = server.TrackCloser(gatewayDB); e != nil {
+				gatewayDB.Close()
+				return e
+			}
+			store, e := identity.NewGatewayStore(gatewayDB.DB())
+			if e != nil {
+				return e
+			}
+			if e = server.AddReadinessCheck("gateway_database", gatewayDB.Ready); e != nil {
+				return e
+			}
+			s.GatewayStore = store
 		}
 		// Owner-commit readback for grant issuance is wired only for an owner whose
 		// address this deployment actually configures. An absent address is a

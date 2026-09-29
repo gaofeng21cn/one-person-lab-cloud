@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	contracts "opl-cloud/packages/contracts/go"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/services/internal/ownerservice"
@@ -33,7 +34,15 @@ type Service struct {
 	Identity   api.CloudIdentityAuthorizationClient
 	Ledger     api.LedgerCoordinationClient
 	Capability api.CapabilityProductServiceClient
-	Serve      api.ServeAgentCoordinationClient
+	// RuntimeReleases is the Runtime Control read surface. A default OPL App order
+	// resolves its immutable artifact from the approved Runtime Release instead of
+	// a CapabilityVersion.
+	RuntimeReleases api.RuntimeControlProductServiceClient
+	Serve           api.ServeAgentCoordinationClient
+	// Gateway is the wallet authority the original order is charged from. A Local
+	// no-charge order funds itself through the Ledger receipt, so an unset Gateway
+	// leaves a paid order awaiting its funding owner instead of inventing a charge.
+	Gateway api.GatewayCoordinationClient
 }
 
 func New(db *sql.DB, auth *ownerservice.Authorizer, catalog api.CatalogCoordinationClient, fabric api.FabricCoordinationClient, identity api.CloudIdentityAuthorizationClient) (*Service, error) {
@@ -98,7 +107,14 @@ type orderResult struct {
 	ResourceSetID         string          `json:"resourceSetId,omitempty"`
 	ResourceReadback      json.RawMessage `json:"resourceReadback,omitempty"`
 	ZeroChargeReceipt     json.RawMessage `json:"zeroChargeReceipt,omitempty"`
-	RuntimeCapability     json.RawMessage `json:"runtimeCapability,omitempty"`
+	WalletDebitCommand    json.RawMessage `json:"walletDebitCommand,omitempty"`
+	WalletOperation       json.RawMessage `json:"walletOperation,omitempty"`
+	WalletActionReceipt   json.RawMessage `json:"walletActionReceipt,omitempty"`
+	// ApplicationSource is the resolved immutable source (default OPL App Runtime
+	// Release or built Agent CapabilityVersion) frozen before Reserve. It is the
+	// single durable fact both branches replay from, so a default-App order never
+	// invents a CapabilityVersion.
+	ApplicationSource json.RawMessage `json:"applicationSource,omitempty"`
 	RuntimeBinding        json.RawMessage `json:"runtimeBinding,omitempty"`
 	RuntimeReservation    json.RawMessage `json:"runtimeReservation,omitempty"`
 	RuntimeCommand        json.RawMessage `json:"runtimeCommand,omitempty"`
@@ -162,8 +178,18 @@ func (s *Service) CreateWorkspace(ctx context.Context, r *api.CreateWorkspaceRpc
 		return nil, err
 	}
 	q := quote.GetQuote()
-	if q.GetId() != b.QuoteId || q.Purpose != api.QuotePurposeEnum_QUOTE_PURPOSE_ENUM_DEPLOY || q.Status != api.QuoteStatusEnum_QUOTE_STATUS_ENUM_OFFERED || q.ExpiresAt == nil || !q.ExpiresAt.AsTime().After(time.Now()) || quote.ResourcePlan == nil || q.GetCapabilityVersionId() == "" {
+	if q.GetId() != b.QuoteId || q.Purpose != api.QuotePurposeEnum_QUOTE_PURPOSE_ENUM_DEPLOY || q.Status != api.QuoteStatusEnum_QUOTE_STATUS_ENUM_OFFERED || q.ExpiresAt == nil || !q.ExpiresAt.AsTime().After(time.Now()) || quote.ResourcePlan == nil {
 		return nil, status.Error(codes.FailedPrecondition, "an unexpired deploy quote with a frozen resource plan is required")
+	}
+	// A deploy quote freezes exactly one application source. The default OPL App
+	// names a Runtime Release, a built Agent names a CapabilityVersion; a quote that
+	// names neither (or both) is refused instead of treated as a resource-only order.
+	selection, selectionErr := acceptedSelection(q)
+	if selectionErr != nil {
+		return nil, status.Error(codes.FailedPrecondition, "a deploy quote must name exactly one application source")
+	}
+	if err := contracts.ValidateWorkspaceApplicationSelection(selection); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, "a deploy quote must name exactly one application source")
 	}
 	// Revalidate after the command lock and the quote read. A request queued
 	// behind another transaction must not commit using a pre-lock permission.

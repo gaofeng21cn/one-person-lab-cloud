@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_serial_gateway_coordination_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T04:10:00Z",
+  "result": "gateway_owner_coordination_implemented_focused_postgres_tests_passed",
+  "window": "serial",
+  "windowTitle": "Serial integration - I03 Gateway Coordination settlement and managed key",
+  "sourceBaseSha": "bf9027253dd852383c6069e7dad9fc7d436efbe3",
+  "workspace": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.3",
+  "findingsClosed": ["I03"],
+  "ownerWriteSet": [
+    "services/gateway-integration",
+    "services/workspace/internal/launch/recovery.go",
+    "docs/evidence/source-checks/2026-09-30-tke-serial-gateway-coordination.json"
+  ],
+  "ownerDiffSha256": {
+    "algorithm": "sha256 over (path + sha256(file)) for each owner file, in the listed order",
+    "aggregate": "e4b4d57c24828c8b85f84a029a5ad54d770b74507eacb49fa54f606bf8ddabf0",
+    "files": {
+      "services/gateway-integration/gatewaymigrations/0001_opl_gateway.sql": "cd21c214d9b3e4ed2720bd2e36fc66d3a2705cc4ef02378df885a104e75a7188",
+      "services/gateway-integration/gatewaymigrations/embed.go": "9a03c3daded85443cb9b0d37b8da721b92a9159365a14d8c00a0c34b7e558a6b",
+      "services/gateway-integration/gatewaymigrations/isolation_test.go": "2e2fafe91030b42df77d7b5ee99fa6a9e26d44d92613357e94b312a8b1dde95c",
+      "services/gateway-integration/identity/coordination.go": "a8fac0044f08554aa1f5d39a1160bde4d7b3dc6e41acc81ffc52e7e2755e8e1c",
+      "services/gateway-integration/identity/coordination_postgres_test.go": "ef2f7c98ffa054e9d59fa8dbf7229712e0732d760bda03793db0502c2a08315a",
+      "services/gateway-integration/identity/gateway_store.go": "fbcc65192ba4624b26669630f9ebc10bf569b13f4debcf98c4d2f64c455f250d",
+      "services/gateway-integration/identity/gateway_wallet.go": "54de0e3867f4e3c3c4ddb9b56959747c76405ee83cae4f5933dc1060c1754580",
+      "services/gateway-integration/identity/managed_key.go": "31efdc1ac6fc9c955cee901fc21c85e9be8d1bfaade8d70d58bcb409489fa584",
+      "services/gateway-integration/identity/service.go": "ba2d0f5ea480ea73417950940b68d3b0cee6ed31ac37374d24a4b2905d17459b",
+      "services/gateway-integration/identity/authorization.go": "f172a5b29086426cbb8a72b4386cc6ce16e05daea4212eb391761cc08e3ef585",
+      "services/gateway-integration/cmd/server/main.go": "cec15b159184c8a58c51163439e3b030380d30e975b127f8dd0555a4e743a1b9",
+      "services/workspace/internal/launch/recovery.go": "c47b13c18d816d48b1411c7345e7f5597f903833a2c7c7746f0126d5023ed2dd"
+    }
+  },
+  "scope": "Implement and register the production GatewayCoordination gRPC server inside the existing Gateway Integration unit. It owns a second, distinct database (opl_gateway / gateway schema) in the same deployment unit as the tenant owner, persists original charge/refund/key intent before dispatch, dispatches at most one Sub2API admin balance adjustment per business code, and reads the native positive balance history as confirmation. Managed-key delivery requires an explicit key issuer and an approved Secret store, both of which fail closed when absent.",
+  "implemented": [
+    "services/gateway-integration/gatewaymigrations/0001_opl_gateway.sql: the gateway data owner's own migration, split from the tenant block in docs/spec/target/contracts/schema.sql, guarded on current_database()='opl_gateway'. identity_mappings, tenant_wallet_bindings, key_bindings, wallet_operations, outbox_events, outbox_deliveries, inbox_events, idempotency_records and operations.",
+    "services/gateway-integration/identity/gateway_store.go: owner-local store over the gateway schema (wallet binding CAS, wallet operation reserve/settle/read, managed-key binding read/insert/revoke).",
+    "services/gateway-integration/identity/gateway_wallet.go: the Sub2API admin wallet adapter - one POST per business code with no retry, exact decimal representability check, affiliate-rebate refusal for 'add', and positive native balance-history confirmation.",
+    "services/gateway-integration/identity/coordination.go: BindWallet, Debit, Refund, ReadWalletAction, CreateManagedKey and RevokeManagedKey. Wallet authorization is resolved through the same CloudIdentity authority that shares this process via the canonical BINDTENANTWALLET / CHARGEACCEPTEDOBLIGATION / READWALLETACTION / REFUNDCONFIRMEDDELETION / BINDMANAGEDSECRET actions.",
+    "services/gateway-integration/identity/service.go + cmd/server/main.go: the GatewayCoordination group is registered and required only when OPL_GATEWAY_DATABASE_URL opens, migrates and readiness-checks the gateway database.",
+    "services/gateway-integration/identity/authorization.go + services/workspace/internal/launch/recovery.go: the create_workspace accepted-operation action set now includes the gateway-audience refundConfirmedDeletion and bindManagedSecret continuations."
+  ],
+  "verification": {
+    "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=postgres://postgres:postgres@127.0.0.1:54555/postgres OPL_POSTGRES_TESTS=1 go -C services/gateway-integration test ./...",
+    "environment": "real isolated PostgreSQL databases provisioned per owner on a local loopback container; a stub Sub2API admin server; an in-process CloudIdentity authority over real gRPC with verified peer tokens",
+    "result": "PASS",
+    "cases": [
+      "TestWalletDebitOnceAndReadback: one original charge for an obligation; exact replay returns the same operation id and the stub saw exactly one balance POST; a changed amount is refused; readback works by operation id and by original idempotency key.",
+      "TestWalletDebitUnknownNotRepeated: an unconfirmed balance response leaves the operation non-terminal, and a later call reads it back without issuing a second balance POST.",
+      "TestWalletRejectsWrongOwner: a wallet operation is not readable under another tenant scope.",
+      "TestOwnerDatabaseIsolation (gatewaymigrations): the gateway migration installs only opl_gateway, refuses a differently named database, and leaves its writer scoped to the gateway schema."
+    ]
+  },
+  "notRun": [
+    "No real Sub2API, Tencent provider, Candidate build, Instance deployment or production readback. The Sub2API wallet is a stub and no real money moved.",
+    "refundConfirmedDeletion / refundPlanChangeCompensation / refundSupplementOnDeletion exist on the owner surface but are not yet driven by a real deletion caller; only Debit/ReadWalletAction/BindWallet have a current caller (Workspace funding)."
+  ],
+  "sharedGaps": [
+    {
+      "id": "G1",
+      "owner": "coordinator (W04 managed-key delivery / stage 4 I05)",
+      "problem": "CreateManagedKey requires a ManagedKeyIssuer and a SecretStore, both of which are unwired here. This is deliberate: a raw key must never fall back into a normal table or a log, so the RPC fails closed until stage 4 wires the approved Secret store and the Sub2API key issuer.",
+      "exactChange": "implement the approved Secret store adapter and the Sub2API key issuer, then wire them in main.go for the gateway owner."
+    }
+  ],
+  "claimBoundary": "This receipt claims Cloud source changes and focused PostgreSQL-backed, real-gRPC owner tests with a stubbed external wallet and no real money. It does not claim a deployable Tencent chain, a production Gateway or Ledger implementation, an instance deployment, a candidate, a release, or any real charge, refund, purchase or deletion.",
+  "secrets": "none: the receipt contains no credentials, tokens, keys, customer data or private addresses; the isolated test database and Sub2API stub are loopback-only and created for this run."
+}

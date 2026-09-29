@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-09-29T12:59:22.529393+00:00",
+  "passed": true,
+  "scope": "implementation plan completeness/coverage/dependency verification only; no work package implemented",
+  "counts": {
+    "workPackages": 32,
+    "features": 17,
+    "restOperations": 108,
+    "tables": 101,
+    "internalRPCs": 174,
+    "executionSlices": 24
+  },
+  "sliceWaves": [
+    [
+      "W01.application-contracts"
+    ],
+    [
+      "W02.owner-readiness"
+    ],
+    [
+      "W03.identity",
+      "W05.receipts",
+      "W12.tke-resources",
+      "W27.runnable-candidate"
+    ],
+    [
+      "W04.payment-key",
+      "W07.publisher-admission",
+      "W13.console-entry"
+    ],
+    [
+      "W08.cos-upload",
+      "W10.app-release",
+      "W21.tenant-admission"
+    ],
+    [
+      "W06.tke-quote",
+      "W07.webui-catalog",
+      "W17.first-delivery"
+    ],
+    [
+      "W09.agent-build",
+      "W15.first-create"
+    ],
+    [
+      "W14.publisher-ui",
+      "W16.workspace-ui",
+      "W17.replace"
+    ],
+    [
+      "W26.agent-source",
+      "W26.default-source"
+    ],
+    [
+      "W29.default-tke"
+    ],
+    [
+      "W29.agent-tke"
+    ]
+  ],
+  "topologicalOrder": [
+    "W00",
+    "W01",
+    "W02",
+    "W03",
+    "W05",
+    "W11",
+    "W12",
+    "W04",
+    "W06",
+    "W07",
+    "W13",
+    "W08",
+    "W10",
+    "W09",
+    "W15",
+    "W14",
+    "W17",
+    "W18",
+    "W19",
+    "W20",
+    "W21",
+    "W22",
+    "W24",
+    "W25",
+    "W16",
+    "W23",
+    "W26",
+    "W27",
+    "W28",
+    "W29",
+    "W30",
+    "W31"
+  ],
+  "acceptanceDependencyWaves": [
+    [
+      "W00"
+    ],
+    [
+      "W01"
+    ],
+    [
+      "W02"
+    ],
+    [
+      "W03",
+      "W05",
+      "W11",
+      "W12"
+    ],
+    [
+      "W04",
+      "W06",
+      "W07",
+      "W13"
+    ],
+    [
+      "W08",
+      "W10"
+    ],
+    [
+      "W09",
+      "W15"
+    ],
+    [
+      "W14",
+      "W17",
+      "W18"
+    ],
+    [
+      "W19"
+    ],
+    [
+      "W20"
+    ],
+    [
+      "W21",
+      "W22"
+    ],
+    [
+      "W24",
+      "W25"
+    ],
+    [
+      "W16",
+      "W23"
+    ],
+    [
+      "W26"
+    ],
+    [
+      "W27"
+    ],
+    [
+      "W28"
+    ],
+    [
+      "W29"
+    ],
+    [
+      "W30",
+      "W31"
+    ]
+  ],
+  "errors": [],
+  "sourceHashes": {
+    "00_master_index.md": "9baa46660818605a5a36febef5d0148d43233348ec13bd8bf8d8599a3dbc0e16",
+    "01_domain_ownership_matrix.md": "b05cf9e25b46ef2407638dee0a7969dfaaa3d4625597285e90374c1550a8a8a2",
+    "14_implementation_work_packages.md": "29c7a2cbc6f8113bab8426ceb1ffa5009d307b7af23fcd4454812ea648a10ed5",
+    "checks/development_plan.json": "667dcb21d64d54f77430b4070ce610ef6b83984ee04d3a89c2d2155f15b66769",
+    "checks/render_development_plan.py": "e6cae478c05afad23bb075197d617f64361c7c9434af46d45f06e17c47422b2a",
+    "checks/validate_development_plan.py": "7da1c53fc7082d15bc7491fadd14c8255b0600be0d668927cd2ed82ad2274988",
+    "contracts/api_inventory.json": "7d680fb0e2d86756129af6bd880d6f581f9ca2141e4e7afbf670f66a99a959be",
+    "contracts/db_inventory.json": "d33ce392ef9033eadba3e7322b9bcd41766ec5d72530320d83cb81fec200c95b",
+    "contracts/ui_inventory.json": "a27d1e5b218c63941127851ed563ff25cd3b90d20db1b791a82b5fbd051c8a3d",
+    "contracts/internal.proto": "798094ab084c81cab789a857f96bad65a19f24ffa0298483400c7b59d0efef51",
+    "03_api_contract_complete.yaml": "6e7c922e9cc696784bf9a4d272a67b7e32d39cd345afe3f1a3137aa492ae05dd",
+    "12_product_spec.md": "8abdbbaf69c34e0a4727aaafea1fd9b261766a1be2c74615d239b6175dc2be6d"
+  }
+}

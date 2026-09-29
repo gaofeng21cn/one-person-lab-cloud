@@ -2,6 +2,8 @@ package delivery_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"sync"
 	"testing"
@@ -13,6 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/packages/contracts/go/publicjson"
 	"opl-cloud/services/internal/ownerservice"
 	"opl-cloud/services/serve/internal/delivery"
 )
@@ -48,16 +51,39 @@ func (f *capabilityForServe) BindReference(ctx context.Context, r *api.BindRefer
 	return &api.ReferenceClaim{Id: r.ClaimId, State: api.ReferenceClaimState_REFERENCE_CLAIM_STATE_BOUND, BoundOperationId: proto.String(actual.OperationId), BoundInputDigest: proto.String(actual.AcceptedInputDigest)}, nil
 }
 
+// runtimeControlForServe serves one approved Runtime Release over the real
+// RuntimeControlProductService client surface so the default OPL App reservation
+// path (no CapabilityVersion, no Package, no Build) is exercised against Serve's
+// real owner store rather than a stub.
+type runtimeControlForServe struct {
+	api.RuntimeControlProductServiceClient
+	release *api.RuntimeVersion
+}
+
+func (f *runtimeControlForServe) ListRuntimeVersions(context.Context, *api.ListRuntimeVersionsRpcRequest, ...grpc.CallOption) (*api.RuntimeVersionPage, error) {
+	return &api.RuntimeVersionPage{Items: []*api.RuntimeVersion{proto.Clone(f.release).(*api.RuntimeVersion)}}, nil
+}
+
 type resourcesForServe struct {
 	api.FabricCoordinationClient
-	confirmed bool
+	confirmed      bool
+	workspace      string
+	dataAttachment string
 }
 
 func (f *resourcesForServe) ReadResources(_ context.Context, r *api.ResourceReadbackRequest, _ ...grpc.CallOption) (*api.ResourceReadback, error) {
-	out := &api.ResourceReadback{ResourceSetId: r.ResourceSetId, WorkspaceId: "ws-first", Outcome: api.Observation_OBSERVATION_UNKNOWN}
+	workspace := f.workspace
+	if workspace == "" {
+		workspace = "ws-first"
+	}
+	attachment := f.dataAttachment
+	if attachment == "" {
+		attachment = "attachment-original"
+	}
+	out := &api.ResourceReadback{ResourceSetId: r.ResourceSetId, WorkspaceId: workspace, Outcome: api.Observation_OBSERVATION_UNKNOWN}
 	if f.confirmed {
 		out.Outcome = api.Observation_OBSERVATION_CONFIRMED
-		out.ExecutionResources = &api.ResourceExecutionBinding{AccountId: "account-original", ComputeAllocationId: "compute-original", StorageVolumeId: "volume-original", DataAttachmentId: "attachment-original", DataAttachmentOperationId: "attach-operation-original"}
+		out.ExecutionResources = &api.ResourceExecutionBinding{AccountId: "account-original", ComputeAllocationId: "compute-original", StorageVolumeId: "volume-original", DataAttachmentId: attachment, DataAttachmentOperationId: "attach-operation-original"}
 	}
 	return out, nil
 }
@@ -72,6 +98,15 @@ type runtimeForServe struct {
 func (f *runtimeForServe) Start(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (delivery.RuntimeObservation, error) {
 	f.starts++
 	return runtimeReady(applicationEntry(), "https://ws.example/app", "ack-only"), nil
+}
+func (*runtimeForServe) Lifecycle(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding, string) error {
+	return nil
+}
+func (*runtimeForServe) Reload(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) error {
+	return nil
+}
+func (*runtimeForServe) Credentials(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (*api.WorkspaceApplicationCredentials, error) {
+	return nil, errors.New("credentials unavailable")
 }
 func (f *runtimeForServe) Observe(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (delivery.RuntimeObservation, error) {
 	f.observes++
@@ -265,6 +300,15 @@ type orderedObservationRuntime struct {
 func (f *orderedObservationRuntime) Start(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (delivery.RuntimeObservation, error) {
 	return delivery.RuntimeObservation{}, nil
 }
+func (*orderedObservationRuntime) Lifecycle(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding, string) error {
+	return nil
+}
+func (*orderedObservationRuntime) Reload(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) error {
+	return nil
+}
+func (*orderedObservationRuntime) Credentials(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (*api.WorkspaceApplicationCredentials, error) {
+	return nil, errors.New("credentials unavailable")
+}
 func (f *orderedObservationRuntime) Observe(ctx context.Context, _ *api.RuntimeDeployCommand, _ *api.ResourceExecutionBinding) (delivery.RuntimeObservation, error) {
 	f.mu.Lock()
 	f.calls++
@@ -344,5 +388,164 @@ func TestServeSerializesObservationThroughSelectionAcrossInstances(t *testing.T)
 	var runtimeState, deploymentState string
 	if err = s.DB.QueryRowContext(ctx, `SELECT i.status,d.status FROM serve.agent_runtime_instances i JOIN serve.agent_deployments d ON d.id=i.deployment_id WHERE i.id=$1`, reservation.RuntimeInstanceId).Scan(&runtimeState, &deploymentState); err != nil || runtimeState != "ready" || deploymentState != "active" {
 		t.Fatalf("final states=%s/%s err=%v", runtimeState, deploymentState, err)
+	}
+}
+
+// defaultAppRelease builds one approved Runtime Release whose publisher contract
+// carries the immutable OCI and the application revision template the default OPL
+// App deploys. The descriptor is the release's own contract, never a caller image.
+func defaultAppRelease(t *testing.T, s *delivery.Service) *api.RuntimeVersion {
+	t.Helper()
+	revision := &api.WorkspaceApplicationRevision{
+		SchemaVersion: 1, ApplicationId: "opl-app", Version: "1", Platform: "linux/amd64",
+		Image:          "registry.test/opl-app@" + artifactDigest,
+		ExposurePolicy: api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION,
+	}
+	return &api.RuntimeVersion{
+		Id: "rv-opl-app", Status: api.RuntimeVersionStatusEnum_RUNTIME_VERSION_STATUS_ENUM_APPROVED,
+		PublisherContract: &api.RuntimePublisherContract{
+			Image:                       &api.ArtifactReference{Repository: "registry.test/opl-app", Digest: artifactDigest},
+			ApplicationRevisionTemplate: revision,
+		},
+	}
+}
+
+// descriptorDigestOf is the digest of a descriptor's canonical public JSON bytes,
+// the same encoding Serve records at reservation.
+func descriptorDigestOf(t *testing.T, descriptor *api.DeploymentDescriptor) string {
+	t.Helper()
+	raw, err := publicjson.Marshal(descriptor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(raw)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// TestServeDefaultAppReservationCarriesNoCapabilityVersion proves the default OPL
+// App is a first-class delivery source: Reserve accepts an explicit opl_app
+// selection backed by an approved Runtime Release, records the runtime version and
+// no CapabilityVersion, acquires exactly one Runtime Release reference claim, and
+// refuses a mixed source that also names a CapabilityVersion.
+func TestServeDefaultAppReservationCarriesNoCapabilityVersion(t *testing.T) {
+	s, _, cap := reservationFixture(t)
+	capCalls := cap.acquired
+	ctx := workspaceContext()
+	release := defaultAppRelease(t, s)
+	s.RuntimeReleases = &runtimeControlForServe{release: release}
+
+	tenant := "tenant-opl-app"
+	c := call(tenant, false)
+	c.IdempotencyKey = "default-app-first-delivery"
+	descriptor := &api.DeploymentDescriptor{SchemaVersion: api.DeploymentDescriptorSchemaVersionEnum_DEPLOYMENT_DESCRIPTOR_SCHEMA_VERSION_ENUM_OPL_DEPLOYMENT_DESCRIPTOR_V1, Artifact: release.GetPublisherContract().GetImage(), Provenance: api.DeploymentDescriptorProvenanceEnum_DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_RUNTIME_RELEASE, ApplicationRevision: release.GetPublisherContract().GetApplicationRevisionTemplate()}
+	request := &api.RuntimeReservationCommand{
+		Context:     c,
+		WorkspaceId: "ws-opl-app",
+		ApplicationSelection: &api.WorkspaceApplicationSelection{
+			Kind:             api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP,
+			RuntimeVersionId: proto.String(release.GetId()),
+		},
+		Artifact:                      release.GetPublisherContract().GetImage(),
+		DeploymentDescriptor:          descriptor,
+		DeploymentDescriptorDigest:    descriptorDigestOf(t, descriptor),
+		DeploymentDescriptorObjectRef: "runtime-contract:" + release.GetId(),
+		ResourceSetId:                 "resource-set-opl-app",
+		DataAttachmentId:              "attachment-opl-app",
+	}
+	out, err := s.Reserve(ctx, request)
+	if err != nil {
+		t.Fatalf("default App reservation: %v", err)
+	}
+	if out.DeploymentId == "" || out.RuntimeInstanceId == "" || out.ExecutionEpoch != 1 {
+		t.Fatalf("reservation=%v", out)
+	}
+	var applicationKind, capability, runtimeVersion string
+	if err := s.DB.QueryRowContext(ctx, `SELECT application_kind, capability_version_id, COALESCE(runtime_version_id,'') FROM serve.agent_deployments WHERE id=$1`, out.DeploymentId).Scan(&applicationKind, &capability, &runtimeVersion); err != nil {
+		t.Fatal(err)
+	}
+	if applicationKind != "opl_app" || capability != "" || runtimeVersion != release.GetId() {
+		t.Fatalf("default App row kind=%q capability=%q runtime=%q", applicationKind, capability, runtimeVersion)
+	}
+	if cap.acquired != capCalls+1 {
+		t.Fatalf("the default App must acquire exactly one Runtime Release reference claim, delta=%d", cap.acquired-capCalls)
+	}
+	mixed := proto.Clone(request).(*api.RuntimeReservationCommand)
+	mixed.Context = call(tenant, false)
+	mixed.Context.IdempotencyKey = "mixed"
+	mixed.CapabilityVersionId = "cv_1"
+	if _, err := s.Reserve(ctx, mixed); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("mixed source accepted: %v", err)
+	}
+}
+
+// TestServeDefaultAppDeploysReadyAndPublishesAccess proves the default OPL App is
+// deployable end to end inside Serve's own owner store: after Reserve admits an
+// approved Runtime Release (no CapabilityVersion, no Build, no Package), a
+// Workspace deploy command drives the real runtime adapter to readiness, Serve
+// commits the single active deployment and its confirmed access entry, and the
+// runtime-availability fact is published on Send. The applied model configuration
+// is not fabricated: with no runtime readback it stays 0.
+func TestServeDefaultAppDeploysReadyAndPublishesAccess(t *testing.T) {
+	s, _, _ := reservationFixture(t)
+	ctx := workspaceContext()
+	release := defaultAppRelease(t, s)
+	s.RuntimeReleases = &runtimeControlForServe{release: release}
+
+	tenant := "tenant-opl-app"
+	c := call(tenant, false)
+	c.IdempotencyKey = "default-app-first-delivery"
+	descriptor := &api.DeploymentDescriptor{SchemaVersion: api.DeploymentDescriptorSchemaVersionEnum_DEPLOYMENT_DESCRIPTOR_SCHEMA_VERSION_ENUM_OPL_DEPLOYMENT_DESCRIPTOR_V1, Artifact: release.GetPublisherContract().GetImage(), Provenance: api.DeploymentDescriptorProvenanceEnum_DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_RUNTIME_RELEASE, ApplicationRevision: release.GetPublisherContract().GetApplicationRevisionTemplate()}
+	reserved, err := s.Reserve(ctx, &api.RuntimeReservationCommand{
+		Context: c, WorkspaceId: "ws-opl-app",
+		ApplicationSelection:          &api.WorkspaceApplicationSelection{Kind: api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP, RuntimeVersionId: proto.String(release.GetId())},
+		Artifact:                      release.GetPublisherContract().GetImage(),
+		DeploymentDescriptor:          descriptor,
+		DeploymentDescriptorDigest:    descriptorDigestOf(t, descriptor),
+		DeploymentDescriptorObjectRef: "runtime-contract:" + release.GetId(),
+		ResourceSetId:                 "resource-set-opl-app",
+		DataAttachmentId:              "attachment-opl-app",
+	})
+	if err != nil {
+		t.Fatalf("default App reservation: %v", err)
+	}
+
+	s.Resources = &resourcesForServe{confirmed: true, workspace: "ws-opl-app", dataAttachment: "attachment-opl-app"}
+	runtime := &runtimeForServe{}
+	s.Runtime = runtime
+	command := &api.RuntimeDeployCommand{
+		Context: c, WorkspaceId: "ws-opl-app", DeploymentId: reserved.DeploymentId,
+		ApplicationSelection: &api.WorkspaceApplicationSelection{Kind: api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP, RuntimeVersionId: proto.String(release.GetId())},
+		RuntimeInstanceId:    reserved.RuntimeInstanceId, ExecutionEpoch: reserved.ExecutionEpoch,
+		ResourceSetId: "resource-set-opl-app", DataAttachmentId: "attachment-opl-app",
+		DeploymentDescriptor: descriptor, DeploymentDescriptorDigest: reserved.DeploymentDescriptorDigest,
+		DeploymentDescriptorObjectRef: reserved.DeploymentDescriptorObjectRef,
+	}
+	state, err := s.Deploy(ctx, command)
+	if err != nil {
+		t.Fatalf("default App deploy: %v", err)
+	}
+	if !state.GetApplicationAvailable() || state.GetState() != api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY || state.GetAccessUrl() != "https://ws.example/app" {
+		t.Fatalf("runtime readback=%v", state)
+	}
+	if state.GetAppliedModelConfigurationVersion() != 0 {
+		t.Fatalf("applied model version must not be fabricated, got %d", state.GetAppliedModelConfigurationVersion())
+	}
+	var deploymentStatus, applicationKind string
+	if err := s.DB.QueryRowContext(ctx, `SELECT status, application_kind FROM serve.agent_deployments WHERE id=$1`, reserved.DeploymentId).Scan(&deploymentStatus, &applicationKind); err != nil {
+		t.Fatal(err)
+	}
+	if deploymentStatus != "active" || applicationKind != "opl_app" {
+		t.Fatalf("deployment status=%q kind=%q", deploymentStatus, applicationKind)
+	}
+	var readinessEvents int
+	if err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM serve.outbox_events WHERE event_type='serve.agent_readiness_observed.v1' AND aggregate_id=$1`, reserved.DeploymentId).Scan(&readinessEvents); err != nil {
+		t.Fatal(err)
+	}
+	if readinessEvents != 1 {
+		t.Fatalf("ready default App emitted %d readiness events, want one", readinessEvents)
+	}
+	access, err := s.GetWorkspaceAccess(serveContext(), &api.GetWorkspaceAccessRpcRequest{Context: c, WorkspaceId: "ws-opl-app"})
+	if err != nil || access.GetUrl() != "https://ws.example/app" {
+		t.Fatalf("default App access=%v err=%v", access, err)
 	}
 }

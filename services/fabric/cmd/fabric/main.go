@@ -48,9 +48,17 @@ func main() {
 	}
 	fabricService := fabric.NewServiceWithOperationStore(provider, operationStore)
 	handler := fabrichttp.NewServerWithAuth(fabricService, authConfig)
-	var dispatcher coordination.LocalResourceDispatcher
-	if local, ok := provider.(*fabric.LocalDockerProvider); ok && databaseURL != "" {
-		dispatcher = coordination.NewLocalDispatcher(fabricService, local)
+	// The target resource coordination surface executes resource work through the
+	// same adapter and durable operation store as the process's HTTP routes. The
+	// dispatcher is provider-specific; it never reaches another provider.
+	var dispatcher coordination.ResourceDispatcher
+	if databaseURL != "" {
+		switch typed := provider.(type) {
+		case *fabric.LocalDockerProvider:
+			dispatcher = coordination.NewLocalDispatcher(fabricService, typed)
+		case *fabric.TencentProvider:
+			dispatcher = coordination.NewTencentDispatcher(fabricService, typed)
+		}
 	}
 	owner, err := coordination.Start(ctx, os.Getenv, dispatcher)
 	if err != nil {

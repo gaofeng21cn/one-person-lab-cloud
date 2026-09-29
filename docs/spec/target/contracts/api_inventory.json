@@ -1103,7 +1103,7 @@
         "F15",
         "F17"
       ],
-      "owner": "workspace",
+      "owner": "bff",
       "request": null,
       "response": "Operation",
       "status": 200,
@@ -1419,7 +1419,7 @@
       "features": [
         "F17"
       ],
-      "owner": "workspace",
+      "owner": "bff",
       "request": null,
       "response": "AdminOperationPage",
       "status": 200,
@@ -1438,7 +1438,7 @@
       "features": [
         "F17"
       ],
-      "owner": "workspace",
+      "owner": "bff",
       "request": "ReconcileOperationRequest",
       "response": "Operation",
       "status": 202,
@@ -1534,7 +1534,7 @@
         "F03",
         "F07"
       ],
-      "owner": "capability",
+      "owner": "runtime_control",
       "request": null,
       "response": "RuntimeVersionPage",
       "status": 200,
@@ -1631,7 +1631,7 @@
       "features": [
         "F03"
       ],
-      "owner": "capability",
+      "owner": "runtime_control",
       "request": "RegisterRuntimeVersionRequest",
       "response": "RuntimeVersion",
       "status": 201,
@@ -1650,7 +1650,7 @@
       "features": [
         "F03"
       ],
-      "owner": "capability",
+      "owner": "runtime_control",
       "request": "CatalogStatusRequest",
       "response": "RuntimeVersion",
       "status": 200,
@@ -1920,7 +1920,7 @@
       "features": [
         "F03"
       ],
-      "owner": "capability",
+      "owner": "runtime_control",
       "request": null,
       "response": "BuildRuntimePolicy",
       "status": 200,
@@ -1939,7 +1939,7 @@
       "features": [
         "F03"
       ],
-      "owner": "capability",
+      "owner": "runtime_control",
       "request": "SetBuildRuntimePolicyRequest",
       "response": "BuildRuntimePolicy",
       "status": 200,

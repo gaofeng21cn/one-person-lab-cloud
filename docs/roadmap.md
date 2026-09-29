@@ -21,100 +21,80 @@ The target product and the delivery sequence are owned by the adopted
 - Legacy migration program `M0`-`M5`:
   [09_legacy_migration.md](./spec/target/09_legacy_migration.md)
 
-Those files are the single writer for the target sequence. This file does not
-restate, renumber, or paraphrase them.
+Those files remain the planning/specification owners; this page tracks open
+outcomes, not a second set of task definitions.
 
-The owner-process implementation is present on canonical `main` through PR
-#627 and is recorded in the [September 24 evidence](./status.md#agent-delivery-chain-owner-process-baseline).
-This is a partial foundation, not a claim that the complete product delivery
-chain is finished. Open work in dependency order:
+### Serial Integration After The Four Domain Preparations
 
-1. The complete Cloud-local publisher path now has real CloudIdentity session and
-   accepted-Build-grant issuance, platform-authorized publisher/WebUI admission,
-   Console/BFF upload, exact Runtime selection, three bound claims,
-   BuildKit/Registry, ready CapabilityVersion and Ledger consumption. Current
-   [source evidence](./evidence/source-checks/2026-09-25-publisher-identity-admission-local.json)
-   names the external Sub2API fixture, existing test membership and remaining
-   production qualification boundary; earlier identity/catalog fixture gaps no
-   longer describe current Cloud source.
-2. Continue the remaining canonical Gateway Integration/CloudIdentity work
-   package for Tenant onboarding/lifecycle and retained identity-data migration.
-   The member slice is now implemented: invitations, acceptance, role changes,
-   last-owner protection, cross-Tenant refusal, session revocation on removal and
-   the audit record are source-verified in
-   [member governance evidence](./evidence/source-checks/2026-09-25-cloudidentity-member-governance-local.json).
-   `Member.displayName` now resolves through CloudIdentity's own authorized
-   read-only Gateway directory identity, which also validates an invited subject;
-   a deployment without that identity leaves both facts unresolved rather than
-   fabricated. The `getWorkspaceAccess` ownership audit this line performed is
-   closed by the contract correction. Open obligation there: the member surface
-   still has no Console page, which belongs to W13 Console/BFF basic integration
-   (F01), not to the W14 agent/upload/build front end; the BFF REST surface is
-   what exists now. Tenant onboarding,
-   suspend/reenable, delete/restore and Gateway wallet migration remain separate
-   outcomes; do not infer full W03, W21 or Gateway wallet migration from the
-   implemented publisher or member slices.
-3. Complete the first Local Serve Agent deployment on a qualified provider host,
-   with readiness and access readback. Workspace accepted-order authorization,
-   frozen Catalog resource planning, Fabric's persistent resource references and
-   the typed Local zero-charge Ledger evidence are implemented and source-verified.
-   Serve's owner-local read surface is **complete and verified
-   end to end** against the production CloudIdentity authority: `listDeployments`,
-   `getDeployment` and `getWorkspaceAccess` are all admitted for a serve-audience
-   member, with cross-Tenant, session-less and revoked-session callers refused; unavailable
-   access returns `APP_ACCESS_UNAVAILABLE`, and
-   the BFF's own Serve read handler proves the chain from real login through the
-   typed owner reads. The composed `GET /api/v2/delivery/{workspaceId}` view still
-   uses the Workspace owner's implemented read service, and the three
-   independent Serve reads are registered on the production BFF mux.
+A/B/C/D's bounded source preparations have been handed off; they do not complete
+their full W packages or authorize direct rollout of this dirty worktree.
+[The source audit](evidence/source-checks/2026-09-29-tke-serial-integration-audit.json)
+and [14 section 11](spec/target/14_implementation_work_packages.md#11-四领域交付后的串行集成与上线)
+define the remaining serial path: dependency baseline → W01/default-App and
+identity consumers → real Gateway/Ledger financial evidence → Fabric/Secret
+handoff → actual Serve execution/route/runtime facts → both Console business
+flows → exact-SHA Candidate → protected Instance installation and acceptance.
+All outcomes in the table below remain open until their own evidence passes.
+A single sequential implementation owner replaces the parallel write allocation;
+logical DDD ownership and separate Instance deployment authority do not change.
 
-   The **first real deployment remains incomplete**. The source now connects
-   Workspace to Capability and Serve Reserve/Deploy/ReadRuntime; Serve owns the
-   reference claim and delivery identities and uses Fabric's existing application
-   adapter. The remaining acceptance requires a qualified Local Linux
-   project-quota host, exact approved profile/account mapping, actual provider
-   compute/storage/attachment readback and actual application readiness/access.
-   The inspected macOS host refuses quota preflight before allocation; Docker
-   Desktop alone is not qualification. Required secret/model/config injection,
-   version replacement and route switching remain separate unfinished behavior.
-   [Status](./status.md#workspace-original-order-and-local-delivery-boundary)
-   separates source acceptance from these provider and application facts.
+### Tencent/TKE Primary Delivery Outcome (2026-09-29)
 
-   The Resource Catalog owner serves approved plans and versioned
-   price/refund/retention policies with the frozen D17 arithmetic and has a real
-   authenticated caller: the BFF catalog surface, the generated CloudIdentity
-   policy, the contract-compiled response status and the contract-derived money
-   vocabulary admit a platform administrator and a member, refuse a tenant
-   administrator, and round-trip a money-bearing policy version
-   ([caller evidence](./evidence/source-checks/2026-09-25-resource-catalog-owner-caller-local.json);
-   earlier owner-only evidence in
-   [policy-catalog evidence](./evidence/source-checks/2026-09-25-resource-catalog-policy-catalog-local.json)).
-   The deploy quote is now priced and accepted on the Catalog side, including
-   expiry, single-binding and stale-offer refusals
-   ([quote evidence](./evidence/source-checks/2026-09-25-resource-catalog-quote-local.json)),
-   while `resize` and `renew` are refused with the gap named. Open in this line:
-   the Ledger consumer of `catalog.policy_changed.v1`, and
-   the decision point over the platform-administrator read of the customer plan
-   list. Quoting one deploy request therefore does not mean a Local deployment
-   loop is complete.
-4. The Cloud Console now has the first real Agent directory/detail read surface:
-   `/console/agents` and `/console/agents/:packageId` read Package,
-   PackageVersion, CapabilityVersion and Build owner facts through the BFF.
-   The September 28 repair completes the real Capability list implementation and
-   current ready-version projection; isolated owner tests cover the visibility
-   and filtering boundary ([source receipt](./evidence/source-checks/2026-09-28-runtime-capability-readback-repair.json)).
-   Remaining F04/F05/F06 work is the explicit upload/build-log/retry/archive/
-   down-level mutation surface and its owner operations; do not treat the
-   current readback page or source fixtures as a completed deployment chain.
+The [September 29 adopted decision](decisions.md#2026-09-29-default-opl-app-and-optional-agent)
+adds default OPL App with its native UI alongside custom Agent delivery. One
+confirmation must reach a usable application. Default App has no synthetic
+Package, BuildJob or CapabilityVersion. Independent WebUI selection remains in
+the custom-Package build flow. Existing `resource_only` obligations remain
+legacy, not the default product.
 
-The single-repository topology is decided, not an open A/B choice. Runtime
-Release admission, Ledger evidence, and independent Fabric provider work may
-proceed in parallel only where their owners and file write sets do not overlap.
-Changes to the shared contract, a single migration sequence, or shared routers
-remain serialized.
+**Business scope and executable contract readiness are different.** The approved
+field migration is recorded in target specification 03
+(`x-approved-wire-migration`) and 02 section 0. Current production decoders,
+SQL/proto, events, claims and consumers do not yet implement it. Start directly
+at `W01.application-contracts`; do not treat historical handoff READY or current
+CI as acceptance of the new product combinations.
 
+| Open outcome | Existing owner/work package | Completion evidence |
+|---|---|---|
+| Two explicit product combinations through one typed selection contract | W01; the impacted owner consumers named in 03/02 | Strict union/SQL/descriptor/event/claim tests and same-schema consumers; default App has no fake Build and still requires runtime readback |
+| Approved actual OPL App/native UI, and independent WebUI inputs | W07/W10, Runtime Control/Capability | Exact specified TCR source digests/platforms, resolvable original publisher-contract/descriptor bytes, native UI capability and admission evidence |
+| Tenant, wallet authorization, original transaction, Key and accepted order | W03/W04/W21 admission/W06/W15 | Actual supported wallet authority and original identity/readback; actor balance reads or Local zero-charge do not prove this outcome |
+| TKE resources through the new coordination path | W12, Fabric | Original prepaid resource actions, CVM/CBS/network/attachment observed; no application execution in Fabric |
+| Default App first use on TKE | W17 first delivery/W15/W16/W26; Instance carries W29 bounded acceptance | Same Candidate, accepted quote/order, App digest, resources, deployment/route epoch, native UI/API and required receipts; one confirmation, restart/lost-response recovery |
+| Agent with independent WebUI through the same deployed chain | W08/W09/W14/W26; bounded W29 acceptance | COS upload/recovery, TKE-hosted Build using actual inputs, Tenant TCR output, Capability registration, exact Serve runtime and actual Agent use |
+| Complete lifecycle, old-customer migration and formal release | W17 replacement/W18–W25/W30; full W26/W28/W29/W31 | Both application modes satisfy their declared lifecycle and retained obligations; full existing Local/Instance same-Candidate qualification and explicit publication authority |
 
+The concrete **24 slices, inputs, write sets, producer dependencies, checks and
+handoff evidence** are generated in
+[14 section 9](spec/target/14_implementation_work_packages.md#9-tencenttke可直接开发的切片与窗口).
+Use five Cloud windows (integration/contracts/Console, artifact pipeline,
+business/identity/order, Fabric resources, Serve delivery), plus an Instance
+window only when an authorized installation is needed. Shared contracts,
+startup machinery, image assets and router integration are serialized.
 
+The immediate four-window preparation is executable before the new default-App
+wire migration: [14 section 10](spec/target/14_implementation_work_packages.md#10-四领域窗口派发与共享合同交接)
+assigns bounded repairs against existing contracts, disjoint writes and focused
+tests. This does not mark W01 complete or waive any downstream acceptance
+producer. Shared-contract changes and generated consumers stay with integration;
+module-local startup wiring stays with its domain window. No automatic old-writer
+retirement or production action is authorized by task dispatch.
+
+Current source gaps include the Local-only resource dispatcher, Serve's use of
+the old Fabric application bridge instead of a TKE application/access adapter,
+Gateway payment/Key wiring, default legacy Console build mode, and exact Runtime
+contract/native-UI admission. COS and real-registry branches are not assumed
+merged. (The product image's missing buildx CLI plugin is closed: the image now
+copies `docker-buildx`, proven by a local image probe.) These are implementation
+outcomes, not further product choices or permission to delete a still-used path.
+
+Local-Docker remains supported and retains its formal-release qualification
+obligations. Its complete feature set and legacy data migration are not imposed
+on the bounded first-use TKE implementation slice. Isolated new objects may use
+the complete necessary owner chain with explicit routing; actual existing
+customer switching still requires the relevant M0–M5 and retirement of its old
+writer after readback. Running several services does not itself create a double
+writer or prove a migration.
 
 The sections below describe the **current implementation** lane. They remain
 open until the target architecture work packages replace them, and they are not the target
@@ -249,7 +229,7 @@ TCR namespace。Tenant ID 才是授权与持久映射身份；email local-part �
 | Approved Runtime release | `runtime_control` | Not Runtime implementation or per-Workspace state |
 | Repository resolution, OCI push, Build identity, output digest, readback | `build` | No user-selected destination; no per-Build Instance involvement |
 | Tenant authorization/target Workspace | `workspace` | No Build output or current Agent selection |
-| Application delivery and readiness | `serve`; TKE execution/readback by `fabric` | Instance does not install each Agent |
+| Application deployment, readiness and access | `serve`, including its TKE application adapter; Fabric supplies confirmed resource refs only | Instance does not install each Agent |
 | Append-only Build/application receipts | `ledger` | Does not become a Build or deployment writer |
 | Personal TCR account/namespace, Cloud Candidate deployment, TKE profile, Secret references | `opl-instance-medopl` | No per-application deployment workflow |
 
@@ -302,11 +282,12 @@ and carries no acceptance.
    Console, admit a test Tenant and run a real Build; read back the Tenant
    binding, Build destination, remote TCR manifest digest, Capability
    version/descriptor and Ledger receipt, all bound to one Tenant and digest.
-7. **Cloud-driven TKE application acceptance — open.** If runtime delivery is in
-   scope, Cloud Serve/Fabric deploys that exact digest to a designated test
-   Workspace/TKE target; read back Pod image digest, readiness, port/health and
-   browser access. Instance does not deploy the Agent.
-8. **50-Tenant readiness — open.** Test 50 tenant bindings/reservations and
+7. **Cloud-driven TKE application acceptance — required and open.** Serve deploys
+   that exact digest using Fabric-confirmed resources; read back runtime image
+   identity, application readiness, route epoch and actual browser/API access.
+   Default App has an earlier direct-Release first-use slice; both are required
+   product paths. Instance only installs Cloud and carries authorized readback.
+8. **50-Tenant readiness — independent follow-up, not a first-use gate.** Test 50 tenant bindings/reservations and
    isolation without buying 50 Workspaces, then measure expected concurrent Build
    and registry API rate against personal-TCR limits; record the peak before
    setting load acceptance.
@@ -324,7 +305,7 @@ and [upgrade backfill receipt](./evidence/source-checks/2026-09-29-tenant-reposi
 | Cloud 平台实现与 portable Candidate | Console / Control Plane / Fabric / Ledger → 本地安装与 Instance owner | 源码、实际 typed HTTP API、管理员界面、领域规则、owner-local schema/decoder/存量迁移、操作恢复和测试；确定 Cloud SHA 对应的 GHCR 多架构镜像，以及既有安装包、`opl-cloud-candidate.json` 和 `SHA256SUMS`。 | 五个闭环中相应 Cloud 行为有实际验证；Candidate 绑定 SHA/tree、index/platform digests、安装文件校验和及构建 provenance；支持另一已满足能力要求的应用时，只需登记其材料，无需再改代码或重建 Cloud。 |
 | OPL App 显式应用描述与存量迁移 | App 发布者 + Cloud 迁移 owner → 新部署与现有 Workspace | 现有镜像的版本化运行描述；原端口/探针/配置/凭据/挂载声明；可执行、可恢复的成功与未完成 Launch/Workspace 绑定迁移。迁移代码随 Cloud 交付，应用描述保留发布者归属。 | OPL App 经独立应用操作安装；原 `/data`、`/projects`、凭据、资源和购买事实保持；旧操作能按原合同完成，迁移后的真实查询/访问/生命周期调用可用。 |
 | IBD 应用交付材料 | IBD 发布者，Fabric 提供通用存储执行能力 → Cloud 准入与 Instance owner | 版本化、机器可读的运行描述；主/依赖 OCI 的完整不可变引用和平台；组件、端口、探针、资源、连接、配置与 Secret 接口、持久/临时挂载；数据/模型/PDF/索引引用和一致性校验和；版本化恢复、验证工具及兼容性说明。 | 主镜像和六个知识服务或明确的外部绑定均齐备；Docker-volume 数据可通过已实现且验证的通用 TKE/PVC 导入路径使用；恢复后的真实检索、问答、SSE 和引用证据通过；材料不包含凭据值。 |
-| 指定 Workspace 的实际部署结果与不可变凭证 | `opl-instance-medopl` → 操作者与最终用户 | 对应 Candidate 的安装；Registry/Secret/provider/DNS/TLS/origin 绑定；限定目标的 IBD 部署、数据导入和可用入口；实际 Runtime、数据、使用及恢复/回滚读回；owner `receipts/` 下的新凭证。 | 凭证同时绑定准确的 Cloud、应用/依赖、数据与恢复工具身份、目标 Workspace、时间及实际结果。只有该层完成，才能声明 IBD 已在目标 Workspace 可用。 |
+| 指定 Workspace 的实际部署结果与不可变凭证 | Cloud Workspace/Serve/Fabric → 用户；Instance只承载Cloud安装/授权验收 | Instance安装对应Candidate及Registry/Secret/provider/DNS/TLS配置；Cloud产品API完成限定应用的部署、数据导入与访问，并输出实际运行/恢复证据；Instance安装receipt关联Cloud业务证据，不另写每应用流程。 | 凭证同时绑定准确的 Cloud、应用/依赖、数据与恢复工具身份、目标 Workspace、时间及实际结果。只有该层完成，才能声明 IBD 已在目标 Workspace 可用。 |
 | 操作说明与验收证据 | 各 owner → 后续运维和接入应用的操作者 | 可复现的登记、预检查、部署、更新、恢复、兼容回滚和故障续接说明；输入格式/示例、支持能力、权限边界；Cloud 检查证据、应用验证结果和 Instance receipt 引用。 | 操作者能用同一版本材料复现完整操作，并区分完成、失败、处理中和结果未知；镜像更新与数据恢复有各自明确步骤和副作用。 |
 
 交付形态分为三条可独立版本化的产物链：
@@ -336,8 +317,8 @@ and [upgrade backfill receipt](./evidence/source-checks/2026-09-29-tenant-reposi
    CP/Fabric 实际 API 消费的机器可读格式，数据与恢复工具位于批准的产物存储。
    交付清单关联这些确定引用和校验和。简单应用可以由管理员表单生成同样的
    部署描述，不强制新增 OPL Package、市场发布或第二个 Registry。
-3. **安装结果。** Instance 使用平台和应用材料，加上自己的配置/Secret 绑定
-   执行投放，通过 receipt 关联上述身份。应用版本发布不等同于 Cloud Product
+3. **安装结果。** Instance只投放Cloud平台及安装配置/Secret绑定；应用由Cloud owner
+   执行，安装receipt关联其业务证据，不代替应用owner。应用版本发布不等同于 Cloud Product
    Release；正式 Product Release 若另行请求，按现有机制提升同一已验证 digest。
 
 ### Business Work Packages

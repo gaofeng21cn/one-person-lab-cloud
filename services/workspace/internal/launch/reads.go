@@ -42,10 +42,27 @@ func scanWorkspace(row rowScanner) (*api.Workspace, string, error) {
 	}
 	if len(accepted.Quote) > 0 {
 		quote := &api.QuoteAcceptance{}
-		if protojson.Unmarshal(accepted.Quote, quote) != nil || quote.GetQuote().GetCapabilityVersionId() == "" {
-			return nil, "", status.Error(codes.DataLoss, "stored Workspace capability choice is invalid")
+		if protojson.Unmarshal(accepted.Quote, quote) != nil {
+			return nil, "", status.Error(codes.DataLoss, "stored Workspace accepted quote is invalid")
 		}
-		w.CapabilityVersionId = proto.String(quote.Quote.GetCapabilityVersionId())
+		// The accepted order names exactly one application source: a built Agent
+		// (CapabilityVersion) or the default OPL App (Runtime Release). Both must be
+		// readable from the stored quote, so a default App readback is not mistaken
+		// for a missing capability choice.
+		selection, selectionErr := acceptedSelection(quote.GetQuote())
+		if selectionErr != nil {
+			return nil, "", status.Error(codes.DataLoss, "stored Workspace application source is invalid")
+		}
+		switch selection.GetKind() {
+		case api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_AGENT:
+			w.CapabilityVersionId = proto.String(selection.GetCapabilityVersionId())
+			w.DeliveryModel = api.WorkspaceDeliveryModelEnum_WORKSPACE_DELIVERY_MODEL_ENUM_AGENT_SAAS
+		case api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP:
+			w.RuntimeVersionId = proto.String(selection.GetRuntimeVersionId())
+			w.DeliveryModel = api.WorkspaceDeliveryModelEnum_WORKSPACE_DELIVERY_MODEL_ENUM_AGENT_SAAS
+		default:
+			return nil, "", status.Error(codes.DataLoss, "stored Workspace application source is invalid")
+		}
 	}
 	if progress.ResourceSetID != "" {
 		w.ResourceReadiness = api.WorkspaceResourceReadinessEnum_WORKSPACE_RESOURCE_READINESS_ENUM_UNKNOWN

@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "cloud_source_development_check",
+  "recordedAt": "2026-09-29T13:37:43.600000+00:00",
+  "domain": "serve",
+  "window": "TKE D - Serve deployment, health and URL",
+  "result": "existing_contract_adapter_implemented_real_tke_not_run",
+  "scope": "Serve-owned TKE execution and access adapter inside the existing ServeRuntimeAdapter/ServeAccessControl contracts. No production access, deployment, purchase, deletion or charge. Real TKE, ingress, certificate and browser routing are not run.",
+  "source": {
+    "branch": "main",
+    "baseSha": "bf9027253dd852383c6069e7dad9fc7d436efbe3",
+    "workingTree": "shared uncommitted worktree; the serve domain diff below is the reviewed change",
+    "package": "opl-cloud/services/serve",
+    "domainDiff": {
+      "deleted": [
+        "services/serve/internal/delivery/fabric_adapter.go",
+        "services/serve/internal/delivery/fabric_adapter_test.go"
+      ],
+      "files": {
+        "services/serve/internal/delivery/route.go": "sha256:9747e3c684c7e4c1518f573bf2bd20d235f762a25775634269945af7268203f4",
+        "services/serve/internal/delivery/routeorigin.go": "sha256:b73e163ff8880960dde37286ac30b32b07befcfb9b108c4b9285c127f2c86094",
+        "services/serve/internal/delivery/tke_adapter.go": "sha256:fd1da1699fb7dd2b20735b135ce15145c43565ef9518d545479ef35f52ac71c0",
+        "services/serve/internal/delivery/runtime_bridge.go": "sha256:dab07bb8e5dd80b42095e4b07c125632f63a3d3e05fe51ba5f49243501f53beb",
+        "services/serve/internal/delivery/runtime.go": "sha256:c313b69b65cb42d8f79f1dc9fbd50f36c1f1a04e7aeb1f7c18a416419a86daf9",
+        "services/serve/internal/delivery/service.go": "sha256:4b75c1b1403c7ba9e444a2aeb92db0abbbc702881856b002ced545798d33d91f",
+        "services/serve/internal/delivery/route_postgres_test.go": "sha256:8668686e76cbad62c78376420513c52142b51de6df8d0168d542283ca9f38646",
+        "services/serve/internal/delivery/routeorigin_test.go": "sha256:1b08f897855497e20fcbcb0c6b5a1a45a90e9a3f25a0e9e1a9f5e90307ce1b43",
+        "services/serve/internal/delivery/tke_adapter_test.go": "sha256:f8d41d129d07839e5ad2fbc69644ee1f6ceec6774eb1303b98e69697e16d44b2"
+      },
+      "aggregate": "sha256:e93b8fddc01d2c34e49082b1084444d405a70dfc365390d46a87d422edfec82a"
+    },
+    "forbiddenWritesUntouched": [
+      "packages/contracts",
+      "docs/spec",
+      "services/internal",
+      "apps/console-bff",
+      "services/fabric",
+      "Dockerfile",
+      "deploy",
+      ".github"
+    ]
+  },
+  "implemented": {
+    "serve_owned_tke_execution_adapter": {
+      "type": "delivery.TKEApplicationAdapter (replaces delivery.FabricApplicationAdapter)",
+      "boundary": "the installation Agent execution boundary reached over the scoped, signed /fabric/workspace-application-runtimes capability; read-only for resources",
+      "fixes": [
+        "a gateway-published entry (serviceName + port) is no longer read as Entry.URL; Serve resolves the publishable origin from the installation-declared RouteOrigin (OPL_PUBLIC_URL scheme, OPL_WORKSPACE_APPLICATION_DOMAIN per-binding origin, OPL_WORKSPACE_DOMAIN retained /w/<workspaceId>/ entry) and refuses when none is declared instead of guessing a host",
+        "the in-cluster upstream is validated as exactly one DNS label plus the declared port; an address, localhost or a compound name is refused",
+        "model configuration (ModelSelections and ModelConfigurationVersion) is delivered instead of rejected",
+        "readiness requires the provider's whole-runtime status ready AND every declared component observed ready AND a resolved publishable entry; a Pod phase or a persisted pointer is never readiness",
+        "the readiness evidence identity binds the runtime operation, resolved origin, validated upstream, whole-runtime observation and applied model configuration version"
+      ]
+    },
+    "serve_access_control": {
+      "type": "delivery.Service implements api.ServeAccessControl over serve.access_bindings and serve.access_switches",
+      "rpc": [
+        "FenceRouteEpoch",
+        "ActivateRoute",
+        "ObserveRoute",
+        "RollbackRoute"
+      ],
+      "fixes": [
+        "provider conditional-revision CAS: only a confirmed provider readback advances the route generation (fence preserves it, activate/rollback advance it by exactly one)",
+        "persistent execution epoch per binding; an older epoch is refused with STALE_EXECUTION_EPOCH",
+        "one unresolved switch per binding blocks every new switch (lost ACK stays unknown until the original provider command is read back)",
+        "activation requires the target deployment's own ready runtime instance with the presented readiness receipt and a confirmed fence for its epoch",
+        "rollback requires the original confirmed switch and a provider-confirmed revision",
+        "RouteProvider port: when no installation route provider is configured Serve records the exact switch it committed to and refuses with route_provider_unavailable instead of reporting an activated route"
+      ]
+    },
+    "serve_runtime_adapter": {
+      "type": "delivery.Service implements api.ServeRuntimeAdapter",
+      "rpc": [
+        "StartRuntime",
+        "ObserveRuntime",
+        "StopRuntime (named capability gap)",
+        "ReloadRuntime (named capability gap)",
+        "ReadApplicationCredentials (named capability gap)"
+      ],
+      "note": "executes/observes the exact original command through the configured TKE adapter and the Fabric-confirmed resource binding; persists nothing, so it cannot become a second delivery writer"
+    },
+    "registration": "delivery.Service.Register now exposes ServeRuntimeAdapter and ServeAccessControl alongside ServeProductService and ServeAgentCoordination"
+  },
+  "verification": {
+    "commands": [
+      {
+        "command": "go -C services/serve test ./...",
+        "environment": "no database DSN; PostgreSQL-backed tests skipped",
+        "result": "pass"
+      },
+      {
+        "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated local PostgreSQL> go -C services/serve test ./... -count=1",
+        "environment": "isolated local docker PostgreSQL 16 (tke-d-serve-pg), serve migration installed by the real migration entrypoint; NOT production",
+        "result": "pass",
+        "focused_tests": [
+          "TestServeTKEAdapterResolvesGatewayEntryToDeclaredOrigin",
+          "TestServeTKEAdapterRefusesToGuessAnOrigin",
+          "TestServeTKEAdapterRequiresWholeRuntimeReadiness",
+          "TestServeTKEAdapterCarriesModelConfigurationAndNamesTheSecretGap",
+          "TestServeTKEAdapterRejectsForeignObservation",
+          "TestServeRouteFenceActivatesAndObservesSingleCurrent",
+          "TestServeRouteLostAckBlocksAndIsReadBack",
+          "TestServeRouteRefusesWithoutProviderAndWithoutReadyTarget",
+          "TestServeRouteRefusesOlderEpochAndUnadmittedCaller",
+          "TestServeRouteRollbackRestoresConfirmedTarget",
+          "TestServeRouteOriginKeepsRetainedBindingHostname",
+          "TestServeRouteOriginRefusesToGuess",
+          "TestServeGatewayUpstreamValidatesProviderDestination"
+        ]
+      },
+      {
+        "command": "gofmt -l services/serve ; go -C services/serve vet ./...",
+        "result": "clean"
+      }
+    ],
+    "evidence": {
+      "entry_to_url": "the provider fixture reports serviceName app-runtime-http-main and port 8080; Serve publishes https://<workspaceId>-<sha1 label>.apps.example/ and refuses with no declared origin; the label ws-route-62097bae4a90 was recomputed independently with SHA-1 over ('workspace-application-origin','ws-route','knowledge-app')",
+      "ready_vs_running": "a fixture whose component is pending yields STARTING with no address; a failed component yields FAILED with no address; only all-components-ready plus a resolved entry yields READY with readiness evidence",
+      "lost_ack_and_epoch_fencing": "a provider transport failure leaves the switch unknown and blocks the next switch (route_switch_unresolved); ObserveRoute reads back the original switch by its provider command id; an older execution epoch is refused with stale_execution_epoch",
+      "single_current": "one route binding per workspace (UNIQUE workspace_id) asserted after fence+activate; the confirmed switch id is committed on the deployment",
+      "secret_not_rejected_silently": "a command carrying a Secret binding is refused with credential_injection_wire_missing and the provider is never called; the fixture asserts no Secret material ever travels in the execution input"
+    }
+  },
+  "shared_contract_gap": {
+    "summary": "An application that needs an injected Secret or platform-issued credential cannot be executed: Serve holds only an opaque Secret binding identity, and no field on the delivery wire transports the Secret delivery reference the execution boundary injects.",
+    "rpc_field_caller_counterexample": [
+      {
+        "rpc": "ServeAgentCoordination.Deploy",
+        "message": "RuntimeDeployCommand",
+        "missing_field": "a typed runtime configuration carrying the Secret delivery reference(s) and non-secret runtime configuration, e.g. `WorkspaceApplicationRuntimeConfiguration runtime_configuration = 16` with entries `{name, secretRef, version, key}` and `{name, target, env}`; the execution boundary's own input type `contracts.WorkspaceApplicationRuntimeInput` already accepts `configuration` + `secretBindings`, so no new execution model is needed",
+        "current_carried_fields": [
+          "secret_binding_id",
+          "model_configuration_version",
+          "model_selections"
+        ],
+        "caller": "services/workspace/internal/launch/runtime.go (builds RuntimeDeployCommand; the accepted quote supplies model selections)",
+        "owner_that_must_produce_the_reference": "the Gateway secret owner (legacy Control Plane produced it through workspaceOPLApplicationConfiguration -> SyncWorkspaceGatewaySecretByID returning {SecretRef, Version}; target owner is GatewayCoordination.CreateManagedKey -> ManagedKeyBinding.secret_delivery_reference plus FabricCoordination.BindSecret)",
+        "counterexample": "revision declares secretInputs[{name:'gateway', target:'/run/secrets/opl_gateway_api_key', env:'OPL_GATEWAY_API_KEY_FILE'}] and credentials[{kind:'gateway_key'}]; the command sets secret_binding_id; currently refused as credential_injection_wire_missing. Executing without the reference would start an Agent that cannot reach any model, so it is never silently degraded.",
+        "legacy_migration_input": [
+          "services/control-plane/internal/server/workspace_default_application.go: workspaceOPLApplicationConfiguration builds {Name:'gateway', SecretRef, Version, Key:'opl_gateway_api_key'}",
+          "services/control-plane/internal/server/workspace_application_origin.go: retained per-binding origin and /w/<workspaceId>/ entry semantics reproduced by Serve's RouteOrigin"
+        ]
+      }
+    ],
+    "not_invented": "no new shared DTO, no simplified deployment model, no packages/contracts change; the exact field/caller/counterexample is handed to the coordinator"
+  },
+  "not_run": [
+    "real Tencent TKE cluster execution, ingress publication, certificate and DNS",
+    "HTML/static/API/SSE routing through a real gateway and tenant isolation over a live origin",
+    "ServeRuntimeAdapter.StopRuntime / ReloadRuntime / ReadApplicationCredentials (no installation path in this slice)",
+    "the ServeAccessControl to Deploy orchestration and the old caller/writer switch (W01 contracts and the coordinator's serial caller migration)",
+    "W01 default App application contracts (runtime_release provenance / application union)"
+  ],
+  "notes": [
+    "the previous Serve session worktree codex/serve-deployment-clean was read only as migration input; its wire changes were not copied and no old credential was reused",
+    "the adapter is Serve-owned: Fabric is reached as the resource/execution provider over the existing admitted capability and is never asked to own Agent readiness or routing"
+  ]
+}

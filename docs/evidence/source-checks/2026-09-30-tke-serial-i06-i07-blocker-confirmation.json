@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_serial_i06_i07_blocker_confirmation_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T08:30:00Z",
+  "result": "i06_and_i07_are_blocked_only_on_two_external_contract_decisions_every_other_requisite_is_present_in_source",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 5 - exact I06/I07 external decisions, and the source-provable parts that are not blocked",
+  "sourceBaseSha": "accd1b65",
+  "branch": "codex/tke-serial-integration",
+  "workspace": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.5",
+  "scope": "Read-only source confirmation that I06 and I07 each require exactly one not-yet-frozen decision, that neither is an implementation gap the serial window can close by itself without guessing, and that the Serving half of I08 is a comparable external boundary. No code change, no provider or production action.",
+  "findings": [
+    {
+      "id": "I06.exact-decision",
+      "fact": "Serve's TKEApplicationAdapter remains the only Serve-side execution caller and signs Fabric HTTP POSTs at /fabric/workspace-application-runtimes[:readback], .../:workspaceId/lifecycle, and .../:workspaceId/credentials (services/serve/internal/delivery/tke_adapter.go). Fabric's real execution executes there by building Kubernetes manifests and calling kubectl inside services/fabric/internal/fabric/tencent_provider_application_runtime.go. FabricCoordination (packages/contracts/proto/internal.proto:2431) exposes only AdmitResources/EnsureResources/ResizeResources/RenewResources/SuspendResources/ResumeResources/DeleteResources/ReadResources/BindSecret: no application-execution RPC.",
+      "decisionRequired": "(a) the typed application-execution RPC shape and its home: a new Serve-side execution owner that legitimately holds the cluster credentials, or a typed Fabric RPC that Serve calls in place of the signed HTTP route.",
+      "whyNotSelfResolved": "Choosing either writes a new cross-owner contract in a module whose provider-adapter ownership the serial window is not authorized to redefine; the wrong choice would double-write the execution owner."
+    },
+    {
+      "id": "I07.exact-decision",
+      "fact": "The route object and its provider-revision performer are now observable in the Instance source, but the CAS performer is not in Cloud. opl-instance-medopl deploy/tke/opl-cloud.k8s.json defines one Ingress 'opl-cloud' (ingressClassName qcloud) with rules cloud.medopl.com, workspace.medopl.com and *.medopl.com all routing to the control-plane service; the wildcard covers per-binding application origins derived from OPL_WORKSPACE_APPLICATION_DOMAIN (services/serve/internal/delivery/routeorigin.go). No Cloud source writes that Ingress or mutates a provider revision on it, and Serve's RouteProvider interface (route.go) has no production implementation or Configure assignment.",
+      "decisionRequired": "(b) which module performs the conditional-revision CAS (Fabric, which already holds kubectl, adopting a documented route action; a standing cluster route controller; or a Serve call into the control plane's proxy registry), and Connect/Configure wiring for that performer.",
+      "whyNotSelfResolved": "The orchestrator/revision contract for the route object lives in the instance repository; inventing it in Cloud would create a second routing writer against an object the instance owns."
+    },
+    {
+      "id": "I08.serving-half",
+      "fact": "The publisher-contract ModelConfigurationContract (docs/spec/target/contracts/publisher-contract.schema.json) declares protocol opl-model-config/v1, portName, applyPath, readbackPath, requestFields {version,selections} and readbackFields {appliedVersion,selections}. Serve now honestly reports applied 0 until a runtime confirms one (fixed last window), but no producer executes PUT applyPath / GET readbackPath: the runtime input (contracts.WorkspaceApplicationRuntimeInput) carries no model configuration, and the runtime observation has no appliedVersion field to return.",
+      "decisionRequired": "Whether Serve executes the opl-model-config/v1 apply/readback against the running application (requires carrying requested configuration into the execution input) or the publisher readback is surfaced through a different typed owner boundary.",
+      "whyNotSelfResolved": "The serializer that performs apply and reports appliedVersion is part of the frozen publisher contract the runtime owner implements, not a Cloud-side invention."
+    }
+  ],
+  "notBlockedParts": [
+    "Serve's own application route bindings/fencing state machine (serve.access_bindings, serve.access_switches) is implemented and tested; only its provider CAS performer is missing.",
+    "The default OPL App first-delivery admission is proven independently (see 2026-09-30-tke-serial-serve-default-app-reservation.json)."
+  ],
+  "notRun": [
+    "no RouteProvider implementation or Configure wiring",
+    "no Serve->Fabric typed application-execution RPC",
+    "no Candidate build, Instance deployment, provider action or production readback"
+  ],
+  "claimBoundary": "This receipt records the exact two external decisions that block I06/I07 and confirms that no other requisite is missing in Cloud source. It claims no runtime code, route activation, execution-ownership move or deployment.",
+  "externalConditionRequired": {
+    "kind": "contract",
+    "description": "(a) typed application-execution owner boundary between Serve and Fabric; (b) installation route object conditional-revision CAS performer and Connect wiring.",
+    "whoOwnsResolution": "Product owner / installation owner (frozen typed contract)"
+  },
+  "secrets": "none"
+}

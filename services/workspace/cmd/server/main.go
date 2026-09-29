@@ -79,12 +79,33 @@ func main() {
 			}
 			service.Capability = api.NewCapabilityProductServiceClient(conn)
 		}
+		// The default OPL App resolves its approved Runtime Release from Runtime
+		// Control; an absent address leaves a default-App order awaiting that owner
+		// rather than inventing a Package or CapabilityVersion.
+		if address := strings.TrimSpace(os.Getenv("OPL_RUNTIME_CONTROL_ADDR")); address != "" {
+			conn, err := dialPeer(config, server, owneridentity.RuntimeControl, address)
+			if err != nil {
+				return err
+			}
+			service.RuntimeReleases = api.NewRuntimeControlProductServiceClient(conn)
+		}
 		if address := strings.TrimSpace(os.Getenv("OPL_SERVE_ADDR")); address != "" {
 			conn, err := dialPeer(config, server, owneridentity.Serve, address)
 			if err != nil {
 				return err
 			}
 			service.Serve = api.NewServeAgentCoordinationClient(conn)
+		}
+		// The Gateway wallet authority is the only owner that may move customer
+		// money. Without a configured address a paid order stays awaiting its
+		// funding owner instead of assuming the charge, so its absence is a normal
+		// deployment shape rather than a startup defect.
+		if address := strings.TrimSpace(os.Getenv("OPL_GATEWAY_ADDR")); address != "" {
+			conn, err := dialPeer(config, server, owneridentity.Gateway, address)
+			if err != nil {
+				return err
+			}
+			service.Gateway = api.NewGatewayCoordinationClient(conn)
 		}
 		if err = service.Register(server); err != nil {
 			return err

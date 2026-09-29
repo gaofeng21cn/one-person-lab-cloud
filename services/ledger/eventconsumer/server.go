@@ -23,6 +23,10 @@ type Server struct {
 	Authorizer *ownerservice.Authorizer
 	Catalog    api.CatalogCoordinationClient
 	Workspace  api.OwnerCommitReadbackClient
+	// Gateway is the wallet owner readback the paid-charge receipt is verified
+	// against. A Local-only deployment leaves it unset and a WALLET_ACTION append
+	// fails closed instead of trusting submitted evidence.
+	Gateway api.GatewayCoordinationClient
 }
 
 func New(db *sql.DB) (*Server, error) {

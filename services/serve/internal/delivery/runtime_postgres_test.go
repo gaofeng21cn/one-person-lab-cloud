@@ -119,6 +119,49 @@ func TestServeRecordsRuntimeObservation(t *testing.T) {
 	}
 }
 
+// TestServeNeverRecordsRequestedModelVersionAsApplied proves the requested model
+// configuration version is delivery intent, not an applied fact: a runtime that
+// has not independently read a version back leaves applied 0, and only the
+// version the runtime itself reports becomes the applied fact.
+func TestServeNeverRecordsRequestedModelVersionAsApplied(t *testing.T) {
+	db, tenant, _ := fixture(t)
+	service, err := delivery.New(db, ownerAuthorizer(&fakeIdentity{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	seedObservationDeployment(t, db, "ws-model", tenant, "dep-model", "deploying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
+
+	command := deployCommand(t, "ws-model", "dep-model", 1)
+	command.ModelConfigurationVersion = 7
+	command.ModelSelections = []*api.ModelSelection{{Slot: "default", ModelId: "model-alpha"}}
+
+	// The runtime is running but has not confirmed an applied version.
+	if _, err := service.RecordDeploymentObservation(ctx, command, runtimeReady(applicationEntry(), "https://ws-model.example/app", "readiness://dep-model")); err != nil {
+		t.Fatalf("recording observation: %v", err)
+	}
+	var applied int64
+	if err := db.QueryRowContext(ctx, `SELECT applied_model_configuration_version FROM serve.agent_runtime_instances WHERE deployment_id='dep-model'`).Scan(&applied); err != nil {
+		t.Fatal(err)
+	}
+	if applied != 0 {
+		t.Fatalf("requested model version was recorded as applied: %d", applied)
+	}
+
+	// Only the version the runtime independently reports becomes applied.
+	observation := runtimeReady(applicationEntry(), "https://ws-model.example/app", "readiness://dep-model")
+	observation.AppliedModelConfigurationVersion = 7
+	if _, err := service.RecordDeploymentObservation(ctx, command, observation); err != nil {
+		t.Fatalf("recording confirmed applied version: %v", err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT applied_model_configuration_version FROM serve.agent_runtime_instances WHERE deployment_id='dep-model'`).Scan(&applied); err != nil {
+		t.Fatal(err)
+	}
+	if applied != 7 {
+		t.Fatalf("runtime-confirmed applied version = %d, want 7", applied)
+	}
+}
+
 func TestServeRefusesOverstatedObservations(t *testing.T) {
 	db, tenant, _ := fixture(t)
 	service, err := delivery.New(db, ownerAuthorizer(&fakeIdentity{}))

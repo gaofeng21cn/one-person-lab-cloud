@@ -155,14 +155,15 @@ func (s *Service) readQuoteTx(ctx context.Context, tx *sql.Tx, quoteID, tenantID
 	var (
 		quote                                             api.Quote
 		purpose, storedState                              string
-		workspaceID, capabilityVersionID, scheduledChange sql.NullString
+		workspaceID, capabilityVersionID, runtimeVersionID    sql.NullString
+		applicationKind, scheduledChange                      sql.NullString
 		models, admission                                 []byte
 		periodStart, periodEnd, expiresAt, createdAt      time.Time
 		sourceSubscriptionVersion                         sql.NullInt64
 		planChange                                        []byte
 	)
-	err := tx.QueryRowContext(ctx, `SELECT id,purpose,workspace_id,capability_version_id,compute_plan_id,storage_plan_id,model_selections,period_months,period_start,period_end,price_policy_version_id,refund_policy_version_id,retention_policy_version_id,refund_terms,retention_terms,expected_interruption,total_usd_micros,status,admission_snapshot,expires_at,created_at,source_subscription_version,plan_change_calculation,scheduled_plan_change_id FROM resource_catalog.quotes WHERE id=$1 AND tenant_id=$2`, quoteID, tenantID).
-		Scan(&quote.Id, &purpose, &workspaceID, &capabilityVersionID, &quote.ComputePlanId, &quote.StoragePlanId, &models, &quote.PeriodMonths, &periodStart, &periodEnd, &quote.PricePolicyVersionId, &quote.RefundPolicyVersionId, &quote.RetentionPolicyVersionId, &quote.RefundTerms, &quote.RetentionTerms, &quote.ExpectedInterruption, &quote.TotalUsdMicros, &storedState, &admission, &expiresAt, &createdAt, &sourceSubscriptionVersion, &planChange, &scheduledChange)
+	err := tx.QueryRowContext(ctx, `SELECT id,purpose,workspace_id,capability_version_id,runtime_version_id,application_kind,compute_plan_id,storage_plan_id,model_selections,period_months,period_start,period_end,price_policy_version_id,refund_policy_version_id,retention_policy_version_id,refund_terms,retention_terms,expected_interruption,total_usd_micros,status,admission_snapshot,expires_at,created_at,source_subscription_version,plan_change_calculation,scheduled_plan_change_id FROM resource_catalog.quotes WHERE id=$1 AND tenant_id=$2`, quoteID, tenantID).
+		Scan(&quote.Id, &purpose, &workspaceID, &capabilityVersionID, &runtimeVersionID, &applicationKind, &quote.ComputePlanId, &quote.StoragePlanId, &models, &quote.PeriodMonths, &periodStart, &periodEnd, &quote.PricePolicyVersionId, &quote.RefundPolicyVersionId, &quote.RetentionPolicyVersionId, &quote.RefundTerms, &quote.RetentionTerms, &quote.ExpectedInterruption, &quote.TotalUsdMicros, &storedState, &admission, &expiresAt, &createdAt, &sourceSubscriptionVersion, &planChange, &scheduledChange)
 	if err != nil {
 		return nil, dbError(err)
 	}
@@ -178,6 +179,9 @@ func (s *Service) readQuoteTx(ctx context.Context, tx *sql.Tx, quoteID, tenantID
 	if capabilityVersionID.Valid {
 		quote.CapabilityVersionId = proto.String(capabilityVersionID.String)
 	}
+	if runtimeVersionID.Valid {
+		quote.RuntimeVersionId = proto.String(runtimeVersionID.String)
+	}
 	if scheduledChange.Valid {
 		quote.ScheduledPlanChangeId = proto.String(scheduledChange.String)
 	}
@@ -192,7 +196,7 @@ func (s *Service) readQuoteTx(ctx context.Context, tx *sql.Tx, quoteID, tenantID
 	if err := json.Unmarshal(admission, &snapshot); err != nil {
 		return nil, status.Error(codes.DataLoss, "the stored quote admission snapshot is not readable")
 	}
-	quote.RuntimeReadbackRequirement = runtimeReadbackRequirementFor(snapshot, quote.GetCapabilityVersionId())
+	quote.RuntimeReadbackRequirement = runtimeReadbackRequirementFor(snapshot, applicationKind.String)
 	rows, err := tx.QueryContext(ctx, `SELECT kind,description,quantity,amount_usd_micros FROM resource_catalog.quote_items WHERE quote_id=$1 ORDER BY sort_order`, quoteID)
 	if err != nil {
 		return nil, dbError(err)

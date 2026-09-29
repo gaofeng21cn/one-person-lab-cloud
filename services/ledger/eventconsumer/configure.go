@@ -27,7 +27,7 @@ func (s *Server) ConfigureCoordination(config ownerservice.Config, getenv func(s
 		conns = append(conns, identityConn)
 	}
 	s.Authorizer = authorizer
-	for _, owner := range []owneridentity.Owner{owneridentity.ResourceCatalog, owneridentity.Workspace} {
+	for _, owner := range []owneridentity.Owner{owneridentity.ResourceCatalog, owneridentity.Workspace, owneridentity.Gateway} {
 		prefix := "OPL_" + strings.ToUpper(owner.String())
 		address := strings.TrimSpace(getenv(prefix + "_ADDR"))
 		if address == "" {
@@ -44,10 +44,13 @@ func (s *Server) ConfigureCoordination(config ownerservice.Config, getenv func(s
 			return close, err
 		}
 		conns = append(conns, conn)
-		if owner == owneridentity.ResourceCatalog {
+		switch owner {
+		case owneridentity.ResourceCatalog:
 			s.Catalog = api.NewCatalogCoordinationClient(conn)
-		} else {
+		case owneridentity.Workspace:
 			s.Workspace = api.NewOwnerCommitReadbackClient(conn)
+		case owneridentity.Gateway:
+			s.Gateway = api.NewGatewayCoordinationClient(conn)
 		}
 	}
 	return close, nil

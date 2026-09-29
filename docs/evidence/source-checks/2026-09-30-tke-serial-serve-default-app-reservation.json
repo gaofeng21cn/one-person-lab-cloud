@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_serial_serve_default_app_reservation_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T08:10:00Z",
+  "result": "serve_reserves_the_default_opl_app_from_an_approved_runtime_release_with_no_capability_version_focused_postgres_test_passed",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 5 - default OPL App reservation carries no CapabilityVersion",
+  "sourceBaseSha": "7619f435f3919c79605d6276ac54f710d00b9a5b",
+  "branch": "codex/tke-serial-integration",
+  "workspace": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.2",
+  "scope": "Prove, against Serve's real owner store, that the default OPL App is a first-class delivery source: Reserve accepts an explicit opl_app selection backed by an approved Runtime Release with no Package/Build/CapabilityVersion, and refuses a mixed selection that also names a CapabilityVersion. No production source, contract, schema, migration or generator changed.",
+  "implemented": [
+    "services/serve/internal/delivery/write_postgres_test.go: TestServeDefaultAppReservationCarriesNoCapabilityVersion drives Serve.Reserve over a real RuntimeControlProductService client surface (runtimeControlForServe) with a Runtime Release whose PublisherContract carries the immutable OCI and application revision template; it asserts the persisted serve.agent_deployments row is application_kind='opl_app' with empty capability_version_id and the selected runtime_version_id, that exactly one Runtime Release reference claim is acquired, and that a mixed source naming CapabilityVersionId is rejected with InvalidArgument.",
+    "The default App deployment descriptor is the release's own publisher contract (DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_RUNTIME_RELEASE), never a caller-supplied image, matching the Reserve admission in services/serve/internal/delivery/write.go."
+  ],
+  "verification": {
+    "commands": [
+      "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=postgres://postgres:postgres@127.0.0.1:54555/postgres?sslmode=disable GOFLAGS=-mod=readonly go -C services/serve test ./internal/delivery/ -run TestServeDefaultAppReservationCarriesNoCapabilityVersion -count=1 -v",
+      "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=postgres://postgres:postgres@127.0.0.1:54555/postgres?sslmode=disable GOFLAGS=-mod=readonly go -C services/serve test ./... -count=1"
+    ],
+    "environment": "local loopback PostgreSQL container for the owner-migration tests",
+    "result": "PASS",
+    "cases": [
+      "TestServeDefaultAppReservationCarriesNoCapabilityVersion: default App reservation persists application_kind=opl_app, capability_version_id empty, runtime_version_id=rv-opl-app, acquires 1 Runtime Release claim, and a mixed CapabilityVersionId source is InvalidArgument.",
+      "All existing Serve delivery and migration suites still pass."
+    ]
+  },
+  "notRun": [
+    "No real Runtime Control, TKE cluster, Candidate build, Instance deployment or production readback; this is a Cloud source-level proof of the default OPL App first-delivery path.",
+    "The publisher opl-model-config/v1 apply/readback, Serve's own TKE application-execution writer (I06), the real configured RouteProvider and Deploy-to-Fence/Activate orchestration (I07) remain open."
+  ],
+  "claimBoundary": "This receipt claims a Cloud source-level correctness proof with a focused isolated-PostgreSQL test: Serve reserves the default OPL App from an approved Runtime Release without a CapabilityVersion and rejects the mixed source. It does not claim the full two-combo end-to-end chain, a Candidate, deployment or production acceptance.",
+  "secrets": "none",
+  "fileHashes": {
+    "services/serve/internal/delivery/write_postgres_test.go": "0bd9649f565747b5fe060b34e653769755cfb69f9fa5293d9aceb8ac6557204d"
+  }
+}

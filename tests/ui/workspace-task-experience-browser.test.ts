@@ -343,12 +343,13 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
         assert.equal(url.searchParams.get("status"), "ready");
         return route.fulfill({ json: { items: [{ id: "cap-ready-1", versionLabel: "IBD Agent 1.0", artifactDigest: "sha256:agent", status: "ready", provenance: "build", modelRequirements: [{ slot: "default", required: true, capability: "chat", allowedModelIds: ["model-1"] }] }] } });
       }
+      if (path === "/api/v2/catalog/runtime-versions") return route.fulfill({ json: { items: [{ id: "runtime-1", name: "Default App", versionLabel: "App 1.0", artifactDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", status: "approved", defaultForNewBuilds: true }] } });
       if (path === "/api/v2/catalog/compute-plans") return route.fulfill({ json: { items: [{ id: "compute-1", name: "Compute Standard", vcpus: 2, memoryMiB: 4096, availability: "available", billingMode: "prepaid_monthly" }] } });
       if (path === "/api/v2/catalog/storage-plans") return route.fulfill({ json: { items: [{ id: "storage-1", name: "Storage Standard", capacityGiB: 50, availability: "available", billingMode: "prepaid_monthly" }] } });
       if (path === "/api/v2/catalog/models") return route.fulfill({ json: { items: [{ id: "model-1", name: "IBD Model", capabilities: ["chat"], available: true, inputPricePerMillionTokensUSDMicros: "1", outputPricePerMillionTokensUSDMicros: "2", priceSource: "gateway", fetchedAt: "2026-09-27T00:00:00Z" }] } });
       if (path === "/api/v2/wallet") return route.fulfill({ json: { source: "gateway", status: "available", balanceUSDMicros: "100000000", currency: "USD", fetchedAt: "2026-09-27T00:00:00Z" } });
       if (path === "/api/v2/quotes" && request.method() === "POST") {
-        assert.deepEqual(request.postDataJSON(), { purpose: "deploy", capabilityVersionId: "cap-ready-1", computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [{ slot: "default", modelId: "model-1" }], periodMonths: 1 });
+        assert.deepEqual(request.postDataJSON(), { purpose: "deploy", applicationSelection: { kind: "agent", capabilityVersionId: "cap-ready-1" }, computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [{ slot: "default", modelId: "model-1" }], periodMonths: 1 });
         return route.fulfill({ status: 201, json: { id: "quote-1", purpose: "deploy", capabilityVersionId: "cap-ready-1", computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [{ slot: "default", modelId: "model-1" }], periodMonths: 1, periodStart: "2026-09-27T00:00:00Z", periodEnd: "2026-10-27T00:00:00Z", pricePolicyVersionId: "price-1", refundPolicyVersionId: "refund-1", retentionPolicyVersionId: "retention-1", refundTerms: "按报价政策处理退款。", retentionTerms: "数据保留按报价政策执行。", expectedInterruption: "部署期间可能短暂不可用。", lineItems: [{ kind: "compute", description: "计算套餐", quantity: 1, amountUSDMicros: "52580000" }], totalUSDMicros: "52580000", status: "offered", expiresAt: "2099-01-01T00:00:00Z", createdAt: "2026-09-27T00:00:00Z", runtimeReadbackRequirement: "required" } });
       }
       if (path === "/api/v2/quotes/quote-1") return route.fulfill({ json: { id: "quote-1", purpose: "deploy", capabilityVersionId: "cap-ready-1", computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [{ slot: "default", modelId: "model-1" }], periodMonths: 1, periodStart: "2026-09-27T00:00:00Z", periodEnd: "2026-10-27T00:00:00Z", pricePolicyVersionId: "price-1", refundPolicyVersionId: "refund-1", retentionPolicyVersionId: "retention-1", refundTerms: "按报价政策处理退款。", retentionTerms: "数据保留按报价政策执行。", lineItems: [], totalUSDMicros: "52580000", status: "offered", expiresAt: "2099-01-01T00:00:00Z" } });
@@ -378,6 +379,7 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
     await page.waitForURL((url) => url.pathname === "/console/workspaces/new");
     await page.getByRole("heading", { name: "新建 Agent Workspace", exact: true }).waitFor({ state: "visible" });
     await page.getByLabel("工作空间名称").fill(`Customer Journey ${viewport.name}`);
+    await page.getByText("已构建 Agent", { exact: true }).click();
     await page.getByLabel("default").selectOption("model-1");
     await page.getByRole("button", { name: "获取准确报价", exact: true }).click();
     await page.getByRole("heading", { name: "确认准确报价与部署条款", exact: true }).waitFor({ state: "visible" });
@@ -430,6 +432,7 @@ test("lost create response reloads into the original idempotent Workspace reques
       const path = new URL(request.url()).pathname;
       if (path === "/api/v2/auth/session") return route.fulfill({ json: { actorId: activeActor, tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
       if (path === "/api/v2/capability-versions") return route.fulfill({ json: { items: [{ id: "cap-1", versionLabel: "Agent", status: "ready", provenance: "build", modelRequirements: [] }] } });
+      if (path === "/api/v2/catalog/runtime-versions") return route.fulfill({ json: { items: [{ id: "runtime-1", name: "Default App", versionLabel: "App 1.0", artifactDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", status: "approved", defaultForNewBuilds: true }] } });
       if (path === "/api/v2/catalog/compute-plans") return route.fulfill({ json: { items: [{ id: "compute-1", name: "Compute", vcpus: 2, memoryMiB: 1024, availability: "available" }] } });
       if (path === "/api/v2/catalog/storage-plans") return route.fulfill({ json: { items: [{ id: "storage-1", name: "Storage", capacityGiB: 10, availability: "available" }] } });
       if (path === "/api/v2/catalog/models") return route.fulfill({ json: { items: [{ id: "model-1", name: "Model", capabilities: [], available: true }] } });
@@ -449,6 +452,7 @@ test("lost create response reloads into the original idempotent Workspace reques
     await loginCloudFixture(page, demo.origin);
     await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
     await page.getByLabel("工作空间名称").fill("Recovery Test");
+    await page.getByText("已构建 Agent", { exact: true }).click();
     await page.getByRole("button", { name: "获取准确报价", exact: true }).click();
     await page.getByRole("checkbox", { name: /我确认以上 Agent/ }).check();
     await page.getByRole("button", { name: "确认并开通 Workspace", exact: true }).click();
@@ -785,6 +789,7 @@ test("v2 operation refresh keeps the original order and never opens before Serve
       const url = new URL(request.url());
       if (url.pathname === "/api/v2/auth/session") return route.fulfill({ json: { actorId: "user-customer", tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
       if (url.pathname === "/api/v2/capability-versions") return route.fulfill({ json: { items: [{ id: "cap-1", versionLabel: "Agent", artifactDigest: "sha256:x", status: "ready", provenance: "build", modelRequirements: [] }] } });
+      if (url.pathname === "/api/v2/catalog/runtime-versions") return route.fulfill({ json: { items: [{ id: "runtime-1", name: "Default App", versionLabel: "App 1.0", artifactDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", status: "approved", defaultForNewBuilds: true }] } });
       if (url.pathname === "/api/v2/catalog/compute-plans") return route.fulfill({ json: { items: [{ id: "compute-1", name: "Compute", vcpus: 2, memoryMiB: 1024, availability: "available", billingMode: "prepaid_monthly" }] } });
       if (url.pathname === "/api/v2/catalog/storage-plans") return route.fulfill({ json: { items: [{ id: "storage-1", name: "Storage", capacityGiB: 10, availability: "available", billingMode: "prepaid_monthly" }] } });
       if (url.pathname === "/api/v2/catalog/models") return route.fulfill({ json: { items: [{ id: "model-1", name: "Model", capabilities: [], available: true, inputPricePerMillionTokensUSDMicros: "1", outputPricePerMillionTokensUSDMicros: "1", priceSource: "gateway", fetchedAt: "2026-09-27T00:00:00Z" }] } });
@@ -801,6 +806,7 @@ test("v2 operation refresh keeps the original order and never opens before Serve
     await loginCloudFixture(page, demo.origin);
     await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
     await page.getByLabel("工作空间名称").fill("Refresh");
+    await page.getByText("已构建 Agent", { exact: true }).click();
     await page.getByRole("button", { name: "获取准确报价", exact: true }).click();
     await page.getByRole("heading", { name: "确认准确报价与部署条款", exact: true }).waitFor();
     await page.getByRole("checkbox", { name: /我确认以上 Agent/ }).check();

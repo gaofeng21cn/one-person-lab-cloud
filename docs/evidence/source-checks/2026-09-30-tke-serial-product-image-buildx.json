@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_serial_product_image_buildx_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T08:10:00Z",
+  "result": "product_image_now_carries_buildx_cli_plugin_build_proven_end_to_end",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 7 - W27 runnable Candidate: ship the buildx CLI plugin in the product image",
+  "branch": "codex/tke-serial-integration",
+  "workspace": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.7",
+  "scope": "Close the source gap the roadmap names as 'the missing buildx in the product image': the product image shipped the docker CLI binary but not its buildx plugin, so the Build owner's `docker buildx build` would fail in the container. No provider, wallet, production or Instance action.",
+  "finding": "Build.Runner invokes `docker buildx build` (services/build/internal/build/runner.go:511, exec.CommandContext(ctx, \"docker\", args...)). The runtime image copied only /usr/local/bin/docker from the pinned docker:27.5.1-cli stage; buildx is a separate CLI plugin at /usr/local/libexec/docker/cli-plugins/docker-buildx, which the docker CLI only discovers on that plugin path. The image therefore could not run an Agent OCI build.",
+  "implemented": [
+    "Dockerfile: added `COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/libexec/docker/cli-plugins/docker-buildx` beside the docker binary copy.",
+    "tests/production/tke-control-plane-image.test.ts: added a Dockerfile assertion that the buildx plugin is copied from the docker-cli stage to the CLI plugin path."
+  ],
+  "verification": {
+    "commands": [
+      "node --test tests/production/tke-control-plane-image.test.ts",
+      "docker build -f <probe> : FROM the pinned docker:27.5.1-cli, COPY the docker binary and docker-buildx to the plugin path, RUN `docker buildx version`"
+    ],
+    "environment": "local Docker Engine with the pinned docker:27.5.1-cli image already present; no registry push, provider or production access",
+    "result": "PASS",
+    "cases": [
+      "The buildx plugin binary exists at /usr/local/libexec/docker/cli-plugins/docker-buildx in docker:27.5.1-cli and reports `github.com/docker/buildx v0.20.1`.",
+      "After copying it to the same path, `docker buildx version` succeeds inside the image, proving the CLI resolves the plugin and the Agent build can start.",
+      "The three Dockerfile asset tests (three service binaries, buildx plugin, fabric contract ordering) pass."
+    ]
+  },
+  "notRun": [
+    "No full product image build, no Agent OCI build against a real BuildKit/registry, no Candidate construction, no Instance deployment or production readback.",
+    "The repo-local OMA-layer naming drift (tools/tests that reference non-existent cmds) is outside this slice and unchanged."
+  ],
+  "claimBoundary": "This receipt claims a source and image-asset change with a real local image probe: the product image now contains the buildx CLI plugin the Build owner needs. It does not claim a built Candidate, a real Agent build, deployment or production acceptance.",
+  "secrets": "none",
+  "fileHashes": {
+    "Dockerfile": "c166e5387b0030f6326b96296fd181f2b9e1d28455832cd97c14a3f1c9a37e8d",
+    "tests/production/tke-control-plane-image.test.ts": "b79ae6e556eaf7c29abdc1de4d42720d0c3ca27a464b310ffdb4f99beba9a659"
+  }
+}

@@ -2484,6 +2484,8 @@ CREATE TABLE resource_catalog.quotes (
   purpose text NOT NULL,
   workspace_id text,
   capability_version_id text,
+  application_kind text,
+  runtime_version_id text,
   compute_plan_id text NOT NULL,
   storage_plan_id text NOT NULL,
   price_policy_version_id text NOT NULL,

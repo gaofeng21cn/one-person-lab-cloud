@@ -89,6 +89,8 @@ func workspaceGrantSystem(t *testing.T) workspaceGrantFixture {
 			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE,
 			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT,
 			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT,
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CHARGEACCEPTEDOBLIGATION,
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION,
 		},
 	}
 	return workspaceGrantFixture{s, db, client, ref, d, reader, request}
@@ -121,6 +123,8 @@ func workspaceAudience(action api.AuthorizationActionEnum) (api.OwnerEnum, owner
 		return api.OwnerEnum_OWNER_ENUM_SERVE, owneridentity.Serve.Service()
 	case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT:
 		return api.OwnerEnum_OWNER_ENUM_LEDGER, owneridentity.Ledger.Service()
+	case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CHARGEACCEPTEDOBLIGATION, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION:
+		return api.OwnerEnum_OWNER_ENUM_GATEWAY, owneridentity.Gateway.Service()
 	default:
 		return api.OwnerEnum_OWNER_ENUM_CAPABILITY, owneridentity.Capability.Service()
 	}
@@ -373,7 +377,7 @@ func TestWorkspaceGrantCloseoutPostgres(t *testing.T) {
 				owner, peer := workspaceAudience(action)
 				r := workspaceContinuation(g, owner, action)
 				_, err := f.s.AuthorizeAction(ownerservice.WithPeerOwner(t.Context(), peer), r)
-				readOrRelease := action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES || action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETQUOTE || action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION || action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE || action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT
+				readOrRelease := action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES || action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETQUOTE || action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION || action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE || action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT || action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION
 				if readOrRelease && err != nil {
 					t.Fatalf("original closeout %s refused: %v", action, err)
 				}

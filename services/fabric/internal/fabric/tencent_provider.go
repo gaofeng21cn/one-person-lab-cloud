@@ -68,6 +68,15 @@ type tencentPackageProfile struct {
 type tencentProviderProfile struct {
 	SchemaVersion int                     `json:"schemaVersion"`
 	Packages      []tencentPackageProfile `json:"packages"`
+	// AccountBindings bind an authorized tenant to the provider account that
+	// owns and tags its prepaid resources. They mirror the Local profile shape;
+	// an unbound tenant can never resolve an accepted plan.
+	AccountBindings []tencentAccountBinding `json:"accountBindings,omitempty"`
+}
+
+type tencentAccountBinding struct {
+	TenantID  string `json:"tenantId"`
+	AccountID string `json:"accountId"`
 }
 
 // tencentWorkspacePlan is the provider-owned, immutable plan used by a
@@ -298,6 +307,14 @@ func decodeTencentProviderProfile(raw []byte) (tencentProviderProfile, map[strin
 		}
 		profile.Packages[index] = item
 		plans[item.ID] = item
+	}
+	seenTenants := map[string]bool{}
+	for _, binding := range profile.AccountBindings {
+		tenant, account := strings.TrimSpace(binding.TenantID), strings.TrimSpace(binding.AccountID)
+		if tenant == "" || account == "" || tenant != binding.TenantID || account != binding.AccountID || seenTenants[tenant] {
+			return tencentProviderProfile{}, nil, fmt.Errorf("tencent_provider_profile_invalid")
+		}
+		seenTenants[tenant] = true
 	}
 	return profile, plans, nil
 }

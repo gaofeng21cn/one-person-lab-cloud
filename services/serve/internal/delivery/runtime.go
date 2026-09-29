@@ -43,8 +43,18 @@ type RuntimeObservation struct {
 	// AccessURL is the publishable URL the adapter resolved for that entry. It is
 	// empty when nothing is publishable yet.
 	AccessURL string
+	// Components is the executing runtime's own whole-runtime component
+	// observation. It carries the provider's per-component readiness so an
+	// adapter can refuse to call a runtime ready while any declared component is
+	// not; a Pod phase alone never reaches this record.
+	Components []contracts.WorkspaceApplicationRuntimeComponentState
 	// ReadinessEvidenceRef is the provider evidence identity for a ready report.
 	ReadinessEvidenceRef string
+	// AppliedModelConfigurationVersion is the model configuration version the
+	// running application independently reported as applied. It is 0 when the
+	// executing runtime has not confirmed a version: the requested version is
+	// delivery intent and is never promoted to an applied fact.
+	AppliedModelConfigurationVersion int64
 	// ObservedAt is when the runtime reported this state.
 	ObservedAt time.Time
 }
@@ -159,7 +169,11 @@ func recordDeploymentObservation(ctx context.Context, tx *sql.Tx, cmd *api.Runti
 	if readinessRef != "" {
 		ref = readinessRef
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET status=$2,access_url=$3,readiness_evidence_ref=$4,observed_at=$5,applied_model_configuration_version=$6,updated_at=now() WHERE id=$1`, cmd.GetRuntimeInstanceId(), state, url, ref, observedAt.UTC(), cmd.GetModelConfigurationVersion())
+	// The applied model configuration version is the value the executing runtime
+	// independently reported, never the version the command requested. A runtime
+	// that has not read the applied version back leaves it 0, so a client can never
+	// read a desired version as an applied fact.
+	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET status=$2,access_url=$3,readiness_evidence_ref=$4,observed_at=$5,applied_model_configuration_version=$6,updated_at=now() WHERE id=$1`, cmd.GetRuntimeInstanceId(), state, url, ref, observedAt.UTC(), observation.AppliedModelConfigurationVersion)
 	if err != nil {
 		return nil, dbError(err)
 	}
@@ -223,13 +237,24 @@ func resolveObservationState(observation RuntimeObservation) (state, accessURL, 
 // validateReserved is called with the workspace lock held. Only Reserve may
 // allocate an epoch or runtime identity; runtime observations cannot advance it.
 func validateReserved(ctx context.Context, tx *sql.Tx, cmd *api.RuntimeDeployCommand) error {
-	var workspace, capability, artifact, runtime string
+	var workspace, capability, applicationKind, artifact, runtime string
+	var runtimeVersion sql.NullString
 	var epoch, maxEpoch int64
-	err := tx.QueryRowContext(ctx, `SELECT workspace_id,capability_version_id,artifact_digest,COALESCE(runtime_instance_id,''),execution_epoch FROM serve.agent_deployments WHERE id=$1 FOR UPDATE`, cmd.GetDeploymentId()).Scan(&workspace, &capability, &artifact, &runtime, &epoch)
+	err := tx.QueryRowContext(ctx, `SELECT workspace_id,capability_version_id,COALESCE(application_kind,''),runtime_version_id,artifact_digest,COALESCE(runtime_instance_id,''),execution_epoch FROM serve.agent_deployments WHERE id=$1 FOR UPDATE`, cmd.GetDeploymentId()).Scan(&workspace, &capability, &applicationKind, &runtimeVersion, &artifact, &runtime, &epoch)
 	if err != nil {
 		return dbError(err)
 	}
-	if workspace != cmd.GetWorkspaceId() || capability != cmd.GetCapabilityVersionId() || artifact != cmd.GetDeploymentDescriptor().GetArtifact().GetDigest() || runtime != cmd.GetRuntimeInstanceId() {
+	if workspace != cmd.GetWorkspaceId() || artifact != cmd.GetDeploymentDescriptor().GetArtifact().GetDigest() || runtime != cmd.GetRuntimeInstanceId() {
+		return refuse(ReasonIdentityMismatch)
+	}
+	// The reserved source must match the command exactly. A built Agent carries the
+	// same CapabilityVersion; the default OPL App carries the same Runtime Release
+	// and no CapabilityVersion.
+	if applicationKind == "opl_app" {
+		if cmd.GetCapabilityVersionId() != "" || cmd.GetApplicationSelection().GetRuntimeVersionId() != runtimeVersion.String {
+			return refuse(ReasonIdentityMismatch)
+		}
+	} else if capability != cmd.GetCapabilityVersionId() {
 		return refuse(ReasonIdentityMismatch)
 	}
 	if epoch != cmd.GetExecutionEpoch() {

@@ -26,6 +26,7 @@ import type {
   ComputePlanPageDTO,
   GatewayWalletReadbackDTO,
   LaunchModelPageDTO,
+  RuntimeVersionPageDTO,
   StoragePlanPageDTO,
   WorkspaceOwnerAccessDTO,
   WorkspaceOwnerDTO,
@@ -69,6 +70,13 @@ export async function listReadyCapabilityVersions(): Promise<CapabilityVersionPa
   return listAllOwnerPages<CapabilityVersionPageDTO["items"][number]>("/api/v2/capability-versions?status=ready", "capability_version");
 }
 
+// listApprovedRuntimeVersions reads the approved default-OPL-App releases. The
+// Runtime Control owner is the authority; an unapproved release is never offered
+// as a choosable default App.
+export async function listApprovedRuntimeVersions(): Promise<RuntimeVersionPageDTO["items"]> {
+  return listAllOwnerPages<RuntimeVersionPageDTO["items"][number]>("/api/v2/catalog/runtime-versions", "runtime_version");
+}
+
 export async function listAvailableComputePlans(): Promise<ComputePlanPageDTO["items"]> {
   return listAllOwnerPages<ComputePlanPageDTO["items"][number]>("/api/v2/catalog/compute-plans", "compute_plan");
 }
@@ -101,8 +109,13 @@ export async function createWorkspaceQuote(
   const quote = await postJson<unknown>("/api/v2/quotes", input, csrfToken, idempotencyKey);
   if (!quote || typeof quote !== "object") throw new Error("invalid_workspace_quote");
   const value = quote as WorkspaceQuoteDTO;
+  // The owner freezes exactly the selection the caller sent: a built Agent returns
+  // the same CapabilityVersion, the default App returns the same Runtime Release.
+  const selectionMatches = input.applicationSelection.kind === "agent"
+    ? value.capabilityVersionId === input.applicationSelection.capabilityVersionId && value.runtimeVersionId === undefined
+    : value.runtimeVersionId === input.applicationSelection.runtimeVersionId && value.capabilityVersionId === undefined;
   if (!value.id || value.purpose !== "deploy" || value.status !== "offered"
-    || value.capabilityVersionId !== input.capabilityVersionId
+    || !selectionMatches
     || value.computePlanId !== input.computePlanId || value.storagePlanId !== input.storagePlanId
     || value.periodMonths !== 1 || !Array.isArray(value.modelSelections)
     || value.modelSelections.length !== input.modelSelections.length

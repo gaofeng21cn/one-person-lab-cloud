@@ -1,28 +1,29 @@
 # OPL Cloud target architecture — 完整开发方案总索引
 
-> 定稿范围：本次确认的F01–F17，D17升级/降配规则已由用户确认。最终可开工结论以checks/handoff_readiness.json及其绑定证据为准。开发规格不等于业务代码已实现、已迁移或已上线。
-> 本轮目标：客户选择 Agent 版本和计算/存储套餐，完成 SaaS 部署；旧资源购买路径有明确迁移。
+> 定稿范围：本次确认的F01–F17，D17升级/降配规则已由用户确认。业务规划可按14的W01切片直接开工；全量技术闭合以checks/handoff_readiness.json及其绑定证据为准，两者不得混同。开发规格不等于业务代码已实现、已迁移或已上线。
+> 本轮目标：主攻 Tencent/TKE；客户一次确认默认 OPL App 或自定义 Agent 与计算/存储套餐，后台完成应用可用；旧资源购买路径按09迁移。
+> 2026-09-29业务决定已采用；03/02记录待W01贯通的合同迁移，旧机器合同/原型和历史READY不能证明新默认路径可用。可以直接启动14的W01切片，不再等待产品决定。
 > 用户批准范围：修齐方案、字段、API、前端展示、交互、迁移与验收；不修改业务代码，不部署，不进行真实扣费或资源采购。
 
 ## 1. 一句话产品与边界
 
-面向普通 SaaS 用户提供官方和私有 Agent 的构建、部署、运行与更新体验；Gateway 提供模型能力，Workspace 提供持续运行环境。商业主线是 AI 能力/Token 服务，Workspace 按批准套餐收费。
+面向普通 SaaS 用户提供默认 OPL App，以及可选官方和私有 Agent 的构建、部署、运行与更新体验；Gateway 提供模型能力，Workspace 提供持续运行环境。商业主线是 AI 能力/Token 服务，Workspace 按批准套餐收费。
 
 - Agent Package 是标准能力包；OCI 是可部署制品；Workspace 是付费环境；Runtime Instance 是某次运行实例。四者不是同义词。
-- 客户选择 Agent 版本、计算/存储套餐、可用模型；上传自己的 Package 时可以选择 WebUI。Runtime 版本由管理员批准的目录策略固定，不接受客户任意镜像地址。
-- 一个 Workspace 同时选中一个 Capability Version；同一版本可被多个 Workspace 使用。更新必须客户显式发起，不自动替换已有实例。
-- 初期支持 Tencent/TKE 与 Local-Docker；提供商通过 Fabric 能力契约体现。某提供商不具备能力时明确拒绝，不静默换提供商。
+- 客户可直接使用默认 OPL App，也可选择 Agent 版本，再确认套餐和模型；Package 与独立 WebUI 都不是新 Workspace 的必填前提。Runtime 从管理员批准目录选择；未显式选择时在报价前解析批准默认版本并冻结，不接受任意镜像地址。
+- 一个 Workspace 至多一个当前应用部署：默认 App 引用 Runtime Release，自定义 Agent 引用 CapabilityVersion；同一版本可被多个 Workspace 使用。更新显式发起，不自动替换，Workspace不复制Serve当前部署。
+- 主攻 Tencent/TKE；Local-Docker保留独立回归与资格；提供商通过 Fabric 能力契约体现。某提供商不具备能力时明确拒绝，不静默换提供商。
 - Sub2API 是身份认证、可消费钱包、Key、Token 用量权威；Cloud 不存密码、不复制可消费余额、不创建第二钱包。
 - Cloud 拥有 Workspace 套餐价格/报价/订阅编排，Gateway 拥有模型价格与钱包记账。资源套餐报价不是 Token 定价。
 - Ledger 保存不可变业务证据，不重复维护可消费钱包。
-- Framework/OPL App 拥有 Runtime 实现；Cloud Runtime Control 只管理获准Runtime Release目录与不可变引用，供Build固定输入，不管理Agent实例。Instance拥有生产配置、Secrets、Cloud服务部署/回滚和资格回执。Serve在Cloud产品内拥有Agent OCI向Workspace的交付/部署/运行状态及访问入口。
+- Framework/OPL App 拥有 Runtime 实现；Cloud Runtime Control 只管理获准Runtime Release目录与不可变引用，供Build和默认App准入固定输入，不管理运行实例。Instance拥有生产配置、Secrets、Cloud服务部署/回滚和资格回执。Serve在Cloud产品内拥有Agent OCI向Workspace的交付/部署/运行状态及访问入口。
 - 单一GitHub仓库只覆盖Cloud产品：`apps/`、`services/`和`packages/`共同演进；不合并Instance、Sub2API、Framework/OPL App等外部Owner。领域服务独立不等于独立仓库，目录/module/进程映射以01第3节为准。
 
 ## 2. 本次收敛决定（不是等待再次选择的选项）
 
 | ID | 决定 | 依据/约束 |
 |---|---|---|
-| D01 | 新客户入口是选 Agent 版本+套餐后部署，不再仅购买裸资源 | 当前用户明确确认；旧路径按 09 迁移 |
+| D01 | 新客户一次确认默认 OPL App或自定义Agent＋套餐，后台自动交付可用应用；不选Package/独立WebUI就是默认App及其发布者声明的内置UI，不是裸资源 | 2026-09-29用户明确补充；旧resource_only按09保留 |
 | D02 | 全部Cloud产品代码位于唯一GitHub仓库`opl-cloud`；领域服务在仓库内保持独立Go module、进程和数据写入边界，CloudIdentity与Gateway Integration按01共module/进程但分数据库/角色；Fabric/Ledger保留权威 | 2026-09-22用户明确单仓库决定；替代原多仓库落点，不改变target architecture领域职责或字段 |
 | D03 | 每个数据 Owner 独立 PostgreSQL database/独立角色；可共 PostgreSQL 实例；跨 Owner 只传不透明 ID，不建跨域 FK/JOIN/事务 | 消除旧稿独立数据库与跨 schema FK 矛盾 |
 | D04 | 外部浏览器 API 统一由 Console BFF 提供 REST；内部 typed gRPC/protobuf；可靠事件用本域 PostgreSQL Outbox→消费者 gRPC Inbox | 落实已讨论的内部协议和 Outbox；当前链路无须增加 NATS 运行依赖 |
@@ -39,27 +40,28 @@
 | D15 | 本规格不设未获依据的50人容量承诺、3分钟上线承诺、10包配额、自动保留期或退款百分比 | 实例策略显式配置且UI展示；必要策略缺失则准入拒绝 |
 | D16 | 保留期、报价和退款规则均版本化；按用户接受的报价快照执行，不能用最新价格覆盖既有义务 | Cloud产品价格与Gateway模型价格分权 |
 
-## 2.1 Agent交付Owner与业务链
+## 2.1 默认 App 与 Agent 共用交付链
 
-唯一主链：
+产品组合由12第1节定义，待实施字段迁移由03的`x-approved-wire-migration`与02负责；14将同一业务拆成可并行交付切片。
 
 ```text
-Serve体验/Console UI发起上传
-→ Capability建立上传会话、校验对象字节、写Package/PackageVersion
-→ 用户选择PackageVersion、WebUI版本和Runtime Release版本
-→ Build固定三个精确输入及其摘要，生成OCI digest与构建证据
-→ 用户选择目标Workspace并确认资源套餐/报价
-→ Workspace校验Tenant成员、权益、当前生命周期与目标资源方案；持有购买/资源业务Saga
-→ Fabric按Workspace请求开通/绑定Compute、Storage、Network等资源并权威读回资源状态
-→ Workspace将精确OCI和已确认resource refs交给Serve部署操作
-→ Serve在已开通资源上应用OCI，读回运行健康/入口，唯一写入该Workspace当前Agent部署事实
-→ Serve通过API、Embed、Hosted UI服务该同一个当前Agent
-→ Ledger按义务记录引用与结果；不成为上述任一事实的writer
+不选Package且不选独立WebUI → Runtime Control批准的OPL App Release + 发布者声明的内置UI
+选择Package → Capability上传/校验 → Build冻结Package、精确Runtime、精确独立WebUI三项输入
+                                   → OCI读回 → CapabilityVersion
+两分支共用 → 一次确认应用+套餐 → Workspace原单/权益/资源Saga
+        → Fabric开通/绑定CVM、CBS、资源网络并确认
+        → Serve部署精确OCI、确认运行健康、唯一当前应用与访问路由
+        → Hosted UI / API / Embed（按发布契约暴露）
+        → Ledger记录所需类型化证据
 ```
 
-边界：每个Workspace至多一个当前Agent；Serve拥有部署尝试、替换/回滚历史、当前选择、Agent运行readiness与Serve路由。Workspace拥有目标权限、订阅/权益和资源方案，不持有activeDeploymentId、Agent状态或重复路由事实。Runtime Control仅有获准Runtime Release版本/制品/兼容契约，Build将其固定进OCI；它不操作Workspace实例。Fabric只拥有基础设施资源开通、绑定和资源readback，不部署Agent OCI。Serve UI不是Package writer：上传和Package状态始终由Capability写入。
+本次严格只有两种组合：默认App（不选Package、不选独立WebUI）或Agent（Package＋精确Runtime＋独立WebUI三项输入）。非法半选组合由服务端拒绝，不自动补输入、不静默降级为默认App。
 
-模块数按部署单元/数据Owner分别统计：9个领域后端部署单元、10个数据Owner（Gateway Integration内tenant与gateway仍是两个Owner），另有Console BFF与Console UI。比此前拓扑新增Serve一个部署单元/Owner；Runtime Control保留同名部署单元但职责收敛为Runtime Release目录。
+默认App直接复用批准Runtime OCI，不构造空Package、假Build或假CapabilityVersion。默认策略仅在接受前正规化选择；任何执行失败不得切成默认App。更新默认App选择新的批准Release；Agent换Runtime或独立WebUI要重新Build；两者替换都走Serve，不重复购买。
+
+每个Workspace至多一个当前应用。Workspace只存已接受业务意图/订阅/资源目标；Serve拥有Deployment、runtime instance、readiness、路由epoch和访问。Fabric仅资源；Runtime Control仅Release目录。一个域不能根据别的域的HTTP202或一个receipt替它写成功。异步交接、确认与未知结果继续原身份读回见06。
+
+目标是9个领域后端部署单元、10个数据Owner（tenant/gateway共模块进程分数据库），另有Console BFF和UI。Instance只安装Cloud及配套配置/Secrets；客户应用始终由Cloud owner执行。
 
 ## 3. 唯一权威文件与执行顺序
 

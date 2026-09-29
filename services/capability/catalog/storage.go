@@ -35,6 +35,12 @@ type Storage interface {
 	// PutPart stores one part for the restricted local data plane. Direct-to-
 	// storage providers are written by the browser and return an error here.
 	PutPart(ctx context.Context, upload string, part int, body io.Reader, size int64, digest string) (etag string, err error)
+	// ListParts reports the provider's current view of one upload's shards, so
+	// GetUpload can reconcile the owner's readback with the real storage state
+	// and a resumed upload only re-sends the shards the provider does not hold.
+	// It never verifies a customer-declared digest; the assembled object is
+	// still verified end to end in Assemble.
+	ListParts(ctx context.Context, upload, providerUploadRef, digest string) (ProviderParts, error)
 	// Assemble finalizes the provider upload and verifies the assembled size
 	// and digest. The returned copy must pass archive validation before Promote.
 	Assemble(ctx context.Context, upload, providerUploadRef, digest string, size int64, parts []ConfirmedPart) (*AssembledObject, error)
@@ -58,6 +64,26 @@ type ConfirmedPart struct {
 	Sha256     string
 	Etag       string
 	Confirmed  bool
+}
+
+// ProviderParts is the provider's current view of one Capability upload.
+//
+// Complete is true when every shard is already present because the provider
+// upload was finalized: the multipart was completed, or the assembled staging
+// object (or content-addressed immutable object) exists. Parts is then empty,
+// because individual shard identities are no longer addressable, and the owner
+// finalizes through CompleteUpload instead of expecting further parts.
+type ProviderParts struct {
+	Complete bool
+	Parts    map[int32]ProviderPart
+}
+
+// ProviderPart is one shard the provider currently holds. SizeBytes and Etag
+// are the provider's own authority; a shard whose size differs from the
+// registered part identity is not the shard the owner admitted.
+type ProviderPart struct {
+	SizeBytes int64
+	Etag      string
 }
 
 // UploadAuthorization is one short-lived scoped write permit returned to the

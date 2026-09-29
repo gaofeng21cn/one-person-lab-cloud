@@ -100,6 +100,14 @@ func (c *cosStorage) Ready(ctx context.Context) error {
 	return ErrStorageUnavailable
 }
 
+// objectExists reports whether the bucket holds the key. An unreadable provider
+// is not absence: the caller must fail closed rather than treat it as a missing
+// object.
+func (c *cosStorage) objectExists(ctx context.Context, key string) bool {
+	_, err := c.client.Object.Head(ctx, key, nil)
+	return err == nil
+}
+
 func (c *cosStorage) BeginUpload(ctx context.Context, upload, digest string, size int64) (string, error) {
 	res, _, err := c.client.Object.InitiateMultipartUpload(ctx, stagingKey(upload), nil)
 	if err != nil || res == nil || res.UploadID == "" {
@@ -132,14 +140,56 @@ func (c *cosStorage) PutPart(ctx context.Context, upload string, part int, body 
 	return "", ErrStorageUnavailable
 }
 
-func (c *cosStorage) Assemble(ctx context.Context, upload, providerUploadRef, digest string, size int64, parts []ConfirmedPart) (*AssembledObject, error) {
+// ListParts reports the provider's current view of one upload's shards. A
+// multipart still open reports its parts; a multipart that is gone means the
+// upload was finalized, so every registered shard is present and the owner
+// finalizes through CompleteUpload instead of expecting further parts.
+func (c *cosStorage) ListParts(ctx context.Context, upload, providerUploadRef, digest string) (ProviderParts, error) {
+	if providerUploadRef == "" {
+		return ProviderParts{}, ErrStorageUnavailable
+	}
 	key := stagingKey(upload)
 	remote, err := c.listParts(ctx, key, providerUploadRef)
 	if err != nil {
-		// A repeated Complete after a lost response: the multipart may already be
-		// finalized. Fall back to the assembled staging object rather than
-		// starting a second upload identity.
-		if _, headErr := c.client.Object.Head(ctx, key, nil); headErr != nil {
+		target, keyErr := immutableKey(digest)
+		if keyErr != nil {
+			return ProviderParts{}, ErrStorageUnavailable
+		}
+		// The multipart is gone: the assembled staging object or the copied
+		// content-addressed immutable object must still be present, otherwise
+		// the provider has lost the upload and the readback fails closed.
+		if !c.objectExists(ctx, key) && !c.objectExists(ctx, target) {
+			return ProviderParts{}, ErrStorageUnavailable
+		}
+		return ProviderParts{Complete: true}, nil
+	}
+	out := ProviderParts{Parts: make(map[int32]ProviderPart, len(remote))}
+	for number, part := range remote {
+		out.Parts[number] = ProviderPart{SizeBytes: part.Size, Etag: part.ETag}
+	}
+	return out, nil
+}
+
+func (c *cosStorage) Assemble(ctx context.Context, upload, providerUploadRef, digest string, size int64, parts []ConfirmedPart) (*AssembledObject, error) {
+	key := stagingKey(upload)
+	target, err := immutableKey(digest)
+	if err != nil {
+		return nil, err
+	}
+	remote, err := c.listParts(ctx, key, providerUploadRef)
+	if err != nil {
+		// The multipart is gone: the upload was finalized, either by a repeated
+		// Complete after a lost response or by an earlier Complete whose owner
+		// transaction did not commit. When the admitted bytes were already
+		// copied to their content-addressed immutable key, recovery reads them
+		// back and re-verifies the exact size and SHA-256 rather than failing
+		// the retry or starting a second upload identity. Otherwise the
+		// finalized staging object must still exist and the same verification
+		// runs below.
+		if c.objectExists(ctx, target) {
+			return c.downloadVerified(ctx, target, digest, size)
+		}
+		if !c.objectExists(ctx, key) {
 			return nil, ErrStorageUnavailable
 		}
 	} else {

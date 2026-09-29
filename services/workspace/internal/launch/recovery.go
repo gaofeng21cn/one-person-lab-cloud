@@ -89,6 +89,15 @@ var continuationActions = []api.AuthorizationActionEnum{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT,
+	// The accepted launch obligation is funded through the Gateway wallet, so the
+	// bounded grant the order asks for includes the charge and its readback.
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CHARGEACCEPTEDOBLIGATION,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION,
+	// A paid deletion refunds the confirmed original charge, and a managed-key
+	// binding delivers the Workspace credential. Both are gateway-audience
+	// continuations of the same accepted obligation.
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REFUNDCONFIRMEDDELETION,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET,
 }
 
 // Resume continues the committed original order. Repeating a side effect after
@@ -182,15 +191,23 @@ func (s *Service) Resume(ctx context.Context, operationID string) error {
 			return err
 		}
 	}
-	// Persist Fabric's original intent even when Ledger is not configured or is
-	// temporarily unavailable. Only an explicitly free Local quote may proceed
-	// through zero-charge evidence; an ordinary money quote remains unchanged.
-	if localNoCharge(accepted) && s.Ledger != nil {
-		receipt, err := s.zeroChargeReceipt(ctx, op, token, accepted, &result)
-		if err != nil {
-			return err
-		}
-		if err = s.ensureResources(ctx, op, token, accepted, receipt.Id, &result); err != nil {
+	// Persist Fabric's original intent before its funding evidence is obtained, so
+	// the accepted resource obligation exists even while the Ledger receipt or the
+	// wallet charge is unanswered. The evidence that releases provisioning is bound
+	// to this same obligation for a Local no-charge order and for a paid one alike;
+	// an order whose funding owner has not answered stays pending instead of
+	// proceeding as if it were free.
+	receiptID, fundingRefused, err := s.fundingEvidence(ctx, op, token, accepted, &result)
+	if err != nil {
+		return err
+	}
+	if fundingRefused {
+		// The funding owner explicitly refused this order, so no resource may be
+		// provisioned for it. The recorded refusal is the operation's outcome.
+		return nil
+	}
+	if receiptID != "" {
+		if err = s.ensureResources(ctx, op, token, accepted, receiptID, &result); err != nil {
 			if code := resourcePermissionError(err); code != "" && result.FabricOperationID != "" && result.ResourceSetID != "" {
 				return s.readResourceCloseout(ctx, op, token, code, &result)
 			}

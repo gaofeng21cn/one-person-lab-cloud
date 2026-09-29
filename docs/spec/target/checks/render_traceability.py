@@ -25,7 +25,7 @@ for f in sorted(ui['features'],key=lambda f:f['featureId']):
     features.append(dict(featureId=f['featureId'],title=f['title'],pages=f['pages'],operationIds=ids,displayFields=f['displayFields'],tables=sorted(used),owners=sorted({ops[x]['x-owner'] for x in ids}),documents=documents,acceptance=f['scenarios']))
 data=dict(schemaVersion=1,generatedFrom=['03_api_contract_complete.yaml','contracts/db_inventory.json','contracts/ui_inventory.json'],authority='derived cross-reference only; edit the relevant API/DB/UI owner, then regenerate',features=features)
 (root/'contracts/traceability.json').write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
-lines=['# 10 全量功能交付与字段追踪矩阵','','> 自动派生索引，不是第二份产品或字段定义。更新03/02/04后运行 checks/render_traceability.py；随后运行 checks/validate_spec.py。','> 每个F编号贯穿客户场景、页面、后端operationId、DTO字段、持久化Owner与接受标准。','','## 总表','','| 功能 | 页面 | API操作数 | 数据Owner |','|---|---|---:|---|']
+lines=['# 10 全量功能交付与字段追踪矩阵','','> 自动派生索引，不是第二份产品或字段定义。更新03/02/04后运行 checks/render_traceability.py；随后运行 checks/validate_spec.py。','> 每个F编号贯穿客户场景、页面、后端operationId、DTO字段、持久化Owner与接受标准。','> 2026-09-29默认App/native UI业务已采用；本表仍派生当前wire基线，新选择字段/消费者须按03 x-approved-wire-migration及14 W01贯通，不能把本表覆盖数当新路径实现证据。','','## 总表','','| 功能 | 页面 | API操作数 | 数据Owner |','|---|---|---:|---|']
 for f in features:
     lines.append(f"| {f['featureId']} {f['title']} | {'、'.join(p['route'] for p in f['pages'])} | {len(f['operationIds'])} | {', '.join(f['owners'])} |")
 for f in features:

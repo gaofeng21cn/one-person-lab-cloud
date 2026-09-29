@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_serial_workspace_default_app_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T09:25:00Z",
+  "result": "workspace_resolves_the_default_opl_app_source_from_an_approved_runtime_release_with_runtime_release_provenance_and_no_build_focused_test_passed",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 6 - Workspace resolves the default OPL App order source from Runtime Control",
+  "sourceBaseSha": "3d9f59c98f2a5448385f30028f8136e2013f677b",
+  "branch": "codex/tke-serial-integration",
+  "workspace": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.2",
+  "scope": "Prove the Workspace launch path resolves the default OPL App order source from the approved Runtime Release, stamping runtime_release provenance and fabricating no Build/Package/CapabilityVersion, and refusing an unapproved release. No production source, contract, schema or migration changed.",
+  "implemented": [
+    "services/workspace/internal/launch/application_source_test.go: TestResolveApplicationSourceDefaultAppBuildsRuntimeReleaseDescriptor drives resolveApplicationSource over a paged RuntimeControlProductService stub with an approved Runtime Release whose publisher contract carries the immutable OCI and application revision template; it asserts the resolved selection is opl_app, the descriptor provenance is RUNTIME_RELEASE (never BUILD), the artifact and application revision are the release's own, the descriptor digest/object-ref are present, and an unapproved release is FailedPrecondition rather than substituted."
+  ],
+  "verification": {
+    "commands": [
+      "GOFLAGS=-mod=readonly go -C services/workspace test ./internal/launch/ -run TestResolveApplicationSourceDefaultApp -count=1 -v",
+      "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=postgres://postgres:postgres@127.0.0.1:54555/postgres?sslmode=disable GOFLAGS=-mod=readonly go -C services/workspace test ./... -count=1"
+    ],
+    "environment": "local loopback PostgreSQL container for the owner-migration tests",
+    "result": "PASS",
+    "cases": [
+      "TestResolveApplicationSourceDefaultAppBuildsRuntimeReleaseDescriptor: approved release -> opl_app source, RUNTIME_RELEASE provenance, release artifact/revision, descriptor identity; revoked release -> FailedPrecondition.",
+      "All existing Workspace launch and migration suites still pass."
+    ]
+  },
+  "notRun": [
+    "No real Runtime Control, TKE cluster, Candidate build, Instance deployment or production readback.",
+    "The default App's real route activation (I07), the publisher opl-model-config/v1 applied readback (I08 serving half) and the full Console/BFF default-App business chain (I11) remain open."
+  ],
+  "claimBoundary": "This receipt claims a Cloud source-level proof with a focused unit test: the Workspace launch path resolves the default OPL App source from an approved Runtime Release with runtime_release provenance and no Build lineage. It does not claim a Candidate, deployment or production acceptance.",
+  "secrets": "none",
+  "fileHashes": {
+    "services/workspace/internal/launch/application_source_test.go": "fb7da06c54f5300a6c035dad26c491c588fef71f8533e37978cabd619eda3816"
+  }
+}

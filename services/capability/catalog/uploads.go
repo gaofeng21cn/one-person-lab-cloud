@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -124,7 +125,69 @@ func (s *Service) GetUpload(ctx context.Context, r *api.GetUploadRpcRequest) (*a
 	if e := s.auth(ctx, r.GetContext(), "GetUpload", api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE, r.UploadId); e != nil {
 		return nil, e
 	}
-	return s.readUpload(ctx, s.DB, r.UploadId, tenant(r.Context))
+	v, e := s.readUpload(ctx, s.DB, r.UploadId, tenant(r.Context))
+	if e != nil {
+		return nil, e
+	}
+	if v.Status != api.UploadSessionStatusEnum_UPLOAD_SESSION_STATUS_ENUM_UPLOADING {
+		return v, nil
+	}
+	return s.reconcileUploadParts(ctx, r.UploadId, v)
+}
+
+// reconcileUploadParts reports the registered shards the Storage Provider
+// already holds. Capability's own data plane observes nothing for a
+// direct-to-storage provider, so without this readback a browser refresh or a
+// resumed upload would re-send bytes the provider already has. A shard is
+// reported complete only when the provider holds it at the exact registered
+// size, or when the provider reports the whole upload finalized; the assembled
+// object is still verified end to end in CompleteUpload.
+func (s *Service) reconcileUploadParts(ctx context.Context, upload string, v *api.UploadSession) (*api.UploadSession, error) {
+	ref, e := s.providerUploadRef(ctx, upload)
+	if e != nil {
+		return nil, e
+	}
+	view, e := s.Objects.store.ListParts(ctx, upload, ref, v.Sha256)
+	if e != nil {
+		return nil, status.Error(codes.Unavailable, "storage provider unavailable")
+	}
+	registered, e := s.registeredParts(ctx, s.DB, upload)
+	if e != nil {
+		return nil, e
+	}
+	present := map[int32]bool{}
+	parts := make([]*api.UploadPart, 0, len(registered))
+	for _, p := range v.CompletedParts {
+		present[p.PartNumber] = true
+		parts = append(parts, p)
+	}
+	for number, actual := range registered {
+		if present[number] {
+			continue
+		}
+		var etag string
+		if view.Complete {
+			// The provider finalized this upload, so every registered shard is
+			// present; the registered readback carries the identity the owner
+			// can still report per part.
+			etag = actual.Etag
+		} else {
+			remote, ok := view.Parts[number]
+			if !ok || remote.SizeBytes != actual.SizeBytes {
+				continue
+			}
+			etag = remote.Etag
+			if etag == "" {
+				// The local provider has no separate provider etag: its etag is
+				// the registered part digest.
+				etag = strings.TrimPrefix(actual.Sha256, "sha256:")
+			}
+		}
+		parts = append(parts, &api.UploadPart{PartNumber: number, Etag: etag, SizeBytes: actual.SizeBytes, Sha256: actual.Sha256})
+	}
+	sort.Slice(parts, func(i, j int) bool { return parts[i].PartNumber < parts[j].PartNumber })
+	v.CompletedParts = parts
+	return v, nil
 }
 func (s *Service) CreateUploadPart(ctx context.Context, r *api.CreateUploadPartRpcRequest) (*api.UploadPartAuthorization, error) {
 	if e := s.auth(ctx, r.GetContext(), "CreateUploadPart", api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE, r.UploadId); e != nil {

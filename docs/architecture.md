@@ -337,29 +337,35 @@ the OPL App port, credentials and mounts.
 
 ### Provisioning And Application Deployment
 
-For a new customer, the Launch is an Agent SaaS operation: the customer selects
-an admitted Agent version and compute/storage plan, confirms the quote, and
-receives a Workspace whose approved resources and exact built OCI are delivered
-as one product path. The path is deliberately staged rather than one database
-transaction: Workspace owns admission, entitlement and the purchase/resource
-Saga; Fabric provisions and reads back infrastructure; Serve deploys the exact
-OCI and owns Agent readiness, access and the current deployment. A resource
-readback alone is never a successful new-customer outcome.
+For a new customer, Launch delivers an application and its approved
+compute/storage plan after one confirmation. The default is an exact approved
+OPL App release with its built-in WebUI, requiring no customer Package or
+separate UI selection. A custom Agent is a Build-confirmed CapabilityVersion.
+Both use the same Workspace business Saga, Fabric resource provisioning, and
+Serve deployment/readiness/access path. There is no resource-only success or
+implicit retry into the default App when a chosen Agent fails.
 
-The Agent input chain is fixed and reproducible: Capability owns the native OMA
-Package and immutable version, Runtime Control supplies an approved OPL App
-Runtime release, the selected reference WebUI is fixed, and Build emits a
-readable immutable TCR OCI digest. The customer chooses the resulting Agent
-version and plan in Console; the customer does not install an application
-afterward and an administrator does not perform a separate application
-distribution step for this new-customer path. Deployment can fail or be
-retried without repeating a settled purchase; failure remains distinct from
-resource fulfillment and is read back by its owning service.
+Runtime Control supplies the approved App release and its immutable publisher
+contract. The default App is deployed directly by digest; no synthetic
+Package/Build/CapabilityVersion or redundant Tenant-registry copy is created.
+For an Agent, Capability supplies the Package and compatible independent
+WebUI, Runtime Control supplies the exact approved Runtime, and Build requires
+all three inputs to produce the immutable Tenant OCI. There is no Agent with
+built-in UI branch; missing either Package or independent WebUI is rejected. Package formats, App UI implementation and ABI remain
+publisher-owned; a mutable tag or a guessed filesystem path is not admission.
 
-The historical `resource_only` Launch remains valid for existing purchases and
-unfinished obligations. Its retained completion conditions and any later
-adoption onto existing resources are migration behavior, not the new-customer
-default and not permission to add an implicit Agent to an old order.
+The application selection is frozen with the quote and accepted order. Workspace
+stores business intent/provenance only; Serve is the sole current-application
+writer. Switching default App/Agent or updating an existing application uses
+Serve's explicit, data-compatible replacement path without repurchasing the
+Workspace. A Runtime change rebuilds an Agent but selects a new approved release
+for a default App; neither happens automatically.
+
+The historical `resource_only` Launch retains its existing purchase obligations
+and completion criteria. It is not the default App product and is not silently
+converted. The September 29 decision is adopted intent; the current production
+contracts still require W01's grouped migration before these new selections can
+be accepted. Current source gaps are owned by `docs/roadmap.md`.
 
 ### Control Plane Authority And Credential Boundary
 
@@ -1056,22 +1062,39 @@ consumers rather than workbench instances.
 
 ## Agent Delivery And Serve Boundary
 
-OPL Serve is the single product and data owner for delivering a built Agent to a Workspace and serving that same Agent. A Workspace is the target and authorization/resource boundary, not a second deployment writer. Each Workspace has at most one current Agent; deployment history and failed/replacement candidates do not create parallel current Agents.
+OPL Serve is the sole deployment/readiness/access owner for both the default
+OPL App and built Agents. Workspace is their entitlement/resource boundary,
+not a second deployment writer. Each Workspace has at most one current
+application; candidate and historical deployments are not additional current
+applications.
 
 ```text
-Serve experience / Console UI starts Package upload
--> Capability owns upload session, Package and immutable PackageVersion
--> Build fixes Package + WebUI + Runtime release refs and produces OCI digest
--> Workspace validates target membership, entitlement and resource plan
--> Fabric provisions/binds infrastructure resources and returns resource readback
--> Serve deploys the exact OCI to the authorized Workspace and owns readiness/current selection
--> API / Embed / Hosted UI reach that same current Agent through Serve
--> Ledger records required delivery/invocation evidence
+Default App: approved Runtime Release + built-in UI ──────────────────┐
+Agent: Package + approved Runtime + explicit UI choice -> Build OCI ─┤
+                                                                  v
+Workspace accepted quote/order -> Fabric confirmed resource refs -> Serve
+                       Serve runtime adapter -> readiness -> access activation
+                            -> same Hosted UI / API / Embed application
+                       Ledger records required owner evidence
 ```
 
-The upload screen may be part of Serve, but Package bytes, upload completion and Package identity are written only by Capability. Runtime Control owns the approved Runtime release catalog used by Build; the OPL App/Framework owner supplies the Runtime implementation. Build binds the exact Runtime release into the immutable OCI. Fabric does not start/stop Agent OCI or own its readiness/routing. Serve's deployment adapter applies the OCI to resources already provisioned by Fabric and records its own authoritative result. Workspace may expose Serve read models through BFF aggregation but stores no duplicate Agent deployment pointer or status.
+Capability owns Package uploads and references. Runtime Control owns approved
+release/default-policy readback used by Build and default-App admission, not
+runtime instances or routes. Fabric owns CVM/CBS/resource networking and
+attachments; Serve's TKE adapter applies the application workload, observes its
+health and owns application route bindings/fencing. Installation ingress/DNS/TLS
+are Instance configuration; two owners must not mutate the same application
+routing object/field. Shared use of Kubernetes APIs does not transfer ownership.
 
-Serve owns public authentication, access policy and route selection for its API/Embed/Hosted UI surfaces. Invocation/session execution semantics remain in the packaged Runtime unless a separately adopted invocation owner is introduced; Serve's access surface must not silently create a second Agent execution model.
+BFF composes readbacks without cross-domain SQL. Commands have durable owner
+Operations/effect identities; Outbox/Inbox supports reliable delivery and Ledger
+records the required immutable receipts. An HTTP acknowledgement or receipt
+alone does not create readiness. Exact async handoff, unknown-result recovery and
+receipt completion obligations are defined in target specification 06.
+
+Serve owns its public access policies; invocation semantics remain in the
+packaged Runtime. The default App's own package/workbench behavior remains App
+and Framework authority, not a new Cloud Package writer.
 
 ## Execution Boundary
 
@@ -1086,9 +1109,9 @@ or resource is Cloud-hosted or managed. Fabric performs the approved resource
 binding and execution. User-provided local, SSH or HPC resources can use the
 same pattern without becoming Console-billed resources by default.
 
-Fabric exposes a provider-neutral capability interface. Core requires a real
-`local-docker` profile; an instance may additionally select an extension such
-as `tencent-tke` or generic `kubernetes`. Provider identifiers, diagnostics, retries, and recovery
+Fabric exposes a provider-neutral capability interface. The current primary delivery profile is `tencent-tke`; `local-docker` remains
+a supported independently qualified profile. No implicit provider substitution
+or additional generic Kubernetes product is introduced. Provider identifiers, diagnostics, retries, and recovery
 mutations stay inside the adapter. Control Plane persists the selected provider
 profile ref per Workspace and uses one Launch business state machine; Fabric
 persists each stage-operation binding and provider-resource mapping. Neither

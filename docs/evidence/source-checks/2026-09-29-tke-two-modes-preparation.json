@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "cloud_source_planning_check",
+  "recordedAt": "2026-09-29T13:03:11.100456+00:00",
+  "result": "two_product_modes_aligned_independent_domain_tasks_ready_W01_pending",
+  "scope": "SSOT and implementation task preparation only. Existing executable specification checks do not prove default-App service implementation or Tencent/TKE runtime delivery.",
+  "supersedesProductScopeOnly": "docs/evidence/source-checks/2026-09-29-tke-default-app-planning.json",
+  "productModes": [
+    "approved OPL App RuntimeRelease OCI with its own UI; no Package/Build/CapabilityVersion",
+    "Package + exact approved Runtime + independent approved WebUI; three real Build inputs and claims"
+  ],
+  "source": {
+    "baseSha": "bf9027253dd852383c6069e7dad9fc7d436efbe3",
+    "workingTree": "uncommitted documentation/checker changes; source hashes include retained prior planning edits",
+    "trackedFileSha256": {
+      "docs/README.md": "8d8cbf78c04039c06e3043e6c2a0246af83967de73df52fa8a185834e4fd270a",
+      "docs/architecture.md": "270d6d59807b9950b40c2096a384ad33bcb4b60b2ca145bfd1db43604766ade8",
+      "docs/decisions.md": "948cf163126879d70777798e1309e9ee976da53db5129ad8beb87384f7941d98",
+      "docs/invariants.md": "82906bdc5fccfd22aa5035e295bac9ee709bc4c4ec352a0f7dc915372f8b7775",
+      "docs/roadmap.md": "e791ee9c4ababc3f7cd1b3744adf105c09e25e8dbfb01d226e5ecd76df3ddb77",
+      "docs/spec/target/00_master_index.md": "9baa46660818605a5a36febef5d0148d43233348ec13bd8bf8d8599a3dbc0e16",
+      "docs/spec/target/01_domain_ownership_matrix.md": "b05cf9e25b46ef2407638dee0a7969dfaaa3d4625597285e90374c1550a8a8a2",
+      "docs/spec/target/02_database_schema_complete.md": "78346b238852e824074176edee446d992c73a95b3e654f8e86d2fbdc8466a020",
+      "docs/spec/target/03_api_contract_complete.yaml": "6e7c922e9cc696784bf9a4d272a67b7e32d39cd345afe3f1a3137aa492ae05dd",
+      "docs/spec/target/04_frontend_interaction_spec.md": "dc5152aa029e935cf0286936f9ab2e52269c2a3ee6924e4126219bfec8578b88",
+      "docs/spec/target/05_build_service_technical_spec.md": "d6c6ab35a9bc12cb52f6c971d908480066ae539fd652251185ea27f0219a0de8",
+      "docs/spec/target/06_data_flow_and_state_machine.md": "d600895fc2b9983e39214cc8aee559d6391a50128bbaed7b1ae722fe23b53fb6",
+      "docs/spec/target/08_delivery_checklist_per_role.md": "2f315fbb19c3a0ef5231249b2d3489a89f8751eb5bde5e835d31c3b5a553cccb",
+      "docs/spec/target/09_legacy_migration.md": "98bcb47a13370c475de85b9110a46d981ac23bd58ea26a80c74064ed1a431bd1",
+      "docs/spec/target/10_feature_traceability.md": "46eb4a42d377076d43777f62ea375baac24ae7963bc40ccbabc8019413290c77",
+      "docs/spec/target/11_ui_ux_design.md": "bb653c620767e534d2540136d9feb1cc5daebaea4e3d112274c60be19717b175",
+      "docs/spec/target/12_product_spec.md": "8abdbbaf69c34e0a4727aaafea1fd9b261766a1be2c74615d239b6175dc2be6d",
+      "docs/spec/target/14_implementation_work_packages.md": "29c7a2cbc6f8113bab8426ceb1ffa5009d307b7af23fcd4454812ea648a10ed5",
+      "docs/spec/target/checks/README.md": "12555a90b1027350715e87e27e026960cd28c406a6584685fcc6ca2bbc25c9c5",
+      "docs/spec/target/checks/contract_cases.json": "34d2ea4989a71cbfd781befb58605ad86d5271209429dbfb15e8fd948b27de8a",
+      "docs/spec/target/checks/decision_status.json": "6bf0cbfa6edaacee5c7ff1941ed7d05e7f5e2a3bc355e55f13cd04162eadaee7",
+      "docs/spec/target/checks/development_plan.json": "667dcb21d64d54f77430b4070ce610ef6b83984ee04d3a89c2d2155f15b66769",
+      "docs/spec/target/checks/development_plan_validation.json": "9b2dacddc1670019fdc08af54b9332c2e3539f22a062c71bcf322f40b0377f68",
+      "docs/spec/target/checks/handoff_readiness.json": "2af7805caf48fc8db551f4c3f1d7d0e57f604026997831b08700b1db8a036932",
+      "docs/spec/target/checks/render_development_plan.py": "e6cae478c05afad23bb075197d617f64361c7c9434af46d45f06e17c47422b2a",
+      "docs/spec/target/checks/render_traceability.py": "990fab38d204f28223415484ef7473326d866c67c93ca24d5c0ab56f341e790c",
+      "docs/spec/target/checks/test_development_plan.py": "5e3591cfa797d524c91d6dff192504595bc5f5b916a3a4cd076794be694b96a0",
+      "docs/spec/target/checks/validate_development_plan.py": "7da1c53fc7082d15bc7491fadd14c8255b0600be0d668927cd2ed82ad2274988",
+      "docs/spec/target/checks/validate_handoff.py": "1156214c4a172c4a35bbefda2aa374a64ade805cef8efff1c2bc687d98e7e2b3",
+      "docs/spec/target/checks/verification.json": "7d78a8b92590a08e39538b3d84181d8ba34affc382d208f45a7939366075f5a6",
+      "docs/spec/target/contracts/api_inventory.json": "7d680fb0e2d86756129af6bd880d6f581f9ca2141e4e7afbf670f66a99a959be",
+      "docs/spec/target/contracts/traceability.json": "43da7185a45b7f10235dc9bdaef2ed6537158fddbc93bb686cd9cb7e630ca4ab",
+      "docs/status.md": "022b845abe77d57bf07d7acbfb744ef69949c86d47dd3fc08a0d7fb44f15951d"
+    },
+    "documentationDiffSha256": "16a08f02ab1f17723cd5bb4cccec4495d3871c1822f669f9b5994d84ef06d453"
+  },
+  "verification": [
+    {
+      "command": "python3 -m unittest discover -s docs/spec/target/checks -p 'test_development_plan.py'",
+      "exitCode": 0,
+      "testsPassed": 17,
+      "layer": "planning validator and actual schema validation only"
+    },
+    {
+      "command": "python3 docs/spec/target/checks/validate_development_plan.py",
+      "exitCode": 0,
+      "counts": {
+        "workPackages": 32,
+        "features": 17,
+        "restOperations": 108,
+        "tables": 101,
+        "internalRPCs": 174,
+        "executionSlices": 24
+      },
+      "receipt": "docs/spec/target/checks/runs/development-plan-20260929T125922529393Z.json"
+    },
+    {
+      "command": "python3 docs/spec/target/checks/validate_cross_domain.py",
+      "exitCode": 0,
+      "receipt": "docs/spec/target/checks/runs/cross-domain-20260929T124756.560585Z.json",
+      "passed": true,
+      "cases": 101,
+      "cleanup": {
+        "containerName": "opl-spec-semantic-1790686076",
+        "containerAbsent": true,
+        "stopSucceeded": true,
+        "removalReadbackPolls": 2,
+        "storage": "tmpfs only; no host mounts/named volumes",
+        "network": "none; no host ports"
+      },
+      "layer": "typed REST/protobuf specification adapters -> isolated PostgreSQL -> exact typed/readback projection; provider router and Storage are explicitly named fixtures, not implemented services"
+    },
+    {
+      "command": "python3 docs/spec/target/checks/validate_spec.py",
+      "exitCode": 0,
+      "groupsPassed": 10,
+      "receipt": "docs/spec/target/checks/runs/20260929T125924209154Z.json"
+    },
+    {
+      "command": "render_traceability.py and render_development_plan.py repeated",
+      "exitCode": 0,
+      "deterministic": {
+        "passed": true,
+        "fileSha256": {
+          "docs/spec/target/10_feature_traceability.md": "46eb4a42d377076d43777f62ea375baac24ae7963bc40ccbabc8019413290c77",
+          "docs/spec/target/14_implementation_work_packages.md": "29c7a2cbc6f8113bab8426ceb1ffa5009d307b7af23fcd4454812ea648a10ed5",
+          "docs/spec/target/contracts/traceability.json": "43da7185a45b7f10235dc9bdaef2ed6537158fddbc93bb686cd9cb7e630ca4ab",
+          "docs/spec/target/checks/development_plan.json": "667dcb21d64d54f77430b4070ce610ef6b83984ee04d3a89c2d2155f15b66769"
+        }
+      }
+    },
+    {
+      "command": "npm run validate:product-boundary",
+      "exitCode": 0
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0
+    },
+    {
+      "command": "python3 docs/spec/target/checks/validate_handoff.py",
+      "exitCode": 1,
+      "status": "needs_correction",
+      "planningEntryReady": true,
+      "technicalClosureVerified": false,
+      "issues": [
+        "UI source changed after verification: 03_api_contract_complete.yaml",
+        "UI source changed after verification: contracts/ui_inventory.json",
+        "UI source changed after verification: 04_frontend_interaction_spec.md",
+        "UI source changed after verification: 11_ui_ux_design.md",
+        "approved application-selection contract migration has not reached executable schemas/consumers (W01)"
+      ]
+    }
+  ],
+  "retainedFailure": "docs/spec/target/checks/runs/20260929T124709206826Z.json: prior PostgreSQL receipt API hash was stale; reran isolated suite rather than rewriting evidence",
+  "developmentEntry": {
+    "integration": "W01.application-contracts plus W02/W05 and real BFF/Console consumers",
+    "domains": "14 section 10 / development_plan.json.parallelPreparation: implement current-contract preparations; new default-App consumers still require W01 handoff"
+  },
+  "notRun": [
+    "npm run verify:local / verify:local:full: this preparation changed documentation and specification checkers, not runtime services; domain code verification belongs to their separate receipts",
+    "current default-App REST/proto/SQL consumer migration",
+    "new interactive prototype/browser verification",
+    "real TCR/COS/provider execution",
+    "real charges/purchases/deletions",
+    "Candidate build/Instance deployment/TKE qualification/formal release"
+  ],
+  "limitations": [
+    "full handoff remains needs_correction; approved target selection is not executable wire support",
+    "four active domain tasks are separate ongoing work and are not covered by these checks",
+    "earlier historical three-combination receipt remains immutable, not current product intent"
+  ],
+  "temporaryReviewAgent": {
+    "model": "deepseek-v4.1-flash",
+    "reasoningEffort": "high",
+    "result": "partial documentation edits followed by provider invalid_request_error on reasoning_text; agent closed, coordinator completed and verified remaining edits"
+  }
+}

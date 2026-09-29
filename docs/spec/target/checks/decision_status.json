@@ -18,7 +18,21 @@
       "approvedText": "中途升级立即生效、保留原到期日，按剩余已付周期补差；降配下个账期生效，不退当期费用。",
       "approvalSource": "当前用户直接确认，随后要求完善实现逻辑并给出定稿结论",
       "policyOwner": "13_plan_change_policy.md"
+    },
+    {
+      "id": "D18",
+      "feature": "F07/F08/F09",
+      "status": "accepted",
+      "question": "默认App与可选Agent是否一次确认后由Cloud在Tencent/TKE自动完整交付？",
+      "approvedText": "主攻tencent-tke，只有两种组合：不选Agent且不选独立WebUI时直接使用获准opl-app及自带WebUI；选择Package和独立WebUI时固定Package+Runtime+WebUI构建Agent OCI。不存在Agent+内置UI第三组合。两者共用一次确认应用+套餐后后台自动部署的业务链；Instance只部署Cloud。",
+      "approvalSource": "2026-09-29当前用户明确限定两种组合，并授权统筹准备后以deepseek-v4.1-flash/high派发四个领域窗口",
+      "policyOwner": "12_product_spec.md",
+      "blocks": null,
+      "doesNotBlock": [
+        "W01合同与消费者迁移",
+        "现有owner独立实现和规划验证"
+      ]
     }
   ],
-  "rule": "D17已由用户直接确认；全量READY仍须以同步后的契约、跨层语义、UI和证据合并检查为准，不能仅改本状态。"
+  "rule": "D17/D18均已采用；产品规划可直接进入W01。完整技术READY还须新wire、真实消费者、DB/UI/运行证据贯通，不以接受决定代替实现。"
 }
