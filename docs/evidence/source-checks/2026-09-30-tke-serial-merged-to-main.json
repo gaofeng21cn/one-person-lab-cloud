@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_serial_merged_to_main_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T10:35:00Z",
+  "result": "the_serial_integration_branch_is_merged_into_canonical_main_with_green_ci_exact_source_sha_in_ancestry",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 7 precondition - canonical main now carries the exact serial source SHA",
+  "sourceBaseSha": "9ce3dc595765d5aa6e47275ec9bdeef2e0a53878",
+  "branch": "main (merged from codex/tke-serial-integration)",
+  "workspace": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.7",
+  "mergedSha": "cddd8b02f2d53c423e3b9b3a9568e7761b0ee507",
+  "scope": "Record that PR #690 merged the serial integration branch into canonical main via a merge commit, with the branch CI green and the exact branch SHA an ancestor of main, so a Candidate can be built from the same SHA.",
+  "findings": [
+    {
+      "id": "pr-690",
+      "fact": "PR #690 (head codex/tke-serial-integration, head SHA cddd8b02) merged into main as merge commit 9ce3dc59. Checks: validate passed in 10m36s; dependency-review passed. mergeStateStatus was CLEAN and mergeable MERGEABLE before merge.",
+      "consequence": "Canonical main now contains the exact serial source SHA cddd8b02, so the Build OPL Cloud Candidate workflow can be dispatched with product_sha=cddd8b02."
+    },
+    {
+      "id": "candidate-gate",
+      "fact": "build-opl-cloud-candidate.yml job guard is `github.ref == 'refs/heads/main' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner`. The repository owner is the user account gaofeng21cn; the authenticated operator is RenDeHuang (write collaborator, not the owner). Historical successful Candidate runs were all dispatched by gaofeng21cn.",
+      "consequence": "Dispatching the Candidate build requires the repository-owner identity (gaofeng21cn). This is the owner/authorized-actor external condition for Stage 7, not a source defect."
+    }
+  ],
+  "notRun": [
+    "Candidate build (requires the repository-owner dispatcher gaofeng21cn).",
+    "Instance deployment, provider action, production readback.",
+    "Real route activation (I07), publisher model-config readback (I08) and the typed Serve->Fabric application-execution boundary (I06), each pending its frozen external contract."
+  ],
+  "claimBoundary": "This receipt claims the serial integration source is merged into canonical main at an exact SHA with green CI. It does not claim a Candidate image, Instance deployment, production acceptance or completion of the still-blocked I06/I07/I08 items.",
+  "secrets": "none"
+}

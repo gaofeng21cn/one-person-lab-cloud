@@ -70,6 +70,19 @@ current source. `npm run verify:local`, `npm run validate:product-boundary` and
 default-OPL-App Serve/Workspace tests were added
 ([receipt](evidence/source-checks/2026-09-30-tke-serial-full-verification-green.json)). It still does not substitute for the Instance TKE acceptance.
 
+## September 30 Serial Integration Merged To Canonical Main
+
+The serial integration branch is merged into canonical `main`: PR
+[#690](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/690) merged
+`codex/tke-serial-integration` (head `cddd8b02`) as merge commit `9ce3dc59`,
+with `validate` and `dependency-review` green and `mergeStateStatus: CLEAN`. The
+exact branch SHA `cddd8b02` is now an ancestor of `main`, so the Candidate image
+can be built from the same SHA. Dispatching
+`.github/workflows/build-opl-cloud-candidate.yml` requires the repository-owner
+identity (`gaofeng21cn`); the authenticated operator is a write collaborator, so
+that dispatch is an explicit owner action, not a source defect
+([receipt](evidence/source-checks/2026-09-30-tke-serial-merged-to-main.json)).
+
 ## September 30 Serial Integration Stage 5 Source Progress (Serve Model Applied Fact)
 
 **Stage 5 (I08, model applied fact):** the section-11 red line that Serve must not
