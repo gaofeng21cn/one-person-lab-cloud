@@ -65,20 +65,28 @@ func main() {
 		if err := s.BackfillTenantRepositoryBindings(ctx); err != nil {
 			return err
 		}
-		options, e := config.TLS.DialOptions(owneridentity.Tenant.Service(), owneridentity.Build.Service(), os.Getenv("OPL_BUILD_TOKEN"))
-		if e != nil {
-			return e
-		}
-		conn, e := grpc.NewClient(os.Getenv("OPL_BUILD_ADDR"), options...)
-		if e != nil {
-			return e
-		}
-		if e = server.TrackCloser(conn); e != nil {
-			return e
-		}
-		s.BuildCommit = api.NewOwnerCommitReadbackClient(conn)
-		if address := strings.TrimSpace(os.Getenv("OPL_WORKSPACE_ADDR")); address != "" {
-			options, e := config.TLS.DialOptions(owneridentity.Tenant.Service(), owneridentity.Workspace.Service(), os.Getenv("OPL_WORKSPACE_TOKEN"))
+		// Owner-commit readback for grant issuance is wired only for an owner whose
+		// address this deployment actually configures. An absent address is a
+		// deployment that has not placed that owner yet, and grpc.NewClient accepts
+		// an empty target without error, so dialing it would install a client whose
+		// failure surfaces much later as an unrelated transport error. Build and
+		// Workspace are treated identically: no address, no client, and the grant
+		// path refuses. This owner is deployed before Build in the unit, so Build
+		// absence is a normal configuration rather than a startup defect.
+		for _, peer := range []struct {
+			target  owneridentity.Owner
+			address string
+			token   string
+			assign  func(api.OwnerCommitReadbackClient)
+		}{
+			{owneridentity.Build, "OPL_BUILD_ADDR", "OPL_BUILD_TOKEN", func(c api.OwnerCommitReadbackClient) { s.BuildCommit = c }},
+			{owneridentity.Workspace, "OPL_WORKSPACE_ADDR", "OPL_WORKSPACE_TOKEN", func(c api.OwnerCommitReadbackClient) { s.WorkspaceCommit = c }},
+		} {
+			address := strings.TrimSpace(os.Getenv(peer.address))
+			if address == "" {
+				continue
+			}
+			options, e := config.TLS.DialOptions(owneridentity.Tenant.Service(), peer.target.Service(), os.Getenv(peer.token))
 			if e != nil {
 				return e
 			}
@@ -89,7 +97,7 @@ func main() {
 			if e = server.TrackCloser(conn); e != nil {
 				return e
 			}
-			s.WorkspaceCommit = api.NewOwnerCommitReadbackClient(conn)
+			peer.assign(api.NewOwnerCommitReadbackClient(conn))
 		}
 		return s.Register(server)
 	})

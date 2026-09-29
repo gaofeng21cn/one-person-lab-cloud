@@ -3,7 +3,6 @@ package catalog
 import (
 	"archive/zip"
 	"bytes"
-	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -13,7 +12,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -33,22 +31,37 @@ type UploadPolicy struct {
 	ManifestPath, SchemaPath, SchemaDigest string
 }
 type Objects struct {
-	Root, PublicURL string
-	SigningKey      []byte
-	Policy          UploadPolicy
-	schema          *jsonschema.Schema
+	SigningKey []byte
+	Policy     UploadPolicy
+	store      Storage
+	schema     *jsonschema.Schema
 }
 
+// NewObjects builds the local-filesystem Storage Provider configuration used by
+// development and single-node instances. A COS-backed instance uses
+// NewObjectsWithStorage with the same policy and signing key.
 func NewObjects(root, publicURL string, key []byte, p UploadPolicy) (*Objects, error) {
-	if !filepath.IsAbs(root) || len(key) < 32 || p.MaxBytes <= 0 || p.PartBytes <= 0 || p.PartBytes > p.MaxBytes || p.MaxExpandedBytes <= 0 || p.MaxFiles <= 0 || p.TTL <= 0 || !safePath(p.ManifestPath) || !digestRE.MatchString(p.SchemaDigest) {
-		return nil, fmt.Errorf("explicit object root, upload URL, signing key and bounded upload/schema policy are required")
+	if !filepath.IsAbs(root) {
+		return nil, fmt.Errorf("explicit object root is required")
 	}
-	u, e := url.Parse(publicURL)
-	if e != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
-		return nil, fmt.Errorf("invalid public upload URL")
+	local, err := newLocalStorage(root, publicURL)
+	if err != nil {
+		return nil, err
 	}
-	if u.Scheme == "http" && u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1" && u.Hostname() != "::1" {
-		return nil, fmt.Errorf("unencrypted object endpoint is only allowed on loopback")
+	return NewObjectsWithStorage(local, key, p)
+}
+
+// NewObjectsWithStorage binds an instance-approved Storage Provider to the
+// Capability upload policy. The signing key authenticates local permits; it is
+// required for a provider whose parts stream through Capability and unused for a
+// direct-to-storage provider the browser writes through presigned URLs.
+func NewObjectsWithStorage(store Storage, key []byte, p UploadPolicy) (*Objects, error) {
+	direct := false
+	if d, ok := store.(interface{ DirectUploadOnly() bool }); ok {
+		direct = d.DirectUploadOnly()
+	}
+	if store == nil || (!direct && len(key) < 32) || p.MaxBytes <= 0 || p.PartBytes <= 0 || p.PartBytes > p.MaxBytes || p.MaxExpandedBytes <= 0 || p.MaxFiles <= 0 || p.TTL <= 0 || !safePath(p.ManifestPath) || !digestRE.MatchString(p.SchemaDigest) {
+		return nil, fmt.Errorf("storage provider, signing key and bounded upload/schema policy are required")
 	}
 	b, e := os.ReadFile(p.SchemaPath)
 	if e != nil {
@@ -69,47 +82,11 @@ func NewObjects(root, publicURL string, key []byte, p UploadPolicy) (*Objects, e
 	if e != nil {
 		return nil, e
 	}
-	for _, dir := range []string{"objects", "parts", "pending"} {
-		if e = os.MkdirAll(filepath.Join(root, dir), 0700); e != nil {
-			return nil, e
-		}
-	}
-	return &Objects{Root: root, PublicURL: strings.TrimRight(publicURL, "/"), SigningKey: key, Policy: p, schema: schema}, nil
+	return &Objects{SigningKey: key, Policy: p, store: store, schema: schema}, nil
 }
+
 func safePath(v string) bool {
 	return v != "" && !strings.Contains(v, "\\") && !strings.HasPrefix(v, "/") && path.Clean(v) == v && v != ".." && !strings.HasPrefix(v, "../") && !strings.Contains(v, ":")
-}
-func (o *Objects) objectPath(d string) (string, error) {
-	if !digestRE.MatchString(d) {
-		return "", fmt.Errorf("invalid object digest")
-	}
-	return filepath.Join(o.Root, "objects", strings.TrimPrefix(d, "sha256:")), nil
-}
-func (o *Objects) putImmutable(source, d string) error {
-	target, e := o.objectPath(d)
-	if e != nil {
-		return e
-	}
-	e = os.Link(source, target)
-	if os.IsExist(e) {
-		f, x := os.Open(target)
-		if x != nil {
-			return x
-		}
-		defer f.Close()
-		h := sha256.New()
-		if _, x = io.Copy(h, f); x != nil {
-			return x
-		}
-		if "sha256:"+hex.EncodeToString(h.Sum(nil)) != d {
-			return fmt.Errorf("immutable object integrity failure")
-		}
-		return nil
-	}
-	if e == nil {
-		e = os.Chmod(target, 0400)
-	}
-	return e
 }
 func (o *Objects) validateArchive(filename string) ([]byte, error) {
 	r, e := zip.OpenReader(filename)
@@ -352,14 +329,15 @@ type partPermit struct {
 	Expires int64  `json:"expires"`
 }
 
-func (o *Objects) permit(p partPermit) string {
+func permit(key []byte, p partPermit) string {
 	b, _ := json.Marshal(p)
 	v := base64.RawURLEncoding.EncodeToString(b)
-	h := hmac.New(sha256.New, o.SigningKey)
+	h := hmac.New(sha256.New, key)
 	h.Write([]byte(v))
 	return v + "." + base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 }
-func (o *Objects) readPermit(v string) (partPermit, error) {
+
+func readPermitWithKey(key []byte, v string) (partPermit, error) {
 	var p partPermit
 	v1, v2, ok := strings.Cut(v, ".")
 	if !ok {
@@ -369,7 +347,7 @@ func (o *Objects) readPermit(v string) (partPermit, error) {
 	if e != nil {
 		return p, e
 	}
-	h := hmac.New(sha256.New, o.SigningKey)
+	h := hmac.New(sha256.New, key)
 	h.Write([]byte(v1))
 	if !hmac.Equal(sig, h.Sum(nil)) {
 		return p, fmt.Errorf("invalid permit")
@@ -387,7 +365,10 @@ func (o *Objects) readPermit(v string) (partPermit, error) {
 	return p, nil
 }
 
-// UploadHandler is a restricted signed PUT data plane; it cannot list or read objects.
+// UploadHandler is a restricted signed PUT data plane; it cannot list or read
+// objects. It is only used by storage providers whose upload URL points back at
+// Capability (local filesystem). Direct-to-storage providers are written by the
+// browser against their own scoped presigned URL.
 func (s *Service) UploadHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// This endpoint is authorized solely by its signed, bounded permit, not
@@ -395,7 +376,7 @@ func (s *Service) UploadHandler() http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Expose-Headers", "ETag")
 		if r.Method == http.MethodOptions {
-			if _, err := s.Objects.readPermit(r.URL.Query().Get("permit")); err != nil {
+			if _, err := readPermitWithKey(s.Objects.SigningKey, r.URL.Query().Get("permit")); err != nil {
 				w.WriteHeader(http.StatusForbidden)
 				return
 			}
@@ -408,7 +389,7 @@ func (s *Service) UploadHandler() http.Handler {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		p, e := s.Objects.readPermit(r.URL.Query().Get("permit"))
+		p, e := readPermitWithKey(s.Objects.SigningKey, r.URL.Query().Get("permit"))
 		if e != nil || r.Header.Get("X-OPL-SHA256") != p.Digest {
 			http.Error(w, "invalid upload authorization", http.StatusForbidden)
 			return
@@ -432,30 +413,15 @@ func (s *Service) UploadHandler() http.Handler {
 			http.Error(w, "upload unavailable", 409)
 			return
 		}
-		f, e := os.CreateTemp(filepath.Join(s.Objects.Root, "pending"), "part-")
+		etag, e := s.Objects.store.PutPart(ctx, p.Upload, int(p.Part), http.MaxBytesReader(w, r.Body, p.Size+1), p.Size, p.Digest)
+		if e == ErrObjectIntegrity {
+			http.Error(w, "part digest or size mismatch", 400)
+			return
+		}
 		if e != nil {
 			w.WriteHeader(503)
 			return
 		}
-		defer os.Remove(f.Name())
-		h := sha256.New()
-		n, e := io.Copy(io.MultiWriter(f, h), http.MaxBytesReader(w, r.Body, p.Size+1))
-		closeErr := f.Close()
-		if e != nil || closeErr != nil || n != p.Size || "sha256:"+hex.EncodeToString(h.Sum(nil)) != p.Digest {
-			http.Error(w, "part digest or size mismatch", 400)
-			return
-		}
-		dir := filepath.Join(s.Objects.Root, "parts", p.Upload)
-		if e = os.MkdirAll(dir, 0700); e != nil {
-			w.WriteHeader(503)
-			return
-		}
-		target := filepath.Join(dir, strconv.Itoa(int(p.Part)))
-		if e = os.Rename(f.Name(), target); e != nil {
-			w.WriteHeader(503)
-			return
-		}
-		etag := strings.TrimPrefix(p.Digest, "sha256:")
 		if _, e = tx.ExecContext(ctx, `UPDATE capability.upload_chunks SET observation_result='confirmed',etag=$1 WHERE upload_session_id=$2 AND part_number=$3`, etag, p.Upload, p.Part); e != nil {
 			w.WriteHeader(503)
 			return
@@ -467,14 +433,4 @@ func (s *Service) UploadHandler() http.Handler {
 		w.Header().Set("ETag", etag)
 		w.WriteHeader(http.StatusNoContent)
 	})
-}
-func (o *Objects) Ready(ctx context.Context) error {
-	f, e := os.CreateTemp(filepath.Join(o.Root, "pending"), "ready-")
-	if e != nil {
-		return e
-	}
-	name := f.Name()
-	e = f.Close()
-	os.Remove(name)
-	return e
 }

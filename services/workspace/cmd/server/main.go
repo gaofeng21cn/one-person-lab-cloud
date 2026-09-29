@@ -86,6 +86,17 @@ func main() {
 			}
 			service.Serve = api.NewServeAgentCoordinationClient(conn)
 		}
+		// The Gateway wallet authority is the only owner that may move customer
+		// money. Without a configured address a paid order stays awaiting its
+		// funding owner instead of assuming the charge, so its absence is a normal
+		// deployment shape rather than a startup defect.
+		if address := strings.TrimSpace(os.Getenv("OPL_GATEWAY_ADDR")); address != "" {
+			conn, err := dialPeer(config, server, owneridentity.Gateway, address)
+			if err != nil {
+				return err
+			}
+			service.Gateway = api.NewGatewayCoordinationClient(conn)
+		}
 		if err = service.Register(server); err != nil {
 			return err
 		}

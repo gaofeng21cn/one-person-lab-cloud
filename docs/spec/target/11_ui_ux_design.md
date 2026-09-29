@@ -1,6 +1,6 @@
 # 11 UI/UX交接设计
 
-> 这是新方案的目标交互与视觉交接，不是现有产品已实现声明。可点击结构原型：`ui-prototype/index.html`。原型顶部持续标注“交互原型，示例数据”，网络被CSP禁用；示例金额不建立实际价格或收费政策。
+> 这是新方案的目标交互与视觉交接，不是现有产品已实现声明。应用默认与两种产品组合是**2026-09-29已采用、待W01贯通的合同迁移**，产品定义见[12](12_product_spec.md)，实施与验收见[14](14_implementation_work_packages.md)，前端绑定见[04](04_frontend_interaction_spec.md)。03/机器inventory和可点击结构原型`ui-prototype/index.html`尚未因此自动支持新选择，本轮不修改它们。原型顶部持续标注“交互原型，示例数据”，网络被CSP禁用；示例金额不建立实际价格或收费政策。
 
 ## 1. 继承什么，改变什么
 
@@ -38,7 +38,7 @@ OPL Cloud
 │  ├─ 上传向导
 │  └─ 构建记录 → 构建详情
 ├─ 工作区
-│  ├─ 列表 → 部署向导
+│  ├─ 列表 → 新建工作区：默认OPL App / 自选Agent + 套餐
 │  └─ 详情：概览 / 模型配置 / 部署历史 / 账单周期 / 危险操作
 │      └─ 历史裸资源：部署到已有资源（adopt，不重购）
 ├─ OPL Gateway：服务信息 / 用量 / API密钥
@@ -65,7 +65,7 @@ OPL Cloud
 ### 3.2 概览
 
 ```text
-[你好/当前空间]                                  [部署智能体]
+[你好/当前空间]                                  [新建工作区]
 [钱包当前状态]       [本月实际模型用量]          [Workspace概况]
 [当前可用Workspace与Open]                       [下一步]
 [待处理的原Operation与查看入口]                [消息]
@@ -75,26 +75,39 @@ OPL Cloud
 
 ### 3.3 智能体与构建
 
-卡片先名称、官方/私有来源、确切版本、是否可部署，再用途和详情。上传主按钮位于右上；“构建记录”是同一任务域子页。构建详情左侧当前阶段及结果，右侧固定输入；日志默认收起。成功是推送+Capability登记都被确认，不是主进程退出0。
+卡片先名称、官方/私有来源、确切版本、是否可部署，再用途和详情。上传主按钮位于右上；“构建记录”是同一任务域子页。构建详情左侧当前阶段及结果，右侧固定输入；日志默认收起。成功是推送、Capability登记和所需artifact receipt都被确认，不是主进程退出0；详情固定展示用户确认的精确Runtime与WebUI selection。
 
-### 3.4 部署向导
+### 3.4 新建工作区：一次确认应用+套餐
 
 ```text
-1 选择Agent → 2 套餐/模型/续费 → 3 报价/条款 → 4 原Operation
+1 应用（默认OPL App，可自选Agent）→ 2 套餐/模型/续费 → 3 一次确认应用+报价/条款 → 4 原ownerOperation
 [主表单：只编辑本步]                          [当前选择摘要]
 [上一步 / 保存草稿返回]                        [版本/资源/费用状态]
 [当前不可跳过的确认]                [下一步 / 明确提交一次]
 ```
 
+默认卡片为“OPL App（自带界面）”，用户不需要先到智能体目录、上传Package或挑选独立WebUI。确认区必须显示已解析的获准RuntimeRelease确切版本；默认是明确的产品选择，不是空值、resource_only或失败fallback。套餐确认后后台自动部署，无第二次安装/应用确认。
+
+| 页面场景 | 选择控件与摘要 | 合同/执行含义（待W01贯通） |
+|---|---|---|
+| 未选Package、未选独立WebUI | 默认OPL App及native WebUI；获准精确Runtime版本可读 | `WorkspaceApplicationSelection = opl_app(runtimeVersionId)`；直接部署RuntimeRelease不可变OCI，不创建Package/Build |
+| 制作Agent，必须选择独立界面 | PackageVersion、获准RuntimeRelease、获准独立WebUI，三项确切版本均必需 | CreateBuildRequest的packageVersionId/runtimeVersionId/webuiVersionId；Build产生版本，部署时选择`agent(capabilityVersionId)` |
+
+只允许表内两种组合。缺Package或缺独立WebUI的半选Agent不可提交，说明缺少哪项输入，服务端同样拒绝；不自动补包/界面、不忽略意图、不降为默认App。默认App的内置UI不伪装为独立目录版本，缺少其发布契约时不允许默认App准入。
+
+“自选Agent”入口显示已ready的确切CapabilityVersion及其冻结Runtime/UI来源；要修改Runtime或WebUI，回到制作页生成新版本，不在部署页改写已有产物。管理员策略只为尚未选择的输入提供候选，不能覆盖显式选择或已经确认的Runtime/UI。已选版本撤销则阻止提交并说明原因，不改选latest/default。
+
+默认和自选的进度页、Workspace详情、购买及访问体验共用一套路径：Workspace购买与资源权益→Fabric资源→Serve运行/readiness/access→Ledger证据读回；不新增默认部署服务。
+
 - 上一步保留非敏感选择，不保持旧报价有效。任何影响报价/契约的变更都清除quote和确认checkbox。
 - 新收费周期仅1个月；续费模式默认manual但请求显式携带。选择automatic后单独未勾选同意控件；不能把普通“确认部署”视为自动续费授权。
 - 草稿按Tenant、actor和create/adopt分别隔离；不存密码、Key、临时签名URL。恢复先重读目录、原状态与新报价。
-- 202之后切到原Operation查看，不自动跳转，不再发create。外部unknown不重购、不反向退款。
+- 202之后留在原ownerOperation（owner+operationId）进度页，不自动打开应用、不再发create。终态后分别读回Workspace、Serve当前Deployment/access、账务与所需receipt；资源ready不等于应用ready，receipt缺失显示待核实。外部unknown不重购、不反向退款。
 - D17已确认，规则以13的workspace-plan-change-v1为准；原型数值仍是固定示例，不是实际Catalog定价。
 
 ### 3.5 工作区详情
 
-主区先“当前选中应用是否可用”和Open，再资源条件、配置生效版本、套餐和完整周期。更新、调整、续费不挤在同一个危险操作菜单。删除有自己的分区和独立确认，不与Open等权并排。
+主区先“当前选中应用是否可用”和Open，再资源条件、配置生效版本、套餐和完整周期。应用来源明确区分“OPL App / RuntimeRelease”与“Agent / CapabilityVersion”；默认路径不显示虚构的Package/Build记录，也不标作历史裸资源。更新、调整、续费不挤在同一个危险操作菜单。删除有自己的分区和独立确认，不与Open等权并排。
 
 模型设置显示目标版本与已应用版本。保存成功但reload未确认时保留“配置应用中”；旧版本指针不证明旧应用仍可访问。
 
@@ -109,7 +122,9 @@ Tenant页面把访问状态与子Workspace恢复/删除状态并列：重新启�
 | 交互 | 确定行为 |
 |---|---|
 | 未提交表单离开 | 非敏感草稿允许保留；清楚说明未提交。危险确认和Key值不保留 |
-| 刷新已受理操作 | 只根据owner+operationId恢复GET，不再发业务写入 |
+| 刷新已受理操作 | 只根据ownerOperation的owner+operationId恢复GET并读回所需receipt，不再发业务写入 |
+| 写响应丢失 | 已知operationId则GET；初次响应丢失且ID未知时，仅对证明持久幂等的原接受端点用同key同body取回原身份。换key重做或下游盲重发禁止；无法保证时显示unknown |
+| 证据尚未确认 | UI经BFF/所属Owner读取对象授权的receipt结果投影（待W01贯通），不调用platform_admin收据端点；所属Owner恢复证据写入，不让用户再次购买、部署或Build来补证据 |
 | 报价过期/输入变化 | 清除原quote与两个同意控件，重新报价后重新确认 |
 | 异步轮询 | 202与非终态GET的Retry-After秒值必须和pollAfterSeconds相同；一次只有一个在途GET；终态两者缺省并停轮询 |
 | 429/503 | 使用明确Retry-After，不转WebSocket、不固定2秒兜底；未知写入结果仍保留原幂等身份 |
@@ -135,20 +150,20 @@ Tenant页面把访问状态与子Workspace恢复/删除状态并列：重新启�
 
 原生dialog提供模态焦点限制；Escape关闭未提交确认，焦点回触发按钮。提交后重读页面让焦点落在操作结果标题。步骤切换将焦点移到新标题，错误聚焦具体字段；颜色不是唯一状态标记。
 
-## 6. 17功能到可点击原型的对应
+## 6. 17功能到原型入口的对应与待迁移差异
 
 | F | 原型入口 | 可走查的动作 |
 |---|---|---|
 | F01 | #login、#settings、#admin-tenants | 示例登录/退出、邀请/角色/移除、Tenant开通与账单绑定确认 |
 | F02 | #agents、#settings | 搜索/范围、分组、官方/私有标签、创建/归档确认 |
-| F03 | #admin-catalog、#admin-pricing | 发布者空间、Runtime/WebUI契约、默认策略、资源/组合价表单 |
-| F04 | #upload | 三步上传、使用示例包、独立验证与构建确认 |
-| F05 | #build | 当前阶段、日志展开、失败与成功fixture切换 |
+| F03 | #admin-catalog、#admin-pricing | 既有目录/政策表单；待验证三输入及默认策略不能覆盖显式选择的语义 |
+| F04 | #upload | 既有三步上传；待接精确Runtime/独立WebUI选择及缺任一输入禁提交 |
+| F05 | #build | 既有阶段/日志fixture；待迁移精确输入分支和artifact receipt读回 |
 | F06 | #agent-detail | 版本来源、部署入口、归档与引用阻止下架 |
-| F07 | #deploy | 四步、返回、报价失效/重新检查、手动/自动续费确认 |
-| F08 | #deploy结果步 | 原操作阶段、unknown、显式推进示例，不联网 |
-| F09 | #workspaces、#workspace | 列表搜索、Open准入说明、模型目标/应用版本 |
-| F10 | #workspace部署历史 | 版本更新与回滚兼容确认 |
+| F07 | #deploy | 既有四步、报价/续费交互；待迁移默认OPL App/自选Agent及一次确认应用+套餐 |
+| F08 | #deploy结果步 | 既有原操作/unknown示例；待迁移两分支共用ownerOperation/receipt读回及丢响应不重发，不联网 |
+| F09 | #workspaces、#workspace | 既有搜索/Open/模型版本；待迁移OPL App与Agent来源展示和共用访问链 |
+| F10 | #workspace部署历史 | 既有版本/回滚确认；opl_app精确RuntimeRelease更新输入待W01贯通 |
 | F11 | #workspace → 套餐变更 | 半期20→40补10，原E不变；下期降配预约、取消、边界授权/目标付款和真实生效分开 |
 | F12 | #billing、#workspace账单 | 完整周期、续费确认、续费模式及原单状态 |
 | F13 | #workspace危险操作、#billing | 名称+影响确认、资源删除/退款分栏 |
@@ -157,13 +172,13 @@ Tenant页面把访问状态与子Workspace恢复/删除状态并列：重新启�
 | F16 | #adopt | 原资源采用Agent，不出现购买/扣费步骤；独立草稿 |
 | F17 | #admin-operations、#admin-qualification | 原操作核对、审计与四层证据分开 |
 
-此覆盖说明原型里能够审阅哪些交互，不等于所有后端动作已实现。真实API/字段/权限仍以03和`contracts/ui_inventory.json`为准；每F的业务流程、草稿、错误和移动行为见04。
+此表区分既有原型可审阅内容与2026-09-29待迁移交互，不把新规格当成原型已实现。既有API/字段/权限见03和`contracts/ui_inventory.json`；新增选择、快照和原请求幂等回读须按03/14的W01贯通，不能把设计术语当现有可发送DTO。每F的业务流程、草稿、错误和移动行为见04。
 
-## 7. 本轮验证范围
+## 7. 既有离线原型验证范围（非2026-09-29新交互证据）
 
-采用本机隔离agent-browser会话检查离线文件。验证项目为：页面路由可达、按钮/对话框/步骤可点击、create/adopt草稿隔离、报价过期阻止提交、危险确认校验、模态关闭、普通/平台权限切换、无横向页面溢出和无HTTP网络请求。
+此前采用本机隔离agent-browser会话检查离线文件；本轮只修改设计文档，不重跑或覆盖这些记录。既有验证项目为：页面路由可达、按钮/对话框/步骤可点击、create/adopt草稿隔离、报价过期阻止提交、危险确认校验、模态关闭、普通/平台权限切换、无横向页面溢出和无HTTP网络请求。
 
-实际结果已记录在checks/ui_prototype_verification.json；不得用原型通过替代React实现、真实Owner合同调用、扣费资源动作或Instance资格验收。
+既有结果记录在checks/ui_prototype_verification.json，效力仅限其原sourceHashes；本设计修改后不能宣称该文件已经绑定本轮字节。不得用原型通过替代React实现、真实Owner合同调用、扣费资源动作或Instance资格验收。
 
 ## 8. 上一轮不受影响页面的基线（保留原哈希）
 
@@ -196,14 +211,24 @@ CBS原盘缩容、混合升降、相同配置no-op、未经批准转换在报价
 
 灰色“模拟边界/原单确认/资源确认/Runtime确认”按钮仅用于离线fixture，生产不提供手改状态API；示例view state不是可直接发送的API DTO。真实字段、状态、窗口与控制条件由03和13唯一约束。
 
-本轮只回归受影响F11及关联续费/删除、窄屏；此前无关页面的测试保留其原哈希证据，不宣称在新字节上重新执行。新截图plan-upgrade.png/plan-downgrade.png及补充状态图、可重放脚本和当前sourceHashes记录在checks/ui_prototype_verification.json。
+此前D17轮次只回归受影响F11及关联续费/删除、窄屏；此前无关页面的测试保留其原哈希证据，不宣称在新字节上重新执行。该轮截图plan-upgrade.png/plan-downgrade.png及补充状态图、可重放脚本和当时sourceHashes记录在checks/ui_prototype_verification.json。
 
-## 10. D17当前回归与金额精度
+## 10. D17既有回归与金额精度
 
-本轮按最终13政策只回归F11及相关F12/F13，不重新设计其余页面。40项固定时钟交互/数值断言、390px和320px下18项受影响布局检查通过。原始基线仍绑定旧字节，不能把旧截图称为新版本全量验收。
+此前D17轮次按最终13政策只回归F11及相关F12/F13，不代表本轮新应用选择已测试。40项固定时钟交互/数值断言、390px和320px下18项受影响布局检查通过。原始基线仍绑定旧字节，不能把旧截图称为新版本全量验收。
 
 付款确认使用API返回的USDMicros十进制字符串，BigInt显示至少2位、最多6位小数：19354839微美元必须显示US$19.354839，不能仅显示19.35却扣取更高精确金额。31天示例20→50、剩20/31周期的只读核对也包含在升级报价页。真实UI不从JavaScript Date重建计费基准或金额；API的UnixMilli来源和金融快照摘要仅作技术溯源。
 
-当前截图：ui-prototype/screenshots/plan-upgrade.png、plan-downgrade.png、plan-failure.png、plan-boundary-mobile.png。分别覆盖精确升级报价、下期预约未生效、已确定失败与不可逆资源/退款分开、原E边界手动等待目标价付款。
+既有D17截图：ui-prototype/screenshots/plan-upgrade.png、plan-downgrade.png、plan-failure.png、plan-boundary-mobile.png。分别覆盖精确升级报价、下期预约未生效、已确定失败与不可逆资源/退款分开、原E边界手动等待目标价付款。
 
-可重放脚本、逐项结果、当前HTML/API/UI清单/本设计/13政策哈希和截图哈希都保存在checks/ui_prototype_verification.json；remainingBusinessDecision为空。D17用户决定已accepted，仍不表示真实采购、扣退款、provider执行或Instance资格已经通过。
+该轮可重放脚本、逐项结果、当时HTML/API/UI清单/本设计/13政策哈希和截图哈希保存在checks/ui_prototype_verification.json；记录中的remainingBusinessDecision为空不表示本轮W01合同迁移已完成。D17用户决定已accepted，仍不表示真实采购、扣退款、provider执行或Instance资格已经通过。
+
+## 11. 2026-09-29交付验收：以tencent-tke为主
+
+以下是12/14所列后续实现的验收要求，不是本轮已通过的测试记录；不新增服务，不访问生产，不修改既有原型证据或机器清单。
+
+- **默认新建**：在真实React页面不选Agent/独立WebUI，仍能看清获准OPL App版本、native WebUI、套餐与费用，一次确认后后台部署；无Package/Build前置和伪历史。最终打开Serve当前应用，而非仅见资源ready。
+- **自选Agent**：上传Package并选择精确Runtime和独立WebUI，三项输入穿过Build、CapabilityVersion、报价和部署；Runtime策略更新不能覆盖选择。服务端拒绝缺Package或独立WebUI的半选组合，UI说明与错误可聚焦。
+- **异步与丢响应**：提交后返回、刷新、网络中断及后端重启均定位同一ownerOperation/receipt，已知Operation后不重发create；初次响应丢失按04的持久幂等接受端点取回原身份，不再次扣费/采购/构建。unknown、资源已ready但应用不可用、receipt未确认分别展示；Operation终态不代替所需事实和证据。
+- **TKE真实终点**：在批准`tencent-tke` profile/套餐下读回精确OCI、资源与持久数据、Serve readiness/access、凭据注入和实际WebUI响应，并与原应用选择及receipt一致。三输入Agent Build产物和默认RuntimeRelease直部署两种组合都要覆盖；Local-Docker通过不替代TKE通过。
+- **证据与权限**：Cloud合同/组件/集成检查只证明其层次；Instance验收由`opl-instance-medopl`保护流程提供绑定同一Candidate SHA/digest的receipt和真实读回。普通本地/E2E不得访问生产私网、采购/删除真实CVM/CBS或扣真实费用。新交互桌面/窄屏、焦点、默认与自选分支截图须在实现后独立取证，不挪用旧截图。

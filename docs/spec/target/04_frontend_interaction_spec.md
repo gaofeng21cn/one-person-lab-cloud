@@ -1,6 +1,6 @@
 # 04 前端功能与交互交接
 
-> 这是前端工程规格，UI布局/可点击原型见11。接口/DTO唯一权威为03；完整字段、输入约束、来源与协议消费在`contracts/ui_inventory.json`。本文件不再复制长int64正则，也不把全部技术DTO塞进客户页面。
+> 这是前端工程规格，UI布局/可点击原型见11。已落规格的接口/DTO权威为03，机读映射在`contracts/ui_inventory.json`；它们不等于运行时支持证明。下述应用/WebUI选择为**2026-09-29已采用、待W01贯通的合同迁移**，产品决定见[12](12_product_spec.md)，迁移与验收见[14](14_implementation_work_packages.md)。03已经记录批准的迁移义务；SQL/proto及真实消费者未贯通前不能声称当前API接受新字段。本文件不复制长int64正则，也不把全部技术DTO塞进客户页面。
 
 ## 1. 框架、导航与真实来源
 
@@ -10,16 +10,29 @@
 
 身份、角色、价格、provider和执行结果取Owner DTO；内部ID不因存在于API就成为普通客户主任务。金额为JSON十进制字符串，BigInt定点显示；所有完整金额/周期可读，精确范围直接引用03 USDMicros/NonnegativeInt64。时间UTC RFC3339按本地时区显示。
 
+### 1.1 应用选择与合同迁移边界
+
+本期主攻`tencent-tke`。新Workspace在同一向导确认应用与套餐后由后台自动购买并部署，不选Package也不选独立WebUI即采用已获准的OPL App及其发布者声明的内置UI。默认不是`resource_only`，也不是自选失败后的fallback。产品选择由12统一定义，04仅投影到页面：
+
+| 产品组合 | 页面默认与精确输入 | 执行归属 |
+|---|---|---|
+| 不选Package且不选独立WebUI | 默认“OPL App（内置界面）”；确认前解析并展示获准精确RuntimeRelease，使用`WorkspaceApplicationSelection = opl_app(runtimeVersionId)` | 直接部署该RuntimeRelease的不可变OCI及其内置UI；不创建Package、BuildJob或伪CapabilityVersion |
+| Package + 精确Runtime + 独立approved WebUI | agent制作页选择已验证`packageVersionId`、获准`runtimeVersionId`与获准独立`webuiVersionId`，三项均为显式精确输入 | Build生成不可变CapabilityVersion；新建Workspace选择`agent(capabilityVersionId)` |
+
+本次严格只有这两种组合，没有第三种。`WorkspaceApplicationSelection`与Build三输入的具体字段封装、判别类型由03定义、消费者迁移由14的W01统一贯通，不在本文件发明可发送JSON。非法半选组合——只选Package不选独立WebUI、只选独立WebUI不选Package、在默认App上叠加独立WebUI——在UI禁用且服务端明确拒绝：不自动补Package、不自动补独立WebUI、不静默忽略选择、不降为默认、也不给Agent路径保留Runtime内置UI。
+
+默认与agent分支共用Workspace报价/购买/资源权益、Fabric资源交付、Serve运行/readiness/access与Ledger证据链。Console/BFF只聚合Owner读回，不增加独立默认部署服务；Serve保有当前部署与访问权威。F04–F06的Package/Build要求只适用于agent制作分支，不是F07–F09默认新建的前置门槛。历史`legacy_resource_only`仍仅按F16处理。
+
 ## 2. 共用交互契约
 
 | 情形 | 前端必须做 | 不得做 |
 |---|---|---|
 | 表单未提交 | 仅保存非敏感意图草稿；明确未提交 | 保存密码、Key、签名URL或危险确认 |
 | 报价选择/版本变化 | 丢弃旧quote及勾选同意，重新检查后重新确认 | 复用旧价格、默认补差、静默同意 |
-| 写响应丢失 | 同key同规范化body取回原身份 | 换key重做扣费/采购/退款 |
-| 202已接受 | 绑定owner+operationId，展示已受理 | 视为部署成功、已删除或已退款 |
+| 写响应丢失 | 保留原key和完全相同请求。已有operationId则GET；未收到ID仅可在已证明持久幂等的原接受端点用同key同body取回原响应，不创建新意图 | 换key重购/重Build，或对不具备持久幂等的下游盲重发 |
+| 202已接受 | 绑定ownerOperation的owner+operationId，展示已受理 | 视为部署成功、已删除或已退款 |
 | 非终态Operation | 严格按pollAfterSeconds/Retry-After相同秒值查询，一次一个GET | 固定间隔、自选指数兜底、转WebSocket |
-| 终态succeeded/failed/cancelled | 停轮询，重新读取各业务事实 | 把一个操作终态覆盖独立资源/钱包结果 |
+| 终态succeeded/failed/cancelled | 停Operation轮询，按原对象读回业务事实与所需receipt；证据缺失仍显示待核实 | 把一个操作终态覆盖独立资源/钱包结果 |
 | 429/503 | 遵守明确Retry-After；保留原命令身份 | 高频轮询或创建第二命令 |
 | 刷新/返回 | GET原任务/Operation；create与adopt草稿隔离 | 重新发出购买/删除或取消后端任务 |
 | 部分读取失败 | 只标不可用区域，保留其他已验证来源 | 0余额、空列表、假ready替代失败 |
@@ -27,11 +40,13 @@
 | 目录下架 | 明确tombstone，不再可新部署 | 宣称物理OCI字节已清理 |
 | Tenant恢复 | reenable原停用与restore已删除分开；逐项子操作 | Tenant active即全部应用可用、复活已删资源 |
 
+`ownerOperation`指所属Owner的持久操作引用，不是新全局工作流。客户页面仅通过BFF/所属Owner读取本Tenant、本对象授权的receipt结果投影；03现有getReceipt/listReceipts是platform_admin端点，不得直接供F05/F08调用或为此扩大权限，W01须贯通客户证据投影。浏览器已知operationId时刷新/返回只GET；后端任务独立继续。初次接受响应丢失且ID未知时，原端点必须以持久唯一键+请求hash支持同key同body取回原已接受响应；这不是新的购买/构建意图，更不授权下游重复扣款。若接口尚不具备该保证，标unknown并先在拥有方补齐，不假定存在新的只读lookup端点或用换key补缺。receipt缺失只由所属Owner恢复证据写入，UI重读证据，不重做业务副作用。
+
 needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示；外部unknown不是failed。D17按13的已批准规则；原型示例金额不是实际Catalog定价。没有3秒自动跳转或固定完成时间。
 
 ## 3. 逐功能页面与控件
 
-字段唯一来源为03，完整机读映射在ui_inventory。F11按已批准的13政策，只展示Catalog返回的计费结果。
+未变更字段来源为03，完整既有机读映射在ui_inventory；涉及§1.1的新选择与ownerOperation定位必须按12/14的W01迁移，不以旧清单覆盖最新产品决定。F11按已批准的13政策，只展示Catalog返回的计费结果。
 
 ### F01 登录、Tenant与成员权限
 
@@ -107,7 +122,7 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 |---|---|
 | 布局/优先级 | 平台/运行底座与界面含Runtime、WebUI、发布者空间三个tab；默认构建策略是Runtime页独立卡。平台/资源与价格政策按计算、存储、价格、退款、保留分区。 |
 | 控件/标注 | 选择PublisherNamespace、不可变完整镜像引用、发布契约结构化字段和可展开完整JSON；显示schema校验错误。第三方必须独立third_party前缀。资源计划先规格，组合价格再选择两侧plan。 |
-| 步骤/业务链 | 先创建/核对发布者空间，准入版本，再选择默认构建策略；弃用/撤销需展示在用影响且不自动更新实例。默认策略带expectedPolicyVersionId，只影响新Build。中途变更使用已批准workspace-plan-change-v1，不接受自定义公式；实际资源价格仍来自批准目录。 |
+| 步骤/业务链 | 先创建/核对发布者空间，准入版本，再选择默认构建策略；弃用/撤销需展示在用影响且不自动更新实例。默认策略带expectedPolicyVersionId，只为尚未选择的新Build提供候选，不能覆盖用户显式runtimeVersionId或WebUI selection，也不能改已确认输入。中途变更使用已批准workspace-plan-change-v1，不接受自定义公式；实际资源价格仍来自批准目录。 |
 | 返回/草稿/刷新 | 技术契约可保存当前标签页的非敏感草稿；离开前说明未提交。只保存引用不存Registry凭据。恢复后重读发布者状态/政策版本，失效选择需重新准入。 |
 | 失败/权限/不可用 | 缺发布者权限/仓库前缀不匹配给字段错误；目录已撤销禁止新选择。组合未定价只显示规格，“选择完整套餐后报价”，不显示最低价或0。 |
 | 窄屏/焦点 | 技术参数分组折叠，错误摘要链接具体字段；JSON编辑区横向仅自身滚动，不撑开页面。危险动作独立确认，焦点先放标题/影响。 |
@@ -127,13 +142,13 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 | 新增价格版本 | `createPricePolicyVersion` / `CreatePricePolicyRequest` | `CreatePricePolicyRequest.versionLabel`、`CreatePricePolicyRequest.periodMonths`、`CreatePricePolicyRequest.computeMonthlyUSDMicros`、`CreatePricePolicyRequest.storageMonthlyUSDMicros`、`CreatePricePolicyRequest.productMonthlyUSDMicros`、`CreatePricePolicyRequest.validFrom`、`CreatePricePolicyRequest.validUntil`、`CreatePricePolicyRequest.computePlanId`、`CreatePricePolicyRequest.storagePlanId`、`CreatePricePolicyRequest.renewalPolicy`、`CreatePricePolicyRequest.planChangePolicyVersion`；权限 platform_admin；绑定确切computePlanId+storagePlanId；整数金额/周期/有效期合法且无重叠，只追加版本 |
 | 新增退款政策版本 | `createRefundPolicyVersion` / `CreateRefundPolicyRequest` | `CreateRefundPolicyRequest.versionLabel`、`CreateRefundPolicyRequest.algorithm`、`CreateRefundPolicyRequest.retentionPolicyVersionId`、`CreateRefundPolicyRequest.customerTerms`、`CreateRefundPolicyRequest.validFrom`、`CreateRefundPolicyRequest.validUntil`；权限 platform_admin；算法与保留策略绑定，有明确customerTerms和有效期 |
 | 新增保留政策版本 | `createRetentionPolicyVersion` / `CreateRetentionPolicyRequest` | `CreateRetentionPolicyRequest.versionLabel`、`CreateRetentionPolicyRequest.customerTerms`；权限 platform_admin；规则由批准契约固定；不在表单放任意保留天数 |
-| 设定新构建的默认底座与界面 | `setBuildRuntimePolicy` / `SetBuildRuntimePolicyRequest` | `SetBuildRuntimePolicyRequest.runtimeVersionId`、`SetBuildRuntimePolicyRequest.defaultWebuiVersionId`、`SetBuildRuntimePolicyRequest.expectedPolicyVersionId`；权限 platform_admin；只选approved兼容Runtime/WebUI；已有策略必须匹配expectedPolicyVersionId，新策略只影响新Build，不改历史输入或已有Workspace |
+| 设定新构建的默认底座与界面 | `setBuildRuntimePolicy` / `SetBuildRuntimePolicyRequest` | `SetBuildRuntimePolicyRequest.runtimeVersionId`、`SetBuildRuntimePolicyRequest.defaultWebuiVersionId`、`SetBuildRuntimePolicyRequest.expectedPolicyVersionId`；权限 platform_admin；只选approved兼容Runtime/WebUI；已有策略必须匹配expectedPolicyVersionId。策略仅提供尚未选择时的候选，不能覆盖用户显式选择或改写已冻结的三输入；目录策略与真实消费者仍须按W01验证一致，不改历史输入或已有Workspace |
 | 新增发布者空间 | `createPublisherNamespace` / `CreatePublisherNamespaceRequest` | `CreatePublisherNamespaceRequest.name`、`CreatePublisherNamespaceRequest.kind`、`CreatePublisherNamespaceRequest.registryId`、`CreatePublisherNamespaceRequest.repositoryPrefix`、`CreatePublisherNamespaceRequest.admissionReceiptId`；权限 platform_admin；批准Registry、完整仓库前缀、official/third_party类型及准入receipt；按路径段校验，不使用模糊前缀 |
 | 撤销发布者空间准入 | `revokePublisherNamespace` / `RevokePublisherNamespaceRequest` | `RevokePublisherNamespaceRequest.reason`；权限 platform_admin；核对在用影响并说明reason；阻止新准入，不静默删已有镜像/资源 |
 
 成功：客户目录呈现已批准且兼容的版本和套餐，管理员可读回批准记录及不可变标识。
 
-失败：目录缺失/失效时明确不可选择，不内置默认runtime、provider或价格。
+失败：目录缺失/失效时明确不可选择，不硬编码Runtime、provider或价格；获准OPL App默认来自Owner目录，目录不可用就阻止提交，不静默换版本。
 
 重复/越权/重启按机读本F的具体场景验证。
 
@@ -144,25 +159,25 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 
 | 交接面 | 确定行为 |
 |---|---|
-| 布局/优先级 | 上传向导三步：选择包与版本→上传并验证→确认构建。右侧摘要区显示目标包/版本/已确认字节与所选WebUI；不混入部署报价。 |
-| 控件/标注 | 文件选择/拖放、版本输入、已有Package和分组选择、上传暂停/继续、批准WebUI选择。文件扩展/大小限制服从owner政策，UI不自设500MB。 |
+| 布局/优先级 | 上传向导三步：选择包与版本→上传并验证→确认构建。右侧摘要区显示目标包/版本/已确认字节、精确Runtime及WebUI selection；不混入部署报价。 |
+| 控件/标注 | 文件选择/拖放、版本输入、已有Package和分组选择、上传暂停/继续、批准RuntimeRelease选择、必选获准独立WebUI及确切版本。文件扩展/大小限制服从owner政策，UI不自设500MB。 |
 | 步骤/业务链 | createUpload→逐part获取签名授权→仅字节直传Storage→getUpload确认分片→completeUpload取得Operation→getPackageVersion确认uploaded→用户显式createBuild。上传100%不等于verified；没有3秒自动跳转。 |
 | 返回/草稿/刷新 | 保留非敏感uploadId、packageVersionId、已选文件元信息；签名URL/授权头不保存。刷新要求用户重新选同一原文件，按原part身份与摘要核对；只补缺失片，不新建成功版本。 |
 | 失败/权限/不可用 | 网络中断不猜分片存在；先读回。签名过期可重取原part授权，session过期按owner继续原未完成身份的协议。校验失败不可覆盖已确认内容。 |
 | 窄屏/焦点 | 文件区与表单单列；长文件名换行，传输/验证分别有标签。步间标题获得焦点，错误聚焦字段；返回不丢已确认上传身份。 |
 
-数据来源：`listNamespaces`、`getPackage`、`listWebuiVersions`、`createUpload`、`getUpload`、`completeUpload`、`listPackageVersions`、`getPackageVersion`、`createBuild`、`createUploadPart`、`getOperation`、`createPackage`
+数据来源：`listNamespaces`、`getPackage`、`listRuntimeVersions`、`listWebuiVersions`、`createUpload`、`getUpload`、`completeUpload`、`listPackageVersions`、`getPackageVersion`、`createBuild`、`createUploadPart`、`getOperation`、`createPackage`
 
 | 动作 | API / 请求schema | 输入与条件 |
 |---|---|---|
 | 开始上传 | `createUpload` / `CreateUploadRequest` | `CreateUploadRequest.versionLabel`、`CreateUploadRequest.fileName`、`CreateUploadRequest.sizeBytes`、`CreateUploadRequest.sha256`；权限 admin/owner；Package可写、版本未重复且文件元信息合法 |
 | 获取分片上传授权 | `createUploadPart` / `CreateUploadPartRequest` | `CreateUploadPartRequest.partNumber`、`CreateUploadPartRequest.sizeBytes`、`CreateUploadPartRequest.sha256`；权限 admin/owner；partNumber/sizeBytes/sha256与会话限制匹配；使用返回method/contentType/校验头直传，不附加BFF cookie或token |
 | 验证上传 | `completeUpload` / `CompleteUploadRequest` | `CompleteUploadRequest.parts`；权限 admin/owner；全部分片已确认；提交parts后202只表示验证已受理，GET Operation成功且PackageVersion uploaded才通过 |
-| 确认构建 | `createBuild` / `CreateBuildRequest` | `CreateBuildRequest.packageVersionId`、`CreateBuildRequest.webuiVersionId`；权限 admin/owner；PackageVersion uploaded且WebUI选择有效 |
+| 确认构建 | `createBuild` / `CreateBuildRequest` | 精确`packageVersionId`、`runtimeVersionId`、`webuiVersionId`三项均必需，沿用03现行三输入合同；权限admin/owner，PackageVersion uploaded、Runtime获准且组合兼容 |
 
 成功：先看到“上传已验证”，确认构建后看到独立任务ID和“查看构建进度”按钮。
 
-失败：摘要/包校验失败保留具体字段错误；修正文件需新上传会话。上传成功但构建创建失败保留已上传版本，可重新提交原构建意图。
+失败：摘要/包校验失败保留具体字段错误；修正文件需新上传会话。上传成功但构建创建被明确拒绝时保留已上传版本，修正后由用户重新确认；受理结果未知按第2节取回原Job/Operation，再只读进度；不创建新的Build意图。
 
 重复/越权/重启按机读本F的具体场景验证。
 
@@ -175,12 +190,12 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 |---|---|
 | 布局/优先级 | 智能体/构建记录列任务、输入版本、当前状态、创建时间；详情左侧阶段，右侧固定输入；日志默认收起，状态与下一步高于技术日志。 |
 | 控件/标注 | 查看原Operation、展开/分页日志；只有BuildJob.retryAllowed=true才出现重试。构建成功后显示部署按钮，不自动导航。 |
-| 步骤/业务链 | getBuild定位Operation；非终态只getOperation轮询；终态再读Build和CapabilityVersion。pushing完成不等于ready登记完成。重试新job关联原job，输入错误应上传新版本。 |
+| 步骤/业务链 | getBuild定位Operation；非终态只getOperation轮询；终态再读Build、CapabilityVersion与artifact receipt，核对冻结的Runtime/WebUI selection与输出digest。pushing完成不等于ready登记完成。重试新job关联原job，输入错误应上传新版本。 |
 | 返回/草稿/刷新 | 只保存job/operation身份，不保存日志或Secret；刷新继续原记录。离页停止页面GET但不停止后端构建。 |
 | 失败/权限/不可用 | 日志读取失败不判任务失败；needs_attention显示原外部结果核对。failed明确可修正的包/契约原因，不承诺退配额。 |
 | 窄屏/焦点 | 阶段纵向排列；日志内部滚动，收起时焦点回日志按钮。成功入口与失败修正入口保持在状态标题附近。 |
 
-数据来源：`listBuilds`、`getBuild`、`listBuildLogs`、`retryBuild`、`getOperation`、`getCapabilityVersion`、`createBuild`
+数据来源：`listBuilds`、`getBuild`、`listBuildLogs`、`retryBuild`、`getOperation`、`getCapabilityVersion`、`createBuild`；artifact receipt使用W01待贯通的对象授权投影，不调用平台管理员收据端点。
 
 | 动作 | API / 请求schema | 输入与条件 |
 |---|---|---|
@@ -220,16 +235,16 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 
 重复/越权/重启按机读本F的具体场景验证。
 
-### F07 部署选择、准入与报价
+### F07 新建Workspace：应用默认、套餐、准入与报价
 
 页面：`/console/workspaces/new` 部署选择与报价
 原型：`#deploy`
 
 | 交接面 | 确定行为 |
 |---|---|
-| 布局/优先级 | 部署向导四步：Agent→套餐/模型/续费方式→确切报价与条款→操作结果。桌面右侧当前选择摘要，窄屏摘要在步骤内容之后、主确认之前。 |
-| 控件/标注 | 已批准版本radio，计算radio卡，存储和模型select，名称输入；renewalMode默认manual但提交必填。automatic需要独立未勾选的明确同意。 |
-| 步骤/业务链 | 步骤1/2只编辑意图；进入3获取新Quote。变更版本/套餐/模型/周期/续费设置、返回编辑或报价过期，都废弃旧quote和确认checkbox。重新报价后必须重新同意，不自动提交。新报价周期固定1个月。 |
+| 布局/优先级 | 新建向导四步：应用（默认OPL App，可自选Agent）→套餐/模型/续费方式→应用+套餐确切报价与条款一次确认→后台部署结果。桌面右侧当前选择摘要，窄屏摘要在步骤内容之后、主确认之前。 |
+| 控件/标注 | 默认应用卡显示获准OPL App/native WebUI和确切Runtime版本；“自选Agent”展开已批准CapabilityVersion radio。无Package时独立WebUI控件显示“请先选择Package”；计算radio卡、存储和模型select、名称输入；renewalMode默认manual但提交必填。automatic需要独立未勾选的明确同意。 |
+| 步骤/业务链 | 步骤1/2只编辑意图，不购买、不要求创建默认Package/Build；进入3前解析精确application selection再获取新Quote。选择已有Agent时读取其已冻结Runtime/WebUI来源，不在部署页重配产物。变更版本/套餐/模型/周期/续费设置、返回编辑或报价过期，都废弃旧quote和确认checkbox。重新报价后必须重新同意，不自动提交。新报价周期固定1个月。 |
 | 返回/草稿/刷新 | 按Tenant+用户+create/adopt分开保留非敏感选择；不保存密码、Key、签名URL。恢复草稿重新读取目录/余额/报价；旧quote不直接恢复为有效。 |
 | 失败/权限/不可用 | 目录/余额/政策读取失败禁止付款确认但保留选择；余额不足展示权威required/available，没有自助支付API就提示联系管理员。价格与规则按批准Catalog真实报价；示例金额不作为生产价格。 |
 | 窄屏/焦点 | 每步单列，标题聚焦；radio整卡可点。关键费用/周期/退款保留条款不能折叠隐藏；确认按钮不被固定底栏遮挡。 |
@@ -238,10 +253,10 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 
 | 动作 | API / 请求schema | 输入与条件 |
 |---|---|---|
-| 检查并获取报价 | `createQuote` / `QuoteRequest` | `QuoteRequest.purpose`、`QuoteRequest.workspaceId`、`QuoteRequest.capabilityVersionId`、`QuoteRequest.computePlanId`、`QuoteRequest.storagePlanId`、`QuoteRequest.modelSelections`、`QuoteRequest.periodMonths`、`QuoteRequest.scheduledPlanChangeId`；权限 admin/owner；所选版本/套餐/模型完整且有效 |
+| 检查并获取报价 | `createQuote` / `QuoteRequest`（应用选择待W01迁移） | 新建purpose=deploy，不带workspaceId；绑定精确`WorkspaceApplicationSelection`、computePlanId、storagePlanId、modelSelections、periodMonths=1。opl_app分支固定runtimeVersionId，agent分支固定capabilityVersionId；不填假capabilityVersionId。03当前deploy仍要求capabilityVersionId，须由W01贯通Quote及接受快照后才能接线；权限admin/owner，组合/套餐/模型有效 |
 | 重新读取报价 | `getQuote` | 无body输入；对象和前置取当前Owner读回；权限 admin/owner；保留现有quoteId核对有效性，不重写快照 |
 
-成功：客户知道将部署的确切版本、承担的费用周期与数据政策，后续提交引用已接受报价。
+成功：客户知道默认OPL App或所选Agent的确切版本、承担的费用周期与数据政策；确认一次应用+套餐，后台自动完成部署，不要求购买后再选应用或第二次点安装。应用类型/版本改变必须失效旧报价，接受快照贯穿原操作且不再跟随目录默认。
 
 失败：余额不足显示本次报价与权威余额，提示“请联系管理员充值后重新检查”；无自助支付接口不显示“立即付款”。
 
@@ -256,16 +271,16 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 |---|---|
 | 布局/优先级 | 结果页先操作是否受理/真实当前stage/下一步；下方分别展示扣费、资源、应用和Receipt事实，不能合成一个running灯。 |
 | 控件/标注 | 查看原操作、返回列表、在明确成功后打开当前环境；不提供“重新创建”来绕过unknown。示例原型的阶段推进按钮不进入生产组件。 |
-| 步骤/业务链 | createWorkspace202后绑定owner+operationId；轮询严格按Operation.pollAfterSeconds和Retry-After，成功后读Workspace/Deployment/账务。应用和凭据验证及所需证据都确认后可打开。 |
-| 返回/草稿/刷新 | 接受后草稿只持久保存原Operation定位，不再次发送创建；响应丢失保留原key+同body取回原身份。新建与历史adopt的草稿及操作分开，防止混用购买流程。 |
-| 失败/权限/不可用 | unknown/needs_attention明确等待核实，不自动补偿或退款。resources ready但app unavailable可同时出现。Receipt写入未确认只恢复那一写入。 |
+| 步骤/业务链 | createWorkspace202后绑定ownerOperation（owner+operationId）；默认与agent共用Workspace购买→Fabric资源→Serve运行与访问链。轮询严格按Operation.pollAfterSeconds和Retry-After，终态读Workspace/Deployment/账务及所需receipt，核对应用选择与不可变OCI。应用和凭据验证及所需证据都确认后可打开。 |
+| 返回/草稿/刷新 | 接受后草稿只持久保存原Operation定位，不再次发送创建；初次响应丢失保留原key及完全相同body，按第2节的持久幂等接受协议取回原身份；无法保证则显示unknown。新建与历史adopt的草稿及操作分开，防止混用购买流程。 |
+| 失败/权限/不可用 | unknown/needs_attention明确等待核实，不自动补偿或退款。resources ready但app unavailable可同时出现。Receipt写入未确认由Owner只恢复证据写入，UI只读核对；部署失败不能切到OPL App默认或resource_only假成功。 |
 | 窄屏/焦点 | 当前阶段和允许动作先于全部历史阶段；长ID按需披露/复制，不撑宽页面。离开、返回都回到同一操作。 |
 
-数据来源：`createWorkspace`、`getOperation`、`getWorkspace`、`getDeployment`、`listWorkspaceTransactions`
+数据来源：`createWorkspace`、`getOperation`、`getWorkspace`、`getDeployment`、`listWorkspaceTransactions`；原端点持久幂等响应回读和对象授权证据投影由W01贯通；不假称已有额外lookup API。
 
 | 动作 | API / 请求schema | 输入与条件 |
 |---|---|---|
-| 确认部署 | `createWorkspace` / `CreateWorkspaceRequest` | `CreateWorkspaceRequest.name`、`CreateWorkspaceRequest.quoteId`、`CreateWorkspaceRequest.renewalMode`、`CreateWorkspaceRequest.automaticRenewalConsent`；权限 admin/owner；有效quoteId、完整用户配置、显式确认价格/数据政策 |
+| 确认部署 | `createWorkspace` / `CreateWorkspaceRequest` | `CreateWorkspaceRequest.name`、`CreateWorkspaceRequest.quoteId`、`CreateWorkspaceRequest.renewalMode`、`CreateWorkspaceRequest.automaticRenewalConsent`；权限 admin/owner；有效quoteId及其精确应用选择快照、完整用户配置、一次显式确认应用/套餐/价格/数据政策；不再从最新Runtime策略重解析选择 |
 | 查看处理进度 | `getOperation` | 无body输入；对象和前置取当前Owner读回；权限 member；原owner+operationId；不重发createWorkspace |
 
 成功：扣费和资源/运行/Secret注入/证据都取得所需确认，客户主动点击打开。
@@ -302,7 +317,7 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 
 重复/越权/重启按机读本F的具体场景验证。
 
-### F10 Agent更新、Runtime重建与回滚
+### F10 应用更新、Runtime重建与回滚
 
 页面：`/console/workspaces/:workspaceId/update` 版本更新；`/console/workspaces/:workspaceId/deployments` 部署历史
 原型：`#workspace`
@@ -310,7 +325,7 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 | 交接面 | 确定行为 |
 |---|---|
 | 布局/优先级 | 从工作区详情进入更新表单：当前版本、目标版本、数据/可用性影响、确认。部署历史保留前驱关系，回滚入口挂在可恢复的历史部署上。 |
-| 控件/标注 | 批准Capability版本select、同版本重建选项（依API支持）、兼容性说明；expectedActiveDeploymentId自动取当前读回不让客户填写。 |
+| 控件/标注 | 按当前应用分支显示获准RuntimeRelease（opl_app）或CapabilityVersion（agent）select，同版本重建选项（依API支持）、兼容性说明；expectedActiveDeploymentId自动取当前读回不让客户填写。 |
 | 步骤/业务链 | 先检查目标兼容/资源/数据迁移；缺验证证据拒绝。明确确认后独立Deployment；只在路由/运行读回一致后显示切换。回滚是单独命令与确认，不是改DB指针。 已有scheduled目标时先验证拟版本/回滚与目标资源兼容；冲突在应用变更前拒绝，不能等下期扣款后才失败。 |
 | 返回/草稿/刷新 | 目标选择可临时保留；重开必须重读当前选中与版本。已接受操作恢复其原id；前驱变更使旧确认失效。 |
 | 失败/权限/不可用 | 不安全回滚显示ROLLBACK_UNSAFE并阻止动作；旧active指针保留不等于旧应用仍可访问。不能承诺自动回滚一定成功。 |
@@ -320,7 +335,7 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 
 | 动作 | API / 请求schema | 输入与条件 |
 |---|---|---|
-| 更新版本或重建 | `updateWorkspaceVersion` / `UpdateWorkspaceVersionRequest` | `UpdateWorkspaceVersionRequest.capabilityVersionId`、`UpdateWorkspaceVersionRequest.expectedActiveDeploymentId`；权限 admin/owner；目标已批准且兼容；无冲突操作；用户显式确认 |
+| 更新版本或重建 | `updateWorkspaceVersion` / `UpdateWorkspaceVersionRequest`（opl_app输入待W01迁移） | 现有capabilityVersionId仅对应agent；opl_app应选择精确runtimeVersionId而不创建假Build/CapabilityVersion，具体应用选择映射见12/14。两分支均校验expectedActiveDeploymentId、批准状态与兼容性；权限admin/owner，无冲突操作，用户显式确认；不自动跨分支替换 |
 | 回滚到所选部署 | `rollbackWorkspace` / `RollbackWorkspaceRequest` | `RollbackWorkspaceRequest.targetDeploymentId`、`RollbackWorkspaceRequest.expectedActiveDeploymentId`；权限 admin/owner；目标可恢复且数据兼容；再次确认影响 |
 
 成功：目标运行验证和选中绑定切换确认后显示新版本；回滚读回确认后才显示“已恢复到所选版本”。
@@ -347,7 +362,7 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 
 | 动作 | API / 请求schema | 输入与条件 |
 |---|---|---|
-| 计算调整报价 | `createQuote` / `QuoteRequest` | `QuoteRequest.purpose`、`QuoteRequest.workspaceId`、`QuoteRequest.capabilityVersionId`、`QuoteRequest.computePlanId`、`QuoteRequest.storagePlanId`、`QuoteRequest.modelSelections`、`QuoteRequest.periodMonths`、`QuoteRequest.scheduledPlanChangeId`；权限 admin/owner；报价用途为套餐调整且引用目标Workspace |
+| 计算调整报价 | `createQuote` / `QuoteRequest` | `QuoteRequest.purpose`、`QuoteRequest.workspaceId`、`QuoteRequest.capabilityVersionId`、`QuoteRequest.computePlanId`、`QuoteRequest.storagePlanId`、`QuoteRequest.modelSelections`、`QuoteRequest.periodMonths`、`QuoteRequest.scheduledPlanChangeId`；权限 admin/owner；报价用途为套餐调整且引用目标Workspace；capabilityVersionId仅用于agent分支，opl_app应用身份从Owner读回按W01合同贯通，不补假版本 |
 | 接受立即升级报价 / 保存下期降配计划 | `resizeWorkspace` / `ApplyQuoteRequest` | `ApplyQuoteRequest.quoteId`；权限 admin/owner；只提交quoteId；原计划与Subscription业务版本匹配。Operation.resourceId是PlanChange.id，受理不是applied；降配当期total=0只保存scheduled，不提前变更资源。 |
 | 取消尚未执行的下期计划 | `cancelPlanChange` / `CancelPlanChangeRequest` | `CancelPlanChangeRequest.expectedScheduleVersion`、`CancelPlanChangeRequest.reason`；权限 admin/owner；仅PlanChange.cancellable=true；expectedScheduleVersion和非空reason必填；下期资金义务accepted或资金/provider动作已发出后不可简单取消。重复命中原取消Operation。 |
 
@@ -375,7 +390,7 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 
 | 动作 | API / 请求schema | 输入与条件 |
 |---|---|---|
-| 获取续费报价 | `createQuote` / `QuoteRequest` | `QuoteRequest.purpose`、`QuoteRequest.workspaceId`、`QuoteRequest.capabilityVersionId`、`QuoteRequest.computePlanId`、`QuoteRequest.storagePlanId`、`QuoteRequest.modelSelections`、`QuoteRequest.periodMonths`、`QuoteRequest.scheduledPlanChangeId`；权限 admin/owner；引用Workspace与目标续费义务 |
+| 获取续费报价 | `createQuote` / `QuoteRequest` | `QuoteRequest.purpose`、`QuoteRequest.workspaceId`、`QuoteRequest.capabilityVersionId`、`QuoteRequest.computePlanId`、`QuoteRequest.storagePlanId`、`QuoteRequest.modelSelections`、`QuoteRequest.periodMonths`、`QuoteRequest.scheduledPlanChangeId`；权限 admin/owner；引用Workspace与目标续费义务；capabilityVersionId仅用于agent分支，opl_app应用身份按W01合同贯通，不补假版本 |
 | 确认续费 | `renewWorkspace` / `ApplyQuoteRequest` | `ApplyQuoteRequest.quoteId`；权限 admin/owner；有效报价、当前周期和生命周期允许 |
 | 设置后续续费方式 | `updateRenewalSettings` / `UpdateRenewalSettingsRequest` | `UpdateRenewalSettingsRequest.renewalMode`、`UpdateRenewalSettingsRequest.expectedRenewalSettingsVersion`、`UpdateRenewalSettingsRequest.automaticRenewalConsent`；权限 admin/owner；expectedRenewalSettingsVersion匹配；automatic需独立同意，manual不带consent字段；关闭只阻止未发出扣费的未来周期，不取消当前原单 |
 
@@ -530,4 +545,12 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 
 原型的桌面/窄屏布局和状态走查见11；实现必须继续进行真实React页面与Owner API集成验收。输入有label，错误可定位，状态aria-live；移动抽屉关闭时inert，dialog焦点可关闭/归还，长名称/金额/周期不产生整页横向滚动。只读查看不能触发高后果资源或资金动作。
 
-静态字段/operationId验证、离线可点击原型和截图分别证明自己的层次，不能宣称生产已采用，也不替代待批准的商业规则。
+静态字段/operationId验证、离线可点击原型和截图分别证明自己的层次，不能宣称生产已采用。2026-09-29产品选择已采用，不再作为待批准规则；旧03/inventory/原型尚未覆盖的新合同仍属W01迁移，旧截图不证明新交互通过。
+
+### 5.1 tencent-tke验收矩阵（待实施，不是本轮运行证据）
+
+- F07–F09默认路径：不选Package/独立WebUI即可确认获准OPL App+套餐；无Package/Build记录；RuntimeRelease不可变OCI、内置UI、Serve当前部署与可访问结果一致。
+- F04–F09自选路径：覆盖唯一Build形态Package+精确Runtime+独立approved WebUI三输入；三项精确版本穿过Build manifest、CapabilityVersion、Quote、部署、receipt及真实页面，不存在保留Runtime内置UI的Agent分支。
+- 非法/竞争：只选Package不选独立WebUI、只选独立WebUI不选Package、在默认App上叠加独立WebUI均在UI禁用、服务端拒绝；目录撤销、默认策略变化或报价失效不静默替换已选版本。
+- 丢响应/刷新/重启：原ownerOperation与receipt可定位；已知Operation后浏览器只读；首次响应丢失严格按第2节取回原身份，后端不重复构建、扣费或采购。资源ready、应用未ready、receipt未确认和unknown分别展示；两分支均经Serve实时访问准入，失败不fallback。
+- TKE证据须串起准确provider profile、批准套餐及预付月付原单、Fabric资源读回、所选OCI、Serve运行/路由/凭据验证、Ledger receipt与浏览器结果；不得用Local-Docker通过替代`tencent-tke`通过。采用同一Candidate SHA/digest的Instance资格由`opl-instance-medopl`受保护流程执行并出具证据，Cloud本地不访问生产，也不从普通E2E购买/删除真实CVM/CBS或执行真实收费。

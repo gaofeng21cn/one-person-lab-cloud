@@ -89,7 +89,7 @@ func (s *Service) ReadResources(ctx context.Context, r *api.ResourceReadbackRequ
 		return nil, persistenceError(err)
 	}
 	if observation == "confirmed" {
-		result, readErr := readLocalResult(ctx, tx, setID)
+		result, readErr := readResourceResult(ctx, tx, setID)
 		if readErr != nil || result.Binding == nil || result.Binding.AccountId == "" || result.Binding.ComputeAllocationId == "" || result.Binding.StorageVolumeId == "" || result.Binding.DataAttachmentId == "" || result.Binding.DataAttachmentOperationId == "" {
 			return nil, status.Error(codes.DataLoss, "confirmed resources lack provider execution evidence")
 		}

@@ -5,6 +5,93 @@ info:
   description: 2026-09-21目标规格，不是实现/上线证据。React业务API仅同源/api/v2；原始上传字节仅Capability签署Storage URL。内部typed gRPC+PostgreSQL Outbox/Inbox。JSON金额string，UTC
     RFC3339。不透明ID。写入CSRF+Origin+Idempotency-Key。Tenant role owner>=admin>=member；platform_admin独立权限，不由Tenant owner自动获得。对象越权404。
     R01–R10闭环修订；D17套餐变更政策已由用户批准，按固定policy-v1实现。
+# Approved target delta, NOT a claim that the current paths below accept these fields.
+# W01 must atomically move schemas, SQL/proto, generated clients and real callers.
+x-approved-wire-migration:
+  decision: 2026-09-29-default-opl-app-and-optional-agent
+  status: approved_pending_W01_consumer_migration
+  productOwner: 12_product_spec.md#11-明确的产品组合与默认行为2026-09-29采用
+  implementationTask: W01.application-contracts
+  currentBoundary: >-
+    Existing paths/components below are the current wire baseline. They still require
+    CapabilityVersion and separate WebUI in several places. They MUST NOT be used to
+    claim default-App support; no nullable-field fallback or fabricated Package is allowed.
+  targetSelections:
+    WorkspaceApplicationSelection:
+      description: Explicit immutable input selection, never a current-deployment pointer in Workspace.
+      oneOf:
+      - type: object
+        additionalProperties: false
+        required: [kind, runtimeVersionId]
+        properties:
+          kind: {type: string, enum: [opl_app]}
+          runtimeVersionId: {$ref: '#/components/schemas/OpaqueId'}
+      - type: object
+        additionalProperties: false
+        required: [kind, capabilityVersionId]
+        properties:
+          kind: {type: string, enum: [agent]}
+          capabilityVersionId: {$ref: '#/components/schemas/OpaqueId'}
+  affectedBoundaries:
+  - boundary: createQuote / Quote / AcceptQuote / ReadQuoteResourcePlan / CreateWorkspace
+    change: >-
+      Application selection is required after explicit default normalization before quote.
+      Quote freezes selection, artifact digest/platform and descriptor digest from its owner;
+      CreateWorkspace still consumes quoteId, not a caller-supplied replacement image/price.
+      Both kinds require runtimeReadbackRequirement=required; absent CapabilityVersion must
+      never imply not_applicable. Default changes after quote never alter accepted intent; admission rechecks approval
+      and refuses a revoked choice rather than substituting another release.
+  - boundary: CreateBuildRequest / BuildInputRequest / BuildInputSnapshot / BuildJob / CapabilityVersion
+    change: >-
+      Custom Agent creation retains the existing required packageVersionId, runtimeVersionId and
+      independent webuiVersionId. Resolve and freeze all three approved artifacts/contracts/claims
+      with the recipe before execution. Missing either Package or independent WebUI is rejected;
+      there is no Agent-with-built-in-UI mode. Default App does not call CreateBuild.
+  - boundary: DeploymentDescriptor / RuntimeReservationCommand / RuntimeDeployCommand / Deployment
+    change: >-
+      Add runtime_release provenance for default App, distinct from build and legacy_application.
+      Preserve the explicit application selection and exact artifact/descriptor across Reserve,
+      Deploy and reads. Default App has Runtime provenance and no Build/Package/CapabilityVersion;
+      built Agents retain real Build lineage. Serve remains the only current selection writer.
+  - boundary: Runtime release admission / PublisherContract / reference claims
+    change: >-
+      Runtime Control must prove the publisher-declared standalone App/native UI capabilities,
+      exact platform, entry, probes, data/Secret contracts and usable immutable descriptor.
+      Verify original stored contract/descriptor bytes and resolvable object references; a
+      re-serialization hash or synthesized string is not proof of immutable source bytes.
+      Reuse the existing runtime_version target of Capability claims through typed owner readback;
+      include Serve usage/commit evidence and the durable per-use admission/revocation ordering in
+      06 section 3.1, not a check-then-use approved read or cross-owner lock. Include retirement/delete fences without cross-owner SQL.
+      Native UI does not create a WebUI claim; default App does not create a Build receipt.
+  - boundary: updateWorkspaceVersion / rollback / model configuration / renew / resize / delete / migration
+    change: >-
+      Reads and replacement accept either source kind, retain the original purchase and data
+      obligations, and distinguish desired application from Serve current state. Runtime change
+      rebuilds a custom Agent but selects a release for default App. Neither silently changes
+      application mode, invents an old Build, or converts legacy_resource_only into default App.
+  - boundary: owner Operation / Gateway-Fabric-Serve readback / Ledger events and receipts
+    change: >-
+      Persist original command/effect keys and accepted input digest before external effects.
+      Use authenticated typed Outbox/Inbox and exact owner readback; receipt ACK loss reuses
+      the original evidence key and payload hash. Add or extend receipt types only in the
+      actual Ledger validator with producer/consumer tests. Per-poll reads need no new receipt.
+      Unknown effects and unconfirmed required evidence cannot become succeeded/qualified.
+      Customer progress reads only a tenant/object-authorized owner projection, not the
+      platform-admin Ledger list. Lost initial responses replay only the identical request
+      against a proven durable idempotent acceptance endpoint to recover its original identity.
+  - boundary: tenant repository binding and source package mapping
+    change: >-
+      Reconcile production TenantRepositoryBinding/GetTenantRepositoryBinding and owner_email
+      into the specification, plus the current api versus planned v226 package mapping, in W01.
+      Preserve real protocol consumers; do not rename imports or duplicate generated contracts
+      merely to make textual paths agree. Default App does not require a Build output repository.
+  acceptance:
+  - Application selection rejects mixed, missing and unknown discriminator inputs; CreateBuild requires all three real inputs.
+  - Default App quote-to-Serve works with no Package, BuildJob, CapabilityVersion or independent WebUI.
+  - Agent Build binds Package, Runtime and independent WebUI, with all three real claims and actual output bytes.
+  - Lost replies and restart retain original quote/order/resources/deployment/receipt identities.
+  - No current wire consumer is left on an incompatible schema; persisted history has a typed migration.
+  - Exact TKE use is separate from decoder/local proof; no production or publication claim from this delta.
 servers:
 - url: /
   description: Same-origin BFF, no instance domain hardcoding.
@@ -2701,7 +2788,8 @@ paths:
       - F13
       - F15
       - F17
-      x-owner: workspace
+      x-owner: bff
+      x-data-owner: resolved from the explicit owner route; BFF is not the operation writer
       x-permission:
       - member
       x-tables:
@@ -3537,7 +3625,8 @@ paths:
       - workspace
       x-feature-id:
       - F17
-      x-owner: workspace
+      x-owner: bff
+      x-data-owner: resolved from the explicit owner route; BFF is not the operation writer
       x-permission:
       - platform_admin
       x-tables:
@@ -3588,7 +3677,8 @@ paths:
       - workspace
       x-feature-id:
       - F17
-      x-owner: workspace
+      x-owner: bff
+      x-data-owner: resolved from the explicit owner route; BFF is not the operation writer
       x-permission:
       - platform_admin
       x-tables:
@@ -3836,7 +3926,7 @@ paths:
       x-feature-id:
       - F03
       - F07
-      x-owner: capability
+      x-owner: runtime_control
       x-permission:
       - member
       x-tables:
@@ -4054,7 +4144,7 @@ paths:
       - capability
       x-feature-id:
       - F03
-      x-owner: capability
+      x-owner: runtime_control
       x-permission:
       - platform_admin
       x-tables:
@@ -4101,7 +4191,7 @@ paths:
       - capability
       x-feature-id:
       - F03
-      x-owner: capability
+      x-owner: runtime_control
       x-permission:
       - platform_admin
       x-tables:
@@ -4771,7 +4861,7 @@ paths:
       - capability
       x-feature-id:
       - F03
-      x-owner: capability
+      x-owner: runtime_control
       x-permission:
       - platform_admin
       x-tables:
@@ -4808,7 +4898,7 @@ paths:
       - capability
       x-feature-id:
       - F03
-      x-owner: capability
+      x-owner: runtime_control
       x-permission:
       - platform_admin
       x-tables:

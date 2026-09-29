@@ -48,15 +48,22 @@ type AuthorizeFunc func(context.Context, *api.CallContext, api.AuthorizationActi
 type Service struct {
 	api.UnimplementedServeProductServiceServer
 	api.UnimplementedServeAgentCoordinationServer
+	api.UnimplementedServeRuntimeAdapterServer
+	api.UnimplementedServeAccessControlServer
 	api.UnimplementedOwnerCommitReadbackServer
 	api.UnimplementedClaimUsageReadbackServer
-	DB          *sql.DB
-	Store       *ownerstore.Store
-	Authorize   AuthorizeFunc
-	Capability  api.CapabilityProductServiceClient
-	References  api.CapabilityCoordinationClient
-	Resources   api.FabricCoordinationClient
-	Runtime     RuntimeAdapter
+	DB         *sql.DB
+	Store      *ownerstore.Store
+	Authorize  AuthorizeFunc
+	Capability api.CapabilityProductServiceClient
+	References api.CapabilityCoordinationClient
+	Resources  api.FabricCoordinationClient
+	Runtime    RuntimeAdapter
+	// Route is Serve's port to the installation route provider. It is the only
+	// thing that may confirm a route epoch fence, activate a selected Agent at the
+	// provider or roll a route back; when it is absent Serve records the switch it
+	// committed to and refuses instead of claiming an unconfirmed route.
+	Route       RouteProvider
 	LedgerInbox api.DomainInboxClient
 }
 
@@ -85,6 +92,8 @@ func (s *Service) Register(server *ownerservice.Server) error {
 	return server.RegisterGroup("ServeProductService", func(g *grpc.Server) {
 		api.RegisterServeProductServiceServer(g, s)
 		api.RegisterServeAgentCoordinationServer(g, s)
+		api.RegisterServeRuntimeAdapterServer(g, s)
+		api.RegisterServeAccessControlServer(g, s)
 		api.RegisterOwnerCommitReadbackServer(g, s)
 		api.RegisterClaimUsageReadbackServer(g, s)
 	})
@@ -145,7 +154,11 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 		service.Resources = api.NewFabricCoordinationClient(conn)
 	}
 	if address := os.Getenv("OPL_FABRIC_APPLICATION_URL"); address != "" {
-		service.Runtime = &FabricApplicationAdapter{BaseURL: address, Token: os.Getenv("OPL_FABRIC_SERVE_SERVICE_TOKEN"), CapabilityKey: os.Getenv("OPL_FABRIC_SERVE_CAPABILITY_KEY")}
+		// The installation's Agent execution boundary. The declared route origin
+		// decides the publishable URL for a gateway-published entry; an
+		// installation that declares none publishes no address rather than a
+		// guessed host.
+		service.Runtime = &TKEApplicationAdapter{BaseURL: address, Token: os.Getenv("OPL_FABRIC_SERVE_SERVICE_TOKEN"), CapabilityKey: os.Getenv("OPL_FABRIC_SERVE_CAPABILITY_KEY"), Origin: RouteOriginFromEnv()}
 	}
 	if address := strings.TrimSpace(os.Getenv("OPL_LEDGER_ADDR")); address != "" {
 		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.Ledger.Service(), os.Getenv("OPL_LEDGER_TOKEN"))

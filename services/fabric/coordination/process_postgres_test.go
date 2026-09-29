@@ -52,7 +52,7 @@ func TestProcessServesAcceptedResourcesAndOwnerOperation(t *testing.T) {
 	token := "isolated-fabric-process-peer-token-00000001"
 	peers, _ := json.Marshal(map[string]string{"workspace": token})
 	env := map[string]string{"OPL_FABRIC_DATABASE_URL": h.OwnerDSN, "OPL_FABRIC_PEER_TOKENS": string(peers), "OPL_GRPC_INSECURE_LOCAL": "1", "OPL_RESOURCE_CATALOG_ADDR": listener.Addr().String(), "OPL_RESOURCE_CATALOG_TOKEN": token, "OPL_CLOUD_IDENTITY_URL": listener.Addr().String(), "OPL_CLOUD_IDENTITY_TOKEN": token}
-	bootstrap, err := coordination.Start(ctx, func(key string) string { return env[key] })
+	bootstrap, err := coordination.Start(ctx, func(key string) string { return env[key] }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

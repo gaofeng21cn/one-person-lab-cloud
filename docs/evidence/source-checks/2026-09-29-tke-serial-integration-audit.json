@@ -1,0 +1,724 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "cloud_serial_integration_handoff_audit",
+  "recordedAt": "2026-09-29T14:28:07.663730+00:00",
+  "result": "domain_preparations_verified_serial_implementation_required_not_deployable_yet",
+  "scope": "read-only source review plus isolated no-DSN tests and serial task specification; no runtime code modifications or deployment by this audit",
+  "source": {
+    "baseSha": "bf9027253dd852383c6069e7dad9fc7d436efbe3",
+    "workingTree": "all four owner changes and prior SSOT are uncommitted; preserve them when starting successor",
+    "trackedPatchSha256": "2d499dc38f3f2ef163fe577557f593ba100686838b427af25b83a697289c3dc7",
+    "files": {
+      "docs/README.md": "8d8cbf78c04039c06e3043e6c2a0246af83967de73df52fa8a185834e4fd270a",
+      "docs/architecture.md": "270d6d59807b9950b40c2096a384ad33bcb4b60b2ca145bfd1db43604766ade8",
+      "docs/decisions.md": "948cf163126879d70777798e1309e9ee976da53db5129ad8beb87384f7941d98",
+      "docs/invariants.md": "82906bdc5fccfd22aa5035e295bac9ee709bc4c4ec352a0f7dc915372f8b7775",
+      "docs/roadmap.md": "1b07213369f6ff4627980ea6bd040b441e6984131cbc795b36a17204884aa140",
+      "docs/spec/target/00_master_index.md": "9baa46660818605a5a36febef5d0148d43233348ec13bd8bf8d8599a3dbc0e16",
+      "docs/spec/target/01_domain_ownership_matrix.md": "b05cf9e25b46ef2407638dee0a7969dfaaa3d4625597285e90374c1550a8a8a2",
+      "docs/spec/target/02_database_schema_complete.md": "78346b238852e824074176edee446d992c73a95b3e654f8e86d2fbdc8466a020",
+      "docs/spec/target/03_api_contract_complete.yaml": "6e7c922e9cc696784bf9a4d272a67b7e32d39cd345afe3f1a3137aa492ae05dd",
+      "docs/spec/target/04_frontend_interaction_spec.md": "dc5152aa029e935cf0286936f9ab2e52269c2a3ee6924e4126219bfec8578b88",
+      "docs/spec/target/05_build_service_technical_spec.md": "d6c6ab35a9bc12cb52f6c971d908480066ae539fd652251185ea27f0219a0de8",
+      "docs/spec/target/06_data_flow_and_state_machine.md": "d600895fc2b9983e39214cc8aee559d6391a50128bbaed7b1ae722fe23b53fb6",
+      "docs/spec/target/08_delivery_checklist_per_role.md": "2f315fbb19c3a0ef5231249b2d3489a89f8751eb5bde5e835d31c3b5a553cccb",
+      "docs/spec/target/09_legacy_migration.md": "98bcb47a13370c475de85b9110a46d981ac23bd58ea26a80c74064ed1a431bd1",
+      "docs/spec/target/10_feature_traceability.md": "46eb4a42d377076d43777f62ea375baac24ae7963bc40ccbabc8019413290c77",
+      "docs/spec/target/11_ui_ux_design.md": "bb653c620767e534d2540136d9feb1cc5daebaea4e3d112274c60be19717b175",
+      "docs/spec/target/12_product_spec.md": "8abdbbaf69c34e0a4727aaafea1fd9b261766a1be2c74615d239b6175dc2be6d",
+      "docs/spec/target/14_implementation_work_packages.md": "309494697189ea1939875379939c4369aa812a6ddabf6ecc066d1e50f4200bf5",
+      "docs/spec/target/checks/README.md": "12555a90b1027350715e87e27e026960cd28c406a6584685fcc6ca2bbc25c9c5",
+      "docs/spec/target/checks/contract_cases.json": "34d2ea4989a71cbfd781befb58605ad86d5271209429dbfb15e8fd948b27de8a",
+      "docs/spec/target/checks/decision_status.json": "6bf0cbfa6edaacee5c7ff1941ed7d05e7f5e2a3bc355e55f13cd04162eadaee7",
+      "docs/spec/target/checks/development_plan.json": "a6db1be09d57e6f875d68bf3b48e4e05f43fcb67889af40a6f6d76c752be7693",
+      "docs/spec/target/checks/development_plan_validation.json": "e83efe36dae8908a44ae441c3c21c1e688156e1d3b2fca280815f6600b4e254a",
+      "docs/spec/target/checks/handoff_readiness.json": "f144e92bd65b4f2174012614d9053f9803e9c9e906c196e2239af5923637cc6c",
+      "docs/spec/target/checks/render_development_plan.py": "91ef718569422beb3a54597d573599b7fd6afc88c0e98ee6510dca4a02b42bb4",
+      "docs/spec/target/checks/render_traceability.py": "990fab38d204f28223415484ef7473326d866c67c93ca24d5c0ab56f341e790c",
+      "docs/spec/target/checks/test_development_plan.py": "3b2801b2f640c9e9e37f7f2c4b44b59a31c389443022542e7fd407fb62f36064",
+      "docs/spec/target/checks/validate_development_plan.py": "2ee41fd4e67d979c2d49aa4f462cccb349b2216863fed5b1abbca64c101b1bd6",
+      "docs/spec/target/checks/validate_handoff.py": "1156214c4a172c4a35bbefda2aa374a64ade805cef8efff1c2bc687d98e7e2b3",
+      "docs/spec/target/checks/verification.json": "fe96fcde3d50bfb0f62dedaa3364d2f78efc4a582900e96dd75229d13e82e9d1",
+      "docs/spec/target/contracts/api_inventory.json": "7d680fb0e2d86756129af6bd880d6f581f9ca2141e4e7afbf670f66a99a959be",
+      "docs/spec/target/contracts/traceability.json": "43da7185a45b7f10235dc9bdaef2ed6537158fddbc93bb686cd9cb7e630ca4ab",
+      "docs/status.md": "229b2921db5b893558ef6f8de89e7f5db9f80dc7a6c84ff6e41073e9eec0af64",
+      "services/build/go.mod": "4989f14f1494bf25dfca25d49aec3a88e6d4557030fa336ccacd8b1077945b42",
+      "services/build/go.sum": "e2383f79cc88e9f5ee4aeaf4843dd7325d4f2b06b51573ac0d66fc31cff11b43",
+      "services/build/internal/build/identity_live_test.go": "82c0c3909666b849978512d56b07c77b2e13b846bab35e7241ec053d87d653e8",
+      "services/build/internal/build/registry_redirect_test.go": "34af5324849e2de809810b5c672ca3bed177bb3414ba54e51915605ef0e96fe4",
+      "services/build/internal/build/registry_scheme_test.go": "f5d76bcdfffcf38c8a5196f1046ad462cca8997c3f299cdf0522e788e8a3645c",
+      "services/build/internal/build/runner.go": "2d1ee7d4df1a2ecf8da3d3c192fa7a4547732bf9b1f113d27b7e3594db4e033a",
+      "services/build/internal/build/runner_live_test.go": "5469dd3651ec2549b6311e63288eba72d584a735692e6e04bc132ac4c610dec8",
+      "services/capability/catalog/cos_storage.go": "d47c1628e2c5b75cf2abd94df8e752e2634dbad52f89af9a3e9f33754ce07e58",
+      "services/capability/catalog/cos_storage_recovery_test.go": "25d82a0e485b0de8d322f6e0a5ff2780c619f74acd2e36e200f7a4e6ab0bc718",
+      "services/capability/catalog/data_plane.go": "0b80c235ccc5e16975e36534ae759d26b06520ecb0aeebe7eb2aba7f90402a22",
+      "services/capability/catalog/local_storage.go": "2fc62809a2246765fbd7315035040c6a88aaef32e3d7a4ffc444d71b35c46e2c",
+      "services/capability/catalog/objects.go": "a62e4ee81ce1c53061b1532298ad8b87cfedba60dd8a6cfa78376c99d571ee39",
+      "services/capability/catalog/storage.go": "d445573203b7c266bc079c8a976804cd6e0287b154854ad70d24993a04cc9d6d",
+      "services/capability/catalog/storage_provider_test.go": "f2328d8a2649f7127e86039bebb1834a68330a21875fd6c7f98c65690a855cb8",
+      "services/capability/catalog/uploads.go": "2710b9d91271347c21db2a6639fa36f248d99f31feeb01e5574a5dfbf15ddb11",
+      "services/capability/catalog/uploads_postgres_test.go": "6c3bb644f38a8e597f74d1ced225dc2e2ff397b30d55416669ce8ba02fcd92f7",
+      "services/capability/catalog/webui_catalog_postgres_test.go": "953b7b1ead030c0d75ab0a04ec664cd8b0701b0b723a8cb3c85628aa4abe5f44",
+      "services/capability/cmd/server/main.go": "e2b095294b55451e99c94e04d86f1f65c5472cbd1eb84f0f6425085a51a872f8",
+      "services/capability/go.mod": "8e84ed86c7dac8cebe19a10620f11d63e4bae105fed466add14bd1a1fefd9b9a",
+      "services/capability/go.sum": "02b1abe59faf2bfe93254a98a00fb2a1abdef6b96fee3179bae559635f3dd93e",
+      "services/fabric/cmd/fabric/main.go": "8c1e0d4e3f8b38f8e8aa111ba64b8520cb3fdde6f4a1e885ade509880934a168",
+      "services/fabric/coordination/dispatch.go": "b74c9d5a646440f4913be23282ab87070dcab2f2418afa1566bfb2dff10621e7",
+      "services/fabric/coordination/local_dispatch.go": "381ad86c12f6280326c730bdecb592085ea384df60d02d157e4dce94146087f9",
+      "services/fabric/coordination/local_dispatch_host_test.go": "9c93994fe2fd05d1649995b40db9c495efb99875b215706a111332bdd26b612c",
+      "services/fabric/coordination/process.go": "78795fa2a8230dfdc515af41aba38a2a01ba06a20405119a8de7e2ba0ccb9ae8",
+      "services/fabric/coordination/process_postgres_test.go": "7d2a9c4af09245e79e38632d32a3fe03c9833294074cf76c5f3991ef46d06973",
+      "services/fabric/coordination/process_test.go": "26e93001597a60ee57115b299f1ea67a24f51b12e89e42af701743667fee1270",
+      "services/fabric/coordination/read.go": "5e798354efa4526b17d1ae5e86f916ad75c751c7fb72d1cc5ec6301a3633be6e",
+      "services/fabric/coordination/resume.go": "980adedaf708a84b8ba919342631c39948dd7a6891dad23330002c5e6c23e649",
+      "services/fabric/coordination/service.go": "3de20dc699408884761236f6b3112d55208095f349576bfcc8ae64a9c8eda1bc",
+      "services/fabric/coordination/service_postgres_test.go": "d0cdbbc7dc45c4e0021875b0976bee8158fab8e6ef645a54f1d617080fba7262",
+      "services/fabric/coordination/tencent_dispatch.go": "ddf36450de6693f443476f06de65a07e1587bea8b27575833db338271a644ea8",
+      "services/fabric/coordination/tencent_dispatch_test.go": "cd84fd1b35eb30e1eb105004f85f6b660cf4118ced82d7302a53e84c044d7c97",
+      "services/fabric/coordination/tencent_resume_postgres_test.go": "3bf4c9ec5e673cbdafb0edb94f196cd60bfd947b1e0b2be5d83d3873ae77e0b4",
+      "services/fabric/internal/fabric/tencent_accepted_plan.go": "3fdaadff3bcd63a0f168470cb445e170e6f50d8498c802d3c62bfd2091379be8",
+      "services/fabric/internal/fabric/tencent_accepted_plan_test.go": "78c5d10aaa46002fe720f4ae33c9a83c44f5fc332ab52079681a9523a5b7c758",
+      "services/fabric/internal/fabric/tencent_provider.go": "df47aa050ffd22ec74d6f9766184056c737034bab0b5d3b1b0a91469ee1eec36",
+      "services/gateway-integration/cmd/server/main.go": "64a65a471a0e8400d6bba382197375bee021c31403481b59985af637a8393e3d",
+      "services/gateway-integration/identity/authorization.go": "f232ee8c5a20a8b83aca308cdb1aaf42ce14cec3750b09630f391191d5de983d",
+      "services/gateway-integration/identity/generate_policy.py": "35c8478a2440f90b3b66df6b4cd9c73f864ac9591604beae7a4884b263ce6a9c",
+      "services/gateway-integration/identity/policy_generated.go": "1331ec3b9deb6854d3dedbd2db6f615503f166caf969b67dec26fe314e8bc245",
+      "services/gateway-integration/identity/policy_generated_test.go": "a0eb3e45eb89ad80cd96af9daa2e4887f352f3c3aa8d1ea11620d9c161f96056",
+      "services/gateway-integration/identity/policy_postgres_test.go": "26051a80da1f0f15e243d8e55eac0a58c091852137a2cd66e0d215a8a1e9975b",
+      "services/gateway-integration/identity/workspace_grants_postgres_test.go": "542e395b20fbb95f4ca6f37654585d6edbb335271cfec39f2e6ec9a7d84f596f",
+      "services/runtime-control/catalog/runtime_control_harness_test.go": "d6ed1c7453045f67b22c86d1dfa32b99b9b758f3d5de07a589f232cde2f35a73",
+      "services/runtime-control/catalog/runtime_release_postgres_test.go": "fd3dd0c707a30486f8cf82ae51c79dc3cc5f51c3b513a92f9c00ffea9136f715",
+      "services/serve/internal/delivery/fabric_adapter.go": "deleted",
+      "services/serve/internal/delivery/fabric_adapter_test.go": "deleted",
+      "services/serve/internal/delivery/route.go": "9747e3c684c7e4c1518f573bf2bd20d235f762a25775634269945af7268203f4",
+      "services/serve/internal/delivery/route_postgres_test.go": "8668686e76cbad62c78376420513c52142b51de6df8d0168d542283ca9f38646",
+      "services/serve/internal/delivery/routeorigin.go": "b73e163ff8880960dde37286ac30b32b07befcfb9b108c4b9285c127f2c86094",
+      "services/serve/internal/delivery/routeorigin_test.go": "1b08f897855497e20fcbcb0c6b5a1a45a90e9a3f25a0e9e1a9f5e90307ce1b43",
+      "services/serve/internal/delivery/runtime.go": "c313b69b65cb42d8f79f1dc9fbd50f36c1f1a04e7aeb1f7c18a416419a86daf9",
+      "services/serve/internal/delivery/runtime_bridge.go": "dab07bb8e5dd80b42095e4b07c125632f63a3d3e05fe51ba5f49243501f53beb",
+      "services/serve/internal/delivery/service.go": "4b75c1b1403c7ba9e444a2aeb92db0abbbc702881856b002ced545798d33d91f",
+      "services/serve/internal/delivery/tke_adapter.go": "fd1da1699fb7dd2b20735b135ce15145c43565ef9518d545479ef35f52ac71c0",
+      "services/serve/internal/delivery/tke_adapter_test.go": "f8d41d129d07839e5ad2fbc69644ee1f6ceec6774eb1303b98e69697e16d44b2",
+      "services/workspace/cmd/server/main.go": "626921cf6fe5b3bf3ce021a4145b90807ea7a5c639b3f17c249786d2a5ebb0e7",
+      "services/workspace/internal/launch/funding.go": "1126ecb000f763c2cdada9a8c92f2c8fdc3e85ac097a88d5fa20f55ca32a8b5b",
+      "services/workspace/internal/launch/funding_test.go": "e205aa4acc009f583e661c7046ba794a75abc48f3a538f6baab0c651ccdd2c01",
+      "services/workspace/internal/launch/recovery.go": "b142e758b9e7e2b1ccf42b5cef3022093213f3f2a69f4c7b4cab7e3c0abd7cbf",
+      "services/workspace/internal/launch/runtime.go": "4109c639734cdf859e0e7657660ffe9891b7952326501172a6908fea64427ca7",
+      "services/workspace/internal/launch/service.go": "a75070a7b6abb54feba43a83d3fb431f34a086c523e1aaf661fe26a2afe3ecb2"
+    }
+  },
+  "ownerReceiptVerification": [
+    {
+      "owner": "artifacts",
+      "receiptSha256": "945f4e2ec49a538b88e83e8a365a5ab7901e1a93e966dbea11e72b4fb1a8c7ba",
+      "filesChecked": 11,
+      "mismatches": [],
+      "trackedDiffMatches": true
+    },
+    {
+      "owner": "business",
+      "receiptSha256": "ddfce8e66b4fe7f1bbdfc03a233dc51ddcd872c9325dba9b883ffc3fef963182",
+      "filesChecked": 13,
+      "mismatches": []
+    },
+    {
+      "owner": "resources",
+      "receiptSha256": "9eb73c05e5b9ab3b2d8c46647f68599499951029723685dd3ef92d0324755172",
+      "filesChecked": 17,
+      "mismatches": []
+    },
+    {
+      "owner": "delivery",
+      "receiptSha256": "b5ee6dbfa91aeaa46bbaacf7e781adcae9caf8279154fc9ad876f7f1b98250d9",
+      "filesChecked": 9,
+      "mismatches": []
+    }
+  ],
+  "threadReadback": {
+    "method": "wait_threads, each specified thread individually; all latest turns completed with no error and idle",
+    "threads": {
+      "artifacts": "01a0ed3e-5bdf-7a81-adeb-fd923bb4148e",
+      "business": "01a0ed3e-65db-74d2-8cd9-91894ff1432d",
+      "resources": "01a0ed3e-6fc4-7b03-b539-2a4f4b890eb0",
+      "delivery": "01a0ed3e-7c68-7272-bb77-ab697c144d5d"
+    }
+  },
+  "focusedVerification": [
+    {
+      "command": "go -C services/capability test ./... -count=1",
+      "exitCode": 0,
+      "elapsedSeconds": 4.32,
+      "log": "/tmp/opl-tke-serial-capability-test.log",
+      "tail": "ok  \topl-cloud/services/capability/catalog\t1.389s\n?   \topl-cloud/services/capability/cmd/server\t[no test files]\nok  \topl-cloud/services/capability/migrations\t1.772s\n",
+      "layer": "isolated source tests with OPL_* removed; no database DSN; PostgreSQL tests may skip"
+    },
+    {
+      "command": "go -C services/runtime-control test ./... -count=1",
+      "exitCode": 0,
+      "elapsedSeconds": 3.47,
+      "log": "/tmp/opl-tke-serial-runtime-control-test.log",
+      "tail": "ok  \topl-cloud/services/runtime-control/catalog\t0.949s\n?   \topl-cloud/services/runtime-control/cmd/server\t[no test files]\nok  \topl-cloud/services/runtime-control/migrations\t0.546s\n",
+      "layer": "isolated source tests with OPL_* removed; no database DSN; PostgreSQL tests may skip"
+    },
+    {
+      "command": "go -C services/build test ./... -count=1",
+      "exitCode": 0,
+      "elapsedSeconds": 1.85,
+      "log": "/tmp/opl-tke-serial-build-test.log",
+      "tail": "?   \topl-cloud/services/build/cmd/server\t[no test files]\nok  \topl-cloud/services/build/internal/build\t0.674s\nok  \topl-cloud/services/build/migrations\t1.172s\n",
+      "layer": "isolated source tests with OPL_* removed; no database DSN; PostgreSQL tests may skip"
+    },
+    {
+      "command": "go -C services/gateway-integration test ./... -count=1",
+      "exitCode": 0,
+      "elapsedSeconds": 1.83,
+      "log": "/tmp/opl-tke-serial-gateway-integration-test.log",
+      "tail": "?   \topl-cloud/services/gateway-integration/cmd/server\t[no test files]\nok  \topl-cloud/services/gateway-integration/identity\t0.669s\nok  \topl-cloud/services/gateway-integration/migrations\t1.072s\n",
+      "layer": "isolated source tests with OPL_* removed; no database DSN; PostgreSQL tests may skip"
+    },
+    {
+      "command": "go -C services/resource-catalog test ./... -count=1",
+      "exitCode": 0,
+      "elapsedSeconds": 1.55,
+      "log": "/tmp/opl-tke-serial-resource-catalog-test.log",
+      "tail": "ok  \topl-cloud/services/resource-catalog/catalog\t0.642s\n?   \topl-cloud/services/resource-catalog/cmd/server\t[no test files]\nok  \topl-cloud/services/resource-catalog/migrations\t0.910s\n",
+      "layer": "isolated source tests with OPL_* removed; no database DSN; PostgreSQL tests may skip"
+    },
+    {
+      "command": "go -C services/workspace test ./... -count=1",
+      "exitCode": 0,
+      "elapsedSeconds": 1.67,
+      "log": "/tmp/opl-tke-serial-workspace-test.log",
+      "tail": "?   \topl-cloud/services/workspace/cmd/server\t[no test files]\nok  \topl-cloud/services/workspace/internal/launch\t0.642s\nok  \topl-cloud/services/workspace/migrations\t0.330s\n",
+      "layer": "isolated source tests with OPL_* removed; no database DSN; PostgreSQL tests may skip"
+    },
+    {
+      "command": "go -C services/serve test ./... -count=1",
+      "exitCode": 0,
+      "elapsedSeconds": 1.64,
+      "log": "/tmp/opl-tke-serial-serve-test.log",
+      "tail": "?   \topl-cloud/services/serve/cmd/server\t[no test files]\nok  \topl-cloud/services/serve/internal/delivery\t1.022s\nok  \topl-cloud/services/serve/migrations\t0.626s\n",
+      "layer": "isolated source tests with OPL_* removed; no database DSN; PostgreSQL tests may skip"
+    },
+    {
+      "command": "go -C services/fabric test ./... -count=1",
+      "exitCode": 0,
+      "elapsedSeconds": 14.84,
+      "log": "/tmp/opl-tke-serial-fabric-test.log",
+      "tail": "ok  \topl-cloud/services/fabric/cmd/fabric\t1.050s\nok  \topl-cloud/services/fabric/cmd/opl-node-image-retire\t0.734s\nok  \topl-cloud/services/fabric/cmd/opl-tencent-provisioner\t3.167s\nok  \topl-cloud/services/fabric/coordination\t4.203s\n?   \topl-cloud/services/fabric/ent\t[no test files]\n?   \topl-cloud/services/fabric/ent/enttest\t[no test files]\n?   \topl-cloud/services/fabric/ent/fabricoperation\t[no test files]\n?   \topl-cloud/services/fabric/ent/hook\t[no test files]\n?   \topl-cloud/services/fabric/ent/machineownership\t[no test files]\n?   \topl-cloud/services/fabric/ent/migrate\t[no test files]\n?   \topl-cloud/services/fabric/ent/predicate\t[no test files]\n?   \topl-cloud/services/fabric/ent/runtime\t[no test files]\n?   \topl-cloud/services/fabric/ent/schema\t[no test files]\nok  \topl-cloud/services/fabric/internal/fabric\t10.690s\nok  \topl-cloud/services/fabric/internal/http\t0.937s\nok  \topl-cloud/services/fabric/internal/protectedresource\t1.653s\nok  \topl-cloud/services/fabric/ownermigrations\t1.189s\n",
+      "layer": "isolated source tests with OPL_* removed; no database DSN; PostgreSQL tests may skip"
+    },
+    {
+      "command": "go -C services/serve test -tags=livebuild -run ^$ ./...",
+      "exitCode": 1,
+      "elapsedSeconds": 1.64,
+      "log": "/tmp/opl-tke-serial-serve-livebuild-compile.log",
+      "tail": "# opl-cloud/services/serve/internal/delivery\n../capability/catalog/cos_storage.go:17:2: missing go.sum entry for module providing package github.com/tencentyun/cos-go-sdk-v5 (imported by opl-cloud/services/capability/catalog); to add:\n\tgo get opl-cloud/services/capability/catalog@v0.0.0\nFAIL\topl-cloud/services/serve/internal/delivery [setup failed]\n?   \topl-cloud/services/serve/cmd/server\t[no test files]\nok  \topl-cloud/services/serve/migrations\t0.441s [no tests to run]\nFAIL\n",
+      "layer": "isolated source tests with OPL_* removed; no database DSN; PostgreSQL tests may skip"
+    },
+    {
+      "command": "go -C services/workspace test -tags=livebuild -run ^$ ./...",
+      "exitCode": 1,
+      "elapsedSeconds": 1.19,
+      "log": "/tmp/opl-tke-serial-workspace-livebuild-compile.log",
+      "tail": "# opl-cloud/services/workspace/internal/launch\n../capability/catalog/cos_storage.go:17:2: missing go.sum entry for module providing package github.com/tencentyun/cos-go-sdk-v5 (imported by opl-cloud/services/capability/catalog); to add:\n\tgo get opl-cloud/services/capability/catalog@v0.0.0\nFAIL\topl-cloud/services/workspace/internal/launch [setup failed]\n?   \topl-cloud/services/workspace/cmd/server\t[no test files]\nok  \topl-cloud/services/workspace/migrations\t0.339s [no tests to run]\nFAIL\n",
+      "layer": "isolated source tests with OPL_* removed; no database DSN; PostgreSQL tests may skip"
+    }
+  ],
+  "verificationEnvironment": {
+    "GOFLAGS": "-mod=readonly",
+    "OPLVariables": "all removed from test subprocess environment; no production config/DSN inherited",
+    "databaseTests": "not rerun with DSN in this review; owners retain isolated PG receipts for their layers",
+    "ordinaryModulesPassed": 8,
+    "livebuildCompilationFailures": 2
+  },
+  "findings": [
+    {
+      "id": "I01",
+      "owner": "contracts and all real consumers",
+      "state": "open",
+      "finding": "W01 application union/runtime_release/default-App readback contract still pending; no CapabilityVersion currently means runtime not_applicable.",
+      "sources": [
+        "docs/spec/target/03_api_contract_complete.yaml:11",
+        "services/resource-catalog/catalog/quotes.go:430"
+      ],
+      "stage": 2
+    },
+    {
+      "id": "I02",
+      "owner": "shared startup and identity",
+      "state": "open",
+      "finding": "CloudIdentity authority still gets a self-readiness requirement on an absent CloudIdentity address; shared operation object authorization and continuation policies must match real consumers.",
+      "sources": [
+        "services/internal/ownerservice/bootstrap.go:66",
+        "services/internal/ownerservice/operations.go",
+        "services/gateway-integration/identity/authorization.go"
+      ],
+      "stage": 2
+    },
+    {
+      "id": "I03",
+      "owner": "Gateway Integration",
+      "state": "open",
+      "finding": "Workspace now has GatewayCoordination client/funding logic, but no production GatewayCoordination registration/implementation was found. Payment and managed-Key fixtures are not a deployable owner. Tenant and Gateway retain separate DB owners in the existing same deployment unit.",
+      "sources": [
+        "services/workspace/internal/launch/funding.go",
+        "services/gateway-integration/cmd/server/main.go",
+        "services/gateway-integration/identity/service.go"
+      ],
+      "stage": 3
+    },
+    {
+      "id": "I04",
+      "owner": "Gateway + Ledger + Fabric",
+      "state": "open",
+      "finding": "Fabric requests a confirmed WALLET_ACTION receipt via ReadReceiptByReference; actual Ledger forwards it only to ReadLocalNoChargeReceipt. A real Tencent order cannot cross this funding gate. Owner, operation, obligation, tenant/workspace, amount/currency and source effect must be reconciled, not merely receipt ID.",
+      "sources": [
+        "services/fabric/coordination/resume.go:263",
+        "services/ledger/eventconsumer/coordination.go:64",
+        "packages/contracts/proto/internal.proto:3660"
+      ],
+      "correctionToOwnerReport": "WALLET_ACTION enum already exists. Missing producer/decoder/store/readback must not be reported as absence of all receipt kinds. B G6 Local-only dispatch is resolved by C in current source.",
+      "stage": 3
+    },
+    {
+      "id": "I05",
+      "owner": "Gateway + Fabric + Serve",
+      "state": "open",
+      "finding": "Secret binding identity is present but actual delivery/configuration is not wired. Serve deliberately refuses any secret-requiring application with credential_injection_wire_missing.",
+      "sources": [
+        "services/serve/internal/delivery/tke_adapter.go:95",
+        "services/serve/internal/delivery/tke_adapter.go:103"
+      ],
+      "stage": 4
+    },
+    {
+      "id": "I06",
+      "owner": "Serve + Fabric caller migration",
+      "state": "open",
+      "finding": "Renaming FabricApplicationAdapter to TKEApplicationAdapter did not transfer application execution ownership: it still posts /fabric/workspace-application-runtimes using OPL_FABRIC_APPLICATION_URL. Treat as migration-stage adapter only; target DDD execution migration and real caller cutover remain.",
+      "sources": [
+        "services/serve/internal/delivery/tke_adapter.go:116",
+        "services/serve/internal/delivery/service.go:153"
+      ],
+      "stage": 5
+    },
+    {
+      "id": "I07",
+      "owner": "Serve",
+      "state": "open",
+      "finding": "Route state machine exists but no production RouteProvider assignment/implementation is wired in Configure. URL construction alone is not ingress/reverse-proxy publication. Deploy-to-Fence/Activate/Observe integration and live origin authorization remain.",
+      "sources": [
+        "services/serve/internal/delivery/service.go:110",
+        "services/serve/internal/delivery/route.go:384"
+      ],
+      "stage": 5
+    },
+    {
+      "id": "I08",
+      "owner": "Serve runtime configuration/readback",
+      "state": "open",
+      "finding": "Source inspection does not substantiate the D report that model configuration is delivered: runtime input is created without model-derived configuration, while applied_model_configuration_version is populated from the command. An independent runtime-applied version must be observed, not echoed or included only in an evidence hash.",
+      "sources": [
+        "services/serve/internal/delivery/tke_adapter.go:95",
+        "services/serve/internal/delivery/tke_adapter.go:105",
+        "services/serve/internal/delivery/tke_adapter.go:202",
+        "services/serve/internal/delivery/runtime.go:167"
+      ],
+      "evidenceLayer": "source inspection; no real runtime model readback performed",
+      "stage": 5
+    },
+    {
+      "id": "I09",
+      "owner": "Serve lifecycle/credentials",
+      "state": "open",
+      "finding": "StopRuntime, ReloadRuntime and ReadApplicationCredentials still return Unimplemented; failure retirement, accepted operations and data-compatible recovery need real implementations and callers.",
+      "sources": [
+        "services/serve/internal/delivery/runtime_bridge.go:55",
+        "services/serve/internal/delivery/runtime_bridge.go:59",
+        "services/serve/internal/delivery/runtime_bridge.go:63"
+      ],
+      "stage": 5
+    },
+    {
+      "id": "I10",
+      "owner": "module dependency consumers",
+      "state": "reproduced",
+      "finding": "Serve and Workspace livebuild compilation fail under GOFLAGS=-mod=readonly on missing cos-go-sdk-v5 sums after A dependency changes. Ordinary no-DSN tests pass but are not integrated qualification.",
+      "sources": [
+        "services/serve/go.mod",
+        "services/serve/go.sum",
+        "services/workspace/go.mod",
+        "services/workspace/go.sum"
+      ],
+      "stage": 1
+    },
+    {
+      "id": "I11",
+      "owner": "Console/BFF + artifact owners + integration",
+      "state": "not_verified",
+      "finding": "Neither real two-mode browser/business flow nor real COS/TCR/BuildKit/claims/registration/TKE usage was qualified by the four preparations. Default App remains a new consumer path, not a resource-only order.",
+      "sources": [
+        "apps/console-bff/internal/httpapi/delivery.go",
+        "docs/spec/target/06_data_flow_and_state_machine.md"
+      ],
+      "stage": 6
+    },
+    {
+      "id": "I12",
+      "owner": "Cloud packaging and Instance installation",
+      "state": "open",
+      "finding": "Cloud Dockerfile still defaults Console to legacy and copies no buildx plugin. Instance remote main manifest has only Control Plane/Ledger/Fabric Deployments; #348 remains open. TKE domains, TLS, role-separated DBs, peer identity, secret references, rollback and runtime readback must be installed and qualified from protected Instance main.",
+      "sources": [
+        "Dockerfile:69",
+        "Dockerfile:105",
+        ".github/workflows/build-opl-cloud-candidate.yml",
+        "docs/runtime/release.md"
+      ],
+      "stage": 7
+    }
+  ],
+  "remoteReadback": {
+    "method": "read-only gh API/PR queries",
+    "cloudMain": "bf9027253dd852383c6069e7dad9fc7d436efbe3",
+    "cloudOpenPRs": [
+      684,
+      686,
+      688,
+      689
+    ],
+    "instanceMain": "0dd109f9aafd3d7378047dc95f6fcc60914e3986",
+    "instanceMainDeployments": [
+      "opl-cloud-control-plane",
+      "opl-cloud-ledger",
+      "opl-cloud-fabric"
+    ],
+    "instancePR348": {
+      "state": "OPEN",
+      "head": "13470f2afe78086b3ad4a36ff5998d78e6db1efa"
+    },
+    "localInstance": {
+      "path": "/Users/huangrende/Documents/ChatGPT/opl-instance-medopl",
+      "branch": "codex/special-chain-run-session-20260920",
+      "head": "875d99fe3e679cd82d0b83f46b087b11a8094590",
+      "dirty": true,
+      "rule": "preserve unrelated local changes; do not deploy this branch as if it were protected main"
+    }
+  },
+  "retainedLocalFixtures": [
+    "tke-a-artifacts-pg",
+    "tke-b-business-pg"
+  ],
+  "planOwner": "docs/spec/target/14_implementation_work_packages.md#11; generated by checks/render_development_plan.py",
+  "planVerification": {
+    "unitTests": {
+      "passed": 19
+    },
+    "plan": {
+      "passed": true,
+      "counts": {
+        "workPackages": 32,
+        "features": 17,
+        "restOperations": 108,
+        "tables": 101,
+        "internalRPCs": 174,
+        "executionSlices": 24
+      },
+      "waves": [
+        [
+          "W00"
+        ],
+        [
+          "W01"
+        ],
+        [
+          "W02"
+        ],
+        [
+          "W03",
+          "W05",
+          "W11",
+          "W12"
+        ],
+        [
+          "W04",
+          "W06",
+          "W07",
+          "W13"
+        ],
+        [
+          "W08",
+          "W10"
+        ],
+        [
+          "W09",
+          "W15"
+        ],
+        [
+          "W14",
+          "W17",
+          "W18"
+        ],
+        [
+          "W19"
+        ],
+        [
+          "W20"
+        ],
+        [
+          "W21",
+          "W22"
+        ],
+        [
+          "W24",
+          "W25"
+        ],
+        [
+          "W16",
+          "W23"
+        ],
+        [
+          "W26"
+        ],
+        [
+          "W27"
+        ],
+        [
+          "W28"
+        ],
+        [
+          "W29"
+        ],
+        [
+          "W30",
+          "W31"
+        ]
+      ],
+      "sliceWaves": [
+        [
+          "W01.application-contracts"
+        ],
+        [
+          "W02.owner-readiness"
+        ],
+        [
+          "W03.identity",
+          "W05.receipts",
+          "W12.tke-resources",
+          "W27.runnable-candidate"
+        ],
+        [
+          "W04.payment-key",
+          "W07.publisher-admission",
+          "W13.console-entry"
+        ],
+        [
+          "W08.cos-upload",
+          "W10.app-release",
+          "W21.tenant-admission"
+        ],
+        [
+          "W06.tke-quote",
+          "W07.webui-catalog",
+          "W17.first-delivery"
+        ],
+        [
+          "W09.agent-build",
+          "W15.first-create"
+        ],
+        [
+          "W14.publisher-ui",
+          "W16.workspace-ui",
+          "W17.replace"
+        ],
+        [
+          "W26.agent-source",
+          "W26.default-source"
+        ],
+        [
+          "W29.default-tke"
+        ],
+        [
+          "W29.agent-tke"
+        ]
+      ],
+      "errors": [],
+      "receipt": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/spec/target/checks/runs/development-plan-20260929T142530497630Z.json"
+    },
+    "specification": {
+      "result": "passed",
+      "checks": [
+        {
+          "name": "openapi_and_operation_inventory",
+          "passed": true,
+          "details": {
+            "operations": 108,
+            "schemas": 178
+          }
+        },
+        {
+          "name": "sql_ast_database_boundary_and_inventory",
+          "passed": true,
+          "details": {
+            "databases": 10,
+            "tables": 101,
+            "columns": 1424,
+            "indexes": 163,
+            "sqlStatements": 422,
+            "execution": "parser only; no database connected"
+          }
+        },
+        {
+          "name": "isolated_postgresql_execution_receipt",
+          "passed": true,
+          "details": {
+            "receipt": "checks/runs/cross-domain-20260929T124756.560585Z.json",
+            "tests": 101,
+            "metadata": {
+              "actualDatabaseFields": 1424,
+              "directMappingsTypeAndEnumChecked": 310,
+              "optionalWireFieldMeansOmittedNotNull": true,
+              "nonnullableDbMayBeInternalOrDerived": "not inferred from API required alone; legacy cases cover real discriminators",
+              "postgresVersion": "PostgreSQL 16.15 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit"
+            },
+            "scope": "typed REST/protobuf specification adapters -> isolated PostgreSQL -> exact typed/readback projection; provider router and Storage are explicitly named fixtures, not implemented services",
+            "cleanup": {
+              "containerName": "opl-spec-semantic-1790686076",
+              "containerAbsent": true,
+              "stopSucceeded": true,
+              "removalReadbackPolls": 2,
+              "storage": "tmpfs only; no host mounts/named volumes",
+              "network": "none; no host ports"
+            }
+          }
+        },
+        {
+          "name": "api_database_field_sources",
+          "passed": true,
+          "details": {
+            "persistedFieldMappings": 310,
+            "derivedFieldMappings": 78
+          }
+        },
+        {
+          "name": "ui_fields_actions_feature_coverage",
+          "passed": true,
+          "details": {
+            "features": 17,
+            "uiFieldReferences": 2567,
+            "actions": 62
+          }
+        },
+        {
+          "name": "error_and_stage_projections",
+          "passed": true,
+          "details": {
+            "errorCodes": 72,
+            "operationStages": 73
+          }
+        },
+        {
+          "name": "feature_traceability",
+          "passed": true,
+          "details": {
+            "features": 17
+          }
+        },
+        {
+          "name": "protobuf_compilation",
+          "passed": true,
+          "details": {
+            "services": 31,
+            "messages": 394,
+            "methods": 174,
+            "compilerWarnings": ""
+          }
+        },
+        {
+          "name": "event_payload_schemas",
+          "passed": true,
+          "details": {
+            "events": 18,
+            "payloadSchemas": 18,
+            "explicitPositiveNegativeCases": 5
+          }
+        },
+        {
+          "name": "contract_positive_negative_cases",
+          "passed": true,
+          "details": {
+            "explicitPositiveNegativeCases": 39
+          }
+        }
+      ],
+      "errors": [],
+      "receipt": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/spec/target/checks/runs/20260929T142532582358Z.json"
+    },
+    "handoff": {
+      "schemaVersion": 1,
+      "timestamp": "2026-09-29T14:25:33.374698+00:00",
+      "status": "needs_correction",
+      "technicalClosureVerified": false,
+      "approvedPendingContractMigrations": [
+        "2026-09-29-default-opl-app-and-optional-agent"
+      ],
+      "implementationEntry": "W01.application-contracts",
+      "planningEntryReady": true,
+      "pendingUserDecisions": [],
+      "issues": [
+        "UI source changed after verification: 03_api_contract_complete.yaml",
+        "UI source changed after verification: contracts/ui_inventory.json",
+        "UI source changed after verification: 04_frontend_interaction_spec.md",
+        "UI source changed after verification: 11_ui_ux_design.md",
+        "approved application-selection contract migration has not reached executable schemas/consumers (W01)"
+      ],
+      "scope": "development specification + interactive prototype + isolated contract/DB tests; NOT implemented services or production qualification",
+      "reviewFindings": {
+        "R01": "evidence_failed",
+        "R02": "evidence_failed",
+        "R03": "evidence_failed",
+        "R04": "evidence_failed",
+        "R05": "evidence_failed",
+        "R06": "evidence_failed",
+        "R07": "evidence_failed",
+        "R08": "evidence_failed",
+        "R09": "evidence_failed",
+        "R10": "evidence_failed"
+      },
+      "evidence": {
+        "static": "checks/runs/20260929T142532582358Z.json",
+        "crossDomain": "checks/runs/cross-domain-20260929T124756.560585Z.json",
+        "publisherSource": "checks/runs/publisher-source-20260921T175446754962Z.json",
+        "contractSemantics": "checks/handoff_contract_semantics.json",
+        "d17ContractSemantics": "checks/d17_contract_results.json",
+        "developmentPlan": "checks/development_plan_validation.json",
+        "ui": "checks/ui_prototype_verification.json"
+      },
+      "counts": {
+        "features": 17,
+        "typedFlowSteps": 89,
+        "restOperations": 108,
+        "crossDomainCases": 101,
+        "contractCases": 60,
+        "d17ContractCases": 56,
+        "implementationWorkPackages": 32
+      }
+    }
+  },
+  "successor": {
+    "model": "deepseek-v4.1-flash",
+    "reasoningEffort": "high",
+    "mode": "one sequential writer in the same Cloud checkout, then separately scoped Instance protected workflow execution",
+    "permission": "user requested new serial implementation and deploy/go-live; no generic repeat approval for that scope, no implied authorization of unbounded money/procurement/deletion or bypass of branch/environment gates"
+  },
+  "notRun": [
+    "npm run verify:local:full",
+    "real browser two-mode E2E",
+    "live TCR/COS or BuildKit",
+    "production private network access",
+    "real wallet/provider mutation",
+    "candidate build",
+    "Instance deployment/customer cutover/rollback",
+    "formal Product Release"
+  ]
+}

@@ -14,7 +14,10 @@ import (
 	"opl-cloud/services/internal/ownerstore"
 )
 
-// resumeRuntime delivers only the accepted Local no-charge order. Workspace
+// resumeRuntime delivers the accepted order whose resources are confirmed. The
+// gate is the resource readback, not the order's provider or billing mode, so a
+// paid order whose resources actually exist is delivered the same way and an
+// order whose funding or resources are unresolved never reaches Serve. Workspace
 // retains coordination evidence; Serve remains the deployment/readiness owner.
 func (s *Service) resumeRuntime(ctx context.Context, op ownerstore.Operation, token string, accepted *api.QuoteAcceptance, resources *api.ResourceReadback, result *orderResult) error {
 	if s.Capability == nil || s.Serve == nil {

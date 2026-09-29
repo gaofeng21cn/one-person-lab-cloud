@@ -44,12 +44,18 @@ runtime={'listRuntimeVersions','registerRuntimeVersion','setRuntimeVersionStatus
 audience_overrides={'getWorkspaceAccess':'serve'}
 session_only={'getLoginContext','login','logout','getSession'}
 subject_bound={'acceptInvitation'}
+# An Operation is read through an explicit owner route, so the contract names no
+# single Operation writer and getOperation carries no x-owner of its own. The
+# audience is the route the caller chose, so CloudIdentity decides it as a
+# route-resolved session read rather than as one owner's role row; emitting a row
+# would pin every owner's Operation read to one arbitrary owner.
+route_resolved={'getOperation'}
 lines=['// Code generated from the canonical API permissions; DO NOT EDIT.','package identity','import api "opl-cloud/packages/contracts/go/api"','type actionPolicy struct {owner api.OwnerEnum; roles []string}','var actions = map[api.AuthorizationActionEnum]actionPolicy{']
 for methods in api['paths'].values():
  for x in methods.values():
   if not isinstance(x,dict) or x.get('x-owner') not in owners: continue
   action=x['operationId'];owner=x['x-owner']
-  if action in session_only or action in subject_bound: continue
+  if action in session_only or action in subject_bound or action in route_resolved: continue
   if action in runtime:owner='runtime_control'
   if action in audience_overrides:owner=audience_overrides[action]
   roles=','.join('"'+v+'"' for v in x['x-permission'])

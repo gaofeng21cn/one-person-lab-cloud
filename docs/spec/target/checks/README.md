@@ -67,3 +67,34 @@ python3 -m unittest discover -s checks -p 'test_development_plan.py'
 14与development_plan.json是同源任务书，不重复定义业务DTO。检查涵盖全部F/API/Owner表/内部RPC、现有代码路径、拟建位置和启动/验收依赖无环；同时拒绝Cloud领域落点逃出当前仓库、tenant/Gateway误拆模块和非Instance任务越界写入。生成器从当前checkout确定工作根；历史来源SHA和旧回执保持原样。只说明任务覆盖和计划可执行，不执行W00–W31的实现、部署或收费。
 
 既有协议/SQL/UI字节未改时复用其精确哈希证据，不为增加任务书重跑有副作用的资格流程。打包/签收忽略.DS_Store、__MACOSX、__pycache__及.pyc，这些是工作站元数据而不是产品规则。
+
+## Tencent/TKE默认App与可选Agent的规划切片
+
+2026-09-29采用业务默认不等于旧wire立即支持。03的
+`x-approved-wire-migration`保留唯一字段迁移定义；02/06定义持久化与异步义务，
+14与`development_plan.json.executionSlices`同源列出可实施交接与五个Cloud窗口。
+`validate_development_plan.py`同时检查整包和切片DAG、默认App不依赖Package/Build/
+独立WebUI、首次创建具备真实Tenant/交易/Serve/证据生产者及Instance写集边界。
+现有unittest还直接消费批准的selection union检查互斥/缺项/跨分支字段拒绝。
+
+`validate_handoff.py`把未贯通的批准迁移列入
+`approvedPendingContractMigrations`，保留`technicalClosureVerified=false`；
+`planningEntryReady`仅表示可从`W01.application-contracts`开工，不代表运行能力。
+历史原型/跨层证据只在其精确hash对应范围有效；不通过修改状态伪造新UI或部署资格。
+
+规划检查不会发起生产、采购或部署。完整机器合同/消费者实现后才移除03的pending
+迁移标记，并重跑对应decoder、迁移、真实服务及浏览器验收。以日期命名的回执追加
+保存；最新验证索引可替换，失败记录不删除。
+
+
+## 两组合纠正与四窗口派发
+
+D18的最终范围只有默认App，以及Package+Runtime+独立WebUI的Agent。
+Build不新增native UI选择；现行CreateBuildRequest三项输入仍必需。
+`test_development_plan.py`直接验证该真实schema，拒绝缺项和额外UI分支。
+
+`development_plan.json.parallelPreparation`与14第10节同源，列出四个
+`deepseek-v4.1-flash/high`领域窗口的立即执行任务、独占写集、测试和专属证据落点。
+这是既有合同内独立开发的入口，不覆盖executionSlices的前置依赖，也不解除W01。
+验证器拒绝跨域/共享写集、模型漂移或绕过合同交接。派发记录由Cloud source evidence
+保存；它不是完成这些任务的receipt，更不是TKE验收。

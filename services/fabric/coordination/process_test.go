@@ -12,7 +12,7 @@ func TestProcessKeepsTargetSurfaceExplicit(t *testing.T) {
 			return "legacy-database"
 		}
 		return ""
-	})
+	}, nil)
 	if err != nil || bootstrap != nil {
 		t.Fatalf("legacy setting unexpectedly enables target=%v %v", bootstrap, err)
 	}
@@ -21,7 +21,7 @@ func TestProcessKeepsTargetSurfaceExplicit(t *testing.T) {
 			return "explicit-target-database"
 		}
 		return ""
-	})
+	}, nil)
 	if err == nil || err.Error() != "OPL_RESOURCE_CATALOG_ADDR is required for Fabric resource acceptance" {
 		t.Fatalf("Catalog dependency not required: %v", err)
 	}

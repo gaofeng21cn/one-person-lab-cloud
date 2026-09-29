@@ -68,12 +68,14 @@ type localFixture struct {
 	fail  bool
 }
 
-func (d *localFixture) EnsureLocal(_ context.Context, in coordination.LocalResourceIntent) (*coordination.LocalResourceResult, error) {
+func (d *localFixture) Provider() string { return "local-docker" }
+
+func (d *localFixture) EnsureResources(_ context.Context, in coordination.ResourceIntent) (*coordination.ResourceResult, error) {
 	d.calls++
 	if d.fail {
 		return nil, status.Error(codes.Unavailable, "fixture provider pending")
 	}
-	return &coordination.LocalResourceResult{Binding: &api.ResourceExecutionBinding{ComputeAllocationId: in.ComputeID, StorageVolumeId: in.StorageID, DataAttachmentId: "attachment-fixture", DataAttachmentOperationId: in.OperationID + ":attachment", AccountId: "explicit-legacy-account"}, Compute: fabric.ComputeAllocation{ID: in.ComputeID, AccountID: "explicit-legacy-account", WorkspaceID: in.WorkspaceID, Status: "running", Provider: "local-docker", ProviderResourceID: "network/fixture"}, Storage: fabric.StorageVolume{ID: in.StorageID, AccountID: "explicit-legacy-account", WorkspaceID: in.WorkspaceID, Status: "ready", Provider: "local-docker", ProviderResourceID: "directory/fixture"}, Attachment: fabric.StorageAttachment{ID: "attachment-fixture", OperationID: in.OperationID + ":attachment", WorkspaceID: in.WorkspaceID, ComputeID: in.ComputeID, VolumeID: in.StorageID, Status: "attached", ProviderAttachmentID: "docker/fixture"}, ObservedAt: time.Now().UTC()}, nil
+	return &coordination.ResourceResult{Binding: &api.ResourceExecutionBinding{ComputeAllocationId: in.ComputeID, StorageVolumeId: in.StorageID, DataAttachmentId: "attachment-fixture", DataAttachmentOperationId: in.OperationID + ":attachment", AccountId: "explicit-legacy-account"}, Compute: fabric.ComputeAllocation{ID: in.ComputeID, AccountID: "explicit-legacy-account", WorkspaceID: in.WorkspaceID, Status: "running", Provider: "local-docker", ProviderResourceID: "network/fixture"}, Storage: fabric.StorageVolume{ID: in.StorageID, AccountID: "explicit-legacy-account", WorkspaceID: in.WorkspaceID, Status: "ready", Provider: "local-docker", ProviderResourceID: "directory/fixture"}, Attachment: fabric.StorageAttachment{ID: "attachment-fixture", OperationID: in.OperationID + ":attachment", WorkspaceID: in.WorkspaceID, ComputeID: in.ComputeID, VolumeID: in.StorageID, Status: "attached", ProviderAttachmentID: "docker/fixture"}, Network: &coordination.NetworkFact{ProviderReference: "network/fixture"}, ObservedAt: time.Now().UTC()}, nil
 }
 
 func (c *catalog) ReadQuoteResourcePlan(_ context.Context, r *api.QuoteResourcePlanRequest) (*api.QuoteAcceptance, error) {

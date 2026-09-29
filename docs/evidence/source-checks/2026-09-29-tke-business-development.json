@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_business_development_source_check",
+  "revision": 2,
+  "revisionNote": "Revision 1 was this window's own pre-verification draft of the same receipt, authored in this window and never handed off or relied on; it was superseded here rather than left as a second, stale claim. No prior receipt existed at this path.",
+  "recordedAt": "2026-09-29T14:40:00Z",
+  "result": "owner_source_implemented_focused_tests_passed_shared_contract_gaps_open",
+  "window": "business",
+  "windowTitle": "TKE B - identity, settlement, quote and Workspace",
+  "coordinatorThreadId": "01a0ecd7-2472-7810-b244-dc19505de019",
+  "sourceBaseSha": "bf9027253dd852383c6069e7dad9fc7d436efbe3",
+  "workspace": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#10",
+  "ownerWriteSet": [
+    "services/gateway-integration",
+    "services/resource-catalog",
+    "services/workspace",
+    "docs/evidence/source-checks/2026-09-29-tke-business-development.json"
+  ],
+  "ownerDiffSha256": {
+    "algorithm": "sha256 over (path + sha256(file)) for each owner file, in the listed order",
+    "aggregate": "60eb5de63143dbe54a253f416ad1223043700a20e5988582d5eb1289dc58c564",
+    "files": {
+      "services/gateway-integration/cmd/server/main.go": "64a65a471a0e8400d6bba382197375bee021c31403481b59985af637a8393e3d",
+      "services/gateway-integration/identity/authorization.go": "f232ee8c5a20a8b83aca308cdb1aaf42ce14cec3750b09630f391191d5de983d",
+      "services/gateway-integration/identity/generate_policy.py": "35c8478a2440f90b3b66df6b4cd9c73f864ac9591604beae7a4884b263ce6a9c",
+      "services/gateway-integration/identity/policy_generated.go": "1331ec3b9deb6854d3dedbd2db6f615503f166caf969b67dec26fe314e8bc245",
+      "services/gateway-integration/identity/policy_generated_test.go": "a0eb3e45eb89ad80cd96af9daa2e4887f352f3c3aa8d1ea11620d9c161f96056",
+      "services/gateway-integration/identity/policy_postgres_test.go": "26051a80da1f0f15e243d8e55eac0a58c091852137a2cd66e0d215a8a1e9975b",
+      "services/gateway-integration/identity/workspace_grants_postgres_test.go": "542e395b20fbb95f4ca6f37654585d6edbb335271cfec39f2e6ec9a7d84f596f",
+      "services/workspace/cmd/server/main.go": "626921cf6fe5b3bf3ce021a4145b90807ea7a5c639b3f17c249786d2a5ebb0e7",
+      "services/workspace/internal/launch/recovery.go": "b142e758b9e7e2b1ccf42b5cef3022093213f3f2a69f4c7b4cab7e3c0abd7cbf",
+      "services/workspace/internal/launch/runtime.go": "4109c639734cdf859e0e7657660ffe9891b7952326501172a6908fea64427ca7",
+      "services/workspace/internal/launch/service.go": "a75070a7b6abb54feba43a83d3fb431f34a086c523e1aaf661fe26a2afe3ecb2",
+      "services/workspace/internal/launch/funding.go": "1126ecb000f763c2cdada9a8c92f2c8fdc3e85ac097a88d5fa20f55ca32a8b5b",
+      "services/workspace/internal/launch/funding_test.go": "e205aa4acc009f583e661c7046ba794a75abc48f3a538f6baab0c651ccdd2c01"
+    }
+  },
+  "scope": "Cloud source and focused isolated verification for the business window only. No instance was deployed, no production network was reached, no real charge, refund, purchase or deletion ran, and no candidate or release was published.",
+  "implemented": [
+    {
+      "id": "B1",
+      "name": "Identity owner readiness wiring (#688 port, in-write-set part)",
+      "files": [
+        "services/gateway-integration/cmd/server/main.go"
+      ],
+      "change": "Owner-commit readback for grant issuance is wired through one guarded loop over {Build, Workspace}: an absent OPL_BUILD_ADDR or OPL_WORKSPACE_ADDR installs no client and the grant path refuses, instead of dialing an empty target that grpc.NewClient accepts without error.",
+      "adoptedFrom": "PR #688 codex/cloudidentity-owner-readiness (https://github.com/gaofeng21cn/one-person-lab-cloud/pull/688), selectively ported; its services/internal and docs/runtime parts are outside this write set and are handed off as G1/G2."
+    },
+    {
+      "id": "B2",
+      "name": "OwnerOperations authorization gap",
+      "files": [
+        "services/gateway-integration/identity/authorization.go",
+        "services/gateway-integration/identity/policy_generated.go",
+        "services/gateway-integration/identity/generate_policy.py",
+        "services/gateway-integration/identity/policy_generated_test.go",
+        "services/gateway-integration/identity/policy_postgres_test.go"
+      ],
+      "change": "An Operation read is route-resolved. The committed policy pinned AUTHORIZATION_ACTION_ENUM_GETOPERATION to OWNER_ENUM_WORKSPACE, so the Console read at GET /api/v2/operations/{owner}/{operationId} was denied for every owner except Workspace, and each receiving owner's own re-authorization was denied for the same reason. CloudIdentity now decides getOperation as a live session's member read against the explicit owner audience over an owner-local OPERATION resource, and the contract-derived table no longer emits a getOperation row (generate_policy.py route_resolved set). Removing that row is a faithful generator output: applying the patched generator to the committed canonical yaml reproduces the committed policy_generated.go minus exactly that row, byte for byte.",
+      "rpc": "CloudIdentityAuthorization.AuthorizeAction action=AUTHORIZATION_ACTION_ENUM_GETOPERATION audience=<explicit route owner> resource.kind=AUTHORIZATION_RESOURCE_KIND_OPERATION",
+      "consumers": [
+        "apps/console-bff/internal/httpapi/server.go handleOperation (via RequireAuthorizedAction; audience = the route owner the browser named)",
+        "services/internal/ownerservice/operations.go Operations.Read (the receiving owner re-authorizes against its own audience)"
+      ],
+      "counterExamples": [
+        "getOperation with a non-OPERATION resource kind is denied",
+        "getOperation with OWNER_ENUM_UNSPECIFIED audience is denied",
+        "a tenant-a session reading a tenant-b operation is denied",
+        "a session with no tenant and no platform-admin subject reading a platform-scope operation is denied"
+      ]
+    },
+    {
+      "id": "B3",
+      "name": "Accepted-operation grant covers the original charge and its readback",
+      "files": [
+        "services/gateway-integration/identity/authorization.go",
+        "services/workspace/internal/launch/recovery.go",
+        "services/gateway-integration/identity/workspace_grants_postgres_test.go"
+      ],
+      "change": "The canonical contract's x-accepted-operation-actions.create_workspace includes chargeAcceptedObligation and readWalletAction, but neither the issued grant's allowed actions nor the grant continuation path covered them, so the Wallet owner would have refused the accepted order's one settlement. A create_workspace grant now includes CHARGEACCEPTEDOBLIGATION and READWALLETACTION, and the grant continuation matches audience GATEWAY for exactly those two actions over the granted Workspace resource. Once the authority ends (revoked or demoted membership, inactive tenant, closeout-only mode) the charge is refused while the readback stays allowed, so an unknown obligation can still be reconciled against its own original code and no new debit is issued.",
+      "rpc": "CloudIdentityAuthorization.IssueAcceptedOperationGrant (workspace create_workspace) and AuthorizeAction action=CHARGEACCEPTEDOBLIGATION|READWALLETACTION audience=OWNER_ENUM_GATEWAY resource.kind=WORKSPACE resource.id=<workspace>",
+      "counterExamples": [
+        "an ended authority cannot issue a new charge",
+        "an ended authority can still read its original wallet action",
+        "a charge addressed to another audience, resource kind or workspace id is denied"
+      ]
+    },
+    {
+      "id": "B4",
+      "name": "Workspace wallet charge for a paid order",
+      "files": [
+        "services/workspace/internal/launch/funding.go",
+        "services/workspace/internal/launch/recovery.go",
+        "services/workspace/internal/launch/service.go",
+        "services/workspace/cmd/server/main.go"
+      ],
+      "change": "The forced Local no-charge gate is no longer the only route to resource provisioning. Resume obtains funding evidence for every accepted order: a Local no-charge order keeps its Ledger receipt, and any other order is charged through the existing typed GatewayCoordination.Debit for the same obligation. The command is frozen before dispatch (original idempotency key = operationId:wallet_charge, obligationId = the Workspace operation, quoteAcceptanceId, amount, currency), the confirmed WalletOperation and its receiptId are persisted, and that receipt id is what releases Fabric with confirmedChargeReceiptId. A lost response reads the original wallet action back by its original key instead of charging again. An unknown charge keeps the obligation pending and is never refunded; an explicit refusal stops the downstream and records the wallet's own error code; a charge for another workspace, amount, kind or a zero amount is refused as DataLoss. Workspace keeps only the original order and its intent - no Serve current-deployment copy is stored.",
+      "rpc": "GatewayCoordination.Debit(WalletDebitCommand) -> WalletOperation; GatewayCoordination.ReadWalletAction(WalletReadbackRequest{originalIdempotencyKey}) -> WalletOperation",
+      "fields": [
+        "WalletDebitCommand.workspaceId",
+        "WalletDebitCommand.obligationId",
+        "WalletDebitCommand.quoteAcceptanceId",
+        "WalletDebitCommand.amountUsdMicros",
+        "WalletDebitCommand.currency",
+        "WalletOperation.kind=CHARGE",
+        "WalletOperation.status",
+        "WalletOperation.receiptId",
+        "WalletOperation.errorCode",
+        "EnsureResourcesCommand.confirmedChargeReceiptId"
+      ],
+      "consumers": [
+        "services/fabric/coordination EnsureResources (receives the confirmedChargeReceiptId; the free intent and the later funded resume are the same original resource operation)"
+      ],
+      "counterExamples": [
+        "a Local no-charge order presented with a wallet charge is refused",
+        "a charge for another workspace, another amount, a REFUND kind or a zero amount is refused",
+        "a rejected charge provisions no resource and records the wallet's own cause",
+        "an unknown charge is re-read by its original code, never re-charged and never refunded",
+        "an order with no configured funding owner stays pending instead of reading as free"
+      ]
+    }
+  ],
+  "verification": [
+    {
+      "command": "go -C services/gateway-integration test ./... -count=1 (OPL_OWNER_MIGRATION_TEST_ADMIN_DSN = isolated loopback PostgreSQL container on 127.0.0.1:54555, created for this run)",
+      "result": "ok: identity 9.836s, migrations ok, cmd/server no test files"
+    },
+    {
+      "command": "go -C services/workspace test ./... -count=1 (same isolated PostgreSQL)",
+      "result": "ok: launch 9.444s, migrations 1.335s, cmd/server no test files"
+    },
+    {
+      "command": "go -C services/resource-catalog test ./... -count=1 (same isolated PostgreSQL)",
+      "result": "ok: catalog ok, migrations ok, cmd/server no test files. No resource-catalog file was changed: the one identified resource-catalog breakpoint is a shared W01 contract gap listed as G4 and was deliberately not patched."
+    },
+    {
+      "command": "go -C services/gateway-integration test ./identity/ -run TestOperationReadIsRouteResolvedAcrossOwnersPostgres -count=1 -v",
+      "result": "PASS. Real CloudIdentity service over real owner PostgreSQL with real sessions: the same tenant session reads an Operation from the fabric, serve, resource_catalog, ledger and workspace routes, while a wrong resource kind, an unspecified owner route, a cross-tenant read and a non-admin platform read are all refused. This is the tenant/session counter-example set for the operation route."
+    },
+    {
+      "command": "go -C services/gateway-integration test ./identity/ -run 'TestGeneratedPolicy|TestWorkspaceAcceptedGrantPostgres|TestWorkspaceGrantCloseoutPostgres|TestWorkspaceGrantRejectsUnboundEvidencePostgres' -count=1 -v",
+      "result": "PASS. The generated table has no getOperation row and the per-owner surface still matches the contract (workspace rows 19 -> 18). The workspace grant now authorizes CHARGEACCEPTEDOBLIGATION and READWALLETACTION at the GATEWAY audience over the granted Workspace, rejects them for another audience/resource, and after revocation/demotion/inactive tenant/closeout-only mode issues no new charge while the wallet readback stays available."
+    },
+    {
+      "command": "go -C services/workspace test ./internal/launch/ -run 'TestPaidOrderChargesTheOriginalObligationOnce|TestUnknownChargeIsReadBackAndNeverRefunded|TestRefusedChargeStopsTheDownstream|TestUnfundedAndForeignChargesCannotReleaseResources' -count=1 -v",
+      "result": "PASS. An isolated in-process wallet authority (the Sub2API role, no network, no real money) proves: exactly one charge per original obligation with and without a lost ACK; the original obligation identity (obligationId, workspace, amount, quoteAcceptanceId, idempotency key, accepted grant) persisted; an unknown charge read back and converged without a second charge and with zero refund calls; a refused charge provisioning nothing; foreign or unfunded evidence releasing nothing."
+    },
+    {
+      "command": "go -C services/workspace test ./internal/launch/ -count=1 -v",
+      "result": "PASS: the pre-existing launch suite still passes with the paid funding path added (durable runtime identities across worker restart, revoked-continuation closeout without a new runtime, zero-charge evidence binding, workspace readback not inventing entitlement or access)."
+    },
+    {
+      "command": "go -C services/workspace vet ./... ; go -C services/gateway-integration vet ./... ; go -C services/resource-catalog vet ./... ; go -C apps/console-bff build ./...",
+      "result": "PASS (no diagnostics in the owner write set; the Console BFF module still builds against the changed identity package)."
+    }
+  ],
+  "notRun": [
+    {
+      "item": "livebuild-tagged live qualification (go -C services/workspace vet -tags livebuild ./...)",
+      "reason": "blocked by another window's in-flight module state: services/capability imports github.com/tencentyun/cos-go-sdk-v5 with no go.sum entry, so the livebuild closure of the workspace test package fails outside this window's write set. Not attributable to this diff; no livebuild-tagged test was executed."
+    },
+    {
+      "item": "OPL_LOCAL_FIRST_DEPLOY_QUALIFICATION=1 local first-deploy qualification",
+      "reason": "opt-in Linux qualification host only; not run in this window."
+    },
+    {
+      "item": "any real Tencent TKE/CVM/CBS procurement, any real charge or refund, any instance or production run",
+      "reason": "explicitly out of scope for this dispatch; no money and no provider resource was touched, and the wallet authority in the tests is in-process and isolated."
+    }
+  ],
+  "sharedGaps": [
+    {
+      "id": "G1",
+      "owner": "coordinator (services/internal/ownerservice/bootstrap.go)",
+      "problem": "PR #688's remaining part is outside this window's write set: the cloud_identity readiness check is still installed for every owner, so the CloudIdentity authority reports NOT_SERVING for itself whenever OPL_CLOUD_IDENTITY_URL is absent while a database is present.",
+      "exactChange": "in services/internal/ownerservice/bootstrap.go, install the cloud_identity readiness check only when config.Owner != OwnerTenant - one added precondition on the existing check; no new check, gate or fallback.",
+      "pr": "https://github.com/gaofeng21cn/one-person-lab-cloud/pull/688 (codex/cloudidentity-owner-readiness, open)",
+      "unverifiedBecause": "services/internal is not in this window's write set."
+    },
+    {
+      "id": "G2",
+      "owner": "coordinator (docs/runtime/package-buildkit-local.md)",
+      "problem": "The #688 configuration note (an absent OPL_BUILD_ADDR is a normal deployment absence, not a defect) is documentation outside this window's write set.",
+      "exactChange": "record the absence rule where OPL_BUILD_ADDR is already documented as canonical configuration."
+    },
+    {
+      "id": "G3",
+      "owner": "coordinator (W01 application contracts)",
+      "problem": "Resource catalog still derives a quote's runtime readback requirement from capabilityVersionId alone: services/resource-catalog/catalog/quotes.go:430 runtimeReadbackRequirementFor returns QUOTE_RUNTIME_READBACK_REQUIREMENT_ENUM_NOT_APPLICABLE when the accepted quote names no capability version, and services/resource-catalog/catalog/accept.go:195 reads it back the same way. Per W01 both application kinds must require a runtime readback, and a missing capability version must not read as a pure resource order.",
+      "exactChange": "carry the accepted application union into the quote admission snapshot so the requirement is derived from the admitted application instead of the presence of a capability version. The snapshot type is services/resource-catalog/catalog/quotes.go:81 quoteSnapshot; it has no application or capability field today.",
+      "counterExample": "a default-App deploy quote accepted without a capability version currently reports NOT_APPLICABLE, which the readback consumer then treats as 'no runtime readback required'.",
+      "notDoneHere": "a nullable fallback or a fabricated CapabilityVersion would misstate the accepted application, so nothing was changed; only the gap is reported."
+    },
+    {
+      "id": "G4",
+      "owner": "coordinator + TKE C (fabric) + TKE A/D",
+      "problem": "There is no Ledger receipt kind for a paid wallet charge. The Local path is verified end to end because Fabric re-reads the local_no_charge evidence from Ledger by reference, but GatewayCoordination.Debit returns only WalletOperation.receiptId and no Ledger receipt type or decoder records a paid charge, so Fabric's Tencent dispatcher has no owner-authoritative evidence to verify ConfirmedChargeReceiptId against.",
+      "exactChange": "decide the paid-charge receipt owner and kind, then let Fabric verify that receipt by reference exactly as the Local local_no_charge path does. Workspace already persists and passes WalletOperation.receiptId as EnsureResourcesCommand.confirmedChargeReceiptId.",
+      "rpc": "GatewayCoordination.Debit -> WalletOperation.receiptId ; LedgerCoordination receipt readback (no paid-charge kind exists today)."
+    },
+    {
+      "id": "G5",
+      "owner": "coordinator (W04.payment-key)",
+      "problem": "GatewayCoordination has no production implementation and no caller anywhere in the repository: only the generated stubs exist, so OPL_GATEWAY_ADDR has no deployable target yet. This window wires the Workspace client and the settlement contract but cannot make the Tencent chain run without the Gateway owner.",
+      "exactChange": "implement GatewayCoordination (BindWallet/Debit/Refund/ReadWalletAction/CreateManagedKey/RevokeManagedKey) in the Gateway Integration owner and add the deployment address."
+    },
+    {
+      "id": "G6",
+      "owner": "coordinator + TKE C (services/fabric)",
+      "problem": "services/fabric/coordination/local_dispatch.go:106 still gates dispatch on plan.provider == 'local-docker' && billingMode == 'LOCAL_NO_CHARGE' && quote.totalUsdMicros == 0, so a Tencent plan reaches no provider path from that file.",
+      "exactChange": "the Tencent dispatcher is TKE C's new coordination code; this window only guarantees the funded evidence (confirmedChargeReceiptId) Fabric needs in order to authorize a prepaid Tencent resource order."
+    },
+    {
+      "id": "G7",
+      "owner": "coordinator (W01 yaml + generator reconciliation)",
+      "problem": "The working-tree docs/spec/target/03_api_contract_complete.yaml (W01 in migration) already carries getOperation with x-owner: bff and x-data-owner 'resolved from the explicit owner route'. Regenerating the policy wholesale from that yaml today would change per-owner row counts (for example tenant 18 -> 23, workspace 19 -> 16, runtime_control rows) because the union migration is mid-flight.",
+      "exactChange": "when the union lands, regenerate policy_generated.go wholesale from the accepted yaml; the getOperation row stays absent under either yaml because generate_policy.py now skips it (route_resolved). This window deliberately did not regenerate the table from a half-migrated yaml.",
+      "verified": "applying the patched generate_policy.py to the HEAD yaml reproduces the committed policy_generated.go minus exactly the getOperation row, byte for byte."
+    },
+    {
+      "id": "G8",
+      "owner": "coordinator (services/internal/ownerservice/operations.go) - observation only",
+      "problem": "Operations.Read authorizes with ResourceScope{tenantId, actorId} taken from the stored operation, so only the operation's own actor can read it. The route-resolved getOperation allow now reaches that owner-local check for every owner, and that check is stricter than the contract's member permission for an admin or owner reading another member's operation.",
+      "exactChange": "decide whether an owner-local Operation read is actor-bound or tenant-member bound; if it is member-bound, relax the ResourceScope in that shared file. Not changed in this window.",
+      "counterExample": "a tenant admin reading a member's operation id."
+    },
+    {
+      "id": "G9",
+      "owner": "coordinator (W17 / TKE D slices)",
+      "problem": "The canonical x-accepted-operation-actions.create_workspace list also names bindManagedSecret, fenceRouteEpoch, activateRoute, observeRoute, retireRuntime and refundConfirmedDeletion, and the current issue list additionally asks for completeAcceptedObligation which the create list does not name. Neither list was reconciled with the canonical union in this window.",
+      "exactChange": "reconcile the Workspace accepted-operation action lists against x-accepted-operation-actions when the Serve delivery, route activation and deletion slices land, adding each action together with its real caller. This window added exactly the two funding actions the current chain needs (chargeAcceptedObligation, readWalletAction)."
+    }
+  ],
+  "claimBoundary": "This receipt claims Cloud source changes, an isolated in-process authority test with no real money, and focused PostgreSQL-backed checks across three owner modules. It does not claim a deployable Tencent chain, a production Gateway or Ledger implementation, an instance deployment, a candidate, a release, or any charge, refund, purchase or deletion. The shared gaps above are explicit coordinator obligations.",
+  "secrets": "none: the receipt contains no credentials, tokens, keys, customer data or private addresses; the isolated test database is a loopback container created for this run."
+}

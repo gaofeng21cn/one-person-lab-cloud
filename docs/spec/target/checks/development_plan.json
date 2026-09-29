@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "57a89affd17d970ccb88d736e3e79c92e65536e7",
+  "sourceSHA": "bf9027253dd852383c6069e7dad9fc7d436efbe3",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -32,7 +32,7 @@
     "fabric": "existing",
     "ledger": "existing",
     "tenant": "existing",
-    "instance": "planned_not_created"
+    "instance": "existing"
   },
   "assignees": "roles/modules are fixed; human names and calendar dates follow actual staffing, not fabricated",
   "workPackages": [
@@ -78,7 +78,7 @@
         "docs/roadmap.md"
       ],
       "deliverables": [
-        "把已确认Agent+套餐目标、D17和逐域单writer迁移写入canonical owner，历史resource_only义务保留",
+        "把12已确认默认App/可选Agent、TKE主线、D17和逐域single-writer移交同步canonical owner；新默认不等于历史resource_only",
         "记录Cloud/Instance/Runtime publisher精确sourceSHA与schema版本；形成实现起点差异清单，不把目标写成现状"
       ],
       "verification": [
@@ -154,14 +154,26 @@
         "services/fabric/go.mod",
         "services/fabric/go.sum",
         "services/ledger/go.mod",
-        "services/ledger/go.sum"
+        "services/ledger/go.sum",
+        "docs/spec/target/02_database_schema_complete.md",
+        "docs/spec/target/03_api_contract_complete.yaml",
+        "docs/spec/target/contracts",
+        "services/runtime-control/migrations",
+        "services/capability/migrations",
+        "services/build/migrations",
+        "services/resource-catalog/migrations",
+        "services/workspace/migrations",
+        "services/serve/migrations"
       ],
       "deliverables": [
         "按真实两端caller把03/proto/events/publisher/plan-change规格进入生产owner；不是整包inventories复制到runtime",
         "锁定schema SHA和生成工具版本；每个consumer生成/校验typed client，只有owner定义业务类型",
         "单仓消费者与契约来自同一Cloud commit，绑定schema SHA与生成工具版本；外部Owner才按精确commit/tag或digest接入，不用moving main/latest",
-        "沿用packages/contracts/go/go.mod；生成包为packages/contracts/go/v226，不为版本子包新建module；以锁定生成配置映射proto import到实际module路径，不手改生成代码",
-        "必要消费者go.mod/go.sum调整属于契约写集：记录实际依赖链与选定版本，不为旧测试或保持diff不变增加兼容字段、强压依赖或另建模块"
+        "沿用packages/contracts/go/go.mod；W01核对已运行api协议与旧v226规划的精确差异后统一生产/规格/生成消费者，不机械改包名、不另建module或并行协议副本",
+        "必要消费者go.mod/go.sum调整属于契约写集：记录实际依赖链与选定版本，不为旧测试或保持diff不变增加兼容字段、强压依赖或另建模块",
+        "先贯通03 x-approved-wire-migration与02第0节：应用来源判别联合、Agent必选独立WebUI、descriptor provenance、claims、Quote/Serve持久化与真实消费者同版交付",
+        "同步已有TenantRepositoryBinding生产RPC与规格、明确api/v226生成映射；修Runtime REST owner和per-owner Operation路由，不复制第二套合同",
+        "默认App不得伪造Package/Build/CapabilityVersion/Build receipt；Agent必须保留Package/Runtime/独立WebUI三个真实输入及claim"
       ],
       "verification": [
         "编译Go/TS/protobuf客户端，按各自协议规则验证JSON/protobuf正反例、金额string/int64及source ms精度；仅生成成功不算消费者接入完成",
@@ -374,8 +386,8 @@
         "services/control-plane/internal/clients/sub2api.go"
       ],
       "plannedWritePaths": [
-        "services/gateway-integration/internal/identity",
-        "services/gateway-integration/internal/authorization"
+        "services/gateway-integration/identity",
+        "services/gateway-integration/cmd/server"
       ],
       "deliverables": [
         "Gateway个人登录→Cloud session/Tenant/membership；平台权限与Tenant角色分离",
@@ -469,9 +481,8 @@
         "services/control-plane/internal/server/wallet_adjustment.go"
       ],
       "plannedWritePaths": [
-        "services/gateway-integration/internal/sub2api",
-        "services/gateway-integration/internal/wallet",
-        "services/gateway-integration/internal/keys"
+        "services/gateway-integration/identity",
+        "services/gateway-integration/migrations"
       ],
       "deliverables": [
         "沿用Sub2API真实接口/身份和一次性Code，完成base/supplement/period/refund原单读回",
@@ -639,7 +650,7 @@
         "W02"
       ],
       "acceptAfter": [
-        "W11"
+        "W12"
       ],
       "existingReadPaths": [
         "services/control-plane/internal/server/routes_billing.go",
@@ -718,7 +729,7 @@
     },
     {
       "id": "W07",
-      "title": "发布者空间与Runtime/WebUI准入",
+      "title": "发布者空间与WebUI准入",
       "coordinator": "Capability",
       "owners": [
         "capability"
@@ -735,8 +746,7 @@
         "services/control-plane/internal/server/workspace_application_admission.go"
       ],
       "plannedWritePaths": [
-        "services/capability/internal/publishers",
-        "services/capability/internal/catalog"
+        "services/capability/catalog"
       ],
       "deliverables": [
         "官方/第三方publisher namespace、registry prefix、完整不可变PublisherContract",
@@ -757,16 +767,11 @@
       "state": "not_implemented",
       "apiPrimary": [
         "createPublisherNamespace",
-        "getBuildRuntimePolicy",
         "listPublisherNamespaces",
-        "listRuntimeVersions",
         "listWebuiVersions",
         "publishOfficialPackage",
-        "registerRuntimeVersion",
         "registerWebuiVersion",
         "revokePublisherNamespace",
-        "setBuildRuntimePolicy",
-        "setRuntimeVersionStatus",
         "setWebuiVersionStatus"
       ],
       "apiConsumes": [],
@@ -782,11 +787,6 @@
         "CapabilityProductService.ListPublisherNamespaces",
         "CapabilityProductService.CreatePublisherNamespace",
         "CapabilityProductService.RevokePublisherNamespace",
-        "RuntimeControlProductService.ListRuntimeVersions",
-        "RuntimeControlProductService.GetBuildRuntimePolicy",
-        "RuntimeControlProductService.SetBuildRuntimePolicy",
-        "RuntimeControlProductService.RegisterRuntimeVersion",
-        "RuntimeControlProductService.SetRuntimeVersionStatus",
         "CapabilityCoordination.ResolveBuildInput",
         "CapabilityCoordination.ResolvePublisherContract",
         "CapabilityCoordination.AcquireReference",
@@ -827,9 +827,8 @@
         "services/control-plane/internal/server/application_revision_store.go"
       ],
       "plannedWritePaths": [
-        "services/capability/internal/packages",
-        "services/capability/internal/uploads",
-        "services/capability/internal/references"
+        "services/capability/catalog",
+        "services/capability/migrations"
       ],
       "deliverables": [
         "分组/Package/版本与受限Storage直传、实际摘要校验及续传",
@@ -922,22 +921,22 @@
       ],
       "startAfter": [
         "W05",
-        "W08"
+        "W08",
+        "W10"
       ],
       "acceptAfter": [],
       "existingReadPaths": [
         "docs/agent-lifecycle.md"
       ],
       "plannedWritePaths": [
-        "services/build/internal/jobs",
-        "services/build/internal/builder",
-        "services/build/internal/registry",
-        "services/capability/internal/artifacts"
+        "services/build/internal/build",
+        "services/capability/catalog"
       ],
       "deliverables": [
         "冻结输入与recipe，真实BuildKit构建及Registry exporter/readback",
         "typed完成事件→Capability Inbox事务创建唯一ready版本；重试新job保留旧历史",
-        "管理员/客户查询构建日志及版本、引用保护下架；无用户自定义任意脚本旁路"
+        "管理员/客户查询构建日志及版本、引用保护下架；无用户自定义任意脚本旁路",
+        "Agent固定Package+Runtime+独立WebUI三项确切输入；默认App直接用获准Release，不创建Build"
       ],
       "verification": [
         "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
@@ -1018,14 +1017,14 @@
         "packages/contracts/proto/internal.proto"
       ],
       "plannedWritePaths": [
-        "services/runtime-control/internal/releases",
-        "services/runtime-control/internal/catalog",
+        "services/runtime-control/catalog",
         "services/runtime-control/migrations"
       ],
       "deliverables": [
         "注册并审核OPL App/Framework Runtime Release；保存不可变artifact digest、ABI/Package兼容契约、状态与准入证据",
         "向Build提供精确RuntimeRelease引用；只读回版本目录，不部署Workspace Agent、不拥有Runtime实例或readiness",
-        "撤销/退役只影响新Build准入，已固定Build输入和历史证据不被改写"
+        "撤销/退役只影响新Build准入，已固定Build输入和历史证据不被改写",
+        "准入指定OPL App源的standalone/native UI发布事实，供默认App的报价/Serve读取与claim保护；批准不等于镜像已实际可用"
       ],
       "verification": [
         "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
@@ -1039,11 +1038,24 @@
         "Runtime目录读回不得被解释为Agent已部署或已运行"
       ],
       "state": "not_implemented",
-      "apiPrimary": [],
+      "apiPrimary": [
+        "getBuildRuntimePolicy",
+        "listRuntimeVersions",
+        "registerRuntimeVersion",
+        "setBuildRuntimePolicy",
+        "setRuntimeVersionStatus"
+      ],
       "apiConsumes": [],
       "tablesPrimary": [
         "runtime_control.runtime_releases",
         "runtime_control.catalog_policies"
+      ],
+      "rpcImplements": [
+        "RuntimeControlProductService.ListRuntimeVersions",
+        "RuntimeControlProductService.GetBuildRuntimePolicy",
+        "RuntimeControlProductService.SetBuildRuntimePolicy",
+        "RuntimeControlProductService.RegisterRuntimeVersion",
+        "RuntimeControlProductService.SetRuntimeVersionStatus"
       ],
       "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
       "contractRefs": [
@@ -1104,13 +1116,6 @@
       "state": "not_implemented",
       "apiPrimary": [],
       "apiConsumes": [],
-      "tablesPrimary": [
-        "fabric.resource_sets",
-        "fabric.resources",
-        "fabric.attachments",
-        "fabric.secret_bindings",
-        "fabric.resource_actions"
-      ],
       "rpcImplements": [
         "FabricCoordination.AdmitResources",
         "FabricCoordination.EnsureResources",
@@ -1184,6 +1189,13 @@
       "state": "not_implemented",
       "apiPrimary": [],
       "apiConsumes": [],
+      "tablesPrimary": [
+        "fabric.resource_sets",
+        "fabric.resources",
+        "fabric.attachments",
+        "fabric.secret_bindings",
+        "fabric.resource_actions"
+      ],
       "rpcImplements": [
         "FabricCoordination.AdmitResources",
         "FabricCoordination.EnsureResources",
@@ -1421,7 +1433,7 @@
     },
     {
       "id": "W15",
-      "title": "准确报价与Agent+套餐Launch闭环",
+      "title": "准确报价与应用＋套餐自动交付",
       "coordinator": "Workspace（协调）/Catalog/Serve",
       "owners": [
         "workspace",
@@ -1433,12 +1445,12 @@
         "F08"
       ],
       "startAfter": [
+        "W03",
         "W04",
         "W05",
         "W06",
-        "W09",
         "W10",
-        "W11"
+        "W12"
       ],
       "acceptAfter": [],
       "existingReadPaths": [
@@ -1447,15 +1459,14 @@
         "services/control-plane/internal/server/workspace_launch_reconciler.go"
       ],
       "plannedWritePaths": [
-        "services/workspace/internal/admission",
         "services/workspace/internal/launch",
-        "services/resource-catalog/internal/quotes",
+        "services/resource-catalog/catalog",
         "services/serve/internal/delivery"
       ],
       "deliverables": [
         "Workspace只负责准入、报价接受、原单/权益/资源计划；Fabric确认资源后将OCI digest与resource refs交给Serve",
-        "Serve创建该Workspace唯一Agent delivery，执行部署/readiness/access并返回真实读回；Workspace通过ServeAgentCoordination.Reserve/Deploy发起，不写Agent deployment/current selection",
-        "本地真实链覆盖Capability→Build→Workspace→Fabric→Serve→API/Embed/Hosted UI；每阶段原身份/原单/epoch持久化，已接受报价不因执行耗时重新计价"
+        "Serve的W17.first-delivery先提供Reserve/Deploy/Observe/Activate；Workspace消费它，不把首次部署实现复制到Workspace",
+        "默认App与自定义Agent共用原单/授权/资源/Serve链；默认App不依赖Build、Package或独立WebUI；已接受报价不因耗时或策略变化重新定价"
       ],
       "verification": [
         "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
@@ -1463,10 +1474,11 @@
         "该命令只作实施后要求；本轮没有执行新产品实现测试",
         "本地真实服务链+外部权威fixture：余额不足、扣款丢响应、资源/receipt不确定、restart",
         "同一次请求串API→Owner→DB→下一Owner→实际应用响应",
+        "同一默认App订单：无Package/Build/CapabilityVersion也能达到真实Serve访问；另验Package+Runtime+独立WebUI构建的Agent，不以Local零收费替代Tencent新购",
         "实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestPricingCatalogLookupRequiresExactAcceptedVersion|TestWorkspaceLaunchMonthlyPreflightRunsBeforeDebitAndProviderStages|TestWorkspaceLaunchDebitAuthoritativeReadbackClassification|TestWorkspaceLaunchResourceOnlyReconcilerCompletesWithoutApplicationFacts)$' -count=1"
       ],
       "acceptance": [
-        "一个Workspace一次原单且最多一个当前Agent；ready来自Serve实际Agent而非资源开通",
+        "一个Workspace一次原单、至多一个当前应用；默认App和Agent均以Serve实际可用及必需receipt确认完成，不以资源ready完成",
         "失败收尾/unknown/退款分开展示，拒绝跨Tenant与伪价格"
       ],
       "state": "not_implemented",
@@ -1617,11 +1629,14 @@
         "F17"
       ],
       "startAfter": [
-        "W09",
-        "W11",
+        "W01",
+        "W02",
+        "W10",
+        "W12"
+      ],
+      "acceptAfter": [
         "W15"
       ],
-      "acceptAfter": [],
       "existingReadPaths": [
         "docs/opl-serve.md",
         "docs/architecture.md",
@@ -1636,7 +1651,9 @@
       "deliverables": [
         "Serve接收Workspace授权、OCI digest、Fabric resource refs与expected current deployment，创建唯一Agent deployment并持久化部署/运行/访问事实",
         "通过ServeAgentCoordination、ServeRuntimeAdapter、ServeAccessControl完成部署、readiness、模型reload、Fence/Activate/Observe/Rollback；同一Workspace最多一个当前Agent",
-        "API/Embed/Hosted UI只读Serve当前Agent；失败回滚保留原路由与数据证据，Workspace不写deployment/current selection，Fabric不写readiness/access"
+        "API/Embed/Hosted UI只读Serve当前Agent；失败回滚保留原路由与数据证据，Workspace不写deployment/current selection，Fabric不写readiness/access",
+        "先独立实现首次TKE交付供W15消费，再完成显式更新/替换/回滚；承接Fabric旧TKE应用能力并切真实caller后才退休旧writer",
+        "默认App runtime_release provenance与Agent build provenance共用Serve聚合；TKE应用Deployment/Service/route由Serve写，CVM/CBS/attachment归Fabric"
       ],
       "verification": [
         "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
@@ -1679,6 +1696,7 @@
         "ServeProductService.UpdateWorkspaceVersion",
         "ServeProductService.RollbackWorkspace",
         "ServeProductService.GetWorkspaceAccess",
+        "ClaimUsageReadback.ReadClaimUsage",
         "ServeAgentCoordination.Reserve",
         "ServeAgentCoordination.Deploy",
         "ServeAgentCoordination.ReloadModels",
@@ -1970,11 +1988,12 @@
       ],
       "startAfter": [
         "W03",
-        "W04",
+        "W04"
+      ],
+      "acceptAfter": [
         "W15",
         "W20"
       ],
-      "acceptAfter": [],
       "existingReadPaths": [
         "services/control-plane/internal/server/routes_admin.go"
       ],
@@ -1985,7 +2004,8 @@
       "deliverables": [
         "创建/绑定账单主体与个人登录分开；暂停权限及子Workspace结果可追踪",
         "reenable只恢复原暂停且仍已付/原资源存在对象；删除后15天恢复是独立操作",
-        "删除资产转平台私有托管，不公开、不自动退款全部余额或重购资源"
+        "删除资产转平台私有托管，不公开、不自动退款全部余额或重购资源",
+        "W21.tenant-admission先交付开通/owner membership/已支持钱包主体与repository binding，供首链使用；暂停/删除/恢复作为后续切片，不以预置测试Tenant代替产品开通"
       ],
       "verification": [
         "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
@@ -2432,7 +2452,6 @@
         "F17"
       ],
       "startAfter": [
-        "W09",
         "W13",
         "W15"
       ],
@@ -2459,7 +2478,7 @@
         "tools"
       ],
       "deliverables": [
-        "前端真实BFF→真实Owner DB/RPC→Local provider/应用；业务链固定为Capability→Build→Workspace→Fabric→Serve→API/Embed/Hosted UI；外部财务只用明确隔离authority fixture",
+        "真实Console/BFF→owner/DB/RPC→资源→Serve→应用；分别验默认App、Package+独立WebUI的Agent；每项标source/Local/TKE与真实或隔离财务边界",
         "以17F逐项执行正常/拒绝/丢响应/重启/重复/越权/并发/取消/恢复向量",
         "性能记录实际实例输入和测量值，不创造50人/3分钟承诺"
       ],
@@ -2532,7 +2551,8 @@
         "目标多服务制品纳入同一个Cloud Candidate/安装清单与同字节资格单位；不另起release authority",
         "固定Cloud SHA及各参与Owner sourceSHA、镜像digests/平台、契约revision、配置schema、全部assets checksum；无latest/main输入",
         "更新现有Candidate/qualification/release消费者与实例接收校验，历史v2单镜像Candidate可读但不是第二当前writer",
-        "CI只有code/build/sandbox测试权限；构建Candidate不等于正式发布或Instance部署"
+        "CI只有code/build/sandbox测试权限；构建Candidate不等于正式发布或Instance部署",
+        "W27.runnable-candidate提供早期可执行同字节候选供TKE首链，不等待全F验收；W27全包完成与W31发布仍满足现有综合资格"
       ],
       "verification": [
         "contracts/工具生成/拒绝反例与portable Compose一致检查",
@@ -2642,7 +2662,8 @@
       "deliverables": [
         "在既有保护workflow/授权runner中采用同一Candidate和真实provider profile",
         "若验收需要付费/采购/销毁，先有独立明确金额/资源/账户范围授权；Cloud本机不进生产私网",
-        "验证真实Agent使用、允许调配策略、升级/下期降配、原单读回与数据恢复/迁移样本"
+        "验证真实Agent使用、允许调配策略、升级/下期降配、原单读回与数据恢复/迁移样本",
+        "早期W29.default-tke/W29.agent-tke是受限首链证据，不冒充W29全生命周期/迁移/同Candidate Local资格；Instance仅部署Cloud并运行Cloud-owned验收器，不逐用户编排"
       ],
       "verification": [
         "Instance现有receipt validators、真实runtime/账务/provider读回",
@@ -2814,11 +2835,11 @@
     "workspace.saga_steps": "W15",
     "serve.agent_runtime_instances": "W17",
     "serve.agent_runtime_actions": "W17",
-    "fabric.resource_sets": "W11",
-    "fabric.resources": "W11",
-    "fabric.attachments": "W11",
-    "fabric.secret_bindings": "W11",
-    "fabric.resource_actions": "W11",
+    "fabric.resource_sets": "W12",
+    "fabric.resources": "W12",
+    "fabric.attachments": "W12",
+    "fabric.secret_bindings": "W12",
+    "fabric.resource_actions": "W12",
     "gateway.identity_mappings": "W04",
     "gateway.tenant_wallet_bindings": "W04",
     "gateway.key_bindings": "W04",
@@ -3036,19 +3057,19 @@
       "W07"
     ],
     "RuntimeControlProductService.ListRuntimeVersions": [
-      "W07"
+      "W10"
     ],
     "RuntimeControlProductService.GetBuildRuntimePolicy": [
-      "W07"
+      "W10"
     ],
     "RuntimeControlProductService.SetBuildRuntimePolicy": [
-      "W07"
+      "W10"
     ],
     "RuntimeControlProductService.RegisterRuntimeVersion": [
-      "W07"
+      "W10"
     ],
     "RuntimeControlProductService.SetRuntimeVersionStatus": [
-      "W07"
+      "W10"
     ],
     "BuildProductService.CreateBuild": [
       "W09"
@@ -3218,7 +3239,8 @@
     "ClaimUsageReadback.ReadClaimUsage": [
       "W08",
       "W09",
-      "W15"
+      "W15",
+      "W17"
     ],
     "CapabilityCoordination.ResolveBuildInput": [
       "W07",
@@ -3459,6 +3481,1006 @@
     "RUNTIME": "go -C services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1",
     "ABI": "go -C packages/contracts/go test ./... -count=1",
     "CANDIDATE": "node --test tests/tools/cloud-candidate-receipt.test.ts tests/contracts/clean-host-qualification.test.ts"
+  },
+  "executionSlices": [
+    {
+      "id": "W01.application-contracts",
+      "workPackage": "W01",
+      "window": "integration",
+      "startAfter": [],
+      "writePaths": [
+        "docs/spec/target/02_database_schema_complete.md",
+        "docs/spec/target/03_api_contract_complete.yaml",
+        "docs/spec/target/contracts",
+        "packages/contracts/proto",
+        "packages/contracts/go",
+        "services/*/migrations",
+        "services/resource-catalog/catalog",
+        "services/workspace/internal/launch",
+        "services/runtime-control/catalog",
+        "services/capability/catalog",
+        "services/build/internal/build",
+        "services/serve/internal/delivery",
+        "services/ledger/internal/ledger",
+        "apps/console-bff/internal/httpapi"
+      ],
+      "inputRefs": [
+        "12产品组合",
+        "03 x-approved-wire-migration",
+        "02第0节",
+        "06异步交接"
+      ],
+      "deliverable": "默认App/Agent与Agent必选独立WebUI的typed合同、SQL约束/加载链、真实decoder和全部消费者一致；含Tenant binding既有漂移",
+      "verification": [
+        "default无Package/Build/CapabilityVersion正例",
+        "混合来源/伪WebUI/错误digest/原单替换拒绝",
+        "go/proto/JSON同版消费者编译与DB约束（此切片不要求真实provider部署）"
+      ],
+      "completionEvidence": "精确source/schema/generator hashes与聚焦消费者测试；移除03 pending迁移标记前须实际贯通，不只生成成功",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W02.owner-readiness",
+      "workPackage": "W02",
+      "window": "integration",
+      "startAfter": [
+        "W01.application-contracts"
+      ],
+      "writePaths": [
+        "services/internal/ownerservice",
+        "services/*/cmd",
+        "deploy/portable",
+        "Dockerfile"
+      ],
+      "inputRefs": [
+        "各owner实际启动条件",
+        "mTLS与DB/role合同"
+      ],
+      "deliverable": "身份/DB/peer/readiness真实，Cloud镜像含buildx及必需owner；Tenant自身授权与Operation也可用",
+      "verification": [
+        "真实PG独立角色和mTLS调用",
+        "不可用依赖不能SERVING",
+        "镜像内CLI/插件/entrypoint检查"
+      ],
+      "completionEvidence": "源码/镜像工具及owner启动证据；不等于TKE部署",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W03.identity",
+      "workPackage": "W03",
+      "window": "business",
+      "startAfter": [
+        "W02.owner-readiness"
+      ],
+      "writePaths": [
+        "services/gateway-integration/identity",
+        "services/gateway-integration/cmd/server"
+      ],
+      "inputRefs": [
+        "CloudIdentityAuthorization",
+        "实际Sub2API登录合同"
+      ],
+      "deliverable": "个人身份、membership、accepted operation grant、跨租户/撤权边界可用",
+      "verification": [
+        "真实BFF登录到owner",
+        "session过期后原已接受操作恢复",
+        "伪actor/audience拒绝"
+      ],
+      "completionEvidence": "真实身份链及拒绝测试；外部fixture明确标注",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W04.payment-key",
+      "workPackage": "W04",
+      "window": "business",
+      "startAfter": [
+        "W03.identity"
+      ],
+      "writePaths": [
+        "services/gateway-integration/identity",
+        "services/gateway-integration/migrations"
+      ],
+      "inputRefs": [
+        "GatewayCoordination",
+        "原Code/账户/金额/Key读回",
+        "06财务阶段"
+      ],
+      "deliverable": "受支持的Tenant钱包授权、原单扣退款/Key创建与Secret引用交接；不以用户余额读取冒充委托",
+      "verification": [
+        "丢响应原单回读不再扣",
+        "未知授权明确拒绝",
+        "原Key/Secret版本恢复无泄漏"
+      ],
+      "completionEvidence": "Gateway权威合同和原单/Key读回；真实费用仅另行授权",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W21.tenant-admission",
+      "workPackage": "W21",
+      "window": "business",
+      "startAfter": [
+        "W03.identity",
+        "W04.payment-key"
+      ],
+      "writePaths": [
+        "services/gateway-integration/identity"
+      ],
+      "inputRefs": [
+        "CreateTenant",
+        "Tenant repository binding",
+        "钱包主体准入"
+      ],
+      "deliverable": "真实开通Tenant/owner membership/已支持钱包主体，Package构建使用稳定repository；不等删除恢复全功能",
+      "verification": [
+        "通过产品API开通而非SQL预置",
+        "重复创建不增身份",
+        "冲突/越权/委托不支持拒绝"
+      ],
+      "completionEvidence": "Tenant/owner/binding原身份与授权证据",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W07.publisher-admission",
+      "workPackage": "W07",
+      "window": "artifacts",
+      "startAfter": [
+        "W03.identity"
+      ],
+      "writePaths": [
+        "services/capability/catalog"
+      ],
+      "inputRefs": [
+        "PublisherContract",
+        "发布者namespace准入",
+        "Capability reference claims"
+      ],
+      "deliverable": "批准发布者身份/registry来源及Runtime引用保护基础；不要求独立WebUI制品或Package上传",
+      "verification": [
+        "发布者归属/registry prefix严格检查",
+        "跨租户/未批准用途拒绝"
+      ],
+      "completionEvidence": "发布者准入与claim协议证据；不是独立WebUI构建证明",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W10.app-release",
+      "workPackage": "W10",
+      "window": "artifacts",
+      "startAfter": [
+        "W07.publisher-admission"
+      ],
+      "writePaths": [
+        "services/runtime-control/catalog",
+        "services/runtime-control/migrations"
+      ],
+      "inputRefs": [
+        "指定OPL App TCR源",
+        "RuntimePublisherContract",
+        "03默认App选择"
+      ],
+      "deliverable": "默认App及Agent构建所需批准Release/默认策略、native UI证据、descriptor和引用保护",
+      "verification": [
+        "真实App digest/平台/入口/native UI读取",
+        "撤销新准入不破坏现有引用",
+        "选择后策略变化不改快照"
+      ],
+      "completionEvidence": "同一Runtime release与native UI实际能力及合同摘要",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W07.webui-catalog",
+      "workPackage": "W07",
+      "window": "artifacts",
+      "startAfter": [
+        "W07.publisher-admission",
+        "W10.app-release"
+      ],
+      "writePaths": [
+        "services/capability/catalog"
+      ],
+      "inputRefs": [
+        "指定WebUI TCR源",
+        "获准Runtime兼容合同"
+      ],
+      "deliverable": "独立WebUI精确制品/平台/contract准入并可选；默认App不依赖此结果",
+      "verification": [
+        "实际WebUI manifest/config/入口兼容读回",
+        "不兼容与未批准拒绝"
+      ],
+      "completionEvidence": "获准独立WebUI的exact artifact/contract readback",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W08.cos-upload",
+      "workPackage": "W08",
+      "window": "artifacts",
+      "startAfter": [
+        "W07.publisher-admission"
+      ],
+      "writePaths": [
+        "services/capability/catalog",
+        "services/capability/cmd/server"
+      ],
+      "inputRefs": [
+        "Storage provider",
+        "上传Operation/part identity",
+        "OMA Package格式"
+      ],
+      "deliverable": "COS直传、分片owner对账、精确对象版本/校验、提交窗口恢复",
+      "verification": [
+        "复制成功DB提交前崩溃",
+        "刷新只续传缺失分片",
+        "越权/错摘要/过期许可拒绝"
+      ],
+      "completionEvidence": "真实受限COS样本readback；对象只上传完成不代表Build可部署",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W09.agent-build",
+      "workPackage": "W09",
+      "window": "artifacts",
+      "startAfter": [
+        "W08.cos-upload",
+        "W10.app-release",
+        "W07.webui-catalog",
+        "W05.receipts"
+      ],
+      "writePaths": [
+        "services/build/internal/build",
+        "services/capability/catalog"
+      ],
+      "inputRefs": [
+        "两种产品组合",
+        "CreateBuildRequest三项必需输入",
+        "Tenant binding",
+        "BuildKit/Registry"
+      ],
+      "deliverable": "Package+Runtime+独立WebUI构建并向Tenant TCR推送，精确输出回读，Capability唯一注册",
+      "verification": [
+        "实际指定Runtime/WebUI输入而非loopback替身",
+        "push丢ACK重启不二次export",
+        "注册/receipt丢ACK唯一版本"
+      ],
+      "completionEvidence": "输入快照/recipe/输出digest/CapabilityVersion/Ledger同一链；默认App不要求该切片",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W05.receipts",
+      "workPackage": "W05",
+      "window": "integration",
+      "startAfter": [
+        "W02.owner-readiness"
+      ],
+      "writePaths": [
+        "services/ledger",
+        "packages/contracts/go"
+      ],
+      "inputRefs": [
+        "06异步交接矩阵",
+        "现行Ledger验证器/事件合同"
+      ],
+      "deliverable": "所需注册/交易/资源/部署证据的生产者和Ledger消费者同版，原键原hash去重及exact readback",
+      "verification": [
+        "重复ACK丢失",
+        "同键不同hash拒绝",
+        "秘密/伪producer拒绝"
+      ],
+      "completionEvidence": "不可变receipt及独立消费者重放证据；不把receipt当业务状态writer",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W12.tke-resources",
+      "workPackage": "W12",
+      "window": "resources",
+      "startAfter": [
+        "W02.owner-readiness"
+      ],
+      "writePaths": [
+        "services/fabric/cmd/fabric",
+        "services/fabric/coordination",
+        "services/fabric/internal/fabric",
+        "services/fabric/cmd/opl-tencent-provisioner"
+      ],
+      "inputRefs": [
+        "FabricCoordination",
+        "PREPAID计划/profile",
+        "原provider请求"
+      ],
+      "deliverable": "把现有Tencent资源能力接入新coordination，CVM/CBS/挂载/网络确认可交Serve；不部署应用",
+      "verification": [
+        "非Local dispatcher实际执行路径",
+        "原请求丢ACK读回/unknown不重购",
+        "规格/节点/PV-PVC/挂载一致"
+      ],
+      "completionEvidence": "资源owner原operation/provider IDs及实际绑定；真实采购须授权",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W06.tke-quote",
+      "workPackage": "W06",
+      "window": "business",
+      "startAfter": [
+        "W10.app-release",
+        "W12.tke-resources"
+      ],
+      "writePaths": [
+        "services/resource-catalog"
+      ],
+      "inputRefs": [
+        "批准TKE资源能力",
+        "D17/price/refund政策",
+        "应用选择快照"
+      ],
+      "deliverable": "默认App与Agent的明确准入、价格和不可变Quote；采购策略不进入前端算法",
+      "verification": [
+        "过期/撤销/不兼容拒绝",
+        "更换应用选择需新Quote",
+        "一次AcceptQuote绑定原单"
+      ],
+      "completionEvidence": "准确报价、批准policy/profile和应用digest/descriptor绑定",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W17.first-delivery",
+      "workPackage": "W17",
+      "window": "delivery",
+      "startAfter": [
+        "W10.app-release",
+        "W12.tke-resources",
+        "W05.receipts"
+      ],
+      "writePaths": [
+        "services/serve/internal/delivery",
+        "services/serve/internal/runtime_adapter",
+        "services/serve/internal/access",
+        "services/serve/migrations"
+      ],
+      "inputRefs": [
+        "Serve Reserve/Deploy/ReadRuntime",
+        "Fabric resource refs",
+        "Runtime/Build descriptor",
+        "06注入/路由顺序"
+      ],
+      "deliverable": "Serve独立TKE应用adapter，原部署身份/Secret/config/data注入，健康及route fence/activate/readback；无CP当前绑定依赖",
+      "verification": [
+        "默认App与built descriptor正例",
+        "Pod ready无URL不得完成",
+        "旧epoch/跨租户/并发挂载拒绝",
+        "根路径/静态/API/SSE"
+      ],
+      "completionEvidence": "同Deployment runtime image identity、应用探针、实际URL及路由epoch；旧Fabric writer切caller后再退",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W15.first-create",
+      "workPackage": "W15",
+      "window": "business",
+      "startAfter": [
+        "W21.tenant-admission",
+        "W04.payment-key",
+        "W06.tke-quote",
+        "W17.first-delivery",
+        "W05.receipts"
+      ],
+      "writePaths": [
+        "services/workspace/internal/launch",
+        "services/workspace/cmd/server"
+      ],
+      "inputRefs": [
+        "已接受Quote",
+        "原单/授权",
+        "Fabric confirmed resources",
+        "Serve reserved deployment"
+      ],
+      "deliverable": "一个持久Saga贯通默认App和Agent；先保留Serve身份再绑定Key，资金/资源/应用/receipt分阶段收敛",
+      "verification": [
+        "相同提交不二次订单",
+        "支付/采购/部署/receipt分别丢响应恢复",
+        "默认App不需CapabilityVersion/Build"
+      ],
+      "completionEvidence": "原Quote/订单/资源/Deployment/必需receipt全确认，Workspace权益与Serve可用状态一致",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W13.console-entry",
+      "workPackage": "W13",
+      "window": "integration",
+      "startAfter": [
+        "W03.identity"
+      ],
+      "writePaths": [
+        "apps/console-bff",
+        "apps/console-ui/src/api/auth-api.ts",
+        "apps/console-ui/src/api/dtos.ts",
+        "apps/console-ui/src/app/console-router.ts",
+        "Dockerfile",
+        ".github/workflows/build-opl-cloud-candidate.yml"
+      ],
+      "inputRefs": [
+        "真实CloudIdentity会话",
+        "同origin确定性路由",
+        "候选前端构建模式"
+      ],
+      "deliverable": "Cloud Console制品、API/CSRF/owner Operation读回实际连通；旧客户入口切换不跳M0-M5",
+      "verification": [
+        "构建产物有cloud入口",
+        "不因API失败回退旧接口",
+        "刷新/退出/跨tenant隔离"
+      ],
+      "completionEvidence": "确切前端制品与BFF/owner真实调用证据",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W14.publisher-ui",
+      "workPackage": "W14",
+      "window": "artifacts",
+      "startAfter": [
+        "W09.agent-build",
+        "W13.console-entry"
+      ],
+      "writePaths": [
+        "apps/console-ui/src/pages/PublisherPage.tsx",
+        "apps/console-ui/src/api/publisher-api.ts"
+      ],
+      "inputRefs": [
+        "W09真实构建",
+        "04上传/选择/恢复"
+      ],
+      "deliverable": "Package+Runtime+独立WebUI由真实Console构建，缺项拒绝，关闭/刷新继续原任务",
+      "verification": [
+        "选项确实进入产物",
+        "浏览器丢响应/跨tenant",
+        "非默认新增UI入口不强制用户上传"
+      ],
+      "completionEvidence": "真实浏览器与Build/Capability版本同digest",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W16.workspace-ui",
+      "workPackage": "W16",
+      "window": "integration",
+      "startAfter": [
+        "W15.first-create",
+        "W13.console-entry"
+      ],
+      "writePaths": [
+        "apps/console-ui/src/app/use-workspace-launch-controller.ts",
+        "apps/console-ui/src/app/workspace-launch-controller-model.ts",
+        "apps/console-ui/src/pages/workspaces",
+        "apps/console-ui/src/api/workspaces-api.ts",
+        "apps/console-ui/src/api/delivery-api.ts"
+      ],
+      "inputRefs": [
+        "12默认App/Agent产品形态",
+        "真实Quote/Create/Serve Access"
+      ],
+      "deliverable": "默认App无需进入Publisher；选套餐一次确认，显示订单/资源/应用/证据各自状态并打开真实URL",
+      "verification": [
+        "无Package默认创建",
+        "同一请求刷新恢复",
+        "不以202/Pod Running/无receipt显示完成"
+      ],
+      "completionEvidence": "前端动作到owner/source事实一致的浏览器证据",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W27.runnable-candidate",
+      "workPackage": "W27",
+      "window": "integration",
+      "startAfter": [
+        "W02.owner-readiness"
+      ],
+      "writePaths": [
+        "Dockerfile",
+        "deploy/portable",
+        ".github/workflows/build-opl-cloud-candidate.yml"
+      ],
+      "inputRefs": [
+        "同Cloud commit合同/owner集合",
+        "buildx/buildkit接线",
+        "安装配置schema"
+      ],
+      "deliverable": "精确SHA/digest的可测试Candidate，声明必需owner/ports/DB/identity/工具；非正式发布",
+      "verification": [
+        "镜像内可执行工具与cloud UI参数",
+        "安装配置缺失明确失败",
+        "无latest漂移"
+      ],
+      "completionEvidence": "Candidate manifest/source/schema/platform/image/asset checksum；任何组件变化新候选",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W26.default-source",
+      "workPackage": "W26",
+      "window": "integration",
+      "startAfter": [
+        "W16.workspace-ui",
+        "W05.receipts"
+      ],
+      "writePaths": [
+        "tests/integration",
+        "tests/ui",
+        "tools"
+      ],
+      "inputRefs": [
+        "真实默认App入口",
+        "所有owner链",
+        "无Package/Build路径"
+      ],
+      "deliverable": "本地真实服务/隔离外部权威证明默认App原单到应用；无真实provider冒充",
+      "verification": [
+        "一键到实际App",
+        "原单/effect/receipt ACK丢失",
+        "重启/数据/越权"
+      ],
+      "completionEvidence": "明确source/local层证据和未执行Tencent事项",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W29.default-tke",
+      "workPackage": "W29",
+      "window": "instance",
+      "startAfter": [
+        "W26.default-source",
+        "W27.runnable-candidate"
+      ],
+      "writePaths": [
+        "../opl-instance-medopl/deploy",
+        "../opl-instance-medopl/.github/workflows",
+        "../opl-instance-medopl/receipts"
+      ],
+      "inputRefs": [
+        "同Candidate",
+        "批准provider/COS/TCR/证书/Secrets引用",
+        "Cloud-owned验收器",
+        "限定采购/费用授权"
+      ],
+      "deliverable": "Instance仅部署Cloud并运行其验收器，Console默认App一次确认→TKE资源→Serve→真实native UI",
+      "verification": [
+        "同App digest/平台/资源/route/receipt",
+        "全新资源采购须独立授权；复用资源只能算应用交付",
+        "不手动kubectl代替Cloud业务"
+      ],
+      "completionEvidence": "安装receipt+Cloud业务receipt+真实URL/readback同链；只证明本slice，非完整W29/Release",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W26.agent-source",
+      "workPackage": "W26",
+      "window": "integration",
+      "startAfter": [
+        "W14.publisher-ui",
+        "W16.workspace-ui",
+        "W05.receipts"
+      ],
+      "writePaths": [
+        "tests/integration",
+        "tests/ui",
+        "tools"
+      ],
+      "inputRefs": [
+        "真实Package/Runtime/UI Build",
+        "同一个Workspace/Serve链"
+      ],
+      "deliverable": "Package+独立WebUI的Agent组合在相同业务链闭合且原操作恢复",
+      "verification": [
+        "实际构建字节/输出digest/Serve运行一致",
+        "丢响应/重启/跨租户",
+        "默认路径回归"
+      ],
+      "completionEvidence": "源/本地隔离层完整组合证据，不与其他实验拼接",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W29.agent-tke",
+      "workPackage": "W29",
+      "window": "instance",
+      "startAfter": [
+        "W29.default-tke",
+        "W26.agent-source",
+        "W27.runnable-candidate"
+      ],
+      "writePaths": [
+        "../opl-instance-medopl/receipts",
+        "../opl-instance-medopl/.github/workflows"
+      ],
+      "inputRefs": [
+        "包含Agent实现的同Candidate",
+        "指定真实输入/输出TCR和COS",
+        "Cloud-owned验收器"
+      ],
+      "deliverable": "在已部署Cloud内从Console完成Package→真实TCR OCI→TKE Serve→实际Agent使用，独立WebUI组合",
+      "verification": [
+        "真实模型/应用按发布者合同使用",
+        "同输入输出/订单/资源/Deployment/route",
+        "重启/响应丢失原身份收敛"
+      ],
+      "completionEvidence": "两种产品组合的TKE首链证据；不提前声明后续生命周期/旧客户迁移通过",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W17.replace",
+      "workPackage": "W17",
+      "window": "delivery",
+      "startAfter": [
+        "W15.first-create",
+        "W09.agent-build"
+      ],
+      "writePaths": [
+        "services/serve/internal/delivery",
+        "services/serve/internal/runtime_adapter",
+        "services/serve/internal/access"
+      ],
+      "inputRefs": [
+        "当前Serve部署",
+        "数据兼容/原资源/显式新选择"
+      ],
+      "deliverable": "默认App/Agent更新和跨模式替换、route fencing与兼容回滚，无重复购买或双current",
+      "verification": [
+        "旧epoch写拒绝",
+        "数据不可逆拒绝",
+        "失败恢复原路由与原数据证明"
+      ],
+      "completionEvidence": "新旧Deployment/claims/data/route真实readback，不能仅改DB指针",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    }
+  ],
+  "windows": [
+    {
+      "id": "integration",
+      "title": "统筹、共享合同、Console集成与验收",
+      "scope": [
+        "docs",
+        "packages/contracts",
+        "services/internal",
+        "services/ledger",
+        "apps/console-bff",
+        "apps/console-ui共享入口/Workspace页（排除PublisherPage/publisher-api）",
+        "Dockerfile",
+        "deploy/portable",
+        ".github/workflows",
+        "tests/integration",
+        "tests/ui"
+      ],
+      "handoff": "先串行W01/W02共享接口，随后吸收独立owner与同Candidate验收；不替域owner写业务状态"
+    },
+    {
+      "id": "artifacts",
+      "title": "输入目录、COS与OCI构建",
+      "scope": [
+        "services/capability",
+        "services/runtime-control",
+        "services/build",
+        "apps/console-ui/src/pages/PublisherPage.tsx",
+        "apps/console-ui/src/api/publisher-api.ts"
+      ],
+      "handoff": "提供批准App/native UI descriptor与三输入Agent Build的真实制品/claims/readback"
+    },
+    {
+      "id": "business",
+      "title": "身份、交易、报价与Workspace Saga",
+      "scope": [
+        "services/gateway-integration",
+        "services/resource-catalog",
+        "services/workspace"
+      ],
+      "handoff": "提供真实Tenant/原单/Key/Quote和恢复中的原Workspace操作；无current deployment副本"
+    },
+    {
+      "id": "resources",
+      "title": "Tencent资源执行",
+      "scope": [
+        "services/fabric"
+      ],
+      "handoff": "原operation的CVM/CBS/网络/attachment readback，不执行应用"
+    },
+    {
+      "id": "delivery",
+      "title": "Serve TKE部署与访问",
+      "scope": [
+        "services/serve"
+      ],
+      "handoff": "精确OCI→运行健康→唯一current→URL；迁移旧应用执行须统筹串行切caller"
+    },
+    {
+      "id": "instance",
+      "title": "按需启用的Instance部署窗口",
+      "scope": [
+        "../opl-instance-medopl"
+      ],
+      "handoff": "只安装Cloud/配置/Secrets与运行已授权Cloud验收器，不是常驻第六个业务实现writer"
+    }
+  ],
+  "parallelPreparation": [
+    {
+      "window": "artifacts",
+      "title": "TKE A — 制品准入、COS与Build",
+      "writePaths": [
+        "services/capability",
+        "services/runtime-control",
+        "services/build",
+        "apps/console-ui/src/pages/PublisherPage.tsx",
+        "apps/console-ui/src/api/publisher-api.ts"
+      ],
+      "entryWork": "沿现有三输入Build合同，核对并有选择吸收#689的COS实现及#684的Registry修复；完成COS成品已复制但DB未提交的崩溃恢复，以及GetUpload对真实Storage分片的对账续传。默认App只做Runtime原始发布合同/descriptor字节准入，不发明新wire。",
+      "currentBreakpoints": [
+        "当前main未含COS PR #689；不能假设已合并",
+        "COS Assemble在复制成品/清理staging后与DB提交之间存在恢复窗口",
+        "实际输入TCR与loopback fixture不同；列tag不等于准入"
+      ],
+      "nextSlices": [
+        "W07.publisher-admission",
+        "W10.app-release",
+        "W07.webui-catalog",
+        "W08.cos-upload",
+        "W09.agent-build",
+        "W14.publisher-ui"
+      ],
+      "commands": [
+        "go -C services/capability test ./...",
+        "go -C services/runtime-control test ./...",
+        "go -C services/build test ./..."
+      ],
+      "acceptance": "原上传/Package/Build/版本身份恢复；错digest/跨租户/未准入拒绝。独立UI必须存在；默认App不得依赖Agent构建。真实TCR/COS未运行时明确not_run。",
+      "model": "deepseek-v4.1-flash",
+      "reasoningEffort": "high",
+      "sharedContractGate": "W01.application-contracts",
+      "evidencePath": "docs/evidence/source-checks/2026-09-29-tke-artifacts-development.json",
+      "sourceBaseline": "current shared checkout; exact HEAD and per-owner diff hashes recorded on start and completion",
+      "forbiddenWrites": [
+        "packages/contracts",
+        "docs/spec/target",
+        "docs/status.md",
+        "docs/roadmap.md",
+        "services/internal",
+        "apps/console-bff",
+        "Dockerfile",
+        "deploy",
+        ".github",
+        "AGENTS.md"
+      ],
+      "stopBoundary": "不得猜新DTO或越界补共享合同；把确切RPC/字段/consumer/拒绝用例交统筹，继续其余独立工作。只有W01同版生成物与消费者测试交接后才接默认App新分支。"
+    },
+    {
+      "window": "business",
+      "title": "TKE B — 身份、交易、报价与Workspace",
+      "writePaths": [
+        "services/gateway-integration",
+        "services/resource-catalog",
+        "services/workspace"
+      ],
+      "entryWork": "核对并有选择吸收#688的身份owner readiness修复；补自身OwnerOperations授权缺口；在现行typed GatewayCoordination与Fabric/Serve合同内接通Workspace启动依赖，删除强制local_no_charge作为Tencent路径的限制，不以真实扣款测试代替隔离权威测试。",
+      "currentBreakpoints": [
+        "Workspace cmd尚未接GatewayCoordination",
+        "launch/runtime.go强制Local zero-charge",
+        "报价缺capabilityVersionId被判not_applicable；默认App修正必须消费W01正式union，不先补nullable兜底"
+      ],
+      "nextSlices": [
+        "W03.identity",
+        "W04.payment-key",
+        "W21.tenant-admission",
+        "W06.tke-quote",
+        "W15.first-create"
+      ],
+      "commands": [
+        "go -C services/gateway-integration test ./...",
+        "go -C services/resource-catalog test ./...",
+        "go -C services/workspace test ./..."
+      ],
+      "acceptance": "一次确认、原单/Key/Operation稳定；扣款丢ACK按原authority读回、不重复扣款；未知效果不自动退款；租户/会话撤权反例。资金测试必须明确隔离。",
+      "model": "deepseek-v4.1-flash",
+      "reasoningEffort": "high",
+      "sharedContractGate": "W01.application-contracts",
+      "evidencePath": "docs/evidence/source-checks/2026-09-29-tke-business-development.json",
+      "sourceBaseline": "current shared checkout; exact HEAD and per-owner diff hashes recorded on start and completion",
+      "forbiddenWrites": [
+        "packages/contracts",
+        "docs/spec/target",
+        "docs/status.md",
+        "docs/roadmap.md",
+        "services/internal",
+        "apps/console-bff",
+        "Dockerfile",
+        "deploy",
+        ".github",
+        "AGENTS.md"
+      ],
+      "stopBoundary": "不得猜新DTO或越界补共享合同；把确切RPC/字段/consumer/拒绝用例交统筹，继续其余独立工作。只有W01同版生成物与消费者测试交接后才接默认App新分支。"
+    },
+    {
+      "window": "resources",
+      "title": "TKE C — Fabric腾讯资源",
+      "writePaths": [
+        "services/fabric"
+      ],
+      "entryWork": "用现有FabricCoordination接入既有Tencent资源provider，而非仅Local dispatcher；持久原provider effect身份并实现CVM/CBS/attachment/network资源readback。先做隔离provider协议测试，不实际采购。",
+      "currentBreakpoints": [
+        "cmd/fabric/main.go新coordination只装LocalResourceDispatcher",
+        "coordination/local_dispatch.go非Local provider无执行路径",
+        "旧Fabric TKE应用writer只能在Serve接管真实caller及义务验收后退休，不提前删"
+      ],
+      "nextSlices": [
+        "W12.tke-resources"
+      ],
+      "commands": [
+        "go -C services/fabric test ./coordination/...",
+        "go -C services/fabric test ./internal/fabric/...",
+        "go -C services/fabric test ./cmd/..."
+      ],
+      "acceptance": "PREPAID月付合同、资源原ID和读回；purchase响应丢失/restart不再采购，unknown不当absent；Fabric不成为新应用部署owner。缺Serve所需字段只提交合同差异。",
+      "model": "deepseek-v4.1-flash",
+      "reasoningEffort": "high",
+      "sharedContractGate": "W01.application-contracts",
+      "evidencePath": "docs/evidence/source-checks/2026-09-29-tke-resources-development.json",
+      "sourceBaseline": "current shared checkout; exact HEAD and per-owner diff hashes recorded on start and completion",
+      "forbiddenWrites": [
+        "packages/contracts",
+        "docs/spec/target",
+        "docs/status.md",
+        "docs/roadmap.md",
+        "services/internal",
+        "apps/console-bff",
+        "Dockerfile",
+        "deploy",
+        ".github",
+        "AGENTS.md"
+      ],
+      "stopBoundary": "不得猜新DTO或越界补共享合同；把确切RPC/字段/consumer/拒绝用例交统筹，继续其余独立工作。只有W01同版生成物与消费者测试交接后才接默认App新分支。"
+    },
+    {
+      "window": "delivery",
+      "title": "TKE D — Serve部署、健康与URL",
+      "writePaths": [
+        "services/serve"
+      ],
+      "entryWork": "在现有ServeRuntimeAdapter/ServeAccessControl合同内实现Serve-owned TKE adapter及访问执行；借鉴旧Fabric实现但不改其目录或切生产caller。验证serviceName/port到明确内部upstream与应用origin路由，不猜URL、不以Pod Running代替ready。",
+      "currentBreakpoints": [
+        "当前Serve只接FabricApplicationAdapter",
+        "TKE observation给serviceName/port，旧adapter却只取Entry.URL导致ready链断",
+        "adapter拒绝Secret/model配置；真实应用注入须按现有publisher合同实现"
+      ],
+      "nextSlices": [
+        "W17.first-delivery",
+        "W17.replace"
+      ],
+      "commands": [
+        "go -C services/serve test ./..."
+      ],
+      "acceptance": "Reserve/Deploy/Observe/Activate、持久effect与epoch、注入/readiness/route同一部署；验证HTML/资源/API/SSE及租户隔离；默认App接线等W01，旧writer切换由统筹串行执行。",
+      "model": "deepseek-v4.1-flash",
+      "reasoningEffort": "high",
+      "sharedContractGate": "W01.application-contracts",
+      "evidencePath": "docs/evidence/source-checks/2026-09-29-tke-delivery-development.json",
+      "sourceBaseline": "current shared checkout; exact HEAD and per-owner diff hashes recorded on start and completion",
+      "forbiddenWrites": [
+        "packages/contracts",
+        "docs/spec/target",
+        "docs/status.md",
+        "docs/roadmap.md",
+        "services/internal",
+        "apps/console-bff",
+        "Dockerfile",
+        "deploy",
+        ".github",
+        "AGENTS.md"
+      ],
+      "stopBoundary": "不得猜新DTO或越界补共享合同；把确切RPC/字段/consumer/拒绝用例交统筹，继续其余独立工作。只有W01同版生成物与消费者测试交接后才接默认App新分支。"
+    }
+  ],
+  "serialIntegration": {
+    "title": "TKE串行集成与上线",
+    "model": "deepseek-v4.1-flash",
+    "reasoningEffort": "high",
+    "ownership": "唯一串行实施窗口接管当前未提交Cloud工作区；四领域窗口停止写入。本统筹只保留本次审计/派发证据，不再并行改同一写集。串行指执行顺序，不合并DDD业务owner。",
+    "scope": "先完成Cloud产品代码、真实消费者、隔离整链及Candidate；随后在Instance仓库的受保护main/production流程内安装同一Candidate并实测。",
+    "authorization": "用户2026-09-29明确要求新建串行窗口并deploy上线；必要的代码集成/分支/提交/推送/PR/受保护流程推进属于该交付。遵守分支保护、发布者身份和Instance权限，不请求重复的泛化继续确认。真钱扣款/新购/续费/销毁仍须既定独立资源及金额范围授权，不由上线意图推定。",
+    "auditReceipt": "docs/evidence/source-checks/2026-09-29-tke-serial-integration-audit.json",
+    "completion": "默认App和三输入Agent均在同一已安装Candidate上形成原单→资源→Serve→URL→真实使用→必需receipt闭环；安装成功、普通go test通过或文档READY都不能替代。",
+    "stages": [
+      {
+        "order": 1,
+        "title": "接管与可复现源码基线",
+        "workPackages": [
+          "W00",
+          "W01",
+          "W02"
+        ],
+        "action": "记录当前HEAD、tracked patch与所有untracked源码hash；保留A/B/C/D和SSOT未提交变更，不从旧HEAD开空worktree丢失成果。审计现有PR的已移植/剩余范围后在codex/分支整理，不盲目合并#684/#688/#689/#686。补Serve/Workspace的COS依赖与livebuild模块sum；恢复checksum验证，不以关闭GOSUMDB永久绕过。",
+        "accept": "受影响普通及livebuild编译通过，生成器可重复；旧四回执保持不可变，后续动作新回执。"
+      },
+      {
+        "order": 2,
+        "title": "W01两组合真实合同与消费者迁移",
+        "workPackages": [
+          "W01",
+          "W02",
+          "W03",
+          "W13"
+        ],
+        "action": "按03/02/06一次贯通selection union、runtime_release provenance、原始descriptor bytes/digest、Quote及接受快照、Serve预留/部署/读取、持久化迁移和严格decoder；默认App必须runtime readback required。Agent仍必需Package/Runtime/独立WebUI及三claim。统一生产/spec proto、api/v226映射、TenantRepositoryBinding和授权生成器。修CloudIdentity自身readiness、Operation对象授权及全部实际continuation动作。",
+        "accept": "两种真实owner正例及混合/缺项/撤销/跨Tenant反例；真实migration loader执行和历史义务保真，所有消费者同版，才移除pending迁移标记。"
+      },
+      {
+        "order": 3,
+        "title": "Gateway交易、Key与Ledger资金证明",
+        "workPackages": [
+          "W04",
+          "W05",
+          "W15",
+          "W21"
+        ],
+        "action": "在既有Gateway Integration单元实现并注册GatewayCoordination，而不是仅Workspace客户端。以Sub2API为唯一钱包，持久原扣退款/Key意图及owner readback。用已有WALLET_ACTION事实核对是否足够；补真实producer、Ledger decoder/持久化/read-by-reference和Fabric消费，不机械按B旧回执再造enum，也不按C假设伪装证据owner。准入真实Tenant/成员和钱包授权。",
+        "accept": "隔离真实服务的Gateway→Ledger→Workspace→Fabric链；收据绑定租户/Workspace/quote/obligation、金额币种、原effect及outcome；错owner/金额/原单拒绝，丢ACK/重启不重扣、unknown不新购或自动退款。"
+      },
+      {
+        "order": 4,
+        "title": "腾讯资源与Secret注入交接",
+        "workPackages": [
+          "W06",
+          "W12",
+          "W15",
+          "W17"
+        ],
+        "action": "复用C的Tencent dispatcher，验证真实owner资金证明、精确Catalog计划、PREPAID预检、CVM/CBS/挂载/网络读回及原provider幂等身份。打通Gateway managed key→批准Secret store→Fabric binding→Serve执行引用；仅typed opaque handle及版本跨域，raw Key不入普通DB/日志/Outbox/receipt。",
+        "accept": "资源和注入均按原对象可回读；失败/未知不多买，不跳过Secret启动空模型应用；隔离provider测试不能代替后续TKE实测。"
+      },
+      {
+        "order": 5,
+        "title": "Serve真正接管执行、路由与运行事实",
+        "workPackages": [
+          "W17",
+          "W05",
+          "W15",
+          "W24"
+        ],
+        "action": "D的TKEApplicationAdapter仍POST旧Fabric应用端点，只是迁移中的调用适配，不是执行writer已迁走。将TKE应用执行能力连同真实caller迁到Serve，串行切换后按09退出对应旧writer。实现并在Configure接入真实RouteProvider，Deploy编排Fence/Activate/Observe。补Secret配置、模型实际应用及读回、Stop/Reload/凭据获取和失败退役/兼容回滚。不得把请求的modelConfigurationVersion直接写成applied。",
+        "accept": "进程实际注册/启动的路径贯穿部署、readiness、route与Ledger；已发布URL不是拼字符串，真实HTML/静态/API/SSE、跨Tenant拒绝、旧epoch、unknown switch、Secret隔离及重启恢复均通过。"
+      },
+      {
+        "order": 6,
+        "title": "两组合Console到服务整链与回归",
+        "workPackages": [
+          "W07",
+          "W08",
+          "W09",
+          "W10",
+          "W13",
+          "W14",
+          "W16",
+          "W26"
+        ],
+        "action": "先验证默认App不依赖Build，再验证OMA Package→COS→精确Runtime+独立WebUI→BuildKit→Tenant OCI digest回读→Capability→同一购买部署链。接真实BFF/Console而非fixture DTO，统一进度/Operation/receipt与访问入口。真实TCR输入的tag列表不能代替获准descriptor/字节身份。",
+        "accept": "npm run verify:local:full及相关browser/livebuild检查，真实PG独立owner/mTLS/幂等恢复；刷新、响应丢失、余额拒绝、未准入、半选组合、错receipt/版本、路由失败均有证据。原型与规格receipt按实际测试更新，不只改hash。"
+      },
+      {
+        "order": 7,
+        "title": "同SHA Candidate与Instance安装准备",
+        "workPackages": [
+          "W02",
+          "W27",
+          "W28",
+          "W29"
+        ],
+        "action": "补镜像内buildx、明确Console cloud模式、所需owners/DB/roles/mTLS、BuildKit隔离、COS/TCR Secret引用和Serve路由配置。经CI及受保护合入得到canonical Cloud SHA，构建不可变Candidate；按既有规则完成合格Linux验证。Instance #348仍是未合并提案，必须以当时remote main为准审核补齐安装清单，不复制每用户业务编排。",
+        "accept": "Candidate manifest、schema与安装资产hash、index/platform digest和来源都一致；Instance受保护main流程可验证接收；本机不触达生产私网。"
+      },
+      {
+        "order": 8,
+        "title": "受保护部署、业务实测与上线收口",
+        "workPackages": [
+          "W29",
+          "W30",
+          "W31"
+        ],
+        "action": "同一串行窗口在Instance owner范围按当前工作流执行preflight、部署、回读、必要rollback和不可变receipt；不是由Cloud workflow dispatch Instance。既有客户切流必须按09满足M0–M5，不用空新库替掉旧登录/订单。对获授权的测试对象验证两组合真实使用；新采购/真实收费/销毁如缺具体范围，只询问最小金额/对象输入，其余工作继续。正式Product Release只有符合既有发布授权及同Candidate资格时提升原字节，部署不强迫先发Release。",
+        "accept": "同Candidate、应用输入输出digest、订单/资源/Deployment/route epoch、实际使用和必要receipt一致；失败按已证明数据兼容的回滚路径处理，不能盲回旧image。记录可访问入口、Cloud SHA、Candidate/Instance run及已验证/未验证范围，不以Pod Running、200或安装成功宣称闭环。"
+      }
+    ]
+  },
+  "contractMigration": {
+    "source": "03_api_contract_complete.yaml#x-approved-wire-migration",
+    "status": "approved_pending_W01_consumer_migration",
+    "entrySlice": "W01.application-contracts"
   },
   "rules": {
     "startDependencies": "finished producer contracts/scaffolding needed to start useful implementation",

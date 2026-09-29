@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUTC": "2026-09-29T14:02:55Z",
+  "window": "TKE A — artifacts, COS and Build (delegated from thread 01a0ecd7-2472-7810-b244-dc19505de019)",
+  "scope": "Cloud source: Capability Storage Provider seam, COS package upload, upload-shard reconciliation, pre-commit crash recovery, Build real-registry blob redirect",
+  "baseHead": "bf9027253dd852383c6069e7dad9fc7d436efbe3",
+  "workingTreeNote": "Shared uncommitted workspace. Other TKE windows (fabric, gateway-integration, serve, workspace) hold concurrent edits; this receipt covers only the TKE A write set.",
+  "writeSet": [
+    "services/capability",
+    "services/runtime-control",
+    "services/build",
+    "apps/console-ui/src/pages/PublisherPage.tsx",
+    "apps/console-ui/src/api/publisher-api.ts"
+  ],
+  "workSetDiffSHA256": {
+    "trackedDiff": "780c023d80823f0bd21602ffa903a2846b7d52014a4ed6776290abaf1adc8ad4",
+    "method": "sha256 of `git diff -- services/capability services/runtime-control services/build apps/console-ui/src/pages/PublisherPage.tsx apps/console-ui/src/api/publisher-api.ts`",
+    "newFileDigests": {
+      "services/capability/catalog/storage.go": "d445573203b7c266bc079c8a976804cd6e0287b154854ad70d24993a04cc9d6d",
+      "services/capability/catalog/local_storage.go": "2fc62809a2246765fbd7315035040c6a88aaef32e3d7a4ffc444d71b35c46e2c",
+      "services/capability/catalog/cos_storage.go": "d47c1628e2c5b75cf2abd94df8e752e2634dbad52f89af9a3e9f33754ce07e58",
+      "services/capability/catalog/storage_provider_test.go": "f2328d8a2649f7127e86039bebb1834a68330a21875fd6c7f98c65690a855cb8",
+      "services/capability/catalog/cos_storage_recovery_test.go": "25d82a0e485b0de8d322f6e0a5ff2780c619f74acd2e36e200f7a4e6ab0bc718",
+      "services/capability/catalog/uploads_postgres_test.go": "6c3bb644f38a8e597f74d1ced225dc2e2ff397b30d55416669ce8ba02fcd92f7",
+      "services/capability/catalog/webui_catalog_postgres_test.go": "953b7b1ead030c0d75ab0a04ec664cd8b0701b0b723a8cb3c85628aa4abe5f44",
+      "services/runtime-control/catalog/runtime_control_harness_test.go": "d6ed1c7453045f67b22c86d1dfa32b99b9b758f3d5de07a589f232cde2f35a73",
+      "services/runtime-control/catalog/runtime_release_postgres_test.go": "fd3dd0c707a30486f8cf82ae51c79dc3cc5f51c3b513a92f9c00ffea9136f715",
+      "services/build/internal/build/registry_redirect_test.go": "34af5324849e2de809810b5c672ca3bed177bb3414ba54e51915605ef0e96fe4",
+      "services/build/internal/build/registry_scheme_test.go": "f5d76bcdfffcf38c8a5196f1046ad462cca8997c3f299cdf0522e788e8a3645c"
+    }
+  },
+  "sourceAudit": {
+    "upstreamPatchesInspected": [
+      "PR 689 `codex/capability-cos-storage` (Store Capability Package bytes through a pluggable Storage provider) — read only, not cherry-picked; no synthetic merge, docs and unrelated hunks not taken",
+      "PR 684 `codex/real-tcr-build-readback` (read pushes back from a real registry through its blob redirect) — read only, not cherry-picked"
+    ],
+    "imported": [
+      "services/capability/catalog/storage.go, local_storage.go, cos_storage.go (Storage seam, local provider, Tencent COS provider)",
+      "services/capability/catalog/{objects.go,data_plane.go,uploads.go,cmd/server/main.go} adapted to the seam",
+      "services/build/internal/build/runner.go redirect policy, per-host registry transport and exporter error surfacing (byte-identical to the PR 684 file)",
+      "focused tests: storage_provider_test.go, registry_redirect_test.go, registry_scheme_test.go, live-harness opt-ins in runner_live_test.go / identity_live_test.go"
+    ]
+  },
+  "changes": [
+    "Capability byte plane is now the Storage Provider seam: localStorage keeps the owner-signed restricted ingest path; cosStorage hands the browser a scoped presigned part URL and registers no /parts route (DirectUploadOnly).",
+    "CreateUpload persists provider_upload_ref from the provider session; CreateUploadPart issues provider-scoped authorization; CompleteUpload assembles through the provider and verifies exact size+SHA-256 before the immutable object exists.",
+    "New Storage.ListParts with ProviderParts{Complete, Parts}; local reports part files it holds, COS reports uploaded multipart shards with the provider size and etag.",
+    "GetUpload reconciles the owner readback with ProviderParts: a registered shard the provider holds at the exact registered size is reported completed (local falls back to its registered digest as etag). The reconciliation is a view; it does not rewrite capability.upload_chunks.observation_result.",
+    "COS Assemble recovers the pre-commit crash window: when the multipart is gone it reads back the content-addressed immutable object, re-verifies size+SHA-256 and finalizes, instead of failing the retry; ListParts reports that finalized state as Complete.",
+    "Build worker follows an approved, bounded registry redirect (real TCR answers blob GET with 307 to presigned object storage), picks transport per registry host (InsecureHTTPHosts) while keeping the legacy AllowHTTP behaviour for an empty list, and surfaces the exporter error text.",
+    "No new wire fields, DTOs, migrations or packages/contracts changes."
+  ],
+  "defectsRepaired": [
+    {
+      "defect": "COS Assemble had a recovery window between copying the artifact to its immutable key (and cleaning up staging) and the owner DB commit",
+      "evidence": "go test ./catalog -run TestCOSAssembleRecoversCopiedImmutableObjectAfterCrash and TestCompleteUploadRecoversArtifactCopiedBeforeOwnerCommit",
+      "behaviour": "the retry re-downloads the immutable object, re-verifies size and SHA-256, and finalizes the same operation instead of failing or starting a second upload identity"
+    },
+    {
+      "defect": "GetUpload returned no completed shards for a direct-to-storage provider, so a refreshed or resumed upload re-sent bytes the provider already held",
+      "evidence": "go test ./catalog -run TestGetUploadReconcilesDirectProviderShardsForResume and TestCOSListPartsReconcilesMidUploadShards",
+      "behaviour": "only provider-held registered shards at the exact registered size are reported complete; the missing shards remain to be uploaded; the persisted observation is unchanged"
+    }
+  ],
+  "consumerContractGaps": [
+    {
+      "gap": "Capability gained a module dependency on github.com/tencentyun/cos-go-sdk-v5 v0.7.75 (+ indirect github.com/clbanning/mxj v1.8.4, github.com/google/go-querystring v1.0.0, github.com/mitchellh/mapstructure, github.com/mozillazg/go-httpheader v0.2.1).",
+      "impact": "Modules whose compiled package set imports opl-cloud/services/capability/catalog must carry the new module sums.",
+      "updatedByThisWindow": [
+        "services/capability/go.mod",
+        "services/capability/go.sum",
+        "services/build/go.mod",
+        "services/build/go.sum"
+      ],
+      "stillRequiredElsewhere": [
+        "services/serve: `go -C services/serve vet -tags=livebuild ./...` currently fails with 'missing go.sum entry for module providing package github.com/tencentyun/cos-go-sdk-v5 (imported by opl-cloud/services/capability/catalog)' — only the livebuild-tagged reservation_live_test.go imports that package. Owner: TKE D write set.",
+        "services/workspace: same failure; only local_first_deploy_qualification_test.go imports that package. Owner: TKE B write set.",
+        "Ordinary `go build ./...` / `go test ./...` in those two modules is unaffected; npm run verify:local compiles with `go test -run ^$ ./...` (no livebuild tag) and is unaffected."
+      ],
+      "reasonNotDoneHere": "services/serve and services/workspace are other windows' exclusive write sets; the coordinator must apply the go.mod/go.sum additions (or serialise them) rather than this window editing their files."
+    },
+    {
+      "gap": "In modules whose module graph includes entgo.io/ent v0.14.6 (services/build, services/workspace) MVS selects github.com/mitchellh/mapstructure v1.5.0, whose module zip was not in the offline module cache and could not be fetched from proxy.golang.org (blocked in this sandbox).",
+      "resolutionHere": "fetched github.com/mitchellh/mapstructure v1.5.0 directly from github.com (GOPROXY=direct GOSUMDB=off) and recorded its go.sum lines in services/build/go.sum: v1.5.0 h1:jeMsZIYE/09sWLaz43PL7Gy6RuMjD2eJVyuac5Z2hdY= (matches the published checksum) and v1.5.0/go.mod h1:bFUtVrKA4DC2yAKiSyO/QUcy7e+RRV2QTWOzhPopBRo=",
+      "stillRequiredElsewhere": "services/workspace needs the same mapstructure v1.5.0 go.sum lines before its livebuild-tagged tests can compile."
+    },
+    {
+      "gap": "No wire gap found: the default-app and three-input Agent contract fields already used (Runtime/WebUI publisher contracts, upload session, descriptor) cover this work; the reconciliation reports through existing UploadSession.completed_parts and adds no field."
+    }
+  ],
+  "frontendBoundary": {
+    "changed": false,
+    "files": [
+      "apps/console-ui/src/pages/PublisherPage.tsx",
+      "apps/console-ui/src/api/publisher-api.ts"
+    ],
+    "reason": "The existing page already (a) fetches GET /uploads/{id} and skips parts present in completedParts matching partNumber+sha256+size, and (b) accepts a presigned PUT whose checksum header is X-OPL-SHA256. The server-side reconciliation is what makes that resume path correct for a direct-to-storage provider, so no client change was needed. Confirmed by reading the page's resume loop; not re-verified in a browser here (npm run verify:local:full is the coordinator's gate)."
+  },
+  "validation": [
+    {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated local PostgreSQL 16.8 container> go -C services/capability test ./... -count=1",
+      "result": "ok, 21 tests passed, zero skipped",
+      "database": "temporary loopback PostgreSQL 16.8 container; real owner migrations and SQL; no provider credentials"
+    },
+    {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<same> go -C services/capability test ./catalog -run 'TestGetUploadReconcilesDirectProviderShardsForResume|TestCompleteUpload|TestWebuiCatalog' -count=1 -v",
+      "result": "all passed: reconciliation, full finalize + data-plane readback, pre-commit crash recovery, wrong-declared-digest rejection, WebUI contract admission + readback"
+    },
+    {
+      "command": "go -C services/capability test ./... -count=1 (no database)",
+      "result": "ok (database-backed cases skip)"
+    },
+    {
+      "command": "go -C services/capability vet -tags=livebuild ./...",
+      "result": "clean"
+    },
+    {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<same> go -C services/runtime-control test ./... -count=1",
+      "result": "ok: catalog (publisher schema encoding, Runtime release admission/readback/rejection) and migrations isolation, zero skipped"
+    },
+    {
+      "command": "go -C services/build test ./... -count=1",
+      "result": "ok"
+    },
+    {
+      "command": "go -C services/build vet -tags=livebuild ./...",
+      "result": "clean"
+    },
+    {
+      "command": "diff <(git show refs/pr684:services/build/internal/build/runner.go) services/build/internal/build/runner.go",
+      "result": "identical to PR 684's runner.go"
+    }
+  ],
+  "notRun": [
+    "Real Tencent COS bucket and real TCR: no credentials were read from any old session and no real COS/TCR write was attempted. COS request/response behaviour is exercised against an in-test fake COS endpoint that serves the same SDK shapes (multipart initiate/part/list/complete, server-side copy, head/get/delete); a real bucket remains not_run.",
+    "Live BuildKit run (`go test -tags=livebuild ./internal/build -run TestLivePackageBuildAndRestartReadback`) needs Docker BuildKit plus a registry credential: not executed; only compiled and vetted.",
+    "`npm run verify:local` / `verify:local:full` (repository-wide gate) is the coordinator's, not this window's.",
+    "The three-input Build end-to-end against a real Tenant TCR (claims -> job -> push -> readback -> Capability registration) is W09.agent-build and was not run here.",
+    "services/serve and services/workspace livebuild-tagged compilation (see consumerContractGaps)."
+  ],
+  "residualRisks": [
+    "The fake COS endpoint implements the SDK request/response subset this provider uses, not COS itself; XML/ETag/signature edge cases of the real service are unproven here. PR 689's own live evidence (`OPL_BUILD_TEST_REGISTRY_*`) remains the only real-registry proof and was not re-run.",
+    "CreateUpload opens the provider upload session inside the owner transaction after the package admission check; a provider session whose transaction then fails is not cleaned up by this window's change. Recorded as an observation, not repaired, because moving the call earlier would let a rejected request create provider state.",
+    "The mapstructure v1.5.0 module was fetched with GOSUMDB=off (sum.golang.org and proxy.golang.org are unreachable from this sandbox). Its h1 hash matches the published value, but the checksum-database lookup itself is not_run.",
+    "Reconciliation deliberately does not mutate capability.upload_chunks.observation_result; a future reader expecting the column to reflect provider-held shards must use GetUpload, not the table."
+  ],
+  "boundary": {
+    "localSourceAndIsolatedDatabase": true,
+    "notClaimed": [
+      "Real COS or TCR write/readback",
+      "Instance deployment, production promotion or a formal Cloud Product Release",
+      "Real money or provider resource mutation",
+      "That the loopback fixture registries or fake COS objects are production artifacts",
+      "W01.application-contracts completion: no shared DTO, proto, migration or packages/contracts change was made by this window"
+    ]
+  },
+  "nextHandoff": [
+    "Coordinator: apply the go.mod/go.sum module-sum additions to services/serve and services/workspace (capability COS dependency; plus mapstructure v1.5.0 sums for services/workspace), or serialise the change into those owners' windows.",
+    "Coordinator: W01.application-contracts still gates any default-App wire change; this window did not invent one.",
+    "Next slices for this window per section 9: W07.publisher-admission, W10.app-release, W07.webui-catalog, W08.cos-upload, W09.agent-build, W14.publisher-ui."
+  ]
+}

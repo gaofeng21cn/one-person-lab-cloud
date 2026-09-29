@@ -58,7 +58,6 @@ var actions = map[api.AuthorizationActionEnum]actionPolicy{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETSUBSCRIPTION:                       {api.OwnerEnum_OWNER_ENUM_WORKSPACE, []string{"member"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEDELETION:                  {api.OwnerEnum_OWNER_ENUM_WORKSPACE, []string{"member"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTWORKSPACETRANSACTIONS:             {api.OwnerEnum_OWNER_ENUM_GATEWAY, []string{"admin", "owner"}},
-	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATION:                          {api.OwnerEnum_OWNER_ENUM_WORKSPACE, []string{"member"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET:                             {api.OwnerEnum_OWNER_ENUM_GATEWAY, []string{"admin", "owner"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTUSAGE:                             {api.OwnerEnum_OWNER_ENUM_GATEWAY, []string{"admin", "owner"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTGATEWAYKEYS:                       {api.OwnerEnum_OWNER_ENUM_GATEWAY, []string{"member"}},

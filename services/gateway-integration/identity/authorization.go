@@ -43,6 +43,11 @@ func null(v string) any {
 	}
 	return v
 }
+func operationOwnerAudience(owner api.OwnerEnum) bool {
+	_, ok := api.OwnerEnum_name[int32(owner)]
+	return ok && owner != api.OwnerEnum_OWNER_ENUM_UNSPECIFIED
+}
+
 func (s *Service) AuthorizeAction(ctx context.Context, r *api.AuthorizationRequest) (*api.AuthorizationDecision, error) {
 	caller, ok := ownerservice.PeerOwner(ctx)
 	if !ok || r.GetActorId() == "" || r.GetRequestId() == "" || r.GetScope() == nil || r.GetResource().GetKind() == 0 || ((r.GetSessionId() == "") == (r.GetAcceptedOperationGrantId() == "")) {
@@ -93,6 +98,20 @@ func (s *Service) AuthorizeAction(ctx context.Context, r *api.AuthorizationReque
 		}
 	} else if r.Scope.GetPlatform() == nil || !admin {
 		return nil, denied()
+	}
+	// An Operation is read through an explicit owner route
+	// (/api/v2/operations/{owner}/{operationId}); the contract names no single
+	// Operation writer, so the contract-derived table has no getOperation row and
+	// the audience is the route the caller chose. The decision is therefore a live
+	// session's member read against that audience over an owner-local record. The
+	// receiving owner re-reads its own row and re-authorizes against its own
+	// audience, so this allow cannot be replayed for another owner, and the tenant
+	// or platform fence above still applies.
+	if r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATION {
+		if r.Resource.GetKind() != api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_OPERATION || !operationOwnerAudience(r.GetAudienceOwner()) {
+			return nil, denied()
+		}
+		return s.saveDecision(ctx, r, version)
 	}
 	p, exists := actions[r.Action]
 	if !exists {
@@ -231,6 +250,12 @@ var workspaceActions = []api.AuthorizationActionEnum{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT,
+	// The accepted launch obligation is funded through the Gateway wallet, so the
+	// canonical x-accepted-operation-actions for create_workspace include the charge
+	// and its readback. Without them a paid order's original grant cannot authorize
+	// the one settlement the customer already accepted.
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CHARGEACCEPTEDOBLIGATION,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION,
 }
 
 func (s *Service) grantOwner(owner api.OwnerEnum) (api.OwnerCommitReadbackClient, api.AuthorizationActionEnum, []api.AuthorizationActionEnum) {
@@ -402,7 +427,10 @@ func (s *Service) authorizeGrant(ctx context.Context, r *api.AuthorizationReques
 	if !active || g.Mode == api.AcceptedGrantMode_ACCEPTED_GRANT_MODE_CLOSEOUT_ONLY {
 		closeout := r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION
 		if g.AcceptedOperationOwner == api.OwnerEnum_OWNER_ENUM_WORKSPACE {
-			closeout = r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETQUOTE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT
+			// A charge is a new effect and stops with the authority; the readback of the
+			// charge already issued stays available so an unknown obligation can still
+			// be reconciled against its own original code.
+			closeout = r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETQUOTE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION
 		}
 		if !closeout {
 			return nil, denied()
@@ -425,7 +453,8 @@ func (s *Service) authorizeGrant(ctx context.Context, r *api.AuthorizationReques
 			((r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_FABRIC && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES)) ||
 				(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETQUOTE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEACCEPTEDOBLIGATION)) ||
 				(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_LEDGER && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT)) ||
-				(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_SERVE && r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME))
+				(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_SERVE && r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME) ||
+				(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_GATEWAY && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CHARGEACCEPTEDOBLIGATION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION)))
 		if r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_CAPABILITY && r.Resource.Kind == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION &&
 			(r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACQUIREREFERENCE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDREFERENCE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE) {
 			for _, v := range evidence.ContinuationResources {

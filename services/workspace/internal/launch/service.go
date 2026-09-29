@@ -34,6 +34,10 @@ type Service struct {
 	Ledger     api.LedgerCoordinationClient
 	Capability api.CapabilityProductServiceClient
 	Serve      api.ServeAgentCoordinationClient
+	// Gateway is the wallet authority the original order is charged from. A Local
+	// no-charge order funds itself through the Ledger receipt, so an unset Gateway
+	// leaves a paid order awaiting its funding owner instead of inventing a charge.
+	Gateway api.GatewayCoordinationClient
 }
 
 func New(db *sql.DB, auth *ownerservice.Authorizer, catalog api.CatalogCoordinationClient, fabric api.FabricCoordinationClient, identity api.CloudIdentityAuthorizationClient) (*Service, error) {
@@ -98,6 +102,8 @@ type orderResult struct {
 	ResourceSetID         string          `json:"resourceSetId,omitempty"`
 	ResourceReadback      json.RawMessage `json:"resourceReadback,omitempty"`
 	ZeroChargeReceipt     json.RawMessage `json:"zeroChargeReceipt,omitempty"`
+	WalletDebitCommand    json.RawMessage `json:"walletDebitCommand,omitempty"`
+	WalletOperation       json.RawMessage `json:"walletOperation,omitempty"`
 	RuntimeCapability     json.RawMessage `json:"runtimeCapability,omitempty"`
 	RuntimeBinding        json.RawMessage `json:"runtimeBinding,omitempty"`
 	RuntimeReservation    json.RawMessage `json:"runtimeReservation,omitempty"`

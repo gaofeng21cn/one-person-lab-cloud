@@ -47,7 +47,7 @@ func TestGeneratedPolicyCoversAssignedOwners(t *testing.T) {
 		api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL:  5,
 		api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG: 14,
 		api.OwnerEnum_OWNER_ENUM_SERVE:            5,
-		api.OwnerEnum_OWNER_ENUM_WORKSPACE:        19,
+		api.OwnerEnum_OWNER_ENUM_WORKSPACE:        18,
 		api.OwnerEnum_OWNER_ENUM_GATEWAY:          9,
 	} {
 		if counts[owner] != want {
@@ -97,6 +97,13 @@ func TestGeneratedPolicyAudienceAndRoles(t *testing.T) {
 	// The invitee-bound operation is deliberately not a grantable role row.
 	if _, ok := actions[api.AuthorizationActionEnum(api.AuthorizationActionEnum_value["AUTHORIZATION_ACTION_ENUM_ACCEPTINVITATION"])]; ok {
 		t.Fatal("acceptInvitation must not be a tenant role row")
+	}
+	// An Operation is read through an explicit owner route, so the contract names
+	// no single Operation writer and the table has no getOperation row: CloudIdentity
+	// decides it as a route-resolved session read whose audience is the route the
+	// caller chose. A row here would pin every owner's Operation read to one owner.
+	if _, ok := actions[api.AuthorizationActionEnum(api.AuthorizationActionEnum_value["AUTHORIZATION_ACTION_ENUM_GETOPERATION"])]; ok {
+		t.Fatal("getOperation must not be one owner's role row")
 	}
 	// The composed BFF read guards the Workspace identity fact, so the workspace
 	// owner needs its own row for that read; the count is pinned by the surface test.

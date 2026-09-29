@@ -9,6 +9,85 @@ is not a work log. Target architecture lives in
 [architecture.md](./architecture.md); open outcomes live in
 [roadmap.md](./roadmap.md).
 
+## September 29 Four-Domain Source Handoff And Serial Integration
+
+The four domain threads completed their bounded current-contract preparations
+and are idle. The [integration audit](evidence/source-checks/2026-09-29-tke-serial-integration-audit.json)
+binds the exact inherited dirty worktree: 50 per-file hashes match the four
+owner receipts, and the Artifact tracked diff matches its receipt. The audit
+reran ordinary tests in eight affected modules without production configuration;
+all passed, but database-dependent tests may skip. The Serve and Workspace
+`livebuild` compilation checks both fail on missing COS dependency sums.
+These are source facts, not end-to-end acceptance.
+
+Completed source surfaces: Artifact COS storage/recovery and Registry redirects;
+Workspace funded-order client and identity authorization corrections; Fabric
+Tencent resource dispatch/readback; Serve observation and route-state-machine
+scaffolding. The full W packages and two-mode TKE business outcome remain open.
+
+Blocking connections remain: W01 application union/consumers; shared identity
+readiness/policy; a real registered GatewayCoordination service; paid-charge
+Ledger production and exact readback; Secret delivery; Serve-owned TKE execution
+rather than its current call to the old Fabric application endpoint; an actual
+configured RouteProvider and deployment-to-route orchestration; actual model
+configuration readback rather than copying the requested version; lifecycle
+and credentials; real BFF/Console, packaging and Instance installation.
+The WALLET_ACTION enum already exists; the missing paid-charge behavior is not
+fixed by adding a duplicate kind. Fabric's old Local-only dispatch gap has been
+addressed by C; B's earlier observation of that gap is not the final source state.
+
+The user requested one new sequential integration/deployment window using
+`deepseek-v4.1-flash/high`. [Work package 14 section 11](spec/target/14_implementation_work_packages.md#11-四领域交付后的串行集成与上线)
+now owns that execution order. It must retain all uncommitted domain work,
+complete the missing producer/consumer paths and integrated checks, then build
+an exact canonical Candidate and use the Instance owner's protected deployment
+and acceptance workflows. Old domain windows must not resume concurrent writes.
+The Instance checkout inspected locally is dirty and not remote `main`; its
+state must not be mistaken for the deployment workflow source. No new Candidate,
+production deployment, customer migration, financial/provider action or release
+was performed by this audit. Actual rollout requires fresh owner evidence.
+
+## September 29 Tencent/TKE Planning And Task Dispatch
+
+The adopted product now includes default OPL App/native UI without a customer
+Package, Build or CapabilityVersion, plus custom Agent built from Package, Runtime and an independent WebUI.
+These are exactly two combinations; Agent with built-in UI is not supported.
+[The decision](decisions.md#2026-09-29-default-opl-app-and-optional-agent) is
+product intent. [Work package 14 section 9](spec/target/14_implementation_work_packages.md#9-tencenttke可直接开发的切片与窗口)
+contains executable work slices and window boundaries, not implementation claims.
+
+The inspected production baseline is `bf9027253dd852383c6069e7dad9fc7d436efbe3`.
+Its Quote/Build/Serve contracts still have mandatory CapabilityVersion or WebUI
+assumptions. The new default path is **not implemented**. Target 03/02 explicitly
+record W01's grouped contract/SQL/consumer migration; the historical schema/UI
+receipts do not validate that delta. The new strict target-selection and slice
+planning checks prove only their specification/planning layer.
+
+The [source/planning receipt](evidence/source-checks/2026-09-29-tke-default-app-planning.json)
+records actual local checks, exact changed-source hashes, and unperformed
+verification. No production access, purchase, deployment, publication, runtime
+contract generation or service behavior change is claimed by this reconciliation.
+
+The final two-combination correction and four-window preparation are recorded
+in [the current preparation evidence](evidence/source-checks/2026-09-29-tke-two-modes-preparation.json).
+The earlier planning receipt remains immutable provenance, including its
+superseded Agent-with-built-in-UI proposal. Current product intent is only the
+two combinations above; Agent keeps all three Build inputs mandatory.
+
+Four local domain tasks have been dispatched with `deepseek-v4.1-flash` and
+`high`, under [work package 14 section 10](spec/target/14_implementation_work_packages.md#10-四领域窗口派发与共享合同交接).
+Their first actions use existing contracts and disjoint owner write sets.
+[Dispatch evidence](evidence/source-checks/2026-09-29-tke-four-window-dispatch.json)
+records exact thread identities and observed startup, not domain completion.
+W01 executable application-selection migration, W02 shared readiness, W05
+receipt producers/consumers and BFF/Console integration remain integration
+obligations. The new App wire and TKE delivery are not yet qualified.
+No domain result from these ongoing tasks is covered by the planning checks.
+
+The historical three-service migration start point below is a dated source
+snapshot, not the current owner-module inventory. Later implementation receipts
+remain valid only for their own sources and tested layers.
+
 ## target architecture Migration Start Point
 
 The target architecture is adopted in

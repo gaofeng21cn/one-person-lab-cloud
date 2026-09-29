@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "cloud_development_task_dispatch",
+  "recordedAt": "2026-09-29T13:03:11.100456+00:00",
+  "result": "four_threads_created_and_observed_active",
+  "coordinatorThreadId": "01a0ecd7-2472-7810-b244-dc19505de019",
+  "sourceBaseSha": "bf9027253dd852383c6069e7dad9fc7d436efbe3",
+  "workspace": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#10",
+  "taskDefinitionSha256": "667dcb21d64d54f77430b4070ce610ef6b83984ee04d3a89c2d2155f15b66769",
+  "preparationReceipt": "docs/evidence/source-checks/2026-09-29-tke-two-modes-preparation.json",
+  "tasks": [
+    {
+      "window": "artifacts",
+      "threadId": "01a0ed3e-5bdf-7a81-adeb-fd923bb4148e",
+      "hostId": "local",
+      "requestedModel": "deepseek-v4.1-flash",
+      "requestedThinking": "high",
+      "creationToolSucceeded": true,
+      "observedStatus": "active",
+      "observedTurnStatus": "inProgress",
+      "observedTurnId": "01a0ed3e-6127-7942-9ed1-2f3b38bf670b",
+      "observedRevision": 9,
+      "observedError": null,
+      "toolExecutionObserved": true
+    },
+    {
+      "window": "business",
+      "threadId": "01a0ed3e-65db-74d2-8cd9-91894ff1432d",
+      "hostId": "local",
+      "requestedModel": "deepseek-v4.1-flash",
+      "requestedThinking": "high",
+      "creationToolSucceeded": true,
+      "observedStatus": "active",
+      "observedTurnStatus": "inProgress",
+      "observedTurnId": "01a0ed3e-6b4e-7e73-8d5f-969f8fb62813",
+      "observedRevision": 7,
+      "observedError": null,
+      "toolExecutionObserved": true
+    },
+    {
+      "window": "resources",
+      "threadId": "01a0ed3e-6fc4-7b03-b539-2a4f4b890eb0",
+      "hostId": "local",
+      "requestedModel": "deepseek-v4.1-flash",
+      "requestedThinking": "high",
+      "creationToolSucceeded": true,
+      "observedStatus": "active",
+      "observedTurnStatus": "inProgress",
+      "observedTurnId": "01a0ed3e-752f-7932-8947-057d5275df8e",
+      "observedRevision": 9,
+      "observedError": null,
+      "toolExecutionObserved": true
+    },
+    {
+      "window": "delivery",
+      "threadId": "01a0ed3e-7c68-7272-bb77-ab697c144d5d",
+      "hostId": "local",
+      "requestedModel": "deepseek-v4.1-flash",
+      "requestedThinking": "high",
+      "creationToolSucceeded": true,
+      "observedStatus": "active",
+      "observedTurnStatus": "inProgress",
+      "observedTurnId": "01a0ed3e-7f43-7800-9648-7ecb2447ed0d",
+      "observedRevision": 8,
+      "observedError": null,
+      "toolExecutionObserved": true
+    }
+  ],
+  "observationMethod": "create_thread with explicit model/thinking, then wait_threads startup snapshot and bounded 60000ms follow-up. Readback exposes execution state, not an independent effective-model field.",
+  "scope": "Task acceptance and startup only, not owner implementation, tests or TKE qualification. No scheduled monitoring created.",
+  "oldSessions": "three prior sessions audited as idle and retained for read-only provenance; no new overlapping work sent to them",
+  "coordination": "shared local checkout, disjoint domain writes and dedicated append-only evidence paths; shared contracts and canonical state owned by coordinator",
+  "notAuthorized": [
+    "commit/push/PR",
+    "production-private access",
+    "real wallet/provider mutations",
+    "Instance deployment dispatch",
+    "formal publication"
+  ]
+}

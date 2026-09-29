@@ -11,6 +11,14 @@ require (
 )
 
 require (
+	github.com/clbanning/mxj v1.8.4 // indirect
+	github.com/google/go-querystring v1.0.0 // indirect
+	github.com/mitchellh/mapstructure v1.4.3 // indirect
+	github.com/mozillazg/go-httpheader v0.2.1 // indirect
+	github.com/tencentyun/cos-go-sdk-v5 v0.7.75 // indirect
+)
+
+require (
 	github.com/dlclark/regexp2 v1.11.0 // indirect
 	github.com/lib/pq v1.12.3 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect

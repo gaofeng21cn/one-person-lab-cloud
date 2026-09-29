@@ -2,28 +2,29 @@
 
 > 自动派生索引，不是第二份产品或字段定义。更新03/02/04后运行 checks/render_traceability.py；随后运行 checks/validate_spec.py。
 > 每个F编号贯穿客户场景、页面、后端operationId、DTO字段、持久化Owner与接受标准。
+> 2026-09-29默认App/native UI业务已采用；本表仍派生当前wire基线，新选择字段/消费者须按03 x-approved-wire-migration及14 W01贯通，不能把本表覆盖数当新路径实现证据。
 
 ## 总表
 
 | 功能 | 页面 | API操作数 | 数据Owner |
 |---|---|---:|---|
-| F01 登录、Tenant与成员权限 | /login、/console/settings/account、/console/settings/members、/admin/tenants/new | 16 | tenant, workspace |
+| F01 登录、Tenant与成员权限 | /login、/console/settings/account、/console/settings/members、/admin/tenants/new | 16 | bff, tenant |
 | F02 分组与官方/私有Agent可见性 | /console/agents、/console/settings/groups | 9 | capability |
-| F03 管理员Runtime/WebUI与资源价格目录 | /admin/catalog/runtime、/admin/catalog/webui、/admin/catalog/publishers、/admin/catalog/build-policy、/admin/catalog/plans | 25 | capability, gateway, resource_catalog |
-| F04 上传Package与后续版本、确认构建 | /console/agents/upload、/console/agents/:packageId/upload | 12 | build, capability, workspace |
-| F05 构建进度、日志与失败重试 | /console/agents/builds、/console/agents/builds/:buildJobId | 7 | build, capability, workspace |
-| F06 智能体详情、版本下架与引用保护 | /console/agents/:packageId | 9 | capability, workspace |
-| F07 部署选择、准入与报价 | /console/workspaces/new | 10 | capability, gateway, resource_catalog |
-| F08 创建Workspace及部署结果 | /console/operations/:owner/:operationId | 5 | gateway, serve, workspace |
-| F09 Workspace查询、打开与模型配置 | /console/workspaces、/console/workspaces/:workspaceId、/console/workspaces/:workspaceId/models | 10 | gateway, serve, workspace |
-| F10 Agent更新、Runtime重建与回滚 | /console/workspaces/:workspaceId/update、/console/workspaces/:workspaceId/deployments | 9 | capability, serve, workspace |
-| F11 立即升级补差与下期降配计划 | /console/workspaces/:workspaceId?tab=plan-changes、/console/workspaces/:workspaceId?tab=plan-changes&planChangeId=:planChangeId | 14 | gateway, resource_catalog, workspace |
-| F12 续费、到期停用与恢复 | /console/billing、/console/workspaces/:workspaceId/billing | 9 | gateway, resource_catalog, workspace |
-| F13 删除Workspace、资源确认与退款 | /console/workspaces/:workspaceId/settings | 7 | gateway, resource_catalog, workspace |
+| F03 管理员Runtime/WebUI与资源价格目录 | /admin/catalog/runtime、/admin/catalog/webui、/admin/catalog/publishers、/admin/catalog/build-policy、/admin/catalog/plans | 25 | capability, gateway, resource_catalog, runtime_control |
+| F04 上传Package与后续版本、确认构建 | /console/agents/upload、/console/agents/:packageId/upload | 12 | bff, build, capability |
+| F05 构建进度、日志与失败重试 | /console/agents/builds、/console/agents/builds/:buildJobId | 7 | bff, build, capability |
+| F06 智能体详情、版本下架与引用保护 | /console/agents/:packageId | 9 | bff, capability |
+| F07 部署选择、准入与报价 | /console/workspaces/new | 10 | capability, gateway, resource_catalog, runtime_control |
+| F08 创建Workspace及部署结果 | /console/operations/:owner/:operationId | 5 | bff, gateway, serve, workspace |
+| F09 Workspace查询、打开与模型配置 | /console/workspaces、/console/workspaces/:workspaceId、/console/workspaces/:workspaceId/models | 10 | bff, gateway, serve, workspace |
+| F10 Agent更新、Runtime重建与回滚 | /console/workspaces/:workspaceId/update、/console/workspaces/:workspaceId/deployments | 9 | bff, capability, runtime_control, serve, workspace |
+| F11 立即升级补差与下期降配计划 | /console/workspaces/:workspaceId?tab=plan-changes、/console/workspaces/:workspaceId?tab=plan-changes&planChangeId=:planChangeId | 14 | bff, gateway, resource_catalog, workspace |
+| F12 续费、到期停用与恢复 | /console/billing、/console/workspaces/:workspaceId/billing | 9 | bff, gateway, resource_catalog, workspace |
+| F13 删除Workspace、资源确认与退款 | /console/workspaces/:workspaceId/settings | 7 | bff, gateway, resource_catalog, workspace |
 | F14 钱包、用量、Key及管理员充值记录 | /console/api、/console/api/usage、/console/api/keys、/admin/recharge-records | 8 | gateway |
-| F15 Tenant停用、删除与窗口内恢复 | /admin/tenants/:tenantId | 12 | tenant, workspace |
-| F16 旧资源与应用迁移后的可见状态和采用Agent | /console/workspaces/:workspaceId、/console/workspaces/:workspaceId/adopt | 10 | capability, gateway, serve, workspace |
-| F17 管理员操作、审计与实例资格读回 | /admin/operations、/admin/qualifications | 7 | ledger, tenant, workspace |
+| F15 Tenant停用、删除与窗口内恢复 | /admin/tenants/:tenantId | 12 | bff, tenant |
+| F16 旧资源与应用迁移后的可见状态和采用Agent | /console/workspaces/:workspaceId、/console/workspaces/:workspaceId/adopt | 10 | bff, capability, gateway, serve, workspace |
+| F17 管理员操作、审计与实例资格读回 | /admin/operations、/admin/qualifications | 7 | bff, ledger, tenant |
 
 ## F01 登录、Tenant与成员权限
 
@@ -36,7 +37,7 @@
 | `createTenant` | `POST /api/v2/admin/tenants` | CreateTenantRequest | 202 Operation | tenant |
 | `getAdminTenant` | `GET /api/v2/admin/tenants/{tenantId}` | — | 200 Tenant | tenant |
 | `getLoginContext` | `GET /api/v2/auth/context` | — | 200 LoginContext | tenant |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | bff |
 | `getSession` | `GET /api/v2/auth/session` | — | 200 Session | tenant |
 | `getTenant` | `GET /api/v2/tenant` | — | 200 Tenant | tenant |
 | `inviteMember` | `POST /api/v2/tenant/invitations` | InviteMemberRequest | 201 Invitation | tenant |
@@ -113,23 +114,23 @@
 | `createRefundPolicyVersion` | `POST /api/v2/admin/catalog/refund-policies` | CreateRefundPolicyRequest | 201 RefundPolicyVersion | resource_catalog |
 | `createRetentionPolicyVersion` | `POST /api/v2/admin/catalog/retention-policies` | CreateRetentionPolicyRequest | 201 RetentionPolicyVersion | resource_catalog |
 | `createStoragePlan` | `POST /api/v2/admin/catalog/storage-plans` | CreateStoragePlanRequest | 201 StoragePlan | resource_catalog |
-| `getBuildRuntimePolicy` | `GET /api/v2/admin/catalog/build-policy` | — | 200 BuildRuntimePolicy | capability |
+| `getBuildRuntimePolicy` | `GET /api/v2/admin/catalog/build-policy` | — | 200 BuildRuntimePolicy | runtime_control |
 | `listComputePlans` | `GET /api/v2/catalog/compute-plans` | — | 200 ComputePlanPage | resource_catalog |
 | `listModels` | `GET /api/v2/catalog/models` | — | 200 ModelPage | gateway |
 | `listPricePolicyVersions` | `GET /api/v2/admin/catalog/price-policies` | — | 200 PricePolicyVersionPage | resource_catalog |
 | `listPublisherNamespaces` | `GET /api/v2/admin/catalog/publisher-namespaces` | — | 200 PublisherNamespacePage | capability |
 | `listRefundPolicyVersions` | `GET /api/v2/admin/catalog/refund-policies` | — | 200 RefundPolicyVersionPage | resource_catalog |
 | `listRetentionPolicyVersions` | `GET /api/v2/admin/catalog/retention-policies` | — | 200 RetentionPolicyVersionPage | resource_catalog |
-| `listRuntimeVersions` | `GET /api/v2/catalog/runtime-versions` | — | 200 RuntimeVersionPage | capability |
+| `listRuntimeVersions` | `GET /api/v2/catalog/runtime-versions` | — | 200 RuntimeVersionPage | runtime_control |
 | `listStoragePlans` | `GET /api/v2/catalog/storage-plans` | — | 200 StoragePlanPage | resource_catalog |
 | `listWebuiVersions` | `GET /api/v2/catalog/webui-versions` | — | 200 WebuiVersionPage | capability |
 | `publishOfficialPackage` | `POST /api/v2/admin/packages/{packageId}/publish` | PublishPackageRequest | 200 Package | capability |
-| `registerRuntimeVersion` | `POST /api/v2/admin/catalog/runtime-versions` | RegisterRuntimeVersionRequest | 201 RuntimeVersion | capability |
+| `registerRuntimeVersion` | `POST /api/v2/admin/catalog/runtime-versions` | RegisterRuntimeVersionRequest | 201 RuntimeVersion | runtime_control |
 | `registerWebuiVersion` | `POST /api/v2/admin/catalog/webui-versions` | RegisterWebuiVersionRequest | 201 WebuiVersion | capability |
 | `revokePublisherNamespace` | `POST /api/v2/admin/catalog/publisher-namespaces/{publisherNamespaceId}/revoke` | RevokePublisherNamespaceRequest | 200 PublisherNamespace | capability |
-| `setBuildRuntimePolicy` | `PUT /api/v2/admin/catalog/build-policy` | SetBuildRuntimePolicyRequest | 200 BuildRuntimePolicy | capability |
+| `setBuildRuntimePolicy` | `PUT /api/v2/admin/catalog/build-policy` | SetBuildRuntimePolicyRequest | 200 BuildRuntimePolicy | runtime_control |
 | `setComputePlanAvailability` | `PUT /api/v2/admin/catalog/compute-plans/{planId}/availability` | PlanAvailabilityRequest | 200 ComputePlan | resource_catalog |
-| `setRuntimeVersionStatus` | `PUT /api/v2/admin/catalog/runtime-versions/{versionId}/status` | CatalogStatusRequest | 200 RuntimeVersion | capability |
+| `setRuntimeVersionStatus` | `PUT /api/v2/admin/catalog/runtime-versions/{versionId}/status` | CatalogStatusRequest | 200 RuntimeVersion | runtime_control |
 | `setStoragePlanAvailability` | `PUT /api/v2/admin/catalog/storage-plans/{planId}/availability` | PlanAvailabilityRequest | 200 StoragePlan | resource_catalog |
 | `setWebuiVersionStatus` | `PUT /api/v2/admin/catalog/webui-versions/{versionId}/status` | CatalogStatusRequest | 200 WebuiVersion | capability |
 
@@ -204,7 +205,7 @@
 | `createPackage` | `POST /api/v2/packages` | CreatePackageRequest | 201 Package | capability |
 | `createUpload` | `POST /api/v2/packages/{packageId}/uploads` | CreateUploadRequest | 201 UploadSession | capability |
 | `createUploadPart` | `POST /api/v2/uploads/{uploadId}/parts` | CreateUploadPartRequest | 200 UploadPartAuthorization | capability |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | bff |
 | `getPackage` | `GET /api/v2/packages/{packageId}` | — | 200 Package | capability |
 | `getPackageVersion` | `GET /api/v2/package-versions/{packageVersionId}` | — | 200 PackageVersion | capability |
 | `getUpload` | `GET /api/v2/uploads/{uploadId}` | — | 200 UploadSession | capability |
@@ -247,7 +248,7 @@
 | `createBuild` | `POST /api/v2/builds` | CreateBuildRequest | 201 BuildJob | build |
 | `getBuild` | `GET /api/v2/builds/{buildId}` | — | 200 BuildJob | build |
 | `getCapabilityVersion` | `GET /api/v2/capability-versions/{capabilityVersionId}` | — | 200 CapabilityVersion | capability |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | bff |
 | `listBuildLogs` | `GET /api/v2/builds/{buildId}/logs` | — | 200 BuildLogPage | build |
 | `listBuilds` | `GET /api/v2/builds` | — | 200 BuildJobPage | build |
 | `retryBuild` | `POST /api/v2/builds/{buildId}/retry` | — | 201 BuildJob | build |
@@ -314,7 +315,7 @@
 | `archivePackage` | `POST /api/v2/packages/{packageId}/archive` | — | 200 Package | capability |
 | `deleteCapabilityVersion` | `DELETE /api/v2/capability-versions/{capabilityVersionId}` | — | 202 Operation | capability |
 | `getCapabilityVersion` | `GET /api/v2/capability-versions/{capabilityVersionId}` | — | 200 CapabilityVersion | capability |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | bff |
 | `getPackage` | `GET /api/v2/packages/{packageId}` | — | 200 Package | capability |
 | `getPackageVersion` | `GET /api/v2/package-versions/{packageVersionId}` | — | 200 PackageVersion | capability |
 | `listCapabilityVersions` | `GET /api/v2/capability-versions` | — | 200 CapabilityVersionPage | capability |
@@ -387,7 +388,7 @@
 | `listCapabilityVersions` | `GET /api/v2/capability-versions` | — | 200 CapabilityVersionPage | capability |
 | `listComputePlans` | `GET /api/v2/catalog/compute-plans` | — | 200 ComputePlanPage | resource_catalog |
 | `listModels` | `GET /api/v2/catalog/models` | — | 200 ModelPage | gateway |
-| `listRuntimeVersions` | `GET /api/v2/catalog/runtime-versions` | — | 200 RuntimeVersionPage | capability |
+| `listRuntimeVersions` | `GET /api/v2/catalog/runtime-versions` | — | 200 RuntimeVersionPage | runtime_control |
 | `listStoragePlans` | `GET /api/v2/catalog/storage-plans` | — | 200 StoragePlanPage | resource_catalog |
 | `listWebuiVersions` | `GET /api/v2/catalog/webui-versions` | — | 200 WebuiVersionPage | capability |
 
@@ -462,7 +463,7 @@
 |---|---|---|---|---|
 | `createWorkspace` | `POST /api/v2/workspaces` | CreateWorkspaceRequest | 202 Operation | workspace |
 | `getDeployment` | `GET /api/v2/workspaces/{workspaceId}/deployments/{deploymentId}` | — | 200 Deployment | serve |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | bff |
 | `getWorkspace` | `GET /api/v2/workspaces/{workspaceId}` | — | 200 Workspace | workspace |
 | `listWorkspaceTransactions` | `GET /api/v2/workspaces/{workspaceId}/transactions` | — | 200 WalletOperationPage | gateway |
 
@@ -494,7 +495,7 @@
 |---|---|---|---|---|
 | `adoptWorkspace` | `POST /api/v2/workspaces/{workspaceId}/adopt` | AdoptWorkspaceRequest | 202 Operation | workspace |
 | `getDeployment` | `GET /api/v2/workspaces/{workspaceId}/deployments/{deploymentId}` | — | 200 Deployment | serve |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | bff |
 | `getWorkspace` | `GET /api/v2/workspaces/{workspaceId}` | — | 200 Workspace | workspace |
 | `getWorkspaceAccess` | `POST /api/v2/workspaces/{workspaceId}/access` | — | 200 WorkspaceAccess | serve |
 | `getWorkspaceModels` | `GET /api/v2/workspaces/{workspaceId}/models` | — | 200 ModelConfiguration | workspace |
@@ -535,11 +536,11 @@
 |---|---|---|---|---|
 | `getCapabilityVersion` | `GET /api/v2/capability-versions/{capabilityVersionId}` | — | 200 CapabilityVersion | capability |
 | `getDeployment` | `GET /api/v2/workspaces/{workspaceId}/deployments/{deploymentId}` | — | 200 Deployment | serve |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | bff |
 | `getWorkspace` | `GET /api/v2/workspaces/{workspaceId}` | — | 200 Workspace | workspace |
 | `listCapabilityVersions` | `GET /api/v2/capability-versions` | — | 200 CapabilityVersionPage | capability |
 | `listDeployments` | `GET /api/v2/workspaces/{workspaceId}/deployments` | — | 200 DeploymentPage | serve |
-| `listRuntimeVersions` | `GET /api/v2/catalog/runtime-versions` | — | 200 RuntimeVersionPage | capability |
+| `listRuntimeVersions` | `GET /api/v2/catalog/runtime-versions` | — | 200 RuntimeVersionPage | runtime_control |
 | `rollbackWorkspace` | `POST /api/v2/workspaces/{workspaceId}/rollback` | RollbackWorkspaceRequest | 202 Operation | serve |
 | `updateWorkspaceVersion` | `POST /api/v2/workspaces/{workspaceId}/update` | UpdateWorkspaceVersionRequest | 202 Operation | serve |
 
@@ -605,7 +606,7 @@
 |---|---|---|---|---|
 | `cancelPlanChange` | `POST /api/v2/workspaces/{workspaceId}/plan-changes/{planChangeId}/cancel` | CancelPlanChangeRequest | 202 Operation | workspace |
 | `createQuote` | `POST /api/v2/quotes` | QuoteRequest | 201 Quote | resource_catalog |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | bff |
 | `getPlanChange` | `GET /api/v2/workspaces/{workspaceId}/plan-changes/{planChangeId}` | — | 200 PlanChange | workspace |
 | `getQuote` | `GET /api/v2/quotes/{quoteId}` | — | 200 Quote | resource_catalog |
 | `getSubscription` | `GET /api/v2/workspaces/{workspaceId}/subscription` | — | 200 Subscription | workspace |
@@ -655,7 +656,7 @@
 | operationId | 请求 | 请求DTO | 成功响应DTO | 唯一Owner |
 |---|---|---|---|---|
 | `createQuote` | `POST /api/v2/quotes` | QuoteRequest | 201 Quote | resource_catalog |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | bff |
 | `getQuote` | `GET /api/v2/quotes/{quoteId}` | — | 200 Quote | resource_catalog |
 | `getSubscription` | `GET /api/v2/workspaces/{workspaceId}/subscription` | — | 200 Subscription | workspace |
 | `getWallet` | `GET /api/v2/wallet` | — | 200 Wallet | gateway |
@@ -698,7 +699,7 @@
 | operationId | 请求 | 请求DTO | 成功响应DTO | 唯一Owner |
 |---|---|---|---|---|
 | `deleteWorkspace` | `DELETE /api/v2/workspaces/{workspaceId}` | DeleteWorkspaceRequest | 202 Operation | workspace |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | bff |
 | `getQuote` | `GET /api/v2/quotes/{quoteId}` | — | 200 Quote | resource_catalog |
 | `getSubscription` | `GET /api/v2/workspaces/{workspaceId}/subscription` | — | 200 Subscription | workspace |
 | `getWorkspace` | `GET /api/v2/workspaces/{workspaceId}` | — | 200 Workspace | workspace |
@@ -778,7 +779,7 @@
 | `createTenant` | `POST /api/v2/admin/tenants` | CreateTenantRequest | 202 Operation | tenant |
 | `deleteTenant` | `DELETE /api/v2/admin/tenants/{tenantId}` | DeleteTenantRequest | 202 Operation | tenant |
 | `getAdminTenant` | `GET /api/v2/admin/tenants/{tenantId}` | — | 200 Tenant | tenant |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | bff |
 | `getTenant` | `GET /api/v2/tenant` | — | 200 Tenant | tenant |
 | `getTenantAssetCustody` | `GET /api/v2/admin/tenants/{tenantId}/asset-custody` | — | 200 AssetCustody | tenant |
 | `getTenantLifecycleOperation` | `GET /api/v2/admin/tenants/{tenantId}/operations/{operationId}` | — | 200 TenantLifecycleProgress | tenant |
@@ -817,7 +818,7 @@
 | `adoptWorkspace` | `POST /api/v2/workspaces/{workspaceId}/adopt` | AdoptWorkspaceRequest | 202 Operation | workspace |
 | `getCapabilityVersion` | `GET /api/v2/capability-versions/{capabilityVersionId}` | — | 200 CapabilityVersion | capability |
 | `getDeployment` | `GET /api/v2/workspaces/{workspaceId}/deployments/{deploymentId}` | — | 200 Deployment | serve |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | bff |
 | `getSubscription` | `GET /api/v2/workspaces/{workspaceId}/subscription` | — | 200 Subscription | workspace |
 | `getWorkspace` | `GET /api/v2/workspaces/{workspaceId}` | — | 200 Workspace | workspace |
 | `listCapabilityVersions` | `GET /api/v2/capability-versions` | — | 200 CapabilityVersionPage | capability |
@@ -887,13 +888,13 @@
 
 | operationId | 请求 | 请求DTO | 成功响应DTO | 唯一Owner |
 |---|---|---|---|---|
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | bff |
 | `getReceipt` | `GET /api/v2/admin/receipts/{receiptId}` | — | 200 Receipt | ledger |
-| `listAdminOperations` | `GET /api/v2/admin/operations` | — | 200 AdminOperationPage | workspace |
+| `listAdminOperations` | `GET /api/v2/admin/operations` | — | 200 AdminOperationPage | bff |
 | `listAuditEvents` | `GET /api/v2/admin/audit-events` | — | 200 AuditEventPage | tenant |
 | `listQualifications` | `GET /api/v2/admin/qualifications` | — | 200 QualificationPage | ledger |
 | `listReceipts` | `GET /api/v2/admin/receipts` | — | 200 ReceiptPage | ledger |
-| `reconcileOperation` | `POST /api/v2/admin/operations/{owner}/{operationId}/reconcile` | ReconcileOperationRequest | 202 Operation | workspace |
+| `reconcileOperation` | `POST /api/v2/admin/operations/{owner}/{operationId}/reconcile` | ReconcileOperationRequest | 202 Operation | bff |
 
 **显示字段来源**（精确Schema.field，包含正常/处理中/失败页字段；可选性按03）：
 

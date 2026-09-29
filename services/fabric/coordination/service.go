@@ -33,7 +33,7 @@ type Service struct {
 	Authorize  AuthorizeFunc
 	Catalog    api.CatalogCoordinationClient
 	Ledger     api.LedgerCoordinationClient
-	Dispatcher LocalResourceDispatcher
+	Dispatcher ResourceDispatcher
 }
 
 func New(db *sql.DB, authorize AuthorizeFunc, catalog api.CatalogCoordinationClient) (*Service, error) {

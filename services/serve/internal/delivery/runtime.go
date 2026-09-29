@@ -43,6 +43,11 @@ type RuntimeObservation struct {
 	// AccessURL is the publishable URL the adapter resolved for that entry. It is
 	// empty when nothing is publishable yet.
 	AccessURL string
+	// Components is the executing runtime's own whole-runtime component
+	// observation. It carries the provider's per-component readiness so an
+	// adapter can refuse to call a runtime ready while any declared component is
+	// not; a Pod phase alone never reaches this record.
+	Components []contracts.WorkspaceApplicationRuntimeComponentState
 	// ReadinessEvidenceRef is the provider evidence identity for a ready report.
 	ReadinessEvidenceRef string
 	// ObservedAt is when the runtime reported this state.

@@ -2,6 +2,24 @@
 
 > **目标可开发规格；未执行数据库迁移。** 替换上一版单库跨域FK、UUID默认值、级联删除、计数双写与重复钱包。外部DTO唯一权威为03，`contracts/schema.sql`是本文件可执行字段投影；`contracts/db_inventory.json`含每表字段、NULL/default、约束、索引、业务功能和来源，供自动核对。
 
+## 0. 2026-09-29默认App的成组迁移义务（W01）
+
+12的产品组合已经采用；03 `x-approved-wire-migration`是待贯通的字段/请求选择定义。下方现有SQL/inventory仍是迁移前可执行基线，不能以其历史DB测试PASS证明新组合。W01必须同步目标SQL、inventory、各owner真实migration加载链、decoder与全部消费者；不在本规划修改一半生产DDL或用nullable fallback冒充实现。
+
+| 现有规格持久化/边界 | 必须改变与保留的不变量 |
+|---|---|
+| `resource_catalog.quotes`及Quote快照 | 报价固定`opl_app(runtimeVersionId)`或`agent(capabilityVersionId)`、精确artifact/descriptor及政策；两个来源互斥，不允许客户用价格或任意image覆盖；默认策略变更不改旧Quote |
+| `workspace.workspaces`、原单/steps | 默认应用不是`legacy_resource_only`；记录原订单的明确应用意图快照与来源，CapabilityVersion仅agent分支有值。当前应用仍只归Serve，不能在Workspace添加activeDeploymentId或随Serve替换双写当前版本 |
+| `serve.agent_deployments`/`agent_runtime_instances` | 保留现有表owner；应用来源明确互斥，默认App允许无CapabilityVersion但必须有批准Runtime来源及精确descriptor，不能无来源ready。部署历史、epoch、原effect/request identity持久化，唯一current约束不减弱 |
+| `build.build_jobs`/inputs/artifacts与`capability.capability_versions` | 只给真实的Package构建，且只有一种Build形态：Package＋精确Runtime＋独立WebUI三项输入全部必填，缺一即拒绝，不存在“保留Runtime内置UI”的Agent构建分支。typed三输入进入input hash，旧完整三输入Build历史不改写 |
+| `runtime_control.runtime_releases`/publisher contract | 准入明确standalone App及其发布者声明的内置UI的能力和发布者运行合同，供默认部署与Build读取。Runtime Control不因此增加runtime_instance或路由表 |
+| `capability.reference_claims` | 复用runtime_version target，通过Runtime owner读取/准入及消费owner commit证据保护默认App和构建Runtime。跨owner仅opaque ID，无FK/JOIN；撤销新准入、现有运行保护和物理删除互斥分别验证 |
+| 各owner Operation/Outbox、Ledger typed evidence | 原命令、输入hash、外部effect ID与receipt key可重放；事实提交和Outbox同库事务；Ledger不可变追加。默认App部署保留Release来源，不制造Build证据 |
+
+当前Workspace真实migration已不含旧规格的capability_version_id/delivery_model列；W01从真实加载链与消费者出发，不能为套旧表重新引入第二份部署状态。若意图已在Operation/accepted quote快照中完整保存，不新增冗余Workspace列。
+
+默认App↔Agent替换保留同Workspace/原购买事实，兼容性和数据迁移由发布者合同加Serve执行控制；没有可证明无损的旧格式回退，不宣称可回滚。历史`legacy_resource_only`/`legacy_application`仍按09保存原身份与义务；不套用默认App创建语义。
+
 ## 1. 数据库与写入身份
 
 | 数据Owner | 独立database/schema | 所属业务服务 |
@@ -15,6 +33,7 @@
 | gateway | opl_gateway / gateway | Gateway Integration的外部Gateway适配模块 |
 | resource_catalog | opl_resource_catalog / resource_catalog | Resource Catalog |
 | ledger | opl_ledger / ledger | Ledger |
+| serve | opl_serve / serve | Serve：默认App和Agent的部署/运行/访问 |
 
 - 可共PostgreSQL实例，但每database必须独立schema owner role、writer role与runtime login。部署Owner创建NOLOGIN `opl_<owner>_owner`（DDL）与`opl_<owner>_writer`（DML），runtime login仅获得对应writer，不获得owner。CloudIdentity与Gateway同进程也使用各自受限连接池，不能借共享进程跨库查表。
 - `schema.sql`是**按BEGIN DATABASE/END DATABASE标记分段的源码包，不是可在一个连接顺序执行的迁移脚本**。执行器分段，分别连到指定database；每段`current_database()` guard拒绝错库。Owner/role/database创建是部署配置，不硬编码生产地址、Secret或登录密码。
@@ -39,13 +58,13 @@
 - 申请上传在Capability事务创建PackageVersion(upload_pending)+UploadSession+幂等响应。PackageVersion只包含原始包的版本、期望digest/size，不在上传时绑定Runtime或WebUI。
 - 浏览器业务请求仅BFF；原始字节仅发送到Capability签发的精确对象/partNumber/大小/hash范围的短时Storage URL。`upload_chunks.part_number`从1开始；同session+partNumber固定size/hash，确认后写etag，unknown调用Storage读回原分片。续签上传URL不创建第二个包或第二分片；不持久化URL/临时凭据。
 - UploadSession的sizeBytes/sha256读取PackageVersion；completedParts读取本session的confirmed chunks，按part_number排序。不持久化completedParts数组或offset两套事实。完成接口验证Storage分片、最终实测size/digest与manifest，匹配后才uploaded；ETag不等于SHA-256。
-- `createBuild(packageVersionId,webuiVersionId)`显式触发构建；服务器冻结当前批准的Runtime/catalog policy并先创建queued Job。Worker再分别取得Package/Runtime/WebUI引用claim、在Build本库提交三个ID，然后Bind OwnerCommitEvidence；全部确认后才读包/执行Build，避免先claim却没有调用者Job身份。Build.input_snapshot包含精确objectRef/digest、Runtime/WebUI digest、构建器版本、接口版本和claim IDs；input_digest覆盖规范化全部输入。Job与本域Operation在同事务创建，回真实jobId。
+- 自定义Agent的createBuild必须显式提交Package、获准精确Runtime与获准独立WebUI三项输入；W01按03迁移前后的typed decoder区分版本，服务器冻结客户选择及批准policy并先创建queued Job。Worker分别取得Package/Runtime/WebUI三个引用claim、在Build本库提交全部输入claim IDs，然后Bind OwnerCommitEvidence；全部确认后才读包/执行Build，避免先claim却没有调用者Job身份。三项任一缺失或非法半选组合一律拒绝，不自动补包、不自动补独立WebUI。Build.input_snapshot包含精确objectRef/digest、Runtime/WebUI digest、构建器版本、接口版本和claim IDs；input_digest覆盖规范化全部输入。Job与本域Operation在同事务创建，回真实jobId。
 - Build成功推送且按digest读回后，进入registering并发事件；Capability Inbox事务按唯一build_job_id创建ready CapabilityVersion并回注册事件；Build确认resultCapabilityVersionId才succeeded。失败重试新Job保留retry_of_build_job_id，旧输入/日志/失败不覆盖。
 - BuildJob.status是执行状态，Operation只跟踪这个命令；状态映射在Build同事务更新，不能由其他Owner根据HTTP响应写它。单个worker lease仅防本库同时执行，不代替外部副作用幂等。
 
 ### 2.3 引用、墓碑与共享digest
 
-- Capability唯一拥有`reference_claims`。Acquire在**本库事务锁目标版本行**、核验status/可见性后插入唯一活跃claim；没有跨Owner refcount。调用者先Acquire、再本Owner事务保存claimId、再Bind；中途崩溃留下的占用不按TTL猜测释放，只能由claimant Owner确认未形成/已结束引用并给release_evidence_ref。
+- Capability唯一拥有`reference_claims`。Acquire对本域Package/WebUI/Capability版本在本库事务锁目标行、核验status/可见性后登记claim；RuntimeRelease在另一owner，必须消费06第3.1节的Runtime用途准入/撤销顺序及精确readback，不能假称跨库锁目标行。没有跨Owner refcount。调用者先Acquire、再本Owner事务保存claimId、再Bind；中途崩溃留下的占用不按TTL猜测释放，只能由claimant Owner确认未形成/已结束引用并给release_evidence_ref。
 - 删除客户CapabilityVersion在Capability同事务锁版本、检查无活跃claim、置deleting并禁止新claim；完成后为deleted墓碑，历史与Build/Package保留。归档Package不级联删除，不影响已经批准的Workspace续费/保留回滚引用；归档空间/包不再创建新上传。
 - **墓碑不声称OCI bytes被物理删除。** 多CapabilityVersion、Runtime、WebUI、构建输入、Candidate/Release可能共享repository+digest；客户删除一版本不得删公共digest。物理清除只有管理员显式授权与全部引用释放后，锁定同repository+digest全局对象的准入记录、冻结所有新增引用，再由Registry权限Owner执行并读回。当前普通产品路径不自动GC、不自动90天清除。
 - 本期没有新增客户物理GC endpoint/worker；墓碑已满足deleteCapabilityVersion语义。后续若实施物理清除，必须在当前Owner增加完整共享对象保护契约与焦点并发测试，不能拿COUNT查询后直接删Registry作为实现。

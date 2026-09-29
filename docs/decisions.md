@@ -1,26 +1,57 @@
 # Decisions
 
-## Review package: historical definition and proposed Cloud boundary
-
-This section is the reviewable product and architecture proposal after the September 21, 2026 source baseline. It deliberately separates the historical definition from the proposed target. It is not implementation or release evidence.
-
-| Area | Historical definition at the baseline | Proposed definition for approval | Why the change is necessary | Affected modules, fields, and interactions |
-| --- | --- | --- | --- | --- |
-| Product identity | Workspace and externally served Agent Service are separate product objects. | Workspace is the delivery target and has at most one current Agent; API, Embed, and Hosted UI reach that same current Agent. | Removes competing lifecycles and makes replacement, access, and deletion unambiguous. | `workspace` keeps identity, membership, entitlement, and resource plan; `serve.agent_deployments` is the sole deployment/current-state writer; BFF/UI read owner projections. |
-| Package ownership | Publication is described at product level without one Cloud Package writer. | Capability owns uploaded Package bytes, identity, metadata, and immutable versions. | Prevents Serve, Workspace, or Build from becoming a second Package authority. | Capability package/version/upload APIs; Build consumes opaque version IDs and digest claims; Serve UI starts the flow but does not persist Package truth. |
-| Runtime release | Runtime and serving responsibilities are not separated in the product contract. | Runtime Control owns only the approved Runtime Release catalog; OPL App/Framework owns Runtime implementation. | Separates version admission from instance deployment and execution. | `runtime_release_id`, digest, ABI/compatibility claims; Build fixes the release in its input snapshot; Serve never writes the catalog. |
-| OCI build | Image/runtime selection can be read as part of Control Plane/Fabric application delivery. | Build fixes Package + WebUI + Runtime Release and emits one immutable OCI digest. | Makes the executable reproducible and prevents mutable tag drift. | `build_jobs`, input snapshot, artifact digest; Build reads Capability/Runtime Control and hands the digest to Serve. |
-| Workspace authority | Workspace orchestration may carry application/deployment selection. | Workspace owns identity, member authorization, entitlement, resource plan, quote/purchase obligations, and target authorization; it stores no current-Agent deployment copy. | Keeps business entitlement separate from delivery truth. | Workspace fields remain business-only; Workspace→Serve passes opaque workspace/tenant/grant/resource references; duplicate current-deployment fields are retired. |
-| Fabric authority | Fabric is a broad runtime/resource substrate and may be mistaken for application readiness authority. | Fabric only provisions, binds, and reads back compute/storage/network/Secret resource facts. | Resource readiness is not Agent readiness; each fact needs one writer. | Fabric resource-set/action/readback fields; Serve consumes resource refs but owns deployment/readiness/access. |
-| Serve authority | Serve is an external Agent Service publication surface without one Workspace deployment owner. | Serve is the sole Agent delivery/deployment/readiness/access owner for a Workspace, retaining history and one current selection. | Gives the delivery chain one real result and removes duplicate deployment writers. | `agent_deployments`, `agent_runtime_instances`, `access_bindings`; delivery/readiness/access APIs; all access modes share one route. |
-| Evidence and presentation | Console/Control Plane projections can be mistaken for business truth. | Ledger remains append-only evidence; BFF/UI aggregate owner readbacks and persist no business copy. | Preserves DDD ownership and traceability. | Typed RPC/events use opaque IDs; BFF DTOs name reporting owners; Ledger receives receipt references only. |
-
-This proposal requires review of the public product promise and the canonical engineering contracts together. It does not authorize a merge, deployment, publication, or end-to-end implementation claim.
-
-
 This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
+
+## 2026-09-29: Default OPL App And Optional Agent On One Tencent/TKE Delivery Path
+
+The primary delivery target is `tencent-tke`. A customer confirms the application
+selection and compute/storage plan once; Cloud completes the order, resource
+provisioning, application deployment and usable access asynchronously. Resource
+readiness alone is not the successful outcome.
+
+An Agent Package and a separately selected WebUI are not prerequisites for a
+new Workspace. With neither selected, Cloud deploys the exact approved OPL App
+Runtime Release with its publisher-declared built-in WebUI. This is a running
+application, not `resource_only`, a legacy import, or a failure fallback. Do not
+invent a Package, BuildJob or CapabilityVersion to fit the earlier mandatory-
+Agent schema. A default App does not need a redundant Cloud Build or a copy in
+the Tenant output repository merely to become deployable.
+
+For a custom Agent, Build requires all three exact inputs: Package, approved
+Runtime and compatible approved independent WebUI. These and default App are
+the only two product combinations. A Package without independent WebUI, or an
+independent WebUI without Package, is rejected rather than filled or ignored. The complete selection, publisher
+contracts, platform, recipe and exact digests are frozen before execution. Runtime Control owns release
+admission/default policy and immutable release readback; it never owns running
+instances. Capability remains the Package/WebUI/build-result catalog owner.
+Serve owns the deployment and access of both default App and custom Agent, with
+at most one current application per Workspace. Workspace owns the accepted
+order and resource intent, not a duplicate current-deployment pointer.
+
+This refines the mandatory-Agent wording of the September 22 decision without
+changing D17, the wallet authority, domain topology or legacy obligations.
+Product combinations are detailed in `docs/spec/target/12_product_spec.md`;
+the pending wire migration is recorded by `03_api_contract_complete.yaml` and
+`02_database_schema_complete.md`, and W01 must update production contracts,
+owner migrations, callers and decoder tests together. Prose approval is not
+proof that the existing mandatory CapabilityVersion/WebUI fields support it.
+
+`opl-instance-medopl` deploys Cloud and supplies installation configuration,
+protected Secret references, certificates and installation receipts. Cloud owns
+the customer Build/Workspace/Serve/Fabric workflows and reusable acceptance
+harness. An authorized Instance runner may execute that harness against the
+installed Cloud; it must not implement a second per-customer application
+provisioning/deployment workflow. Installing the full necessary service set for
+an isolated business chain is not itself a double writer; command ownership and
+migration fences, not the count of running processes, establish the boundary.
+
+Local-Docker remains a supported regression/qualification surface. Its current
+formal-release receipt requirements remain intact, but completing all Local
+features, legacy migration or later lifecycle features is not a prerequisite to
+implementing and testing a bounded Tencent/TKE first-use slice. First-use proof
+must not be relabelled complete F01–F17 or formal release qualification.
 
 ## 2026-09-29: Tenant-Scoped Application OCI Repositories On Personal TCR
 

@@ -19,7 +19,7 @@ func TestLocalDispatcherRejectsUnsupportedHostQuota(t *testing.T) {
 	provider := fabric.NewLocalDockerProvider()
 	service := fabric.NewService(provider)
 	dispatcher := coordination.NewLocalDispatcher(service, provider)
-	_, err := dispatcher.EnsureLocal(context.Background(), coordination.LocalResourceIntent{TenantID: "tenant", WorkspaceID: "quota-guard-never-created", OperationID: "quota-guard", ComputeID: "quota-compute-never-created", StorageID: "quota-storage-never-created", Plan: &api.ResourcePlanSnapshot{Provider: "local-docker", ProviderProfileId: "profile", ProviderCapabilityVersion: "v1", Region: "local", BillingMode: "LOCAL_NO_CHARGE", ProviderComputeSkuId: "compute-sku", ProviderStorageSkuId: "storage-sku", Vcpus: 2, MemoryMib: 4096, CapacityGib: 10}})
+	_, err := dispatcher.EnsureResources(context.Background(), coordination.ResourceIntent{TenantID: "tenant", WorkspaceID: "quota-guard-never-created", OperationID: "quota-guard", ComputeID: "quota-compute-never-created", StorageID: "quota-storage-never-created", Plan: &api.ResourcePlanSnapshot{Provider: "local-docker", ProviderProfileId: "profile", ProviderCapabilityVersion: "v1", Region: "local", BillingMode: "LOCAL_NO_CHARGE", ProviderComputeSkuId: "compute-sku", ProviderStorageSkuId: "storage-sku", Vcpus: 2, MemoryMib: 4096, CapacityGib: 10}})
 	if err == nil || !strings.Contains(err.Error(), "local_docker_storage_quota_unavailable") {
 		t.Fatalf("host quota guard=%v", err)
 	}

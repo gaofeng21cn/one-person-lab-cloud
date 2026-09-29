@@ -245,3 +245,58 @@ func TestInvitationExpiryBoundaryPostgres(t *testing.T) {
 		}
 	}
 }
+
+// TestOperationReadIsRouteResolvedAcrossOwnersPostgres proves the operation read
+// the Console performs at /api/v2/operations/{owner}/{operationId}. The contract
+// names no single Operation writer, so the decision is a live session's member
+// read against the explicit owner route rather than one owner's role row.
+// Without it every owner except Workspace would be refused its own operation
+// read, and a row would have pinned the audience to an arbitrary owner.
+func TestOperationReadIsRouteResolvedAcrossOwnersPostgres(t *testing.T) {
+	system := newMemberSystem(t)
+	memberCookie, member := memberLogin(t, system.client, "owner-a@example.test")
+	platformCookie, platform := memberLogin(t, system.client, "platform@example.test")
+	if member.GetTenantId() != "tenant-a" || platform.GetTenantId() != "" {
+		t.Fatalf("unexpected session binding: %q %q", member.GetTenantId(), platform.GetTenantId())
+	}
+	const read = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATION
+	const operationKind = api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_OPERATION
+
+	// The same tenant session reads an Operation from each owner route it names;
+	// the audience is the route, not a fixed Operation writer.
+	for _, audience := range []api.OwnerEnum{
+		api.OwnerEnum_OWNER_ENUM_FABRIC,
+		api.OwnerEnum_OWNER_ENUM_SERVE,
+		api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG,
+		api.OwnerEnum_OWNER_ENUM_LEDGER,
+		api.OwnerEnum_OWNER_ENUM_WORKSPACE,
+	} {
+		if e := authorizeAt(t, system, member, memberCookie, audience, read, operationKind, "operation-a", "tenant-a", "member-operation-"+audience.String()); e != nil {
+			t.Fatalf("a tenant member was refused the %s operation route: %v", audience, e)
+		}
+	}
+	// The read is authorized only for the Operation resource an owner route names,
+	// so the same action cannot be reused against another resource kind.
+	if e := authorizeAt(t, system, member, memberCookie, api.OwnerEnum_OWNER_ENUM_FABRIC, read, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, "workspace-a", "tenant-a", "member-operation-wrong-kind"); status.Code(e) != codes.PermissionDenied {
+		t.Fatalf("an operation read reached another resource kind: %v", e)
+	}
+	// The audience must be a Cloud owner: the route itself is the authority, so an
+	// unspecified owner has no Operation store to answer and cannot be allowed.
+	if e := authorizeAt(t, system, member, memberCookie, api.OwnerEnum_OWNER_ENUM_UNSPECIFIED, read, operationKind, "operation-a", "tenant-a", "member-operation-no-owner"); status.Code(e) != codes.PermissionDenied {
+		t.Fatalf("an operation read without an owner route was allowed: %v", e)
+	}
+	// The tenant fence still applies: a tenant-a session cannot read a tenant-b
+	// operation by naming it.
+	if e := authorizeAt(t, system, member, memberCookie, api.OwnerEnum_OWNER_ENUM_FABRIC, read, operationKind, "operation-b", "tenant-b", "member-operation-other-tenant"); status.Code(e) != codes.PermissionDenied {
+		t.Fatalf("an operation read crossed tenants: %v", e)
+	}
+	// A platform-scoped read is the platform administrator's; a session with no
+	// Tenant and no administrator subject is refused rather than treated as one.
+	if e := authorizeAt(t, system, platform, platformCookie, api.OwnerEnum_OWNER_ENUM_FABRIC, read, operationKind, "operation-platform", "", "platform-operation-read"); e != nil {
+		t.Fatalf("the platform administrator was refused an operation route: %v", e)
+	}
+	plainCookie, plain := memberLogin(t, system.client, "member@example.test")
+	if e := authorizeAt(t, system, plain, plainCookie, api.OwnerEnum_OWNER_ENUM_FABRIC, read, operationKind, "operation-platform", "", "plain-operation-platform"); status.Code(e) != codes.PermissionDenied {
+		t.Fatalf("a non-administrator session read a platform operation: %v", e)
+	}
+}
