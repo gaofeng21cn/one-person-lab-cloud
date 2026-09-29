@@ -23,8 +23,8 @@ func TestDeployQuoteRequiresCapabilityVersion(t *testing.T) {
 		if err := publicjson.Unmarshal(raw, request); err != nil {
 			t.Fatal(err)
 		}
-		if err := validateDeployQuoteRequest(request); status.Code(err) != codes.InvalidArgument {
-			t.Fatalf("deploy without capability version: %v, want InvalidArgument", err)
+		if _, err := validateDeployQuoteRequest(request); status.Code(err) != codes.InvalidArgument {
+			t.Fatalf("deploy without an application selection: %v, want InvalidArgument", err)
 		}
 	}
 }

@@ -497,6 +497,16 @@ message ModelSelection {
  string model_id = 2;
 }
 
+// WorkspaceApplicationSelection is the explicit, immutable application source the
+// customer chooses before a quote. kind is a required discriminator: a decoder
+// rejects a mixed selection, a missing/unspecified kind, or a kind that disagrees
+// with the id it carries. A selection is never an implicit default.
+message WorkspaceApplicationSelection {
+ WorkspaceApplicationSelectionKindEnum kind = 1;
+ optional string runtime_version_id = 2;
+ optional string capability_version_id = 3;
+}
+
 message QuoteRequest {
  // Discriminator/required validation follows the matching OpenAPI schema; reject invalid variants.
  QuoteRequestPurposeEnum purpose = 1;
@@ -507,6 +517,7 @@ message QuoteRequest {
  repeated ModelSelection model_selections = 6;
  int32 period_months = 7;
  optional string scheduled_plan_change_id = 8;
+ WorkspaceApplicationSelection application_selection = 9;
 }
 
 message QuoteLine {
@@ -545,6 +556,7 @@ message Quote {
  PlanChangeCalculation plan_change_calculation = 23;
  optional string scheduled_plan_change_id = 24;
  QuoteRuntimeReadbackRequirementEnum runtime_readback_requirement = 25;
+ optional string runtime_version_id = 26;
 }
 
 message Workspace {
@@ -565,6 +577,7 @@ message Workspace {
  google.protobuf.Timestamp updated_at = 14;
  WorkspaceDeliveryModelEnum delivery_model = 15;
  int64 version = 16;
+ optional string runtime_version_id = 17;
 }
 
 message CreateWorkspaceRequest {
@@ -1065,6 +1078,7 @@ message DeploymentDescriptor {
  DeploymentDescriptorProvenanceEnum provenance = 9;
  optional string legacy_application_revision_id = 10;
  WorkspaceApplicationRevision application_revision = 11;
+ WorkspaceApplicationSelection application_selection = 12;
 }
 
 message PublisherNamespace {
@@ -3769,6 +3783,13 @@ enum DeploymentDescriptorProvenanceEnum {
  DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_UNSPECIFIED = 0;
  DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_BUILD = 1;
  DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_LEGACY_APPLICATION = 2;
+ DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_RUNTIME_RELEASE = 3;
+}
+
+enum WorkspaceApplicationSelectionKindEnum {
+ WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_UNSPECIFIED = 0;
+ WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP = 1;
+ WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_AGENT = 2;
 }
 
 enum PublisherNamespaceKindEnum {

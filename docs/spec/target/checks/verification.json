@@ -1,7 +1,7 @@
 {
-  "result": "passed",
-  "timestamp": "2026-09-29T14:25:32.582358+00:00",
-  "report": "checks/runs/20260929T142532582358Z.json",
+  "result": "failed",
+  "timestamp": "2026-09-29T15:16:03.235131+00:00",
+  "report": "checks/runs/20260929T151603235131Z.json",
   "scope": "documentation contracts only; not implementation/runtime/DB execution/Instance qualification",
   "checks": [
     {
@@ -26,7 +26,7 @@
     },
     {
       "name": "isolated_postgresql_execution_receipt",
-      "passed": true,
+      "passed": false,
       "details": {
         "receipt": "checks/runs/cross-domain-20260929T124756.560585Z.json",
         "tests": 101,
@@ -85,7 +85,7 @@
       "passed": true,
       "details": {
         "services": 31,
-        "messages": 394,
+        "messages": 395,
         "methods": 174,
         "compilerWarnings": ""
       }
@@ -107,5 +107,7 @@
       }
     }
   ],
-  "errors": []
+  "errors": [
+    "cross-domain executed source hash differs: contracts/internal.proto"
+  ]
 }

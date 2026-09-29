@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	contracts "opl-cloud/packages/contracts/go"
 	api "opl-cloud/packages/contracts/go/api"
 )
 
@@ -103,11 +104,12 @@ func (s *Service) CreateQuote(ctx context.Context, r *api.CreateQuoteRpcRequest)
 		return nil, err
 	}
 	request := r.GetBody()
-	if err := validateDeployQuoteRequest(request); err != nil {
+	selection, err := validateDeployQuoteRequest(request)
+	if err != nil {
 		return nil, err
 	}
 	out := &api.Quote{}
-	err := s.command(ctx, r.GetContext(), "CreateQuote", request, out, func(tx *sql.Tx) error {
+	err = s.command(ctx, r.GetContext(), "CreateQuote", request, out, func(tx *sql.Tx) error {
 		// The original response wins before current catalog admission or pricing:
 		// a retry must not lose its quote when a plan or policy later expires.
 		now := time.Now().UTC()
@@ -165,13 +167,21 @@ func (s *Service) CreateQuote(ctx context.Context, r *api.CreateQuoteRpcRequest)
 		out.Status = api.QuoteStatusEnum_QUOTE_STATUS_ENUM_OFFERED
 		out.ExpiresAt = timestamppb.New(now.Add(quoteValidity))
 		out.CreatedAt = timestamppb.Now()
-		if request.GetCapabilityVersionId() != "" {
-			out.CapabilityVersionId = proto.String(request.GetCapabilityVersionId())
+		// The offer freezes exactly the selected source. A default OPL App names an
+		// approved Runtime Release and never a CapabilityVersion or Package; a built
+		// Agent names its CapabilityVersion. runtimeReadbackRequirement stays REQUIRED
+		// for both: an absent CapabilityVersion never means not_applicable.
+		applicationKind := "agent"
+		if selection.GetKind() == api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP {
+			applicationKind = "opl_app"
+			out.RuntimeVersionId = proto.String(selection.GetRuntimeVersionId())
+		} else {
+			out.CapabilityVersionId = proto.String(selection.GetCapabilityVersionId())
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO resource_catalog.quotes(id,tenant_id,actor_id,purpose,capability_version_id,compute_plan_id,storage_plan_id,price_policy_version_id,refund_policy_version_id,retention_policy_version_id,total_usd_micros,period_start,period_end,status,input_digest,admission_snapshot,expires_at,created_at,model_selections,period_months,refund_terms,retention_terms,expected_interruption) VALUES($1,$2,$3,'deploy',$4,$5,$6,$7,$8,$9,$10,$11,$12,'offered',$13,$14,$15,now(),$16,$17,$18,$19,$20)`,
-			out.Id, tenantID, r.GetContext().GetActorId(), nullable(request.GetCapabilityVersionId()), out.ComputePlanId, out.StoragePlanId,
+		if _, err := tx.ExecContext(ctx, `INSERT INTO resource_catalog.quotes(id,tenant_id,actor_id,purpose,capability_version_id,runtime_version_id,application_kind,compute_plan_id,storage_plan_id,price_policy_version_id,refund_policy_version_id,retention_policy_version_id,total_usd_micros,period_start,period_end,status,input_digest,admission_snapshot,expires_at,created_at,model_selections,period_months,refund_terms,retention_terms,expected_interruption) VALUES($1,$2,$3,'deploy',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'offered',$15,$16,$17,now(),$18,$19,$20,$21,$22)`,
+			out.Id, tenantID, r.GetContext().GetActorId(), nullable(out.GetCapabilityVersionId()), nullable(out.GetRuntimeVersionId()), applicationKind, out.ComputePlanId, out.StoragePlanId,
 			out.PricePolicyVersionId, out.RefundPolicyVersionId, out.RetentionPolicyVersionId, out.TotalUsdMicros,
-			periodStart, periodEnd, quoteInputDigest(request, snapshot), snapshot, now.Add(quoteValidity),
+			periodStart, periodEnd, quoteInputDigest(request, selection, snapshot), snapshot, now.Add(quoteValidity),
 			models, out.PeriodMonths, out.RefundTerms, out.RetentionTerms, out.ExpectedInterruption); err != nil {
 			return dbError(err)
 		}
@@ -183,33 +193,64 @@ func (s *Service) CreateQuote(ctx context.Context, r *api.CreateQuoteRpcRequest)
 // validateDeployQuoteRequest admits the deploy variant this slice implements. The
 // other variants are refused with the specific reason rather than answered with a
 // deploy-shaped offer.
-func validateDeployQuoteRequest(request *api.QuoteRequest) error {
+func validateDeployQuoteRequest(request *api.QuoteRequest) (*api.WorkspaceApplicationSelection, error) {
 	if request == nil {
-		return status.Error(codes.InvalidArgument, "a quote request is required")
+		return nil, status.Error(codes.InvalidArgument, "a quote request is required")
 	}
 	switch request.GetPurpose() {
 	case api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_RESIZE, api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_RENEW:
-		return status.Error(codes.Unimplemented, "this slice prices only the deploy variant; resize and renew depend on a Workspace subscription, paid period and accepted plan change that do not exist yet")
+		return nil, status.Error(codes.Unimplemented, "this slice prices only the deploy variant; resize and renew depend on a Workspace subscription, paid period and accepted plan change that do not exist yet")
 	case api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_DEPLOY:
 	default:
-		return status.Error(codes.InvalidArgument, "purpose must be deploy, resize or renew")
+		return nil, status.Error(codes.InvalidArgument, "purpose must be deploy, resize or renew")
 	}
 	if request.GetWorkspaceId() != "" {
-		return status.Error(codes.InvalidArgument, "a deploy quote is not bound to an existing workspace")
+		return nil, status.Error(codes.InvalidArgument, "a deploy quote is not bound to an existing workspace")
 	}
-	if request.GetCapabilityVersionId() == "" {
-		return status.Error(codes.InvalidArgument, "a deploy quote requires capabilityVersionId")
+	// A deploy quote freezes exactly one application source. The default OPL App
+	// names an approved Runtime Release; a built Agent names a CapabilityVersion.
+	// The two are mutually exclusive and neither is implicit.
+	selection, err := deployApplicationSelection(request)
+	if err != nil {
+		return nil, err
 	}
 	if request.GetComputePlanId() == "" || request.GetStoragePlanId() == "" {
-		return status.Error(codes.InvalidArgument, "computePlanId and storagePlanId are required")
+		return nil, status.Error(codes.InvalidArgument, "computePlanId and storagePlanId are required")
 	}
 	if request.GetPeriodMonths() != 1 {
-		return status.Error(codes.InvalidArgument, "periodMonths must be 1")
+		return nil, status.Error(codes.InvalidArgument, "periodMonths must be 1")
 	}
 	if request.GetScheduledPlanChangeId() != "" {
-		return status.Error(codes.InvalidArgument, "scheduledPlanChangeId is not valid for the deploy variant")
+		return nil, status.Error(codes.InvalidArgument, "scheduledPlanChangeId is not valid for the deploy variant")
 	}
-	return nil
+	return selection, nil
+}
+
+// deployApplicationSelection normalizes the deploy request's application source.
+// The explicit applicationSelection is the contract field; the legacy
+// capabilityVersionId remains accepted only as the agent branch of the same
+// selection, so an existing agent caller and the new default-App caller both
+// decode to one of the two mutually exclusive shapes. A caller that presents both
+// forms, neither form, or a kind that disagrees with its id is rejected.
+func deployApplicationSelection(request *api.QuoteRequest) (*api.WorkspaceApplicationSelection, error) {
+	explicit := request.GetApplicationSelection()
+	legacyCapability := request.GetCapabilityVersionId()
+	if explicit == nil {
+		if legacyCapability == "" {
+			return nil, status.Error(codes.InvalidArgument, "a deploy quote requires an application selection")
+		}
+		return &api.WorkspaceApplicationSelection{
+			Kind:                api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_AGENT,
+			CapabilityVersionId: proto.String(legacyCapability),
+		}, nil
+	}
+	if legacyCapability != "" {
+		return nil, status.Error(codes.InvalidArgument, "applicationSelection and capabilityVersionId are mutually exclusive")
+	}
+	if err := contracts.ValidateWorkspaceApplicationSelection(explicit); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	return explicit, nil
 }
 
 // Quote admission uses the same availability as the customer plan list. Hold
@@ -298,10 +339,11 @@ func modelSelections(selections []*api.ModelSelection) []map[string]string {
 
 // quoteInputDigest binds the offer to its exact input so an acceptance can prove
 // it accepted this offer and not another with the same plan pair.
-func quoteInputDigest(request *api.QuoteRequest, snapshot []byte) string {
+func quoteInputDigest(request *api.QuoteRequest, selection *api.WorkspaceApplicationSelection, snapshot []byte) string {
 	material, _ := json.Marshal([]any{
 		request.GetPurpose().String(), request.GetComputePlanId(), request.GetStoragePlanId(),
-		request.GetCapabilityVersionId(), request.GetPeriodMonths(), modelSelections(request.GetModelSelections()),
+		selection.GetKind().String(), selection.GetRuntimeVersionId(), selection.GetCapabilityVersionId(),
+		request.GetPeriodMonths(), modelSelections(request.GetModelSelections()),
 		json.RawMessage(snapshot),
 	})
 	return digest(material)
@@ -370,14 +412,15 @@ func (s *Service) readQuote(ctx context.Context, quoteID, tenantID string) (*api
 	var (
 		quote                                             api.Quote
 		purpose, storedState                              string
-		workspaceID, capabilityVersionID, scheduledChange sql.NullString
+		workspaceID, capabilityVersionID, runtimeVersionID    sql.NullString
+		applicationKind, scheduledChange                      sql.NullString
 		models, admission                                 []byte
 		periodStart, periodEnd, expiresAt, createdAt      time.Time
 		sourceSubscriptionVersion                         sql.NullInt64
 		planChange                                        []byte
 	)
-	err := s.DB.QueryRowContext(ctx, `SELECT id,purpose,workspace_id,capability_version_id,compute_plan_id,storage_plan_id,model_selections,period_months,period_start,period_end,price_policy_version_id,refund_policy_version_id,retention_policy_version_id,refund_terms,retention_terms,expected_interruption,total_usd_micros,status,admission_snapshot,expires_at,created_at,source_subscription_version,plan_change_calculation,scheduled_plan_change_id FROM resource_catalog.quotes WHERE id=$1 AND tenant_id=$2`, quoteID, tenantID).
-		Scan(&quote.Id, &purpose, &workspaceID, &capabilityVersionID, &quote.ComputePlanId, &quote.StoragePlanId, &models, &quote.PeriodMonths, &periodStart, &periodEnd, &quote.PricePolicyVersionId, &quote.RefundPolicyVersionId, &quote.RetentionPolicyVersionId, &quote.RefundTerms, &quote.RetentionTerms, &quote.ExpectedInterruption, &quote.TotalUsdMicros, &storedState, &admission, &expiresAt, &createdAt, &sourceSubscriptionVersion, &planChange, &scheduledChange)
+	err := s.DB.QueryRowContext(ctx, `SELECT id,purpose,workspace_id,capability_version_id,runtime_version_id,application_kind,compute_plan_id,storage_plan_id,model_selections,period_months,period_start,period_end,price_policy_version_id,refund_policy_version_id,retention_policy_version_id,refund_terms,retention_terms,expected_interruption,total_usd_micros,status,admission_snapshot,expires_at,created_at,source_subscription_version,plan_change_calculation,scheduled_plan_change_id FROM resource_catalog.quotes WHERE id=$1 AND tenant_id=$2`, quoteID, tenantID).
+		Scan(&quote.Id, &purpose, &workspaceID, &capabilityVersionID, &runtimeVersionID, &applicationKind, &quote.ComputePlanId, &quote.StoragePlanId, &models, &quote.PeriodMonths, &periodStart, &periodEnd, &quote.PricePolicyVersionId, &quote.RefundPolicyVersionId, &quote.RetentionPolicyVersionId, &quote.RefundTerms, &quote.RetentionTerms, &quote.ExpectedInterruption, &quote.TotalUsdMicros, &storedState, &admission, &expiresAt, &createdAt, &sourceSubscriptionVersion, &planChange, &scheduledChange)
 	if err != nil {
 		return nil, dbError(err)
 	}
@@ -392,6 +435,9 @@ func (s *Service) readQuote(ctx context.Context, quoteID, tenantID string) (*api
 	}
 	if capabilityVersionID.Valid {
 		quote.CapabilityVersionId = proto.String(capabilityVersionID.String)
+	}
+	if runtimeVersionID.Valid {
+		quote.RuntimeVersionId = proto.String(runtimeVersionID.String)
 	}
 	if scheduledChange.Valid {
 		quote.ScheduledPlanChangeId = proto.String(scheduledChange.String)
@@ -417,7 +463,7 @@ func (s *Service) readQuote(ctx context.Context, quoteID, tenantID string) (*api
 	if err := json.Unmarshal(admission, &snapshot); err != nil {
 		return nil, status.Error(codes.DataLoss, "the stored quote admission snapshot is not readable")
 	}
-	quote.RuntimeReadbackRequirement = runtimeReadbackRequirementFor(snapshot, quote.GetCapabilityVersionId())
+	quote.RuntimeReadbackRequirement = runtimeReadbackRequirementFor(snapshot, applicationKind.String)
 	if quote.LineItems, err = s.readQuoteLines(ctx, quoteID); err != nil {
 		return nil, err
 	}
@@ -425,13 +471,16 @@ func (s *Service) readQuote(ctx context.Context, quoteID, tenantID string) (*api
 }
 
 // runtimeReadbackRequirement is derived from the stored admission basis, not from
-// the caller: a quote that names a capability version will deliver an agent and
-// therefore needs a runtime readback, while a resource-only quote does not.
-func runtimeReadbackRequirementFor(_ quoteSnapshot, capabilityVersionID string) api.QuoteRuntimeReadbackRequirementEnum {
-	if capabilityVersionID == "" {
-		return api.QuoteRuntimeReadbackRequirementEnum_QUOTE_RUNTIME_READBACK_REQUIREMENT_ENUM_NOT_APPLICABLE
+// the caller. Both application sources deliver an application and therefore require
+// a runtime readback: the default OPL App is an approved Runtime Release with no
+// CapabilityVersion, while a built Agent names a CapabilityVersion. Only a
+// retained resource-only legacy quote (no application source at all) is
+// not_applicable, so an absent CapabilityVersion never implies not_applicable.
+func runtimeReadbackRequirementFor(_ quoteSnapshot, applicationKind string) api.QuoteRuntimeReadbackRequirementEnum {
+	if applicationKind == "opl_app" || applicationKind == "agent" {
+		return api.QuoteRuntimeReadbackRequirementEnum_QUOTE_RUNTIME_READBACK_REQUIREMENT_ENUM_REQUIRED
 	}
-	return api.QuoteRuntimeReadbackRequirementEnum_QUOTE_RUNTIME_READBACK_REQUIREMENT_ENUM_REQUIRED
+	return api.QuoteRuntimeReadbackRequirementEnum_QUOTE_RUNTIME_READBACK_REQUIREMENT_ENUM_NOT_APPLICABLE
 }
 
 func (s *Service) readQuoteLines(ctx context.Context, quoteID string) ([]*api.QuoteLine, error) {

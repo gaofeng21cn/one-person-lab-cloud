@@ -519,16 +519,32 @@ message ModelSelection {
  string model_id = 2;
 }
 
+// WorkspaceApplicationSelection is the explicit, immutable application source the
+// customer chooses before a quote. The default OPL App selects an approved
+// Runtime Release and never carries a CapabilityVersion; a built Agent selects a
+// CapabilityVersion. kind is a required discriminator: a decoder rejects a mixed
+// selection (both ids set), a missing/unspecified kind, or a kind that disagrees
+// with the id it carries. A selection is never an implicit default.
+message WorkspaceApplicationSelection {
+ WorkspaceApplicationSelectionKindEnum kind = 1;
+ optional string runtime_version_id = 2;
+ optional string capability_version_id = 3;
+}
+
 message QuoteRequest {
  // Discriminator/required validation follows the matching OpenAPI schema; reject invalid variants.
  QuoteRequestPurposeEnum purpose = 1;
  optional string workspace_id = 2;
+ // capability_version_id is the agent branch selection. For the default OPL App
+ // the caller presents application_selection.runtime_version_id instead; the two
+ // are mutually exclusive and a deploy with neither is rejected.
  optional string capability_version_id = 3;
  string compute_plan_id = 4;
  string storage_plan_id = 5;
  repeated ModelSelection model_selections = 6;
  int32 period_months = 7;
  optional string scheduled_plan_change_id = 8;
+ WorkspaceApplicationSelection application_selection = 9;
 }
 
 message QuoteLine {
@@ -567,6 +583,9 @@ message Quote {
  PlanChangeCalculation plan_change_calculation = 23;
  optional string scheduled_plan_change_id = 24;
  QuoteRuntimeReadbackRequirementEnum runtime_readback_requirement = 25;
+ // runtime_version_id is set only for the default OPL App selection; it names the
+ // exact approved Runtime Release whose immutable OCI the quote froze.
+ optional string runtime_version_id = 26;
 }
 
 message Workspace {
@@ -587,6 +606,9 @@ message Workspace {
  google.protobuf.Timestamp updated_at = 14;
  WorkspaceDeliveryModelEnum delivery_model = 15;
  int64 version = 16;
+ // runtime_version_id names the accepted default OPL App Runtime Release when the
+ // accepted application source is the default App; it is empty for a built Agent.
+ optional string runtime_version_id = 17;
 }
 
 message CreateWorkspaceRequest {
@@ -1087,6 +1109,11 @@ message DeploymentDescriptor {
  DeploymentDescriptorProvenanceEnum provenance = 9;
  optional string legacy_application_revision_id = 10;
  WorkspaceApplicationRevision application_revision = 11;
+ // application_selection preserves the explicit immutable application source the
+ // customer accepted. It is required for the RUNTIME_RELEASE provenance (default
+ // OPL App) and for the BUILD provenance (built Agent); it is absent only for the
+ // retained legacy provenance.
+ WorkspaceApplicationSelection application_selection = 12;
 }
 
 message PublisherNamespace {
@@ -3449,6 +3476,12 @@ enum QuoteLineKindEnum {
  QUOTE_LINE_KIND_ENUM_ADJUSTMENT_CREDIT = 4;
 }
 
+enum WorkspaceApplicationSelectionKindEnum {
+ WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_UNSPECIFIED = 0;
+ WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP = 1;
+ WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_AGENT = 2;
+}
+
 enum QuotePurposeEnum {
  QUOTE_PURPOSE_ENUM_UNSPECIFIED = 0;
  QUOTE_PURPOSE_ENUM_DEPLOY = 1;
@@ -3794,6 +3827,10 @@ enum DeploymentDescriptorProvenanceEnum {
  DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_UNSPECIFIED = 0;
  DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_BUILD = 1;
  DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_LEGACY_APPLICATION = 2;
+ // DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_RUNTIME_RELEASE is the default OPL App:
+ // an approved Runtime Release's immutable OCI with no Build, Package or
+ // CapabilityVersion.
+ DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_RUNTIME_RELEASE = 3;
 }
 
 enum PublisherNamespaceKindEnum {

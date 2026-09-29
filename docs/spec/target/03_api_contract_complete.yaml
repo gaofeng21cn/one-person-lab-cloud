@@ -8022,6 +8022,41 @@ components:
       required:
       - slot
       - modelId
+    WorkspaceApplicationSelection:
+      type: object
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum:
+          - opl_app
+          - agent
+        runtimeVersionId:
+          $ref: '#/components/schemas/OpaqueId'
+        capabilityVersionId:
+          $ref: '#/components/schemas/OpaqueId'
+      required:
+      - kind
+      description: 明确且不可变的应用来源选择。opl_app必须且只能带runtimeVersionId（默认OPL App的获准Runtime Release）；agent必须且只能带capabilityVersionId（已构建Agent）。kind为判别器；同时给出两个id、缺少kind或kind与id不符必须被拒绝。绝不隐式默认。
+      oneOf:
+      - properties:
+          kind:
+            enum:
+            - opl_app
+        required:
+        - runtimeVersionId
+        not:
+          required:
+          - capabilityVersionId
+      - properties:
+          kind:
+            enum:
+            - agent
+        required:
+        - capabilityVersionId
+        not:
+          required:
+          - runtimeVersionId
     QuoteRequest:
       type: object
       additionalProperties: false
@@ -10438,6 +10473,8 @@ components:
           type: string
           enum:
           - opl-deployment-descriptor/v1
+        applicationSelection:
+          $ref: '#/components/schemas/WorkspaceApplicationSelection'
         artifact:
           $ref: '#/components/schemas/ArtifactReference'
         runtimeContract:
@@ -10460,6 +10497,7 @@ components:
           enum:
           - build
           - legacy_application
+          - runtime_release
         legacyApplicationRevisionId:
           type: string
           minLength: 1
@@ -10488,6 +10526,20 @@ components:
         not:
           required:
           - legacyApplicationRevisionId
+      - properties:
+          provenance:
+            enum:
+            - runtime_release
+        required:
+        - applicationSelection
+        not:
+          anyOf:
+          - required:
+            - packageVersionId
+          - required:
+            - buildInputDigest
+          - required:
+            - legacyApplicationRevisionId
       - properties:
           provenance:
             enum:
