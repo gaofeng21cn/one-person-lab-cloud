@@ -2,6 +2,8 @@ package delivery_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"sync"
 	"testing"
@@ -13,6 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/packages/contracts/go/publicjson"
 	"opl-cloud/services/internal/ownerservice"
 	"opl-cloud/services/serve/internal/delivery"
 )
@@ -46,6 +49,19 @@ func (f *capabilityForServe) BindReference(ctx context.Context, r *api.BindRefer
 		return nil, errors.New("owner evidence mismatch")
 	}
 	return &api.ReferenceClaim{Id: r.ClaimId, State: api.ReferenceClaimState_REFERENCE_CLAIM_STATE_BOUND, BoundOperationId: proto.String(actual.OperationId), BoundInputDigest: proto.String(actual.AcceptedInputDigest)}, nil
+}
+
+// runtimeControlForServe serves one approved Runtime Release over the real
+// RuntimeControlProductService client surface so the default OPL App reservation
+// path (no CapabilityVersion, no Package, no Build) is exercised against Serve's
+// real owner store rather than a stub.
+type runtimeControlForServe struct {
+	api.RuntimeControlProductServiceClient
+	release *api.RuntimeVersion
+}
+
+func (f *runtimeControlForServe) ListRuntimeVersions(context.Context, *api.ListRuntimeVersionsRpcRequest, ...grpc.CallOption) (*api.RuntimeVersionPage, error) {
+	return &api.RuntimeVersionPage{Items: []*api.RuntimeVersion{proto.Clone(f.release).(*api.RuntimeVersion)}}, nil
 }
 
 type resourcesForServe struct {
@@ -362,5 +378,92 @@ func TestServeSerializesObservationThroughSelectionAcrossInstances(t *testing.T)
 	var runtimeState, deploymentState string
 	if err = s.DB.QueryRowContext(ctx, `SELECT i.status,d.status FROM serve.agent_runtime_instances i JOIN serve.agent_deployments d ON d.id=i.deployment_id WHERE i.id=$1`, reservation.RuntimeInstanceId).Scan(&runtimeState, &deploymentState); err != nil || runtimeState != "ready" || deploymentState != "active" {
 		t.Fatalf("final states=%s/%s err=%v", runtimeState, deploymentState, err)
+	}
+}
+
+// defaultAppRelease builds one approved Runtime Release whose publisher contract
+// carries the immutable OCI and the application revision template the default OPL
+// App deploys. The descriptor is the release's own contract, never a caller image.
+func defaultAppRelease(t *testing.T, s *delivery.Service) *api.RuntimeVersion {
+	t.Helper()
+	revision := &api.WorkspaceApplicationRevision{
+		SchemaVersion: 1, ApplicationId: "opl-app", Version: "1", Platform: "linux/amd64",
+		Image:          "registry.test/opl-app@" + artifactDigest,
+		ExposurePolicy: api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION,
+	}
+	return &api.RuntimeVersion{
+		Id: "rv-opl-app", Status: api.RuntimeVersionStatusEnum_RUNTIME_VERSION_STATUS_ENUM_APPROVED,
+		PublisherContract: &api.RuntimePublisherContract{
+			Image:                       &api.ArtifactReference{Repository: "registry.test/opl-app", Digest: artifactDigest},
+			ApplicationRevisionTemplate: revision,
+		},
+	}
+}
+
+// descriptorDigestOf is the digest of a descriptor's canonical public JSON bytes,
+// the same encoding Serve records at reservation.
+func descriptorDigestOf(t *testing.T, descriptor *api.DeploymentDescriptor) string {
+	t.Helper()
+	raw, err := publicjson.Marshal(descriptor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(raw)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// TestServeDefaultAppReservationCarriesNoCapabilityVersion proves the default OPL
+// App is a first-class delivery source: Reserve accepts an explicit opl_app
+// selection backed by an approved Runtime Release, records the runtime version and
+// no CapabilityVersion, acquires exactly one Runtime Release reference claim, and
+// refuses a mixed source that also names a CapabilityVersion.
+func TestServeDefaultAppReservationCarriesNoCapabilityVersion(t *testing.T) {
+	s, _, cap := reservationFixture(t)
+	capCalls := cap.acquired
+	ctx := workspaceContext()
+	release := defaultAppRelease(t, s)
+	s.RuntimeReleases = &runtimeControlForServe{release: release}
+
+	tenant := "tenant-opl-app"
+	c := call(tenant, false)
+	c.IdempotencyKey = "default-app-first-delivery"
+	descriptor := &api.DeploymentDescriptor{SchemaVersion: api.DeploymentDescriptorSchemaVersionEnum_DEPLOYMENT_DESCRIPTOR_SCHEMA_VERSION_ENUM_OPL_DEPLOYMENT_DESCRIPTOR_V1, Artifact: release.GetPublisherContract().GetImage(), Provenance: api.DeploymentDescriptorProvenanceEnum_DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_RUNTIME_RELEASE, ApplicationRevision: release.GetPublisherContract().GetApplicationRevisionTemplate()}
+	request := &api.RuntimeReservationCommand{
+		Context:     c,
+		WorkspaceId: "ws-opl-app",
+		ApplicationSelection: &api.WorkspaceApplicationSelection{
+			Kind:             api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP,
+			RuntimeVersionId: proto.String(release.GetId()),
+		},
+		Artifact:                      release.GetPublisherContract().GetImage(),
+		DeploymentDescriptor:          descriptor,
+		DeploymentDescriptorDigest:    descriptorDigestOf(t, descriptor),
+		DeploymentDescriptorObjectRef: "runtime-contract:" + release.GetId(),
+		ResourceSetId:                 "resource-set-opl-app",
+		DataAttachmentId:              "attachment-opl-app",
+	}
+	out, err := s.Reserve(ctx, request)
+	if err != nil {
+		t.Fatalf("default App reservation: %v", err)
+	}
+	if out.DeploymentId == "" || out.RuntimeInstanceId == "" || out.ExecutionEpoch != 1 {
+		t.Fatalf("reservation=%v", out)
+	}
+	var applicationKind, capability, runtimeVersion string
+	if err := s.DB.QueryRowContext(ctx, `SELECT application_kind, capability_version_id, COALESCE(runtime_version_id,'') FROM serve.agent_deployments WHERE id=$1`, out.DeploymentId).Scan(&applicationKind, &capability, &runtimeVersion); err != nil {
+		t.Fatal(err)
+	}
+	if applicationKind != "opl_app" || capability != "" || runtimeVersion != release.GetId() {
+		t.Fatalf("default App row kind=%q capability=%q runtime=%q", applicationKind, capability, runtimeVersion)
+	}
+	if cap.acquired != capCalls+1 {
+		t.Fatalf("the default App must acquire exactly one Runtime Release reference claim, delta=%d", cap.acquired-capCalls)
+	}
+	mixed := proto.Clone(request).(*api.RuntimeReservationCommand)
+	mixed.Context = call(tenant, false)
+	mixed.Context.IdempotencyKey = "mixed"
+	mixed.CapabilityVersionId = "cv_1"
+	if _, err := s.Reserve(ctx, mixed); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("mixed source accepted: %v", err)
 	}
 }

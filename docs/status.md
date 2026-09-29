@@ -81,6 +81,15 @@ desired version. A focused isolated-PostgreSQL test proves a requested version
 leaves applied `0` until the runtime reports it
 ([receipt](evidence/source-checks/2026-09-30-tke-serial-serve-model-applied.json)).
 
+The default OPL App first-delivery path is now proven against Serve's real owner
+store: `Reserve` accepts an explicit `opl_app` selection backed by an approved
+Runtime Release with no Package, Build or CapabilityVersion, records
+`application_kind='opl_app'` with an empty `capability_version_id`, acquires
+exactly one Runtime Release reference claim, and rejects a mixed source that also
+names a CapabilityVersion (§11.2 acceptance "default App has no
+Package/Build/CapabilityVersion")
+([receipt](evidence/source-checks/2026-09-30-tke-serial-serve-default-app-reservation.json)).
+
 Still open in Stage 5: driving the publisher `opl-model-config/v1` apply/readback
 (`PUT applyPath` / `GET readbackPath`) so the adapter can actually obtain an
 applied version; the real `RouteProvider` wiring and Deploy-to-Fence/Activate
