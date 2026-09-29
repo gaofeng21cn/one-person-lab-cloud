@@ -57,8 +57,13 @@ type Service struct {
 	Authorize  AuthorizeFunc
 	Capability api.CapabilityProductServiceClient
 	References api.CapabilityCoordinationClient
-	Resources  api.FabricCoordinationClient
-	Runtime    RuntimeAdapter
+	// RuntimeReleases is the Runtime Control read surface Serve uses to confirm the
+	// exact approved Runtime Release behind a default OPL App selection. It carries
+	// no Build or CapabilityVersion; the release's own publisher contract supplies
+	// the immutable artifact and the application revision template.
+	RuntimeReleases api.RuntimeControlProductServiceClient
+	Resources       api.FabricCoordinationClient
+	Runtime         RuntimeAdapter
 	// Route is Serve's port to the installation route provider. It is the only
 	// thing that may confirm a route epoch fence, activate a selected Agent at the
 	// provider or roll a route back; when it is absent Serve records the switch it
@@ -138,6 +143,20 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 		}
 		service.Capability = api.NewCapabilityProductServiceClient(conn)
 		service.References = api.NewCapabilityCoordinationClient(conn)
+	}
+	if address := os.Getenv("OPL_RUNTIME_CONTROL_ADDR"); address != "" {
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.RuntimeControl.Service(), os.Getenv("OPL_RUNTIME_CONTROL_TOKEN"))
+		if err != nil {
+			return err
+		}
+		conn, err := grpc.NewClient(address, options...)
+		if err != nil {
+			return err
+		}
+		if err = server.TrackCloser(conn); err != nil {
+			return err
+		}
+		service.RuntimeReleases = api.NewRuntimeControlProductServiceClient(conn)
 	}
 	if address := os.Getenv("OPL_FABRIC_COORDINATION_ADDR"); address != "" {
 		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.Fabric.Service(), os.Getenv("OPL_FABRIC_COORDINATION_TOKEN"))

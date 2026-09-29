@@ -228,13 +228,24 @@ func resolveObservationState(observation RuntimeObservation) (state, accessURL, 
 // validateReserved is called with the workspace lock held. Only Reserve may
 // allocate an epoch or runtime identity; runtime observations cannot advance it.
 func validateReserved(ctx context.Context, tx *sql.Tx, cmd *api.RuntimeDeployCommand) error {
-	var workspace, capability, artifact, runtime string
+	var workspace, capability, applicationKind, artifact, runtime string
+	var runtimeVersion sql.NullString
 	var epoch, maxEpoch int64
-	err := tx.QueryRowContext(ctx, `SELECT workspace_id,capability_version_id,artifact_digest,COALESCE(runtime_instance_id,''),execution_epoch FROM serve.agent_deployments WHERE id=$1 FOR UPDATE`, cmd.GetDeploymentId()).Scan(&workspace, &capability, &artifact, &runtime, &epoch)
+	err := tx.QueryRowContext(ctx, `SELECT workspace_id,capability_version_id,COALESCE(application_kind,''),runtime_version_id,artifact_digest,COALESCE(runtime_instance_id,''),execution_epoch FROM serve.agent_deployments WHERE id=$1 FOR UPDATE`, cmd.GetDeploymentId()).Scan(&workspace, &capability, &applicationKind, &runtimeVersion, &artifact, &runtime, &epoch)
 	if err != nil {
 		return dbError(err)
 	}
-	if workspace != cmd.GetWorkspaceId() || capability != cmd.GetCapabilityVersionId() || artifact != cmd.GetDeploymentDescriptor().GetArtifact().GetDigest() || runtime != cmd.GetRuntimeInstanceId() {
+	if workspace != cmd.GetWorkspaceId() || artifact != cmd.GetDeploymentDescriptor().GetArtifact().GetDigest() || runtime != cmd.GetRuntimeInstanceId() {
+		return refuse(ReasonIdentityMismatch)
+	}
+	// The reserved source must match the command exactly. A built Agent carries the
+	// same CapabilityVersion; the default OPL App carries the same Runtime Release
+	// and no CapabilityVersion.
+	if applicationKind == "opl_app" {
+		if cmd.GetCapabilityVersionId() != "" || cmd.GetApplicationSelection().GetRuntimeVersionId() != runtimeVersion.String {
+			return refuse(ReasonIdentityMismatch)
+		}
+	} else if capability != cmd.GetCapabilityVersionId() {
 		return refuse(ReasonIdentityMismatch)
 	}
 	if epoch != cmd.GetExecutionEpoch() {
