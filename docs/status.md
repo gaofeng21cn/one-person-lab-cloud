@@ -62,6 +62,11 @@ that plugin, and a Dockerfile assertion plus a real local image probe
 No full product image build, Agent build, Candidate, deployment or provider
 action was performed.
 
+The shared verification gate `npm run verify:local:full` now passes on the merged
+serial branch with a temporary PostgreSQL container and Docker integration and
+zero Postgres test skips, so the Stage-6 ordinary/full acceptance is green for the
+current source. It still does not substitute for the Instance TKE acceptance.
+
 ## September 30 Serial Integration Stage 5 Source Progress (Serve Model Applied Fact)
 
 **Stage 5 (I08, model applied fact):** the section-11 red line that Serve must not
