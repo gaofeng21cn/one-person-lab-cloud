@@ -103,6 +103,11 @@ COPY --from=ledger-build /out/opl-ledger /usr/local/bin/opl-ledger
 COPY --from=fabric-build /out/opl-fabric /usr/local/bin/opl-fabric
 COPY --from=fabric-build /out/opl-node-image-retire /usr/local/bin/opl-node-image-retire
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
+# The Build owner invokes `docker buildx build` for every Agent OCI. The
+# docker CLI discovers buildx only as a CLI plugin on its plugin path, so the
+# product image must carry the plugin binary or every Agent build fails with
+# 'unknown command: buildx'.
+COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/libexec/docker/cli-plugins/docker-buildx
 RUN mkdir -p /app/.runtime && chown -R node:node /app/.runtime
 
 USER node

@@ -47,6 +47,21 @@ state must not be mistaken for the deployment workflow source. No new Candidate,
 production deployment, customer migration, financial/provider action or release
 was performed by this audit. Actual rollout requires fresh owner evidence.
 
+## September 30 Serial Integration Stage 7 Source Progress (Runnable Candidate Image)
+
+**Stage 7 (W27 runnable Candidate asset):** the roadmap gap "the missing buildx
+in the product image" is closed. The Build owner runs `docker buildx build` for
+every Agent OCI (`services/build/internal/build/runner.go:511`), but the product
+image copied only the `docker` binary from the pinned `docker:27.5.1-cli` stage;
+buildx is a separate CLI plugin the CLI only discovers at
+`/usr/local/libexec/docker/cli-plugins/docker-buildx`, so every in-image Agent
+build would have failed with `unknown command: buildx`. The Dockerfile now copies
+that plugin, and a Dockerfile assertion plus a real local image probe
+(`RUN docker buildx version` succeeded after the same copy) prove it
+([receipt](evidence/source-checks/2026-09-30-tke-serial-product-image-buildx.json)).
+No full product image build, Agent build, Candidate, deployment or provider
+action was performed.
+
 ## September 30 Serial Integration Stage 5 Source Progress (Serve Model Applied Fact)
 
 **Stage 5 (I08, model applied fact):** the section-11 red line that Serve must not

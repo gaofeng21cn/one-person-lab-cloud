@@ -24,6 +24,17 @@ test("OPL Cloud product image contains all three control-service binaries", asyn
   }
 });
 
+test("OPL Cloud product image carries the buildx CLI plugin for Agent OCI builds", async () => {
+  const dockerfile = await readFile("Dockerfile", "utf8");
+  // The Build owner runs `docker buildx build`; the docker CLI finds buildx only
+  // as a CLI plugin on its plugin path. Shipping only the docker binary makes
+  // every Agent build fail with "unknown command: buildx".
+  assert.match(
+    dockerfile,
+    /COPY --from=docker-cli \/usr\/local\/libexec\/docker\/cli-plugins\/docker-buildx \/usr\/local\/libexec\/docker\/cli-plugins\/docker-buildx/
+  );
+});
+
 test("Fabric image build includes its local Go contract replacement before dependency download", async () => {
   const dockerfile = await readFile("Dockerfile", "utf8");
   const fabricStage = dockerfile.slice(0, dockerfile.indexOf(" AS control-plane-build"));
