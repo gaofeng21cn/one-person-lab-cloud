@@ -241,8 +241,8 @@ func TestRuntimeRecoveryUsesDurableOriginalIdentities(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(before.RuntimeCapability) == 0 || len(before.RuntimeBinding) == 0 {
-				t.Fatal("descriptor or execution binding was not frozen before side effects")
+			if len(before.ApplicationSource) == 0 || len(before.RuntimeBinding) == 0 {
+				t.Fatal("application source or execution binding was not frozen before side effects")
 			}
 			if loss == "deploy" && (len(before.RuntimeReservation) == 0 || len(before.RuntimeCommand) == 0) {
 				t.Fatal("deployment identity was not frozen before dispatch")

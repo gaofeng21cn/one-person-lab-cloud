@@ -1,7 +1,7 @@
 {
   "result": "passed",
-  "timestamp": "2026-09-29T16:54:10.318112+00:00",
-  "report": "checks/runs/20260929T165410318112Z.json",
+  "timestamp": "2026-09-29T17:10:44.097284+00:00",
+  "report": "checks/runs/20260929T171044097284Z.json",
   "scope": "documentation contracts only; not implementation/runtime/DB execution/Instance qualification",
   "checks": [
     {
@@ -28,7 +28,7 @@
       "name": "isolated_postgresql_execution_receipt",
       "passed": true,
       "details": {
-        "receipt": "checks/runs/cross-domain-20260929T165054.641846Z.json",
+        "receipt": "checks/runs/cross-domain-20260929T170730.221299Z.json",
         "tests": 101,
         "metadata": {
           "actualDatabaseFields": 1426,
@@ -39,7 +39,7 @@
         },
         "scope": "typed REST/protobuf specification adapters -> isolated PostgreSQL -> exact typed/readback projection; provider router and Storage are explicitly named fixtures, not implemented services",
         "cleanup": {
-          "containerName": "opl-spec-semantic-1790700654",
+          "containerName": "opl-spec-semantic-1790701650",
           "containerAbsent": true,
           "stopSucceeded": true,
           "removalReadbackPolls": 2,
@@ -85,8 +85,8 @@
       "passed": true,
       "details": {
         "services": 31,
-        "messages": 395,
-        "methods": 174,
+        "messages": 396,
+        "methods": 175,
         "compilerWarnings": ""
       }
     },

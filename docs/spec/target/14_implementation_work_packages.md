@@ -334,7 +334,7 @@
 
 **主实现表（字段唯一来源02，不在此复制字段定义）**：`ledger.receipts`, `ledger.reconciliations`
 
-**内部协议实现/协作端口**：`LedgerProductService.ListReceipts`, `LedgerProductService.GetReceipt`, `LedgerProductService.ListQualifications`, `LedgerCoordination.AppendReceipt`, `LedgerCoordination.ReadReceiptByReference`, `LedgerCoordination.ReadLocalNoChargeReceipt`, `LedgerPlanChangeEvidence.AppendPlanChangeReceipt`, `LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt`, `DomainInbox.Deliver`
+**内部协议实现/协作端口**：`LedgerProductService.ListReceipts`, `LedgerProductService.GetReceipt`, `LedgerProductService.ListQualifications`, `LedgerCoordination.AppendReceipt`, `LedgerCoordination.ReadReceiptByReference`, `LedgerCoordination.ReadLocalNoChargeReceipt`, `LedgerCoordination.ReadWalletActionReceipt`, `LedgerPlanChangeEvidence.AppendPlanChangeReceipt`, `LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt`, `DomainInbox.Deliver`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder

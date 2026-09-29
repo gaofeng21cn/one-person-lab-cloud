@@ -109,7 +109,7 @@ type orderResult struct {
 	ZeroChargeReceipt     json.RawMessage `json:"zeroChargeReceipt,omitempty"`
 	WalletDebitCommand    json.RawMessage `json:"walletDebitCommand,omitempty"`
 	WalletOperation       json.RawMessage `json:"walletOperation,omitempty"`
-	RuntimeCapability     json.RawMessage `json:"runtimeCapability,omitempty"`
+	WalletActionReceipt   json.RawMessage `json:"walletActionReceipt,omitempty"`
 	// ApplicationSource is the resolved immutable source (default OPL App Runtime
 	// Release or built Agent CapabilityVersion) frozen before Reserve. It is the
 	// single durable fact both branches replay from, so a default-App order never

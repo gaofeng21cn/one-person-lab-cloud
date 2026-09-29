@@ -2467,13 +2467,19 @@ service TenantWorkspaceCoordination {
  rpc DeleteTenantWorkspaces(TenantWorkspaceLifecycleCommand) returns (TenantWorkspaceLifecycleReadback);
  rpc ResumeTenantWorkspaces(ResumeTenantWorkspacesRequest) returns (TenantWorkspaceLifecycleReadback);
 }
-message AppendReceiptRequest { CallContext context = 1; Receipt receipt = 2; string evidence_digest = 3; string owner_evidence_reference = 4; QuoteAcceptance quote_acceptance = 5; OwnerCommitEvidence owner_commit_evidence = 6; }
+message AppendReceiptRequest { CallContext context = 1; Receipt receipt = 2; string evidence_digest = 3; string owner_evidence_reference = 4; QuoteAcceptance quote_acceptance = 5; OwnerCommitEvidence owner_commit_evidence = 6; WalletOperation wallet_operation = 7; }
 message GetReceiptByReferenceRequest { CallContext context = 1; string owner = 2; string owner_evidence_reference = 3; }
 message LocalNoChargeReceiptEvidence { Receipt receipt = 1; QuoteAcceptance quote_acceptance = 2; OwnerCommitEvidence owner_commit_evidence = 3; string evidence_digest = 4; }
+// WalletActionReceiptEvidence is the owner-authoritative funded-charge proof the
+// Ledger records for a paid Workspace order. It binds the exact accepted quote,
+// the Gateway wallet operation that moved the money, and the Workspace owner
+// commit that accepted the obligation. It names a receipt, never a raw key.
+message WalletActionReceiptEvidence { Receipt receipt = 1; QuoteAcceptance quote_acceptance = 2; WalletOperation wallet_operation = 3; OwnerCommitEvidence owner_commit_evidence = 4; string evidence_digest = 5; }
 service LedgerCoordination {
  rpc AppendReceipt(AppendReceiptRequest) returns (Receipt);
  rpc ReadReceiptByReference(GetReceiptByReferenceRequest) returns (Receipt);
  rpc ReadLocalNoChargeReceipt(GetReceiptByReferenceRequest) returns (LocalNoChargeReceiptEvidence);
+ rpc ReadWalletActionReceipt(GetReceiptByReferenceRequest) returns (WalletActionReceiptEvidence);
 }
 
 // D17: fixed approved policy-v1. RPC groups below live in the existing Workspace,

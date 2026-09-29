@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "bf9027253dd852383c6069e7dad9fc7d436efbe3",
+  "sourceSHA": "72cdc91013672a10167d0027eaa81ccaa215bf6c",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -614,6 +614,7 @@
         "LedgerCoordination.AppendReceipt",
         "LedgerCoordination.ReadReceiptByReference",
         "LedgerCoordination.ReadLocalNoChargeReceipt",
+        "LedgerCoordination.ReadWalletActionReceipt",
         "LedgerPlanChangeEvidence.AppendPlanChangeReceipt",
         "LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt",
         "DomainInbox.Deliver"
@@ -3414,6 +3415,9 @@
       "W05"
     ],
     "LedgerCoordination.ReadLocalNoChargeReceipt": [
+      "W05"
+    ],
+    "LedgerCoordination.ReadWalletActionReceipt": [
       "W05"
     ],
     "WorkspacePlanChangeReadback.ReadSubscriptionPlanState": [

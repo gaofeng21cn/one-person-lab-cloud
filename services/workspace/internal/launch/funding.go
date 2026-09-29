@@ -74,7 +74,7 @@ func (s *Service) walletCharge(ctx context.Context, op ownerstore.Operation, tok
 		return "", false, err
 	}
 	if hasRecord && walletChargeSettled(recorded.GetStatus()) {
-		return s.finishWalletCharge(ctx, op, token, recorded, result)
+		return s.finishWalletCharge(ctx, op, token, accepted, recorded, result)
 	}
 	if err = s.beginStep(ctx, op, token, "wallet_charge", 3, "gateway", "resource_preflight", command); err != nil {
 		return "", false, err
@@ -106,7 +106,7 @@ func (s *Service) walletCharge(ctx context.Context, op ownerstore.Operation, tok
 		}
 		observed = read
 	}
-	return s.finishWalletCharge(ctx, op, token, observed, result)
+	return s.finishWalletCharge(ctx, op, token, accepted, observed, result)
 }
 
 // readWalletCharge decodes the charge already recorded for this obligation. A
@@ -130,17 +130,26 @@ func readWalletCharge(op ownerstore.Operation, accepted *api.QuoteAcceptance, re
 // obligation. Only a confirmed charge names the receipt that releases resources;
 // an explicit refusal stops the downstream, and any other answer stays an unknown
 // obligation that a later pass reads back instead of charging again.
-func (s *Service) finishWalletCharge(ctx context.Context, op ownerstore.Operation, token string, charged *api.WalletOperation, result *orderResult) (string, bool, error) {
+func (s *Service) finishWalletCharge(ctx context.Context, op ownerstore.Operation, token string, accepted *api.QuoteAcceptance, charged *api.WalletOperation, result *orderResult) (string, bool, error) {
 	result.WalletOperation = wire(charged)
 	switch charged.GetStatus() {
 	case api.WalletOperationStatusEnum_WALLET_OPERATION_STATUS_ENUM_CONFIRMED:
 		if charged.GetReceiptId() == "" || charged.GetCreatedAt() == nil || charged.CreatedAt.CheckValid() != nil {
 			return "", false, s.failedCall(ctx, op, token, "wallet_charge", "funding", *result, status.Error(codes.DataLoss, "confirmed wallet charge has no receipt evidence"))
 		}
-		if err := s.checkpoint(ctx, op, token, "wallet_charge", "resource_preflight", "running", "confirmed", charged.GetReceiptId(), "", *result); err != nil {
+		// A confirmed Gateway charge is not yet the Ledger funding proof Fabric
+		// consumes. Append the owner-authoritative WALLET_ACTION receipt that binds
+		// this obligation, quote, workspace and amount, then release resources with the
+		// receipt the Ledger itself returns. A funding owner that never confirms cannot
+		// reach this branch, so no resource is released on an unknown charge.
+		receipt, err := s.walletActionReceipt(ctx, op, token, accepted, charged, result)
+		if err != nil {
 			return "", false, err
 		}
-		return charged.GetReceiptId(), false, nil
+		if err := s.checkpoint(ctx, op, token, "wallet_charge", "resource_preflight", "running", "confirmed", receipt.GetId(), "", *result); err != nil {
+			return "", false, err
+		}
+		return receipt.GetId(), false, nil
 	case api.WalletOperationStatusEnum_WALLET_OPERATION_STATUS_ENUM_REJECTED:
 		// An explicit refusal stops the downstream. The cause is the wallet's own
 		// code, so an unnamed refusal is unreadable evidence rather than a guess.
@@ -159,6 +168,67 @@ func (s *Service) finishWalletCharge(ctx context.Context, op ownerstore.Operatio
 		}
 		return "", false, nil
 	}
+}
+
+// walletActionReceipt records the confirmed charge in the Ledger as the WALLET_ACTION
+// receipt that funds this original obligation. The Ledger re-reads the accepted
+// Catalog quote, the Workspace commit and the Gateway wallet operation, so a
+// submitted amount or workspace that differs from any owner is refused. The
+// receipt id the Ledger returns is the exact identity Fabric later reads back.
+func (s *Service) walletActionReceipt(ctx context.Context, op ownerstore.Operation, token string, accepted *api.QuoteAcceptance, charged *api.WalletOperation, result *orderResult) (*api.Receipt, error) {
+	if len(result.WalletActionReceipt) > 0 {
+		stored := &api.WalletActionReceiptEvidence{}
+		if protojson.Unmarshal(result.WalletActionReceipt, stored) != nil || validateWalletActionReceipt(op, accepted, charged, nil) != nil {
+			return nil, status.Error(codes.DataLoss, "stored Wallet action evidence is invalid")
+		}
+		return stored.Receipt, nil
+	}
+	commit, err := evidence(op)
+	if err != nil {
+		return nil, err
+	}
+	request := &api.AppendReceiptRequest{
+		Context:   continuation(op, result.GrantID, "wallet_action_receipt"),
+		Receipt:   &api.Receipt{Kind: api.ReceiptKindEnum_RECEIPT_KIND_ENUM_WALLET_ACTION, Owner: api.OwnerEnum_OWNER_ENUM_WORKSPACE, OperationId: proto.String(op.ID), Outcome: api.ReceiptOutcomeEnum_RECEIPT_OUTCOME_ENUM_CONFIRMED, EvidenceSummary: "Gateway wallet charge confirmed for the original paid Workspace order."},
+		EvidenceDigest: accepted.SnapshotDigest, OwnerEvidenceReference: op.ID, QuoteAcceptance: accepted, OwnerCommitEvidence: commit, WalletOperation: charged,
+	}
+	if err = s.beginStep(ctx, op, token, "wallet_action_receipt", 3, "ledger", "receipt", request); err != nil {
+		return nil, err
+	}
+	appended, err := s.Ledger.AppendReceipt(ctx, request)
+	if err != nil {
+		return nil, s.failedCall(ctx, op, token, "wallet_action_receipt", "receipt", *result, err)
+	}
+	readback, err := s.Ledger.ReadWalletActionReceipt(ctx, &api.GetReceiptByReferenceRequest{Context: continuation(op, result.GrantID, "read_wallet_action_receipt"), Owner: "workspace", OwnerEvidenceReference: op.ID})
+	if err != nil {
+		return nil, s.failedCall(ctx, op, token, "wallet_action_receipt", "receipt", *result, err)
+	}
+	if err = validateWalletActionReceipt(op, accepted, charged, readback); err != nil {
+		return nil, s.failedCall(ctx, op, token, "wallet_action_receipt", "receipt", *result, err)
+	}
+	if appended.GetId() != readback.GetReceipt().GetId() {
+		return nil, s.failedCall(ctx, op, token, "wallet_action_receipt", "receipt", *result, status.Error(codes.DataLoss, "Ledger returned a different Wallet action receipt"))
+	}
+	result.WalletActionReceipt = wire(readback)
+	return readback.GetReceipt(), nil
+}
+
+// validateWalletActionReceipt binds the stored Ledger evidence to the original
+// order, the confirmed Gateway charge and, when present, the appended receipt.
+func validateWalletActionReceipt(op ownerstore.Operation, accepted *api.QuoteAcceptance, charged *api.WalletOperation, readback *api.WalletActionReceiptEvidence) error {
+	if localNoCharge(accepted) || charged.GetReceiptId() == "" {
+		return status.Error(codes.DataLoss, "a Wallet action receipt requires a confirmed paid charge")
+	}
+	if readback == nil {
+		return nil
+	}
+	r := readback.GetReceipt()
+	if r.GetId() != charged.GetReceiptId() || r.GetKind() != api.ReceiptKindEnum_RECEIPT_KIND_ENUM_WALLET_ACTION || r.GetOwner() != api.OwnerEnum_OWNER_ENUM_WORKSPACE ||
+		r.GetOperationId() != op.ID || r.GetOutcome() != api.ReceiptOutcomeEnum_RECEIPT_OUTCOME_ENUM_CONFIRMED || r.GetCreatedAt() == nil || r.CreatedAt.CheckValid() != nil ||
+		readback.GetEvidenceDigest() != accepted.GetSnapshotDigest() || !proto.Equal(readback.GetQuoteAcceptance(), accepted) || !proto.Equal(readback.GetWalletOperation(), charged) {
+		return status.Error(codes.DataLoss, "Ledger Wallet action evidence differs from the original paid order")
+	}
+	return nil
 }
 
 func walletChargeSettled(status api.WalletOperationStatusEnum) bool {

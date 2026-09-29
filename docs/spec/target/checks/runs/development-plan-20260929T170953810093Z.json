@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "timestamp": "2026-09-29T17:10:42.312930+00:00",
-  "passed": true,
+  "timestamp": "2026-09-29T17:09:53.810093+00:00",
+  "passed": false,
   "scope": "implementation plan completeness/coverage/dependency verification only; no work package implemented",
   "counts": {
     "workPackages": 32,
@@ -163,12 +163,14 @@
       "W31"
     ]
   ],
-  "errors": [],
+  "errors": [
+    "internal RPC implementation coverage differs"
+  ],
   "sourceHashes": {
     "00_master_index.md": "9baa46660818605a5a36febef5d0148d43233348ec13bd8bf8d8599a3dbc0e16",
     "01_domain_ownership_matrix.md": "b05cf9e25b46ef2407638dee0a7969dfaaa3d4625597285e90374c1550a8a8a2",
-    "14_implementation_work_packages.md": "d34814987959770d74753747d2d01d2c3aaa431a853b3de8cce505c3baecaa1e",
-    "checks/development_plan.json": "1492a5055dd73163a6da980eaed207b8009540e837f73c68d328cfaec0f88ea2",
+    "14_implementation_work_packages.md": "309494697189ea1939875379939c4369aa812a6ddabf6ecc066d1e50f4200bf5",
+    "checks/development_plan.json": "a6db1be09d57e6f875d68bf3b48e4e05f43fcb67889af40a6f6d76c752be7693",
     "checks/render_development_plan.py": "91ef718569422beb3a54597d573599b7fd6afc88c0e98ee6510dca4a02b42bb4",
     "checks/validate_development_plan.py": "2ee41fd4e67d979c2d49aa4f462cccb349b2216863fed5b1abbca64c101b1bd6",
     "contracts/api_inventory.json": "7d680fb0e2d86756129af6bd880d6f581f9ca2141e4e7afbf670f66a99a959be",

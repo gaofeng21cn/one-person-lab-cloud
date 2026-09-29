@@ -113,6 +113,43 @@ func (f *fundingFabricClient) ReadResources(_ context.Context, r *api.ResourceRe
 	return proto.Clone(f.readback).(*api.ResourceReadback), nil
 }
 
+// ledgerAuthority is the append-only receipt owner in these tests. It records the
+// WALLET_ACTION receipt the original paid order appends and returns it on read,
+// which is exactly the identity Fabric later consumes. It never rewrites or
+// re-mints the receipt id the wallet already named.
+type ledgerAuthority struct {
+	api.LedgerCoordinationClient
+	receipts    map[string]*api.WalletActionReceiptEvidence
+	appendCalls int
+}
+
+func (l *ledgerAuthority) AppendReceipt(_ context.Context, r *api.AppendReceiptRequest, _ ...grpc.CallOption) (*api.Receipt, error) {
+	l.appendCalls++
+	if r.GetReceipt().GetKind() != api.ReceiptKindEnum_RECEIPT_KIND_ENUM_WALLET_ACTION || r.GetWalletOperation().GetStatus() != api.WalletOperationStatusEnum_WALLET_OPERATION_STATUS_ENUM_CONFIRMED || r.GetReceipt().GetOperationId() != r.GetOwnerEvidenceReference() {
+		return nil, status.Error(codes.InvalidArgument, "not a confirmed wallet action receipt")
+	}
+	if l.receipts == nil {
+		l.receipts = map[string]*api.WalletActionReceiptEvidence{}
+	}
+	if existing := l.receipts[r.GetOwnerEvidenceReference()]; existing != nil {
+		return proto.Clone(existing.GetReceipt()).(*api.Receipt), nil
+	}
+	receipt := proto.Clone(r.GetReceipt()).(*api.Receipt)
+	receipt.Id = r.GetWalletOperation().GetReceiptId()
+	receipt.CreatedAt = timestamppb.Now()
+	evidence := &api.WalletActionReceiptEvidence{Receipt: receipt, QuoteAcceptance: proto.Clone(r.GetQuoteAcceptance()).(*api.QuoteAcceptance), WalletOperation: proto.Clone(r.GetWalletOperation()).(*api.WalletOperation), OwnerCommitEvidence: proto.Clone(r.GetOwnerCommitEvidence()).(*api.OwnerCommitEvidence), EvidenceDigest: r.GetEvidenceDigest()}
+	l.receipts[r.GetOwnerEvidenceReference()] = evidence
+	return receipt, nil
+}
+
+func (l *ledgerAuthority) ReadWalletActionReceipt(_ context.Context, r *api.GetReceiptByReferenceRequest, _ ...grpc.CallOption) (*api.WalletActionReceiptEvidence, error) {
+	existing := l.receipts[r.GetOwnerEvidenceReference()]
+	if existing == nil {
+		return nil, status.Error(codes.NotFound, "no wallet action receipt for the original reference")
+	}
+	return proto.Clone(existing).(*api.WalletActionReceiptEvidence), nil
+}
+
 // paidOrderDatabase provisions the same isolated Workspace database the runtime
 // tests use, so the paid funding path is exercised against the owner's real schema.
 func paidOrderDatabase(t *testing.T) *sql.DB {
@@ -183,6 +220,7 @@ func fundingService(t *testing.T, db *sql.DB) (*Service, ownerstore.Operation, *
 	service, op, accepted := seedPaidOrder(t, db)
 	authority := &walletAuthority{}
 	service.Gateway = authority
+	service.Ledger = &ledgerAuthority{}
 	fabric, ok := service.Fabric.(*fundingFabricClient)
 	if !ok {
 		t.Fatal("unexpected resource client")
@@ -260,7 +298,7 @@ func TestUnknownChargeIsReadBackAndNeverRefunded(t *testing.T) {
 	}
 	// The original code is the only thing re-read: a later pass must not charge.
 	authority.converge = true
-	restarted := &Service{Store: service.Store, Fabric: service.Fabric, Gateway: authority}
+	restarted := &Service{Store: service.Store, Fabric: service.Fabric, Gateway: authority, Ledger: service.Ledger}
 	if err = restarted.Resume(t.Context(), op.ID); err != nil {
 		t.Fatal(err)
 	}

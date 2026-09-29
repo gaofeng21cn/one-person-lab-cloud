@@ -47,6 +47,36 @@ state must not be mistaken for the deployment workflow source. No new Candidate,
 production deployment, customer migration, financial/provider action or release
 was performed by this audit. Actual rollout requires fresh owner evidence.
 
+## September 30 Serial Integration Stage 2-3 Source Progress
+
+Under the section-11 serial window (`codex/tke-serial-integration`), two stages
+now have source, consumer and evidence. **Stage 2 (W01 application union):** the
+approved 2026-09-29 delta is in the executable canonical schema — `QuoteRequest`
+carries the explicit `applicationSelection`, `Quote`/`Workspace` carry
+`runtimeVersionId`, and `resource_catalog.quotes` has the mutually exclusive
+`application_kind`/`runtime_version_id` columns. Resource Catalog, Workspace
+`CreateWorkspace`/readback, the Console BFF and Console UI all consume the two
+combinations; the strict browser suite (115 tests) and a real PostgreSQL
+round-trip pass. `RuntimeReadbackRequirement` stays `required` for the default App.
+
+**Stage 3 (funding, partially):** the paid-charge funding gate is closed. The
+Ledger records a real `WALLET_ACTION` receipt for a paid Workspace order — it
+re-reads the accepting Catalog quote, the Workspace owner commit and the Gateway
+wallet operation before persisting, then serves it by reference so Fabric's
+existing `readConfirmedWalletCharge` receives `kind=WALLET_ACTION` with a
+confirmed outcome. Workspace appends and reads that receipt after a confirmed
+Gateway charge and releases resources with the receipt the Ledger returns. A real
+isolated-PostgreSQL test proves persistence, replay, restart readback, amount
+tamper refusal and that the generic HTTP writer cannot mint the type.
+
+Still open in Stage 3: the `GatewayCoordination` server itself is not yet
+registered in `services/gateway-integration`; the Workspace paid path reaches
+Sub2API through a fixture authority in isolated tests only. Stages 4-8 (Secret
+injection, Serve-owned TKE execution, real RouteProvider, model readback,
+two-mode Console chain, Candidate build, Instance install) remain open, and no
+Candidate, production deployment, customer migration, financial or provider
+action was performed.
+
 ## September 29 Tencent/TKE Planning And Task Dispatch
 
 The adopted product now includes default OPL App/native UI without a customer

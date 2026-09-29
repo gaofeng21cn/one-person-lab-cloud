@@ -1,15 +1,17 @@
 {
   "schemaVersion": 1,
-  "timestamp": "2026-09-29T17:10:32.871063+00:00",
+  "timestamp": "2026-09-29T17:09:49.251098+00:00",
   "status": "needs_correction",
   "technicalClosureVerified": false,
   "approvedPendingContractMigrations": [
     "2026-09-29-default-opl-app-and-optional-agent"
   ],
   "implementationEntry": "W01.application-contracts",
-  "planningEntryReady": true,
+  "planningEntryReady": false,
   "pendingUserDecisions": [],
   "issues": [
+    "static receipt stale: checks/development_plan_validation.json",
+    "development work-package coverage/DAG checks failed",
     "approved application-selection contract migration has not reached executable schemas/consumers (W01)"
   ],
   "scope": "development specification + interactive prototype + isolated contract/DB tests; NOT implemented services or production qualification",
@@ -26,7 +28,7 @@
     "R10": "evidence_failed"
   },
   "evidence": {
-    "static": "checks/runs/20260929T171032059344Z.json",
+    "static": "checks/runs/20260929T170944901894Z.json",
     "crossDomain": "checks/runs/cross-domain-20260929T170730.221299Z.json",
     "publisherSource": "checks/runs/publisher-source-20260929T170946801693Z.json",
     "contractSemantics": "checks/handoff_contract_semantics.json",
