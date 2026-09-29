@@ -90,6 +90,12 @@ passing path. Closing it needs an approved Sub2API service-issuance capability o
 an explicit owner decision on where the delegated authority lives. See the
 [boundary receipt](evidence/source-checks/2026-09-30-tke-serial-managed-key-serving-boundary.json).
 
+A second, verified defect in the same slice is recorded there too: Serve currently
+drives `CreateManagedKey` with its own gRPC identity, but the Gateway owner admits
+only the Workspace peer (Fabric's `BindSecret` admits Serve and Workspace, and F08
+row 6 names `workspace->gateway`). Reconciliation of the driver belongs with the
+external authority decision rather than as a speculative allowlist change.
+
 ## September 30 Serial Integration Stage 2-3 Source Progress
 
 Under the section-11 serial window (`codex/tke-serial-integration`), two stages
