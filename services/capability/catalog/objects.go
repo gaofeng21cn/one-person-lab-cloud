@@ -53,8 +53,7 @@ func NewObjects(root, publicURL string, key []byte, p UploadPolicy) (*Objects, e
 
 // NewObjectsWithStorage binds an instance-approved Storage Provider to the
 // Capability upload policy. The signing key authenticates local permits; it is
-// required for a provider whose parts stream through Capability and unused for a
-// direct-to-storage provider the browser writes through presigned URLs.
+// required regardless of provider so the object data plane stays owner-signed.
 func NewObjectsWithStorage(store Storage, key []byte, p UploadPolicy) (*Objects, error) {
 	direct := false
 	if d, ok := store.(interface{ DirectUploadOnly() bool }); ok {

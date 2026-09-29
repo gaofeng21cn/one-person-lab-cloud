@@ -140,11 +140,10 @@ func (c *cosStorage) PutPart(ctx context.Context, upload string, part int, body 
 	return "", ErrStorageUnavailable
 }
 
-// ListParts reconciles the owner readback with COS. While the multipart exists it
-// reports each uploaded shard with the provider's own size and etag. Once the
-// multipart is gone the upload was finalized, so every shard is present exactly
-// when the finalized staging object or the content-addressed immutable object
-// still exists.
+// ListParts reports the provider's current view of one upload's shards. A
+// multipart still open reports its parts; a multipart that is gone means the
+// upload was finalized, so every registered shard is present and the owner
+// finalizes through CompleteUpload instead of expecting further parts.
 func (c *cosStorage) ListParts(ctx context.Context, upload, providerUploadRef, digest string) (ProviderParts, error) {
 	if providerUploadRef == "" {
 		return ProviderParts{}, ErrStorageUnavailable
@@ -156,6 +155,9 @@ func (c *cosStorage) ListParts(ctx context.Context, upload, providerUploadRef, d
 		if keyErr != nil {
 			return ProviderParts{}, ErrStorageUnavailable
 		}
+		// The multipart is gone: the assembled staging object or the copied
+		// content-addressed immutable object must still be present, otherwise
+		// the provider has lost the upload and the readback fails closed.
 		if !c.objectExists(ctx, key) && !c.objectExists(ctx, target) {
 			return ProviderParts{}, ErrStorageUnavailable
 		}
@@ -178,11 +180,12 @@ func (c *cosStorage) Assemble(ctx context.Context, upload, providerUploadRef, di
 	if err != nil {
 		// The multipart is gone: the upload was finalized, either by a repeated
 		// Complete after a lost response or by an earlier Complete whose owner
-		// transaction did not commit. If the admitted bytes were already copied
-		// to their content-addressed immutable key, recovery reads them back and
-		// re-verifies the exact size and SHA-256 instead of failing the retry or
-		// starting a second upload identity. Otherwise the finalized staging
-		// object must still exist, and the same verification runs below.
+		// transaction did not commit. When the admitted bytes were already
+		// copied to their content-addressed immutable key, recovery reads them
+		// back and re-verifies the exact size and SHA-256 rather than failing
+		// the retry or starting a second upload identity. Otherwise the
+		// finalized staging object must still exist and the same verification
+		// runs below.
 		if c.objectExists(ctx, target) {
 			return c.downloadVerified(ctx, target, digest, size)
 		}
@@ -209,12 +212,18 @@ func (c *cosStorage) Assemble(ctx context.Context, upload, providerUploadRef, di
 		}
 		return nil, err
 	}
-	if _, _, err := c.client.Object.Copy(ctx, target, c.cfg.Bucket+"/"+key, nil); err != nil {
-		assembled.Cleanup()
-		return nil, ErrStorageUnavailable
-	}
-	c.client.Object.Delete(ctx, key)
 	return assembled, nil
+}
+
+func (c *cosStorage) Promote(ctx context.Context, upload, digest string, assembled *AssembledObject) error {
+	target, err := immutableKey(digest)
+	if err != nil {
+		return err
+	}
+	if _, _, err := c.client.Object.Copy(ctx, target, c.cfg.Bucket+"/"+stagingKey(upload), nil); err != nil {
+		return ErrStorageUnavailable
+	}
+	return nil
 }
 
 // listParts returns every uploaded part keyed by number, following pagination.

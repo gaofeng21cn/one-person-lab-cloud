@@ -16,9 +16,10 @@ import (
 // Two implementations exist: a single-node filesystem provider that receives
 // bytes through Capability's restricted data plane, and a Tencent COS provider
 // that hands the browser a scoped presigned URL so bytes never transit
-// Capability. Both persist provider_upload_ref / provider_part_ref and both
-// verify the assembled object's exact size and digest before it becomes
-// immutable.
+// Capability (see docs/spec/target/05_build_service_technical_spec.md: "BFF签发
+// 受限上传许可而不代理大文件"). Both persist provider_upload_ref /
+// provider_part_ref and both verify the assembled object's exact size and
+// digest before it becomes immutable.
 type Storage interface {
 	// Ready verifies the provider is reachable and writable at process start.
 	Ready(ctx context.Context) error
@@ -40,11 +41,12 @@ type Storage interface {
 	// It never verifies a customer-declared digest; the assembled object is
 	// still verified end to end in Assemble.
 	ListParts(ctx context.Context, upload, providerUploadRef, digest string) (ProviderParts, error)
-	// Assemble finalizes the provider upload, verifies the assembled size and
-	// digest against the admitted facts, and stores the immutable object keyed
-	// by digest. It returns a readable copy of the exact admitted bytes for
-	// archive policy validation. The immutable object already exists on success.
+	// Assemble finalizes the provider upload and verifies the assembled size
+	// and digest. The returned copy must pass archive validation before Promote.
 	Assemble(ctx context.Context, upload, providerUploadRef, digest string, size int64, parts []ConfirmedPart) (*AssembledObject, error)
+	// Promote stores validated bytes under their immutable digest. It retains
+	// staging bytes so a failed owner transaction can retry the same upload.
+	Promote(ctx context.Context, upload, digest string, assembled *AssembledObject) error
 	// OpenImmutable streams the stored immutable object keyed by digest.
 	OpenImmutable(ctx context.Context, digest string) (*ImmutableObject, error)
 	// DeleteUpload removes provider upload artifacts for a cancelled or expired

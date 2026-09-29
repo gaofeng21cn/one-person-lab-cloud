@@ -232,6 +232,26 @@ TCR namespace。Tenant ID 才是授权与持久映射身份；email local-part �
 | Append-only Build/application receipts | `ledger` | Does not become a Build or deployment writer |
 | Personal TCR account/namespace, Cloud Candidate deployment, TKE profile, Secret references | `opl-instance-medopl` | No per-application deployment workflow |
 
+The TKE deployment unit grows with this chain, not ahead of it. Cloud owns which
+capability each target service owns and `opl-instance-medopl` owns the unit that
+carries it, per
+[Deployment Unit Composition](./architecture.md#deployment-unit-composition).
+Each deployment batch carries the work packages that move the same capability and
+its real callers, so a service enters the unit with its W packages and not before:
+
+| Deployment batch | Service entering the unit | Work packages moved with it |
+| --- | --- | --- |
+| 1 | `gateway-integration` (CloudIdentity/`tenant`) and the BFF session surface | `W02`, `W03`, `W13` |
+| 2 | `capability`, `build` | `W07`, `W08`, `W09` |
+| 3 | `resource-catalog`, `workspace` | `W06`, `W15` |
+| 4 | `runtime-control`, `serve` | `W10`, `W17` |
+| 5 | remaining Console BFF routes, `console-ui` entry switch | `W14`, `W16`, `W22`, `W23`, `W26` |
+
+`gateway-integration` is first because every target owner authorizes inbound
+calls through its gRPC boundary; the rest follow in capability order. Running the
+full target service set before its callers have moved is not a stage of this chain
+and carries no acceptance.
+
 **Stages**
 
 1. **SSOT and runtime inventory — in progress.** Keep the generic Agent chain and

@@ -78,6 +78,30 @@ func (l *localStorage) AuthorizePart(ctx context.Context, upload, providerUpload
 	}, nil
 }
 
+// PutPart writes one verified part after the data plane validates its permit
+// and the owner DB confirms the part identity.
+func (l *localStorage) PutPart(ctx context.Context, upload string, part int, body io.Reader, size int64, digest string) (string, error) {
+	dir := filepath.Join(l.root, "parts", upload)
+	if e := os.MkdirAll(dir, 0700); e != nil {
+		return "", ErrStorageUnavailable
+	}
+	f, e := os.CreateTemp(filepath.Join(l.root, "pending"), "part-")
+	if e != nil {
+		return "", ErrStorageUnavailable
+	}
+	defer os.Remove(f.Name())
+	h := sha256.New()
+	n, e := io.Copy(io.MultiWriter(f, h), io.LimitReader(body, size+1))
+	closeErr := f.Close()
+	if e != nil || closeErr != nil || n != size || "sha256:"+hex.EncodeToString(h.Sum(nil)) != digest {
+		return "", ErrObjectIntegrity
+	}
+	if e = os.Rename(f.Name(), l.partPath(upload, part)); e != nil {
+		return "", ErrStorageUnavailable
+	}
+	return strings.TrimPrefix(digest, "sha256:"), nil
+}
+
 // ListParts reports the part files the local provider holds. The local provider
 // has no separate provider etag: its etag is the registered part digest, so it
 // leaves Etag empty and the reconciler reuses the registered identity.
@@ -105,30 +129,6 @@ func (l *localStorage) ListParts(ctx context.Context, upload, providerUploadRef,
 		out.Parts[int32(number)] = ProviderPart{SizeBytes: info.Size()}
 	}
 	return out, nil
-}
-
-// PutPart writes one verified part after the data plane validates its permit
-// and the owner DB confirms the part identity.
-func (l *localStorage) PutPart(ctx context.Context, upload string, part int, body io.Reader, size int64, digest string) (string, error) {
-	dir := filepath.Join(l.root, "parts", upload)
-	if e := os.MkdirAll(dir, 0700); e != nil {
-		return "", ErrStorageUnavailable
-	}
-	f, e := os.CreateTemp(filepath.Join(l.root, "pending"), "part-")
-	if e != nil {
-		return "", ErrStorageUnavailable
-	}
-	defer os.Remove(f.Name())
-	h := sha256.New()
-	n, e := io.Copy(io.MultiWriter(f, h), io.LimitReader(body, size+1))
-	closeErr := f.Close()
-	if e != nil || closeErr != nil || n != size || "sha256:"+hex.EncodeToString(h.Sum(nil)) != digest {
-		return "", ErrObjectIntegrity
-	}
-	if e = os.Rename(f.Name(), l.partPath(upload, part)); e != nil {
-		return "", ErrStorageUnavailable
-	}
-	return strings.TrimPrefix(digest, "sha256:"), nil
 }
 
 func (l *localStorage) Assemble(ctx context.Context, upload, providerUploadRef, digest string, size int64, parts []ConfirmedPart) (*AssembledObject, error) {
@@ -162,11 +162,11 @@ func (l *localStorage) Assemble(ctx context.Context, upload, providerUploadRef, 
 		os.Remove(f.Name())
 		return nil, ErrDigestMismatch
 	}
-	if e = l.putImmutable(f.Name(), digest); e != nil {
-		os.Remove(f.Name())
-		return nil, e
-	}
 	return &AssembledObject{File: f}, nil
+}
+
+func (l *localStorage) Promote(ctx context.Context, upload, digest string, assembled *AssembledObject) error {
+	return l.putImmutable(assembled.File.Name(), digest)
 }
 
 func (l *localStorage) putImmutable(source, d string) error {

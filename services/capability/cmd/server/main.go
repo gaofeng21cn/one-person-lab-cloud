@@ -51,7 +51,7 @@ func main() {
 			return ownerservice.ErrHandlersNotImplemented
 		}
 		policy := catalog.UploadPolicy{MaxBytes: 1 << 30, PartBytes: 16 << 20, MaxExpandedBytes: 4 << 30, MaxFiles: 100000, TTL: 24 * time.Hour, ManifestPath: "manifest.json", SchemaPath: schemaPath, SchemaDigest: schemaDigest}
-		objects, err := capabilityObjects(ctx, policy)
+		objects, err := capabilityObjects(policy)
 		if err != nil {
 			return err
 		}
@@ -153,8 +153,8 @@ func main() {
 // provider keeps bytes on a mounted volume and requires the owner signing key
 // for its restricted upload permits; COS stores immutable objects in the
 // instance bucket and hands the browser scoped presigned URLs, so no signing
-// key is needed. An unknown kind fails closed instead of silently falling back.
-func capabilityObjects(ctx context.Context, policy catalog.UploadPolicy) (*catalog.Objects, error) {
+// key is needed.
+func capabilityObjects(policy catalog.UploadPolicy) (*catalog.Objects, error) {
 	kind := strings.ToLower(os.Getenv("OPL_CAPABILITY_STORAGE_KIND"))
 	if kind == "" {
 		kind = "local"
@@ -167,13 +167,17 @@ func capabilityObjects(ctx context.Context, policy catalog.UploadPolicy) (*catal
 		}
 		return catalog.NewObjects(root, publicURL, []byte(signing), policy)
 	case "cos":
-		return catalog.NewCOSObjects(ctx, catalog.COSConfig{
+		store, err := catalog.NewCOSObjects(context.Background(), catalog.COSConfig{
 			Bucket:    os.Getenv("OPL_CAPABILITY_COS_BUCKET"),
 			Region:    os.Getenv("OPL_CAPABILITY_COS_REGION"),
 			SecretID:  os.Getenv("OPL_CAPABILITY_COS_SECRET_ID"),
 			SecretKey: os.Getenv("OPL_CAPABILITY_COS_SECRET_KEY"),
 			Endpoint:  os.Getenv("OPL_CAPABILITY_COS_ENDPOINT"),
 		}, policy)
+		if err != nil {
+			return nil, err
+		}
+		return store, nil
 	default:
 		return nil, fmt.Errorf("unsupported capability storage kind %q", kind)
 	}

@@ -44,8 +44,6 @@ func (s *Service) CreateUpload(ctx context.Context, r *api.CreateUploadRpcReques
 		out.PartSizeBytes = s.Objects.Policy.PartBytes
 		out.Status = api.UploadSessionStatusEnum_UPLOAD_SESSION_STATUS_ENUM_UPLOADING
 		out.ExpiresAt = timestamppb.New(time.Now().Add(s.Objects.Policy.TTL))
-		// The package must be admitted before the provider opens a session, so a
-		// rejected request never creates provider state.
 		providerRef, e := s.Objects.store.BeginUpload(ctx, out.Id, b.Sha256, b.SizeBytes)
 		if e != nil {
 			return status.Error(codes.Unavailable, "storage provider unavailable")
@@ -140,11 +138,10 @@ func (s *Service) GetUpload(ctx context.Context, r *api.GetUploadRpcRequest) (*a
 // reconcileUploadParts reports the registered shards the Storage Provider
 // already holds. Capability's own data plane observes nothing for a
 // direct-to-storage provider, so without this readback a browser refresh or a
-// resumed upload would re-send bytes the provider already has, and a finalized
-// upload would look empty. A shard is reported complete only when the provider
-// holds it at the exact registered size, or when the provider reports the whole
-// upload finalized; the assembled object is still verified end to end in
-// CompleteUpload.
+// resumed upload would re-send bytes the provider already has. A shard is
+// reported complete only when the provider holds it at the exact registered
+// size, or when the provider reports the whole upload finalized; the assembled
+// object is still verified end to end in CompleteUpload.
 func (s *Service) reconcileUploadParts(ctx context.Context, upload string, v *api.UploadSession) (*api.UploadSession, error) {
 	ref, e := s.providerUploadRef(ctx, upload)
 	if e != nil {
@@ -192,7 +189,6 @@ func (s *Service) reconcileUploadParts(ctx context.Context, upload string, v *ap
 	v.CompletedParts = parts
 	return v, nil
 }
-
 func (s *Service) CreateUploadPart(ctx context.Context, r *api.CreateUploadPartRpcRequest) (*api.UploadPartAuthorization, error) {
 	if e := s.auth(ctx, r.GetContext(), "CreateUploadPart", api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE, r.UploadId); e != nil {
 		return nil, e
@@ -206,7 +202,7 @@ func (s *Service) CreateUploadPart(ctx context.Context, r *api.CreateUploadPartR
 	}
 	b := r.GetBody()
 	count := (u.SizeBytes + u.PartSizeBytes - 1) / u.PartSizeBytes
-	if b.GetPartNumber() <= 0 || int64(b.GetPartNumber()) > count || b.GetSizeBytes() <= 0 || !digestRE.MatchString(b.GetSha256()) {
+	if b.GetPartNumber() < 1 || int64(b.PartNumber) > count || !digestRE.MatchString(b.GetSha256()) {
 		return nil, status.Error(codes.InvalidArgument, "invalid part")
 	}
 	size := u.PartSizeBytes
@@ -235,11 +231,11 @@ func (s *Service) CreateUploadPart(ctx context.Context, r *api.CreateUploadPartR
 	if e = tx.Commit(); e != nil {
 		return nil, dbError(e)
 	}
-	ref, e := s.providerUploadRef(ctx, u.Id)
+	providerRef, e := s.providerUploadRef(ctx, u.Id)
 	if e != nil {
 		return nil, e
 	}
-	auth, e := s.Objects.store.AuthorizePart(ctx, u.Id, ref, int(b.PartNumber), b.SizeBytes, b.Sha256, u.ExpiresAt.AsTime())
+	auth, e := s.Objects.store.AuthorizePart(ctx, u.Id, providerRef, int(b.PartNumber), b.SizeBytes, b.Sha256, u.ExpiresAt.AsTime())
 	if e != nil {
 		return nil, status.Error(codes.Unavailable, "upload authorization unavailable")
 	}
@@ -289,7 +285,6 @@ func (s *Service) CompleteUpload(ctx context.Context, r *api.CompleteUploadRpcRe
 		if e != nil {
 			return e
 		}
-		confirmed := make([]ConfirmedPart, 0, len(parts))
 		for i, p := range parts {
 			if int64(p.PartNumber) != int64(i)+1 {
 				return status.Error(codes.InvalidArgument, "parts must be numbered consecutively from 1")
@@ -301,30 +296,42 @@ func (s *Service) CompleteUpload(ctx context.Context, r *api.CompleteUploadRpcRe
 			if actual.Confirmed && actual.Etag != p.Etag {
 				return status.Error(codes.InvalidArgument, "parts differ from owner readback")
 			}
-			confirmed = append(confirmed, ConfirmedPart{PartNumber: p.PartNumber, SizeBytes: p.SizeBytes, Sha256: p.Sha256, Etag: p.Etag, Confirmed: actual.Confirmed})
 		}
-		ref, e := s.providerUploadRef(ctx, u.Id)
+		confirmed := make([]ConfirmedPart, 0, len(parts))
+		for _, p := range parts {
+			confirmed = append(confirmed, ConfirmedPart{PartNumber: p.PartNumber, SizeBytes: p.SizeBytes, Sha256: p.Sha256, Etag: p.Etag})
+		}
+		providerRef, e := s.providerUploadRef(ctx, u.Id)
 		if e != nil {
 			return e
 		}
-		assembled, assemblyErr := s.Objects.store.Assemble(ctx, u.Id, ref, u.Sha256, u.SizeBytes, confirmed)
-		switch {
-		case assemblyErr == ErrStorageUnavailable:
-			return status.Error(codes.Unavailable, "object store unavailable")
-		case assemblyErr == ErrObjectIntegrity:
-			return status.Error(codes.DataLoss, "part integrity failed")
-		case assemblyErr != nil && assemblyErr != ErrDigestMismatch:
+		assembled, e := s.Objects.store.Assemble(ctx, u.Id, providerRef, u.Sha256, u.SizeBytes, confirmed)
+		if e == ErrStorageUnavailable {
 			return status.Error(codes.Unavailable, "object store unavailable")
 		}
+		if e == ErrObjectIntegrity {
+			return status.Error(codes.DataLoss, "part integrity failed")
+		}
+		if e != nil && e != ErrDigestMismatch {
+			return status.Error(codes.Unavailable, "object store unavailable")
+		}
+		digestMismatch := e == ErrDigestMismatch
 		validation := ""
 		var manifest []byte
-		if assemblyErr == ErrDigestMismatch {
+		if digestMismatch {
 			validation = "PACKAGE_DIGEST_MISMATCH"
 		} else {
-			defer assembled.Cleanup()
-			if manifest, e = s.Objects.validateArchive(assembled.File.Name()); e != nil {
+			manifest, e = s.Objects.validateArchive(assembled.File.Name())
+			if e != nil {
 				validation = "PACKAGE_VALIDATION_FAILED"
+			} else if e = s.Objects.store.Promote(ctx, u.Id, u.Sha256, assembled); e != nil {
+				assembled.Cleanup()
+				return status.Error(codes.Unavailable, "immutable object write failed")
 			}
+			assembled.Cleanup()
+		}
+		if digestMismatch && assembled != nil {
+			assembled.Cleanup()
 		}
 		now := time.Now()
 		out.OperationId = id("op")

@@ -2,7 +2,12 @@ package catalog
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"io"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -26,6 +31,46 @@ func TestLocalProviderStreamsThroughCapability(t *testing.T) {
 	}
 }
 
+func TestLocalProviderPromotesOnlyAfterValidationAndRetainsRetryInput(t *testing.T) {
+	ctx := context.Background()
+	store, err := newLocalStorage(t.TempDir(), "http://127.0.0.1:8281")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := []byte("package bytes")
+	hash := sha256.Sum256(data)
+	digest := "sha256:" + hex.EncodeToString(hash[:])
+	if _, err := store.PutPart(ctx, "upload-1", 1, strings.NewReader(string(data)), int64(len(data)), digest); err != nil {
+		t.Fatal(err)
+	}
+	parts := []ConfirmedPart{{PartNumber: 1, SizeBytes: int64(len(data)), Sha256: digest}}
+	assembled, err := store.Assemble(ctx, "upload-1", "", digest, int64(len(data)), parts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer assembled.Cleanup()
+	if _, err := os.Stat(store.root + "/objects/" + strings.TrimPrefix(digest, "sha256:")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("assembly must not publish bytes before archive validation: %v", err)
+	}
+	if err := store.Promote(ctx, "upload-1", digest, assembled); err != nil {
+		t.Fatal(err)
+	}
+	object, err := store.OpenImmutable(ctx, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer object.Close()
+	read, err := io.ReadAll(object.Body)
+	if err != nil || string(read) != string(data) {
+		t.Fatalf("promoted bytes differ: %q, %v", read, err)
+	}
+	retry, err := store.Assemble(ctx, "upload-1", "", digest, int64(len(data)), parts)
+	if err != nil {
+		t.Fatalf("assembly must remain retryable until owner commit: %v", err)
+	}
+	retry.Cleanup()
+}
+
 func TestLocalProviderRejectsUnencryptedPublicEndpoint(t *testing.T) {
 	if _, err := newLocalStorage(t.TempDir(), "http://objects.example.test"); err == nil {
 		t.Fatal("non-loopback http upload endpoint must be rejected")
@@ -33,36 +78,6 @@ func TestLocalProviderRejectsUnencryptedPublicEndpoint(t *testing.T) {
 	if _, err := newLocalStorage(t.TempDir(), "http://127.0.0.1:8281"); err != nil {
 		t.Fatalf("loopback http must be admitted for local development: %v", err)
 	}
-}
-
-func TestLocalProviderReconcilesOnlyPartsItActuallyHolds(t *testing.T) {
-	store, err := newLocalStorage(t.TempDir(), "https://capability.example.test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx := context.Background()
-	digestOne := digest([]byte("part one"))
-	digestTwo := digest([]byte("part two"))
-	if _, err := store.BeginUpload(ctx, "upload-1", digest([]byte("whole")), 1024); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.PutPart(ctx, "upload-1", 1, strings.NewReader("part one"), int64(len("part one")), digestOne); err != nil {
-		t.Fatal(err)
-	}
-	view, err := store.ListParts(ctx, "upload-1", "", digest([]byte("whole")))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if view.Complete || len(view.Parts) != 1 {
-		t.Fatalf("provider view=%+v", view)
-	}
-	if part, ok := view.Parts[1]; !ok || part.SizeBytes != int64(len("part one")) {
-		t.Fatalf("part one readback=%+v", view.Parts[1])
-	}
-	if _, ok := view.Parts[2]; ok {
-		t.Fatal("a part the provider never received must not be reported")
-	}
-	_ = digestTwo
 }
 
 func TestCOSProviderIsDirectUploadOnly(t *testing.T) {

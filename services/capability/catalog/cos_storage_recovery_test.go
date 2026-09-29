@@ -196,12 +196,14 @@ func fakeCOSParts(t *testing.T, server *httptest.Server, upload, providerUploadR
 }
 
 // TestCOSAssembleRecoversCopiedImmutableObjectAfterCrash proves the recovery
-// window is closed: after Assemble copied the admitted bytes to their
-// content-addressed immutable key and cleaned up staging, but before the owner
-// transaction committed, a retry of the same Complete operation must finalize
-// from the immutable object instead of failing or re-uploading.
+// window is closed: after the archive-validated bytes were copied to their
+// content-addressed immutable key and the staging artifact was cleaned, but
+// before the owner transaction committed, a retry of the same Complete
+// operation must finalize from the immutable object instead of failing or
+// re-uploading.
 func TestCOSAssembleRecoversCopiedImmutableObjectAfterCrash(t *testing.T) {
-	server := httptest.NewTLSServer(newFakeCOS())
+	fake := newFakeCOS()
+	server := httptest.NewTLSServer(fake)
 	defer server.Close()
 	store := fakeCOSStorage(t, server)
 	ctx := context.Background()
@@ -224,13 +226,20 @@ func TestCOSAssembleRecoversCopiedImmutableObjectAfterCrash(t *testing.T) {
 	if _, err = assembled.File.ReadAt(body, 0); err != nil {
 		t.Fatal(err)
 	}
-	assembled.Cleanup()
 	if string(body) != string(total) {
 		t.Fatalf("assembled bytes=%q", body)
 	}
 
-	// The crash: the multipart is gone, staging is cleaned up, and the owner
-	// never committed. The retry must succeed from the immutable object.
+	// The owner copies the validated bytes to their content-addressed key. The
+	// crash: the multipart is gone, staging is cleaned up, and the owner never
+	// committed. The retry must succeed from the immutable object.
+	if err = store.Promote(ctx, upload, want, assembled); err != nil {
+		t.Fatal(err)
+	}
+	assembled.Cleanup()
+	fake.mu.Lock()
+	delete(fake.objects, stagingKey(upload))
+	fake.mu.Unlock()
 	view, err := store.ListParts(ctx, upload, ref, want)
 	if err != nil || !view.Complete {
 		t.Fatalf("finalized upload view=%+v err=%v", view, err)
@@ -250,9 +259,11 @@ func TestCOSAssembleRecoversCopiedImmutableObjectAfterCrash(t *testing.T) {
 }
 
 // TestCOSRecoveryReVerifiesTheImmutableObject pins that the recovery path
-// re-verifies the stored bytes instead of trusting the key: an inconsistent
-// object under the content-addressed key is reported as a digest mismatch, and a
-// missing finalized upload is reported unavailable rather than as absence.
+// re-verifies the stored bytes instead of trusting the key: after the validated
+// bytes were copied to their content-addressed key (Promote) and the staging
+// artifact was cleaned, an inconsistent object under that key is reported as a
+// digest mismatch, and a missing finalized upload is reported unavailable rather
+// than as absence.
 func TestCOSRecoveryReVerifiesTheImmutableObject(t *testing.T) {
 	fake := newFakeCOS()
 	server := httptest.NewTLSServer(fake)
@@ -269,16 +280,26 @@ func TestCOSRecoveryReVerifiesTheImmutableObject(t *testing.T) {
 	}
 	fakeCOSParts(t, server, upload, ref, map[int]string{1: body})
 	confirmed := []ConfirmedPart{{PartNumber: 1, SizeBytes: int64(len(body)), Sha256: want}}
-	if _, err = store.Assemble(ctx, upload, ref, want, int64(len(body)), confirmed); err != nil {
+	assembled, err := store.Assemble(ctx, upload, ref, want, int64(len(body)), confirmed)
+	if err != nil {
 		t.Fatal(err)
 	}
-	// Simulate an inconsistent object store: the content-addressed key holds
-	// bytes that do not hash to the digest it is keyed by.
+	// The owner copies the archive-validated bytes to their content-addressed
+	// key; the crash window opens here, before the owner transaction commits,
+	// and the staging artifact is cleaned. A retry must recover from the
+	// immutable object.
 	key, err := immutableKey(want)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err = store.Promote(ctx, upload, want, assembled); err != nil {
+		t.Fatal(err)
+	}
+	assembled.Cleanup()
 	fake.mu.Lock()
+	delete(fake.objects, stagingKey(upload))
+	// Simulate an inconsistent object store: the content-addressed key holds
+	// bytes that do not hash to the digest it is keyed by.
 	fake.objects[key] = []byte("tampered bytes")
 	fake.mu.Unlock()
 	if _, err = store.Assemble(ctx, upload, ref, want, int64(len(body)), confirmed); err != ErrDigestMismatch {
