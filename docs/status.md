@@ -100,6 +100,19 @@ and no Cloud source produces a routing Ingress; grep finds only NetworkPolicy
 Ingress rules). The publisher model-config apply/readback wire is likewise not
 admitted by the adapter's `WorkspaceApplicationRuntimeInput`.
 
+## September 30 Serial Integration Stage 1 Generator Reproducibility
+
+**Stage 1 (reproducible generators):** the canonical CloudIdentity authorization
+generator (`services/gateway-integration/identity/generate_policy.py`) did not
+reproduce its committed output: it omitted the two workspace-audience
+administrative-operation rows (`listAdminOperations`, `reconcileOperation`) and all
+five `runtime_control` rows, because `bff` and `runtime_control` were missing from
+its scanned owner set. It now reproduces the committed
+`policy_generated.go` byte-for-byte, and the focused policy tests pass
+([receipt](evidence/source-checks/2026-09-30-tke-serial-policy-generator-reproducible.json)).
+Only the generator source changed; the committed generated tables are unchanged and
+no machine contract/schema/spec-validation input was touched.
+
 ## September 30 Serial Integration Stage 1 Merge And Capability Overlay
 
 Under the section-11 serial window (`codex/tke-serial-integration`), the branch

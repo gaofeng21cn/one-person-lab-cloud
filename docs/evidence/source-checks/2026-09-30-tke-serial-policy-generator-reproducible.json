@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_serial_generator_reproducibility_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T09:05:00Z",
+  "result": "cloudidentity_policy_generator_reproduces_committed_output_focused_tests_pass",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 1 - restore the CloudIdentity policy generator's reproducibility",
+  "branch": "codex/tke-serial-integration",
+  "workspace": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.1",
+  "scope": "Read-only diagnosis plus a generator-source fix. The committed generated file is unchanged; only the generator that must reproduce it was corrected. No contract, schema, proto, generator output, provider or production change.",
+  "finding": "The canonical authorization/status generator services/gateway-integration/identity/generate_policy.py did not reproduce its committed output. Section 11.1 requires reproducible generators. Running it dropped the two workspace-audience administrative-operation rows (listAdminOperations, reconcileOperation) and all five runtime_control rows (listRuntimeVersions, registerRuntimeVersion, setRuntimeVersionStatus, getBuildRuntimePolicy, setBuildRuntimePolicy), because 'bff' and 'runtime_control' were omitted from the owner set, so the committed file and the generator disagreed and a regeneration would have silently dropped seven real policy rows.",
+  "implemented": [
+    "services/gateway-integration/identity/generate_policy.py: added 'runtime_control' (whose five operations the runtime_control special-case already overrides) and 'bff' (which supplies the two workspace-audience admin-operation reads) to the scanned owner set. The committed policy_generated.go is now reproduced byte-for-byte by the generator."
+  ],
+  "verification": {
+    "commands": [
+      "cd services/gateway-integration/identity && python3 generate_policy.py ; diff -q policy_generated.go <git show HEAD:...>",
+      "GOFLAGS=-mod=readonly go -C services/gateway-integration test ./identity/ -run TestGeneratedPolicy -count=1"
+    ],
+    "environment": "python3 + the real 03_api_contract_complete.yaml; no external dependency",
+    "result": "PASS",
+    "cases": [
+      "The generator now emits exactly the 99-row, 8-owner table that TestGeneratedPolicyCoversAssignedOwners pins (runtime_control=5, workspace=18), reproduced byte-for-byte from the committed file.",
+      "The generated policy and BFF status tables are unchanged; only generate_policy.py changed."
+    ]
+  },
+  "notRun": [
+    "No full docs/spec/target check suite rerun: no SOURCE_FILES input (03 yaml, schema.sql, db_inventory, internal.proto, publisher schema, semantics_cases, validate_cross_domain.py, 13, plan-change-policy) changed.",
+    "No Candidate build, deployment, provider or production action."
+  ],
+  "claimBoundary": "This receipt claims a generator-source reproducibility fix with focused tests: the CloudIdentity policy generator now reproduces its committed output. It claims no contract/schema change, no runtime behavior change, no deployment.",
+  "secrets": "none",
+  "fileHashes": {
+    "services/gateway-integration/identity/generate_policy.py": "b1c566ea41b7dca3ce37a31069b4f3a693653d46fb3a2a3ef19a2c18e22e35f3",
+    "services/gateway-integration/identity/policy_generated.go": "1331ec3b9deb6854d3dedbd2db6f615503f166caf969b67dec26fe314e8bc245"
+  }
+}

@@ -33,7 +33,10 @@ api=yaml.safe_load((root/'docs/spec/target/03_api_contract_complete.yaml').read_
 # Owner surfaces CloudIdentity authorizes. The set is every owner whose operations
 # are reachable through the BFF or whose work package has already switched a real
 # caller to this authority; an owner is added once, wholesale, never per action.
-owners={'capability','build','tenant','resource_catalog','serve','workspace','gateway'}
+# 'bff' is admitted so the audience_overrides below can name the workspace
+# audience the Console's two administrative-operation reads actually carry;
+# session-only and route-resolved reads are exempted and never become rows.
+owners={'capability','build','tenant','resource_catalog','serve','workspace','gateway','runtime_control','bff'}
 # Runtime Control policy rows live in this table because CloudIdentity is the one
 # authorization owner; the x-owner below is the audience the decision names.
 runtime={'listRuntimeVersions','registerRuntimeVersion','setRuntimeVersionStatus','getBuildRuntimePolicy','setBuildRuntimePolicy'}
@@ -41,7 +44,11 @@ runtime={'listRuntimeVersions','registerRuntimeVersion','setRuntimeVersionStatus
 # operation is named on ServeProductService and Serve owns
 # serve.agent_runtime_instances/serve.access_bindings, so the audience is serve
 # even though the operation routes through the Workspace product path.
-audience_overrides={'getWorkspaceAccess':'serve'}
+# The Console's two admin-operation surfaces are read through the Workspace
+# administrative product path, so the audience CloudIdentity names is
+# workspace even though the contract operation carries no x-owner of its
+# own (getOperation is a route-resolved session read and stays exempt).
+audience_overrides={'getWorkspaceAccess':'serve','listAdminOperations':'workspace','reconcileOperation':'workspace'}
 session_only={'getLoginContext','login','logout','getSession'}
 subject_bound={'acceptInvitation'}
 # An Operation is read through an explicit owner route, so the contract names no
