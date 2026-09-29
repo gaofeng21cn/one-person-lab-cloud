@@ -68,6 +68,18 @@ orchestration (I07); moving TKE application execution and its real caller from
 Fabric to Serve and retiring the old Fabric HTTP writer (I06). No Candidate,
 deployment or provider action was performed.
 
+I06 and I07 each depend on a not-yet-frozen external contract, established by
+read-only review and recorded rather than fabricated
+([boundary receipt](evidence/source-checks/2026-09-30-tke-serial-serve-exec-route-boundary.json)).
+I06 needs a typed application-execution owner boundary between Serve and Fabric
+(`FabricCoordination` has no application-execution RPC, so Serve still reaches
+execution over Fabric's signed `/fabric/workspace-application-runtimes` HTTP
+route). I07 needs the installation route object and its conditional-revision CAS
+performer to be named (Serve's `RouteProvider` interface has no implementation,
+and no Cloud source produces a routing Ingress; grep finds only NetworkPolicy
+Ingress rules). The publisher model-config apply/readback wire is likewise not
+admitted by the adapter's `WorkspaceApplicationRuntimeInput`.
+
 ## September 30 Serial Integration Stage 1 Merge And Capability Overlay
 
 Under the section-11 serial window (`codex/tke-serial-integration`), the branch
