@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "build-package-to-real-registry-readback",
+  "result": "pass",
+  "recordedAt": "2026-09-29T05:54:41Z",
+  "source": {
+    "repository": "gaofeng21cn/one-person-lab-cloud",
+    "headSha": "b737b8e540ebdac761856ec6d91336b2689441b1",
+    "treeSha": "0f16c17af924c401657caf08f34bdf4a2ca394e1",
+    "base": "origin/main",
+    "trackedFileSha256": {
+      "services/build/internal/build/runner.go": "2d1ee7d4df1a2ecf8da3d3c192fa7a4547732bf9b1f113d27b7e3594db4e033a",
+      "services/build/internal/build/runner_live_test.go": "5469dd3651ec2549b6311e63288eba72d584a735692e6e04bc132ac4c610dec8",
+      "services/build/internal/build/identity_live_test.go": "82c0c3909666b849978512d56b07c77b2e13b846bab35e7241ec053d87d653e8",
+      "services/build/internal/build/registry_redirect_test.go": "34af5324849e2de809810b5c672ca3bed177bb3414ba54e51915605ef0e96fe4",
+      "services/build/internal/build/registry_scheme_test.go": "f5d76bcdfffcf38c8a5196f1046ad462cca8997c3f299cdf0522e788e8a3645c"
+    }
+  },
+  "registry": {
+    "host": "uswccr.ccs.tencentyun.com",
+    "namespace": "oplcloud",
+    "repository": "uswccr.ccs.tencentyun.com/oplcloud/tenant-4ec4af08c009c4034dc47a88",
+    "destinationResolver": "Tenant owner binding: Build resolves the output repository from tenant_repository_bindings, not from a caller or a derived hash path",
+    "note": "repository name is derived from the live harness tenant id; no existing customer repository was written"
+  },
+  "chain": [
+    "browser uploads a Package ZIP through the Capability wire (BFF /api/v2)",
+    "three-part replayed upload with idempotent completion; corrupt bytes and cross-tenant reads rejected",
+    "Runtime and WebUI admission, CreateBuild with three bound reference claims",
+    "real BuildKit composes one immutable OCI from the exact Package, Runtime and WebUI inputs",
+    "the composed OCI is pushed to the real Tencent TCR repository resolved from the Tenant binding",
+    "the worker reads the pushed manifest and blobs back from TCR to confirm identity",
+    "a ready CapabilityVersion is registered exactly once",
+    "Ledger persists both original domain events; lost ACKs replay without duplicates",
+    "worker SIGKILL after registry commit, recovered by a fresh worker with one artifact/event/version",
+    "browser publisher journey completes and reload readback preserves the same version"
+  ],
+  "observedEvidence": {
+    "test": "TestLivePackageBuildAndRestartReadback",
+    "testResult": "PASS",
+    "durationSeconds": 58.93,
+    "artifactDigest": "sha256:24c650ad8aae4d610025b7db2ea0664f94220e5b0aa62f6ecc9e0e102304d9e5",
+    "capabilityVersionId": "capv_9a791959dd140199db79821d908194e5",
+    "buildInputSnapshotDigest": "sha256:9e5f39923e724588b3c0c9a517c6588645dee52cd9d808809d7370a4ba755f45",
+    "persistedDescriptor": "sha256:62371d3a36402824627ab7bcd5c80f14d627791c5466be808d39690f588d88b7",
+    "browserMarker": "BROWSER_PUBLISHER_OK"
+  },
+  "independentReadback": {
+    "performedBy": "separate registry HTTP read after the test, using the approved credential",
+    "manifestStatus": 200,
+    "manifestDigestMatched": true,
+    "configDigest": "sha256:630e6c2a07dde9dd01647106edb7f76fe8bdc6be6379aae1b95f2f62b73a0c03",
+    "layers": 3,
+    "interpretation": "The artifact the Build owner confirmed is the artifact a later reader fetches from TCR; the worker did not merely trust the exporter."
+  },
+  "defectRepaired": {
+    "symptom": "a real registry build composed and pushed its OCI, then never registered a ready CapabilityVersion",
+    "rootCause": "BuildKit pushed the manifest, but the worker reads blobs back through the registry, and Tencent TCR answers a blob GET with 307 to a presigned object-store URL. The worker rejected every redirect, so the readback failed and the job stayed needs_attention.",
+    "fix": "follow an approved redirect, bounded to a short chain and an approved scheme; Go drops the Authorization header on a cross-host redirect, so the presigned storage URL never receives the registry credential",
+    "whyItMatters": "without it, no real registry build can ever confirm its own output; the whole publish lane is unreachable on a real registry"
+  },
+  "verification": {
+    "focusedUnit": {
+      "command": "go test ./internal/build -run 'TestRunner' -count=1",
+      "result": "pass"
+    },
+    "focusedPackage": {
+      "command": "go test ./...",
+      "result": "pass",
+      "module": "services/build"
+    },
+    "vet": {
+      "command": "go vet ./... (and -tags=livebuild ./internal/build)",
+      "result": "pass"
+    },
+    "sourceTests": {
+      "command": "npm run test:source",
+      "result": "pass",
+      "tests": 245,
+      "fail": 0
+    },
+    "liveLoopbackDefault": {
+      "command": "go test -tags=livebuild ./internal/build -run TestLivePackageBuildAndRestartReadback -count=1",
+      "result": "pass",
+      "note": "default harness stays loopback-only; no behaviour change without the opt-in env"
+    },
+    "liveRealRegistry": {
+      "command": "same, with OPL_BUILD_TEST_REGISTRY_HOST/NAMESPACE + OPL_BUILD_TEST_DOCKER_AUTH + OPL_BUILD_TEST_REGISTRY_TOKEN",
+      "result": "pass"
+    },
+    "diffCheck": {
+      "command": "git diff --check",
+      "result": "pass"
+    },
+    "notRun": {
+      "command": "npm run verify:local (full)",
+      "reason": "the local browser suite hung at 0% CPU for ~50 minutes in this sandbox; it is unrelated to this Go-only change. Source tests and the affected module were run instead. CI runs the full gate."
+    }
+  },
+  "boundary": {
+    "localSourceAndRealRegistryReadback": true,
+    "notClaimed": [
+      "Instance deployment or Workspace availability",
+      "production promotion or a formal Cloud Product Release",
+      "real-money or provider resource mutation",
+      "TCR deletion or cleanup of any pre-existing repository",
+      "that the loopback fixture images are production Runtime/WebUI artifacts"
+    ]
+  },
+  "claimBoundary": "A real end-to-end run of the Package upload -> BuildKit OCI -> push to a real Tencent TCR repository -> read the pushed bytes back chain, on an exact source commit, with an independent registry read confirming the same digest. Instance adoption and any production claim remain separate owner actions."
+}
