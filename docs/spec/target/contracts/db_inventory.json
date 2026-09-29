@@ -7021,6 +7021,20 @@
           ]
         },
         {
+          "name": "application_kind",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "source": "02_database_schema_complete.md#resource_catalog.quotes.application_kind"
+        },
+        {
+          "name": "runtime_version_id",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "source": "03_api_contract_complete.yaml#/components/schemas/Quote/properties/runtimeVersionId"
+        },
+        {
           "name": "compute_plan_id",
           "type": "text",
           "nullable": false,

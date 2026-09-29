@@ -8071,6 +8071,8 @@ components:
           $ref: '#/components/schemas/OpaqueId'
         capabilityVersionId:
           $ref: '#/components/schemas/OpaqueId'
+        applicationSelection:
+          $ref: '#/components/schemas/WorkspaceApplicationSelection'
         computePlanId:
           $ref: '#/components/schemas/OpaqueId'
         storagePlanId:
@@ -8096,8 +8098,11 @@ components:
           purpose:
             enum:
             - deploy
-        required:
-        - capabilityVersionId
+        oneOf:
+        - required:
+          - capabilityVersionId
+        - required:
+          - applicationSelection
         not:
           required:
           - workspaceId
@@ -8197,6 +8202,8 @@ components:
           $ref: '#/components/schemas/OpaqueId'
         capabilityVersionId:
           $ref: '#/components/schemas/OpaqueId'
+        runtimeVersionId:
+          $ref: '#/components/schemas/OpaqueId'
         computePlanId:
           $ref: '#/components/schemas/OpaqueId'
         storagePlanId:
@@ -8283,6 +8290,7 @@ components:
         purpose: resource_catalog.quotes.purpose
         workspaceId: resource_catalog.quotes.workspace_id
         capabilityVersionId: resource_catalog.quotes.capability_version_id
+        runtimeVersionId: resource_catalog.quotes.runtime_version_id
         computePlanId: resource_catalog.quotes.compute_plan_id
         storagePlanId: resource_catalog.quotes.storage_plan_id
         modelSelections: resource_catalog.quotes.model_selections
@@ -8435,6 +8443,8 @@ components:
           $ref: '#/components/schemas/OpaqueId'
         capabilityVersionId:
           $ref: '#/components/schemas/OpaqueId'
+        runtimeVersionId:
+          $ref: '#/components/schemas/OpaqueId'
         deliveryModel:
           type: string
           enum:
@@ -8503,6 +8513,11 @@ components:
         computePlanId: workspace.workspaces.compute_plan_id
         storagePlanId: workspace.workspaces.storage_plan_id
         capabilityVersionId: workspace.workspaces.capability_version_id
+        runtimeVersionId:
+          kind: derived
+          sources:
+          - workspace.operations.accepted_input
+          rule: 从原单已接受Quote快照读回默认OPL App的Runtime Release；构建Agent分支为空，不放Workspace当前部署指针
         deliveryModel: workspace.workspaces.delivery_model
         status: workspace.workspaces.status
         resourceReadiness:

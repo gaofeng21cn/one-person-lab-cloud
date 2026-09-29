@@ -1348,7 +1348,7 @@ Database `opl_workspace` · Schema `workspace` · Writer `opl_workspace_writer`�
 
 #### workspace.workspaces
 
-当前已接受业务选择；迁移裸资源capabilityVersionId可空，UI不得称已部署；部署/current selection由Serve读回，expiresAt从订阅投影。覆盖 F08, F09, F10, F11, F12, F13, F16。
+当前已接受业务选择；迁移裸资源capabilityVersionId可空，UI不得称已部署；部署/current selection由Serve读回，expiresAt从订阅投影。覆盖 F08, F09, F10, F11, F12, F13, F16。默认App的runtimeVersionId不是本表列，而是从已接受原单workspace.operations.accepted_input读回，避免随Serve当前部署双写。
 
 | 字段 | 类型 | 可空 | 默认 | 字段来源 |
 |---|---|---|---|---|
@@ -3003,6 +3003,8 @@ Catalog唯一writer，AcceptQuote本库锁row校验并绑定唯一Workspace Oper
 | `purpose` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/Quote/properties/purpose` |
 | `workspace_id` | `text` | NULL | `—` | `03_api_contract_complete.yaml#/components/schemas/Quote/properties/workspaceId` |
 | `capability_version_id` | `text` | NULL | `—` | `03_api_contract_complete.yaml#/components/schemas/Quote/properties/capabilityVersionId` |
+| `application_kind` | `text` | NULL | `—` | `02_database_schema_complete.md#resource_catalog.quotes.application_kind` |
+| `runtime_version_id` | `text` | NULL | `—` | `03_api_contract_complete.yaml#/components/schemas/Quote/properties/runtimeVersionId` |
 | `compute_plan_id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/Quote/properties/computePlanId` |
 | `storage_plan_id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/Quote/properties/storagePlanId` |
 | `price_policy_version_id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/Quote/properties/pricePolicyVersionId` |
@@ -3038,6 +3040,7 @@ Catalog唯一writer，AcceptQuote本库锁row校验并绑定唯一Workspace Oper
 - `CHECK (period_months > 0)`
 - `CHECK ((purpose = 'resize') = (plan_change_calculation IS NOT NULL))`
 - `CHECK (purpose <> 'resize' OR source_subscription_version IS NOT NULL)`
+- `CHECK ((application_kind = 'opl_app' AND runtime_version_id IS NOT NULL AND capability_version_id IS NULL) OR (application_kind = 'agent' AND capability_version_id IS NOT NULL AND runtime_version_id IS NULL))` 报价恰冻结一个应用来源：默认OPL App带runtime_version_id、构建Agent带capability_version_id，二者互斥且无隐式默认
 
 索引：
 - `quotes_tenant_list`: `(tenant_id, created_at DESC, id DESC)`

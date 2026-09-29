@@ -169,9 +169,35 @@ export interface LaunchModelDTO {
 
 export interface LaunchModelPageDTO { items: LaunchModelDTO[]; nextCursor?: string; }
 
+export type WorkspaceApplicationKindDTO = "opl_app" | "agent";
+
+// Explicit, immutable application source. A deploy order names exactly one:
+// the default OPL App (an approved Runtime Release) or a built Agent (a
+// CapabilityVersion). The two id forms are mutually exclusive; kind is the
+// discriminator and neither is implicit.
+export interface WorkspaceApplicationSelectionDTO {
+  kind: WorkspaceApplicationKindDTO;
+  runtimeVersionId?: string;
+  capabilityVersionId?: string;
+}
+
+export interface RuntimeVersionDTO {
+  id: string;
+  name: string;
+  versionLabel: string;
+  artifactDigest: string;
+  status: "approved" | "deprecated" | "revoked" | "unspecified";
+  defaultForNewBuilds: boolean;
+}
+
+export interface RuntimeVersionPageDTO {
+  items: RuntimeVersionDTO[];
+  nextCursor?: string;
+}
+
 export interface WorkspaceQuoteRequestDTO {
   purpose: "deploy";
-  capabilityVersionId: string;
+  applicationSelection: WorkspaceApplicationSelectionDTO;
   computePlanId: string;
   storagePlanId: string;
   modelSelections: Array<{ slot: string; modelId: string }>;
@@ -181,7 +207,8 @@ export interface WorkspaceQuoteRequestDTO {
 export interface WorkspaceQuoteDTO {
   id: string;
   purpose: "deploy";
-  capabilityVersionId: string;
+  runtimeVersionId?: string;
+  capabilityVersionId?: string;
   computePlanId: string;
   storagePlanId: string;
   modelSelections: Array<{ slot: string; modelId: string }>;

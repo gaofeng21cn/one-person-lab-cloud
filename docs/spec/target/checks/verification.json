@@ -1,7 +1,7 @@
 {
-  "result": "failed",
-  "timestamp": "2026-09-29T15:16:03.235131+00:00",
-  "report": "checks/runs/20260929T151603235131Z.json",
+  "result": "passed",
+  "timestamp": "2026-09-29T16:54:10.318112+00:00",
+  "report": "checks/runs/20260929T165410318112Z.json",
   "scope": "documentation contracts only; not implementation/runtime/DB execution/Instance qualification",
   "checks": [
     {
@@ -9,7 +9,7 @@
       "passed": true,
       "details": {
         "operations": 108,
-        "schemas": 178
+        "schemas": 179
       }
     },
     {
@@ -18,7 +18,7 @@
       "details": {
         "databases": 10,
         "tables": 101,
-        "columns": 1424,
+        "columns": 1426,
         "indexes": 163,
         "sqlStatements": 422,
         "execution": "parser only; no database connected"
@@ -26,20 +26,20 @@
     },
     {
       "name": "isolated_postgresql_execution_receipt",
-      "passed": false,
+      "passed": true,
       "details": {
-        "receipt": "checks/runs/cross-domain-20260929T124756.560585Z.json",
+        "receipt": "checks/runs/cross-domain-20260929T165054.641846Z.json",
         "tests": 101,
         "metadata": {
-          "actualDatabaseFields": 1424,
-          "directMappingsTypeAndEnumChecked": 310,
+          "actualDatabaseFields": 1426,
+          "directMappingsTypeAndEnumChecked": 311,
           "optionalWireFieldMeansOmittedNotNull": true,
           "nonnullableDbMayBeInternalOrDerived": "not inferred from API required alone; legacy cases cover real discriminators",
           "postgresVersion": "PostgreSQL 16.15 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit"
         },
         "scope": "typed REST/protobuf specification adapters -> isolated PostgreSQL -> exact typed/readback projection; provider router and Storage are explicitly named fixtures, not implemented services",
         "cleanup": {
-          "containerName": "opl-spec-semantic-1790686076",
+          "containerName": "opl-spec-semantic-1790700654",
           "containerAbsent": true,
           "stopSucceeded": true,
           "removalReadbackPolls": 2,
@@ -52,8 +52,8 @@
       "name": "api_database_field_sources",
       "passed": true,
       "details": {
-        "persistedFieldMappings": 310,
-        "derivedFieldMappings": 78
+        "persistedFieldMappings": 311,
+        "derivedFieldMappings": 79
       }
     },
     {
@@ -107,7 +107,5 @@
       }
     }
   ],
-  "errors": [
-    "cross-domain executed source hash differs: contracts/internal.proto"
-  ]
+  "errors": []
 }

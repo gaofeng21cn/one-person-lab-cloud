@@ -445,3 +445,43 @@ func TestQuoteAcceptanceBindsOneOperation(t *testing.T) {
 		t.Fatalf("unpriced pair code = %v, want FailedPrecondition", status.Code(err))
 	}
 }
+
+// TestDeployQuoteDefaultAppSelectionRoundTrips proves the default-OPL-App branch
+// against the real store: the quote freezes the Runtime Release and no
+// CapabilityVersion, still requires a runtime readback, and reads back the exact
+// source. A mixed or id-less selection is refused before any row is written.
+func TestDeployQuoteDefaultAppSelectionRoundTrips(t *testing.T) {
+	service, _ := system(t)
+	ctx := peerContext(t)
+	computePlanID, storagePlanID := quoteFixture(t, service)
+	member := tenantCall("101", "tenant-test", "q-default-app", "q-default-app")
+
+	quote, err := service.CreateQuote(ctx, &api.CreateQuoteRpcRequest{Context: member, Body: &api.QuoteRequest{
+		Purpose:             api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_DEPLOY,
+		ApplicationSelection: &api.WorkspaceApplicationSelection{Kind: api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP, RuntimeVersionId: proto.String("runtime-1")},
+		ComputePlanId:        computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 1}})
+	if err != nil {
+		t.Fatalf("default-app quote: %v", err)
+	}
+	if quote.GetRuntimeVersionId() != "runtime-1" || quote.GetCapabilityVersionId() != "" {
+		t.Fatalf("default-app quote froze the wrong source: %+v", quote)
+	}
+	if quote.GetRuntimeReadbackRequirement() != api.QuoteRuntimeReadbackRequirementEnum_QUOTE_RUNTIME_READBACK_REQUIREMENT_ENUM_REQUIRED {
+		t.Fatalf("the default App still requires a runtime readback")
+	}
+	read, err := service.GetQuote(ctx, &api.GetQuoteRpcRequest{Context: member, QuoteId: quote.GetId()})
+	if err != nil {
+		t.Fatalf("read default-app quote: %v", err)
+	}
+	if read.GetRuntimeVersionId() != "runtime-1" || read.GetCapabilityVersionId() != "" {
+		t.Fatalf("default-app readback differs: %+v", read)
+	}
+
+	// A mixed selection names two sources at once and must be refused.
+	if _, err := service.CreateQuote(ctx, &api.CreateQuoteRpcRequest{Context: member, Body: &api.QuoteRequest{
+		Purpose:             api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_DEPLOY,
+		ApplicationSelection: &api.WorkspaceApplicationSelection{Kind: api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP, RuntimeVersionId: proto.String("runtime-1"), CapabilityVersionId: proto.String("cv-1")},
+		ComputePlanId:        computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 1}}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("mixed selection code = %v, want InvalidArgument", status.Code(err))
+	}
+}

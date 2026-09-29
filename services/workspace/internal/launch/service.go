@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	contracts "opl-cloud/packages/contracts/go"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/services/internal/ownerservice"
@@ -177,8 +178,18 @@ func (s *Service) CreateWorkspace(ctx context.Context, r *api.CreateWorkspaceRpc
 		return nil, err
 	}
 	q := quote.GetQuote()
-	if q.GetId() != b.QuoteId || q.Purpose != api.QuotePurposeEnum_QUOTE_PURPOSE_ENUM_DEPLOY || q.Status != api.QuoteStatusEnum_QUOTE_STATUS_ENUM_OFFERED || q.ExpiresAt == nil || !q.ExpiresAt.AsTime().After(time.Now()) || quote.ResourcePlan == nil || q.GetCapabilityVersionId() == "" {
+	if q.GetId() != b.QuoteId || q.Purpose != api.QuotePurposeEnum_QUOTE_PURPOSE_ENUM_DEPLOY || q.Status != api.QuoteStatusEnum_QUOTE_STATUS_ENUM_OFFERED || q.ExpiresAt == nil || !q.ExpiresAt.AsTime().After(time.Now()) || quote.ResourcePlan == nil {
 		return nil, status.Error(codes.FailedPrecondition, "an unexpired deploy quote with a frozen resource plan is required")
+	}
+	// A deploy quote freezes exactly one application source. The default OPL App
+	// names a Runtime Release, a built Agent names a CapabilityVersion; a quote that
+	// names neither (or both) is refused instead of treated as a resource-only order.
+	selection, selectionErr := acceptedSelection(q)
+	if selectionErr != nil {
+		return nil, status.Error(codes.FailedPrecondition, "a deploy quote must name exactly one application source")
+	}
+	if err := contracts.ValidateWorkspaceApplicationSelection(selection); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, "a deploy quote must name exactly one application source")
 	}
 	// Revalidate after the command lock and the quote read. A request queued
 	// behind another transaction must not commit using a pre-lock permission.

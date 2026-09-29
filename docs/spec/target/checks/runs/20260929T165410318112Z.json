@@ -1,0 +1,193 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-09-29T16:54:10.318112+00:00",
+  "result": "passed",
+  "scope": "documentation contracts only; not implementation/runtime/DB execution/Instance qualification",
+  "checks": [
+    {
+      "name": "openapi_and_operation_inventory",
+      "passed": true,
+      "details": {
+        "operations": 108,
+        "schemas": 179
+      }
+    },
+    {
+      "name": "sql_ast_database_boundary_and_inventory",
+      "passed": true,
+      "details": {
+        "databases": 10,
+        "tables": 101,
+        "columns": 1426,
+        "indexes": 163,
+        "sqlStatements": 422,
+        "execution": "parser only; no database connected"
+      }
+    },
+    {
+      "name": "isolated_postgresql_execution_receipt",
+      "passed": true,
+      "details": {
+        "receipt": "checks/runs/cross-domain-20260929T165054.641846Z.json",
+        "tests": 101,
+        "metadata": {
+          "actualDatabaseFields": 1426,
+          "directMappingsTypeAndEnumChecked": 311,
+          "optionalWireFieldMeansOmittedNotNull": true,
+          "nonnullableDbMayBeInternalOrDerived": "not inferred from API required alone; legacy cases cover real discriminators",
+          "postgresVersion": "PostgreSQL 16.15 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit"
+        },
+        "scope": "typed REST/protobuf specification adapters -> isolated PostgreSQL -> exact typed/readback projection; provider router and Storage are explicitly named fixtures, not implemented services",
+        "cleanup": {
+          "containerName": "opl-spec-semantic-1790700654",
+          "containerAbsent": true,
+          "stopSucceeded": true,
+          "removalReadbackPolls": 2,
+          "storage": "tmpfs only; no host mounts/named volumes",
+          "network": "none; no host ports"
+        }
+      }
+    },
+    {
+      "name": "api_database_field_sources",
+      "passed": true,
+      "details": {
+        "persistedFieldMappings": 311,
+        "derivedFieldMappings": 79
+      }
+    },
+    {
+      "name": "ui_fields_actions_feature_coverage",
+      "passed": true,
+      "details": {
+        "features": 17,
+        "uiFieldReferences": 2567,
+        "actions": 62
+      }
+    },
+    {
+      "name": "error_and_stage_projections",
+      "passed": true,
+      "details": {
+        "errorCodes": 72,
+        "operationStages": 73
+      }
+    },
+    {
+      "name": "feature_traceability",
+      "passed": true,
+      "details": {
+        "features": 17
+      }
+    },
+    {
+      "name": "protobuf_compilation",
+      "passed": true,
+      "details": {
+        "services": 31,
+        "messages": 395,
+        "methods": 174,
+        "compilerWarnings": ""
+      }
+    },
+    {
+      "name": "event_payload_schemas",
+      "passed": true,
+      "details": {
+        "events": 18,
+        "payloadSchemas": 18,
+        "explicitPositiveNegativeCases": 5
+      }
+    },
+    {
+      "name": "contract_positive_negative_cases",
+      "passed": true,
+      "details": {
+        "explicitPositiveNegativeCases": 39
+      }
+    }
+  ],
+  "errors": [],
+  "toolVersions": {
+    "openapi-spec-validator": "0.7.2",
+    "grpcio-tools": "1.80.0",
+    "pglast": "8.3",
+    "PyYAML": "6.0.3",
+    "jsonschema": "4.25.1"
+  },
+  "artifacts": {
+    "00_master_index.md": "9baa46660818605a5a36febef5d0148d43233348ec13bd8bf8d8599a3dbc0e16",
+    "01_domain_ownership_matrix.md": "b05cf9e25b46ef2407638dee0a7969dfaaa3d4625597285e90374c1550a8a8a2",
+    "02_database_schema_complete.md": "180a79e5c8cf210f438b0508f47814c4a3e28fad66018e7ac6ce901f36f8dc32",
+    "03_api_contract_complete.yaml": "962d1896455a6b343091cd5e5f7faecce50db4866941025c49780bd8f527c7aa",
+    "04_frontend_interaction_spec.md": "dc5152aa029e935cf0286936f9ab2e52269c2a3ee6924e4126219bfec8578b88",
+    "05_build_service_technical_spec.md": "d6c6ab35a9bc12cb52f6c971d908480066ae539fd652251185ea27f0219a0de8",
+    "06_data_flow_and_state_machine.md": "d600895fc2b9983e39214cc8aee559d6391a50128bbaed7b1ae722fe23b53fb6",
+    "07_error_handling_matrix.md": "be8ab84544cfe7e323d26bb956e4f670cf107b59d1ebabee3f08f9637fb24b66",
+    "08_delivery_checklist_per_role.md": "2f315fbb19c3a0ef5231249b2d3489a89f8751eb5bde5e835d31c3b5a553cccb",
+    "09_legacy_migration.md": "98bcb47a13370c475de85b9110a46d981ac23bd58ea26a80c74064ed1a431bd1",
+    "10_feature_traceability.md": "46eb4a42d377076d43777f62ea375baac24ae7963bc40ccbabc8019413290c77",
+    "11_ui_ux_design.md": "bb653c620767e534d2540136d9feb1cc5daebaea4e3d112274c60be19717b175",
+    "12_product_spec.md": "8abdbbaf69c34e0a4727aaafea1fd9b261766a1be2c74615d239b6175dc2be6d",
+    "13_plan_change_policy.md": "43f1ac890fbab9b2c26da4937dbcce1389f3153ad56451af0b91cddb1473f686",
+    "14_implementation_work_packages.md": "309494697189ea1939875379939c4369aa812a6ddabf6ecc066d1e50f4200bf5",
+    "checks/.pytest_cache/.gitignore": "3ed731b65d06150c138e2dadb0be0697550888a6b47eb8c45ecc9adba8b8e9bd",
+    "checks/.pytest_cache/CACHEDIR.TAG": "37dc88ef9a0abeddbe81053a6dd8fdfb13afb613045ea1eb4a5c815a74a3bde4",
+    "checks/.pytest_cache/README.md": "73fd6fccdd802c419a6b2d983d6c3173b7da97558ac4b589edec2dfe443db9ad",
+    "checks/.pytest_cache/v/cache/nodeids": "cd71a99df3d779934460676950a7c1a2aa1050d7a3f7e2644fefc4c911e102b6",
+    "checks/README.md": "12555a90b1027350715e87e27e026960cd28c406a6584685fcc6ca2bbc25c9c5",
+    "checks/contract_cases.json": "34d2ea4989a71cbfd781befb58605ad86d5271209429dbfb15e8fd948b27de8a",
+    "checks/d17_acceptance_vectors.json": "74d5d340dd5ed44fd2c3696f1d419979900272b696d08f80679bf9cd653708c5",
+    "checks/d17_contract_results.json": "7f3097205dfbf817c3af79dafa6b8ae620e7b3120460f77af55ff58f82623908",
+    "checks/d17_native_millis.go": "7876ce15e26731747f2ec699667f2b5c1fba13c9fd563faa9d40388b3e270d5c",
+    "checks/db_execution.json": "6552ffb19b7f4c40b45fd625cc0546d30a6840367baa76e7fb27a3b877016254",
+    "checks/db_execution_subscription_alignment.json": "89138c6e298ee277d5fafb1950d1fa547f251e48544ae2fdd946bfe0d104f7a3",
+    "checks/decision_status.json": "6bf0cbfa6edaacee5c7ff1941ed7d05e7f5e2a3bc355e55f13cd04162eadaee7",
+    "checks/development_plan.json": "a6db1be09d57e6f875d68bf3b48e4e05f43fcb67889af40a6f6d76c752be7693",
+    "checks/development_plan_validation.json": "53f2f455b1a2f4f22cbd1e2017a5f00ee500a76a6c262325f2dfaf07ffdcb618",
+    "checks/event_cases.json": "afaacb024bf9c382bcdf97c47024b75bb4c2ba6c6c7a115427af6475cbfeedeb",
+    "checks/handoff_contract_semantics.json": "881b32f9a921c83e73486ab703e674192d75e0fad0b7f6f20f3a4f0f4a3af091",
+    "checks/handoff_readiness.json": "7e5e6b5677cd372cb24495e8e0179c9162ce99d96e35e06f5d0eff52c217a9a6",
+    "checks/provider_reference_verification.json": "8a5c072dfa90ecb6f42e98497890e8e39514f804255ddf35eb0165f35fc657b6",
+    "checks/publisher_source_check.go": "36430675a2cac4bae3610a13cda3ddbfc3d41973de72d29720e1a2ebf6b67ce8",
+    "checks/render_development_plan.py": "91ef718569422beb3a54597d573599b7fd6afc88c0e98ee6510dca4a02b42bb4",
+    "checks/render_domain_flows.py": "30d6602c3efd17a9ca4af16288a252698308f4c423c975c88aac0351b20da8e5",
+    "checks/render_traceability.py": "990fab38d204f28223415484ef7473326d866c67c93ca24d5c0ab56f341e790c",
+    "checks/requirements.txt": "1af6585d1505ebf0aa79faa63405a9be59c939f44620a09ee6b9f5bd53cec264",
+    "checks/semantics_cases.json": "5fbb6a35344003d90edc24168a29d0dc6d79202468ebd96c8f02f1be55df24ff",
+    "checks/test_development_plan.py": "3b2801b2f640c9e9e37f7f2c4b44b59a31c389443022542e7fd407fb62f36064",
+    "checks/ui_prototype_verification.json": "a40fe00156cfbda857baeba92bf7e1ba86eb17b0a6d567b1cd09d11a514d7065",
+    "checks/validate_contract_semantics.py": "5ff27d069abeb0b981de54274188ffd82e33c12daf3ff41d0949ae89253cafa8",
+    "checks/validate_cross_domain.py": "f97865db24fe1bd22ea0841d5e2a4e5bc64f756aa2e55279b83307115506326e",
+    "checks/validate_d17_contract.py": "5497d9c59efbfa93b40981884256ec8f56e4934f14e064c180a163f5f6b7ec54",
+    "checks/validate_development_plan.py": "2ee41fd4e67d979c2d49aa4f462cccb349b2216863fed5b1abbca64c101b1bd6",
+    "checks/validate_handoff.py": "1156214c4a172c4a35bbefda2aa374a64ade805cef8efff1c2bc687d98e7e2b3",
+    "checks/validate_publisher_source.py": "c06d06352e5ca6a60d4bd18d899283cb9aba0e106998b0581fafb44af9f2f1a9",
+    "checks/validate_spec.py": "68aa95d0d798ffc11047218021ed8cc9fa21b08dff51650f3b89af7625e4b2ab",
+    "contracts/api_inventory.json": "7d680fb0e2d86756129af6bd880d6f581f9ca2141e4e7afbf670f66a99a959be",
+    "contracts/db_inventory.json": "368b194f262fada153283d619b51536f1738975c9fdbcf45d99ed2b9a384565c",
+    "contracts/domain_flows.json": "d5314c10093ecbfc08eddea5190610a86bc801fe295e5216d9e56f4b7013e91a",
+    "contracts/events.json": "a9e46025299e2fa6ad2a38e0289145451d315cb70166bfc239bafbb26965fbd1",
+    "contracts/internal.proto": "a452527c4b7388bbec2d324bedce4c9d5af3ac03846d83eee12b70009abb2b08",
+    "contracts/plan-change-policy.json": "d2f9282bf450e2fbcf3f82f706cebccce335db6fdff51d3489ab78ba653698f6",
+    "contracts/publisher-contract.schema.json": "97aa9c5bb38b1016d66fa31505559571e45fcaeddbedcb3bfd7fe316f5b2ebe6",
+    "contracts/schema.sql": "6dd6eb9d6be44664c8683d65efccd68c46d241673eb216c2a09e97f46683d3ca",
+    "contracts/traceability.json": "43da7185a45b7f10235dc9bdaef2ed6537158fddbc93bb686cd9cb7e630ca4ab",
+    "contracts/ui_inventory.json": "a27d1e5b218c63941127851ed563ff25cd3b90d20db1b791a82b5fbd051c8a3d",
+    "ui-prototype/index.html": "4ceab69310fefd5966d40345beaee2415d52de6966ba94654ae87c0adb5ed41d",
+    "ui-prototype/screenshots/adopt-existing-desktop.png": "bc4acbb3acb26500d76dd0ce0c3e9973e7d78594ed587e76db5b0c1b11a8d640",
+    "ui-prototype/screenshots/build-failed-desktop.png": "77b6025d2c71661e4b3335f94ba1c769af529aae44fe7a72c7ce18d6a2aa3bc6",
+    "ui-prototype/screenshots/deploy-mobile.png": "372845a8a5c013afda3a31ade10627cd4ff28b0dfeda4dc9e1c1d44d0505ab65",
+    "ui-prototype/screenshots/deploy-quote-desktop.png": "babea6a1877e968915e6ef41d673d090508c48079ac62b3235ad2e9c446d4297",
+    "ui-prototype/screenshots/deploy-unknown-desktop.png": "075f85c21ac10b3ae1f2effd1f398e8aba34e3bc49a25d0d14591be596624277",
+    "ui-prototype/screenshots/overview-desktop.png": "967fc52993f5be656249cfa30577e8714a4b5f09985a75c42cc6262c7955d3a0",
+    "ui-prototype/screenshots/plan-boundary-mobile.png": "053e2a35d2af9161b8be42eea5c5d1f5c8e43b3c47ab05e7793d44e5eeff7090",
+    "ui-prototype/screenshots/plan-downgrade.png": "a42ad4cfe96014f6d4b15d87a80b6e2ee60fa4146b9429c56e92147cc2d1a9cb",
+    "ui-prototype/screenshots/plan-failure.png": "b7af298fde77b017596c3ef27af7864b75fd2a2f3d50bbcd1ada6b9d1a265522",
+    "ui-prototype/screenshots/plan-upgrade.png": "37f38d476ddb0296fbad40d31e34ca70ef0eb65954fb2904b1d6456cde0242f3",
+    "ui-prototype/screenshots/publisher-namespace-desktop.png": "b66f890232543aaee0ba362a1e398025f531f74b6c4467e06cf0e283bf3d3b21",
+    "ui-prototype/screenshots/tenant-reenable-desktop.png": "7741de1a07990d8224e9967231c78cc6074774155d4dd3f5c77ccc6ca3146455",
+    "ui-prototype/screenshots/workspace-delete-confirm-desktop.png": "18581cef3f6d3fe7a23fa717cc467139e653de319797d1718f180b790b30b6f8",
+    "ui-prototype/screenshots/workspaces-mobile.png": "7125ad4e69a0ad66f65ec03f924e61d248d6afe17f95a95d2c47b110001f840c"
+  }
+}
