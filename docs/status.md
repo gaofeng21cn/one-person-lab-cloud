@@ -71,6 +71,25 @@ prove injection and refusal of an unbound declared Secret. Serving a managed key
 whose issuer writes over Fabric's HTTP secret boundary, route execution, model
 readback, two-mode Console, Candidate and Instance rollout remain open.
 
+## September 30 Serial Integration Stage 4 Serving-Half Boundary (I05)
+
+**Stage 4 (I05 served half):** the remaining half of I05 — a production
+`ManagedKeyIssuer`/`SecretStore` on the Gateway owner that mints the Workspace
+managed key and writes it to the approved store — is blocked by an external
+authority gap, verified against upstream Sub2API v0.2.4 source. Sub2API exposes no
+admin/service-authorized key-issuance endpoint: creation is `POST /api/v1/keys`
+gated by the user's own JWT, and the admin surface only reads a user's keys and
+updates a key's group. Fabric's `/fabric/gateway-secrets` write additionally
+requires the Sub2API `WorkspaceAPIKeyID`, which only the missing issuer would
+return. The existing production default-App path already creates the key and
+writes the Secret, but does so inside Control Plane while it still holds the
+user's delegated bearer; that authority does not exist on the Gateway owner.
+Per section 11 this was **not bypassed**: `CreateManagedKey` keeps failing closed,
+no raw key was written anywhere, and no fallback table, log or receipt fakes a
+passing path. Closing it needs an approved Sub2API service-issuance capability or
+an explicit owner decision on where the delegated authority lives. See the
+[boundary receipt](evidence/source-checks/2026-09-30-tke-serial-managed-key-serving-boundary.json).
+
 ## September 30 Serial Integration Stage 2-3 Source Progress
 
 Under the section-11 serial window (`codex/tke-serial-integration`), two stages
