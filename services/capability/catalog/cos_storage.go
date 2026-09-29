@@ -162,17 +162,18 @@ func (c *cosStorage) Assemble(ctx context.Context, upload, providerUploadRef, di
 		}
 		return nil, err
 	}
+	return assembled, nil
+}
+
+func (c *cosStorage) Promote(ctx context.Context, upload, digest string, assembled *AssembledObject) error {
 	target, err := immutableKey(digest)
 	if err != nil {
-		assembled.Cleanup()
-		return nil, err
+		return err
 	}
-	if _, _, err := c.client.Object.Copy(ctx, target, c.cfg.Bucket+"/"+key, nil); err != nil {
-		assembled.Cleanup()
-		return nil, ErrStorageUnavailable
+	if _, _, err := c.client.Object.Copy(ctx, target, c.cfg.Bucket+"/"+stagingKey(upload), nil); err != nil {
+		return ErrStorageUnavailable
 	}
-	c.client.Object.Delete(ctx, key)
-	return assembled, nil
+	return nil
 }
 
 // listParts returns every uploaded part keyed by number, following pagination.

@@ -259,10 +259,13 @@ func (s *Service) CompleteUpload(ctx context.Context, r *api.CompleteUploadRpcRe
 			validation = "PACKAGE_DIGEST_MISMATCH"
 		} else {
 			manifest, e = s.Objects.validateArchive(assembled.File.Name())
-			assembled.Cleanup()
 			if e != nil {
 				validation = "PACKAGE_VALIDATION_FAILED"
+			} else if e = s.Objects.store.Promote(ctx, u.Id, u.Sha256, assembled); e != nil {
+				assembled.Cleanup()
+				return status.Error(codes.Unavailable, "immutable object write failed")
 			}
+			assembled.Cleanup()
 		}
 		if digestMismatch && assembled != nil {
 			assembled.Cleanup()

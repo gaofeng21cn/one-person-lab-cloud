@@ -35,11 +35,12 @@ type Storage interface {
 	// PutPart stores one part for the restricted local data plane. Direct-to-
 	// storage providers are written by the browser and return an error here.
 	PutPart(ctx context.Context, upload string, part int, body io.Reader, size int64, digest string) (etag string, err error)
-	// Assemble finalizes the provider upload, verifies the assembled size and
-	// digest against the admitted facts, and stores the immutable object keyed
-	// by digest. It returns a readable copy of the exact admitted bytes for
-	// archive policy validation. The immutable object already exists on success.
+	// Assemble finalizes the provider upload and verifies the assembled size
+	// and digest. The returned copy must pass archive validation before Promote.
 	Assemble(ctx context.Context, upload, providerUploadRef, digest string, size int64, parts []ConfirmedPart) (*AssembledObject, error)
+	// Promote stores validated bytes under their immutable digest. It retains
+	// staging bytes so a failed owner transaction can retry the same upload.
+	Promote(ctx context.Context, upload, digest string, assembled *AssembledObject) error
 	// OpenImmutable streams the stored immutable object keyed by digest.
 	OpenImmutable(ctx context.Context, digest string) (*ImmutableObject, error)
 	// DeleteUpload removes provider upload artifacts for a cancelled or expired

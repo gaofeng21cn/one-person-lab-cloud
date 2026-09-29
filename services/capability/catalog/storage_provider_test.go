@@ -2,7 +2,12 @@ package catalog
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"io"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +29,46 @@ func TestLocalProviderStreamsThroughCapability(t *testing.T) {
 	if _, ok := interface{}(store).(interface{ DirectUploadOnly() bool }); ok {
 		t.Fatal("local provider must expose its restricted ingest data plane")
 	}
+}
+
+func TestLocalProviderPromotesOnlyAfterValidationAndRetainsRetryInput(t *testing.T) {
+	ctx := context.Background()
+	store, err := newLocalStorage(t.TempDir(), "http://127.0.0.1:8281")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := []byte("package bytes")
+	hash := sha256.Sum256(data)
+	digest := "sha256:" + hex.EncodeToString(hash[:])
+	if _, err := store.PutPart(ctx, "upload-1", 1, strings.NewReader(string(data)), int64(len(data)), digest); err != nil {
+		t.Fatal(err)
+	}
+	parts := []ConfirmedPart{{PartNumber: 1, SizeBytes: int64(len(data)), Sha256: digest}}
+	assembled, err := store.Assemble(ctx, "upload-1", "", digest, int64(len(data)), parts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer assembled.Cleanup()
+	if _, err := os.Stat(store.root + "/objects/" + strings.TrimPrefix(digest, "sha256:")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("assembly must not publish bytes before archive validation: %v", err)
+	}
+	if err := store.Promote(ctx, "upload-1", digest, assembled); err != nil {
+		t.Fatal(err)
+	}
+	object, err := store.OpenImmutable(ctx, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer object.Close()
+	read, err := io.ReadAll(object.Body)
+	if err != nil || string(read) != string(data) {
+		t.Fatalf("promoted bytes differ: %q, %v", read, err)
+	}
+	retry, err := store.Assemble(ctx, "upload-1", "", digest, int64(len(data)), parts)
+	if err != nil {
+		t.Fatalf("assembly must remain retryable until owner commit: %v", err)
+	}
+	retry.Cleanup()
 }
 
 func TestLocalProviderRejectsUnencryptedPublicEndpoint(t *testing.T) {

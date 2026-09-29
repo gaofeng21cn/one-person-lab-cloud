@@ -133,11 +133,11 @@ func (l *localStorage) Assemble(ctx context.Context, upload, providerUploadRef, 
 		os.Remove(f.Name())
 		return nil, ErrDigestMismatch
 	}
-	if e = l.putImmutable(f.Name(), digest); e != nil {
-		os.Remove(f.Name())
-		return nil, e
-	}
 	return &AssembledObject{File: f}, nil
+}
+
+func (l *localStorage) Promote(ctx context.Context, upload, digest string, assembled *AssembledObject) error {
+	return l.putImmutable(assembled.File.Name(), digest)
 }
 
 func (l *localStorage) putImmutable(source, d string) error {
