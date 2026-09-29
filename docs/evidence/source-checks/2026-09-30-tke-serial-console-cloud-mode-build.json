@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_serial_console_cloud_mode_build_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T11:05:00Z",
+  "result": "the_console_cloud_identity_build_succeeds_and_changes_the_emitted_bundle_when_selected",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 7 - Console cloud mode build and observable mode distinction",
+  "sourceBaseSha": "cddd8b02f2d53c423e3b9b3a9568e7761b0ee507",
+  "branch": "codex/tke-serial-integration",
+  "workspace": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.7",
+  "scope": "Establish the §11.7 'explicit Console cloud mode' source fact: the VITE_CONSOLE_IDENTITY=cloud build compiles, and its emitted bundle differs observably from the legacy default (the cloud build exposes the Publisher route). No production source changed; the build artifacts were removed after the check.",
+  "findings": [
+    {
+      "id": "cloud-mode-build",
+      "fact": "`VITE_CONSOLE_IDENTITY=cloud npm run build` (vite build) completed successfully: 2814 modules transformed, dist emitted. The Console identity is read at `apps/console-ui/src/app/console-identity.ts` and gates the Publisher/Agent routes in `apps/console-ui/src/app/console-router.ts`.",
+      "consequence": "The cloud-mode Console bundle is producible from the exact source SHA."
+    },
+    {
+      "id": "observable-difference",
+      "fact": "The emitted bundle distinguishes the two modes: the cloud build contains the Publisher surface marker `发布 Package` twice, while the legacy-default build contains it once.",
+      "consequence": "Selecting VITE_CONSOLE_IDENTITY=cloud has an observable effect on the built product, not a no-op."
+    },
+    {
+      "id": "not-the-default",
+      "fact": "The product Dockerfile's ARG default remains `VITE_CONSOLE_IDENTITY=legacy` and no Cloud build path (Candidate/release/qualification workflow) passes `cloud`.",
+      "consequence": "An installed product image still builds the legacy Console by default; explicitly shipping the cloud Console is an open decision for the Instance/Candidate path and is recorded, not assumed."
+    }
+  ],
+  "notRun": [
+    "Full product image build (Docker Hub is unreachable from this local host: auth.docker.io i/o timeout, so the pinned base/CLI images cannot be pulled and no fully offline build is possible here).",
+    "Candidate build (owner-actor dispatch), Instance deployment, production readback.",
+    "Console end-to-end business chain from the cloud-mode bundle against a live BFF."
+  ],
+  "claimBoundary": "This receipt claims the Console cloud-mode build compiles and produces a bundle observably distinct from the legacy default. It does not claim a Candidate image, an installed product, or that the cloud Console is the shipped default.",
+  "secrets": "none"
+}

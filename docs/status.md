@@ -70,6 +70,19 @@ current source. `npm run verify:local`, `npm run validate:product-boundary` and
 default-OPL-App Serve/Workspace tests were added
 ([receipt](evidence/source-checks/2026-09-30-tke-serial-full-verification-green.json)). It still does not substitute for the Instance TKE acceptance.
 
+## September 30 Serial Integration Stage 7 Source Progress (Console Cloud Mode)
+
+**Stage 7 (Console cloud mode):** the §11.7 "explicit Console cloud mode" source
+fact is established. `VITE_CONSOLE_IDENTITY=cloud npm run build` compiles, and
+the emitted bundle is observably distinct from the legacy default (the cloud
+build exposes the Publisher surface marker `发布 Package` twice versus once),
+so selecting the mode has a real effect. The product Dockerfile's default is still
+`legacy` and no Cloud build path passes `cloud`, so shipping the cloud Console in
+the installed product remains an open Candidate/Instance decision
+([receipt](evidence/source-checks/2026-09-30-tke-serial-console-cloud-mode-build.json)).
+A full local product image build was not possible here because Docker Hub is
+unreachable from this host.
+
 ## September 30 Serial Integration Merged To Canonical Main
 
 The serial integration branch is merged into canonical `main`: PR
