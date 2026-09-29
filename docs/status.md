@@ -47,6 +47,30 @@ state must not be mistaken for the deployment workflow source. No new Candidate,
 production deployment, customer migration, financial/provider action or release
 was performed by this audit. Actual rollout requires fresh owner evidence.
 
+## September 30 Serial Integration Stage 4 Source Progress (Secret Injection)
+
+**Stage 4 (I05 Secret injection):** the default OPL App's platform Gateway
+credential can now reach the Agent uncorrupted. The deploy wire gained an opaque
+managed-key binding (`RuntimeManagedKeyBinding`) so a `SecretBindingCommand`
+carries the exact approved-store fingerprint and a `SecretBindingReadback`
+returns the confirmed version. `FabricCoordination.BindSecret` is implemented in
+`services/fabric/coordination`: it authorizes the caller with the same
+CloudIdentity `BINDMANAGEDSECRET` action, resolves Fabric's own confirmed
+execution resource, has the provider confirm the exact approved-store Secret
+(`TencentProvider`/`LocalDockerProvider` `BindWorkspaceApplicationSecret`), and
+writes one immutable `fabric.secret_bindings` row per runtime+purpose that a
+retry replays rather than duplicates. `Serve`'s deployment resolves the managed
+key (`GatewayCoordination.CreateManagedKey`) and the Fabric binding before it
+freezes its snapshot, the adapter now injects the confirmed binding into the
+runtime input instead of refusing, and the runtime readiness event reports
+`credential_injection_verified` only from a confirmed binding. The raw Gateway
+Key still never enters Serve or any owner database. An isolated real-gRPC,
+real-PostgreSQL test proves confirmation, replay without a second confirmation,
+conflicting-reference refusal and authorization denial; the Serve adapter tests
+prove injection and refusal of an unbound declared Secret. Serving a managed key
+whose issuer writes over Fabric's HTTP secret boundary, route execution, model
+readback, two-mode Console, Candidate and Instance rollout remain open.
+
 ## September 30 Serial Integration Stage 2-3 Source Progress
 
 Under the section-11 serial window (`codex/tke-serial-integration`), two stages

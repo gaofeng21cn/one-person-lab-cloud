@@ -191,6 +191,12 @@ type WorkspaceApplicationRuntimeConfiguration struct {
 	CredentialSourceRuntimeOperationID string `json:"credentialSourceRuntimeOperationId,omitempty"`
 }
 
+// WorkspaceApplicationGatewayKeyField is the field name the installation's
+// Workspace Gateway Secret stores the managed key under. It is the one field a
+// revision's declared Gateway credential binds, so the reference, key field and
+// secret reference form a fixed triple no caller chooses.
+const WorkspaceApplicationGatewayKeyField = "opl_gateway_api_key"
+
 type WorkspaceApplicationRuntimeSecretBinding struct {
 	Name      string `json:"name"`
 	SecretRef string `json:"secretRef"`

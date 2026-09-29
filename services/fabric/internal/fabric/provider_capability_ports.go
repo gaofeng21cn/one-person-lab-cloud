@@ -17,6 +17,7 @@ type optionalProviderPorts struct {
 	workspaceLaunchComputePool          workspaceLaunchComputePoolProvider
 	workspaceLaunchRuntimeImageRevision workspaceLaunchRuntimeImageRevisionProvider
 	workspaceRuntimeDeleteObservation   workspaceRuntimeDeleteObservationProvider
+	applicationSecretBinder             workspaceApplicationSecretBinder
 	monthlyPreflightReports             monthlyPreflightReportProvider
 	monthlyProviderTruth                monthlyProviderTruthProvider
 }
@@ -39,6 +40,7 @@ func optionalProviderPortsFrom(provider Provider) optionalProviderPorts {
 	ports.workspaceLaunchComputePool, _ = provider.(workspaceLaunchComputePoolProvider)
 	ports.workspaceLaunchRuntimeImageRevision, _ = provider.(workspaceLaunchRuntimeImageRevisionProvider)
 	ports.workspaceRuntimeDeleteObservation, _ = provider.(workspaceRuntimeDeleteObservationProvider)
+	ports.applicationSecretBinder, _ = provider.(workspaceApplicationSecretBinder)
 	ports.monthlyPreflightReports, _ = provider.(monthlyPreflightReportProvider)
 	ports.monthlyProviderTruth, _ = provider.(monthlyProviderTruthProvider)
 	return ports

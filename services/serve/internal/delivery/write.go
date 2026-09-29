@@ -344,6 +344,9 @@ func (s *Service) Deploy(ctx context.Context, r *api.RuntimeDeployCommand) (*api
 	if s.Runtime == nil || s.Resources == nil || s.References == nil {
 		return nil, status.Error(codes.Unavailable, "runtime adapter, Fabric readback and Capability must be configured")
 	}
+	if err := s.resolveManagedKeyBinding(ctx, r); err != nil {
+		return nil, err
+	}
 	if err := s.acceptDeploy(ctx, r); err != nil {
 		return nil, err
 	}
@@ -452,10 +455,10 @@ func appendReadinessEvent(ctx context.Context, tx *sql.Tx, store *ownerstore.Sto
 		DeploymentId:         r.GetDeploymentId(),
 		Outcome:              outcome,
 		ApplicationAvailable: o.State == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY,
-		// The current Fabric adapter rejects secret/model configuration and does
-		// not return a credential-injection readback. Absence of a binding is not
-		// proof that injection happened, so keep this explicitly false.
-		CredentialInjectionVerified:      false,
+		// Injection is proven only by a confirmed managed-key Secret binding that
+		// the execution boundary was given; an application that declares no Secret
+		// needs none, and absence of a binding is never treated as proof.
+		CredentialInjectionVerified:      r.GetManagedKeyBinding() != nil && strings.TrimSpace(r.GetManagedKeyBinding().GetSecretBindingId()) != "" && strings.TrimSpace(r.GetManagedKeyBinding().GetSecretVersion()) != "",
 		AppliedModelConfigurationVersion: r.GetModelConfigurationVersion(),
 		ReceiptId: func() *string {
 			if o.ReadinessEvidenceRef == "" {

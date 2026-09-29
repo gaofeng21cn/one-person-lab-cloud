@@ -67,8 +67,12 @@ func (f *tkeProviderFixture) handler(w http.ResponseWriter, r *http.Request) {
 	if json.Unmarshal(body, &f.lastInput) != nil {
 		f.t.Fatal("invalid typed input")
 	}
-	if f.lastInput.SecretBindings != nil {
-		f.t.Fatal("secret material must never travel through Serve's execution input")
+	// A managed-key Secret binding may travel as an opaque reference (name,
+	// reference, version, key field); its raw value must never appear.
+	for _, binding := range f.lastInput.SecretBindings {
+		if binding.SecretRef == "" || binding.Version == "" || binding.Key != contracts.WorkspaceApplicationGatewayKeyField {
+			f.t.Fatalf("invalid runtime secret binding %+v", binding)
+		}
 	}
 	components := contracts.WorkspaceApplicationRuntimeComponents(f.lastInput.Revision)
 	for i := range components {
@@ -165,7 +169,7 @@ func TestServeTKEAdapterRequiresWholeRuntimeReadiness(t *testing.T) {
 	}
 }
 
-func TestServeTKEAdapterCarriesModelConfigurationAndNamesTheSecretGap(t *testing.T) {
+func TestServeTKEAdapterCarriesModelConfigurationAndInjectsDeclaredSecrets(t *testing.T) {
 	origin := delivery.RouteOrigin{Scheme: "https", ApplicationDomain: "apps.example"}
 	adapter, fixture, cmd, binding := tkeAdapterFixture(t, &contracts.WorkspaceApplicationEntry{ServiceName: "app-runtime-http-main", Port: 8080}, origin)
 	ctx := context.Background()
@@ -181,17 +185,31 @@ func TestServeTKEAdapterCarriesModelConfigurationAndNamesTheSecretGap(t *testing
 		t.Fatal("fixture did not receive the typed runtime input")
 	}
 
-	// A referenced Secret has no field to travel in, so Serve refuses and names the
-	// exact missing fact instead of executing an un-injected Agent.
-	secretCommand := proto.Clone(cmd).(*api.RuntimeDeployCommand)
-	secretCommand.SecretBindingId = "sbx-opaque-binding"
+	// A revision that declares the platform Gateway credential must execute only
+	// with the exact confirmed Secret binding, which travels as an opaque reference
+	// into the execution boundary.
+	declared := proto.Clone(cmd).(*api.RuntimeDeployCommand)
+	declared.DeploymentDescriptor.ApplicationRevision.Credentials = []*api.WorkspaceApplicationCredential{{Name: "gateway", Kind: api.WorkspaceApplicationCredentialKindEnum_WORKSPACE_APPLICATION_CREDENTIAL_KIND_ENUM_GATEWAY_KEY, Target: "/run/secrets/opl_gateway_api_key"}}
+	const version = "0123456789abcdef"
+	declared.ManagedKeyBinding = &api.RuntimeManagedKeyBinding{KeyBindingId: "key-1", SecretDeliveryReference: contracts.WorkspaceGatewaySecretRef(declared.WorkspaceId), Fingerprint: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", TargetSlot: "gateway", SecretBindingId: "sbx_1", SecretVersion: version}
+	if _, err := adapter.Start(ctx, declared, binding); err != nil {
+		t.Fatalf("declared secret rejected: %v", err)
+	}
+	if len(fixture.lastInput.SecretBindings) != 1 || fixture.lastInput.SecretBindings[0].Name != "gateway" || fixture.lastInput.SecretBindings[0].SecretRef != contracts.WorkspaceGatewaySecretRef(declared.WorkspaceId) || fixture.lastInput.SecretBindings[0].Version != version || fixture.lastInput.Configuration.CredentialVersion != version {
+		t.Fatalf("declared secret not injected: %+v", fixture.lastInput)
+	}
+
+	// The same revision with no confirmed binding must be refused rather than
+	// started un-injected and unable to reach its model.
+	unbound := proto.Clone(declared).(*api.RuntimeDeployCommand)
+	unbound.ManagedKeyBinding = nil
 	before := fixture.calls
-	_, err := adapter.Start(ctx, secretCommand, binding)
-	if status.Code(err) != codes.FailedPrecondition || !strings.Contains(err.Error(), delivery.ReasonCredentialInjectionWireMissing) || !strings.Contains(err.Error(), "Secret binding") {
-		t.Fatalf("secret gap err=%v", err)
+	_, err := adapter.Start(ctx, unbound, binding)
+	if status.Code(err) != codes.FailedPrecondition || !strings.Contains(err.Error(), delivery.ReasonManagedKeyUnavailable) {
+		t.Fatalf("unbound declared secret err=%v", err)
 	}
 	if fixture.calls != before {
-		t.Fatal("an unexpressible secret injection reached the provider")
+		t.Fatal("an unbound secret injection reached the provider")
 	}
 }
 

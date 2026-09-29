@@ -18,6 +18,7 @@ type TencentResourceProvider interface {
 	ReadComputeAllocation(context.Context, fabric.ComputeAllocation) (fabric.ComputeAllocation, error)
 	ReadStorageVolume(context.Context, fabric.StorageVolume) (fabric.StorageVolume, error)
 	ReadStorageAttachment(context.Context, fabric.StorageAttachment, fabric.ComputeAllocation, fabric.StorageVolume) (fabric.StorageAttachment, error)
+	BindWorkspaceApplicationSecret(context.Context, fabric.SecretBindInput) (fabric.SecretBindResult, error)
 }
 
 type tencentDispatcher struct {
@@ -37,6 +38,14 @@ func NewTencentDispatcher(service *fabric.Service, provider TencentResourceProvi
 }
 
 func (d *tencentDispatcher) Provider() string { return providerTencentTKE }
+
+func (d *tencentDispatcher) BindSecret(ctx context.Context, in SecretBindIntent) (SecretBindResult, error) {
+	bound, err := d.provider.BindWorkspaceApplicationSecret(ctx, fabric.SecretBindInput{AccountID: in.TenantID, WorkspaceID: in.WorkspaceID, RuntimeInstanceID: in.RuntimeInstanceID, SecretRef: in.SecretRef, Purpose: in.TargetSlot, Fingerprint: in.Fingerprint, TargetSlot: in.TargetSlot})
+	if err != nil {
+		return SecretBindResult{}, err
+	}
+	return SecretBindResult{SecretRef: bound.SecretRef, Version: bound.Version, Fingerprint: bound.Fingerprint}, nil
+}
 
 func (d *tencentDispatcher) EnsureResources(ctx context.Context, in ResourceIntent) (*ResourceResult, error) {
 	bound, err := d.provider.ResolveAcceptedResourcePlan(in.TenantID, in.Plan)

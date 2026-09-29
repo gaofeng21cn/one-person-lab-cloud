@@ -68,6 +68,29 @@ type NetworkFact struct {
 type ResourceDispatcher interface {
 	Provider() string
 	EnsureResources(context.Context, ResourceIntent) (*ResourceResult, error)
+	// BindSecret asks the provider to confirm the exact approved-store Secret for
+	// one runtime and return its observed identity. It never writes a credential.
+	BindSecret(context.Context, SecretBindIntent) (SecretBindResult, error)
+}
+
+// SecretBindIntent is one committed request to confirm an approved-store Secret
+// for a runtime. It carries only opaque identities, keyed by the Workspace and
+// runtime instance so a retry names the same credential.
+type SecretBindIntent struct {
+	TenantID          string
+	WorkspaceID       string
+	RuntimeInstanceID string
+	SecretRef         string
+	Fingerprint       string
+	TargetSlot        string
+}
+
+// SecretBindResult is the provider-confirmed Secret identity: the reference, its
+// exact version and fingerprint, as read back from the approved store.
+type SecretBindResult struct {
+	SecretRef   string
+	Version     string
+	Fingerprint string
 }
 
 func validResourceResult(in ResourceIntent, r *ResourceResult, provider string) error {

@@ -25,6 +25,14 @@ func NewLocalDispatcher(service *fabric.Service, provider *fabric.LocalDockerPro
 
 func (d *localDispatcher) Provider() string { return providerLocalDocker }
 
+func (d *localDispatcher) BindSecret(ctx context.Context, in SecretBindIntent) (SecretBindResult, error) {
+	bound, err := d.provider.BindWorkspaceApplicationSecret(ctx, fabric.SecretBindInput{AccountID: in.TenantID, WorkspaceID: in.WorkspaceID, RuntimeInstanceID: in.RuntimeInstanceID, SecretRef: in.SecretRef, Purpose: in.TargetSlot, Fingerprint: in.Fingerprint, TargetSlot: in.TargetSlot})
+	if err != nil {
+		return SecretBindResult{}, err
+	}
+	return SecretBindResult{SecretRef: bound.SecretRef, Version: bound.Version, Fingerprint: bound.Fingerprint}, nil
+}
+
 func (d *localDispatcher) EnsureResources(ctx context.Context, in ResourceIntent) (*ResourceResult, error) {
 	bound, err := d.provider.ResolveAcceptedResourcePlan(in.TenantID, in.Plan)
 	if err != nil {

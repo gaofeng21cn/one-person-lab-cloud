@@ -3,6 +3,7 @@ package coordination_test
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net"
 	"os"
 	"sync"
@@ -69,6 +70,10 @@ type localFixture struct {
 }
 
 func (d *localFixture) Provider() string { return "local-docker" }
+
+func (d *localFixture) BindSecret(context.Context, coordination.SecretBindIntent) (coordination.SecretBindResult, error) {
+	return coordination.SecretBindResult{}, fmt.Errorf("fixture_provider_bind_unavailable")
+}
 
 func (d *localFixture) EnsureResources(_ context.Context, in coordination.ResourceIntent) (*coordination.ResourceResult, error) {
 	d.calls++

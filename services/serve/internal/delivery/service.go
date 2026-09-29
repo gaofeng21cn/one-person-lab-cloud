@@ -63,7 +63,11 @@ type Service struct {
 	// the immutable artifact and the application revision template.
 	RuntimeReleases api.RuntimeControlProductServiceClient
 	Resources       api.FabricCoordinationClient
-	Runtime         RuntimeAdapter
+	// Gateway is the only owner that may mint a Workspace-managed Gateway key and
+	// write it to the approved Secret store. Serve never holds the raw key; it
+	// carries only the opaque binding identity into the deployment.
+	Gateway api.GatewayCoordinationClient
+	Runtime RuntimeAdapter
 	// Route is Serve's port to the installation route provider. It is the only
 	// thing that may confirm a route epoch fence, activate a selected Agent at the
 	// provider or roll a route back; when it is absent Serve records the switch it
@@ -171,6 +175,20 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 			return err
 		}
 		service.Resources = api.NewFabricCoordinationClient(conn)
+	}
+	if address := os.Getenv("OPL_GATEWAY_ADDR"); address != "" {
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.Gateway.Service(), os.Getenv("OPL_GATEWAY_TOKEN"))
+		if err != nil {
+			return err
+		}
+		conn, err := grpc.NewClient(address, options...)
+		if err != nil {
+			return err
+		}
+		if err = server.TrackCloser(conn); err != nil {
+			return err
+		}
+		service.Gateway = api.NewGatewayCoordinationClient(conn)
 	}
 	if address := os.Getenv("OPL_FABRIC_APPLICATION_URL"); address != "" {
 		// The installation's Agent execution boundary. The declared route origin

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"strings"
@@ -42,6 +43,10 @@ type tencentFixture struct {
 }
 
 func (d *tencentFixture) Provider() string { return "tencent-tke" }
+
+func (d *tencentFixture) BindSecret(context.Context, coordination.SecretBindIntent) (coordination.SecretBindResult, error) {
+	return coordination.SecretBindResult{}, fmt.Errorf("fixture_provider_bind_unavailable")
+}
 
 func (d *tencentFixture) EnsureResources(_ context.Context, in coordination.ResourceIntent) (*coordination.ResourceResult, error) {
 	d.calls++
