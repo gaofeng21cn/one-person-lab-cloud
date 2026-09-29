@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_cloudidentity_owner_readiness_source_receipt",
+  "recordedAt": "2026-09-29T00:00:00+08:00",
+  "status": "cloud_source_implemented_focused_postgres_passed_installation_pending",
+  "scope": "First deployment batch enablement for the CloudIdentity owner (services/gateway-integration, owner tenant). Source and focused PostgreSQL verification only: no service was deployed, no Instance manifest was changed, no provider or money mutation ran.",
+  "problem": {
+    "statement": "The owner that answers CloudIdentity authorization installed a failing cloud_identity readiness check for itself whenever OPL_CLOUD_IDENTITY_URL was absent and a database was present, so it could never report SERVING in an installation that had not deployed a separate authority.",
+    "reproduction": {
+      "shape": "tenant owner, real isolated PostgreSQL database, OPL_CLOUD_IDENTITY_URL unset, TenantProductService group registered",
+      "observedBefore": "FAIL: tenant: dependency cloud_identity is not ready: CloudIdentity authorization is not configured",
+      "observedAfter": "PASS: the authority reports Ready and SERVING"
+    },
+    "secondStatement": "The Build owner-commit readback dialed its target unconditionally. grpc.NewClient accepts an empty target without error, so an unconfigured OPL_BUILD_ADDR installed a client whose failure surfaced later as an unrelated transport error instead of an explicit absence. The Workspace readback in the same process already guarded on a non-empty address."
+  },
+  "sourceEvidence": [
+    {
+      "fact": "The readiness check was installed without excluding the owner that answers authorization",
+      "path": "services/internal/ownerservice/bootstrap.go",
+      "line": 66,
+      "before": "if config.CloudIdentityAddr == \"\" && (config.DatabaseURL != \"\" || database != nil) { AddReadinessCheck(\"cloud_identity\", ...) }",
+      "after": "the same check is installed only when config.Owner != OwnerTenant"
+    },
+    {
+      "fact": "Every owner resolves the CloudIdentity address from OPL_CLOUD_IDENTITY_URL, and an absent address yields an authorizer with no client",
+      "path": "services/internal/ownerservice/config.go",
+      "line": 69
+    },
+    {
+      "fact": "The authority's own members path authorizes in-process through Service.AuthorizeAction, not through the ownerservice.Authorizer, so the batch-1 login/session/invitation flow does not depend on a configured address",
+      "path": "services/gateway-integration/identity/members.go",
+      "line": 45
+    },
+    {
+      "fact": "The Build readback dialed without an address guard while the Workspace readback guarded",
+      "path": "services/gateway-integration/cmd/server/main.go",
+      "line": 68,
+      "before": "grpc.NewClient(os.Getenv(\"OPL_BUILD_ADDR\"), options...) called unconditionally",
+      "after": "Build and Workspace are wired through one guarded loop: no address, no client"
+    },
+    {
+      "fact": "The tenant owner is the CloudIdentity authority and the only target service that registers the authorization server",
+      "path": "services/gateway-integration/identity/service.go",
+      "line": 87
+    }
+  ],
+  "implementation": {
+    "ownerservice": "The cloud_identity readiness check now applies to every owner except the authority. The change is a precondition on an existing check; no new check, gate or fallback was added.",
+    "gateway-integration": "Build and Workspace owner-commit readback share one guarded wiring loop. A configured address dials and tracks the connection; an absent address leaves the corresponding grant path refusing rather than installing a client against an empty target.",
+    "configuration": "docs/runtime/package-buildkit-local.md records the absence rule where OPL_BUILD_ADDR is already documented as canonical configuration.",
+    "test": "services/internal/ownerservice/readiness_postgres_test.go gains TestCloudIdentityAuthorityDoesNotRequireASeparateCloudIdentity, which pins both directions against a real PostgreSQL server: the authority serves without dialing itself, and an ordinary owner is still gated on a configured address."
+  },
+  "focusedVerification": [
+    {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated loopback admin DSN> go -C services/internal/ownerservice test -run TestCloudIdentityAuthorityDoesNotRequireASeparateCloudIdentity -count=1 -v",
+      "result": "passed",
+      "coverage": "authority subtest: Ready and SERVING with no configured address; gated subtest: an owner without a configured address reports Ready error naming cloud_identity and does not report SERVING"
+    },
+    {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated loopback admin DSN> go -C services/internal/ownerservice test ./... -count=1",
+      "result": "passed",
+      "coverage": "the whole shared owner-process package against real PostgreSQL, including the pre-existing readiness and operation over-the-wire tests"
+    },
+    {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated loopback admin DSN> go -C services/gateway-integration test ./... -count=1",
+      "result": "passed",
+      "coverage": "identity, migrations and the command package; member governance, repository binding and workspace grant persistence tests unchanged"
+    },
+    {
+      "command": "npm run verify:local",
+      "result": "passed",
+      "coverage": "ordinary source verification across contracts, control-plane, fabric, ledger and shared packages"
+    },
+    {
+      "command": "gofmt -l services/internal/ownerservice services/gateway-integration; go vet ./... in both modules",
+      "result": "passed",
+      "coverage": "formatting and static analysis for both changed modules"
+    }
+  ],
+  "remainingGaps": [
+    {
+      "gap": "The authority's own shared OwnerOperations group still cannot authorize without a configured CloudIdentity address.",
+      "evidence": "With owner tenant, a real database and no address, ownerservice.Authorizer.Authorize returns 'Unavailable: CloudIdentity authorization is not configured' after the scope check passes.",
+      "whyNotFixedHere": "Resolving it requires the authority to answer authorization in-process from its own store. The policy implementation lives in gateway-integration while the authorizer is constructed inside the shared startup path before the owner's own service exists, so the fix changes the shared startup contract for every owner. It is a distinct outcome and is not smuggled into this change.",
+      "affectedPath": "console operation readback /api/v2/operations/{owner}/{operationId} for owner=tenant, not the batch-1 login, session and invitation flow",
+      "note": "This gap was reproduced but is not pinned as expected behaviour in any test."
+    }
+  ],
+  "notProven": [
+    "That services/gateway-integration runs in the Instance unit or reports SERVING on Tencent/TKE.",
+    "That any CloudIdentity-authorized call from another owner succeeds in a deployed installation.",
+    "That the Console BFF session surface is reachable or switched.",
+    "Any Instance receipt: this change produces no deployment, rollout, rollback or provider qualification evidence."
+  ],
+  "boundary": "This receipt binds a Cloud source change and its focused PostgreSQL verification. Adopting the first deployment batch, and any readback from Tencent/TKE, belongs to the owner of opl-instance-medopl.",
+  "sourceFilesSha256": {
+    "services/internal/ownerservice/bootstrap.go": "69c3e405399eaac5755b018d69c3fa5b1c4969b5dbb73f40ef6e306615aec2d2",
+    "services/internal/ownerservice/readiness_postgres_test.go": "6ee3b3994ce989b2ea5101a3cc42e6e1d5eefc5dff96ae400cad55314804a490",
+    "services/gateway-integration/cmd/server/main.go": "64a65a471a0e8400d6bba382197375bee021c31403481b59985af637a8393e3d",
+    "docs/runtime/package-buildkit-local.md": "85c598062c6b8f65c9196c7d221142af31cc30a6cc25825d47f635a9ecee5f21"
+  },
+  "productionDeploymentDispatched": false,
+  "realMoneyOrProviderMutation": false,
+  "source": {
+    "baseSha": "bf9027253dd852383c6069e7dad9fc7d436efbe3",
+    "commitSha": "91e781e13b8306740120d12216bb81197d42a969",
+    "branch": "codex/cloudidentity-owner-readiness"
+  }
+}

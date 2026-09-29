@@ -128,7 +128,9 @@ configure these through approved instance configuration/Secret stores:
 - `OPL_BUILD_ADDR`, `OPL_BUILD_TOKEN`: typed owner-commit readback for grant
   issuance and resource-limited continuation. The Build peer allowlist includes
   Tenant. The shared `OPL_CLOUD_IDENTITY_URL`/token points to this authority for
-  the other owners and shared Tenant operation readback.
+  the other owners and shared Tenant operation readback. An address that is not
+  configured leaves that owner's grant path refusing rather than dialing an empty
+  target, because this authority is deployed before Build in the unit.
 - `OPL_PUBLIC_URL`: BFF's configured public origin behind a TLS reverse proxy.
 - `OPL_PUBLISHER_SCHEMA_PATH` and `OPL_PUBLISHER_SCHEMA_DIGEST`: Capability's exact
   canonical publisher schema; the image includes it at

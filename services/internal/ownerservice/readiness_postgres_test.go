@@ -3,6 +3,7 @@ package ownerservice
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"google.golang.org/grpc"
@@ -71,4 +72,80 @@ func TestOwnerReportsServingOnlyWithAReachableDatabase(t *testing.T) {
 	if err := bootstrap.Server.Ready(ctx); err != nil {
 		t.Fatalf("ready owner reported not ready: %v", err)
 	}
+}
+
+// TestCloudIdentityAuthorityDoesNotRequireASeparateCloudIdentity proves, against a
+// real PostgreSQL server, that the owner answering CloudIdentity authorization
+// reports SERVING from its own store, and that every other owner stays gated on a
+// configured CloudIdentity address.
+//
+// The authority resolves authorization from its own database, so an absent
+// OPL_CLOUD_IDENTITY_URL is its correct production configuration. Gating it on a
+// dial to another process made a correctly configured authority permanently
+// NOT_SERVING, which is a false dependency report rather than a truthful one.
+func TestCloudIdentityAuthorityDoesNotRequireASeparateCloudIdentity(t *testing.T) {
+	t.Setenv("OPL_POSTGRES_TESTS", "1")
+	adminDSN := ownerstoretest.EnsureAdminDSNOrSkip(os.Getenv, t.Skip)
+	ctx := context.Background()
+
+	start := func(t *testing.T, owner Owner, database, schemaRole, writerRole, runtimeRole string) *Bootstrap {
+		t.Helper()
+		harness, err := ownerstoretest.Setup(ctx, ownerstoretest.Config{
+			AdminDSN:        adminDSN,
+			Owner:           string(owner),
+			Database:        database,
+			SchemaOwnerRole: schemaRole,
+			WriterRole:      writerRole,
+			RuntimeRole:     runtimeRole,
+		})
+		if err != nil {
+			t.Fatalf("provision isolated database: %v", err)
+		}
+		t.Cleanup(func() { _ = harness.Close(context.Background()) })
+		if err := harness.Install(ctx, harness.OwnerDSN, harness.DatabaseName(), emptyMigrations{}); err != nil {
+			t.Fatalf("install owner schema: %v", err)
+		}
+		ownerDatabase, err := OpenDatabase(ctx, owner, harness.RuntimeDSN)
+		if err != nil {
+			t.Fatalf("open owner database: %v", err)
+		}
+		t.Cleanup(func() { _ = ownerDatabase.Close() })
+
+		config := bootstrapConfig(owner)
+		// No OPL_CLOUD_IDENTITY_URL in either case: this is the exact production
+		// shape of an installation that has not deployed a separate authority.
+		config.CloudIdentityAddr = ""
+		config.CloudIdentityToken = ""
+		bootstrap, err := StartWithDatabase(ctx, ownerDatabase, config, emptyMigrations{}, func(server *Server, _ *Database) error {
+			if err := server.RequireProductGroups("TenantProductService"); err != nil {
+				return err
+			}
+			return server.RegisterGroup("TenantProductService", func(*grpc.Server) {})
+		})
+		if err != nil {
+			t.Fatalf("start: %v", err)
+		}
+		t.Cleanup(func() { _ = bootstrap.Close() })
+		return bootstrap
+	}
+
+	t.Run("the authority serves without dialing itself", func(t *testing.T) {
+		bootstrap := start(t, OwnerTenant, "opl_ci_authority_probe", "opl_ci_authority_probe_owner", "opl_ci_authority_probe_writer", "opl_ci_authority_probe_runtime")
+		if err := bootstrap.Server.Ready(ctx); err != nil {
+			t.Fatalf("the CloudIdentity authority reported not ready: %v", err)
+		}
+		if !bootstrap.Server.healthServing() {
+			t.Fatal("the CloudIdentity authority did not report SERVING")
+		}
+	})
+
+	t.Run("every other owner is still gated on a configured authority", func(t *testing.T) {
+		bootstrap := start(t, OwnerCapability, "opl_ci_gated_probe", "opl_ci_gated_probe_owner", "opl_ci_gated_probe_writer", "opl_ci_gated_probe_runtime")
+		if err := bootstrap.Server.Ready(ctx); err == nil || !strings.Contains(err.Error(), "cloud_identity") {
+			t.Fatalf("an owner without a configured CloudIdentity reported ready or the wrong reason: %v", err)
+		}
+		if bootstrap.Server.healthServing() {
+			t.Fatal("an owner without a configured CloudIdentity reported SERVING")
+		}
+	})
 }
