@@ -12,6 +12,7 @@ package delivery
 
 import (
 	"context"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -48,20 +49,104 @@ func (s *Service) ObserveRuntime(ctx context.Context, request *api.RuntimeReadba
 	return s.runtimeReadback(ctx, request.GetRuntimeInstanceId(), request.GetDeploymentId())
 }
 
-// StopRuntime, ReloadRuntime and ReadApplicationCredentials are part of the same
-// contract but are not implemented in this slice: the installation boundary this
-// adapter reaches exposes start and readback only. Each refuses with a named,
-// actionable reason instead of returning an empty success.
-func (s *Service) StopRuntime(context.Context, *api.RuntimeStopCommand) (*api.Operation, error) {
-	return nil, status.Errorf(codes.Unimplemented, "%s: StopRuntime has no installation execution path in this slice", ReasonRuntimeAdapterCapabilityUnavailable)
+// StopRuntime retires the exact original runtime through the installation's
+// lifecycle boundary. It resolves the persisted original command from Serve's own
+// store, so a lost caller response retires the same runtime rather than a new one.
+func (s *Service) StopRuntime(ctx context.Context, command *api.RuntimeStopCommand) (*api.Operation, error) {
+	if err := requireServePeer(ctx); err != nil {
+		return nil, err
+	}
+	if s.Runtime == nil {
+		return nil, status.Error(codes.Unavailable, "runtime execution adapter is not configured")
+	}
+	runtimeID := strings.TrimSpace(command.GetRuntimeInstanceId())
+	if runtimeID == "" {
+		return nil, status.Error(codes.InvalidArgument, "runtime instance is required")
+	}
+	deploy, err := s.persistedRuntimeCommand(ctx, runtimeID, command.GetDeploymentId())
+	if err != nil {
+		return nil, err
+	}
+	binding, err := s.confirmedRuntimeBinding(ctx, deploy.command)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.Runtime.Lifecycle(ctx, deploy.command, binding, "suspended"); err != nil {
+		return nil, err
+	}
+	return s.runtimeLifecycleOperation(ctx, deploy, "runtime_stop", "suspending"), nil
 }
 
-func (s *Service) ReloadRuntime(context.Context, *api.RuntimeReloadCommand) (*api.Operation, error) {
-	return nil, status.Errorf(codes.Unimplemented, "%s: ReloadRuntime has no installation execution path in this slice", ReasonRuntimeAdapterCapabilityUnavailable)
+// ReloadRuntime applies a new model configuration to the exact persisted runtime.
+// The applied version is only recorded after the installation confirms it, so a
+// failed reload never advances applied_model_configuration_version.
+func (s *Service) ReloadRuntime(ctx context.Context, command *api.RuntimeReloadCommand) (*api.Operation, error) {
+	if err := requireServePeer(ctx); err != nil {
+		return nil, err
+	}
+	if s.Runtime == nil {
+		return nil, status.Error(codes.Unavailable, "runtime execution adapter is not configured")
+	}
+	runtimeID := strings.TrimSpace(command.GetRuntimeInstanceId())
+	if runtimeID == "" || command.GetTargetVersion() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "runtime instance and a positive target version are required")
+	}
+	deploy, err := s.persistedRuntimeCommand(ctx, runtimeID, "")
+	if err != nil {
+		return nil, err
+	}
+	if current := deploy.appliedModelVersion; current != command.GetExpectedAppliedVersion() {
+		return nil, status.Errorf(codes.FailedPrecondition, "runtime applied model configuration is %d, not the expected version", current)
+	}
+	reload := proto.Clone(deploy.command).(*api.RuntimeDeployCommand)
+	reload.ModelConfigurationVersion = command.GetTargetVersion()
+	reload.ModelSelections = command.GetSelections()
+	binding, err := s.confirmedRuntimeBinding(ctx, reload)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.Runtime.Reload(ctx, reload, binding); err != nil {
+		return nil, err
+	}
+	// The requested version is NOT the applied version until the runtime confirms
+	// it. Until a provider readback carries the applied model configuration, the
+	// operation stays awaiting confirmation and the stored applied version is
+	// unchanged, so a client can never read a desired version as applied.
+	return s.runtimeLifecycleOperation(ctx, deploy, "runtime_reload", "awaiting_confirmation"), nil
 }
 
-func (s *Service) ReadApplicationCredentials(context.Context, *api.ReadApplicationCredentialsRequest) (*api.WorkspaceApplicationCredentials, error) {
-	return nil, status.Errorf(codes.Unimplemented, "%s: ReadApplicationCredentials has no installation credential path in this slice", ReasonRuntimeAdapterCapabilityUnavailable)
+// ReadApplicationCredentials returns the platform-issued WebUI credential for the
+// exact persisted runtime through the installation's credential boundary. The
+// value is never persisted, logged or written to an event.
+func (s *Service) ReadApplicationCredentials(ctx context.Context, request *api.ReadApplicationCredentialsRequest) (*api.WorkspaceApplicationCredentials, error) {
+	if err := requireServePeer(ctx); err != nil {
+		return nil, err
+	}
+	if s.Runtime == nil {
+		return nil, status.Error(codes.Unavailable, "runtime execution adapter is not configured")
+	}
+	runtimeID := strings.TrimSpace(request.GetRuntimeInstanceId())
+	if runtimeID == "" {
+		return nil, status.Error(codes.InvalidArgument, "runtime instance is required")
+	}
+	deploy, err := s.persistedRuntimeCommand(ctx, runtimeID, request.GetDeploymentId())
+	if err != nil {
+		return nil, err
+	}
+	binding, err := s.confirmedRuntimeBinding(ctx, deploy.command)
+	if err != nil {
+		return nil, err
+	}
+	credentials, err := s.Runtime.Credentials(ctx, deploy.command, binding)
+	if err != nil {
+		return nil, err
+	}
+	// The runtime's own credential for the same workspace is the only value served;
+	// a mismatch is refused rather than returned.
+	if credentials.GetRuntimeInstanceId() != runtimeID || credentials.GetWorkspaceId() != deploy.command.GetWorkspaceId() {
+		return nil, status.Error(codes.FailedPrecondition, "runtime credentials do not match the exact runtime")
+	}
+	return credentials, nil
 }
 
 // executeRuntimeStep resolves the exact executable resource binding through the

@@ -251,3 +251,120 @@ func referencedSecretRequired(revision contracts.WorkspaceApplicationRevision) b
 	}
 	return contracts.WorkspaceApplicationRequiresPlatformCredentials(revision)
 }
+
+// lifecycleRuntimeInput builds the Fabric lifecycle input for the exact original
+// deployment. Only opaque runtime identity travels; explicit application input is
+// replaced by the lifecycle handle the Fabric runtime already owns.
+func (a *TKEApplicationAdapter) lifecycleInput(command *api.RuntimeDeployCommand, binding *api.ResourceExecutionBinding, desired string) contracts.WorkspaceApplicationRuntimeLifecycleInput {
+	return contracts.WorkspaceApplicationRuntimeLifecycleInput{
+		AccountID: binding.GetAccountId(), WorkspaceID: command.GetWorkspaceId(),
+		RuntimeID: contracts.WorkspaceApplicationRuntimeID(command.GetRuntimeInstanceId()),
+		RuntimeOperationID: command.GetRuntimeInstanceId(), DesiredState: desired,
+	}
+}
+
+// Lifecycle applies a desired state to the exact reserved runtime through the
+// installation's lifecycle boundary and confirms the provider applied it.
+func (a *TKEApplicationAdapter) Lifecycle(ctx context.Context, command *api.RuntimeDeployCommand, binding *api.ResourceExecutionBinding, desired string) error {
+	_, err := a.callLifecycle(ctx, command, binding, desired, "lifecycle")
+	return err
+}
+
+// Reload applies the command's model configuration through the lifecycle boundary's
+// running state, which re-reads the frozen configuration the runtime already holds.
+func (a *TKEApplicationAdapter) Reload(ctx context.Context, command *api.RuntimeDeployCommand, binding *api.ResourceExecutionBinding) error {
+	_, err := a.callLifecycle(ctx, command, binding, "running", "lifecycle")
+	return err
+}
+
+// Credentials reads the platform-issued WebUI credential for the exact runtime. The
+// value travels only in the response and is never persisted.
+func (a *TKEApplicationAdapter) Credentials(ctx context.Context, command *api.RuntimeDeployCommand, binding *api.ResourceExecutionBinding) (*api.WorkspaceApplicationCredentials, error) {
+	if a == nil || a.BaseURL == "" || a.Token == "" || len(a.CapabilityKey) < 32 {
+		return nil, status.Error(codes.Unavailable, "Serve Agent execution credentials are not configured")
+	}
+	body, err := json.Marshal(a.lifecycleInput(command, binding, "running"))
+	if err != nil {
+		return nil, err
+	}
+	response, err := a.post(ctx, command, binding, "/fabric/workspace-application-runtimes/"+url.PathEscape(command.GetWorkspaceId())+"/credentials", "read_workspace_application_runtime_credentials", body)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, status.Errorf(codes.Unavailable, "Agent credential boundary returned HTTP %d", response.StatusCode)
+	}
+	var credentials contracts.WorkspaceApplicationRuntimeCredentials
+	if json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&credentials) != nil || credentials.RuntimeID != contracts.WorkspaceApplicationRuntimeID(command.GetRuntimeInstanceId()) || credentials.WorkspaceID != command.GetWorkspaceId() {
+		return nil, status.Error(codes.FailedPrecondition, "Agent credential readback does not match the exact runtime")
+	}
+	return &api.WorkspaceApplicationCredentials{WorkspaceId: credentials.WorkspaceID, RuntimeInstanceId: credentials.RuntimeID, Username: credentials.WebUIUsername, Password: credentials.WebUIPassword}, nil
+}
+
+// callLifecycle posts one lifecycle request and confirms the provider's readback of
+// the exact runtime.
+func (a *TKEApplicationAdapter) callLifecycle(ctx context.Context, command *api.RuntimeDeployCommand, binding *api.ResourceExecutionBinding, desired, endpoint string) (*contracts.WorkspaceApplicationRuntimeLifecycleResult, error) {
+	if a == nil || a.BaseURL == "" || a.Token == "" || len(a.CapabilityKey) < 32 {
+		return nil, status.Error(codes.Unavailable, "Serve Agent execution credentials are not configured")
+	}
+	body, err := json.Marshal(a.lifecycleInput(command, binding, desired))
+	if err != nil {
+		return nil, err
+	}
+	response, err := a.post(ctx, command, binding, "/fabric/workspace-application-runtimes/"+url.PathEscape(command.GetWorkspaceId())+"/"+endpoint, "set_workspace_application_runtime_lifecycle", body)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, status.Errorf(codes.Unavailable, "Agent lifecycle boundary returned HTTP %d", response.StatusCode)
+	}
+	var result contracts.WorkspaceApplicationRuntimeLifecycleResult
+	if json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&result) != nil {
+		return nil, status.Error(codes.FailedPrecondition, "Agent lifecycle readback is not decodable")
+	}
+	if result.RuntimeID != contracts.WorkspaceApplicationRuntimeID(command.GetRuntimeInstanceId()) || result.WorkspaceID != command.GetWorkspaceId() {
+		return nil, status.Error(codes.FailedPrecondition, "Agent lifecycle readback does not match the exact runtime")
+	}
+	return &result, nil
+}
+
+// post signs and sends one Fabric capability request. It is the shared frame the
+// adapter's own execution calls use, factored so lifecycle and credential calls
+// carry the identical scoped, signed identity.
+func (a *TKEApplicationAdapter) post(ctx context.Context, command *api.RuntimeDeployCommand, binding *api.ResourceExecutionBinding, path, action string, body []byte) (*http.Response, error) {
+	if binding == nil {
+		return nil, status.Error(codes.InvalidArgument, "resource binding is required")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(a.BaseURL, "/")+path, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256(body)
+	claims := struct {
+		Version      int    `json:"version"`
+		Caller       string `json:"caller"`
+		AccountID    string `json:"accountId"`
+		WorkspaceID  string `json:"workspaceId"`
+		ResourceKind string `json:"resourceKind"`
+		ResourceID   string `json:"resourceId"`
+		Action       string `json:"action"`
+		OperationID  string `json:"operationId"`
+		ExpiresAt    int64  `json:"expiresAt"`
+		BodySHA256   string `json:"bodySha256"`
+	}{1, "serve", binding.GetAccountId(), command.GetWorkspaceId(), "workspace_application_runtime", command.GetWorkspaceId(), action, command.GetRuntimeInstanceId(), time.Now().Add(time.Minute).Unix(), hex.EncodeToString(sum[:])}
+	payload, _ := json.Marshal(claims)
+	encoded := base64.RawURLEncoding.EncodeToString(payload)
+	mac := hmac.New(sha256.New, []byte(a.CapabilityKey))
+	mac.Write([]byte(encoded))
+	req.Header.Set("Authorization", "Bearer "+a.Token)
+	req.Header.Set("Idempotency-Key", command.GetRuntimeInstanceId())
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-OPL-Fabric-Capability", encoded+"."+base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
+	client := a.Client
+	if client == nil {
+		client = &http.Client{Timeout: 90 * time.Second}
+	}
+	return client.Do(req)
+}

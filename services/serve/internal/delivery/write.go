@@ -29,6 +29,13 @@ import (
 type RuntimeAdapter interface {
 	Start(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (RuntimeObservation, error)
 	Observe(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (RuntimeObservation, error)
+	// Lifecycle applies a desired lifecycle state (running, suspended, absent) to
+	// the exact reserved runtime. It reports only what the provider confirmed.
+	Lifecycle(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding, string) error
+	// Reload applies the command's model configuration to the exact runtime.
+	Reload(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) error
+	// Credentials reads the platform-issued WebUI credential for the exact runtime.
+	Credentials(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (*api.WorkspaceApplicationCredentials, error)
 }
 
 type reservationInput struct {

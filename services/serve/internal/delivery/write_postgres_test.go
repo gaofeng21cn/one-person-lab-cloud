@@ -73,6 +73,15 @@ func (f *runtimeForServe) Start(context.Context, *api.RuntimeDeployCommand, *api
 	f.starts++
 	return runtimeReady(applicationEntry(), "https://ws.example/app", "ack-only"), nil
 }
+func (*runtimeForServe) Lifecycle(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding, string) error {
+	return nil
+}
+func (*runtimeForServe) Reload(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) error {
+	return nil
+}
+func (*runtimeForServe) Credentials(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (*api.WorkspaceApplicationCredentials, error) {
+	return nil, errors.New("credentials unavailable")
+}
 func (f *runtimeForServe) Observe(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (delivery.RuntimeObservation, error) {
 	f.observes++
 	if f.observeErr {
@@ -264,6 +273,15 @@ type orderedObservationRuntime struct {
 
 func (f *orderedObservationRuntime) Start(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (delivery.RuntimeObservation, error) {
 	return delivery.RuntimeObservation{}, nil
+}
+func (*orderedObservationRuntime) Lifecycle(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding, string) error {
+	return nil
+}
+func (*orderedObservationRuntime) Reload(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) error {
+	return nil
+}
+func (*orderedObservationRuntime) Credentials(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (*api.WorkspaceApplicationCredentials, error) {
+	return nil, errors.New("credentials unavailable")
 }
 func (f *orderedObservationRuntime) Observe(ctx context.Context, _ *api.RuntimeDeployCommand, _ *api.ResourceExecutionBinding) (delivery.RuntimeObservation, error) {
 	f.mu.Lock()
