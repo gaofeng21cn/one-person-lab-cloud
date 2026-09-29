@@ -46,11 +46,12 @@ func main() {
 		if database == nil {
 			return ownerservice.ErrHandlersNotImplemented
 		}
-		root, publicURL, schemaPath, schemaDigest, signing := os.Getenv("OPL_CAPABILITY_OBJECT_ROOT"), os.Getenv("OPL_CAPABILITY_OBJECT_URL"), os.Getenv("OPL_CAPABILITY_PACKAGE_SCHEMA_PATH"), os.Getenv("OPL_CAPABILITY_PACKAGE_SCHEMA_DIGEST"), os.Getenv("OPL_CAPABILITY_OBJECT_SIGNING_KEY")
-		if root == "" || publicURL == "" || schemaPath == "" || schemaDigest == "" || len(signing) < 32 {
+		schemaPath, schemaDigest := os.Getenv("OPL_CAPABILITY_PACKAGE_SCHEMA_PATH"), os.Getenv("OPL_CAPABILITY_PACKAGE_SCHEMA_DIGEST")
+		if schemaPath == "" || schemaDigest == "" {
 			return ownerservice.ErrHandlersNotImplemented
 		}
-		objects, err := catalog.NewObjects(root, publicURL, []byte(signing), catalog.UploadPolicy{MaxBytes: 1 << 30, PartBytes: 16 << 20, MaxExpandedBytes: 4 << 30, MaxFiles: 100000, TTL: 24 * time.Hour, ManifestPath: "manifest.json", SchemaPath: schemaPath, SchemaDigest: schemaDigest})
+		policy := catalog.UploadPolicy{MaxBytes: 1 << 30, PartBytes: 16 << 20, MaxExpandedBytes: 4 << 30, MaxFiles: 100000, TTL: 24 * time.Hour, ManifestPath: "manifest.json", SchemaPath: schemaPath, SchemaDigest: schemaDigest}
+		objects, err := capabilityObjects(policy)
 		if err != nil {
 			return err
 		}
@@ -145,6 +146,40 @@ func main() {
 	}()
 	if err := server.Serve(); err != nil {
 		log.Fatal(err)
+	}
+}
+
+// capabilityObjects selects the instance-approved Storage Provider. The local
+// provider keeps bytes on a mounted volume and requires the owner signing key
+// for its restricted upload permits; COS stores immutable objects in the
+// instance bucket and hands the browser scoped presigned URLs, so no signing
+// key is needed.
+func capabilityObjects(policy catalog.UploadPolicy) (*catalog.Objects, error) {
+	kind := strings.ToLower(os.Getenv("OPL_CAPABILITY_STORAGE_KIND"))
+	if kind == "" {
+		kind = "local"
+	}
+	switch kind {
+	case "local":
+		root, publicURL, signing := os.Getenv("OPL_CAPABILITY_OBJECT_ROOT"), os.Getenv("OPL_CAPABILITY_OBJECT_URL"), os.Getenv("OPL_CAPABILITY_OBJECT_SIGNING_KEY")
+		if root == "" || publicURL == "" || len(signing) < 32 {
+			return nil, fmt.Errorf("local storage requires object root, upload URL and a signing key of at least 32 bytes")
+		}
+		return catalog.NewObjects(root, publicURL, []byte(signing), policy)
+	case "cos":
+		store, err := catalog.NewCOSObjects(context.Background(), catalog.COSConfig{
+			Bucket:    os.Getenv("OPL_CAPABILITY_COS_BUCKET"),
+			Region:    os.Getenv("OPL_CAPABILITY_COS_REGION"),
+			SecretID:  os.Getenv("OPL_CAPABILITY_COS_SECRET_ID"),
+			SecretKey: os.Getenv("OPL_CAPABILITY_COS_SECRET_KEY"),
+			Endpoint:  os.Getenv("OPL_CAPABILITY_COS_ENDPOINT"),
+		}, policy)
+		if err != nil {
+			return nil, err
+		}
+		return store, nil
+	default:
+		return nil, fmt.Errorf("unsupported capability storage kind %q", kind)
 	}
 }
 

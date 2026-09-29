@@ -59,14 +59,31 @@ The Capability process now requires these explicit settings in addition to its
 existing owner database, gRPC peers and approved Package schema configuration:
 
 - `OPL_CAPABILITY_OBJECT_LISTEN_ADDR`: the HTTP bind address for its data plane.
-- `OPL_CAPABILITY_OBJECT_URL`: the externally reachable URL used for signed
-  upload-part URLs and Build object reads. HTTP is admitted only for loopback;
-  an installed instance supplies its TLS endpoint.
+- `OPL_CAPABILITY_STORAGE_KIND`: `local` (default) or `cos`. `local` keeps
+  immutable bytes on a mounted volume; `cos` stores them in the instance Tencent
+  COS bucket.
+- `OPL_CAPABILITY_OBJECT_URL`: for `local`, the externally reachable URL used for
+  signed upload-part URLs and Build object reads. HTTP is admitted only for
+  loopback; an installed instance supplies its TLS endpoint. For `cos`, it is
+  only the Build object-read endpoint because upload parts go straight to COS.
 - `OPL_CAPABILITY_OBJECT_TOKEN`: a dedicated service-only read token of at least
   32 bytes, supplied to both Capability and Build through the existing approved
   secret store. It is never returned in upload permits or customer responses.
 
-`PUT /parts` still requires its signed permit and exact checksum header.
+`OPL_CAPABILITY_STORAGE_KIND=cos` instead requires `OPL_CAPABILITY_COS_BUCKET`,
+`OPL_CAPABILITY_COS_REGION`, `OPL_CAPABILITY_COS_SECRET_ID` and
+`OPL_CAPABILITY_COS_SECRET_KEY` (optional `OPL_CAPABILITY_COS_ENDPOINT` for a
+custom domain). The secret pair is a bucket-scoped sub-account credential held
+only in the instance Secret store; it is never sent to a browser. Browser uploads
+receive short-lived presigned URLs scoped to one upload part, so the bucket needs
+CORS permitting the Console origin with `PUT`/`GET`/`HEAD`, exposing `ETag`, and
+allowing the `X-OPL-SHA256` request header. With `cos`, Capability does not
+register `PUT /parts` at all, and immutable objects stay content-addressed by
+SHA-256 (`objects/sha256/<hex>`) so Build reads them by digest alone. A completed
+assembly verifies the provider object's exact size and SHA-256 before it becomes
+immutable; the customer-declared checksum is never trusted on its own.
+
+With `local`, `PUT /parts` still requires its signed permit and exact checksum header.
 `GET /objects/<sha256-hex>` requires the Build bearer token and an uploaded
 PackageVersion with that immutable object identity. It exposes no object list,
 write or deletion API. Build recomputes the object digest and length before
