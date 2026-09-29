@@ -82,9 +82,10 @@ retirement or production action is authorized by task dispatch.
 
 Current source gaps include the Local-only resource dispatcher, Serve's use of
 the old Fabric application bridge instead of a TKE application/access adapter,
-Gateway payment/Key wiring, the missing buildx in the product image, default
-legacy Console build mode, and exact Runtime contract/native-UI admission.
-COS and real-registry branches are not assumed merged. These are implementation
+Gateway payment/Key wiring, default legacy Console build mode, and exact Runtime
+contract/native-UI admission. COS and real-registry branches are not assumed
+merged. (The product image's missing buildx CLI plugin is closed: the image now
+copies `docker-buildx`, proven by a local image probe.) These are implementation
 outcomes, not further product choices or permission to delete a still-used path.
 
 Local-Docker remains supported and retains its formal-release qualification
