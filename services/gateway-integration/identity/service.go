@@ -35,6 +35,7 @@ type Service struct {
 	api.UnimplementedTenantProductServiceServer
 	api.UnimplementedCloudIdentityAuthorizationServer
 	api.UnimplementedGatewayProductServiceServer
+	api.UnimplementedGatewayCoordinationServer
 	DB              *sql.DB
 	store           *ownerstore.Store
 	Gateway         *Gateway
@@ -53,6 +54,13 @@ type Service struct {
 	// Tenant's application OCI destination. They carry no credential.
 	registryHost      string
 	registryNamespace string
+
+	// The fields below wire the gateway data owner's typed coordination surface.
+	// They are optional: a deployment without the gateway database or an approved
+	// Secret store leaves them nil and the corresponding RPC fails closed.
+	GatewayStore *GatewayStore
+	SecretStore  SecretStore
+	KeyIssuer    ManagedKeyIssuer
 }
 
 // Platform administrators are explicit deployment-owned Gateway subject IDs,
@@ -79,7 +87,15 @@ func New(db *sql.DB, gateway *Gateway, signing []byte, admins []string, invitati
 	return s, nil
 }
 func (s *Service) Register(server *ownerservice.Server) error {
-	if err := server.RequireProductGroups("TenantProductService", "GatewayProductService"); err != nil {
+	required := []string{"TenantProductService", "GatewayProductService"}
+	// The gateway data owner's settlement/key surface is only declared when this
+	// process actually owns the gateway database. A deployment without it omits the
+	// group entirely, and readiness names the missing dependency rather than
+	// serving a money path with no writer.
+	if s.GatewayStore != nil {
+		required = append(required, "GatewayCoordination")
+	}
+	if err := server.RequireProductGroups(required...); err != nil {
 		return err
 	}
 	if err := server.RegisterGroup("TenantProductService", func(g *grpc.Server) {
@@ -87,6 +103,13 @@ func (s *Service) Register(server *ownerservice.Server) error {
 		api.RegisterCloudIdentityAuthorizationServer(g, s)
 	}); err != nil {
 		return err
+	}
+	if s.GatewayStore != nil {
+		if err := server.RegisterGroup("GatewayCoordination", func(g *grpc.Server) {
+			api.RegisterGatewayCoordinationServer(g, s)
+		}); err != nil {
+			return err
+		}
 	}
 	return server.RegisterGroup("GatewayProductService", func(g *grpc.Server) {
 		api.RegisterGatewayProductServiceServer(g, s)

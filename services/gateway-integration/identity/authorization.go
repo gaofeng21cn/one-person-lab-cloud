@@ -256,6 +256,11 @@ var workspaceActions = []api.AuthorizationActionEnum{
 	// the one settlement the customer already accepted.
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CHARGEACCEPTEDOBLIGATION,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION,
+	// A paid workspace deletion refunds the confirmed original charge, and a
+	// managed-key binding delivers the Workspace's Gateway credential. Both are
+	// gateway-audience continuations of the same accepted obligation.
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REFUNDCONFIRMEDDELETION,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET,
 }
 
 func (s *Service) grantOwner(owner api.OwnerEnum) (api.OwnerCommitReadbackClient, api.AuthorizationActionEnum, []api.AuthorizationActionEnum) {
@@ -454,7 +459,7 @@ func (s *Service) authorizeGrant(ctx context.Context, r *api.AuthorizationReques
 				(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETQUOTE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEACCEPTEDOBLIGATION)) ||
 				(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_LEDGER && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT)) ||
 				(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_SERVE && r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME) ||
-				(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_GATEWAY && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CHARGEACCEPTEDOBLIGATION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION)))
+				(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_GATEWAY && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CHARGEACCEPTEDOBLIGATION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REFUNDCONFIRMEDDELETION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET)))
 		if r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_CAPABILITY && r.Resource.Kind == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION &&
 			(r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACQUIREREFERENCE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDREFERENCE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE) {
 			for _, v := range evidence.ContinuationResources {

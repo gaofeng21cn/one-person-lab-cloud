@@ -93,6 +93,11 @@ var continuationActions = []api.AuthorizationActionEnum{
 	// bounded grant the order asks for includes the charge and its readback.
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CHARGEACCEPTEDOBLIGATION,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION,
+	// A paid deletion refunds the confirmed original charge, and a managed-key
+	// binding delivers the Workspace credential. Both are gateway-audience
+	// continuations of the same accepted obligation.
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REFUNDCONFIRMEDDELETION,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET,
 }
 
 // Resume continues the committed original order. Repeating a side effect after

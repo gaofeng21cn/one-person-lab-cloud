@@ -69,9 +69,22 @@ Gateway charge and releases resources with the receipt the Ledger returns. A rea
 isolated-PostgreSQL test proves persistence, replay, restart readback, amount
 tamper refusal and that the generic HTTP writer cannot mint the type.
 
-Still open in Stage 3: the `GatewayCoordination` server itself is not yet
-registered in `services/gateway-integration`; the Workspace paid path reaches
-Sub2API through a fixture authority in isolated tests only. Stages 4-8 (Secret
+**Stage 3 (GatewayCoordination):** the production settlement surface is now
+implemented and registered in `services/gateway-integration`. The gateway data
+owner has its own database (`opl_gateway`/schema `gateway`), opened, migrated and
+readiness-checked from `OPL_GATEWAY_DATABASE_URL` alongside the tenant database in
+the same deployment unit. `BindWallet`, `Debit`, `Refund`, `ReadWalletAction`,
+`CreateManagedKey` and `RevokeManagedKey` are served; a charge/refund persists its
+original intent before dispatch, issues at most one Sub2API admin balance
+adjustment per business code, and confirms only from the native positive balance
+history. An isolated real-PostgreSQL, real-gRPC test proves one charge per
+obligation, replay idempotency, changed-amount refusal, an unconfirmed response
+that is never re-issued, and cross-tenant read refusal. See the
+[source receipt](evidence/source-checks/2026-09-30-tke-serial-gateway-coordination.json).
+
+Still open in Stage 3: `CreateManagedKey` fails closed until an approved Secret
+store and a Sub2API key issuer are wired (stage 4 / I05), and the Gateway wallet is
+exercised through a stub Sub2API in isolated tests only. Stages 4-8 (Secret
 injection, Serve-owned TKE execution, real RouteProvider, model readback,
 two-mode Console chain, Candidate build, Instance install) remain open, and no
 Candidate, production deployment, customer migration, financial or provider
