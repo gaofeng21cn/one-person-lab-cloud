@@ -66,14 +66,24 @@ func (f *runtimeControlForServe) ListRuntimeVersions(context.Context, *api.ListR
 
 type resourcesForServe struct {
 	api.FabricCoordinationClient
-	confirmed bool
+	confirmed      bool
+	workspace      string
+	dataAttachment string
 }
 
 func (f *resourcesForServe) ReadResources(_ context.Context, r *api.ResourceReadbackRequest, _ ...grpc.CallOption) (*api.ResourceReadback, error) {
-	out := &api.ResourceReadback{ResourceSetId: r.ResourceSetId, WorkspaceId: "ws-first", Outcome: api.Observation_OBSERVATION_UNKNOWN}
+	workspace := f.workspace
+	if workspace == "" {
+		workspace = "ws-first"
+	}
+	attachment := f.dataAttachment
+	if attachment == "" {
+		attachment = "attachment-original"
+	}
+	out := &api.ResourceReadback{ResourceSetId: r.ResourceSetId, WorkspaceId: workspace, Outcome: api.Observation_OBSERVATION_UNKNOWN}
 	if f.confirmed {
 		out.Outcome = api.Observation_OBSERVATION_CONFIRMED
-		out.ExecutionResources = &api.ResourceExecutionBinding{AccountId: "account-original", ComputeAllocationId: "compute-original", StorageVolumeId: "volume-original", DataAttachmentId: "attachment-original", DataAttachmentOperationId: "attach-operation-original"}
+		out.ExecutionResources = &api.ResourceExecutionBinding{AccountId: "account-original", ComputeAllocationId: "compute-original", StorageVolumeId: "volume-original", DataAttachmentId: attachment, DataAttachmentOperationId: "attach-operation-original"}
 	}
 	return out, nil
 }
@@ -465,5 +475,77 @@ func TestServeDefaultAppReservationCarriesNoCapabilityVersion(t *testing.T) {
 	mixed.CapabilityVersionId = "cv_1"
 	if _, err := s.Reserve(ctx, mixed); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("mixed source accepted: %v", err)
+	}
+}
+
+// TestServeDefaultAppDeploysReadyAndPublishesAccess proves the default OPL App is
+// deployable end to end inside Serve's own owner store: after Reserve admits an
+// approved Runtime Release (no CapabilityVersion, no Build, no Package), a
+// Workspace deploy command drives the real runtime adapter to readiness, Serve
+// commits the single active deployment and its confirmed access entry, and the
+// runtime-availability fact is published on Send. The applied model configuration
+// is not fabricated: with no runtime readback it stays 0.
+func TestServeDefaultAppDeploysReadyAndPublishesAccess(t *testing.T) {
+	s, _, _ := reservationFixture(t)
+	ctx := workspaceContext()
+	release := defaultAppRelease(t, s)
+	s.RuntimeReleases = &runtimeControlForServe{release: release}
+
+	tenant := "tenant-opl-app"
+	c := call(tenant, false)
+	c.IdempotencyKey = "default-app-first-delivery"
+	descriptor := &api.DeploymentDescriptor{SchemaVersion: api.DeploymentDescriptorSchemaVersionEnum_DEPLOYMENT_DESCRIPTOR_SCHEMA_VERSION_ENUM_OPL_DEPLOYMENT_DESCRIPTOR_V1, Artifact: release.GetPublisherContract().GetImage(), Provenance: api.DeploymentDescriptorProvenanceEnum_DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_RUNTIME_RELEASE, ApplicationRevision: release.GetPublisherContract().GetApplicationRevisionTemplate()}
+	reserved, err := s.Reserve(ctx, &api.RuntimeReservationCommand{
+		Context: c, WorkspaceId: "ws-opl-app",
+		ApplicationSelection:          &api.WorkspaceApplicationSelection{Kind: api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP, RuntimeVersionId: proto.String(release.GetId())},
+		Artifact:                      release.GetPublisherContract().GetImage(),
+		DeploymentDescriptor:          descriptor,
+		DeploymentDescriptorDigest:    descriptorDigestOf(t, descriptor),
+		DeploymentDescriptorObjectRef: "runtime-contract:" + release.GetId(),
+		ResourceSetId:                 "resource-set-opl-app",
+		DataAttachmentId:              "attachment-opl-app",
+	})
+	if err != nil {
+		t.Fatalf("default App reservation: %v", err)
+	}
+
+	s.Resources = &resourcesForServe{confirmed: true, workspace: "ws-opl-app", dataAttachment: "attachment-opl-app"}
+	runtime := &runtimeForServe{}
+	s.Runtime = runtime
+	command := &api.RuntimeDeployCommand{
+		Context: c, WorkspaceId: "ws-opl-app", DeploymentId: reserved.DeploymentId,
+		ApplicationSelection: &api.WorkspaceApplicationSelection{Kind: api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP, RuntimeVersionId: proto.String(release.GetId())},
+		RuntimeInstanceId:    reserved.RuntimeInstanceId, ExecutionEpoch: reserved.ExecutionEpoch,
+		ResourceSetId: "resource-set-opl-app", DataAttachmentId: "attachment-opl-app",
+		DeploymentDescriptor: descriptor, DeploymentDescriptorDigest: reserved.DeploymentDescriptorDigest,
+		DeploymentDescriptorObjectRef: reserved.DeploymentDescriptorObjectRef,
+	}
+	state, err := s.Deploy(ctx, command)
+	if err != nil {
+		t.Fatalf("default App deploy: %v", err)
+	}
+	if !state.GetApplicationAvailable() || state.GetState() != api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY || state.GetAccessUrl() != "https://ws.example/app" {
+		t.Fatalf("runtime readback=%v", state)
+	}
+	if state.GetAppliedModelConfigurationVersion() != 0 {
+		t.Fatalf("applied model version must not be fabricated, got %d", state.GetAppliedModelConfigurationVersion())
+	}
+	var deploymentStatus, applicationKind string
+	if err := s.DB.QueryRowContext(ctx, `SELECT status, application_kind FROM serve.agent_deployments WHERE id=$1`, reserved.DeploymentId).Scan(&deploymentStatus, &applicationKind); err != nil {
+		t.Fatal(err)
+	}
+	if deploymentStatus != "active" || applicationKind != "opl_app" {
+		t.Fatalf("deployment status=%q kind=%q", deploymentStatus, applicationKind)
+	}
+	var readinessEvents int
+	if err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM serve.outbox_events WHERE event_type='serve.agent_readiness_observed.v1' AND aggregate_id=$1`, reserved.DeploymentId).Scan(&readinessEvents); err != nil {
+		t.Fatal(err)
+	}
+	if readinessEvents != 1 {
+		t.Fatalf("ready default App emitted %d readiness events, want one", readinessEvents)
+	}
+	access, err := s.GetWorkspaceAccess(serveContext(), &api.GetWorkspaceAccessRpcRequest{Context: c, WorkspaceId: "ws-opl-app"})
+	if err != nil || access.GetUrl() != "https://ws.example/app" {
+		t.Fatalf("default App access=%v err=%v", access, err)
 	}
 }

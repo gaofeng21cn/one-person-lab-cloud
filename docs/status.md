@@ -81,6 +81,13 @@ desired version. A focused isolated-PostgreSQL test proves a requested version
 leaves applied `0` until the runtime reports it
 ([receipt](evidence/source-checks/2026-09-30-tke-serial-serve-model-applied.json)).
 
+The default OPL App is now proven deployable end to end inside Serve's own owner
+store: after reservation it reaches a committed `active` deployment through the
+real runtime adapter, `GetWorkspaceAccess` returns the confirmed entry, exactly
+one `serve.agent_readiness_observed.v1` event is emitted, and the applied model
+version honestly stays 0 — with no Package, Build or CapabilityVersion anywhere
+([deploy receipt](evidence/source-checks/2026-09-30-tke-serial-serve-default-app-deploy.json)).
+
 The default OPL App first-delivery path is now proven against Serve's real owner
 store: `Reserve` accepts an explicit `opl_app` selection backed by an approved
 Runtime Release with no Package, Build or CapabilityVersion, records

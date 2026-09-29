@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_serial_serve_default_app_deploy_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T09:05:00Z",
+  "result": "default_opl_app_deploys_to_ready_and_publishes_access_without_any_build_or_capability_version_focused_postgres_test_passed",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 5/6 - default OPL App end-to-end deploy, readiness, access and event inside Serve's own store",
+  "sourceBaseSha": "07c8a02b0481f303e9c860c1703598f5f0b1091f",
+  "branch": "codex/tke-serial-integration",
+  "workspace": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.2",
+  "scope": "Extend the default-OPL-App proof from first-delivery admission (Reserve) to the full Serve-side delivery: Deploy through the real runtime adapter to a confirmed ready runtime, the committed active deployment and access entry, and the runtime-availability Outbox fact. No production source, contract, schema, migration or generator changed; this is a focused isolated-PostgreSQL test on the current Serve owner store.",
+  "implemented": [
+    "services/serve/internal/delivery/write_postgres_test.go: TestServeDefaultAppDeploysReadyAndPublishesAccess reserves the default OPL App from an approved Runtime Release (no CapabilityVersion/Build/Package), then Deploys it: Serve reaches READY through the runtime adapter, commits application_kind='opl_app' with deployment status 'active', GetWorkspaceAccess returns the confirmed access URL, exactly one serve.agent_readiness_observed.v1 event is emitted, and the applied model configuration version stays 0 (never fabricated from the requested version).",
+    "resourcesForServe in the same test file now echoes the requested resource-set workspace and data-attachment id (defaults unchanged for existing tests), so the default App's own workspace identity is exercised."
+  ],
+  "verification": {
+    "commands": [
+      "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=postgres://postgres:postgres@127.0.0.1:54555/postgres?sslmode=disable GOFLAGS=-mod=readonly go -C services/serve test ./internal/delivery/ -run TestServeDefaultApp -count=1 -v",
+      "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=postgres://postgres:postgres@127.0.0.1:54555/postgres?sslmode=disable GOFLAGS=-mod=readonly go -C services/serve test ./... -count=1"
+    ],
+    "environment": "local loopback PostgreSQL container for the owner-migration tests",
+    "result": "PASS",
+    "cases": [
+      "TestServeDefaultAppDeploysReadyAndPublishesAccess: default App Deploy -> READY, deployment active, kind opl_app, access URL confirmed, one readiness event, applied model version 0.",
+      "TestServeDefaultAppReservationCarriesNoCapabilityVersion still passes; all existing Serve delivery and migration suites pass."
+    ]
+  },
+  "notRun": [
+    "No real Runtime Control, TKE cluster, Candidate build, Instance deployment or production readback.",
+    "The default App's real route activation (I07 RouteProvider) and the publisher opl-model-config/v1 applied readback (I08 serving half) remain open on their frozen external contracts.",
+    "The Console/BFF-to-Serve default-App business chain (I11) is not exercised here."
+  ],
+  "claimBoundary": "This receipt claims a Cloud source-level proof with a focused isolated-PostgreSQL test: the default OPL App is deployable end to end inside Serve's own owner store with no Build/Package/CapabilityVersion, reaching a committed ready deployment and access entry. It does not claim real route activation, publisher model-config readback, a Candidate, deployment or production acceptance.",
+  "secrets": "none",
+  "fileHashes": {
+    "services/serve/internal/delivery/write_postgres_test.go": "5c6a709a9296c37ec92812ae93b02a658d62c31767809d38bfd0e0bdeb9a9584"
+  }
+}
