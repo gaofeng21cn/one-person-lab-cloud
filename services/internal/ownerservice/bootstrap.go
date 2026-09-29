@@ -63,7 +63,13 @@ func StartWithDatabase(ctx context.Context, database *Database, config Config, s
 		return nil, err
 	}
 	bootstrap := &Bootstrap{Server: server, Authorizer: authorizer, identityConn: identityConn}
-	if config.CloudIdentityAddr == "" && (config.DatabaseURL != "" || database != nil) {
+	// Every owner reaches user authorization over the CloudIdentity gRPC boundary
+	// except the owner that answers it. The tenant process is that authority: it
+	// resolves authorization from its own store, so an absent
+	// OPL_CLOUD_IDENTITY_URL is its correct configuration and must not be reported
+	// as a missing dependency. A readiness check that can never pass for a
+	// correctly configured authority is a false NOT_SERVING, not a truthful one.
+	if config.Owner != OwnerTenant && config.CloudIdentityAddr == "" && (config.DatabaseURL != "" || database != nil) {
 		_ = server.AddReadinessCheck("cloud_identity", func(context.Context) error { return errors.New("CloudIdentity authorization is not configured") })
 	}
 

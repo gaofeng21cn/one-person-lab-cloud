@@ -42,6 +42,13 @@ type Runner struct {
 	Timeout                           time.Duration
 	HTTP                              *http.Client
 	AllowHTTP                         bool
+	// InsecureHTTPHosts lists registry hosts that are reachable only over plain
+	// HTTP, for example a disposable loopback registry in an isolated test. It is
+	// per-host so one run can read such a fixture over HTTP while still writing
+	// its immutable output to a real HTTPS registry. When the list is empty the
+	// legacy AllowHTTP switch decides every host, so production behaviour is
+	// unchanged.
+	InsecureHTTPHosts []string
 }
 
 var digestPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
@@ -59,6 +66,7 @@ func (r *Runner) Validate() error {
 	}
 	return nil
 }
+
 // DestinationRepository joins one Tenant-reserved destination to the immutable
 // output identity. The destination comes from the Tenant owner; Build never
 // derives it from a request or from a caller-supplied value.
@@ -167,7 +175,23 @@ func (r *Runner) client() *http.Client {
 		return r.HTTP
 	}
 	return &http.Client{Timeout: time.Minute, CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		return errors.New("storage and registry redirects are not approved")
+		// A real registry serves blob bytes from a separate storage service
+		// through a redirect; Tencent TCR answers a blob GET with 307 to a
+		// presigned object-store URL. The worker must follow that redirect or it
+		// can never confirm a pushed blob, so an unapproved redirect would leave
+		// every real registry build stuck in needs_attention.
+		//
+		// The redirect is still bounded: only an approved scheme is followed, a
+		// short chain is allowed, and Go itself drops the Authorization header
+		// when a redirect leaves the original host, so a presigned storage URL is
+		// never handed the registry or storage credential.
+		if len(via) >= 5 {
+			return errors.New("too many registry redirects")
+		}
+		if req.URL.Scheme != "https" && !(r.AllowHTTP && req.URL.Scheme == "http") {
+			return errors.New("registry redirect target is not an approved scheme")
+		}
+		return nil
 	}}
 }
 func (r *Runner) request(ctx context.Context, endpoint, token, accept string) (*http.Response, error) {
@@ -183,13 +207,24 @@ func (r *Runner) request(ctx context.Context, endpoint, token, accept string) (*
 	}
 	return r.client().Do(req)
 }
+
+// scheme decides the transport for one registry host. An explicit per-host list
+// is authoritative; without one the legacy AllowHTTP switch applies to every
+// host.
+func (r *Runner) scheme(host string) string {
+	for _, candidate := range r.InsecureHTTPHosts {
+		if candidate == host {
+			return "http"
+		}
+	}
+	if len(r.InsecureHTTPHosts) == 0 && r.AllowHTTP {
+		return "http"
+	}
+	return "https"
+}
 func (r *Runner) registryURL(repository, kind, reference string) string {
 	parts := strings.SplitN(repository, "/", 2)
-	scheme := "https"
-	if r.AllowHTTP {
-		scheme = "http"
-	}
-	return scheme + "://" + parts[0] + "/v2/" + parts[1] + "/" + kind + "/" + reference
+	return r.scheme(parts[0]) + "://" + parts[0] + "/v2/" + parts[1] + "/" + kind + "/" + reference
 }
 
 var ErrAbsent = errors.New("registry manifest is absent")
@@ -530,6 +565,11 @@ func (w *progressWriter) Write(p []byte) (int, error) {
 			Current, Total int64
 		}
 		if json.Unmarshal(line, &v) == nil {
+			if v.Error != "" {
+				// Surface the exporter/provider error text; otherwise a failed push
+				// is visible only as a needs_attention job with no cause.
+				w.log("BuildKit error: " + v.Error)
+			}
 			if digestPattern.MatchString(v.ID) {
 				state := "running"
 				if v.Completed != nil {
