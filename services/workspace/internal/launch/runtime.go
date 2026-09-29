@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -20,7 +21,7 @@ import (
 // order whose funding or resources are unresolved never reaches Serve. Workspace
 // retains coordination evidence; Serve remains the deployment/readiness owner.
 func (s *Service) resumeRuntime(ctx context.Context, op ownerstore.Operation, token string, accepted *api.QuoteAcceptance, resources *api.ResourceReadback, result *orderResult) error {
-	if s.Capability == nil || s.Serve == nil {
+	if s.Serve == nil {
 		return nil // The persisted order remains awaiting its runtime dependencies.
 	}
 	commit, err := evidence(op)
@@ -31,32 +32,34 @@ func (s *Service) resumeRuntime(ctx context.Context, op ownerstore.Operation, to
 	if err != nil {
 		return s.failedCall(ctx, op, token, "read_resources", "runtime", *result, err)
 	}
-	version := &api.CapabilityVersion{}
-	if len(result.RuntimeCapability) == 0 {
-		request := &api.GetCapabilityVersionRpcRequest{Context: continuation(op, result.GrantID, "runtime_capability"), CapabilityVersionId: accepted.Quote.GetCapabilityVersionId()}
-		if err = s.beginStep(ctx, op, token, "runtime_capability", 5, "capability", "runtime", request); err != nil {
-			return err
-		}
-		version, err = s.Capability.GetCapabilityVersion(ctx, request)
+	source := &applicationSource{}
+	if len(result.ApplicationSource) == 0 {
+		source, err = s.resolveApplicationSource(ctx, op, result.GrantID, accepted)
 		if err != nil {
 			return s.failedCall(ctx, op, token, "runtime_capability", "runtime", *result, err)
 		}
-		if err = validateRuntimeVersion(accepted, version); err != nil {
-			return s.failedCall(ctx, op, token, "runtime_capability", "runtime", *result, err)
+		record, recErr := source.record()
+		if recErr != nil {
+			return s.failedCall(ctx, op, token, "runtime_capability", "runtime", *result, recErr)
 		}
-		result.RuntimeCapability, result.RuntimeBinding = wire(version), wire(binding)
-		if err = s.checkpoint(ctx, op, token, "runtime_capability", "runtime", "running", "confirmed", version.Id, "", *result); err != nil {
+		result.ApplicationSource, result.RuntimeBinding = record, wire(binding)
+		if err = s.checkpoint(ctx, op, token, "runtime_capability", "runtime", "running", "confirmed", source.identity(), "", *result); err != nil {
 			return err
 		}
 	} else {
-		if protojson.Unmarshal(result.RuntimeCapability, version) != nil {
-			return status.Error(codes.DataLoss, "stored runtime capability is invalid")
+		record := &sourceRecord{}
+		if json.Unmarshal(result.ApplicationSource, record) != nil {
+			return status.Error(codes.DataLoss, "stored application source is invalid")
 		}
-		if err = validateRuntimeVersion(accepted, version); err != nil {
+		source, err = record.resolve()
+		if err != nil {
+			return err
+		}
+		if err = s.revalidateApplicationSource(accepted, source); err != nil {
 			return err
 		}
 	}
-	reserve := &api.RuntimeReservationCommand{Context: continuation(op, result.GrantID, "reserve_runtime"), WorkspaceId: op.ResourceID, CapabilityVersionId: version.Id, Artifact: version.Artifact, DeploymentDescriptor: version.DeploymentDescriptor, DeploymentDescriptorDigest: version.DeploymentDescriptorDigest, DeploymentDescriptorObjectRef: version.DeploymentDescriptorObjectRef, ResourceSetId: resources.ResourceSetId, DataAttachmentId: binding.DataAttachmentId}
+	reserve := &api.RuntimeReservationCommand{Context: continuation(op, result.GrantID, "reserve_runtime"), WorkspaceId: op.ResourceID, CapabilityVersionId: source.CapabilityVersionID, ApplicationSelection: source.Selection, Artifact: source.Artifact, DeploymentDescriptor: source.DeploymentDescriptor, DeploymentDescriptorDigest: source.DescriptorDigest, DeploymentDescriptorObjectRef: source.DescriptorObjectRef, ResourceSetId: resources.ResourceSetId, DataAttachmentId: binding.DataAttachmentId}
 	reservation := &api.RuntimeReservation{}
 	if len(result.RuntimeReservation) == 0 {
 		if err = s.beginStep(ctx, op, token, "reserve_runtime", 6, "serve", "runtime", reserve); err != nil {
@@ -79,7 +82,7 @@ func (s *Service) resumeRuntime(ctx context.Context, op ownerstore.Operation, to
 	if err = validateRuntimeReservation(reserve, reservation); err != nil {
 		return err
 	}
-	command := runtimeCommand(op, result.GrantID, accepted, version, binding, resources.ResourceSetId, reservation)
+	command := runtimeCommand(op, result.GrantID, accepted, source, binding, resources.ResourceSetId, reservation)
 	recovering := len(result.RuntimeCommand) > 0
 	if recovering {
 		stored := &api.RuntimeDeployCommand{}
@@ -144,6 +147,16 @@ func runtimeBinding(op ownerstore.Operation, accepted *api.QuoteAcceptance, reso
 	return b, nil
 }
 
+// revalidateApplicationSource binds a recovered application source to the accepted
+// quote: the recovered CapabilityVersion or Runtime Release must still be the one
+// the accepted quote named, so a recovery cannot silently switch sources.
+func (s *Service) revalidateApplicationSource(accepted *api.QuoteAcceptance, source *applicationSource) error {
+	if accepted.GetQuote().GetCapabilityVersionId() != source.CapabilityVersionID || accepted.GetQuote().GetRuntimeVersionId() != source.RuntimeVersionID {
+		return status.Error(codes.DataLoss, "stored application source differs from its accepted quote")
+	}
+	return nil
+}
+
 func validateRuntimeVersion(accepted *api.QuoteAcceptance, version *api.CapabilityVersion) error {
 	descriptor, artifact := version.GetDeploymentDescriptor(), version.GetArtifact()
 	if version.GetId() == "" || version.GetId() != accepted.GetQuote().GetCapabilityVersionId() || version.GetStatus() != api.CapabilityVersionStatusEnum_CAPABILITY_VERSION_STATUS_ENUM_READY || descriptor == nil || artifact.GetRepository() == "" || artifact.GetDigest() == "" || artifact.GetDigest() != version.GetArtifactDigest() || !proto.Equal(artifact, descriptor.GetArtifact()) || version.GetDeploymentDescriptorObjectRef() == "" {
@@ -167,8 +180,8 @@ func validateRuntimeReservation(request *api.RuntimeReservationCommand, r *api.R
 	return nil
 }
 
-func runtimeCommand(op ownerstore.Operation, grant string, accepted *api.QuoteAcceptance, version *api.CapabilityVersion, binding *api.ResourceExecutionBinding, resourceSetID string, reservation *api.RuntimeReservation) *api.RuntimeDeployCommand {
-	return &api.RuntimeDeployCommand{Context: continuation(op, grant, "deploy_runtime"), WorkspaceId: op.ResourceID, DeploymentId: reservation.DeploymentId, RuntimeInstanceId: reservation.RuntimeInstanceId, CapabilityVersionId: version.Id, DeploymentDescriptor: version.DeploymentDescriptor, DeploymentDescriptorDigest: version.DeploymentDescriptorDigest, DeploymentDescriptorObjectRef: version.DeploymentDescriptorObjectRef, ResourceSetId: resourceSetID, DataAttachmentId: binding.DataAttachmentId, DataCompatibility: version.DataCompatibility, ModelSelections: accepted.Quote.ModelSelections, ExecutionEpoch: reservation.ExecutionEpoch}
+func runtimeCommand(op ownerstore.Operation, grant string, accepted *api.QuoteAcceptance, source *applicationSource, binding *api.ResourceExecutionBinding, resourceSetID string, reservation *api.RuntimeReservation) *api.RuntimeDeployCommand {
+	return &api.RuntimeDeployCommand{Context: continuation(op, grant, "deploy_runtime"), WorkspaceId: op.ResourceID, DeploymentId: reservation.DeploymentId, RuntimeInstanceId: reservation.RuntimeInstanceId, CapabilityVersionId: source.CapabilityVersionID, ApplicationSelection: source.Selection, DeploymentDescriptor: source.DeploymentDescriptor, DeploymentDescriptorDigest: source.DescriptorDigest, DeploymentDescriptorObjectRef: source.DescriptorObjectRef, ResourceSetId: resourceSetID, DataAttachmentId: binding.DataAttachmentId, DataCompatibility: source.DataCompatibility, ModelSelections: accepted.Quote.ModelSelections, ExecutionEpoch: reservation.ExecutionEpoch}
 }
 
 func (s *Service) readRuntime(ctx context.Context, op ownerstore.Operation, token string, command *api.RuntimeDeployCommand, result *orderResult) (*api.RuntimeReadback, error) {

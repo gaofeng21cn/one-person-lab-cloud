@@ -398,9 +398,10 @@ func TestRevokedResourceContinuationReadsOriginalWithoutNewRuntime(t *testing.T)
 func TestRuntimeReadbackRejectsIdentityAndReadinessDrift(t *testing.T) {
 	op, _, accepted := orderFixture()
 	version := runtimeVersion(t, accepted.Quote.GetCapabilityVersionId())
+	source := &applicationSource{Selection: &api.WorkspaceApplicationSelection{Kind: api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_AGENT, CapabilityVersionId: proto.String(version.GetId())}, Artifact: version.GetArtifact(), DeploymentDescriptor: version.GetDeploymentDescriptor(), DescriptorDigest: version.GetDeploymentDescriptorDigest(), DescriptorObjectRef: version.GetDeploymentDescriptorObjectRef(), DataCompatibility: version.GetDataCompatibility(), CapabilityVersionID: version.GetId()}
 	binding := &api.ResourceExecutionBinding{DataAttachmentId: "attachment-original"}
 	reservation := &api.RuntimeReservation{DeploymentId: "deployment-original", RuntimeInstanceId: "runtime-original", ExecutionEpoch: 1}
-	command := runtimeCommand(op, "grant-original", accepted, version, binding, "resource-set-original", reservation)
+	command := runtimeCommand(op, "grant-original", accepted, source, binding, "resource-set-original", reservation)
 	ready := readyRuntime(command)
 	if err := validateRuntimeReadback(command, ready); err != nil {
 		t.Fatal(err)

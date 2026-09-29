@@ -100,7 +100,7 @@ var enumNames = map[protoreflect.FullName]map[protoreflect.EnumNumber]string{
 	"opl.cloud.api.WebuiPublisherContractAuthenticationProtocolEnum":    {1: "opl-application-session/v1"},
 	"opl.cloud.api.PublisherContractReferenceKindEnum":                  {1: "runtime", 2: "webui"},
 	"opl.cloud.api.DeploymentDescriptorSchemaVersionEnum":               {1: "opl-deployment-descriptor/v1"},
-	"opl.cloud.api.DeploymentDescriptorProvenanceEnum":                  {1: "build", 2: "legacy_application"},
+	"opl.cloud.api.DeploymentDescriptorProvenanceEnum":                  {1: "build", 2: "legacy_application", 3: "runtime_release"},
 	"opl.cloud.api.PublisherNamespaceKindEnum":                          {1: "official", 2: "third_party"},
 	"opl.cloud.api.PublisherNamespaceStatusEnum":                        {1: "approved", 2: "revoked"},
 	"opl.cloud.api.CreatePublisherNamespaceRequestKindEnum":             {1: "official", 2: "third_party"},

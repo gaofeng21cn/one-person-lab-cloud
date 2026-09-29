@@ -33,7 +33,11 @@ type Service struct {
 	Identity   api.CloudIdentityAuthorizationClient
 	Ledger     api.LedgerCoordinationClient
 	Capability api.CapabilityProductServiceClient
-	Serve      api.ServeAgentCoordinationClient
+	// RuntimeReleases is the Runtime Control read surface. A default OPL App order
+	// resolves its immutable artifact from the approved Runtime Release instead of
+	// a CapabilityVersion.
+	RuntimeReleases api.RuntimeControlProductServiceClient
+	Serve           api.ServeAgentCoordinationClient
 	// Gateway is the wallet authority the original order is charged from. A Local
 	// no-charge order funds itself through the Ledger receipt, so an unset Gateway
 	// leaves a paid order awaiting its funding owner instead of inventing a charge.
@@ -105,6 +109,11 @@ type orderResult struct {
 	WalletDebitCommand    json.RawMessage `json:"walletDebitCommand,omitempty"`
 	WalletOperation       json.RawMessage `json:"walletOperation,omitempty"`
 	RuntimeCapability     json.RawMessage `json:"runtimeCapability,omitempty"`
+	// ApplicationSource is the resolved immutable source (default OPL App Runtime
+	// Release or built Agent CapabilityVersion) frozen before Reserve. It is the
+	// single durable fact both branches replay from, so a default-App order never
+	// invents a CapabilityVersion.
+	ApplicationSource json.RawMessage `json:"applicationSource,omitempty"`
 	RuntimeBinding        json.RawMessage `json:"runtimeBinding,omitempty"`
 	RuntimeReservation    json.RawMessage `json:"runtimeReservation,omitempty"`
 	RuntimeCommand        json.RawMessage `json:"runtimeCommand,omitempty"`
