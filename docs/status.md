@@ -85,6 +85,19 @@ A focused regression test reserves and deploys a built Agent from the selection
 alone
 ([receipt](evidence/source-checks/2026-09-30-tke-serial-agent-selection-mutual-exclusion-fix.json)).
 
+## September 30 Serial Integration Regression Fix (Recovered Runtime Command)
+
+The next Cloud Qualification `fabric` failure (run `36646236276`,
+`TestLocalFirstApplicationDeploymentQualification`) was `runtime command differs
+from its original execution` during process-failure recovery. Root cause: the
+durable `sourceRecord` persisted the artifact, descriptor, digest and ids but not
+`DataCompatibility`, which the runtime deploy command carries; on recovery the
+re-created command therefore differed from the frozen one. `sourceRecord` now
+stores and restores `DataCompatibility`, and
+`TestSourceRecordRoundTripsDataCompatibility` proves the recovered command is
+proto-equal to the original
+([receipt](evidence/source-checks/2026-09-30-tke-serial-source-record-data-compatibility.json)).
+
 ## September 30 Serial Integration Stage 7 Source Progress (Console Cloud Mode)
 
 **Stage 7 (Console cloud mode):** the §11.7 "explicit Console cloud mode" source

@@ -22,14 +22,14 @@ import (
 // the source differs: a built Agent names its CapabilityVersion, the default OPL
 // App names an approved Runtime Release with no Build lineage.
 type applicationSource struct {
-	Selection             *api.WorkspaceApplicationSelection
-	Artifact              *api.ArtifactReference
-	DeploymentDescriptor  *api.DeploymentDescriptor
-	DescriptorDigest      string
-	DescriptorObjectRef   string
-	DataCompatibility     *api.DataCompatibility
-	RuntimeVersionID      string
-	CapabilityVersionID   string
+	Selection            *api.WorkspaceApplicationSelection
+	Artifact             *api.ArtifactReference
+	DeploymentDescriptor *api.DeploymentDescriptor
+	DescriptorDigest     string
+	DescriptorObjectRef  string
+	DataCompatibility    *api.DataCompatibility
+	RuntimeVersionID     string
+	CapabilityVersionID  string
 }
 
 // acceptedSelection derives the explicit selection from an accepted quote. A
@@ -110,13 +110,17 @@ func (s *Service) resolveApplicationSource(ctx context.Context, op ownerstore.Op
 // It carries the exact bytes Serve reserved so a recovered order reissues the same
 // command without re-reading a possibly-changed catalog.
 type sourceRecord struct {
-	Kind                 string            `json:"kind"`
-	RuntimeVersionID     string            `json:"runtimeVersionId,omitempty"`
-	CapabilityVersionID  string            `json:"capabilityVersionId,omitempty"`
-	Artifact             json.RawMessage   `json:"artifact"`
-	DeploymentDescriptor json.RawMessage   `json:"deploymentDescriptor"`
-	DescriptorDigest     string            `json:"deploymentDescriptorDigest"`
-	DescriptorObjectRef  string            `json:"deploymentDescriptorObjectRef"`
+	Kind                 string          `json:"kind"`
+	RuntimeVersionID     string          `json:"runtimeVersionId,omitempty"`
+	CapabilityVersionID  string          `json:"capabilityVersionId,omitempty"`
+	Artifact             json.RawMessage `json:"artifact"`
+	DeploymentDescriptor json.RawMessage `json:"deploymentDescriptor"`
+	DescriptorDigest     string          `json:"deploymentDescriptorDigest"`
+	DescriptorObjectRef  string          `json:"deploymentDescriptorObjectRef"`
+	// DataCompatibility is the accepted version's data contract. It is part of the
+	// runtime deploy command, so it must be part of the durable source record too,
+	// otherwise a recovered command differs from the one originally frozen.
+	DataCompatibility json.RawMessage `json:"dataCompatibility,omitempty"`
 }
 
 func (a *applicationSource) record() (json.RawMessage, error) {
@@ -128,11 +132,18 @@ func (a *applicationSource) record() (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
+	var compatibility json.RawMessage
+	if a.DataCompatibility != nil {
+		compatibility, err = publicjson.Marshal(a.DataCompatibility)
+		if err != nil {
+			return nil, err
+		}
+	}
 	kind := "agent"
 	if a.Selection.GetKind() == api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP {
 		kind = "opl_app"
 	}
-	return json.Marshal(sourceRecord{Kind: kind, RuntimeVersionID: a.RuntimeVersionID, CapabilityVersionID: a.CapabilityVersionID, Artifact: artifact, DeploymentDescriptor: descriptor, DescriptorDigest: a.DescriptorDigest, DescriptorObjectRef: a.DescriptorObjectRef})
+	return json.Marshal(sourceRecord{Kind: kind, RuntimeVersionID: a.RuntimeVersionID, CapabilityVersionID: a.CapabilityVersionID, Artifact: artifact, DeploymentDescriptor: descriptor, DescriptorDigest: a.DescriptorDigest, DescriptorObjectRef: a.DescriptorObjectRef, DataCompatibility: compatibility})
 }
 
 func (s *sourceRecord) resolve() (*applicationSource, error) {
@@ -152,7 +163,14 @@ func (s *sourceRecord) resolve() (*applicationSource, error) {
 		selection.Kind = api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_AGENT
 		selection.CapabilityVersionId = proto.String(s.CapabilityVersionID)
 	}
-	return &applicationSource{Selection: selection, Artifact: artifact, DeploymentDescriptor: descriptor, DescriptorDigest: s.DescriptorDigest, DescriptorObjectRef: s.DescriptorObjectRef, RuntimeVersionID: s.RuntimeVersionID, CapabilityVersionID: s.CapabilityVersionID}, nil
+	var compatibility *api.DataCompatibility
+	if len(s.DataCompatibility) > 0 {
+		compatibility = &api.DataCompatibility{}
+		if publicjson.Unmarshal(s.DataCompatibility, compatibility) != nil {
+			return nil, status.Error(codes.DataLoss, "stored application source data compatibility is invalid")
+		}
+	}
+	return &applicationSource{Selection: selection, Artifact: artifact, DeploymentDescriptor: descriptor, DescriptorDigest: s.DescriptorDigest, DescriptorObjectRef: s.DescriptorObjectRef, RuntimeVersionID: s.RuntimeVersionID, CapabilityVersionID: s.CapabilityVersionID, DataCompatibility: compatibility}, nil
 }
 
 // runtimeRelease reads the exact approved release from Runtime Control's paged
