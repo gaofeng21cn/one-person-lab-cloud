@@ -60,9 +60,13 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	regName := "opl-build-test-reg-" + suffix
 	bkName := "opl-build-test-kit-" + suffix
 	registry := "127.0.0.1:" + rp
-	// Build resolves each Tenant's destination from the Tenant owner. The live
-	// harness points those reserved bindings at this disposable registry.
-	t.Setenv("OPL_BUILD_TEST_REGISTRY_HOST", registry)
+	// Build resolves each Tenant's destination from the Tenant owner. The default
+	// harness points those reserved bindings at this disposable registry. An
+	// operator may instead name a real registry so the same owner chain writes to
+	// it; the fixtures below stay on the loopback registry either way.
+	if os.Getenv("OPL_BUILD_TEST_REGISTRY_HOST") == "" {
+		t.Setenv("OPL_BUILD_TEST_REGISTRY_HOST", registry)
+	}
 	docker("run", "-d", "--name", regName, "-p", registry+":"+rp, "-p", "127.0.0.1:"+bp+":"+bp, "-e", "REGISTRY_HTTP_ADDR=0.0.0.0:"+rp, "registry:2")
 	t.Cleanup(func() { exec.Command("docker", "rm", "-fv", regName).Run() })
 	cfg := filepath.Join(root, "buildkit.toml")
@@ -94,14 +98,32 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	if buildxDir == "" {
 		t.Fatal("Docker Buildx CLI plugin is required")
 	}
-	isolatedDockerConfig, err := json.Marshal(struct {
-		CLIPluginsExtraDirs []string `json:"cliPluginsExtraDirs"`
-	}{CLIPluginsExtraDirs: []string{buildxDir}})
+	isolatedConfig := struct {
+		CLIPluginsExtraDirs []string                   `json:"cliPluginsExtraDirs"`
+		Auths               map[string]json.RawMessage `json:"auths,omitempty"`
+	}{CLIPluginsExtraDirs: []string{buildxDir}, Auths: map[string]json.RawMessage{}}
+	// The default run is loopback-only and needs no credential. An operator may
+	// opt in to a real output registry, which needs credential material in both
+	// the client config and the isolated BuildKit daemon.
+	realRegistryAuth, realRegistryHost := os.Getenv("OPL_BUILD_TEST_DOCKER_AUTH"), os.Getenv("OPL_BUILD_TEST_DOCKER_REGISTRY")
+	if realRegistryAuth != "" && realRegistryHost != "" {
+		isolatedConfig.Auths[realRegistryHost] = json.RawMessage(fmt.Sprintf(`{"auth":%q}`, realRegistryAuth))
+	}
+	isolatedDockerConfig, err := json.Marshal(isolatedConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dc, "config.json"), isolatedDockerConfig, 0600); err != nil {
 		t.Fatal(err)
+	}
+	// BuildKit resolves docker-image:// contexts and pushes inside the daemon, so a
+	// real-registry run needs the same approved config there; the client-side
+	// DockerConfig alone cannot authenticate the remote worker. The loopback
+	// default needs no credential and keeps its previous startup.
+	if realRegistryAuth != "" && realRegistryHost != "" {
+		docker("exec", bkName, "mkdir", "-p", "/root/.docker")
+		docker("cp", filepath.Join(dc, "config.json"), bkName+":/root/.docker/config.json")
+		docker("restart", bkName)
 	}
 	bx := func(args ...string) string {
 		t.Helper()
@@ -129,7 +151,10 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 		t.Fatal("digest-pinned frontend required")
 	}
 	p := &api.ImagePlatform{Os: api.ImagePlatformOsEnum_IMAGE_PLATFORM_OS_ENUM_LINUX, Architecture: api.ImagePlatformArchitectureEnum_IMAGE_PLATFORM_ARCHITECTURE_ENUM_ARM64}
-	r := &Runner{Builder: "isolated", RegistryPrefix: registry + "/result", DockerConfig: dc, WorkDir: root, MaxPackageBytes: 1 << 20, MaxExpandedBytes: 2 << 20, MaxFiles: 128, Timeout: 3 * time.Minute, AllowHTTP: true}
+	// Fixtures live on the loopback registry, which is reachable only over http.
+	// The immutable output may be written to a real https registry instead, so the
+	// transport is decided per host rather than by one global switch.
+	r := &Runner{Builder: "isolated", RegistryPrefix: registry + "/result", DockerConfig: dc, WorkDir: root, MaxPackageBytes: 1 << 20, MaxExpandedBytes: 2 << 20, MaxFiles: 128, Timeout: 3 * time.Minute, AllowHTTP: true, InsecureHTTPHosts: []string{registry}, RegistryToken: os.Getenv("OPL_BUILD_TEST_REGISTRY_TOKEN")}
 	seed := func(name, filename, body string) *api.ArtifactReference {
 		t.Helper()
 		d := filepath.Join(root, name)
