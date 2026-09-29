@@ -65,7 +65,10 @@ action was performed.
 The shared verification gate `npm run verify:local:full` now passes on the merged
 serial branch with a temporary PostgreSQL container and Docker integration and
 zero Postgres test skips, so the Stage-6 ordinary/full acceptance is green for the
-current source. It still does not substitute for the Instance TKE acceptance.
+current source. `npm run verify:local`, `npm run validate:product-boundary` and
+`npm run verify:local:full` all pass again on the current HEAD after the
+default-OPL-App Serve/Workspace tests were added
+([receipt](evidence/source-checks/2026-09-30-tke-serial-full-verification-green.json)). It still does not substitute for the Instance TKE acceptance.
 
 ## September 30 Serial Integration Stage 5 Source Progress (Serve Model Applied Fact)
 
