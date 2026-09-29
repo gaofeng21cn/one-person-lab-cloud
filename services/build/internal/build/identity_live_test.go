@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -129,7 +130,11 @@ func newLiveIdentity(t *testing.T, ctx context.Context, dsn string) *liveIdentit
 	if e != nil {
 		t.Fatal(e)
 	}
-	service.ConfigureRegistry(registryHost, "result")
+	registryNamespace := strings.TrimSpace(os.Getenv("OPL_BUILD_TEST_REGISTRY_NAMESPACE"))
+	if registryNamespace == "" {
+		registryNamespace = "result"
+	}
+	service.ConfigureRegistry(registryHost, registryNamespace)
 	if e = service.BackfillTenantRepositoryBindings(ctx); e != nil {
 		t.Fatal(e)
 	}
