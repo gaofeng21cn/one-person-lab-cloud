@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "receiptType": "opl_cloud_tke_serial_portable_tke_configuration_source_check",
- "revision": 3,
+ "revision": 4,
  "recordedAt": "2026-09-30T02:48:39Z",
  "result": "portable_candidate_assets_now_declare_and_forward_the_tencent_tke_and_application_origin_facts_their_owners_require",
  "window": "serial",
@@ -93,5 +93,47 @@
   "The frozen I06/I07/I08 external contracts."
  ],
  "claimBoundary": "This receipt claims the portable Candidate assets now declare and forward the facts their Cloud owners require, and that the assets render with a disposable env. It claims no Candidate image, no deployed installation, no provider action and no Instance receipt.",
- "secrets": "none"
+ "secrets": "none",
+ "ssotConformance": [
+  {
+   "ssot": "docs/spec/target/14_implementation_work_packages.md#9.2 W27.runnable-candidate",
+   "requirement": "写集含 `deploy/portable`；验收「安装配置缺失明确失败」",
+   "conformance": "The overlay requires every provider fact with `:?`, so a missing installation input fails the Compose render before any process starts, instead of a Fabric owner that runs and silently refuses."
+  },
+  {
+   "ssot": "docs/spec/target/14_implementation_work_packages.md#9.2 W02.owner-readiness",
+   "requirement": "写集含 `deploy/portable`；验收「不可用依赖不能SERVING；镜像内CLI/插件/entrypoint检查」",
+   "conformance": "The shipped Fabric owner now receives every fact its constructor and Readiness declare, so it cannot serve with an unconfigured provider, and it receives the provisioner binary path and the kubeconfig path its entrypoint reads."
+  },
+  {
+   "ssot": "docs/spec/target/14_implementation_work_packages.md#11.7",
+   "requirement": "「补...所需owners/DB/roles/mTLS...Serve路由配置」",
+   "conformance": "This supplies the owners' required provider configuration and the route-origin configuration that Control Plane and Serve read, without adding a new asset or moving an owner."
+  },
+  {
+   "ssot": "docs/invariants.md#provider-resources",
+   "requirement": "「Provider selection and concrete resource policy come from the active instance profile. Provider-specific behavior stays inside the Fabric adapter. ... Instance-designated system resources remain outside customer allocation and cleanup.」",
+   "conformance": "The instance profile and the system-resource identity are installer-supplied names; only Fabric reads them, and the assets hardcode none so one installation's pool cannot leak into the shared product."
+  },
+  {
+   "ssot": "docs/invariants.md#identity-and-secrets",
+   "requirement": "「Passwords, raw Keys, tokens, provider credentials ... stay out of ... non-secret artifacts.」",
+   "conformance": "The assets and this receipt carry only variable names, a host path reference and file hashes; no credential value, cluster identity or private address is written."
+  },
+  {
+   "ssot": "docs/invariants.md#release-and-production",
+   "requirement": "「Production credentials are available only inside the smallest authorized publish or instance-mutation boundary. Local development does not connect directly to production-private services.」",
+   "conformance": "The kubeconfig stays an Instance-host secret mounted read-only into the single process that holds cluster credentials; this change reaches no private network and performs no provider or production action."
+  },
+  {
+   "ssot": "docs/architecture.md#deployment-unit-composition",
+   "requirement": "「the manifest, Secret references and readback are reviewed with the capability they carry.」",
+   "conformance": "These are the Cloud-owned portable assets that declare what the deployment unit must supply to the owners it carries; the concrete unit remains the Instance owner's."
+  },
+  {
+   "ssot": "docs/installation.md#current-candidate-format",
+   "requirement": "Current source constructs a ten-asset Candidate bundle",
+   "conformance": "The change keeps the same ten-asset bundle and changes only the content of two existing assets and one base file."
+  }
+ ]
 }
