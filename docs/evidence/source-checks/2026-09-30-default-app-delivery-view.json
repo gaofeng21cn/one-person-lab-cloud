@@ -1,0 +1,88 @@
+{
+ "schemaVersion": 1,
+ "receiptType": "opl_cloud_default_app_delivery_view_source_check",
+ "revision": 1,
+ "recordedAt": "2026-09-30T03:33:33Z",
+ "result": "the_console_delivery_view_now_reports_the_default_app_layers_as_not_applicable_instead_of_failing",
+ "window": "serial",
+ "windowTitle": "Serial integration stage 6 - default App Console delivery view",
+ "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.6",
+ "necessity": {
+  "decision": "The two supported delivery combinations are the default App (an approved Runtime Release with built-in UI, no Package/Build/CapabilityVersion) and the Agent (Package + Runtime + independent WebUI). The Console delivery view is the surface that renders that chain. It must render both combinations; today it fails the default App entirely. This change makes it render the default App, changing no other behavior.",
+  "currentProblem": "apps/console-bff/internal/httpapi/delivery.go returned `serve: deployment <id> names no capability version` whenever the current deployment and the Workspace both named no capability version. A default-App deployment is exactly that case, so `GET /api/v2/delivery/{workspaceId}` answered an owner-read failure (502) for every default-App Workspace, and the Console Workspace delivery panel showed `delivery_unavailable` instead of the chain. This contradicts the adopted delivery invariant that the default App needs no synthetic Package, Build or CapabilityVersion.",
+  "confirmedFacts": [
+   "services/serve/internal/delivery/write.go stores a default-App reservation/deployment with an empty capability_version_id and a runtime selection, while the Agent path stores a capability_version_id.",
+   "docs/invariants.md Adopted Application Delivery Invariants: the default App uses an exact approved Runtime Release and needs no synthetic Package, Build or CapabilityVersion; the Agent uses Build with exact Package, Runtime and independent WebUI inputs.",
+   "docs/spec/target/14_implementation_work_packages.md#11.6 requires verifying the default App first and that it does not depend on Build.",
+   "The Console renders whatever state string the BFF sends (apps/console-ui/src/components/workspaces/AgentDeliveryPanel.tsx), so an owner-attributed not-applicable state is rendered honestly."
+  ],
+  "mustStaySeparate": [
+   "The BFF does not invent a CapabilityVersion or a Build for the default App; it reports those layers as not applicable and still reads Workspace and Serve facts from their owners.",
+   "The Agent combination is unchanged: when a capability version is named, the view still reads Capability and Build and still fails closed on a missing or empty owner readback.",
+   "This is a read-view composition fix; it does not deploy anything, does not change Serve's writes and does not make the BFF a writer."
+  ],
+  "minimalImplementation": [
+   "When neither the current deployment nor the Workspace names a capability version, set the Capability and Build layers to a fixed `not_applicable` / `default_app_runtime_release` fact and return the Workspace and Serve facts, instead of erroring.",
+   "Add TestDeliveryViewReportsDefaultAppLayersAsNotApplicable alongside the existing Agent-view tests."
+  ],
+  "whyNotAlternative": [
+   "Fabricating a placeholder version would show a Capability the owner never wrote.",
+   "Calling Capability/Build with an empty id would surface a spurious owner failure.",
+   "Refusing the view keeps the default App unusable in the Console, which is the combination Stage 6 must verify first."
+  ]
+ },
+ "ssotConformance": [
+  {
+   "ssot": "docs/invariants.md#adopted-application-delivery-invariants",
+   "requirement": "「The default App uses an exact approved Runtime Release with its built-in UI; it needs no synthetic Package, Build or CapabilityVersion.」",
+   "conformance": "The delivery view now renders that combination with the Capability/Build layers marked not applicable rather than requiring a version or inventing one."
+  },
+  {
+   "ssot": "docs/spec/target/14_implementation_work_packages.md#11.6",
+   "requirement": "「先验证默认App不依赖Build...接真实BFF/Console而非fixture DTO」",
+   "conformance": "The default-App path through the real BFF no longer fails, which is the precondition for verifying it does not depend on Build."
+  },
+  {
+   "ssot": "docs/invariants.md#console",
+   "requirement": "「Console presents current owner-backed...facts. Independent sources load independently. A failed source does not erase valid facts from another source.」",
+   "conformance": "The default-App view returns real Workspace and Serve facts and does not let the absent Capability/Build layers erase them."
+  },
+  {
+   "ssot": "docs/invariants.md#evidence-levels",
+   "requirement": "「code-complete means the exact source revision passed its required local source... gates with no required skips.」",
+   "conformance": "The focused Go test runs in npm run verify:local's database-free Go lane."
+  }
+ ],
+ "acceptance": [
+  "GET /api/v2/delivery/{workspaceId} answers 200 for a default-App deployment with no capability version, with Serve's access fact intact and Capability/Build marked not_applicable.",
+  "The existing Agent-combination view test is unchanged and still passes.",
+  "The empty-owner-readback fail-closed test still passes."
+ ],
+ "endState": "Complete for the Cloud-owned Console delivery view over both supported combinations. Live Console qualification and Instance deployment remain external.",
+ "ownerWriteSet": [
+  "apps/console-bff/internal/httpapi/delivery.go",
+  "apps/console-bff/internal/httpapi/server_test.go"
+ ],
+ "evidenceSources": {
+  "apps/console-bff/internal/httpapi/delivery.go": "e5cc585bc6db4174735b919c193a9c403f3c9e661f774e199ca34691ad95e9ca",
+  "apps/console-bff/internal/httpapi/server_test.go": "fefec8bdec0885db0d4beaadaec2243862cb969440f065ce4007264af3e80c38"
+ },
+ "verification": [
+  {
+   "command": "go -C apps/console-bff test ./... -count=1",
+   "result": "pass",
+   "detail": "The Console BFF package, including the new default-App test and the retained Agent and fail-closed tests, is green."
+  },
+  {
+   "command": "npm run verify:local",
+   "result": "pass",
+   "detail": "Full local gate is green after the change."
+  }
+ ],
+ "notRun": [
+  "Live Console browser qualification against a deployed default-App Workspace (needs an Instance).",
+  "Candidate build and Instance deployment (external preconditions)."
+ ],
+ "claimBoundary": "This receipt claims the Console BFF delivery view now renders the default-App combination without failing, verified by a focused Go test and npm run verify:local. It claims no deployed Console, no Candidate and no Instance receipt.",
+ "secrets": "none"
+}

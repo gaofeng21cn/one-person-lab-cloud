@@ -1977,6 +1977,19 @@ names from the owning Go source instead of restating them. Evidence:
 This is a Cloud source and asset fact; no Candidate image, installation,
 provider action or Instance receipt exists yet.
 
+### Default App Console Delivery View
+
+The Console delivery view over a Workspace supports both delivery combinations.
+`apps/console-bff/internal/httpapi/delivery.go` previously failed the whole view
+with `serve: deployment <id> names no capability version` whenever neither the
+current deployment nor the Workspace named a capability version, which is
+exactly the default-App deployment; the Workspace page then showed
+`delivery_unavailable`. It now reports the Capability and Build layers as
+`not_applicable` (`default_app_runtime_release`) while still composing the real
+Workspace and Serve facts, and the Agent combination and fail-closed behavior
+are unchanged. Evidence:
+[default App delivery view](./evidence/source-checks/2026-09-30-default-app-delivery-view.json).
+
 ## Distribution Boundary
 
 The five `v0.1.7` assets and their public API digests match the Release manifest
