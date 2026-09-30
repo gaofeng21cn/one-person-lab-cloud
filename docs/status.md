@@ -70,6 +70,19 @@ current source. `npm run verify:local`, `npm run validate:product-boundary` and
 default-OPL-App Serve/Workspace tests were added
 ([receipt](evidence/source-checks/2026-09-30-tke-serial-full-verification-green.json)). It still does not substitute for the Instance TKE acceptance.
 
+## September 30 Serial Integration Stage 8 Instance Install Gap
+
+A read-only check of the Instance repository names the exact Stage-8 blocker: the
+production install manifest `deploy/tke/opl-cloud.k8s.json` deploys only the
+legacy `opl-cloud-control-plane`, `opl-cloud-ledger` and `opl-cloud-fabric`; it
+contains no Deployment, Service or address for Serve, Workspace, Capability,
+Build, Runtime Control, CloudIdentity, Gateway Integration or Resource Catalog.
+The install change for the Agent build-chain owners (plus Capability/Build/Runtime
+Control/Tenant/Console BFF/BuildKit) is Instance PR #348, which is **closed, not
+merged**, and even it does not install Serve or Workspace. So the installed
+product still cannot deliver the default-App or Agent chain
+([receipt](evidence/source-checks/2026-09-30-tke-serial-instance-install-gap.json)).
+
 ## September 30 Serial Integration Stage 6/7/8 Evidence And Preconditions
 
 The full Console browser suite passes on canonical main (`npm run
