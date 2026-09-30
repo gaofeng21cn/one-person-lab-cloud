@@ -1,70 +1,71 @@
 {
+ "schemaVersion": 2,
+ "owner": "OPL Cloud",
+ "purpose": "Bind one exact canonical Cloud source revision to one portable multi-architecture Cloud image and deterministic installation asset bundle before qualification.",
+ "state": "current",
+ "machineBoundary": "Cloud owns the replaceable Candidate manifest identity and portable bundle bytes; the canonical manifest does not bind selected Workspace images, Provider Profiles, domains, deployment, qualification, or rollback facts.",
+ "lifecycle": {
+  "type": "long_term_contract",
+  "removalCondition": "Replace only with a newer current contract for the same portable Candidate identity boundary."
+ },
+ "candidateReceiptV2": {
   "schemaVersion": 2,
-  "owner": "OPL Cloud",
-  "purpose": "Bind one exact canonical Cloud source revision to one portable multi-architecture Cloud image and deterministic installation asset bundle before qualification.",
-  "state": "current",
-  "machineBoundary": "Cloud owns the replaceable Candidate manifest identity and portable bundle bytes; the canonical manifest does not bind selected Workspace images, Provider Profiles, domains, deployment, qualification, or rollback facts.",
-  "lifecycle": {
-    "type": "long_term_contract",
-    "removalCondition": "Replace only with a newer current contract for the same portable Candidate identity boundary."
-  },
-  "candidateReceiptV2": {
-    "schemaVersion": 2,
-    "kind": "opl_cloud_candidate",
-    "productRepository": "gaofeng21cn/one-person-lab-cloud",
-    "cloudImageRepository": "ghcr.io/gaofeng21cn/one-person-lab-cloud",
-    "platforms": [
-      "linux/amd64",
-      "linux/arm64"
-    ],
-    "exactKeys": [
-      "schemaVersion",
-      "kind",
-      "product",
-      "cloudImage",
-      "assets",
-      "provenance"
-    ],
-    "productExactKeys": [
-      "repository",
-      "sha",
-      "tree"
-    ],
-    "cloudImageExactKeys": [
-      "repository",
-      "indexRef",
-      "indexDigest",
-      "revision",
-      "platforms"
-    ],
-    "platformExactKeys": [
-      "platform",
-      "digest"
-    ],
-    "assetExactKeys": [
-      "name",
-      "sha256"
-    ],
-    "portableAssets": [
-      "compose.yaml",
-      "compose.deployment-platform-owned.yaml",
-      "compose.deployment-managed-tke.yaml",
-      "compose.deployment-customer-owned.yaml",
-      "compose.fabric-local-docker.yaml",
-      "compose.fabric-tencent-tke.yaml",
-      "compose.local-workspace.yaml",
-      "opl-cloud.env.example"
-    ],
-    "manifest": "opl-cloud-candidate.json",
-    "checksumManifest": "SHA256SUMS",
-    "checksumCoverage": "portable_assets_and_candidate_manifest",
-    "provenanceExactKeys": [
-      "workflowRepository",
-      "workflowSha",
-      "workflowRunId",
-      "workflowRunAttempt"
-    ],
-    "receiptDigest": "sha256_of_canonical_json_bytes",
-    "qualificationFactsOwner": "instance_or_installer_receipt"
-  }
+  "kind": "opl_cloud_candidate",
+  "productRepository": "gaofeng21cn/one-person-lab-cloud",
+  "cloudImageRepository": "ghcr.io/gaofeng21cn/one-person-lab-cloud",
+  "platforms": [
+   "linux/amd64",
+   "linux/arm64"
+  ],
+  "exactKeys": [
+   "schemaVersion",
+   "kind",
+   "product",
+   "cloudImage",
+   "assets",
+   "provenance"
+  ],
+  "productExactKeys": [
+   "repository",
+   "sha",
+   "tree"
+  ],
+  "cloudImageExactKeys": [
+   "repository",
+   "indexRef",
+   "indexDigest",
+   "revision",
+   "platforms"
+  ],
+  "platformExactKeys": [
+   "platform",
+   "digest"
+  ],
+  "assetExactKeys": [
+   "name",
+   "sha256"
+  ],
+  "portableAssets": [
+   "compose.yaml",
+   "compose.deployment-platform-owned.yaml",
+   "compose.deployment-managed-tke.yaml",
+   "compose.deployment-customer-owned.yaml",
+   "compose.fabric-local-docker.yaml",
+   "compose.fabric-tencent-tke.yaml",
+   "compose.local-workspace.yaml",
+   "opl-cloud.env.example",
+   "opl-cloud-owner-topology.json"
+  ],
+  "manifest": "opl-cloud-candidate.json",
+  "checksumManifest": "SHA256SUMS",
+  "checksumCoverage": "portable_assets_and_candidate_manifest",
+  "provenanceExactKeys": [
+   "workflowRepository",
+   "workflowSha",
+   "workflowRunId",
+   "workflowRunAttempt"
+  ],
+  "receiptDigest": "sha256_of_canonical_json_bytes",
+  "qualificationFactsOwner": "instance_or_installer_receipt"
+ }
 }

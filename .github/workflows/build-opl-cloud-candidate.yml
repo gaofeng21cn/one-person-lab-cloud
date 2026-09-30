@@ -203,6 +203,7 @@ jobs:
           cp "$BUILD_CONTEXT/deploy/portable/compose.fabric-tencent-tke.yaml" "$bundle/compose.fabric-tencent-tke.yaml"
           cp "$BUILD_CONTEXT/deploy/portable/compose.local-workspace.yaml" "$bundle/compose.local-workspace.yaml"
           cp "$BUILD_CONTEXT/deploy/portable/opl-cloud.env.example" "$bundle/opl-cloud.env.example"
+          cp "$BUILD_CONTEXT/deploy/portable/opl-cloud-owner-topology.json" "$bundle/opl-cloud-owner-topology.json"
           (
             cd "$bundle"
             jq -n \
@@ -213,7 +214,8 @@ jobs:
               --arg localDocker "$(sha256sum compose.fabric-local-docker.yaml | cut -d ' ' -f1)" \
               --arg tencentTke "$(sha256sum compose.fabric-tencent-tke.yaml | cut -d ' ' -f1)" \
               --arg localWorkspace "$(sha256sum compose.local-workspace.yaml | cut -d ' ' -f1)" \
-              --arg environment "$(sha256sum opl-cloud.env.example | cut -d ' ' -f1)" '
+              --arg environment "$(sha256sum opl-cloud.env.example | cut -d ' ' -f1)" \
+              --arg ownerTopology "$(sha256sum opl-cloud-owner-topology.json | cut -d ' ' -f1)" '
               [
                 {name:"compose.yaml",sha256:$compose},
                 {name:"compose.deployment-platform-owned.yaml",sha256:$platformOwned},
@@ -222,7 +224,8 @@ jobs:
                 {name:"compose.fabric-local-docker.yaml",sha256:$localDocker},
                 {name:"compose.fabric-tencent-tke.yaml",sha256:$tencentTke},
                 {name:"compose.local-workspace.yaml",sha256:$localWorkspace},
-                {name:"opl-cloud.env.example",sha256:$environment}
+                {name:"opl-cloud.env.example",sha256:$environment},
+                {name:"opl-cloud-owner-topology.json",sha256:$ownerTopology}
               ]
             ' > "$assets"
           )
