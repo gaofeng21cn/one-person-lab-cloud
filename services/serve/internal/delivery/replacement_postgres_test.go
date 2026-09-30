@@ -701,3 +701,61 @@ func TestServeRuntimeLifecycleActsOnThePersistedCommand(t *testing.T) {
 		t.Fatalf("lifecycle=%v, want the single stop this test issued", runtime.lifecycle)
 	}
 }
+
+// TestServeReloadModelsAdmitsOnlyTheWorkspaceOwner proves the coordination entry
+// point the Workspace owner calls reaches the same owner-local reload as the
+// execution adapter: the admitted peer applies the requested configuration and the
+// stored applied version advances only to the version the application read back,
+// while another owner's call is refused before anything is applied.
+func TestServeReloadModelsAdmitsOnlyTheWorkspaceOwner(t *testing.T) {
+	s, r, _ := reservationFixture(t)
+	ctx := workspaceContext()
+	s.Resources = &resourcesForServe{confirmed: true, workspace: "ws-first", dataAttachment: "attachment-original"}
+	runtime := &runtimeForServe{reloadVersion: 7}
+	s.Runtime = runtime
+	reservation, err := s.Reserve(ctx, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Deploy(ctx, deployReserved(r, reservation)); err != nil {
+		t.Fatalf("first delivery: %v", err)
+	}
+	command := &api.RuntimeReloadCommand{RuntimeInstanceId: reservation.RuntimeInstanceId, ExpectedAppliedVersion: 0, TargetVersion: 7, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-7"}}}
+	// A peer that is not the Workspace owner never reaches the reload path.
+	foreign := ownerservice.WithPeerOwner(context.Background(), owneridentity.Capability.Service())
+	if _, err = s.ReloadModels(foreign, command); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("foreign peer err=%v want permission denied", err)
+	}
+	if len(runtime.reloads) != 0 {
+		t.Fatalf("a refused caller still reached the execution boundary: %v", runtime.reloads)
+	}
+	operation, err := s.ReloadModels(ctx, command)
+	if err != nil {
+		t.Fatalf("reload models: %v", err)
+	}
+	if operation.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED || operation.GetOwner() != api.OperationOwnerEnum_OPERATION_OWNER_ENUM_SERVE || operation.GetOperationId() == "" {
+		t.Fatalf("operation=%v", operation)
+	}
+	if applied := appliedModelConfiguration(t, s, reservation.RuntimeInstanceId); applied != 7 {
+		t.Fatalf("applied model configuration=%d, want the version the application read back", applied)
+	}
+	// A caller that still expects the pre-reload version is refused: the stored
+	// applied version is a precondition, so a lost response is resolved by reading
+	// the applied version, never by resending a stale expectation.
+	if _, err = s.ReloadModels(ctx, command); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("stale expectation err=%v want a failed precondition", err)
+	}
+	// The command is idempotent by its target version: resuming it with the version
+	// the runtime now holds replays the same durable operation instead of allocating
+	// a second applied fact.
+	resumed, err := s.ReloadModels(ctx, &api.RuntimeReloadCommand{RuntimeInstanceId: reservation.RuntimeInstanceId, ExpectedAppliedVersion: 7, TargetVersion: 7, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-7"}}})
+	if err != nil {
+		t.Fatalf("resumed reload: %v", err)
+	}
+	if resumed.GetOperationId() != operation.GetOperationId() {
+		t.Fatalf("resumed reload allocated a second operation: %v", resumed)
+	}
+	if applied := appliedModelConfiguration(t, s, reservation.RuntimeInstanceId); applied != 7 {
+		t.Fatalf("resumed reload advanced the applied configuration to %d", applied)
+	}
+}

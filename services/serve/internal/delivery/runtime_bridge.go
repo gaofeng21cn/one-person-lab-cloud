@@ -24,6 +24,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	api "opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/owneridentity"
 )
 
 // ReasonRuntimeAdapterCapabilityUnavailable names an execution-adapter capability
@@ -84,6 +85,19 @@ func (s *Service) StopRuntime(ctx context.Context, command *api.RuntimeStopComma
 	return s.runtimeLifecycleOperation(ctx, deploy, "runtime_stop", "runtime", "succeeded")
 }
 
+// ReloadModels applies one model configuration to the exact persisted runtime on
+// behalf of the Workspace owner, which owns the accepted model intent this command
+// carries. It is the coordination entry point and the execution-adapter entry point
+// share one owner-local reload: the admitted caller differs, the persisted intent,
+// the publisher interface and the compare-and-set that records the applied version
+// do not.
+func (s *Service) ReloadModels(ctx context.Context, command *api.RuntimeReloadCommand) (*api.Operation, error) {
+	if err := requirePeer(ctx, owneridentity.Workspace); err != nil {
+		return nil, err
+	}
+	return s.reloadRuntime(ctx, command)
+}
+
 // ReloadRuntime applies a new model configuration to the exact persisted runtime
 // through the frozen publisher interface and records the version the application
 // itself read back. The requested version is never written as the applied one: the
@@ -94,6 +108,14 @@ func (s *Service) ReloadRuntime(ctx context.Context, command *api.RuntimeReloadC
 	if err := requireServePeer(ctx); err != nil {
 		return nil, err
 	}
+	return s.reloadRuntime(ctx, command)
+}
+
+// reloadRuntime is the one owner-local reload both admitted callers reach. It
+// resolves the persisted runtime command, checks the caller's expected applied
+// version against Serve's own stored one, applies the target version through the
+// execution boundary and records only the version the application read back.
+func (s *Service) reloadRuntime(ctx context.Context, command *api.RuntimeReloadCommand) (*api.Operation, error) {
 	if s.Runtime == nil {
 		return nil, status.Error(codes.Unavailable, "runtime execution adapter is not configured")
 	}
