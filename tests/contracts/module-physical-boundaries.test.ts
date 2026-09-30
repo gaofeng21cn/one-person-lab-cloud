@@ -35,7 +35,7 @@ function goModulePath(source) {
 }
 
 test("Go services remain physically isolated behind typed owner contracts", async () => {
-  const sharedModules = ["postgresmigrate", "ownerservice", "ownerstore"];
+  const sharedModules = ["postgresmigrate", "ownerservice", "ownerstore", "protectedresource"];
   const sharedModulePaths = await Promise.all(sharedModules.map(async (name) =>
     goModulePath(await text(`services/internal/${name}/go.mod`))));
   const cloudSDKImportPrefixes = ["github.com/tencentcloud/", "k8s.io/"];

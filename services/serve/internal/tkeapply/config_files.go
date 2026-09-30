@@ -1,4 +1,4 @@
-package fabric
+package tkeapply
 
 import (
 	"bytes"
@@ -34,14 +34,14 @@ func verifyApplicationConfigObject(input WorkspaceApplicationRuntimeInput, confi
 	return bytes.Equal(mustJSON(config["data"]), mustJSON(input.Configuration.Files))
 }
 
-func (p *TencentProvider) readApplicationConfigObject(ctx context.Context, input WorkspaceApplicationRuntimeInput) (map[string]any, error) {
+func (p *Executor) readApplicationConfigObject(ctx context.Context, input WorkspaceApplicationRuntimeInput) (map[string]any, error) {
 	name := workspaceApplicationComponentResourceName(input, "config")
 	raw, err := p.callKubectl(ctx, []string{"get", "configmap/" + name, "--ignore-not-found", "-o", "json"}, nil, protectedresource.Target{})
 	if err != nil {
 		return nil, err
 	}
 	if len(bytes.TrimSpace(raw)) == 0 {
-		return nil, ErrWorkspaceLaunchResourceAbsent
+		return nil, ErrResourceAbsent
 	}
 	var config map[string]any
 	if json.Unmarshal(raw, &config) != nil || !verifyApplicationConfigObject(input, config) {
@@ -50,13 +50,13 @@ func (p *TencentProvider) readApplicationConfigObject(ctx context.Context, input
 	return config, nil
 }
 
-func (p *TencentProvider) prepareApplicationConfigFiles(ctx context.Context, input WorkspaceApplicationRuntimeInput) error {
+func (p *Executor) prepareApplicationConfigFiles(ctx context.Context, input WorkspaceApplicationRuntimeInput) error {
 	if len(input.Configuration.Files) == 0 {
 		return nil
 	}
 	if _, err := p.readApplicationConfigObject(ctx, input); err == nil {
 		return nil
-	} else if !errors.Is(err, ErrWorkspaceLaunchResourceAbsent) {
+	} else if !errors.Is(err, ErrResourceAbsent) {
 		return err
 	}
 	config := map[string]any{"apiVersion": "v1", "kind": "ConfigMap", "immutable": true,

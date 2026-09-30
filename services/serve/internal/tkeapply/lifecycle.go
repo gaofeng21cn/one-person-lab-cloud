@@ -1,4 +1,4 @@
-package fabric
+package tkeapply
 
 import (
 	"context"
@@ -8,7 +8,10 @@ import (
 	"strconv"
 )
 
-func (p *TencentProvider) ReadWorkspaceApplicationRuntimeLifecycle(ctx context.Context, input WorkspaceApplicationRuntimeInput) (WorkspaceApplicationRuntimeLifecycleResult, error) {
+func (p *Executor) ReadWorkspaceApplicationRuntimeLifecycle(ctx context.Context, input WorkspaceApplicationRuntimeInput) (WorkspaceApplicationRuntimeLifecycleResult, error) {
+	if err := p.clusterAccessError(); err != nil {
+		return WorkspaceApplicationRuntimeLifecycleResult{}, err
+	}
 	resources, err := p.readWorkspaceApplicationResources(ctx, input)
 	if err != nil {
 		return WorkspaceApplicationRuntimeLifecycleResult{}, err
@@ -54,7 +57,7 @@ func (p *TencentProvider) ReadWorkspaceApplicationRuntimeLifecycle(ctx context.C
 	return result, nil
 }
 
-func (p *TencentProvider) SetWorkspaceApplicationRuntimeLifecycle(ctx context.Context, input WorkspaceApplicationRuntimeInput, desired string) (WorkspaceApplicationRuntimeLifecycleResult, error) {
+func (p *Executor) SetWorkspaceApplicationRuntimeLifecycle(ctx context.Context, input WorkspaceApplicationRuntimeInput, desired string) (WorkspaceApplicationRuntimeLifecycleResult, error) {
 	if _, err := p.ReadWorkspaceApplicationRuntimeLifecycle(ctx, input); err != nil {
 		return WorkspaceApplicationRuntimeLifecycleResult{}, err
 	}
@@ -74,7 +77,7 @@ func (p *TencentProvider) SetWorkspaceApplicationRuntimeLifecycle(ctx context.Co
 			targets = append(targets, "deployment/"+name, "service/"+name)
 		}
 		if len(input.Configuration.Files) > 0 {
-			if _, err := p.readApplicationConfigObject(ctx, input); err != nil && !errors.Is(err, ErrWorkspaceLaunchResourceAbsent) {
+			if _, err := p.readApplicationConfigObject(ctx, input); err != nil && !errors.Is(err, ErrResourceAbsent) {
 				return WorkspaceApplicationRuntimeLifecycleResult{}, err
 			}
 			targets = append(targets, "configmap/"+workspaceApplicationComponentResourceName(input, "config"))
@@ -88,7 +91,7 @@ func (p *TencentProvider) SetWorkspaceApplicationRuntimeLifecycle(ctx context.Co
 		if desired == "running" {
 			replicas = 1
 		} else if desired != "suspended" {
-			return WorkspaceApplicationRuntimeLifecycleResult{}, ErrWorkspaceApplicationRuntimeInputInvalid
+			return WorkspaceApplicationRuntimeLifecycleResult{}, ErrInputInvalid
 		}
 		resources, err := p.readWorkspaceApplicationResources(ctx, input)
 		if err != nil {

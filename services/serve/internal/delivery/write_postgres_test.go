@@ -93,6 +93,9 @@ func (f *resourcesForServe) ReadResources(_ context.Context, r *api.ResourceRead
 	if f.confirmed {
 		out.Outcome = api.Observation_OBSERVATION_CONFIRMED
 		out.ExecutionResources = &api.ResourceExecutionBinding{AccountId: "account-original", ComputeAllocationId: "compute-original", StorageVolumeId: "volume-original", DataAttachmentId: attachment, DataAttachmentOperationId: "attach-operation-original"}
+		// Serve schedules the workload only onto the placement the resources owner
+		// confirmed alongside that binding.
+		out.ApplicationPlacement = &api.ApplicationExecutionPlacement{ComputeNodeName: "node-original", ComputePackageId: "basic", StoragePvcName: "pvc-original"}
 	}
 	return out, nil
 }
@@ -108,24 +111,24 @@ type runtimeForServe struct {
 	credentialErr bool
 }
 
-func (f *runtimeForServe) Start(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (delivery.RuntimeObservation, error) {
+func (f *runtimeForServe) Start(context.Context, *api.RuntimeDeployCommand, delivery.ExecutionTarget) (delivery.RuntimeObservation, error) {
 	f.starts++
 	return runtimeReady(applicationEntry(), "https://ws.example/app", "ack-only"), nil
 }
-func (f *runtimeForServe) Lifecycle(_ context.Context, _ *api.RuntimeDeployCommand, _ *api.ResourceExecutionBinding, desired string) error {
+func (f *runtimeForServe) Lifecycle(_ context.Context, _ *api.RuntimeDeployCommand, _ delivery.ExecutionTarget, desired string) error {
 	f.lifecycle = append(f.lifecycle, desired)
 	return nil
 }
-func (*runtimeForServe) Reload(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) error {
+func (*runtimeForServe) Reload(context.Context, *api.RuntimeDeployCommand, delivery.ExecutionTarget) error {
 	return nil
 }
-func (f *runtimeForServe) Credentials(_ context.Context, c *api.RuntimeDeployCommand, _ *api.ResourceExecutionBinding) (*api.WorkspaceApplicationCredentials, error) {
+func (f *runtimeForServe) Credentials(_ context.Context, c *api.RuntimeDeployCommand, _ delivery.ExecutionTarget) (*api.WorkspaceApplicationCredentials, error) {
 	if f.credentialErr {
 		return nil, errors.New("credentials unavailable")
 	}
 	return &api.WorkspaceApplicationCredentials{WorkspaceId: c.GetWorkspaceId(), RuntimeInstanceId: c.GetRuntimeInstanceId(), Username: "admin", Password: "issued-once"}, nil
 }
-func (f *runtimeForServe) Observe(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (delivery.RuntimeObservation, error) {
+func (f *runtimeForServe) Observe(context.Context, *api.RuntimeDeployCommand, delivery.ExecutionTarget) (delivery.RuntimeObservation, error) {
 	f.observes++
 	if f.observeErr {
 		return delivery.RuntimeObservation{}, errors.New("readback unavailable")
@@ -314,19 +317,19 @@ type orderedObservationRuntime struct {
 	calls        int
 }
 
-func (f *orderedObservationRuntime) Start(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (delivery.RuntimeObservation, error) {
+func (f *orderedObservationRuntime) Start(context.Context, *api.RuntimeDeployCommand, delivery.ExecutionTarget) (delivery.RuntimeObservation, error) {
 	return delivery.RuntimeObservation{}, nil
 }
-func (*orderedObservationRuntime) Lifecycle(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding, string) error {
+func (*orderedObservationRuntime) Lifecycle(context.Context, *api.RuntimeDeployCommand, delivery.ExecutionTarget, string) error {
 	return nil
 }
-func (*orderedObservationRuntime) Reload(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) error {
+func (*orderedObservationRuntime) Reload(context.Context, *api.RuntimeDeployCommand, delivery.ExecutionTarget) error {
 	return nil
 }
-func (*orderedObservationRuntime) Credentials(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (*api.WorkspaceApplicationCredentials, error) {
+func (*orderedObservationRuntime) Credentials(context.Context, *api.RuntimeDeployCommand, delivery.ExecutionTarget) (*api.WorkspaceApplicationCredentials, error) {
 	return nil, errors.New("credentials unavailable")
 }
-func (f *orderedObservationRuntime) Observe(ctx context.Context, _ *api.RuntimeDeployCommand, _ *api.ResourceExecutionBinding) (delivery.RuntimeObservation, error) {
+func (f *orderedObservationRuntime) Observe(ctx context.Context, _ *api.RuntimeDeployCommand, _ delivery.ExecutionTarget) (delivery.RuntimeObservation, error) {
 	f.mu.Lock()
 	f.calls++
 	n := f.calls

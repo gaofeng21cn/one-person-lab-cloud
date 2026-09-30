@@ -24,18 +24,36 @@ import (
 	"opl-cloud/services/internal/ownerstore"
 )
 
-// RuntimeAdapter executes the already admitted descriptor through the existing
-// provider port. Resource bindings are Fabric readbacks, never caller input.
+// ExecutionTarget is the exact confirmed execution fact a delivery step runs
+// against: the resource binding identity plus, when the resources owner publishes
+// one, the infrastructure placement the application workload is scheduled onto.
+// Both come from the same Fabric owner readback, so Serve never composes a
+// placement of its own.
+//
+// The requirement to refuse an unconfirmed placement belongs to the executor that
+// schedules the workload, not to this provider-neutral target: a cluster executor
+// refuses a workload it cannot place onto the confirmed node, prepaid package and
+// storage claim, while a boundary whose provider resolves its own placement needs
+// none. Checking it here would refuse every provider whose resources are not
+// scheduled onto a node, a package and a claim.
+type ExecutionTarget struct {
+	Binding   *api.ResourceExecutionBinding
+	Placement *api.ApplicationExecutionPlacement
+}
+
+// RuntimeAdapter executes the already admitted descriptor through Serve's own
+// execution boundary. Resource bindings and their placement are Fabric readbacks,
+// never caller input.
 type RuntimeAdapter interface {
-	Start(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (RuntimeObservation, error)
-	Observe(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (RuntimeObservation, error)
+	Start(context.Context, *api.RuntimeDeployCommand, ExecutionTarget) (RuntimeObservation, error)
+	Observe(context.Context, *api.RuntimeDeployCommand, ExecutionTarget) (RuntimeObservation, error)
 	// Lifecycle applies a desired lifecycle state (running, suspended, absent) to
 	// the exact reserved runtime. It reports only what the provider confirmed.
-	Lifecycle(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding, string) error
+	Lifecycle(context.Context, *api.RuntimeDeployCommand, ExecutionTarget, string) error
 	// Reload applies the command's model configuration to the exact runtime.
-	Reload(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) error
+	Reload(context.Context, *api.RuntimeDeployCommand, ExecutionTarget) error
 	// Credentials reads the platform-issued WebUI credential for the exact runtime.
-	Credentials(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (*api.WorkspaceApplicationCredentials, error)
+	Credentials(context.Context, *api.RuntimeDeployCommand, ExecutionTarget) (*api.WorkspaceApplicationCredentials, error)
 }
 
 type reservationInput struct {
@@ -599,6 +617,20 @@ func confirmedBinding(command *api.RuntimeDeployCommand, resources *api.Resource
 	return b, nil
 }
 
+// confirmedExecutionTarget resolves the execution facts one delivery step runs
+// against from the same confirmed readback: the executable resource binding and the
+// placement the resources owner published for it. A provider that schedules no
+// workload onto a node, a prepaid package and a storage claim publishes none, and
+// the executor that schedules owns the refusal, so this confirmation never
+// substitutes or drops a fact.
+func confirmedExecutionTarget(command *api.RuntimeDeployCommand, resources *api.ResourceReadback) (ExecutionTarget, error) {
+	binding, err := confirmedBinding(command, resources)
+	if err != nil {
+		return ExecutionTarget{}, err
+	}
+	return ExecutionTarget{Binding: binding, Placement: resources.GetApplicationPlacement()}, nil
+}
+
 // reconcileRuntime serializes the complete provider observation and owner commit
 // under the same PostgreSQL workspace lock as Reserve. That lock spans service
 // processes, so a slow earlier HTTP response cannot overwrite a later observation.
@@ -659,17 +691,17 @@ func (s *Service) observeAndFinishDeliveryTx(ctx context.Context, tx *sql.Tx, co
 	if err != nil {
 		return dbError(err)
 	}
-	binding, err := confirmedBinding(command, resources)
+	target, err := confirmedExecutionTarget(command, resources)
 	if err != nil {
 		return err
 	}
 	// Start's acknowledgement cannot prove readiness; only the separate read does.
 	if start {
-		if _, err = s.Runtime.Start(ctx, command, binding); err != nil {
+		if _, err = s.Runtime.Start(ctx, command, target); err != nil {
 			return err
 		}
 	}
-	observation, err := s.Runtime.Observe(ctx, command, binding)
+	observation, err := s.Runtime.Observe(ctx, command, target)
 	if err != nil {
 		return err
 	}

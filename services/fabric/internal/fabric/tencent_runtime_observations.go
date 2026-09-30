@@ -6,7 +6,7 @@ import (
 	"reflect"
 
 	contracts "opl-cloud/packages/contracts/go"
-	"opl-cloud/services/fabric/internal/protectedresource"
+	"opl-cloud/services/internal/protectedresource"
 )
 
 func controllerUID(resource map[string]any, kind string) string {

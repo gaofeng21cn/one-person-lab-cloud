@@ -71,12 +71,12 @@ func (s *Service) StopRuntime(ctx context.Context, command *api.RuntimeStopComma
 	if err != nil {
 		return nil, err
 	}
-	binding, err := s.confirmedRuntimeBinding(ctx, deploy.command)
+	target, err := s.confirmedRuntimeTarget(ctx, deploy.command)
 	if err != nil {
 		return nil, err
 	}
 	if err := s.applyRecordedLifecycle(ctx, deploy, "stop", map[string]string{"desired": "suspended"}, func() error {
-		return s.Runtime.Lifecycle(ctx, deploy.command, binding, "suspended")
+		return s.Runtime.Lifecycle(ctx, deploy.command, target, "suspended")
 	}); err != nil {
 		return nil, err
 	}
@@ -108,12 +108,12 @@ func (s *Service) ReloadRuntime(ctx context.Context, command *api.RuntimeReloadC
 	reload := proto.Clone(deploy.command).(*api.RuntimeDeployCommand)
 	reload.ModelConfigurationVersion = command.GetTargetVersion()
 	reload.ModelSelections = command.GetSelections()
-	binding, err := s.confirmedRuntimeBinding(ctx, reload)
+	target, err := s.confirmedRuntimeTarget(ctx, reload)
 	if err != nil {
 		return nil, err
 	}
 	if err := s.applyRecordedLifecycle(ctx, deploy, "reload", map[string]string{"desired": "running", "targetVersion": strconv.FormatInt(command.GetTargetVersion(), 10), "selections": reloadSelectionDigest(reload.GetModelSelections())}, func() error {
-		return s.Runtime.Reload(ctx, reload, binding)
+		return s.Runtime.Reload(ctx, reload, target)
 	}); err != nil {
 		return nil, err
 	}
@@ -142,11 +142,11 @@ func (s *Service) ReadApplicationCredentials(ctx context.Context, request *api.R
 	if err != nil {
 		return nil, err
 	}
-	binding, err := s.confirmedRuntimeBinding(ctx, deploy.command)
+	target, err := s.confirmedRuntimeTarget(ctx, deploy.command)
 	if err != nil {
 		return nil, err
 	}
-	credentials, err := s.Runtime.Credentials(ctx, deploy.command, binding)
+	credentials, err := s.Runtime.Credentials(ctx, deploy.command, target)
 	if err != nil {
 		return nil, err
 	}
@@ -172,16 +172,16 @@ func (s *Service) executeRuntimeStep(ctx context.Context, command *api.RuntimeDe
 	if err != nil {
 		return RuntimeObservation{}, err
 	}
-	binding, err := confirmedBinding(command, resources)
+	target, err := confirmedExecutionTarget(command, resources)
 	if err != nil {
 		return RuntimeObservation{}, err
 	}
 	if start {
-		if _, err = s.Runtime.Start(ctx, command, binding); err != nil {
+		if _, err = s.Runtime.Start(ctx, command, target); err != nil {
 			return RuntimeObservation{}, err
 		}
 	}
-	return s.Runtime.Observe(ctx, command, binding)
+	return s.Runtime.Observe(ctx, command, target)
 }
 
 // runtimeObservationReadback projects one adapter observation into the contract's

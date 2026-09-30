@@ -740,7 +740,7 @@ func (s *Service) quiesceCurrentWriter(ctx context.Context, plan replacementPlan
 	if err != nil {
 		return err
 	}
-	binding, err := s.confirmedRuntimeBinding(ctx, deploy.command)
+	target, err := s.confirmedRuntimeTarget(ctx, deploy.command)
 	if err != nil {
 		return err
 	}
@@ -756,7 +756,7 @@ func (s *Service) quiesceCurrentWriter(ctx context.Context, plan replacementPlan
 	if confirmed {
 		return nil
 	}
-	if err = s.Runtime.Lifecycle(ctx, deploy.command, binding, "suspended"); err != nil {
+	if err = s.Runtime.Lifecycle(ctx, deploy.command, target, "suspended"); err != nil {
 		return err
 	}
 	if err = s.confirmRuntimeAction(ctx, id, "suspended:"+replacementDeploymentID); err != nil {
@@ -774,7 +774,7 @@ func (s *Service) resumeCurrentWriter(ctx context.Context, current *currentDeliv
 	if err != nil {
 		return err
 	}
-	binding, err := s.confirmedRuntimeBinding(ctx, deploy.command)
+	target, err := s.confirmedRuntimeTarget(ctx, deploy.command)
 	if err != nil {
 		return err
 	}
@@ -788,7 +788,7 @@ func (s *Service) resumeCurrentWriter(ctx context.Context, current *currentDeliv
 		return err
 	}
 	if !confirmed {
-		if err = s.Runtime.Lifecycle(ctx, deploy.command, binding, "running"); err != nil {
+		if err = s.Runtime.Lifecycle(ctx, deploy.command, target, "running"); err != nil {
 			return err
 		}
 		if err = s.confirmRuntimeAction(ctx, resumeID, "running:"+replacementDeploymentID); err != nil {
@@ -822,7 +822,7 @@ func (s *Service) retireFailedReplacement(ctx context.Context, command *api.Runt
 	if s.Runtime == nil {
 		return status.Error(codes.Unavailable, "runtime execution adapter is not configured")
 	}
-	binding, err := s.confirmedRuntimeBinding(ctx, command)
+	target, err := s.confirmedRuntimeTarget(ctx, command)
 	if err != nil {
 		return err
 	}
@@ -838,7 +838,7 @@ func (s *Service) retireFailedReplacement(ctx context.Context, command *api.Runt
 	if confirmed {
 		return nil
 	}
-	if err = s.Runtime.Lifecycle(ctx, command, binding, "absent"); err != nil {
+	if err = s.Runtime.Lifecycle(ctx, command, target, "absent"); err != nil {
 		return err
 	}
 	if err = s.confirmRuntimeAction(ctx, id, "absent:"+command.GetDeploymentId()); err != nil {

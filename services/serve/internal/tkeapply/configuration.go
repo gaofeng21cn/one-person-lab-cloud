@@ -1,4 +1,4 @@
-package fabric
+package tkeapply
 
 import (
 	"bytes"
@@ -9,7 +9,6 @@ import (
 	"fmt"
 	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/internal/protectedresource"
-	"os"
 	"reflect"
 	"sort"
 	"strconv"
@@ -150,13 +149,13 @@ func workspaceApplicationComponentEnvironment(input WorkspaceApplicationRuntimeI
 	return result
 }
 
-func (p *TencentProvider) readApplicationBoundSecret(ctx context.Context, input WorkspaceApplicationRuntimeInput, binding contracts.WorkspaceApplicationRuntimeSecretBinding) (string, error) {
+func (p *Executor) readApplicationBoundSecret(ctx context.Context, input WorkspaceApplicationRuntimeInput, binding contracts.WorkspaceApplicationRuntimeSecretBinding) (string, error) {
 	raw, err := p.callKubectl(ctx, []string{"get", "secret/" + binding.SecretRef, "--ignore-not-found", "-o", "json"}, nil, protectedresource.Target{})
 	if err != nil {
 		return "", err
 	}
 	if len(bytes.TrimSpace(raw)) == 0 {
-		return "", ErrWorkspaceLaunchResourceAbsent
+		return "", ErrResourceAbsent
 	}
 	var secret map[string]any
 	if json.Unmarshal(raw, &secret) != nil {
@@ -177,14 +176,14 @@ func (p *TencentProvider) readApplicationBoundSecret(ctx context.Context, input 
 	return string(value), nil
 }
 
-func (p *TencentProvider) applicationSecretObject(ctx context.Context, input WorkspaceApplicationRuntimeInput) (map[string]any, error) {
+func (p *Executor) applicationSecretObject(ctx context.Context, input WorkspaceApplicationRuntimeInput) (map[string]any, error) {
 	name := workspaceApplicationComponentResourceName(input, "secrets")
 	raw, err := p.callKubectl(ctx, []string{"get", "secret/" + name, "--ignore-not-found", "-o", "json"}, nil, protectedresource.Target{})
 	if err != nil {
 		return nil, err
 	}
 	if len(bytes.TrimSpace(raw)) == 0 {
-		return nil, ErrWorkspaceLaunchResourceAbsent
+		return nil, ErrResourceAbsent
 	}
 	var secret map[string]any
 	if json.Unmarshal(raw, &secret) != nil {
@@ -196,7 +195,7 @@ func (p *TencentProvider) applicationSecretObject(ctx context.Context, input Wor
 	return secret, nil
 }
 
-func (p *TencentProvider) prepareApplicationSecrets(ctx context.Context, input WorkspaceApplicationRuntimeInput) error {
+func (p *Executor) prepareApplicationSecrets(ctx context.Context, input WorkspaceApplicationRuntimeInput) error {
 	required := len(input.Revision.SecretInputs) > 0 || contracts.WorkspaceApplicationRequiresPlatformCredentials(input.Revision)
 	for _, dependency := range input.Revision.Dependencies {
 		required = required || len(dependency.SecretInputs) > 0
@@ -206,7 +205,7 @@ func (p *TencentProvider) prepareApplicationSecrets(ctx context.Context, input W
 	}
 	if _, err := p.applicationSecretObject(ctx, input); err == nil {
 		return nil
-	} else if !errors.Is(err, ErrWorkspaceLaunchResourceAbsent) {
+	} else if !errors.Is(err, ErrResourceAbsent) {
 		return err
 	}
 	data := map[string]string{}
@@ -225,7 +224,7 @@ func (p *TencentProvider) prepareApplicationSecrets(ctx context.Context, input W
 	admin, hasAdmin := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword)
 	session, hasSession := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret)
 	if hasAdmin || hasSession {
-		seed := strings.TrimSpace(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"))
+		seed := strings.TrimSpace(p.Installation.AdminPasswordSeed)
 		if seed == "" {
 			return errors.New("workspace_application_credential_seed_required")
 		}
@@ -431,7 +430,7 @@ func verifyTencentApplicationConfiguration(input WorkspaceApplicationRuntimeInpu
 	}
 	return len(mounts) == 0 && len(volumes) == 0
 }
-func (p *TencentProvider) ReadWorkspaceApplicationRuntimeCredentials(ctx context.Context, input WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeCredentials, error) {
+func (p *Executor) ReadWorkspaceApplicationRuntimeCredentials(ctx context.Context, input WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeCredentials, error) {
 	if _, err := workspaceApplicationGatewayBinding(input); err != nil {
 		return contracts.WorkspaceApplicationRuntimeCredentials{}, err
 	}

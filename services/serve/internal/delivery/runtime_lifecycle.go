@@ -61,17 +61,18 @@ func (s *Service) persistedRuntimeCommand(ctx context.Context, runtimeID, deploy
 	return &persistedRuntime{command: command, operationID: opID, tenantID: tenantID, actorID: actorID, requestID: requestID, accountID: accountID, appliedModelVersion: appliedVersion}, nil
 }
 
-// confirmedRuntimeBinding resolves the exact Fabric execution binding the command
-// reserved, so lifecycle and credentials reach the same provider object.
-func (s *Service) confirmedRuntimeBinding(ctx context.Context, command *api.RuntimeDeployCommand) (*api.ResourceExecutionBinding, error) {
+// confirmedRuntimeTarget resolves the exact Fabric execution fact the command
+// reserved, so lifecycle and credentials reach the same provider object on the same
+// confirmed placement.
+func (s *Service) confirmedRuntimeTarget(ctx context.Context, command *api.RuntimeDeployCommand) (ExecutionTarget, error) {
 	if s.Resources == nil {
-		return nil, status.Error(codes.Unavailable, "Fabric readback is not configured")
+		return ExecutionTarget{}, status.Error(codes.Unavailable, "Fabric readback is not configured")
 	}
 	resources, err := s.Resources.ReadResources(ctx, &api.ResourceReadbackRequest{Context: nextOwnerCall(command.GetContext()), ResourceSetId: command.GetResourceSetId()})
 	if err != nil {
-		return nil, err
+		return ExecutionTarget{}, err
 	}
-	return confirmedBinding(command, resources)
+	return confirmedExecutionTarget(command, resources)
 }
 
 // runtimeLifecycleOperation records one lifecycle action as an owner Operation in

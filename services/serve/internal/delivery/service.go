@@ -190,12 +190,14 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 		}
 		service.Gateway = api.NewGatewayCoordinationClient(conn)
 	}
-	if address := os.Getenv("OPL_FABRIC_APPLICATION_URL"); address != "" {
-		// The installation's Agent execution boundary. The declared route origin
-		// decides the publishable URL for a gateway-published entry; an
-		// installation that declares none publishes no address rather than a
-		// guessed host.
-		service.Runtime = &TKEApplicationAdapter{BaseURL: address, Token: os.Getenv("OPL_FABRIC_SERVE_SERVICE_TOKEN"), CapabilityKey: os.Getenv("OPL_FABRIC_SERVE_CAPABILITY_KEY"), Origin: RouteOriginFromEnv()}
+	// Serve owns application execution, so this process binds the one execution
+	// boundary its installation declares: its own cluster facts, or the declared
+	// migration-source boundary for the provider whose executor has not moved yet.
+	// The declared route origin decides the publishable URL for a gateway-published
+	// entry; an installation that declares none publishes no address rather than a
+	// guessed host.
+	if err := configureAgentExecution(service, RouteOriginFromEnv()); err != nil {
+		return err
 	}
 	if address := strings.TrimSpace(os.Getenv("OPL_LEDGER_ADDR")); address != "" {
 		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.Ledger.Service(), os.Getenv("OPL_LEDGER_TOKEN"))

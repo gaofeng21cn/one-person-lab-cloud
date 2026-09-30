@@ -558,7 +558,7 @@ func (fixture *tencentRuntimeReadbackFixture) resources() map[string]map[string]
 	secret := resources["Secret"]
 	secret["data"] = map[string]any{"webui_password": b64("runtime-password"), "webui_session_secret": b64("runtime-session")}
 	resources["PersistentVolumeClaim"] = map[string]any{
-		"kind": "PersistentVolumeClaim", "metadata": map[string]any{"name": storagePVCName(fixture.storage)}, "status": map[string]any{"phase": "Bound"},
+		"kind": "PersistentVolumeClaim", "metadata": map[string]any{"name": StoragePVCName(fixture.storage)}, "status": map[string]any{"phase": "Bound"},
 	}
 	resources["Ingress"] = map[string]any{
 		"kind": "Ingress", "metadata": map[string]any{"name": "opl-cloud"},

@@ -334,7 +334,7 @@ func tencentApplicationRuntimeFixture(t *testing.T) (*TencentProvider, *fakeTenc
 	input.WorkspaceID = "ws-alpha"
 	input.Revision.EntryPort = "http"
 	volume := tencentApplicationVolume()
-	fake.resources["PersistentVolumeClaim:"+storagePVCName(volume)] = map[string]any{"kind": "PersistentVolumeClaim", "metadata": map[string]any{"name": storagePVCName(volume), "uid": "pvc-owned", "labels": map[string]any{"oplcloud.cn/storage-id": volume.ID}, "annotations": map[string]any{"opl_account_id": input.AccountID, "opl_workspace_id": input.WorkspaceID, "opl_resource_id": volume.ID}}}
+	fake.resources["PersistentVolumeClaim:"+StoragePVCName(volume)] = map[string]any{"kind": "PersistentVolumeClaim", "metadata": map[string]any{"name": StoragePVCName(volume), "uid": "pvc-owned", "labels": map[string]any{"oplcloud.cn/storage-id": volume.ID}, "annotations": map[string]any{"opl_account_id": input.AccountID, "opl_workspace_id": input.WorkspaceID, "opl_resource_id": volume.ID}}}
 	return provider, fake, input
 }
 
@@ -793,7 +793,7 @@ func TestTencentApplicationReadbackRejectsActualMountDrift(t *testing.T) {
 				}
 			}
 			if change == "storage owner" {
-				pvc := fake.resources["PersistentVolumeClaim:"+storagePVCName(tencentApplicationVolume())]
+				pvc := fake.resources["PersistentVolumeClaim:"+StoragePVCName(tencentApplicationVolume())]
 				nested(pvc, "metadata", "annotations").(map[string]any)["opl_account_id"] = "foreign-account"
 			}
 			if change == "extra mount" {
