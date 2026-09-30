@@ -3,16 +3,16 @@ module opl-cloud/services/fabric
 go 1.26.0
 
 require (
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cbs v1.3.165
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.170
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm v1.3.162
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/tke v1.3.169
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/vpc v1.3.170
-	golang.org/x/sys v0.47.0
-	google.golang.org/grpc v1.83.2
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cbs v1.3.179
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.185
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm v1.3.183
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/tke v1.3.180
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/vpc v1.3.185
+	golang.org/x/sys v0.48.0
+	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
-	k8s.io/apimachinery v0.37.0
-	k8s.io/cri-api v0.37.0
+	k8s.io/apimachinery v0.37.1
+	k8s.io/cri-api v0.37.1
 	opl-cloud/packages/contracts/go v0.0.0
 	opl-cloud/services/internal/ownerservice v0.0.0
 	opl-cloud/services/internal/ownerstore v0.0.0
@@ -28,7 +28,7 @@ require (
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/zclconf/go-cty-yaml v1.1.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20260721132016-d427ff9ee9ad // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
