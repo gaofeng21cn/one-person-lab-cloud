@@ -1,0 +1,107 @@
+{
+ "schemaVersion": 1,
+ "receiptType": "opl_cloud_candidate_branch_source_check",
+ "revision": 1,
+ "recordedAt": "2026-09-30T03:43:16Z",
+ "result": "the_candidate_workflow_now_builds_from_an_exact_branch_commit_while_the_release_publication_boundary_stays_main_only_and_owner_gated",
+ "window": "serial",
+ "windowTitle": "Serial integration stage 7 - Candidate source ref",
+ "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.7",
+ "necessity": {
+  "decision": "A Candidate is a replaceable input, not a formal Release. The serial integration window produces integrated work on a branch before it lands on canonical main, and the deployment must be qualified and exercised on that same source. The Candidate therefore has to be buildable from the exact commit of a branch. The formal Release publication boundary does not move: it stays main-only and owner-gated.",
+  "currentProblem": "The Candidate workflow job guard required `github.ref == 'refs/heads/main'`, and the identity step required `git merge-base --is-ancestor PRODUCT_SHA origin/main`. A branch commit not yet on main could not produce a Candidate: the job was skipped, or the identity step failed. That blocked building the Candidate for the integrated branch work.",
+  "confirmedFacts": [
+   "docs/runtime/release.md states the main-only rule for the Release (publication) workflow, not for the Candidate workflow: `The repository owner or RenDeHuang then explicitly dispatches the Release workflow from Cloud main`.",
+   "docs/runtime/release.md Candidate Qualification calls `PR checks, CI artifacts, and exact-SHA candidate images ... replaceable inputs` that do not create a formal version, Git tag or GitHub Release.",
+   "The Candidate manifest already binds the exact Product SHA and tree and the workflow provenance (`workflowSha`), so a branch-sourced Candidate is still tied to one unambiguous commit.",
+   "tools/validate-product-boundary.mjs validates the Candidate workflow's inputs, jobs, environment, repository and permissions but did not assert the guard, so the guard could drift."
+  ],
+  "mustStaySeparate": [
+   "Only the Candidate workflow's source ref is relaxed. The Release workflow stays dispatched from main by the repository owner or RenDeHuang, and publication still promotes the exact qualified digest without a rebuild.",
+   "The owner actor gate on the Candidate job is kept: only `github.actor` and `github.triggering_actor` equal to the repository owner may dispatch.",
+   "The Candidate still binds one exact commit: the identity step proves PRODUCT_SHA equals the checked-out HEAD, the tree is clean, and a non-branch ref is refused.",
+   "This changes no source bytes, no runtime behavior, and no Instance obligation."
+  ],
+  "minimalImplementation": [
+   "Candidate job guard: accept `github.ref_type == 'branch'` instead of pinning `refs/heads/main`, keeping both owner actor checks.",
+   "Identity step: keep the main-ancestry acceptance, and when the commit is not on main require it to be the head of a dispatched branch (which the HEAD==PRODUCT_SHA check already proves); refuse tags and PR merge refs.",
+   "Input description: product_sha is the exact head of the dispatched branch.",
+   "tools/validate-product-boundary.mjs: assert the guard admits branch refs, keeps the owner checks, and does not pin main."
+  ],
+  "whyNotAlternative": [
+   "Waiting for main makes the Candidate unbuildable before the branch lands, which is exactly the current blocker.",
+   "Dropping the owner actor gate to let anyone dispatch would widen the Candidate trust boundary beyond the request.",
+   "Building from a PR merge ref or an arbitrary commit would lose the 'exact branch head' identity the assets and receipts rely on."
+  ]
+ },
+ "ssotConformance": [
+  {
+   "ssot": "docs/runtime/release.md#candidate-qualification",
+   "requirement": "「PR checks, CI artifacts, and exact-SHA candidate images are replaceable inputs... The candidate must identify one canonical Cloud SHA and one digest-addressed multi-architecture image.」",
+   "conformance": "The Candidate still identifies exactly one Cloud SHA (the branch head, proven equal to the checked-out HEAD) and one multi-architecture image; it is not a formal Release and creates no tag or version."
+  },
+  {
+   "ssot": "docs/runtime/release.md#publication",
+   "requirement": "「The repository owner or RenDeHuang then explicitly dispatches the Release workflow from Cloud main; the original actor and current triggering actor must match.」",
+   "conformance": "Unchanged. This receipt records that the Release (publication) workflow keeps its main-only, owner-gated rule; only the Candidate workflow's source ref is relaxed."
+  },
+  {
+   "ssot": "docs/spec/target/14_implementation_work_packages.md#11.7",
+   "requirement": "「构建不可变Candidate...Instance #348仍是未合并提案，必须以当时remote main为准审核补齐安装清单」",
+   "conformance": "This makes the Candidate buildable from the serial branch so the same source can be qualified and then deployed."
+  },
+  {
+   "ssot": "docs/invariants.md#release-and-production",
+   "requirement": "「Publication and deployment bind exact source commits, image digests, caller authority, and owner readback. A build or test result proves only its own layer.」",
+   "conformance": "Only the owner may dispatch, the exact commit is bound by SHA/tree/provenance, and this receipt claims only the workflow-source change, not an image or deployment."
+  }
+ ],
+ "ssotChangeRequest": {
+  "requiresUserConsent": true,
+  "notModified": [
+   "docs/runtime/release.md",
+   "docs/architecture.md",
+   "docs/spec/target/14_implementation_work_packages.md",
+   "docs/invariants.md"
+  ],
+  "question": "docs/runtime/release.md is the canonical release-procedure owner. It does not currently state a Candidate-source rule, so no source/doc divergence exists yet. If the branch-source Candidate rule should be recorded in release.md (or architecture.md), that is a release-boundary documentation change and is reported here for consent rather than made unilaterally.",
+  "proposedDocText": "A Candidate may be built from the exact head commit of any branch. The Release workflow remains main-only and owner-gated; publication still promotes the exact qualified digest without a rebuild."
+ },
+ "acceptance": [
+  "npm run validate:product-boundary passes and now asserts the Candidate guard admits branch refs, keeps the owner checks, and does not pin main.",
+  "npm run verify:local passes.",
+  "A repository owner can dispatch the Candidate workflow from a branch whose head is the product_sha."
+ ],
+ "endState": "Complete for the Cloud-owned Candidate source-ref change. Building the image on a branch, qualifying it, and the protected Instance deployment remain external.",
+ "ownerWriteSet": [
+  ".github/workflows/build-opl-cloud-candidate.yml",
+  "tools/validate-product-boundary.mjs"
+ ],
+ "evidenceSources": {
+  ".github/workflows/build-opl-cloud-candidate.yml": "826d5467c700840a8a6e33e6d0473f1b0d65adfcddbdb7cea7d864f1f1798396",
+  "tools/validate-product-boundary.mjs": "6cc1eb31e4f5ad898d13f3476b9794b7c77cae2f93157c4cb0da57297c8df3a8"
+ },
+ "verification": [
+  {
+   "command": "npm run validate:product-boundary",
+   "result": "pass",
+   "detail": "The boundary script now asserts the Candidate guard's branch-ref shape and owner checks."
+  },
+  {
+   "command": "node --test \"tests/contracts/*.test.ts\"",
+   "result": "pass",
+   "detail": "All contract tests pass."
+  },
+  {
+   "command": "npm run verify:local",
+   "result": "pass",
+   "detail": "Full local gate is green."
+  }
+ ],
+ "notRun": [
+  "Dispatching the Candidate workflow (requires the repository owner actor; the local Docker Hub pull is also blocked from this host).",
+  "Candidate image build and Instance deployment."
+ ],
+ "claimBoundary": "This receipt claims the Candidate workflow now builds from an exact branch commit while the Release publication boundary stays main-only and owner-gated, verified by validate:product-boundary and verify:local. It claims no built image, no Candidate artifact and no Instance receipt.",
+ "secrets": "none"
+}
