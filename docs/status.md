@@ -2003,6 +2003,28 @@ workflow still runs from `main`. `tools/validate-product-boundary.mjs` now gates
 that guard shape. Evidence:
 [candidate branch source](./evidence/source-checks/2026-09-30-candidate-branch-source.json).
 
+### Default App Launch Confirm Step
+
+The Console launch page renders both application combinations from one catalog.
+`apps/console-ui/src/app/use-workspace-launch-controller.ts` only failed the
+catalog when the approved Runtime Release list *and* the ready CapabilityVersion
+list were both empty, which is what a default-App-only tenant presents, but its
+state init then dereferenced `availableVersions[0].id` unconditionally. On an
+empty ready list that threw during render and the route unmounted to an empty
+body, so `/console/workspaces/new` showed nothing at all. The CapabilityVersion
+init now falls back to `""` like the sibling Runtime Release init. The confirm
+step in `WorkspaceLaunchPage.tsx` had also hardcoded the `Agent 版本` row from
+the CapabilityVersion, so a default-App quote rendered an empty version row; it
+now labels and reads the `Runtime Release` row for the default App and keeps the
+`Agent 版本` row for a built Agent. The browser test
+`default App confirm step shows its Runtime Release instead of an empty
+CapabilityVersion` drives the real Console through the real BFF with an approved
+Runtime Release and an empty ready-CapabilityVersion catalog; it passes with the
+fix and fails without it. Evidence:
+[default App confirm step](./evidence/source-checks/2026-09-30-default-app-confirm-step-release.json).
+This is a Cloud source fact; no deployed Console, Candidate or Instance receipt
+exists yet.
+
 ## Distribution Boundary
 
 The five `v0.1.7` assets and their public API digests match the Release manifest

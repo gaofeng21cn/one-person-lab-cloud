@@ -220,7 +220,7 @@ export function useWorkspaceLaunchController({
       setAgentWallet(wallet);
       setAgentApplicationKindState((current) => current === "agent" ? (availableVersions.length ? "agent" : "opl_app") : (availableReleases.length ? "opl_app" : "agent"));
       setAgentRuntimeVersionIdState((current) => current && availableReleases.some((r) => r.id === current) ? current : (availableReleases[0]?.id ?? ""));
-      setAgentCapabilityVersionIdState((current) => current && availableVersions.some((v) => v.id === current) ? current : availableVersions[0].id);
+      setAgentCapabilityVersionIdState((current) => current && availableVersions.some((v) => v.id === current) ? current : (availableVersions[0]?.id ?? ""));
       setAgentComputePlanIdState((current) => current && availableCompute.some((p) => p.id === current) ? current : availableCompute[0].id);
       setAgentStoragePlanIdState((current) => current && availableStorage.some((p) => p.id === current) ? current : availableStorage[0].id);
       setAgentSourceLoading(false);
