@@ -549,3 +549,46 @@ func TestServeDefaultAppDeploysReadyAndPublishesAccess(t *testing.T) {
 		t.Fatalf("default App access=%v err=%v", access, err)
 	}
 }
+
+// TestServeAgentReservationFromSelectionWithoutLegacyField is the regression guard
+// for the serial branch defect where the Workspace caller presented both the
+// explicit agent application selection and the legacy top-level capabilityVersionId,
+// which Serve refuses as mutually exclusive. A built Agent must be admissible from
+// its explicit selection alone, and the reserved row must record the capability
+// version from that selection.
+func TestServeAgentReservationFromSelectionWithoutLegacyField(t *testing.T) {
+	s, base, cap := reservationFixture(t)
+	ctx := workspaceContext()
+	request := proto.Clone(base).(*api.RuntimeReservationCommand)
+	request.CapabilityVersionId = ""
+	request.ApplicationSelection = &api.WorkspaceApplicationSelection{Kind: api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_AGENT, CapabilityVersionId: proto.String("cv_1")}
+	request.Context.IdempotencyKey = "agent-from-selection"
+
+	out, err := s.Reserve(ctx, request)
+	if err != nil {
+		t.Fatalf("agent reservation from selection: %v", err)
+	}
+	var applicationKind, capability string
+	if err := s.DB.QueryRowContext(ctx, `SELECT application_kind, capability_version_id FROM serve.agent_deployments WHERE id=$1`, out.DeploymentId).Scan(&applicationKind, &capability); err != nil {
+		t.Fatal(err)
+	}
+	if applicationKind != "agent" || capability != "cv_1" {
+		t.Fatalf("agent row kind=%q capability=%q", applicationKind, capability)
+	}
+	// The deploy command built from the reservation must also be admitted; the
+	// real Workspace caller carries the same explicit selection it reserved with.
+	command := deployReserved(request, out)
+	command.ApplicationSelection = request.ApplicationSelection
+	command.Context = call("tenant-alpha", false)
+	command.Context.IdempotencyKey = "agent-deploy-from-selection"
+	s.Resources = &resourcesForServe{confirmed: true}
+	s.Runtime = &runtimeForServe{}
+	state, err := s.Deploy(ctx, command)
+	if err != nil {
+		t.Fatalf("agent deploy from selection: %v", err)
+	}
+	if !state.GetApplicationAvailable() {
+		t.Fatalf("agent deploy readback=%v", state)
+	}
+	_ = cap
+}

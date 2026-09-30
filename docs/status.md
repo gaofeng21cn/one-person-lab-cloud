@@ -70,6 +70,38 @@ current source. `npm run verify:local`, `npm run validate:product-boundary` and
 default-OPL-App Serve/Workspace tests were added
 ([receipt](evidence/source-checks/2026-09-30-tke-serial-full-verification-green.json)). It still does not substitute for the Instance TKE acceptance.
 
+## September 30 Serial Integration Regression Fix (Built-Agent Selection)
+
+A real regression surfaced by the Cloud Qualification `fabric` job (run
+`36644007785`, `TestLocalFirstApplicationDeploymentQualification`): the Workspace
+caller presented both the explicit agent `applicationSelection` and the legacy
+top-level `capabilityVersionId`, which Serve refuses as mutually exclusive, so no
+built Agent could be delivered. This was introduced while adding the
+default-App selection union. `services/workspace/internal/launch/runtime.go`
+now carries only `ApplicationSelection` on Reserve/Deploy, and Serve's
+`Reserve`/`validateReserved` read the agent's CapabilityVersion from the explicit
+selection (the legacy field is a fallback only when no selection is presented).
+A focused regression test reserves and deploys a built Agent from the selection
+alone
+([receipt](evidence/source-checks/2026-09-30-tke-serial-agent-selection-mutual-exclusion-fix.json)).
+
+## September 30 Serial Integration Regression Fix (Recovered Runtime Command)
+
+The next Cloud Qualification `fabric` failure (run `36646236276`,
+`TestLocalFirstApplicationDeploymentQualification`) was `runtime command differs
+from its original execution` during process-failure recovery. Root cause: the
+durable `sourceRecord` persisted the artifact, descriptor, digest and ids but not
+`DataCompatibility`, which the runtime deploy command carries; on recovery the
+re-created command therefore differed from the frozen one. `sourceRecord` now
+stores and restores `DataCompatibility`, and
+`TestSourceRecordRoundTripsDataCompatibility` proves the recovered command is
+proto-equal to the original
+([receipt](evidence/source-checks/2026-09-30-tke-serial-source-record-data-compatibility.json)).
+Both fixes are confirmed by a green Cloud Qualification run
+([36647494320](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/36647494320)):
+all jobs pass, including the `fabric` job's
+`TestLocalFirstApplicationDeploymentQualification`.
+
 ## September 30 Serial Integration Stage 7 Source Progress (Console Cloud Mode)
 
 **Stage 7 (Console cloud mode):** the §11.7 "explicit Console cloud mode" source
@@ -82,6 +114,7 @@ the installed product remains an open Candidate/Instance decision
 ([receipt](evidence/source-checks/2026-09-30-tke-serial-console-cloud-mode-build.json)).
 A full local product image build was not possible here because Docker Hub is
 unreachable from this host.
+
 
 ## September 30 Serial Integration Merged To Canonical Main
 

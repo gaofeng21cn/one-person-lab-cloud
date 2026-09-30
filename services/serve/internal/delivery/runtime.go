@@ -250,11 +250,19 @@ func validateReserved(ctx context.Context, tx *sql.Tx, cmd *api.RuntimeDeployCom
 	// The reserved source must match the command exactly. A built Agent carries the
 	// same CapabilityVersion; the default OPL App carries the same Runtime Release
 	// and no CapabilityVersion.
+	// The explicit application selection is the authoritative source: a built
+	// Agent names its CapabilityVersion there, while the legacy top-level field is
+	// still accepted when no selection was presented, so a recovered command from
+	// either shape validates against the same reserved row.
+	effectiveCapability := cmd.GetApplicationSelection().GetCapabilityVersionId()
+	if effectiveCapability == "" {
+		effectiveCapability = cmd.GetCapabilityVersionId()
+	}
 	if applicationKind == "opl_app" {
 		if cmd.GetCapabilityVersionId() != "" || cmd.GetApplicationSelection().GetRuntimeVersionId() != runtimeVersion.String {
 			return refuse(ReasonIdentityMismatch)
 		}
-	} else if capability != cmd.GetCapabilityVersionId() {
+	} else if capability != effectiveCapability {
 		return refuse(ReasonIdentityMismatch)
 	}
 	if epoch != cmd.GetExecutionEpoch() {

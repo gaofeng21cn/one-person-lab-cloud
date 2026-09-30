@@ -115,3 +115,42 @@ func TestResolveApplicationSourceDefaultAppBuildsRuntimeReleaseDescriptor(t *tes
 		t.Fatalf("unapproved release err=%v, want FailedPrecondition", err)
 	}
 }
+
+// TestSourceRecordRoundTripsDataCompatibility proves the durable source record
+// carries the accepted version's data compatibility, so a recovered runtime deploy
+// command is byte-equal to the one originally frozen. Without this, the recovery
+// guard "runtime command differs from its original execution" fires even though
+// nothing the caller controls changed.
+func TestSourceRecordRoundTripsDataCompatibility(t *testing.T) {
+	source := &applicationSource{
+		Selection:            &api.WorkspaceApplicationSelection{Kind: api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_AGENT, CapabilityVersionId: proto.String("capability-1")},
+		Artifact:             &api.ArtifactReference{Repository: "local.example/app", Digest: "sha256:deadbeef"},
+		DeploymentDescriptor: &api.DeploymentDescriptor{SchemaVersion: api.DeploymentDescriptorSchemaVersionEnum_DEPLOYMENT_DESCRIPTOR_SCHEMA_VERSION_ENUM_OPL_DEPLOYMENT_DESCRIPTOR_V1, Provenance: api.DeploymentDescriptorProvenanceEnum_DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_BUILD},
+		DescriptorDigest:     "sha256:abc", DescriptorObjectRef: "descriptor-original", CapabilityVersionID: "capability-1",
+		DataCompatibility: &api.DataCompatibility{DataSchemaVersion: "1"},
+	}
+	record, err := source.record()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := &sourceRecord{}
+	if err := json.Unmarshal(record, stored); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := stored.resolve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.DataCompatibility.GetDataSchemaVersion() != "1" {
+		t.Fatalf("recovered data compatibility = %v", recovered.DataCompatibility)
+	}
+	op := ownerstore.Operation{ID: "op-1", ResourceID: "ws-1", ActorID: "actor-1", TenantID: "tenant-1", RequestID: "req-1"}
+	accepted := &api.QuoteAcceptance{Quote: &api.Quote{Id: "quote-1", Purpose: api.QuotePurposeEnum_QUOTE_PURPOSE_ENUM_DEPLOY, CapabilityVersionId: proto.String("capability-1"), ComputePlanId: "compute-1", StoragePlanId: "storage-1", PeriodMonths: 1}}
+	binding := &api.ResourceExecutionBinding{DataAttachmentId: "attachment-1"}
+	reservation := &api.RuntimeReservation{DeploymentId: "dep-1", RuntimeInstanceId: "rt-1", ExecutionEpoch: 1}
+	original := runtimeCommand(op, "grant-1", accepted, source, binding, "rs-1", reservation)
+	replayed := runtimeCommand(op, "grant-1", accepted, recovered, binding, "rs-1", reservation)
+	if !proto.Equal(original, replayed) {
+		t.Fatalf("recovered runtime command differs:\n original=%v\n replayed=%v", original, replayed)
+	}
+}
