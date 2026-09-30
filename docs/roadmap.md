@@ -285,6 +285,12 @@ and carries no acceptance.
    Cloud Candidate only and supplies stable Cloud/TKE/TCR configuration and
    Secret references once per installation/upgrade. Build gets scoped input-read
    and output-write credentials; TKE workload pull uses a separate read identity.
+   The portable Candidate assets now declare the configuration those owners
+   require: the Fabric protected-resource facts
+   (`OPL_SYSTEM_COMPUTE_*`), which the guard enforces on every mutating
+   `kubectl`, and `OPL_WORKSPACE_APPLICATION_DOMAIN`, which the Control Plane
+   and Serve use for per-binding application origins. The remaining gap is the
+   protected Instance installation itself.
 6. **Tencent-hosted Build acceptance — open.** Through the deployed Cloud
    Console, admit a test Tenant and run a real Build; read back the Tenant
    binding, Build destination, remote TCR manifest digest, Capability

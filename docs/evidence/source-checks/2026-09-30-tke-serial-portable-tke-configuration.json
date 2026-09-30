@@ -1,0 +1,68 @@
+{
+ "schemaVersion": 1,
+ "receiptType": "opl_cloud_tke_serial_portable_tke_configuration_source_check",
+ "revision": 1,
+ "recordedAt": "2026-09-30T02:13:59Z",
+ "result": "portable_candidate_assets_now_declare_the_protected_resource_and_application_origin_facts_their_owners_require",
+ "window": "serial",
+ "windowTitle": "Serial integration stage 7 - complete the portable Candidate installation configuration",
+ "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.7",
+ "scope": "Complete the Cloud-owned portable Candidate installation contract for the supported tencent-tke provider and for the per-binding application origin. Two source-proven owner facts were absent from the portable assets that ship and run those owners. No provider, cluster, Instance or production action.",
+ "findings": [
+  {
+   "id": "fabric-protected-resource-guard",
+   "fact": "services/fabric/internal/fabric/tencent_provider.go callKubectl runs protectedresource.FromEnv().Check(target) for every mutating kubectl verb (apply/create/patch/delete/scale); Config.Validate requires OPL_SYSTEM_COMPUTE_NODE_POOL_ID, _MACHINE_ID, _NODE_NAME, _MACHINE_TYPE and OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON, so Fabric refuses every provider/cluster mutation while they are unset. compose.fabric-tencent-tke.yaml and opl-cloud.env.example declared none of the five OPL_SYSTEM_COMPUTE_* facts, although services/control-plane/ops/production-manifest.ts already requires them for a tencent-tke install.",
+   "consequence": "The portable tencent-tke Candidate could start Fabric but not mutate anything; the assets now forward the exact facts the guard reads."
+  },
+  {
+   "id": "application-origin-domain",
+   "fact": "services/control-plane/internal/server/workspace_application_origin.go parseWorkspaceApplicationOriginHost returns not-a-binding-origin when OPL_WORKSPACE_APPLICATION_DOMAIN is empty, and services/serve/internal/delivery/routeorigin.go uses the same name for ApplicationEntryURL. compose.yaml did not forward it and opl-cloud.env.example did not declare it, so an install built from the published template could not dispatch or publish the per-binding application origin that the Instance Ingress wildcard routes.",
+   "consequence": "The base Compose now forwards the declared value and the template declares the installer input, keeping the setting optional but explicit rather than undiscoverable."
+  }
+ ],
+ "ownerWriteSet": [
+  "compose.yaml",
+  "deploy/portable/compose.fabric-tencent-tke.yaml",
+  "deploy/portable/opl-cloud.env.example",
+  "tests/contracts/portable-tke-configuration.test.ts"
+ ],
+ "evidenceSources": {
+  "compose.yaml": "06790c858e8b6b57aa1ecafbdcbc7427b9196e4de0d9e04d2e608b4fca08e6fa",
+  "deploy/portable/compose.fabric-tencent-tke.yaml": "8cf82b80535c66eb680efff40e8510856b9fbbc529edef564142d3f5c5889f6a",
+  "deploy/portable/opl-cloud.env.example": "1cc6c840db944a291aa41c824f4ccf8143f2720e8fdb7d3da8eb30259726d020",
+  "tests/contracts/portable-tke-configuration.test.ts": "c0d15e1852241e7546fcb3653d713d0520a4dc37d98c3194a6724edb6fbbeee9",
+  "services/fabric/internal/protectedresource/guard.go": "f065a98c18e81348cfaaa2e2f5baf6ad9881bbfbe87e18bfbddc72c8c2a1f5bb",
+  "services/control-plane/internal/server/workspace_application_origin.go": "ce5d68de4865d9cf0617fe620cb54d13ff236151c6fbce5c0c774320207b2ea9",
+  "services/serve/internal/delivery/routeorigin.go": "b73e163ff8880960dde37286ac30b32b07befcfb9b108c4b9285c127f2c86094",
+  "services/control-plane/ops/production-manifest.ts": "bec48216db48b451816db4d004a9e31e4b72c5b832807418c4ec053a86861f88"
+ },
+ "verification": [
+  {
+   "command": "node --test tests/contracts/portable-tke-configuration.test.ts",
+   "result": "pass",
+   "detail": "The overlay forwards every fact protectedresource.FromEnv reads (read from guard.go), the template declares them, and the base Compose forwards the application-origin domain both readers use."
+  },
+  {
+   "command": "node --test \"tests/contracts/*.test.ts\"",
+   "result": "pass",
+   "detail": "13 contract tests pass, including the retained portable Local-Docker asset and product-distribution tests."
+  },
+  {
+   "command": "docker compose --env-file <env> -f compose.yaml -f deploy/portable/compose.deployment-managed-tke.yaml -f deploy/portable/compose.fabric-tencent-tke.yaml config",
+   "result": "pass",
+   "detail": "Rendered with a disposable env file: Fabric receives the five OPL_SYSTEM_COMPUTE_* facts and OPL_FABRIC_PROVIDER=tencent-tke; Control Plane receives OPL_WORKSPACE_APPLICATION_DOMAIN=application.example.com. No image pull, provider call or cluster access."
+  },
+  {
+   "command": "npm run test:ownership && npm run validate:product-boundary && npm run verify:local",
+   "result": "pass",
+   "detail": "Test ownership, product boundary and the full local gate (source tests, contract tests, Console browser suite, database-free Go tests, whitespace) are green."
+  }
+ ],
+ "notRun": [
+  "Candidate image build (owner-actor dispatch) and Instance deployment.",
+  "Any Tencent provider or cluster mutation; no real charge, purchase, renewal or deletion.",
+  "The frozen I06/I07/I08 external contracts."
+ ],
+ "claimBoundary": "This receipt claims the portable Candidate assets now declare the protected-resource and application-origin facts their Cloud owners require and that the assets render with a disposable env. It claims no Candidate image, no deployed installation, no provider action and no Instance receipt.",
+ "secrets": "none"
+}

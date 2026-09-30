@@ -108,6 +108,20 @@ Console routing. Customer Console does not select a provider. The current
 `local-docker` is rejected, while `platform_owned` with `local-docker` remains
 qualification-only.
 
+Selecting `tencent-tke` requires five protected-resource facts in the same
+environment as Fabric: `OPL_SYSTEM_COMPUTE_NODE_POOL_ID`,
+`OPL_SYSTEM_COMPUTE_MACHINE_ID`, `OPL_SYSTEM_COMPUTE_NODE_NAME`,
+`OPL_SYSTEM_COMPUTE_MACHINE_TYPE` and `OPL_SYSTEM_COMPUTE_CVM_ID`. Fabric's
+protected-resource guard refuses every mutating `kubectl` action unless they
+identify the installation's own system node pool and machine, so
+`compose.fabric-tencent-tke.yaml` requires them and the environment template
+declares them. The same names are validated by
+`services/control-plane/ops/production-manifest.ts`. Separately,
+`OPL_WORKSPACE_APPLICATION_DOMAIN` is the installer's own per-binding
+application-origin domain; the base Compose forwards it to the Control Plane,
+and leaving it empty publishes no application origins rather than an address
+that cannot resolve.
+
 A Candidate is not a Product Release. Its files are admitted and qualified as
 one checksum-bound set from one canonical Cloud SHA and image digest. The
 Instance owner supplies the domain, provider profile, immutable Workspace image
