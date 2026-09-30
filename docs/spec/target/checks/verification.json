@@ -1,7 +1,7 @@
 {
   "result": "passed",
-  "timestamp": "2026-09-29T19:22:21.532790+00:00",
-  "report": "checks/runs/20260929T192221532790Z.json",
+  "timestamp": "2026-09-30T10:17:02.508058+00:00",
+  "report": "checks/runs/20260930T101702508058Z.json",
   "scope": "documentation contracts only; not implementation/runtime/DB execution/Instance qualification",
   "checks": [
     {
@@ -18,7 +18,7 @@
       "details": {
         "databases": 10,
         "tables": 101,
-        "columns": 1426,
+        "columns": 1422,
         "indexes": 163,
         "sqlStatements": 422,
         "execution": "parser only; no database connected"
@@ -28,10 +28,10 @@
       "name": "isolated_postgresql_execution_receipt",
       "passed": true,
       "details": {
-        "receipt": "checks/runs/cross-domain-20260929T192005.140049Z.json",
+        "receipt": "checks/runs/cross-domain-20260930T093147.790587Z.json",
         "tests": 101,
         "metadata": {
-          "actualDatabaseFields": 1426,
+          "actualDatabaseFields": 1422,
           "directMappingsTypeAndEnumChecked": 311,
           "optionalWireFieldMeansOmittedNotNull": true,
           "nonnullableDbMayBeInternalOrDerived": "not inferred from API required alone; legacy cases cover real discriminators",
@@ -39,7 +39,7 @@
         },
         "scope": "typed REST/protobuf specification adapters -> isolated PostgreSQL -> exact typed/readback projection; provider router and Storage are explicitly named fixtures, not implemented services",
         "cleanup": {
-          "containerName": "opl-spec-semantic-1790709605",
+          "containerName": "opl-spec-semantic-1790760707",
           "containerAbsent": true,
           "stopSucceeded": true,
           "removalReadbackPolls": 2,

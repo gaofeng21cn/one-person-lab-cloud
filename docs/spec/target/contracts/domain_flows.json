@@ -410,7 +410,7 @@
           "request": "ResourceAdmissionRequest",
           "response": "AdmissionResult",
           "writes": [],
-          "completionEvidence": "provider能力、实际资源/route CAS能力准入",
+          "completionEvidence": "provider资源能力与实际执行容量准入；Serve路由由Serve独立核验",
           "onUnknownOrRejection": "不能静默换provider或降能力",
           "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
         },
@@ -569,7 +569,7 @@
             "serve.access_bindings",
             "serve.access_switches"
           ],
-          "completionEvidence": "provider conditional revision确认新epoch",
+          "completionEvidence": "Serve本地CAS确认新epoch，target/generation不变",
           "onUnknownOrRejection": "未知旧switch先读回，不抢占",
           "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
         },
@@ -583,8 +583,8 @@
             "serve.access_bindings",
             "serve.access_switches"
           ],
-          "completionEvidence": "epoch/revision/target精确，provider实际路由确认",
-          "onUnknownOrRejection": "旧epoch/旧revision拒绝，丢响应ObserveRoute",
+          "completionEvidence": "epoch/generation/target精确，Serve本地CAS/readback确认",
+          "onUnknownOrRejection": "旧epoch拒绝，丢响应ObserveRoute",
           "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
         },
         {
@@ -602,7 +602,7 @@
         }
       ],
       "terminal": "Serve本域CAS active Deployment/访问generation后，receipt核对；客户可打开当前应用",
-      "notes": "Serve的active Deployment是选中业务权威，Fabric是真实路由权威；Workspace只提供授权和业务目标事实，没有跨库原子提交幻觉"
+      "notes": "Serve的active Deployment、readiness和access binding是当前应用交付权威；Fabric仅有资源事实，Workspace仅有授权和业务目标，没有跨库原子提交幻觉"
     },
     {
       "featureId": "F09",
@@ -718,7 +718,7 @@
             "serve.access_switches",
             "serve.access_bindings"
           ],
-          "completionEvidence": "新epoch先在provider确认",
+          "completionEvidence": "新epoch先在Serve owner内确认",
           "onUnknownOrRejection": "旧未知切换不被强行覆盖",
           "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
         },
@@ -746,8 +746,8 @@
             "serve.access_switches",
             "serve.access_bindings"
           ],
-          "completionEvidence": "新target/provider revision确认",
-          "onUnknownOrRejection": "丢响应原switch读回",
+          "completionEvidence": "新target通过Serve本地CAS确认",
+          "onUnknownOrRejection": "丢响应按原switch读回",
           "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
         },
         {
@@ -760,8 +760,8 @@
             "serve.access_switches",
             "serve.access_bindings"
           ],
-          "completionEvidence": "原目标+原switch证据+当前expected generation可核对",
-          "onUnknownOrRejection": "不能仅改DB指针称回滚成功",
+          "completionEvidence": "原目标+原switch身份+当前expected generation可核对",
+          "onUnknownOrRejection": "不能仅改Deployment字段称回滚成功",
           "when": "新部署明确失败且旧数据/路由允许安全回滚"
         }
       ],

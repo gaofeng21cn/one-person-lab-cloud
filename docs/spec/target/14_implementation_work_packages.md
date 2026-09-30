@@ -1742,7 +1742,7 @@ Instance只安装Cloud及安装配置/Secrets/证书、进行授权的安装/资
 
 **对应原工作包：** W17, W05, W15, W24
 
-**实施：** D的TKEApplicationAdapter仍POST旧Fabric应用端点，只是迁移中的调用适配，不是执行writer已迁走。将TKE应用执行能力连同真实caller迁到Serve，串行切换后按09退出对应旧writer。实现并在Configure接入真实RouteProvider，Deploy编排Fence/Activate/Observe。补Secret配置、模型实际应用及读回、Stop/Reload/凭据获取和失败退役/兼容回滚。不得把请求的modelConfigurationVersion直接写成applied。
+**实施：** D的TKEApplicationAdapter仍POST旧Fabric应用端点，只是迁移中的调用适配，不是执行writer已迁走。将TKE应用执行能力连同真实caller迁到Serve，串行切换后按09退出对应旧writer。Serve以本域access_bindings的generation/accepted epoch执行Fence/Activate/Observe与兼容Rollback，Deploy确认readiness和当前Deployment/绑定同事务提交；接入按绑定读回的access data plane，迁移实际入口和调用者并清退Control Plane应用proxy/当前路由解析器，不保留RouteProvider或路由fallback。Instance只提供稳定Ingress/DNS/TLS到Serve。补Secret配置、模型实际应用及读回、Stop/Reload/凭据获取和失败退役。不得把请求的modelConfigurationVersion直接写成applied。
 
 **验收后进入下一段：** 进程实际注册/启动的路径贯穿部署、readiness、route与Ledger；已发布URL不是拼字符串，真实HTML/静态/API/SSE、跨Tenant拒绝、旧epoch、unknown switch、Secret隔离及重启恢复均通过。
 

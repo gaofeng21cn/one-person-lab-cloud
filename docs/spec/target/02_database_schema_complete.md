@@ -165,17 +165,17 @@ GetAuthorizationContext/AuthorizeAction在每次特权调用同时核对：连�
 
 accepted_operation_grants绑定原Owner/Operation/resource、原permission version、固定allowed_actions、mode及必要续费consent/period身份；不是任意action数组授权。撤权/停用转为closeout_only时只允许已获准的原义务核对/完成/撤销/退款/清理，不得新增采购、扣款、resize或延期。自动续费另用WorkspaceAuthorizationReadback验证最新consent及同周期身份，客户撤销未来授权不能被历史grant绕过。
 
-### R05：Serve选择提交和真实路由的两个提交点
+### R05：Serve当前选择与访问绑定的单一Owner提交
 
-Serve唯一分配delivery `execution_epoch`并持有当前Deployment/route selection；Fabric唯一拥有`route_generation`、`accepted_execution_epoch`、`provider_revision`和实际target。Workspace不保存`current_agent_deployment_id`、`selected_route_generation`或`selected_execution_epoch`，也不承担跨数据库选择事务。
+Serve唯一分配delivery `execution_epoch`，并在自己的数据库中持有当前Deployment、`route_generation`、`accepted_execution_epoch`、Serve-owned `route_revision`、当前target及切换记录。`serve.access_bindings`是唯一权威路由对象；Serve access data plane只读该Owner已提交的绑定。Fabric不拥有应用route generation/target，也不写应用路由。Workspace不保存`current_agent_deployment_id`、`selected_route_generation`或`selected_execution_epoch`，不承担跨数据库选择事务。
 
-1. Workspace在自己的库中锁定授权/业务意图并创建原始Operation；Serve在自己的库中接收不透明Workspace授权和目标引用，分配`execution_epoch`并持久化目标Deployment。
-2. Fabric先锁route_bindings，检查expected generation/provider revision并写唯一非终态route_switches(action_kind=fence)。真正调用provider的同一路由对象conditional revision CAS，同时更新epoch metadata并保持target不变；读回确认后更新accepted_execution_epoch/provider_revision，generation不变。
-3. Activate/Rollback要求已确认fence的epoch、同provider revision、预期generation与精确目标/ready或compatibility receipt。先持久命令再调用provider CAS；成功读回后generation+1。旧provider请求即使晚到，也因同对象revision已变化而被拒绝，不能只在Cloud DB里检查epoch。
-4. unknown的fence/activate/rollback占该Workspace唯一非终态位置；只能按原provider_command_id读回，禁止以更高epoch抢占/新命令重试。
-5. Serve核验原操作、当前epoch、原选中及Fabric目标读回后，以Serve本库CAS提交当前Deployment、route generation/epoch并发selection receipt。Fabric记录selection commit receipt后才允许退休旧实例。提交响应丢失读取原Serve身份；选择CAS失败为needs_attention，完成原提交或明确fence+rollback，禁止last-writer-wins。Workspace只读Serve的typed selection/readback，不写回部署选择。
+1. Workspace在自己的库中锁定授权/业务意图并创建原始Operation；Serve接收不透明Workspace授权和目标引用，分配`execution_epoch`并持久化目标Deployment。
+2. 新TKE Service通过Serve-owned runtime adapter完成部署并取得Serve确认的readiness。Serve在自身route-binding行上以expected generation/accepted epoch执行CAS；唯一未决switch先持久化，CAS与current Deployment/route binding在Serve数据库事务内完成，不再调用Fabric或另一个Kubernetes route object作为第二路由writer。Fence仅提升accepted epoch，不改变generation/target；Activate/Rollback要求该已接受epoch，并将generation准确加一。
+3. 新绑定提交后，Serve access data plane按请求中的已验证Workspace/application origin读取Serve owner状态，只转发到该绑定指定且已确认ready的TKE Service。它拒绝未绑定、旧origin、未ready、已退役或跨Workspace目标；不接受客户端提供的upstream地址。
+4. 切换响应丢失时，按原Serve operation/switch identity读取同一owner记录。冲突/未知不得用新epoch或last-writer-wins覆盖；只有确认的Serve CAS才推进generation并更新当前Deployment。Serve在本地绑定读回与deployment selection一致后返回owner readback/所需receipt。
+5. Workspace只读Serve的typed selection/access readback，不写回部署选择。旧部署仅在新目标、路由绑定及访问readback确认后，按兼容性和数据义务退役。
 
-ProviderRevisionPrecondition为exactRevision或ConfirmedRouteAbsence(receiptId,observedAt) oneof。首次require_absent只允许generation0且有真实absence证据；DB保存expected_absence_receipt_id/time，不用空串当通配条件。数据库事务不声称与外部router原子。
+首次绑定使用generation zero且Serve binding无已确认`route_revision`的本地读回；后续切换使用Serve数据库的精确generation、accepted epoch和binding `route_revision`。`switch_id`就是切换记录的唯一身份，不再派生第二个 command identity；ACK丢失仅按原`switch_id`恢复。迁移既存行时保留既有row id、revision、唯一性及unknown阻塞语义。TKE Ingress、DNS、TLS是Instance安装级稳定入口，只把Workspace应用origin流量送到Serve access entry，不参与每Workspace CAS。数据库事务不声称与Pod readiness原子；先readiness，再提交Serve绑定，外部HTTP实测验证流量可达。
 
 ### R07：重新启用和删除后恢复分开
 
@@ -2161,7 +2161,7 @@ readiness/accessUrl真实回读；无active布尔、无订阅业务状态。覆�
 
 #### serve.access_bindings
 
-Serve owns the delivery execution epoch; Fabric owns observed route generation; generation advances only on verified route readback。覆盖 F08, F09, F10, F13。
+Serve owns the delivery execution epoch, current route generation, accepted execution epoch, Serve-owned route revision, current target and observed access binding; generation advances only on Serve-owner CAS and readback。覆盖 F08, F09, F10, F13。
 
 | 字段 | 类型 | 可空 | 默认 | 字段来源 |
 |---|---|---|---|---|
@@ -2174,7 +2174,7 @@ Serve owns the delivery execution epoch; Fabric owns observed route generation; 
 | `observed_at` | `timestamptz` | NULL | `—` | `02_database_schema_complete.md#serve.access_bindings.observed_at` |
 | `created_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#serve.access_bindings.created_at` |
 | `updated_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#serve.access_bindings.updated_at` |
-| `provider_revision` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_bindings.provider_revision` |
+| `route_revision` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_bindings.route_revision` |
 
 约束：
 - `PRIMARY KEY (id)`
@@ -2187,7 +2187,7 @@ Serve owns the delivery execution epoch; Fabric owns observed route generation; 
 
 #### serve.access_switches
 
-Provider conditional revision CAS covers target plus epoch metadata; confirmed fence preserves target/generation but advances epoch/revision, then activate/rollback advances generation; any unknown blocks all new route actions。覆盖 F08, F10, F13。
+Serve-local conditional state transition covers target plus epoch metadata; confirmed fencing preserves target/generation while accepting the execution epoch, then activation/rollback advances generation; any unresolved switch blocks all new route actions。覆盖 F08, F10, F13。
 
 | 字段 | 类型 | 可空 | 默认 | 字段来源 |
 |---|---|---|---|---|
@@ -2200,8 +2200,6 @@ Provider conditional revision CAS covers target plus epoch metadata; confirmed f
 | `execution_epoch` | `bigint` | 否 | `—` | `02_database_schema_complete.md#serve.access_switches.execution_epoch` |
 | `target_execution_resource_id` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.target_execution_resource_id` |
 | `previous_target_execution_resource_id` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.previous_target_execution_resource_id` |
-| `provider_command_id` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.access_switches.provider_command_id` |
-| `provider_request_ref` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.provider_request_ref` |
 | `status` | `text` | 否 | `'requested'` | `02_database_schema_complete.md#serve.access_switches.status` |
 | `observed_route_generation` | `bigint` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.observed_route_generation` |
 | `observed_execution_epoch` | `bigint` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.observed_execution_epoch` |
@@ -2211,22 +2209,18 @@ Provider conditional revision CAS covers target plus epoch metadata; confirmed f
 | `created_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#serve.access_switches.created_at` |
 | `updated_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#serve.access_switches.updated_at` |
 | `action_kind` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.access_switches.action_kind` |
-| `expected_provider_revision` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.expected_provider_revision` |
-| `observed_provider_revision` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.observed_provider_revision` |
-| `expected_absence_receipt_id` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.expected_absence_receipt_id` |
-| `expected_absence_observed_at` | `timestamptz` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.expected_absence_observed_at` |
+| `expected_route_revision` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.expected_route_revision` |
+| `observed_route_revision` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.observed_route_revision` |
 
 约束：
 - `PRIMARY KEY (id)`
 - `CHECK (status IN ('requested','confirmed','rejected','unknown'))`
 - `CHECK (expected_route_generation >= 0 AND execution_epoch >= 0)`
-- `UNIQUE (provider_command_id)`
 - `CHECK (selection_commit_receipt_id IS NULL OR status = 'confirmed')`
 - `CHECK (action_kind IN ('fence','activate','rollback'))`
 - `CHECK (action_kind = 'fence' OR target_execution_resource_id IS NOT NULL)`
-- `CHECK (expected_provider_revision IS NOT NULL OR expected_route_generation = 0)`
-- `CHECK (status <> 'confirmed' OR ((observed_route_generation = expected_route_generation + CASE WHEN action_kind = 'fence' THEN 0 ELSE 1 END AND observed_execution_epoch = execution_epoch AND observed_provider_revision IS NOT NULL AND evidence_ref IS NOT NULL) IS TRUE))`
-- `CHECK ((expected_provider_revision IS NOT NULL AND expected_absence_receipt_id IS NULL AND expected_absence_observed_at IS NULL) OR (expected_provider_revision IS NULL AND expected_route_generation = 0 AND expected_absence_receipt_id IS NOT NULL AND expected_absence_observed_at IS NOT NULL))`
+- `CHECK (expected_route_revision IS NOT NULL OR expected_route_generation = 0)`
+- `CHECK (status <> 'confirmed' OR ((observed_route_generation = expected_route_generation + CASE WHEN action_kind = 'fence' THEN 0 ELSE 1 END AND observed_execution_epoch = execution_epoch AND observed_route_revision IS NOT NULL AND evidence_ref IS NOT NULL) IS TRUE)`
 
 索引：
 - `route_switches_one_pending`: UNIQUE `(route_binding_id)` WHERE `status IN ('requested','unknown')`

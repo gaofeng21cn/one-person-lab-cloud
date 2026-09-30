@@ -305,51 +305,42 @@ def seed_route_resources(db,sid):
  db.insert('fabric','resource_sets',id='set-'+sid,tenant_id='test-tenant',workspace_id=ws,provider='local',provider_profile_ref='isolated',region='local',compute_plan_id='test-compute',storage_plan_id='test-storage',accepted_quote_id='quote-test',approved_specification={'scope':'test'},observation_result='confirmed',observed_at=NOW)
  for label in ['old','new']:
   db.insert('fabric','resources',id=label+'-'+sid,resource_set_id='set-'+sid,kind='execution',provider_resource_ref=label+'-provider-'+sid,provider_purchase_key=label+'-key-'+sid,billing_mode='LOCAL_NO_CHARGE',requested_specification={'scope':'test'},observed_specification={'scope':'test'},observation_result='confirmed',observed_at=NOW)
- db.insert('serve','access_bindings',id='route-'+sid,workspace_id=ws,route_generation=0,accepted_execution_epoch=1,target_execution_resource_id='old-'+sid,provider_revision='r0',observed_at=NOW)
+ db.insert('serve','access_bindings',id='route-'+sid,workspace_id=ws,route_generation=0,accepted_execution_epoch=1,target_execution_resource_id='old-'+sid,observed_at=NOW)
  return ws
 
-class ProviderRouteFixture:
- """Explicit provider boundary simulator; it does not claim a real adapter is qualified."""
- def __init__(self,target):self.revision='r0';self.epoch=1;self.target=target;self.sequence=0
- def cas(self,expected_revision,epoch,target):
-  if self.revision!=expected_revision:raise Rejection('provider_reject','provider conditional revision rejects late route mutation')
-  if epoch<self.epoch:raise Rejection('provider_reject','provider epoch metadata rejects stale execution')
-  self.sequence+=1;self.revision='r'+str(self.sequence);self.epoch=epoch;self.target=target
-  return {'revision':self.revision,'epoch':self.epoch,'target':self.target}
-
 def route_case(db,pb,case):
- sid=case['id'];ws=seed_route_resources(db,sid);binding='route-'+sid;provider=ProviderRouteFixture('old-'+sid)
+ sid=case['id'];ws=seed_route_resources(db,sid);binding='route-'+sid
  context={'requestId':'req-'+sid,'idempotencyKey':'key-'+sid,'authorizationContextId':'fixture-context','actorId':'test-actor','scope':{'tenant':{'tenantId':'test-tenant'}},'deadlineAt':'2026-09-21T12:05:00Z'}
- fence={'context':context,'workspaceId':ws,'operationId':'serve-op-'+sid,'executionEpoch':'2','expectedRouteGeneration':'0','providerPrecondition':{'exactRevision':'r0'}}
+ fence={'context':context,'workspaceId':ws,'operationId':'serve-op-'+sid,'executionEpoch':'2','expectedRouteGeneration':'0','revisionPrecondition':{'requireAbsent':{}}}
  proto_validate(pb,'FenceRouteEpochCommand',fence)
- db.insert('serve','access_switches',id='fence-'+sid,route_binding_id=binding,workspace_id=ws,operation_owner='serve',operation_id='serve-op-'+sid,expected_route_generation=0,execution_epoch=2,target_execution_resource_id='old-'+sid,provider_command_id='provider-fence-'+sid,action_kind='fence',expected_provider_revision='r0')
- observed=provider.cas('r0',2,'old-'+sid)
- db.sql('serve',"UPDATE serve.access_switches SET status='confirmed',observed_route_generation=0,observed_execution_epoch=2,observed_provider_revision='r1',evidence_ref='fence-receipt-test' WHERE id="+q('fence-'+sid)+"; UPDATE serve.access_bindings SET accepted_execution_epoch=2,provider_revision='r1',last_confirmed_switch_id="+q('fence-'+sid)+' WHERE id='+q(binding)+" AND accepted_execution_epoch=1 AND route_generation=0 AND provider_revision='r0';")
+ db.insert('serve','access_switches',id='fence-'+sid,route_binding_id=binding,workspace_id=ws,operation_owner='serve',operation_id='serve-op-'+sid,expected_route_generation=0,execution_epoch=2,target_execution_resource_id='old-'+sid,action_kind='fence')
+ fence_revision='serve-route/fence-'+sid
+ fence_commit=db.sql('serve',"WITH changed AS (UPDATE serve.access_bindings SET accepted_execution_epoch=2,route_revision="+q(fence_revision)+",last_confirmed_switch_id="+q('fence-'+sid)+' WHERE id='+q(binding)+" AND accepted_execution_epoch=1 AND route_generation=0 AND route_revision IS NULL RETURNING id) UPDATE serve.access_switches SET status='confirmed',observed_route_generation=0,observed_execution_epoch=2,observed_route_revision="+q(fence_revision)+",evidence_ref='fence-receipt-test' WHERE id="+q('fence-'+sid)+" AND EXISTS (SELECT 1 FROM changed) RETURNING id,status;")
+ owner_assert(bool(fence_commit),'Serve fence CAS must commit the accepted epoch')
+ if case.get('mutation')=='late_switch':
+  stale=db.sql('serve','UPDATE serve.access_bindings SET target_execution_resource_id='+q('late-'+sid)+' WHERE id='+q(binding)+' AND route_generation=0 AND accepted_execution_epoch=1 AND route_revision IS NULL RETURNING id;')
+  owner_assert(bool(stale),'late switch from old revision rejected by Serve-local CAS')
  mutation=case.get('mutation');epoch=1 if mutation=='epoch' else 2;generation=1 if mutation=='generation' else 0
- activation={'context':context,'workspaceId':ws,'operationId':'serve-op-'+sid,'executionEpoch':str(epoch),'expectedRouteGeneration':str(generation),'providerPrecondition':{'exactRevision':'r1'},'targetExecutionResourceId':'new-'+sid,'targetRuntimeInstanceId':'runtime-'+sid,'targetDeploymentId':'dep-'+sid,'confirmedReadinessReceiptId':'readiness-'+sid}
+ activation={'context':context,'workspaceId':ws,'operationId':'serve-op-'+sid,'executionEpoch':str(epoch),'expectedRouteGeneration':str(generation),'revisionPrecondition':{'exactRevision':fence_revision},'targetExecutionResourceId':'new-'+sid,'targetRuntimeInstanceId':'runtime-'+sid,'targetDeploymentId':'dep-'+sid,'confirmedReadinessReceiptId':'readiness-'+sid}
  proto_validate(pb,'RouteActivateCommand',activation)
- current=db.one_json('serve','SELECT route_generation,accepted_execution_epoch,provider_revision FROM serve.access_bindings WHERE id='+q(binding))
+ current=db.one_json('serve','SELECT route_generation,accepted_execution_epoch,route_revision FROM serve.access_bindings WHERE id='+q(binding))
  owner_assert(current['route_generation']==generation,'stale route generation')
  owner_assert(current['accepted_execution_epoch']==epoch,'stale execution epoch despite route generation match')
- if mutation=='late_provider':provider.cas('r0',1,'old-'+sid)
  if mutation=='unknown_pending':
-  db.insert('serve','access_switches',id='unknown-'+sid,route_binding_id=binding,workspace_id=ws,operation_owner='serve',operation_id='serve-op-'+sid,expected_route_generation=0,execution_epoch=2,target_execution_resource_id='new-'+sid,provider_command_id='unknown-provider-command-'+sid,status='unknown',action_kind='activate',expected_provider_revision='r1')
+  db.insert('serve','access_switches',id='unknown-'+sid,route_binding_id=binding,workspace_id=ws,operation_owner='serve',operation_id='serve-op-'+sid,expected_route_generation=0,execution_epoch=2,target_execution_resource_id='new-'+sid,expected_route_revision=fence_revision,status='unknown',action_kind='activate')
  try:
-  # Atomic local reserve includes exact generation/epoch/revision predicate. An empty
-  # RETURNING means reject before provider mutation, not a successful no-op.
-  sql="WITH locked AS (SELECT id FROM serve.access_bindings WHERE id="+q(binding)+" AND route_generation=0 AND accepted_execution_epoch=2 AND provider_revision='r1' FOR UPDATE) INSERT INTO serve.access_switches(id,route_binding_id,workspace_id,operation_owner,operation_id,expected_route_generation,execution_epoch,target_execution_resource_id,previous_target_execution_resource_id,provider_command_id,action_kind,expected_provider_revision) SELECT "+','.join([q('activate-'+sid),'id',q(ws),q('serve'),q('serve-op-'+sid),'0','2',q('new-'+sid),q('old-'+sid),q('activate-command-'+sid),q('activate'),q('r1')])+" FROM locked RETURNING id;"
+  # A pending switch reserves the exact Serve binding generation/epoch/revision.
+  sql="WITH locked AS (SELECT id FROM serve.access_bindings WHERE id="+q(binding)+" AND route_generation=0 AND accepted_execution_epoch=2 AND route_revision="+q(fence_revision)+" FOR UPDATE) INSERT INTO serve.access_switches(id,route_binding_id,workspace_id,operation_owner,operation_id,expected_route_generation,execution_epoch,target_execution_resource_id,previous_target_execution_resource_id,action_kind,expected_route_revision) SELECT "+','.join([q('activate-'+sid),'id',q(ws),q('serve'),q('serve-op-'+sid),'0','2',q('new-'+sid),q('old-'+sid),q('activate'),q(fence_revision)])+" FROM locked RETURNING id;"
   owner_assert(bool(db.sql('serve',sql)),'local CAS reservation rejected')
  except PgError as e:
   if e.state=='23505':raise Rejection('database_reject','one pending/unknown route action per Workspace')
   raise
- observed=provider.cas('r1',2,'new-'+sid)
- db.sql('serve',"UPDATE serve.access_switches SET status='confirmed',observed_route_generation=1,observed_execution_epoch=2,observed_provider_revision='r2',evidence_ref='route-readback-test' WHERE id="+q('activate-'+sid)+"; UPDATE serve.access_bindings SET route_generation=1,target_execution_resource_id="+q('new-'+sid)+",provider_revision='r2',last_confirmed_switch_id="+q('activate-'+sid)+' WHERE id='+q(binding)+" AND route_generation=0 AND accepted_execution_epoch=2 AND provider_revision='r1';")
  if mutation=='commit_epoch':db.sql('serve','UPDATE serve.agent_deployments SET execution_epoch=3 WHERE id='+q('dep-'+sid)+';')
- selected=db.sql('serve','UPDATE serve.agent_deployments SET status=\'active\',runtime_instance_id='+q('runtime-'+sid)+',verification_evidence_ref='+q('readiness-'+sid)+',activated_at='+q(NOW)+',selection_commit_receipt_id='+q('selection-commit-'+sid)+' WHERE id='+q('dep-'+sid)+" AND status='verifying' AND execution_epoch=2 RETURNING id;")
+ activation_revision='serve-route/activate-'+sid
+ selected=db.sql('serve',"WITH ready AS (SELECT id FROM serve.agent_deployments WHERE id="+q('dep-'+sid)+" AND status='verifying' AND execution_epoch=2 FOR UPDATE), changed AS (UPDATE serve.access_bindings SET route_generation=1,target_execution_resource_id="+q('new-'+sid)+",route_revision="+q(activation_revision)+",last_confirmed_switch_id="+q('activate-'+sid)+' WHERE id='+q(binding)+" AND route_generation=0 AND accepted_execution_epoch=2 AND route_revision="+q(fence_revision)+" AND EXISTS (SELECT 1 FROM ready) RETURNING id), deployment AS (UPDATE serve.agent_deployments SET status='active',runtime_instance_id="+q('runtime-'+sid)+",verification_evidence_ref="+q('readiness-'+sid)+",activated_at="+q(NOW)+",selection_commit_receipt_id="+q('selection-commit-'+sid)+' WHERE id='+q('dep-'+sid)+" AND EXISTS (SELECT 1 FROM changed) RETURNING id) UPDATE serve.access_switches SET status='confirmed',observed_route_generation=1,observed_execution_epoch=2,observed_route_revision="+q(activation_revision)+",evidence_ref='route-readback-test',selection_commit_receipt_id="+q('selection-commit-'+sid)+" WHERE id="+q('activate-'+sid)+" AND EXISTS (SELECT 1 FROM deployment) RETURNING id,status;")
  owner_assert(bool(selected),'Serve selection commit stale intent/epoch; do not claim routed target is selected')
- db.sql('serve','UPDATE serve.access_switches SET selection_commit_receipt_id='+q('selection-commit-'+sid)+' WHERE id='+q('activate-'+sid)+';')
  row=db.one_json('serve','SELECT id,status,execution_epoch,selection_commit_receipt_id FROM serve.agent_deployments WHERE id='+q('dep-'+sid));assert row=={'id':'dep-'+sid,'status':'active','execution_epoch':2,'selection_commit_receipt_id':'selection-commit-'+sid}
- return {'fenceConfirmedBeforeActivate':True,'providerFixture':observed,'selectedCommit':row,'externalRouterAtomicWithDatabase':False}
+ return {'fenceConfirmedBeforeActivate':True,'serveBinding':db.one_json('serve','SELECT route_generation,accepted_execution_epoch,route_revision,target_execution_resource_id FROM serve.access_bindings WHERE id='+q(binding)),'selectedCommit':row,'instanceIngressQualified':False}
 
 
 def tenant_lifecycle_case(db,pb,case):

@@ -1,5 +1,9 @@
 # Workspace Runtime Access
 
+This page contains retained implementation facts and the target boundary:
+Serve owns application route selection and access; Control Plane's existing
+proxy is migration-source behavior and must be retired after callers move.
+
 ## Selected Application Access
 
 New installations resolve the selected application deployment independently of
@@ -7,13 +11,16 @@ the original resource Launch. `currentApplication` reports that generation's
 live readiness and declared entry; `applicationInstallation` separately reports
 pending or failed default installation. A ready application without a declared
 web entry does not show an Open action. Fabric read failure cannot replay a
-previous ready observation.
+previous ready observation. Serve owns the current route binding and access
+data plane; Control Plane route resolution is migration-source behavior to
+retire.
 
-A declared public entry uses the application's own origin and root path.
-Control Plane does not route a generic application through OPL App's `/w` cookie
-proxy or transfer management credentials. The application owns its sessions,
-assets, APIs and streaming behavior; DNS/TLS and real browser qualification are
-Instance obligations. `cloud_private` does not expose an anonymous public URL.
+A declared public entry uses the application's own origin and root path. Serve's
+access data plane does not route a generic application through OPL App's `/w`
+cookie proxy or transfer management credentials. The application owns its
+sessions, assets, APIs and streaming behavior; stable DNS/TLS/Ingress and real
+browser qualification are Instance obligations. `cloud_private` does not
+expose an anonymous public URL.
 
 The origin is one hostname per (Workspace, application) pair, derived from the
 binding identity rather than allocated:
@@ -93,24 +100,27 @@ The Tencent/TKE adapter access path is:
 Browser
   -> configured Instance Workspace domain
   -> shared CLB / TKE Ingress
-  -> Control Plane reverse proxy
+  -> Control Plane reverse proxy (retained path only; not the target application route)
   -> Fabric-created per-Workspace ClusterIP Service :3000
   -> Workspace runtime
 ```
 
-For retained Runtime status and authorized repair readback, a provider may
-report only the observed `ServiceName` when this installation publishes the
-entry. Control Plane composes the customer URL with `workspaceGatewayEntryURL`;
-a provider-published `URL` remains unchanged. A missing provider URL is not a
-Runtime failure. Runtime identity, health, entitlement and credential checks
-still apply; `unready` stays unready, and an absent Runtime gains no entry.
+This diagram records the current retained path, not the target. For retained
+Runtime status and authorized repair readback, a provider may report only the
+observed `ServiceName` when this installation publishes the entry. The target
+path sends stable Instance Ingress to Serve, whose access handler resolves the
+Serve-owned committed binding and forwards only to that ready target. A
+provider-published `URL` remains a runtime observation, not a second route
+authority. Runtime identity, health, entitlement and credential checks still
+apply; `unready` stays unready, and an absent Runtime gains no entry.
 
 The current Workspace Runtime compatibility boundary fixes the internal WebUI
 port at `3000`. `opl-cloud-workspace-runtime-abi-contract.json` is its versioned
-cross-module owner; Control Plane proxy routing and both Fabric adapters project
-the fixed value through named constants. The ABI is not an environment override,
-an Instance-selectable option, an installation default, or a separate feature
-lane.
+cross-module owner; current Control Plane proxy routing and both Fabric adapters
+project the fixed value through named constants. The ABI is not an environment
+override, an Instance-selectable option, an installation default, or a separate
+feature lane. During route migration, Serve's access adapter consumes the same
+ABI without coupling to Control Plane implementation details.
 
 Cloud requires the Instance to supply `OPL_WORKSPACE_DOMAIN`; Control Plane and
 Tencent/TKE startup fail closed when it is absent. There is no access-domain

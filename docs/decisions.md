@@ -38,6 +38,33 @@ the pending wire migration is recorded by `03_api_contract_complete.yaml` and
 owner migrations, callers and decoder tests together. Prose approval is not
 proof that the existing mandatory CapabilityVersion/WebUI fields support it.
 
+### Workspace Access Routing Owner
+
+Serve is the sole business and persistence owner of each Workspace's current
+application route. Its `serve.access_bindings` row is the authoritative route
+selection; route generation, execution epoch, switch identity, and confirmed
+target/readback are committed by Serve. The Serve access data plane resolves an
+incoming Workspace application origin against that confirmed binding and
+forwards only to the exact admitted, ready TKE Service target. It consumes
+Serve-owned state and does not create a second route writer.
+
+The installation's Ingress, DNS, and TLS are stable Instance configuration:
+they deliver matching Workspace application-origin traffic to the Serve access
+entry and are not edited for per-Workspace deployment switches. Fabric owns
+infrastructure resources and their provider facts, not application routing.
+Control Plane's existing Workspace reverse proxy and current-route resolution
+are migration-source behavior only. Move its live access callers to the Serve
+entry and retire the old route/proxy writer in the same bounded migration; it
+must not remain a permanent fallback or a parallel reader of current selection.
+
+Route activation is a Serve-local conditional state transition, not a CAS on a
+second Kubernetes route object. Serve persists the switch before execution,
+checks the expected generation/epoch and predecessor, commits the new binding
+only after the target is ready, and returns an owner readback/receipt. A lost
+acknowledgement is resolved by reading the original switch identity; unknown
+state blocks later switches. External request verification through the stable
+Instance Ingress proves that the access data plane serves the confirmed target.
+
 `opl-instance-medopl` deploys Cloud and supplies installation configuration,
 protected Secret references, certificates and installation receipts. Cloud owns
 the customer Build/Workspace/Serve/Fabric workflows and reusable acceptance
@@ -173,6 +200,11 @@ The remaining target decisions are:
   readiness, access and current-selection facts. The old Control Plane/Fabric
   application writer is migration source only and must be retired when its
   callers move.
+- Serve's `serve.access_bindings` is also the sole route-selection authority.
+  Serve's access data plane reads the committed binding; Instance Ingress/DNS/TLS
+  stays stable and forwards to that entry. Neither Control Plane nor Fabric owns
+  or writes the current application route, and no second Kubernetes route CAS
+  object is introduced.
 - `Capability` owns Package, version, and catalog metadata while object bytes
   live in the storage provider. `Build` reads immutable references and writes
   its own jobs and artifact evidence. A ready Capability version is created only

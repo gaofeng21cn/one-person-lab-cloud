@@ -1,0 +1,123 @@
+{
+  "schemaVersion": "opl-cross-domain-execution/v1",
+  "executedAt": "2026-09-30T08:27:30.299629+00:00",
+  "completedAt": "2026-09-30T08:27:43.765158+00:00",
+  "passed": false,
+  "sourceHashes": {
+    "03_api_contract_complete.yaml": "962d1896455a6b343091cd5e5f7faecce50db4866941025c49780bd8f527c7aa",
+    "contracts/schema.sql": "9ca9ec32a3e304151266e57da25f75c141f5627d90931bf536aa82ce0f7df373",
+    "contracts/db_inventory.json": "d9543793361396be535db43e2dbf1cb42c3d62be87c6eb93422fa9b477f14cac",
+    "contracts/internal.proto": "c0def77ecf552acea98bb199e429e4ed9f6b24f2bb6257c74f85908c5980aeb7",
+    "contracts/publisher-contract.schema.json": "97aa9c5bb38b1016d66fa31505559571e45fcaeddbedcb3bfd7fe316f5b2ebe6",
+    "checks/semantics_cases.json": "cf24491813c559b767bbbe118f2625ffee15f9cf1aca9aeaf7f4eae8f76231fc",
+    "checks/validate_cross_domain.py": "e46ea0107f1a6d34510b0f3499de7a02f914b17f3f658b0917a7008ddbd354b1",
+    "13_plan_change_policy.md": "43f1ac890fbab9b2c26da4937dbcce1389f3153ad56451af0b91cddb1473f686",
+    "contracts/plan-change-policy.json": "d2f9282bf450e2fbcf3f82f706cebccce335db6fdff51d3489ab78ba653698f6"
+  },
+  "sourceUnchangedDuringRun": true,
+  "sourceHashesAtEnd": {
+    "03_api_contract_complete.yaml": "962d1896455a6b343091cd5e5f7faecce50db4866941025c49780bd8f527c7aa",
+    "contracts/schema.sql": "9ca9ec32a3e304151266e57da25f75c141f5627d90931bf536aa82ce0f7df373",
+    "contracts/db_inventory.json": "d9543793361396be535db43e2dbf1cb42c3d62be87c6eb93422fa9b477f14cac",
+    "contracts/internal.proto": "c0def77ecf552acea98bb199e429e4ed9f6b24f2bb6257c74f85908c5980aeb7",
+    "contracts/publisher-contract.schema.json": "97aa9c5bb38b1016d66fa31505559571e45fcaeddbedcb3bfd7fe316f5b2ebe6",
+    "checks/semantics_cases.json": "cf24491813c559b767bbbe118f2625ffee15f9cf1aca9aeaf7f4eae8f76231fc",
+    "checks/validate_cross_domain.py": "e46ea0107f1a6d34510b0f3499de7a02f914b17f3f658b0917a7008ddbd354b1",
+    "13_plan_change_policy.md": "43f1ac890fbab9b2c26da4937dbcce1389f3153ad56451af0b91cddb1473f686",
+    "contracts/plan-change-policy.json": "d2f9282bf450e2fbcf3f82f706cebccce335db6fdff51d3489ab78ba653698f6"
+  },
+  "image": {
+    "name": "sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb",
+    "repoTags": [
+      "postgres:16-alpine"
+    ],
+    "id": "sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb",
+    "repoDigests": [
+      "postgres@sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb"
+    ]
+  },
+  "metadata": {
+    "actualDatabaseFields": 1421,
+    "directMappingsTypeAndEnumChecked": 311,
+    "optionalWireFieldMeansOmittedNotNull": true,
+    "nonnullableDbMayBeInternalOrDerived": "not inferred from API required alone; legacy cases cover real discriminators",
+    "postgresVersion": "PostgreSQL 16.15 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit"
+  },
+  "setupError": null,
+  "cases": [
+    {
+      "id": "R05-route-switch-select-commit",
+      "suite": "route",
+      "expected": "accept",
+      "actual": "unexpected_database_error",
+      "sqlState": "42601",
+      "reason": "ERROR:  42601: syntax error at or near \"UPDATE\"\nLINE 1: ...tion_epoch=1 AND route_generation=0 RETURNING id) UPDATE ser...\n                                                             ^\nLOCATION:  scanner_yyerror, scan.l:1244\n",
+      "passed": false
+    },
+    {
+      "id": "R05-stale-route-generation",
+      "suite": "route",
+      "expected": "owner_reject",
+      "actual": "unexpected_database_error",
+      "sqlState": "42601",
+      "reason": "ERROR:  42601: syntax error at or near \"UPDATE\"\nLINE 1: ...tion_epoch=1 AND route_generation=0 RETURNING id) UPDATE ser...\n                                                             ^\nLOCATION:  scanner_yyerror, scan.l:1244\n",
+      "passed": false
+    },
+    {
+      "id": "R05-stale-execution-epoch",
+      "suite": "route",
+      "expected": "owner_reject",
+      "actual": "unexpected_database_error",
+      "sqlState": "42601",
+      "reason": "ERROR:  42601: syntax error at or near \"UPDATE\"\nLINE 1: ...tion_epoch=1 AND route_generation=0 RETURNING id) UPDATE ser...\n                                                             ^\nLOCATION:  scanner_yyerror, scan.l:1244\n",
+      "passed": false
+    },
+    {
+      "id": "R05-unknown-switch-blocks-next",
+      "suite": "route",
+      "expected": "database_reject",
+      "actual": "unexpected_database_error",
+      "sqlState": "42601",
+      "reason": "ERROR:  42601: syntax error at or near \"UPDATE\"\nLINE 1: ...tion_epoch=1 AND route_generation=0 RETURNING id) UPDATE ser...\n                                                             ^\nLOCATION:  scanner_yyerror, scan.l:1244\n",
+      "passed": false
+    },
+    {
+      "id": "R05-selected-commit-stale-epoch",
+      "suite": "route",
+      "expected": "owner_reject",
+      "actual": "unexpected_database_error",
+      "sqlState": "42601",
+      "reason": "ERROR:  42601: syntax error at or near \"UPDATE\"\nLINE 1: ...tion_epoch=1 AND route_generation=0 RETURNING id) UPDATE ser...\n                                                             ^\nLOCATION:  scanner_yyerror, scan.l:1244\n",
+      "passed": false
+    },
+    {
+      "id": "R05-late-switch-after-fence",
+      "suite": "route",
+      "expected": "owner_reject",
+      "actual": "unexpected_database_error",
+      "sqlState": "42601",
+      "reason": "ERROR:  42601: syntax error at or near \"UPDATE\"\nLINE 1: ...tion_epoch=1 AND route_generation=0 RETURNING id) UPDATE ser...\n                                                             ^\nLOCATION:  scanner_yyerror, scan.l:1244\n",
+      "passed": false
+    }
+  ],
+  "caseSelection": {
+    "prefix": "R05",
+    "fullSuite": false
+  },
+  "sqlInvocations": 100,
+  "cleanup": {
+    "containerName": "opl-spec-semantic-1790756850",
+    "containerAbsent": true,
+    "stopSucceeded": true,
+    "removalReadbackPolls": 4,
+    "storage": "tmpfs only; no host mounts/named volumes",
+    "network": "none; no host ports"
+  },
+  "scope": "typed REST/protobuf specification adapters -> isolated PostgreSQL -> exact typed/readback projection; provider router and Storage are explicitly named fixtures, not implemented services",
+  "notProven": [
+    "real service handlers/Saga workers",
+    "production or Instance adoption",
+    "real Gateway/provider charges or resources",
+    "actual implementation/provider/Instance acceptance remain separate from approved D17 specification"
+  ]
+}
