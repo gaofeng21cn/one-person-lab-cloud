@@ -108,15 +108,26 @@ Console routing. Customer Console does not select a provider. The current
 `local-docker` is rejected, while `platform_owned` with `local-docker` remains
 qualification-only.
 
-Selecting `tencent-tke` requires five protected-resource facts in the same
-environment as Fabric: `OPL_SYSTEM_COMPUTE_NODE_POOL_ID`,
-`OPL_SYSTEM_COMPUTE_MACHINE_ID`, `OPL_SYSTEM_COMPUTE_NODE_NAME`,
-`OPL_SYSTEM_COMPUTE_MACHINE_TYPE` and `OPL_SYSTEM_COMPUTE_CVM_ID`. Fabric's
-protected-resource guard refuses every mutating `kubectl` action unless they
-identify the installation's own system node pool and machine, so
-`compose.fabric-tencent-tke.yaml` requires them and the environment template
-declares them. The same names are validated by
-`services/control-plane/ops/production-manifest.ts`. Separately,
+`compose.fabric-tencent-tke.yaml` forwards Fabric every installation fact its
+Tencent provider validates or reports: `OPL_WORKSPACE_DOMAIN`,
+`OPL_CLOUD_IMAGE`, `OPL_WORKSPACE_IMAGE`, `OPL_K8S_NAMESPACE`,
+`OPL_IMAGE_PULL_SECRET_NAME`, `OPL_WORKSPACE_STORAGE_CLASS`,
+`OPL_TENCENT_PROVISIONER_BIN`, `TENCENT_DEPLOY_KUBECONFIG_REF` and
+`RUN_TENCENT_CREATE_RELEASE_EXECUTION`. It also mounts the TKE deploy
+kubeconfig read-only from `TENCENT_DEPLOY_KUBECONFIG_HOST_PATH` to
+`TENCENT_DEPLOY_KUBECONFIG_REF`, because Fabric is the only process that holds
+the cluster credentials. `RUN_TENCENT_CREATE_RELEASE_EXECUTION=1` is the
+provisioner's explicit live-mutation opt-in; `0` keeps an installation
+read-only.
+
+Five further facts protect the installation's own system node:
+`OPL_SYSTEM_COMPUTE_NODE_POOL_ID`, `OPL_SYSTEM_COMPUTE_MACHINE_ID`,
+`OPL_SYSTEM_COMPUTE_NODE_NAME`, `OPL_SYSTEM_COMPUTE_MACHINE_TYPE` and
+`OPL_SYSTEM_COMPUTE_CVM_ID`. Fabric's protected-resource guard refuses every
+mutating `kubectl` action unless they identify that node, so the overlay
+requires them and the environment template declares them. The same names are
+validated by `services/control-plane/ops/production-manifest.ts`.
+
 `OPL_WORKSPACE_APPLICATION_DOMAIN` is the installer's own per-binding
 application-origin domain; the base Compose forwards it to the Control Plane,
 and leaving it empty publishes no application origins rather than an address

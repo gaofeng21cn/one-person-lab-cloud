@@ -5,11 +5,32 @@ services:
     environment:
       OPL_FABRIC_PROVIDER: tencent-tke
       OPL_INGRESS_CLASS: ${OPL_INGRESS_CLASS:-}
+      # The Tencent provider validates and reads these facts itself
+      # (services/fabric/internal/fabric/tencent_provider.go and
+      # tencent_provider_runtime.go): the constructor refuses to build a usable
+      # provider without the Workspace domain, the immutable Workspace image, the
+      # namespace and the provisioner binary, and Readiness reports the rest as
+      # missing. Every one is sourced from the installer environment so the
+      # provider fails before any provider or cluster action instead of running
+      # with an empty fact.
+      OPL_WORKSPACE_DOMAIN: ${OPL_WORKSPACE_DOMAIN:?Set OPL_WORKSPACE_DOMAIN}
+      OPL_CLOUD_IMAGE: ${OPL_CLOUD_IMAGE:?Set OPL_CLOUD_IMAGE}
       OPL_WORKSPACE_IMAGE: ${OPL_WORKSPACE_IMAGE:?Set OPL_WORKSPACE_IMAGE to an immutable Workspace image digest}
       OPL_WORKSPACE_IMAGE_RELEASES_JSON: ${OPL_WORKSPACE_IMAGE_RELEASES_JSON:?Set the approved immutable Workspace image release catalog}
+      OPL_K8S_NAMESPACE: ${OPL_K8S_NAMESPACE:?Set OPL_K8S_NAMESPACE}
+      OPL_IMAGE_PULL_SECRET_NAME: ${OPL_IMAGE_PULL_SECRET_NAME:?Set OPL_IMAGE_PULL_SECRET_NAME}
+      OPL_WORKSPACE_STORAGE_CLASS: ${OPL_WORKSPACE_STORAGE_CLASS:?Set OPL_WORKSPACE_STORAGE_CLASS}
+      OPL_TENCENT_PROVISIONER_BIN: ${OPL_TENCENT_PROVISIONER_BIN:?Set OPL_TENCENT_PROVISIONER_BIN}
+      TENCENT_DEPLOY_KUBECONFIG_REF: ${TENCENT_DEPLOY_KUBECONFIG_REF:?Set TENCENT_DEPLOY_KUBECONFIG_REF}
+      # Explicit live-mutation opt-in. The provisioner refuses every non-dry-run
+      # Tencent mutation unless this is "1", so the installation states it rather
+      # than inheriting a permissive default.
+      RUN_TENCENT_CREATE_RELEASE_EXECUTION: ${RUN_TENCENT_CREATE_RELEASE_EXECUTION:?Set RUN_TENCENT_CREATE_RELEASE_EXECUTION to 1 to authorize live Tencent resource mutations}
       OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON: ${OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON:?Set the deployment-owned Tencent/TKE provider profile JSON}
       OPL_TENCENT_ZONE: ${OPL_TENCENT_ZONE:?Set OPL_TENCENT_ZONE}
       OPL_TENCENT_REGION: ${OPL_TENCENT_REGION:?Set OPL_TENCENT_REGION}
+      # The protected-resource guard rejects every mutating kubectl action unless
+      # these identify the installation's own system node pool and machine.
       OPL_SYSTEM_COMPUTE_NODE_POOL_ID: ${OPL_SYSTEM_COMPUTE_NODE_POOL_ID:?Set OPL_SYSTEM_COMPUTE_NODE_POOL_ID}
       OPL_SYSTEM_COMPUTE_MACHINE_ID: ${OPL_SYSTEM_COMPUTE_MACHINE_ID:?Set OPL_SYSTEM_COMPUTE_MACHINE_ID}
       OPL_SYSTEM_COMPUTE_NODE_NAME: ${OPL_SYSTEM_COMPUTE_NODE_NAME:?Set OPL_SYSTEM_COMPUTE_NODE_NAME}
@@ -18,6 +39,14 @@ services:
       TENCENT_CVM_SYSTEM_DISK_TYPE: ${TENCENT_CVM_SYSTEM_DISK_TYPE:?Set TENCENT_CVM_SYSTEM_DISK_TYPE}
       TENCENT_CVM_SYSTEM_DISK_SIZE_GB: ${TENCENT_CVM_SYSTEM_DISK_SIZE_GB:?Set TENCENT_CVM_SYSTEM_DISK_SIZE_GB}
       TENCENT_CBS_DISK_TYPE: ${TENCENT_CBS_DISK_TYPE:?Set TENCENT_CBS_DISK_TYPE}
+    # Fabric is the only process that holds the cluster credentials. The
+    # installer supplies the TKE deploy kubeconfig on the host and this overlay
+    # mounts it read-only at the in-container path the provider is told to use.
+    volumes:
+      - type: bind
+        source: ${TENCENT_DEPLOY_KUBECONFIG_HOST_PATH:?Set the host path of the TKE deploy kubeconfig}
+        target: ${TENCENT_DEPLOY_KUBECONFIG_REF:?Set TENCENT_DEPLOY_KUBECONFIG_REF}
+        read_only: true
 
   control-plane:
     labels:

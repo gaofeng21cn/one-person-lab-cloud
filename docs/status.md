@@ -1945,9 +1945,16 @@ Fabric's `callKubectl` runs `protectedresource.FromEnv().Check` for every
 mutating verb, and `Config.Validate` requires `OPL_SYSTEM_COMPUTE_NODE_POOL_ID`,
 `OPL_SYSTEM_COMPUTE_MACHINE_ID`, `OPL_SYSTEM_COMPUTE_NODE_NAME`,
 `OPL_SYSTEM_COMPUTE_MACHINE_TYPE` and `OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON`,
-so `deploy/portable/compose.fabric-tencent-tke.yaml` now forwards the five facts
-and `deploy/portable/opl-cloud.env.example` declares them; a rendered overlay
-delivers them to Fabric with `OPL_FABRIC_PROVIDER=tencent-tke`.
+so `deploy/portable/compose.fabric-tencent-tke.yaml` now forwards them and
+`deploy/portable/opl-cloud.env.example` declares them. The same overlay also
+forwards every fact the provider's own constructor and readiness check require
+(`OPL_WORKSPACE_DOMAIN`, `OPL_CLOUD_IMAGE`, `OPL_WORKSPACE_IMAGE`,
+`OPL_K8S_NAMESPACE`, `OPL_IMAGE_PULL_SECRET_NAME`,
+`OPL_WORKSPACE_STORAGE_CLASS`, `OPL_TENCENT_PROVISIONER_BIN`,
+`TENCENT_DEPLOY_KUBECONFIG_REF`, `RUN_TENCENT_CREATE_RELEASE_EXECUTION`) and
+mounts the TKE deploy kubeconfig read-only, because a rendered overlay had
+previously delivered none of them to the Fabric container. A rendered overlay
+now delivers the whole set with `OPL_FABRIC_PROVIDER=tencent-tke`.
 `compose.yaml` now forwards `OPL_WORKSPACE_APPLICATION_DOMAIN` to the Control
 Plane, the same name `parseWorkspaceApplicationOriginHost` and Serve's
 `ApplicationEntryURL` read, and the template declares it. The focused contract
