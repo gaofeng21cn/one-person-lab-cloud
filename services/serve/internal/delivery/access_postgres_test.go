@@ -108,6 +108,89 @@ func TestServeAccessEntryServesConfirmedTarget(t *testing.T) {
 	if pathResponse.StatusCode != http.StatusOK || pathResponse.SeenPath != "/healthz" {
 		t.Fatalf("path entry status=%d path=%q", pathResponse.StatusCode, pathResponse.SeenPath)
 	}
+	if response := accessGet(t, server.URL, "other.example", "/w/"+workspace+"/healthz"); response.StatusCode != http.StatusNotFound {
+		t.Fatalf("foreign retained-path host status=%d body=%s", response.StatusCode, response.Body)
+	}
+}
+
+func TestServeAccessEntryStripsPlatformCredentialsAndConfinesCookies(t *testing.T) {
+	service, tenant, workspace, runtimeInstance, db := routeFixture(t)
+	markRouteTargetReady(t, db, runtimeInstance)
+	activateRoute(t, service, tenant, workspace, runtimeInstance)
+
+	var seenAuthorization, seenCSRF, seenCookie string
+	var seenPathAuthorization, seenPathCSRF, seenPathCookie string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Forwarded-Host") == "workspace.example" {
+			seenPathAuthorization = r.Header.Get("Authorization")
+			seenPathCSRF = r.Header.Get("X-OPL-CSRF")
+			seenPathCookie = r.Header.Get("Cookie")
+		} else {
+			seenAuthorization = r.Header.Get("Authorization")
+			seenCSRF = r.Header.Get("X-OPL-CSRF")
+			seenCookie = r.Header.Get("Cookie")
+		}
+		w.Header().Set("Set-Cookie", "app_session=next; Domain=.apps.example; Path=/")
+		_, _ = io.WriteString(w, "application-response")
+	}))
+	defer upstream.Close()
+
+	entry, err := delivery.NewAccessEntry(db, accessOrigin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry.Transport = serviceTransport{byService: map[string]*httptest.Server{"app-main": upstream}}
+	server := httptest.NewServer(entry.Handler())
+	defer server.Close()
+
+	request, err := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Host = applicationHost(t, workspace)
+	request.Header.Set("Authorization", "Bearer application-token")
+	request.Header.Set("X-OPL-CSRF", "platform-csrf")
+	request.AddCookie(&http.Cookie{Name: "opl_session", Value: "platform-session"})
+	request.AddCookie(&http.Cookie{Name: "opl_ws_active", Value: workspace})
+	request.AddCookie(&http.Cookie{Name: "opl_ws_session_runtime", Value: "runtime-session"})
+	request.AddCookie(&http.Cookie{Name: "app_session", Value: "application-session"})
+	response, err := (&http.Client{}).Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d", response.StatusCode)
+	}
+	if seenAuthorization != "Bearer application-token" || seenCSRF != "" || !strings.Contains(seenCookie, "app_session=application-session") || strings.Contains(seenCookie, "opl_session") || strings.Contains(seenCookie, "opl_ws_") {
+		t.Fatalf("forwarded credentials authorization=%q csrf=%q cookie=%q", seenAuthorization, seenCSRF, seenCookie)
+	}
+	if cookie := response.Header.Get("Set-Cookie"); strings.Contains(cookie, "Domain=") {
+		t.Fatalf("application cookie widened its domain: %q", cookie)
+	}
+
+	pathRequest, err := http.NewRequest(http.MethodGet, server.URL+"/w/"+workspace+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pathRequest.Host = "workspace.example"
+	pathRequest.Header.Set("Authorization", "Bearer platform-token")
+	pathRequest.Header.Set("X-OPL-CSRF", "platform-csrf")
+	pathRequest.AddCookie(&http.Cookie{Name: "opl_session", Value: "platform-session"})
+	pathRequest.AddCookie(&http.Cookie{Name: "opl_ws_active", Value: workspace})
+	pathRequest.AddCookie(&http.Cookie{Name: "opl_ws_session_runtime", Value: "runtime-session"})
+	pathRequest.AddCookie(&http.Cookie{Name: "app_session", Value: "application-session"})
+	pathResponse, err := (&http.Client{}).Do(pathRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pathResponse.Body.Close()
+	if pathResponse.StatusCode != http.StatusOK {
+		t.Fatalf("path status=%d", pathResponse.StatusCode)
+	}
+	if seenPathAuthorization != "" || seenPathCSRF != "" || !strings.Contains(seenPathCookie, "app_session=application-session") || strings.Contains(seenPathCookie, "opl_session") || strings.Contains(seenPathCookie, "opl_ws_") {
+		t.Fatalf("path forwarded credentials authorization=%q csrf=%q cookie=%q", seenPathAuthorization, seenPathCSRF, seenPathCookie)
+	}
 }
 
 func TestServeAccessEntryRefusesUnconfirmedSupersededAndUnready(t *testing.T) {
