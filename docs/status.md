@@ -1951,6 +1951,32 @@ Plane, Kubernetes, Package, or Workspace-restart mutation. It is strong
 evidence for those existing
 Workspaces, not for a new purchase or current-source qualification.
 
+### Portable Managed-TKE Configuration Completeness
+
+The portable Candidate assets now declare the facts their own owners require.
+Fabric's `callKubectl` runs `protectedresource.FromEnv().Check` for every
+mutating verb, and `Config.Validate` requires `OPL_SYSTEM_COMPUTE_NODE_POOL_ID`,
+`OPL_SYSTEM_COMPUTE_MACHINE_ID`, `OPL_SYSTEM_COMPUTE_NODE_NAME`,
+`OPL_SYSTEM_COMPUTE_MACHINE_TYPE` and `OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON`,
+so `deploy/portable/compose.fabric-tencent-tke.yaml` now forwards them and
+`deploy/portable/opl-cloud.env.example` declares them. The same overlay also
+forwards every fact the provider's own constructor and readiness check require
+(`OPL_WORKSPACE_DOMAIN`, `OPL_CLOUD_IMAGE`, `OPL_WORKSPACE_IMAGE`,
+`OPL_K8S_NAMESPACE`, `OPL_IMAGE_PULL_SECRET_NAME`,
+`OPL_WORKSPACE_STORAGE_CLASS`, `OPL_TENCENT_PROVISIONER_BIN`,
+`TENCENT_DEPLOY_KUBECONFIG_REF`, `RUN_TENCENT_CREATE_RELEASE_EXECUTION`) and
+mounts the TKE deploy kubeconfig read-only, because a rendered overlay had
+previously delivered none of them to the Fabric container. A rendered overlay
+now delivers the whole set with `OPL_FABRIC_PROVIDER=tencent-tke`.
+`compose.yaml` now forwards `OPL_WORKSPACE_APPLICATION_DOMAIN` to the Control
+Plane, the same name `parseWorkspaceApplicationOriginHost` and Serve's
+`ApplicationEntryURL` read, and the template declares it. The focused contract
+test `tests/contracts/portable-tke-configuration.test.ts` reads the required
+names from the owning Go source instead of restating them. Evidence:
+[portable TKE configuration](./evidence/source-checks/2026-09-30-tke-serial-portable-tke-configuration.json).
+This is a Cloud source and asset fact; no Candidate image, installation,
+provider action or Instance receipt exists yet.
+
 ## Distribution Boundary
 
 The five `v0.1.7` assets and their public API digests match the Release manifest
