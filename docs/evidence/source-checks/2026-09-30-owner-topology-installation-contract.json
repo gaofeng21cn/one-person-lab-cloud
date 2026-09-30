@@ -1,0 +1,145 @@
+{
+ "schemaVersion": 1,
+ "receiptType": "opl_cloud_owner_topology_installation_contract_source_check",
+ "revision": 1,
+ "recordedAt": "2026-09-30T05:20:00Z",
+ "result": "cloud_now_declares_the_full_owner_process_topology_as_an_installation_fact_derived_from_owner_source_and_ships_it_in_the_candidate_bundle",
+ "window": "serial",
+ "windowTitle": "Serial integration stage 8 - the Cloud-side installation contract for the full owner topology (milestone M1 step 1)",
+ "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.7",
+ "milestoneM1": {
+  "objective": "Minimum real delivery of the default OPL App: the instance installs the complete Cloud owner topology, Cloud builds an exact-SHA Candidate, the instance deploys it under its protected workflow, Serve reaches a confirmed route and URL on Tencent TKE, and a user opens the application.",
+  "blockers": [
+   {
+    "id": "M1.1-instance-topology",
+    "blockedFact": "gaofeng21cn/opl-instance-medopl deploy/tke/opl-cloud.k8s.json installs only opl-cloud-control-plane, opl-cloud-ledger and opl-cloud-fabric. No Deployment, Service, database, role, Secret or address is declared for Serve, Workspace, Capability, Build, Runtime Control, CloudIdentity/Gateway Integration or Resource Catalog, and the closed Instance PR #348 did not add Serve or Workspace.",
+    "owner": "Instance repository owner (gaofeng21cn/opl-instance-medopl)",
+    "cloudSideDeliveredThisWindow": "The Cloud-owned declaration of every owner process, its listen address, its peer identity, its database and its external environment, plus the portable environment template naming each variable and a Candidate bundle that carries it.",
+    "minimalExternalAction": "Extend the Instance install manifest to the full owner set using deploy/portable/opl-cloud-owner-topology.json (one process per declared binary, one database per declared owner, the declared ADDR/PEER_TOKENS/URL/TOKEN names) and redeploy. Cloud must not dispatch that deployment.",
+    "currentEvidence": "docs/evidence/source-checks/2026-09-30-tke-serial-instance-install-gap.json"
+   },
+   {
+    "id": "M1.2-candidate",
+    "blockedFact": "The exact-SHA Candidate must be produced by .github/workflows/build-opl-cloud-candidate.yml, whose guard admits only the repository owner as github.actor and github.triggering_actor. A write collaborator's dispatch is skipped (observed run 36650150455).",
+    "owner": "repository owner gaofeng21cn",
+    "minimalExternalAction": "Dispatch build-opl-cloud-candidate.yml with product_sha set to the exact Cloud commit of this integration, then record the resulting index digest.",
+    "currentEvidence": "docs/evidence/source-checks/2026-09-30-candidate-branch-source.json"
+   },
+   {
+    "id": "M1.3-route",
+    "blockedFact": "Serve's RouteProvider interface has no production implementation and Configure assigns none, so every route switch fails closed with route_provider_unavailable and no Agent URL is ever confirmed. The installation route object is observable in the Instance source: one Ingress named opl-cloud (ingressClassName qcloud) whose wildcard host covers the per-binding application origins. Which module performs the conditional-revision CAS on it is the unfrozen decision.",
+    "owner": "product owner / installation owner (frozen typed contract)",
+    "minimalExternalAction": "Approve the I06/I07 boundary decision already reported for docs/decisions.md, so Serve can implement its provider and its Deploy orchestration without inventing a second routing writer.",
+    "currentEvidence": "docs/evidence/source-checks/2026-09-30-tke-serial-i06-i07-blocker-confirmation.json"
+   }
+  ],
+  "notABlocker": "The Agent combination's real-host chain is green on canonical main: the Cloud Qualification run 36671324835 (fabric job, TestLocalFirstApplicationDeploymentQualification) passes on the current main with real Linux project quota, a real container and live HTTP."
+ },
+ "necessity": {
+  "decision": "Milestone M1 begins with the instance installing the complete Cloud owner topology. One product image already carries an executable for every owner, so which processes exist, what each one listens on, which database it opens and which peers it admits are Cloud product facts. Cloud declared none of them: the portable environment template named only the three legacy services' variables. An instance extending its manifest therefore had to invent the owner set, the addresses, the databases and the peer identities, which makes the instance a second writer of Cloud's own process contract and makes the install unreproducible. This change makes that contract explicit, source-derived and drift-proof.",
+  "currentProblem": "deploy/portable/opl-cloud.env.example declared 55 variables, none of them for Serve, Workspace, Capability, Build, Runtime Control, Resource Catalog, CloudIdentity/Gateway Integration or the Console BFF. deploy/portable declared no statement of the owner topology at all. The only current statement was the Instance's own three-service manifest, and the product image's owner set was asserted only for the build lane (tests/contracts/product-image-owners.test.ts), not for installation.",
+  "confirmedFacts": [
+   "services/internal/ownerservice/config.go LoadConfig resolves every owner-identity process's shared startup contract: OPL_<UPPER(owner)>_ADDR, OPL_<UPPER(owner)>_PEER_TOKENS (a JSON object of peer owner to >=32-character token), DATABASE_URL, OPL_CLOUD_IDENTITY_URL/OPL_CLOUD_IDENTITY_TOKEN, and the owneridentity TLS environment (NODE_ENV, OPL_GRPC_INSECURE_LOCAL, OPL_GRPC_CA_FILE/CERT_FILE/KEY_FILE).",
+   "Eight owner entrypoints call LoadConfig with an explicit identity and default address: capability (:8181), build (:8182), runtime-control (:8183), workspace (:8184), serve (:8185), resource-catalog (:8186), gateway-integration (owner identity tenant, :8187) and ledger (:8186). Ledger and Resource Catalog therefore share the :8186 default, so an installation that leaves both empty runs two owners on one port.",
+   "packages/contracts/go/owneridentity/owneridentity.go owns the canonical owner identities; the environment prefix is derived from them, not restated.",
+   "The Console BFF owns no database and reads OPL_<OWNER>_URL and OPL_<OWNER>_TOKEN for each owner, while an owner process listens on OPL_<OWNER>_ADDR and admits callers through OPL_<OWNER>_PEER_TOKENS. Both spellings describe the same target, so an installation must set both.",
+   "Dockerfile's publisher-build lane emits /out/opl-<service> for capability, build, runtime-control, workspace, resource-catalog, serve and gateway-integration plus opl-console-bff, and the control-plane, fabric and ledger stages emit their own binaries; the runtime stage copies all of them into /usr/local/bin.",
+   "The Candidate bundle's portable asset list is owned by packages/contracts/opl-cloud-candidate-receipt-contract.json (candidateReceiptV2.portableAssets) and asserted by tools/cloud-candidate-receipt.ts and tools/validate-product-boundary.mjs, so a new installation asset belongs in all three plus the workflow that assembles the bundle."
+  ],
+  "mustStaySeparate": [
+   "Cloud declares the owner processes, their addresses, databases and peer identities. The instance owner still owns the provider selection, domain, certificates, Secret references, cluster and deployment; this declaration moves none of that into Cloud.",
+   "The declaration is derived from each owner's own startup source and is checked by a test; it is not a second place where an owner's configuration logic lives.",
+   "This is a declaration and packaging change: it starts no process, deploys nothing, buys nothing and changes no owner's runtime behavior."
+  ],
+  "minimalImplementation": [
+   "deploy/portable/opl-cloud-owner-topology.json declares the shared environment, the derived address and peer-token naming rule, the shared-default-address fact with its evidence, and one entry per process with its owner identity, binary, address variable, peer-token variable, database variable and every owner-specific environment name.",
+   "deploy/portable/opl-cloud.env.example gains an OPL_CLOUD_OWNER_TOPOLOGY section naming every declared variable, with no duplicate key.",
+   "tests/contracts/owner-topology.test.ts derives the owner set, owner identities, listen addresses, binaries and environment names from the owning Go source, the Dockerfile and the candidate asset contract, and fails on any undeclared or stale entry.",
+   "The Candidate bundle copies and checksums the new asset: the receipt contract, both product-boundary tools and build-opl-cloud-candidate.yml."
+  ],
+  "whyNotAlternative": [
+   "Letting the instance derive the topology from the binaries would put a second reader and writer of Cloud's process contract outside Cloud.",
+   "Declaring only the three legacy services would keep milestone M1's first step impossible.",
+   "Declaring names without a source-derived test would drift silently; the test is what makes the declaration a contract.",
+   "Shipping the asset only in the repository (not the Candidate bundle) would leave the instance without the declaration at the exact qualified bytes."
+  ]
+ },
+ "ssotConformance": [
+  {
+   "ssot": "docs/spec/target/14_implementation_work_packages.md#11.7",
+   "requirement": "「补镜像内buildx、明确Console cloud模式、所需owners/DB/roles/mTLS、BuildKit隔离、COS/TCR Secret引用和Serve路由配置」",
+   "conformance": "The required owners, their databases, their mTLS environment and their peer identities are now declared in one Cloud-owned, source-derived installation fact and shipped in the Candidate bundle."
+  },
+  {
+   "ssot": "docs/invariants.md#release-and-production",
+   "requirement": "「Cloud publishes portable product artifacts. The instance owner deploys and qualifies an immutable Cloud candidate in its own protected environment.」",
+   "conformance": "Cloud now publishes the installation contract for its own processes; the instance still deploys and qualifies. No deployment is performed or dispatched from Cloud."
+  },
+  {
+   "ssot": "docs/architecture.md#repository-and-instance-topology",
+   "requirement": "Each domain owns its own data and writes; Cloud publishes portable artifacts and does not own an instance deployment workflow.",
+   "conformance": "Each owner keeps its own database variable and its own peer allowlist; the declaration adds no shared database, no shared credential and no instance workflow."
+  },
+  {
+   "ssot": "docs/invariants.md#evidence-levels",
+   "requirement": "「code-complete means the exact source revision passed its required local source... gates with no required skips.」",
+   "conformance": "The new contract test runs inside npm run test:source, and the Candidate asset contract is asserted by npm run validate:product-boundary inside npm run verify:local."
+  }
+ ],
+ "acceptance": [
+  "Every ownerservice entrypoint the repository runs is declared with the identity, address variable, peer-token variable and default address its own main.go passes to ownerservice.LoadConfig.",
+  "Every environment name any owner process reads from its own non-test source is either shared, derived, declared, or explicitly marked external, and no declared name is stale.",
+  "The environment template names every declared installation variable, and the Candidate bundle declares, copies, checksums and validates the new asset.",
+  "The declaration records the shared :8186 default of ledger and resource-catalog with its evidence, so an installation cannot silently place two owners on one port."
+ ],
+ "endState": "Complete for the Cloud-owned installation contract that names the full owner topology. Extending the Instance install manifest, dispatching the owner-gated Candidate build and freezing the I06/I07 route boundary remain external and are named by milestone M1 above.",
+ "ownerWriteSet": [
+  "deploy/portable/opl-cloud-owner-topology.json",
+  "deploy/portable/opl-cloud.env.example",
+  "tests/contracts/owner-topology.test.ts",
+  "packages/contracts/opl-cloud-candidate-receipt-contract.json",
+  "tools/cloud-candidate-receipt.ts",
+  "tools/validate-product-boundary.mjs",
+  ".github/workflows/build-opl-cloud-candidate.yml",
+  "tests/tools/cloud-candidate-receipt.test.ts"
+ ],
+ "evidenceSources": {
+  "deploy/portable/opl-cloud-owner-topology.json": "1a303bcea900c0f890f706fc7d9e2f5b98cb39955f92152719542cbd2b29eb4b",
+  "deploy/portable/opl-cloud.env.example": "17e007cc309b455b091c3a9f8c7e15d782df498080313f01a8b53cbe65a8ca10",
+  "tests/contracts/owner-topology.test.ts": "a233d5fddf91855f2b7ae3c241916c659e9230b7fe468f1af01fae143bf2b871",
+  ".github/workflows/build-opl-cloud-candidate.yml": "992ca287424993d920283a6a1efe66b3bcbc88994e07df3d227744afa9abd10a",
+  "packages/contracts/opl-cloud-candidate-receipt-contract.json": "8318bf7606cf694a0289dd681fb74395c84ec7355f089f590a210a4c9b57d3c7",
+  "tools/cloud-candidate-receipt.ts": "dcde1e217ebf597c23e34f909dc8033ccb1dfc9b2d0d24bf265d0fc9a1d454b7",
+  "tools/validate-product-boundary.mjs": "cc4a3d452f9559607170462fc8014e13966b9b49a8643fceb36432361f4c1f35",
+  "tests/tools/cloud-candidate-receipt.test.ts": "7b6d9e909fcebe5d2e2d3941ac1d1e3865a4d49519aa7a4179a23ca6d9dcd7cc"
+ },
+ "verification": [
+  {
+   "command": "node --test tests/contracts/owner-topology.test.ts",
+   "result": "pass",
+   "detail": "Six assertions: owner entrypoints, non-ownerservice listen contracts, environment accounting, product-image owner coverage, template coverage, and the shared default address fact."
+  },
+  {
+   "command": "npm run test:source",
+   "result": "pass",
+   "detail": "257 tests pass, including the new contract test."
+  },
+  {
+   "command": "npm run verify:local",
+   "result": "pass",
+   "detail": "Full local gate is green, including npm run validate:product-boundary over the changed candidate asset contract."
+  },
+  {
+   "command": "gh run view 36671324835",
+   "result": "pass",
+   "detail": "Cloud Qualification on canonical main completed successfully, including the fabric job's real Linux first-application-deployment qualification."
+  }
+ ],
+ "notRun": [
+  "Instance install-manifest change, protected deployment, Tencent resource action and TKE readback (instance-owner actions).",
+  "Candidate build (owner-actor dispatch).",
+  "Serve RouteProvider implementation (blocked on the I06/I07 decision)."
+ ],
+ "claimBoundary": "This receipt claims the Cloud-owned installation contract for the full owner topology now exists, is derived from the owning source, is checked by a test and ships in the Candidate bundle. It claims no Candidate image, no deployment, no TKE readback and no route activation.",
+ "secrets": "none"
+}

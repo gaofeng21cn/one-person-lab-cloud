@@ -30,7 +30,8 @@ const assetNames = [
   "compose.fabric-local-docker.yaml",
   "compose.fabric-tencent-tke.yaml",
   "compose.local-workspace.yaml",
-  "opl-cloud.env.example"
+  "opl-cloud.env.example",
+  "opl-cloud-owner-topology.json"
 ];
 
 function sha256(value: string | Buffer) {

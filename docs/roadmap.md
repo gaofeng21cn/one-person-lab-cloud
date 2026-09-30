@@ -38,6 +38,19 @@ All outcomes in the table below remain open until their own evidence passes.
 A single sequential implementation owner replaces the parallel write allocation;
 logical DDD ownership and separate Instance deployment authority do not change.
 
+### Milestone M1 Blockers After The Owner-Topology Contract
+
+The default OPL App's minimum real delivery chain is bounded by three blockers,
+each named with its owner and the smallest external action. Cloud now supplies
+the installation contract those steps consume
+([evidence](evidence/source-checks/2026-09-30-owner-topology-installation-contract.json)).
+
+| Blocker | Owner | Smallest external action |
+| --- | --- | --- |
+| The instance manifest still installs only the legacy three services | Instance repository owner | Extend `deploy/tke/opl-cloud.k8s.json` to the full owner set from the Cloud-owned declaration and redeploy there |
+| The exact-SHA Candidate needs the owner-gated dispatch | repository owner | Dispatch `build-opl-cloud-candidate.yml` with the exact Cloud commit and record the index digest |
+| Serve has no production `RouteProvider`, so no Agent URL is ever confirmed | product owner / installation owner | Freeze the I06/I07 boundary decision already reported, then Serve implements its provider and Deploy orchestration |
+
 ### Tencent/TKE Primary Delivery Outcome (2026-09-29)
 
 The [September 29 adopted decision](decisions.md#2026-09-29-default-opl-app-and-optional-agent)

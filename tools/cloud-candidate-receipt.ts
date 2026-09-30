@@ -20,7 +20,8 @@ const PORTABLE_ASSETS = [
   "compose.fabric-local-docker.yaml",
   "compose.fabric-tencent-tke.yaml",
   "compose.local-workspace.yaml",
-  "opl-cloud.env.example"
+  "opl-cloud.env.example",
+  "opl-cloud-owner-topology.json"
 ];
 const RECEIPT_KEYS = ["schemaVersion", "kind", "product", "cloudImage", "assets", "provenance"];
 const PRODUCT_KEYS = ["repository", "sha", "tree"];

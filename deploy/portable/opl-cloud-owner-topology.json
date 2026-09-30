@@ -1,0 +1,428 @@
+{
+ "schemaVersion": 1,
+ "owner": "opl-cloud",
+ "purpose": "The Cloud owner processes a conforming installation runs, and the environment each process requires.",
+ "state": "current",
+ "machineBoundary": "Cloud declares the owner processes, their addresses, databases and peer identities. The instance owner selects the provider, supplies the domain, Secrets and certificates, and performs deployment.",
+ "image": {
+  "env": "OPL_CLOUD_IMAGE",
+  "fact": "One product image carries every owner executable; the installation selects which processes to run.",
+  "binaryDirectory": "/usr/local/bin"
+ },
+ "sharedEnv": {
+  "tls": [
+   "NODE_ENV",
+   "OPL_GRPC_INSECURE_LOCAL",
+   "OPL_GRPC_CA_FILE",
+   "OPL_GRPC_CERT_FILE",
+   "OPL_GRPC_KEY_FILE"
+  ],
+  "database": "DATABASE_URL",
+  "cloudIdentity": [
+   "OPL_CLOUD_IDENTITY_URL",
+   "OPL_CLOUD_IDENTITY_TOKEN"
+  ],
+  "hostProvided": [
+   "PATH",
+   "HOME",
+   "TMPDIR"
+  ]
+ },
+ "derivedEnv": {
+  "address": "OPL_<OWNERNAME>_ADDR",
+  "peerTokens": "OPL_<OWNERNAME>_PEER_TOKENS",
+  "peerTokensShape": "JSON object {\"<peer owner identity>\":\"<at least 32 characters>\"}"
+ },
+ "distinctAddressesRequired": true,
+ "distinctAddressesEvidence": "services/ledger/cmd/ledger/main.go and services/resource-catalog/cmd/server/main.go both default their listen address to \":8186\", so an installation that leaves both addresses empty runs two owners on one port. Every address must therefore be set explicitly.",
+ "processes": [
+  {
+   "service": "capability",
+   "kind": "ownerservice",
+   "ownerName": "capability",
+   "ownerConstant": "OwnerCapability",
+   "binary": "/usr/local/bin/opl-capability",
+   "addressEnv": "OPL_CAPABILITY_ADDR",
+   "peerTokensEnv": "OPL_CAPABILITY_PEER_TOKENS",
+   "defaultAddress": ":8181",
+   "databaseEnv": "DATABASE_URL",
+   "env": [
+    "OPL_BUILD_ADDR",
+    "OPL_LEDGER_ADDR",
+    "OPL_RUNTIME_CONTROL_ADDR",
+    "OPL_SERVE_ADDR",
+    "OPL_CAPABILITY_OBJECT_LISTEN_ADDR",
+    "OPL_CAPABILITY_OBJECT_URL",
+    "OPL_CAPABILITY_OBJECT_TOKEN",
+    "OPL_CAPABILITY_OBJECT_ROOT",
+    "OPL_CAPABILITY_OBJECT_SIGNING_KEY",
+    "OPL_CAPABILITY_STORAGE_KIND",
+    "OPL_CAPABILITY_PACKAGE_SCHEMA_PATH",
+    "OPL_CAPABILITY_PACKAGE_SCHEMA_DIGEST",
+    "OPL_PUBLISHER_SCHEMA_PATH",
+    "OPL_PUBLISHER_SCHEMA_DIGEST",
+    "OPL_CAPABILITY_COS_ENDPOINT",
+    "OPL_CAPABILITY_COS_REGION",
+    "OPL_CAPABILITY_COS_BUCKET",
+    "OPL_CAPABILITY_COS_SECRET_ID",
+    "OPL_CAPABILITY_COS_SECRET_KEY"
+   ],
+   "optionalEnv": [],
+   "externalEnv": [],
+   "registers": [
+    "CapabilityProductService",
+    "CapabilityCoordination"
+   ],
+   "notes": [
+    "Package/WebUI/build-result catalog owner. OPL_CAPABILITY_STORAGE_KIND selects the object store; the COS_* set is required only for the object-store kind."
+   ]
+  },
+  {
+   "service": "build",
+   "kind": "ownerservice",
+   "ownerName": "build",
+   "ownerConstant": "OwnerBuild",
+   "binary": "/usr/local/bin/opl-build",
+   "addressEnv": "OPL_BUILD_ADDR",
+   "peerTokensEnv": "OPL_BUILD_PEER_TOKENS",
+   "defaultAddress": ":8182",
+   "databaseEnv": "DATABASE_URL",
+   "env": [
+    "OPL_BUILD_BUILDER",
+    "OPL_BUILD_WORKDIR",
+    "OPL_BUILD_DOCKER_CONFIG",
+    "OPL_BUILD_REGISTRY_PREFIX",
+    "OPL_BUILD_REGISTRY_TOKEN",
+    "OPL_CAPABILITY_ADDR",
+    "OPL_CAPABILITY_OBJECT_URL",
+    "OPL_CAPABILITY_OBJECT_TOKEN",
+    "OPL_LEDGER_ADDR"
+   ],
+   "optionalEnv": [],
+   "externalEnv": [],
+   "registers": [
+    "BuildProductService",
+    "BuildCoordination"
+   ],
+   "notes": [
+    "Runs the admitted BuildKit build; OPL_BUILD_BUILDER and OPL_BUILD_WORKDIR are installation facts for the build host."
+   ]
+  },
+  {
+   "service": "runtime-control",
+   "kind": "ownerservice",
+   "ownerName": "runtime_control",
+   "ownerConstant": "OwnerRuntimeControl",
+   "binary": "/usr/local/bin/opl-runtime-control",
+   "addressEnv": "OPL_RUNTIME_CONTROL_ADDR",
+   "peerTokensEnv": "OPL_RUNTIME_CONTROL_PEER_TOKENS",
+   "defaultAddress": ":8183",
+   "databaseEnv": "DATABASE_URL",
+   "env": [
+    "OPL_CAPABILITY_ADDR",
+    "OPL_RUNTIME_PUBLISHER_SCHEMA_PATH",
+    "OPL_RUNTIME_PUBLISHER_SCHEMA_DIGEST"
+   ],
+   "optionalEnv": [],
+   "externalEnv": [],
+   "registers": [
+    "RuntimeControlProductService"
+   ],
+   "notes": [
+    "Owns Runtime Release admission and immutable release readback. It never owns a running instance."
+   ]
+  },
+  {
+   "service": "workspace",
+   "kind": "ownerservice",
+   "ownerName": "workspace",
+   "ownerConstant": "OwnerWorkspace",
+   "binary": "/usr/local/bin/opl-workspace",
+   "addressEnv": "OPL_WORKSPACE_ADDR",
+   "peerTokensEnv": "OPL_WORKSPACE_PEER_TOKENS",
+   "defaultAddress": ":8184",
+   "databaseEnv": "DATABASE_URL",
+   "env": [
+    "OPL_CAPABILITY_ADDR",
+    "OPL_FABRIC_ADDR",
+    "OPL_GATEWAY_ADDR",
+    "OPL_LEDGER_ADDR",
+    "OPL_RESOURCE_CATALOG_ADDR",
+    "OPL_RUNTIME_CONTROL_ADDR",
+    "OPL_SERVE_ADDR"
+   ],
+   "optionalEnv": [],
+   "externalEnv": [],
+   "registers": [
+    "WorkspaceProductService",
+    "WorkspaceAdmission"
+   ],
+   "notes": [
+    "Owns the accepted order and resource intent; it persists no second current-deployment pointer."
+   ]
+  },
+  {
+   "service": "serve",
+   "kind": "ownerservice",
+   "ownerName": "serve",
+   "ownerConstant": "OwnerServe",
+   "binary": "/usr/local/bin/opl-serve",
+   "addressEnv": "OPL_SERVE_ADDR",
+   "peerTokensEnv": "OPL_SERVE_PEER_TOKENS",
+   "defaultAddress": ":8185",
+   "databaseEnv": "DATABASE_URL",
+   "env": [
+    "OPL_CAPABILITY_ADDR",
+    "OPL_CAPABILITY_TOKEN",
+    "OPL_FABRIC_COORDINATION_ADDR",
+    "OPL_FABRIC_COORDINATION_TOKEN",
+    "OPL_FABRIC_APPLICATION_URL",
+    "OPL_FABRIC_SERVE_SERVICE_TOKEN",
+    "OPL_FABRIC_SERVE_CAPABILITY_KEY",
+    "OPL_GATEWAY_ADDR",
+    "OPL_GATEWAY_TOKEN",
+    "OPL_LEDGER_ADDR",
+    "OPL_LEDGER_TOKEN",
+    "OPL_RUNTIME_CONTROL_ADDR",
+    "OPL_RUNTIME_CONTROL_TOKEN"
+   ],
+   "optionalEnv": [],
+   "externalEnv": [],
+   "registers": [
+    "ServeProductService",
+    "ServeAgentCoordination",
+    "ServeRuntimeAdapter",
+    "ServeAccessControl"
+   ],
+   "notes": [
+    "Sole writer of default-App and Agent deployment/readiness/access facts. OPL_WORKSPACE_DOMAIN and OPL_WORKSPACE_APPLICATION_DOMAIN are read from the environment by Serve's route-origin resolution, and no installation route provider (RouteProvider) is configured by any current environment variable."
+   ]
+  },
+  {
+   "service": "resource-catalog",
+   "kind": "ownerservice",
+   "ownerName": "resource_catalog",
+   "ownerConstant": "OwnerResourceCatalog",
+   "binary": "/usr/local/bin/opl-resource-catalog",
+   "addressEnv": "OPL_RESOURCE_CATALOG_ADDR",
+   "peerTokensEnv": "OPL_RESOURCE_CATALOG_PEER_TOKENS",
+   "defaultAddress": ":8186",
+   "databaseEnv": "DATABASE_URL",
+   "env": [
+    "OPL_LEDGER_ADDR",
+    "OPL_RESOURCE_CATALOG_PROFILE_JSON"
+   ],
+   "optionalEnv": [],
+   "externalEnv": [],
+   "registers": [
+    "ResourceCatalogProductService",
+    "CatalogCoordination"
+   ],
+   "notes": []
+  },
+  {
+   "service": "ledger",
+   "kind": "ownerservice",
+   "ownerName": "ledger",
+   "ownerConstant": "OwnerLedger",
+   "binary": "/usr/local/bin/opl-ledger",
+   "addressEnv": "OPL_LEDGER_ADDR",
+   "peerTokensEnv": "OPL_LEDGER_PEER_TOKENS",
+   "defaultAddress": ":8186",
+   "databaseEnv": "DATABASE_URL",
+   "env": [
+    "LEDGER_ADDR",
+    "OPL_INTERNAL_SERVICE_TOKEN",
+    "OPL_LEDGER_CAPABILITY_KEY"
+   ],
+   "optionalEnv": [],
+   "externalEnv": [
+    "OPL_POSTGRES_TESTS"
+   ],
+   "registers": [
+    "LedgerProductService",
+    "LedgerCoordination",
+    "DomainInbox"
+   ],
+   "notes": [
+    "The legacy LEDGER_ADDR spelling is still read for the retained HTTP surface.",
+    "OPL_POSTGRES_TESTS only selects the isolated database harness; production never sets it."
+   ]
+  },
+  {
+   "service": "gateway-integration",
+   "kind": "ownerservice",
+   "ownerName": "tenant",
+   "ownerConstant": "OwnerTenant",
+   "binary": "/usr/local/bin/opl-gateway-integration",
+   "addressEnv": "OPL_TENANT_ADDR",
+   "peerTokensEnv": "OPL_TENANT_PEER_TOKENS",
+   "defaultAddress": ":8187",
+   "databaseEnv": "DATABASE_URL",
+   "env": [
+    "OPL_GATEWAY_DATABASE_URL",
+    "OPL_SUB2API_URL",
+    "OPL_GATEWAY_DIRECTORY_EMAIL",
+    "OPL_GATEWAY_DIRECTORY_PASSWORD",
+    "OPL_SESSION_SIGNING_KEY",
+    "OPL_INVITATION_TTL",
+    "OPL_PLATFORM_ADMIN_SUBJECTS",
+    "OPL_WORKSPACE_REGISTRY_HOST",
+    "OPL_WORKSPACE_REGISTRY_NAMESPACE"
+   ],
+   "optionalEnv": [],
+   "externalEnv": [],
+   "registers": [
+    "TenantProductService",
+    "CloudIdentityAuthorization",
+    "GatewayProductService",
+    "GatewayCoordination",
+    "RepositoryBinding"
+   ],
+   "notes": [
+    "CloudIdentity and Gateway Integration are the same process and the same data owner."
+   ]
+  },
+  {
+   "service": "fabric",
+   "kind": "http",
+   "binary": "/usr/local/bin/opl-fabric",
+   "addressEnv": "FABRIC_ADDR",
+   "defaultAddress": ":8082",
+   "databaseEnv": "DATABASE_URL",
+   "env": [
+    "OPL_FABRIC_DATABASE_URL",
+    "FABRIC_ADDR",
+    "OPL_FABRIC_PROVIDER",
+    "OPL_INTERNAL_SERVICE_TOKEN",
+    "OPL_FABRIC_CAPABILITY_KEY",
+    "OPL_FABRIC_RUNNER_SERVICE_TOKEN",
+    "OPL_AIONUI_ADMIN_PASSWORD_SEED",
+    "OPL_CLOUD_IMAGE",
+    "OPL_WORKSPACE_IMAGE",
+    "OPL_WORKSPACE_DOMAIN",
+    "OPL_K8S_NAMESPACE",
+    "OPL_IMAGE_PULL_SECRET_NAME",
+    "OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON",
+    "OPL_TENCENT_PROVISIONER_BIN",
+    "TENCENT_DEPLOY_KUBECONFIG_REF",
+    "TENCENT_DEPLOY_CLUSTER_ID",
+    "TENCENT_CBS_DISK_TYPE",
+    "RUN_TENCENT_CREATE_RELEASE_EXECUTION",
+    "OPL_SYSTEM_COMPUTE_NODE_POOL_ID",
+    "OPL_SYSTEM_COMPUTE_MACHINE_ID",
+    "OPL_SYSTEM_COMPUTE_NODE_NAME",
+    "OPL_SYSTEM_COMPUTE_MACHINE_TYPE",
+    "OPL_SYSTEM_COMPUTE_CVM_ID",
+    "OPL_FABRIC_LOCAL_DOCKER_HOST",
+    "OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT",
+    "OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT",
+    "OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST",
+    "OPL_FABRIC_LOCAL_DOCKER_PROBE_IMAGE",
+    "OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER",
+    "OPL_FABRIC_LOCAL_DOCKER_ALLOW_UNBOUNDED_SWAP",
+    "OPL_FABRIC_DOCKER_BINARY",
+    "OPL_CODEX_MODEL",
+    "OPL_CODEX_PROVIDER_NAME",
+    "OPL_CODEX_REASONING_EFFORT",
+    "OPL_FABRIC_SERVE_CAPABILITY_KEY",
+    "OPL_FABRIC_SERVE_SERVICE_TOKEN",
+    "OPL_LEDGER_ADDR",
+    "OPL_LEDGER_TOKEN",
+    "OPL_RESOURCE_CATALOG_ADDR",
+    "OPL_RESOURCE_CATALOG_TOKEN"
+   ],
+   "registers": [
+    "FabricCoordination",
+    "provider dispatchers"
+   ],
+   "notes": [
+    "Owns infrastructure resource mutation and readback only. The legacy signed HTTP application-runtime surface is the migration bridge that I06 retires."
+   ]
+  },
+  {
+   "service": "control-plane",
+   "kind": "http",
+   "binary": "/usr/local/bin/opl-control-plane",
+   "addressEnv": "CONTROL_PLANE_ADDR",
+   "defaultAddress": ":8787",
+   "databaseEnv": "DATABASE_URL",
+   "env": [
+    "CONTROL_PLANE_ADDR",
+    "PORT",
+    "FABRIC_URL",
+    "LEDGER_URL",
+    "OPL_INTERNAL_SERVICE_TOKEN",
+    "OPL_DEPLOYMENT_MODE",
+    "OPL_PUBLIC_URL",
+    "OPL_WORKSPACE_DOMAIN",
+    "OPL_CONSOLE_DIST_DIR",
+    "OPL_CONSOLE_USERS_JSON",
+    "OPL_FABRIC_PROVIDER",
+    "OPL_CLOUD_IMAGE",
+    "OPL_WORKSPACE_IMAGE",
+    "OPL_RELEASE_SHA",
+    "OPL_RELEASE_TREE",
+    "OPL_TENCENT_ZONE",
+    "OPL_BASIC_COMPUTE_INSTANCE_TYPE",
+    "OPL_BASIC_COMPUTE_NODE_POOL_ID",
+    "OPL_PROVIDER_ACCEPTANCE_TOKEN",
+    "OPL_WORKSPACE_LAUNCH_WORKER_ENABLED",
+    "OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED",
+    "OPL_WORKSPACE_RUNTIME_IMAGE_REPLACEMENT_WORKER_ENABLED",
+    "OPL_MONTHLY_BILLING_WORKER_ENABLED",
+    "OPL_PROVIDER_RECONCILE_WORKER_ENABLED",
+    "OPL_ARCHIVE_RETENTION_WORKER_ENABLED",
+    "OPL_ARCHIVE_RETENTION_INTERVAL_MS",
+    "OPL_FABRIC_SERVICE_TOKEN",
+    "OPL_FABRIC_CAPABILITY_KEY",
+    "OPL_LEDGER_SERVICE_TOKEN",
+    "OPL_LEDGER_CAPABILITY_KEY",
+    "OPL_SUB2API_BASE_URL",
+    "OPL_SUB2API_ADMIN_EMAIL",
+    "OPL_SUB2API_ADMIN_PASSWORD",
+    "OPL_SUB2API_USER_EMAIL",
+    "OPL_SUB2API_USER_PASSWORD",
+    "OPL_SUB2API_REQUEST_TIMEOUT_MS"
+   ],
+   "registers": [
+    "legacy Control Plane HTTP surface"
+   ],
+   "notes": [
+    "Migration source, not a permanent second writer; it also serves the Console static bundle."
+   ]
+  },
+  {
+   "service": "console-bff",
+   "kind": "bff",
+   "binary": "/usr/local/bin/opl-console-bff",
+   "addressEnv": "OPL_BFF_ADDR",
+   "defaultAddress": ":8190",
+   "databaseEnv": null,
+   "env": [
+    "OPL_CAPABILITY_URL",
+    "OPL_RUNTIME_CONTROL_URL",
+    "OPL_BUILD_URL",
+    "OPL_WORKSPACE_URL",
+    "OPL_SERVE_URL",
+    "OPL_RESOURCE_CATALOG_URL",
+    "OPL_GATEWAY_URL",
+    "OPL_CAPABILITY_TOKEN",
+    "OPL_RUNTIME_CONTROL_TOKEN",
+    "OPL_BUILD_TOKEN",
+    "OPL_WORKSPACE_TOKEN",
+    "OPL_SERVE_TOKEN",
+    "OPL_RESOURCE_CATALOG_TOKEN",
+    "OPL_GATEWAY_TOKEN",
+    "OPL_BFF_ADDR",
+    "OPL_PUBLIC_URL"
+   ],
+   "registers": [
+    "Console BFF REST surface"
+   ],
+   "notes": [
+    "The BFF owns no business data and holds no database. It reaches each owner through OPL_<OWNER>_URL/OPL_<OWNER>_TOKEN, while an owner process listens on OPL_<OWNER>_ADDR and admits callers through OPL_<OWNER>_PEER_TOKENS: an installation must set both spellings for the same target."
+   ]
+  }
+ ]
+}

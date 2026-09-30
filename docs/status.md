@@ -2025,6 +2025,28 @@ fix and fails without it. Evidence:
 This is a Cloud source fact; no deployed Console, Candidate or Instance receipt
 exists yet.
 
+### Cloud Owner Topology Installation Contract
+
+Milestone M1 starts with the instance installing the complete Cloud owner
+topology, and the product image already carries an executable for every owner.
+What was missing was Cloud's own statement of that topology: the portable
+environment template named only the legacy three services' variables, so an
+instance extending its manifest had to invent the owner set, addresses,
+databases and peer identities. `deploy/portable/opl-cloud-owner-topology.json`
+now declares each process (owner identity, binary, `OPL_<OWNER>_ADDR`,
+`OPL_<OWNER>_PEER_TOKENS`, `DATABASE_URL`, and every owner-specific variable),
+`deploy/portable/opl-cloud.env.example` names each variable in a dedicated
+section, and `tests/contracts/owner-topology.test.ts` derives the owner set,
+identities, listen addresses, binaries and environment names from the owning Go
+source, the Dockerfile and the candidate asset contract, failing on any
+undeclared or stale entry. The Candidate bundle now declares, copies, checksums
+and validates the new asset. The declaration also records that Ledger and
+Resource Catalog share the `:8186` default listen address, so an installation
+must set both explicitly. Evidence:
+[owner topology installation contract](./evidence/source-checks/2026-09-30-owner-topology-installation-contract.json).
+This is a Cloud source and packaging fact; no Candidate image, installation,
+TKE readback or route activation exists yet.
+
 ## Distribution Boundary
 
 The five `v0.1.7` assets and their public API digests match the Release manifest

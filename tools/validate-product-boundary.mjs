@@ -130,7 +130,8 @@ const expectedCandidateAssets = [
   "compose.fabric-local-docker.yaml",
   "compose.fabric-tencent-tke.yaml",
   "compose.local-workspace.yaml",
-  "opl-cloud.env.example"
+  "opl-cloud.env.example",
+  "opl-cloud-owner-topology.json"
 ];
 if (candidateContract.schemaVersion !== 2 || candidateReceipt?.schemaVersion !== 2 ||
     JSON.stringify(candidateReceipt?.platforms) !== JSON.stringify(["linux/amd64", "linux/arm64"]) ||
