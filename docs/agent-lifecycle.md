@@ -35,7 +35,6 @@ Agent design / domain source
 | Object | Meaning | Owner |
 | --- | --- | --- |
 | Agent design | Goal, boundary, stages, inputs, outputs, review rules and authority functions | OMA / domain owner |
-| Agent design | Goal, boundary, stages, inputs, outputs, review rules and authority functions | OMA / domain owner |
 | Agent Package | Uploaded distributable bytes, identity, metadata and immutable versions | Capability |
 | WebUI selection | Exact selected WebUI reference/version | Build input; WebUI remains with its owning source |
 | Runtime release | Approved Runtime-version catalog and exact selectable references | Runtime Control; implementation/release belongs to OPL App/Framework owner |

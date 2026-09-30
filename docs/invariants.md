@@ -7,8 +7,12 @@ current implementation documentation.
 
 ## Authority
 
-- Control Plane owns customer sessions, account policy, Workspace business
-  operations, settlement coordination, and customer-facing DTOs.
+- CloudIdentity owns Tenant/session authorization; Workspace owns its business
+  operations; Resource Catalog owns plans and pricing policies; Serve owns
+  application delivery/current selection/readiness/access. Capability, Build and
+  Runtime Control retain Package, OCI build and Runtime Release authority.
+  Console BFF presents owner DTOs without business persistence. Control Plane
+  owns only its retained sessions, account policy, Workspace and settlement paths.
 - Fabric owns provider-neutral compute, storage, attachment, Secret binding,
   Runtime facts, provider operations, and provider-authoritative readback.
 - Ledger owns append-only receipts, evidence, retention, reconciliation, and
@@ -22,12 +26,14 @@ current implementation documentation.
 
 ## Physical Ownership
 
-- Control Plane, Fabric, and Ledger remain separate processes, Go modules, and
-  PostgreSQL schema owners.
-- Cross-service integration uses typed HTTP APIs. A service reads and writes
-  only its own tables.
-- Console calls Control Plane product APIs. Provider, wallet, and Ledger access
-  stays behind the owning server boundary.
+- Business owners retain separate process, module and database boundaries as
+  defined by the [architecture map](architecture.md#target-directory-and-service-map).
+  Tenant and Gateway remain distinct data owners in one deployment unit.
+- Extracted owners use typed gRPC/protobuf; retained callers use typed HTTP.
+  A service reads and writes only its own tables.
+- Console calls identity-specific same-origin product APIs. Provider, wallet and
+  Ledger access stays behind the owning server boundary; an unavailable owner
+  does not authorize fallback to a different writer.
 - Shared infrastructure remains policy-free and serves at least two current
   owners.
 
@@ -43,8 +49,8 @@ current implementation documentation.
   storage, and non-secret artifacts.
 - Secret reveal is an explicit owner-authorized, private, no-store interaction.
   Ordinary status projections remain redacted.
-- A Workspace Gateway Key is persisted only by the selected Fabric secret
-  owner. Control Plane and Ledger retain references, not the raw Key.
+- A Workspace Gateway Key is persisted only by the selected secret owner.
+  Business operations and Ledger retain references, not the raw Key.
 
 ## Money
 
@@ -92,8 +98,9 @@ resource-only provisioning and selected-application behavior follow the
   absence precedes refund; previous and closing refunds share the same
   original-charge reservation. A ready-before-freeze Workspace is never closed
   as failed. Unknown outcomes cannot become absence or payment confirmation.
-- Launch, renewal, Key rotation, Runtime repair, and deletion are durable
-  Control Plane operations over one Workspace identity.
+- Launch, renewal, Key rotation, Runtime repair and deletion continue the
+  original owning operation over one Workspace identity. Retained Control Plane
+  obligations do not silently move to a new Workspace writer.
 - Recovery continues the original operation and original resource identities.
   It cannot create a second purchase or silently replace an already confirmed
   resource.
@@ -140,10 +147,11 @@ implementation and remaining gaps are reported separately in status/roadmap.
   login, application Gateway Key or model Key. Later deployment failure cannot
   repeat a debit or turn fulfilled resources into an unfulfilled purchase.
   Retained Launches keep the completion obligations of their original contract.
-- A Launch declares its provisioning shape explicitly. A customer Launch
-  delivers resources only; it does not create an application installation. The
-  provisioning shape is never inferred from a server default or from a
-  Workspace's own resources.
+- A Launch declares its application selection and provisioning shape explicitly.
+  New delivery selects default OPL App from an approved Runtime Release or an
+  optional built Agent; default App does not create a synthetic Package, BuildJob
+  or CapabilityVersion. Existing resource-only orders keep their original
+  obligations. Selection is never inferred from a server default or resources.
 - A retained data binding is keyed by the stable application identity, never by
   an image tag, digest or deployment attempt. An update that keeps the
   application keeps its data binding; an unrelated application does not inherit

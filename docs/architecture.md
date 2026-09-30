@@ -24,13 +24,13 @@ OPL Base           Framework runtime product; implemented by the scoped Framewor
 OPL Packages       independently published installable capabilities and owner revisions
 OPL Framework      Host-side discovery/projection and runtime/state/action producer
 one-person-lab-app App product, Client profile, GUI ABI and release authority
-opl-aion-shell     current Stable AionUI Shell carrier
-opl-studio         candidate DSH/Cordis Application Host and delivery carrier
-OPL Cloud          Console, Control Plane, Fabric, Ledger and Workspace product
+opl-aion-shell     retired migration baseline and historical fixtures
+opl-studio         active DSH/Cordis Application Host and App delivery carrier
+OPL Cloud          Console/BFF, domain services and retained migration paths
 ```
 
-Cloud is not a second Framework Host and does not own the desktop App or either
-Shell. A desktop or browser Shell may render Cloud projections through the same
+Cloud does not acquire Framework or Studio Host authority and does not own the
+desktop App or its Shell. A desktop or browser Shell may render Cloud projections through the same
 App-owned contribution and state/action ABI, while Cloud services retain their
 process, database, API, release and provider authorities. Changing the selected
 App Shell therefore does not migrate Cloud authority or make Cloud a GUI plugin.
@@ -69,12 +69,12 @@ For Cloud, the authority surfaces are concrete products and services:
 
 | Family capability domain | Cloud authority surface | Boundary outside Cloud |
 | --- | --- | --- |
-| Console | Cloud Console and Control Plane own the account/control-plane product, Workspace policy, approval, quota and billing projection | Framework may expose operator/readiness/action projections; App owns local product interaction, neither owns Cloud policy or service state |
+| Console | Console UI/BFF exposes typed account, Workspace, policy, quota and billing facts from their domain owners; Control Plane retains unmigrated callers | Framework may expose operator/readiness/action projections; App owns local product interaction, neither owns Cloud policy or service state |
 | Workspace | The Workspace service owns Workspace identity, membership/entitlement, resource plan and target authorization; its Saga provisions resources then requests Serve delivery | Agent Package, build artifact and Agent deployment state are owned by Capability, Build and Serve respectively |
 | Fabric | Fabric owns provider-neutral compute/storage/network resource facts, provisioning/binding ports and provider adapters | Agent OCI deployment, Agent runtime readiness and Serve traffic selection are not Fabric facts |
 | Ledger | Cloud Ledger owns Cloud receipts, reconciliation, idempotency, and caller-owned opaque provenance refs | Framework observers and product projections do not become the persistent Cloud Ledger or a review/continuation authority |
 | Remote Companion / OPL Link | `opl-link/service` owns broker, pairing, capacity and provider transport authority | OPL Cloud only hosts Workspace/WebUI delivery and does not own a remote-companion route, provider, persistence or contract |
-| Gateway / Wallet | Control Plane projects Gateway account data and coordinates settlement | Sub2API remains the external identity, spendable-wallet, Key, routing and usage authority |
+| Gateway / Wallet | Gateway Integration projects native Gateway facts and coordinates accepted settlement; Control Plane retains its legacy integration | Sub2API remains the external identity, spendable-wallet, Key, routing and usage authority |
 | Capability / Build / Runtime Control / Serve | Capability owns Agent Packages and WebUI catalog; Build owns OCI build jobs/evidence; Runtime Control owns approved Runtime release versions; Serve owns per-Workspace Agent delivery and API/Embed/Hosted UI access | OPL App/Framework owns Runtime implementation; Fabric owns only infrastructure resources; no parallel Agent Service lifecycle |
 
 This rebaseline keeps the family vocabulary useful without making a Cloud
@@ -116,14 +116,19 @@ domain-separated Agent SaaS architecture. The target domains are `tenant`
 (CloudIdentity), `capability`, `build`, `workspace`, `runtime_control`,
 `resource_catalog`, `gateway` (Gateway Integration), `fabric`, and `ledger`,
 with `console-ui` and a Console BFF as the browser surface. All Cloud product
-code belongs to this one GitHub repository, `opl-cloud`; service boundaries are
+code belongs to this one GitHub repository, `one-person-lab-cloud`; `opl-cloud`
+is its product/runtime identifier. Service boundaries are
 not repository boundaries. `Fabric` and `Ledger` retain their execution and
-evidence authority. The target architecture work packages track the migration from the current
-Control Plane, Fabric, and Ledger implementation, not creation of domain repos.
+evidence authority. The target architecture work packages track caller and data
+migration plus qualification, not creation of domain repositories. The
+[implementation map](implementation-architecture.md#physical-module-and-dependency-map)
+owns which paths already exist.
 
 ### Target Directory And Service Map
 
-This is the target layout, not evidence that the new modules already exist:
+This map defines responsibility and placement. Module presence and tested
+behavior are recorded in [implementation architecture](implementation-architecture.md)
+and [status](status.md); neither proves Instance installation.
 
 | In-repository path | Module / deployment boundary | Data and responsibility owner |
 | --- | --- | --- |
@@ -135,10 +140,10 @@ This is the target layout, not evidence that the new modules already exist:
 | `services/workspace/` | Independent Go module and process | `workspace`: Workspace lifecycle and business Saga |
 | `services/runtime-control/` | Independent Go module and process | `runtime_control`: approved Runtime release catalog, immutable Runtime version references and admission lifecycle used by Build |
 | `services/resource-catalog/` | Independent Go module and process | `resource_catalog`: product plans and pricing rules |
-| `services/serve/` | New independent Go module and process | `serve`: per-Workspace Agent delivery/deployment lifecycle, Runtime execution adapter, readiness and access routing; API/Embed/Hosted UI |
+| `services/serve/` | Independent Go module and process | `serve`: per-Workspace application delivery/deployment lifecycle, Runtime execution adapter, readiness and access routing; API/Embed/Hosted UI for an Agent |
 | `services/fabric/` | Existing independent Go module and process | `fabric`: provider mutation, compute/storage/network provisioning, binding and resource readback only |
 | `services/ledger/` | Existing independent Go module and process | `ledger`: receipts, evidence and reconciliation |
-| `packages/contracts/go/` | One shared Go module, no process or database | Cross-owner wire contracts and generated `v226/` bindings |
+| `packages/contracts/go/` | One shared Go module, no process or database | Cross-owner wire contracts and generated bindings |
 | `services/internal/` | Existing narrowly scoped, policy-free shared infrastructure | Only reusable mechanisms with at least two real service callers |
 | `services/control-plane/` | Existing independent Go module and process during migration | Retained capabilities until their callers and obligations move to the target owner; not a permanent second writer |
 
@@ -149,17 +154,16 @@ CloudIdentity and Gateway Integration stay in one service module and deployment
 unit while retaining two data owners; a proto `service` declaration does not
 create a process. The BFF owns no business Saga; Workspace does.
 
-This adds seven planned business-service modules and one BFF module to the
-repository, rather than new GitHub repositories. This includes Serve as one new
-Agent-delivery Owner; Runtime Control remains one existing target service but its
-responsibility is narrowed to Runtime release versions. Fabric, Ledger, Console UI and
+The domain-separated design uses seven extracted business-service modules and
+one BFF module inside this repository. Serve owns application delivery;
+Runtime Control owns Runtime release versions. Fabric, Ledger, Console UI and
 the existing contracts module are retained. The Control Plane is migrated one
 live capability at a time: switch its real callers and preserve historical data
 obligations before retiring each old write path. This decision does not add an
 orchestrator, event bus, shared policy layer, or a second Gateway.
 
-W01 uses `packages/contracts/proto/` for production proto source and
-`packages/contracts/go/v226/` for generated bindings under the existing
+W01 uses `packages/contracts/proto/` for production proto source and generated
+bindings under the existing
 `packages/contracts/go/go.mod`; it does not create a second contracts module.
 Contracts and internal consumers use the same Cloud source commit, recorded
 schema hashes, and locked generation tools. Consumer `go.mod` and `go.sum`
@@ -170,9 +174,11 @@ Cloud; their external integration and exact artifact pins remain unchanged.
 
 ### Current Implementation And Instance Boundary
 
-The current implementation still runs the earlier Control Plane, Fabric, and
-Ledger services. Their boundaries are described below and remain authoritative
-for the code that exists today; the target topology governs new work. Similarly
+The current source implements Console BFF and the extracted domain services
+alongside retained Control Plane, Fabric, and Ledger paths. Their current caller
+boundaries are owned by [implementation architecture](implementation-architecture.md).
+The [status](status.md) separates source checks from installed Instance evidence;
+the target topology is not an assertion that all processes are deployed. Similarly
 named prototype repositories are historical inputs, not parallel current
 writers. The short identifier `opl-cloud` remains valid for packages, images,
 binaries, services, namespaces, environment variables and runner labels.
@@ -180,8 +186,9 @@ binaries, services, namespaces, environment variables and runner labels.
 An instance repository materializes one installation without copying product or
 runtime code. It owns non-secret domains, provider selection, region and
 resource profile, the enabled subset of Cloud-defined plans, image pins, secret
-references, and deployment receipts. Cloud Control Plane owns the versioned
-customer price catalog; an Instance cannot override it. An instance may run on
+references, and deployment receipts. Resource Catalog owns extracted plans and
+versioned price policies; Control Plane retains its legacy price catalog. An
+Instance cannot override either owner's accepted pricing facts. An instance may run on
 a hosted cloud or a supported Linux Docker host. macOS may run the
 control-services profile, but Docker Desktop is not a supported Local-Docker
 Workspace host under the current project-quota contract. Secrets remain in the
@@ -224,12 +231,14 @@ never runs a process with no current caller, and the manifest, Secret references
 and readback are reviewed with the capability they carry. Cloud owns which
 capability each service owns; `opl-instance-medopl` owns the concrete unit.
 
-The current `managed_tke` unit runs Control Plane, Fabric and Ledger.
-`services/gateway-integration` (`tenant`/CloudIdentity) precedes the remaining
-target services because every target owner authorizes inbound calls through the
-CloudIdentity gRPC boundary; Build and Capability, then Workspace and Resource
-Catalog, then Serve and Runtime Control follow. The Console BFF replaces the
-Control Plane browser surface only when the capability it serves has moved.
+Cloud declares current owner binaries, addresses, HTTP surfaces, databases and
+peer requirements in `deploy/portable/opl-cloud-owner-topology.json`. The exact
+image declares whether its Console uses `legacy` or `cloud` identity. An
+installation must route the APIs required by that identity and run the owners
+that serve those capabilities; binary presence alone does not enable them.
+The latest retained Instance install inspection still shows only Control Plane,
+Fabric and Ledger. That dated observation and the remaining installation gap
+belong to [status](status.md) and [roadmap](roadmap.md), not this target map.
 
 ## Development And Supply-Chain Authority
 
@@ -363,9 +372,9 @@ for a default App; neither happens automatically.
 
 The historical `resource_only` Launch retains its existing purchase obligations
 and completion criteria. It is not the default App product and is not silently
-converted. The September 29 decision is adopted intent; the current production
-contracts still require W01's grouped migration before these new selections can
-be accepted. Current source gaps are owned by `docs/roadmap.md`.
+converted. The September 29 decision is adopted intent; the source selection
+union and its grouped consumers are implemented, while Candidate/Instance
+acceptance remains separate. Current gaps are owned by `docs/roadmap.md`.
 
 ### Control Plane Authority And Credential Boundary
 
@@ -390,8 +399,9 @@ and administrator credentials do not reach the application runtime.
 
 ### Application And Deployment Identity
 
-The target scope is zero or one selected Agent deployment per Workspace; that
-Agent may contain a primary service and private supporting services.
+The target scope is zero or one selected application deployment per Workspace:
+default OPL App or an optional Agent. An Agent may contain a primary service
+and private supporting services.
 Independent applications within the same Workspace are a later product choice.
 A web entry is optional for a worker-only application. An authorized
 administrator may explicitly allow anonymous application access; that alone
@@ -616,9 +626,9 @@ Bounded contexts follow authority, not a service per noun. Workspace owns its id
 | Model | Kind and owner | Invariant |
 | --- | --- | --- |
 | Workspace | Workspace aggregate root | Owns tenant/membership relation, entitlement, resource plan, lifecycle and target authorization. Resource-provisioned Workspace may have no Agent; it stores no Agent deployment/current pointer. |
-| Application revision | Immutable publisher-owned description admitted by Control Plane | Exact descriptor and component digests are fixed. Cloud registration owns availability/permission to use that revision, not the application's upstream release identity or implementation. |
-| Agent delivery/deployment | Serve-owned per-Workspace entity and durable operation | Fixes exact CapabilityVersion/OCI, predecessor, deployment config/resource refs, idempotency and readiness evidence; Serve alone selects the current Agent for that Workspace. |
-| Data restore | Separate durable Control Plane operation | Fixes restore artifact, input consistency set and new target bindings; application-owned validation and Fabric execution readback precede successful binding. Restart/update cannot implicitly create this operation. |
+| Application revision | Immutable publisher-owned description admitted by Runtime Control or Capability/Build | Exact descriptor and component digests are fixed. Cloud registration owns availability/permission to use that revision, not the application's upstream release identity or implementation. Retained Control Plane admissions preserve their original contracts. |
+| Application delivery/deployment | Serve-owned per-Workspace entity and durable operation | Fixes an approved Runtime Release or exact CapabilityVersion/OCI, predecessor, deployment config/resource refs, idempotency and readiness evidence; Serve alone selects the current application for that Workspace. |
+| Data restore | Separate durable owning operation; retained Control Plane obligations remain with their original writer | Fixes restore artifact, input consistency set and new target bindings; application-owned validation and Fabric execution readback precede successful binding. Restart/update cannot implicitly create this operation. |
 | Runtime release | Runtime Control-owned immutable release | Identifies the approved OPL App/Framework Runtime artifact and compatibility contract that Build pins into an OCI; it has no Workspace instance/deployment state. |
 | Volume, attachment and Secret binding | Existing Fabric resource owners, referenced by a runtime or restore operation | Physical ownership, version, allowed consumers and lifecycle remain authoritative here; logical data names are not provider identities. |
 | Image/platform/probe/resource/mount/Secret/data reference | Typed value objects | Validated immutable facts passed only where consumed; none requires its own service, repository or workflow engine. |
@@ -632,10 +642,10 @@ meaning and do not prescribe new wire enums or database columns.
 
 | Fact | Authority | Meaning |
 | --- | --- | --- |
-| Paid entitlement and lifecycle version | Control Plane, anchored to confirmed Sub2API settlement | Whether the Workspace may consume its resources and admit an operation. |
-| Resource fulfillment and current resource condition | Fabric readback; Control Plane records accepted fulfillment | Which compute, storage and attachments were delivered and which exist now. |
+| Paid entitlement and lifecycle version | Workspace, anchored to confirmed native Gateway settlement; Control Plane for retained orders | Whether the Workspace may consume its resources and admit an operation. |
+| Resource fulfillment and current resource condition | Fabric readback; original business owner records accepted fulfillment | Which compute, storage and attachments were delivered and which exist now. |
 | Workspace entitlement and target authorization | Workspace aggregate | Whether delivery is allowed and which resource plan/Workspace is the target; not which Agent deployment is current. |
-| Current Agent and deployment history | Serve | The single current deployment and all accepted/replacement deployment operations for a Workspace. |
+| Current application and deployment history | Serve | The single current deployment and all accepted/replacement deployment operations for a Workspace. |
 | Runtime release catalog | Runtime Control | Which immutable Runtime releases Build may use for new OCI artifacts. |
 | Observed Agent readiness and Serve route | Serve readback | Whether the selected OCI is running and reachable through Serve. |
 | Provisioned infrastructure resources | Fabric readback | Which compute/storage/network resources exist and their provider state. |
@@ -657,8 +667,9 @@ restart and customer/operator reads without a single overloaded `running` flag.
 
 ### Engineering Layers Within Existing Owners
 
-These are responsibility boundaries inside the current Go services, not a
-requirement to create a new package or process per row. Control Plane separates
+These are retained implementation seams, not the target ownership map or a
+requirement to create a new package/process per row. Extracted responsibilities
+follow the [domain map](#target-directory-and-service-map). Control Plane separates
 purchase/fulfillment and Workspace application management as cohesive domain
 capabilities; they share the Workspace entitlement reference while keeping their
 operation identities, results and completion conditions separate. Fabric keeps
@@ -793,8 +804,8 @@ The following paragraph describes the retained implementation migration source,
 not the target new-customer entry. In that source, the administrator Console
 selects an admitted application revision through Control Plane and Fabric
 extends its Runtime/resource ports. The target replaces that path with the
-customer Agent-version-plus-plan entry: Workspace owns admission and resource
-entitlement, while Serve owns Agent delivery/readiness/access/current selection.
+customer default-App-or-Agent-plus-plan entry: Workspace owns admission and resource
+entitlement, while Serve owns application delivery/readiness/access/current selection.
 Ledger keeps opaque immutable evidence; no second deployment writer is retained
 after the live callers migrate.
 
@@ -845,8 +856,10 @@ callback contracts. Studio owns its application composition, native Codex and
 delivery transport; it does not acquire Framework runtime, Package discovery or
 currentness, App product/state/action, domain, or release authority. The Hosts do
 not share registries, session state, currentness, or internal service graphs.
-AionUI remains the Stable Shell; renderer choice cannot redefine Cloud APIs or
-service state.
+App selects Studio as its active Desktop, WebUI and Docker carrier; Aion Shell
+is retained only for migration provenance and historical fixtures. The
+App-owned shell contract remains authoritative. Renderer choice cannot redefine
+Cloud APIs or service state.
 
 Cloud integrations use typed public APIs with explicit identity, capability,
 idempotency and owner readback. Cloud processes, databases, provider mutation,
@@ -855,7 +868,7 @@ The selected Instance supplies Fabric's provider profile.
 
 ## Core And Extension Boundary
 
-The MVP Core is one installable vertical product path:
+The retained Local MVP Core is one installable vertical product path:
 
 ```text
 thin Console
@@ -874,13 +887,16 @@ path. Delete records resource absence before a separate refund operation may
 settle the original paid period. Sub2API remains the only spendable wallet,
 and Ledger does not become a second wallet or accounting engine.
 
-Extensions include Tencent/TKE and generic Kubernetes provider adapters,
-managed or institution-owned resources, OPL Serve, customer-operated payment,
+The current primary delivery target uses Tencent/TKE with default OPL App or an
+optional Agent as specified [above](#provisioning-and-application-deployment).
+Local-Docker remains a supported independently qualified profile. Broader
+extensions include managed or institution-owned resources, complete public Serve
+access, customer-operated payment,
 detailed Console refinement, and Ledger evidence verticals not required by the
 Core path. The current public-beta cut selects self-service signup and
 administrator top-up while retaining Sub2API as the single wallet authority.
 An instance selects deployment extensions without redefining the Core product.
-`opl-instance-medopl` selects the Tencent/TKE extension for the medopl instance;
+`opl-instance-medopl` selects Tencent/TKE for the medopl instance;
 Tencent/TKE is not a prerequisite for the local Core journey, but it is a
 supported adapter of the portable Release.
 
@@ -890,7 +906,9 @@ to the [roadmap](roadmap.md).
 
 ## Launch Authority And Physical Ownership
 
-One Workspace Launch has one durable Control Plane operation and state machine.
+For the retained path, one Workspace Launch has one durable Control Plane
+operation and state machine. Extracted Workspace operations use their own
+owner-backed Saga; this retained contract does not become their second writer.
 Create and Resume enter the same Reconciler, but the Reconciler coordinates
 separate physical owners rather than implementing their work:
 
@@ -1112,24 +1130,29 @@ same pattern without becoming Console-billed resources by default.
 Fabric exposes a provider-neutral capability interface. The current primary delivery profile is `tencent-tke`; `local-docker` remains
 a supported independently qualified profile. No implicit provider substitution
 or additional generic Kubernetes product is introduced. Provider identifiers, diagnostics, retries, and recovery
-mutations stay inside the adapter. Control Plane persists the selected provider
-profile ref per Workspace and uses one Launch business state machine; Fabric
+mutations stay inside the adapter. The original business owner freezes the
+selected provider profile per accepted order; Control Plane retains that
+responsibility for its Launches. Fabric
 persists each stage-operation binding and provider-resource mapping. Neither
 generic product identity nor Control Plane contains Tencent resource names.
 
 ## Balance And Billing Boundary
 
-Gateway is the only spendable account-balance owner. Cloud Control Plane owns
-the versioned customer price catalog, quotes, account-total billing projection,
-and settlement policy, and initiates one monthly settlement per Workspace and
-billing period. Console only presents Control Plane DTOs. Fabric reports
+Sub2API is the only spendable account-balance owner. Resource Catalog owns
+extracted plans, versioned pricing policies and accepted quotes. Workspace owns
+the original business obligation; Gateway Integration coordinates its native
+settlement. Control Plane retains its legacy catalog, quotes, account-total
+billing projection and settlement paths. Console presents the corresponding
+owner DTOs. Fabric reports
 resource/provider facts and owns no wallet, balance, or customer price. Ledger
 records append-only charge, refund, resource, and reconciliation receipts
 without becoming a second balance store or pricing engine.
 
 ## Package Lifecycle Boundary
 
-There is no Cloud-owned Agent Registry. Package identity, capabilities,
+There is no parallel Cloud native-carrier Package registry. Capability owns
+admitted Agent upload/catalog versions used by the Cloud Build chain; it does
+not replace the native Package owner or Framework discovery. Package identity, capabilities,
 entrypoints and exact publication revisions come from the Package owner.
 Physical install/update/remove and installed/callable state come from fresh
 readback of the configured native carrier. Framework `opl packages` discovers
@@ -1179,13 +1202,15 @@ policies before Runway selects a provider or Fabric binds resources.
 ## Currentness Boundary
 
 This repository explains the target product split. Service availability comes
-from the corresponding implementation repo, API contract, runtime health and
+from the corresponding owning source in this repository, API contract, runtime health and
 owner receipt. Package currentness comes from the owning publication surface and
 fresh native-carrier readback, exposed through Framework aggregation where
 available.
 
 ## Account Admission And Workspace Purchase
 
+This section records retained Control Plane admission obligations. Extracted
+CloudIdentity and Workspace authorization follows the adopted domain contracts.
 Sub2API remains the Gateway identity and spendable-wallet authority. Control
 Plane owns the Cloud Account and the separate `workspacePurchaseEnabled` fact;
 the existence of a remote identity, a local Account, or an existing Workspace

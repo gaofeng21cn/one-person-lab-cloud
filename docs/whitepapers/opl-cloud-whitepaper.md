@@ -10,7 +10,7 @@ Machine boundary: 面向用户的产品愿景源文，不持有服务实现、�
 > 让复杂知识工作跨越本机、私有数据、远端资源与对外服务，仍然保持连续、受控、可复查
 
 发布日期：2026-07-15
-最近修订：2026-08-16
+最近修订：2026-09-30
 
 适用对象：正在使用 AI 推进科研、基金、汇报、书籍或其他长期知识项目，希望沿用现有工作方式使用在线工作台、协作资源与远端计算，或者把成熟 Agent 能力提供给外部用户的个人、实验室和机构。
 
@@ -113,7 +113,7 @@ OPL 使用一组跨产品的能力域来保持长期一致的语言：工作空�
 
 本机 OPL App 适合个人控制、敏感材料和日常编辑；在线 OPL Workspace 适合远程访问、协作和托管执行。两者共享同一套产品语言，分别承载同一工作模型在本机与云端的工作面。
 
-用户可以从本机开始，在需要在线访问或更强资源时选择合适的 Workspace，再把结果带回原项目。环境改变后，任务身份、材料引用、产物关系和继续入口仍然保留。对于 Agent 服务，Workspace 是部署目标：一个 Workspace 至多有一个当前 Agent。OPL Serve 将 Agent 交付到该 Workspace，并让 API、Embed、Hosted UI 访问同一个当前 Agent，而不是另建一个与 Workspace 并列的 Agent Service。
+用户可以从本机开始，在需要在线访问或更强资源时选择合适的 Workspace，再把结果带回原项目。环境改变后，任务身份、材料引用、产物关系和继续入口仍然保留。Workspace 默认交付 OPL App 及其原生界面，也可以选择已构建的 Agent；默认 App 直接使用获准的 Runtime Release，不需要虚构 Package 或构建任务。一个 Workspace 至多有一个当前应用选择，交付状态由 Serve 持有；选择 Agent 时，API、Embed、Hosted UI 访问同一个当前 Agent，而不是另建一个与 Workspace 并列的 Agent Service。
 
 ### 三、先形成计划，再授予资源权力
 
@@ -256,7 +256,7 @@ Fabric 连接获准资源，提交并监控任务。数据默认留在资源所�
 
 这份白皮书面向用户解释 OPL Cloud 的设计理念与目标产品边界，回答“为什么这样设计会更好用、更可信”。功能清单、安装说明、服务状态、价格、发布时间与正式公告由对应产品页面提供。
 
-本文呈现 OPL Cloud 的产品选择与设计承诺。具体能力的当前可用状态由正式产品页面持续更新；读者可以据此判断 OPL Cloud 是否对复杂知识工作的真实矛盾做出了完整、专业和一致的回答。
+本文呈现 OPL Cloud 的产品选择与设计承诺。[架构](https://github.com/gaofeng21cn/one-person-lab-cloud/blob/main/docs/architecture.md)持有职责边界，[实现说明](https://github.com/gaofeng21cn/one-person-lab-cloud/blob/main/docs/implementation-architecture.md)和[当前状态](https://github.com/gaofeng21cn/one-person-lab-cloud/blob/main/docs/status.md)分别持有源码路径与验收证据，[安装说明](https://github.com/gaofeng21cn/one-person-lab-cloud/blob/main/docs/installation.md)区分公开版本和候选版本。文档、源码与构建不证明具体实例已部署，读者应按对应层次判断实际可用范围。
 
 ## 结语
 

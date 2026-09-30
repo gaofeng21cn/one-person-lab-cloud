@@ -44,8 +44,8 @@ OPL Cloud is the fourth product layer in the stable OPL ecology and is under act
 `OPL Base` supplies the Framework Host, `OPL App` supplies the local workbench,
 `OPL Packages` supply installable capabilities, and Cloud adds online Workspace,
 governance, hosted resources, collaboration, and Agent services. Cloud consumes
-their owner references; it does not replace Base, publish Packages, or create a
-second Cordis Host.
+their owner references; it does not replace Base, publish Packages, or acquire
+the scoped Framework or Studio Host authority.
 
 ## Product Model
 
@@ -53,7 +53,7 @@ second Cordis Host.
 | --- | --- | --- |
 | AI access and usage | **OPL Gateway** | Model access, routing, provider policy, and usage signals |
 | Online project work | **OPL Workspace** | Zero or more independent cloud workbenches per account |
-| External Agent use | **OPL Serve** | Exact Service, immutable Revision, Deployment, API, Embed, and Hosted UI |
+| External Agent use | **OPL Serve** | Per-Workspace delivery, immutable revisions, deployments, API, Embed, and Hosted UI |
 | Account governance | **OPL Console** | Account policy, approvals, quota, billing, and managed-resource policy |
 | Data, tools, and compute | **OPL Fabric** | Connect, Compute, Storage, Environments, and execution adapters |
 | Evidence continuity | **OPL Ledger** | Receipts, provenance, review, and continuation refs |
@@ -68,13 +68,14 @@ consume those owner and carrier references without creating competing truth.
 
 ## MVP Focus
 
-The first product slice is intentionally narrow: a thin Console for essential
-Workspace, balance, and usage management; a real
-`Console -> Control Plane -> Workspace launcher/provider -> local Docker`
-creation and management path for OPL App/WebUI Workspaces; and authoritative
-Gateway accounting through Sub2API without a second wallet. The accepted public
-beta adds zero-balance registration, administrator top-up and controlled purchase.
-Customer-operated payment/top-up remains deferred.
+The current delivery target is a thin Console for Workspace, balance, and usage
+management, with a default OPL App/native UI or an optional built Agent delivered
+through the same Workspace chain. Cloud-identity authentication, Workspace,
+Publisher and delivery surfaces use `Console -> Console BFF -> domain owners`;
+shared Gateway/Billing panels and the legacy Workspace path retain Control
+Plane APIs. Sub2API remains the wallet authority. The accepted public beta adds
+zero-balance registration, administrator top-up and controlled purchase;
+customer-operated payment/top-up remains deferred.
 
 The repository contains a `local-docker` Workspace provider for supported
 Linux hosts. It requires Workspace storage on a dedicated ext4/XFS mount with
@@ -82,7 +83,7 @@ project quota enabled and fails readiness when the host cannot enforce it.
 
 Source capability, a public Product Release, and a concrete Instance are three
 different evidence layers. The only public Product Release, `v0.1.7`, predates
-the current ten-asset Compose split and does not contain the current complete
+the current Candidate format and does not contain the current complete
 Workspace installation path. See [current capability](docs/status.md) for
 verified implementation and runtime facts, [installation](docs/installation.md)
 for the exact public-release boundary, and the [roadmap](docs/roadmap.md) for
@@ -103,25 +104,28 @@ Each account may own zero or more independent OPL Workspaces. Every Workspace
 has its own stable identity, URL, runtime, resource binding, billing period,
 credentials, and receipts. OPL Cloud imposes no fixed product-level Workspace
 limit; every creation remains subject to balance, provider capacity, quota, and
-policy. An account may also publish multiple Agent Services because a Service is
-a deployment resource, not a Workspace.
+policy. Each Workspace has at most one current application selection; Serve owns
+its delivery and access state. API, Embed, and Hosted UI address that same current
+Agent when an Agent is selected, while prior deployments remain history.
 
 ## Repository Boundary
 
 `one-person-lab-cloud` is the single OPL Cloud product and implementation
 repository. It owns the public vision, target architecture, whitepaper, roadmap,
-Console, Control Plane, Fabric, Ledger, Workspace delivery, machine contracts,
-portable installation assets, GHCR images, GitHub Releases, and reusable
-provider adapters. `opl-cloud` remains the short identifier for
-npm packages, images, binaries, services, namespaces, environment variables,
+Console UI/BFF, Capability, Build, Runtime Control, Workspace, Resource Catalog,
+Serve, Gateway Integration/CloudIdentity, Fabric, Ledger, retained Control Plane
+paths, machine contracts, portable installation assets, GHCR images, GitHub
+Releases, and reusable provider adapters. `opl-cloud` remains the short identifier
+for npm packages, images, binaries, services, namespaces, environment variables,
 and runner labels; it is not a second repository.
 
 `opl-instance-medopl` is the only owner of the `medopl` instance's domains,
 Tencent/TKE selection, enabled subset of Cloud-defined plans, production
 environment and Secrets, deployment workflows, image pins, rollback, and
-receipts. Cloud Control Plane owns versioned customer prices. The Instance
-consumes an immutable Cloud product SHA and image digest without copying product
-source.
+receipts. Cloud Resource Catalog owns the extracted plans and versioned pricing
+policies; Control Plane retains its legacy price catalog for existing callers.
+The Instance consumes an immutable Cloud product SHA and image digest without
+copying product source.
 A design, contract, generated artifact, passing test, or published image does
 not prove that an instance is deployed or ready.
 
@@ -147,14 +151,14 @@ steps; it is not a readiness dashboard.
 
 ```text
 one-person-lab-cloud/
-  apps/                Console user interface
+  apps/                Console user interface and Console BFF
   assets/              Public brand and user-journey assets
   contracts/           Whitepaper artifact profile
   deploy/              Portable installation and reusable adapter templates
   docs/                Product, implementation, planning, and provenance docs
   packages/contracts/  Current machine contracts
   scripts/             Whitepaper build and publication-request wrappers
-  services/            Control Plane, Fabric, and Ledger
+  services/            Domain owners and retained Control Plane paths
   tools/               Local, product-release, and reusable verification tools
 ```
 

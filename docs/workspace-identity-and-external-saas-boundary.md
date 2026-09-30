@@ -33,9 +33,9 @@ The canonical Cloud identity rule is:
 - Console may manage account billing, quotas, approvals and managed resources.
   It lists and governs every Workspace owned by the account without becoming
   the runtime or provider-state owner.
-- OPL Serve may let the account publish multiple Agent Services. A Service is an
-  externally callable deployment resource, not another Workspace, browser
-  workbench, project container or collaboration account.
+- OPL Serve owns one current application delivery per Workspace. API, Embed and
+  Hosted UI address that Workspace's current Agent when an Agent is selected;
+  they do not create another Workspace or a parallel Agent Service collection.
 
 For the OPL App application, its WebUI carrier is provided through the active
 App shell and consumes App, Framework and domain-owner projections. Other
@@ -46,21 +46,23 @@ resource and entitlement facts.
 ## Collaboration And Serve
 
 Organizations and teams govern policy, approval, and collaboration around
-independent Workspaces. OPL Serve publishes Agent Revisions as separate Agent
-Services through its Agent Edge.
+independent Workspaces. OPL Serve publishes exact Agent Revisions into those
+Workspaces and routes external access through its Agent Edge.
 
 
-## Proposed Workspace Agent relationship under product review
+## Workspace Application Selection
 
-The proposed target changes only the Agent relationship, not Workspace
-cardinality: one account may still own many independent Workspaces. An Agent
-is delivered into a selected Workspace, and that Workspace has at most one
-current Agent at a time; replacement preserves deployment history but never
-creates a second current selection. Serve owns the delivery/current state.
+The adopted [application decision](decisions.md#2026-09-29-default-opl-app-and-optional-agent-on-one-tencenttke-delivery-path)
+preserves Workspace cardinality: one account may own many independent
+Workspaces. New delivery selects default OPL App/native UI or an optional built
+Agent. A Workspace has at most one current application selection; replacement
+preserves deployment history but never creates a second current selection.
+Serve owns the delivery/current state.
 Workspace owns identity, membership, entitlement, resource plan, and target
 authorization, and stores no deployment pointer or readiness copy. API, Embed,
 and Hosted UI all route to the same Serve-owned current Agent.
 
-The historical separate Agent Service wording is retained in the baseline
-commit for review; this section is the proposed target and requires explicit
-product-owner approval.
+Default App comes from an approved Runtime Release and has no synthetic Package,
+BuildJob or CapabilityVersion. The current implementation and retained migration
+paths are owned by [implementation architecture](implementation-architecture.md);
+this product decision does not claim complete Instance qualification.

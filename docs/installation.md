@@ -92,12 +92,34 @@ Candidate path and must not be supplemented with newer overlays copied from
 
 ## Current Candidate Format
 
-Current source constructs a ten-asset Candidate bundle: one base Compose file,
-three deployment overlays, two Fabric overlays, one Local-Workspace overlay,
-an environment template, a manifest, and checksums. Deployment mode and Fabric
+Current source constructs a Candidate with nine portable assets plus
+`opl-cloud-candidate.json` and `SHA256SUMS`: one base Compose file, three
+deployment overlays, two Fabric overlays, one Local-Workspace overlay, an
+environment template and `opl-cloud-owner-topology.json`. The Candidate receipt
+contract and builder own this exact set. The formal Product Release contract
+still lists its separate ten-file promotion format with
+`opl-cloud-release.json`; neither set describes the five public `v0.1.7` assets.
+Deployment mode and Fabric
 provider are independent selections. The current Local-Docker provider also
 requires Workspace storage on a dedicated ext4/XFS mount with project quota
 enabled and rejects unsupported layouts before Launch mutation.
+
+The base Compose profile still starts the retained Control Plane, Fabric and
+Ledger processes. The product image also carries Console BFF and the extracted
+domain-owner executables, but the base profile does not install them. A conforming
+owner-backed installation materializes the addresses, databases, peer identities,
+required variables and browser HTTP surfaces declared by
+`opl-cloud-owner-topology.json`. The Instance owner supplies its concrete
+manifest, Secrets and certificates.
+
+Console identity is an image-level fact: `VITE_CONSOLE_IDENTITY` is a build
+argument with default `legacy`, recorded by the image label
+`opl.cloud.console-identity`. `legacy` uses the retained Control Plane APIs;
+`cloud` uses Console BFF for authentication, Workspace, Publisher and delivery,
+while shared Gateway/Billing and other unmigrated panels retain Control Plane
+APIs. A runtime environment variable cannot change that baked bundle. Owner
+binaries alone do not prove that the selected APIs are routed or ready. See the
+[current request map](implementation-architecture.md#request-path).
 
 The installation model has three separate axes: `OPL_DEPLOYMENT_MODE` is the
 deployment-owner value (`platform_owned`, `managed_tke`, or `customer_owned`),
@@ -134,7 +156,9 @@ and leaving it empty publishes no application origins rather than an address
 that cannot resolve.
 
 A Candidate is not a Product Release. Its files are admitted and qualified as
-one checksum-bound set from one canonical Cloud SHA and image digest. The
+one checksum-bound set from one exact Cloud SHA and image digest. Candidate
+construction admits the workflow's allowed branch refs; formal publication
+requires the exact source to be merged into canonical `main`. The
 Instance owner supplies the domain, provider profile, immutable Workspace image
 catalog, production Secrets, deployment, rollback, and receipts. Only after the
 same Candidate bytes pass the required Local and Instance qualification may an

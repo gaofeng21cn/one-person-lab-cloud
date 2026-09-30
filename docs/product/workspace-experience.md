@@ -9,21 +9,23 @@ contracts own field-level facts and permissions.
 
 ```text
 register -> sign in -> observe zero balance -> receive administrator top-up
-         -> list Workspaces -> select Basic or Pro -> confirm one Workspace total
-         -> provision compute/storage -> Workspace ready with no app required
-administrator: select provisioned Workspace -> registry/repository/image
-             -> configure and bind data -> deploy
-customer: inspect application status -> open the assigned app
+         -> list Workspaces -> select default OPL App or a built Agent and plans
+         -> confirm one accepted quote -> resources and application progress
+         -> inspect owner readiness -> open the delivered application
+administrator: govern approved releases, Agent builds, configuration and data
 ```
 
 The target public beta allows one customer to register one Account and create multiple
 independent Workspaces after an administrator funds its Sub2API wallet. A new
 Account starts at zero balance, and registration performs no purchase or Fabric
 mutation. Each provisioned Workspace has its own launch identity, resources,
-entitlement and purchase Receipt, with an optional current deployment. This is
-the new provisioning/deployment target. Current source still couples OPL App
-Runtime, Gateway Key and Secrets to Launch completion; retained operations keep
-that original contract until their explicit migration boundary.
+entitlement and purchase Receipt, with at most one current application selection.
+The
+[September 29 decision](../decisions.md#2026-09-29-default-opl-app-and-optional-agent-on-one-tencenttke-delivery-path)
+owns the default-App/optional-Agent target. Retained Control Plane Launches and
+resource-only orders keep their original contracts; their current callers and
+the cloud-identity implementation are mapped in
+[implementation architecture](../implementation-architecture.md#console-source-truth).
 
 ## Application Selection Target
 
@@ -32,7 +34,15 @@ Workspace identity is independent of its selected application; the
 owns that decision. Resource provisioning and deployment have independent
 progress and success states. A provisioned empty Workspace is usable for later
 installation; an application failure does not make the resource purchase fail.
-An authorized administrator selects the target Workspace, registry connection,
+New customer delivery selects an approved Runtime Release for default OPL App,
+or an already built immutable Agent version. Default App uses its native UI and
+does not create a Package, BuildJob or CapabilityVersion; independent WebUI
+selection belongs to the custom Agent build flow. One confirmation must reach
+an application that can actually be used, while resource and application
+progress remain separate facts.
+
+For retained administrator-managed application installation, the administrator
+selects the target Workspace, registry connection,
 repository and image/tag,
 resolves the immutable version, then supplies startup/configuration/Secret
 inputs, persistent mounts, exposure policy and optional data restoration.
@@ -44,21 +54,22 @@ Registration of a TCR reference, restoration of data and replacement of an
 application are distinct actions with distinct results. Selecting a revision
 for one Workspace does not change other Workspaces or the installation default.
 A new registry version or default change does not upgrade existing Workspaces.
-Application distribution is an admin capability in this scope; account ownership
-does not grant it, and customer self-service image selection is not introduced.
+Arbitrary registry/image installation remains an admin capability; account
+ownership does not authorize it. The approved default-App/Agent selection does
+not introduce customer self-service image browsing.
 The preview explains data compatibility, any planned interruption and whether
 additional capacity would require a separate purchase. Cloud management always
 requires role-specific authorization. Visitor access follows the selected exposure:
 IBD may allow anonymous use, OPL App may use its own password, and a private
 entry may additionally require a Cloud account. Application login is not a
 universal provisioning or deployment requirement.
-Current source still exposes the OPL App credentials and fixed-image controls
-described below; general application selection is an
+The retained Control Plane source exposes the OPL App credential and image
+controls described below; complete owner-backed maintenance is an
 [open outcome](../roadmap.md#workspace-application-decoupling).
 
 ## Owner Surface
 
-Console shows:
+The retained Console surface shows:
 
 - live Sub2API USD balance;
 - fixed Basic or Pro Workspace package price in USD;
@@ -115,8 +126,8 @@ purchase Receipt. Compute and storage never debit the customer independently.
 ## Workspace And Storage
 
 A Workspace keeps stable identity and access while application and data
-bindings have separate lifecycles. Current source uses one independently owned
-StorageVolume and a current runtime pointer; the application target supports
+bindings have separate lifecycles. The retained Control Plane path uses one
+independently owned StorageVolume and a current runtime pointer; the application target supports
 explicit data bindings for its component services. On Tencent, retained data
 uses Workspace-owned CBS through the declared application mounts. Compatible
 image updates keep the existing data set and bindings; unrelated applications
@@ -136,7 +147,8 @@ readiness are both confirmed; uncertain results continue the same operation.
 Permanent deletion confirms the customer's intent once and continues in the
 background. Reopening details reads the original deletion progress. Removing a
 Workspace from the list is insufficient to show success while its deletion
-Receipt is pending. Normal deletion has no refund. There is no new customer
+Receipt is pending. Deletion and any permitted original-charge refund remain
+separate verified operations. There is no new customer
 backup platform, resource replacement or free retention capability.
 
 ## Availability

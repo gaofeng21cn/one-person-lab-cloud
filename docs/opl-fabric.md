@@ -81,7 +81,7 @@ Fabric evidence alone does not prove the complete Console-to-Workspace path.
 Current facts belong to [status](status.md), and the remaining end-to-end gap
 belongs to the [roadmap](roadmap.md).
 
-Control Plane owns one durable Workspace Launch business state machine; Create
+For retained Launches, Control Plane owns the durable business state machine; Create
 and Resume enter its same Reconciler. Fabric owns the resource-stage
 implementation, durable operation store, provider/Kubernetes mutation, and
 authoritative readback for compute, storage, attachment, Secret binding, and
@@ -155,13 +155,15 @@ This catalog lets products select resources without exposing infrastructure
 internals or creating a second package registry.
 
 
-## Target Agent delivery boundary under product review
+## Agent Delivery Boundary
 
 For Agent delivery, Fabric is deliberately narrower than the general Fabric
 vision: it provisions, binds, and reads back compute, storage, network, and
 approved Secret/resource references. Serve remains the only owner of Agent
-Deployment, Runtime instance readiness, route generation, and API/Embed/Hosted
-UI access. Fabric may prepare the sandbox and return resource facts, but a
+Deployment, Runtime instance readiness, current traffic selection and
+API/Embed/Hosted UI access. Fabric owns resource/execution binding and provider
+route-generation facts under the [typed owner boundary](architecture.md#agent-delivery-and-serve-boundary).
+Fabric may prepare the sandbox and return resource facts, but a
 successful resource readback is not an Agent-ready result. Existing remote jobs,
 Connectors, App, Workspace, and domain-agent callers remain valid outside this
 specific delivery chain.
