@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_serial_instance_install_gap_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T13:55:00Z",
+  "result": "the_instance_production_manifest_installs_only_the_legacy_three_services_and_does_not_install_any_new_domain_owner",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 8 - the Instance install manifest gap for the new domain owners",
+  "sourceBaseSha": "e2182297ccc895c0d59791daa38a0b871c48d4bf",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.8",
+  "scope": "Read-only inspection of the Instance repository to name the exact deployment gap for the new default-App/Agent delivery chain. No Instance content changed; the Instance checkout is dirty and its default branch is main on the remote.",
+  "findings": [
+    {
+      "id": "production-manifest-services",
+      "fact": "gaofeng21cn/opl-instance-medopl deploy/tke/opl-cloud.k8s.json (Instance main, via origin/main) deploys exactly opl-cloud-control-plane, opl-cloud-ledger, opl-cloud-fabric. It contains no Deployment, Service or ADDR env for Serve, Workspace, Capability, Build, Runtime Control, CloudIdentity/tenant, Gateway Integration or Resource Catalog, and instance/medopl.json still records productSha a59bde68 with release tag v0.1.7.",
+      "consequence": "The installed product is the legacy Control Plane topology. The default-OPL-App and built-Agent chains cannot be delivered on it without an install-manifest change that deploys the new domain owners."
+    },
+    {
+      "id": "install-proposal-not-merged",
+      "fact": "The install change for the Agent build-chain owners is Instance PR #348 ('Deploy the Cloud Agent build chain owners on medopl', branch codex/deploy-agent-build-chain), which is CLOSED (not merged) as of 2026-09-29. That branch's manifest adds opl-cloud-capability, opl-cloud-build, opl-cloud-runtime-control, opl-cloud-tenant, opl-cloud-console-bff and opl-cloud-buildkit, but still not Serve or Workspace.",
+      "consequence": "Even the closed proposal would not install Serve/Workspace, so the default-App delivery owner would still be absent. The instance install path must be extended beyond #348 before any Stage-8 acceptance."
+    },
+    {
+      "id": "deploy-gate",
+      "fact": "deploy.yml admits only on ref main with environment production, and preflight/qualification-decision also require ref main and environment production; the local Instance checkout is a dirty feature branch and must not be reset.",
+      "consequence": "Stage 8 is gated on the Instance repository's protected main plus its production environment, and on a Candidate whose product SHA matches the deployed Cloud image."
+    }
+  ],
+  "notRun": [
+    "Any Instance change, Candidate build, deployment, provider action or production readback."
+  ],
+  "claimBoundary": "This receipt records the exact Instance install-manifest gap that blocks Stage 8. It claims no Instance change, no deployment and no production acceptance.",
+  "secrets": "none"
+}
