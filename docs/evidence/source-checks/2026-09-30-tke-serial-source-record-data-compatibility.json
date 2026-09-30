@@ -3,7 +3,7 @@
   "receiptType": "opl_cloud_tke_serial_source_record_data_compatibility_source_check",
   "revision": 1,
   "recordedAt": "2026-09-30T12:10:00Z",
-  "result": "the_durable_application_source_record_now_carries_data_compatibility_so_a_recovered_runtime_command_is_byte_equal",
+  "result": "the_durable_application_source_record_now_carries_data_compatibility_so_a_recovered_runtime_command_is_byte_equal_and_cloud_qualification_fabric_job_now_passes",
   "window": "serial",
   "windowTitle": "Serial integration regression fix - recovered runtime command differed because the source record dropped dataCompatibility",
   "sourceBaseSha": "76d49b35c069ecf083cc9a6708866546a156e69d",
@@ -21,18 +21,20 @@
       "GOFLAGS=-mod=readonly go -C services/workspace test -c -tags=livebuild -o /tmp/first-deploy.test ./internal/launch",
       "GOFLAGS=-mod=readonly go -C services/workspace test ./internal/launch/ -run TestSourceRecordRoundTrips -count=1 -v",
       "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=postgres://postgres:postgres@127.0.0.1:54555/postgres?sslmode=disable GOFLAGS=-mod=readonly go -C services/workspace test ./... -count=1",
-      "Cloud Qualification run 36646236276 on branch HEAD 8befd29e reproduced the failure in the fabric job before this fix"
+      "Cloud Qualification run 36646236276 on branch HEAD 8befd29e reproduced the failure in the fabric job before this fix",
+      "Cloud Qualification workflow_dispatch run 36647494320 on branch codex/tke-agent-selection-fix"
     ],
     "environment": "local loopback PostgreSQL container; the failing job is the real Linux qualification host",
     "result": "PASS",
     "cases": [
       "Source record round-trips DataCompatibility and the recovered runtime command equals the frozen one.",
-      "Workspace module and livebuild compile pass; the pre-fix failure is a real Cloud Qualification failure."
+      "Workspace module and livebuild compile pass; the pre-fix failure is a real Cloud Qualification failure.",
+      "Cloud Qualification run 36647494320 passed all jobs (go-contracts, node-console, postgres-ledger, control-plane, fabric, validate), so the fabric \"Test first Local application deployment with real owners\" test now passes."
     ]
   },
   "notRun": [
-    "Re-dispatch of the Cloud Qualification workflow to confirm the fabric job now passes the process-failure recovery stage.",
-    "Candidate build, Instance deployment, production readback."
+    "Candidate build, Instance deployment, production readback.",
+    "Candidate build, Instance deployment, production readback (still not performed)."
   ],
   "claimBoundary": "This receipt claims the recovery command-mismatch root cause (dropped DataCompatibility in the durable source record) is fixed in source with a focused round-trip test. It does not claim the qualification job is green until it is re-dispatched.",
   "secrets": "none",

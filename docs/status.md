@@ -97,6 +97,10 @@ stores and restores `DataCompatibility`, and
 `TestSourceRecordRoundTripsDataCompatibility` proves the recovered command is
 proto-equal to the original
 ([receipt](evidence/source-checks/2026-09-30-tke-serial-source-record-data-compatibility.json)).
+Both fixes are confirmed by a green Cloud Qualification run
+([36647494320](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/36647494320)):
+all jobs pass, including the `fabric` job's
+`TestLocalFirstApplicationDeploymentQualification`.
 
 ## September 30 Serial Integration Stage 7 Source Progress (Console Cloud Mode)
 
