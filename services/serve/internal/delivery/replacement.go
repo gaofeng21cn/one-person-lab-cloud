@@ -213,35 +213,56 @@ func (s *Service) runReplacement(ctx context.Context, plan replacementPlan) (*ap
 	if err = lockWorkspace(ctx, tx, plan.workspaceID); err != nil {
 		return nil, dbError(err)
 	}
-	current, epoch, resourceSetID, attachmentID, running, err := currentDeliveryTx(ctx, tx, plan.workspaceID)
+	operationID := replacementOperationID(plan)
+	replay, err := s.replacementReplay(ctx, operationID, plan.workspaceID)
 	if err != nil {
 		return nil, err
 	}
-	if current == "" {
-		return nil, status.Errorf(codes.FailedPrecondition, "%s: workspace %s has no current application to replace", ReasonReplacementUnavailable, plan.workspaceID)
-	}
-	if current != plan.expectedCurrent {
-		return nil, status.Errorf(codes.FailedPrecondition, "%s: workspace %s current deployment is %s, not the expected %s", ReasonCurrentDeploymentConflict, plan.workspaceID, current, plan.expectedCurrent)
-	}
-	if err = replacementCompatibilityRefusal(running, plan.compatibility, plan.kind == "rollback_workspace"); err != nil {
-		return nil, err
-	}
-	if plan.capabilityVersionID == "" && plan.runtimeVersionID == "" {
-		return nil, status.Errorf(codes.FailedPrecondition, "%s: the replacement names no admitted application source", ReasonReplacementUnavailable)
-	}
-	// The admitted descriptor and the digest Serve records for it must be the same
-	// fact. A mismatch is refused before any identity is allocated, so Serve never
-	// persists evidence that does not describe the application it executes.
-	digest, err := descriptorDigest(plan.descriptor)
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "the replacement descriptor cannot be canonicalized")
-	}
-	if digest != plan.descriptorDigest {
-		return nil, status.Errorf(codes.FailedPrecondition, "%s: the replacement descriptor does not match its admitted digest", ReasonReplacementUnavailable)
-	}
-	command, operationID, err := s.admitReplacementTx(ctx, tx, plan, current, epoch+1, resourceSetID, attachmentID)
-	if err != nil {
-		return nil, err
+	var command *api.RuntimeDeployCommand
+	var current *currentDelivery
+	exclusive := false
+	if replay != nil {
+		// A retry of the same logical switch converges on the delivery it already
+		// owns, whatever the Workspace's current application has since become: the
+		// caller is asking for the result of its own accepted command, not for a
+		// second freshness check. Nothing is admitted or stopped again.
+		command = replacementCommand(plan, replay.DeploymentID, replay.RuntimeID, replay.ResourceSetID, replay.DataAttachment, replay.ExecutionEpoch)
+	} else {
+		if current, err = currentDeliveryTx(ctx, tx, plan.workspaceID); err != nil {
+			return nil, err
+		}
+		if current == nil {
+			return nil, status.Errorf(codes.FailedPrecondition, "%s: workspace %s has no current application to replace", ReasonReplacementUnavailable, plan.workspaceID)
+		}
+		if current.DeploymentID != plan.expectedCurrent {
+			return nil, status.Errorf(codes.FailedPrecondition, "%s: workspace %s current deployment is %s, not the expected %s", ReasonCurrentDeploymentConflict, plan.workspaceID, current.DeploymentID, plan.expectedCurrent)
+		}
+		if err = replacementCompatibilityRefusal(current.Compatibility, plan.compatibility, plan.kind == "rollback_workspace"); err != nil {
+			return nil, err
+		}
+		if plan.capabilityVersionID == "" && plan.runtimeVersionID == "" {
+			return nil, status.Errorf(codes.FailedPrecondition, "%s: the replacement names no admitted application source", ReasonReplacementUnavailable)
+		}
+		// The admitted descriptor and the digest Serve records for it must be the
+		// same fact. A mismatch is refused before any identity is allocated, so
+		// Serve never persists evidence that does not describe what it executes.
+		digest, err := descriptorDigest(plan.descriptor)
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, "the replacement descriptor cannot be canonicalized")
+		}
+		if digest != plan.descriptorDigest {
+			return nil, status.Errorf(codes.FailedPrecondition, "%s: the replacement descriptor does not match its admitted digest", ReasonReplacementUnavailable)
+		}
+		// A read-write mount the publisher declares it cannot share forces the two
+		// revisions apart: the running writer must stop before the replacement
+		// mounts the same retained data. Both sides are compared, because either
+		// revision may be the one that states the limit.
+		if exclusive, err = exclusiveDataWriter(current.Descriptor, plan.descriptor); err != nil {
+			return nil, err
+		}
+		if command, err = s.admitReplacementTx(ctx, tx, plan, current, operationID); err != nil {
+			return nil, err
+		}
 	}
 	if err = tx.Commit(); err != nil {
 		return nil, dbError(err)
@@ -251,24 +272,113 @@ func (s *Service) runReplacement(ctx context.Context, plan replacementPlan) (*ap
 	if _, err = s.bindReservation(ctx, plan.call, &api.RuntimeReservation{DeploymentId: command.GetDeploymentId()}); err != nil {
 		return nil, err
 	}
-	if _, err = s.observeAndFinishDelivery(ctx, command, true); err != nil {
+	// The frozen start command is persisted before the provider call, so this
+	// replacement is as recoverable as a first delivery: stop, reload, credentials
+	// and a later replacement all resume the identical command, and a replay of
+	// this switch finds its own row instead of writing a second one.
+	if err = s.acceptReplacementStart(ctx, command); err != nil {
+		return nil, err
+	}
+	if replay == nil && exclusive {
+		// The old writer is stopped only after its replacement is admitted, so the
+		// Workspace always has a recorded reason for the gap, and the stop is
+		// recorded before the provider call so a replay never issues it twice.
+		if err = s.quiesceCurrentWriter(ctx, plan, current, command.GetDeploymentId()); err != nil {
+			return nil, err
+		}
+	}
+	readback, err := s.observeAndFinishDelivery(ctx, command, true)
+	if err != nil {
+		// The replacement's outcome is unknown. No new side effect is issued
+		// against it: a writer this switch stopped stays stopped, and the
+		// unresolved replacement is resolved by reading it back, exactly as an
+		// unresolved route switch blocks every later switch. Returning the
+		// original error keeps the caller from reading a guess as a result.
+		return nil, err
+	}
+	if readback.GetApplicationAvailable() {
+		// The replacement is the Workspace's current application. The route and the
+		// superseded delivery were committed in the transaction that observed it.
+		return s.deliveryOperation(ctx, operationID)
+	}
+	if state := readback.GetState(); state != api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_FAILED && state != api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_TERMINATED {
+		// Still converging: the replacement may yet become the current
+		// application, so nothing is retired and the owning operation reports the
+		// state the provider actually observed.
+		return s.deliveryOperation(ctx, operationID)
+	}
+	// A definite failure. The replacement's own runtime is retired so it cannot
+	// remain a second instance of this Workspace, and a writer the switch stopped
+	// is restored. The route never moved, so the Workspace serves the delivery it
+	// already had.
+	if err = s.retireFailedReplacement(ctx, command); err != nil {
+		return nil, err
+	}
+	if err = s.restoreWriterStoppedByReplacement(ctx, command.GetDeploymentId()); err != nil {
 		return nil, err
 	}
 	return s.deliveryOperation(ctx, operationID)
 }
 
-// admitReplacementTx reserves one replacement delivery row at the new execution
-// epoch inside the caller's transaction. The new deployment names the deployment
-// it replaces, carries its own runtime instance at the same confirmed resource
-// set and data attachment, and stays queued until the execution adapter observes
-// it.
-func (s *Service) admitReplacementTx(ctx context.Context, tx *sql.Tx, plan replacementPlan, previousDeploymentID string, epoch int64, resourceSetID, dataAttachmentID string) (*api.RuntimeDeployCommand, string, error) {
+// restoreWriterStoppedByReplacement restores the delivery a switch stopped before
+// the replacement failed. Whether this switch took the writer away is a persisted
+// fact -- the confirmed stop it recorded against the replacement's own identity --
+// not a value re-derived from whichever application the Workspace serves now. A
+// replayed switch therefore restores exactly the writer it stopped, and a switch
+// that stopped nothing issues no recovery call.
+func (s *Service) restoreWriterStoppedByReplacement(ctx context.Context, replacementDeploymentID string) error {
+	var stopped bool
+	if err := s.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM serve.agent_runtime_actions WHERE command_id=$1 AND action='stop' AND observation_result='confirmed')`, stableID("stop_", replacementDeploymentID)).Scan(&stopped); err != nil {
+		return dbError(err)
+	}
+	if !stopped {
+		return nil
+	}
+	// The delivery this replacement displaced is the one whose writer was taken
+	// away, and its runtime instance is the exact object the stop was applied to.
+	var replacedDeploymentID, replacedRuntimeID string
+	if err := s.DB.QueryRowContext(ctx, `
+		SELECT d.previous_deployment_id, i.id
+		FROM serve.agent_deployments d
+		JOIN serve.agent_runtime_instances i ON i.deployment_id = d.previous_deployment_id
+		WHERE d.id=$1`, replacementDeploymentID).Scan(&replacedDeploymentID, &replacedRuntimeID); err != nil {
+		return dbError(err)
+	}
+	return s.resumeCurrentWriter(ctx, &currentDelivery{DeploymentID: replacedDeploymentID, RuntimeID: replacedRuntimeID}, replacementDeploymentID)
+}
+
+// acceptReplacementStart persists the frozen start command of one replacement
+// delivery in its own transaction, exactly as the first delivery does.
+func (s *Service) acceptReplacementStart(ctx context.Context, command *api.RuntimeDeployCommand) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return dbError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err = lockWorkspace(ctx, tx, command.GetWorkspaceId()); err != nil {
+		return dbError(err)
+	}
+	if err = recordStartActionTx(ctx, tx, command); err != nil {
+		return err
+	}
+	return dbError(tx.Commit())
+}
+
+// admitReplacementTx admits or resumes one replacement delivery inside the
+// caller's transaction. A first attempt allocates the delivery identity, claims
+// the admitted source and records the owning operation; a retry of the same
+// logical switch names the same identities and resumes the row it already owns
+// instead of allocating a second delivery.
+//
+// The new deployment names the deployment it replaces, carries its own runtime
+// instance at the same confirmed resource set and data attachment, and stays
+// queued until the execution adapter observes it.
+func (s *Service) admitReplacementTx(ctx context.Context, tx *sql.Tx, plan replacementPlan, current *currentDelivery, operationID string) (*api.RuntimeDeployCommand, error) {
 	var tenantID string
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(o.tenant_id,'') FROM serve.agent_deployments d JOIN serve.operations o ON o.id=d.operation_id WHERE d.id=$1`, previousDeploymentID).Scan(&tenantID); err != nil {
-		return nil, "", dbError(err)
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(o.tenant_id,'') FROM serve.agent_deployments d JOIN serve.operations o ON o.id=d.operation_id WHERE d.id=$1`, current.DeploymentID).Scan(&tenantID); err != nil {
+		return nil, dbError(err)
 	}
 	deploymentID := stableID("dep_", tenantID, plan.workspaceID, plan.call.GetActorId(), plan.call.GetIdempotencyKey())
-	operationID := stableID("op_", deploymentID)
 	runtimeID := stableID("rti_", deploymentID)
 	claimTarget := &api.ReferenceTarget{}
 	if plan.capabilityVersionID != "" {
@@ -278,36 +388,89 @@ func (s *Service) admitReplacementTx(ctx context.Context, tx *sql.Tx, plan repla
 	}
 	claim, err := s.References.AcquireReference(ctx, &api.ReferenceClaimRequest{Context: nextOwnerCall(plan.call), Target: claimTarget, ClaimantOwner: api.OwnerEnum_OWNER_ENUM_SERVE, ClaimantResourceId: deploymentID})
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	if claim.GetId() == "" || claim.GetClaimantOwner() != api.OwnerEnum_OWNER_ENUM_SERVE || claim.GetClaimantResourceId() != deploymentID || claim.GetState() == api.ReferenceClaimState_REFERENCE_CLAIM_STATE_RELEASED {
-		return nil, "", status.Error(codes.FailedPrecondition, "reference claim identity mismatch")
+		return nil, status.Error(codes.FailedPrecondition, "reference claim identity mismatch")
 	}
-	accepted, err := replacementAcceptedInput(plan, deploymentID, resourceSetID, dataAttachmentID)
-	if err != nil {
-		return nil, "", err
-	}
-	if _, err = s.Store.CreateOperation(ctx, tx, ownerstore.OperationInput{ID: operationID, TenantID: tenantID, ActorID: plan.call.GetActorId(), Kind: plan.kind, ResourceID: deploymentID, Stage: "runtime", RequestID: plan.call.GetRequestId(), AcceptedInput: accepted}); err != nil {
-		return nil, "", dbError(err)
-	}
-	compatibility := plan.compatibility
 	applicationKind := "agent"
 	if plan.capabilityVersionID == "" {
 		applicationKind = "opl_app"
 	}
+	if applicationKind == "agent" && claim.GetTarget().GetCapabilityVersionId() != plan.capabilityVersionID {
+		return nil, status.Error(codes.FailedPrecondition, "Capability claim identity mismatch")
+	}
+	if applicationKind == "opl_app" && claim.GetTarget().GetRuntimeVersionId() != plan.runtimeVersionID {
+		return nil, status.Error(codes.FailedPrecondition, "Runtime Release claim identity mismatch")
+	}
+	accepted, err := replacementAcceptedInput(plan, deploymentID, current.ResourceSetID, current.DataAttachment)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = s.Store.CreateOperation(ctx, tx, ownerstore.OperationInput{ID: operationID, TenantID: tenantID, ActorID: plan.call.GetActorId(), Kind: plan.kind, ResourceID: deploymentID, Stage: "runtime", RequestID: plan.call.GetRequestId(), AcceptedInput: accepted}); err != nil {
+		return nil, dbError(err)
+	}
+	compatibility := plan.compatibility
 	descriptor, err := publicjson.Marshal(plan.descriptor)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	attachment, _ := json.Marshal(map[string]string{"attachmentId": dataAttachmentID})
+	attachment, _ := json.Marshal(map[string]string{"attachmentId": current.DataAttachment})
 	if _, err = tx.ExecContext(ctx, `INSERT INTO serve.agent_deployments(id,workspace_id,capability_version_id,application_kind,runtime_version_id,artifact_digest,reference_claim_id,runtime_instance_id,previous_deployment_id,operation_id,status,data_compatibility,execution_epoch) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'queued',$11,$12)`,
-		deploymentID, plan.workspaceID, plan.capabilityVersionID, applicationKind, nullable(plan.runtimeVersionID), plan.descriptor.GetArtifact().GetDigest(), claim.GetId(), runtimeID, previousDeploymentID, operationID, compatibility, epoch); err != nil {
-		return nil, "", dbError(err)
+		deploymentID, plan.workspaceID, plan.capabilityVersionID, applicationKind, nullable(plan.runtimeVersionID), plan.descriptor.GetArtifact().GetDigest(), claim.GetId(), runtimeID, current.DeploymentID, operationID, compatibility, current.ExecutionEpoch+1); err != nil {
+		return nil, dbError(err)
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO serve.agent_runtime_instances(id,workspace_id,deployment_id,artifact_digest,fabric_resource_set_id,status,data_attachment_contract,execution_epoch,deployment_descriptor,deployment_descriptor_digest,deployment_descriptor_object_ref) VALUES($1,$2,$3,$4,$5,'pending',$6,$7,$8,$9,$10)`,
-		runtimeID, plan.workspaceID, deploymentID, plan.descriptor.GetArtifact().GetDigest(), resourceSetID, attachment, epoch, descriptor, plan.descriptorDigest, plan.descriptorRef); err != nil {
-		return nil, "", dbError(err)
+		runtimeID, plan.workspaceID, deploymentID, plan.descriptor.GetArtifact().GetDigest(), current.ResourceSetID, attachment, current.ExecutionEpoch+1, descriptor, plan.descriptorDigest, plan.descriptorRef); err != nil {
+		return nil, dbError(err)
 	}
+	command := replacementCommand(plan, deploymentID, runtimeID, current.ResourceSetID, current.DataAttachment, current.ExecutionEpoch+1)
+	return command, nil
+}
+
+// replacementOperationID is the owning operation of one logical switch. It keys
+// the admission on the caller's own command identity, so a retry of the same
+// switch names the same operation while two different switches never collide.
+func replacementOperationID(plan replacementPlan) string {
+	return stableID("op_", plan.kind, plan.workspaceID, plan.call.GetActorId(), plan.call.GetIdempotencyKey())
+}
+
+// replacementReplay reports the delivery a retry of this logical switch already
+// owns. The owning operation is the recorded identity, and the delivery it named
+// is read back rather than re-derived, so a replay never depends on which
+// application the Workspace happens to be serving now.
+func (s *Service) replacementReplay(ctx context.Context, operationID, workspaceID string) (*currentDelivery, error) {
+	var deploymentID string
+	err := s.DB.QueryRowContext(ctx, `SELECT resource_id FROM serve.operations WHERE id=$1 AND kind IN ('update_workspace','rollback_workspace')`, operationID).Scan(&deploymentID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, dbError(err)
+	}
+	return existingReplacementTx(ctx, s.DB, deploymentID, workspaceID)
+}
+
+// existingReplacementTx reads one admitted replacement delivery by its own id.
+func existingReplacementTx(ctx context.Context, q rowQueryer, deploymentID, workspaceID string) (*currentDelivery, error) {
+	row := q.QueryRowContext(ctx, `
+		SELECT d.id, COALESCE(d.runtime_instance_id,''), d.execution_epoch, i.fabric_resource_set_id, COALESCE(i.data_attachment_contract->>'attachmentId',''), d.data_compatibility, i.deployment_descriptor
+		FROM serve.agent_deployments d
+		JOIN serve.agent_runtime_instances i ON i.deployment_id = d.id
+		WHERE d.id=$1 AND d.workspace_id=$2`, deploymentID, workspaceID)
+	out := &currentDelivery{}
+	if err := row.Scan(&out.DeploymentID, &out.RuntimeID, &out.ExecutionEpoch, &out.ResourceSetID, &out.DataAttachment, &out.Compatibility, &out.Descriptor); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, dbError(err)
+	}
+	return out, nil
+}
+
+// replacementCommand is the single builder of a replacement's execution command,
+// so an admitted delivery and its replayed form are the same command.
+func replacementCommand(plan replacementPlan, deploymentID, runtimeID, resourceSetID, dataAttachmentID string, epoch int64) *api.RuntimeDeployCommand {
 	command := &api.RuntimeDeployCommand{
 		Context: plan.call, WorkspaceId: plan.workspaceID, DeploymentId: deploymentID,
 		CapabilityVersionId: plan.capabilityVersionID, DeploymentDescriptor: plan.descriptor,
@@ -319,7 +482,7 @@ func (s *Service) admitReplacementTx(ctx context.Context, tx *sql.Tx, plan repla
 	} else {
 		command.ApplicationSelection = &api.WorkspaceApplicationSelection{Kind: api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP, RuntimeVersionId: proto.String(plan.runtimeVersionID)}
 	}
-	return command, operationID, nil
+	return command
 }
 
 // replacementAcceptedInput stores the replacement in the same accepted-input
@@ -342,28 +505,57 @@ func replacementAcceptedInput(plan replacementPlan, deploymentID, resourceSetID,
 	return json.Marshal(reservationInput{Request: request, Actor: plan.call.GetActorId(), Scope: scope, AuthorizationContextID: plan.call.GetAuthorizationContextId(), Digest: "sha256:" + ownerstore.HashRequestBody(reservationBytes(reservation))})
 }
 
+// rowQueryer is the read surface both an owner transaction and a plain owner
+// connection provide, so one delivery reader serves the locked admission path and
+// the lock-free replay probe without two copies of the same query.
+type rowQueryer interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// currentDelivery is the Workspace's one current application together with the
+// facts a replacement must act on: the frozen command it executes under, the
+// confirmed infrastructure it holds, and its own declared data/mount facts.
+type currentDelivery struct {
+	DeploymentID   string
+	RuntimeID      string
+	ExecutionEpoch int64
+	ResourceSetID  string
+	DataAttachment string
+	Compatibility  []byte
+	Descriptor     []byte
+}
+
 // currentDeliveryTx reads the Workspace's current delivery and the confirmed
-// infrastructure it runs on.
-func currentDeliveryTx(ctx context.Context, tx *sql.Tx, workspaceID string) (deploymentID string, epoch int64, resourceSetID, dataAttachmentID string, compatibility []byte, err error) {
-	err = tx.QueryRowContext(ctx, `
-		SELECT d.id, d.execution_epoch, i.fabric_resource_set_id, COALESCE(i.data_attachment_contract->>'attachmentId',''), d.data_compatibility
+// infrastructure it runs on. A Workspace with no active delivery returns nil
+// rather than an empty identity, so a caller cannot confuse "no application"
+// with a delivery whose identity happens to be blank.
+func currentDeliveryTx(ctx context.Context, q rowQueryer, workspaceID string) (*currentDelivery, error) {
+	out := &currentDelivery{}
+	err := q.QueryRowContext(ctx, `
+		SELECT d.id, COALESCE(d.runtime_instance_id,''), d.execution_epoch, i.fabric_resource_set_id, COALESCE(i.data_attachment_contract->>'attachmentId',''), d.data_compatibility, i.deployment_descriptor
 		FROM serve.agent_deployments d
 		JOIN serve.agent_runtime_instances i ON i.deployment_id = d.id
 		WHERE d.workspace_id = $1 AND d.status = 'active'
 		ORDER BY d.created_at DESC, d.id DESC LIMIT 1`, workspaceID).
-		Scan(&deploymentID, &epoch, &resourceSetID, &dataAttachmentID, &compatibility)
+		Scan(&out.DeploymentID, &out.RuntimeID, &out.ExecutionEpoch, &out.ResourceSetID, &out.DataAttachment, &out.Compatibility, &out.Descriptor)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", 0, "", "", nil, nil
+		return nil, nil
 	}
 	if err != nil {
-		err = dbError(err)
+		return nil, dbError(err)
 	}
-	return deploymentID, epoch, resourceSetID, dataAttachmentID, compatibility, err
+	return out, nil
 }
 
 // deliveryOperation reports the owning Operation for one admitted delivery from
 // Serve's own operation row.
 func (s *Service) deliveryOperation(ctx context.Context, operationID string) (*api.Operation, error) {
+	return s.operationByID(ctx, operationID)
+}
+
+// operationByID reports one of Serve's own Operations exactly as it is recorded,
+// so a caller never reads a state Serve has not committed.
+func (s *Service) operationByID(ctx context.Context, operationID string) (*api.Operation, error) {
 	var kind, statusText, stage, resource, requestID, result string
 	var created, updated, completed sql.NullTime
 	err := s.DB.QueryRowContext(ctx, `SELECT kind,status,stage,resource_id,COALESCE(request_id,''),COALESCE(observation_result,''),created_at,updated_at,completed_at FROM serve.operations WHERE id=$1`, operationID).
@@ -455,4 +647,202 @@ func migrationRollbackRefusal(declared *api.DataCompatibility) error {
 		return status.Errorf(codes.FailedPrecondition, "%s: schema %q requires a migration the publisher does not declare rollback-safe", ReasonDataRollbackUnsafe, declared.GetDataSchemaVersion())
 	}
 	return nil
+}
+
+// exclusiveDataWriter reports whether the two admitted revisions must not hold
+// the Workspace's retained data at the same time. The publisher owns the data
+// schema and states, per persistent mount, whether more than one writer is
+// allowed; a read-write mount its publisher does not declare shareable can only
+// be held by one running application. Both sides are compared, because either
+// revision may be the one that states the limit.
+//
+// A revision that declares no such mount shares nothing exclusively, so the
+// ordinary update needs no stop and no gap in service.
+func exclusiveDataWriter(running []byte, target *api.DeploymentDescriptor) (bool, error) {
+	if descriptorDeclaresExclusiveWriter(target) {
+		return true, nil
+	}
+	if len(running) == 0 {
+		return false, nil
+	}
+	descriptor := &api.DeploymentDescriptor{}
+	if err := publicjson.Unmarshal(running, descriptor); err != nil {
+		return false, status.Error(codes.DataLoss, "the current delivery has no readable deployment descriptor")
+	}
+	return descriptorDeclaresExclusiveWriter(descriptor), nil
+}
+
+// descriptorDeclaresExclusiveWriter is the one place that reads a revision's
+// declared mount policy. A policy counts only when it names a mount the same
+// revision declares read-write, so a policy for a read-only or absent mount
+// never blocks a replacement.
+func descriptorDeclaresExclusiveWriter(descriptor *api.DeploymentDescriptor) bool {
+	readWrite := map[string]bool{}
+	for _, mount := range descriptor.GetApplicationRevision().GetPersistentMounts() {
+		if !mount.GetReadOnly() {
+			readWrite[mount.GetName()] = true
+		}
+	}
+	for _, policy := range descriptor.GetRuntimeContract().GetData().GetMountPolicies() {
+		if !policy.GetConcurrentWritersSupported() && readWrite[policy.GetMountName()] {
+			return true
+		}
+	}
+	return false
+}
+
+// recordRuntimeAction persists one lifecycle intent against a runtime instance
+// before the provider call and reports whether that intent was already confirmed
+// by an earlier attempt. A confirmed identical action needs no second provider
+// call; an unconfirmed one is issued again, because the desired state is
+// idempotent and the earlier outcome is unknown.
+func (s *Service) recordRuntimeAction(ctx context.Context, id, runtimeInstanceID, action, expectedDeploymentID string, snapshot []byte) (bool, error) {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return false, dbError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	// The stored snapshot is PostgreSQL jsonb, so compare it semantically in the
+	// database rather than byte-for-byte against Go's encoding of the request.
+	var result string
+	var identical bool
+	err = tx.QueryRowContext(ctx, `SELECT observation_result,input_snapshot=$2::jsonb FROM serve.agent_runtime_actions WHERE command_id=$1 FOR UPDATE`, id, snapshot).Scan(&result, &identical)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		if _, err = tx.ExecContext(ctx, `INSERT INTO serve.agent_runtime_actions(id,runtime_instance_id,command_id,action,expected_deployment_id,input_snapshot,observation_result) VALUES($1,$2,$1,$3,$4,$5,'unknown')`, id, runtimeInstanceID, action, expectedDeploymentID, snapshot); err != nil {
+			return false, dbError(err)
+		}
+		if err = tx.Commit(); err != nil {
+			return false, dbError(err)
+		}
+		return false, nil
+	case err != nil:
+		return false, dbError(err)
+	}
+	if !identical {
+		return false, status.Error(codes.AlreadyExists, "runtime lifecycle action input differs from its original command")
+	}
+	return result == "confirmed", dbError(tx.Commit())
+}
+
+// confirmRuntimeAction records that the provider confirmed one lifecycle action.
+func (s *Service) confirmRuntimeAction(ctx context.Context, id, evidence string) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE serve.agent_runtime_actions SET observation_result='confirmed',evidence_ref=NULLIF($2,''),updated_at=now() WHERE command_id=$1`, id, evidence)
+	return dbError(err)
+}
+
+// quiesceCurrentWriter stops the application the Workspace currently serves
+// before a replacement that cannot share its retained data with it. The stop is
+// recorded against the replacement's own identity before the provider call, so a
+// replayed switch never issues a second stop.
+func (s *Service) quiesceCurrentWriter(ctx context.Context, plan replacementPlan, current *currentDelivery, replacementDeploymentID string) error {
+	deploy, err := s.persistedRuntimeCommand(ctx, current.RuntimeID, current.DeploymentID)
+	if err != nil {
+		return err
+	}
+	binding, err := s.confirmedRuntimeBinding(ctx, deploy.command)
+	if err != nil {
+		return err
+	}
+	id := stableID("stop_", replacementDeploymentID)
+	snapshot, err := json.Marshal(map[string]string{"action": "stop", "runtimeInstanceId": current.RuntimeID, "deploymentId": current.DeploymentID, "replacementDeploymentId": replacementDeploymentID})
+	if err != nil {
+		return status.Error(codes.Internal, "cannot record the replacement stop")
+	}
+	confirmed, err := s.recordRuntimeAction(ctx, id, current.RuntimeID, "stop", current.DeploymentID, snapshot)
+	if err != nil {
+		return err
+	}
+	if confirmed {
+		return nil
+	}
+	if err = s.Runtime.Lifecycle(ctx, deploy.command, binding, "suspended"); err != nil {
+		return err
+	}
+	if err = s.confirmRuntimeAction(ctx, id, "suspended:"+replacementDeploymentID); err != nil {
+		return err
+	}
+	return s.setRuntimeInstanceState(ctx, current.RuntimeID, "stopped")
+}
+
+// resumeCurrentWriter restores the application a switch stopped, after a
+// replacement failed definitively. It is the inverse of quiesceCurrentWriter
+// under its own recorded identity, and it restores the same runtime instance the
+// Workspace was already serving rather than admitting a new delivery.
+func (s *Service) resumeCurrentWriter(ctx context.Context, current *currentDelivery, replacementDeploymentID string) error {
+	deploy, err := s.persistedRuntimeCommand(ctx, current.RuntimeID, current.DeploymentID)
+	if err != nil {
+		return err
+	}
+	binding, err := s.confirmedRuntimeBinding(ctx, deploy.command)
+	if err != nil {
+		return err
+	}
+	resumeID := stableID("resume_", replacementDeploymentID)
+	snapshot, err := json.Marshal(map[string]string{"action": "start", "runtimeInstanceId": current.RuntimeID, "deploymentId": current.DeploymentID, "replacementDeploymentId": replacementDeploymentID})
+	if err != nil {
+		return status.Error(codes.Internal, "cannot record the replacement recovery")
+	}
+	confirmed, err := s.recordRuntimeAction(ctx, resumeID, current.RuntimeID, "start", current.DeploymentID, snapshot)
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		if err = s.Runtime.Lifecycle(ctx, deploy.command, binding, "running"); err != nil {
+			return err
+		}
+		if err = s.confirmRuntimeAction(ctx, resumeID, "running:"+replacementDeploymentID); err != nil {
+			return err
+		}
+	}
+	return s.setRuntimeInstanceState(ctx, current.RuntimeID, "ready")
+}
+
+// setRuntimeInstanceState records the state Serve itself applied and the provider
+// confirmed for one runtime instance. A replacement that stops the only writer,
+// or restores it, changes the state of that instance and must not leave Serve's
+// own record claiming a state the provider was told to leave.
+func (s *Service) setRuntimeInstanceState(ctx context.Context, runtimeID, state string) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return dbError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET status=$2,observed_at=now(),updated_at=now() WHERE id=$1`, runtimeID, state); err != nil {
+		return dbError(err)
+	}
+	return dbError(tx.Commit())
+}
+
+// retireFailedReplacement removes the exact runtime a replacement created after
+// it failed to become the Workspace's application. It is recorded under the
+// replacement's own identity, so a replayed switch retires the same runtime
+// instead of a newly derived one.
+func (s *Service) retireFailedReplacement(ctx context.Context, command *api.RuntimeDeployCommand) error {
+	if s.Runtime == nil {
+		return status.Error(codes.Unavailable, "runtime execution adapter is not configured")
+	}
+	binding, err := s.confirmedRuntimeBinding(ctx, command)
+	if err != nil {
+		return err
+	}
+	id := stableID("terminate_", command.GetDeploymentId())
+	snapshot, err := json.Marshal(map[string]string{"action": "terminate", "runtimeInstanceId": command.GetRuntimeInstanceId(), "deploymentId": command.GetDeploymentId()})
+	if err != nil {
+		return status.Error(codes.Internal, "cannot record the failed replacement retirement")
+	}
+	confirmed, err := s.recordRuntimeAction(ctx, id, command.GetRuntimeInstanceId(), "terminate", command.GetDeploymentId(), snapshot)
+	if err != nil {
+		return err
+	}
+	if confirmed {
+		return nil
+	}
+	if err = s.Runtime.Lifecycle(ctx, command, binding, "absent"); err != nil {
+		return err
+	}
+	if err = s.confirmRuntimeAction(ctx, id, "absent:"+command.GetDeploymentId()); err != nil {
+		return err
+	}
+	return s.setRuntimeInstanceState(ctx, command.GetRuntimeInstanceId(), "terminated")
 }

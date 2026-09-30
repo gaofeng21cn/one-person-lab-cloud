@@ -102,27 +102,35 @@ type runtimeForServe struct {
 	observeErr       bool
 	state            api.AgentRuntimeObservationState
 	readiness        string
+	// lifecycle records every desired state Serve asked the provider to apply, in
+	// order, so a replacement's stop/restore/retire sequence is observable.
+	lifecycle     []string
+	credentialErr bool
 }
 
 func (f *runtimeForServe) Start(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (delivery.RuntimeObservation, error) {
 	f.starts++
 	return runtimeReady(applicationEntry(), "https://ws.example/app", "ack-only"), nil
 }
-func (*runtimeForServe) Lifecycle(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding, string) error {
+func (f *runtimeForServe) Lifecycle(_ context.Context, _ *api.RuntimeDeployCommand, _ *api.ResourceExecutionBinding, desired string) error {
+	f.lifecycle = append(f.lifecycle, desired)
 	return nil
 }
 func (*runtimeForServe) Reload(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) error {
 	return nil
 }
-func (*runtimeForServe) Credentials(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (*api.WorkspaceApplicationCredentials, error) {
-	return nil, errors.New("credentials unavailable")
+func (f *runtimeForServe) Credentials(_ context.Context, c *api.RuntimeDeployCommand, _ *api.ResourceExecutionBinding) (*api.WorkspaceApplicationCredentials, error) {
+	if f.credentialErr {
+		return nil, errors.New("credentials unavailable")
+	}
+	return &api.WorkspaceApplicationCredentials{WorkspaceId: c.GetWorkspaceId(), RuntimeInstanceId: c.GetRuntimeInstanceId(), Username: "admin", Password: "issued-once"}, nil
 }
 func (f *runtimeForServe) Observe(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (delivery.RuntimeObservation, error) {
 	f.observes++
 	if f.observeErr {
 		return delivery.RuntimeObservation{}, errors.New("readback unavailable")
 	}
-	if f.state == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_PENDING {
+	if f.state == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_PENDING || f.state == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_FAILED {
 		return delivery.RuntimeObservation{State: f.state, ObservedAt: time.Now().UTC()}, nil
 	}
 	readiness := f.readiness

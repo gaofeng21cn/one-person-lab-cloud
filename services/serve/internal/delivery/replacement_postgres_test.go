@@ -7,13 +7,21 @@ package delivery_test
 // Console BFF calls.
 
 import (
+	"context"
+	"encoding/json"
+	"os"
+	"reflect"
 	"strings"
 	"testing"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	api "opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/packages/contracts/go/publicjson"
+	"opl-cloud/services/internal/ownerservice"
 	"opl-cloud/services/serve/internal/delivery"
 )
 
@@ -234,13 +242,16 @@ func TestServeVersionSwitchReplacesTheCurrentApplication(t *testing.T) {
 	if generation, target := routeBinding(t, s, "ws-first"); generation != 3 || target != rolledID {
 		t.Fatalf("failed switch changed the route: generation=%d target=%s", generation, target)
 	}
-	var queued int
-	var queuedStatus string
-	if err := s.DB.QueryRow(`SELECT count(*),COALESCE(max(status),'') FROM serve.agent_deployments WHERE workspace_id='ws-first' AND execution_epoch=4`).Scan(&queued, &queuedStatus); err != nil {
+	var attempted int
+	var attemptedStatus string
+	if err := s.DB.QueryRow(`SELECT count(*),COALESCE(max(status),'') FROM serve.agent_deployments WHERE workspace_id='ws-first' AND execution_epoch=4`).Scan(&attempted, &attemptedStatus); err != nil {
 		t.Fatal(err)
 	}
-	if queued != 1 || queuedStatus != "queued" {
-		t.Fatalf("failed switch left %d epoch-4 deliveries with status %q", queued, queuedStatus)
+	// The replacement whose outcome is unknown is recorded as executing, because
+	// its frozen start command was persisted before the provider call. Nothing was
+	// retired against an unknown result.
+	if attempted != 1 || attemptedStatus != "deploying" {
+		t.Fatalf("failed switch left %d epoch-4 deliveries with status %q", attempted, attemptedStatus)
 	}
 }
 
@@ -353,5 +364,296 @@ func TestServeReplacementRefusesUnprovenDataCompatibility(t *testing.T) {
 	}
 	if migratedSchema != "2" || !migrated {
 		t.Fatalf("recorded migration contract schema=%q migrationRequired=%v", migratedSchema, migrated)
+	}
+}
+
+// publisherContractExample loads the runtime publisher contract the SSOT schema
+// publishes as its own example, so a test descriptor carries a complete contract
+// instead of a hand-built partial one.
+func publisherContractExample(t *testing.T) *api.RuntimePublisherContract {
+	t.Helper()
+	raw, err := os.ReadFile("../../../../docs/spec/target/contracts/publisher-contract.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Examples []json.RawMessage
+	}
+	if err = json.Unmarshal(raw, &document); err != nil || len(document.Examples) == 0 {
+		t.Fatalf("publisher contract schema has no example: %v", err)
+	}
+	contract := &api.RuntimePublisherContract{}
+	if err = publicjson.Unmarshal(document.Examples[0], contract); err != nil {
+		t.Fatal(err)
+	}
+	return contract
+}
+
+// withPersistentMount gives one admitted application revision a read-write
+// persistent mount, and its publisher contract the matching mount policy, so the
+// replacement's single-writer rule has the facts it reads.
+func withPersistentMount(t *testing.T, descriptor *api.DeploymentDescriptor, shareable bool) *api.DeploymentDescriptor {
+	t.Helper()
+	clone := proto.Clone(descriptor).(*api.DeploymentDescriptor)
+	clone.ApplicationRevision.PersistentMounts = []*api.WorkspaceApplicationMount{{Name: "workspace-data", MountPath: "/var/lib/opl"}}
+	contract := publisherContractExample(t)
+	contract.Data.MountPolicies = []*api.DataMountPolicy{{MountName: "workspace-data", ConcurrentWritersSupported: shareable}}
+	clone.RuntimeContract = contract
+	return clone
+}
+
+// exclusiveSwitchFixture delivers a first application whose declared mount
+// cannot be shared, and returns the Workspace's service plus the release that
+// replaces it.
+func exclusiveSwitchFixture(t *testing.T) (*delivery.Service, *api.RuntimeReservationCommand, *api.RuntimeReservation, *api.CapabilityVersion, *runtimeForServe) {
+	t.Helper()
+	s, base, cap := reservationFixture(t)
+	first := withPersistentMount(t, base.DeploymentDescriptor, false)
+	request := proto.Clone(base).(*api.RuntimeReservationCommand)
+	request.DeploymentDescriptor = first
+	request.Artifact = first.GetArtifact()
+	request.DeploymentDescriptorDigest = descriptorDigestOf(t, first)
+	request.Context.IdempotencyKey = "exclusive-first"
+	cap.version = &api.CapabilityVersion{
+		Id: "cv_1", Status: api.CapabilityVersionStatusEnum_CAPABILITY_VERSION_STATUS_ENUM_READY,
+		Artifact: request.Artifact, DeploymentDescriptor: request.DeploymentDescriptor,
+		DeploymentDescriptorDigest: request.DeploymentDescriptorDigest, DeploymentDescriptorObjectRef: request.DeploymentDescriptorObjectRef,
+		DataCompatibility: &api.DataCompatibility{DataSchemaVersion: "1"},
+	}
+	second := replacementVersion(t, "cv_2", strings.Repeat("2", 64))
+	second.DeploymentDescriptor = withPersistentMount(t, second.DeploymentDescriptor, false)
+	second.Artifact = second.DeploymentDescriptor.GetArtifact()
+	second.DeploymentDescriptorDigest = descriptorDigestOf(t, second.DeploymentDescriptor)
+	cap.versions = map[string]*api.CapabilityVersion{second.GetId(): second}
+	s.Resources = &resourcesForServe{confirmed: true, workspace: "ws-first", dataAttachment: "attachment-original"}
+	runtime := &runtimeForServe{}
+	s.Runtime = runtime
+	ctx := workspaceContext()
+	reservation, err := s.Reserve(ctx, request)
+	if err != nil {
+		t.Fatalf("exclusive first reservation: %v", err)
+	}
+	if _, err = s.Deploy(ctx, deployReserved(request, reservation)); err != nil {
+		t.Fatalf("exclusive first delivery: %v", err)
+	}
+	runtime.lifecycle = nil
+	return s, request, reservation, second, runtime
+}
+
+func switchVersion(t *testing.T, s *delivery.Service, key, versionID, expectedCurrent string) (*api.Operation, error) {
+	t.Helper()
+	call := call("tenant-alpha", false)
+	call.IdempotencyKey = key
+	return s.UpdateWorkspaceVersion(serveContext(), &api.UpdateWorkspaceVersionRpcRequest{
+		Context: call, WorkspaceId: "ws-first",
+		Body: &api.UpdateWorkspaceVersionRequest{CapabilityVersionId: versionID, ExpectedCurrentAgentDeploymentId: expectedCurrent},
+	})
+}
+
+// TestServeReplacementQuiescesAnExclusiveDataWriter proves a replacement that
+// cannot share the Workspace's retained data stops the running writer first, so
+// the two revisions never hold the same mount at once.
+func TestServeReplacementQuiescesAnExclusiveDataWriter(t *testing.T) {
+	s, _, reservation, second, runtime := exclusiveSwitchFixture(t)
+	operation, err := switchVersion(t, s, "switch-exclusive", second.GetId(), reservation.DeploymentId)
+	if err != nil {
+		t.Fatalf("exclusive switch: %v", err)
+	}
+	if operation.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
+		t.Fatalf("exclusive switch operation=%v", operation)
+	}
+	if !reflect.DeepEqual(runtime.lifecycle, []string{"suspended"}) {
+		t.Fatalf("exclusive switch lifecycle=%v, want the previous writer stopped", runtime.lifecycle)
+	}
+	current, state, epoch, previous := currentDeploymentFacts(t, s, "ws-first")
+	if state != "active" || epoch != 2 || previous != reservation.DeploymentId || current == reservation.DeploymentId {
+		t.Fatalf("exclusive switch facts id=%s status=%s epoch=%d previous=%s", current, state, epoch, previous)
+	}
+	if generation, target := routeBinding(t, s, "ws-first"); generation != 2 || target != current {
+		t.Fatalf("exclusive switch route generation=%d target=%s", generation, target)
+	}
+	var stopped string
+	if err := s.DB.QueryRow(`SELECT status FROM serve.agent_runtime_instances WHERE deployment_id=$1`, reservation.DeploymentId).Scan(&stopped); err != nil {
+		t.Fatal(err)
+	}
+	if stopped != "stopped" {
+		t.Fatalf("replaced writer status=%q, want stopped", stopped)
+	}
+}
+
+// TestServeReplacementRestoresTheStoppedWriterAfterDefiniteFailure proves a
+// replacement that definitely failed is retired and the writer the switch
+// stopped is restored, with the route never having moved.
+func TestServeReplacementRestoresTheStoppedWriterAfterDefiniteFailure(t *testing.T) {
+	s, _, reservation, second, runtime := exclusiveSwitchFixture(t)
+	runtime.state = api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_FAILED
+	operation, err := switchVersion(t, s, "switch-exclusive-fails", second.GetId(), reservation.DeploymentId)
+	if err != nil {
+		t.Fatalf("definite failure returned a transport error: %v", err)
+	}
+	if operation.GetStatus() == api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
+		t.Fatalf("definitely failed replacement reported success: %v", operation)
+	}
+	if !reflect.DeepEqual(runtime.lifecycle, []string{"suspended", "absent", "running"}) {
+		t.Fatalf("failure recovery lifecycle=%v, want stop then retire then restore", runtime.lifecycle)
+	}
+	id, state, epoch, _ := currentDeploymentFacts(t, s, "ws-first")
+	if id != reservation.DeploymentId || state != "active" || epoch != 1 {
+		t.Fatalf("failed replacement changed the current application: %s %s %d", id, state, epoch)
+	}
+	if generation, target := routeBinding(t, s, "ws-first"); generation != 1 || target != reservation.DeploymentId {
+		t.Fatalf("failed replacement changed the route: generation=%d target=%s", generation, target)
+	}
+	var restored string
+	if err := s.DB.QueryRow(`SELECT status FROM serve.agent_runtime_instances WHERE deployment_id=$1`, reservation.DeploymentId).Scan(&restored); err != nil {
+		t.Fatal(err)
+	}
+	if restored != "ready" {
+		t.Fatalf("restored writer status=%q, want ready", restored)
+	}
+	var failedStatus, failedRuntime string
+	if err := s.DB.QueryRow(`SELECT d.status,r.status FROM serve.agent_deployments d JOIN serve.agent_runtime_instances r ON r.deployment_id=d.id WHERE d.execution_epoch=2 AND d.workspace_id='ws-first'`).Scan(&failedStatus, &failedRuntime); err != nil {
+		t.Fatal(err)
+	}
+	if failedStatus != "verifying" || failedRuntime != "terminated" {
+		t.Fatalf("retired replacement status=%q runtime=%q", failedStatus, failedRuntime)
+	}
+}
+
+// TestServeVersionSwitchResumesItsOwnDeliveryOnReplay proves a switch whose
+// response was lost converges on its original delivery instead of allocating a
+// second one, and that every delivery keeps the frozen command a later stop,
+// reload or replacement resumes from.
+func TestServeVersionSwitchResumesItsOwnDeliveryOnReplay(t *testing.T) {
+	s, _, reservation, second, _ := exclusiveSwitchFixture(t)
+	first, err := switchVersion(t, s, "switch-replayed", second.GetId(), reservation.DeploymentId)
+	if err != nil {
+		t.Fatalf("switch: %v", err)
+	}
+	replayed, err := switchVersion(t, s, "switch-replayed", second.GetId(), reservation.DeploymentId)
+	if err != nil {
+		t.Fatalf("replayed switch: %v", err)
+	}
+	if replayed.GetOperationId() != first.GetOperationId() || replayed.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
+		t.Fatalf("replay=%v first=%v", replayed, first)
+	}
+	var deliveries int
+	if err := s.DB.QueryRow(`SELECT count(*) FROM serve.agent_deployments WHERE workspace_id='ws-first'`).Scan(&deliveries); err != nil {
+		t.Fatal(err)
+	}
+	if deliveries != 2 {
+		t.Fatalf("replay allocated %d deliveries, want the original two", deliveries)
+	}
+	var starts int
+	if err := s.DB.QueryRow(`SELECT count(*) FROM serve.agent_runtime_actions WHERE action='start'`).Scan(&starts); err != nil {
+		t.Fatal(err)
+	}
+	if starts != 2 {
+		t.Fatalf("recorded %d start commands, want one per delivery", starts)
+	}
+}
+
+// TestServeReplayedSwitchRestoresTheWriterItStopped proves a switch that took the
+// Workspace's only writer away and then lost its result still restores that writer
+// when the caller replays it and the replacement turns out to have failed. The
+// stop is recovered from the record the switch itself committed, not re-derived
+// from whichever application the Workspace happens to serve.
+func TestServeReplayedSwitchRestoresTheWriterItStopped(t *testing.T) {
+	s, _, reservation, second, runtime := exclusiveSwitchFixture(t)
+	runtime.observeErr = true
+	if _, err := switchVersion(t, s, "switch-replayed-failure", second.GetId(), reservation.DeploymentId); err == nil {
+		t.Fatal("an unknown replacement outcome was reported as a result")
+	}
+	runtime.observeErr = false
+	runtime.state = api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_FAILED
+	operation, err := switchVersion(t, s, "switch-replayed-failure", second.GetId(), reservation.DeploymentId)
+	if err != nil {
+		t.Fatalf("replayed switch: %v", err)
+	}
+	if operation.GetStatus() == api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
+		t.Fatalf("replayed failed switch reported success: %v", operation)
+	}
+	if !reflect.DeepEqual(runtime.lifecycle, []string{"suspended", "absent", "running"}) {
+		t.Fatalf("replayed failure recovery lifecycle=%v, want stop then retire then restore", runtime.lifecycle)
+	}
+	id, state, epoch, _ := currentDeploymentFacts(t, s, "ws-first")
+	if id != reservation.DeploymentId || state != "active" || epoch != 1 {
+		t.Fatalf("replayed failed switch changed the current application: %s %s %d", id, state, epoch)
+	}
+	var restored string
+	if err := s.DB.QueryRow(`SELECT status FROM serve.agent_runtime_instances WHERE deployment_id=$1`, reservation.DeploymentId).Scan(&restored); err != nil {
+		t.Fatal(err)
+	}
+	if restored != "ready" {
+		t.Fatalf("replayed switch left the restored writer %q, want ready", restored)
+	}
+}
+
+// servePeerContext addresses Serve's own execution adapter surface, which only
+// Serve's own process is admitted to call.
+func servePeerContext() context.Context {
+	return ownerservice.WithPeerOwner(context.Background(), owneridentity.Serve.Service())
+}
+
+// TestServeRuntimeLifecycleActsOnThePersistedCommand proves Stop, Reload and the
+// credential read resolve the exact original runtime of a delivered application
+// and report only states Serve actually committed. Before this change the frozen
+// command carried no call context, so every one of these three actions panicked
+// on the peer readback.
+func TestServeRuntimeLifecycleActsOnThePersistedCommand(t *testing.T) {
+	s, r, _ := reservationFixture(t)
+	ctx := workspaceContext()
+	s.Resources = &resourcesForServe{confirmed: true, workspace: "ws-first", dataAttachment: "attachment-original"}
+	runtime := &runtimeForServe{}
+	s.Runtime = runtime
+	reservation, err := s.Reserve(ctx, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Deploy(ctx, deployReserved(r, reservation)); err != nil {
+		t.Fatalf("first delivery: %v", err)
+	}
+	peer := servePeerContext()
+	// Stop applies the suspended state and completes only because the provider
+	// confirmed it; the operation is never reported as succeeded on a guess.
+	stop, err := s.StopRuntime(peer, &api.RuntimeStopCommand{RuntimeInstanceId: reservation.RuntimeInstanceId, DeploymentId: reservation.DeploymentId})
+	if err != nil {
+		t.Fatalf("stop: %v", err)
+	}
+	if stop.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED || stop.GetStage() != api.OperationStageEnum_OPERATION_STAGE_ENUM_RUNTIME || stop.GetOperationId() == "" || stop.GetOwner() != api.OperationOwnerEnum_OPERATION_OWNER_ENUM_SERVE {
+		t.Fatalf("stop operation=%v", stop)
+	}
+	resumed, err := s.StopRuntime(peer, &api.RuntimeStopCommand{RuntimeInstanceId: reservation.RuntimeInstanceId, DeploymentId: reservation.DeploymentId})
+	if err != nil {
+		t.Fatalf("resumed stop: %v", err)
+	}
+	if resumed.GetOperationId() != stop.GetOperationId() {
+		t.Fatalf("resumed stop allocated a second operation: %v", resumed)
+	}
+	// A reload records the request but never writes the requested version as the
+	// applied one.
+	reload, err := s.ReloadRuntime(peer, &api.RuntimeReloadCommand{RuntimeInstanceId: reservation.RuntimeInstanceId, ExpectedAppliedVersion: 0, TargetVersion: 2, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-2"}}})
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if reload.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_AWAITING_CONFIRMATION || reload.GetStage() != api.OperationStageEnum_OPERATION_STAGE_ENUM_RUNTIME {
+		t.Fatalf("reload operation=%v", reload)
+	}
+	var applied int64
+	if err := s.DB.QueryRow(`SELECT applied_model_configuration_version FROM serve.agent_runtime_instances WHERE id=$1`, reservation.RuntimeInstanceId).Scan(&applied); err != nil {
+		t.Fatal(err)
+	}
+	if applied != 0 {
+		t.Fatalf("requested model version was recorded as applied: %d", applied)
+	}
+	credentials, err := s.ReadApplicationCredentials(peer, &api.ReadApplicationCredentialsRequest{WorkspaceId: "ws-first", RuntimeInstanceId: reservation.RuntimeInstanceId, DeploymentId: reservation.DeploymentId})
+	if err != nil {
+		t.Fatalf("credentials: %v", err)
+	}
+	if credentials.GetUsername() != "admin" || credentials.GetPassword() != "issued-once" || credentials.GetWorkspaceId() != "ws-first" {
+		t.Fatalf("credentials=%v", credentials)
+	}
+	if !reflect.DeepEqual(runtime.lifecycle, []string{"suspended"}) {
+		t.Fatalf("lifecycle=%v, want the single stop this test issued", runtime.lifecycle)
 	}
 }

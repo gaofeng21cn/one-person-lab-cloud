@@ -71,8 +71,17 @@ func reservationBytes(r *api.RuntimeReservationCommand) []byte {
 	clean.Context = nil
 	return wire(clean)
 }
+
+// nextOwnerCall derives the call context of an owner-to-owner request. The peer's
+// identity comes from the authenticated transport, so the caller's own
+// authorization context is never forwarded. A frozen command persisted for a
+// lifecycle action carries no call context by design, and the derived context is
+// therefore an empty one rather than a panic.
 func nextOwnerCall(c *api.CallContext) *api.CallContext {
-	v := proto.Clone(c).(*api.CallContext)
+	v := &api.CallContext{}
+	if c != nil {
+		v = proto.Clone(c).(*api.CallContext)
+	}
 	v.AuthorizationContextId = ""
 	return v
 }
@@ -374,32 +383,45 @@ func (s *Service) acceptDeploy(ctx context.Context, r *api.RuntimeDeployCommand)
 	if err = s.authorize(ctx, r.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME, r.WorkspaceId); err != nil {
 		return err
 	}
+	if err = recordStartActionTx(ctx, tx, r); err != nil {
+		return err
+	}
+	return dbError(tx.Commit())
+}
+
+// recordStartActionTx persists the frozen start command before any provider call,
+// so every admitted delivery has exactly one original command that a later stop,
+// reload, credential read or replacement resumes from. The command identity is
+// deterministic, so a replay of the same delivery finds its own row instead of
+// writing a second one, and a replay that presents different input is refused
+// rather than silently re-targeting the provider call.
+//
+// It is shared by the Workspace-driven first delivery and Serve's own
+// replacement, so a switched-to deployment is as recoverable as the first one.
+func recordStartActionTx(ctx context.Context, tx *sql.Tx, r *api.RuntimeDeployCommand) error {
 	key := stableID("start_", r.DeploymentId)
 	var prior []byte
-	err = tx.QueryRowContext(ctx, `SELECT input_snapshot FROM serve.agent_runtime_actions WHERE command_id=$1`, key).Scan(&prior)
-	input := deployBytes(r)
+	err := tx.QueryRowContext(ctx, `SELECT input_snapshot FROM serve.agent_runtime_actions WHERE command_id=$1`, key).Scan(&prior)
 	if err == nil {
 		var old api.RuntimeDeployCommand
-		if protojson.Unmarshal(prior, &old) != nil || !proto.Equal(&old, func() *api.RuntimeDeployCommand {
-			v := proto.Clone(r).(*api.RuntimeDeployCommand)
-			v.Context = nil
-			return v
-		}()) {
+		expected := proto.Clone(r).(*api.RuntimeDeployCommand)
+		expected.Context = nil
+		if protojson.Unmarshal(prior, &old) != nil || !proto.Equal(&old, expected) {
 			return status.Error(codes.AlreadyExists, "deployment execution input differs from its original command")
 		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return dbError(err)
 	} else {
-		_, err = tx.ExecContext(ctx, `INSERT INTO serve.agent_runtime_actions(id,runtime_instance_id,command_id,action,expected_deployment_id,input_snapshot,observation_result) VALUES($1,$2,$1,'start',$3,$4,'unknown')`, key, r.RuntimeInstanceId, r.DeploymentId, input)
-		if err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO serve.agent_runtime_actions(id,runtime_instance_id,command_id,action,expected_deployment_id,input_snapshot,observation_result) VALUES($1,$2,$1,'start',$3,$4,'unknown')`, key, r.RuntimeInstanceId, r.DeploymentId, deployBytes(r)); err != nil {
 			return dbError(err)
 		}
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_deployments SET status=CASE WHEN status='active' THEN status ELSE 'deploying' END,updated_at=now() WHERE id=$1`, r.DeploymentId)
-	if err != nil {
+	// A delivery that is already the current application keeps its status; every
+	// other admitted delivery is executing and is recorded as deploying.
+	if _, err = tx.ExecContext(ctx, `UPDATE serve.agent_deployments SET status=CASE WHEN status='active' THEN status ELSE 'deploying' END,updated_at=now() WHERE id=$1`, r.DeploymentId); err != nil {
 		return dbError(err)
 	}
-	return dbError(tx.Commit())
+	return nil
 }
 func (s *Service) finishFirstDelivery(ctx context.Context, tx *sql.Tx, r *api.RuntimeDeployCommand, o RuntimeObservation) error {
 	var err error

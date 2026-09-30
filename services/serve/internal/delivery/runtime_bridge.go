@@ -12,6 +12,10 @@ package delivery
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"strconv"
 	"strings"
 
 	"google.golang.org/grpc/codes"
@@ -71,10 +75,13 @@ func (s *Service) StopRuntime(ctx context.Context, command *api.RuntimeStopComma
 	if err != nil {
 		return nil, err
 	}
-	if err := s.Runtime.Lifecycle(ctx, deploy.command, binding, "suspended"); err != nil {
+	if err := s.applyRecordedLifecycle(ctx, deploy, "stop", map[string]string{"desired": "suspended"}, func() error {
+		return s.Runtime.Lifecycle(ctx, deploy.command, binding, "suspended")
+	}); err != nil {
 		return nil, err
 	}
-	return s.runtimeLifecycleOperation(ctx, deploy, "runtime_stop", "suspending"), nil
+	// The provider confirmed the suspended state, so the retire action completes.
+	return s.runtimeLifecycleOperation(ctx, deploy, "runtime_stop", "runtime", "succeeded")
 }
 
 // ReloadRuntime applies a new model configuration to the exact persisted runtime.
@@ -105,14 +112,16 @@ func (s *Service) ReloadRuntime(ctx context.Context, command *api.RuntimeReloadC
 	if err != nil {
 		return nil, err
 	}
-	if err := s.Runtime.Reload(ctx, reload, binding); err != nil {
+	if err := s.applyRecordedLifecycle(ctx, deploy, "reload", map[string]string{"desired": "running", "targetVersion": strconv.FormatInt(command.GetTargetVersion(), 10), "selections": reloadSelectionDigest(reload.GetModelSelections())}, func() error {
+		return s.Runtime.Reload(ctx, reload, binding)
+	}); err != nil {
 		return nil, err
 	}
 	// The requested version is NOT the applied version until the runtime confirms
 	// it. Until a provider readback carries the applied model configuration, the
-	// operation stays awaiting confirmation and the stored applied version is
+	// operation waits for confirmation and the stored applied version is
 	// unchanged, so a client can never read a desired version as applied.
-	return s.runtimeLifecycleOperation(ctx, deploy, "runtime_reload", "awaiting_confirmation"), nil
+	return s.runtimeLifecycleOperation(ctx, deploy, "runtime_reload", "runtime", "awaiting_confirmation")
 }
 
 // ReadApplicationCredentials returns the platform-issued WebUI credential for the
@@ -212,4 +221,13 @@ func runtimeObservationReadback(command *api.RuntimeDeployCommand, observation R
 		readback.ReadinessReceiptId = observation.ReadinessEvidenceRef
 	}
 	return readback
+}
+
+// reloadSelectionDigest identifies the exact model selections one reload applies,
+// so a retry of the same action is recognized while a retry that changes the
+// selections is refused.
+func reloadSelectionDigest(selections []*api.ModelSelection) string {
+	raw, _ := json.Marshal(selections)
+	sum := sha256.Sum256(raw)
+	return "sha256:" + hex.EncodeToString(sum[:])
 }
