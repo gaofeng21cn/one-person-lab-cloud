@@ -24,12 +24,21 @@ type capabilityForServe struct {
 	api.CapabilityProductServiceClient
 	api.CapabilityCoordinationClient
 	version         *api.CapabilityVersion
+	versions        map[string]*api.CapabilityVersion
 	service         *delivery.Service
 	bindFail        bool
 	acquired, bound int
 }
 
-func (f *capabilityForServe) GetCapabilityVersion(context.Context, *api.GetCapabilityVersionRpcRequest, ...grpc.CallOption) (*api.CapabilityVersion, error) {
+func (f *capabilityForServe) GetCapabilityVersion(_ context.Context, r *api.GetCapabilityVersionRpcRequest, _ ...grpc.CallOption) (*api.CapabilityVersion, error) {
+	// versions carries every admitted version the fixture publishes, so a switch
+	// can target a different version than the first delivery used.
+	if version, ok := f.versions[r.GetCapabilityVersionId()]; ok {
+		return proto.Clone(version).(*api.CapabilityVersion), nil
+	}
+	if r.GetCapabilityVersionId() != f.version.GetId() {
+		return nil, status.Errorf(codes.NotFound, "no capability version %s", r.GetCapabilityVersionId())
+	}
 	return proto.Clone(f.version).(*api.CapabilityVersion), nil
 }
 func (f *capabilityForServe) AcquireReference(_ context.Context, r *api.ReferenceClaimRequest, _ ...grpc.CallOption) (*api.ReferenceClaim, error) {

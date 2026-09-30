@@ -415,6 +415,16 @@ func (s *Service) finishFirstDelivery(ctx context.Context, tx *sql.Tx, r *api.Ru
 	if o.State == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY && recordedStatus == "ready" {
 		state = "active"
 	}
+	// The Workspace has at most one current application, and Serve's own store
+	// enforces exactly that. A replacement becomes current only by retiring the
+	// delivery it replaced in this same transaction, so the invariant holds at
+	// every statement boundary and the replaced delivery stays readable as
+	// history instead of being deleted.
+	if state == "active" {
+		if _, err = tx.ExecContext(ctx, `UPDATE serve.agent_deployments SET status='superseded',updated_at=now() WHERE id=(SELECT previous_deployment_id FROM serve.agent_deployments WHERE id=$1) AND workspace_id=$2 AND status IN ('active','rolled_back')`, r.DeploymentId, r.WorkspaceId); err != nil {
+			return dbError(err)
+		}
+	}
 	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_deployments SET status=$2,verification_evidence_ref=NULLIF($3,''),activated_at=CASE WHEN $2='active' THEN COALESCE(activated_at,now()) ELSE activated_at END,updated_at=now() WHERE id=$1`, r.DeploymentId, state, o.ReadinessEvidenceRef)
 	if err != nil {
 		return dbError(err)
@@ -586,32 +596,63 @@ func (s *Service) reconcileRuntime(ctx context.Context, command *api.RuntimeDepl
 	if err = s.authorize(ctx, command.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME, command.WorkspaceId); err != nil {
 		return nil, err
 	}
-	resources, err := s.Resources.ReadResources(ctx, &api.ResourceReadbackRequest{Context: nextOwnerCall(command.Context), ResourceSetId: command.ResourceSetId})
-	if err != nil {
-		return nil, err
-	}
-	binding, err := confirmedBinding(command, resources)
-	if err != nil {
-		return nil, err
-	}
-	// Start's acknowledgement cannot prove readiness; only the separate read does.
-	if start {
-		if _, err = s.Runtime.Start(ctx, command, binding); err != nil {
-			return nil, err
-		}
-	}
-	observation, err := s.Runtime.Observe(ctx, command, binding)
-	if err != nil {
-		return nil, err
-	}
-	if _, err = recordDeploymentObservation(ctx, tx, command, observation); err != nil {
-		return nil, err
-	}
-	if err = s.finishFirstDelivery(ctx, tx, command, observation); err != nil {
+	if err = s.observeAndFinishDeliveryTx(ctx, tx, command, start); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(); err != nil {
 		return nil, dbError(err)
 	}
 	return s.runtimeReadback(ctx, command.RuntimeInstanceId, command.DeploymentId)
+}
+
+// observeAndFinishDelivery observes the exact command through the execution
+// adapter and commits the observation in its own transaction. It is the
+// un-authorized half of reconcileRuntime, shared with Serve's own replacement
+// product APIs, which authorize the switch they perform before calling it.
+func (s *Service) observeAndFinishDelivery(ctx context.Context, command *api.RuntimeDeployCommand, start bool) (*api.RuntimeReadback, error) {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, dbError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err = lockWorkspace(ctx, tx, command.WorkspaceId); err != nil {
+		return nil, dbError(err)
+	}
+	if err = validateReserved(ctx, tx, command); err != nil {
+		return nil, err
+	}
+	if err = s.observeAndFinishDeliveryTx(ctx, tx, command, start); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, dbError(err)
+	}
+	return s.runtimeReadback(ctx, command.RuntimeInstanceId, command.DeploymentId)
+}
+
+// observeAndFinishDeliveryTx executes and observes the command, records the
+// observation and finishes the delivery step inside the caller's transaction.
+func (s *Service) observeAndFinishDeliveryTx(ctx context.Context, tx *sql.Tx, command *api.RuntimeDeployCommand, start bool) error {
+	resources, err := s.Resources.ReadResources(ctx, &api.ResourceReadbackRequest{Context: nextOwnerCall(command.Context), ResourceSetId: command.ResourceSetId})
+	if err != nil {
+		return dbError(err)
+	}
+	binding, err := confirmedBinding(command, resources)
+	if err != nil {
+		return err
+	}
+	// Start's acknowledgement cannot prove readiness; only the separate read does.
+	if start {
+		if _, err = s.Runtime.Start(ctx, command, binding); err != nil {
+			return err
+		}
+	}
+	observation, err := s.Runtime.Observe(ctx, command, binding)
+	if err != nil {
+		return err
+	}
+	if _, err = recordDeploymentObservation(ctx, tx, command, observation); err != nil {
+		return err
+	}
+	return s.finishFirstDelivery(ctx, tx, command, observation)
 }
