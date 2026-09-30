@@ -7,7 +7,7 @@ import (
 	"errors"
 
 	contracts "opl-cloud/packages/contracts/go"
-	"opl-cloud/services/fabric/internal/protectedresource"
+	"opl-cloud/services/internal/protectedresource"
 )
 
 func workspaceApplicationComponentConfigInputs(input WorkspaceApplicationRuntimeInput, component contracts.WorkspaceApplicationRuntimeComponentState) []contracts.WorkspaceApplicationConfigInput {

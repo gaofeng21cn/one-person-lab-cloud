@@ -24,18 +24,39 @@ import (
 	"opl-cloud/services/internal/ownerstore"
 )
 
-// RuntimeAdapter executes the already admitted descriptor through the existing
-// provider port. Resource bindings are Fabric readbacks, never caller input.
+// ExecutionTarget is the exact confirmed execution fact a delivery step runs
+// against: the resource binding identity plus, when the resources owner publishes
+// one, the infrastructure placement the application workload is scheduled onto.
+// Both come from the same Fabric owner readback, so Serve never composes a
+// placement of its own.
+//
+// The requirement to refuse an unconfirmed placement belongs to the executor that
+// schedules the workload, not to this provider-neutral target: a cluster executor
+// refuses a workload it cannot place onto the confirmed node, prepaid package and
+// storage claim, while a boundary whose provider resolves its own placement needs
+// none. Checking it here would refuse every provider whose resources are not
+// scheduled onto a node, a package and a claim.
+type ExecutionTarget struct {
+	Binding   *api.ResourceExecutionBinding
+	Placement *api.ApplicationExecutionPlacement
+}
+
+// RuntimeAdapter executes the already admitted descriptor through Serve's own
+// execution boundary. Resource bindings and their placement are Fabric readbacks,
+// never caller input.
 type RuntimeAdapter interface {
-	Start(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (RuntimeObservation, error)
-	Observe(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (RuntimeObservation, error)
+	Start(context.Context, *api.RuntimeDeployCommand, ExecutionTarget) (RuntimeObservation, error)
+	Observe(context.Context, *api.RuntimeDeployCommand, ExecutionTarget) (RuntimeObservation, error)
 	// Lifecycle applies a desired lifecycle state (running, suspended, absent) to
 	// the exact reserved runtime. It reports only what the provider confirmed.
-	Lifecycle(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding, string) error
-	// Reload applies the command's model configuration to the exact runtime.
-	Reload(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) error
+	Lifecycle(context.Context, *api.RuntimeDeployCommand, ExecutionTarget, string) error
+	// Reload applies the command's model configuration through the frozen
+	// publisher interface and reports the version the application itself read back.
+	// A boundary that cannot execute the declared interface refuses instead of
+	// returning a version it never observed.
+	Reload(context.Context, *api.RuntimeDeployCommand, ExecutionTarget) (int64, error)
 	// Credentials reads the platform-issued WebUI credential for the exact runtime.
-	Credentials(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (*api.WorkspaceApplicationCredentials, error)
+	Credentials(context.Context, *api.RuntimeDeployCommand, ExecutionTarget) (*api.WorkspaceApplicationCredentials, error)
 }
 
 type reservationInput struct {
@@ -71,8 +92,17 @@ func reservationBytes(r *api.RuntimeReservationCommand) []byte {
 	clean.Context = nil
 	return wire(clean)
 }
+
+// nextOwnerCall derives the call context of an owner-to-owner request. The peer's
+// identity comes from the authenticated transport, so the caller's own
+// authorization context is never forwarded. A frozen command persisted for a
+// lifecycle action carries no call context by design, and the derived context is
+// therefore an empty one rather than a panic.
 func nextOwnerCall(c *api.CallContext) *api.CallContext {
-	v := proto.Clone(c).(*api.CallContext)
+	v := &api.CallContext{}
+	if c != nil {
+		v = proto.Clone(c).(*api.CallContext)
+	}
 	v.AuthorizationContextId = ""
 	return v
 }
@@ -374,32 +404,45 @@ func (s *Service) acceptDeploy(ctx context.Context, r *api.RuntimeDeployCommand)
 	if err = s.authorize(ctx, r.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME, r.WorkspaceId); err != nil {
 		return err
 	}
+	if err = recordStartActionTx(ctx, tx, r); err != nil {
+		return err
+	}
+	return dbError(tx.Commit())
+}
+
+// recordStartActionTx persists the frozen start command before any provider call,
+// so every admitted delivery has exactly one original command that a later stop,
+// reload, credential read or replacement resumes from. The command identity is
+// deterministic, so a replay of the same delivery finds its own row instead of
+// writing a second one, and a replay that presents different input is refused
+// rather than silently re-targeting the provider call.
+//
+// It is shared by the Workspace-driven first delivery and Serve's own
+// replacement, so a switched-to deployment is as recoverable as the first one.
+func recordStartActionTx(ctx context.Context, tx *sql.Tx, r *api.RuntimeDeployCommand) error {
 	key := stableID("start_", r.DeploymentId)
 	var prior []byte
-	err = tx.QueryRowContext(ctx, `SELECT input_snapshot FROM serve.agent_runtime_actions WHERE command_id=$1`, key).Scan(&prior)
-	input := deployBytes(r)
+	err := tx.QueryRowContext(ctx, `SELECT input_snapshot FROM serve.agent_runtime_actions WHERE command_id=$1`, key).Scan(&prior)
 	if err == nil {
 		var old api.RuntimeDeployCommand
-		if protojson.Unmarshal(prior, &old) != nil || !proto.Equal(&old, func() *api.RuntimeDeployCommand {
-			v := proto.Clone(r).(*api.RuntimeDeployCommand)
-			v.Context = nil
-			return v
-		}()) {
+		expected := proto.Clone(r).(*api.RuntimeDeployCommand)
+		expected.Context = nil
+		if protojson.Unmarshal(prior, &old) != nil || !proto.Equal(&old, expected) {
 			return status.Error(codes.AlreadyExists, "deployment execution input differs from its original command")
 		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return dbError(err)
 	} else {
-		_, err = tx.ExecContext(ctx, `INSERT INTO serve.agent_runtime_actions(id,runtime_instance_id,command_id,action,expected_deployment_id,input_snapshot,observation_result) VALUES($1,$2,$1,'start',$3,$4,'unknown')`, key, r.RuntimeInstanceId, r.DeploymentId, input)
-		if err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO serve.agent_runtime_actions(id,runtime_instance_id,command_id,action,expected_deployment_id,input_snapshot,observation_result) VALUES($1,$2,$1,'start',$3,$4,'unknown')`, key, r.RuntimeInstanceId, r.DeploymentId, deployBytes(r)); err != nil {
 			return dbError(err)
 		}
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_deployments SET status=CASE WHEN status='active' THEN status ELSE 'deploying' END,updated_at=now() WHERE id=$1`, r.DeploymentId)
-	if err != nil {
+	// A delivery that is already the current application keeps its status; every
+	// other admitted delivery is executing and is recorded as deploying.
+	if _, err = tx.ExecContext(ctx, `UPDATE serve.agent_deployments SET status=CASE WHEN status='active' THEN status ELSE 'deploying' END,updated_at=now() WHERE id=$1`, r.DeploymentId); err != nil {
 		return dbError(err)
 	}
-	return dbError(tx.Commit())
+	return nil
 }
 func (s *Service) finishFirstDelivery(ctx context.Context, tx *sql.Tx, r *api.RuntimeDeployCommand, o RuntimeObservation) error {
 	var err error
@@ -415,6 +458,16 @@ func (s *Service) finishFirstDelivery(ctx context.Context, tx *sql.Tx, r *api.Ru
 	if o.State == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY && recordedStatus == "ready" {
 		state = "active"
 	}
+	// The Workspace has at most one current application, and Serve's own store
+	// enforces exactly that. A replacement becomes current only by retiring the
+	// delivery it replaced in this same transaction, so the invariant holds at
+	// every statement boundary and the replaced delivery stays readable as
+	// history instead of being deleted.
+	if state == "active" {
+		if _, err = tx.ExecContext(ctx, `UPDATE serve.agent_deployments SET status='superseded',updated_at=now() WHERE id=(SELECT previous_deployment_id FROM serve.agent_deployments WHERE id=$1) AND workspace_id=$2 AND status IN ('active','rolled_back')`, r.DeploymentId, r.WorkspaceId); err != nil {
+			return dbError(err)
+		}
+	}
 	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_deployments SET status=$2,verification_evidence_ref=NULLIF($3,''),activated_at=CASE WHEN $2='active' THEN COALESCE(activated_at,now()) ELSE activated_at END,updated_at=now() WHERE id=$1`, r.DeploymentId, state, o.ReadinessEvidenceRef)
 	if err != nil {
 		return dbError(err)
@@ -427,6 +480,13 @@ func (s *Service) finishFirstDelivery(ctx context.Context, tx *sql.Tx, r *api.Ru
 		_, err = tx.ExecContext(ctx, `UPDATE serve.operations SET status='succeeded',stage='verification',observation_result='confirmed',completed_at=COALESCE(completed_at,now()),updated_at=now() WHERE id=(SELECT operation_id FROM serve.agent_deployments WHERE id=$1)`, r.DeploymentId)
 		if err != nil {
 			return dbError(err)
+		}
+		// Readiness alone does not expose the application. The deployment becomes
+		// the Workspace's current route target in this same transaction, so the
+		// access data plane starts serving exactly the instance whose readiness
+		// was just recorded and no acknowledgement can be lost in between.
+		if err = commitDeliveryRoute(ctx, tx, r, o.ReadinessEvidenceRef); err != nil {
+			return err
 		}
 	}
 	if err = appendReadinessEvent(ctx, tx, s.Store, r, o); err != nil {
@@ -560,6 +620,20 @@ func confirmedBinding(command *api.RuntimeDeployCommand, resources *api.Resource
 	return b, nil
 }
 
+// confirmedExecutionTarget resolves the execution facts one delivery step runs
+// against from the same confirmed readback: the executable resource binding and the
+// placement the resources owner published for it. A provider that schedules no
+// workload onto a node, a prepaid package and a storage claim publishes none, and
+// the executor that schedules owns the refusal, so this confirmation never
+// substitutes or drops a fact.
+func confirmedExecutionTarget(command *api.RuntimeDeployCommand, resources *api.ResourceReadback) (ExecutionTarget, error) {
+	binding, err := confirmedBinding(command, resources)
+	if err != nil {
+		return ExecutionTarget{}, err
+	}
+	return ExecutionTarget{Binding: binding, Placement: resources.GetApplicationPlacement()}, nil
+}
+
 // reconcileRuntime serializes the complete provider observation and owner commit
 // under the same PostgreSQL workspace lock as Reserve. That lock spans service
 // processes, so a slow earlier HTTP response cannot overwrite a later observation.
@@ -579,32 +653,63 @@ func (s *Service) reconcileRuntime(ctx context.Context, command *api.RuntimeDepl
 	if err = s.authorize(ctx, command.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME, command.WorkspaceId); err != nil {
 		return nil, err
 	}
-	resources, err := s.Resources.ReadResources(ctx, &api.ResourceReadbackRequest{Context: nextOwnerCall(command.Context), ResourceSetId: command.ResourceSetId})
-	if err != nil {
-		return nil, err
-	}
-	binding, err := confirmedBinding(command, resources)
-	if err != nil {
-		return nil, err
-	}
-	// Start's acknowledgement cannot prove readiness; only the separate read does.
-	if start {
-		if _, err = s.Runtime.Start(ctx, command, binding); err != nil {
-			return nil, err
-		}
-	}
-	observation, err := s.Runtime.Observe(ctx, command, binding)
-	if err != nil {
-		return nil, err
-	}
-	if _, err = recordDeploymentObservation(ctx, tx, command, observation); err != nil {
-		return nil, err
-	}
-	if err = s.finishFirstDelivery(ctx, tx, command, observation); err != nil {
+	if err = s.observeAndFinishDeliveryTx(ctx, tx, command, start); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(); err != nil {
 		return nil, dbError(err)
 	}
 	return s.runtimeReadback(ctx, command.RuntimeInstanceId, command.DeploymentId)
+}
+
+// observeAndFinishDelivery observes the exact command through the execution
+// adapter and commits the observation in its own transaction. It is the
+// un-authorized half of reconcileRuntime, shared with Serve's own replacement
+// product APIs, which authorize the switch they perform before calling it.
+func (s *Service) observeAndFinishDelivery(ctx context.Context, command *api.RuntimeDeployCommand, start bool) (*api.RuntimeReadback, error) {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, dbError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err = lockWorkspace(ctx, tx, command.WorkspaceId); err != nil {
+		return nil, dbError(err)
+	}
+	if err = validateReserved(ctx, tx, command); err != nil {
+		return nil, err
+	}
+	if err = s.observeAndFinishDeliveryTx(ctx, tx, command, start); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, dbError(err)
+	}
+	return s.runtimeReadback(ctx, command.RuntimeInstanceId, command.DeploymentId)
+}
+
+// observeAndFinishDeliveryTx executes and observes the command, records the
+// observation and finishes the delivery step inside the caller's transaction.
+func (s *Service) observeAndFinishDeliveryTx(ctx context.Context, tx *sql.Tx, command *api.RuntimeDeployCommand, start bool) error {
+	resources, err := s.Resources.ReadResources(ctx, &api.ResourceReadbackRequest{Context: nextOwnerCall(command.Context), ResourceSetId: command.ResourceSetId})
+	if err != nil {
+		return dbError(err)
+	}
+	target, err := confirmedExecutionTarget(command, resources)
+	if err != nil {
+		return err
+	}
+	// Start's acknowledgement cannot prove readiness; only the separate read does.
+	if start {
+		if _, err = s.Runtime.Start(ctx, command, target); err != nil {
+			return err
+		}
+	}
+	observation, err := s.Runtime.Observe(ctx, command, target)
+	if err != nil {
+		return err
+	}
+	if _, err = recordDeploymentObservation(ctx, tx, command, observation); err != nil {
+		return err
+	}
+	return s.finishFirstDelivery(ctx, tx, command, observation)
 }

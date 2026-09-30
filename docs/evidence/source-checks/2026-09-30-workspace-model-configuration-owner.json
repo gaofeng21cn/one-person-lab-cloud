@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_workspace_model_configuration_owner_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T13:40:00Z",
+  "result": "the_workspace_owner_now_answers_its_own_model_configuration_read_from_its_own_confirmed_applied_version_and_serve_admits_the_workspace_as_the_coordination_caller_of_the_same_owner_local_reload_the_execution_adapter_uses_so_the_applied_version_can_only_come_from_the_runtime_s_own_readback",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 11.5 seventh pass - the Workspace model configuration owner and the Serve coordination entry point",
+  "sourceBaseSha": "f63d8e40",
+  "branch": "codex/serve-access-data-plane",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.5",
+  "milestoneM1": {
+    "objective": "Minimum real delivery of the default OPL App: the instance installs the complete Cloud owner topology, Cloud builds an exact-SHA Candidate, the instance deploys it, Serve reaches a confirmed route and URL on Tencent TKE, and a user opens the application.",
+    "stepDelivered": "The Workspace owner now has both halves of the model configuration contract it owns. Read: WorkspaceProductService.GetWorkspaceModels answers with the Workspace's own latest persisted configuration intent, the applied model configuration version it recorded only after a runtime confirmed a real reload, and the status the owning operation plus the reload observation prove, so a requested version is never presented as the applied one. Write entry: ServeAgentCoordination.ReloadModels is admitted only to the Workspace owner and reaches the same owner-local reload the execution adapter uses, so the coordination entry point and the adapter share one persisted intent, one publisher interface and one applied-version compare-and-set."
+  },
+  "necessity": {
+    "decision": "docs/spec/target/14_implementation_work_packages.md section W17 lists getWorkspaceModels and updateWorkspaceModels among the APIs this stage must deliver and names workspace.model_configurations as one of its tables, and section 11.5 requires the model configuration to be actually applied and read back while forbidding a requested modelConfigurationVersion to be written as the applied one. The Workspace owner is the writer of workspace.model_configurations and of workspace.workspaces.model_configuration_version, but neither the read nor its only durable fact existed in the current implementation.",
+    "currentProblem": "services/workspace/internal/launch implemented CreateWorkspace, ListWorkspaces, GetWorkspace, GetOperation, Resume, Run and RunOnce only, so api.UnimplementedWorkspaceProductServiceServer answered WorkspaceProductService.GetWorkspaceModels with Unimplemented even though GET /api/v2/workspaces/{workspaceId}/models and workspace.model_configurations are declared with owner workspace. services/workspace/migrations/0001_opl_workspace.sql created workspace.workspaces without model_configuration_version, so no Workspace could hold the applied version at all and the owner read of api.Workspace.modelConfigurationVersion was not selected. On the Serve side only ReloadRuntime existed, whose caller must be the Serve owner, so the Workspace owner had no admitted entry point into the one owner-local reload that already persisted the reload action and compare-and-set the applied version.",
+    "confirmedFacts": [
+      "docs/spec/target/02_database_schema_complete.md workspace.workspaces declares model_configuration_version as bigint NOT NULL DEFAULT 0 with CHECK (model_configuration_version >= 0), and docs/spec/target/contracts/schema.sql line 943 declares the same column with its check on line 955, while services/workspace/migrations/0001_opl_workspace.sql created the table without it. The column is an SSOT-declared fact of this owner, so adding it is an implementation step, not a specification change.",
+      "docs/spec/target/03_api_contract_complete.yaml declares ModelConfiguration with x-owner workspace and x-table workspace.model_configurations, requires workspaceId, version, selections, status and updatedAt, and states the status rule version=appliedVersion plus a confirmed validation is applied, a failed Operation is failed, unknown or needs_attention is needs_attention, and anything else is pending. The applied version is the Workspace's own recorded fact: docs/spec/target/02_database_schema_complete.md section 2.5 states the Runtime confirms the real reload first and the Workspace advances model_configuration_version in the same transaction, and that the requested value is never shown as the applied one.",
+      "docs/spec/target/06_data_flow_and_state_machine.md section F09 row 4 declares workspace to serve ServeAgentCoordination.ReloadModels writing serve.agent_runtime_actions, with the evidence that the target configuration version and selections were actually applied and that a saved success is not a successful reload, while row 5 keeps the observation of the applied version a read-only fact. packages/contracts/proto/internal.proto declares ReloadModels in ServeAgentCoordination at line 2462 and its generated client at packages/contracts/go/api/internal_grpc.pb.go line 6699, so no contract change was needed for either half.",
+      "docs/spec/target/06_data_flow_and_state_machine.md section 7 states that a model configuration update for both the default App and a built Agent accepts only the model fields its frozen publishing contract declares and its expectedConfigurationVersion, that Workspace validates entitlement and target authorization, persists the model selection intent and configuration version, and starts the change serially, that Serve receives that version, persists the reload action and reads the actually applied version back, and that Workspace does not copy Serve's instance state while Serve does not write a second copy of the Workspace's model intent. The read implemented here therefore reads no Serve table and derives its answer from the Workspace's own rows only."
+    ]
+  },
+  "ssotConformance": {
+    "items": [
+      {
+        "source": "docs/spec/target/14_implementation_work_packages.md#11.5",
+        "requirement": "补Secret配置、模型实际应用及读回、Stop/Reload/凭据获取和失败退役/兼容回滚。不得把请求的modelConfigurationVersion直接写成applied。",
+        "conformance": "The Workspace owner now answers the model configuration read from the applied version it recorded only after a runtime confirmed a real reload, and Serve admits the Workspace to the one owner-local reload that advances the applied version by compare-and-set on the version the application read back. No code path in this pass writes a requested version into an applied fact."
+      },
+      {
+        "source": "docs/spec/target/14_implementation_work_packages.md",
+        "requirement": "Section W17 names getWorkspaceModels and updateWorkspaceModels among its main APIs, names workspace.model_configurations among its main tables, and lists WorkspaceProductService.GetWorkspaceModels, WorkspaceProductService.UpdateWorkspaceModels and ServeAgentCoordination.ReloadModels among the internal protocols it must implement.",
+        "conformance": "WorkspaceProductService.GetWorkspaceModels and ServeAgentCoordination.ReloadModels now exist as owner implementations over workspace.model_configurations and serve.agent_runtime_actions. UpdateWorkspaceModels is deliberately not implemented in this pass; the exact blocking fact and the decision it needs are recorded under pendingSsotAlignment."
+      },
+      {
+        "source": "docs/spec/target/06_data_flow_and_state_machine.md#7-f09详情访问与配置更新",
+        "requirement": "模型配置更新对默认App和Agent都只接受其冻结发布合同声明的模型字段与expectedConfigurationVersion；Workspace校验权益/目标授权并持久化模型选择意图/配置版本，串行发起变更；Serve接收该版本，持久reload动作并通过发布者声明接口执行、读回实际applied version，随后CAS记录运行生效事实。Workspace不复制Serve实例状态，Serve不另写一份Workspace模型意图。",
+        "conformance": "GetWorkspaceModels reads only workspace.workspaces, workspace.model_configurations and workspace.operations through the owner's own store, authorizes AuthorizationActionEnum GETWORKSPACEMODELS on the Workspace resource for the tenant the row names, and reports the applied version from the Workspace's own column, so no Serve table is copied. The Serve side shares one reloadRuntime with its execution adapter instead of writing a second copy of the Workspace's model intent."
+      },
+      {
+        "source": "docs/spec/target/06_data_flow_and_state_machine.md#f09-使用模型配置与应用登录",
+        "requirement": "Row 4: workspace→serve / ServeAgentCoordination.ReloadModels, RuntimeReloadCommand → Operation, receiving owner writes serve.agent_runtime_actions, completion evidence '目标配置版本+selections实际应用；保存成功不等于reload成功'.",
+        "conformance": "ReloadModels requires the verified calling owner to be the Workspace owner before it reaches any execution boundary, then runs the same owner-local reload that records the reload action for the target version and advances the applied version only for the version the application itself reported. A save-only path cannot report success: appliedVersion <= 0, a readback version other than the requested one, or a compare-and-set that no longer matches the stored version each fail instead of being recorded."
+      },
+      {
+        "source": "docs/spec/target/02_database_schema_complete.md#workspace.workspaces",
+        "requirement": "model_configuration_version bigint NOT NULL DEFAULT 0, CHECK (model_configuration_version >= 0); the applied version is derived from this Workspace field and a requested value is never shown as applied.",
+        "conformance": "services/workspace/migrations/0002_model_configuration_version.sql adds exactly that column and check on the owner's own database with the owner's own guard, role and transaction; the owner read selects it into api.Workspace.modelConfigurationVersion and reports it as ModelConfiguration.appliedVersion."
+      },
+      {
+        "source": "docs/spec/target/02_database_schema_complete.md#workspace.model_configurations",
+        "requirement": "新配置新version；Runtime有效调用验证后事务推进Workspace.modelConfigurationVersion. Constraints: PRIMARY KEY (id), UNIQUE (workspace_id, version), CHECK (version > 0), CHECK (runtime_reload_observation IN ('confirmed','rejected','unknown')).",
+        "conformance": "The read takes the highest version row for the Workspace, decodes its typed selections through the owner's own decoder, joins the operation that carries it, and derives the status from the row's observation plus that operation's state. The applied version is read from workspace.workspaces, never advanced from the request, and a row that is not at the applied version with a confirmed observation is reported as needs_attention, failed or pending."
+      },
+      {
+        "source": "docs/spec/target/03_api_contract_complete.yaml",
+        "requirement": "ModelConfiguration is owned by workspace over workspace.model_configurations and requires workspaceId, version, selections, status and updatedAt; its status is applied when version equals appliedVersion with a confirmed validation, failed for a failed Operation, needs_attention for unknown or needs_attention, and pending otherwise.",
+        "conformance": "The implementation returns exactly those fields: workspaceId and the row's version, the row's typed selections, the operation id when a change exists, the row's updatedAt or the Workspace's updatedAt for the launch configuration, and the status derived by modelConfigurationStatus from the confirmed observation and the owning operation's state."
+      },
+      {
+        "source": "docs/architecture.md#agent-delivery-and-serve-boundary",
+        "requirement": "OPL Serve is the sole deployment/readiness/access owner for both the default OPL App and built Agents. Workspace is their entitlement/resource boundary, not a second deployment writer. BFF composes readbacks without cross-domain SQL.",
+        "conformance": "The Workspace read adds no Serve-owned deployment, readiness or access fact and performs no cross-owner query; it answers from its own database and its own recorded applied version, while the model reload remains a Serve-owned action in serve.agent_runtime_actions."
+      },
+      {
+        "source": "docs/invariants.md#application-deployment-and-data",
+        "requirement": "A Workspace binding to an application gets its own browser origin, derived from the binding identity rather than allocated, and deployment is bound to the resolved digest and platform rather than a tag.",
+        "conformance": "Untouched by this pass: no origin, binding identity or artifact reference is read or written here, and the model configuration read returns no access URL."
+      },
+      {
+        "source": "docs/invariants.md#adopted-application-delivery-invariants",
+        "requirement": "Workspace owns business identity, membership, entitlement, resource plan, quote/purchase obligations, and target authorization; it does not persist a second Agent deployment or current-selection fact. Serve is the sole writer of deployment history, current deployment, Runtime instance readiness evidence and access bindings.",
+        "conformance": "GetWorkspaceModels persists and reads no deployment or current-selection fact, and ReloadModels writes only Serve's own reload action and applied model configuration version."
+      },
+      {
+        "source": "docs/invariants.md#identity-and-secrets",
+        "requirement": "Secrets remain in their approved secret stores and authorized runtime boundaries.",
+        "conformance": "The read path decodes only typed slot and model id selections and returns no credential, Secret reference or key material; the migration adds a version column only."
+      }
+    ]
+  },
+  "acceptance": [
+    "TestServeReloadModelsAdmitsOnlyTheWorkspaceOwner proves a caller that is not the Workspace owner is refused with PermissionDenied before the execution boundary is touched, that an admitted Workspace call applies the configuration and advances the stored applied version only to the version the application read back, that an expectation other than the stored applied version fails with FailedPrecondition, and that resuming the command with the version the runtime now holds replays the same durable operation id instead of allocating a second applied fact.",
+    "TestGetWorkspaceModelsAnswersTheAppliedLaunchConfiguration proves a Workspace that never changed its configuration answers with version 0, appliedVersion 0, status applied and the accepted order's frozen model selections, and that GetWorkspace reports the same model configuration version as the model read.",
+    "TestGetWorkspaceModelsReportsAPendingChangeAsUnapplied proves a persisted change with an unknown reload observation is reported as version 1 against appliedVersion 0 with status needs_attention while the Workspace's applied version stays 0, so an unconfirmed reload is never presented as applied.",
+    "TestGetWorkspaceModelsDerivesStatusFromTheOwningOperation proves a failed owning operation reports failed, that the same change reported confirmed at the applied version reports applied at that version, and that a change still waiting on its operation reports needs_attention at the previous applied version.",
+    "TestGetWorkspaceModelsAdmitsOnlyTheOwningTenant proves a tenant other than the Workspace's own is refused with PermissionDenied, a policy denial from CloudIdentity is passed through as PermissionDenied, an unverified caller is refused with Unauthenticated, an empty workspace id is refused with InvalidArgument and an unknown Workspace is reported NotFound.",
+    "TestModelConfigurationStatusFollowsTheOwningFacts proves each branch of the documented status rule: applied only for the applied version with a confirmed observation, pending for a confirmed or rejected row that is not the applied version, needs_attention for an unknown observation or a needs_attention operation, and failed for a failed operation.",
+    "TestModelSelectionsCodecRejectsAnUnreadableRow proves the stored selections round trip through the owner's own codec and that a non-list row, an empty slot and an empty model id are each refused as DataLoss.",
+    "TestWorkspaceReadbackDoesNotInventEntitlementOrAccess proves the Workspace read carries the stored model configuration version through the same scan that carries status, readiness and capability version, and still refuses a mismatched resource readback.",
+    "TestOwnerDatabaseIsolation installs the owner's real migration entrypoint, including 0002_model_configuration_version.sql, on an isolated PostgreSQL database and proves the owner's writer role remains scoped to this owner's schema."
+  ],
+  "evidenceSources": [
+    "services/workspace/internal/launch/models.go",
+    "services/workspace/internal/launch/models_test.go",
+    "services/workspace/internal/launch/reads.go",
+    "services/workspace/internal/launch/recovery_test.go",
+    "services/workspace/migrations/0002_model_configuration_version.sql",
+    "services/serve/internal/delivery/runtime_bridge.go",
+    "services/serve/internal/delivery/replacement_postgres_test.go"
+  ],
+  "verification": [
+    {
+      "command": "go -C services/workspace build ./... && go -C services/workspace vet ./...",
+      "result": "pass",
+      "detail": "The Workspace module builds and vets clean with the model configuration read, the migration and the projection of the stored version into the Workspace read."
+    },
+    {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=... go -C services/workspace test ./... -count=1",
+      "result": "pass",
+      "detail": "The Workspace module passes on a real isolated PostgreSQL database, including the migration isolation suite that installs 0002_model_configuration_version.sql and the focused model configuration read tests."
+    },
+    {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=... go -C services/serve test ./... -count=1",
+      "result": "pass",
+      "detail": "The Serve module passes on a real isolated PostgreSQL database with the Workspace-admitted reload entry point sharing the owner-local reload."
+    },
+    {
+      "command": "npm run verify:local",
+      "result": "pass",
+      "detail": "The full local lane (product boundary, Node source tests, Console browser suite, typecheck, lint, build, every Go module compile, the database-free Go test specs and Git whitespace) reported 'Local verification passed.' on this revision."
+    },
+    {
+      "command": "npm run verify:local:full",
+      "result": "fail",
+      "detail": "The PostgreSQL lane fails on one legacy-module test unrelated to this write set: opl-cloud/services/control-plane/internal/server TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp. The same test fails identically on the pass's base SHA f63d8e40 in a clean worktree with the same PostgreSQL environment, and its own assertion output shows why: it qualifies the recovery window of a fixture whose paidThrough is 2026-08-31 against today's clock and reports renewalStatus expired_unpaid. services/control-plane is a migration-source module that this pass does not import, compile-time depend on or modify, and its sources are byte-identical to the base SHA. The failure is recorded rather than implied away, so no full-lane pass is claimed."
+    },
+    {
+      "command": "git status --short",
+      "result": "pass",
+      "detail": "The write set is exactly the seven files named under evidenceSources; services/internal/ownerservice/go.mod is unchanged."
+    }
+  ],
+  "endState": [
+    "Complete for the Cloud-owned Workspace half of the stage 11.5 model configuration item: workspace.workspaces carries the SSOT-declared model_configuration_version, WorkspaceProductService.GetWorkspaceModels answers from the Workspace owner's own rows and its own confirmed applied version, and ServeAgentCoordination.ReloadModels admits only the Workspace owner into the same owner-local reload the execution adapter uses. UpdateWorkspaceModels is not implemented, and section 11.5 is not complete; the single fact that blocks it is named below with the decision it needs."
+  ],
+  "pendingSsotAlignment": {
+    "owner": "serial integration window",
+    "note": "Items this pass deliberately did not fold in, each reported with its exact blocking fact rather than half-implemented or invented.",
+    "items": [
+      "WorkspaceProductService.UpdateWorkspaceModels cannot be implemented against the current contracts without a contract decision, because workspace.model_configurations.gateway_key_binding_id is NOT NULL in docs/spec/target/02_database_schema_complete.md#workspace.model_configurations while no current channel tells the Workspace owner which Gateway key binding a configuration version uses. services/serve/internal/delivery/secret.go mints the managed key through GatewayCoordination.CreateManagedKey inside Serve's deploy path with the deploy-time model ids, Serve's ReloadModels neither re-mints that key nor reports its binding id (RuntimeReloadCommand carries only context, runtime_instance_id, expected_applied_version, target_version and selections, and RuntimeReadback carries only credential_injection_verified), and GatewayCoordination exposes no read of a Workspace's key binding other than CreateManagedKey, which issues a new key. Because gateway.key_bindings records the per-key model allowlist that the key issuer binds externally, a model change that needs different model ids needs a new binding, so recording one would either have to be fabricated or delivered through a contract change. docs/spec/target/06_data_flow_and_state_machine.md section F08 row 6 declares workspace→gateway GatewayCoordination.CreateManagedKey, which is the same divergence already reported in docs/evidence/source-checks/2026-09-30-serve-model-configuration-apply-readback.json for the declared-SecretInput delivery channel; the two are one decision. The candidate directions are to carry a Workspace-minted RuntimeManagedKeyBinding on the reload command (packages/contracts/proto/internal.proto RuntimeReloadCommand has no such field although RuntimeDeployCommand field 17 managed_key_binding does), to have Serve mint and roll out the model-set key on reload and report the binding id back (a response field change), or to declare the column nullable and its source elsewhere. All three are contract or specification changes and none was made.",
+      "The shared-module inventory in the lower-layer documents. docs/implementation-architecture.md still names only services/internal/postgresmigrate as shared infrastructure while services/internal also holds ownerservice, ownerstore and protectedresource, each imported by at least two current services. Those documents are projections the coordination window reconciles; this pass states the current fact in code and in this receipt.",
+      "Remaining SSOT-declared columns of workspace.workspaces that this pass did not add: capability_version_id, delivery_model and their mutual-exclusion check are declared by docs/spec/target/02_database_schema_complete.md#workspace.workspaces but are absent from services/workspace/migrations. They belong to the deployment-selection slices that own those facts, so this pass added only the column its own owner read and applied-version rule requires."
+    ]
+  },
+  "notRun": [
+    "No specification file, api contract document, generated binding or proto was edited in this pass; the generated bindings already declared WorkspaceProductService.GetWorkspaceModels and ServeAgentCoordination.ReloadModels.",
+    "No Candidate image build, no workflow dispatch and no Release.",
+    "No Instance deployment, Ingress re-point, Tencent resource action or real cluster readback.",
+    "No Local-Docker qualification or livebuild first-deploy run.",
+    "No UpdateWorkspaceModels implementation and no Console or Control Plane caller migration; the application surface those callers use is unchanged.",
+    "No repair of the pre-existing services/control-plane PostgreSQL test failure, which belongs to the module it fails in and to the window that migrates it."
+  ],
+  "claimBoundary": "This receipt claims a Cloud source change: the Workspace owner answers its own model configuration read from its own confirmed applied version, carries the SSOT-declared model_configuration_version column, and Serve admits the Workspace owner into the same owner-local reload the execution adapter uses. It is proven by the Workspace and Serve module builds and vets, both Go suites on a real isolated PostgreSQL database including the owner migration isolation suite, npm run verify:local reporting 'Local verification passed.', and the unchanged write set. The PostgreSQL lane of npm run verify:local:full fails on one pre-existing, date-dependent services/control-plane test that reproduces on the base SHA and is not part of this write set; the receipt records that failure instead of claiming a full-lane pass. It claims no specification update, no Candidate image, no Instance deployment, no real application request, no UpdateWorkspaceModels implementation, no Gateway managed-key delivery for a changed model set, and no completion of section 11.5.",
+  "secrets": "none"
+}

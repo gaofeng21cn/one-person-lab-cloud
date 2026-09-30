@@ -42,6 +42,9 @@ func serveDatabase(t *testing.T, runtimeDSN string) *ownerservice.Database {
 		t.Fatalf("open serve owner database: %v", err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
+	// The process serves the Workspace application entry as part of its product
+	// surface; the test takes an ephemeral port so two suites never collide.
+	t.Setenv("OPL_SERVE_ACCESS_ADDR", "127.0.0.1:0")
 	return database
 }
 

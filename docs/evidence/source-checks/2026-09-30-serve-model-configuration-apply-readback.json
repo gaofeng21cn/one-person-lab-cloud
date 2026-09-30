@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_serve_model_configuration_apply_readback_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T12:20:00Z",
+  "result": "serve_now_executes_the_frozen_publisher_model_configuration_interface_inside_its_own_execution_boundary_it_addresses_only_the_declared_port_presents_the_delivered_value_of_the_declared_authorization_secret_input_and_records_the_applied_version_only_from_the_application_s_own_readback_so_a_requested_version_can_never_be_reported_or_persisted_as_an_applied_one",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 11.5 sixth pass - Serve applies and reads back the publisher model configuration",
+  "sourceBaseSha": "d9c4c902",
+  "branch": "codex/serve-access-data-plane",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.5",
+  "milestoneM1": {
+    "objective": "Minimum real delivery of the default OPL App: the instance installs the complete Cloud owner topology, Cloud builds an exact-SHA Candidate, the instance deploys it, Serve reaches a confirmed route and URL on Tencent TKE, and a user opens the application.",
+    "stepDelivered": "A model configuration now travels the whole Cloud-owned path: Workspace records the model intent and the expected applied version, Serve's reload resolves the publisher interface from the exact frozen Runtime Release the deployment was admitted against, persists one reload intent per target version, applies it through the declared interface on the declared port, reads the application's own applied version and selection payload back, and advances serve.agent_runtime_instances.applied_model_configuration_version by compare-and-set only for the version the application reported. A release that declares no interface, a protocol this Cloud has no wire for, a revision that declares no such port or secret input, or a runtime whose declared authorization input was not delivered is refused with a named reason instead of being answered with the requested version."
+  },
+  "necessity": {
+    "decision": "docs/spec/target/14_implementation_work_packages.md#11.5 requires the model configuration to be actually applied and read back, and states that the requested modelConfigurationVersion must not be written as the applied one. Serve owned the deployment, runtime-instance and access-binding facts of a Workspace application, but its reload only re-applied the desired running state through the lifecycle boundary, so no Cloud source could produce the applied model configuration fact that serve.agent_runtime_instances, RuntimeReadback and the F09 chain all require. This pass gives the frozen publisher interface its executor inside the process that already owns the workload.",
+    "currentProblem": "services/serve/internal/delivery/tke_adapter.go Reload called Lifecycle(ctx, c, target, \"running\") and runtime_bridge.go then recorded the operation as awaiting_confirmation, so applied_model_configuration_version could never advance: the requested version was neither applied through the declared interface nor read back from the application. The publisher contract's modelConfiguration block (protocol, portName, applyPath, readbackPath, requestFields, readbackFields, authorizationSecretInputName) is carried by the approved Runtime Release and was read by no Cloud source, so a release could declare an interface this Cloud silently ignored.",
+    "confirmedFacts": [
+      "docs/spec/target/02_database_schema_complete.md serve.agent_runtime_instances.applied_model_configuration_version is a bigint defaulting to 0 with CHECK (applied_model_configuration_version >= 0), and packages/contracts/proto/internal.proto RuntimeReadback carries applied_model_configuration_version as field 9. Both are readback facts, so advancing them from anything but the application's own answer would have written a requested version into an applied field.",
+      "docs/spec/target/contracts/publisher-contract.schema.json ModelConfigurationContract declares exactly one protocol (opl-model-config/v1), a portName that references applicationRevisionTemplate.ports, two absolute paths with no '..' segment, requestFields {version,selections}, readbackFields {appliedVersion,selections} and an authorizationSecretInputName that references the template's own SecretInputs, with the explicit note not to invent a SecretSlot or substitute the Gateway Key. The executor validates the frozen declaration against the revision before it addresses anything, so a declaration this boundary cannot execute is refused rather than approximated.",
+      "docs/spec/target/03_api_contract_complete.yaml line 10230 states that PUT applyPath submits ModelConfigurationPayload{version,selections:[{slot,modelId}]}, GET readbackPath returns ModelConfigurationReadback, repeating the same version with the same payload returns the same result and a different payload is a conflict. The executor sends exactly that payload, sorts the selection wires, and reports a conflict when the application answers the requested version with different selections.",
+      "packages/contracts/go/workspace_application_runtime.go ValidateWorkspaceApplicationRuntimeConfiguration requires a confirmed binding for every declared secret input (workspace_application_secret_binding_missing) and the shared runtime Secret is built from those bindings, so the interface's authorization value is the declared input's delivered value: the executor reads that exact value through the same bound-Secret read the injection uses, and refuses when the runtime carries no confirmed delivery for it. Deriving a platform credential for a declared input would have contradicted both the binding requirement and the contract note.",
+      "services/serve/internal/delivery/tke_adapter.go runtimeInput still refuses a revision that declares a secret input with ReasonCredentialInjectionWireMissing, because RuntimeDeployCommand carries only an opaque secret_binding_id and no Secret delivery reference for a declared input. A release whose model configuration authorizes with a declared secret input is therefore executable end to end only after that delivery exists; the interface refuses in the meantime instead of authorizing with an invented value.",
+      "docs/spec/target/02_database_schema_complete.md serve.agent_runtime_actions has UNIQUE (command_id) with observation_result constrained to confirmed/rejected/unknown, which is why the reload intent is persisted before the interface call and the action is confirmed in the same transaction that advances the applied version by compare-and-set."
+    ]
+  },
+  "ssotConformance": {
+    "items": [
+      {
+        "source": "docs/spec/target/14_implementation_work_packages.md#11.5",
+        "requirement": "补Secret配置、模型实际应用及读回、Stop/Reload/凭据获取和失败退役/兼容回滚。不得把请求的modelConfigurationVersion直接写成applied。",
+        "conformance": "Reload now applies through the declared interface and reads the applied version back; recordAppliedModelConfiguration refuses when the readback version is not the requested one and advances the stored applied version only by compare-and-set on the version the caller expected, so the requested version is never written as applied."
+      },
+      {
+        "source": "docs/spec/target/06_data_flow_and_state_machine.md#7-f09详情访问与配置更新",
+        "requirement": "Serve接收该版本，持久reload动作并通过发布者声明接口执行、读回实际applied version，随后CAS记录运行生效事实。失败保留最后确认配置，不在UI乐观显示未生效模型。",
+        "conformance": "The reload action is recorded before the call, the applied version is written only with the readback that confirmed it and the same transaction confirms the action, and a failed or unconfirmed reload leaves the stored applied version untouched."
+      },
+      {
+        "source": "docs/spec/target/06_data_flow_and_state_machine.md#f09-使用模型配置与应用登录",
+        "requirement": "workspace→serve ServeAgentCoordination.ReloadModels 的目标配置版本+selections实际应用；保存成功不等于reload成功。serve→serve ObserveRuntime 的appliedVersion和选择相同，运行状态真实；unknown显示应用中/待核实，不覆盖已确认配置。",
+        "conformance": "The reload reports the application's own applied version and the executor compares the answered selections against the applied payload; an unconfirmed or conflicting answer is refused and never replaces the last confirmed configuration."
+      },
+      {
+        "source": "docs/spec/target/contracts/publisher-contract.schema.json#/$defs/ModelConfigurationContract",
+        "requirement": "只声明一个protocol、引用revision ports的portName、两个绝对路径、requestFields/readbackFields、authorizationSecretInputName引用其SecretInputs，不另发明SecretSlot或用Gateway Key代替控制凭据。",
+        "conformance": "validateModelConfigurationContract refuses any other protocol, an undeclared port, a non-absolute or escaping path, a field list that is not the contract's own, or a secret input the revision does not declare; the destination is the Service this executor applied for that declared port, and the authorization is the declared input's delivered value."
+      },
+      {
+        "source": "docs/spec/target/03_api_contract_complete.yaml",
+        "requirement": "PUT applyPath提交ModelConfigurationPayload{version:int64 string,selections:[{slot,modelId}]}，GET readbackPath返回ModelConfigurationReadback；重复同version同payload返回同结果，异payload冲突；不能借此写应用任意JSON。",
+        "conformance": "The request body carries only the decimal version string and the slot/modelId wires, the readback body is decoded into appliedVersion plus selections, and the only accepted values are the requested version with the requested selections."
+      },
+      {
+        "source": "docs/spec/target/02_database_schema_complete.md#serve.agent_runtime_instances",
+        "requirement": "applied_model_configuration_version 是运行生效事实，默认0，CHECK >= 0。",
+        "conformance": "The column advances only to the version the application read back, through UPDATE ... WHERE id=$1 AND applied_model_configuration_version=$2, so a mismatch leaves it unchanged and a concurrency loss is reported rather than overwritten."
+      },
+      {
+        "source": "docs/architecture.md#agent-delivery-and-serve-boundary",
+        "requirement": "Serve is the sole deployment/readiness/access owner for both the default OPL App and built Agents; Serve's TKE adapter applies the application workload, observes its health and owns application route bindings/fencing.",
+        "conformance": "The interface is executed inside Serve's own TKE executor against its own applied Service and it resolves the frozen interface from Serve's own deployment row and the approved Runtime Release, not from a caller."
+      },
+      {
+        "source": "docs/invariants.md#identity-and-secrets",
+        "requirement": "Credentials remain in their approved secret stores and authorized runtime boundaries; a platform credential is not invented where the application declares none.",
+        "conformance": "The interface authorizes with the value of the declared secret input as delivered by the runtime's confirmed binding and Cloud persists and derives nothing; a runtime without that confirmed delivery is refused."
+      },
+      {
+        "source": "docs/invariants.md#adopted-application-delivery-invariants",
+        "requirement": "Configuration and Secret rotation advance a confirmed version through the same Workspace operation and activation rules; the current binding cannot silently claim an old Secret version.",
+        "conformance": "A reload is one durable action keyed by the target version, its result is the version the application confirmed, and an unknown result leaves the last confirmed configuration and never claims the new version."
+      }
+    ]
+  },
+  "acceptance": [
+    "TestModelConfigurationApplyReadsTheDeclaredVersionBack proves the apply addresses http://<applied main Service>:<declared port><applyPath>, presents the declared secret input's delivered value as its bearer, sends exactly {version, selections:[{slot,modelId}]} with the selection wires ordered by slot, performs the declared GET readback with no body, and returns the version the application reported.",
+    "TestModelConfigurationApplyRefusesAnUnreportedVersion, TestModelConfigurationApplyRefusesAConflictingSelectionPayload and TestModelConfigurationApplyRefusesAnApplicationThatRefusedTheApply prove the requested version is never returned: a different applied version, an empty version, an unparseable body, the requested version with other selections, an absent declared selections field, or a refused apply all leave the configuration unconfirmed and stop before a readback that could be mistaken for success.",
+    "TestModelConfigurationApplyRefusesAnUnexecutableContract proves an unknown protocol, an undeclared port, a relative or escaping path, a field list the contract does not define, an authorization that names no declared secret input, and a non-positive target version are all refused with nothing addressed.",
+    "TestModelConfigurationApplyRefusesAnUndeliveredAuthorization proves a runtime that carries no confirmed binding for the declared authorization input, or whose confirmed Secret is absent from the namespace, is refused instead of being authorized with an invented value.",
+    "TestServeResolvesTheModelConfigurationFromTheFrozenRelease and TestServeResolvesNoModelConfigurationForAnUnknownDeployment prove the interface is resolved on Serve's real isolated PostgreSQL database from serve.agent_deployments plus the approved Runtime Release (the default App's own runtime_version_id, and an Agent's CapabilityVersion naming it), that a release declaring no interface leaves the capability absent, and that an unresolvable source is refused rather than served.",
+    "TestAgentExecutionReloadCarriesTheFrozenModelConfiguration, TestAgentExecutionRefusesAnUndeclaredModelConfiguration and TestAgentExecutionRefusesAnUnresolvableModelConfiguration prove the reload executes the frozen interface with the command's target version and selections, that a release declaring none is refused with model_configuration_unavailable and never reaches an executor, and that a process which cannot resolve the interface answers Unavailable.",
+    "TestServeRuntimeLifecycleActsOnThePersistedCommand proves on Serve's real isolated database that the applied version advances only for the version the application reported, that an unconfirmed readback leaves it unchanged, and that a caller whose expected applied version does not match the stored one is refused before the execution boundary is called."
+  ],
+  "evidenceSources": [
+    "services/serve/internal/tkeapply/modelconfiguration.go",
+    "services/serve/internal/tkeapply/modelconfiguration_test.go",
+    "services/serve/internal/delivery/model_configuration.go",
+    "services/serve/internal/delivery/model_configuration_test.go",
+    "services/serve/internal/delivery/tke_adapter.go",
+    "services/serve/internal/delivery/runtime_bridge.go",
+    "services/serve/internal/delivery/runtime_lifecycle.go",
+    "services/serve/internal/delivery/write.go",
+    "services/serve/internal/delivery/execution.go",
+    "services/serve/internal/delivery/execution_bridge.go",
+    "services/serve/internal/delivery/replacement_postgres_test.go",
+    "services/serve/internal/delivery/write_postgres_test.go",
+    "services/serve/internal/tkeapply/executor.go"
+  ],
+  "verification": [
+    {
+      "command": "go -C services/serve build ./... && go -C services/serve vet ./...",
+      "result": "pass",
+      "detail": "The Serve module builds and vets clean with the model configuration executor, the reload rewrite and the adapters."
+    },
+    {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=... go -C services/serve test ./... -count=1",
+      "result": "pass",
+      "detail": "internal/delivery, internal/tkeapply and migrations pass against a real PostgreSQL server, including the resolution, reload and compare-and-set suites."
+    },
+    {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=... go -C services/fabric test ./... -count=1",
+      "result": "pass",
+      "detail": "Fabric is unchanged by this pass and its suites still pass on this revision."
+    },
+    {
+      "command": "npm run verify:local",
+      "result": "pass",
+      "detail": "Reported 'Local verification passed' on this revision (product boundary, Node source tests, Console browser suite, typecheck, lint, build, every Go module compile and database-free test, Git whitespace)."
+    }
+  ],
+  "endState": [
+    "Complete for the Cloud-owned apply/readback half of the section 11.5 model configuration item: Serve resolves the frozen publisher interface from the exact release the deployment was admitted against, refuses any declaration it cannot execute, addresses only the declared port of the Service it applied, authorizes with the declared secret input's delivered value, persists one reload intent per target version, and advances the stored applied model configuration version only by the compare-and-set the application's own readback confirmed. A caller-visible reload that the application did not confirm stays unconfirmed and never replaces the last confirmed configuration. The declared-SecretInput delivery channel (RuntimeDeployCommand carries an opaque secret_binding_id and no Secret delivery reference) and the Console/Control Plane caller migration remain, and they are named below; section 11.5 is not complete."
+  ],
+  "pendingSsotAlignment": {
+    "owner": "serial integration window",
+    "note": "Items this pass deliberately did not fold in, each reported with its exact write set rather than half-migrated.",
+    "items": [
+      "The declared-SecretInput delivery channel. RuntimeDeployCommand carries an opaque secret_binding_id and the runtime input needs a Secret reference, version and key for every declared input; services/serve/internal/delivery/secret.go resolves only the Gateway managed key, and runtimeInput refuses a revision that declares a secret input with ReasonCredentialInjectionWireMissing. A release whose model configuration authorizes with a declared secret input therefore cannot be executed end to end yet. That resolution crosses the Secret binding owner, so this pass refuses (model_configuration_unsupported through the executor, and the existing named refusal before it) instead of inventing a value or a Secret.",
+      "The shared-module inventory in the lower-layer documents. docs/implementation-architecture.md (line 180 on origin/main after PR #707) still names only services/internal/postgresmigrate as shared infrastructure, while services/internal now also holds ownerservice, ownerstore and protectedresource, each imported by at least two current services. Those documents are projections the coordination window reconciles; this pass states the current fact in code and in this receipt.",
+      "Anchor drift in earlier receipts of this branch. docs/evidence/source-checks/2026-09-30-serve-{owns-tke-application-execution,route-revision-identity,access-data-plane}.json cite anchors that do not exist in the current SSOT files (docs/decisions.md#workspace-access-routing-owner, docs/architecture.md#cross-service-coordination-and-data-ownership, docs/invariants.md#agent-delivery). This receipt cites only anchors that exist today (docs/architecture.md#agent-delivery-and-serve-boundary, docs/invariants.md#application-deployment-and-data, docs/invariants.md#adopted-application-delivery-invariants, docs/invariants.md#identity-and-secrets). Whether the earlier receipts are corrected is the coordination window's decision; they are evidence projections, not SSOT."
+    ]
+  },
+  "notRun": [
+    "No specification file, api contract document, generated binding, proto or migration was edited in this pass.",
+    "No Candidate image build, no workflow dispatch and no Release.",
+    "No Instance deployment, Ingress re-point, Tencent resource action or real cluster readback; the executor's tests drive a recording HTTP boundary and an in-memory cluster fixture, and no kubectl invocation was executed here.",
+    "No Local-Docker qualification or livebuild first-deploy run.",
+    "No Console or Control Plane caller migration; the application surface those callers use is unchanged."
+  ],
+  "claimBoundary": "This receipt claims a Cloud source change: Serve executes the frozen publisher model configuration interface inside its own execution boundary, records only the applied version the application itself read back, and refuses every declaration, delivery or answer it cannot prove. It is proven by the Serve build and vet, the Serve Go suites on a real isolated PostgreSQL database plus the record-answering boundary fixture, the unchanged Fabric suites, and npm run verify:local on this revision. It claims no specification update, no Candidate image, no Instance deployment, no real application request, no declared-SecretInput delivery channel, and no completion of section 11.5.",
+  "secrets": "none"
+}

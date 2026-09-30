@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_serve_route_revision_identity_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T08:40:00Z",
+  "result": "the_route_switch_contract_no_longer_names_an_external_router_revision_command_or_absence_receipt_the_switch_identity_is_the_row_identity_and_the_migration_preserves_it",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 11.5 second pass - the route revision/identity vocabulary is restated as the local facts Serve actually owns",
+  "sourceBaseSha": "26bf195e",
+  "branch": "codex/serve-access-data-plane",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.5",
+  "supersedesGapOf": {
+    "receipt": "docs/evidence/source-checks/2026-09-30-serve-access-data-plane.json",
+    "gapClosed": "The production proto still named the retired provider revision semantics (ProviderRevisionPrecondition, provider_precondition, RouteReadback.provider_revision)."
+  },
+  "milestoneM1": {
+    "objective": "Minimum real delivery of the default OPL App: the instance installs the complete Cloud owner topology, Cloud builds an exact-SHA Candidate, the instance deploys it, Serve reaches a confirmed route and URL on Tencent TKE, and a user opens the application.",
+    "stepDelivered": "The route contract now states the facts Serve actually owns. The revision a switch conditions on is the binding's own last confirmed route revision, the switch identity is the row identity, and the caller's first-route assertion is that it read this owner's binding and found no confirmed route. Nothing in the Serve route contract still names a provider revision, a provider command, a provider request, or an external absence receipt."
+  },
+  "necessity": {
+    "decision": "Names in a machine contract must describe the fact the field holds. After Serve became the route owner, serve.access_bindings.provider_revision held Serve's own derived route revision, serve.access_switches.provider_command_id held a value derived one-to-one from the switch id, serve.access_switches.provider_request_ref held nothing at all, and expected_absence_receipt_id/expected_absence_observed_at recorded an external router's absence proof that no longer exists. Retaining the provider vocabulary would make every future reader look for an external router that is not there; mechanically renaming the two derived columns would preserve a redundant second identity.",
+    "currentProblem": "The production proto, the generated Go bindings and serve.access_switches still carried the external-router vocabulary inherited from the pre-decision design: ProviderRevisionPrecondition (exact_revision | ConfirmedRouteAbsence{receipt_id, observed_at}), provider_precondition, RouteReadback.provider_revision, RouteReadback.provider_command_id, provider_command_id (NOT NULL UNIQUE), provider_request_ref (never written by any Serve code path).",
+    "confirmedFacts": [
+      "routeProviderCommandID(switchID) returned \"serve-route:\"+switchID, a pure derivation, and the UNIQUE(provider_command_id) constraint it supported was therefore equivalent to the primary key on the same derived id; the only readers were the ON CONFLICT target, the unresolved-switch comparison, and one RouteReadback field that no consumer read.",
+      "provider_request_ref appeared in services/serve/migrations/0001_opl_serve.sql and in no Serve statement: the route switch insert and update list no such column.",
+      "The absence precondition had exactly one producer, Serve itself (commitDeliveryRoute synthesised \"serve-route-absence/<workspaceId>\"), so the receipt identity and observation time never carried an external fact.",
+      "RouteAbsence/RouteRevisionPrecondition and the Route* messages have no consumer outside services/serve: a repository-wide search finds only the service, its tests, the proto sources, the generated bindings and the SSOT copies.",
+      "RouteObservedEvent.provider_revision is declared in packages/contracts/proto/internal.proto and packages/contracts/proto/events.json and is produced by no current code path (no producer, no consumer, no test).",
+      "The D17 cross-domain validator docs/spec/target/checks/validate_cross_domain.py writes provider_command_id/provider_revision/expected_provider_revision/observed_provider_revision against the specification schema, so the SSOT side of this rename is a coordinated change owned by the coordination window."
+    ],
+    "mustStaySeparate": [
+      "Fabric's own provider_request_ref on fabric.resource_actions is a real provider fact and is untouched.",
+      "ReleaseEvidence.confirmed_resource_absence_receipt_id and ClaimUsageEvidence.confirmed_absence_receipt_id are Fabric resource-absence facts owned by that boundary and are untouched.",
+      "The spec-side copies (docs/spec/target/contracts/internal.proto, schema.sql, db_inventory.json, events.json, 02/06 documents and the D17 validator) are owned by the coordination window and were not edited by this change."
+    ],
+    "minimalImplementation": [
+      "packages/contracts/proto/internal.proto: ProviderRevisionPrecondition becomes RouteRevisionPrecondition with `exact_revision` and an explicit empty RouteAbsence marker; provider_precondition becomes revision_precondition on the fence/activate/rollback commands; RouteReadback.provider_revision becomes route_revision; RouteReadback.provider_command_id is retired with field 10 reserved; RouteObservedEvent.provider_revision becomes route_revision; the ServeAccessControl doc comment now describes Serve's own binding instead of a provider CAS.",
+      "packages/contracts/proto/events.json: RouteObserved.providerRevision becomes routeRevision (required list updated); this is the only edit to the file.",
+      "packages/contracts/go/api: regenerated from the proto with the pinned generator (grpc_tools 1.80.0 / protoc-gen-go v1.36.6 / protoc-gen-go-grpc v1.5.1) via packages/contracts/proto/generate.sh; the public JSON shape file changed nothing, so no public property moved.",
+      "services/serve/migrations/0004_route_revision_identity.sql: renames provider_revision/expected_provider_revision/observed_provider_revision to route_revision/expected_route_revision/observed_route_revision, drops provider_command_id and its UNIQUE constraint, drops provider_request_ref, drops the caller-asserted absence receipt columns and the check that enforced their shape (dropped by discovered name so the auto-generated constraint identifier is not guessed), and keeps the surviving 'no revision only at generation zero' check.",
+      "services/serve/internal/delivery/route.go: the switch insert conflicts on the primary key instead of a derived command id, the unresolved-switch check compares the switch id, pendingRouteSwitch returns the row id, the readback carries switch_id and route_revision only, routeProviderCommandID and absenceColumns are deleted, and routePrecondition accepts an explicit RouteAbsence marker instead of receipt/observed_at.",
+      "services/serve/internal/delivery/access.go: the entry reads route_revision from the same binding.",
+      "services/serve/internal/delivery/route_postgres_test.go: new replay/identity, unknown-switch and schema-shape tests (below)."
+    ],
+    "whyNotAlternative": [
+      "Renaming provider_command_id to switch_command_id would keep a second identity derived one-to-one from the primary key, and would leave a reader free to believe a switch has two names; retiring it keeps the resume identity single.",
+      "Keeping a caller-supplied absence receipt would keep an external proof that no longer exists; the absence is now a fact Serve reads from its own binding and still verifies before writing the switch, so generation zero plus no confirmed revision is the whole assertion.",
+      "Dropping the NOT VALID check constraint by a guessed auto-generated name would break on a database whose constraint numbering differs; the migration removes exactly the constraint whose definition names the retired column.",
+      "Editing the specification copies in the same change would cross the write boundary the coordination window set; the exact delta is reported instead."
+    ]
+  },
+  "ssotConformance": [
+    {
+      "ssot": "docs/architecture.md#agent-delivery-and-serve-boundary",
+      "requirement": "Serve owns application route bindings/fencing; installation ingress/DNS/TLS are Instance configuration; two owners must not mutate the same application routing object/field.",
+      "conformance": "No contract field in the Serve route surface names an external router or provider revision any more, so the route object has exactly one owner in the wire contract as well as in the database."
+    },
+    {
+      "ssot": "docs/invariants.md#agent-delivery",
+      "requirement": "Serve is the sole writer of ... Runtime instance readiness evidence, and access bindings for a Workspace.",
+      "conformance": "The switch row now records only Serve's own confirmed route revision and its own switch identity."
+    },
+    {
+      "ssot": "docs/spec/target/14_implementation_work_packages.md#11.5",
+      "requirement": "Serve must actually take over routing and runtime facts rather than keep the migration adapter's vocabulary.",
+      "conformance": "The route contract, the generated bindings, the owner migration and every Serve consumer were changed in one revision; no compatibility alias, no retired-column fallback and no second writer remain."
+    },
+    {
+      "ssot": "AGENTS.md (repository rules) - machine contracts",
+      "requirement": "Machine contracts contain stable inter-owner facts, not implementation layout ... or a catalog of retired alternatives; a field stays only when a current consumer reads it.",
+      "conformance": "provider_request_ref (no writer, no reader) and provider_command_id (pure derivation of the primary key) are retired rather than renamed, and RouteReadback no longer carries a field no consumer read."
+    },
+    {
+      "ssot": "docs/invariants.md#evidence-levels",
+      "requirement": "code-complete means the exact source revision passed its required local source, build, persistence, and integration gates with no required skips.",
+      "conformance": "Local source, PostgreSQL and full local gates are green on this revision (below), and the migration runs against a real PostgreSQL 16."
+    }
+  ],
+  "acceptance": [
+    "A replay of the same logical switch names the same row: the switch count stays one, the returned switch id is the row id, and the route revision the confirmed switch wrote is unchanged.",
+    "A replay that can no longer satisfy its own precondition is refused with route_precondition_invalid instead of re-applying, and the caller recovers the confirmed fact by observing the original switch id.",
+    "An unknown switch blocks every new switch for its binding, no presented precondition lifts the block, the refusal names the switch identity, and observing that identity reports unknown with its own execution epoch.",
+    "A fence conditioned on absence records SQL NULL as its expected revision rather than an empty string that would read as a wildcard.",
+    "The Serve route tables hold route_revision/expected_route_revision/observed_route_revision and none of provider_revision/expected_provider_revision/observed_provider_revision/provider_command_id/provider_request_ref/expected_absence_receipt_id/expected_absence_observed_at.",
+    "Every Go module in the repository builds against the regenerated bindings, and no Go source outside the generated package references a retired symbol."
+  ],
+  "evidenceSources": [
+    "services/serve/internal/delivery/route_postgres_test.go",
+    "services/serve/migrations/0004_route_revision_identity.sql",
+    "packages/contracts/proto/internal.proto",
+    "packages/contracts/proto/events.json",
+    "packages/contracts/proto/generate.sh"
+  ],
+  "verification": [
+    {
+      "command": "cd services/serve && go build ./... && go vet ./...",
+      "result": "pass",
+      "detail": "The Serve module builds and vets clean against the regenerated bindings."
+    },
+    {
+      "command": "cd services/serve && OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<temporary PostgreSQL 16> go test ./... -count=1",
+      "result": "pass",
+      "detail": "internal/delivery and migrations pass, including the new replay/identity, unknown-switch and schema-shape tests and the existing fence/activate/observe/rollback, stale-generation, stale-epoch, unready-target and foreign-caller tests."
+    },
+    {
+      "command": "for each Go module: go build ./...",
+      "result": "pass",
+      "detail": "packages/contracts/go, every service module and apps/console-bff build against the regenerated bindings."
+    },
+    {
+      "command": "npm run verify:local:full",
+      "result": "pass",
+      "detail": "Full local gate with a temporary PostgreSQL 16 container and Docker integration: product boundary, Node source tests, browser suite, typecheck, lint, Console build, every Go module compile/database-free run, all PostgreSQL owner suites with zero skips, and the git whitespace check."
+    }
+  ],
+  "endState": "Complete for the Cloud-owned source change that restates the Serve route contract in the terms Serve owns and migrates the owner schema and every consumer in one revision. The specification copies, the D17 validator and the SSOT prose remain a coordinated obligation of the coordination window.",
+  "pendingSsotAlignment": {
+    "owner": "coordination window",
+    "note": "This change implements the renamed/retired vocabulary in the production contract, generated bindings, Serve source and the owner migration. The specification and check copies must carry the identical change in the same round; Cloud source did not edit any file under docs/spec.",
+    "items": [
+      "docs/spec/target/contracts/internal.proto: same message/field renames plus reserved 10 on RouteReadback, and the ServeAccessControl comment.",
+      "docs/spec/target/contracts/events.json: RouteObserved.providerRevision -> routeRevision, required list and the RouteObserved description, which still says the selection commit belongs to the Workspace owner.",
+      "docs/spec/target/contracts/schema.sql and db_inventory.json: column renames, the two dropped columns, the dropped check and the dropped UNIQUE constraint.",
+      "docs/spec/target/checks/validate_cross_domain.py: the R05 route flow writes provider_command_id/provider_revision/expected_provider_revision/observed_provider_revision.",
+      "docs/spec/target/02_database_schema_complete.md (R05 step 2 and the serve.access_switches field table) and 06_data_flow_and_state_machine.md (the fence/activate rows)."
+    ]
+  },
+  "notRun": [
+    "No specification file was edited.",
+    "No Candidate image build, no owner-actor workflow dispatch and no Release.",
+    "No Instance deployment, Ingress change, Tencent resource action or TKE readback.",
+    "No Control Plane caller migration or proxy retirement; no I06 execution move and no I08 model-configuration readback."
+  ],
+  "claimBoundary": "This receipt claims a Cloud source change: the Serve route contract names only the local route revision and switch identity, the retired provider command/request/absence-receipt facts are removed from the production contract, the generated bindings and the owner schema, and the migration preserves the original switch identity, proven by passing Serve PostgreSQL suites, every Go module build and npm run verify:local:full on this revision. It claims no specification update, no Candidate image, no deployment, no real TKE request and no production behavior.",
+  "secrets": "none"
+}
