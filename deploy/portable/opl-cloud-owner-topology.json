@@ -424,5 +424,100 @@
     "The BFF owns no business data and holds no database. It reaches each owner through OPL_<OWNER>_URL/OPL_<OWNER>_TOKEN, while an owner process listens on OPL_<OWNER>_ADDR and admits callers through OPL_<OWNER>_PEER_TOKENS: an installation must set both spellings for the same target."
    ]
   }
- ]
+ ],
+ "consoleBundle": {
+  "buildArg": "VITE_CONSOLE_IDENTITY",
+  "values": [
+   "cloud",
+   "legacy"
+  ],
+  "default": "legacy",
+  "bakedAt": "image_build",
+  "imageLabel": "opl.cloud.console-identity",
+  "identitySelects": {
+   "cloud": {
+    "requiresApiSurface": [
+     "/api/",
+     "/api/v2/"
+    ],
+    "console": "The Console reaches the Console BFF's /api/v2 surface and exposes the Publisher and Agent surfaces."
+   },
+   "legacy": {
+    "requiresApiSurface": [
+     "/api/"
+    ],
+    "console": "The Console reaches the Control Plane's /api surface and exposes neither the Publisher nor the Agent surface."
+   }
+  },
+  "congruence": "The identity is baked into the image, so an installation cannot change it. An installation whose routed browser API surface does not serve the surface this identity calls runs a Console that cannot authenticate. Read the image label and route accordingly; do not infer the identity from the deployment overlay.",
+  "evidence": {
+   "dockerfile": "Dockerfile declares ARG VITE_CONSOLE_IDENTITY in the build stage and in the runtime stage and emits the opl.cloud.console-identity label",
+   "reader": "apps/console-ui/src/app/console-identity.ts reads import.meta.env.VITE_CONSOLE_IDENTITY",
+   "modeSurfaces": "apps/console-ui/src/app/console-router.ts and apps/console-ui/src/api/auth-api.ts switch on that value"
+  }
+ },
+ "browserApiSurface": {
+  "rule": "Every HTTP surface a Cloud process registers is declared here with the process that registers it. A surface marked browserFacing is one a conforming installation must route the browser to; the rest are reached by owners or by the installation's own probes.",
+  "surfaces": [
+   {
+    "prefix": "/api/",
+    "processes": [
+     "control-plane"
+    ],
+    "browserFacing": true,
+    "evidence": "services/control-plane/internal/server registers its routes as \"<METHOD> /api/...\""
+   },
+   {
+    "prefix": "/api/v2/",
+    "processes": [
+     "console-bff"
+    ],
+    "browserFacing": true,
+    "evidence": "apps/console-bff/internal/httpapi registers its routes as \"<METHOD> /api/v2/...\""
+   },
+   {
+    "prefix": "/fabric/",
+    "processes": [
+     "fabric"
+    ],
+    "browserFacing": false,
+    "evidence": "services/fabric/internal/http registers /fabric/... for the typed owner HTTP surface and the legacy application-runtime bridge"
+   },
+   {
+    "prefix": "/ledger/",
+    "processes": [
+     "ledger"
+    ],
+    "browserFacing": false,
+    "evidence": "services/ledger/internal/http registers /ledger/... for owner receipts and evidence"
+   },
+   {
+    "prefix": "/objects/",
+    "processes": [
+     "capability"
+    ],
+    "browserFacing": false,
+    "evidence": "services/capability registers /objects/... on its own object-store listen address"
+   },
+   {
+    "prefix": "/healthz/",
+    "processes": [
+     "console-bff",
+     "fabric",
+     "ledger"
+    ],
+    "browserFacing": false,
+    "evidence": "each of these processes registers GET /healthz for the installation's own liveness probe"
+   },
+   {
+    "prefix": "/readyz/",
+    "processes": [
+     "ledger"
+    ],
+    "browserFacing": false,
+    "evidence": "services/ledger registers GET /readyz for its readiness probe"
+   }
+  ],
+  "requirement": "The Console is served from one origin and calls both browser-facing surfaces, so a browser-facing installation routes /api/ to control-plane and /api/v2/ to console-bff on the same public host. An installation that routes only one of them serves a Console whose other half cannot answer."
+ }
 }

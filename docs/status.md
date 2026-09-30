@@ -2047,6 +2047,31 @@ must set both explicitly. Evidence:
 This is a Cloud source and packaging fact; no Candidate image, installation,
 TKE readback or route activation exists yet.
 
+### Browser-Facing HTTP Surface And Console Identity
+
+The installed product serves the Console from one origin while the Console calls
+two processes' APIs, and the Console bundle's mode is baked at image build, so no
+deployment can change it. Neither fact was declared.
+`deploy/portable/opl-cloud-owner-topology.json` now names every HTTP surface the
+Cloud processes register (`/api/` from control-plane, `/api/v2/` from the Console
+BFF, `/fabric/`, `/ledger/`, `/objects/`, `/healthz/`, `/readyz/`), states which
+of them a conforming installation must route the browser to, and adds
+`consoleBundle`: the `VITE_CONSOLE_IDENTITY` argument, its values, its default,
+its image label and the API surface each identity requires. The Dockerfile's
+runtime stage now declares the same argument and emits
+`LABEL opl.cloud.console-identity`, so the identity travels with the digest.
+`tests/contracts/owner-topology.test.ts` derives the surfaces from the processes'
+own route registrations and the Console's own API path literals and asserts both
+directions, and three mutation probes (mis-attributing `/api/v2/`, registering a
+new source surface, drifting the runtime-stage default) each fail the suite.
+Evidence:
+[browser surface and Console identity](./evidence/source-checks/2026-09-30-http-surface-and-console-identity-declaration.json).
+Known gap recorded there: the customer Workspace list and detail still read the
+Control Plane's `/api/workspaces`, so a cloud-identity Console lists a Workspace
+it created through the owner surface only after that read path switches.
+This is a Cloud source and packaging fact; no Candidate image, installation or
+TKE readback exists yet.
+
 ## Distribution Boundary
 
 The five `v0.1.7` assets and their public API digests match the Release manifest

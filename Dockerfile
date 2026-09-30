@@ -77,8 +77,17 @@ FROM node:26-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6da
 
 WORKDIR /app
 ARG TARGETARCH
+# The Console bundle is baked here, so its identity is an image-level fact, not a
+# deployment choice: the same digest either carries the cloud identity (the
+# Console reaches the Console BFF's /api/v2 surface) or the legacy identity (the
+# Console reaches the Control Plane's /api surface). The runtime stage therefore
+# declares the same build argument the build stage uses and labels the image with
+# it, so an installation, a Local qualification, a Candidate or a Release can read
+# which surface this exact digest serves instead of inferring it.
+ARG VITE_CONSOLE_IDENTITY=legacy
 ENV NODE_ENV=production
 ENV CONTROL_PLANE_ADDR=:8787
+LABEL opl.cloud.console-identity=$VITE_CONSOLE_IDENTITY
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl \

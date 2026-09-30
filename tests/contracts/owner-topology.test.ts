@@ -35,10 +35,26 @@ type ProcessEntry = {
   registers?: string[];
   notes?: string[];
 };
+type SurfaceEntry = { prefix: string; processes: string[]; browserFacing: boolean; evidence: string };
 type Topology = {
   sharedEnv: Record<string, string | string[]>;
   derivedEnv: { address: string; peerTokens: string };
   processes: ProcessEntry[];
+  consoleBundle: {
+    buildArg: string;
+    values: string[];
+    default: string;
+    bakedAt: string;
+    imageLabel: string;
+    identitySelects: Record<string, string>;
+    congruence: string;
+    evidence: Record<string, string>;
+  };
+  browserApiSurface: {
+    rule: string;
+    surfaces: SurfaceEntry[];
+    requirement: string;
+  };
 };
 
 async function loadTopology(): Promise<Topology> {
@@ -231,5 +247,144 @@ test("the declaration records that two owners share a default listen address", a
   for (const [address, services] of collisions) {
     assert.ok((topology as unknown as { distinctAddressesEvidence: string }).distinctAddressesEvidence.includes(address),
       `the shared default address ${address} (${services.join(", ")}) must be named as evidence`);
+  }
+});
+
+
+
+// sourceFiles lists files with any of the given extensions, recursively.
+async function sourceFiles(dir: string, extensions: string[]): Promise<string[]> {
+  const found: string[] = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) found.push(...(await sourceFiles(full, extensions)));
+    else if (extensions.some((extension) => entry.name.endsWith(extension))) found.push(full);
+  }
+  return found;
+}
+
+// surfacePrefix reduces an HTTP path to the surface routing distinguishes: the
+// first segment, plus a version segment when the second segment is one, so
+// /api/workspaces/... shares /api/ while /api/v2/... does not.
+function surfacePrefix(path: string): string {
+  const segments = path.split("/").filter(Boolean);
+  const version = segments[1] && /^v\d+$/.test(segments[1]) ? `${segments[1]}/` : "";
+  return `/${segments[0]}/${version}`;
+}
+
+// ownerProcesses is the process set whose HTTP surfaces the declaration covers.
+const ownerProcessDirectories: Array<[string, string]> = [
+  ["control-plane", "services/control-plane"],
+  ["console-bff", "apps/console-bff"],
+  ["fabric", "services/fabric"],
+  ["ledger", "services/ledger"],
+  ["capability", "services/capability"],
+  ["build", "services/build"],
+  ["runtime-control", "services/runtime-control"],
+  ["workspace", "services/workspace"],
+  ["serve", "services/serve"],
+  ["resource-catalog", "services/resource-catalog"],
+  ["gateway-integration", "services/gateway-integration"]
+];
+
+// registeredHttpSurfaces reads every HTTP surface a Cloud process registers,
+// taking only route registration shapes: a method-prefixed route literal, or a
+// path-keyed route table entry. Outbound client URLs carry no method and are
+// therefore not counted.
+async function registeredHttpSurfaces(): Promise<Map<string, Set<string>>> {
+  const byPrefix = new Map<string, Set<string>>();
+  for (const [service, directory] of ownerProcessDirectories) {
+    for (const file of await goFiles(directory)) {
+      const source = await readFile(file, "utf8");
+      const paths = new Set<string>();
+      for (const match of source.matchAll(/"(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) (\/[^" ]*)"/g)) paths.add(match[1]);
+      for (const match of source.matchAll(/"(\/[^" ]*)":\s*\{/g)) paths.add(match[1]);
+      for (const registered of paths) {
+        const prefix = surfacePrefix(registered);
+        const owners = byPrefix.get(prefix) ?? new Set<string>();
+        owners.add(service);
+        byPrefix.set(prefix, owners);
+      }
+    }
+  }
+  return byPrefix;
+}
+
+// consoleApiPrefixes reads every API path literal the Console source itself
+// names, at the same surface granularity.
+async function consoleApiPrefixes(): Promise<Set<string>> {
+  const prefixes = new Set<string>();
+  for (const file of await sourceFiles("apps/console-ui/src", [".ts", ".tsx"])) {
+    const source = await readFile(file, "utf8");
+    for (const match of source.matchAll(/[`"'](\/api\/[^`"'\s]*)[`"']/g)) {
+      if (match[1].includes("${")) continue;
+      prefixes.add(surfacePrefix(match[1]));
+    }
+  }
+  assert.ok(prefixes.size >= 2, `the Console must name its API surfaces, saw ${[...prefixes].join(",")}`);
+  return prefixes;
+}
+
+test("the declaration names every HTTP surface the Cloud processes register", async () => {
+  const topology = await loadTopology();
+  const registered = await registeredHttpSurfaces();
+  assert.ok(registered.size >= 5, `expected the owner HTTP surfaces, saw ${[...registered.keys()].join(",")}`);
+  const declared = new Map(topology.browserApiSurface.surfaces.map((surface) => [surface.prefix, surface]));
+  for (const [prefix, owners] of [...registered].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    const surface = declared.get(prefix);
+    assert.ok(surface, `${prefix} is registered by ${[...owners].join(",")} and must be declared in the browser API surface`);
+    assert.deepEqual([...owners].sort(), [...surface.processes].sort(),
+      `${prefix} is declared for ${surface.processes.join(",")} but registered by ${[...owners].join(",")}`);
+    assert.ok(surface.browserFacing === (prefix.startsWith("/api/")),
+      `${prefix} must be marked browser-facing exactly when it is an API surface the Console calls`);
+  }
+  for (const surface of topology.browserApiSurface.surfaces) {
+    assert.ok(registered.has(surface.prefix), `${surface.prefix} is declared but no process registers it`);
+    assert.ok(surface.evidence.length > 0, `${surface.prefix} must carry the evidence that registers it`);
+  }
+});
+
+test("every API path the Console calls is served by a declared browser-facing process", async () => {
+  const topology = await loadTopology();
+  const browserFacing = topology.browserApiSurface.surfaces.filter((surface) => surface.browserFacing);
+  assert.ok(browserFacing.length >= 2, "the declaration must name the browser-facing surfaces");
+  for (const prefix of [...(await consoleApiPrefixes())].sort()) {
+    const match = browserFacing.filter((surface) => prefix.startsWith(surface.prefix)).sort((a, b) => b.prefix.length - a.prefix.length)[0];
+    assert.ok(match, `the Console calls ${prefix} but no declared browser-facing process serves it`);
+  }
+  // The Console is served from one origin and calls more than one surface, so each
+  // identity must declare every surface it requires, and each required surface
+  // must be one a conforming installation routes.
+  for (const value of topology.consoleBundle.values) {
+    const selection = topology.consoleBundle.identitySelects[value];
+    assert.ok(selection && Array.isArray(selection.requiresApiSurface) && selection.requiresApiSurface.length > 0,
+      `the ${value} identity must declare the API surface it requires`);
+    for (const prefix of selection.requiresApiSurface) {
+      assert.ok(browserFacing.some((surface) => surface.prefix === prefix),
+        `the ${value} identity requires ${prefix} and the declaration must route it`);
+    }
+  }
+  const cloud = topology.consoleBundle.identitySelects.cloud;
+  for (const prefix of await consoleApiPrefixes()) {
+    assert.ok(cloud.requiresApiSurface.some((required) => prefix.startsWith(required)),
+      `the Console calls ${prefix} and the cloud identity must declare it reachable`);
+  }
+});
+
+test("the Console identity is an image fact the declaration and the image agree on", async () => {
+  const topology = await loadTopology();
+  const consoleBundle = topology.consoleBundle;
+  const dockerfile = await readFile(dockerfilePath, "utf8");
+  const declarations = [...dockerfile.matchAll(new RegExp(`ARG ${consoleBundle.buildArg}=(\\S+)`, "g"))].map((match) => match[1]);
+  assert.ok(declarations.length >= 2, `${consoleBundle.buildArg} must be declared in both the build and runtime stages`);
+  assert.equal(new Set(declarations).size, 1, `the ${consoleBundle.buildArg} defaults disagree: ${declarations.join(",")}`);
+  assert.equal(declarations[0], consoleBundle.default);
+  assert.ok(dockerfile.includes(`LABEL ${consoleBundle.imageLabel}=$${consoleBundle.buildArg}`),
+    `the image must label itself with ${consoleBundle.imageLabel}`);
+  const identitySource = await readFile("apps/console-ui/src/app/console-identity.ts", "utf8");
+  assert.ok(identitySource.includes(consoleBundle.buildArg), "the Console must read the declared identity argument");
+  for (const value of consoleBundle.values) {
+    assert.ok(Object.prototype.hasOwnProperty.call(consoleBundle.identitySelects, value),
+      `the declaration must state what the ${value} identity selects`);
   }
 });

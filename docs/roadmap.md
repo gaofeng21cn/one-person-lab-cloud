@@ -38,6 +38,18 @@ All outcomes in the table below remain open until their own evidence passes.
 A single sequential implementation owner replaces the parallel write allocation;
 logical DDD ownership and separate Instance deployment authority do not change.
 
+### Milestone M1 Blockers After The HTTP-Surface And Console-Identity Contract
+
+The instance owner can now read the two installation facts the previous turn did
+not state: which process serves each HTTP surface a browser-facing install must
+route, and which Console surface an exact Candidate digest carries
+([evidence](evidence/source-checks/2026-09-30-http-surface-and-console-identity-declaration.json)).
+The remaining M1 blockers are unchanged, and one Cloud-side Console gap is now
+named: the customer Workspace list and detail still read the Control Plane's
+`/api/workspaces` surface, so a cloud-identity Console does not show a Workspace
+it created through the Workspace owner's `/api/v2` surface. That read migration
+belongs to Console/Console-BFF and is the next Cloud-side M1 step.
+
 ### Milestone M1 Blockers After The Owner-Topology Contract
 
 The default OPL App's minimum real delivery chain is bounded by three blockers,
