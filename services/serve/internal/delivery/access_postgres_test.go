@@ -43,11 +43,11 @@ func (s serviceTransport) RoundTrip(request *http.Request) (*http.Response, erro
 func activateRoute(t *testing.T, service *delivery.Service, tenant, workspace, runtimeInstance string) {
 	t.Helper()
 	ctx := routeServeContext()
-	fenced, err := service.FenceRouteEpoch(ctx, &api.FenceRouteEpochCommand{Context: routeCall(tenant), WorkspaceId: workspace, OperationId: "op-route", ExecutionEpoch: 1, ExpectedRouteGeneration: 0, ProviderPrecondition: absentPrecondition()})
+	fenced, err := service.FenceRouteEpoch(ctx, &api.FenceRouteEpochCommand{Context: routeCall(tenant), WorkspaceId: workspace, OperationId: "op-route", ExecutionEpoch: 1, ExpectedRouteGeneration: 0, RevisionPrecondition: absentPrecondition()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ActivateRoute(ctx, &api.RouteActivateCommand{Context: routeCall(tenant), WorkspaceId: workspace, OperationId: "op-route", ExecutionEpoch: 1, ExpectedRouteGeneration: 0, ProviderPrecondition: exactPrecondition(fenced.GetProviderRevision()), TargetExecutionResourceId: runtimeInstance, TargetRuntimeInstanceId: runtimeInstance, TargetDeploymentId: "dep-route", ConfirmedReadinessReceiptId: "readiness://dep-route"}); err != nil {
+	if _, err := service.ActivateRoute(ctx, &api.RouteActivateCommand{Context: routeCall(tenant), WorkspaceId: workspace, OperationId: "op-route", ExecutionEpoch: 1, ExpectedRouteGeneration: 0, RevisionPrecondition: exactPrecondition(fenced.GetRouteRevision()), TargetExecutionResourceId: runtimeInstance, TargetRuntimeInstanceId: runtimeInstance, TargetDeploymentId: "dep-route", ConfirmedReadinessReceiptId: "readiness://dep-route"}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -171,11 +171,11 @@ func TestServeAccessEntryKeepsWorkspacesSeparate(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := routeServeContext()
-	fenced, err := service.FenceRouteEpoch(ctx, &api.FenceRouteEpochCommand{Context: routeCall(tenant), WorkspaceId: other, OperationId: "op-other", ExecutionEpoch: 1, ExpectedRouteGeneration: 0, ProviderPrecondition: absentPrecondition()})
+	fenced, err := service.FenceRouteEpoch(ctx, &api.FenceRouteEpochCommand{Context: routeCall(tenant), WorkspaceId: other, OperationId: "op-other", ExecutionEpoch: 1, ExpectedRouteGeneration: 0, RevisionPrecondition: absentPrecondition()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ActivateRoute(ctx, &api.RouteActivateCommand{Context: routeCall(tenant), WorkspaceId: other, OperationId: "op-other", ExecutionEpoch: 1, ExpectedRouteGeneration: 0, ProviderPrecondition: exactPrecondition(fenced.GetProviderRevision()), TargetExecutionResourceId: otherRuntime, TargetRuntimeInstanceId: otherRuntime, TargetDeploymentId: "dep-other", ConfirmedReadinessReceiptId: "readiness://dep-other"}); err != nil {
+	if _, err := service.ActivateRoute(ctx, &api.RouteActivateCommand{Context: routeCall(tenant), WorkspaceId: other, OperationId: "op-other", ExecutionEpoch: 1, ExpectedRouteGeneration: 0, RevisionPrecondition: exactPrecondition(fenced.GetRouteRevision()), TargetExecutionResourceId: otherRuntime, TargetRuntimeInstanceId: otherRuntime, TargetDeploymentId: "dep-other", ConfirmedReadinessReceiptId: "readiness://dep-other"}); err != nil {
 		t.Fatal(err)
 	}
 

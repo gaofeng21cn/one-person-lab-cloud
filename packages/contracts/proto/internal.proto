@@ -2465,33 +2465,56 @@ service ServeRuntimeAdapter {
  rpc ReloadRuntime(RuntimeReloadCommand) returns (Operation);
  rpc ObserveRuntime(RuntimeReadbackRequest) returns (RuntimeReadback);
 }
-message ConfirmedRouteAbsence { string receipt_id = 1; google.protobuf.Timestamp observed_at = 2; }
-message ProviderRevisionPrecondition { oneof condition { string exact_revision = 1; ConfirmedRouteAbsence require_absent = 2; } }
-message FenceRouteEpochCommand { CallContext context = 1; string workspace_id = 2; string operation_id = 3; int64 execution_epoch = 4; int64 expected_route_generation = 5; ProviderRevisionPrecondition provider_precondition = 6; }
-message RouteActivateCommand { CallContext context = 1; string workspace_id = 2; string operation_id = 3; int64 execution_epoch = 4; int64 expected_route_generation = 5; ProviderRevisionPrecondition provider_precondition = 6; string target_execution_resource_id = 7; string target_runtime_instance_id = 8; string target_deployment_id = 9; string confirmed_readiness_receipt_id = 10; }
+// RouteAbsence states that the caller read the Workspace's Serve-owned access
+// binding and found no confirmed route at all.
+message RouteAbsence {}
+// RouteRevisionPrecondition is the route revision the caller read from the
+// Workspace's Serve-owned access binding before presenting a switch. Serve owns
+// the route object, so it compares the presented condition against its own
+// binding: exact_revision is the revision of the binding's last confirmed route,
+// and require_absent is only truthful at route generation zero. A caller can
+// therefore never advance a route it did not read, and no external router
+// revision is involved.
+message RouteRevisionPrecondition { oneof condition { string exact_revision = 1; RouteAbsence require_absent = 2; } }
+message FenceRouteEpochCommand { CallContext context = 1; string workspace_id = 2; string operation_id = 3; int64 execution_epoch = 4; int64 expected_route_generation = 5; RouteRevisionPrecondition revision_precondition = 6; }
+message RouteActivateCommand { CallContext context = 1; string workspace_id = 2; string operation_id = 3; int64 execution_epoch = 4; int64 expected_route_generation = 5; RouteRevisionPrecondition revision_precondition = 6; string target_execution_resource_id = 7; string target_runtime_instance_id = 8; string target_deployment_id = 9; string confirmed_readiness_receipt_id = 10; }
 message RouteObserveRequest { CallContext context = 1; string workspace_id = 2; optional string switch_id = 3; }
-message RouteRollbackCommand { CallContext context = 1; string workspace_id = 2; string original_switch_id = 3; string operation_id = 4; int64 execution_epoch = 5; int64 expected_route_generation = 6; ProviderRevisionPrecondition provider_precondition = 7; string target_execution_resource_id = 8; string target_runtime_instance_id = 9; string target_deployment_id = 10; string compatibility_receipt_id = 11; }
-message RouteReadback { string workspace_id = 1; string switch_id = 2; Observation observation = 3; int64 current_generation = 4; int64 accepted_execution_epoch = 5; optional string target_execution_resource_id = 6; optional string target_runtime_instance_id = 7; optional string target_deployment_id = 8; string provider_revision = 9; string provider_command_id = 10; optional string route_receipt_id = 11; google.protobuf.Timestamp observed_at = 12; optional ErrorCodeEnum error_code = 13; }
+message RouteRollbackCommand { CallContext context = 1; string workspace_id = 2; string original_switch_id = 3; string operation_id = 4; int64 execution_epoch = 5; int64 expected_route_generation = 6; RouteRevisionPrecondition revision_precondition = 7; string target_execution_resource_id = 8; string target_runtime_instance_id = 9; string target_deployment_id = 10; string compatibility_receipt_id = 11; }
+// RouteReadback is Serve's own route fact. switch_id is both the switch identity
+// and the identity a reader resumes from, so no second command identity is
+// carried; route_revision is the revision the confirmed switch wrote.
+message RouteReadback { string workspace_id = 1; string switch_id = 2; Observation observation = 3; int64 current_generation = 4; int64 accepted_execution_epoch = 5; optional string target_execution_resource_id = 6; optional string target_runtime_instance_id = 7; optional string target_deployment_id = 8; string route_revision = 9; optional string route_receipt_id = 11; google.protobuf.Timestamp observed_at = 12; optional ErrorCodeEnum error_code = 13; reserved 10; }
+// Serve owns the Workspace route. serve.access_bindings is the authoritative
+// current route and serve.access_switches records every conditional transition of
+// it; there is no external router, so the conditional revision compared here is
+// the binding's own last confirmed route revision (route_revision), never a
+// provider token. Instance DNS/TLS/Ingress is a stable hop to Serve's access
+// entry and is not a per-Workspace route writer.
 // Serve allocates execution_epoch and persists the delivery intent in one local
-// Serve transaction. Before any route mutation it confirms FenceRouteEpoch at
-// provider: router must CAS the
-// same object's metadata epoch+target using provider conditional revision. Merely
-// allocating a new epoch is NOT proof the external router has been fenced.
-// Fabric reserves a unique route switch (fence/activate/rollback), then executes
-// exact provider identity. unknown blocks new fences/switches; observe original ID.
-// First route requires provider_precondition.require_absent receipt and generation 0;
-// no empty revision means wildcard. Existing routes require exact_revision from
-// confirmed readback. require_absent is rejected if any route/provider revision exists.
-// Fence does not change route generation/target. Activate/rollback require current
-// accepted epoch and expected provider revision+generation; success increases route
-// generation by exactly one. Old provider requests after fence fail conditional CAS.
-// Serve commits the current deployment and route generation/epoch only after
-// confirmed exact target readback and its own current-intent CAS, then emits
-// selection evidence. Workspace supplies authorization and opaque target facts;
-// it does not store or commit a deployment pointer. Lost DB response resumes the
-// original Serve switch, never a new activation. Failed selection CAS leaves the
-// Serve intent needs_attention: authoritative readback, then complete the original
-// commit or explicitly fence+rollback. Never last-writer-wins.
+// Serve transaction. FenceRouteEpoch advances the binding's accepted epoch and
+// route revision while leaving its target and route generation unchanged, so a
+// stale epoch can never advance the route; merely allocating a new epoch is NOT a
+// fence.
+// A binding has at most one unresolved switch (requested or unknown). It exists
+// only when a writer was interrupted between recording and confirming, it blocks
+// every new switch for that binding, and it is resumed by reading back its
+// original switch_id. No later switch may preempt it and no expected revision can
+// lift the block.
+// The first route requires revision_precondition.require_absent at generation
+// zero, so the caller must have read the binding and found no confirmed route;
+// an existing route requires exact_revision from a confirmed readback. Activate
+// and rollback require the current accepted epoch plus the exact expected
+// revision and generation, and success advances the route generation by exactly
+// one. Serve's local conditional update refuses a stale epoch or an unmatched
+// revision, so a late request can never move the route.
+// Serve commits the current deployment and the route generation/epoch in the same
+// owner transaction as the confirmed switch, then emits selection evidence.
+// Workspace supplies authorization and opaque target facts; it does not store or
+// commit a deployment pointer. A lost response is resolved by observing the
+// original switch identity, never by allocating a new activation. A failed
+// selection CAS leaves the Serve intent needs_attention: authoritative readback,
+// then complete the original commit or explicitly fence+rollback. Never
+// last-writer-wins.
 service ServeAccessControl {
  rpc FenceRouteEpoch(FenceRouteEpochCommand) returns (RouteReadback);
  rpc ActivateRoute(RouteActivateCommand) returns (RouteReadback);
@@ -2761,7 +2784,7 @@ message RouteObservedEvent {
  string action_kind = 3;
  int64 route_generation = 4;
  int64 execution_epoch = 5;
- string provider_revision = 6;
+ string route_revision = 6;
  optional string target_execution_resource_id = 7;
  string outcome = 8;
  optional string route_receipt_id = 9;

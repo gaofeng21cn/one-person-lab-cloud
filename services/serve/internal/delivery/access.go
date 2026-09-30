@@ -151,7 +151,7 @@ func (e *AccessEntry) Resolve(ctx context.Context, host, requestPath string) (ac
 	}
 	route := accessRoute{WorkspaceID: workspaceID}
 	err := e.DB.QueryRowContext(ctx, `
-		SELECT b.route_generation, COALESCE(b.last_confirmed_switch_id,''), COALESCE(b.provider_revision,''),
+		SELECT b.route_generation, COALESCE(b.last_confirmed_switch_id,''), COALESCE(b.route_revision,''),
 		       COALESCE(b.target_runtime_instance_id,''), COALESCE(b.target_deployment_id,'')
 		FROM serve.access_bindings b WHERE b.workspace_id = $1`, workspaceID).
 		Scan(&route.RouteGeneration, &route.SwitchID, &route.Revision, &route.RuntimeInstanceID, &route.DeploymentID)

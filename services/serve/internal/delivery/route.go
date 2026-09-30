@@ -20,7 +20,6 @@ import (
 	"errors"
 	"strconv"
 	"strings"
-	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -89,19 +88,17 @@ func (s *Service) FenceRouteEpoch(ctx context.Context, command *api.FenceRouteEp
 	if strings.TrimSpace(command.GetOperationId()) == "" || command.GetExecutionEpoch() < 1 || command.GetExpectedRouteGeneration() < 0 {
 		return nil, status.Error(codes.InvalidArgument, "workspace, operation and a positive execution epoch are required")
 	}
-	precondition, err := routePrecondition(command.GetExpectedRouteGeneration(), command.GetProviderPrecondition())
+	precondition, err := routePrecondition(command.GetExpectedRouteGeneration(), command.GetRevisionPrecondition())
 	if err != nil {
 		return nil, err
 	}
 	return s.commitRouteSwitch(ctx, routeSwitchPlan{
-		workspaceID:               workspaceID,
-		operationID:               strings.TrimSpace(command.GetOperationId()),
-		actionKind:                "fence",
-		executionEpoch:            command.GetExecutionEpoch(),
-		expectedRouteGeneration:   command.GetExpectedRouteGeneration(),
-		expectedProviderRevision:  precondition.expectedRevision,
-		expectedAbsenceReceiptID:  precondition.absenceReceiptID,
-		expectedAbsenceObservedAt: precondition.absenceObservedAt,
+		workspaceID:             workspaceID,
+		operationID:             strings.TrimSpace(command.GetOperationId()),
+		actionKind:              "fence",
+		executionEpoch:          command.GetExecutionEpoch(),
+		expectedRouteGeneration: command.GetExpectedRouteGeneration(),
+		expectedRouteRevision:   precondition.expectedRevision,
 	})
 }
 
@@ -123,23 +120,21 @@ func (s *Service) ActivateRoute(ctx context.Context, command *api.RouteActivateC
 	if strings.TrimSpace(command.GetOperationId()) == "" || command.GetExecutionEpoch() < 1 || command.GetExpectedRouteGeneration() < 0 || target == "" {
 		return nil, status.Error(codes.InvalidArgument, "workspace, operation, execution epoch and target execution resource are required")
 	}
-	precondition, err := routePrecondition(command.GetExpectedRouteGeneration(), command.GetProviderPrecondition())
+	precondition, err := routePrecondition(command.GetExpectedRouteGeneration(), command.GetRevisionPrecondition())
 	if err != nil {
 		return nil, err
 	}
 	return s.commitRouteSwitch(ctx, routeSwitchPlan{
-		workspaceID:               workspaceID,
-		operationID:               strings.TrimSpace(command.GetOperationId()),
-		actionKind:                "activate",
-		executionEpoch:            command.GetExecutionEpoch(),
-		expectedRouteGeneration:   command.GetExpectedRouteGeneration(),
-		expectedProviderRevision:  precondition.expectedRevision,
-		expectedAbsenceReceiptID:  precondition.absenceReceiptID,
-		expectedAbsenceObservedAt: precondition.absenceObservedAt,
-		target:                    target,
-		targetRuntimeInstanceID:   strings.TrimSpace(command.GetTargetRuntimeInstanceId()),
-		targetDeploymentID:        strings.TrimSpace(command.GetTargetDeploymentId()),
-		readinessReceiptID:        strings.TrimSpace(command.GetConfirmedReadinessReceiptId()),
+		workspaceID:             workspaceID,
+		operationID:             strings.TrimSpace(command.GetOperationId()),
+		actionKind:              "activate",
+		executionEpoch:          command.GetExecutionEpoch(),
+		expectedRouteGeneration: command.GetExpectedRouteGeneration(),
+		expectedRouteRevision:   precondition.expectedRevision,
+		target:                  target,
+		targetRuntimeInstanceID: strings.TrimSpace(command.GetTargetRuntimeInstanceId()),
+		targetDeploymentID:      strings.TrimSpace(command.GetTargetDeploymentId()),
+		readinessReceiptID:      strings.TrimSpace(command.GetConfirmedReadinessReceiptId()),
 	})
 }
 
@@ -163,7 +158,7 @@ func (s *Service) RollbackRoute(ctx context.Context, command *api.RouteRollbackC
 	if strings.TrimSpace(command.GetOperationId()) == "" || command.GetExecutionEpoch() < 1 || command.GetExpectedRouteGeneration() < 0 || originalSwitchID == "" || target == "" {
 		return nil, status.Error(codes.InvalidArgument, "workspace, operation, execution epoch, original switch and target execution resource are required")
 	}
-	precondition, err := routePrecondition(command.GetExpectedRouteGeneration(), command.GetProviderPrecondition())
+	precondition, err := routePrecondition(command.GetExpectedRouteGeneration(), command.GetRevisionPrecondition())
 	if err != nil {
 		return nil, err
 	}
@@ -171,18 +166,16 @@ func (s *Service) RollbackRoute(ctx context.Context, command *api.RouteRollbackC
 		return nil, err
 	}
 	return s.commitRouteSwitch(ctx, routeSwitchPlan{
-		workspaceID:               workspaceID,
-		operationID:               strings.TrimSpace(command.GetOperationId()),
-		actionKind:                "rollback",
-		executionEpoch:            command.GetExecutionEpoch(),
-		expectedRouteGeneration:   command.GetExpectedRouteGeneration(),
-		expectedProviderRevision:  precondition.expectedRevision,
-		expectedAbsenceReceiptID:  precondition.absenceReceiptID,
-		expectedAbsenceObservedAt: precondition.absenceObservedAt,
-		target:                    target,
-		targetRuntimeInstanceID:   strings.TrimSpace(command.GetTargetRuntimeInstanceId()),
-		targetDeploymentID:        strings.TrimSpace(command.GetTargetDeploymentId()),
-		readinessReceiptID:        strings.TrimSpace(command.GetCompatibilityReceiptId()),
+		workspaceID:             workspaceID,
+		operationID:             strings.TrimSpace(command.GetOperationId()),
+		actionKind:              "rollback",
+		executionEpoch:          command.GetExecutionEpoch(),
+		expectedRouteGeneration: command.GetExpectedRouteGeneration(),
+		expectedRouteRevision:   precondition.expectedRevision,
+		target:                  target,
+		targetRuntimeInstanceID: strings.TrimSpace(command.GetTargetRuntimeInstanceId()),
+		targetDeploymentID:      strings.TrimSpace(command.GetTargetDeploymentId()),
+		readinessReceiptID:      strings.TrimSpace(command.GetCompatibilityReceiptId()),
 	})
 }
 
@@ -203,15 +196,15 @@ func (s *Service) ObserveRoute(ctx context.Context, request *api.RouteObserveReq
 		generation, epoch         int64
 		target, lastSwitch        sql.NullString
 		targetRuntime, targetDepl sql.NullString
-		providerRevision          sql.NullString
+		confirmedRevision         sql.NullString
 		observedAt                sql.NullTime
 	)
 	err := s.DB.QueryRowContext(ctx, `
 		SELECT id, route_generation, accepted_execution_epoch, target_execution_resource_id,
 		       target_runtime_instance_id, target_deployment_id,
-		       last_confirmed_switch_id, provider_revision, observed_at
+		       last_confirmed_switch_id, route_revision, observed_at
 		FROM serve.access_bindings WHERE workspace_id = $1`, workspaceID).
-		Scan(&bindingID, &generation, &epoch, &target, &targetRuntime, &targetDepl, &lastSwitch, &providerRevision, &observedAt)
+		Scan(&bindingID, &generation, &epoch, &target, &targetRuntime, &targetDepl, &lastSwitch, &confirmedRevision, &observedAt)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return readback, nil
@@ -232,21 +225,21 @@ func (s *Service) ObserveRoute(ctx context.Context, request *api.RouteObserveReq
 	if targetDepl.Valid {
 		readback.TargetDeploymentId = &targetDepl.String
 	}
-	if providerRevision.Valid {
-		readback.ProviderRevision = providerRevision.String
+	if confirmedRevision.Valid {
+		readback.RouteRevision = confirmedRevision.String
 	}
 	if observedAt.Valid {
 		readback.ObservedAt = timestamppb.New(observedAt.Time.UTC())
 	}
 
 	var (
-		switchID, providerCommandID, switchStatus string
-		switchEpoch                               int64
-		switchTarget                              sql.NullString
-		switchRuntime, switchDeployment           sql.NullString
-		switchEvidence                            sql.NullString
+		switchID, switchStatus          string
+		switchEpoch                     int64
+		switchTarget                    sql.NullString
+		switchRuntime, switchDeployment sql.NullString
+		switchEvidence                  sql.NullString
 	)
-	query := `SELECT id, provider_command_id, status, execution_epoch, target_execution_resource_id, target_runtime_instance_id, target_deployment_id, evidence_ref FROM serve.access_switches WHERE route_binding_id = $1`
+	query := `SELECT id, status, execution_epoch, target_execution_resource_id, target_runtime_instance_id, target_deployment_id, evidence_ref FROM serve.access_switches WHERE route_binding_id = $1`
 	args := []any{bindingID}
 	if requested := strings.TrimSpace(request.GetSwitchId()); requested != "" {
 		query += ` AND id = $2`
@@ -255,7 +248,7 @@ func (s *Service) ObserveRoute(ctx context.Context, request *api.RouteObserveReq
 		query += ` AND status IN ('requested','unknown')`
 	}
 	query += ` ORDER BY created_at DESC, id DESC LIMIT 1`
-	err = s.DB.QueryRowContext(ctx, query, args...).Scan(&switchID, &providerCommandID, &switchStatus, &switchEpoch, &switchTarget, &switchRuntime, &switchDeployment, &switchEvidence)
+	err = s.DB.QueryRowContext(ctx, query, args...).Scan(&switchID, &switchStatus, &switchEpoch, &switchTarget, &switchRuntime, &switchDeployment, &switchEvidence)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		if requested := strings.TrimSpace(request.GetSwitchId()); requested != "" {
@@ -266,7 +259,6 @@ func (s *Service) ObserveRoute(ctx context.Context, request *api.RouteObserveReq
 		return nil, dbError(err)
 	}
 	readback.SwitchId = switchID
-	readback.ProviderCommandId = providerCommandID
 	if switchTarget.Valid {
 		readback.TargetExecutionResourceId = &switchTarget.String
 	}
@@ -293,18 +285,18 @@ func (s *Service) ObserveRoute(ctx context.Context, request *api.RouteObserveReq
 
 // routeSwitchPlan is the validated shape of one route switch command.
 type routeSwitchPlan struct {
-	workspaceID               string
-	operationID               string
-	actionKind                string
-	executionEpoch            int64
-	expectedRouteGeneration   int64
-	expectedProviderRevision  string
-	expectedAbsenceReceiptID  string
-	expectedAbsenceObservedAt time.Time
-	target                    string
-	targetRuntimeInstanceID   string
-	targetDeploymentID        string
-	readinessReceiptID        string
+	workspaceID             string
+	operationID             string
+	actionKind              string
+	executionEpoch          int64
+	expectedRouteGeneration int64
+	// expectedRouteRevision is the revision the caller presented: the binding's
+	// last confirmed route revision, or empty for the caller's absence assertion.
+	expectedRouteRevision   string
+	target                  string
+	targetRuntimeInstanceID string
+	targetDeploymentID      string
+	readinessReceiptID      string
 }
 
 // commitRouteSwitch applies one route switch to the Workspace's Serve-owned
@@ -347,17 +339,17 @@ func commitRouteSwitchTx(ctx context.Context, tx *sql.Tx, plan routeSwitchPlan) 
 		return nil, owneridentity.WithErrorCode(status.Errorf(codes.FailedPrecondition, "%s: execution epoch %d of workspace %s is older than the accepted %d", ReasonStaleExecutionEpoch, plan.executionEpoch, plan.workspaceID, binding.AcceptedExecutionEpoch), api.ErrorCodeEnum_ERROR_CODE_ENUM_STALE_EXECUTION_EPOCH)
 	}
 	switchID := routeSwitchID(plan.workspaceID, plan.actionKind, plan.expectedRouteGeneration, plan.executionEpoch)
-	providerCommandID := routeProviderCommandID(switchID)
 	// An unresolved earlier switch blocks every new switch for this binding before
 	// any other check: it exists only when a writer was interrupted between
 	// recording and confirming a switch, so a new switch would run against a route
 	// whose state nobody knows. The original switch identity is what a reader
-	// resumes from, and no precondition can lift the block.
+	// resumes from, and no precondition can lift the block. A replay of the same
+	// logical switch names the same identity, so it is not treated as a conflict.
 	pending, err := pendingRouteSwitch(ctx, tx, binding.ID)
 	if err != nil {
 		return nil, err
 	}
-	if pending.Valid && pending.String != providerCommandID {
+	if pending.Valid && pending.String != switchID {
 		return nil, status.Errorf(codes.FailedPrecondition, "%s: route switch %s of workspace %s must be read back before a new switch is committed", ReasonRouteSwitchUnresolved, pending.String, plan.workspaceID)
 	}
 	if err := verifyRouteRevisionPrecondition(binding, plan); err != nil {
@@ -382,20 +374,22 @@ func commitRouteSwitchTx(ctx context.Context, tx *sql.Tx, plan routeSwitchPlan) 
 	// token, and a replay of the same switch names the same revision.
 	revision := routeRevision(switchID)
 	evidence := routeEvidenceRef(switchID)
-	absenceReceipt, absenceObservedAt := absenceColumns(plan)
+	// The switch identity is the row identity, so a replay of the same switch
+	// conflicts on the primary key and writes no second switch. An empty expected
+	// revision is the caller's absence assertion, which the check constraint only
+	// admits at generation zero.
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO serve.access_switches
 			(id, route_binding_id, workspace_id, operation_owner, operation_id, expected_route_generation,
 			 execution_epoch, target_execution_resource_id, previous_target_execution_resource_id,
-			 provider_command_id, status, action_kind, expected_provider_revision,
-			 expected_absence_receipt_id, expected_absence_observed_at,
-			 observed_route_generation, observed_execution_epoch, observed_provider_revision, evidence_ref,
+			 status, action_kind, expected_route_revision,
+			 observed_route_generation, observed_execution_epoch, observed_route_revision, evidence_ref,
 			 target_runtime_instance_id, target_deployment_id, updated_at)
-		VALUES ($1,$2,$3,'serve',$4,$5,$6,$7,$8,$9,'confirmed',$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,now())
-		ON CONFLICT (provider_command_id) DO NOTHING`,
+		VALUES ($1,$2,$3,'serve',$4,$5,$6,$7,$8,'confirmed',$9,$10,$11,$12,$13,$14,$15,$16,now())
+		ON CONFLICT (id) DO NOTHING`,
 		switchID, binding.ID, plan.workspaceID, plan.operationID, plan.expectedRouteGeneration,
-		plan.executionEpoch, target, previousTarget, providerCommandID, plan.actionKind,
-		nullable(plan.expectedProviderRevision), absenceReceipt, absenceObservedAt,
+		plan.executionEpoch, target, previousTarget, plan.actionKind,
+		nullable(plan.expectedRouteRevision),
 		observedGeneration, plan.executionEpoch, revision, evidence,
 		targetRuntimeInstance, targetDeployment); err != nil {
 		return nil, dbError(err)
@@ -404,7 +398,7 @@ func commitRouteSwitchTx(ctx context.Context, tx *sql.Tx, plan routeSwitchPlan) 
 		UPDATE serve.access_bindings
 		SET route_generation=$2, accepted_execution_epoch=$3, target_execution_resource_id=$4,
 		    target_runtime_instance_id=$5, target_deployment_id=$6,
-		    last_confirmed_switch_id=$7, provider_revision=$8, observed_at=now(), updated_at=now()
+		    last_confirmed_switch_id=$7, route_revision=$8, observed_at=now(), updated_at=now()
 		WHERE id=$1`,
 		binding.ID, observedGeneration, plan.executionEpoch, target,
 		targetRuntimeInstance, targetDeployment, switchID, revision); err != nil {
@@ -416,13 +410,13 @@ func commitRouteSwitchTx(ctx context.Context, tx *sql.Tx, plan routeSwitchPlan) 
 		}
 	}
 	return &api.RouteReadback{
-		WorkspaceId: plan.workspaceID, SwitchId: switchID, ProviderCommandId: providerCommandID,
+		WorkspaceId: plan.workspaceID, SwitchId: switchID,
 		Observation:       api.Observation_OBSERVATION_CONFIRMED,
 		CurrentGeneration: observedGeneration, AcceptedExecutionEpoch: plan.executionEpoch,
 		TargetExecutionResourceId: protoStringOrNil(target.String),
 		TargetRuntimeInstanceId:   protoStringOrNil(targetRuntimeInstance.String),
 		TargetDeploymentId:        protoStringOrNil(targetDeployment.String),
-		ProviderRevision:          revision,
+		RouteRevision:             revision,
 		RouteReceiptId:            protoStringOrNil(evidence),
 		ObservedAt:                timestamppb.Now(),
 	}, nil
@@ -433,13 +427,13 @@ func commitRouteSwitchTx(ctx context.Context, tx *sql.Tx, plan routeSwitchPlan) 
 // must be present and equal; a confirmed absence is only truthful while the
 // binding has never confirmed a switch.
 func verifyRouteRevisionPrecondition(binding routeBinding, plan routeSwitchPlan) error {
-	if plan.expectedProviderRevision != "" {
-		if !binding.ProviderRevision.Valid || binding.ProviderRevision.String != plan.expectedProviderRevision {
-			return owneridentity.WithErrorCode(status.Errorf(codes.FailedPrecondition, "%s: workspace %s route revision is %q, not the expected %q", ReasonRoutePreconditionInvalid, plan.workspaceID, binding.ProviderRevision.String, plan.expectedProviderRevision), api.ErrorCodeEnum_ERROR_CODE_ENUM_VERSION_CONFLICT)
+	if plan.expectedRouteRevision != "" {
+		if !binding.RouteRevision.Valid || binding.RouteRevision.String != plan.expectedRouteRevision {
+			return owneridentity.WithErrorCode(status.Errorf(codes.FailedPrecondition, "%s: workspace %s route revision is %q, not the expected %q", ReasonRoutePreconditionInvalid, plan.workspaceID, binding.RouteRevision.String, plan.expectedRouteRevision), api.ErrorCodeEnum_ERROR_CODE_ENUM_VERSION_CONFLICT)
 		}
 		return nil
 	}
-	if binding.RouteGeneration != 0 || binding.ProviderRevision.Valid || binding.LastConfirmedSwitchID.Valid {
+	if binding.RouteGeneration != 0 || binding.RouteRevision.Valid || binding.LastConfirmedSwitchID.Valid {
 		return owneridentity.WithErrorCode(status.Errorf(codes.FailedPrecondition, "%s: workspace %s already has a confirmed route, so a confirmed-absence precondition cannot apply", ReasonRoutePreconditionInvalid, plan.workspaceID), api.ErrorCodeEnum_ERROR_CODE_ENUM_VERSION_CONFLICT)
 	}
 	return nil
@@ -538,7 +532,7 @@ type routeBinding struct {
 	TargetRuntimeInstance   sql.NullString
 	TargetDeployment        sql.NullString
 	LastConfirmedSwitchID   sql.NullString
-	ProviderRevision        sql.NullString
+	RouteRevision           sql.NullString
 	ObservedAt              sql.NullTime
 }
 
@@ -554,31 +548,31 @@ func ensureRouteBinding(ctx context.Context, tx *sql.Tx, workspaceID string) (ro
 	if err := tx.QueryRowContext(ctx, `
 		SELECT id, workspace_id, route_generation, accepted_execution_epoch,
 		       target_execution_resource_id, target_runtime_instance_id, target_deployment_id,
-		       last_confirmed_switch_id, provider_revision, observed_at
+		       last_confirmed_switch_id, route_revision, observed_at
 		FROM serve.access_bindings WHERE workspace_id = $1 FOR UPDATE`, workspaceID).
 		Scan(&binding.ID, &binding.WorkspaceID, &binding.RouteGeneration, &binding.AcceptedExecutionEpoch,
 			&binding.TargetExecutionResource, &binding.TargetRuntimeInstance, &binding.TargetDeployment,
-			&binding.LastConfirmedSwitchID, &binding.ProviderRevision, &binding.ObservedAt); err != nil {
+			&binding.LastConfirmedSwitchID, &binding.RouteRevision, &binding.ObservedAt); err != nil {
 		return binding, dbError(err)
 	}
 	return binding, nil
 }
 
-// pendingRouteSwitch reports the binding's unresolved switch, the one piece of
-// state that blocks every new route action for that binding.
+// pendingRouteSwitch reports the binding's unresolved switch identity, the one
+// piece of state that blocks every new route action for that binding.
 func pendingRouteSwitch(ctx context.Context, tx *sql.Tx, bindingID string) (sql.NullString, error) {
-	var providerCommandID sql.NullString
+	var switchID sql.NullString
 	err := tx.QueryRowContext(ctx, `
-		SELECT provider_command_id FROM serve.access_switches
+		SELECT id FROM serve.access_switches
 		WHERE route_binding_id = $1 AND status IN ('requested','unknown')
-		ORDER BY created_at DESC, id DESC LIMIT 1`, bindingID).Scan(&providerCommandID)
+		ORDER BY created_at DESC, id DESC LIMIT 1`, bindingID).Scan(&switchID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return providerCommandID, nil
+		return switchID, nil
 	}
 	if err != nil {
-		return providerCommandID, dbError(err)
+		return switchID, dbError(err)
 	}
-	return providerCommandID, nil
+	return switchID, nil
 }
 
 // lockRouteBinding serializes route actions for one workspace.
@@ -591,36 +585,38 @@ func lockRouteBinding(ctx context.Context, tx *sql.Tx, workspaceID string) error
 
 // routePreconditionShape projects the presented route precondition onto the
 // shape serve.access_switches can record: the exact route revision the caller
-// read from this binding, or a confirmed absence that is only recordable at
-// generation zero.
+// read from this binding, or the caller's assertion that the binding had no
+// confirmed route, which is only recordable at generation zero. An empty expected
+// revision is that absence: the parser refuses an empty exact revision, so the
+// only way to reach it is the absence variant.
 type routePreconditionShape struct {
-	expectedRevision  string
-	absenceReceiptID  string
-	absenceObservedAt time.Time
+	expectedRevision string
 }
 
-func routePrecondition(expectedGeneration int64, precondition *api.ProviderRevisionPrecondition) (routePreconditionShape, error) {
+func routePrecondition(expectedGeneration int64, precondition *api.RouteRevisionPrecondition) (routePreconditionShape, error) {
 	if precondition == nil {
-		return routePreconditionShape{}, status.Error(codes.InvalidArgument, "a route revision precondition (exact revision or confirmed absence) is required")
+		return routePreconditionShape{}, status.Error(codes.InvalidArgument, "a route revision precondition (exact_revision or require_absent) is required")
 	}
 	switch condition := precondition.GetCondition().(type) {
-	case *api.ProviderRevisionPrecondition_ExactRevision:
+	case *api.RouteRevisionPrecondition_ExactRevision:
 		revision := strings.TrimSpace(condition.ExactRevision)
 		if revision == "" {
 			return routePreconditionShape{}, status.Error(codes.InvalidArgument, "an exact route revision must not be empty")
 		}
 		return routePreconditionShape{expectedRevision: revision}, nil
-	case *api.ProviderRevisionPrecondition_RequireAbsent:
-		absence := condition.RequireAbsent
-		if absence == nil || strings.TrimSpace(absence.GetReceiptId()) == "" || absence.GetObservedAt() == nil || !absence.GetObservedAt().IsValid() {
-			return routePreconditionShape{}, status.Error(codes.InvalidArgument, "a confirmed absence requires its receipt and observation time")
+	case *api.RouteRevisionPrecondition_RequireAbsent:
+		if condition.RequireAbsent == nil {
+			return routePreconditionShape{}, status.Error(codes.InvalidArgument, "require_absent must carry the caller's route absence assertion")
 		}
+		// The route object is Serve's own binding, so absence is a fact Serve reads
+		// from it: no confirmed route revision exists yet. Only generation zero can
+		// present that, and Serve still verifies it before writing the switch.
 		if expectedGeneration != 0 {
-			return routePreconditionShape{}, status.Errorf(codes.InvalidArgument, "%s: a confirmed-absence precondition is only recordable at route generation zero", ReasonRouteGenerationConflict)
+			return routePreconditionShape{}, status.Errorf(codes.InvalidArgument, "%s: require_absent is only recordable at route generation zero", ReasonRouteGenerationConflict)
 		}
-		return routePreconditionShape{absenceReceiptID: strings.TrimSpace(absence.GetReceiptId()), absenceObservedAt: absence.GetObservedAt().AsTime().UTC()}, nil
+		return routePreconditionShape{}, nil
 	default:
-		return routePreconditionShape{}, status.Error(codes.InvalidArgument, "a route revision precondition (exact revision or confirmed absence) is required")
+		return routePreconditionShape{}, status.Error(codes.InvalidArgument, "a route revision precondition (exact_revision or require_absent) is required")
 	}
 }
 
@@ -646,20 +642,11 @@ func routeSwitchID(workspaceID, actionKind string, generation, epoch int64) stri
 	return "rsw_" + raw[:32]
 }
 
-func routeProviderCommandID(switchID string) string { return "serve-route:" + switchID }
-
 // sha256Hex is the stable hex digest used to derive owner-local route identities
 // from exact inputs, so a replay names the same row instead of allocating one.
 func sha256Hex(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])
-}
-
-func absenceColumns(plan routeSwitchPlan) (any, any) {
-	if plan.expectedAbsenceReceiptID == "" {
-		return nil, nil
-	}
-	return plan.expectedAbsenceReceiptID, plan.expectedAbsenceObservedAt.UTC()
 }
 
 // nullablePort records an absent upstream port as SQL NULL, so the column's
@@ -710,40 +697,37 @@ func commitDeliveryRoute(ctx context.Context, tx *sql.Tx, r *api.RuntimeDeployCo
 	}
 	precondition := routePreconditionShape{}
 	switch {
-	case binding.ProviderRevision.Valid && binding.ProviderRevision.String != "":
-		precondition.expectedRevision = binding.ProviderRevision.String
+	case binding.RouteRevision.Valid && binding.RouteRevision.String != "":
+		precondition.expectedRevision = binding.RouteRevision.String
 	case binding.RouteGeneration == 0 && !binding.LastConfirmedSwitchID.Valid:
-		// The first route this Workspace ever confirms is recorded with a
-		// confirmed absence instead of an invented revision.
-		precondition.absenceReceiptID = "serve-route-absence/" + r.GetWorkspaceId()
-		precondition.absenceObservedAt = time.Now().UTC()
+		// The first route this Workspace ever confirms carries the absence
+		// assertion instead of an invented revision: Serve read its own binding and
+		// found no confirmed route revision.
 	default:
 		return status.Errorf(codes.FailedPrecondition, "%s: workspace %s has a route generation but no confirmed revision to condition on", ReasonRoutePreconditionInvalid, r.GetWorkspaceId())
 	}
 	fenced, err := commitRouteSwitchTx(ctx, tx, routeSwitchPlan{
-		workspaceID:               r.GetWorkspaceId(),
-		operationID:               operationID,
-		actionKind:                "fence",
-		executionEpoch:            r.GetExecutionEpoch(),
-		expectedRouteGeneration:   binding.RouteGeneration,
-		expectedProviderRevision:  precondition.expectedRevision,
-		expectedAbsenceReceiptID:  precondition.absenceReceiptID,
-		expectedAbsenceObservedAt: precondition.absenceObservedAt,
+		workspaceID:             r.GetWorkspaceId(),
+		operationID:             operationID,
+		actionKind:              "fence",
+		executionEpoch:          r.GetExecutionEpoch(),
+		expectedRouteGeneration: binding.RouteGeneration,
+		expectedRouteRevision:   precondition.expectedRevision,
 	})
 	if err != nil {
 		return err
 	}
 	_, err = commitRouteSwitchTx(ctx, tx, routeSwitchPlan{
-		workspaceID:              r.GetWorkspaceId(),
-		operationID:              operationID,
-		actionKind:               "activate",
-		executionEpoch:           r.GetExecutionEpoch(),
-		expectedRouteGeneration:  fenced.GetCurrentGeneration(),
-		expectedProviderRevision: fenced.GetProviderRevision(),
-		target:                   r.GetRuntimeInstanceId(),
-		targetRuntimeInstanceID:  r.GetRuntimeInstanceId(),
-		targetDeploymentID:       r.GetDeploymentId(),
-		readinessReceiptID:       readinessRef,
+		workspaceID:             r.GetWorkspaceId(),
+		operationID:             operationID,
+		actionKind:              "activate",
+		executionEpoch:          r.GetExecutionEpoch(),
+		expectedRouteGeneration: fenced.GetCurrentGeneration(),
+		expectedRouteRevision:   fenced.GetRouteRevision(),
+		target:                  r.GetRuntimeInstanceId(),
+		targetRuntimeInstanceID: r.GetRuntimeInstanceId(),
+		targetDeploymentID:      r.GetDeploymentId(),
+		readinessReceiptID:      readinessRef,
 	})
 	return err
 }
