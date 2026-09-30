@@ -1,35 +1,47 @@
 {
  "schemaVersion": 1,
  "receiptType": "opl_cloud_tke_serial_portable_tke_configuration_source_check",
- "revision": 2,
- "recordedAt": "2026-09-30T02:28:24Z",
+ "revision": 3,
+ "recordedAt": "2026-09-30T02:48:39Z",
  "result": "portable_candidate_assets_now_declare_and_forward_the_tencent_tke_and_application_origin_facts_their_owners_require",
  "window": "serial",
  "windowTitle": "Serial integration stage 7 - complete the portable Candidate installation configuration",
  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.7",
- "scope": "Complete the Cloud-owned portable Candidate installation contract for the supported tencent-tke provider and for the per-binding application origin. The owner-enforced configuration facts were absent from, or not forwarded by, the portable assets that ship and run those owners. No provider, cluster, Instance or production action.",
- "findings": [
-  {
-   "id": "tencent-provider-configuration-not-forwarded",
-   "fact": "services/fabric/internal/fabric/tencent_provider.go NewTencentProvider computes installationErr from OPL_WORKSPACE_DOMAIN, OPL_WORKSPACE_IMAGE, OPL_K8S_NAMESPACE and OPL_TENCENT_PROVISIONER_BIN, and validateInstallationConfig fails every kubectl action while it is set; TencentProvider.Readiness (tencent_provider_runtime.go) additionally requires OPL_CLOUD_IMAGE, OPL_IMAGE_PULL_SECRET_NAME, OPL_WORKSPACE_STORAGE_CLASS, TENCENT_DEPLOY_KUBECONFIG_REF and RUN_TENCENT_CREATE_RELEASE_EXECUTION=1. Container environment of a rendered compose.fabric-tencent-tke.yaml contained none of them, so the portable TKE Fabric could not build a usable provider or pass readiness.",
-   "consequence": "compose.fabric-tencent-tke.yaml now forwards every fact the provider validates or reports, and mounts the TKE deploy kubeconfig read-only from TENCENT_DEPLOY_KUBECONFIG_HOST_PATH to TENCENT_DEPLOY_KUBECONFIG_REF."
-  },
-  {
-   "id": "fabric-protected-resource-guard",
-   "fact": "services/fabric/internal/fabric/tencent_provider.go callKubectl runs protectedresource.FromEnv().Check(target) for every mutating kubectl verb (apply/create/patch/delete/scale); Config.Validate requires OPL_SYSTEM_COMPUTE_NODE_POOL_ID, _MACHINE_ID, _NODE_NAME, _MACHINE_TYPE and OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON, so Fabric refuses every provider/cluster mutation while they are unset. The portable assets declared none of the five OPL_SYSTEM_COMPUTE_* facts, although services/control-plane/ops/production-manifest.ts already requires them for a tencent-tke install.",
-   "consequence": "The assets now forward and declare exactly the facts the guard reads."
-  },
-  {
-   "id": "application-origin-domain",
-   "fact": "services/control-plane/internal/server/workspace_application_origin.go parseWorkspaceApplicationOriginHost returns not-a-binding-origin when OPL_WORKSPACE_APPLICATION_DOMAIN is empty, and services/serve/internal/delivery/routeorigin.go uses the same name for ApplicationEntryURL. compose.yaml did not forward it and opl-cloud.env.example did not declare it, so an install built from the published template could not dispatch or publish the per-binding application origin that the Instance Ingress wildcard routes.",
-   "consequence": "The base Compose now forwards the declared value and the template declares the installer input, keeping the setting optional but explicit rather than undiscoverable."
-  },
-  {
-   "id": "live-mutation-opt-in-declared-not-defaulted",
-   "fact": "services/fabric/cmd/opl-tencent-provisioner refuses every non-dry-run Tencent mutation unless RUN_TENCENT_CREATE_RELEASE_EXECUTION is \"1\"; the portable assets neither declared nor forwarded it.",
-   "consequence": "The template declares it as 0 with an explicit statement of what 1 authorizes, and the overlay forwards the installer's value instead of hardcoding a permissive one. No charge, purchase, renewal or deletion is performed here."
-  }
+ "necessity": {
+  "decision": "A portable Candidate bundle is only installable if the assets it publishes declare and forward every fact the owners it ships require. This change closes exactly the two owner-enforced configuration gaps that made the published tencent-tke assets unrunnable, and adds the application-origin input the install cannot otherwise discover. It adds no new capability, service or contract.",
+  "currentProblem": "A rendered `compose.yaml` + `deploy/portable/compose.deployment-managed-tke.yaml` + `deploy/portable/compose.fabric-tencent-tke.yaml` delivered no Tencent installation fact to the Fabric container: not OPL_WORKSPACE_DOMAIN, which `NewTencentProvider` requires before it builds a usable provider, and none of the facts `Readiness` reports. Compose injects only the keys a service lists, so facts the environment template declared never reached the process. The overlay also mounted no kubeconfig although Fabric is the only process that holds cluster credentials, and declared none of the five `OPL_SYSTEM_COMPUTE_*` facts the protected-resource guard enforces on every mutating `kubectl`. Separately, `OPL_WORKSPACE_APPLICATION_DOMAIN` was neither forwarded to the Control Plane nor declared, so the per-binding origin the Instance Ingress wildcard routes was silently unreachable.",
+  "confirmedFacts": [
+   "services/fabric/internal/fabric/tencent_provider.go NewTencentProvider computes installationErr from OPL_WORKSPACE_DOMAIN, OPL_WORKSPACE_IMAGE, OPL_K8S_NAMESPACE and OPL_TENCENT_PROVISIONER_BIN, and validateInstallationConfig fails every kubectl action while it is set.",
+   "services/fabric/internal/fabric/tencent_provider_runtime.go TencentProvider.Readiness additionally requires OPL_CLOUD_IMAGE, OPL_IMAGE_PULL_SECRET_NAME, OPL_WORKSPACE_STORAGE_CLASS, TENCENT_DEPLOY_KUBECONFIG_REF and RUN_TENCENT_CREATE_RELEASE_EXECUTION=1.",
+   "services/fabric/internal/fabric/tencent_provider.go callKubectl runs protectedresource.FromEnv().Check(target) for every mutating verb, and services/fabric/internal/protectedresource/guard.go Config.Validate requires the five OPL_SYSTEM_COMPUTE_* facts plus the provider profile.",
+   "services/fabric/cmd/opl-tencent-provisioner refuses every non-dry-run Tencent mutation unless RUN_TENCENT_CREATE_RELEASE_EXECUTION is 1.",
+   "services/control-plane/internal/server/workspace_application_origin.go parseWorkspaceApplicationOriginHost returns not-a-binding-origin when OPL_WORKSPACE_APPLICATION_DOMAIN is empty; services/serve/internal/delivery/routeorigin.go reads the same name for ApplicationEntryURL.",
+   "services/control-plane/ops/production-manifest.ts already lists the OPL_SYSTEM_COMPUTE_* facts and OPL_CONSOLE_DOMAIN as required for a tencent-tke install, so the portable assets were behind the Cloud-documented production contract."
+  ],
+  "mustStaySeparate": [
+   "Declaring an installer input is not choosing a permissive default: RUN_TENCENT_CREATE_RELEASE_EXECUTION stays 0 in the template and the overlay forwards the installer's value.",
+   "Fabric owns the cluster credentials; the overlay only mounts the kubeconfig read-only at the path the provider is told to read, and no credential value is placed in any asset or receipt.",
+   "Fabric owns infrastructure resources; Serve owns application execution and the publishable origin. This change supplies configuration and never moves an owner or writes another owner's state.",
+   "The deploy kubeconfig is an Instance-host fact. The assets accept the host path and the in-container path; they do not embed a cluster identity or reach any private network."
+  ],
+  "minimalImplementation": [
+   "compose.fabric-tencent-tke.yaml forwards every fact the Tencent provider validates or reports, plus the five protected-resource facts, and mounts the kubeconfig read-only.",
+   "opl-cloud.env.example declares those inputs and OPL_WORKSPACE_APPLICATION_DOMAIN.",
+   "compose.yaml forwards OPL_WORKSPACE_APPLICATION_DOMAIN to the Control Plane.",
+   "tests/contracts/portable-tke-configuration.test.ts extracts the required names from the owning Go source, so it tracks the owners instead of restating their constants."
+  ],
+  "whyNotAlternative": [
+   "Hardcoding the facts would freeze one installation's node pool, namespace and paths into the shared product asset, which the Instance owner must supply.",
+   "Leaving them undeclared keeps a provider that starts but can never mutate, and a route object the install cannot dispatch: the failure would surface only as a live refutation on TKE.",
+   "Making RUN_TENCENT_CREATE_RELEASE_EXECUTION=1 a shipped default would authorize live Tencent mutations the install did not choose, which the money and provider boundaries forbid."
+  ]
+ },
+ "acceptance": [
+  "The portable managed-TKE assets render with a disposable env and deliver the whole provider fact set to Fabric with OPL_FABRIC_PROVIDER=tencent-tke and a read-only kubeconfig bind mount.",
+  "The base Compose forwards OPL_WORKSPACE_APPLICATION_DOMAIN to the Control Plane, and the environment template declares it with the protected-resource facts.",
+  "A focused contract test reads the required names from the owning Go source and fails if the assets fall behind either owner."
  ],
+ "endState": "Complete for the Cloud-owned portable installation contract. The remaining Stage 7/8 work is external: an owner-dispatched Candidate build, the protected Instance installation manifest that deploys the new domain owners, and the frozen I06/I07/I08 external contracts.",
  "ownerWriteSet": [
   "compose.yaml",
   "deploy/portable/compose.fabric-tencent-tke.yaml",
@@ -52,7 +64,7 @@
   {
    "command": "node --test tests/contracts/portable-tke-configuration.test.ts",
    "result": "pass",
-   "detail": "Four tests: the overlay forwards every protected-resource fact read from guard.go and every fact the provider constructor and Readiness require (extracted from their source), mounts the kubeconfig read-only, the template declares them all plus the application-origin domain, and the base Compose forwards the origin domain both readers use."
+   "detail": "The overlay forwards every protected-resource fact read from guard.go and every fact the provider constructor and Readiness require (extracted from their source), mounts the kubeconfig read-only, the template declares them all plus the application-origin domain, and the base Compose forwards the origin domain both readers use."
   },
   {
    "command": "docker compose --env-file <disposable> -f compose.yaml -f deploy/portable/compose.deployment-managed-tke.yaml -f deploy/portable/compose.fabric-tencent-tke.yaml config",
@@ -62,12 +74,17 @@
   {
    "command": "node --test \"tests/contracts/*.test.ts\"",
    "result": "pass",
-   "detail": "13 contract test files pass, including the retained portable Local-Docker asset and product-distribution tests."
+   "detail": "All contract test files pass, including the retained portable Local-Docker asset and product-distribution tests."
   },
   {
    "command": "npm run test:ownership && npm run validate:product-boundary && npm run verify:local",
    "result": "pass",
    "detail": "Test ownership, product boundary and the full local gate (source tests, contract tests, Console browser suite, database-free Go tests, whitespace) are green."
+  },
+  {
+   "command": "pull-request-ci validate on PR #698",
+   "result": "pass",
+   "detail": "The repository CI validate job (npm ci, npm run verify:local, git diff --check) passed on the pushed head."
   }
  ],
  "notRun": [
