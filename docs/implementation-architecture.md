@@ -1,7 +1,9 @@
 # OPL Cloud Implementation Architecture
 
 This repository implements the OPL Cloud product layer. Browser Console calls
-Cloud Control Plane APIs; App Shells consume Cloud-facing projections through
+the Console BFF or retained Control Plane APIs according to the surface and its
+image's identity;
+App Shells consume Cloud-facing projections through
 App/Framework contracts. Cloud service and database authority stays in the
 owning Cloud service.
 
@@ -9,7 +11,7 @@ owning Cloud service.
 
 This document describes the implementation that exists, not completed target architecture
 migration. The adopted target keeps all Cloud product code in one GitHub
-repository, `opl-cloud`, while retaining independent service modules and
+repository, `one-person-lab-cloud`, while retaining independent service modules and
 processes. Its canonical directory/deployment-unit map is
 [Repository And Instance Topology](architecture.md#repository-and-instance-topology).
 Capability, Build, Runtime Control, Workspace, Resource Catalog and Serve have
@@ -23,14 +25,16 @@ Catalog and Workspace routes behind CloudIdentity. A deploy quote freezes its
 approved provider plan; Workspace commits the original accepted order and Fabric
 persists its resource-set, resource and operation references. Resource acceptance
 does not establish provider allocation or a paid subscription. The Ledger
-consumer of the platform-scoped catalog policy event remains open. Gateway Integration now implements
-the CloudIdentity publisher session and accepted-Build authorization slice in
-`services/gateway-integration`, using only the Tenant database. The public JSON
+consumer of the platform-scoped catalog policy event remains open. Gateway
+Integration implements CloudIdentity sessions, Tenant governance and accepted
+operation authorization in `services/gateway-integration`. The public JSON
 boundary resolves property names and 64-bit scalar forms from the canonical
 contract, so a published spelling such as `monthlyPriceUSDMicros` and its decimal
-string form are authoritative over protobuf's own derivation. Gateway/wallet
-operations are not migrated by this slice; their eventual owner retains a separate
-database and pool inside the same deployment unit. It also serves Tenant member
+string form are authoritative over protobuf's own derivation. Its Gateway
+coordination and product surfaces are registered only when a separate Gateway
+database is configured; Tenant and Gateway remain separate writers and pools
+inside one deployment unit. Sub2API retains wallet, Key, model and usage truth.
+The service also serves Tenant member
 and invitation governance (list, invite, accept, revoke, role change and removal,
 with last-owner protection and audit) over the same Tenant database, and its
 generated permission table is the single authorization policy for the capability,
@@ -38,10 +42,11 @@ build, tenant, runtime control, resource catalog, serve and workspace audiences,
 and the Console BFF's HTTP success status per routed action is compiled from the
 same contract rather than hand-listed. `getWorkspaceAccess` is a Serve-audience
 read because Serve owns the access fact, and each owner fact in a composed BFF
-view is authorized against the owner that reports it. This is not
-completion of all W03 work: `Member.displayName` uses the authorized Gateway
-identity-directory read, while Tenant onboarding/suspend/reenable/delete/restore
-and retained identity-data migration remain with W21.
+view is authorized against the owner that reports it. `Member.displayName` uses
+the authorized Gateway identity-directory read. Tenant lifecycle handlers and
+repository binding are implemented in the same owner; their presence does not
+prove retained identity-data migration or Instance qualification. The exact
+remaining outcomes belong to [roadmap](roadmap.md).
 
 Serve implements its read surface in `services/serve/internal/delivery`: the
 owner-local current Deployment, the delivery history and the current Agent's
@@ -66,30 +71,39 @@ Workspace commit, stores evidence in its existing append-only receipt store and
 exposes the nested evidence only on the authenticated typed coordination path.
 Fabric verifies that evidence before its existing Local adapter dispatches.
 
-On confirmed Local resources, Workspace freezes the Capability descriptor and
-calls Serve Reserve, Deploy and ReadRuntime with the same original operation.
+The Workspace order carries one explicit application selection: an approved
+Runtime Release for default `opl_app`, or a built CapabilityVersion for `agent`.
+Default App uses the Runtime Release's artifact and descriptor without creating
+a Package, BuildJob or CapabilityVersion. On confirmed Local resources,
+Workspace calls Serve Reserve, Deploy and ReadRuntime with that original order.
 Provider readiness and Serve readiness remain independent facts; this slice
 does not create paid periods, fabricate subscriptions or activate Workspace
 entitlement. Local dispatch requires a Linux host with the existing project-quota
 preflight; Docker Desktop on a macOS Fabric host does not meet that prerequisite.
-Version replacement, route switching and unresolved required secret/model/config
-injection remain outside this first-delivery slice. Current verification and
+Complete replacement, TKE execution/route ownership and runtime model apply
+readback remain separate qualification outcomes. Current verification and
 remaining qualification limits are recorded in [status](status.md).
 
 Control Plane remains the current caller and writer for capabilities not yet
 migrated. Extraction must switch real callers and retire the old write path;
-it must not create a permanent second writer. The existing contracts Go module
-will also contain generated target architecture bindings under `v226/`, rather than a second
-module. Consumer dependency updates are verified with that contract change.
+it must not create a permanent second writer. Production protobuf bindings live
+under `packages/contracts/go/api/` in the existing contracts Go module. Consumer
+dependency updates are verified with that contract change.
 
 ## Request Path
 
 ```text
 Browser Console
-  -> Control Plane product API
-       -> Sub2API management API: live balance, account Key/usage, once-dispatched debit/refund
-       -> Fabric API: typed compute, storage, attachment, Secret, and runtime stages
-       -> Ledger API: receipts and reconciliation evidence
+  -> cloud authentication, Workspace, Publisher and delivery:
+       same-origin Console BFF /api/v2/*
+       -> CloudIdentity: session and audience-bound authorization
+       -> typed gRPC owner APIs: Catalog, Workspace, Capability, Build,
+          Runtime Control, Serve and Gateway Integration
+       -> Workspace/Serve coordination -> Fabric resource facts and Ledger evidence
+  -> shared Gateway/Billing and other unmigrated panels, legacy Workspace:
+       retained Control Plane /api/*
+       -> Sub2API management API: balance, Key/usage, original debit/refund
+       -> typed Fabric/Ledger HTTP APIs: retained resource and receipt obligations
 ```
 
 Sub2API is external and remains the only spendable-balance, API-key, routing,
@@ -99,7 +113,7 @@ outside this repository's mutation boundary.
 
 ## Family Integration
 
-Cloud has separate Console, Control Plane, Fabric and Ledger owners. Framework
+Cloud has separate browser, domain-service and retained migration owners. Framework
 and App integrations consume public contracts; their scoped Host composition is
 defined by [the architecture boundary](architecture.md#host-client-and-cloud-authority-boundary).
 Cloud API, persistence, provider, wallet, Workspace and Ledger authority never
@@ -107,9 +121,13 @@ moves into a desktop renderer or application Host.
 
 ## Core Path
 
-The Core path is `Console -> Control Plane -> Workspace launcher/provider ->
-local Docker`. Fabric owns resource mutation and readback, Sub2API owns balance,
-Keys and usage, and Ledger owns receipts plus the append-only Evidence Index.
+The current cloud path is `Console -> Console BFF -> Workspace/Resource Catalog
+-> Fabric + Serve + Ledger`, with CloudIdentity authorization and native Gateway
+integration. The retained Local path is `Console -> Control Plane -> Workspace
+launcher/provider -> local Docker`. These paths retain their own object and
+operation identities; there is no automatic fallback between them. Fabric owns
+resource mutation and readback, Sub2API owns balance, Keys and usage, and Ledger
+owns receipts plus the append-only Evidence Index.
 Installers select `OPL_FABRIC_PROVIDER` and immutable Workspace images
 explicitly; missing provider or image inputs fail closed. Current capability is
 recorded in [status](status.md); remaining outcomes are in the
@@ -117,9 +135,10 @@ recorded in [status](status.md); remaining outcomes are in the
 
 ## Physical Module And Dependency Map
 
-The retained Workspace lane has Control Plane, Fabric and Ledger Go services.
-The Package publishing lane additionally uses Console BFF, Capability, Build and
-Runtime Control modules with typed gRPC owner contracts. Repository co-location
+The extracted Workspace and Package lanes use Console BFF, CloudIdentity/Gateway
+Integration, Capability, Build, Runtime Control, Workspace, Resource Catalog and
+Serve with typed gRPC owner contracts. The retained Workspace lane keeps Control
+Plane, Fabric and Ledger HTTP services. Repository co-location
 and one release image do not authorize implementation imports between owners.
 Ledger's domain-event listener reuses the policy-free `ownerservice` identity
 and mTLS mechanics already used by the other owner processes. It records events
@@ -133,7 +152,8 @@ the UI API adapter, without cookies or service credentials.
 
 ```text
 apps/console-ui
-  -> same-origin /api/*
+  -> migrated cloud surfaces: /api/v2/* -> apps/console-bff -> typed gRPC owners
+  -> retained callers in either build: /api/* -> services/control-plane
 services/control-plane
   -> typed HTTP client -> services/fabric
   -> typed HTTP client -> services/ledger
@@ -143,13 +163,17 @@ services/control-plane ─┐
 services/fabric        ├─> services/internal/postgresmigrate
 services/ledger       ─┘
 
-packages/contracts/go -> shared runtime types consumed by Control Plane and Fabric
+packages/contracts/go -> shared runtime types and generated owner API bindings
 packages/contracts/*.json -> consumed artifact and cross-owner byte contracts
 ```
 
 | Module | Physical boundary | Owns | Allowed dependencies | Forbidden coupling |
 | --- | --- | --- | --- | --- |
-| Console UI | `apps/console-ui`, TypeScript build | presentation and customer interaction | Control Plane product APIs under `/api/*` | direct Fabric, Ledger, Sub2API, Tencent, Kubernetes, persistence, or server implementation imports |
+| Console UI | `apps/console-ui`, TypeScript build | presentation and customer interaction | migrated cloud surfaces use same-origin BFF `/api/v2/*`; retained callers use Control Plane `/api/*` | direct Fabric, Ledger, Sub2API, Tencent, Kubernetes, persistence, or server implementation imports |
+| Console BFF | `apps/console-bff`, independent Go module and process | browser REST, session security and typed owner DTO aggregation | CloudIdentity and generated gRPC owner clients | business persistence, Saga state or another owner's implementation imports |
+| CloudIdentity / Gateway Integration | `services/gateway-integration`, one independent module/process, separate Tenant/Gateway databases | Tenant/session/member policy, accepted-operation authorization and native Gateway integration | external Sub2API APIs and typed owner readbacks | a second wallet, copied live balance or cross-owner table writes |
+| Capability / Build / Runtime Control | `services/capability`, `services/build`, `services/runtime-control`, independent modules/processes and stores | immutable Package/catalog facts, fixed-input OCI jobs/artifacts, approved Runtime Releases respectively | generated owner clients and current object/BuildKit adapters | another owner's store, Runtime implementation or deployment/current-selection authority |
+| Workspace / Resource Catalog / Serve | `services/workspace`, `services/resource-catalog`, `services/serve`, independent modules/processes and stores | accepted Workspace operations/Saga, plans and pricing policies, application delivery/current selection/readiness/access respectively | generated owner clients, Fabric/Ledger coordination and the retained first-delivery execution adapter | cross-owner writes, duplicate current deployment or inferred provider/financial success |
 | Control Plane | independent `go.mod`, binary, Deployment and schema | session/account mapping, Workspace entitlement, Launch cursor/attempt/lease/CAS, account/settlement coordination and customer DTOs | typed HTTP clients for Fabric, Ledger and Sub2API; narrow PostgreSQL migration helper | resource-stage reducers, Fabric operation derivation, Fabric/Ledger implementation imports, provider fields/SDKs/Kubernetes, provider mutations, or downstream table writes |
 | Fabric | independent `go.mod`, binary, Deployment and schema | compute, storage, attachment, Secret binding, Runtime, provider-neutral operation bindings/store, provider mutations and authoritative readback | provider adapters, cloud SDKs and narrow PostgreSQL migration helper | wallet, customer billing policy, Console session state, or Ledger table writes |
 | Ledger | independent `go.mod`, binary, Deployment and schema | receipts, reconciliation, idempotency, retention, and caller-owned opaque provenance refs | narrow PostgreSQL migration helper | review-policy or review-gate semantics, Launch continuation authority, spendable balance mutation, provider SDKs, Fabric execution, or Control Plane table writes |
@@ -162,11 +186,14 @@ Tencent or Kubernetes SDKs, and Console network calls must remain inside its API
 adapter and resolve to `/api/*`. This gate runs through the existing `npm test`
 lane; it complements behavior and contract tests rather than replacing them.
 
-Portable Compose gives each service its own PostgreSQL role/database and
-inbound service token; Control Plane receives separate Fabric and Ledger
-outbound tokens. Token rotation does not require restarting PostgreSQL or
+The retained portable Compose profile gives Control Plane, Fabric and Ledger
+their own PostgreSQL role/database and inbound service token; Control Plane
+receives separate Fabric and Ledger outbound tokens. Token rotation does not require restarting PostgreSQL or
 unrelated services. The common image makes the services one product release
-unit. Configuration and isolation tests do not prove concrete Instance adoption.
+unit. `deploy/portable/opl-cloud-owner-topology.json` declares the extracted
+processes, databases, peer requirements and HTTP routing surfaces an installation
+must materialize. Compose startup of the retained profile does not install this
+full topology. Configuration and isolation tests do not prove Instance adoption.
 
 Deployment isolation is an independent implementation lane, not a predecessor
 to Console, Control Plane, Fabric, or Ledger development. Portable distribution
@@ -178,18 +205,19 @@ blast radius creates a separate requirement.
 
 ## Repository And Instance Boundary
 
-`opl-cloud` (formerly `one-person-lab-cloud`) owns product architecture, the
-current reusable Console, Control Plane, Fabric, and Ledger implementation, and
-the target domain services. These are module and service boundaries inside one
-GitHub repository, not authorization for separate implementation repositories.
-The same short name also identifies packages, images, binaries, services,
+`one-person-lab-cloud` owns product architecture, Console UI/BFF, extracted domain
+services and retained Control Plane/Fabric/Ledger paths. These are module and
+service boundaries inside one GitHub repository, not authorization for separate
+implementation repositories.
+The short identifier `opl-cloud` identifies packages, images, binaries, services,
 namespaces, environment variables and runner labels.
 
 `opl-instance-medopl` owns one concrete installation: domain names, provider
 profile, region and resource ids, the enabled subset of Cloud-defined plans,
 image pins, secret references, promotion policy, and deployment receipts. The
-current fixed customer prices and `priceVersion` are implemented by the Cloud
-Control Plane catalog; an Instance does not override them. Instance repositories
+extracted plans and versioned policies are implemented by Resource Catalog;
+Control Plane retains its legacy prices and `priceVersion` for existing callers.
+An Instance does not override either catalog. Instance repositories
 consume exact Cloud candidates for pre-publication qualification
 and digest-addressed Releases after publication. Their internal artifacts may use the
 `opl-cloud` identifier, but they never copy runtime code, product contracts, or
@@ -206,7 +234,32 @@ command or an accepted caller for these paths.
 
 ## Console Source Truth
 
-| Console area | Authority | Control Plane projection |
+The image's `VITE_CONSOLE_IDENTITY` selects authentication and migrated browser
+surfaces. The Dockerfile defaults to `legacy` and labels the built digest with
+`opl.cloud.console-identity`; a deployment cannot change the baked bundle.
+
+| Console identity | Browser surface | Workspace source |
+| --- | --- | --- |
+| `cloud` | Authentication, Workspace, Publisher and delivery use same-origin Console BFF `/api/v2/*`, CloudIdentity session and owner authorization | Workspace owner list/detail, composed resource/delivery/access facts; no retained Control Plane Workspace read or maintenance fallback |
+| `legacy` | Retained Control Plane authentication and Workspace `/api/*` | Existing Control Plane Workspace rows, lifecycle and Runtime projections |
+
+Shared Gateway wallet/Key/usage, Billing, announcement and operator panels still
+use their retained `/api/*` adapters in either build. Cloud identity does not
+redirect these callers to BFF; their API availability and authorization remain
+deployment requirements. The BFF wallet used by the cloud launch flow is a
+separate owner surface, not a migration of the shared Gateway controller.
+
+The cloud detail exposes the owner's lifecycle, resource readiness, application
+availability, period end and access URL. Workspace-owner renewal, deletion,
+credentials and application-installation BFF routes remain unimplemented, so
+their legacy controls receive no cloud Workspace. The
+[browser reference](implementation/console.md) owns query and command state;
+[roadmap](roadmap.md#cloud-identity-customer-workspace-read-2026-09-30) owns the
+missing maintenance outcomes.
+
+The following source map applies to the retained Control Plane API:
+
+| Console area | Authority | Retained Control Plane projection |
 | --- | --- | --- |
 | Signed-in identity | Sub2API identity plus local Session mapping | `/api/auth/me` |
 | Public model endpoint | configured Sub2API origin projected as `/v1` | `/api/gateway/endpoint` |
@@ -237,6 +290,10 @@ completion. The current controller exports and API adapter are discoverable in
 `apps/console-ui/src/app`; they are not maintained as a second migration list.
 
 ## Service Ownership
+
+The extracted owner map is defined above. The detailed Control Plane, Fabric
+and Ledger behavior below describes retained callers and data obligations; it
+does not assign migrated capabilities back to Control Plane.
 
 `apps/console-ui` owns presentation only. It has no persistence and never calls
 Fabric, Ledger, Tencent, Kubernetes, or Sub2API directly.
@@ -948,10 +1005,10 @@ the hosted proof: no recorded Build job is bound to the existing
 a Tenant-resolved destination yet.
 
 
-## Target owner transition under product review
+## Owner Transition
 
 The current Control Plane/Fabric/Ledger implementation remains the migration
-source. The proposed target moves one live capability at a time to the domain
+source for retained callers. The adopted target moves one live capability at a time to the domain
 owners described by the canonical target specification: Capability owns
 Package facts, Build owns immutable OCI build facts, Runtime Control owns the
 approved Runtime Release catalog, Workspace owns business authorization and

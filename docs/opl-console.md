@@ -14,20 +14,22 @@ or explicitly managed resources and Agent Services.
 The Framework `Console` contribution projects runtime/read-model facts inside
 the single Framework Cordis Host and may provide typed client contributions for
 an App Shell. OPL Cloud Console presents Cloud accounts, policy, quotas,
-Workspace lifecycle, and billing through Control Plane. Control Plane owns the
-product APIs and databases; the Cloud repository owns product release. The
-`opl-aion-shell` and `opl-studio` projects carry the App GUI.
+Workspace lifecycle and billing through owner-backed product APIs. Console BFF
+aggregates the extracted owners; Control Plane retains unmigrated APIs and
+obligations. The Cloud repository owns product release. App selects `opl-studio`
+as its active GUI carrier; `opl-aion-shell` is a retired migration baseline.
 
 ## MVP Boundary
 
-Core Console is deliberately thin: it exposes the Workspace collection and the
-balance and usage facts needed to create and manage one local Docker Workspace
-path through Control Plane. Control Plane owns the product DTOs; Sub2API owns
-balance and usage, and Ledger supplies receipt projections.
+Core Console is deliberately thin: it exposes Workspace, balance, usage and
+owner-backed delivery facts. The current identity-specific browser paths are
+owned by [implementation architecture](implementation-architecture.md#console-source-truth).
+Sub2API owns balance and usage, and Ledger supplies receipt projections.
 
 The accepted public-beta target adds zero-balance registration, administrator
 top-up and controlled purchase. Customer-operated payment/top-up, broader
-managed-resource policy and Serve administration remain deferred. Current capability is owned by [status](status.md); gap and priority
+managed-resource policy and complete public serving remain later outcomes.
+Current capability is owned by [status](status.md); gap and priority
 are owned by the [roadmap](roadmap.md).
 
 ## Governance Objects
@@ -84,16 +86,17 @@ subscription behavior are separate later product decisions.
 
 ## Metering And Billing Boundary
 
-Console can present Control Plane metering projections for Gateway provider
+Console can present owner-backed metering projections for Gateway provider
 usage, the managed Workspace plan, Serve endpoint and invocation/session usage,
 Cloud-hosted compute and storage, and explicitly managed connector usage.
 User-provided local, SSH, or HPC resources can still produce Fabric and Ledger
 refs without becoming Cloud-billed by default.
 
-Gateway is the only spendable-balance owner. Control Plane owns the versioned
-price catalog, account-total billing projection and settlement policy, and
-orchestrates one Workspace monthly debit against that Gateway balance. Console
-presents Control Plane DTOs. Fabric returns resource and provider facts, while
+Sub2API is the only spendable-balance owner. Resource Catalog owns extracted
+plans and pricing policies; Gateway Integration coordinates the original
+accepted wallet operation. Control Plane retains the legacy catalog, billing
+projection and settlement paths for existing callers. Console presents the
+corresponding owner DTOs. Fabric returns resource and provider facts, while
 Ledger records append-only charge, refund, resource, and reconciliation
 receipts.
 
@@ -113,18 +116,22 @@ performs Package mutations through Framework delegation, and Ledger records
 refs. Domain owners retain professional quality and delivery authority.
 
 
-## Target boundary under product review
+## Domain Owner Boundary
 
-The proposed product model separates the browser surface from domain authority:
+The [adopted architecture](architecture.md#repository-and-instance-topology)
+separates the browser surface from domain authority:
 
-- Console UI calls the Console BFF; the BFF authenticates the session and composes typed owner readbacks.
+- Migrated cloud Console surfaces call the BFF for authentication and typed owner
+  readbacks; unmigrated callers retain Control Plane APIs.
 - Workspace owns identity, membership, entitlement, resource plans, quote/purchase obligations, and target authorization.
 - Capability, Build, and Runtime Control own Package facts, immutable OCI build facts, and approved Runtime Release facts respectively.
 - Serve owns the Workspace Agent delivery, current deployment, readiness, and API/Embed/Hosted UI access.
 - Fabric returns only infrastructure resource provisioning, binding, and readback facts; it does not answer Agent readiness.
 - Ledger records append-only evidence and opaque provenance; it does not become a lifecycle or Saga writer.
 
-The existing Control Plane remains the migration source until each caller and write path is transferred. This proposal does not claim that the target handler set is already deployed.
+Control Plane remains the migration source until each caller and write path is
+transferred. The owner map does not claim that all handlers are installed or
+qualified in an Instance.
 
 The portable Console build defaults to `VITE_CONSOLE_IDENTITY=legacy`, retaining
 the Control Plane login and Workspace APIs. Only a build explicitly selecting

@@ -45,9 +45,10 @@ input, output, artifact, review, cost and continuation refs where applicable.
 Ledger persists these as caller-owned opaque provenance; provider secrets and
 event/session state remain with their owners.
 
-Gateway remains the spendable-balance owner; Control Plane owns account-total
-billing and settlement policy, and Console presents it. Ledger records immutable evidence about
-money movements and resource charges.
+Sub2API remains the spendable-balance owner. The owning business/Gateway service
+coordinates accepted settlement; Control Plane retains its legacy account-total
+billing and settlement paths. Console presents the owner facts. Ledger records
+immutable evidence about money movements and resource charges.
 
 ## Local No-Charge Receipts
 
@@ -136,7 +137,7 @@ Examples of domain-owned review semantics:
   export readiness.
 
 
-## Target owner boundary under product review
+## Domain Owner Boundary
 
 Ledger remains append-only evidence. It accepts opaque references from
 Capability, Build, Runtime Control, Workspace, Serve, Fabric, Gateway, and

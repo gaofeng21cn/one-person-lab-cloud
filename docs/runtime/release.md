@@ -54,8 +54,8 @@ machine-contract owner.
 
 PR checks, CI artifacts, and exact-SHA candidate images are replaceable inputs.
 They may fail, be superseded, or be deleted without creating a formal version.
-The candidate must identify one canonical Cloud SHA and one digest-addressed
-multi-architecture image. It must be available to both qualification paths
+The Candidate must identify one exact Cloud SHA on a workflow-admitted branch
+and one digest-addressed multi-architecture image. It must be available to both qualification paths
 without creating a Git tag, GitHub Release, or versioned GHCR tag.
 Its portable bundle contains the installation assets, canonical
 `opl-cloud-candidate.json`, and `SHA256SUMS`. The manifest binds the exact

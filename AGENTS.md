@@ -1,6 +1,6 @@
 # OPL Cloud Development Rules
 
-`opl-cloud` is the single GitHub product repository for OPL Cloud architecture,
+`one-person-lab-cloud` is the single GitHub product repository for OPL Cloud architecture,
 Console/BFF, domain services, contracts, portable distribution, and reusable
 release mechanisms. A domain is not a separate GitHub repository.
 
@@ -19,9 +19,10 @@ release mechanisms. A domain is not a separate GitHub repository.
 - `opl-instance-medopl` owns the medopl domains, provider profile, production
   environment and Secrets, deployment, rollback, acceptance, and receipts.
 
-`opl-cloud` is also the package, image, service, namespace, and runner name.
-The former `one-person-lab-cloud` name, archived documentation repository, and
-Git history are provenance, not separate current product writers. Instance,
+`opl-cloud` is the product's package, image, service, namespace, and runner name.
+The current repository identity is `gaofeng21cn/one-person-lab-cloud`, as declared
+by the distribution contract. Archived repositories and Git history are
+provenance, not separate current product writers. Instance,
 Sub2API, and Framework remain separate authorities outside this consolidation.
 
 ## Reconcile Before Editing
@@ -76,14 +77,19 @@ Each domain owns its own data and writes; cross-owner references use opaque
 identifiers only. The canonical in-repository directory and deployment-unit map
 is [Repository And Instance Topology](docs/architecture.md#repository-and-instance-topology).
 
-The table below is the current implementation that is being migrated. Its rows
-remain authoritative for the code that exists today; the target domains above
-govern new work, and the target architecture work packages own the migration.
+The current implementation has both extracted owner processes and retained
+Control Plane callers. [Implementation architecture](docs/implementation-architecture.md)
+owns their source paths and request map; the target work packages own remaining
+migration and qualification outcomes.
 
 | Module | Owns |
 | --- | --- |
-| `apps/console-ui` | Presentation and calls to Control Plane product APIs |
-| `services/control-plane` | Sessions, account policy, Workspace orchestration, settlement coordination, customer DTOs |
+| `apps/console-ui` | Presentation; migrated cloud surfaces call Console BFF, while retained callers use Control Plane APIs |
+| `apps/console-bff` | Same-origin browser REST, session security and typed owner aggregation; no business persistence |
+| `services/gateway-integration` | CloudIdentity/Tenant and Gateway integration, with distinct data owners in one deployment unit |
+| `services/capability`, `services/build`, `services/runtime-control` | Package/catalog facts, immutable OCI build facts, approved Runtime Release references respectively |
+| `services/workspace`, `services/resource-catalog`, `services/serve` | Workspace business operations, approved plans/pricing policies, application delivery/readiness/access respectively |
+| `services/control-plane` | Retained sessions, account policy, Workspace lifecycle, settlement coordination and customer DTOs until their callers migrate |
 | `services/fabric` | Provider-neutral compute, storage, attachment, Secret binding, Runtime facts, provider adapters |
 | `services/ledger` | Receipts, evidence, retention, reconciliation, opaque provenance |
 | `services/internal` | Policy-free infrastructure shared by at least two current services |
@@ -93,17 +99,21 @@ govern new work, and the target architecture work packages own the migration.
   PostgreSQL database and roles. CloudIdentity (`tenant`) and Gateway Integration
   (`gateway`) are distinct data owners in the same Gateway Integration module
   and deployment unit; neither each domain name nor each proto service creates
-  another process. Internal calls use typed gRPC/protobuf; Console uses the BFF
-  REST API. Until migrated, Control Plane, Fabric, and Ledger keep their current
-  module, process, and typed HTTP boundaries.
+  another process. Extracted owners use typed gRPC/protobuf; migrated cloud
+  Console surfaces use the BFF REST API. Retained Control Plane, Fabric, and Ledger
+  callers keep their current module, process, and typed HTTP boundaries.
 - Control Plane is a migration source, not a permanent second writer alongside
   the extracted services. Move a capability and its real callers together, then
   retire its old write path while preserving historical obligations.
-- Console currently reaches service data through Control Plane APIs; the target
-  browser entry is `apps/console-bff`.
+- Console's `cloud` identity uses `apps/console-bff` for authentication,
+  Workspace, Publisher and delivery surfaces; shared Gateway/Billing and other
+  unmigrated panels still use Control Plane APIs. `legacy` retains its current
+  Control Plane authentication and Workspace APIs. The identity is baked into
+  the image and declared by its label and installation topology, not changed at
+  runtime.
 - Keep one shared contracts Go module at `packages/contracts/go/go.mod`. W01
-  places proto sources in `packages/contracts/proto/` and generated target architecture Go
-  bindings in `packages/contracts/go/v226/`, not another module. Internal
+  places production proto sources in `packages/contracts/proto/` and generated
+  Go bindings under the existing contracts module, not another module. Internal
   consumers build from the same Cloud commit, record the schema hash, and lock
   generator versions. Necessary consumer `go.mod`/`go.sum` updates belong to
   that contract change; do not add a module solely to avoid those updates.
@@ -154,9 +164,10 @@ Cloud publishes portable GHCR images, GitHub Releases, installation assets, and
 reusable provider adapters. It does not own an instance deployment workflow or
 require a production environment to build the product.
 
-During pre-1.0, build a replaceable candidate from an exact canonical Cloud SHA
-and image digest. The instance owner deploys and qualifies that candidate in its
-protected environment. A formal Product Release promotes the same qualified
+During pre-1.0, build a replaceable candidate from an exact Cloud SHA and image
+digest on a branch admitted by the Candidate workflow. Formal publication still
+requires that exact source to be merged into canonical `main`. The instance owner
+deploys and qualifies that candidate in its protected environment. A formal Product Release promotes the same qualified
 bytes without a rebuild.
 
 Candidate construction and local development do not authorize formal

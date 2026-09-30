@@ -83,7 +83,8 @@ must not appear as a next action for failed customer tasks.
 
 ## Truth And Safety
 
-- The browser calls only Control Plane product APIs. It does not call Fabric,
+- The browser calls only its identity-specific same-origin product APIs through
+  Console BFF or retained Control Plane. It does not call Fabric,
   Ledger, Sub2API or provider APIs directly.
 - Display service-provided money, time, status and price snapshots without
   inventing business truth in the browser.
