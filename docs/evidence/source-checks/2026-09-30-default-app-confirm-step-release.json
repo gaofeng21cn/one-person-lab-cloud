@@ -1,0 +1,92 @@
+{
+ "schemaVersion": 1,
+ "receiptType": "opl_cloud_default_app_confirm_step_source_check",
+ "revision": 1,
+ "recordedAt": "2026-09-30T04:40:15Z",
+ "result": "the_default_app_launch_renders_its_runtime_release_instead_of_crashing_or_showing_an_empty_capability_version",
+ "window": "serial",
+ "windowTitle": "Serial integration stage 6 - default App Console launch confirm step",
+ "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.6",
+ "necessity": {
+  "decision": "The default OPL App and the built Agent are the only two new-product application combinations, and both are created from the same Console launch page. The default App is satisfied by an approved Runtime Release with no CapabilityVersion, so the launch page must render that combination with an empty ready-CapabilityVersion catalog. Today it crashes, and even when it renders it names the wrong owner fact on the confirm step. This change makes the launch page render the default App honestly, changing no other behavior.",
+  "currentProblem": "apps/console-ui/src/app/use-workspace-launch-controller.ts loadCatalog accepts `!availableReleases.length && !availableVersions.length` as the only empty-catalog failure, so a catalog with an approved Runtime Release and no ready CapabilityVersion is a valid default-App catalog. The companion state init then wrote `availableVersions[0].id` unconditionally, which throws `TypeError: Cannot read properties of undefined` on an empty ready list, and React unmounts the whole route: `/console/workspaces/new` rendered an empty body with no Console error. Separately, apps/console-ui/src/components/workspaces/WorkspaceLaunchPage.tsx hardcoded the confirm-step row label `Agent 版本` and read the CapabilityVersion, so even a default-App quote showed an empty version row instead of its Runtime Release.",
+  "confirmedFacts": [
+   "use-workspace-launch-controller.ts guard (line ~212) admits a catalog that has an approved Runtime Release but an empty ready-CapabilityVersion list; the sibling Runtime Release init already uses `availableReleases[0]?.id ?? \"\"`, but the CapabilityVersion init dereferenced `availableVersions[0].id` without the optional guard.",
+   "WorkspaceLaunchPage.tsx AgentLaunchPage already had `isDefaultApp`, `release` and `version` in scope and used `isDefaultApp ? release... : version...` for the order summary, but the confirm list still hardcoded the Agent CapabilityVersion row.",
+   "docs/invariants.md Adopted Application Delivery Invariants: the default App uses an exact approved Runtime Release with its built-in UI; it needs no synthetic Package, Build or CapabilityVersion.",
+   "docs/spec/target/14_implementation_work_packages.md#11.6 requires verifying the default App first, through the real BFF/Console rather than fixture DTOs.",
+   "The launch controller already sends the default-App application selection `{ kind: \"opl_app\", runtimeVersionId }` with empty modelSelections, and the quote readback already requires a mutually exclusive selection; only the UI state init and the confirm row were wrong."
+  ],
+  "mustStaySeparate": [
+   "The default-App launch is not repaired by fabricating a CapabilityVersion or a ready placeholder; an empty ready-CapabilityVersion catalog stays a successful authoritative empty read.",
+   "The built-Agent combination is unchanged: it still requires a ready CapabilityVersion, its model requirement slots and its own confirm row, and still fails closed when its owner routes are unavailable.",
+   "This is a Console UI state/rendering fix; it does not change Serve writes, the BFF, the contracts, or any catalog owner."
+  ],
+  "minimalImplementation": [
+   "Guard the CapabilityVersion state init the same way as the Runtime Release init: `(availableVersions[0]?.id ?? \"\")`.",
+   "Render the default-App confirm row as `Runtime Release` bound to the selected Runtime Release, and keep `Agent 版本` bound to the CapabilityVersion for the built Agent.",
+   "Add the browser test `default App confirm step shows its Runtime Release instead of an empty CapabilityVersion`, which drives the real Console through the real BFF with an approved Runtime Release and an empty ready-CapabilityVersion catalog."
+  ],
+  "whyNotAlternative": [
+   "Forcing a CapabilityVersion to exist would contradict the adopted invariant that the default App needs none.",
+   "Making the empty ready list an `agent_launch_catalog_empty` error would make the default App unusable in the Console, which is the combination section 11.6 must verify first.",
+   "Rendering a blank or mislabeled version row would present the Agent owner's fact for a default-App order, which is a false owner attribution."
+  ]
+ },
+ "ssotConformance": [
+  {
+   "ssot": "docs/invariants.md#adopted-application-delivery-invariants",
+   "requirement": "「The default App uses an exact approved Runtime Release with its built-in UI; it needs no synthetic Package, Build or CapabilityVersion.」",
+   "conformance": "The launch page now renders and completes the default-App configuration and confirm steps with an empty ready-CapabilityVersion catalog and never derives a CapabilityVersion for it."
+  },
+  {
+   "ssot": "docs/spec/target/14_implementation_work_packages.md#11.6",
+   "requirement": "「先验证默认App不依赖Build...接真实BFF/Console而非fixture DTO」",
+   "conformance": "The new browser test drives the real Console UI against the real BFF v2 routes, proving the default-App launch does not depend on any CapabilityVersion fact."
+  },
+  {
+   "ssot": "docs/invariants.md#console",
+   "requirement": "「Console presents current owner-backed...facts. Independent sources load independently. A failed source does not erase valid facts from another source.」「empty represents a successful authoritative read with no rows」",
+   "conformance": "An empty ready-CapabilityVersion read no longer aborts the page; the approved Runtime Release and the resource/wallet facts stay rendered as the default-App facts."
+  },
+  {
+   "ssot": "docs/invariants.md#evidence-levels",
+   "requirement": "「code-complete means the exact source revision passed its required local source...gates with no required skips.」",
+   "conformance": "The change is covered by the Console browser suite inside npm run verify:local, which passed on this revision."
+  }
+ ],
+ "acceptance": [
+  "With an approved Runtime Release and no ready CapabilityVersion, `/console/workspaces/new` renders the configure step and the default-App confirm step, and the confirm step shows `Runtime Release` = `App 1.0` while rendering no `Agent 版本` row.",
+  "The quote request for the default App carries `applicationSelection: { kind: \"opl_app\", runtimeVersionId: \"runtime-1\" }` with empty modelSelections.",
+  "The existing built-Agent launch journey and the fail-closed catalog tests are unchanged and still pass."
+ ],
+ "endState": "Complete for the Cloud-owned Console launch page over both supported combinations. Live Console qualification against a deployed default-App Workspace, the Candidate build and Instance deployment remain external.",
+ "ownerWriteSet": [
+  "apps/console-ui/src/app/use-workspace-launch-controller.ts",
+  "apps/console-ui/src/components/workspaces/WorkspaceLaunchPage.tsx",
+  "tests/ui/workspace-task-experience-browser.test.ts"
+ ],
+ "evidenceSources": {
+  "apps/console-ui/src/app/use-workspace-launch-controller.ts": "f1ea52644893c617a1cc98aa82febedc1496acec1ad37ea45a47011827ddf917",
+  "apps/console-ui/src/components/workspaces/WorkspaceLaunchPage.tsx": "a184a3671423c9f5baec78363005a8e4b37a7b70c9882823f740d4bdc7bb372f",
+  "tests/ui/workspace-task-experience-browser.test.ts": "d657a08d83517fb2246a55e016288d2ea62a31efd8b92644cd3758b35b2f718d"
+ },
+ "verification": [
+  {
+   "command": "node --test --test-name-pattern=\"default App confirm step\" tests/ui/workspace-task-experience-browser.test.ts",
+   "result": "pass",
+   "detail": "The new test passes with the fix and fails without it: reverting the controller init to `availableVersions[0].id` makes the page crash and the configure-step heading never appear, so the test covers the regression."
+  },
+  {
+   "command": "npm run verify:local",
+   "result": "pass",
+   "detail": "Full local gate (source tests, Console browser suite, typecheck, lint, Console build, Go compile and database-free Go tests, whitespace) is green after the change."
+  }
+ ],
+ "notRun": [
+  "Live Console browser qualification against a deployed default-App Workspace (needs an Instance).",
+  "Candidate build and Instance deployment (external preconditions)."
+ ],
+ "claimBoundary": "This receipt claims the Console launch page now renders both application combinations without crashing on an empty ready-CapabilityVersion catalog, verified by a focused Console browser test and npm run verify:local. It claims no deployed Console, no Candidate and no Instance receipt.",
+ "secrets": "none"
+}
