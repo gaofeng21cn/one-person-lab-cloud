@@ -12,6 +12,10 @@ package delivery
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"strconv"
 	"strings"
 
 	"google.golang.org/grpc/codes"
@@ -20,6 +24,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	api "opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/owneridentity"
 )
 
 // ReasonRuntimeAdapterCapabilityUnavailable names an execution-adapter capability
@@ -67,23 +72,50 @@ func (s *Service) StopRuntime(ctx context.Context, command *api.RuntimeStopComma
 	if err != nil {
 		return nil, err
 	}
-	binding, err := s.confirmedRuntimeBinding(ctx, deploy.command)
+	target, err := s.confirmedRuntimeTarget(ctx, deploy.command)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.Runtime.Lifecycle(ctx, deploy.command, binding, "suspended"); err != nil {
+	if err := s.applyRecordedLifecycle(ctx, deploy, "stop", map[string]string{"desired": "suspended"}, func() error {
+		return s.Runtime.Lifecycle(ctx, deploy.command, target, "suspended")
+	}); err != nil {
 		return nil, err
 	}
-	return s.runtimeLifecycleOperation(ctx, deploy, "runtime_stop", "suspending"), nil
+	// The provider confirmed the suspended state, so the retire action completes.
+	return s.runtimeLifecycleOperation(ctx, deploy, "runtime_stop", "runtime", "succeeded")
 }
 
-// ReloadRuntime applies a new model configuration to the exact persisted runtime.
-// The applied version is only recorded after the installation confirms it, so a
-// failed reload never advances applied_model_configuration_version.
+// ReloadModels applies one model configuration to the exact persisted runtime on
+// behalf of the Workspace owner, which owns the accepted model intent this command
+// carries. It is the coordination entry point and the execution-adapter entry point
+// share one owner-local reload: the admitted caller differs, the persisted intent,
+// the publisher interface and the compare-and-set that records the applied version
+// do not.
+func (s *Service) ReloadModels(ctx context.Context, command *api.RuntimeReloadCommand) (*api.Operation, error) {
+	if err := requirePeer(ctx, owneridentity.Workspace); err != nil {
+		return nil, err
+	}
+	return s.reloadRuntime(ctx, command)
+}
+
+// ReloadRuntime applies a new model configuration to the exact persisted runtime
+// through the frozen publisher interface and records the version the application
+// itself read back. The requested version is never written as the applied one: the
+// stored applied version advances only by a compare-and-set that the readback
+// confirmed, so a failed or unconfirmed reload leaves the last confirmed
+// configuration exactly as it was.
 func (s *Service) ReloadRuntime(ctx context.Context, command *api.RuntimeReloadCommand) (*api.Operation, error) {
 	if err := requireServePeer(ctx); err != nil {
 		return nil, err
 	}
+	return s.reloadRuntime(ctx, command)
+}
+
+// reloadRuntime is the one owner-local reload both admitted callers reach. It
+// resolves the persisted runtime command, checks the caller's expected applied
+// version against Serve's own stored one, applies the target version through the
+// execution boundary and records only the version the application read back.
+func (s *Service) reloadRuntime(ctx context.Context, command *api.RuntimeReloadCommand) (*api.Operation, error) {
 	if s.Runtime == nil {
 		return nil, status.Error(codes.Unavailable, "runtime execution adapter is not configured")
 	}
@@ -101,18 +133,80 @@ func (s *Service) ReloadRuntime(ctx context.Context, command *api.RuntimeReloadC
 	reload := proto.Clone(deploy.command).(*api.RuntimeDeployCommand)
 	reload.ModelConfigurationVersion = command.GetTargetVersion()
 	reload.ModelSelections = command.GetSelections()
-	binding, err := s.confirmedRuntimeBinding(ctx, reload)
+	target, err := s.confirmedRuntimeTarget(ctx, reload)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.Runtime.Reload(ctx, reload, binding); err != nil {
+	return s.reloadModelConfiguration(ctx, deploy, reload, target, command)
+}
+
+// reloadModelConfiguration records the reload intent for one target version, applies
+// it through the execution boundary, and records the version the application read
+// back together with the operation that reports it. The action and the operation are
+// keyed by the target version, so each configuration version has one durable intent
+// and one durable result while a retry of the same version resumes its own.
+//
+// The applied version is written by the readback alone: the compare-and-set requires
+// the exact version the caller expected, so a reload that the application did not
+// confirm leaves the runtime's last confirmed configuration untouched.
+func (s *Service) reloadModelConfiguration(ctx context.Context, deploy *persistedRuntime, reload *api.RuntimeDeployCommand, target ExecutionTarget, command *api.RuntimeReloadCommand) (*api.Operation, error) {
+	targetVersion := strconv.FormatInt(command.GetTargetVersion(), 10)
+	snapshot, err := json.Marshal(map[string]string{
+		"desired": "running", "targetVersion": targetVersion,
+		"selections": reloadSelectionDigest(reload.GetModelSelections()),
+	})
+	if err != nil {
+		return nil, status.Error(codes.Internal, "cannot record the runtime reload")
+	}
+	actionID := stableID("act_", "reload", deploy.command.GetRuntimeInstanceId(), deploy.operationID, targetVersion)
+	if _, err = s.recordRuntimeAction(ctx, actionID, deploy.command.GetRuntimeInstanceId(), "reload", deploy.command.GetDeploymentId(), snapshot); err != nil {
 		return nil, err
 	}
-	// The requested version is NOT the applied version until the runtime confirms
-	// it. Until a provider readback carries the applied model configuration, the
-	// operation stays awaiting confirmation and the stored applied version is
-	// unchanged, so a client can never read a desired version as applied.
-	return s.runtimeLifecycleOperation(ctx, deploy, "runtime_reload", "awaiting_confirmation"), nil
+	appliedVersion, err := s.Runtime.Reload(ctx, reload, target)
+	if err != nil {
+		return nil, err
+	}
+	if appliedVersion <= 0 {
+		return nil, status.Error(codes.Internal, "the execution boundary reported no applied model configuration version")
+	}
+	if err = s.recordAppliedModelConfiguration(ctx, deploy, actionID, command.GetTargetVersion(), appliedVersion); err != nil {
+		return nil, err
+	}
+	return s.runtimeLifecycleOperation(ctx, deploy, "runtime_reload", "runtime", "succeeded", targetVersion)
+}
+
+// recordAppliedModelConfiguration advances the runtime's applied model
+// configuration version by compare-and-set and records the confirmed reload action
+// in one transaction. The readback version must be the requested one and the stored
+// version must be the one the caller expected, so the applied fact is exactly what
+// the application reported and never a version a caller asked for.
+func (s *Service) recordAppliedModelConfiguration(ctx context.Context, deploy *persistedRuntime, actionID string, expectedVersion, appliedVersion int64) error {
+	if appliedVersion != expectedVersion {
+		return status.Errorf(codes.FailedPrecondition, "the application reported applied model configuration %d, not the requested %d", appliedVersion, expectedVersion)
+	}
+	runtimeID := deploy.command.GetRuntimeInstanceId()
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return dbError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET applied_model_configuration_version=$3,updated_at=now() WHERE id=$1 AND applied_model_configuration_version=$2`, runtimeID, deploy.appliedModelVersion, appliedVersion)
+	if err != nil {
+		return dbError(err)
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected != 1 {
+		return status.Errorf(codes.FailedPrecondition, "runtime applied model configuration is no longer %d", deploy.appliedModelVersion)
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_actions SET observation_result='confirmed',evidence_ref=NULLIF($2,''),updated_at=now() WHERE command_id=$1`, actionID, modelConfigurationEvidence(actionID, appliedVersion)); err != nil {
+		return dbError(err)
+	}
+	return dbError(tx.Commit())
+}
+
+// modelConfigurationEvidence is the reload action's evidence identity: the action
+// and the version the application itself reported for it.
+func modelConfigurationEvidence(actionID string, appliedVersion int64) string {
+	return "serve-model-configuration://" + actionID + "/" + strconv.FormatInt(appliedVersion, 10)
 }
 
 // ReadApplicationCredentials returns the platform-issued WebUI credential for the
@@ -133,11 +227,11 @@ func (s *Service) ReadApplicationCredentials(ctx context.Context, request *api.R
 	if err != nil {
 		return nil, err
 	}
-	binding, err := s.confirmedRuntimeBinding(ctx, deploy.command)
+	target, err := s.confirmedRuntimeTarget(ctx, deploy.command)
 	if err != nil {
 		return nil, err
 	}
-	credentials, err := s.Runtime.Credentials(ctx, deploy.command, binding)
+	credentials, err := s.Runtime.Credentials(ctx, deploy.command, target)
 	if err != nil {
 		return nil, err
 	}
@@ -163,16 +257,16 @@ func (s *Service) executeRuntimeStep(ctx context.Context, command *api.RuntimeDe
 	if err != nil {
 		return RuntimeObservation{}, err
 	}
-	binding, err := confirmedBinding(command, resources)
+	target, err := confirmedExecutionTarget(command, resources)
 	if err != nil {
 		return RuntimeObservation{}, err
 	}
 	if start {
-		if _, err = s.Runtime.Start(ctx, command, binding); err != nil {
+		if _, err = s.Runtime.Start(ctx, command, target); err != nil {
 			return RuntimeObservation{}, err
 		}
 	}
-	return s.Runtime.Observe(ctx, command, binding)
+	return s.Runtime.Observe(ctx, command, target)
 }
 
 // runtimeObservationReadback projects one adapter observation into the contract's
@@ -212,4 +306,13 @@ func runtimeObservationReadback(command *api.RuntimeDeployCommand, observation R
 		readback.ReadinessReceiptId = observation.ReadinessEvidenceRef
 	}
 	return readback
+}
+
+// reloadSelectionDigest identifies the exact model selections one reload applies,
+// so a retry of the same action is recognized while a retry that changes the
+// selections is refused.
+func reloadSelectionDigest(selections []*api.ModelSelection) string {
+	raw, _ := json.Marshal(selections)
+	sum := sha256.Sum256(raw)
+	return "sha256:" + hex.EncodeToString(sum[:])
 }

@@ -10,7 +10,7 @@ import (
 	"strconv"
 
 	contracts "opl-cloud/packages/contracts/go"
-	"opl-cloud/services/fabric/internal/protectedresource"
+	"opl-cloud/services/internal/protectedresource"
 )
 
 // EnsureWorkspaceApplicationRuntime applies one manifest per admitted
@@ -333,7 +333,7 @@ func workspaceApplicationManifest(input WorkspaceApplicationRuntimeInput, comput
 func workspaceApplicationComponentManifest(input WorkspaceApplicationRuntimeInput, compute ComputeAllocation, volume StorageVolume, admitted map[string]bool) []byte {
 	components := contracts.WorkspaceApplicationRuntimeComponents(input.Revision)
 	tags := oplCostTags(compute.AccountID, input.WorkspaceID, applicationRuntimeID(input), input.RuntimeOperationID)
-	pvcName := storagePVCName(volume)
+	pvcName := StoragePVCName(volume)
 	items := make([]any, 0, len(components)*2+1)
 	for _, component := range components {
 		if admitted != nil && !admitted[component.Name] {

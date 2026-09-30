@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"opl-cloud/services/fabric/internal/protectedresource"
+	"opl-cloud/services/internal/protectedresource"
 )
 
 const (

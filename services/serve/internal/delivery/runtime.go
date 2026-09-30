@@ -43,6 +43,14 @@ type RuntimeObservation struct {
 	// AccessURL is the publishable URL the adapter resolved for that entry. It is
 	// empty when nothing is publishable yet.
 	AccessURL string
+	// AccessUpstreamService and AccessUpstreamPort are the in-cluster destination
+	// the provider reported for that entry, when it reported a gateway entry
+	// instead of its own external URL. Serve persists them because Serve owns the
+	// access data plane: the proxy must reach an exact Service the provider
+	// created, never a name it composed itself. Both stay empty for a
+	// provider-published URL entry.
+	AccessUpstreamService string
+	AccessUpstreamPort    int
 	// Components is the executing runtime's own whole-runtime component
 	// observation. It carries the provider's per-component readiness so an
 	// adapter can refuse to call a runtime ready while any declared component is
@@ -59,6 +67,26 @@ type RuntimeObservation struct {
 	ObservedAt time.Time
 }
 
+// resolveAccessUpstream validates the in-cluster destination one observation
+// reported. A gateway entry names exactly one Service and one port; a runtime
+// whose entry carry the provider's own URL has no upstream. An entry that
+// describes both, or a Service name that is not one DNS label, is refused
+// rather than recorded as a destination the proxy would have to reinterpret.
+func resolveAccessUpstream(observation RuntimeObservation) (string, int, error) {
+	service := strings.TrimSpace(observation.AccessUpstreamService)
+	port := observation.AccessUpstreamPort
+	if service == "" && port == 0 {
+		return "", 0, nil
+	}
+	if service == "" || port < 1 || port > 65535 || !dnsLabelValid(service) {
+		return "", 0, refuse(ReasonAppAccessUnavailable)
+	}
+	if observation.ApplicationEntry != nil && strings.TrimSpace(observation.ApplicationEntry.URL) != "" {
+		return "", 0, refuse(ReasonAppAccessUnavailable)
+	}
+	return service, port, nil
+}
+
 // RuntimeRecord is Serve's own persisted runtime-instance fact.
 type RuntimeRecord struct {
 	ID              string
@@ -71,6 +99,10 @@ type RuntimeRecord struct {
 	ObservedAt      time.Time
 	ExecutionEpoch  int64
 	ApplicationOpen bool
+	// AccessUpstreamService and AccessUpstreamPort name the in-cluster
+	// destination Serve's access data plane proxies to for this instance.
+	AccessUpstreamService string
+	AccessUpstreamPort    int
 }
 
 // ErrRuntimeObservationRefused reports an observation Serve will not record. It is
@@ -152,6 +184,10 @@ func recordDeploymentObservation(ctx context.Context, tx *sql.Tx, cmd *api.Runti
 	if err != nil {
 		return nil, err
 	}
+	upstreamService, upstreamPort, err := resolveAccessUpstream(observation)
+	if err != nil {
+		return nil, err
+	}
 	if err := validateReserved(ctx, tx, cmd); err != nil {
 		return nil, err
 	}
@@ -173,7 +209,7 @@ func recordDeploymentObservation(ctx context.Context, tx *sql.Tx, cmd *api.Runti
 	// independently reported, never the version the command requested. A runtime
 	// that has not read the applied version back leaves it 0, so a client can never
 	// read a desired version as an applied fact.
-	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET status=$2,access_url=$3,readiness_evidence_ref=$4,observed_at=$5,applied_model_configuration_version=$6,updated_at=now() WHERE id=$1`, cmd.GetRuntimeInstanceId(), state, url, ref, observedAt.UTC(), observation.AppliedModelConfigurationVersion)
+	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET status=$2,access_url=$3,readiness_evidence_ref=$4,observed_at=$5,applied_model_configuration_version=$6,access_upstream_service=$7,access_upstream_port=$8,updated_at=now() WHERE id=$1`, cmd.GetRuntimeInstanceId(), state, url, ref, observedAt.UTC(), observation.AppliedModelConfigurationVersion, nullable(upstreamService), nullablePort(upstreamPort))
 	if err != nil {
 		return nil, dbError(err)
 	}
@@ -183,7 +219,8 @@ func recordDeploymentObservation(ctx context.Context, tx *sql.Tx, cmd *api.Runti
 		ID: id, WorkspaceID: cmd.GetWorkspaceId(), DeploymentID: cmd.GetDeploymentId(),
 		RuntimeID: cmd.GetRuntimeInstanceId(), Status: state, AccessURL: accessURL,
 		ReadinessRef: readinessRef, ObservedAt: observedAt, ExecutionEpoch: cmd.GetExecutionEpoch(),
-		ApplicationOpen: state == "ready",
+		ApplicationOpen:       state == "ready",
+		AccessUpstreamService: upstreamService, AccessUpstreamPort: upstreamPort,
 	}, nil
 }
 

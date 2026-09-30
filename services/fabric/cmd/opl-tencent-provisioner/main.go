@@ -17,7 +17,7 @@ import (
 
 	contracts "opl-cloud/packages/contracts/go"
 	fabricstore "opl-cloud/services/fabric/internal/fabric"
-	"opl-cloud/services/fabric/internal/protectedresource"
+	"opl-cloud/services/internal/protectedresource"
 
 	cbs2017 "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cbs/v20170312"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"

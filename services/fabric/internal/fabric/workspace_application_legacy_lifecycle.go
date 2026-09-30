@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	contracts "opl-cloud/packages/contracts/go"
-	"opl-cloud/services/fabric/internal/protectedresource"
+	"opl-cloud/services/internal/protectedresource"
 	"strconv"
 )
 
