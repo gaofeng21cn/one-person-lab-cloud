@@ -84,9 +84,12 @@ func (s *Service) StopRuntime(ctx context.Context, command *api.RuntimeStopComma
 	return s.runtimeLifecycleOperation(ctx, deploy, "runtime_stop", "runtime", "succeeded")
 }
 
-// ReloadRuntime applies a new model configuration to the exact persisted runtime.
-// The applied version is only recorded after the installation confirms it, so a
-// failed reload never advances applied_model_configuration_version.
+// ReloadRuntime applies a new model configuration to the exact persisted runtime
+// through the frozen publisher interface and records the version the application
+// itself read back. The requested version is never written as the applied one: the
+// stored applied version advances only by a compare-and-set that the readback
+// confirmed, so a failed or unconfirmed reload leaves the last confirmed
+// configuration exactly as it was.
 func (s *Service) ReloadRuntime(ctx context.Context, command *api.RuntimeReloadCommand) (*api.Operation, error) {
 	if err := requireServePeer(ctx); err != nil {
 		return nil, err
@@ -112,16 +115,76 @@ func (s *Service) ReloadRuntime(ctx context.Context, command *api.RuntimeReloadC
 	if err != nil {
 		return nil, err
 	}
-	if err := s.applyRecordedLifecycle(ctx, deploy, "reload", map[string]string{"desired": "running", "targetVersion": strconv.FormatInt(command.GetTargetVersion(), 10), "selections": reloadSelectionDigest(reload.GetModelSelections())}, func() error {
-		return s.Runtime.Reload(ctx, reload, target)
-	}); err != nil {
+	return s.reloadModelConfiguration(ctx, deploy, reload, target, command)
+}
+
+// reloadModelConfiguration records the reload intent for one target version, applies
+// it through the execution boundary, and records the version the application read
+// back together with the operation that reports it. The action and the operation are
+// keyed by the target version, so each configuration version has one durable intent
+// and one durable result while a retry of the same version resumes its own.
+//
+// The applied version is written by the readback alone: the compare-and-set requires
+// the exact version the caller expected, so a reload that the application did not
+// confirm leaves the runtime's last confirmed configuration untouched.
+func (s *Service) reloadModelConfiguration(ctx context.Context, deploy *persistedRuntime, reload *api.RuntimeDeployCommand, target ExecutionTarget, command *api.RuntimeReloadCommand) (*api.Operation, error) {
+	targetVersion := strconv.FormatInt(command.GetTargetVersion(), 10)
+	snapshot, err := json.Marshal(map[string]string{
+		"desired": "running", "targetVersion": targetVersion,
+		"selections": reloadSelectionDigest(reload.GetModelSelections()),
+	})
+	if err != nil {
+		return nil, status.Error(codes.Internal, "cannot record the runtime reload")
+	}
+	actionID := stableID("act_", "reload", deploy.command.GetRuntimeInstanceId(), deploy.operationID, targetVersion)
+	if _, err = s.recordRuntimeAction(ctx, actionID, deploy.command.GetRuntimeInstanceId(), "reload", deploy.command.GetDeploymentId(), snapshot); err != nil {
 		return nil, err
 	}
-	// The requested version is NOT the applied version until the runtime confirms
-	// it. Until a provider readback carries the applied model configuration, the
-	// operation waits for confirmation and the stored applied version is
-	// unchanged, so a client can never read a desired version as applied.
-	return s.runtimeLifecycleOperation(ctx, deploy, "runtime_reload", "runtime", "awaiting_confirmation")
+	appliedVersion, err := s.Runtime.Reload(ctx, reload, target)
+	if err != nil {
+		return nil, err
+	}
+	if appliedVersion <= 0 {
+		return nil, status.Error(codes.Internal, "the execution boundary reported no applied model configuration version")
+	}
+	if err = s.recordAppliedModelConfiguration(ctx, deploy, actionID, command.GetTargetVersion(), appliedVersion); err != nil {
+		return nil, err
+	}
+	return s.runtimeLifecycleOperation(ctx, deploy, "runtime_reload", "runtime", "succeeded", targetVersion)
+}
+
+// recordAppliedModelConfiguration advances the runtime's applied model
+// configuration version by compare-and-set and records the confirmed reload action
+// in one transaction. The readback version must be the requested one and the stored
+// version must be the one the caller expected, so the applied fact is exactly what
+// the application reported and never a version a caller asked for.
+func (s *Service) recordAppliedModelConfiguration(ctx context.Context, deploy *persistedRuntime, actionID string, expectedVersion, appliedVersion int64) error {
+	if appliedVersion != expectedVersion {
+		return status.Errorf(codes.FailedPrecondition, "the application reported applied model configuration %d, not the requested %d", appliedVersion, expectedVersion)
+	}
+	runtimeID := deploy.command.GetRuntimeInstanceId()
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return dbError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET applied_model_configuration_version=$3,updated_at=now() WHERE id=$1 AND applied_model_configuration_version=$2`, runtimeID, deploy.appliedModelVersion, appliedVersion)
+	if err != nil {
+		return dbError(err)
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected != 1 {
+		return status.Errorf(codes.FailedPrecondition, "runtime applied model configuration is no longer %d", deploy.appliedModelVersion)
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_actions SET observation_result='confirmed',evidence_ref=NULLIF($2,''),updated_at=now() WHERE command_id=$1`, actionID, modelConfigurationEvidence(actionID, appliedVersion)); err != nil {
+		return dbError(err)
+	}
+	return dbError(tx.Commit())
+}
+
+// modelConfigurationEvidence is the reload action's evidence identity: the action
+// and the version the application itself reported for it.
+func modelConfigurationEvidence(actionID string, appliedVersion int64) string {
+	return "serve-model-configuration://" + actionID + "/" + strconv.FormatInt(appliedVersion, 10)
 }
 
 // ReadApplicationCredentials returns the platform-issued WebUI credential for the

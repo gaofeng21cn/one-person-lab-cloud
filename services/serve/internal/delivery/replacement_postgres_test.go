@@ -591,6 +591,17 @@ func TestServeReplayedSwitchRestoresTheWriterItStopped(t *testing.T) {
 
 // servePeerContext addresses Serve's own execution adapter surface, which only
 // Serve's own process is admitted to call.
+// appliedModelConfiguration reads the runtime's own stored applied model
+// configuration version.
+func appliedModelConfiguration(t *testing.T, s *delivery.Service, runtimeInstanceID string) int64 {
+	t.Helper()
+	var applied int64
+	if err := s.DB.QueryRow(`SELECT applied_model_configuration_version FROM serve.agent_runtime_instances WHERE id=$1`, runtimeInstanceID).Scan(&applied); err != nil {
+		t.Fatal(err)
+	}
+	return applied
+}
+
 func servePeerContext() context.Context {
 	return ownerservice.WithPeerOwner(context.Background(), owneridentity.Serve.Service())
 }
@@ -630,22 +641,55 @@ func TestServeRuntimeLifecycleActsOnThePersistedCommand(t *testing.T) {
 	if resumed.GetOperationId() != stop.GetOperationId() {
 		t.Fatalf("resumed stop allocated a second operation: %v", resumed)
 	}
-	// A reload records the request but never writes the requested version as the
-	// applied one.
+	// A reload applies the requested configuration through the frozen publisher
+	// interface and advances the applied version only to the version the application
+	// itself read back.
+	runtime.reloadVersion = 2
 	reload, err := s.ReloadRuntime(peer, &api.RuntimeReloadCommand{RuntimeInstanceId: reservation.RuntimeInstanceId, ExpectedAppliedVersion: 0, TargetVersion: 2, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-2"}}})
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
-	if reload.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_AWAITING_CONFIRMATION || reload.GetStage() != api.OperationStageEnum_OPERATION_STAGE_ENUM_RUNTIME {
+	if reload.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED || reload.GetStage() != api.OperationStageEnum_OPERATION_STAGE_ENUM_RUNTIME {
 		t.Fatalf("reload operation=%v", reload)
 	}
-	var applied int64
-	if err := s.DB.QueryRow(`SELECT applied_model_configuration_version FROM serve.agent_runtime_instances WHERE id=$1`, reservation.RuntimeInstanceId).Scan(&applied); err != nil {
-		t.Fatal(err)
+	applied := appliedModelConfiguration(t, s, reservation.RuntimeInstanceId)
+	if applied != 2 {
+		t.Fatalf("applied model configuration=%d, want the version the application read back", applied)
 	}
-	if applied != 0 {
-		t.Fatalf("requested model version was recorded as applied: %d", applied)
+	// A later configuration version is its own durable operation and its own applied
+	// fact, so repeated model configuration updates are not refused as a replayed
+	// first one.
+	runtime.reloadVersion = 3
+	second, err := s.ReloadRuntime(peer, &api.RuntimeReloadCommand{RuntimeInstanceId: reservation.RuntimeInstanceId, ExpectedAppliedVersion: 2, TargetVersion: 3, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-3"}}})
+	if err != nil {
+		t.Fatalf("second reload: %v", err)
 	}
+	if second.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED || second.GetOperationId() == reload.GetOperationId() {
+		t.Fatalf("second reload operation=%v first=%v", second, reload)
+	}
+	if applied = appliedModelConfiguration(t, s, reservation.RuntimeInstanceId); applied != 3 {
+		t.Fatalf("applied model configuration=%d, want 3", applied)
+	}
+	// A readback the application did not answer with the requested version leaves
+	// the last confirmed configuration exactly as it was.
+	stale := &runtimeForServe{reloadVersion: 4}
+	s.Runtime = stale
+	if _, err = s.ReloadRuntime(peer, &api.RuntimeReloadCommand{RuntimeInstanceId: reservation.RuntimeInstanceId, ExpectedAppliedVersion: 3, TargetVersion: 5, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-5"}}}); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("unconfirmed reload err=%v want a failed precondition", err)
+	}
+	if applied = appliedModelConfiguration(t, s, reservation.RuntimeInstanceId); applied != 3 {
+		t.Fatalf("unconfirmed reload advanced the applied configuration to %d", applied)
+	}
+	// The expected version is a precondition, not a hint: a caller that expects a
+	// configuration the runtime does not hold is refused before any provider call.
+	stale.reloads = nil
+	if _, err = s.ReloadRuntime(peer, &api.RuntimeReloadCommand{RuntimeInstanceId: reservation.RuntimeInstanceId, ExpectedAppliedVersion: 1, TargetVersion: 6, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-6"}}}); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("stale expected version err=%v", err)
+	}
+	if len(stale.reloads) != 0 {
+		t.Fatalf("a stale expected version still called the execution boundary: %v", stale.reloads)
+	}
+	s.Runtime = runtime
 	credentials, err := s.ReadApplicationCredentials(peer, &api.ReadApplicationCredentialsRequest{WorkspaceId: "ws-first", RuntimeInstanceId: reservation.RuntimeInstanceId, DeploymentId: reservation.DeploymentId})
 	if err != nil {
 		t.Fatalf("credentials: %v", err)

@@ -61,6 +61,11 @@ type agentExecutionAdapter struct {
 	// without one has an absent execution capability, not an anonymous one.
 	Executor applicationExecutor
 	Origin   RouteOrigin
+	// ModelConfigurations resolves the frozen publisher model configuration
+	// interface for the exact deployment a command names. It is Serve's own owner
+	// read of an immutable release identity, so the adapter never accepts an
+	// interface from a caller.
+	ModelConfigurations func(context.Context, *api.RuntimeDeployCommand) (tkeapply.ModelConfiguration, error)
 }
 
 func (a *agentExecutionAdapter) Start(ctx context.Context, c *api.RuntimeDeployCommand, target ExecutionTarget) (RuntimeObservation, error) {
@@ -280,13 +285,55 @@ func (a *agentExecutionAdapter) Lifecycle(ctx context.Context, c *api.RuntimeDep
 	return nil
 }
 
-// Reload applies the command's model configuration through the lifecycle
-// boundary's running state, which re-reads the configuration the runtime already
-// holds. Applying a new model configuration and reading its applied version back is
-// a separate owner step; until then Serve does not report the requested version as
-// applied.
-func (a *agentExecutionAdapter) Reload(ctx context.Context, c *api.RuntimeDeployCommand, target ExecutionTarget) error {
-	return a.Lifecycle(ctx, c, target, "running")
+// Reload applies the command's model configuration through the frozen publisher
+// interface and reports the version the application itself read back. A release
+// that declares no interface, or a command that names no positive target version,
+// is refused with the exact reason it is unavailable; the requested version is
+// never returned as the applied one.
+func (a *agentExecutionAdapter) Reload(ctx context.Context, c *api.RuntimeDeployCommand, target ExecutionTarget) (int64, error) {
+	if c.GetModelConfigurationVersion() <= 0 {
+		return 0, status.Error(codes.InvalidArgument, "a positive model configuration version is required")
+	}
+	modelConfiguration, err := a.modelConfiguration(ctx, c)
+	if err != nil {
+		return 0, err
+	}
+	if !modelConfiguration.Declared {
+		return 0, status.Errorf(codes.FailedPrecondition, "%s: the frozen Runtime Release declares no publisher model configuration interface", ReasonModelConfigurationUnavailable)
+	}
+	input, err := a.runtimeInput(c, target)
+	if err != nil {
+		return 0, err
+	}
+	readback, err := a.Executor.ApplyModelConfiguration(ctx, input, modelConfiguration.Contract, tkeapply.ModelConfigurationRequest{
+		Version:    c.GetModelConfigurationVersion(),
+		Selections: modelConfigurationSelections(c.GetModelSelections()),
+	})
+	if err != nil {
+		return 0, err
+	}
+	return readback.AppliedVersion, nil
+}
+
+// modelConfiguration resolves the frozen interface for one command through the
+// adapter's own owner read. A process that cannot resolve it refuses rather than
+// applying a configuration through an interface it did not read.
+func (a *agentExecutionAdapter) modelConfiguration(ctx context.Context, c *api.RuntimeDeployCommand) (tkeapply.ModelConfiguration, error) {
+	if a == nil || a.ModelConfigurations == nil {
+		return tkeapply.ModelConfiguration{}, status.Error(codes.Unavailable, "the publisher model configuration interface is not resolvable")
+	}
+	return a.ModelConfigurations(ctx, c)
+}
+
+// modelConfigurationSelections restates the command's declared selections as the
+// interface's own payload. The interface carries slots and model ids only, so no
+// other command field travels with it.
+func modelConfigurationSelections(selections []*api.ModelSelection) []tkeapply.ModelSelection {
+	out := make([]tkeapply.ModelSelection, 0, len(selections))
+	for _, selection := range selections {
+		out = append(out, tkeapply.ModelSelection{Slot: selection.GetSlot(), ModelID: selection.GetModelId()})
+	}
+	return out
 }
 
 // Credentials reads the platform-issued WebUI credential for the exact runtime. The

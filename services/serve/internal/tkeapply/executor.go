@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"opl-cloud/services/internal/protectedresource"
@@ -52,6 +53,11 @@ type Executor struct {
 	// Installation is the installation-owned cluster configuration the workload is
 	// applied with.
 	Installation Installation
+	// HTTPClient issues the boundary's requests to the application it applied: the
+	// publisher-declared model configuration interface, whose destination is the
+	// Service this executor created for a declared port. A nil client uses the
+	// boundary's own bounded default.
+	HTTPClient *http.Client
 }
 
 // Configured reports whether the executor can reach the cluster. An installation

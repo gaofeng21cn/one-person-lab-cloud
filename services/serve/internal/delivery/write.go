@@ -50,8 +50,11 @@ type RuntimeAdapter interface {
 	// Lifecycle applies a desired lifecycle state (running, suspended, absent) to
 	// the exact reserved runtime. It reports only what the provider confirmed.
 	Lifecycle(context.Context, *api.RuntimeDeployCommand, ExecutionTarget, string) error
-	// Reload applies the command's model configuration to the exact runtime.
-	Reload(context.Context, *api.RuntimeDeployCommand, ExecutionTarget) error
+	// Reload applies the command's model configuration through the frozen
+	// publisher interface and reports the version the application itself read back.
+	// A boundary that cannot execute the declared interface refuses instead of
+	// returning a version it never observed.
+	Reload(context.Context, *api.RuntimeDeployCommand, ExecutionTarget) (int64, error)
 	// Credentials reads the platform-issued WebUI credential for the exact runtime.
 	Credentials(context.Context, *api.RuntimeDeployCommand, ExecutionTarget) (*api.WorkspaceApplicationCredentials, error)
 }

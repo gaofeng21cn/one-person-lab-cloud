@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	contracts "opl-cloud/packages/contracts/go"
+	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/services/internal/protectedresource"
 	"opl-cloud/services/serve/internal/tkeapply"
 )
@@ -41,6 +42,9 @@ type applicationExecutor interface {
 	SetWorkspaceApplicationRuntimeLifecycle(context.Context, contracts.WorkspaceApplicationRuntimeInput, string) (contracts.WorkspaceApplicationRuntimeLifecycleResult, error)
 	ReadWorkspaceApplicationRuntimeLifecycle(context.Context, contracts.WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeLifecycleResult, error)
 	ReadWorkspaceApplicationRuntimeCredentials(context.Context, contracts.WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeCredentials, error)
+	// ApplyModelConfiguration applies one model configuration through the frozen
+	// publisher interface and reports the version the application itself read back.
+	ApplyModelConfiguration(context.Context, contracts.WorkspaceApplicationRuntimeInput, tkeapply.ModelConfigurationContract, tkeapply.ModelConfigurationRequest) (tkeapply.ModelConfigurationReadback, error)
 }
 
 // configureAgentExecution binds the one execution boundary this installation
@@ -61,6 +65,12 @@ func configureAgentExecution(service *Service, origin RouteOrigin) error {
 			return err
 		}
 		service.Runtime = &agentExecutionAdapter{
+			// The publisher interface is resolved from the exact frozen release the
+			// deployment was admitted against, so a reload never accepts an interface
+			// from its caller.
+			ModelConfigurations: func(ctx context.Context, command *api.RuntimeDeployCommand) (tkeapply.ModelConfiguration, error) {
+				return service.frozenModelConfiguration(ctx, nextOwnerCall(command.GetContext()), command)
+			},
 			Executor: &tkeapply.Executor{
 				Kubectl: tkeapply.KubectlRunner(os.Getenv("TENCENT_DEPLOY_KUBECONFIG_REF"), namespace),
 				// The installation's protected-compute declaration is the same fact

@@ -109,6 +109,11 @@ type runtimeForServe struct {
 	// order, so a replacement's stop/restore/retire sequence is observable.
 	lifecycle     []string
 	credentialErr bool
+	// reloadVersion is the version the boundary reports it read back from the
+	// application. Zero means the boundary never confirmed an applied version.
+	reloadVersion int64
+	reloadErr     error
+	reloads       []string
 }
 
 func (f *runtimeForServe) Start(context.Context, *api.RuntimeDeployCommand, delivery.ExecutionTarget) (delivery.RuntimeObservation, error) {
@@ -119,8 +124,15 @@ func (f *runtimeForServe) Lifecycle(_ context.Context, _ *api.RuntimeDeployComma
 	f.lifecycle = append(f.lifecycle, desired)
 	return nil
 }
-func (*runtimeForServe) Reload(context.Context, *api.RuntimeDeployCommand, delivery.ExecutionTarget) error {
-	return nil
+func (f *runtimeForServe) Reload(_ context.Context, c *api.RuntimeDeployCommand, _ delivery.ExecutionTarget) (int64, error) {
+	f.reloads = append(f.reloads, c.GetRuntimeInstanceId())
+	if f.reloadErr != nil {
+		return 0, f.reloadErr
+	}
+	if f.reloadVersion == 0 {
+		return 0, errors.New("reload readback unavailable")
+	}
+	return f.reloadVersion, nil
 }
 func (f *runtimeForServe) Credentials(_ context.Context, c *api.RuntimeDeployCommand, _ delivery.ExecutionTarget) (*api.WorkspaceApplicationCredentials, error) {
 	if f.credentialErr {
@@ -323,8 +335,8 @@ func (f *orderedObservationRuntime) Start(context.Context, *api.RuntimeDeployCom
 func (*orderedObservationRuntime) Lifecycle(context.Context, *api.RuntimeDeployCommand, delivery.ExecutionTarget, string) error {
 	return nil
 }
-func (*orderedObservationRuntime) Reload(context.Context, *api.RuntimeDeployCommand, delivery.ExecutionTarget) error {
-	return nil
+func (*orderedObservationRuntime) Reload(context.Context, *api.RuntimeDeployCommand, delivery.ExecutionTarget) (int64, error) {
+	return 0, errors.New("reload is not part of this observation ordering")
 }
 func (*orderedObservationRuntime) Credentials(context.Context, *api.RuntimeDeployCommand, delivery.ExecutionTarget) (*api.WorkspaceApplicationCredentials, error) {
 	return nil, errors.New("credentials unavailable")
@@ -428,6 +440,38 @@ func defaultAppRelease(t *testing.T, s *delivery.Service) *api.RuntimeVersion {
 			ApplicationRevisionTemplate: revision,
 		},
 	}
+}
+
+// modelConfigurationInterface is the one interface this Cloud executes: the frozen
+// publisher declaration of the apply path, the readback path, the declared payload
+// fields and the declared control credential input.
+func modelConfigurationInterface() *api.ModelConfigurationContract {
+	return &api.ModelConfigurationContract{
+		Protocol:     api.ModelConfigurationContractProtocolEnum_MODEL_CONFIGURATION_CONTRACT_PROTOCOL_ENUM_OPL_MODEL_CONFIG_V1,
+		PortName:     "control",
+		ApplyPath:    "/control/models",
+		ReadbackPath: "/control/models",
+		RequestFields: []api.ModelConfigurationContractRequestFieldsEnum{
+			api.ModelConfigurationContractRequestFieldsEnum_MODEL_CONFIGURATION_CONTRACT_REQUEST_FIELDS_ENUM_VERSION,
+			api.ModelConfigurationContractRequestFieldsEnum_MODEL_CONFIGURATION_CONTRACT_REQUEST_FIELDS_ENUM_SELECTIONS,
+		},
+		ReadbackFields: []api.ModelConfigurationContractReadbackFieldsEnum{
+			api.ModelConfigurationContractReadbackFieldsEnum_MODEL_CONFIGURATION_CONTRACT_READBACK_FIELDS_ENUM_APPLIEDVERSION,
+			api.ModelConfigurationContractReadbackFieldsEnum_MODEL_CONFIGURATION_CONTRACT_READBACK_FIELDS_ENUM_SELECTIONS,
+		},
+		AuthorizationSecretInputName: "control_token",
+	}
+}
+
+// agentRelease builds the approved Runtime Release an admitted Agent was built
+// against. The Agent's own admitted CapabilityVersion names it, so Serve resolves
+// the model configuration interface from that one immutable identity.
+func agentRelease(t *testing.T, contract *api.ModelConfigurationContract) *api.RuntimeVersion {
+	t.Helper()
+	release := defaultAppRelease(t, nil)
+	release.Id = "rv-agent"
+	release.PublisherContract.ModelConfiguration = contract
+	return release
 }
 
 // descriptorDigestOf is the digest of a descriptor's canonical public JSON bytes,

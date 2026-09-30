@@ -85,15 +85,15 @@ func (s *Service) confirmedRuntimeTarget(ctx context.Context, command *api.Runti
 // reports success here: applying a desired state and confirming it is a separate,
 // observed fact, and the operation stays accepted until the provider readback
 // records it.
-func (s *Service) runtimeLifecycleOperation(ctx context.Context, deploy *persistedRuntime, kind, stage, nextStatus string) (*api.Operation, error) {
-	opID := stableID("op_", kind, deploy.command.GetRuntimeInstanceId(), deploy.operationID)
+func (s *Service) runtimeLifecycleOperation(ctx context.Context, deploy *persistedRuntime, kind, stage, nextStatus string, identity ...string) (*api.Operation, error) {
+	opID := stableID("op_", append([]string{kind, deploy.command.GetRuntimeInstanceId(), deploy.operationID}, identity...)...)
 	runtimeID := deploy.command.GetRuntimeInstanceId()
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, dbError(err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	accepted, _ := json.Marshal(map[string]any{"runtimeInstanceId": runtimeID, "deploymentId": deploy.command.GetDeploymentId(), "action": kind})
+	accepted, _ := json.Marshal(map[string]any{"runtimeInstanceId": runtimeID, "deploymentId": deploy.command.GetDeploymentId(), "action": kind, "identity": identity})
 	if _, err = s.Store.CreateOperation(ctx, tx, ownerstore.OperationInput{ID: opID, TenantID: deploy.tenantID, ActorID: deploy.actorID, Kind: kind, ResourceID: runtimeID, Stage: strings.ToLower(stage), RequestID: deploy.requestID, AcceptedInput: accepted}); err != nil {
 		// The action identity is already recorded. It is this caller's own
 		// operation only when it names the same runtime, kind and request.

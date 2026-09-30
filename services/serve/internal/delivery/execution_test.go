@@ -32,11 +32,17 @@ type fakeExecutor struct {
 	placement   tkeapply.Placement
 	observation contracts.WorkspaceApplicationRuntimeObservation
 	ensureErr   error
-	lifecycle   contracts.WorkspaceApplicationRuntimeLifecycleResult
-	lifecycleEr error
-	credentials contracts.WorkspaceApplicationRuntimeCredentials
-	calls       int
-	desired     string
+	// modelConfiguration records the frozen interface Serve's delivery carried into
+	// the executor, and modelRequest the exact apply it asked for.
+	modelConfiguration tkeapply.ModelConfiguration
+	modelRequest       tkeapply.ModelConfigurationRequest
+	modelReadback      tkeapply.ModelConfigurationReadback
+	modelErr           error
+	lifecycle          contracts.WorkspaceApplicationRuntimeLifecycleResult
+	lifecycleEr        error
+	credentials        contracts.WorkspaceApplicationRuntimeCredentials
+	calls              int
+	desired            string
 }
 
 func (f *fakeExecutor) Configured() error { return nil }
@@ -45,6 +51,12 @@ func (f *fakeExecutor) EnsureWorkspaceApplicationRuntime(_ context.Context, inpu
 	f.calls++
 	f.input, f.placement = input, placement
 	return f.observation, f.ensureErr
+}
+
+func (f *fakeExecutor) ApplyModelConfiguration(_ context.Context, input contracts.WorkspaceApplicationRuntimeInput, contract tkeapply.ModelConfigurationContract, request tkeapply.ModelConfigurationRequest) (tkeapply.ModelConfigurationReadback, error) {
+	f.calls++
+	f.input, f.modelConfiguration, f.modelRequest = input, tkeapply.ModelConfiguration{Declared: true, Contract: contract}, request
+	return f.modelReadback, f.modelErr
 }
 
 func (f *fakeExecutor) ReadWorkspaceApplicationRuntime(_ context.Context, input contracts.WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
@@ -131,8 +143,15 @@ func readyObservation(t *testing.T, command *api.RuntimeDeployCommand, entry *co
 	}
 }
 
+// executionAdapter builds the adapter with the frozen interface resolution the
+// process wires at Configure. The default fixture release declares no interface, so
+// a test that needs one supplies its own resolver.
 func executionAdapter(fake *fakeExecutor, origin RouteOrigin) *agentExecutionAdapter {
-	return &agentExecutionAdapter{Executor: fake, Origin: origin}
+	return &agentExecutionAdapter{Executor: fake, Origin: origin, ModelConfigurations: absentModelConfigurations}
+}
+
+func absentModelConfigurations(context.Context, *api.RuntimeDeployCommand) (tkeapply.ModelConfiguration, error) {
+	return tkeapply.ModelConfiguration{}, nil
 }
 
 // TestAgentExecutionResolvesTheGatewayEntryToTheDeclaredOrigin is the decisive
@@ -298,7 +317,7 @@ func TestAgentExecutionReachesTheBoundaryOfAProviderWithoutAPlacement(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter := &agentExecutionAdapter{Executor: &fabricApplicationBridge{BaseURL: server.URL, Token: token, CapabilityKey: key, Client: server.Client()}, Origin: RouteOrigin{}}
+	adapter := &agentExecutionAdapter{Executor: &fabricApplicationBridge{BaseURL: server.URL, Token: token, CapabilityKey: key, Client: server.Client()}, Origin: RouteOrigin{}, ModelConfigurations: absentModelConfigurations}
 	if _, err := adapter.Start(context.Background(), command, confirmed); err != nil {
 		t.Fatalf("a provider without a published placement was refused: %v", err)
 	}
@@ -306,6 +325,81 @@ func TestAgentExecutionReachesTheBoundaryOfAProviderWithoutAPlacement(t *testing
 	case <-called:
 	case <-time.After(5 * time.Second):
 		t.Fatal("the provider's own execution boundary was not reached")
+	}
+}
+
+// TestAgentExecutionReloadCarriesTheFrozenModelConfiguration proves the reload
+// executes the frozen publisher interface Serve resolved for that exact deployment
+// and reports the version the application itself read back rather than the version
+// the caller requested.
+func TestAgentExecutionReloadCarriesTheFrozenModelConfiguration(t *testing.T) {
+	command := executionCommand(t)
+	contract := tkeapply.ModelConfigurationContract{
+		Protocol: tkeapply.ModelConfigurationProtocol, PortName: "control",
+		ApplyPath: "/control/models", ReadbackPath: "/control/models",
+		RequestFields: []string{"version", "selections"}, ReadbackFields: []string{"appliedVersion", "selections"},
+		AuthorizationSecretInputName: "control_token",
+	}
+	resolve := func(context.Context, *api.RuntimeDeployCommand) (tkeapply.ModelConfiguration, error) {
+		return tkeapply.ModelConfiguration{Declared: true, Contract: contract}, nil
+	}
+	fake := &fakeExecutor{observation: readyObservation(t, command, nil)}
+	adapter := &agentExecutionAdapter{Executor: fake, Origin: RouteOrigin{}, ModelConfigurations: resolve}
+	reload := proto.Clone(command).(*api.RuntimeDeployCommand)
+	reload.ModelConfigurationVersion = 4
+	reload.ModelSelections = []*api.ModelSelection{{Slot: "chat", ModelId: "model-4"}}
+	fake.modelReadback = tkeapply.ModelConfigurationReadback{AppliedVersion: 4}
+	applied, err := adapter.Reload(context.Background(), reload, executionTargetFixture(reload))
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if applied != 4 {
+		t.Fatalf("applied=%d, want the version the application read back", applied)
+	}
+	if fake.modelConfiguration.Contract.AuthorizationSecretInputName != "control_token" || fake.modelConfiguration.Contract.PortName != "control" {
+		t.Fatalf("the executor received a different interface: %+v", fake.modelConfiguration.Contract)
+	}
+	if fake.modelRequest.Version != 4 || len(fake.modelRequest.Selections) != 1 || fake.modelRequest.Selections[0].Slot != "chat" || fake.modelRequest.Selections[0].ModelID != "model-4" {
+		t.Fatalf("apply request=%+v", fake.modelRequest)
+	}
+}
+
+// TestAgentExecutionRefusesAnUndeclaredModelConfiguration proves a reload whose
+// frozen release declares no publisher interface is refused with the exact reason
+// and never reaches an executor, so the requested version cannot be reported as an
+// applied one.
+func TestAgentExecutionRefusesAnUndeclaredModelConfiguration(t *testing.T) {
+	command := executionCommand(t)
+	fake := &fakeExecutor{observation: readyObservation(t, command, nil)}
+	adapter := executionAdapter(fake, RouteOrigin{})
+	reload := proto.Clone(command).(*api.RuntimeDeployCommand)
+	reload.ModelConfigurationVersion = 3
+	applied, err := adapter.Reload(context.Background(), reload, executionTargetFixture(reload))
+	if status.Code(err) != codes.FailedPrecondition || !strings.Contains(status.Convert(err).Message(), ReasonModelConfigurationUnavailable) {
+		t.Fatalf("err=%v want the declared reason", err)
+	}
+	if applied != 0 || fake.calls != 0 {
+		t.Fatalf("applied=%d calls=%d, want no executor call", applied, fake.calls)
+	}
+}
+
+// TestAgentExecutionRefusesAnUnresolvableModelConfiguration proves a process that
+// cannot resolve the frozen interface refuses instead of applying a configuration
+// through an interface it did not read.
+func TestAgentExecutionRefusesAnUnresolvableModelConfiguration(t *testing.T) {
+	command := executionCommand(t)
+	reload := proto.Clone(command).(*api.RuntimeDeployCommand)
+	reload.ModelConfigurationVersion = 3
+	unavailable := func(context.Context, *api.RuntimeDeployCommand) (tkeapply.ModelConfiguration, error) {
+		return tkeapply.ModelConfiguration{}, status.Error(codes.Unavailable, "Runtime Control is not configured")
+	}
+	for name, adapter := range map[string]*agentExecutionAdapter{
+		"unresolvable": {Executor: &fakeExecutor{}, Origin: RouteOrigin{}, ModelConfigurations: unavailable},
+		"unwired":      {Executor: &fakeExecutor{}, Origin: RouteOrigin{}},
+	} {
+		if _, err := adapter.Reload(context.Background(), reload, executionTargetFixture(reload)); status.Code(err) != codes.Unavailable {
+			t.Fatalf("%s err=%v want unavailable", name, err)
+		}
 	}
 }
 

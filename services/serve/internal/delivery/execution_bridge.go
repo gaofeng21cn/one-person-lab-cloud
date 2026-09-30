@@ -56,6 +56,16 @@ func (b *fabricApplicationBridge) EnsureWorkspaceApplicationRuntime(ctx context.
 	return observation, nil
 }
 
+// ApplyModelConfiguration refuses: the migration-source surface carries the
+// workload and its lifecycle only. It has no publisher model configuration
+// interface, so this boundary cannot report an applied model configuration version
+// and says so instead of answering with the requested one. The provider whose
+// executor has not moved cannot execute a model configuration until its execution
+// moves into this process.
+func (b *fabricApplicationBridge) ApplyModelConfiguration(context.Context, contracts.WorkspaceApplicationRuntimeInput, tkeapply.ModelConfigurationContract, tkeapply.ModelConfigurationRequest) (tkeapply.ModelConfigurationReadback, error) {
+	return tkeapply.ModelConfigurationReadback{}, status.Error(codes.FailedPrecondition, ReasonModelConfigurationUnavailable+": the declared Fabric application boundary carries no publisher model configuration interface")
+}
+
 func (b *fabricApplicationBridge) ReadWorkspaceApplicationRuntime(ctx context.Context, input contracts.WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
 	var observation contracts.WorkspaceApplicationRuntimeObservation
 	response, err := b.post(ctx, "/fabric/workspace-application-runtimes/"+url.PathEscape(input.WorkspaceID)+"/readback", "read_workspace_application_runtime", input, input.RuntimeOperationID, input.AccountID, input.WorkspaceID)
