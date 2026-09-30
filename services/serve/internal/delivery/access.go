@@ -88,6 +88,7 @@ func NewAccessEntry(db *sql.DB, origin RouteOrigin) (*AccessEntry, error) {
 type accessRoute struct {
 	WorkspaceID       string
 	ApplicationID     string
+	pathBased         bool
 	RuntimeInstanceID string
 	DeploymentID      string
 	RouteGeneration   int64
@@ -131,9 +132,11 @@ func (e *AccessEntry) serve(w http.ResponseWriter, r *http.Request) {
 			request.Out.Host = request.In.Host
 			request.Out.Header.Set("X-Forwarded-Host", request.In.Host)
 			request.Out.Header.Set("X-Forwarded-Proto", externalScheme(request.In))
+			sanitizeAccessRequest(request.Out, route.pathBased)
 			request.Out.Header.Del("X-Opl-Workspace-Id")
 			request.Out.Header.Del("X-Opl-Route-Generation")
 		},
+		ModifyResponse: confineAccessResponseCookies,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			writeAccessRefusal(w, r, accessRefusal{status: http.StatusBadGateway, code: "workspace_application_upstream_failed"})
 		},
@@ -149,7 +152,7 @@ func (e *AccessEntry) Resolve(ctx context.Context, host, requestPath string) (ac
 	if refusal != nil {
 		return accessRoute{}, refusal
 	}
-	route := accessRoute{WorkspaceID: workspaceID}
+	route := accessRoute{WorkspaceID: workspaceID, pathBased: pathBased}
 	err := e.DB.QueryRowContext(ctx, `
 		SELECT b.route_generation, COALESCE(b.last_confirmed_switch_id,''), COALESCE(b.route_revision,''),
 		       COALESCE(b.target_runtime_instance_id,''), COALESCE(b.target_deployment_id,'')
@@ -210,6 +213,9 @@ func (e *AccessEntry) resolveIdentity(host, requestPath string) (workspaceID, ap
 		return id, label, false, nil
 	}
 	if id, ok := retainedWorkspaceIDFromPath(requestPath); ok {
+		if !e.Origin.WorkspaceEntryHostMatches(host) {
+			return "", "", false, errAccessOriginUnresolved
+		}
 		return id, "", true, nil
 	}
 	return "", "", false, errAccessOriginUnresolved
@@ -243,4 +249,44 @@ func writeAccessRefusal(w http.ResponseWriter, _ *http.Request, refusal accessRe
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(refusal.status)
 	_, _ = fmt.Fprintf(w, `{"error":%q,"retryable":%t}`, refusal.code, refusal.status == http.StatusServiceUnavailable)
+}
+
+// sanitizeAccessRequest removes platform credentials at the trusted proxy
+// boundary. A dedicated application origin keeps application Authorization and
+// cookies; the retained shared path cannot safely carry a platform Authorization
+// header to the application.
+func sanitizeAccessRequest(request *http.Request, pathBased bool) {
+	for _, name := range []string{"X-OPL-CSRF", "X-OPL-CSRF-Token"} {
+		request.Header.Del(name)
+	}
+	if pathBased {
+		request.Header.Del("Authorization")
+	}
+	remaining := make([]string, 0, len(request.Cookies()))
+	for _, cookie := range request.Cookies() {
+		if cookie.Name == "opl_session" || cookie.Name == "opl_ws_active" || strings.HasPrefix(cookie.Name, "opl_ws_session_") {
+			continue
+		}
+		remaining = append(remaining, cookie.Name+"="+cookie.Value)
+	}
+	if len(remaining) == 0 {
+		request.Header.Del("Cookie")
+		return
+	}
+	request.Header.Set("Cookie", strings.Join(remaining, "; "))
+}
+
+// confineAccessResponseCookies prevents an application from widening a cookie
+// onto sibling bindings or the Console origin.
+func confineAccessResponseCookies(response *http.Response) error {
+	if len(response.Header.Values("Set-Cookie")) == 0 {
+		return nil
+	}
+	cookies := response.Cookies()
+	response.Header.Del("Set-Cookie")
+	for _, cookie := range cookies {
+		cookie.Domain = ""
+		response.Header.Add("Set-Cookie", cookie.String())
+	}
+	return nil
 }

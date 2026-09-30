@@ -93,6 +93,19 @@ func (o RouteOrigin) WorkspaceEntryURL(workspaceID string) (string, bool) {
 	return o.Scheme + "://" + o.WorkspaceDomain + "/w/" + workspaceID + "/", true
 }
 
+// WorkspaceEntryHostMatches accepts only the installation-declared host for the
+// retained path entry. The path carries a Workspace identity, but the Host still
+// selects the trusted installation boundary and must not be caller-controlled.
+func (o RouteOrigin) WorkspaceEntryHostMatches(host string) bool {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if parsed, _, err := net.SplitHostPort(host); err == nil {
+		host = parsed
+	} else if strings.Contains(host, ":") {
+		return false
+	}
+	return o.WorkspaceDomain != "" && strings.TrimSuffix(host, ".") == strings.TrimSuffix(strings.ToLower(o.WorkspaceDomain), ".")
+}
+
 // ApplicationEntryURL is the address one (Workspace, application) binding is
 // served at: scheme://<workspaceId>-<label>.<application domain>/. It reports
 // false when the installation declares no application-origin domain, or when the
