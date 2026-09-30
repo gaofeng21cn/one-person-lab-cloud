@@ -2408,7 +2408,11 @@ message RuntimeManagedKeyBinding { string key_binding_id = 1; string secret_deli
 message RuntimeDeployCommand { CallContext context = 1; string workspace_id = 2; string deployment_id = 3; string capability_version_id = 4; DeploymentDescriptor deployment_descriptor = 5; string resource_set_id = 6; string data_attachment_id = 7; string secret_binding_id = 8; int64 model_configuration_version = 9; repeated ModelSelection model_selections = 10; DataCompatibility data_compatibility = 11; string runtime_instance_id = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; WorkspaceApplicationSelection application_selection = 16; RuntimeManagedKeyBinding managed_key_binding = 17; }
 message RuntimeReadbackRequest { CallContext context = 1; string runtime_instance_id = 2; string deployment_id = 3; }
 message RuntimeReadback { string runtime_instance_id = 1; string workspace_id = 2; string deployment_id = 3; AgentRuntimeObservationState state = 4; bool process_ready = 5; bool application_available = 6; bool credential_injection_verified = 7; ArtifactReference artifact = 8; int64 applied_model_configuration_version = 9; string readiness_receipt_id = 10; Observation outcome = 11; google.protobuf.Timestamp observed_at = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; WorkspaceApplicationEntry application_entry = 16; string access_url = 17; }
-message RuntimeReloadCommand { CallContext context = 1; string runtime_instance_id = 2; int64 expected_applied_version = 3; int64 target_version = 4; repeated ModelSelection selections = 5; }
+// The managed key binding is an opaque Gateway/Fabric owner readback. It is
+// supplied only by Workspace after Gateway CreateManagedKey and Fabric
+// BindSecret; public update callers never choose or construct it. Serve applies
+// the publisher contract but never issues or revokes the Gateway key.
+message RuntimeReloadCommand { CallContext context = 1; string runtime_instance_id = 2; int64 expected_applied_version = 3; int64 target_version = 4; repeated ModelSelection selections = 5; RuntimeManagedKeyBinding managed_key_binding = 6; }
 message RuntimeStopCommand { CallContext context = 1; string runtime_instance_id = 2; string deployment_id = 3; string retained_data_attachment_id = 4; }
 service ServeAgentCoordination {
  rpc Reserve(RuntimeReservationCommand) returns (RuntimeReservation);

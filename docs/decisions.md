@@ -38,6 +38,49 @@ the pending wire migration is recorded by `03_api_contract_complete.yaml` and
 owner migrations, callers and decoder tests together. Prose approval is not
 proof that the existing mandatory CapabilityVersion/WebUI fields support it.
 
+### Workspace Model Configuration And Gateway Key Binding Owner
+
+Workspace owns the accepted model-configuration intent, its monotonically
+versioned history, and the `gateway_key_binding_id` recorded for each accepted
+configuration. Gateway Integration is the sole owner of Gateway-managed key
+issuance, model allowlists, secret-delivery references and key revocation;
+Workspace never fabricates or edits those facts. Fabric owns the runtime Secret
+binding and its provider readback. Serve owns runtime application of the frozen
+configuration, publisher apply/readback, readiness and the applied-version
+observation; Serve is not a Gateway key issuer.
+
+The update path is one owner-separated operation:
+
+1. Workspace authorizes the update and validates the new selections against the
+   admitted Workspace/application.
+2. Workspace calls `GatewayCoordination.CreateManagedKey` with the exact model
+   set and target runtime. Gateway returns an opaque `ManagedKeyBinding`; the
+   raw key is never returned to Workspace, persisted in Workspace, or placed in
+   a receipt.
+3. Workspace records the returned binding identity with the new configuration
+   version. The `gateway_key_binding_id` column therefore remains `NOT NULL`;
+   a configuration without a confirmed Gateway binding is not accepted.
+4. The approved Secret reference is bound through `FabricCoordination.BindSecret`
+   and read back. Fabric owns only the Secret binding fact, not application
+   readiness or routing.
+5. Workspace calls `ServeAgentCoordination.ReloadModels` with the opaque
+   `RuntimeManagedKeyBinding` and the expected applied version. Serve applies
+   the publisher contract and records only the version the application reads
+   back.
+6. Workspace advances its applied model-configuration version only after the
+   confirmed Serve readback, using the same operation/CAS and receipt chain.
+
+The public `updateWorkspaceModels` request contains selections and an expected
+version only; clients never choose a Gateway key binding. The binding is an
+internal owner-to-owner fact created by Gateway for that exact configuration.
+Default `opl-app` and Agent plus independent WebUI use this same path whenever
+the runtime declares model configuration; a runtime that declares no such
+publisher interface has no fabricated model-configuration capability.
+
+This decision resolves the previous contract gap without making Serve a second
+Gateway owner, weakening the non-null schema invariant, or introducing a global
+workflow/event-bus authority.
+
 ### Workspace Access Routing Owner
 
 Serve is the sole business and persistence owner of each Workspace's current

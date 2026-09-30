@@ -750,6 +750,16 @@
 
 **内部协议实现/协作端口**：`WorkspaceProductService.GetWorkspaceModels`, `WorkspaceProductService.UpdateWorkspaceModels`, `WorkspaceProductService.RevealWorkspaceApplicationCredentials`, `ServeProductService.ListDeployments`, `ServeProductService.GetDeployment`, `ServeProductService.UpdateWorkspaceVersion`, `ServeProductService.RollbackWorkspace`, `ServeProductService.GetWorkspaceAccess`, `ClaimUsageReadback.ReadClaimUsage`, `ServeAgentCoordination.Reserve`, `ServeAgentCoordination.Deploy`, `ServeAgentCoordination.ReloadModels`, `ServeAgentCoordination.ReadRuntime`, `ServeAgentCoordination.Retire`, `ServeRuntimeAdapter.ReadApplicationCredentials`, `ServeRuntimeAdapter.StartRuntime`, `ServeRuntimeAdapter.StopRuntime`, `ServeRuntimeAdapter.ReloadRuntime`, `ServeRuntimeAdapter.ObserveRuntime`, `ServeAccessControl.FenceRouteEpoch`, `ServeAccessControl.ActivateRoute`, `ServeAccessControl.ObserveRoute`, `ServeAccessControl.RollbackRoute`, `ServePlanChangeControl.RestoreAfterResourceChange`
 
+`UpdateWorkspaceModels` has one mandatory owner-separated sequence: Workspace
+authorizes and validates the selection, Gateway creates the exact managed-key
+binding, Fabric confirms the runtime Secret binding, Serve applies and reads back
+the publisher configuration through `RuntimeReloadCommand.managed_key_binding`,
+and Workspace advances `model_configuration_version` only from that confirmed
+readback. The public request remains `expectedVersion + selections`; no caller
+may supply a key binding. This sequence is shared by the default OPL App and the
+Agent plus independent WebUI product combinations whenever their Runtime
+publisher declares the model-configuration contract.
+
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
 - Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local

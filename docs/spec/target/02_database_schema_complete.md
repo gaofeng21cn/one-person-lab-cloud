@@ -1484,6 +1484,13 @@ Database `opl_workspace` · Schema `workspace` · Writer `opl_workspace_writer`�
 | `selections` | `jsonb` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/ModelConfiguration/properties/selections` |
 | `updated_at` | `timestamptz` | 否 | `now()` | `03_api_contract_complete.yaml#/components/schemas/ModelConfiguration/properties/updatedAt` |
 
+`gateway_key_binding_id` is an opaque identity returned by
+`GatewayCoordination.CreateManagedKey` for this Workspace, target runtime and
+exact model set. It is not accepted from the public update request and is not
+derived from a model id, a Secret value or an external key string. The row is
+inserted only after Gateway confirms the binding; the following Fabric Secret
+binding and Serve runtime readback belong to the same Workspace operation.
+
 约束：
 - `PRIMARY KEY (id)`
 - `UNIQUE (workspace_id, version)`

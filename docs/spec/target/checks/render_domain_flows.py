@@ -55,7 +55,9 @@ flow('F08','购买到实际可用的部署',['createWorkspace','getOperation','g
 flow('F09','使用、模型配置与应用登录',['getWorkspace','getWorkspaceAccess','getWorkspaceModels','updateWorkspaceModels','revealWorkspaceApplicationCredentials'],[A('workspace'),
  step('bff','workspace','ServeProductService.GetWorkspaceAccess',[],'当前部署/访问策略和运行事实一致','按canonical应用登录，不新增SSO'),
  step('bff','workspace','WorkspaceProductService.RevealWorkspaceApplicationCredentials',[],'所有者权限+当前声明workspace_admin_password+实际ready，只一次性用户名/密码','no-store不缓存；不返回GatewayKey或session_secret'),
- step('workspace','serve','ServeAgentCoordination.ReloadModels',['serve.agent_runtime_actions'],'目标配置版本+selections实际应用','保存成功不等于reload成功'),
+ step('workspace','gateway','GatewayCoordination.CreateManagedKey',['gateway.key_bindings'],'exact Workspace/runtime/model set；仅返回opaque binding与Secret delivery reference；不返回明文Key','unknown按Gateway action readback处理，不盲建第二Key'),
+ step('workspace','fabric','FabricCoordination.BindSecret',['fabric.secret_bindings'],'Gateway返回的opaque Secret reference实际绑定到目标runtime并读回confirmed version','unknown不进入Serve；不把Gateway Key当任意环境变量公开'),
+ step('workspace','serve','ServeAgentCoordination.ReloadModels',['serve.agent_runtime_actions'],'目标配置版本+selections及opaque RuntimeManagedKeyBinding实际应用；Serve不铸造Gateway Key','保存成功不等于reload成功'),
  step('serve','serve','ServeRuntimeAdapter.ObserveRuntime',[],'appliedVersion和选择相同，运行状态真实','unknown显示应用中/待核实，不覆盖已确认配置')], '打开真实应用；模型实际生效；应用管理员凭据仅在既有授权reveal路径一次性显示')
 flow('F10','更新、切换和回滚',['updateWorkspaceVersion','rollbackWorkspace'],[A('workspace'),
  step('workspace','capability','CapabilityCoordination.ResolvePublisherContract',[],'目标版本完整契约与数据兼容','不支持安全回滚的迁移拒绝，不猜semver'),

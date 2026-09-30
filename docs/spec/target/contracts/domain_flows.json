@@ -651,6 +651,32 @@
         },
         {
           "caller": "workspace",
+          "owner": "gateway",
+          "rpc": "GatewayCoordination.CreateManagedKey",
+          "request": "ManagedKeyCommand",
+          "response": "ManagedKeyBinding",
+          "writes": [
+            "gateway.key_bindings"
+          ],
+          "completionEvidence": "exact Workspace/runtime/model set；仅返回opaque binding与Secret delivery reference；不返回明文Key",
+          "onUnknownOrRejection": "unknown按Gateway action readback处理，不盲建第二Key",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "fabric",
+          "rpc": "FabricCoordination.BindSecret",
+          "request": "SecretBindingCommand",
+          "response": "SecretBindingReadback",
+          "writes": [
+            "fabric.secret_bindings"
+          ],
+          "completionEvidence": "Gateway返回的opaque Secret reference实际绑定到目标runtime并读回confirmed version",
+          "onUnknownOrRejection": "unknown不进入Serve；不把Gateway Key当任意环境变量公开",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
           "owner": "serve",
           "rpc": "ServeAgentCoordination.ReloadModels",
           "request": "RuntimeReloadCommand",
@@ -658,7 +684,7 @@
           "writes": [
             "serve.agent_runtime_actions"
           ],
-          "completionEvidence": "目标配置版本+selections实际应用",
+          "completionEvidence": "目标配置版本+selections及opaque RuntimeManagedKeyBinding实际应用；Serve不铸造Gateway Key",
           "onUnknownOrRejection": "保存成功不等于reload成功",
           "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
         },

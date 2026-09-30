@@ -370,6 +370,19 @@ Serve's explicit, data-compatible replacement path without repurchasing the
 Workspace. A Runtime change rebuilds an Agent but selects a new approved release
 for a default App; neither happens automatically.
 
+Model configuration follows the same owner separation. Workspace owns the
+accepted selections, configuration version and the opaque
+`gateway_key_binding_id`; Gateway Integration owns managed-key issuance,
+model allowlists, secret-delivery references and revocation; Fabric owns the
+Secret binding/readback; Serve owns publisher apply/readback and runtime
+readiness. `WorkspaceProductService.UpdateWorkspaceModels` must first obtain a
+confirmed `ManagedKeyBinding` from `GatewayCoordination.CreateManagedKey`, then
+bind the returned Secret reference through `FabricCoordination.BindSecret`, and
+only then call Serve with an internal `RuntimeManagedKeyBinding`. Serve never
+mints a Gateway key and no caller-supplied binding is trusted. The applied
+Workspace version advances only after Serve reports the application-read
+version through the owner-local operation/CAS path.
+
 The historical `resource_only` Launch retains its existing purchase obligations
 and completion criteria. It is not the default App product and is not silently
 converted. The September 29 decision is adopted intent; the source selection
