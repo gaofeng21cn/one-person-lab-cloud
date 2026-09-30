@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_serial_browser_suite_green_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T13:20:00Z",
+  "result": "the_full_console_browser_suite_passes_including_the_cloud_identity_mode",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 6 - full Console browser suite green",
+  "sourceBaseSha": "5db5424f3090fb2246cc843ad69372bf7a13968a",
+  "branch": "codex/tke-serial-stage6-8-evidence",
+  "workspace": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.6",
+  "scope": "Record the full Console browser suite result on canonical main. No source changed.",
+  "verification": {
+    "commands": ["npm run test:browser:suite"],
+    "environment": "local headless browser with the deployed Console build and both legacy and cloud identity modes",
+    "result": "PASS",
+    "cases": [
+      "115 tests, 115 pass, 0 fail, 0 skipped, including 'cloud Console exposes only its deployed publisher and delivery routes' and the customer Workspace journey at desktop and mobile widths."
+    ]
+  },
+  "notRun": [
+    "Live TCR/COS/BuildKit, a real Candidate, Instance deployment, provider action or production readback.",
+    "The default-App and Agent business chains against a deployed Candidate (Stage 8)."
+  ],
+  "claimBoundary": "This receipt claims the full Console browser suite, including the cloud identity mode, passes on the recorded canonical main SHA. It does not claim a Candidate, deployment or production acceptance.",
+  "secrets": "none"
+}

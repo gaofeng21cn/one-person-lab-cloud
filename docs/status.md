@@ -70,6 +70,18 @@ current source. `npm run verify:local`, `npm run validate:product-boundary` and
 default-OPL-App Serve/Workspace tests were added
 ([receipt](evidence/source-checks/2026-09-30-tke-serial-full-verification-green.json)). It still does not substitute for the Instance TKE acceptance.
 
+## September 30 Serial Integration Stage 6/7/8 Evidence And Preconditions
+
+The full Console browser suite passes on canonical main (`npm run
+test:browser:suite`, 115 tests, including the cloud identity mode)
+([receipt](evidence/source-checks/2026-09-30-tke-serial-browser-suite-green.json)).
+The exact external preconditions for the remaining stages are recorded, not
+bypassed: the Candidate build requires the repository-owner dispatcher
+(`gaofeng21cn`) from `main`, and Instance deployment requires
+`opl-instance-medopl` protected `main` with `environment: production` and a
+Candidate bound to the same product SHA
+([receipt](evidence/source-checks/2026-09-30-tke-serial-candidate-instance-preconditions.json)).
+
 ## September 30 Serial Integration Qualification Green On Canonical Main
 
 The OPL Cloud Qualification workflow passes on canonical main
