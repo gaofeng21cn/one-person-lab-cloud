@@ -8689,7 +8689,7 @@ components:
       required:
       - expectedVersion
       - selections
-      description: Runtime reload readback appliedVersion==目标version后才成功。
+      description: Runtime reload readback appliedVersion==目标version后才成功。Gateway managed-key binding is created and returned internally by Gateway for the exact selections; the public request never carries gatewayKeyBindingId.
     Deployment:
       type: object
       additionalProperties: false

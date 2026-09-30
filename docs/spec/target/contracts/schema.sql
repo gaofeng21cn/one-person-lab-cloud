@@ -1655,7 +1655,7 @@ CREATE TABLE serve.agent_runtime_actions (
   CHECK (observation_result IN ('confirmed','rejected','unknown'))
 );
 CREATE INDEX agent_runtime_actions_instance ON serve.agent_runtime_actions (runtime_instance_id, created_at DESC, id DESC);
--- Serve owns the delivery execution epoch; Fabric owns observed route generation; generation advances only on verified route readback
+-- Serve owns delivery epoch, current route generation and target; its access entry reads this binding
 CREATE TABLE serve.access_bindings (
   id text NOT NULL,
   workspace_id text NOT NULL,
@@ -1666,14 +1666,14 @@ CREATE TABLE serve.access_bindings (
   observed_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  provider_revision text,
+  route_revision text,
   PRIMARY KEY (id),
   UNIQUE (workspace_id),
   UNIQUE (id, workspace_id),
   CHECK (route_generation >= 0 AND accepted_execution_epoch >= 0)
 );
 CREATE INDEX access_bindings_target ON serve.access_bindings (target_execution_resource_id);
--- Provider conditional revision CAS covers target plus epoch metadata; confirmed fence preserves target/generation but advances epoch/revision, then activate/rollback advances generation; any unknown blocks all new route actions
+-- Serve-local revision CAS: fence advances accepted epoch/revision without changing target/generation; activation or rollback advances generation; unresolved switches block new actions
 CREATE TABLE serve.access_switches (
   id text NOT NULL,
   route_binding_id text NOT NULL,
@@ -1684,8 +1684,6 @@ CREATE TABLE serve.access_switches (
   execution_epoch bigint NOT NULL,
   target_execution_resource_id text,
   previous_target_execution_resource_id text,
-  provider_command_id text NOT NULL,
-  provider_request_ref text,
   status text NOT NULL DEFAULT 'requested',
   observed_route_generation bigint,
   observed_execution_epoch bigint,
@@ -1695,21 +1693,17 @@ CREATE TABLE serve.access_switches (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   action_kind text NOT NULL,
-  expected_provider_revision text,
-  observed_provider_revision text,
-  expected_absence_receipt_id text,
-  expected_absence_observed_at timestamptz,
+  expected_route_revision text,
+  observed_route_revision text,
   PRIMARY KEY (id),
   FOREIGN KEY (route_binding_id, workspace_id) REFERENCES serve.access_bindings (id, workspace_id) ON DELETE RESTRICT,
   CHECK (status IN ('requested','confirmed','rejected','unknown')),
   CHECK (expected_route_generation >= 0 AND execution_epoch >= 0),
-  UNIQUE (provider_command_id),
   CHECK (selection_commit_receipt_id IS NULL OR status = 'confirmed'),
   CHECK (action_kind IN ('fence','activate','rollback')),
   CHECK (action_kind = 'fence' OR target_execution_resource_id IS NOT NULL),
-  CHECK (expected_provider_revision IS NOT NULL OR expected_route_generation = 0),
-  CHECK (status <> 'confirmed' OR ((observed_route_generation = expected_route_generation + CASE WHEN action_kind = 'fence' THEN 0 ELSE 1 END AND observed_execution_epoch = execution_epoch AND observed_provider_revision IS NOT NULL AND evidence_ref IS NOT NULL) IS TRUE)),
-  CHECK ((expected_provider_revision IS NOT NULL AND expected_absence_receipt_id IS NULL AND expected_absence_observed_at IS NULL) OR (expected_provider_revision IS NULL AND expected_route_generation = 0 AND expected_absence_receipt_id IS NOT NULL AND expected_absence_observed_at IS NOT NULL))
+  CHECK (expected_route_revision IS NOT NULL OR expected_route_generation = 0),
+  CHECK (status <> 'confirmed' OR ((observed_route_generation = expected_route_generation + CASE WHEN action_kind = 'fence' THEN 0 ELSE 1 END AND observed_execution_epoch = execution_epoch AND observed_route_revision IS NOT NULL AND evidence_ref IS NOT NULL) IS TRUE))
 );
 CREATE UNIQUE INDEX route_switches_one_pending ON serve.access_switches (route_binding_id) WHERE status IN ('requested','unknown');
 CREATE INDEX access_switches_operation ON serve.access_switches (operation_owner, operation_id, created_at DESC, id DESC);

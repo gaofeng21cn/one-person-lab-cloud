@@ -2408,7 +2408,11 @@ message RuntimeManagedKeyBinding { string key_binding_id = 1; string secret_deli
 message RuntimeDeployCommand { CallContext context = 1; string workspace_id = 2; string deployment_id = 3; string capability_version_id = 4; DeploymentDescriptor deployment_descriptor = 5; string resource_set_id = 6; string data_attachment_id = 7; string secret_binding_id = 8; int64 model_configuration_version = 9; repeated ModelSelection model_selections = 10; DataCompatibility data_compatibility = 11; string runtime_instance_id = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; WorkspaceApplicationSelection application_selection = 16; RuntimeManagedKeyBinding managed_key_binding = 17; }
 message RuntimeReadbackRequest { CallContext context = 1; string runtime_instance_id = 2; string deployment_id = 3; }
 message RuntimeReadback { string runtime_instance_id = 1; string workspace_id = 2; string deployment_id = 3; AgentRuntimeObservationState state = 4; bool process_ready = 5; bool application_available = 6; bool credential_injection_verified = 7; ArtifactReference artifact = 8; int64 applied_model_configuration_version = 9; string readiness_receipt_id = 10; Observation outcome = 11; google.protobuf.Timestamp observed_at = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; WorkspaceApplicationEntry application_entry = 16; string access_url = 17; }
-message RuntimeReloadCommand { CallContext context = 1; string runtime_instance_id = 2; int64 expected_applied_version = 3; int64 target_version = 4; repeated ModelSelection selections = 5; }
+// The managed key binding is an opaque Gateway/Fabric owner readback. It is
+// supplied only by Workspace after Gateway CreateManagedKey and Fabric
+// BindSecret; public update callers never choose or construct it. Serve applies
+// the publisher contract but never issues or revokes the Gateway key.
+message RuntimeReloadCommand { CallContext context = 1; string runtime_instance_id = 2; int64 expected_applied_version = 3; int64 target_version = 4; repeated ModelSelection selections = 5; RuntimeManagedKeyBinding managed_key_binding = 6; }
 message RuntimeStopCommand { CallContext context = 1; string runtime_instance_id = 2; string deployment_id = 3; string retained_data_attachment_id = 4; }
 service ServeAgentCoordination {
  rpc Reserve(RuntimeReservationCommand) returns (RuntimeReservation);
@@ -2427,33 +2431,24 @@ service ServeRuntimeAdapter {
  rpc ReloadRuntime(RuntimeReloadCommand) returns (Operation);
  rpc ObserveRuntime(RuntimeReadbackRequest) returns (RuntimeReadback);
 }
-message ConfirmedRouteAbsence { string receipt_id = 1; google.protobuf.Timestamp observed_at = 2; }
-message ProviderRevisionPrecondition { oneof condition { string exact_revision = 1; ConfirmedRouteAbsence require_absent = 2; } }
-message FenceRouteEpochCommand { CallContext context = 1; string workspace_id = 2; string operation_id = 3; int64 execution_epoch = 4; int64 expected_route_generation = 5; ProviderRevisionPrecondition provider_precondition = 6; }
-message RouteActivateCommand { CallContext context = 1; string workspace_id = 2; string operation_id = 3; int64 execution_epoch = 4; int64 expected_route_generation = 5; ProviderRevisionPrecondition provider_precondition = 6; string target_execution_resource_id = 7; string target_runtime_instance_id = 8; string target_deployment_id = 9; string confirmed_readiness_receipt_id = 10; }
+// The revision is owned by Serve's access binding, not an external router.
+message RouteAbsence {}
+message RouteRevisionPrecondition { oneof condition { string exact_revision = 1; RouteAbsence require_absent = 2; } }
+message FenceRouteEpochCommand { CallContext context = 1; string workspace_id = 2; string operation_id = 3; int64 execution_epoch = 4; int64 expected_route_generation = 5; RouteRevisionPrecondition revision_precondition = 6; }
+message RouteActivateCommand { CallContext context = 1; string workspace_id = 2; string operation_id = 3; int64 execution_epoch = 4; int64 expected_route_generation = 5; RouteRevisionPrecondition revision_precondition = 6; string target_execution_resource_id = 7; string target_runtime_instance_id = 8; string target_deployment_id = 9; string confirmed_readiness_receipt_id = 10; }
 message RouteObserveRequest { CallContext context = 1; string workspace_id = 2; optional string switch_id = 3; }
-message RouteRollbackCommand { CallContext context = 1; string workspace_id = 2; string original_switch_id = 3; string operation_id = 4; int64 execution_epoch = 5; int64 expected_route_generation = 6; ProviderRevisionPrecondition provider_precondition = 7; string target_execution_resource_id = 8; string target_runtime_instance_id = 9; string target_deployment_id = 10; string compatibility_receipt_id = 11; }
-message RouteReadback { string workspace_id = 1; string switch_id = 2; Observation observation = 3; int64 current_generation = 4; int64 accepted_execution_epoch = 5; optional string target_execution_resource_id = 6; optional string target_runtime_instance_id = 7; optional string target_deployment_id = 8; string provider_revision = 9; string provider_command_id = 10; optional string route_receipt_id = 11; google.protobuf.Timestamp observed_at = 12; optional ErrorCodeEnum error_code = 13; }
-// Serve allocates execution_epoch and persists the delivery intent in one local
-// Serve transaction. Before any route mutation it confirms FenceRouteEpoch at
-// provider: router must CAS the
-// same object's metadata epoch+target using provider conditional revision. Merely
-// allocating a new epoch is NOT proof the external router has been fenced.
-// Fabric reserves a unique route switch (fence/activate/rollback), then executes
-// exact provider identity. unknown blocks new fences/switches; observe original ID.
-// First route requires provider_precondition.require_absent receipt and generation 0;
-// no empty revision means wildcard. Existing routes require exact_revision from
-// confirmed readback. require_absent is rejected if any route/provider revision exists.
-// Fence does not change route generation/target. Activate/rollback require current
-// accepted epoch and expected provider revision+generation; success increases route
-// generation by exactly one. Old provider requests after fence fail conditional CAS.
-// Serve commits the current deployment and route generation/epoch only after
-// confirmed exact target readback and its own current-intent CAS, then emits
-// selection evidence. Workspace supplies authorization and opaque target facts;
-// it does not store or commit a deployment pointer. Lost DB response resumes the
-// original Serve switch, never a new activation. Failed selection CAS leaves the
-// Serve intent needs_attention: authoritative readback, then complete the original
-// commit or explicitly fence+rollback. Never last-writer-wins.
+message RouteRollbackCommand { CallContext context = 1; string workspace_id = 2; string original_switch_id = 3; string operation_id = 4; int64 execution_epoch = 5; int64 expected_route_generation = 6; RouteRevisionPrecondition revision_precondition = 7; string target_execution_resource_id = 8; string target_runtime_instance_id = 9; string target_deployment_id = 10; string compatibility_receipt_id = 11; }
+message RouteReadback { string workspace_id = 1; string switch_id = 2; Observation observation = 3; int64 current_generation = 4; int64 accepted_execution_epoch = 5; optional string target_execution_resource_id = 6; optional string target_runtime_instance_id = 7; optional string target_deployment_id = 8; string route_revision = 9; optional string route_receipt_id = 11; google.protobuf.Timestamp observed_at = 12; optional ErrorCodeEnum error_code = 13; reserved 10; }
+// Serve's access binding is the only route object. A switch is identified by its
+// row id (switch_id); the binding's last confirmed route_revision is the local
+// conditional version. Fence advances accepted epoch/revision, preserving the
+// target/generation. Activate/rollback require the accepted epoch, exact
+// generation/revision, ready target and original intent; generation advances once
+// with the selected deployment in one Serve transaction. First use requires
+// generation zero and verified binding absence, never an external absence receipt.
+// Unknown switches block new actions; lost ACK resumes the original switch_id.
+// Instance's stable Ingress delivers traffic to Serve's binding reader without
+// per-Workspace mutations. Workspace authorizes but does not write selection.
 service ServeAccessControl {
  rpc FenceRouteEpoch(FenceRouteEpochCommand) returns (RouteReadback);
  rpc ActivateRoute(RouteActivateCommand) returns (RouteReadback);
@@ -2723,7 +2718,7 @@ message RouteObservedEvent {
  string action_kind = 3;
  int64 route_generation = 4;
  int64 execution_epoch = 5;
- string provider_revision = 6;
+ string route_revision = 6;
  optional string target_execution_resource_id = 7;
  string outcome = 8;
  optional string route_receipt_id = 9;
