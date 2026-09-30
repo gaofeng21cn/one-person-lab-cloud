@@ -38,17 +38,28 @@ All outcomes in the table below remain open until their own evidence passes.
 A single sequential implementation owner replaces the parallel write allocation;
 logical DDD ownership and separate Instance deployment authority do not change.
 
+### Cloud-Identity Customer Workspace Read (2026-09-30)
+
+The cloud-identity Console now reads the customer Workspace list and detail from
+the Workspace owner and never from the Control Plane projection, so it lists,
+opens and reads back the Workspace its own launch flow created
+([evidence](evidence/source-checks/2026-09-30-cloud-console-workspace-owner-read.json)).
+Two Cloud-side outcomes remain open on this path:
+
+| Open outcome | Owner | Next action |
+| --- | --- | --- |
+| The Console BFF exposes no Workspace-owner renewal, deletion, credential or application-installation route | Console/Console-BFF (this serial window) | Add the owner-backed routes and the matching detail controls, then retire the Control Plane maintenance path for the cloud identity |
+| The installed topology still routes one origin to both `/api/` and `/api/v2/`, while the cloud identity requires only the BFF surface | Instance repository owner | Route only the declared browser-facing surfaces for the identity the digest carries |
+
 ### Milestone M1 Blockers After The HTTP-Surface And Console-Identity Contract
 
 The instance owner can now read the two installation facts the previous turn did
 not state: which process serves each HTTP surface a browser-facing install must
 route, and which Console surface an exact Candidate digest carries
 ([evidence](evidence/source-checks/2026-09-30-http-surface-and-console-identity-declaration.json)).
-The remaining M1 blockers are unchanged, and one Cloud-side Console gap is now
-named: the customer Workspace list and detail still read the Control Plane's
-`/api/workspaces` surface, so a cloud-identity Console does not show a Workspace
-it created through the Workspace owner's `/api/v2` surface. That read migration
-belongs to Console/Console-BFF and is the next Cloud-side M1 step.
+The remaining M1 blockers are unchanged. That turn named one Cloud-side Console
+gap, the customer Workspace read; it is closed above, and the owner-backed
+maintenance surfaces it did not cover remain open.
 
 ### Milestone M1 Blockers After The Owner-Topology Contract
 

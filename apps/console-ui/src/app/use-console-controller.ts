@@ -13,6 +13,7 @@ import type {
 import {
   getWorkspaceGatewayBudget
 } from "../api/workspaces-api.ts";
+import { cloudIdentity } from "./console-identity.ts";
 import { parseConsoleRoute, useConsoleRouter, type ConsoleRoute } from "./console-router.ts";
 import type {
   AuthStatus,
@@ -277,11 +278,18 @@ export function useConsoleController() {
   });
   const fabricRuntimeRead: FabricRuntimeReadController = fabricRuntimeReadCapability;
   const activeWorkspace = customerWorkspaceRead.activeWorkspace;
+  // The Control Plane's credential, deletion, renewal, application-installation
+  // and budget controllers all act on a Workspace the Control Plane owns. A
+  // cloud-identity Workspace belongs to the Workspace owner, so those
+  // controllers receive no Workspace under that identity instead of addressing
+  // Control Plane routes that do not describe it.
+  const controlPlaneWorkspace = cloudIdentity ? null : activeWorkspace;
+  const controlPlaneWorkspaceId = cloudIdentity ? "" : activeWorkspaceId;
 
   const workspaceSecretCapability = useWorkspaceSecretController({
     session,
-    workspace: activeWorkspace,
-    activeWorkspaceId,
+    workspace: controlPlaneWorkspace,
+    activeWorkspaceId: controlPlaneWorkspaceId,
     currentMutationRequest,
     refreshWorkspaceDetail: async (workspaceId) => {
       if (!session) return;
@@ -307,8 +315,8 @@ export function useConsoleController() {
 
   const workspaceDeleteCapability = useWorkspaceDeleteController({
     session,
-    workspace: activeWorkspace,
-    activeWorkspaceId,
+    workspace: controlPlaneWorkspace,
+    activeWorkspaceId: controlPlaneWorkspaceId,
     currentMutationRequest,
     navigate,
     flash,
@@ -318,8 +326,8 @@ export function useConsoleController() {
 
   const workspaceRenewalCapability = useWorkspaceRenewalController({
     session,
-    workspace: activeWorkspace,
-    activeWorkspaceId,
+    workspace: controlPlaneWorkspace,
+    activeWorkspaceId: controlPlaneWorkspaceId,
     currentMutationRequest,
     workspaceDetailProjectionLease: customerWorkspaceReadCapability.workspaceDetailProjectionLease,
     onWorkspaceReadback: customerWorkspaceReadCapability.applyWorkspaceReadback,
@@ -330,15 +338,15 @@ export function useConsoleController() {
   const workspaceRenewal: WorkspaceRenewalController = workspaceRenewalCapability;
 
   const workspaceApplicationInstallation = useWorkspaceApplicationInstallationController({
-    session, workspace: activeWorkspace, workspaceId: activeWorkspaceId, currentMutationRequest,
+    session, workspace: controlPlaneWorkspace, workspaceId: controlPlaneWorkspaceId, currentMutationRequest,
     refreshWorkspace: () => refreshCurrentPage(), flash, mutationError
   });
 
   const workspaceBudgetCapability = useWorkspaceBudgetController({
     session,
-    workspace: activeWorkspace,
+    workspace: controlPlaneWorkspace,
     budget: sources.workspaceBudget.value,
-    activeWorkspaceId,
+    activeWorkspaceId: controlPlaneWorkspaceId,
     currentMutationRequest,
     workspaceBudgetProjectionLease,
     updateBudgetSource: (value) => updateSource("workspaceBudget", { value, loading: false, error: "" }),
@@ -448,6 +456,14 @@ export function useConsoleController() {
   const gatewayUsage: GatewayUsageController = gatewayUsageCapability;
 
   const loadWorkspaceAccess = async (generation: number, activeSession: AuthSession, workspaceId: string) => {
+    // A cloud-identity Console reads the whole customer Workspace projection from
+    // the Workspace owner, including its access URL and delivery state. The
+    // Control Plane runtime-status and gateway-budget routes describe a Workspace
+    // that owner does not have, so they are not read for an owner Workspace.
+    if (cloudIdentity) {
+      await customerWorkspaceReadCapability.load();
+      return;
+    }
     const workspaceBudgetGeneration = ++workspaceBudgetRequestGeneration.current;
     const budgetReadStillCurrent = () => {
       const currentRoute = currentRouteRef.current;

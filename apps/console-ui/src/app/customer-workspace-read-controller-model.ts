@@ -142,14 +142,22 @@ export function invalidateCustomerWorkspaceReadEpoch(
   };
 }
 
+// A customer Workspace is provided by exactly one owner, chosen by the Console
+// identity: the Control Plane projection in legacy mode and the Workspace owner
+// in cloud mode. The read accepts the projection only from that owner, so a
+// Workspace created through one owner can never be answered by the other.
+export type CustomerWorkspaceSourceOwner = "control-plane" | "workspace";
+
 type CustomerWorkspaceScopedSource =
   | {
     readonly kind: "list";
+    readonly sourceOwner: CustomerWorkspaceSourceOwner;
     readonly scope: CustomerWorkspaceListScope;
     readonly source: SourceEnvelope<WorkspaceListData>;
   }
   | {
     readonly kind: "detail";
+    readonly sourceOwner: CustomerWorkspaceSourceOwner;
     readonly scope: CustomerWorkspaceDetailScope;
     readonly source: SourceEnvelope<WorkspaceDTO | null>;
   };
@@ -160,7 +168,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function customerWorkspaceSourceMatchesScope(input: CustomerWorkspaceScopedSource): boolean {
   const { source } = input;
-  if (!isRecord(source) || source.source !== "control-plane") return false;
+  if (!isRecord(source) || source.source !== input.sourceOwner) return false;
   if (source.available === false) return source.status === "unavailable";
   if (source.available !== true) return false;
 
@@ -201,6 +209,7 @@ export function createCustomerWorkspaceReadState(): CustomerWorkspaceReadState {
 export type CustomerWorkspaceCompletion =
   | {
     readonly kind: "list";
+    readonly sourceOwner: CustomerWorkspaceSourceOwner;
     readonly activeScope: CustomerWorkspaceListScope;
     readonly responseScope: CustomerWorkspaceListScope;
     readonly source: SourceEnvelope<WorkspaceListData>;
@@ -208,6 +217,7 @@ export type CustomerWorkspaceCompletion =
   }
   | {
     readonly kind: "detail";
+    readonly sourceOwner: CustomerWorkspaceSourceOwner;
     readonly activeScope: CustomerWorkspaceDetailScope;
     readonly responseScope: CustomerWorkspaceDetailScope;
     readonly source: SourceEnvelope<WorkspaceDTO | null>;
@@ -223,6 +233,7 @@ export function applyCustomerWorkspaceCompletion(
   if (completion.kind === "list") {
     if (!customerWorkspaceSourceMatchesScope({
       kind: "list",
+      sourceOwner: completion.sourceOwner,
       scope: completion.activeScope,
       source: completion.source
     })) return null;
@@ -234,6 +245,7 @@ export function applyCustomerWorkspaceCompletion(
 
   if (!customerWorkspaceSourceMatchesScope({
     kind: "detail",
+    sourceOwner: completion.sourceOwner,
     scope: completion.activeScope,
     source: completion.source
   })) return null;

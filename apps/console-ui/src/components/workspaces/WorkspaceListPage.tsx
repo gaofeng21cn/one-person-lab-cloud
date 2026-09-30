@@ -2,7 +2,7 @@ import { ChevronRight, Plus, RefreshCw } from "lucide-react";
 
 import type { ConsoleController } from "../../app/use-console-controller.ts";
 import { cloudIdentity } from "../../app/console-identity.ts";
-import { presentWorkspaceLifecycle } from "../../app/workspace-experience-model.ts";
+import { presentWorkspaceDeliveryModel, presentWorkspaceLifecycle } from "../../app/workspace-experience-model.ts";
 import type { WorkspaceDTO } from "../../api/dtos.ts";
 import { SourceState } from "../source/SourceState.tsx";
 import { Badge, Button } from "../ui/index.ts";
@@ -15,7 +15,10 @@ type WorkspaceListController = Pick<ConsoleController, "customerWorkspaceRead" |
 
 export function WorkspaceSummaryRow({ controller, workspace }: { controller: WorkspaceSummaryController; workspace: WorkspaceDTO }) {
   const path = `/console/workspaces/${encodeURIComponent(workspace.id)}`;
-  return <tr><td><PageLink controller={controller} path={path}><strong>{workspace.name || "未命名工作空间"}</strong></PageLink></td><td>{workspace.packageId?.toUpperCase() || "暂不可用"}</td><td><Badge color="secondary">{presentWorkspaceLifecycle(workspace.state).label}</Badge></td><td>{formatDate(workspace.paidThrough)}</td><td><PageLink controller={controller} path={path}><span className="workspace-detail-link">查看详情</span><ChevronRight aria-hidden size={17} /></PageLink></td></tr>;
+  // The Workspace owner delivers the Workspace and states the delivery model;
+  // the Control Plane projection instead states the purchased plan.
+  const delivery = cloudIdentity ? presentWorkspaceDeliveryModel(workspace.deliveryModel) : workspace.packageId?.toUpperCase() || "暂不可用";
+  return <tr><td><PageLink controller={controller} path={path}><strong>{workspace.name || "未命名工作空间"}</strong></PageLink></td><td>{delivery}</td><td><Badge color="secondary">{presentWorkspaceLifecycle(workspace.state).label}</Badge></td><td>{formatDate(workspace.paidThrough)}</td><td><PageLink controller={controller} path={path}><span className="workspace-detail-link">查看详情</span><ChevronRight aria-hidden size={17} /></PageLink></td></tr>;
 }
 
 export function WorkspaceListPage({ controller }: { controller: WorkspaceListController }) {
@@ -30,7 +33,7 @@ export function WorkspaceListPage({ controller }: { controller: WorkspaceListCon
         <LaunchOperation controller={controller.workspaceLaunch} compact onBack={() => controller.navigate("/console/workspaces")} onRefresh={controller.refreshCurrentPage} />
       ) : null}
       <section className="panel workspace-list-panel">
-        <div className="workspace-list-head"><span>工作空间</span><span>套餐</span><span>当前状态</span><span>已付至</span><span /></div>
+        <div className="workspace-list-head"><span>工作空间</span><span>{cloudIdentity ? "交付模式" : "套餐"}</span><span>当前状态</span><span>已付至</span><span /></div>
         <SourceState
           emptyTitle="暂无工作空间"
           emptyDescription="当前账号尚未开通工作空间。"
@@ -44,7 +47,9 @@ export function WorkspaceListPage({ controller }: { controller: WorkspaceListCon
           {(data) => <div className="workspace-list" role="list">{data.items.map((workspace) => (
             <PageLink className="workspace-list-row" controller={controller} key={workspace.id} path={`/console/workspaces/${encodeURIComponent(workspace.id)}`}>
               <span className="workspace-list-name"><strong>{workspace.name || "未命名工作空间"}</strong></span>
-              <span><strong>{workspace.packageId?.toUpperCase() || "暂不可用"}</strong><small>{workspace.storageGb ? `${workspace.storageGb} GB` : "规格暂不可用"}</small></span>
+              {cloudIdentity
+                ? <span><strong>{presentWorkspaceDeliveryModel(workspace.deliveryModel)}</strong><small>{workspace.resourceReadiness ? `资源 ${workspace.resourceReadiness}` : "资源状态暂不可用"}</small></span>
+                : <span><strong>{workspace.packageId?.toUpperCase() || "暂不可用"}</strong><small>{workspace.storageGb ? `${workspace.storageGb} GB` : "规格暂不可用"}</small></span>}
               <span><strong>{presentWorkspaceLifecycle(workspace.state).label}</strong><small>当前状态</small></span>
               <span><strong>{formatDate(workspace.paidThrough)}</strong><small>权益截止</small></span>
               <span className="workspace-detail-link">查看详情</span>

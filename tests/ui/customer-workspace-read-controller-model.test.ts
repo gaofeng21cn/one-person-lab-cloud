@@ -43,9 +43,15 @@ const beta: WorkspaceDTO = {
   name: "Beta"
 };
 
-function source<T>(data: T, status: "available" | "empty" = "available"): SourceEnvelope<T> {
+type WorkspaceSourceOwner = "control-plane" | "workspace";
+
+function source<T>(
+  data: T,
+  status: "available" | "empty" = "available",
+  owner: WorkspaceSourceOwner = "control-plane"
+): SourceEnvelope<T> {
   return {
-    source: "control-plane",
+    source: owner,
     status,
     available: true,
     fetchedAt,
@@ -53,13 +59,13 @@ function source<T>(data: T, status: "available" | "empty" = "available"): Source
   };
 }
 
-function unavailable<T>(): SourceEnvelope<T> {
+function unavailable<T>(owner: WorkspaceSourceOwner = "control-plane"): SourceEnvelope<T> {
   return {
-    source: "control-plane",
+    source: owner,
     status: "unavailable",
     available: false,
     fetchedAt,
-    reasonCode: "control_plane_unavailable"
+    reasonCode: `${owner.replace(/-/g, "_")}_unavailable`
   };
 }
 
@@ -97,15 +103,16 @@ test("list completion requires the exact Control Plane page identity", () => {
     pageSize: CUSTOMER_WORKSPACE_LIST_PAGE_SIZE
   });
 
-  assert.equal(customerWorkspaceSourceMatchesScope({ kind: "list", scope, source: source(page(3, 10)) }), true);
-  assert.equal(customerWorkspaceSourceMatchesScope({ kind: "list", scope, source: source(page(2, 10)) }), false);
-  assert.equal(customerWorkspaceSourceMatchesScope({ kind: "list", scope, source: source(page(3, 1)) }), false);
+  assert.equal(customerWorkspaceSourceMatchesScope({ kind: "list", sourceOwner: "control-plane", scope, source: source(page(3, 10)) }), true);
+  assert.equal(customerWorkspaceSourceMatchesScope({ kind: "list", sourceOwner: "control-plane", scope, source: source(page(2, 10)) }), false);
+  assert.equal(customerWorkspaceSourceMatchesScope({ kind: "list", sourceOwner: "control-plane", scope, source: source(page(3, 1)) }), false);
   assert.equal(customerWorkspaceSourceMatchesScope({
     kind: "list",
+    sourceOwner: "control-plane",
     scope,
     source: { ...source(page(3, 10)), source: "fabric" }
   }), false);
-  assert.equal(customerWorkspaceSourceMatchesScope({ kind: "list", scope, source: unavailable() }), true);
+  assert.equal(customerWorkspaceSourceMatchesScope({ kind: "list", sourceOwner: "control-plane", scope, source: unavailable() }), true);
 });
 
 test("detail completion accepts only the requested Workspace or authoritative absence", () => {
@@ -115,15 +122,16 @@ test("detail completion accepts only the requested Workspace or authoritative ab
     workspaceId: alpha.id
   });
 
-  assert.equal(customerWorkspaceSourceMatchesScope({ kind: "detail", scope, source: source(alpha) }), true);
-  assert.equal(customerWorkspaceSourceMatchesScope({ kind: "detail", scope, source: source(beta) }), false);
-  assert.equal(customerWorkspaceSourceMatchesScope({ kind: "detail", scope, source: source(null, "empty") }), true);
+  assert.equal(customerWorkspaceSourceMatchesScope({ kind: "detail", sourceOwner: "control-plane", scope, source: source(alpha) }), true);
+  assert.equal(customerWorkspaceSourceMatchesScope({ kind: "detail", sourceOwner: "control-plane", scope, source: source(beta) }), false);
+  assert.equal(customerWorkspaceSourceMatchesScope({ kind: "detail", sourceOwner: "control-plane", scope, source: source(null, "empty") }), true);
   assert.equal(customerWorkspaceSourceMatchesScope({
     kind: "detail",
+    sourceOwner: "control-plane",
     scope,
     source: { ...source(alpha), source: "sub2api" }
   }), false);
-  assert.equal(customerWorkspaceSourceMatchesScope({ kind: "detail", scope, source: unavailable() }), true);
+  assert.equal(customerWorkspaceSourceMatchesScope({ kind: "detail", sourceOwner: "control-plane", scope, source: unavailable() }), true);
 });
 
 test("list and detail settle independently", () => {
@@ -141,6 +149,7 @@ test("list and detail settle independently", () => {
   });
   const listResult = applyCustomerWorkspaceCompletion(initial, {
     kind: "list",
+    sourceOwner: "control-plane",
     activeScope: listScope,
     responseScope: listScope,
     source: source(page(1, 10))
@@ -149,6 +158,7 @@ test("list and detail settle independently", () => {
   assert.ok(listResult);
   const detailFailure = applyCustomerWorkspaceCompletion(listResult, {
     kind: "detail",
+    sourceOwner: "control-plane",
     activeScope: detailScope,
     responseScope: detailScope,
     source: unavailable(),
@@ -176,6 +186,7 @@ test("stale completion cannot mutate either projection", () => {
 
   assert.equal(applyCustomerWorkspaceCompletion(state, {
     kind: "detail",
+    sourceOwner: "control-plane",
     activeScope,
     responseScope: staleScope,
     source: source(alpha)
@@ -258,11 +269,13 @@ test("reset invalidates old leases and production settlement keeps empty, absenc
   const emptyList = source(page(1, CUSTOMER_WORKSPACE_LIST_PAGE_SIZE, []), "empty");
   assert.equal(customerWorkspaceSourceMatchesScope({
     kind: "list",
+    sourceOwner: "control-plane",
     scope: emptyListScope,
     source: emptyList
   }), true);
   const emptyListState = applyCustomerWorkspaceCompletion(createCustomerWorkspaceReadState(), {
     kind: "list",
+    sourceOwner: "control-plane",
     activeScope: emptyListScope,
     responseScope: emptyListScope,
     source: emptyList
@@ -274,11 +287,13 @@ test("reset invalidates old leases and production settlement keeps empty, absenc
   const absence = source<WorkspaceDTO | null>(null, "empty");
   assert.equal(customerWorkspaceSourceMatchesScope({
     kind: "detail",
+    sourceOwner: "control-plane",
     scope: newScope,
     source: absence
   }), true);
   const absentDetailState = applyCustomerWorkspaceCompletion(createCustomerWorkspaceReadState(), {
     kind: "detail",
+    sourceOwner: "control-plane",
     activeScope: newScope,
     responseScope: newScope,
     source: absence
@@ -290,11 +305,13 @@ test("reset invalidates old leases and production settlement keeps empty, absenc
   const unavailableDetail = unavailable<WorkspaceDTO | null>();
   assert.equal(customerWorkspaceSourceMatchesScope({
     kind: "detail",
+    sourceOwner: "control-plane",
     scope: newScope,
     source: unavailableDetail
   }), true);
   const unavailableDetailState = applyCustomerWorkspaceCompletion(createCustomerWorkspaceReadState(), {
     kind: "detail",
+    sourceOwner: "control-plane",
     activeScope: newScope,
     responseScope: newScope,
     source: unavailableDetail,
@@ -303,4 +320,55 @@ test("reset invalidates old leases and production settlement keeps empty, absenc
   assert.equal(unavailableDetailState?.detail.value?.available, false);
   assert.equal(unavailableDetailState?.detail.value?.status, "unavailable");
   assert.equal(unavailableDetailState?.detail.error, "Workspace detail unavailable");
+});
+
+test("each identity accepts only the customer Workspace owner it reads", () => {
+  const listScope = createCustomerWorkspaceListScope({
+    ...epoch(),
+    requestGeneration: 1,
+    page: 1,
+    pageSize: CUSTOMER_WORKSPACE_LIST_PAGE_SIZE
+  });
+  const detailScope = createCustomerWorkspaceDetailScope({
+    ...epoch(),
+    requestGeneration: 1,
+    workspaceId: alpha.id
+  });
+
+  // The cloud-identity Console reads the Workspace owner, whose projection
+  // carries that owner's own source label.
+  assert.equal(customerWorkspaceSourceMatchesScope({
+    kind: "list", sourceOwner: "workspace", scope: listScope, source: source(page(1, 10), "available", "workspace")
+  }), true);
+  assert.equal(customerWorkspaceSourceMatchesScope({
+    kind: "detail", sourceOwner: "workspace", scope: detailScope, source: source(alpha, "available", "workspace")
+  }), true);
+  assert.equal(customerWorkspaceSourceMatchesScope({
+    kind: "detail", sourceOwner: "workspace", scope: detailScope, source: unavailable<WorkspaceDTO | null>("workspace")
+  }), true);
+
+  // Neither identity accepts the other owner's projection, so a Workspace
+  // created through the Workspace owner is never answered by the Control Plane,
+  // and the retained Control Plane Workspace is never answered by the owner.
+  assert.equal(customerWorkspaceSourceMatchesScope({
+    kind: "list", sourceOwner: "workspace", scope: listScope, source: source(page(1, 10))
+  }), false);
+  assert.equal(customerWorkspaceSourceMatchesScope({
+    kind: "list", sourceOwner: "control-plane", scope: listScope, source: source(page(1, 10), "available", "workspace")
+  }), false);
+  assert.equal(customerWorkspaceSourceMatchesScope({
+    kind: "detail", sourceOwner: "control-plane", scope: detailScope, source: source(alpha, "available", "workspace")
+  }), false);
+
+  // A cloud-identity completion commits the owner projection into the detail.
+  const ownerDetailState = applyCustomerWorkspaceCompletion(createCustomerWorkspaceReadState(), {
+    kind: "detail",
+    sourceOwner: "workspace",
+    activeScope: detailScope,
+    responseScope: detailScope,
+    source: source(alpha, "available", "workspace")
+  });
+  assert.ok(ownerDetailState?.detail.value?.available);
+  assert.equal(ownerDetailState.detail.value.source, "workspace");
+  assert.equal(ownerDetailState.detail.value.data?.id, alpha.id);
 });

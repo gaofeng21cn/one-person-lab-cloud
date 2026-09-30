@@ -6,7 +6,13 @@ import type {
   WorkspaceDTO,
   WorkspaceListData
 } from "../api/dtos.ts";
-import { findWorkspaceInPages, getWorkspaces } from "../api/workspaces-api.ts";
+import {
+  findWorkspaceInPages,
+  getWorkspaces,
+  readCustomerWorkspaceOwnerDetail,
+  readCustomerWorkspaceOwnerList
+} from "../api/workspaces-api.ts";
+import { cloudIdentity } from "./console-identity.ts";
 import type { CustomerWorkspaceReadController, WorkspaceSourceProjectionLease } from "./console-controller-types.ts";
 import {
   CUSTOMER_WORKSPACE_LIST_PAGE_SIZE,
@@ -27,7 +33,8 @@ import {
   type CustomerWorkspaceListScope,
   type CustomerWorkspaceReadEpoch,
   type CustomerWorkspaceReadState,
-  type CustomerWorkspaceRouteScope
+  type CustomerWorkspaceRouteScope,
+  type CustomerWorkspaceSourceOwner
 } from "./customer-workspace-read-controller-model.ts";
 
 interface CustomerWorkspaceReadDependencies {
@@ -43,6 +50,11 @@ export interface CustomerWorkspaceReadCapability extends CustomerWorkspaceReadCo
   applyWorkspaceReadback: (readback: SourceEnvelope<WorkspaceDTO | null>) => boolean;
   reset: () => void;
 }
+
+// The identity selects the customer Workspace owner. A cloud-identity Console
+// creates and reads Workspaces through the Workspace owner's /api/v2 surface;
+// a legacy Console keeps reading the Control Plane projection.
+const customerWorkspaceSourceOwner: CustomerWorkspaceSourceOwner = cloudIdentity ? "workspace" : "control-plane";
 
 function sessionKey(session: AuthSession | null): string {
   return session ? `${session.user.id}\u0000${session.csrfToken}` : "";
@@ -174,6 +186,7 @@ export function useCustomerWorkspaceReadController({
   ) => {
     setState((current) => applyCustomerWorkspaceCompletion(current, {
       kind: "list",
+      sourceOwner: customerWorkspaceSourceOwner,
       activeScope: requestScope,
       responseScope: requestScope,
       source,
@@ -188,6 +201,7 @@ export function useCustomerWorkspaceReadController({
   ) => {
     setState((current) => applyCustomerWorkspaceCompletion(current, {
       kind: "detail",
+      sourceOwner: customerWorkspaceSourceOwner,
       activeScope: requestScope,
       responseScope: requestScope,
       source,
@@ -217,9 +231,16 @@ export function useCustomerWorkspaceReadController({
     beginProjection("list");
 
     try {
-      const result = await getWorkspaces(requestedPage, requestedPageSize);
+      const result = cloudIdentity
+        ? await readCustomerWorkspaceOwnerList(requestedPage, requestedPageSize)
+        : await getWorkspaces(requestedPage, requestedPageSize);
       if (!requestOwnsScope(requestScope, userId, csrfToken, requestRouteKey)) return;
-      if (!customerWorkspaceSourceMatchesScope({ kind: "list", scope: requestScope, source: result })) {
+      if (!customerWorkspaceSourceMatchesScope({
+        kind: "list",
+        sourceOwner: customerWorkspaceSourceOwner,
+        scope: requestScope,
+        source: result
+      })) {
         throw new Error("customer_workspace_list_identity_mismatch");
       }
       commitList(requestScope, result);
@@ -237,7 +258,7 @@ export function useCustomerWorkspaceReadController({
       listRequestedPageRef.current = committedPageRef.current;
       commitList(
         requestScope,
-        unavailableSource<WorkspaceListData>("control-plane"),
+        unavailableSource<WorkspaceListData>(customerWorkspaceSourceOwner),
         friendlyError(error)
       );
     }
@@ -261,16 +282,23 @@ export function useCustomerWorkspaceReadController({
     beginProjection("detail");
 
     try {
-      const result = await findWorkspaceInPages(workspaceId);
+      const result = cloudIdentity
+        ? await readCustomerWorkspaceOwnerDetail(workspaceId)
+        : await findWorkspaceInPages(workspaceId);
       if (!requestOwnsScope(requestScope, userId, csrfToken, requestRouteKey)) return null;
-      if (!customerWorkspaceSourceMatchesScope({ kind: "detail", scope: requestScope, source: result })) {
+      if (!customerWorkspaceSourceMatchesScope({
+        kind: "detail",
+        sourceOwner: customerWorkspaceSourceOwner,
+        scope: requestScope,
+        source: result
+      })) {
         throw new Error("customer_workspace_detail_identity_mismatch");
       }
       commitDetail(requestScope, result);
       return result;
     } catch (error) {
       if (!requestOwnsScope(requestScope, userId, csrfToken, requestRouteKey)) return null;
-      const fallback = unavailableSource<WorkspaceDTO | null>("control-plane");
+      const fallback = unavailableSource<WorkspaceDTO | null>(customerWorkspaceSourceOwner);
       commitDetail(requestScope, fallback, friendlyError(error));
       return fallback;
     }
@@ -346,6 +374,7 @@ export function useCustomerWorkspaceReadController({
     });
     if (!customerWorkspaceSourceMatchesScope({
       kind: "detail",
+      sourceOwner: customerWorkspaceSourceOwner,
       scope: validationScope,
       source: readback
     })) return false;

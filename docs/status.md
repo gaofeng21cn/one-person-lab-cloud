@@ -2072,6 +2072,37 @@ it created through the owner surface only after that read path switches.
 This is a Cloud source and packaging fact; no Candidate image, installation or
 TKE readback exists yet.
 
+### Cloud-Identity Customer Workspace Read
+
+The Console has two identities and each one now reads the customer Workspace
+from exactly one owner. The legacy identity keeps the retained Control Plane
+projection. The cloud identity reads the Workspace owner, which is the only
+owner that can answer for a Workspace the default-App or Agent launch created
+through `POST /api/v2/workspaces`. `workspaces-api.ts` projects the owner's
+complete cursor list into the Console page model and reads the owner detail,
+carrying only the facts the owner returns; the projection validator in
+`customer-workspace-read-controller-model.ts` accepts the owner projection only
+for the identity that selected that owner and refuses the other owner's
+projection in both directions. The list, detail and overview pages render the
+owner's delivery model, lifecycle state, resource readiness, application
+availability, period end and access URL under the cloud identity, and
+`use-console-controller.ts` supplies no Workspace to the Control Plane
+credential, deletion, renewal, application-installation and budget controllers
+under that identity, so those routes are never addressed for an owner
+Workspace. A browser test drives the real cloud-identity Console and records
+that it reads `GET /api/v2/workspaces` and `GET /api/v2/workspaces/{id}`, opens
+the owner's access URL, and issues zero `/api/workspaces` requests. Evidence:
+[cloud-identity customer Workspace read](./evidence/source-checks/2026-09-30-cloud-console-workspace-owner-read.json).
+Known gap recorded there: the Console BFF exposes no Workspace-owner renewal,
+deletion, credential or application-installation route, so the cloud detail page
+offers those controls only once such owner surfaces exist. `npm run
+verify:local:full` also passed on this revision: every PostgreSQL-gated owner
+suite ran with zero skips against a temporary PostgreSQL 16 container, and the
+browser suite, the product-boundary validator, typecheck, lint and the Go module
+tests were green.
+This is a Cloud source fact; no Candidate image, installation or TKE readback
+exists yet.
+
 ## Distribution Boundary
 
 The five `v0.1.7` assets and their public API digests match the Release manifest

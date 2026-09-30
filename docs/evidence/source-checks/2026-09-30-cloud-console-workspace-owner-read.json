@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_cloud_identity_customer_workspace_read_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T07:40:00Z",
+  "result": "a_cloud_identity_console_reads_the_customer_workspace_list_and_detail_from_the_workspace_owner_and_never_from_the_control_plane_projection",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 11.6 - the cloud-identity Console reads the customer Workspace from its owning service",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.6",
+  "milestoneM1": {
+    "objective": "Minimum real delivery of the default OPL App: the instance installs the complete Cloud owner topology, Cloud builds an exact-SHA Candidate, the instance deploys it, Serve reaches a confirmed route and URL on Tencent TKE, and a user opens the application.",
+    "stepDelivered": "A cloud-identity Console can now show the Workspace it created. The default-App launch writes the Workspace through the Workspace owner's /api/v2 surface, but the customer Workspace list and detail still read the Control Plane's /api/workspaces projection, which does not contain an owner Workspace. The read now follows the identity, so the created Workspace is listed, opened and read back from the owner that holds it."
+  },
+  "necessity": {
+    "decision": "The Console has two identities and each identity reads the customer Workspace from exactly one owner. The legacy identity keeps the retained Control Plane projection; the cloud identity reads the Workspace owner, which is the only owner that can answer for a Workspace created by the default-App or Agent launch flow. The read source is a property of the identity, not a fallback chain.",
+    "currentProblem": "apps/console-ui/src/api/workspaces-api.ts read the customer Workspace list and detail from the Control Plane's /api/workspaces surface under both identities, and the Console identity gated only authentication, publisher and Agent surfaces. A cloud-identity Console therefore completed a default-App launch through the Workspace owner's /api/v2/workspaces, then listed from a projection that does not contain that Workspace: the user could not see, open or read back the Workspace just created. The detail route additionally read the Control Plane runtime-status, renewal and deletion routes for that Workspace id.",
+    "confirmedFacts": [
+      "The Control Plane's /api/workspaces routes are served by services/control-plane/internal/server from the Control Plane's own store; the Workspace owner is a separate process with a separate database (services/workspace, packages/contracts/proto internal.proto WorkspaceProductService.ListWorkspaces/GetWorkspace).",
+      "The default-App and Agent launch flows create the Workspace through POST /api/v2/workspaces, and the Workspace owner's Workspace message (id, name, status, resource_readiness, application_availability, delivery_model, current_period_end, access_url, created_at, updated_at, version) carries no plan, no owner-account pair and no total count.",
+      "The Console's page model is page/pageSize/total while the owner pages by cursor with limit 1..100 and no total, and the Console already had listWorkspaceOwnerRows()/getWorkspaceOwner() reading the owner surface with no caller.",
+      "The detail route also loaded the Control Plane runtime-status route in use-fabric-runtime-read-controller.ts and the Control Plane gateway-budget route in loadWorkspaceAccess, and use-workspace-delete-controller.ts and use-workspace-renewal-controller.ts load from the active Workspace id, so those owners addressed a Workspace the Control Plane does not have."
+    ],
+    "mustStaySeparate": [
+      "The Workspace owner is the authority for a cloud Workspace; the Control Plane projection remains the authority for the retained legacy Workspace and is untouched for the legacy identity.",
+      "The Console render model is one shape for both identities; only the fields the providing owner returns are filled in, and every column an owner does not return is rendered as unavailable rather than taken from the other owner.",
+      "Cloud declares and tests this source boundary. Nothing here installs, deploys, buys, routes or activates anything, and no owner runtime behavior changed."
+    ],
+    "minimalImplementation": [
+      "apps/console-ui/src/app/use-customer-workspace-read-controller.ts selects the read owner from the Console identity, and passes that owner to the projection validator instead of the hardcoded Control Plane label.",
+      "apps/console-ui/src/app/customer-workspace-read-controller-model.ts validates the source envelope against the owner the identity selected, so each identity refuses the other owner's projection.",
+      "apps/console-ui/src/api/workspaces-api.ts projects the Workspace owner's complete list into the Console page model in one owner read, and reads the owner detail, carrying only the facts the owner returns.",
+      "WorkspaceListPage.tsx, WorkspaceDetailPage.tsx and CustomerPages.tsx render the owner's delivery model, lifecycle state, resource readiness, application availability, period end and access URL for the cloud identity, and render the Control Plane plan, renewal, budget and deletion controls only for the legacy identity.",
+      "use-console-controller.ts supplies no Workspace to the Control Plane credential, deletion, renewal, application-installation and budget controllers under the cloud identity, so those routes are never addressed for an owner Workspace."
+    ],
+    "whyNotAlternative": [
+      "Reading the owner only when the Control Plane read is empty would be a fallback chain that hides which owner answered and would make the same Workspace listable from two owners.",
+      "Filling the Control Plane-only columns (plan, owner-account pair, total) from the owner's cursor page would invent facts the owner does not state.",
+      "Keeping the Control Plane maintenance controls visible for an owner Workspace would address routes that do not describe it; the owner-backed renewal, deletion and credential surfaces are recorded as the remaining gap instead of being faked."
+    ]
+  },
+  "ssotConformance": [
+    {
+      "ssot": "docs/spec/target/14_implementation_work_packages.md#11.6",
+      "requirement": "「接真实BFF/Console而非fixture DTO，统一进度/Operation/receipt与访问入口」",
+      "conformance": "The cloud-identity Console's customer Workspace list and detail now read the real Workspace owner surface the launch flow writes to, so the entry the user opens comes from the same owner as the Workspace."
+    },
+    {
+      "ssot": "docs/architecture.md#repository-and-instance-topology",
+      "requirement": "「Console currently reaches service data through Control Plane APIs; the target browser entry is apps/console-bff.」and「Control Plane is a migration source, not a permanent second writer.」",
+      "conformance": "The customer Workspace read is the first customer surface moved from the Control Plane's /api projection to the owning service through the BFF's /api/v2 surface; the legacy identity keeps the retained path, and no new Control Plane writer was added."
+    },
+    {
+      "ssot": "docs/opl-console.md#target-boundary-under-product-review",
+      "requirement": "「Console UI calls the Console BFF; the BFF authenticates the session and composes typed owner readbacks.」",
+      "conformance": "A cloud-identity Console reads its Workspaces through /api/v2/workspaces, the BFF's typed readback of the Workspace owner, and stops reading the Control Plane projection."
+    },
+    {
+      "ssot": "docs/invariants.md#console",
+      "requirement": "「Console presents current owner-backed account, wallet, Workspace, Usage, receipt, and failure facts.」「Independent sources load independently.」「empty represents a successful authoritative read with no rows; unavailable represents a failed authoritative read.」",
+      "conformance": "The customer Workspace projection now comes from the owner that holds it; an owner read failure settles as unavailable for that source and does not erase other sources, and a successful owner read with no rows settles as empty with total 0."
+    },
+    {
+      "ssot": "docs/invariants.md#evidence-levels",
+      "requirement": "「code-complete means the exact source revision passed its required local source, build, persistence, and integration gates with no required skips.」",
+      "conformance": "npm run test:source, the affected browser suites and npm run verify:local are green on this revision; only the affected browser tests were rerun individually in addition to the full gate."
+    }
+  ],
+  "acceptance": [
+    "A cloud-identity Console lists the Workspace the launch flow created through the Workspace owner: GET /api/v2/workspaces is read and GET /api/workspaces is not requested at all.",
+    "Opening a listed Workspace reads GET /api/v2/workspaces/{id}, renders the owner's facts and opens the owner's access URL; the Control Plane runtime-status, renewal and deletion routes are never requested for an owner Workspace.",
+    "The projection validator accepts the owner projection only for the identity that selected that owner, and refuses the other owner's projection in both directions.",
+    "The legacy identity is unchanged: the Control Plane list/detail read, the plan column and the renewal, budget and deletion controls still work, and the retained browser suites pass."
+  ],
+  "endState": "Complete for the Cloud-owned source change that makes a cloud-identity Console read the customer Workspace list and detail from the Workspace owner. Owner-backed renewal, deletion, credential and application-installation surfaces for the cloud identity, the Candidate image, the Instance installation, deployment and TKE route readback all remain external.",
+  "knownGaps": [
+    {
+      "id": "cloud-console-workspace-maintenance-surfaces",
+      "fact": "The cloud detail page renders the Workspace owner's projection and its delivery chain but offers no renewal, deletion, credential reveal/rotate or application-installation control, because the Console BFF exposes no Workspace-owner route for them (the proto surface exists: WorkspaceProductService.DeleteWorkspace/RenewWorkspace/GetWorkspaceDeletion/RevealWorkspaceApplicationCredentials/UpdateRenewalSettings).",
+      "consequence": "A cloud-identity customer can see, open and read back a Workspace but cannot yet renew or delete it from the Console.",
+      "nextOwner": "Console/Console-BFF (this serial window)"
+    }
+  ],
+  "ownerWriteSet": [
+    "apps/console-ui/src/api/workspaces-api.ts",
+    "apps/console-ui/src/api/dtos.ts",
+    "apps/console-ui/src/app/customer-workspace-read-controller-model.ts",
+    "apps/console-ui/src/app/use-customer-workspace-read-controller.ts",
+    "apps/console-ui/src/app/use-console-controller.ts",
+    "apps/console-ui/src/app/workspace-experience-model.ts",
+    "apps/console-ui/src/components/workspaces/WorkspaceDetailPage.tsx",
+    "apps/console-ui/src/components/workspaces/WorkspaceListPage.tsx",
+    "apps/console-ui/src/pages/CustomerPages.tsx",
+    "tests/ui/workspace-task-experience-browser.test.ts",
+    "tests/ui/customer-workspace-read-controller-model.test.ts",
+    "tests/ui/workspace-experience-model.test.ts",
+    "docs/evidence/source-checks/2026-09-30-cloud-console-workspace-owner-read.json",
+    "docs/status.md",
+    "docs/roadmap.md"
+  ],
+  "evidenceSources": {
+    "apps/console-ui/src/api/workspaces-api.ts": "ed932c9039d988d877aff0642b2b4cbd4a1c6d68a2006e1cf48f0c5b24c9cffa",
+    "apps/console-ui/src/api/dtos.ts": "3e1e636ae9fda3ddf7ee8a2acd5cf07028bc250f7506e911c197715d00dbed90",
+    "apps/console-ui/src/app/customer-workspace-read-controller-model.ts": "f926f959adacccaf95a958c776295dc57edc5e75ccac4c42c1aa67d443aeab63",
+    "apps/console-ui/src/app/use-customer-workspace-read-controller.ts": "767faa1fa79ad6644ce560400d55a1426552a714f9ff4a42d7e65e700c9f91a8",
+    "apps/console-ui/src/app/use-console-controller.ts": "8cf023cd7543423b4444790e65059b4222622d739a4fc2ff2a1e6a01f35122ae",
+    "apps/console-ui/src/app/workspace-experience-model.ts": "ec92da887d42a16706767d57fae207391b819f702afe2f8d59ee639f3447608a",
+    "apps/console-ui/src/components/workspaces/WorkspaceDetailPage.tsx": "db177f04dd10817be17fc6401d08bd6c06a44f0d6d3f62dde331e43b2571e38c",
+    "apps/console-ui/src/components/workspaces/WorkspaceListPage.tsx": "df32c11f58197f5f144e35065e47ecf72a47148468981d8a20eb60e9c1261ed9",
+    "apps/console-ui/src/pages/CustomerPages.tsx": "9df72282bb748d017f9161607b7cbc6cbed7c2150b083fa603dbd9f7df0900a0",
+    "tests/ui/workspace-task-experience-browser.test.ts": "9711dd646ea4a6fbd2c0a440c67af540983558c6ba732f61f672379297658383",
+    "tests/ui/customer-workspace-read-controller-model.test.ts": "5ad832586a880efad53ef343117d9043031dca79e9235fceebde1385f6677ae5",
+    "tests/ui/workspace-experience-model.test.ts": "17f108827d8db88b01bfed3130e34dc936384130095455169fd1aa33283ed306"
+  },
+  "verification": [
+    {
+      "command": "node --test tests/ui/workspace-task-experience-browser.test.ts",
+      "result": "pass",
+      "detail": "13 tests pass, including the new test that a cloud-identity Console lists and opens the owner Workspace, reads GET /api/v2/workspaces and GET /api/v2/workspaces/ws-owner, and records zero Control Plane Workspace requests."
+    },
+    {
+      "command": "node --test tests/ui/customer-workspace-read-controller-model.test.ts",
+      "result": "pass",
+      "detail": "10 tests pass, including the new assertion that each identity accepts only the customer Workspace owner it reads and that a cloud completion commits the owner projection."
+    },
+    {
+      "command": "node --test --test-concurrency=3 tests/ui/customer-workspace-read-navigation-browser.test.ts tests/ui/workspace-mvp-flow.test.ts tests/ui/workspace-lifecycle-freshness-browser.test.ts tests/ui/workspace-renewal-navigation-browser.test.ts tests/ui/workspace-budget-navigation-browser.test.ts tests/ui/agent-owner-readback-browser.test.ts tests/ui/cloud-webui-browser.test.ts",
+      "result": "pass",
+      "detail": "20 tests pass; the legacy customer Workspace, renewal, budget, deletion and Agent readback flows are unchanged."
+    },
+    {
+      "command": "npm run test:source",
+      "result": "pass",
+      "detail": "262 tests pass."
+    },
+    {
+      "command": "npm run verify:local",
+      "result": "pass",
+      "detail": "Full local gate, including the browser suite, Go module tests and the product-boundary validator, is green on this revision."
+    },
+    {
+      "command": "npm run verify:local:full",
+      "result": "pass",
+      "detail": "The full local gate with a temporary PostgreSQL 16 container and Docker integration passed: every PostgreSQL-gated owner suite ran with zero skips and the browser suite, product-boundary validator, typecheck, lint and Go module tests were green on this revision."
+    }
+  ],
+  "notRun": [
+    "No Candidate image build or owner-actor dispatch.",
+    "No Instance install-manifest change, deployment, Tencent resource action or TKE readback.",
+    "No owner-backed renewal, deletion, credential or application-installation surface was added to the Console BFF."
+  ],
+  "claimBoundary": "This receipt claims a Cloud source change: the cloud-identity Console reads its customer Workspace list and detail from the Workspace owner, the projection validator is owner-exact, and the legacy identity is unchanged, all proven by passing source and browser tests on this revision. It claims no Candidate image, no deployment, no TKE readback and no production Console behavior.",
+  "secrets": "none"
+}
