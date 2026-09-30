@@ -2,7 +2,9 @@
 
 This reference owns current browser composition and state semantics. Product
 outcomes belong to [the experience guide](../product/console-experience-guide.md);
-durable facts remain in Control Plane, Fabric, Ledger and Sub2API.
+durable facts remain in the owning Cloud services and external Sub2API. The
+[implementation request map](../implementation-architecture.md#request-path)
+owns the current service and API boundaries.
 
 ## Composition
 
@@ -30,6 +32,20 @@ is not a reason. Session changes invalidate every protected capability before
 new data can commit.
 
 ## Query Isolation
+
+A cloud-identity Console reads Workspace list, overview and detail through
+`/api/v2/workspaces` and the Workspace owner; a legacy-identity Console reads
+the retained Control Plane projection. The identity-specific DTO validator
+refuses the other owner's projection in both directions. Cloud access uses the
+owner's returned URL and facts; the root passes no cloud Workspace to retained
+credential, deletion, renewal, budget or application-installation controllers.
+Missing owner maintenance routes remain a [roadmap gap](../roadmap.md#cloud-identity-customer-workspace-read-2026-09-30).
+
+Gateway Account Read/Usage, Billing, announcement and operator controllers keep
+their retained Control Plane `/api/*` adapters in both identity builds. The
+cloud launch flow's BFF wallet/catalog reads do not change those shared panel
+callers. This composition does not prove that a deployment exposes or authorizes
+all retained APIs for a CloudIdentity session.
 
 A response commits only for its current Session, route, request generation and
 selected identity. Pagination parameters and source identity must match.
@@ -89,6 +105,11 @@ backend command implements server-side replay.
 | Operator Account | Provision/disable/purchase-eligibility response and authoritative paged Account projection match target identity and fields |
 | Wallet Adjustment / Recovery | Typed wallet operation reaches terminal or manual review and its operation/account readback is refreshed |
 | Operator Announcement | Create/publish/withdraw response and operator collection agree on identity, content, schedule and target state |
+
+The table describes retained Control Plane commands. Cloud-identity Workspace
+creation uses the BFF quote/original-operation path and owner readback described
+in the [delivery-chain reference](agent-package-runtime-webui-chain.md); its
+unimplemented maintenance actions do not use legacy commands as a fallback.
 
 Launch forces `autoRenew=false` for `resourceBillingMode=none`. Its hook and
 focused model own polling limits; the browser never reconstructs the server

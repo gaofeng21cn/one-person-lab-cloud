@@ -4,13 +4,15 @@ Owner: `one-person-lab-cloud`
 Purpose: `gateway_target_reference`
 State: `active_target_reference`
 Machine boundary: Human-readable target product reference; implementation and
-readiness come from Control Plane, Sub2API, tests, status, and owner readback.
+readiness come from Gateway Integration, retained Control Plane paths, Sub2API,
+tests, status, and owner readback.
 
 OPL Gateway is the target frontier-AI capability gateway for One Person Lab.
 
 Sub2API is its external backend and the only owner of spendable balance, API
 keys, model routing, and request usage. Cloud integrates those authorities
-through Control Plane; it does not create a second Gateway service or wallet.
+through Gateway Integration and retained Control Plane callers; it does not
+create a second Gateway backend or wallet.
 Its target responsibilities are unified AI API access, credential and provider
 configuration, usage metering, and downstream OPL workflow integration.
 
@@ -46,8 +48,10 @@ pay for directly.
 
 ## Public Surface
 
-This repository contains the Control Plane integration for Sub2API balance,
-usage, balance history, Key lifecycle, and deterministic debit/refund paths.
+This repository contains native Sub2API integration in Gateway Integration and
+the retained Control Plane balance, usage, balance-history, Key and debit/refund
+paths. [Implementation architecture](implementation-architecture.md#request-path)
+owns their current caller boundaries.
 That code and its tests are not runtime availability evidence. Current
 capability belongs to [status](status.md); the remaining Core gap belongs to the
 [roadmap](roadmap.md).
@@ -65,7 +69,7 @@ routing, keys, and usage metering. OPL Serve owns the external Agent endpoint;
 it does not turn Gateway into the Agent Service control plane.
 
 
-## Target Agent interaction boundary under product review
+## Agent Interaction Boundary
 
 Serve may invoke Gateway for model access, usage, and provider policy, but
 Gateway remains the authority for model routing, Keys, usage, and spendable

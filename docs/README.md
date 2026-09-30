@@ -51,8 +51,14 @@ cannot yet follow is an explicit roadmap gap, not a competing SSOT.
   surfaces; they do not become a second security, product, or status owner.
 - `one-person-lab` owns the reusable development method. Instance identity,
   provider profile and deployment receipts belong to the instance repository;
-  `opl-cloud` is the single Cloud product repository as well as its existing
-  internal artifact identifier; external owner repositories are not merged.
+  `one-person-lab-cloud` is the current GitHub product repository and `opl-cloud`
+  is its product/artifact identifier; external owner repositories are not merged.
+- Current Console identity routing, extracted services and retained Control
+  Plane callers belong to [implementation architecture](./implementation-architecture.md).
+  Architecture and target capability pages define ownership, not installed
+  process inventory. [Status](./status.md) owns dated evidence, and
+  [installation](./installation.md) separates public Release bytes from current
+  Candidate assets.
 
 ## Active Navigation
 

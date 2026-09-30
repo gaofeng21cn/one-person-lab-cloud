@@ -8,8 +8,9 @@ readiness come from Workspace source, tests, status, and instance readback.
 
 OPL Workspace is an account-owned isolated environment with stable access,
 resource entitlement and data bindings. In the Agent delivery path, a Workspace
-is the authorized target for one current Agent: it may have no Agent before
-delivery, and at most one current Agent after delivery. OPL App is the default
+is the authorized target for at most one current application selection: default
+OPL App or an optional Agent. It may have no Agent, and at most one current Agent after
+Agent delivery. OPL App is the default
 workbench/runtime implementation; other OCI applications may supply their own
 UI, API or worker behavior. The
 [application boundary](architecture.md#workspace-application-boundary) owns the
@@ -31,17 +32,17 @@ balance, provider capacity, quota, and policy. Workspace state is keyed by
 
 ## MVP Boundary
 
-The current implemented carrier is an OPL App/WebUI container created and
-managed through the real product chain:
+The current delivery target supports default OPL App/native UI or a built Agent
+through the owner-backed chain:
 
 ```text
-Console -> Control Plane -> Workspace launcher/provider -> local Docker
+Console -> Console BFF -> Workspace / Resource Catalog -> Fabric + Serve + Ledger
 ```
 
-Core completion requires create, authoritative readback, access, and delete on
-a supported Linux Docker host. Compose startup of the Cloud control services
-does not satisfy this boundary. The Local-Docker provider exists, but one
-exact-current clean-host product journey remains open; see
+The retained Control Plane Local-Docker path remains implemented for its
+existing callers. Completion requires create, authoritative readback, use and
+lifecycle evidence for the same exact Candidate on a supported host. Compose
+startup of the control services does not satisfy this boundary; see
 [current capability](status.md) and the current [P0 gaps](roadmap.md).
 
 ## Workspace Product Flow
@@ -49,15 +50,19 @@ exact-current clean-host product journey remains open; see
 ```text
 open the account Workspace list
 -> provision compute/storage or select an existing provisioned Workspace
--> for Agent delivery, user selects Package, WebUI and Runtime version in Serve
+-> select default OPL App from an approved Runtime Release, or a built Agent
 -> administrator supplies configuration, Secret bindings and optional restore source
 -> Workspace authorizes the target and resource plan; Fabric provisions/binds resources
--> Serve delivers immutable OCI to the Workspace's current-Agent slot
--> Serve verifies delivery and routes API / Embed / Hosted UI to that same Agent
--> inspect Agent and Workspace status through their respective owner readbacks
+-> Serve delivers immutable OCI to the Workspace's current-application slot
+-> Serve verifies delivery and provides application access
+-> for an Agent, API / Embed / Hosted UI route to that same current Agent
+-> inspect application and Workspace status through their respective owner readbacks
 ```
 
-A provisioned Workspace may have no Agent. Workspace owns its identity, members,
+A provisioned Workspace may have no Agent. Default App uses its approved Runtime
+Release without a synthetic Package, BuildJob or CapabilityVersion. The
+[September 29 decision](decisions.md#2026-09-29-default-opl-app-and-optional-agent-on-one-tencenttke-delivery-path)
+owns that product selection. Workspace owns its identity, members,
 entitlements, resource plan, lifecycle and authorization to target it. Capability
 owns uploaded Agent Package bytes and metadata even when upload begins in a Serve
 screen. Build fixes the selected Package, WebUI and Runtime-version inputs and
@@ -99,9 +104,9 @@ the Workspace interface displays that state by reading the Serve owner surface.
   record.
 - Fabric provisions/binds compute, storage and network resources and provides
   authoritative resource readback; it does not own Agent OCI deployment.
-- Control Plane or the target policy owner owns account availability, quota and
-  policy across the Workspace collection; Console presents and calls those
-  capabilities.
+- CloudIdentity and the owning policy service govern account availability,
+  quota and authorization across the Workspace collection. Control Plane retains
+  its unmigrated policy paths; Console presents the matching owner facts.
 - Gateway supplies AI access when the application requests that binding.
 - Ledger records receipt and opaque provenance refs; the selected application
   retains its business state, including OPL App projects, artifacts, reviews and
