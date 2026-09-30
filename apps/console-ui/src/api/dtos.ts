@@ -72,13 +72,23 @@ export interface LoginRequest {
 
 export interface Workspace {
   id: string;
-  ownerAccountId: string;
-  ownerUserId: string;
+  // The Control Plane projection names the account and user that own the
+  // Workspace. The Workspace owner derives them from the authenticated caller
+  // instead of storing them on the resource, so the Console renders whichever
+  // facts the providing owner returns and leaves these two absent otherwise.
+  ownerAccountId?: string;
+  ownerUserId?: string;
   state: string;
   createdAt: string;
   updatedAt: string;
   name?: string;
   url?: string;
+  // The Workspace owner's own delivery facts. Its resource carries no plan and
+  // no owner-account pair, so a Console reading that owner renders these
+  // instead of the Control Plane plan columns.
+  deliveryModel?: string;
+  resourceReadiness?: string;
+  applicationAvailability?: string;
   applicationBinding?: string;
   currentApplication?: WorkspaceCurrentApplicationDTO;
   applicationInstallation?: WorkspaceApplicationInstallationDTO;

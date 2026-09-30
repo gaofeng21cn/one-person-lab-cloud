@@ -5,7 +5,8 @@ import type { WorkspaceSecretController } from "../../app/console-controller-typ
 import type { ConsoleController } from "../../app/use-console-controller.ts";
 import {
   formatWorkspaceBudgetUsdInput, parseWorkspaceBudgetUsdInput,
-  presentWorkspaceApplicationBinding, presentWorkspaceApplicationInstallation, presentWorkspaceBudget, presentWorkspaceRecovery, presentWorkspaceRenewal, presentWorkspaceRuntime
+  presentWorkspaceApplicationBinding, presentWorkspaceApplicationInstallation, presentWorkspaceBudget,
+  presentWorkspaceDeliveryModel, presentWorkspaceLifecycle, presentWorkspaceRecovery, presentWorkspaceRenewal, presentWorkspaceRuntime
 } from "../../app/workspace-experience-model.ts";
 import { presentWorkspaceDelete, presentWorkspaceDeleteReason } from "../../app/workspace-delete-controller-model.ts";
 import type { WorkspaceDTO, WorkspaceGatewayBudgetDTO, WorkspaceGatewayBudgetUpdateRequest, WorkspaceRuntimeDTO } from "../../api/dtos.ts";
@@ -189,7 +190,56 @@ function WorkspaceTechnicalDetails({ controller, detail, runtime }: {
   </details>;
 }
 
+// The two Console identities read the customer Workspace from two owners, so
+// each one renders the facts its owner actually returns. The cloud identity
+// reads the Workspace owner (name, delivery, readiness, availability, access
+// URL) and its delivery chain; the legacy identity keeps the Control Plane
+// render with plan, renewal, budget and deletion controls.
 export function WorkspaceDetailPage({ controller }: { controller: WorkspaceDetailController }) {
+  return cloudIdentity
+    ? <WorkspaceOwnerDetailPage controller={controller} />
+    : <ControlPlaneWorkspaceDetailPage controller={controller} />;
+}
+
+function WorkspaceOwnerDetailPage({ controller }: { controller: WorkspaceDetailController }) {
+  const workspaceSource = controller.customerWorkspaceRead.detail.value;
+  if (controller.customerWorkspaceRead.detail.loading && !workspaceSource) return <section className="workspace-detail-page"><div className="source-loading" aria-live="polite"><span className="spinner" />正在读取</div></section>;
+  if (!workspaceSource) return <section className="workspace-detail-page"><div className="source-loading" aria-live="polite"><span className="spinner" />等待读取</div></section>;
+  if (workspaceSource.available === false) return <section className="workspace-detail-page">
+    <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />工作空间列表</Button>
+    <Alert color="warning" indicator={<AlertCircle size={18} />} title="工作空间详情暂不可用" description="暂时无法确认该工作空间，请稍后重试。" actions={<Button onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重试</Button>} />
+    <section className="panel workspace-technical-panel"><details className="workspace-technical-details"><summary><span>技术详情</span><ChevronDown aria-hidden size={16} /></summary><div className="workspace-technical-details__body"><dl className="data-list"><div><dt>workspace source reason</dt><dd><code>{workspaceSource.reasonCode}</code></dd></div></dl></div></details></section>
+  </section>;
+  if (workspaceSource.data === null) return <section className="workspace-detail-page"><div className="empty-panel"><AlertCircle /><h2>工作空间不存在</h2><p>该工作空间不存在或当前账号无权访问。</p><Button onClick={() => controller.navigate("/console/workspaces")} variant="outline">返回列表</Button></div></section>;
+  const detail = workspaceSource.data;
+  const lifecycle = presentWorkspaceLifecycle(detail.state);
+  const accessUrl = detail.url && /^https?:\/\//.test(detail.url) ? detail.url : null;
+  return (
+    <section className="workspace-detail-page" data-slide="C-WS-05">
+      <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />工作空间列表</Button>
+      <div className="workspace-detail-content">
+        <section className="panel workspace-identity-panel"><div className="workspace-heading"><div><h2>{detail.name || "未命名工作空间"}</h2><div className={`workspace-availability workspace-availability--${lifecycle.known ? lifecycle.kind : "pending"}`}><strong>{lifecycle.label}</strong><span>{accessUrl ? "该工作空间已发布访问入口，可直接打开。" : "访问入口尚未就绪，稍后刷新查看。"}</span></div></div><div className="workspace-entry-actions"><Button color="primary" disabled={!accessUrl} onClick={() => accessUrl && window.open(accessUrl, "_blank", "noopener,noreferrer")}>打开工作空间<ExternalLink aria-hidden size={16} /></Button><Button onClick={() => void controller.refreshCurrentPage()} variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div></div><dl className="workspace-primary-facts"><div><dt>交付模式</dt><dd>{presentWorkspaceDeliveryModel(detail.deliveryModel)}</dd></div><div><dt>资源就绪</dt><dd>{detail.resourceReadiness || "暂不可用"}</dd></div><div><dt>应用可用</dt><dd>{detail.applicationAvailability || "暂不可用"}</dd></div><div><dt>权益截止</dt><dd>{formatDate(detail.paidThrough)}</dd></div></dl></section>
+        <section className="panel workspace-technical-panel"><details className="workspace-technical-details"><summary><span>技术详情</span><ChevronDown aria-hidden size={16} /></summary><div className="workspace-technical-details__body">
+          <dl className="data-list">
+            <div><dt>Workspace ID</dt><dd><code>{detail.id}</code></dd></div>
+            <div><dt>lifecycle status</dt><dd><code>{detail.state}</code></dd></div>
+            <div><dt>delivery model</dt><dd><code>{detail.deliveryModel || "-"}</code></dd></div>
+            <div><dt>resource readiness</dt><dd><code>{detail.resourceReadiness || "-"}</code></dd></div>
+            <div><dt>application availability</dt><dd><code>{detail.applicationAvailability || "-"}</code></dd></div>
+            <div><dt>access URL</dt><dd>{accessUrl ? <a href={accessUrl} rel="noreferrer" target="_blank"><code>{accessUrl}</code><ExternalLink aria-hidden size={14} /></a> : "-"}</dd></div>
+          </dl>
+          <div className="workspace-delivery-details" data-agent-delivery>
+            <h3>交付链</h3>
+            <p>按负责服务展示当前智能体交付读回。</p>
+            <dl className="data-list"><AgentDeliveryPanel workspaceId={detail.id} /></dl>
+          </div>
+        </div></details></section>
+      </div>
+    </section>
+  );
+}
+
+function ControlPlaneWorkspaceDetailPage({ controller }: { controller: WorkspaceDetailController }) {
   const workspaceRead = controller.customerWorkspaceRead;
   const runtimeRead = controller.fabricRuntimeRead;
   const workspaceSource = workspaceRead.detail.value;

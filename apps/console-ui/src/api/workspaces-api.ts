@@ -173,6 +173,68 @@ export async function listWorkspaceOwnerRows(): Promise<WorkspaceOwnerDTO[]> {
   return listAllOwnerPages<WorkspaceOwnerDTO>("/api/v2/workspaces", "workspace");
 }
 
+// The Workspace owner is the authority for a cloud-identity Console's customer
+// Workspace read. That Workspace lives in the owner's own database, so the
+// Control Plane projection the legacy Console lists from does not contain it.
+// The owner pages by cursor and carries neither the Control Plane plan fields
+// nor an owner-account pair, so the complete owner list is projected once into
+// the Console's page model and every column the owner does not return is
+// rendered as unavailable rather than filled from another owner.
+export const CUSTOMER_WORKSPACE_OWNER_SOURCE = "workspace";
+
+export function projectCustomerWorkspace(workspace: WorkspaceOwnerDTO): WorkspaceDTO {
+  if (!workspace.id || !workspace.createdAt || !workspace.updatedAt) {
+    throw new Error("invalid_workspace_owner_identity");
+  }
+  return {
+    id: workspace.id,
+    state: workspace.status,
+    createdAt: workspace.createdAt,
+    updatedAt: workspace.updatedAt,
+    ...(workspace.name ? { name: workspace.name } : {}),
+    ...(workspace.accessUrl ? { url: workspace.accessUrl } : {}),
+    ...(workspace.currentPeriodEnd ? { paidThrough: workspace.currentPeriodEnd } : {}),
+    ...(workspace.deliveryModel ? { deliveryModel: workspace.deliveryModel } : {}),
+    ...(workspace.resourceReadiness ? { resourceReadiness: workspace.resourceReadiness } : {}),
+    ...(workspace.applicationAvailability ? { applicationAvailability: workspace.applicationAvailability } : {})
+  };
+}
+
+export async function readCustomerWorkspaceOwnerList(
+  page: number,
+  pageSize: number
+): Promise<SourceEnvelope<WorkspaceListData>> {
+  if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(pageSize) || pageSize < 1) {
+    throw new Error("customer_workspace_page_invalid");
+  }
+  const items = (await listWorkspaceOwnerRows()).map(projectCustomerWorkspace);
+  return {
+    source: CUSTOMER_WORKSPACE_OWNER_SOURCE,
+    status: items.length === 0 ? "empty" : "available",
+    available: true,
+    fetchedAt: new Date().toISOString(),
+    data: {
+      items: items.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize),
+      total: items.length,
+      page,
+      pageSize
+    }
+  };
+}
+
+export async function readCustomerWorkspaceOwnerDetail(
+  workspaceId: string
+): Promise<SourceEnvelope<WorkspaceDTO | null>> {
+  const workspace = projectCustomerWorkspace(await getWorkspaceOwner(workspaceId));
+  return {
+    source: CUSTOMER_WORKSPACE_OWNER_SOURCE,
+    status: "available",
+    available: true,
+    fetchedAt: new Date().toISOString(),
+    data: workspace
+  };
+}
+
 export async function getWorkspaceOwnerAccess(
   workspaceId: string,
   csrfToken: string,

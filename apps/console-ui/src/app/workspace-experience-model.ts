@@ -287,20 +287,47 @@ export function presentWorkspaceRuntime(runtime: WorkspaceRuntimeDTO, expectedAp
   }
 }
 
+// The Control Plane projection reports its lifecycle/creating/running states;
+// the Workspace owner reports provisioning/updating/deleting/deleted/
+// needs_attention. Both sets are current owner values, so both are named.
 type KnownWorkspaceLifecycle =
   | "active"
   | "creating"
   | "data_deleted"
+  | "deleted"
+  | "deleting"
   | "expired"
   | "failed"
+  | "needs_attention"
   | "pending"
+  | "provisioning"
   | "running"
-  | "suspended";
+  | "suspended"
+  | "updating";
 
 export type WorkspaceLifecyclePresentation =
   | { known: true; kind: KnownWorkspaceLifecycle; label: string }
   | { known: false; kind: "unknown"; label: "待确认"; rawValue: string }
   | { known: false; kind: "unavailable"; label: "暂不可用" };
+
+// The Workspace owner names how it delivers the Workspace. The Control Plane
+// projection carries no delivery model, so this is presentational only when the
+// providing owner returns one.
+export function presentWorkspaceDeliveryModel(model: string | undefined): string {
+  switch (model) {
+    case "agent_saas":
+      return "智能体应用";
+    case "imported_application":
+      return "已导入应用";
+    case "legacy_resource_only":
+      return "仅资源";
+    case undefined:
+    case "":
+      return "暂不可用";
+    default:
+      return "待确认";
+  }
+}
 
 export function presentWorkspaceLifecycle(
   state: WorkspaceDTO["state"] | undefined
@@ -322,6 +349,16 @@ export function presentWorkspaceLifecycle(
       return { known: true, kind: "running", label: "运行中" };
     case "suspended":
       return { known: true, kind: "suspended", label: "已暂停" };
+    case "provisioning":
+      return { known: true, kind: "provisioning", label: "开通中" };
+    case "updating":
+      return { known: true, kind: "updating", label: "更新中" };
+    case "deleting":
+      return { known: true, kind: "deleting", label: "删除中" };
+    case "deleted":
+      return { known: true, kind: "deleted", label: "已删除" };
+    case "needs_attention":
+      return { known: true, kind: "needs_attention", label: "待处理" };
     case undefined:
     case "":
       return { known: false, kind: "unavailable", label: "暂不可用" };

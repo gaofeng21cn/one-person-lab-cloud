@@ -28,6 +28,7 @@ import { GatewayUsagePage } from "../components/gateway-usage/GatewayUsagePage.t
 import { KeysPanel } from "../components/keys/KeysPanel.tsx";
 import { WorkspaceDetailPage } from "../components/workspaces/WorkspaceDetailPage.tsx";
 import { WorkspaceLaunchPage } from "../components/workspaces/WorkspaceLaunchPage.tsx";
+import { cloudIdentity } from "../app/console-identity.ts";
 import { WorkspaceListPage, WorkspaceSummaryRow } from "../components/workspaces/WorkspaceListPage.tsx";
 import { SourceState } from "../components/source/SourceState.tsx";
 import { Badge, Button, SegmentedControl } from "../components/ui/index.ts";
@@ -196,7 +197,7 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
           >
             {(data) => (
               <div className="overview-workspace-table table-wrap">
-                <table><thead><tr><th>工作空间</th><th>套餐</th><th>生命周期状态</th><th>已付至</th><th /></tr></thead><tbody>
+                <table><thead><tr><th>工作空间</th><th>{cloudIdentity ? "交付模式" : "套餐"}</th><th>生命周期状态</th><th>已付至</th><th /></tr></thead><tbody>
                   {data.items.map((workspace) => <WorkspaceSummaryRow controller={controller} key={workspace.id} workspace={workspace} />)}
                 </tbody></table>
               </div>

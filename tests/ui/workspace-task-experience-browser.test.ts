@@ -151,8 +151,13 @@ for (const identity of ["legacy", "cloud"] as const) {
           await route.fulfill({ status: 404, json: { error: "bff_not_deployed" } });
           return;
         }
+        // The cloud identity reads the customer Workspace from the Workspace
+        // owner, so the fixture answers the owner list and detail routes.
+        const ownerWorkspace = { id: "ws-1", name: "Customer Workspace", computePlanId: "compute-1", storagePlanId: "storage-1", deliveryModel: "agent_saas", status: "active", resourceReadiness: "ready", applicationAvailability: "available", currentPeriodEnd: "2026-10-27T00:00:00Z", createdAt: "2026-09-27T00:00:00Z", updatedAt: "2026-09-27T00:00:00Z", version: "1" };
         const responses: Record<string, unknown> = {
           "/api/v2/auth/session": { actorId: "user-customer", tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" },
+          "/api/v2/workspaces": { items: [ownerWorkspace] },
+          "/api/v2/workspaces/ws-1": ownerWorkspace,
           "/api/v2/namespaces": { items: [{ id: "namespace-1", name: "Fixture namespace" }] },
           "/api/v2/packages": { items: [] },
           "/api/v2/catalog/webui-versions": { items: [{ id: "webui-1", name: "Fixture WebUI", versionLabel: "1.0.0", status: "approved" }] },
@@ -1173,3 +1178,87 @@ async function verifyWorkspaceDetailExperience() {
     await demo.close();
   }
 }
+
+test("cloud Console reads the customer Workspace from the Workspace owner only", { timeout: 60_000 }, async () => {
+  const demo = await startCloudConsoleDemo();
+  const browser = await launchBrowser({ headless: true });
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const audit = await installBrowserAudit(page, demo.origin);
+  const ownerReads: string[] = [];
+  const controlPlaneReads: string[] = [];
+  const ownerWorkspace = {
+    id: "ws-owner",
+    name: "Owner Workspace",
+    capabilityVersionId: "cap-ready-1",
+    computePlanId: "compute-1",
+    storagePlanId: "storage-1",
+    deliveryModel: "agent_saas",
+    status: "active",
+    resourceReadiness: "ready",
+    applicationAvailability: "available",
+    currentPeriodEnd: "2026-10-27T00:00:00Z",
+    accessUrl: "https://agent.example.invalid/ws-owner",
+    createdAt: "2026-09-27T00:00:00Z",
+    updatedAt: "2026-09-27T00:00:00Z",
+    version: "1"
+  };
+  try {
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (url.origin !== demo.origin) return;
+      if (url.pathname.startsWith("/api/v2/workspaces")) ownerReads.push(`${request.method()} ${url.pathname}`);
+      if (url.pathname.startsWith("/api/workspaces")) controlPlaneReads.push(`${request.method()} ${url.pathname}`);
+    });
+    await page.addInitScript({ content: `window.openedWorkspace = null; window.open = (url, target, features) => { window.openedWorkspace = { url: String(url || ""), target: String(target || ""), features: String(features || "") }; return null; };` });
+    await page.route("**/api/v2/**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const responses: Record<string, unknown> = {
+        "/api/v2/auth/session": { actorId: "user-customer", tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" },
+        "/api/v2/workspaces": { items: [ownerWorkspace] },
+        "/api/v2/workspaces/ws-owner": ownerWorkspace,
+        "/api/v2/delivery/ws-owner": {
+          workspaceId: "ws-owner",
+          workspace: { owner: "workspace", state: "active", details: {} },
+          capabilityVersion: { owner: "capability", state: "ready", details: {} },
+          build: { owner: "build", state: "succeeded", details: {} },
+          serve: { owner: "serve", state: "ready", details: { accessUrl: "https://agent.example.invalid/ws-owner" } }
+        }
+      };
+      assert.ok(Object.hasOwn(responses, path), `unexpected BFF request: ${path}`);
+      await route.fulfill({ json: responses[path] });
+    });
+    await loginCloudFixture(page, demo.origin);
+
+    await page.goto(`${demo.origin}/console/workspaces`, { waitUntil: "networkidle" });
+    const row = page.locator(".workspace-list-row").first();
+    await row.waitFor({ state: "visible" });
+    const rowText = await row.innerText();
+    assert.match(rowText, /Owner Workspace/);
+    assert.match(rowText, /智能体应用/);
+    assert.deepEqual(controlPlaneReads, [], "the cloud Console must not list from the Control Plane projection");
+    assert.ok(ownerReads.includes("GET /api/v2/workspaces"));
+
+    await row.click();
+    await page.waitForURL((url) => url.pathname === "/console/workspaces/ws-owner");
+    await page.locator(".workspace-technical-details").waitFor({ state: "visible" });
+    const openButton = page.getByRole("button", { name: "打开工作空间", exact: true });
+    await openButton.waitFor({ state: "visible" });
+    assert.equal(await openButton.isDisabled(), false);
+    await openButton.click();
+    assert.deepEqual(await page.evaluate(() => (window as Window & { openedWorkspace?: unknown }).openedWorkspace), {
+      url: "https://agent.example.invalid/ws-owner",
+      target: "_blank",
+      features: "noopener,noreferrer"
+    });
+    await page.locator(".workspace-technical-details > summary").click();
+    await page.locator("[data-agent-delivery]").getByText("Capability", { exact: true }).waitFor({ state: "visible" });
+    assert.deepEqual(controlPlaneReads, [], "the cloud Console must not read the Control Plane Workspace routes");
+    assert.ok(ownerReads.includes("GET /api/v2/workspaces/ws-owner"));
+    assertBrowserAuditClean(audit);
+  } finally {
+    await page.close();
+    await browser.close();
+    await demo.close();
+  }
+});

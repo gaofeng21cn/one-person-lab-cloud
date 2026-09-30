@@ -17,6 +17,7 @@ import {
   presentWorkspaceLaunch,
   presentWorkspaceLaunchStage,
   presentWorkspaceLifecycle,
+  presentWorkspaceDeliveryModel,
   presentWorkspaceQuote,
   presentWorkspaceRenewal,
   presentWorkspaceRuntime
@@ -339,7 +340,12 @@ test("Workspace lifecycle statuses use only exact current owner values", () => {
     ["failed", "已失败"],
     ["pending", "待开通"],
     ["running", "运行中"],
-    ["suspended", "已暂停"]
+    ["suspended", "已暂停"],
+    ["provisioning", "开通中"],
+    ["updating", "更新中"],
+    ["deleting", "删除中"],
+    ["deleted", "已删除"],
+    ["needs_attention", "待处理"]
   ] as const;
 
   for (const [state, label] of cases) {
@@ -361,6 +367,15 @@ test("Workspace lifecycle statuses use only exact current owner values", () => {
     kind: "unavailable",
     label: "暂不可用"
   });
+});
+
+test("Workspace delivery models label only the values the owner states", () => {
+  assert.equal(presentWorkspaceDeliveryModel("agent_saas"), "智能体应用");
+  assert.equal(presentWorkspaceDeliveryModel("imported_application"), "已导入应用");
+  assert.equal(presentWorkspaceDeliveryModel("legacy_resource_only"), "仅资源");
+  assert.equal(presentWorkspaceDeliveryModel(""), "暂不可用");
+  assert.equal(presentWorkspaceDeliveryModel(undefined), "暂不可用");
+  assert.equal(presentWorkspaceDeliveryModel("agent_saas_future"), "待确认");
 });
 
 test("Workspace budget statuses have exact labels and an explicit unknown", () => {
