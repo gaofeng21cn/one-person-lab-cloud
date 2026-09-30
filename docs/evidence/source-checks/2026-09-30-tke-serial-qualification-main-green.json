@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_serial_qualification_main_green_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T12:40:00Z",
+  "result": "cloud_qualification_passes_on_canonical_main_including_the_real_linux_first_local_application_deployment",
+  "window": "serial",
+  "windowTitle": "Serial integration - Cloud Qualification green on canonical main",
+  "sourceBaseSha": "2dcd7e8183bb5da4e84017769c8d73c0402b1577",
+  "branch": "main (codex/tke-serial-qualification-main for this receipt)",
+  "workspace": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.6",
+  "scope": "Record that the OPL Cloud Qualification workflow, including its real Linux 'Test first Local application deployment with real owners' fabric job, passes on canonical main after the built-Agent regression fixes were merged.",
+  "verification": {
+    "run": "https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/36649409916",
+    "ref": "main",
+    "jobs": [
+      "go-contracts: pass (34s)",
+      "node-console: pass (6m23s)",
+      "fabric: pass (3m54s), including TestLocalFirstApplicationDeploymentQualification",
+      "postgres-ledger: pass (1m0s)",
+      "control-plane: pass (1m57s)",
+      "validate: pass (4s)"
+    ],
+    "result": "PASS"
+  },
+  "context": [
+    "The same workflow failed on main run 36644007785 (mutual-exclusion defect) and on branch run 36646236276 (dropped DataCompatibility in the recovered runtime command). Both were fixed and merged in PR #693.",
+    "This run proves the real first Local application deployment reaches ready, observes a real process failure back to the accepted order, and recovers, with the fixes in place."
+  ],
+  "notRun": [
+    "Candidate build (owner-actor dispatch), Instance deployment, provider action, production readback.",
+    "Real route activation (I07), publisher opl-model-config/v1 readback (I08 serving half), typed Serve->Fabric application-execution boundary (I06)."
+  ],
+  "claimBoundary": "This receipt claims the Cloud Qualification workflow, including the real Linux first-Local-application-deployment job, passes on canonical main. It does not claim a Candidate image, Instance deployment or production acceptance.",
+  "secrets": "none"
+}

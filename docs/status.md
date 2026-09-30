@@ -70,6 +70,16 @@ current source. `npm run verify:local`, `npm run validate:product-boundary` and
 default-OPL-App Serve/Workspace tests were added
 ([receipt](evidence/source-checks/2026-09-30-tke-serial-full-verification-green.json)). It still does not substitute for the Instance TKE acceptance.
 
+## September 30 Serial Integration Qualification Green On Canonical Main
+
+The OPL Cloud Qualification workflow passes on canonical main
+([run 36649409916](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/36649409916)):
+all jobs green, including the real Linux `fabric` job's
+`TestLocalFirstApplicationDeploymentQualification`, which deploys a real Local
+application to ready, observes a real process failure back to the accepted order,
+and recovers. This closes the two regressions fixed in PR #693
+([receipt](evidence/source-checks/2026-09-30-tke-serial-qualification-main-green.json)).
+
 ## September 30 Serial Integration Regression Fix (Built-Agent Selection)
 
 A real regression surfaced by the Cloud Qualification `fabric` job (run

@@ -20,8 +20,8 @@
     },
     {
       "id": "candidate-gate",
-      "fact": "build-opl-cloud-candidate.yml job guard is `github.ref == 'refs/heads/main' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner`. The repository owner is the user account gaofeng21cn; the authenticated operator is RenDeHuang (write collaborator, not the owner). Historical successful Candidate runs were all dispatched by gaofeng21cn.",
-      "consequence": "Dispatching the Candidate build requires the repository-owner identity (gaofeng21cn). This is the owner/authorized-actor external condition for Stage 7, not a source defect."
+      "fact": "build-opl-cloud-candidate.yml job guard is `github.ref == 'refs/heads/main' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner`. The repository owner is the user account gaofeng21cn; the authenticated operator is RenDeHuang (write collaborator, not the owner). Historical successful Candidate runs were all dispatched by gaofeng21cn. Confirmed by dispatch attempt: run 36650150455 (main, product_sha=2dcd7e81) was dispatched by RenDeHuang and completed 'skipped' in 2s, because the candidate job guard requires github.actor == github.repository_owner.",
+      "consequence": "Dispatching the Candidate build requires the repository-owner identity (gaofeng21cn); a write-collaborator dispatch is skipped, not run. This is the owner/authorized-actor external condition for Stage 7, not a source defect."
     }
   ],
   "notRun": [
