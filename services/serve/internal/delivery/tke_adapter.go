@@ -203,6 +203,14 @@ func (a *TKEApplicationAdapter) call(ctx context.Context, c *api.RuntimeDeployCo
 		return out, nil
 	}
 	out.AccessURL = accessURL
+	// A gateway entry is reachable only through the installation's origin, and
+	// the only destination behind it is the Service the provider created. Serve
+	// records that exact Service and port so its own access data plane proxies to
+	// a provider-reported destination instead of composing one.
+	if strings.TrimSpace(observation.Entry.URL) == "" {
+		out.AccessUpstreamService = observation.Entry.ServiceName
+		out.AccessUpstreamPort = observation.Entry.Port
+	}
 	// The readiness reference binds the exact live observation bytes with the
 	// resolved route and the validated in-cluster upstream, so a later reader can
 	// tell which execution and which route produced the readiness fact.

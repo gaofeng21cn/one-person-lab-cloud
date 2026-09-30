@@ -428,6 +428,13 @@ func (s *Service) finishFirstDelivery(ctx context.Context, tx *sql.Tx, r *api.Ru
 		if err != nil {
 			return dbError(err)
 		}
+		// Readiness alone does not expose the application. The deployment becomes
+		// the Workspace's current route target in this same transaction, so the
+		// access data plane starts serving exactly the instance whose readiness
+		// was just recorded and no acknowledgement can be lost in between.
+		if err = commitDeliveryRoute(ctx, tx, r, o.ReadinessEvidenceRef); err != nil {
+			return err
+		}
 	}
 	if err = appendReadinessEvent(ctx, tx, s.Store, r, o); err != nil {
 		return dbError(err)

@@ -184,7 +184,11 @@
     "OPL_LEDGER_ADDR",
     "OPL_LEDGER_TOKEN",
     "OPL_RUNTIME_CONTROL_ADDR",
-    "OPL_RUNTIME_CONTROL_TOKEN"
+    "OPL_RUNTIME_CONTROL_TOKEN",
+    "OPL_SERVE_ACCESS_ADDR",
+    "OPL_PUBLIC_URL",
+    "OPL_WORKSPACE_DOMAIN",
+    "OPL_WORKSPACE_APPLICATION_DOMAIN"
    ],
    "optionalEnv": [],
    "externalEnv": [],
@@ -195,7 +199,7 @@
     "ServeAccessControl"
    ],
    "notes": [
-    "Sole writer of default-App and Agent deployment/readiness/access facts. OPL_WORKSPACE_DOMAIN and OPL_WORKSPACE_APPLICATION_DOMAIN are read from the environment by Serve's route-origin resolution, and no installation route provider (RouteProvider) is configured by any current environment variable."
+    "Sole writer of default-App and Agent deployment/readiness/access facts, and the owner of the Workspace route binding and its access data plane. OPL_SERVE_ACCESS_ADDR names the application entry Serve serves itself; OPL_PUBLIC_URL, OPL_WORKSPACE_DOMAIN and OPL_WORKSPACE_APPLICATION_DOMAIN are the installation's declared route origin for that entry. No installation route provider is configured by any environment variable: the route object is Serve's own access binding."
    ]
   },
   {

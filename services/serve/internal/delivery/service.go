@@ -68,11 +68,11 @@ type Service struct {
 	// carries only the opaque binding identity into the deployment.
 	Gateway api.GatewayCoordinationClient
 	Runtime RuntimeAdapter
-	// Route is Serve's port to the installation route provider. It is the only
-	// thing that may confirm a route epoch fence, activate a selected Agent at the
-	// provider or roll a route back; when it is absent Serve records the switch it
-	// committed to and refuses instead of claiming an unconfirmed route.
-	Route       RouteProvider
+	// Access serves the Workspace application entry. It reads the same
+	// Serve-owned access binding the route state machine commits, so the process
+	// that decides which instance is current and the process that proxies to it
+	// can never disagree.
+	Access      *AccessEntry
 	LedgerInbox api.DomainInboxClient
 }
 
@@ -210,6 +210,19 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 			return err
 		}
 		service.LedgerInbox = api.NewDomainInboxClient(conn)
+	}
+	// Serve owns the Workspace application entry, so the process that commits the
+	// route also serves it. Binding the entry eagerly makes a missing or taken
+	// address a startup failure instead of an installation that quietly serves no
+	// application entry. The address is the installation's own declared fact and
+	// is named literally here so the installation contract can derive it.
+	accessEntry, err := NewAccessEntry(database.DB(), RouteOriginFromEnv())
+	if err != nil {
+		return err
+	}
+	service.Access = accessEntry
+	if err := startAccessEntry(server, accessEntry, os.Getenv("OPL_SERVE_ACCESS_ADDR")); err != nil {
+		return err
 	}
 	if service.LedgerInbox != nil {
 		deliveryCtx, cancel := context.WithCancel(context.Background())

@@ -1,0 +1,168 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_serve_access_data_plane_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T07:50:00Z",
+  "result": "serve_owns_the_workspace_route_binding_and_serves_the_application_entry_from_that_committed_binding_with_owner_local_generation_epoch_cas",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 11.5 - Serve's own route binding and access data plane replace the provider-owned route performer",
+  "sourceBaseSha": "26bf195e",
+  "branch": "codex/serve-access-data-plane",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.5",
+  "milestoneM1": {
+    "objective": "Minimum real delivery of the default OPL App: the instance installs the complete Cloud owner topology, Cloud builds an exact-SHA Candidate, the instance deploys it, Serve reaches a confirmed route and URL on Tencent TKE, and a user opens the application.",
+    "stepDelivered": "The route object and the process that serves it are now one owner. Serve's own serve.access_bindings row is the sole route selection, Serve commits the generation/epoch transition as a local conditional-state change, and the same process serves the Workspace application entry by resolving a request against that committed binding and proxying to the exact ready target it names. The retired interface (Serve's RouteProvider port, which had no production implementation) is removed instead of left unimplemented, so no second route writer and no fallback remain."
+  },
+  "necessity": {
+    "decision": "Serve owns the Workspace route binding and the access data plane that serves it. The route object is Serve's own access_bindings row; the conditional revision is Serve's own last confirmed route revision; the entry is served by the Serve process itself. The installation supplies a stable Ingress/DNS/TLS hop to that entry and does not participate in per-Workspace switching.",
+    "currentProblem": "Serve held a provider port (RouteProvider) with no production implementation and no Configure wiring, so no Agent URL was ever confirmed, and the Workspace application entry was still resolved and proxied by Control Plane (workspaceEntryUpstream / workspaceGatewayEntryURL in services/control-plane/internal/server/workspace_gateway.go). The route facts were split across two owners: Serve recorded a switch it could never confirm, and a different process composed the customer-facing upstream. The access_binding also carried no pointer to the exact running instance, so a reader that wanted to know which TKE Service serves the Workspace would have had to look one up from another owner's data and would have become a second route resolver.",
+    "confirmedFacts": [
+      "Serve already owned serve.access_bindings, serve.access_switches, serve.agent_deployments and serve.agent_runtime_instances, and its route state machine already refused any switch that was not confirmed; the only missing piece was a performer, and the route object it described is the binding Serve already writes.",
+      "The executing TKE provider reports one in-cluster destination (Service name plus declared entry port) for a gateway entry, and owns an external URL only when it publishes its own endpoint; only Serve's runtime-instance row records readiness for that instance.",
+      "Serve already persisted the provider-reported publisher URL for a provider-published entry; the gateway destination was not persisted at all, so nothing could resolve it without asking Fabric again.",
+      "tests/contracts/owner-topology.test.ts derives the installation's declared environment from each process's own Go source, and deploy/portable/opl-cloud.env.example must name every declared installation variable.",
+      "The installation Ingress in opl-instance-medopl routes the Cloud, Workspace and wildcard application domains to the Control Plane service, so the entry a browser opens is currently answered by a different owner than the one that owns the route."
+    ],
+    "mustStaySeparate": [
+      "Fabric keeps infrastructure resource mutation and readback; it is not a route writer and it is not asked for the current route.",
+      "Control Plane keeps its retained legacy Workspace proxy for the legacy identity; it is migration-source behavior, is not called by Serve, and is not a fallback for Serve's entry.",
+      "The Instance keeps DNS/TLS/Ingress as stable configuration; no Cloud source writes an Ingress or a Kubernetes route object, and no per-Workspace switch edits the installation Ingress.",
+      "A provider-published URL entry keeps its own URL; the in-cluster destination is recorded only for a gateway entry, and the two can never both be recorded."
+    ],
+    "minimalImplementation": [
+      "services/serve/migrations/0003_access_data_plane.sql adds the target runtime-instance/deployment identity to serve.access_bindings and serve.access_switches (the switch constraint is NOT VALID so rows an already installed owner recorded are not retroactively rewritten) and the provider-reported in-cluster destination to serve.agent_runtime_instances, constrained to one DNS label and a bounded port.",
+      "services/serve/internal/delivery/access.go is the access data plane: it resolves the request's Workspace and application identity, reads the same committed binding the state machine writes, requires the named runtime instance to be ready with a recorded destination, refuses an origin whose application label no longer matches the confirmed target, and proxies with a streaming-safe transport that preserves the external Host and scheme and strips the internal Workspace selector headers.",
+      "services/serve/internal/delivery/access_server.go listens on the installation's declared OPL_SERVE_ACCESS_ADDR (default :8188, distinct from the Serve owner surface and from every other declared owner default), registers it as the access_entry readiness check, and closes it through the owner bootstrap.",
+      "services/serve/internal/delivery/route.go deletes the RouteProvider port, compares the caller's presented revision against the binding's own confirmed route revision, derives the confirmed revision and evidence reference from the exact switch identity, and exposes commitRouteSwitchTx so a fence and its activation commit inside one owner transaction; commitDeliveryRoute makes the first delivery's readiness and route one atomic transition.",
+      "services/serve/internal/delivery/runtime.go and tke_adapter.go record the provider-reported in-cluster destination with the readiness observation instead of discarding it.",
+      "deploy/portable/opl-cloud-owner-topology.json and deploy/portable/opl-cloud.env.example declare OPL_SERVE_ACCESS_ADDR and the Serve route origin (OPL_PUBLIC_URL, OPL_WORKSPACE_DOMAIN, OPL_WORKSPACE_APPLICATION_DOMAIN) as installation facts, read literally by Serve's own source so the declaration cannot drift."
+    ],
+    "whyNotAlternative": [
+      "Keeping RouteProvider as an interface and leaving it unassigned would keep a second, unimplemented route performer in the tree and would still confirm no URL.",
+      "Having Serve keep the binding while Control Plane keeps resolving and proxying would leave two owners of one current route and would let the two disagree after a switch.",
+      "Composing the upstream from the request or from an origin-derived name would let a caller choose the destination; the destination now comes only from the confirmed binding's own runtime-instance row.",
+      "Serving a request whose application label no longer matches the confirmed target would let a superseded application keep controlling its old origin (browser storage, service workers); the entry refuses it with a typed 410 instead.",
+      "Adding a second Kubernetes route object or a cluster route controller would create exactly the second route writer the decision rejects."
+    ]
+  },
+  "ssotConformance": [
+    {
+      "ssot": "docs/architecture.md#agent-delivery-and-serve-boundary",
+      "requirement": "Serve's TKE adapter applies the application workload, observes its health and owns application route bindings/fencing. Installation ingress/DNS/TLS are Instance configuration; two owners must not mutate the same application routing object/field.",
+      "conformance": "The route binding, its fencing/activation state machine and the data plane that serves the entry are all inside the Serve owner, which is also the process that applies the workload and observes its health. No Cloud source writes an installation Ingress, and no second owner mutates the routing object."
+    },
+    {
+      "ssot": "docs/architecture.md#access-configuration-and-network",
+      "requirement": "Use an isolated browser origin for each Workspace's binding to an application... Compatible updates to that application may retain its origin; switching to an unrelated application gets a new origin so the old application's service worker or browser storage cannot control the replacement.",
+      "conformance": "The entry derives the application origin label from the binding identity exactly as the retained logic did, so an unchanged application keeps its origin, and it refuses a request whose label does not match the currently confirmed target instead of serving the replacement application under the retired origin."
+    },
+    {
+      "ssot": "docs/invariants.md#agent-delivery",
+      "requirement": "Serve is the sole writer of default-App and Agent deployment history, current deployment, Runtime instance readiness evidence, and access bindings for a Workspace.",
+      "conformance": "The confirmed route target, its generation/epoch and the instance readiness that admits it are written in one Serve transaction; the entry reads only those Serve-owned rows."
+    },
+    {
+      "ssot": "docs/spec/target/14_implementation_work_packages.md#11.5",
+      "requirement": "Implement and wire the real route performer in Configure, and make Deploy orchestrate Fence/Activate/Observe.",
+      "conformance": "Configure now creates and binds the access entry, the Deploy path commits the fence and activation through commitDeliveryRoute inside the delivery transaction, and ObserveRoute reads back the binding's confirmed target and the requested switch identity. The route performer is Serve's own conditional update on serve.access_bindings rather than a provider call; the work-package sentence that still names a RouteProvider is recorded below as a pending SSOT alignment owned by the coordination window."
+    },
+    {
+      "ssot": "docs/invariants.md#evidence-levels",
+      "requirement": "code-complete means the exact source revision passed its required local source, build, persistence, and integration gates with no required skips.",
+      "conformance": "npm run test:source, the owner-topology contract test, npm run verify:local and npm run verify:local:full (temporary PostgreSQL 16 with Docker integration, zero skips) are green on this revision, and the Serve PostgreSQL suites pass with the owner migration applied."
+    }
+  ],
+  "knownGaps": [
+    "The installation Ingress and the target manifests still route the Workspace application origins to the Control Plane service; the Instance owner must forward them to the Serve access entry (this is the I07 Instance-side remainder).",
+    "Control Plane's workspace proxy and current-route resolution are still present as migration source; they are retired only after the live access callers and the Instance Ingress move, and no fallback to them may be added.",
+    "Serve still reaches TKE application execution over Fabric's signed /fabric/workspace-application-runtimes HTTP route (I06); the execution owner migration and the retirement of that writer are separate work.",
+    "The publisher opl-model-config/v1 apply/readback that makes an applied model configuration real (I08) is not implemented; Serve still reports applied 0 rather than the requested version.",
+    "Deploy orchestration for update/replace/rollback/stop beyond the first delivery's readiness+route commit is not implemented in this change.",
+    "The production proto still names the retired provider revision semantics (ProviderRevisionPrecondition, provider_precondition, RouteReadback.provider_revision)."
+  ],
+  "pendingSsotAlignment": {
+    "owner": "coordination window (the serial window owns docs/spec/target, docs/architecture.md, docs/decisions.md and docs/invariants.md)",
+    "note": "This change implements the adopted route-owner decision; the following SSOT statements still describe the retired provider-owned route CAS and must be updated by the SSOT owner. Cloud source did not edit any SSOT file in this change.",
+    "items": [
+      "docs/spec/target/14_implementation_work_packages.md#11.5 still says to implement and wire a real RouteProvider in Configure.",
+      "docs/spec/target/02_database_schema_complete.md R05 step 2 still assigns route_generation/provider_revision and the route CAS to Fabric.",
+      "docs/spec/target/06_data_flow_and_state_machine.md still describes the fence/activate steps as a provider conditional revision confirmation.",
+      "docs/spec/target/contracts/schema.sql and docs/spec/target/contracts/db_inventory.json still name serve.access_bindings.provider_revision, serve.access_switches.expected_provider_revision/observed_provider_revision and the ProviderRevisionPrecondition message."
+    ]
+  },
+  "ownerWriteSet": [
+    "services/serve/migrations/0003_access_data_plane.sql",
+    "services/serve/internal/delivery/access.go",
+    "services/serve/internal/delivery/access_server.go",
+    "services/serve/internal/delivery/access_postgres_test.go",
+    "services/serve/internal/delivery/route.go",
+    "services/serve/internal/delivery/routeorigin.go",
+    "services/serve/internal/delivery/route_postgres_test.go",
+    "services/serve/internal/delivery/runtime.go",
+    "services/serve/internal/delivery/service.go",
+    "services/serve/internal/delivery/tke_adapter.go",
+    "services/serve/internal/delivery/write.go",
+    "services/serve/internal/delivery/process_postgres_test.go",
+    "deploy/portable/opl-cloud-owner-topology.json",
+    "deploy/portable/opl-cloud.env.example"
+  ],
+  "acceptance": [
+    "A request for a Workspace's confirmed application origin is served by the confirmed binding's own ready target, keeps the application's path/host/scheme, and never carries an internal Workspace selector header to the application.",
+    "The retained path entry (/w/<workspaceId>/...) serves the same confirmed target and strips its own prefix.",
+    "An unconfirmed route, a target whose runtime instance is not ready or has no recorded destination, and an origin whose application label no longer matches the confirmed target are refused with distinct typed refusals; a request for another Workspace's origin is never served by this Workspace's target.",
+    "A streaming (chunked) application response reaches the client as it is produced instead of being buffered by the entry.",
+    "The route CAS refuses a stale generation, a stale execution epoch, a precondition that does not match the binding's confirmed revision, an activation whose epoch is not covered by a confirmed fence, a target with no ready runtime instance, a non-Serve peer and an unconfirmed original switch for a rollback.",
+    "A legacy unresolved switch recorded before this migration keeps blocking new switches and is read back by its original identity and command id instead of being preempted.",
+    "The installation contract test derives OPL_SERVE_ACCESS_ADDR and the three route-origin names from Serve's own source and the declaration names them, so the declaration and the process cannot drift."
+  ],
+  "evidenceSources": [
+    "services/serve/internal/delivery/access_postgres_test.go",
+    "services/serve/internal/delivery/route_postgres_test.go",
+    "tests/contracts/owner-topology.test.ts",
+    "deploy/portable/opl-cloud-owner-topology.json",
+    "docs/architecture.md#agent-delivery-and-serve-boundary",
+    "docs/invariants.md#agent-delivery"
+  ],
+  "verification": [
+    {
+      "command": "cd services/serve && go build ./... && go vet ./...",
+      "result": "pass",
+      "detail": "The Serve module builds and vets clean, including the new access entry, the migration and the removed RouteProvider interface."
+    },
+    {
+      "command": "cd services/serve && OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<temporary PostgreSQL 16> go test ./... -count=1",
+      "result": "pass",
+      "detail": "internal/delivery and migrations pass against a real PostgreSQL: the access entry serves the confirmed target, refuses unconfirmed/unready/superseded/foreign-host requests, keeps two Workspaces separate and streams; the route tests cover the local CAS, stale generation/epoch, unconfirmed precondition, unready target, the legacy unresolved switch and rollback."
+    },
+    {
+      "command": "node --test tests/contracts/owner-topology.test.ts",
+      "result": "pass",
+      "detail": "9 tests pass; the installation declaration accounts for every environment name each process reads, and the declaration matched the names Serve's source now reads literally."
+    },
+    {
+      "command": "npm run test:source",
+      "result": "pass",
+      "detail": "262 tests pass."
+    },
+    {
+      "command": "npm run verify:local",
+      "result": "pass",
+      "detail": "Full local gate including the browser suite, the product-boundary validator, typecheck, lint, the Console build, every Go module compile/database-free run and git whitespace check."
+    },
+    {
+      "command": "npm run verify:local:full",
+      "result": "pass",
+      "detail": "Local verification with PostgreSQL and Docker integration passed: 'Local verification passed with PostgreSQL and Docker integration', every PostgreSQL-gated owner suite ran with zero skips (Control Plane and Fabric reported 8 packages passed, 0 skipped)."
+    }
+  ],
+  "endState": "Complete for the Cloud-owned source change that makes Serve the sole owner of the Workspace route binding and of the entry that serves it, with the owner-local generation/epoch CAS, the recorded in-cluster destination and the installation declaration that lets an instance route application origins to that entry. Candidate construction, Instance manifest/Ingress change, deployment, provider action and production readback all remain external.",
+  "notRun": [
+    "No SSOT file was edited; the alignment of docs/spec/target 02/06/14, the target schema/inventory and the production proto names is recorded above as an obligation of the SSOT owner.",
+    "No Candidate image build, no owner-actor workflow dispatch and no Release.",
+    "No Instance install-manifest or Ingress change, no deployment, no Tencent resource action and no TKE readback.",
+    "No Control Plane proxy/caller retirement: the existing route and proxy are untouched and remain migration source.",
+    "No Serve-owned TKE application execution (I06) and no model-configuration apply/readback (I08)."
+  ],
+  "claimBoundary": "This receipt claims a Cloud source change: Serve commits its route generation/epoch as a local conditional state transition on its own access binding and serves the Workspace application entry from that committed binding, with the installation contract declaring the entry address and route origin, proven by passing Serve PostgreSQL suites, the owner-topology contract test, npm run test:source, npm run verify:local and npm run verify:local:full on this revision. It claims no Candidate image, no SSOT update, no Instance deployment, no Ingress change, no real TKE request and no production behavior.",
+  "secrets": "none"
+}
