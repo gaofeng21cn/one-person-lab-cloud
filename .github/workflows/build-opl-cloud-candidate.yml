@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       product_sha:
-        description: Exact 40-character Product commit already merged into Cloud main.
+        description: Exact 40-character Product commit at the head of the dispatched branch.
         required: true
         type: string
 
@@ -17,7 +17,12 @@ concurrency:
 
 jobs:
   candidate:
-    if: ${{ github.ref == 'refs/heads/main' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner }}
+    # The Candidate is a replaceable input, not a formal Release. It may be built
+    # from the exact commit of any branch (for example the serial integration
+    # branch before its work lands on canonical main), so the job does not pin the
+    # dispatched ref to main. The publication trust boundary is unchanged: only the
+    # repository owner may dispatch, and the Release workflow still runs from main.
+    if: ${{ github.ref_type == 'branch' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -48,10 +53,23 @@ jobs:
             echo "Candidate checkout must be clean before source validation." >&2
             exit 1
           fi
+          # The Candidate source is the exact PRODUCT_SHA, which the check above
+          # already proved is the checked-out HEAD of the dispatched branch. When
+          # that commit is not yet on canonical main, it is an exact branch commit
+          # for this Candidate only; the bytes and the provenance are still bound to
+          # one unambiguous SHA. A non-branch ref (a tag or a PR merge ref) is
+          # refused so the accepted sources stay branches whose HEAD is the SHA.
           git fetch --no-tags "https://github.com/$PRODUCT_REPOSITORY.git" main:refs/remotes/candidate-source/main
           if ! git merge-base --is-ancestor "$PRODUCT_SHA" refs/remotes/candidate-source/main; then
-            echo "Product SHA is not merged into canonical main." >&2
-            exit 1
+            # Not on main: accept it only as the exact head of a dispatched branch.
+            # The check above already proved PRODUCT_SHA is the checked-out HEAD of
+            # this run, and the job guard admits branch refs only, so the accepted
+            # source stays one unambiguous commit selected by its own branch.
+            if [ "${GITHUB_REF_TYPE:-}" != "branch" ]; then
+              echo "Product SHA is neither on canonical main nor the head of a dispatched branch." >&2
+              exit 1
+            fi
+            echo "Building Candidate from branch $GITHUB_REF_NAME at $PRODUCT_SHA (not yet on canonical main)."
           fi
           product_tree="$(git rev-parse "$PRODUCT_SHA^{tree}")"
           if ! [[ "$product_tree" =~ ^[0-9a-f]{40}$ ]]; then

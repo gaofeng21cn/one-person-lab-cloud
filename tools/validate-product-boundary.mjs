@@ -67,6 +67,17 @@ if (JSON.stringify(candidateInputs) !== JSON.stringify(["product_sha"]) ||
     candidateJob?.permissions?.contents !== "read" || candidateJob?.permissions?.packages !== "write") {
   throw new Error("Cloud Candidate workflow authority boundary is invalid");
 }
+// The Candidate is a replaceable input, not a formal Release, so it may be built
+// from any branch's exact commit: the guard must admit branch refs and must not
+// pin the dispatched ref to main. The owner actors and the Release workflow's
+// main-only rule remain the publication boundary.
+const candidateGuard = String(candidateJob?.if ?? "");
+for (const required of ["github.ref_type == 'branch'", "github.actor == github.repository_owner", "github.triggering_actor == github.repository_owner"]) {
+  if (!candidateGuard.includes(required)) throw new Error(`Cloud Candidate guard is missing: ${required}`);
+}
+if (candidateGuard.includes("refs/heads/main")) {
+  throw new Error("Cloud Candidate guard must not pin the dispatched ref to main");
+}
 const candidateCommands = (candidateJob.steps || []).map((step) => step.run || "").join("\n");
 const candidateArtifact = (candidateJob.steps || []).find((step) => step.id === "candidate_artifact");
 if (candidateArtifact?.with?.name !== "opl-cloud-candidate-${{ inputs.product_sha }}-${{ github.run_attempt }}") {

@@ -1990,6 +1990,19 @@ Workspace and Serve facts, and the Agent combination and fail-closed behavior
 are unchanged. Evidence:
 [default App delivery view](./evidence/source-checks/2026-09-30-default-app-delivery-view.json).
 
+### Candidate Source Ref
+
+A Candidate is a replaceable input, not a formal Release. The Candidate workflow
+(`.github/workflows/build-opl-cloud-candidate.yml`) now admits any branch ref
+whose head commit is the requested `product_sha`, instead of pinning the
+dispatched ref to `refs/heads/main`, so the serial integration branch can build
+the Candidate before its work lands on canonical main. The publication boundary
+is unchanged: only the repository owner may dispatch (`github.actor` and
+`github.triggering_actor`), a non-branch ref is refused, and the Release
+workflow still runs from `main`. `tools/validate-product-boundary.mjs` now gates
+that guard shape. Evidence:
+[candidate branch source](./evidence/source-checks/2026-09-30-candidate-branch-source.json).
+
 ## Distribution Boundary
 
 The five `v0.1.7` assets and their public API digests match the Release manifest
