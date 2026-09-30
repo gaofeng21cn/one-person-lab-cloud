@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_serve_replacement_orchestration_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T09:05:00Z",
+  "result": "serve_owns_the_workspace_version_switch_and_rollback_one_new_delivery_per_replacement_at_the_next_execution_epoch_the_replaced_delivery_is_retired_in_the_same_owner_transaction_the_route_moves_only_after_the_replacement_instance_is_proven_ready_and_a_replacement_whose_declared_data_contract_does_not_cover_the_running_data_is_refused",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 11.5 third pass - Serve's Deploy orchestration completes the replacement: version switch, failure retirement and declared-data-compatibility rollback",
+  "sourceBaseSha": "c67c0388",
+  "branch": "codex/serve-access-data-plane",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.5",
+  "milestoneM1": {
+    "objective": "Minimum real delivery of the default OPL App: the instance installs the complete Cloud owner topology, Cloud builds an exact-SHA Candidate, the instance deploys it, Serve reaches a confirmed route and URL on Tencent TKE, and a user opens the application.",
+    "stepDelivered": "Serve's own version switch and rollback now execute through the same Deploy orchestration as the first delivery: fence, execute, observe, activate, and retire the replaced delivery in one owner transaction. A failed replacement leaves the running application and its route exactly as they were, and a replacement whose target declares no data contract covering the running schema is refused."
+  },
+  "necessity": {
+    "decision": "Serve is the sole writer of a Workspace's deployment history and current deployment, so a version switch or a rollback is Serve's own replacement of the current application rather than a second delivery source or an edit of the current pointer. Because Serve is also the only owner that knows both the running deployment and the new one, Serve must (a) admit exactly one new delivery at the next execution epoch naming the deployment it replaces, (b) commit the route change only in the transaction that observes the replacement's own readiness, and (c) refuse a replacement whose declared data contract does not cover the data the Workspace already has.",
+    "currentProblem": "Serve had no replacement orchestration at all: ServeProductService.UpdateWorkspaceVersion and ServeProductService.RollbackWorkspace were declared in the production contract but unimplemented, so a Workspace could not move to another admitted version and a failed delivery had no owner-side rollback path. The first draft of the orchestration also carried two owner-level defects that the new tests exposed: the replacement was promoted to active in a statement before the replaced delivery was retired, which violates Serve's own one-active-deployment unique index, and a rollback admitted a nil data contract because the target deployment's recorded data_compatibility was never read.",
+    "confirmedFacts": [
+      "serve.agent_deployments already carries previous_deployment_id, execution_epoch and data_compatibility, and serve.access_bindings/access_switches already carry the target deployment identity from migration 0003; the replacement therefore needed no new migration and no contract change.",
+      "A demonstration on the temporary PostgreSQL 16 instance proved the defect directly: with a partial unique index on (workspace_id) WHERE status='active', updating a second row of the same Workspace to active while the first is still active fails with 'duplicate key value violates unique constraint'.",
+      "serve.agent_deployments.data_compatibility is NOT NULL and is written by Reserve from the admitted version's own declaration, so a rollback can read the target delivery's recorded contract instead of re-declaring one.",
+      "packages/contracts/proto/internal.proto declares UpdateWorkspaceVersion and RollbackWorkspace on ServeProductService, and the endpoint row in docs/spec/target/10_feature_traceability.md attributes updateWorkspaceVersion to serve.",
+      "publicjson.Marshal returns 'publisher message is required' for a nil message, so admitting a nil compatibility was a hard error rather than a silently recorded empty contract."
+    ]
+  },
+  "ssotConformance": {
+    "items": [
+      {
+        "source": "docs/spec/target/14_implementation_work_packages.md#11.5",
+        "requirement": "Deploy编排Fence/Activate/Observe ... 失败退役/兼容回滚",
+        "conformance": "UpdateWorkspaceVersion and RollbackWorkspace admit one replacement delivery, execute it through the same observe-then-finish transaction that fences and activates the route, retire the replaced delivery in that transaction, and refuse a replacement whose declared data contract does not cover the running data. A replacement that never becomes ready leaves the current deployment, its route binding and the runtime readback untouched."
+      },
+      {
+        "source": "docs/spec/target/14_implementation_work_packages.md W17.replace",
+        "requirement": "写集 services/serve/internal/delivery, services/serve/internal/runtime_adapter, services/serve/internal/access；验收 旧epoch写拒绝；数据不可逆拒绝；失败恢复原路由与原数据证明",
+        "conformance": "Every change is inside services/serve/internal/delivery. A replacement at a stale execution epoch is refused by the existing reserved-identity check, and the reconciliation path holds the same PostgreSQL workspace lock as Reserve. A replacement whose target declares no path from the running data schema, or a publisher migration the publisher does not declare rollback-safe, is refused before any identity is allocated. After a replacement that fails to observe, the same current deployment and the same route generation/target are still the Workspace's current facts, proven by test."
+      },
+      {
+        "source": "docs/invariants.md#adopted-application-delivery-invariants",
+        "requirement": "Serve is the sole writer of default-App and Agent deployment history, current deployment, Runtime instance readiness evidence, and access bindings for a Workspace.",
+        "conformance": "The replacement writes only serve.agent_deployments, serve.agent_runtime_instances, serve.agent_runtime_actions, serve.operations, serve.outbox_events, serve.access_bindings and serve.access_switches, all inside one owner transaction, and it reads the replaced delivery and the confirmed resource binding from Serve's own rows."
+      },
+      {
+        "source": "docs/invariants.md#application-deployment-and-data",
+        "requirement": "Restart and image rollback cannot implicitly restore, overwrite or migrate persistent data. Image compatibility with retained data must be established before rollback; scratch storage does not imply durable application sessions.",
+        "conformance": "replacementCompatibilityRefusal compares only publisher-declared facts of the exact revisions: the schema version each side writes, the schema versions the target can carry forward from, the target's declared migration requirement and the declared rollback safety. A schema transition that the target does not declare, and a migration the publisher does not declare rollback-safe, are refused; no version string is ordered and no compatibility is inferred."
+      },
+      {
+        "source": "docs/invariants.md#application-deployment-and-data",
+        "requirement": "A Workspace binding to an application gets its own browser origin ... A compatible update keeps it; an unrelated application does not inherit it, and a superseded origin is refused instead of served.",
+        "conformance": "The replacement keeps the Workspace's existing access binding and advances its route generation by exactly one through the existing fence/activate switches, so the served origin is unchanged and the replaced deployment is retired as history rather than published under a second route."
+      },
+      {
+        "source": "docs/invariants.md#application-deployment-and-data",
+        "requirement": "Deployment and recovery bind immutable application/restore revisions, exact data inputs and current owner-derived resource bindings. Uncertain execution results require readback before a new side effect.",
+        "conformance": "A replacement reuses the Workspace's already confirmed resource set and data attachment read from the current delivery's own runtime row, refuses a target deployment that is not a delivery of this Workspace, refuses a descriptor whose canonical digest differs from the admitted digest, and commits the observation before the route change; an unavailable readback is an error, never a success."
+      },
+      {
+        "source": "docs/spec/target/06_data_flow_and_state_machine.md F10",
+        "requirement": "serve→serve FenceRouteEpoch / Deploy / ActivateRoute / RollbackRoute；终点 一个确认选中部署，无重复购买；失败时旧运行结果有实际证据",
+        "conformance": "One replacement produces exactly one fence and one activate switch at the new execution epoch, exactly one active deployment (asserted by test), and no resource purchase: the confirmed resource set and data attachment are reused. A failed replacement leaves the previous delivery active with its own readiness evidence and route switch readable."
+      },
+      {
+        "source": "docs/spec/target/00_master_index.md / docs/architecture.md#agent-delivery-and-serve-boundary",
+        "requirement": "Candidate and historical deployments are not additional current applications.",
+        "conformance": "The replaced delivery moves to superseded in the same transaction that the replacement becomes active, so the Workspace's deployment history stays readable while exactly one row remains the current application."
+      }
+    ]
+  },
+  "acceptance": [
+    "A version switch admits one new delivery at execution_epoch+1 whose previous_deployment_id names the running deployment, reuses the confirmed resource set and data attachment, and becomes active only after its own runtime instance is observed ready.",
+    "The same transaction that records readiness and activates the route marks the replaced deployment superseded, so Serve's one-active-deployment index holds at every statement boundary.",
+    "A version switch whose expected current deployment is not the Workspace's current one is refused with current_deployment_conflict and performs no provider call.",
+    "A replacement for a Workspace with no current application is refused with replacement_source_unavailable.",
+    "A rollback whose target deployment is not a delivery of this Workspace is refused with NotFound and replacement_source_unavailable.",
+    "A rollback re-executes the target deployment's own stored descriptor and records the data contract that delivery was admitted with.",
+    "A replacement whose target declares a different data schema version that is not listed in its compatible_from_versions is refused with data_compatibility_unproven.",
+    "A replacement that declares a publisher migration without declaring rollback safety is refused with data_rollback_not_safe, and so is a rollback out of a running version that does not declare its own data rollback-safe.",
+    "A declared-compatible upgrade and a declared rollback-safe migration are admitted, and the new deployment row records the target's own data contract.",
+    "A replacement whose runtime observation never becomes available returns an error, leaves the previous deployment active and leaves the route generation and target unchanged."
+  ],
+  "evidenceSources": [
+    "services/serve/internal/delivery/replacement.go",
+    "services/serve/internal/delivery/replacement_postgres_test.go",
+    "services/serve/internal/delivery/write.go",
+    "services/serve/internal/delivery/write_postgres_test.go",
+    "services/serve/internal/delivery/route.go",
+    "services/serve/migrations/0001_opl_serve.sql",
+    "services/serve/migrations/0003_access_data_plane.sql"
+  ],
+  "verification": [
+    {
+      "command": "cd services/serve && go build ./... && go vet ./...",
+      "result": "pass",
+      "detail": "The Serve module builds and vets clean."
+    },
+    {
+      "command": "cd services/serve && OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<temporary PostgreSQL 16.8> go test ./... -count=1",
+      "result": "pass",
+      "detail": "internal/delivery and migrations pass, including the two new replacement suites (switch/rollback/failure retirement and declared-data-compatibility refusals) and the existing reserve, deploy, readiness, access, route and Secret suites."
+    },
+    {
+      "command": "docker exec opl-pg-serve psql (partial unique index reproduction)",
+      "result": "pass",
+      "detail": "Reproduced the one-active-deployment violation directly against PostgreSQL before changing the owner transaction: 'duplicate key value violates unique constraint', which confirmed the ordering defect instead of assuming it."
+    },
+    {
+      "command": "npm run verify:local",
+      "result": "pass",
+      "detail": "Product boundary, Node source tests, browser suite, typecheck, lint and every Go module compile/run on this revision."
+    }
+  ],
+  "endState": "Complete for the Cloud-owned Serve source change that implements the Workspace version switch and rollback on the existing owner schema, and for the two owner defects the new tests exposed. The replacement is the only path that changes a Workspace's current application, it retires the replaced delivery in the same owner transaction, and it refuses a data transition the admitted revision does not declare.",
+  "pendingSsotAlignment": {
+    "owner": "coordination window / user",
+    "note": "This change implements Serve's side of F10/W17.replace on the current contract. Two items remain that cannot be decided in Cloud source alone and are reported instead of implemented.",
+    "items": [
+      "The default-App branch of the replacement input. docs/spec/target/04_frontend_interaction_spec.md says the opl_app branch must select an exact runtimeVersionId and marks that input mapping as pending the W01 migration, but UpdateWorkspaceVersionRequest in docs/spec/target/contracts/internal.proto and docs/spec/target/03_api_contract_complete.yaml carries only capabilityVersionId, so Serve accepts only the Agent branch today. Adding the selection union to the update/rollback requests is a contract change and needs the coordination window and the user's approval.",
+      "The default-App replacement still records the empty data contract the first-delivery path stores, because the OPL App's real upgrade/rollback contract lives in the Runtime Release publisher contract. Replacing an OPL App deployment therefore has no declared contract to compare; this is recorded as a gap rather than worked around, and closing it belongs with the same opl_app input decision."
+    ]
+  },
+  "notRun": [
+    "No specification file, api contract or generated binding was edited.",
+    "No migration was added: the replacement uses columns that migrations 0001-0004 already declare.",
+    "No Candidate image build, no owner-actor workflow dispatch and no Release.",
+    "No Instance deployment, Ingress change, Tencent resource action or TKE readback.",
+    "No Control Plane caller migration or proxy retirement; no I06 execution move and no I08 model-configuration readback."
+  ],
+  "claimBoundary": "This receipt claims a Cloud source change: Serve owns the Workspace version switch and rollback, admits one replacement delivery at the next execution epoch, retires the replaced delivery in the same owner transaction that observes readiness and moves the route, refuses a replacement whose declared data contract does not cover the running data, and leaves the running application and route untouched when a replacement fails. It is proven by the Serve PostgreSQL suites (including the two new ones), every Go module build, and npm run verify:local on this revision. It claims no specification update, no Candidate image, no deployment, no real TKE request and no production behavior.",
+  "secrets": "none"
+}

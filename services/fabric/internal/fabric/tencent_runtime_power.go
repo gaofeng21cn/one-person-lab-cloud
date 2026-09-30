@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"opl-cloud/services/fabric/internal/protectedresource"
+	"opl-cloud/services/internal/protectedresource"
 )
 
 func (p *TencentProvider) readWorkspaceRuntimePowerDeployment(ctx context.Context, input WorkspaceRuntimePowerInput) (map[string]any, WorkspaceRuntimePowerResult, error) {

@@ -10,12 +10,14 @@ require (
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/vpc v1.3.170
 	golang.org/x/sys v0.47.0
 	google.golang.org/grpc v1.83.2
+	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	k8s.io/apimachinery v0.37.0
 	k8s.io/cri-api v0.37.0
 	opl-cloud/packages/contracts/go v0.0.0
 	opl-cloud/services/internal/ownerservice v0.0.0
 	opl-cloud/services/internal/ownerstore v0.0.0
 	opl-cloud/services/internal/postgresmigrate v0.0.0
+	opl-cloud/services/internal/protectedresource v0.0.0
 )
 
 require (
@@ -27,7 +29,6 @@ require (
 	github.com/zclconf/go-cty-yaml v1.1.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
-	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20260721132016-d427ff9ee9ad // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
@@ -35,6 +36,8 @@ require (
 )
 
 replace opl-cloud/services/internal/postgresmigrate => ../internal/postgresmigrate
+
+replace opl-cloud/services/internal/protectedresource => ../internal/protectedresource
 
 replace opl-cloud/packages/contracts/go => ../../packages/contracts/go
 
@@ -49,7 +52,7 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-openapi/inflect v0.19.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
+	github.com/google/uuid v1.6.0
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/lib/pq v1.12.3
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect

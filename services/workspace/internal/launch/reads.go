@@ -15,7 +15,7 @@ import (
 	"opl-cloud/services/internal/ownerservice"
 )
 
-const workspaceColumns = `w.id,w.tenant_id,w.name,w.status,w.compute_plan_id,w.storage_plan_id,w.created_at,w.updated_at,w.version,
+const workspaceColumns = `w.id,w.tenant_id,w.name,w.status,w.compute_plan_id,w.storage_plan_id,w.created_at,w.updated_at,w.version,w.model_configuration_version,
 	COALESCE(o.accepted_input,'{}'::jsonb),COALESCE(o.result,'{}'::jsonb)`
 const workspaceJoin = ` FROM workspace.workspaces w LEFT JOIN workspace.operations o ON o.id=w.active_operation_id`
 
@@ -26,7 +26,7 @@ func scanWorkspace(row rowScanner) (*api.Workspace, string, error) {
 	var tenant, state string
 	var created, updated time.Time
 	var input, result []byte
-	if err := row.Scan(&w.Id, &tenant, &w.Name, &state, &w.ComputePlanId, &w.StoragePlanId, &created, &updated, &w.Version, &input, &result); err != nil {
+	if err := row.Scan(&w.Id, &tenant, &w.Name, &state, &w.ComputePlanId, &w.StoragePlanId, &created, &updated, &w.Version, &w.ModelConfigurationVersion, &input, &result); err != nil {
 		return nil, "", dbError(err)
 	}
 	v, ok := api.WorkspaceStatusEnum_value["WORKSPACE_STATUS_ENUM_"+strings.ToUpper(state)]

@@ -13,6 +13,7 @@ import (
 
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/services/fabric/internal/fabric"
 	"opl-cloud/services/internal/ownerservice"
 )
 
@@ -94,6 +95,10 @@ func (s *Service) ReadResources(ctx context.Context, r *api.ResourceReadbackRequ
 			return nil, status.Error(codes.DataLoss, "confirmed resources lack provider execution evidence")
 		}
 		out.ExecutionResources = result.Binding
+		// The workload executor schedules the Workspace application onto the exact
+		// node and prepaid storage this confirmed resource set landed on, so the
+		// same provider mutation's placement facts are projected here.
+		out.ApplicationPlacement = fabric.ApplicationExecutionPlacement(result.Compute, result.Storage)
 	}
 	if err = tx.Commit(); err != nil {
 		return nil, persistenceError(err)
