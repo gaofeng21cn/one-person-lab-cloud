@@ -123,7 +123,15 @@ func (s *Server) deliveryView(ctx context.Context, caller Caller, workspaceID st
 		capabilityVersionID = workspace.GetCapabilityVersionId()
 	}
 	if capabilityVersionID == "" {
-		return DeliveryView{}, fmt.Errorf("serve: deployment %s names no capability version", current.GetId())
+		// The default App is delivered from an approved Runtime Release and needs
+		// no synthetic Package, Build or CapabilityVersion, so a deployment that
+		// names none is the second supported combination rather than a broken one.
+		// Report the Capability and Build layers as genuinely not applicable: the
+		// view stays owner-attributed and honest without inventing a version,
+		// calling an owner that has no such fact, or failing the whole chain.
+		view.Capability = OwnerFact{Owner: capabilityOwner, State: defaultAppLayerState, Details: map[string]any{"reason": defaultAppLayerReason}}
+		view.Build = OwnerFact{Owner: buildOwner, State: defaultAppLayerState, Details: map[string]any{"reason": defaultAppLayerReason}}
+		return view, nil
 	}
 	if err := authorize(owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, capabilityVersionID); err != nil {
 		return DeliveryView{}, err
@@ -185,6 +193,15 @@ func currentDeployment(page *api.DeploymentPage) *api.Deployment {
 	// own status already distinguishes queued/deploying/verifying/failed.
 	return page.GetItems()[0]
 }
+
+// The default App carries no CapabilityVersion and no Build. The delivery view
+// reports those two layers as not applicable rather than as a failure or an
+// invented value, matching the adopted delivery invariant that the default App
+// needs no synthetic Package, Build or CapabilityVersion.
+const (
+	defaultAppLayerState  = "not_applicable"
+	defaultAppLayerReason = "default_app_runtime_release"
+)
 
 // The owner names are the fixed Cloud owner identities, not a second vocabulary.
 const (

@@ -186,6 +186,43 @@ func TestDeliveryViewAttributesEachLayerToItsOwner(t *testing.T) {
 	}
 }
 
+// defaultAppReader is the second supported delivery combination: the default App
+// has no CapabilityVersion and no Build, so Serve names none.
+func defaultAppReader() *fakeReader {
+	reader := resolvedReader()
+	reader.workspace.CapabilityVersionId = nil
+	reader.deployments.Items[0].CapabilityVersionId = ""
+	reader.version = nil
+	reader.build = nil
+	return reader
+}
+
+func TestDeliveryViewReportsDefaultAppLayersAsNotApplicable(t *testing.T) {
+	server := NewServer(defaultAppReader(), allowedIdentity())
+	request := sessionRequest(http.MethodGet, "/api/v2/delivery/ws-1")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("default App delivery must not fail: status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var view DeliveryView
+	if err := json.Unmarshal(response.Body.Bytes(), &view); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// The default App keeps real Workspace and Serve facts and reports the two
+	// layers it does not have as not applicable, attributed to their owners.
+	if view.Serve.Owner != "serve" || view.Serve.Details["accessUrl"] != "https://agent.example.test" {
+		t.Fatalf("default App must still compose the Serve access fact: %+v", view.Serve)
+	}
+	if view.Capability.Owner != "capability" || view.Capability.State != "not_applicable" {
+		t.Fatalf("capability layer must be not applicable for the default App: %+v", view.Capability)
+	}
+	if view.Build.Owner != "build" || view.Build.State != "not_applicable" {
+		t.Fatalf("build layer must be not applicable for the default App: %+v", view.Build)
+	}
+}
+
 func TestDeliveryViewReportsMissingOwnerAsFailure(t *testing.T) {
 	server := NewServer(&fakeReader{err: errors.New("serve unavailable")}, allowedIdentity())
 	request := sessionRequest(http.MethodGet, "/api/v2/delivery/ws-1")
