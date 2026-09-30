@@ -51,6 +51,14 @@ current implementation documentation.
   Ordinary status projections remain redacted.
 - A Workspace Gateway Key is persisted only by the selected secret owner.
   Business operations and Ledger retain references, not the raw Key.
+- Gateway Integration is the sole writer of `gateway.key_bindings` and the
+  only owner allowed to issue, allowlist or revoke a Workspace-managed Gateway
+  key. Workspace may persist only the returned opaque binding id on its model
+  configuration; it may not mint, reconstruct or substitute that id.
+- A model-configuration version is not accepted without a confirmed Gateway
+  binding and a confirmed runtime Secret-binding readback. Serve receives the
+  opaque `RuntimeManagedKeyBinding` and applies the publisher contract; it never
+  becomes a Gateway-key writer.
 
 ## Money
 
@@ -197,6 +205,10 @@ implementation and remaining gaps are reported separately in status/roadmap.
   intent and advance a confirmed version through the same Workspace operation
   and activation rules. The current binding cannot silently claim an old Secret
   version after its consumers have changed.
+- `UpdateWorkspaceModels` creates the new Gateway binding through the Gateway
+  owner, binds its Secret through the Fabric owner, and advances the Workspace
+  applied version only after Serve's publisher apply/readback confirms the
+  target version. The public request never carries a key-binding id.
 - Retained data bindings are stable across ordinary image updates and are
   independent of tag/digest/attempt identity. Tencent application persistence
   uses Workspace-owned CBS via explicit mounts; container layers and tmpfs are

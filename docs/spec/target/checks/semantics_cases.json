@@ -428,10 +428,10 @@
       "expected": "owner_reject"
     },
     {
-      "id": "R05-late-provider-request-after-fence",
+      "id": "R05-late-switch-after-fence",
       "suite": "route",
-      "mutation": "late_provider",
-      "expected": "provider_reject"
+      "mutation": "late_switch",
+      "expected": "owner_reject"
     },
     {
       "id": "R03-legacy-descriptor-no-fake-build",

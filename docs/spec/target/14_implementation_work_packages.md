@@ -750,6 +750,16 @@
 
 **内部协议实现/协作端口**：`WorkspaceProductService.GetWorkspaceModels`, `WorkspaceProductService.UpdateWorkspaceModels`, `WorkspaceProductService.RevealWorkspaceApplicationCredentials`, `ServeProductService.ListDeployments`, `ServeProductService.GetDeployment`, `ServeProductService.UpdateWorkspaceVersion`, `ServeProductService.RollbackWorkspace`, `ServeProductService.GetWorkspaceAccess`, `ClaimUsageReadback.ReadClaimUsage`, `ServeAgentCoordination.Reserve`, `ServeAgentCoordination.Deploy`, `ServeAgentCoordination.ReloadModels`, `ServeAgentCoordination.ReadRuntime`, `ServeAgentCoordination.Retire`, `ServeRuntimeAdapter.ReadApplicationCredentials`, `ServeRuntimeAdapter.StartRuntime`, `ServeRuntimeAdapter.StopRuntime`, `ServeRuntimeAdapter.ReloadRuntime`, `ServeRuntimeAdapter.ObserveRuntime`, `ServeAccessControl.FenceRouteEpoch`, `ServeAccessControl.ActivateRoute`, `ServeAccessControl.ObserveRoute`, `ServeAccessControl.RollbackRoute`, `ServePlanChangeControl.RestoreAfterResourceChange`
 
+`UpdateWorkspaceModels` has one mandatory owner-separated sequence: Workspace
+authorizes and validates the selection, Gateway creates the exact managed-key
+binding, Fabric confirms the runtime Secret binding, Serve applies and reads back
+the publisher configuration through `RuntimeReloadCommand.managed_key_binding`,
+and Workspace advances `model_configuration_version` only from that confirmed
+readback. The public request remains `expectedVersion + selections`; no caller
+may supply a key binding. This sequence is shared by the default OPL App and the
+Agent plus independent WebUI product combinations whenever their Runtime
+publisher declares the model-configuration contract.
+
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
 - Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local
@@ -1742,7 +1752,7 @@ Instance只安装Cloud及安装配置/Secrets/证书、进行授权的安装/资
 
 **对应原工作包：** W17, W05, W15, W24
 
-**实施：** D的TKEApplicationAdapter仍POST旧Fabric应用端点，只是迁移中的调用适配，不是执行writer已迁走。将TKE应用执行能力连同真实caller迁到Serve，串行切换后按09退出对应旧writer。实现并在Configure接入真实RouteProvider，Deploy编排Fence/Activate/Observe。补Secret配置、模型实际应用及读回、Stop/Reload/凭据获取和失败退役/兼容回滚。不得把请求的modelConfigurationVersion直接写成applied。
+**实施：** D的TKEApplicationAdapter仍POST旧Fabric应用端点，只是迁移中的调用适配，不是执行writer已迁走。将TKE应用执行能力连同真实caller迁到Serve，串行切换后按09退出对应旧writer。Serve以本域access_bindings的generation/accepted epoch执行Fence/Activate/Observe与兼容Rollback，Deploy确认readiness和当前Deployment/绑定同事务提交；接入按绑定读回的access data plane，迁移实际入口和调用者并清退Control Plane应用proxy/当前路由解析器，不保留RouteProvider或路由fallback。Instance只提供稳定Ingress/DNS/TLS到Serve。补Secret配置、模型实际应用及读回、Stop/Reload/凭据获取和失败退役。不得把请求的modelConfigurationVersion直接写成applied。
 
 **验收后进入下一段：** 进程实际注册/启动的路径贯穿部署、readiness、route与Ledger；已发布URL不是拼字符串，真实HTML/静态/API/SSE、跨Tenant拒绝、旧epoch、unknown switch、Secret隔离及重启恢复均通过。
 

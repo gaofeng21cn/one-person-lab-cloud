@@ -1,0 +1,131 @@
+{
+  "schemaVersion": "opl-cross-domain-execution/v1",
+  "executedAt": "2026-09-30T08:29:47.344940+00:00",
+  "completedAt": "2026-09-30T08:30:13.747730+00:00",
+  "passed": true,
+  "sourceHashes": {
+    "03_api_contract_complete.yaml": "962d1896455a6b343091cd5e5f7faecce50db4866941025c49780bd8f527c7aa",
+    "contracts/schema.sql": "9ca9ec32a3e304151266e57da25f75c141f5627d90931bf536aa82ce0f7df373",
+    "contracts/db_inventory.json": "d9543793361396be535db43e2dbf1cb42c3d62be87c6eb93422fa9b477f14cac",
+    "contracts/internal.proto": "c0def77ecf552acea98bb199e429e4ed9f6b24f2bb6257c74f85908c5980aeb7",
+    "contracts/publisher-contract.schema.json": "97aa9c5bb38b1016d66fa31505559571e45fcaeddbedcb3bfd7fe316f5b2ebe6",
+    "checks/semantics_cases.json": "cf24491813c559b767bbbe118f2625ffee15f9cf1aca9aeaf7f4eae8f76231fc",
+    "checks/validate_cross_domain.py": "3db639d4e8a9a25d9682d268e007038c914ea10a634e30d099eb4967dba62bdd",
+    "13_plan_change_policy.md": "43f1ac890fbab9b2c26da4937dbcce1389f3153ad56451af0b91cddb1473f686",
+    "contracts/plan-change-policy.json": "d2f9282bf450e2fbcf3f82f706cebccce335db6fdff51d3489ab78ba653698f6"
+  },
+  "sourceUnchangedDuringRun": true,
+  "sourceHashesAtEnd": {
+    "03_api_contract_complete.yaml": "962d1896455a6b343091cd5e5f7faecce50db4866941025c49780bd8f527c7aa",
+    "contracts/schema.sql": "9ca9ec32a3e304151266e57da25f75c141f5627d90931bf536aa82ce0f7df373",
+    "contracts/db_inventory.json": "d9543793361396be535db43e2dbf1cb42c3d62be87c6eb93422fa9b477f14cac",
+    "contracts/internal.proto": "c0def77ecf552acea98bb199e429e4ed9f6b24f2bb6257c74f85908c5980aeb7",
+    "contracts/publisher-contract.schema.json": "97aa9c5bb38b1016d66fa31505559571e45fcaeddbedcb3bfd7fe316f5b2ebe6",
+    "checks/semantics_cases.json": "cf24491813c559b767bbbe118f2625ffee15f9cf1aca9aeaf7f4eae8f76231fc",
+    "checks/validate_cross_domain.py": "3db639d4e8a9a25d9682d268e007038c914ea10a634e30d099eb4967dba62bdd",
+    "13_plan_change_policy.md": "43f1ac890fbab9b2c26da4937dbcce1389f3153ad56451af0b91cddb1473f686",
+    "contracts/plan-change-policy.json": "d2f9282bf450e2fbcf3f82f706cebccce335db6fdff51d3489ab78ba653698f6"
+  },
+  "image": {
+    "name": "sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb",
+    "repoTags": [
+      "postgres:16-alpine"
+    ],
+    "id": "sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb",
+    "repoDigests": [
+      "postgres@sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb"
+    ]
+  },
+  "metadata": {
+    "actualDatabaseFields": 1421,
+    "directMappingsTypeAndEnumChecked": 311,
+    "optionalWireFieldMeansOmittedNotNull": true,
+    "nonnullableDbMayBeInternalOrDerived": "not inferred from API required alone; legacy cases cover real discriminators",
+    "postgresVersion": "PostgreSQL 16.15 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit"
+  },
+  "setupError": null,
+  "cases": [
+    {
+      "id": "R05-route-switch-select-commit",
+      "suite": "route",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "fenceConfirmedBeforeActivate": true,
+        "serveBinding": {
+          "route_generation": 1,
+          "accepted_execution_epoch": 2,
+          "target_execution_resource_id": "new-R05-route-switch-select-commit"
+        },
+        "selectedCommit": {
+          "id": "dep-R05-route-switch-select-commit",
+          "status": "active",
+          "execution_epoch": 2,
+          "selection_commit_receipt_id": "selection-commit-R05-route-switch-select-commit"
+        },
+        "instanceIngressQualified": false
+      },
+      "passed": true
+    },
+    {
+      "id": "R05-stale-route-generation",
+      "suite": "route",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "stale route generation",
+      "passed": true
+    },
+    {
+      "id": "R05-stale-execution-epoch",
+      "suite": "route",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "stale execution epoch despite route generation match",
+      "passed": true
+    },
+    {
+      "id": "R05-unknown-switch-blocks-next",
+      "suite": "route",
+      "expected": "database_reject",
+      "actual": "database_reject",
+      "reason": "one pending/unknown route action per Workspace",
+      "passed": true
+    },
+    {
+      "id": "R05-selected-commit-stale-epoch",
+      "suite": "route",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "Serve selection commit stale intent/epoch; do not claim routed target is selected",
+      "passed": true
+    },
+    {
+      "id": "R05-late-switch-after-fence",
+      "suite": "route",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "late switch from old epoch rejected by Serve-local CAS",
+      "passed": true
+    }
+  ],
+  "caseSelection": {
+    "prefix": "R05",
+    "fullSuite": false
+  },
+  "sqlInvocations": 115,
+  "cleanup": {
+    "containerName": "opl-spec-semantic-1790756987",
+    "containerAbsent": true,
+    "stopSucceeded": true,
+    "removalReadbackPolls": 4,
+    "storage": "tmpfs only; no host mounts/named volumes",
+    "network": "none; no host ports"
+  },
+  "scope": "typed REST/protobuf specification adapters -> isolated PostgreSQL -> exact typed/readback projection; provider router and Storage are explicitly named fixtures, not implemented services",
+  "notProven": [
+    "real service handlers/Saga workers",
+    "production or Instance adoption",
+    "real Gateway/provider charges or resources",
+    "actual implementation/provider/Instance acceptance remain separate from approved D17 specification"
+  ]
+}

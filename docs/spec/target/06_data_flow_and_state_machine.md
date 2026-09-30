@@ -94,7 +94,7 @@ UI查询Operation/Build：展示“可部署”，链接新版本
 | key | Gateway创建/取得本Workspace托管Key，绑定Serve预留身份 | exact Key身份、模型/group/预算、Secret引用/版本；无明文持久化 | 原Key读回，不盲建第二Key |
 | secret | Serve按合同请求Fabric在确切资源绑定Secret引用 | 原资源/实例/Key引用/Secret版本匹配，运行边界可用 | 查原绑定；不是重购或重新生成Key |
 | deploy | Serve在Fabric已确认资源上应用冻结OCI/合同、config/data，读回实例 | exact digest、环境/挂载、应用健康、凭据和UI可用 | 不宣称active；保持原部署操作 |
-| activation | Serve按Workspace授权及expected predecessor CAS当前Deployment；Serve Access以epoch/generation确认路由 | 唯一current deployment、目标/路由revision、鉴权/应用探针一致 | 不宣称可打开，不重复收费；原switch读回 |
+| activation | Serve按Workspace授权及expected predecessor CAS当前Deployment与access binding；以accepted epoch/generation读回 | 唯一current deployment、目标/绑定代际、鉴权/应用探针一致 | 不宣称可打开，不重复收费；原switch读回 |
 | evidence/finish | 各副作用Owner提交必要证据，Ledger append/readback；Workspace核对完成事实，CAS entitlement=active及Operation=succeeded | 原单、应用分支/版本/digest、资源、Serve readiness/access与必要receipt精确关联 | 可展示已经确认的局部事实，证据未齐不得宣称整体完成 |
 
 ### 6.1 具体async handoff矩阵
@@ -112,7 +112,7 @@ UI查询Operation/Build：展示“可部署”，链接新版本
 | Workspace→Gateway Key | Gateway durableOperation、原create/bind effectID；按操作与Key ID读回 | Key绑定/安全审计按契约持证，交付证据仅引用指纹/版本 | 查原Key与绑定；需要正文时仅授权Secret运行边界获取 | 模型/用途/实例绑定及Secret引用一致 | 确定拒绝停部署；unknown不盲建第二Key |
 | Serve→Fabric Secret绑定 | Fabric binding operation/effectID；资源/实例/Secret版本读回 | 必要绑定证据并入交付证据；无Secret正文 | 原binding读回并继续相同版本，不重发新凭据 | 合同声明的确切绑定可供Serve运行边界使用 | 绑定不符拒绝；unknown不启动未经确认配置 |
 | Workspace→Serve Deploy/更新/模型（F08–F10） | Serve durableOperation；deploy/reload effectID、实例/配置版本；Serve runtime adapter实际读回 | 必要部署/配置生效证据；不为每轮health/poll建收据 | 原动作查询applied digest/configuration version，原epoch恢复 | 合同、镜像、持久数据、模型生效版本及应用健康相符 | 确定失败按兼容规则收尾；unknown保留最后确认事实，禁止报ready |
-| Serve→Serve Access切换/回滚（F08/F10） | Serve switch operation/effectID；expected generation/epoch/providerRevision；实际路由读回 | 选中/切换或回滚完成证据 | 原switch读回后完成同一Serve CAS；不发新switch抢占unknown | 路由目标/代际与Serve唯一current及readiness一致 | 旧epoch/revision拒绝；unknown阻止后续切换，DB指针不代替实际路由 |
+| Serve→Serve Access切换/回滚（F08/F10） | Serve switch operation/effectID；expected route generation/epoch；Serve access-binding readback | 选中/切换或回滚完成证据；独立记录经Instance入口的真实请求验收 | 原switch读回后完成同一Serve本地CAS；不发新switch抢占unknown | Serve唯一route binding、current Deployment与readiness一致；TKE请求到达该binding目标 | 旧epoch/generation拒绝；unknown阻止后续切换；Ingress配置和Serve DB不形成双writer |
 | Workspace→Serve暂停/恢复（F11/F12/F15） | Serve durableOperation及stop/start effectID；原实例/资源/授权周期读回 | 必要生命周期转换证据，不把停用字段当停机证明 | 原动作/实例读回；不创建替代资源或续费单 | 访问关闭/运行停止，或原资源上应用与访问实际恢复 | 确定不具恢复能力明示；unknown不报已暂停/恢复 |
 | Workspace→Serve Retire（F13/closeout） | Serve retirement operation/effectID；原deployment/runtime/access读回 | retirement/访问关闭证据，关联后续删除 | 查原route撤销/stop动作；先封入口再停止并确认absence | 不再有当前可访问/运行实例及有效注入使用者 | unknown不得把资源/Workspace标已删或提前退款 |
 | Workspace→Fabric释放（F13/closeout） | Fabric delete operation及逐项effectID；Secret binding/attachment/volume/compute/network精确读回 | 资源删除/absence证据，绑定原资源身份 | 原provider delete ID读回；执行依赖顺序，不凭列表缺项重试采购 | Serve已退役；绑定/指定资源absence，保留义务明确 | 部分失败逐项保留；unknown不宣称完整删除 |
@@ -149,8 +149,8 @@ W05必须逐条将上表义务映射到真实事件/ReceiptKind、producer身份
 2. 验证数据兼容、镜像平台、资源容量、模型与Secret契约；不可逆数据迁移必须已有发布者批准的迁移/备份与恢复规则，否则准入拒绝。
 3. 按分支取得RuntimeRelease或Capability版本引用并由Serve持久新Deployment；Serve保留旧current，Workspace保留原购买事实，不复制部署指针。
 4. Serve创建新实例或按发布者支持的停止旧实例后替换路径执行；同一可写数据卷不得同时被两个不支持并发的实例挂载写入。
-5. Serve分配execution_epoch后，先调用FenceRouteEpoch并确认provider条件版本CAS更新epoch，再允许该epoch进行Activate/Rollback。首次路由须使用有证据的requireAbsent前置，不用空串表示任意版本；其余使用Fence返回的精确providerRevision。未知旧switch先按原id读回，不抢占。Serve Access执行端按route generation/epoch防旧worker竞争（不是Fabric资源路由事实），验证新实例真实readiness后切换路由；Serve在明确切换读回后将新Deployment置为active并supersede旧Deployment。
-6. 失败且旧数据仍兼容时进入rolling_back，重新验证旧实例/路由，确认后rolled_back；不能仅改DB指针当回滚成功。
+5. Serve分配execution_epoch并在Serve owner内按route generation/epoch串行化切换；unknown旧switch先按原operation/switch id读回，不抢占。验证新实例真实readiness后，Serve在同一owner事务中CAS更新access binding及current Deployment；只有该事务/readback确认后才将新Deployment置为active并supersede旧Deployment。TKE Ingress是稳定安装入口，不参与每Workspace切换；对外流量经Serve access entry按已提交binding转发。
+6. 失败且旧数据仍兼容时进入rolling_back，由Serve以新的原义switch CAS恢复旧binding，并读回旧目标仍ready；不能仅改Deployment字段称回滚成功。独立的TKE HTTP验收证明实际请求到达已确认目标，不构成第二路由writer。
 7. 旧Runtime的非活动保留至多1天是原讨论要求；执行清理前必须读回非选中、无数据/恢复义务，再删除运行资源并释放claim。超时不能强删仍活动实例。
 8. 更新镜像不再次扣Workspace购买费；若资源调整必要先走独立F11报价确认。新Runtime发布只显示可更新提示，不自动替换。
 
@@ -352,7 +352,7 @@ worker按固定recipe调用BuildKit与Registry exporter；不是新的构建框�
 |---:|---|---|---|---|
 | 1 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→tenant / `CloudIdentityAuthorization.AuthorizeAction` | `AuthorizationRequest` → `AuthorizationDecision` | 只读/由原Owner管理 | session/grant/action/resource/audience/权限版本确切一致；deny不改用管理员；unknown不发后续副作用 |
 | 2 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；resource_catalog→workspace / `WorkspaceAdmission.CheckAdmission` | `AdmissionRequest` → `AdmissionResult` | 只读/由原Owner管理 | 当前版本、模型、作用域与原Workspace义务确认；quote并不等于容量预留，提交时复查 |
-| 3 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→fabric / `FabricCoordination.AdmitResources` | `ResourceAdmissionRequest` → `AdmissionResult` | 只读/由原Owner管理 | provider能力、实际资源/route CAS能力准入；不能静默换provider或降能力 |
+| 3 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→fabric / `FabricCoordination.AdmitResources` | `ResourceAdmissionRequest` → `AdmissionResult` | 只读/由原Owner管理 | provider资源能力与实际执行容量准入；Serve路由由Serve独立核验；不能静默换provider或降能力 |
 | 4 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；bff→resource_catalog / `ResourceCatalogProductService.CreateQuote` | `CreateQuoteRpcRequest` → `Quote` | resource_catalog.quotes, resource_catalog.quote_items | purpose/kind/金额符号与DB完全同词；总额=sum正项-credit；pending/缺政策拒绝，不能零价兜底 |
 
 **终点**：客户能看到同一quote的金额、单月周期、有效期和数据规则
@@ -372,14 +372,13 @@ worker按固定recipe调用BuildKit与Registry exporter；不是新的构建框�
 | 7 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→fabric / `FabricCoordination.EnsureResources` | `EnsureResourcesCommand` → `Operation` | fabric.resources, fabric.resource_sets, fabric.attachments | 批准预付资源与Workspace/原请求exact匹配；unknown查原provider动作，不重购 |
 | 8 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；runtime_control→fabric / `FabricCoordination.BindSecret` | `SecretBindingCommand` → `SecretBindingReadback` | fabric.secret_bindings | 完整发布描述指定的Secret引用实际注入；不把Gateway Key当任意环境变量公开 |
 | 9 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→serve / `ServeAgentCoordination.Deploy` | `RuntimeDeployCommand` → `RuntimeReadback` | serve.agent_runtime_actions | 完整DeploymentDescriptor送执行层并实际ready；非就绪不开放入口 |
-| 10 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；serve→serve / `ServeAccessControl.FenceRouteEpoch` | `FenceRouteEpochCommand` → `RouteReadback` | serve.access_bindings, serve.access_switches | provider conditional revision确认新epoch；未知旧switch先读回，不抢占 |
-| 11 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；serve→serve / `ServeAccessControl.ActivateRoute` | `RouteActivateCommand` → `RouteReadback` | serve.access_bindings, serve.access_switches | epoch/revision/target精确，provider实际路由确认；旧epoch/旧revision拒绝，丢响应ObserveRoute |
+| 10 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；serve→serve / `ServeAccessControl.FenceRouteEpoch` | `FenceRouteEpochCommand` → `RouteReadback` | serve.access_bindings, serve.access_switches | Serve本地CAS确认新epoch，target/generation不变；未知旧switch先读回，不抢占 |
+| 11 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；serve→serve / `ServeAccessControl.ActivateRoute` | `RouteActivateCommand` → `RouteReadback` | serve.access_bindings, serve.access_switches | epoch/generation/target精确，Serve本地CAS/readback确认；旧epoch拒绝，丢响应ObserveRoute |
 | 12 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→ledger / `LedgerCoordination.AppendReceipt` | `AppendReceiptRequest` → `Receipt` | ledger.receipts | 返回receipt身份，另ReadReceiptByReference核对原输入；同idempotency key读回，不填假Workspace或重写receipt |
 
-**终点**：Serve本域CAS active Deployment/访问generation后，receipt核对；客户可打开当前Agent
+**终点**：Serve本域CAS active Deployment/访问generation后，receipt核对；客户可打开当前应用
 
-Serve的active Deployment、readiness和access binding是Agent交付权威；Fabric只提供
-基础设施资源与执行读回，Workspace只提供授权、权益和资源计划事实，没有跨库原子提交幻觉。
+Serve的active Deployment、readiness和access binding是当前应用交付权威；Fabric仅有资源事实，Workspace仅有授权和业务目标，没有跨库原子提交幻觉
 
 ### F09 使用、模型配置与应用登录
 
@@ -390,8 +389,10 @@ Serve的active Deployment、readiness和access binding是Agent交付权威；Fab
 | 1 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→tenant / `CloudIdentityAuthorization.AuthorizeAction` | `AuthorizationRequest` → `AuthorizationDecision` | 只读/由原Owner管理 | session/grant/action/resource/audience/权限版本确切一致；deny不改用管理员；unknown不发后续副作用 |
 | 2 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；bff→workspace / `ServeProductService.GetWorkspaceAccess` | `GetWorkspaceAccessRpcRequest` → `WorkspaceAccess` | 只读/由原Owner管理 | 当前部署/访问策略和运行事实一致；按canonical应用登录，不新增SSO |
 | 3 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；bff→workspace / `WorkspaceProductService.RevealWorkspaceApplicationCredentials` | `RevealWorkspaceApplicationCredentialsRpcRequest` → `WorkspaceApplicationCredentials` | 只读/由原Owner管理 | 所有者权限+当前声明workspace_admin_password+实际ready，只一次性用户名/密码；no-store不缓存；不返回GatewayKey或session_secret |
-| 4 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→serve / `ServeAgentCoordination.ReloadModels` | `RuntimeReloadCommand` → `Operation` | serve.agent_runtime_actions | 目标配置版本+selections实际应用；保存成功不等于reload成功 |
-| 5 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；serve→serve / `ServeRuntimeAdapter.ObserveRuntime` | `RuntimeReadbackRequest` → `RuntimeReadback` | 只读/由原Owner管理 | appliedVersion和选择相同，运行状态真实；unknown显示应用中/待核实，不覆盖已确认配置 |
+| 4 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→gateway / `GatewayCoordination.CreateManagedKey` | `ManagedKeyCommand` → `ManagedKeyBinding` | gateway.key_bindings | exact Workspace/runtime/model set；仅返回opaque binding与Secret delivery reference；不返回明文Key；unknown按Gateway action readback处理，不盲建第二Key |
+| 5 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→fabric / `FabricCoordination.BindSecret` | `SecretBindingCommand` → `SecretBindingReadback` | fabric.secret_bindings | Gateway返回的opaque Secret reference实际绑定到目标runtime并读回confirmed version；unknown不进入Serve；不把Gateway Key当任意环境变量公开 |
+| 6 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→serve / `ServeAgentCoordination.ReloadModels` | `RuntimeReloadCommand` → `Operation` | serve.agent_runtime_actions | 目标配置版本+selections及opaque RuntimeManagedKeyBinding实际应用；Serve不铸造Gateway Key；保存成功不等于reload成功 |
+| 7 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；serve→serve / `ServeRuntimeAdapter.ObserveRuntime` | `RuntimeReadbackRequest` → `RuntimeReadback` | 只读/由原Owner管理 | appliedVersion和选择相同，运行状态真实；unknown显示应用中/待核实，不覆盖已确认配置 |
 
 **终点**：打开真实应用；模型实际生效；应用管理员凭据仅在既有授权reveal路径一次性显示
 
@@ -403,10 +404,10 @@ Serve的active Deployment、readiness和access binding是Agent交付权威；Fab
 |---:|---|---|---|---|
 | 1 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→tenant / `CloudIdentityAuthorization.AuthorizeAction` | `AuthorizationRequest` → `AuthorizationDecision` | 只读/由原Owner管理 | session/grant/action/resource/audience/权限版本确切一致；deny不改用管理员；unknown不发后续副作用 |
 | 2 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→capability / `CapabilityCoordination.ResolvePublisherContract` | `ResolvePublisherContractRequest` → `ResolvedPublisherContract` | 只读/由原Owner管理 | 目标版本完整契约与数据兼容；不支持安全回滚的迁移拒绝，不猜semver |
-| 3 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；serve→serve / `ServeAccessControl.FenceRouteEpoch` | `FenceRouteEpochCommand` → `RouteReadback` | serve.access_switches, serve.access_bindings | 新epoch先在provider确认；旧未知切换不被强行覆盖 |
+| 3 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；serve→serve / `ServeAccessControl.FenceRouteEpoch` | `FenceRouteEpochCommand` → `RouteReadback` | serve.access_switches, serve.access_bindings | 新epoch先在Serve owner内确认；旧未知切换不被强行覆盖 |
 | 4 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→serve / `ServeAgentCoordination.Deploy` | `RuntimeDeployCommand` → `RuntimeReadback` | serve.agent_runtime_instances, serve.agent_runtime_actions | 新实例实际验证且不违反可写卷并发限制；保留旧选中版本/原数据义务 |
-| 5 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；serve→serve / `ServeAccessControl.ActivateRoute` | `RouteActivateCommand` → `RouteReadback` | serve.access_switches, serve.access_bindings | 新target/provider revision确认；丢响应原switch读回 |
-| 6 | 新部署明确失败且旧数据/路由允许安全回滚；serve→serve / `ServeAccessControl.RollbackRoute` | `RouteRollbackCommand` → `RouteReadback` | serve.access_switches, serve.access_bindings | 原目标+原switch证据+当前expected generation可核对；不能仅改DB指针称回滚成功 |
+| 5 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；serve→serve / `ServeAccessControl.ActivateRoute` | `RouteActivateCommand` → `RouteReadback` | serve.access_switches, serve.access_bindings | 新target通过Serve本地CAS确认；丢响应按原switch读回 |
+| 6 | 新部署明确失败且旧数据/路由允许安全回滚；serve→serve / `ServeAccessControl.RollbackRoute` | `RouteRollbackCommand` → `RouteReadback` | serve.access_switches, serve.access_bindings | 原目标+原switch身份+当前expected generation可核对；不能仅改Deployment字段称回滚成功 |
 
 **终点**：一个确认选中部署，无重复购买；失败时旧运行结果有实际证据
 

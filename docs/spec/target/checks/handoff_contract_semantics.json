@@ -126,11 +126,7 @@
       "pass": true
     },
     {
-      "case": "R05 revision exact/absence discriminated",
-      "pass": true
-    },
-    {
-      "case": "R05 wildcard mixed with absence rejected",
+      "case": "R05 external route precondition retired",
       "pass": true
     },
     {
@@ -150,7 +146,27 @@
       "pass": true
     },
     {
-      "case": "R05 current generation/epoch/provider revision readback typed",
+      "case": "R05 Serve-owned revision precondition FenceRouteEpochCommand",
+      "pass": true
+    },
+    {
+      "case": "R05 Serve-owned revision precondition RouteActivateCommand",
+      "pass": true
+    },
+    {
+      "case": "R05 Serve-owned revision precondition RouteRollbackCommand",
+      "pass": true
+    },
+    {
+      "case": "R05 Serve-local revision and switch readback typed",
+      "pass": true
+    },
+    {
+      "case": "R05 local absence/exact revision typed",
+      "pass": true
+    },
+    {
+      "case": "R05 external provider fields rejected",
       "pass": true
     },
     {

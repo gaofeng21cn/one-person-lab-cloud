@@ -72,7 +72,7 @@ the installation contract those steps consume
 | --- | --- | --- |
 | The instance manifest still installs only the legacy three services | Instance repository owner | Extend `deploy/tke/opl-cloud.k8s.json` to the full owner set from the Cloud-owned declaration and redeploy there |
 | The exact-SHA Candidate needs the owner-gated dispatch | repository owner | Dispatch `build-opl-cloud-candidate.yml` with the exact Cloud commit and record the index digest |
-| Serve has no production `RouteProvider`, so no Agent URL is ever confirmed | product owner / installation owner | Freeze the I06/I07 boundary decision already reported, then Serve implements its provider and Deploy orchestration |
+| Cloud PR #706 has the Serve access entry, binding CAS, and approved `route_revision`/`switch_id` identity migration, but is unmerged; live access callers remain on Control Plane and Instance/TKE qualification is absent | Serve owns route binding, access entry and local generation/epoch/revision CAS; Instance owns stable Ingress/DNS/TLS | Merge/qualify the exact PR source after focused migration checks; route stable Instance Ingress to Serve; move live callers and retire Control Plane route resolution/proxy with no fallback. Verify real TKE requests reach the confirmed target for default App and Agent |
 
 ### Tencent/TKE Primary Delivery Outcome (2026-09-29)
 
@@ -93,9 +93,11 @@ combinations (default-App reserve/deploy/access; built-Agent from its selection)
 Cloud Qualification is green on canonical main, including the real Linux
 first-Local-application-deployment job. This closes the contract-readiness gap,
 not the product outcomes below: the default-App and Agent rows still require the
-same Candidate, Instance runtime evidence and the frozen I06/I07/I08 external
-contracts before their end-to-end acceptance. Do not treat current CI as
-acceptance of the new product combinations.
+same Candidate and Instance runtime evidence before their end-to-end acceptance.
+The Serve route-owner decision is adopted in `docs/decisions.md`; I07 has an
+unmerged Cloud source implementation in PR #706, while I06/I08 and the route
+wire/schema/caller/Instance migration remain open. No route-owner choice is pending.
+Do not treat current CI as acceptance of the new product combinations.
 
 | Open outcome | Existing owner/work package | Completion evidence |
 |---|---|---|

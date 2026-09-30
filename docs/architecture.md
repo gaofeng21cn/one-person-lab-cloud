@@ -370,6 +370,19 @@ Serve's explicit, data-compatible replacement path without repurchasing the
 Workspace. A Runtime change rebuilds an Agent but selects a new approved release
 for a default App; neither happens automatically.
 
+Model configuration follows the same owner separation. Workspace owns the
+accepted selections, configuration version and the opaque
+`gateway_key_binding_id`; Gateway Integration owns managed-key issuance,
+model allowlists, secret-delivery references and revocation; Fabric owns the
+Secret binding/readback; Serve owns publisher apply/readback and runtime
+readiness. `WorkspaceProductService.UpdateWorkspaceModels` must first obtain a
+confirmed `ManagedKeyBinding` from `GatewayCoordination.CreateManagedKey`, then
+bind the returned Secret reference through `FabricCoordination.BindSecret`, and
+only then call Serve with an internal `RuntimeManagedKeyBinding`. Serve never
+mints a Gateway key and no caller-supplied binding is trusted. The applied
+Workspace version advances only after Serve reports the application-read
+version through the owner-local operation/CAS path.
+
 The historical `resource_only` Launch retains its existing purchase obligations
 and completion criteria. It is not the default App product and is not silently
 converted. The September 29 decision is adopted intent; the source selection
@@ -521,12 +534,14 @@ then retain their normal origin semantics. Compatible updates to that applicatio
 may retain its origin; switching to an unrelated application gets a new origin
 so the old application's service worker or browser storage cannot control the
 replacement. The stable Console entry may redirect to the current origin.
-Instance owns DNS/TLS; the current Control Plane proxy can implement the access
-boundary without first introducing a new routing service. Preserve the
-external Host/scheme through a trusted proxy boundary, constrain cookie scope,
-and isolate application origins from Console authentication. Existing path-based
-entries require a deliberate compatibility migration, not HTML or cookie-name
-rewriting for each application.
+Instance owns the stable DNS/TLS and Ingress that forwards Workspace application
+origins to Serve's access entry. Serve owns the route binding and the access data
+plane that resolves the confirmed binding and proxies to its admitted, ready
+application target. Preserve the external Host/scheme through a trusted proxy
+boundary, constrain cookie scope, and isolate application origins from Console
+authentication. Existing path-based Control Plane entries require a deliberate
+caller migration and retirement, not HTML or cookie-name rewriting for each
+application.
 
 The binding origin is derived from the binding identity rather than allocated,
 so it needs no distribution table and no second writer. Its name carries the
@@ -647,7 +662,7 @@ meaning and do not prescribe new wire enums or database columns.
 | Workspace entitlement and target authorization | Workspace aggregate | Whether delivery is allowed and which resource plan/Workspace is the target; not which Agent deployment is current. |
 | Current application and deployment history | Serve | The single current deployment and all accepted/replacement deployment operations for a Workspace. |
 | Runtime release catalog | Runtime Control | Which immutable Runtime releases Build may use for new OCI artifacts. |
-| Observed Agent readiness and Serve route | Serve readback | Whether the selected OCI is running and reachable through Serve. |
+| Observed Agent readiness and Serve route | Serve readback | Whether the selected OCI is running and reachable through Serve; Serve's access data plane reads the same Serve-owned route binding. |
 | Provisioned infrastructure resources | Fabric readback | Which compute/storage/network resources exist and their provider state. |
 | Operation and evidence completion | Owning durable operation and Ledger receipt readback | Whether provisioning, deployment or restore completed and whether its result was recorded. |
 
@@ -721,6 +736,13 @@ Workspace retains only the business authorization and resource entitlement.
 Each external mutation rechecks its applicable authorization and resource
 binding; a preview is not a permanent capacity or entitlement grant.
 
+Serve also owns the per-Workspace route binding and its access data plane. The
+binding in Serve's database is the sole current-target authority; Serve commits
+route generation/epoch changes locally and its access handler reads that same
+committed binding. The stable Instance Ingress forwards traffic to Serve and is
+not changed for application deployments. Control Plane's current proxy is a
+migration source only and must be retired after its live callers move.
+
 Fabric prepares only the admitted resource/data/Secret bindings, runs an
 explicit restore when selected, and applies the declared component group.
 Provider capabilities translate that request to Kubernetes or Docker and read
@@ -783,7 +805,7 @@ command names above do not claim that corresponding types already exist.
 | --- | --- | --- |
 | Control Plane domain and repositories | `services/control-plane/internal/domain/`, `internal/controlplane/`, `ent/schema/`, `internal/server/workspace_store.go` and `ent_state_store_workspace.go` | Cohesive owner-local domain rules and application services for the live use case; the current Workspace projection and thin delegates do not themselves establish these layers. Ent/store adapters implement typed persistence and atomic reservation/activation. Keep actual provider state out. |
 | Control Plane current orchestration entrypoints | `workspace_launch_fabric_stages.go`, `workspace_launch_activation.go`, `workspace_runtime_image_replacement.go`, `workspace_image_release_policy.go`, `workspace_renewal.go`, `workspace_delete.go` under `services/control-plane/internal/server/` | Migration source only: move new Agent admission/deployment callers to Workspace/Serve owners; preserve old Launch contracts and separate historical purchase proof from current Agent proof. Retire the old deployment/current-selection writer after the real callers move. |
-| Control Plane access and clients | `services/control-plane/internal/server/workspace_gateway.go`, `routes_workspace.go`, `internal/clients/` | Authenticate management operations; apply the chosen application exposure policy and preserve application login/session behavior. Use current Fabric entry/Secret bindings instead of the original Launch's Runtime; map typed cross-owner results. |
+| Control Plane access and clients | `services/control-plane/internal/server/workspace_gateway.go`, `routes_workspace.go`, `internal/clients/` | Authenticate management operations and map typed cross-owner results. Its Workspace application proxy/current-route resolution is retained migration-source behavior and is retired after live access callers move to Serve; it is not a parallel route reader or fallback. |
 | Fabric resource fulfillment | `services/fabric/internal/fabric/workspace_launch_stage_engine.go`, `workspace_launch_stage.go`, `internal/http/server.go`, capability ports and owner stores; CP client `services/control-plane/internal/clients/fabric_workspace_launch.go` | Resource-only preflight, typed input/integrity, persistence/decoder and compute/storage/attachment execution/readback move together. Image admission applies to application execution; the new resource contract cannot inherit the old required-image check. |
 | Fabric Runtime | `services/fabric/internal/fabric/provider_port.go`, `workspace_runtime_read_engine.go`, `workspace_runtime_image_replacement.go`, `tencent_provider.go`, `tencent_provider_runtime.go`, `local_docker_runtime.go` and owner stores | Declared component-group creation, readback, power/deletion, general Secret binding and bounded restore execution. Manifest generation and authoritative validation change together; dependency digests participate in retention/cleanup. |
 | Contracts | `packages/contracts/go/`, the current Workspace Runtime ABI and image-release contracts | Versioned deployment/entry/resource observation DTOs and integrity bindings consumed by both services; preserve retained request identities and migrate consumers together. No shared ORM entities or business reducers. |

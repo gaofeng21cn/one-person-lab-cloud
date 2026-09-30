@@ -45,11 +45,14 @@ check('R04 ambiguous scope rejected',rejects_proto(pb.AuthorizationScope,{'platf
 check('R04 role self-assertion absent from request',rejects_proto(pb.AuthorizationRequest,{'actorId':'u1','role':'owner'}))
 check('R04 audience typed and action closed',rejects_proto(pb.AuthorizationRequest,{'action':'ARBITRARY_ADMIN_ACTION'}))
 check('R04 no invented AppSSO service','CloudIdentityApplicationAccess' not in pb.DESCRIPTOR.services_by_name)
-exact=ParseDict({'exactRevision':'rv7'},pb.ProviderRevisionPrecondition());absent=ParseDict({'requireAbsent':{'receiptId':'abs1','observedAt':'2026-09-21T00:00:00Z'}},pb.ProviderRevisionPrecondition())
-check('R05 revision exact/absence discriminated',exact.WhichOneof('condition')=='exact_revision' and absent.WhichOneof('condition')=='require_absent')
-check('R05 wildcard mixed with absence rejected',rejects_proto(pb.ProviderRevisionPrecondition,{'exactRevision':'rv7','requireAbsent':{'receiptId':'abs1'}}))
+check('R05 external route precondition retired','ProviderRevisionPrecondition' not in pb.DESCRIPTOR.message_types_by_name and 'ConfirmedRouteAbsence' not in pb.DESCRIPTOR.message_types_by_name and 'RouteRevisionPrecondition' in pb.DESCRIPTOR.message_types_by_name and 'RouteAbsence' in pb.DESCRIPTOR.message_types_by_name)
 for method in ['FenceRouteEpoch','ActivateRoute','ObserveRoute','RollbackRoute']:check('R05 concrete route RPC '+method,method in pb.DESCRIPTOR.services_by_name['ServeAccessControl'].methods_by_name)
-check('R05 current generation/epoch/provider revision readback typed',all(f in pb.RouteReadback.DESCRIPTOR.fields_by_name for f in ['current_generation','accepted_execution_epoch','provider_revision','target_execution_resource_id']))
+for name in ['FenceRouteEpochCommand','RouteActivateCommand','RouteRollbackCommand']:
+ fields=getattr(pb,name).DESCRIPTOR.fields_by_name
+ check('R05 Serve-owned revision precondition '+name,'revision_precondition' in fields and 'provider_precondition' not in fields and 'expected_accepted_execution_epoch' not in fields)
+check('R05 Serve-local revision and switch readback typed',all(f in pb.RouteReadback.DESCRIPTOR.fields_by_name for f in ['current_generation','accepted_execution_epoch','switch_id','route_revision','target_execution_resource_id']) and 'provider_revision' not in pb.RouteReadback.DESCRIPTOR.fields_by_name and 'provider_command_id' not in pb.RouteReadback.DESCRIPTOR.fields_by_name)
+check('R05 local absence/exact revision typed',all(f in pb.RouteRevisionPrecondition.DESCRIPTOR.fields_by_name for f in ['exact_revision','require_absent']))
+check('R05 external provider fields rejected',rejects_proto(pb.RouteActivateCommand,{'providerPrecondition':{'exactRevision':'rv7'}}) and rejects_proto(pb.RouteReadback,{'providerRevision':'rv7'}))
 apiops={o['operationId']:o for item in api['paths'].values() for o in item.values()}
 check('R07 reenable independent of restore',apiops['reenableTenant']['x-operation-kind']=='reenable_tenant' and apiops['restoreTenant']['x-operation-kind']=='restore_tenant')
 check('R07 reenable includes bounded Workspace resumption','workspace_resumption' in sc['Operation']['x-stage-values']['reenable_tenant'])
