@@ -49,10 +49,17 @@ legacy, not the default product.
 
 **Business scope and executable contract readiness are different.** The approved
 field migration is recorded in target specification 03
-(`x-approved-wire-migration`) and 02 section 0. Current production decoders,
-SQL/proto, events, claims and consumers do not yet implement it. Start directly
-at `W01.application-contracts`; do not treat historical handoff READY or current
-CI as acceptance of the new product combinations.
+(`x-approved-wire-migration`) and 02 section 0. The one typed selection union is
+now implemented across the real owner consumers: contracts/SQL/proto, Resource
+Catalog quotes, Workspace launch/accept/runtime, and Serve reserve/deploy all
+carry the explicit `opl_app`/`agent` selection, and Serve's own store proves both
+combinations (default-App reserve/deploy/access; built-Agent from its selection).
+Cloud Qualification is green on canonical main, including the real Linux
+first-Local-application-deployment job. This closes the contract-readiness gap,
+not the product outcomes below: the default-App and Agent rows still require the
+same Candidate, Instance runtime evidence and the frozen I06/I07/I08 external
+contracts before their end-to-end acceptance. Do not treat current CI as
+acceptance of the new product combinations.
 
 | Open outcome | Existing owner/work package | Completion evidence |
 |---|---|---|
