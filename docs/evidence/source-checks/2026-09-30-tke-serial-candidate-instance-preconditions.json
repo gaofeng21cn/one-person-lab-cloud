@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_serial_candidate_instance_preconditions_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T13:25:00Z",
+  "result": "the_exact_owner_and_ref_preconditions_for_candidate_and_instance_deployment_are_recorded_not_bypassed",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 7/8 - Candidate and Instance deployment preconditions",
+  "sourceBaseSha": "5db5424f3090fb2246cc843ad69372bf7a13968a",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.7",
+  "scope": "Read-only confirmation of the exact dispatcher/ref/environment preconditions that gate the Candidate build and the Instance deployment, so the remaining external dependency is precise. No source change; no bypass attempted.",
+  "findings": [
+    {
+      "id": "cloud-candidate-gate",
+      "fact": "gaofeng21cn/one-person-lab-cloud .github/workflows/build-opl-cloud-candidate.yml job guard is `github.ref == 'refs/heads/main' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner`. A dispatch by the write collaborator RenDeHuang (run 36650150455, product_sha=2dcd7e81) completed 'skipped'.",
+      "consequence": "The Candidate build requires the repository-owner identity (gaofeng21cn) to dispatch it from main."
+    },
+    {
+      "id": "instance-deploy-gate",
+      "fact": "gaofeng21cn/opl-instance-medopl .github/workflows/deploy.yml admits `... github.actor == 'RenDeHuang' ...` only on `github.ref == 'refs/heads/main'`, with `environment: production`. The Instance default branch is main; the local Instance checkout is on a dirty feature branch and must not be reset. preflight.yml and qualification-decision.yml also require ref main and environment production.",
+      "consequence": "Instance deployment requires the Instance repository's protected main with the production environment, and a qualified Candidate bound to the same product SHA. The required Candidate is the one gated by the owner above."
+    },
+    {
+      "id": "dependency-order",
+      "fact": "The Instance workflow inputs bind a `candidate_receipt` (the Candidate bundle) whose product SHA must match the deployed Cloud image.",
+      "consequence": "Stage 8 cannot start until Stage 7 produces the Candidate; both depend on the owner dispatch and the Instance protected main."
+    }
+  ],
+  "notRun": [
+    "Candidate build and Instance deployment (blocked by the owner/protected-ref preconditions above).",
+    "The frozen I06/I07/I08 external contracts."
+  ],
+  "claimBoundary": "This receipt records the exact external preconditions for Stage 7/8; it claims no Candidate, no deployment and no bypass of any branch or environment gate.",
+  "secrets": "none"
+}
