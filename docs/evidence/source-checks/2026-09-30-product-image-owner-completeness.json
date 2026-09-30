@@ -1,0 +1,100 @@
+{
+ "schemaVersion": 1,
+ "receiptType": "opl_cloud_product_image_owner_completeness_source_check",
+ "revision": 1,
+ "recordedAt": "2026-09-30T03:19:58Z",
+ "result": "the_product_image_contract_now_asserts_every_owner_binary_its_deployment_can_select",
+ "window": "serial",
+ "windowTitle": "Serial integration stage 7 - product image owner completeness",
+ "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.7",
+ "necessity": {
+  "decision": "Instance selects which owner processes to run from the single portable product image. If the image stops building one owner, the installation cannot start that capability even though every source test still passes. The image therefore needs an asserted owner-completeness contract, and this change adds it. It changes no runtime behavior.",
+  "currentProblem": "tests/production/tke-control-plane-image.test.ts only asserted opl-control-plane, opl-fabric and opl-ledger, and tests/production is not run by any workflow. The seven target owners built in the publisher lane (capability, build, runtime-control, workspace, resource-catalog, serve, gateway-integration) and the Console BFF had no gating assertion, so one dropped from the `for service in ...` loop would silently ship an image that cannot run that owner.",
+  "confirmedFacts": [
+   "Dockerfile builds opl-control-plane, opl-fabric and opl-ledger in their own stages and the rest in the publisher-build lane via `for service in capability build runtime-control workspace resource-catalog serve gateway-integration`.",
+   "Every one of those services and apps/console-bff has a cmd/server/main.go entrypoint.",
+   "tests/contracts/*.test.ts runs under npm run test:source, which npm run verify:local and the Pull Request CI validate job execute; tests/production/*.test.ts is not referenced by any workflow."
+  ],
+  "mustStaySeparate": [
+   "A build assertion proves the image contains a binary; it does not prove an owner runs, is admitted, or works. Deployment and runtime readback remain Instance evidence.",
+   "The test derives its owner set from the repository layout, so it tracks the source tree instead of freezing a copied list.",
+   "The three legacy control services keep their own asserted stages; this does not merge them into the publisher lane."
+  ],
+  "minimalImplementation": [
+   "Add tests/contracts/product-image-owners.test.ts, which derives services/*/cmd/server as the owner set, asserts the publisher lane builds each non-dedicated owner and the Console BFF, and asserts the runtime stage copies the binaries.",
+   "Keep the existing dedicated-stage assertions for control-plane, fabric and ledger, now gated by npm run verify:local."
+  ],
+  "whyNotAlternative": [
+   "Asserting literal binary names would drift from the loop; reading the services tree keeps the check aligned with the source that defines the owners.",
+   "Placing the check in tests/production would leave it unexecuted in CI, which is where a dropped owner must be caught."
+  ]
+ },
+ "ssotConformance": [
+  {
+   "ssot": "docs/spec/target/14_implementation_work_packages.md#9.2 W27.runnable-candidate",
+   "requirement": "写集含 `Dockerfile`；验收「镜像内可执行工具...无latest漂移」",
+   "conformance": "The image contract now proves every owner the deployment can select has an executable built from source, not from a mutable tag."
+  },
+  {
+   "ssot": "docs/spec/target/14_implementation_work_packages.md#11.7",
+   "requirement": "「补...所需owners/DB/roles/mTLS、BuildKit隔离、COS/TCR Secret引用和Serve路由配置」；验收「镜像内CLI/插件/entrypoint检查」",
+   "conformance": "This is the entrypoint/binary half of the image acceptance, asserted from the source tree."
+  },
+  {
+   "ssot": "docs/invariants.md#release-and-production",
+   "requirement": "「Publication and deployment bind exact source commits, image digests... A build or test result proves only its own layer.」",
+   "conformance": "The contract claims only that the image builds the owner binaries; the receipt's claimBoundary keeps it at the source layer and defers running/deployment to Instance evidence."
+  },
+  {
+   "ssot": "docs/invariants.md#evidence-levels",
+   "requirement": "「code-complete means the exact source revision passed its required local source... gates with no required skips.」",
+   "conformance": "The new contract runs in npm run verify:local and the Pull Request CI validate job with no skips."
+  }
+ ],
+ "acceptance": [
+  "npm run verify:local passes with the new contract test.",
+  "Removing any owner from the publisher-build loop fails the test.",
+  "Removing a COPY from the runtime stage fails the test."
+ ],
+ "endState": "Complete for the Cloud-owned image owner-completeness contract. Building, publishing and running the image, and the protected Instance installation, remain external obligations.",
+ "ownerWriteSet": [
+  "tests/contracts/product-image-owners.test.ts",
+  "docs/status.md"
+ ],
+ "ownerServicesDerivedFromSource": [
+  "build",
+  "capability",
+  "gateway-integration",
+  "resource-catalog",
+  "runtime-control",
+  "serve",
+  "workspace"
+ ],
+ "evidenceSources": {
+  "Dockerfile": "c166e5387b0030f6326b96296fd181f2b9e1d28455832cd97c14a3f1c9a37e8d",
+  "tests/contracts/product-image-owners.test.ts": "8275803cdb55bb04c7517dccb9828bbb35fd01562d9fcc6f79cd604f17725a9f"
+ },
+ "verification": [
+  {
+   "command": "node --test tests/contracts/product-image-owners.test.ts",
+   "result": "pass",
+   "detail": "Both assertions pass against the current Dockerfile."
+  },
+  {
+   "command": "node --test \"tests/contracts/*.test.ts\"",
+   "result": "pass",
+   "detail": "16 contract tests pass."
+  },
+  {
+   "command": "npm run test:ownership && npm run validate:product-boundary",
+   "result": "pass",
+   "detail": "Test ownership and product boundary are valid."
+  }
+ ],
+ "notRun": [
+  "Docker image build (auth.docker.io and registry-1.docker.io timed out from this host; the product base images cannot be pulled).",
+  "Candidate build (owner-actor dispatch) and Instance deployment."
+ ],
+ "claimBoundary": "This receipt claims the product image contract now asserts every owner binary the deployment can select, verified by a contract test that runs in verify:local and Pull Request CI. It claims no built image, no running owner, no Candidate and no Instance receipt.",
+ "secrets": "none"
+}
