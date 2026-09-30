@@ -184,7 +184,22 @@
     "OPL_LEDGER_ADDR",
     "OPL_LEDGER_TOKEN",
     "OPL_RUNTIME_CONTROL_ADDR",
-    "OPL_RUNTIME_CONTROL_TOKEN"
+    "OPL_RUNTIME_CONTROL_TOKEN",
+    "OPL_SERVE_ACCESS_ADDR",
+    "OPL_PUBLIC_URL",
+    "OPL_WORKSPACE_DOMAIN",
+    "OPL_WORKSPACE_APPLICATION_DOMAIN",
+    "OPL_K8S_NAMESPACE",
+    "TENCENT_DEPLOY_KUBECONFIG_REF",
+    "OPL_IMAGE_PULL_SECRET_NAME",
+    "OPL_AIONUI_ADMIN_PASSWORD_SEED",
+    "OPL_WORKSPACE_APPLICATION_INGRESS_PEERS",
+    "OPL_SYSTEM_COMPUTE_NODE_POOL_ID",
+    "OPL_SYSTEM_COMPUTE_MACHINE_ID",
+    "OPL_SYSTEM_COMPUTE_NODE_NAME",
+    "OPL_SYSTEM_COMPUTE_MACHINE_TYPE",
+    "OPL_SYSTEM_COMPUTE_CVM_ID",
+    "OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON"
    ],
    "optionalEnv": [],
    "externalEnv": [],
@@ -195,7 +210,9 @@
     "ServeAccessControl"
    ],
    "notes": [
-    "Sole writer of default-App and Agent deployment/readiness/access facts. OPL_WORKSPACE_DOMAIN and OPL_WORKSPACE_APPLICATION_DOMAIN are read from the environment by Serve's route-origin resolution, and no installation route provider (RouteProvider) is configured by any current environment variable."
+    "Sole writer of default-App and Agent deployment/readiness/access facts, and the owner of the Workspace route binding and its access data plane. OPL_SERVE_ACCESS_ADDR names the application entry Serve serves itself; OPL_PUBLIC_URL, OPL_WORKSPACE_DOMAIN and OPL_WORKSPACE_APPLICATION_DOMAIN are the installation's declared route origin for that entry. No installation route provider is configured by any environment variable: the route object is Serve's own access binding.",
+    "Serve owns application execution. A TKE installation declares its namespace, kubeconfig Secret reference, image-pull Secret, credential seed, the ingress peers allowed to reach a Workspace application, and the same protected-compute facts Fabric's provider is bounded by; Serve then applies, observes, scales and retires the workload itself.",
+    "OPL_FABRIC_APPLICATION_URL with its service token and capability key remains only for the provider whose in-process executor has not moved yet. An installation that declares both OPL_K8S_NAMESPACE and OPL_FABRIC_APPLICATION_URL is refused at startup, because that would be two writers for one workload."
    ]
   },
   {

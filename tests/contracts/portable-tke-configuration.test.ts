@@ -10,7 +10,7 @@ import YAML from "yaml";
 // restating their constants.
 
 async function protectedResourceFacts() {
-  const source = await readFile("services/fabric/internal/protectedresource/guard.go", "utf8");
+  const source = await readFile("services/internal/protectedresource/guard.go", "utf8");
   const fromEnv = source.slice(source.indexOf("func FromEnv()"), source.indexOf("func FromMap("));
   const names = [...fromEnv.matchAll(/"([A-Z][A-Z0-9_]*)"/g)].map((match) => match[1]);
   assert.ok(names.length > 0, "protectedresource.FromEnv must name the facts it reads");

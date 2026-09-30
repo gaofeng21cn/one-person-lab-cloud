@@ -7206,26 +7206,37 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
+// Serve owns the Workspace route. serve.access_bindings is the authoritative
+// current route and serve.access_switches records every conditional transition of
+// it; there is no external router, so the conditional revision compared here is
+// the binding's own last confirmed route revision (route_revision), never a
+// provider token. Instance DNS/TLS/Ingress is a stable hop to Serve's access
+// entry and is not a per-Workspace route writer.
 // Serve allocates execution_epoch and persists the delivery intent in one local
-// Serve transaction. Before any route mutation it confirms FenceRouteEpoch at
-// provider: router must CAS the
-// same object's metadata epoch+target using provider conditional revision. Merely
-// allocating a new epoch is NOT proof the external router has been fenced.
-// Fabric reserves a unique route switch (fence/activate/rollback), then executes
-// exact provider identity. unknown blocks new fences/switches; observe original ID.
-// First route requires provider_precondition.require_absent receipt and generation 0;
-// no empty revision means wildcard. Existing routes require exact_revision from
-// confirmed readback. require_absent is rejected if any route/provider revision exists.
-// Fence does not change route generation/target. Activate/rollback require current
-// accepted epoch and expected provider revision+generation; success increases route
-// generation by exactly one. Old provider requests after fence fail conditional CAS.
-// Serve commits the current deployment and route generation/epoch only after
-// confirmed exact target readback and its own current-intent CAS, then emits
-// selection evidence. Workspace supplies authorization and opaque target facts;
-// it does not store or commit a deployment pointer. Lost DB response resumes the
-// original Serve switch, never a new activation. Failed selection CAS leaves the
-// Serve intent needs_attention: authoritative readback, then complete the original
-// commit or explicitly fence+rollback. Never last-writer-wins.
+// Serve transaction. FenceRouteEpoch advances the binding's accepted epoch and
+// route revision while leaving its target and route generation unchanged, so a
+// stale epoch can never advance the route; merely allocating a new epoch is NOT a
+// fence.
+// A binding has at most one unresolved switch (requested or unknown). It exists
+// only when a writer was interrupted between recording and confirming, it blocks
+// every new switch for that binding, and it is resumed by reading back its
+// original switch_id. No later switch may preempt it and no expected revision can
+// lift the block.
+// The first route requires revision_precondition.require_absent at generation
+// zero, so the caller must have read the binding and found no confirmed route;
+// an existing route requires exact_revision from a confirmed readback. Activate
+// and rollback require the current accepted epoch plus the exact expected
+// revision and generation, and success advances the route generation by exactly
+// one. Serve's local conditional update refuses a stale epoch or an unmatched
+// revision, so a late request can never move the route.
+// Serve commits the current deployment and the route generation/epoch in the same
+// owner transaction as the confirmed switch, then emits selection evidence.
+// Workspace supplies authorization and opaque target facts; it does not store or
+// commit a deployment pointer. A lost response is resolved by observing the
+// original switch identity, never by allocating a new activation. A failed
+// selection CAS leaves the Serve intent needs_attention: authoritative readback,
+// then complete the original commit or explicitly fence+rollback. Never
+// last-writer-wins.
 type ServeAccessControlClient interface {
 	FenceRouteEpoch(ctx context.Context, in *FenceRouteEpochCommand, opts ...grpc.CallOption) (*RouteReadback, error)
 	ActivateRoute(ctx context.Context, in *RouteActivateCommand, opts ...grpc.CallOption) (*RouteReadback, error)
@@ -7285,26 +7296,37 @@ func (c *serveAccessControlClient) RollbackRoute(ctx context.Context, in *RouteR
 // All implementations must embed UnimplementedServeAccessControlServer
 // for forward compatibility.
 //
+// Serve owns the Workspace route. serve.access_bindings is the authoritative
+// current route and serve.access_switches records every conditional transition of
+// it; there is no external router, so the conditional revision compared here is
+// the binding's own last confirmed route revision (route_revision), never a
+// provider token. Instance DNS/TLS/Ingress is a stable hop to Serve's access
+// entry and is not a per-Workspace route writer.
 // Serve allocates execution_epoch and persists the delivery intent in one local
-// Serve transaction. Before any route mutation it confirms FenceRouteEpoch at
-// provider: router must CAS the
-// same object's metadata epoch+target using provider conditional revision. Merely
-// allocating a new epoch is NOT proof the external router has been fenced.
-// Fabric reserves a unique route switch (fence/activate/rollback), then executes
-// exact provider identity. unknown blocks new fences/switches; observe original ID.
-// First route requires provider_precondition.require_absent receipt and generation 0;
-// no empty revision means wildcard. Existing routes require exact_revision from
-// confirmed readback. require_absent is rejected if any route/provider revision exists.
-// Fence does not change route generation/target. Activate/rollback require current
-// accepted epoch and expected provider revision+generation; success increases route
-// generation by exactly one. Old provider requests after fence fail conditional CAS.
-// Serve commits the current deployment and route generation/epoch only after
-// confirmed exact target readback and its own current-intent CAS, then emits
-// selection evidence. Workspace supplies authorization and opaque target facts;
-// it does not store or commit a deployment pointer. Lost DB response resumes the
-// original Serve switch, never a new activation. Failed selection CAS leaves the
-// Serve intent needs_attention: authoritative readback, then complete the original
-// commit or explicitly fence+rollback. Never last-writer-wins.
+// Serve transaction. FenceRouteEpoch advances the binding's accepted epoch and
+// route revision while leaving its target and route generation unchanged, so a
+// stale epoch can never advance the route; merely allocating a new epoch is NOT a
+// fence.
+// A binding has at most one unresolved switch (requested or unknown). It exists
+// only when a writer was interrupted between recording and confirming, it blocks
+// every new switch for that binding, and it is resumed by reading back its
+// original switch_id. No later switch may preempt it and no expected revision can
+// lift the block.
+// The first route requires revision_precondition.require_absent at generation
+// zero, so the caller must have read the binding and found no confirmed route;
+// an existing route requires exact_revision from a confirmed readback. Activate
+// and rollback require the current accepted epoch plus the exact expected
+// revision and generation, and success advances the route generation by exactly
+// one. Serve's local conditional update refuses a stale epoch or an unmatched
+// revision, so a late request can never move the route.
+// Serve commits the current deployment and the route generation/epoch in the same
+// owner transaction as the confirmed switch, then emits selection evidence.
+// Workspace supplies authorization and opaque target facts; it does not store or
+// commit a deployment pointer. A lost response is resolved by observing the
+// original switch identity, never by allocating a new activation. A failed
+// selection CAS leaves the Serve intent needs_attention: authoritative readback,
+// then complete the original commit or explicitly fence+rollback. Never
+// last-writer-wins.
 type ServeAccessControlServer interface {
 	FenceRouteEpoch(context.Context, *FenceRouteEpochCommand) (*RouteReadback, error)
 	ActivateRoute(context.Context, *RouteActivateCommand) (*RouteReadback, error)

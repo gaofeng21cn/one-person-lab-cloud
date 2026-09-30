@@ -32,17 +32,12 @@ import (
 	contracts "opl-cloud/packages/contracts/go"
 )
 
-const (
-	// workspaceDomainEnv names the host the installation publishes Workspace
-	// entries under, for example the `/w/<workspaceId>/` route.
-	workspaceDomainEnv = "OPL_WORKSPACE_DOMAIN"
-	// publicURLEnv is the installation's own public address. Its scheme is the
-	// scheme every published entry uses, so the two cannot disagree.
-	publicURLEnv = "OPL_PUBLIC_URL"
-	// applicationOriginDomainEnv names the domain per-binding application origins
-	// live under. An installation that publishes none states no such domain.
-	applicationOriginDomainEnv = "OPL_WORKSPACE_APPLICATION_DOMAIN"
-)
+// The installation's route origin is read from three literal environment names so
+// the installation contract in deploy/portable/opl-cloud-owner-topology.json can
+// derive them from this file. The entry a customer's browser opens and the access
+// data plane that answers it are both served by Serve, so which domain and scheme
+// they use is an installation fact the instance owner declares, never an inference
+// Serve makes.
 
 // applicationOriginLabelLength keeps the derived application part short while
 // making an accidental collision between two applications of the same Workspace
@@ -67,9 +62,15 @@ type RouteOrigin struct {
 // is refused later, never guessed.
 func RouteOriginFromEnv() RouteOrigin {
 	return RouteOrigin{
-		Scheme:            originScheme(os.Getenv(publicURLEnv)),
-		WorkspaceDomain:   bareDomain(os.Getenv(workspaceDomainEnv)),
-		ApplicationDomain: bareDomain(os.Getenv(applicationOriginDomainEnv)),
+		// OPL_PUBLIC_URL: the installation's own public address; its scheme is the
+		// scheme every published entry uses, so the two cannot disagree.
+		Scheme: originScheme(os.Getenv("OPL_PUBLIC_URL")),
+		// OPL_WORKSPACE_DOMAIN: the host Workspace entries are published under, for
+		// example the `/w/<workspaceId>/` route.
+		WorkspaceDomain: bareDomain(os.Getenv("OPL_WORKSPACE_DOMAIN")),
+		// OPL_WORKSPACE_APPLICATION_DOMAIN: the domain per-binding application
+		// origins live under. An installation that publishes none states none.
+		ApplicationDomain: bareDomain(os.Getenv("OPL_WORKSPACE_APPLICATION_DOMAIN")),
 	}
 }
 
@@ -246,4 +247,46 @@ func resolveApplicationEntry(origin RouteOrigin, workspaceID, applicationID stri
 		return address, upstream, nil
 	}
 	return "", "", refuse(ReasonAppAccessUnavailable)
+}
+
+// ParseApplicationEntryHost reverses ApplicationEntryHost. It reads the
+// Workspace identity and the application label back out of the name, so the
+// access data plane resolves a request without a lookup table; the caller still
+// confirms the label against the binding's current target, because a name that
+// no longer matches belongs to a superseded application rather than to this one.
+func (o RouteOrigin) ParseApplicationEntryHost(host string) (workspaceID, applicationLabel string, ok bool) {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if parsed, _, err := net.SplitHostPort(host); err == nil {
+		host = parsed
+	} else if strings.Contains(host, ":") {
+		return "", "", false
+	}
+	host = strings.TrimSuffix(host, ".")
+	domain := strings.ToLower(strings.TrimSpace(o.ApplicationDomain))
+	if domain == "" || !strings.HasSuffix(host, "."+domain) {
+		return "", "", false
+	}
+	prefix := strings.TrimSuffix(host, "."+domain)
+	index := strings.LastIndex(prefix, "-")
+	if index <= 0 {
+		return "", "", false
+	}
+	workspaceID, applicationLabel = prefix[:index], prefix[index+1:]
+	if !dnsLabelValid(workspaceID) || len(applicationLabel) != applicationOriginLabelLength || !hexLabelValid(applicationLabel) {
+		return "", "", false
+	}
+	return workspaceID, applicationLabel, true
+}
+
+// hexLabelValid accepts the lowercase hex the origin label is composed of.
+func hexLabelValid(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, char := range value {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
+			return false
+		}
+	}
+	return true
 }
