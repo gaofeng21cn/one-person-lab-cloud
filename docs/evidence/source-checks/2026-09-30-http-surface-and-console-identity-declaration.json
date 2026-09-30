@@ -1,0 +1,119 @@
+{
+ "schemaVersion": 1,
+ "receiptType": "opl_cloud_http_surface_and_console_identity_declaration_source_check",
+ "revision": 1,
+ "recordedAt": "2026-09-30T05:48:39Z",
+ "result": "cloud_now_declares_every_owner_http_surface_source_derived_and_labels_the_image_with_the_console_identity_it_bakes",
+ "window": "serial",
+ "windowTitle": "Serial integration stage 8 - the browser-facing HTTP surface and the Console identity as installation facts (milestone M1 step 2)",
+ "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.7",
+ "milestoneM1": {
+  "objective": "Minimum real delivery of the default OPL App: the instance installs the complete Cloud owner topology, Cloud builds an exact-SHA Candidate, the instance deploys it, Serve reaches a confirmed route and URL on Tencent TKE, and a user opens the application.",
+  "stepDelivered": "The instance owner can now read, from Cloud, which process serves each HTTP surface and which Console surface the exact Candidate digest carries. Both were previously unstated, so extending the install manifest required guessing, and a Console could be installed against the wrong API surface without any fact saying so."
+ },
+ "necessity": {
+  "decision": "The Console is served from one origin and calls two different processes' APIs; the Console bundle's mode is baked into the image at build time and cannot be changed by a deployment. Neither fact was declared anywhere. The instance owner extending its manifest therefore had to infer the routing from source, and no installation consumer could tell which of the two Console identities an image digest carries. This change declares both as Cloud-owned, source-derived facts and puts the Console identity on the image itself, so the next install step is a read instead of an inference.",
+  "currentProblem": "deploy/portable/opl-cloud-owner-topology.json declared the owner processes, their addresses, databases and peers, but not a single HTTP surface. Which process serves /api/ versus /api/v2/ was stated only by each process's own route registration, and nothing in the product said that a browser-facing installation must route both to the same host. Separately, ARG VITE_CONSOLE_IDENTITY was declared only in the Dockerfile's build stage: the image carried a Console whose identity no consumer could read, and the identity decides whether the Console calls the Control Plane's /api surface or the Console BFF's /api/v2 surface. An installation pairing a cloud-identity Console with a topology that routes only /api gets a Console whose authentication cannot answer, and nothing failed closed on that mismatch.",
+  "confirmedFacts": [
+   "The registered HTTP surfaces are exactly: /api/ (control-plane), /api/v2/ (console-bff), /fabric/ (fabric), /ledger/ (ledger), /objects/ (capability), /healthz/ (console-bff, fabric, ledger) and /readyz/ (ledger). Deriving them requires distinguishing route registration from outbound client URLs: control-plane's Sub2API client also names /api/v1/... paths, which are not registered surfaces.",
+   "Every API path the Console source names lies under /api/ or /api/v2/, so those are the only browser-facing surfaces.",
+   "apps/console-ui/src/app/console-identity.ts reads import.meta.env.VITE_CONSOLE_IDENTITY; apps/console-ui/src/api/auth-api.ts and apps/console-ui/src/app/console-router.ts switch on it, so the identity decides the authentication surface and the exposed product surfaces.",
+   "The Dockerfile builds the Console bundle in the build stage with ARG VITE_CONSOLE_IDENTITY (default legacy) and copies the emitted dist into the runtime stage, so the identity is an image-level fact, not a deployment choice.",
+   "Container labels already use the opl.cloud.<fact> convention (opl.cloud.fabric-provider, opl.cloud.deployment-mode), so the Console identity label follows it.",
+   "The Candidate workflow reads an image config label already (org.opencontainers.image.revision), so labelling the identity gives every installation consumer a readback path."
+  ],
+  "mustStaySeparate": [
+   "Cloud declares its own HTTP surfaces and the identity its image carries. The instance owner still owns the cluster, its Ingress, TLS, DNS and the routing decision; this change routes nothing.",
+   "The image label is a readback of an existing build argument, not a second definition of the Console mode: the test asserts the build and runtime stages declare the same default and that the label names the same argument.",
+   "This change starts no process, builds no image, deploys nothing, buys nothing, and changes no owner's runtime behavior."
+  ],
+  "minimalImplementation": [
+   "deploy/portable/opl-cloud-owner-topology.json declares every registered HTTP surface with the processes that register it and whether a conforming installation routes the browser to it, plus the browser-routing requirement.",
+   "The same declaration adds consoleBundle: the build argument, its values, its default, the fact that it is baked at image build, the image label, and per-identity required API surfaces.",
+   "The Dockerfile runtime stage declares the same build argument the build stage uses and emits LABEL opl.cloud.console-identity, so the identity travels with the digest.",
+   "tests/contracts/owner-topology.test.ts derives the registered surfaces from the processes' own route registrations, reads the Console's own API path literals, and asserts both directions of the declaration plus the identity/digest agreement."
+  ],
+  "whyNotAlternative": [
+   "Deriving the routing from source at install time would keep a second reader of Cloud's HTTP contract outside Cloud.",
+   "Labelling the image without declaring the surfaces would leave the routing requirement unstated, so the same mismatch would still be installable.",
+   "Declaring the surfaces without a source-derived test would drift: the test distinguishes registration sites from outbound client URL literals, which is exactly the confusion that produced a wrong /api/v1/ read during this analysis.",
+   "Putting the identity in a deployment overlay is impossible: the bundle is baked at image build, so the fact must ride on the image."
+  ]
+ },
+ "ssotConformance": [
+  {
+   "ssot": "docs/spec/target/14_implementation_work_packages.md#11.7",
+   "requirement": "「补镜像内buildx、明确Console cloud模式、所需owners/DB/roles/mTLS、BuildKit隔离、COS/TCR Secret引用和Serve路由配置」",
+   "conformance": "The Console identity is now explicit, labelled on the image and declared together with every API surface a conforming installation must route; the owner set, databases and mTLS were declared in the previous change."
+  },
+  {
+   "ssot": "docs/invariants.md#release-and-production",
+   "requirement": "「Publication and deployment bind exact source commits, image digests, caller authority, and owner readback.」",
+   "conformance": "The identity a digest carries is now a readback the installer and any qualification consumer can bind to that digest, instead of an inferred property of the build context."
+  },
+  {
+   "ssot": "docs/architecture.md#repository-and-instance-topology",
+   "requirement": "「Console currently reaches service data through Control Plane APIs; the target browser entry is apps/console-bff.」",
+   "conformance": "The declaration names both the current /api surface and the BFF's /api/v2 surface, so a deployment can be routed for the identity it actually carries and the migration to the BFF entry is a declared routing change, not an inference."
+  },
+  {
+   "ssot": "docs/invariants.md#evidence-levels",
+   "requirement": "「code-complete means the exact source revision passed its required local source... gates with no required skips.」",
+   "conformance": "The new assertions run inside npm run test:source, and npm run verify:local is green on this revision."
+  }
+ ],
+ "acceptance": [
+  "The declaration names every HTTP surface the Cloud processes register, with the registering processes, and the test fails on any undeclared surface or wrong owner.",
+  "Every API path the Console source names is covered by a declared browser-facing surface, and each Console identity declares the surfaces it requires.",
+  "The Dockerfile declares ARG VITE_CONSOLE_IDENTITY in both stages with one default and labels the image with it; the test fails if the defaults drift or the label is removed.",
+  "Three independent probes each fail the suite: mis-attributing the /api/v2 surface, registering a new surface in source, and drifting the runtime-stage default."
+ ],
+ "endState": "Complete for the Cloud-owned declaration of its HTTP surfaces and its baked Console identity. Routing those surfaces in the installed topology, extending the Instance install manifest, dispatching the owner-gated Candidate build and freezing the I06/I07 route boundary remain external.",
+ "knownGaps": [
+  {
+   "id": "cloud-console-customer-workspace-read",
+   "fact": "apps/console-ui/src/api/workspaces-api.ts reads the customer Workspace list and detail from the Control Plane's /api/workspaces surface, and the identity switch covers only authentication, publisher and agent surfaces (apps/console-ui/src/app/console-identity.ts has no caller in the customer Workspace read path). A cloud-identity Console therefore creates a default-App Workspace through the Workspace owner's /api/v2 surface but lists it from the Control Plane's projection, which does not contain it.",
+   "consequence": "The Console cannot show a Workspace it just created until that read path switches to the owner surface. This is a Console/Console-BFF change, not an installation fact, so it is recorded here rather than in the machine declaration, which carries only stable inter-owner facts.",
+   "nextOwner": "Console/Console-BFF (this serial window)"
+  }
+ ],
+ "ownerWriteSet": [
+  "deploy/portable/opl-cloud-owner-topology.json",
+  "Dockerfile",
+  "tests/contracts/owner-topology.test.ts"
+ ],
+ "evidenceSources": {
+  "deploy/portable/opl-cloud-owner-topology.json": "7da3ce146123d9d86e7ac8e9e1d042b818e4ea963abb3de04b3122142645f118",
+  "Dockerfile": "c24d8cdc5b30fdef787ea97004e05fda0cbbdea5195c4cf01ce2f8c0260541d5",
+  "tests/contracts/owner-topology.test.ts": "65531564d54fce0120f751ca9d48fd9cc6f5bcb45ab0c04bb0f30624ac5b1d91"
+ },
+ "verification": [
+  {
+   "command": "node --test tests/contracts/owner-topology.test.ts",
+   "result": "pass",
+   "detail": "Nine assertions: owner entrypoints, non-ownerservice listen contracts, environment accounting, image owner coverage, template coverage, shared default address, HTTP surface completeness, Console call coverage, and Console identity agreement."
+  },
+  {
+   "command": "npm run test:source",
+   "result": "pass",
+   "detail": "260 tests pass, including the new assertions."
+  },
+  {
+   "command": "npm run verify:local",
+   "result": "pass",
+   "detail": "Full local gate is green on this revision."
+  },
+  {
+   "command": "three mutation probes",
+   "result": "pass",
+   "detail": "Mis-attributing the /api/v2 surface, registering a new source surface, and drifting the runtime-stage ARG default each fail the suite, so the assertions are not vacuous."
+  }
+ ],
+ "notRun": [
+  "No image build (Docker Hub is unreachable from this host) and no Candidate build (owner-actor dispatch).",
+  "No Instance install-manifest change, deployment, Tencent resource action or TKE readback.",
+  "No Console customer Workspace read migration to the owner surface (recorded as a known gap)."
+ ],
+ "claimBoundary": "This receipt claims the Cloud-owned HTTP-surface declaration and the Console-identity image label exist, are derived from source, are guarded by non-vacuous tests, and ship in the Candidate bundle's declaration asset. It claims no Candidate image, no deployment, no TKE readback and no Console behavior change.",
+ "secrets": "none"
+}
