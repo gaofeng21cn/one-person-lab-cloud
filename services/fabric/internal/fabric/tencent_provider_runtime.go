@@ -17,7 +17,7 @@ import (
 	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
-	"opl-cloud/services/fabric/internal/protectedresource"
+	"opl-cloud/services/internal/protectedresource"
 )
 
 func (p *TencentProvider) CreateWorkspaceRuntime(ctx context.Context, input WorkspaceRuntimeInput, compute ComputeAllocation, volume StorageVolume) (WorkspaceRuntime, error) {

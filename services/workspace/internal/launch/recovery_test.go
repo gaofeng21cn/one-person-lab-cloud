@@ -135,9 +135,10 @@ func TestZeroChargeEvidenceRequiresExactLocalOrder(t *testing.T) {
 }
 
 type workspaceRow struct {
-	state    string
-	accepted acceptedOrder
-	result   orderResult
+	state              string
+	modelConfiguration int64
+	accepted           acceptedOrder
+	result             orderResult
 }
 
 func (r workspaceRow) Scan(values ...any) error {
@@ -150,8 +151,9 @@ func (r workspaceRow) Scan(values ...any) error {
 	*values[6].(*time.Time) = time.Date(2026, 9, 26, 0, 0, 0, 0, time.UTC)
 	*values[7].(*time.Time) = *values[6].(*time.Time)
 	*values[8].(*int64) = 7
-	*values[9].(*[]byte), _ = json.Marshal(r.accepted)
-	*values[10].(*[]byte), _ = json.Marshal(r.result)
+	*values[9].(*int64) = r.modelConfiguration
+	*values[10].(*[]byte), _ = json.Marshal(r.accepted)
+	*values[11].(*[]byte), _ = json.Marshal(r.result)
 	return nil
 }
 
@@ -171,12 +173,12 @@ func TestWorkspaceReadbackDoesNotInventEntitlementOrAccess(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			readback := &api.ResourceReadback{ResourceSetId: "resources-original", WorkspaceId: "workspace-original", Outcome: tc.outcome}
-			row := workspaceRow{state: tc.state, accepted: acceptedOrder{Quote: wire(offer)}, result: orderResult{ResourceSetID: readback.ResourceSetId, ResourceReadback: wire(readback)}}
+			row := workspaceRow{state: tc.state, modelConfiguration: 3, accepted: acceptedOrder{Quote: wire(offer)}, result: orderResult{ResourceSetID: readback.ResourceSetId, ResourceReadback: wire(readback)}}
 			w, tenant, err := scanWorkspace(row)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if w.Status != tc.status || w.ResourceReadiness != tc.readiness || w.Version != 7 || tenant != "tenant-original" || w.GetCapabilityVersionId() != offer.Quote.GetCapabilityVersionId() {
+			if w.Status != tc.status || w.ResourceReadiness != tc.readiness || w.Version != 7 || w.GetModelConfigurationVersion() != 3 || tenant != "tenant-original" || w.GetCapabilityVersionId() != offer.Quote.GetCapabilityVersionId() {
 				t.Fatalf("stored Workspace facts lost: %v", w)
 			}
 			if w.CurrentPeriodEnd != nil || w.AccessUrl != nil || w.ApplicationAvailability == api.WorkspaceApplicationAvailabilityEnum_WORKSPACE_APPLICATION_AVAILABILITY_ENUM_AVAILABLE {

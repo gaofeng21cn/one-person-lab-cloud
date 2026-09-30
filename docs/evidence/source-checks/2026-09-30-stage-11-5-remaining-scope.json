@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_stage_11_5_remaining_scope_inventory_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T10:20:00Z",
+  "result": "the_remaining_section_11_5_items_are_each_a_cross_module_ownership_migration_or_an_order_gated_retirement_and_the_exact_write_set_and_sequence_are_now_recorded_so_the_serial_window_can_execute_them_without_guessing",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 11.5 fifth pass - exact remaining scope, write set and ordering for I06, I08 and the Control Plane application proxy",
+  "sourceBaseSha": "ad8de66b",
+  "branch": "codex/serve-access-data-plane",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.5",
+  "scope": "Read-only source inventory after the four shipped Serve slices. It records what each remaining section-11.5 item actually requires, the exact files and callers it touches, and the one thing that makes each of them unsafe to land as a partial change. No code change in this pass; a first implementation attempt (a ResourceReadback placement projection feeding a Serve-owned TKE executor) was written, found to be inseparable from the Control Plane retirement below, and reverted so the tree stays green.",
+  "completedInThisStage": {
+    "shippedCommit": "ad8de66b",
+    "receipt": "docs/evidence/source-checks/2026-09-30-serve-replacement-lifecycle-retirement.json",
+    "summary": "Serve runs Stop, Reload and the credential read on the exact persisted original command, records each lifecycle intent before the provider call, never reports an unconfirmed state as succeeded or a requested model version as applied, persists the frozen start command for replacements, stops the running writer when the publisher declares the shared mount cannot have concurrent writers, retires a definitely failed replacement, restores the writer it stopped, and converges a replayed switch on the delivery it already owns."
+  },
+  "resolvedExternalDecisions": [
+    {
+      "id": "I07",
+      "previouslyRequired": "docs/evidence/source-checks/2026-09-30-tke-serial-i06-i07-blocker-confirmation.json asked which module performs the conditional-revision CAS against the installation's route object.",
+      "resolution": "The coordination window's rewritten docs/spec/target/14_implementation_work_packages.md#11.5 and the product owner decision now state that Serve performs the Fence/Activate/Observe and compatible Rollback as a local conditional state transition on its own serve.access_bindings generation and accepted execution epoch, and that the Instance only provides a stable Ingress/DNS/TLS to Serve. No Cloud-side RouteProvider, provider-revision performer or RouteProvider port is required, and none is to be reintroduced.",
+      "status": "closed"
+    }
+  ],
+  "remainingItems": [
+    {
+      "id": "I06",
+      "requirement": "docs/spec/target/14_implementation_work_packages.md#11.5: 将TKE应用执行能力连同真实caller迁到Serve，串行切换后按09退出对应旧writer; docs/architecture.md: Serve's TKE adapter applies the application workload.",
+      "currentWriter": "services/fabric/internal/fabric/tencent_provider_application_configuration.go, tencent_provider_application_config_files.go, tencent_provider_application_lifecycle.go, tencent_provider_application_runtime.go and their tests (1,249 lines) build and apply the workload manifests, and services/fabric/internal/http/server.go:561/579/597/615/633 exposes them over /fabric/workspace-application-runtimes*.",
+      "callers": [
+        "services/serve/internal/delivery/tke_adapter.go (386 lines) signs Fabric HTTP POSTs at those endpoints for deploy, readback, lifecycle, reload and credentials.",
+        "services/control-plane/internal/clients/fabric_application_runtime.go (103 lines) plus services/control-plane/internal/controlplane/service_application_runtime.go (77 lines) expose the same endpoints to services/control-plane/internal/server/workspace_application_*.go (2,963 lines of handlers, drivers and stores) and workspace_application_deployment_driver.go, which the console still reaches through /api/workspaces/{id}/runtime-status and /api/workspaces/{id}/runtime-credentials/reveal."
+      ],
+      "whyNotSelfResolved": "The execution move is atomic: Serve cannot hold the workload writer while Fabric still holds the same Kubernetes objects, and Fabric's endpoints cannot be retired while their Control Plane callers exist. Fabric's endpoints would therefore have to retire together with the Control Plane application surface, which is the same surface section 11.6 replaces with the Serve-backed Console read path. Landing it as a partial change would either leave two execution writers or leave a Console-reachable route calling a retired endpoint.",
+      "exactWriteSet": [
+        "services/serve/internal (new TKE application execution package and the adapter that calls it)",
+        "services/fabric/internal/fabric (delete the four tencent_provider_application_* files and the workspace_application_* helpers only the retired endpoints used)",
+        "services/fabric/internal/http (delete the /fabric/workspace-application-runtimes* handlers and their scope mapping)",
+        "services/control-plane/internal/clients, services/control-plane/internal/controlplane, services/control-plane/internal/server (retire the application client, service and surface)",
+        "packages/contracts/proto (a typed readback for the placement facts Serve must schedule onto, because ResourceExecutionBinding is a stored identity compared with proto.Equal by services/workspace/internal/launch/runtime.go and must not gain fields)"
+      ]
+    },
+    {
+      "id": "I08",
+      "requirement": "docs/spec/target/14_implementation_work_packages.md#11.5: 补Secret配置、模型实际应用及读回; 不得把请求的modelConfigurationVersion直接写成applied.",
+      "currentState": "Honest but incomplete: Serve returns awaiting_confirmation from ReloadRuntime and never advances applied_model_configuration_version (test-covered in ad8de66b), but nothing applies the requested configuration or reads it back. services/serve/internal/delivery/tke_adapter.go Reload (line 291) merely re-issues the running lifecycle state.",
+      "facts": [
+        "docs/spec/target/contracts/publisher-contract.schema.json declares ModelConfigurationContract {protocol opl-model-config/v1, portName, applyPath, readbackPath, requestFields [version, selections], readbackFields [appliedVersion, selections], authorizationSecretInputName} and is carried on the deployment descriptor's runtimeContract.",
+        "contracts.WorkspaceApplicationRuntimeObservation has no appliedVersion field, and WorkspaceApplicationRuntimeInput carries no model configuration, so the current Fabric runtime boundary cannot transport either half of the contract."
+      ],
+      "whyNotSelfResolved": "The apply/readback is performed by whichever module executes the workload. Performing it in Fabric today writes it in the module section 11.5 requires Serve to replace, and the control credential named by authorizationSecretInputName is materialised by that same execution boundary, so the credential path cannot be split across the two modules.",
+      "status": "depends on I06"
+    },
+    {
+      "id": "control-plane-application-proxy",
+      "requirement": "docs/spec/target/14_implementation_work_packages.md#11.5: 接入按绑定读回的access data plane，迁移实际入口和调用者并清退Control Plane应用proxy/当前路由解析器，不保留RouteProvider或路由fallback.",
+      "currentState": "Serve already owns and serves the access data plane (services/serve/internal/delivery/access.go, access_server.go; both the retained /w/{workspaceId}/ path and the per-binding application origin are served from serve.access_bindings). The Console BFF already reads Serve through ServeProductService (apps/console-bff/internal/clients/serve_read.go).",
+      "duplicateWriter": "services/control-plane/internal/server/workspace_gateway.go:1062-1200 (proxyWorkspace, proxyWorkspaceRoot, proxyWorkspaceTo, workspaceEntryUpstream and the credential policy) plus workspace_application_origin.go (186 lines) and routes_core.go:11-13 (/w/, /api/, /ws) still resolve the application route and proxy to the same in-cluster target, and app_state.go:334 workspaceGatewayEntryURL is still the string assembly of the published entry that section 11.5 forbids.",
+      "whyNotSelfResolved": "The retirement is order-gated by the same section: retire after the entry migration completes. The installation's Ingress currently routes cloud.medopl.com, workspace.medopl.com and *.medopl.com to the control-plane service, and switching that to Serve is an Instance-side change this window is explicitly not allowed to dispatch. Deleting the Cloud-side proxy first would remove the only served application entry until the Instance is re-pointed.",
+      "status": "order-gated"
+    }
+  ],
+  "evidenceSources": [
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/architecture.md",
+    "docs/spec/target/06_data_flow_and_state_machine.md",
+    "docs/spec/target/contracts/publisher-contract.schema.json",
+    "services/serve/internal/delivery/tke_adapter.go",
+    "services/fabric/internal/fabric/tencent_provider_application_runtime.go",
+    "services/fabric/internal/http/server.go",
+    "services/control-plane/internal/clients/fabric_application_runtime.go",
+    "services/control-plane/internal/server/workspace_gateway.go",
+    "services/control-plane/internal/server/routes_core.go",
+    "apps/console-bff/internal/clients/serve_read.go"
+  ],
+  "verification": [
+    {
+      "command": "git status --short after reverting the partial placement-contract attempt",
+      "result": "pass",
+      "detail": "The tree is clean at ad8de66b; the incomplete ResourceReadback placement projection and the Fabric projection that had no consumer were both reverted rather than left in the tree."
+    },
+    {
+      "command": "cd services/serve && go build ./... && OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<temporary PostgreSQL 16.8> go test ./... -count=1",
+      "result": "pass",
+      "detail": "The shipped revision still builds and its suites pass after the revert."
+    },
+    {
+      "command": "rg over the four modules for the app-execution call graph and file line counts",
+      "result": "pass",
+      "detail": "Read-only inventory that produced the write sets and line counts recorded above; no source was modified to obtain it."
+    },
+    {
+      "command": "npm run verify:local",
+      "result": "pass",
+      "detail": "Product boundary, Node source tests, browser suite, typecheck, lint, every Go module compile/run and the Git whitespace check on this revision; the run reports 'Local verification passed.'"
+    }
+  ],
+  "endState": "Section 11.5's Serve-side ownership slices are shipped (route binding and access data plane, route revision and switch identity, replacement orchestration, runtime lifecycle and failed-replacement retirement). The three remaining items are inventoried with exact write sets, current writers and callers: I06 is a three-module execution-ownership migration whose retirement half is the Control Plane application surface that section 11.6 replaces; I08 depends on I06 because the apply/readback runs in the workload executor and the control credential is materialised there; the Control Plane application proxy retirement is order-gated on the Instance Ingress being pointed at Serve first.",
+  "blockers": {
+    "kind": "sequence-and-scope",
+    "items": [
+      "I06 must be executed as one stage together with the Control Plane application-surface retirement; the serial window needs to confirm that retiring the 2,963-line services/control-plane/internal/server/workspace_application_*.go surface and its /api/workspaces/{id}/runtime-status and /runtime-credentials/reveal routes is part of this stage rather than deferred to 11.6.",
+      "The Control Plane application proxy retirement must land in the same stage as the Instance Ingress re-point to Serve, because until then the Ingress routes the application domains to the control-plane service.",
+      "A typed readback for the placement facts Serve schedules the workload onto is required and must not extend ResourceExecutionBinding, which is a stored identity compared with proto.Equal."
+    ],
+    "whoOwnsResolution": "coordination window / product owner (stage sequencing) and instance owner (Ingress re-point)"
+  },
+  "notRun": [
+    "No code change in this pass: the attempted placement-contract slice was reverted.",
+    "No Candidate image build, no owner-actor workflow dispatch and no Release.",
+    "No Instance deployment, Ingress change, Tencent resource action or TKE readback.",
+    "No Fabric endpoint deletion and no Control Plane caller migration."
+  ],
+  "claimBoundary": "This receipt records an inventory and a sequencing decision, not an implementation. It claims that the Serve-side section-11.5 slices are shipped and verified at ad8de66b, and that the three remaining items each require either a three-module atomic migration (I06 with the Control Plane application surface, plus I08 on top of it) or an Instance-side Ingress re-point before the Cloud-side proxy can be retired. It claims no execution move, no model-configuration apply, no proxy retirement and no deployment.",
+  "secrets": "none"
+}

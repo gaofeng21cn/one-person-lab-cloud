@@ -8,6 +8,10 @@ WORKDIR /src/services/fabric
 COPY services/internal/ownerservice /src/services/internal/ownerservice
 COPY services/internal/ownerstore /src/services/internal/ownerstore
 COPY services/internal/postgresmigrate /src/services/internal/postgresmigrate
+# Fabric's provider and the tencent provisioner read the installation's
+# protected-compute guard, so the shared guard module is part of this stage's
+# local replacements.
+COPY services/internal/protectedresource /src/services/internal/protectedresource
 COPY packages/contracts/go /src/packages/contracts/go
 COPY services/fabric/go.mod services/fabric/go.sum ./
 RUN GOPROXY="$GOPROXY" go mod download
