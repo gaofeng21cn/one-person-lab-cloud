@@ -1985,6 +1985,14 @@ Local-Docker overlay, but not the current three deployment overlays, two Fabric
 overlays, or current complete Workspace installation contract. See
 [installation.md](./installation.md) for the executable boundary.
 
+The runnable product image builds one executable per owner the deployment can
+select. `tests/contracts/product-image-owners.test.ts` derives the expected owner
+set from `services/*/cmd/server` and asserts the `publisher-build` lane builds
+every one of them plus the Console BFF, and that the runtime stage copies them;
+the three legacy control services keep their own asserted stages. It previously
+verified only `opl-control-plane`, `opl-fabric` and `opl-ledger`, so a silently
+dropped new owner would have shipped an image that cannot start that capability.
+
 Current source separates Candidate construction, Local qualification, Instance
 qualification, publication, and public readback, and is designed to promote the
 qualified image digest without rebuilding it. No hosted cohort has completed
