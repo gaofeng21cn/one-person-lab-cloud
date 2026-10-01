@@ -8689,7 +8689,7 @@ components:
       required:
       - expectedVersion
       - selections
-      description: Runtime reload readback appliedVersion==目标version后才成功。Gateway managed-key binding is created and returned internally by Gateway for the exact selections; the public request never carries gatewayKeyBindingId.
+      description: Runtime reload readback appliedVersion==目标version后才成功。Gateway managed-key binding is created and returned internally by Gateway for the exact selections; the public request never carries gatewayKeyBindingId. When an existing runtime configuration changes its managed Secret, the owner uses the internal Fabric RebindSecret path with predecessor CAS; the predecessor Gateway key is revoked only after the new runtime readback is confirmed.
     Deployment:
       type: object
       additionalProperties: false
