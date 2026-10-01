@@ -26,7 +26,7 @@ async function ownerServicesWithServer() {
 test("the product image builds every service that has a server entrypoint", async () => {
   const dockerfile = await readFile("Dockerfile", "utf8");
   const publisherStart = dockerfile.indexOf("AS publisher-build");
-  const publisherEnd = dockerfile.indexOf("FROM docker:27.5.1-cli");
+  const publisherEnd = dockerfile.indexOf("FROM docker:");
   assert.ok(publisherStart > 0 && publisherEnd > publisherStart, "Dockerfile must keep its publisher-build stage before the docker-cli stage");
   const publisherStage = dockerfile.slice(publisherStart, publisherEnd);
 
