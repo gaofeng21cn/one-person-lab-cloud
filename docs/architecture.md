@@ -85,7 +85,7 @@ OPL Cloud
 ├─ OPL Workspace     user-visible isolated application environment
 ├─ OPL Serve         Agent Package-to-Workspace delivery, deployment authority, API/Embed/Hosted UI access
 ├─ OPL Console       account policy, approval, quota and billing
-├─ OPL Fabric        Connect, Compute, Storage, Environments and adapters
+├─ OPL Fabric        Connect contract, Compute, Storage and Environments
 └─ OPL Ledger        receipt and provenance refs
 
 Package owners       identity, capabilities, entrypoints and publication revisions
@@ -311,7 +311,7 @@ flowchart TB
   Serve --> Gateway[OPL Gateway: model access]
   Serve --> Ledger[OPL Ledger: evidence]
 
-  Fabric --> Connect[OPL Connect]
+  Fabric -. logical access contract .-> Connect[OPL Connect]
   Fabric --> Compute[OPL Compute]
   Fabric --> Environments[OPL Environments]
   Fabric --> Storage[Workspace Storage]
@@ -326,13 +326,81 @@ flowchart TB
 | OPL Workspace | Workspace identity, membership/entitlement, resource plan and authorization of the target | Agent deployment lifecycle/current selection (Serve), Package/Build facts, Fabric resource facts |
 | OPL Serve | Sole Agent delivery/deployment lifecycle per Workspace, deployment history/current Agent, OCI execution/readiness/routing, API/Embed/Hosted UI | Package/Skill contents, Runtime release catalog, Workspace entitlement, infrastructure resource truth and domain verdicts |
 | OPL Console | Account onboarding, Workspace lifecycle, quota, approval, account-total billing view and managed-resource policy | Spendable wallet, package install/update/repair and resource execution |
-| OPL Fabric | Provider-neutral compute, storage, network and connector resource provisioning/binding plus resource readback | Agent OCI deployment, Runtime release selection, Agent readiness and Serve access routing |
+| OPL Fabric | Provider-neutral compute, storage, network, Secret and execution-resource provisioning/binding plus resource readback | Agent OCI deployment, Runtime release selection, Agent readiness, Serve access routing and domain-specific system adapters |
 | OPL Ledger | Receipt, opaque provenance, reconciliation and idempotency | Source data, package truth, review policy, continuation authorization and domain verdicts |
 | Package owner | Stable identity, capabilities, entrypoints and exact publication revisions | Physical carrier state, Cloud policy and domain verdicts |
 | Native carrier | Physical install, update, remove and fresh installed/callable readback | Package identity, Cloud policy and domain verdicts |
 | OPL Packages | Carrier-neutral discovery, descriptor projection, configured-carrier delegation and fresh state aggregation | Parallel resolver/lock/currentness, account policy and domain truth |
 | OPL Runtime Control | Approved Runtime release versions and immutable artifact/compatibility references consumed by Build | Agent deployment, running instance state and Runtime implementation |
 | Domain agent | Domain strategy, evidence judgment, quality verdict and delivery authority | Cloud infrastructure truth |
+
+## Capability Design Review
+
+The owner model is sound and can stay. Its main weakness is presentation:
+internal target vocabulary currently appears beside the user-facing product
+surfaces, so a reader must mentally combine Console, Workspace, Serve,
+Gateway, Fabric, Ledger, Capability, Build and Runtime Control before
+understanding the product.
+
+The user-facing capability model should therefore be read through five layers:
+
+| User-facing layer | What the user can decide or observe | Unique owner |
+| --- | --- | --- |
+| Console | account, approval, plan, quota, billing and evidence views | Console UI/BFF plus the owner DTOs |
+| Workspace | isolated environment, entitlement, application choice and model intent | Workspace |
+| Serve | deploy, replace, open, API/Embed/Hosted UI, readiness and applied runtime configuration | Serve |
+| Gateway | model access, provider routing, managed-key use and usage signals | Gateway Integration with Sub2API as external authority |
+| Evidence | receipt, provenance, reconciliation and review trail | Ledger |
+
+Each capability is then read at three separate levels:
+
+1. **Logical capability**: the stable product meaning and owner boundary.
+2. **Contract**: typed requests, results, policy, identity and recovery
+   semantics shared by callers and implementations.
+3. **Implementation**: one or more replaceable services, packages, adapters or
+   provider backends selected by an Instance or domain owner.
+
+An implementation may be replaced or run in several variants without changing
+the logical owner. Conversely, an installed backend, package or process does not
+prove that the logical capability is callable, authorized or qualified.
+OPL Connect is the clearest example: Connect owns the logical access contract;
+`glkvm-native` is one backend; MAP owns the medical semantic adapter and
+workflow above it.
+
+Fabric is the infrastructure substrate behind Workspace and Serve. Capability,
+Build and Runtime Control are the supply-chain path behind Serve. They remain
+separate owners because they have different data, callers and replacement
+semantics, but they should not be presented as additional user journeys.
+
+Medical semantics are a domain-agent concern. MAP owns semantic hospital-system
+adapters, task state and clinical workflow. OPL Connect is the logical access
+contract underneath those adapters; `glkvm-native` is one replaceable backend
+for device/session control, alongside possible API, CLI or MCP backends. Cloud
+does not need a medical-specific adapter service or institution-system catalog.
+
+This gives the architecture a clear result:
+
+- **Strong**: one writer per business fact, Workspace and Serve are separated
+  at the correct boundary, and Instance deployment is distinct from Cloud
+  source and Candidate construction.
+- **Worth simplifying**: current and target vocabulary should be introduced
+  through the five layers above, with the internal supply-chain and
+  infrastructure owners shown only where a reader needs their evidence or
+  failure boundary.
+- **Do not merge**: Gateway, Fabric, Serve and Ledger have different secret,
+  provider, runtime and evidence obligations. Merging them would create the
+  duplicate writers this architecture is designed to remove.
+
+Every new Cloud capability should answer four questions before gaining a
+surface: which owner writes its fact, which current caller needs it, which
+existing layer exposes it, and what owner readback proves completion. A new
+service, registry, workflow engine or global event bus has no place without
+those answers.
+
+The medical platform follows the same rule. It adds a medical domain layer and
+institution-owned acceptance on top of Cloud; it does not add a second wallet,
+Package registry, deployment lifecycle or evidence authority. Its boundary and
+open contracts are in [Medical Agent Platform](medical-agent-platform.md).
 
 ## Workspace Application Boundary
 
@@ -1152,10 +1220,10 @@ OPL App and OPL Workspace use the same resource execution pattern:
 plan -> approve -> execute -> monitor -> collect -> receipt
 ```
 
-Console applies account or explicit shared policy when a workspace, connector
-or resource is Cloud-hosted or managed. Fabric performs the approved resource
-binding and execution. User-provided local, SSH or HPC resources can use the
-same pattern without becoming Console-billed resources by default.
+Console applies account or explicit shared policy when a workspace or resource
+is Cloud-hosted or managed. Fabric performs the approved resource binding and
+execution. User-provided local, SSH or HPC resources can use the same pattern
+without becoming Console-billed resources by default.
 
 Fabric exposes a provider-neutral capability interface. The current primary delivery profile is `tencent-tke`; `local-docker` remains
 a supported independently qualified profile. No implicit provider substitution
@@ -1198,7 +1266,7 @@ Cloud surfaces consume those refs without redefining them:
 - Console projects whether account policy permits a package ref and which
   quotas or managed resources may use it.
 - Fabric reads package requirements and binds compute, storage, environments
-  and connectors for a run.
+  and optional shared providers for a run.
 - App and Workspace display owner identity plus fresh carrier state and actions
   aggregated by Framework.
 - Ledger may record exact publication, carrier-action and carrier-readback refs
@@ -1207,16 +1275,25 @@ Cloud surfaces consume those refs without redefining them:
 None of these projections can install, update, remove, repair or create a
 second package or carrier truth. Mutations route to the configured carrier.
 
-## Connector And Domain Boundary
+## Logical Connect And Backend Boundary
 
-OPL Connect owns stable connector access, normalized source refs, credential
-boundaries, errors, retries and rate limits. Domain-specific adapters and
-domain agents own retrieval strategy, evidence selection, synthesis and quality
-judgment. Ledger records refs only.
+OPL Connect is a logical capability module. It owns the cross-backend request
+and result envelope, authorization and egress policy, normalized source or
+observation refs, timeout/retry/unknown-result semantics and opaque execution
+receipts. It does not own a particular transport or device implementation.
 
-The current OPL connector surface and any domain-specific adapter must be read
-from fresh Framework/domain contracts and runtime readback. A target connector
-described in Cloud docs is not a readiness claim.
+Backends implement that contract. `glkvm-native` is one backend for device
+session, observation and input primitives; API, CLI, MCP and other qualified
+implementations may coexist or replace it. Backend health and installed state
+are implementation facts and must be read back separately from logical Connect
+availability.
+
+Domain-specific adapters remain with their domain owner. MAP owns medical task
+state, semantic HIS/EMR/LIS/PACS operations, site profiles and qualification
+evidence, and calls the Connect contract through the selected backend. Cloud
+does not make a domain adapter callable merely because a backend is installed.
+A target contract, backend or domain adapter described in Cloud docs is not a
+readiness claim.
 
 ## Data Boundary
 

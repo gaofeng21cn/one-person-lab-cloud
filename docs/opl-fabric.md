@@ -6,15 +6,16 @@ State: `active_target_reference`
 Machine boundary: Human-readable target platform reference; implementation and
 readiness come from Fabric source, tests, status, and provider readback.
 
-OPL Fabric is the target resource and connector substrate for OPL App, OPL
-Workspace, Cloud-managed jobs, and approved domain-agent actions. The target
-connects work and Serve invocations to compute, storage, software environments,
-and external systems through a shared plan, approval, execution, collection,
-and receipt pattern.
+OPL Fabric is the target resource substrate for OPL App, OPL Workspace,
+Cloud-managed jobs and approved domain-agent actions. It connects work and
+Serve invocations to compute, storage and software environments through a
+shared plan, approval, execution, collection and receipt pattern. OPL Connect
+defines the logical external-access contract; its backends are replaceable and
+domain-specific system adapters remain with their domain Agent.
 
 ```text
 OPL Fabric
-├─ OPL Connect        connector access and normalized source refs
+├─ OPL Connect        logical access contract and normalized source refs
 ├─ OPL Compute        Docker, VM, GPU, SSH, HPC and managed workers
 ├─ OPL Environments   software stacks and runtime environment refs
 ├─ Workspace Storage  volumes, private buckets and institutional storage refs
@@ -32,13 +33,18 @@ state.
 
 ## OPL Connect
 
-Connect owns stable connector access, normalized source refs, credentials, error
-semantics, retries and rate limits. Package owners supply identity and
-publication; configured carriers install the bytes; Framework supplies the
-aggregated installed/callable ref before Fabric binds it to a run.
+Connect owns the logical access contract, normalized source refs, credentials,
+error semantics, retries and rate limits. A backend such as `glkvm-native`, an
+API/CLI adapter or an MCP path owns its concrete transport and implementation
+diagnostics. Package owners supply identity and publication when a backend is
+packaged; configured carriers or the Instance read back the effective backend
+before Fabric binds it to a run.
 
 Domain-specific retrieval strategy, evidence judgment, synthesis and quality
-remain with the domain adapter and domain Agent.
+remain with the domain adapter and domain Agent. Medical hospital-system
+semantics, MAP task state and site qualification are MAP concerns. They use the
+Connect contract but do not transfer their domain ownership to Fabric or a
+selected backend.
 
 ## OPL Compute
 
@@ -132,7 +138,7 @@ Fabric may project package requirements for resource planning:
 - fresh carrier installed/callable ref;
 - compute and hardware requirements;
 - storage and data-boundary requirements;
-- environment and connector requirements;
+- environment and Connect-backed access requirements;
 - review gates and runtime policy refs.
 
 Fabric reports `binding_available`, `binding_blocked`, or equivalent resource
@@ -146,7 +152,7 @@ resource issues to Fabric or Console policy as applicable.
 | --- | --- | --- |
 | Compute | Standard compute, GPU, SSH/HPC, managed worker | OPL Compute / resource provider |
 | Storage | Workspace volume, private bucket, institutional storage ref | Storage owner + Fabric binding |
-| Connector | Literature source, database, internal API, tool integration | OPL Connect + source owner |
+| Connect-backed access | Literature source, database, public/internal tool or device integration | OPL Connect contract + selected backend/source owner |
 | Environment | Python/R, CUDA, document tooling, runtime profile | OPL Environments |
 | Package requirement | Owner descriptor/publication ref, fresh carrier state and resource requirements | Package owner + native carrier; Framework aggregation; Fabric projection only |
 | Serve execution | Sandbox/worker, network, secret and artifact binding for an exact Agent Revision | Runway lifecycle + Fabric resource truth |
@@ -165,5 +171,5 @@ API/Embed/Hosted UI access. Fabric owns resource/execution binding and provider
 route-generation facts under the [typed owner boundary](architecture.md#agent-delivery-and-serve-boundary).
 Fabric may prepare the sandbox and return resource facts, but a
 successful resource readback is not an Agent-ready result. Existing remote jobs,
-Connectors, App, Workspace, and domain-agent callers remain valid outside this
-specific delivery chain.
+Connect-backed access, App, Workspace and domain-agent callers remain valid
+outside this specific delivery chain.

@@ -3,75 +3,92 @@
 Owner: `one-person-lab-cloud`
 Purpose: `connect_target_reference`
 State: `active_target_reference`
-Machine boundary: Human-readable target connector reference; implementation and
-readiness come from Framework, domain, and owner readback.
+Machine boundary: Human-readable logical capability reference; concrete
+backends and readiness come from Framework, domain, Instance and owner
+readback.
 
-OPL Connect is the target connector capability inside OPL Fabric. It defines a
-stable access boundary for App, Workspace, and approved domain agents to use
-external data sources, literature providers, databases, tool APIs, and
-institutional systems. Serve invocations may use the same target capability
-through Runway and Fabric when an exact revision and consumer data policy permit
-it.
+OPL Connect is the logical access capability inside OPL Fabric. It defines the
+stable request, policy, result, evidence and recovery boundary for App,
+Workspace and approved domain agents to use external systems. The capability
+does not prescribe one transport or deployment. A configured backend may be a
+native service, API/CLI adapter, MCP path, package, device-control service or
+another qualified implementation.
 
-## Connector Responsibility
+`glkvm-native` is one possible OPL Connect backend. It supplies device/session
+control and observation primitives; it does not become the Connect logical
+owner, a hospital-system semantic adapter or a clinical decision authority.
+Serve invocations may use Connect through Runway and Fabric when an exact
+revision and consumer data policy permit it. Institution-specific semantics
+remain with the relevant domain Agent and its deployment profile.
 
-Connect owns:
+## Logical Capability Responsibility
 
-- connector request/result envelopes;
-- credential and data-egress boundaries;
-- provider-specific access behavior;
-- normalized source refs;
-- errors, retries, cache metadata and rate limits;
-- provider execution receipts.
+The logical Connect contract owns:
+
+- request/result envelopes and capability references;
+- credential, authorization and data-egress boundaries;
+- normalized source and observation references;
+- error, retry, timeout and unknown-result semantics;
+- backend execution receipts and opaque provenance.
+
+The selected backend owns its transport protocol, device or provider calls,
+provider-specific diagnostics and implementation details. Domain agents retain
+the meaning of returned data and the decision to act on it.
 
 ## Standard Call Shape
 
 ```text
 App / Workspace / domain Agent
--> capability request
--> OPL Connect provider adapter
--> normalized source refs + provider receipt
--> domain workflow
+-> OPL Connect logical contract
+-> selected backend (for example `glkvm-native`, API, CLI or MCP)
+-> normalized source/observation refs + backend receipt
+-> domain semantic adapter and workflow
 -> optional Ledger receipt refs
 ```
 
-Console may approve account-managed credentials, providers, service egress and
-quotas.
-Ledger may retain connector and source refs. Neither changes connector or
-domain truth.
+Console may approve account-managed credentials, backend availability, service
+egress and quotas. Ledger may retain opaque source and execution refs. Neither
+changes backend or domain truth.
 
 ## Package Boundary
 
-A connector adapter can be carried by an OPL Package. Its owner controls
-identity, capabilities and exact publication revisions; the configured carrier
-installs and reads back physical bytes. Framework aggregates the resulting
-installed/callable adapter ref. Connect only invokes that ref, while Fabric
-binds the adapter and its credentials/resources to a run.
+An implementation may be carried by an OPL Package, exposed by a native
+service, or supplied by the Instance. Its implementation owner controls
+identity, capabilities and exact revision; the configured carrier or Instance
+reads back the effective backend. Framework aggregates installed/callable
+implementation state. Connect binds the selected backend and its
+credentials/resources to a run without making that backend the logical owner.
 
 ## Transport And Domain Boundary
 
-Generic shared providers belong in OPL Connect when their access semantics are
-stable across domains. Framework owns its current provider adapters and public transport contracts;
-Cloud does not maintain a provider inventory. OPL Connect owns provider
-invocation, retry, cache, identifier and metadata normalization, source refs
-and transport receipts for its admitted routes.
+Connect is a logical module, not a single provider implementation. Framework,
+Instance or another approved owner may select and expose a backend, while the
+Connect contract remains stable across backend replacements. The backend owns
+transport invocation, provider/device retries, cache behavior and diagnostics;
+Connect owns the cross-backend envelope, policy, normalization and recovery
+semantics.
 
 MAS and other domain owners consume the exact provider/source refs and retain
-query strategy, result selection, evidence interpretation, claim support, and
-quality decisions. Current provider or domain readiness requires fresh
-Framework, provider, and domain owner readback.
+query strategy, result selection, evidence interpretation, claim support and
+quality decisions. MAP follows the same pattern: its semantic hospital-system
+adapters call the Connect contract, while `glkvm-native` or an API/CLI/MCP
+implementation supplies the selected backend. Current capability readiness
+requires fresh logical-contract, backend and domain-owner readback.
 
 ## Governance And Evidence
 
 | Concern | Owner |
 | --- | --- |
-| Connector access, refs, credentials, provider errors/retries/rate limits | OPL Connect |
-| Adapter Package identity, capabilities and publication revision | Package owner |
-| Adapter physical install, update, remove and readback | Configured native carrier; Framework delegates and aggregates |
+| Logical Connect contract, envelopes, policy and recovery semantics | OPL Connect |
+| Backend transport, device/provider calls and implementation diagnostics | Selected backend owner, such as `glkvm-native` or an API/CLI/MCP adapter |
+| Backend identity, capabilities and publication revision | Backend/package owner |
+| Backend physical install, update, remove and readback | Configured native carrier or Instance; Framework delegates and aggregates |
 | Account/service availability, credential approval, quota and audit policy | OPL Console |
 | Resource and environment binding | OPL Fabric |
-| Retrieval strategy, evidence use, writing and review | Domain Agent |
+| Retrieval strategy, semantic mapping, evidence use, writing and review | Domain Agent, including MAP |
 | Receipt and opaque provenance refs | OPL Ledger; the calling owner retains continuation authority |
 
-Connector availability, package health, policy approval and domain readiness
-are separate states and must remain separately readable.
+Logical-contract availability, backend health, policy approval and domain
+readiness are separate states and must remain separately readable. A MAP site
+adapter is qualified by MAP and the Instance; selecting `glkvm-native` or
+another backend does not make the clinical capability callable by itself.
