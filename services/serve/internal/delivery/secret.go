@@ -37,60 +37,33 @@ func deploymentRevision(r *api.RuntimeDeployCommand) (contracts.WorkspaceApplica
 	return revision, nil
 }
 
-// resolveManagedKeyBinding mints (or replays) the Workspace-managed Gateway key
-// for this exact runtime and binds its approved-store Secret through Fabric, then
-// records the result on the deploy command. It mutates only the caller's copy of
-// the command; the frozen snapshot the caller persists afterwards carries the
-// binding so a recovery replay issues the same identities.
-//
-// The raw key never enters this process: Gateway writes it to the approved Secret
-// store and returns an opaque delivery reference; Fabric confirms that reference
-// and returns the exact version Serve's execution boundary must inject.
-func (s *Service) resolveManagedKeyBinding(ctx context.Context, r *api.RuntimeDeployCommand) error {
+// resolveManagedKeyBinding confirms the Workspace-issued managed key binding a launch
+// command carries. The launch key is issued and bound by the Workspace owner (F08
+// workspace->gateway CreateManagedKey, then workspace->fabric BindSecret) and travels
+// on the deploy command as an opaque RuntimeManagedKeyBinding. Serve never mints a
+// Gateway key: a runtime that declares the installation Gateway credential must
+// present the complete binding its owner produced, and one that declares no such
+// credential must present none.
+func (s *Service) resolveManagedKeyBinding(_ context.Context, r *api.RuntimeDeployCommand) error {
 	revision, err := deploymentRevision(r)
 	if err != nil {
 		return err
 	}
 	credential, declared := contracts.WorkspaceApplicationDeclaredCredential(revision, contracts.WorkspaceApplicationCredentialGatewayKey)
 	if !declared {
-		return nil
-	}
-	if r.GetManagedKeyBinding() != nil && strings.TrimSpace(r.GetManagedKeyBinding().GetSecretBindingId()) != "" {
-		// A recovered command already carries its original binding.
-		return nil
-	}
-	if s.Gateway == nil {
-		return status.Error(codes.Unavailable, "the Gateway managed-key authority is not configured")
-	}
-	if s.Resources == nil {
-		return status.Error(codes.Unavailable, "Fabric Secret binding is not configured")
-	}
-	modelIDs := make([]string, 0, len(r.GetModelSelections()))
-	for _, selection := range r.GetModelSelections() {
-		if id := strings.TrimSpace(selection.GetModelId()); id != "" {
-			modelIDs = append(modelIDs, id)
+		if r.GetManagedKeyBinding() != nil {
+			return status.Errorf(codes.FailedPrecondition, "%s: the runtime declares no Gateway credential, so no managed key binding applies", ReasonManagedKeyUnavailable)
 		}
+		return nil
 	}
-	if len(modelIDs) == 0 {
-		return status.Error(codes.FailedPrecondition, "the default App declares a Gateway credential but names no model")
+	binding := r.GetManagedKeyBinding()
+	if binding == nil || strings.TrimSpace(binding.GetKeyBindingId()) == "" || strings.TrimSpace(binding.GetSecretBindingId()) == "" ||
+		strings.TrimSpace(binding.GetSecretVersion()) == "" || strings.TrimSpace(binding.GetFingerprint()) == "" {
+		return status.Errorf(codes.FailedPrecondition, "%s: a launch that declares a Gateway credential requires the Workspace-issued managed key binding", ReasonManagedKeyUnavailable)
 	}
-	mint := &api.ManagedKeyCommand{Context: nextOwnerCall(r.GetContext()), WorkspaceId: r.GetWorkspaceId(), ModelIds: modelIDs, TargetRuntimeInstanceId: r.GetRuntimeInstanceId()}
-	key, err := s.Gateway.CreateManagedKey(ctx, mint)
-	if err != nil {
-		return err
+	if binding.GetTargetSlot() != credential.Name || binding.GetSecretDeliveryReference() != contracts.WorkspaceGatewaySecretRef(r.GetWorkspaceId()) {
+		return status.Errorf(codes.FailedPrecondition, "%s: the managed key binding does not name this Workspace's Gateway Secret delivery", ReasonManagedKeyUnavailable)
 	}
-	if strings.TrimSpace(key.GetKeyBindingId()) == "" || strings.TrimSpace(key.GetSecretDeliveryReference()) == "" || strings.TrimSpace(key.GetFingerprint()) == "" || key.GetWorkspaceId() != r.GetWorkspaceId() || key.GetTargetRuntimeInstanceId() != r.GetRuntimeInstanceId() {
-		return status.Error(codes.FailedPrecondition, "the Gateway returned a managed key that differs from the original runtime")
-	}
-	bind := &api.SecretBindingCommand{Context: nextOwnerCall(r.GetContext()), WorkspaceId: r.GetWorkspaceId(), RuntimeInstanceId: r.GetRuntimeInstanceId(), KeyBindingId: key.GetKeyBindingId(), SecretDeliveryReference: key.GetSecretDeliveryReference(), TargetSlot: credential.Name, Fingerprint: key.GetFingerprint()}
-	bound, err := s.Resources.BindSecret(ctx, bind)
-	if err != nil {
-		return err
-	}
-	if bound.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED || strings.TrimSpace(bound.GetSecretBindingId()) == "" || strings.TrimSpace(bound.GetVersion()) == "" || bound.GetFingerprint() != key.GetFingerprint() || bound.GetRuntimeInstanceId() != r.GetRuntimeInstanceId() {
-		return status.Error(codes.FailedPrecondition, "Fabric did not confirm the exact Gateway Secret binding")
-	}
-	r.ManagedKeyBinding = &api.RuntimeManagedKeyBinding{KeyBindingId: key.GetKeyBindingId(), SecretDeliveryReference: key.GetSecretDeliveryReference(), Fingerprint: key.GetFingerprint(), TargetSlot: credential.Name, SecretBindingId: bound.GetSecretBindingId(), SecretVersion: bound.GetVersion()}
 	return nil
 }
 

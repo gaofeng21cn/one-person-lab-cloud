@@ -168,6 +168,11 @@ type modelLaunch struct {
 	grantID           string
 	runtimeInstanceID string
 	source            *sourceRecord
+	// keyBindingID is the launch-issued Gateway key binding for a runtime whose
+	// revision declares the installation Gateway credential. The first model
+	// configuration replaces it, so it is the predecessor key the update revokes
+	// once Serve confirms the new version.
+	keyBindingID string
 }
 
 func (l modelLaunch) revision() (contracts.WorkspaceApplicationRevision, error) {
@@ -222,7 +227,15 @@ func (s *Service) workspaceLaunch(ctx context.Context, workspaceID string) (mode
 	if json.Unmarshal(result.ApplicationSource, source) != nil {
 		return modelLaunch{}, status.Error(codes.DataLoss, "stored Workspace application source is invalid")
 	}
-	return modelLaunch{grantID: result.GrantID, runtimeInstanceID: command.GetRuntimeInstanceId(), source: source}, nil
+	keyBindingID := ""
+	if len(result.ManagedKeyBinding) > 0 {
+		binding := &api.RuntimeManagedKeyBinding{}
+		if protojson.Unmarshal(result.ManagedKeyBinding, binding) != nil {
+			return modelLaunch{}, status.Error(codes.DataLoss, "stored launch managed key binding is invalid")
+		}
+		keyBindingID = strings.TrimSpace(binding.GetKeyBindingId())
+	}
+	return modelLaunch{grantID: result.GrantID, runtimeInstanceID: command.GetRuntimeInstanceId(), source: source, keyBindingID: keyBindingID}, nil
 }
 
 // acceptModelUpdate durably records the new configuration intent and its Operation
@@ -386,17 +399,45 @@ func (s *Service) activeModelSecretBindingID(ctx context.Context, workspaceID st
 	err := s.Store.DB().QueryRowContext(ctx, `SELECT COALESCE(result,'{}'::jsonb) FROM workspace.operations
 		WHERE resource_id=$1 AND kind='update_models' AND status='succeeded'
 		ORDER BY created_at DESC, id DESC LIMIT 1`, workspaceID).Scan(&raw)
+	if err == nil {
+		var result orderResult
+		if json.Unmarshal(raw, &result) != nil {
+			return "", status.Error(codes.DataLoss, "stored Workspace model update result is invalid")
+		}
+		// A prior confirmed configuration already bound the runtime Secret, so its
+		// recorded binding is the exact predecessor to replace.
+		return strings.TrimSpace(result.SecretBindingID), nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return "", dbError(err)
+	}
+	// No configuration update has ever succeeded, so the active binding is the one
+	// the launch established for the runtime's declared Gateway credential. It is the
+	// predecessor the first model configuration replaces; a launch that bound nothing
+	// (no declared credential) leaves this empty, so the first configuration binds
+	// initially instead of rebinding.
+	var launchRaw []byte
+	err = s.Store.DB().QueryRowContext(ctx, `SELECT COALESCE(result,'{}'::jsonb) FROM workspace.operations
+		WHERE resource_id=$1 AND kind='create_workspace'
+		ORDER BY created_at DESC, id DESC LIMIT 1`, workspaceID).Scan(&launchRaw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
 	if err != nil {
 		return "", dbError(err)
 	}
-	var result orderResult
-	if json.Unmarshal(raw, &result) != nil {
-		return "", status.Error(codes.DataLoss, "stored Workspace model update result is invalid")
+	var launch orderResult
+	if json.Unmarshal(launchRaw, &launch) != nil {
+		return "", status.Error(codes.DataLoss, "stored Workspace launch result is invalid")
 	}
-	return strings.TrimSpace(result.SecretBindingID), nil
+	if len(launch.ManagedKeyBinding) == 0 {
+		return "", nil
+	}
+	binding := &api.RuntimeManagedKeyBinding{}
+	if protojson.Unmarshal(launch.ManagedKeyBinding, binding) != nil {
+		return "", status.Error(codes.DataLoss, "stored launch managed key binding is invalid")
+	}
+	return strings.TrimSpace(binding.GetSecretBindingId()), nil
 }
 
 // bindOrRebindModelSecret confirms the approved Secret for one model configuration.
@@ -482,9 +523,10 @@ func (s *Service) revokeSupersededKey(ctx context.Context, op ownerstore.Operati
 	err := s.Store.DB().QueryRowContext(ctx, `SELECT gateway_key_binding_id FROM workspace.model_configurations
 		WHERE workspace_id=$1 AND version<$2 ORDER BY version DESC LIMIT 1`, op.ResourceID, targetVersion).Scan(&previous)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
-	}
-	if err != nil {
+		// No prior configuration row exists, so the launch-issued Gateway key is the
+		// predecessor this first configuration replaces.
+		previous = launch.keyBindingID
+	} else if err != nil {
 		return "", dbError(err)
 	}
 	if strings.TrimSpace(previous) == "" {

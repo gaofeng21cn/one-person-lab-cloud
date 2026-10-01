@@ -20,6 +20,7 @@ import (
 	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/packages/contracts/go/publicjson"
 	"opl-cloud/services/internal/ownerservice"
+	"opl-cloud/services/internal/ownerstore"
 )
 
 // modelUpdateGateway is the GatewayCoordination fixture for the update path. It
@@ -222,6 +223,33 @@ func appliedWorkspaceModelVersion(t *testing.T, db *sql.DB) int64 {
 		t.Fatal(err)
 	}
 	return applied
+}
+
+// seedLaunchManagedKeyBinding records on the Workspace's launch operation the opaque
+// Gateway/Fabric binding the launch established for a declared Gateway credential, so
+// the update path can name it as the predecessor it replaces.
+func seedLaunchManagedKeyBinding(t *testing.T, db *sql.DB, secretBindingID, keyBindingID, runtimeInstanceID string) {
+	t.Helper()
+	var raw []byte
+	if err := db.QueryRowContext(t.Context(), `SELECT COALESCE(result,'{}'::jsonb) FROM workspace.operations WHERE resource_id='workspace-original' AND kind='create_workspace'`).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var result map[string]json.RawMessage
+	if json.Unmarshal(raw, &result) != nil {
+		t.Fatal("launch result is invalid")
+	}
+	binding, err := json.Marshal(map[string]string{"keyBindingId": keyBindingID, "secretDeliveryReference": "opl-gateway-workspace-original", "fingerprint": "sha256:" + strings.Repeat("ab", 32), "targetSlot": "gateway", "secretBindingId": secretBindingID, "secretVersion": "vlaunch"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result["managedKeyBinding"] = binding
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.ExecContext(t.Context(), `UPDATE workspace.operations SET result=$1 WHERE resource_id='workspace-original' AND kind='create_workspace'`, encoded); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestUpdateWorkspaceModelsAppliesOneOwnerSeparatedConfiguration proves the whole
@@ -564,5 +592,97 @@ func TestUpdateWorkspaceModelsValidatesTheSelections(t *testing.T) {
 				t.Fatal("invalid selections reached owners")
 			}
 		})
+	}
+}
+
+// TestUpdateWorkspaceModelsRebindsTheLaunchEstablishedBinding proves the fixed
+// connection: a runtime whose declared Gateway credential was delivered at launch
+// (Workspace CreateManagedKey + Fabric BindSecret, recorded on the launch result)
+// makes the first UpdateWorkspaceModels name that launch binding as its RebindSecret
+// predecessor, so the first model change replaces the launch key instead of colliding
+// with it.
+func TestUpdateWorkspaceModelsRebindsTheLaunchEstablishedBinding(t *testing.T) {
+	db := runtimeDatabase(t)
+	service, gateway, fabric, serve := modelUpdateWorkspace(t, db, true)
+	// The launch already established the Workspace's Gateway key binding for the
+	// runtime's gateway purpose and recorded its Fabric binding id.
+	seedLaunchManagedKeyBinding(t, db, "sbx_launch_binding", "gateway-key-launch", "runtime-original")
+	fabric.rows = map[string]*api.SecretBindingReadback{
+		"runtime-original:gateway": {SecretBindingId: "sbx_launch_binding", RuntimeInstanceId: "runtime-original", Fingerprint: "sha256:" + strings.Repeat("ab", 32), Version: "vlaunch", Outcome: api.Observation_OBSERVATION_CONFIRMED},
+	}
+	fabric.active = "sbx_launch_binding"
+	call, ctx := modelUpdateContext("tenant-original", "launch-binding-rebind")
+	operation, err := service.UpdateWorkspaceModels(ctx, modelUpdateRequest(call, "workspace-original", 0, []*api.ModelSelection{{Slot: "chat", ModelId: "model-a"}}))
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if operation.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
+		t.Fatalf("first update=%v", operation)
+	}
+	// The first update rebound against the launch binding rather than calling
+	// BindSecret for the same runtime purpose.
+	if fabric.rebinds != 1 || fabric.binds != 0 {
+		t.Fatalf("first update binds=%d rebinds=%d, want the launch predecessor rebind", fabric.binds, fabric.rebinds)
+	}
+	if fabric.lastRebind.GetExpectedCurrentSecretBindingId() != "sbx_launch_binding" {
+		t.Fatalf("the first update named predecessor %q, want the launch binding", fabric.lastRebind.GetExpectedCurrentSecretBindingId())
+	}
+	// The launch Gateway key is revoked after Serve confirms the new version.
+	if gateway.revokes != 1 || gateway.lastRevoke.GetKeyBindingId() != "gateway-key-launch" {
+		t.Fatalf("the launch key was not revoked: revokes=%d last=%+v", gateway.revokes, gateway.lastRevoke)
+	}
+	if applied := appliedWorkspaceModelVersion(t, db); applied != 1 {
+		t.Fatalf("applied version=%d want 1", applied)
+	}
+	if serve.reloads != 1 {
+		t.Fatalf("serve reloads=%d want 1", serve.reloads)
+	}
+}
+
+// TestEnsureRuntimeGatewayBindingIssuesAndBindsTheLaunchKey proves the F08 owner
+// path: for a runtime whose frozen revision declares the installation Gateway
+// credential, the Workspace issues the opaque binding through Gateway and binds its
+// Secret through Fabric before Deploy, records the binding on the command and the
+// launch result, and reuses the recorded binding on a restart rather than minting a
+// second key. A revision that declares no credential mints nothing.
+func TestEnsureRuntimeGatewayBindingIssuesAndBindsTheLaunchKey(t *testing.T) {
+	revision := modelUpdateRevision(t, true)
+	command := &api.RuntimeDeployCommand{
+		WorkspaceId: "workspace-original", RuntimeInstanceId: "runtime-original",
+		DeploymentDescriptor: &api.DeploymentDescriptor{ApplicationRevision: revision},
+		ModelSelections:      []*api.ModelSelection{{Slot: "chat", ModelId: "model-a"}},
+	}
+	op := ownerstore.Operation{ID: "op-launch", RequestID: "request-launch", TenantID: "tenant-original", ActorID: "actor-original"}
+	result := &orderResult{GrantID: "grant-launch"}
+	gateway, fabric := &modelUpdateGateway{}, &modelUpdateFabric{}
+	service := &Service{Gateway: gateway, Fabric: fabric}
+
+	if err := service.ensureRuntimeGatewayBinding(context.Background(), op, result, command); err != nil {
+		t.Fatalf("ensure launch binding: %v", err)
+	}
+	if gateway.mints != 1 || fabric.binds != 1 {
+		t.Fatalf("launch key was not issued and bound: mints=%d binds=%d", gateway.mints, fabric.binds)
+	}
+	if command.GetManagedKeyBinding().GetSecretBindingId() == "" || command.GetManagedKeyBinding().GetKeyBindingId() != "gateway-key-model-a" || command.GetManagedKeyBinding().GetTargetSlot() != "gateway" {
+		t.Fatalf("launch command binding=%+v", command.GetManagedKeyBinding())
+	}
+	if len(result.ManagedKeyBinding) == 0 {
+		t.Fatal("launch binding was not recorded on the order result")
+	}
+	// A restart reuses the recorded binding instead of minting a second key.
+	replayed := &api.RuntimeDeployCommand{WorkspaceId: command.WorkspaceId, RuntimeInstanceId: command.RuntimeInstanceId, DeploymentDescriptor: command.DeploymentDescriptor, ModelSelections: command.ModelSelections}
+	if err := service.ensureRuntimeGatewayBinding(context.Background(), op, result, replayed); err != nil {
+		t.Fatalf("replay launch binding: %v", err)
+	}
+	if gateway.mints != 1 || fabric.binds != 1 || replayed.GetManagedKeyBinding().GetSecretBindingId() != command.GetManagedKeyBinding().GetSecretBindingId() {
+		t.Fatalf("restart reissued the launch key: mints=%d binds=%d", gateway.mints, fabric.binds)
+	}
+	// A revision that declares no credential mints nothing and carries no binding.
+	plain := &api.RuntimeDeployCommand{WorkspaceId: command.WorkspaceId, RuntimeInstanceId: command.RuntimeInstanceId, DeploymentDescriptor: &api.DeploymentDescriptor{ApplicationRevision: modelUpdateRevision(t, false)}, ModelSelections: command.ModelSelections}
+	if err := service.ensureRuntimeGatewayBinding(context.Background(), op, &orderResult{GrantID: "grant-launch"}, plain); err != nil {
+		t.Fatalf("no-credential launch: %v", err)
+	}
+	if gateway.mints != 1 || plain.GetManagedKeyBinding() != nil {
+		t.Fatalf("a runtime without a declared credential minted a key")
 	}
 }

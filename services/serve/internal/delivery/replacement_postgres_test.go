@@ -715,6 +715,7 @@ func TestServeReloadModelsAdmitsOnlyTheWorkspaceOwner(t *testing.T) {
 	s.Runtime = runtime
 	deploy := deployReserved(r, reservation)
 	deploy.ModelSelections = []*api.ModelSelection{{Slot: "chat", ModelId: "model-original"}}
+	deploy.ManagedKeyBinding = launchManagedKeyBinding(r.GetWorkspaceId(), reservation.RuntimeInstanceId, "key-original")
 	if _, err := s.Deploy(ctx, deploy); err != nil {
 		t.Fatalf("first delivery: %v", err)
 	}
@@ -778,11 +779,12 @@ func TestServeReloadModelsRefusesAnUnconfirmedManagedKeyBinding(t *testing.T) {
 			s.Runtime = runtime
 			deploy := deployReserved(r, reservation)
 			deploy.ModelSelections = []*api.ModelSelection{{Slot: "chat", ModelId: "model-original"}}
+			deploy.ManagedKeyBinding = launchManagedKeyBinding(r.GetWorkspaceId(), reservation.RuntimeInstanceId, "key-original")
 			if _, err := s.Deploy(ctx, deploy); err != nil {
 				t.Fatalf("first delivery: %v", err)
 			}
-			if gateway.calls != 1 {
-				t.Fatalf("setup minted %d keys, want the deploy's single one", gateway.calls)
+			if gateway.calls != 0 {
+				t.Fatalf("Serve minted %d keys on the launch path, want none", gateway.calls)
 			}
 			_, err := s.ReloadModels(ctx, &api.RuntimeReloadCommand{RuntimeInstanceId: reservation.RuntimeInstanceId, ExpectedAppliedVersion: 0, TargetVersion: 7, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-7"}}, ManagedKeyBinding: binding})
 			if status.Code(err) != codes.FailedPrecondition {
@@ -791,8 +793,8 @@ func TestServeReloadModelsRefusesAnUnconfirmedManagedKeyBinding(t *testing.T) {
 			if len(runtime.reloads) != 0 {
 				t.Fatalf("a refused reload reached the execution boundary: %v", runtime.reloads)
 			}
-			if gateway.calls != 1 {
-				t.Fatalf("the reload minted %d extra Gateway keys, want none", gateway.calls-1)
+			if gateway.calls != 0 {
+				t.Fatalf("the reload minted %d Gateway keys, want none", gateway.calls)
 			}
 			if applied := appliedModelConfiguration(t, s, reservation.RuntimeInstanceId); applied != 0 {
 				t.Fatalf("a refused reload advanced the applied configuration to %d", applied)

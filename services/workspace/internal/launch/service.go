@@ -120,6 +120,11 @@ type orderResult struct {
 	RuntimeCommand        json.RawMessage `json:"runtimeCommand,omitempty"`
 	RuntimeReadback       json.RawMessage `json:"runtimeReadback,omitempty"`
 	RuntimeDeployAccepted bool            `json:"runtimeDeployAccepted,omitempty"`
+	// ManagedKeyBinding is the opaque Gateway/Fabric binding the launch issued for a
+	// runtime whose revision declares the installation Gateway credential. It is the
+	// exact binding id the first model configuration names as its RebindSecret
+	// predecessor, so the replacement path has a real predecessor from the start.
+	ManagedKeyBinding json.RawMessage `json:"managedKeyBinding,omitempty"`
 
 	// The model-configuration update records the version it applied and the owner
 	// identities it established, so a later read or a recovery names the same
