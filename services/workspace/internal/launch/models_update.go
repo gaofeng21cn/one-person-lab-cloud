@@ -331,17 +331,21 @@ func (s *Service) runModelUpdate(ctx context.Context, op ownerstore.Operation, l
 	}
 	// 4. Fabric binds the approved Secret into the exact runtime and confirms the
 	// version the execution boundary must inject. An unconfirmed binding never
-	// reaches Serve.
+	// reaches Serve. A runtime that already carries a confirmed Fabric binding for
+	// this purpose is a replacement: the first configuration binds initially, and a
+	// later configuration rebinds against the exact predecessor it recorded. Fabric
+	// never silently replaces a different Secret, so the two operations stay
+	// distinct and the predecessor stays active until the replacement is confirmed.
 	if err = s.advanceModelUpdate(ctx, op, "configuration"); err != nil {
 		return nil, err
 	}
-	bound, err := s.Fabric.BindSecret(ctx, &api.SecretBindingCommand{Context: continuation(op, launch.grantID, "bind_managed_secret"), WorkspaceId: op.ResourceID, RuntimeInstanceId: launch.runtimeInstanceID, KeyBindingId: binding.GetKeyBindingId(), SecretDeliveryReference: binding.GetSecretDeliveryReference(), TargetSlot: credential.Name, Fingerprint: binding.GetFingerprint()})
+	predecessor, err := s.activeModelSecretBindingID(ctx, op.ResourceID)
+	if err != nil {
+		return nil, err
+	}
+	secretBindingID, secretVersion, err := s.bindOrRebindModelSecret(ctx, op, launch, credential.Name, predecessor, binding)
 	if err != nil {
 		return s.rejectModelConfiguration(ctx, op, configurationID, "configuration", err)
-	}
-	if bound.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED || strings.TrimSpace(bound.GetSecretBindingId()) == "" || strings.TrimSpace(bound.GetVersion()) == "" ||
-		bound.GetFingerprint() != binding.GetFingerprint() || bound.GetRuntimeInstanceId() != launch.runtimeInstanceID {
-		return s.rejectModelConfiguration(ctx, op, configurationID, "configuration", status.Error(codes.FailedPrecondition, "Fabric did not confirm the exact Gateway Secret binding"))
 	}
 	// 5. Serve applies the publisher contract and reports the version the
 	// application itself read back. The opaque binding travels with the command and
@@ -349,7 +353,7 @@ func (s *Service) runModelUpdate(ctx context.Context, op ownerstore.Operation, l
 	if err = s.advanceModelUpdate(ctx, op, "reload"); err != nil {
 		return nil, err
 	}
-	reload := &api.RuntimeReloadCommand{Context: continuation(op, launch.grantID, "reload_models"), RuntimeInstanceId: launch.runtimeInstanceID, ExpectedAppliedVersion: appliedVersion, TargetVersion: targetVersion, Selections: selections, ManagedKeyBinding: &api.RuntimeManagedKeyBinding{KeyBindingId: binding.GetKeyBindingId(), SecretDeliveryReference: binding.GetSecretDeliveryReference(), Fingerprint: binding.GetFingerprint(), TargetSlot: credential.Name, SecretBindingId: bound.GetSecretBindingId(), SecretVersion: bound.GetVersion()}}
+	reload := &api.RuntimeReloadCommand{Context: continuation(op, launch.grantID, "reload_models"), RuntimeInstanceId: launch.runtimeInstanceID, ExpectedAppliedVersion: appliedVersion, TargetVersion: targetVersion, Selections: selections, ManagedKeyBinding: &api.RuntimeManagedKeyBinding{KeyBindingId: binding.GetKeyBindingId(), SecretDeliveryReference: binding.GetSecretDeliveryReference(), Fingerprint: binding.GetFingerprint(), TargetSlot: credential.Name, SecretBindingId: secretBindingID, SecretVersion: secretVersion}}
 	reloaded, err := s.Serve.ReloadModels(ctx, reload)
 	if err != nil {
 		return s.rejectModelConfiguration(ctx, op, configurationID, "reload", err)
@@ -359,16 +363,70 @@ func (s *Service) runModelUpdate(ctx context.Context, op ownerstore.Operation, l
 	}
 	// 6. Only now does the Workspace advance its applied version, in the same
 	// transaction that records the confirmed reload.
-	if err = s.confirmModelConfiguration(ctx, op, configurationID, bound.GetVersion(), targetVersion); err != nil {
+	if err = s.confirmModelConfiguration(ctx, op, configurationID, secretVersion, targetVersion); err != nil {
 		return nil, err
 	}
 	// The superseded key is retired after the new one is confirmed, so a
 	// configuration change never leaves the previous generation live.
 	revoked, revokeErr := s.revokeSupersededKey(ctx, op, launch, targetVersion)
 	if revokeErr != nil {
-		return s.finishModelUpdate(ctx, op, "verification", "needs_attention", "unknown", "", status.Code(revokeErr).String(), orderResult{ConfigurationID: configurationID, ConfigurationVersion: targetVersion, KeyBindingID: binding.GetKeyBindingId(), SecretBindingID: bound.GetSecretBindingId(), ServeOperationID: reloaded.GetOperationId(), RevokedKeyBindingID: revoked})
+		return s.finishModelUpdate(ctx, op, "verification", "needs_attention", "unknown", "", status.Code(revokeErr).String(), orderResult{ConfigurationID: configurationID, ConfigurationVersion: targetVersion, KeyBindingID: binding.GetKeyBindingId(), SecretBindingID: secretBindingID, ServeOperationID: reloaded.GetOperationId(), RevokedKeyBindingID: revoked})
 	}
-	return s.finishModelUpdate(ctx, op, "succeeded", "succeeded", "confirmed", "", "", orderResult{ConfigurationID: configurationID, ConfigurationVersion: targetVersion, KeyBindingID: binding.GetKeyBindingId(), SecretBindingID: bound.GetSecretBindingId(), ServeOperationID: reloaded.GetOperationId(), RevokedKeyBindingID: revoked})
+	return s.finishModelUpdate(ctx, op, "succeeded", "succeeded", "confirmed", "", "", orderResult{ConfigurationID: configurationID, ConfigurationVersion: targetVersion, KeyBindingID: binding.GetKeyBindingId(), SecretBindingID: secretBindingID, ServeOperationID: reloaded.GetOperationId(), RevokedKeyBindingID: revoked})
+}
+
+// activeModelSecretBindingID returns the Fabric Secret binding this Workspace's
+// last confirmed model configuration recorded for its runtime. It is the exact
+// predecessor a later configuration must name when it rebinds: the first
+// configuration binds initially, so an absent value means there is nothing to
+// replace. The binding id is the opaque owner readback Workspace stored with the
+// configuration it confirmed, not a value the caller can choose.
+func (s *Service) activeModelSecretBindingID(ctx context.Context, workspaceID string) (string, error) {
+	var raw []byte
+	err := s.Store.DB().QueryRowContext(ctx, `SELECT COALESCE(result,'{}'::jsonb) FROM workspace.operations
+		WHERE resource_id=$1 AND kind='update_models' AND status='succeeded'
+		ORDER BY created_at DESC, id DESC LIMIT 1`, workspaceID).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", dbError(err)
+	}
+	var result orderResult
+	if json.Unmarshal(raw, &result) != nil {
+		return "", status.Error(codes.DataLoss, "stored Workspace model update result is invalid")
+	}
+	return strings.TrimSpace(result.SecretBindingID), nil
+}
+
+// bindOrRebindModelSecret confirms the approved Secret for one model configuration.
+// With no predecessor the first configuration binds initially; with a predecessor
+// the replacement must name that exact Fabric binding so Fabric compares the active
+// binding before it supersedes. Both paths return the confirmed binding identity and
+// version Serve must inject; a replacement reports the predecessor it retired so the
+// update receipt can record it.
+func (s *Service) bindOrRebindModelSecret(ctx context.Context, op ownerstore.Operation, launch modelLaunch, targetSlot, predecessor string, binding *api.ManagedKeyBinding) (string, string, error) {
+	if strings.TrimSpace(predecessor) == "" {
+		bound, err := s.Fabric.BindSecret(ctx, &api.SecretBindingCommand{Context: continuation(op, launch.grantID, "bind_managed_secret"), WorkspaceId: op.ResourceID, RuntimeInstanceId: launch.runtimeInstanceID, KeyBindingId: binding.GetKeyBindingId(), SecretDeliveryReference: binding.GetSecretDeliveryReference(), TargetSlot: targetSlot, Fingerprint: binding.GetFingerprint()})
+		if err != nil {
+			return "", "", err
+		}
+		if bound.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED || strings.TrimSpace(bound.GetSecretBindingId()) == "" || strings.TrimSpace(bound.GetVersion()) == "" ||
+			bound.GetFingerprint() != binding.GetFingerprint() || bound.GetRuntimeInstanceId() != launch.runtimeInstanceID {
+			return "", "", status.Error(codes.FailedPrecondition, "Fabric did not confirm the exact Gateway Secret binding")
+		}
+		return bound.GetSecretBindingId(), bound.GetVersion(), nil
+	}
+	rebound, err := s.Fabric.RebindSecret(ctx, &api.SecretBindingRebindCommand{Context: continuation(op, launch.grantID, "rebind_managed_secret"), WorkspaceId: op.ResourceID, RuntimeInstanceId: launch.runtimeInstanceID, ExpectedCurrentSecretBindingId: predecessor, KeyBindingId: binding.GetKeyBindingId(), SecretDeliveryReference: binding.GetSecretDeliveryReference(), TargetSlot: targetSlot, Fingerprint: binding.GetFingerprint()})
+	if err != nil {
+		return "", "", err
+	}
+	if rebound.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED || strings.TrimSpace(rebound.GetSecretBindingId()) == "" || strings.TrimSpace(rebound.GetVersion()) == "" ||
+		rebound.GetFingerprint() != binding.GetFingerprint() || rebound.GetRuntimeInstanceId() != launch.runtimeInstanceID ||
+		strings.TrimSpace(rebound.GetPreviousSecretBindingId()) != predecessor {
+		return "", "", status.Error(codes.FailedPrecondition, "Fabric did not confirm the exact Gateway Secret replacement")
+	}
+	return rebound.GetSecretBindingId(), rebound.GetVersion(), nil
 }
 
 // recordModelConfigurationIntent writes the accepted configuration version and the
