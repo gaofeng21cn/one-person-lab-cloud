@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"strings"
 	"testing"
 
 	"google.golang.org/grpc"
@@ -78,6 +79,33 @@ func managedKeyFixture(t *testing.T) (*delivery.Service, *api.RuntimeReservation
 	s.Resources = resources
 	s.Runtime = &runtimeForServe{}
 	return s, r, out, gateway, resources
+}
+
+// declareGatewayCredential makes one reservation's revision declare the
+// installation Gateway credential, then re-binds the descriptor digest and the
+// capability fixture to the exact bytes Reserve authenticates.
+func declareGatewayCredential(t *testing.T, r *api.RuntimeReservationCommand, cap *capabilityForServe) {
+	t.Helper()
+	r.DeploymentDescriptor.ApplicationRevision.Credentials = []*api.WorkspaceApplicationCredential{{Name: "gateway", Kind: api.WorkspaceApplicationCredentialKindEnum_WORKSPACE_APPLICATION_CREDENTIAL_KIND_ENUM_GATEWAY_KEY, Target: "/run/secrets/opl_gateway_api_key"}}
+	rawDescriptor, err := publicjson.Marshal(r.GetDeploymentDescriptor())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(rawDescriptor)
+	r.DeploymentDescriptorDigest = "sha256:" + hex.EncodeToString(sum[:])
+	cap.version.DeploymentDescriptor = r.GetDeploymentDescriptor()
+	cap.version.DeploymentDescriptorDigest = r.GetDeploymentDescriptorDigest()
+}
+
+// confirmedReloadBindingFixture is the opaque Gateway/Fabric readback a
+// Workspace presents for one model-configuration version: Gateway's key binding
+// identity delivered into this Workspace's installation Gateway Secret slot.
+func confirmedReloadBindingFixture(workspaceID, keyBindingID, version string) *api.RuntimeManagedKeyBinding {
+	return &api.RuntimeManagedKeyBinding{
+		KeyBindingId: keyBindingID, Fingerprint: "sha256:" + strings.Repeat("ab", 32),
+		SecretDeliveryReference: contracts.WorkspaceGatewaySecretRef(workspaceID),
+		TargetSlot:              "gateway", SecretBindingId: "sbx_" + keyBindingID, SecretVersion: version,
+	}
 }
 
 func TestServeDeployResolvesAndInjectsManagedKey(t *testing.T) {

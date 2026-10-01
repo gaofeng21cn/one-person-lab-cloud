@@ -133,6 +133,16 @@ func (s *Service) reloadRuntime(ctx context.Context, command *api.RuntimeReloadC
 	reload := proto.Clone(deploy.command).(*api.RuntimeDeployCommand)
 	reload.ModelConfigurationVersion = command.GetTargetVersion()
 	reload.ModelSelections = command.GetSelections()
+	// Serve applies the credential generation its owners confirmed when this runtime
+	// declares the Gateway credential: the reload carries the opaque binding Gateway
+	// issued for the new model set and Fabric read back, and Serve never mints a
+	// replacement key of its own. A runtime that declares no such credential receives
+	// no credential and no caller-supplied binding is trusted for it.
+	binding, err := confirmedReloadBinding(reload, command.GetManagedKeyBinding())
+	if err != nil {
+		return nil, err
+	}
+	reload.ManagedKeyBinding = binding
 	target, err := s.confirmedRuntimeTarget(ctx, reload)
 	if err != nil {
 		return nil, err
@@ -151,9 +161,13 @@ func (s *Service) reloadRuntime(ctx context.Context, command *api.RuntimeReloadC
 // confirm leaves the runtime's last confirmed configuration untouched.
 func (s *Service) reloadModelConfiguration(ctx context.Context, deploy *persistedRuntime, reload *api.RuntimeDeployCommand, target ExecutionTarget, command *api.RuntimeReloadCommand) (*api.Operation, error) {
 	targetVersion := strconv.FormatInt(command.GetTargetVersion(), 10)
+	// The durable intent names the configuration version and the one credential
+	// generation bound to it, so a retry of the same version resumes its own action
+	// while a retry that changes either the selections or the binding is refused.
 	snapshot, err := json.Marshal(map[string]string{
 		"desired": "running", "targetVersion": targetVersion,
 		"selections": reloadSelectionDigest(reload.GetModelSelections()),
+		"keyBinding": reload.GetManagedKeyBinding().GetKeyBindingId(),
 	})
 	if err != nil {
 		return nil, status.Error(codes.Internal, "cannot record the runtime reload")
