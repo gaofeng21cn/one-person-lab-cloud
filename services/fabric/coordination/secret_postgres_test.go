@@ -304,4 +304,10 @@ func TestRebindSecretReplacesOnlyTheExpectedPredecessor(t *testing.T) {
 	if _, err = api.NewFabricCoordinationClient(serveConn).RebindSecret(ctx, conflict); status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("foreign peer err=%v want permission denied", err)
 	}
+	// A denied authorization (wrong tenant/owner) is refused before any retirement.
+	authority.deny = true
+	defer func() { authority.deny = false }()
+	if _, err = client.RebindSecret(ctx, &api.SecretBindingRebindCommand{Context: call("rebind-denied"), WorkspaceId: workspace, RuntimeInstanceId: "rt_rebind", ExpectedCurrentSecretBindingId: replacement.GetSecretBindingId(), KeyBindingId: "key-3", SecretDeliveryReference: "opl-gateway-" + workspace, TargetSlot: "gateway", Fingerprint: firstFingerprint}); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("denied rebind err=%v want permission denied", err)
+	}
 }
