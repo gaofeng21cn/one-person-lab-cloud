@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_workspace_launch_gateway_key_owner_source_check",
+  "revision": 1,
+  "recordedAt": "2026-10-01T10:00:00Z",
+  "result": "the_launch_delivery_of_a_runtime_that_declares_the_installation_gateway_credential_now_issues_and_binds_its_managed_key_on_the_workspace_owner_path_records_the_opaque_fabric_binding_so_the_first_updateworkspacemodels_has_a_predecessor_to_replace_and_serve_stops_minting_a_gateway_key_so_the_two_configuration_combinations_can_be_delivered",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 11.5 - the launch Gateway key owner and the first model configuration predecessor",
+  "branch": "codex/serve-access-data-plane",
+  "implementationSha": "87cfc87a",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.5",
+  "necessity": {
+    "decision": "docs/spec/target/06_data_flow_and_state_machine.md F08 rows 6 and 8 place gateway CreateManagedKey and fabric BindSecret on the Workspace owner at launch; docs/decisions.md and docs/invariants.md make Gateway the sole key issuer and forbid Serve from minting a Gateway key. The merged F09 replacement contract (44d754fe) requires the first UpdateWorkspaceModels to name the exact active predecessor binding.",
+    "currentProblem": "Serve.Deploy minted the launch Gateway key and bound its Secret inside Serve (resolveManagedKeyBinding), so the launch-established fabric.secret_bindings id was never recorded where the Workspace could read it. A runtime whose revision declares the installation Gateway credential therefore had no predecessor available to the first UpdateWorkspaceModels: the update called Fabric BindSecret for an already-bound runtime purpose and Fabric refused the different Secret with AlreadyExists, so the first model configuration could never be applied on either product combination. The launch also omitted the workspace->gateway CreateManagedKey and workspace->fabric BindSecret continuations the SSOT names for F08.",
+    "confirmedFacts": [
+      "docs/spec/target/06_data_flow_and_state_machine.md F08 row 6 is workspace->gateway GatewayCoordination.CreateManagedKey and row 8 is runtime_control->fabric FabricCoordination.BindSecret; F09 row 4/5 repeat them on the Workspace owner for the update",
+      "services/serve/internal/delivery/secret.go resolveManagedKeyBinding called s.Gateway.CreateManagedKey inside Serve's Deploy, which the Gateway owner admits only to the Workspace peer",
+      "RuntimeDeployCommand already carries RuntimeManagedKeyBinding managed_key_binding = 17 and the Workspace order result already persists an orderResult the launch and update paths both decode",
+      "a focused test before this change proved the collision: a launch-established binding made the first UpdateWorkspaceModels reach Fabric BindSecret and be refused with AlreadyExists"
+    ],
+    "outcome": "Workspace resumeRuntime now issues and binds the launch key before Deploy and freezes the binding on the command and the order result; activeModelSecretBindingID falls back to that launch binding as the first configuration's predecessor; revokeSupersededKey revokes the launch key after Serve confirms the new version; and Serve resolveManagedKeyBinding applies the Workspace-issued binding or refuses, never minting one."
+  },
+  "ssotConformance": [
+    {
+      "source": "docs/spec/target/06_data_flow_and_state_machine.md#F08",
+      "requirement": "rows 6 and 8: Workspace calls GatewayCoordination.CreateManagedKey and then FabricCoordination.BindSecret at launch, before Serve Deploy.",
+      "conformance": "Workspace resumeRuntime calls CreateManagedKey and BindSecret before Deploy and records the opaque binding; Serve Deploy no longer mints or binds."
+    },
+    {
+      "source": "docs/decisions.md#2026-10-01-fabric-owns-explicit-secret-binding-replacement",
+      "requirement": "the first configuration replaces the launch binding through RebindSecret with the expected predecessor.",
+      "conformance": "activeModelSecretBindingID returns the launch binding id when no model-configuration update has succeeded, so the first update names it as the RebindSecret predecessor."
+    },
+    {
+      "source": "docs/invariants.md#identity-and-secrets",
+      "requirement": "Gateway Integration is the sole writer and issuer of a Workspace-managed Gateway key; Serve is not a Gateway-key writer.",
+      "conformance": "Serve resolveManagedKeyBinding contains no Gateway or Fabric call; it validates and applies the Workspace-issued binding only."
+    }
+  ],
+  "verification": {
+    "focused": [
+      {
+        "command": "go -C services/workspace test ./... -count=1",
+        "result": "pass",
+        "covers": "ensureRuntimeGatewayBinding issues/binds the launch key once and reuses the recorded binding on restart, mints nothing without a declared credential, the first update rebinds against the launch predecessor and revokes the launch key, plus all existing launch/model tests."
+      },
+      {
+        "command": "go -C services/serve test ./... -count=1",
+        "result": "pass",
+        "covers": "Deploy applies the Workspace-issued binding and mints/binds nothing; a missing or incomplete binding is refused before the deployment becomes active; the reload path still mints nothing."
+      },
+      {
+        "command": "go -C services/fabric test ./... -count=1",
+        "result": "pass",
+        "covers": "BindSecret initial-bind/replay and RebindSecret predecessor CAS are unchanged."
+      },
+      {
+        "command": "go -C services/gateway-integration test ./... -count=1",
+        "result": "pass",
+        "covers": "the Workspace accepted-operation grant still admits the Gateway and Fabric audiences."
+      }
+    ],
+    "repository": [
+      {
+        "command": "npm run verify:local",
+        "result": "pass",
+        "evidence": "Local verification passed."
+      },
+      {
+        "command": "npm run verify:local:full",
+        "result": "fail (pre-existing, unrelated to this write set)",
+        "evidence": "Only opl-cloud/services/control-plane/internal/server:TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp fails; its fixture pins paidThrough=2026-08-31 while the wall clock is 2026-10-01 and it reproduces on canonical main. No fabric/workspace/serve/gateway failure appeared."
+      }
+    ],
+    "notRun": [
+      "No Candidate build was dispatched (the candidate workflow admits only the repository owner as actor); no Instance deployment, Tencent resource action, real charge or production access was performed."
+    ]
+  },
+  "remainingScope": {
+    "callerMigration": "The Console BFF/UI model-configuration surfaces and the retirement of the retained Control Plane application proxy/route resolver remain interlocked with the Instance Ingress pointing at Serve.",
+    "candidate": "Section 11.7: the repository owner must dispatch the Candidate workflow for the exact branch SHA.",
+    "instance": "Section 11.8: Candidate installation and Tencent TKE acceptance remain the protected obligations of opl-instance-medopl.",
+    "githubReview": "PR #718 (code) and #719 (SSOT) remain open for gaofeng21cn review; the local SSOT merge is not treated as approved."
+  },
+  "claimBoundary": "Source-check and focused owner tests only. This proves the launch key now travels the SSOT owner path and that the first model configuration can name a real predecessor. It does not prove a Candidate exists, an Instance deployed, a Tencent resource was provisioned, or either product combination is accepted end to end.",
+  "ssotAnchors": [
+    "docs/spec/target/06_data_flow_and_state_machine.md#F08",
+    "docs/spec/target/06_data_flow_and_state_machine.md#F09",
+    "docs/decisions.md#2026-10-01-fabric-owns-explicit-secret-binding-replacement",
+    "docs/invariants.md#identity-and-secrets",
+    "docs/spec/target/14_implementation_work_packages.md#W17"
+  ]
+}
