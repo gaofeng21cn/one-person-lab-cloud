@@ -390,9 +390,11 @@ Serve的active Deployment、readiness和access binding是当前应用交付权�
 | 2 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；bff→workspace / `ServeProductService.GetWorkspaceAccess` | `GetWorkspaceAccessRpcRequest` → `WorkspaceAccess` | 只读/由原Owner管理 | 当前部署/访问策略和运行事实一致；按canonical应用登录，不新增SSO |
 | 3 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；bff→workspace / `WorkspaceProductService.RevealWorkspaceApplicationCredentials` | `RevealWorkspaceApplicationCredentialsRpcRequest` → `WorkspaceApplicationCredentials` | 只读/由原Owner管理 | 所有者权限+当前声明workspace_admin_password+实际ready，只一次性用户名/密码；no-store不缓存；不返回GatewayKey或session_secret |
 | 4 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→gateway / `GatewayCoordination.CreateManagedKey` | `ManagedKeyCommand` → `ManagedKeyBinding` | gateway.key_bindings | exact Workspace/runtime/model set；仅返回opaque binding与Secret delivery reference；不返回明文Key；unknown按Gateway action readback处理，不盲建第二Key |
-| 5 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→fabric / `FabricCoordination.BindSecret` | `SecretBindingCommand` → `SecretBindingReadback` | fabric.secret_bindings | Gateway返回的opaque Secret reference实际绑定到目标runtime并读回confirmed version；unknown不进入Serve；不把Gateway Key当任意环境变量公开 |
+| 5 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→fabric / `FabricCoordination.BindSecret` | `SecretBindingCommand` → `SecretBindingReadback` | fabric.secret_bindings | 首次绑定或同请求重试；Gateway返回的opaque Secret reference实际绑定到目标runtime并读回confirmed version；不同active Secret必须走RebindSecret；unknown不进入Serve |
+| 5a | 仅当已有confirmed active binding且模型配置更换Gateway Secret时；workspace→fabric / `FabricCoordination.RebindSecret` | `SecretBindingRebindCommand` → `SecretBindingRebindReadback` | fabric.secret_bindings | expected predecessor exact match；provider确认新Secret后保留one-active invariant并返回新binding/version；unknown先读回原replacement或compensation，不撤销旧Gateway key |
 | 6 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→serve / `ServeAgentCoordination.ReloadModels` | `RuntimeReloadCommand` → `Operation` | serve.agent_runtime_actions | 目标配置版本+selections及opaque RuntimeManagedKeyBinding实际应用；Serve不铸造Gateway Key；保存成功不等于reload成功 |
 | 7 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；serve→serve / `ServeRuntimeAdapter.ObserveRuntime` | `RuntimeReadbackRequest` → `RuntimeReadback` | 只读/由原Owner管理 | appliedVersion和选择相同，运行状态真实；unknown显示应用中/待核实，不覆盖已确认配置 |
+| 8 | 仅在Serve readback确认新配置后；workspace→gateway / `GatewayCoordination.RevokeManagedKey` | `ManagedKeyRevoke` → `Operation` | gateway.key_bindings | 只撤销已被新Runtime版本取代的 predecessor；unknown先读原revoke action，不撤销错误key |
 
 **终点**：打开真实应用；模型实际生效；应用管理员凭据仅在既有授权reveal路径一次性显示
 

@@ -209,6 +209,14 @@ implementation and remaining gaps are reported separately in status/roadmap.
   owner, binds its Secret through the Fabric owner, and advances the Workspace
   applied version only after Serve's publisher apply/readback confirms the
   target version. The public request never carries a key-binding id.
+- `FabricCoordination.BindSecret` is initial-bind/replay only. A different
+  Secret for an already active runtime purpose must use the explicit Fabric
+  `RebindSecret` operation with the expected predecessor binding; Fabric never
+  permits two active bindings for the same runtime purpose.
+- A predecessor Gateway key remains valid until the replacement Secret and new
+  Runtime model version are confirmed by Fabric and Serve. Gateway revocation
+  and Fabric binding retirement are separate owner actions; unknown replacement
+  or compensation blocks subsequent side effects until readback.
 - Retained data bindings are stable across ordinary image updates and are
   independent of tag/digest/attempt identity. Tencent application persistence
   uses Workspace-owned CBS via explicit mounts; container layers and tmpfs are

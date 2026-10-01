@@ -2436,6 +2436,13 @@ message ResourceReadback { string resource_set_id = 1; string workspace_id = 2; 
 message ApplicationExecutionPlacement { string compute_node_name = 1; string compute_package_id = 2; string compute_node_pool_id = 3; string compute_machine_name = 4; string compute_instance_id = 5; string storage_pvc_name = 6; }
 message SecretBindingCommand { CallContext context = 1; string workspace_id = 2; string runtime_instance_id = 3; string key_binding_id = 4; string secret_delivery_reference = 5; string target_slot = 6; string fingerprint = 7; }
 message SecretBindingReadback { string secret_binding_id = 1; string runtime_instance_id = 2; string fingerprint = 3; Observation outcome = 4; string receipt_id = 5; string version = 6; }
+// RebindSecret is the explicit replacement path for a changed Gateway Secret.
+// It compares the expected predecessor, confirms the new store version through
+// Fabric's provider adapter, and returns the replacement binding. It does not
+// revoke the predecessor Gateway key; Workspace does that only after Serve
+// confirms the new applied model version.
+message SecretBindingRebindCommand { CallContext context = 1; string workspace_id = 2; string runtime_instance_id = 3; string expected_current_secret_binding_id = 4; string key_binding_id = 5; string secret_delivery_reference = 6; string target_slot = 7; string fingerprint = 8; }
+message SecretBindingRebindReadback { string previous_secret_binding_id = 1; string secret_binding_id = 2; string runtime_instance_id = 3; string fingerprint = 4; Observation outcome = 5; string receipt_id = 6; string version = 7; }
 service FabricCoordination {
  rpc AdmitResources(ResourceAdmissionRequest) returns (AdmissionResult);
  rpc EnsureResources(EnsureResourcesCommand) returns (Operation);
@@ -2446,6 +2453,7 @@ service FabricCoordination {
  rpc DeleteResources(MutateResourcesCommand) returns (Operation);
  rpc ReadResources(ResourceReadbackRequest) returns (ResourceReadback);
  rpc BindSecret(SecretBindingCommand) returns (SecretBindingReadback);
+ rpc RebindSecret(SecretBindingRebindCommand) returns (SecretBindingRebindReadback);
 }
 message RuntimeReservationCommand { CallContext context = 1; string workspace_id = 2; string deployment_id = 3; string capability_version_id = 4; ArtifactReference artifact = 5; string deployment_descriptor_digest = 6; string deployment_descriptor_object_ref = 7; DeploymentDescriptor deployment_descriptor = 8; string resource_set_id = 9; string data_attachment_id = 10; WorkspaceApplicationSelection application_selection = 11; }
 message RuntimeReservation { string runtime_instance_id = 1; string workspace_id = 2; string deployment_id = 3; ArtifactReference artifact = 4; string deployment_descriptor_digest = 5; string deployment_descriptor_object_ref = 6; int64 execution_epoch = 7; string operation_id = 8; }
@@ -2454,7 +2462,11 @@ message RuntimeManagedKeyBinding { string key_binding_id = 1; string secret_deli
 message RuntimeDeployCommand { CallContext context = 1; string workspace_id = 2; string deployment_id = 3; string capability_version_id = 4; DeploymentDescriptor deployment_descriptor = 5; string resource_set_id = 6; string data_attachment_id = 7; string secret_binding_id = 8; int64 model_configuration_version = 9; repeated ModelSelection model_selections = 10; DataCompatibility data_compatibility = 11; string runtime_instance_id = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; WorkspaceApplicationSelection application_selection = 16; RuntimeManagedKeyBinding managed_key_binding = 17; }
 message RuntimeReadbackRequest { CallContext context = 1; string runtime_instance_id = 2; string deployment_id = 3; }
 message RuntimeReadback { string runtime_instance_id = 1; string workspace_id = 2; string deployment_id = 3; AgentRuntimeObservationState state = 4; bool process_ready = 5; bool application_available = 6; bool credential_injection_verified = 7; ArtifactReference artifact = 8; int64 applied_model_configuration_version = 9; string readiness_receipt_id = 10; Observation outcome = 11; google.protobuf.Timestamp observed_at = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; WorkspaceApplicationEntry application_entry = 16; string access_url = 17; }
-message RuntimeReloadCommand { CallContext context = 1; string runtime_instance_id = 2; int64 expected_applied_version = 3; int64 target_version = 4; repeated ModelSelection selections = 5; }
+// The managed key binding is an opaque Gateway/Fabric owner readback. It is
+// supplied only by Workspace after Gateway CreateManagedKey and Fabric
+// BindSecret; public update callers never choose or construct it. Serve applies
+// the publisher contract but never issues or revokes the Gateway key.
+message RuntimeReloadCommand { CallContext context = 1; string runtime_instance_id = 2; int64 expected_applied_version = 3; int64 target_version = 4; repeated ModelSelection selections = 5; RuntimeManagedKeyBinding managed_key_binding = 6; }
 message RuntimeStopCommand { CallContext context = 1; string runtime_instance_id = 2; string deployment_id = 3; string retained_data_attachment_id = 4; }
 service ServeAgentCoordination {
  rpc Reserve(RuntimeReservationCommand) returns (RuntimeReservation);

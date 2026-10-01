@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_workspace_model_configuration_update_owner_source_check",
+  "revision": 1,
+  "recordedAt": "2026-10-01T00:40:00Z",
+  "result": "the_production_reload_contract_now_carries_the_opaque_runtime_managed_key_binding_workspace_implements_the_one_owner_separated_update_workspace_models_sequence_and_serve_applies_only_the_confirmed_credential_generation_its_owners_issued_so_the_applied_version_can_only_come_from_the_runtime_s_own_readback",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 11.5 eighth pass - the Workspace model configuration update and the reload managed-key binding",
+  "sourceBaseSha": "ee34d2a0",
+  "branch": "codex/serve-access-data-plane",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#W17",
+  "milestoneM1": {
+    "objective": "Minimum real delivery of the default OPL App: the instance installs the complete Cloud owner topology, Cloud builds an exact-SHA Candidate, the instance deploys it, Serve reaches a confirmed route and URL on Tencent TKE, and a user opens the application.",
+    "stepDelivered": "UpdateWorkspaceModels is implemented as the one owner-separated operation the local SSOT merge (ee34d2a0) specifies: Workspace authorizes the update and validates the selections, GatewayCoordination.CreateManagedKey issues the managed key for exactly that model set and runtime, Workspace records the returned opaque binding with the new configuration version, FabricCoordination.BindSecret confirms the runtime Secret binding, ServeAgentCoordination.ReloadModels applies the publisher contract from the opaque RuntimeManagedKeyBinding, and the Workspace advances workspace.workspaces.model_configuration_version only from Serve's confirmed readback. The production RuntimeReloadCommand now carries the managed_key_binding field the merged SSOT projection declares."
+  },
+  "necessity": {
+    "decision": "docs/decisions.md#workspace-model-configuration-and-gateway-key-binding-owner adopts one owner-separated update sequence for both product combinations; docs/spec/target/14_implementation_work_packages.md section W17 states UpdateWorkspaceModels must obtain a confirmed ManagedKeyBinding from Gateway, bind the returned Secret reference through Fabric, and only then call Serve with an internal RuntimeManagedKeyBinding; docs/invariants.md#identity-and-secrets makes Gateway Integration the sole writer of gateway.key_bindings and forbids Serve from becoming a Gateway-key writer; docs/spec/target/02_database_schema_complete.md keeps workspace.model_configurations.gateway_key_binding_id NOT NULL.",
+    "currentProblem": "Before this pass the merged SSOT projection docs/spec/target/contracts/internal.proto declared RuntimeReloadCommand.managed_key_binding while the production contract packages/contracts/proto/internal.proto did not, so no generated binding carried it. services/workspace/internal/launch implemented only GetWorkspaceModels, so WorkspaceProductService.UpdateWorkspaceModels was answered by api.UnimplementedWorkspaceProductServiceServer. services/serve/internal/delivery reloadRuntime applied a reload without any managed-key binding, so a Workspace had no owner-separated way to change the credential generation its runtime uses.",
+    "confirmedFacts": [
+      "docs/spec/target/contracts/internal.proto declares message RuntimeReloadCommand with 'RuntimeManagedKeyBinding managed_key_binding = 6' and the comment that the binding is supplied only by Workspace after Gateway CreateManagedKey and Fabric BindSecret and that Serve never issues or revokes the Gateway key; packages/contracts/proto/internal.proto declared the same message without field 6.",
+      "docs/spec/target/06_data_flow_and_state_machine.md F09 rows 4-7 name workspace->gateway CreateManagedKey, workspace->fabric BindSecret, workspace->serve ReloadModels with the opaque RuntimeManagedKeyBinding, and serve->serve ObserveRuntime; row 6 states Serve does not mint the Gateway key.",
+      "services/gateway-integration/identity/coordination.go CreateManagedKey is admitted only to the Workspace peer, issues through ManagedKeyIssuer, writes the opaque delivery through SecretStore, records gateway.key_bindings and returns only the opaque ManagedKeyBinding; RevokeManagedKey is admitted only to the Workspace peer.",
+      "services/fabric/coordination/secret.go BindSecret is admitted to the Serve and Workspace peers, requires an idempotency key, confirms the approved Secret through the provider and writes fabric.secret_bindings once per runtime and purpose.",
+      "workspace.model_configurations declares gateway_key_binding_id NOT NULL and operation_id NOT NULL with a foreign key to workspace.operations, so the configuration row can only be written after Gateway confirms the binding and after the update operation exists."
+    ],
+    "outcome": "The Workspace owner now answers UpdateWorkspaceModels with one owner-separated operation whose applied version advances only from Serve's confirmed readback, and Serve applies only the confirmed credential generation its owners issued."
+  },
+  "writeSet": [
+    "packages/contracts/proto/internal.proto",
+    "packages/contracts/go/api/internal.pb.go",
+    "services/gateway-integration/identity/authorization.go",
+    "services/serve/internal/delivery/secret.go",
+    "services/serve/internal/delivery/runtime_bridge.go",
+    "services/serve/internal/delivery/secret_postgres_test.go",
+    "services/serve/internal/delivery/replacement_postgres_test.go",
+    "services/workspace/internal/launch/models_update.go",
+    "services/workspace/internal/launch/models_update_test.go",
+    "services/workspace/internal/launch/service.go"
+  ],
+  "implementation": {
+    "contractProjection": {
+      "source": "docs/spec/target/contracts/internal.proto",
+      "change": "packages/contracts/proto/internal.proto RuntimeReloadCommand now carries the identical comment and 'RuntimeManagedKeyBinding managed_key_binding = 6'. packages/contracts/go/api/internal.pb.go was regenerated with the pinned tools (protoc-gen-go v1.36.6, protoc-gen-go-grpc v1.5.1, grpcio-tools 1.80.0 / libprotoc 31.1) through packages/contracts/proto/generate.sh; the generated header tool versions are unchanged and the diff is limited to the RuntimeReloadCommand field, its getter, the descriptor bytes and the dependency index.",
+      "noNewFiles": "No new contract file, schema, public API field or documentation file was added; the production contract was brought into line with the already merged SSOT projection."
+    },
+    "workspaceOwner": {
+      "entryPoint": "services/workspace/internal/launch/models_update.go UpdateWorkspaceModels",
+      "sequence": [
+        "ValidateCallContext, workspace id, idempotency key and the typed selections (slot and model id required, no duplicate slot); require Gateway, Fabric and Serve.",
+        "Read the Workspace's tenant and applied model_configuration_version, then authorize UPDATEWORKSPACEMODELS for that Workspace.",
+        "Resolve the frozen launch (grant, runtime instance, application source record) and require the frozen revision to declare the installation Gateway credential; a runtime without that capability is refused rather than fabricated.",
+        "Accept the update idempotently: idempotency_records under tenant/actor/updateWorkspaceModels/key, a workspace.operations row of kind update_models at stage admission, and an expectedVersion check against the latest recorded configuration (or the applied version) under a row lock.",
+        "GatewayCoordination.CreateManagedKey for the exact model ids and target runtime; the returned binding must name this Workspace, this runtime and the installation Gateway Secret reference.",
+        "Insert workspace.model_configurations with the new version, the returned gateway_key_binding_id, the update operation, runtime_reload_observation 'unknown' and the typed selections.",
+        "FabricCoordination.BindSecret with the opaque delivery reference; an unconfirmed or mismatched readback is refused and never reaches Serve.",
+        "ServeAgentCoordination.ReloadModels with expectedAppliedVersion, targetVersion, the selections and the opaque RuntimeManagedKeyBinding; a Serve operation that is not succeeded is refused.",
+        "Advance workspace.workspaces.model_configuration_version by compare-and-set in the same transaction that marks the configuration row confirmed.",
+        "Revoke the superseded Gateway key binding once the new one is confirmed, and report the update operation through the local owner readback."
+      ],
+      "statusVocabulary": "The operation is reported as kind update_models with the contract's own stage sequence (admission, key, configuration, reload, verification, succeeded); a refusal an owner answered is recorded rejected, a transport or availability failure stays unknown, and the applied version is untouched unless Serve confirmed."
+    },
+    "gatewayAuthority": {
+      "change": "services/gateway-integration/identity/authorization.go admits the BINDMANAGEDSECRET action for the Fabric audience as well as the Gateway audience inside a Workspace accepted-operation grant (Workspace -> Fabric BindSecret), while Gateway remains the sole writer of gateway.key_bindings and the sole issuer/revoker of the managed key.",
+      "authorizationProbe": "A probe against the live CloudIdentity authority in the isolated tenant database showed the Fabric audience was refused for BINDMANAGEDSECRET before the change and the Gateway audience was allowed; the Fabric audience is now admitted as the accepted obligation's second owner for that one action."
+    },
+    "serveBoundary": {
+      "change": "services/serve/internal/delivery/secret.go confirmedReloadBinding plus services/serve/internal/delivery/runtime_bridge.go reloadRuntime.",
+      "behavior": "When the frozen revision declares the installation Gateway credential, a reload must carry a complete opaque binding (key binding id, secret binding id, secret version, fingerprint) that names this Workspace's installation Gateway Secret and the declared slot; Serve injects exactly that version and never mints or revokes a Gateway key. When the revision declares no such credential, no credential is injected and a caller-supplied binding is refused rather than trusted. The reload intent snapshot names the key binding id, so a retry with different selections or a different binding is refused while the same version resumes its own action."
+    }
+  },
+  "conformance": [
+    {
+      "source": "docs/decisions.md#workspace-model-configuration-and-gateway-key-binding-owner",
+      "requirement": "The update path is one owner-separated operation: Workspace authorizes and records, Gateway issues the opaque ManagedKeyBinding, Fabric binds and readbacks the Secret, Serve applies and readbacks the publisher configuration, and Workspace advances its applied version only after the confirmed Serve readback.",
+      "conformance": "UpdateWorkspaceModels runs exactly that sequence; workspace.model_configurations.gateway_key_binding_id is written from the Gateway-returned identity, and workspace.workspaces.model_configuration_version advances only inside confirmModelConfiguration after Serve reports a succeeded reload."
+    },
+    {
+      "source": "docs/spec/target/14_implementation_work_packages.md#W17",
+      "requirement": "UpdateWorkspaceModels has one mandatory owner-separated sequence through RuntimeReloadCommand.managed_key_binding; the public request remains expectedVersion + selections and no caller may supply a key binding.",
+      "conformance": "The public request carries only expectedVersion and selections; the binding is created by Gateway for the exact model set and passed to Serve as the opaque RuntimeManagedKeyBinding. The production contract now declares that field."
+    },
+    {
+      "source": "docs/invariants.md#identity-and-secrets",
+      "requirement": "Gateway Integration is the sole writer of gateway.key_bindings and the only owner allowed to issue, allowlist or revoke a Workspace-managed Gateway key; Workspace persists only the returned opaque binding id; a model-configuration version is not accepted without a confirmed Gateway binding and a confirmed runtime Secret-binding readback; Serve is not a Gateway-key writer.",
+      "conformance": "Workspace persists only gateway_key_binding_id and never the key or its delivery reference; Serve receives the opaque binding and issues no key; the configuration row is written only after CreateManagedKey confirmed and is marked confirmed only after BindSecret and ReloadModels confirmed."
+    },
+    {
+      "source": "docs/spec/target/02_database_schema_complete.md#workspace.model_configurations",
+      "requirement": "New configuration, new version; the Workspace advances modelConfigurationVersion only after a valid runtime call; gateway_key_binding_id is not accepted from the public request.",
+      "conformance": "Each update writes one new version row referencing its update operation and the Gateway binding, and the applied column advances by compare-and-set only after Serve's confirmed readback."
+    },
+    {
+      "source": "docs/spec/target/06_data_flow_and_state_machine.md#F09",
+      "requirement": "Rows 4-7: workspace->gateway CreateManagedKey, workspace->fabric BindSecret, workspace->serve ReloadModels with the opaque RuntimeManagedKeyBinding, serve->serve ObserveRuntime; Serve does not mint the Gateway key; a saved configuration is not a successful reload.",
+      "conformance": "The implementation calls each owner exactly once in that order under continuation contexts derived from the accepted launch grant, and reports success only for a reload Serve confirmed."
+    },
+    {
+      "source": "docs/invariants.md#adopted-application-delivery-invariants",
+      "requirement": "Serve is the sole owner of the deployment, runtime readiness and the applied-version observation; Workspace does not persist a second deployment or current-selection fact.",
+      "conformance": "UpdateWorkspaceModels persists only its own configuration version and the opaque Gateway binding; the applied fact comes from Serve's own confirmed reload and no Serve table is written by Workspace."
+    }
+  ],
+  "verification": {
+    "focused": [
+      {
+        "command": "go -C services/workspace test ./... -count=1 (OPL_OWNER_MIGRATION_TEST_ADMIN_DSN -> isolated PostgreSQL)",
+        "result": "pass",
+        "covers": "UpdateWorkspaceModels: full owner-separated sequence, expectedVersion precondition, idempotent replay and conflict, each unconfirmed Gateway/Fabric/Serve step leaving the applied version untouched, a runtime without the Gateway credential, owning-tenant admission, superseded-key revocation, and selection validation; plus GetWorkspaceModels and the existing launch recovery tests."
+      },
+      {
+        "command": "go -C services/serve test ./... -count=1 (same DSN)",
+        "result": "pass",
+        "covers": "ReloadModels admits only the Workspace owner, carries and enforces the confirmed managed-key binding, refuses an absent/incomplete/re-targeted binding before the execution boundary and issues no Gateway key; Deploy managed-key resolution; the existing lifecycle and replacement tests."
+      },
+      {
+        "command": "go -C services/gateway-integration test ./... -count=1 (same DSN)",
+        "result": "pass",
+        "covers": "CloudIdentity authorization for the Workspace accepted-operation grant, including the Fabric audience for BINDMANAGEDSECRET, plus wallet and managed-key coordination."
+      },
+      {
+        "command": "go -C services/fabric test ./... -count=1 (same DSN)",
+        "result": "pass",
+        "covers": "BindSecret owner writes and provider confirmation."
+      }
+    ],
+    "repository": [
+      {
+        "command": "npm run verify:local",
+        "result": "pass",
+        "evidence": "Local verification passed. (includes the contract/semantic validators, generated-binding consistency, database-free owner tests and Git whitespace)"
+      },
+      {
+        "command": "npm run verify:local:full",
+        "result": "fail (pre-existing, unrelated to this write set)",
+        "evidence": "Only opl-cloud/services/control-plane/internal/server:TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp fails; its fixture pins paidThrough=2026-08-31 while the wall clock is 2026-10-01, so renewalStatus is expired_unpaid. The same failure reproduces on the frozen origin/main base commit 861aacaa in a clean detached worktree with the same PostgreSQL environment, so it is a date-relative fixture defect and not caused by this change."
+      }
+    ],
+    "notRun": [
+      "No Candidate build, Instance deployment, Tencent resource action, real charge or production access was performed; no Instance deployment was dispatched from Cloud."
+    ]
+  },
+  "remainingScope": {
+    "callerMigration": "The Console BFF and Console UI still route the model configuration surfaces through Control Plane for the retained callers; moving those live callers onto the Workspace owner and retiring the old path is a separate bounded migration.",
+    "supersededKeyRetirement": "Gateway-side rotation works: the superseded gateway.key_bindings row is revoked after the replacement is confirmed. Fabric-side, fabric.secret_bindings has UNIQUE (execution_resource_id, purpose) WHERE revoked_at IS NULL and no code writes revoked_at, so a second model-configuration update for the same runtime and slot replays the first binding instead of confirming a new version; the reload then reaches the execution boundary with a stale version and is refused rather than injecting an unverified generation. Closing that gap needs an owner-approved Fabric re-bind/unbind semantic; this pass neither added a contract nor invented one.",
+    "candidateAndInstance": "Section 11.7 (same-SHA branch Candidate) and 11.8 (instance deployment and Tencent TKE acceptance) remain the external owner obligations of opl-instance-medopl."
+  },
+  "ssotAnchors": [
+    "docs/decisions.md#workspace-model-configuration-and-gateway-key-binding-owner",
+    "docs/architecture.md#agent-delivery-and-serve-boundary",
+    "docs/invariants.md#identity-and-secrets",
+    "docs/spec/target/02_database_schema_complete.md#workspace.model-configurations",
+    "docs/spec/target/03_api_contract_complete.yaml (UpdateWorkspaceModelsRequest, ModelConfiguration)",
+    "docs/spec/target/06_data_flow_and_state_machine.md#F09",
+    "docs/spec/target/14_implementation_work_packages.md#W17",
+    "docs/spec/target/contracts/internal.proto (RuntimeReloadCommand)"
+  ]
+}

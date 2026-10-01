@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_serve_access_data_plane_merged_ssot_reconciliation_source_check",
+  "revision": 1,
+  "recordedAt": "2026-10-01T06:00:00Z",
+  "result": "the_serial_integration_branch_is_rebased_onto_the_now_merged_ssot_pr_708_fb0ef688_and_code_pr_706_aa49df82_its_production_reload_contract_matches_the_merged_ssot_projection_and_the_production_and_generated_bindings_plus_the_gateway_fabric_serve_workspace_owner_suites_all_verify_on_the_merged_base",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 11.5 - rebase the Workspace model configuration update onto the merged SSOT and merged #706",
+  "sourceBaseSha": "5e69066a",
+  "branch": "codex/serve-access-data-plane",
+  "reconciledHeadSha": "d64a4bf5",
+  "canonicalMainSha": "fb0ef688",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.5",
+  "necessity": {
+    "decision": "PR #708 (fb0ef688) merged the Tencent/TKE SSOT into canonical main and PR #706 (aa49df82) merged the Serve access-entry owner. The serial branch still sat on an earlier local merge of the same SSOT and so did not contain #706/#709/#710-#715. Its production contract and its reload path had to be reconciled onto canonical main before any Candidate could be built from it, because the Candidate is bound to one exact SHA whose tree must be internally consistent.",
+    "currentProblem": "Before this pass packages/contracts/proto/internal.proto on the branch matched the merged SSOT RuntimeReloadCommand managed_key_binding field while canonical main's #706-generated bindings did not; the branch also predated the merged Serve access-entry and the dependency refreshes, so a Candidate built from it would have shipped a divergent access layer and stale module versions.",
+    "confirmedFacts": [
+      "origin/main head fb0ef688 (#708) and aa49df82 (#706) are both present; docs/spec/target/contracts/internal.proto on main declares RuntimeReloadCommand.managed_key_binding = 6 while packages/contracts/proto/internal.proto on main, the #706 generated source of truth, still omits field 6, so the production contract and the SSOT projection disagreed on main.",
+      "The branch JSON/Go document blobs (docs/spec/target/contracts/internal.proto, docs/spec/target/contracts/domain_flows.json, docs/decisions.md, docs/invariants.md) are byte-identical to origin/main, so the earlier local SSOT merge introduced no document divergence."
+    ],
+    "outcome": "The branch was merged with origin/main. Conflicts were resolved to canonical main for the access entry (access.go, access_postgres_test.go) and the dependency files, and to the branch's SSOT-aligned side only for the two files whose only delta is the SSOT-declared managed_key_binding field. The production internal.proto was regenerated with the pinned protoc-gen-go v1.36.6 / protoc v6.31.1, and the regenerated bindings were proved consistent with the merged prototype (no drift in publicjson or the grpc service surface)."
+  },
+  "ssotConformance": [
+    {
+      "source": "docs/spec/target/contracts/internal.proto",
+      "requirement": "message RuntimeReloadCommand carries RuntimeManagedKeyBinding managed_key_binding = 6; the binding is supplied only by Workspace after Gateway CreateManagedKey and Fabric BindSecret; Serve never issues or revokes the Gateway key.",
+      "conformance": "packages/contracts/proto/internal.proto on the reconciled head carries the same field and comment, and the generated api bindings expose GetManagedKeyBinding for RuntimeReloadCommand."
+    },
+    {
+      "source": "docs/invariants.md#adopted-application-delivery-invariants",
+      "requirement": "Serve is the sole owner of the deployment, runtime readiness and the applied-version observation.",
+      "conformance": "No Serve-owned file was reverted; the merged access-entry credential isolation from #706/#709 is preserved and the reload applied version is still written from Serve's own readback."
+    },
+    {
+      "source": "docs/spec/target/14_implementation_work_packages.md#11.1",
+      "requirement": "Record the current HEAD, keep the A/B/C/D and SSOT work, integrate on a codex/ branch, do not lose the existing work to an empty worktree.",
+      "conformance": "The branch retains 7796fa27 and its descendants; the merge adds origin/main without dropping any branch commit."
+    }
+  ],
+  "verification": {
+    "focused": [
+      {"command": "go -C services/workspace test ./... -count=1", "result": "pass", "covers": "UpdateWorkspaceModels owner-separated sequence, replay/conflict, each unconfirmed step, tenant admission, selection validation; launch recovery."},
+      {"command": "go -C services/serve test ./... -count=1", "result": "pass", "covers": "ReloadModels owner admission and confirmed managed-key binding enforcement, Deploy managed-key resolution, lifecycle/replacement/access."},
+      {"command": "go -C services/gateway-integration test ./... -count=1", "result": "pass", "covers": "CloudIdentity authorization incl. the Fabric audience for BINDMANAGEDSECRET, wallet and managed-key coordination."},
+      {"command": "go -C services/fabric test ./... -count=1", "result": "pass", "covers": "BindSecret owner writes and provider confirmation."},
+      {"command": "bash packages/contracts/proto/generate.sh", "result": "pass", "covers": "Deterministic regeneration of the internal bindings from the merged proto with the pinned tool versions; no publicjson or grpc-surface drift."}
+    ],
+    "repository": [
+      {"command": "npm run verify:local", "result": "pass", "evidence": "Local verification passed."},
+      {"command": "npm run verify:local:full", "result": "fail (pre-existing, unrelated to this write set)", "evidence": "Only opl-cloud/services/control-plane/internal/server:TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp fails; its fixture pins paidThrough=2026-08-31 while the wall clock is 2026-10-01, so renewalStatus is expired_unpaid. The same failure reproduces on canonical main fb0ef688 in a clean worktree with the same PostgreSQL environment, so it is a date-relative fixture defect and not caused by this change."}
+    ],
+    "notRun": [
+      "No Candidate build was dispatched: the .github/workflows/build-opl-cloud-candidate.yml job guard admits only github.actor == github.repository_owner (gaofeng21cn), so the serial window's authenticated actor cannot build the Candidate from this branch.",
+      "No Instance deployment, no opl-instance-medopl production workflow, no Tencent resource action, no real charge and no production access were performed."
+    ]
+  },
+  "remainingScope": {
+    "candidate": "Section 11.7: the exact branch SHA must be built into a Candidate by the repository owner, because the candidate workflow admits only the repository owner as actor. This receipt names the reconciled head so that one dispatch binds one unambiguous SHA.",
+    "instance": "Section 11.8: Candidate installation, Tencent TKE acceptance and the two-business-mode runtime evidence remain the protected obligations of opl-instance-medopl under its production environment and separately authorized Tencent resources.",
+    "callerMigration": "The Console BFF and Console UI route no model-configuration update surface today; adding the owner-backed workspace maintenance routes and retiring the retained Control Plane application proxy and route resolver is the same bounded migration that requires the Instance Ingress to point at Serve, so it is interlocked with the deployment above.",
+    "supersededKeyRetirement": "Gateway-side rotation is implemented. Fabric-side, fabric.secret_bindings has UNIQUE (execution_resource_id, purpose) WHERE revoked_at IS NULL and nothing writes revoked_at, so a same-slot re-bind replays the original row and the execution boundary refuses a stale generation rather than injecting it. Closing that gap needs an owner-approved Fabric re-bind semantic; this pass invented none."
+  },
+  "claimBoundary": "Source-check evidence only. This proves the serial branch is consistent with canonical main and that the four owner suites and the pinned generator pass on the merged base. It does not prove a Candidate exists, an Instance deployed, a Tencent resource was provisioned, or that either product combination is accepted end to end.",
+  "ssotAnchors": [
+    "docs/spec/target/contracts/internal.proto (RuntimeReloadCommand)",
+    "docs/spec/target/06_data_flow_and_state_machine.md#F09",
+    "docs/spec/target/14_implementation_work_packages.md#11.5",
+    "docs/invariants.md#adopted-application-delivery-invariants"
+  ]
+}

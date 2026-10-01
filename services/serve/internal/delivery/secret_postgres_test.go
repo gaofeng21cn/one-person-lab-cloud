@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"strings"
 	"testing"
 
 	"google.golang.org/grpc"
@@ -80,22 +81,61 @@ func managedKeyFixture(t *testing.T) (*delivery.Service, *api.RuntimeReservation
 	return s, r, out, gateway, resources
 }
 
-func TestServeDeployResolvesAndInjectsManagedKey(t *testing.T) {
+// declareGatewayCredential makes one reservation's revision declare the
+// installation Gateway credential, then re-binds the descriptor digest and the
+// capability fixture to the exact bytes Reserve authenticates.
+func declareGatewayCredential(t *testing.T, r *api.RuntimeReservationCommand, cap *capabilityForServe) {
+	t.Helper()
+	r.DeploymentDescriptor.ApplicationRevision.Credentials = []*api.WorkspaceApplicationCredential{{Name: "gateway", Kind: api.WorkspaceApplicationCredentialKindEnum_WORKSPACE_APPLICATION_CREDENTIAL_KIND_ENUM_GATEWAY_KEY, Target: "/run/secrets/opl_gateway_api_key"}}
+	rawDescriptor, err := publicjson.Marshal(r.GetDeploymentDescriptor())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(rawDescriptor)
+	r.DeploymentDescriptorDigest = "sha256:" + hex.EncodeToString(sum[:])
+	cap.version.DeploymentDescriptor = r.GetDeploymentDescriptor()
+	cap.version.DeploymentDescriptorDigest = r.GetDeploymentDescriptorDigest()
+}
+
+// confirmedReloadBindingFixture is the opaque Gateway/Fabric readback a
+// Workspace presents for one model-configuration version: Gateway's key binding
+// identity delivered into this Workspace's installation Gateway Secret slot.
+func confirmedReloadBindingFixture(workspaceID, keyBindingID, version string) *api.RuntimeManagedKeyBinding {
+	return &api.RuntimeManagedKeyBinding{
+		KeyBindingId: keyBindingID, Fingerprint: "sha256:" + strings.Repeat("ab", 32),
+		SecretDeliveryReference: contracts.WorkspaceGatewaySecretRef(workspaceID),
+		TargetSlot:              "gateway", SecretBindingId: "sbx_" + keyBindingID, SecretVersion: version,
+	}
+}
+
+// launchManagedKeyBinding is the opaque Workspace-issued binding a launch command
+// carries for a runtime whose revision declares the installation Gateway credential.
+// Workspace issues it (Gateway CreateManagedKey + Fabric BindSecret) before Deploy,
+// so Serve only applies it.
+func launchManagedKeyBinding(workspaceID, runtimeInstanceID, keyBindingID string) *api.RuntimeManagedKeyBinding {
+	return &api.RuntimeManagedKeyBinding{
+		KeyBindingId: keyBindingID, Fingerprint: "sha256:" + strings.Repeat("ab", 32),
+		SecretDeliveryReference: contracts.WorkspaceGatewaySecretRef(workspaceID),
+		TargetSlot:              "gateway", SecretBindingId: "sbx_" + keyBindingID, SecretVersion: "v" + keyBindingID,
+	}
+}
+
+func TestServeDeployAppliesTheWorkspaceIssuedManagedKey(t *testing.T) {
 	s, r, out, gateway, resources := managedKeyFixture(t)
 	ctx := workspaceContext()
 	command := deployReserved(r, out)
 	command.ModelSelections = []*api.ModelSelection{{Slot: "default", ModelId: "model-alpha"}}
+	command.ManagedKeyBinding = launchManagedKeyBinding(r.WorkspaceId, out.RuntimeInstanceId, "key-1")
 	readback, err := s.Deploy(ctx, command)
 	if err != nil || readback.GetState() != api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY {
 		t.Fatalf("deploy=%v %v", readback, err)
 	}
-	if gateway.calls != 1 || resources.binds != 1 {
-		t.Fatalf("gateway=%d binds=%d", gateway.calls, resources.binds)
+	// Serve minted no Gateway key and bound no Secret: the Workspace owner produced
+	// the binding, and Serve only applied it.
+	if gateway.calls != 0 || resources.binds != 0 {
+		t.Fatalf("Serve minted/bound a key on the launch path: gateway=%d binds=%d", gateway.calls, resources.binds)
 	}
-	if resources.lastCommand.GetWorkspaceId() != r.WorkspaceId || resources.lastCommand.GetRuntimeInstanceId() != out.RuntimeInstanceId || resources.lastCommand.GetKeyBindingId() != "key-1" || resources.lastCommand.GetSecretDeliveryReference() != contracts.WorkspaceGatewaySecretRef(r.WorkspaceId) {
-		t.Fatalf("bind command=%+v", resources.lastCommand)
-	}
-	// The readiness event reports injection only because that binding exists.
+	// The readiness event reports injection only because the binding exists.
 	var verified bool
 	if err := s.DB.QueryRowContext(ctx, `SELECT (payload->>'credentialInjectionVerified')::boolean FROM serve.outbox_events WHERE event_type='serve.agent_readiness_observed.v1' AND aggregate_id=$1`, out.DeploymentId).Scan(&verified); err != nil {
 		t.Fatal(err)
@@ -103,22 +143,32 @@ func TestServeDeployResolvesAndInjectsManagedKey(t *testing.T) {
 	if !verified {
 		t.Fatal("readiness event did not report verified credential injection")
 	}
-	// A second Deploy replays the same binding without a second Gateway mint.
+	// A second Deploy replays the same binding without minting or binding again.
 	if _, err = s.Deploy(ctx, command); err != nil {
 		t.Fatal(err)
 	}
-	if gateway.calls != 1 || resources.binds != 1 {
+	if gateway.calls != 0 || resources.binds != 0 {
 		t.Fatalf("replay gateway=%d binds=%d", gateway.calls, resources.binds)
 	}
 }
 
-func TestServeDeployRefusesUnconfirmedManagedKeyBinding(t *testing.T) {
-	s, r, out, _, resources := managedKeyFixture(t)
-	resources.conflict = true
+func TestServeDeployRefusesAMissingWorkspaceIssuedBinding(t *testing.T) {
+	s, r, out, gateway, resources := managedKeyFixture(t)
+	// A runtime that declares the Gateway credential must present the complete
+	// Workspace-issued binding; Serve never mints one itself.
 	command := deployReserved(r, out)
 	command.ModelSelections = []*api.ModelSelection{{Slot: "default", ModelId: "model-alpha"}}
 	if _, err := s.Deploy(workspaceContext(), command); status.Code(err) != codes.FailedPrecondition {
-		t.Fatalf("conflicting binding err=%v", err)
+		t.Fatalf("absent binding err=%v want failed precondition", err)
+	}
+	incomplete := deployReserved(r, out)
+	incomplete.ModelSelections = command.GetModelSelections()
+	incomplete.ManagedKeyBinding = &api.RuntimeManagedKeyBinding{KeyBindingId: "key-1", Fingerprint: "sha256:" + strings.Repeat("ab", 32), SecretDeliveryReference: contracts.WorkspaceGatewaySecretRef(r.WorkspaceId), TargetSlot: "gateway"}
+	if _, err := s.Deploy(workspaceContext(), incomplete); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("incomplete binding err=%v want failed precondition", err)
+	}
+	if gateway.calls != 0 || resources.binds != 0 {
+		t.Fatalf("a refused launch minted/bound: gateway=%d binds=%d", gateway.calls, resources.binds)
 	}
 	// A refused binding must not record the deployment as active.
 	var status string

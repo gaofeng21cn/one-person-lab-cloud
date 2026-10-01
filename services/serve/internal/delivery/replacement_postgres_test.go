@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
+	contracts "opl-cloud/packages/contracts/go"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/packages/contracts/go/publicjson"
@@ -708,22 +709,21 @@ func TestServeRuntimeLifecycleActsOnThePersistedCommand(t *testing.T) {
 // stored applied version advances only to the version the application read back,
 // while another owner's call is refused before anything is applied.
 func TestServeReloadModelsAdmitsOnlyTheWorkspaceOwner(t *testing.T) {
-	s, r, _ := reservationFixture(t)
+	s, r, reservation, _, _ := managedKeyFixture(t)
 	ctx := workspaceContext()
-	s.Resources = &resourcesForServe{confirmed: true, workspace: "ws-first", dataAttachment: "attachment-original"}
 	runtime := &runtimeForServe{reloadVersion: 7}
 	s.Runtime = runtime
-	reservation, err := s.Reserve(ctx, r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = s.Deploy(ctx, deployReserved(r, reservation)); err != nil {
+	deploy := deployReserved(r, reservation)
+	deploy.ModelSelections = []*api.ModelSelection{{Slot: "chat", ModelId: "model-original"}}
+	deploy.ManagedKeyBinding = launchManagedKeyBinding(r.GetWorkspaceId(), reservation.RuntimeInstanceId, "key-original")
+	if _, err := s.Deploy(ctx, deploy); err != nil {
 		t.Fatalf("first delivery: %v", err)
 	}
-	command := &api.RuntimeReloadCommand{RuntimeInstanceId: reservation.RuntimeInstanceId, ExpectedAppliedVersion: 0, TargetVersion: 7, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-7"}}}
+	binding := confirmedReloadBindingFixture(r.GetWorkspaceId(), "key-7", "v7")
+	command := &api.RuntimeReloadCommand{RuntimeInstanceId: reservation.RuntimeInstanceId, ExpectedAppliedVersion: 0, TargetVersion: 7, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-7"}}, ManagedKeyBinding: binding}
 	// A peer that is not the Workspace owner never reaches the reload path.
 	foreign := ownerservice.WithPeerOwner(context.Background(), owneridentity.Capability.Service())
-	if _, err = s.ReloadModels(foreign, command); status.Code(err) != codes.PermissionDenied {
+	if _, err := s.ReloadModels(foreign, command); status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("foreign peer err=%v want permission denied", err)
 	}
 	if len(runtime.reloads) != 0 {
@@ -748,7 +748,7 @@ func TestServeReloadModelsAdmitsOnlyTheWorkspaceOwner(t *testing.T) {
 	// The command is idempotent by its target version: resuming it with the version
 	// the runtime now holds replays the same durable operation instead of allocating
 	// a second applied fact.
-	resumed, err := s.ReloadModels(ctx, &api.RuntimeReloadCommand{RuntimeInstanceId: reservation.RuntimeInstanceId, ExpectedAppliedVersion: 7, TargetVersion: 7, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-7"}}})
+	resumed, err := s.ReloadModels(ctx, &api.RuntimeReloadCommand{RuntimeInstanceId: reservation.RuntimeInstanceId, ExpectedAppliedVersion: 7, TargetVersion: 7, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-7"}}, ManagedKeyBinding: binding})
 	if err != nil {
 		t.Fatalf("resumed reload: %v", err)
 	}
@@ -757,5 +757,48 @@ func TestServeReloadModelsAdmitsOnlyTheWorkspaceOwner(t *testing.T) {
 	}
 	if applied := appliedModelConfiguration(t, s, reservation.RuntimeInstanceId); applied != 7 {
 		t.Fatalf("resumed reload advanced the applied configuration to %d", applied)
+	}
+}
+
+// TestServeReloadModelsRefusesAnUnconfirmedManagedKeyBinding proves Serve applies
+// only the credential generation its owners confirmed: a reload with no binding, an
+// incomplete one, or one that names another Workspace's Secret delivery is refused
+// before the execution boundary is reached and never advances the applied version.
+// Serve issues no Gateway key of its own on the reload path.
+func TestServeReloadModelsRefusesAnUnconfirmedManagedKeyBinding(t *testing.T) {
+	for name, binding := range map[string]*api.RuntimeManagedKeyBinding{
+		"absent":          nil,
+		"incomplete":      {KeyBindingId: "key-7", Fingerprint: "sha256:" + strings.Repeat("ab", 32), SecretDeliveryReference: contracts.WorkspaceGatewaySecretRef("ws-first"), TargetSlot: "gateway"},
+		"foreign deliver": {KeyBindingId: "key-7", Fingerprint: "sha256:" + strings.Repeat("ab", 32), SecretDeliveryReference: contracts.WorkspaceGatewaySecretRef("ws-other"), TargetSlot: "gateway", SecretBindingId: "sbx_key-7", SecretVersion: "v7"},
+		"foreign slot":    {KeyBindingId: "key-7", Fingerprint: "sha256:" + strings.Repeat("ab", 32), SecretDeliveryReference: contracts.WorkspaceGatewaySecretRef("ws-first"), TargetSlot: "other", SecretBindingId: "sbx_key-7", SecretVersion: "v7"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s, r, reservation, gateway, _ := managedKeyFixture(t)
+			ctx := workspaceContext()
+			runtime := &runtimeForServe{reloadVersion: 7}
+			s.Runtime = runtime
+			deploy := deployReserved(r, reservation)
+			deploy.ModelSelections = []*api.ModelSelection{{Slot: "chat", ModelId: "model-original"}}
+			deploy.ManagedKeyBinding = launchManagedKeyBinding(r.GetWorkspaceId(), reservation.RuntimeInstanceId, "key-original")
+			if _, err := s.Deploy(ctx, deploy); err != nil {
+				t.Fatalf("first delivery: %v", err)
+			}
+			if gateway.calls != 0 {
+				t.Fatalf("Serve minted %d keys on the launch path, want none", gateway.calls)
+			}
+			_, err := s.ReloadModels(ctx, &api.RuntimeReloadCommand{RuntimeInstanceId: reservation.RuntimeInstanceId, ExpectedAppliedVersion: 0, TargetVersion: 7, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-7"}}, ManagedKeyBinding: binding})
+			if status.Code(err) != codes.FailedPrecondition {
+				t.Fatalf("err=%v want a failed precondition", err)
+			}
+			if len(runtime.reloads) != 0 {
+				t.Fatalf("a refused reload reached the execution boundary: %v", runtime.reloads)
+			}
+			if gateway.calls != 0 {
+				t.Fatalf("the reload minted %d Gateway keys, want none", gateway.calls)
+			}
+			if applied := appliedModelConfiguration(t, s, reservation.RuntimeInstanceId); applied != 0 {
+				t.Fatalf("a refused reload advanced the applied configuration to %d", applied)
+			}
+		})
 	}
 }

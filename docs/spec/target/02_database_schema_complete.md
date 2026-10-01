@@ -2352,6 +2352,14 @@ Owner事务核验同resource_set和kind，更新/回滚满足卷单写挂载约�
 索引：
 - `secret_bindings_active`: UNIQUE `(execution_resource_id, purpose)` WHERE `revoked_at IS NULL`
 
+`revoked_at` means that the Fabric binding is no longer the active binding for
+that runtime purpose; it does not mean that the corresponding Gateway key has
+been revoked. `RebindSecret` must compare the expected predecessor binding,
+confirm the replacement Secret through the provider, and preserve the unique
+active index. The predecessor remains recoverable until Serve confirms the new
+model version and Gateway revokes the predecessor key; an unknown replacement
+or compensation is not treated as success.
+
 #### fabric.resource_actions
 
 实费/采购/续费/删除须Instance保护流程与有界授权；unknown查询原provider请求。覆盖 F08, F10, F11, F12, F13, F17。

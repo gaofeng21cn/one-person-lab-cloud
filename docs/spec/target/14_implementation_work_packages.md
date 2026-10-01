@@ -760,6 +760,15 @@ may supply a key binding. This sequence is shared by the default OPL App and the
 Agent plus independent WebUI product combinations whenever their Runtime
 publisher declares the model-configuration contract.
 
+For a later configuration that changes the managed key, W01 must use the
+explicit `FabricCoordination.RebindSecret` path: compare the expected current
+Fabric binding, provider-confirm the replacement, preserve one active binding
+per runtime purpose, apply/read back the new Runtime version, then revoke the
+predecessor Gateway key and retire its Fabric binding. Rejected or unknown
+replacement/compensation never advances Workspace or revokes the predecessor.
+The replacement operation is owner-local and idempotent through `CallContext`; it
+does not introduce a global workflow engine or a public key-binding field.
+
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
 - Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local

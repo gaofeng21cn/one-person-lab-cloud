@@ -5,11 +5,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+	contracts "opl-cloud/packages/contracts/go"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/publicjson"
 	"opl-cloud/services/internal/ownerstore"
@@ -83,6 +86,19 @@ func (s *Service) resumeRuntime(ctx context.Context, op ownerstore.Operation, to
 		return err
 	}
 	command := runtimeCommand(op, result.GrantID, accepted, source, binding, resources.ResourceSetId, reservation)
+	// A frozen revision that declares the installation Gateway credential is
+	// delivered its Workspace-managed key here: Workspace issues the opaque binding
+	// through Gateway and binds its Secret through Fabric, records the binding on the
+	// deploy command, and Serve only applies it. This keeps the launch key on the
+	// F08 owner path (workspace->gateway CreateManagedKey, then BindSecret) instead of
+	// minting inside Serve, and it records the exact Fabric binding id the first model
+	// configuration must name as its predecessor when it replaces the key.
+	if err = s.ensureRuntimeGatewayBinding(ctx, op, result, command); err != nil {
+		if errors.Is(err, errRuntimeAwaitingKeyOwners) {
+			return nil // The order stays awaiting its key owners rather than deploying without a credential.
+		}
+		return s.failedCall(ctx, op, token, "deploy_runtime", "runtime", *result, err)
+	}
 	recovering := len(result.RuntimeCommand) > 0
 	if recovering {
 		stored := &api.RuntimeDeployCommand{}
@@ -127,6 +143,91 @@ func (s *Service) resumeRuntime(ctx context.Context, op ownerstore.Operation, to
 	}
 	_, err = s.readRuntime(ctx, op, token, command, result)
 	return err
+}
+
+// errRuntimeAwaitingKeyOwners reports that a runtime whose revision declares the
+// installation Gateway credential reached the launch before the Gateway or Fabric
+// owner was configured. The order waits rather than deploying without a key.
+var errRuntimeAwaitingKeyOwners = errors.New("runtime gateway key owners are not configured")
+
+// commandRevision decodes the immutable application revision a deploy command was
+// frozen against, rejecting an unreadable or invalid one.
+func commandRevision(command *api.RuntimeDeployCommand) (contracts.WorkspaceApplicationRevision, error) {
+	var zero contracts.WorkspaceApplicationRevision
+	if command.GetDeploymentDescriptor() == nil {
+		return zero, status.Error(codes.DataLoss, "runtime command carries no deployment descriptor")
+	}
+	// A descriptor with no application revision (a legacy build) declares no
+	// installation Gateway credential, so it needs no managed key binding.
+	if command.GetDeploymentDescriptor().GetApplicationRevision() == nil {
+		return zero, nil
+	}
+	raw, err := publicjson.Marshal(command.GetDeploymentDescriptor().GetApplicationRevision())
+	if err != nil {
+		return zero, status.Error(codes.DataLoss, "runtime application revision cannot be encoded")
+	}
+	var revision contracts.WorkspaceApplicationRevision
+	if json.Unmarshal(raw, &revision) != nil || contracts.ValidateWorkspaceApplicationRevision(revision) != nil {
+		return zero, status.Error(codes.DataLoss, "runtime application revision is invalid")
+	}
+	return revision, nil
+}
+
+// ensureRuntimeGatewayBinding resolves the Workspace-managed Gateway key binding a
+// launch command must carry. A revision that declares no Gateway credential needs
+// none. For one that does, a recovered command reuses the binding it recorded as
+// one durable fact, and a first attempt issues the key through Gateway and binds
+// its Secret through Fabric, recording the exact Fabric binding id. Workspace never
+// mints inside Serve, and the binding is frozen on the command before dispatch so a
+// restart replays the same identities.
+func (s *Service) ensureRuntimeGatewayBinding(ctx context.Context, op ownerstore.Operation, result *orderResult, command *api.RuntimeDeployCommand) error {
+	revision, err := commandRevision(command)
+	if err != nil {
+		return err
+	}
+	credential, declared := contracts.WorkspaceApplicationDeclaredCredential(revision, contracts.WorkspaceApplicationCredentialGatewayKey)
+	if !declared {
+		return nil
+	}
+	if len(result.ManagedKeyBinding) > 0 {
+		binding := &api.RuntimeManagedKeyBinding{}
+		if protojson.Unmarshal(result.ManagedKeyBinding, binding) != nil {
+			return status.Error(codes.DataLoss, "stored launch managed key binding is invalid")
+		}
+		command.ManagedKeyBinding = binding
+		return nil
+	}
+	if s.Gateway == nil || s.Fabric == nil {
+		return errRuntimeAwaitingKeyOwners
+	}
+	modelIDs := make([]string, 0, len(command.GetModelSelections()))
+	for _, selection := range command.GetModelSelections() {
+		if id := strings.TrimSpace(selection.GetModelId()); id != "" {
+			modelIDs = append(modelIDs, id)
+		}
+	}
+	if len(modelIDs) == 0 {
+		return status.Error(codes.FailedPrecondition, "the frozen revision declares a Gateway credential but names no model")
+	}
+	key, err := s.Gateway.CreateManagedKey(ctx, &api.ManagedKeyCommand{Context: continuation(op, result.GrantID, "create_managed_key"), WorkspaceId: op.ResourceID, ModelIds: modelIDs, TargetRuntimeInstanceId: command.GetRuntimeInstanceId()})
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(key.GetKeyBindingId()) == "" || strings.TrimSpace(key.GetSecretDeliveryReference()) == "" || strings.TrimSpace(key.GetFingerprint()) == "" ||
+		key.GetWorkspaceId() != op.ResourceID || key.GetTargetRuntimeInstanceId() != command.GetRuntimeInstanceId() || key.GetSecretDeliveryReference() != contracts.WorkspaceGatewaySecretRef(op.ResourceID) {
+		return status.Error(codes.DataLoss, "Gateway returned a managed key that differs from the accepted launch")
+	}
+	bound, err := s.Fabric.BindSecret(ctx, &api.SecretBindingCommand{Context: continuation(op, result.GrantID, "bind_managed_secret"), WorkspaceId: op.ResourceID, RuntimeInstanceId: command.GetRuntimeInstanceId(), KeyBindingId: key.GetKeyBindingId(), SecretDeliveryReference: key.GetSecretDeliveryReference(), TargetSlot: credential.Name, Fingerprint: key.GetFingerprint()})
+	if err != nil {
+		return err
+	}
+	if bound.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED || strings.TrimSpace(bound.GetSecretBindingId()) == "" || strings.TrimSpace(bound.GetVersion()) == "" ||
+		bound.GetFingerprint() != key.GetFingerprint() || bound.GetRuntimeInstanceId() != command.GetRuntimeInstanceId() {
+		return status.Error(codes.FailedPrecondition, "Fabric did not confirm the exact Gateway Secret binding for the launch")
+	}
+	command.ManagedKeyBinding = &api.RuntimeManagedKeyBinding{KeyBindingId: key.GetKeyBindingId(), SecretDeliveryReference: key.GetSecretDeliveryReference(), Fingerprint: key.GetFingerprint(), TargetSlot: credential.Name, SecretBindingId: bound.GetSecretBindingId(), SecretVersion: bound.GetVersion()}
+	result.ManagedKeyBinding = wire(command.ManagedKeyBinding)
+	return nil
 }
 
 func runtimeBinding(op ownerstore.Operation, accepted *api.QuoteAcceptance, resources *api.ResourceReadback, result *orderResult, commit *api.OwnerCommitEvidence) (*api.ResourceExecutionBinding, error) {

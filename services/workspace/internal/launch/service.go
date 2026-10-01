@@ -101,25 +101,40 @@ type acceptedOrder struct {
 	InputDigest            string          `json:"inputDigest"`
 }
 type orderResult struct {
-	GrantID               string          `json:"grantId,omitempty"`
-	Acceptance            json.RawMessage `json:"acceptance,omitempty"`
-	FabricOperationID     string          `json:"fabricOperationId,omitempty"`
-	ResourceSetID         string          `json:"resourceSetId,omitempty"`
-	ResourceReadback      json.RawMessage `json:"resourceReadback,omitempty"`
-	ZeroChargeReceipt     json.RawMessage `json:"zeroChargeReceipt,omitempty"`
-	WalletDebitCommand    json.RawMessage `json:"walletDebitCommand,omitempty"`
-	WalletOperation       json.RawMessage `json:"walletOperation,omitempty"`
-	WalletActionReceipt   json.RawMessage `json:"walletActionReceipt,omitempty"`
+	GrantID             string          `json:"grantId,omitempty"`
+	Acceptance          json.RawMessage `json:"acceptance,omitempty"`
+	FabricOperationID   string          `json:"fabricOperationId,omitempty"`
+	ResourceSetID       string          `json:"resourceSetId,omitempty"`
+	ResourceReadback    json.RawMessage `json:"resourceReadback,omitempty"`
+	ZeroChargeReceipt   json.RawMessage `json:"zeroChargeReceipt,omitempty"`
+	WalletDebitCommand  json.RawMessage `json:"walletDebitCommand,omitempty"`
+	WalletOperation     json.RawMessage `json:"walletOperation,omitempty"`
+	WalletActionReceipt json.RawMessage `json:"walletActionReceipt,omitempty"`
 	// ApplicationSource is the resolved immutable source (default OPL App Runtime
 	// Release or built Agent CapabilityVersion) frozen before Reserve. It is the
 	// single durable fact both branches replay from, so a default-App order never
 	// invents a CapabilityVersion.
-	ApplicationSource json.RawMessage `json:"applicationSource,omitempty"`
+	ApplicationSource     json.RawMessage `json:"applicationSource,omitempty"`
 	RuntimeBinding        json.RawMessage `json:"runtimeBinding,omitempty"`
 	RuntimeReservation    json.RawMessage `json:"runtimeReservation,omitempty"`
 	RuntimeCommand        json.RawMessage `json:"runtimeCommand,omitempty"`
 	RuntimeReadback       json.RawMessage `json:"runtimeReadback,omitempty"`
 	RuntimeDeployAccepted bool            `json:"runtimeDeployAccepted,omitempty"`
+	// ManagedKeyBinding is the opaque Gateway/Fabric binding the launch issued for a
+	// runtime whose revision declares the installation Gateway credential. It is the
+	// exact binding id the first model configuration names as its RebindSecret
+	// predecessor, so the replacement path has a real predecessor from the start.
+	ManagedKeyBinding json.RawMessage `json:"managedKeyBinding,omitempty"`
+
+	// The model-configuration update records the version it applied and the owner
+	// identities it established, so a later read or a recovery names the same
+	// configuration, Gateway binding and Serve operation.
+	ConfigurationID      string `json:"configurationId,omitempty"`
+	ConfigurationVersion int64  `json:"configurationVersion,omitempty"`
+	KeyBindingID         string `json:"keyBindingId,omitempty"`
+	SecretBindingID      string `json:"secretBindingId,omitempty"`
+	ServeOperationID     string `json:"serveOperationId,omitempty"`
+	RevokedKeyBindingID  string `json:"revokedKeyBindingId,omitempty"`
 }
 
 func decodeOrder(op ownerstore.Operation) (acceptedOrder, orderResult, error) {

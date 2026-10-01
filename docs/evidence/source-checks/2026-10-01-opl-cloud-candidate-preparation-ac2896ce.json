@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_candidate_preparation_source_check",
+  "revision": 1,
+  "recordedAt": "2026-10-01T12:00:00Z",
+  "result": "the_exact_branch_source_sha_is_frozen_with_its_tree_contract_config_hashes_and_product_boundary_validation_so_a_same_sha_candidate_can_be_built_from_a_dedicated_non_main_branch_the_local_image_build_itself_is_blocked_because_docker_hub_dns_is_unresolvable_in_this_environment_and_the_candidate_workflow_admits_only_the_repository_owner_as_actor",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 11.7 - exact-SHA Candidate preparation on a dedicated non-main branch",
+  "candidateBranch": "codex/opl-cloud-candidate-ac2896ce",
+  "sourceSha": "ac2896ce8f2d1e6126e591adf7add09d5877e050",
+  "sourceTree": "ea1d2862e94c6fc4861268596821b8cd6556ef44",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.7",
+  "buildInputs": {
+    "candidateWorkflow": ".github/workflows/build-opl-cloud-candidate.yml",
+    "candidateWorkflowCommit": "bec56eec58f7627fb3fde4792be47f7cbdefe6e1",
+    "buildContext": "git archive --format=tar ac2896ce | extracted to a clean directory (tree ea1d2862)",
+    "platforms": ["linux/amd64", "linux/arm64"],
+    "imageRepository": "ghcr.io/gaofeng21cn/one-person-lab-cloud",
+    "dockerfile": "Dockerfile"
+  },
+  "contractAndConfigHashes": {
+    "packages/contracts/proto/internal.proto": "c36ad598a62ca7329531d1ef380240bcbbc01dbf",
+    "docs/spec/target/contracts/internal.proto": "d7dfbc91bf469806d5e63783cda94de7d0a5bdce",
+    "packages/contracts/proto/events.json": "ea671eb6e835865221d30bf44e337febe10c06cb",
+    "packages/contracts/go/publicjson/shape_generated.go": "1c944a230efacee198e238c37c87f9c6f36ec959",
+    "deploy/portable/opl-cloud-owner-topology.json": "5b051e2c17894de159a84328d8341f35a2e8743b",
+    "deploy/portable/opl-cloud.env.example": "e9e49750ee8d9ca38d38b62a54ae13ea5d2f0b73",
+    "Dockerfile": "df140056e95ce0f4ecbc9efa27f80bf5431e8411",
+    "package.json": "9deac3807731bd5e7fbd63cc3f002d0b07d3e112"
+  },
+  "verification": {
+    "completed": [
+      {"command": "git rev-parse ac2896ce^{tree}", "result": "pass", "evidence": "the frozen source SHA resolves to one unambiguous tree ea1d2862."},
+      {"command": "git branch codex/opl-cloud-candidate-ac2896ce ac2896ce", "result": "pass", "evidence": "a dedicated non-main candidate branch points exactly at the source SHA."},
+      {"command": "npm run validate:product-boundary", "result": "pass", "evidence": "OPL Cloud product distribution boundary is valid."},
+      {"command": "git archive --format=tar ac2896ce", "result": "pass", "evidence": "the exact-SHA build context extracts cleanly from a tracked tree with no working-tree bytes."}
+    ],
+    "blocked": [
+      {"command": "docker buildx build --platform linux/amd64 -t opl-cloud-candidate:ac2896ce-amd64 --load <sha-tree>", "result": "blocked (external environment)", "evidence": "The Docker daemon in this environment cannot resolve Docker Hub (docker manifest inspect node:26-bookworm-slim returns 'dial tcp: lookup registry-1.docker.io: no such host'), so buildx cannot load base-image metadata and a local multi-stage image build cannot complete. This is an environmental blocker for the local image build only; the exact-SHA source, tree, contract/config hashes and product-boundary validation are all captured here, and the Candidate workflow builds from an exact checked-out SHA with no local Docker dependency."}
+    ],
+    "notRun": [
+      "No Candidate image was pushed: .github/workflows/build-opl-cloud-candidate.yml admits only github.actor == github.repository_owner (gaofeng21cn); the serial window's actor is not that owner. No Instance deployment, Tencent resource action, real charge or production access was performed."
+    ]
+  },
+  "remainingScope": {
+    "ownerAction": "The repository owner must dispatch Build OPL Cloud Candidate with product_sha=ac2896ce8f2d1e6126e591adf7add09d5877e050; the workflow then records the exact index and per-platform digests in its own candidate receipt. No Cloud-side code change is required for that dispatch.",
+    "instance": "Section 11.8: Candidate installation and Tencent TKE acceptance remain the protected obligations of opl-instance-medopl.",
+    "githubReview": "PR #718 (code) and #719 (SSOT) remain open for gaofeng21cn; the local SSOT merge is not treated as approved."
+  },
+  "claimBoundary": "This is exact-SHA Candidate preparation (source, tree, contract/config hashes, product-boundary validation, dedicated non-main branch), not a built or published Candidate. It does not prove an image exists, an Instance deployed, a Tencent resource was provisioned, or either product combination is accepted end to end.",
+  "ssotAnchors": [
+    "docs/spec/target/14_implementation_work_packages.md#11.7",
+    "docs/spec/target/14_implementation_work_packages.md#11.8"
+  ]
+}
