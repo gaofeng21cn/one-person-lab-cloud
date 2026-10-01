@@ -18,7 +18,7 @@ import (
 	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
-	"opl-cloud/services/fabric/internal/protectedresource"
+	"opl-cloud/services/internal/protectedresource"
 
 	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
 )

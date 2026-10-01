@@ -61,33 +61,81 @@ func (s *Service) persistedRuntimeCommand(ctx context.Context, runtimeID, deploy
 	return &persistedRuntime{command: command, operationID: opID, tenantID: tenantID, actorID: actorID, requestID: requestID, accountID: accountID, appliedModelVersion: appliedVersion}, nil
 }
 
-// confirmedRuntimeBinding resolves the exact Fabric execution binding the command
-// reserved, so lifecycle and credentials reach the same provider object.
-func (s *Service) confirmedRuntimeBinding(ctx context.Context, command *api.RuntimeDeployCommand) (*api.ResourceExecutionBinding, error) {
+// confirmedRuntimeTarget resolves the exact Fabric execution fact the command
+// reserved, so lifecycle and credentials reach the same provider object on the same
+// confirmed placement.
+func (s *Service) confirmedRuntimeTarget(ctx context.Context, command *api.RuntimeDeployCommand) (ExecutionTarget, error) {
 	if s.Resources == nil {
-		return nil, status.Error(codes.Unavailable, "Fabric readback is not configured")
+		return ExecutionTarget{}, status.Error(codes.Unavailable, "Fabric readback is not configured")
 	}
 	resources, err := s.Resources.ReadResources(ctx, &api.ResourceReadbackRequest{Context: nextOwnerCall(command.GetContext()), ResourceSetId: command.GetResourceSetId()})
 	if err != nil {
-		return nil, err
+		return ExecutionTarget{}, err
 	}
-	return confirmedBinding(command, resources)
+	return confirmedExecutionTarget(command, resources)
 }
 
 // runtimeLifecycleOperation records one lifecycle action as an owner Operation in
-// Serve's own store. It is idempotent on the action identity, so a resumed command
-// returns the same operation instead of writing a second one.
-func (s *Service) runtimeLifecycleOperation(ctx context.Context, deploy *persistedRuntime, kind, stage string) *api.Operation {
-	opID := stableID("op_", kind, deploy.command.GetRuntimeInstanceId(), deploy.operationID)
+// Serve's own store and returns that row exactly as committed. The action
+// identity is deterministic, so a resumed command resumes its original operation
+// instead of writing a second one; a row that exists with different input is
+// refused rather than reported as this caller's own.
+//
+// The reported state is read back from the owner row. A lifecycle action never
+// reports success here: applying a desired state and confirming it is a separate,
+// observed fact, and the operation stays accepted until the provider readback
+// records it.
+func (s *Service) runtimeLifecycleOperation(ctx context.Context, deploy *persistedRuntime, kind, stage, nextStatus string, identity ...string) (*api.Operation, error) {
+	opID := stableID("op_", append([]string{kind, deploy.command.GetRuntimeInstanceId(), deploy.operationID}, identity...)...)
+	runtimeID := deploy.command.GetRuntimeInstanceId()
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return &api.Operation{OperationId: opID, Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_SERVE, ResourceId: deploy.command.GetRuntimeInstanceId(), Status: api.OperationStatusEnum_OPERATION_STATUS_ENUM_RUNNING, Stage: api.OperationStageEnum(api.OperationStageEnum_value["OPERATION_STAGE_ENUM_RUNTIME"])}
+		return nil, dbError(err)
 	}
-	defer tx.Rollback()
-	accepted, _ := json.Marshal(map[string]any{"runtimeInstanceId": deploy.command.GetRuntimeInstanceId(), "deploymentId": deploy.command.GetDeploymentId(), "action": kind})
-	if _, err = s.Store.CreateOperation(ctx, tx, ownerstore.OperationInput{ID: opID, TenantID: deploy.tenantID, ActorID: deploy.actorID, Kind: kind, ResourceID: deploy.command.GetRuntimeInstanceId(), Stage: strings.ToLower(stage), RequestID: deploy.requestID, AcceptedInput: accepted}); err != nil {
-		return &api.Operation{OperationId: opID, Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_SERVE, ResourceId: deploy.command.GetRuntimeInstanceId(), Status: api.OperationStatusEnum_OPERATION_STATUS_ENUM_RUNNING, Stage: api.OperationStageEnum(api.OperationStageEnum_value["OPERATION_STAGE_ENUM_RUNTIME"])}
+	defer func() { _ = tx.Rollback() }()
+	accepted, _ := json.Marshal(map[string]any{"runtimeInstanceId": runtimeID, "deploymentId": deploy.command.GetDeploymentId(), "action": kind, "identity": identity})
+	if _, err = s.Store.CreateOperation(ctx, tx, ownerstore.OperationInput{ID: opID, TenantID: deploy.tenantID, ActorID: deploy.actorID, Kind: kind, ResourceID: runtimeID, Stage: strings.ToLower(stage), RequestID: deploy.requestID, AcceptedInput: accepted}); err != nil {
+		// The action identity is already recorded. It is this caller's own
+		// operation only when it names the same runtime, kind and request.
+		existing, readErr := s.Store.ReadOperation(ctx, opID)
+		if readErr != nil || existing.Kind != kind || existing.ResourceID != runtimeID || existing.RequestID != deploy.requestID {
+			return nil, status.Error(codes.AlreadyExists, "runtime lifecycle operation identity mismatch")
+		}
+		return s.operationByID(ctx, opID)
 	}
-	_ = tx.Commit()
-	return &api.Operation{OperationId: opID, Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_SERVE, Kind: api.OperationKindEnum(api.OperationKindEnum_value["OPERATION_KIND_ENUM_"+strings.ToUpper(kind)]), ResourceId: deploy.command.GetRuntimeInstanceId(), Status: api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED, Stage: api.OperationStageEnum(api.OperationStageEnum_value["OPERATION_STAGE_ENUM_RUNTIME"])}
+	// The recorded status is the fact this action actually established: a state
+	// the provider confirmed may complete, while an action whose applied result is
+	// still unread waits for confirmation instead of claiming success.
+	if _, err = tx.ExecContext(ctx, `UPDATE serve.operations SET status=$2,stage=$3,completed_at=CASE WHEN $2='succeeded' THEN COALESCE(completed_at,now()) ELSE completed_at END,updated_at=now() WHERE id=$1`, opID, nextStatus, stage); err != nil {
+		return nil, dbError(err)
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, dbError(err)
+	}
+	return s.operationByID(ctx, opID)
+}
+
+// applyRecordedLifecycle persists one lifecycle intent for the exact persisted
+// runtime before the provider call and reports whether the provider applied it. A
+// retry of the same action resumes the recorded intent instead of re-issuing the
+// call, and a retry presenting different input is refused rather than silently
+// re-targeting the runtime. The provider call is repeated only when the earlier
+// outcome was never confirmed, which is the one case where it is unknown.
+func (s *Service) applyRecordedLifecycle(ctx context.Context, deploy *persistedRuntime, action string, snapshot map[string]string, apply func() error) error {
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		return status.Error(codes.Internal, "cannot record the runtime lifecycle action")
+	}
+	id := stableID("act_", action, deploy.command.GetRuntimeInstanceId(), deploy.operationID)
+	confirmed, err := s.recordRuntimeAction(ctx, id, deploy.command.GetRuntimeInstanceId(), action, deploy.command.GetDeploymentId(), raw)
+	if err != nil {
+		return err
+	}
+	if confirmed {
+		return nil
+	}
+	if err = apply(); err != nil {
+		return err
+	}
+	return s.confirmRuntimeAction(ctx, id, action)
 }

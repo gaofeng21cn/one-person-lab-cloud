@@ -55,7 +55,7 @@ func (d *tencentFixture) EnsureResources(_ context.Context, in coordination.Reso
 	}
 	return &coordination.ResourceResult{
 		Binding:    &api.ResourceExecutionBinding{ComputeAllocationId: in.ComputeID, StorageVolumeId: in.StorageID, DataAttachmentId: "att-" + in.ComputeID, DataAttachmentOperationId: in.OperationID + ":attachment", AccountId: "acct-a"},
-		Compute:    fabric.ComputeAllocation{ID: in.ComputeID, AccountID: "acct-a", WorkspaceID: in.WorkspaceID, Status: "running", Provider: "tencent-tke", ProviderResourceID: "ins-" + in.ComputeID, ProviderRequestID: "req-cvm-" + in.ComputeID, NodePoolID: "np-basic", MachineName: "machine-" + in.ComputeID, NodeName: "10.66.0.10", PrivateIP: "10.66.0.10", Zone: "ap-guangzhou-3", ChargeType: "PREPAID", RenewFlag: "NOTIFY_AND_MANUAL_RENEW", Deadline: "2026-10-29T00:00:00Z"},
+		Compute:    fabric.ComputeAllocation{ID: in.ComputeID, AccountID: "acct-a", WorkspaceID: in.WorkspaceID, Status: "running", Provider: "tencent-tke", ProviderResourceID: "ins-" + in.ComputeID, InstanceID: "ins-" + in.ComputeID, CVMInstanceID: "ins-" + in.ComputeID, ProviderRequestID: "req-cvm-" + in.ComputeID, PackageID: "pkg-basic", NodePoolID: "np-basic", MachineName: "machine-" + in.ComputeID, NodeName: "10.66.0.10", PrivateIP: "10.66.0.10", Zone: "ap-guangzhou-3", ChargeType: "PREPAID", RenewFlag: "NOTIFY_AND_MANUAL_RENEW", Deadline: "2026-10-29T00:00:00Z"},
 		Storage:    fabric.StorageVolume{ID: in.StorageID, AccountID: "acct-a", WorkspaceID: in.WorkspaceID, Status: "ready", Provider: "tencent-tke", ProviderResourceID: "disk-" + in.StorageID, ProviderRequestID: "req-cbs-" + in.StorageID, SizeGB: 10, Zone: "ap-guangzhou-3", DiskType: "CLOUD_BSSD", Deadline: "2026-10-29T00:00:00Z"},
 		Attachment: fabric.StorageAttachment{ID: "att-" + in.ComputeID, OperationID: in.OperationID + ":attachment", WorkspaceID: in.WorkspaceID, ComputeID: in.ComputeID, VolumeID: in.StorageID, Status: "attached", Provider: "tencent-tke", ProviderAttachmentID: "pv/pv-x:pvc/pvc-x", ProviderRequestID: "req-att-" + in.ComputeID},
 		Network:    &coordination.NetworkFact{ProviderReference: "tke-node-pool/np-basic", Zone: "ap-guangzhou-3", Region: "ap-guangzhou"},
@@ -181,7 +181,16 @@ func TestTencentPrepaidResourcesConfirmOnlyWithVerifiedOwnerFunding(t *testing.T
 		read.ExecutionResources.GetDataAttachmentOperationId() != pending.OperationId+":attachment" || read.ObservedAt == nil {
 		t.Fatalf("execution binding missing for Serve: %v", read)
 	}
+	// The workload executor schedules the Workspace application onto the exact
+	// node, prepaid package and prepaid claim the confirmed resources landed on;
+	// the readback projects them and never re-derives them.
 	computeRef := "ins-" + read.ExecutionResources.GetComputeAllocationId()
+	if placement := read.GetApplicationPlacement(); placement == nil ||
+		placement.GetComputeNodeName() != "10.66.0.10" || placement.GetComputePackageId() != "pkg-basic" ||
+		placement.GetComputeNodePoolId() != "np-basic" || placement.GetComputeMachineName() != "machine-"+read.ExecutionResources.GetComputeAllocationId() ||
+		placement.GetComputeInstanceId() != computeRef || placement.GetStoragePvcName() == "" {
+		t.Fatalf("application execution placement missing: %v", read.GetApplicationPlacement())
+	}
 	kinds := map[string]string{}
 	for _, resource := range read.Resources {
 		kinds[resource.Kind] = resource.OpaqueProviderReference

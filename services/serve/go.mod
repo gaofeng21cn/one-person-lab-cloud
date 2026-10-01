@@ -1,21 +1,30 @@
 module opl-cloud/services/serve
 
-go 1.25.0
+go 1.26.0
 
 require (
 	google.golang.org/grpc v1.83.2
-	google.golang.org/protobuf v1.36.11
+	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
+	k8s.io/apimachinery v0.37.0
 	opl-cloud/packages/contracts/go v0.0.0
 	opl-cloud/services/internal/ownerservice v0.0.0
 	opl-cloud/services/internal/ownerstore v0.0.0-00010101000000-000000000000
+	opl-cloud/services/internal/protectedresource v0.0.0
 )
 
 require (
 	github.com/clbanning/mxj v1.8.4 // indirect
+	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
+	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/google/go-querystring v1.0.0 // indirect
 	github.com/mitchellh/mapstructure v1.4.3 // indirect
 	github.com/mozillazg/go-httpheader v0.2.1 // indirect
 	github.com/tencentyun/cos-go-sdk-v5 v0.7.75 // indirect
+	github.com/x448/float16 v0.8.4 // indirect
+	gopkg.in/inf.v0 v0.9.1 // indirect
+	k8s.io/klog/v2 v2.140.0 // indirect
+	k8s.io/utils v0.0.0-20260626114624-be93311217bd // indirect
+	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 )
 
 require (
@@ -39,6 +48,8 @@ replace opl-cloud/services/internal/ownerservice => ../internal/ownerservice
 replace opl-cloud/services/internal/ownerstore => ../internal/ownerstore
 
 replace opl-cloud/services/internal/postgresmigrate => ../internal/postgresmigrate
+
+replace opl-cloud/services/internal/protectedresource => ../internal/protectedresource
 
 replace opl-cloud/apps/console-bff => ../../apps/console-bff
 

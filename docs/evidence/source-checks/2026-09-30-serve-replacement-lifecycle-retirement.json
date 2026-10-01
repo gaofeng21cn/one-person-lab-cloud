@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_serve_replacement_lifecycle_retirement_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T09:50:00Z",
+  "result": "serve_runs_stop_reload_and_credentials_on_the_persisted_original_command_of_the_exact_delivery_records_each_lifecycle_action_before_the_provider_call_converges_a_replayed_switch_on_the_delivery_it_already_owns_stops_the_running_writer_before_an_exclusive_data_mount_is_replaced_retires_a_definitely_failed_replacement_and_restores_the_writer_it_stopped_never_reports_a_requested_model_version_as_applied",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 11.5 fourth pass - Serve's runtime lifecycle, exclusive-data replacement and failed-replacement retirement",
+  "sourceBaseSha": "325e73ae",
+  "branch": "codex/serve-access-data-plane",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.5",
+  "milestoneM1": {
+    "objective": "Minimum real delivery of the default OPL App: the instance installs the complete Cloud owner topology, Cloud builds an exact-SHA Candidate, the instance deploys it, Serve reaches a confirmed route and URL on Tencent TKE, and a user opens the application.",
+    "stepDelivered": "Every action a Workspace's delivery supports now executes against the exact persisted original command, and a replacement that cannot share the Workspace's retained data stops the running writer first, retires itself if it fails definitely, and restores the writer it stopped. Stop, reload and the credential read no longer report a state Serve never committed, and a replayed switch converges on its own delivery instead of allocating a second one."
+  },
+  "necessity": {
+    "decision": "Serve is the sole writer of a Workspace's current application and its Runtime instance facts, so the lifecycle actions that operate on an already-delivered application -- stop, reload, credential read, and the retirement of a failed replacement -- must be Serve's own actions on Serve's own recorded delivery. The original command is the one authoritative description of the delivery (its exact admitted descriptor, resource set and data attachment), so every continuation resolves that command from serve.agent_runtime_actions instead of re-deriving one, records the intended action before the provider call, and reports only what the owner row and the provider observation actually established.",
+    "currentProblem": "Four owner-level gaps remained in Serve's half of section 11.5. (1) Serve.StopRuntime and Serve.ReloadRuntime issued a provider call and then asserted a terminal operation state they had never confirmed, so a client could read 'succeeded' for a state the provider never applied; the frozen command persisted for a lifecycle action also carried no CallContext, so the Fabric readback dereferenced a nil call context instead of acting on the runtime. (2) A replacement never persisted the frozen start command of its own delivery, so the switched-to application could not later be stopped, reloaded, credential-read or replaced, which made only the first delivery recoverable. (3) A replacement whose publisher declares a read-write persistent mount that cannot have concurrent writers mounted the same retained data while the previous writer was still running, and a replayed switch would not restore a writer it had stopped. (4) A replacement that failed definitively was left as a second runtime instance of the Workspace with no retirement and no restoration of the writer the switch stopped.",
+    "confirmedFacts": [
+      "serve.agent_runtime_actions already models a lifecycle intent per command (command_id UNIQUE, action IN start/stop/terminate/reload/verify, observation_result IN confirmed/rejected/unknown) and carries the frozen input_snapshot, so the persistence the lifecycle needs already existed and needed no migration.",
+      "input_snapshot is PostgreSQL jsonb. The first comparison used bytes.Equal against Go's json.Marshal output, which never matches because jsonb is stored and returned with its own canonical spacing; the reproduction showed the very first replay refusing its own recorded command with 'runtime lifecycle action input differs from its original command'.",
+      "docs/spec/target/contracts/publisher-contract.schema.json declares DataMountPolicy.mountName + concurrentWritersSupported and WorkspaceApplicationRevision.persistentMounts (name/mountPath/readOnly); the single-writer fact is therefore a publisher declaration of the exact revision and never a Serve heuristic.",
+      "docs/spec/target/14_implementation_work_packages.md#11.5 requires Serve to supply Stop/Reload/credential read and failed retirement, and forbids recording the requested modelConfigurationVersion as applied.",
+      "docs/spec/target/06_data_flow_and_state_machine.md F10 row 4 requires the new instance to be verified without violating the writable-volume concurrency limit and to preserve the previous selected version and its original data obligations."
+    ],
+    "consequencesIfNotDone": "Without this change Serve could report a lifecycle state it never applied, a switched-to delivery could never be operated on, two revisions could hold one exclusive read-write mount at the same time, and a failed switch would leave an orphan runtime instance and a stopped writer serving a Workspace whose route never moved."
+  },
+  "ssotConformance": {
+    "items": [
+      {
+        "source": "docs/spec/target/14_implementation_work_packages.md#11.5",
+        "requirement": "补Secret配置、模型实际应用及读回、Stop/Reload/凭据获取和失败退役。不得把请求的modelConfigurationVersion直接写成applied。",
+        "conformance": "StopRuntime, ReloadRuntime and ReadApplicationCredentials each resolve the frozen original RuntimeDeployCommand of the exact delivery from serve.agent_runtime_actions and act on its confirmed Fabric binding. Stop records observation_result='confirmed' for the action and only then completes its operation as succeeded/runtime; Reload applies the selections, records the action, and leaves the operation at awaiting_confirmation because the requested version is not the applied one until a provider readback carries it; the applied_model_configuration_version column is never advanced by the reload path. A replacement that a provider observation reports FAILED or TERMINATED is retired through the same installation lifecycle boundary and its runtime instance is marked terminated."
+      },
+      {
+        "source": "docs/spec/target/06_data_flow_and_state_machine.md F09 (row 4, row 5) and F10 (row 4)",
+        "requirement": "ReloadModels: 目标配置版本+selections实际应用；保存成功不等于reload成功; Deploy: 新实例实际验证且不违反可写卷并发限制；保留旧选中版本/原数据义务.",
+        "conformance": "ReloadRuntime returns an Operation whose status is awaiting_confirmation, never succeeded, and the suite asserts that applied_model_configuration_version stays 0 after a reload to version 2. A replacement computes exclusiveDataWriter from the publisher declarations of both the running and the target revision before admitting anything; when a read-write mount is declared not to support concurrent writers, the running writer is stopped (and the stop recorded) before the replacement may mount the same retained data, and the replaced delivery's rows and route binding are preserved."
+      },
+      {
+        "source": "docs/invariants.md#application-deployment-and-data",
+        "requirement": "Restart and image rollback cannot implicitly restore, overwrite or migrate persistent data. ... Deployment and recovery bind immutable application/restore revisions, exact data inputs and current owner-derived resource bindings. Uncertain execution results require readback before a new side effect.",
+        "conformance": "A replacement that cannot observe its instance returns the original error and issues no further side effect against it: the writer it stopped stays stopped and the unresolved replacement is resolved by reading it back, exactly as an unresolved route switch blocks every later one. A definite provider failure is the only case that retires the replacement and restores the writer, and both decisions are made from the provider's own observation of the exact deployment id."
+      },
+      {
+        "source": "docs/invariants.md#application-deployment-and-data",
+        "requirement": "Tencent application persistence uses Workspace-owned CBS via explicit mounts; container layers and tmpfs are excluded. ... data is never implicitly shared across Workspaces.",
+        "conformance": "The single-writer gate reads only the replacement's and the running delivery's own declared persistentMounts and mountPolicies. A policy counts only when it names a mount the same revision declares read-write, so a read-only or absent mount never blocks a replacement; no mount path, provider object or cross-Workspace fact is consulted."
+      },
+      {
+        "source": "docs/invariants.md#adopted-application-delivery-invariants",
+        "requirement": "Serve is the sole writer of default-App and Agent deployment history, current deployment, Runtime instance readiness evidence, and access bindings for a Workspace.",
+        "conformance": "The write set stays inside serve.agent_runtime_actions, serve.agent_runtime_instances and serve.operations. A replayed switch recovers the delivery it already owns by reading serve.operations.resource_id for its own operation identity and then that delivery's own row (replacementReplay / existingReplacementTx), instead of re-deriving a delivery or trusting the Workspace's current pointer; whether a writer must be restored is read from the confirmed stop action the switch itself recorded."
+      },
+      {
+        "source": "docs/spec/target/12_product_spec.md (line 42)",
+        "requirement": "不可逆数据变更无批准迁移/恢复契约则拒绝，不因为“不收费”就跳过数据保护。",
+        "conformance": "The exclusive-writer gate stops the running writer before the replacement mounts the same data; a definite failure restores exactly that writer. Serve never assumes the data survives or that the previous container merely keeps running, and it distinguishes an unknown provider outcome (no retirement, no restore) from a definite failure (retire and restore)."
+      }
+    ]
+  },
+  "acceptance": [
+    "StopRuntime on a delivered application records a stop action, applies the suspended state, marks the action confirmed only after the provider call returns, completes its operation as succeeded/runtime, and returns the same operation id when the caller replays it.",
+    "ReloadRuntime records the reload action with the target version and a digest of the exact selections, applies it, returns awaiting_confirmation, and leaves applied_model_configuration_version unchanged at 0.",
+    "ReadApplicationCredentials resolves the persisted original command and returns the runtime's own workspace credential; a credential that names another runtime or Workspace is refused.",
+    "A version switch over a read-write mount whose publisher declares concurrentWritersSupported=false issues exactly one 'suspended' lifecycle call, marks the replaced runtime instance stopped, and still advances the route generation by exactly one.",
+    "A replacement whose provider observation is FAILED issues exactly 'suspended', 'absent', 'running' in that order, retires the failed replacement (verifying / terminated), leaves the previous deployment active at epoch 1 and leaves route generation at 1.",
+    "A switch that lost its response is replayed to the same operation and the same delivery, allocates no second deployment and records exactly one start command per delivery.",
+    "A replayed switch that stopped the writer and then finds the replacement definitely failed restores that writer (status ready) from the stop it recorded, without re-deriving it from the Workspace's current pointer."
+  ],
+  "evidenceSources": [
+    "services/serve/internal/delivery/replacement.go",
+    "services/serve/internal/delivery/replacement_postgres_test.go",
+    "services/serve/internal/delivery/runtime_bridge.go",
+    "services/serve/internal/delivery/runtime_lifecycle.go",
+    "services/serve/internal/delivery/write.go",
+    "services/serve/internal/delivery/write_postgres_test.go",
+    "services/serve/migrations/0001_opl_serve.sql",
+    "docs/spec/target/contracts/publisher-contract.schema.json"
+  ],
+  "verification": [
+    {
+      "command": "cd services/serve && go build ./... && go vet ./...",
+      "result": "pass",
+      "detail": "The Serve module builds and vets clean."
+    },
+    {
+      "command": "cd services/serve && OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<temporary PostgreSQL 16.8> go test ./... -count=1",
+      "result": "pass",
+      "detail": "internal/delivery and migrations pass, including TestServeRuntimeLifecycleActsOnThePersistedCommand, TestServeReplacementQuiescesAnExclusiveDataWriter, TestServeReplacementRestoresTheStoppedWriterAfterDefiniteFailure, TestServeVersionSwitchResumesItsOwnDeliveryOnReplay and TestServeReplayedSwitchRestoresTheWriterItStopped."
+    },
+    {
+      "command": "mutation check: make restoreWriterStoppedByReplacement return immediately, then run TestServeReplayedSwitchRestoresTheWriterItStopped",
+      "result": "pass",
+      "detail": "The new test fails with 'replayed failure recovery lifecycle=[suspended absent], want stop then retire then restore' when the restore is removed, so the assertion covers the defect rather than restating the code."
+    },
+    {
+      "command": "npm run verify:local",
+      "result": "pass",
+      "detail": "Product boundary, Node source tests, browser suite, typecheck, lint and every Go module compile/run on this revision; the run reports 'Local verification passed.'"
+    }
+  ],
+  "endState": "Complete for the Cloud-owned Serve source change that gives Stop, Reload and the credential read their exact persisted command, persists the frozen start command for replacements, gates a replacement on the publisher's declared single-writer mount policy, retires a definitely failed replacement and restores the writer it stopped, and converges a replayed switch on the delivery it already owns. No specification file, contract, generated binding or migration was edited, because every fact this pass needed already existed.",
+  "pendingSsotAlignment": {
+    "owner": "coordination window / user",
+    "note": "Two items remain that cannot be decided in Cloud source alone; they are reported, not implemented.",
+    "items": [
+      "The I06 execution move: services/fabric/internal/fabric/tencent_provider_application*.go and workspace_application*.go still own the TKE application execution that section 11.5 requires to move to Serve together with its real callers, and services/serve/internal/delivery/tke_adapter.go still POSTs the legacy Fabric /fabric/workspace-application-runtimes endpoints. Moving it needs a typed cross-owner boundary (FabricCoordination today exposes only resource and Secret RPCs) and a decision on which window owns the Fabric-side write set.",
+      "The I08 model-configuration apply/readback: RuntimePublisherContract.model_configuration (enum 8) declares PUT applyPath / GET readbackPath, but ReloadRuntime still returns awaiting_confirmation because no provider readback path carries the applied model configuration yet. Driving the real apply/readback belongs with the same execution-move decision."
+    ]
+  },
+  "notRun": [
+    "No specification file, api contract or generated binding was edited.",
+    "No migration was added: the pass uses columns migrations 0001-0004 already declare.",
+    "No Candidate image build, no owner-actor workflow dispatch and no Release.",
+    "No Instance deployment, Ingress change, Tencent resource action or TKE readback.",
+    "No Control Plane caller migration or proxy retirement; no I06 execution move and no I08 model-configuration readback."
+  ],
+  "claimBoundary": "This receipt claims a Cloud source change inside services/serve/internal/delivery: Serve executes Stop, Reload and the credential read against the exact persisted original command, records each lifecycle intent before the provider call and never reports an unconfirmed state as succeeded or a requested model version as applied; a replacement persists its own frozen start command, stops the running writer when the publisher declares the shared mount cannot have concurrent writers, retires a definitely failed replacement and restores the writer it stopped; and a replayed switch converges on the delivery it already owns. It is proven by the Serve PostgreSQL suites (five named above plus one mutation check), every Go module build, and npm run verify:local on this revision. It claims no specification update, no Candidate image, no deployment, no real TKE request, no Control Plane retirement and no production behavior.",
+  "secrets": "none"
+}

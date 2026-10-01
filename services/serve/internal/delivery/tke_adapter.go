@@ -1,13 +1,13 @@
 package delivery
 
-// TKEApplicationAdapter is Serve's own adapter to the installation's Agent
-// execution boundary.
+// agentExecutionAdapter executes one already-admitted descriptor through this
+// Serve process's own application executor.
 //
-// The installation executes Agent workloads on TKE. The execution engine is
-// reached over the Fabric-owned application-runtime port, which is the only
-// component that holds the cluster credentials and the provider naming; Serve
-// calls that port through the same scoped, signed capability the port admits, and
-// it never buys, deletes or mutates a resource allocation.
+// Before this adapter ran in-process, the workload was applied by Fabric's
+// signed HTTP application-runtime surface: Serve only described what it wanted and
+// another owner ran the cluster mutation. Application execution now belongs to
+// Serve, so the adapter calls its own executor and Fabric keeps only infrastructure
+// resource facts and their readback.
 //
 // The adapter exists because three facts have exactly one owner and Serve must
 // respect each of them:
@@ -17,28 +17,21 @@ package delivery
 //     the installation's declared route origin and never treats the provider's
 //     service name or port as an Entry URL. A gateway entry with no declared
 //     origin is recorded as not-open rather than published at a guessed host.
-//   - Readiness is the provider's whole-runtime observation. A Pod that is merely
-//     Running, or a persisted pointer, is not readiness: every declared component
-//     must be observed ready *and* a publishable entry must resolve before Serve
-//     records the Agent as ready.
-//   - Credential and model configuration belong to the deployment intent. The
-//     adapter carries the model configuration into the observed runtime record and
-//     refuses only the one case the current wire cannot express: a referenced
-//     Secret whose delivery reference has no field to travel in. That refusal
-//     names the missing owner field instead of silently dropping the injection.
+//   - Readiness is the whole-runtime observation. A Pod that is merely Running, or
+//     a persisted pointer, is not readiness: every declared component must be
+//     observed ready *and* a publishable entry must resolve before Serve records
+//     the Agent as ready.
+//   - The workload is scheduled onto the exact placement Fabric confirmed for the
+//     Workspace's own prepaid resources. A readback that does not carry that
+//     placement is refused instead of scheduling onto a guessed node, package or
+//     claim.
 
 import (
-	"bytes"
 	"context"
-	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -48,6 +41,7 @@ import (
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/packages/contracts/go/publicjson"
+	"opl-cloud/services/serve/internal/tkeapply"
 )
 
 // ReasonCredentialInjectionWireMissing names the one injection the current
@@ -58,30 +52,73 @@ import (
 // the adapter refuses and names the exact owner fact it needs.
 const ReasonCredentialInjectionWireMissing = "credential_injection_wire_missing"
 
-// TKEApplicationAdapter executes one already-admitted descriptor against the
-// installation's Agent execution boundary. Resource bindings are Fabric readbacks,
-// never caller input, and the browser-facing origin comes from the installation's
-// declared RouteOrigin.
-type TKEApplicationAdapter struct {
-	BaseURL, Token, CapabilityKey string
-	Origin                        RouteOrigin
-	Client                        *http.Client
+// agentExecutionAdapter executes one already-admitted descriptor against the
+// installation's Agent execution boundary. Resource bindings and their confirmed
+// placement are Fabric readbacks, never caller input, and the browser-facing origin
+// comes from the installation's declared RouteOrigin.
+type agentExecutionAdapter struct {
+	// Executor is the one execution boundary this installation declares. A process
+	// without one has an absent execution capability, not an anonymous one.
+	Executor applicationExecutor
+	Origin   RouteOrigin
+	// ModelConfigurations resolves the frozen publisher model configuration
+	// interface for the exact deployment a command names. It is Serve's own owner
+	// read of an immutable release identity, so the adapter never accepts an
+	// interface from a caller.
+	ModelConfigurations func(context.Context, *api.RuntimeDeployCommand) (tkeapply.ModelConfiguration, error)
 }
 
-func (a *TKEApplicationAdapter) Start(ctx context.Context, c *api.RuntimeDeployCommand, b *api.ResourceExecutionBinding) (RuntimeObservation, error) {
-	return a.call(ctx, c, b, false)
-}
-
-func (a *TKEApplicationAdapter) Observe(ctx context.Context, c *api.RuntimeDeployCommand, b *api.ResourceExecutionBinding) (RuntimeObservation, error) {
-	return a.call(ctx, c, b, true)
-}
-
-func (a *TKEApplicationAdapter) call(ctx context.Context, c *api.RuntimeDeployCommand, b *api.ResourceExecutionBinding, read bool) (RuntimeObservation, error) {
+func (a *agentExecutionAdapter) Start(ctx context.Context, c *api.RuntimeDeployCommand, target ExecutionTarget) (RuntimeObservation, error) {
 	var zero RuntimeObservation
-	if a == nil || a.BaseURL == "" || a.Token == "" || len(a.CapabilityKey) < 32 {
-		return zero, status.Error(codes.Unavailable, "Serve Agent execution credentials are not configured")
+	input, err := a.runtimeInput(c, target)
+	if err != nil {
+		return zero, err
 	}
-	if c == nil || c.GetDeploymentDescriptor() == nil || b == nil {
+	observation, err := a.Executor.EnsureWorkspaceApplicationRuntime(ctx, input, placementFor(target, c.GetWorkspaceId()))
+	if err != nil {
+		if !isExecutionPending(err) {
+			return zero, err
+		}
+		// Pending is not a failure: the components are converging and the
+		// observation carries the live state. Start still never claims readiness.
+	}
+	out, err := a.observe(c, input, observation)
+	if err != nil {
+		return zero, err
+	}
+	// Start acknowledges the request. Readiness is the separate observation's fact,
+	// so a start never carries readiness evidence even when the workload it applied
+	// already serves.
+	out.State, out.ReadinessEvidenceRef = api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_STARTING, ""
+	return out, nil
+}
+
+func (a *agentExecutionAdapter) Observe(ctx context.Context, c *api.RuntimeDeployCommand, target ExecutionTarget) (RuntimeObservation, error) {
+	var zero RuntimeObservation
+	input, err := a.runtimeInput(c, target)
+	if err != nil {
+		return zero, err
+	}
+	observation, err := a.Executor.ReadWorkspaceApplicationRuntime(ctx, input)
+	if err != nil {
+		return zero, err
+	}
+	return a.observe(c, input, observation)
+}
+
+// runtimeInput restates the exact deployment descriptor Serve was asked to run as
+// the executor's typed input. The resource binding is Serve's own readback, and the
+// model configuration the caller requested is validated here rather than silently
+// dropped.
+func (a *agentExecutionAdapter) runtimeInput(c *api.RuntimeDeployCommand, target ExecutionTarget) (contracts.WorkspaceApplicationRuntimeInput, error) {
+	var zero contracts.WorkspaceApplicationRuntimeInput
+	if a == nil || a.Executor == nil {
+		return zero, status.Error(codes.Unavailable, "Serve Agent execution is not configured")
+	}
+	if err := a.Executor.Configured(); err != nil {
+		return zero, status.Error(codes.Unavailable, "Serve Agent execution is not configured")
+	}
+	if c == nil || c.GetDeploymentDescriptor() == nil || target.Binding == nil {
 		return zero, status.Error(codes.InvalidArgument, "deployment descriptor and resource binding are required")
 	}
 	raw, err := publicjson.Marshal(c.GetDeploymentDescriptor().GetApplicationRevision())
@@ -92,6 +129,7 @@ func (a *TKEApplicationAdapter) call(ctx context.Context, c *api.RuntimeDeployCo
 	if json.Unmarshal(raw, &revision) != nil || contracts.ValidateWorkspaceApplicationRevision(revision) != nil {
 		return zero, status.Error(codes.InvalidArgument, "invalid application revision")
 	}
+	b := target.Binding
 	input := contracts.WorkspaceApplicationRuntimeInput{SchemaVersion: 2, AccountID: b.GetAccountId(), WorkspaceID: c.GetWorkspaceId(), ComputeID: b.GetComputeAllocationId(), VolumeID: b.GetStorageVolumeId(), AttachmentID: b.GetDataAttachmentId(), AttachmentOperationID: b.GetDataAttachmentOperationId(), RuntimeOperationID: c.GetRuntimeInstanceId(), Revision: revision, DataBindingID: c.GetDataAttachmentId()}
 	secretBindings, err := managedKeyRuntimeBindings(c)
 	if err != nil {
@@ -117,55 +155,15 @@ func (a *TKEApplicationAdapter) call(ctx context.Context, c *api.RuntimeDeployCo
 	if err = contracts.ValidateWorkspaceApplicationRuntimeConfiguration(input); err != nil {
 		return zero, status.Error(codes.FailedPrecondition, "application configuration or protected secret binding is required")
 	}
-	body, err := json.Marshal(input)
-	if err != nil {
-		return zero, err
-	}
-	path, action := "/fabric/workspace-application-runtimes", "create_workspace_application_runtime"
-	if read {
-		path += "/" + url.PathEscape(input.WorkspaceID) + "/readback"
-		action = "read_workspace_application_runtime"
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(a.BaseURL, "/")+path, bytes.NewReader(body))
-	if err != nil {
-		return zero, err
-	}
-	sum := sha256.Sum256(body)
-	claims := struct {
-		Version      int    `json:"version"`
-		Caller       string `json:"caller"`
-		AccountID    string `json:"accountId"`
-		WorkspaceID  string `json:"workspaceId"`
-		ResourceKind string `json:"resourceKind"`
-		ResourceID   string `json:"resourceId"`
-		Action       string `json:"action"`
-		OperationID  string `json:"operationId"`
-		ExpiresAt    int64  `json:"expiresAt"`
-		BodySHA256   string `json:"bodySha256"`
-	}{1, "serve", input.AccountID, input.WorkspaceID, "workspace_application_runtime", input.WorkspaceID, action, input.RuntimeOperationID, time.Now().Add(time.Minute).Unix(), hex.EncodeToString(sum[:])}
-	payload, _ := json.Marshal(claims)
-	encoded := base64.RawURLEncoding.EncodeToString(payload)
-	mac := hmac.New(sha256.New, []byte(a.CapabilityKey))
-	mac.Write([]byte(encoded))
-	req.Header.Set("Authorization", "Bearer "+a.Token)
-	req.Header.Set("Idempotency-Key", input.RuntimeOperationID)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-OPL-Fabric-Capability", encoded+"."+base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
-	client := a.Client
-	if client == nil {
-		client = &http.Client{Timeout: 90 * time.Second}
-	}
-	response, err := client.Do(req)
-	if err != nil {
-		return zero, status.Error(codes.Unavailable, "Agent execution adapter transport unavailable")
-	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return zero, status.Errorf(codes.Unavailable, "Agent execution adapter returned HTTP %d", response.StatusCode)
-	}
-	limited := io.LimitReader(response.Body, 2<<20)
-	var observation contracts.WorkspaceApplicationRuntimeObservation
-	if json.NewDecoder(limited).Decode(&observation) != nil || observation.WorkspaceID != input.WorkspaceID || observation.RuntimeID != contracts.WorkspaceApplicationRuntimeID(input.RuntimeOperationID) || contracts.ValidateWorkspaceApplicationRuntimeObservation(revision, observation) != nil {
+	return input, nil
+}
+
+// observe maps one executor observation onto Serve's runtime observation. Readiness
+// is the whole-runtime fact, not one component and not a Pod phase, and a start
+// acknowledges the request without claiming readiness.
+func (a *agentExecutionAdapter) observe(c *api.RuntimeDeployCommand, input contracts.WorkspaceApplicationRuntimeInput, observation contracts.WorkspaceApplicationRuntimeObservation) (RuntimeObservation, error) {
+	var zero RuntimeObservation
+	if observation.WorkspaceID != input.WorkspaceID || observation.RuntimeID != contracts.WorkspaceApplicationRuntimeID(input.RuntimeOperationID) || contracts.ValidateWorkspaceApplicationRuntimeObservation(input.Revision, observation) != nil {
 		return zero, status.Error(codes.FailedPrecondition, "Agent runtime observation does not match the exact original input")
 	}
 	out := RuntimeObservation{ObservedAt: time.Now().UTC(), Components: observation.Components, ApplicationEntry: observation.Entry}
@@ -181,37 +179,40 @@ func (a *TKEApplicationAdapter) call(ctx context.Context, c *api.RuntimeDeployCo
 	default:
 		return zero, status.Error(codes.FailedPrecondition, "Agent runtime state is unknown")
 	}
-	// Readiness is the whole-runtime fact, not one component and not a Pod phase.
-	// Only an observation that reports every declared component ready may even be
-	// considered; a running Pod whose component is not ready stays not-ready.
-	allComponentsReady := deploymentComponentsReady(revision, observation.Components)
+	allComponentsReady := deploymentComponentsReady(input.Revision, observation.Components)
 	if out.State != api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY || !allComponentsReady {
 		if out.State == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY {
 			out.State = api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_STARTING
 		}
 		return out, nil
 	}
-	accessURL, upstream, resolveErr := resolveApplicationEntry(a.Origin, c.GetWorkspaceId(), revision.ApplicationID, *observation.Entry)
+	if observation.Entry == nil {
+		// The runtime serves, but it publishes no web entry at all (for example an
+		// application that declares no entry port or a cloud_private exposure). Serve
+		// invents no address for it and claims no publishable readiness, so the
+		// delivery is recorded as not-open rather than as an open application.
+		out.State = api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_STARTING
+		return out, nil
+	}
+	accessURL, upstream, resolveErr := resolveApplicationEntry(a.Origin, c.GetWorkspaceId(), input.Revision.ApplicationID, *observation.Entry)
 	if resolveErr != nil {
 		// The application runs, but no publishable address is provable. Serve never
 		// publishes a guessed host; only a readback reports the running state, and a
 		// start stays starting because it cannot prove readiness at all.
 		out.AccessURL = ""
-		if !read {
-			out.State = api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_STARTING
-		}
+		out.State = api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_STARTING
 		return out, nil
 	}
 	out.AccessURL = accessURL
-	// The readiness reference binds the exact live observation bytes with the
-	// resolved route and the validated in-cluster upstream, so a later reader can
-	// tell which execution and which route produced the readiness fact.
-	if read {
-		out.ReadinessEvidenceRef = tkeReadinessEvidence(input.RuntimeOperationID, accessURL, upstream, observation, c.GetModelConfigurationVersion())
-	} else {
-		// Start acknowledges the request; only the separate read may prove readiness.
-		out.State = api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_STARTING
+	// A gateway entry is reachable only through the installation's origin, and
+	// the only destination behind it is the Service the executor created. Serve
+	// records that exact Service and port so its own access data plane proxies to
+	// a reported destination instead of composing one.
+	if strings.TrimSpace(observation.Entry.URL) == "" {
+		out.AccessUpstreamService = observation.Entry.ServiceName
+		out.AccessUpstreamPort = observation.Entry.Port
 	}
+	out.ReadinessEvidenceRef = tkeReadinessEvidence(input.RuntimeOperationID, accessURL, upstream, observation, c.GetModelConfigurationVersion())
 	return out, nil
 }
 
@@ -260,119 +261,121 @@ func referencedSecretRequired(revision contracts.WorkspaceApplicationRevision) b
 	return contracts.WorkspaceApplicationRequiresPlatformCredentials(revision)
 }
 
-// lifecycleRuntimeInput builds the Fabric lifecycle input for the exact original
-// deployment. Only opaque runtime identity travels; explicit application input is
-// replaced by the lifecycle handle the Fabric runtime already owns.
-func (a *TKEApplicationAdapter) lifecycleInput(command *api.RuntimeDeployCommand, binding *api.ResourceExecutionBinding, desired string) contracts.WorkspaceApplicationRuntimeLifecycleInput {
-	return contracts.WorkspaceApplicationRuntimeLifecycleInput{
-		AccountID: binding.GetAccountId(), WorkspaceID: command.GetWorkspaceId(),
-		RuntimeID:          contracts.WorkspaceApplicationRuntimeID(command.GetRuntimeInstanceId()),
-		RuntimeOperationID: command.GetRuntimeInstanceId(), DesiredState: desired,
+// Lifecycle applies a desired state to the exact runtime through this Serve
+// process's own executor and confirms the executor observed the applied state. A
+// readback that does not show the requested state is refused rather than reported
+// as an applied lifecycle.
+func (a *agentExecutionAdapter) Lifecycle(ctx context.Context, c *api.RuntimeDeployCommand, target ExecutionTarget, desired string) error {
+	input, err := a.runtimeInput(c, target)
+	if err != nil {
+		return err
 	}
+	result, err := a.Executor.SetWorkspaceApplicationRuntimeLifecycle(ctx, input, desired)
+	if err != nil {
+		return err
+	}
+	if result.RuntimeID != contracts.WorkspaceApplicationRuntimeID(input.RuntimeOperationID) || result.WorkspaceID != input.WorkspaceID {
+		return status.Error(codes.FailedPrecondition, "Agent lifecycle readback does not match the exact runtime")
+	}
+	// A suspended application may already be fully absent: the executor reports the
+	// stronger fact, and both mean the writer stopped.
+	if result.State != desired && !(desired == "suspended" && result.State == "absent") {
+		return status.Errorf(codes.FailedPrecondition, "Agent lifecycle readback reports %q, not %q", result.State, desired)
+	}
+	return nil
 }
 
-// Lifecycle applies a desired state to the exact reserved runtime through the
-// installation's lifecycle boundary and confirms the provider applied it.
-func (a *TKEApplicationAdapter) Lifecycle(ctx context.Context, command *api.RuntimeDeployCommand, binding *api.ResourceExecutionBinding, desired string) error {
-	_, err := a.callLifecycle(ctx, command, binding, desired, "lifecycle")
-	return err
+// Reload applies the command's model configuration through the frozen publisher
+// interface and reports the version the application itself read back. A release
+// that declares no interface, or a command that names no positive target version,
+// is refused with the exact reason it is unavailable; the requested version is
+// never returned as the applied one.
+func (a *agentExecutionAdapter) Reload(ctx context.Context, c *api.RuntimeDeployCommand, target ExecutionTarget) (int64, error) {
+	if c.GetModelConfigurationVersion() <= 0 {
+		return 0, status.Error(codes.InvalidArgument, "a positive model configuration version is required")
+	}
+	modelConfiguration, err := a.modelConfiguration(ctx, c)
+	if err != nil {
+		return 0, err
+	}
+	if !modelConfiguration.Declared {
+		return 0, status.Errorf(codes.FailedPrecondition, "%s: the frozen Runtime Release declares no publisher model configuration interface", ReasonModelConfigurationUnavailable)
+	}
+	input, err := a.runtimeInput(c, target)
+	if err != nil {
+		return 0, err
+	}
+	readback, err := a.Executor.ApplyModelConfiguration(ctx, input, modelConfiguration.Contract, tkeapply.ModelConfigurationRequest{
+		Version:    c.GetModelConfigurationVersion(),
+		Selections: modelConfigurationSelections(c.GetModelSelections()),
+	})
+	if err != nil {
+		return 0, err
+	}
+	return readback.AppliedVersion, nil
 }
 
-// Reload applies the command's model configuration through the lifecycle boundary's
-// running state, which re-reads the frozen configuration the runtime already holds.
-func (a *TKEApplicationAdapter) Reload(ctx context.Context, command *api.RuntimeDeployCommand, binding *api.ResourceExecutionBinding) error {
-	_, err := a.callLifecycle(ctx, command, binding, "running", "lifecycle")
-	return err
+// modelConfiguration resolves the frozen interface for one command through the
+// adapter's own owner read. A process that cannot resolve it refuses rather than
+// applying a configuration through an interface it did not read.
+func (a *agentExecutionAdapter) modelConfiguration(ctx context.Context, c *api.RuntimeDeployCommand) (tkeapply.ModelConfiguration, error) {
+	if a == nil || a.ModelConfigurations == nil {
+		return tkeapply.ModelConfiguration{}, status.Error(codes.Unavailable, "the publisher model configuration interface is not resolvable")
+	}
+	return a.ModelConfigurations(ctx, c)
+}
+
+// modelConfigurationSelections restates the command's declared selections as the
+// interface's own payload. The interface carries slots and model ids only, so no
+// other command field travels with it.
+func modelConfigurationSelections(selections []*api.ModelSelection) []tkeapply.ModelSelection {
+	out := make([]tkeapply.ModelSelection, 0, len(selections))
+	for _, selection := range selections {
+		out = append(out, tkeapply.ModelSelection{Slot: selection.GetSlot(), ModelID: selection.GetModelId()})
+	}
+	return out
 }
 
 // Credentials reads the platform-issued WebUI credential for the exact runtime. The
 // value travels only in the response and is never persisted.
-func (a *TKEApplicationAdapter) Credentials(ctx context.Context, command *api.RuntimeDeployCommand, binding *api.ResourceExecutionBinding) (*api.WorkspaceApplicationCredentials, error) {
-	if a == nil || a.BaseURL == "" || a.Token == "" || len(a.CapabilityKey) < 32 {
-		return nil, status.Error(codes.Unavailable, "Serve Agent execution credentials are not configured")
-	}
-	body, err := json.Marshal(a.lifecycleInput(command, binding, "running"))
+func (a *agentExecutionAdapter) Credentials(ctx context.Context, c *api.RuntimeDeployCommand, target ExecutionTarget) (*api.WorkspaceApplicationCredentials, error) {
+	input, err := a.runtimeInput(c, target)
 	if err != nil {
 		return nil, err
 	}
-	response, err := a.post(ctx, command, binding, "/fabric/workspace-application-runtimes/"+url.PathEscape(command.GetWorkspaceId())+"/credentials", "read_workspace_application_runtime_credentials", body)
+	credentials, err := a.Executor.ReadWorkspaceApplicationRuntimeCredentials(ctx, input)
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, status.Errorf(codes.Unavailable, "Agent credential boundary returned HTTP %d", response.StatusCode)
-	}
-	var credentials contracts.WorkspaceApplicationRuntimeCredentials
-	if json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&credentials) != nil || credentials.RuntimeID != contracts.WorkspaceApplicationRuntimeID(command.GetRuntimeInstanceId()) || credentials.WorkspaceID != command.GetWorkspaceId() {
+	if credentials.RuntimeID != contracts.WorkspaceApplicationRuntimeID(c.GetRuntimeInstanceId()) || credentials.WorkspaceID != c.GetWorkspaceId() {
 		return nil, status.Error(codes.FailedPrecondition, "Agent credential readback does not match the exact runtime")
 	}
 	return &api.WorkspaceApplicationCredentials{WorkspaceId: credentials.WorkspaceID, RuntimeInstanceId: credentials.RuntimeID, Username: credentials.WebUIUsername, Password: credentials.WebUIPassword}, nil
 }
 
-// callLifecycle posts one lifecycle request and confirms the provider's readback of
-// the exact runtime.
-func (a *TKEApplicationAdapter) callLifecycle(ctx context.Context, command *api.RuntimeDeployCommand, binding *api.ResourceExecutionBinding, desired, endpoint string) (*contracts.WorkspaceApplicationRuntimeLifecycleResult, error) {
-	if a == nil || a.BaseURL == "" || a.Token == "" || len(a.CapabilityKey) < 32 {
-		return nil, status.Error(codes.Unavailable, "Serve Agent execution credentials are not configured")
+// placementFor projects the resources owner's published placement onto the
+// executor's own placement type. A readback that published none projects none, and
+// the executor that schedules the workload refuses it; the Workspace identity is
+// the delivery's own confirmed workspace, so the workload is never applied to
+// another Workspace's placement.
+func placementFor(target ExecutionTarget, workspaceID string) tkeapply.Placement {
+	placement := target.Placement
+	return tkeapply.Placement{
+		AccountID:          target.Binding.GetAccountId(),
+		WorkspaceID:        workspaceID,
+		ComputeID:          target.Binding.GetComputeAllocationId(),
+		StorageVolumeID:    target.Binding.GetStorageVolumeId(),
+		ComputeNodeName:    placement.GetComputeNodeName(),
+		ComputePackageID:   placement.GetComputePackageId(),
+		ComputeNodePoolID:  placement.GetComputeNodePoolId(),
+		ComputeMachineName: placement.GetComputeMachineName(),
+		ComputeInstanceID:  placement.GetComputeInstanceId(),
+		StoragePVCName:     placement.GetStoragePvcName(),
 	}
-	body, err := json.Marshal(a.lifecycleInput(command, binding, desired))
-	if err != nil {
-		return nil, err
-	}
-	response, err := a.post(ctx, command, binding, "/fabric/workspace-application-runtimes/"+url.PathEscape(command.GetWorkspaceId())+"/"+endpoint, "set_workspace_application_runtime_lifecycle", body)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, status.Errorf(codes.Unavailable, "Agent lifecycle boundary returned HTTP %d", response.StatusCode)
-	}
-	var result contracts.WorkspaceApplicationRuntimeLifecycleResult
-	if json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&result) != nil {
-		return nil, status.Error(codes.FailedPrecondition, "Agent lifecycle readback is not decodable")
-	}
-	if result.RuntimeID != contracts.WorkspaceApplicationRuntimeID(command.GetRuntimeInstanceId()) || result.WorkspaceID != command.GetWorkspaceId() {
-		return nil, status.Error(codes.FailedPrecondition, "Agent lifecycle readback does not match the exact runtime")
-	}
-	return &result, nil
 }
 
-// post signs and sends one Fabric capability request. It is the shared frame the
-// adapter's own execution calls use, factored so lifecycle and credential calls
-// carry the identical scoped, signed identity.
-func (a *TKEApplicationAdapter) post(ctx context.Context, command *api.RuntimeDeployCommand, binding *api.ResourceExecutionBinding, path, action string, body []byte) (*http.Response, error) {
-	if binding == nil {
-		return nil, status.Error(codes.InvalidArgument, "resource binding is required")
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(a.BaseURL, "/")+path, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	sum := sha256.Sum256(body)
-	claims := struct {
-		Version      int    `json:"version"`
-		Caller       string `json:"caller"`
-		AccountID    string `json:"accountId"`
-		WorkspaceID  string `json:"workspaceId"`
-		ResourceKind string `json:"resourceKind"`
-		ResourceID   string `json:"resourceId"`
-		Action       string `json:"action"`
-		OperationID  string `json:"operationId"`
-		ExpiresAt    int64  `json:"expiresAt"`
-		BodySHA256   string `json:"bodySha256"`
-	}{1, "serve", binding.GetAccountId(), command.GetWorkspaceId(), "workspace_application_runtime", command.GetWorkspaceId(), action, command.GetRuntimeInstanceId(), time.Now().Add(time.Minute).Unix(), hex.EncodeToString(sum[:])}
-	payload, _ := json.Marshal(claims)
-	encoded := base64.RawURLEncoding.EncodeToString(payload)
-	mac := hmac.New(sha256.New, []byte(a.CapabilityKey))
-	mac.Write([]byte(encoded))
-	req.Header.Set("Authorization", "Bearer "+a.Token)
-	req.Header.Set("Idempotency-Key", command.GetRuntimeInstanceId())
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-OPL-Fabric-Capability", encoded+"."+base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
-	client := a.Client
-	if client == nil {
-		client = &http.Client{Timeout: 90 * time.Second}
-	}
-	return client.Do(req)
+// isExecutionPending reports whether the executor's error is its honest progress
+// signal rather than a refused execution.
+func isExecutionPending(err error) bool {
+	return errors.Is(err, tkeapply.ErrWorkspaceLaunchPending)
 }

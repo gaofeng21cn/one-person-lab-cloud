@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"opl-cloud/services/fabric/internal/protectedresource"
+	"opl-cloud/services/internal/protectedresource"
 )
 
 const tencentCBSCreateMutationStateSchemaVersion = 2
@@ -478,7 +478,7 @@ func (p *TencentProvider) ReadStorageVolumeStatus(ctx context.Context, volume St
 	if err != nil || volume.Status == "external_deleted" || volume.Status == "pending" {
 		return volume, err
 	}
-	pvc := storagePVCName(volume)
+	pvc := StoragePVCName(volume)
 	raw, err := p.callKubectl(ctx, []string{"get", "pvc/" + pvc, "-o", "json"}, nil, protectedresource.Target{})
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "notfound") || strings.Contains(strings.ToLower(err.Error()), "not found") {

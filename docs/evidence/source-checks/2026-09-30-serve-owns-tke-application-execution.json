@@ -1,0 +1,158 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_serve_tke_application_execution_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T11:30:00Z",
+  "result": "serve_owns_tke_application_execution_in_process_through_the_confirmed_resource_placement_and_the_installation_s_declared_cluster_facts_the_signed_fabric_application_boundary_now_serves_only_the_provider_whose_executor_has_not_moved_and_an_installation_that_declares_both_is_refused_at_startup",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 11.5 fifth pass - Serve owns TKE application execution",
+  "sourceBaseSha": "4c459520",
+  "branch": "codex/serve-access-data-plane",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.5",
+  "milestoneM1": {
+    "objective": "Minimum real delivery of the default OPL App: the instance installs the complete Cloud owner topology, Cloud builds an exact-SHA Candidate, the instance deploys it, Serve reaches a confirmed route and URL on Tencent TKE, and a user opens the application.",
+    "stepDelivered": "Serve now applies, observes, scales and retires the Workspace application workload itself. A delivery reads the exact node, prepaid package, prepaid node pool, machine and prepaid storage claim Fabric confirmed for the same resource mutation, renders the workload from the installation's own namespace, image-pull Secret and declared ingress peers, and reaches the cluster only through its own kubectl boundary and the protected-compute guard. The signed Fabric application boundary no longer carries TKE execution: it remains only for the provider whose in-process executor has not moved, and an installation that declares both is refused at startup instead of resolving a second writer by precedence."
+  },
+  "necessity": {
+    "decision": "Section 11.5 requires the TKE application execution capability and its real caller to move to Serve. Serve is already the sole writer of a Workspace's deployment, runtime-instance and access-binding facts, so the object those facts describe must be applied by the same owner: while the workload was applied over Fabric's signed HTTP application-runtime surface, Serve asserted readiness and route facts for an object it did not create, and two services could write the same Workspace's application.",
+    "currentProblem": "services/serve/internal/delivery/tke_adapter.go POSTed /fabric/workspace-application-runtimes for create, readback, lifecycle and credentials, so Serve's own execution path was a call adapter, not the writer. The facts the workload is applied with (node, prepaid package, node pool, machine, storage claim) lived only in Fabric's ComputeAllocation/StorageVolume rows and had no typed readback, so Serve could not have scheduled the workload at all; the application NetworkPolicy also named the old Control Plane proxy pod as its only admitted ingress peer, which would have left a Serve-proxied application unreachable.",
+    "confirmedFacts": [
+      "ResourceReadback carries execution_resources but no placement, and ResourceExecutionBinding is a stored identity compared with proto.Equal in services/workspace/internal/launch/runtime.go, so the placement could not be added to the binding: packages/contracts/proto/internal.proto adds ApplicationExecutionPlacement (message field 11 of ResourceReadback) and services/fabric/coordination/read.go projects it from the same confirmed ComputeAllocation/StorageVolume read that produced the binding.",
+      "services/fabric/internal/fabric/tencent_provider_application_*.go built the workload from the operator's ComputeAllocation/StorageVolume arguments; the corresponding Serve-side executor therefore takes a Placement value with the same six facts and refuses to apply when the node, prepaid package or storage claim is absent.",
+      "The workload's ingress peer was a hardcoded pod label pair ('app.kubernetes.io/name=opl-cloud, app.kubernetes.io/component=control-plane'). No Cloud source declares the installation's Serve pod labels, so the fact is declared by the installation (OPL_WORKSPACE_APPLICATION_INGRESS_PEERS) and the executor refuses to render an application's ingress without it.",
+      "services/fabric/internal/protectedresource was a Fabric module; Serve's own mutation boundary needs the same guard, so it is now the shared services/internal/protectedresource module and both providers read its facts in their own source.",
+      "Fabric's Local-Docker provider also implements the application-runtime port, and its executor has not moved yet. Removing the remaining bridge in this pass would have removed the only execution path of a supported deployment mode.",
+      "The placement is a read projection of the provider mutation, so it exists only for a provider whose Workspace compute and prepaid storage land on a node, a prepaid package and a claim: Fabric publishes none for the Local-Docker provider. The requirement to refuse an unconfirmed placement therefore belongs to the executor that schedules the workload (services/serve/internal/tkeapply refuses ErrPlacementUnconfirmed before it reaches the cluster), not to Serve's provider-neutral confirmedExecutionTarget. Enforcing it at the adapter would have left the retained migration-source boundary unreachable and refused the real local first-deploy chain that runs on that provider."
+    ]
+  },
+  "ssotConformance": {
+    "items": [
+      {
+        "source": "docs/spec/target/14_implementation_work_packages.md#11.5",
+        "requirement": "D的TKEApplicationAdapter仍POST旧Fabric应用端点，只是迁移中的调用适配，不是执行writer已迁走。将TKE应用执行能力连同真实caller迁到Serve，串行切换后按09退出对应旧writer。",
+        "conformance": "services/serve/internal/tkeapply owns the TKE workload objects: EnsureWorkspaceApplicationRuntime applies one Deployment, Service and NetworkPolicy per declared component from the confirmed Placement, ReadWorkspaceApplicationRuntime observes them, Set/ReadWorkspaceApplicationRuntimeLifecycle scale and retire them, and ReadWorkspaceApplicationRuntimeCredentials reads the platform-derived credential from the applied Secret. services/serve/internal/delivery/tke_adapter.go no longer performs any HTTP call: it restates the exact RuntimeDeployCommand as the executor's typed input and calls the executor in process. Fabric's own HTTP application-runtime endpoints remain reachable only by the migration-source caller, which this receipt names explicitly rather than removing under a live caller."
+      },
+      {
+        "source": "docs/spec/target/14_implementation_work_packages.md#11.5",
+        "requirement": "接入按绑定读回的access data plane，迁移实际入口和调用者并清退Control Plane应用proxy/当前路由解析器，不保留RouteProvider或路由fallback。Instance只提供稳定Ingress/DNS/TLS到Serve。",
+        "conformance": "The adapter resolves the publishable entry from the installation's declared route origin exactly as before, and now takes the in-cluster upstream from the destination the executor itself created. A ready workload that publishes no entry (no declared entry port or a cloud_private exposure) is recorded as not-open instead of dereferencing a missing entry, so no address is invented. No RouteProvider, provider revision or external absence receipt exists in either the code or the receipt."
+      },
+      {
+        "source": "docs/decisions.md#workspace-access-routing-owner",
+        "requirement": "Serve is the sole business and persistence owner of each Workspace's current application route. Its serve.access_bindings row is the authoritative route selection ... The Serve access data plane resolves an incoming Workspace application origin against that confirmed binding and forwards only to the exact admitted, ready TKE Service target.",
+        "conformance": "The access data plane already owns route resolution; this pass gives it the writer that creates that exact Service target. The application NetworkPolicy's ingress now admits the installation-declared Serve access pods, so the proxy that the route decision belongs to is the only peer allowed to reach a Workspace application besides its own sibling components."
+      },
+      {
+        "source": "docs/architecture.md#cross-service-coordination-and-data-ownership",
+        "requirement": "Observed Agent readiness and Serve route | Serve readback ... Fabric readback | Which compute/storage/network resources exist and their provider state.",
+        "conformance": "Fabric's projection is read-only: services/fabric/internal/fabric/application_execution_placement.go derives the placement from the persisted ComputeAllocation and StorageVolume and returns nil when the placement facts are absent, so a consumer fails closed. Fabric performs no application-object mutation for a Serve-owned delivery."
+      },
+      {
+        "source": "docs/spec/target/09_legacy_migration.md#5 (\"每个领域移交有独立写集；未移交能力继续由原Owner负责，真实调用方切换后才退休旧writer\")",
+        "requirement": "A capability that has not been handed over stays with its original writer until its real callers move, and the old writer is retired only afterwards.",
+        "conformance": "Serve runs the TKE provider in process and Fabric keeps the Local-Docker provider's application executor, which is the provider whose executor has not moved. Serve therefore declares exactly one boundary: an installation that declares its own cluster facts binds the in-process executor, an installation that declares none binds the Fabric signed boundary for that provider, and an installation that declares both is refused at startup instead of resolving a second writer by precedence. The placement requirement is enforced by the in-process executor that schedules the workload, so the retained boundary stays reachable for the one provider that publishes no placement."
+      },
+      {
+        "source": "docs/invariants.md#application-deployment-and-data",
+        "requirement": "Deployment and recovery bind immutable application/restore revisions, exact data inputs and current owner-derived resource bindings.",
+        "conformance": "The executor accepts only the typed WorkspaceApplicationRuntimeInput derived from the frozen command plus the confirmed placement; it refuses an input whose configuration, credential reference or data binding the shared contract says is incomplete, refuses a component whose live image differs from the admitted revision, and refuses a placement that does not name the node, package and claim."
+      },
+      {
+        "source": "docs/spec/target/12_product_spec.md (resource protection)",
+        "requirement": "安装自身系统资源不得被工作负载占用；变更必须经守卫。",
+        "conformance": "Every mutating kubectl action passes protectedresource.Config.Check with the placement's package, node pool, machine, node and instance. The executor refuses to mutate at all when the installation's protected-compute declaration is invalid, and an unconfirmed placement never reaches the cluster."
+      }
+    ]
+  },
+  "acceptance": [
+    "The workload applied for a confirmed placement names that placement's node (spec.template.spec.nodeSelector kubernetes.io/hostname), tolerates its prepaid package (oplcloud.cn/package-id), mounts its prepaid storage claim (persistentVolumeClaim claimName), pulls with the installation's image-pull Secret, and admits exactly the installation-declared Serve access pods plus the application's own sibling components.",
+    "An installation that declares no image-pull Secret, no ingress peer, or a placement without node/package/claim applies nothing: the test asserts no Deployment object exists after the refusal.",
+    "A confirmed resource readback that publishes no placement is carried as no placement at all: the delivery target keeps the same confirmed binding, the provider that publishes none keeps its own execution boundary (proved against a real HTTP fixture), and the in-process executor refuses an unconfirmed placement with ErrPlacementUnconfirmed before any kubectl call.",
+    "A mutating kubectl action whose target names the installation's protected node is refused with protectedresource.ErrProtectedResource and never reaches the cluster.",
+    "A created workload whose component does not serve is reported pending, and a workload scaled to zero stops being reported ready.",
+    "SetWorkspaceApplicationRuntimeLifecycle confirms the state it applied (suspended), reports the stronger absent state after retirement with the image-retirement obligation, and the credentials read returns the Workspace's own derived credential.",
+    "The Serve adapter never claims readiness on Start, never publishes an address for a ready-but-unpublished application, never records a foreign runtime's observation, refuses a lifecycle readback that does not show the requested state, and never records the requested model configuration version as applied.",
+    "A deployment carrying a declared platform Gateway credential executes only with the exact confirmed Secret binding; an unbound declaration is refused with credential_injection_wire_missing before any executor call (the executor is not invoked).",
+    "An installation that declares both OPL_K8S_NAMESPACE and OPL_FABRIC_APPLICATION_URL is refused at startup; declaring only one binds exactly one execution boundary.",
+    "OPL_WORKSPACE_APPLICATION_INGRESS_PEERS accepts exactly one JSON object of non-empty label name/value pairs, and an empty declaration leaves the fact absent rather than substituting a default."
+  ],
+  "evidenceSources": [
+    "services/serve/internal/tkeapply/executor.go",
+    "services/serve/internal/tkeapply/kubectl.go",
+    "services/serve/internal/tkeapply/placement.go",
+    "services/serve/internal/tkeapply/runtime.go",
+    "services/serve/internal/tkeapply/configuration.go",
+    "services/serve/internal/tkeapply/lifecycle.go",
+    "services/serve/internal/tkeapply/executor_test.go",
+    "services/serve/internal/delivery/execution.go",
+    "services/serve/internal/delivery/execution_bridge.go",
+    "services/serve/internal/delivery/tke_adapter.go",
+    "services/serve/internal/delivery/execution_test.go",
+    "services/serve/internal/delivery/write.go",
+    "services/fabric/internal/fabric/application_execution_placement.go",
+    "services/fabric/coordination/read.go",
+    "services/fabric/internal/fabric/tencent_provider.go",
+    "services/internal/protectedresource/guard.go",
+    "packages/contracts/proto/internal.proto",
+    "deploy/portable/opl-cloud-owner-topology.json",
+    "deploy/portable/opl-cloud.env.example",
+    "Dockerfile",
+    "services/serve/internal/delivery/write_postgres_test.go",
+    "services/fabric/coordination/tencent_resume_postgres_test.go",
+    "tests/contracts/module-physical-boundaries.test.ts",
+    "tools/verify-local.ts"
+  ],
+  "verification": [
+    {
+      "command": "cd services/serve && go build ./... && go vet ./...",
+      "result": "pass",
+      "detail": "The Serve module builds and vets clean with the new in-process executor wired into Configure."
+    },
+    {
+      "command": "cd services/fabric && go build ./... && go vet ./...",
+      "result": "pass",
+      "detail": "The Fabric module builds and vets clean with the shared protected-resource guard read in the provider's own source."
+    },
+    {
+      "command": "cd services/serve && OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<local PostgreSQL> go test ./... -count=1",
+      "result": "pass",
+      "detail": "internal/delivery and internal/tkeapply pass: the adapter carries the published placement verbatim and reaches a provider's own boundary when that provider publishes none, the in-process executor refuses an unconfirmed placement before any kubectl call, and the PostgreSQL delivery suites run against the Fabric readback fixture that carries the placement."
+    },
+    {
+      "command": "cd services/fabric && OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<local PostgreSQL> go test ./... -count=1",
+      "result": "pass",
+      "detail": "The Fabric module's suites pass, including the coordination suite that asserts the confirmed resource readback projects the placement facts of the same provider mutation into Serve's readback."
+    },
+    {
+      "command": "node --test tests/contracts/owner-topology.test.ts tests/contracts/portable-tke-configuration.test.ts tests/contracts/module-physical-boundaries.test.ts",
+      "result": "pass",
+      "detail": "The owner-topology declaration accounts for every environment name each process reads (the Serve execution facts and the protected-compute facts included, each read by the process's own source), the installation template names every declared variable, and the physical-boundary contract lists the shared protected-resource module that Fabric and Serve now both import."
+    },
+    {
+      "command": "npm run verify:local",
+      "result": "pass",
+      "detail": "Reported 'Local verification passed' on this revision."
+    }
+  ],
+  "endState": "Complete for the Cloud-owned half of the execution move: Serve applies, observes, scales, retires and credential-reads a TKE Workspace application through its own executor, driven by the placement Fabric publishes for the same resource mutation and the cluster facts the installation declares, and it refuses to schedule onto a placement the resources owner did not confirm. Exactly one execution boundary is bound per installation: an installation that declares its own cluster facts runs the in-process executor, an installation that declares none binds the Fabric signed boundary of the provider whose executor has not moved, and one that declares both is refused. The Control Plane operator application surface and Fabric's Local-Docker application executor are the remaining migration-source writers; their retirement is the next slice and is named below.",
+  "pendingSsotAlignment": {
+    "owner": "serial integration window",
+    "note": "Three items remain that this pass deliberately did not fold in; each is reported with its exact write set rather than half-migrated.",
+    "items": [
+      "The Local-Docker provider's application executor. services/fabric/internal/fabric/local_docker_application_*.go still applies the workload for that provider, and Serve reaches it through the declared OPL_FABRIC_APPLICATION_URL boundary. Serve owns the TKE provider now; the same port must be given a Docker implementation before the bridge and its three environment facts can be deleted. Until then an installation declares exactly one of the two boundaries.",
+      "The Control Plane application surface and Fabric's HTTP application endpoints. services/control-plane/internal/server/workspace_application_*.go (with /api/workspaces/{id}/runtime-status and /runtime-credentials/reveal) still drive Fabric's application endpoints for a resource-only order, and the default OPL App install for such an order runs through that surface. Retiring it requires the Console read/apply callers to move to Serve's own product surface first; that caller migration is the next slice.",
+      "The shared-module inventory in the lower-layer documents. docs/implementation-architecture.md still names only services/internal/postgresmigrate as shared infrastructure, and docs/status.md both repeats that line and describes Fabric's kubectl guard as protectedresource.FromEnv() per call, while services/internal now also holds ownerservice, ownerstore and protectedresource and each provider reads the guard facts in its own source. Each shared module is imported by at least two current services (checked over the whole tree). Those documents are projections the coordination window reconciles, so this pass states the current fact in code and in this receipt instead of writing over them."
+    ]
+  },
+  "notRun": [
+    "No specification file, api contract document or generated binding was edited; the only wire change is the production proto field ApplicationExecutionPlacement on ResourceReadback.",
+    "No migration was added.",
+    "No Candidate image build, no owner-actor workflow dispatch and no Release.",
+    "No Instance deployment, Ingress re-point, Tencent resource action or real TKE readback.",
+    "No Control Plane application-surface retirement and no I08 model-configuration apply/readback.",
+    "No real cluster, namespace or Secret was contacted: the executor's tests drive an in-memory cluster fixture, and no kubectl invocation was executed.",
+    "No local-docker or livebuild first-deploy qualification was executed here; the Local-Docker provider keeps its own executor and its own boundary this pass."
+  ],
+  "claimBoundary": "This receipt claims a Cloud source change: Serve owns the TKE application execution writer, the placement it schedules onto comes from Fabric's confirmed resource readback, the cluster facts are installation declarations, the protected-compute guard bounds every mutation, and an installation cannot declare two execution boundaries. It is proven by the Serve and Fabric module builds, the Serve Go suites (in-memory cluster fixture), the owner-topology and portable-TKE contract tests, and npm run verify:local on this revision. It claims no specification update, no Candidate image, no deployment, no real TKE request, no Control Plane retirement and no completion of section 11.5.",
+  "secrets": "none"
+}

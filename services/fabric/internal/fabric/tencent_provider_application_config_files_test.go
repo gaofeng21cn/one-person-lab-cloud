@@ -46,7 +46,7 @@ func TestTencentApplicationDependencyConfigAndLifecycle(t *testing.T) {
 	}
 	dependency := contracts.WorkspaceApplicationRuntimeComponents(input.Revision)[1]
 	deployment := fake.deployments[workspaceApplicationComponentResourceName(input, dependency.Name)]
-	if !verifyTencentApplicationConfiguration(input, dependency, deployment, storagePVCName(tencentApplicationVolume())) {
+	if !verifyTencentApplicationConfiguration(input, dependency, deployment, StoragePVCName(tencentApplicationVolume())) {
 		t.Fatal("declared dependency rejected")
 	}
 	security := nested(deployment, "spec", "template", "spec", "securityContext").(map[string]any)

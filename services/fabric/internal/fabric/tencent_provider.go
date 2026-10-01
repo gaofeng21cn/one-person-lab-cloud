@@ -23,7 +23,7 @@ import (
 	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
-	"opl-cloud/services/fabric/internal/protectedresource"
+	"opl-cloud/services/internal/protectedresource"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8slabels "k8s.io/apimachinery/pkg/labels"
@@ -97,6 +97,7 @@ type TencentProvider struct {
 	provision       func(context.Context, provisionerRequest) (provisionerResponse, error)
 	kubectl         func(context.Context, []string, []byte) ([]byte, error)
 	convergenceWait func(context.Context, int) error
+	guard           protectedresource.Config
 	profile         tencentProviderProfile
 	plans           map[string]tencentPackageProfile
 	region          string
@@ -151,7 +152,7 @@ func (p *TencentProvider) callKubectl(ctx context.Context, args []string, stdin 
 	switch args[0] {
 	case "get", "wait", "logs", "describe", "version":
 	default:
-		if err := protectedresource.FromEnv().Check(target); err != nil {
+		if err := p.guard.Check(target); err != nil {
 			return nil, err
 		}
 	}
@@ -215,7 +216,19 @@ func NewTencentProvider() *TencentProvider {
 	if workspaceImagesErr != nil {
 		installationErr = workspaceImagesErr
 	}
+	// The installation's protected-compute declaration is read here, in the
+	// provider's own source, so the facts this process requires stay part of the
+	// installation contract instead of hiding behind a shared default.
+	guard := protectedresource.FromMap(map[string]string{
+		"OPL_SYSTEM_COMPUTE_NODE_POOL_ID":              os.Getenv("OPL_SYSTEM_COMPUTE_NODE_POOL_ID"),
+		"OPL_SYSTEM_COMPUTE_MACHINE_ID":                os.Getenv("OPL_SYSTEM_COMPUTE_MACHINE_ID"),
+		"OPL_SYSTEM_COMPUTE_NODE_NAME":                 os.Getenv("OPL_SYSTEM_COMPUTE_NODE_NAME"),
+		"OPL_SYSTEM_COMPUTE_MACHINE_TYPE":              os.Getenv("OPL_SYSTEM_COMPUTE_MACHINE_TYPE"),
+		"OPL_SYSTEM_COMPUTE_CVM_ID":                    os.Getenv("OPL_SYSTEM_COMPUTE_CVM_ID"),
+		"OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON": os.Getenv("OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON"),
+	})
 	provider := &TencentProvider{
+		guard:           guard,
 		convergenceWait: boundedClaimReadbackWait,
 		profile:         profile, plans: plans, region: strings.TrimSpace(os.Getenv(tencentProviderRegionEnv)),
 		storageDiskType: strings.TrimSpace(os.Getenv("TENCENT_CBS_DISK_TYPE")), profileErr: profileErr,
@@ -1230,7 +1243,11 @@ func storageBindingNames(volume StorageVolume) (string, string) {
 	return pv, pvc
 }
 
-func storagePVCName(volume StorageVolume) string {
+// StoragePVCName is the provider-confirmed PersistentVolumeClaim a Workspace's
+// prepaid storage is bound to. It is a readback fact about the storage mutation,
+// so the component that schedules a workload onto that storage reads it here
+// instead of re-deriving the binding name from the volume identity.
+func StoragePVCName(volume StorageVolume) string {
 	_, pvc := storageBindingNames(volume)
 	return pvc
 }
@@ -1250,7 +1267,7 @@ func workspaceManifestWithGatewayPlan(input WorkspaceRuntimeInput, workspaceName
 		"oplcloud.cn/runtime-operation-id":    k8sCostLabelValue(input.RuntimeOperationID),
 	}
 	labels := stringAnyMap(mergeStringMaps(runtimeSelectorLabels(serviceName, compute), identityLabels, k8sCostLabels(tags)))
-	pvcName := storagePVCName(storage)
+	pvcName := StoragePVCName(storage)
 	password := deriveWorkspaceAdminPassword(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"), workspaceID, credentialSeed)
 	secretData := map[string]any{"webui_password": b64(password), "webui_session_secret": b64(deriveWorkspaceSessionSecret(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"), workspaceID, credentialSeed))}
 	secretItems := []any{map[string]any{"key": "webui_password", "path": "opl_webui_password"}, map[string]any{"key": "webui_session_secret", "path": "webui_session_secret"}}
