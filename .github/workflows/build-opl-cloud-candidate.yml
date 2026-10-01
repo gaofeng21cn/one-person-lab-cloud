@@ -17,12 +17,10 @@ concurrency:
 
 jobs:
   candidate:
-    # The Candidate is a replaceable input, not a formal Release. It may be built
-    # from the exact commit of any branch (for example the serial integration
-    # branch before its work lands on canonical main), so the job does not pin the
-    # dispatched ref to main. The publication trust boundary is unchanged: only the
-    # repository owner may dispatch, and the Release workflow still runs from main.
-    if: ${{ github.ref_type == 'branch' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner }}
+    # One-time serial Candidate bridge: the product bytes remain the exact
+    # product_sha commit; only this bridge ref admits the named write collaborator.
+    # The permanent Release workflow remains main-only and independently gated.
+    if: ${{ github.repository == 'gaofeng21cn/one-person-lab-cloud' && github.ref == 'refs/heads/codex/candidate-92de4458-bridge' && github.ref_type == 'branch' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:

@@ -67,12 +67,17 @@ if (JSON.stringify(candidateInputs) !== JSON.stringify(["product_sha"]) ||
     candidateJob?.permissions?.contents !== "read" || candidateJob?.permissions?.packages !== "write") {
   throw new Error("Cloud Candidate workflow authority boundary is invalid");
 }
-// The Candidate is a replaceable input, not a formal Release, so it may be built
-// from any branch's exact commit: the guard must admit branch refs and must not
-// pin the dispatched ref to main. The owner actors and the Release workflow's
-// main-only rule remain the publication boundary.
+// This temporary serial bridge is a replaceable Candidate input, not a formal
+// Release. It is bound to one named branch and requires one actor identity; the
+// product bytes are still selected by the exact product_sha input. The permanent
+// Release workflow remains main-only and keeps its independent publisher gate.
 const candidateGuard = String(candidateJob?.if ?? "");
-for (const required of ["github.ref_type == 'branch'", "github.actor == github.repository_owner", "github.triggering_actor == github.repository_owner"]) {
+for (const required of [
+  "github.ref_type == 'branch'",
+  "github.ref == 'refs/heads/codex/candidate-92de4458-bridge'",
+  "github.actor == github.triggering_actor",
+  "github.actor == github.repository_owner || github.actor == 'RenDeHuang'"
+]) {
   if (!candidateGuard.includes(required)) throw new Error(`Cloud Candidate guard is missing: ${required}`);
 }
 if (candidateGuard.includes("refs/heads/main")) {
