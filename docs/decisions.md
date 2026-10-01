@@ -4,6 +4,63 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-10-01: Reuse OPL Cloud For The Medical Meta-Agent Platform
+
+The medical meta-agent platform is a domain product built on OPL Cloud. It
+reuses CloudIdentity, Workspace, Capability, Build, Runtime Control, Gateway,
+Fabric, Serve, Console and Ledger rather than creating a parallel platform
+stack.
+
+The medical domain owner owns clinical goals, medical data semantics, source
+documents, evidence selection, clinical facts, model inferences, quality
+verdicts, doctor review and institution acceptance. Cloud owns the platform
+contracts that make those operations isolated, recoverable and auditable:
+tenant/workspace scope, package and runtime delivery, model access, Secret
+bindings, durable operations, receipts and provider-neutral infrastructure
+facts.
+
+The medical platform has three explicit layers:
+
+1. **Cloud platform layer**: identity, Workspace, Package/Build/Runtime,
+   Gateway, Fabric, Serve and Ledger.
+2. **Medical domain layer**: patient and encounter identities, source
+   documents, extraction, clinical facts, evidence chains, agent skills,
+   review/signing and medical quality policy.
+3. **Institution/Instance layer**: MAP deployment profiles, site-specific
+   system access, data residency, protected deployment, institution roles,
+   retention, export/delete and clinical-use acceptance.
+
+Medical records, identifiers and clinical conclusions remain opaque domain
+objects to Cloud. Cloud receipts may retain owner references and hashes needed
+for provenance, but must not become a second medical record, prompt trace or
+patient identity authority. Patient-facing, clinician-facing and
+institution-facing operations must carry explicit data classification,
+authorization, retention and review state.
+
+No medical model output may silently become an order, diagnosis, prescription,
+or other clinical action. A medical agent release requires a domain-owned
+evaluation set, safety and quality gates, evidence-linked output, human review
+policy and institution acceptance. Unknown, needs-review, unsafe and rejected
+states remain visible until the medical owner resolves them.
+
+Medical system integration follows the Med Auto Practice (MAP) design. OPL
+Connect is the logical access contract; MAP owns its TaskEngine, medical
+proposal components, semantic site adapters and task-level evidence.
+`glkvm-native` is one replaceable OPL Connect backend for device/session
+control when KVM is required. API, CLI, MCP and other qualified backends may
+implement the same contract. The hospital system remains authoritative for
+records and orders. Site-specific products, page models, playbooks and
+qualification evidence stay in the MAP deployment profile and are not promoted
+into a Cloud-owned institution-system catalog. Cloud provides the Workspace,
+runtime, Secret, resource, egress, operation and receipt primitives; it does not
+choose one backend as the medical implementation.
+
+This decision does not create a medical-specific Cloud service, global workflow
+engine, second wallet, second Package registry or alternative deployment
+authority. The target boundary, missing contracts and acceptance criteria are
+maintained in [medical-agent-platform.md](medical-agent-platform.md); current
+implementation and external qualification remain separate status layers.
+
 ## 2026-09-29: Default OPL App And Optional Agent On One Tencent/TKE Delivery Path
 
 The primary delivery target is `tencent-tke`. A customer confirms the application

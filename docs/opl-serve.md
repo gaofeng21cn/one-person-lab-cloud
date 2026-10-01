@@ -173,7 +173,7 @@ approved execution path even when another provider offers a managed sandbox.
 ## Commercial Boundary
 
 The first commercial boundary bills the publisher account for service, model,
-execution, storage, and managed connector usage.
+execution, storage and optional managed shared-provider usage.
 
 ## Currentness
 

@@ -62,6 +62,10 @@ cannot yet follow is an explicit roadmap gap, not a competing SSOT.
 
 ## Active Navigation
 
+- [Unified current SSOT entry](./status.md#current-capability-baseline)
+- [Open outcomes and acceptance](./roadmap.md#priority-outcomes)
+- [Capability design review](./architecture.md#capability-design-review)
+- [Medical Agent Platform boundary](./medical-agent-platform.md)
 - [target architecture development specification](./spec/target/00_master_index.md)
 - [Tencent/TKE delivery slices and work-window handoff](./spec/target/14_implementation_work_packages.md#9-tencenttke可直接开发的切片与窗口)
 - [Default OPL App and optional Agent product combinations](./spec/target/12_product_spec.md#11-明确的产品组合与默认行为2026-09-29采用)
@@ -81,6 +85,10 @@ cannot yet follow is an explicit roadmap gap, not a competing SSOT.
 
 ## Specialized Owners
 
+The [Medical Agent Platform boundary](./medical-agent-platform.md) defines
+medical-domain and institution ownership on top of Cloud without creating a
+parallel platform authority.
+
 [`opl-workspace.md`](./opl-workspace.md) defines the Cloud application environment; the
 [Workspace application architecture](architecture.md#workspace-application-boundary)
 owns its DDD model and context boundaries. The Workspace identity decision owns
@@ -94,8 +102,8 @@ The remaining target capability references:
 - [`agent-lifecycle.md`](./agent-lifecycle.md): cross-surface object and owner model for exposing standard OPL Agents in App and Workspace.
 - [`opl-gateway.md`](./opl-gateway.md): target frontier-AI capability gateway; Sub2API keeps balance, key and routing authority.
 - [`opl-serve.md`](./opl-serve.md): publishing a validated OPL Agent as an externally usable service.
-- [`opl-fabric.md`](./opl-fabric.md): target resource and connector substrate for App, Workspace, jobs and approved agent actions.
-- [`opl-connect.md`](./opl-connect.md): connector capability inside Fabric for external sources, providers and institution systems.
+- [`opl-fabric.md`](./opl-fabric.md): target resource substrate for App, Workspace, jobs and approved agent actions, with the Connect access contract.
+- [`opl-connect.md`](./opl-connect.md): logical external-access capability inside Fabric; backends such as `glkvm-native` are replaceable and domain-specific adapters remain with their Agent.
 
 `DEV_GUIDE.md` owns local setup and commands; `CONTRIBUTING.md` owns contribution
 and review; `AGENTS.md` owns agent execution rules. Installation, release

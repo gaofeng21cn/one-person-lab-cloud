@@ -63,10 +63,11 @@ a generic token platform.
 
 ## Boundary With Fabric
 
-OPL Fabric owns general connectors, compute, storage, environments, and
-execution adapters. OPL Gateway owns frontier AI access, provider policy, model
-routing, keys, and usage metering. OPL Serve owns the external Agent endpoint;
-it does not turn Gateway into the Agent Service control plane.
+OPL Fabric owns compute, storage, environments and execution adapters; the
+logical external-access contract is OPL Connect and its backends are selected
+per deployment. OPL Gateway owns frontier AI access, provider policy, model
+routing, keys and usage metering. OPL Serve owns the external Agent endpoint; it
+does not turn Gateway into the Agent Service control plane.
 
 
 ## Agent Interaction Boundary
