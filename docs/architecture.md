@@ -381,7 +381,15 @@ bind the returned Secret reference through `FabricCoordination.BindSecret`, and
 only then call Serve with an internal `RuntimeManagedKeyBinding`. Serve never
 mints a Gateway key and no caller-supplied binding is trusted. The applied
 Workspace version advances only after Serve reports the application-read
-version through the owner-local operation/CAS path.
+version through the owner-local operation/CAS path. For a later configuration that
+changes the managed key, Workspace uses Fabric's explicit `RebindSecret` with the
+expected current binding identity. Fabric confirms the replacement and preserves
+the one-active-binding invariant; Serve then applies and reads back the new
+publisher configuration. The predecessor Gateway key is revoked only after that
+readback, and Fabric binding retirement is recorded separately from Gateway key
+revocation. A rejected or unknown replacement keeps the predecessor key and
+blocks further side effects until the original operation or compensation is read
+back.
 
 The historical `resource_only` Launch retains its existing purchase obligations
 and completion criteria. It is not the default App product and is not silently

@@ -1929,6 +1929,8 @@ CREATE TABLE fabric.secret_bindings (
   FOREIGN KEY (execution_resource_id) REFERENCES fabric.resources (id) ON DELETE RESTRICT,
   CHECK (observation_result IN ('confirmed','rejected','unknown'))
 );
+-- RebindSecret replaces the active Fabric binding only after predecessor CAS and
+-- provider confirmation; Gateway key revocation is a separate owner action.
 CREATE UNIQUE INDEX secret_bindings_active ON fabric.secret_bindings (execution_resource_id, purpose) WHERE revoked_at IS NULL;
 
 -- 实费/采购/续费/删除须Instance保护流程与有界授权；unknown查询原provider请求

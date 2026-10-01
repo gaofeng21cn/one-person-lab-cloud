@@ -81,6 +81,57 @@ This decision resolves the previous contract gap without making Serve a second
 Gateway owner, weakening the non-null schema invariant, or introducing a global
 workflow/event-bus authority.
 
+### 2026-10-01: Fabric Owns Explicit Secret Binding Replacement
+
+`FabricCoordination.BindSecret` remains the initial-bind and same-request replay
+operation. It must not silently replace a different Secret: a retry with the same
+runtime, purpose and Secret replays the confirmed binding, while a different
+Secret is a conflict. This preserves the invariant that one runtime purpose has
+one active Fabric binding and makes lost responses safe to recover.
+
+A model-configuration update that changes the Gateway key therefore uses a
+separate owner operation, `FabricCoordination.RebindSecret`. The replacement
+command carries the expected current Fabric binding identity, the new opaque
+Gateway binding and approved Secret delivery reference, the target purpose and
+an idempotency key in `CallContext`. Fabric verifies the predecessor, asks the
+provider to confirm the exact new Secret, and returns the new binding's version,
+fingerprint, identity and receipt. It never receives or persists the raw key.
+
+The replacement sequence is:
+
+1. Workspace authorizes and validates the new model selection and creates a new
+   exact Gateway managed-key binding.
+2. Fabric performs `RebindSecret` against the expected current binding. The
+   active-index invariant remains: Fabric atomically records the new confirmed
+   binding as current and retains the predecessor as historical/recoverable;
+   it does not allow two active bindings for one runtime purpose.
+3. Serve receives the new opaque `RuntimeManagedKeyBinding`, applies the new
+   publisher configuration and reads back the target applied version.
+4. Workspace advances its applied model-configuration version only after the
+   Serve readback and owner-local CAS confirm the new version.
+5. Only after that confirmation does Workspace request Gateway to revoke the
+   predecessor key. Fabric then records the predecessor binding as retired;
+   Gateway key revocation and Fabric binding retirement remain separate owner
+   facts.
+
+If Fabric or Serve rejects, the predecessor Gateway key is not revoked. If a
+replacement or compensation response is unknown, the same operation identity is
+read back before any new side effect. A failed Serve apply may compensate by
+re-binding the predecessor Secret through Fabric; a compensation result that is
+unknown blocks later model changes until the owner readback resolves it.
+
+This is a bounded replacement saga, not a global workflow engine and not a
+second database writer. The public `updateWorkspaceModels` request remains
+`expectedVersion + selections`; `RebindSecret` is an internal owner-to-owner
+contract. The same semantics apply to default `opl-app` and Agent plus
+independent WebUI whenever their Runtime declares model configuration.
+
+The change is necessary because the existing active-binding uniqueness rule is
+correct for idempotency but cannot represent a second legitimate configuration
+without either fabricating success, dropping the uniqueness invariant, or
+revoking the old Gateway key before the new runtime is confirmed. None of those
+is acceptable under the Workspace, Gateway, Fabric and Serve ownership rules.
+
 ### Workspace Access Routing Owner
 
 Serve is the sole business and persistence owner of each Workspace's current

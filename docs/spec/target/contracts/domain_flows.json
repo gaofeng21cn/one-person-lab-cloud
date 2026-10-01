@@ -677,6 +677,19 @@
         },
         {
           "caller": "workspace",
+          "owner": "fabric",
+          "rpc": "FabricCoordination.RebindSecret",
+          "request": "SecretBindingRebindCommand",
+          "response": "SecretBindingRebindReadback",
+          "writes": [
+            "fabric.secret_bindings"
+          ],
+          "completionEvidence": "existing predecessor binding matches exactly; provider confirms the replacement Secret version/fingerprint; one active binding per runtime purpose remains",
+          "onUnknownOrRejection": "do not revoke the predecessor Gateway key; read the original replacement or compensation operation before another side effect",
+          "when": "only when an existing confirmed active binding is being replaced by a new Gateway Secret"
+        },
+        {
+          "caller": "workspace",
           "owner": "serve",
           "rpc": "ServeAgentCoordination.ReloadModels",
           "request": "RuntimeReloadCommand",
@@ -684,7 +697,7 @@
           "writes": [
             "serve.agent_runtime_actions"
           ],
-          "completionEvidence": "目标配置版本+selections及opaque RuntimeManagedKeyBinding实际应用；Serve不铸造Gateway Key",
+          "completionEvidence": "target configuration plus opaque RuntimeManagedKeyBinding applied and read back; Serve never mints or revokes Gateway keys",
           "onUnknownOrRejection": "保存成功不等于reload成功",
           "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
         },
@@ -698,6 +711,19 @@
           "completionEvidence": "appliedVersion和选择相同，运行状态真实",
           "onUnknownOrRejection": "unknown显示应用中/待核实，不覆盖已确认配置",
           "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "gateway",
+          "rpc": "GatewayCoordination.RevokeManagedKey",
+          "request": "ManagedKeyRevoke",
+          "response": "Operation",
+          "writes": [
+            "gateway.key_bindings"
+          ],
+          "completionEvidence": "only the predecessor binding replaced by a confirmed new Serve model version is revoked",
+          "onUnknownOrRejection": "read the original revoke action; do not revoke a different key",
+          "when": "only after Serve runtime readback and Workspace applied-version CAS confirm the replacement"
         }
       ],
       "terminal": "打开真实应用；模型实际生效；应用管理员凭据仅在既有授权reveal路径一次性显示",
