@@ -52,14 +52,20 @@ func (g *modelUpdateGateway) RevokeManagedKey(_ context.Context, r *api.ManagedK
 	return &api.Operation{OperationId: r.GetKeyBindingId(), Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_GATEWAY, Kind: api.OperationKindEnum_OPERATION_KIND_ENUM_REVOKE_KEY, ResourceId: r.GetKeyBindingId(), Status: api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED, Stage: api.OperationStageEnum_OPERATION_STAGE_ENUM_SUCCEEDED}, nil
 }
 
-// modelUpdateFabric is the FabricCoordination fixture. It confirms the exact
-// Secret binding it was asked for, or refuses, and counts the bindings.
+// modelUpdateFabric is the FabricCoordination fixture. By default it models the
+// current Fabric exactly: fabric.secret_bindings has one active row per runtime and
+// purpose, BindSecret confirms the first binding and replays that same row (the
+// original fingerprint and version) for every later bind of the same runtime and
+// slot. When rebind is set it models the contract-permitted case that a replacement
+// binding is confirmed as its own row, which the current Fabric cannot yet do.
 type modelUpdateFabric struct {
 	api.FabricCoordinationClient
 	binds       int
 	lastBinding *api.SecretBindingCommand
 	bindErr     error
 	rejected    bool
+	rebind      bool
+	rows        map[string]*api.SecretBindingReadback
 }
 
 func (f *modelUpdateFabric) BindSecret(_ context.Context, r *api.SecretBindingCommand, _ ...grpc.CallOption) (*api.SecretBindingReadback, error) {
@@ -71,7 +77,16 @@ func (f *modelUpdateFabric) BindSecret(_ context.Context, r *api.SecretBindingCo
 	if f.rejected {
 		return &api.SecretBindingReadback{SecretBindingId: "sbx_" + r.GetRuntimeInstanceId(), RuntimeInstanceId: r.GetRuntimeInstanceId(), Fingerprint: "sha256:other", Version: "other", Outcome: api.Observation_OBSERVATION_CONFIRMED}, nil
 	}
-	return &api.SecretBindingReadback{SecretBindingId: "sbx_" + r.GetRuntimeInstanceId(), RuntimeInstanceId: r.GetRuntimeInstanceId(), Fingerprint: r.GetFingerprint(), Version: "v" + strings.TrimPrefix(r.GetKeyBindingId(), "gateway-key-"), Outcome: api.Observation_OBSERVATION_CONFIRMED}, nil
+	key := r.GetRuntimeInstanceId() + ":" + r.GetTargetSlot()
+	if f.rows == nil {
+		f.rows = map[string]*api.SecretBindingReadback{}
+	}
+	if stored, found := f.rows[key]; found && !f.rebind {
+		return proto.Clone(stored).(*api.SecretBindingReadback), nil
+	}
+	fresh := &api.SecretBindingReadback{SecretBindingId: "sbx_" + r.GetRuntimeInstanceId(), RuntimeInstanceId: r.GetRuntimeInstanceId(), Fingerprint: r.GetFingerprint(), Version: "v" + strings.TrimPrefix(r.GetKeyBindingId(), "gateway-key-"), Outcome: api.Observation_OBSERVATION_CONFIRMED}
+	f.rows[key] = fresh
+	return proto.Clone(fresh).(*api.SecretBindingReadback), nil
 }
 
 // modelUpdateServe is the ServeAgentCoordination fixture. It reports the applied
@@ -394,29 +409,72 @@ func TestUpdateWorkspaceModelsAdmitsOnlyTheOwningTenant(t *testing.T) {
 	}
 }
 
-// TestUpdateWorkspaceModelsRevokesTheSupersededKeyAfterConfirmation proves the key
-// the new configuration replaces is retired only after the new binding is confirmed,
-// so a configuration change never leaves the previous generation live.
-func TestUpdateWorkspaceModelsRevokesTheSupersededKeyAfterConfirmation(t *testing.T) {
+// TestUpdateWorkspaceModelsForwardsTheBindingFabricActuallyConfirmed proves the one
+// fact Workspace may use: it records and forwards the binding Fabric confirmed, never
+// a version it derived from the new key. Building a second configuration reaches the
+// same runtime slot Fabric already holds one active binding for
+// (fabric.secret_bindings is UNIQUE on execution_resource_id and purpose where
+// revoked_at is null and nothing writes revoked_at), so Fabric replays its original
+// row. Workspace therefore hands Serve that replayed generation verbatim; the real
+// execution boundary reads the Secret's own version annotation back and refuses a
+// generation Fabric did not confirm, so the applied version still advances only from
+// Serve's readback. Superseding a Fabric binding needs an owner-approved re-bind
+// semantic, which this pass did not invent.
+func TestUpdateWorkspaceModelsForwardsTheBindingFabricActuallyConfirmed(t *testing.T) {
 	db := runtimeDatabase(t)
-	service, gateway, _, _ := modelUpdateWorkspace(t, db, true)
+	service, gateway, fabric, serve := modelUpdateWorkspace(t, db, true)
 	call, ctx := modelUpdateContext("tenant-original", "update-models-first")
-	if _, err := service.UpdateWorkspaceModels(ctx, modelUpdateRequest(call, "workspace-original", 0, []*api.ModelSelection{{Slot: "chat", ModelId: "model-a"}})); err != nil {
-		t.Fatal(err)
+	first, err := service.UpdateWorkspaceModels(ctx, modelUpdateRequest(call, "workspace-original", 0, []*api.ModelSelection{{Slot: "chat", ModelId: "model-a"}}))
+	if err != nil || first.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
+		t.Fatalf("first update=%v %v", first, err)
 	}
 	second := &api.CallContext{RequestId: call.GetRequestId() + "-2", IdempotencyKey: call.GetIdempotencyKey() + "-2", ActorId: call.GetActorId(), SessionId: call.SessionId, Scope: call.GetScope()}
 	operation, err := service.UpdateWorkspaceModels(ctx, modelUpdateRequest(second, "workspace-original", 1, []*api.ModelSelection{{Slot: "chat", ModelId: "model-b"}}))
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("second update: %v", err)
 	}
 	if operation.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
 		t.Fatalf("second update=%v", operation)
 	}
+	// Fabric confirmed the replayed generation, so that is exactly what the reload
+	// carried: the Workspace derived nothing from the replacement key.
+	if fabric.binds != 2 || serve.reloads != 2 {
+		t.Fatalf("binds=%d reloads=%d", fabric.binds, serve.reloads)
+	}
+	if version := serve.lastReload.GetManagedKeyBinding().GetSecretVersion(); version != "vmodel-a" {
+		t.Fatalf("the reload carried %q, want Fabric's confirmed generation vmodel-a", version)
+	}
+	// The superseded key is retired because Serve confirmed the configuration, and
+	// the applied version advances only from that confirmation.
 	if gateway.mints != 2 || gateway.revokes != 1 || gateway.lastRevoke.GetKeyBindingId() != "gateway-key-model-a" || gateway.lastRevoke.GetWorkspaceId() != "workspace-original" {
-		t.Fatalf("superseded key was not retired exactly once: mints=%d revokes=%d last=%+v", gateway.mints, gateway.revokes, gateway.lastRevoke)
+		t.Fatalf("superseded key rotation: mints=%d revokes=%d last=%+v", gateway.mints, gateway.revokes, gateway.lastRevoke)
 	}
 	if applied := appliedWorkspaceModelVersion(t, db); applied != 2 {
 		t.Fatalf("applied version=%d want 2", applied)
+	}
+}
+
+// TestUpdateWorkspaceModelsRefusesAReloadFabricDidNotConfirm proves the fail-closed
+// path for the same boundary: a Fabric readback that does not match the Gateway
+// binding's own fingerprint is refused, the reload never reaches Serve, and the
+// applied version stays at the last confirmed one.
+func TestUpdateWorkspaceModelsRefusesAReloadFabricDidNotConfirm(t *testing.T) {
+	db := runtimeDatabase(t)
+	service, gateway, fabric, serve := modelUpdateWorkspace(t, db, true)
+	fabric.rejected = true
+	call, ctx := modelUpdateContext("tenant-original", "update-models-fabric-replay")
+	operation, err := service.UpdateWorkspaceModels(ctx, modelUpdateRequest(call, "workspace-original", 0, []*api.ModelSelection{{Slot: "chat", ModelId: "model-a"}}))
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if operation.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_NEEDS_ATTENTION || operation.GetObservationResult() != api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_REJECTED {
+		t.Fatalf("a mismatched Fabric readback was not refused: %v", operation)
+	}
+	if serve.reloads != 0 || gateway.revokes != 0 {
+		t.Fatalf("a refused binding reached Serve (%d) or rotated a key (%d)", serve.reloads, gateway.revokes)
+	}
+	if applied := appliedWorkspaceModelVersion(t, db); applied != 0 {
+		t.Fatalf("a refused binding advanced the applied version to %d", applied)
 	}
 }
 
