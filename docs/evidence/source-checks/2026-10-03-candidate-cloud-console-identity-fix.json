@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_candidate_console_identity_fix_source_check",
+  "revision": 1,
+  "recordedAt": "2026-10-03T00:00:00Z",
+  "result": "the_shipped_candidate_builds_the_cloud_console_identity_and_proves_it_on_the_emitted_oci",
+  "window": "tke_serial",
+  "windowTitle": "Candidate Console identity fix for the TKE two-mode business closure",
+  "branch": "codex/candidate-cloud-console-identity",
+  "baseMainSha": "385c8cf50ae889a183e700247077ee0f997fcb12",
+  "sourceBaseSha": "385c8cf50ae889a183e700247077ee0f997fcb12",
+  "rootCause": {
+    "fact": "The Console identity is a build-time fact. `apps/console-ui/src/app/console-identity.ts` reads `VITE_CONSOLE_IDENTITY`, and `apps/console-ui/src/console-model.ts` / `console-router.ts` add the customer `智能体` (`/console/agents`) and Publisher surfaces only when it equals `cloud`. The product Dockerfile default is the neutral `legacy`, and no Cloud build path (Candidate/Release/Qualification) passed `cloud`.",
+    "consequence": "Every deployed Candidate image baked the legacy Console bundle, so the customer Console had no `智能体` navigation/route even though the account and BFF surfaces existed."
+  },
+  "change": {
+    "candidateWorkflow": ".github/workflows/build-opl-cloud-candidate.yml passes --build-arg VITE_CONSOLE_IDENTITY=cloud and reads back opl.cloud.console-identity == \"cloud\" from both the amd64 and arm64 emitted images.",
+    "boundaryValidator": "tools/validate-product-boundary.mjs rejects a Candidate that does not build the cloud Console identity or does not read it back.",
+    "gate": "tests/tools/opl-cloud-candidate-console-identity.test.ts asserts the build arg, the label readback, and the Dockerfile's neutral default plus identity label.",
+    "dockerfile": "Unchanged: it keeps the neutral `legacy` default and LABEL opl.cloud.console-identity, which owner-topology and owneridentity declare as the image's default identity selection; the Candidate, as the shipped cloud product, selects `cloud` explicitly."
+  },
+  "evidence": {
+    "buildArgSelectsCloud": true,
+    "labelReadbackRequired": true,
+    "dockerfileDefaultUnchanged": true,
+    "productBoundaryValid": true,
+    "verifyLocal": "passed",
+    "pr": "gaofeng21cn/one-person-lab-cloud#723",
+    "prValidate": "success"
+  },
+  "ownerOnlyCandidateDispatch": {
+    "guard": "build-opl-cloud-candidate.yml requires github.actor == github.repository_owner == gaofeng21cn == triggering_actor",
+    "attemptedRunId": 37036296975,
+    "attemptedActor": "RenDeHuang",
+    "result": "skipped by the owner-only job guard; the repository owner must dispatch the Candidate build",
+    "requiredInput": { "product_sha": "the frozen branch head of codex/candidate-cloud-console-identity" }
+  },
+  "claimBoundary": "This receipt claims the fix source and its gates, plus a green local verification and PR CI. It does not claim a built Candidate image, an installed product, or that the deployed Console now shows 智能体; those require an owner-dispatched Candidate build and the Instance protected deployment chain.",
+  "notRun": [
+    "Candidate image build (owner-only dispatch; the RenDeHuang attempt was skipped).",
+    "Instance Deploy / Deployment Verification / Qualification Decision / admission for the new Candidate.",
+    "Real Console purchase and the two-mode Workspace acceptance."
+  ],
+  "secrets": "none"
+}
