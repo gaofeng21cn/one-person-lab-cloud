@@ -121,6 +121,7 @@ jobs:
           metadata="$RUNNER_TEMP/opl-cloud-candidate-metadata.json"
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
+            --build-arg VITE_CONSOLE_IDENTITY=cloud \
             --label "org.opencontainers.image.source=https://github.com/$PRODUCT_REPOSITORY" \
             --label "org.opencontainers.image.revision=$PRODUCT_SHA" \
             --cache-from "type=gha,scope=opl-cloud-candidate" \
@@ -173,11 +174,13 @@ jobs:
           arm64_image="$(docker buildx imagetools inspect "$IMAGE_REPOSITORY@$arm64_digest" --format '{{json .Image}}')"
           jq -e --arg revision "$PRODUCT_SHA" '
             .os == "linux" and .architecture == "amd64" and
-            .config.Labels["org.opencontainers.image.revision"] == $revision
+            .config.Labels["org.opencontainers.image.revision"] == $revision and
+            .config.Labels["opl.cloud.console-identity"] == "cloud"
           ' <<< "$amd64_image" >/dev/null
           jq -e --arg revision "$PRODUCT_SHA" '
             .os == "linux" and .architecture == "arm64" and
-            .config.Labels["org.opencontainers.image.revision"] == $revision
+            .config.Labels["org.opencontainers.image.revision"] == $revision and
+            .config.Labels["opl.cloud.console-identity"] == "cloud"
           ' <<< "$arm64_image" >/dev/null
           {
             printf 'AMD64_DIGEST=%s\n' "$amd64_digest"

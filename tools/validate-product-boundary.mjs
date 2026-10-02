@@ -86,6 +86,15 @@ if (candidateArtifact?.with?.name !== "opl-cloud-candidate-${{ inputs.product_sh
 for (const required of ["--platform linux/amd64,linux/arm64", "--push", "tools/cloud-candidate-receipt.ts validate-bundle", "opl-cloud-candidate.json", "SHA256SUMS"]) {
   if (!candidateCommands.includes(required)) throw new Error(`Cloud Candidate is missing: ${required}`);
 }
+// The Candidate image is the shipped cloud product: it must bake the cloud
+// Console identity explicitly and prove it on the emitted OCI, so a product
+// image can never silently install the legacy Console bundle (no "智能体" nav).
+if (!candidateCommands.includes("--build-arg VITE_CONSOLE_IDENTITY=cloud")) {
+  throw new Error("Cloud Candidate must explicitly build the cloud Console identity");
+}
+if (!candidateCommands.includes('opl.cloud.console-identity"] == "cloud')) {
+  throw new Error("Cloud Candidate must read back the cloud console identity from the emitted image");
+}
 
 const compose = await readFile(new URL("compose.yaml", root), "utf8");
 for (const required of ["control-plane:", "fabric:", "ledger:", "postgres:", "OPL_CLOUD_IMAGE"]) {
