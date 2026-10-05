@@ -200,9 +200,10 @@ func (s *Service) resumeDeferredApplicationStartup(ctx context.Context, input Wo
 	if err != nil || !resume {
 		return false, err
 	}
-	s.mu.Lock()
-	compute, volume, attachment := s.computes[input.ComputeID], s.volumes[input.VolumeID], s.attachments[input.AttachmentID]
-	s.mu.Unlock()
+	compute, volume, attachment, resourceErr := s.workspaceApplicationResources(ctx, input.ComputeID, input.VolumeID, input.AttachmentID)
+	if resourceErr != nil {
+		return false, resourceErr
+	}
 	if err := s.validateWorkspaceApplicationRuntimeInput(input, compute, volume, attachment); err != nil {
 		return false, err
 	}
