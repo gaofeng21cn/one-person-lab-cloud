@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { constants } from "node:fs";
+import { constants, existsSync } from "node:fs";
 import { mkdir, mkdtemp, open, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -360,26 +360,37 @@ export function validateLocalQualificationReceipt(value) {
     if (!value.restart?.performed || ["operationStable", "workspaceStable", "runtimeStable", "receiptStable"].some((key) => value.restart?.[key] !== true)) {
       throw new Error("restart continuity is invalid");
     }
+    // A resource-only purchase's v2 Delete binds its Launch and Launch Receipt,
+    // never the application installation's Runtime or Workspace Key: the Runtime
+    // is retired with its application generation and the Gateway Key stays
+    // retained in the authority.
     if (value.deletion?.ownerAuthorized !== true || value.deletion?.workspaceAbsent !== true || value.deletion?.runtimeAbsent !== true ||
-      value.deletion?.workspaceKeyAbsent !== true || value.deletion?.fabricSecretAbsent !== true ||
+      value.deletion?.workspaceKeyRetained !== true || value.deletion?.fabricSecretAbsent !== true ||
       value.deletion?.accountId !== value.identities.accountId || value.deletion?.operationId !== value.identities.deleteOperationId ||
       value.deletion?.deletionReceiptId !== value.identities.deletionReceiptId || value.deletion?.workspaceId !== value.identities.workspaceId ||
-      value.deletion?.runtimeId !== value.identities.runtimeId || String(value.deletion?.keyId || "") !== String(value.identities.keyId)) {
+      String(value.deletion?.runtimeId) !== "" || String(value.deletion?.workspaceApiKeyId) !== "0") {
       throw new Error("owner deletion evidence is invalid");
     }
   }
   if (live) {
     if (value.deletionReceipt?.count !== 0) throw new Error("live qualification must not record a deletion receipt");
   } else if (value.deletionReceipt?.count !== 1 || value.deletionReceipt?.id !== value.identities.deletionReceiptId ||
-    value.deletionReceipt?.type !== "workspace.deleted.v1" || value.deletionReceipt?.accountId !== value.identities.accountId ||
+    value.deletionReceipt?.type !== "workspace.deleted.v1" ||
     value.deletionReceipt?.operationId !== value.identities.deleteOperationId || value.deletionReceipt?.workspaceId !== value.identities.workspaceId ||
-    value.deletionReceipt?.launchReceiptId !== value.identities.purchaseReceiptId) {
+    value.deletionReceipt?.launchReceiptId !== value.identities.purchaseReceiptId ||
+    value.deletionReceipt?.resourceType !== "workspace" || value.deletionReceipt?.resourceId !== value.identities.workspaceId ||
+    value.deletionReceipt?.resourceStatus?.runtimeStatus !== "absent" || value.deletionReceipt?.resourceStatus?.gatewaySecretStatus !== "absent" ||
+    value.deletionReceipt?.resourceStatus?.attachmentStatus !== "absent" || value.deletionReceipt?.resourceStatus?.storageStatus !== "absent" ||
+    value.deletionReceipt?.resourceStatus?.computeStatus !== "absent" || value.deletionReceipt?.resourceStatus?.workspaceStatus !== "absent" ||
+    !workspaceDeleteReceiptStagesMatch(value.deletionReceipt?.stageEvidence)) {
     throw new Error("deletion receipt binding is invalid");
   }
   if (["containers", "volumes", "networks"].some((key) => value.residuals?.[key] !== 0)) {
     throw new Error("exact-labelled residual evidence is invalid");
   }
-  const expectedAuthorityWrites = live ? { keyCreates: 1, keyDeletes: 0, debits: 1, refunds: 0 } : { keyCreates: 1, keyDeletes: 1, debits: 1, refunds: 0 };
+  // Delete performs no Gateway mutation in either mode: the Workspace-reserved
+  // Key stays retained in the authority, so no Key deletion is ever admitted.
+  const expectedAuthorityWrites = { keyCreates: 1, keyDeletes: 0, debits: 1, refunds: 0 };
   if (Object.entries(expectedAuthorityWrites).some(([key, count]) => value.authorityWriteCounts?.[key] !== count)) {
     throw new Error("qualification authority write counts are invalid");
   }
@@ -1160,6 +1171,41 @@ export function resolveWorkspaceKey(keys, workspaceId) {
   return { id: String(matches[0].id), name };
 }
 
+// The deleted Workspace's injected Gateway Secret is the provider secret-root
+// directory Contracts names from the Workspace identity.
+export function workspaceGatewaySecretRef(workspaceId) {
+  return `opl-gateway-${createHash("sha256").update(String(workspaceId)).digest("hex").slice(0, 16)}`;
+}
+
+// Delete retains the Workspace-reserved Gateway Key: after the Workspace is
+// gone, the authority still owns and meters exactly the Key this installation
+// created, unchanged, and no other Gateway Key was removed.
+export function retainedWorkspaceKey(keys, workspaceId, keyId) {
+  const exact = (keys || []).filter((candidate) => String(candidate?.id || "") === String(keyId));
+  return exact.length === 1 && exact[0]?.name === workspaceReservedKeyName(workspaceId) && exact[0]?.kind === "workspace" && exact[0]?.status === "active";
+}
+
+// The deletion Receipt attests every stage that preceded it: the frozen order,
+// each stage's own result and evidence kind, and a real provider or committed
+// local observation with its opaque reference.
+const workspaceDeleteReceiptStages = Object.freeze([
+  Object.freeze({ stage: "runtime_absent", result: "absent", evidenceKind: "provider_readback" }),
+  Object.freeze({ stage: "attachment_absent", result: "released", evidenceKind: "local_transition" }),
+  Object.freeze({ stage: "storage_absent", result: "absent", evidenceKind: "provider_readback" }),
+  Object.freeze({ stage: "compute_absent", result: "absent", evidenceKind: "provider_readback" }),
+  Object.freeze({ stage: "workspace_absent", result: "removed", evidenceKind: "local_transition" })
+]);
+
+export function workspaceDeleteReceiptStagesMatch(stageEvidence) {
+  if (!Array.isArray(stageEvidence) || stageEvidence.length !== workspaceDeleteReceiptStages.length) return false;
+  return workspaceDeleteReceiptStages.every((expected, index) => {
+    const entry = stageEvidence[index];
+    return entry?.stage === expected.stage && entry?.result === expected.result && entry?.evidenceKind === expected.evidenceKind &&
+      typeof entry?.observedAt === "string" && entry.observedAt.trim() !== "" &&
+      typeof entry?.evidenceRef === "string" && entry.evidenceRef.trim() !== "";
+  });
+}
+
 // Only the Local-Docker publication shape is admissible: the application's own
 // entry is the host-bound loopback port its provider reported.
 export function localApplicationEntryPort(url) {
@@ -1647,30 +1693,44 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
       operationId: expectedDeleteOperationId, workspaceId,
       onPending: (pending) => { ownerDeletePending = pending; }
     });
+    // The purchase is resource-only: its v2 Delete binds the Launch and the
+    // Launch Receipt, never the application installation's Runtime or Workspace
+    // Key. Delete performs no Gateway or wallet mutation, so the terminal
+    // response reports both identities as empty and every owned absence it
+    // confirmed.
     if (deletion?.status !== "deleted" || deletion?.accountId !== accountId || String(deletion?.sub2apiUserId) !== String(sub2apiUserId) ||
       deletion?.launchOperationId !== operationId || deletion?.operationId !== expectedDeleteOperationId || deletion?.launchReceiptId !== receiptId ||
-      deletion?.workspaceId !== workspaceId || deletion?.runtimeId !== evidence.runtime.runtimeId || String(deletion?.workspaceApiKeyId) !== String(keyId) ||
-      !String(deletion?.deletionReceiptId || "").trim() || deletion?.runtimeStatus !== "absent" ||
-      deletion?.secretStatus !== "absent" || deletion?.keyStatus !== "absent") {
+      deletion?.workspaceId !== workspaceId || String(deletion?.runtimeId || "") !== "" || String(deletion?.workspaceApiKeyId ?? "") !== "0" ||
+      deletion?.keyStatus !== undefined || !String(deletion?.deletionReceiptId || "").trim() ||
+      deletion?.runtimeStatus !== "absent" || deletion?.secretStatus !== "absent") {
       throw new Error("owner-authorized Workspace DELETE terminal evidence is invalid");
     }
     const afterDeletePage = sourceData((await http.json("/api/workspaces?page=1&pageSize=20", {}, restartedAuth)).payload, "control-plane");
     const workspaceAbsent = !(afterDeletePage?.items || []).some((candidate) => candidate?.id === workspaceId);
     const runtimeAfterDelete = await http.request(`/api/workspaces/${encodeURIComponent(workspaceId)}/runtime-status`, {}, restartedAuth);
     const runtimeAbsent = runtimeAfterDelete.response.status === 404;
-    const keyAfterDelete = await http.request(`/api/gateway/keys/${encodeURIComponent(keyId)}`, {}, restartedAuth);
     residuals = await residualCounts(accountId, workspaceId);
-    const authorityAfterOwnerDelete = options.authorityMode === "fixture" ? await authorityState(authorityPort, authorityToken) : null;
-    const workspaceKeyAbsent = keyAfterDelete.response.status === 404 && (options.authorityMode !== "fixture" ||
-      !(authorityAfterOwnerDelete?.keys || []).some((candidate) => String(candidate?.id) === String(keyId)));
-    const fabricSecretAbsent = deletion.secretStatus === "absent";
-    if (!workspaceAbsent || !runtimeAbsent || !workspaceKeyAbsent || !fabricSecretAbsent || Object.values(residuals).some((count) => count !== 0)) {
-      throw new Error("owner DELETE did not prove Workspace, Key, Runtime, and exact-labelled Docker cleanup");
+    const authorityAfterOwnerDelete = await authorityState(authorityPort, authorityToken);
+    // The Workspace-reserved Gateway Key is the one object Delete must not
+    // remove: the platform retains it, so the authority still owns and meters
+    // exactly the Key this installation created after the Workspace is gone.
+    const workspaceKeyRetained = retainedWorkspaceKey(authorityAfterOwnerDelete?.keys || [], workspaceId, keyId);
+    // Fabric's injected Secret is a provider secret-root directory named from
+    // the Workspace identity; that exact ref must be gone after Delete.
+    const fabricSecretAbsent = deletion.secretStatus === "absent" && !existsSync(join(fabricSecretRoot, workspaceGatewaySecretRef(workspaceId)));
+    if (!workspaceAbsent || !runtimeAbsent || !workspaceKeyRetained || !fabricSecretAbsent || Object.values(residuals).some((count) => count !== 0)) {
+      throw new Error("owner DELETE did not prove Workspace, Runtime and Secret cleanup with Gateway Key retention");
     }
     const deletionReceipt = sourceData((await http.json(`/api/billing/receipts/${encodeURIComponent(deletion.deletionReceiptId)}`, {}, restartedAuth)).payload, "ledger");
+    const deletionResourceStatus = deletionReceipt?.resourceStatus || {};
     if (deletionReceipt?.receiptId !== deletion.deletionReceiptId || deletionReceipt?.type !== "workspace.deleted.v1" ||
-      deletionReceipt?.status !== "completed" || deletionReceipt?.accountId !== accountId ||
-      deletionReceipt?.operationId !== expectedDeleteOperationId || deletionReceipt?.workspaceId !== workspaceId) {
+      deletionReceipt?.status !== "completed" ||
+      deletionReceipt?.operationId !== expectedDeleteOperationId || deletionReceipt?.workspaceId !== workspaceId ||
+      deletionReceipt?.resourceType !== "workspace" || deletionReceipt?.resourceId !== workspaceId ||
+      deletionReceipt?.launchReceiptId !== receiptId ||
+      !["runtimeStatus", "gatewaySecretStatus", "attachmentStatus", "storageStatus", "computeStatus", "workspaceStatus"]
+        .every((key) => deletionResourceStatus[key] === "absent") ||
+      !workspaceDeleteReceiptStagesMatch(deletionReceipt?.stageEvidence)) {
       throw new Error("Ledger deletion Receipt binding is invalid");
     }
     let afterDeleteMicros = afterMicros;
@@ -1724,16 +1784,18 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
       restart,
       deletion: {
         ownerAuthorized: true, accountId, operationId: String(deletion.operationId || ""), deletionReceiptId: String(deletion.deletionReceiptId || ""), workspaceId,
-        runtimeId: evidence.runtime.runtimeId, keyId,
-        workspaceAbsent, runtimeAbsent, workspaceKeyAbsent, fabricSecretAbsent
+        runtimeId: String(deletion.runtimeId || ""), workspaceApiKeyId: String(deletion.workspaceApiKeyId ?? ""),
+        workspaceAbsent, runtimeAbsent, workspaceKeyRetained, fabricSecretAbsent
       },
       deletionReceipt: {
         count: 1, id: deletionReceipt.receiptId, type: deletionReceipt.type,
-        accountId: deletionReceipt.accountId, operationId: deletionReceipt.operationId, workspaceId: deletionReceipt.workspaceId,
-        launchReceiptId: String(deletion.launchReceiptId || "")
+        operationId: deletionReceipt.operationId, workspaceId: deletionReceipt.workspaceId,
+        launchReceiptId: String(deletionReceipt.launchReceiptId || ""),
+        resourceType: deletionReceipt.resourceType, resourceId: deletionReceipt.resourceId,
+        resourceStatus: deletionReceipt.resourceStatus, stageEvidence: deletionReceipt.stageEvidence
       },
       residuals,
-      authorityWriteCounts: options.authorityMode === "fixture" ? authorityAfterOwnerDelete?.writeCounts : { keyCreates: 1, keyDeletes: 1, debits: 1, refunds: 0 },
+      authorityWriteCounts: authorityAfterOwnerDelete?.writeCounts,
       mutationCounts: { workspaceLaunchPosts: 1, workspaceDeleteRequests: 1, refundPosts: 0 },
       refund: { count: 0 },
       usage: { source: "sub2api", status: "available", totalRequests: usage.totalRequests },

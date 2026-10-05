@@ -31,7 +31,10 @@ import {
   validateLocalJ1AccountingReadback,
   validateLocalQualificationReceipt,
   workspaceDeleteFailureEvidence,
-  workspaceReservedKeyName
+  workspaceDeleteReceiptStagesMatch,
+  workspaceGatewaySecretRef,
+  workspaceReservedKeyName,
+  retainedWorkspaceKey
 } from "../../tools/local-workspace-qualification.ts";
 import { runLocalWorkspaceQualification } from "../../tools/local-workspace-qualification.ts";
 
@@ -672,15 +675,27 @@ test("READY receipt binds the exact durable and accounting evidence", () => {
     restart: { performed: true, operationStable: true, workspaceStable: true, runtimeStable: true, receiptStable: true },
     deletion: {
       ownerAuthorized: true, accountId: "acct-admin", operationId: "workspace-delete-alpha", deletionReceiptId: "receipt-delete",
-      workspaceId: "ws-alpha", runtimeId: "rt-alpha", keyId: "71",
-      workspaceAbsent: true, runtimeAbsent: true, workspaceKeyAbsent: true, fabricSecretAbsent: true
+      workspaceId: "ws-alpha", runtimeId: "", workspaceApiKeyId: "0",
+      workspaceAbsent: true, runtimeAbsent: true, workspaceKeyRetained: true, fabricSecretAbsent: true
     },
     deletionReceipt: {
-      count: 1, id: "receipt-delete", type: "workspace.deleted.v1", accountId: "acct-admin",
-      operationId: "workspace-delete-alpha", workspaceId: "ws-alpha", launchReceiptId: "receipt-alpha"
+      count: 1, id: "receipt-delete", type: "workspace.deleted.v1",
+      operationId: "workspace-delete-alpha", workspaceId: "ws-alpha", launchReceiptId: "receipt-alpha",
+      resourceType: "workspace", resourceId: "ws-alpha",
+      resourceStatus: {
+        runtimeStatus: "absent", gatewaySecretStatus: "absent", attachmentStatus: "absent",
+        storageStatus: "absent", computeStatus: "absent", workspaceStatus: "absent"
+      },
+      stageEvidence: [
+        { stage: "runtime_absent", result: "absent", evidenceKind: "provider_readback", observedAt: "2026-10-06T00:00:01Z", evidenceRef: "deletion-evidence:1" },
+        { stage: "attachment_absent", result: "released", evidenceKind: "local_transition", observedAt: "2026-10-06T00:00:02Z", evidenceRef: "deletion-evidence:2" },
+        { stage: "storage_absent", result: "absent", evidenceKind: "provider_readback", observedAt: "2026-10-06T00:00:03Z", evidenceRef: "deletion-evidence:3" },
+        { stage: "compute_absent", result: "absent", evidenceKind: "provider_readback", observedAt: "2026-10-06T00:00:04Z", evidenceRef: "deletion-evidence:4" },
+        { stage: "workspace_absent", result: "removed", evidenceKind: "local_transition", observedAt: "2026-10-06T00:00:05Z", evidenceRef: "deletion-evidence:5" }
+      ]
     },
     residuals: { containers: 0, volumes: 0, networks: 0 },
-    authorityWriteCounts: { keyCreates: 1, keyDeletes: 1, debits: 1, refunds: 0 },
+    authorityWriteCounts: { keyCreates: 1, keyDeletes: 0, debits: 1, refunds: 0 },
     mutationCounts: { workspaceLaunchPosts: 1, workspaceDeleteRequests: 1, refundPosts: 0 },
     refund: { count: 0 },
     usage: { source: "sub2api", status: "available", totalRequests: 0 },
@@ -697,8 +712,28 @@ test("READY receipt binds the exact durable and accounting evidence", () => {
     ...fixtureReceipt, deletionReceipt: { ...fixtureReceipt.deletionReceipt, type: "billing.workspace_refunded.v1" }
   }), /deletion receipt/);
   assert.throws(() => validateLocalQualificationReceipt({
-    ...fixtureReceipt, deletion: { ...fixtureReceipt.deletion, keyId: "72" }
+    ...fixtureReceipt, deletion: { ...fixtureReceipt.deletion, workspaceKeyRetained: false }
   }), /owner deletion/);
+  assert.throws(() => validateLocalQualificationReceipt({
+    ...fixtureReceipt, deletion: { ...fixtureReceipt.deletion, runtimeId: "rt-alpha" }
+  }), /owner deletion/);
+  assert.throws(() => validateLocalQualificationReceipt({
+    ...fixtureReceipt, deletion: { ...fixtureReceipt.deletion, workspaceApiKeyId: "71" }
+  }), /owner deletion/);
+  assert.throws(() => validateLocalQualificationReceipt({
+    ...fixtureReceipt,
+    deletionReceipt: {
+      ...fixtureReceipt.deletionReceipt,
+      stageEvidence: fixtureReceipt.deletionReceipt.stageEvidence.slice(0, 4)
+    }
+  }), /deletion receipt/);
+  assert.throws(() => validateLocalQualificationReceipt({
+    ...fixtureReceipt,
+    deletionReceipt: {
+      ...fixtureReceipt.deletionReceipt,
+      resourceStatus: { ...fixtureReceipt.deletionReceipt.resourceStatus, gatewaySecretStatus: "pending" }
+    }
+  }), /deletion receipt/);
   assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, qualification: { authorityMode: "fixture", p0Ready: true } }), /authority classification/);
   assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, wallet: { ...fixtureReceipt.wallet, afterUsdMicros: "47420001" } }), /fixture wallet/);
   assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, authorityWriteCounts: { ...fixtureReceipt.authorityWriteCounts, debits: 2 } }), /authority write counts/);
@@ -711,6 +746,30 @@ test("READY receipt binds the exact durable and accounting evidence", () => {
   assert.throws(() => validateLocalQualificationReceipt({
     ...fixtureReceipt, application: { ...fixtureReceipt.application, runtimeId: "rt-other" }
   }), /application installation/);
+});
+
+test("owner delete proves Gateway Secret removal and Gateway Key retention by their own owners", () => {
+  const workspaceId = "ws-alpha";
+  const keyName = workspaceReservedKeyName(workspaceId);
+  // The provider secret ref is derived from the Workspace identity, exactly like
+  // Contracts' WorkspaceGatewaySecretRef.
+  assert.equal(workspaceGatewaySecretRef(workspaceId), `opl-gateway-${createHash("sha256").update(workspaceId).digest("hex").slice(0, 16)}`);
+  assert.equal(retainedWorkspaceKey([{ id: "71", name: keyName, kind: "workspace", status: "active" }], workspaceId, "71"), true);
+  assert.equal(retainedWorkspaceKey([{ id: "71", name: keyName, kind: "workspace", status: "disabled" }], workspaceId, "71"), false);
+  assert.equal(retainedWorkspaceKey([], workspaceId, "71"), false);
+  assert.equal(retainedWorkspaceKey([{ id: "72", name: keyName, kind: "workspace", status: "active" }], workspaceId, "71"), false);
+  const stages = [
+    { stage: "runtime_absent", result: "absent", evidenceKind: "provider_readback", observedAt: "t1", evidenceRef: "ref-1" },
+    { stage: "attachment_absent", result: "released", evidenceKind: "local_transition", observedAt: "t2", evidenceRef: "ref-2" },
+    { stage: "storage_absent", result: "absent", evidenceKind: "provider_readback", observedAt: "t3", evidenceRef: "ref-3" },
+    { stage: "compute_absent", result: "absent", evidenceKind: "provider_readback", observedAt: "t4", evidenceRef: "ref-4" },
+    { stage: "workspace_absent", result: "removed", evidenceKind: "local_transition", observedAt: "t5", evidenceRef: "ref-5" }
+  ];
+  assert.equal(workspaceDeleteReceiptStagesMatch(stages), true);
+  assert.equal(workspaceDeleteReceiptStagesMatch(stages.slice(0, 4)), false);
+  assert.equal(workspaceDeleteReceiptStagesMatch([...stages.slice(0, 4), { ...stages[4], stage: "receipt_recorded" }]), false);
+  assert.equal(workspaceDeleteReceiptStagesMatch([{ ...stages[0], evidenceRef: "" }, ...stages.slice(1)]), false);
+  assert.equal(workspaceDeleteReceiptStagesMatch([{ ...stages[0], result: "waiting" }, ...stages.slice(1)]), false);
 });
 
 test("local build proxy rejects credentials or URL parameters and errors redact the entire URL authority and query", () => {
