@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -122,7 +124,19 @@ func (s *Service) ReadWalletAction(ctx context.Context, r *api.WalletReadbackReq
 	if err := s.authorizeWalletRead(ctx, r.GetContext(), record); err != nil {
 		return nil, err
 	}
-	return WalletOperationMessage(record), nil
+	// A terminal answer is the owner's recorded authoritative readback. A
+	// non-terminal answer - requested or unknown - converges from the native
+	// history under its original code; the answer is only ever read, never a
+	// second charge or refund. A code the native history still cannot confirm
+	// stays explicitly non-terminal rather than being guessed.
+	if record.Status == "confirmed" || record.Status == "rejected" {
+		return WalletOperationMessage(record), nil
+	}
+	binding, err := s.GatewayStore.ReadActiveWalletBinding(ctx, record.TenantID)
+	if err != nil {
+		return WalletOperationMessage(record), nil
+	}
+	return s.reconcileWalletOperation(ctx, record, binding)
 }
 
 type walletActionRequest struct {
@@ -192,7 +206,13 @@ func (s *Service) walletAction(ctx context.Context, req walletActionRequest) (*a
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, "Gateway wallet reservation unavailable")
 	}
-	if record.Status != "requested" {
+	// A terminal answer is the owner's recorded authoritative readback and is
+	// never re-derived. A non-terminal answer - the original answer was not
+	// persisted, or the external outcome was unknown - is resolved from the
+	// native history by its original code, so an unknown outcome converges to
+	// confirmed or stays explicitly unknown. It is never re-charged or refunded
+	// to probe.
+	if record.Status == "confirmed" || record.Status == "rejected" {
 		return WalletOperationMessage(record), nil
 	}
 	// The original answer was not persisted: dispatch exactly one adjustment under
@@ -241,7 +261,7 @@ func (s *Service) confirmWalletOperation(ctx context.Context, record WalletRecor
 		return nil, status.Error(codes.Unavailable, "Gateway balance history unavailable")
 	}
 	entry, ok := history[externalCode]
-	if !ok || entry.Micros != record.AmountUSDMicros {
+	if !ok || entry.Micros != nativeAdjustmentMicros(record) {
 		// The POST reported success but the native audit record is not yet visible.
 		// It is not proof the money moved, so stay non-terminal and let the caller
 		// read back instead of claiming a confirmed charge.
@@ -270,7 +290,7 @@ func (s *Service) reconcileWalletOperation(ctx context.Context, record WalletRec
 		return nil, status.Error(codes.Unavailable, "Gateway balance history unavailable")
 	}
 	if entry, ok := history[externalCode]; ok {
-		if entry.Micros != record.AmountUSDMicros {
+		if entry.Micros != nativeAdjustmentMicros(record) {
 			return nil, status.Error(codes.FailedPrecondition, "native wallet adjustment differs from the recorded amount")
 		}
 		receiptID := record.Kind + "-receipt-" + shortDigest(record.ID)
@@ -280,6 +300,19 @@ func (s *Service) reconcileWalletOperation(ctx context.Context, record WalletRec
 		return s.gatewayStoreRead(ctx, record.ID)
 	}
 	return WalletOperationMessage(record), nil
+}
+
+// nativeAdjustmentMicros is the signed delta the native wallet records for one
+// wallet action. A charge subtracts from the balance, so the wallet owner's
+// history carries its negative; a refund adds and stays positive. Evidence is
+// matched against this signed value, exactly as the retained Control Plane
+// settlement semantics did, so an opposite-sign record can never confirm the
+// obligation.
+func nativeAdjustmentMicros(record WalletRecord) int64 {
+	if record.Kind == "charge" {
+		return -record.AmountUSDMicros
+	}
+	return record.AmountUSDMicros
 }
 
 func (s *Service) gatewayStoreRead(ctx context.Context, id string) (*api.WalletOperation, error) {
@@ -296,6 +329,17 @@ func (s *Service) gatewayStoreRead(ctx context.Context, id string) (*api.WalletO
 // store through the delivery reference. Both the key issuer and the Secret store
 // are required dependencies; a deployment missing either fails closed rather than
 // persisting or emitting a raw credential.
+//
+// The original command is registered in this owner's existing
+// gateway.idempotency_records before any external issuance, under the caller's
+// immutable idempotency key and normalized input digest. A replay of the same
+// command reads the recorded answer back instead of issuing a second key; a
+// replayed command with a different input is refused. When the external outcome
+// was never confirmed - a lost ACK, or a recorded refusal the owner could not
+// settle - the operation stays explicitly unresolved and is never re-dispatched:
+// this owner has no approved idempotent lookup of an existing key by its original
+// issue identity, so re-issuing could create a second key for one accepted
+// command.
 func (s *Service) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand) (*api.ManagedKeyBinding, error) {
 	if err := s.coordinationCaller(ctx, owneridentity.Workspace.Service()); err != nil {
 		return nil, err
@@ -322,6 +366,17 @@ func (s *Service) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand
 	if err := s.authorizeManagedKey(ctx, r.GetContext(), tenantID, r.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
+	modelIDs := normalizeManagedKeyModelIDs(r.GetModelIds())
+	if len(modelIDs) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "workspace and at least one model id are required")
+	}
+	call := r.GetContext()
+	if strings.TrimSpace(call.GetIdempotencyKey()) == "" {
+		return nil, owneridentity.WithErrorCode(status.Error(codes.InvalidArgument, "idempotency key is required"), api.ErrorCodeEnum_ERROR_CODE_ENUM_IDEMPOTENCY_REQUIRED)
+	}
+	// The wallet binding is a local read with no external effect, so it is resolved
+	// before the original command is registered: only an issuance that may reach
+	// the external authority needs the durable original-command record.
 	binding, err := s.GatewayStore.ReadActiveWalletBinding(ctx, tenantID)
 	if err == ErrWalletBindingAbsent {
 		return nil, status.Error(codes.FailedPrecondition, "the tenant has no active wallet binding")
@@ -329,25 +384,117 @@ func (s *Service) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, "Gateway wallet binding unavailable")
 	}
-	raw, externalKeyID, err := s.KeyIssuer.IssueWorkspaceKey(ctx, binding.BillingSub2APIUserID, r.GetWorkspaceId(), r.GetModelIds())
+	reservation := ManagedKeyCommandReservation{
+		TenantID: tenantID, ActorID: call.GetActorId(), WorkspaceID: r.GetWorkspaceId(),
+		IdempotencyKey:     call.GetIdempotencyKey(),
+		CommandFingerprint: managedKeyCommandFingerprint(r.GetWorkspaceId(), r.GetTargetRuntimeInstanceId(), modelIDs),
+	}
+	record, existing, err := s.GatewayStore.ReserveManagedKeyCommand(ctx, reservation)
+	if errors.Is(err, ErrManagedKeyCommandConflict) {
+		return nil, owneridentity.WithErrorCode(status.Error(codes.AlreadyExists, "idempotency key reused with a different managed key command"), api.ErrorCodeEnum_ERROR_CODE_ENUM_IDEMPOTENCY_CONFLICT)
+	}
 	if err != nil {
-		return nil, err
+		return nil, status.Error(codes.Unavailable, "Gateway key command registration unavailable")
+	}
+	if existing {
+		return s.managedKeyCommandAnswer(ctx, reservation, record, nil)
+	}
+	raw, externalKeyID, err := s.KeyIssuer.IssueWorkspaceKey(ctx, binding.BillingSub2APIUserID, r.GetWorkspaceId(), modelIDs)
+	if err != nil {
+		if !definiteManagedKeyRefusal(err) {
+			// The external effect may or may not exist. The original command stays
+			// pending so a later attempt reads it back instead of issuing a second
+			// key; no new effect is dispatched without an approved lookup.
+			return nil, status.Error(codes.Unavailable, "managed key issuance outcome unknown")
+		}
+		body, marshalErr := json.Marshal(managedKeyCommandState{Outcome: "rejected", ErrorCode: status.Code(err).String()})
+		if marshalErr != nil {
+			return nil, status.Error(codes.Unavailable, "Gateway key settlement unavailable")
+		}
+		if settleErr := s.GatewayStore.SettleManagedKeyCommand(ctx, reservation, managedKeyCommandRejectedStatus, body, ""); settleErr != nil {
+			return nil, status.Error(codes.Unavailable, "Gateway key settlement unavailable")
+		}
+		return nil, status.Error(codes.FailedPrecondition, "the managed key issuance was refused")
 	}
 	fingerprint := shortDigest(externalKeyID + ":" + raw)
+	// The external identity this issuance actually produced is recorded before the
+	// Secret write, so a lost delivery is read back as this one original key
+	// instead of a second issuance.
+	if err = s.GatewayStore.AdvanceManagedKeyCommandPending(ctx, reservation, externalKeyID, fingerprint); err != nil {
+		return nil, status.Error(codes.Unavailable, "Gateway key command readback unavailable")
+	}
 	delivery, err := s.SecretStore.PutSecret(ctx, SecretDelivery{TenantID: tenantID, WorkspaceID: r.GetWorkspaceId(), Purpose: "workspace_managed", Fingerprint: fingerprint, Raw: raw})
 	if err != nil {
+		// The key exists but its delivery is unconfirmed; the command stays
+		// unresolved with the observed key identity recorded, and is read back
+		// rather than being re-issued.
 		return nil, status.Error(codes.Unavailable, "approved Secret store write failed")
 	}
-	keyBinding, err := s.GatewayStore.InsertManagedKeyBinding(ctx, ManagedKeyBinding{
-		TenantID: tenantID, WorkspaceID: r.GetWorkspaceId(), ActorID: r.GetContext().GetActorId(),
+	state := managedKeyCommandState{Outcome: "confirmed", ExternalKeyID: externalKeyID, Fingerprint: fingerprint,
+		SecretRef: delivery.Reference, KeyBindingID: "gateway-key-" + shortDigest(tenantID+":"+r.GetWorkspaceId()+":"+externalKeyID),
+		TargetRuntimeInstanceID: r.GetTargetRuntimeInstanceId()}
+	body, marshalErr := json.Marshal(state)
+	if marshalErr != nil {
+		return nil, status.Error(codes.Unavailable, "Gateway key settlement unavailable")
+	}
+	keyBinding, err := s.GatewayStore.InsertConfirmedManagedKeyBinding(ctx, ManagedKeyBinding{
+		TenantID: tenantID, WorkspaceID: r.GetWorkspaceId(), ActorID: call.GetActorId(),
 		ExternalKeyID: externalKeyID, Fingerprint: fingerprint, SecretRef: delivery.Reference,
-		Purpose: "workspace_managed", ModelIDs: r.GetModelIds(), TargetRuntimeInstanceID: r.GetTargetRuntimeInstanceId(), TTL: managedKeyTTL,
-	})
+		Purpose: "workspace_managed", ModelIDs: modelIDs, TargetRuntimeInstanceID: r.GetTargetRuntimeInstanceId(), TTL: managedKeyTTL,
+	}, reservation, body)
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, "Gateway key binding unavailable")
 	}
-	out := &api.ManagedKeyBinding{KeyBindingId: keyBinding.ID, Fingerprint: fingerprint, SecretDeliveryReference: delivery.Reference,
-		WorkspaceId: r.GetWorkspaceId(), TargetRuntimeInstanceId: r.GetTargetRuntimeInstanceId()}
+	// The binding row is the recorded effect; its id is the opaque readback
+	// identity the command answer names. The stored answer already carries the
+	// same identities, so resolving from the record keeps one source of truth.
+	record, err = s.GatewayStore.ReadManagedKeyCommand(ctx, reservation)
+	if err != nil {
+		return nil, status.Error(codes.Unavailable, "Gateway key command readback unavailable")
+	}
+	return s.managedKeyCommandAnswer(ctx, reservation, record, &keyBinding)
+}
+
+// managedKeyCommandAnswer resolves the recorded answer of one original managed
+// key command. A confirmed answer is read back from the recorded Gateway key
+// binding row, so the returned identity is the owner's stored fact rather than a
+// re-derived one. A pending answer stays explicitly unresolved: the observed
+// external key identity, when the issuance produced one, is reported so the
+// original effect can be reconciled, and it is never re-issued.
+func (s *Service) managedKeyCommandAnswer(ctx context.Context, reservation ManagedKeyCommandReservation, record ManagedKeyCommandRecord, recorded *ManagedKeyBinding) (*api.ManagedKeyBinding, error) {
+	state := managedKeyCommandState{}
+	if err := json.Unmarshal(record.Body, &state); err != nil {
+		return nil, status.Error(codes.DataLoss, "stored managed key command answer is invalid")
+	}
+	switch record.ResponseStatus {
+	case managedKeyCommandPendingStatus:
+		if state.ExternalKeyID != "" {
+			return nil, status.Error(codes.Unavailable, "managed key issuance outcome is unresolved for its observed external key; the original command is never re-issued")
+		}
+		return nil, status.Error(codes.Unavailable, "managed key issuance outcome is unresolved; the original command is never re-issued")
+	case managedKeyCommandRejectedStatus:
+		return nil, status.Error(codes.FailedPrecondition, "the managed key issuance was refused: "+state.ErrorCode)
+	case managedKeyCommandConfirmedStatus:
+	default:
+		return nil, status.Error(codes.DataLoss, "stored managed key command answer has an unknown state")
+	}
+	keyBinding := ManagedKeyBinding{}
+	if recorded != nil {
+		keyBinding = *recorded
+	} else {
+		var err error
+		keyBinding, err = s.GatewayStore.ReadManagedKeyBinding(ctx, state.KeyBindingID)
+		if err != nil {
+			return nil, status.Error(codes.Unavailable, "Gateway key binding readback unavailable")
+		}
+	}
+	if keyBinding.TenantID != reservation.TenantID || keyBinding.WorkspaceID != reservation.WorkspaceID ||
+		keyBinding.ExternalKeyID != state.ExternalKeyID || keyBinding.Fingerprint != state.Fingerprint ||
+		keyBinding.SecretRef != state.SecretRef {
+		return nil, status.Error(codes.DataLoss, "Gateway key binding differs from its original command")
+	}
+	out := &api.ManagedKeyBinding{KeyBindingId: keyBinding.ID, Fingerprint: keyBinding.Fingerprint, SecretDeliveryReference: keyBinding.SecretRef,
+		WorkspaceId: keyBinding.WorkspaceID, TargetRuntimeInstanceId: state.TargetRuntimeInstanceID}
 	if !keyBinding.ExpiresAt.IsZero() {
 		out.ExpiresAt = timestamppb.New(keyBinding.ExpiresAt)
 	}

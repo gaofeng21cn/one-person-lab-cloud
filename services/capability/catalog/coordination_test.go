@@ -17,7 +17,13 @@ type runtimeCatalogClient struct {
 }
 
 func (c *runtimeCatalogClient) ListRuntimeVersions(context.Context, *api.ListRuntimeVersionsRpcRequest, ...grpc.CallOption) (*api.RuntimeVersionPage, error) {
-	page := c.pages[c.calls]
+	// A repeated read returns the same page and never walks off the fixture: the
+	// catalog owner re-reads the Runtime Release on each claim and bind.
+	index := c.calls
+	if index >= len(c.pages) {
+		index = len(c.pages) - 1
+	}
+	page := c.pages[index]
 	c.calls++
 	return page, nil
 }

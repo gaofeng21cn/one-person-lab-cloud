@@ -99,37 +99,7 @@ func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneri
 		}
 		result, err := invoke(r.WithContext(ctx), call, input)
 		if err != nil {
-			if ownerCode, ok := owneridentity.ErrorCode(err); ok {
-				if httpStatus, declared := errorStatus[ownerCode]; declared {
-					// Keep the owner's typed decision and the contract's public status;
-					// transport categories cannot distinguish LAST_OWNER from validation.
-					if httpStatus == 429 || httpStatus == 503 {
-						w.Header().Set("Retry-After", "2")
-					}
-					writeJSON(w, httpStatus, map[string]any{"code": strings.TrimPrefix(ownerCode.String(), "ERROR_CODE_ENUM_"), "message": "publisher request could not be completed", "requestId": r.Header.Get(requestIDHeader)})
-					return
-				}
-			}
-			code := 502
-			switch status.Code(err) {
-			case codes.InvalidArgument:
-				code = 400
-			case codes.Unauthenticated:
-				code = 401
-			case codes.PermissionDenied:
-				code = 403
-			case codes.NotFound:
-				code = 404
-			case codes.AlreadyExists, codes.Aborted:
-				code = 409
-			case codes.FailedPrecondition:
-				code = 422
-			case codes.ResourceExhausted:
-				code = 429
-			case codes.Unavailable, codes.DeadlineExceeded:
-				code = 503
-			}
-			writePublisherError(w, r, code, "owner_request_failed", "publisher request could not be completed")
+			writeOwnerCallFailure(w, r, err)
 			return
 		}
 		raw, err := publicjson.Marshal(result)
@@ -226,6 +196,14 @@ func (s *Server) registerPublisherRoutes(mux *http.ServeMux) {
 	s.publisherRoute(mux, "GET /api/v2/catalog/runtime-versions", owneridentity.RuntimeControl, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.runtimeControl.ListRuntimeVersions(r.Context(), &api.ListRuntimeVersionsRpcRequest{Context: c, QueryCursor: proto.String(r.URL.Query().Get("cursor"))})
 	})
+	// The administrator runtime admission command. The path sits under
+	// /api/v2/admin/catalog/, so the shared boundary resolves the caller's own
+	// platform scope; the Runtime Control owner authorizes the action again and
+	// owns the idempotent command record, so a replay returns the recorded
+	// RuntimeVersion instead of admitting a second release.
+	s.publisherRoute(mux, "POST /api/v2/admin/catalog/runtime-versions", owneridentity.RuntimeControl, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REGISTERRUNTIMEVERSION, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "", func() proto.Message { return &api.RegisterRuntimeVersionRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		return s.runtimeControl.RegisterRuntimeVersion(r.Context(), &api.RegisterRuntimeVersionRpcRequest{Context: c, Body: body.(*api.RegisterRuntimeVersionRequest)})
+	})
 	s.publisherRoute(mux, "GET /api/v2/capability-versions", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTCAPABILITYVERSIONS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		query := &api.ListCapabilityVersionsRpcRequest{Context: c, QueryCursor: optionalQuery(r, "cursor"), QueryLimit: optionalLimit(r), QueryPackageId: optionalQuery(r, "packageId")}
 		if value := r.URL.Query().Get("status"); value != "" {
@@ -297,6 +275,45 @@ func publisherRequestID(r *http.Request) {
 		r.Header.Set(requestIDHeader, hex.EncodeToString(id[:]))
 	}
 }
+
+// writeOwnerCallFailure maps an owner call failure onto its public status and
+// typed business code. The passthrough publisher routes and the composed
+// Workspace read both answer through it, so an owner's own decision and the
+// contract's public status stay identical on every route that calls an owner.
+func writeOwnerCallFailure(w http.ResponseWriter, r *http.Request, err error) {
+	if ownerCode, ok := owneridentity.ErrorCode(err); ok {
+		if httpStatus, declared := errorStatus[ownerCode]; declared {
+			// Keep the owner's typed decision and the contract's public status;
+			// transport categories cannot distinguish LAST_OWNER from validation.
+			if httpStatus == 429 || httpStatus == 503 {
+				w.Header().Set("Retry-After", "2")
+			}
+			writeJSON(w, httpStatus, map[string]any{"code": strings.TrimPrefix(ownerCode.String(), "ERROR_CODE_ENUM_"), "message": "publisher request could not be completed", "requestId": r.Header.Get(requestIDHeader)})
+			return
+		}
+	}
+	code := 502
+	switch status.Code(err) {
+	case codes.InvalidArgument:
+		code = 400
+	case codes.Unauthenticated:
+		code = 401
+	case codes.PermissionDenied:
+		code = 403
+	case codes.NotFound:
+		code = 404
+	case codes.AlreadyExists, codes.Aborted:
+		code = 409
+	case codes.FailedPrecondition:
+		code = 422
+	case codes.ResourceExhausted:
+		code = 429
+	case codes.Unavailable, codes.DeadlineExceeded:
+		code = 503
+	}
+	writePublisherError(w, r, code, "owner_request_failed", "publisher request could not be completed")
+}
+
 func writePublisherIdentityError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case status.Code(err) == codes.ResourceExhausted:

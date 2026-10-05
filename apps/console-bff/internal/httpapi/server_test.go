@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"opl-cloud/apps/console-bff/internal/clients"
@@ -263,9 +264,22 @@ func TestOperationRoutingRejectsUnknownOwner(t *testing.T) {
 	}
 }
 
+// servedOperation is a contract-valid Operation as an owner returns it: the
+// public readback requires the owner's real status, kind, stage and request
+// identity, so a bare message is not an acceptable stand-in.
+func servedOperation(owner api.OperationOwnerEnum) *api.Operation {
+	return &api.Operation{
+		OperationId: "op-1", Owner: owner,
+		Kind: api.OperationKindEnum_OPERATION_KIND_ENUM_CREATE_WORKSPACE, ResourceId: "ws-1",
+		Status: api.OperationStatusEnum_OPERATION_STATUS_ENUM_RUNNING, Stage: api.OperationStageEnum_OPERATION_STAGE_ENUM_ADMISSION,
+		RequestId: "request-1", PollAfterSeconds: proto.Int32(3),
+		CreatedAt: timestamppb.Now(), UpdatedAt: timestamppb.Now(),
+	}
+}
+
 func TestOperationRoutingUsesNamedOwner(t *testing.T) {
 	reader := resolvedReader()
-	reader.operation = &api.Operation{OperationId: "op-1", Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_CAPABILITY}
+	reader.operation = servedOperation(api.OperationOwnerEnum_OPERATION_OWNER_ENUM_CAPABILITY)
 	identity := allowedIdentity()
 	identity.decision.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATION
 	identity.decision.AudienceOwner = api.OwnerEnum_OWNER_ENUM_CAPABILITY
@@ -275,8 +289,16 @@ func TestOperationRoutingUsesNamedOwner(t *testing.T) {
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
 
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	if response.Code != http.StatusOK || response.Header().Get("Retry-After") != "3" {
+		t.Fatalf("status = %d retry-after = %q body = %s", response.Code, response.Header().Get("Retry-After"), response.Body.String())
+	}
+	// The caller polls this route for the contract's own public Operation shape.
+	var body map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["operationId"] != "op-1" || body["owner"] != "capability" || body["status"] != "running" || body["kind"] != "create_workspace" {
+		t.Fatalf("operation not published in the public shape: %v", body)
 	}
 }
 
@@ -332,7 +354,7 @@ func TestDeliveryRejectsAuthorizationFromAnotherIssuer(t *testing.T) {
 
 func TestOperationRoutingAcceptsTheServeOwner(t *testing.T) {
 	reader := resolvedReader()
-	reader.operation = &api.Operation{OperationId: "op-1", Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_SERVE}
+	reader.operation = servedOperation(api.OperationOwnerEnum_OPERATION_OWNER_ENUM_SERVE)
 	identity := allowedIdentity()
 	identity.decision.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATION
 	identity.decision.AudienceOwner = api.OwnerEnum_OWNER_ENUM_SERVE

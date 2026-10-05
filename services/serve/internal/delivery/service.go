@@ -336,7 +336,28 @@ func (s *Service) workspaceTenant(ctx context.Context, workspaceID string) (stri
 // the caller's own scope covers it, then defers the live decision to
 // CloudIdentity. A caller cannot widen its scope by presenting a different
 // workspace id: Serve's persisted tenant decides, not the request.
+//
+// This admission serves actions that may create a Workspace's first Serve
+// record, so a Workspace with no delivery record yet is decided by the live
+// authority alone. Reads of an existing delivery fact use authorizeRead.
 func (s *Service) authorize(ctx context.Context, call *api.CallContext, action api.AuthorizationActionEnum, workspaceID string) error {
+	return s.authorizeWorkspace(ctx, call, action, workspaceID, false)
+}
+
+// authorizeRead admits a read of Serve's delivery facts for one Workspace.
+//
+// A read answers only for a Workspace Serve has delivered to the caller's own
+// tenant. A Workspace whose delivery belongs to another tenant and a Workspace
+// with no delivery record at all are refused with the same decision, so a read
+// cannot be used to learn whether Serve has delivered an opaque Workspace id.
+func (s *Service) authorizeRead(ctx context.Context, call *api.CallContext, action api.AuthorizationActionEnum, workspaceID string) error {
+	return s.authorizeWorkspace(ctx, call, action, workspaceID, true)
+}
+
+// authorizeWorkspace is the shared admission behind authorize and authorizeRead.
+// refuseUndelivered makes a tenant-scoped read of a Workspace with no delivery
+// record the same refusal as a read of another tenant's Workspace.
+func (s *Service) authorizeWorkspace(ctx context.Context, call *api.CallContext, action api.AuthorizationActionEnum, workspaceID string, refuseUndelivered bool) error {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if call == nil || workspaceID == "" {
 		return status.Error(codes.InvalidArgument, "authenticated call context and workspace are required")
@@ -352,8 +373,13 @@ func (s *Service) authorize(ctx context.Context, call *api.CallContext, action a
 	platform := call.GetScope().GetPlatform() != nil
 	// Serve's own delivery records are authoritative for the tenant of a Workspace
 	// it has delivered; a caller whose own scope names a different tenant is
-	// refused before the live authority is even consulted.
-	if known && !platform && callerTenant != tenant {
+	// refused before the live authority is even consulted. On the read surface the
+	// same refusal covers a Workspace with no delivery record: the denial is
+	// identical in code and message, so the read cannot separate another tenant's
+	// Workspace from an id Serve has never delivered.
+	foreign := known && callerTenant != tenant
+	undelivered := !known && refuseUndelivered
+	if !platform && (foreign || undelivered) {
 		return status.Error(codes.PermissionDenied, "workspace belongs to another tenant")
 	}
 	// The declared scope must match the caller's own scope or the shared authorizer
@@ -375,7 +401,7 @@ func (s *Service) authorize(ctx context.Context, call *api.CallContext, action a
 
 // ListDeployments returns the Serve-owned delivery attempts for one Workspace.
 func (s *Service) ListDeployments(ctx context.Context, r *api.ListDeploymentsRpcRequest) (*api.DeploymentPage, error) {
-	if err := s.authorize(ctx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS, r.GetWorkspaceId()); err != nil {
+	if err := s.authorizeRead(ctx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS, r.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
 	n := limit(r.GetQueryLimit())
@@ -418,7 +444,7 @@ func (s *Service) ListDeployments(ctx context.Context, r *api.ListDeploymentsRpc
 
 // GetDeployment returns one Serve-owned deployment for one Workspace.
 func (s *Service) GetDeployment(ctx context.Context, r *api.GetDeploymentRpcRequest) (*api.Deployment, error) {
-	if err := s.authorize(ctx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETDEPLOYMENT, r.GetWorkspaceId()); err != nil {
+	if err := s.authorizeRead(ctx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETDEPLOYMENT, r.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(r.GetDeploymentId()) == "" {
@@ -444,7 +470,7 @@ func (s *Service) GetDeployment(ctx context.Context, r *api.GetDeploymentRpcRequ
 // facts are refused; a provisioned resource is never a ready application. No
 // access expiry is invented when the provider has supplied none.
 func (s *Service) GetWorkspaceAccess(ctx context.Context, r *api.GetWorkspaceAccessRpcRequest) (*api.WorkspaceAccess, error) {
-	if err := s.authorize(ctx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS, r.GetWorkspaceId()); err != nil {
+	if err := s.authorizeRead(ctx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS, r.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
 	access := &api.WorkspaceAccess{WorkspaceId: r.GetWorkspaceId()}

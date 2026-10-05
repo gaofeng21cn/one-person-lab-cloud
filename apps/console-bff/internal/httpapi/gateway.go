@@ -34,6 +34,29 @@ func (s *Server) registerModelCatalogRoute(mux *http.ServeMux, gateway api.Gatew
 	})
 }
 
+// registerWalletBindingRoute exposes the one administrator wallet binding
+// command the Console launch journey needs. The Tenant owner authorizes the
+// action (bindTenantWallet is a Tenant-audience platform-admin action) and the
+// Gateway owner performs it through its typed coordination surface; the BFF
+// forwards the caller's own session context, the path tenant and the body only,
+// and passes the authorization context CloudIdentity just issued for this exact
+// action so the money-adjacent command cannot be replayed for another tenant.
+func (s *Server) registerWalletBindingRoute(mux *http.ServeMux) {
+	s.publisherRoute(mux, "PUT /api/v2/admin/tenants/{tenantId}/wallet-binding", owneridentity.Tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDTENANTWALLET, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "tenantId", func() proto.Message { return &api.BindTenantWalletRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		if s.gatewayCoordination == nil {
+			return nil, status.Error(codes.Unavailable, "gateway coordination owner is not configured")
+		}
+		command := &api.WalletBindingCommand{
+			Context:                c,
+			TargetTenantId:         r.PathValue("tenantId"),
+			BillingSub2ApiUserId:   body.(*api.BindTenantWalletRequest).GetBillingSub2ApiUserId(),
+			ExpectedBindingVersion: body.(*api.BindTenantWalletRequest).GetExpectedBindingVersion(),
+			AuthorizationReceiptId: c.GetAuthorizationContextId(),
+		}
+		return s.gatewayCoordination.BindWallet(r.Context(), command)
+	})
+}
+
 // NewGatewayReadHandler exposes only the Gateway-owned product reads (wallet and
 // model catalog) over the BFF's authenticated boundary. It exists so a caller
 // outside apps/console-bff, which cannot reach the internal package, can still

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 
 	"google.golang.org/grpc/codes"
@@ -8,6 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/packages/contracts/go/publicjson"
 )
 
 // NewWorkspaceHandler exposes the same authenticated routes as the BFF process.
@@ -45,11 +47,68 @@ func (s *Server) registerWorkspaceRoutes(mux *http.ServeMux, workspace api.Works
 			}
 			return workspace.ListWorkspaces(r.Context(), &api.ListWorkspacesRpcRequest{Context: call, QueryCursor: optionalQuery(r, "cursor"), QueryLimit: &limit})
 		})
-	s.publisherRoute(mux, "GET /api/v2/workspaces/{workspaceId}", owneridentity.Workspace, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACE, kind, "workspaceId", nil,
+	// The model configuration belongs to the Workspace owner: the owner persists the
+	// accepted intent, its own applied version, and the operation that carries the
+	// reload. The BFF only forwards the caller's own request to that owner, so a
+	// Console never reimplements the configuration or reads it from another service.
+	s.publisherRoute(mux, "GET /api/v2/workspaces/{workspaceId}/models", owneridentity.Workspace, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEMODELS, kind, "workspaceId", nil,
 		func(r *http.Request, call *api.CallContext, _ proto.Message) (proto.Message, error) {
 			if err := require(); err != nil {
 				return nil, err
 			}
-			return workspace.GetWorkspace(r.Context(), &api.GetWorkspaceRpcRequest{Context: call, WorkspaceId: r.PathValue("workspaceId")})
+			return workspace.GetWorkspaceModels(r.Context(), &api.GetWorkspaceModelsRpcRequest{Context: call, WorkspaceId: r.PathValue("workspaceId")})
 		})
+	s.publisherRoute(mux, "PUT /api/v2/workspaces/{workspaceId}/models", owneridentity.Workspace, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATEWORKSPACEMODELS, kind, "workspaceId", func() proto.Message { return &api.UpdateWorkspaceModelsRequest{} },
+		func(r *http.Request, call *api.CallContext, body proto.Message) (proto.Message, error) {
+			if err := require(); err != nil {
+				return nil, err
+			}
+			return workspace.UpdateWorkspaceModels(r.Context(), &api.UpdateWorkspaceModelsRpcRequest{Context: call, Body: body.(*api.UpdateWorkspaceModelsRequest), WorkspaceId: r.PathValue("workspaceId")})
+		})
+	// The canonical Workspace schema is the console-bff's derived read model: its
+	// applicationAvailability, accessUrl and modelConfigurationVersion are
+	// compositions of the Serve-owned deployment, runtime instance and access
+	// readbacks, not Workspace columns. The detail route therefore composes the
+	// Workspace owner's own readback with the Serve facts under the caller's own
+	// per-owner authorization.
+	mux.HandleFunc("GET /api/v2/workspaces/{workspaceId}", func(w http.ResponseWriter, r *http.Request) {
+		publisherRequestID(r)
+		w.Header().Set("Cache-Control", "no-store")
+		caller, err := RequireSession(r.Context(), s.identity, r)
+		if err != nil {
+			writePublisherIdentityError(w, r, err)
+			return
+		}
+		ctx := WithCaller(r.Context(), caller, r.Header.Get(requestIDHeader))
+		resource := &api.AuthorizationResource{Kind: kind, Id: proto.String(r.PathValue("workspaceId"))}
+		if err := RequireAuthorizedAction(ctx, s.identity, caller, owneridentity.Workspace,
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACE, resource, r.Header.Get(requestIDHeader)); err != nil {
+			writePublisherIdentityError(w, r, err)
+			return
+		}
+		if err := require(); err != nil {
+			writePublisherError(w, r, 503, "owner_unconfigured", "publisher owner unavailable")
+			return
+		}
+		read, err := s.workspaceApplication(ctx, caller, r.PathValue("workspaceId"))
+		if err != nil {
+			// A denied Serve decision is an authorization boundary, not an upstream
+			// failure, so it keeps its own status; everything else is mapped as the
+			// publisher routes map an owner call.
+			if errors.Is(err, ErrAuthorizationRequired) || errors.Is(err, ErrSessionRequired) {
+				writePublisherIdentityError(w, r, err)
+				return
+			}
+			writeOwnerCallFailure(w, r, err)
+			return
+		}
+		raw, err := publicjson.Marshal(read)
+		if err != nil {
+			writePublisherError(w, r, 502, "invalid_owner_response", "publisher owner returned an invalid response")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(raw)
+	})
 }

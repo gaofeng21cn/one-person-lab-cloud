@@ -94,9 +94,13 @@ type Clients struct {
 	tenant         api.TenantProductServiceClient
 	catalog        api.ResourceCatalogProductServiceClient
 	gateway        api.GatewayProductServiceClient
-	authorization  api.CloudIdentityAuthorizationClient
-	owner          map[owneridentity.Owner]api.OwnerOperationsClient
-	conns          []*grpc.ClientConn
+	// gatewayCoordination is the Gateway owner's typed settlement surface. The
+	// BFF drives it for the one administrator wallet binding command whose owner
+	// (tenant) authorizes the action itself; the BFF decides nothing.
+	gatewayCoordination api.GatewayCoordinationClient
+	authorization       api.CloudIdentityAuthorizationClient
+	owner               map[owneridentity.Owner]api.OwnerOperationsClient
+	conns               []*grpc.ClientConn
 }
 
 // Dial opens one connection per configured owner. An owner that is not configured
@@ -133,6 +137,7 @@ func Dial(config Config) (*Clients, error) {
 			clients.serve = api.NewServeProductServiceClient(conn)
 		case owneridentity.Gateway:
 			clients.gateway = api.NewGatewayProductServiceClient(conn)
+			clients.gatewayCoordination = api.NewGatewayCoordinationClient(conn)
 		}
 	}
 	if addr := strings.TrimSpace(config.Addresses[owneridentity.ResourceCatalog]); addr != "" {
@@ -264,6 +269,12 @@ func CallContext(ctx context.Context) *api.CallContext {
 
 // GatewayClient exposes the Gateway Integration product read client.
 func (c *Clients) GatewayClient() api.GatewayProductServiceClient { return c.gateway }
+
+// GatewayCoordinationClient exposes the Gateway owner's typed settlement surface
+// the BFF reaches on the same Gateway Integration connection.
+func (c *Clients) GatewayCoordinationClient() api.GatewayCoordinationClient {
+	return c.gatewayCoordination
+}
 
 // Wallet reads the Gateway-owned spendable wallet. No local balance is synthesized.
 func (c *Clients) Wallet(ctx context.Context) (*api.Wallet, error) {

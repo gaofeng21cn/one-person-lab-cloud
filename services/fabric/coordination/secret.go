@@ -17,15 +17,17 @@ import (
 )
 
 // BindSecret records that one accepted delivery's Gateway Secret is bound into the
-// resource set its runtime actually consumes. The caller supplies only opaque
-// identities: the runtime instance, the Gateway key binding and the approved
-// Secret delivery reference. Fabric resolves the execution resource from its own
-// resource set, has the provider confirm the exact stored Secret, then writes the
-// immutable fabric.secret_bindings row. A retry for the same runtime and purpose
-// replays that same binding instead of minting a second one; a retry that names a
-// different Secret, key binding or resource set is a conflicting original.
+// resource set its runtime actually consumes. Serve is the only approved caller:
+// the accepted obligation hands Serve the opaque Gateway binding, and Workspace no
+// longer binds into Fabric directly. The caller supplies only opaque identities:
+// the runtime instance, the Gateway key binding and the approved Secret delivery
+// reference. Fabric resolves the execution resource from its own resource set, has
+// the provider confirm the exact stored Secret, then writes the immutable
+// fabric.secret_bindings row. A retry for the same runtime, slot, key binding and
+// Secret replays that same binding instead of minting a second one; a retry that
+// names any different original is a conflict.
 func (s *Service) BindSecret(ctx context.Context, r *api.SecretBindingCommand) (*api.SecretBindingReadback, error) {
-	if err := peer(ctx, owneridentity.Serve.Service(), owneridentity.Workspace.Service()); err != nil {
+	if err := peer(ctx, owneridentity.Serve.Service()); err != nil {
 		return nil, err
 	}
 	if err := ownerservice.ValidateCallContext(ctx, r.GetContext()); err != nil {
@@ -68,11 +70,28 @@ func (s *Service) BindSecret(ctx context.Context, r *api.SecretBindingCommand) (
 	}
 	// Every writer locks the original workspace before reading its binding; a
 	// concurrent retry cannot bind a second Secret for the same runtime and purpose.
-	var existingID, existingRef, existingVersion, existingFingerprint, existingPurpose, existingResult string
-	err = tx.QueryRowContext(ctx, `SELECT id,secret_ref,version,fingerprint,purpose,observation_result FROM fabric.secret_bindings WHERE execution_resource_id=$1 AND purpose=$2 AND revoked_at IS NULL FOR UPDATE`, execID, purpose).Scan(&existingID, &existingRef, &existingVersion, &existingFingerprint, &existingPurpose, &existingResult)
+	// The deterministic binding identity recomputes the exact original intent from
+	// this request: the same tenant, workspace, runtime instance and slot. A retry
+	// that recomputes a different identity names a different original, so it never
+	// replays — or relabels — the binding another runtime instance holds.
+	bindingID := "sbx_" + shortDigest(tenant, r.GetWorkspaceId(), r.GetRuntimeInstanceId(), purpose)
+	var existingID, existingRef, existingVersion, existingFingerprint, existingResult string
+	err = tx.QueryRowContext(ctx, `SELECT id,secret_ref,version,fingerprint,observation_result FROM fabric.secret_bindings WHERE execution_resource_id=$1 AND purpose=$2 AND revoked_at IS NULL FOR UPDATE`, execID, purpose).Scan(&existingID, &existingRef, &existingVersion, &existingFingerprint, &existingResult)
 	if err == nil {
-		if existingRef != r.GetSecretDeliveryReference() {
-			return nil, status.Error(codes.AlreadyExists, "runtime already has a bound Secret for this purpose")
+		origin, originErr := secretBindingOriginOf(ctx, tx, existingID)
+		if originErr != nil {
+			return nil, originErr
+		}
+		if existingID != bindingID || existingRef != r.GetSecretDeliveryReference() || origin.RuntimeInstanceID != r.GetRuntimeInstanceId() || origin.KeyBindingID != r.GetKeyBindingId() {
+			return nil, status.Error(codes.AlreadyExists, "the runtime instance already holds an active Secret binding for this slot")
+		}
+		// The confirmed store content for one runtime and slot is fixed until an
+		// explicit RebindSecret names the predecessor: an input fingerprint that
+		// differs from the confirmed binding is a different Secret identity, not a
+		// retry of the original bind. The field stays optional, so an omitted
+		// fingerprint replays the owner-authoritative confirmed readback below.
+		if r.GetFingerprint() != "" && r.GetFingerprint() != existingFingerprint {
+			return nil, status.Error(codes.FailedPrecondition, "the runtime instance already holds a confirmed Secret with a different fingerprint for this slot; a changed Secret requires RebindSecret")
 		}
 		if err = tx.Commit(); err != nil {
 			return nil, persistenceError(err)
@@ -90,7 +109,6 @@ func (s *Service) BindSecret(ctx context.Context, r *api.SecretBindingCommand) (
 	if bound.SecretRef != r.GetSecretDeliveryReference() || bound.Version == "" || bound.Fingerprint == "" || (r.GetFingerprint() != "" && bound.Fingerprint != r.GetFingerprint()) {
 		return nil, status.Error(codes.FailedPrecondition, "the approved Secret store returned a different identity")
 	}
-	bindingID := "sbx_" + shortDigest(tenant, r.WorkspaceId, r.RuntimeInstanceId, purpose)
 	_, err = tx.ExecContext(ctx, `INSERT INTO fabric.secret_bindings (id,resource_set_id,execution_resource_id,secret_ref,purpose,version,fingerprint,observation_result) VALUES ($1,$2,$3,$4,$5,$6,$7,'confirmed')`, bindingID, setID, execID, bound.SecretRef, purpose, bound.Version, bound.Fingerprint)
 	if err != nil {
 		if isUniqueViolation(err) {

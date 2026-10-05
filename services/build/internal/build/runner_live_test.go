@@ -261,7 +261,10 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	}
 	putBlob(input.RuntimeContract.BuildRecipe.Recipe.Repository, recipe)
 	input.RuntimeContract.BuildRecipe.Recipe.Digest = digest(recipe)
-	input.SnapshotDigest = digest(wire(input))
+	// The frozen identity is the canonical three-input encoding the Capability
+	// owner also derives, so this live fixture carries a digest both owners can
+	// re-derive from the persisted snapshot bytes.
+	input.SnapshotDigest = digest(BuildInputDigestBytes(input))
 	if err := r.Validate(); err != nil {
 		t.Fatal(err)
 	}

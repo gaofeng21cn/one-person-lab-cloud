@@ -256,6 +256,30 @@ export interface WorkspaceOwnerOperationDTO {
 
 export interface WorkspaceOwnerPageDTO { items: WorkspaceOwnerDTO[]; nextCursor?: string; }
 
+// The Workspace owner's model configuration: `version` is the persisted intent
+// version, `appliedVersion` only advances after the runtime confirmed a real
+// reload, and the status is the owner's own derivation of the two. Both version
+// fields are the contract's NonnegativeInt64 decimal strings.
+export interface WorkspaceModelSelectionDTO {
+  slot: string;
+  modelId: string;
+}
+
+export interface WorkspaceModelConfigurationDTO {
+  workspaceId: string;
+  version: string;
+  appliedVersion?: string;
+  selections: WorkspaceModelSelectionDTO[];
+  status: "pending" | "applied" | "failed" | "needs_attention";
+  operationId?: string;
+  updatedAt: string;
+}
+
+export interface WorkspaceModelUpdateRequest {
+  expectedVersion: string;
+  selections: WorkspaceModelSelectionDTO[];
+}
+
 export interface WorkspaceOwnerDTO {
   id: string;
   name: string;

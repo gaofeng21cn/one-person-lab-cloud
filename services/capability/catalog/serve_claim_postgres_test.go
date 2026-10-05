@@ -143,3 +143,44 @@ func TestServeCapabilityClaimUsesExactClaimantOwner(t *testing.T) {
 		t.Fatal("live owner authorization was skipped")
 	}
 }
+
+// TestServeClaimsTheApprovedRuntimeReleaseForTheDefaultApp proves the default
+// OPL App delivery path: Serve claims the approved Runtime Release its deployment
+// descriptor was frozen from, exactly as it claims a built Agent's
+// CapabilityVersion, and a target that is not a deployable version is still
+// refused.
+func TestServeClaimsTheApprovedRuntimeReleaseForTheDefaultApp(t *testing.T) {
+	db := capabilityClaimDB(t)
+	ctx := ownerservice.WithPeerOwner(context.Background(), owneridentity.Serve.Service())
+	authCalls := 0
+	runtime := &runtimeCatalogClient{pages: []*api.RuntimeVersionPage{{Items: []*api.RuntimeVersion{{Id: "runtime-approved", Status: api.RuntimeVersionStatusEnum_RUNTIME_VERSION_STATUS_ENUM_APPROVED}}}}}
+	s := &Service{DB: db, Runtime: runtime, Authorize: func(context.Context, *api.CallContext, api.AuthorizationActionEnum, *api.AuthorizationResource, ownerservice.ResourceScope) error {
+		authCalls++
+		return nil
+	}}
+	call := &api.CallContext{ActorId: "actor", RequestId: "request", SessionId: proto.String("session"), Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-claim"}}}}
+	request := &api.ReferenceClaimRequest{Context: call, Target: &api.ReferenceTarget{Target: &api.ReferenceTarget_RuntimeVersionId{RuntimeVersionId: "runtime-approved"}}, ClaimantOwner: api.OwnerEnum_OWNER_ENUM_SERVE, ClaimantResourceId: "deployment-default-app"}
+	claim, err := s.AcquireReference(ctx, request)
+	if err != nil {
+		t.Fatalf("default App runtime claim: %v", err)
+	}
+	replay, err := s.AcquireReference(ctx, request)
+	if err != nil || replay.Id != claim.Id {
+		t.Fatalf("replay=%v %v", replay, err)
+	}
+	var targetType, runtimeID, purpose string
+	if err = db.QueryRowContext(ctx, `SELECT target_type,COALESCE(runtime_version_id,''),purpose FROM capability.reference_claims WHERE id=$1`, claim.Id).Scan(&targetType, &runtimeID, &purpose); err != nil || targetType != "runtime_version" || runtimeID != "runtime-approved" || purpose != "deploy" {
+		t.Fatalf("claim row type=%s runtime=%s purpose=%s err=%v", targetType, runtimeID, purpose, err)
+	}
+	if claim.GetTarget().GetRuntimeVersionId() != "runtime-approved" {
+		t.Fatalf("claim target=%v", claim.GetTarget())
+	}
+	// A non-deployable target stays refused for Serve.
+	_, err = s.AcquireReference(ctx, &api.ReferenceClaimRequest{Context: call, Target: &api.ReferenceTarget{Target: &api.ReferenceTarget_PackageVersionId{PackageVersionId: "pv"}}, ClaimantOwner: api.OwnerEnum_OWNER_ENUM_SERVE, ClaimantResourceId: "deployment-default-app"})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("Serve claimed a non-deployable version: %v", err)
+	}
+	if authCalls < 2 {
+		t.Fatal("live owner authorization was skipped")
+	}
+}

@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -22,7 +23,7 @@ var (
 
 func TestLocalProviderStreamsThroughCapability(t *testing.T) {
 	root := t.TempDir()
-	store, err := newLocalStorage(root, "https://capability.example.test")
+	store, err := newLocalStorage(root, "https://capability.example.test", bytes.Repeat([]byte("k"), 32))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +34,7 @@ func TestLocalProviderStreamsThroughCapability(t *testing.T) {
 
 func TestLocalProviderPromotesOnlyAfterValidationAndRetainsRetryInput(t *testing.T) {
 	ctx := context.Background()
-	store, err := newLocalStorage(t.TempDir(), "http://127.0.0.1:8281")
+	store, err := newLocalStorage(t.TempDir(), "http://127.0.0.1:8281", bytes.Repeat([]byte("k"), 32))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,11 +72,49 @@ func TestLocalProviderPromotesOnlyAfterValidationAndRetainsRetryInput(t *testing
 	retry.Cleanup()
 }
 
+// TestLocalProviderPermitUsesConfiguredSigningKey pins the byte-plane seam: the
+// provider signs each part permit with the exact key the Capability data plane
+// verifies from Objects.SigningKey, so a default-constructed local provider can
+// never emit a permit that its own ingest route rejects.
+func TestLocalProviderPermitUsesConfiguredSigningKey(t *testing.T) {
+	key := bytes.Repeat([]byte("k"), 32)
+	root := t.TempDir()
+	schema := []byte(`{"type":"object"}`)
+	path := root + "/schema.json"
+	if err := os.WriteFile(path, schema, 0600); err != nil {
+		t.Fatal(err)
+	}
+	objects, err := NewObjects(root, "http://127.0.0.1:8281", key, UploadPolicy{MaxBytes: 1 << 20, PartBytes: 1 << 20, MaxExpandedBytes: 2 << 20, MaxFiles: 128, TTL: time.Minute, ManifestPath: "manifest.json", SchemaPath: path, SchemaDigest: digest(schema)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	local, ok := objects.store.(*localStorage)
+	if !ok || !bytes.Equal(local.signingKey, key) {
+		t.Fatalf("local provider key=%q want configured key", local.signingKey)
+	}
+	digest := "sha256:" + strings.Repeat("ab", 32)
+	auth, err := objects.store.AuthorizePart(context.Background(), "upload-abc", "", 1, 128, digest, time.Now().Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(auth.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	permit := u.Query().Get("permit")
+	if _, err = readPermitWithKey(objects.SigningKey, permit); err != nil {
+		t.Fatalf("data plane must accept the provider's own permit: %v", err)
+	}
+	if _, err = readPermitWithKey(bytes.Repeat([]byte("z"), 32), permit); err == nil {
+		t.Fatal("a different signing key must not verify the provider permit")
+	}
+}
+
 func TestLocalProviderRejectsUnencryptedPublicEndpoint(t *testing.T) {
-	if _, err := newLocalStorage(t.TempDir(), "http://objects.example.test"); err == nil {
+	if _, err := newLocalStorage(t.TempDir(), "http://objects.example.test", bytes.Repeat([]byte("k"), 32)); err == nil {
 		t.Fatal("non-loopback http upload endpoint must be rejected")
 	}
-	if _, err := newLocalStorage(t.TempDir(), "http://127.0.0.1:8281"); err != nil {
+	if _, err := newLocalStorage(t.TempDir(), "http://127.0.0.1:8281", bytes.Repeat([]byte("k"), 32)); err != nil {
 		t.Fatalf("loopback http must be admitted for local development: %v", err)
 	}
 }

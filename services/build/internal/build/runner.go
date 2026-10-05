@@ -24,6 +24,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 	api "opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/publicjson"
 )
 
 // Runner invokes one instance-approved, isolated BuildKit builder. It receives
@@ -157,6 +158,71 @@ func (r *Runner) ValidateInput(in *api.BuildInputSnapshot) error {
 	}
 	if in.RuntimeContract.ApplicationRevisionTemplate == nil || in.RuntimeContractReference == nil || in.WebuiContractReference == nil {
 		return errors.New("publisher descriptor and references are required")
+	}
+	if err := validateCombination(in.RuntimeContract, in.WebuiContract); err != nil {
+		return err
+	}
+	// The frozen snapshot digest is the identity every later owner readback and
+	// claim binding compares against. Re-derive it from the same canonical
+	// encoding the Capability owner freezes, so an assembled or edited snapshot
+	// cannot carry a digest that does not describe its own bytes.
+	if digest(BuildInputDigestBytes(in)) != in.SnapshotDigest {
+		return errors.New("Build input snapshot digest does not describe its bytes")
+	}
+	return nil
+}
+
+// BuildInputDigestBytes is the canonical encoding of the three-input snapshot
+// facts with the digest field itself cleared. Both the Capability owner and this
+// owner recompute the frozen identity from these bytes, so the value can never
+// depend on protojson's intentional cross-build whitespace instability. The
+// three reference-claim IDs are this owner's coordination bookkeeping, acquired
+// after the freeze; they are bound to this digest but never hashed into it.
+func BuildInputDigestBytes(in *api.BuildInputSnapshot) []byte {
+	probe := proto.Clone(in).(*api.BuildInputSnapshot)
+	probe.SnapshotDigest = ""
+	probe.PackageClaimId = ""
+	probe.RuntimeClaimId = ""
+	probe.WebuiClaimId = ""
+	encoded, err := publicjson.Marshal(probe)
+	if err != nil {
+		return nil
+	}
+	return encoded
+}
+
+// validateCombination refuses a three-input combination whose individually
+// approved parts are mutually incompatible: the Runtime Release must declare the
+// Build recipe's selected Package format, and the WebUI must declare the Runtime
+// Release's ABI. Build re-checks this from the frozen snapshot because Build is
+// the last owner before an exporter starts.
+func validateCombination(runtime *api.RuntimePublisherContract, webui *api.WebuiPublisherContract) error {
+	recipe := runtime.GetBuildRecipe()
+	if recipe == nil || runtime.GetImage() == nil || webui.GetImage() == nil {
+		return errors.New("Runtime publisher contract is incomplete")
+	}
+	formats := runtime.GetPackageFormatVersions()
+	format := recipe.GetPackageInput().GetFormatVersion()
+	if len(formats) == 0 || format == "" {
+		return errors.New("Runtime Release declares no approved Package format")
+	}
+	matched := false
+	for _, candidate := range formats {
+		matched = matched || candidate == format
+	}
+	if !matched {
+		return errors.New("Runtime Build recipe selects an unapproved Package format")
+	}
+	abi := runtime.GetRuntimeAbiVersion()
+	if abi == "" || len(webui.GetRuntimeAbiVersions()) == 0 {
+		return errors.New("Runtime Release or WebUI declares no Runtime ABI")
+	}
+	supported := false
+	for _, candidate := range webui.GetRuntimeAbiVersions() {
+		supported = supported || candidate == abi
+	}
+	if !supported {
+		return errors.New("selected WebUI does not support the Runtime Release ABI")
 	}
 	return nil
 }
