@@ -49,8 +49,8 @@ test("owner delete continues only from exact durable compute pending evidence", 
   const auth = { cookie: "session=test", csrf: "csrf-test" };
   const operationId = "workspace-delete-alpha";
   const responses = [
-    { response: { status: 202, headers: new Headers({ "retry-after": "1" }) }, payload: { status: "pending", phase: "storage_destroyed", ownerStage: "compute", computeStatus: "destroying", operationId, workspaceId: "ws-alpha", computeReadbacks: 1, maxComputeReadbacks: 8 } },
-    { response: { status: 202, headers: new Headers({ "retry-after": "1" }) }, payload: { status: "pending", phase: "storage_destroyed", ownerStage: "compute", computeStatus: "destroying", operationId, workspaceId: "ws-alpha", computeReadbacks: 2, maxComputeReadbacks: 8 } },
+    { response: { status: 202, headers: new Headers({ "retry-after": "1" }) }, payload: { status: "pending", phase: "storage_absent", ownerStage: "compute", computeStatus: "destroying", operationId, workspaceId: "ws-alpha", computeReadbacks: 1, maxComputeReadbacks: 8 } },
+    { response: { status: 202, headers: new Headers({ "retry-after": "1" }) }, payload: { status: "pending", phase: "storage_absent", ownerStage: "compute", computeStatus: "destroying", operationId, workspaceId: "ws-alpha", computeReadbacks: 2, maxComputeReadbacks: 8 } },
     { response: { status: 200, headers: new Headers() }, payload: { status: "deleted", operationId, workspaceId: "ws-alpha" } }
   ];
   const calls = [];
@@ -72,7 +72,7 @@ test("owner delete continues only from exact durable compute pending evidence", 
   for (const call of calls) assert.deepEqual(call, [path, init, auth, [200, 202]]);
   assert.equal(pendingEvidence.length, 2);
   assert.deepEqual(pendingEvidence.at(-1), {
-    phase: "storage_destroyed", ownerStage: "compute", ordinal: 2, max: 8,
+    phase: "storage_absent", ownerStage: "compute", ordinal: 2, max: 8,
     operationDigest: `sha256:${createHash("sha256").update(operationId).digest("hex")}`
   });
   assert.doesNotMatch(JSON.stringify(pendingEvidence), /workspace-delete-alpha|ws-alpha/);
@@ -81,7 +81,7 @@ test("owner delete continues only from exact durable compute pending evidence", 
 test("owner delete response-loss continuation preserves the consumed read ordinal", async () => {
   const responses = [
     { response: { status: 202, headers: new Headers({ "retry-after": "1" }) }, payload: {
-      status: "pending", phase: "storage_destroyed", ownerStage: "compute", computeStatus: "destroying",
+      status: "pending", phase: "storage_absent", ownerStage: "compute", computeStatus: "destroying",
       operationId: "workspace-delete-alpha", workspaceId: "ws-alpha", computeReadbacks: 2, maxComputeReadbacks: 8
     } },
     { response: { status: 200, headers: new Headers() }, payload: {
@@ -102,7 +102,7 @@ test("owner delete response-loss continuation preserves the consumed read ordina
 });
 
 test("owner delete rejects pending identity, ordinal, and budget drift", async () => {
-  const base = { status: "pending", phase: "storage_destroyed", ownerStage: "compute", computeStatus: "destroying", operationId: "workspace-delete-alpha", workspaceId: "ws-alpha", computeReadbacks: 1, maxComputeReadbacks: 8 };
+  const base = { status: "pending", phase: "storage_absent", ownerStage: "compute", computeStatus: "destroying", operationId: "workspace-delete-alpha", workspaceId: "ws-alpha", computeReadbacks: 1, maxComputeReadbacks: 8 };
   for (const [name, pending] of Object.entries({
     identity: { ...base, operationId: "workspace-delete-other" },
     ordinal: { ...base, computeReadbacks: 2 },
@@ -119,7 +119,7 @@ test("owner delete rejects pending identity, ordinal, and budget drift", async (
 test("owner delete failure keeps only redacted last pending evidence", async () => {
   const operationId = "workspace-delete-secret-alpha";
   const pending = {
-    status: "pending", phase: "storage_destroyed", ownerStage: "compute", computeStatus: "destroying",
+    status: "pending", phase: "storage_absent", ownerStage: "compute", computeStatus: "destroying",
     operationId, workspaceId: "ws-secret-alpha", computeReadbacks: 1, maxComputeReadbacks: 8
   };
   const evidence = [];
@@ -139,7 +139,7 @@ test("owner delete failure keeps only redacted last pending evidence", async () 
   }, async () => {}), /continuation failed/);
   assert.equal(evidence.length, 1);
   assert.deepEqual(evidence[0], {
-    phase: "storage_destroyed", ownerStage: "compute", ordinal: 1, max: 8,
+    phase: "storage_absent", ownerStage: "compute", ordinal: 1, max: 8,
     operationDigest: `sha256:${createHash("sha256").update(operationId).digest("hex")}`
   });
   assert.doesNotMatch(JSON.stringify(evidence), /workspace-delete-secret-alpha|ws-secret-alpha/);

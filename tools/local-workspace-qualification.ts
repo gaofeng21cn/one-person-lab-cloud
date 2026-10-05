@@ -679,7 +679,9 @@ export async function continueWorkspaceDelete(http, path, init, auth, expected, 
     const maximum = Number(pending?.maxComputeReadbacks);
     const retryAfterRaw = result.response.headers?.get("retry-after");
     const retryAfter = retryAfterRaw === "1" ? 1 : Number.NaN;
-    if (pending?.status !== "pending" || pending?.phase !== "storage_destroyed" || pending?.ownerStage !== "compute" ||
+    // The durable phase names the stage that just completed; ownerStage names the
+    // stage the operation is working on, so a compute wait reports storage_absent.
+    if (pending?.status !== "pending" || pending?.phase !== "storage_absent" || pending?.ownerStage !== "compute" ||
       pending?.computeStatus !== "destroying" || pending?.operationId !== expected.operationId || pending?.workspaceId !== expected.workspaceId ||
       !Number.isSafeInteger(readback) || !Number.isSafeInteger(maximum) || readback !== previousReadback + 1 ||
       maximum !== 8 || maxReadbacks !== 0 && maximum !== maxReadbacks || readback >= maximum || retryAfter !== 1) {
