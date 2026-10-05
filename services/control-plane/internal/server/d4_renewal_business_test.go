@@ -168,7 +168,11 @@ func TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp(t *testing.
 	if len(wallet.writes) != 0 {
 		t.Fatal("insufficient balance was charged")
 	}
-	now := time.Now().UTC()
+	// Keep the scenario on the fixture's synthetic clock. Using the host wall
+	// clock here makes the fixed paidThrough boundary cross one or more billing
+	// periods as the calendar advances, changing which renewal operation the
+	// test observes.
+	now := fixture.paidThrough.Add(time.Second)
 	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now); err != nil {
 		t.Fatal(err)
 	}
