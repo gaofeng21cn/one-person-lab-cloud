@@ -147,7 +147,12 @@ func (app *controlPlaneServer) ensureBootstrapAdmin(ctx context.Context, service
 		}
 		return nil
 	}
-	bootstrapAccount := map[string]any{"id": "acct-admin", "ownerUserId": "usr-admin", "sub2apiUserId": identity.ID, "status": "active"}
+	// The platform-owned bootstrap operator is also the deployment's buyer in
+	// the Local qualification path, so it defaults to the same purchase
+	// eligibility as a provisioned account and as the customer-owned bootstrap
+	// below. The operator surface can still revoke or grant it explicitly, and
+	// the launch admission switch keeps its own independent stop.
+	bootstrapAccount := map[string]any{"id": "acct-admin", "ownerUserId": "usr-admin", "sub2apiUserId": identity.ID, "status": "active", "workspacePurchaseEnabled": true}
 	bootstrapUser := map[string]any{"id": "usr-admin", "email": identityEmail, "accountId": "acct-admin", "role": "admin", "status": "active"}
 	return app.tables.CreateProvisionedAccount(ctx, bootstrapAccount, bootstrapUser)
 }
