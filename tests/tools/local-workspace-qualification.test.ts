@@ -30,7 +30,8 @@ import {
   validateJ0ReadyReceipt,
   validateLocalJ1AccountingReadback,
   validateLocalQualificationReceipt,
-  workspaceDeleteFailureEvidence
+  workspaceDeleteFailureEvidence,
+  workspaceReservedKeyName
 } from "../../tools/local-workspace-qualification.ts";
 import { runLocalWorkspaceQualification } from "../../tools/local-workspace-qualification.ts";
 
@@ -588,15 +589,18 @@ test("Local J1 accounting allows unrelated history and rejects duplicate operati
   const workspaceId = "ws-current";
   const receiptId = "receipt-current";
   const runtimeId = "runtime-current";
+  const applicationOperationId = "workspace-application-deploy-current";
   const keyId = "700";
+  const keyName = workspaceReservedKeyName(workspaceId);
+  const entryUrl = "http://127.0.0.1:32776/";
   const debitCode = "opl:current-debit";
   const amountUsdMicros = "52580000";
-  const currentKey = { id: keyId, kind: "workspace", status: "active" };
-  const historicalKey = { id: "699", kind: "workspace", status: "active" };
+  const currentKey = { id: keyId, name: keyName, kind: "workspace", status: "active" };
+  const historicalKey = { id: "699", name: "opl-workspace-historical", kind: "workspace", status: "active" };
   const currentReceipt = {
     receiptId, operationId, workspaceId, type: "billing.workspace_purchased.v1", status: "completed",
     chargeReference: debitCode, totalUsdMicros: amountUsdMicros,
-    fulfillment: { runtimeId, workspaceApiKeyId: keyId }
+    fulfillment: { computeAllocationId: "compute-current", storageId: "storage-current", attachmentId: "attachment-current" }
   };
   const historicalReceipt = {
     ...currentReceipt,
@@ -604,10 +608,10 @@ test("Local J1 accounting allows unrelated history and rejects duplicate operati
     operationId: "workspace-launch-historical",
     workspaceId: "ws-historical",
     chargeReference: "opl:historical-debit",
-    fulfillment: { runtimeId: "runtime-historical", workspaceApiKeyId: "699" }
+    fulfillment: { computeAllocationId: "compute-historical", storageId: "storage-historical", attachmentId: "attachment-historical" }
   };
   const input = {
-    operationId, workspaceId, receiptId, runtimeId, keyId, sub2apiUserId: "41", debitCode, amountUsdMicros,
+    operationId, workspaceId, receiptId, runtimeId, keyId, keyName, sub2apiUserId: "41", debitCode, amountUsdMicros,
     beforeMicros: "1000000000", afterMicros: "947420001",
     baselineKeys: [historicalKey], baselineReceipts: [historicalReceipt],
     keys: [historicalKey, currentKey], receipts: [historicalReceipt, currentReceipt],
@@ -615,18 +619,26 @@ test("Local J1 accounting allows unrelated history and rejects duplicate operati
     history: { items: [{ valueUsdMicros: "-1000000", status: "used" }] },
     debit: { count: 1, code: debitCode, userId: "41", amountUsdMicros },
     evidence: {
-      launch: { operationId, workspaceId, receiptId },
-      runtime: { runtimeId },
+      launch: { operationId, workspaceId, receiptId, computeAllocationId: "compute-current", storageId: "storage-current", attachmentId: "attachment-current" },
+      current: { status: "ready", entryUrl, operationId: applicationOperationId },
+      workspace: { url: entryUrl },
+      runtime: { runtimeId, currentApplication: { operationId: applicationOperationId } },
       receipt: currentReceipt
     }
   };
 
   assert.deepEqual(validateLocalJ1AccountingReadback(input), { walletExactDeltaObserved: false });
   assert.throws(() => validateLocalJ1AccountingReadback({ ...input, keys: [...input.keys, currentKey] }), /key cardinality/);
+  assert.throws(() => validateLocalJ1AccountingReadback({ ...input, keys: [historicalKey, { ...currentKey, name: "opl-workspace-other" }] }), /key cardinality/);
   assert.throws(() => validateLocalJ1AccountingReadback({ ...input, receipts: [...input.receipts, currentReceipt] }), /receipt cardinality/);
   assert.throws(() => validateLocalJ1AccountingReadback({ ...input, debit: { ...input.debit, count: 2 } }), /debit cardinality/);
   assert.throws(() => validateLocalJ1AccountingReadback({ ...input, baselineKeys: [...input.baselineKeys, currentKey] }), /predates/);
+  assert.throws(() => validateLocalJ1AccountingReadback({ ...input, baselineKeys: [...input.baselineKeys, { id: "698", name: keyName, kind: "workspace", status: "active" }] }), /predates/);
   assert.throws(() => validateLocalJ1AccountingReadback({ ...input, baselineReceipts: [...input.baselineReceipts, currentReceipt] }), /predates/);
+  assert.throws(() => validateLocalJ1AccountingReadback({
+    ...input,
+    evidence: { ...input.evidence, runtime: { runtimeId, currentApplication: { operationId: "workspace-application-deploy-other" } } }
+  }), /accounting binding/);
 });
 
 test("READY receipt binds the exact durable and accounting evidence", () => {
@@ -649,8 +661,13 @@ test("READY receipt binds the exact durable and accounting evidence", () => {
     debit: { count: 1, accountId: "acct-admin", operationId: "workspace-launch-alpha", workspaceId: "ws-alpha", code: "opl:qualification-alpha", userId: "41", amountUsdMicros: "52580000" },
     wallet: { beforeUsdMicros: "100000000", afterUsdMicros: "47420000", afterDeleteUsdMicros: "47420000" },
     receipt: {
-      count: 1, id: "receipt-alpha", accountId: "acct-admin", operationId: "workspace-launch-alpha", workspaceId: "ws-alpha", runtimeId: "rt-alpha",
-      keyId: "71", chargeReference: "opl:qualification-alpha", amountUsdMicros: "52580000"
+      count: 1, id: "receipt-alpha", accountId: "acct-admin", operationId: "workspace-launch-alpha", workspaceId: "ws-alpha",
+      provisioningMode: "resource_only", computeAllocationId: "compute-alpha", storageId: "storage-alpha", attachmentId: "attachment-alpha",
+      chargeReference: "opl:qualification-alpha", amountUsdMicros: "52580000"
+    },
+    application: {
+      status: "ready", operationId: "workspace-application-deploy-alpha", applicationId: "opl-app", revision: "1".repeat(64),
+      entryUrl: "http://127.0.0.1:32776/", runtimeId: "rt-alpha", keyId: "71", resumed: false
     },
     restart: { performed: true, operationStable: true, workspaceStable: true, runtimeStable: true, receiptStable: true },
     deletion: {
@@ -685,6 +702,15 @@ test("READY receipt binds the exact durable and accounting evidence", () => {
   assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, qualification: { authorityMode: "fixture", p0Ready: true } }), /authority classification/);
   assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, wallet: { ...fixtureReceipt.wallet, afterUsdMicros: "47420001" } }), /fixture wallet/);
   assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, authorityWriteCounts: { ...fixtureReceipt.authorityWriteCounts, debits: 2 } }), /authority write counts/);
+  assert.throws(() => validateLocalQualificationReceipt({
+    ...fixtureReceipt, receipt: { ...fixtureReceipt.receipt, runtimeId: "rt-alpha" }
+  }), /receipt binding/);
+  assert.throws(() => validateLocalQualificationReceipt({
+    ...fixtureReceipt, application: { ...fixtureReceipt.application, status: "pending" }
+  }), /application installation/);
+  assert.throws(() => validateLocalQualificationReceipt({
+    ...fixtureReceipt, application: { ...fixtureReceipt.application, runtimeId: "rt-other" }
+  }), /application installation/);
 });
 
 test("local build proxy rejects credentials or URL parameters and errors redact the entire URL authority and query", () => {
@@ -796,15 +822,18 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
   const workspaceId = `ws-${stableID("workspace-launch-v2", accountId, operationId).slice(0, 18)}`;
   const receiptId = "receipt-j1";
   const runtimeId = "runtime-j1";
+  const applicationOperationId = "workspace-application-deploy-j1";
   const keyId = "700";
+  const keyName = workspaceReservedKeyName(workspaceId);
   const debitCode = "opl:j1-debit";
   const amountUsdMicros = "52580000";
-  const workspaceURL = `http://workspace.test/w/${workspaceId}/`;
-  const historicalKey = { id: "699", kind: "workspace", status: "active" };
+  let entryURL = "";
+  const resourceFulfillment = { computeAllocationId: "compute-j1", storageId: "storage-j1", attachmentId: "attachment-j1" };
+  const historicalKey = { id: "699", name: "opl-workspace-historical", kind: "workspace", status: "active" };
   const historicalReceipt = {
     receiptId: "receipt-historical", operationId: "workspace-launch-historical", workspaceId: "ws-historical",
     type: "billing.workspace_purchased.v1", status: "completed", chargeReference: "opl:historical-debit",
-    totalUsdMicros: "52580000", fulfillment: { runtimeId: "runtime-historical", workspaceApiKeyId: "699" }
+    totalUsdMicros: "52580000", fulfillment: { computeAllocationId: "compute-historical", storageId: "storage-historical", attachmentId: "attachment-historical" }
   };
   const requests = [];
   const counts = { mappingPosts: 0, workspacePosts: 0, keyCreates: 0, debits: 0, refunds: 0, deletes: 0, restarts: 0 };
@@ -816,8 +845,11 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
     response.end(JSON.stringify(payload));
   };
   const launch = (status = "succeeded") => ({
-    operationId, workspaceId, status, phase: status, receiptId, url: workspaceURL,
-    workspaceApiKeyId: keyId, computeAllocationId: "compute-j1", storageId: "storage-j1", attachmentId: "attachment-j1"
+    operationId, workspaceId, status, phase: status, receiptId,
+    computeAllocationId: "compute-j1", storageId: "storage-j1", attachmentId: "attachment-j1"
+  });
+  const currentApplication = () => ({
+    operationId: applicationOperationId, applicationId: "opl-app", revision: "revision-j1", status: "ready", entryUrl: entryURL
   });
   server = createServer(async (request, response) => {
     const url = new URL(request.url || "/", "http://qualification.test");
@@ -844,7 +876,7 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
     if (method === "GET" && url.pathname === "/api/gateway/wallet") return send(response, 200, envelope("sub2api", { userId: "41", currency: "USD", usdMicros: counts.debits ? "947420000" : "1000000000", status: "active" }));
     if (method === "GET" && url.pathname === "/api/gateway/usage-summary") return send(response, 200, envelope("sub2api", { totalRequests: 0 }));
     if (method === "GET" && url.pathname === "/api/gateway/keys") {
-      const items = counts.keyCreates ? [historicalKey, { id: keyId, kind: "workspace", status: "active" }] : [historicalKey];
+      const items = counts.keyCreates ? [historicalKey, { id: keyId, name: keyName, kind: "workspace", status: "active" }] : [historicalKey];
       return send(response, 200, envelope("sub2api", { items, total: items.length, page: 1, pageSize: 100, pages: 1 }));
     }
     if (method === "POST" && url.pathname === "/api/pricing/preview") return send(response, 200, { resourceType: "workspace", packageId: "basic", currency: "USD", totalChargeUsdMicros: Number(amountUsdMicros) });
@@ -856,19 +888,24 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
       launchReads += 1;
       return send(response, 200, launch(launchReads === 1 ? "pending" : "succeeded"));
     }
-    if (method === "GET" && url.pathname === "/api/workspaces") return send(response, 200, envelope("control-plane", { items: [{ id: workspaceId, url: workspaceURL }], total: 1, page: 1, pageSize: 20 }));
-    if (method === "GET" && url.pathname === `/api/workspaces/${workspaceId}/runtime-status`) return send(response, 200, envelope("fabric", { workspaceId, runtimeId, ready: true, status: "running", url: workspaceURL }));
-    if (method === "GET" && url.pathname === `/api/billing/receipts/${receiptId}`) return send(response, 200, envelope("ledger", { receiptId, accountId, operationId, workspaceId, type: "billing.workspace_purchased.v1", status: "completed", chargeReference: debitCode, totalUsdMicros: amountUsdMicros, fulfillment: { runtimeId, workspaceApiKeyId: keyId } }));
+    if (method === "GET" && url.pathname === "/api/workspaces") return send(response, 200, envelope("control-plane", { items: [{ id: workspaceId, url: entryURL, openable: true, currentApplication: currentApplication() }], total: 1, page: 1, pageSize: 20 }));
+    if (method === "GET" && url.pathname === `/api/workspaces/${workspaceId}/runtime-status`) return send(response, 200, envelope("fabric", { workspaceId, runtimeId, ready: true, status: "running", url: entryURL, currentApplication: currentApplication() }));
+    if (method === "GET" && url.pathname === `/api/billing/receipts/${receiptId}`) return send(response, 200, envelope("ledger", { receiptId, accountId, operationId, workspaceId, type: "billing.workspace_purchased.v1", status: "completed", chargeReference: debitCode, totalUsdMicros: amountUsdMicros, fulfillment: resourceFulfillment }));
     if (method === "GET" && url.pathname === "/api/billing/receipts") {
-      const currentReceipt = { receiptId, accountId, operationId, workspaceId, type: "billing.workspace_purchased.v1", status: "completed", chargeReference: debitCode, totalUsdMicros: amountUsdMicros, fulfillment: { runtimeId, workspaceApiKeyId: keyId } };
+      const currentReceipt = { receiptId, accountId, operationId, workspaceId, type: "billing.workspace_purchased.v1", status: "completed", chargeReference: debitCode, totalUsdMicros: amountUsdMicros, fulfillment: resourceFulfillment };
       return send(response, 200, envelope("ledger", { receipts: counts.debits ? [historicalReceipt, currentReceipt] : [historicalReceipt], hasMore: false, nextCursor: "" }));
     }
     if (method === "GET" && url.pathname === `/api/gateway/keys/${keyId}`) return send(response, 200, envelope("sub2api", { id: keyId, kind: "workspace", status: "active" }));
     if (method === "GET" && url.pathname === `/api/gateway/keys/${keyId}/usage-summary`) return send(response, 200, envelope("sub2api", { totalRequests: 0 }));
     if (method === "GET" && url.pathname === "/api/gateway/balance-history") return send(response, 200, envelope("sub2api", { items: [{ valueUsdMicros: `-${amountUsdMicros}`, status: "used" }], total: 1, page: 1, pageSize: 20, pages: 1 }));
-    if (method === "GET" && url.pathname === `/w/${workspaceId}/`) { response.writeHead(200, { "content-type": "text/html" }); response.end("<html>OPL Workspace READY</html>"); return; }
     return send(response, 404, { error: "not_found" });
   });
+  const entryServer = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end("<html>OPL Workspace READY</html>");
+  });
+  await new Promise((resolvePromise, reject) => { entryServer.once("error", reject); entryServer.listen(0, "127.0.0.1", resolvePromise); });
+  entryURL = `http://127.0.0.1:${entryServer.address().port}/`;
   await new Promise((resolvePromise, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolvePromise); });
   const address = server.address();
   const http = createHTTP(`http://127.0.0.1:${address.port}`);
@@ -901,7 +938,11 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
       runLiveJ1: async ({ j0Ready }) => runLocalWorkspaceJ1HTTPQualification({
         http, adminEmail: "admin@example.test", adminPassword: "admin-password", qualificationEmail: accountEmail, qualificationPassword: accountPassword,
         accountProvisionKey, launchKey, operationId, workspaceId, workspaceName: "J1", wait: async () => {},
-        onStage: (stage) => stages.push(stage), readRuntime: async () => ({ runningDigest: workspaceDigest }),
+        onStage: (stage) => stages.push(stage),
+        readRuntime: async ({ runtimeId: observedRuntimeId }) => {
+          if (observedRuntimeId !== runtimeId) throw new Error("Runtime readback identity is invalid");
+          return { runningDigest: workspaceDigest };
+        },
         readDebit: async ({ code, sub2apiUserId, amountUsdMicros: value }) => ({ code, userId: sub2apiUserId, amountUsdMicros: value, count: 1 }),
         cleanup: async (scope) => { cleanupCalls.push(scope); return { containers: 0, volumes: 0, networks: 0 }; },
         receiptBase: {
@@ -917,7 +958,7 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
     const writtenReceipt = JSON.parse(await readFile(outputPath, "utf8"));
     assert.equal(writtenReceipt.j0Ready.digest, result.j0Ready.digest);
     assert.deepEqual(writtenReceipt.j0Ready.source, { sha, tree: "d".repeat(40), clean: true });
-    assert.deepEqual(stages, ["bootstrap_ready", "admin_login", "account_provision", "qualification_login", "wallet_usage_baseline", "pricing_preview", "workspace_launch", "terminal_readback", "workspace_open", "accounting_readback", "receipt_validation", "qualification_cleanup"]);
+    assert.deepEqual(stages, ["bootstrap_ready", "admin_login", "account_provision", "qualification_login", "wallet_usage_baseline", "pricing_preview", "workspace_launch", "application_installation", "terminal_readback", "workspace_open", "accounting_readback", "receipt_validation", "qualification_cleanup"]);
     assert.deepEqual(cleanupCalls, [{ accountId, workspaceId }]);
     assert.deepEqual(counts, { mappingPosts: 1, workspacePosts: 1, keyCreates: 1, debits: 1, refunds: 0, deletes: 0, restarts: 0 });
     assert.equal(requests.filter((request) => request.method === "POST" && request.path === "/api/workspace-launches").length, 1);
@@ -929,6 +970,7 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
       else process.env[name] = value;
     }
     await new Promise((resolvePromise) => server.close(() => resolvePromise()));
+    await new Promise((resolvePromise) => entryServer.close(() => resolvePromise()));
     await rm(j0Root, { recursive: true, force: true });
   }
 });
