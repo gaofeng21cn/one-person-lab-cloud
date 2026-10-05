@@ -213,6 +213,9 @@ func TestWorkspaceLaunchDebitMissingBeforeReservationRemainsAbsent(t *testing.T)
 func TestWorkspaceLaunchDebitConvergesWithBoundedReadOnlyContinuation(t *testing.T) {
 	t.Setenv("OPL_TENCENT_ZONE", "na-siliconvalley-1")
 	command := workspaceLaunchUnitCommand()
+	// The debit preflight names the zone of the provider that owns the launch,
+	// so this command carries the Tencent profile its zone environment belongs to.
+	command.ProviderProfileRef = string(fabricTencentTKE)
 	userID, charge := command.Sub2APIUserID, command.TotalChargeUSDMicros
 	usedAt := time.Date(2026, 8, 16, 2, 3, 4, 0, time.UTC)
 	code := monthlyRedeemCode(monthlyEnvironment(), command.OperationID)
