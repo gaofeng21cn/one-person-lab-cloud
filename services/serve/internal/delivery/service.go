@@ -134,7 +134,7 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 		return err
 	}
 	if address := os.Getenv("OPL_CAPABILITY_ADDR"); address != "" {
-		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.Capability.Service(), os.Getenv("OPL_CAPABILITY_TOKEN"))
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Capability), os.Getenv("OPL_CAPABILITY_TOKEN"))
 		if err != nil {
 			return err
 		}
@@ -149,7 +149,7 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 		service.References = api.NewCapabilityCoordinationClient(conn)
 	}
 	if address := os.Getenv("OPL_RUNTIME_CONTROL_ADDR"); address != "" {
-		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.RuntimeControl.Service(), os.Getenv("OPL_RUNTIME_CONTROL_TOKEN"))
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owneridentity.RuntimeControl), os.Getenv("OPL_RUNTIME_CONTROL_TOKEN"))
 		if err != nil {
 			return err
 		}
@@ -163,7 +163,7 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 		service.RuntimeReleases = api.NewRuntimeControlProductServiceClient(conn)
 	}
 	if address := os.Getenv("OPL_FABRIC_COORDINATION_ADDR"); address != "" {
-		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.Fabric.Service(), os.Getenv("OPL_FABRIC_COORDINATION_TOKEN"))
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Fabric), os.Getenv("OPL_FABRIC_COORDINATION_TOKEN"))
 		if err != nil {
 			return err
 		}
@@ -177,7 +177,7 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 		service.Resources = api.NewFabricCoordinationClient(conn)
 	}
 	if address := os.Getenv("OPL_GATEWAY_ADDR"); address != "" {
-		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.Gateway.Service(), os.Getenv("OPL_GATEWAY_TOKEN"))
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Gateway), os.Getenv("OPL_GATEWAY_TOKEN"))
 		if err != nil {
 			return err
 		}
@@ -200,7 +200,7 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 		return err
 	}
 	if address := strings.TrimSpace(os.Getenv("OPL_LEDGER_ADDR")); address != "" {
-		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.Ledger.Service(), os.Getenv("OPL_LEDGER_TOKEN"))
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Ledger), os.Getenv("OPL_LEDGER_TOKEN"))
 		if err != nil {
 			return err
 		}

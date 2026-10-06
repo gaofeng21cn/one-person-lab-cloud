@@ -112,7 +112,7 @@ func Dial(config Config) (*Clients, error) {
 		if addr == "" {
 			continue
 		}
-		options, err := config.TLS.DialOptions(owneridentity.ConsoleBFF, owner.Service(), config.Tokens[owner])
+		options, err := config.TLS.DialOptions(owneridentity.ConsoleBFF, owneridentity.DeploymentUnitTransportPrincipal(owner), config.Tokens[owner])
 		if err != nil {
 			clients.Close()
 			return nil, err
@@ -141,7 +141,7 @@ func Dial(config Config) (*Clients, error) {
 		}
 	}
 	if addr := strings.TrimSpace(config.Addresses[owneridentity.ResourceCatalog]); addr != "" {
-		options, err := config.TLS.DialOptions(owneridentity.ConsoleBFF, owneridentity.ResourceCatalog.Service(), config.Tokens[owneridentity.ResourceCatalog])
+		options, err := config.TLS.DialOptions(owneridentity.ConsoleBFF, owneridentity.DeploymentUnitTransportPrincipal(owneridentity.ResourceCatalog), config.Tokens[owneridentity.ResourceCatalog])
 		if err != nil {
 			clients.Close()
 			return nil, err
@@ -155,7 +155,7 @@ func Dial(config Config) (*Clients, error) {
 		clients.catalog = api.NewResourceCatalogProductServiceClient(conn)
 	}
 	if addr := strings.TrimSpace(config.CloudIdentityAddr); addr != "" {
-		options, err := config.TLS.DialOptions(owneridentity.ConsoleBFF, owneridentity.Service(owneridentity.Tenant), config.CloudIdentityToken)
+		options, err := config.TLS.DialOptions(owneridentity.ConsoleBFF, owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Tenant), config.CloudIdentityToken)
 		if err != nil {
 			clients.Close()
 			return nil, err
