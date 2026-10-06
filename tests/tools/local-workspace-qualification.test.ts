@@ -754,10 +754,19 @@ test("owner delete proves Gateway Secret removal and Gateway Key retention by th
   // The provider secret ref is derived from the Workspace identity, exactly like
   // Contracts' WorkspaceGatewaySecretRef.
   assert.equal(workspaceGatewaySecretRef(workspaceId), `opl-gateway-${createHash("sha256").update(workspaceId).digest("hex").slice(0, 16)}`);
-  assert.equal(retainedWorkspaceKey([{ id: "71", name: keyName, kind: "workspace", status: "active" }], workspaceId, "71"), true);
-  assert.equal(retainedWorkspaceKey([{ id: "71", name: keyName, kind: "workspace", status: "disabled" }], workspaceId, "71"), false);
-  assert.equal(retainedWorkspaceKey([], workspaceId, "71"), false);
-  assert.equal(retainedWorkspaceKey([{ id: "72", name: keyName, kind: "workspace", status: "active" }], workspaceId, "71"), false);
+  // The authority's own key record is what the retention check reads: it has no
+  // Control Plane `kind` projection, and the exact record must be unchanged.
+  const authorityKey = { id: 71, userId: 41, name: keyName, groupId: 7, status: "active" };
+  const authorityKeyRecord = { ...authorityKey };
+  assert.equal(retainedWorkspaceKey([authorityKey], [authorityKeyRecord], workspaceId, "71"), true);
+  assert.equal(retainedWorkspaceKey([authorityKey], [{ ...authorityKey, status: "disabled" }], workspaceId, "71"), false);
+  assert.equal(retainedWorkspaceKey([authorityKey], [], workspaceId, "71"), false);
+  assert.equal(retainedWorkspaceKey([authorityKey], [{ ...authorityKey, id: 72 }], workspaceId, "71"), false);
+  assert.equal(retainedWorkspaceKey([authorityKey], [{ ...authorityKey, userId: 42 }], workspaceId, "71"), false);
+  assert.equal(retainedWorkspaceKey([authorityKey], [{ ...authorityKey, name: `${keyName}-other` }], workspaceId, "71"), false);
+  assert.equal(retainedWorkspaceKey([{ ...authorityKey, name: `${keyName}-other` }], [authorityKeyRecord], workspaceId, "71"), false);
+  assert.equal(retainedWorkspaceKey([authorityKey], [authorityKeyRecord, { id: 72, userId: 41, name: `${keyName}-second`, groupId: 7, status: "active" }], workspaceId, "71"), false);
+  assert.equal(retainedWorkspaceKey([authorityKey, { id: 72, userId: 41, name: `${keyName}-second`, groupId: 7, status: "active" }], [authorityKeyRecord], workspaceId, "71"), false);
   const stages = [
     { stage: "runtime_absent", result: "absent", evidenceKind: "provider_readback", observedAt: "t1", evidenceRef: "ref-1" },
     { stage: "attachment_absent", result: "released", evidenceKind: "local_transition", observedAt: "t2", evidenceRef: "ref-2" },

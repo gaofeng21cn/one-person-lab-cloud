@@ -1182,9 +1182,21 @@ export function workspaceGatewaySecretRef(workspaceId) {
 // Delete retains the Workspace-reserved Gateway Key: after the Workspace is
 // gone, the authority still owns and meters exactly the Key this installation
 // created, unchanged, and no other Gateway Key was removed.
-export function retainedWorkspaceKey(keys, workspaceId, keyId) {
-  const exact = (keys || []).filter((candidate) => String(candidate?.id || "") === String(keyId));
-  return exact.length === 1 && exact[0]?.name === workspaceReservedKeyName(workspaceId) && exact[0]?.kind === "workspace" && exact[0]?.status === "active";
+//
+// The authority is the owner of that fact, and its own key record carries the
+// identity the authority meters (id, name, user, group, status) without Control
+// Plane's `kind` projection, so retention is proven by the exact before/after
+// record of the reserved Key and an unchanged key inventory.
+export function retainedWorkspaceKey(before, after, workspaceId, keyId) {
+  const exact = (keys) => (keys || []).filter((candidate) => String(candidate?.id || "") === String(keyId));
+  const beforeKey = exact(before);
+  const afterKey = exact(after);
+  const name = workspaceReservedKeyName(workspaceId);
+  const record = (key) => [String(key?.id || ""), key?.name, String(key?.userId ?? ""), String(key?.groupId ?? ""), key?.status].join("\u0000");
+  const inventory = (keys) => (keys || []).map((candidate) => String(candidate?.id ?? "")).sort().join(",");
+  return beforeKey.length === 1 && afterKey.length === 1 &&
+    beforeKey[0].name === name && afterKey[0].name === name && afterKey[0].status === "active" &&
+    record(beforeKey[0]) === record(afterKey[0]) && inventory(before) === inventory(after);
 }
 
 // The deletion Receipt attests every stage that preceded it: the frozen order,
@@ -1716,7 +1728,7 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
     // The Workspace-reserved Gateway Key is the one object Delete must not
     // remove: the platform retains it, so the authority still owns and meters
     // exactly the Key this installation created after the Workspace is gone.
-    const workspaceKeyRetained = retainedWorkspaceKey(authorityAfterOwnerDelete?.keys || [], workspaceId, keyId);
+    const workspaceKeyRetained = retainedWorkspaceKey(authorityBeforeDelete?.keys || [], authorityAfterOwnerDelete?.keys || [], workspaceId, keyId);
     // Fabric's injected Secret is a provider secret-root directory named from
     // the Workspace identity; that exact ref must be gone after Delete.
     const fabricSecretAbsent = deletion.secretStatus === "absent" && !existsSync(join(fabricSecretRoot, workspaceGatewaySecretRef(workspaceId)));
