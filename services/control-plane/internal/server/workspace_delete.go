@@ -523,7 +523,7 @@ func (app *controlPlaneServer) currentWorkspaceDeleteGatewayIdentity(ctx context
 
 func workspaceDeleteLaunchReceiptMatches(actual clients.ReceiptInput, expected []clients.ReceiptInput) bool {
 	for _, candidate := range expected {
-		if workspaceLaunchReceiptInputMatches(actual, candidate) {
+		if clients.ReceiptInputEqual(actual, candidate) {
 			return true
 		}
 	}
@@ -1563,7 +1563,7 @@ func (app *controlPlaneServer) recordWorkspaceDeletionReceipt(ctx context.Contex
 	}
 	input := workspaceDeletionReceiptInput(operation)
 	receipt, err := service.RecordMonthlyReceipt(ctx, input, operation.OperationID+":deletion-receipt")
-	if err != nil || receipt.ReceiptID == "" || !workspaceLaunchReceiptInputMatches(receipt.ReceiptInput, input) {
+	if err != nil || receipt.ReceiptID == "" || !clients.ReceiptInputEqual(receipt.ReceiptInput, input) {
 		return operation, errWorkspaceDeleteUnconfirmed
 	}
 	// The receipt's own stage is recorded against the written receipt, so the

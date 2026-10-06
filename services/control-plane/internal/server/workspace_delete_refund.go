@@ -375,7 +375,7 @@ func (app *controlPlaneServer) workspaceDeleteReceiptRecorded(ctx context.Contex
 	if err != nil {
 		return false, err
 	}
-	if receipt.ReceiptID != operation.DeletionReceiptID || !workspaceLaunchReceiptInputMatches(receipt.ReceiptInput, expected) {
+	if receipt.ReceiptID != operation.DeletionReceiptID || !clients.ReceiptInputEqual(receipt.ReceiptInput, expected) {
 		return false, nil
 	}
 	return true, nil

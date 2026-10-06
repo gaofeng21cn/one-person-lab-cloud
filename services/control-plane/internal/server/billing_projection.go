@@ -319,7 +319,7 @@ func settlementReceiptReconciliationCode(settlement billingSettlement, receipts 
 		actual.Cost, expected.Cost = cloneMap(actual.Cost), cloneMap(expected.Cost)
 		delete(actual.Cost, "postChargeBalanceUsdMicros")
 		delete(expected.Cost, "postChargeBalanceUsdMicros")
-		if workspaceLaunchReceiptInputMatches(actual, expected) {
+		if clients.ReceiptInputEqual(actual, expected) {
 			return ""
 		}
 	}
