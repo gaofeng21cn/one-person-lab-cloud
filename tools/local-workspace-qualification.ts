@@ -329,8 +329,8 @@ export function validateLocalQualificationReceipt(value) {
   }
   if (value.qualification.authorityMode === "fixture" &&
     (BigInt(value.wallet.beforeUsdMicros) - BigInt(value.debit.amountUsdMicros) !== BigInt(value.wallet.afterUsdMicros) ||
-      value.wallet.afterDeleteUsdMicros !== value.wallet.afterUsdMicros)) {
-    throw new Error("isolated fixture wallet readback does not equal the exact debit or changed during deletion");
+      BigInt(value.wallet.afterDeleteUsdMicros) !== BigInt(value.wallet.afterUsdMicros) + BigInt(value.refund?.amountUsdMicros || "0"))) {
+    throw new Error("isolated fixture wallet readback does not equal the exact debit and its platform refund");
   }
   // The purchase receipt binds exactly the resources this resource-only Launch
   // delivered. The Runtime and the Workspace Key belong to the default
@@ -390,7 +390,12 @@ export function validateLocalQualificationReceipt(value) {
   }
   // Delete performs no Gateway mutation in either mode: the Workspace-reserved
   // Key stays retained in the authority, so no Key deletion is ever admitted.
-  const expectedAuthorityWrites = { keyCreates: 1, keyDeletes: 0, debits: 1, refunds: 0 };
+  // The fixture lane performs the owner Delete, so Control Plane also performs
+  // the platform hourly refund for the deleted Workspace; the live lane does not
+  // delete at all and therefore records no refund.
+  const expectedAuthorityWrites = live
+    ? { keyCreates: 1, keyDeletes: 0, debits: 1, refunds: 0 }
+    : { keyCreates: 1, keyDeletes: 0, debits: 1, refunds: 1 };
   if (Object.entries(expectedAuthorityWrites).some(([key, count]) => value.authorityWriteCounts?.[key] !== count)) {
     throw new Error("qualification authority write counts are invalid");
   }
@@ -400,7 +405,17 @@ export function validateLocalQualificationReceipt(value) {
   if (Object.entries(expectedMutationCounts).some(([key, count]) => value.mutationCounts?.[key] !== count)) {
     throw new Error("qualification mutation counts are invalid");
   }
-  if (value.refund?.count !== 0) throw new Error("Workspace qualification must not refund");
+  if (live) {
+    if (value.refund?.count !== 0) throw new Error("live qualification must not refund");
+  } else if (value.refund?.count !== 1 ||
+    !/^wallet-adjustment-delete-[0-9a-f]{24}$/.test(String(value.refund?.walletOperationId || "")) ||
+    !String(value.refund?.receiptId || "").trim() || !String(value.refund?.code || "").startsWith("opl:") ||
+    String(value.refund?.userId || "") !== String(value.identities.sub2apiUserId) ||
+    value.refund?.relatedOperationId !== value.identities.launchOperationId ||
+    !/^[1-9][0-9]*$/.test(String(value.refund?.amountUsdMicros || "")) ||
+    BigInt(value.refund.amountUsdMicros) > BigInt(value.debit.amountUsdMicros)) {
+    throw new Error("platform refund for the deleted Workspace is not exactly bound");
+  }
   if (value.usage?.source !== "sub2api" || value.usage?.status !== "available") throw new Error("Sub2API usage readback is invalid");
   const serialized = JSON.stringify(value);
   if (/"(?:password|cookie|csrf|authorization|token|apiKey)"\s*:/i.test(serialized)) {
@@ -1748,16 +1763,43 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
       throw new Error("Ledger deletion Receipt binding is invalid");
     }
     let afterDeleteMicros = afterMicros;
+    let refundEvidence = { count: 0 };
     if (options.authorityMode === "fixture") {
       const adjustmentsAfterDelete = authorityAfterOwnerDelete?.adjustments || [];
       const debitAfterDelete = adjustmentsAfterDelete.filter((candidate) => candidate?.kind === "debit" && candidate?.code === debit.code);
       const refundsAfterDelete = adjustmentsAfterDelete.filter((candidate) => candidate?.kind === "refund");
-      if (debitAfterDelete.length !== 1 || refundsAfterDelete.length !== 0 || authorityAfterOwnerDelete?.writeCounts?.debits !== 1 ||
-        authorityAfterOwnerDelete?.writeCounts?.refunds !== 0) {
+      // Control Plane's deletion closeout refunds the unused part of the paid
+      // period as its own wallet operation, so exactly one refund adjustment and
+      // exactly one business_refund receipt must exist, and both must bind to
+      // this Delete operation: the wallet operation id is derived from the
+      // Delete operation id, the refunded order is the charge the platform
+      // debited, and the amount is the one the Ledger receipt records.
+      const refundWalletOperationId = `wallet-adjustment-delete-${stableID(expectedDeleteOperationId).slice(0, 24)}`;
+      const refundReceipts = (await readAllBillingReceipts(http, restartedAuth)).filter((candidate) =>
+        candidate?.type === "gateway.wallet_adjustment.v1" && candidate?.kind === "business_refund");
+      if (debitAfterDelete.length !== 1 || authorityAfterOwnerDelete?.writeCounts?.debits !== 1 ||
+        refundsAfterDelete.length !== 1 || refundReceipts.length !== 1 || authorityAfterOwnerDelete?.writeCounts?.refunds !== 1) {
         throw new Error("qualification authority Delete accounting evidence is invalid");
       }
+      const refundAdjustment = refundsAfterDelete[0];
+      const refundReceipt = refundReceipts[0];
+      if (refundReceipt?.operationId !== refundWalletOperationId || refundReceipt?.workspaceId !== workspaceId ||
+        refundReceipt?.resourceId !== workspaceId || refundReceipt?.relatedOperationId !== operationId ||
+        refundReceipt?.status !== "completed" || refundReceipt?.periodStart !== receipt.periodStart || refundReceipt?.paidThrough !== receipt.paidThrough ||
+        String(refundReceipt?.refundUsdMicros || "") !== String(refundAdjustment?.valueUsdMicros || "") ||
+        String(refundAdjustment?.amountUsdMicros || "") !== String(refundAdjustment?.valueUsdMicros || "") ||
+        String(refundAdjustment?.userId || "") !== String(sub2apiUserId) || refundAdjustment?.status !== "used" ||
+        !String(refundAdjustment?.code || "").startsWith("opl:") || !String(refundAdjustment?.usedAt || "").trim() ||
+        !(BigInt(refundReceipt.refundUsdMicros) > 0n && BigInt(refundReceipt.refundUsdMicros) <= BigInt(amountUsdMicros))) {
+        throw new Error("platform refund for the deleted Workspace is not exactly bound");
+      }
+      refundEvidence = {
+        count: 1, walletOperationId: refundWalletOperationId, receiptId: String(refundReceipt.receiptId || ""),
+        amountUsdMicros: String(refundReceipt.refundUsdMicros || ""), code: String(refundAdjustment.code || ""),
+        userId: String(refundAdjustment.userId || ""), relatedOperationId: String(refundReceipt.relatedOperationId || "")
+      };
       afterDeleteMicros = String(authorityAfterOwnerDelete?.wallet?.usdMicros || "");
-      if (!/^\d+$/.test(afterDeleteMicros) || afterDeleteMicros !== afterMicros) {
+      if (!/^\d+$/.test(afterDeleteMicros) || BigInt(afterDeleteMicros) !== BigInt(afterMicros) + BigInt(refundEvidence.amountUsdMicros)) {
         throw new Error("qualification wallet changed during Workspace Delete");
       }
     }
@@ -1811,7 +1853,7 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
       residuals,
       authorityWriteCounts: authorityAfterOwnerDelete?.writeCounts,
       mutationCounts: { workspaceLaunchPosts: 1, workspaceDeleteRequests: 1, refundPosts: 0 },
-      refund: { count: 0 },
+      refund: refundEvidence,
       usage: { source: "sub2api", status: "available", totalRequests: usage.totalRequests },
       qualification: { authorityMode: options.authorityMode, p0Ready: false },
       deferred: [...deferredCloudGates]

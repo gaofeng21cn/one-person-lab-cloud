@@ -662,7 +662,7 @@ test("READY receipt binds the exact durable and accounting evidence", () => {
       runtimeId: "rt-alpha", keyId: "71", debitCode: "opl:qualification-alpha", purchaseReceiptId: "receipt-alpha"
     },
     debit: { count: 1, accountId: "acct-admin", operationId: "workspace-launch-alpha", workspaceId: "ws-alpha", code: "opl:qualification-alpha", userId: "41", amountUsdMicros: "52580000" },
-    wallet: { beforeUsdMicros: "100000000", afterUsdMicros: "47420000", afterDeleteUsdMicros: "47420000" },
+    wallet: { beforeUsdMicros: "100000000", afterUsdMicros: "47420000", afterDeleteUsdMicros: "99926972" },
     receipt: {
       count: 1, id: "receipt-alpha", accountId: "acct-admin", operationId: "workspace-launch-alpha", workspaceId: "ws-alpha",
       provisioningMode: "resource_only", computeAllocationId: "compute-alpha", storageId: "storage-alpha", attachmentId: "attachment-alpha",
@@ -695,9 +695,15 @@ test("READY receipt binds the exact durable and accounting evidence", () => {
       ]
     },
     residuals: { containers: 0, volumes: 0, networks: 0 },
-    authorityWriteCounts: { keyCreates: 1, keyDeletes: 0, debits: 1, refunds: 0 },
+    authorityWriteCounts: { keyCreates: 1, keyDeletes: 0, debits: 1, refunds: 1 },
     mutationCounts: { workspaceLaunchPosts: 1, workspaceDeleteRequests: 1, refundPosts: 0 },
-    refund: { count: 0 },
+    // The deletion closeout's platform refund: the wallet operation derives from
+    // the Delete operation, refunds the charge that paid for the period, and is
+    // recorded by its own Ledger receipt.
+    refund: {
+      count: 1, walletOperationId: `wallet-adjustment-delete-${"a".repeat(24)}`, receiptId: "receipt-refund",
+      amountUsdMicros: "52506972", code: "opl:qualification-refund", userId: "41", relatedOperationId: "workspace-launch-alpha"
+    },
     usage: { source: "sub2api", status: "available", totalRequests: 0 },
     qualification: { authorityMode: "fixture", p0Ready: false },
     deferred: ["tencent-tke", "production-sub2api", "production-secrets"]
@@ -737,6 +743,15 @@ test("READY receipt binds the exact durable and accounting evidence", () => {
   assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, qualification: { authorityMode: "fixture", p0Ready: true } }), /authority classification/);
   assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, wallet: { ...fixtureReceipt.wallet, afterUsdMicros: "47420001" } }), /fixture wallet/);
   assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, authorityWriteCounts: { ...fixtureReceipt.authorityWriteCounts, debits: 2 } }), /authority write counts/);
+  assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, authorityWriteCounts: { ...fixtureReceipt.authorityWriteCounts, refunds: 0 } }), /authority write counts/);
+  assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, refund: { ...fixtureReceipt.refund, count: 0 } }), /platform refund/);
+  assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, refund: { ...fixtureReceipt.refund, relatedOperationId: "workspace-launch-other" } }), /platform refund/);
+  assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, refund: { ...fixtureReceipt.refund, walletOperationId: "wallet-adjustment-delete-short" } }), /platform refund/);
+  assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, refund: { ...fixtureReceipt.refund, code: "refund-without-owner-prefix" } }), /platform refund/);
+  assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, refund: { ...fixtureReceipt.refund, amountUsdMicros: "52580001" } }), /platform refund/);
+  assert.throws(() => validateLocalQualificationReceipt({
+    ...fixtureReceipt, wallet: { ...fixtureReceipt.wallet, afterDeleteUsdMicros: "47420000" }
+  }), /fixture wallet/);
   assert.throws(() => validateLocalQualificationReceipt({
     ...fixtureReceipt, receipt: { ...fixtureReceipt.receipt, runtimeId: "rt-alpha" }
   }), /receipt binding/);
