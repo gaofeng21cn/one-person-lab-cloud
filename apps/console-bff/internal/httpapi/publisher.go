@@ -38,7 +38,7 @@ func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneri
 			writePublisherIdentityError(w, r, err)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/api/v2/admin/catalog/") {
+		if strings.HasPrefix(r.URL.Path, "/api/v2/admin/") {
 			caller.Session = proto.Clone(caller.Session).(*api.Session)
 			caller.Session.TenantId = nil
 		}
@@ -159,6 +159,12 @@ func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneri
 }
 
 func (s *Server) registerPublisherRoutes(mux *http.ServeMux) {
+	s.publisherRoute(mux, "POST /api/v2/admin/tenants", owneridentity.Tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATETENANT, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", func() proto.Message { return &api.CreateTenantRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		if s.tenant == nil {
+			return nil, status.Error(codes.Unavailable, "tenant owner is not configured")
+		}
+		return s.tenant.CreateTenant(r.Context(), &api.CreateTenantRpcRequest{Context: c, Body: body.(*api.CreateTenantRequest)})
+	})
 	mux.HandleFunc("GET /api/v2/auth/session", func(w http.ResponseWriter, r *http.Request) {
 		publisherRequestID(r)
 		w.Header().Set("Cache-Control", "no-store")
