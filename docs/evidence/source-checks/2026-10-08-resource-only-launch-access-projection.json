@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_resource_only_launch_access_projection_source_check",
+  "revision": 1,
+  "recordedAt": "2026-10-08T00:00:00Z",
+  "result": "a_resource_only_launch_no_longer_compares_the_gateway_key_identity_it_does_not_own_so_the_entry_serves_the_application_whose_own_installation_bound_the_key",
+  "window": "tke_serial",
+  "windowTitle": "TKE end-to-end closure step 9 - the resource-only Launch access gate refused the application its own install had bound",
+  "branch": "codex/serve-resource-only-workspace-with-app-bound-key",
+  "baseMainSha": "41a51bdc2387f7abf73046bdbc150664c62411e7",
+  "sourceBaseSha": "41a51bdc2387f7abf73046bdbc150664c62411e7",
+  "rootCause": {
+    "owner": "one-person-lab-cloud",
+    "fact": "`workspaceLaunchAccessProjectionMismatchFields` compared the Workspace row's `workspaceApiKeyId` against the retained Launch projection unconditionally. A resource-only Launch provisions resources only and therefore carries no key identity on its operation facts, while the default-application installation that follows creates its own Gateway key and writes it onto the same Workspace row in `workspace_application_deployment_driver.go`. The comparison could therefore never agree once the application was installed.",
+    "consequence": "After a real purchase and a completed default-application install, the Workspace entry gate answered 409 `workspace_runtime_truth_unavailable` for both the per-binding origin and the `/w/` path, permanently, even though the Workspace read and the runtime read both reported the application ready. The installed application could not be reached at all.",
+    "canonicalOwnership": "The Launch activation owns the resource entitlement and the Workspace row owns the live application binding and its key identity. The access gate re-derived a key identity the Launch shape does not own, which is the duplicate-writer defect the module contract forbids."
+  },
+  "change": {
+    "ownerFile": "services/control-plane/internal/server/workspace_launch_activation.go",
+    "shape": "The key-identity comparison in `workspaceLaunchAccessProjectionMismatchFields` now applies only to a Launch that actually owns a Gateway key; a `WorkspaceProvisioningResourceOnly` Launch skips it and keeps every other stable projection check. `workspaceLaunchProjectionMismatchFields` (the activation-completion check, a full-Launch path) is unchanged.",
+    "closedSeam": "The public seam is the existing per-binding application origin route, exercised end to end by `TestWorkspaceApplicationOriginServesAfterTheApplicationBindsItsOwnKey`; no new interface, flag, or fallback was added."
+  },
+  "evidence": {
+    "red": {
+      "command": "go -C services/control-plane test ./internal/server/ -run TestWorkspaceApplicationOriginServesAfterTheApplicationBindsItsOwnKey -count=1",
+      "result": "fail",
+      "observed": "the application-bound key refused its own ready application: 409 {\"error\":\"workspace_runtime_truth_unavailable\"}; the recorded audit was stage=workspace_access reason=canonical_facts_mismatch failed_fields=[workspace_api_key_id]",
+      "capturedAt": "2026-10-08",
+      "method": "the production change was temporarily reverted in the working tree for this run only and restored afterwards"
+    },
+    "green": {
+      "command": "go -C services/control-plane test ./internal/server/ -run 'TestWorkspaceApplicationOriginServesAfterTheApplicationBindsItsOwnKey|TestWorkspaceLaunchAccessProjectionStillBindsTheKeyForAFullLaunch' -count=1",
+      "result": "pass",
+      "covers": "the entry now serves the ready application whose own install bound the key, and a full Launch still reports a key-identity disagreement as a defect instead of absorbing it"
+    },
+    "repository": {
+      "command": "npm run verify:local",
+      "result": "pass",
+      "evidence": "Local verification passed."
+    },
+    "liveRefusal": {
+      "workspaceId": "ws-69192bbd2e43666be3",
+      "applicationId": "opl-app",
+      "revision": "8d15aba7efc8207d9e8e0ad4525a4d263bf8304be62ba319f30b664c79bb1a0e",
+      "origin": "https://ws-69192bbd2e43666be3-7dbacb8c053a.medopl.com/",
+      "observedAt": "2026-10-07T22:17Z",
+      "originResult": "409 {\"error\":\"workspace_runtime_truth_unavailable\"}",
+      "pathResult": "GET https://workspace.medopl.com/w/ws-69192bbd2e43666be3/ -> 409 {\"error\":\"workspace_runtime_truth_unavailable\"}",
+      "workspaceRead": "available=true; the customer projection names the install's applicationBinding, and the Gateway budget read resolves keyId 371 from the Workspace row, which is the only writer that can supply it",
+      "runtimeRead": "Fabric reports currentApplication.status=ready with the same entryUrl and ready=true, so only the access gate disagreed",
+      "applicationBinding": "opl-app@8d15aba7efc8207d9e8e0ad4525a4d263bf8304be62ba319f30b664c79bb1a0e",
+      "gatewayKeyId": "371"
+    }
+  },
+  "claimBoundary": "Source-check plus focused owner tests plus a captured live refusal. This proves the Cloud-side defect and its repair at the access-gate owner. It does not prove the refused deployment was fixed in place: the running Candidate 55f4266a predates the repair, so closure requires a new Candidate, an Instance deployment of it, and a separate authorized purchase. It also does not transfer or narrow any Instance obligation recorded under opl-instance-medopl.",
+  "notRun": [
+    "No Candidate was built from this branch and no Instance deployment was dispatched; the protected Instance chain remains the owner of those steps.",
+    "No Tencent resource was created, changed, or deleted by this receipt.",
+    "No production charge was made; the purchase under step 8 was covered by its own authorization."
+  ],
+  "secrets": "none",
+  "implementationSha": "60265d7a"
+}

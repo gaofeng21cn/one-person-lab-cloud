@@ -15,6 +15,13 @@ previous ready observation. Serve owns the current route binding and access
 data plane; Control Plane route resolution is migration-source behavior to
 retire.
 
+The retained access gate admits a request only while the Workspace row still
+agrees with the Launch that created it. The comparison covers the fields the
+Launch owns: a resource-only Launch provisions resources and carries no Gateway
+key identity, so the key its own default-application installation later binds
+onto the same row is that installation's fact and is not compared. A full
+Launch keeps the key-identity check, because it does own the key it issues.
+
 A declared public entry uses the application's own origin and root path. Serve's
 access data plane does not route a generic application through OPL App's `/w`
 cookie proxy or transfer management credentials. The application owns its
