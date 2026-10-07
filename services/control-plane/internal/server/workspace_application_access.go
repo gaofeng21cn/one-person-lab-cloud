@@ -169,6 +169,7 @@ func workspaceCurrentApplicationRuntimeResponse(current *workspaceCurrentApplica
 	}
 	return map[string]any{
 		"workspaceId": observation.WorkspaceID, "runtimeId": observation.RuntimeID,
+		"entry": observation.Entry,
 		"status": status, "ready": current.Status == "ready", "url": current.EntryURL,
 		"checks": checks, "currentApplication": current,
 	}

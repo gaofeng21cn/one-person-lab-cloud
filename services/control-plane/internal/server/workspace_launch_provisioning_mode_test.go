@@ -175,3 +175,32 @@ func TestWorkspaceLaunchActivationRowResourceOnlyKeepsApplicationBindingEmpty(t 
 		t.Fatalf("resource-only activation with runtime facts error = %v, want runtime_fact_forbidden", err)
 	}
 }
+
+func TestWorkspaceLaunchReadbackPublishesThePersistedProvisioningMode(t *testing.T) {
+	for _, command := range []workspaceLaunchReconcileCreate{workspaceLaunchUnitCommand(), workspaceLaunchResourceOnlyUnitCommand()} {
+		operation, err := newWorkspaceLaunchReconcileOperation(command)
+		if err != nil {
+			t.Fatal(err)
+		}
+		row, err := workspaceLaunchReconcileOperationRow(operation)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := workspaceLaunchResponse(row)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := response["provisioningMode"]; got != string(operation.provisioningMode()) {
+			t.Fatalf("readback mode = %v, want %s", got, operation.provisioningMode())
+		}
+	}
+}
+
+func TestWorkspaceApplicationRuntimeReadbackPublishesTheOwnerEntry(t *testing.T) {
+	entry := &contracts.WorkspaceApplicationEntry{ServiceName: "application-main", Port: 3000}
+	observation := contracts.WorkspaceApplicationRuntimeObservation{WorkspaceID: "ws-alpha", RuntimeID: "runtime-alpha", Entry: entry}
+	response := workspaceCurrentApplicationRuntimeResponse(&workspaceCurrentApplication{}, observation)
+	if response["entry"] != entry {
+		t.Fatalf("entry = %v, want the owner observation %v", response["entry"], entry)
+	}
+}
