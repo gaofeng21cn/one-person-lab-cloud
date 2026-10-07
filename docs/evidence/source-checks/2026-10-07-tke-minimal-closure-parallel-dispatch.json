@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "tke_minimal_closure_parallel_dispatch",
+  "recordedAt": "2026-10-07T06:00:00Z",
+  "status": "in_progress",
+  "objective": "Make the existing branch-exact Candidate reachable through the Tencent/TKE customer vertical slice without changing SSOT or duplicating completed Cloud/mTLS/Local capabilities.",
+  "baseline": {
+    "productSha": "27d7d4cba92101000648ea50a7979dfd5b63021b",
+    "candidateRun": "37502040146",
+    "instanceMaterialRun": "37551805519",
+    "instancePreflightRun": "37567787899",
+    "blockingDeployRun": "37567880923",
+    "blockingReason": "existing Instance deploy reconciles existing Deployments but has no protected first-install/create-only entry"
+  },
+  "parallelLanes": [
+    {
+      "id": "instance-first-install",
+      "owner": "opl-instance-medopl",
+      "agent": "01a1153e-45f5-7060-b935-6c01b37a070e",
+      "writeSet": ["first-install workflow/phase", "minimal target contract", "Instance focused tests", "Instance receipt schema/use"],
+      "mustNotChange": ["Cloud SSOT", "Cloud Candidate", "existing dirty primary checkout", "production cluster"],
+      "acceptance": ["before=absent", "create-only", "ready/readback", "bounded delete-on-failure", "append-only receipt"]
+    },
+    {
+      "id": "cloud-tenant-entry",
+      "owner": "one-person-lab-cloud",
+      "agent": "01a1153d-f3db-7300-bc19-b1391a5c7488",
+      "writeSet": ["existing Tenant CreateTenant BFF route", "focused route tests"],
+      "mustNotChange": ["SSOT", "owner boundaries", "wallet/Gateway authority", "Instance repository", "Candidate or main release state"],
+      "acceptance": ["real BFF route reaches existing Tenant owner", "authorization and typed context preserved", "focused tests pass"]
+    },
+    {
+      "id": "resource-catalog-profile",
+      "owner": "opl-instance-medopl",
+      "status": "blocked_until_instance_lane_receipt",
+      "writeSet": ["deployment-owned OPL_RESOURCE_CATALOG_PROFILE_JSON input"],
+      "acceptance": ["resource-catalog starts without CrashLoop", "profile is deployment-owned and receipt-bound"]
+    }
+  ],
+  "serialIntegration": [
+    "review both lane receipts",
+    "integrate owner changes",
+    "build a new Candidate from a branch exact SHA if Cloud bytes changed",
+    "run Instance Preflight",
+    "run first-install",
+    "run Deployment Verification and qualification",
+    "run the authorized testcloud4 purchase",
+    "read back Workspace/Fabric, Serve URL, and Ledger receipt",
+    "write final closure receipt"
+  ],
+  "claims": {
+    "ssotModified": false,
+    "productionMutationAttempted": false,
+    "closureComplete": false
+  }
+}
