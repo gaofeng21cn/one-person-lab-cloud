@@ -137,7 +137,13 @@ func workspaceLaunchProjectionMismatchFields(operation workspaceLaunchReconcileO
 
 func workspaceLaunchAccessProjectionMismatchFields(operation workspaceLaunchReconcileOperation, workspace map[string]any) []string {
 	mismatches := workspaceLaunchStableProjectionMismatchFields(operation, workspace)
-	if int64(numberField(workspace, "workspaceApiKeyId", 0)) != operation.int64Fact("workspaceApiKeyId") {
+	// A resource-only Launch provisions resources only, so it owns no Gateway
+	// key: the default-application install that follows binds the key it created
+	// onto the same Workspace row. The key is that install's fact, not the
+	// Launch's, so comparing it here would refuse the very application the
+	// Workspace publishes once the key exists. Full Launches keep the check.
+	if operation.provisioningMode() != contracts.WorkspaceProvisioningResourceOnly &&
+		int64(numberField(workspace, "workspaceApiKeyId", 0)) != operation.int64Fact("workspaceApiKeyId") {
 		mismatches = append(mismatches, "workspace_api_key_id")
 	}
 	return mismatches

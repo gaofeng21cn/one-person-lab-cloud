@@ -480,3 +480,105 @@ func TestWorkspaceApplicationOriginKeepsTheSuspendedRefusal(t *testing.T) {
 		t.Fatalf("a suspended workspace triggered %d application reads, want none", len(fixture.fabric.applicationRuntimeInputs))
 	}
 }
+
+// A resource-only purchase carries no key identity on its Launch, and the
+// default application install that follows binds its own Gateway key to the
+// same Workspace row. That is the real new-customer shape: the Launch and the
+// Workspace agree on no key, then the application activation sets one. The
+// entry must keep serving the application the Workspace publishes, because the
+// admission that matters at the origin is the application's own live readback,
+// not the retained Launch projection.
+func TestWorkspaceApplicationOriginServesAfterTheApplicationBindsItsOwnKey(t *testing.T) {
+	t.Setenv("OPL_WORKSPACE_DOMAIN", "workspace.example")
+	t.Setenv("OPL_WORKSPACE_APPLICATION_DOMAIN", "application.example")
+	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
+	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
+	app := fixture.server.(*controlPlaneHTTPHandler).app
+	intent := seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "knowledge-app", true)
+	revision := contracts.WorkspaceApplicationRevision{SchemaVersion: 1, ApplicationID: "knowledge-app", Version: "1.0.0", Platform: "linux/amd64",
+		Image: "registry.example/knowledge-app@sha256:" + strings.Repeat("a", 64), ExposurePolicy: "application",
+		EntryPort: "http", Ports: []contracts.WorkspaceApplicationPort{{Name: "http", Port: 8080, Protocol: "TCP"}}}
+	components := contracts.WorkspaceApplicationRuntimeComponents(revision)
+	for index := range components {
+		components[index].State = "ready"
+	}
+	fixture.fabric.applicationRuntimeObservation = contracts.WorkspaceApplicationRuntimeObservation{
+		SchemaVersion: 1, WorkspaceID: "ws-alpha", RuntimeID: contracts.WorkspaceApplicationRuntimeID(intent.OperationID + ":runtime"),
+		Status: "ready", Entry: applicationGatewayEntry(revision), Components: components,
+	}
+	// What the real default-application activation does: it binds the key it
+	// created for the installation onto the Workspace it installed into.
+	workspace, found, err := app.tables.GetWorkspace(context.Background(), "ws-alpha")
+	if err != nil || !found {
+		t.Fatal("missing workspace", err)
+	}
+	if int64(numberField(workspace, "workspaceApiKeyId", 0)) != 0 {
+		t.Fatal("the fixture Launch must carry no key identity")
+	}
+	workspace["workspaceApiKeyId"] = int64(19)
+	if err := app.tables.SaveWorkspace(context.Background(), workspace); err != nil {
+		t.Fatal(err)
+	}
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "knowledge-app-live-response")
+	}))
+	defer upstream.Close()
+	upstreamURL, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.workspaceProxyTransport = roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		r.URL.Scheme, r.URL.Host = upstreamURL.Scheme, upstreamURL.Host
+		return http.DefaultTransport.RoundTrip(r)
+	})
+
+	host, ok := workspaceApplicationOriginHost("ws-alpha", "knowledge-app")
+	if !ok {
+		t.Fatal("origin host was not derived")
+	}
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Host = host
+	rec := httptest.NewRecorder()
+	fixture.server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "knowledge-app-live-response" {
+		t.Fatalf("the application-bound key refused its own ready application: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// The retention of the access projection is shape-specific. A full Launch does
+// own its Gateway key, so a Workspace row that disagrees with it is still a
+// defect the operator must see, not something the resource-only exemption may
+// silently absorb.
+func TestWorkspaceLaunchAccessProjectionStillBindsTheKeyForAFullLaunch(t *testing.T) {
+	resourceOnly, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchResourceOnlyUnitCommand())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Only the key field is under test here; the remaining projection fields are
+	// covered by the shape fixtures above and by the runtime authority tests.
+	workspace := map[string]any{"workspaceApiKeyId": int64(19)}
+	comparedKey := func(fields []string) bool {
+		for _, field := range fields {
+			if field == "workspace_api_key_id" {
+				return true
+			}
+		}
+		return false
+	}
+	if got := workspaceLaunchAccessProjectionMismatchFields(resourceOnly, workspace); comparedKey(got) {
+		t.Fatalf("a resource-only Launch compared a key it does not own: %v", got)
+	}
+
+	full, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if full.provisioningMode() == contracts.WorkspaceProvisioningResourceOnly {
+		t.Fatal("the full-Launch fixture must not be resource-only")
+	}
+	if got := workspaceLaunchAccessProjectionMismatchFields(full, workspace); !comparedKey(got) {
+		t.Fatalf("a full Launch lost its key-identity check: %v", got)
+	}
+}
