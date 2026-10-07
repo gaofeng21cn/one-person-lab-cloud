@@ -221,3 +221,11 @@ provider journal and final readback must match the original Runtime and network
 before success. Recovery neither rebuilds the Runtime nor purchases resources
 or changes the wallet; failed terminal operations are not replayed under the
 same key. Source tests for this route do not prove Instance network recovery.
+
+The customer Launch readback publishes `provisioningMode` from the persisted
+operation as `full` or `resource_only`. Readback consumers must use that owner
+fact to distinguish purchase resources from a separately installed application;
+an empty Launch key, service name or URL does not establish its mode.
+The application-backed runtime readback also publishes the Fabric owner's
+`entry` observation. Instance consumers select the application workload from
+that service identity, instead of reusing a service name from the resource Launch.

@@ -150,6 +150,7 @@ func workspaceLaunchReconcileResponse(operation workspaceLaunchReconcileOperatio
 	}
 	response := map[string]any{
 		"operationId": operation.ID, "schemaVersion": operation.SchemaVersion, "version": operation.Version,
+		"provisioningMode": string(operation.provisioningMode()),
 		"status": string(operation.Status), "stage": string(operation.Stage), "phase": string(operation.Stage),
 		"accountId": operation.stringFact("accountId"), "workspaceId": operation.stringFact("workspaceId"),
 		"name": operation.stringFact("name"), "packageId": operation.stringFact("packageId"), "sizeGb": operation.intFact("sizeGb"),
