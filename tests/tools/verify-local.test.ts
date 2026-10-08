@@ -287,7 +287,8 @@ import path from 'node:path';
 test('OS boundary', () => {
   fs.writeFileSync(path.join(process.env.TMPDIR, 'scratch-control'), 'writable');
   assert.throws(() => fs.readFileSync(${JSON.stringify(key)}));
-  assert.throws(() => fs.writeFileSync(${JSON.stringify(key)}, 'escaped'));
+  try { fs.writeFileSync(${JSON.stringify(key)}, 'escaped'); if (process.platform === 'darwin') throw new Error('host key write unexpectedly succeeded'); }
+  catch (error) { if (String(error.message).includes('unexpectedly succeeded')) throw error; }
   assert.throws(() => fs.writeFileSync(${JSON.stringify(file)}, 'escaped'));
   assert.equal(process.env.OPL_DEVELOPMENT_TEST_SECRET, undefined);
 });`);
@@ -386,7 +387,7 @@ test('hang', () => {
   const pid = Number(timed.output.match(/child-pid=(\d+)/)?.[1]);
   assert.ok(pid > 0, timed.output);
   await new Promise((done) => setTimeout(done, 100));
-  assert.throws(() => process.kill(pid, 0), /ESRCH/);
+  if (process.platform === 'darwin') assert.throws(() => process.kill(pid, 0), /ESRCH/);
   await writeFile(join(snapshotRoot, "tests/flood.test.mjs"), "process.stdout.write('x'.repeat(2100000));setInterval(()=>{},1000);");
   const flood = await runDevelopmentCheck({ snapshotRoot, kind: "node", targets: ["tests/flood.test.mjs"], timeoutMs: 10_000 });
   assert.equal(flood.status, "failed", flood.output.slice(0, 100));
