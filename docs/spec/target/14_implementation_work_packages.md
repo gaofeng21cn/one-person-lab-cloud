@@ -30,7 +30,7 @@
 | fabric | `services/fabric` | existing |
 | ledger | `services/ledger` | existing |
 | tenant | `services/gateway-integration` | existing |
-| instance | `../opl-instance-medopl` | existing |
+| instance | `../opl-instance-medopl` | external-owner/unverified |
 
 所有Cloud工作根均位于同一个opl-cloud GitHub仓库；路径由当前checkout推导，不绑定开发者机器。instance是外部Owner，不属于Cloud合仓写集；W29/W30仅描述其授权工作，不能由Cloud任务越界执行。具体模块/进程/数据库实施映射见01，架构决定以docs/architecture.md及docs/decisions.md为准，tenant与gateway两行共享一个部署单元。planned_not_created指目录未建，不是等待创建GitHub仓库。
 
@@ -534,7 +534,7 @@
 - 实现Local-Docker资源集、挂载和配额资格；把资源引用交给Serve，不部署Agent OCI、不控制Runtime生命周期、不拥有访问路由
 - Linux存储/权限前提不满足明确失败，不把Mac Docker Desktop冒充Local资格
 
-**内部协议实现/协作端口**：`FabricCoordination.AdmitResources`, `FabricCoordination.EnsureResources`, `FabricCoordination.ResizeResources`, `FabricCoordination.RenewResources`, `FabricCoordination.SuspendResources`, `FabricCoordination.ResumeResources`, `FabricCoordination.DeleteResources`, `FabricCoordination.ReadResources`, `FabricCoordination.BindSecret`, `FabricPlanTransitionReadback.ReadApprovedPlanTransition`, `FabricPlanTransitionReadback.ReadExecutionPlan`
+**内部协议实现/协作端口**：`FabricCoordination.AdmitResources`, `FabricCoordination.EnsureResources`, `FabricCoordination.ResizeResources`, `FabricCoordination.RenewResources`, `FabricCoordination.SuspendResources`, `FabricCoordination.ResumeResources`, `FabricCoordination.DeleteResources`, `FabricCoordination.ReadResources`, `FabricCoordination.BindSecret`, `FabricCoordination.RebindSecret`, `FabricPlanTransitionReadback.ReadApprovedPlanTransition`, `FabricPlanTransitionReadback.ReadExecutionPlan`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
@@ -566,7 +566,7 @@
 
 **主实现表（字段唯一来源02，不在此复制字段定义）**：`fabric.resource_sets`, `fabric.resources`, `fabric.attachments`, `fabric.secret_bindings`, `fabric.resource_actions`
 
-**内部协议实现/协作端口**：`FabricCoordination.AdmitResources`, `FabricCoordination.EnsureResources`, `FabricCoordination.ResizeResources`, `FabricCoordination.RenewResources`, `FabricCoordination.SuspendResources`, `FabricCoordination.ResumeResources`, `FabricCoordination.DeleteResources`, `FabricCoordination.ReadResources`, `FabricCoordination.BindSecret`, `FabricPlanTransitionReadback.ReadApprovedPlanTransition`, `FabricPlanTransitionReadback.ReadExecutionPlan`
+**内部协议实现/协作端口**：`FabricCoordination.AdmitResources`, `FabricCoordination.EnsureResources`, `FabricCoordination.ResizeResources`, `FabricCoordination.RenewResources`, `FabricCoordination.SuspendResources`, `FabricCoordination.ResumeResources`, `FabricCoordination.DeleteResources`, `FabricCoordination.ReadResources`, `FabricCoordination.BindSecret`, `FabricCoordination.RebindSecret`, `FabricPlanTransitionReadback.ReadApprovedPlanTransition`, `FabricPlanTransitionReadback.ReadExecutionPlan`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
@@ -750,24 +750,9 @@
 
 **内部协议实现/协作端口**：`WorkspaceProductService.GetWorkspaceModels`, `WorkspaceProductService.UpdateWorkspaceModels`, `WorkspaceProductService.RevealWorkspaceApplicationCredentials`, `ServeProductService.ListDeployments`, `ServeProductService.GetDeployment`, `ServeProductService.UpdateWorkspaceVersion`, `ServeProductService.RollbackWorkspace`, `ServeProductService.GetWorkspaceAccess`, `ClaimUsageReadback.ReadClaimUsage`, `ServeAgentCoordination.Reserve`, `ServeAgentCoordination.Deploy`, `ServeAgentCoordination.ReloadModels`, `ServeAgentCoordination.ReadRuntime`, `ServeAgentCoordination.Retire`, `ServeRuntimeAdapter.ReadApplicationCredentials`, `ServeRuntimeAdapter.StartRuntime`, `ServeRuntimeAdapter.StopRuntime`, `ServeRuntimeAdapter.ReloadRuntime`, `ServeRuntimeAdapter.ObserveRuntime`, `ServeAccessControl.FenceRouteEpoch`, `ServeAccessControl.ActivateRoute`, `ServeAccessControl.ObserveRoute`, `ServeAccessControl.RollbackRoute`, `ServePlanChangeControl.RestoreAfterResourceChange`
 
-`UpdateWorkspaceModels` has one mandatory owner-separated sequence: Workspace
-authorizes and validates the selection, Gateway creates the exact managed-key
-binding, Fabric confirms the runtime Secret binding, Serve applies and reads back
-the publisher configuration through `RuntimeReloadCommand.managed_key_binding`,
-and Workspace advances `model_configuration_version` only from that confirmed
-readback. The public request remains `expectedVersion + selections`; no caller
-may supply a key binding. This sequence is shared by the default OPL App and the
-Agent plus independent WebUI product combinations whenever their Runtime
-publisher declares the model-configuration contract.
-
-For a later configuration that changes the managed key, W01 must use the
-explicit `FabricCoordination.RebindSecret` path: compare the expected current
-Fabric binding, provider-confirm the replacement, preserve one active binding
-per runtime purpose, apply/read back the new Runtime version, then revoke the
-predecessor Gateway key and retire its Fabric binding. Rejected or unknown
-replacement/compensation never advances Workspace or revokes the predecessor.
-The replacement operation is owner-local and idempotent through `CallContext`; it
-does not introduce a global workflow engine or a public key-binding field.
+**补充说明**：
+- `UpdateWorkspaceModels` has one mandatory owner-separated sequence: Workspace authorizes and validates the selection, Gateway creates the exact managed-key binding, Fabric confirms the runtime Secret binding, Serve applies and reads back the publisher configuration through `RuntimeReloadCommand.managed_key_binding`, and Workspace advances `model_configuration_version` only from that confirmed readback. The public request remains `expectedVersion + selections`; no caller may supply a key binding. This sequence is shared by the default OPL App and the Agent plus independent WebUI product combinations whenever their Runtime publisher declares the model-configuration contract.
+- For a later configuration that changes the managed key, W01 must use the explicit `FabricCoordination.RebindSecret` path: compare the expected current Fabric binding, provider-confirm the replacement, preserve one active binding per runtime purpose, apply/read back the new Runtime version, then revoke the predecessor Gateway key and retire its Fabric binding. Rejected or unknown replacement/compensation never advances Workspace or revokes the predecessor. The replacement operation is owner-local and idempotent through `CallContext`; it does not introduce a global workflow engine or a public key-binding field.
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder

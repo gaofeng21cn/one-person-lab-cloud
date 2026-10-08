@@ -1,0 +1,137 @@
+import { spawnSync } from "node:child_process";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const proto = "packages/contracts/proto";
+const target = "docs/spec/target";
+const go = "packages/contracts/go";
+const identity = "services/gateway-integration/identity";
+const bff = "apps/console-bff/internal/httpapi";
+
+// These are the actual generator inputs, not a synthetic merged contract.
+export const generationInputs = [
+  `${proto}/generate.sh`,
+  `${proto}/generate_public_json_shape.py`,
+  `${proto}/generate_event_identity.py`,
+  `${proto}/internal.proto`,
+  `${proto}/events.json`,
+  `${target}/contracts/internal.proto`,
+  `${target}/contracts/publisher-contract.schema.json`,
+  `${target}/03_api_contract_complete.yaml`,
+  `${identity}/generate_policy.py`
+] as const;
+
+export const generatedOutputs = [
+  `${go}/api/internal.pb.go`,
+  `${go}/api/internal_grpc.pb.go`,
+  `${go}/publicjson/shape_generated.go`,
+  `${go}/event_identity.go`,
+  `${identity}/policy_generated.go`,
+  `${bff}/status_generated.go`
+] as const;
+
+export const uncoveredGeneration = [
+  "events.json: source contract, NOT regenerated; only its generated event identities are checked. Production/target parity and W01 migration completeness are not freshness checks."
+] as const;
+
+export type GenerationCommand = { command: string; args: string[]; cwd: string };
+export type GenerationRunner = (command: GenerationCommand) => void;
+
+function runGenerator({ command, args, cwd }: GenerationCommand) {
+  const result = spawnSync(command, args, {
+    cwd,
+    env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" },
+    encoding: "utf8",
+    timeout: 120_000,
+    maxBuffer: 4 * 1024 * 1024
+  });
+  if (result.error || result.status !== 0) {
+    const invocation = `${command} ${args.join(" ")}`;
+    throw new Error(`${invocation} failed: ${result.error?.message ?? result.signal ?? result.status}\n${result.stderr}${result.stdout}`.trim());
+  }
+}
+
+function generatedFiles(root: string, directory: string, suffix: string): string[] {
+  if (!existsSync(join(root, directory))) return [];
+  return readdirSync(join(root, directory), { withFileTypes: true }).flatMap((entry) => {
+    const path = `${directory}/${entry.name}`;
+    return entry.isDirectory() ? generatedFiles(root, path, suffix) : entry.name.endsWith(suffix) ? [path] : [];
+  });
+}
+
+// Each directory/suffix is owned by a covered generator. Do not scan business
+// source or treat target schemas and migration completeness as derived outputs.
+function discoveredOutputs(root: string) {
+  return [
+    ...generatedFiles(root, `${go}/api`, ".pb.go"),
+    ...generatedFiles(root, `${go}/publicjson`, "_generated.go"),
+    ...generatedFiles(root, identity, "_generated.go"),
+    ...generatedFiles(root, bff, "_generated.go")
+  ];
+}
+
+/** Run real generators into an empty output tree. Never rewrite checked-in outputs. */
+export function verifyGeneratedContracts({
+  root = repositoryRoot,
+  runner = runGenerator
+}: { root?: string; runner?: GenerationRunner } = {}) {
+  const temporary = mkdtempSync(join(tmpdir(), "opl-generated-contracts-"));
+  const errors: string[] = [];
+  const compared: string[] = [];
+  try {
+    for (const path of generationInputs) {
+      mkdirSync(dirname(join(temporary, path)), { recursive: true });
+      copyFileSync(join(root, path), join(temporary, path));
+    }
+    // Do not seed outputs: a skipped/no-op generator must fail as missing output.
+    for (const path of generatedOutputs) mkdirSync(dirname(join(temporary, path)), { recursive: true });
+    const commands: GenerationCommand[] = ["bindings", "public-json", "event-identity", "policy"].map((chain) => ({
+      command: "bash",
+      args: [`${proto}/generate.sh`, chain],
+      cwd: temporary
+    }));
+    // Report each independent chain even if another generator fails.
+    for (const command of commands) {
+      try {
+        runner(command);
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : String(error));
+      }
+    }
+    const outputs = new Set([...generatedOutputs, ...discoveredOutputs(root), ...discoveredOutputs(temporary)]);
+    for (const path of [...outputs].sort()) {
+      const checkedIn = join(root, path);
+      const regenerated = join(temporary, path);
+      if (!existsSync(checkedIn)) {
+        errors.push(`missing checked-in generated output: ${path}`);
+      } else if (!existsSync(regenerated)) {
+        errors.push(`missing regenerated output (or obsolete checked-in generated output): ${path}`);
+      } else if (!readFileSync(checkedIn).equals(readFileSync(regenerated))) {
+        errors.push(`generated bytes differ: ${path}`);
+      } else {
+        compared.push(path);
+      }
+    }
+    return { passed: errors.length === 0, errors, compared, uncovered: [...uncoveredGeneration] };
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  try {
+    if (process.argv.length !== 2) throw new Error("verify-generated-contracts accepts no arguments");
+    const result = verifyGeneratedContracts();
+    for (const limitation of result.uncovered) console.log(`NOT COVERED: ${limitation}`);
+    for (const path of result.compared) console.log(`MATCH: ${path}`);
+    for (const error of result.errors) console.error(`FAIL: ${error}`);
+    console.log(`Generated contracts freshness: ${result.passed ? "PASS" : "FAIL"}`);
+    process.exitCode = result.passed ? 0 : 1;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
+}

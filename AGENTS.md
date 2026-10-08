@@ -48,6 +48,78 @@ When current sources disagree:
 Issues, PRs, comments, agent sessions, generated docs, and old plans are inputs.
 They do not override the current owner.
 
+## Scoped Development Contract
+
+The existing phase plan, including the work-package records in
+`docs/spec/target/checks/development_plan.json`, supplies development tasks; it
+is not a permanent owner or task registry. Stable source ownership remains in
+the canonical documents mapped by `docs/README.md`. A plan or execution record
+cannot redefine that ownership or create another business-field authority.
+
+A trusted host admits each run using an authorization record stored outside the
+repository or in ignored runtime storage, protected from worker writes. Admission
+references an existing plan record and its canonical owner, narrows the read/write
+scope, and declares exact stage inputs and a host-controlled runner with no
+arbitrary shell interface. It does not introduce a new business-owner registry,
+task schema, or repository-global current state. Scope expansion requires a new
+host admission, not a worker edit to its plan or authorization. Read permissions
+and acceptance targets are not write permissions. Concurrent workspace changes
+require an explicitly named, host-signed run on the same baseline and plan:
+`coauthorRuns` names independent collaborators; `requires` names prerequisites
+and their transitive dependency chain. The host verifies their exact write scopes
+and current phase ownership, never authorizes every directory in a plan, and
+never scans unrelated run or business-receipt bodies. Coexistence permission is
+not completion evidence: prerequisites and acceptance still require actual
+verified receipts; stale downstream evidence does not erase its previous edits
+or prevent an upstream owner from repairing its own stage.
+
+Use `npm run dev:tools` and `npm run dev:run` as the host integration entry points;
+CLI arguments are finalized with the tool implementation. The worker interface
+is limited to `dev_context`, `dev_read`, `dev_search`, `dev_write`, `dev_status`
+and `dev_verify`. Status is a readback; verification is an acceptance request to
+the trusted runner, not permission to execute an arbitrary command. There is no
+worker `complete` or `publish` operation. The worker must receive admitted
+context before file operations; reads, searches and writes stay inside that
+scope. Every operation rechecks the current baseline and workspace change scope.
+A failed context refresh or admission check revokes the previous admission; the
+worker cannot continue using context from before the failure. Worker writes
+cannot alter admission, runner policy, run state or receipts.
+Run state advances only from actual execution results, never from a worker's
+completion claim; a failed or blocked result remains failed or blocked.
+
+The host materializes each stage's declared inputs into an isolated snapshot.
+The runner cannot read undeclared repository code dependencies; declare those
+inputs before admission rather than granting a repository mount or shell escape.
+Recovery may reuse a stage only when its exact inputs and bound upstream evidence
+are unchanged. Downstream evidence binds the upstream receipts and actual stage
+inputs. The host appends signed per-run receipts; it never overwrites receipts or
+automatically updates `docs/status.md`, `docs/roadmap.md`, or a global state file.
+Canonical evidence summaries remain explicit owner-maintained changes.
+
+Enforcement belongs at the trusted host entry, not in a particular model loop.
+The host must require current context before file operations, validate the
+baseline and change scope, and expose only the admitted operations to the
+client. `runRestrictedWorker` is one replaceable reference adapter; an existing
+chat may use the same host-owned entry without adopting that adapter. A chat
+that retains unrestricted shell or filesystem access is not controlled merely
+because these tools are attached. These rules and entry points do not establish
+that all Codex sessions are restricted, that the rewritten interface is enabled,
+or that remote branch protection is configured; those claims require actual host
+and runner evidence.
+
+Run `npm run test:development-gates` and
+`npm run typecheck:development-tools` for the control plane. Generated-field
+freshness via `npm run verify:generated-contracts` checks the covered generator
+outputs against their declared source inputs; it does not prove production/spec
+parity, W01 migration, or consumer adoption. Plan projection freshness via
+`npm run verify:development-plan` regenerates `14_implementation_work_packages.md`
+and `checks/development_plan.json` into an isolated tree, compares exact task-book
+bytes and canonicalized plan JSON (ignoring the provenance-only `sourceSHA`) and runs the read-only coverage
+validator, so a hand-edited or stale projection fails the gate instead of an
+agent declaring the plan current. Both gates run inside `npm run verify:local`. Fixture and source-check evidence do
+not establish product runtime, Candidate qualification, Instance deployment, or
+production readiness.
+
 ## Documentation
 
 Follow the hierarchy in `docs/README.md`. Lower layers may implement or report

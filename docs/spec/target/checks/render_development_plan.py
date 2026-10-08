@@ -2,10 +2,18 @@
 # -*- coding: utf-8 -*-
 """Render concrete work packages from frozen contracts; not an implementation or task runner."""
 from pathlib import Path
-import json,subprocess,re
+import argparse,json,subprocess,re,os
 P=Path(__file__).resolve().parents[1]
+# Inputs always come from this checkout; OP renders out to a separate tree so a
+# freshness gate can byte-compare without mutating checked-in generated artifacts.
+OUT=Path(os.environ['OPL_DEVELOPMENT_PLAN_OUT']).resolve() if os.environ.get('OPL_DEVELOPMENT_PLAN_OUT') else P
 C=P.parents[2]  # The containing Cloud checkout, never a sibling provenance repository.
 HOME=C.parent
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--check',action='store_true',help='Render freshness comparison bytes without Git provenance; requires an isolated output tree.')
+options=parser.parse_args()
+if options.check and (not os.environ.get('OPL_DEVELOPMENT_PLAN_OUT') or OUT.is_relative_to(C)):
+    parser.error('--check requires OPL_DEVELOPMENT_PLAN_OUT outside the input checkout')
 def display_path(value):
     path=Path(value)
     if not path.is_absolute():
@@ -405,22 +413,35 @@ for w in W:
  if 'F11' in w['features']:w['contractRefs'].append('13_plan_change_policy.md')
  if 'F16' in w['features']:w['contractRefs'].append('09_legacy_migration.md')
  w['existingPathStatus']={x:(C/Path(x)).exists() for x in w['existingReadPaths']}
-plan={'schemaVersion':1,'status':'plan_only_not_implemented','sourceSHA':subprocess.check_output(['git','-C',str(C),'rev-parse','HEAD'],text=True).strip(),'sourceRoots':roots,'sourceRootStatus':{k:('existing' if (C/Path(v)).exists() else 'planned_not_created') for k,v in roots.items()},'assignees':'roles/modules are fixed; human names and calendar dates follow actual staffing, not fabricated','workPackages':W,'tablePrimary':table_primary,'rpcImplementers':rpc_assignments,'baselineCommands':baseline,'executionSlices':slices,'windows':windows,'parallelPreparation':parallel_preparation,'serialIntegration':serial_integration,'contractMigration':{'source':'03_api_contract_complete.yaml#x-approved-wire-migration','status':'approved_pending_W01_consumer_migration','entrySlice':'W01.application-contracts'},'rules':{'startDependencies':'finished producer contracts/scaffolding needed to start useful implementation','acceptDependencies':'real producers needed for integrated acceptance; no fixture-only completion','formalReleaseVsInstance':'separate authorized Owners; same qualified bytes; Cloud never dispatches Instance deployment'}}
-(P/'checks/development_plan.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2)+'\n')
+# Freshness ignores provenance; default generation must obtain a real Git SHA or fail.
+provenance={} if options.check else {'sourceSHA':subprocess.check_output(['git','-C',str(C),'rev-parse','HEAD'],text=True).strip()}
+# Instance declares an external owner; never inspect its filesystem or claim local verification.
+plan={'schemaVersion':1,'status':'plan_only_not_implemented',**provenance,'sourceRoots':roots,'sourceRootStatus':{k:('external-owner/unverified' if k=='instance' else ('existing' if (C/Path(v)).exists() else 'planned_not_created')) for k,v in roots.items()},'assignees':'roles/modules are fixed; human names and calendar dates follow actual staffing, not fabricated','workPackages':W,'tablePrimary':table_primary,'rpcImplementers':rpc_assignments,'baselineCommands':baseline,'executionSlices':slices,'windows':windows,'parallelPreparation':parallel_preparation,'serialIntegration':serial_integration,'contractMigration':{'source':'03_api_contract_complete.yaml#x-approved-wire-migration','status':'approved_pending_W01_consumer_migration','entrySlice':'W01.application-contracts'},'rules':{'startDependencies':'finished producer contracts/scaffolding needed to start useful implementation','acceptDependencies':'real producers needed for integrated acceptance; no fixture-only completion','formalReleaseVsInstance':'separate authorized Owners; same qualified bytes; Cloud never dispatches Instance deployment'}}
+(OUT/'checks').mkdir(parents=True,exist_ok=True)
+(OUT/'checks/development_plan.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2)+'\n')
 lines=['# 14 完整开发执行任务书','','> 目标：把已定稿F01–F17变成可直接分工实施的工作包。主Owner为Cloud架构/各领域负责人；产品/字段/协议Owner仍是00–13，本文件不重新定义它们。','> 本文件是执行规格，不是进度账本；not_implemented仅表示本生成器不认证实施完成。实际完成情况以docs/status.md与Owner证据为准，不代表已创建目录、跑通服务、迁移或发布。','> 每个任务列真实来源、拟创建写集、依赖、前后端产物及验收。原任务记录/失败验证保留历史，不用百分比冒充交付。','','## 1. 完整方案的层次与交付','','12产品主说明回答用户得到什么；11/04回答页面怎样操作；01/02/03/05/06/13回答权威、字段、接口、规则和恢复；09回答旧数据如何迁移；本14回答谁先做、改哪里、怎么测、交给谁；08仍是各角色统一验收Owner。','','- 范围严格F01–F17，不增加Marketplace、公开注册、任意Runtime上传、新钱包或工作流框架。','- 金额、原单、D17、provider预付规则及data-loss边界不允许研发自选第二种解释。','- 设计/页面可按冻结规格并行开发，最后必须接真实BFF/Owner，不以静态prototype或mock冒充完成。','- 不预设“50人/3分钟/两周完成”等无依据承诺；人名/日历排期按实际资源填，不再改业务语义。','','## 2. 代码与仓库落点','','| 逻辑Owner | 工作根 | 当前状态 |','|---|---|---|']
 for k,v in roots.items():lines.append(f"| {k} | `{display_path(v)}` | {plan['sourceRootStatus'][k]} |")
 lines+=['','所有Cloud工作根均位于同一个opl-cloud GitHub仓库；路径由当前checkout推导，不绑定开发者机器。instance是外部Owner，不属于Cloud合仓写集；W29/W30仅描述其授权工作，不能由Cloud任务越界执行。具体模块/进程/数据库实施映射见01，架构决定以docs/architecture.md及docs/decisions.md为准，tenant与gateway两行共享一个部署单元。planned_not_created指目录未建，不是等待创建GitHub仓库。','','## 3. 实施顺序、并行与完成依赖','','可立即启动第一批是W00→W01→W02；随后W03/W05/W06/W07/W10/W11/W12等按各自依赖并行。按第9节可实施切片推进，不等全部W综合完成才做第一个用户结果；下表整包依赖仅表示综合收口，不能代替切片开始条件。','','- 首条TKE产品闭环优先默认App：无需Package/Build，W10批准App→W06报价→W15/W12/W17资源与应用→W16真实访问；切片依赖见第9节。','- 随后叠加Agent：W07/08/09/14上传与真实构建→同一Workspace/Serve链；只覆盖Package+Runtime+独立WebUI。Local是独立回归/资格，不取代TKE首链。','- 第三条：W17–W23，配置/切换/升降配/续费/删除与管理治理。','- 迁移转换W25在契约/DB早期开始，生产切换在W30，不等最后才考虑旧ID和原单。','- 构建/Local/Instance资格/发布是W27–W31，代码测试、候选、实例采用和正式发布分层。','','| 工作包 | 协调Owner | 可以开始的依赖 | 综合验收依赖 | 业务范围 |','|---|---|---|---|---|']
 for w in W:lines.append(f"| {w['id']} {w['title']} | {w['coordinator']} | {','.join(w['startAfter']) or '无'} | {','.join(w['acceptAfter']) or '本任务依赖与边界即可'} | {','.join(w['features'])} |")
 lines+=['','### 同文件与发布边界的串行点','','- W00独占canonical目标同步；W01独占同一shared contract revision及必要consumer依赖整合，消费者同commit吸收。W02并行任务不各自改写共享契约或根构建配置。','- Workspace各工作包可以并行内部独立文件，但router/main/store/schema aggregate与同一migration序号由Workspace Owner串行合入，不双写/不另建全局协调器。','- Console各页面/独立controller可并行；console-router、use-console-controller和共享DTO整合由W13/Console Owner串行吸收。','- Fabric Local/Tencent在适配器内并行；provider_port/public DTO/通用handler变更必须同版更新两端与测试。','- 数据库正式迁移、canonical main、Candidate冻结、Instance运行状态和正式发布不并行写。','- W31不等于W30。产品可以发布已资格字节，客户迁移可分批；不能据产品发布宣称所有Instance已采用。','','## 4. 工作包详单']
+# Narrative that supplements a work package's deliverables. Kept in the generator
+# so a regeneration reproduces it byte-for-byte instead of living only in the output.
+work_notes={
+ 'W17':[
+  "`UpdateWorkspaceModels` has one mandatory owner-separated sequence: Workspace authorizes and validates the selection, Gateway creates the exact managed-key binding, Fabric confirms the runtime Secret binding, Serve applies and reads back the publisher configuration through `RuntimeReloadCommand.managed_key_binding`, and Workspace advances `model_configuration_version` only from that confirmed readback. The public request remains `expectedVersion + selections`; no caller may supply a key binding. This sequence is shared by the default OPL App and the Agent plus independent WebUI product combinations whenever their Runtime publisher declares the model-configuration contract.",
+  "For a later configuration that changes the managed key, W01 must use the explicit `FabricCoordination.RebindSecret` path: compare the expected current Fabric binding, provider-confirm the replacement, preserve one active binding per runtime purpose, apply/read back the new Runtime version, then revoke the predecessor Gateway key and retire its Fabric binding. Rejected or unknown replacement/compensation never advances Workspace or revokes the predecessor. The replacement operation is owner-local and idempotent through `CallContext`; it does not introduce a global workflow engine or a public key-binding field.",
+ ],
+}
 for w in W:
  lines+=['',f"### {w['id']} {w['title']}",'',f"**协调Owner：** {w['coordinator']}；**参与Owner：** {', '.join(w['owners'])}。",f"**F范围：** {', '.join(w['features'])}；**开始依赖：** {', '.join(w['startAfter']) or '无'}；**验收依赖：** {', '.join(w['acceptAfter']) or '按本任务边界'}。",'', '**现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：']
- for x in w['existingReadPaths']:lines.append(f'- `{display_path(x)}`'+('' if Path(x).exists() else '（需按当前source inventory定位；不虚构已存在）'))
+ for x in w['existingReadPaths']:lines.append(f'- `{display_path(x)}`'+('' if w['existingPathStatus'][x] else '（需按当前source inventory定位；不虚构已存在）'))
  lines+=['','**拟写入位置（未来实施，尚未创建的路径也明确列出）**：']
  for x in w['plannedWritePaths']:lines.append('- `'+display_path(x)+'`')
  lines+=['','**必须交付**：']+['- '+x for x in w['deliverables']]
  if w['apiPrimary']:lines+=['','**主实现API（沿用03的唯一Owner，不是改变数据写权）**：'+', '.join('`'+x+'`' for x in w['apiPrimary'])]
  if w.get('tablesPrimary'):lines+=['','**主实现表（字段唯一来源02，不在此复制字段定义）**：'+', '.join('`'+x+'`' for x in w['tablesPrimary'])]
  if w.get('rpcImplements'):lines+=['','**内部协议实现/协作端口**：'+', '.join('`'+x+'`' for x in w['rpcImplements'])]
+ if work_notes.get(w['id']):lines+=['','**补充说明**：']+['- '+x for x in work_notes[w['id']]]
  if w['apiConsumes']:lines+=['','**前端消费API**：'+', '.join('`'+x+'`' for x in w['apiConsumes'])]
  lines+=['','**验证**：']+['- '+x.replace(str(C)+'/','') for x in w['verification']]
  lines+=['','**完成判定**：']+['- '+x for x in w['acceptance']]
@@ -480,7 +501,7 @@ for stage in serial_integration['stages']:
   '**对应原工作包：** '+', '.join(stage['workPackages']), '',
   '**实施：** '+stage['action'], '', '**验收后进入下一段：** '+stage['accept']]
 lines += ['', '此处为同一工作包的串行收口次序，不新增业务owner、中央workflow或第二套领域合同。新串行窗口应持续实施至上线接受或精确外部条件缺失，不能完成一个局部slice后再次只交计划或请求泛化继续确认。']
-(P/'14_implementation_work_packages.md').write_text('\n'.join(lines)+'\n')
+(OUT/'14_implementation_work_packages.md').write_text('\n'.join(lines)+'\n')
 print(f'rendered {len(W)} work packages / {len(api)} primary API assignments')
 missing=[(w['id'],x) for w in W for x in w['existingReadPaths'] if not (C/Path(x)).exists()]
 print('missing source paths:',missing)

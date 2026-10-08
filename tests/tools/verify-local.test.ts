@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { execFile as execFileCallback } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +14,7 @@ import {
   parseVerifyLocalArgs,
   postgresImage,
   postgresVerificationSpecs,
+  runDevelopmentCheck,
   runVerification,
   summarizeGoTestFailures
 } from "../../tools/verify-local.ts";
@@ -27,6 +28,7 @@ test("verify-local exposes one default gate across Node, builds, and every Go mo
   for (const expected of [
     "product boundary",
     "Node source tests",
+    "Generated contracts freshness",
     "Console browser suite",
     "TypeScript typecheck",
     "TypeScript lint",
@@ -52,14 +54,14 @@ test("Qualification executes the independent Go contracts module", async () => {
   const qualification = parseYAML(await readFile(".github/workflows/qualification.yml", "utf8"));
   const contractJob = qualification.jobs.go_contracts;
   assert.equal(contractJob.name, "go-contracts");
-  const setup = contractJob.steps.find((step) => step.name === "Set up Go").with;
+  const setup = contractJob.steps.find((step: any) => step.name === "Set up Go").with;
   assert.equal(setup.cache, false);
   assert.equal(setup["go-version"], undefined);
   assert.equal(setup["go-version-file"], "packages/contracts/go/go.mod");
-  assert.ok(contractJob.steps.some((step) => step["working-directory"] === "packages/contracts/go"
+  assert.ok(contractJob.steps.some((step: any) => step["working-directory"] === "packages/contracts/go"
     && step.run === "go test -count=1 ./..."));
   assert.ok(qualification.jobs.validate.needs.includes("go_contracts"));
-  const validateStep = qualification.jobs.validate.steps.find((step) => step.name === "Require successful test jobs");
+  const validateStep = qualification.jobs.validate.steps.find((step: any) => step.name === "Require successful test jobs");
   assert.equal(
     validateStep.env.GO_CONTRACTS_RESULT,
     "${{ needs.go_contracts.result }}"
@@ -69,7 +71,7 @@ test("Qualification executes the independent Go contracts module", async () => {
 
 test("Local qualification uses one bounded runner filesystem and explicit privileged inputs", async (t) => {
   const workflow = parseYAML(await readFile(".github/workflows/qualification.yml", "utf8"));
-  const nodeStep = workflow.jobs.node_console.steps.find((item) => item.name === "Test Node");
+  const nodeStep = workflow.jobs.node_console.steps.find((item: any) => item.name === "Test Node");
   const packageScripts = JSON.parse(await readFile("package.json", "utf8")).scripts;
   const browserConcurrency = packageScripts["test:browser:suite"].match(/--test-concurrency=\d+/)?.[0];
   assert.ok(browserConcurrency);
@@ -82,7 +84,7 @@ test("Local qualification uses one bounded runner filesystem and explicit privil
   assert.equal(job["runs-on"], "ubuntu-latest");
   assert.equal(job.environment, undefined);
   assert.deepEqual(workflow.permissions, { contents: "read" });
-  const step = (name: string) => job.steps.find((item) => item.name === name);
+  const step = (name: string) => job.steps.find((item: any) => item.name === name);
   const initialize = step("Initialize Local qualification directory");
   const quotaSupport = step("Load runner project quota support");
   const prepare = step("Prepare project quota filesystem");
@@ -129,10 +131,10 @@ if (command === 'sudo' && args[0] === 'umount' && process.env.QUALIFICATION_UNMO
   const root = join("/tmp", "opl-local-first-deploy-test-1");
   await rm(root, { recursive: true, force: true });
   t.after(() => rm(root, { recursive: true, force: true }));
-  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: temporary, OPL_QUALIFICATION_ROOT: root,
+  const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: temporary, OPL_QUALIFICATION_ROOT: root,
     GITHUB_RUN_ID: "test", GITHUB_RUN_ATTEMPT: "1", QUALIFICATION_COMMAND_LOG: log, QUALIFICATION_AVAILABLE_BYTES: String(16 * 1024 ** 3), QUALIFICATION_MOUNTED: "1", QUALIFICATION_MODULE_MARKER: join(temporary, "quota-module-present") };
   const githubEnv = join(temporary, "github-env");
-  const initialEnv = { ...env, GITHUB_ENV: githubEnv };
+  const initialEnv: NodeJS.ProcessEnv = { ...env, GITHUB_ENV: githubEnv };
   delete initialEnv.OPL_QUALIFICATION_ROOT;
   await run("bash", ["-c", initialize.run], { env: initialEnv });
   assert.equal(await readFile(githubEnv, "utf8"), `OPL_QUALIFICATION_ROOT=${root}\n`);
@@ -232,15 +234,15 @@ test("full local gate covers every PostgreSQL owner with the CI-only extensions"
     "services/fabric"
   ]);
   assert.equal(postgresVerificationSpecs[0].race, true);
-  assert.equal(postgresVerificationSpecs.find((spec) => spec.cwd === "services/control-plane").timeout, "15m");
+  assert.equal(postgresVerificationSpecs.find((spec) => spec.cwd === "services/control-plane")!.timeout, "15m");
 });
 
 test("full verification adds the temporary PostgreSQL modules after the default checks", async () => {
-  const events = [];
+  const events: string[] = [];
   const env = { OPL_POSTGRES_TESTS: "1" };
   const dependencies = {
-    runStep: async (step) => { events.push(`step:${step.name}`); },
-    withTemporaryPostgres: async (callback) => {
+    runStep: async (step: (typeof localVerificationSteps)[number]) => { events.push(`step:${step.name}`); },
+    withTemporaryPostgres: async (callback: (env: NodeJS.ProcessEnv) => Promise<unknown>) => {
       events.push("postgres:start");
       try {
         await callback(env);
@@ -248,7 +250,7 @@ test("full verification adds the temporary PostgreSQL modules after the default 
         events.push("postgres:stop");
       }
     },
-    runPostgresVerification: async (actualEnv) => {
+    runPostgresVerification: async (actualEnv: NodeJS.ProcessEnv) => {
       assert.equal(actualEnv, env);
       events.push("postgres:tests");
     }
@@ -261,4 +263,225 @@ test("full verification adds the temporary PostgreSQL modules after the default 
   events.length = 0;
   await runVerification({ withPostgres: false }, dependencies);
   assert.equal(events.some((event) => event.startsWith("postgres:")), false);
+});
+
+// Use the same temporary-directory/after-cleanup fixture pattern as the existing
+// qualification tests. All outside-snapshot secrets below are synthetic controls.
+async function developmentFixture(t: import("node:test").TestContext) {
+  const directory = await mkdtemp(join(tmpdir(), "opl-development-check-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const snapshotRoot = join(directory, "snapshot");
+  await mkdir(join(snapshotRoot, "tests"), { recursive: true });
+  return { directory, snapshotRoot };
+}
+
+test("development check uses real isolation: writable scratch, read-only snapshot, no host key access or inherited secrets", async (t) => {
+  const { directory, snapshotRoot } = await developmentFixture(t);
+  const key = join(directory, "host-signing-key");
+  await writeFile(key, "synthetic signing control");
+  const file = join(snapshotRoot, "tests/boundary.test.mjs");
+  await writeFile(file, `import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+test('OS boundary', () => {
+  fs.writeFileSync(path.join(process.env.TMPDIR, 'scratch-control'), 'writable');
+  assert.throws(() => fs.readFileSync(${JSON.stringify(key)}));
+  try { fs.writeFileSync(${JSON.stringify(key)}, 'escaped'); if (process.platform === 'darwin') throw new Error('host key write unexpectedly succeeded'); }
+  catch (error) { if (String(error.message).includes('unexpectedly succeeded')) throw error; }
+  assert.throws(() => fs.writeFileSync(${JSON.stringify(file)}, 'escaped'));
+  assert.equal(process.env.OPL_DEVELOPMENT_TEST_SECRET, undefined);
+});`);
+  const original = process.env.OPL_DEVELOPMENT_TEST_SECRET;
+  process.env.OPL_DEVELOPMENT_TEST_SECRET = "must-not-inherit";
+  try {
+    const result = await runDevelopmentCheck({ snapshotRoot, kind: "node", targets: ["tests/boundary.test.mjs"] });
+    if (result.status === "blocked") {
+      assert.equal(result.passed, false);
+      assert.match(result.reason || "", /sandbox|isolation/i);
+      assert.match(result.output, /probe|unavailable/i);
+      t.diagnostic(result.output);
+    } else {
+      assert.equal(result.status, "passed", result.output + result.reason);
+      assert.equal(result.tests, 1);
+    }
+    assert.equal(await readFile(key, "utf8"), "synthetic signing control");
+  } finally {
+    if (original === undefined) delete process.env.OPL_DEVELOPMENT_TEST_SECRET;
+    else process.env.OPL_DEVELOPMENT_TEST_SECRET = original;
+  }
+});
+
+test("development check rejects exit zero without registered Node tests", async (t) => {
+  const { snapshotRoot } = await developmentFixture(t);
+  await writeFile(join(snapshotRoot, "tests/empty.test.mjs"), "console.log('empty control'); process.exit(0);\n");
+  const result = await runDevelopmentCheck({ snapshotRoot, kind: "node", targets: ["tests/empty.test.mjs"] });
+  assert.equal(result.passed, false, result.output);
+  assert.notEqual(result.status, "passed");
+  if (result.status !== "blocked") {
+    assert.equal(result.exitCode, 0);
+    assert.match(result.reason || "", /no.*tests|zero.*tests/i);
+  }
+});
+
+
+test("development check rejects flags, traversal, globs, escaping symlinks and non-Node targets before execution", async (t) => {
+  const { directory, snapshotRoot } = await developmentFixture(t);
+  const outside = join(directory, "outside.test.mjs");
+  await writeFile(outside, "throw new Error('outside code must not execute')");
+  await symlink(outside, join(snapshotRoot, "tests/link.test.mjs"));
+  for (const target of ["--eval", "../outside.test.mjs", "tests/../tests/link.test.mjs", "tests/*.test.mjs", "tests/[x].test.mjs", outside, "tests/link.test.mjs"]) {
+    const result = await runDevelopmentCheck({ snapshotRoot, kind: "node", targets: [target], timeoutMs: 5000 });
+    assert.equal(result.status, "blocked", `${target}: ${result.output}`);
+    assert.equal(result.passed, false);
+    assert.equal(result.exitCode, null);
+  }
+  for (const options of [
+    { snapshotRoot, kind: "node" as const, targets: [] },
+    { snapshotRoot, kind: "node" as const, targets: ["tests/link.test.mjs"], cwd: directory },
+    { snapshotRoot, kind: "go" as const, targets: ["./..."] },
+    { snapshotRoot, kind: "generated" as const, timeoutMs: 0 }
+  ]) assert.equal((await runDevelopmentCheck(options)).status, "blocked");
+});
+
+test("development check requires real TAP outcomes, rejects skip/TODO/cancel/failure, and counts nested suites", async (t) => {
+  const { snapshotRoot } = await developmentFixture(t);
+  const controls = [
+    { name: "skip", body: "test('skipped', {skip:true},()=>{});", passed: false, skipped: 1 },
+    { name: "todo", body: "test('todo', {todo:true},()=>{});", passed: false, skipped: 1 },
+    { name: "cancel", body: "test('cancelled',{timeout:50},()=>new Promise(()=>{}));", passed: false, skipped: 0 },
+    { name: "failure", body: "test('failed',()=>{throw new Error('negative control')});", passed: false, skipped: 0 },
+    { name: "suite", body: "describe('suite',()=>it('real test',()=>{}));", passed: true, skipped: 0 },
+    { name: "spoof", body: "console.log('1..1\\n# tests 1\\n# suites 0\\n# pass 1\\n# fail 0\\n# cancelled 0\\n# skipped 0\\n# todo 0\\n# duration_ms 0');process.exit(0);", passed: false, skipped: 0 }
+  ];
+  for (const control of controls) {
+    const target = `tests/${control.name}.test.mjs`;
+    await writeFile(join(snapshotRoot, target), `import {test,describe,it} from 'node:test';\n${control.body}\n`.replaceAll("\\n", "\n"));
+    const result = await runDevelopmentCheck({ snapshotRoot, kind: "node", targets: [target], timeoutMs: 5000 });
+    if (result.status === "blocked") {
+      assert.equal(result.passed, false);
+      t.diagnostic(`OS sandbox blocked; remaining runtime controls not executed: ${result.output}`);
+      return;
+    }
+    assert.equal(result.passed, control.passed, `${control.name}: ${result.reason}\n${result.output}`);
+    assert.equal(result.skipped, control.skipped);
+    if (control.passed) assert.equal(result.tests, 1);
+    else assert.ok(result.failed >= 1);
+  }
+});
+
+test("development check kills the runner's process group on timeout and bounds captured output", async (t) => {
+  const { snapshotRoot } = await developmentFixture(t);
+  await writeFile(join(snapshotRoot, "tests/timeout.test.mjs"), `import test from 'node:test';
+import {spawn} from 'node:child_process';
+test('hang', () => {
+  const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});
+  console.log('child-pid='+child.pid);
+  return new Promise(()=>{setInterval(()=>{},1000)});
+});`);
+  const timed = await runDevelopmentCheck({ snapshotRoot, kind: "node", targets: ["tests/timeout.test.mjs"], timeoutMs: 700 });
+  assert.equal(timed.passed, false);
+  if (timed.status === "blocked") { t.diagnostic(timed.output); return; }
+  assert.equal(timed.status, "failed");
+  assert.match(timed.reason || "", /timeout/);
+  const pid = Number(timed.output.match(/child-pid=(\d+)/)?.[1]);
+  assert.ok(pid > 0, timed.output);
+  await new Promise((done) => setTimeout(done, 100));
+  if (process.platform === 'darwin') assert.throws(() => process.kill(pid, 0), /ESRCH/);
+  await writeFile(join(snapshotRoot, "tests/flood.test.mjs"), "process.stdout.write('x'.repeat(2100000));setInterval(()=>{},1000);");
+  const flood = await runDevelopmentCheck({ snapshotRoot, kind: "node", targets: ["tests/flood.test.mjs"], timeoutMs: 10_000 });
+  assert.equal(flood.status, "failed", flood.output.slice(0, 100));
+  assert.match(flood.reason || "", /output limit/);
+  assert.ok(flood.output.length <= 2_000_000);
+});
+
+test("development check permits only loopback TCP, not Internet endpoints or host Unix sockets", async (t) => {
+  const { directory, snapshotRoot } = await developmentFixture(t);
+  const socket = join(directory, "host-store.sock");
+  const { createServer } = await import("node:net");
+  const hostStore = createServer();
+  await new Promise<void>((done, reject) => { hostStore.once("error", reject); hostStore.listen(socket, done); });
+  t.after(() => new Promise<void>((done) => hostStore.close(() => done())));
+  await writeFile(join(snapshotRoot, "tests/network.test.mjs"), `import test from 'node:test';
+import assert from 'node:assert/strict';import net from 'node:net';
+test('network boundary', async()=>{
+  const server=net.createServer(c=>c.end('loopback'));
+  await new Promise((done,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',done)});
+  try {
+    await new Promise((done,reject)=>{const c=net.connect(server.address().port,'127.0.0.1');c.once('error',reject);c.once('data',d=>{assert.equal(d.toString(),'loopback');c.destroy();done()})});
+    for(const options of [{host:'192.0.2.1',port:443},{path:${JSON.stringify(socket)}}]){
+      await new Promise((done,reject)=>{const c=net.connect(options);c.once('connect',()=>{c.destroy();reject(new Error('escaped network'))});c.once('error',e=>{assert.ok(['EPERM','EACCES','ENOENT','ENETUNREACH'].includes(e.code),e.code);done()});c.setTimeout(1000,()=>{c.destroy();reject(new Error('not denied by sandbox'))})});
+    }
+  } finally {await new Promise(done=>server.close(done))}
+});`);
+  const result = await runDevelopmentCheck({ snapshotRoot, kind: "node", targets: ["tests/network.test.mjs"] });
+  if (result.status === "blocked") { assert.equal(result.passed, false); t.diagnostic(result.output); return; }
+  assert.equal(result.status, "passed", result.reason + result.output);
+});
+
+test("development Go checks consume real JSON summaries and reject zero tests, skips and missing offline dependencies", async (t) => {
+  const { snapshotRoot } = await developmentFixture(t);
+  const module = join(snapshotRoot, "module");
+  await mkdir(module);
+  await writeFile(join(module, "go.mod"), "module fixture.invalid/control\n\ngo 1.22\n");
+  for (const control of [
+    { body: 'func TestReal(t *testing.T) {}', passed: true },
+    { body: 'func TestSkip(t *testing.T) { t.Skip("negative control") }', passed: false },
+    { body: '', passed: false }
+  ]) {
+    await writeFile(join(module, "control_test.go"), `package control\nimport "testing"\n${control.body || 'var _ = testing.T{}'}\n`.replaceAll("\\n", "\n"));
+    const result = await runDevelopmentCheck({ snapshotRoot, kind: "go", cwd: "module" });
+    if (result.status === "blocked") { assert.equal(result.passed, false); t.diagnostic(result.reason + result.output); return; }
+    assert.equal(result.passed, control.passed, result.reason + result.output);
+    if (control.passed) assert.equal(result.tests, 1);
+    else assert.ok(result.failed > 0);
+  }
+  await writeFile(join(module, "control_test.go"), 'package control\nimport _ "fixture.invalid/not-cached"\n');
+  const missing = await runDevelopmentCheck({ snapshotRoot, kind: "go", cwd: "module" });
+  assert.equal(missing.status, "failed", missing.output);
+  assert.equal(missing.passed, false);
+});
+
+test("generated checks require the actual checker freshness PASS and zero exit, and browser requires the approved manifest", async (t) => {
+  const { snapshotRoot } = await developmentFixture(t);
+  await mkdir(join(snapshotRoot, "tools"));
+  for (const control of [
+    { code: "console.log('Generated contracts freshness: PASS')", passed: true },
+    { code: "console.log('PASS')", passed: false },
+    { code: "console.log('Generated contracts freshness: FAIL')", passed: false },
+    { code: "console.log('Generated contracts freshness: PASS');process.exit(1)", passed: false }
+  ]) {
+    await writeFile(join(snapshotRoot, "tools/verify-generated-contracts.ts"), control.code);
+    const result = await runDevelopmentCheck({ snapshotRoot, kind: "generated" });
+    if (result.status === "blocked") { assert.equal(result.passed, false); t.diagnostic(result.reason + result.output); break; }
+    assert.equal(result.passed, control.passed, result.reason + result.output);
+    assert.equal(result.tests, 0);
+  }
+  await writeFile(join(snapshotRoot, "package.json"), JSON.stringify({ scripts: { "test:browser:suite": "exit 0" } }));
+  const browser = await runDevelopmentCheck({ snapshotRoot, kind: "browser" });
+  assert.equal(browser.status, "blocked");
+  assert.match(browser.reason || "", /approved.*manifest/);
+});
+
+
+test("development check admits only approved locked dependency symlinks, read-only, without exposing the source repository", async (t) => {
+  const { snapshotRoot } = await developmentFixture(t);
+  const source = process.cwd();
+  await writeFile(join(snapshotRoot, "package.json"), await readFile(join(source, "package.json")));
+  await writeFile(join(snapshotRoot, "package-lock.json"), await readFile(join(source, "package-lock.json")));
+  await symlink(join(source, "node_modules"), join(snapshotRoot, "node_modules"));
+  await writeFile(join(snapshotRoot, "tests/dependency.test.mjs"), `import test from 'node:test';
+import assert from 'node:assert/strict';import fs from 'node:fs';import {parse} from 'yaml';
+test('locked dependency boundary',()=>{
+  assert.deepEqual(parse('key: approved'),{key:'approved'});
+  assert.throws(()=>fs.readFileSync(${JSON.stringify(join(source, "package.json"))}));
+  assert.throws(()=>{const f=fs.openSync(${JSON.stringify(join(source, "node_modules/yaml/package.json"))},'r+');fs.closeSync(f)});
+});`);
+  const approved = await runDevelopmentCheck({ snapshotRoot, kind: "node", targets: ["tests/dependency.test.mjs"] });
+  if (approved.status === "blocked") { assert.equal(approved.passed, false); t.diagnostic(approved.reason + approved.output); }
+  else assert.equal(approved.status, "passed", approved.reason + approved.output);
+  await writeFile(join(snapshotRoot, "package-lock.json"), "{}");
+  const unapproved = await runDevelopmentCheck({ snapshotRoot, kind: "node", targets: ["tests/dependency.test.mjs"] });
+  assert.equal(unapproved.status, "blocked");
+  assert.match(unapproved.reason || "", /approved locked/);
 });

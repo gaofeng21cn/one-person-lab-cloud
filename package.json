@@ -35,7 +35,17 @@
     "verify:resource-catalog-live": "cd services/resource-catalog && go test -tags=livebuild ./catalog -run TestLiveCatalogPlatformAdminLoop -count=1 -v",
     "verify:local:full": "node tools/verify-local.ts --with-postgres",
     "qualify:local:workspace": "node tools/local-workspace-qualification.ts",
-    "validate:production-manifest": "node tools/validate-production-manifest.ts"
+    "validate:production-manifest": "node tools/validate-production-manifest.ts",
+    "dev:context": "node tools/dev-session.ts context",
+    "dev:tools": "node tools/dev-session.ts serve",
+    "verify:dev-scope": "node tools/dev-session.ts scope",
+    "verify:generated-contracts": "node tools/verify-generated-contracts.ts",
+    "test:development-gates": "node --test tests/tools/dev-session.test.ts tests/tools/verify-generated-contracts.test.ts tests/tools/verify-development-plan.test.ts",
+    "typecheck:development-tools": "tsc --strict --noEmit --skipLibCheck --target ES2023 --module NodeNext --moduleResolution NodeNext --allowImportingTsExtensions --types node --lib ES2023,DOM tools/dev-session.ts tools/verify-local.ts tools/verify-generated-contracts.ts tools/verify-development-plan.ts tests/tools/dev-session.test.ts tests/tools/verify-local.test.ts tests/tools/verify-generated-contracts.test.ts tests/tools/verify-development-plan.test.ts",
+    "dev:approve": "node tools/dev-session.ts approve",
+    "dev:run": "node tools/dev-session.ts run",
+    "dev:verify": "node tools/dev-session.ts verify",
+    "verify:development-plan": "node tools/verify-development-plan.ts"
   },
   "dependencies": {
     "@openai/apps-sdk-ui": "^0.2.2",
@@ -52,6 +62,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "24.0.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "playwright": "^1.63.0",
