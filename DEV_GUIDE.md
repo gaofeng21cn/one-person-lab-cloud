@@ -93,16 +93,45 @@ receipts to this repository.
 
 Follow [Scoped Development Contract](AGENTS.md#scoped-development-contract) for
 per-run admission, restricted worker capabilities, isolated stage inputs and
-signed receipts. Use `npm run dev:tools` for the worker tool entry and
-`npm run dev:run` for the trusted host runner entry. Their argument details are
-finalized with the implementation; this guide does not freeze a CLI protocol or
-assert that a particular chat already runs under that host.
+signed receipts. The trusted host creates the approval JSON and signing store
+outside the repository; the worker cannot edit either. Current commands are:
+
+```bash
+npm run dev:approve -- /absolute/host-approval.json /absolute/host-store
+npm run dev:context -- /absolute/host-store run-id
+npm run dev:tools -- /absolute/host-store run-id
+npm run dev:run -- /absolute/host-store run-id https://model.example/v1/chat/completions model-id
+npm run dev:verify -- /absolute/host-store run-id gate-id
+npm run verify:dev-scope -- /absolute/host-store run-id
+```
+
+`dev:run` launches a separate worker with only the six admitted tools. Attaching
+`dev:tools` to a shell-enabled chat does not restrict that chat. The source
+runner is not an Instance executor and does not consume an Instance receipt as
+source completion. Keep live business-chain work in its current owner session;
+its protected workflows and existing receipt validators remain authoritative.
+Multiple checkouts are allowed: bind evidence to exact source and input hashes,
+not a directory name or a thread's completion claim. Do not discard ongoing
+owner work or rerun accepted production steps merely to adopt this entry.
 
 The host references an existing phase-plan record and canonical owner, narrows
 scope and declares stage inputs and the runner. A worker requests acceptance
 with `dev_verify` and observes actual results with `dev_status`; it cannot
 complete or publish a run by assertion. A shell-enabled chat remains
 unrestricted. Run receipts do not automatically write product status or roadmap.
+
+The host refreshes admitted context before every model turn. Status is computed
+from the current declared inputs and signed predecessor evidence, not stored as
+an agent-editable completion field. A new session or model can continue the same
+run without restarting valid stages; an actual input or bound evidence change
+invalidates only the affected stage and its dependents. A refresh failure stops
+the worker rather than continuing with an old admission.
+
+Receipt lookup reads only the named development gate's attempt sequence and
+verifies its signature and identity. It does not enumerate and parse business
+receipt bodies. Development receipts prove source checks; business and Instance
+receipts stay in their existing owner formats and qualification paths. Neither
+layer is accepted as evidence of completion of the other.
 
 ## Pre-Commit Checks
 

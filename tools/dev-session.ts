@@ -79,26 +79,56 @@ function parseApproval(value: unknown): RunApproval {
   return a as RunApproval;
 }
 interface Phase { record: Record<string, any>; root: string; startAfter: string[]; acceptAfter: string[]; fingerprint: string }
+/** Only the host resolves plan patterns; signed worker paths remain exact. */
+function phaseWritePaths(root: string, declarations: string[]): string[] {
+  return declarations.flatMap(declaration => {
+    const parts = declaration.replace(/\/$/u, '').split('/');
+    if (parts.some(part => part.includes('*') && part !== '*') || parts[0] === '*') fail('invalid bounded phase path pattern');
+    pathName(parts.map(part => part === '*' ? 'host-pattern' : part).join('/'));
+    let candidates = [''];
+    for (const part of parts) {
+      if (part !== '*') candidates = candidates.map(prefix => prefix ? `${prefix}/${part}` : part);
+      else candidates = candidates.flatMap(prefix => {
+        const directory = physical(root, prefix);
+        if (!existsSync(directory) || !lstatSync(directory).isDirectory()) return [];
+        return readdirSync(directory).sort().map(name => `${prefix}/${name}`)
+          .filter(path => lstatSync(physical(root, path)).isDirectory());
+      });
+    }
+    return candidates.map(path => {
+      // Missing declarations stay exact files; no inferred directory grant.
+      const target = physical(root, path);
+      return declaration.endsWith('/') || (existsSync(target) && lstatSync(target).isDirectory()) ? path + '/' : path;
+    });
+  });
+}
 function phase(root: string, approval: RunApproval, atBase = false): Phase {
   const bytes = atBase ? git(root, ['show', `${approval.baseSha}:${approval.planPath}`]) : fileBytes(root, approval.planPath, 2 * 1024 * 1024).toString();
   const plan = object(JSON.parse(bytes));
   if (plan.schemaVersion !== 1) fail('unsupported phase plan');
-  const roots = object(plan.sourceRoots); const ownerRoot = pathName(roots[approval.owner]);
+  const roots = object(plan.sourceRoots);
+  // The canonical cloud owner lives at '.', but worker paths still require a
+  // bounded relative scope. Root ownership is not a root filesystem grant.
+  const ownerRoot = approval.owner === 'cloud' && roots.cloud === '.' ? '.' : pathName(roots[approval.owner]);
   const list = plan[approval.selection.collection]; if (!Array.isArray(list)) fail('phase collection missing');
   const found = list.filter((item: any) => (item.id ?? item.window) === approval.selection.id);
   if (found.length !== 1) fail('phase record missing or duplicated');
   const record = object(found[0]);
-  const parent = approval.selection.collection === 'executionSlices' ? (plan.workPackages || []).find((w: any) => w.id === record.workPackage) : record;
-  if (approval.selection.collection !== 'parallelPreparation' && (!parent || !Array.isArray(parent.owners) || !parent.owners.includes(approval.owner))) fail('DDD owner does not own phase record');
+  const parentOf = (slice: Record<string, any>) => {
+    const parents = (plan.workPackages || []).filter((w: any) => w.id === slice.workPackage);
+    if (parents.length !== 1) fail('phase parent missing or duplicated');
+    return object(parents[0]);
+  };
+  const parents = approval.selection.collection === 'parallelPreparation' ? strings(record.nextSlices, 'preparation slices').map(sliceId => {
+    const slices = (plan.executionSlices || []).filter((s: any) => s.id === sliceId);
+    if (slices.length !== 1) fail('preparation slice missing or duplicated');
+    return parentOf(object(slices[0]));
+  }) : [approval.selection.collection === 'executionSlices' ? parentOf(record) : record];
+  if (!parents.some(parent => Array.isArray(parent.owners) && parent.owners.includes(approval.owner))) fail('DDD owner does not own phase record');
   const writes = strings(record.plannedWritePaths ?? record.writePaths, 'phase write scope');
-  const normalized = writes.map(p => {
-    pathName(p, true);
-    // A nonexistent declaration remains an exact file, never guessed to be a directory grant.
-    const target = physical(root, p.replace(/\/$/u, ''));
-    return p.endsWith('/') || (existsSync(target) && lstatSync(target).isDirectory()) ? p.replace(/\/$/u, '') + '/' : p;
-  });
+  const normalized = phaseWritePaths(root, writes);
   for (const p of approval.writePaths) {
-    if (!matches(p.replace(/\/$/u, ''), [ownerRoot + '/']) || !matches(p.replace(/\/$/u, ''), normalized)) fail(`write scope is outside approved DDD phase: ${p}`);
+    if ((ownerRoot !== '.' && !matches(p.replace(/\/$/u, ''), [ownerRoot + '/'])) || !matches(p.replace(/\/$/u, ''), normalized)) fail(`write scope is outside approved DDD phase: ${p}`);
     const forbidden = record.forbiddenWrites ?? [];
     if (forbidden.some((q: string) => p === q || p.startsWith(q + '/') || q.startsWith(p.endsWith('/') ? p : p + '/'))) fail(`phase forbids write: ${p}`);
   }
@@ -106,7 +136,8 @@ function phase(root: string, approval: RunApproval, atBase = false): Phase {
   const acceptAfter = strings(record.acceptAfter ?? (record.sharedContractGate ? [record.sharedContractGate] : []), 'accept dependencies', false);
   const dependencies = new Set([...startAfter, ...acceptAfter]);
   for (const key of Object.keys(approval.requires)) if (!dependencies.has(key)) fail(`invented phase dependency: ${key}`);
-  return { record, root: ownerRoot, startAfter, acceptAfter, fingerprint: digest(canonical({ record, ownerRoot })) };
+  const ownership = parents.map(parent => ({ id: parent.id, owners: parent.owners }));
+  return { record, root: ownerRoot, startAfter, acceptAfter, fingerprint: digest(canonical({ record, ownerRoot, ownership })) };
 }
 function physical(root: string, path: string) {
   pathName(path); let target = root;
@@ -190,14 +221,17 @@ function runnerHash() {
 }
 function receiptHistory(store: string, runId: string, gateId: string): { receipt: StageReceipt; hash: string }[] {
   const directory = resolve(runDirectory(store, runId), 'receipts'); if (!existsSync(directory)) return [];
-  const results = readdirSync(directory).filter(path => path.endsWith('.json')).map(path => {
+  const name = new RegExp(`^${id(gateId).replace(/\./gu, '\\.')}-([1-9][0-9]*)\\.json$`, 'u');
+  const sequence = readdirSync(directory).flatMap(path => {
+    const match = name.exec(path); return match ? [{ path, attempt: Number(match[1]) }] : [];
+  }).sort((a, b) => a.attempt - b.attempt);
+  return sequence.map(({ path, attempt }, index) => {
+    if (attempt !== index + 1) fail('EVIDENCE_INVALID: receipt sequence gap or duplicate');
     const receipt = readSigned(store, resolve(directory, path)) as StageReceipt;
     if (receipt.schemaVersion !== 1 || receipt.kind !== 'opl.development.stage.v1' || receipt.runId !== runId ||
-      !Number.isSafeInteger(receipt.attempt) || receipt.attempt < 1 || !['passed', 'failed', 'blocked'].includes(receipt.result) || receipt.evidenceLayer !== 'source') fail('EVIDENCE_INVALID: invalid stage receipt');
+      receipt.gateId !== gateId || receipt.attempt !== attempt || !['passed', 'failed', 'blocked'].includes(receipt.result) || receipt.evidenceLayer !== 'source') fail('EVIDENCE_INVALID: invalid stage receipt');
     return { receipt, hash: digest(canonical(receipt)) };
-  }).filter(item => item.receipt.gateId === gateId).sort((a, b) => a.receipt.attempt - b.receipt.attempt);
-  if (results.some((item, index) => item.receipt.attempt !== index + 1)) fail('EVIDENCE_INVALID: receipt sequence gap or duplicate');
-  return results;
+  });
 }
 function appendReceipt(store: string, receipt: StageReceipt) {
   const directory = resolve(runDirectory(store, receipt.runId), 'receipts'); mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -241,13 +275,7 @@ export class DevelopmentSession {
     const marker = `${this.approval.runId}:${gateId}`; if (visiting.has(marker)) fail('EVIDENCE_INVALID: cyclic evidence dependencies');
     visiting = new Set(visiting).add(marker);
     const gate = this.approval.gates.find(g => g.id === gateId); if (!gate) fail('unknown gate');
-    const external = this.dependencyEvidence(phase(this.root, this.approval).startAfter, visiting);
-    const blockers: any[] = [...external.blockers]; const dependencies: StageReceipt['dependencies'] = [...external.dependencies];
-    for (const dependency of gate.needs) {
-      const prior = this.gateState(dependency, visiting);
-      if (prior.state !== 'passed') blockers.push({ dependency, owner: this.approval.owner, state: prior.state });
-      else dependencies.push({ runId: this.approval.runId, gateId: dependency, receiptHash: prior.receiptHash! });
-    }
+    const { blockers, dependencies } = this.gateEvidence(gate, visiting);
     if (blockers.length) return { gateId, state: 'blocked', blockers };
     const last = receiptHistory(this.store, this.approval.runId, gateId).at(-1);
     if (!last) return { gateId, state: 'pending', blockers };
@@ -258,6 +286,16 @@ export class DevelopmentSession {
     if (r.result === 'blocked') blockers.push({ dependency: gateId, owner: this.approval.owner, reason: r.verification.reason ?? 'acceptance runner blocked' });
     return { gateId, state: r.result, receiptHash: last.hash, blockers };
   }
+  private gateEvidence(gate: DevelopmentGate, visiting = new Set<string>()) {
+    const external = this.dependencyEvidence(phase(this.root, this.approval).startAfter, visiting);
+    const blockers: any[] = [...external.blockers]; const dependencies: StageReceipt['dependencies'] = [...external.dependencies];
+    for (const dependency of gate.needs) {
+      const prior = this.gateState(dependency, visiting);
+      if (prior.state !== 'passed') blockers.push({ dependency, owner: this.approval.owner, state: prior.state });
+      else dependencies.push({ runId: this.approval.runId, gateId: dependency, receiptHash: prior.receiptHash! });
+    }
+    return { blockers, dependencies };
+  }
   private dependencyEvidence(ids: string[], visiting = new Set<string>()) {
     const blockers: any[] = []; const dependencies: StageReceipt['dependencies'] = [];
     for (const dependency of ids) {
@@ -267,15 +305,22 @@ export class DevelopmentSession {
       }
       const upstream = new DevelopmentSession(this.root, this.store, reference.runId);
       if (upstream.approval.selection.id !== dependency) fail('EVIDENCE_INVALID: predecessor phase identity mismatch');
-      const states = reference.gateId ? [upstream.gateState(reference.gateId, visiting)] : upstream.approval.gates.map(g => upstream.gateState(g.id, visiting));
+      // Gate markers have one separator; run-terminal markers have two, so
+      // even an approved gate named "terminal" cannot collide with ancestry.
+      const marker = `run:${reference.runId}:terminal`;
+      if (visiting.has(marker)) fail('EVIDENCE_INVALID: cyclic evidence dependencies');
+      const ancestry = new Set(visiting).add(marker);
+      if (reference.gateId && !upstream.approval.gates.some(g => g.id === reference.gateId)) fail('EVIDENCE_INVALID: unknown predecessor gate');
+      // A gate reference never downgrades a phase prerequisite to one test.
+      const states = upstream.approval.gates.map(g => upstream.gateState(g.id, ancestry));
       if (states.some(s => s.state !== 'passed')) {
         blockers.push({ dependency, owner: upstream.approval.owner, runId: reference.runId, reason: 'predecessor evidence missing, stale, failed or blocked' }); continue;
       }
-      if (!reference.gateId) {
-        const terminal = upstream.dependencyEvidence(phase(this.root, upstream.approval).acceptAfter, visiting);
-        if (terminal.blockers.length) { blockers.push({ dependency, owner: upstream.approval.owner, reason: 'predecessor terminal dependencies unverified' }); continue; }
-      }
-      dependencies.push(...states.map(state => ({ runId: reference.runId, gateId: state.gateId, receiptHash: state.receiptHash! })));
+      const terminal = upstream.dependencyEvidence(phase(this.root, upstream.approval).acceptAfter, ancestry);
+      if (terminal.blockers.length) { blockers.push({ dependency, owner: upstream.approval.owner, reason: 'predecessor terminal dependencies unverified' }); continue; }
+      // Bind the complete terminal chain even when its independent stage
+      // receipts are unchanged. Only consumers of this evidence must reverify.
+      dependencies.push(...states.map(state => ({ runId: reference.runId, gateId: state.gateId, receiptHash: state.receiptHash! })), ...terminal.dependencies);
     }
     return { blockers, dependencies };
   }
@@ -300,6 +345,9 @@ export class DevelopmentSession {
     writeFileSync(fd, JSON.stringify({ pid: process.pid })); closeSync(fd);
     let snapshot: string | undefined;
     try {
+      const initialEvidence = this.gateEvidence(gate);
+      if (initialEvidence.blockers.length) fail('DEPENDENCY_BLOCKED: ' + JSON.stringify(initialEvidence.blockers));
+      const dependencies = initialEvidence.dependencies;
       const files = inputFiles(this.root, gate.inputs); const hash = fingerprint(files);
       const phaseHash = phase(this.root, this.approval).fingerprint;
       snapshot = mkdtempSync(resolve(tmpdir(), 'opl-acceptance-'));
@@ -310,15 +358,17 @@ export class DevelopmentSession {
       const checked = await runDevelopmentCheck({ snapshotRoot: snapshot, kind: gate.kind, targets: gate.targets, cwd: gate.cwd });
       const unchanged = hash === fingerprint(inputFiles(this.root, gate.inputs)) && phaseHash === phase(this.root, this.approval).fingerprint;
       const previous = receiptHistory(this.store, this.approval.runId, gateId);
-      const dependencies = [...this.dependencyEvidence(phase(this.root, this.approval).startAfter).dependencies,
-        ...gate.needs.map(dep => ({ runId: this.approval.runId, gateId: dep, receiptHash: this.gateState(dep).receiptHash! }))];
+      const currentEvidence = this.gateEvidence(gate);
+      const dependenciesUnchanged = !currentEvidence.blockers.length && canonical(dependencies) === canonical(currentEvidence.dependencies);
+      const reason = !dependenciesUnchanged ? 'DEPENDENCY_CHANGED_DURING_VERIFICATION' :
+        !unchanged ? 'INPUT_CHANGED_DURING_VERIFICATION' : checked.reason;
       const receipt: StageReceipt = { schemaVersion: 1, kind: 'opl.development.stage.v1', runId: this.approval.runId, gateId, attempt: previous.length + 1,
         evidenceLayer: 'source', sourceSha: this.head(), approvalHash: digest(canonical(this.approval)), phaseHash, runnerHash: runnerHash(), inputHash: hash, dependencies,
-        result: unchanged ? checked.status : 'failed', checkedAt: new Date().toISOString(),
+        result: unchanged && dependenciesUnchanged ? checked.status : 'failed', checkedAt: new Date().toISOString(),
         verification: { tests: checked.tests, failed: checked.failed, skipped: checked.skipped, exitCode: checked.exitCode, outputSha256: digest(checked.output),
-          ...(unchanged ? checked.reason ? { reason: checked.reason } : {} : { reason: 'INPUT_CHANGED_DURING_VERIFICATION' }) } };
+          ...(reason ? { reason } : {}) } };
       appendReceipt(this.store, receipt);
-      return { ...this.view(), verification: receipt.verification };
+      return { ...this.view(), ...(!dependenciesUnchanged ? { result: 'failed' } : {}), verification: receipt.verification };
     } finally { if (snapshot) rmSync(snapshot, { recursive: true, force: true }); unlinkSync(lock); }
   }
   private allowed(path: string, write = false) {
@@ -405,12 +455,21 @@ export async function runRestrictedWorker(session: DevelopmentSession, options: 
   if (!(endpoint.protocol === 'https:' || (endpoint.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(endpoint.hostname))) || endpoint.username || endpoint.password) fail('explicit HTTPS model endpoint required; HTTP is local-only');
   if (typeof options.model !== 'string' || !options.model.trim()) fail('model required');
   const maxTurns = options.maxTurns ?? 8; if (!Number.isSafeInteger(maxTurns) || maxTurns < 1 || maxTurns > 32) fail('invalid turn budget');
-  const current = session.context();
-  const messages: any[] = [{ role: 'system', content: 'You are a restricted business-owner worker. Use the admitted tools. Only the host acceptance runner advances verified progress. Source evidence never claims Candidate, Instance or production readiness. Current admission:\n' + JSON.stringify(current) },
+  const instruction = 'You are a restricted business-owner worker. Use the admitted tools. Only the host acceptance runner advances verified progress. Source evidence never claims Candidate, Instance or production readiness. Current admission:\n';
+  const messages: any[] = [{ role: 'system', content: instruction },
     { role: 'user', content: 'Continue the next unfinished admitted stage. Do not restart verified work. Request its declared acceptance gate after the change.' }];
+  const refreshAdmission = () => {
+    // This is a trusted-host refresh, not a worker bypass of stale admission.
+    // Failures propagate before another model request or terminal readback.
+    const current = session.context();
+    messages[0].content = instruction + JSON.stringify(current);
+    if (Buffer.byteLength(JSON.stringify(messages)) > 768 * 1024) fail('worker context budget exceeded');
+    const { result, nextGate, stages, blockers } = current;
+    return { result, nextGate, stages, blockers };
+  };
   const tools = toolSpecs.map(spec => ({ type: 'function', function: { name: spec.name, description: spec.description, parameters: spec.inputSchema } }));
   for (let turn = 0; turn < maxTurns; turn++) {
-    const status = session.status(); if (status.result === 'passed') return { ...status, turns: turn };
+    const status = refreshAdmission(); if (status.result === 'passed') return { ...status, turns: turn };
     const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json', ...(options.apiKey ? { authorization: `Bearer ${options.apiKey}` } : {}) },
       body: JSON.stringify({ model: options.model, messages, tools, tool_choice: 'auto', max_tokens: 2048 }), signal: AbortSignal.timeout(60_000) });
     if (!response.ok) fail(`MODEL_HTTP_${response.status}`);
@@ -428,7 +487,7 @@ export async function runRestrictedWorker(session: DevelopmentSession, options: 
     if (!calls.length) messages.push({ role: 'user', content: 'Completion is unverified. Use the admitted tools or report the concrete blocker; text cannot complete the run.' });
     if (Buffer.byteLength(JSON.stringify(messages)) > 768 * 1024) fail('worker context budget exceeded');
   }
-  const status = session.status();
+  const status = refreshAdmission();
   return status.result === 'passed' ? { ...status, turns: maxTurns } : { ...status, result: 'blocked', reason: 'TURN_BUDGET_EXHAUSTED', turns: maxTurns };
 }
 /** stdio exposes only declared repository functions. Other client-native tools are not controlled by MCP. */

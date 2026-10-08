@@ -2,13 +2,18 @@
 # -*- coding: utf-8 -*-
 """Render concrete work packages from frozen contracts; not an implementation or task runner."""
 from pathlib import Path
-import json,subprocess,re,os
+import argparse,json,subprocess,re,os
 P=Path(__file__).resolve().parents[1]
 # Inputs always come from this checkout; OP renders out to a separate tree so a
 # freshness gate can byte-compare without mutating checked-in generated artifacts.
 OUT=Path(os.environ['OPL_DEVELOPMENT_PLAN_OUT']).resolve() if os.environ.get('OPL_DEVELOPMENT_PLAN_OUT') else P
 C=P.parents[2]  # The containing Cloud checkout, never a sibling provenance repository.
 HOME=C.parent
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--check',action='store_true',help='Render freshness comparison bytes without Git provenance; requires an isolated output tree.')
+options=parser.parse_args()
+if options.check and (not os.environ.get('OPL_DEVELOPMENT_PLAN_OUT') or OUT.is_relative_to(C)):
+    parser.error('--check requires OPL_DEVELOPMENT_PLAN_OUT outside the input checkout')
 def display_path(value):
     path=Path(value)
     if not path.is_absolute():
@@ -408,7 +413,9 @@ for w in W:
  if 'F11' in w['features']:w['contractRefs'].append('13_plan_change_policy.md')
  if 'F16' in w['features']:w['contractRefs'].append('09_legacy_migration.md')
  w['existingPathStatus']={x:(C/Path(x)).exists() for x in w['existingReadPaths']}
-plan={'schemaVersion':1,'status':'plan_only_not_implemented','sourceSHA':subprocess.check_output(['git','-C',str(C),'rev-parse','HEAD'],text=True).strip(),'sourceRoots':roots,'sourceRootStatus':{k:('existing' if (k=='instance' or (C/Path(v)).exists()) else 'planned_not_created') for k,v in roots.items()},'assignees':'roles/modules are fixed; human names and calendar dates follow actual staffing, not fabricated','workPackages':W,'tablePrimary':table_primary,'rpcImplementers':rpc_assignments,'baselineCommands':baseline,'executionSlices':slices,'windows':windows,'parallelPreparation':parallel_preparation,'serialIntegration':serial_integration,'contractMigration':{'source':'03_api_contract_complete.yaml#x-approved-wire-migration','status':'approved_pending_W01_consumer_migration','entrySlice':'W01.application-contracts'},'rules':{'startDependencies':'finished producer contracts/scaffolding needed to start useful implementation','acceptDependencies':'real producers needed for integrated acceptance; no fixture-only completion','formalReleaseVsInstance':'separate authorized Owners; same qualified bytes; Cloud never dispatches Instance deployment'}}
+# Freshness ignores provenance; default generation must obtain a real Git SHA or fail.
+provenance={} if options.check else {'sourceSHA':subprocess.check_output(['git','-C',str(C),'rev-parse','HEAD'],text=True).strip()}
+plan={'schemaVersion':1,'status':'plan_only_not_implemented',**provenance,'sourceRoots':roots,'sourceRootStatus':{k:('existing' if (k=='instance' or (C/Path(v)).exists()) else 'planned_not_created') for k,v in roots.items()},'assignees':'roles/modules are fixed; human names and calendar dates follow actual staffing, not fabricated','workPackages':W,'tablePrimary':table_primary,'rpcImplementers':rpc_assignments,'baselineCommands':baseline,'executionSlices':slices,'windows':windows,'parallelPreparation':parallel_preparation,'serialIntegration':serial_integration,'contractMigration':{'source':'03_api_contract_complete.yaml#x-approved-wire-migration','status':'approved_pending_W01_consumer_migration','entrySlice':'W01.application-contracts'},'rules':{'startDependencies':'finished producer contracts/scaffolding needed to start useful implementation','acceptDependencies':'real producers needed for integrated acceptance; no fixture-only completion','formalReleaseVsInstance':'separate authorized Owners; same qualified bytes; Cloud never dispatches Instance deployment'}}
 (OUT/'checks').mkdir(parents=True,exist_ok=True)
 (OUT/'checks/development_plan.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2)+'\n')
 lines=['# 14 完整开发执行任务书','','> 目标：把已定稿F01–F17变成可直接分工实施的工作包。主Owner为Cloud架构/各领域负责人；产品/字段/协议Owner仍是00–13，本文件不重新定义它们。','> 本文件是执行规格，不是进度账本；not_implemented仅表示本生成器不认证实施完成。实际完成情况以docs/status.md与Owner证据为准，不代表已创建目录、跑通服务、迁移或发布。','> 每个任务列真实来源、拟创建写集、依赖、前后端产物及验收。原任务记录/失败验证保留历史，不用百分比冒充交付。','','## 1. 完整方案的层次与交付','','12产品主说明回答用户得到什么；11/04回答页面怎样操作；01/02/03/05/06/13回答权威、字段、接口、规则和恢复；09回答旧数据如何迁移；本14回答谁先做、改哪里、怎么测、交给谁；08仍是各角色统一验收Owner。','','- 范围严格F01–F17，不增加Marketplace、公开注册、任意Runtime上传、新钱包或工作流框架。','- 金额、原单、D17、provider预付规则及data-loss边界不允许研发自选第二种解释。','- 设计/页面可按冻结规格并行开发，最后必须接真实BFF/Owner，不以静态prototype或mock冒充完成。','- 不预设“50人/3分钟/两周完成”等无依据承诺；人名/日历排期按实际资源填，不再改业务语义。','','## 2. 代码与仓库落点','','| 逻辑Owner | 工作根 | 当前状态 |','|---|---|---|']
@@ -426,7 +433,7 @@ work_notes={
 }
 for w in W:
  lines+=['',f"### {w['id']} {w['title']}",'',f"**协调Owner：** {w['coordinator']}；**参与Owner：** {', '.join(w['owners'])}。",f"**F范围：** {', '.join(w['features'])}；**开始依赖：** {', '.join(w['startAfter']) or '无'}；**验收依赖：** {', '.join(w['acceptAfter']) or '按本任务边界'}。",'', '**现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：']
- for x in w['existingReadPaths']:lines.append(f'- `{display_path(x)}`'+('' if Path(x).exists() else '（需按当前source inventory定位；不虚构已存在）'))
+ for x in w['existingReadPaths']:lines.append(f'- `{display_path(x)}`'+('' if w['existingPathStatus'][x] else '（需按当前source inventory定位；不虚构已存在）'))
  lines+=['','**拟写入位置（未来实施，尚未创建的路径也明确列出）**：']
  for x in w['plannedWritePaths']:lines.append('- `'+display_path(x)+'`')
  lines+=['','**必须交付**：']+['- '+x for x in w['deliverables']]

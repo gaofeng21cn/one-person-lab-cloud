@@ -38,7 +38,7 @@
     "validate:production-manifest": "node tools/validate-production-manifest.ts",
     "dev:context": "node tools/dev-session.ts context",
     "dev:tools": "node tools/dev-session.ts serve",
-    "verify:dev-scope": "node tools/dev-session.ts verify",
+    "verify:dev-scope": "node tools/dev-session.ts scope",
     "verify:generated-contracts": "node tools/verify-generated-contracts.ts",
     "test:development-gates": "node --test tests/tools/dev-session.test.ts tests/tools/verify-generated-contracts.test.ts tests/tools/verify-development-plan.test.ts",
     "typecheck:development-tools": "tsc --strict --noEmit --skipLibCheck --target ES2023 --module NodeNext --moduleResolution NodeNext --allowImportingTsExtensions --types node --lib ES2023,DOM tools/dev-session.ts tools/verify-local.ts tools/verify-generated-contracts.ts tools/verify-development-plan.ts tests/tools/dev-session.test.ts tests/tools/verify-local.test.ts tests/tools/verify-generated-contracts.test.ts tests/tools/verify-development-plan.test.ts",

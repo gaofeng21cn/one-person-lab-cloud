@@ -395,8 +395,25 @@ export async function runDevelopmentCheck(options: {
       args = ["tools/verify-development-plan.ts"];
       // The plan gate regenerates into an isolated tree and byte-compares; it only
       // needs the trusted python3 interpreter, never protoc or the network.
-      const tool = await trustedTool("python3");
-      if (tool && !inside(snapshot, tool)) readPaths.add(tool);
+      // On macOS /usr/bin/python3 is an Xcode selector, not an interpreter.
+      // Resolve the installed runtime from a fixed host installation location;
+      // do not grant the worker access to developer selection/configuration.
+      const pythonDirectories = process.platform === "darwin" ?
+        ["/Library/Developer/CommandLineTools/usr/bin", ...trustedToolDirectories] : trustedToolDirectories;
+      let tool: string | undefined;
+      for (const directory of pythonDirectories) {
+        try {
+          const candidate = join(directory, "python3");
+          await access(candidate, constants.X_OK);
+          if ((await stat(candidate)).isFile()) { tool = await realpath(candidate); break; }
+        } catch { /* Only fixed runtime installation locations are eligible. */ }
+      }
+      if (!tool || inside(snapshot, tool)) return blocked("trusted Python runtime unavailable");
+      readPaths.add(tool);
+      const framework = "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/";
+      if (tool.startsWith(framework)) readPaths.add(resolve(dirname(tool), ".."));
+      else if (tool.startsWith("/opt/homebrew/Cellar/")) readPaths.add(tool.split("/").slice(0, 6).join("/"));
+      env.PATH = dirname(tool) + ":" + env.PATH;
     }
     if (options.kind === "browser") {
       if (!Buffer.from(await readFile(join(snapshot, "package.json"))).equals(await readFile(join(root, "package.json")))) {
