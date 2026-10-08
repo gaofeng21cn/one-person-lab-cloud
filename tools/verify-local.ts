@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { access, mkdir, mkdtemp, readFile, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -82,6 +82,46 @@ export const localVerificationSteps = Object.freeze([
   { name: "Git whitespace", command: "git", args: ["diff", "--check"] }
 ]);
 
+type VerificationStep = { name: string; command: string; args: string[]; cwd?: string };
+
+const developmentToolPaths = ["tools/", "tests/tools/", "AGENTS.md", "DEV_GUIDE.md", "package.json", ".github/"];
+const generatedContractPaths = ["packages/contracts/proto/", "packages/contracts/go/", "services/gateway-integration/identity/", "apps/console-bff/internal/httpapi/"];
+
+function anyPath(paths: readonly string[], prefixes: readonly string[]) {
+  return paths.some((path) => prefixes.some((prefix) => path === prefix || path.startsWith(prefix)));
+}
+
+/** Select the smallest local evidence set for an explicit Git change scope. */
+export function focusedVerificationSteps(changedPaths: readonly string[]): VerificationStep[] {
+  const steps: VerificationStep[] = [];
+  const add = (step: VerificationStep) => steps.push(step);
+  const hasRepositoryCode = changedPaths.some((path) => !path.startsWith("docs/"));
+  if (hasRepositoryCode) add({ name: "product boundary", command: "npm", args: ["run", "validate:product-boundary"] });
+  if (anyPath(changedPaths, generatedContractPaths)) {
+    add({ name: "Generated contracts freshness", command: "npm", args: ["run", "verify:generated-contracts"] });
+  }
+  if (changedPaths.some((path) => path.startsWith("docs/spec/target/"))) {
+    add({ name: "Development plan freshness", command: "npm", args: ["run", "verify:development-plan"] });
+  }
+  if (anyPath(changedPaths, developmentToolPaths)) {
+    add({ name: "Development tools typecheck", command: "npm", args: ["run", "typecheck:development-tools"] });
+  }
+  if (changedPaths.some((path) => /^(?:apps|packages)\/.*\.[cm]?[jt]sx?$/u.test(path))) {
+    add({ name: "TypeScript typecheck", command: "npm", args: ["run", "typecheck"] });
+  }
+  const testPaths = changedPaths.filter((path) => /^tests\/.*\.test\.[cm]?[jt]s$/u.test(path));
+  const browserTests = testPaths.filter((path) => /browser\.test\.[cm]?[jt]s$/u.test(path));
+  const nodeTests = testPaths.filter((path) => !browserTests.includes(path));
+  if (nodeTests.length) add({ name: "Focused development tests", command: "node", args: ["--test", ...nodeTests] });
+  if (browserTests.length) add({ name: "Focused E2E tests", command: "node", args: ["--test", ...browserTests] });
+  const changedGoModules = goModules.filter((module) => changedPaths.some((path) => path === module || path.startsWith(`${module}/`)));
+  for (const module of changedGoModules) {
+    add({ name: `${module} focused Go compile`, command: "go", args: ["test", "-run", "^$", "./..."], cwd: module });
+  }
+  add({ name: "Git whitespace", command: "git", args: ["diff", "--check"] });
+  return steps;
+}
+
 export const postgresVerificationSpecs = Object.freeze([
   { cwd: "services/internal/postgresmigrate", race: true },
   // Each owner proves, against a real PostgreSQL server, that its own migration
@@ -104,15 +144,32 @@ export const postgresVerificationSpecs = Object.freeze([
 
 export function parseVerifyLocalArgs(args = process.argv.slice(2)) {
   let withPostgres = false;
-  for (const token of args) {
+  let focused = false;
+  let base: string | undefined;
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index];
     if (token === "--with-postgres") {
       if (withPostgres) throw new Error("verify-local argument --with-postgres may be provided once");
       withPostgres = true;
       continue;
     }
+    if (token === "--focused") {
+      if (focused) throw new Error("verify-local argument --focused may be provided once");
+      focused = true;
+      continue;
+    }
+    if (token === "--base") {
+      if (base !== undefined) throw new Error("verify-local argument --base may be provided once");
+      const value = args[++index];
+      if (!value || value.startsWith("--")) throw new Error("verify-local argument --base requires a ref");
+      base = value;
+      continue;
+    }
     throw new Error(`unknown verify-local argument: ${token}`);
   }
-  return { withPostgres };
+  if (focused && base === undefined) throw new Error("focused verification requires --base <ref>");
+  if (!focused && base !== undefined) throw new Error("--base requires --focused");
+  return { withPostgres, ...(focused ? { focused: true, base: base! } : {}) };
 }
 
 
@@ -510,7 +567,6 @@ fs.writeFileSync(p.join(process.env.TMPDIR,'probe'),'scratch');console.log('sand
   }
 }
 
-type VerificationStep = { name: string; command: string; args: string[]; cwd?: string };
 type ProcessResult = { code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string };
 type GoTestEvent = { Action?: string; Package?: string; Test?: string; Output?: string };
 type GoTestSummary = { failed: number; skipped: number; passedPackages: string[]; passedTests: { package: string; name: string }[] };
@@ -756,8 +812,23 @@ const defaultDependencies = Object.freeze({
   runPostgresVerification
 });
 
-export async function runVerification({ withPostgres = false } = {}, dependencies = defaultDependencies) {
-  for (const step of localVerificationSteps) await dependencies.runStep(step);
+function changedPathsForBase(base: string) {
+  const git = (args: string[]) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
+  const baseSha = git(["rev-parse", "--verify", "--end-of-options", `${base}^{commit}`]).trim();
+  const split = (value: string) => value.split("\0").filter(Boolean);
+  return [...new Set([
+    ...split(git(["diff", "--name-only", "-z", "--no-renames", `${baseSha}...HEAD`, "--"])),
+    ...split(git(["diff", "--cached", "--name-only", "-z", "--no-renames", baseSha, "--"])),
+    ...split(git(["diff", "--name-only", "-z", "--no-renames", "--"])),
+    ...split(git(["ls-files", "--others", "--exclude-standard", "-z"]))
+  ])].sort();
+}
+
+export async function runVerification(options: { withPostgres?: boolean; focused?: boolean; base?: string } = {}, dependencies = defaultDependencies) {
+  const { withPostgres = false, focused = false, base } = options;
+  if (focused && !base) throw new Error("focused verification requires --base <ref>");
+  const steps = focused ? focusedVerificationSteps(changedPathsForBase(base!)) : localVerificationSteps;
+  for (const step of steps) await dependencies.runStep(step);
   if (withPostgres) {
     await dependencies.withTemporaryPostgres((env) => dependencies.runPostgresVerification(env));
   }
@@ -766,7 +837,8 @@ export async function runVerification({ withPostgres = false } = {}, dependencie
 async function main() {
   const options = parseVerifyLocalArgs();
   await runVerification(options);
-  process.stdout.write(`\nLocal verification passed${options.withPostgres ? " with PostgreSQL and Docker integration" : ""}.\n`);
+  const mode = options.focused ? ` focused verification against ${options.base}` : "";
+  process.stdout.write(`\nLocal${mode} verification passed${options.withPostgres ? " with PostgreSQL and Docker integration" : ""}.\n`);
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {

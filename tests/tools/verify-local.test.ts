@@ -16,6 +16,7 @@ import {
   postgresVerificationSpecs,
   runDevelopmentCheck,
   runVerification,
+  focusedVerificationSteps,
   summarizeGoTestFailures
 } from "../../tools/verify-local.ts";
 
@@ -27,8 +28,8 @@ test("verify-local exposes one default gate across Node, builds, and every Go mo
   const names = localVerificationSteps.map((step) => step.name);
   for (const expected of [
     "product boundary",
-    "Node source tests",
     "Generated contracts freshness",
+    "Node source tests",
     "Console browser suite",
     "TypeScript typecheck",
     "TypeScript lint",
@@ -48,6 +49,38 @@ test("verify-local exposes one default gate across Node, builds, and every Go mo
     databaseFreeGoTestSpecs.find((spec) => spec.cwd === "packages/contracts/go"),
     { cwd: "packages/contracts/go", packages: ["./..."] }
   );
+});
+
+test("focused verification selects only gates affected by an explicit change set", () => {
+  assert.deepEqual(parseVerifyLocalArgs(["--focused", "--base", "origin/main"]), {
+    withPostgres: false,
+    focused: true,
+    base: "origin/main"
+  });
+  assert.throws(() => parseVerifyLocalArgs(["--focused"]), /requires --base/);
+  assert.throws(() => parseVerifyLocalArgs(["--base", "origin/main"]), /requires --focused/);
+
+  const selected = focusedVerificationSteps([
+    "tools/dev-session.ts",
+    "tests/tools/dev-session.test.ts",
+    "docs/spec/target/checks/development_plan.json",
+    "services/fabric/internal/fabric/runtime.go",
+    "services/fabric/internal/fabric/runtime_test.go"
+  ]).map((step) => step.name);
+  assert.deepEqual(selected, [
+    "product boundary",
+    "Development plan freshness",
+    "Development tools typecheck",
+    "Focused development tests",
+    "services/fabric focused Go compile",
+    "Git whitespace"
+  ]);
+
+  const docsOnly = focusedVerificationSteps(["docs/README.md"]).map((step) => step.name);
+  assert.deepEqual(docsOnly, ["Git whitespace"]);
+  assert.ok(focusedVerificationSteps(["apps/console-ui/src/main.tsx"]).some((step) => step.name === "TypeScript typecheck"));
+  const browser = focusedVerificationSteps(["tests/ui/gateway-account-read-controller-browser.test.ts"]).map((step) => step.name);
+  assert.deepEqual(browser, ["product boundary", "Focused E2E tests", "Git whitespace"]);
 });
 
 test("Qualification executes the independent Go contracts module", async () => {

@@ -158,16 +158,33 @@ layer is accepted as evidence of completion of the other.
 ## Pre-Commit Checks
 
 ```bash
+npm run verify:local:focused -- --base origin/main
+```
+
+Focused verification is the normal local path. It requires an explicit base
+ref, inspects committed, staged, unstaged, and untracked paths, and selects only
+the affected checks. It does not claim that unrelated full-suite evidence ran.
+The selector is risk-based: development/tool changes select the development
+contract checks; generated-contract changes select freshness; plan changes select
+plan freshness; `apps/` and `packages/` TypeScript changes select typecheck; changed
+Node tests run directly; changed browser tests select focused E2E; and changed Go
+modules select compile checks. Browser suites, builds, PostgreSQL integration and
+full source coverage are not selected unless the changed boundary or an explicit
+full command requires them.
+The exhaustive source gate remains available for CI or explicit local rehearsal:
+
+```bash
 npm run verify:local
 ```
 
-The default gate needs no database. It validates the product boundary, Node
+The exhaustive gate needs no database. It validates the product boundary, Node
 tests, Console typecheck/lint/build, the current Go module set and Git
 whitespace. The module inventory is owned by
 [implementation-architecture.md](docs/implementation-architecture.md), not a
 fixed count in this guide. Go coverage means all-module compilation plus the
 explicitly database-free package tests. Changes to persistence, capacity behavior, local
-Docker, or a cross-service path also run the complete local gate:
+Docker, or a cross-service path require the relevant focused owner checks and,
+when the database/provider boundary is affected, the explicit complete local gate:
 
 ```bash
 npm run verify:local:full
