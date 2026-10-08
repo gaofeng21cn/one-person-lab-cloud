@@ -4,7 +4,7 @@
 from pathlib import Path
 from datetime import datetime,timezone
 from collections import Counter
-import json,hashlib,re,sys
+import json,hashlib,re,sys,os
 R=Path(__file__).resolve().parents[1]
 plan=json.loads((R/'checks/development_plan.json').read_text())
 api=json.loads((R/'contracts/api_inventory.json').read_text())['operations']
@@ -17,7 +17,11 @@ def require(ok,message):
 cloud=R.parents[2]
 def resolve_path(value):
  p=Path(value)
- return p.resolve() if p.is_absolute() else (cloud/p).resolve()
+ candidate=p if p.is_absolute() else cloud/p
+ declared=Path(os.path.abspath(candidate))
+ # Resolve local source links, but keep external owner declarations lexical:
+ # their filesystem and symlink targets are outside this validation authority.
+ return candidate.resolve() if declared.is_relative_to(cloud) else declared
 roots={owner:resolve_path(path) for owner,path in plan['sourceRoots'].items()}
 require(roots.get('cloud')==cloud,'Cloud root must be the containing checkout')
 for owner,path in roots.items():
@@ -25,6 +29,7 @@ for owner,path in roots.items():
   require(path.is_relative_to(cloud) and path!=cloud,'Cloud owner escapes repository: '+owner)
 require(roots.get('tenant')==roots.get('gateway'),'CloudIdentity must share the Gateway Integration module')
 require('instance' in roots and not roots['instance'].is_relative_to(cloud),'Instance remains an external deployment owner')
+require(plan.get('sourceRootStatus',{}).get('instance')=='external-owner/unverified','Instance source root must be external-owner/unverified')
 require({t['owner'] for t in db}<=set(roots),'data owner lacks a declared work root')
 require(len(W)==len(plan['workPackages']),'duplicate work package identity')
 features={f'F{i:02d}' for i in range(1,18)}
@@ -49,7 +54,9 @@ for wid,w in W.items():
  require(set(w['owners'])<=set(roots),wid+' references an undeclared owner work root')
  require(w['state']=='not_implemented',wid+' incorrectly claims work was implemented')
  for k in ['coordinator','owners','features','plannedWritePaths','deliverables','verification','acceptance']:require(bool(w.get(k)),wid+' missing '+k)
- for source in w['existingReadPaths']:require(resolve_path(source).exists(),wid+' falsely labels existing source: '+source)
+ for source in w['existingReadPaths']:
+  resolved=resolve_path(source)
+  require(resolved.is_relative_to(cloud) and resolved.exists(),wid+' falsely labels existing source: '+source)
  for path in w['plannedWritePaths']:
   resolved=resolve_path(path)
   require(resolved.is_relative_to(cloud) or ('instance' in w['owners'] and resolved.is_relative_to(roots['instance'])),wid+' write escapes authorized repository scope: '+path)

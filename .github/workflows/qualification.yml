@@ -28,6 +28,15 @@ jobs:
           node-version: "24"
           cache: npm
 
+      - name: Install OS sandbox for scoped checks
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          # bubblewrap needs unprivileged user namespaces; newer Ubuntu images
+          # restrict them via AppArmor, so relax that restriction for the runner.
+          sudo sysctl -w kernel.unprivileged_userns_clone=1 || true
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
       - name: Install Node dependencies
         run: npm ci --no-audit --no-fund
 

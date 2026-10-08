@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "c474cd1e7d5e5530e6e68ce5aef14b9a8167ec6d",
+  "sourceSHA": "2a59357d0826ec32893a842104e8bc0305ef73aa",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -32,7 +32,7 @@
     "fabric": "existing",
     "ledger": "existing",
     "tenant": "existing",
-    "instance": "existing"
+    "instance": "external-owner/unverified"
   },
   "assignees": "roles/modules are fixed; human names and calendar dates follow actual staffing, not fabricated",
   "workPackages": [

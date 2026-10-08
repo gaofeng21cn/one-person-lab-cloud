@@ -50,6 +50,114 @@ test("real regeneration byte-matches the checked-in plan artifacts and validates
   assert.deepEqual(result.artifacts, [...generatedPlanArtifacts]);
 });
 
+test("public renderer reports Instance as external-owner/unverified regardless of sibling presence", () => {
+  const directory = mkdtempSync(join(tmpdir(), "opl-plan-external-owner-"));
+  const scratch = join(directory, "checkout");
+  const out = join(directory, "rendered");
+  try {
+    mkdirSync(scratch);
+    materializePlanSnapshot(scratch);
+    let previous: Buffer[] | undefined;
+    for (const present of [false, true]) {
+      if (present) mkdirSync(join(directory, "opl-instance-medopl"));
+      const rendered = spawnSync("python3", [join(scratch, "docs/spec/target/checks/render_development_plan.py"), "--check"], {
+        cwd: scratch,
+        env: { ...process.env, OPL_DEVELOPMENT_PLAN_OUT: out, PYTHONDONTWRITEBYTECODE: "1" },
+        encoding: "utf8"
+      });
+      assert.equal(rendered.status, 0, rendered.stderr);
+      const artifacts = ["checks/development_plan.json", "14_implementation_work_packages.md"].map((path) => readFileSync(join(out, path)));
+      const plan = JSON.parse(artifacts[0].toString());
+      assert.equal(plan.sourceRootStatus.instance, "external-owner/unverified");
+      assert.match(artifacts[1].toString(), /\| instance \| `\.\.\/opl-instance-medopl` \| external-owner\/unverified \|/u);
+      if (previous) assert.deepEqual(artifacts, previous, "external sibling presence changed the Cloud projection");
+      previous = artifacts;
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("public validator rejects missing or locally verified Instance status without writing evidence", () => {
+  const scratch = mkdtempSync(join(tmpdir(), "opl-plan-instance-status-"));
+  try {
+    materializePlanSnapshot(scratch);
+    const planPath = join(scratch, generatedPlanArtifacts[0]);
+    const plan = JSON.parse(readFileSync(planPath, "utf8"));
+    for (const status of ["existing", "planned_not_created", undefined]) {
+      if (status === undefined) delete plan.sourceRootStatus.instance;
+      else plan.sourceRootStatus.instance = status;
+      writeFileSync(planPath, JSON.stringify(plan, null, 2) + "\n");
+      const before = snapshotState(scratch);
+      const checked = spawnSync("python3", [join(scratch, "docs/spec/target/checks/validate_development_plan.py"), "--check"], {
+        cwd: scratch, env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" }, encoding: "utf8"
+      });
+      assert.equal(checked.status, 1, checked.stderr + checked.stdout);
+      assert.ok(JSON.parse(checked.stdout).errors.includes("Instance source root must be external-owner/unverified"));
+      assert.deepEqual(snapshotState(scratch), before);
+    }
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test("public generation and validation keep external Instance paths unverified without following sibling symlinks", () => {
+  const directory = mkdtempSync(join(tmpdir(), "opl-plan-instance-link-"));
+  const scratch = join(directory, "checkout");
+  const out = join(directory, "rendered");
+  try {
+    mkdirSync(scratch);
+    materializePlanSnapshot(scratch);
+    // A synthetic external sibling points back into this fixture. Its physical
+    // target must not redefine an unverified external ownership declaration.
+    symlinkSync(scratch, join(directory, "opl-instance-medopl"));
+    const rendered = spawnSync("python3", [join(scratch, "docs/spec/target/checks/render_development_plan.py"), "--check"], {
+      cwd: scratch,
+      env: { ...process.env, OPL_DEVELOPMENT_PLAN_OUT: out, PYTHONDONTWRITEBYTECODE: "1" },
+      encoding: "utf8"
+    });
+    assert.equal(rendered.status, 0, rendered.stderr);
+    for (const artifact of generatedPlanArtifacts) {
+      cpSync(join(out, artifact.replace(/^docs\/spec\/target\//u, "")), join(scratch, artifact));
+    }
+    const before = snapshotState(scratch);
+    const checked = spawnSync("python3", [join(scratch, "docs/spec/target/checks/validate_development_plan.py"), "--check"], {
+      cwd: scratch, env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" }, encoding: "utf8"
+    });
+    assert.equal(checked.status, 0, checked.stderr + checked.stdout);
+    assert.deepEqual(JSON.parse(checked.stdout).errors, []);
+    assert.deepEqual(snapshotState(scratch), before);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("public validator refuses to claim an external Instance file as an existing Cloud input", () => {
+  const directory = mkdtempSync(join(tmpdir(), "opl-plan-external-input-"));
+  const scratch = join(directory, "checkout");
+  try {
+    mkdirSync(scratch);
+    materializePlanSnapshot(scratch);
+    const external = join(directory, "opl-instance-medopl");
+    mkdirSync(external);
+    writeFileSync(join(external, "source.txt"), "synthetic external owner source\n");
+    const planPath = join(scratch, generatedPlanArtifacts[0]);
+    const plan = JSON.parse(readFileSync(planPath, "utf8"));
+    plan.sourceRootStatus.instance = "external-owner/unverified";
+    plan.workPackages.find((item: { id: string }) => item.id === "W29").existingReadPaths.push("../opl-instance-medopl/source.txt");
+    writeFileSync(planPath, JSON.stringify(plan, null, 2) + "\n");
+    const before = snapshotState(scratch);
+    const checked = spawnSync("python3", [join(scratch, "docs/spec/target/checks/validate_development_plan.py"), "--check"], {
+      cwd: scratch, env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" }, encoding: "utf8"
+    });
+    assert.equal(checked.status, 1, checked.stderr + checked.stdout);
+    assert.ok(JSON.parse(checked.stdout).errors.includes("W29 falsely labels existing source: ../opl-instance-medopl/source.txt"));
+    assert.deepEqual(snapshotState(scratch), before);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("the default subprocess reads renderer inputs from the requested root", () => {
   const scratch = mkdtempSync(join(tmpdir(), "opl-plan-root-"));
   try {

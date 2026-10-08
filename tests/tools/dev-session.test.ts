@@ -74,16 +74,18 @@ test('canonical parallelPreparation admits only owners of its existing execution
     { window: 'delivery', owner: 'serve', path: 'services/serve/admission.go' },
     { window: 'artifacts', owner: 'console', path: 'apps/console-ui/src/pages/PublisherPage.tsx' },
   ];
+  const coauthorRuns: string[] = [];
   for (const { window, owner, path } of scopes) {
     put(root, path, 'admitted owner input\n');
     const scoped = { ...approval, runId: `prepare-${owner}`, owner,
-      selection: { collection: 'parallelPreparation', id: window }, readPaths: [path], writePaths: [path] };
+      selection: { collection: 'parallelPreparation', id: window }, readPaths: [path], writePaths: [path], coauthorRuns: [...coauthorRuns] };
     assert.throws(() => development.approveRun(root, store, { ...scoped, runId: `cloud-${owner}`, owner: 'cloud' }), /DDD owner does not own phase record/);
     development.approveRun(root, store, scoped);
     const session = new development.DevelopmentSession(root, store, scoped.runId);
     assert.equal(session.context().owner, owner);
     const file = session.read(path); session.write(path, file.sha256, file.content + '// preparation before terminal acceptance\n');
     assert.throws(() => session.read('other/input.ts'), /SCOPE_DENIED/);
+    coauthorRuns.push(scoped.runId);
   }
 });
 
@@ -157,6 +159,7 @@ test('acceptAfter receipt changes invalidate transitive consumers without restar
   ];
   for (const { id, owner, runId, requires } of records) development.approveRun(root, store, { ...approval, baseSha, runId, owner,
     selection: { collection: 'workPackages', id }, readPaths: [`${owner}/`], writePaths: [`${owner}/input.ts`],
+    coauthorRuns: owner === 'independent' ? [approval.runId] : [],
     gates: [{ id: 'acceptance', kind: 'node', inputs: [`${owner}/`], targets: [`${owner}/acceptance.test.mjs`], needs: [] }], requires });
   const producer = new development.DevelopmentSession(root, store, approval.runId);
   const other = new development.DevelopmentSession(root, store, 'other-run');
@@ -337,8 +340,10 @@ test('owner scope rejects root scans, traversal, symlinks, unknown fields and se
   const session = new development.DevelopmentSession(root, store, approval.runId); session.context();
   for (const path of ['.', '..', '/', 'owner/../other', '.git/config', '.runtime/key']) assert.throws(() => session.search([path], 'answer'));
   assert.throws(() => session.read('other/input.ts'), /SCOPE_DENIED/);
-  symlinkSync(join(root, 'other/input.ts'), join(root, 'owner/link.ts'));
-  assert.throws(() => session.read('owner/link.ts'), /symlink refused/);
+  symlinkSync(join(root, 'other/input.ts'), join(root, 'owner/new.ts'));
+  assert.throws(() => session.read('owner/new.ts'), /symlink refused/);
+  rmSync(join(root, 'owner/new.ts'));
+  session.context();
   const acceptance = session.read('owner/acceptance.test.mjs');
   session.write('owner/acceptance.test.mjs', acceptance.sha256, acceptance.content.replace('answer,42', 'answer,41'));
   assert.equal(session.read('owner/acceptance.test.mjs').content.includes('answer,41'), true);
@@ -354,6 +359,129 @@ test('context loads the development contract, validates the current baseline sco
   assert.deepEqual(current.readyTasks, [{ gateId: 'acceptance', owner: 'owner', action: 'implement-or-verify' }]);
   put(root, 'outside.ts', 'out of scope\n'); git('add', 'outside.ts');
   assert.throws(() => new development.DevelopmentSession(root, store, 'owner-run').context(), /WRITE_SCOPE_DENIED/);
+});
+
+test('context exposes every independent ready gate and blocks only its declared dependents', async t => {
+  const { root, store, approval } = fixture(t);
+  development.approveRun(root, store, { ...approval, gates: [approval.gates[0],
+    { ...approval.gates[0], id: 'independent' }, { ...approval.gates[0], id: 'dependent', needs: ['acceptance'] }] });
+  const session = new development.DevelopmentSession(root, store, approval.runId);
+  assert.deepEqual(session.context().readyTasks.map(task => task.gateId), ['acceptance', 'independent']);
+  await session.verifyGate('acceptance');
+  assert.deepEqual(session.status().readyTasks.map(task => task.gateId), ['independent', 'dependent']);
+  const resumed = new development.DevelopmentSession(root, store, approval.runId).context();
+  assert.equal(resumed.stages[0].state, 'passed');
+  assert.deepEqual(resumed.readyTasks.map(task => task.gateId), ['independent', 'dependent']);
+});
+
+test('failed context refresh revokes the previous admission before any further file operation', t => {
+  const { root, store, approval } = fixture(t);
+  development.approveRun(root, store, approval);
+  const session = new development.DevelopmentSession(root, store, approval.runId);
+  session.context();
+  put(root, 'outside.ts', 'unowned input\n');
+  assert.throws(() => session.context(), /WRITE_SCOPE_DENIED/);
+  assert.throws(() => session.read('owner/input.ts'), /CONTEXT_REQUIRED/);
+  assert.throws(() => session.write('owner/new.ts', 'absent', 'not admitted'), /CONTEXT_REQUIRED/);
+});
+
+test('receipt failure during context refresh revokes an existing admission', async t => {
+  const { root, store, approval } = fixture(t);
+  development.approveRun(root, store, approval);
+  const session = new development.DevelopmentSession(root, store, approval.runId);
+  session.context(); await session.verifyGate('acceptance');
+  const file = join(store, 'runs', approval.runId, 'receipts', 'acceptance-1.json');
+  const envelope = JSON.parse(readFileSync(file, 'utf8')); envelope.payload.result = 'failed';
+  writeFileSync(file, JSON.stringify(envelope));
+  assert.throws(() => session.context(), /EVIDENCE_INVALID/);
+  assert.throws(() => session.read('owner/input.ts'), /CONTEXT_REQUIRED/);
+});
+
+test('malformed context requests revoke the existing admission before argument rejection', async t => {
+  const { root, store, approval } = fixture(t);
+  development.approveRun(root, store, approval);
+  const session = new development.DevelopmentSession(root, store, approval.runId);
+  for (const input of [{ extra: true }, null, []]) {
+    session.context();
+    await assert.rejects(development.dispatchTool(session, 'dev_context', input));
+    assert.throws(() => session.read('owner/input.ts'), /CONTEXT_REQUIRED/);
+  }
+});
+
+test('new out-of-scope changes revoke admission at the operation entry without a context request', t => {
+  const { root, store, approval } = fixture(t);
+  development.approveRun(root, store, approval);
+  const session = new development.DevelopmentSession(root, store, approval.runId);
+  session.context();
+  put(root, 'outside.ts', 'not admitted\n');
+  assert.throws(() => session.read('owner/input.ts'), /WRITE_SCOPE_DENIED/);
+  assert.throws(() => session.status(), /CONTEXT_REQUIRED/);
+});
+
+test('signed read scope does not authorize read-only input mutations', t => {
+  const { root, store, approval, git } = fixture(t);
+  put(root, 'owner/read-only.ts', 'read-only baseline\n');
+  git('add', '.'); git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'read-only baseline');
+  development.approveRun(root, store, { ...approval, baseSha: git('rev-parse', 'HEAD').trim() });
+  const session = new development.DevelopmentSession(root, store, approval.runId);
+  session.context();
+  assert.equal(session.read('owner/read-only.ts').content, 'read-only baseline\n');
+  put(root, 'owner/read-only.ts', 'unauthorized mutation\n');
+  assert.throws(() => session.context(), /WRITE_SCOPE_DENIED: owner\/read-only.ts/);
+  assert.throws(() => session.read('owner/input.ts'), /CONTEXT_REQUIRED/);
+});
+
+test('a signed acceptance target is not a write grant', t => {
+  const { root, store, approval } = fixture(t);
+  development.approveRun(root, store, { ...approval, writePaths: ['owner/input.ts'] });
+  put(root, 'owner/acceptance.test.mjs', 'unauthorized test replacement\n');
+  assert.throws(() => new development.DevelopmentSession(root, store, approval.runId).context(),
+    /WRITE_SCOPE_DENIED: owner\/acceptance.test.mjs/);
+});
+
+test('only explicitly referenced coauthors can contribute concurrent workspace changes', t => {
+  const { root, store, approval } = fixture(t);
+  development.approveRun(root, store, { ...approval, runId: 'other-run', owner: 'other',
+    selection: { collection: 'workPackages', id: 'W02' }, readPaths: ['other/'], writePaths: ['other/input.ts'],
+    gates: [{ ...approval.gates[0], inputs: ['other/input.ts'] }] });
+  development.approveRun(root, store, approval);
+  put(root, 'other/input.ts', 'signed but not referenced\n');
+  assert.throws(() => new development.DevelopmentSession(root, store, approval.runId).context(),
+    /WRITE_SCOPE_DENIED: other\/input.ts/);
+  development.approveRun(root, store, { ...approval, runId: 'shared-run', coauthorRuns: ['other-run'] });
+  const session = new development.DevelopmentSession(root, store, 'shared-run');
+  assert.deepEqual(session.context().changedPaths, ['other/input.ts']);
+  assert.deepEqual((development as any).verifyWriteScope(root, store, 'shared-run').changedPaths, ['other/input.ts']);
+  assert.throws(() => session.write('other/input.ts', sha('signed but not referenced\n'), 'owner escape'), /SCOPE_DENIED/);
+  // Unrelated host records and business receipts must not be parsed.
+  put(store, 'runs/unrelated/approval.json', 'poison: not referenced');
+  put(store, 'runs/other-run/receipts/business.json', 'poison: not development evidence');
+  assert.equal(session.context().result, 'ready');
+  const file = join(store, 'runs', 'other-run', 'approval.json');
+  const envelope = JSON.parse(readFileSync(file, 'utf8')); envelope.payload.writePaths.push('other/');
+  writeFileSync(file, JSON.stringify(envelope));
+  assert.throws(() => session.context(), /EVIDENCE_INVALID/);
+  assert.throws(() => session.read('owner/input.ts'), /CONTEXT_REQUIRED/);
+});
+
+test('coauthor run declarations are strict host fields', t => {
+  const { root, store, approval } = fixture(t);
+  for (const [runId, coauthorRuns, expected] of [
+    ['bad-coauthors', 'other-run', /invalid coauthor runs/],
+    ['duplicate-coauthors', ['other-run', 'other-run'], /duplicate coauthor runs/],
+    ['self-coauthor', ['self-coauthor'], /self coauthor refused/],
+  ] as const) {
+    assert.throws(() => development.approveRun(root, store, { ...approval, runId, coauthorRuns } as any), expected);
+  }
+});
+
+test('a plan directory alone cannot authorize a coauthor change', t => {
+  const { root, store, approval } = fixture(t);
+  development.approveRun(root, store, approval);
+  put(root, 'other/input.ts', 'unassigned coauthor change\n');
+  const session = new development.DevelopmentSession(root, store, approval.runId);
+  assert.throws(() => session.context(), /WRITE_SCOPE_DENIED: other\/input.ts/);
+  assert.throws(() => session.read('owner/input.ts'), /CONTEXT_REQUIRED/);
 });
 
 test('current evidence or HEAD drift requires re-admission; CAS protects concurrent edits', t => {
@@ -415,7 +543,8 @@ test('dedicated worker refuses self-declared completion and advertises no native
 test('the host refreshes worker admission and dynamic progress after other-owner HEAD and status changes', async t => {
   const { root, store, approval, git } = fixture(t);
   put(root, 'other/acceptance.test.mjs', "import test from 'node:test';test('second stage',()=>{});\n");
-  development.approveRun(root, store, { ...approval, gates: [...approval.gates,
+  git('add', '.'); git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'host-declared second stage baseline');
+  development.approveRun(root, store, { ...approval, baseSha: git('rev-parse', 'HEAD').trim(), gates: [...approval.gates,
     { id: 'second', kind: 'node', inputs: ['other/'], targets: ['other/acceptance.test.mjs'], needs: [] }] });
   const admissions: any[] = [];
   const server = createServer(async (req, res) => {
@@ -499,7 +628,7 @@ test('worker admission refresh errors terminate before another model request, in
     }), (error: any) => error.code === 'ENOENT' && error.path.endsWith('/docs/roadmap.md'));
     assert.equal(requests, 1);
     assert.equal(existsSync(join(store, 'runs', approval.runId, 'receipts')), false);
-    await assert.rejects(development.dispatchTool(session, 'dev_read', { path: 'owner/input.ts' }), /CONTEXT_STALE/);
+    await assert.rejects(development.dispatchTool(session, 'dev_read', { path: 'owner/input.ts' }), /CONTEXT_REQUIRED/);
   });
 });
 
@@ -583,7 +712,7 @@ test('verified producer evidence unblocks its consumer, survives unrelated commi
   put(root, 'other/acceptance.test.mjs', "import test from 'node:test';test('consumer behavior',()=>{});\n");
   git('add', '.'); git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'handoff baseline');
   const baseSha = git('rev-parse', 'HEAD').trim();
-  development.approveRun(root, store, { ...approval, baseSha });
+  development.approveRun(root, store, { ...approval, baseSha, coauthorRuns: ['other-run'] });
   development.approveRun(root, store, { ...approval, runId: 'other-run', baseSha,
     selection: { collection: 'workPackages', id: 'W02' }, owner: 'other',
     readPaths: ['other/'], writePaths: ['other/input.ts'],

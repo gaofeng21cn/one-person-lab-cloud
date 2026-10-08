@@ -133,10 +133,21 @@ the worker rather than continuing with an old admission.
 Every context admission also reads `AGENTS.md`, this guide, `docs/status.md` and
 `docs/roadmap.md`, verifies that the approved base SHA is available and remains
 an ancestor of the checkout, checks the current Git change scope against the
-existing plan's owner write declarations, and returns the complete set of ready
-gates. This is a baseline readback, not a repository-wide source scan: Git
+host-signed write scopes, and returns the complete set of ready gates. This is a
+baseline readback, not a repository-wide source scan: Git
 metadata establishes the change set, while source and receipts are read only
 through the admitted paths and declared dependencies.
+
+Every file operation rechecks that scope. Failure revokes admission until a
+successful `dev_context`; a read-only path or an acceptance target never grants
+write authority. For a shared checkout, the host lists independent collaborators
+in the optional `coauthorRuns` array of exact run IDs; prerequisite run IDs come
+from `requires`, including its named transitive chain. Each contributor must use
+the same base SHA and plan and retain a valid signature and current phase scope.
+An unreferenced run is not discovered by scanning the host store. These references
+permit existing authorized changes to coexist, not task completion or a bypass
+of prerequisite receipt checks on writes and acceptance. Disjoint checkouts need
+no coauthor references until their changes are integrated on an admitted baseline.
 
 Receipt lookup reads only the named development gate's attempt sequence and
 verifies its signature and identity. It does not enumerate and parse business
@@ -187,8 +198,8 @@ filesystem, and fixture quota backends do not prove kernel enforcement.
 For generated-field changes, run `npm run verify:generated-contracts` to
 regenerate the covered outputs from their declared source inputs and compare
 exact bytes. Run `npm run verify:development-plan` to regenerate the plan task
-book into an isolated tree, byte-compare the checked-in projection and validate
-its coverage read-only; a stale or hand-edited plan projection is refused
+book into an isolated tree, compare exact task-book bytes and canonicalized plan
+JSON with the checked-in projection and validate its coverage read-only; a stale or hand-edited plan projection is refused
 instead of being treated as current state. Freshness is separate from production/spec reconciliation, W01
 migration and real consumer verification; it does not freeze handwritten
 business fields. See [contract ownership](packages/contracts/README.md).

@@ -48,9 +48,10 @@ export interface RunApproval {
   selection: { collection: 'workPackages' | 'executionSlices' | 'parallelPreparation'; id: string };
   owner: string; readPaths: string[]; writePaths: string[]; gates: DevelopmentGate[];
   requires: Record<string, { runId: string; gateId?: string }>;
+  coauthorRuns?: string[];
 }
 function parseApproval(value: unknown): RunApproval {
-  const a = object(value); keys(a, ['schemaVersion', 'runId', 'baseSha', 'planPath', 'selection', 'owner', 'readPaths', 'writePaths', 'gates', 'requires']);
+  const a = object(value); keys(a, ['schemaVersion', 'runId', 'baseSha', 'planPath', 'selection', 'owner', 'readPaths', 'writePaths', 'gates', 'requires', 'coauthorRuns']);
   if (a.schemaVersion !== 1 || !/^[a-f0-9]{40}$/u.test(a.baseSha)) fail('exact approved base SHA required');
   id(a.runId); id(a.owner); pathName(a.planPath);
   const s = object(a.selection); keys(s, ['collection', 'id']); id(s.id);
@@ -77,6 +78,9 @@ function parseApproval(value: unknown): RunApproval {
     id(dependency); const r = object(raw); keys(r, ['runId', 'gateId']); id(r.runId); if (r.gateId !== undefined) id(r.gateId);
     if (r.runId === a.runId) fail('self dependency refused');
   }
+  if (a.coauthorRuns !== undefined) strings(a.coauthorRuns, 'coauthor runs', false).forEach(runId => {
+    id(runId); if (runId === a.runId) fail('self coauthor refused');
+  });
   return a as RunApproval;
 }
 interface Phase { record: Record<string, any>; root: string; startAfter: string[]; acceptAfter: string[]; fingerprint: string }
@@ -165,38 +169,6 @@ function changedPaths(root: string, base: string) {
     ...git(root, ['diff', '--name-only', '-z', '--no-renames', base, '--']).split('\0'),
     ...git(root, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0'),
   ].filter(Boolean));
-}
-function planWriteDeclarations(root: string, planPath: string): string[] {
-  const plan = object(JSON.parse(fileBytes(root, planPath, 2 * 1024 * 1024).toString()));
-  const declarations = ['workPackages', 'executionSlices', 'parallelPreparation'].flatMap(collection =>
-    (Array.isArray(plan[collection]) ? plan[collection] : []).flatMap((record: any) =>
-      strings(record.plannedWritePaths ?? record.writePaths ?? [], 'plan write scope', false)));
-  return declarations.map(declaration => {
-    if (declaration.endsWith('/')) return declaration;
-    let candidates = [root];
-    for (const part of declaration.split('/')) {
-      candidates = part === '*' ? candidates.flatMap(parent => {
-        try { return readdirSync(parent, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => resolve(parent, entry.name)); }
-        catch { return []; }
-      }) : candidates.map(parent => resolve(parent, part));
-    }
-    return candidates.some(candidate => existsSync(candidate) && lstatSync(candidate).isDirectory()) ? `${declaration}/` : declaration;
-  });
-}
-function matchesPlanPath(path: string, declaration: string) {
-  const directory = declaration.endsWith('/'); const parts = declaration.replace(/\/$/u, '').split('/'); const pathParts = path.split('/');
-  if (directory ? pathParts.length < parts.length : pathParts.length !== parts.length) return false;
-  return parts.every((part, index) => part === '*' || part === pathParts[index]);
-}
-function verifyAdmittedWorkspaceScope(root: string, approval: RunApproval) {
-  const allowed = new Set([...approval.writePaths, ...requiredContextPaths,
-    ...approval.gates.flatMap(g => (g.targets ?? []).filter(target => matches(target, approval.writePaths)))]);
-  const declarations = planWriteDeclarations(root, approval.planPath);
-  for (const path of changedPaths(root, approval.baseSha)) {
-    pathName(path);
-    if (!matches(path, [...allowed]) && !declarations.some(declaration => matchesPlanPath(path, declaration))) fail(`WRITE_SCOPE_DENIED: ${path}`);
-  }
-  return [...changedPaths(root, approval.baseSha)].sort();
 }
 function verifyApprovedBaseline(root: string, approval: RunApproval) {
   try {
@@ -300,27 +272,68 @@ export class DevelopmentSession {
     if (this.approval.runId !== runId) fail('run identity mismatch'); phase(this.root, this.approval, true);
   }
   private head() { return git(this.root, ['rev-parse', 'HEAD']).trim(); }
-  context() {
+  /** Host dispatch invalidates the previous admission before validating context arguments. */
+  revokeAdmission() { this.admitted = undefined; }
+  scope() {
     verifyApprovedBaseline(this.root, this.approval);
-    const changed = verifyAdmittedWorkspaceScope(this.root, this.approval);
+    return { runId: this.approval.runId, baseSha: this.approval.baseSha, changedPaths: this.verifyWorkspaceScope() };
+  }
+  context() {
+    this.admitted = undefined;
+    verifyApprovedBaseline(this.root, this.approval);
+    const changed = this.verifyWorkspaceScope();
     const selected = phase(this.root, this.approval); const head = this.head();
     const inputs = requiredContextPaths.map(path => {
       const bytes = fileBytes(this.root, path); return { path, sha256: digest(bytes), content: bytes.toString() };
     });
+    const current = this.view();
     if (Buffer.byteLength(JSON.stringify(inputs)) > 192 * 1024) fail('required context exceeds budget');
     if (head !== this.head() || inputs.some(i => digest(fileBytes(this.root, i.path)) !== i.sha256)) fail('CONTEXT_STALE');
     this.admitted = { head, phase: selected.fingerprint, inputs: inputs.map(({ path, sha256 }) => ({ path, sha256 })) };
     return { runId: this.approval.runId, owner: this.approval.owner, selection: this.approval.selection,
       baseSha: this.approval.baseSha, observedHead: head, changedPaths: changed, context: inputs, phaseRecord: selected.record,
       readPaths: this.approval.readPaths, writePaths: this.approval.writePaths, evidenceLayer: 'source',
-      ...this.view() };
+      ...current };
   }
   private ready() {
     if (!this.admitted) fail('CONTEXT_REQUIRED: receive current context first');
-    if (this.head() !== this.admitted.head || phase(this.root, this.approval).fingerprint !== this.admitted.phase ||
-      this.admitted.inputs.some(i => digest(fileBytes(this.root, i.path)) !== i.sha256)) {
-      this.admitted = undefined; fail('CONTEXT_STALE: receive current context again');
+    try {
+      if (this.head() !== this.admitted.head || phase(this.root, this.approval).fingerprint !== this.admitted.phase ||
+        this.admitted.inputs.some(i => digest(fileBytes(this.root, i.path)) !== i.sha256)) fail('CONTEXT_STALE: receive current context again');
+      verifyApprovedBaseline(this.root, this.approval);
+      this.verifyWorkspaceScope();
+    } catch (error) {
+      this.admitted = undefined;
+      throw error;
     }
+  }
+  /** Read/write scopes are distinct; only named, host-signed contributors authorize workspace changes. */
+  private verifyWorkspaceScope() {
+    const paths = [...changedPaths(this.root, this.approval.baseSha)].sort();
+    const ownPaths = [...this.approval.writePaths, ...requiredContextPaths];
+    const outside = paths.filter(path => { pathName(path); return !matches(path, ownPaths); });
+    if (!outside.length) return paths;
+    const contributors: DevelopmentSession[] = [];
+    const visited = new Set([this.approval.runId]);
+    const include = (runId: string) => {
+      if (visited.has(runId)) return;
+      visited.add(runId);
+      const upstream = new DevelopmentSession(this.root, this.store, runId);
+      if (upstream.approval.baseSha !== this.approval.baseSha || upstream.approval.planPath !== this.approval.planPath)
+        fail(`EVIDENCE_INVALID: coauthor baseline or plan mismatch: ${runId}`);
+      verifyApprovedBaseline(this.root, upstream.approval);
+      phase(this.root, upstream.approval);
+      contributors.push(upstream);
+      Object.values(upstream.approval.requires).forEach(reference => include(reference.runId));
+    };
+    [...(this.approval.coauthorRuns ?? []), ...Object.values(this.approval.requires).map(r => r.runId)].forEach(include);
+    for (const path of outside) {
+      if (!contributors.some(upstream => matches(path, upstream.approval.writePaths))) fail(`WRITE_SCOPE_DENIED: ${path}`);
+    }
+    // Coexistence authority is not completion evidence. Prerequisite evidence
+    // gates the contributor's writes and acceptance, not the existence of its
+    // previous edits; invalidating evidence must not deadlock its producer.
+    return paths;
   }
   private gateState(gateId: string, visiting = new Set<string>()): { gateId: string; state: string; receiptHash?: string; blockers: any[] } {
     const marker = `${this.approval.runId}:${gateId}`; if (visiting.has(marker)) fail('EVIDENCE_INVALID: cyclic evidence dependencies');
@@ -490,6 +503,7 @@ const toolSpecs = [
 /** Unknown tools and arguments fail before any operation; completion is never a worker tool. */
 export async function dispatchTool(session: DevelopmentSession, name: string, input: unknown) {
   const spec = toolSpecs.find(tool => tool.name === name); if (!spec) fail(`unknown tool: ${name}`);
+  if (name === 'dev_context') session.revokeAdmission();
   const args = object(input); keys(args, Object.keys(spec.inputSchema.properties));
   for (const key of 'required' in spec.inputSchema ? spec.inputSchema.required! : []) if (!(key in args)) fail(`missing field: ${key}`);
   switch (name) {
@@ -571,10 +585,7 @@ export async function serve(session: DevelopmentSession) {
 }
 /** Verify resulting paths from signed host permissions, never from worker-modified policy. */
 export function verifyWriteScope(root: string, store: string, runId: string) {
-  const session = new DevelopmentSession(root, store, runId); const base = session.approval.baseSha;
-  const paths = changedPaths(root, base);
-  for (const path of paths) { pathName(path); if (!matches(path, session.approval.writePaths)) fail(`WRITE_SCOPE_DENIED: ${path}`); }
-  return { runId, baseSha: base, changedPaths: [...paths].sort() };
+  return new DevelopmentSession(root, store, runId).scope();
 }
 async function main() {
   const [command, storeOrApproval, runOrStore, extra, model, turns, ...rest] = process.argv.slice(2);

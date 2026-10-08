@@ -62,7 +62,16 @@ references an existing plan record and its canonical owner, narrows the read/wri
 scope, and declares exact stage inputs and a host-controlled runner with no
 arbitrary shell interface. It does not introduce a new business-owner registry,
 task schema, or repository-global current state. Scope expansion requires a new
-host admission, not a worker edit to its plan or authorization.
+host admission, not a worker edit to its plan or authorization. Read permissions
+and acceptance targets are not write permissions. Concurrent workspace changes
+require an explicitly named, host-signed run on the same baseline and plan:
+`coauthorRuns` names independent collaborators; `requires` names prerequisites
+and their transitive dependency chain. The host verifies their exact write scopes
+and current phase ownership, never authorizes every directory in a plan, and
+never scans unrelated run or business-receipt bodies. Coexistence permission is
+not completion evidence: prerequisites and acceptance still require actual
+verified receipts; stale downstream evidence does not erase its previous edits
+or prevent an upstream owner from repairing its own stage.
 
 Use `npm run dev:tools` and `npm run dev:run` as the host integration entry points;
 CLI arguments are finalized with the tool implementation. The worker interface
@@ -71,7 +80,10 @@ and `dev_verify`. Status is a readback; verification is an acceptance request to
 the trusted runner, not permission to execute an arbitrary command. There is no
 worker `complete` or `publish` operation. The worker must receive admitted
 context before file operations; reads, searches and writes stay inside that
-scope. Worker writes cannot alter admission, runner policy, run state or receipts.
+scope. Every operation rechecks the current baseline and workspace change scope.
+A failed context refresh or admission check revokes the previous admission; the
+worker cannot continue using context from before the failure. Worker writes
+cannot alter admission, runner policy, run state or receipts.
 Run state advances only from actual execution results, never from a worker's
 completion claim; a failed or blocked result remains failed or blocked.
 
@@ -101,8 +113,8 @@ freshness via `npm run verify:generated-contracts` checks the covered generator
 outputs against their declared source inputs; it does not prove production/spec
 parity, W01 migration, or consumer adoption. Plan projection freshness via
 `npm run verify:development-plan` regenerates `14_implementation_work_packages.md`
-and `checks/development_plan.json` into an isolated tree, byte-compares them
-(ignoring the provenance-only `sourceSHA`) and runs the read-only coverage
+and `checks/development_plan.json` into an isolated tree, compares exact task-book
+bytes and canonicalized plan JSON (ignoring the provenance-only `sourceSHA`) and runs the read-only coverage
 validator, so a hand-edited or stale projection fails the gate instead of an
 agent declaring the plan current. Both gates run inside `npm run verify:local`. Fixture and source-check evidence do
 not establish product runtime, Candidate qualification, Instance deployment, or

@@ -30,7 +30,7 @@
 | fabric | `services/fabric` | existing |
 | ledger | `services/ledger` | existing |
 | tenant | `services/gateway-integration` | existing |
-| instance | `../opl-instance-medopl` | existing |
+| instance | `../opl-instance-medopl` | external-owner/unverified |
 
 所有Cloud工作根均位于同一个opl-cloud GitHub仓库；路径由当前checkout推导，不绑定开发者机器。instance是外部Owner，不属于Cloud合仓写集；W29/W30仅描述其授权工作，不能由Cloud任务越界执行。具体模块/进程/数据库实施映射见01，架构决定以docs/architecture.md及docs/decisions.md为准，tenant与gateway两行共享一个部署单元。planned_not_created指目录未建，不是等待创建GitHub仓库。
 
