@@ -4,6 +4,47 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-10-08: Separate Legacy Workspace Retention From The Cloud Tenant Entry
+
+A Gateway-authenticated User and a Cloud Tenant are distinct concepts. A User
+such as `testcloud4@medopl.com` may be admitted as the `owner` of a Tenant,
+but the User identity is not itself the Tenant. The Tenant is the authorization
+boundary for its members, repository binding, Packages, Builds and Cloud
+Workspaces.
+
+For the agreed first Cloud chain, the designated User is admitted as the owner
+of one Tenant whose installation-owned repository binding is
+`oplcloud/testcloud4`. Tenant admission and Cloud Workspace creation are
+separate operations: the protected administrator path admits the Tenant, then
+the customer creates the Cloud Workspace through the Cloud product path. The
+first Cloud Workspace uses the approved OPL App Runtime and the approved Basic
+plan (`tencent-tke`, `na-siliconvalley`, 2c4g, 10 GB, prepaid monthly).
+
+The existing paid Control Plane Workspace remains a Legacy Workspace during
+this transition. It is not copied, silently adopted, or read through a fallback
+writer. After the new Cloud chain has a complete owner-authoritative PASS
+receipt, the Legacy Workspace may be deleted and refunded through its existing
+owner workflows. Deletion and refund remain separate readback obligations; the
+original order, charge and receipt evidence are preserved.
+
+The delivery is split into two lanes:
+
+1. The first Cloud lane proves Tenant admission, Cloud Workspace creation,
+   default OPL App delivery, one bounded real application interaction, and
+   Ledger readback.
+2. The second lane proves custom Package upload, Build, immutable OCI evidence
+   and Serve delivery.
+
+Independent owner work may proceed in parallel. Tenant admission, the Cloud
+Workspace production mutation, the Legacy deletion/refund mutation, shared
+contracts and final acceptance are serialized. A lane receipt must identify
+its exact input and output artifact, owner, verification, and the next
+consumer action.
+
+This decision does not add a Control Plane fallback to the Cloud Console,
+create a second writer, or require custom Package upload to block the first
+Cloud lane.
+
 ## 2026-10-01: Reuse OPL Cloud For The Medical Meta-Agent Platform
 
 The medical meta-agent platform is a domain product built on OPL Cloud. It
