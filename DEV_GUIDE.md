@@ -105,11 +105,14 @@ npm run dev:verify -- /absolute/host-store run-id gate-id
 npm run verify:dev-scope -- /absolute/host-store run-id
 ```
 
-`dev:run` launches a separate worker with only the six admitted tools. Attaching
-`dev:tools` to a shell-enabled chat does not restrict that chat. The source
-runner is not an Instance executor and does not consume an Instance receipt as
-source completion. Keep live business-chain work in its current owner session;
-its protected workflows and existing receipt validators remain authoritative.
+`dev:run` is an optional reference model adapter that launches a separate worker
+with only the six admitted tools. The hard entry contract is the host-owned
+`dev:context`/`dev:tools` path: an existing development client may use that path
+without adopting this adapter. Attaching `dev:tools` to a shell-enabled chat
+does not restrict that chat. The source runner is not an Instance executor and
+does not consume an Instance receipt as source completion. Keep live
+business-chain work in its current owner session; its protected workflows and
+existing receipt validators remain authoritative.
 Multiple checkouts are allowed: bind evidence to exact source and input hashes,
 not a directory name or a thread's completion claim. Do not discard ongoing
 owner work or rerun accepted production steps merely to adopt this entry.
@@ -126,6 +129,14 @@ an agent-editable completion field. A new session or model can continue the same
 run without restarting valid stages; an actual input or bound evidence change
 invalidates only the affected stage and its dependents. A refresh failure stops
 the worker rather than continuing with an old admission.
+
+Every context admission also reads `AGENTS.md`, this guide, `docs/status.md` and
+`docs/roadmap.md`, verifies that the approved base SHA is available and remains
+an ancestor of the checkout, checks the current Git change scope against the
+existing plan's owner write declarations, and returns the complete set of ready
+gates. This is a baseline readback, not a repository-wide source scan: Git
+metadata establishes the change set, while source and receipts are read only
+through the admitted paths and declared dependencies.
 
 Receipt lookup reads only the named development gate's attempt sequence and
 verifies its signature and identity. It does not enumerate and parse business

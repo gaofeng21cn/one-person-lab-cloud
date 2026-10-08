@@ -18,7 +18,7 @@ function fixture(t: any) {
   const directory = mkdtempSync(join(tmpdir(), 'opl-entry-'));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const root = join(directory, 'repo'); const store = join(directory, 'host'); mkdirSync(root);
-  for (const file of ['AGENTS.md', 'docs/status.md', 'docs/roadmap.md']) put(root, file, `current ${file}\n`);
+  for (const file of ['AGENTS.md', 'DEV_GUIDE.md', 'docs/status.md', 'docs/roadmap.md']) put(root, file, `current ${file}\n`);
   put(root, 'owner/input.ts', 'export const answer = 42;\n');
   put(root, 'other/input.ts', 'outside scope\n');
   put(root, 'owner/acceptance.test.mjs', "import test from 'node:test';import assert from 'node:assert/strict';import {answer} from './input.ts';test('approved behavior',()=>assert.equal(answer,42));\n");
@@ -29,7 +29,7 @@ function fixture(t: any) {
   const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' });
   git('init', '-q'); git('add', '.'); git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'approved baseline');
   const approval = { schemaVersion: 1, runId: 'owner-run', baseSha: git('rev-parse', 'HEAD').trim(), planPath,
-    selection: { collection: 'workPackages', id: 'W01' }, owner: 'owner', readPaths: ['owner/'], writePaths: ['owner/input.ts', 'owner/new.ts'],
+    selection: { collection: 'workPackages', id: 'W01' }, owner: 'owner', readPaths: ['owner/'], writePaths: ['owner/input.ts', 'owner/new.ts', 'owner/acceptance.test.mjs'],
     gates: [{ id: 'acceptance', kind: 'node', inputs: ['owner/'], targets: ['owner/acceptance.test.mjs'], needs: [] }], requires: {} };
   return { root, store, git, approval };
 }
@@ -339,8 +339,21 @@ test('owner scope rejects root scans, traversal, symlinks, unknown fields and se
   assert.throws(() => session.read('other/input.ts'), /SCOPE_DENIED/);
   symlinkSync(join(root, 'other/input.ts'), join(root, 'owner/link.ts'));
   assert.throws(() => session.read('owner/link.ts'), /symlink refused/);
-  assert.throws(() => session.write('owner/acceptance.test.mjs', 'absent', ''), /protected/);
+  const acceptance = session.read('owner/acceptance.test.mjs');
+  session.write('owner/acceptance.test.mjs', acceptance.sha256, acceptance.content.replace('answer,42', 'answer,41'));
+  assert.equal(session.read('owner/acceptance.test.mjs').content.includes('answer,41'), true);
   assert.throws(() => (development as any).approveRun(root, store, approval), /EEXIST/);
+});
+
+test('context loads the development contract, validates the current baseline scope and exposes all ready gates', t => {
+  const { root, store, approval, git } = fixture(t);
+  (development as any).approveRun(root, store, approval);
+  const session = new development.DevelopmentSession(root, store, approval.runId);
+  const current = session.context();
+  assert.deepEqual(current.context.map((item: any) => item.path), ['AGENTS.md', 'DEV_GUIDE.md', 'docs/status.md', 'docs/roadmap.md']);
+  assert.deepEqual(current.readyTasks, [{ gateId: 'acceptance', owner: 'owner', action: 'implement-or-verify' }]);
+  put(root, 'outside.ts', 'out of scope\n'); git('add', 'outside.ts');
+  assert.throws(() => new development.DevelopmentSession(root, store, 'owner-run').context(), /WRITE_SCOPE_DENIED/);
 });
 
 test('current evidence or HEAD drift requires re-admission; CAS protects concurrent edits', t => {

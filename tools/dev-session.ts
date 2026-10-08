@@ -8,6 +8,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
 const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
+const requiredContextPaths = ['AGENTS.md', 'DEV_GUIDE.md', 'docs/status.md', 'docs/roadmap.md'] as const;
 function fail(message: string): never { throw new Error(message); }
 const git = (root: string, args: string[]) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
 const object = (value: unknown): Record<string, any> => {
@@ -157,6 +158,54 @@ function fileBytes(root: string, path: string, limit = 192 * 1024): Buffer {
     return readFileSync(fd);
   } finally { closeSync(fd); }
 }
+function changedPaths(root: string, base: string) {
+  return new Set([
+    ...git(root, ['diff', '--name-only', '-z', '--no-renames', base, 'HEAD', '--']).split('\0'),
+    ...git(root, ['diff', '--cached', '--name-only', '-z', '--no-renames', base, '--']).split('\0'),
+    ...git(root, ['diff', '--name-only', '-z', '--no-renames', base, '--']).split('\0'),
+    ...git(root, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0'),
+  ].filter(Boolean));
+}
+function planWriteDeclarations(root: string, planPath: string): string[] {
+  const plan = object(JSON.parse(fileBytes(root, planPath, 2 * 1024 * 1024).toString()));
+  const declarations = ['workPackages', 'executionSlices', 'parallelPreparation'].flatMap(collection =>
+    (Array.isArray(plan[collection]) ? plan[collection] : []).flatMap((record: any) =>
+      strings(record.plannedWritePaths ?? record.writePaths ?? [], 'plan write scope', false)));
+  return declarations.map(declaration => {
+    if (declaration.endsWith('/')) return declaration;
+    let candidates = [root];
+    for (const part of declaration.split('/')) {
+      candidates = part === '*' ? candidates.flatMap(parent => {
+        try { return readdirSync(parent, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => resolve(parent, entry.name)); }
+        catch { return []; }
+      }) : candidates.map(parent => resolve(parent, part));
+    }
+    return candidates.some(candidate => existsSync(candidate) && lstatSync(candidate).isDirectory()) ? `${declaration}/` : declaration;
+  });
+}
+function matchesPlanPath(path: string, declaration: string) {
+  const directory = declaration.endsWith('/'); const parts = declaration.replace(/\/$/u, '').split('/'); const pathParts = path.split('/');
+  if (directory ? pathParts.length < parts.length : pathParts.length !== parts.length) return false;
+  return parts.every((part, index) => part === '*' || part === pathParts[index]);
+}
+function verifyAdmittedWorkspaceScope(root: string, approval: RunApproval) {
+  const allowed = new Set([...approval.writePaths, ...requiredContextPaths,
+    ...approval.gates.flatMap(g => (g.targets ?? []).filter(target => matches(target, approval.writePaths)))]);
+  const declarations = planWriteDeclarations(root, approval.planPath);
+  for (const path of changedPaths(root, approval.baseSha)) {
+    pathName(path);
+    if (!matches(path, [...allowed]) && !declarations.some(declaration => matchesPlanPath(path, declaration))) fail(`WRITE_SCOPE_DENIED: ${path}`);
+  }
+  return [...changedPaths(root, approval.baseSha)].sort();
+}
+function verifyApprovedBaseline(root: string, approval: RunApproval) {
+  try {
+    git(root, ['cat-file', '-e', `${approval.baseSha}^{commit}`]);
+    execFileSync('git', ['-C', root, 'merge-base', '--is-ancestor', approval.baseSha, 'HEAD']);
+  } catch {
+    fail('BASELINE_MISMATCH: approved base is unavailable or not an ancestor of HEAD');
+  }
+}
 function storeRoot(root: string, store: string) {
   if (!isAbsolute(store)) fail('absolute host store required');
   const target = resolve(store); mkdirSync(target, { recursive: true, mode: 0o700 });
@@ -252,15 +301,17 @@ export class DevelopmentSession {
   }
   private head() { return git(this.root, ['rev-parse', 'HEAD']).trim(); }
   context() {
+    verifyApprovedBaseline(this.root, this.approval);
+    const changed = verifyAdmittedWorkspaceScope(this.root, this.approval);
     const selected = phase(this.root, this.approval); const head = this.head();
-    const inputs = ['AGENTS.md', 'docs/status.md', 'docs/roadmap.md'].map(path => {
+    const inputs = requiredContextPaths.map(path => {
       const bytes = fileBytes(this.root, path); return { path, sha256: digest(bytes), content: bytes.toString() };
     });
     if (Buffer.byteLength(JSON.stringify(inputs)) > 192 * 1024) fail('required context exceeds budget');
     if (head !== this.head() || inputs.some(i => digest(fileBytes(this.root, i.path)) !== i.sha256)) fail('CONTEXT_STALE');
     this.admitted = { head, phase: selected.fingerprint, inputs: inputs.map(({ path, sha256 }) => ({ path, sha256 })) };
     return { runId: this.approval.runId, owner: this.approval.owner, selection: this.approval.selection,
-      baseSha: this.approval.baseSha, observedHead: head, context: inputs, phaseRecord: selected.record,
+      baseSha: this.approval.baseSha, observedHead: head, changedPaths: changed, context: inputs, phaseRecord: selected.record,
       readPaths: this.approval.readPaths, writePaths: this.approval.writePaths, evidenceLayer: 'source',
       ...this.view() };
   }
@@ -329,8 +380,10 @@ export class DevelopmentSession {
     const terminal = this.dependencyEvidence(phase(this.root, this.approval).acceptAfter);
     const passed = stages.every(s => s.state === 'passed') && !terminal.blockers.length;
     const next = stages.find(s => s.state !== 'passed' && s.state !== 'blocked');
+    const readyTasks = stages.filter(s => ['pending', 'failed'].includes(s.state) && !s.blockers.length)
+      .map(s => ({ gateId: s.gateId, owner: this.approval.owner, action: s.state === 'failed' ? 'fix-or-verify' : 'implement-or-verify' }));
     return { result: passed ? 'passed' : next?.state === 'failed' ? 'failed' : next ? 'ready' : 'blocked', nextGate: next?.gateId ?? null,
-      stages, blockers: [...stages.flatMap(s => s.blockers), ...terminal.blockers] };
+      readyTasks, stages, blockers: [...stages.flatMap(s => s.blockers), ...terminal.blockers] };
   }
   status() { this.ready(); return this.view(); }
   /** A request executes the approved runner; caller-supplied results are never accepted. */
@@ -375,9 +428,9 @@ export class DevelopmentSession {
     this.ready(); pathName(path);
     if (write) { const blocked = this.dependencyEvidence(phase(this.root, this.approval).startAfter).blockers; if (blocked.length) fail('DEPENDENCY_BLOCKED: ' + JSON.stringify(blocked)); }
     const protectedPaths = ['AGENTS.md', 'DEV_GUIDE.md', 'CONTRIBUTING.md', 'package.json', 'package-lock.json', this.approval.planPath];
-    if (write && (protectedPaths.includes(path) || ['docs/', '.github/', 'tools/', 'tests/tools/'].some(p => path.startsWith(p)) ||
-      this.approval.gates.some(g => g.targets?.includes(path)))) fail(`SCOPE_DENIED: protected ${path}`);
-    const scope = write ? this.approval.writePaths : [...this.approval.readPaths, ...this.approval.writePaths];
+    if (write && (protectedPaths.includes(path) || ['docs/', '.github/', 'tools/', 'tests/tools/'].some(p => path.startsWith(p)))) fail(`SCOPE_DENIED: protected ${path}`);
+    const gateTargets = this.approval.gates.flatMap(g => (g.targets ?? []).filter(target => matches(target, this.approval.writePaths)));
+    const scope = write ? [...this.approval.writePaths, ...gateTargets] : [...this.approval.readPaths, ...this.approval.writePaths, ...gateTargets];
     if (!matches(path, scope)) fail(`SCOPE_DENIED: ${path}`);
     return physical(this.root, path);
   }
@@ -464,8 +517,8 @@ export async function runRestrictedWorker(session: DevelopmentSession, options: 
     const current = session.context();
     messages[0].content = instruction + JSON.stringify(current);
     if (Buffer.byteLength(JSON.stringify(messages)) > 768 * 1024) fail('worker context budget exceeded');
-    const { result, nextGate, stages, blockers } = current;
-    return { result, nextGate, stages, blockers };
+    const { result, nextGate, readyTasks, stages, blockers } = current;
+    return { result, nextGate, readyTasks, stages, blockers };
   };
   const tools = toolSpecs.map(spec => ({ type: 'function', function: { name: spec.name, description: spec.description, parameters: spec.inputSchema } }));
   for (let turn = 0; turn < maxTurns; turn++) {
@@ -519,12 +572,7 @@ export async function serve(session: DevelopmentSession) {
 /** Verify resulting paths from signed host permissions, never from worker-modified policy. */
 export function verifyWriteScope(root: string, store: string, runId: string) {
   const session = new DevelopmentSession(root, store, runId); const base = session.approval.baseSha;
-  const paths = new Set([
-    ...git(root, ['diff', '--name-only', '-z', '--no-renames', base, 'HEAD', '--']).split('\0'),
-    ...git(root, ['diff', '--cached', '--name-only', '-z', '--no-renames', base, '--']).split('\0'),
-    ...git(root, ['diff', '--name-only', '-z', '--no-renames', base, '--']).split('\0'),
-    ...git(root, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0'),
-  ].filter(Boolean));
+  const paths = changedPaths(root, base);
   for (const path of paths) { pathName(path); if (!matches(path, session.approval.writePaths)) fail(`WRITE_SCOPE_DENIED: ${path}`); }
   return { runId, baseSha: base, changedPaths: [...paths].sort() };
 }

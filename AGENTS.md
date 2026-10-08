@@ -84,12 +84,16 @@ inputs. The host appends signed per-run receipts; it never overwrites receipts o
 automatically updates `docs/status.md`, `docs/roadmap.md`, or a global state file.
 Canonical evidence summaries remain explicit owner-maintained changes.
 
-Enforcement requires a trusted host and a dedicated restricted worker without
-an unrestricted shell, filesystem tool, or alternate repository access. An
-existing chat that retains shell access is unrestricted even if these tools are
-attached. These rules and entry points do not establish that all Codex sessions
-are restricted, that the rewritten interface is enabled, or that remote branch
-protection is configured; those claims require actual host and runner evidence.
+Enforcement belongs at the trusted host entry, not in a particular model loop.
+The host must require current context before file operations, validate the
+baseline and change scope, and expose only the admitted operations to the
+client. `runRestrictedWorker` is one replaceable reference adapter; an existing
+chat may use the same host-owned entry without adopting that adapter. A chat
+that retains unrestricted shell or filesystem access is not controlled merely
+because these tools are attached. These rules and entry points do not establish
+that all Codex sessions are restricted, that the rewritten interface is enabled,
+or that remote branch protection is configured; those claims require actual host
+and runner evidence.
 
 Run `npm run test:development-gates` and
 `npm run typecheck:development-tools` for the control plane. Generated-field
