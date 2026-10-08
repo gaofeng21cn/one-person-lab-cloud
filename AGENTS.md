@@ -48,6 +48,30 @@ When current sources disagree:
 Issues, PRs, comments, agent sessions, generated docs, and old plans are inputs.
 They do not override the current owner.
 
+## Scoped Development Contract
+
+Development tasks use `development/development-contract.json` and the fixed schema
+in `tools/dev-session.ts`. Every task names one DDD owner, primary module,
+canonical contract, real callers, current-state anchors, bounded write paths,
+ordered acceptance stages, terminal stage and evidence layer. The owner registry
+must own the primary module, contract and every write path; a worker cannot
+expand this task or its permissions.
+
+The only supported worker file entry is the scoped stdio server documented in
+`development/README.md`. It requires `dev_context`, rejects repository-root
+search and arbitrary commands, and revokes admission when HEAD, task or current
+inputs change. The host must not expose an unrestricted shell or filesystem
+alongside it. `dev_write` cannot update status, roadmap or evidence projections.
+
+A trusted host runs acceptance stages and publishes a fixed receipt with
+`npm run dev:publish`. Publication updates `development/state/current.json` and
+the generated development-state projection in `docs/status.md` and
+`docs/roadmap.md`. A blocked receipt stays blocked. This projection records
+development evidence only; it cannot claim runtime, Candidate, Instance or
+production readiness. Run `npm run test:development-gates` and
+`npm run typecheck:development-tools` for the control plane, and
+`npm run verify:generated-contracts` for generated contract freshness.
+
 ## Documentation
 
 Follow the hierarchy in `docs/README.md`. Lower layers may implement or report

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "evidenceLayers": ["target", "source", "runtime", "production"],
+  "owners": {
+    "cloud-development": {
+      "primaryModules": ["development"],
+      "writePaths": ["development/", "tools/dev-session.ts", "tools/verify-generated-contracts.ts", "tests/tools/", "packages/contracts/proto/generate.sh", "package.json", "package-lock.json", "tools/verify-local.ts", ".github/workflows/pull-request-ci.yml", "AGENTS.md"],
+      "contractPaths": ["AGENTS.md", "development/development-contract.json", "development/README.md"]
+    },
+    "contracts": {
+      "primaryModules": ["packages/contracts"],
+      "writePaths": ["packages/contracts/", "docs/spec/target/contracts/", "docs/spec/target/03_api_contract_complete.yaml", "tests/contracts/"],
+      "contractPaths": ["packages/contracts/README.md", "docs/spec/target/contracts/internal.proto", "docs/spec/target/03_api_contract_complete.yaml"]
+    },
+    "console": {
+      "primaryModules": ["apps/console-ui", "apps/console-bff"],
+      "writePaths": ["apps/console-ui/", "apps/console-bff/", "tests/ui/"],
+      "contractPaths": ["docs/architecture.md", "docs/implementation-architecture.md"]
+    },
+    "workspace": {
+      "primaryModules": ["services/workspace"],
+      "writePaths": ["services/workspace/", "tests/ui/", "tests/integration/"],
+      "contractPaths": ["docs/architecture.md", "docs/spec/target/contracts/internal.proto"]
+    },
+    "gateway": {
+      "primaryModules": ["services/gateway-integration"],
+      "writePaths": ["services/gateway-integration/", "tests/integration/"],
+      "contractPaths": ["docs/architecture.md", "docs/spec/target/contracts/internal.proto"]
+    },
+    "fabric": {
+      "primaryModules": ["services/fabric"],
+      "writePaths": ["services/fabric/", "tests/integration/"],
+      "contractPaths": ["docs/architecture.md", "docs/spec/target/contracts/internal.proto"]
+    },
+    "serve": {
+      "primaryModules": ["services/serve"],
+      "writePaths": ["services/serve/", "tests/integration/"],
+      "contractPaths": ["docs/architecture.md", "docs/spec/target/contracts/internal.proto"]
+    },
+    "ledger": {
+      "primaryModules": ["services/ledger"],
+      "writePaths": ["services/ledger/", "tests/integration/"],
+      "contractPaths": ["docs/architecture.md", "docs/spec/target/contracts/internal.proto"]
+    },
+    "instance": {
+      "primaryModules": ["external:opl-instance-medopl"],
+      "writePaths": [],
+      "contractPaths": ["docs/architecture.md", "docs/status.md"]
+    }
+  }
+}

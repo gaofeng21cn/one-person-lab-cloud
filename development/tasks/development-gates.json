@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 2,
+  "id": "development-gates",
+  "objective": "Enforce scoped development and generated-contract freshness without claiming product runtime readiness.",
+  "domainOwner": "cloud-development",
+  "primaryModule": "development",
+  "canonicalContract": "development/development-contract.json",
+  "callers": [
+    "tools/dev-session.ts",
+    "tools/verify-generated-contracts.ts",
+    ".github/workflows/pull-request-ci.yml"
+  ],
+  "nextAction": "Run the negative-control tests and real contract regeneration, then enable the restricted tool runner before using it for a Default App end-to-end task.",
+  "blockers": [
+    "This task does not establish Default App runtime readiness or authorize deployment.",
+    "An unrestricted host shell or filesystem tool bypasses this broker and must not be exposed to the restricted worker."
+  ],
+  "context": [
+    {
+      "path": "AGENTS.md"
+    },
+    {
+      "path": "docs/status.md"
+    },
+    {
+      "path": "docs/roadmap.md"
+    },
+    {
+      "path": "docs/implementation-architecture.md",
+      "startLine": 1,
+      "endLine": 65
+    }
+  ],
+  "readPaths": [
+    "tools/dev-session.ts",
+    "tools/verify-generated-contracts.ts",
+    "tests/tools/dev-session.test.ts",
+    "tests/tools/verify-generated-contracts.test.ts",
+    "packages/contracts/proto/",
+    "packages/contracts/go/api/",
+    "packages/contracts/go/publicjson/",
+    "packages/contracts/go/event_identity.go",
+    "docs/spec/target/contracts/",
+    "docs/spec/target/03_api_contract_complete.yaml",
+    "docs/spec/target/checks/requirements.txt",
+    "package.json",
+    "tools/verify-local.ts",
+    ".github/workflows/pull-request-ci.yml",
+    "development/README.md",
+    "package-lock.json",
+    "development/tsconfig.json",
+    "development/development-contract.json"
+  ],
+  "writePaths": [
+    "tools/dev-session.ts",
+    "tools/verify-generated-contracts.ts",
+    "tests/tools/dev-session.test.ts",
+    "tests/tools/verify-generated-contracts.test.ts",
+    "packages/contracts/proto/generate.sh",
+    "package.json",
+    "tools/verify-local.ts",
+    "development/README.md",
+    "AGENTS.md",
+    "development/tasks/development-gates.json",
+    "package-lock.json",
+    "development/tsconfig.json",
+    ".github/workflows/pull-request-ci.yml",
+    "development/development-contract.json"
+  ],
+  "currentState": {
+    "statusPath": "docs/status.md",
+    "roadmapPath": "docs/roadmap.md",
+    "anchors": [
+      "Current Source Baseline",
+      "Priority Outcomes"
+    ]
+  },
+  "flow": {
+    "stages": [
+      {
+        "id": "current-context",
+        "owner": "cloud-development",
+        "entrypoint": "node tools/dev-session.ts context",
+        "acceptance": "Mandatory AGENTS/status/roadmap inputs are delivered and hashed."
+      },
+      {
+        "id": "focused-verification",
+        "owner": "cloud-development",
+        "entrypoint": "npm run test:development-gates",
+        "acceptance": "Scoped broker, fixed fields and negative controls pass."
+      },
+      {
+        "id": "generated-contracts",
+        "owner": "contracts",
+        "entrypoint": "npm run verify:generated-contracts",
+        "acceptance": "All production generators reproduce checked-in bytes and source owners agree."
+      },
+      {
+        "id": "source-receipt",
+        "owner": "cloud-development",
+        "entrypoint": "trusted host receipt publication",
+        "acceptance": "A trusted receipt records the exact SHA, commands, result and changed paths."
+      }
+    ],
+    "terminalStage": "source-receipt"
+  },
+  "evidence": {
+    "layer": "source",
+    "receiptPath": "docs/evidence/source-checks/development-gates.json",
+    "statusProjection": "development/state/current.json"
+  },
+  "completionEvidence": "Successful focused tests and byte-identical real regeneration. Not a deployment receipt."
+}

@@ -56,6 +56,7 @@ export const databaseFreeGoTestSpecs = Object.freeze([
 
 export const localVerificationSteps = Object.freeze([
   { name: "product boundary", command: "npm", args: ["run", "validate:product-boundary"] },
+  { name: "Development tools typecheck", command: "npm", args: ["run", "typecheck:development-tools"] },
   { name: "Node source tests", command: "npm", args: ["run", "test:source"] },
   // One bounded-concurrency invocation instead of nine sequential ones: each
   // group used to boot its own demo server and Chromium before the next started.
