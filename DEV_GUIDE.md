@@ -30,12 +30,14 @@ thin Console
   -> Sub2API-authoritative balance, usage, and debit
 ```
 
-The source contains the thin Console, the Sub2API-backed Gateway accounting
-surfaces, and Fabric's `local-docker` provider with an isolated Docker
-integration test. Closing the product Core path still requires the same-revision
-Console-to-Workspace acceptance evidence described in the roadmap. Workspace
-Delete performs no wallet or refund mutation. Ledger records the required
-receipts and reconciliation evidence; it never owns spendable balance.
+This path describes the retained MVP flow, not the complete current service
+inventory or Console routing. The current owners, extracted services, retained
+callers and request paths belong to
+[implementation-architecture.md](docs/implementation-architecture.md). Closing
+the product Core path still requires the same-revision Console-to-Workspace
+acceptance evidence described in the roadmap. Workspace Delete performs no
+wallet or refund mutation. Ledger records the required receipts and
+reconciliation evidence; it never owns spendable balance.
 
 ## Local Console Preview
 
@@ -49,8 +51,9 @@ requests. It proves only the interaction preview.
 
 ## Portable Control Services
 
-Use the release-owned Compose file and environment template to validate or run
-PostgreSQL, Ledger, Fabric, and Control Plane:
+Use the release-owned Compose file and environment template to validate the
+portable control stack. The current deployment-unit inventory belongs to
+[implementation-architecture.md](docs/implementation-architecture.md):
 
 ```bash
 docker compose --env-file deploy/portable/opl-cloud.env.example config --quiet
@@ -74,12 +77,32 @@ receipts to this repository.
 
 ## Ownership Rules
 
-- Console calls only Control Plane product APIs.
-- Control Plane owns Workspace orchestration and billing coordination.
+- Current Console/BFF routing, extracted owners and retained Control Plane
+  responsibilities follow
+  [implementation-architecture.md](docs/implementation-architecture.md), not a
+  Console-only-to-Control-Plane assumption.
+- Domain authority remains in the canonical architecture owners; extraction
+  moves real callers and retires the old write path instead of adding a second
+  writer.
 - Fabric owns provider resources and provider adapters.
 - Sub2API owns identity credentials, spendable balance, API Keys, routing, and
   request usage.
 - Ledger owns append-only receipts and reconciliation evidence.
+
+## Scoped Host And Worker Entry
+
+Follow [Scoped Development Contract](AGENTS.md#scoped-development-contract) for
+per-run admission, restricted worker capabilities, isolated stage inputs and
+signed receipts. Use `npm run dev:tools` for the worker tool entry and
+`npm run dev:run` for the trusted host runner entry. Their argument details are
+finalized with the implementation; this guide does not freeze a CLI protocol or
+assert that a particular chat already runs under that host.
+
+The host references an existing phase-plan record and canonical owner, narrows
+scope and declares stage inputs and the runner. A worker requests acceptance
+with `dev_verify` and observes actual results with `dev_status`; it cannot
+complete or publish a run by assertion. A shell-enabled chat remains
+unrestricted. Run receipts do not automatically write product status or roadmap.
 
 ## Pre-Commit Checks
 
@@ -88,9 +111,11 @@ npm run verify:local
 ```
 
 The default gate needs no database. It validates the product boundary, Node
-tests, Console typecheck/lint/build, five Go modules (including shared contracts),
-and Git whitespace. Go coverage means all-module compilation plus the explicitly
-database-free package tests. Changes to persistence, capacity behavior, local
+tests, Console typecheck/lint/build, the current Go module set and Git
+whitespace. The module inventory is owned by
+[implementation-architecture.md](docs/implementation-architecture.md), not a
+fixed count in this guide. Go coverage means all-module compilation plus the
+explicitly database-free package tests. Changes to persistence, capacity behavior, local
 Docker, or a cross-service path also run the complete local gate:
 
 ```bash
@@ -118,6 +143,17 @@ image and executables on completion or failure. This is Linux source
 qualification; it does not deploy an Instance or establish installed product
 readiness. A Docker Desktop daemon does not qualify a macOS Fabric process's
 filesystem, and fixture quota backends do not prove kernel enforcement.
+
+For generated-field changes, run `npm run verify:generated-contracts` to
+regenerate the covered outputs from their declared source inputs and compare
+exact bytes. Run `npm run verify:development-plan` to regenerate the plan task
+book into an isolated tree, byte-compare the checked-in projection and validate
+its coverage read-only; a stale or hand-edited plan projection is refused
+instead of being treated as current state. Freshness is separate from production/spec reconciliation, W01
+migration and real consumer verification; it does not freeze handwritten
+business fields. See [contract ownership](packages/contracts/README.md).
+Fixture and source passes are evidence only for the exercised layer, not
+installed product runtime or Instance acceptance.
 
 Whitepaper source or Profile changes additionally run `npm run build:whitepaper`;
 rendering is separate from the ordinary source gate and from publication.

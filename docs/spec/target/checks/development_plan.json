@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "228778c2e3d4b31c9a888ecaf69ca5bdf5d82dd2",
+  "sourceSHA": "c474cd1e7d5e5530e6e68ce5aef14b9a8167ec6d",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -1127,6 +1127,7 @@
         "FabricCoordination.DeleteResources",
         "FabricCoordination.ReadResources",
         "FabricCoordination.BindSecret",
+        "FabricCoordination.RebindSecret",
         "FabricPlanTransitionReadback.ReadApprovedPlanTransition",
         "FabricPlanTransitionReadback.ReadExecutionPlan"
       ],
@@ -1207,6 +1208,7 @@
         "FabricCoordination.DeleteResources",
         "FabricCoordination.ReadResources",
         "FabricCoordination.BindSecret",
+        "FabricCoordination.RebindSecret",
         "FabricPlanTransitionReadback.ReadApprovedPlanTransition",
         "FabricPlanTransitionReadback.ReadExecutionPlan"
       ],
@@ -3354,6 +3356,10 @@
       "W12"
     ],
     "FabricCoordination.BindSecret": [
+      "W11",
+      "W12"
+    ],
+    "FabricCoordination.RebindSecret": [
       "W11",
       "W12"
     ],

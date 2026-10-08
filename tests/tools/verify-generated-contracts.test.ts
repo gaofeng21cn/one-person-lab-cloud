@@ -8,9 +8,7 @@ import type { TestContext } from "node:test";
 import {
   generationInputs,
   generatedOutputs,
-  protoDescriptorProgram,
-  verifyGeneratedContracts,
-  verifyProtoSchema
+  verifyGeneratedContracts
 } from "../../tools/verify-generated-contracts.ts";
 import type { GenerationCommand, GenerationRunner } from "../../tools/verify-generated-contracts.ts";
 
@@ -23,28 +21,32 @@ function put(root: string, path: string, data: string | Buffer) {
 }
 
 // A deterministic dependency-aware runner, not an assertion/hash manifest.
-// Real generator execution runs through `npm run verify:generated-contracts`; it
-// is not yet a blocking CI required check until the contracts owner reconciles the
-// production/target proto drift.
+// Real generator execution runs through `npm run verify:generated-contracts`.
+// These fixtures exercise freshness, not W01 migration or source-copy parity.
 function fakeGeneration({ args, cwd }: GenerationCommand) {
+  assert.equal(args[0], `${proto}/generate.sh`);
   const contents = (...paths: string[]) => Buffer.concat(paths.map((path) => readFileSync(join(cwd, path))));
-  if (args[0] === "-c") {
-    assert.equal(args[1], protoDescriptorProgram);
-    // Unit tests inject descriptor bytes; opt-in tests below exercise real protoc.
-    put(cwd, args[4], contents(args[2]));
-    put(cwd, args[5], contents(args[3]));
-    put(cwd, args[6], "fixture descriptor source difference");
-  } else if (args[0] === `${proto}/generate.sh`) {
-    for (const output of generatedOutputs.slice(0, 2)) {
-      put(cwd, output, contents(`${proto}/generate.sh`, `${proto}/internal.proto`));
-    }
-    put(cwd, generatedOutputs[2], contents(
-      `${proto}/generate_public_json_shape.py`, `${target}/contracts/internal.proto`,
-      `${target}/03_api_contract_complete.yaml`, `${target}/contracts/publisher-contract.schema.json`
-    ));
-  } else {
-    assert.deepEqual(args, [`${proto}/generate_event_identity.py`, `${proto}/events.json`, generatedOutputs[3]]);
-    put(cwd, generatedOutputs[3], contents(`${proto}/generate_event_identity.py`, `${proto}/events.json`));
+  switch (args[1]) {
+    case "bindings":
+      for (const output of generatedOutputs.slice(0, 2)) {
+        put(cwd, output, contents(`${proto}/generate.sh`, `${proto}/internal.proto`));
+      }
+      break;
+    case "public-json":
+      put(cwd, generatedOutputs[2], contents(
+        `${proto}/generate.sh`, `${proto}/generate_public_json_shape.py`, `${target}/contracts/internal.proto`,
+        `${target}/03_api_contract_complete.yaml`, `${target}/contracts/publisher-contract.schema.json`
+      ));
+      break;
+    case "event-identity":
+      put(cwd, generatedOutputs[3], contents(`${proto}/generate.sh`, `${proto}/generate_event_identity.py`, `${proto}/events.json`));
+      break;
+    case "policy":
+      for (const output of generatedOutputs.slice(4)) {
+        put(cwd, output, contents(`${proto}/generate.sh`, "services/gateway-integration/identity/generate_policy.py", `${target}/03_api_contract_complete.yaml`));
+      }
+      break;
+    default: throw new Error(`unexpected generation chain: ${args[1]}`);
   }
 }
 
@@ -52,12 +54,9 @@ function fixture(t: TestContext) {
   const root = mkdtempSync(join(tmpdir(), "opl-freshness-test-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   for (const path of generationInputs) put(root, path, `input: ${path}\n`);
-  put(root, `${proto}/events.json`, JSON.stringify({ oneOf: [], description: "event contract" }));
-  for (const name of ["internal.proto", "events.json"]) {
-    put(root, `${target}/contracts/${name}`, readFileSync(join(root, `${proto}/${name}`)));
+  for (const chain of ["bindings", "public-json", "event-identity", "policy"]) {
+    fakeGeneration({ command: "bash", args: [`${proto}/generate.sh`, chain], cwd: root });
   }
-  fakeGeneration({ command: "bash", args: [`${proto}/generate.sh`], cwd: root });
-  fakeGeneration({ command: "python3", args: [`${proto}/generate_event_identity.py`, `${proto}/events.json`, generatedOutputs[3]], cwd: root });
   return root;
 }
 
@@ -79,143 +78,55 @@ test("freshness passes by regenerating isolated inputs into empty outputs withou
   assert.deepEqual(result.errors, []);
   assert.deepEqual(result.compared, [...generatedOutputs].sort());
   assert.match(result.uncovered.join("\n"), /events.json.*NOT regenerated/);
-  assert.equal(calls.length, 3);
-  assert.equal(calls[0].command, process.env.PYTHON || "python3");
-  assert.equal(calls[1].command, "bash");
-  assert.equal(calls[2].command, process.env.PYTHON || "python3");
+  assert.equal(calls.length, 4);
+  for (const call of calls) assert.equal(call.command, "bash");
   for (const call of calls) assert.equal(existsSync(call.cwd), false, "temporary workspace leaked");
   for (const [path, bytes] of originals) assert.deepEqual(readFileSync(join(root, path)), bytes);
 });
 
-for (const [name, inputs, outputs] of [
-  ["both proto inputs", [`${proto}/internal.proto`, `${target}/contracts/internal.proto`], generatedOutputs.slice(0, 3)],
-  ["API schema", [`${target}/03_api_contract_complete.yaml`], [generatedOutputs[2]]],
-  ["publisher schema", [`${target}/contracts/publisher-contract.schema.json`], [generatedOutputs[2]]],
-  ["event identities input", [`${proto}/events.json`, `${target}/contracts/events.json`], [generatedOutputs[3]]],
-  ["generator source", [`${proto}/generate_public_json_shape.py`], [generatedOutputs[2]]]
-] as const) {
-  test(`freshness rejects ${name} drift even when duplicate sources still agree`, (t) => {
-    const root = fixture(t);
-    for (const path of inputs) put(root, path, JSON.stringify("changed input"));
-    const result = verifyGeneratedContracts({ root, runner: fakeGeneration });
-    assert.equal(result.passed, false);
-    assert.ok(result.errors.every((error) => !error.startsWith("proto schema differs") && !error.startsWith("source JSON differs")));
-    for (const output of outputs) assert.ok(result.errors.includes(`generated bytes differ: ${output}`));
-  });
-}
-
-for (const name of ["internal.proto", "events.json"]) {
-  for (const side of [proto, `${target}/contracts`]) {
-    test(`freshness detects ${side}/${name} disagreement without replacing either source`, (t) => {
-      const root = fixture(t);
-      put(root, `${side}/${name}`, JSON.stringify("one-sided drift"));
-      let calls = 0;
-      const result = verifyGeneratedContracts({ root, runner: (command) => { calls++; fakeGeneration(command); } });
-      assert.equal(result.passed, false);
-      assert.ok(result.errors.some((error) => error.startsWith(name === "internal.proto" ? "proto schema differs:" : "source JSON differs:")));
-      assert.equal(calls, 3, "source conflict must not hide real regeneration evidence");
-      assert.equal(readFileSync(join(root, `${side}/${name}`), "utf8"), JSON.stringify("one-sided drift"));
-    });
-  }
-}
-
-test("event source parity ignores formatting and object key order without overwriting either copy", (t) => {
+test("freshness accepts current generated bytes when production and target sources intentionally differ", (t) => {
   const root = fixture(t);
-  const reformatted = '{\n  "description": "event contract",\n  "oneOf": []\n}\n';
-  put(root, `${target}/contracts/events.json`, reformatted);
+  put(root, `${target}/contracts/internal.proto`, "target migration remains incomplete\n");
+  put(root, `${target}/contracts/events.json`, JSON.stringify({ description: "target migration remains incomplete" }));
+  // Public JSON consumes the target proto; generate its current bytes without
+  // forcing the production and target copies to agree.
+  fakeGeneration({ command: "bash", args: [`${proto}/generate.sh`, "public-json"], cwd: root });
   const result = verifyGeneratedContracts({ root, runner: fakeGeneration });
   assert.equal(result.passed, true, result.errors.join("\n"));
-  assert.equal(readFileSync(join(root, `${target}/contracts/events.json`), "utf8"), reformatted);
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.compared, [...generatedOutputs].sort());
 });
 
-test("event source parity preserves description conflicts and array order", (t) => {
+test("freshness covers the existing identity policy and BFF status generator", (t) => {
   const root = fixture(t);
-  put(root, `${target}/contracts/events.json`, JSON.stringify({ oneOf: [], description: "conflicting owner claim" }));
-  assert.ok(verifyGeneratedContracts({ root, runner: fakeGeneration }).errors.some((error) => error.startsWith("source JSON differs:")));
-  put(root, `${proto}/events.json`, JSON.stringify({ oneOf: ["first", "second"] }));
-  put(root, `${target}/contracts/events.json`, JSON.stringify({ oneOf: ["second", "first"] }));
-  assert.ok(verifyGeneratedContracts({ root, runner: fakeGeneration }).errors.some((error) => error.startsWith("source JSON differs:")));
-});
-
-test("descriptor compilation failure cannot silently pass source parity or hide output comparisons", (t) => {
-  const root = fixture(t);
-  const result = verifyGeneratedContracts({ root, runner: (command) => {
-    if (command.args[0] === "-c") throw new Error("grpcio-tools version mismatch: expected 1.80.0, got 0.0.0");
-    fakeGeneration(command);
-  } });
-  assert.equal(result.passed, false);
-  assert.ok(result.errors.some((error) => error.includes("grpcio-tools version mismatch")));
-  assert.equal(result.compared.length, 4);
-});
-
-// Explicit integration mode keeps the ordinary Node source lane dependency-free.
-// Run OPL_TEST_PROTO_DESCRIPTORS=1 node --test <this file> with locked grpcio-tools.
-if (process.env.OPL_TEST_PROTO_DESCRIPTORS === "1") {
-  const production = `syntax = "proto3";
-package opl.cloud.api;
-option go_package = "opl-cloud/packages/contracts/go/api;api";
-option java_package = "opl.cloud.api.literal";
-// Production comments may differ from the specification.
-message Envelope {
-  message Nested { string value = 1; }
-  enum Kind { KIND_UNSPECIFIED = 0; KIND_VALUE = 1; }
-  oneof body { string text = 1; .opl.cloud.api.Envelope.Nested nested = 2; }
-  Kind kind = 3;
-  repeated .opl.cloud.api.Envelope.Nested children = 4;
-  optional int64 counter = 5;
-  reserved 6;
-}
-service Example { rpc Call(.opl.cloud.api.Envelope) returns (.opl.cloud.api.Envelope); }
-`;
-  const specification = production
-    .replaceAll("opl.cloud.api", "opl.cloud.v226")
-    .replace("opl-cloud/packages/contracts/go/api;api", "opl.cloud/contracts/v226;v226")
-    .replace('java_package = "opl.cloud.v226.literal"', 'java_package = "opl.cloud.api.literal"')
-    .replace("Production comments may differ from the specification.", "Different target comment.");
-
-  const cases: [string, (source: string) => string][] = [
-    ["field number", (s) => s.replace("string text = 1", "string text = 10")],
-    ["field name", (s) => s.replace("string text", "string renamed")],
-    ["scalar type", (s) => s.replace("string text", "bytes text")],
-    ["message type", (s) => s.replace("Envelope.Nested nested", "Envelope nested")],
-    ["field addition", (s) => s.replace("reserved 6;", "reserved 6; string added = 7;")],
-    ["field removal", (s) => s.replace("Kind kind = 3;", "")],
-    ["field cardinality", (s) => s.replace("repeated .opl.cloud.v226", ".opl.cloud.v226")],
-    ["proto3 optional", (s) => s.replace("optional int64", "int64")],
-    ["field options", (s) => s.replace("string text = 1;", "string text = 1 [deprecated = true];")],
-    ["oneof name", (s) => s.replace("oneof body", "oneof renamed")],
-    ["oneof membership", (s) => s.replace("string text = 1;", "").replace("Kind kind = 3;", "Kind kind = 3; string text = 1;")],
-    ["enum value", (s) => s.replace("KIND_VALUE = 1", "KIND_VALUE = 2")],
-    ["message addition", (s) => s + "message Added {}\n"],
-    ["RPC addition", (s) => s.replace("service Example {", "service Example { rpc Added(Envelope) returns (Envelope);")],
-    ["RPC removal", (s) => s.replace(/rpc Call\([^;]+;/, "")],
-    ["RPC input", (s) => s.replace("Call(.opl.cloud.v226.Envelope)", "Call(.opl.cloud.v226.Envelope.Nested)")],
-    ["RPC output", (s) => s.replace("returns (.opl.cloud.v226.Envelope)", "returns (.opl.cloud.v226.Envelope.Nested)")],
-    ["RPC streaming", (s) => s.replace("Call(.opl", "Call(stream .opl")],
-    ["undeclared package", (s) => s.replaceAll("opl.cloud.v226", "opl.cloud.future")],
-    ["undeclared Go deployment mapping", (s) => s.replace("opl.cloud/contracts/v226;v226", "other/contracts;other")],
-    ["unrelated string option", (s) => s.replace('java_package = "opl.cloud.api.literal"', 'java_package = "opl.cloud.v226.literal"')]
+  const outputs = [
+    "services/gateway-integration/identity/policy_generated.go",
+    "apps/console-bff/internal/httpapi/status_generated.go"
   ];
+  const result = verifyGeneratedContracts({ root, runner: fakeGeneration });
+  assert.equal(result.passed, true, result.errors.join("\n"));
+  for (const output of outputs) assert.ok(result.compared.includes(output), `unchecked output: ${output}`);
+});
 
-  test("real locked descriptors accept only declared deployment mappings and ignore comments/whitespace", (t) => {
+for (const [input, outputs] of [
+  [`${proto}/internal.proto`, generatedOutputs.slice(0, 2)],
+  [`${target}/contracts/internal.proto`, [generatedOutputs[2]]],
+  [`${target}/03_api_contract_complete.yaml`, [generatedOutputs[2], ...generatedOutputs.slice(4)]],
+  [`${target}/contracts/publisher-contract.schema.json`, [generatedOutputs[2]]],
+  [`${proto}/events.json`, [generatedOutputs[3]]],
+  [`${proto}/generate_public_json_shape.py`, [generatedOutputs[2]]],
+  [`${proto}/generate_event_identity.py`, [generatedOutputs[3]]],
+  ["services/gateway-integration/identity/generate_policy.py", generatedOutputs.slice(4)],
+  [`${proto}/generate.sh`, generatedOutputs]
+] as const) {
+  test(`freshness detects ${input} drift only through its real output consumers`, (t) => {
     const root = fixture(t);
-    put(root, `${proto}/internal.proto`, production);
-    put(root, `${target}/contracts/internal.proto`, specification.replaceAll("\n", "\n\n"));
-    assert.doesNotThrow(() => verifyProtoSchema(root));
+    put(root, input, "changed input\n");
+    const result = verifyGeneratedContracts({ root, runner: fakeGeneration });
+    assert.equal(result.passed, false);
+    assert.deepEqual(result.errors.sort(), outputs.map((output) => `generated bytes differ: ${output}`).sort());
+    assert.deepEqual(result.compared, generatedOutputs.filter((output) => !outputs.some((affected) => affected === output)).sort());
   });
-
-  for (const [name, mutate] of cases) {
-    test(`real locked descriptors reject ${name} drift`, (t) => {
-      const root = fixture(t);
-      put(root, `${proto}/internal.proto`, production);
-      put(root, `${target}/contracts/internal.proto`, mutate(specification));
-      assert.throws(() => verifyProtoSchema(root), (error: Error) => {
-        assert.match(error.message, /proto schema differs:/);
-        assert.match(error.message, /descriptor\.file\[internal\.proto\]/);
-        return true;
-      });
-    });
-  }
 }
 
 for (const output of generatedOutputs) {
@@ -239,26 +150,51 @@ test("freshness rejects no-op generators instead of comparing seeded generated f
   for (const output of generatedOutputs) assert.ok(result.errors.some((error) => error.includes(output)));
 });
 
-test("freshness checks the full Go binding output set, including obsolete and new files", (t) => {
-  const root = fixture(t);
-  const obsolete = "packages/contracts/go/api/obsolete.pb.go";
-  const added = "packages/contracts/go/api/new.pb.go";
-  put(root, obsolete, "obsolete\n");
-  const result = verifyGeneratedContracts({ root, runner: (command) => {
-    fakeGeneration(command);
-    put(command.cwd, added, "new\n");
-  } });
-  assert.equal(result.passed, false);
-  assert.ok(result.errors.includes(`missing regenerated output (or obsolete checked-in binding): ${obsolete}`));
-  assert.ok(result.errors.includes(`missing checked-in generated output: ${added}`));
-});
+for (const [chain, missing] of [
+  ["bindings", generatedOutputs.slice(0, 2)],
+  ["public-json", [generatedOutputs[2]]],
+  ["event-identity", [generatedOutputs[3]]],
+  ["policy", generatedOutputs.slice(4)]
+] as const) {
+  test(`freshness rejects a no-op ${chain} chain without hiding independent results`, (t) => {
+    const result = verifyGeneratedContracts({ root: fixture(t), runner: (command) => {
+      if (command.args[1] !== chain) fakeGeneration(command);
+    } });
+    assert.equal(result.passed, false);
+    for (const output of missing) assert.ok(result.errors.includes(
+      `missing regenerated output (or obsolete checked-in generated output): ${output}`
+    ));
+    assert.deepEqual(result.compared, generatedOutputs.filter((output) => !missing.some((path) => path === output)).sort());
+  });
+}
+
+for (const [directory, suffix] of [
+  ["packages/contracts/go/api", ".pb.go"],
+  ["packages/contracts/go/publicjson", "_generated.go"],
+  ["services/gateway-integration/identity", "_generated.go"],
+  ["apps/console-bff/internal/httpapi", "_generated.go"]
+]) {
+  test(`freshness rejects obsolete and new generated files in ${directory}`, (t) => {
+    const root = fixture(t);
+    const obsolete = `${directory}/nested/obsolete${suffix}`;
+    const added = `${directory}/nested/new${suffix}`;
+    put(root, obsolete, "obsolete\n");
+    const result = verifyGeneratedContracts({ root, runner: (command) => {
+      fakeGeneration(command);
+      put(command.cwd, added, "new\n");
+    } });
+    assert.equal(result.passed, false);
+    assert.ok(result.errors.includes(`missing regenerated output (or obsolete checked-in generated output): ${obsolete}`));
+    assert.ok(result.errors.includes(`missing checked-in generated output: ${added}`));
+  });
+}
 
 test("freshness fails closed on missing tools while still checking the independent event chain", (t) => {
   const root = fixture(t);
   let temporary = "";
   const result = verifyGeneratedContracts({ root, runner: (command) => {
     temporary = command.cwd;
-    if (command.command === "bash") throw new Error("missing generator: protoc-gen-go; expected protoc-gen-go v1.36.6");
+    if (command.args[1] === "bindings") throw new Error("missing generator: protoc-gen-go; expected protoc-gen-go v1.36.6");
     fakeGeneration(command);
   } });
   assert.equal(result.passed, false);
@@ -285,6 +221,7 @@ for (const [tool, version, expected] of [
   ["protoc-gen-go-grpc", null, /missing generator: protoc-gen-go-grpc/],
   ["protoc-gen-go-grpc", "protoc-gen-go-grpc 0.0.0", /protoc-gen-go-grpc version mismatch/],
   ["gofmt", null, /missing formatter: gofmt/],
+  ["python3", null, /missing Python: python3/],
   ["python3", "libprotoc 0.0", /protoc version mismatch/]
 ] as const) {
   test(`actual shell preflight rejects ${tool} ${version ?? "missing"}`, (t) => {
@@ -312,4 +249,111 @@ for (const [tool, version, expected] of [
     assert.equal(result.status, 1, result.stderr);
     assert.match(result.stderr, expected);
   });
+}
+
+// The integration lane executes the existing Python/protoc generators, not the
+// dependency-aware fixture. Locked tools must be supplied explicitly; no skips
+// or fallback generators inside an enabled integration run.
+if (process.env.OPL_TEST_GENERATED_CONTRACTS === "1") {
+  function realFixture(t: TestContext) {
+    const root = fixture(t);
+    for (const path of [...generationInputs, ...generatedOutputs]) {
+      put(root, path, readFileSync(new URL(`../../${path}`, import.meta.url)));
+    }
+    return root;
+  }
+
+  test("real freshness reproduces all existing output bytes despite target/production migration gaps", (t) => {
+    const root = realFixture(t);
+    put(root, `${target}/contracts/events.json`, "unused target migration source\n");
+    const originals = new Map([...generationInputs, ...generatedOutputs].map((path) => [path, readFileSync(join(root, path))]));
+    const result = verifyGeneratedContracts({ root });
+    assert.equal(result.passed, true, result.errors.join("\n"));
+    assert.deepEqual(result.compared, [...generatedOutputs].sort());
+    for (const [path, bytes] of originals) assert.deepEqual(readFileSync(join(root, path)), bytes);
+  });
+
+  test("real freshness detects a changed owner event identity without updating generated products", (t) => {
+    const root = realFixture(t);
+    const path = `${proto}/events.json`;
+    const events = JSON.parse(readFileSync(join(root, path), "utf8"));
+    events.oneOf[0].properties.schemaVersion.const += 1;
+    put(root, path, JSON.stringify(events));
+    const original = readFileSync(join(root, generatedOutputs[3]));
+    const result = verifyGeneratedContracts({ root });
+    assert.equal(result.passed, false);
+    assert.deepEqual(result.errors, [`generated bytes differ: ${generatedOutputs[3]}`]);
+    assert.deepEqual(result.compared, generatedOutputs.filter((output) => output !== generatedOutputs[3]).sort());
+    assert.deepEqual(readFileSync(join(root, generatedOutputs[3])), original);
+  });
+  test("real API permission changes reach only the existing identity policy output", async (t) => {
+    const root = realFixture(t);
+    const path = `${target}/03_api_contract_complete.yaml`;
+    const { parse, stringify } = await import("yaml");
+    const api = parse(readFileSync(join(root, path), "utf8"));
+    const operation = api.paths["/api/v2/catalog/compute-plans"].get;
+    assert.deepEqual(operation["x-permission"], ["member"]);
+    operation["x-permission"] = ["owner"];
+    put(root, path, stringify(api));
+    const result = verifyGeneratedContracts({ root });
+    assert.equal(result.passed, false);
+    assert.deepEqual(result.errors, [`generated bytes differ: ${generatedOutputs[4]}`]);
+    assert.deepEqual(result.compared, generatedOutputs.filter((output) => output !== generatedOutputs[4]).sort());
+  });
+
+  test("real API success status changes reach only the existing BFF status output", async (t) => {
+    const root = realFixture(t);
+    const path = `${target}/03_api_contract_complete.yaml`;
+    const { parse, stringify } = await import("yaml");
+    const api = parse(readFileSync(join(root, path), "utf8"));
+    const responses = api.paths["/api/v2/auth/context"].get.responses;
+    responses["201"] = responses["200"];
+    delete responses["200"];
+    put(root, path, stringify(api));
+    const result = verifyGeneratedContracts({ root });
+    assert.equal(result.passed, false);
+    assert.deepEqual(result.errors, [`generated bytes differ: ${generatedOutputs[5]}`]);
+    assert.deepEqual(result.compared, generatedOutputs.filter((output) => output !== generatedOutputs[5]).sort());
+  });
+
+  for (const [chain, packageName, version] of [
+    ["bindings", "grpcio-tools", "1.80.0"],
+    ["policy", "PyYAML", "6.0.3"]
+  ]) {
+    for (const fault of ["missing", "mismatch"]) {
+      test(`real ${chain} preflight refuses ${packageName} ${fault} before changing any output`, (t) => {
+        const root = realFixture(t);
+        const python = spawnSync(process.env.PYTHON || "python3", ["-c", "import sys; print(sys.executable)"], { encoding: "utf8" });
+        assert.equal(python.status, 0, python.stderr);
+        const wrapper = "python-package-fault";
+        // Execute the shell's actual metadata preflight with one controlled
+        // package result. No package files or product sources are changed.
+        put(root, wrapper, `#!${python.stdout.trim()}
+import importlib.metadata as metadata
+import sys
+original_version = metadata.version
+def version(package):
+    if package == ${JSON.stringify(packageName)}:
+        ${fault === "missing" ? "raise metadata.PackageNotFoundError(package)" : 'return "0.0.0"'}
+    return original_version(package)
+metadata.version = version
+if sys.argv[1] != "-":
+    raise SystemExit("unexpected execution past package preflight")
+sys.argv = sys.argv[1:]
+exec(compile(sys.stdin.read(), "<package-preflight>", "exec"))
+`);
+        chmodSync(join(root, wrapper), 0o755);
+        const originals = new Map(generatedOutputs.map((path) => [path, readFileSync(join(root, path))]));
+        const result = spawnSync("/bin/bash", [join(root, `${proto}/generate.sh`), chain], {
+          env: { ...process.env, PYTHON: join(root, wrapper), PYTHONDONTWRITEBYTECODE: "1" }, encoding: "utf8"
+        });
+        assert.equal(result.status, 1, result.stderr);
+        assert.ok(result.stderr.includes(fault === "missing"
+          ? `missing ${packageName}==${version}`
+          : `${packageName} version mismatch: expected ${version}, got 0.0.0`), result.stderr);
+        for (const [path, bytes] of originals) assert.deepEqual(readFileSync(join(root, path)), bytes);
+      });
+    }
+  }
+
 }

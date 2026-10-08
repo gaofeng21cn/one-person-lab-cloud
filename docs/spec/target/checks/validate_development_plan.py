@@ -143,8 +143,14 @@ for wid,w in W.items():
  for operation in w['apiPrimary']:require('`'+operation+'`' in text,'human task operation absent: '+operation)
 require('W29' in W['W31']['startAfter'] and 'W30' not in W['W31']['startAfter'],'Product release and all-customer migration wrongly conflated')
 require('08_delivery_checklist_per_role.md' in text or '08' in text,'role acceptance owner absent')
+check_only='--check' in sys.argv[1:]
 now=datetime.now(timezone.utc)
 report={'schemaVersion':1,'timestamp':now.isoformat(),'passed':not errors,'scope':'implementation plan completeness/coverage/dependency verification only; no work package implemented','counts':{'workPackages':len(W),'features':len(features),'restOperations':len(ops),'tables':len(actual_tables),'internalRPCs':len(rpcs),'executionSlices':len(slices)},'sliceWaves':slice_waves,'topologicalOrder':order,'acceptanceDependencyWaves':waves,'errors':errors,'sourceHashes':{name:hashlib.sha256((R/name).read_bytes()).hexdigest() for name in ['00_master_index.md','01_domain_ownership_matrix.md','14_implementation_work_packages.md','checks/development_plan.json','checks/render_development_plan.py','checks/validate_development_plan.py','contracts/api_inventory.json','contracts/db_inventory.json','contracts/ui_inventory.json','contracts/internal.proto','03_api_contract_complete.yaml','12_product_spec.md']}}
+if check_only:
+ # Read-only gate: prove the checked-in projection still matches its live inputs without
+ # mutating receipts or the validation snapshot. The trusted host decides where to persist evidence.
+ print(json.dumps({'passed':report['passed'],'counts':report['counts'],'waves':waves,'sliceWaves':slice_waves,'errors':errors},ensure_ascii=False,indent=2))
+ sys.exit(bool(errors))
 receipt=R/'checks/runs'/('development-plan-'+now.strftime('%Y%m%dT%H%M%S%fZ')+'.json');receipt.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
 (R/'checks/development_plan_validation.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
 print(json.dumps({'passed':report['passed'],'counts':report['counts'],'waves':waves,'sliceWaves':slice_waves,'errors':errors,'receipt':str(receipt)},ensure_ascii=False,indent=2))
