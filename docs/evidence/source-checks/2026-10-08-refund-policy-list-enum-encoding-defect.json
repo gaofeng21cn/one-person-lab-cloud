@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_resource_catalog_refund_enum_encoding_defect_source_check",
+  "revision": 1,
+  "recordedAt": "2026-10-08T21:30:00Z",
+  "result": "defect_established_in_source_by_arithmetic_and_by_live_run_sequence",
+  "objective": "Explain why the live Console origin answers 502 on the platform administrator's own refund policy list once the table holds a row, while the sibling price and retention policy lists answer 200 in the same administrator session.",
+  "defect": {
+    "class": "stored_enum_spelling_not_normalized_before_the_wire_name_lookup",
+    "owner": "opl-cloud",
+    "primaryFile": "services/resource-catalog/catalog/policies.go",
+    "primaryFunction": "scanRefundPolicy",
+    "primaryLine": 321,
+    "currentCode": "v.Algorithm = api.RefundPolicyVersionAlgorithmEnum(api.RefundPolicyVersionAlgorithmEnum_value[\"REFUND_POLICY_VERSION_ALGORITHM_ENUM_\"+upper(algorithm)])",
+    "statement": "The stored row carries the contract's own hyphenated spelling (CreateRefundPolicyVersion writes the literal \"workspace-delete-refund-v1\"), while the generated enum spells its members with underscores (REFUND_POLICY_VERSION_ALGORITHM_ENUM_WORKSPACE_DELETE_REFUND_V1). Because the separator is never normalized, the lookup misses, the missing key on a Go map yields the zero value, and the field silently becomes REFUND_POLICY_VERSION_ALGORITHM_ENUM_UNSPECIFIED.",
+    "whyTheSilentFallbackBecomesA502": [
+      "api.RefundPolicyVersionAlgorithmEnum declares only UNSPECIFIED = 0 and WORKSPACE_DELETE_REFUND_V1 = 1, so the unspecified member has no public spelling",
+      "the public contract marks RefundPolicyVersion.algorithm as required (packages/contracts/go/publicjson/shape_generated.go)",
+      "publicjson.Marshal in packages/contracts/go/publicjson/codec.go refuses a required property whose wire value has no published text and returns \"required property RefundPolicyVersion.algorithm has no public value for REFUND_POLICY_VERSION_ALGORITHM_ENUM_UNSPECIFIED\"",
+      "the Admin catalog list route (apps/console-bff/internal/httpapi/catalog.go) always encodes its owner answer through that codec, so it maps the encoder failure to HTTP 502 with the declared publisher error envelope"
+    ],
+    "existingCorrectPatternInTheSameFile": {
+      "function": "planChangePolicyVersionEnum",
+      "line": 351,
+      "code": "name := \"PRICE_POLICY_VERSION_PLAN_CHANGE_POLICY_VERSION_ENUM_\" + strings.ToUpper(strings.ReplaceAll(stored, \"-\", \"_\"))",
+      "statement": "the same file already normalizes the separator for the price policy's plan-change member, so the refund path is a missing step in an in-repo pattern rather than a missing convention"
+    }
+  },
+  "localReproduction": {
+    "how": "a scratch Go test in a detached worktree at product SHA bc99e765 called publicjson.Marshal on the page the list builds with the mapped-unspecified member",
+    "observed": "err = \"required property RefundPolicyVersion.algorithm has no public value for REFUND_POLICY_VERSION_ALGORITHM_ENUM_UNSPECIFIED\", raw = empty",
+    "control": "the same message with Algorithm set to WORKSPACE_DELETE_REFUND_V1 marshals cleanly and emits \"algorithm\":\"workspace-delete-refund-v1\"",
+    "lookupProbe": "the mapping probe logged \"REFUND_POLICY_VERSION_ALGORITHM_ENUM_WORKSPACE-DELETE-REFUND-V1\" -> ok=false value=0 and \"REFUND_POLICY_VERSION_ALGORITHM_ENUM_WORKSPACE_DELETE_REFUND_V1\" -> ok=true value=1"
+  },
+  "liveRunSequence": {
+    "origin": "https://cloud.medopl.com",
+    "productSha": "bc99e76524198075f4d4afb28847495b8f6285dd",
+    "cloudImageDigest": "sha256:53c9c92435a54bea08f146c5a5c724aa55f8a55d567f0abf00331c49dc779b38",
+    "liveImageIsTheCandidate": "deployment verification run 37748320822 records podImageIds true and consoleBffHealth true for this product revision",
+    "observed": [
+      "run 37814915051: the administrator refund list answered 200 while empty; retention, refund, compute, storage and price creation each answered 201; the same list then answered 502",
+      "runs 37815274349, 37816285206, 37838710197, 37842454166 and 37845816295: the list answered 502 before any write, with the price and retention lists at 200 in the same sessions",
+      "the same 502 appears on the administrator list route only; no customer-facing route serializes a refund policy version"
+    ],
+    "launchReach": "the customer quote and Workspace create path reads refundPolicyVersionId and the frozen refundTerms string, never the nested RefundPolicyVersion.algorithm, so this defect does not block a customer launch; it blocks the administrator list readback"
+  },
+  "openTransportObservation": {
+    "statement": "the live 502 body's own envelope was recorded from the Instance lane as a JSON object publishing type, title, status and detail with the route's own no-store directive, which is not a shape any revision in this repository's history produces on that route; the defect above is established independently of the body's envelope",
+    "recordedBy": "opl-instance-medopl receipts/2026-10-09-platform-catalog-admission-refusal-attribution.json"
+  },
+  "requiredRepair": {
+    "scope": "one owner function",
+    "statement": "normalize the stored separator before the enum-name lookup in scanRefundPolicy, matching planChangePolicyVersionEnum in the same file, and add the focused test that would have caught it (a list read over a stored hyphenated algorithm)",
+    "whyNoDataMigration": "the stored value is the contract's own spelling and remains correct; only the reader's mapping is wrong"
+  },
+  "notClaimed": [
+    "no Candidate was built and no Instance deployment was made by this record; the finding was produced from the current source, a local reproduction, and already-recorded Instance evidence",
+    "no product bytes were changed by this record",
+    "the fix and its Candidate are an open owner action"
+  ],
+  "secrets": "none"
+}
