@@ -108,7 +108,10 @@ test('the declared write set must be valid relative paths that cover the actual 
 test('receipt entries are typed and refuse unknown types, missing fields and inconsistent identities', () => {
   reject(render({ 'Receipt Pipeline': '- receipt: vibe-check; result: passed; path: `x`' }), /UNKNOWN_RECEIPT_TYPE/);
   reject(render({ 'Receipt Pipeline': '- receipt: development-stage; result: passed; run: `r1`; gate: `acceptance`; attempt: 1' }), /MISSING_RECEIPT_FIELD: development-stage: (path|sha256)/);
-  reject(render({ 'Terminal State': 'Terminal state: merge-ready' }), /MERGE_AUTHORIZATION_UNPROVEN/);
+  reject(
+    render({ 'Terminal State': 'Terminal state: merge-ready', 'Receipt Pipeline': '- receipt: instance; result: passed; ref: `instance-1`' }),
+    /SOURCE_LAYER_EVIDENCE_REQUIRED/,
+  );
   reject(
     render({
       'Terminal State': 'Terminal state: merge-ready',
@@ -199,7 +202,8 @@ test('a source-check receipt file must exist, stay in the source layer and cover
     result: 'pass',
     sourceBaseSha: baseSha,
     writeSet: [...changedFiles, receiptPath],
-    verifiedSource: { changedFilesSha256: { [codeFile]: sha(codeBytes) } },
+    verifiedSource: { changedFilesSha256: { [codeFile]: sha(codeBytes), [changedFiles[1]]: sha('export const model = true;\n') } },
+    execution: { command: `node --test --test-reporter=tap ${changedFiles[1]}`, exitCode: 0, tests: 19, failed: 0, skipped: 0, todo: 0, outputSha256: sha('tap output') },
     ...overrides,
   });
   const write = (value: unknown) => {
@@ -230,11 +234,69 @@ test('a source-check receipt file must exist, stay in the source layer and cover
   write(receipt({ writeSet: [...changedFiles, 'services/workspace/internal/undeclared.go'] }));
   reject(body, /RECEIPT_WRITE_SET_MISMATCH/, { root: directory, changedPaths: [...changedFiles, receiptPath] });
 
-  write(receipt({ verifiedSource: { changedFilesSha256: { [codeFile]: sha('a superseded revision') } } }));
+  write(receipt({ verifiedSource: { changedFilesSha256: { [codeFile]: sha('a superseded revision'), [changedFiles[1]]: sha('export const model = true;\n') } } }));
   reject(body, /RECEIPT_STALE_HASH/, { root: directory, changedPaths: [...changedFiles, receiptPath] });
 
   rmSync(join(directory, receiptPath));
   reject(body, /RECEIPT_NOT_FOUND/, { root: directory, changedPaths: [...changedFiles, receiptPath] });
+});
+
+test('a receipt cannot stand in an unrelated hash or omit the real execution summary', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'opl-receipt-coverage-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const receiptPath = 'docs/evidence/source-checks/check.json';
+  const ownerPath = 'apps/console-ui/src/app/workspace-models-controller-model.ts';
+  const changed = [ownerPath, receiptPath];
+  const ownerBytes = 'export const controller = true;\n';
+  const body = render({
+    'Write Set': changed.map((path) => `- \`${path}\``).join('\n'),
+    'Receipt Pipeline': `- receipt: source-check; result: passed; path: \`${receiptPath}\``,
+  });
+  mkdirSync(join(directory, dirname(ownerPath)), { recursive: true });
+  writeFileSync(join(directory, ownerPath), ownerBytes);
+  mkdirSync(join(directory, dirname(receiptPath)), { recursive: true });
+  const write = (value: unknown) => writeFileSync(join(directory, receiptPath), JSON.stringify(value, null, 2));
+  const facts = { plan: fixturePlan, root: directory, changedPaths: changed, eventBaseSha: baseSha } as const;
+  const execution = { command: 'node --test --test-reporter=tap tests/ui/workspace-experience-model.test.ts', exitCode: 0, tests: 18, failed: 0, skipped: 0, todo: 0, outputSha256: sha('tap output') };
+  const base = () => ({ schemaVersion: 1, receiptType: 'coverage_audit', evidenceLayer: 'source', result: 'pass', sourceBaseSha: baseSha, writeSet: changed, execution });
+
+  // The audited rejection: an unchanged, undeclared file hash plus prose-only
+  // verification used to pass. Either defect alone must now fail the record.
+  write({ ...base(), verifiedSource: { changedFilesSha256: { 'apps/console-ui/src/app/unrelated-controller-model.ts': sha('unrelated') } } });
+  reject(body, /RECEIPT_HASH_MISSING: .*does not fingerprint changed path apps\/console-ui\/src\/app\/workspace-models-controller-model\.ts/, facts);
+  reject(body, /RECEIPT_HASH_NOT_CHANGED: .*apps\/console-ui\/src\/app\/unrelated-controller-model\.ts/, facts);
+
+  write({ ...base(), verifiedSource: { changedFilesSha256: { [ownerPath]: sha(ownerBytes) } }, execution: undefined });
+  reject(body, /RECEIPT_EXECUTION_REQUIRED: .*records no executed command summary/, facts);
+
+  write({ ...base(), verifiedSource: { changedFilesSha256: { [ownerPath]: sha(ownerBytes) } }, execution: { ...execution, skipped: 1 } });
+  reject(body, /RECEIPT_EXECUTION_NOT_CLEAN/, facts);
+
+  write({ ...base(), verifiedSource: { changedFilesSha256: { [ownerPath]: sha(ownerBytes) } }, execution: { ...execution, exitCode: 1 } });
+  reject(body, /RECEIPT_EXECUTION_NOT_PASSING/, facts);
+
+  write({ ...base(), verifiedSource: { changedFilesSha256: { [ownerPath]: sha(ownerBytes) } }, execution: { command: 'node --test x', exitCode: 0, tests: 0, failed: 0, skipped: 0, todo: 0, outputSha256: sha('tap output') } });
+  reject(body, /RECEIPT_EXECUTION_EMPTY/, facts);
+
+  // A deletion is a real recorded fact, not an existence check to skip: it only
+  // passes when the checked revision actually deletes that path.
+  write({ ...base(), verifiedSource: { changedFilesSha256: { [ownerPath]: 'deleted' } } });
+  reject(body, /RECEIPT_HASH_NOT_DELETED/, facts);
+
+  write({ ...base(), verifiedSource: { changedFilesSha256: { [ownerPath]: sha(ownerBytes) } } });
+  const accepted = checkPullRequestBody(body, facts);
+  assert.equal(accepted.ok, true, accepted.errors.join('\n'));
+
+  // A real deletion must still appear in the fingerprint set instead of being
+  // omitted; recording it as `deleted` is accepted only for that revision.
+  const deletionFacts = { ...facts, changedPaths: changed, deletedPaths: [ownerPath] } as const;
+  rmSync(join(directory, ownerPath));
+  write({ ...base(), verifiedSource: { changedFilesSha256: { [ownerPath]: 'deleted' } } });
+  const deletion = checkPullRequestBody(body, deletionFacts);
+  assert.equal(deletion.ok, true, deletion.errors.join('\n'));
+  write({ ...base(), verifiedSource: { changedFilesSha256: {} } });
+  reject(body, /RECEIPT_HASH_MISSING: .*does not fingerprint changed path apps\/console-ui\/src\/app\/workspace-models-controller-model\.ts/, deletionFacts);
+  writeFileSync(join(directory, ownerPath), ownerBytes);
 });
 
 test('the phase write scope is authorized with the shared entry policy, not owner membership alone', (t) => {
@@ -264,7 +326,8 @@ test('the phase write scope is authorized with the shared entry policy, not owne
   writeFileSync(join(directory, receiptPath), JSON.stringify({
     schemaVersion: 1, receiptType: 'scope_example', evidenceLayer: 'source', result: 'pass', sourceBaseSha: baseSha,
     writeSet: [codeFile, 'tests/ui/workspace-experience-model.test.ts', receiptPath],
-    verifiedSource: { changedFilesSha256: { [codeFile]: sha(codeBytes) } },
+    verifiedSource: { changedFilesSha256: { [codeFile]: sha(codeBytes), 'tests/ui/workspace-experience-model.test.ts': sha('export const test = true;\n') } },
+    execution: { command: 'node --test --test-reporter=tap tests/ui/workspace-experience-model.test.ts', exitCode: 0, tests: 1, failed: 0, skipped: 0, todo: 0, outputSha256: sha('tap output') },
   }));
   const grantedBody = render({
     Ownership: grantedOwnership,
@@ -324,84 +387,45 @@ test('the canonical plan resolves the console surface fix and development govern
   assert.deepEqual(governanceResult.errors, []);
 });
 
-test('the bootstrap path enforces record compliance, while a base that has the checker still enforces merge', (t) => {
-  // Physical condition only: the pull request's base revision predates the
-  // checker. Simulated with a real worktree-shaped directory, not a runner.
-  const directory = mkdtempSync(join(tmpdir(), 'opl-governance-bootstrap-'));
+test('retired public-key, proof and bootstrap options are refused with no downgrade path', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'opl-governance-retired-'));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const repository = join(directory, 'repo');
-  const bootstrapBase = join(directory, 'base-without-checker');
-  const presentBase = join(directory, 'base-with-checker');
-  mkdirSync(join(bootstrapBase, 'docs'), { recursive: true });
-  mkdirSync(join(presentBase, 'tools'), { recursive: true });
-  writeFileSync(join(presentBase, 'tools/check-pr-governance.ts'), readFileSync(checkerPath));
-  // A minimal checked revision: plan, implementation files and a passing
-  // source-check receipt, all committed so the change scope is empty.
-  const planPath = 'docs/spec/target/checks/development_plan.json';
-  const receiptPath = 'docs/evidence/source-checks/example.json';
-  const codeBytes = 'export const controller = true;\n';
+  mkdirSync(join(repository, 'docs/spec/target/checks'), { recursive: true });
   mkdirSync(join(repository, 'apps/console-ui/src/app'), { recursive: true });
-  writeFileSync(join(repository, changedFiles[0]), codeBytes);
+  writeFileSync(join(repository, changedFiles[0]), 'export const controller = true;\n');
   writeFileSync(join(repository, changedFiles[1]), 'export const model = true;\n');
-  mkdirSync(join(repository, dirname(receiptPath)), { recursive: true });
-  mkdirSync(join(repository, dirname(planPath)), { recursive: true });
-  const gitFixture = (...args: string[]) => execFileSync('git', ['-C', repository, ...args], { encoding: 'utf8' });
-  gitFixture('init', '-q');
-  // The body declares its base only after the fixture commit exists.
+  writeFileSync(join(repository, 'docs/spec/target/checks/development_plan.json'), JSON.stringify(fixturePlan));
+  const git = (...args: string[]) => execFileSync('git', ['-C', repository, ...args], { encoding: 'utf8' });
+  git('init', '-q'); git('add', '.');
+  git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'baseline');
+  const base = git('rev-parse', 'HEAD').trim();
   const bodyPath = join(directory, 'body.md');
-  const writeBody = (base: string) => writeFileSync(bodyPath, render({
-    Baseline: `Base SHA: \`${base}\``,
-    'Write Set': ['- `' + changedFiles[0] + '`', '- `' + changedFiles[1] + '`', '- `' + receiptPath + '`'].join('\n'),
-  }));
-  writeBody('0'.repeat(40));
-  writeFileSync(join(repository, planPath), JSON.stringify(fixturePlan));
-  writeFileSync(join(repository, receiptPath), JSON.stringify({
-    schemaVersion: 1, receiptType: 'example_source_check', evidenceLayer: 'source', result: 'pass',
-    sourceBaseSha: '0'.repeat(40), writeSet: [...changedFiles, receiptPath],
-    verifiedSource: { changedFilesSha256: { [changedFiles[0]]: sha(codeBytes) } },
-  }));
-  gitFixture('add', '.');
-  gitFixture('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'checked revision fixture');
-  const fixtureBase = gitFixture('rev-parse', 'HEAD').trim();
-  writeBody(fixtureBase);
-  writeFileSync(join(repository, receiptPath), JSON.stringify({
-    schemaVersion: 1, receiptType: 'example_source_check', evidenceLayer: 'source', result: 'pass',
-    sourceBaseSha: fixtureBase, writeSet: [...changedFiles, receiptPath],
-    verifiedSource: { changedFilesSha256: { [changedFiles[0]]: sha(codeBytes) } },
-  })); // file content is not part of the body check; the receipt file itself stays committed-eligible
-  gitFixture('add', '.'); gitFixture('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'receipt binds the fixture base');
+  writeFileSync(bodyPath, render({ Baseline: `Base SHA: \`${base}\`` }));
 
-  // Base lacks the checker: merge mode downgrades to record compliance and the
-  // validate step must not fail on the missing host acceptance.
-  const bootstrap = spawnSync('node', [
-    checkerPath, '--body-file', bodyPath, '--root', repository,
-    '--base', fixtureBase, '--mode', 'merge', '--bootstrap-base', bootstrapBase,
-  ], { encoding: 'utf8' });
-  assert.equal(bootstrap.status, 0, bootstrap.stdout + bootstrap.stderr);
-  const bootstrapResult = JSON.parse(bootstrap.stdout);
-  assert.equal(bootstrapResult.mode, 'merge');
-  assert.equal(bootstrapResult.effectiveMode, 'record');
-  assert.equal(bootstrapResult.bootstrap, true);
-  assert.equal(bootstrapResult.ok, true, JSON.stringify(bootstrapResult.errors));
+  for (const flag of [
+    ['--bootstrap-base', join(directory, 'repo')],
+    ['--authority-env', 'OPL_DEVELOPMENT_AUTHORITY_PUBLIC_KEY'],
+  ]) {
+    const retired = spawnSync('node', [
+      checkerPath, '--body-file', bodyPath, '--root', repository, '--base', base, '--mode', 'merge', ...flag,
+    ], { encoding: 'utf8' });
+    assert.equal(retired.status, 1, `${flag[0]}: ${retired.stdout}${retired.stderr}`);
+    assert.match(retired.stderr + retired.stdout, /usage: check-pr-governance\.ts/);
+  }
 
-  // A base that physically has the checker keeps the merge enforcement: the
-  // same source-complete body fails without a verified host acceptance.
-  const enforced = spawnSync('node', [
-    checkerPath, '--body-file', bodyPath, '--root', repository,
-    '--base', fixtureBase, '--mode', 'merge', '--bootstrap-base', presentBase,
-  ], { encoding: 'utf8' });
-  assert.equal(enforced.status, 1, enforced.stdout + enforced.stderr);
-  const enforcedResult = JSON.parse(enforced.stdout);
-  assert.equal(enforcedResult.effectiveMode, 'merge');
-  assert.equal(enforcedResult.bootstrap, false);
-  assert.match(enforcedResult.errors.join('\n'), /MERGE_AUTHORIZATION_NOT_CLAIMED/);
-
-  // A missing bootstrap-base directory is not a downgrade condition.
-  const absent = spawnSync('node', [
-    checkerPath, '--body-file', bodyPath, '--root', repository,
-    '--base', fixtureBase, '--mode', 'merge', '--bootstrap-base', join(directory, 'does-not-exist'),
-  ], { encoding: 'utf8' });
-  assert.equal(absent.status, 1, absent.stdout + absent.stderr);
+  // No downgrade: a merge-mode body that is not merge-ready fails on its record,
+  // and a merge-ready body without a source-check receipt fails as unproven.
+  const notClaimed = spawnSync('node', [checkerPath, '--body-file', bodyPath, '--root', repository, '--base', base, '--mode', 'merge'], { encoding: 'utf8' });
+  assert.equal(notClaimed.status, 1, notClaimed.stdout + notClaimed.stderr);
+  assert.match(notClaimed.stdout, /MERGE_AUTHORIZATION_NOT_CLAIMED/);
+  assert.equal(/bootstrap|effectiveMode/.test(notClaimed.stdout), false, 'no bootstrap downgrade is reported');
+  const unproven = checkPullRequestBody(
+    render({ Baseline: `Base SHA: \`${base}\``, 'Terminal State': 'Terminal state: merge-ready', 'Receipt Pipeline': '- receipt: instance; result: passed; ref: `instance-1`' }),
+    { plan: fixturePlan, changedPaths: changedFiles, eventBaseSha: base, mode: 'merge' },
+  );
+  assert.equal(unproven.ok, false);
+  assert.match(unproven.errors.join('\n'), /SOURCE_LAYER_EVIDENCE_REQUIRED|MERGE_AUTHORIZATION_UNPROVEN/);
 });
 
 test('the real command entry reads the body, the plan and the git change scope', (t) => {
@@ -427,6 +451,7 @@ test('the real command entry reads the body, the plan and the git change scope',
     sourceBaseSha: baseline,
     writeSet: ['apps/console-ui/src/app/workspace-models-controller-model.ts', receiptPath],
     verifiedSource: { changedFilesSha256: { 'apps/console-ui/src/app/workspace-models-controller-model.ts': sha('export const verdict = "applied";\n') } },
+    execution: { command: 'node --test --test-reporter=tap tests/ui/workspace-experience-model.test.ts', exitCode: 0, tests: 19, failed: 0, skipped: 0, todo: 0, outputSha256: sha('tap output') },
   }));
   const outside = mkdtempSync(join(tmpdir(), 'opl-governance-bodies-'));
   t.after(() => rmSync(outside, { recursive: true, force: true }));
@@ -491,20 +516,17 @@ test('the package entry exposes the governance check and keeps it inside the dev
   const workflow = readFileSync(new URL('../../.github/workflows/pull-request-ci.yml', import.meta.url), 'utf8');
   assert.match(workflow, /types: \[opened, synchronize, reopened, edited\]/);
   assert.match(workflow, /--mode record/);
-  assert.match(workflow, /--mode merge/);
-  assert.match(workflow, /--authority-env OPL_DEVELOPMENT_AUTHORITY_PUBLIC_KEY/);
-  assert.match(workflow, /vars\.OPL_DEVELOPMENT_AUTHORITY_PUBLIC_KEY/);
+  // No public key, no signed proof, no bootstrap exemption survives.
+  assert.equal(/OPL_DEVELOPMENT_AUTHORITY_PUBLIC_KEY|authority-env|bootstrap/.test(workflow), false, 'retired signing/bootstrap governance is gone');
+  assert.equal(/proof/.test(workflow), false, 'no in-repo proof path is accepted');
   assert.equal(/pull_request_target/.test(workflow), false, 'no pull_request_target execution');
   assert.equal(/dependabot\[bot\]/.test(workflow), false, 'no actor-based governance exemption');
   // The checker runs from the trusted base revision with the head as data.
   assert.match(workflow, /worktree add --detach --force "\$base_dir" "\$PR_BASE_SHA"/);
-  assert.match(workflow, /Governance bootstrap/);
-  // Physical bootstrap condition only: the validate merge step passes the base
-  // worktree so the checker itself downgrades to record enforcement when the
-  // base revision has no checker file; a base that carries the checker keeps
-  // merge enforcement. No actor or user condition takes part.
-  assert.match(workflow, /--bootstrap-base "\$base_dir"/);
-  assert.match(workflow, /bootstrap-checked via head copy; merge authorization is not enforced remotely for this first landing and IS enforced from the next pull request/);
+  assert.match(workflow, /\$base_dir\/tools\/check-pr-governance\.ts/);
+  // The real execution gate stays: the validate job runs the exhaustive local gate
+  // on the reviewed commit, and no pull-request-local file can self-certify it.
+  assert.match(workflow, /npm run verify:local/);
   assert.equal(/github\.actor/.test(workflow), false, 'no actor condition in the governance chain');
   assert.equal(existsSync(new URL('../../tools/ci/governance-check.sh', import.meta.url)), false);
 });

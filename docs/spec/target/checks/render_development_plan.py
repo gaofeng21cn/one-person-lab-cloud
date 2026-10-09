@@ -245,11 +245,11 @@ delivery_slice('W27.runnable-candidate','integration',['W02.owner-readiness'],
 # governance pull request has an accurate phase/owner reference. Restricted
 # workers never obtain these writes; dev-session protects them separately.
 delivery_slice('W27.development-governance','integration',[],
- ['.github/','tools/','tests/tools/','AGENTS.md','DEV_GUIDE.md','package.json','docs/spec/target/','docs/evidence/source-checks/','docs/evidence/development-stage/'],
+ ['.github/','tools/','tests/tools/','AGENTS.md','DEV_GUIDE.md','package.json','docs/spec/target/','docs/evidence/source-checks/'],
  ['AGENTS.md#scoped-development-contract','DEV_GUIDE.md#scoped-host-and-worker-entry','现有PR合规清单(.github/PULL_REQUEST_TEMPLATE.md)'],
- '开发治理统一入口：PR body机器校验(base SHA/DDD owner/phase/write set/receipt分层)、开发SSOT phase入口与hard-entry审计；host-owned，restricted worker不获得这些写权限',
+ '开发治理统一入口：PR body机器校验(base SHA/DDD owner/phase/write set/source-check执行摘要)、开发SSOT phase入口与hard-entry审计；host-owned，restricted worker不获得这些写权限',
  ['npm run test:development-gates','npm run verify:development-plan','npm run verify:local:focused -- --base origin/main'],
- '实际执行的gate结果与append-only source-check receipt；不替代host acceptance receipt，不声称产品runtime或发布完成')
+ '实际执行的gate结果与append-only source-check receipt；不替代CI实际validate，不声称产品runtime或发布完成')
 delivery_slice('W26.default-source','integration',['W16.workspace-ui','W05.receipts'],
  ['tests/integration','tests/ui','tools'],
  ['真实默认App入口','所有owner链','无Package/Build路径'],

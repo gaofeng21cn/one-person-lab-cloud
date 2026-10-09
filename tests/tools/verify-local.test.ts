@@ -516,6 +516,46 @@ test('hang', () => {
   assert.ok(flood.output.length <= 2_000_000);
 });
 
+test("development check executes real Git fixtures with the fixed host installation inside the OS sandbox", async (t) => {
+  const { snapshotRoot } = await developmentFixture(t);
+  // Real repository fixtures (init/add/commit/log) are the exact operation the
+  // governance tests perform. macOS /usr/bin/git is an Xcode selector that
+  // cannot work without developer-selection state inside the sandbox, so the
+  // runner must bind one real fixed installation and authorize exactly it.
+  await writeFile(join(snapshotRoot, "tests/git.test.mjs"), `import test from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+test('git fixture', () => {
+  const directory = path.join(process.env.TMPDIR, 'git-fixture');
+  fs.mkdirSync(directory, { recursive: true });
+  const git = (...args) => execFileSync('git', ['-C', directory, ...args], { encoding: 'utf8' });
+  git('init', '-q');
+  fs.writeFileSync(path.join(directory, 'input.txt'), 'fixture input' + String.fromCharCode(10));
+  git('add', '.');
+  git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture baseline');
+  assert.equal(git('log', '--format=%s').trim(), 'fixture baseline');
+  assert.match(git('rev-parse', 'HEAD').trim(), /^[a-f0-9]{40}$/u);
+});`);
+  const result = await runDevelopmentCheck({ snapshotRoot, kind: "node", targets: ["tests/git.test.mjs"] });
+  assert.equal(result.status, "passed", result.output + (result.reason ?? ""));
+  assert.equal(result.tests, 1);
+  assert.equal(result.failed, 0);
+  assert.equal(result.skipped, 0);
+
+  if (process.platform === "darwin") {
+    // No host developer-selection state was granted: the fixed installation
+    // works, while the Apple selector shim cannot resolve its data link here.
+    await writeFile(join(snapshotRoot, "tests/shim.test.mjs"), `import test from 'node:test';
+import { execFileSync } from 'node:child_process';
+test('apple selector shim', () => { execFileSync('/usr/bin/git', ['--version']); });`);
+    const shim = await runDevelopmentCheck({ snapshotRoot, kind: "node", targets: ["tests/shim.test.mjs"], timeoutMs: 30_000 });
+    assert.equal(shim.status, "failed", shim.output);
+    assert.match(shim.output, /developer_dir|developer tools|xcode-select/i);
+  }
+});
+
 test("development check permits only loopback TCP, not Internet endpoints or host Unix sockets", async (t) => {
   const { directory, snapshotRoot } = await developmentFixture(t);
   const socket = join(directory, "host-store.sock");

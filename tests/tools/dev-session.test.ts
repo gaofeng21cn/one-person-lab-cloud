@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, watch, writeFileSync } from 'node:fs';
+import { accessSync, chmodSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, watch, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
 import * as development from '../../tools/dev-session.ts';
+import { checkPullRequestBody, requiredSections } from '../../tools/check-pr-governance.ts';
 
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
 const planPath = 'docs/spec/target/checks/development_plan.json';
@@ -197,11 +198,11 @@ test('acceptAfter receipt changes invalidate transitive consumers without restar
     assert.deepEqual(readdirSync(join(store, 'runs', session.approval.runId, 'receipts')).sort(), ['acceptance-1.json', 'business-owner-receipt.json']);
   }
   assert.equal(bound(independent).receiptHash, oldIndependentHash);
-  assert.deepEqual(JSON.parse(originalBytes.toString()).payload.dependencies, originalDependencies);
+  assert.deepEqual(JSON.parse(originalBytes.toString()).dependencies, originalDependencies);
   const accepted = await consumer.verifyGate('acceptance');
   assert.equal(accepted.result, 'passed');
   assert.deepEqual(readFileSync(join(receiptDirectory, 'acceptance-1.json')), originalBytes);
-  const current = JSON.parse(readFileSync(join(receiptDirectory, 'acceptance-2.json'), 'utf8')).payload;
+  const current = JSON.parse(readFileSync(join(receiptDirectory, 'acceptance-2.json'), 'utf8'));
   assert.equal(current.evidenceLayer, 'source');
   assert.deepEqual(current.dependencies, [bound(middle), bound(other), bound(producer)]);
   assert.notEqual(current.dependencies[2].receiptHash, originalDependencies[2].receiptHash);
@@ -298,7 +299,7 @@ test('public progress and verification never read poisoned unrelated gate or bus
   assert.ok(existsSync(join(directory, 'acceptance-2.json')));
 });
 
-test('public admission rejects selected-gate signature tampering, sequence gaps and filename identity mismatches', async t => {
+test('public admission rejects misfiled host records, sequence gaps and filename identity mismatches', async t => {
   const { root, store, approval } = fixture(t);
   development.approveRun(root, store, { ...approval, gates: [...approval.gates, { ...approval.gates[0], id: 'other-gate' }] });
   const session = new development.DevelopmentSession(root, store, approval.runId); session.context();
@@ -310,12 +311,12 @@ test('public admission rejects selected-gate signature tampering, sequence gaps 
   const directory = join(store, 'runs', approval.runId, 'receipts');
   const first = readFileSync(join(directory, 'acceptance-1.json'));
   const second = readFileSync(join(directory, 'acceptance-2.json'));
-  for (const corruption of ['signature', 'gap', 'swapped attempts', 'foreign gate'] as const) {
+  for (const corruption of ['identity mismatch', 'gap', 'swapped attempts', 'foreign gate'] as const) {
     await t.test(corruption, async () => {
       try {
-        if (corruption === 'signature') {
-          const envelope = JSON.parse(first.toString()); envelope.payload.result = 'failed';
-          writeFileSync(join(directory, 'acceptance-1.json'), JSON.stringify(envelope));
+        if (corruption === 'identity mismatch') {
+          const record = JSON.parse(first.toString()); record.runId = 'another-run';
+          writeFileSync(join(directory, 'acceptance-1.json'), JSON.stringify(record));
         } else if (corruption === 'gap') rmSync(join(directory, 'acceptance-1.json'));
         else if (corruption === 'swapped attempts') {
           writeFileSync(join(directory, 'acceptance-1.json'), second);
@@ -385,14 +386,14 @@ test('failed context refresh revokes the previous admission before any further f
   assert.throws(() => session.write('owner/new.ts', 'absent', 'not admitted'), /CONTEXT_REQUIRED/);
 });
 
-test('receipt failure during context refresh revokes an existing admission', async t => {
+test('an invalid host receipt record during context refresh revokes an existing admission', async t => {
   const { root, store, approval } = fixture(t);
   development.approveRun(root, store, approval);
   const session = new development.DevelopmentSession(root, store, approval.runId);
   session.context(); await session.verifyGate('acceptance');
   const file = join(store, 'runs', approval.runId, 'receipts', 'acceptance-1.json');
-  const envelope = JSON.parse(readFileSync(file, 'utf8')); envelope.payload.result = 'failed';
-  writeFileSync(file, JSON.stringify(envelope));
+  const record = JSON.parse(readFileSync(file, 'utf8')); record.attempt = 7;
+  writeFileSync(file, JSON.stringify(record));
   assert.throws(() => session.context(), /EVIDENCE_INVALID/);
   assert.throws(() => session.read('owner/input.ts'), /CONTEXT_REQUIRED/);
 });
@@ -458,8 +459,8 @@ test('only explicitly referenced coauthors can contribute concurrent workspace c
   put(store, 'runs/other-run/receipts/business.json', 'poison: not development evidence');
   assert.equal(session.context().result, 'ready');
   const file = join(store, 'runs', 'other-run', 'approval.json');
-  const envelope = JSON.parse(readFileSync(file, 'utf8')); envelope.payload.writePaths.push('other/');
-  writeFileSync(file, JSON.stringify(envelope));
+  const record = JSON.parse(readFileSync(file, 'utf8')); record.extraField = 'not an approved host field';
+  writeFileSync(file, JSON.stringify(record));
   assert.throws(() => session.context(), /EVIDENCE_INVALID/);
   assert.throws(() => session.read('owner/input.ts'), /CONTEXT_REQUIRED/);
 });
@@ -669,10 +670,12 @@ test('real stdio entry requires context on every process and refuses forged acce
   }
 });
 
-test('authorization tampering cannot widen a clean worker scope', t => {
+test('a host approval record widened beyond its phase cannot authorize a clean worker scope', t => {
   const { root, store, approval } = fixture(t); (development as any).approveRun(root, store, approval);
   const path = join(store, 'runs', approval.runId, 'approval.json');
-  const envelope = JSON.parse(readFileSync(path, 'utf8')); envelope.payload.writePaths.push('other/'); writeFileSync(path, JSON.stringify(envelope));
+  const record = JSON.parse(readFileSync(path, 'utf8')); record.writePaths.push('other/'); writeFileSync(path, JSON.stringify(record));
+  assert.throws(() => new development.DevelopmentSession(root, store, approval.runId), /write scope is outside approved DDD phase/);
+  const malformed = JSON.parse(readFileSync(path, 'utf8')); malformed.unknown = true; writeFileSync(path, JSON.stringify(malformed));
   assert.throws(() => new development.DevelopmentSession(root, store, approval.runId), /EVIDENCE_INVALID/);
 });
 
@@ -828,7 +831,7 @@ test('consumer acceptance',()=>new Promise(done=>{
           assert.ok('verification' in rejected);
           assert.equal(rejected.verification.reason, 'DEPENDENCY_CHANGED_DURING_VERIFICATION');
           const receiptDirectory = join(store, 'runs', consumer.approval.runId, 'receipts');
-          const receipt = JSON.parse(readFileSync(join(receiptDirectory, 'consumer-1.json'), 'utf8')).payload;
+          const receipt = JSON.parse(readFileSync(join(receiptDirectory, 'consumer-1.json'), 'utf8'));
           assert.equal(receipt.result, 'failed');
           assert.deepEqual(receipt.dependencies, [original]);
           const rejectedBytes = readFileSync(join(receiptDirectory, 'consumer-1.json'));
@@ -848,7 +851,7 @@ test('consumer acceptance',()=>new Promise(done=>{
             retry.release();
             assert.equal((await retry.verification).result, 'passed');
           } finally { retry.release(); await retry.verification; }
-          const accepted = JSON.parse(readFileSync(join(receiptDirectory, 'consumer-2.json'), 'utf8')).payload;
+          const accepted = JSON.parse(readFileSync(join(receiptDirectory, 'consumer-2.json'), 'utf8'));
           assert.equal(accepted.result, 'passed');
           assert.deepEqual(accepted.dependencies, [current]);
           assert.deepEqual(readFileSync(join(receiptDirectory, 'consumer-1.json')), rejectedBytes);
@@ -1019,8 +1022,9 @@ test('host stage receipts bind the run, source, phase, inputs, runner and output
   const verified = await session.verifyGate('acceptance');
   assert.equal(verified.result, 'passed');
   const receipt = JSON.parse(readFileSync(join(store, 'runs', approval.runId, 'receipts', 'acceptance-1.json'), 'utf8'));
-  assert.deepEqual(Object.keys(receipt).sort(), ['payload', 'signature']);
-  const payload = receipt.payload;
+  assert.equal('payload' in receipt, false, 'host records are plain structured JSON, not signed envelopes');
+  assert.equal('signature' in receipt, false, 'no self-signed facility remains');
+  const payload = receipt;
   assert.equal(payload.schemaVersion, 1);
   assert.equal(payload.kind, 'opl.development.stage.v1');
   assert.equal(payload.evidenceLayer, 'source');
@@ -1036,12 +1040,232 @@ test('host stage receipts bind the run, source, phase, inputs, runner and output
   assert.match(payload.verification.outputSha256, /^[a-f0-9]{64}$/u);
   assert.deepEqual(payload.dependencies, []);
   assert.ok(Number.isFinite(Date.parse(payload.checkedAt)));
-  const unsigned = { ...payload }; delete unsigned.signature;
-  assert.notEqual(payload.approvalHash, sha(JSON.stringify(unsigned)));
+  const approvalRecord = JSON.parse(readFileSync(join(store, 'runs', approval.runId, 'approval.json'), 'utf8'));
+  assert.equal('payload' in approvalRecord, false);
+  assert.equal(payload.approvalHash, sha(development.canonical(approvalRecord)));
+  assert.equal(payload.sourceSha, git('rev-parse', 'HEAD').trim());
 
   mkdirSync(join(store, 'runs', 'second-run', 'receipts'), { recursive: true });
   writeFileSync(join(store, 'runs', 'second-run', 'receipts', 'acceptance-1.json'), JSON.stringify(receipt));
   assert.throws(() => new development.DevelopmentSession(root, store, 'second-run').context(), /EVIDENCE_INVALID: invalid stage receipt/);
+});
+
+test('the host exports the executed stage result as the pull-request source-check receipt', async t => {
+  const { root, store, approval, git } = fixture(t);
+  development.approveRun(root, store, approval);
+  const session = new development.DevelopmentSession(root, store, approval.runId);
+  session.context();
+  const input = session.read('owner/input.ts');
+  session.write(input.path, input.sha256, input.content + '// executed change\n');
+  assert.equal((await session.verifyGate('acceptance')).result, 'passed');
+
+  // A pending gate never exports a passing receipt.
+  development.approveRun(root, store, { ...approval, runId: 'pending-run', gates: [{ ...approval.gates[0], id: 'second' }] });
+  assert.throws(() => development.generateSourceCheckReceipt(root, store, 'pending-run', 'second'), /current gate obligation to be passed, not pending/);
+
+  const generated = development.generateSourceCheckReceipt(root, store, approval.runId, 'acceptance');
+  const written = JSON.parse(readFileSync(join(root, generated.path), 'utf8'));
+  assert.equal(generated.path, `docs/evidence/source-checks/${approval.runId}-acceptance-1.json`);
+  assert.equal(written.evidenceLayer, 'source');
+  assert.equal(written.result, 'pass');
+  assert.equal(written.sourceBaseSha, approval.baseSha);
+  assert.equal(written.execution.exitCode, 0);
+  assert.equal(written.execution.tests, 1);
+  assert.equal(written.execution.failed, 0);
+  assert.equal(written.execution.skipped, 0);
+  assert.equal(written.execution.todo, 0);
+  assert.match(written.execution.outputSha256, /^[a-f0-9]{64}$/u);
+  // The receipt fingerprints the real changed content and never its own file.
+  assert.equal(written.verifiedSource.changedFilesSha256['owner/input.ts'], sha('export const answer = 42;\n// executed change\n'));
+  assert.equal('docs/evidence/source-checks/' + approval.runId + '-acceptance-1.json' in written.verifiedSource.changedFilesSha256, false);
+  assert.ok(written.writeSet.includes('owner/input.ts'));
+  // The generated receipt binds the host record it came from.
+  assert.equal(written.sourceStage.runId, approval.runId);
+  assert.equal(written.sourceStage.gateId, 'acceptance');
+  assert.equal(written.sourceStage.attempt, 1);
+
+  // The same host exit is reachable through the real command entry; the
+  // already-exported attempt is refused by the append-only rule.
+  assert.throws(
+    () => execFileSync(process.execPath, [resolve('tools/dev-session.ts'), 'source-check', store, approval.runId, 'acceptance'], { cwd: root, encoding: 'utf8' }),
+    /already exported|append-only/i,
+  );
+
+  // A later content change makes the exported receipt stale for the revision.
+  writeFileSync(join(root, 'owner/input.ts'), 'export const answer = 42;\n// executed change\n// later change\n');
+  const stale = JSON.parse(readFileSync(join(root, generated.path), 'utf8'));
+  assert.notEqual(stale.verifiedSource.changedFilesSha256['owner/input.ts'], sha(readFileSync(join(root, 'owner/input.ts'), 'utf8')));
+  git('add', '.'); git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'receipt export baseline');
+
+});
+
+test('the source-check export re-derives the current obligation and never trusts a stored past result', async t => {
+  const { root, store, approval } = fixture(t);
+  development.approveRun(root, store, approval);
+  const session = new development.DevelopmentSession(root, store, approval.runId);
+  session.context();
+  const input = session.read('owner/input.ts');
+  session.write(input.path, input.sha256, input.content + '// executed change\n');
+  assert.equal((await session.verifyGate('acceptance')).result, 'passed', 'the real gate executed and passed');
+
+  const first = development.generateSourceCheckReceipt(root, store, approval.runId, 'acceptance');
+  assert.equal(first.path.endsWith('-acceptance-1.json'), true, first.path);
+  // Append-only: the same attempt is never regenerated or overwritten.
+  const bytes = readFileSync(join(root, first.path));
+  assert.throws(() => development.generateSourceCheckReceipt(root, store, approval.runId, 'acceptance'), /already exported|append-only/i);
+  assert.deepEqual(readFileSync(join(root, first.path)), bytes, 'the recorded attempt stays byte-identical');
+
+  // The stored record still says passed, but the declared input moved on: the
+  // export refuses because the current obligation is no longer satisfied.
+  const stored = JSON.parse(readFileSync(join(store, 'runs', approval.runId, 'receipts', 'acceptance-1.json'), 'utf8'));
+  assert.equal(stored.result, 'passed');
+  // Different bytes, same observable behavior: the stored result is now stale
+  // for the current declared input even though it still passes the test.
+  writeFileSync(join(root, 'owner/input.ts'), 'export const answer = 42;\n// moved on after the receipt\n');
+  assert.throws(() => development.generateSourceCheckReceipt(root, store, approval.runId, 'acceptance'), /current|stale|pending/i);
+
+  // Re-executing the current obligation produces a new attempt with its own path.
+  session.context();
+  const current = session.read('owner/input.ts');
+  session.write(current.path, current.sha256, current.content + '// re-executed\n');
+  assert.equal((await session.verifyGate('acceptance')).result, 'passed');
+  const second = development.generateSourceCheckReceipt(root, store, approval.runId, 'acceptance');
+  assert.equal(second.path.endsWith('-acceptance-2.json'), true, second.path);
+  const secondBody = JSON.parse(readFileSync(join(root, second.path), 'utf8'));
+  assert.equal(secondBody.sourceStage.attempt, 2);
+  assert.equal(secondBody.verifiedSource.changedFilesSha256['owner/input.ts'], sha(readFileSync(join(root, 'owner/input.ts'), 'utf8')));
+});
+
+/**
+ * Install one deterministic interleaving point for the export's own Git
+ * invocations: while the shim directory is first on PATH, the real Git binary
+ * is served by a recorded stand-in that performs one mutation and then
+ * delegates. The trigger is either an argument this export path alone passes
+ * (`--diff-filter=D`) or the receipt file the append just created, so the
+ * mutation can only land between the export's obligation snapshot and its
+ * append checks — never before the snapshot and never after the checks.
+ */
+function gitInterpose(t: any, options: { argv?: string; receipt?: string; rewrite: string; content: string }) {
+  const directory = mkdtempSync(join(tmpdir(), 'opl-git-interpose-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const executable = (process.env.PATH ?? '').split(':').filter(Boolean)
+    .map(directory_ => join(directory_, 'git'))
+    .find(candidate => { try { accessSync(candidate, constants.X_OK); return true; } catch { return false; } });
+  if (!executable) throw new Error('git is unavailable on PATH');
+  const fired = join(directory, 'fired');
+  const trigger = options.argv !== undefined
+    ? `process.argv.slice(2).includes(${JSON.stringify(options.argv)})`
+    : `existsSync(${JSON.stringify(options.receipt)})`;
+  const shim = join(directory, 'git');
+  writeFileSync(shim, `#!${process.execPath}
+import { spawnSync } from 'node:child_process';
+import { existsSync, writeFileSync } from 'node:fs';
+if (!existsSync(${JSON.stringify(fired)}) && ${trigger}) {
+  writeFileSync(${JSON.stringify(options.rewrite)}, ${JSON.stringify(options.content)});
+  writeFileSync(${JSON.stringify(fired)}, 'fired');
+}
+const delegated = spawnSync(${JSON.stringify(executable)}, process.argv.slice(2), { stdio: ['ignore', 'inherit', 'inherit'] });
+process.exit(delegated.status ?? 1);
+`);
+  chmodSync(shim, 0o755);
+  return { directory, fired };
+}
+
+test('the source-check export refuses a declared input that moves while the receipt is being built', async t => {
+  const { root, store, approval } = fixture(t);
+  development.approveRun(root, store, approval);
+  const session = new development.DevelopmentSession(root, store, approval.runId);
+  session.context();
+  const input = session.read('owner/input.ts');
+  session.write(input.path, input.sha256, input.content + '// executed change\n');
+  assert.equal((await session.verifyGate('acceptance')).result, 'passed');
+  const receiptPath = join(root, 'docs/evidence/source-checks', 'owner-run-acceptance-1.json');
+
+  const moved = 'export const answer = 42;\n// moved while the export enumerated the deletion facts\n';
+  const interpose = gitInterpose(t, { argv: '--diff-filter=D', rewrite: join(root, 'owner/input.ts'), content: moved });
+  const inherited = process.env.PATH ?? '';
+  process.env.PATH = `${interpose.directory}:${inherited}`;
+  try {
+    assert.throws(() => development.generateSourceCheckReceipt(root, store, approval.runId, 'acceptance'), /SOURCE_CHECK_STATE_CHANGED:/u);
+  } finally { process.env.PATH = inherited; }
+
+  assert.equal(existsSync(interpose.fired), true, 'the interposed input change ran during the export');
+  assert.equal(readFileSync(join(root, 'owner/input.ts'), 'utf8'), moved);
+  assert.equal(existsSync(receiptPath), false, 'no record is appended after the obligation moved');
+  assert.deepEqual(readdirSync(join(store, 'runs', approval.runId, 'receipts')), ['acceptance-1.json']);
+});
+
+test('the source-check export keeps a record whose declared input moves during the append and leaves it stale', async t => {
+  const { root, store, git, approval } = fixture(t);
+  development.approveRun(root, store, approval);
+  const session = new development.DevelopmentSession(root, store, approval.runId);
+  session.context();
+  const input = session.read('owner/input.ts');
+  session.write(input.path, input.sha256, input.content + '// executed change\n');
+  assert.equal((await session.verifyGate('acceptance')).result, 'passed');
+  const receiptPath = join(root, 'docs/evidence/source-checks', 'owner-run-acceptance-1.json');
+  const receiptRelPath = 'docs/evidence/source-checks/owner-run-acceptance-1.json';
+
+  const moved = 'export const answer = 42;\n// moved after the record was appended\n';
+  const interpose = gitInterpose(t, { receipt: receiptPath, rewrite: join(root, 'owner/input.ts'), content: moved });
+  const inherited = process.env.PATH ?? '';
+  process.env.PATH = `${interpose.directory}:${inherited}`;
+  try {
+    assert.throws(() => development.generateSourceCheckReceipt(root, store, approval.runId, 'acceptance'), /SOURCE_CHECK_STATE_CHANGED_AFTER_APPEND:/u);
+  } finally { process.env.PATH = inherited; }
+
+  assert.equal(existsSync(interpose.fired), true, 'the interposed input change ran after the append');
+  assert.equal(readFileSync(join(root, 'owner/input.ts'), 'utf8'), moved);
+  // Append-only history: the published record is retained untouched, still
+  // standing for the inputs that actually executed rather than the moved ones.
+  const published = JSON.parse(readFileSync(receiptPath, 'utf8'));
+  assert.equal(published.result, 'pass');
+  assert.equal(published.sourceStage.attempt, 1);
+  assert.equal(published.verifiedSource.changedFilesSha256['owner/input.ts'], sha('export const answer = 42;\n// executed change\n'));
+  assert.notEqual(published.verifiedSource.changedFilesSha256['owner/input.ts'], sha(moved));
+  // The current acceptance obligation for the affected stage is not passed.
+  assert.equal(new development.DevelopmentSession(root, store, approval.runId).context().result, 'ready');
+  // The freshness predicate the pull-request record check applies to the very
+  // same retained record judges it stale for the checked revision.
+  const plan = JSON.parse(readFileSync(join(root, planPath), 'utf8'));
+  const sections: Record<string, string> = {
+    'Decision Conclusion': 'Record the executed owner acceptance change.',
+    'Current Problem': 'The owner behavior needed the admitted change.',
+    'Business SSOT': 'No business SSOT change.',
+    'Development SSOT': 'No development SSOT change.',
+    Baseline: `Base SHA: \`${approval.baseSha}\``,
+    Ownership: 'DDD owner: `owner`\nPhase: `W01`',
+    'Write Set': `- \`owner/input.ts\`\n- \`${receiptRelPath}\``,
+    'Receipt Pipeline': `- receipt: source-check; result: passed; path: \`${receiptRelPath}\``,
+    'Acceptance Criteria': '- [x] The owner behavior is verified.',
+    Verification: '- `node --test`: executed.',
+    Limitations: '- The retained record is stale for the current revision.',
+    'Terminal State': 'Terminal state: source-complete',
+    'Merge Danger': 'Merge danger: none',
+  };
+  const body = requiredSections.map(name => `## ${name}\n\n${sections[name]}\n`).join('\n');
+  const verdict = checkPullRequestBody(body, {
+    plan, root, changedPaths: ['owner/input.ts'], eventBaseSha: approval.baseSha,
+    headSha: git('rev-parse', 'HEAD').trim(), mode: 'record',
+  });
+  assert.equal(verdict.ok, false, 'a staled record is never accepted as current evidence');
+  assert.match(verdict.errors.join('\n'), /RECEIPT_STALE_HASH: .*owner\/input\.ts/u);
+});
+
+test('the source-check export refuses non-regular changed paths instead of recording a deletion', async t => {
+  const { root, store, approval } = fixture(t);
+  development.approveRun(root, store, approval);
+  const session = new development.DevelopmentSession(root, store, approval.runId);
+  session.context();
+  const input = session.read('owner/input.ts');
+  session.write(input.path, input.sha256, input.content + '// executed change\n');
+  assert.equal((await session.verifyGate('acceptance')).result, 'passed');
+  symlinkSync(join(root, 'other/input.ts'), join(root, 'owner/new.ts'));
+  assert.throws(() => development.generateSourceCheckReceipt(root, store, approval.runId, 'acceptance'), /symlink refused|not a regular file/i);
+  rmSync(join(root, 'owner/new.ts'));
+  const generated = development.generateSourceCheckReceipt(root, store, approval.runId, 'acceptance');
+  assert.equal(generated.path.endsWith('-acceptance-1.json'), true);
+  assert.equal(JSON.parse(readFileSync(join(root, generated.path), 'utf8')).verifiedSource.changedFilesSha256['owner/new.ts'], undefined);
 });
 
 test('a Console surface fix writes only its explicitly granted console test files', async t => {

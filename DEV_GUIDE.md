@@ -93,8 +93,10 @@ receipts to this repository.
 
 Follow [Scoped Development Contract](AGENTS.md#scoped-development-contract) for
 per-run admission, restricted worker capabilities, isolated stage inputs and
-signed receipts. The trusted host creates the approval JSON and signing store
-outside the repository; the worker cannot edit either. Current commands are:
+append-only execution receipts. The trusted host stores approval and run receipts
+outside the repository or in ignored runtime storage protected from worker
+writes; only the host creates them from admitted scope and actual execution.
+Current commands are:
 
 ```bash
 npm run dev:approve -- /absolute/host-approval.json /absolute/host-store
@@ -120,20 +122,22 @@ owner work or rerun accepted production steps merely to adopt this entry.
 The host references an existing phase-plan record and canonical owner, narrows
 scope and declares stage inputs and the runner. A worker requests acceptance
 with `dev_verify` and observes actual results with `dev_status`; it cannot
-complete or publish a run by assertion. A shell-enabled chat remains
+complete or publish a run by assertion. The host's `dev:verify` executes the
+admitted stage and appends a runtime receipt to the host store; it does not
+automatically create a PR source-check record. A shell-enabled chat remains
 unrestricted. Run receipts do not automatically write product status or roadmap.
 
 The host refreshes admitted context before every model turn. Status is computed
-from the current declared inputs and signed predecessor evidence, not stored as
-an agent-editable completion field. A new session or model can continue the same
-run without restarting valid stages; an actual input or bound evidence change
+from the current declared input hashes and bound predecessor receipt hashes,
+not stored as an agent-editable completion field. A new session or model can
+continue the same run without restarting valid stages; an actual input or bound evidence change
 invalidates only the affected stage and its dependents. A refresh failure stops
 the worker rather than continuing with an old admission.
 
 Every context admission also reads `AGENTS.md`, this guide, `docs/status.md` and
 `docs/roadmap.md`, verifies that the approved base SHA is available and remains
 an ancestor of the checkout, checks the current Git change scope against the
-host-signed write scopes, and returns the complete set of ready gates. This is a
+host-admitted write scopes, and returns the complete set of ready gates. This is a
 baseline readback, not a repository-wide source scan: Git
 metadata establishes the change set, while source and receipts are read only
 through the admitted paths and declared dependencies.
@@ -143,94 +147,113 @@ successful `dev_context`; a read-only path or an acceptance target never grants
 write authority. For a shared checkout, the host lists independent collaborators
 in the optional `coauthorRuns` array of exact run IDs; prerequisite run IDs come
 from `requires`, including its named transitive chain. Each contributor must use
-the same base SHA and plan and retain a valid signature and current phase scope.
+the same base SHA and plan and retain current host admission and phase scope.
 An unreferenced run is not discovered by scanning the host store. These references
 permit existing authorized changes to coexist, not task completion or a bypass
 of prerequisite receipt checks on writes and acceptance. Disjoint checkouts need
 no coauthor references until their changes are integrated on an admitted baseline.
 
 Receipt lookup reads only the named development gate's attempt sequence and
-verifies its signature and identity. It does not enumerate and parse business
-receipt bodies. Development receipts prove source checks; business and Instance
-receipts stay in their existing owner formats and qualification paths. Neither
+verifies its identity, input hashes and bound dependency hashes. It does not
+enumerate and parse business receipt bodies. Development receipts prove source
+checks; business and Instance receipts stay in their existing owner formats and
+qualification paths. Neither
 layer is accepted as evidence of completion of the other.
 
 ## Pull Request Governance Record
 
-Every pull request except an automated dependency bump carries a governance
-record in its description. The required sections, their exact structure and the
-terminal states are machine-enforced by `npm run check:pr-body` and by the
+Every pull request carries a governance record in its description. The required
+sections, their exact structure and the terminal states are machine-enforced by
+`npm run check:pr-body` and by the
 `governance` job in
 [pull request CI](.github/workflows/pull-request-ci.yml). A missing, duplicated
 or empty section, an incomplete base SHA, an owner that does not own the
 declared phase record, a changed path outside the declared write set, an untyped
-or inconsistent receipt entry, or a terminal state without the required
-evidence is refused; a changed path without a declared phase record fails the
+or inconsistent receipt entry, stale changed-content hashes, or a
+completion claim without executed evidence and closed acceptance criteria is
+refused; a changed path without a declared phase record fails the
 same way instead of being grandfathered in.
 
 ```bash
 npm run check:pr-body -- --body-file /absolute/pr-body.md --base origin/main
 ```
 
-The record separates the evidence layers instead of merging them:
+The workflow is real local focused execution results, host-generated PR
+source-check evidence, PR record and freshness checks, actual CI `validate`
+execution for the current revision, `gaofeng21cn` review, then merge by a user-authorized agent or
+`gaofeng21cn` under the existing merge rules. Updating the revision requires
+current CI results and fresh evidence for changed inputs; editing the PR body
+reruns record validation.
+
+The host owns approval and authoritative run receipts in runtime storage. After
+`dev:verify` records a passed stage in the approved run, the host exports exactly
+that executed result as the PR source-check receipt:
+
+```bash
+node tools/dev-session.ts source-check /absolute/host-store <run-id> <gate-id>
+```
+
+The exporter refuses a run, gate or gate state without a recorded passed stage
+receipt, writes `docs/evidence/source-checks/<run-id>-<gate-id>-<attempt>.json` from the
+current change scope and stage verification fields, and never accepts a
+hand-written `result: pass`. Neither the focused command nor `dev:verify`
+creates the PR record by itself; only this host exit does, and it is a host
+operation outside worker scope. Its repository reference does not grant workers
+permission to write host approval, run state or receipts. The current checker
+owns validation of its format, not a separately hand-maintained schema in this
+guide. Source-check validation covers the complete
+base SHA, actual write set, corresponding changed-content hashes and execution
+summary. Owner and phase are constrained by PR context and host approval, not
+validated as source-check receipt fields. Complete declared-input and dependency
+receipt-hash binding belongs to host stage receipts; a PR source-check alone does
+not provide it. Every actual changed path is bound to its content hash; the
+current receipt's own path is the sole self-hash exclusion. A deleted path uses
+the explicit `deleted` marker, checked against the actual Git deletion.
+Execution evidence records the command actually run, its exit code, actual test
+counts and the SHA-256 digest of captured output. Passing behavior evidence
+requires a zero exit code, a positive count of registered tests actually run and
+zero failures, skips or TODOs; a `result: pass` label, a planned command or
+unchecked acceptance criteria cannot establish completion. Each attempt appends
+new evidence rather than rewriting an earlier result. Historical receipts are
+neither migrated nor overwritten and cannot serve as current PASS evidence.
+
+The record separates the evidence layers instead of merging them. Declare only
+applicable receipts, and retain failed or unavailable execution as such:
 
 | Receipt entry | Names | Layer it proves |
 | --- | --- | --- |
-| `source-check` | an in-repo `docs/evidence/source-checks/*.json` receipt with `evidenceLayer: source`, `result: pass`, its `sourceBaseSha` and its write set | Executed source checks for the declared base and write set |
-| `development-stage` | the host store identity `runs/<run>/receipts/<gate>-<attempt>.json` plus `run`, `gate`, `attempt` and the signed receipt digest | Host acceptance: the signed payload binds approval, phase, declared inputs, dependencies, runner and output digest |
+| `source-check` | a host-generated source-check reference in the format accepted by the current checker | The recorded source execution for the bound base, actual write set and changed contents; no complete stage-input or dependency binding |
 | `business` / `instance` | the existing owner receipt reference | The business or Instance layer in its own format; never a substitute for source evidence |
 
-`Terminal state: merge-ready` requires every declared receipt to have passed and
-a verified host `development-stage` receipt; a pull request body, an agent
-claim, a business receipt or a self-signed file never provides that.
-`source-complete` claims the source layer only and is not a merge
-authorization, and `blocked` carries open obligations.
+`Terminal state: merge-ready` records closed acceptance criteria and passed
+declared receipts; it requires no additional development-stage acceptance.
+`source-complete` records only the exercised source layer, not business-chain
+E2E, Instance qualification or production readiness. Neither label grants merge
+permission. `blocked` carries open obligations and preserves failed or pending
+evidence instead of claiming success.
 
-Record compliance and merge authorization are separate machine checks. The
-`governance` CI job runs the checker in `record` mode; the existing `validate`
-job runs the same checker in `merge` mode as a step, so an unverified
-merge-ready claim fails that job instead of appearing as a skipped `needs`
-dependency. Both steps run the checker from the pull request's **base**
-revision and inspect the head revision only as reviewed data, so a pull request
-cannot weaken the check that judges it by editing the checker.
+Record validity and merge eligibility are separate. The `governance` CI job
+executes `tools/check-pr-governance.ts` from the PR **base commit** in `record`
+mode, with head treated only as inspected data. If the base has no checker, the
+job fails closed; it never executes a PR head checker or grants an actor
+exception. The existing `validate` job independently runs its full source
+commands against the checked-out current revision, including the changed
+implementation and its tests. A local receipt cannot substitute for that actual
+CI execution. The record checker establishes record validity and freshness,
+not the provenance of a claimed execution or permission to merge.
 
-The first landing of this mechanism is bootstrap, and the condition is purely
-physical: the pull request whose base revision lacks
-`tools/check-pr-governance.ts`. There, `validate` runs the head copy with
-`--mode merge --bootstrap-base <base worktree>` and the checker itself
-downgrades that one run to `record` enforcement, reporting
-`effectiveMode: "record"` and `bootstrap: true`, with an explicit `::warning`
-that merge authorization is not enforced remotely for this first landing and
-**is** enforced from the next pull request. A base revision that carries the
-checker always keeps full merge enforcement; no actor, user or label may
-downgrade it. The workflow uses `pull_request`, never `pull_request_target`,
-and reads no secrets.
+When the base checker still requires the retired acceptance gate for a
+`merge-ready` label, use `source-complete` with genuine executed source evidence
+for this governance transition. Keep the base checker in record mode; do not
+manufacture a retired acceptance receipt or switch to the head checker to get a
+passing record. Actual CI and the existing review/merge rules still decide
+whether that source revision can merge.
 
-The merge step trusts one host authentication root, supplied by the repository
-variable `OPL_DEVELOPMENT_AUTHORITY_PUBLIC_KEY`: either the SPKI PEM public key
-or its base64 text (for example `base64 -i <host-store>/authority.pub`). The
-value is never taken from the pull request, a pull-request-provided key or a
-repository file. A `development-stage` entry may name a trusted local store
-with `--host-store <absolute path>` or an in-repo public proof with
-`proof: docs/evidence/development-stage/<name>.json`, whose content is
-`schemaVersion: 1`, `kind: opl.development.stage.proof.v1`, and the signed
-`approval` and `receipt` envelopes (`payload` + `signature`) produced by
-`approveRun` and a passed `verifyGate`. The checker validates both signatures,
-the approval/receipt identity, the approved phase and write scope, the declared
-owner, the bound base SHA, the phase and input fingerprints, the runner
-identity, the receipt digest and every dependency receipt hash. The receipt's
-`sourceSha` may precede the reviewed head only by proof-only commits; any other
-post-receipt change is refused. `merge-ready` without a configured trust root
-or a verifyable proof is refused, and no actor receives a blanket exemption.
-
-The development host (a shell-enabled session or CI runner holding the trusted
-store) produces that proof after the candidate commit: approve and verify the
-run at the candidate, export the two signed envelopes into the proof file,
-commit the proof-only successor, then rewrite the body to `merge-ready` with the
-`development-stage` entry. The receipt binds the candidate `sourceSha`; the
-proof file is the only successor change allowed. The host-source-check receipt
-for this governance change records the local source runs and does not
-substitute for that host acceptance.
+`gaofeng21cn` review and existing user merge authorization remain unchanged.
+Merge requires actual successful CI results for the current revision and the
+applicable review rules; a valid record alone is insufficient. These workflow
+checks do not establish that remote branch protection is configured. The
+workflow uses `pull_request`, never `pull_request_target`, and reads no secrets.
 
 Restricted workers cannot write `AGENTS.md`, `DEV_GUIDE.md`, `.github/**`,
 `tools/**`, `tests/tools/**`, `package.json` or the development plan; the
@@ -274,8 +297,14 @@ exhaustive lane, not an implicit way to start unrelated integration suites. Unre
 browser suites, builds and full repository tests are not selected automatically.
 Git scope uses the merge base plus local index/worktree changes, not unrelated
 upstream changes. Whitespace checks cover committed, staged and unstaged diffs.
-Focused success proves only the selected checks, not downstream completeness,
-host receipt acceptance, business-chain E2E or production readiness.
+The focused command outputs actual execution results; it does not automatically
+write a source-check receipt. The host's `dev:verify` separately runs an admitted
+stage and appends a runtime receipt to the host store. For a PR, the host
+generates the source-check from that executed record with
+`node tools/dev-session.ts source-check <host-store> <run-id> <gate-id>`. Do not
+hand-write a passing result or treat a runtime receipt as that PR record. Focused success proves only the selected checks, not
+downstream
+completeness, business-chain E2E, Instance acceptance or production readiness.
 The exhaustive source gate remains available for CI or explicit local rehearsal:
 
 ```bash
