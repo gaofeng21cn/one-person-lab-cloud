@@ -361,6 +361,43 @@ func TestGap6ThreeInputCombinationRejectsUnapprovedPackageFormat(t *testing.T) {
 	}
 }
 
+// TestGap6ThreeInputCombinationRejectsMissingBuildRecipe pins the boundary the
+// custom Agent Build consumer keeps: even an individually approved Runtime
+// Release whose publisher contract carries no Build recipe is incomplete state,
+// so the Capability owner must refuse the combination instead of freezing a
+// snapshot against a recipe it never declared.
+func TestGap6ThreeInputCombinationRejectsMissingBuildRecipe(t *testing.T) {
+	runtime := gapRuntimeContract(t)
+	webui := gapWebuiContract(t)
+	if len(runtime.GetPackageFormatVersions()) == 0 {
+		t.Fatal("fixture precondition: Runtime contract must declare Package format versions")
+	}
+	runtime.BuildRecipe = nil
+	if err := validateBuildCombination(runtime, webui); status.Code(err) != codes.DataLoss {
+		t.Fatalf("Runtime contract missing Build recipe=%v", err)
+	}
+}
+
+// TestGap6ThreeInputCombinationRejectsMissingPackageFormats pins the other half
+// of the same boundary: a Runtime Release that keeps its Build recipe but
+// declares no approved Package format must be refused as a failed precondition,
+// never silently accepted as a custom Agent Build combination.
+func TestGap6ThreeInputCombinationRejectsMissingPackageFormats(t *testing.T) {
+	runtime := gapRuntimeContract(t)
+	webui := gapWebuiContract(t)
+	if runtime.GetBuildRecipe() == nil {
+		t.Fatal("fixture precondition: Runtime contract must declare a Build recipe")
+	}
+	runtime.PackageFormatVersions = nil
+	if err := validateBuildCombination(runtime, webui); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("Runtime contract missing Package format versions (nil)=%v", err)
+	}
+	runtime.PackageFormatVersions = []string{}
+	if err := validateBuildCombination(runtime, webui); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("Runtime contract missing Package format versions (empty)=%v", err)
+	}
+}
+
 // TestGap6RegistrationRefusesUnapprovedWebui reproduces GAP-6(b) on the single
 // READY writer: a Runtime Release or WebUI that was approved when the Build
 // started and revoked before registration must not become a ready
