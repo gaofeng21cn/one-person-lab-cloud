@@ -33,15 +33,19 @@ class RepositoryPlacementTests(unittest.TestCase):
         (self.spec / 'checks/runs').mkdir()
         original = json.loads((SPEC / 'checks/development_plan.json').read_text())
         self.plan = json.loads(json.dumps(original).replace(str(CLOUD), str(self.cloud)))
-        # Existing source entries are read-only provenance for this validator.
-        # Keep them at the real checkout; only planned writes and roots move.
+        # The validator requires existing sources inside the containing checkout.
+        # Materialize their existence in the fixture instead of granting an
+        # absolute read path to the real repository.
         for work, source in zip(self.plan['workPackages'], original['workPackages']):
-            # Existing-source provenance stays anchored to the real checkout; planned
-            # writes are resolved against the isolated temporary checkout by the validator.
-            work['existingReadPaths'] = [
-                str((CLOUD / path).resolve()) if not Path(path).is_absolute() else path
-                for path in source['existingReadPaths']
-            ]
+            work['existingReadPaths'] = list(source['existingReadPaths'])
+            for path in source['existingReadPaths']:
+                existing = CLOUD / path
+                target = self.cloud / path
+                if existing.is_dir():
+                    target.mkdir(parents=True, exist_ok=True)
+                else:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(existing, target)
         self.plan['sourceRoots']['instance'] = str(Path(self.temp.name) / 'opl-instance-medopl')
         old_instance = original['sourceRoots']['instance']
         for work in self.plan['workPackages']:
@@ -49,6 +53,15 @@ class RepositoryPlacementTests(unittest.TestCase):
                 path.replace(old_instance, self.plan['sourceRoots']['instance'])
                 for path in work['plannedWritePaths']
             ]
+        for item in self.plan['executionSlices']:
+            item['writePaths'] = [
+                path.replace(old_instance, self.plan['sourceRoots']['instance'])
+                for path in item['writePaths']
+            ]
+            for path in item.get('testWritePaths', []):
+                target = self.cloud / path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(CLOUD / path, target)
 
     def validate(self):
         (self.spec / 'checks/development_plan.json').write_text(json.dumps(self.plan))

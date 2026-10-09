@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "964d28f4aeebc588f71dc7da74d26299cceb24eb",
+  "recordedAt": "2026-10-09T20:23:33.941Z",
+  "writeSet": [
+    "docs/evidence/source-checks/github-ci-20261010-go-summary-closeout-source-1.json",
+    "docs/evidence/source-checks/github-ci-20261010-go-summary-e2e-source-1.json",
+    "docs/evidence/source-checks/github-ci-20261010-go-summary-final-source-1.json",
+    "docs/evidence/source-checks/github-ci-20261010-go-summary-scope-source-1.json",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/render_development_plan.py",
+    "docs/spec/target/checks/test_development_plan.py",
+    "tests/tools/verify-local.test.ts",
+    "tools/verify-local.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "964d28f4aeebc588f71dc7da74d26299cceb24eb",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/github-ci-20261010-go-summary-e2e-source-1.json": "23027dfee74982009a373295453977984bf42eb1690e63c14502cf0b2215a566",
+      "docs/evidence/source-checks/github-ci-20261010-go-summary-final-source-1.json": "0aca8fd757a11d8bfe739d03f964ba69ea5c30ad20807e9c9c1b2e4ddb1d1b79",
+      "docs/evidence/source-checks/github-ci-20261010-go-summary-scope-source-1.json": "c184210419fe1d5ac7792e2806b8cc82454b20e4de6d7025b51d75d9706e820b",
+      "docs/spec/target/14_implementation_work_packages.md": "4784dd7b97c33a8b9b220a3431ef65a83962998da115ab3b6108f4d2657c3581",
+      "docs/spec/target/checks/development_plan.json": "a1559e4f5f05a5ac2ac09071012c9568a710bfff76bef03b9c56a723952bf470",
+      "docs/spec/target/checks/render_development_plan.py": "c91314746cb88fbd996ec7ce8db36af94c8f450bd23cba39e8ac297e5a9723ce",
+      "docs/spec/target/checks/test_development_plan.py": "3c44146e16f595a302ce1836634dcb190abe291793c7f1ed52bc0a33bfd2d4d1",
+      "tests/tools/verify-local.test.ts": "0301e7095d139921ad2d4d343aae9e9d3fe209e258d5d9f20a9ef75cf696bb99",
+      "tools/verify-local.ts": "0dc86f9f715086e2457a1b780524ba44dcb51fbea16b20f57e7a4b93136a7006"
+    }
+  },
+  "execution": {
+    "command": "go acceptance gate",
+    "exitCode": 0,
+    "tests": 107,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "1929b6159b539434d25cabfd8f7d9d5fcde27bac0fcea799192c77051b56c419"
+  },
+  "sourceStage": {
+    "runId": "github-ci-20261010-go-summary-closeout",
+    "gateId": "source",
+    "attempt": 1,
+    "receiptHash": "3930564a0f6d90344de3877cb0b60dec4a71629323ba65367ea0750b76d4543c"
+  }
+}

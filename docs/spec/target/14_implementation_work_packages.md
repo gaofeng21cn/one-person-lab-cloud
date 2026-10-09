@@ -1304,11 +1304,11 @@
 
 **输入：** 12产品组合；03 x-approved-wire-migration；02第0节；06异步交接
 
-**写集：** `docs/spec/target/02_database_schema_complete.md`, `docs/spec/target/03_api_contract_complete.yaml`, `docs/spec/target/contracts`, `packages/contracts/proto`, `packages/contracts/go`, `services/*/migrations`, `services/resource-catalog/catalog`, `services/workspace/internal/launch`, `services/runtime-control/catalog`, `services/capability/catalog`, `services/build/internal/build`, `services/serve/internal/delivery`, `services/ledger/internal/ledger`, `apps/console-bff/internal/httpapi`
+**写集：** `docs/spec/target/02_database_schema_complete.md`, `docs/spec/target/03_api_contract_complete.yaml`, `docs/spec/target/contracts`, `packages/contracts/proto`, `packages/contracts/go`, `services/*/migrations`, `services/resource-catalog/catalog`, `services/workspace/internal/launch`, `services/runtime-control/catalog`, `services/capability/catalog`, `services/build/internal/build`, `services/serve/internal/delivery`, `services/ledger/internal/ledger`, `apps/console-bff/internal/httpapi`, `docs/status.md`, `docs/roadmap.md`
 
 **验收：** default无Package/Build/CapabilityVersion正例；混合来源/伪WebUI/错误digest/原单替换拒绝；go/proto/JSON同版消费者编译与DB约束（此切片不要求真实provider部署）
 
-**交付证据：** 精确source/schema/generator hashes与聚焦消费者测试；移除03 pending迁移标记前须实际贯通，不只生成成功
+**交付证据：** 精确source/schema/generator hashes与聚焦消费者测试；同步docs/status.md和docs/roadmap.md中的本次源码事实，不把源码验收写成部署完成；移除03 pending迁移标记前须实际贯通，不只生成成功
 
 **未知结果：** 按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。
 
