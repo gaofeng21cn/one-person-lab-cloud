@@ -45,6 +45,32 @@ can be read back.
 
 ## Priority Outcomes
 
+### First Tencent/TKE Default App Launch (2026-10-10)
+
+The [October 10 decision](decisions.md#2026-10-10-first-tencenttke-launch-without-cloud-model-configuration)
+narrows the first launch: Cloud Console model selection/update is not a release
+gate. Reuse the existing published default App OCI at its verified digest; retain
+authentication, tenant isolation, Gateway credentials, data safety, actual message
+execution, money reconciliation and exact deployment evidence. Runtime publication
+may omit undeclared model/Build capabilities; source consumers and Instance admission
+must adopt the approved schema without inventing defaults. Custom Agent Build still
+requires its original recipe/format contracts and has separate acceptance.
+
+Consume the existing Ingress repair, Candidate and binding receipts at their actual
+evidence layers. First implement only the affected admission/launch/UI seams, then
+integrate an exact branch SHA and build a Candidate if Cloud bytes changed. The
+Instance owner adopts the exact schema digest and qualifies those bytes. Finally
+resume the original operation and verify ready URL, App login, one real answer,
+original order/charge and Gateway/Ledger readback under the existing authorization
+limits. Unchanged checks are reused; changed boundaries receive focused tests. Do
+not start a new App release for the deferred model-management interface or repeat
+a Local full run by default. The broader table below is not the first-launch gate.
+
+The implementation handoff is complete only when each affected owner records its
+exact input SHA/contract digest, executed red/green checks, output/readback, upstream
+receipt references and the next consumer/command. This prose/schema change is not
+a deployed Candidate or final business PASS.
+
 | Priority | Outcome | Cloud owner | Current state | Completion evidence |
 | --- | --- | --- | --- | --- |
 | P0 | Move live model-configuration callers to Workspace/Gateway/Fabric/Serve | Workspace, Console BFF/UI, Control Plane migration | Owner-separated source path is implemented; retained callers still use Control Plane | BFF/UI uses the Workspace owner for read/write, old writer has no configured caller, owner and browser tests pass |

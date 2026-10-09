@@ -297,7 +297,7 @@ var required = map[protoreflect.Name]map[string]bool{
 	"DataUpgradeContract":                       {"mode": true, "compatibleFromSchemaVersions": true, "backupRequired": true},
 	"DataRollbackContract":                      {"safe": true, "compatibleSchemaVersions": true},
 	"DataContract":                              {"schemaVersion": true, "upgrade": true, "rollback": true, "mountPolicies": true},
-	"RuntimePublisherContract":                  {"schemaVersion": true, "publisherNamespaceId": true, "image": true, "kind": true, "runtimeAbiVersion": true, "packageFormatVersions": true, "buildRecipe": true, "modelConfiguration": true, "applicationAccess": true, "data": true, "applicationRevisionTemplate": true, "packageFormatContracts": true},
+	"RuntimePublisherContract":                  {"schemaVersion": true, "publisherNamespaceId": true, "image": true, "kind": true, "runtimeAbiVersion": true, "applicationAccess": true, "data": true, "applicationRevisionTemplate": true},
 	"WebuiPublisherContract":                    {"schemaVersion": true, "publisherNamespaceId": true, "image": true, "kind": true, "runtimeAbiVersions": true, "uiProtocolVersion": true, "integrationMode": true, "staticRoot": true, "entryFile": true, "assetBasePath": true, "apiBasePath": true, "authenticationProtocol": true, "supportsSse": true, "supportsWebsocket": true},
 	"PublisherContractReference":                {"publisherNamespaceId": true, "versionId": true, "kind": true, "descriptorDigest": true, "descriptorObjectRef": true},
 	"DeploymentDescriptor":                      {"schemaVersion": true, "artifact": true, "provenance": true, "applicationRevision": true},

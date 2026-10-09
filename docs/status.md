@@ -13,6 +13,18 @@ Instance installation, or a Product Release. The target boundary is in
 [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## First Tencent/TKE Launch Scope Alignment (2026-10-10)
+
+The [October 10 decision](decisions.md#2026-10-10-first-tencenttke-launch-without-cloud-model-configuration)
+defers Cloud Console model management from the first default App launch. The
+publisher schema/API and generated public JSON vocabulary describe absent optional
+capabilities without claiming them. This is a contract/source-check layer only:
+consumer adoption, Instance schema-digest adoption, exact Candidate deployment,
+real application use and charge/Ledger reconciliation still need their owner
+receipts. Existing production evidence is not upgraded by this decision.
+The [scope/contract receipt](evidence/source-checks/2026-10-10-first-tke-default-app-without-cloud-model-config.json)
+records the public JSON red/green check and the remaining owner acceptance.
+
 ## Console Product Decision Alignment (2026-10-09)
 
 The [October 9 decision](decisions.md#2026-10-09-task-oriented-console-and-customer-agent-version-lifecycle)

@@ -4,6 +4,53 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-10-10: First Tencent/TKE Launch Without Cloud Model Configuration
+
+The first Tencent/TKE launch slice deploys the approved default OPL App from an
+existing published OCI digest. It does not require Cloud Console model selection
+or model-configuration updates. The application must still authenticate its user,
+use the authorized Gateway configuration and answer one real message; actual
+usage/charges and the original order must reconcile with Ledger evidence.
+
+`opl-model-config/v1` is the Cloud-operated model apply/readback interface, not a
+deployment protocol or a prerequisite of OCI publication. A Runtime that does
+not implement it must omit `modelConfiguration`, not invent paths, report a fake
+applied version or substitute API Key configuration for model selection. Cloud
+model-update commands for such a release are rejected before effects, and the
+Console explains that this management capability is unavailable. A present
+declaration retains all existing validation and apply/readback requirements.
+
+Runtime publication describes actual capabilities. The standalone default App
+may also omit `buildRecipe`, `packageFormatVersions` and `packageFormatContracts`:
+its delivery never creates a Package, BuildJob or custom Agent. The custom Agent
+lane remains separate and its real Build consumers must require their approved
+recipe, Package-format and Framework contract facts before Build admission. No
+consumer may infer a Build-capable Runtime or weaken custom Agent requirements
+from this first-launch decision. Name/tag heuristics and fabricated declarations
+are not substitutes for the selected application kind and owner readback.
+
+Cloud owns the existing Runtime ABI and uses `opl-runtime/v1` for the currently
+defined OPL Runtime ABI only after its required startup/Secret/data behavior is
+verified for the exact selected image. This version string is not a compatibility
+waiver. Existing image bytes are preferred; rebuild the App only if a required
+first-launch behavior actually fails at the selected digest.
+
+The accepted path is the existing Tenant/wallet, approved Basic quote, one
+confirmation or recovery of the original operation, original charge/order,
+Fabric resources/Secret binding, Serve workload readiness and real URL, App
+login and one genuine message, and owner-authoritative Ledger reconciliation.
+Use the existing authorization limits and original operation/effect identities;
+do not repeat purchases or charges. Identity isolation, prepaid monthly policy,
+data safety, secrets, exact image provenance and billing evidence are unchanged.
+
+Runtime Control owns declaration admission; Workspace owns entitlement and
+configuration intent; Serve owns deployment and confirmed application behavior;
+Gateway/Sub2API own wallet/key/usage facts; Ledger owns evidence. Instance owns
+protected deployment and runtime qualification, not those product decisions.
+Independent source fixes can run in parallel; shared contracts, production
+changes, money effects and final user acceptance are serialized. This decision
+does not claim implementation, Candidate qualification or production PASS.
+
 ## 2026-10-09: Task-Oriented Console And Customer Agent Version Lifecycle
 
 Customers upload a standard OMA/OPL Agent Package, supply its name/version and

@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_first_tke_default_app_scope_contract_source_check",
+  "revision": 1,
+  "recordedAt": "2026-10-09T17:34:31.789804+00:00",
+  "owner": "OPL Cloud canonical product/contract owner (supervisor session)",
+  "evidenceLayer": "contract_and_source_check_only",
+  "baseSourceSHA": "bf4c33e27384cccec7abccd1272c6af6e59898ba",
+  "canonicalMainInputSHA": "964d28f4aeebc588f71dc7da74d26299cceb24eb",
+  "branch": "codex/console-business-ssot-20261009",
+  "objective": "Adopt the user-approved first Tencent/TKE default App launch without Cloud Console model configuration, reuse an existing released OCI and preserve actual application/money acceptance.",
+  "authorization": "User explicitly deferred Cloud Console model updates for first launch; previous approval permits separating default App declarations from custom Agent Build requirements. Existing production/money authorization limits are not expanded.",
+  "changes": {
+    "optionalDeclaredCapabilities": [
+      "modelConfiguration",
+      "buildRecipe",
+      "packageFormatVersions",
+      "packageFormatContracts"
+    ],
+    "unchangedRequiredFacts": [
+      "publisherNamespaceId",
+      "image",
+      "runtimeAbiVersion",
+      "applicationAccess",
+      "data",
+      "applicationRevisionTemplate"
+    ],
+    "customAgentBuildRequirements": "Required at the real Build admission consumer; consumer adoption and negative tests remain an explicit obligation.",
+    "businessServiceImplementationChanged": false,
+    "instanceChanged": false,
+    "appImageChanged": false
+  },
+  "inputs": {
+    "changedFiles": [
+      {
+        "path": "docs/decisions.md",
+        "sha256": "sha256:ca91ce4a975b920524e6489898109afbe82c7c80ec23df733f28e2a61363374d"
+      },
+      {
+        "path": "docs/roadmap.md",
+        "sha256": "sha256:6466e7c24e9bae0f539f16cfebe5e1030394ef5c29d684a0f2175f944ad5e0b2"
+      },
+      {
+        "path": "docs/spec/target/03_api_contract_complete.yaml",
+        "sha256": "sha256:f619a0da0c565c4a6a1a14ac1637a7ef19eec82d84e92bcc42ff143117b5313d"
+      },
+      {
+        "path": "docs/spec/target/06_data_flow_and_state_machine.md",
+        "sha256": "sha256:4a0f13dc7dfb5d410a0ae4d8eb24e229df9d878022d99de7231aa048c45b405e"
+      },
+      {
+        "path": "docs/spec/target/12_product_spec.md",
+        "sha256": "sha256:fce1296dc007a3248bee6b9335583b52a99066916984bbb35c3345377e84f513"
+      },
+      {
+        "path": "docs/spec/target/contracts/publisher-contract.schema.json",
+        "sha256": "sha256:176d492a0c0c491ca4e180d9e5d3e04a08ab9c621c4254806658ef529c77b5ef"
+      },
+      {
+        "path": "docs/status.md",
+        "sha256": "sha256:1eabb36361ff99b1933ed7be9e0a3b143761f7011347a0991a8e20650a253917"
+      },
+      {
+        "path": "packages/contracts/go/publicjson/codec_test.go",
+        "sha256": "sha256:5a612c0a9aa98c4fbe0cd1011f193491359777053e0787fcf03ccf788605fd67"
+      },
+      {
+        "path": "packages/contracts/go/publicjson/shape_generated.go",
+        "sha256": "sha256:c79569889a249ef4d575a86d0f84cce29f8d9d76cd84e8196843d94f81550925"
+      }
+    ]
+  },
+  "verification": {
+    "red": {
+      "command": "cd packages/contracts/go && go test ./publicjson -run '^TestStandaloneRuntimeContractPreservesAbsentOptionalCapabilities$' -count=1",
+      "result": "FAIL_EXPECTED",
+      "decisiveOutput": "undeclared capability packageFormatVersions was synthesized",
+      "logDigest": "sha256:1e2d7bbd8a2e5810f785a7da9d85d00d681e63efb2873334dd4976ef55d521af"
+    },
+    "green": {
+      "command": "cd packages/contracts/go && go test ./publicjson -count=1",
+      "result": "PASS",
+      "logDigest": "sha256:ce70bfc829781ca0ab490ad1dc5b29ee147e199ced3b4a93b3c14f895d84ea23"
+    },
+    "focused": {
+      "command": "PATH=\"/Users/huangrende/go/bin:$PATH\" npm run verify:local:focused -- --base bf4c33e27384cccec7abccd1272c6af6e59898ba",
+      "result": "PASS",
+      "executedTests": [
+        "TestPublisherExamplesPreservePublicJSON",
+        "TestPublisherJSONRejectsWrongWireVocabulary",
+        "TestStandaloneRuntimeContractPreservesAbsentOptionalCapabilities",
+        "TestPublisherPathPatternRejectsTraversal",
+        "TestMoneyPropertiesUseTheContractSpellingAndScalarForm",
+        "TestGeneratedPublicVocabularyMatchesTheContractCounts",
+        "TestContractTypedIntegersUseTheirDeclaredForm",
+        "TestUnpublishedEnumValueIsOmittedOrRefused",
+        "TestQuoteMoneyUsesTheContractSpelling"
+      ],
+      "failures": 0,
+      "skips": 0,
+      "generatedOutputsMatched": 6,
+      "logDigest": "sha256:5c2606c82323b64e67e3bbe76a2f7b41f868ec8af590c8ed5877bba44a1bd608"
+    },
+    "schema": {
+      "result": "PASS",
+      "checks": [
+        "standalone declaration may omit model/Build capabilities",
+        "present empty model declaration rejected",
+        "missing data declaration rejected",
+        "OpenAPI and publisher JSON required fields match"
+      ],
+      "logDigest": "sha256:36405afeeb443ad6985c684d9acaf2e11b31ce462a290593b64209649c57922e"
+    },
+    "toolingFailuresResolved": [
+      "Go test is auto-selected by focused scope; --test accepts the tool inventory, not a Go filename.",
+      "Pinned protoc generators were installed but absent from PATH; add existing GOPATH/bin, no tool versions changed."
+    ]
+  },
+  "nextConsumers": [
+    {
+      "owner": "TKE integration session 01a11607-b5c8-78d3-a7ed-4660138bd078",
+      "inputs": "Approved SSOT commits bf4c33e plus this receipt commit; existing owner/Candidate/Instance receipts. Integrate commits, not the entire outdated branch tree.",
+      "action": "Adopt declaration absence at Runtime Control/Workspace/Serve/Console and Instance schema pin; preserve Build and model-update rejection boundaries; use focused red/green tests.",
+      "requiredReadback": "Existing-digest admission and actual first-use acceptance, no fake optional capability."
+    },
+    {
+      "owner": "Instance deployment/qualification",
+      "action": "Serialize protected deployment using the affected exact branch Candidate and current Ingress repair; read back rollout, provider binding, installed schema and App image digests.",
+      "requiredReadback": "Real ready URL plus App login/message and original charge/order/Gateway/Ledger reconciliation."
+    }
+  ],
+  "notClaimed": [
+    "merged into main",
+    "consumer adoption",
+    "Candidate qualification",
+    "Instance deployment",
+    "App login or message PASS",
+    "customer charge/refund PASS",
+    "final business closed loop"
+  ],
+  "terminalAcceptance": "One authorized customer Tenant/wallet -> original Basic monthly quote/order/operation -> confirmed TKE resources and App -> usable URL and login -> one real answer and actual Gateway usage/charge -> Ledger reconciliation; replay does not duplicate purchase/charge."
+}
