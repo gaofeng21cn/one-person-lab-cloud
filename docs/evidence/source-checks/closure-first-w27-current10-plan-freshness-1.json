@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "964d28f4aeebc588f71dc7da74d26299cceb24eb",
+  "recordedAt": "2026-10-09T18:14:24.571Z",
+  "writeSet": [
+    "docs/evidence/source-checks/closure-first-w27-current10-plan-freshness-1.json",
+    "docs/roadmap.md",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/render_development_plan.py",
+    "docs/status.md"
+  ],
+  "verifiedSource": {
+    "baseSha": "964d28f4aeebc588f71dc7da74d26299cceb24eb",
+    "changedFilesSha256": {
+      "docs/roadmap.md": "6555f91c9affff0bc0e0411794528b0c46745c17cd124ec0161891427639757d",
+      "docs/spec/target/14_implementation_work_packages.md": "a8a6b388578561c6e61a7329bcbf4c4a752872be5b2ebed1e6b18de232fa4292",
+      "docs/spec/target/checks/development_plan.json": "a95ba1ce5442b4e438fce4069fc150c21691e96704672530e53c5dbfcb6ac1ce",
+      "docs/spec/target/checks/render_development_plan.py": "3799abfcc9a8d491d53d49b353abf0f0e1526fda9126a6de2c8846c7bf89a308",
+      "docs/status.md": "9017cd1748050bde902f7c6cb34fc47ab2bf2ff3158c9d5d3355758275df6dd2"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/check-pr-governance.test.ts",
+    "exitCode": 0,
+    "tests": 19,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "fff67f6019a9095fdfb7399869fa3aa816bbfe044a9ff705084e98c04276da7a"
+  },
+  "sourceStage": {
+    "runId": "closure-first-w27-current10",
+    "gateId": "plan-freshness",
+    "attempt": 1,
+    "receiptHash": "91be2ae4147485184102cce7fb28244c3385f993514bf09c308d1cbf6ae4e95e"
+  }
+}

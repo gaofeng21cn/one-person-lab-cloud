@@ -107,6 +107,7 @@
 - `docs/architecture.md`
 - `docs/decisions.md`
 - `docs/roadmap.md`
+- `docs/status.md`
 
 **必须交付**：
 - 把12已确认默认App/可选Agent、TKE主线、D17和逐域single-writer移交同步canonical owner；新默认不等于历史resource_only
@@ -1546,7 +1547,7 @@
 
 **输入：** AGENTS.md#scoped-development-contract；DEV_GUIDE.md#scoped-host-and-worker-entry；现有PR合规清单(.github/PULL_REQUEST_TEMPLATE.md)
 
-**写集：** `.github/`, `tools/`, `tests/tools/`, `AGENTS.md`, `DEV_GUIDE.md`, `package.json`, `docs/spec/target/`, `docs/evidence/source-checks/`
+**写集：** `.github/`, `tools/`, `tests/tools/`, `AGENTS.md`, `DEV_GUIDE.md`, `package.json`, `docs/spec/target/`, `docs/evidence/source-checks/`, `docs/status.md`, `docs/roadmap.md`
 
 **验收：** npm run test:development-gates；npm run verify:development-plan；npm run verify:local:focused -- --base origin/main
 
@@ -1724,19 +1725,27 @@ W25/W30专门处理旧客户的M0–M5与唯一writer移交；新默认App不得
 最终TKE首链必须绑定同一应用输入/输出digest、订单、资源、Deployment、route epoch与真实应用使用及必要receipt；任何一环unknown都不是闭环。Local用作隔离验证与既有发布资格，不成为本次业务主攻替代物。
 Instance只安装Cloud及安装配置/Secrets/证书、进行授权的安装/资格动作；每用户编排、Build与部署都在Cloud owners内部完成。本轮派发不授权真实扣款/采购/删除、生产私网访问、Instance部署或正式发布。
 
-## 11. 四领域交付后的串行集成与上线
+## 11. 业务闭环收口（单目标、外部阻塞优先）
 
 **执行模型：** `deepseek-v4.1-flash` / `high`
 
-唯一串行实施窗口接管当前未提交Cloud工作区；四领域窗口停止写入。本统筹只保留本次审计/派发证据，不再并行改同一写集。串行指执行顺序，不合并DDD业务owner。
+业务闭环必须有一个当前终态目标和一个收口Owner。四领域准备窗口仍可在互斥写集内并行；只有共享合同、canonical main、Candidate、Instance运行状态和正式发布进入串行边界时才停止并行。串行指真实集成与验收顺序，不合并DDD业务owner。
 
 先完成Cloud产品代码、真实消费者、隔离整链及Candidate；随后在Instance仓库的受保护main/production流程内安装同一Candidate并实测。
+
+**闭环调度规则：**
+
+1. 一次只选择一个终态目标；当前首个目标是默认 App 在受保护 Instance 上可访问，不同时推进默认 App、Agent、迁移和治理收口。
+2. 每次开工先读取 Cloud 当前基线、Instance 当前基线、最新 Candidate/Deploy receipt 和其中的 `nextOwnerAction`。若 receipt 已给出具体外部Owner动作，下一步就是该动作；不能继续创建与当前阻塞无关的 Cloud PR。
+3. `source` receipt 只能证明源代码；只有同一 Candidate 的 Instance runtime/readback receipt 才能推进业务闭环状态。CI 绿、Pod Running、文档 READY、局部测试通过都不能替代。
+4. 外部动作失败时只保留一个精确 blocker、一个Owner和一个复现入口；先完成该Owner的修复、重部署和读回，再恢复其它工作。不得用新的设计文档、治理规则或重复扫描覆盖未完成的运行闭环。
+5. 一个部署批次应汇总部署、readiness、route和真实请求读回；不要把同一失败拆成多个只记录观察的PR。
 
 **审计入口：** `docs/evidence/source-checks/2026-09-29-tke-serial-integration-audit.json`。四窗口只完成本次独立准备，不表示各W整包完成；具体剩余硬断点以审计及真实source为准，不照抄旧session结论。
 
 **授权边界：** 用户2026-09-29明确要求新建串行窗口并deploy上线；必要的代码集成/分支/提交/推送/PR/受保护流程推进属于该交付。遵守分支保护、发布者身份和Instance权限，不请求重复的泛化继续确认。真钱扣款/新购/续费/销毁仍须既定独立资源及金额范围授权，不由上线意图推定。
 
-**最终接受：** 默认App和三输入Agent均在同一已安装Candidate上形成原单→资源→Serve→URL→真实使用→必需receipt闭环；安装成功、普通go test通过或文档READY都不能替代。
+**最终接受：** 先让默认App在同一已安装Candidate上形成原单→资源→Serve→URL→真实使用→必需receipt闭环，再以同一Candidate单独验收三输入Agent；安装成功、普通go test通过或文档READY都不能替代任一真实闭环。
 
 ### 11.1 接管与可复现源码基线
 
@@ -1790,7 +1799,7 @@ Instance只安装Cloud及安装配置/Secrets/证书、进行授权的安装/资
 
 **对应原工作包：** W02, W27, W28, W29
 
-**实施：** 补镜像内buildx、明确Console cloud模式、所需owners/DB/roles/mTLS、BuildKit隔离、COS/TCR Secret引用和Serve路由配置。经CI及受保护合入得到canonical Cloud SHA，构建不可变Candidate；按既有规则完成合格Linux验证。Instance #348仍是未合并提案，必须以当时remote main为准审核补齐安装清单，不复制每用户业务编排。
+**实施：** 补镜像内buildx、明确Console cloud模式、所需owners/DB/roles/mTLS、BuildKit隔离、COS/TCR Secret引用和Serve路由配置。经CI及受保护合入得到canonical Cloud SHA，构建不可变Candidate；按既有规则完成合格Linux验证。历史 Instance #348 已关闭，安装清单必须以 Instance 当前 origin/main 和当前受保护部署回读为准，不得继续按旧三服务快照派发任务，也不复制每用户业务编排。
 
 **验收后进入下一段：** Candidate manifest、schema与安装资产hash、index/platform digest和来源都一致；Instance受保护main流程可验证接收；本机不触达生产私网。
 
@@ -1802,4 +1811,4 @@ Instance只安装Cloud及安装配置/Secrets/证书、进行授权的安装/资
 
 **验收后进入下一段：** 同Candidate、应用输入输出digest、订单/资源/Deployment/route epoch、实际使用和必要receipt一致；失败按已证明数据兼容的回滚路径处理，不能盲回旧image。记录可访问入口、Cloud SHA、Candidate/Instance run及已验证/未验证范围，不以Pod Running、200或安装成功宣称闭环。
 
-此处为同一工作包的串行收口次序，不新增业务owner、中央workflow或第二套领域合同。新串行窗口应持续实施至上线接受或精确外部条件缺失，不能完成一个局部slice后再次只交计划或请求泛化继续确认。
+此处为同一工作包的串行收口次序，不新增业务owner、中央workflow或第二套领域合同。收口窗口应持续实施至上线接受或精确外部条件缺失；出现外部条件缺失时必须把唯一 blocker、Owner、复现入口和 nextOwnerAction 写入当前 receipt，并执行该动作，不能完成一个局部slice后再次只交计划或请求泛化继续确认。

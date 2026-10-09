@@ -3,8 +3,8 @@
 Owner: `opl-cloud`
 Purpose: `replaceable_current_evidence_snapshot`
 State: `current_snapshot`
-Snapshot source: `9db27a91bc236cdf294253a352a3e1682fd35235` on `main`
-Snapshot date: 2026-10-01
+Snapshot source: `964d28f4aeebc588f71dc7da74d26299cceb24eb` on `main`
+Snapshot date: 2026-10-10
 
 This page answers one question: what is proven in the Cloud repository at the
 current source revision? It does not describe the target architecture, an
@@ -12,6 +12,28 @@ Instance installation, or a Product Release. The target boundary is in
 [architecture.md](architecture.md), durable decisions are in
 [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
+
+## Current Business Closure Lane (2026-10-10)
+
+The only active terminal objective is **Default App live on the protected
+Instance**. Cloud source work is not business completion: the current Cloud
+baseline is `964d28f4`, while the Instance owner currently has
+`01ec51b6` on `origin/main`.
+
+The Instance source now declares the complete Cloud owner topology. The older
+September 30 install-gap receipt remains historical evidence and must not be
+used as the current blocker. The current blocker is later in the same lane:
+the October 9 Serve rollout (`37946612084`) stalled because the wildcard
+application-origin rule was placed on the HTTPS listener without a matching
+certificate (`CertError`). Instance PR #447 merged the rule-scope repair and
+its source/validation run passed, but the repair has not yet been restated on
+the live Ingress or followed by a new deploy/readback.
+
+**Next owner action:** run the protected Instance ingress restatement, confirm
+`Ready=True` without `CertError`, then redeploy the pinned Candidate and read
+back Serve readiness, route access and the Default App request. Until that
+receipt exists, do not open unrelated Cloud implementation work and do not
+claim the Cloud chain closed.
 
 ## Current Source Baseline
 
@@ -105,10 +127,11 @@ into production.
    boundary.
 4. The Console BFF/UI model-configuration callers still use the retained
    Control Plane path. Source ownership is settled; caller retirement is not.
-5. The installed Instance inspected on September 30 still contained only the
-   legacy Control Plane, Fabric and Ledger set. The Cloud topology declaration
-   does not install those owners by itself; see
-   [Instance install gap](evidence/source-checks/2026-09-30-tke-serial-instance-install-gap.json).
+5. The September 30 inspection found only the legacy Control Plane, Fabric and
+   Ledger set; that receipt is historical. The Instance `origin/main` manifest
+   was subsequently expanded to the complete owner topology on October 7.
+   Live installation, Serve readiness and route qualification remain open and
+   are owned by `opl-instance-medopl`.
 
 ## Candidate, Instance And Release Boundary
 

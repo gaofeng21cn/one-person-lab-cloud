@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "8b9219d99d49b400f42183ffdf8badbfa862ae9e",
+  "sourceSHA": "964d28f4aeebc588f71dc7da74d26299cceb24eb",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -75,7 +75,8 @@
       "plannedWritePaths": [
         "docs/architecture.md",
         "docs/decisions.md",
-        "docs/roadmap.md"
+        "docs/roadmap.md",
+        "docs/status.md"
       ],
       "deliverables": [
         "把12已确认默认App/可选Agent、TKE主线、D17和逐域single-writer移交同步canonical owner；新默认不等于历史resource_only",
@@ -4040,7 +4041,9 @@
         "DEV_GUIDE.md",
         "package.json",
         "docs/spec/target/",
-        "docs/evidence/source-checks/"
+        "docs/evidence/source-checks/",
+        "docs/status.md",
+        "docs/roadmap.md"
       ],
       "inputRefs": [
         "AGENTS.md#scoped-development-contract",
@@ -4435,14 +4438,14 @@
     }
   ],
   "serialIntegration": {
-    "title": "TKE串行集成与上线",
+    "title": "业务闭环收口（单目标、外部阻塞优先）",
     "model": "deepseek-v4.1-flash",
     "reasoningEffort": "high",
-    "ownership": "唯一串行实施窗口接管当前未提交Cloud工作区；四领域窗口停止写入。本统筹只保留本次审计/派发证据，不再并行改同一写集。串行指执行顺序，不合并DDD业务owner。",
+    "ownership": "业务闭环必须有一个当前终态目标和一个收口Owner。四领域准备窗口仍可在互斥写集内并行；只有共享合同、canonical main、Candidate、Instance运行状态和正式发布进入串行边界时才停止并行。串行指真实集成与验收顺序，不合并DDD业务owner。",
     "scope": "先完成Cloud产品代码、真实消费者、隔离整链及Candidate；随后在Instance仓库的受保护main/production流程内安装同一Candidate并实测。",
     "authorization": "用户2026-09-29明确要求新建串行窗口并deploy上线；必要的代码集成/分支/提交/推送/PR/受保护流程推进属于该交付。遵守分支保护、发布者身份和Instance权限，不请求重复的泛化继续确认。真钱扣款/新购/续费/销毁仍须既定独立资源及金额范围授权，不由上线意图推定。",
     "auditReceipt": "docs/evidence/source-checks/2026-09-29-tke-serial-integration-audit.json",
-    "completion": "默认App和三输入Agent均在同一已安装Candidate上形成原单→资源→Serve→URL→真实使用→必需receipt闭环；安装成功、普通go test通过或文档READY都不能替代。",
+    "completion": "先让默认App在同一已安装Candidate上形成原单→资源→Serve→URL→真实使用→必需receipt闭环，再以同一Candidate单独验收三输入Agent；安装成功、普通go test通过或文档READY都不能替代任一真实闭环。",
     "stages": [
       {
         "order": 1,
@@ -4528,7 +4531,7 @@
           "W28",
           "W29"
         ],
-        "action": "补镜像内buildx、明确Console cloud模式、所需owners/DB/roles/mTLS、BuildKit隔离、COS/TCR Secret引用和Serve路由配置。经CI及受保护合入得到canonical Cloud SHA，构建不可变Candidate；按既有规则完成合格Linux验证。Instance #348仍是未合并提案，必须以当时remote main为准审核补齐安装清单，不复制每用户业务编排。",
+        "action": "补镜像内buildx、明确Console cloud模式、所需owners/DB/roles/mTLS、BuildKit隔离、COS/TCR Secret引用和Serve路由配置。经CI及受保护合入得到canonical Cloud SHA，构建不可变Candidate；按既有规则完成合格Linux验证。历史 Instance #348 已关闭，安装清单必须以 Instance 当前 origin/main 和当前受保护部署回读为准，不得继续按旧三服务快照派发任务，也不复制每用户业务编排。",
         "accept": "Candidate manifest、schema与安装资产hash、index/platform digest和来源都一致；Instance受保护main流程可验证接收；本机不触达生产私网。"
       },
       {
