@@ -23,7 +23,10 @@ function materializePlanSnapshot(scratch: string) {
   // Path presence is also a render input. Preserve the admitted paths' actual
   // files/directories, without importing Git metadata or unrelated source trees.
   const readPaths: string[] = plan.workPackages.flatMap((item: { existingReadPaths: string[] }) => item.existingReadPaths);
-  for (const path of new Set([...inputs, ...generatedPlanArtifacts, "tools/verify-development-plan.ts", ...readPaths])) {
+  // Development test grants must be materialized too: the validator refuses a
+  // grant that does not resolve to a real file in the checked tree.
+  const testWritePaths: string[] = (plan.executionSlices ?? []).flatMap((item: { testWritePaths?: string[] }) => item.testWritePaths ?? []);
+  for (const path of new Set([...inputs, ...generatedPlanArtifacts, "tools/verify-development-plan.ts", ...readPaths, ...testWritePaths])) {
     const source = join(root, path);
     const destination = join(scratch, path);
     if (statSync(source).isDirectory()) mkdirSync(destination, { recursive: true });

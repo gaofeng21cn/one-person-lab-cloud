@@ -1,27 +1,90 @@
-## Outcome
+<!--
+One governance record per pull request. Every section below is required
+exactly once, and CI refuses a body with a missing, duplicated or empty
+section. `npm run check:pr-body -- --body-file <path>` runs the same check
+locally. A pull-request body declares claims; it is never a receipt.
+-->
 
-<!-- What user or operator outcome changes, and why? -->
+## Decision Conclusion
+
+<!-- The single decision this change implements at its owning layer. Keep unrelated decisions out. -->
+
+## Current Problem
+
+<!-- The observed current behavior and why it is wrong. Name the reproduced path, not a speculative one. -->
+
+## Business SSOT
+
+<!--
+Either state `No business SSOT change:` and name the owners that stay authoritative, or name the canonical business owner this PR actually updates, for example `docs/architecture.md`, `docs/roadmap.md` or a contracts file.
+-->
+
+## Development SSOT
+
+<!--
+Either state `No development SSOT change:` and name the owners that stay authoritative, or name the development owner this PR updates, for example `AGENTS.md`, `DEV_GUIDE.md` or `docs/spec/target/checks/development_plan.json`.
+-->
+
+## Baseline
+
+- Base SHA: `<40-hex base commit>` (required; must equal the pull request base commit)
 
 ## Ownership
 
-<!-- Name the existing phase-plan record or roadmap gap/lane ID, primary module, exact write set, and canonical product, implementation, contract, or instance owner. A phase plan supplies work, not permanent ownership or authorization. Name any overlapping PR; if more than one module changes, name the public contract between them. -->
+- DDD owner: `<development-plan source owner, for example console, workspace, cloud or ledger>`
+- Phase: `<work package id, execution slice id or preparation window from development_plan.json>`
 
-## SSOT Reconciliation
+<!-- The declared owner must own the declared phase record in the current development plan. -->
 
-<!-- List the current owners checked. If sources conflicted, explain the provenance and why the selected owner is authoritative. -->
+## Write Set
+
+<!--
+One line per exact repository-relative path this PR may change; a trailing `/` declares that directory. Every path the PR actually changes must be declared here, and the diff is machine-compared against this list.
+-->
+
+- `<repository-relative path>`
+
+## Receipt Pipeline
+
+<!--
+One line per receipt. Do not paste receipt contents and do not use this body as evidence: `source-check` points at an in-repo `docs/evidence/source-checks` receipt; `development-stage` names the host-store receipt identity (run/gate/attempt and its SHA-256); `business` and `instance` name their existing owner references.
+-->
+
+- receipt: source-check; result: `<passed|failed|pending>`; path: `docs/evidence/source-checks/<receipt-name>.json`
+- receipt: development-stage; result: `<passed|failed|pending>`; path: `runs/<run-id>/receipts/<gate-id>-<attempt>.json`; run: `<run-id>`; gate: `<gate-id>`; attempt: `<attempt>`; sha256: `<64-hex receipt digest>`
+- receipt: business; result: `<passed|failed|pending>`; authority: `<business owner>`; ref: `<existing owner receipt reference>`
+- receipt: instance; result: `<passed|failed|pending>`; ref: `<existing instance receipt reference>`
+
+## Acceptance Criteria
+
+<!-- One checkbox per acceptance item. `merge-ready` and `source-complete` require every box checked. -->
+
+- [ ] `<observable acceptance item>`
 
 ## Verification
 
-<!-- List the exact commands, input revision and readbacks actually completed, including failures. For a scoped run, reference host admission, declared stage inputs, actual runner results and signed per-run receipts with upstream/downstream evidence binding. dev_verify requests acceptance; worker claims do not complete or publish it. Use npm run dev:tools / npm run dev:run as host entries; keep CLI details with the implementation. Receipts do not automatically update status or roadmap. A shell-enabled chat is unrestricted; documentation does not prove all Codex sessions are restricted or remote branch protection is enabled. -->
+<!-- The exact commands and executed results (test counts, exit codes), including failures. Worker claims and planned commands are not results. -->
 
-## Checklist
+- `<command>`: `<actual executed result>`
 
-- [ ] This PR has one objective and a narrow write set.
-- [ ] The gap/lane ID, primary module, exact write set, and any overlap are explicit; unrelated lanes are not blocked by this PR's production gates.
-- [ ] I updated the canonical owner instead of creating duplicate current status or policy.
-- [ ] The feature is in its owning module; cross-module calls use a public contract with no sibling source/table access or copied state machine.
-- [ ] Product targets, fixture/source evidence, product runtime, and Instance/production claims remain distinct.
-- [ ] Current service/module inventory and Console routing follow `docs/implementation-architecture.md`, not a duplicated legacy inventory.
-- [ ] If generated fields changed, covered-output freshness and W01 production/spec reconciliation plus real consumer migration are reported separately; no second business-field or task registry was introduced.
-- [ ] No secret, customer data, or raw provider response is included.
-- [ ] The branch is current with `main`, review conversations are resolved, and `validate` passes.
+## Limitations
+
+<!-- What this evidence does not prove (runtime, Instance, provider, unrun suites), and what remains open. -->
+
+- `<limitation>`
+
+## Terminal State
+
+- Terminal state: `<merge-ready|source-complete|blocked>`
+
+<!--
+`merge-ready` means every declared receipt passed and a passed host `development-stage` acceptance receipt exists. `source-complete` means the source layer is complete with source-layer receipts and no host acceptance receipt is claimed. `blocked` carries open obligations.
+-->
+
+## Merge Danger
+
+<!--
+State what merging can break: contract or migration order, coordinated deployment, rollback, or none. Also confirm no secret, customer data or raw provider response is included, and that the branch is current with main with review conversations resolved.
+-->
+
+- Merge danger: `<none|what merging can break and the required follow-up>`

@@ -155,6 +155,92 @@ receipt bodies. Development receipts prove source checks; business and Instance
 receipts stay in their existing owner formats and qualification paths. Neither
 layer is accepted as evidence of completion of the other.
 
+## Pull Request Governance Record
+
+Every pull request except an automated dependency bump carries a governance
+record in its description. The required sections, their exact structure and the
+terminal states are machine-enforced by `npm run check:pr-body` and by the
+`governance` job in
+[pull request CI](.github/workflows/pull-request-ci.yml). A missing, duplicated
+or empty section, an incomplete base SHA, an owner that does not own the
+declared phase record, a changed path outside the declared write set, an untyped
+or inconsistent receipt entry, or a terminal state without the required
+evidence is refused; a changed path without a declared phase record fails the
+same way instead of being grandfathered in.
+
+```bash
+npm run check:pr-body -- --body-file /absolute/pr-body.md --base origin/main
+```
+
+The record separates the evidence layers instead of merging them:
+
+| Receipt entry | Names | Layer it proves |
+| --- | --- | --- |
+| `source-check` | an in-repo `docs/evidence/source-checks/*.json` receipt with `evidenceLayer: source`, `result: pass`, its `sourceBaseSha` and its write set | Executed source checks for the declared base and write set |
+| `development-stage` | the host store identity `runs/<run>/receipts/<gate>-<attempt>.json` plus `run`, `gate`, `attempt` and the signed receipt digest | Host acceptance: the signed payload binds approval, phase, declared inputs, dependencies, runner and output digest |
+| `business` / `instance` | the existing owner receipt reference | The business or Instance layer in its own format; never a substitute for source evidence |
+
+`Terminal state: merge-ready` requires every declared receipt to have passed and
+a verified host `development-stage` receipt; a pull request body, an agent
+claim, a business receipt or a self-signed file never provides that.
+`source-complete` claims the source layer only and is not a merge
+authorization, and `blocked` carries open obligations.
+
+Record compliance and merge authorization are separate machine checks. The
+`governance` CI job runs the checker in `record` mode; the existing `validate`
+job runs the same checker in `merge` mode as a step, so an unverified
+merge-ready claim fails that job instead of appearing as a skipped `needs`
+dependency. Both steps run the checker from the pull request's **base**
+revision and inspect the head revision only as reviewed data, so a pull request
+cannot weaken the check that judges it by editing the checker.
+
+The first landing of this mechanism is bootstrap, and the condition is purely
+physical: the pull request whose base revision lacks
+`tools/check-pr-governance.ts`. There, `validate` runs the head copy with
+`--mode merge --bootstrap-base <base worktree>` and the checker itself
+downgrades that one run to `record` enforcement, reporting
+`effectiveMode: "record"` and `bootstrap: true`, with an explicit `::warning`
+that merge authorization is not enforced remotely for this first landing and
+**is** enforced from the next pull request. A base revision that carries the
+checker always keeps full merge enforcement; no actor, user or label may
+downgrade it. The workflow uses `pull_request`, never `pull_request_target`,
+and reads no secrets.
+
+The merge step trusts one host authentication root, supplied by the repository
+variable `OPL_DEVELOPMENT_AUTHORITY_PUBLIC_KEY`: either the SPKI PEM public key
+or its base64 text (for example `base64 -i <host-store>/authority.pub`). The
+value is never taken from the pull request, a pull-request-provided key or a
+repository file. A `development-stage` entry may name a trusted local store
+with `--host-store <absolute path>` or an in-repo public proof with
+`proof: docs/evidence/development-stage/<name>.json`, whose content is
+`schemaVersion: 1`, `kind: opl.development.stage.proof.v1`, and the signed
+`approval` and `receipt` envelopes (`payload` + `signature`) produced by
+`approveRun` and a passed `verifyGate`. The checker validates both signatures,
+the approval/receipt identity, the approved phase and write scope, the declared
+owner, the bound base SHA, the phase and input fingerprints, the runner
+identity, the receipt digest and every dependency receipt hash. The receipt's
+`sourceSha` may precede the reviewed head only by proof-only commits; any other
+post-receipt change is refused. `merge-ready` without a configured trust root
+or a verifyable proof is refused, and no actor receives a blanket exemption.
+
+The development host (a shell-enabled session or CI runner holding the trusted
+store) produces that proof after the candidate commit: approve and verify the
+run at the candidate, export the two signed envelopes into the proof file,
+commit the proof-only successor, then rewrite the body to `merge-ready` with the
+`development-stage` entry. The receipt binds the candidate `sourceSha`; the
+proof file is the only successor change allowed. The host-source-check receipt
+for this governance change records the local source runs and does not
+substitute for that host acceptance.
+
+Restricted workers cannot write `AGENTS.md`, `DEV_GUIDE.md`, `.github/**`,
+`tools/**`, `tests/tools/**`, `package.json` or the development plan; the
+development-governance work is a host-owned reference lane
+(`W27.development-governance`), not a worker grant. A bounded Console
+presentation fix uses `W16.console-ui-fixes`; its phase record grants the two
+existing console test files through `testWritePaths` (exact files under
+`tests/`, never a directory or a business owner) so the implementation and its
+test stay in one owner scope.
+
 ## Pre-Commit Checks
 
 ```bash
