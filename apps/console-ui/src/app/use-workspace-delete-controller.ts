@@ -1,21 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { AuthSession, WorkspaceDeletionDTO, WorkspaceDTO } from "../api/dtos.ts";
+import type { AuthSession, WorkspaceDeleteRequest, WorkspaceDeletionDTO, WorkspaceDTO } from "../api/dtos.ts";
 import {
   deleteWorkspace,
+  findWorkspaceInOwnerPages,
   findWorkspaceInPages,
   getWorkspaceDeletion,
   workspaceDeleteIdempotencyKey
 } from "../api/workspaces-api.ts";
+import { cloudIdentity } from "./console-identity.ts";
 import {
   isWorkspaceDeleteNotFound,
   resolveWorkspaceDeleteIntent,
   shouldRetainWorkspaceDeleteIntent,
+  workspaceDeleteConfirmationReady,
   workspaceDeleteReadbackConfirmed,
   type WorkspaceDeleteIntent,
   type WorkspaceDeleteIssue
 } from "./workspace-delete-controller-model.ts";
 import type { WorkspaceDeleteController } from "./console-controller-types.ts";
+
+// The Workspace owner is the authority for a cloud-identity Workspace, so the
+// deletion absence readback goes through that owner's list; the legacy identity
+// keeps the Control Plane list it has always read.
+const workspaceDeleteAbsenceReadback = cloudIdentity ? findWorkspaceInOwnerPages : findWorkspaceInPages;
 
 interface WorkspaceDeleteDependencies {
   session: AuthSession | null;
@@ -105,7 +113,7 @@ export function useWorkspaceDeleteController({
     csrfToken: string
   ): Promise<boolean> => {
     try {
-      const readback = await findWorkspaceInPages(workspaceId);
+      const readback = await workspaceDeleteAbsenceReadback(workspaceId);
       if (!requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) return false;
       if (!workspaceDeleteReadbackConfirmed(readback)) {
         setIssue("unconfirmed");
@@ -157,10 +165,23 @@ export function useWorkspaceDeleteController({
     await readDeletion(activeWorkspaceId, ++requestGeneration.current, currentMutationRequest(), session.user.id, session.csrfToken);
   };
 
-  const deleteCurrentWorkspace = async () => {
+  const deleteCurrentWorkspace = async (confirmation?: WorkspaceDeleteRequest) => {
     if (!session || !workspace || workspace.id !== activeWorkspaceId || busy || loading
       || readback.workspaceId !== activeWorkspaceId || readback.operation || issue === "unconfirmed") return;
-    if (!window.confirm(`确认删除工作空间“${workspace.name || workspace.id}”？请先自行下载需要的数据。删除后数据无法恢复，关闭页面后仍会继续处理，不会自动退款。`)) return;
+    let command: WorkspaceDeleteRequest | undefined;
+    if (cloudIdentity) {
+      // The Workspace owner's command carries the caller's own confirmation of
+      // the exact name and of the data destruction; the delete panel collects
+      // both, and this controller never submits a substitute for them.
+      if (!confirmation || !workspaceDeleteConfirmationReady(
+        workspace.name || workspace.id,
+        confirmation.confirmationName,
+        confirmation.acknowledgeDataDestruction
+      )) return;
+      command = { confirmationName: confirmation.confirmationName.trim(), acknowledgeDataDestruction: true };
+    } else if (!window.confirm(`确认删除工作空间“${workspace.name || workspace.id}”？请先自行下载需要的数据。删除后数据无法恢复，关闭页面后仍会继续处理，不会自动退款。`)) {
+      return;
+    }
 
     const requestStillCurrent = currentMutationRequest();
     const userId = session.user.id;
@@ -177,7 +198,7 @@ export function useWorkspaceDeleteController({
     setIssue("");
 
     try {
-      const result = await deleteWorkspace(workspaceId, csrfToken, resolved.idempotencyKey);
+      const result = await deleteWorkspace(workspaceId, csrfToken, resolved.idempotencyKey, command);
       if (!requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) return;
       if (!result.available) {
         if (intents.current.get(workspaceId) === resolved) intents.current.delete(workspaceId);

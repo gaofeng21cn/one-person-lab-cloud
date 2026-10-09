@@ -368,6 +368,14 @@ export interface WorkspaceDeleteResponse {
   operationId?: string;
 }
 
+// The Workspace owner's delete command. The caller confirms the exact Workspace
+// name and acknowledges that the owner will destroy the Workspace's data; the
+// owner remains the authority that decides the command.
+export interface WorkspaceDeleteRequest {
+  confirmationName: string;
+  acknowledgeDataDestruction: boolean;
+}
+
 // Platform deletion stage vocabulary. Control Plane projects its durable
 // operation phase onto these stages; Console never interprets the phase itself.
 export type WorkspaceDeletionStage =
@@ -387,7 +395,7 @@ export interface WorkspaceDeletionDTO {
   /** Platform deletion stage reached by this operation. */
   stage?: WorkspaceDeletionStage;
   /** Durable operation phase, retained for the technical panel only. */
-  phase: string;
+  phase?: string;
   /** Customer-visible progress state. */
   pageState?: WorkspaceDeletionPageState;
   /** Stable block reason when the operation stopped. */

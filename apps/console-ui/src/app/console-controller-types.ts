@@ -33,6 +33,7 @@ import type {
   WalletAdjustmentOperationDTO,
   WorkspaceCredentialAccess,
   WorkspaceDTO,
+  WorkspaceDeleteRequest,
   WorkspaceDeletionDTO,
   WorkspaceGatewayBudgetDTO,
   WorkspaceGatewayBudgetUpdateRequest,
@@ -186,7 +187,8 @@ export interface WorkspaceDeleteController {
   loading: boolean;
   operation: WorkspaceDeletionDTO | null;
   refresh: () => Promise<void>;
-  deleteCurrentWorkspace: () => Promise<void>;
+  /** The cloud identity passes the confirmation its owner command requires. */
+  deleteCurrentWorkspace: (confirmation?: WorkspaceDeleteRequest) => Promise<void>;
 }
 
 export type WorkspaceRuntimeImageReplacementIssue = "" | "unavailable" | "unconfirmed" | "timeout";

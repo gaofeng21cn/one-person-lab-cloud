@@ -8,8 +8,10 @@ import {
   isWorkspaceDeleteNotFound,
   presentWorkspaceDelete,
   presentWorkspaceDeleteReason,
+  presentWorkspaceDeleteResourceState,
   resolveWorkspaceDeleteIntent,
   shouldRetainWorkspaceDeleteIntent,
+  workspaceDeleteConfirmationReady,
   workspaceDeleteReadbackConfirmed,
   type WorkspaceDeleteErrorPayload,
   type WorkspaceDeleteIntent
@@ -105,7 +107,35 @@ test("response loss and 404 retain a delete intent, while known client errors re
 test("owner not-found errors are identified for authoritative absence readback", () => {
   assert.equal(isWorkspaceDeleteNotFound(apiError(404, { error: "workspace_not_found" })), true);
   assert.equal(isWorkspaceDeleteNotFound(apiError(404, { error: "forbidden" })), false);
+  // The BFF reports the same owner not-found under its own code spelling.
+  assert.equal(isWorkspaceDeleteNotFound(apiError(404, { code: "NOT_FOUND" })), true);
+  assert.equal(isWorkspaceDeleteNotFound(apiError(404, { code: "VALIDATION_FAILED" })), false);
   assert.equal(isWorkspaceDeleteNotFound(apiError()), false);
+});
+
+test("the cloud delete command is only ready with the exact name and the acknowledgement", () => {
+  assert.equal(workspaceDeleteConfirmationReady("Alpha Workspace", "Alpha Workspace", true), true);
+  assert.equal(workspaceDeleteConfirmationReady("Alpha Workspace", "  Alpha Workspace  ", true), true);
+  assert.equal(workspaceDeleteConfirmationReady("Alpha Workspace", "Alpha Workspac", true), false);
+  assert.equal(workspaceDeleteConfirmationReady("Alpha Workspace", "Alpha Workspace", false), false);
+  assert.equal(workspaceDeleteConfirmationReady("Alpha Workspace", "", true), false);
+  assert.equal(workspaceDeleteConfirmationReady("", "", true), false);
+});
+
+test("the resource cleanup state and the refund state are separate rendered facts", () => {
+  // Resources still being deleted while the refund is not due yet.
+  const waiting = presentWorkspaceDelete({
+    workspaceId: workspace.id, operationId: "workspace-delete-alpha", status: "pending", pageState: "waiting", refundStatus: "not_due"
+  });
+  assert.ok(waiting);
+  assert.equal(presentWorkspaceDeleteResourceState(waiting), "正在删除资源与数据");
+  assert.equal(waiting.refundLabel, "本次删除无需退款");
+
+  // A confirmed and rejected resource readback each keep their own wording.
+  assert.equal(presentWorkspaceDeleteResourceState({ workspaceId: workspace.id, operationId: "workspace-delete-alpha", status: "deleted", pageState: "completed" }), "资源与数据已确认删除");
+  assert.match(presentWorkspaceDeleteResourceState({ workspaceId: workspace.id, operationId: "workspace-delete-alpha", status: "manual_review", pageState: "blocked" }) || "", /待核实/);
+  assert.match(presentWorkspaceDeleteResourceState({ workspaceId: workspace.id, operationId: "workspace-delete-alpha", status: "pending", pageState: "retrying" }) || "", /待核实/);
+  assert.equal(presentWorkspaceDeleteResourceState(null), "");
 });
 
 test("deletion progress renders only the platform stage, state, reason and refund it published", () => {

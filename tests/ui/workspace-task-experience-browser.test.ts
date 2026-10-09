@@ -121,6 +121,17 @@ function assertBrowserAuditClean(audit: BrowserAudit) {
   assert.deepEqual(audit.consoleErrors, []);
 }
 
+// The Workspace owner reports "no deletion readback yet" as a not-found, and a
+// cloud-identity Workspace route always reads that state. The expected browser
+// 404 is answered explicitly and never admitted as an unexpected route.
+const ownerDeletionNotFound = { status: 404, json: { code: "NOT_FOUND", message: "Workspace deletion is not found", requestId: "request-deletion-read" } };
+
+function allowExpectedOwnerDeletionNotFound(audit: BrowserAudit) {
+  const expected = "Failed to load resource: the server responded with a status of 404 (Not Found)";
+  assert.ok(audit.consoleErrors.every((message) => message === expected), `unexpected console errors: ${audit.consoleErrors.join(" | ")}`);
+  audit.consoleErrors.length = 0;
+}
+
 async function login(page: Page, origin: string) {
   await page.goto(`${origin}/login`, { waitUntil: "domcontentloaded" });
   await page.getByLabel("邮箱").fill(CONSOLE_DEMO_CREDENTIALS.customer.email);
@@ -151,6 +162,12 @@ for (const identity of ["legacy", "cloud"] as const) {
         v2Requests.push(path);
         if (identity === "legacy") {
           await route.fulfill({ status: 404, json: { error: "bff_not_deployed" } });
+          return;
+        }
+        // The Workspace owner holds no deletion readback for this fixture, and
+        // the cloud Console's delete panel reads exactly that owner fact.
+        if (path === "/api/v2/workspaces/ws-1/deletion") {
+          await route.fulfill(ownerDeletionNotFound);
           return;
         }
         // The cloud identity reads the customer Workspace from the Workspace
@@ -206,6 +223,9 @@ for (const identity of ["legacy", "cloud"] as const) {
       } else {
         await page.locator(".publisher-page").getByRole("heading", { name: "Cloud WebUI / Agent Package", exact: true }).waitFor({ state: "visible" });
         assert.equal(await page.getByRole("heading", { name: "页面不存在", exact: true }).count(), 0);
+        // The cloud Workspace route reads the owner's own deletion readback,
+        // which is a not-found while this Workspace has no such operation.
+        allowExpectedOwnerDeletionNotFound(audit);
       }
       assertBrowserAuditClean(audit);
     } finally {
@@ -1230,6 +1250,9 @@ test("cloud Console reads the customer Workspace from the Workspace owner only",
       assert.ok(Object.hasOwn(responses, path), `unexpected BFF request: ${path}`);
       await route.fulfill({ json: responses[path] });
     });
+    // The owner holds no deletion readback for this Workspace, which the cloud
+    // Console's own delete panel reads as the owner's not-found.
+    await page.route("**/api/v2/workspaces/ws-owner/deletion", (route) => route.fulfill(ownerDeletionNotFound));
     await loginCloudFixture(page, demo.origin);
 
     await page.goto(`${demo.origin}/console/workspaces`, { waitUntil: "networkidle" });
@@ -1257,6 +1280,7 @@ test("cloud Console reads the customer Workspace from the Workspace owner only",
     await page.locator("[data-agent-delivery]").getByText("Capability", { exact: true }).waitFor({ state: "visible" });
     assert.deepEqual(controlPlaneReads, [], "the cloud Console must not read the Control Plane Workspace routes");
     assert.ok(ownerReads.includes("GET /api/v2/workspaces/ws-owner"));
+    allowExpectedOwnerDeletionNotFound(audit);
     assertBrowserAuditClean(audit);
   } finally {
     await page.close();
@@ -1355,6 +1379,9 @@ async function openWorkspaceModelsRoute(
       return route.fulfill({ json: modelsNeedsAttentionOperation });
     }
     if (path === "/api/v2/catalog/models") return route.fulfill({ json: modelsCatalogFixture });
+    // The Workspace owner holds no deletion readback for this fixture; the cloud
+    // Console reads that owner fact on its Workspace routes.
+    if (path === "/api/v2/workspaces/ws-models/deletion") return route.fulfill(ownerDeletionNotFound);
     unexpectedRequests.push(`${request.method()} ${path}`);
     return route.fulfill({ status: 404, json: { error: "unexpected_request" } });
   });
@@ -1395,6 +1422,7 @@ test("Workspace model readback keeps a needs_attention closeout out of the failu
     assert.deepEqual(models.operationReads, ["GET /api/v2/operations/workspace/op-models-1"], "an applied readback needs no operation read on reload");
 
     assert.deepEqual(models.unexpectedRequests, []);
+    allowExpectedOwnerDeletionNotFound(audit);
     assertBrowserAuditClean(audit);
   } finally {
     await browser.close();
@@ -1414,6 +1442,7 @@ test("Workspace model readback keeps an unapplied closeout on the failure alert"
     await page.getByText("模型配置未生效", { exact: true }).waitFor({ state: "visible" });
     await modelStatusCell(page).getByText("需要处理", { exact: true }).waitFor({ state: "visible" });
     assert.deepEqual(models.unexpectedRequests, []);
+    allowExpectedOwnerDeletionNotFound(audit);
     assertBrowserAuditClean(audit);
   } finally {
     await browser.close();
@@ -1442,6 +1471,7 @@ test("a late model configuration readback cannot replace the route that replaced
       }
       if (path === "/api/v2/operations/workspace/op-models-1") return route.fulfill({ json: modelsNeedsAttentionOperation });
       if (path === "/api/v2/catalog/models") return route.fulfill({ json: modelsCatalogFixture });
+      if (path === "/api/v2/workspaces/ws-models/deletion") return route.fulfill(ownerDeletionNotFound);
       return route.fulfill({ status: 404, json: { error: "unexpected_request" } });
     });
     await loginCloudFixture(page, demo.origin);
@@ -1461,6 +1491,7 @@ test("a late model configuration readback cannot replace the route that replaced
     await page.waitForURL((url) => url.pathname === "/console/workspaces/ws-models/models");
     await modelStatusCell(page).getByText("已生效", { exact: true }).waitFor({ state: "visible" });
     assert.equal(await page.getByText("模型配置未生效", { exact: true }).count(), 0, "re-entering the models page must show the owner's applied readback");
+    allowExpectedOwnerDeletionNotFound(audit);
     assertBrowserAuditClean(audit);
   } finally {
     releaseLateRead.resolve();
@@ -1491,6 +1522,7 @@ test("an unanswered model configuration readback never turns into the unapplied 
       }
       if (path === "/api/v2/operations/workspace/op-models-1") return route.fulfill({ json: modelsNeedsAttentionOperation });
       if (path === "/api/v2/catalog/models") return route.fulfill({ json: modelsCatalogFixture });
+      if (path === "/api/v2/workspaces/ws-models/deletion") return route.fulfill(ownerDeletionNotFound);
       unexpectedRequests.push(`${request.method()} ${path}`);
       return route.fulfill({ status: 404, json: { error: "unexpected_request" } });
     });
@@ -1505,6 +1537,7 @@ test("an unanswered model configuration readback never turns into the unapplied 
     await page.getByText("模型配置结果待确认", { exact: true }).waitFor({ state: "visible" });
     assert.equal(await page.getByText("原操作读回不可用", { exact: true }).count(), 0, "the terminal operation was read back and stays displayed");
     assert.deepEqual(unexpectedRequests, []);
+    allowExpectedOwnerDeletionNotFound(audit);
     assertBrowserAuditClean(audit);
   } finally {
     await browser.close();

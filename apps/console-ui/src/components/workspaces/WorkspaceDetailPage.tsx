@@ -8,7 +8,7 @@ import {
   presentWorkspaceApplicationBinding, presentWorkspaceApplicationInstallation, presentWorkspaceBudget,
   presentWorkspaceDeliveryModel, presentWorkspaceLifecycle, presentWorkspaceRecovery, presentWorkspaceRenewal, presentWorkspaceRuntime
 } from "../../app/workspace-experience-model.ts";
-import { presentWorkspaceDelete, presentWorkspaceDeleteReason } from "../../app/workspace-delete-controller-model.ts";
+import { presentWorkspaceDelete, presentWorkspaceDeleteReason, presentWorkspaceDeleteResourceState, workspaceDeleteConfirmationReady } from "../../app/workspace-delete-controller-model.ts";
 import type { WorkspaceDTO, WorkspaceGatewayBudgetDTO, WorkspaceGatewayBudgetUpdateRequest, WorkspaceRuntimeDTO } from "../../api/dtos.ts";
 import { Alert, Button, Checkbox, Field } from "../ui/index.ts";
 import { AgentDeliveryPanel } from "./AgentDeliveryPanel.tsx";
@@ -219,6 +219,7 @@ function WorkspaceOwnerDetailPage({ controller }: { controller: WorkspaceDetailC
       <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />工作空间列表</Button>
       <div className="workspace-detail-content">
         <section className="panel workspace-identity-panel"><div className="workspace-heading"><div><h2>{detail.name || "未命名工作空间"}</h2><div className={`workspace-availability workspace-availability--${lifecycle.known ? lifecycle.kind : "pending"}`}><strong>{lifecycle.label}</strong><span>{accessUrl ? "该工作空间已发布访问入口，可直接打开。" : "访问入口尚未就绪，稍后刷新查看。"}</span></div></div><div className="workspace-entry-actions"><Button color="primary" disabled={!accessUrl} onClick={() => accessUrl && window.open(accessUrl, "_blank", "noopener,noreferrer")}>打开工作空间<ExternalLink aria-hidden size={16} /></Button><Button onClick={() => controller.navigate(`/console/workspaces/${encodeURIComponent(detail.id)}/models`)} variant="outline">模型配置</Button><Button onClick={() => void controller.refreshCurrentPage()} variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div></div><dl className="workspace-primary-facts"><div><dt>交付模式</dt><dd>{presentWorkspaceDeliveryModel(detail.deliveryModel)}</dd></div><div><dt>资源就绪</dt><dd>{detail.resourceReadiness || "暂不可用"}</dd></div><div><dt>应用可用</dt><dd>{detail.applicationAvailability || "暂不可用"}</dd></div><div><dt>权益截止</dt><dd>{formatDate(detail.paidThrough)}</dd></div></dl></section>
+        <WorkspaceOwnerDeletePanel controller={controller} workspace={detail} />
         <section className="panel workspace-technical-panel"><details className="workspace-technical-details"><summary><span>技术详情</span><ChevronDown aria-hidden size={16} /></summary><div className="workspace-technical-details__body">
           <dl className="data-list">
             <div><dt>Workspace ID</dt><dd><code>{detail.id}</code></dd></div>
@@ -237,6 +238,43 @@ function WorkspaceOwnerDetailPage({ controller }: { controller: WorkspaceDetailC
       </div>
     </section>
   );
+}
+
+// The cloud identity deletes through the Workspace owner's own command, so the
+// panel collects exactly the confirmation that command requires — the full
+// Workspace name and the acknowledgement of the data destruction — and then only
+// reads the owner's deletion back. Resource cleanup and the refund stay two
+// independent facts, and neither is inferred from the other.
+function WorkspaceOwnerDeletePanel({ controller, workspace }: { controller: WorkspaceDetailController; workspace: WorkspaceDTO }) {
+  const [confirmationName, setConfirmationName] = useState("");
+  const [acknowledged, setAcknowledged] = useState(false);
+  const deletion = controller.workspaceDeletion;
+  if (deletion || controller.workspaceDeleteBusy || controller.workspaceDeletionLoading || controller.workspaceDeleteIssue === "unconfirmed") {
+    const presentation = presentWorkspaceDelete(deletion);
+    const title = controller.workspaceDeleteBusy ? "正在提交删除请求"
+      : controller.workspaceDeleteIssue === "unconfirmed" ? "删除状态暂不可读"
+      : presentation?.title ?? "正在确认工作空间状态";
+    const description = controller.workspaceDeleteIssue === "unconfirmed" ? "暂时无法确认原删除操作，请刷新状态。请勿重复删除或另行申请退款。"
+      : presentation?.detail ?? "正在读取工作空间是否有未完成的删除操作。";
+    return <section className="panel workspace-delete-panel">
+      <div className="workspace-settings-heading"><h3>{title}</h3><p>{description}</p></div>
+      {/* The two facts the owner publishes independently: resource and data
+          deletion, and the refund. Neither completion implies the other. */}
+      <dl className="data-list" data-workspace-delete-progress>
+        <div><dt>资源与数据删除</dt><dd>{presentWorkspaceDeleteResourceState(deletion) || "正在读取"}</dd></div>
+        <div><dt>最近读回</dt><dd>{presentation?.lastReadbackLabel || "-"}</dd></div>
+        <div><dt>退款状态</dt><dd>{presentation?.refundLabel || "尚未进入退款"}</dd></div>
+        <div><dt>退款操作</dt><dd><code>{deletion?.refundOperationId || "-"}</code></dd></div>
+      </dl>
+      <Button busy={controller.workspaceDeletionLoading} disabled={controller.workspaceDeleteBusy} onClick={() => void controller.refreshWorkspaceDeletion()} variant="outline"><RefreshCw aria-hidden size={16} />刷新删除状态</Button>
+    </section>;
+  }
+  return <section className="panel workspace-delete-panel">
+    <div className="workspace-settings-heading"><h3>删除工作空间</h3><p>请先自行下载需要的数据。删除后数据无法恢复，关闭页面后仍会继续处理，不会自动退款。</p></div>
+    <Field description="请输入该工作空间的完整名称以确认删除。" label="工作空间名称" maxLength={256} onChange={(event) => setConfirmationName(event.currentTarget.value)} placeholder={workspace.name || workspace.id} value={confirmationName} />
+    <Checkbox checked={acknowledged} label="我已知悉：删除会销毁该工作空间的应用、数据与资源" onChange={setAcknowledged} />
+    <Button busy={controller.workspaceDeleteBusy} color="danger" disabled={!workspaceDeleteConfirmationReady(workspace.name || workspace.id, confirmationName, acknowledged)} onClick={() => void controller.deleteCurrentWorkspace({ confirmationName: confirmationName.trim(), acknowledgeDataDestruction: true })} variant="outline"><Trash2 aria-hidden size={16} />删除工作空间</Button>
+  </section>;
 }
 
 function ControlPlaneWorkspaceDetailPage({ controller }: { controller: WorkspaceDetailController }) {

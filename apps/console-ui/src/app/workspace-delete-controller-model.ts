@@ -24,6 +24,7 @@ export function workspaceDeleteReadbackConfirmed(
 
 export interface WorkspaceDeleteErrorPayload {
   readonly error?: string;
+  readonly code?: string;
 }
 
 function errorPayload(error: unknown): WorkspaceDeleteErrorPayload | null {
@@ -31,11 +32,28 @@ function errorPayload(error: unknown): WorkspaceDeleteErrorPayload | null {
   const payload = (error as { payload?: unknown }).payload;
   if (!payload || typeof payload !== "object") return null;
   const value = payload as Record<string, unknown>;
-  return { error: typeof value.error === "string" ? value.error : undefined };
+  return {
+    error: typeof value.error === "string" ? value.error : undefined,
+    code: typeof value.code === "string" ? value.code : undefined
+  };
 }
 
+// The legacy Control Plane reports this fact as `error`, the BFF as its own `code`.
 export function isWorkspaceDeleteNotFound(error: unknown): boolean {
-  return errorPayload(error)?.error === "workspace_not_found";
+  const payload = errorPayload(error);
+  return payload?.error === "workspace_not_found" || payload?.code === "NOT_FOUND";
+}
+
+// The Workspace owner's delete command requires the caller to confirm the exact
+// Workspace name and to acknowledge the data destruction. Console only gates its
+// own button on that confirmation; the owner still decides the command.
+export function workspaceDeleteConfirmationReady(
+  workspaceName: string,
+  confirmationName: string,
+  acknowledgeDataDestruction: boolean
+): boolean {
+  const expected = workspaceName.trim();
+  return acknowledgeDataDestruction && expected !== "" && confirmationName.trim() === expected;
 }
 
 export function shouldRetainWorkspaceDeleteIntent(error: unknown): boolean {
@@ -117,6 +135,20 @@ function workspaceDeletePageState(operation: WorkspaceDeletionDTO): WorkspaceDel
   if (operation.status === "deleted") return "completed";
   if (operation.status === "manual_review") return "blocked";
   return "waiting";
+}
+
+// The customer-visible resource/data cleanup state of the deletion view. The
+// Workspace owner publishes no platform stage, so the projected progress state
+// is what Console renders for the resource side; the refund stays a separate
+// fact that finishes on its own.
+export function presentWorkspaceDeleteResourceState(operation: WorkspaceDeletionDTO | null): string {
+  if (!operation) return "";
+  switch (workspaceDeletePageState(operation)) {
+    case "completed": return "资源与数据已确认删除";
+    case "blocked": return "删除结果待核实，需要核对原始开通记录";
+    case "retrying": return "删除结果待核实，平台会继续自动核对";
+    default: return "正在删除资源与数据";
+  }
 }
 
 // presentWorkspaceDelete shows the current stage, the stable reason when the
