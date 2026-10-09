@@ -111,9 +111,9 @@ W[4]['plannedWritePaths']=['services/gateway-integration/identity','services/gat
 W[3]['plannedWritePaths']=['services/gateway-integration/identity','services/gateway-integration/cmd/server']
 
 slices=[]
-def delivery_slice(key, window, deps, writes, input_refs, output, checks, evidence):
+def delivery_slice(key, window, deps, writes, input_refs, output, checks, evidence, tests=None):
     slices.append(dict(id=key,workPackage=key.split('.')[0],window=window,startAfter=deps,
-        writePaths=writes,inputRefs=input_refs,deliverable=output,verification=checks,
+        writePaths=writes,**({'testWritePaths':tests} if tests else {}),inputRefs=input_refs,deliverable=output,verification=checks,
         completionEvidence=evidence,
         onUnknown='按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。'))
 delivery_slice('W01.application-contracts','integration',[],
@@ -224,12 +224,32 @@ delivery_slice('W16.workspace-ui','integration',['W15.first-create','W13.console
  '默认App无需进入Publisher；选套餐一次确认，显示订单/资源/应用/证据各自状态并打开真实URL',
  ['无Package默认创建','同一请求刷新恢复','不以202/Pod Running/无receipt显示完成'],
  '前端动作到owner/source事实一致的浏览器证据')
+# Bounded Console presentation fixes get their own accurate lane: the console
+# source owner, no business producer dependency, and the existing console test
+# targets. They no longer borrow the whole W16 package or the launch-only slice.
+delivery_slice('W16.console-ui-fixes','integration',[],
+ ['apps/console-ui/src/app','apps/console-ui/src/pages'],
+ ['既有Console页面/controller规格','既有Console unit/browser测试目标','真实owner readback（Workspace/Delivery读取）','docs/implementation-architecture.md当前Console/BFF路由'],
+ '既有Console表现层回归的最小修复：从owner读回派生展示结论，复用现有unit/browser目标；不新增业务语义、不写后端或业务SSOT',
+ ['npm run typecheck','node --test tests/ui/workspace-experience-model.test.ts','npm run test:browser:workspace-lifecycle'],
+ '真实执行的既有Console unit/browser目标(0 fail/skip)与source-check receipt；不声称业务链或W16包完成',
+ ['tests/ui/workspace-experience-model.test.ts','tests/ui/workspace-task-experience-browser.test.ts'])
 delivery_slice('W27.runnable-candidate','integration',['W02.owner-readiness'],
  ['Dockerfile','deploy/portable','.github/workflows/build-opl-cloud-candidate.yml'],
  ['同Cloud commit合同/owner集合','buildx/buildkit接线','安装配置schema'],
  '精确SHA/digest的可测试Candidate，声明必需owner/ports/DB/identity/工具；非正式发布',
  ['镜像内可执行工具与cloud UI参数','安装配置缺失明确失败','无latest漂移'],
  'Candidate manifest/source/schema/platform/image/asset checksum；任何组件变化新候选')
+# The development-governance lane is host-owned: it names where the PR gate,
+# the development plan mechanics and the development documents live so a
+# governance pull request has an accurate phase/owner reference. Restricted
+# workers never obtain these writes; dev-session protects them separately.
+delivery_slice('W27.development-governance','integration',[],
+ ['.github/','tools/','tests/tools/','AGENTS.md','DEV_GUIDE.md','package.json','docs/spec/target/','docs/evidence/source-checks/','docs/evidence/development-stage/'],
+ ['AGENTS.md#scoped-development-contract','DEV_GUIDE.md#scoped-host-and-worker-entry','现有PR合规清单(.github/PULL_REQUEST_TEMPLATE.md)'],
+ '开发治理统一入口：PR body机器校验(base SHA/DDD owner/phase/write set/receipt分层)、开发SSOT phase入口与hard-entry审计；host-owned，restricted worker不获得这些写权限',
+ ['npm run test:development-gates','npm run verify:development-plan','npm run verify:local:focused -- --base origin/main'],
+ '实际执行的gate结果与append-only source-check receipt；不替代host acceptance receipt，不声称产品runtime或发布完成')
 delivery_slice('W26.default-source','integration',['W16.workspace-ui','W05.receipts'],
  ['tests/integration','tests/ui','tools'],
  ['真实默认App入口','所有owner链','无Package/Build路径'],
@@ -459,7 +479,9 @@ for item in slices:
  lines.append('| `'+item['id']+'` | '+item['window']+' | '+(', '.join(item['startAfter']) or '无')+' | '+item['deliverable']+' |')
 lines += ['', '### 9.2 每个切片的输入、写集、验收与证据']
 for item in slices:
- lines += ['', '#### '+item['id'], '', '**输入：** '+'；'.join(item['inputRefs']), '', '**写集：** '+', '.join('`'+p+'`' for p in item['writePaths']), '', '**验收：** '+'；'.join(item['verification']), '', '**交付证据：** '+item['completionEvidence'], '', '**未知结果：** '+item['onUnknown']]
+ lines += ['', '#### '+item['id'], '', '**输入：** '+'；'.join(item['inputRefs']), '', '**写集：** '+', '.join('`'+p+'`' for p in item['writePaths'])]
+ if item.get('testWritePaths'): lines += ['', '**测试写授权（开发SSOT，仅精确文件）：** '+', '.join('`'+p+'`' for p in item['testWritePaths'])]
+ lines += ['', '**验收：** '+'；'.join(item['verification']), '', '**交付证据：** '+item['completionEvidence'], '', '**未知结果：** '+item['onUnknown']]
 lines += ['', '### 9.3 首链之后的原工作包义务', '',
  'W17.replace和W18/W19/W20/W21后续治理覆盖更新回滚、续费/到期、D17升降配、删除/退款、Tenant停用/恢复；W22/W23消费对应真实owner，W24补操作恢复/告警；两种应用模式全部适用。',
  'W25/W30专门处理旧客户的M0–M5与唯一writer移交；新默认App不得冒充legacy_resource_only。W26全F验收仍包含这些结果。W28/W29整包资格及W31同字节正式发布要求不因早期首链通过而取消。',

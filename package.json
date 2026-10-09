@@ -41,12 +41,13 @@
     "dev:tools": "node tools/dev-session.ts serve",
     "verify:dev-scope": "node tools/dev-session.ts scope",
     "verify:generated-contracts": "node tools/verify-generated-contracts.ts",
-    "test:development-gates": "node --test tests/tools/dev-session.test.ts tests/tools/verify-generated-contracts.test.ts tests/tools/verify-development-plan.test.ts",
-    "typecheck:development-tools": "tsc --strict --noEmit --skipLibCheck --target ES2023 --module NodeNext --moduleResolution NodeNext --allowImportingTsExtensions --types node --lib ES2023,DOM tools/dev-session.ts tools/verify-local.ts tools/verify-generated-contracts.ts tools/verify-development-plan.ts tests/tools/dev-session.test.ts tests/tools/verify-local.test.ts tests/tools/verify-generated-contracts.test.ts tests/tools/verify-development-plan.test.ts",
+    "test:development-gates": "node --test tests/tools/dev-session.test.ts tests/tools/check-pr-governance.test.ts tests/tools/check-pr-merge-authorization.test.ts tests/tools/verify-generated-contracts.test.ts tests/tools/verify-development-plan.test.ts",
+    "typecheck:development-tools": "tsc --strict --noEmit --skipLibCheck --target ES2023 --module NodeNext --moduleResolution NodeNext --allowImportingTsExtensions --types node --lib ES2023,DOM tools/dev-session.ts tools/check-pr-governance.ts tools/verify-local.ts tools/verify-generated-contracts.ts tools/verify-development-plan.ts tests/tools/dev-session.test.ts tests/tools/check-pr-governance.test.ts tests/tools/check-pr-merge-authorization.test.ts tests/tools/verify-local.test.ts tests/tools/verify-generated-contracts.test.ts tests/tools/verify-development-plan.test.ts",
     "dev:approve": "node tools/dev-session.ts approve",
     "dev:run": "node tools/dev-session.ts run",
     "dev:verify": "node tools/dev-session.ts verify",
-    "verify:development-plan": "node tools/verify-development-plan.ts"
+    "verify:development-plan": "node tools/verify-development-plan.ts",
+    "check:pr-body": "node tools/check-pr-governance.ts"
   },
   "dependencies": {
     "@openai/apps-sdk-ui": "^0.2.2",

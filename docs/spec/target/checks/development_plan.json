@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "2a59357d0826ec32893a842104e8bc0305ef73aa",
+  "sourceSHA": "b957655950f3dc53961fc6f589d4e18cb9b8f238",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -3974,6 +3974,34 @@
       "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
     },
     {
+      "id": "W16.console-ui-fixes",
+      "workPackage": "W16",
+      "window": "integration",
+      "startAfter": [],
+      "writePaths": [
+        "apps/console-ui/src/app",
+        "apps/console-ui/src/pages"
+      ],
+      "testWritePaths": [
+        "tests/ui/workspace-experience-model.test.ts",
+        "tests/ui/workspace-task-experience-browser.test.ts"
+      ],
+      "inputRefs": [
+        "既有Console页面/controller规格",
+        "既有Console unit/browser测试目标",
+        "真实owner readback（Workspace/Delivery读取）",
+        "docs/implementation-architecture.md当前Console/BFF路由"
+      ],
+      "deliverable": "既有Console表现层回归的最小修复：从owner读回派生展示结论，复用现有unit/browser目标；不新增业务语义、不写后端或业务SSOT",
+      "verification": [
+        "npm run typecheck",
+        "node --test tests/ui/workspace-experience-model.test.ts",
+        "npm run test:browser:workspace-lifecycle"
+      ],
+      "completionEvidence": "真实执行的既有Console unit/browser目标(0 fail/skip)与source-check receipt；不声称业务链或W16包完成",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
       "id": "W27.runnable-candidate",
       "workPackage": "W27",
       "window": "integration",
@@ -3997,6 +4025,36 @@
         "无latest漂移"
       ],
       "completionEvidence": "Candidate manifest/source/schema/platform/image/asset checksum；任何组件变化新候选",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W27.development-governance",
+      "workPackage": "W27",
+      "window": "integration",
+      "startAfter": [],
+      "writePaths": [
+        ".github/",
+        "tools/",
+        "tests/tools/",
+        "AGENTS.md",
+        "DEV_GUIDE.md",
+        "package.json",
+        "docs/spec/target/",
+        "docs/evidence/source-checks/",
+        "docs/evidence/development-stage/"
+      ],
+      "inputRefs": [
+        "AGENTS.md#scoped-development-contract",
+        "DEV_GUIDE.md#scoped-host-and-worker-entry",
+        "现有PR合规清单(.github/PULL_REQUEST_TEMPLATE.md)"
+      ],
+      "deliverable": "开发治理统一入口：PR body机器校验(base SHA/DDD owner/phase/write set/receipt分层)、开发SSOT phase入口与hard-entry审计；host-owned，restricted worker不获得这些写权限",
+      "verification": [
+        "npm run test:development-gates",
+        "npm run verify:development-plan",
+        "npm run verify:local:focused -- --base origin/main"
+      ],
+      "completionEvidence": "实际执行的gate结果与append-only source-check receipt；不替代host acceptance receipt，不声称产品runtime或发布完成",
       "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
     },
     {

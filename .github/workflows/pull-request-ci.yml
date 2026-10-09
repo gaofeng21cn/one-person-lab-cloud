@@ -4,6 +4,9 @@ on:
   pull_request:
     branches:
       - main
+    # `edited` re-runs the governance check when the pull-request body changes;
+    # without it a stale green check would survive a rewritten claim.
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
@@ -23,6 +26,39 @@ jobs:
         with:
           fail-on-severity: moderate
 
+  governance:
+    name: governance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      # Record compliance: structure, base SHA, ownership, write set, receipt
+      # layering. Merge authorization is enforced inside the validate job.
+      - name: Check the pull request governance record
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          base_dir="$RUNNER_TEMP/governance-base-record"
+          git worktree add --detach --force "$base_dir" "$PR_BASE_SHA"
+          entry="$base_dir/tools/check-pr-governance.ts"
+          if [ ! -f "$entry" ]; then
+            echo "::warning title=Governance bootstrap::${PR_BASE_SHA} has no governance checker; this pull request is bootstrap-checked via head copy; merge authorization is not enforced remotely for this first landing and IS enforced from the next pull request"
+            entry="$GITHUB_WORKSPACE/tools/check-pr-governance.ts"
+          fi
+          node "$entry" --body-env PR_BODY --base-env PR_BASE_SHA --head-env PR_HEAD_SHA --mode record --root "$GITHUB_WORKSPACE"
+
   validate:
     name: validate
     runs-on: ubuntu-latest
@@ -39,6 +75,34 @@ jobs:
         with:
           node-version: "24"
           cache: npm
+
+      # Merge authorization is a step inside the same validate job: a separate
+      # job with `needs` would only show as skipped, not block the merge. The
+      # checker executes from the base revision and treats the head as data, so
+      # a pull request cannot weaken the check that judges it; the trust root is
+      # the repository variable, never the pull request.
+      #
+      # Bootstrap is a physical condition, never an actor exemption: when the
+      # base revision physically lacks tools/check-pr-governance.ts (this
+      # mechanism's own first landing), the checker itself downgrades to record
+      # enforcement for that pull request, because no base revision could have
+      # enforced merge authorization. A base revision that carries the checker
+      # always keeps full merge enforcement.
+      - name: Enforce merge authorization
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          OPL_DEVELOPMENT_AUTHORITY_PUBLIC_KEY: ${{ vars.OPL_DEVELOPMENT_AUTHORITY_PUBLIC_KEY }}
+        run: |
+          base_dir="$RUNNER_TEMP/governance-base-merge"
+          git worktree add --detach --force "$base_dir" "$PR_BASE_SHA"
+          entry="$base_dir/tools/check-pr-governance.ts"
+          if [ ! -f "$entry" ]; then
+            echo "::warning title=Governance bootstrap::${PR_BASE_SHA} has no governance checker; this pull request is bootstrap-checked via head copy; merge authorization is not enforced remotely for this first landing and IS enforced from the next pull request"
+            entry="$GITHUB_WORKSPACE/tools/check-pr-governance.ts"
+          fi
+          node "$entry" --body-env PR_BODY --base-env PR_BASE_SHA --head-env PR_HEAD_SHA --mode merge --bootstrap-base "$base_dir" --root "$GITHUB_WORKSPACE" --authority-env OPL_DEVELOPMENT_AUTHORITY_PUBLIC_KEY
 
       - name: Set up Python
         uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0

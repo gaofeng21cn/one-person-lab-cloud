@@ -84,6 +84,11 @@ for key,item in slices.items():
  for path in item.get('writePaths',[]):
   resolved=resolve_path(path)
   require(resolved.is_relative_to(cloud) or (item.get('window')=='instance' and resolved.is_relative_to(roots['instance'])),'slice write escapes owner boundary: '+key)
+ # Development-only test grants are exact files under tests/; never a
+ # directory, pattern or business-owned path.
+ for path in item.get('testWritePaths',[]):
+  resolved=resolve_path(path)
+  require(path.startswith('tests/') and not path.endswith('/') and resolved.is_relative_to(cloud) and resolved.is_file(),'invalid slice test write grant: '+key+' -> '+path)
 remaining_slices={key:set(item.get('startAfter',[])) for key,item in slices.items()}
 slice_waves=[]
 while remaining_slices:

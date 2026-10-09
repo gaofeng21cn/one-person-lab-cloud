@@ -858,3 +858,219 @@ test('consumer acceptance',()=>new Promise(done=>{
     }
   });
 }
+
+test('a bounded Console surface fix admits only console paths under its own slice, without business prerequisites', async t => {
+  const { root, store, git } = canonicalFixture(t);
+  put(root, 'apps/console-ui/src/app/workspace-models-controller-model.ts', 'export const verdictFor = (configuration: string) => configuration;\n');
+  put(root, 'tests/ui/workspace-experience-model.test.ts', "import test from 'node:test';import assert from 'node:assert/strict';import { verdictFor } from '../../apps/console-ui/src/app/workspace-models-controller-model.ts';test('owner configuration verdict',()=>assert.equal(verdictFor('applied'),'applied'));\n");
+  git('add', '.'); git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'console surface slice inputs');
+  const baseSha = git('rev-parse', 'HEAD').trim();
+  const approval = { schemaVersion: 1, runId: 'console-fix', baseSha, planPath,
+    selection: { collection: 'executionSlices', id: 'W16.console-ui-fixes' }, owner: 'console',
+    readPaths: ['apps/console-ui/src/app', 'apps/console-ui/src/pages', 'tests/ui'],
+    writePaths: ['apps/console-ui/src/app/workspace-models-controller-model.ts'],
+    gates: [{ id: 'acceptance', kind: 'node', inputs: ['apps/console-ui/src/app/workspace-models-controller-model.ts', 'tests/ui/workspace-experience-model.test.ts'], targets: ['tests/ui/workspace-experience-model.test.ts'], needs: [] }], requires: {} };
+  development.approveRun(root, store, approval);
+  const session = new development.DevelopmentSession(root, store, 'console-fix');
+  const current = session.context();
+  assert.equal(current.owner, 'console');
+  assert.equal(current.result, 'ready');
+  assert.deepEqual(current.blockers, []);
+  assert.throws(() => session.read('services/workspace/internal/launch/service.go'), /SCOPE_DENIED/);
+  const file = session.read('apps/console-ui/src/app/workspace-models-controller-model.ts');
+  session.write(file.path, file.sha256, file.content + '// bounded console presentation fix\n');
+  assert.equal((await session.verifyGate('acceptance')).stages[0].state, 'passed');
+  assert.throws(() => development.approveRun(root, store, { ...approval, runId: 'console-fix-outside', writePaths: ['services/workspace/internal/launch/service.go'] }), /write scope is outside approved DDD phase/);
+  assert.throws(() => development.approveRun(root, store, { ...approval, runId: 'console-fix-borrow', owner: 'workspace', selection: { collection: 'workPackages', id: 'W16' } }), /DDD owner does not own phase record/);
+});
+
+test('the development-governance slice resolves to Cloud while its paths stay host-owned for restricted workers', async t => {
+  const { root, store, git } = canonicalFixture(t);
+  put(root, 'tools/host-entry.ts', 'export const hostOwned = true;\n');
+  git('add', '.'); git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'governance slice inputs');
+  const baseSha = git('rev-parse', 'HEAD').trim();
+  const approval = { schemaVersion: 1, runId: 'governance-run', baseSha, planPath,
+    selection: { collection: 'executionSlices', id: 'W27.development-governance' }, owner: 'cloud',
+    readPaths: ['tools/'], writePaths: ['tools/host-entry.ts'],
+    gates: [{ id: 'acceptance', kind: 'developmentPlan', inputs: ['docs/spec/target/checks/development_plan.json'], needs: [] }], requires: {} };
+  development.approveRun(root, store, approval);
+  const session = new development.DevelopmentSession(root, store, 'governance-run');
+  assert.equal(session.context().owner, 'cloud');
+  const file = session.read('tools/host-entry.ts');
+  assert.throws(() => session.write(file.path, file.sha256, 'worker edit'), /SCOPE_DENIED: protected tools\/host-entry\.ts/);
+});
+
+test('a malformed dev_context over the real stdio entry revokes the previous admission', async t => {
+  const { root, store, approval } = fixture(t); development.approveRun(root, store, approval);
+  const child = spawn(process.execPath, [resolve('tools/dev-session.ts'), 'serve', store, approval.runId], { cwd: root, stdio: ['pipe', 'pipe', 'pipe'] });
+  t.after(() => child.kill()); let stdout = ''; let stderr = '';
+  child.stdout.on('data', b => { stdout += b; }); child.stderr.on('data', b => { stderr += b; });
+  const calls = [
+    { id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } },
+    { id: 2, method: 'tools/call', params: { name: 'dev_context', arguments: {} } },
+    { id: 3, method: 'tools/call', params: { name: 'dev_read', arguments: { path: 'owner/input.ts' } } },
+    { id: 4, method: 'tools/call', params: { name: 'dev_context', arguments: { extra: true } } },
+    { id: 5, method: 'tools/call', params: { name: 'dev_read', arguments: { path: 'owner/input.ts' } } },
+  ];
+  child.stdin.end(calls.map(c => JSON.stringify({ jsonrpc: '2.0', ...c })).join('\n') + '\n');
+  const code = await new Promise<number | null>((done, reject) => { child.once('error', reject); child.once('close', done); });
+  assert.equal(code, 0, stderr); const answers = stdout.trim().split('\n').map(s => JSON.parse(s));
+  assert.equal(answers[2].result.isError, undefined, JSON.stringify(answers[2]));
+  assert.match(answers[2].result.content[0].text, /answer/);
+  assert.match(answers[3].result.content[0].text, /unknown field/);
+  assert.match(answers[4].result.content[0].text, /CONTEXT_REQUIRED/);
+});
+
+test('the public scope entry shares baseline, coauthor, prerequisite and write-scope validation with context', t => {
+  const { root, store, approval, git } = fixture(t);
+  development.approveRun(root, store, approval);
+  assert.deepEqual(development.verifyWriteScope(root, store, approval.runId).changedPaths, []);
+
+  const coauthored = { ...approval, runId: 'coauthored-run', coauthorRuns: ['ghost-coauthor'] };
+  development.approveRun(root, store, coauthored);
+  put(root, 'outside.ts', 'outside both runs\n');
+  assert.throws(() => development.verifyWriteScope(root, store, coauthored.runId), /EVIDENCE_INVALID: coauthor or prerequisite run unresolved: ghost-coauthor/);
+  assert.throws(() => new development.DevelopmentSession(root, store, coauthored.runId).context(), /EVIDENCE_INVALID: coauthor or prerequisite run unresolved: ghost-coauthor/);
+  rmSync(join(root, 'outside.ts'));
+
+  const plan = JSON.parse(readFileSync(join(root, planPath), 'utf8'));
+  plan.workPackages[0].startAfter = ['W02'];
+  put(root, planPath, JSON.stringify(plan));
+  git('add', planPath); git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'declared predecessor');
+  const baseSha = git('rev-parse', 'HEAD').trim();
+  const required = { ...approval, runId: 'required-run', baseSha, requires: { W02: { runId: 'ghost-predecessor' } } };
+  development.approveRun(root, store, required);
+  put(root, 'outside.ts', 'outside both runs\n');
+  assert.throws(() => development.verifyWriteScope(root, store, required.runId), /EVIDENCE_INVALID: coauthor or prerequisite run unresolved: ghost-predecessor/);
+  rmSync(join(root, 'outside.ts'));
+
+  git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '--amend', '-m', 'rewritten approved history');
+  assert.throws(() => development.verifyWriteScope(root, store, required.runId), /BASELINE_MISMATCH/);
+});
+
+test('every file and acceptance operation refreshes the current admission before acting', async t => {
+  const { root, store, approval } = fixture(t);
+  development.approveRun(root, store, approval);
+  const operations: ((session: development.DevelopmentSession) => unknown)[] = [
+    session => session.read('owner/input.ts'),
+    session => session.search(['owner/'], 'answer'),
+    session => session.write('owner/new.ts', 'absent', 'out-of-scope-epoch write'),
+    session => session.status(),
+  ];
+  for (const operation of operations) {
+    const session = new development.DevelopmentSession(root, store, approval.runId);
+    session.context();
+    put(root, 'outside.ts', 'not admitted\n');
+    assert.throws(() => operation(session), /WRITE_SCOPE_DENIED/);
+    rmSync(join(root, 'outside.ts'));
+  }
+  const session = new development.DevelopmentSession(root, store, approval.runId);
+  session.context();
+  put(root, 'outside.ts', 'not admitted\n');
+  await assert.rejects(session.verifyGate('acceptance'), /WRITE_SCOPE_DENIED/);
+  rmSync(join(root, 'outside.ts'));
+});
+
+test('progress never reports passed, and never reuses a gate, without a current host receipt', async t => {
+  const { root, store, approval } = fixture(t);
+  development.approveRun(root, store, approval);
+  const session = new development.DevelopmentSession(root, store, approval.runId);
+  const before = session.context();
+  assert.notEqual(before.result, 'passed');
+  assert.equal(before.stages[0].state, 'pending');
+  await assert.rejects(development.dispatchTool(session, 'dev_complete', {}), /unknown tool/);
+  const verified = await session.verifyGate('acceptance') as any;
+  assert.equal(verified.result, 'passed');
+  assert.match(verified.verification.outputSha256, /^[a-f0-9]{64}$/u);
+  rmSync(join(store, 'runs', approval.runId, 'receipts', 'acceptance-1.json'));
+  const afterDeletion = new development.DevelopmentSession(root, store, approval.runId).context();
+  assert.equal(afterDeletion.result, 'ready');
+  assert.equal(afterDeletion.stages[0].state, 'pending');
+});
+
+test('the public scope entry re-derives the current phase exactly like context', t => {
+  const { root, store, approval, git } = fixture(t);
+  const plan = JSON.parse(readFileSync(join(root, planPath), 'utf8'));
+  plan.workPackages[0].owners = ['cloud'];
+  plan.workPackages[0].plannedWritePaths = ['owner', planPath];
+  put(root, planPath, JSON.stringify(plan));
+  git('add', planPath); git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'plan write granted');
+  const granted = { ...approval, baseSha: git('rev-parse', 'HEAD').trim(), owner: 'cloud', writePaths: [...approval.writePaths, planPath] };
+  development.approveRun(root, store, granted);
+  assert.deepEqual(development.verifyWriteScope(root, store, granted.runId).changedPaths, []);
+
+  const narrowed = JSON.parse(readFileSync(join(root, planPath), 'utf8'));
+  narrowed.workPackages[0].plannedWritePaths = ['owner/other-only'];
+  const session = new development.DevelopmentSession(root, store, granted.runId);
+  session.context();
+  put(root, planPath, JSON.stringify(narrowed));
+  assert.throws(() => session.read('owner/input.ts'), /write scope is outside approved DDD phase: owner\/input\.ts/);
+  assert.throws(() => session.read('owner/input.ts'), /CONTEXT_REQUIRED/);
+  assert.throws(() => development.verifyWriteScope(root, store, granted.runId), /write scope is outside approved DDD phase: owner\/input\.ts/);
+  assert.throws(() => new development.DevelopmentSession(root, store, granted.runId).context(), /write scope is outside approved DDD phase: owner\/input\.ts/);
+});
+
+test('host stage receipts bind the run, source, phase, inputs, runner and output, and a foreign run receipt is refused', async t => {
+  const { root, store, approval, git } = fixture(t);
+  development.approveRun(root, store, approval);
+  development.approveRun(root, store, { ...approval, runId: 'second-run' });
+  const session = new development.DevelopmentSession(root, store, approval.runId);
+  session.context();
+  const verified = await session.verifyGate('acceptance');
+  assert.equal(verified.result, 'passed');
+  const receipt = JSON.parse(readFileSync(join(store, 'runs', approval.runId, 'receipts', 'acceptance-1.json'), 'utf8'));
+  assert.deepEqual(Object.keys(receipt).sort(), ['payload', 'signature']);
+  const payload = receipt.payload;
+  assert.equal(payload.schemaVersion, 1);
+  assert.equal(payload.kind, 'opl.development.stage.v1');
+  assert.equal(payload.evidenceLayer, 'source');
+  assert.equal(payload.runId, approval.runId);
+  assert.equal(payload.gateId, 'acceptance');
+  assert.equal(payload.attempt, 1);
+  assert.equal(payload.result, 'passed');
+  assert.equal(payload.sourceSha, git('rev-parse', 'HEAD').trim());
+  assert.match(payload.approvalHash, /^[a-f0-9]{64}$/u);
+  assert.match(payload.phaseHash, /^[a-f0-9]{64}$/u);
+  assert.match(payload.runnerHash, /^[a-f0-9]{64}$/u);
+  assert.match(payload.inputHash, /^[a-f0-9]{64}$/u);
+  assert.match(payload.verification.outputSha256, /^[a-f0-9]{64}$/u);
+  assert.deepEqual(payload.dependencies, []);
+  assert.ok(Number.isFinite(Date.parse(payload.checkedAt)));
+  const unsigned = { ...payload }; delete unsigned.signature;
+  assert.notEqual(payload.approvalHash, sha(JSON.stringify(unsigned)));
+
+  mkdirSync(join(store, 'runs', 'second-run', 'receipts'), { recursive: true });
+  writeFileSync(join(store, 'runs', 'second-run', 'receipts', 'acceptance-1.json'), JSON.stringify(receipt));
+  assert.throws(() => new development.DevelopmentSession(root, store, 'second-run').context(), /EVIDENCE_INVALID: invalid stage receipt/);
+});
+
+test('a Console surface fix writes only its explicitly granted console test files', async t => {
+  const { root, store, git } = canonicalFixture(t);
+  put(root, 'apps/console-ui/src/app/workspace-models-controller-model.ts', 'export const verdictFor = (configuration: string) => configuration;\n');
+  put(root, 'tests/ui/workspace-experience-model.test.ts', "import test from 'node:test';import assert from 'node:assert/strict';import { verdictFor } from '../../apps/console-ui/src/app/workspace-models-controller-model.ts';test('owner configuration verdict',()=>assert.equal(verdictFor('applied'),'applied'));\n");
+  put(root, 'tests/ui/workspace-task-experience-browser.test.ts', "import test from 'node:test';test('browser surface',()=>{});\n");
+  git('add', '.'); git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'console slice with tests');
+  const baseSha = git('rev-parse', 'HEAD').trim();
+  const granted = { schemaVersion: 1, runId: 'console-tests', baseSha, planPath,
+    selection: { collection: 'executionSlices', id: 'W16.console-ui-fixes' }, owner: 'console',
+    readPaths: ['apps/console-ui/src/app', 'tests/ui'],
+    writePaths: ['apps/console-ui/src/app/workspace-models-controller-model.ts', 'tests/ui/workspace-experience-model.test.ts'],
+    gates: [{ id: 'acceptance', kind: 'node', inputs: ['tests/ui/workspace-experience-model.test.ts', 'apps/console-ui/src/app/workspace-models-controller-model.ts'], targets: ['tests/ui/workspace-experience-model.test.ts'], needs: [] }], requires: {} };
+  development.approveRun(root, store, granted);
+  const session = new development.DevelopmentSession(root, store, 'console-tests');
+  assert.equal(session.context().owner, 'console');
+  const implementation = session.read('apps/console-ui/src/app/workspace-models-controller-model.ts');
+  session.write(implementation.path, implementation.sha256, implementation.content + '// owner readback derived verdict\n');
+  const testFile = session.read('tests/ui/workspace-experience-model.test.ts');
+  session.write(testFile.path, testFile.sha256, testFile.content + '// same-owner regression\n');
+  assert.equal((await session.verifyGate('acceptance')).stages[0].state, 'passed');
+
+  for (const writePaths of [
+    ['tests/ui/workspace-budget-controller-model.test.ts'],
+    ['tests/ui/'],
+    ['tests/tools/dev-session.test.ts'],
+  ]) {
+    assert.throws(() => development.approveRun(root, store, { ...granted, runId: `console-denied-${writePaths.length}-${writePaths[0].length}`, writePaths }),
+      /write scope is outside approved DDD phase/, writePaths.join(','));
+  }
+});

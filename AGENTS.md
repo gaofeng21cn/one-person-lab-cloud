@@ -96,6 +96,20 @@ inputs. The host appends signed per-run receipts; it never overwrites receipts o
 automatically updates `docs/status.md`, `docs/roadmap.md`, or a global state file.
 Canonical evidence summaries remain explicit owner-maintained changes.
 
+Merge readiness is recorded through the development-governance entry rather
+than inferred. Record compliance and merge authorization are machine-distinct:
+`.github/PULL_REQUEST_TEMPLATE.md` and the PR CI `governance` job check the
+record, while the `validate` job's merge step requires a host-signed
+`development-stage` receipt verified against the trusted host public key. A
+pull request body, agent claim, source-check receipt, business/Instance receipt
+or self-signed file never substitutes for that host acceptance, and
+`source-complete` records the source layer without granting merge. The one
+bootstrap case is physical rather than an exemption: a pull request whose base
+revision lacks `tools/check-pr-governance.ts` is checked in record mode only
+(it cannot be merge-enforced by a base revision that has no checker), and merge
+authorization is enforced from the next pull request onward. See the
+[Pull Request Governance Record](DEV_GUIDE.md#pull-request-governance-record).
+
 Enforcement belongs at the trusted host entry, not in a particular model loop.
 The host must require current context before file operations, validate the
 baseline and change scope, and expose only the admitted operations to the
