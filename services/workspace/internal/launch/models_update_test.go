@@ -174,6 +174,24 @@ func modelUpdateRevision(t *testing.T, declareGateway bool) *api.WorkspaceApplic
 // three coordination stubs. It returns the service and its stubs.
 func modelUpdateWorkspace(t *testing.T, db *sql.DB, declareGateway bool) (*Service, *modelUpdateGateway, *modelUpdateFabric, *modelUpdateServe) {
 	t.Helper()
+	return modelUpdateDeliveredWorkspace(t, db, declareGateway, "agent", "capability-original")
+}
+
+// modelUpdateDefaultAppWorkspace seeds the default OPL App source the first
+// Tencent/TKE launch freezes: an approved Runtime Release with no Build lineage.
+func modelUpdateDefaultAppWorkspace(t *testing.T, db *sql.DB) (*Service, *modelUpdateGateway, *modelUpdateFabric, *modelUpdateServe) {
+	t.Helper()
+	return modelUpdateDeliveredWorkspace(t, db, true, "opl_app", "")
+}
+
+// modelUpdateDeliveredWorkspace seeds a delivered Workspace whose accepted launch
+// froze a resolved application source and a runtime command, then wires the update
+// path's owner reads and coordination stubs. The source is either the built Agent
+// that names its CapabilityVersion or the default App that names its Runtime
+// Release, and both resolve the same approved Runtime Release whose publisher
+// contract carries the declared model-configuration interface.
+func modelUpdateDeliveredWorkspace(t *testing.T, db *sql.DB, declareGateway bool, kind, capabilityVersionID string) (*Service, *modelUpdateGateway, *modelUpdateFabric, *modelUpdateServe) {
+	t.Helper()
 	service, op, _, _ := seedRuntimeOrder(t, db)
 	revision := modelUpdateRevision(t, declareGateway)
 	artifact := &api.ArtifactReference{Repository: "registry.test/app", Digest: "sha256:1111111111111111111111111111111111111111111111111111111111111111"}
@@ -187,7 +205,7 @@ func modelUpdateWorkspace(t *testing.T, db *sql.DB, declareGateway bool) (*Servi
 	if err != nil {
 		t.Fatal(err)
 	}
-	sourceRaw, err := json.Marshal(sourceRecord{Kind: "agent", CapabilityVersionID: "capability-original", Artifact: artifactRaw, DeploymentDescriptor: descriptorRaw, DescriptorDigest: "sha256:" + hex.EncodeToString(sum[:]), DescriptorObjectRef: "descriptor-original"})
+	sourceRaw, err := json.Marshal(sourceRecord{Kind: kind, RuntimeVersionID: modelUpdateRuntimeReleaseID(kind), CapabilityVersionID: capabilityVersionID, Artifact: artifactRaw, DeploymentDescriptor: descriptorRaw, DescriptorDigest: "sha256:" + hex.EncodeToString(sum[:]), DescriptorObjectRef: "descriptor-original"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +220,41 @@ func modelUpdateWorkspace(t *testing.T, db *sql.DB, declareGateway bool) (*Servi
 	gateway, fabric, serve := &modelUpdateGateway{}, &modelUpdateFabric{}, &modelUpdateServe{}
 	service.Auth = ownerservice.NewAuthorizer(ownerservice.OwnerWorkspace, &modelReadIdentity{})
 	service.Gateway, service.Fabric, service.Serve = gateway, fabric, serve
+	service.Capability = &modelUpdateCapability{version: &api.CapabilityVersion{Id: capabilityVersionID, RuntimeVersionId: proto.String("runtime-original"), Artifact: artifact}}
+	service.RuntimeReleases = &runtimeReleaseStub{releases: []*api.RuntimeVersion{modelUpdateRelease(true)}}
 	return service, gateway, fabric, serve
+}
+
+// modelUpdateRuntimeReleaseID is the release identity each launch shape freezes: the
+// default App names its Runtime Release directly, while a built Agent names only its
+// CapabilityVersion, whose admitted version names the same release.
+func modelUpdateRuntimeReleaseID(kind string) string {
+	if kind == "opl_app" {
+		return "runtime-original"
+	}
+	return ""
+}
+
+// modelUpdateCapability is the Capability readback a built Agent's update resolves:
+// the admitted version names the exact Runtime Release it was built against.
+type modelUpdateCapability struct {
+	api.CapabilityProductServiceClient
+	version *api.CapabilityVersion
+}
+
+func (c *modelUpdateCapability) GetCapabilityVersion(_ context.Context, _ *api.GetCapabilityVersionRpcRequest, _ ...grpc.CallOption) (*api.CapabilityVersion, error) {
+	return c.version, nil
+}
+
+// modelUpdateRelease answers one Runtime Control catalog read with the approved
+// Runtime Release the launch froze, declaring the publisher model-configuration
+// interface or honestly omitting it.
+func modelUpdateRelease(declareModelConfiguration bool) *api.RuntimeVersion {
+	contract := &api.RuntimePublisherContract{Image: &api.ArtifactReference{Repository: "registry.test/app", Digest: "sha256:1111111111111111111111111111111111111111111111111111111111111111"}}
+	if declareModelConfiguration {
+		contract.ModelConfiguration = &api.ModelConfigurationContract{Protocol: api.ModelConfigurationContractProtocolEnum_MODEL_CONFIGURATION_CONTRACT_PROTOCOL_ENUM_OPL_MODEL_CONFIG_V1, PortName: "http", ApplyPath: "/control/models", ReadbackPath: "/control/models", RequestFields: []api.ModelConfigurationContractRequestFieldsEnum{api.ModelConfigurationContractRequestFieldsEnum_MODEL_CONFIGURATION_CONTRACT_REQUEST_FIELDS_ENUM_VERSION}, ReadbackFields: []api.ModelConfigurationContractReadbackFieldsEnum{api.ModelConfigurationContractReadbackFieldsEnum_MODEL_CONFIGURATION_CONTRACT_READBACK_FIELDS_ENUM_APPLIEDVERSION}, AuthorizationSecretInputName: "gateway"}
+	}
+	return &api.RuntimeVersion{Id: "runtime-original", Status: api.RuntimeVersionStatusEnum_RUNTIME_VERSION_STATUS_ENUM_APPROVED, PublisherContract: contract}
 }
 
 // modelUpdateContext is the Console BFF's session-scoped update of one Workspace.
@@ -447,6 +499,44 @@ func TestUpdateWorkspaceModelsRefusesARuntimeWithoutTheGatewayCredential(t *test
 	}
 	if gateway.mints != 0 || fabric.binds != 0 || serve.reloads != 0 {
 		t.Fatalf("a runtime without the capability reached owners: gateway=%d fabric=%d serve=%d", gateway.mints, fabric.binds, serve.reloads)
+	}
+}
+
+// TestUpdateWorkspaceModelsRefusesAReleaseWithoutTheModelConfigurationInterface
+// proves the first-launch boundary: a frozen Runtime Release that honestly declares
+// no model-configuration interface is refused before any owner effect. No Gateway
+// key is minted, no runtime Secret is bound, Serve is never asked to reload, the
+// applied version stays and no update operation is recorded; the same launch whose
+// release does declare the interface still reaches the owners.
+func TestUpdateWorkspaceModelsRefusesAReleaseWithoutTheModelConfigurationInterface(t *testing.T) {
+	db := runtimeDatabase(t)
+	service, gateway, fabric, serve := modelUpdateDefaultAppWorkspace(t, db)
+	service.RuntimeReleases = &runtimeReleaseStub{releases: []*api.RuntimeVersion{modelUpdateRelease(false)}}
+	call, ctx := modelUpdateContext("tenant-original", "update-models-undeclared")
+	_, err := service.UpdateWorkspaceModels(ctx, modelUpdateRequest(call, "workspace-original", 0, []*api.ModelSelection{{Slot: "chat", ModelId: "model-new"}}))
+	if status.Code(err) != codes.FailedPrecondition || !strings.Contains(status.Convert(err).Message(), ReasonModelConfigurationUnavailable) {
+		t.Fatalf("release without a declared interface err=%v, want a failed precondition naming %s", err, ReasonModelConfigurationUnavailable)
+	}
+	if gateway.mints != 0 || fabric.binds != 0 || serve.reloads != 0 {
+		t.Fatalf("an undeclared model configuration reached owners: gateway=%d fabric=%d serve=%d", gateway.mints, fabric.binds, serve.reloads)
+	}
+	if applied := appliedWorkspaceModelVersion(t, db); applied != 0 {
+		t.Fatalf("applied model configuration=%d, want the unchanged 0", applied)
+	}
+	var operations int
+	if err = db.QueryRowContext(t.Context(), `SELECT count(*) FROM workspace.operations WHERE kind='update_models'`).Scan(&operations); err != nil {
+		t.Fatal(err)
+	}
+	if operations != 0 {
+		t.Fatalf("a refused update recorded %d update_models operations", operations)
+	}
+	service.RuntimeReleases = &runtimeReleaseStub{releases: []*api.RuntimeVersion{modelUpdateRelease(true)}}
+	call, ctx = modelUpdateContext("tenant-original", "update-models-declared")
+	if _, err = service.UpdateWorkspaceModels(ctx, modelUpdateRequest(call, "workspace-original", 0, []*api.ModelSelection{{Slot: "chat", ModelId: "model-new"}})); err != nil {
+		t.Fatalf("declared interface update: %v", err)
+	}
+	if gateway.mints != 1 || serve.reloads != 1 || appliedWorkspaceModelVersion(t, db) != 1 {
+		t.Fatalf("declared interface did not reach owners: gateway=%d fabric=%d serve=%d", gateway.mints, fabric.binds, serve.reloads)
 	}
 }
 

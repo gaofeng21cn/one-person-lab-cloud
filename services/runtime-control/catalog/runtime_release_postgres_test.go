@@ -181,6 +181,77 @@ func TestRuntimeReleaseRefusesUnadmittedPublisherAndContract(t *testing.T) {
 	}
 }
 
+// TestRuntimeReleaseAdmitsAStandaloneRuntimeWithoutBuildOrModelCapabilities proves
+// the first Tencent/TKE default App can be admitted from an immutable OCI digest with
+// only the capabilities it actually has: the declaration omits the Cloud-operated
+// model configuration and the custom Agent Build facts, and the owner stores and
+// reads back exactly those facts without synthesizing an interface, a recipe or a
+// Package format. A declaration that does present a model interface still has to
+// satisfy the approved schema in full.
+func TestRuntimeReleaseAdmitsAStandaloneRuntimeWithoutBuildOrModelCapabilities(t *testing.T) {
+	service := runtimeService(t)
+	ctx := ownerservice.WithPeerOwner(context.Background(), owneridentity.ConsoleBFF)
+	standalone := standaloneRuntimeContract(t)
+	admitted, err := service.RegisterRuntimeVersion(ctx, &api.RegisterRuntimeVersionRpcRequest{Context: adminCall("runtime-standalone"), Body: &api.RegisterRuntimeVersionRequest{Name: "one-person-lab-app", VersionLabel: "26.10.8", PublisherNamespaceId: "pub_official", PublisherContract: standalone, AdmissionReceiptId: "receipt"}})
+	if err != nil {
+		t.Fatalf("standalone Runtime declaration: %v", err)
+	}
+	if admitted.GetStatus() != api.RuntimeVersionStatusEnum_RUNTIME_VERSION_STATUS_ENUM_APPROVED || admitted.GetArtifactDigest() != standalone.GetImage().GetDigest() {
+		t.Fatalf("admitted standalone release=%v", admitted)
+	}
+	readback, err := publicjson.Marshal(admitted.GetPublisherContract())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output map[string]json.RawMessage
+	if err = json.Unmarshal(readback, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"modelConfiguration", "buildRecipe", "packageFormatVersions", "packageFormatContracts"} {
+		if _, exists := output[name]; exists {
+			t.Fatalf("undeclared capability %s was synthesized", name)
+		}
+	}
+	// A declaration that does present the model interface still has to satisfy the
+	// approved schema in full: an incomplete interface is refused, not admitted.
+	partial := proto.Clone(standalone).(*api.RuntimePublisherContract)
+	partial.ModelConfiguration = &api.ModelConfigurationContract{PortName: "control"}
+	if _, err := service.RegisterRuntimeVersion(ctx, &api.RegisterRuntimeVersionRpcRequest{Context: adminCall("runtime-partial"), Body: &api.RegisterRuntimeVersionRequest{Name: "one-person-lab-app", VersionLabel: "26.10.8", PublisherNamespaceId: "pub_official", PublisherContract: partial, AdmissionReceiptId: "receipt"}}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("incomplete declared model interface err=%v, want an invalid argument", err)
+	}
+}
+
+// standaloneRuntimeContract is the declaration a standalone default App publisher
+// makes: the contract example reduced to the capabilities the released image and the
+// installation actually have.
+func standaloneRuntimeContract(t *testing.T) *api.RuntimePublisherContract {
+	t.Helper()
+	raw, err := os.ReadFile(runtimePublisherSchemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct{ Examples []json.RawMessage }
+	if err = json.Unmarshal(raw, &document); err != nil {
+		t.Fatal(err)
+	}
+	var input map[string]json.RawMessage
+	if err = json.Unmarshal(document.Examples[0], &input); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"modelConfiguration", "buildRecipe", "packageFormatVersions", "packageFormatContracts"} {
+		delete(input, name)
+	}
+	encoded, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract := &api.RuntimePublisherContract{}
+	if err = publicjson.Unmarshal(encoded, contract); err != nil {
+		t.Fatalf("standalone Runtime declaration is not a valid contract: %v", err)
+	}
+	return contract
+}
+
 func TestRuntimeReleaseRejectsForeignNamespaceContract(t *testing.T) {
 	service := runtimeService(t)
 	ctx := ownerservice.WithPeerOwner(context.Background(), owneridentity.ConsoleBFF)

@@ -71,6 +71,13 @@ func (s *Service) UpdateWorkspaceModels(ctx context.Context, r *api.UpdateWorksp
 	if !declared {
 		return nil, status.Errorf(codes.FailedPrecondition, "%s: the runtime declares no model-configuration capability", ReasonModelConfigurationUnavailable)
 	}
+	// The frozen Runtime Release must also declare the publisher interface a reload
+	// executes. Both facts are required before any owner effect: a release that
+	// declares no interface is refused here rather than after a Gateway key was
+	// minted and a runtime Secret was bound.
+	if err = s.requireDeclaredModelConfiguration(ctx, launch); err != nil {
+		return nil, err
+	}
 	op, targetVersion, replay, err := s.acceptModelUpdate(ctx, c, workspaceID, body, tenant)
 	if err != nil {
 		return nil, err
@@ -85,6 +92,12 @@ func (s *Service) UpdateWorkspaceModels(ctx context.Context, r *api.UpdateWorksp
 // declares no installation Gateway credential, so no model configuration can be
 // applied to it.
 const ReasonModelConfigurationUnavailable = "model_configuration_unavailable"
+
+// ReasonModelConfigurationSourceUnresolved names the launch fact a model update
+// needs and the frozen application source cannot prove: the exact approved Runtime
+// Release the publisher interface belongs to. A launch that names neither a release
+// nor an admitted Agent naming one is refused instead of guessed at.
+const ReasonModelConfigurationSourceUnresolved = "model_configuration_source_unresolved"
 
 // validateModelSelections restates and checks one accepted selection set: every
 // slot names exactly one model, and no slot is named twice, so the key Gateway
@@ -161,10 +174,57 @@ func latestModelConfigurationTx(ctx context.Context, tx *sql.Tx, workspaceID str
 	return row, true, nil
 }
 
+// requireDeclaredModelConfiguration proves the frozen Runtime Release of this launch
+// declares the publisher model-configuration interface before the update performs any
+// owner effect. The interface is a fact of the approved Runtime Release the launch
+// froze: the default App names it directly, and a built Agent names the release its
+// admitted CapabilityVersion was built against. Serve resolves the same declaration
+// again when it reloads, so an undeclared interface is refused by both owners and
+// never applied.
+func (s *Service) requireDeclaredModelConfiguration(ctx context.Context, launch modelLaunch) error {
+	resolved, err := launch.source.resolve()
+	if err != nil {
+		return err
+	}
+	call := continuation(launch.operation, launch.grantID, "model_capability")
+	releaseID := resolved.RuntimeVersionID
+	if releaseID == "" {
+		if resolved.Selection.GetKind() != api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_AGENT || resolved.CapabilityVersionID == "" {
+			return status.Errorf(codes.FailedPrecondition, "%s: the launch names no approved Runtime Release", ReasonModelConfigurationSourceUnresolved)
+		}
+		if s.Capability == nil {
+			return status.Error(codes.Unavailable, "Capability is not configured")
+		}
+		version, err := s.Capability.GetCapabilityVersion(ctx, &api.GetCapabilityVersionRpcRequest{Context: call, CapabilityVersionId: resolved.CapabilityVersionID})
+		if err != nil {
+			return err
+		}
+		if version.GetId() != resolved.CapabilityVersionID || version.GetArtifact().GetDigest() != resolved.Artifact.GetDigest() {
+			return status.Error(codes.FailedPrecondition, "Capability did not confirm the exact deployed version")
+		}
+		releaseID = strings.TrimSpace(version.GetRuntimeVersionId())
+		if releaseID == "" {
+			return status.Errorf(codes.FailedPrecondition, "%s: the admitted Agent names no approved Runtime Release", ReasonModelConfigurationSourceUnresolved)
+		}
+	}
+	release, err := s.approvedRuntimeRelease(ctx, call, releaseID)
+	if err != nil {
+		return err
+	}
+	if release.GetPublisherContract().GetModelConfiguration() == nil {
+		return status.Errorf(codes.FailedPrecondition, "%s: the frozen Runtime Release declares no model-configuration interface", ReasonModelConfigurationUnavailable)
+	}
+	return nil
+}
+
 // modelLaunch is the frozen launch fact the update path continues: the bounded
 // grant the accepted order obtained, the runtime instance that order delivered and
 // the immutable application source it was admitted against.
 type modelLaunch struct {
+	// operation is the accepted create_workspace operation this update continues. Its
+	// identity and the bounded grant below are the continuation every owner read and
+	// effect the update issues is admitted under.
+	operation         ownerstore.Operation
 	grantID           string
 	runtimeInstanceID string
 	source            *sourceRecord
@@ -203,12 +263,17 @@ func (l modelLaunch) revision() (contracts.WorkspaceApplicationRevision, error) 
 // delivered. A Workspace with no delivered runtime has nothing to apply a model
 // configuration to, which is refused rather than invented.
 func (s *Service) workspaceLaunch(ctx context.Context, workspaceID string) (modelLaunch, error) {
+	var operationID string
 	var raw []byte
-	err := s.Store.DB().QueryRowContext(ctx, `SELECT COALESCE(result,'{}'::jsonb) FROM workspace.operations
-		WHERE resource_id=$1 AND kind='create_workspace' ORDER BY created_at DESC, id DESC LIMIT 1`, workspaceID).Scan(&raw)
+	err := s.Store.DB().QueryRowContext(ctx, `SELECT id,COALESCE(result,'{}'::jsonb) FROM workspace.operations
+		WHERE resource_id=$1 AND kind='create_workspace' ORDER BY created_at DESC, id DESC LIMIT 1`, workspaceID).Scan(&operationID, &raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return modelLaunch{}, status.Error(codes.FailedPrecondition, "the Workspace has no accepted launch")
 	}
+	if err != nil {
+		return modelLaunch{}, dbError(err)
+	}
+	operation, err := s.Store.ReadOperation(ctx, operationID)
 	if err != nil {
 		return modelLaunch{}, dbError(err)
 	}
@@ -235,7 +300,7 @@ func (s *Service) workspaceLaunch(ctx context.Context, workspaceID string) (mode
 		}
 		keyBindingID = strings.TrimSpace(binding.GetKeyBindingId())
 	}
-	return modelLaunch{grantID: result.GrantID, runtimeInstanceID: command.GetRuntimeInstanceId(), source: source, keyBindingID: keyBindingID}, nil
+	return modelLaunch{operation: operation, grantID: result.GrantID, runtimeInstanceID: command.GetRuntimeInstanceId(), source: source, keyBindingID: keyBindingID}, nil
 }
 
 // acceptModelUpdate durably records the new configuration intent and its Operation

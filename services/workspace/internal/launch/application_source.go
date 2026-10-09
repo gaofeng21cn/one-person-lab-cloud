@@ -173,11 +173,16 @@ func (s *sourceRecord) resolve() (*applicationSource, error) {
 	return &applicationSource{Selection: selection, Artifact: artifact, DeploymentDescriptor: descriptor, DescriptorDigest: s.DescriptorDigest, DescriptorObjectRef: s.DescriptorObjectRef, RuntimeVersionID: s.RuntimeVersionID, CapabilityVersionID: s.CapabilityVersionID, DataCompatibility: compatibility}, nil
 }
 
-// runtimeRelease reads the exact approved release from Runtime Control's paged
-// catalog. It refuses an unapproved release instead of substituting another.
-func (s *Service) runtimeRelease(ctx context.Context, call *api.CallContext, runtimeVersionID string) (*api.RuntimeVersion, error) {
+// approvedRuntimeRelease reads one approved Runtime Release, with its publisher
+// contract, from Runtime Control's paged catalog. It refuses an unapproved,
+// unidentifiable or contract-less release instead of substituting another, and it
+// adds no requirement of its own beyond the release's own approval.
+func (s *Service) approvedRuntimeRelease(ctx context.Context, call *api.CallContext, runtimeVersionID string) (*api.RuntimeVersion, error) {
+	if s.RuntimeReleases == nil {
+		return nil, status.Error(codes.Unavailable, "Runtime Control is not configured")
+	}
 	if runtimeVersionID == "" {
-		return nil, status.Error(codes.InvalidArgument, "a default OPL App order requires a runtime version")
+		return nil, status.Error(codes.InvalidArgument, "an approved Runtime Release is required")
 	}
 	cursor := ""
 	for {
@@ -192,8 +197,8 @@ func (s *Service) runtimeRelease(ctx context.Context, call *api.CallContext, run
 			if release.GetStatus() != api.RuntimeVersionStatusEnum_RUNTIME_VERSION_STATUS_ENUM_APPROVED {
 				return nil, status.Error(codes.FailedPrecondition, "selected Runtime Release is not approved")
 			}
-			if release.GetPublisherContract() == nil || release.GetPublisherContract().GetImage() == nil || release.GetPublisherContract().GetApplicationRevisionTemplate() == nil {
-				return nil, status.Error(codes.FailedPrecondition, "Runtime Release has no immutable application contract")
+			if release.GetPublisherContract() == nil {
+				return nil, status.Error(codes.FailedPrecondition, "selected Runtime Release has no publisher contract")
 			}
 			return release, nil
 		}
@@ -202,6 +207,23 @@ func (s *Service) runtimeRelease(ctx context.Context, call *api.CallContext, run
 		}
 		cursor = page.GetNextCursor()
 	}
+}
+
+// runtimeRelease reads the exact approved release a default OPL App order deploys.
+// It additionally requires the immutable application contract that order's
+// deployment descriptor is built from.
+func (s *Service) runtimeRelease(ctx context.Context, call *api.CallContext, runtimeVersionID string) (*api.RuntimeVersion, error) {
+	if runtimeVersionID == "" {
+		return nil, status.Error(codes.InvalidArgument, "a default OPL App order requires a runtime version")
+	}
+	release, err := s.approvedRuntimeRelease(ctx, call, runtimeVersionID)
+	if err != nil {
+		return nil, err
+	}
+	if release.GetPublisherContract().GetImage() == nil || release.GetPublisherContract().GetApplicationRevisionTemplate() == nil {
+		return nil, status.Error(codes.FailedPrecondition, "Runtime Release has no immutable application contract")
+	}
+	return release, nil
 }
 
 // identity returns the durable identity of one resolved source for the commit

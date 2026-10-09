@@ -202,7 +202,14 @@ func (s *Service) RegisterRuntimeVersion(ctx context.Context, r *api.RegisterRun
 		out.PublisherContractDigest = digest(raw)
 		out.PublisherContractObjectRef = "runtime-contract:" + out.Id + "@" + out.PublisherContractDigest
 		out.CreatedAt = timestamppb.Now()
-		_, e := tx.ExecContext(ctx, `INSERT INTO runtime_control.runtime_releases(id,name,version_label,artifact_repository,artifact_digest,approved_by,runtime_abi_version,package_format_versions,admission_receipt_id,publisher_namespace_id,publisher_contract_digest,publisher_contract,publisher_contract_object_ref,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, out.Id, out.Name, out.VersionLabel, b.PublisherContract.Image.Repository, out.ArtifactDigest, r.Context.ActorId, out.RuntimeAbiVersion, pq.Array(out.PackageFormatVersions), out.AdmissionReceiptId, out.PublisherNamespaceId, out.PublisherContractDigest, raw, out.PublisherContractObjectRef, out.CreatedAt.AsTime())
+		// A release that declares no Package format stores the empty list: the column is
+		// never NULL, and its value stays the contract's own declaration instead of a
+		// synthesized format the release never approved.
+		formats := out.PackageFormatVersions
+		if formats == nil {
+			formats = []string{}
+		}
+		_, e := tx.ExecContext(ctx, `INSERT INTO runtime_control.runtime_releases(id,name,version_label,artifact_repository,artifact_digest,approved_by,runtime_abi_version,package_format_versions,admission_receipt_id,publisher_namespace_id,publisher_contract_digest,publisher_contract,publisher_contract_object_ref,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, out.Id, out.Name, out.VersionLabel, b.PublisherContract.Image.Repository, out.ArtifactDigest, r.Context.ActorId, out.RuntimeAbiVersion, pq.Array(formats), out.AdmissionReceiptId, out.PublisherNamespaceId, out.PublisherContractDigest, raw, out.PublisherContractObjectRef, out.CreatedAt.AsTime())
 		return dbError(e)
 	})
 	return out, e
