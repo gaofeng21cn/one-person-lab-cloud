@@ -131,18 +131,26 @@ func (s *Service) reloadRuntime(ctx context.Context, command *api.RuntimeReloadC
 		return nil, status.Errorf(codes.FailedPrecondition, "runtime applied model configuration is %d, not the expected version", current)
 	}
 	reload := proto.Clone(deploy.command).(*api.RuntimeDeployCommand)
+	// The frozen start command carries no call context by design. The model reload
+	// is a new admitted Workspace command, so its own call context is the one Serve
+	// derives every owner call from: the Fabric resource readback, the Secret
+	// replacement and the execution step all name this reload's original identity.
+	reload.Context = command.GetContext()
 	reload.ModelConfigurationVersion = command.GetTargetVersion()
 	reload.ModelSelections = command.GetSelections()
-	// Serve applies the credential generation its owners confirmed when this runtime
-	// declares the Gateway credential: the reload carries the opaque binding Gateway
-	// issued for the new model set and Fabric read back, and Serve never mints a
-	// replacement key of its own. A runtime that declares no such credential receives
-	// no credential and no caller-supplied binding is trusted for it.
-	binding, err := confirmedReloadBinding(reload, command.GetManagedKeyBinding())
+	// Serve performs the managed-key handover itself when this runtime declares the
+	// Gateway credential: the reload carries only the Workspace handover input, and
+	// Serve alone asks Fabric to confirm the replacement against the exact
+	// predecessor it recorded before applying the new configuration. A retry of an
+	// already-recorded command reuses the binding Fabric confirmed for it, so no
+	// replay can name a different predecessor or retire a second binding.
+	recorded, err := s.recordedSecretHandover(ctx, runtimeID, deploy.operationID, strconv.FormatInt(command.GetTargetVersion(), 10))
 	if err != nil {
 		return nil, err
 	}
-	reload.ManagedKeyBinding = binding
+	if err = s.resolveReloadManagedSecret(ctx, reload, deploy.command, command.GetManagedKeyBinding(), recorded); err != nil {
+		return nil, err
+	}
 	target, err := s.confirmedRuntimeTarget(ctx, reload)
 	if err != nil {
 		return nil, err
@@ -164,10 +172,18 @@ func (s *Service) reloadModelConfiguration(ctx context.Context, deploy *persiste
 	// The durable intent names the configuration version and the one credential
 	// generation bound to it, so a retry of the same version resumes its own action
 	// while a retry that changes either the selections or the binding is refused.
+	// The confirmed Fabric binding identity is recorded with it because Serve alone
+	// now performs the handover: the recorded identity is both the evidence that the
+	// persisted reload ran against a confirmed binding and the predecessor a later
+	// replacement must name. Fabric replays the identical readback for a retried
+	// handover, so the recorded value is stable across a lost response.
 	snapshot, err := json.Marshal(map[string]string{
 		"desired": "running", "targetVersion": targetVersion,
-		"selections": reloadSelectionDigest(reload.GetModelSelections()),
-		"keyBinding": reload.GetManagedKeyBinding().GetKeyBindingId(),
+		"selections":      reloadSelectionDigest(reload.GetModelSelections()),
+		"keyBinding":      reload.GetManagedKeyBinding().GetKeyBindingId(),
+		"fingerprint":     reload.GetManagedKeyBinding().GetFingerprint(),
+		"secretBindingId": reload.GetManagedKeyBinding().GetSecretBindingId(),
+		"secretVersion":   reload.GetManagedKeyBinding().GetSecretVersion(),
 	})
 	if err != nil {
 		return nil, status.Error(codes.Internal, "cannot record the runtime reload")

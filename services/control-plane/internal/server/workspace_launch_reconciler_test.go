@@ -4292,7 +4292,7 @@ func TestWorkspaceLaunchReceiptInputUsesCanonicalUnionIdentity(t *testing.T) {
 			},
 		},
 	}
-	if !workspaceLaunchReceiptInputMatches(charged, wantCharged) {
+	if !clients.ReceiptInputEqual(charged, wantCharged) {
 		t.Fatalf("charged launch receipt = %#v, want %#v", charged, wantCharged)
 	}
 
@@ -4305,7 +4305,7 @@ func TestWorkspaceLaunchReceiptInputUsesCanonicalUnionIdentity(t *testing.T) {
 		AccountID: zeroCostOperation.stringFact("accountId"), WorkspaceID: zeroCostOperation.stringFact("workspaceId"), RequestID: zeroCostOperation.ID,
 		Execution: canonicalExecution(zeroCostOperation), Owner: canonicalOwner(zeroCostOperation),
 	}
-	if !workspaceLaunchReceiptInputMatches(zeroCost, wantZeroCost) {
+	if !clients.ReceiptInputEqual(zeroCost, wantZeroCost) {
 		t.Fatalf("zero-cost launch receipt = %#v, want %#v", zeroCost, wantZeroCost)
 	}
 }

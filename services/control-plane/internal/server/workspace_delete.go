@@ -523,7 +523,7 @@ func (app *controlPlaneServer) currentWorkspaceDeleteGatewayIdentity(ctx context
 
 func workspaceDeleteLaunchReceiptMatches(actual clients.ReceiptInput, expected []clients.ReceiptInput) bool {
 	for _, candidate := range expected {
-		if workspaceLaunchReceiptInputMatches(actual, candidate) {
+		if clients.ReceiptInputEqual(actual, candidate) {
 			return true
 		}
 	}
@@ -952,9 +952,15 @@ func (app *controlPlaneServer) runWorkspaceDelete(ctx context.Context, service *
 				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_application_cleanup_unconfirmed")
 			}
 			if operation.ProvisioningMode == string(contracts.WorkspaceProvisioningResourceOnly) {
-				// The owned independent application groups were cleaned above; this
-				// purchase created no legacy Runtime or Secret. The absence is still a
-				// provider readback: Fabric reads the labelled Runtime objects back.
+				// This purchase created no legacy Runtime, but its installed
+				// application still owns the Workspace Gateway Secret, and Fabric
+				// reports that Secret file as a residual of this Workspace until it
+				// is removed. Retire the owned application Secrets first, because
+				// the readback below is what the runtime stage evidence attests and
+				// a confirmed stage is immutable.
+				if err := app.convergeWorkspaceDeleteApplicationSecrets(ctx, service, operation); err != nil {
+					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_application_secret_cleanup_unconfirmed")
+				}
 				residual, readErr := service.ObserveWorkspaceDeleteRuntimeResiduals(ctx, operation.WorkspaceID)
 				if readErr != nil || !workspaceDeleteRuntimeResidualsAbsent(residual, operation.WorkspaceID) {
 					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_absence_unconfirmed")
@@ -1063,15 +1069,7 @@ func (app *controlPlaneServer) runWorkspaceDelete(ctx context.Context, service *
 				}
 				operation = next
 			}
-			persistedResult := stringValue(workspaceDeleteOperationRow(operation)["result"])
-			if err := app.convergeWorkspaceApplicationSecretCleanup(ctx, service, operation, func() error {
-				desired := workspaceDeleteOperationRow(operation)
-				if err := app.tables.ApplyWorkspaceDelete(ctx, workspaceDeleteStoreMutation{ExpectedResult: persistedResult, DesiredOperation: desired}); err != nil {
-					return err
-				}
-				persistedResult = stringValue(desired["result"])
-				return nil
-			}); err != nil {
+			if err := app.convergeWorkspaceDeleteApplicationSecrets(ctx, service, operation); err != nil {
 				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_application_secret_cleanup_unconfirmed")
 			}
 			attachment, err := service.DetachWorkspaceStorage(ctx, operation.AccountID, operation.WorkspaceID, operation.AttachmentID, workspaceDeleteStageKey(operation, "attachment"))
@@ -1418,6 +1416,26 @@ func (app *controlPlaneServer) persistWorkspaceDelete(ctx context.Context, curre
 	})
 }
 
+// convergeWorkspaceDeleteApplicationSecrets retires every owned application
+// Gateway Secret this Delete still reports as pending and persists each
+// retirement against the currently stored operation. A retirement already
+// recorded as absent is skipped, so the Secret is never removed twice and a
+// partially converged inventory resumes exactly where it stopped.
+func (app *controlPlaneServer) convergeWorkspaceDeleteApplicationSecrets(ctx context.Context, service *controlplane.Service, operation workspaceDeleteOperation) error {
+	if operation.ApplicationSecrets == nil {
+		return nil
+	}
+	persistedResult := stringValue(workspaceDeleteOperationRow(operation)["result"])
+	return app.convergeWorkspaceApplicationSecretCleanup(ctx, service, operation, func() error {
+		desired := workspaceDeleteOperationRow(operation)
+		if err := app.tables.ApplyWorkspaceDelete(ctx, workspaceDeleteStoreMutation{ExpectedResult: persistedResult, DesiredOperation: desired}); err != nil {
+			return err
+		}
+		persistedResult = stringValue(desired["result"])
+		return nil
+	})
+}
+
 func (app *controlPlaneServer) markWorkspaceDeleteUnconfirmed(ctx context.Context, operation workspaceDeleteOperation, code string) (workspaceDeleteOperation, error) {
 	next := operation
 	next.Status, next.LastErrorCode = "manual_review", code
@@ -1545,7 +1563,7 @@ func (app *controlPlaneServer) recordWorkspaceDeletionReceipt(ctx context.Contex
 	}
 	input := workspaceDeletionReceiptInput(operation)
 	receipt, err := service.RecordMonthlyReceipt(ctx, input, operation.OperationID+":deletion-receipt")
-	if err != nil || receipt.ReceiptID == "" || !workspaceLaunchReceiptInputMatches(receipt.ReceiptInput, input) {
+	if err != nil || receipt.ReceiptID == "" || !clients.ReceiptInputEqual(receipt.ReceiptInput, input) {
 		return operation, errWorkspaceDeleteUnconfirmed
 	}
 	// The receipt's own stage is recorded against the written receipt, so the

@@ -89,10 +89,16 @@ func (s *Service) ResolveBuildInput(ctx context.Context, r *api.BuildInputReques
 			return nil, status.Error(codes.FailedPrecondition, "input publisher is no longer approved")
 		}
 	}
+	if e := validateBuildCombination(contract, &webui); e != nil {
+		return nil, e
+	}
 	runtimeRef := &api.PublisherContractReference{PublisherNamespaceId: runtime.GetPublisherNamespaceId(), VersionId: runtime.GetId(), Kind: api.PublisherContractReferenceKindEnum_PUBLISHER_CONTRACT_REFERENCE_KIND_ENUM_RUNTIME, DescriptorDigest: runtime.GetPublisherContractDigest(), DescriptorObjectRef: "runtime-contract:" + runtime.GetId() + "@" + runtime.GetPublisherContractDigest()}
 	in := &api.BuildInputSnapshot{PackageId: packageID, PackageVersionId: r.GetPackageVersionId(), PackageObject: &api.SourceObjectReference{StorageObjectId: objectRef, VersionId: objectRef, Sha256: sha, SizeBytes: size}, RuntimeVersionId: runtime.GetId(), RuntimeArtifact: contract.GetImage(), WebuiVersionId: r.GetWebuiVersionId(), WebuiArtifact: webui.GetImage(), RuntimeContract: contract, WebuiContract: &webui, RuntimeContractReference: runtimeRef, WebuiContractReference: &webuiRef}
-	b, _ := protojson.Marshal(in)
-	in.SnapshotDigest = digest(b)
+	snapshotDigest, e := buildInputDigest(in)
+	if e != nil {
+		return nil, e
+	}
+	in.SnapshotDigest = snapshotDigest
 	return in, nil
 }
 
@@ -107,8 +113,13 @@ func (s *Service) AcquireReference(ctx context.Context, r *api.ReferenceClaimReq
 		return nil, status.Error(codes.InvalidArgument, "Build or Serve claimant identity is required")
 	}
 	if r.GetClaimantOwner() == api.OwnerEnum_OWNER_ENUM_SERVE {
-		if kind != "capability_version" {
-			return nil, status.Error(codes.InvalidArgument, "Serve may only claim a CapabilityVersion")
+		// Serve delivers exactly one application source. A built Agent claims its
+		// CapabilityVersion; the default OPL App claims the approved Runtime Release
+		// the deployment descriptor was frozen from. Both are versioned deployable
+		// artifacts this owner admits, so the claim purpose is the same; any other
+		// target is still refused.
+		if kind != "capability_version" && kind != "runtime_version" {
+			return nil, status.Error(codes.InvalidArgument, "Serve may only claim a deployable version")
 		}
 		purpose = "deploy"
 	}
@@ -326,6 +337,13 @@ func (s *Service) Deliver(ctx context.Context, r *api.DeliverEventRequest) (*api
 	if readback.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED || readback.GetBuildJobId() != payload.BuildJobId || readback.GetInput().GetPackageVersionId() != payload.PackageVersionId || readback.GetInput().GetRuntimeVersionId() != payload.RuntimeVersionId || readback.GetInput().GetWebuiVersionId() != payload.WebuiVersionId || readback.GetArtifact().GetDigest() != payload.ArtifactDigest || readback.GetArtifactReceiptId() != payload.ArtifactReceiptId || readback.GetDeploymentDescriptorDigest() != payload.DeploymentDescriptorDigest {
 		return nil, status.Error(codes.FailedPrecondition, "Build artifact readback mismatch")
 	}
+	// The three frozen inputs are the only provenance this version may claim. The
+	// Package identity must survive intake, and the Runtime Release and WebUI must
+	// still be individually approved at registration time: an input that was
+	// revoked while the job ran cannot become a ready CapabilityVersion.
+	if e := s.validateFrozenInput(ctx, event, readback); e != nil {
+		return nil, e
+	}
 	descriptor, e := publicjson.Marshal(readback.GetDeploymentDescriptor())
 	if e != nil || digest(descriptor) != payload.DeploymentDescriptorDigest {
 		return nil, status.Error(codes.FailedPrecondition, "Build descriptor bytes differ from digest")
@@ -393,7 +411,9 @@ func (s *Service) authorizeReference(ctx context.Context, c *api.CallContext, ac
 		return status.Error(codes.PermissionDenied, "Build or Serve reference peer required")
 	}
 	if peer == owneridentity.Serve.Service() && kind != "capability_version" {
-		return status.Error(codes.PermissionDenied, "Serve may only reference CapabilityVersion")
+		if kind != "runtime_version" {
+			return status.Error(codes.PermissionDenied, "Serve may only reference a deployable version")
+		}
 	}
 	if kind == "package_version" || kind == "capability_version" {
 		return s.auth(ctx, c, action, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, target)

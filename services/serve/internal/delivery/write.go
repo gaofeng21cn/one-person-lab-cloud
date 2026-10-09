@@ -377,7 +377,7 @@ func (s *Service) Deploy(ctx context.Context, r *api.RuntimeDeployCommand) (*api
 	if s.Runtime == nil || s.Resources == nil || s.References == nil {
 		return nil, status.Error(codes.Unavailable, "runtime adapter, Fabric readback and Capability must be configured")
 	}
-	if err := s.resolveManagedKeyBinding(ctx, r); err != nil {
+	if err := s.confirmLaunchManagedSecret(ctx, r); err != nil {
 		return nil, err
 	}
 	if err := s.acceptDeploy(ctx, r); err != nil {
@@ -387,6 +387,25 @@ func (s *Service) Deploy(ctx context.Context, r *api.RuntimeDeployCommand) (*api
 		return nil, err
 	}
 	return s.reconcileRuntime(ctx, r, true)
+}
+
+// validateDeploy proves one deploy command is admissible for this Serve owner
+// before any externally visible Secret handover happens, without writing
+// anything. The write path revalidates under its own lock, so this preflight can
+// never stand in for the persisted admission.
+func (s *Service) validateDeploy(ctx context.Context, r *api.RuntimeDeployCommand) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return dbError(err)
+	}
+	defer tx.Rollback()
+	if err = lockWorkspace(ctx, tx, r.GetWorkspaceId()); err != nil {
+		return dbError(err)
+	}
+	if err = validateReserved(ctx, tx, r); err != nil {
+		return err
+	}
+	return s.authorize(ctx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME, r.GetWorkspaceId())
 }
 
 func (s *Service) acceptDeploy(ctx context.Context, r *api.RuntimeDeployCommand) error {

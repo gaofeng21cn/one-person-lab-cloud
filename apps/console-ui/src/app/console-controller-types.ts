@@ -37,6 +37,9 @@ import type {
   WorkspaceGatewayBudgetDTO,
   WorkspaceGatewayBudgetUpdateRequest,
   WorkspaceLaunchResponse,
+  WorkspaceModelConfigurationDTO,
+  WorkspaceModelSelectionDTO,
+  WorkspaceOwnerOperationDTO,
   WorkspacePricePreview,
   WorkspaceListData,
   WorkspaceRuntimeDTO,
@@ -83,6 +86,19 @@ export interface CustomerWorkspaceReadController {
   activeWorkspace: WorkspaceDTO | null;
   refresh: () => Promise<SourceEnvelope<WorkspaceDTO | null> | null>;
   changePage: (page: number) => Promise<void>;
+}
+
+export type WorkspaceModelsIssue = "" | "unavailable" | "unconfirmed" | "failed";
+
+export interface WorkspaceModelsController {
+  configuration: RemoteState<SourceEnvelope<WorkspaceModelConfigurationDTO>>;
+  operation: RemoteState<WorkspaceOwnerOperationDTO>;
+  busy: boolean;
+  issue: WorkspaceModelsIssue;
+  updateError: string;
+  refresh: () => Promise<void>;
+  refreshOperation: () => Promise<void>;
+  update: (selections: WorkspaceModelSelectionDTO[]) => Promise<boolean>;
 }
 
 export interface FabricRuntimeReadController {

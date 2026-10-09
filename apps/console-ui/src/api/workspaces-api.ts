@@ -14,13 +14,16 @@ import type {
   WorkspaceGatewayBudgetUpdateRequest,
   WorkspaceListData,
   WorkspaceDTO,
+  WorkspaceModelConfigurationDTO,
+  WorkspaceModelSelectionDTO,
+  WorkspaceModelUpdateRequest,
   WorkspaceRenewalRequest,
   WorkspaceRenewalResponse,
   WorkspaceRenewalReadDTO,
   WorkspaceRuntimeDTO
 } from "./dtos.ts";
 import type { WorkspaceApplicationInstallationDTO } from "./dtos.ts";
-import { deleteJson, postJson, getJson, patchJson, type ApiError } from "./console-api.ts";
+import { deleteJson, postJson, putJson, getJson, patchJson, type ApiError } from "./console-api.ts";
 import type {
   CapabilityVersionPageDTO,
   ComputePlanPageDTO,
@@ -147,6 +150,77 @@ export async function createAgentWorkspace(
   if (!operation.operationId || operation.owner !== "workspace" || operation.kind !== "create_workspace"
     || !operation.resourceId || !operation.status || !operation.stage) {
     throw new Error("invalid_workspace_operation");
+  }
+  return operation;
+}
+
+// The model configuration is the Workspace owner's own persisted fact. The
+// Console only renders what that owner returned: an unconfirmed change keeps its
+// own version and status instead of being projected as applied here.
+function workspaceModelSelections(value: unknown): WorkspaceModelSelectionDTO[] {
+  if (!Array.isArray(value)) throw new Error("invalid_workspace_models_readback");
+  const seenSlots = new Set<string>();
+  return value.map((entry) => {
+    if (!entry || typeof entry !== "object") throw new Error("invalid_workspace_models_readback");
+    const selection = entry as Record<string, unknown>;
+    const slot = String(selection.slot ?? "");
+    const modelId = String(selection.modelId ?? "");
+    if (!slot.trim() || !modelId.trim() || seenSlots.has(slot)) throw new Error("invalid_workspace_models_readback");
+    seenSlots.add(slot);
+    return { slot, modelId };
+  });
+}
+
+export function decodeWorkspaceModelConfiguration(value: unknown, workspaceId: string): WorkspaceModelConfigurationDTO {
+  if (!value || typeof value !== "object") throw new Error("invalid_workspace_models_readback");
+  const configuration = value as Record<string, unknown>;
+  const version = String(configuration.version ?? "");
+  const appliedVersion = configuration.appliedVersion === undefined ? undefined : String(configuration.appliedVersion);
+  const operationId = configuration.operationId === undefined ? undefined : String(configuration.operationId);
+  const status = configuration.status;
+  if (configuration.workspaceId !== workspaceId
+    || !/^(0|[1-9]\d*)$/.test(version)
+    || appliedVersion !== undefined && !/^(0|[1-9]\d*)$/.test(appliedVersion)
+    || operationId !== undefined && !operationId.trim()
+    || (status !== "pending" && status !== "applied" && status !== "failed" && status !== "needs_attention")
+    || typeof configuration.updatedAt !== "string" || !configuration.updatedAt.trim()) {
+    throw new Error("invalid_workspace_models_readback");
+  }
+  return {
+    workspaceId,
+    version,
+    ...(appliedVersion !== undefined ? { appliedVersion } : {}),
+    selections: workspaceModelSelections(configuration.selections),
+    status,
+    ...(operationId !== undefined ? { operationId } : {}),
+    updatedAt: configuration.updatedAt
+  };
+}
+
+export async function getWorkspaceModels(workspaceId: string): Promise<WorkspaceModelConfigurationDTO> {
+  return decodeWorkspaceModelConfiguration(
+    await getJson<unknown>(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/models`),
+    workspaceId
+  );
+}
+
+export async function updateWorkspaceModels(
+  workspaceId: string,
+  input: WorkspaceModelUpdateRequest,
+  csrfToken: string,
+  idempotencyKey: string
+): Promise<WorkspaceOwnerOperationDTO> {
+  const value = await putJson<unknown>(
+    `/api/v2/workspaces/${encodeURIComponent(workspaceId)}/models`,
+    input,
+    csrfToken,
+    idempotencyKey
+  );
+  if (!value || typeof value !== "object") throw new Error("invalid_workspace_models_operation");
+  const operation = value as WorkspaceOwnerOperationDTO;
+  if (operation.operationId === undefined || operation.owner !== "workspace" || operation.kind !== "update_models"
+    || !operation.resourceId || !operation.status || !operation.stage) {
+    throw new Error("invalid_workspace_models_operation");
   }
   return operation;
 }

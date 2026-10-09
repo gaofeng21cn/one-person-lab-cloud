@@ -33,7 +33,7 @@ func (s *Server) ConfigureCoordination(config ownerservice.Config, getenv func(s
 		if address == "" {
 			continue
 		}
-		options, err := config.TLS.DialOptions(config.Owner.Service(), owner.Service(), getenv(prefix+"_TOKEN"))
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owner), getenv(prefix+"_TOKEN"))
 		if err != nil {
 			close()
 			return close, err

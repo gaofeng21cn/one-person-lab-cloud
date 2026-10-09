@@ -46,6 +46,27 @@ func workspaceApplicationRuntimeID(runtimeOperationID string) string {
 	return contracts.WorkspaceApplicationRuntimeID(runtimeOperationID)
 }
 
+// workspaceApplicationResources resolves the exact Compute/Storage/Attachment
+// triple an application runtime input names. The Launch-stage engine records
+// staged resources in the operation store before the in-memory projection
+// contains them, so a cache miss re-projects the staged launch resources once
+// and re-reads, following the established GetComputeAllocation cache-miss
+// recovery instead of judging a binding against a stale projection.
+func (s *Service) workspaceApplicationResources(ctx context.Context, computeID, volumeID, attachmentID string) (ComputeAllocation, StorageVolume, StorageAttachment, error) {
+	s.mu.Lock()
+	compute, volume, attachment := s.computes[computeID], s.volumes[volumeID], s.attachments[attachmentID]
+	s.mu.Unlock()
+	if compute.ID != "" && volume.ID != "" && attachment.ID != "" {
+		return compute, volume, attachment, nil
+	}
+	if err := s.hydrateMissingResourceState(ctx); err != nil {
+		return ComputeAllocation{}, StorageVolume{}, StorageAttachment{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.computes[computeID], s.volumes[volumeID], s.attachments[attachmentID], nil
+}
+
 func (s *Service) validateWorkspaceApplicationRuntimeInput(input WorkspaceApplicationRuntimeInput, compute ComputeAllocation, volume StorageVolume, attachment StorageAttachment) error {
 	if compute.ID == "" || volume.ID == "" || compute.AccountID == "" || compute.AccountID != volume.AccountID ||
 		input.AccountID == "" || input.AccountID != compute.AccountID ||
@@ -95,11 +116,10 @@ func (s *Service) createWorkspaceApplicationRuntime(ctx context.Context, input W
 	if strings.TrimSpace(input.IdempotencyKey) == "" {
 		return contracts.WorkspaceApplicationRuntimeObservation{}, errors.Join(ErrWorkspaceApplicationRuntimeInputInvalid, errors.New("runtime_idempotency_key_required"))
 	}
-	s.mu.Lock()
-	compute := s.computes[input.ComputeID]
-	volume := s.volumes[input.VolumeID]
-	attachment := s.attachments[input.AttachmentID]
-	s.mu.Unlock()
+	compute, volume, attachment, resourceErr := s.workspaceApplicationResources(ctx, input.ComputeID, input.VolumeID, input.AttachmentID)
+	if resourceErr != nil {
+		return contracts.WorkspaceApplicationRuntimeObservation{}, resourceErr
+	}
 	if err := s.validateWorkspaceApplicationRuntimeInput(input, compute, volume, attachment); err != nil {
 		return contracts.WorkspaceApplicationRuntimeObservation{}, errors.Join(ErrWorkspaceApplicationRuntimeInputInvalid, err)
 	}

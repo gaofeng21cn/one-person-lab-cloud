@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"strings"
 	"time"
@@ -16,8 +17,9 @@ import (
 )
 
 const workspaceColumns = `w.id,w.tenant_id,w.name,w.status,w.compute_plan_id,w.storage_plan_id,w.created_at,w.updated_at,w.version,w.model_configuration_version,
-	COALESCE(o.accepted_input,'{}'::jsonb),COALESCE(o.result,'{}'::jsonb)`
-const workspaceJoin = ` FROM workspace.workspaces w LEFT JOIN workspace.operations o ON o.id=w.active_operation_id`
+	COALESCE(o.accepted_input,'{}'::jsonb),COALESCE(o.result,'{}'::jsonb),s.current_period_end`
+const workspaceJoin = ` FROM workspace.workspaces w LEFT JOIN workspace.operations o ON o.id=w.active_operation_id
+	LEFT JOIN workspace.subscriptions s ON s.workspace_id=w.id`
 
 type rowScanner interface{ Scan(...any) error }
 
@@ -26,8 +28,14 @@ func scanWorkspace(row rowScanner) (*api.Workspace, string, error) {
 	var tenant, state string
 	var created, updated time.Time
 	var input, result []byte
-	if err := row.Scan(&w.Id, &tenant, &w.Name, &state, &w.ComputePlanId, &w.StoragePlanId, &created, &updated, &w.Version, &w.ModelConfigurationVersion, &input, &result); err != nil {
+	var periodEnd sql.NullTime
+	if err := row.Scan(&w.Id, &tenant, &w.Name, &state, &w.ComputePlanId, &w.StoragePlanId, &created, &updated, &w.Version, &w.ModelConfigurationVersion, &input, &result, &periodEnd); err != nil {
 		return nil, "", dbError(err)
+	}
+	// The accepted period is this owner's own confirmed subscription projection;
+	// a Workspace whose obligation has no confirmed period yet reports none.
+	if periodEnd.Valid {
+		w.CurrentPeriodEnd = timestamppb.New(periodEnd.Time.UTC())
 	}
 	v, ok := api.WorkspaceStatusEnum_value["WORKSPACE_STATUS_ENUM_"+strings.ToUpper(state)]
 	if !ok || v == 0 {
@@ -79,8 +87,10 @@ func scanWorkspace(row rowScanner) (*api.Workspace, string, error) {
 	} else if state != "provisioning" {
 		w.ApplicationAvailability = api.WorkspaceApplicationAvailabilityEnum_WORKSPACE_APPLICATION_AVAILABILITY_ENUM_UNKNOWN
 	}
-	// Accepted quotes confer neither a paid period nor Serve availability. The
-	// current slice deliberately leaves currentPeriodEnd and accessUrl absent.
+	// An accepted quote alone confers no paid period, and this owner never
+	// fabricates Serve availability or an access URL: currentPeriodEnd above comes
+	// only from this owner's confirmed subscription row, while accessUrl stays a
+	// Serve/BFF-composed fact.
 	return w, tenant, nil
 }
 

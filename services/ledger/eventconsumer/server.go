@@ -39,8 +39,8 @@ func (s *Server) Install(ctx context.Context) error { return s.store.Install(ctx
 
 func (s *Server) Deliver(ctx context.Context, r *api.DeliverEventRequest) (*api.InboxAck, error) {
 	peer, ok := ownerservice.PeerOwner(ctx)
-	if !ok || (peer != owneridentity.Build.Service() && peer != owneridentity.Capability.Service() && peer != owneridentity.Serve.Service()) {
-		return nil, status.Error(codes.Unauthenticated, "verified Build, Capability or Serve peer required")
+	if !ok || (peer != owneridentity.Build.Service() && peer != owneridentity.Capability.Service() && peer != owneridentity.Serve.Service() && peer != owneridentity.ResourceCatalog.Service() && peer != owneridentity.Gateway.Service()) {
+		return nil, status.Error(codes.Unauthenticated, "verified Build, Capability, Serve, Resource Catalog or Gateway peer required")
 	}
 	event := r.GetEvent()
 	if r.GetAuthenticatedProducer() != string(peer) || event.GetOwner() != string(peer) {

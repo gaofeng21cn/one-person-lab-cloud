@@ -44,7 +44,7 @@ func NewObjects(root, publicURL string, key []byte, p UploadPolicy) (*Objects, e
 	if !filepath.IsAbs(root) {
 		return nil, fmt.Errorf("explicit object root is required")
 	}
-	local, err := newLocalStorage(root, publicURL)
+	local, err := newLocalStorage(root, publicURL, key)
 	if err != nil {
 		return nil, err
 	}

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "tke_cloud_tenant_route_implementation",
+  "recordedAt": "2026-10-07T06:30:00Z",
+  "status": "implemented_not_candidate_verified",
+  "owner": "one-person-lab-cloud",
+  "branch": "codex/tke-minimal-closure-tenant-route",
+  "commit": "49692db7",
+  "objective": "Expose the existing Tenant owner CreateTenant operation through the minimal authenticated Console BFF administration surface.",
+  "change": {
+    "route": "POST /api/v2/admin/tenants",
+    "owner": "tenant / CloudIdentity",
+    "scope": "platform",
+    "authority": "existing TenantProductService.CreateTenant",
+    "guards": ["session", "same-origin", "CSRF", "Idempotency-Key", "typed owner authorization"]
+  },
+  "verification": {
+    "command": "go test ./internal/httpapi ./internal/clients",
+    "passed": true,
+    "diffCheck": true,
+    "covered": ["platform scope", "typed context propagation", "body propagation", "CSRF rejection", "idempotency rejection", "cross-site rejection"]
+  },
+  "notChanged": ["SSOT", "owner boundaries", "wallet", "Gateway authority", "Instance repository", "production state"],
+  "claimBoundary": "This receipt proves the source route and focused tests only. It does not claim a Candidate, TKE deployment, Tenant runtime admission, billing, or business closure.",
+  "nextSerialStep": "Use this branch exact commit as the Cloud product SHA for a new Candidate, then bind that Candidate in Instance Preflight and First Install."
+}

@@ -15,7 +15,7 @@ type AcceptedLocalResourcePlan struct {
 }
 
 func (p *LocalDockerProvider) ResolveAcceptedResourcePlan(tenant string, plan *api.ResourcePlanSnapshot) (AcceptedLocalResourcePlan, error) {
-	if p == nil || p.profileErr != nil || plan == nil || tenant == "" || plan.Provider != "local-docker" || plan.BillingMode != "LOCAL_NO_CHARGE" || p.profile.ProfileID == "" || p.profile.CapabilityVersion == "" || p.profile.Region == "" || plan.ProviderProfileId != p.profile.ProfileID || plan.ProviderCapabilityVersion != p.profile.CapabilityVersion || plan.Region != p.profile.Region {
+	if p == nil || p.profileErr != nil || plan == nil || tenant == "" || plan.Provider != "local-docker" || !validLocalBillingMode(plan.BillingMode) || p.profile.ProfileID == "" || p.profile.CapabilityVersion == "" || p.profile.Region == "" || plan.ProviderProfileId != p.profile.ProfileID || plan.ProviderCapabilityVersion != p.profile.CapabilityVersion || plan.Region != p.profile.Region {
 		return AcceptedLocalResourcePlan{}, fmt.Errorf("local_docker_accepted_profile_mismatch")
 	}
 	var account string
@@ -43,4 +43,12 @@ func (p *LocalDockerProvider) ResolveAcceptedResourcePlan(tenant string, plan *a
 		return AcceptedLocalResourcePlan{}, fmt.Errorf("local_docker_accepted_plan_mismatch")
 	}
 	return AcceptedLocalResourcePlan{PackageID: packageID, AccountID: account, NodePoolID: "local-docker"}, nil
+}
+
+// validLocalBillingMode admits the two approved provider purchase shapes for the
+// Local-Docker provider: a Local zero-charge plan and a prepaid monthly plan whose
+// charge the Gateway wallet authority confirmed. Any other mode is not a plan this
+// provider may execute.
+func validLocalBillingMode(mode string) bool {
+	return mode == "LOCAL_NO_CHARGE" || mode == "PREPAID_MONTHLY"
 }

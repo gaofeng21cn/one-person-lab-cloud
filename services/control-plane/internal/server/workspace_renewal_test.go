@@ -501,8 +501,12 @@ type workspaceRenewalWorkerFixture struct {
 
 func newWorkspaceRenewalWorkerFixture(t *testing.T, balances []int64) workspaceRenewalWorkerFixture {
 	t.Helper()
+	return newWorkspaceRenewalWorkerFixtureAt(t, balances, time.Date(2026, 8, 31, 9, 30, 0, 0, time.UTC))
+}
+
+func newWorkspaceRenewalWorkerFixtureAt(t *testing.T, balances []int64, paidThrough time.Time) workspaceRenewalWorkerFixture {
+	t.Helper()
 	app, service, sub2API, fabric, ledger, events := newMonthlyBillingTest(t, balances)
-	paidThrough := time.Date(2026, 8, 31, 9, 30, 0, 0, time.UTC)
 	renewedThrough := nextBillingMonth(paidThrough, paidThrough.Day())
 	ownerID, workspaceID := "usr-monthly-owner", "workspace-monthly"
 	computeID, storageID := "compute-workspace-monthly", "storage-workspace-monthly"

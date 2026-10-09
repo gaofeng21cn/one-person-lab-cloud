@@ -91,6 +91,9 @@ func workspaceGrantSystem(t *testing.T) workspaceGrantFixture {
 			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT,
 			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CHARGEACCEPTEDOBLIGATION,
 			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION,
+			// The default OPL App path reads the frozen Runtime Release through
+			// the same accepted obligation.
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS,
 		},
 	}
 	return workspaceGrantFixture{s, db, client, ref, d, reader, request}
@@ -107,10 +110,19 @@ func (f workspaceGrantFixture) issue(t *testing.T) *api.AcceptedOperationGrant {
 
 func workspaceContinuation(g *api.AcceptedOperationGrant, owner api.OwnerEnum, action api.AuthorizationActionEnum) *api.AuthorizationRequest {
 	kind, id := api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, g.ResourceId
-	if owner == api.OwnerEnum_OWNER_ENUM_CAPABILITY {
+	switch {
+	case owner == api.OwnerEnum_OWNER_ENUM_CAPABILITY:
 		kind, id = api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, "capability-original"
+	case owner == api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL:
+		// The default OPL App reads the approved Runtime Release from the Runtime
+		// Control catalog with no resource id.
+		kind, id = api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, ""
 	}
-	return &api.AuthorizationRequest{Scope: g.Scope, ActorId: g.ActorId, AcceptedOperationGrantId: &g.Id, AudienceOwner: owner, Action: action, Resource: &api.AuthorizationResource{Kind: kind, Id: &id}, RequestId: "continue-workspace"}
+	resource := &api.AuthorizationResource{Kind: kind}
+	if id != "" {
+		resource.Id = &id
+	}
+	return &api.AuthorizationRequest{Scope: g.Scope, ActorId: g.ActorId, AcceptedOperationGrantId: &g.Id, AudienceOwner: owner, Action: action, Resource: resource, RequestId: "continue-workspace"}
 }
 
 func workspaceAudience(action api.AuthorizationActionEnum) (api.OwnerEnum, owneridentity.Service) {
@@ -121,6 +133,8 @@ func workspaceAudience(action api.AuthorizationActionEnum) (api.OwnerEnum, owner
 		return api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG, owneridentity.ResourceCatalog.Service()
 	case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME:
 		return api.OwnerEnum_OWNER_ENUM_SERVE, owneridentity.Serve.Service()
+	case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS:
+		return api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL, owneridentity.RuntimeControl.Service()
 	case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT:
 		return api.OwnerEnum_OWNER_ENUM_LEDGER, owneridentity.Ledger.Service()
 	case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CHARGEACCEPTEDOBLIGATION, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION:

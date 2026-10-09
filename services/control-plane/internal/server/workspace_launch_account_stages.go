@@ -1,11 +1,9 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -260,7 +258,7 @@ func workspaceLaunchPurchaseReceiptFromLedger(ctx context.Context, adapter *cont
 				continue
 			}
 			requestMatched = true
-			if workspaceLaunchReceiptInputMatches(receipt.ReceiptInput, expected[expectedIndex]) {
+			if clients.ReceiptInputEqual(receipt.ReceiptInput, expected[expectedIndex]) {
 				inputMatched = true
 				break
 			}
@@ -277,12 +275,6 @@ func workspaceLaunchPurchaseReceiptFromLedger(ctx context.Context, adapter *cont
 		return clients.Receipt{}, false, nil
 	}
 	return *match, true, nil
-}
-
-func workspaceLaunchReceiptInputMatches(actual, expected clients.ReceiptInput) bool {
-	actualJSON, actualErr := json.Marshal(actual)
-	expectedJSON, expectedErr := json.Marshal(expected)
-	return actualErr == nil && expectedErr == nil && bytes.Equal(actualJSON, expectedJSON)
 }
 
 func workspaceLaunchCredentialFingerprint(value string) string {

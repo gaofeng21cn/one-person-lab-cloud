@@ -98,6 +98,10 @@ var continuationActions = []api.AuthorizationActionEnum{
 	// continuations of the same accepted obligation.
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REFUNDCONFIRMEDDELETION,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET,
+	// The default OPL App names an approved Runtime Release, so the original
+	// accepted obligation reads that one Runtime Control catalog entry. The read
+	// carries no resource id and is bounded by the same grant.
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS,
 }
 
 // Resume continues the committed original order. Repeating a side effect after

@@ -364,7 +364,7 @@ func (f *gatewayAccountingFabric) PreflightWorkspaceLaunch(_ context.Context, in
 	return clients.WorkspaceLaunchPreflight{
 		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, Available: true, Reason: "none",
 		LaunchOperationID: input.LaunchOperationID, RequestHash: input.RequestHash,
-		ProviderProfileRef: "local-provider-profile", BindingRef: "local-preflight-" + stableID(input.LaunchOperationID)[:12], SpecDigest: strings.Repeat("a", 64),
+		ProviderProfileRef: string(fabricLocalDocker), BindingRef: "local-preflight-" + stableID(input.LaunchOperationID)[:12], SpecDigest: strings.Repeat("a", 64),
 	}, nil
 }
 

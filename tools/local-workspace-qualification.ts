@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { constants } from "node:fs";
+import { constants, existsSync } from "node:fs";
 import { mkdir, mkdtemp, open, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -329,15 +329,28 @@ export function validateLocalQualificationReceipt(value) {
   }
   if (value.qualification.authorityMode === "fixture" &&
     (BigInt(value.wallet.beforeUsdMicros) - BigInt(value.debit.amountUsdMicros) !== BigInt(value.wallet.afterUsdMicros) ||
-      value.wallet.afterDeleteUsdMicros !== value.wallet.afterUsdMicros)) {
-    throw new Error("isolated fixture wallet readback does not equal the exact debit or changed during deletion");
+      BigInt(value.wallet.afterDeleteUsdMicros) !== BigInt(value.wallet.afterUsdMicros) + BigInt(value.refund?.amountUsdMicros || "0"))) {
+    throw new Error("isolated fixture wallet readback does not equal the exact debit and its platform refund");
   }
+  // The purchase receipt binds exactly the resources this resource-only Launch
+  // delivered. The Runtime and the Workspace Key belong to the default
+  // application installation and are bound by its own evidence block.
   if (value.receipt?.count !== 1 || value.receipt?.id !== value.identities.purchaseReceiptId ||
     value.receipt?.accountId !== value.identities.accountId || value.receipt?.operationId !== value.identities.launchOperationId ||
-    value.receipt?.workspaceId !== value.identities.workspaceId || value.receipt?.runtimeId !== value.identities.runtimeId ||
-    String(value.receipt?.keyId || "") !== String(value.identities.keyId) ||
+    value.receipt?.workspaceId !== value.identities.workspaceId || value.receipt?.provisioningMode !== "resource_only" ||
+    value.receipt?.runtimeId !== undefined || value.receipt?.keyId !== undefined ||
+    !String(value.receipt?.computeAllocationId || "").trim() || !String(value.receipt?.storageId || "").trim() ||
+    !String(value.receipt?.attachmentId || "").trim() ||
     value.receipt?.chargeReference !== value.identities.debitCode || String(value.receipt?.amountUsdMicros || "") !== String(value.debit.amountUsdMicros)) {
     throw new Error("receipt binding is invalid");
+  }
+  if (value.application?.status !== "ready" || !String(value.application?.operationId || "").trim() ||
+    !String(value.application?.applicationId || "").trim() || !String(value.application?.revision || "").trim() ||
+    localApplicationEntryPort(value.application?.entryUrl) === 0 ||
+    value.application?.runtimeId !== value.identities.runtimeId ||
+    String(value.application?.keyId || "") !== String(value.identities.keyId) ||
+    typeof value.application?.resumed !== "boolean") {
+    throw new Error("application installation binding is invalid");
   }
   if (live) {
     if (value.restart?.performed !== false || value.deletion?.performed !== false || value.deletion?.mode !== "qualification_owned_cleanup") {
@@ -347,26 +360,42 @@ export function validateLocalQualificationReceipt(value) {
     if (!value.restart?.performed || ["operationStable", "workspaceStable", "runtimeStable", "receiptStable"].some((key) => value.restart?.[key] !== true)) {
       throw new Error("restart continuity is invalid");
     }
+    // A resource-only purchase's v2 Delete binds its Launch and Launch Receipt,
+    // never the application installation's Runtime or Workspace Key: the Runtime
+    // is retired with its application generation and the Gateway Key stays
+    // retained in the authority.
     if (value.deletion?.ownerAuthorized !== true || value.deletion?.workspaceAbsent !== true || value.deletion?.runtimeAbsent !== true ||
-      value.deletion?.workspaceKeyAbsent !== true || value.deletion?.fabricSecretAbsent !== true ||
+      value.deletion?.workspaceKeyRetained !== true || value.deletion?.fabricSecretAbsent !== true ||
       value.deletion?.accountId !== value.identities.accountId || value.deletion?.operationId !== value.identities.deleteOperationId ||
       value.deletion?.deletionReceiptId !== value.identities.deletionReceiptId || value.deletion?.workspaceId !== value.identities.workspaceId ||
-      value.deletion?.runtimeId !== value.identities.runtimeId || String(value.deletion?.keyId || "") !== String(value.identities.keyId)) {
+      String(value.deletion?.runtimeId) !== "" || String(value.deletion?.workspaceApiKeyId) !== "0") {
       throw new Error("owner deletion evidence is invalid");
     }
   }
   if (live) {
     if (value.deletionReceipt?.count !== 0) throw new Error("live qualification must not record a deletion receipt");
   } else if (value.deletionReceipt?.count !== 1 || value.deletionReceipt?.id !== value.identities.deletionReceiptId ||
-    value.deletionReceipt?.type !== "workspace.deleted.v1" || value.deletionReceipt?.accountId !== value.identities.accountId ||
+    value.deletionReceipt?.type !== "workspace.deleted.v1" ||
     value.deletionReceipt?.operationId !== value.identities.deleteOperationId || value.deletionReceipt?.workspaceId !== value.identities.workspaceId ||
-    value.deletionReceipt?.launchReceiptId !== value.identities.purchaseReceiptId) {
+    value.deletionReceipt?.launchReceiptId !== value.identities.purchaseReceiptId ||
+    value.deletionReceipt?.resourceType !== "workspace" || value.deletionReceipt?.resourceId !== value.identities.workspaceId ||
+    value.deletionReceipt?.resourceStatus?.runtimeStatus !== "absent" || value.deletionReceipt?.resourceStatus?.gatewaySecretStatus !== "absent" ||
+    value.deletionReceipt?.resourceStatus?.attachmentStatus !== "absent" || value.deletionReceipt?.resourceStatus?.storageStatus !== "absent" ||
+    value.deletionReceipt?.resourceStatus?.computeStatus !== "absent" || value.deletionReceipt?.resourceStatus?.workspaceStatus !== "absent" ||
+    !workspaceDeleteReceiptStagesMatch(value.deletionReceipt?.stageEvidence)) {
     throw new Error("deletion receipt binding is invalid");
   }
   if (["containers", "volumes", "networks"].some((key) => value.residuals?.[key] !== 0)) {
     throw new Error("exact-labelled residual evidence is invalid");
   }
-  const expectedAuthorityWrites = live ? { keyCreates: 1, keyDeletes: 0, debits: 1, refunds: 0 } : { keyCreates: 1, keyDeletes: 1, debits: 1, refunds: 0 };
+  // Delete performs no Gateway mutation in either mode: the Workspace-reserved
+  // Key stays retained in the authority, so no Key deletion is ever admitted.
+  // The fixture lane performs the owner Delete, so Control Plane also performs
+  // the platform hourly refund for the deleted Workspace; the live lane does not
+  // delete at all and therefore records no refund.
+  const expectedAuthorityWrites = live
+    ? { keyCreates: 1, keyDeletes: 0, debits: 1, refunds: 0 }
+    : { keyCreates: 1, keyDeletes: 0, debits: 1, refunds: 1 };
   if (Object.entries(expectedAuthorityWrites).some(([key, count]) => value.authorityWriteCounts?.[key] !== count)) {
     throw new Error("qualification authority write counts are invalid");
   }
@@ -376,7 +405,17 @@ export function validateLocalQualificationReceipt(value) {
   if (Object.entries(expectedMutationCounts).some(([key, count]) => value.mutationCounts?.[key] !== count)) {
     throw new Error("qualification mutation counts are invalid");
   }
-  if (value.refund?.count !== 0) throw new Error("Workspace qualification must not refund");
+  if (live) {
+    if (value.refund?.count !== 0) throw new Error("live qualification must not refund");
+  } else if (value.refund?.count !== 1 ||
+    !/^wallet-adjustment-delete-[0-9a-f]{24}$/.test(String(value.refund?.walletOperationId || "")) ||
+    !String(value.refund?.receiptId || "").trim() || !String(value.refund?.code || "").startsWith("opl:") ||
+    String(value.refund?.userId || "") !== String(value.identities.sub2apiUserId) ||
+    value.refund?.relatedOperationId !== value.identities.launchOperationId ||
+    !/^[1-9][0-9]*$/.test(String(value.refund?.amountUsdMicros || "")) ||
+    BigInt(value.refund.amountUsdMicros) > BigInt(value.debit.amountUsdMicros)) {
+    throw new Error("platform refund for the deleted Workspace is not exactly bound");
+  }
   if (value.usage?.source !== "sub2api" || value.usage?.status !== "available") throw new Error("Sub2API usage readback is invalid");
   const serialized = JSON.stringify(value);
   if (/"(?:password|cookie|csrf|authorization|token|apiKey)"\s*:/i.test(serialized)) {
@@ -655,7 +694,9 @@ export async function continueWorkspaceDelete(http, path, init, auth, expected, 
     const maximum = Number(pending?.maxComputeReadbacks);
     const retryAfterRaw = result.response.headers?.get("retry-after");
     const retryAfter = retryAfterRaw === "1" ? 1 : Number.NaN;
-    if (pending?.status !== "pending" || pending?.phase !== "storage_destroyed" || pending?.ownerStage !== "compute" ||
+    // The durable phase names the stage that just completed; ownerStage names the
+    // stage the operation is working on, so a compute wait reports storage_absent.
+    if (pending?.status !== "pending" || pending?.phase !== "storage_absent" || pending?.ownerStage !== "compute" ||
       pending?.computeStatus !== "destroying" || pending?.operationId !== expected.operationId || pending?.workspaceId !== expected.workspaceId ||
       !Number.isSafeInteger(readback) || !Number.isSafeInteger(maximum) || readback !== previousReadback + 1 ||
       maximum !== 8 || maxReadbacks !== 0 && maximum !== maxReadbacks || readback >= maximum || retryAfter !== 1) {
@@ -688,6 +729,44 @@ export async function waitForLaunch(http, operationId, auth, wait = (millisecond
     await wait(1000);
   }
   throw new Error("Workspace launch did not reach succeeded within 180 seconds");
+}
+
+// The default OPL application installation is committed beside the resource
+// Launch, so the owner reports it as its own pending generation until its
+// Runtime is ready. A stalled credential preparation is resumed exactly once
+// through the customer's own continuation command; an installation the owner
+// parks for review without that continuation stops the qualification.
+export async function waitForWorkspaceApplicationInstallation(http, auth, {
+  workspaceId, operationId,
+  wait = (milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds)),
+  attempts = 300
+} = {}) {
+  let resumed = false;
+  let installation = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const page = sourceData((await http.json("/api/workspaces?page=1&pageSize=20", {}, auth)).payload, "control-plane");
+    const workspace = page?.items?.find((candidate) => candidate?.id === workspaceId);
+    if (!workspace) throw new Error("Workspace owner readback is invalid");
+    installation = workspace.applicationInstallation || null;
+    if (workspace.currentApplication?.status === "ready") return { workspace, installation, resumed, attempts: attempt + 1 };
+    if (installation?.canResume === true && !resumed) {
+      const continued = await http.json(`/api/workspaces/${encodeURIComponent(workspaceId)}/application-installation/resume`, {
+        method: "POST", headers: { "idempotency-key": `application-resume:${operationId}` }, body: {}
+      }, auth, [202]);
+      const projection = continued.payload;
+      if (projection?.workspaceId !== workspaceId ||
+        projection.applicationInstallation && (projection.applicationInstallation.operationId !== installation.operationId ||
+          projection.applicationInstallation.applicationId !== installation.applicationId ||
+          projection.applicationInstallation.revision !== installation.revision)) {
+        throw new Error("Workspace application installation continuation is invalid");
+      }
+      resumed = true;
+      continue;
+    }
+    if (installation?.status === "manual_review") throw new Error("Workspace application installation stopped for review");
+    await wait(1000);
+  }
+  throw new Error("Workspace application installation did not become ready within 300 seconds");
 }
 
 export async function waitForCompose(compose) {
@@ -728,6 +807,11 @@ async function consoleReadback(http) {
   if (asset.response.status !== 200 || !asset.text.trim()) throw new Error("Console hashed script is unavailable");
 }
 
+// A Local purchase is a resource Launch: the Control Plane commits the default
+// OPL application installation beside it, and the resource Launch never carries
+// an application URL. The customer entry, the Runtime and the Workspace Key
+// therefore belong to the selected application generation, so the owner
+// readback binds that generation instead of a URL this purchase never had.
 export async function readWorkspaceEvidence(http, auth, operationId, workspaceId, receiptId) {
   const launch = (await http.json(`/api/workspace-launches/${encodeURIComponent(operationId)}`, {}, auth)).payload;
   if (launch?.status !== "succeeded" || launch?.phase !== "succeeded" || launch?.workspaceId !== workspaceId || launch?.receiptId !== receiptId) {
@@ -735,16 +819,29 @@ export async function readWorkspaceEvidence(http, auth, operationId, workspaceId
   }
   const page = sourceData((await http.json("/api/workspaces?page=1&pageSize=20", {}, auth)).payload, "control-plane");
   const workspace = page?.items?.find((candidate) => candidate?.id === workspaceId);
-  if (!workspace || workspace.url !== launch.url) throw new Error("Workspace owner readback is invalid");
+  const current = workspace?.currentApplication;
+  if (!workspace || !current || current.status !== "ready" || !String(current.entryUrl || "").trim() ||
+    workspace.url !== current.entryUrl || workspace.openable !== true) {
+    throw new Error("Workspace owner readback is invalid");
+  }
   const runtime = sourceData((await http.json(`/api/workspaces/${encodeURIComponent(workspaceId)}/runtime-status`, {}, auth)).payload, "fabric");
-  if (!runtime || runtime.workspaceId !== workspaceId || runtime.ready !== true || runtime.status !== "running" || runtime.url !== launch.url) {
+  if (!runtime || runtime.workspaceId !== workspaceId || runtime.ready !== true || runtime.status !== "running" ||
+    runtime.url !== current.entryUrl || runtime.currentApplication?.operationId !== current.operationId ||
+    !String(runtime.runtimeId || "").trim()) {
     throw new Error("Workspace runtime readback is invalid");
   }
+  // The resource-only purchase receipt binds exactly the resources it delivered:
+  // a Runtime and a Workspace Key belong to the installation request, never to
+  // this receipt.
   const receipt = sourceData((await http.json(`/api/billing/receipts/${encodeURIComponent(receiptId)}`, {}, auth)).payload, "ledger");
-  if (receipt?.receiptId !== receiptId || receipt?.workspaceId !== workspaceId || receipt?.type !== "billing.workspace_purchased.v1" || receipt?.status !== "completed") {
+  if (receipt?.receiptId !== receiptId || receipt?.workspaceId !== workspaceId || receipt?.type !== "billing.workspace_purchased.v1" ||
+    receipt?.status !== "completed" || receipt?.fulfillment?.runtimeId !== undefined || receipt?.fulfillment?.workspaceApiKeyId !== undefined ||
+    String(receipt?.fulfillment?.computeAllocationId || "") !== String(launch.computeAllocationId || "") ||
+    String(receipt?.fulfillment?.storageId || "") !== String(launch.storageId || "") ||
+    String(receipt?.fulfillment?.attachmentId || "") !== String(launch.attachmentId || "")) {
     throw new Error("Ledger receipt readback is invalid");
   }
-  return { launch, workspace, runtime, receipt };
+  return { launch, workspace, current, runtime, receipt };
 }
 
 async function readAllGatewayKeys(http, auth) {
@@ -789,13 +886,16 @@ async function readAllBillingReceipts(http, auth) {
 
 export function validateLocalJ1AccountingReadback(input) {
   const {
-    operationId, workspaceId, receiptId, runtimeId, keyId, sub2apiUserId, debitCode, amountUsdMicros,
+    operationId, workspaceId, receiptId, runtimeId, keyId, keyName, sub2apiUserId, debitCode, amountUsdMicros,
     beforeMicros, afterMicros, baselineKeys, baselineReceipts, keys, receipts, key, keyUsage, usage, history, debit, evidence
   } = input;
-  if (![baselineKeys, baselineReceipts, keys, receipts].every(Array.isArray) || !Array.isArray(history?.items)) {
+  if (![baselineKeys, baselineReceipts, keys, receipts].every(Array.isArray) || !Array.isArray(history?.items) ||
+    !String(keyName || "").trim()) {
     throw new Error("local qualification accounting inventory is invalid");
   }
-  if (baselineKeys.some((candidate) => String(candidate?.id || "") === keyId)) {
+  // The installation creates the Workspace's reserved Key, so both its identity
+  // and its exact name must be new to this qualification run.
+  if (baselineKeys.some((candidate) => String(candidate?.id || "") === keyId || candidate?.name === keyName)) {
     throw new Error("local qualification exact workspace key predates this operation");
   }
   if (baselineReceipts.some((candidate) => candidate?.type === "billing.workspace_purchased.v1" &&
@@ -804,7 +904,8 @@ export function validateLocalJ1AccountingReadback(input) {
   }
 
   const exactKeys = keys.filter((candidate) => String(candidate?.id || "") === keyId);
-  if (exactKeys.length !== 1 || key?.id !== keyId || key?.kind !== "workspace" || key?.status !== "active" || exactKeys[0]?.kind !== "workspace" || exactKeys[0]?.status !== "active") {
+  if (exactKeys.length !== 1 || exactKeys[0]?.name !== keyName || key?.id !== keyId || key?.kind !== "workspace" || key?.status !== "active" ||
+    exactKeys[0]?.kind !== "workspace" || exactKeys[0]?.status !== "active") {
     throw new Error("local qualification exact workspace key cardinality is invalid");
   }
   const workspacePurchaseReceipts = receipts.filter((candidate) =>
@@ -818,9 +919,15 @@ export function validateLocalJ1AccountingReadback(input) {
   if (typeof usage?.totalRequests !== "number" || typeof keyUsage?.totalRequests !== "number" ||
     !/^\d+$/.test(afterMicros) ||
     evidence?.launch?.operationId !== operationId || evidence?.launch?.workspaceId !== workspaceId || evidence?.launch?.receiptId !== receiptId ||
-    evidence?.runtime?.runtimeId !== runtimeId || evidence?.receipt?.receiptId !== receiptId || evidence?.receipt?.workspaceId !== workspaceId ||
+    evidence?.current?.status !== "ready" || !String(evidence?.current?.entryUrl || "").trim() ||
+    evidence?.workspace?.url !== evidence?.current?.entryUrl ||
+    evidence?.runtime?.runtimeId !== runtimeId || evidence?.runtime?.currentApplication?.operationId !== evidence?.current?.operationId ||
+    evidence?.receipt?.receiptId !== receiptId || evidence?.receipt?.workspaceId !== workspaceId ||
     evidence?.receipt?.chargeReference !== debitCode || String(evidence?.receipt?.totalUsdMicros) !== amountUsdMicros ||
-    evidence?.receipt?.fulfillment?.runtimeId !== runtimeId || String(evidence?.receipt?.fulfillment?.workspaceApiKeyId || "") !== keyId) {
+    evidence?.receipt?.fulfillment?.runtimeId !== undefined || evidence?.receipt?.fulfillment?.workspaceApiKeyId !== undefined ||
+    String(evidence?.receipt?.fulfillment?.computeAllocationId || "") !== String(evidence?.launch?.computeAllocationId || "") ||
+    String(evidence?.receipt?.fulfillment?.storageId || "") !== String(evidence?.launch?.storageId || "") ||
+    String(evidence?.receipt?.fulfillment?.attachmentId || "") !== String(evidence?.launch?.attachmentId || "")) {
     throw new Error("local qualification operation accounting binding is invalid");
   }
   return { walletExactDeltaObserved: /^\d+$/.test(beforeMicros) && BigInt(beforeMicros) - BigInt(amountUsdMicros) === BigInt(afterMicros) };
@@ -914,11 +1021,15 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
     const launch = await waitForLaunch(http, operationId, auth, wait);
     const receiptId = String(launch?.receiptId || "");
     if (!receiptId) throw new Error("terminal launch receipt identity is missing");
+    onStage("application_installation");
+    const installation = await waitForWorkspaceApplicationInstallation(http, auth, { workspaceId, operationId, wait });
+    const workspaceKey = resolveWorkspaceKey(await readAllGatewayKeys(http, auth), workspaceId);
     onStage("terminal_readback");
     const evidence = await readWorkspaceEvidence(http, auth, operationId, workspaceId, receiptId);
-    const runtimeImage = await readRuntime({ accountId: provision.accountId, workspaceId });
+    if (localApplicationEntryPort(evidence.current.entryUrl) === 0) throw new Error("Workspace application entry is invalid");
+    const runtimeImage = await readRuntime({ accountId: provision.accountId, workspaceId, runtimeId: evidence.runtime.runtimeId });
     onStage("workspace_open");
-    const opened = await http.request(`/w/${encodeURIComponent(workspaceId)}/`, { redirect: "follow" });
+    const opened = await fetchApplicationEntry(evidence.current.entryUrl);
     if (!opened.response.ok || !opened.text.includes("OPL Workspace READY")) throw new Error("Workspace Runtime open failed");
 
     onStage("accounting_readback");
@@ -930,12 +1041,12 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
       readAllBillingReceipts(http, auth),
       readDebit({ accountId: provision.accountId, sub2apiUserId, code: evidence.receipt.chargeReference, amountUsdMicros })
     ]);
-    const keyId = String(launch.workspaceApiKeyId || "");
+    const keyId = workspaceKey.id;
     const key = sourceData((await http.json(`/api/gateway/keys/${encodeURIComponent(keyId)}`, {}, auth)).payload, "sub2api");
     const keyUsage = sourceData((await http.json(`/api/gateway/keys/${encodeURIComponent(keyId)}/usage-summary?period=month`, {}, auth)).payload, "sub2api");
     const afterMicros = String(walletAfter?.usdMicros || "");
     const accounting = validateLocalJ1AccountingReadback({
-      operationId, workspaceId, receiptId, runtimeId: evidence.runtime.runtimeId, keyId, sub2apiUserId,
+      operationId, workspaceId, receiptId, runtimeId: evidence.runtime.runtimeId, keyId, keyName: workspaceKey.name, sub2apiUserId,
       debitCode: evidence.receipt.chargeReference, amountUsdMicros, beforeMicros, afterMicros,
       baselineKeys, baselineReceipts, keys, receipts, key, keyUsage, usage, history: historyPage, debit, evidence
     });
@@ -954,8 +1065,14 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
       wallet: { beforeUsdMicros: beforeMicros, afterUsdMicros: afterMicros, exactDeltaObserved: accounting.walletExactDeltaObserved },
       receipt: {
         count: 1, id: receiptId, accountId: provision.accountId, operationId, workspaceId,
-        runtimeId: evidence.runtime.runtimeId, keyId, chargeReference: evidence.receipt.chargeReference,
-        amountUsdMicros: String(evidence.receipt.totalUsdMicros)
+        provisioningMode: "resource_only", computeAllocationId: String(evidence.receipt.fulfillment?.computeAllocationId || ""),
+        storageId: String(evidence.receipt.fulfillment?.storageId || ""), attachmentId: String(evidence.receipt.fulfillment?.attachmentId || ""),
+        chargeReference: evidence.receipt.chargeReference, amountUsdMicros: String(evidence.receipt.totalUsdMicros)
+      },
+      application: {
+        status: evidence.current.status, operationId: evidence.current.operationId, applicationId: evidence.current.applicationId,
+        revision: evidence.current.revision, entryUrl: evidence.current.entryUrl,
+        runtimeId: evidence.runtime.runtimeId, keyId, resumed: installation.resumed === true
       },
       restart: { performed: false },
       deletion: { performed: false, mode: "qualification_owned_cleanup" },
@@ -1035,19 +1152,100 @@ export async function cleanupLocalQualificationResources(accountId, workspaceId,
   return residualCounts(accountId, workspaceId);
 }
 
-async function runtimeImageReadback(accountId, workspaceId, expectedImage, expectedImageID) {
+// The installation owns the Runtime container. Its exact provider labels must
+// name this account, Workspace, application Runtime generation and component,
+// and run exactly the qualified Workspace image.
+async function applicationRuntimeImageReadback(accountId, workspaceId, expectedImage, expectedImageID, expectedRuntimeId) {
   const ids = await exactLabelIDs("containers", accountId, workspaceId);
   const runtime = [];
   for (const id of ids) {
     const [inspection] = JSON.parse((await runProcess("docker", ["inspect", id])).stdout);
-    if (inspection?.Config?.Labels?.["opl.fabric.kind"] === "runtime") runtime.push(inspection);
+    if (inspection?.Config?.Labels?.["opl.fabric.kind"] === "application_runtime") runtime.push(inspection);
   }
-  if (runtime.length !== 1) throw new Error(`expected one exact-labelled Runtime container, found ${runtime.length}`);
+  if (runtime.length !== 1) throw new Error(`expected one exact-labelled application Runtime container, found ${runtime.length}`);
   const labels = runtime[0].Config.Labels || {};
-  if (labels["opl.image.ref"] !== expectedImage || runtime[0].Image !== expectedImageID) {
+  if (labels["opl.image.ref"] !== expectedImage || runtime[0].Image !== expectedImageID ||
+    labels["opl.runtime.id"] !== expectedRuntimeId || labels["opl.component.role"] !== "main" ||
+    labels["opl.workspace.id"] !== workspaceId || labels["opl.account.id"] !== accountId) {
     throw new Error("Workspace Runtime image binding is invalid");
   }
   return runtime[0];
+}
+
+// The Workspace owner names every Workspace's reserved Sub2API Key from the
+// Workspace identity, and the default installation creates exactly that Key.
+export function workspaceReservedKeyName(workspaceId) {
+  return `opl-workspace-${stableID(workspaceId).slice(0, 12)}`;
+}
+
+export function resolveWorkspaceKey(keys, workspaceId) {
+  const name = workspaceReservedKeyName(workspaceId);
+  const matches = keys.filter((candidate) => candidate?.name === name);
+  if (matches.length !== 1 || matches[0]?.kind !== "workspace" || matches[0]?.status !== "active" ||
+    !/^[1-9][0-9]*$/.test(String(matches[0]?.id || ""))) {
+    throw new Error("local qualification Workspace Key inventory is invalid");
+  }
+  return { id: String(matches[0].id), name };
+}
+
+// The deleted Workspace's injected Gateway Secret is the provider secret-root
+// directory Contracts names from the Workspace identity.
+export function workspaceGatewaySecretRef(workspaceId) {
+  return `opl-gateway-${createHash("sha256").update(String(workspaceId)).digest("hex").slice(0, 16)}`;
+}
+
+// Delete retains the Workspace-reserved Gateway Key: after the Workspace is
+// gone, the authority still owns and meters exactly the Key this installation
+// created, unchanged, and no other Gateway Key was removed.
+//
+// The authority is the owner of that fact, and its own key record carries the
+// identity the authority meters (id, name, user, group, status) without Control
+// Plane's `kind` projection, so retention is proven by the exact before/after
+// record of the reserved Key and an unchanged key inventory.
+export function retainedWorkspaceKey(before, after, workspaceId, keyId) {
+  const exact = (keys) => (keys || []).filter((candidate) => String(candidate?.id || "") === String(keyId));
+  const beforeKey = exact(before);
+  const afterKey = exact(after);
+  const name = workspaceReservedKeyName(workspaceId);
+  const record = (key) => [String(key?.id || ""), key?.name, String(key?.userId ?? ""), String(key?.groupId ?? ""), key?.status].join("\u0000");
+  const inventory = (keys) => (keys || []).map((candidate) => String(candidate?.id ?? "")).sort().join(",");
+  return beforeKey.length === 1 && afterKey.length === 1 &&
+    beforeKey[0].name === name && afterKey[0].name === name && afterKey[0].status === "active" &&
+    record(beforeKey[0]) === record(afterKey[0]) && inventory(before) === inventory(after);
+}
+
+// The deletion Receipt attests every stage that preceded it: the frozen order,
+// each stage's own result and evidence kind, and a real provider or committed
+// local observation with its opaque reference.
+const workspaceDeleteReceiptStages = Object.freeze([
+  Object.freeze({ stage: "runtime_absent", result: "absent", evidenceKind: "provider_readback" }),
+  Object.freeze({ stage: "attachment_absent", result: "released", evidenceKind: "local_transition" }),
+  Object.freeze({ stage: "storage_absent", result: "absent", evidenceKind: "provider_readback" }),
+  Object.freeze({ stage: "compute_absent", result: "absent", evidenceKind: "provider_readback" }),
+  Object.freeze({ stage: "workspace_absent", result: "removed", evidenceKind: "local_transition" })
+]);
+
+export function workspaceDeleteReceiptStagesMatch(stageEvidence) {
+  if (!Array.isArray(stageEvidence) || stageEvidence.length !== workspaceDeleteReceiptStages.length) return false;
+  return workspaceDeleteReceiptStages.every((expected, index) => {
+    const entry = stageEvidence[index];
+    return entry?.stage === expected.stage && entry?.result === expected.result && entry?.evidenceKind === expected.evidenceKind &&
+      typeof entry?.observedAt === "string" && entry.observedAt.trim() !== "" &&
+      typeof entry?.evidenceRef === "string" && entry.evidenceRef.trim() !== "";
+  });
+}
+
+// Only the Local-Docker publication shape is admissible: the application's own
+// entry is the host-bound loopback port its provider reported.
+export function localApplicationEntryPort(url) {
+  const match = /^http:\/\/127\.0\.0\.1:([0-9]{1,5})\/$/.exec(String(url || ""));
+  const port = match ? Number(match[1]) : 0;
+  return port >= 1 && port <= 65535 ? port : 0;
+}
+
+async function fetchApplicationEntry(url) {
+  const response = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(30_000) });
+  return { response, text: await response.text() };
 }
 
 export async function authorityState(port, token) {
@@ -1457,11 +1655,19 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
     const receiptId = String(launch.receiptId || "");
     if (!receiptId) throw new Error("terminal launch receipt identity is missing");
 
+    // The resource Launch carries no Runtime of its own: the owner commits the
+    // default OPL application installation beside it. Wait for the owner's own
+    // ready readback, then bind the Workspace Key the installation created.
+    stage = "application_installation";
+    const installation = await waitForWorkspaceApplicationInstallation(http, auth, { workspaceId, operationId });
+    const workspaceKey = resolveWorkspaceKey(await readAllGatewayKeys(http, auth), workspaceId);
+    const keyId = workspaceKey.id;
     stage = "terminal_readback";
     const evidence = await readWorkspaceEvidence(http, auth, operationId, workspaceId, receiptId);
-    const opened = await http.request(`/w/${encodeURIComponent(workspaceId)}/`, { redirect: "follow" });
+    if (localApplicationEntryPort(evidence.current.entryUrl) === 0) throw new Error("Workspace application entry is invalid");
+    const opened = await fetchApplicationEntry(evidence.current.entryUrl);
     if (!opened.response.ok || !opened.text.includes("OPL Workspace READY")) throw new Error("Workspace Runtime open failed");
-    const runtimeContainer = await runtimeImageReadback(accountId, workspaceId, workspaceImage, workspaceInspection.Id);
+    const runtimeContainer = await applicationRuntimeImageReadback(accountId, workspaceId, workspaceImage, workspaceInspection.Id, evidence.runtime.runtimeId);
     const usage = sourceData((await http.json("/api/gateway/usage-summary?period=month", {}, auth)).payload, "sub2api");
     const walletAfterCharge = sourceData((await http.json("/api/gateway/wallet", {}, auth)).payload, "sub2api");
     const chargedMicros = String(walletAfterCharge?.usdMicros || "");
@@ -1487,7 +1693,10 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
     const receipts = (receiptsPage?.receipts || []).filter((candidate) => candidate?.type === "billing.workspace_purchased.v1");
     const receipt = evidence.receipt;
     if (receipts.length !== 1 || receipt.chargeReference !== debit.code || String(receipt.totalUsdMicros) !== amountUsdMicros ||
-      receipt.fulfillment?.runtimeId !== evidence.runtime.runtimeId || String(receipt.fulfillment?.workspaceApiKeyId || "") !== String(launch.workspaceApiKeyId || "")) {
+      receipt.fulfillment?.runtimeId !== undefined || receipt.fulfillment?.workspaceApiKeyId !== undefined ||
+      String(receipt.fulfillment?.computeAllocationId || "") !== String(launch.computeAllocationId || "") ||
+      String(receipt.fulfillment?.storageId || "") !== String(launch.storageId || "") ||
+      String(receipt.fulfillment?.attachmentId || "") !== String(launch.attachmentId || "")) {
       throw new Error("Ledger receipt exact binding is invalid");
     }
 
@@ -1513,43 +1722,84 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
       operationId: expectedDeleteOperationId, workspaceId,
       onPending: (pending) => { ownerDeletePending = pending; }
     });
+    // The purchase is resource-only: its v2 Delete binds the Launch and the
+    // Launch Receipt, never the application installation's Runtime or Workspace
+    // Key. Delete performs no Gateway or wallet mutation, so the terminal
+    // response reports both identities as empty and every owned absence it
+    // confirmed.
     if (deletion?.status !== "deleted" || deletion?.accountId !== accountId || String(deletion?.sub2apiUserId) !== String(sub2apiUserId) ||
       deletion?.launchOperationId !== operationId || deletion?.operationId !== expectedDeleteOperationId || deletion?.launchReceiptId !== receiptId ||
-      deletion?.workspaceId !== workspaceId || deletion?.runtimeId !== evidence.runtime.runtimeId || String(deletion?.workspaceApiKeyId) !== String(launch.workspaceApiKeyId) ||
-      !String(deletion?.deletionReceiptId || "").trim() || deletion?.runtimeStatus !== "absent" ||
-      deletion?.secretStatus !== "absent" || deletion?.keyStatus !== "absent") {
+      deletion?.workspaceId !== workspaceId || String(deletion?.runtimeId || "") !== "" || String(deletion?.workspaceApiKeyId ?? "") !== "0" ||
+      deletion?.keyStatus !== undefined || !String(deletion?.deletionReceiptId || "").trim() ||
+      deletion?.runtimeStatus !== "absent" || deletion?.secretStatus !== "absent") {
       throw new Error("owner-authorized Workspace DELETE terminal evidence is invalid");
     }
     const afterDeletePage = sourceData((await http.json("/api/workspaces?page=1&pageSize=20", {}, restartedAuth)).payload, "control-plane");
     const workspaceAbsent = !(afterDeletePage?.items || []).some((candidate) => candidate?.id === workspaceId);
     const runtimeAfterDelete = await http.request(`/api/workspaces/${encodeURIComponent(workspaceId)}/runtime-status`, {}, restartedAuth);
     const runtimeAbsent = runtimeAfterDelete.response.status === 404;
-    const keyAfterDelete = await http.request(`/api/gateway/keys/${encodeURIComponent(launch.workspaceApiKeyId)}`, {}, restartedAuth);
     residuals = await residualCounts(accountId, workspaceId);
-    const authorityAfterOwnerDelete = options.authorityMode === "fixture" ? await authorityState(authorityPort, authorityToken) : null;
-    const workspaceKeyAbsent = keyAfterDelete.response.status === 404 && (options.authorityMode !== "fixture" ||
-      !(authorityAfterOwnerDelete?.keys || []).some((candidate) => String(candidate?.id) === String(launch.workspaceApiKeyId)));
-    const fabricSecretAbsent = deletion.secretStatus === "absent";
-    if (!workspaceAbsent || !runtimeAbsent || !workspaceKeyAbsent || !fabricSecretAbsent || Object.values(residuals).some((count) => count !== 0)) {
-      throw new Error("owner DELETE did not prove Workspace, Key, Runtime, and exact-labelled Docker cleanup");
+    const authorityAfterOwnerDelete = await authorityState(authorityPort, authorityToken);
+    // The Workspace-reserved Gateway Key is the one object Delete must not
+    // remove: the platform retains it, so the authority still owns and meters
+    // exactly the Key this installation created after the Workspace is gone.
+    const workspaceKeyRetained = retainedWorkspaceKey(authorityBeforeDelete?.keys || [], authorityAfterOwnerDelete?.keys || [], workspaceId, keyId);
+    // Fabric's injected Secret is a provider secret-root directory named from
+    // the Workspace identity; that exact ref must be gone after Delete.
+    const fabricSecretAbsent = deletion.secretStatus === "absent" && !existsSync(join(fabricSecretRoot, workspaceGatewaySecretRef(workspaceId)));
+    if (!workspaceAbsent || !runtimeAbsent || !workspaceKeyRetained || !fabricSecretAbsent || Object.values(residuals).some((count) => count !== 0)) {
+      throw new Error("owner DELETE did not prove Workspace, Runtime and Secret cleanup with Gateway Key retention");
     }
     const deletionReceipt = sourceData((await http.json(`/api/billing/receipts/${encodeURIComponent(deletion.deletionReceiptId)}`, {}, restartedAuth)).payload, "ledger");
+    const deletionResourceStatus = deletionReceipt?.resourceStatus || {};
     if (deletionReceipt?.receiptId !== deletion.deletionReceiptId || deletionReceipt?.type !== "workspace.deleted.v1" ||
-      deletionReceipt?.status !== "completed" || deletionReceipt?.accountId !== accountId ||
-      deletionReceipt?.operationId !== expectedDeleteOperationId || deletionReceipt?.workspaceId !== workspaceId) {
+      deletionReceipt?.status !== "completed" ||
+      deletionReceipt?.operationId !== expectedDeleteOperationId || deletionReceipt?.workspaceId !== workspaceId ||
+      deletionReceipt?.resourceType !== "workspace" || deletionReceipt?.resourceId !== workspaceId ||
+      deletionReceipt?.launchReceiptId !== receiptId ||
+      !["runtimeStatus", "gatewaySecretStatus", "attachmentStatus", "storageStatus", "computeStatus", "workspaceStatus"]
+        .every((key) => deletionResourceStatus[key] === "absent") ||
+      !workspaceDeleteReceiptStagesMatch(deletionReceipt?.stageEvidence)) {
       throw new Error("Ledger deletion Receipt binding is invalid");
     }
     let afterDeleteMicros = afterMicros;
+    let refundEvidence = { count: 0 };
     if (options.authorityMode === "fixture") {
       const adjustmentsAfterDelete = authorityAfterOwnerDelete?.adjustments || [];
       const debitAfterDelete = adjustmentsAfterDelete.filter((candidate) => candidate?.kind === "debit" && candidate?.code === debit.code);
       const refundsAfterDelete = adjustmentsAfterDelete.filter((candidate) => candidate?.kind === "refund");
-      if (debitAfterDelete.length !== 1 || refundsAfterDelete.length !== 0 || authorityAfterOwnerDelete?.writeCounts?.debits !== 1 ||
-        authorityAfterOwnerDelete?.writeCounts?.refunds !== 0) {
+      // Control Plane's deletion closeout refunds the unused part of the paid
+      // period as its own wallet operation, so exactly one refund adjustment and
+      // exactly one business_refund receipt must exist, and both must bind to
+      // this Delete operation: the wallet operation id is derived from the
+      // Delete operation id, the refunded order is the charge the platform
+      // debited, and the amount is the one the Ledger receipt records.
+      const refundWalletOperationId = `wallet-adjustment-delete-${stableID(expectedDeleteOperationId).slice(0, 24)}`;
+      const refundReceipts = (await readAllBillingReceipts(http, restartedAuth)).filter((candidate) =>
+        candidate?.type === "gateway.wallet_adjustment.v1" && candidate?.kind === "business_refund");
+      if (debitAfterDelete.length !== 1 || authorityAfterOwnerDelete?.writeCounts?.debits !== 1 ||
+        refundsAfterDelete.length !== 1 || refundReceipts.length !== 1 || authorityAfterOwnerDelete?.writeCounts?.refunds !== 1) {
         throw new Error("qualification authority Delete accounting evidence is invalid");
       }
+      const refundAdjustment = refundsAfterDelete[0];
+      const refundReceipt = refundReceipts[0];
+      if (refundReceipt?.operationId !== refundWalletOperationId || refundReceipt?.workspaceId !== workspaceId ||
+        refundReceipt?.resourceId !== workspaceId || refundReceipt?.relatedOperationId !== operationId ||
+        refundReceipt?.status !== "completed" || refundReceipt?.periodStart !== receipt.periodStart || refundReceipt?.paidThrough !== receipt.paidThrough ||
+        String(refundReceipt?.refundUsdMicros || "") !== String(refundAdjustment?.valueUsdMicros || "") ||
+        String(refundAdjustment?.amountUsdMicros || "") !== String(refundAdjustment?.valueUsdMicros || "") ||
+        String(refundAdjustment?.userId || "") !== String(sub2apiUserId) || refundAdjustment?.status !== "used" ||
+        !String(refundAdjustment?.code || "").startsWith("opl:") || !String(refundAdjustment?.usedAt || "").trim() ||
+        !(BigInt(refundReceipt.refundUsdMicros) > 0n && BigInt(refundReceipt.refundUsdMicros) <= BigInt(amountUsdMicros))) {
+        throw new Error("platform refund for the deleted Workspace is not exactly bound");
+      }
+      refundEvidence = {
+        count: 1, walletOperationId: refundWalletOperationId, receiptId: String(refundReceipt.receiptId || ""),
+        amountUsdMicros: String(refundReceipt.refundUsdMicros || ""), code: String(refundAdjustment.code || ""),
+        userId: String(refundAdjustment.userId || ""), relatedOperationId: String(refundReceipt.relatedOperationId || "")
+      };
       afterDeleteMicros = String(authorityAfterOwnerDelete?.wallet?.usdMicros || "");
-      if (!/^\d+$/.test(afterDeleteMicros) || afterDeleteMicros !== afterMicros) {
+      if (!/^\d+$/.test(afterDeleteMicros) || BigInt(afterDeleteMicros) !== BigInt(afterMicros) + BigInt(refundEvidence.amountUsdMicros)) {
         throw new Error("qualification wallet changed during Workspace Delete");
       }
     }
@@ -1571,31 +1821,39 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
       identities: {
         accountId, sub2apiUserId, launchOperationId: operationId, deleteOperationId: String(deletion.operationId || ""),
         deletionReceiptId: String(deletion.deletionReceiptId || ""), workspaceId,
-        runtimeId: evidence.runtime.runtimeId, keyId: String(launch.workspaceApiKeyId), debitCode: debit.code,
+        runtimeId: evidence.runtime.runtimeId, keyId, debitCode: debit.code,
         purchaseReceiptId: receiptId
       },
       debit: { count: debitCount, accountId, operationId, workspaceId, code: debit.code, userId: String(debit.userId), amountUsdMicros },
       wallet: { beforeUsdMicros: beforeMicros, afterUsdMicros: afterMicros, afterDeleteUsdMicros: afterDeleteMicros },
       receipt: {
         count: 1, id: receipt.receiptId, accountId, operationId, workspaceId: receipt.workspaceId,
-        runtimeId: receipt.fulfillment.runtimeId, keyId: String(receipt.fulfillment.workspaceApiKeyId),
+        provisioningMode: "resource_only", computeAllocationId: String(receipt.fulfillment.computeAllocationId || ""),
+        storageId: String(receipt.fulfillment.storageId || ""), attachmentId: String(receipt.fulfillment.attachmentId || ""),
         chargeReference: receipt.chargeReference, amountUsdMicros: String(receipt.totalUsdMicros)
+      },
+      application: {
+        status: evidence.current.status, operationId: evidence.current.operationId, applicationId: evidence.current.applicationId,
+        revision: evidence.current.revision, entryUrl: evidence.current.entryUrl,
+        runtimeId: evidence.runtime.runtimeId, keyId, resumed: installation.resumed === true
       },
       restart,
       deletion: {
         ownerAuthorized: true, accountId, operationId: String(deletion.operationId || ""), deletionReceiptId: String(deletion.deletionReceiptId || ""), workspaceId,
-        runtimeId: evidence.runtime.runtimeId, keyId: String(launch.workspaceApiKeyId),
-        workspaceAbsent, runtimeAbsent, workspaceKeyAbsent, fabricSecretAbsent
+        runtimeId: String(deletion.runtimeId || ""), workspaceApiKeyId: String(deletion.workspaceApiKeyId ?? ""),
+        workspaceAbsent, runtimeAbsent, workspaceKeyRetained, fabricSecretAbsent
       },
       deletionReceipt: {
         count: 1, id: deletionReceipt.receiptId, type: deletionReceipt.type,
-        accountId: deletionReceipt.accountId, operationId: deletionReceipt.operationId, workspaceId: deletionReceipt.workspaceId,
-        launchReceiptId: String(deletion.launchReceiptId || "")
+        operationId: deletionReceipt.operationId, workspaceId: deletionReceipt.workspaceId,
+        launchReceiptId: String(deletionReceipt.launchReceiptId || ""),
+        resourceType: deletionReceipt.resourceType, resourceId: deletionReceipt.resourceId,
+        resourceStatus: deletionReceipt.resourceStatus, stageEvidence: deletionReceipt.stageEvidence
       },
       residuals,
-      authorityWriteCounts: options.authorityMode === "fixture" ? authorityAfterOwnerDelete?.writeCounts : { keyCreates: 1, keyDeletes: 1, debits: 1, refunds: 0 },
+      authorityWriteCounts: authorityAfterOwnerDelete?.writeCounts,
       mutationCounts: { workspaceLaunchPosts: 1, workspaceDeleteRequests: 1, refundPosts: 0 },
-      refund: { count: 0 },
+      refund: refundEvidence,
       usage: { source: "sub2api", status: "available", totalRequests: usage.totalRequests },
       qualification: { authorityMode: options.authorityMode, p0Ready: false },
       deferred: [...deferredCloudGates]

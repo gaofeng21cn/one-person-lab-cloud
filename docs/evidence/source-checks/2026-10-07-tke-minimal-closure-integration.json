@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "tke_minimal_closure_integration",
+  "recordedAt": "2026-10-07T12:54:45Z",
+  "status": "integrated_pending_candidate",
+  "owner": "one-person-lab-cloud",
+  "branch": "codex/tke-minimal-closure-integration",
+  "commit": "ef54771d8f692031135481b30d46aa18370ba430",
+  "objective": "Integrate the two parallel TKE closure lanes (owner-transport/closure tree on 27d7d4c and the Console BFF tenant admission route on eb9061b0) into one branch exact SHA for a replaceable branch Candidate.",
+  "merge": {
+    "base": "27d7d4cba92101000648ea50a7979dfd5b63021b",
+    "merged": "eb9061b0",
+    "strategy": "no-ff",
+    "conflicts": 0,
+    "commonFiles": [
+      "apps/console-bff/internal/httpapi/publisher.go",
+      "services/control-plane/internal/server/d4_renewal_business_test.go"
+    ]
+  },
+  "verification": {
+    "consoleBffFocused": "ok opl-cloud/apps/console-bff/internal/httpapi; ok opl-cloud/apps/console-bff/internal/clients",
+    "contractsFocused": "ok opl-cloud/packages/contracts/go/owneridentity",
+    "productBoundary": "passed",
+    "verifyLocal": "passed",
+    "diffCheck": "passed"
+  },
+  "integratedFacts": {
+    "tenantRouteInMergedTree": true,
+    "deploymentUnitTransportPrincipalInMergedTree": true,
+    "ownerTopologyBundleAssetInWorkflow": true
+  },
+  "notChanged": ["SSOT", "DDD owner boundaries", "Cloud architecture", "canonical main", "Release publication boundary"],
+  "claimBoundary": "This receipt proves the integration merge, its focused checks, the product-boundary validation and the local verification only. It does not claim a built Candidate, TKE installation, runtime readiness, qualification, billing, or business closure.",
+  "nextSerialStep": "Dispatch Build OPL Cloud Candidate for this exact branch SHA, then bind that Candidate in Instance Preflight."
+}

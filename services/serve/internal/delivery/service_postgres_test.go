@@ -218,9 +218,27 @@ func TestServeReadSurfaceIsOwnerTruth(t *testing.T) {
 		t.Fatalf("anonymous workspace reported %+v", anon)
 	}
 
-	// A Workspace Serve has never delivered has no entry and no fabricated mode.
+	// A Workspace Serve has never delivered is refused to a tenant-scoped reader
+	// with the same decision as another tenant's Workspace: the read must not
+	// distinguish "not yours" from "no delivery record". A platform-scoped
+	// operator read keeps the live-authority path and still reports no fabricated
+	// mode for a Workspace with no delivery.
 	empty, err := service.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call(tenant, false), WorkspaceId: "ws-unknown"})
-	assertAccessUnavailable(t, empty, err)
+	if empty != nil || status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("undelivered tenant read = %v / %v, want the uniform refusal", empty, err)
+	}
+	platformEmpty, err := service.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call(tenant, true), WorkspaceId: "ws-unknown"})
+	assertAccessUnavailable(t, platformEmpty, err)
+}
+
+// assertReadRefused asserts the uniform read refusal a tenant-scoped caller
+// receives for another tenant's Workspace or an id Serve has no delivery record
+// for. The decision carries the same constant message in both cases.
+func assertReadRefused(t *testing.T, err error) {
+	t.Helper()
+	if status.Code(err) != codes.PermissionDenied || status.Convert(err).Message() != "workspace belongs to another tenant" {
+		t.Fatalf("read refusal = %v, want the uniform PermissionDenied decision", err)
+	}
 }
 
 func assertAccessUnavailable(t *testing.T, access *api.WorkspaceAccess, err error) {
@@ -301,6 +319,87 @@ func TestServeReadSurfaceRejectsCrossTenant(t *testing.T) {
 	}
 	if _, err := denied.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call(tenant, false), WorkspaceId: "ws-alpha"}); status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("CloudIdentity denial was not honored: %v", err)
+	}
+}
+
+// TestServeReadSurfaceRefusesUndeliveredAndForeignWorkspaces is the focused
+// tenant/ownership isolation guard for the read surface: a tenant-scoped read of
+// a Workspace Serve has never delivered and a read of another tenant's
+// Workspace are refused with the byte-identical decision, so a read cannot be
+// used to learn whether Serve holds a delivery record for an opaque Workspace
+// id. The guard runs before the live authority is consulted and writes nothing;
+// a repeated call returns the same refusal, and the owning tenant's own
+// delivered Workspace stays readable.
+func TestServeReadSurfaceRefusesUndeliveredAndForeignWorkspaces(t *testing.T) {
+	db, tenant, _ := fixture(t)
+	identity := &fakeIdentity{}
+	service, err := delivery.New(db, ownerAuthorizer(identity))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := serveContext()
+	seedDeployment(t, db, "ws-owned", tenant, "dep-owned", "active", "ready", "https://ws-owned.example/app", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
+	seedDeployment(t, db, "ws-foreign", "tenant-other", "dep-foreign", "active", "ready", "https://ws-foreign.example/app", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
+
+	refusals := map[string][]string{}
+	for _, workspace := range []string{"ws-unknown", "ws-foreign"} {
+		for _, read := range []struct {
+			name string
+			call func() error
+		}{
+			{"list-deployments", func() error {
+				_, callErr := service.ListDeployments(ctx, &api.ListDeploymentsRpcRequest{Context: call(tenant, false), WorkspaceId: workspace})
+				return callErr
+			}},
+			{"get-deployment", func() error {
+				_, callErr := service.GetDeployment(ctx, &api.GetDeploymentRpcRequest{Context: call(tenant, false), WorkspaceId: workspace, DeploymentId: "dep-unknown"})
+				return callErr
+			}},
+			{"workspace-access", func() error {
+				_, callErr := service.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call(tenant, false), WorkspaceId: workspace})
+				return callErr
+			}},
+		} {
+			for attempt := 0; attempt < 2; attempt++ {
+				callErr := read.call()
+				assertReadRefused(t, callErr)
+				refusals[read.name] = append(refusals[read.name], callErr.Error())
+			}
+		}
+	}
+	// Every refusal for the undelivered id is identical to every refusal for the
+	// other tenant's Workspace, for every read: nothing in the decision separates
+	// the two cases, and the retried call repeats the same refusal.
+	for _, read := range []string{"list-deployments", "get-deployment", "workspace-access"} {
+		seen := refusals[read]
+		for _, value := range seen[1:] {
+			if value != seen[0] {
+				t.Fatalf("%s refusals are distinguishable: %v", read, seen)
+			}
+		}
+		if len(seen) != 4 {
+			t.Fatalf("%s refusals = %d, want 4", read, len(seen))
+		}
+	}
+	// The refusal is Serve's own persisted-authority guard: the live authority is
+	// never consulted for an id Serve cannot attribute, and no row is written.
+	if identity.calls != 0 {
+		t.Fatalf("the read refusal consulted the live authority %d times", identity.calls)
+	}
+	var rows int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM serve.agent_deployments WHERE workspace_id IN ('ws-unknown','ws-foreign')`).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 1 {
+		t.Fatalf("refused reads changed Serve rows: %d", rows)
+	}
+	// The owning tenant's own delivered Workspace stays readable and still reaches
+	// the live decision: the guard is scoped to ids Serve cannot attribute.
+	if _, err := service.ListDeployments(ctx, &api.ListDeploymentsRpcRequest{Context: call(tenant, false), WorkspaceId: "ws-owned"}); err != nil {
+		t.Fatalf("the owning tenant's delivered Workspace was refused: %v", err)
+	}
+	if identity.calls == 0 {
+		t.Fatal("the admitted read never consulted the live authority")
 	}
 }
 

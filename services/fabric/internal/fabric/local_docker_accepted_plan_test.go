@@ -16,7 +16,17 @@ func TestLocalDockerAcceptedResourcePlanExactBinding(t *testing.T) {
 	if err != nil || got.PackageID != "package-is-not-the-sku" || got.AccountID != "legacy-account" || got.NodePoolID != "local-docker" {
 		t.Fatalf("exact binding=%+v %v", got, err)
 	}
-	for name, mutate := range map[string]func(*api.ResourcePlanSnapshot){"profile": func(p *api.ResourcePlanSnapshot) { p.ProviderProfileId = "other" }, "capability": func(p *api.ResourcePlanSnapshot) { p.ProviderCapabilityVersion = "other" }, "region": func(p *api.ResourcePlanSnapshot) { p.Region = "other" }, "storage SKU": func(p *api.ResourcePlanSnapshot) { p.ProviderStorageSkuId = "other" }, "compute SKU": func(p *api.ResourcePlanSnapshot) { p.ProviderComputeSkuId = "package-is-not-the-sku" }, "size": func(p *api.ResourcePlanSnapshot) { p.CapacityGib = 20 }, "memory": func(p *api.ResourcePlanSnapshot) { p.MemoryMib = 2048 }, "provider": func(p *api.ResourcePlanSnapshot) { p.Provider = "tencent-tke" }, "billing": func(p *api.ResourcePlanSnapshot) { p.BillingMode = "PREPAID_MONTHLY" }} {
+	// The Local-Docker provider executes both approved purchase shapes: a Local
+	// zero-charge plan and a prepaid monthly plan whose wallet charge the Gateway
+	// authority confirmed. Both resolve the same deployment package; only an
+	// unapproved billing mode is refused.
+	prepaid := proto.Clone(plan).(*api.ResourcePlanSnapshot)
+	prepaid.BillingMode = "PREPAID_MONTHLY"
+	prepaid.PrepaidMonths = 1
+	if got, err := provider.ResolveAcceptedResourcePlan("tenant", prepaid); err != nil || got.PackageID != "package-is-not-the-sku" || got.AccountID != "legacy-account" || got.NodePoolID != "local-docker" {
+		t.Fatalf("prepaid binding=%+v %v", got, err)
+	}
+	for name, mutate := range map[string]func(*api.ResourcePlanSnapshot){"profile": func(p *api.ResourcePlanSnapshot) { p.ProviderProfileId = "other" }, "capability": func(p *api.ResourcePlanSnapshot) { p.ProviderCapabilityVersion = "other" }, "region": func(p *api.ResourcePlanSnapshot) { p.Region = "other" }, "storage SKU": func(p *api.ResourcePlanSnapshot) { p.ProviderStorageSkuId = "other" }, "compute SKU": func(p *api.ResourcePlanSnapshot) { p.ProviderComputeSkuId = "package-is-not-the-sku" }, "size": func(p *api.ResourcePlanSnapshot) { p.CapacityGib = 20 }, "memory": func(p *api.ResourcePlanSnapshot) { p.MemoryMib = 2048 }, "provider": func(p *api.ResourcePlanSnapshot) { p.Provider = "tencent-tke" }, "billing": func(p *api.ResourcePlanSnapshot) { p.BillingMode = "POSTPAID_BY_HOUR" }} {
 		t.Run(name, func(t *testing.T) {
 			changed := proto.Clone(plan).(*api.ResourcePlanSnapshot)
 			mutate(changed)

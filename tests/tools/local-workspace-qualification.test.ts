@@ -30,7 +30,11 @@ import {
   validateJ0ReadyReceipt,
   validateLocalJ1AccountingReadback,
   validateLocalQualificationReceipt,
-  workspaceDeleteFailureEvidence
+  workspaceDeleteFailureEvidence,
+  workspaceDeleteReceiptStagesMatch,
+  workspaceGatewaySecretRef,
+  workspaceReservedKeyName,
+  retainedWorkspaceKey
 } from "../../tools/local-workspace-qualification.ts";
 import { runLocalWorkspaceQualification } from "../../tools/local-workspace-qualification.ts";
 
@@ -45,8 +49,8 @@ test("owner delete continues only from exact durable compute pending evidence", 
   const auth = { cookie: "session=test", csrf: "csrf-test" };
   const operationId = "workspace-delete-alpha";
   const responses = [
-    { response: { status: 202, headers: new Headers({ "retry-after": "1" }) }, payload: { status: "pending", phase: "storage_destroyed", ownerStage: "compute", computeStatus: "destroying", operationId, workspaceId: "ws-alpha", computeReadbacks: 1, maxComputeReadbacks: 8 } },
-    { response: { status: 202, headers: new Headers({ "retry-after": "1" }) }, payload: { status: "pending", phase: "storage_destroyed", ownerStage: "compute", computeStatus: "destroying", operationId, workspaceId: "ws-alpha", computeReadbacks: 2, maxComputeReadbacks: 8 } },
+    { response: { status: 202, headers: new Headers({ "retry-after": "1" }) }, payload: { status: "pending", phase: "storage_absent", ownerStage: "compute", computeStatus: "destroying", operationId, workspaceId: "ws-alpha", computeReadbacks: 1, maxComputeReadbacks: 8 } },
+    { response: { status: 202, headers: new Headers({ "retry-after": "1" }) }, payload: { status: "pending", phase: "storage_absent", ownerStage: "compute", computeStatus: "destroying", operationId, workspaceId: "ws-alpha", computeReadbacks: 2, maxComputeReadbacks: 8 } },
     { response: { status: 200, headers: new Headers() }, payload: { status: "deleted", operationId, workspaceId: "ws-alpha" } }
   ];
   const calls = [];
@@ -68,7 +72,7 @@ test("owner delete continues only from exact durable compute pending evidence", 
   for (const call of calls) assert.deepEqual(call, [path, init, auth, [200, 202]]);
   assert.equal(pendingEvidence.length, 2);
   assert.deepEqual(pendingEvidence.at(-1), {
-    phase: "storage_destroyed", ownerStage: "compute", ordinal: 2, max: 8,
+    phase: "storage_absent", ownerStage: "compute", ordinal: 2, max: 8,
     operationDigest: `sha256:${createHash("sha256").update(operationId).digest("hex")}`
   });
   assert.doesNotMatch(JSON.stringify(pendingEvidence), /workspace-delete-alpha|ws-alpha/);
@@ -77,7 +81,7 @@ test("owner delete continues only from exact durable compute pending evidence", 
 test("owner delete response-loss continuation preserves the consumed read ordinal", async () => {
   const responses = [
     { response: { status: 202, headers: new Headers({ "retry-after": "1" }) }, payload: {
-      status: "pending", phase: "storage_destroyed", ownerStage: "compute", computeStatus: "destroying",
+      status: "pending", phase: "storage_absent", ownerStage: "compute", computeStatus: "destroying",
       operationId: "workspace-delete-alpha", workspaceId: "ws-alpha", computeReadbacks: 2, maxComputeReadbacks: 8
     } },
     { response: { status: 200, headers: new Headers() }, payload: {
@@ -98,7 +102,7 @@ test("owner delete response-loss continuation preserves the consumed read ordina
 });
 
 test("owner delete rejects pending identity, ordinal, and budget drift", async () => {
-  const base = { status: "pending", phase: "storage_destroyed", ownerStage: "compute", computeStatus: "destroying", operationId: "workspace-delete-alpha", workspaceId: "ws-alpha", computeReadbacks: 1, maxComputeReadbacks: 8 };
+  const base = { status: "pending", phase: "storage_absent", ownerStage: "compute", computeStatus: "destroying", operationId: "workspace-delete-alpha", workspaceId: "ws-alpha", computeReadbacks: 1, maxComputeReadbacks: 8 };
   for (const [name, pending] of Object.entries({
     identity: { ...base, operationId: "workspace-delete-other" },
     ordinal: { ...base, computeReadbacks: 2 },
@@ -115,7 +119,7 @@ test("owner delete rejects pending identity, ordinal, and budget drift", async (
 test("owner delete failure keeps only redacted last pending evidence", async () => {
   const operationId = "workspace-delete-secret-alpha";
   const pending = {
-    status: "pending", phase: "storage_destroyed", ownerStage: "compute", computeStatus: "destroying",
+    status: "pending", phase: "storage_absent", ownerStage: "compute", computeStatus: "destroying",
     operationId, workspaceId: "ws-secret-alpha", computeReadbacks: 1, maxComputeReadbacks: 8
   };
   const evidence = [];
@@ -135,7 +139,7 @@ test("owner delete failure keeps only redacted last pending evidence", async () 
   }, async () => {}), /continuation failed/);
   assert.equal(evidence.length, 1);
   assert.deepEqual(evidence[0], {
-    phase: "storage_destroyed", ownerStage: "compute", ordinal: 1, max: 8,
+    phase: "storage_absent", ownerStage: "compute", ordinal: 1, max: 8,
     operationDigest: `sha256:${createHash("sha256").update(operationId).digest("hex")}`
   });
   assert.doesNotMatch(JSON.stringify(evidence), /workspace-delete-secret-alpha|ws-secret-alpha/);
@@ -588,15 +592,18 @@ test("Local J1 accounting allows unrelated history and rejects duplicate operati
   const workspaceId = "ws-current";
   const receiptId = "receipt-current";
   const runtimeId = "runtime-current";
+  const applicationOperationId = "workspace-application-deploy-current";
   const keyId = "700";
+  const keyName = workspaceReservedKeyName(workspaceId);
+  const entryUrl = "http://127.0.0.1:32776/";
   const debitCode = "opl:current-debit";
   const amountUsdMicros = "52580000";
-  const currentKey = { id: keyId, kind: "workspace", status: "active" };
-  const historicalKey = { id: "699", kind: "workspace", status: "active" };
+  const currentKey = { id: keyId, name: keyName, kind: "workspace", status: "active" };
+  const historicalKey = { id: "699", name: "opl-workspace-historical", kind: "workspace", status: "active" };
   const currentReceipt = {
     receiptId, operationId, workspaceId, type: "billing.workspace_purchased.v1", status: "completed",
     chargeReference: debitCode, totalUsdMicros: amountUsdMicros,
-    fulfillment: { runtimeId, workspaceApiKeyId: keyId }
+    fulfillment: { computeAllocationId: "compute-current", storageId: "storage-current", attachmentId: "attachment-current" }
   };
   const historicalReceipt = {
     ...currentReceipt,
@@ -604,10 +611,10 @@ test("Local J1 accounting allows unrelated history and rejects duplicate operati
     operationId: "workspace-launch-historical",
     workspaceId: "ws-historical",
     chargeReference: "opl:historical-debit",
-    fulfillment: { runtimeId: "runtime-historical", workspaceApiKeyId: "699" }
+    fulfillment: { computeAllocationId: "compute-historical", storageId: "storage-historical", attachmentId: "attachment-historical" }
   };
   const input = {
-    operationId, workspaceId, receiptId, runtimeId, keyId, sub2apiUserId: "41", debitCode, amountUsdMicros,
+    operationId, workspaceId, receiptId, runtimeId, keyId, keyName, sub2apiUserId: "41", debitCode, amountUsdMicros,
     beforeMicros: "1000000000", afterMicros: "947420001",
     baselineKeys: [historicalKey], baselineReceipts: [historicalReceipt],
     keys: [historicalKey, currentKey], receipts: [historicalReceipt, currentReceipt],
@@ -615,18 +622,26 @@ test("Local J1 accounting allows unrelated history and rejects duplicate operati
     history: { items: [{ valueUsdMicros: "-1000000", status: "used" }] },
     debit: { count: 1, code: debitCode, userId: "41", amountUsdMicros },
     evidence: {
-      launch: { operationId, workspaceId, receiptId },
-      runtime: { runtimeId },
+      launch: { operationId, workspaceId, receiptId, computeAllocationId: "compute-current", storageId: "storage-current", attachmentId: "attachment-current" },
+      current: { status: "ready", entryUrl, operationId: applicationOperationId },
+      workspace: { url: entryUrl },
+      runtime: { runtimeId, currentApplication: { operationId: applicationOperationId } },
       receipt: currentReceipt
     }
   };
 
   assert.deepEqual(validateLocalJ1AccountingReadback(input), { walletExactDeltaObserved: false });
   assert.throws(() => validateLocalJ1AccountingReadback({ ...input, keys: [...input.keys, currentKey] }), /key cardinality/);
+  assert.throws(() => validateLocalJ1AccountingReadback({ ...input, keys: [historicalKey, { ...currentKey, name: "opl-workspace-other" }] }), /key cardinality/);
   assert.throws(() => validateLocalJ1AccountingReadback({ ...input, receipts: [...input.receipts, currentReceipt] }), /receipt cardinality/);
   assert.throws(() => validateLocalJ1AccountingReadback({ ...input, debit: { ...input.debit, count: 2 } }), /debit cardinality/);
   assert.throws(() => validateLocalJ1AccountingReadback({ ...input, baselineKeys: [...input.baselineKeys, currentKey] }), /predates/);
+  assert.throws(() => validateLocalJ1AccountingReadback({ ...input, baselineKeys: [...input.baselineKeys, { id: "698", name: keyName, kind: "workspace", status: "active" }] }), /predates/);
   assert.throws(() => validateLocalJ1AccountingReadback({ ...input, baselineReceipts: [...input.baselineReceipts, currentReceipt] }), /predates/);
+  assert.throws(() => validateLocalJ1AccountingReadback({
+    ...input,
+    evidence: { ...input.evidence, runtime: { runtimeId, currentApplication: { operationId: "workspace-application-deploy-other" } } }
+  }), /accounting binding/);
 });
 
 test("READY receipt binds the exact durable and accounting evidence", () => {
@@ -647,25 +662,48 @@ test("READY receipt binds the exact durable and accounting evidence", () => {
       runtimeId: "rt-alpha", keyId: "71", debitCode: "opl:qualification-alpha", purchaseReceiptId: "receipt-alpha"
     },
     debit: { count: 1, accountId: "acct-admin", operationId: "workspace-launch-alpha", workspaceId: "ws-alpha", code: "opl:qualification-alpha", userId: "41", amountUsdMicros: "52580000" },
-    wallet: { beforeUsdMicros: "100000000", afterUsdMicros: "47420000", afterDeleteUsdMicros: "47420000" },
+    wallet: { beforeUsdMicros: "100000000", afterUsdMicros: "47420000", afterDeleteUsdMicros: "99926972" },
     receipt: {
-      count: 1, id: "receipt-alpha", accountId: "acct-admin", operationId: "workspace-launch-alpha", workspaceId: "ws-alpha", runtimeId: "rt-alpha",
-      keyId: "71", chargeReference: "opl:qualification-alpha", amountUsdMicros: "52580000"
+      count: 1, id: "receipt-alpha", accountId: "acct-admin", operationId: "workspace-launch-alpha", workspaceId: "ws-alpha",
+      provisioningMode: "resource_only", computeAllocationId: "compute-alpha", storageId: "storage-alpha", attachmentId: "attachment-alpha",
+      chargeReference: "opl:qualification-alpha", amountUsdMicros: "52580000"
+    },
+    application: {
+      status: "ready", operationId: "workspace-application-deploy-alpha", applicationId: "opl-app", revision: "1".repeat(64),
+      entryUrl: "http://127.0.0.1:32776/", runtimeId: "rt-alpha", keyId: "71", resumed: false
     },
     restart: { performed: true, operationStable: true, workspaceStable: true, runtimeStable: true, receiptStable: true },
     deletion: {
       ownerAuthorized: true, accountId: "acct-admin", operationId: "workspace-delete-alpha", deletionReceiptId: "receipt-delete",
-      workspaceId: "ws-alpha", runtimeId: "rt-alpha", keyId: "71",
-      workspaceAbsent: true, runtimeAbsent: true, workspaceKeyAbsent: true, fabricSecretAbsent: true
+      workspaceId: "ws-alpha", runtimeId: "", workspaceApiKeyId: "0",
+      workspaceAbsent: true, runtimeAbsent: true, workspaceKeyRetained: true, fabricSecretAbsent: true
     },
     deletionReceipt: {
-      count: 1, id: "receipt-delete", type: "workspace.deleted.v1", accountId: "acct-admin",
-      operationId: "workspace-delete-alpha", workspaceId: "ws-alpha", launchReceiptId: "receipt-alpha"
+      count: 1, id: "receipt-delete", type: "workspace.deleted.v1",
+      operationId: "workspace-delete-alpha", workspaceId: "ws-alpha", launchReceiptId: "receipt-alpha",
+      resourceType: "workspace", resourceId: "ws-alpha",
+      resourceStatus: {
+        runtimeStatus: "absent", gatewaySecretStatus: "absent", attachmentStatus: "absent",
+        storageStatus: "absent", computeStatus: "absent", workspaceStatus: "absent"
+      },
+      stageEvidence: [
+        { stage: "runtime_absent", result: "absent", evidenceKind: "provider_readback", observedAt: "2026-10-06T00:00:01Z", evidenceRef: "deletion-evidence:1" },
+        { stage: "attachment_absent", result: "released", evidenceKind: "local_transition", observedAt: "2026-10-06T00:00:02Z", evidenceRef: "deletion-evidence:2" },
+        { stage: "storage_absent", result: "absent", evidenceKind: "provider_readback", observedAt: "2026-10-06T00:00:03Z", evidenceRef: "deletion-evidence:3" },
+        { stage: "compute_absent", result: "absent", evidenceKind: "provider_readback", observedAt: "2026-10-06T00:00:04Z", evidenceRef: "deletion-evidence:4" },
+        { stage: "workspace_absent", result: "removed", evidenceKind: "local_transition", observedAt: "2026-10-06T00:00:05Z", evidenceRef: "deletion-evidence:5" }
+      ]
     },
     residuals: { containers: 0, volumes: 0, networks: 0 },
-    authorityWriteCounts: { keyCreates: 1, keyDeletes: 1, debits: 1, refunds: 0 },
+    authorityWriteCounts: { keyCreates: 1, keyDeletes: 0, debits: 1, refunds: 1 },
     mutationCounts: { workspaceLaunchPosts: 1, workspaceDeleteRequests: 1, refundPosts: 0 },
-    refund: { count: 0 },
+    // The deletion closeout's platform refund: the wallet operation derives from
+    // the Delete operation, refunds the charge that paid for the period, and is
+    // recorded by its own Ledger receipt.
+    refund: {
+      count: 1, walletOperationId: `wallet-adjustment-delete-${"a".repeat(24)}`, receiptId: "receipt-refund",
+      amountUsdMicros: "52506972", code: "opl:qualification-refund", userId: "41", relatedOperationId: "workspace-launch-alpha"
+    },
     usage: { source: "sub2api", status: "available", totalRequests: 0 },
     qualification: { authorityMode: "fixture", p0Ready: false },
     deferred: ["tencent-tke", "production-sub2api", "production-secrets"]
@@ -680,11 +718,82 @@ test("READY receipt binds the exact durable and accounting evidence", () => {
     ...fixtureReceipt, deletionReceipt: { ...fixtureReceipt.deletionReceipt, type: "billing.workspace_refunded.v1" }
   }), /deletion receipt/);
   assert.throws(() => validateLocalQualificationReceipt({
-    ...fixtureReceipt, deletion: { ...fixtureReceipt.deletion, keyId: "72" }
+    ...fixtureReceipt, deletion: { ...fixtureReceipt.deletion, workspaceKeyRetained: false }
   }), /owner deletion/);
+  assert.throws(() => validateLocalQualificationReceipt({
+    ...fixtureReceipt, deletion: { ...fixtureReceipt.deletion, runtimeId: "rt-alpha" }
+  }), /owner deletion/);
+  assert.throws(() => validateLocalQualificationReceipt({
+    ...fixtureReceipt, deletion: { ...fixtureReceipt.deletion, workspaceApiKeyId: "71" }
+  }), /owner deletion/);
+  assert.throws(() => validateLocalQualificationReceipt({
+    ...fixtureReceipt,
+    deletionReceipt: {
+      ...fixtureReceipt.deletionReceipt,
+      stageEvidence: fixtureReceipt.deletionReceipt.stageEvidence.slice(0, 4)
+    }
+  }), /deletion receipt/);
+  assert.throws(() => validateLocalQualificationReceipt({
+    ...fixtureReceipt,
+    deletionReceipt: {
+      ...fixtureReceipt.deletionReceipt,
+      resourceStatus: { ...fixtureReceipt.deletionReceipt.resourceStatus, gatewaySecretStatus: "pending" }
+    }
+  }), /deletion receipt/);
   assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, qualification: { authorityMode: "fixture", p0Ready: true } }), /authority classification/);
   assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, wallet: { ...fixtureReceipt.wallet, afterUsdMicros: "47420001" } }), /fixture wallet/);
   assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, authorityWriteCounts: { ...fixtureReceipt.authorityWriteCounts, debits: 2 } }), /authority write counts/);
+  assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, authorityWriteCounts: { ...fixtureReceipt.authorityWriteCounts, refunds: 0 } }), /authority write counts/);
+  assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, refund: { ...fixtureReceipt.refund, count: 0 } }), /platform refund/);
+  assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, refund: { ...fixtureReceipt.refund, relatedOperationId: "workspace-launch-other" } }), /platform refund/);
+  assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, refund: { ...fixtureReceipt.refund, walletOperationId: "wallet-adjustment-delete-short" } }), /platform refund/);
+  assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, refund: { ...fixtureReceipt.refund, code: "refund-without-owner-prefix" } }), /platform refund/);
+  assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, refund: { ...fixtureReceipt.refund, amountUsdMicros: "52580001" } }), /platform refund/);
+  assert.throws(() => validateLocalQualificationReceipt({
+    ...fixtureReceipt, wallet: { ...fixtureReceipt.wallet, afterDeleteUsdMicros: "47420000" }
+  }), /fixture wallet/);
+  assert.throws(() => validateLocalQualificationReceipt({
+    ...fixtureReceipt, receipt: { ...fixtureReceipt.receipt, runtimeId: "rt-alpha" }
+  }), /receipt binding/);
+  assert.throws(() => validateLocalQualificationReceipt({
+    ...fixtureReceipt, application: { ...fixtureReceipt.application, status: "pending" }
+  }), /application installation/);
+  assert.throws(() => validateLocalQualificationReceipt({
+    ...fixtureReceipt, application: { ...fixtureReceipt.application, runtimeId: "rt-other" }
+  }), /application installation/);
+});
+
+test("owner delete proves Gateway Secret removal and Gateway Key retention by their own owners", () => {
+  const workspaceId = "ws-alpha";
+  const keyName = workspaceReservedKeyName(workspaceId);
+  // The provider secret ref is derived from the Workspace identity, exactly like
+  // Contracts' WorkspaceGatewaySecretRef.
+  assert.equal(workspaceGatewaySecretRef(workspaceId), `opl-gateway-${createHash("sha256").update(workspaceId).digest("hex").slice(0, 16)}`);
+  // The authority's own key record is what the retention check reads: it has no
+  // Control Plane `kind` projection, and the exact record must be unchanged.
+  const authorityKey = { id: 71, userId: 41, name: keyName, groupId: 7, status: "active" };
+  const authorityKeyRecord = { ...authorityKey };
+  assert.equal(retainedWorkspaceKey([authorityKey], [authorityKeyRecord], workspaceId, "71"), true);
+  assert.equal(retainedWorkspaceKey([authorityKey], [{ ...authorityKey, status: "disabled" }], workspaceId, "71"), false);
+  assert.equal(retainedWorkspaceKey([authorityKey], [], workspaceId, "71"), false);
+  assert.equal(retainedWorkspaceKey([authorityKey], [{ ...authorityKey, id: 72 }], workspaceId, "71"), false);
+  assert.equal(retainedWorkspaceKey([authorityKey], [{ ...authorityKey, userId: 42 }], workspaceId, "71"), false);
+  assert.equal(retainedWorkspaceKey([authorityKey], [{ ...authorityKey, name: `${keyName}-other` }], workspaceId, "71"), false);
+  assert.equal(retainedWorkspaceKey([{ ...authorityKey, name: `${keyName}-other` }], [authorityKeyRecord], workspaceId, "71"), false);
+  assert.equal(retainedWorkspaceKey([authorityKey], [authorityKeyRecord, { id: 72, userId: 41, name: `${keyName}-second`, groupId: 7, status: "active" }], workspaceId, "71"), false);
+  assert.equal(retainedWorkspaceKey([authorityKey, { id: 72, userId: 41, name: `${keyName}-second`, groupId: 7, status: "active" }], [authorityKeyRecord], workspaceId, "71"), false);
+  const stages = [
+    { stage: "runtime_absent", result: "absent", evidenceKind: "provider_readback", observedAt: "t1", evidenceRef: "ref-1" },
+    { stage: "attachment_absent", result: "released", evidenceKind: "local_transition", observedAt: "t2", evidenceRef: "ref-2" },
+    { stage: "storage_absent", result: "absent", evidenceKind: "provider_readback", observedAt: "t3", evidenceRef: "ref-3" },
+    { stage: "compute_absent", result: "absent", evidenceKind: "provider_readback", observedAt: "t4", evidenceRef: "ref-4" },
+    { stage: "workspace_absent", result: "removed", evidenceKind: "local_transition", observedAt: "t5", evidenceRef: "ref-5" }
+  ];
+  assert.equal(workspaceDeleteReceiptStagesMatch(stages), true);
+  assert.equal(workspaceDeleteReceiptStagesMatch(stages.slice(0, 4)), false);
+  assert.equal(workspaceDeleteReceiptStagesMatch([...stages.slice(0, 4), { ...stages[4], stage: "receipt_recorded" }]), false);
+  assert.equal(workspaceDeleteReceiptStagesMatch([{ ...stages[0], evidenceRef: "" }, ...stages.slice(1)]), false);
+  assert.equal(workspaceDeleteReceiptStagesMatch([{ ...stages[0], result: "waiting" }, ...stages.slice(1)]), false);
 });
 
 test("local build proxy rejects credentials or URL parameters and errors redact the entire URL authority and query", () => {
@@ -796,15 +905,18 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
   const workspaceId = `ws-${stableID("workspace-launch-v2", accountId, operationId).slice(0, 18)}`;
   const receiptId = "receipt-j1";
   const runtimeId = "runtime-j1";
+  const applicationOperationId = "workspace-application-deploy-j1";
   const keyId = "700";
+  const keyName = workspaceReservedKeyName(workspaceId);
   const debitCode = "opl:j1-debit";
   const amountUsdMicros = "52580000";
-  const workspaceURL = `http://workspace.test/w/${workspaceId}/`;
-  const historicalKey = { id: "699", kind: "workspace", status: "active" };
+  let entryURL = "";
+  const resourceFulfillment = { computeAllocationId: "compute-j1", storageId: "storage-j1", attachmentId: "attachment-j1" };
+  const historicalKey = { id: "699", name: "opl-workspace-historical", kind: "workspace", status: "active" };
   const historicalReceipt = {
     receiptId: "receipt-historical", operationId: "workspace-launch-historical", workspaceId: "ws-historical",
     type: "billing.workspace_purchased.v1", status: "completed", chargeReference: "opl:historical-debit",
-    totalUsdMicros: "52580000", fulfillment: { runtimeId: "runtime-historical", workspaceApiKeyId: "699" }
+    totalUsdMicros: "52580000", fulfillment: { computeAllocationId: "compute-historical", storageId: "storage-historical", attachmentId: "attachment-historical" }
   };
   const requests = [];
   const counts = { mappingPosts: 0, workspacePosts: 0, keyCreates: 0, debits: 0, refunds: 0, deletes: 0, restarts: 0 };
@@ -816,8 +928,11 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
     response.end(JSON.stringify(payload));
   };
   const launch = (status = "succeeded") => ({
-    operationId, workspaceId, status, phase: status, receiptId, url: workspaceURL,
-    workspaceApiKeyId: keyId, computeAllocationId: "compute-j1", storageId: "storage-j1", attachmentId: "attachment-j1"
+    operationId, workspaceId, status, phase: status, receiptId,
+    computeAllocationId: "compute-j1", storageId: "storage-j1", attachmentId: "attachment-j1"
+  });
+  const currentApplication = () => ({
+    operationId: applicationOperationId, applicationId: "opl-app", revision: "revision-j1", status: "ready", entryUrl: entryURL
   });
   server = createServer(async (request, response) => {
     const url = new URL(request.url || "/", "http://qualification.test");
@@ -844,7 +959,7 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
     if (method === "GET" && url.pathname === "/api/gateway/wallet") return send(response, 200, envelope("sub2api", { userId: "41", currency: "USD", usdMicros: counts.debits ? "947420000" : "1000000000", status: "active" }));
     if (method === "GET" && url.pathname === "/api/gateway/usage-summary") return send(response, 200, envelope("sub2api", { totalRequests: 0 }));
     if (method === "GET" && url.pathname === "/api/gateway/keys") {
-      const items = counts.keyCreates ? [historicalKey, { id: keyId, kind: "workspace", status: "active" }] : [historicalKey];
+      const items = counts.keyCreates ? [historicalKey, { id: keyId, name: keyName, kind: "workspace", status: "active" }] : [historicalKey];
       return send(response, 200, envelope("sub2api", { items, total: items.length, page: 1, pageSize: 100, pages: 1 }));
     }
     if (method === "POST" && url.pathname === "/api/pricing/preview") return send(response, 200, { resourceType: "workspace", packageId: "basic", currency: "USD", totalChargeUsdMicros: Number(amountUsdMicros) });
@@ -856,19 +971,24 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
       launchReads += 1;
       return send(response, 200, launch(launchReads === 1 ? "pending" : "succeeded"));
     }
-    if (method === "GET" && url.pathname === "/api/workspaces") return send(response, 200, envelope("control-plane", { items: [{ id: workspaceId, url: workspaceURL }], total: 1, page: 1, pageSize: 20 }));
-    if (method === "GET" && url.pathname === `/api/workspaces/${workspaceId}/runtime-status`) return send(response, 200, envelope("fabric", { workspaceId, runtimeId, ready: true, status: "running", url: workspaceURL }));
-    if (method === "GET" && url.pathname === `/api/billing/receipts/${receiptId}`) return send(response, 200, envelope("ledger", { receiptId, accountId, operationId, workspaceId, type: "billing.workspace_purchased.v1", status: "completed", chargeReference: debitCode, totalUsdMicros: amountUsdMicros, fulfillment: { runtimeId, workspaceApiKeyId: keyId } }));
+    if (method === "GET" && url.pathname === "/api/workspaces") return send(response, 200, envelope("control-plane", { items: [{ id: workspaceId, url: entryURL, openable: true, currentApplication: currentApplication() }], total: 1, page: 1, pageSize: 20 }));
+    if (method === "GET" && url.pathname === `/api/workspaces/${workspaceId}/runtime-status`) return send(response, 200, envelope("fabric", { workspaceId, runtimeId, ready: true, status: "running", url: entryURL, currentApplication: currentApplication() }));
+    if (method === "GET" && url.pathname === `/api/billing/receipts/${receiptId}`) return send(response, 200, envelope("ledger", { receiptId, accountId, operationId, workspaceId, type: "billing.workspace_purchased.v1", status: "completed", chargeReference: debitCode, totalUsdMicros: amountUsdMicros, fulfillment: resourceFulfillment }));
     if (method === "GET" && url.pathname === "/api/billing/receipts") {
-      const currentReceipt = { receiptId, accountId, operationId, workspaceId, type: "billing.workspace_purchased.v1", status: "completed", chargeReference: debitCode, totalUsdMicros: amountUsdMicros, fulfillment: { runtimeId, workspaceApiKeyId: keyId } };
+      const currentReceipt = { receiptId, accountId, operationId, workspaceId, type: "billing.workspace_purchased.v1", status: "completed", chargeReference: debitCode, totalUsdMicros: amountUsdMicros, fulfillment: resourceFulfillment };
       return send(response, 200, envelope("ledger", { receipts: counts.debits ? [historicalReceipt, currentReceipt] : [historicalReceipt], hasMore: false, nextCursor: "" }));
     }
     if (method === "GET" && url.pathname === `/api/gateway/keys/${keyId}`) return send(response, 200, envelope("sub2api", { id: keyId, kind: "workspace", status: "active" }));
     if (method === "GET" && url.pathname === `/api/gateway/keys/${keyId}/usage-summary`) return send(response, 200, envelope("sub2api", { totalRequests: 0 }));
     if (method === "GET" && url.pathname === "/api/gateway/balance-history") return send(response, 200, envelope("sub2api", { items: [{ valueUsdMicros: `-${amountUsdMicros}`, status: "used" }], total: 1, page: 1, pageSize: 20, pages: 1 }));
-    if (method === "GET" && url.pathname === `/w/${workspaceId}/`) { response.writeHead(200, { "content-type": "text/html" }); response.end("<html>OPL Workspace READY</html>"); return; }
     return send(response, 404, { error: "not_found" });
   });
+  const entryServer = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end("<html>OPL Workspace READY</html>");
+  });
+  await new Promise((resolvePromise, reject) => { entryServer.once("error", reject); entryServer.listen(0, "127.0.0.1", resolvePromise); });
+  entryURL = `http://127.0.0.1:${entryServer.address().port}/`;
   await new Promise((resolvePromise, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolvePromise); });
   const address = server.address();
   const http = createHTTP(`http://127.0.0.1:${address.port}`);
@@ -901,7 +1021,11 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
       runLiveJ1: async ({ j0Ready }) => runLocalWorkspaceJ1HTTPQualification({
         http, adminEmail: "admin@example.test", adminPassword: "admin-password", qualificationEmail: accountEmail, qualificationPassword: accountPassword,
         accountProvisionKey, launchKey, operationId, workspaceId, workspaceName: "J1", wait: async () => {},
-        onStage: (stage) => stages.push(stage), readRuntime: async () => ({ runningDigest: workspaceDigest }),
+        onStage: (stage) => stages.push(stage),
+        readRuntime: async ({ runtimeId: observedRuntimeId }) => {
+          if (observedRuntimeId !== runtimeId) throw new Error("Runtime readback identity is invalid");
+          return { runningDigest: workspaceDigest };
+        },
         readDebit: async ({ code, sub2apiUserId, amountUsdMicros: value }) => ({ code, userId: sub2apiUserId, amountUsdMicros: value, count: 1 }),
         cleanup: async (scope) => { cleanupCalls.push(scope); return { containers: 0, volumes: 0, networks: 0 }; },
         receiptBase: {
@@ -917,7 +1041,7 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
     const writtenReceipt = JSON.parse(await readFile(outputPath, "utf8"));
     assert.equal(writtenReceipt.j0Ready.digest, result.j0Ready.digest);
     assert.deepEqual(writtenReceipt.j0Ready.source, { sha, tree: "d".repeat(40), clean: true });
-    assert.deepEqual(stages, ["bootstrap_ready", "admin_login", "account_provision", "qualification_login", "wallet_usage_baseline", "pricing_preview", "workspace_launch", "terminal_readback", "workspace_open", "accounting_readback", "receipt_validation", "qualification_cleanup"]);
+    assert.deepEqual(stages, ["bootstrap_ready", "admin_login", "account_provision", "qualification_login", "wallet_usage_baseline", "pricing_preview", "workspace_launch", "application_installation", "terminal_readback", "workspace_open", "accounting_readback", "receipt_validation", "qualification_cleanup"]);
     assert.deepEqual(cleanupCalls, [{ accountId, workspaceId }]);
     assert.deepEqual(counts, { mappingPosts: 1, workspacePosts: 1, keyCreates: 1, debits: 1, refunds: 0, deletes: 0, restarts: 0 });
     assert.equal(requests.filter((request) => request.method === "POST" && request.path === "/api/workspace-launches").length, 1);
@@ -929,6 +1053,7 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
       else process.env[name] = value;
     }
     await new Promise((resolvePromise) => server.close(() => resolvePromise()));
+    await new Promise((resolvePromise) => entryServer.close(() => resolvePromise()));
     await rm(j0Root, { recursive: true, force: true });
   }
 });

@@ -3,7 +3,7 @@ import { constants } from "node:fs";
 import { access, mkdir, mkdtemp, readFile, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse as parseYAML } from "yaml";
@@ -133,7 +133,13 @@ export function focusedVerificationSteps(changedPaths: readonly string[], testTa
       .map(path => { const directory = relative(module, dirname(path)); return directory ? `./${directory}` : "."; }))].sort();
     // Module metadata and non-Go assets affect module-level tests. A database
     // requirement is a real boundary failure, never a reason to compile-only.
-    const targets = paths.some(path => !path.endsWith(".go")) ? ["./..."] : packages;
+    // Entrypoint packages often have no tests. Select the module's behavior
+    // suites in that case instead of treating a compile-only package as proof.
+    const hasPackageTests = packages.some(target => {
+      const directory = join(root, module, target);
+      return existsSync(directory) && readdirSync(directory).some(name => name.endsWith("_test.go"));
+    });
+    const targets = paths.some(path => !path.endsWith(".go")) || !hasPackageTests ? ["./..."] : packages;
     add({ name: `${module} focused Go tests`, command: "go", args: ["test", "-count=1", "-json", ...targets], cwd: module, evidence: "go" });
   }
   if (mergeBase) {

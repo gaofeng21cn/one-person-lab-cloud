@@ -18,12 +18,14 @@ import (
 )
 
 // RebindSecret is Fabric's explicit replacement path for a changed Gateway
-// Secret. BindSecret stays initial-bind and same-request replay only, so a second
+// Secret. Serve is the only approved caller, exactly as for the initial bind.
+// BindSecret stays initial-bind and same-request replay only, so a second
 // model configuration that changes the managed key cannot be expressed as another
 // BindSecret; it must name the exact predecessor it replaces. Fabric compares that
-// predecessor under the same per-Workspace lock it binds under, has the provider
-// confirm the new approved-store Secret, then retires the predecessor binding and
-// writes the replacement as the one active binding, preserving the
+// predecessor under the same per-Workspace lock it binds under, proves it belongs
+// to the exact runtime instance the replacement names, has the provider confirm
+// the new approved-store Secret, then retires the predecessor binding and writes
+// the replacement as the one active binding, preserving the
 // (execution_resource_id, purpose) WHERE revoked_at IS NULL invariant without ever
 // holding two active bindings.
 //
@@ -33,7 +35,7 @@ import (
 // failure rolls the whole transaction back, so the predecessor binding stays
 // active and no replacement is recorded.
 func (s *Service) RebindSecret(ctx context.Context, r *api.SecretBindingRebindCommand) (*api.SecretBindingRebindReadback, error) {
-	if err := peer(ctx, owneridentity.Workspace.Service()); err != nil {
+	if err := peer(ctx, owneridentity.Serve.Service()); err != nil {
 		return nil, err
 	}
 	if err := ownerservice.ValidateCallContext(ctx, r.GetContext()); err != nil {
@@ -117,10 +119,30 @@ func (s *Service) RebindSecret(ctx context.Context, r *api.SecretBindingRebindCo
 	if currentResult != "confirmed" {
 		return nil, status.Error(codes.FailedPrecondition, "the active Secret binding is not confirmed")
 	}
+	// The predecessor must belong to the exact runtime instance this replacement
+	// names. Its originating bind/rebind command is the durable runtime identity
+	// of the active binding, so a replacement can never retire another runtime
+	// instance's binding or relabel it in the readback.
+	origin, err := secretBindingOriginOf(ctx, tx, currentID)
+	if err != nil {
+		return nil, err
+	}
+	if origin.RuntimeInstanceID != r.GetRuntimeInstanceId() {
+		return nil, status.Error(codes.FailedPrecondition, "the active Secret binding belongs to a different runtime instance")
+	}
 	if currentRef == r.GetSecretDeliveryReference() && currentFingerprint == r.GetFingerprint() {
-		// The predecessor already carries the requested Secret identity: the
-		// replacement names itself, so replay the current binding instead of
-		// retiring and re-writing the same content.
+		// The predecessor may answer the replacement as itself only when the
+		// request names the exact Gateway key binding the active binding was
+		// created from. Identical Secret content does not prove the same Gateway
+		// binding identity: another binding can neither be labeled confirmed by
+		// the predecessor nor silently swapped in without the provider
+		// confirmation and predecessor retirement a real replacement requires.
+		if origin.KeyBindingID != r.GetKeyBindingId() {
+			return nil, status.Error(codes.FailedPrecondition, "the active Secret binding belongs to a different Gateway key binding")
+		}
+		// The predecessor already carries the requested Secret identity and
+		// Gateway binding: the replacement names itself, so replay the current
+		// binding instead of retiring and re-writing the same content.
 		out := secretRebindReadback(currentID, currentID, r.GetRuntimeInstanceId(), currentVersion, currentFingerprint, "confirmed", currentID)
 		if err = recordSecretRebindIdempotency(ctx, tx, s, idem, setID, out); err != nil {
 			return nil, err

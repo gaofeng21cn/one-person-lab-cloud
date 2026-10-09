@@ -268,7 +268,7 @@ func TestPostgresD3CloseoutBusinessChain(t *testing.T) {
 				t.Fatal("failed workspace was activated")
 			}
 			receipt, err := c.finance.process.handler.service.BillingReceiptForAccount(context.Background(), op.stringFact("accountId"), op.stringFact("workspaceId"), op.Closeout.ReceiptID)
-			if err != nil || !workspaceLaunchReceiptInputMatches(receipt.ReceiptInput, workspaceLaunchCloseoutReceiptInput(op)) {
+			if err != nil || !clients.ReceiptInputEqual(receipt.ReceiptInput, workspaceLaunchCloseoutReceiptInput(op)) {
 				t.Fatalf("closure receipt mismatch: %v", err)
 			}
 			response, err := workspaceLaunchReconcileResponse(op, nil)

@@ -424,15 +424,41 @@ func TestLiveServeReadChain(t *testing.T) {
 		assertAccessUnavailable(t, access, err)
 	})
 
-	t.Run("never_delivered_workspace_has_empty_history", func(t *testing.T) {
+	t.Run("never_delivered_workspace_is_refused_like_a_foreign_one", func(t *testing.T) {
+		// The read surface must not distinguish "not yours" from "no delivery
+		// record": a Workspace Serve has never delivered is refused with the same
+		// decision the production chain gives another tenant's Workspace, and the
+		// authority admits the identical request when Serve's ownership guard is
+		// not the decider. The refusal is Serve's own persisted-authority guard.
 		call := bffReadCall(t, ctx, chain, "serve", "live-never-delivered")
-		page, err := client.ListDeployments(ctx, &api.ListDeploymentsRpcRequest{Context: call, WorkspaceId: "ws-never-delivered"})
-		requireServed(t, err, "ListDeployments for a Workspace Serve has never delivered")
-		if len(page.GetItems()) != 0 {
-			t.Fatalf("never-delivered Workspace reported history: %+v", page.GetItems())
+		decision, err := chain.client.Authorize(ctx, serveReadAuthorization(call, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS, "ws-never-delivered", "live-never-delivered-direct"))
+		if err != nil || decision.GetResult() != api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED {
+			t.Fatalf("the production authority refused the direct read: %v / %+v", err, decision)
 		}
-		access, err := client.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call, WorkspaceId: "ws-never-delivered"})
-		assertAccessUnavailable(t, access, err)
+		for _, read := range []struct {
+			name string
+			call func() error
+		}{
+			{"list-deployments", func() error {
+				_, callErr := client.ListDeployments(ctx, &api.ListDeploymentsRpcRequest{Context: call, WorkspaceId: "ws-never-delivered"})
+				return callErr
+			}},
+			{"get-deployment", func() error {
+				_, callErr := client.GetDeployment(ctx, &api.GetDeploymentRpcRequest{Context: call, WorkspaceId: "ws-never-delivered", DeploymentId: "dep-never"})
+				return callErr
+			}},
+			{"workspace-access", func() error {
+				_, callErr := client.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call, WorkspaceId: "ws-never-delivered"})
+				return callErr
+			}},
+		} {
+			for attempt := 0; attempt < 2; attempt++ {
+				callErr := read.call()
+				if status.Code(callErr) != codes.PermissionDenied || status.Convert(callErr).Message() != "workspace belongs to another tenant" {
+					t.Fatalf("%s attempt %d on a never-delivered Workspace = %v, want the uniform refusal", read.name, attempt, callErr)
+				}
+			}
+		}
 	})
 
 	t.Run("attempt_without_active_agent_publishes_no_entry", func(t *testing.T) {

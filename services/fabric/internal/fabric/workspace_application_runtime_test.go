@@ -325,3 +325,52 @@ func TestWorkspaceApplicationRuntimeFailedReadbackCannotConvergeSuccess(t *testi
 		})
 	}
 }
+
+// A Workspace bought through the Launch-stage engine is recorded in the
+// operation store while the in-memory projection can still be empty in the same
+// process. The application runtime must recover that staged resource set on a
+// cache miss exactly like the delete and read paths do, instead of judging the
+// binding against a stale projection.
+func TestWorkspaceApplicationResourcesRecoverStagedLaunchResources(t *testing.T) {
+	ctx := context.Background()
+	service, _, _, resources := workspaceLaunchDeleteProjectionFixture(t)
+	if _, exists := service.computes[resources.ComputeAllocationID]; exists {
+		t.Fatal("fixture unexpectedly projected staged compute before cache-miss recovery")
+	}
+	compute, volume, attachment, err := service.workspaceApplicationResources(ctx, resources.ComputeAllocationID, resources.StorageID, resources.AttachmentID)
+	if err != nil {
+		t.Fatalf("recover staged resources: %v", err)
+	}
+	if compute.ID != resources.ComputeAllocationID || volume.ID != resources.StorageID || attachment.ID != resources.AttachmentID {
+		t.Fatalf("recovered compute=%q volume=%q attachment=%q", compute.ID, volume.ID, attachment.ID)
+	}
+	// The recovered projection now serves the same triple without another
+	// recovery pass.
+	againCompute, againVolume, againAttachment, err := service.workspaceApplicationResources(ctx, resources.ComputeAllocationID, resources.StorageID, resources.AttachmentID)
+	if err != nil || againCompute.ID != compute.ID || againVolume.ID != volume.ID || againAttachment.ID != attachment.ID {
+		t.Fatalf("second read compute=%q volume=%q attachment=%q err=%v", againCompute.ID, againVolume.ID, againAttachment.ID, err)
+	}
+}
+
+// The application runtime binding check must see the same staged Workspace that
+// the Launch-stage engine just sold: a preflight on a cache miss recovers the
+// staged resources first, so it can never reject the exact Compute, Storage and
+// Attachment the launch committed.
+func TestPreflightWorkspaceApplicationRuntimeRecoversStagedLaunchResources(t *testing.T) {
+	ctx := context.Background()
+	service, _, _, resources := workspaceLaunchDeleteProjectionFixture(t)
+	if _, exists := service.computes[resources.ComputeAllocationID]; exists {
+		t.Fatal("fixture unexpectedly projected staged compute before cache-miss recovery")
+	}
+	input := applicationRuntimeInput("app-runtime-staged", applicationRevisionForTest())
+	input.AccountID, input.WorkspaceID = "acct-delete", "ws-delete"
+	input.ComputeID, input.VolumeID, input.AttachmentID = resources.ComputeAllocationID, resources.StorageID, resources.AttachmentID
+	input.AttachmentOperationID = resources.AttachmentBindingRef
+	err := service.PreflightWorkspaceApplicationRuntime(ctx, input)
+	if err == nil {
+		return
+	}
+	if errors.Is(err, ErrWorkspaceApplicationRuntimeInputInvalid) {
+		t.Fatalf("staged launch resources must pass the binding check, err=%v", err)
+	}
+}

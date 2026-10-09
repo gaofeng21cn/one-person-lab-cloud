@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -185,6 +186,12 @@ func seedPaidOrder(t *testing.T, db *sql.DB) (*Service, ownerstore.Operation, *a
 	_, offer, accepted := orderFixture()
 	offer.ResourcePlan.Provider, accepted.ResourcePlan.Provider = "tencent", "tencent"
 	offer.ResourcePlan.BillingMode, accepted.ResourcePlan.BillingMode = "PREPAID_MONTHLY", "PREPAID_MONTHLY"
+	// A deploy quote always freezes the accepted period and its price basis; the
+	// paid activation binds the confirmed charge to exactly these facts.
+	offer.Quote.PeriodMonths, accepted.Quote.PeriodMonths = 1, 1
+	offer.Quote.PricePolicyVersionId, accepted.Quote.PricePolicyVersionId = "price-policy-original", "price-policy-original"
+	offer.Quote.PeriodStart, accepted.Quote.PeriodStart = timestamppb.New(time.Date(2026, 9, 26, 0, 0, 0, 0, time.UTC)), timestamppb.New(time.Date(2026, 9, 26, 0, 0, 0, 0, time.UTC))
+	offer.Quote.PeriodEnd, accepted.Quote.PeriodEnd = timestamppb.New(time.Date(2026, 10, 26, 0, 0, 0, 0, time.UTC)), timestamppb.New(time.Date(2026, 10, 26, 0, 0, 0, 0, time.UTC))
 	store, err := ownerstore.New(db, "workspace")
 	if err != nil {
 		t.Fatal(err)

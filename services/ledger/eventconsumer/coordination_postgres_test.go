@@ -572,3 +572,543 @@ func TestWalletActionReceiptPostgresWirePersistence(t *testing.T) {
 		t.Fatalf("generic writer accepted the wallet type: %v", err)
 	}
 }
+
+// inboxWireService starts the real Ledger domain listener over an isolated
+// PostgreSQL store with every peer identity the current matrix installs:
+// Workspace/Fabric for coordination, Build/Capability/Serve for their event
+// streams, Resource Catalog for the platform-scope policy publication, and
+// Gateway as the contract owner of wallet.operation_observed.v1.
+func inboxWireService(t *testing.T) (*sql.DB, *Server, string) {
+	t.Helper()
+	db := coordinationDB(t)
+	s, err := New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Install(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	peers := map[owneridentity.Service]string{}
+	for _, owner := range []owneridentity.Owner{owneridentity.Workspace, owneridentity.Fabric, owneridentity.Build, owneridentity.Capability, owneridentity.Serve, owneridentity.ResourceCatalog, owneridentity.Gateway} {
+		peers[owner.Service()] = coordinationToken
+	}
+	config := ownerservice.Config{Owner: owneridentity.Ledger, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: peers}
+	server, err := s.NewGRPC(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return db, s, startCoordinationWire(t, server)
+}
+
+func domainInboxClient(t *testing.T, address string, owner owneridentity.Owner) api.DomainInboxClient {
+	t.Helper()
+	options, err := (owneridentity.TLSConfig{AllowInsecureLocal: true}).DialOptions(owner.Service(), owneridentity.Ledger.Service(), coordinationToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := grpc.NewClient(address, options...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	return api.NewDomainInboxClient(conn)
+}
+
+// catalogPolicyEnvelope is the exact envelope shape the Resource Catalog Outbox
+// hands to its Ledger delivery loop: platform scope, no tenant, aggregate equal
+// to the policy version the payload names.
+func catalogPolicyEnvelope() *api.EventEnvelope {
+	return &api.EventEnvelope{
+		EventId: "evt-catalog-policy-wire-1", EventType: "catalog.policy_changed.v1", SchemaVersion: 1,
+		Owner: "resource_catalog", Scope: "platform", AggregateId: "policy-wire-1", AggregateVersion: 1,
+		RequestId: "req-policy-wire-1", OccurredAt: timestamppb.New(time.Now().UTC()),
+		Payload: &api.EventEnvelope_CatalogPolicyChanged{CatalogPolicyChanged: &api.CatalogPolicyChangedEvent{
+			PolicyVersionId: "policy-wire-1", PolicyKind: "price", ValidFrom: timestamppb.New(time.Now().Add(-time.Hour).UTC()),
+		}},
+	}
+}
+
+// TestDomainInboxAcceptsRealResourceCatalogPublication proves the previously
+// refused real producer path end to end over the wire: the platform-scope
+// catalog.policy_changed.v1 delivery is acknowledged, persisted with exact
+// immutable identity, replayed without a second row, and read back through the
+// existing store reader. Forged producers and conflicting bytes stay refused.
+func TestDomainInboxAcceptsRealResourceCatalogPublication(t *testing.T) {
+	db, s, address := inboxWireService(t)
+	ctx := context.Background()
+	catalog := domainInboxClient(t, address, owneridentity.ResourceCatalog)
+	event := catalogPolicyEnvelope()
+	ack, err := catalog.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: "resource_catalog", Event: event})
+	if err != nil {
+		t.Fatalf("deliver catalog policy: %v", err)
+	}
+	if ack.GetEventId() != event.EventId || ack.GetConsumer() != "ledger" || !ack.GetCommitted() || ack.GetDuplicate() {
+		t.Fatalf("ack=%v", ack)
+	}
+	var receiptID, requestHash string
+	var org, workspace, artifact string
+	if err = db.QueryRowContext(ctx, `SELECT id, organization_id, workspace_id, artifact_id, request_hash FROM evidence_receipts WHERE receipt_type='catalog.policy_changed.v1' AND idempotency_key='domain:resource_catalog:'||$1`, event.EventId).Scan(&receiptID, &org, &workspace, &artifact, &requestHash); err != nil {
+		t.Fatal(err)
+	}
+	if org != "platform" || workspace != "" || artifact == "" || requestHash == "" {
+		t.Fatalf("stored policy evidence org=%q workspace=%q artifact=%q hash=%q", org, workspace, artifact, requestHash)
+	}
+	// The identical bytes replay as the original receipt, never a second fact.
+	replay, err := catalog.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: "resource_catalog", Event: proto.Clone(event).(*api.EventEnvelope)})
+	if err != nil || !replay.GetCommitted() || !replay.GetDuplicate() {
+		t.Fatalf("replay=%v %v", replay, err)
+	}
+	var rows int
+	if err = db.QueryRowContext(ctx, `SELECT count(*) FROM evidence_receipts WHERE receipt_type='catalog.policy_changed.v1'`).Scan(&rows); err != nil || rows != 1 {
+		t.Fatalf("rows=%d %v", rows, err)
+	}
+	// Readback through the store's receipt reader returns the same immutable id.
+	stored, err := s.store.Receipt(ctx, receiptID)
+	if err != nil || stored.ReceiptID != receiptID || stored.Type != "catalog.policy_changed.v1" || stored.OrganizationID != "platform" {
+		t.Fatalf("readback=%+v %v", stored, err)
+	}
+	// The same event id with different policy bytes is refused, not replaced.
+	conflict := proto.Clone(event).(*api.EventEnvelope)
+	conflict.GetCatalogPolicyChanged().PolicyKind = "retention"
+	if _, err = catalog.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: "resource_catalog", Event: conflict}); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("conflicting policy bytes = %v, want AlreadyExists", err)
+	}
+	// A peer claiming another producer's envelope is refused before persistence.
+	forged := proto.Clone(event).(*api.EventEnvelope)
+	forged.EventId = "evt-forged-1"
+	if _, err = catalog.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: "build", Event: forged}); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("forged producer = %v, want PermissionDenied", err)
+	}
+	build := domainInboxClient(t, address, owneridentity.Build)
+	if _, err = build.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: "build", Event: proto.Clone(forged).(*api.EventEnvelope)}); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("foreign owner envelope = %v, want PermissionDenied", err)
+	}
+	// A readiness event smuggled through the platform scope is refused, while the
+	// legal tenant-scope shape still commits: tenancy was not loosened.
+	serve := domainInboxClient(t, address, owneridentity.Serve)
+	smuggled := &api.EventEnvelope{EventId: "evt-readiness-platform", EventType: "serve.agent_readiness_observed.v1", SchemaVersion: 1, Owner: "serve", Scope: "platform", AggregateId: "dep-wire-1", AggregateVersion: 1, RequestId: "req-readiness-1", OccurredAt: timestamppb.New(time.Now().UTC()), Payload: &api.EventEnvelope_RuntimeReadinessObserved{RuntimeReadinessObserved: &api.RuntimeReadinessObservedEvent{RuntimeInstanceId: "rt-wire-1", WorkspaceId: "ws-wire-1", DeploymentId: "dep-wire-1", Outcome: "unknown"}}}
+	if _, err = serve.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: "serve", Event: smuggled}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("platform readiness = %v, want InvalidArgument", err)
+	}
+	legal := proto.Clone(smuggled).(*api.EventEnvelope)
+	legal.EventId, legal.Scope, legal.TenantId = "evt-readiness-tenant", "tenant", "tenant-wire-1"
+	if ack, err = serve.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: "serve", Event: legal}); err != nil || !ack.GetCommitted() {
+		t.Fatalf("tenant readiness = %v %v", ack, err)
+	}
+	// The generic HTTP writer still cannot mint either newly typed evidence row.
+	httpHandler := ledgerhttp.NewServer(s.store, coordinationToken)
+	body := `{"type":"catalog.policy_changed.v1","status":"completed","surface":"cloud","organizationId":"platform","requestId":"req-forged","idempotencyKey":"forged-catalog"}`
+	req := httptest.NewRequest(http.MethodPost, "/ledger/receipts", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+coordinationToken)
+	req.Header.Set("Idempotency-Key", "forged-catalog")
+	out := httptest.NewRecorder()
+	httpHandler.ServeHTTP(out, req)
+	if out.Code != http.StatusBadRequest || strings.Contains(out.Body.String(), "receiptId") {
+		t.Fatalf("generic HTTP write status=%d body=%s", out.Code, out.Body.String())
+	}
+}
+
+// firstChainObservationShapes returns the three contract-listed observation
+// events this receiver now decodes, typed from their contract payloads. These
+// are typed fixtures: the Serve and Gateway producer delivery loops are their
+// own owners' write sets, so this matrix proves the Ledger receiver and the
+// exact envelope identities those producers must deliver.
+func firstChainObservationShapes() []struct {
+	name     string
+	owner    owneridentity.Owner
+	envelope *api.EventEnvelope
+} {
+	now := timestamppb.New(time.Now().UTC())
+	return []struct {
+		name     string
+		owner    owneridentity.Owner
+		envelope *api.EventEnvelope
+	}{
+		{
+			name: "serve.access_observed.v1", owner: owneridentity.Serve,
+			envelope: &api.EventEnvelope{EventId: "evt-observe-access-1", EventType: "serve.access_observed.v1", SchemaVersion: 1, Owner: "serve", Scope: "tenant", TenantId: "tenant-observe", AggregateId: "switch-observe-1", AggregateVersion: 1, RequestId: "req-observe-1", OccurredAt: now,
+				Payload: &api.EventEnvelope_RouteObserved{RouteObserved: &api.RouteObservedEvent{WorkspaceId: "workspace-observe", SwitchId: "switch-observe-1", ActionKind: "activate", RouteGeneration: 2, ExecutionEpoch: 1, RouteRevision: "route-revision-observe-1", Outcome: "confirmed", RouteReceiptId: proto.String("route-receipt-observe-1")}}},
+		},
+		{
+			name: "fabric.resources_observed.v1", owner: owneridentity.Serve,
+			envelope: &api.EventEnvelope{EventId: "evt-observe-resources-1", EventType: "fabric.resources_observed.v1", SchemaVersion: 1, Owner: "serve", Scope: "tenant", TenantId: "tenant-observe", AggregateId: "resource-set-observe-1", AggregateVersion: 1, RequestId: "req-observe-2", OccurredAt: now,
+				Payload: &api.EventEnvelope_ResourcesObserved{ResourcesObserved: &api.ResourcesObservedEvent{ResourceSetId: "resource-set-observe-1", WorkspaceId: "workspace-observe", ResourceActionId: "resource-action-observe-1", Outcome: "confirmed", AbsenceConfirmed: false}}},
+		},
+		{
+			name: "wallet.operation_observed.v1", owner: owneridentity.Gateway,
+			envelope: &api.EventEnvelope{EventId: "evt-observe-wallet-1", EventType: "wallet.operation_observed.v1", SchemaVersion: 1, Owner: "gateway", Scope: "tenant", TenantId: "tenant-observe", AggregateId: "wallet-operation-observe-1", AggregateVersion: 1, RequestId: "req-observe-3", OccurredAt: now,
+				Payload: &api.EventEnvelope_WalletOperationObserved{WalletOperationObserved: &api.WalletOperationObservedEvent{WalletOperationId: "wallet-operation-observe-1", WorkspaceId: "workspace-observe", Kind: "charge", Status: "confirmed", AmountUsdMicros: 52_580_000, ReceiptId: proto.String("wallet-receipt-observe-1")}}},
+		},
+	}
+}
+
+// TestDomainInboxAcceptsFirstChainObservationEvents proves the three
+// previously-refused first-chain observation events are consumable by the real
+// Ledger gRPC listener: first delivery commits once, identical bytes replay as
+// Duplicate, changed bytes under the same identity are refused, an independent
+// store reader reads back the identical immutable row bound to its workspace,
+// and the generic HTTP writer still cannot mint any of the three types.
+func TestDomainInboxAcceptsFirstChainObservationEvents(t *testing.T) {
+	db, s, address := inboxWireService(t)
+	ctx := context.Background()
+	clients := map[owneridentity.Owner]api.DomainInboxClient{}
+	for _, owner := range []owneridentity.Owner{owneridentity.Serve, owneridentity.Gateway} {
+		clients[owner] = domainInboxClient(t, address, owner)
+	}
+	for _, shape := range firstChainObservationShapes() {
+		t.Run(shape.name, func(t *testing.T) {
+			client, event := clients[shape.owner], shape.envelope
+			ack, err := client.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: shape.owner.String(), Event: event})
+			if err != nil || !ack.GetCommitted() || ack.GetDuplicate() || ack.GetEventId() != event.EventId || ack.GetAppliedAggregateVersion() != event.AggregateVersion {
+				t.Fatalf("first delivery ack=%v err=%v", ack, err)
+			}
+			var count int
+			var receiptID string
+			if err = db.QueryRowContext(ctx, `SELECT count(*), max(id) FROM evidence_receipts WHERE receipt_type=$1 AND idempotency_key='domain:'||$2||':'||$3`, shape.name, shape.owner.String(), event.EventId).Scan(&count, &receiptID); err != nil {
+				t.Fatal(err)
+			}
+			if count != 1 {
+				t.Fatalf("%s rows=%d", shape.name, count)
+			}
+			// Lost acknowledgement: the producer retries the original bytes.
+			replay, err := client.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: shape.owner.String(), Event: proto.Clone(event).(*api.EventEnvelope)})
+			if err != nil || !replay.GetCommitted() || !replay.GetDuplicate() {
+				t.Fatalf("replay ack=%v err=%v", replay, err)
+			}
+			// Conflicting bytes under the same event identity never replace the fact.
+			conflict := proto.Clone(event).(*api.EventEnvelope)
+			conflict.RequestId = event.RequestId + "-conflict"
+			if _, err = client.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: shape.owner.String(), Event: conflict}); status.Code(err) != codes.AlreadyExists {
+				t.Fatalf("%s conflicting bytes = %v, want AlreadyExists", shape.name, err)
+			}
+			// An independent store reader over the same database returns the exact
+			// immutable row, bound to the observed workspace.
+			restarted := ledger.NewPostgresStore(db)
+			stored, err := restarted.Receipt(ctx, receiptID)
+			if err != nil || stored.ReceiptID != receiptID || stored.Type != shape.name || stored.OrganizationID != "tenant-observe" || stored.WorkspaceID != "workspace-observe" || stored.RequestID != event.RequestId {
+				t.Fatalf("%s restart readback=%+v err=%v", shape.name, stored, err)
+			}
+			if stored.ArtifactID == "" || stored.IdempotencyKey != "" {
+				t.Fatalf("%s stored evidence missing derived digest: %+v", shape.name, stored)
+			}
+		})
+	}
+	// The generic HTTP writer must never mint these typed rows.
+	httpHandler := ledgerhttp.NewServer(s.store, coordinationToken)
+	for _, shape := range firstChainObservationShapes() {
+		body := `{"type":"` + shape.name + `","status":"completed","surface":"cloud","organizationId":"tenant-observe","workspaceId":"workspace-observe","requestId":"req-forged","idempotencyKey":"forged-` + shape.name + `"}`
+		req := httptest.NewRequest(http.MethodPost, "/ledger/receipts", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+coordinationToken)
+		req.Header.Set("Idempotency-Key", "forged-"+shape.name)
+		out := httptest.NewRecorder()
+		httpHandler.ServeHTTP(out, req)
+		if out.Code != http.StatusBadRequest {
+			t.Fatalf("generic HTTP write for %s status=%d body=%s", shape.name, out.Code, out.Body.String())
+		}
+	}
+}
+
+// TestFirstChainObservationRejections runs the refusal matrix over the real
+// Ledger gRPC boundary with isolated PostgreSQL. Every case mutates exactly one
+// contract identity or payload field of an otherwise legal envelope, so a pass
+// proves that specific guard and nothing wider.
+func TestFirstChainObservationRejections(t *testing.T) {
+	db, _, address := inboxWireService(t)
+	ctx := context.Background()
+	serve := domainInboxClient(t, address, owneridentity.Serve)
+	gateway := domainInboxClient(t, address, owneridentity.Gateway)
+	build := domainInboxClient(t, address, owneridentity.Build)
+	base := map[string]*api.EventEnvelope{}
+	for _, shape := range firstChainObservationShapes() {
+		base[shape.name] = shape.envelope
+	}
+	type rejectCase struct {
+		name   string
+		event  *api.EventEnvelope
+		owner  owneridentity.Owner
+		client api.DomainInboxClient
+		mutate func(*api.EventEnvelope)
+		code   codes.Code
+	}
+	cases := []rejectCase{
+		{name: "access missing workspace", event: base["serve.access_observed.v1"], owner: owneridentity.Serve, client: serve, mutate: func(e *api.EventEnvelope) { e.GetRouteObserved().WorkspaceId = "" }, code: codes.InvalidArgument},
+		{name: "access wrong owner", event: base["serve.access_observed.v1"], owner: owneridentity.Serve, client: serve, mutate: func(e *api.EventEnvelope) { e.Owner = "gateway" }, code: codes.PermissionDenied},
+		{name: "access platform scope", event: base["serve.access_observed.v1"], owner: owneridentity.Serve, client: serve, mutate: func(e *api.EventEnvelope) { e.Scope, e.TenantId = "platform", "" }, code: codes.InvalidArgument},
+		{name: "access platform scope with tenant", event: base["serve.access_observed.v1"], owner: owneridentity.Serve, client: serve, mutate: func(e *api.EventEnvelope) { e.Scope = "platform" }, code: codes.InvalidArgument},
+		{name: "resources platform scope", event: base["fabric.resources_observed.v1"], owner: owneridentity.Serve, client: serve, mutate: func(e *api.EventEnvelope) { e.Scope, e.TenantId = "platform", "" }, code: codes.InvalidArgument},
+		{name: "wallet platform scope", event: base["wallet.operation_observed.v1"], owner: owneridentity.Gateway, client: gateway, mutate: func(e *api.EventEnvelope) { e.Scope, e.TenantId = "platform", "" }, code: codes.InvalidArgument},
+		{name: "access missing tenant", event: base["serve.access_observed.v1"], owner: owneridentity.Serve, client: serve, mutate: func(e *api.EventEnvelope) { e.TenantId = "" }, code: codes.InvalidArgument},
+		{name: "access wrong aggregate", event: base["serve.access_observed.v1"], owner: owneridentity.Serve, client: serve, mutate: func(e *api.EventEnvelope) { e.AggregateId = "other-switch" }, code: codes.InvalidArgument},
+		{name: "access missing switch", event: base["serve.access_observed.v1"], owner: owneridentity.Serve, client: serve, mutate: func(e *api.EventEnvelope) { e.GetRouteObserved().SwitchId = "" }, code: codes.InvalidArgument},
+		{name: "access bad action kind", event: base["serve.access_observed.v1"], owner: owneridentity.Serve, client: serve, mutate: func(e *api.EventEnvelope) { e.GetRouteObserved().ActionKind = "swap" }, code: codes.InvalidArgument},
+		{name: "access negative generation", event: base["serve.access_observed.v1"], owner: owneridentity.Serve, client: serve, mutate: func(e *api.EventEnvelope) { e.GetRouteObserved().RouteGeneration = -1 }, code: codes.InvalidArgument},
+		{name: "access missing revision", event: base["serve.access_observed.v1"], owner: owneridentity.Serve, client: serve, mutate: func(e *api.EventEnvelope) { e.GetRouteObserved().RouteRevision = "" }, code: codes.InvalidArgument},
+		{name: "access bad outcome", event: base["serve.access_observed.v1"], owner: owneridentity.Serve, client: serve, mutate: func(e *api.EventEnvelope) { e.GetRouteObserved().Outcome = "maybe" }, code: codes.InvalidArgument},
+		{name: "access empty optional receipt", event: base["serve.access_observed.v1"], owner: owneridentity.Serve, client: serve, mutate: func(e *api.EventEnvelope) { e.GetRouteObserved().RouteReceiptId = proto.String("") }, code: codes.InvalidArgument},
+		{name: "access nil payload", event: base["serve.access_observed.v1"], owner: owneridentity.Serve, client: serve, mutate: func(e *api.EventEnvelope) { e.Payload = nil }, code: codes.InvalidArgument},
+		{name: "resources wrong aggregate", event: base["fabric.resources_observed.v1"], owner: owneridentity.Serve, client: serve, mutate: func(e *api.EventEnvelope) { e.AggregateId = "other-set" }, code: codes.InvalidArgument},
+		{name: "resources missing action", event: base["fabric.resources_observed.v1"], owner: owneridentity.Serve, client: serve, mutate: func(e *api.EventEnvelope) { e.GetResourcesObserved().ResourceActionId = "" }, code: codes.InvalidArgument},
+		{name: "resources absence claim without confirmed outcome", event: base["fabric.resources_observed.v1"], owner: owneridentity.Serve, client: serve, mutate: func(e *api.EventEnvelope) {
+			e.GetResourcesObserved().Outcome = "unknown"
+			e.GetResourcesObserved().AbsenceConfirmed = true
+		}, code: codes.InvalidArgument},
+		{name: "resources bad outcome", event: base["fabric.resources_observed.v1"], owner: owneridentity.Serve, client: serve, mutate: func(e *api.EventEnvelope) { e.GetResourcesObserved().Outcome = "done" }, code: codes.InvalidArgument},
+		{name: "wallet wrong owner", event: base["wallet.operation_observed.v1"], owner: owneridentity.Gateway, client: gateway, mutate: func(e *api.EventEnvelope) { e.Owner = "serve" }, code: codes.PermissionDenied},
+		{name: "wallet wrong aggregate", event: base["wallet.operation_observed.v1"], owner: owneridentity.Gateway, client: gateway, mutate: func(e *api.EventEnvelope) { e.AggregateId = "other-operation" }, code: codes.InvalidArgument},
+		{name: "wallet bad kind", event: base["wallet.operation_observed.v1"], owner: owneridentity.Gateway, client: gateway, mutate: func(e *api.EventEnvelope) { e.GetWalletOperationObserved().Kind = "withdrawal" }, code: codes.InvalidArgument},
+		{name: "wallet bad status", event: base["wallet.operation_observed.v1"], owner: owneridentity.Gateway, client: gateway, mutate: func(e *api.EventEnvelope) { e.GetWalletOperationObserved().Status = "settled" }, code: codes.InvalidArgument},
+		{name: "wallet negative amount", event: base["wallet.operation_observed.v1"], owner: owneridentity.Gateway, client: gateway, mutate: func(e *api.EventEnvelope) { e.GetWalletOperationObserved().AmountUsdMicros = -1 }, code: codes.InvalidArgument},
+		{name: "wallet bad purpose", event: base["wallet.operation_observed.v1"], owner: owneridentity.Gateway, client: gateway, mutate: func(e *api.EventEnvelope) { e.GetWalletOperationObserved().Purpose = proto.String("donation") }, code: codes.InvalidArgument},
+		{name: "wallet half coverage", event: base["wallet.operation_observed.v1"], owner: owneridentity.Gateway, client: gateway, mutate: func(e *api.EventEnvelope) {
+			e.GetWalletOperationObserved().CoverageStart = timestamppb.New(time.Now().UTC())
+		}, code: codes.InvalidArgument},
+		{name: "serve cannot claim gateway wallet observation", event: base["wallet.operation_observed.v1"], owner: owneridentity.Serve, client: serve, mutate: func(e *api.EventEnvelope) { e.EventId = "evt-forged-wallet" }, code: codes.PermissionDenied},
+		{name: "build cannot claim serve access observation", event: base["serve.access_observed.v1"], owner: owneridentity.Build, client: build, mutate: func(e *api.EventEnvelope) { e.EventId = "evt-forged-access" }, code: codes.PermissionDenied},
+	}
+	for i, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			event := proto.Clone(tc.event).(*api.EventEnvelope)
+			event.EventId = fmt.Sprintf("evt-reject-%d", i)
+			tc.mutate(event)
+			_, err := tc.client.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: tc.owner.String(), Event: event})
+			if status.Code(err) != tc.code {
+				t.Fatalf("%s = %v, want %s", tc.name, err, tc.code)
+			}
+		})
+	}
+	// The refusal matrix must not have persisted a single observation row.
+	var rows int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM evidence_receipts WHERE receipt_type IN ('serve.access_observed.v1','fabric.resources_observed.v1','wallet.operation_observed.v1')`).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 0 {
+		t.Fatalf("refused observations persisted %d rows", rows)
+	}
+	// Cross-tenant re-use of a committed event identity never replaces the
+	// original fact: the same event id with a different tenant is refused as a
+	// conflict against the persisted request hash.
+	legal := proto.Clone(base["serve.access_observed.v1"]).(*api.EventEnvelope)
+	legal.EventId = "evt-tenant-reuse"
+	if ack, err := serve.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: "serve", Event: legal}); err != nil || !ack.GetCommitted() {
+		t.Fatalf("legal access delivery=%v err=%v", ack, err)
+	}
+	foreignTenant := proto.Clone(legal).(*api.EventEnvelope)
+	foreignTenant.TenantId = "tenant-other"
+	if _, err := serve.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: "serve", Event: foreignTenant}); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("cross-tenant identity reuse = %v, want AlreadyExists", err)
+	}
+	var storedTenant string
+	if err := db.QueryRowContext(ctx, `SELECT organization_id FROM evidence_receipts WHERE idempotency_key='domain:serve:'||$1`, legal.EventId).Scan(&storedTenant); err != nil || storedTenant != legal.TenantId {
+		t.Fatalf("stored tenant=%q err=%v", storedTenant, err)
+	}
+}
+
+// lostResponseInboxClient is the lost-acknowledgement producer view: the call
+// reaches the real Ledger gRPC listener and commits, but the caller never sees
+// the acknowledgement, exactly as a dropped response would behave. The
+// producer's legal recovery is to retry the identical original bytes.
+type lostResponseInboxClient struct{ api.DomainInboxClient }
+
+func (c lostResponseInboxClient) Deliver(ctx context.Context, r *api.DeliverEventRequest, opts ...grpc.CallOption) (*api.InboxAck, error) {
+	if _, err := c.DomainInboxClient.Deliver(ctx, r, opts...); err != nil {
+		return nil, err
+	}
+	return nil, status.Error(codes.Unavailable, "acknowledgement lost after commit")
+}
+
+// restartInboxWire starts a second real Ledger gRPC service instance over the
+// same database: a new store and listener are constructed, and only the
+// database survives. This proves readback across a service restart at the
+// listener/store layer; it is not a killed-OS-process or SIGKILL test.
+func restartInboxWire(t *testing.T, db *sql.DB) (*Server, string) {
+	t.Helper()
+	s, err := New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peers := map[owneridentity.Service]string{}
+	for _, owner := range []owneridentity.Owner{owneridentity.Workspace, owneridentity.Fabric, owneridentity.Build, owneridentity.Capability, owneridentity.Serve, owneridentity.ResourceCatalog, owneridentity.Gateway} {
+		peers[owner.Service()] = coordinationToken
+	}
+	config := ownerservice.Config{Owner: owneridentity.Ledger, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: peers}
+	server, err := s.NewGRPC(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s, startCoordinationWire(t, server)
+}
+
+// TestFirstChainObservationLostAckAndServiceRestart proves original-identity
+// recovery for the three observation events: the producer commits through the
+// real listener but loses the acknowledgement, retries the identical bytes,
+// gets the original fact back as a duplicate, and a second service instance over
+// the same database reads back exactly one immutable row per event.
+func TestFirstChainObservationLostAckAndServiceRestart(t *testing.T) {
+	db, _, address := inboxWireService(t)
+	ctx := context.Background()
+	type committed struct {
+		eventID, receiptID, requestHash, owner string
+		event                                  *api.EventEnvelope
+	}
+	var facts []committed
+	for _, shape := range firstChainObservationShapes() {
+		client := domainInboxClient(t, address, shape.owner)
+		lost := lostResponseInboxClient{client}
+		if _, err := lost.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: shape.owner.String(), Event: proto.Clone(shape.envelope).(*api.EventEnvelope)}); status.Code(err) != codes.Unavailable {
+			t.Fatalf("%s lost-ack send = %v, want Unavailable", shape.name, err)
+		}
+		var receiptID, requestHash string
+		if err := db.QueryRowContext(ctx, `SELECT id, request_hash FROM evidence_receipts WHERE idempotency_key='domain:'||$1||':'||$2`, shape.owner.String(), shape.envelope.EventId).Scan(&receiptID, &requestHash); err != nil {
+			t.Fatalf("%s was not committed by the lost acknowledgement: %v", shape.name, err)
+		}
+		facts = append(facts, committed{eventID: shape.envelope.EventId, receiptID: receiptID, requestHash: requestHash, owner: shape.owner.String(), event: shape.envelope})
+	}
+	// A restarted service instance answers the producer's retry with the original
+	// committed fact instead of recording a second one.
+	restarted, restartAddress := restartInboxWire(t, db)
+	for _, fact := range facts {
+		client := domainInboxClient(t, restartAddress, owneridentity.Owner(fact.owner))
+		ack, err := client.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: fact.owner, Event: proto.Clone(fact.event).(*api.EventEnvelope)})
+		if err != nil || !ack.GetCommitted() || !ack.GetDuplicate() || ack.GetEventId() != fact.eventID {
+			t.Fatalf("%s restart retry ack=%v err=%v", fact.eventID, ack, err)
+		}
+		stored, err := restarted.store.Receipt(ctx, fact.receiptID)
+		if err != nil || stored.ReceiptID != fact.receiptID || stored.RequestID != fact.event.RequestId {
+			t.Fatalf("%s restarted store readback=%+v err=%v", fact.eventID, stored, err)
+		}
+		var rows int
+		if err := db.QueryRowContext(ctx, `SELECT count(*) FROM evidence_receipts WHERE idempotency_key='domain:'||$1||':'||$2 AND request_hash=$3`, fact.owner, fact.eventID, fact.requestHash).Scan(&rows); err != nil {
+			t.Fatal(err)
+		}
+		if rows != 1 {
+			t.Fatalf("%s has %d immutable rows after retry", fact.eventID, rows)
+		}
+	}
+}
+
+// currentProducerShapes returns one envelope per event type that has a real
+// producer in this source tree, byte-shaped from that producer's own append
+// call. They are typed fixtures: the producer processes are not started here,
+// because ledger's write set cannot run another owner's delivery loop, and the
+// per-event producer source locations are recorded in the step receipt.
+func currentProducerShapes() []struct {
+	name     string
+	owner    owneridentity.Owner
+	envelope *api.EventEnvelope
+	digest   string
+} {
+	now := timestamppb.New(time.Now().UTC())
+	sha := "sha256:" + strings.Repeat("ab", 32)
+	return []struct {
+		name     string
+		owner    owneridentity.Owner
+		envelope *api.EventEnvelope
+		digest   string
+	}{
+		{
+			name: "package.uploaded.v1", owner: owneridentity.Capability, digest: sha,
+			envelope: &api.EventEnvelope{EventId: "evt-shape-package", EventType: "package.uploaded.v1", SchemaVersion: 1, Owner: "capability", Scope: "tenant", TenantId: "tenant-shape", AggregateId: "pv-shape-1", AggregateVersion: 1, RequestId: "req-shape-1", OccurredAt: now,
+				Payload: &api.EventEnvelope_PackageUploaded{PackageUploaded: &api.PackageUploadedEvent{PackageVersionId: "pv-shape-1", PackageId: "pkg-shape-1", Sha256: sha, SizeBytes: 2048}}},
+		},
+		{
+			name: "build.artifact_confirmed.v1", owner: owneridentity.Build, digest: sha,
+			envelope: &api.EventEnvelope{EventId: "evt-shape-artifact", EventType: "build.artifact_confirmed.v1", SchemaVersion: 1, Owner: "build", Scope: "tenant", TenantId: "tenant-shape", AggregateId: "job-shape-1", AggregateVersion: 1, RequestId: "req-shape-2", OccurredAt: now,
+				Payload: &api.EventEnvelope_BuildArtifactConfirmed{BuildArtifactConfirmed: &api.BuildArtifactConfirmedEvent{BuildJobId: "job-shape-1", PackageVersionId: "pv-shape-1", RuntimeVersionId: "rt-shape-1", WebuiVersionId: "webui-shape-1", ArtifactDigest: sha, ArtifactReceiptId: "artifact-shape-1", DeploymentDescriptorDigest: "sha256:" + strings.Repeat("cd", 32)}}},
+		},
+		{
+			name: "build.failed.v1", owner: owneridentity.Build,
+			envelope: &api.EventEnvelope{EventId: "evt-shape-failed", EventType: "build.failed.v1", SchemaVersion: 1, Owner: "build", Scope: "tenant", TenantId: "tenant-shape", AggregateId: "job-shape-2", AggregateVersion: 1, RequestId: "req-shape-3", OccurredAt: now,
+				Payload: &api.EventEnvelope_BuildFailed{BuildFailed: &api.BuildFailedEvent{BuildJobId: "job-shape-2", ErrorCode: "build_failed"}}},
+		},
+		{
+			name: "capability.version_registered.v1", owner: owneridentity.Capability, digest: sha,
+			envelope: &api.EventEnvelope{EventId: "evt-shape-registered", EventType: "capability.version_registered.v1", SchemaVersion: 1, Owner: "capability", Scope: "tenant", TenantId: "tenant-shape", AggregateId: "capv-shape-1", AggregateVersion: 1, RequestId: "req-shape-4", OccurredAt: now,
+				Payload: &api.EventEnvelope_CapabilityVersionRegistered{CapabilityVersionRegistered: &api.CapabilityVersionRegisteredEvent{CapabilityVersionId: "capv-shape-1", BuildJobId: "job-shape-1", ArtifactDigest: sha}}},
+		},
+		{
+			name: "serve.agent_readiness_observed.v1", owner: owneridentity.Serve,
+			envelope: &api.EventEnvelope{EventId: "evt-shape-readiness", EventType: "serve.agent_readiness_observed.v1", SchemaVersion: 1, Owner: "serve", Scope: "tenant", TenantId: "tenant-shape", AggregateId: "dep-shape-1", AggregateVersion: 3, RequestId: "req-shape-5", OccurredAt: now,
+				Payload: &api.EventEnvelope_RuntimeReadinessObserved{RuntimeReadinessObserved: &api.RuntimeReadinessObservedEvent{RuntimeInstanceId: "rt-shape-1", WorkspaceId: "ws-shape-1", DeploymentId: "dep-shape-1", Outcome: "confirmed", ApplicationAvailable: true, ReceiptId: proto.String("readiness-shape-1"), AppliedModelConfigurationVersion: 2}}},
+		},
+	}
+}
+
+// TestDomainInboxAcceptsEveryCurrentProducerShape runs the acceptance matrix
+// for every event type that has a live producer in this tree: authenticated
+// delivery commits once, identical bytes replay as the original receipt after a
+// lost acknowledgement, tampered bytes with the same identity are refused, the
+// row survives an independent store reader, and refusal peers stay outside the
+// producer set.
+func TestDomainInboxAcceptsEveryCurrentProducerShape(t *testing.T) {
+	db, _, address := inboxWireService(t)
+	ctx := context.Background()
+	clients := map[owneridentity.Owner]api.DomainInboxClient{}
+	for _, owner := range []owneridentity.Owner{owneridentity.Build, owneridentity.Capability, owneridentity.Serve} {
+		clients[owner] = domainInboxClient(t, address, owner)
+	}
+	for _, shape := range currentProducerShapes() {
+		t.Run(shape.name, func(t *testing.T) {
+			client := clients[shape.owner]
+			event := shape.envelope
+			ack, err := client.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: shape.owner.String(), Event: event})
+			if err != nil || !ack.GetCommitted() || ack.GetDuplicate() || ack.GetEventId() != event.EventId || ack.GetAppliedAggregateVersion() != event.AggregateVersion {
+				t.Fatalf("first delivery ack=%v err=%v", ack, err)
+			}
+			// Lost acknowledgement: the producer retries the original bytes and must
+			// be answered with the same committed fact, not a second one.
+			replay, err := client.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: shape.owner.String(), Event: proto.Clone(event).(*api.EventEnvelope)})
+			if err != nil || !replay.GetCommitted() || !replay.GetDuplicate() {
+				t.Fatalf("replay ack=%v err=%v", replay, err)
+			}
+			var count int
+			var receiptID, requestHash string
+			if err = db.QueryRowContext(ctx, `SELECT count(*), max(id), max(request_hash) FROM evidence_receipts WHERE receipt_type=$1 AND idempotency_key='domain:'||$2||':'||$3`, shape.name, shape.owner.String(), event.EventId).Scan(&count, &receiptID, &requestHash); err != nil {
+				t.Fatal(err)
+			}
+			if count != 1 || requestHash == "" {
+				t.Fatalf("%s rows=%d", shape.name, count)
+			}
+			if shape.digest != "" {
+				var artifact string
+				if err = db.QueryRowContext(ctx, `SELECT artifact_id FROM evidence_receipts WHERE id=$1`, receiptID).Scan(&artifact); err != nil || artifact != shape.digest {
+					t.Fatalf("%s artifact=%q err=%v", shape.name, artifact, err)
+				}
+			}
+			// Conflicting bytes under the same event identity are refused.
+			conflict := proto.Clone(event).(*api.EventEnvelope)
+			conflict.RequestId = event.RequestId + "-conflict"
+			if _, err = client.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: shape.owner.String(), Event: conflict}); status.Code(err) != codes.AlreadyExists {
+				t.Fatalf("%s conflicting bytes = %v, want AlreadyExists", shape.name, err)
+			}
+			// An independent store reader (a restarted process over the same database)
+			// reads back the identical immutable row.
+			restarted := ledger.NewPostgresStore(db)
+			stored, err := restarted.Receipt(ctx, receiptID)
+			if err != nil || stored.ReceiptID != receiptID || stored.Type != shape.name || stored.OrganizationID != "tenant-shape" {
+				t.Fatalf("%s restart readback=%+v err=%v", shape.name, stored, err)
+			}
+			// The stored payload is the exact event bytes Ledger accepted, and the
+			// shared secret gate the writer applies to every RecordDomainEvent input
+			// is proven for this evidence shape in the ledger package tests.
+			var payload string
+			if err = db.QueryRowContext(ctx, `SELECT payload_json FROM evidence_receipts WHERE id=$1`, receiptID).Scan(&payload); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(payload, `"domainEvent"`) {
+				t.Fatalf("%s stored payload lost the domain event reference: %s", shape.name, payload)
+			}
+		})
+	}
+	// A coordination peer outside the event-producer set cannot use the event
+	// channel: Workspace may append receipts but never domain events, so its
+	// delivery is refused before any store access.
+	workspace := domainInboxClient(t, address, owneridentity.Workspace)
+	if _, err := workspace.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: "workspace", Event: currentProducerShapes()[0].envelope}); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("workspace event delivery = %v, want Unauthenticated", err)
+	}
+	// And a producer cannot deliver another owner's event type.
+	build := clients[owneridentity.Build]
+	if _, err := build.Deliver(ctx, &api.DeliverEventRequest{AuthenticatedProducer: "build", Event: currentProducerShapes()[4].envelope}); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("build claiming serve readiness = %v, want PermissionDenied", err)
+	}
+}
