@@ -328,7 +328,7 @@ function developmentTAP(stdout: string, targets: string[], cwd: string) {
 function developmentGoJSON(stdout: string) {
   const running = new Set<string>(), terminal = new Map<string, string>();
   const packages = new Map<string, string>(), started = new Set<string>();
-  let invalid = false, packageFailures = 0, packageSkips = 0;
+  let invalid = false, packageFailures = 0;
   for (const line of stdout.split(/\r?\n/).filter((line) => line.trim())) {
     try {
       const event = JSON.parse(line);
@@ -344,12 +344,14 @@ function developmentGoJSON(stdout: string) {
         if (packages.has(event.Package)) invalid = true;
         packages.set(event.Package, event.Action);
         if (event.Action === "fail") packageFailures++;
-        if (event.Action === "skip") packageSkips++;
       }
     } catch { invalid = true; }
   }
   const failed = [...terminal.values()].filter((value) => value === "fail").length + packageFailures;
-  const skipped = [...terminal.values()].filter((value) => value === "skip").length + packageSkips;
+  // Go emits package-level "skip" for compiled packages with no test files.
+  // Only registered test skips are skipped behavior; the positive test count
+  // below still refuses a stage that executed no tests at all.
+  const skipped = [...terminal.values()].filter((value) => value === "skip").length;
   const tests = terminal.size;
   const complete = running.size === terminal.size && packages.size > 0 && [...started].every((name) => packages.has(name)) &&
     [...running].every((id) => packages.has(id.split("\0")[0]));

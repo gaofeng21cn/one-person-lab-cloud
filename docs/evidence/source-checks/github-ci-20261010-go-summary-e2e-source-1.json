@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "964d28f4aeebc588f71dc7da74d26299cceb24eb",
+  "recordedAt": "2026-10-09T20:11:25.261Z",
+  "writeSet": [
+    "docs/evidence/source-checks/github-ci-20261010-go-summary-e2e-source-1.json",
+    "tests/tools/verify-local.test.ts",
+    "tools/verify-local.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "964d28f4aeebc588f71dc7da74d26299cceb24eb",
+    "changedFilesSha256": {
+      "tests/tools/verify-local.test.ts": "0301e7095d139921ad2d4d343aae9e9d3fe209e258d5d9f20a9ef75cf696bb99",
+      "tools/verify-local.ts": "0dc86f9f715086e2457a1b780524ba44dcb51fbea16b20f57e7a4b93136a7006"
+    }
+  },
+  "execution": {
+    "command": "go acceptance gate",
+    "exitCode": 0,
+    "tests": 107,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "6db1936645f0784d3a4581b6763c148892cbc2c3477c4fc2d30fe05d3dc8e60c"
+  },
+  "sourceStage": {
+    "runId": "github-ci-20261010-go-summary-e2e",
+    "gateId": "source",
+    "attempt": 1,
+    "receiptHash": "8b12b95a17fe700fa0d82ad896093c64a1706a0deb87b264ea0d828c0d44c3c2"
+  }
+}

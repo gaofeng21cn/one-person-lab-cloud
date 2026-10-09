@@ -585,6 +585,8 @@ test("development Go checks consume real JSON summaries and reject zero tests, s
   const module = join(snapshotRoot, "module");
   await mkdir(module);
   await writeFile(join(module, "go.mod"), "module fixture.invalid/control\n\ngo 1.22\n");
+  await mkdir(join(module, "compileonly"));
+  await writeFile(join(module, "compileonly", "control.go"), "package compileonly\n");
   for (const control of [
     { body: 'func TestReal(t *testing.T) {}', passed: true },
     { body: 'func TestSkip(t *testing.T) { t.Skip("negative control") }', passed: false },
