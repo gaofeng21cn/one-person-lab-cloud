@@ -152,7 +152,9 @@ func d4RenewalOwnerSession(t *testing.T, handler *controlPlaneHTTPHandler) *http
 }
 
 func TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp(t *testing.T) {
-	fixture := newWorkspaceRenewalRuntimeFixture(t, nil)
+	// The HTTP recovery route uses real time. Anchor the expired period once
+	// near that clock, then keep every worker tick on the same fixture timeline.
+	fixture := newWorkspaceRenewalWorkerFixtureAt(t, nil, time.Now().UTC().Add(-time.Minute).Truncate(time.Second))
 	store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)
 	seedTenantMember(t, store, "acct-monthly", "org-monthly", "usr-monthly-owner", "monthly-owner@example.com")
 	mustStore(t, store.SaveCompute(context.Background(), fixture.compute))

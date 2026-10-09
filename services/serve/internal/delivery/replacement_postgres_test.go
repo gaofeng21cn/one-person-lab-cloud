@@ -709,18 +709,29 @@ func TestServeRuntimeLifecycleActsOnThePersistedCommand(t *testing.T) {
 // stored applied version advances only to the version the application read back,
 // while another owner's call is refused before anything is applied.
 func TestServeReloadModelsAdmitsOnlyTheWorkspaceOwner(t *testing.T) {
-	s, r, reservation, _, _ := managedKeyFixture(t)
+	s, r, reservation, _, resources := managedKeyFixture(t)
 	ctx := workspaceContext()
 	runtime := &runtimeForServe{reloadVersion: 7}
 	s.Runtime = runtime
 	deploy := deployReserved(r, reservation)
 	deploy.ModelSelections = []*api.ModelSelection{{Slot: "chat", ModelId: "model-original"}}
-	deploy.ManagedKeyBinding = launchManagedKeyBinding(r.GetWorkspaceId(), reservation.RuntimeInstanceId, "key-original")
+	deploy.ManagedKeyBinding = launchManagedKeyHandover(r.GetWorkspaceId(), "key-original")
 	if _, err := s.Deploy(ctx, deploy); err != nil {
 		t.Fatalf("first delivery: %v", err)
 	}
-	binding := confirmedReloadBindingFixture(r.GetWorkspaceId(), "key-7", "v7")
-	command := &api.RuntimeReloadCommand{RuntimeInstanceId: reservation.RuntimeInstanceId, ExpectedAppliedVersion: 0, TargetVersion: 7, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-7"}}, ManagedKeyBinding: binding}
+	// Serve performed the initial bind itself: the launch handed over only the
+	// Gateway input and Serve recorded the Fabric-confirmed identity.
+	if resources.binds != 1 || resources.rebinds != 0 || resources.active == "" {
+		t.Fatalf("launch handover binds=%d rebinds=%d active=%q", resources.binds, resources.rebinds, resources.active)
+	}
+	launchBinding := resources.active
+	binding := confirmedReloadBindingReadback(r.GetWorkspaceId(), "key-7")
+	// The reload is a Workspace-admitted command: it carries the caller's own call
+	// context, and Serve derives every owner call from that original identity.
+	reloadCall := call(r.GetContext().GetScope().GetTenant().GetTenantId(), false)
+	reloadCall.IdempotencyKey = "model-update-1"
+	reloadCall.RequestId = "model-update-1"
+	command := &api.RuntimeReloadCommand{Context: reloadCall, RuntimeInstanceId: reservation.RuntimeInstanceId, ExpectedAppliedVersion: 0, TargetVersion: 7, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-7"}}, ManagedKeyBinding: binding}
 	// A peer that is not the Workspace owner never reaches the reload path.
 	foreign := ownerservice.WithPeerOwner(context.Background(), owneridentity.Capability.Service())
 	if _, err := s.ReloadModels(foreign, command); status.Code(err) != codes.PermissionDenied {
@@ -739,6 +750,12 @@ func TestServeReloadModelsAdmitsOnlyTheWorkspaceOwner(t *testing.T) {
 	if applied := appliedModelConfiguration(t, s, reservation.RuntimeInstanceId); applied != 7 {
 		t.Fatalf("applied model configuration=%d, want the version the application read back", applied)
 	}
+	// Serve performed the replacement against the exact predecessor it recorded and
+	// Fabric confirmed a new single active binding.
+	if resources.rebinds != 1 || resources.lastRebind.GetExpectedCurrentSecretBindingId() != launchBinding ||
+		resources.lastRebind.GetKeyBindingId() != "key-7" || resources.active == launchBinding {
+		t.Fatalf("replacement predecessor=%q key=%q active=%q rebinds=%d", resources.lastRebind.GetExpectedCurrentSecretBindingId(), resources.lastRebind.GetKeyBindingId(), resources.active, resources.rebinds)
+	}
 	// A caller that still expects the pre-reload version is refused: the stored
 	// applied version is a precondition, so a lost response is resolved by reading
 	// the applied version, never by resending a stale expectation.
@@ -748,45 +765,60 @@ func TestServeReloadModelsAdmitsOnlyTheWorkspaceOwner(t *testing.T) {
 	// The command is idempotent by its target version: resuming it with the version
 	// the runtime now holds replays the same durable operation instead of allocating
 	// a second applied fact.
-	resumed, err := s.ReloadModels(ctx, &api.RuntimeReloadCommand{RuntimeInstanceId: reservation.RuntimeInstanceId, ExpectedAppliedVersion: 7, TargetVersion: 7, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-7"}}, ManagedKeyBinding: binding})
+	reboundActive := resources.active
+	rebindsAfterFirst := resources.rebinds
+	resumedCall := call(r.GetContext().GetScope().GetTenant().GetTenantId(), false)
+	resumedCall.IdempotencyKey = "model-update-1"
+	resumedCall.RequestId = "model-update-1"
+	resumed, err := s.ReloadModels(ctx, &api.RuntimeReloadCommand{Context: resumedCall, RuntimeInstanceId: reservation.RuntimeInstanceId, ExpectedAppliedVersion: 7, TargetVersion: 7, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-7"}}, ManagedKeyBinding: binding})
 	if err != nil {
 		t.Fatalf("resumed reload: %v", err)
 	}
 	if resumed.GetOperationId() != operation.GetOperationId() {
 		t.Fatalf("resumed reload allocated a second operation: %v", resumed)
 	}
+	// The replay reused the binding the durable intent already recorded: no second
+	// Fabric replacement, no second active binding, no second execution.
+	if resources.active != reboundActive || resources.rebinds != rebindsAfterFirst {
+		t.Fatalf("resumed replay active=%q rebinds=%d, want the recorded binding %q and no new replacement", resources.active, resources.rebinds, reboundActive)
+	}
 	if applied := appliedModelConfiguration(t, s, reservation.RuntimeInstanceId); applied != 7 {
 		t.Fatalf("resumed reload advanced the applied configuration to %d", applied)
 	}
 }
 
-// TestServeReloadModelsRefusesAnUnconfirmedManagedKeyBinding proves Serve applies
-// only the credential generation its owners confirmed: a reload with no binding, an
-// incomplete one, or one that names another Workspace's Secret delivery is refused
-// before the execution boundary is reached and never advances the applied version.
-// Serve issues no Gateway key of its own on the reload path.
+// TestServeReloadModelsRefusesAnUnconfirmedManagedKeyBinding proves Serve accepts
+// only the Workspace handover input on a reload: absent, incomplete, foreign-slot
+// or caller-confirmed forms are refused before the execution boundary is reached
+// and never advance the applied version or touch the active binding.
 func TestServeReloadModelsRefusesAnUnconfirmedManagedKeyBinding(t *testing.T) {
 	for name, binding := range map[string]*api.RuntimeManagedKeyBinding{
-		"absent":          nil,
-		"incomplete":      {KeyBindingId: "key-7", Fingerprint: "sha256:" + strings.Repeat("ab", 32), SecretDeliveryReference: contracts.WorkspaceGatewaySecretRef("ws-first"), TargetSlot: "gateway"},
-		"foreign deliver": {KeyBindingId: "key-7", Fingerprint: "sha256:" + strings.Repeat("ab", 32), SecretDeliveryReference: contracts.WorkspaceGatewaySecretRef("ws-other"), TargetSlot: "gateway", SecretBindingId: "sbx_key-7", SecretVersion: "v7"},
-		"foreign slot":    {KeyBindingId: "key-7", Fingerprint: "sha256:" + strings.Repeat("ab", 32), SecretDeliveryReference: contracts.WorkspaceGatewaySecretRef("ws-first"), TargetSlot: "other", SecretBindingId: "sbx_key-7", SecretVersion: "v7"},
+		"absent":           nil,
+		"incomplete":       {KeyBindingId: "key-7", SecretDeliveryReference: contracts.WorkspaceGatewaySecretRef("ws-first"), TargetSlot: "gateway"},
+		"foreign deliver":  {KeyBindingId: "key-7", Fingerprint: "sha256:" + strings.Repeat("ab", 32), SecretDeliveryReference: contracts.WorkspaceGatewaySecretRef("ws-other"), TargetSlot: "gateway"},
+		"foreign slot":     {KeyBindingId: "key-7", Fingerprint: "sha256:" + strings.Repeat("ab", 32), SecretDeliveryReference: contracts.WorkspaceGatewaySecretRef("ws-first"), TargetSlot: "other"},
+		"caller confirmed": {KeyBindingId: "key-7", Fingerprint: "sha256:" + strings.Repeat("ab", 32), SecretDeliveryReference: contracts.WorkspaceGatewaySecretRef("ws-first"), TargetSlot: "gateway", SecretBindingId: "sbx_key-7", SecretVersion: "v7"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			s, r, reservation, gateway, _ := managedKeyFixture(t)
+			s, r, reservation, gateway, resources := managedKeyFixture(t)
 			ctx := workspaceContext()
 			runtime := &runtimeForServe{reloadVersion: 7}
 			s.Runtime = runtime
 			deploy := deployReserved(r, reservation)
 			deploy.ModelSelections = []*api.ModelSelection{{Slot: "chat", ModelId: "model-original"}}
-			deploy.ManagedKeyBinding = launchManagedKeyBinding(r.GetWorkspaceId(), reservation.RuntimeInstanceId, "key-original")
+			deploy.ManagedKeyBinding = launchManagedKeyHandover(r.GetWorkspaceId(), "key-original")
 			if _, err := s.Deploy(ctx, deploy); err != nil {
 				t.Fatalf("first delivery: %v", err)
 			}
 			if gateway.calls != 0 {
 				t.Fatalf("Serve minted %d keys on the launch path, want none", gateway.calls)
 			}
-			_, err := s.ReloadModels(ctx, &api.RuntimeReloadCommand{RuntimeInstanceId: reservation.RuntimeInstanceId, ExpectedAppliedVersion: 0, TargetVersion: 7, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-7"}}, ManagedKeyBinding: binding})
+			active := resources.active
+			revocations := resources.rebinds
+			refuseCall := call(r.GetContext().GetScope().GetTenant().GetTenantId(), false)
+			refuseCall.IdempotencyKey = "model-update-refused"
+			refuseCall.RequestId = "model-update-refused"
+			_, err := s.ReloadModels(ctx, &api.RuntimeReloadCommand{Context: refuseCall, RuntimeInstanceId: reservation.RuntimeInstanceId, ExpectedAppliedVersion: 0, TargetVersion: 7, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-7"}}, ManagedKeyBinding: binding})
 			if status.Code(err) != codes.FailedPrecondition {
 				t.Fatalf("err=%v want a failed precondition", err)
 			}
@@ -795,6 +827,9 @@ func TestServeReloadModelsRefusesAnUnconfirmedManagedKeyBinding(t *testing.T) {
 			}
 			if gateway.calls != 0 {
 				t.Fatalf("the reload minted %d Gateway keys, want none", gateway.calls)
+			}
+			if resources.active != active || resources.rebinds != revocations {
+				t.Fatalf("a refused reload changed the active binding %q -> %q", active, resources.active)
 			}
 			if applied := appliedModelConfiguration(t, s, reservation.RuntimeInstanceId); applied != 0 {
 				t.Fatalf("a refused reload advanced the applied configuration to %d", applied)

@@ -102,6 +102,12 @@ test("focused Go verification executes the affected package instead of only comp
   assert.ok(!steps.some(step => step.args.includes("^$")));
 });
 
+test("focused Go entrypoint changes include the module behavior suite when the entrypoint has no tests", () => {
+  const steps = focusedVerificationSteps(["services/runtime-control/cmd/server/main.go"]);
+  assert.deepEqual(steps.find(step => step.name === "services/runtime-control focused Go tests")?.args,
+    ["test", "-count=1", "-json", "./..."]);
+});
+
 test("focused freshness covers every authoritative generator input and output", () => {
   for (const path of [...generationInputs, ...generatedOutputs]) {
     const steps = focusedVerificationSteps([path], ["tests/tools/verify-generated-contracts.test.ts"]);

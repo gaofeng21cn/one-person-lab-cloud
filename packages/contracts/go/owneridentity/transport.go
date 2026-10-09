@@ -21,6 +21,22 @@ func (s Service) String() string { return string(s) }
 func (s Service) Valid() bool    { return s == ConsoleBFF || Owner(s).Valid() }
 func (o Owner) Service() Service { return Service(o) }
 
+// DeploymentUnitTransportPrincipal resolves the transport principal of the
+// deployment unit that serves one owner's typed boundary. CloudIdentity (tenant)
+// and Gateway Integration (gateway) are two data owners inside one process and
+// one deployment unit, and that process carries exactly one transport identity:
+// tenant. A caller that reaches the Gateway owner therefore verifies the
+// deployment unit's principal; the service name `gateway` is the owner identity
+// on the data boundary (it names the audience an authorization decision is
+// issued for), never a certificate a running process can present. Every other
+// owner is its own transport principal.
+func DeploymentUnitTransportPrincipal(owner Owner) Service {
+	if owner == Gateway {
+		return Tenant.Service()
+	}
+	return owner.Service()
+}
+
 // TLSConfig uses the instance's CA and certificates; this package issues none.
 // Certificates carry URI SAN spiffe://opl.cloud/service/<service>.
 type TLSConfig struct {

@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 const localDockerProviderProfileEnv = "OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON"
@@ -598,11 +600,24 @@ func (p *LocalDockerProvider) ReadComputeProviderFacts(ctx context.Context, allo
 
 // ReadComputeDestroyStatus answers the read-only absence readback for the local
 // provider. It owns no TKE machine, CVM or CBS disk, so a missing local compute
-// and volume are the complete absence facts for its scope.
+// network is the complete absence fact for its scope. A compute network that is
+// still present means the deletion this readback attests is unfinished, and the
+// readback classifies that outcome so the owning operation keeps retrying by
+// reading again instead of recording a terminal conflict.
 func (p *LocalDockerProvider) ReadComputeDestroyStatus(ctx context.Context, allocation ComputeAllocation) (ComputeAllocation, error) {
 	readback, err := p.ReadComputeAllocation(ctx, allocation)
 	if err != nil && readback.Status != "external_deleted" {
 		return readback, err
+	}
+	if readback.Status != "external_deleted" {
+		// The retained allocation records whether the network removal was
+		// already dispatched. A dispatched removal may have run, so only a
+		// read-only reconciliation may retry it; without one the owner may
+		// still remove the network itself.
+		readback.DestroyState = contracts.WorkspaceDeleteOutcomePendingRetry
+		if allocation.Status == "destroying" {
+			readback.DestroyState = contracts.WorkspaceDeleteOutcomeUnconfirmedSend
+		}
 	}
 	return readback, nil
 }

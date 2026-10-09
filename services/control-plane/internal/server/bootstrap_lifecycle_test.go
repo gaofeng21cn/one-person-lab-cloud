@@ -50,6 +50,9 @@ func TestFreshPersistentServerBootstrapsRemoteOperatorIdentityAtomically(t *test
 		users[0]["id"] != "usr-admin" || users[0]["email"] != "operator@example.test" || users[0]["role"] != "admin" || users[0]["passwordHash"] != nil {
 		t.Fatalf("accounts=%#v users=%#v", accounts, users)
 	}
+	if accounts[0]["workspacePurchaseEnabled"] != true {
+		t.Fatalf("bootstrap operator account must default to purchase eligibility: %#v", accounts[0])
+	}
 }
 
 func TestFreshPostgresPersistentServerBootstrapsRemoteOperatorIdentityAtomically(t *testing.T) {

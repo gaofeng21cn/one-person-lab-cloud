@@ -165,6 +165,20 @@ type AliasedStaticConsoleRoute = {
 }[StaticRouteAliasPath];
 type StaticConsoleRoute = CanonicalStaticConsoleRoute | AliasedStaticConsoleRoute;
 
+// The model configuration page reads and updates the Workspace owner's own
+// model configuration. It exists only in the cloud identity Console: the legacy
+// Control Plane projection has no equivalent owner route, and the Console never
+// substitutes one for the other.
+type WorkspaceModelsRoute = {
+  kind: "customer.workspace-models";
+  path: string;
+  surface: "customer";
+  title: "模型配置";
+  requiresSession: true;
+  navigationId: "customer.workspaces";
+  workspaceId: string;
+};
+
 type AgentDetailRoute = {
   kind: "customer.agent-detail";
   path: string;
@@ -185,7 +199,7 @@ type WorkspaceDetailRoute = {
   workspaceId: string;
 };
 
-export type ConsoleRoute = StaticConsoleRoute | AgentDetailRoute | WorkspaceDetailRoute;
+export type ConsoleRoute = StaticConsoleRoute | AgentDetailRoute | WorkspaceDetailRoute | WorkspaceModelsRoute;
 export type ConsoleRouteKind = ConsoleRoute["kind"];
 export type PublicConsoleRoute = Extract<ConsoleRoute, { surface: "public" }>;
 export type CustomerConsoleRoute = Extract<ConsoleRoute, { surface: "customer" }>;
@@ -225,6 +239,27 @@ export function parseConsoleRoute(pathname: string): ConsoleRoute | null {
 
   const workspaceDetailPrefix = "/console/workspaces/";
   if (!path.startsWith(workspaceDetailPrefix)) return null;
+
+  if (cloudIdentity && path.endsWith("/models")) {
+    const encodedModelsWorkspaceId = path.slice(workspaceDetailPrefix.length, path.length - "/models".length);
+    if (!encodedModelsWorkspaceId || encodedModelsWorkspaceId.includes("/")) return null;
+    let modelsWorkspaceId: string;
+    try {
+      modelsWorkspaceId = decodeURIComponent(encodedModelsWorkspaceId);
+    } catch {
+      return null;
+    }
+    if (!modelsWorkspaceId || modelsWorkspaceId.includes("/")) return null;
+    return {
+      kind: "customer.workspace-models",
+      path,
+      surface: "customer",
+      title: "模型配置",
+      requiresSession: true,
+      navigationId: "customer.workspaces",
+      workspaceId: modelsWorkspaceId
+    };
+  }
 
   const encodedWorkspaceId = path.slice(workspaceDetailPrefix.length);
   if (!encodedWorkspaceId || encodedWorkspaceId.includes("/")) return null;

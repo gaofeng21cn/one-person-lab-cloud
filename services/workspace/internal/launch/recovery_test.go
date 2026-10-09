@@ -23,6 +23,48 @@ func orderFixture() (ownerstore.Operation, *api.QuoteAcceptance, *api.QuoteAccep
 	return op, offer, accepted
 }
 
+// TestOwnerCommitNamesTheAcceptedApplicationSource proves the commit's
+// continuation resources name exactly the one application source the accepted
+// quote froze: the Runtime Release of the default OPL App, or the built Agent's
+// CapabilityVersion. A grant that named the other kind would authorize a version
+// this order never accepted.
+func TestOwnerCommitNamesTheAcceptedApplicationSource(t *testing.T) {
+	op, offer, _ := orderFixture()
+	offer.Quote.RuntimeVersionId = proto.String("runtime-original")
+	offer.Quote.CapabilityVersionId = nil
+	input, _ := json.Marshal(acceptedOrder{Quote: wire(offer), AuthorizationContextID: "authorization-original", InputDigest: "sha256:original"})
+	op.AcceptedInput, op.Result = input, json.RawMessage(`{}`)
+	commit, err := evidence(op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var versions []string
+	for _, resource := range commit.GetContinuationResources() {
+		if resource.GetKind() == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION {
+			versions = append(versions, resource.GetId())
+		}
+	}
+	if len(versions) != 1 || versions[0] != "runtime-original" {
+		t.Fatalf("default App continuation versions=%v", versions)
+	}
+	opAgent, offerAgent, _ := orderFixture()
+	inputAgent, _ := json.Marshal(acceptedOrder{Quote: wire(offerAgent), AuthorizationContextID: "authorization-original", InputDigest: "sha256:original"})
+	opAgent.AcceptedInput, opAgent.Result = inputAgent, json.RawMessage(`{}`)
+	agentCommit, err := evidence(opAgent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var agentVersions []string
+	for _, resource := range agentCommit.GetContinuationResources() {
+		if resource.GetKind() == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION {
+			agentVersions = append(agentVersions, resource.GetId())
+		}
+	}
+	if len(agentVersions) != 1 || agentVersions[0] != "capability-original" {
+		t.Fatalf("Agent continuation versions=%v", agentVersions)
+	}
+}
+
 func TestAcceptedOrderRejectsCrossOwnerDrift(t *testing.T) {
 	op, offer, accepted := orderFixture()
 	if err := validateAcceptance(op, offer, accepted); err != nil {

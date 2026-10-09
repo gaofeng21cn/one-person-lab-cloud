@@ -66,7 +66,7 @@ func (s *Service) walletCharge(ctx context.Context, op ownerstore.Operation, tok
 	} else {
 		stored := &api.WalletDebitCommand{}
 		if protojson.Unmarshal(result.WalletDebitCommand, stored) != nil || !proto.Equal(stored, command) {
-			return "", false, s.failedCall(ctx, op, token, "wallet_charge", "funding", *result, status.Error(codes.DataLoss, "wallet command differs from its original execution"))
+			return "", false, s.failedCall(ctx, op, token, "wallet_charge", "resource_preflight", *result, status.Error(codes.DataLoss, "wallet command differs from its original execution"))
 		}
 	}
 	recorded, hasRecord, err := readWalletCharge(op, accepted, result)
@@ -85,11 +85,11 @@ func (s *Service) walletCharge(ctx context.Context, op ownerstore.Operation, tok
 		charged, chargeErr := s.Gateway.Debit(ctx, command)
 		if chargeErr != nil {
 			if !walletReadCanRecover(chargeErr) {
-				return "", false, s.failedCall(ctx, op, token, "wallet_charge", "funding", *result, chargeErr)
+				return "", false, s.failedCall(ctx, op, token, "wallet_charge", "resource_preflight", *result, chargeErr)
 			}
 		} else {
 			if err = validateWalletCharge(op, accepted, charged); err != nil {
-				return "", false, s.failedCall(ctx, op, token, "wallet_charge", "funding", *result, err)
+				return "", false, s.failedCall(ctx, op, token, "wallet_charge", "resource_preflight", *result, err)
 			}
 			observed = charged
 		}
@@ -99,10 +99,10 @@ func (s *Service) walletCharge(ctx context.Context, op ownerstore.Operation, tok
 		// original action is read back by its original code instead of re-issued.
 		read, readErr := s.Gateway.ReadWalletAction(ctx, &api.WalletReadbackRequest{Context: continuation(op, result.GrantID, "read_wallet_charge"), OriginalIdempotencyKey: command.GetContext().GetIdempotencyKey()})
 		if readErr != nil {
-			return "", false, s.failedCall(ctx, op, token, "wallet_charge", "funding", *result, readErr)
+			return "", false, s.failedCall(ctx, op, token, "wallet_charge", "resource_preflight", *result, readErr)
 		}
 		if err = validateWalletCharge(op, accepted, read); err != nil {
-			return "", false, s.failedCall(ctx, op, token, "wallet_charge", "funding", *result, err)
+			return "", false, s.failedCall(ctx, op, token, "wallet_charge", "resource_preflight", *result, err)
 		}
 		observed = read
 	}
@@ -135,7 +135,7 @@ func (s *Service) finishWalletCharge(ctx context.Context, op ownerstore.Operatio
 	switch charged.GetStatus() {
 	case api.WalletOperationStatusEnum_WALLET_OPERATION_STATUS_ENUM_CONFIRMED:
 		if charged.GetReceiptId() == "" || charged.GetCreatedAt() == nil || charged.CreatedAt.CheckValid() != nil {
-			return "", false, s.failedCall(ctx, op, token, "wallet_charge", "funding", *result, status.Error(codes.DataLoss, "confirmed wallet charge has no receipt evidence"))
+		return "", false, s.failedCall(ctx, op, token, "wallet_charge", "resource_preflight", *result, status.Error(codes.DataLoss, "confirmed wallet charge has no receipt evidence"))
 		}
 		// A confirmed Gateway charge is not yet the Ledger funding proof Fabric
 		// consumes. Append the owner-authoritative WALLET_ACTION receipt that binds
@@ -154,7 +154,7 @@ func (s *Service) finishWalletCharge(ctx context.Context, op ownerstore.Operatio
 		// An explicit refusal stops the downstream. The cause is the wallet's own
 		// code, so an unnamed refusal is unreadable evidence rather than a guess.
 		if !validErrorCode(charged.GetErrorCode()) {
-			return "", false, s.failedCall(ctx, op, token, "wallet_charge", "funding", *result, status.Error(codes.DataLoss, "rejected wallet charge names no cause"))
+			return "", false, s.failedCall(ctx, op, token, "wallet_charge", "resource_preflight", *result, status.Error(codes.DataLoss, "rejected wallet charge names no cause"))
 		}
 		if err := s.checkpoint(ctx, op, token, "wallet_charge", "resource_preflight", "needs_attention", "rejected", charged.GetId(), errorCodeText(charged.GetErrorCode()), *result); err != nil {
 			return "", false, err
@@ -188,8 +188,8 @@ func (s *Service) walletActionReceipt(ctx context.Context, op ownerstore.Operati
 		return nil, err
 	}
 	request := &api.AppendReceiptRequest{
-		Context:   continuation(op, result.GrantID, "wallet_action_receipt"),
-		Receipt:   &api.Receipt{Kind: api.ReceiptKindEnum_RECEIPT_KIND_ENUM_WALLET_ACTION, Owner: api.OwnerEnum_OWNER_ENUM_WORKSPACE, OperationId: proto.String(op.ID), Outcome: api.ReceiptOutcomeEnum_RECEIPT_OUTCOME_ENUM_CONFIRMED, EvidenceSummary: "Gateway wallet charge confirmed for the original paid Workspace order."},
+		Context:        continuation(op, result.GrantID, "wallet_action_receipt"),
+		Receipt:        &api.Receipt{Kind: api.ReceiptKindEnum_RECEIPT_KIND_ENUM_WALLET_ACTION, Owner: api.OwnerEnum_OWNER_ENUM_WORKSPACE, OperationId: proto.String(op.ID), Outcome: api.ReceiptOutcomeEnum_RECEIPT_OUTCOME_ENUM_CONFIRMED, EvidenceSummary: "Gateway wallet charge confirmed for the original paid Workspace order."},
 		EvidenceDigest: accepted.SnapshotDigest, OwnerEvidenceReference: op.ID, QuoteAcceptance: accepted, OwnerCommitEvidence: commit, WalletOperation: charged,
 	}
 	if err = s.beginStep(ctx, op, token, "wallet_action_receipt", 3, "ledger", "receipt", request); err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"log"
 	"strings"
 	"time"
 
@@ -67,6 +68,7 @@ func (s *Service) resume(ctx context.Context, r *api.EnsureResourcesCommand, ope
 	if dispatchErr != nil {
 		// A pending or unreadable provider stays unknown, never absent, and is
 		// retried against the same original intent.
+		log.Printf("fabric resource dispatch unavailable operation=%s: %v", operationID, dispatchErr)
 		if _, err = tx.ExecContext(ctx, `UPDATE fabric.operations SET status='awaiting_confirmation',stage='resource_preflight',error_code='DEPENDENCY_UNAVAILABLE',observation_result='unknown',updated_at=now() WHERE id=$1`, operationID); err != nil {
 			return nil, persistenceError(err)
 		}
@@ -210,18 +212,38 @@ func (s *Service) dispatchFundingEvidence(ctx context.Context, r *api.EnsureReso
 	}
 	switch plan.GetProvider() {
 	case providerLocalDocker:
-		if plan.GetBillingMode() != billingLocalNoCharge || r.GetQuoteAcceptance().GetQuote().GetTotalUsdMicros() != 0 || s.Ledger == nil {
+		// The provider executes both approved purchase shapes. A Local zero-charge
+		// plan is funded by its own Ledger Local receipt; a prepaid monthly plan is
+		// funded by the confirmed wallet charge the Gateway authority recorded for
+		// the same obligation, exactly like the Tencent path. The billing mode
+		// decides which owner evidence is read back; neither is trusted on the
+		// reference string alone.
+		switch plan.GetBillingMode() {
+		case billingLocalNoCharge:
+			if r.GetQuoteAcceptance().GetQuote().GetTotalUsdMicros() != 0 || s.Ledger == nil {
+				return nil, false
+			}
+			evidence, ok := s.readLocalNoChargeEvidence(ctx, r)
+			if !ok {
+				return nil, false
+			}
+			proof, err := protojson.Marshal(evidence)
+			if err != nil {
+				return nil, false
+			}
+			return proof, true
+		case billingPrepaidMonthly:
+			if r.GetQuoteAcceptance().GetQuote().GetTotalUsdMicros() <= 0 || s.Ledger == nil {
+				return nil, false
+			}
+			receipt, ok := s.readConfirmedWalletCharge(ctx, r)
+			if !ok {
+				return nil, false
+			}
+			return confirmedChargeEvidence(receipt)
+		default:
 			return nil, false
 		}
-		evidence, ok := s.readLocalNoChargeEvidence(ctx, r)
-		if !ok {
-			return nil, false
-		}
-		proof, err := protojson.Marshal(evidence)
-		if err != nil {
-			return nil, false
-		}
-		return proof, true
 	case providerTencentTKE:
 		// Strict prepaid monthly purchase only. The confirmed charge reference is
 		// not trusted on its own: Fabric re-reads the exact confirmed wallet charge

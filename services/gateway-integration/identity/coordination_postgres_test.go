@@ -34,8 +34,15 @@ import (
 type gatewayWalletStub struct {
 	mu          sync.Mutex
 	adjustments int
+	applied     int
 	failBalance bool
-	entries     map[string]json.Number
+	// applyThenFail applies the native adjustment and then drops the response, so
+	// the caller experiences ACK loss on an effect the wallet actually committed.
+	applyThenFail bool
+	// refuseBalance answers the balance POST with a definite 4xx refusal without
+	// touching the wallet, exactly like a pre-dispatch rejection.
+	refuseBalance bool
+	entries       map[string]json.Number
 }
 
 func (s *gatewayWalletStub) handler() http.Handler {
@@ -52,8 +59,12 @@ func (s *gatewayWalletStub) handler() http.Handler {
 	mux.HandleFunc("/api/v1/admin/users/77/balance", func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		s.adjustments++
-		fail := s.failBalance
+		fail, applyThenFail, refuse := s.failBalance, s.applyThenFail, s.refuseBalance
 		s.mu.Unlock()
+		if refuse {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
 		if fail {
 			http.Error(w, "boom", http.StatusInternalServerError)
 			return
@@ -65,12 +76,23 @@ func (s *gatewayWalletStub) handler() http.Handler {
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		code := strings.TrimPrefix(body.Notes, "OPL Cloud balance adjustment: ")
+		// The native wallet records the signed applied delta: a subtract is a
+		// negative history value and an add is positive, exactly as Sub2API does.
+		value := body.Balance
+		if body.Operation == "subtract" {
+			value = json.Number("-" + value.String())
+		}
 		s.mu.Lock()
 		if s.entries == nil {
 			s.entries = map[string]json.Number{}
 		}
-		s.entries[code] = body.Balance
+		s.entries[code] = value
+		s.applied++
 		s.mu.Unlock()
+		if applyThenFail {
+			http.Error(w, "connection lost after commit", http.StatusInternalServerError)
+			return
+		}
 		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"id": 77}})
 	})
 	mux.HandleFunc("/api/v1/admin/users/77/balance-history", func(w http.ResponseWriter, r *http.Request) {

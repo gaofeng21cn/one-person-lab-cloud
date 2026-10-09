@@ -3,9 +3,12 @@ package identity
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/lib/pq"
 
 	api "opl-cloud/packages/contracts/go/api"
 )
@@ -59,9 +62,18 @@ type ManagedKeyBinding struct {
 	CreatedAt               time.Time
 }
 
-// InsertManagedKeyBinding records the confirmed managed key. It fails closed when
-// a confirmed binding has no opaque secret reference.
-func (s *GatewayStore) InsertManagedKeyBinding(ctx context.Context, binding ManagedKeyBinding) (ManagedKeyBinding, error) {
+// There is exactly one writer that records a confirmed managed key - the
+// transactional InsertConfirmedManagedKeyBinding below - so a binding can never
+// become durable without its original command answer. A standalone binding insert
+// is deliberately not offered.
+// execer is the subset of *sql.DB and *sql.Tx one owner write needs, so a
+// binding can be recorded alone or together with its original command answer in
+// one transaction.
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func (s *GatewayStore) insertManagedKeyBinding(ctx context.Context, exec execer, binding ManagedKeyBinding) (ManagedKeyBinding, error) {
 	if strings.TrimSpace(binding.ExternalKeyID) == "" || strings.TrimSpace(binding.SecretRef) == "" || strings.TrimSpace(binding.Fingerprint) == "" {
 		return ManagedKeyBinding{}, errors.New("external key id, secret reference and fingerprint are required")
 	}
@@ -75,16 +87,90 @@ func (s *GatewayStore) InsertManagedKeyBinding(ctx context.Context, binding Mana
 		binding.ExpiresAt = time.Time{}
 	}
 	binding.ObservationResult = "confirmed"
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := exec.ExecContext(ctx, `
 		INSERT INTO gateway.key_bindings (id, tenant_id, workspace_id, actor_id, external_key_id, fingerprint, secret_ref, purpose,
 			model_ids, observation_result, name, expires_at, created_at, updated_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13)`,
 		binding.ID, binding.TenantID, binding.WorkspaceID, nullString(binding.ActorID), binding.ExternalKeyID, binding.Fingerprint,
-		binding.SecretRef, binding.Purpose, binding.ModelIDs, binding.ObservationResult, binding.ID, nullTime(binding.ExpiresAt), now); err != nil {
+		binding.SecretRef, binding.Purpose, pq.Array(binding.ModelIDs), binding.ObservationResult, binding.ID, nullTime(binding.ExpiresAt), now); err != nil {
 		return ManagedKeyBinding{}, err
 	}
 	binding.CreatedAt = now
 	return binding, nil
+}
+
+// InsertConfirmedManagedKeyBinding records the confirmed key binding and the
+// original command's confirmed answer in one transaction. The recorded effect
+// and the command identity therefore commit together: a crash can never leave a
+// binding whose original command is still pending, or a pending command that
+// already minted a key.
+func (s *GatewayStore) InsertConfirmedManagedKeyBinding(ctx context.Context, binding ManagedKeyBinding, reservation ManagedKeyCommandReservation, answer []byte) (ManagedKeyBinding, error) {
+	if len(answer) == 0 || !json.Valid(answer) {
+		return ManagedKeyBinding{}, errors.New("a confirmed managed key command answer must be a JSON document")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ManagedKeyBinding{}, err
+	}
+	defer tx.Rollback()
+	recorded, err := s.insertManagedKeyBinding(ctx, tx, binding)
+	if err != nil {
+		return ManagedKeyBinding{}, err
+	}
+	result, err := tx.ExecContext(ctx, `
+		UPDATE gateway.idempotency_records
+		SET response_status = $5, response_body = $6, resource_id = $7
+		WHERE tenant_scope = $1 AND actor_scope = $2 AND operation_name = $3 AND idempotency_key = $4
+		  AND request_sha256 = $8 AND response_status = $9`,
+		reservation.TenantID, reservation.ActorID, managedKeyCommandOperation, reservation.IdempotencyKey,
+		managedKeyCommandConfirmedStatus, answer, recorded.ID, reservation.CommandFingerprint, managedKeyCommandPendingStatus)
+	if err != nil {
+		return ManagedKeyBinding{}, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return ManagedKeyBinding{}, err
+	}
+	if rows != 1 {
+		return ManagedKeyBinding{}, errors.New("managed key command is not pending in this owner")
+	}
+	if err = tx.Commit(); err != nil {
+		return ManagedKeyBinding{}, err
+	}
+	return recorded, nil
+}
+
+// AdvanceManagedKeyCommandPending records the opaque external identity an
+// issuance actually produced while the command is still unresolved, so a lost
+// Secret delivery is read back as the one original key instead of a second
+// issuance. It never overwrites an already-recorded identity or answer.
+func (s *GatewayStore) AdvanceManagedKeyCommandPending(ctx context.Context, reservation ManagedKeyCommandReservation, externalKeyID, fingerprint string) error {
+	if strings.TrimSpace(externalKeyID) == "" || strings.TrimSpace(fingerprint) == "" {
+		return errors.New("an observed managed key effect requires its external key id and fingerprint")
+	}
+	state, err := json.Marshal(managedKeyCommandState{Outcome: "pending", ExternalKeyID: externalKeyID, Fingerprint: fingerprint})
+	if err != nil {
+		return err
+	}
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE gateway.idempotency_records
+		SET response_body = $5
+		WHERE tenant_scope = $1 AND actor_scope = $2 AND operation_name = $3 AND idempotency_key = $4
+		  AND request_sha256 = $6 AND response_status = $7
+		  AND response_body->>'outcome' = 'pending' AND response_body->>'externalKeyId' IS NULL`,
+		reservation.TenantID, reservation.ActorID, managedKeyCommandOperation, reservation.IdempotencyKey,
+		state, reservation.CommandFingerprint, managedKeyCommandPendingStatus)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return errors.New("managed key command already carries an observed effect")
+	}
+	return nil
 }
 
 // ReadManagedKeyBinding reads one recorded managed key by its own binding id.
@@ -97,7 +183,7 @@ func (s *GatewayStore) ReadManagedKeyBinding(ctx context.Context, id string) (Ma
 			purpose, model_ids, observation_result, expires_at, revoked_at, created_at
 		FROM gateway.key_bindings WHERE id = $1`, id).
 		Scan(&binding.ID, &binding.TenantID, &binding.WorkspaceID, &binding.ActorID, &binding.ExternalKeyID, &binding.Fingerprint,
-			&binding.SecretRef, &binding.Purpose, &binding.ModelIDs, &binding.ObservationResult, &expiresAt, &revokedAt, &binding.CreatedAt)
+			&binding.SecretRef, &binding.Purpose, pq.Array(&binding.ModelIDs), &binding.ObservationResult, &expiresAt, &revokedAt, &binding.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ManagedKeyBinding{}, ErrGatewayWalletUnknown
 	}

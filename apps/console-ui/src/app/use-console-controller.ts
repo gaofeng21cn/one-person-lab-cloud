@@ -35,6 +35,7 @@ import type {
   WorkspaceApplicationDeploymentController,
   WorkspaceImageReleaseController,
   WorkspaceLaunchController,
+  WorkspaceModelsController,
   WorkspaceRenewalController,
   WorkspaceRuntimeImageReplacementController,
   WorkspaceSecretController,
@@ -57,6 +58,7 @@ import { useWorkspaceApplicationDeploymentController } from "./use-workspace-app
 import { useWorkspaceApplicationInstallationController } from "./use-workspace-application-installation-controller.ts";
 import { useWorkspaceImageReleaseController } from "./use-workspace-image-release-controller.ts";
 import { useWorkspaceLaunchController } from "./use-workspace-launch-controller.ts";
+import { useWorkspaceModelsController } from "./use-workspace-models-controller.ts";
 import { useWorkspaceRenewalController } from "./use-workspace-renewal-controller.ts";
 import { useWorkspaceRuntimeImageReplacementController } from "./use-workspace-runtime-image-replacement-controller.ts";
 import { useWorkspaceSecretController } from "./use-workspace-secret-controller.ts";
@@ -194,6 +196,7 @@ export function useConsoleController() {
     customerAnnouncementCapability.reset();
     gatewayAccountReadCapability.reset();
     customerWorkspaceReadCapability.reset();
+    workspaceModelsCapability.reset();
     fabricRuntimeReadCapability.reset();
     workspaceBudgetRequestGeneration.current += 1;
   };
@@ -237,7 +240,7 @@ export function useConsoleController() {
     };
   };
 
-  const activeWorkspaceId = route?.kind === "customer.workspace-detail" ? route.workspaceId : "";
+  const activeWorkspaceId = route?.kind === "customer.workspace-detail" || route?.kind === "customer.workspace-models" ? route.workspaceId : "";
   const gatewayAccountReadScope: GatewayAccountReadRouteScope = route?.kind === "customer.overview"
     ? "overview"
     : route?.kind === "customer.workspace-new"
@@ -251,7 +254,9 @@ export function useConsoleController() {
       ? { kind: "list" }
       : route?.kind === "customer.workspace-detail"
         ? { kind: "detail", workspaceId: activeWorkspaceId }
-        : route?.kind === "customer.billing" ? { kind: "terms" } : { kind: "inactive" };
+        : route?.kind === "customer.workspace-models"
+          ? { kind: "models", workspaceId: activeWorkspaceId }
+          : route?.kind === "customer.billing" ? { kind: "terms" } : { kind: "inactive" };
 
   const gatewayAccountReadCapability = useGatewayAccountReadController({
     scope: gatewayAccountReadScope,
@@ -268,6 +273,16 @@ export function useConsoleController() {
     unavailableSource
   });
   const customerWorkspaceRead: CustomerWorkspaceReadController = customerWorkspaceReadCapability;
+
+  const workspaceModelsCapability = useWorkspaceModelsController({
+    active: route?.kind === "customer.workspace-models",
+    workspaceId: activeWorkspaceId,
+    currentSession: () => sessionRef.current,
+    friendlyError,
+    unavailableSource,
+    flash
+  });
+  const workspaceModels: WorkspaceModelsController = workspaceModelsCapability;
 
   const fabricRuntimeReadCapability = useFabricRuntimeReadController({
     active: customerWorkspaceReadScope.kind === "detail",
@@ -546,6 +561,9 @@ export function useConsoleController() {
       case "customer.workspace-detail":
         await loadWorkspaceAccess(generation, activeSession, activeRoute.workspaceId);
         return;
+      case "customer.workspace-models":
+        await Promise.all([customerWorkspaceReadCapability.load(), workspaceModelsCapability.load()]);
+        return;
       case "customer.api.overview":
         await gatewayAccountReadCapability.load();
         return;
@@ -735,6 +753,7 @@ export function useConsoleController() {
     refreshCurrentPage,
     gatewayAccountRead,
     customerWorkspaceRead,
+    workspaceModels,
     fabricRuntimeRead,
     workspaceLaunch,
     workspaceDeleteBusy: workspaceDelete.busy,

@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_candidate_build_source_check",
+  "revision": 1,
+  "recordedAt": "2026-10-07T13:15:00Z",
+  "result": "the_branch_exact_sha_candidate_for_the_tke_minimal_closure_built_successfully_and_published_its_immutable_index_and_platform_digests",
+  "window": "tke_minimal_closure",
+  "windowTitle": "Branch exact-SHA Candidate for the integrated TKE minimal closure",
+  "branch": "codex/tke-minimal-closure-integration",
+  "sourceSha": "55f4266aa403dc1af307af709e7fa1fffbbfee7b",
+  "sourceTree": "57b4622d7183bb1023a7f4770d0f6e223bdf7322",
+  "dispatch": {
+    "workflow": "Build OPL Cloud Candidate",
+    "runId": 37625271392,
+    "runAttempt": 1,
+    "dispatchRef": "codex/candidate-4b0939fe-bridge",
+    "workflowSha": "3521328c4c1ff33cde20c984013b3a398c05495c",
+    "productSha": "55f4266aa403dc1af307af709e7fa1fffbbfee7b"
+  },
+  "candidate": {
+    "kind": "opl_cloud_candidate",
+    "schemaVersion": 2,
+    "cloudImage": {
+      "indexRef": "ghcr.io/gaofeng21cn/one-person-lab-cloud@sha256:e3c4299267f72e53dd9de5d5bc25741abb5e897bce31038da89bc1942211300a",
+      "indexDigest": "sha256:e3c4299267f72e53dd9de5d5bc25741abb5e897bce31038da89bc1942211300a",
+      "platforms": {
+        "linux/amd64": "sha256:60e8e65393e6860c8a5129e12792930d8b9a7456041f48181256a7e52939ce09",
+        "linux/arm64": "sha256:89dcf38a9c27d1b38747e0347b5e2e78293f7f7a059d4aefa41b9360e63d167f"
+      },
+      "revision": "55f4266aa403dc1af307af709e7fa1fffbbfee7b"
+    },
+    "bundleAssets": [
+      "compose.yaml",
+      "compose.deployment-platform-owned.yaml",
+      "compose.deployment-managed-tke.yaml",
+      "compose.deployment-customer-owned.yaml",
+      "compose.fabric-local-docker.yaml",
+      "compose.fabric-tencent-tke.yaml",
+      "compose.local-workspace.yaml",
+      "opl-cloud.env.example",
+      "opl-cloud-owner-topology.json"
+    ]
+  },
+  "verification": {
+    "buildJob": "success",
+    "bundleSha256Sums": "all assets OK locally",
+    "envelopeDecode": "decodes on the Instance candidate-receipt-envelope tool with product sha and tree",
+    "cloudConsoleIdentity": "read back as cloud on both platforms by the build workflow"
+  },
+  "claimBoundary": "This receipt claims the immutable Candidate image identity and bundle for exact branch SHA 55f4266a. It does not claim an Instance deployment, runtime health, qualification, billing, or business closure.",
+  "nextSerialStep": "Bind this Candidate receipt in the Instance Preflight from instance main."
+}

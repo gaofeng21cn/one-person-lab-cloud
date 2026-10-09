@@ -37,12 +37,12 @@ require (
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	golang.org/x/mod v0.38.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apimachinery v0.37.0 // indirect
+	k8s.io/apimachinery v0.37.1 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260721132016-d427ff9ee9ad // indirect
 	k8s.io/utils v0.0.0-20260626114624-be93311217bd // indirect
@@ -73,8 +73,8 @@ require opl-cloud/services/gateway-integration v0.0.0
 replace opl-cloud/services/gateway-integration => ../gateway-integration
 
 require (
-	google.golang.org/grpc v1.83.2
-	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
+	google.golang.org/grpc v1.84.0
+	google.golang.org/protobuf v1.36.12
 	opl-cloud/packages/contracts/go v0.0.0
 	opl-cloud/services/capability v0.0.0
 	opl-cloud/services/fabric v0.0.0
@@ -89,3 +89,7 @@ replace opl-cloud/services/ledger => ../ledger
 replace opl-cloud/services/capability => ../capability
 
 replace opl-cloud/services/serve => ../serve
+
+replace opl-cloud/services/internal/protectedresource => ../internal/protectedresource
+
+require opl-cloud/services/internal/protectedresource v0.0.0 // indirect

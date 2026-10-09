@@ -238,6 +238,13 @@ func (s *Service) GetAuthorizationContext(ctx context.Context, r *api.GetAuthori
 }
 
 var buildActions = []api.AuthorizationActionEnum{api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACQUIREREFERENCE, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDREFERENCE, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION}
+
+// The default OPL App resolves its approved Runtime Release from Runtime
+// Control, so the accepted Workspace obligation must be able to read the one
+// catalog entry its quote froze; the read is bounded to the Runtime Control
+// catalog and never to a second owner's version.
+var workspaceListRuntimeVersions = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS
+
 var workspaceActions = []api.AuthorizationActionEnum{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES,
@@ -261,6 +268,10 @@ var workspaceActions = []api.AuthorizationActionEnum{
 	// gateway-audience continuations of the same accepted obligation.
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REFUNDCONFIRMEDDELETION,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET,
+	// The default OPL App reads its frozen Runtime Release from Runtime Control
+	// through the same accepted obligation. The read names no other owner's
+	// resource, so it is a bound continuation rather than a widened grant.
+	workspaceListRuntimeVersions,
 }
 
 func (s *Service) grantOwner(owner api.OwnerEnum) (api.OwnerCommitReadbackClient, api.AuthorizationActionEnum, []api.AuthorizationActionEnum) {
@@ -454,18 +465,22 @@ func (s *Service) authorizeGrant(ctx context.Context, r *api.AuthorizationReques
 	}
 	matched := false
 	if g.AcceptedOperationOwner == api.OwnerEnum_OWNER_ENUM_WORKSPACE {
-		matched = r.Resource.Kind == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE && r.Resource.GetId() == g.ResourceId &&
-			((r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_FABRIC && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES)) ||
-				(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETQUOTE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEACCEPTEDOBLIGATION)) ||
-				(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_LEDGER && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT)) ||
-				(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_SERVE && r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME) ||
-				(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_GATEWAY && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CHARGEACCEPTEDOBLIGATION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REFUNDCONFIRMEDDELETION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET)) ||
-				// Delivering the accepted model configuration splits the managed-key binding across
-				// its two owners: Gateway issues and allowlists the opaque key, while Fabric binds
-				// the approved Secret into the exact runtime and reads the version back. Both are
-				// continuations of the same accepted Workspace obligation, so the action is
-				// admitted at the audience that owns each RPC rather than only at Gateway.
-				(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_FABRIC && r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET))
+		// The frozen Runtime Release read is a catalog read, not a Workspace-resource
+		// action: it names the Runtime Control catalog with no resource id, so it is
+		// matched as its own bounded clause rather than under the Workspace resource.
+		matched = (r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL && r.Action == workspaceListRuntimeVersions && r.Resource.Kind == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG && r.Resource.GetId() == "") ||
+			(r.Resource.Kind == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE && r.Resource.GetId() == g.ResourceId &&
+				((r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_FABRIC && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES)) ||
+					(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETQUOTE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEACCEPTEDOBLIGATION)) ||
+					(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_LEDGER && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT)) ||
+					(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_SERVE && r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME) ||
+					(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_GATEWAY && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CHARGEACCEPTEDOBLIGATION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REFUNDCONFIRMEDDELETION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET)) ||
+					// Delivering the accepted model configuration splits the managed-key binding across
+					// its two owners: Gateway issues and allowlists the opaque key, while Fabric binds
+					// the approved Secret into the exact runtime and reads the version back. Both are
+					// continuations of the same accepted Workspace obligation, so the action is
+					// admitted at the audience that owns each RPC rather than only at Gateway.
+					(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_FABRIC && r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET)))
 		if r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_CAPABILITY && r.Resource.Kind == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION &&
 			(r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACQUIREREFERENCE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDREFERENCE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE) {
 			for _, v := range evidence.ContinuationResources {

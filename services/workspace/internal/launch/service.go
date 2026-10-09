@@ -184,7 +184,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, r *api.CreateWorkspaceRpc
 		if err != nil {
 			return nil, dbError(err)
 		}
-		return operation(op), nil
+		return operation(op)
 	}
 	readCall := proto.Clone(c).(*api.CallContext)
 	readCall.AuthorizationContextId = ""
@@ -237,7 +237,11 @@ func (s *Service) CreateWorkspace(ctx context.Context, r *api.CreateWorkspaceRpc
 	}
 	idem.ResourceID = wid
 	idem.OperationID = oid
-	idem.ResponseBody = wire(operation(op))
+	acceptedOperation, err := operation(op)
+	if err != nil {
+		return nil, err
+	}
+	idem.ResponseBody = wire(acceptedOperation)
 	if err = s.Store.RecordIdempotency(ctx, tx, idem); err != nil {
 		return nil, dbError(err)
 	}
@@ -251,18 +255,35 @@ func (s *Service) CreateWorkspace(ctx context.Context, r *api.CreateWorkspaceRpc
 	if err != nil {
 		return nil, dbError(err)
 	}
-	return operation(op), nil
+	return operation(op)
 }
-func operation(o ownerstore.Operation) *api.Operation {
-	out := &api.Operation{OperationId: o.ID, Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_WORKSPACE, Kind: api.OperationKindEnum_OPERATION_KIND_ENUM_CREATE_WORKSPACE, ResourceId: o.ResourceID, Status: api.OperationStatusEnum(api.OperationStatusEnum_value["OPERATION_STATUS_ENUM_"+strings.ToUpper(o.Status)]), Stage: api.OperationStageEnum(api.OperationStageEnum_value["OPERATION_STAGE_ENUM_"+strings.ToUpper(o.Stage)]), RequestId: o.RequestID, CreatedAt: timestamppb.New(o.CreatedAt), UpdatedAt: timestamppb.New(o.UpdatedAt)}
+
+// operation projects one owner-local create_workspace row as the typed Operation
+// the caller polls. Stage, status and observation are resolved through the
+// contract's own vocabulary, so an unknown stored value is an error instead of a
+// silent zero enum that a public contract cannot spell.
+func operation(o ownerstore.Operation) (*api.Operation, error) {
+	stage, ok := api.OperationStageEnum_value["OPERATION_STAGE_ENUM_"+strings.ToUpper(o.Stage)]
+	if !ok || stage == 0 {
+		return nil, status.Error(codes.Internal, "stored Workspace operation stage is invalid")
+	}
+	state, ok := api.OperationStatusEnum_value["OPERATION_STATUS_ENUM_"+strings.ToUpper(o.Status)]
+	if !ok || state == 0 {
+		return nil, status.Error(codes.Internal, "stored Workspace operation status is invalid")
+	}
+	out := &api.Operation{OperationId: o.ID, Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_WORKSPACE, Kind: api.OperationKindEnum_OPERATION_KIND_ENUM_CREATE_WORKSPACE, ResourceId: o.ResourceID, Status: api.OperationStatusEnum(state), Stage: api.OperationStageEnum(stage), RequestId: o.RequestID, CreatedAt: timestamppb.New(o.CreatedAt), UpdatedAt: timestamppb.New(o.UpdatedAt)}
 	if o.Observation != "" {
-		v := api.OperationObservationResultEnum(api.OperationObservationResultEnum_value["OPERATION_OBSERVATION_RESULT_ENUM_"+strings.ToUpper(o.Observation)])
+		observation, ok := api.OperationObservationResultEnum_value["OPERATION_OBSERVATION_RESULT_ENUM_"+strings.ToUpper(o.Observation)]
+		if !ok || observation == 0 {
+			return nil, status.Error(codes.Internal, "stored Workspace operation observation is invalid")
+		}
+		v := api.OperationObservationResultEnum(observation)
 		out.ObservationResult = &v
 	}
 	if !o.Terminal() {
 		out.PollAfterSeconds = proto.Int32(5)
 	}
-	return out
+	return out, nil
 }
 func (s *Service) ReadOwnerCommit(ctx context.Context, r *api.ReadOwnerCommitRequest) (*api.OwnerCommitEvidence, error) {
 	peer, ok := ownerservice.PeerOwner(ctx)
@@ -287,5 +308,15 @@ func evidence(op ownerstore.Operation) (*api.OwnerCommitEvidence, error) {
 	if protojson.Unmarshal(a.Quote, q) != nil {
 		return nil, status.Error(codes.DataLoss, "stored quote is invalid")
 	}
-	return &api.OwnerCommitEvidence{Owner: api.OwnerEnum_OWNER_ENUM_WORKSPACE, OperationId: op.ID, ResourceId: op.ResourceID, AcceptedInputDigest: a.InputDigest, CommittedVersion: 1, AcceptedAt: timestamppb.New(op.CreatedAt), AuthorizationContextId: a.AuthorizationContextID, ActorId: op.ActorID, Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: op.TenantID}}}, AcceptedAction: api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEWORKSPACE, AuthorizationResource: workspaceResource(""), ContinuationResources: []*api.AuthorizationResource{workspaceResource(op.ResourceID), {Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, Id: proto.String(q.Quote.GetCapabilityVersionId())}}}, nil
+	// The accepted order names exactly one frozen application source, so its commit
+	// carries exactly that source as the continuation resource: the CapabilityVersion
+	// of a built Agent or the Runtime Release of the default OPL App. Naming the
+	// other kind would widen the grant to a version this order never accepted.
+	source := &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION}
+	if q.GetQuote().GetRuntimeVersionId() != "" {
+		source.Id = proto.String(q.GetQuote().GetRuntimeVersionId())
+	} else {
+		source.Id = proto.String(q.GetQuote().GetCapabilityVersionId())
+	}
+	return &api.OwnerCommitEvidence{Owner: api.OwnerEnum_OWNER_ENUM_WORKSPACE, OperationId: op.ID, ResourceId: op.ResourceID, AcceptedInputDigest: a.InputDigest, CommittedVersion: 1, AcceptedAt: timestamppb.New(op.CreatedAt), AuthorizationContextId: a.AuthorizationContextID, ActorId: op.ActorID, Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: op.TenantID}}}, AcceptedAction: api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEWORKSPACE, AuthorizationResource: workspaceResource(""), ContinuationResources: []*api.AuthorizationResource{workspaceResource(op.ResourceID), source}}, nil
 }

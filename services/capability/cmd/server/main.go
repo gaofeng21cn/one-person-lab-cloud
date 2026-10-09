@@ -187,7 +187,7 @@ func dialPeer(config ownerservice.Config, tls owneridentity.TLSConfig, target ow
 	if address == "" {
 		return nil, fmt.Errorf("%s address is required", target)
 	}
-	options, err := tls.DialOptions(config.Owner.Service(), target.Service(), os.Getenv("OPL_"+strings.ToUpper(target.String())+"_TOKEN"))
+	options, err := tls.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(target), os.Getenv("OPL_"+strings.ToUpper(target.String())+"_TOKEN"))
 	if err != nil {
 		return nil, err
 	}

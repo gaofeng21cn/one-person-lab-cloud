@@ -945,7 +945,7 @@ func confirmWorkspaceLaunchRefund(ctx context.Context, service *controlplane.Ser
 	if err != nil {
 		return false, err
 	}
-	if receipt.ReceiptID != operation.ReceiptID || !workspaceLaunchReceiptInputMatches(receipt.ReceiptInput, walletAdjustmentReceipt(refund.ID, operation)) {
+	if receipt.ReceiptID != operation.ReceiptID || !clients.ReceiptInputEqual(receipt.ReceiptInput, walletAdjustmentReceipt(refund.ID, operation)) {
 		return false, errWalletAdjustmentConflict
 	}
 	return true, nil

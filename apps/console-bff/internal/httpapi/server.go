@@ -11,11 +11,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"opl-cloud/apps/console-bff/internal/clients"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/packages/contracts/go/publicjson"
 )
 
 // Server serves the Console BFF REST surface over typed owner reads.
@@ -28,7 +30,11 @@ type Server struct {
 	tenant         api.TenantProductServiceClient
 	catalog        api.ResourceCatalogProductServiceClient
 	gateway        api.GatewayProductServiceClient
-	workspace      api.WorkspaceProductServiceClient
+	// gatewayCoordination is the Gateway owner's typed settlement surface. The
+	// one administrator wallet binding command reaches it; every other fact the
+	// BFF serves still comes from the product read clients.
+	gatewayCoordination api.GatewayCoordinationClient
+	workspace           api.WorkspaceProductServiceClient
 }
 
 // OwnerReader is the typed read surface the BFF needs. It is satisfied by the
@@ -69,6 +75,11 @@ func NewServer(reader OwnerReader, identity IdentityReader) *Server {
 		s.gateway = p.GatewayClient()
 	}
 	if p, ok := reader.(interface {
+		GatewayCoordinationClient() api.GatewayCoordinationClient
+	}); ok {
+		s.gatewayCoordination = p.GatewayCoordinationClient()
+	}
+	if p, ok := reader.(interface {
 		WorkspaceClient() api.WorkspaceProductServiceClient
 	}); ok {
 		s.workspace = p.WorkspaceClient()
@@ -84,6 +95,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerMemberRoutes(mux)
 	s.registerCatalogRoutes(mux, s.catalog)
 	s.registerGatewayRoutes(mux, s.gateway)
+	s.registerWalletBindingRoute(mux)
 	s.registerWorkspaceRoutes(mux, s.workspace)
 	if reader, ok := s.reader.(ServeDeliveryReader); ok {
 		RegisterServeDeliveryRoutes(mux, reader, s.identity)
@@ -163,7 +175,19 @@ func (s *Server) handleOperation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "owner_read_failed", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, operation)
+	// The readback is the contract's public Operation, not the owner's wire
+	// message: the caller polls this route and stops on the public terminal status.
+	raw, err := publicjson.Marshal(operation)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "invalid_owner_response", err.Error())
+		return
+	}
+	if operation.GetPollAfterSeconds() > 0 {
+		w.Header().Set("Retry-After", strconv.Itoa(int(operation.GetPollAfterSeconds())))
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(raw)
 }
 
 // ownerFromPath resolves the path owner token against the contract's finite

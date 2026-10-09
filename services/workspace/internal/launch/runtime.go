@@ -31,7 +31,7 @@ func (s *Service) resumeRuntime(ctx context.Context, op ownerstore.Operation, to
 	if err != nil {
 		return err
 	}
-	binding, err := runtimeBinding(op, accepted, resources, result, commit)
+	binding, err := s.runtimeBinding(op, accepted, resources, result, commit)
 	if err != nil {
 		return s.failedCall(ctx, op, token, "read_resources", "runtime", *result, err)
 	}
@@ -107,7 +107,7 @@ func (s *Service) resumeRuntime(ctx context.Context, op ownerstore.Operation, to
 		}
 		// A previous command may already have reached Serve. Read its original
 		// instance before deciding whether a replay of Start is necessary.
-		observed, err := s.readRuntime(ctx, op, token, command, result)
+		observed, err := s.readRuntime(ctx, op, token, accepted, command, result)
 		if err != nil {
 			if result.RuntimeDeployAccepted || ctx.Err() != nil || !runtimeReadCanRetryStart(err) {
 				return err
@@ -141,7 +141,7 @@ func (s *Service) resumeRuntime(ctx context.Context, op ownerstore.Operation, to
 	if err = s.checkpoint(ctx, op, token, "deploy_runtime", "runtime", "awaiting_confirmation", "confirmed", reservation.OperationId, "", *result); err != nil {
 		return err
 	}
-	_, err = s.readRuntime(ctx, op, token, command, result)
+	_, err = s.readRuntime(ctx, op, token, accepted, command, result)
 	return err
 }
 
@@ -230,10 +230,15 @@ func (s *Service) ensureRuntimeGatewayBinding(ctx context.Context, op ownerstore
 	return nil
 }
 
-func runtimeBinding(op ownerstore.Operation, accepted *api.QuoteAcceptance, resources *api.ResourceReadback, result *orderResult, commit *api.OwnerCommitEvidence) (*api.ResourceExecutionBinding, error) {
-	zero := &api.LocalNoChargeReceiptEvidence{}
-	if protojson.Unmarshal(result.ZeroChargeReceipt, zero) != nil || validateZeroChargeEvidence(op, accepted, commit, zero, nil) != nil {
-		return nil, status.Error(codes.FailedPrecondition, "verified Local no-charge evidence is required before runtime")
+func (s *Service) runtimeBinding(op ownerstore.Operation, accepted *api.QuoteAcceptance, resources *api.ResourceReadback, result *orderResult, commit *api.OwnerCommitEvidence) (*api.ResourceExecutionBinding, error) {
+	// The gate is the order's own funding proof, not its provider or billing mode:
+	// a Local no-charge order is released by its Ledger zero-charge receipt, while a
+	// paid order is released only by the Ledger WALLET_ACTION receipt for its
+	// confirmed Gateway charge. Either way the proof must name this exact obligation,
+	// so a paid path can never be delivered on Local zero-charge evidence (or the
+	// reverse) merely because its resources exist.
+	if _, _, err := s.fundingProofFor(op, accepted, result, commit); err != nil {
+		return nil, err
 	}
 	b := resources.GetExecutionResources()
 	if resources.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED || resources.GetAbsenceConfirmed() || resources.GetWorkspaceId() != op.ResourceID || resources.GetResourceSetId() == "" || resources.GetResourceSetId() != result.ResourceSetID || b.GetAccountId() == "" || b.GetComputeAllocationId() == "" || b.GetStorageVolumeId() == "" || b.GetDataAttachmentId() == "" || b.GetDataAttachmentOperationId() == "" {
@@ -285,7 +290,7 @@ func runtimeCommand(op ownerstore.Operation, grant string, accepted *api.QuoteAc
 	return &api.RuntimeDeployCommand{Context: continuation(op, grant, "deploy_runtime"), WorkspaceId: op.ResourceID, DeploymentId: reservation.DeploymentId, RuntimeInstanceId: reservation.RuntimeInstanceId, ApplicationSelection: source.Selection, DeploymentDescriptor: source.DeploymentDescriptor, DeploymentDescriptorDigest: source.DescriptorDigest, DeploymentDescriptorObjectRef: source.DescriptorObjectRef, ResourceSetId: resourceSetID, DataAttachmentId: binding.DataAttachmentId, DataCompatibility: source.DataCompatibility, ModelSelections: accepted.Quote.ModelSelections, ExecutionEpoch: reservation.ExecutionEpoch}
 }
 
-func (s *Service) readRuntime(ctx context.Context, op ownerstore.Operation, token string, command *api.RuntimeDeployCommand, result *orderResult) (*api.RuntimeReadback, error) {
+func (s *Service) readRuntime(ctx context.Context, op ownerstore.Operation, token string, accepted *api.QuoteAcceptance, command *api.RuntimeDeployCommand, result *orderResult) (*api.RuntimeReadback, error) {
 	request := &api.RuntimeReadbackRequest{Context: continuation(op, result.GrantID, "read_runtime"), RuntimeInstanceId: command.RuntimeInstanceId, DeploymentId: command.DeploymentId}
 	if err := s.beginStep(ctx, op, token, "read_runtime", 8, "serve", "runtime", request); err != nil {
 		return nil, err
@@ -298,18 +303,31 @@ func (s *Service) readRuntime(ctx context.Context, op ownerstore.Operation, toke
 		return nil, s.failedCall(ctx, op, token, "read_runtime", "runtime", *result, err)
 	}
 	result.RuntimeReadback = wire(observed)
+	ready := observed.GetOutcome() == api.Observation_OBSERVATION_CONFIRMED && observed.GetState() == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY
 	stage, state, observation := "runtime", "awaiting_confirmation", "unknown"
 	if observed.Outcome == api.Observation_OBSERVATION_REJECTED || observed.State == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_FAILED {
 		state, observation = "needs_attention", "rejected"
 	} else if observed.Outcome == api.Observation_OBSERVATION_CONFIRMED {
 		observation = "confirmed"
-		if observed.State == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY {
+		if ready {
 			stage = "activation"
 		}
 	}
-	// Even Serve-ready does not prove Gateway, period or entitlement activation.
+	// Even Serve-ready does not prove Gateway, period or entitlement activation,
+	// so the confirmed readiness is recorded at the activation boundary before the
+	// entitlement is written. For a paid order the order's own confirmed charge
+	// receipt then releases the one quoted subscription and its first immutable
+	// period, the Workspace becomes active and the operation reaches its terminal
+	// confirmed state. A Local no-charge order deliberately keeps the activation
+	// boundary here: its zero-fee period is a separate product decision and is not
+	// fabricated from paid evidence.
 	if err = s.checkpoint(ctx, op, token, "read_runtime", stage, state, observation, command.RuntimeInstanceId, "DEPENDENCY_UNAVAILABLE", *result); err != nil {
 		return nil, err
+	}
+	if ready && !localNoCharge(accepted) {
+		if err = s.activatePaidOrder(ctx, op, token, accepted, result, observed); err != nil {
+			return nil, s.failedCall(ctx, op, token, "read_runtime", "activation", *result, err)
+		}
 	}
 	return observed, nil
 }

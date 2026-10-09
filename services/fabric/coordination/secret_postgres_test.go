@@ -171,11 +171,11 @@ func TestBindSecretRecordsProviderConfirmedBindingOnce(t *testing.T) {
 }
 
 // TestRebindSecretReplacesOnlyTheExpectedPredecessor proves Fabric's replacement
-// contract: an initial BindSecret creates the one active binding, RebindSecret with
-// the exact predecessor retires it and writes the replacement as the one active
-// binding (never two), a replayed RebindSecret returns the same readback without a
-// second retirement, a wrong predecessor is refused, and a non-Workspace caller is
-// refused.
+// contract: an initial Serve BindSecret creates the one active binding,
+// RebindSecret with the exact predecessor retires it and writes the replacement as
+// the one active binding (never two), a replayed RebindSecret returns the same
+// readback without a second retirement, a wrong predecessor is refused, and the
+// retired Workspace caller is refused.
 func TestRebindSecretReplacesOnlyTheExpectedPredecessor(t *testing.T) {
 	db := database(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
@@ -230,16 +230,16 @@ func TestRebindSecretReplacesOnlyTheExpectedPredecessor(t *testing.T) {
 	call := func(key string) *api.CallContext {
 		return &api.CallContext{ActorId: "actor", RequestId: "request-" + key, IdempotencyKey: key, SessionId: proto.String("session"), Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: tenant}}}}
 	}
-	workspaceOpts, err := config.TLS.DialOptions(owneridentity.Workspace.Service(), owneridentity.Fabric.Service(), token)
+	serveOpts, err := config.TLS.DialOptions(owneridentity.Serve.Service(), owneridentity.Fabric.Service(), token)
 	if err != nil {
 		t.Fatal(err)
 	}
-	workspaceConn, err := grpc.NewClient(fabricListener.Addr().String(), workspaceOpts...)
+	serveConn, err := grpc.NewClient(fabricListener.Addr().String(), serveOpts...)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { workspaceConn.Close() })
-	client := api.NewFabricCoordinationClient(workspaceConn)
+	t.Cleanup(func() { serveConn.Close() })
+	client := api.NewFabricCoordinationClient(serveConn)
 
 	first, err := client.BindSecret(ctx, &api.SecretBindingCommand{Context: call("bind-first"), WorkspaceId: workspace, RuntimeInstanceId: "rt_rebind", KeyBindingId: "key-1", SecretDeliveryReference: "opl-gateway-" + workspace, TargetSlot: "gateway", Fingerprint: firstFingerprint})
 	if err != nil || first.GetSecretBindingId() == "" || dispatcher.calls != 1 {
@@ -291,18 +291,18 @@ func TestRebindSecretReplacesOnlyTheExpectedPredecessor(t *testing.T) {
 	if _, err = client.RebindSecret(ctx, conflict); status.Code(err) != codes.AlreadyExists {
 		t.Fatalf("idempotency conflict err=%v want already exists", err)
 	}
-	// A non-Workspace peer may not replace the binding.
-	serveOpts, err := config.TLS.DialOptions(owneridentity.Serve.Service(), owneridentity.Fabric.Service(), token)
+	// Workspace is no longer admitted: Serve is the only Secret-binding caller.
+	workspaceOpts, err := config.TLS.DialOptions(owneridentity.Workspace.Service(), owneridentity.Fabric.Service(), token)
 	if err != nil {
 		t.Fatal(err)
 	}
-	serveConn, err := grpc.NewClient(fabricListener.Addr().String(), serveOpts...)
+	workspaceConn, err := grpc.NewClient(fabricListener.Addr().String(), workspaceOpts...)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { serveConn.Close() })
-	if _, err = api.NewFabricCoordinationClient(serveConn).RebindSecret(ctx, conflict); status.Code(err) != codes.PermissionDenied {
-		t.Fatalf("foreign peer err=%v want permission denied", err)
+	t.Cleanup(func() { workspaceConn.Close() })
+	if _, err = api.NewFabricCoordinationClient(workspaceConn).RebindSecret(ctx, conflict); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("retired Workspace peer err=%v want permission denied", err)
 	}
 	// A denied authorization (wrong tenant/owner) is refused before any retirement.
 	authority.deny = true

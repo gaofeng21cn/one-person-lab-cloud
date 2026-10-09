@@ -24,6 +24,23 @@ type applicationLifecycleFabric struct {
 	secretMutations   []clients.WorkspaceApplicationGatewaySecretCleanupInput
 	secretError       error
 	runtimeInputs     []clients.WorkspaceApplicationRuntimeInput
+	// gatewaySecretPresent models the Workspace Gateway Secret file Local-Docker
+	// keeps until the application Secret retirement removes it: Fabric reports
+	// that file as a labelled residual of the Workspace until then.
+	gatewaySecretPresent bool
+}
+
+// ObserveWorkspaceRuntimeDelete models the real Local-Docker residual readback:
+// the Workspace Gateway Secret is an owned labelled object of the Workspace, so
+// it stays a residual until its own retirement removes it.
+func (f *applicationLifecycleFabric) ObserveWorkspaceRuntimeDelete(ctx context.Context, workspaceID string) (clients.WorkspaceRuntimeDeleteObservation, error) {
+	observation, err := f.workspaceDeleteFabric.ObserveWorkspaceRuntimeDelete(ctx, workspaceID)
+	if err != nil || !f.gatewaySecretPresent {
+		return observation, err
+	}
+	observation.State = clients.WorkspaceRuntimeDeleteObservationPresent
+	observation.Residuals = append(observation.Residuals, clients.WorkspaceRuntimeDeleteResidual{Kind: "secret", Name: contracts.WorkspaceGatewaySecretRef(workspaceID)})
+	return observation, nil
 }
 
 func (f *applicationLifecycleFabric) ReadWorkspaceApplicationRuntimeLifecycle(_ context.Context, input clients.WorkspaceApplicationRuntimeLifecycleInput) (contracts.WorkspaceApplicationRuntimeLifecycleResult, error) {
@@ -45,6 +62,9 @@ func (f *applicationLifecycleFabric) RemoveWorkspaceApplicationGatewaySecret(_ c
 	f.secretMutations = append(f.secretMutations, input)
 	if f.events != nil {
 		f.events.add("application:secret:" + input.SecretRef)
+	}
+	if f.secretError == nil {
+		f.gatewaySecretPresent = false
 	}
 	return f.secretError
 }
@@ -359,7 +379,7 @@ func TestApplicationLifecycleDeleteCleansDefaultGatewaySecretAndRetainsKey(t *te
 			if installed {
 				seedApplicationRevisionForLifecycle(t, app, "ws-alpha", revision, contracts.WorkspaceApplicationRuntimeConfiguration{}, []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", Key: "opl_gateway_api_key", SecretRef: secret.SecretRef, Version: "v2"}}, 19, true)
 			}
-			fabric := &applicationLifecycleFabric{workspaceDeleteFabric: fixture.fabric, states: map[string]string{}, secretError: errors.New("injected_secret_cleanup_failure")}
+			fabric := &applicationLifecycleFabric{workspaceDeleteFabric: fixture.fabric, states: map[string]string{}, secretError: errors.New("injected_secret_cleanup_failure"), gatewaySecretPresent: true}
 			server, err := NewPersistentServer(controlplane.NewService(ledger, fabric, sub2api), fixture.store)
 			if err != nil {
 				t.Fatal(err)
@@ -390,6 +410,68 @@ func TestApplicationLifecycleDeleteCleansDefaultGatewaySecretAndRetainsKey(t *te
 				t.Fatalf("cleanup proof=%+v err=%v", operation.ApplicationSecrets, err)
 			}
 		})
+	}
+}
+
+// A resource-only purchase owns no legacy Runtime, but its default application
+// installation owns one Workspace Gateway Secret. Local-Docker reports that
+// Secret file as a labelled residual of the Workspace until the application
+// Secret retirement removes it, so the retirement must precede the residual
+// readback the Delete records as its runtime stage evidence.
+func TestApplicationLifecycleDeleteRetiresGatewaySecretBeforeRuntimeReadback(t *testing.T) {
+	fixture, sub2api, ledger, events := newResourceOnlyWorkspaceLifecycleFixture(t)
+	app := fixture.server.(*controlPlaneHTTPHandler).app
+	revision := defaultOPLApplicationRevision("registry.example/opl-app@sha256:" + strings.Repeat("a", 64))
+	secret := clients.GatewaySecretWriteResult{SecretRef: contracts.WorkspaceGatewaySecretRef("ws-alpha"), Version: "v1", Fingerprint: "sha256:" + strings.Repeat("b", 64)}
+	request := workspaceDefaultApplicationRequest{
+		SchemaVersion: 1, OperationID: workspaceDefaultApplicationOperationID("workspace-launch-alpha"), LaunchOperationID: "workspace-launch-alpha",
+		AccountID: "acct-alpha", WorkspaceID: "ws-alpha", OwnerUserID: stringValue(fixture.workspace["ownerUserId"]), Sub2APIUserID: 41,
+		WorkspaceKeyGroupID: 7, Revision: revision, Phase: "waiting_resources", GatewaySecret: &secret, WorkspaceAPIKeyID: 19,
+	}
+	row, err := workspaceDefaultApplicationRow(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustStore(t, fixture.store.SaveRuntimeOperation(context.Background(), row))
+	seedApplicationRevisionForLifecycle(t, app, "ws-alpha", revision, contracts.WorkspaceApplicationRuntimeConfiguration{},
+		[]contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", Key: "opl_gateway_api_key", SecretRef: secret.SecretRef, Version: "v2"}}, 19, true)
+	fabric := &applicationLifecycleFabric{workspaceDeleteFabric: fixture.fabric, states: map[string]string{}, gatewaySecretPresent: true}
+	server, err := NewPersistentServer(controlplane.NewService(ledger, fabric, sub2api), fixture.store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := tenantOwnerSessionForTest(t, server)
+	response := requestWithMutationKeyForTest(t, server, session, http.MethodDelete, "/api/workspaces/ws-alpha", `{}`, "delete-secret-order")
+	if response.Code != http.StatusOK {
+		t.Fatalf("delete=%d %s", response.Code, response.Body.String())
+	}
+	if len(fabric.secretMutations) != 1 || fabric.secretMutations[0].SecretRef != secret.SecretRef || fabric.gatewaySecretPresent {
+		t.Fatalf("gateway Secret retirement=%+v present=%v", fabric.secretMutations, fabric.gatewaySecretPresent)
+	}
+	sequence := events.snapshot()
+	retired, residualRead := -1, -1
+	for index, event := range sequence {
+		if event == "application:secret:"+secret.SecretRef && retired < 0 {
+			retired = index
+		}
+		if event == "fabric:runtime-residual-read" && residualRead < 0 {
+			residualRead = index
+		}
+	}
+	if retired < 0 || residualRead < 0 || retired > residualRead {
+		t.Fatalf("gateway Secret retired=%d residual read=%d events=%v", retired, residualRead, sequence)
+	}
+	operation, found, err := app.workspaceDeleteOperation(context.Background(), "ws-alpha")
+	if err != nil || !found || operation.Phase != "complete" || operation.RuntimeStatus != "absent" || operation.SecretStatus != "absent" || operation.KeyStatus != "" ||
+		len(operation.ApplicationSecrets.Secrets) != 1 || operation.ApplicationSecrets.Secrets[0].State != "absent" {
+		t.Fatalf("completed delete=%+v err=%v", operation, err)
+	}
+	if evidence, present := contracts.WorkspaceDeleteStageEvidenceLatest(operation.StageEvidence, contracts.WorkspaceDeleteStageRuntimeAbsent); !present ||
+		evidence.Result != contracts.WorkspaceDeleteEvidenceAbsent || evidence.EvidenceKind != contracts.WorkspaceDeleteEvidenceProviderReadback || evidence.ReadbackID == "" {
+		t.Fatalf("runtime stage evidence=%+v present=%v", evidence, present)
+	}
+	if sub2api.keyDeletes != 0 || !sub2api.keyExists {
+		t.Fatal("resource-only deletion changed Gateway Key retention")
 	}
 }
 

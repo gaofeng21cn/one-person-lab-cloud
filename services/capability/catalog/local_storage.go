@@ -23,7 +23,7 @@ type localStorage struct {
 	signingKey      []byte
 }
 
-func newLocalStorage(root, publicURL string) (*localStorage, error) {
+func newLocalStorage(root, publicURL string, signingKey []byte) (*localStorage, error) {
 	u, e := url.Parse(publicURL)
 	if e != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
 		return nil, fmt.Errorf("invalid public upload URL")
@@ -36,7 +36,11 @@ func newLocalStorage(root, publicURL string) (*localStorage, error) {
 			return nil, e
 		}
 	}
-	return &localStorage{root: root, publicURL: strings.TrimRight(publicURL, "/")}, nil
+	// Part permits are signed by this provider and verified by the Capability data
+	// plane from the same Objects.SigningKey, so the provider instance must retain
+	// that exact key; signing with an empty key would make every part upload fail
+	// its own authorization check.
+	return &localStorage{root: root, publicURL: strings.TrimRight(publicURL, "/"), signingKey: signingKey}, nil
 }
 
 func (l *localStorage) objectPath(d string) (string, error) {

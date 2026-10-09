@@ -15,11 +15,10 @@ type workspaceApplicationPreflightProvider interface {
 
 func (s *Service) PreflightWorkspaceApplicationRuntime(ctx context.Context, input WorkspaceApplicationRuntimeInput) error {
 	input.IdempotencyKey = input.RuntimeOperationID
-	s.mu.Lock()
-	compute := s.computes[input.ComputeID]
-	volume := s.volumes[input.VolumeID]
-	attachment := s.attachments[input.AttachmentID]
-	s.mu.Unlock()
+	compute, volume, attachment, resourceErr := s.workspaceApplicationResources(ctx, input.ComputeID, input.VolumeID, input.AttachmentID)
+	if resourceErr != nil {
+		return resourceErr
+	}
 	if err := s.validateWorkspaceApplicationRuntimeInput(input, compute, volume, attachment); err != nil {
 		return errors.Join(ErrWorkspaceApplicationRuntimeInputInvalid, err)
 	}

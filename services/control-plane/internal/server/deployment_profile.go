@@ -21,6 +21,12 @@ const (
 	fabricTencentTKE  fabricProvider = "tencent-tke"
 )
 
+// fabricLocalDockerZone is the zone the Local-Docker adapter places every
+// compute allocation in and reports back for its resources. Fabric's monthly
+// preflight requires a named zone, and this is the provider-owned value the
+// platform preflights and bills a Local-Docker Workspace in.
+const fabricLocalDockerZone = "local"
+
 type deploymentProfile struct {
 	Mode           deploymentMode
 	FabricProvider fabricProvider

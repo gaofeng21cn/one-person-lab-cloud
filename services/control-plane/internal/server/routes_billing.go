@@ -194,7 +194,7 @@ func (app *controlPlaneServer) projectCustomerBillingReceipt(ctx context.Context
 		operation, err := decodeWorkspaceLaunchReconcileOperation(row)
 		if err != nil || !workspaceLaunchCloseoutActive(operation) || operation.Closeout.ReceiptRequestedAt == "" ||
 			receipt.ReceiptID == "" || operation.Closeout.ReceiptID != "" && operation.Closeout.ReceiptID != receipt.ReceiptID ||
-			!workspaceLaunchReceiptInputMatches(receipt.ReceiptInput, workspaceLaunchCloseoutReceiptInput(operation)) {
+			!clients.ReceiptInputEqual(receipt.ReceiptInput, workspaceLaunchCloseoutReceiptInput(operation)) {
 			return nil, false
 		}
 		if _, err := time.Parse(time.RFC3339, receipt.CreatedAt); err != nil {

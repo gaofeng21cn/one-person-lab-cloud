@@ -58,10 +58,21 @@ type catalog struct {
 type ledger struct {
 	api.LedgerCoordinationClient
 	evidence *api.LocalNoChargeReceiptEvidence
+	charge   *api.Receipt
 }
 
 func (l *ledger) ReadLocalNoChargeReceipt(_ context.Context, _ *api.GetReceiptByReferenceRequest, _ ...grpc.CallOption) (*api.LocalNoChargeReceiptEvidence, error) {
 	return proto.Clone(l.evidence).(*api.LocalNoChargeReceiptEvidence), nil
+}
+
+// ReadReceiptByReference answers the confirmed wallet charge the Local prepaid
+// funding branch re-reads. A receipt the fixture does not hold is not returned, so
+// the branch refuses the same way it would against the live Ledger.
+func (l *ledger) ReadReceiptByReference(_ context.Context, _ *api.GetReceiptByReferenceRequest, _ ...grpc.CallOption) (*api.Receipt, error) {
+	if l.charge == nil {
+		return nil, status.Error(codes.NotFound, "no confirmed wallet charge")
+	}
+	return proto.Clone(l.charge).(*api.Receipt), nil
 }
 
 type localFixture struct {
@@ -451,6 +462,43 @@ func TestResourceAcceptanceAndReadback(t *testing.T) {
 		var attachments int
 		if err = db.QueryRow(`SELECT count(*) FROM fabric.attachments WHERE resource_set_id=$1`, pending.ResourceId).Scan(&attachments); err != nil || attachments != 0 {
 			t.Fatalf("compute was invented as execution: %d %v", attachments, err)
+		}
+	})
+
+	t.Run("local prepaid monthly dispatches on its own confirmed wallet charge", func(t *testing.T) {
+		paid := command("local-paid")
+		paid.Plan.Provider = "local-docker"
+		paid.Plan.BillingMode = "PREPAID_MONTHLY"
+		paid.Plan.PrepaidMonths = 1
+		paid.QuoteAcceptance.ResourcePlan.Provider = "local-docker"
+		paid.QuoteAcceptance.ResourcePlan.BillingMode = "PREPAID_MONTHLY"
+		paid.QuoteAcceptance.Quote.TotalUsdMicros = 1_500_000
+		bind(paid)
+		pending, err := client.EnsureResources(ctx, paid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dispatch := &localFixture{}
+		service.Dispatcher, service.Ledger = dispatch, &ledger{}
+		defer func() { service.Dispatcher = nil; service.Ledger = nil }()
+
+		// A Local prepaid plan without its confirmed wallet charge is not funded, so
+		// no provider mutation may run.
+		paid.ConfirmedChargeReceiptId = "forged-reference"
+		got, err := client.EnsureResources(ctx, paid)
+		if err != nil || got.OperationId != pending.OperationId || dispatch.calls != 0 {
+			t.Fatalf("missing wallet charge dispatched: %v %v calls=%d", got, err, dispatch.calls)
+		}
+
+		// The confirmed charge must belong to this original obligation and amount.
+		service.Ledger = &ledger{charge: &api.Receipt{Id: "wrong-receipt", Owner: api.OwnerEnum_OWNER_ENUM_WORKSPACE, OperationId: proto.String("another-obligation"), Kind: api.ReceiptKindEnum_RECEIPT_KIND_ENUM_WALLET_ACTION, Outcome: api.ReceiptOutcomeEnum_RECEIPT_OUTCOME_ENUM_CONFIRMED}}
+		if _, err = client.EnsureResources(ctx, paid); err != nil || dispatch.calls != 0 {
+			t.Fatalf("foreign wallet receipt dispatched: %v calls=%d", err, dispatch.calls)
+		}
+		service.Ledger = &ledger{charge: &api.Receipt{Id: "wallet-receipt", Owner: api.OwnerEnum_OWNER_ENUM_WORKSPACE, OperationId: proto.String(paid.ObligationId), Kind: api.ReceiptKindEnum_RECEIPT_KIND_ENUM_WALLET_ACTION, Outcome: api.ReceiptOutcomeEnum_RECEIPT_OUTCOME_ENUM_CONFIRMED}}
+		paid.ConfirmedChargeReceiptId = "wallet-receipt"
+		if _, err = client.EnsureResources(ctx, paid); err != nil || dispatch.calls == 0 {
+			t.Fatalf("confirmed wallet charge did not dispatch: %v calls=%d", err, dispatch.calls)
 		}
 	})
 }

@@ -319,19 +319,16 @@ func TestLiveServeReadThroughBFF(t *testing.T) {
 		assertBFFError(t, resp, api.ErrorCodeEnum_ERROR_CODE_ENUM_APP_ACCESS_UNAVAILABLE)
 	})
 
-	t.Run("empty_history_through_bff", func(t *testing.T) {
+	t.Run("never_delivered_through_bff_is_forbidden", func(t *testing.T) {
+		// The BFF route must answer a Workspace Serve has no delivery record for
+		// with the same refusal it answers another tenant's Workspace: no status,
+		// page or deployment fact may separate the two cases.
 		resp := bffRequest(t, server.URL, http.MethodGet, "/api/v2/workspaces/ws-never-delivered/deployments", tenantCookie)
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("status = %d", resp.StatusCode)
+		if resp.StatusCode != http.StatusForbidden {
+			resp.Body.Close()
+			t.Fatalf("status = %d, want 403", resp.StatusCode)
 		}
-		var page api.DeploymentPage
-		fields := decodeInto(t, resp, &page)
-		if string(fields["items"]) != "[]" {
-			t.Fatalf("empty history must carry required items as [], got %s", fields["items"])
-		}
-		if len(page.Items) != 0 {
-			t.Fatalf("never-delivered Workspace reported history: %+v", page.Items)
-		}
+		assertBFFError(t, resp, api.ErrorCodeEnum_ERROR_CODE_ENUM_FORBIDDEN)
 	})
 
 	t.Run("missing_deployment_is_not_found", func(t *testing.T) {

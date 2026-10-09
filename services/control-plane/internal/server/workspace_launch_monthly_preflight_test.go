@@ -422,7 +422,8 @@ func TestWorkspaceLaunchMonthlyPreflightFailureBlocksDebitAndFabricMutation(t *t
 		"storage_error", "storage_unavailable", "storage_invalid",
 	} {
 		t.Run(failureMode, func(t *testing.T) {
-			server, store, client, _, events := newWorkspaceLaunchMonthlyPreflightFixture(t, failureMode)
+			server, store, client, fabric, events := newWorkspaceLaunchMonthlyPreflightFixture(t, failureMode)
+			fabric.providerProfileRef = "tencent-tke"
 			session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
 
 			response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches",
@@ -458,7 +459,7 @@ func TestWorkspaceLaunchMonthlyPreflightFailureBlocksDebitAndFabricMutation(t *t
 	}
 }
 
-func TestWorkspaceLaunchProviderNeutralProfileDoesNotRequireTheTencentZone(t *testing.T) {
+func TestWorkspaceLaunchLocalDockerProfilePreflightsItsOwnZoneWithoutTheTencentZone(t *testing.T) {
 	t.Setenv(controlledBasicPilotEnabledEnv, "1")
 	t.Setenv(controlledBasicPilotAccountsEnv, "acct-alpha")
 	t.Setenv("OPL_TENCENT_ZONE", "")
@@ -475,7 +476,7 @@ func TestWorkspaceLaunchProviderNeutralProfileDoesNotRequireTheTencentZone(t *te
 	}
 	_, runErr := continueWorkspaceLaunchKeyForMonthlyPreflightTest(t, server, session, "provider-neutral-zone")
 	if runErr != nil {
-		t.Fatalf("provider-neutral launch must not require OPL_TENCENT_ZONE: err=%v events=%#v", runErr, *events)
+		t.Fatalf("Local-Docker launch must not require OPL_TENCENT_ZONE: err=%v events=%#v", runErr, *events)
 	}
 
 	rows, err := queryRuntimeOperations(context.Background(), store, runtimeOperationQuery{Action: "workspace.launch.v2"})
@@ -487,22 +488,63 @@ func TestWorkspaceLaunchProviderNeutralProfileDoesNotRequireTheTencentZone(t *te
 		t.Fatal(err)
 	}
 	if operation.Status == "manual_review" || operation.Stage == "debit" {
-		t.Fatalf("provider-neutral launch parked on a missing Tencent zone: operation=%#v", operation)
+		t.Fatalf("Local-Docker launch parked on a missing Tencent zone: operation=%#v", operation)
 	}
-	// The zone is provider-owned: a provider-neutral profile sends none, so the
-	// Fabric preflight confirms an empty zone instead of a Tencent one.
-	if fabric.monthlyPreflightZones == nil || len(fabric.monthlyPreflightZones) == 0 {
-		t.Fatalf("monthly preflight did not run: events=%#v", *events)
+	// The zone is provider-owned: Local-Docker orders in its own fixed zone, so
+	// the Fabric preflight confirms that zone instead of a Tencent one.
+	if len(fabric.monthlyPreflightZones) != 2 {
+		t.Fatalf("monthly preflight did not run for both resources: zones=%#v events=%#v", fabric.monthlyPreflightZones, *events)
 	}
 	for _, zone := range fabric.monthlyPreflightZones {
-		if zone != "" {
-			t.Fatalf("provider-neutral monthly preflight carried a zone: zones=%#v", fabric.monthlyPreflightZones)
+		if zone != fabricLocalDockerZone {
+			t.Fatalf("Local-Docker monthly preflight did not carry its own zone: zones=%#v", fabric.monthlyPreflightZones)
 		}
 	}
-	// The provider-neutral path is a real billing path: it confirms its preflight
-	// and then charges, exactly as before this change.
+	// The Local-Docker path is a real billing path: it confirms its preflight
+	// and then charges.
 	if len(client.charges) == 0 {
-		t.Fatalf("provider-neutral launch did not debit: charges=%#v events=%#v", client.charges, *events)
+		t.Fatalf("Local-Docker launch did not debit: charges=%#v events=%#v", client.charges, *events)
+	}
+}
+
+func TestWorkspaceLaunchUnmappedProviderProfileFailsClosedBeforeDebit(t *testing.T) {
+	t.Setenv(controlledBasicPilotEnabledEnv, "1")
+	t.Setenv(controlledBasicPilotAccountsEnv, "acct-alpha")
+	t.Setenv("OPL_TENCENT_ZONE", "ap-guangzhou-1")
+	t.Setenv("OPL_WORKSPACE_LAUNCH_WORKER_ENABLED", "0")
+
+	server, store, client, fabric, events := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
+	fabric.providerProfileRef = "unmapped-provider"
+	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
+	response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches",
+		`{"name":"Unmapped provider zone","packageId":"basic","autoRenew":false}`, "unmapped-provider-zone")
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	_, runErr := continueWorkspaceLaunchKeyForMonthlyPreflightTest(t, server, session, "unmapped-provider-zone")
+	if runErr == nil || !errors.Is(runErr, errWorkspaceLaunchMonthlyPreflightInvalid) {
+		t.Fatalf("run launch error=%v, want %v", runErr, errWorkspaceLaunchMonthlyPreflightInvalid)
+	}
+	rows, err := queryRuntimeOperations(context.Background(), store, runtimeOperationQuery{Action: "workspace.launch.v2"})
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("read launch operations=%#v err=%v", rows, err)
+	}
+	operation, err := decodeWorkspaceLaunchReconcileOperation(rows[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt := operation.Attempts["debit"]
+	if operation.Status != "manual_review" || operation.Stage != "debit" ||
+		attempt.Attempted != 1 || attempt.Confirmed != 0 || attempt.Unknown != 1 || attempt.Max != 1 || attempt.Status != "unknown" {
+		t.Fatalf("unmapped provider did not park the reserved debit: operation=%#v attempt=%#v", operation, attempt)
+	}
+	if len(client.charges) != 0 {
+		t.Fatalf("unmapped provider wrote debit authority: charges=%#v events=%#v", client.charges, *events)
+	}
+	for _, event := range *events {
+		if strings.HasPrefix(event, "fabric.monthly.") {
+			t.Fatalf("unmapped provider dispatched a zone-less monthly preflight: events=%#v", *events)
+		}
 	}
 }
 
@@ -551,7 +593,8 @@ func TestWorkspaceLaunchMonthlyPreflightRunsBeforeDebitAndProviderStages(t *test
 	t.Setenv("OPL_TENCENT_ZONE", "ap-guangzhou-1")
 	t.Setenv("OPL_WORKSPACE_LAUNCH_WORKER_ENABLED", "0")
 
-	server, store, client, _, events := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
+	server, store, client, fabric, events := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
+	fabric.providerProfileRef = "tencent-tke"
 	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
 	response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches",
 		`{"name":"Monthly preflight success","packageId":"basic","autoRenew":false}`,
@@ -608,6 +651,7 @@ func TestWorkspaceLaunchSameAccountSequentialPurchasesCreateIndependentWorkspace
 	t.Setenv("OPL_WORKSPACE_LAUNCH_WORKER_ENABLED", "0")
 
 	server, store, client, fabric, events := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
+	fabric.providerProfileRef = "tencent-tke"
 	ledger := fabric.receiptLedger
 	client.balance = 2 * gatewayAccountingChargeMicros
 	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
@@ -736,7 +780,7 @@ func TestWorkspaceLaunchRetainedFullWorkerContinuesFreshRuntimePendingReadOnly(t
 	server, store, _, fabric, events := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
 	fabric.runtimePending = true
 	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
-	seedRetainedFullLaunchForMonthlyPreflightTest(t, store, "fresh-runtime-pending", "Fresh runtime pending", firstNonEmpty(fabric.providerProfileRef, "provider-profile"))
+	seedRetainedFullLaunchForMonthlyPreflightTest(t, store, "fresh-runtime-pending", "Fresh runtime pending", string(fabricTencentTKE))
 	if _, err := continueWorkspaceLaunchKeyForMonthlyPreflightTest(t, server, session, "fresh-runtime-pending"); err != nil {
 		t.Fatalf("continue launch: %v", err)
 	}

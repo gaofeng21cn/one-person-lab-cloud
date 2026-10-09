@@ -130,13 +130,40 @@ func (c *ledgerHTTPClient) RecordReceipt(ctx context.Context, input ReceiptInput
 		return Receipt{}, err
 	}
 	if input.Type == "billing.workspace_purchased.v1" || input.Type == "billing.workspace_renewed.v1" || input.Type == "billing.workspace_expired.v1" || input.Type == "billing.workspace_refunded.v1" || input.Type == "workspace.created" || input.Type == "workspace.deleted.v1" || input.Type == "workspace.gateway_key_rotated.v1" || input.Type == "gateway.wallet_adjustment.v1" {
-		submitted, submittedErr := json.Marshal(input)
-		returned, returnedErr := json.Marshal(result.ReceiptInput)
-		if submittedErr != nil || returnedErr != nil || !bytes.Equal(submitted, returned) || result.ReceiptID == "" {
+		if !ReceiptInputEqual(result.ReceiptInput, input) || result.ReceiptID == "" {
 			return Receipt{}, fmt.Errorf("invalid Ledger receipt response")
 		}
 	}
 	return result, nil
+}
+
+// ReceiptInputEqual reports whether the receipt input Ledger returned is exactly
+// the input Control Plane submitted.
+//
+// The comparison runs on the decoded JSON data, not on marshaled bytes: JSON
+// object members have no order, so a payload built in process marshals the
+// contract structs embedded in its maps in Go field order while the same payload
+// decoded from a Ledger response marshals them in map key order. Byte comparison
+// would reject a receipt Ledger stored and echoed exactly, so both sides are
+// decoded with exact numbers and compared as data.
+func ReceiptInputEqual(actual, expected ReceiptInput) bool {
+	actualJSON, actualErr := canonicalReceiptInputJSON(actual)
+	expectedJSON, expectedErr := canonicalReceiptInputJSON(expected)
+	return actualErr == nil && expectedErr == nil && bytes.Equal(actualJSON, expectedJSON)
+}
+
+func canonicalReceiptInputJSON(input ReceiptInput) ([]byte, error) {
+	payload, err := json.Marshal(input)
+	if err != nil {
+		return nil, err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return nil, err
+	}
+	return json.Marshal(value)
 }
 
 func (c *ledgerHTTPClient) ListReceipts(ctx context.Context, query ReceiptQuery) (ReceiptPage, error) {

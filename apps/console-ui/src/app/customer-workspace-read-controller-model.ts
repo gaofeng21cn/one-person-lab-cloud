@@ -12,6 +12,7 @@ export type CustomerWorkspaceRouteScope =
   | { readonly kind: "overview" }
   | { readonly kind: "list" }
   | { readonly kind: "detail"; readonly workspaceId: string }
+  | { readonly kind: "models"; readonly workspaceId: string }
   | { readonly kind: "terms" };
 
 export type CustomerWorkspaceRouteReadPlan =
@@ -19,7 +20,7 @@ export type CustomerWorkspaceRouteReadPlan =
   | { readonly kind: "detail"; readonly workspaceId: string };
 
 export function customerWorkspaceRouteScopeKey(scope: CustomerWorkspaceRouteScope): string {
-  return scope.kind === "detail" ? `${scope.kind}:${scope.workspaceId}` : scope.kind;
+  return scope.kind === "detail" || scope.kind === "models" ? `${scope.kind}:${scope.workspaceId}` : scope.kind;
 }
 
 export function customerWorkspaceRouteReadPlan(
@@ -38,6 +39,11 @@ export function customerWorkspaceRouteReadPlan(
         pageSize: CUSTOMER_WORKSPACE_LIST_PAGE_SIZE
       };
     case "detail":
+      return scope.workspaceId ? { kind: "detail", workspaceId: scope.workspaceId } : null;
+    case "models":
+      // The model configuration page still renders the Workspace owner's own
+      // detail read: the identity, lifecycle and access facts come from the same
+      // owner call, so the page never composes a Workspace from another source.
       return scope.workspaceId ? { kind: "detail", workspaceId: scope.workspaceId } : null;
     case "terms":
       return { kind: "list", page: 1, pageSize: CUSTOMER_WORKSPACE_LIST_PAGE_SIZE };

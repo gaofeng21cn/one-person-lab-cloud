@@ -30,6 +30,7 @@ import { WorkspaceDetailPage } from "../components/workspaces/WorkspaceDetailPag
 import { WorkspaceLaunchPage } from "../components/workspaces/WorkspaceLaunchPage.tsx";
 import { cloudIdentity } from "../app/console-identity.ts";
 import { WorkspaceListPage, WorkspaceSummaryRow } from "../components/workspaces/WorkspaceListPage.tsx";
+import { WorkspaceModelsPage } from "../components/workspaces/WorkspaceModelsPage.tsx";
 import { SourceState } from "../components/source/SourceState.tsx";
 import { Badge, Button, SegmentedControl } from "../components/ui/index.ts";
 import { apiMenu, formatCount, formatDate, formatUsdMicros } from "../console-model.ts";
@@ -351,6 +352,8 @@ export function CustomerPages({ controller, route }: { controller: ConsoleContro
       return <WorkspaceLaunchPage controller={controller.workspaceLaunch} onBack={() => controller.navigate("/console/workspaces")} onRefresh={controller.refreshCurrentPage} />;
     case "customer.workspace-detail":
       return <WorkspaceDetailPage controller={controller} />;
+    case "customer.workspace-models":
+      return <WorkspaceModelsPage controller={controller} />;
     case "customer.api.overview":
     case "customer.api.usage":
     case "customer.api.keys":
