@@ -1,0 +1,273 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_development_governance_merge_authorization_source_check",
+  "revision": 2,
+  "revises": "docs/evidence/source-checks/2026-10-09-development-governance-gates.json",
+  "recordedAt": "2026-10-09T12:21:52.030752+00:00",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "b957655950f3dc53961fc6f589d4e18cb9b8f238",
+  "branch": "codex/development-governance-gates",
+  "primaryModule": "tools",
+  "objective": "Make the governance record machine-distinct from merge authorization, verify real host evidence instead of author fields, reuse the host scope policy in the pull-request gate, and close the Console source+test owner loop without touching business SSOT.",
+  "taskReference": {
+    "workPackage": "W27",
+    "slice": "W27.development-governance",
+    "relatedSlice": "W16.console-ui-fixes",
+    "scope": "Development governance only. Business SSOT, contracts, backend services, features, API/RPC/schema inventories, priorities and plan states are unchanged."
+  },
+  "writeSet": [
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    ".github/workflows/pull-request-ci.yml",
+    "AGENTS.md",
+    "DEV_GUIDE.md",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/development_plan_validation.json",
+    "docs/spec/target/checks/render_development_plan.py",
+    "docs/spec/target/checks/runs/development-plan-20261009T111617259449Z.json",
+    "docs/spec/target/checks/validate_development_plan.py",
+    "package.json",
+    "tests/tools/check-pr-governance.test.ts",
+    "tests/tools/check-pr-merge-authorization.test.ts",
+    "tests/tools/dev-session.test.ts",
+    "tests/tools/verify-development-plan.test.ts",
+    "tools/check-pr-governance.ts",
+    "tools/dev-session.ts",
+    "docs/evidence/source-checks/2026-10-09-development-governance-gates.json",
+    "docs/evidence/source-checks/2026-10-09-development-governance-merge-authorization.json"
+  ],
+  "verifiedSource": {
+    "baseSha": "b957655950f3dc53961fc6f589d4e18cb9b8f238",
+    "changedFilesSha256": {
+      ".github/PULL_REQUEST_TEMPLATE.md": "8d8ac63c36e4a643e8dc8cf0b6a8ee9a726e5b2555cc50e5ada798e2d9289574",
+      ".github/workflows/pull-request-ci.yml": "05006c0947f1121a53e1e554206df9c0fccbb64c0cad42e2404f8a741c0f6bf3",
+      "AGENTS.md": "3491b89a3e172545e3a8227a9ef3db19c9c7868a3773e79028ed966ba37255a8",
+      "DEV_GUIDE.md": "be013b04c2e644b64b372d4168257e37decdef79960b5c06cb4ca877ca911c7b",
+      "docs/spec/target/14_implementation_work_packages.md": "42a57c71846f97f263da1f2fb27d89055b88e5cd98afe4481c796c51511b6bcb",
+      "docs/spec/target/checks/development_plan.json": "e135887a29bbd339306c0dffd0a965524d11817131ee76e859c6036c71044764",
+      "docs/spec/target/checks/development_plan_validation.json": "1b76928bf49103eedf4aa1441a1dc631a94df2ce82f3e8aaf294c49ea0258be9",
+      "docs/spec/target/checks/render_development_plan.py": "0afdfa3bc954767d05d745a414fb94be2b87c2c4d88046a68d7e369de2674573",
+      "docs/spec/target/checks/runs/development-plan-20261009T111617259449Z.json": "1b76928bf49103eedf4aa1441a1dc631a94df2ce82f3e8aaf294c49ea0258be9",
+      "docs/spec/target/checks/validate_development_plan.py": "abd90fbada3468cea0143f6d807b9dc6e984b38248e610df36ba9b8fd6b19bcb",
+      "package.json": "1712f1b5355708e9d6528a4a962dfee3bf1ddb1709242d5e1a1d1fefa51f7e0b",
+      "tests/tools/check-pr-governance.test.ts": "60a850f09869b0c4d83755f96ae3ce89ba7644c93a27d9237a2b05330abd2f74",
+      "tests/tools/check-pr-merge-authorization.test.ts": "2bdf83615839456327eca5539a34afb9cc1ee1797bae54388a4b1784aef18afc",
+      "tests/tools/dev-session.test.ts": "187b0426ff97e42da58c84977ec4b363b015144342e0addc7db34059a010d6e2",
+      "tests/tools/verify-development-plan.test.ts": "44f7fb932d02274087d46629e9e641612316cb9ca11dee53bd65a615ee6fb2f1",
+      "tools/check-pr-governance.ts": "53c31af891ebcc39c0486b009e592ccb756a80883263f5abd7af43a1167f8538",
+      "tools/dev-session.ts": "9c7bfaa97a028bda2247d2a096be5e525f8ecc517d7f5965fc7ac5e7b13378a8",
+      "docs/evidence/source-checks/2026-10-09-development-governance-gates.json": "2ebc16fbd50000b7df4f02e0dc736749d8712626e07da44e05f3ea97faae7ed7"
+    },
+    "unchangedInputs": "Business SSOT documents, business contracts, backend services and the merged #735 work are unchanged."
+  },
+  "verification": {
+    "redGreen": [
+      {
+        "phase": "red",
+        "slice": "Console source+test owner loop",
+        "command": "node --test --test-name-pattern=\"writes only its explicitly granted\" tests/tools/dev-session.test.ts",
+        "exitCode": 1,
+        "evidence": "write scope is outside approved DDD phase: tests/ui/workspace-experience-model.test.ts - W16.console-ui-fixes had no test write grant, so the implementation and its test could not be admitted to one owner scope."
+      },
+      {
+        "phase": "green",
+        "slice": "Console source+test owner loop",
+        "command": "node --test --test-name-pattern=\"writes only its explicitly granted\" tests/tools/dev-session.test.ts",
+        "exitCode": 0,
+        "evidence": "The phase record testWritePaths grants exactly tests/ui/workspace-experience-model.test.ts and tests/ui/workspace-task-experience-browser.test.ts; the directory, another test, and tests/tools paths stay refused."
+      },
+      {
+        "phase": "red",
+        "slice": "Shared scope policy in the PR gate",
+        "command": "node --test --test-name-pattern=\"phase write scope is authorized\" tests/tools/check-pr-governance.test.ts",
+        "exitCode": 1,
+        "evidence": "The checker accepted a body that switched ownership to console/W16.console-ui-fixes while changing tools/ and .github/; owner membership alone was checked."
+      },
+      {
+        "phase": "green",
+        "slice": "Shared scope policy in the PR gate",
+        "command": "node --test tests/tools/check-pr-governance.test.ts",
+        "exitCode": 0,
+        "testSummary": {
+          "tests": 17,
+          "pass": 17,
+          "fail": 0,
+          "skipped": 0
+        },
+        "evidence": "The record check and the approved-run check both call authorizePhaseWriteScope; smuggled tooling paths, borrowed business paths and directory test grants are refused with the entry scope message."
+      },
+      {
+        "phase": "red",
+        "slice": "Merge authorization vs record compliance",
+        "command": "node --test --test-name-pattern=\"fabricated development-stage|record compliance and merge authorization\" tests/tools/check-pr-governance.test.ts",
+        "exitCode": 1,
+        "evidence": "A merge-ready body with runs/nonexistent-run/receipts/nonexistent-gate-1.json and an all-zero digest returned ok:true; the checker only compared author-declared fields."
+      },
+      {
+        "phase": "green",
+        "slice": "Merge authorization vs record compliance",
+        "command": "node --test tests/tools/check-pr-merge-authorization.test.ts",
+        "exitCode": 0,
+        "testSummary": {
+          "tests": 4,
+          "pass": 4,
+          "fail": 0,
+          "skipped": 0
+        },
+        "evidence": "A real Ed25519 host store (temporary test keys, never committed) authorizes merge-ready through the host store or an exported signed proof; the assertion set is: fabricated/missing run receipt -> EVIDENCE_INVALID; no trusted store or proof -> MERGE_AUTHORIZATION_UNPROVEN; proof present but no configured trust root -> MERGE_AUTHORIZATION_UNCONFIGURED; foreign run receipt -> EVIDENCE_INVALID; rogue-key or tampered payload -> signature mismatch; stale declared inputs -> EVIDENCE_STALE_INPUT; non-proof successor commit -> MERGE_AUTHORIZATION_UNPROVEN; a business-layer payload signed by the store key -> EVIDENCE_INVALID; a store inside the repository -> HOST_STORE_INSIDE_REPOSITORY; a valid signed proof -> merge passes. source-complete passes record checks and fails merge mode."
+      },
+      {
+        "phase": "red",
+        "slice": "Source-check hash binding",
+        "command": "node --test --test-name-pattern=\"source-check receipt file must exist\" tests/tools/check-pr-governance.test.ts",
+        "exitCode": 1,
+        "evidence": "A receipt whose verifiedSource.changedFilesSha256 did not match the checked bytes, or covered none of the actual changed paths, still passed."
+      },
+      {
+        "phase": "green",
+        "slice": "Source-check hash binding",
+        "command": "node --test tests/tools/check-pr-governance.test.ts",
+        "exitCode": 0,
+        "evidence": "Every recorded file hash must equal the reviewed bytes (RECEIPT_STALE_HASH), every actual changed path must be covered by the receipt write set, and a receipt without hashes is refused."
+      },
+      {
+        "phase": "red",
+        "slice": "Bootstrap deadlock",
+        "command": "node --test --test-name-pattern=\"bootstrap path enforces record compliance\" tests/tools/check-pr-governance.test.ts",
+        "exitCode": 1,
+        "evidence": "The validate merge step fell back to the head copy and still ran --mode merge, so this pull request (source-complete, base b9576559 physically lacking tools/check-pr-governance.ts) always failed with MERGE_AUTHORIZATION_NOT_CLAIMED; the checker had no --bootstrap-base support (usage error)."
+      },
+      {
+        "phase": "green",
+        "slice": "Bootstrap deadlock",
+        "command": "node --test tests/tools/check-pr-governance.test.ts",
+        "exitCode": 0,
+        "testSummary": {
+          "tests": 18,
+          "pass": 18,
+          "fail": 0,
+          "skipped": 0
+        },
+        "evidence": "effectiveGovernanceMode() applies one physical condition only: merge mode with --bootstrap-base whose directory lacks tools/check-pr-governance.ts downgrades to record enforcement (effectiveMode record, bootstrap true, exit 0 for the source-complete body); a base directory that carries the checker keeps merge enforcement (exit 1, MERGE_AUTHORIZATION_NOT_CLAIMED); a missing bootstrap-base directory fails closed. The workflow assertions require --bootstrap-base, the precise bootstrap warning sentence and the absence of any actor condition."
+      }
+    ],
+    "ciChain": [
+      {
+        "command": "node --test tests/tools/check-pr-governance.test.ts (package/CI entry assertions)",
+        "exitCode": 0,
+        "evidence": "The workflow is asserted to use pull_request types opened/synchronize/reopened/edited, record and merge modes, vars.OPL_DEVELOPMENT_AUTHORITY_PUBLIC_KEY, the base-revision worktree, the explicit bootstrap warning, no pull_request_target and no actor-based exemption."
+      },
+      {
+        "command": "node tools/check-pr-governance.ts --body-file <final body> --root <this checkout> --base b9576559 --mode merge --bootstrap-base <real b9576559 worktree>",
+        "exitCode": 0,
+        "result": "effectiveMode=record, bootstrap=true, ok=true",
+        "evidence": "Simulated against a real worktree of base b9576559 (checker file physically absent): the validate step now passes in record mode with the bootstrap warning, so this first-landing pull request no longer deadlocks; its merge authorization is enforced only by the next pull request, whose base carries the checker."
+      },
+      {
+        "command": "node tools/check-pr-governance.ts --body-file <final body> --base b9576559 --mode merge --bootstrap-base <directory containing the checker>",
+        "exitCode": 1,
+        "result": "effectiveMode=merge, bootstrap=false, MERGE_AUTHORIZATION_NOT_CLAIMED",
+        "evidence": "A base that physically carries the checker keeps full merge enforcement; the downgrade cannot be requested by an author."
+      },
+      {
+        "command": "node tools/check-pr-governance.ts --body-file <final body> --root <this checkout> --base b9576559 --mode record",
+        "exitCode": 0,
+        "result": "pass",
+        "evidence": "The final pull-request body passes the record check against the real plan, receipts and change scope."
+      },
+      {
+        "command": "node tools/check-pr-governance.ts --body-file <final body> --root <this checkout> --base b9576559 --mode merge",
+        "exitCode": 1,
+        "result": "MERGE_AUTHORIZATION_NOT_CLAIMED (expected)",
+        "evidence": "The merge gate refuses this branch before the host acceptance receipt is produced; this is the intended bootstrap state, not an exemption."
+      },
+      {
+        "command": "isolated CLI rehearsal (fixture repository, temporary host store): dev-session approve -> context -> verify (receipt passed) -> export signed proof -> check-pr-governance --mode merge with base64 authority public key",
+        "exitCode": 0,
+        "result": "ok:true, authorization.basis=signed-proof",
+        "evidence": "The full host-store/proof chain works without depending on the shipped verify-local snapshot runner (the gate fixture needs no installed dependencies)."
+      },
+      {
+        "command": "same isolated CLI rehearsal negatives: no trust root / foreign key / tampered proof",
+        "exitCode": 1,
+        "result": "MERGE_AUTHORIZATION_UNCONFIGURED; approval signature mismatch; receipt signature mismatch",
+        "evidence": "The merge path fails closed in every negative case."
+      }
+    ],
+    "independentHostChecks": [
+      {
+        "command": "npm run test:development-gates",
+        "exitCode": 0,
+        "testSummary": {
+          "tests": 131,
+          "pass": 131,
+          "fail": 0,
+          "skipped": 0
+        },
+        "result": "pass"
+      },
+      {
+        "command": "npm run typecheck:development-tools",
+        "exitCode": 0,
+        "result": "pass"
+      },
+      {
+        "command": "npm run verify:development-plan",
+        "exitCode": 0,
+        "result": "pass",
+        "evidence": "Task book and plan JSON regenerate byte-identically into an isolated tree; the read-only validator accepts the test-write grant fields and the two slices."
+      },
+      {
+        "command": "npm run verify:local:focused -- --base b9576559 --test tests/tools/dev-session.test.ts --test tests/tools/check-pr-governance.test.ts --test tests/tools/check-pr-merge-authorization.test.ts --test tests/tools/verify-development-plan.test.ts",
+        "exitCode": 0,
+        "result": "pass"
+      }
+    ],
+    "runnerClaims": "Only actual exit codes and test summaries are recorded; no agent completion text is treated as evidence and no host acceptance receipt is claimed or fabricated. The merge-path rehearsal runs as direct unit calls plus the isolated CLI fixture with temporary Ed25519 keys generated outside the repository; it does not depend on, and does not modify, the shipped verify-local snapshot runner."
+  },
+  "planDevelopmentFieldsAdded": {
+    "executionSlices.W16.console-ui-fixes": [
+      "testWritePaths (exact tests/ui files; development-only grant)"
+    ],
+    "executionSlices.W27.development-governance": [
+      "writePaths re-expressed as host-owned surfaces (.github/, tools/, tests/tools/, AGENTS.md, DEV_GUIDE.md, package.json, docs/spec/target/, docs/evidence/source-checks/, docs/evidence/development-stage/)"
+    ],
+    "generator": [
+      "delivery_slice(testWritePaths=...) and the matching task-book line"
+    ],
+    "validator": [
+      "testWritePaths must be exact files under tests/ that exist"
+    ],
+    "unchanged": "workPackages, features, owners, apiPrimary/apiConsumes, tablePrimary, rpcImplementers, schema and every state/priority field are untouched."
+  },
+  "acceptance": [
+    "Record compliance and merge authorization are separate machine results; source-complete can be recorded but not merged.",
+    "A merge-ready claim without a trusted host store, a configured trust root or an exported signed proof is refused.",
+    "The pull-request gate uses the same phase scope function as the host entry; unapproved paths fail even when ownership resolves.",
+    "W16.console-ui-fixes carries the implementation and its two existing console test files in one owner scope, without granting tests/ui/ or a business root.",
+    "Source-check receipts must bind the checked bytes and cover the actual change.",
+    "CI checks the record and the merge authorization inside the existing validate job, from the base revision checker, with no actor exemption."
+  ],
+  "conformance": {
+    "businessSsotChanged": false,
+    "businessContractsChanged": false,
+    "backendChanged": false,
+    "productRuntimeChanged": false,
+    "existingEvidenceOverwritten": false,
+    "mergedWorkRedone": false
+  },
+  "limitations": {
+    "remoteEnforcement": "The GitHub repository variable OPL_DEVELOPMENT_AUTHORITY_PUBLIC_KEY is not configured and the hosted governance/validate jobs have not run; remote required-check state cannot be proven from this session.",
+    "bootstrap": "This tool first lands here, so the base revision predates the checker: the hosted run for this pull request uses the head copy with an explicit bootstrap warning and is not fully enforced remotely. Later pull requests execute the base revision checker.",
+    "hostAcceptance": "No host acceptance receipt exists for this branch yet. The development host must approve and verify a run at the candidate commit, export the signed proof and rewrite the body to merge-ready; the validate merge step fails until then.",
+    "scopedAdmission": "This session is shell-enabled rather than a restricted worker; no opl.development.stage.v1 receipt is fabricated and no trusted store is deployed.",
+    "notRun": [
+      "Full local repository suite (verify:local, verify:local:full)",
+      "PostgreSQL/provider integration",
+      "Candidate build or publication",
+      "Instance deployment or production readback",
+      "GitHub-hosted CI on the branch and remote branch-protection readback"
+    ]
+  }
+}

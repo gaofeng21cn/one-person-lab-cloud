@@ -4,6 +4,9 @@ on:
   pull_request:
     branches:
       - main
+    # `edited` re-runs the governance check when the pull-request body changes;
+    # without it a stale green check would survive a rewritten claim.
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
@@ -22,6 +25,40 @@ jobs:
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: moderate
+
+  governance:
+    name: governance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      # Record compliance and freshness use only the base commit's checker;
+      # head is inspected data. Actual execution belongs to the validate job,
+      # and merge eligibility still follows the existing review/merge rules.
+      - name: Check the pull request governance record
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          base_dir="$RUNNER_TEMP/governance-base-record"
+          git worktree add --detach --force "$base_dir" "$PR_BASE_SHA"
+          entry="$base_dir/tools/check-pr-governance.ts"
+          if [ ! -f "$entry" ]; then
+            echo "::error title=Governance checker missing::${PR_BASE_SHA} has no governance checker; refusing to execute the pull request head copy"
+            exit 1
+          fi
+          node "$entry" --body-env PR_BODY --base-env PR_BASE_SHA --head-env PR_HEAD_SHA --mode record --root "$GITHUB_WORKSPACE"
 
   validate:
     name: validate

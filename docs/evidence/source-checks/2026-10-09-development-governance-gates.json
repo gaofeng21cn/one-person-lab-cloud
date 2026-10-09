@@ -1,0 +1,193 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_development_governance_gates_source_check",
+  "revision": 1,
+  "recordedAt": "2026-10-09T10:02:00.533318+00:00",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "b957655950f3dc53961fc6f589d4e18cb9b8f238",
+  "branch": "codex/development-governance-gates",
+  "primaryModule": "tools",
+  "objective": "Unify the PR compliance record, the development SSOT phase entry, the host hard-entry defects and the layered receipt pipeline into one machine-enforced governance entry without touching business SSOT, business contracts or backend behavior.",
+  "taskReference": {
+    "workPackage": "W27",
+    "slice": "W27.development-governance",
+    "relatedSlice": "W16.console-ui-fixes",
+    "scope": "Development governance only: the former Console regression slice (#735) keeps its owner, and a bounded Console surface fix now has its own accurate lane instead of borrowing W16."
+  },
+  "writeSet": [
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    ".github/workflows/pull-request-ci.yml",
+    "AGENTS.md",
+    "DEV_GUIDE.md",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/development_plan_validation.json",
+    "docs/spec/target/checks/render_development_plan.py",
+    "docs/spec/target/checks/runs/development-plan-20261009T095308906613Z.json",
+    "package.json",
+    "tests/tools/check-pr-governance.test.ts",
+    "tests/tools/dev-session.test.ts",
+    "tools/check-pr-governance.ts",
+    "tools/dev-session.ts",
+    "docs/evidence/source-checks/2026-10-09-development-governance-gates.json"
+  ],
+  "verifiedSource": {
+    "baseSha": "b957655950f3dc53961fc6f589d4e18cb9b8f238",
+    "changedFilesSha256": {
+      ".github/PULL_REQUEST_TEMPLATE.md": "8d8ac63c36e4a643e8dc8cf0b6a8ee9a726e5b2555cc50e5ada798e2d9289574",
+      ".github/workflows/pull-request-ci.yml": "0e5e9b83f5b17f191dedb8aff5e1c288fb553cdae0a95a076c88fa65beeb54c2",
+      "AGENTS.md": "18ddda143202d8759d52ec8f1f6d9ff140a69c5b33f5f45201082815492b0181",
+      "DEV_GUIDE.md": "920673f7cf29341f2e34c0b53d8b25d9549bf7ee462fa8814d4f2c18f2e3c8a3",
+      "docs/spec/target/14_implementation_work_packages.md": "4bb0041f48d19d3e4b53c710417f70bcd6fc0637d4565938f995bb6dd9c1137c",
+      "docs/spec/target/checks/development_plan.json": "97b98ebb7c52da33e177a71f66a00a9c6c47586fe01ed40687605ed9fe785c64",
+      "docs/spec/target/checks/development_plan_validation.json": "83907e868a97840eb7c31e4f89658c044d1d7d2f51b29ad254b61c2e391a5523",
+      "docs/spec/target/checks/render_development_plan.py": "fe4cb874680faf6f76a5ec46f08fe8dac5c69f9e69a8d2352d86521ebf2fc54a",
+      "docs/spec/target/checks/runs/development-plan-20261009T095308906613Z.json": "83907e868a97840eb7c31e4f89658c044d1d7d2f51b29ad254b61c2e391a5523",
+      "package.json": "249f7ad1e6864bbf0f2ef16171afabdf61e0a595323146c618178e0f30c40ffc",
+      "tests/tools/check-pr-governance.test.ts": "253db077df06bbbabcd00ce97015341a1e4707d65d037939009b4469ed53b1b0",
+      "tests/tools/dev-session.test.ts": "13b2725c72350652aaf1d7a602cb151bea47d48f1dc39f857561f455c296bb8f",
+      "tools/check-pr-governance.ts": "8e7b9b5549833f9e1aadcfa64a9d625a9a9abdb95b6c33d7816beb78f483b143",
+      "tools/dev-session.ts": "142b267a3beaa8770aaadc3f6e72120fae3c325ab766e08d36f9f1d4dabfcc46"
+    },
+    "unchangedInputs": "Business SSOT (docs/architecture.md, docs/decisions.md, docs/status.md, docs/roadmap.md), business contracts, backend services and product behavior are unchanged; #735 is not redone."
+  },
+  "verification": {
+    "redGreen": [
+      {
+        "phase": "red",
+        "slice": "PR compliance checker",
+        "command": "node --test tests/tools/check-pr-governance.test.ts",
+        "exitCode": 1,
+        "evidence": "ERR_MODULE_NOT_FOUND for tools/check-pr-governance.ts before the implementation existed."
+      },
+      {
+        "phase": "green",
+        "slice": "PR compliance checker",
+        "command": "node --test tests/tools/check-pr-governance.test.ts",
+        "exitCode": 0,
+        "testSummary": {
+          "tests": 14,
+          "pass": 14,
+          "fail": 0,
+          "skipped": 0
+        },
+        "evidence": "Template sections, base SHA, owner/phase resolution, write set, typed receipt entries, terminal states and receipt-file checks all pass; unedited template placeholders fail."
+      },
+      {
+        "phase": "red",
+        "slice": "Development SSOT phase entries",
+        "command": "node --test --test-name-pattern=\"bounded Console surface fix|development-governance slice resolves\" tests/tools/dev-session.test.ts",
+        "exitCode": 1,
+        "evidence": "phase record missing or duplicated for W16.console-ui-fixes and W27.development-governance before the plan records existed."
+      },
+      {
+        "phase": "green",
+        "slice": "Development SSOT phase entries",
+        "command": "node --test --test-name-pattern=\"bounded Console surface fix|development-governance slice resolves\" tests/tools/dev-session.test.ts",
+        "exitCode": 0,
+        "testSummary": {
+          "tests": 2,
+          "pass": 2,
+          "fail": 0,
+          "skipped": 0
+        },
+        "evidence": "A bounded Console fix admits only console paths under W16.console-ui-fixes with no business prerequisites; the governance slice resolves to cloud while tools/.github stay host-protected for restricted workers."
+      },
+      {
+        "phase": "red",
+        "slice": "Hard entry defects",
+        "command": "node --test --test-name-pattern=\"public scope entry shares|scope entry re-derives\" tests/tools/dev-session.test.ts",
+        "exitCode": 1,
+        "evidence": "An unresolved coauthor/prerequisite leaked a raw ENOENT instead of a decidable EVIDENCE_INVALID identity, and the public scope entry accepted a plan whose current phase no longer covered the approved write paths."
+      },
+      {
+        "phase": "green",
+        "slice": "Hard entry defects",
+        "command": "node --test tests/tools/dev-session.test.ts",
+        "exitCode": 0,
+        "testSummary": {
+          "tests": 56,
+          "pass": 56,
+          "fail": 0,
+          "skipped": 0
+        },
+        "evidence": "Malformed dev_context over the real stdio entry revokes admission; the public scope entry shares baseline/coauthor/requires/write-scope/phase validation with context; every file and acceptance operation refreshes admission; progress never reports passed or reuses a gate without a current host receipt; a foreign run receipt is refused; stage receipts bind run, source, phase, inputs, runner and output."
+      }
+    ],
+    "independentHostChecks": [
+      {
+        "command": "npm run test:development-gates",
+        "exitCode": 0,
+        "testSummary": {
+          "tests": 124,
+          "pass": 124,
+          "fail": 0,
+          "skipped": 0
+        },
+        "result": "pass"
+      },
+      {
+        "command": "npm run typecheck:development-tools",
+        "exitCode": 0,
+        "result": "pass"
+      },
+      {
+        "command": "npm run verify:development-plan",
+        "exitCode": 0,
+        "result": "pass",
+        "evidence": "The plan task book and JSON projection regenerate byte-identically into an isolated tree and the read-only coverage validator accepts the two added slices."
+      },
+      {
+        "command": "npm run test:ownership",
+        "exitCode": 0,
+        "result": "pass"
+      },
+      {
+        "command": "npm run verify:local:focused -- --base b957655950f3dc53961fc6f589d4e18cb9b8f238 --test tests/tools/dev-session.test.ts --test tests/tools/check-pr-governance.test.ts",
+        "exitCode": 0,
+        "testSummary": {
+          "tests": 70,
+          "pass": 70,
+          "fail": 0,
+          "skipped": 0
+        },
+        "result": "pass"
+      },
+      {
+        "command": "npm run check:pr-body -- --body-file <draft> --base b957655950f3dc53961fc6f589d4e18cb9b8f238",
+        "exitCode": 0,
+        "result": "pass",
+        "evidence": "The draft pull-request body for this branch passes the new gate against the real plan and change scope."
+      }
+    ],
+    "runnerClaims": "Only actual exit codes and test summaries were recorded; no agent completion text is treated as evidence."
+  },
+  "acceptance": [
+    "The PR body is machine-checked for its required sections, complete base SHA, DDD owner/phase ownership, declared write set, typed receipt entries and terminal state.",
+    "A bounded Console surface fix and the development-governance change have accurate phase records rather than borrowing W16.",
+    "The host entry refuses a malformed dev_context before argument rejection, refreshes admission on every operation and shares its validation chain with the public scope readback.",
+    "Agent claims, pull-request text and business receipts cannot complete a run or claim merge readiness.",
+    "Existing source, browser, plan and generated-contract gates remain green."
+  ],
+  "conformance": {
+    "businessSsotChanged": false,
+    "businessContractsChanged": false,
+    "backendChanged": false,
+    "productRuntimeChanged": false,
+    "existingEvidenceOverwritten": false,
+    "mergedWorkRedone": false
+  },
+  "limitations": {
+    "scopedAdmission": "This is a shell-enabled development session, not a restricted worker. The new W27.development-governance lane documents where the host-owned governance files live; no signed opl.development.stage.v1 receipt is claimed.",
+    "ci": "The PR CI governance job and branch protection are not yet executed on GitHub; this receipt records local executed checks only.",
+    "hostStore": "No host acceptance store is deployed for this repository checkout, so no development-stage receipt is attached.",
+    "notRun": [
+      "Full local repository suite (verify:local, verify:local:full)",
+      "PostgreSQL/provider integration",
+      "Candidate build or publication",
+      "Instance deployment or production readback",
+      "GitHub-hosted CI on the branch"
+    ]
+  }
+}

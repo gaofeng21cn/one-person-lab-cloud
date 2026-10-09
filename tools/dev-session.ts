@@ -1,5 +1,5 @@
 /** Development admission and evidence are host-owned; business plans remain their existing owners. */
-import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomUUID, sign, verify } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { closeSync, constants, existsSync, fstatSync, ftruncateSync, lstatSync, linkSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
-const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
+export const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 const requiredContextPaths = ['AGENTS.md', 'DEV_GUIDE.md', 'docs/status.md', 'docs/roadmap.md'] as const;
 function fail(message: string): never { throw new Error(message); }
 const git = (root: string, args: string[]) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
@@ -34,7 +34,7 @@ function pathName(value: unknown, directory = false): string {
   return value;
 }
 const matches = (path: string, roots: string[]) => roots.some(root => root.endsWith('/') ? path.startsWith(root) || path === root.slice(0, -1) : path === root);
-function canonical(value: any): string {
+export function canonical(value: any): string {
   if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
   if (value && typeof value === 'object') return '{' + Object.keys(value).sort().map(k => JSON.stringify(k) + ':' + canonical(value[k])).join(',') + '}';
   return JSON.stringify(value);
@@ -50,7 +50,7 @@ export interface RunApproval {
   requires: Record<string, { runId: string; gateId?: string }>;
   coauthorRuns?: string[];
 }
-function parseApproval(value: unknown): RunApproval {
+export function parseApproval(value: unknown): RunApproval {
   const a = object(value); keys(a, ['schemaVersion', 'runId', 'baseSha', 'planPath', 'selection', 'owner', 'readPaths', 'writePaths', 'gates', 'requires', 'coauthorRuns']);
   if (a.schemaVersion !== 1 || !/^[a-f0-9]{40}$/u.test(a.baseSha)) fail('exact approved base SHA required');
   id(a.runId); id(a.owner); pathName(a.planPath);
@@ -84,7 +84,46 @@ function parseApproval(value: unknown): RunApproval {
   return a as RunApproval;
 }
 interface Phase { record: Record<string, any>; root: string; startAfter: string[]; acceptAfter: string[]; fingerprint: string }
-/** Only the host resolves plan patterns; signed worker paths remain exact. */
+export interface PhaseSelection { collection: 'workPackages' | 'executionSlices' | 'parallelPreparation'; id: string }
+export interface ResolvedPhase {
+  record: Record<string, any>;
+  ownership: { id: string; owners: any }[];
+  owners: string[];
+  writePaths: string[];
+  /** Development-only explicit test grants: exact files under tests/ for a non-cloud owner. */
+  testWritePaths: string[];
+  startAfter: string[];
+  acceptAfter: string[];
+}
+/** Resolve one phase record and its owning package from the plan; shared by the host entry and the PR governance check. */
+export function resolvePhaseRecord(planValue: unknown, selection: PhaseSelection): ResolvedPhase {
+  const plan = object(planValue);
+  if (plan.schemaVersion !== 1) fail('unsupported phase plan');
+  const list = plan[selection.collection]; if (!Array.isArray(list)) fail('phase collection missing');
+  const found = list.filter((item: any) => (item.id ?? item.window) === selection.id);
+  if (found.length !== 1) fail('phase record missing or duplicated');
+  const record = object(found[0]);
+  const parentOf = (slice: Record<string, any>) => {
+    const parents = (plan.workPackages || []).filter((w: any) => w.id === slice.workPackage);
+    if (parents.length !== 1) fail('phase parent missing or duplicated');
+    return object(parents[0]);
+  };
+  const parents = selection.collection === 'parallelPreparation' ? strings(record.nextSlices, 'preparation slices').map((sliceId: string) => {
+    const slices = (plan.executionSlices || []).filter((s: any) => s.id === sliceId);
+    if (slices.length !== 1) fail('preparation slice missing or duplicated');
+    return parentOf(object(slices[0]));
+  }) : [selection.collection === 'executionSlices' ? parentOf(record) : record];
+  const ownership = parents.map((parent: Record<string, any>) => ({ id: parent.id, owners: parent.owners }));
+  const owners = [...new Set(parents.flatMap((parent: Record<string, any>) => Array.isArray(parent.owners) ? parent.owners : []))];
+  const testWritePaths = strings(record.testWritePaths ?? [], 'phase test write scope', false);
+  // The test grant is explicit and narrow: exact files under tests/, never a
+  // directory, pattern or business-owned path.
+  for (const testPath of testWritePaths) { pathName(testPath); if (!testPath.startsWith('tests/') || testPath.endsWith('/')) fail('invalid test write path'); }
+  return { record, ownership, owners: owners as string[], writePaths: strings(record.plannedWritePaths ?? record.writePaths, 'phase write scope'), testWritePaths,
+    startAfter: strings(record.startAfter ?? [], 'start dependencies', false),
+    acceptAfter: strings(record.acceptAfter ?? (record.sharedContractGate ? [record.sharedContractGate] : []), 'accept dependencies', false) };
+}
+/** Only the host resolves plan patterns; admitted worker paths remain exact. */
 function phaseWritePaths(root: string, declarations: string[]): string[] {
   return declarations.flatMap(declaration => {
     const parts = declaration.replace(/\/$/u, '').split('/');
@@ -107,42 +146,51 @@ function phaseWritePaths(root: string, declarations: string[]): string[] {
     });
   });
 }
-function phase(root: string, approval: RunApproval, atBase = false): Phase {
-  const bytes = atBase ? git(root, ['show', `${approval.baseSha}:${approval.planPath}`]) : fileBytes(root, approval.planPath, 2 * 1024 * 1024).toString();
-  const plan = object(JSON.parse(bytes));
-  if (plan.schemaVersion !== 1) fail('unsupported phase plan');
+/** Host authorization shared by every admission and by the pull-request governance check. */
+export interface PhaseAuthorization {
+  record: Record<string, any>;
+  ownerRoot: string;
+  writePaths: string[];
+  testWritePaths: string[];
+  startAfter: string[];
+  acceptAfter: string[];
+  fingerprint: string;
+}
+/** Resolve the phase and authorize declared paths with one scope policy for the worker entry and the PR gate. */
+export function authorizePhaseWriteScope(root: string, planValue: unknown, selection: PhaseSelection, owner: string, declaredPaths: string[]): PhaseAuthorization {
+  const plan = object(planValue);
   const roots = object(plan.sourceRoots);
   // The canonical cloud owner lives at '.', but worker paths still require a
   // bounded relative scope. Root ownership is not a root filesystem grant.
-  const ownerRoot = approval.owner === 'cloud' && roots.cloud === '.' ? '.' : pathName(roots[approval.owner]);
-  const list = plan[approval.selection.collection]; if (!Array.isArray(list)) fail('phase collection missing');
-  const found = list.filter((item: any) => (item.id ?? item.window) === approval.selection.id);
-  if (found.length !== 1) fail('phase record missing or duplicated');
-  const record = object(found[0]);
-  const parentOf = (slice: Record<string, any>) => {
-    const parents = (plan.workPackages || []).filter((w: any) => w.id === slice.workPackage);
-    if (parents.length !== 1) fail('phase parent missing or duplicated');
-    return object(parents[0]);
-  };
-  const parents = approval.selection.collection === 'parallelPreparation' ? strings(record.nextSlices, 'preparation slices').map(sliceId => {
-    const slices = (plan.executionSlices || []).filter((s: any) => s.id === sliceId);
-    if (slices.length !== 1) fail('preparation slice missing or duplicated');
-    return parentOf(object(slices[0]));
-  }) : [approval.selection.collection === 'executionSlices' ? parentOf(record) : record];
-  if (!parents.some(parent => Array.isArray(parent.owners) && parent.owners.includes(approval.owner))) fail('DDD owner does not own phase record');
-  const writes = strings(record.plannedWritePaths ?? record.writePaths, 'phase write scope');
-  const normalized = phaseWritePaths(root, writes);
-  for (const p of approval.writePaths) {
-    if ((ownerRoot !== '.' && !matches(p.replace(/\/$/u, ''), [ownerRoot + '/'])) || !matches(p.replace(/\/$/u, ''), normalized)) fail(`write scope is outside approved DDD phase: ${p}`);
-    const forbidden = record.forbiddenWrites ?? [];
+  const ownerRoot = owner === 'cloud' && roots.cloud === '.' ? '.' : pathName(roots[owner]);
+  const resolved = resolvePhaseRecord(plan, selection);
+  if (!resolved.owners.includes(owner)) fail('DDD owner does not own phase record');
+  const normalized = phaseWritePaths(root, resolved.writePaths);
+  const normalizedTests = phaseWritePaths(root, resolved.testWritePaths);
+  for (const p of declaredPaths) {
+    const key = p.replace(/\/$/u, '');
+    const inPhase = (ownerRoot === '.' || matches(key, [ownerRoot + '/'])) && matches(key, normalized);
+    const grantedTest = matches(key, normalizedTests);
+    // Evidence append paths are host/session-owned: the restricted worker
+    // entry refuses every docs/ write, so they are neither a business nor a
+    // worker grant; they still have to be declared in the approval.
+    const evidence = key === 'docs/evidence/source-checks' || key.startsWith('docs/evidence/source-checks/');
+    if (!inPhase && !grantedTest && !evidence) fail(`write scope is outside approved DDD phase: ${p}`);
+    const forbidden = resolved.record.forbiddenWrites ?? [];
     if (forbidden.some((q: string) => p === q || p.startsWith(q + '/') || q.startsWith(p.endsWith('/') ? p : p + '/'))) fail(`phase forbids write: ${p}`);
   }
-  const startAfter = strings(record.startAfter ?? [], 'start dependencies', false);
-  const acceptAfter = strings(record.acceptAfter ?? (record.sharedContractGate ? [record.sharedContractGate] : []), 'accept dependencies', false);
-  const dependencies = new Set([...startAfter, ...acceptAfter]);
+  // The grant is the validated declared set, not the wider phase declaration:
+  // an approval narrows the phase scope and never expands it.
+  return { record: resolved.record, ownerRoot, writePaths: phaseWritePaths(root, declaredPaths), testWritePaths: normalizedTests,
+    startAfter: resolved.startAfter, acceptAfter: resolved.acceptAfter,
+    fingerprint: digest(canonical({ record: resolved.record, ownerRoot, ownership: resolved.ownership })) };
+}
+function phase(root: string, approval: RunApproval, atBase = false): Phase {
+  const bytes = atBase ? git(root, ['show', `${approval.baseSha}:${approval.planPath}`]) : fileBytes(root, approval.planPath, 2 * 1024 * 1024).toString();
+  const scope = authorizePhaseWriteScope(root, JSON.parse(bytes), approval.selection, approval.owner, approval.writePaths);
+  const dependencies = new Set([...scope.startAfter, ...scope.acceptAfter]);
   for (const key of Object.keys(approval.requires)) if (!dependencies.has(key)) fail(`invented phase dependency: ${key}`);
-  const ownership = parents.map(parent => ({ id: parent.id, owners: parent.owners }));
-  return { record, root: ownerRoot, startAfter, acceptAfter, fingerprint: digest(canonical({ record, ownerRoot, ownership })) };
+  return { record: scope.record, root: scope.ownerRoot, startAfter: scope.startAfter, acceptAfter: scope.acceptAfter, fingerprint: scope.fingerprint };
 }
 function physical(root: string, path: string) {
   pathName(path); let target = root;
@@ -170,6 +218,14 @@ function changedPaths(root: string, base: string) {
     ...git(root, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0'),
   ].filter(Boolean));
 }
+/** Verified Git deletion facts; a missing file is a deletion only when Git says so. */
+function repositoryDeletedPaths(root: string, base: string) {
+  return new Set([
+    ...git(root, ['diff', '--name-only', '--diff-filter=D', '-z', '--no-renames', base, 'HEAD', '--']).split('\0'),
+    ...git(root, ['diff', '--cached', '--name-only', '--diff-filter=D', '-z', '--no-renames', base, '--']).split('\0'),
+    ...git(root, ['diff', '--name-only', '--diff-filter=D', '-z', '--no-renames', base, '--']).split('\0'),
+  ].filter(Boolean));
+}
 function verifyApprovedBaseline(root: string, approval: RunApproval) {
   try {
     git(root, ['cat-file', '-e', `${approval.baseSha}^{commit}`]);
@@ -185,31 +241,30 @@ function storeRoot(root: string, store: string) {
   if (real === repo || real.startsWith(repo + sep) || repo.startsWith(real + sep)) fail('host store must be separate from repository');
   return real;
 }
-function signed(store: string, payload: unknown) {
-  const key = createPrivateKey(readFileSync(resolve(store, 'authority.key')));
-  return { payload, signature: sign(null, Buffer.from(canonical(payload)), key).toString('base64') };
+// Admission and receipts live in the host-owned store as plain structured
+// records. Authenticity comes from the store boundary and the isolated runner:
+// workers never write the store, and every acceptance receipt is written only
+// after the host runner actually executed. A worker-supplied result claim is
+// never accepted; the host re-reads the record it wrote.
+function readRecord(path: string): any {
+  return object(JSON.parse(readFileSync(path, 'utf8')));
 }
-function readSigned(store: string, path: string): any {
-  const envelope = object(JSON.parse(readFileSync(path, 'utf8'))); keys(envelope, ['payload', 'signature']);
-  const key = createPublicKey(readFileSync(resolve(store, 'authority.pub')));
-  if (typeof envelope.signature !== 'string' || !verify(null, Buffer.from(canonical(envelope.payload)), key, Buffer.from(envelope.signature, 'base64'))) fail('EVIDENCE_INVALID: host signature mismatch');
-  return envelope.payload;
+/** Append-only record creation: never overwrite an existing host record. */
+function writeRecord(target: string, value: unknown) {
+  const temporary = resolve(dirname(target), `.pending-${randomUUID()}`);
+  writeFileSync(temporary, JSON.stringify(value) + '\n', { flag: 'wx', mode: 0o600 });
+  try { linkSync(temporary, target); } finally { unlinkSync(temporary); }
 }
 function runDirectory(store: string, runId: string) { return resolve(store, 'runs', id(runId)); }
 /** Approve a bounded execution reference before launching the restricted worker. Only the host exposes this operation. */
 export function approveRun(root: string, storePath: string, raw: unknown) {
   root = realpathSync(root); const approval = parseApproval(raw); phase(root, approval, true);
   const store = storeRoot(root, storePath);
-  if (!existsSync(resolve(store, 'authority.key'))) {
-    const pair = generateKeyPairSync('ed25519');
-    writeFileSync(resolve(store, 'authority.key'), pair.privateKey.export({ type: 'pkcs8', format: 'pem' }), { flag: 'wx', mode: 0o600 });
-    writeFileSync(resolve(store, 'authority.pub'), pair.publicKey.export({ type: 'spki', format: 'pem' }), { flag: 'wx', mode: 0o600 });
-  }
   const directory = runDirectory(store, approval.runId); mkdirSync(directory, { recursive: true, mode: 0o700 });
-  writeFileSync(resolve(directory, 'approval.json'), JSON.stringify(signed(store, approval)) + '\n', { flag: 'wx', mode: 0o600 });
+  writeRecord(resolve(directory, 'approval.json'), approval);
   return { runId: approval.runId, hostStore: store };
 }
-interface StageReceipt {
+export interface StageReceipt {
   schemaVersion: 1; kind: 'opl.development.stage.v1'; runId: string; gateId: string; attempt: number;
   evidenceLayer: 'source'; sourceSha: string; approvalHash: string; phaseHash: string; runnerHash: string;
   inputHash: string; dependencies: { runId: string; gateId: string; receiptHash: string }[];
@@ -248,18 +303,170 @@ function receiptHistory(store: string, runId: string, gateId: string): { receipt
   }).sort((a, b) => a.attempt - b.attempt);
   return sequence.map(({ path, attempt }, index) => {
     if (attempt !== index + 1) fail('EVIDENCE_INVALID: receipt sequence gap or duplicate');
-    const receipt = readSigned(store, resolve(directory, path)) as StageReceipt;
-    if (receipt.schemaVersion !== 1 || receipt.kind !== 'opl.development.stage.v1' || receipt.runId !== runId ||
-      receipt.gateId !== gateId || receipt.attempt !== attempt || !['passed', 'failed', 'blocked'].includes(receipt.result) || receipt.evidenceLayer !== 'source') fail('EVIDENCE_INVALID: invalid stage receipt');
+    const receipt = readStageReceipt(resolve(directory, path), runId, gateId, attempt);
     return { receipt, hash: digest(canonical(receipt)) };
   });
 }
 function appendReceipt(store: string, receipt: StageReceipt) {
   const directory = resolve(runDirectory(store, receipt.runId), 'receipts'); mkdirSync(directory, { recursive: true, mode: 0o700 });
-  const target = resolve(directory, `${receipt.gateId}-${receipt.attempt}.json`);
-  const temporary = resolve(directory, `.pending-${randomUUID()}`);
-  writeFileSync(temporary, JSON.stringify(signed(store, receipt)) + '\n', { flag: 'wx', mode: 0o600 });
-  try { linkSync(temporary, target); } finally { unlinkSync(temporary); }
+  writeRecord(resolve(directory, `${receipt.gateId}-${receipt.attempt}.json`), receipt);
+}
+
+/** Open a host store for read-only evidence checks; a store inside the repository is author-controlled data. */
+export function openTrustedStore(root: string, storePath: string): string {
+  if (!isAbsolute(storePath)) fail('EVIDENCE_INVALID: absolute host store required');
+  const target = resolve(storePath);
+  if (!existsSync(target)) fail('EVIDENCE_INVALID: host store not found');
+  const real = realpathSync(target); const repo = realpathSync(root);
+  if (real === repo || real.startsWith(repo + sep) || repo.startsWith(real + sep)) fail('HOST_STORE_INSIDE_REPOSITORY: the trusted store must stay outside the repository');
+  if (!lstatSync(real).isDirectory()) fail('EVIDENCE_INVALID: host store must be a directory');
+  return real;
+}
+/** Validate one stage receipt record against its declared identity; shared by store and checker reads. */
+export function parseStageReceipt(value: unknown, runId: string, gateId: string, attempt: number): StageReceipt {
+  const receipt = object(value) as StageReceipt;
+  if (receipt.schemaVersion !== 1 || receipt.kind !== 'opl.development.stage.v1' || receipt.runId !== runId ||
+    receipt.gateId !== gateId || receipt.attempt !== attempt || !['passed', 'failed', 'blocked'].includes(receipt.result) ||
+    receipt.evidenceLayer !== 'source') fail('EVIDENCE_INVALID: invalid stage receipt');
+  return receipt;
+}
+/** Read and validate one host run approval record from a trusted store. */
+export function readRunApproval(store: string, runId: string): RunApproval {
+  try {
+    const approval = parseApproval(readRecord(resolve(runDirectory(store, runId), 'approval.json')));
+    if (approval.runId !== runId) fail('run identity mismatch');
+    return approval;
+  } catch (error: any) {
+    if (String(error?.message ?? error).startsWith('EVIDENCE_INVALID')) throw error;
+    fail(`EVIDENCE_INVALID: approved run missing or invalid: ${runId} (${error?.message ?? error})`);
+  }
+}
+/** Read one host stage record through its identity validator; malformed or misfiled records fail closed. */
+export function readStageReceipt(path: string, runId: string, gateId: string, attempt: number): StageReceipt {
+  try { return parseStageReceipt(readRecord(path), runId, gateId, attempt); }
+  catch (error: any) {
+    if (String(error?.message ?? error).startsWith('EVIDENCE_INVALID')) throw error;
+    fail(`EVIDENCE_INVALID: invalid stage receipt: ${error?.message ?? error}`);
+  }
+}
+/** One verified stage receipt from the host attempt sequence; missing paths and identity mismatches fail closed. */
+export function stageReceiptEvidence(store: string, runId: string, gateId: string, attempt: number) {
+  const entry = receiptHistory(store, runId, gateId).find(candidate => candidate.receipt.attempt === attempt);
+  if (!entry) fail('EVIDENCE_INVALID: host stage receipt missing or sequence invalid');
+  return entry;
+}
+/** Resolve a dependency by its recorded receipt hash instead of trusting a declared attempt number. */
+export function receiptEvidenceByHash(store: string, runId: string, gateId: string, hash: string) {
+  const entry = receiptHistory(store, runId, gateId).find(candidate => candidate.hash === hash);
+  if (!entry) fail('EVIDENCE_INVALID: dependency receipt missing or hash mismatch');
+  return entry;
+}
+/**
+ * Host-only export: turn one already-executed and recorded stage result into the
+ * pull-request source-check receipt. Every field comes from the host store and
+ * the checked revision; nothing is hand-written, and the worker never reaches
+ * this entry. The receipt fingerprints the real changed content (its own file
+ * excepted, since it cannot fingerprint itself) and binds the stage record.
+ */
+export function generateSourceCheckReceipt(root: string, storePath: string, runId: string, gateId: string) {
+  const session = new DevelopmentSession(root, storePath, runId);
+  // Re-derive the current obligation from the admitted baseline, phase record,
+  // declared inputs, dependency receipts and runner identity. A stored past
+  // result is never enough: if anything moved on, the gate is not passed now.
+  session.context();
+  // One canonical snapshot of the current obligation: gate states with their
+  // receipt hashes, the phase fingerprint, declared input fingerprints,
+  // dependency receipts and runner identity. Everything appended below must
+  // still match it, so a race with another host writer is refused instead of
+  // being laundered into fresh but unverified hashes.
+  const obligationView = session.status();
+  const state = obligationView.stages.find(candidate => candidate.gateId === gateId);
+  if (!state) fail('source-check export requires a gate declared by the approved run');
+  if (state.state !== 'passed') fail(`source-check export requires the current gate obligation to be passed, not ${state.state}`);
+  const obligation = canonical(obligationView);
+  const currentObligation = () => {
+    try { return canonical(session.status()); }
+    catch (error: any) { return `unavailable:${error?.message ?? error}`; }
+  };
+  const history = receiptHistory(session.store, runId, gateId);
+  const last = history.at(-1)!;
+  const gate = session.approval.gates.find(candidate => candidate.id === gateId)!;
+  const path = `docs/evidence/source-checks/${id(runId)}-${id(gateId)}-${last.receipt.attempt}.json`;
+  const target = resolve(session.root, path);
+  if (existsSync(target)) fail(`source-check receipt already exported for attempt ${last.receipt.attempt}; the record is append-only`);
+  const paths = [...changedPaths(session.root, session.approval.baseSha)].sort();
+  const deleted = repositoryDeletedPaths(session.root, session.approval.baseSha);
+  const changedFilesSha256: Record<string, string> = {};
+  for (const changed of paths) {
+    if (changed === path) continue;
+    pathName(changed);
+    if (deleted.has(changed)) {
+      // A deletion is recorded only from the Git deletion fact; a path that
+      // still exists is never re-labelled.
+      if (existsSync(resolve(session.root, changed))) fail(`recorded deletion still exists: ${changed}`);
+      changedFilesSha256[changed] = 'deleted'; continue;
+    }
+    // physical/fileBytes refuse symlinks, escaping paths, directories and
+    // multi-link or oversized files; nothing falls through to "missing".
+    changedFilesSha256[changed] = digest(fileBytes(session.root, changed, 16 * 1024 * 1024));
+  }
+  const writeSet = [...new Set([...paths, path])].sort();
+  const receipt = {
+    schemaVersion: 1,
+    receiptType: 'opl_development_source_check',
+    evidenceLayer: 'source',
+    result: 'pass',
+    sourceBaseSha: session.approval.baseSha,
+    recordedAt: new Date().toISOString(),
+    writeSet,
+    verifiedSource: { baseSha: session.approval.baseSha, changedFilesSha256 },
+    execution: {
+      command: gate.kind === 'node' ? ['node --test --test-reporter=tap', ...(gate.targets ?? [])].join(' ') : `${gate.kind} acceptance gate`,
+      exitCode: last.receipt.verification.exitCode,
+      tests: last.receipt.verification.tests,
+      failed: last.receipt.verification.failed,
+      skipped: last.receipt.verification.skipped,
+      todo: 0,
+      outputSha256: last.receipt.verification.outputSha256,
+    },
+    // Traceability to the executed host record; the checker verifies base,
+    // write set, fingerprints and execution summary from the file itself.
+    sourceStage: { runId, gateId, attempt: last.receipt.attempt, receiptHash: last.hash },
+  };
+  // The record must not describe a state that moved on between the snapshot
+  // above and the append; a changed obligation is refused, never re-hashed.
+  if (currentObligation() !== obligation) fail('SOURCE_CHECK_STATE_CHANGED: the current obligation moved while the receipt was being built; nothing was appended');
+  mkdirSync(dirname(target), { recursive: true });
+  // Append-only atomic creation, the same primitive the host store uses: the
+  // complete record is written to a same-directory temporary and linked into
+  // place. link(2) refuses an existing target, so a concurrent export can
+  // never be overwritten and no reader ever sees a partial record.
+  const temporary = resolve(dirname(target), `.pending-${randomUUID()}`);
+  try {
+    writeFileSync(temporary, JSON.stringify(receipt, null, 2) + '\n', { flag: 'wx', mode: 0o644 });
+    linkSync(temporary, target);
+  } finally { rmSync(temporary, { force: true }); }
+  // The appended record is immutable history of the inputs that actually
+  // executed; a change that raced the append never deletes, rewrites or
+  // re-labels it. The record is published, reported as stale, and the
+  // fingerprint/scope checks that consume it refuse it for the current
+  // revision until the affected stage is re-executed as a new attempt.
+  if (currentObligation() !== obligation) {
+    fail('SOURCE_CHECK_STATE_CHANGED_AFTER_APPEND: the published record covers the historically executed inputs and stays as-is; it is now stale for the current obligation and the affected stage must be re-verified as a new attempt');
+  }
+  return { path, receipt };
+}
+/** The phase authorization implied by one approved run, recomputed at the checked revision. */
+export function resolveApprovedPhase(root: string, approval: RunApproval) {
+  return phase(root, approval);
+}
+/** Hash the declared stage inputs exactly as the acceptance runner binds them. */
+export function gateInputHash(root: string, gate: DevelopmentGate): string {
+  return fingerprint(inputFiles(root, gate.inputs));
+}
+/** The runner identity bound into stage receipts. */
+export function currentRunnerHash(): string {
+  return runnerHash();
 }
 
 /** Each new worker starts unadmitted, including after restart. There is no agent-controlled completion method. */
@@ -268,7 +475,7 @@ export class DevelopmentSession {
   private admitted?: { head: string; phase: string; inputs: { path: string; sha256: string }[] };
   constructor(root: string, store: string, runId: string) {
     this.root = realpathSync(root); this.store = storeRoot(this.root, store);
-    this.approval = parseApproval(readSigned(this.store, resolve(runDirectory(this.store, runId), 'approval.json')));
+    this.approval = readRunApproval(this.store, runId);
     if (this.approval.runId !== runId) fail('run identity mismatch'); phase(this.root, this.approval, true);
   }
   private head() { return git(this.root, ['rev-parse', 'HEAD']).trim(); }
@@ -276,7 +483,11 @@ export class DevelopmentSession {
   revokeAdmission() { this.admitted = undefined; }
   scope() {
     verifyApprovedBaseline(this.root, this.approval);
-    return { runId: this.approval.runId, baseSha: this.approval.baseSha, changedPaths: this.verifyWorkspaceScope() };
+    const changed = this.verifyWorkspaceScope();
+    // The public scope readback shares the complete context admission chain:
+    // the current phase record must still cover every approved write path.
+    const selected = phase(this.root, this.approval);
+    return { runId: this.approval.runId, baseSha: this.approval.baseSha, phaseHash: selected.fingerprint, changedPaths: changed };
   }
   context() {
     this.admitted = undefined;
@@ -307,18 +518,28 @@ export class DevelopmentSession {
       throw error;
     }
   }
-  /** Read/write scopes are distinct; only named, host-signed contributors authorize workspace changes. */
+  /** Read/write scopes are distinct; only named, host-approved contributors authorize workspace changes. */
   private verifyWorkspaceScope() {
     const paths = [...changedPaths(this.root, this.approval.baseSha)].sort();
     const ownPaths = [...this.approval.writePaths, ...requiredContextPaths];
-    const outside = paths.filter(path => { pathName(path); return !matches(path, ownPaths); });
+    // The source-check evidence prefix is host/session-owned: a restricted
+    // worker is refused every docs/ write, and the host source-check export
+    // appends its record there. This matches authorizePhaseWriteScope, which
+    // already treats those prefixes as host-authored, not a worker grant.
+    const hostEvidence = (path: string) => path === 'docs/evidence/source-checks' || path.startsWith('docs/evidence/source-checks/');
+    const outside = paths.filter(path => { pathName(path); return !matches(path, ownPaths) && !hostEvidence(path); });
     if (!outside.length) return paths;
     const contributors: DevelopmentSession[] = [];
     const visited = new Set([this.approval.runId]);
     const include = (runId: string) => {
       if (visited.has(runId)) return;
       visited.add(runId);
-      const upstream = new DevelopmentSession(this.root, this.store, runId);
+      // An unreferenced or unavailable contributor fails closed with the same
+      // evidence identity as every other invalid reference, not a raw I/O error.
+      const upstream = (() => {
+        try { return new DevelopmentSession(this.root, this.store, runId); }
+        catch (error: any) { fail(`EVIDENCE_INVALID: coauthor or prerequisite run unresolved: ${runId} (${error.message})`); }
+      })();
       if (upstream.approval.baseSha !== this.approval.baseSha || upstream.approval.planPath !== this.approval.planPath)
         fail(`EVIDENCE_INVALID: coauthor baseline or plan mismatch: ${runId}`);
       verifyApprovedBaseline(this.root, upstream.approval);
@@ -420,6 +641,9 @@ export class DevelopmentSession {
       for (const [path, bytes] of files) {
         const target = resolve(snapshot, path); mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, bytes, { mode: 0o444 });
       }
+      // A Node stage resolves its dependencies from the approved host install
+      // only when the stage declared the dependency manifest; the runner binds
+      // that install and re-checks the locked manifests before execution.
       const { runDevelopmentCheck } = await import('./verify-local.ts');
       const checked = await runDevelopmentCheck({ snapshotRoot: snapshot, kind: gate.kind, targets: gate.targets, cwd: gate.cwd });
       const unchanged = hash === fingerprint(inputFiles(this.root, gate.inputs)) && phaseHash === phase(this.root, this.approval).fingerprint;
@@ -583,7 +807,7 @@ export async function serve(session: DevelopmentSession) {
     } catch (error: any) { process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request?.id ?? null, error: { code: -32600, message: error.message } }) + '\n'); }
   }
 }
-/** Verify resulting paths from signed host permissions, never from worker-modified policy. */
+/** Verify resulting paths from host permissions in the trusted store, never from worker-modified policy. */
 export function verifyWriteScope(root: string, store: string, runId: string) {
   return new DevelopmentSession(root, store, runId).scope();
 }
@@ -594,9 +818,9 @@ async function main() {
   if (command === 'approve' && storeOrApproval && runOrStore && !extra) {
     return console.log(JSON.stringify(approveRun(root, runOrStore, JSON.parse(readFileSync(resolve(storeOrApproval), 'utf8'))), null, 2));
   }
-  if (!['context', 'serve', 'verify', 'scope', 'run'].includes(command) || !storeOrApproval || !runOrStore ||
-    (command === 'run' ? !extra || !model : command === 'verify' ? !extra || model || turns : extra || model || turns)) {
-    fail('usage: dev-session approve <host-authorization.json> <absolute-host-store> | <context|serve|scope> <host-store> <run-id> | verify <host-store> <run-id> <gate-id> | run <host-store> <run-id> <https-chat-completions-endpoint> <model> [max-turns]');
+  if (!['context', 'serve', 'verify', 'scope', 'source-check', 'run'].includes(command) || !storeOrApproval || !runOrStore ||
+    (command === 'run' ? !extra || !model : command === 'verify' || command === 'source-check' ? !extra || model || turns : extra || model || turns)) {
+    fail('usage: dev-session approve <host-authorization.json> <absolute-host-store> | <context|serve|scope> <host-store> <run-id> | verify <host-store> <run-id> <gate-id> | source-check <host-store> <run-id> <gate-id> | run <host-store> <run-id> <https-chat-completions-endpoint> <model> [max-turns]');
   }
   const session = new DevelopmentSession(root, storeOrApproval, runOrStore);
   if (command === 'serve') return serve(session);
@@ -604,6 +828,9 @@ async function main() {
   if (command === 'run') {
     const result = await runRestrictedWorker(session, { endpoint: extra, model, maxTurns: turns === undefined ? undefined : Number(turns), apiKey: process.env.OPL_DEV_API_KEY });
     console.log(JSON.stringify(result, null, 2)); if (result.result !== 'passed') process.exitCode = 1; return;
+  }
+  if (command === 'source-check') {
+    return console.log(JSON.stringify(generateSourceCheckReceipt(root, storeOrApproval, runOrStore, extra), null, 2));
   }
   const context = session.context();
   const result = command === 'context' ? context : await session.verifyGate(extra);

@@ -328,7 +328,7 @@ function developmentTAP(stdout: string, targets: string[], cwd: string) {
 function developmentGoJSON(stdout: string) {
   const running = new Set<string>(), terminal = new Map<string, string>();
   const packages = new Map<string, string>(), started = new Set<string>();
-  let invalid = false, packageFailures = 0, packageSkips = 0;
+  let invalid = false, packageFailures = 0;
   for (const line of stdout.split(/\r?\n/).filter((line) => line.trim())) {
     try {
       const event = JSON.parse(line);
@@ -344,12 +344,14 @@ function developmentGoJSON(stdout: string) {
         if (packages.has(event.Package)) invalid = true;
         packages.set(event.Package, event.Action);
         if (event.Action === "fail") packageFailures++;
-        if (event.Action === "skip") packageSkips++;
       }
     } catch { invalid = true; }
   }
   const failed = [...terminal.values()].filter((value) => value === "fail").length + packageFailures;
-  const skipped = [...terminal.values()].filter((value) => value === "skip").length + packageSkips;
+  // Go emits package-level "skip" for compiled packages with no test files.
+  // Only registered test skips are skipped behavior; the positive test count
+  // below still refuses a stage that executed no tests at all.
+  const skipped = [...terminal.values()].filter((value) => value === "skip").length;
   const tests = terminal.size;
   const complete = running.size === terminal.size && packages.size > 0 && [...started].every((name) => packages.has(name)) &&
     [...running].every((id) => packages.has(id.split("\0")[0]));
@@ -440,6 +442,51 @@ export async function runDevelopmentCheck(options: {
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    // Repository fixtures execute Git. macOS /usr/bin/git is an Xcode selector
+    // that needs developer-selection state the sandbox intentionally never
+    // receives, so one fixed real installation is resolved on the host from
+    // known locations and only that installation is bound for Node stages.
+    if (options.kind === "node") {
+      // Hermetic Git configuration for every Node stage: no system file and no
+      // terminal prompt. A stage that never executes Git must stay runnable on
+      // a host without a fixed installation; a Git-dependent target then fails
+      // on its own instead of silently widening host configuration.
+      env.GIT_CONFIG_NOSYSTEM = "1";
+      env.GIT_TERMINAL_PROMPT = "0";
+      const gitDirectories = process.platform === "darwin"
+        ? ["/Library/Developer/CommandLineTools/usr/bin", "/opt/homebrew/bin", ...trustedToolDirectories]
+        : trustedToolDirectories;
+      let git: string | undefined;
+      for (const directory of gitDirectories) {
+        try {
+          const candidate = join(directory, "git");
+          await access(candidate, constants.X_OK);
+          if ((await stat(candidate)).isFile()) { git = await realpath(candidate); break; }
+        } catch { /* Only fixed installation locations are eligible. */ }
+      }
+      if (git) {
+        // Trusted Git reports its own command directory; the sandbox authorizes
+        // exactly that installation instead of any developer selection or PATH.
+        // The configuration probe is hermetic as well: nested isolation (a
+        // development gate that itself runs this runner) has no system
+        // gitconfig grant, and no prompt or user config may affect the answer.
+        const configuration = await captureDevelopmentProcess(git, ["--exec-path"], temporaryRoot,
+          { HOME: process.env.HOME ?? temporaryRoot, PATH: process.env.PATH ?? "", GIT_CONFIG_NOSYSTEM: "1", GIT_TERMINAL_PROMPT: "0" }, 10_000);
+        const reported = configuration.stdout.trim();
+        if (configuration.code !== 0 || configuration.problem || !reported) {
+          return blocked("trusted Git runtime configuration unavailable", configuration.stderr + configuration.stdout + (configuration.problem || ""));
+        }
+        const execPath = await realpath(reported);
+        if (inside(snapshot, execPath) || inside(root, execPath) || inside(execPath, root)) return blocked("unsafe Git runtime installation");
+        readPaths.add(git); readPaths.add(execPath);
+        try {
+          const share = await realpath(resolve(execPath, "..", "..", "share", "git-core"));
+          if (!inside(snapshot, share) && !inside(root, share) && !inside(share, root)) readPaths.add(share);
+        } catch { /* A Git installation without shared templates stays usable. */ }
+        env.GIT_EXEC_PATH = execPath;
+        env.PATH = dirname(git) + ":" + env.PATH;
+      }
     }
     if (options.kind === "node") args = ["--test", "--test-reporter=tap", ...targets];
     if (options.kind === "go" || options.kind === "generated") {
