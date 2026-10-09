@@ -255,7 +255,7 @@ authorize publication.
 
 ## Verification
 
-- Run focused checks first with `npm run verify:local:focused -- --base <verified-base-ref>`. The command selects checks from the explicit Git change scope; it never guesses the base. It chooses development, generated-contract, plan, TypeScript, focused Node/E2E, or Go compile evidence according to the changed boundary.
+- Run focused checks first with `npm run verify:local:focused -- --base <verified-base-ref>`. The command selects checks from the explicit Git change scope; it never guesses the base. Declare existing owner behavior targets with repeated `--test <file>` when no current test changed; missing targets are refused rather than falling back to full tests or treating typecheck as behavior evidence. Generated checks use the existing generator input/output inventory, E2E classification uses the existing browser suite inventory, and Go changes run tests for the affected packages. Focused test evidence requires actual executed tests with zero failures, skips or TODOs; it is not host acceptance or proof of complete downstream coverage.
 - `npm run verify:local` is the exhaustive source/CI gate, not a required local precondition for every change. CI keeps this exhaustive gate; local work should not repeat it unless the boundary requires it or the developer explicitly asks.
 - Use `npm run verify:local:full` only for persistence, schema, retained service
   behavior, cross-module contracts, or structural changes involving PostgreSQL,

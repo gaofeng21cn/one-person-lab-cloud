@@ -164,13 +164,32 @@ npm run verify:local:focused -- --base origin/main
 Focused verification is the normal local path. It requires an explicit base
 ref, inspects committed, staged, unstaged, and untracked paths, and selects only
 the affected checks. It does not claim that unrelated full-suite evidence ran.
-The selector is risk-based: development/tool changes select the development
-contract checks; generated-contract changes select freshness; plan changes select
-plan freshness; `apps/` and `packages/` TypeScript changes select typecheck; changed
-Node tests run directly; changed browser tests select focused E2E; and changed Go
-modules select compile checks. Browser suites, builds, PostgreSQL integration and
-full source coverage are not selected unless the changed boundary or an explicit
-full command requires them.
+Development/tool changes select development typecheck; generated-contract inputs
+and outputs reuse the existing freshness inventory; plan changes select plan
+freshness; `apps/` and `packages/` TypeScript changes select typecheck. Current
+changed test files run directly. A source-only change must declare the existing
+owner behavior targets from its acceptance scope, for example:
+
+```bash
+npm run verify:local:focused -- --base origin/main --test tests/tools/dev-session.test.ts
+```
+
+Repeated `--test` selects multiple targets; deleted tests are not executed, and
+missing or nonexistent targets fail before running checks. This is an explicit
+seam selection, not a guessed source-to-test dependency graph. The existing
+`test:browser:suite` inventory identifies real browser targets, including those
+without a browser filename suffix. Go source changes run the affected packages;
+module metadata or non-Go assets run that affected module's suite. Node and Go
+behavior evidence rejects zero executed tests, failures, skips and TODOs.
+If an owner suite needs PostgreSQL or a provider, supply that real boundary's
+validation environment; compilation or skipping is not a substitute. Combining
+`--focused` with `--with-postgres` is rejected: the latter remains the explicit
+exhaustive lane, not an implicit way to start unrelated integration suites. Unrelated
+browser suites, builds and full repository tests are not selected automatically.
+Git scope uses the merge base plus local index/worktree changes, not unrelated
+upstream changes. Whitespace checks cover committed, staged and unstaged diffs.
+Focused success proves only the selected checks, not downstream completeness,
+host receipt acceptance, business-chain E2E or production readiness.
 The exhaustive source gate remains available for CI or explicit local rehearsal:
 
 ```bash

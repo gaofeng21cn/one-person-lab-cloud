@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import { parse as parseYAML } from "yaml";
+import { generationInputs, generatedOutputs } from "../../tools/verify-generated-contracts.ts";
 
 import {
   databaseFreeGoTestSpecs,
@@ -17,6 +18,7 @@ import {
   runDevelopmentCheck,
   runVerification,
   focusedVerificationSteps,
+  focusedChangeScope,
   summarizeGoTestFailures
 } from "../../tools/verify-local.ts";
 
@@ -72,15 +74,86 @@ test("focused verification selects only gates affected by an explicit change set
     "Development plan freshness",
     "Development tools typecheck",
     "Focused development tests",
-    "services/fabric focused Go compile",
+    "services/fabric focused Go tests",
     "Git whitespace"
   ]);
 
   const docsOnly = focusedVerificationSteps(["docs/README.md"]).map((step) => step.name);
   assert.deepEqual(docsOnly, ["Git whitespace"]);
-  assert.ok(focusedVerificationSteps(["apps/console-ui/src/main.tsx"]).some((step) => step.name === "TypeScript typecheck"));
+  assert.ok(focusedVerificationSteps(["apps/console-ui/src/main.tsx"], ["tests/ui/console-model.test.ts"]).some((step) => step.name === "TypeScript typecheck"));
   const browser = focusedVerificationSteps(["tests/ui/gateway-account-read-controller-browser.test.ts"]).map((step) => step.name);
   assert.deepEqual(browser, ["product boundary", "Focused E2E tests", "Git whitespace"]);
+});
+
+test("focused source verification requires declared behavior targets instead of passing typecheck alone", () => {
+  assert.throws(() => focusedVerificationSteps(["apps/console-ui/src/main.tsx"]), /behavior targets.*--test/);
+  const steps = focusedVerificationSteps(["apps/console-ui/src/main.tsx"], ["tests/ui/console-model.test.ts"]);
+  assert.deepEqual(steps.find(step => step.name === "Focused development tests")?.args,
+    ["--test", "--test-reporter=tap", "tests/ui/console-model.test.ts"]);
+  assert.deepEqual(parseVerifyLocalArgs(["--focused", "--base", "origin/main", "--test", "tests/ui/console-model.test.ts"]),
+    { withPostgres: false, focused: true, base: "origin/main", testTargets: ["tests/ui/console-model.test.ts"] });
+  assert.throws(() => parseVerifyLocalArgs(["--test", "tests/ui/console-model.test.ts"]), /requires --focused/);
+});
+
+test("focused Go verification executes the affected package instead of only compiling its module", () => {
+  const steps = focusedVerificationSteps(["services/fabric/internal/fabric/runtime.go"]);
+  assert.deepEqual(steps.find(step => step.name === "services/fabric focused Go tests")?.args,
+    ["test", "-count=1", "-json", "./internal/fabric"]);
+  assert.ok(!steps.some(step => step.args.includes("^$")));
+});
+
+test("focused freshness covers every authoritative generator input and output", () => {
+  for (const path of [...generationInputs, ...generatedOutputs]) {
+    const steps = focusedVerificationSteps([path], ["tests/tools/verify-generated-contracts.test.ts"]);
+    assert.ok(steps.some(step => step.name === "Generated contracts freshness"), path);
+  }
+});
+
+test("focused E2E selection follows the existing browser inventory, not filename guesses", () => {
+  const steps = focusedVerificationSteps(["tests/ui/workspace-mvp-flow.test.ts"]);
+  assert.deepEqual(steps.find(step => step.name === "Focused E2E tests")?.args,
+    ["--test", "--test-reporter=tap", "tests/ui/workspace-mvp-flow.test.ts"]);
+  assert.ok(!steps.some(step => step.name === "Focused development tests"));
+});
+
+test("focused verification never executes a deleted test and requires a current replacement target", () => {
+  const deleted = "tests/tools/retired-focused-behavior.test.ts";
+  assert.throws(() => focusedVerificationSteps([deleted]), /behavior targets.*--test/);
+  const steps = focusedVerificationSteps([deleted], ["tests/tools/verify-local.test.ts"]);
+  assert.deepEqual(steps.find(step => step.name === "Focused development tests")?.args,
+    ["--test", "--test-reporter=tap", "tests/tools/verify-local.test.ts"]);
+  assert.throws(() => focusedVerificationSteps([], [deleted]), /focused test target does not exist/);
+});
+
+test("focused Git scope excludes upstream-only changes and includes committed, staged, unstaged and untracked inputs", async t => {
+  const repo = await mkdtemp(join(tmpdir(), "opl-focused-git-"));
+  t.after(() => rm(repo, { recursive: true, force: true }));
+  const run = promisify(execFileCallback);
+  const git = (...args: string[]) => run("git", ["-C", repo, ...args]);
+  await git("init", "-q");
+  await writeFile(join(repo, "initial.txt"), "baseline\n");
+  await git("add", "."); await git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "baseline");
+  const base = (await git("rev-parse", "HEAD")).stdout.trim();
+  await git("checkout", "-qb", "upstream");
+  await writeFile(join(repo, "upstream-only.txt"), "upstream\n");
+  await git("add", "."); await git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "upstream only");
+  await git("checkout", "-qb", "owner", base);
+  await writeFile(join(repo, "committed.txt"), "owner\n");
+  await git("add", "."); await git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "owner change");
+  await writeFile(join(repo, "staged.txt"), "staged\n"); await git("add", "staged.txt");
+  await writeFile(join(repo, "initial.txt"), "unstaged\n");
+  await writeFile(join(repo, "untracked.txt"), "untracked\n");
+  const scope = focusedChangeScope("upstream", repo);
+  assert.equal(scope.mergeBase, base);
+  assert.deepEqual(scope.paths, ["committed.txt", "initial.txt", "staged.txt", "untracked.txt"]);
+  const whitespace = focusedVerificationSteps([], [], scope.mergeBase).filter(step => step.command === "git");
+  assert.deepEqual(whitespace.map(step => step.args), [
+    ["diff", "--check", base, "HEAD", "--"], ["diff", "--cached", "--check", "--"], ["diff", "--check", "--"]
+  ]);
+});
+
+test("focused verification refuses an implicit exhaustive PostgreSQL lane", () => {
+  assert.throws(() => parseVerifyLocalArgs(["--focused", "--base", "origin/main", "--with-postgres"]), /cannot combine.*focused.*PostgreSQL/);
 });
 
 test("Qualification executes the independent Go contracts module", async () => {
@@ -357,6 +430,15 @@ test("development check rejects exit zero without registered Node tests", async 
   }
 });
 
+
+test("development check rejects an empty owner target even when another target executes real tests", async t => {
+  const { snapshotRoot } = await developmentFixture(t);
+  await writeFile(join(snapshotRoot, "tests/empty.test.mjs"), "console.log('empty owner');\n");
+  await writeFile(join(snapshotRoot, "tests/real.test.mjs"), "import test from 'node:test'; test('owner behavior', () => {});\n");
+  const result = await runDevelopmentCheck({ snapshotRoot, kind: "node", targets: ["tests/empty.test.mjs", "tests/real.test.mjs"] });
+  assert.equal(result.passed, false, result.output);
+  if (result.status !== "blocked") assert.match(result.reason || "", /no registered Node tests/i);
+});
 
 test("development check rejects flags, traversal, globs, escaping symlinks and non-Node targets before execution", async (t) => {
   const { directory, snapshotRoot } = await developmentFixture(t);
