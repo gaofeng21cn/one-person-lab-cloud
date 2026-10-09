@@ -60,6 +60,36 @@ can be read back.
 | P1 | MAP domain contracts and evaluation gate | MAP medical domain owner/Instance | Cloud logical Connect boundary is documented; no clinical domain or qualified MAP adapter/backend combination is claimed | MAP task/adapter contract, selected OPL Connect backend, approved data classes, source/evidence model, human review states, evaluation set, release gate and institution acceptance; no medical-specific Cloud adapter is required |
 | P2 | Customer-operated payment, multi-user Workspace, HA/GPU and broader provider profiles | Product and Instance owners | Deliberately outside the current beta cut | Separate product decision, owner and qualification evidence before admission |
 
+## Task-Oriented Console And Agent Version Lifecycle
+
+The [October 9 decision](decisions.md#2026-10-09-task-oriented-console-and-customer-agent-version-lifecycle)
+and [Workspace experience](product/workspace-experience.md) are adopted intent,
+not completed code, Candidate or production claims. The source at `b9576559`
+still exposes Runtime/WebUI pickers in Publisher, a largely read-only Agent
+catalog, retained administrator maintenance, and no complete Tenant 50-artifact
+publication/deletion journey. Existing upload recovery, owner default-policy
+methods, quote/launch, finance, logout and node cleanup are reuse inputs.
+
+| Open vertical outcome | Owning behavior / real consumer | Acceptance and next consumer |
+| --- | --- | --- |
+| Active defaults and simple upload/build | Runtime Control policy, Capability Package/WebUI, Build admission; Console BFF/UI | Import is not activation; exact approved defaults are frozen; customer supplies only Package/name/version; actual Build produces a ready digest; receipt feeds deployment |
+| Complete Agent version-to-Workspace handoff | Capability/Build outputs, Workspace authorization/quote, Serve deployment; Console BFF/UI | Several artifacts per upload remain visible; an exact ready version reaches an entitled empty Workspace or the existing explicit new quote; URL/application readback feeds switching |
+| Customer same-Agent upgrade/return | Tenant authorization, Workspace entitlement, Serve current deployment/data compatibility, Fabric resource facts | Same stable Package identity, capacity/data/downtime preview, negative authorization tests, one durable operation, real target readiness/access and unchanged data/other Workspaces; receipt feeds cleanup |
+| Local cleanup and cloud artifact lifecycle | Capability availability/quota/reference admission, Build registry execution, Serve consumers, Fabric/Instance node cleanup | Per-Tenant 50 root digests including in-flight reservations; no auto-eviction; current/in-flight artifacts protected; cloud deletion confirmed before quota release; local absence does not claim reclaimed bytes; metadata/data preserved and retained digest can be re-pulled |
+| First-cut customer disable and coherent Admin surfaces | Tenant new-command authorization and Console aggregation; existing finance/app owners | View/admit/enable/disable; no implicit app/renewal/Key/resource/refund changes; import/active/single-Workspace actions are visibly separate; existing authorized operations recover |
+
+Deliver each changed seam with focused executed behavior evidence before its
+consumer; bind exact source inputs, outputs, upstream receipts and next action.
+Source/browser receipts and desktop/mobile screenshots do not close Instance
+acceptance. Integrate owner branches before one serial user journey on exact
+Candidate bytes. Independent development can run in parallel; shared contracts,
+files, production changes, wallets and destructive acceptance are serialized.
+These outcomes do not restart Local full qualification or redefine the separate
+TKE launch/refund lanes; unchanged evidence is consumed directly and only affected
+inputs/downstream behavior are reverified. Machine contracts and lower technical
+projections remain pending where they still expose older picker, authorization,
+disable or artifact semantics; no changed wire behavior is claimed by this prose.
+
 ## Cloud-Identity Customer Workspace Read (2026-09-30)
 
 The cloud Console identity reads Workspaces from the Workspace owner through the

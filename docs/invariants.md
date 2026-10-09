@@ -185,9 +185,26 @@ implementation and remaining gaps are reported separately in status/roadmap.
   application cookie cannot widen beyond its own binding.
 - The external host and scheme an application observes come from the trusted
   proxy boundary, never from a caller-supplied header.
-- Initial application distribution, update, rollback and deployment settings
-  require administrator authorization. Account ownership alone does not grant
-  deployment permission; other management actions retain their role policies.
+- Authorized customers may initially deploy a ready Tenant Agent to an entitled
+  empty Workspace and switch versions within the same stable Package identity.
+  Target authorization, data compatibility and capacity are checked on every
+  switch. Default OPL App Runtime changes, unrelated-application replacement,
+  arbitrary images and deployment settings remain administrator-only. Account
+  ownership alone never bypasses these checks.
+- Import/approval is distinct from platform-default activation. Build freezes
+  administrator-selected approved Runtime/WebUI inputs; default changes do not
+  mutate prior Builds or running Workspaces, and retries keep their inputs.
+- Local version cleanup preserves business data/CBS bindings, Packages, version
+  metadata and receipts, excludes current/in-flight/shared references and never
+  destroys CVM/CBS resources. Registry deletion is a separate action.
+- Tenant cloud Agent artifacts have a 50-root-digest limit, enforced by the
+  Capability quota/availability owner before Build publication. Aliases, platform
+  children and local copies do not add slots. In-use/in-flight artifacts cannot
+  be deleted; unknown writes do not free quota and no automatic eviction occurs.
+- Disabling a customer/Tenant blocks new Cloud management commands, not existing
+  application access, subscriptions/renewal, resource/data retention or authorized
+  recovery. Expiry and separate authorized actions retain their policies; disable
+  alone does not delete, refund or revoke Gateway Keys.
 - Each Workspace fixes its own application revision, configuration and data
   bindings. A registry upload or installation-default change cannot update
   existing Workspaces; updating Workspace A does not change Workspace B.

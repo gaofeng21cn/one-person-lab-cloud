@@ -25,8 +25,8 @@ Public entry and login surfaces introduce the generic OPL Cloud product. They
 must not hard-code medopl or another instance identity; instance branding and
 deployment facts belong to the instance owner.
 
-The desktop customer destinations are `概览`, `工作空间`, `OPL Gateway`, and
-`费用`, in that order; mobile uses the shorter `Gateway` label for the same
+The desktop customer destinations are `概览`, `智能体`, `工作空间`, `OPL Gateway`,
+and `费用`, in that order; mobile uses the shorter `Gateway` label for the same
 destination. Messages stay in the top bar and account facts in one account
 menu. Gateway has local Service Information, Usage and API Key destinations;
 Billing separates subscription terms from transaction history. The platform
@@ -57,8 +57,9 @@ and mobile navigation overlays are mutually exclusive and preserve focus.
 | Surface | Required customer outcome and information priority |
 | --- | --- |
 | Overview | Read existing balance, monthly actual API cost/request count and Workspace total, then the currently loaded Workspace with its available next action; recent fees and messages are secondary |
+| My Agents and upload | Name/version/Package upload, actual upload/build progress, deployability and actionable failure first; platform active Runtime/WebUI selection stays behind the owner boundary; versions, rebuild and deployment are reachable without OCI jargon |
 | Workspace list and launch | Find a Workspace or configure, review the actual amount due, explicitly confirm and submit once; distinguish preparing, manual review, failed, refunded and unconfirmed results without inventing refund or completion |
-| Workspace detail | Availability and Open first, then credentials, plan/renewal/storage and advanced budget controls; maintenance resets remain distinct and Delete has its own confirmed high-risk group |
+| Workspace detail | Availability and Open first, then credentials, plan/renewal/storage and advanced budget controls; same-Agent version switching shows resource/data/downtime preview; maintenance resets, local cleanup, cloud-artifact deletion and Workspace deletion remain distinct confirmed actions |
 | API Keys | Current Key identity, status, limits, expiry and usage first; create, reveal/copy and usage instructions stay reachable; edit, enable/disable, the two distinct usage resets and Delete retain their permissions and confirmations |
 | Gateway Usage | Current Key and period contextualize requests, total Tokens and actual cost; records show time, model, input/output Tokens and cost; searchable paginated selection does not become another Key-management surface |
 | Subscriptions | Desktop and mobile expose Workspace identity, plan, owner monthly amount, the complete billing period, renewal and auto-renew state before entering detail; missing period endpoints or unknown flags stay explicitly unavailable |
@@ -81,6 +82,23 @@ components and fulfillment facts stay in the owning service/DTO. Their presence
 in an API is not a reason to add customer UI. Support tickets are retired and
 must not appear as a next action for failed customer tasks.
 
+## Administrator Task Hierarchy
+
+Group administrator work by customer management, Agent/artifact management,
+Workspace/resources, Runtime/WebUI management, and finance/reconciliation;
+keep existing health/announcement functions as operational destinations. Reuse
+existing routes/components where they fit rather than one menu per domain.
+Platform catalog import/approval and active-default selection are separate from
+updating one Workspace; neither action implicitly updates a fleet.
+
+Resource views separate purchased CPU/memory/storage/GPU allocation, readiness
+and expiry from actual measured utilization. Show utilization only with an
+owner observation/time, never synthesize zeros or forecasts. Agent/artifact
+views default to metadata and build diagnostics; private Package content and
+credentials do not become visible by default. Customer disable is not Workspace
+expiry, resource deletion, Key revocation or refund. Wallet balances remain
+Sub2API facts and business receipts remain Ledger evidence, not a second wallet.
+
 ## Truth And Safety
 
 - The browser calls only its identity-specific same-origin product APIs through
@@ -102,6 +120,13 @@ schemas and eligible contracts under `packages/contracts`; this guide does not
 copy their field lists.
 
 ## Design Freedom
+
+Task destinations, role/action boundaries, required facts, states, confirmations
+and behavior acceptance are the product agreement. Pixels, component placement
+and screenshots are not frozen contracts. The adopted version/cleanup/50-artifact
+behavior is defined by [Workspace experience](workspace-experience.md) and the
+[October 9 decision](../decisions.md#2026-10-09-task-oriented-console-and-customer-agent-version-lifecycle),
+not another UI specification or design-system authority.
 
 Visual design and implementation choices belong to `apps/console-ui` and evolve
 with current content, brand, accessibility, devices, and user workflows. A

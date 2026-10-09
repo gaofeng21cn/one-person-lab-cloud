@@ -427,7 +427,11 @@ contract. The default App is deployed directly by digest; no synthetic
 Package/Build/CapabilityVersion or redundant Tenant-registry copy is created.
 For an Agent, Capability supplies the Package and compatible independent
 WebUI, Runtime Control supplies the exact approved Runtime, and Build requires
-all three inputs to produce the immutable Tenant OCI. There is no Agent with
+all three inputs to produce the immutable Tenant OCI. The customer supplies the
+standard Package and name/version; the effective administrator-selected default
+policy supplies the approved compatible Runtime/WebUI. Approval and import are
+not default activation, and the browser cannot substitute the first catalog row
+for that policy. There is no Agent with
 built-in UI branch; missing either Package or independent WebUI is rejected. Package formats, App UI implementation and ABI remain
 publisher-owned; a mutable tag or a guessed filesystem path is not admission.
 
@@ -554,13 +558,27 @@ binding. The live local BuildKit chain exercises the same resolver against a
 disposable registry. A Tencent/TKE-hosted Cloud Build pushing a Tenant-resolved
 destination remains the open hosted proof.
 
-New Agent versions are produced from the approved Package + Runtime + WebUI
-chain and are selected by the customer for a specific Workspace and quote.
+New Agent versions are produced from the Package + effective approved
+Runtime/WebUI default-policy inputs, frozen before Build. The customer selects
+a ready Agent version for an entitled empty Workspace or confirms a quote for
+a new Workspace, not its Runtime/WebUI build inputs.
 Console presents the owner readbacks and does not turn a mutable registry tag
 into a deployment identity. A new Package, Runtime, WebUI or OCI digest creates
 a new immutable version; selecting it never changes another Workspace
 implicitly. The same Agent version may serve several Workspaces with separate
 data, while those Workspaces may advance through versions independently.
+
+Each Tenant retains at most 50 distinct root-digest Agent OCI artifact versions
+across its repository; aliases and architecture children do not add slots.
+Capability is the single quota/availability and reference-eligibility owner;
+Build executes registry publication/deletion and consumes that admission.
+Serve's active and in-flight consumers protect artifacts from deletion.
+Concurrent publication reserves capacity before registry writes. At the limit,
+customers explicitly select unused artifacts for deletion; there is no automatic
+eviction. Failed or unknown deletion does not release capacity. Metadata,
+Package history and receipts survive artifact deletion; local node cleanup is
+separate and does not free cloud quota. The owning implementations and browser
+consumers still need the [roadmap acceptance](roadmap.md#task-oriented-console-and-agent-version-lifecycle).
 
 Capability, Runtime Control and Build admit and fix the Agent inputs; Workspace
 authorizes the target and resource plan; Serve is the writer of the per-
@@ -585,10 +603,24 @@ An image is executable content and does not by itself describe its deployment.
 
 Control-plane management authorization and application visitor authentication
 are separate decisions. Management commands require their role-specific Cloud
-authorization. Initial application distribution, updates, rollback and deployment
-configuration/exposure changes require an authorized administrator; account
-owners retain their separately authorized purchase and Workspace lifecycle
-operations. Opening an application does not universally require a Cloud account.
+authorization. Authorized customers may initially deploy their Tenant's ready Agent to an
+entitled empty Workspace and switch forward/backward within the same stable
+Package identity. Serve checks target authorization, data compatibility and
+existing capacity for each explicit operation; a display name is not identity.
+Default OPL App Runtime updates, unrelated-application replacement, arbitrary
+image installation and deployment configuration/exposure changes still require
+an authorized administrator. Short downtime is allowed and disclosed. Capacity
+failure offers another Workspace or a separately confirmed new-Workspace quote,
+not automatic expansion or a data reset. Platform-default changes do not mutate
+existing deployments. Account owners retain their separately authorized purchase
+and Workspace lifecycle operations. Opening an application does not universally require a Cloud account.
+
+Customer/Tenant disable blocks new Cloud management commands only. It does not
+implicitly stop applications, cancel subscriptions/renewal, delete data/resources,
+revoke Gateway Keys or refund money; authorized in-flight operations can still
+recover. Entitlement expiry and explicit high-consequence actions keep their own
+policies. First-cut customer management is view/admit/enable/disable; broader
+multi-member UI is deferred, not removed from the domain model.
 
 An explicitly configured pass-through entry leaves visitor authentication to the
 application: the current IBD UI can be anonymous, while OPL App can require its
@@ -1186,7 +1218,7 @@ applications.
 
 ```text
 Default App: approved Runtime Release + built-in UI ──────────────────┐
-Agent: Package + approved Runtime + explicit UI choice -> Build OCI ─┤
+Agent: Package + approved active Runtime/WebUI policy -> Build OCI ─┤
                                                                   v
 Workspace accepted quote/order -> Fabric confirmed resource refs -> Serve
                        Serve runtime adapter -> readiness -> access activation

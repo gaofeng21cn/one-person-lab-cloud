@@ -10,7 +10,7 @@
 面向普通 SaaS 用户提供默认 OPL App，以及可选官方和私有 Agent 的构建、部署、运行与更新体验；Gateway 提供模型能力，Workspace 提供持续运行环境。商业主线是 AI 能力/Token 服务，Workspace 按批准套餐收费。
 
 - Agent Package 是标准能力包；OCI 是可部署制品；Workspace 是付费环境；Runtime Instance 是某次运行实例。四者不是同义词。
-- 客户可直接使用默认 OPL App，也可选择 Agent 版本，再确认套餐和模型；Package 与独立 WebUI 都不是新 Workspace 的必填前提。Runtime 从管理员批准目录选择；未显式选择时在报价前解析批准默认版本并冻结，不接受任意镜像地址。
+- 客户可直接使用默认 OPL App，也可选择 Agent 版本，再确认套餐和模型；Package 与独立 WebUI 都不是新 Workspace 的必填前提。客户不选Runtime/WebUI；平台在构建/默认App准入时解析管理员active的获准兼容默认策略并冻结，不接受任意镜像地址。2026-10-09的权限、清理、50制品限额与交互细化见[当前决定](../../decisions.md#2026-10-09-task-oriented-console-and-customer-agent-version-lifecycle)；技术合同/原型未随文字自动实现。
 - 一个 Workspace 至多一个当前应用部署：默认 App 引用 Runtime Release，自定义 Agent 引用 CapabilityVersion；同一版本可被多个 Workspace 使用。更新显式发起，不自动替换，Workspace不复制Serve当前部署。
 - 主攻 Tencent/TKE；Local-Docker保留独立回归与资格；提供商通过 Fabric 能力契约体现。某提供商不具备能力时明确拒绝，不静默换提供商。
 - Sub2API 是身份认证、可消费钱包、Key、Token 用量权威；Cloud 不存密码、不复制可消费余额、不创建第二钱包。
@@ -100,7 +100,7 @@
 | F01 | 登录/退出、当前账户、Tenant/成员权限 | Gateway认证，Cloud权限与钱包主体映射 |
 | F02 | 默认/自建分组、私有与官方Agent可见性 | Tenant隔离、官方版本可部署的显式可见性 |
 | F03 | 管理员准入Runtime/WebUI与资源/价格目录 | 不可变版本、兼容性、有效期和可用性 |
-| F04 | 上传Package与后续版本、选择WebUI、确认构建 | 可恢复上传、明确任务ID、不可变构建输入 |
+| F04 | 上传标准Package与名称/版本、消费active默认组合、确认构建 | 可恢复上传、明确任务ID、不可变构建输入 |
 | F05 | 构建进度/日志/失败重试 | 原任务不覆盖，重试新任务，无自动收费 |
 | F06 | Agent详情/版本、归档与制品删除保护 | 引用中的版本不可删除，历史保留 |
 | F07 | 选择Agent/套餐/模型、检查与报价 | 钱包/资源/兼容性准入，接受确切报价 |

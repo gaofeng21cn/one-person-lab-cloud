@@ -257,6 +257,16 @@ their legacy controls receive no cloud Workspace. The
 [roadmap](roadmap.md#cloud-identity-customer-workspace-read-2026-09-30) owns the
 missing maintenance outcomes.
 
+The [October 9 Console decision](decisions.md#2026-10-09-task-oriented-console-and-customer-agent-version-lifecycle)
+is a target refinement, not an implementation claim. Publisher currently asks
+for Runtime/WebUI and initially chooses approved catalog rows, not an effective
+policy readback. Agent detail presents only the first matching artifact per
+Package upload and lacks the complete rebuild/deploy/delete actions. Runtime
+Control already has default-policy owner methods; customer switching, cloud
+quota/deletion and the coherent Admin browser path require the explicit
+[Console outcome](roadmap.md#task-oriented-console-and-agent-version-lifecycle).
+Do not make legacy maintenance an implicit fallback for Cloud identity.
+
 The following source map applies to the retained Control Plane API:
 
 | Console area | Authority | Retained Control Plane projection |

@@ -2,6 +2,8 @@
 
 > 这是新方案的目标交互与视觉交接，不是现有产品已实现声明。应用默认与两种产品组合是**2026-09-29已采用、待W01贯通的合同迁移**，产品定义见[12](12_product_spec.md)，实施与验收见[14](14_implementation_work_packages.md)，前端绑定见[04](04_frontend_interaction_spec.md)。03/机器inventory和可点击结构原型`ui-prototype/index.html`尚未因此自动支持新选择，本轮不修改它们。原型顶部持续标注“交互原型，示例数据”，网络被CSP禁用；示例金额不建立实际价格或收费政策。
 
+> 2026-10-09交互细化已采用：[当前业务决定](../../decisions.md#2026-10-09-task-oriented-console-and-customer-agent-version-lifecycle)、[Console交互owner](../../product/console-experience-guide.md)、[Workspace交互owner](../../product/workspace-experience.md)。固定的是任务、权限、状态、确认与验收，不是本文件原型的像素值。旧04/03字段、原型和生成任务清单仍是待迁移投影，不能据它们恢复客户Runtime/WebUI选择或旧Admin-only授权；缺口见[roadmap](../../roadmap.md#task-oriented-console-and-agent-version-lifecycle)。
+
 ## 1. 继承什么，改变什么
 
 设计来源：
@@ -43,9 +45,9 @@ OPL Cloud
 │      └─ 历史裸资源：部署到已有资源（adopt，不重购）
 ├─ OPL Gateway：服务信息 / 用量 / API密钥
 ├─ 费用：订阅与周期 / 交易记录
-├─ 设置：个人账户 / 成员 / 分组
+├─ 账户菜单：身份 / 安全退出（首版不扩成员/分组管理）
 └─ 平台管理（独立权限）
-   ├─ Tenant管理：访问、子Workspace动作、托管与恢复
+   ├─ 客户管理：查看 / 准入 / 启用 / 停用（不连带停机、删资源或退款）
    ├─ 运行底座与界面：Runtime / WebUI / 发布者空间 / 默认构建策略
    ├─ 资源与价格政策：计算 / 存储 / 组合价格 / 退款 / 保留
    ├─ 操作与审计
@@ -75,7 +77,7 @@ OPL Cloud
 
 ### 3.3 智能体与构建
 
-卡片先名称、官方/私有来源、确切版本、是否可部署，再用途和详情。上传主按钮位于右上；“构建记录”是同一任务域子页。构建详情左侧当前阶段及结果，右侧固定输入；日志默认收起。成功是推送、Capability登记和所需artifact receipt都被确认，不是主进程退出0；详情固定展示用户确认的精确Runtime与WebUI selection。
+卡片先名称、官方/私有来源、确切版本、是否可部署，再用途和详情。上传主按钮位于右上；“构建记录”是同一任务域子页。构建详情左侧当前阶段及结果，右侧固定输入；日志默认收起。成功是推送、Capability登记和所需artifact receipt都被确认，不是主进程退出0；主表单只保留标准Package、名称/版本；平台active策略解析获准Runtime/WebUI并冻结输入。精确输入属于折叠技术详情，不是客户选版器。显示同Package的所有构建制品，“有可用更新 → 重新构建 → 确认切换”分开。版本页区分本地清理与云端删除，显示Tenant云端制品用量/50；引用保护和计数来自owner，不由浏览器猜测。
 
 ### 3.4 新建工作区：一次确认应用+套餐
 
@@ -91,11 +93,11 @@ OPL Cloud
 | 页面场景 | 选择控件与摘要 | 合同/执行含义（待W01贯通） |
 |---|---|---|
 | 未选Package、未选独立WebUI | 默认OPL App及native WebUI；获准精确Runtime版本可读 | `WorkspaceApplicationSelection = opl_app(runtimeVersionId)`；直接部署RuntimeRelease不可变OCI，不创建Package/Build |
-| 制作Agent，必须选择独立界面 | PackageVersion、获准RuntimeRelease、获准独立WebUI，三项确切版本均必需 | CreateBuildRequest的packageVersionId/runtimeVersionId/webuiVersionId；Build产生版本，部署时选择`agent(capabilityVersionId)` |
+| 制作Agent，平台固定active独立界面/Runtime | PackageVersion、获准RuntimeRelease、获准独立WebUI，三项确切版本均必需 | CreateBuildRequest的packageVersionId/runtimeVersionId/webuiVersionId；Build产生版本，部署时选择`agent(capabilityVersionId)` |
 
-只允许表内两种组合。缺Package或缺独立WebUI的半选Agent不可提交，说明缺少哪项输入，服务端同样拒绝；不自动补包/界面、不忽略意图、不降为默认App。默认App的内置UI不伪装为独立目录版本，缺少其发布契约时不允许默认App准入。
+只允许表内两种组合。客户只传Package是合法上传交互，平台必须补全并冻结已配置active的获准Runtime/WebUI输入；没有完整有效策略则明确拒绝Build，不猜测补包/界面、不忽略意图、不降为默认App。默认App的内置UI不伪装为独立目录版本，缺少其发布契约时不允许默认App准入。
 
-“自选Agent”入口显示已ready的确切CapabilityVersion及其冻结Runtime/UI来源；要修改Runtime或WebUI，回到制作页生成新版本，不在部署页改写已有产物。管理员策略只为尚未选择的输入提供候选，不能覆盖显式选择或已经确认的Runtime/UI。已选版本撤销则阻止提交并说明原因，不改选latest/default。
+“自选Agent”入口选择已ready的确切CapabilityVersion；冻结Runtime/UI来源放技术详情，不是客户选版器。Admin更新active策略后，客户可从原Package显式重新构建，再确认切换；不能在部署页改写旧产物。新构建解析当前有效策略，已接受Build/重试保持原冻结输入。版本撤销则阻止新的使用并说明原因，不自动改选latest/default。
 
 默认和自选的进度页、Workspace详情、购买及访问体验共用一套路径：Workspace购买与资源权益→Fabric资源→Serve运行/readiness/access→Ledger证据读回；不新增默认部署服务。
 
@@ -133,7 +135,7 @@ Tenant页面把访问状态与子Workspace恢复/删除状态并列：重新启�
 | 危险动作 | 显示确切对象、影响、原政策，名称输入与未勾选确认；未受理可取消，已受理不假取消 |
 | Secret | 显式单次模态展示；关闭/离页/退出从DOM和内存清除，不持久化 |
 | 目录下架 | tombstone只撤去目录可用性，不声称物理Registry字节已删除 |
-| Tenant重新启用 | 恢复访问后只Resume原Tenant停用所暂停、仍付费且资源存在的子环境；skipped显式原因，不重购/续费 |
+| Tenant重新启用 | 只恢复新Cloud管理命令权限；不自动Resume、采购或续费Workspace。停用未自动暂停应用，欠费到期或历史暂停的恢复须走独立授权操作 |
 | Tenant删除恢复 | deletedAt+15天内只恢复身份/保留资产权限，已销毁CVM/CBS不复活 |
 
 ## 5. 状态设计与窄屏焦点
@@ -156,8 +158,8 @@ Tenant页面把访问状态与子Workspace恢复/删除状态并列：重新启�
 |---|---|---|
 | F01 | #login、#settings、#admin-tenants | 示例登录/退出、邀请/角色/移除、Tenant开通与账单绑定确认 |
 | F02 | #agents、#settings | 搜索/范围、分组、官方/私有标签、创建/归档确认 |
-| F03 | #admin-catalog、#admin-pricing | 既有目录/政策表单；待验证三输入及默认策略不能覆盖显式选择的语义 |
-| F04 | #upload | 既有三步上传；待接精确Runtime/独立WebUI选择及缺任一输入禁提交 |
+| F03 | #admin-catalog、#admin-pricing | 既有目录/政策表单；待验证Admin active策略固定完整获准输入；新Build用当前策略，已接受Build/重试保留原输入，客户无选版器 |
+| F04 | #upload | 既有三步上传；待接平台active的精确Runtime/独立WebUI策略（旧原型选版器不代表新交互）及缺任一输入禁提交 |
 | F05 | #build | 既有阶段/日志fixture；待迁移精确输入分支和artifact receipt读回 |
 | F06 | #agent-detail | 版本来源、部署入口、归档与引用阻止下架 |
 | F07 | #deploy | 既有四步、报价/续费交互；待迁移默认OPL App/自选Agent及一次确认应用+套餐 |
@@ -228,7 +230,7 @@ CBS原盘缩容、混合升降、相同配置no-op、未经批准转换在报价
 以下是12/14所列后续实现的验收要求，不是本轮已通过的测试记录；不新增服务，不访问生产，不修改既有原型证据或机器清单。
 
 - **默认新建**：在真实React页面不选Agent/独立WebUI，仍能看清获准OPL App版本、native WebUI、套餐与费用，一次确认后后台部署；无Package/Build前置和伪历史。最终打开Serve当前应用，而非仅见资源ready。
-- **自选Agent**：上传Package并选择精确Runtime和独立WebUI，三项输入穿过Build、CapabilityVersion、报价和部署；Runtime策略更新不能覆盖选择。服务端拒绝缺Package或独立WebUI的半选组合，UI说明与错误可聚焦。
+- **自选Agent**：客户上传标准Package及名称/版本，平台读取active策略并固定精确Runtime和独立WebUI；三项输入穿过Build、CapabilityVersion、报价和部署。策略更新不覆盖旧Build/重试；无有效组合或不兼容时明确拒绝。上传页不再要求客户选版。
 - **异步与丢响应**：提交后返回、刷新、网络中断及后端重启均定位同一ownerOperation/receipt，已知Operation后不重发create；初次响应丢失按04的持久幂等接受端点取回原身份，不再次扣费/采购/构建。unknown、资源已ready但应用不可用、receipt未确认分别展示；Operation终态不代替所需事实和证据。
 - **TKE真实终点**：在批准`tencent-tke` profile/套餐下读回精确OCI、资源与持久数据、Serve readiness/access、凭据注入和实际WebUI响应，并与原应用选择及receipt一致。三输入Agent Build产物和默认RuntimeRelease直部署两种组合都要覆盖；Local-Docker通过不替代TKE通过。
 - **证据与权限**：Cloud合同/组件/集成检查只证明其层次；Instance验收由`opl-instance-medopl`保护流程提供绑定同一Candidate SHA/digest的receipt和真实读回。普通本地/E2E不得访问生产私网、采购/删除真实CVM/CBS或扣真实费用。新交互桌面/窄屏、焦点、默认与自选分支截图须在实现后独立取证，不挪用旧截图。

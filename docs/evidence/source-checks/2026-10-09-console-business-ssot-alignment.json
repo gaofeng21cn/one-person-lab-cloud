@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_console_business_ssot_alignment_source_check",
+  "revision": 1,
+  "recordedAt": "2026-10-09T12:59:54.253106+00:00",
+  "owner": "OPL Cloud canonical product/documentation owner",
+  "evidenceLayer": "documentation_only",
+  "baseSourceSHA": "b957655950f3dc53961fc6f589d4e18cb9b8f238",
+  "objective": "Persist the user-approved Console tasks, Agent version permissions, administrator active defaults, data-safe cleanup and per-Tenant cloud artifact limit in existing canonical owners before implementation.",
+  "inputs": {
+    "sourceFilesChanged": false,
+    "generatedContractsChanged": false,
+    "documents": [
+      {
+        "path": "docs/agent-lifecycle.md",
+        "sha256": "sha256:5e1f9c999fe86ce12e6774296173f008cd72cefd55bb5aaec0445342e589ed45"
+      },
+      {
+        "path": "docs/architecture.md",
+        "sha256": "sha256:48b1bccbe0bf8ce66355e32fec772746692456fc150f32b7b07efd4fb59105e9"
+      },
+      {
+        "path": "docs/decisions.md",
+        "sha256": "sha256:7086a33d18e49fb026e554a3c30b9f097122fe723e2caabb2248885d95b00b20"
+      },
+      {
+        "path": "docs/implementation-architecture.md",
+        "sha256": "sha256:7557efb058f4911eee892960a99437641a82334d46a8aec9abe7b90d3b3da672"
+      },
+      {
+        "path": "docs/invariants.md",
+        "sha256": "sha256:fe220a3a75c0b7cd764570d2852e32277eeac2c3bc85d611c8bed3bbdc2c984d"
+      },
+      {
+        "path": "docs/product/console-experience-guide.md",
+        "sha256": "sha256:adfa561ee300f91a0052327bf59efc67327722c1098be0c36ec5c540d71cea19"
+      },
+      {
+        "path": "docs/product/workspace-experience.md",
+        "sha256": "sha256:ce068a771d25b768e295af132f6802da3b313556409343b0d242d4a4de234e58"
+      },
+      {
+        "path": "docs/roadmap.md",
+        "sha256": "sha256:b39d36464e0526a332cda8ff7fe705d8bb6e6e33e984b92836e694d68ced8a5f"
+      },
+      {
+        "path": "docs/spec/target/00_master_index.md",
+        "sha256": "sha256:ecf3dc31cbb81e20837ef58d83ef5a4adf878ffb0b6924e460d5a2ce0d9404e7"
+      },
+      {
+        "path": "docs/spec/target/11_ui_ux_design.md",
+        "sha256": "sha256:adf3ba212777e0e694acbbd1658b55c122a8056e2ad1dc6d225663771654a98e"
+      },
+      {
+        "path": "docs/spec/target/12_product_spec.md",
+        "sha256": "sha256:e46d158a956a95541d7bf6edfe2b6c7752666c5301921aa5fa4d944778d0145a"
+      },
+      {
+        "path": "docs/status.md",
+        "sha256": "sha256:b266a3ac13c9dffcbf01fc5441d0cee81596bb8996e8a89d3352a064c4e92b1a"
+      }
+    ]
+  },
+  "verification": {
+    "focused": {
+      "command": "npm run verify:local:focused -- --base b957655950f3dc53961fc6f589d4e18cb9b8f238",
+      "result": "PASS",
+      "executedChecks": [
+        "Development plan freshness",
+        "Git committed whitespace",
+        "Git staged whitespace",
+        "Git whitespace"
+      ],
+      "behaviorTestsExecuted": false
+    },
+    "staticDocumentConsistency": {
+      "result": "PASS",
+      "documentCount": 12,
+      "newRelativeLinksChecked": 20,
+      "checks": {
+        "dated_decision": true,
+        "old_global_admin_only_removed": true,
+        "customer_picker_removed_from_product": true,
+        "tenant_50_limit": true,
+        "separate_local_cloud_actions": true,
+        "unimplemented_not_production": true,
+        "generated_contracts_and_source_unchanged": true
+      },
+      "evidenceLayer": "documentation_only",
+      "behaviorTestsExecuted": false,
+      "productionAcceptance": false
+    },
+    "ownerReview": {
+      "result": "reviewed_findings_resolved",
+      "scope": "documentation diff and same-rule conflicts only",
+      "resolvedFindings": [
+        "Removed remaining human-selected Runtime/WebUI wording in lifecycle, master and UI specification, including historical acceptance projections.",
+        "Re-enable restores management permission without implicitly resuming Workspaces."
+      ],
+      "limitations": "Not a code, machine-contract, runtime or production review."
+    },
+    "environmentRecovery": {
+      "firstAttempt": "ERR_MODULE_NOT_FOUND: yaml in isolated worktree",
+      "resolution": "Reused installed dependencies only after package-lock.json bytes matched the unchanged checkout; no source or lockfile patch."
+    }
+  },
+  "authorizationBoundary": {
+    "onlyCanonicalDocumentationChanged": true,
+    "ssotWriter": "user-authorized supervisor session",
+    "noDeployment": true,
+    "noPurchase": true,
+    "noDeletion": true,
+    "noRefund": true,
+    "otherLanesUnchanged": true
+  },
+  "notClaimed": [
+    "implemented customer switching",
+    "enforced live Tenant quota",
+    "cloud artifact deletion",
+    "Candidate qualification",
+    "TKE deployment",
+    "production acceptance"
+  ],
+  "nextConsumer": {
+    "owner": "Console business implementation coordinator with bounded domain owners",
+    "entry": "docs/roadmap.md#task-oriented-console-and-agent-version-lifecycle",
+    "action": "Consume this exact documentation commit and source-content hashes; reuse passed owner evidence, implement only missing seams, append actual RED/GREEN/browser receipts, then hand affected artifacts to the existing serial TKE integration owner.",
+    "ssotWritePermission": false
+  }
+}
