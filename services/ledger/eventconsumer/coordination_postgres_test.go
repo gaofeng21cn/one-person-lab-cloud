@@ -1112,3 +1112,100 @@ func TestDomainInboxAcceptsEveryCurrentProducerShape(t *testing.T) {
 		t.Fatalf("build claiming serve readiness = %v, want PermissionDenied", err)
 	}
 }
+
+// deletionCoordinationRequest builds the confirmed Workspace deletion evidence
+// the Workspace owner records after Serve and Fabric confirmed the original
+// runtime and resources absent. The receipt names the deletion's own accepted
+// DELETEWORKSPACE commit, not the original launch order.
+func deletionCoordinationRequest() *api.AppendReceiptRequest {
+	scope := &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-local"}}}
+	workspace, deletion := "workspace-local", "deletion-operation-local"
+	resource := &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, Id: proto.String(workspace)}
+	commit := &api.OwnerCommitEvidence{Owner: api.OwnerEnum_OWNER_ENUM_WORKSPACE, OperationId: deletion, ResourceId: workspace,
+		AcceptedInputDigest: "sha256:" + strings.Repeat("c", 64), CommittedVersion: 1,
+		AcceptedAt: timestamppb.New(time.Now().Add(-time.Minute)), AuthorizationContextId: "deletion-authorization", ActorId: "actor-local",
+		Scope: scope, AcceptedAction: api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEWORKSPACE, AuthorizationResource: resource,
+		ContinuationResources: []*api.AuthorizationResource{resource}}
+	return &api.AppendReceiptRequest{Context: &api.CallContext{RequestId: "request-deletion", IdempotencyKey: "append-deletion", ActorId: "actor-local", Scope: scope, AcceptedOperationGrantId: proto.String("grant-deletion")},
+		Receipt:        &api.Receipt{Kind: api.ReceiptKindEnum_RECEIPT_KIND_ENUM_PROVIDER_ACTION, Owner: api.OwnerEnum_OWNER_ENUM_WORKSPACE, OperationId: proto.String(deletion), Outcome: api.ReceiptOutcomeEnum_RECEIPT_OUTCOME_ENUM_CONFIRMED, EvidenceSummary: "Workspace deletion confirmed: the original application runtime and provider resources are absent."},
+		EvidenceDigest: "sha256:" + strings.Repeat("d", 64), OwnerEvidenceReference: deletion, OwnerCommitEvidence: commit}
+}
+
+// TestDeletionReceiptPostgresWirePersistence proves the deletion evidence path
+// end to end against real Ledger persistence: the confirmed deletion is recorded
+// from the Workspace owner's own accepted commit, read back by reference by both
+// the refunding owner and the public reader, replays identically, and neither a
+// forged commit nor the generic writer can mint it.
+func TestDeletionReceiptPostgresWirePersistence(t *testing.T) {
+	db, s, owners, client, fabric := coordinatedService(t)
+	ctx := context.Background()
+	request := deletionCoordinationRequest()
+	owners.commit = proto.Clone(request.OwnerCommitEvidence).(*api.OwnerCommitEvidence)
+
+	first, err := client.AppendReceipt(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.GetId() == "" || first.GetKind() != api.ReceiptKindEnum_RECEIPT_KIND_ENUM_PROVIDER_ACTION || first.GetOwner() != api.OwnerEnum_OWNER_ENUM_WORKSPACE || first.GetOutcome() != api.ReceiptOutcomeEnum_RECEIPT_OUTCOME_ENUM_CONFIRMED || first.GetCreatedAt() == nil {
+		t.Fatalf("receipt=%v", first)
+	}
+	if owners.commitReads != 1 {
+		t.Fatalf("the Workspace commit was read back %d times", owners.commitReads)
+	}
+	// Replaying by a new key returns the identical receipt rather than a second one.
+	replay := proto.Clone(request).(*api.AppendReceiptRequest)
+	replay.Context.RequestId, replay.Context.IdempotencyKey = "request-deletion-retry", "append-deletion-retry"
+	second, err := client.AppendReceipt(ctx, replay)
+	if err != nil || !proto.Equal(first, second) {
+		t.Fatalf("replay differs: %v %v", second, err)
+	}
+	read := &api.GetReceiptByReferenceRequest{Context: replay.Context, Owner: "workspace", OwnerEvidenceReference: request.OwnerEvidenceReference}
+	// The contract reads the deletion through the one ReadReceiptByReference
+	// operation. Both the Workspace owner that recorded it and Fabric, which
+	// observes the same reference, resolve it to the identical receipt.
+	for _, reader := range []api.LedgerCoordinationClient{client, fabric} {
+		actual, err := reader.ReadReceiptByReference(ctx, read)
+		if err != nil || !proto.Equal(actual, first) {
+			t.Fatalf("deletion read=%v %v", actual, err)
+		}
+	}
+	// A restart reads the same persisted evidence.
+	restarted := ledger.NewPostgresStore(db)
+	stored, err := restarted.ReadDeletionReceipt(ctx, request.OwnerEvidenceReference)
+	if err != nil || !proto.Equal(stored.Evidence, first) {
+		t.Fatalf("restart read=%v", err)
+	}
+	// The same reference with different evidence is refused, not replaced.
+	conflict := proto.Clone(request).(*api.AppendReceiptRequest)
+	conflict.Receipt.EvidenceSummary = "a different deletion"
+	conflict.OwnerCommitEvidence.AcceptedInputDigest = "sha256:" + strings.Repeat("e", 64)
+	owners.commit = proto.Clone(conflict.OwnerCommitEvidence).(*api.OwnerCommitEvidence)
+	if _, err = client.AppendReceipt(ctx, conflict); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("conflict=%v", err)
+	}
+	// A commit the Workspace owner never accepted is refused before persistence.
+	owners.commit = proto.Clone(request.OwnerCommitEvidence).(*api.OwnerCommitEvidence)
+	owners.commit.OperationId = "another-deletion"
+	forged := proto.Clone(request).(*api.AppendReceiptRequest)
+	forged.Context.IdempotencyKey = "append-deletion-forged"
+	if _, err = client.AppendReceipt(ctx, forged); err == nil {
+		t.Fatal("a deletion the Workspace owner never accepted was recorded")
+	}
+	// The deletion type is read only through its typed coordination path: neither
+	// the generic receipt reader nor the generic list projects it, and its a
+	// launch's funding receipt still resolves to its own type.
+	if _, err = s.store.Receipt(ctx, first.GetId()); err != ledger.ErrReceiptNotFound {
+		t.Fatalf("generic read=%v", err)
+	}
+	page, err := s.store.ListReceipts(ctx, ledger.ReceiptQuery{WorkspaceID: "workspace-local"})
+	if err != nil || len(page.Receipts) != 0 {
+		t.Fatalf("generic list leaked deletion evidence: %v %v", page, err)
+	}
+	if _, err = s.store.RecordReceipt(ctx, ledger.ReceiptInput{Type: ledger.DeletionReceiptType, Status: "completed", Surface: "cloud", WorkspaceID: "workspace-local", IdempotencyKey: "forged-deletion"}); err != ledger.ErrInvalidReceiptInput {
+		t.Fatalf("generic writer=%v", err)
+	}
+	var rows int
+	if err = db.QueryRowContext(ctx, `SELECT count(*) FROM evidence_receipts WHERE receipt_type=$1`, ledger.DeletionReceiptType).Scan(&rows); err != nil || rows != 1 {
+		t.Fatalf("deletion rows=%d %v", rows, err)
+	}
+}

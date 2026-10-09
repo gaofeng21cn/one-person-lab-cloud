@@ -31,9 +31,40 @@ func (s *Server) AppendReceipt(ctx context.Context, r *api.AppendReceiptRequest)
 		return s.appendWalletActionReceipt(ctx, r)
 	case api.ReceiptKindEnum_RECEIPT_KIND_ENUM_LOCAL_NO_CHARGE:
 		return s.appendLocalNoChargeReceipt(ctx, r)
+	case api.ReceiptKindEnum_RECEIPT_KIND_ENUM_PROVIDER_ACTION:
+		return s.appendDeletionReceipt(ctx, r)
 	default:
 		return nil, status.Error(codes.InvalidArgument, "unsupported receipt kind for this owner")
 	}
+}
+
+// appendDeletionReceipt records the confirmed Workspace deletion. The evidence is
+// the Workspace owner's own DELETEWORKSPACE commit, re-read from that owner, so a
+// caller cannot record a deletion the owner never accepted and a refund can rely
+// on evidence that really exists.
+func (s *Server) appendDeletionReceipt(ctx context.Context, r *api.AppendReceiptRequest) (*api.Receipt, error) {
+	if err := ledger.ValidateDeletionReceiptInput(r); err != nil {
+		return nil, receiptError(err)
+	}
+	commit := r.OwnerCommitEvidence
+	if err := s.authorizeReceipt(ctx, r.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT, commit.ResourceId, commit.Scope.GetTenant().GetTenantId(), commit.ActorId); err != nil {
+		return nil, err
+	}
+	if s.Workspace == nil {
+		return nil, status.Error(codes.Unavailable, "Workspace owner readback required")
+	}
+	if err := s.readWorkspaceCommit(ctx, r); err != nil {
+		return nil, err
+	}
+	stored, err := s.store.RecordDeletionReceipt(ctx, r, func(ctx context.Context) error {
+		freshCall := proto.Clone(r.Context).(*api.CallContext)
+		freshCall.AuthorizationContextId = ""
+		return s.authorizeReceipt(ctx, freshCall, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT, commit.ResourceId, commit.Scope.GetTenant().GetTenantId(), commit.ActorId)
+	})
+	if err != nil {
+		return nil, receiptError(err)
+	}
+	return stored.Evidence, nil
 }
 
 func (s *Server) appendLocalNoChargeReceipt(ctx context.Context, r *api.AppendReceiptRequest) (*api.Receipt, error) {
@@ -151,9 +182,10 @@ func (s *Server) readGatewayCharge(ctx context.Context, r *api.AppendReceiptRequ
 }
 
 func (s *Server) ReadReceiptByReference(ctx context.Context, r *api.GetReceiptByReferenceRequest) (*api.Receipt, error) {
-	// One obligation is funded exactly one way, so the two stored receipt types are
-	// disjoint. The reference is read as a wallet action first, then as a Local
-	// no-charge receipt; a reference absent from both is not a funding proof.
+	// Each typed obligation is recorded exactly one way, so the stored receipt
+	// types are disjoint: one owner reference resolves to a funded charge, a Local
+	// no-charge obligation, or a confirmed deletion. A reference absent from all
+	// three is not evidence of any of them.
 	evidence, err := s.ReadWalletActionReceipt(ctx, r)
 	if err == nil {
 		return evidence.Receipt, nil
@@ -162,10 +194,43 @@ func (s *Server) ReadReceiptByReference(ctx context.Context, r *api.GetReceiptBy
 		return nil, err
 	}
 	local, localErr := s.ReadLocalNoChargeReceipt(ctx, r)
-	if localErr != nil {
+	if localErr == nil {
+		return local.Receipt, nil
+	}
+	if status.Code(localErr) != codes.NotFound {
 		return nil, localErr
 	}
-	return local.Receipt, nil
+	return s.readDeletionReceipt(ctx, r)
+}
+
+// readDeletionReceipt returns the recorded deletion receipt by the Workspace
+// owner's own reference. The contract reads it through the one
+// ReadReceiptByReference operation, so this is that path's deletion arm rather
+// than another RPC. DELETEWORKSPACE is not the sole accepted action that may
+// record a deletion: releasing a resource set currently authorizes itself with
+// the accepted resources write, but the deletion evidence is always recorded
+// against the deletion's own operation. The same GETRECEIPT admission the other
+// typed reads use decides delivery, so the refunding owner and the recording
+// owner read the identical receipt.
+func (s *Server) readDeletionReceipt(ctx context.Context, r *api.GetReceiptByReferenceRequest) (*api.Receipt, error) {
+	peer, ok := ownerservice.PeerOwner(ctx)
+	if !ok || (peer != owneridentity.Workspace.Service() && peer != owneridentity.Fabric.Service() && peer != owneridentity.Gateway.Service()) {
+		return nil, status.Error(codes.Unauthenticated, "verified Workspace, Fabric or Gateway peer required")
+	}
+	if err := ownerservice.ValidateCallContext(ctx, r.GetContext()); err != nil {
+		return nil, err
+	}
+	if r.GetOwner() != "workspace" || strings.TrimSpace(r.GetOwnerEvidenceReference()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "original Workspace owner reference required")
+	}
+	stored, err := s.store.ReadDeletionReceipt(ctx, r.OwnerEvidenceReference)
+	if err != nil {
+		return nil, receiptError(err)
+	}
+	if err := s.authorizeReceipt(ctx, r.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT, stored.WorkspaceID, stored.TenantID, stored.ActorID); err != nil {
+		return nil, err
+	}
+	return stored.Evidence, nil
 }
 
 func (s *Server) ReadWalletActionReceipt(ctx context.Context, r *api.GetReceiptByReferenceRequest) (*api.WalletActionReceiptEvidence, error) {
