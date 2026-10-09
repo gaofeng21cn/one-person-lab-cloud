@@ -465,6 +465,14 @@ func storageDestroyReadbackConfirmsAbsence(volume StorageVolume) bool {
 	}
 }
 
+// StorageDeletionAbsent reports whether a provider readback proves that the
+// exact prepaid storage volume no longer exists. It is the read-only absence
+// predicate FabricCoordination.DeleteResources uses to confirm a storage handle
+// from the owning provider surface instead of from a destroy call returning.
+func StorageDeletionAbsent(volume StorageVolume) bool {
+	return storageDestroyReadbackConfirmsAbsence(volume)
+}
+
 func (s *Service) SyncStorageVolume(ctx context.Context, volumeID string) (StorageVolume, error) {
 	s.mu.Lock()
 	existing := s.volumes[volumeID]

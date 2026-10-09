@@ -884,6 +884,23 @@ func (s *Service) releaseMachineOwnership(ctx context.Context, resourceID string
 	return s.machineOwnership.SaveMachineOwnership(ctx, ownership)
 }
 
+// ComputeDeletionAbsent reports whether a provider readback proves that the exact
+// compute allocation and the machine/CVM it owned no longer exist. It is the
+// read-only absence predicate FabricCoordination.DeleteResources uses, so a
+// released compute handle is confirmed from the owning provider surface instead
+// of from a destroy call returning.
+func ComputeDeletionAbsent(allocation ComputeAllocation) bool {
+	switch allocation.Provider {
+	case "tencent-tke":
+		return validTencentComputeAbsenceEvidence(allocation)
+	case "local-docker":
+		return allocation.Status == "external_deleted" && allocation.MachinePresent != nil && !*allocation.MachinePresent &&
+			allocation.CVMStatus == "NOT_FOUND" && allocation.TKEStatus == "NOT_FOUND"
+	default:
+		return false
+	}
+}
+
 func isExternallyDeletedComputeStatus(status string) bool {
 	switch status {
 	case "external_deleted", "deleted", "missing":

@@ -39,6 +39,12 @@ func NewTencentDispatcher(service *fabric.Service, provider TencentResourceProvi
 
 func (d *tencentDispatcher) Provider() string { return providerTencentTKE }
 
+// DeleteResource releases one kind of the accepted resource set through the same
+// internal Fabric service and provider the HTTP runtime routes use.
+func (d *tencentDispatcher) DeleteResource(ctx context.Context, in ResourceDeletionIntent, kind string) (ResourceDeletionFact, error) {
+	return deleteResourceFromOwnSurface(ctx, d.service, in, kind)
+}
+
 func (d *tencentDispatcher) BindSecret(ctx context.Context, in SecretBindIntent) (SecretBindResult, error) {
 	bound, err := d.provider.BindWorkspaceApplicationSecret(ctx, fabric.SecretBindInput{AccountID: in.TenantID, WorkspaceID: in.WorkspaceID, RuntimeInstanceID: in.RuntimeInstanceID, SecretRef: in.SecretRef, Purpose: in.TargetSlot, Fingerprint: in.Fingerprint, TargetSlot: in.TargetSlot})
 	if err != nil {
