@@ -239,6 +239,15 @@ func TestRetentionAndRefundPolicyLifecycle(t *testing.T) {
 	if refund.GetAlgorithm() != api.RefundPolicyVersionAlgorithmEnum_REFUND_POLICY_VERSION_ALGORITHM_ENUM_WORKSPACE_DELETE_REFUND_V1 || refund.GetRetentionPolicyVersionId() != retention.GetId() {
 		t.Fatalf("refund = %+v, want the bound workspace-delete-refund-v1", refund)
 	}
+	// The administrator reads the same row back through the list route, which
+	// scans the stored hyphenated algorithm into the published member.
+	page, err := service.ListRefundPolicyVersions(ctx, &api.ListRefundPolicyVersionsRpcRequest{Context: platformCall("admin", "req-f3", "idem-f3")})
+	if err != nil {
+		t.Fatalf("list refund policies: %v", err)
+	}
+	if len(page.GetItems()) != 1 || page.GetItems()[0].GetAlgorithm() != api.RefundPolicyVersionAlgorithmEnum_REFUND_POLICY_VERSION_ALGORITHM_ENUM_WORKSPACE_DELETE_REFUND_V1 || page.GetItems()[0].GetId() != refund.GetId() {
+		t.Fatalf("listed refund policies = %+v, want the created workspace-delete-refund-v1 row", page.GetItems())
+	}
 }
 
 // TestUnavailableAvailabilityIsRefused proves the owner refuses to silently store

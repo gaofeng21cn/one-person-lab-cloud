@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_resource_catalog_refund_enum_encoding_repair_source_check",
+  "revision": 1,
+  "recordedAt": "2026-10-09T18:45:00+00:00",
+  "owner": "OPL Cloud integration session (first Tencent/TKE default App launch)",
+  "evidenceLayer": "implementation_and_source_check_only",
+  "baseSourceSHA": "fe6daedac9c964162947e3a1c3bad230910d9881",
+  "branch": "codex/first-tke-default-app-closure",
+  "objective": "Repair the recorded Resource Catalog defect that made the platform administrator's refund policy list unencodable once one row exists, so the resource_catalog platform admission phase can read its declared facts instead of a 502.",
+  "inputs": {
+    "defectReceipt": "docs/evidence/source-checks/2026-10-08-refund-policy-list-enum-encoding-defect.json",
+    "forcingLiveEvidence": "opl-instance-medopl Platform Catalog Admission run 37974271283 against Candidate fe6daeda: the resource_catalog phase stopped at refundPoliciesStatusBefore=502 before any write, while the price and retention lists answered 200 in the same session"
+  },
+  "authorization": "The existing first-launch closure authorization: the phase's declared route set is the owner's own route, and the recorded defect names one owner function whose repair the phase requires. No production secret, purchase, delete or refund action is involved.",
+  "changes": {
+    "services/resource-catalog/catalog/policies.go": "scanRefundPolicy now maps the stored algorithm through refundPolicyAlgorithmEnum, which normalizes the contract's hyphenated stored spelling onto the wire enum's underscore members before the membership check, matching planChangePolicyVersionEnum in the same file",
+    "services/resource-catalog/catalog/policy_test.go": "TestRefundPolicyScanKeepsTheStoredPolicyPublishable scans the stored hyphenated algorithm and pins both the published wire member and that the public codec marshals the list page",
+    "services/resource-catalog/catalog/service_postgres_test.go": "TestRetentionAndRefundPolicyLifecycle reads the created refund policy back through ListRefundPolicyVersions, the real administrator list route's owner call"
+  },
+  "verification": {
+    "redUnit": {
+      "command": "cd services/resource-catalog && go test ./catalog/ -run TestRefundPolicyScanKeepsTheStoredPolicyPublishable -count=1",
+      "observed": "FAIL: scanned algorithm = REFUND_POLICY_VERSION_ALGORITHM_ENUM_UNSPECIFIED, want the published workspace-delete-refund-v1 member"
+    },
+    "redPostgres": {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=postgresql://postgres@127.0.0.1:57142/postgres go test ./catalog/ -run TestRetentionAndRefundPolicyLifecycle -count=1",
+      "observed": "FAIL: the listed row carried no algorithm member at all, exactly the live symptom"
+    },
+    "green": [
+      "the same two commands pass after the change (catalog 0.307s and 0.585s)",
+      "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=... go test ./... -count=1 in services/resource-catalog: catalog ok, migrations ok, cmd/server has no test files"
+    ]
+  },
+  "notClaimed": [
+    "no Candidate was built, no Instance deployment was made and no live route was read by this record; the live 502 remains until a Candidate carrying this repair is deployed and read back",
+    "the recorded defect's open transport observation about the live 502 body envelope is not addressed here"
+  ],
+  "nextConsumers": [
+    "the next Candidate built from this branch carries the repair",
+    "the Instance platform-catalog-admission resource_catalog phase must then record the declared facts instead of the refused read"
+  ],
+  "secrets": "none"
+}

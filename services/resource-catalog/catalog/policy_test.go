@@ -1,10 +1,13 @@
 package catalog
 
 import (
+	"database/sql"
 	"encoding/json"
 	"os"
 	"testing"
+	"time"
 
+	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/publicjson"
 )
 
@@ -146,5 +149,40 @@ func TestFrozenPolicyIsPublishable(t *testing.T) {
 	// The renewal policy the owner stores on the same version must publish too.
 	if _, err := publicjson.Marshal(renewalPolicy()); err != nil {
 		t.Fatalf("the frozen renewal policy is not publishable: %v", err)
+	}
+}
+
+// refundPolicyRow stubs one stored refund policy row for the scan mapping.
+type refundPolicyRow struct{ algorithm string }
+
+func (r refundPolicyRow) Scan(dest ...any) error {
+	*(dest[0].(*string)) = "refund-1"
+	*(dest[1].(*string)) = "refund-1"
+	*(dest[2].(*string)) = r.algorithm
+	*(dest[3].(*string)) = "retention-1"
+	*(dest[4].(*string)) = "720-hour policy"
+	validFrom := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	*(dest[5].(*time.Time)) = validFrom
+	*(dest[6].(*sql.NullTime)) = sql.NullTime{}
+	*(dest[7].(*time.Time)) = validFrom
+	return nil
+}
+
+// TestRefundPolicyScanKeepsTheStoredPolicyPublishable proves the list and quote
+// scan maps the stored hyphenated algorithm onto the published wire member. The
+// contract spells the stored value with hyphens and its enum members with
+// underscores, so a separator mismatch leaves the required `algorithm` property
+// with no published value: the public coders refuse the page and every
+// administrator refund list answers 502 once one row exists.
+func TestRefundPolicyScanKeepsTheStoredPolicyPublishable(t *testing.T) {
+	scanned, err := scanRefundPolicy(refundPolicyRow{algorithm: "workspace-delete-refund-v1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scanned.GetAlgorithm() != api.RefundPolicyVersionAlgorithmEnum_REFUND_POLICY_VERSION_ALGORITHM_ENUM_WORKSPACE_DELETE_REFUND_V1 {
+		t.Fatalf("scanned algorithm = %v, want the published workspace-delete-refund-v1 member", scanned.GetAlgorithm())
+	}
+	if _, err := publicjson.Marshal(&api.RefundPolicyVersionPage{Items: []*api.RefundPolicyVersion{scanned}}); err != nil {
+		t.Fatalf("the public coder refused the scanned refund policy page: %v", err)
 	}
 }

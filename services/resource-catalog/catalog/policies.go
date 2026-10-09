@@ -318,13 +318,28 @@ func scanRefundPolicy(row rowScanner) (*api.RefundPolicyVersion, error) {
 	if err := row.Scan(&v.Id, &v.VersionLabel, &algorithm, &v.RetentionPolicyVersionId, &v.CustomerTerms, &validFrom, &validUntil, &createdAt); err != nil {
 		return nil, err
 	}
-	v.Algorithm = api.RefundPolicyVersionAlgorithmEnum(api.RefundPolicyVersionAlgorithmEnum_value["REFUND_POLICY_VERSION_ALGORITHM_ENUM_"+upper(algorithm)])
+	v.Algorithm = refundPolicyAlgorithmEnum(algorithm)
 	v.ValidFrom = timestamppb.New(validFrom.UTC())
 	if validUntil.Valid {
 		v.ValidUntil = timestamppb.New(validUntil.Time.UTC())
 	}
 	v.CreatedAt = timestamppb.New(createdAt.UTC())
 	return &v, nil
+}
+
+// refundPolicyAlgorithmEnum maps the stored algorithm, which the contract spells
+// with hyphens, onto the wire enum, whose members are spelled with underscores.
+// Reading the stored value with the wrong separator would miss the member and
+// leave the required algorithm property with no published value, so the public
+// coders refuse the page and every refund policy list answers 502 once one row
+// exists.
+func refundPolicyAlgorithmEnum(stored string) api.RefundPolicyVersionAlgorithmEnum {
+	name := "REFUND_POLICY_VERSION_ALGORITHM_ENUM_" + strings.ToUpper(strings.ReplaceAll(stored, "-", "_"))
+	value, ok := api.RefundPolicyVersionAlgorithmEnum_value[name]
+	if !ok {
+		return api.RefundPolicyVersionAlgorithmEnum_REFUND_POLICY_VERSION_ALGORITHM_ENUM_UNSPECIFIED
+	}
+	return api.RefundPolicyVersionAlgorithmEnum(value)
 }
 
 // scanRetentionPolicy reads one retention policy version row.
