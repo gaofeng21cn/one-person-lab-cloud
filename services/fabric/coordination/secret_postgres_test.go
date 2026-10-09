@@ -40,6 +40,10 @@ func (d *secretDispatcher) EnsureResources(context.Context, coordination.Resourc
 	return nil, fmt.Errorf("resource dispatch not used")
 }
 
+func (d *secretDispatcher) DeleteResource(context.Context, coordination.ResourceDeletionIntent, string) (coordination.ResourceDeletionFact, error) {
+	return coordination.ResourceDeletionFact{}, fmt.Errorf("fixture_provider_delete_unavailable")
+}
+
 func (d *secretDispatcher) BindSecret(_ context.Context, in coordination.SecretBindIntent) (coordination.SecretBindResult, error) {
 	d.calls++
 	if d.conflict {
@@ -77,6 +81,10 @@ func (d *rebindDispatcher) PutManagedSecret(context.Context, coordination.PutMan
 
 func (d *rebindDispatcher) EnsureResources(context.Context, coordination.ResourceIntent) (*coordination.ResourceResult, error) {
 	return nil, fmt.Errorf("resource dispatch not used")
+}
+
+func (d *rebindDispatcher) DeleteResource(context.Context, coordination.ResourceDeletionIntent, string) (coordination.ResourceDeletionFact, error) {
+	return coordination.ResourceDeletionFact{}, fmt.Errorf("fixture_provider_delete_unavailable")
 }
 
 func (d *rebindDispatcher) BindSecret(_ context.Context, in coordination.SecretBindIntent) (coordination.SecretBindResult, error) {

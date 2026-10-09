@@ -65,20 +65,39 @@ func (s *Service) ReadResources(ctx context.Context, r *api.ResourceReadbackRequ
 	if observation == "unknown" {
 		out.ErrorCode = "DEPENDENCY_UNAVAILABLE"
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id,kind,COALESCE(provider_resource_ref,''),observation_result,observed_at FROM fabric.resources WHERE resource_set_id=$1 ORDER BY kind,id`, setID)
+	recordedDeletions, err := readRecordedDeletions(ctx, tx, setID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT id,kind,COALESCE(provider_resource_ref,''),observation_result,observed_at,COALESCE(deletion_evidence_ref,''),deleted_at FROM fabric.resources WHERE resource_set_id=$1 ORDER BY kind,id`, setID)
 	if err != nil {
 		return nil, persistenceError(err)
 	}
 	defer rows.Close()
+	released := 0
+	resourceFacts := 0
 	for rows.Next() {
 		fact := &api.ResourceFact{}
 		var state string
-		var resourceObserved sql.NullTime
-		if err = rows.Scan(&fact.Id, &fact.Kind, &fact.OpaqueProviderReference, &state, &resourceObserved); err != nil {
+		var resourceObserved, deletedAt sql.NullTime
+		if err = rows.Scan(&fact.Id, &fact.Kind, &fact.OpaqueProviderReference, &state, &resourceObserved, &fact.ReceiptId, &deletedAt); err != nil {
 			return nil, persistenceError(err)
 		}
+		resourceFacts++
 		fact.State = state
-		if fact.OpaqueProviderReference == "" && !resourceObserved.Valid && state == "unknown" {
+		switch {
+		case deletedAt.Valid:
+			// Absence exists only as the owning surface's confirmed readback; the
+			// deletion evidence reference names it.
+			fact.State = DeletionStateAbsent
+			released++
+		case recordedDeletions[fact.Kind].confirmed:
+			fact.State = DeletionStateAbsent
+			fact.ReceiptId = recordedDeletions[fact.Kind].evidenceRef
+			released++
+		case recordedDeletions[fact.Kind].state != "":
+			fact.State = recordedDeletions[fact.Kind].state
+		case fact.OpaqueProviderReference == "" && !resourceObserved.Valid && state == "unknown":
 			fact.State = "not_dispatched"
 		}
 		out.Resources = append(out.Resources, fact)
@@ -89,7 +108,35 @@ func (s *Service) ReadResources(ctx context.Context, r *api.ResourceReadbackRequ
 	if err = rows.Close(); err != nil {
 		return nil, persistenceError(err)
 	}
-	if observation == "confirmed" {
+	// A set whose release has started reports every released kind as its own
+	// fact: the runtime, its Secret binding and the mount binding are released
+	// through their own owning surfaces, so their recorded readbacks are
+	// projected here instead of being inferred from the persisted rows. A pending
+	// or unknown handle is never reported absent, and a kind that is still absent
+	// from the record has not been dispatched yet. A set without a recorded
+	// release keeps the plain persisted-resource shape.
+	allKindsAbsent := true
+	for _, kind := range deleteResourceKinds() {
+		recorded, exists := recordedDeletions[kind]
+		if !exists || !recorded.confirmed {
+			allKindsAbsent = false
+		}
+		if len(recordedDeletions) == 0 || kind == DeletionKindCompute || kind == DeletionKindStorage {
+			continue
+		}
+		fact := &api.ResourceFact{Id: recorded.resourceID, Kind: kind, ReceiptId: recorded.evidenceRef}
+		switch {
+		case !exists:
+			fact.State = "not_dispatched"
+		case recorded.confirmed:
+			fact.State = DeletionStateAbsent
+		default:
+			fact.State = recorded.state
+		}
+		out.Resources = append(out.Resources, fact)
+	}
+	out.AbsenceConfirmed = allKindsAbsent && resourceFacts > 0 && released == resourceFacts
+	if observation == "confirmed" && !out.AbsenceConfirmed {
 		result, readErr := readResourceResult(ctx, tx, setID)
 		if readErr != nil || result.Binding == nil || result.Binding.AccountId == "" || result.Binding.ComputeAllocationId == "" || result.Binding.StorageVolumeId == "" || result.Binding.DataAttachmentId == "" || result.Binding.DataAttachmentOperationId == "" {
 			return nil, status.Error(codes.DataLoss, "confirmed resources lack provider execution evidence")

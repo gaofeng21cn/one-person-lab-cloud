@@ -25,6 +25,12 @@ func NewLocalDispatcher(service *fabric.Service, provider *fabric.LocalDockerPro
 
 func (d *localDispatcher) Provider() string { return providerLocalDocker }
 
+// DeleteResource releases one kind of the accepted resource set through the same
+// internal Fabric service and provider the HTTP runtime routes use.
+func (d *localDispatcher) DeleteResource(ctx context.Context, in ResourceDeletionIntent, kind string) (ResourceDeletionFact, error) {
+	return deleteResourceFromOwnSurface(ctx, d.service, in, kind)
+}
+
 func (d *localDispatcher) BindSecret(ctx context.Context, in SecretBindIntent) (SecretBindResult, error) {
 	bound, err := d.provider.BindWorkspaceApplicationSecret(ctx, fabric.SecretBindInput{AccountID: in.TenantID, WorkspaceID: in.WorkspaceID, RuntimeInstanceID: in.RuntimeInstanceID, SecretRef: in.SecretRef, Purpose: in.TargetSlot, Fingerprint: in.Fingerprint, TargetSlot: in.TargetSlot})
 	if err != nil {

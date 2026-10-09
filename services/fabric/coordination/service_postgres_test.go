@@ -91,6 +91,10 @@ func (d *localFixture) PutManagedSecret(context.Context, coordination.PutManaged
 	return coordination.ManagedSecretResult{}, status.Error(codes.Unimplemented, "fixture Secret write is not used")
 }
 
+func (d *localFixture) DeleteResource(context.Context, coordination.ResourceDeletionIntent, string) (coordination.ResourceDeletionFact, error) {
+	return coordination.ResourceDeletionFact{}, fmt.Errorf("fixture_provider_delete_unavailable")
+}
+
 func (d *localFixture) EnsureResources(_ context.Context, in coordination.ResourceIntent) (*coordination.ResourceResult, error) {
 	d.calls++
 	if d.fail {
