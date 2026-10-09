@@ -318,7 +318,18 @@ func scanRefundPolicy(row rowScanner) (*api.RefundPolicyVersion, error) {
 	if err := row.Scan(&v.Id, &v.VersionLabel, &algorithm, &v.RetentionPolicyVersionId, &v.CustomerTerms, &validFrom, &validUntil, &createdAt); err != nil {
 		return nil, err
 	}
-	v.Algorithm = api.RefundPolicyVersionAlgorithmEnum(api.RefundPolicyVersionAlgorithmEnum_value["REFUND_POLICY_VERSION_ALGORITHM_ENUM_"+upper(algorithm)])
+	// The stored algorithm is the contract's hyphenated literal
+	// (workspace-delete-refund-v1), while the wire enum member spells the same
+	// words with underscores. Reading the stored value with the wrong separator
+	// would silently resolve the unspecified member and make the required public
+	// property unencodable, so only a table hit is accepted.
+	name := "REFUND_POLICY_VERSION_ALGORITHM_ENUM_" + strings.ToUpper(strings.ReplaceAll(algorithm, "-", "_"))
+	value, ok := api.RefundPolicyVersionAlgorithmEnum_value[name]
+	if !ok {
+		v.Algorithm = api.RefundPolicyVersionAlgorithmEnum_REFUND_POLICY_VERSION_ALGORITHM_ENUM_UNSPECIFIED
+	} else {
+		v.Algorithm = api.RefundPolicyVersionAlgorithmEnum(value)
+	}
 	v.ValidFrom = timestamppb.New(validFrom.UTC())
 	if validUntil.Valid {
 		v.ValidUntil = timestamppb.New(validUntil.Time.UTC())
