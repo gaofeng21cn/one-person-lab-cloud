@@ -3,6 +3,7 @@ import test from "node:test";
 import { decodeDto } from "../../apps/console-ui/src/api/dtos.ts";
 
 import type {
+  WorkspaceModelConfigurationDTO,
   WorkspaceDTO,
   WorkspaceGatewayBudgetDTO,
   WorkspaceLaunchResponse,
@@ -22,6 +23,11 @@ import {
   presentWorkspaceRenewal,
   presentWorkspaceRuntime
 } from "../../apps/console-ui/src/app/workspace-experience-model.ts";
+import {
+  presentWorkspaceModelStatus,
+  workspaceModelConfigurationApplied,
+  workspaceModelConfigurationIssue
+} from "../../apps/console-ui/src/app/workspace-models-controller-model.ts";
 
 function launch(overrides: Partial<WorkspaceLaunchResponse> = {}): WorkspaceLaunchResponse {
   return {
@@ -537,4 +543,57 @@ test("Workspace quote presentation rejects price and ownership contradictions", 
     selectedPriceUsdMicros: 0,
     customerOwned: false
   }), unconfirmed);
+});
+
+function configuration(overrides: Partial<WorkspaceModelConfigurationDTO> = {}): WorkspaceModelConfigurationDTO {
+  return {
+    workspaceId: "workspace-alpha",
+    version: "2",
+    appliedVersion: "2",
+    selections: [{ slot: "chat", modelId: "model-a" }],
+    status: "applied",
+    operationId: "operation-models-2",
+    updatedAt: "2026-09-01T00:00:00Z",
+    ...overrides
+  };
+}
+
+// The owner's own readback for a confirmed change: status applied and the
+// confirmed version equal to the persisted one.
+test("Workspace model configuration applied readback is applied and issue-free", () => {
+  const read = configuration();
+  assert.equal(workspaceModelConfigurationApplied(read), true);
+  assert.equal(workspaceModelConfigurationIssue(read), "");
+});
+
+// Any other readback keeps its own verdict: a reload still in flight stays
+// unconfirmed, and a configuration the runtime did not confirm reports the
+// update as not applied.
+test("Workspace model configuration issue follows the owner's readback", () => {
+  assert.equal(workspaceModelConfigurationIssue(configuration({ status: "pending", appliedVersion: "1" })), "unconfirmed");
+  assert.equal(workspaceModelConfigurationIssue(configuration({ status: "needs_attention", appliedVersion: "1" })), "failed");
+  assert.equal(workspaceModelConfigurationIssue(configuration({ status: "failed", appliedVersion: "1" })), "failed");
+});
+
+test("Workspace model configuration status presentation keeps its exact verdicts", () => {
+  assert.deepEqual(presentWorkspaceModelStatus(configuration()), {
+    label: "已生效",
+    tone: "good",
+    description: "运行中的应用已确认加载当前模型配置。"
+  });
+  assert.deepEqual(presentWorkspaceModelStatus(configuration({ status: "pending", appliedVersion: "1" })), {
+    label: "等待应用",
+    tone: "warning",
+    description: "配置已提交，运行中的应用尚未确认加载，请以原操作读回为准。"
+  });
+  assert.deepEqual(presentWorkspaceModelStatus(configuration({ status: "needs_attention", appliedVersion: "1" })), {
+    label: "需要处理",
+    tone: "danger",
+    description: "本次模型配置结果需要管理员确认，运行中的应用保留上一次已确认的配置。"
+  });
+  assert.deepEqual(presentWorkspaceModelStatus(configuration({ status: "failed", appliedVersion: "1" })), {
+    label: "更新失败",
+    tone: "danger",
+    description: "本次模型配置未应用，运行中的应用保留上一次已确认的配置。"
+  });
 });

@@ -11,6 +11,8 @@ import type {
   SourceEnvelope,
   WorkspaceDTO,
   WorkspaceGatewayBudgetDTO,
+  WorkspaceModelConfigurationDTO,
+  WorkspaceOwnerOperationDTO,
   WorkspaceGatewayBudgetUpdateRequest,
   WorkspaceListData,
   WorkspaceLaunchResponse,
@@ -1258,6 +1260,253 @@ test("cloud Console reads the customer Workspace from the Workspace owner only",
     assertBrowserAuditClean(audit);
   } finally {
     await page.close();
+    await browser.close();
+    await demo.close();
+  }
+});
+
+
+// The model configuration page renders the Workspace owner's own readback. A
+// terminal update_models operation whose closeout still needs attention is not
+// proof that the running application kept the previous configuration: the
+// owner's configuration readback decides which version is applied.
+const modelsFixtureUpdatedAt = "2026-10-01T00:00:00Z";
+
+const modelsWorkspaceFixture: WorkspaceDTO = {
+  id: "ws-models",
+  name: "Model Workspace",
+  state: "active",
+  deliveryModel: "agent_saas",
+  resourceReadiness: "ready",
+  applicationAvailability: "available",
+  createdAt: "2026-10-01T00:00:00Z",
+  updatedAt: "2026-10-01T00:00:00Z"
+};
+
+const modelsCatalogFixture = {
+  items: [
+    { id: "model-1", name: "IBD Model", capabilities: ["chat"], available: true, fetchedAt: modelsFixtureUpdatedAt },
+    { id: "model-2", name: "Backup Model", capabilities: ["chat"], available: true, fetchedAt: modelsFixtureUpdatedAt }
+  ]
+};
+
+const modelsDeliveryFixture = {
+  workspaceId: "ws-models",
+  workspace: { owner: "workspace", state: "active", details: {} },
+  capabilityVersion: { owner: "capability", state: "ready", details: {} },
+  build: { owner: "build", state: "succeeded", details: {} },
+  serve: { owner: "serve", state: "ready", details: {} }
+};
+
+const modelsPendingConfiguration: WorkspaceModelConfigurationDTO = {
+  workspaceId: "ws-models",
+  version: "2",
+  appliedVersion: "1",
+  selections: [{ slot: "default", modelId: "model-1" }],
+  status: "pending",
+  operationId: "op-models-1",
+  updatedAt: modelsFixtureUpdatedAt
+};
+
+const modelsAppliedConfiguration: WorkspaceModelConfigurationDTO = {
+  ...modelsPendingConfiguration,
+  appliedVersion: "2",
+  status: "applied"
+};
+
+const modelsUnappliedConfiguration: WorkspaceModelConfigurationDTO = {
+  ...modelsPendingConfiguration,
+  status: "needs_attention"
+};
+
+const modelsNeedsAttentionOperation: WorkspaceOwnerOperationDTO = {
+  operationId: "op-models-1",
+  owner: "workspace",
+  kind: "update_models",
+  resourceId: "ws-models",
+  status: "needs_attention",
+  stage: "verification",
+  requestId: "request-models-1",
+  createdAt: modelsFixtureUpdatedAt,
+  updatedAt: modelsFixtureUpdatedAt
+};
+
+async function openWorkspaceModelsRoute(
+  page: Page,
+  origin: string,
+  settledConfiguration: () => WorkspaceModelConfigurationDTO
+) {
+  const operationReads: string[] = [];
+  const unexpectedRequests: string[] = [];
+  let configurationReads = 0;
+  await page.route("**/api/v2/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path === "/api/v2/auth/session") return route.fulfill({ json: { actorId: "user-customer", tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
+    if (path === "/api/v2/workspaces/ws-models") return route.fulfill({ json: modelsWorkspaceFixture });
+    if (path === "/api/v2/workspaces/ws-models/models") {
+      configurationReads += 1;
+      // The persisted intent is still pending; the terminal operation answer
+      // forces the readback that carries the owner's applied facts.
+      return route.fulfill({ json: configurationReads === 1 ? modelsPendingConfiguration : settledConfiguration() });
+    }
+    if (path === "/api/v2/operations/workspace/op-models-1") {
+      operationReads.push(`${request.method()} ${path}`);
+      return route.fulfill({ json: modelsNeedsAttentionOperation });
+    }
+    if (path === "/api/v2/catalog/models") return route.fulfill({ json: modelsCatalogFixture });
+    unexpectedRequests.push(`${request.method()} ${path}`);
+    return route.fulfill({ status: 404, json: { error: "unexpected_request" } });
+  });
+  const operationRead = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v2/operations/workspace/op-models-1");
+  await page.goto(`${origin}/console/workspaces/ws-models/models`, { waitUntil: "domcontentloaded" });
+  await operationRead;
+  // Both the failure alert and the applied badge are terminal page states, so
+  // this settles identically before and after the fix.
+  await page.waitForFunction(() => {
+    const panel = document.querySelector(".workspace-models-panel");
+    if (!panel) return false;
+    const text = panel.textContent || "";
+    return text.includes("模型配置未生效") || text.includes("已生效");
+  });
+  return { operationReads, unexpectedRequests, configurationReads: () => configurationReads };
+}
+
+function modelStatusCell(page: Page) {
+  return page.locator(".workspace-models-panel .data-list > div").filter({ hasText: "配置状态" }).locator("dd");
+}
+
+test("Workspace model readback keeps a needs_attention closeout out of the failure alert", { timeout: 60_000 }, async () => {
+  const demo = await startCloudConsoleDemo();
+  const browser = await launchBrowser({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: viewports[0] });
+    const audit = await installBrowserAudit(page, demo.origin);
+    await loginCloudFixture(page, demo.origin);
+    const models = await openWorkspaceModelsRoute(page, demo.origin, () => modelsAppliedConfiguration);
+    assert.equal(await page.getByText("模型配置未生效", { exact: true }).count(), 0, "a confirmed applied version must not render the failure alert even when the closeout needs attention");
+    await modelStatusCell(page).getByText("已生效", { exact: true }).waitFor({ state: "visible" });
+    assert.deepEqual(models.operationReads, ["GET /api/v2/operations/workspace/op-models-1"]);
+    assert.ok(models.configurationReads() >= 2, "the terminal operation answer must be decided by the owner's configuration readback");
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await modelStatusCell(page).getByText("已生效", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.getByText("模型配置未生效", { exact: true }).count(), 0, "a reload of a confirmed applied readback must stay applied without the failure alert");
+    assert.deepEqual(models.operationReads, ["GET /api/v2/operations/workspace/op-models-1"], "an applied readback needs no operation read on reload");
+
+    assert.deepEqual(models.unexpectedRequests, []);
+    assertBrowserAuditClean(audit);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("Workspace model readback keeps an unapplied closeout on the failure alert", { timeout: 60_000 }, async () => {
+  const demo = await startCloudConsoleDemo();
+  const browser = await launchBrowser({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: viewports[0] });
+    const audit = await installBrowserAudit(page, demo.origin);
+    await loginCloudFixture(page, demo.origin);
+    const models = await openWorkspaceModelsRoute(page, demo.origin, () => modelsUnappliedConfiguration);
+    assert.ok(models.configurationReads() >= 2, "the terminal operation answer must be decided by the owner's configuration readback");
+    await page.getByText("模型配置未生效", { exact: true }).waitFor({ state: "visible" });
+    await modelStatusCell(page).getByText("需要处理", { exact: true }).waitFor({ state: "visible" });
+    assert.deepEqual(models.unexpectedRequests, []);
+    assertBrowserAuditClean(audit);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("a late model configuration readback cannot replace the route that replaced its page", { timeout: 60_000 }, async () => {
+  const demo = await startCloudConsoleDemo();
+  const browser = await launchBrowser({ headless: true });
+  const releaseLateRead = deferred();
+  try {
+    const page = await browser.newPage({ viewport: viewports[0] });
+    const audit = await installBrowserAudit(page, demo.origin);
+    let configurationReads = 0;
+    await page.route("**/api/v2/**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === "/api/v2/auth/session") return route.fulfill({ json: { actorId: "user-customer", tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
+      if (path === "/api/v2/workspaces/ws-models") return route.fulfill({ json: modelsWorkspaceFixture });
+      if (path === "/api/v2/delivery/ws-models") return route.fulfill({ json: modelsDeliveryFixture });
+      if (path === "/api/v2/workspaces/ws-models/models") {
+        configurationReads += 1;
+        if (configurationReads === 1) return route.fulfill({ json: modelsPendingConfiguration });
+        await releaseLateRead.promise;
+        return route.fulfill({ json: modelsAppliedConfiguration });
+      }
+      if (path === "/api/v2/operations/workspace/op-models-1") return route.fulfill({ json: modelsNeedsAttentionOperation });
+      if (path === "/api/v2/catalog/models") return route.fulfill({ json: modelsCatalogFixture });
+      return route.fulfill({ status: 404, json: { error: "unexpected_request" } });
+    });
+    await loginCloudFixture(page, demo.origin);
+    const operationRead = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v2/operations/workspace/op-models-1");
+    const lateReadFinished = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v2/workspaces/ws-models/models" && configurationReads >= 2, { timeout: 15_000 });
+    await page.goto(`${demo.origin}/console/workspaces/ws-models/models`, { waitUntil: "domcontentloaded" });
+    await operationRead;
+    await page.getByRole("button", { name: "工作空间详情", exact: true }).click();
+    await page.waitForURL((url) => url.pathname === "/console/workspaces/ws-models");
+    await page.locator(".workspace-identity-panel").getByText("Model Workspace", { exact: true }).waitFor({ state: "visible" });
+    releaseLateRead.resolve();
+    await lateReadFinished;
+    assert.equal(page.url().endsWith("/console/workspaces/ws-models"), true, "the Console must stay on the route the user opened");
+    assert.equal(await page.locator(".workspace-models-panel").count(), 0, "the replaced models page must not render on the Workspace detail route");
+    assert.equal(await page.getByText("模型配置未生效", { exact: true }).count(), 0, "the late readback must not inject the replaced page's failure alert");
+    await page.locator(".workspace-identity-panel").getByRole("button", { name: "模型配置", exact: true }).click();
+    await page.waitForURL((url) => url.pathname === "/console/workspaces/ws-models/models");
+    await modelStatusCell(page).getByText("已生效", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.getByText("模型配置未生效", { exact: true }).count(), 0, "re-entering the models page must show the owner's applied readback");
+    assertBrowserAuditClean(audit);
+  } finally {
+    releaseLateRead.resolve();
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("an unanswered model configuration readback never turns into the unapplied verdict", { timeout: 60_000 }, async () => {
+  const demo = await startCloudConsoleDemo();
+  const browser = await launchBrowser({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: viewports[0] });
+    const audit = await installBrowserAudit(page, demo.origin);
+    const unexpectedRequests: string[] = [];
+    let configurationReads = 0;
+    await page.route("**/api/v2/**", async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (path === "/api/v2/auth/session") return route.fulfill({ json: { actorId: "user-customer", tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
+      if (path === "/api/v2/workspaces/ws-models") return route.fulfill({ json: modelsWorkspaceFixture });
+      if (path === "/api/v2/workspaces/ws-models/models") {
+        configurationReads += 1;
+        if (configurationReads === 1) return route.fulfill({ json: modelsPendingConfiguration });
+        // The readback the terminal operation forces cannot be decoded, so the
+        // owner never returns a verdict for this configuration.
+        return route.fulfill({ json: { unexpected: "unreadable_model_readback" } });
+      }
+      if (path === "/api/v2/operations/workspace/op-models-1") return route.fulfill({ json: modelsNeedsAttentionOperation });
+      if (path === "/api/v2/catalog/models") return route.fulfill({ json: modelsCatalogFixture });
+      unexpectedRequests.push(`${request.method()} ${path}`);
+      return route.fulfill({ status: 404, json: { error: "unexpected_request" } });
+    });
+    await loginCloudFixture(page, demo.origin);
+    const operationRead = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v2/operations/workspace/op-models-1");
+    const failedReadback = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v2/workspaces/ws-models/models" && configurationReads >= 2, { timeout: 15_000 });
+    await page.goto(`${demo.origin}/console/workspaces/ws-models/models`, { waitUntil: "domcontentloaded" });
+    await operationRead;
+    await failedReadback;
+    await page.getByText("读取模型配置失败", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.getByText("模型配置未生效", { exact: true }).count(), 0, "a readback the owner never answered must not become the unapplied verdict");
+    await page.getByText("模型配置结果待确认", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.getByText("原操作读回不可用", { exact: true }).count(), 0, "the terminal operation was read back and stays displayed");
+    assert.deepEqual(unexpectedRequests, []);
+    assertBrowserAuditClean(audit);
+  } finally {
     await browser.close();
     await demo.close();
   }

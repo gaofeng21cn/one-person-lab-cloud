@@ -1,4 +1,5 @@
 import type { WorkspaceModelConfigurationDTO, WorkspaceModelSelectionDTO, WorkspaceOwnerOperationDTO } from "../api/dtos.ts";
+import type { WorkspaceModelsIssue } from "./console-controller-types.ts";
 
 // The model configuration is the Workspace owner's own fact: the intent version
 // it persists, the version the runtime confirmed, and the operation that carries
@@ -63,6 +64,15 @@ export function workspaceModelOperationRejected(operation: WorkspaceOwnerOperati
 export function workspaceModelConfigurationApplied(configuration: WorkspaceModelConfigurationDTO): boolean {
   return configuration.status === "applied"
     && configuration.appliedVersion === configuration.version;
+}
+
+// The page issue comes from the owner's configuration readback alone: a version
+// the runtime already confirmed needs no issue even when the update still needs
+// attention, a pending reload stays explicitly unconfirmed, and any other
+// readback reports the update as not applied.
+export function workspaceModelConfigurationIssue(configuration: WorkspaceModelConfigurationDTO): WorkspaceModelsIssue {
+  if (workspaceModelConfigurationApplied(configuration)) return "";
+  return configuration.status === "pending" ? "unconfirmed" : "failed";
 }
 
 export interface WorkspaceModelStatusPresentation {

@@ -17,6 +17,7 @@ import {
   resolveWorkspaceModelUpdateIntent,
   shouldRetainWorkspaceModelIntent,
   workspaceModelConfigurationApplied,
+  workspaceModelConfigurationIssue,
   workspaceModelOperationConfirmed,
   workspaceModelOperationRejected,
   workspaceModelSelectionsSignature,
@@ -134,9 +135,11 @@ export function useWorkspaceModelsController({
     }
   }, [workspaceId]);
 
-  // readOwnerOperation reads the accepted command's own operation and, once it
-  // confirmed, re-reads the owner's configuration. The applied version is never
-  // advanced from the operation status alone.
+  // readOwnerOperation reads the accepted command's own operation and re-reads
+  // the owner's configuration after a terminal answer, because the running
+  // application can already carry the requested version while the closeout still
+  // needs attention. The applied version is never advanced from the operation
+  // status alone.
   const readOwnerOperation = useCallback(async (
     operationId: string,
     requestGeneration: number,
@@ -161,8 +164,27 @@ export function useWorkspaceModelsController({
         return read;
       }
       if (workspaceModelOperationRejected(read)) {
+        // The owner answered the command terminally, so the intent is cleared
+        // before the configuration readback: a failed second read never keeps
+        // a rejected command pending. The readback only refines the displayed
+        // status, since the running application can already carry the requested
+        // version even though the closeout still needs attention.
         intent.current = null;
-        setIssue("failed");
+        try {
+          const configurationRead = await getWorkspaceModels(workspaceId);
+          if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return null;
+          setConfiguration({ value: settledConfiguration(configurationRead), loading: false, error: "" });
+          setIssue(workspaceModelConfigurationIssue(configurationRead));
+        } catch (error) {
+          if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return null;
+          // The terminal operation was read back, so it stays displayed and the
+          // previous readback stays visible. The failed re-read is reported
+          // through the existing configuration error channel and keeps the
+          // unconfirmed verdict instead of claiming a verdict the owner never
+          // returned.
+          setConfiguration((current) => ({ ...current, error: friendlyError(error) }));
+          setIssue("unconfirmed");
+        }
         return read;
       }
       setIssue("unconfirmed");
@@ -188,16 +210,13 @@ export function useWorkspaceModelsController({
       const configurationRead = await getWorkspaceModels(workspaceId);
       if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return;
       setConfiguration({ value: settledConfiguration(configurationRead), loading: false, error: "" });
-      if (workspaceModelConfigurationApplied(configurationRead)) {
+      const configurationIssue = workspaceModelConfigurationIssue(configurationRead);
+      if (configurationIssue === "") {
         clearCompletedIntent(configurationRead);
         setIssue("");
         return;
       }
-      if (configurationRead.status === "pending") {
-        setIssue("unconfirmed");
-      } else {
-        setIssue("failed");
-      }
+      setIssue(configurationIssue);
       // A configuration whose reload is still pending is recovered from its own
       // original operation instead of resubmitting the command.
       if (configurationRead.status === "pending" && configurationRead.operationId) {
