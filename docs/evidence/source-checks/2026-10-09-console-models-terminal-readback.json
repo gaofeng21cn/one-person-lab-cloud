@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_console_models_terminal_readback_source_check",
+  "revision": 1,
+  "recordedAt": "2026-10-09T08:12:00.110447+00:00",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "512cb3c582ba3283198de29ef396cffc4dbfb08a",
+  "branch": "codex/console-ui-models-terminal-readback",
+  "primaryModule": "apps/console-ui",
+  "objective": "Derive the Console model update verdict from Workspace configuration readback after an attention-required operation, without confusing closeout obligations with applied configuration.",
+  "taskReference": {
+    "workPackage": "W16",
+    "feature": "F09",
+    "scope": "A regression in the existing Console model configuration surface, not work-package or business-chain completion."
+  },
+  "necessity": {
+    "currentProblem": "The controller classified a needs_attention operation as an unapplied configuration without reading the configuration owner. A successfully reloaded model update whose superseded key could not be revoked was shown as not applied.",
+    "confirmedFacts": [
+      "Workspace confirmModelConfiguration marks the configuration reload confirmed and advances the applied version before revokeSupersededKey.",
+      "The revoke failure path calls finishModelUpdate, which writes workspace.operations only. The configuration remains applied; it is not downgraded to configuration-level needs_attention by that path.",
+      "The Console must read configuration after the terminal operation and preserve generation/session/workspace scope checks."
+    ],
+    "selectedAuthority": "Workspace owns applied configuration and operation readbacks. Console owns presentation only.",
+    "discardedExplanation": "The earlier equal-version configuration-level needs_attention promotion was not justified by the current revoke-failure path and is not included."
+  },
+  "writeSet": [
+    "apps/console-ui/src/app/use-workspace-models-controller.ts",
+    "apps/console-ui/src/app/workspace-models-controller-model.ts",
+    "tests/ui/workspace-experience-model.test.ts",
+    "tests/ui/workspace-task-experience-browser.test.ts",
+    "docs/evidence/source-checks/2026-10-09-console-models-terminal-readback.json"
+  ],
+  "verifiedSource": {
+    "baseSha": "512cb3c582ba3283198de29ef396cffc4dbfb08a",
+    "patchSha256": "eedafc4d96d62d539759185c98b34e78bf27dea7d9de487cd5f1cde88994cfb0",
+    "changedFilesSha256": {
+      "apps/console-ui/src/app/use-workspace-models-controller.ts": "811abab3ba029835f70842273db7e8a4550a279b2a4052588e7750b78b032592",
+      "apps/console-ui/src/app/workspace-models-controller-model.ts": "b20171cd23de7db1cacd7ef0a80359e4e4f2fb84144120e8261c1f89b8b1bdb3",
+      "tests/ui/workspace-experience-model.test.ts": "731fe320c80703dfef60d1d74083a266eee1c6fffb9186e203dafd6b67fb033b",
+      "tests/ui/workspace-task-experience-browser.test.ts": "8a377a5fa0a34564d20b8a8d66d646e9cde4ecc5be02ffa0a15398cbe3faeb84"
+    },
+    "unchangedInputs": "Other tracked inputs are the exact base commit; dependencies use its unchanged package lock. No test/framework/package script was added."
+  },
+  "verification": {
+    "redGreen": [
+      {
+        "phase": "red",
+        "command": "node --test --test-name-pattern=\"needs_attention closeout|unapplied closeout|late model configuration readback|unanswered model configuration readback\" tests/ui/workspace-task-experience-browser.test.ts",
+        "exitCode": 1,
+        "outputSha256": "bfd1ef5e1e080b71604f3dd65d55186c55c80e31d621ef6a65ce4475479e0d3f",
+        "testSummary": {
+          "tests": 4,
+          "pass": 0,
+          "fail": 4,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        "evidence": "Two assertion failures and two bounded missing-readback response timeouts against the unmodified baseline controller."
+      },
+      {
+        "phase": "green",
+        "command": "node --test --test-name-pattern=\"needs_attention closeout|unapplied closeout|late model configuration readback|unanswered model configuration readback\" tests/ui/workspace-task-experience-browser.test.ts",
+        "exitCode": 0,
+        "outputSha256": "1368f18f1da42e14e7c42bb5b8c503e9832799077edc4c75cc9e3907ba66cab7",
+        "testSummary": {
+          "tests": 4,
+          "pass": 4,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        "evidence": "All four regressions pass against the accepted controller, including page refresh, navigation, and visible readback errors."
+      }
+    ],
+    "independentHostChecks": [
+      {
+        "command": "npm run verify:local:focused -- --base origin/main",
+        "startedAt": "2026-10-09T08:01:54.589305+00:00",
+        "exitCode": 0,
+        "outputSha256": "b082dc168c66e9d229a7e4748c4bf4269e425f8e68c0dc7372bc20114ce5b749",
+        "testSummaries": {
+          "tests": [
+            19,
+            17
+          ],
+          "pass": [
+            19,
+            17
+          ],
+          "fail": [
+            0,
+            0
+          ],
+          "cancelled": [
+            0,
+            0
+          ],
+          "skipped": [
+            0,
+            0
+          ],
+          "todo": [
+            0,
+            0
+          ]
+        },
+        "result": "pass"
+      },
+      {
+        "command": "npm run test:ownership",
+        "startedAt": "2026-10-09T08:05:19.476160+00:00",
+        "exitCode": 0,
+        "outputSha256": "8f30dca4f5b5dad5612c8239b7c48b93c107be69abba9d9506d799d1b26a5388",
+        "result": "pass"
+      },
+      {
+        "command": "npm run lint",
+        "startedAt": "2026-10-09T08:05:19.634958+00:00",
+        "exitCode": 0,
+        "outputSha256": "4705fe2fd382bf082a02105077a4a5d8533630bda04c8a8b764b9e775863635b",
+        "result": "pass"
+      },
+      {
+        "command": "git diff --check",
+        "startedAt": "2026-10-09T08:05:20.043045+00:00",
+        "exitCode": 0,
+        "outputSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "result": "pass"
+      }
+    ],
+    "runnerClaims": "Actual command exit codes and test summaries were checked; worker completion text was not accepted as execution evidence."
+  },
+  "acceptance": [
+    "An attention-required operation with applied equal-version configuration renders applied without the unapplied alert, and stays correct after page reload.",
+    "An unapplied configuration retains its failure alert and requires the actual configuration re-read.",
+    "A late readback after leaving the models route does not replace the active route; returning reads current applied facts.",
+    "An undecodable configuration readback displays its read error and unconfirmed verdict, not a false unapplied verdict; the already read terminal operation is not erased.",
+    "The rejected intent is cleared before the second read; original generation/session/workspace guards remain.",
+    "The new regressions reuse existing test files in the source/browser CI inventories."
+  ],
+  "handover": {
+    "developmentSession": "01a11efc-e0e3-74f1-8bc8-d57616a3ab38",
+    "acceptanceSession": "01a119dc-498b-7da2-9b8f-910fdf41b829",
+    "structure": "One development session owns implementation and its internal subagents. The coordinating session reviews, independently verifies, records source evidence and integrates."
+  },
+  "conformance": {
+    "businessSsotChanged": false,
+    "developmentPlanChanged": false,
+    "contractsOrGeneratedFieldsChanged": false,
+    "backendChanged": false,
+    "testFrameworkOrScriptsChanged": false,
+    "existingEvidenceOverwritten": false
+  },
+  "limitations": {
+    "browserBoundary": "Actual Console/React/controller browser execution with explicitly stubbed API readbacks. Not real owner-service, database, provider or Instance E2E.",
+    "scopedAdmission": "This is a shell-enabled session, not a restricted worker. The current W16 phase paths omit this controller and console sourceRoot does not grant tests/ui writes. No compliant scoped admission or signed development-stage receipt is claimed.",
+    "receiptBoundary": "This source-check receipt is not opl.development.stage.v1, a business receipt, Candidate qualification or Instance acceptance.",
+    "ci": "PR CI will verify the committed head separately. This pre-commit source-check receipt does not claim CI has run.",
+    "notRun": [
+      "Full local repository suite",
+      "PostgreSQL/provider integration",
+      "Candidate build or publication",
+      "Instance deployment",
+      "Real charges, procurement or deletion",
+      "Production readback"
+    ]
+  }
+}
