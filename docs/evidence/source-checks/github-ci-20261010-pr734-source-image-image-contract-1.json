@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "8fb71e7a5e779cac5e7b5bdfa70dbc59cb0bf76f",
+  "recordedAt": "2026-10-09T20:40:43.629Z",
+  "writeSet": [
+    "apps/console-bff/internal/httpapi/admin_configuration_test.go",
+    "apps/console-bff/internal/httpapi/publisher.go",
+    "docs/evidence/source-checks/2026-10-09-refund-policy-algorithm-enum-encoding.json",
+    "docs/evidence/source-checks/github-ci-20261010-pr734-source-image-image-contract-1.json",
+    "docs/roadmap.md",
+    "docs/status.md",
+    "services/resource-catalog/catalog/policies.go",
+    "services/resource-catalog/catalog/policies_readback_test.go"
+  ],
+  "verifiedSource": {
+    "baseSha": "8fb71e7a5e779cac5e7b5bdfa70dbc59cb0bf76f",
+    "changedFilesSha256": {
+      "apps/console-bff/internal/httpapi/admin_configuration_test.go": "845ca155f1e859a77d0aefdac664f3c62525d72280ade491a786051ac220421b",
+      "apps/console-bff/internal/httpapi/publisher.go": "a36e099708803871dbbefd266a248f4590b6d9863fb8a3aceba0faacb39984ec",
+      "docs/evidence/source-checks/2026-10-09-refund-policy-algorithm-enum-encoding.json": "818a42181eac0e6a78b6d426c21f69a5686ef370ce1a59485d43f41616d983d7",
+      "docs/roadmap.md": "8fe4a308f80cac4f8ddfcebda9b65410d131ee9220ef61f986dc711111ea9a16",
+      "docs/status.md": "cad95cc4b58d731b12858095780882ab0028925a2c6030c5d9c53be4a67ddb63",
+      "services/resource-catalog/catalog/policies.go": "80d23176054d2f13d891103fa3126fd44ea479ea39c601db1e60fa64257152ed",
+      "services/resource-catalog/catalog/policies_readback_test.go": "5e9c2aa53b5696fba8a2bdcc7dcd1c3635b37ae117c395ad8a3d39a2c35a414c"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/contracts/product-image-owners.test.ts",
+    "exitCode": 0,
+    "tests": 2,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "90890b797064db43c1bcb0543e9d19cad1dcd65297c67283b0c2d4e9877f112a"
+  },
+  "sourceStage": {
+    "runId": "github-ci-20261010-pr734-source-image",
+    "gateId": "image-contract",
+    "attempt": 1,
+    "receiptHash": "f500993b35a6cfe829763de41aa07113e0147e3d9b2f90b6ff90abe464d613c2"
+  }
+}

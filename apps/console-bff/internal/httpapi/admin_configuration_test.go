@@ -7,23 +7,29 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 )
 
-// runtimeControlProbe records the typed runtime admission command the BFF
-// forwards, so a test can prove the platform scope, the owner's own idempotency
-// key and the exact body reach the Runtime Control owner.
+// runtimeControlProbe records the typed runtime commands the BFF forwards, so a
+// test can prove the platform scope, the owner's own idempotency key and the
+// exact body reach the Runtime Control owner.
 type runtimeControlProbe struct {
 	api.RuntimeControlProductServiceClient
-	received *api.RegisterRuntimeVersionRpcRequest
-	calls    int
+	received    *api.RegisterRuntimeVersionRpcRequest
+	calls       int
+	readPolicy  *api.GetBuildRuntimePolicyRpcRequest
+	setPolicy   *api.SetBuildRuntimePolicyRpcRequest
+	policyReads int
+	policySets  int
 }
 
 func (p *runtimeControlProbe) RegisterRuntimeVersion(_ context.Context, r *api.RegisterRuntimeVersionRpcRequest, _ ...grpc.CallOption) (*api.RuntimeVersion, error) {
@@ -32,6 +38,20 @@ func (p *runtimeControlProbe) RegisterRuntimeVersion(_ context.Context, r *api.R
 	return &api.RuntimeVersion{Id: "runtime-1", Name: r.GetBody().GetName(), VersionLabel: r.GetBody().GetVersionLabel(),
 		Status:               api.RuntimeVersionStatusEnum_RUNTIME_VERSION_STATUS_ENUM_APPROVED,
 		PublisherNamespaceId: r.GetBody().GetPublisherNamespaceId(), AdmissionReceiptId: r.GetBody().GetAdmissionReceiptId()}, nil
+}
+
+func (p *runtimeControlProbe) GetBuildRuntimePolicy(_ context.Context, r *api.GetBuildRuntimePolicyRpcRequest, _ ...grpc.CallOption) (*api.BuildRuntimePolicy, error) {
+	p.policyReads++
+	p.readPolicy = r
+	return &api.BuildRuntimePolicy{Id: "policy-1", RuntimeVersionId: "runtime-1", DefaultWebuiVersionId: proto.String("webui-1"), PolicyVersion: "policy-v1",
+		EffectiveAt: timestamppb.New(time.Unix(1759000000, 0)), CreatedAt: timestamppb.New(time.Unix(1759000000, 0))}, nil
+}
+
+func (p *runtimeControlProbe) SetBuildRuntimePolicy(_ context.Context, r *api.SetBuildRuntimePolicyRpcRequest, _ ...grpc.CallOption) (*api.BuildRuntimePolicy, error) {
+	p.policySets++
+	p.setPolicy = r
+	return &api.BuildRuntimePolicy{Id: "policy-2", RuntimeVersionId: r.GetBody().GetRuntimeVersionId(), DefaultWebuiVersionId: proto.String("webui-1"), PolicyVersion: "policy-v2",
+		EffectiveAt: timestamppb.New(time.Unix(1759000000, 0)), CreatedAt: timestamppb.New(time.Unix(1759000000, 0))}, nil
 }
 
 // TestRuntimeVersionRegisterRouteCarriesPlatformScopeAndOwnerIdempotency proves
@@ -97,6 +117,121 @@ func TestRuntimeVersionRegisterRouteCarriesPlatformScopeAndOwnerIdempotency(t *t
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusForbidden || probe.calls != 0 {
 		t.Fatalf("missing CSRF status=%d calls=%d", response.Code, probe.calls)
+	}
+}
+
+// TestBuildRuntimePolicyRoutesForwardTheOwnerReadAndCommand proves the two
+// administrator build-policy paths answer the owner's own readback in the
+// contract spelling, forward the contract body and idempotency key to the
+// Runtime Control owner, and keep the shared boundary: a denied caller, a missing
+// CSRF token and an unwired owner are all refused before any policy is served.
+func TestBuildRuntimePolicyRoutesForwardTheOwnerReadAndCommand(t *testing.T) {
+	identity := platformIdentity(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETBUILDRUNTIMEPOLICY)
+	identity.decision.AudienceOwner = api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL
+	probe := &runtimeControlProbe{}
+	handler := NewPublisherHandler(nil, probe, nil, identity)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, adminSessionRequest(http.MethodGet, "/api/v2/admin/catalog/build-policy"))
+	if response.Code != http.StatusOK {
+		t.Fatalf("build policy read status=%d body=%s", response.Code, response.Body.String())
+	}
+	if probe.policyReads != 1 || probe.readPolicy == nil {
+		t.Fatalf("owner reads=%d", probe.policyReads)
+	}
+	if read := probe.readPolicy; read.GetContext().GetActorId() != "admin-1" || read.GetContext().GetScope().GetPlatform() == nil {
+		t.Fatalf("owner read context=%v", read.GetContext())
+	}
+	if len(identity.requests) != 1 {
+		t.Fatalf("authorization requests=%d", len(identity.requests))
+	}
+	if authorized := identity.requests[0]; authorized.GetAudienceOwner() != api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL ||
+		authorized.GetAction() != api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETBUILDRUNTIMEPOLICY ||
+		authorized.GetResource().GetKind() != api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG ||
+		authorized.GetResource().GetId() != "" || authorized.GetScope().GetPlatform() == nil {
+		t.Fatalf("authorization request=%v", authorized)
+	}
+	for _, want := range []string{`"id":"policy-1"`, `"runtimeVersionId":"runtime-1"`, `"defaultWebuiVersionId":"webui-1"`, `"policyVersion":"policy-v1"`, `"effectiveAt":"`, `"createdAt":"`} {
+		if !strings.Contains(response.Body.String(), want) {
+			t.Fatalf("response %s missing %s", response.Body.String(), want)
+		}
+	}
+
+	// The command carries the contract body and the caller's own idempotency key
+	// under the same platform scope.
+	identity.decision.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETBUILDRUNTIMEPOLICY
+	request := adminSessionRequest(http.MethodPut, "/api/v2/admin/catalog/build-policy")
+	prepareAdminWrite(request, `{"runtimeVersionId":"runtime-1","expectedPolicyVersionId":"policy-1"}`)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("build policy write status=%d body=%s", response.Code, response.Body.String())
+	}
+	if probe.policySets != 1 || probe.setPolicy == nil {
+		t.Fatalf("owner commands=%d", probe.policySets)
+	}
+	if command := probe.setPolicy; command.GetBody().GetRuntimeVersionId() != "runtime-1" || command.GetBody().GetExpectedPolicyVersionId() != "policy-1" ||
+		command.GetContext().GetIdempotencyKey() != "stable-catalog-command" || command.GetContext().GetScope().GetPlatform() == nil {
+		t.Fatalf("owner command=%v", command)
+	}
+	if len(identity.requests) != 2 {
+		t.Fatalf("authorization requests=%d", len(identity.requests))
+	}
+	if authorized := identity.requests[1]; authorized.GetAudienceOwner() != api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL ||
+		authorized.GetAction() != api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETBUILDRUNTIMEPOLICY ||
+		authorized.GetResource().GetKind() != api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG ||
+		authorized.GetScope().GetPlatform() == nil {
+		t.Fatalf("authorization request=%v", authorized)
+	}
+	if !strings.Contains(response.Body.String(), `"runtimeVersionId":"runtime-1"`) || !strings.Contains(response.Body.String(), `"policyVersion":"policy-v2"`) {
+		t.Fatalf("response %s missing the owner readback", response.Body.String())
+	}
+
+	// A caller CloudIdentity denies is refused before the owner is called.
+	denied := platformIdentity(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETBUILDRUNTIMEPOLICY)
+	denied.decision.AudienceOwner = api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL
+	denied.decision.Result = api.AuthorizationResult_AUTHORIZATION_RESULT_DENIED
+	handler = NewPublisherHandler(nil, probe, nil, denied)
+	probe.policySets = 0
+	request = adminSessionRequest(http.MethodPut, "/api/v2/admin/catalog/build-policy")
+	prepareAdminWrite(request, `{"runtimeVersionId":"runtime-1","expectedPolicyVersionId":"policy-1"}`)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden || probe.policySets != 0 {
+		t.Fatalf("denied caller status=%d commands=%d", response.Code, probe.policySets)
+	}
+
+	// The shared write guard applies unchanged: no CSRF token, no owner call.
+	probe.policySets = 0
+	request = adminSessionRequest(http.MethodPut, "/api/v2/admin/catalog/build-policy")
+	prepareAdminWrite(request, `{"runtimeVersionId":"runtime-1","expectedPolicyVersionId":"policy-1"}`)
+	request.Header.Del("X-CSRF-Token")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden || probe.policySets != 0 {
+		t.Fatalf("missing CSRF status=%d commands=%d", response.Code, probe.policySets)
+	}
+
+	// A write without an idempotency key is refused for the same reason: the
+	// owner's idempotent command record can never be addressed without it.
+	probe.policySets = 0
+	request = adminSessionRequest(http.MethodPut, "/api/v2/admin/catalog/build-policy")
+	prepareAdminWrite(request, `{"runtimeVersionId":"runtime-1","expectedPolicyVersionId":"policy-1"}`)
+	request.Header.Del("Idempotency-Key")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || probe.policySets != 0 {
+		t.Fatalf("missing idempotency status=%d commands=%d", response.Code, probe.policySets)
+	}
+
+	// An unwired Runtime Control owner is unavailable, never a fabricated policy.
+	unwiredHandler := NewPublisherHandler(nil, nil, nil, identity)
+	request = adminSessionRequest(http.MethodPut, "/api/v2/admin/catalog/build-policy")
+	prepareAdminWrite(request, `{"runtimeVersionId":"runtime-1","expectedPolicyVersionId":"policy-1"}`)
+	response = httptest.NewRecorder()
+	unwiredHandler.ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unwired owner status=%d body=%s", response.Code, response.Body.String())
 	}
 }
 

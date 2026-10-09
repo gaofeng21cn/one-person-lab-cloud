@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_refund_policy_algorithm_enum_encoding_source_check",
+  "revision": 1,
+  "recordedAt": "2026-10-09T03:05:10Z",
+  "result": "the_resource_catalog_refund_policy_scan_now_resolves_the_stored_hyphenated_algorithm_onto_its_wire_member_so_the_administrator_refund_policy_list_is_encodable_again",
+  "window": "tke_serial",
+  "windowTitle": "TKE minimal closure - the administrator refund-policy list answered 502 once one refund policy version existed",
+  "branch": "codex/tke-minimal-closure-integration",
+  "baseHead": "bc99e76524198075f4d4afb28847495b8f6285dd",
+  "workingTreeNote": "Shared uncommitted worktree. Parallel windows hold concurrent edits outside this write set (apps/console-bff/internal/httpapi). This receipt covers only the refund-policy readback write set.",
+  "rootCause": {
+    "owner": "one-person-lab-cloud",
+    "ownerFile": "services/resource-catalog/catalog/policies.go",
+    "fact": "`scanRefundPolicy` resolved the stored `algorithm` column with a single lookup key: `\"REFUND_POLICY_VERSION_ALGORITHM_ENUM_\" + upper(algorithm)`. The column stores the contract's hyphenated literal `workspace-delete-refund-v1` (the same literal `CreateRefundPolicyVersion` writes), while the wire enum member is spelled `REFUND_POLICY_VERSION_ALGORITHM_ENUM_WORKSPACE_DELETE_REFUND_V1`. The lookup therefore missed, `api.RefundPolicyVersionAlgorithmEnum_value[...]` answered the map zero value, and the row was silently read back as `..._UNSPECIFIED`.",
+    "consequence": "`algorithm` is a required public property of `RefundPolicyVersion` in `packages/contracts/go/publicjson/shape_generated.go`, so the public encoder refuses a page whose row resolved to the unspecified member (`required property RefundPolicyVersion.algorithm has no public value for REFUND_POLICY_VERSION_ALGORITHM_ENUM_UNSPECIFIED`). The Console BFF `GET /api/v2/admin/catalog/refund-policies` therefore answered 502 for as long as one refund policy version existed, and 200 while the table was empty. Quote and Launch were unaffected because the quote resolution carries `refundPolicyVersionId` and the customer-terms text rather than re-encoding the algorithm member.",
+    "canonicalOwnership": "The Resource Catalog owner owns both the stored spelling and the wire projection. The fix belongs in `scanRefundPolicy`, next to the unchanged `planChangePolicyVersionEnum`, which already had to bridge the same hyphen/underscore difference for `plan_change_policy_version`."
+  },
+  "change": {
+    "ownerFile": "services/resource-catalog/catalog/policies.go",
+    "shape": "`scanRefundPolicy` now normalizes the stored separator (`strings.ReplaceAll(algorithm, \"-\", \"_\")`, upper-cased) and only accepts a table hit, falling back to the explicit `REFUND_POLICY_VERSION_ALGORITHM_ENUM_UNSPECIFIED` member when the stored value names no wire member. Same shape as the existing `planChangePolicyVersionEnum`.",
+    "closedSeam": "The public seam is the existing owner read plus shared encoder, exercised by the new `TestListRefundPolicyVersionsReadsBackTheStoredRefundAlgorithm` through the production `CreateRefundPolicyVersion` -> `ListRefundPolicyVersions` -> `publicjson.Marshal` path on a real isolated owner database. No contract, schema, migration, fallback layer, or compatibility branch was added."
+  },
+  "evidence": {
+    "red": {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated local PostgreSQL 16 admin DSN> go -C services/resource-catalog test ./catalog/ -run TestListRefundPolicyVersionsReadsBackTheStoredRefundAlgorithm -count=1",
+      "result": "fail",
+      "observed": "listed refund algorithm = REFUND_POLICY_VERSION_ALGORITHM_ENUM_UNSPECIFIED, want REFUND_POLICY_VERSION_ALGORITHM_ENUM_WORKSPACE_DELETE_REFUND_V1; encode refund policy page: required property RefundPolicyVersion.algorithm has no public value for REFUND_POLICY_VERSION_ALGORITHM_ENUM_UNSPECIFIED",
+      "capturedAt": "2026-10-09",
+      "method": "the scanner fix had not been applied yet; the run used the unmodified `scanRefundPolicy` against the new regression test"
+    },
+    "green": {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated local PostgreSQL 16 admin DSN> go -C services/resource-catalog test ./catalog/ -run TestListRefundPolicyVersionsReadsBackTheStoredRefundAlgorithm -count=1",
+      "result": "pass"
+    },
+    "focused": {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated local PostgreSQL 16 admin DSN> go -C services/resource-catalog test ./catalog/ -run 'Refund|Policy|Price' -count=1",
+      "result": "pass",
+      "covers": "the new readback test, the retention/refund lifecycle, the price-policy publish/refusal cases, and the quote policy-expiry regression; 0 skips in this run"
+    },
+    "packageSuite": {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated local PostgreSQL 16 admin DSN> go -C services/resource-catalog test ./... -count=1",
+      "result": "pass",
+      "covers": "catalog and migrations packages with the owner's real isolated PostgreSQL database"
+    },
+    "liveBuildLoop": {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated local PostgreSQL 16 admin DSN> go -C services/resource-catalog test -tags=livebuild ./catalog -run TestLiveCatalogPlatformAdminLoop -count=1",
+      "result": "pass",
+      "covers": "the real cross-owner loop: real CloudIdentity decision, real Console BFF boundary, real Resource Catalog owner process over its own PostgreSQL database"
+    },
+    "repository": {
+      "command": "npm run verify:local",
+      "result": "pass",
+      "evidence": "Local verification passed.",
+      "caveat": "The database-free lane does not run the new PostgreSQL-gated regression; the write-set runs above carried the isolated admin DSN."
+    }
+  },
+  "writeSet": {
+    "trackedDiffSha256": "27ed62f429fa71dd16f4bdcb6152e5137c3f2372fa8c0e4a51cc5e71c7977489",
+    "method": "sha256 of `git diff -- services/resource-catalog` in the tested worktree",
+    "newFileDigests": {
+      "services/resource-catalog/catalog/policies_readback_test.go": "5e9c2aa53b5696fba8a2bdcc7dcd1c3635b37ae117c395ad8a3d39a2c35a414c"
+    },
+    "changedFileDigests": {
+      "services/resource-catalog/catalog/policies.go": "80d23176054d2f13d891103fa3126fd44ea479ea39c601db1e60fa64257152ed"
+    }
+  },
+  "claimBoundary": "Source-check plus focused owner tests on a real isolated PostgreSQL owner database, including the existing livebuild cross-owner loop. This proves the Cloud-side defect and its repair at the Resource Catalog scanner. It does not re-read the deployed instance: the live administrator 502 symptom was observed before this change, the five existing live catalog facts were not modified or re-created, and confirmed live readback requires a new Candidate and Instance deployment under the protected Instance chain.",
+  "notRun": [
+    "No Candidate was built from this branch and no Instance deployment was dispatched.",
+    "No live or production catalog row was read, changed, or deleted by this receipt; the fix is verified against an isolated test database that reproduces the same stored literal.",
+    "No production charge and no Tencent resource mutation was performed."
+  ],
+  "secrets": "none"
+}
