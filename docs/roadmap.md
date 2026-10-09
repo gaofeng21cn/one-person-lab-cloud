@@ -66,9 +66,14 @@ limits. Unchanged checks are reused; changed boundaries receive focused tests. D
 not start a new App release for the deferred model-management interface or repeat
 a Local full run by default. The broader table below is not the first-launch gate.
 
-The implementation handoff is complete only when each affected owner records its
-exact input SHA/contract digest, executed red/green checks, output/readback, upstream
-receipt references and the next consumer/command. This prose/schema change is not
+The affected Cloud owners are implemented on `codex/first-tke-default-app-closure`
+(commit `0aa598c7`, consumer receipt
+`docs/evidence/source-checks/2026-10-10-standalone-default-app-consumer-adoption.json`):
+Runtime Control admits and stores the standalone declaration with its migration
+upgrade path verified against a real 0001-only database, Workspace refuses a model
+update for a release that declares no interface before any owner effect, and the
+custom Agent Build refusals for absent recipe/Package-format facts stay pinned. This
+prose/schema change is not
 a deployed Candidate or final business PASS.
 
 | Priority | Outcome | Cloud owner | Current state | Completion evidence |

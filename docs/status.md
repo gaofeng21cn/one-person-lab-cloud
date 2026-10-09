@@ -24,6 +24,17 @@ real application use and charge/Ledger reconciliation still need their owner
 receipts. Existing production evidence is not upgraded by this decision.
 The [scope/contract receipt](evidence/source-checks/2026-10-10-first-tke-default-app-without-cloud-model-config.json)
 records the public JSON red/green check and the remaining owner acceptance.
+The affected source consumers are implemented on branch
+`codex/first-tke-default-app-closure`: Runtime Control admits and stores the
+standalone declaration (migration 0002 relaxes its Package-format guard to
+"absent equals empty" and the insert writes the empty list instead of NULL),
+Workspace refuses a model update for a release that declares no
+model-configuration interface before any Gateway, Fabric or Serve effect, and the
+custom Agent Build consumer still refuses a runtime that omits its recipe or
+Package-format facts. The
+[consumer-adoption receipt](evidence/source-checks/2026-10-10-standalone-default-app-consumer-adoption.json)
+records the red/green checks and the environment-level lane limitations; exact
+Candidate construction, Instance schema adoption and the real launch remain open.
 
 ## Console Product Decision Alignment (2026-10-09)
 

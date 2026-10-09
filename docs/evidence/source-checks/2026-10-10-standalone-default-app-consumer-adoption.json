@@ -1,0 +1,178 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_standalone_default_app_consumer_adoption_source_check",
+  "revision": 1,
+  "recordedAt": "2026-10-09T18:20:00+00:00",
+  "owner": "OPL Cloud integration session (first Tencent/TKE default App launch)",
+  "evidenceLayer": "implementation_and_source_check_only",
+  "baseSourceSHA": "964d28f4aeebc588f71dc7da74d26299cceb24eb",
+  "branch": "codex/first-tke-default-app-closure",
+  "integratedUpstream": [
+    {
+      "path": "docs/decisions.md, docs/roadmap.md, docs/spec/target/**, docs/spec/target/contracts/publisher-contract.schema.json, docs/status.md, packages/contracts/go/publicjson/**, docs/evidence/source-checks/2026-10-10-first-tke-default-app-without-cloud-model-config.json",
+      "sourceCommit": "3636c3a5ea7a06a0a50b735a8dc680949bb45cbd",
+      "integratedCommit": "fb793b2411be3ce574c627bc7b51e4d3e2bf1545"
+    },
+    {
+      "path": "docs/architecture.md, docs/decisions.md, docs/invariants.md, docs/product/**, docs/roadmap.md, docs/spec/target/**, docs/status.md, docs/evidence/source-checks/2026-10-09-console-business-ssot-alignment.json",
+      "sourceCommit": "bf4c33e27384cccec7abccd1272c6af6e59898ba",
+      "integratedCommit": "2bbb4090 (cherry-picked onto 964d28f4; tree-identical to the approved commit)"
+    }
+  ],
+  "objective": "Adopt the approved standalone default App Runtime declaration in its real consumers before the first Tencent/TKE launch: Runtime Control admits it, custom Agent Build keeps its recipe/format refusals, and Workspace refuses a model update before any effect when the frozen release declares no publisher model-configuration interface.",
+  "authorization": "User decided the first Tencent/TKE launch must not require Cloud Console model management. No production, provider, money or credential action was taken in this change.",
+  "changes": {
+    "runtimeControl": [
+      "services/runtime-control/migrations/0002_standalone_runtime_declaration.sql turns the storage guard into 'an absent Package-format declaration equals the empty list' and keeps exact equality once formats are declared.",
+      "services/runtime-control/catalog/service.go stores the empty list instead of NULL when a release declares no Package format, so the column stays non-null and the contract bytes stay exactly as declared.",
+      "services/runtime-control/catalog/runtime_release_postgres_test.go admits a standalone declaration read back byte-faithfully, refuses an incomplete declared model interface and keeps the existing unadmitted-publisher/contract refusals."
+    ],
+    "workspace": [
+      "services/workspace/internal/launch/models_update.go resolves the frozen Runtime Release (default App directly; built Agent through its admitted CapabilityVersion) and refuses a model update before any owner effect when that release declares no model-configuration interface.",
+      "services/workspace/internal/launch/application_source.go splits the approved-release read so the launch path keeps its immutable-application-contract requirement while the model-update path adds no new one.",
+      "services/workspace/internal/launch/models_update_test.go seeds both launch shapes and proves the refusal leaves gateway/fabric/serve untouched, the applied version at 0 and no update operation recorded, while the same launch with a declared interface still applies."
+    ],
+    "customAgentBuildBoundary": [
+      "services/capability/catalog/gap6_closure_test.go (commit d5a36c74) pins that a Runtime declaration missing buildRecipe (DataLoss) or packageFormatVersions (FailedPrecondition) is still refused by the real Build combination consumer."
+    ],
+    "businessServiceCallsRemoved": false,
+    "canonicalSourceChangedOutsideTheIntegratedCommits": false
+  },
+  "inputs": {
+    "changedFiles": [
+      {
+        "path": "services/runtime-control/catalog/service.go",
+        "sha256": "sha256:b7508485c56e5536543101d951509ef698dcc8f44c32be82b0e16c467a44021a"
+      },
+      {
+        "path": "services/runtime-control/catalog/runtime_release_postgres_test.go",
+        "sha256": "sha256:7719658b890603689329871f156c3e43708b2a5c33e652b6ac2179e2703b7f3b"
+      },
+      {
+        "path": "services/runtime-control/migrations/0002_standalone_runtime_declaration.sql",
+        "sha256": "sha256:baa8d87668e3b3034190574e0a4b8ef9d94b449d30707e01613d440f8bd26f12"
+      },
+      {
+        "path": "services/workspace/internal/launch/models_update.go",
+        "sha256": "sha256:c39c9e359d48d3317e3572677f40e6ac0aa3d3b52fbb2474023a5a2960e9dfda"
+      },
+      {
+        "path": "services/workspace/internal/launch/application_source.go",
+        "sha256": "sha256:523fcadc1595060b9801832abc708510e4a592740c6641b6244d3b5bf9be9b7f"
+      },
+      {
+        "path": "services/workspace/internal/launch/models_update_test.go",
+        "sha256": "sha256:ec82c02a8436bddc9cc9d5af36d0ec3d68ac6d9cd0bf634dae1aec9a13a93ab6"
+      },
+      {
+        "path": "services/capability/catalog/gap6_closure_test.go",
+        "sha256": "sha256:7f64525e716ab4c521ed5cfd4a4f8ff10ad3872449dc38228ba8aff234421ac6"
+      }
+    ]
+  },
+  "verification": {
+    "red": [
+      {
+        "command": "cd services/workspace && OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated PostgreSQL> go test ./internal/launch -run 'TestUpdateWorkspaceModelsRefusesAReleaseWithoutTheModelConfigurationInterface' -count=1 -v",
+        "result": "FAIL_EXPECTED",
+        "decisiveOutput": "release without a declared interface err=<nil>, want a failed precondition naming model_configuration_unavailable",
+        "logDigest": "sha256:ed7374e8f64756197b3e5a49468b88aa4a8c287f6dcdb60b9cbc5408a9c5a787"
+      },
+      {
+        "command": "cd services/runtime-control && OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated PostgreSQL> go test ./catalog -run 'TestRuntimeReleaseAdmitsAStandaloneRuntimeWithoutBuildOrModelCapabilities' -count=1 -v",
+        "result": "FAIL_EXPECTED",
+        "decisiveOutput": "standalone Runtime declaration: rpc error: code = InvalidArgument desc = publisher contract fails approved schema",
+        "logDigest": "sha256:45e9c0d8cc136e9daf238b11a966c127376771cbde00a736bc38ab08fc378705"
+      }
+    ],
+    "green": [
+      {
+        "command": "cd services/workspace && OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated PostgreSQL> go test ./internal/launch -run TestUpdateWorkspaceModels -count=1 -v",
+        "result": "PASS",
+        "logDigest": "sha256:72b919736ff291689ed2aac4c6ead0daaab94752df6ff3ff54465006529c8cd6"
+      },
+      {
+        "command": "cd services/runtime-control && OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated PostgreSQL> go test ./... -count=1",
+        "result": "PASS",
+        "logDigest": "sha256:f126265b466126234cacaaf84a873959ec6adaef384cc2d399ed5d23bcfe2f96"
+      },
+      {
+        "command": "cd services/capability && go test ./catalog -run 'TestGap6|TestBuild' -count=1",
+        "result": "PASS",
+        "note": "Includes the two pinned refusals for a Runtime declaration that omits buildRecipe or packageFormatVersions.",
+        "logDigest": "sha256:ac489ee2ee30f0a3da79c9357c97f90ada5a13ed34240b4498736bb0fa9e603d"
+      }
+    ],
+    "affectedOwnerModules": {
+      "command": "go test ./... -count=1 with an isolated PostgreSQL administrator DSN",
+      "result": "PASS",
+      "packages": [
+        "services/runtime-control/catalog",
+        "services/runtime-control/migrations",
+        "services/workspace/internal/launch",
+        "services/workspace/migrations",
+        "services/capability/catalog",
+        "services/capability/migrations",
+        "services/serve/internal/delivery",
+        "services/serve/internal/tkeapply",
+        "services/serve/migrations"
+      ],
+      "failures": 0
+    },
+    "migrationUpgradePath": {
+      "command": "apply 0001 to an empty opl_runtime_control database, then apply 0002, then insert",
+      "result": "PASS",
+      "observed": [
+        "before: constraint runtime_releases_check5 CHECK (((publisher_contract -> 'packageFormatVersions') = to_jsonb(package_format_versions)) IS TRUE)",
+        "after: constraint runtime_releases_package_format_versions_check CHECK ((to_jsonb(package_format_versions) = COALESCE((publisher_contract -> 'packageFormatVersions'), '[]'::jsonb)))",
+        "an absent declaration with the empty stored list is accepted",
+        "a declared Package format with an absent contract list is still refused"
+      ]
+    },
+    "repositoryLanes": {
+      "productBoundary": "PASS",
+      "generatedContractsFreshness": "PASS",
+      "developmentPlanFreshness": "PASS",
+      "developmentToolsTypecheck": "PASS",
+      "typecheck": "PASS",
+      "lint": "PASS",
+      "build": "PASS",
+      "focusedLane": {
+        "command": "npm run verify:local:focused -- --base 964d28f4",
+        "result": "TOOLING_FAILURE_NOT_A_BEHAVIOR_FAILURE",
+        "decisiveOutput": "services/runtime-control focused Go tests: Go tests failed or skipped",
+        "attribution": "The only skip is opl-cloud/services/runtime-control/cmd/server reporting 'no test files' because the focused lane selects ./... when a changed path is not a .go file (the new migration). Every selected test passed.",
+        "logDigest": "sha256:5b4fb715c7c76c228592b71e3855a19e3ffd84acfa2f15a9ac595d098808c97c"
+      },
+      "fullLane": {
+        "command": "npm run verify:local:full",
+        "result": "ENVIRONMENT_FAILURE_NOT_A_BEHAVIOR_FAILURE",
+        "decisiveOutput": "tests/tools/verify-local.test.ts:559 development check permits only loopback TCP, not Internet endpoints or host Unix sockets; inner probe listen EPERM 127.0.0.1",
+        "baselineReproduction": "The same single test file fails identically at unmodified base 964d28f4, so the sandbox limitation is pre-existing and independent of this change.",
+        "remainingStepsRunManually": [
+          "typecheck PASS",
+          "lint PASS",
+          "build PASS",
+          "all affected owner modules' PostgreSQL tests PASS"
+        ],
+        "logDigest": "sha256:0c1ab8f739ce89d12a18b4f74bf2d5d5e39522aaac44817ed952f4a9ceafac4a"
+      }
+    }
+  },
+  "notClaimed": [
+    "Candidate built from this branch",
+    "Instance deployment or runtime qualification",
+    "Runtime Release admission in the production instance",
+    "App login or message PASS",
+    "customer charge/order/Gateway/Ledger reconciliation",
+    "final business closed loop"
+  ],
+  "nextConsumers": [
+    {
+      "owner": "OPL Cloud Candidate and Instance deployment",
+      "action": "Build a Candidate from this branch's exact commit 0aa598c7907143dc8fb34bf6f3c24850868e19ea, adopt the new publisher schema digest sha256:176d492a0c0c491ca4e180d9e5d3e04a08ab9c621c4254806658ef529c77b5ef, re-apply the merged Ingress repair and deploy through the protected workflows.",
+      "requiredReadback": "Rollout ready URL, Runtime Release admitted from the declared standalone artifact, real App login and one message, original order/charge and Gateway/Ledger reconciliation."
+    }
+  ],
+  "terminalAcceptance": "One authorized customer Tenant/wallet -> original Basic monthly quote/order/operation -> confirmed TKE resources and default App -> usable URL and login -> one real answer and actual Gateway usage/charge -> Ledger reconciliation, without repeating purchase or charge."
+}
