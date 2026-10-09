@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "b957655950f3dc53961fc6f589d4e18cb9b8f238",
+  "sourceSHA": "8b9219d99d49b400f42183ffdf8badbfa862ae9e",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -4040,21 +4040,20 @@
         "DEV_GUIDE.md",
         "package.json",
         "docs/spec/target/",
-        "docs/evidence/source-checks/",
-        "docs/evidence/development-stage/"
+        "docs/evidence/source-checks/"
       ],
       "inputRefs": [
         "AGENTS.md#scoped-development-contract",
         "DEV_GUIDE.md#scoped-host-and-worker-entry",
         "现有PR合规清单(.github/PULL_REQUEST_TEMPLATE.md)"
       ],
-      "deliverable": "开发治理统一入口：PR body机器校验(base SHA/DDD owner/phase/write set/receipt分层)、开发SSOT phase入口与hard-entry审计；host-owned，restricted worker不获得这些写权限",
+      "deliverable": "开发治理统一入口：PR body机器校验(base SHA/DDD owner/phase/write set/source-check执行摘要)、开发SSOT phase入口与hard-entry审计；host-owned，restricted worker不获得这些写权限",
       "verification": [
         "npm run test:development-gates",
         "npm run verify:development-plan",
         "npm run verify:local:focused -- --base origin/main"
       ],
-      "completionEvidence": "实际执行的gate结果与append-only source-check receipt；不替代host acceptance receipt，不声称产品runtime或发布完成",
+      "completionEvidence": "实际执行的gate结果与append-only source-check receipt；不替代CI实际validate，不声称产品runtime或发布完成",
       "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
     },
     {

@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "8b9219d99d49b400f42183ffdf8badbfa862ae9e",
+  "recordedAt": "2026-10-09T15:41:34.276Z",
+  "writeSet": [
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    ".github/workflows/pull-request-ci.yml",
+    "AGENTS.md",
+    "DEV_GUIDE.md",
+    "docs/evidence/source-checks/governance-plain-20261009153913244-record-contracts-1.json",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/development_plan_validation.json",
+    "docs/spec/target/checks/render_development_plan.py",
+    "docs/spec/target/checks/runs/development-plan-20261009T135634190464Z.json",
+    "tests/tools/check-pr-governance.test.ts",
+    "tests/tools/check-pr-merge-authorization.test.ts",
+    "tests/tools/dev-session.test.ts",
+    "tests/tools/verify-local.test.ts",
+    "tools/check-pr-governance.ts",
+    "tools/dev-session.ts",
+    "tools/verify-local.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "8b9219d99d49b400f42183ffdf8badbfa862ae9e",
+    "changedFilesSha256": {
+      ".github/PULL_REQUEST_TEMPLATE.md": "71d81095e73497c9153e347a7d328a2bf4f99ffdabca2ea906ff05ae5a99203e",
+      ".github/workflows/pull-request-ci.yml": "34a3286caa46947e95b816554ae98518bec234ca3d0a156d065adf2c811c7222",
+      "AGENTS.md": "1d273bc54f2b1de2deb2e6a05540c15a6015016b8e990a26e56e59dc5fdb31bc",
+      "DEV_GUIDE.md": "a7857e6c63f1041e2d9259543ad6075301cd04c8250ceaf9bef278a19e43106e",
+      "docs/spec/target/14_implementation_work_packages.md": "428fb3fefb20ae8bef0af14f570cd5df1c22c44f31fd5eadc9e4b95fb6532946",
+      "docs/spec/target/checks/development_plan.json": "ad26f67a8e5fa08850db64acd8f4249ca90f1d5292f624ab930dbbaf07821b55",
+      "docs/spec/target/checks/development_plan_validation.json": "dfeb05545abb955c3752d493b1a0ee719ea6b2a7367a9471c825090b6c72d744",
+      "docs/spec/target/checks/render_development_plan.py": "75a299a9869c2848c95988e496831d5db679d1341422e0f22d394a97a76e8d0b",
+      "docs/spec/target/checks/runs/development-plan-20261009T135634190464Z.json": "dfeb05545abb955c3752d493b1a0ee719ea6b2a7367a9471c825090b6c72d744",
+      "tests/tools/check-pr-governance.test.ts": "ff071948347e2e25c964679256969fae1b4bac69997be786bf7fb2c63fbe81f1",
+      "tests/tools/check-pr-merge-authorization.test.ts": "2ce518f2504042faecfdc74a113eb23ba4fcaf545cc7313146a0665ff57e3e33",
+      "tests/tools/dev-session.test.ts": "1a267498589ee024aa7a3f7e974cf96871cb5f7d593521243cba4067dfb379b8",
+      "tests/tools/verify-local.test.ts": "17e62770208204e2bdc0d35e298a84138dc9e4f80db684c48f053d936975676c",
+      "tools/check-pr-governance.ts": "f7465966fefb5f6981bdde32a04cdce9963ff6de033dc9118d6adc5847239106",
+      "tools/dev-session.ts": "78dafca5dc51c8e4b50b7aad6d8d26d34e5ec9820f8b86c87a0dc307f7c2e7a9",
+      "tools/verify-local.ts": "9cb8ede9a116b4b5778fa58cd6cd815c7f62ec2d759e3cec2ed899c3777d96cf"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/check-pr-governance.test.ts",
+    "exitCode": 0,
+    "tests": 19,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "6430d452724c5884ef0f95c30ec3dea6c190c92b4a5b633a6de47a9e9635a96c"
+  },
+  "sourceStage": {
+    "runId": "governance-plain-20261009153913244",
+    "gateId": "record-contracts",
+    "attempt": 1,
+    "receiptHash": "1250f7dc05174cb46b616c287ad7bcaa9f9d8873ae71cb5d8efbb4058348d3f5"
+  }
+}

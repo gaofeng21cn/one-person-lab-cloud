@@ -1,18 +1,19 @@
 /**
  * Machine check for the pull-request governance entry. The PR body declares the
- * claim; the trusted host store, a signed host proof and the canonical owner
- * remain the evidence owners. A PR body is never a receipt, and an author's
- * fields or files never become the trust root.
+ * claim; the host-owned store records real local execution and the CI validate
+ * run is the independent execution gate for the reviewed commit. A PR body is
+ * never a receipt, and an author's fields or in-repo JSON never prove that any
+ * command actually ran.
  */
 import { execFileSync } from 'node:child_process';
-import { createHash, createPublicKey, verify } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  authorizePhaseWriteScope, canonical, digest, gateInputHash, openTrustedStore, parseApproval, parseStageReceipt,
+  authorizePhaseWriteScope, canonical, digest, gateInputHash, openTrustedStore,
   readRunApproval, receiptEvidenceByHash, resolveApprovedPhase, resolvePhaseRecord, stageReceiptEvidence, currentRunnerHash,
-  type PhaseSelection, type RunApproval, type StageReceipt,
+  type PhaseSelection, type RunApproval,
 } from './dev-session.ts';
 
 export const requiredSections = [
@@ -43,7 +44,7 @@ export interface GovernanceClaim {
   receipts: ReceiptClaim[]; terminalState: TerminalState; mergeDanger: string;
 }
 export interface MergeAuthorization {
-  claimed: boolean; ok: boolean; basis?: 'host-store' | 'signed-proof'; runId?: string; gateId?: string; attempt?: number;
+  claimed: boolean; ok: boolean; basis?: 'host-store'; runId?: string; gateId?: string; attempt?: number;
   receiptDigest?: string; errors: string[]; checkedGates?: { gateId: string; receiptHash: string }[];
 }
 export interface GovernanceFacts {
@@ -52,12 +53,12 @@ export interface GovernanceFacts {
   eventBaseSha?: string;
   headSha?: string;
   root?: string;
-  /** `record` checks the governance record; `merge` additionally requires a verified host acceptance. */
+  /** `record` checks the governance record; `merge` additionally requires a completed merge-ready claim. */
   mode?: GovernanceMode;
-  /** An absolute trusted host store for local verification; never a repository path. */
+  /** An absolute host store for local stage-record readback; never a repository path. */
   hostStore?: string;
-  /** The trusted host authority public key (PEM or base64 PEM); never taken from the pull request. */
-  authorityPublicKey?: string;
+  /** Paths the checked revision deletes; a receipt may record an explicit `deleted` fact only for these. */
+  deletedPaths?: readonly string[];
 }
 export interface GovernanceResult { ok: boolean; errors: string[]; claim?: GovernanceClaim; authorization: MergeAuthorization }
 
@@ -65,7 +66,7 @@ const receiptTypes: ReceiptType[] = ['source-check', 'development-stage', 'busin
 const receiptResults: ReceiptResult[] = ['passed', 'failed', 'pending'];
 const receiptFields: Record<ReceiptType, string[]> = {
   'source-check': ['path'],
-  'development-stage': ['path', 'run', 'gate', 'attempt', 'sha256', 'proof'],
+  'development-stage': ['path', 'run', 'gate', 'attempt', 'sha256'],
   business: ['authority', 'ref'],
   instance: ['ref'],
 };
@@ -74,7 +75,6 @@ const identifier = /^[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*$/u;
 const sha40 = /^[a-f0-9]{40}$/u;
 const sha256hex = /^[a-f0-9]{64}$/u;
 const sourceCheckReceiptPattern = /^docs\/evidence\/source-checks\/[A-Za-z0-9._-]+\.json$/u;
-const proofPattern = /^docs\/evidence\/development-stage\/[A-Za-z0-9._-]+\.json$/u;
 
 interface Section { name: string; content: string }
 function sections(body: string): Section[] {
@@ -113,17 +113,8 @@ function repositoryPath(root: string, path: string) {
   if (!rel || rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel)) return undefined;
   return resolve(realpathSync(root), rel);
 }
-function decodeAuthority(value: string | undefined): string | undefined {
-  if (!value) return undefined;
-  const trimmed = value.trim();
-  if (trimmed.includes('-----BEGIN')) return trimmed;
-  try {
-    const decoded = Buffer.from(trimmed, 'base64').toString('utf8');
-    return decoded.includes('-----BEGIN') ? decoded : undefined;
-  } catch { return undefined; }
-}
 
-/** Check one pull-request body against the plan, the git change scope, receipts and a trusted host proof. */
+/** Check one pull-request body against the plan, the git change scope and the declared receipts. */
 export function checkPullRequestBody(body: string, facts: GovernanceFacts = {}): GovernanceResult {
   const errors: string[] = [];
   const mode: GovernanceMode = facts.mode ?? 'record';
@@ -212,7 +203,7 @@ export function checkPullRequestBody(body: string, facts: GovernanceFacts = {}):
       if (!allowed.has(key)) { errors.push(`UNKNOWN_RECEIPT_FIELD: ${type}: ${key}`); continue; }
       parsed[key] = value;
     }
-    for (const required of ['result', ...receiptFields[type].filter((field) => field !== 'proof')]) {
+    for (const required of ['result', ...receiptFields[type]]) {
       if (!parsed[required]) errors.push(`MISSING_RECEIPT_FIELD: ${type}: ${required}`);
     }
     if (parsed.result && !receiptResults.includes(parsed.result as ReceiptResult)) {
@@ -226,7 +217,6 @@ export function checkPullRequestBody(body: string, facts: GovernanceFacts = {}):
       if (parsed.run && parsed.gate && parsed.attempt && parsed.path !== receiptPathFor(parsed.run, parsed.gate, parsed.attempt)) {
         errors.push(`RECEIPT_PATH_MISMATCH: ${parsed.path} does not match ${receiptPathFor(parsed.run, parsed.gate, parsed.attempt)}`);
       }
-      if (parsed.proof && !proofPattern.test(parsed.proof)) errors.push(`RECEIPT_PATH_INVALID: ${parsed.proof} is not a docs/evidence/development-stage proof`);
     }
     if (type === 'source-check' && parsed.path && !sourceCheckReceiptPattern.test(parsed.path)) {
       errors.push(`RECEIPT_PATH_INVALID: ${parsed.path} is not a docs/evidence/source-checks receipt`);
@@ -271,7 +261,13 @@ export function checkPullRequestBody(body: string, facts: GovernanceFacts = {}):
 
   // Source-check receipts are verified against the checked revision, not restated.
   const changedPaths = facts.changedPaths ?? [];
-  for (const receipt of declared.filter((entry) => entry.type === 'source-check')) {
+  const currentSourceChecks = declared.filter((entry) => entry.type === 'source-check');
+  if (currentSourceChecks.length > 1) {
+    // One current source-check authority per pull request. Historical receipts
+    // belong in `revises`/`Limitations`, never in a mutual-exemption cycle.
+    errors.push('RECEIPT_MULTIPLE_CURRENT: at most one current source-check receipt is allowed');
+  }
+  for (const receipt of currentSourceChecks.slice(0, 1)) {
     const path = receipt.fields.path;
     if (!path || !facts.root || !sourceCheckReceiptPattern.test(path)) continue;
     const target = repositoryPath(facts.root, path);
@@ -300,25 +296,69 @@ export function checkPullRequestBody(body: string, facts: GovernanceFacts = {}):
         }
       }
     }
-    // The recorded file hashes must equal the checked content; a receipt whose
-    // inputs moved on is stale and cannot certify the revision under review.
-    const hashes = receiptBody.verifiedSource?.changedFilesSha256;
-    if (!hashes || typeof hashes !== 'object' || Array.isArray(hashes) || !Object.keys(hashes).length) {
-      errors.push(`RECEIPT_INVALID: ${path} records no verified file hashes`);
+    // The checked revision's real execution summary: a receipt that records only
+    // `result: pass` and prose is refused. The final CI validate run is the
+    // independent execution gate; these fields make the local claim checkable.
+    const execution = receiptBody.execution;
+    if (!execution || typeof execution !== 'object' || Array.isArray(execution)) {
+      errors.push(`RECEIPT_EXECUTION_REQUIRED: ${path} records no executed command summary`);
     } else {
-      for (const [hashedPath, hashedValue] of Object.entries(hashes as Record<string, unknown>)) {
-        if (!relativePath(hashedPath) || !sha256hex.test(String(hashedValue))) { errors.push(`RECEIPT_INVALID: ${path} hash entry ${hashedPath}`); continue; }
+      if (typeof execution.command !== 'string' || !execution.command.trim() || execution.command.length > 512) {
+        errors.push(`RECEIPT_EXECUTION_INVALID: ${path} command`);
+      }
+      if (!Number.isSafeInteger(execution.exitCode)) errors.push(`RECEIPT_EXECUTION_INVALID: ${path} exitCode`);
+      for (const field of ['tests', 'failed', 'skipped', 'todo'] as const) {
+        if (!Number.isSafeInteger(execution[field]) || execution[field] < 0) errors.push(`RECEIPT_EXECUTION_INVALID: ${path} ${field}`);
+      }
+      if (!sha256hex.test(String(execution.outputSha256 ?? ''))) errors.push(`RECEIPT_EXECUTION_INVALID: ${path} outputSha256`);
+      if (receiptBody.result === 'pass') {
+        if (execution.exitCode !== 0) errors.push(`RECEIPT_EXECUTION_NOT_PASSING: ${path} exitCode ${execution.exitCode}`);
+        if (execution.failed > 0 || execution.skipped > 0 || execution.todo > 0) {
+          errors.push(`RECEIPT_EXECUTION_NOT_CLEAN: ${path} failed/skipped/TODO ${execution.failed}/${execution.skipped}/${execution.todo}`);
+        }
+        if (!Number.isSafeInteger(execution.tests) || execution.tests < 1) errors.push(`RECEIPT_EXECUTION_EMPTY: ${path} recorded no executed tests`);
+      }
+    }
+    // Only the receipt file currently being validated is excused from
+    // fingerprinting itself; every other changed path must carry its exact
+    // input fingerprint. No other receipt, evidence directory or historical
+    // reference is exempt, and deletions are real changed paths too.
+    const expectedHashes = changedPaths.filter((changed) => changed !== path);
+    const hashes = receiptBody.verifiedSource?.changedFilesSha256;
+    if (expectedHashes.length && (!hashes || typeof hashes !== 'object' || Array.isArray(hashes))) {
+      errors.push(`RECEIPT_INVALID: ${path} records no verified file hashes`);
+    } else if (hashes && (typeof hashes !== 'object' || Array.isArray(hashes))) {
+      errors.push(`RECEIPT_INVALID: ${path} records malformed verified file hashes`);
+    } else {
+      const recorded = (hashes ?? {}) as Record<string, unknown>;
+      const deletedPaths = new Set(facts.deletedPaths ?? []);
+      for (const [hashedPath, hashedValue] of Object.entries(recorded)) {
+        if (!relativePath(hashedPath)) { errors.push(`RECEIPT_INVALID: ${path} hash entry ${hashedPath}`); continue; }
         const file = repositoryPath(facts.root, hashedPath);
+        if (hashedValue === 'deleted') {
+          // A deletion is a real recorded fact, not an existence check to skip.
+          if (!deletedPaths.has(hashedPath)) errors.push(`RECEIPT_HASH_NOT_DELETED: ${path} records ${hashedPath} as deleted but the checked revision does not delete it`);
+          else if (file && existsSync(file)) errors.push(`RECEIPT_STALE_DELETION: ${path} records ${hashedPath} as deleted but it still exists`);
+          continue;
+        }
+        if (!sha256hex.test(String(hashedValue))) { errors.push(`RECEIPT_INVALID: ${path} hash entry ${hashedPath}`); continue; }
+        if (!expectedHashes.includes(hashedPath)) {
+          errors.push(`RECEIPT_HASH_NOT_CHANGED: ${path} fingerprints ${hashedPath} which is not part of the checked revision`);
+          continue;
+        }
         if (!file || !existsSync(file)) { errors.push(`RECEIPT_HASH_PATH_MISSING: ${path} records ${hashedPath}`); continue; }
         const actual = digest(readFileSync(file));
         if (actual !== hashedValue) errors.push(`RECEIPT_STALE_HASH: ${path} recorded ${hashedPath} as ${hashedValue} but it is now ${actual}`);
       }
+      for (const expected of expectedHashes) {
+        if (!(expected in recorded)) errors.push(`RECEIPT_HASH_MISSING: ${path} does not fingerprint changed path ${expected}`);
+      }
     }
   }
 
-  // Merge authorization: every development-stage declaration is checked against
-  // the trusted host store or a signed host proof; the trust root is never
-  // taken from the pull request.
+  // Local stage records: a development-stage declaration is read back from the
+  // host-owned store only. There is no in-repo proof, no public key and no
+  // self-signed file; the CI validate run is the independent execution gate.
   const stageReceipts = declared.filter((entry) => entry.type === 'development-stage');
   if (stageReceipts.length) {
     authorization.claimed = true;
@@ -329,38 +369,14 @@ export function checkPullRequestBody(body: string, facts: GovernanceFacts = {}):
         if (!claim.dddOwner || !claim.phase || !claim.baseSha || !facts.root || !facts.headSha || !facts.plan) {
           throw new Error('MERGE_AUTHORIZATION_CONTEXT: owner, phase, base, plan and checked revision are required');
         }
-        const proofPath = entry.fields.proof;
-        const hostStore = facts.hostStore ? openTrustedStore(facts.root, facts.hostStore) : undefined;
-        const authority = decodeAuthority(facts.authorityPublicKey);
-        if (!hostStore && !proofPath) throw new Error('MERGE_AUTHORIZATION_UNPROVEN: a trusted host store or signed host proof is required');
-        if (!hostStore && !authority) throw new Error('MERGE_AUTHORIZATION_UNCONFIGURED: the trusted host public key is not configured');
-
-        let approval: RunApproval; let receipt: StageReceipt; let receiptHash: string;
-        if (hostStore) {
-          approval = readRunApproval(hostStore, runId);
-          const storeEntry = stageReceiptEvidence(hostStore, runId, gateId, attempt);
-          receipt = storeEntry.receipt; receiptHash = storeEntry.hash;
-          authorization.basis = 'host-store';
-        } else {
-          const proofTarget = repositoryPath(facts.root, proofPath!);
-          if (!proofTarget || !existsSync(proofTarget)) throw new Error(`EVIDENCE_INVALID: signed proof missing: ${proofPath}`);
-          const proof = JSON.parse(readFileSync(proofTarget, 'utf8'));
-          if (!proof || typeof proof !== 'object' || Array.isArray(proof) || proof.schemaVersion !== 1 || proof.kind !== 'opl.development.stage.proof.v1') {
-            throw new Error('EVIDENCE_INVALID: proof structure');
-          }
-          const key = createPublicKey(authority!);
-          const unwrap = (envelope: any, label: string) => {
-            if (!envelope || typeof envelope !== 'object' || typeof envelope.signature !== 'string' || envelope.payload === undefined ||
-              !verify(null, Buffer.from(canonical(envelope.payload)), key, Buffer.from(envelope.signature, 'base64'))) {
-              throw new Error(`EVIDENCE_INVALID: ${label} signature mismatch`);
-            }
-            return envelope.payload;
-          };
-          approval = parseApproval(unwrap(proof.approval, 'approval'));
-          receipt = parseStageReceipt(unwrap(proof.receipt, 'receipt'), runId, gateId, attempt);
-          receiptHash = digest(canonical(receipt));
-          authorization.basis = 'signed-proof';
+        if (!facts.hostStore) {
+          throw new Error('MERGE_AUTHORIZATION_UNPROVEN: an absolute host store is required to read a development-stage record');
         }
+        const hostStore = openTrustedStore(facts.root, facts.hostStore);
+        const approval: RunApproval = readRunApproval(hostStore, runId);
+        const storeEntry = stageReceiptEvidence(hostStore, runId, gateId, attempt);
+        const receipt = storeEntry.receipt; const receiptHash = storeEntry.hash;
+        authorization.basis = 'host-store';
 
         if (receipt.result !== 'passed') throw new Error(`MERGE_AUTHORIZATION_PENDING: ${runId}/${gateId} is ${receipt.result}`);
         if (approval.runId !== runId) throw new Error('EVIDENCE_INVALID: run identity mismatch');
@@ -390,15 +406,11 @@ export function checkPullRequestBody(body: string, facts: GovernanceFacts = {}):
           const bound = hostStore
             ? receiptEvidenceByHash(hostStore, dependency.runId, dependency.gateId, dependency.receiptHash)
             : undefined;
-          if (!bound) throw new Error(`EVIDENCE_INVALID: dependency proof missing: ${dependency.runId}/${dependency.gateId}`);
+          if (!bound) throw new Error(`EVIDENCE_INVALID: dependency receipt missing: ${dependency.runId}/${dependency.gateId}`);
         }
         const sourceSha = receipt.sourceSha;
         execFileSync('git', ['-C', facts.root, 'cat-file', '-e', `${sourceSha}^{commit}`]);
         execFileSync('git', ['-C', facts.root, 'merge-base', '--is-ancestor', sourceSha, facts.headSha]);
-        const successors = execFileSync('git', ['-C', facts.root, 'diff', '--name-only', '-z', '--no-renames', `${sourceSha}..${facts.headSha}`, '--'], { encoding: 'utf8' }).split('\0').filter(Boolean);
-        for (const successor of successors) {
-          if (successor !== proofPath) throw new Error(`MERGE_AUTHORIZATION_UNPROVEN: post-receipt change ${successor} is not proof-only`);
-        }
         authorization.ok = true; authorization.runId = runId; authorization.gateId = gateId; authorization.attempt = attempt;
         authorization.receiptDigest = receiptHash;
       } catch (error: any) {
@@ -409,9 +421,14 @@ export function checkPullRequestBody(body: string, facts: GovernanceFacts = {}):
   }
 
   if (terminalState === 'merge-ready') {
-    if (!stageReceipts.length) errors.push('MERGE_AUTHORIZATION_UNPROVEN: merge-ready requires a host development-stage receipt');
-    else if (!authorization.ok) errors.push(...authorization.errors.map((message) => `MERGE_AUTHORIZATION: ${message}`));
-  } else if (declared.some((entry) => entry.type === 'development-stage') && !authorization.ok) {
+    // Merge readiness is the source-layer record plus the CI validate run on
+    // the reviewed commit. The checker never claims a command ran; it refuses a
+    // merge-ready body without a source-layer receipt to bind the revision.
+    if (!declared.some((entry) => entry.type === 'source-check')) {
+      errors.push('MERGE_AUTHORIZATION_UNPROVEN: merge-ready requires a source-check receipt for the checked revision');
+    }
+  }
+  if (stageReceipts.length && !authorization.ok) {
     errors.push(...authorization.errors.map((message) => `MERGE_AUTHORIZATION: ${message}`));
   }
   if (mode === 'merge' && terminalState !== 'merge-ready') {
@@ -437,20 +454,16 @@ function repositoryChangeScope(root: string, base: string, head: string): string
 }
 
 function usage(): never {
-  throw new Error('usage: check-pr-governance.ts (--body-file <path> | --body-env <NAME>) [--plan <path>] [--root <path>] [--base <40-hex-sha> | --base-env <NAME>] [--head <sha> | --head-env <NAME>] [--mode record|merge] [--host-store <absolute path>] [--authority-env <NAME>] [--bootstrap-base <existing base worktree directory>]');
+  throw new Error('usage: check-pr-governance.ts (--body-file <path> | --body-env <NAME>) [--plan <path>] [--root <path>] [--base <40-hex-sha> | --base-env <NAME>] [--head <sha> | --head-env <NAME>] [--mode record|merge] [--host-store <absolute path>]');
 }
-/**
- * Bootstrap downgrade is a physical condition, never an actor exemption: when
- * the checked pull request's base revision has no checker file, merge mode
- * enforces record compliance only. A base that carries the checker keeps full
- * merge enforcement.
- */
-export function effectiveGovernanceMode(mode: GovernanceMode, bootstrapBase: string | undefined): { mode: GovernanceMode; bootstrap: boolean } {
-  if (mode !== 'merge' || bootstrapBase === undefined) return { mode, bootstrap: false };
-  const base = resolve(bootstrapBase);
-  if (!existsSync(base) || !statSync(base).isDirectory()) throw new Error(`invalid bootstrap base: ${bootstrapBase}`);
-  const hasChecker = existsSync(resolve(base, 'tools/check-pr-governance.ts'));
-  return hasChecker ? { mode: 'merge', bootstrap: false } : { mode: 'record', bootstrap: true };
+/** Paths the checked revision deletes; a recorded deletion fact is verified against this set. */
+function repositoryDeletedPaths(root: string, base: string, head: string): string[] {
+  const names = (...args: string[]) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).split('\0').filter(Boolean);
+  return [...new Set([
+    ...names('diff', '--name-only', '--diff-filter=D', '-z', '--no-renames', `${base}...${head}`, '--'),
+    ...names('diff', '--cached', '--name-only', '--diff-filter=D', '-z', '--no-renames', base, '--'),
+    ...names('diff', '--name-only', '--diff-filter=D', '-z', '--no-renames', base, '--'),
+  ])];
 }
 export function governanceCli(argv: string[], environment: NodeJS.ProcessEnv = process.env) {
   const options = new Map<string, string>();
@@ -460,7 +473,7 @@ export function governanceCli(argv: string[], environment: NodeJS.ProcessEnv = p
     if (!flag?.startsWith('--') || value === undefined) usage();
     options.set(flag, value);
   }
-  for (const flag of options.keys()) if (!['--body-file', '--body-env', '--plan', '--root', '--base', '--base-env', '--head', '--head-env', '--mode', '--host-store', '--authority-env', '--bootstrap-base'].includes(flag)) usage();
+  for (const flag of options.keys()) if (!['--body-file', '--body-env', '--plan', '--root', '--base', '--base-env', '--head', '--head-env', '--mode', '--host-store'].includes(flag)) usage();
   const bodyFile = options.get('--body-file');
   const bodyEnv = options.get('--body-env');
   if (Boolean(bodyFile) === Boolean(bodyEnv)) usage();
@@ -479,17 +492,15 @@ export function governanceCli(argv: string[], environment: NodeJS.ProcessEnv = p
     if (!sha40.test(resolved)) throw new Error(`invalid base SHA: ${base}`);
     base = resolved;
   }
-  const requestedMode = (options.get('--mode') ?? 'record') as GovernanceMode;
-  if (!['record', 'merge'].includes(requestedMode)) usage();
-  const { mode, bootstrap } = effectiveGovernanceMode(requestedMode, options.get('--bootstrap-base'));
-  const authorityEnv = options.get('--authority-env');
+  const mode = (options.get('--mode') ?? 'record') as GovernanceMode;
+  if (!['record', 'merge'].includes(mode)) usage();
   const changedPaths = base ? repositoryChangeScope(root, base, head) : undefined;
+  const deletedPaths = base ? repositoryDeletedPaths(root, base, head) : undefined;
   const result = checkPullRequestBody(body, {
-    plan, root, changedPaths, eventBaseSha: base, headSha: head, mode,
+    plan, root, changedPaths, deletedPaths, eventBaseSha: base, headSha: head, mode,
     hostStore: options.get('--host-store'),
-    authorityPublicKey: authorityEnv ? environment[authorityEnv] : undefined,
   });
-  process.stdout.write(JSON.stringify({ ok: result.ok, mode: requestedMode, effectiveMode: mode, bootstrap, errors: result.errors, claim: result.claim, authorization: result.authorization, changedPaths, baseSha: base, headSha: head }, null, 2) + '\n');
+  process.stdout.write(JSON.stringify({ ok: result.ok, mode, errors: result.errors, claim: result.claim, authorization: result.authorization, changedPaths, deletedPaths, baseSha: base, headSha: head }, null, 2) + '\n');
   if (!result.ok) { process.stderr.write('PR_GOVERNANCE_FAILED\n'); process.exitCode = 1; }
   return result;
 }

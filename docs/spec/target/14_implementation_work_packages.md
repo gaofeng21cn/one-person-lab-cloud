@@ -1291,7 +1291,7 @@
 | `W16.workspace-ui` | integration | W15.first-create, W13.console-entry | 默认App无需进入Publisher；选套餐一次确认，显示订单/资源/应用/证据各自状态并打开真实URL |
 | `W16.console-ui-fixes` | integration | 无 | 既有Console表现层回归的最小修复：从owner读回派生展示结论，复用现有unit/browser目标；不新增业务语义、不写后端或业务SSOT |
 | `W27.runnable-candidate` | integration | W02.owner-readiness | 精确SHA/digest的可测试Candidate，声明必需owner/ports/DB/identity/工具；非正式发布 |
-| `W27.development-governance` | integration | 无 | 开发治理统一入口：PR body机器校验(base SHA/DDD owner/phase/write set/receipt分层)、开发SSOT phase入口与hard-entry审计；host-owned，restricted worker不获得这些写权限 |
+| `W27.development-governance` | integration | 无 | 开发治理统一入口：PR body机器校验(base SHA/DDD owner/phase/write set/source-check执行摘要)、开发SSOT phase入口与hard-entry审计；host-owned，restricted worker不获得这些写权限 |
 | `W26.default-source` | integration | W16.workspace-ui, W05.receipts | 本地真实服务/隔离外部权威证明默认App原单到应用；无真实provider冒充 |
 | `W29.default-tke` | instance | W26.default-source, W27.runnable-candidate | Instance仅部署Cloud并运行其验收器，Console默认App一次确认→TKE资源→Serve→真实native UI |
 | `W26.agent-source` | integration | W14.publisher-ui, W16.workspace-ui, W05.receipts | Package+独立WebUI的Agent组合在相同业务链闭合且原操作恢复 |
@@ -1546,11 +1546,11 @@
 
 **输入：** AGENTS.md#scoped-development-contract；DEV_GUIDE.md#scoped-host-and-worker-entry；现有PR合规清单(.github/PULL_REQUEST_TEMPLATE.md)
 
-**写集：** `.github/`, `tools/`, `tests/tools/`, `AGENTS.md`, `DEV_GUIDE.md`, `package.json`, `docs/spec/target/`, `docs/evidence/source-checks/`, `docs/evidence/development-stage/`
+**写集：** `.github/`, `tools/`, `tests/tools/`, `AGENTS.md`, `DEV_GUIDE.md`, `package.json`, `docs/spec/target/`, `docs/evidence/source-checks/`
 
 **验收：** npm run test:development-gates；npm run verify:development-plan；npm run verify:local:focused -- --base origin/main
 
-**交付证据：** 实际执行的gate结果与append-only source-check receipt；不替代host acceptance receipt，不声称产品runtime或发布完成
+**交付证据：** 实际执行的gate结果与append-only source-check receipt；不替代CI实际validate，不声称产品runtime或发布完成
 
 **未知结果：** 按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。
 
