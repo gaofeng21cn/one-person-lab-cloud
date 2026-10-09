@@ -19,7 +19,7 @@ Workspace; it is not a second Agent Package or Runtime owner.
 Agent design / domain source
 -> Agent Package upload begins in Serve UI
 -> Capability validates and stores uploaded bytes + metadata as immutable Package version
--> user selects WebUI and an approved Runtime version from Runtime Control catalog
+-> administrator-selected effective policy resolves approved Runtime/WebUI inputs; customer does not pick them
 -> Build fixes Package + WebUI + Runtime refs/digests and produces immutable OCI
 -> user requests delivery to a Workspace through Serve
 -> Workspace authorizes its identity, member, entitlement, target and resource plan
@@ -52,9 +52,10 @@ Agent design / domain source
 2. User begins upload in Serve; Capability validates and persists the exact
    Package bytes, metadata, identity and immutable version. Serve UI is not the
    Package writer.
-3. User selects the WebUI and Runtime version. Runtime Control supplies only
-   approved Runtime-version references; the OPL App/Framework owner supplies
-   the Runtime implementation.
+3. The administrator-selected effective policy resolves approved compatible
+   Runtime/WebUI inputs; the customer does not select them. Runtime Control
+   supplies exact release references; the OPL App/Framework owner supplies the
+   Runtime implementation.
 4. Build consumes exact Package, WebUI and Runtime refs and emits an immutable
    OCI digest plus build evidence. OCI fixes those inputs; changing one requires
    a new Build output.

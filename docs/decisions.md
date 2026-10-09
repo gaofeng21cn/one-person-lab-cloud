@@ -4,6 +4,76 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-10-09: Task-Oriented Console And Customer Agent Version Lifecycle
+
+Customers upload a standard OMA/OPL Agent Package, supply its name/version and
+request a Build. They do not select Runtime, independent WebUI, repository or
+OCI references. Runtime Control's administrator-selected effective default
+policy resolves an approved compatible Runtime and WebUI; Capability validates
+Package/WebUI facts and Build freezes the exact inputs before execution. Import
+and approval do not automatically activate a default. An unavailable or
+incompatible default is explained, not replaced by the first catalog entry or
+an older release. The default OPL App uses its approved active Runtime's built-in
+UI directly and does not create a synthetic Package or Build.
+
+A changed Package, Runtime or WebUI produces a new immutable Agent/OCI version.
+Customers see an available update, explicitly rebuild from the retained Package,
+then explicitly switch a Workspace; default changes never rebuild or deploy
+existing installations automatically. A retry uses its original frozen inputs.
+An authorized customer can initially deploy a ready Agent to an entitled empty
+Workspace or confirm a quote for a new Workspace. Within the same Tenant and
+stable Package identity, the customer can upgrade or return to a retained Agent
+version when data compatibility and existing capacity are verified. Version
+names, tag order and repository equality are not identity or compatibility
+proof. Switching the default App Runtime, unrelated applications or arbitrary
+images remains an administrator operation. Short downtime is allowed and shown;
+no automatic expansion, purchase, data reset or destructive migration is
+implicit. Insufficient capacity offers another Workspace or the existing new-
+Workspace quote flow. A new Workspace has independent data and does not migrate,
+delete or refund the old Workspace.
+
+Platform-active default inputs and a Workspace's current Serve deployment are
+different facts. Serve remains the sole current-deployment writer. Version
+switching and cleanup preserve Workspace data/CBS bindings, uploaded Packages,
+version records and receipts. Local cleanup retires only unreferenced inactive
+runtime artifacts/cache, not CVM/CBS resources, shared layers or business data.
+A locally removed image can be pulled again by exact digest if its cloud artifact
+is still retained and the target remains admissible and data-compatible.
+
+Each Tenant may retain at most 50 distinct cloud Agent OCI artifact versions
+across all its Agents. Count the root OCI digest once, not its aliases,
+architecture child manifests, Package records or local copies; platform Runtime/
+WebUI inputs are not Tenant Build outputs. Capability owns the Tenant artifact
+availability/quota and reference eligibility; Build owns registry execution,
+Serve owns deployment/in-flight references, and Fabric/Instance retain node and
+provider cleanup authority. Publication must reserve capacity atomically before
+creating a new cloud artifact; retries and identical artifacts do not consume
+another slot. At capacity, ask the customer to explicitly delete an unused cloud
+artifact; never automatically evict the oldest. Deletion excludes every active
+or in-flight consumer, preserves metadata and receipts, and releases quota only
+on confirmed cloud deletion. Unknown publication/deletion results remain pending
+for reconciliation, not permission to republish, delete again or free a slot.
+Cloud deletion and local cleanup are separate actions; cloud deletion removes
+that artifact's direct pull/rollback path without deleting Workspace data.
+
+The first customer-management cut is view, admission, enable and disable.
+Disabling blocks new Cloud management commands but does not by itself stop
+running applications, cancel subscriptions/renewal, delete resources, revoke
+Gateway Keys or refund money. Existing authorized operations remain recoverable;
+entitlement expiry and separately authorized resource/money actions keep their
+own policies. Multi-member management is outside this cut. Sub2API stays the
+spendable-wallet authority; Ledger stays the business-evidence authority.
+
+Console fixes task destinations, role boundaries, visible states, confirmations
+and completion evidence, not pixels or screenshot hashes. The product interaction
+owners are [Workspace experience](product/workspace-experience.md) and
+[Console experience](product/console-experience-guide.md). This decision narrows
+the September 10/11 administrator-only rule for customer Agent operations, but
+preserves administrator-only default-App and arbitrary-image management. It does
+not change other lanes' launch/refund authorization, Instance deployment rules,
+billing policy or source/production evidence. Unimplemented seams remain explicit
+in [the Console roadmap](roadmap.md#task-oriented-console-and-agent-version-lifecycle).
+
 ## 2026-10-08: Separate Legacy Workspace Retention From The Cloud Tenant Entry
 
 A Gateway-authenticated User and a Cloud Tenant are distinct concepts. A User
@@ -585,11 +655,16 @@ Application business logic, packaging, formats and restore algorithms remain
 with the application owner; several services may run on one CVM or be packaged
 in one image.
 
-The 2026-09-11 refinement makes initial application distribution an administrator
-operation against explicitly selected Workspaces. Each Workspace pins its own
+The 2026-09-11 refinement originally made initial application distribution an
+administrator operation against explicitly selected Workspaces. The
+[October 9 decision](#2026-10-09-task-oriented-console-and-customer-agent-version-lifecycle)
+now permits authorized customer initial Agent deployment and same-Package
+version switching; default-App Runtime and arbitrary-image operations remain
+administrator-only. Each Workspace pins its own
 revision and data bindings; publishing another image or changing a default does
-not update existing installations. Customers use the selected application and
-retain their separately authorized Workspace lifecycle actions. Existing admin
+not update existing installations. Customers use the selected application, may perform the explicitly authorized
+Agent operations above, and retain their separately authorized Workspace
+lifecycle actions. Existing admin
 resource views are extended for deployment, rather than introducing a customer
 application marketplace. Tencent application data uses Workspace-owned CBS via
 explicit mounts; ordinary image updates reuse those bindings and never restore,

@@ -13,6 +13,19 @@ Instance installation, or a Product Release. The target boundary is in
 [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Console Product Decision Alignment (2026-10-09)
+
+The [October 9 decision](decisions.md#2026-10-09-task-oriented-console-and-customer-agent-version-lifecycle)
+aligns the adopted task/permission/default-selection/cleanup/50-artifact behavior
+with its existing product and architecture owners. The source audit was against
+`b957655950f3dc53961fc6f589d4e18cb9b8f238`; source files, generated contracts,
+Candidate bytes and Instance state were not changed. The
+[documentation receipt](evidence/source-checks/2026-10-09-console-business-ssot-alignment.json)
+records document consistency/focused-gate evidence only, not implemented behavior
+or production readiness. Pending implementation and next-consumer acceptance are
+in the [Console outcome](roadmap.md#task-oriented-console-and-agent-version-lifecycle).
+Existing TKE launch and Legacy refund lane receipts remain separate evidence.
+
 ## Current Source Baseline
 
 The current source contains the target owner modules and the retained
