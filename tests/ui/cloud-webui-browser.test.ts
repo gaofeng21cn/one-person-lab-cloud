@@ -79,30 +79,35 @@ test("Cloud Agent keeps the current turn locked until the Runtime completes it",
   }
 });
 
-test("Cloud publisher selects immutable Runtime and Agent WebUI owner versions", { timeout: 30_000 }, async () => {
+test("Cloud publisher resolves the effective build defaults from the owner and never guesses a catalog row", { timeout: 30_000 }, async () => {
   const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
   process.env.VITE_CONSOLE_IDENTITY = "cloud";
   const server = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await launchBrowser({ headless: true });
+  let policyActive = true;
+  // Publisher commands only: an unresolved default must not reach upload or build.
+  const commands: string[] = [];
+  const stateChanging = (method: string, path: string) => method !== "GET" && /^\/api\/v2\/(builds|uploads|packages|namespaces|capability-versions)/.test(path);
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await page.route("**/api/v2/**", async (route) => {
-      const url = new URL(route.request().url());
+      const request = route.request();
+      const url = new URL(request.url());
       const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+      if (stateChanging(request.method(), url.pathname)) commands.push(`${request.method()} ${url.pathname}`);
       if (url.pathname === "/api/v2/auth/context") return json({ csrfToken: "csrf-fixture" });
       if (url.pathname === "/api/v2/auth/login") return json({ actorId: "user-customer", tenantId: "tenant-fixture", displayName: "Customer", permissions: [], csrfToken: "csrf-fixture", expiresAt: "2099-01-01T00:00:00Z" });
       if (url.pathname === "/api/v2/auth/session") return json({ actorId: "user-customer", tenantId: "tenant-fixture", displayName: "Customer", permissions: [], csrfToken: "csrf-fixture", expiresAt: "2099-01-01T00:00:00Z" });
       if (url.pathname === "/api/v2/namespaces") return json({ items: [{ id: "ns-1", name: "fixture", status: "active" }] });
       if (url.pathname === "/api/v2/packages") return json({ items: [{ id: "pkg-1", name: "fixture-agent", status: "ready" }] });
-      if (url.pathname === "/api/v2/catalog/webui-versions") return json({ items: [
-        { id: "webui-good", name: "Cloud WebUI fixture", versionLabel: "0.1.0", status: "approved", artifactDigest: digest, admissionReceiptId: "receipt-webui" },
-        { id: "webui-latest", name: "mutable", versionLabel: "latest", status: "approved", artifactDigest: "ghcr.io/example/webui:latest" },
-        { id: "webui-revoked", name: "revoked", versionLabel: "0.0.1", status: "revoked", artifactDigest: digest }
-      ] });
+      // Runtime Control projects the one Runtime its effective policy names onto
+      // this member-readable catalog. The policy default here is deliberately the
+      // second approved row, so a page that picks the first catalog entry fails.
       if (url.pathname === "/api/v2/catalog/runtime-versions") return json({ items: [
-        { id: "runtime-good", name: "OPL App Runtime", versionLabel: "26.9.26", status: "approved", artifactDigest: digest, admissionReceiptId: "receipt-runtime" },
+        { id: "runtime-first", name: "First catalog row", versionLabel: "0.0.1", status: "approved", artifactDigest: "sha256:" + "b".repeat(64) },
+        { id: "runtime-default", name: "OPL App Runtime default", versionLabel: "26.9.26", status: "approved", artifactDigest: digest, defaultForNewBuilds: policyActive },
         { id: "runtime-latest", name: "mutable", versionLabel: "latest", status: "approved", artifactDigest: "ghcr.io/example/runtime:latest" },
-        { id: "runtime-revoked", name: "revoked", versionLabel: "0.0.1", status: "revoked", artifactDigest: digest }
+        { id: "runtime-revoked", name: "revoked", versionLabel: "0.0.1", status: "revoked", artifactDigest: digest, defaultForNewBuilds: false }
       ] });
       return json({ error: "unexpected_cloud_webui_browser_request", path: url.pathname }, 500);
     });
@@ -112,19 +117,34 @@ test("Cloud publisher selects immutable Runtime and Agent WebUI owner versions",
     await page.getByRole("button", { name: "登录", exact: true }).click();
     await page.goto(`${server.origin}/console/publisher`, { waitUntil: "networkidle" });
     await page.getByText("Fail-closed boundary", { exact: true }).waitFor();
-    const webui = page.getByLabel("WebUI");
-    const runtime = page.getByLabel("Runtime Release");
-    assert.equal(await runtime.locator("option[value=runtime-good]").count(), 1);
-    assert.equal(await runtime.locator("option[value=runtime-latest]").count(), 0);
-    assert.equal(await runtime.locator("option[value=runtime-revoked]").count(), 0);
-    assert.equal(await webui.locator("option[value=webui-latest]").evaluate((item) => (item as HTMLOptionElement).disabled), true);
-    assert.equal(await webui.locator("option[value=webui-revoked]").count(), 0);
-    assert.match(await page.locator(".publisher-selection-readback").getByText("Runtime catalog", { exact: false }).textContent() || "", /sha256:/);
-    assert.equal(await page.evaluate(() => localStorage.length), 0);
-    assert.equal(await page.evaluate(() => JSON.stringify(sessionStorage)), "{}");
+
+    // No customer picker exists: the exact inputs are the owner's resolution.
+    assert.equal(await page.getByLabel("Runtime Release").count(), 0);
+    assert.equal(await page.getByLabel("WebUI").count(), 0);
+    const readback = page.locator(".publisher-selection-readback");
+    const resolved = await readback.textContent() || "";
+    assert.match(resolved, /OPL App Runtime default · 26\.9\.26 · sha256:a{64}/);
+    assert.doesNotMatch(resolved, /First catalog row/);
+    assert.match(resolved, /Agent WebUI：不可用：平台生效的默认界面版本尚未对客户会话提供合法授权读取/);
+
+    // Runtime Control's effective default WebUI has no member-authorized read
+    // yet, so the Build command stays unavailable and nothing is submitted.
+    const submit = page.getByRole("button", { name: "上传并构建 / 继续上传" });
+    assert.equal(await submit.isDisabled(), true);
+    assert.equal(commands.length, 0);
     await page.keyboard.press("Tab");
     assert.ok(await page.evaluate(() => document.activeElement?.getAttribute("aria-label") || document.activeElement?.tagName));
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    assert.equal(await page.evaluate(() => localStorage.length), 0);
+    assert.equal(await page.evaluate(() => JSON.stringify(sessionStorage)), "{}");
+
+    // An inactive default policy is reported as the missing owner fact instead
+    // of falling back to an approved catalog row.
+    policyActive = false;
+    await page.reload({ waitUntil: "networkidle" });
+    await page.getByRole("status").filter({ hasText: "平台生效默认尚未就绪" }).first().waitFor();
+    assert.equal(await submit.isDisabled(), true);
+    assert.equal(commands.length, 0);
   } finally {
     await browser.close();
     await server.close();

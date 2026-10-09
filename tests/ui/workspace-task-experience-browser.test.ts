@@ -162,8 +162,10 @@ for (const identity of ["legacy", "cloud"] as const) {
           "/api/v2/workspaces/ws-1": ownerWorkspace,
           "/api/v2/namespaces": { items: [{ id: "namespace-1", name: "Fixture namespace" }] },
           "/api/v2/packages": { items: [] },
-          "/api/v2/catalog/webui-versions": { items: [{ id: "webui-1", name: "Fixture WebUI", versionLabel: "1.0.0", status: "approved" }] },
-          "/api/v2/catalog/runtime-versions": { items: [{ id: "runtime-1", name: "Fixture Runtime", versionLabel: "1.0.0", status: "approved", artifactDigest: "sha256:" + "a".repeat(64) }] },
+          // Runtime Control projects the one Runtime its effective policy names onto
+          // this member-readable catalog; the Publisher page must report that row
+          // and never fall back to another approved catalog entry.
+          "/api/v2/catalog/runtime-versions": { items: [{ id: "runtime-latest", name: "Newest catalog row", versionLabel: "1.0.1", status: "approved", artifactDigest: "sha256:" + "b".repeat(64) }, { id: "runtime-1", name: "Fixture Runtime", versionLabel: "1.0.0", status: "approved", artifactDigest: "sha256:" + "a".repeat(64), defaultForNewBuilds: true }] },
           "/api/v2/delivery/ws-1": {
             workspaceId: "ws-1",
             workspace: { owner: "workspace", state: "active", details: {} },
@@ -192,9 +194,21 @@ for (const identity of ["legacy", "cloud"] as const) {
         await page.goto(`${demo.origin}/console/workspaces`, { waitUntil: "networkidle" });
         await page.getByRole("link", { name: "发布 Package", exact: true }).click();
         await page.locator(".publisher-page").getByRole("heading", { name: "Cloud WebUI / Agent Package", exact: true }).waitFor({ state: "visible" });
-        await page.waitForFunction(() => (document.querySelector('[aria-label="WebUI"]') as HTMLSelectElement | null)?.value === "webui-1");
+        // The customer supplies only Package/name/version: the page reports the
+        // effective default Runtime Control served it, keeps no picker and never
+        // substitutes the first approved catalog row.
+        assert.equal(await page.getByLabel("Runtime Release").count(), 0);
+        assert.equal(await page.getByLabel("WebUI").count(), 0);
+        await page.waitForFunction(() => (document.querySelector(".publisher-selection-readback")?.textContent || "").includes("sha256:"));
+        const readback = (await page.locator(".publisher-selection-readback").textContent()) || "";
+        assert.match(readback, /Fixture Runtime · 1\.0\.0 · sha256:a{64}/);
+        assert.doesNotMatch(readback, /Newest catalog row/);
+        assert.match(readback, /Agent WebUI：不可用：平台生效的默认界面版本尚未对客户会话提供合法授权读取/);
         assert.equal(await page.locator(".publisher-page fieldset").isDisabled(), false);
+        assert.equal(await page.getByRole("button", { name: "上传并构建 / 继续上传" }).isDisabled(), true);
         assert.ok(v2Requests.includes("/api/v2/namespaces"));
+        assert.ok(v2Requests.includes("/api/v2/catalog/runtime-versions"));
+        assert.ok(!v2Requests.includes("/api/v2/catalog/webui-versions"), "the page must not fall back to the WebUI catalog");
       }
 
       // A direct URL must obey the same build boundary as visible navigation.
@@ -206,6 +220,11 @@ for (const identity of ["legacy", "cloud"] as const) {
       } else {
         await page.locator(".publisher-page").getByRole("heading", { name: "Cloud WebUI / Agent Package", exact: true }).waitFor({ state: "visible" });
         assert.equal(await page.getByRole("heading", { name: "页面不存在", exact: true }).count(), 0);
+        // The direct URL obeys the same owner-resolved boundary: Runtime from the
+        // policy projection, no customer picker, no catalog first-row fallback.
+        await page.locator(".publisher-selection-readback").getByText("输入来源", { exact: false }).waitFor({ state: "visible" });
+        assert.equal(await page.getByLabel("Runtime Release").count(), 0);
+        assert.equal(await page.getByLabel("WebUI").count(), 0);
       }
       assertBrowserAuditClean(audit);
     } finally {
