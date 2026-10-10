@@ -36,7 +36,7 @@ func (s *Service) Run(ctx context.Context) error {
 
 func (s *Service) RunOnce(ctx context.Context) error {
 	rows, err := s.Store.DB().QueryContext(ctx, `SELECT o.id FROM workspace.operations o
-		WHERE o.kind='create_workspace' AND o.status IN ('accepted','running','awaiting_confirmation','needs_attention')
+		WHERE o.kind IN ('create_workspace','delete_workspace') AND o.status IN ('accepted','running','awaiting_confirmation','needs_attention')
 		AND (o.worker_lease_until IS NULL OR o.worker_lease_until<now())
 		AND NOT EXISTS (SELECT 1 FROM workspace.saga_steps st WHERE st.operation_id=o.id AND st.next_attempt_at>now())
 		ORDER BY o.updated_at,o.id LIMIT 20`)
@@ -104,6 +104,20 @@ var continuationActions = []api.AuthorizationActionEnum{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS,
 }
 
+// deletionContinuationActions is the continuation surface of the deletion's own
+// accepted obligation: the canonical x-accepted-operation-actions group for
+// delete_workspace. A deletion accepted by one administrator therefore runs under
+// that administrator's own grant instead of the original order's.
+var deletionContinuationActions = []api.AuthorizationActionEnum{
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RETIRERUNTIME,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REFUNDCONFIRMEDDELETION,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT,
+}
+
 // Resume continues the committed original order. Repeating a side effect after
 // response loss reuses its immutable command and key at the receiving owner.
 func (s *Service) Resume(ctx context.Context, operationID string) error {
@@ -115,6 +129,10 @@ func (s *Service) Resume(ctx context.Context, operationID string) error {
 	}
 	if op.Terminal() {
 		return nil
+	}
+	if op.Kind == "delete_workspace" {
+		// A committed deletion resumes through its own ordered cleanup.
+		return s.resumeDeletion(ctx, operationID)
 	}
 	if op.Kind != "create_workspace" {
 		return status.Error(codes.FailedPrecondition, "operation is not a Workspace launch")
@@ -410,6 +428,12 @@ func (s *Service) checkpointOutcome(ctx context.Context, op ownerstore.Operation
 	if err != nil {
 		return status.Error(codes.Internal, "Workspace result cannot be encoded")
 	}
+	return s.checkpointBytes(ctx, op, token, step, stage, state, operationObservation, stepObservation, ownerRef, operationCode, stepCode, raw)
+}
+
+// checkpointBytes persists one fenced step outcome. The caller owns the result
+// encoding, so every operation kind records its own durable result.
+func (s *Service) checkpointBytes(ctx context.Context, op ownerstore.Operation, token, step, stage, state, operationObservation, stepObservation, ownerRef, operationCode, stepCode string, raw []byte) error {
 	tx, err := s.Store.DB().BeginTx(ctx, nil)
 	if err != nil {
 		return dbError(err)
