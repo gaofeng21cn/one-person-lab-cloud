@@ -250,6 +250,38 @@ test('carries the host-owned isolated database declaration and refuses misuse', 
   }
 });
 
+test('an unrelated malformed receipt never affects the named gate consumption', async () => {
+  const root = tempRoot('frame-unrelated-receipt-');
+  try {
+    writeStubFramework(root);
+    const receipt = stageReceiptFixture();
+    const store = join(root, 'store');
+    upstreamStore(store, receipt);
+    const receipts = join(store, 'runs', 'step4-selection-decoder', 'receipts');
+    // A different gate's corrupt record must not be opened while the named
+    // gate is consumed: receipt lookup reads only the named attempt sequence.
+    writeFileSync(join(receipts, 'legacy-gate-1.json'), '{ this is not json');
+    const manifest = manifestFixture({ requires: [{ runId: 'step4-selection-decoder', gateId: 'contracts-decoder', receiptHash: receiptAddress(receipt) }] });
+    const requires = resolveRequires(manifest as any, store);
+    assert.deepEqual(requires, { 'W01.application-contracts': { runId: 'step4-selection-decoder', gateId: 'contracts-decoder' } });
+    const validators = await (await import('../../tools/dev-frame-bridge.ts')).loadFrameValidators(root);
+    const reference = {
+      runId: 'step4-selection-decoder',
+      gateId: 'contracts-decoder',
+      attempt: 1,
+      receiptHash: receiptAddress(receipt),
+      result: 'passed',
+      verification: { tests: 3, failed: 0, skipped: 0, todo: 0, exitCode: 0, outputSha256: HASH_A },
+    };
+    assert.equal(consumeReceiptReference(validators, store, reference).receiptHash, receiptAddress(receipt));
+    // A corrupt record of the requested gate itself still fails closed.
+    writeFileSync(join(receipts, 'contracts-decoder-2.json'), '{ not json');
+    assert.throws(() => resolveRequires(manifest as any, store), SyntaxError);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('resolves a downstream requires binding by the upstream record and its receipt hash', () => {
   const root = tempRoot('frame-requires-');
   try {

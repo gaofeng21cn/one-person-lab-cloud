@@ -280,7 +280,8 @@ export interface StageReceipt {
   evidenceLayer: 'source'; sourceSha: string; approvalHash: string; phaseHash: string; runnerHash: string;
   inputHash: string; dependencies: { runId: string; gateId: string; receiptHash: string }[];
   result: 'passed' | 'failed' | 'blocked'; checkedAt: string;
-  verification: { tests: number; failed: number; skipped: number; exitCode: number | null; outputSha256: string; reason?: string };
+  verification: { tests: number; failed: number; skipped: number; exitCode: number | null; outputSha256: string;
+    command?: string; cwd?: string; reason?: string };
 }
 function inputFiles(root: string, paths: string[]) {
   const files = new Map<string, Buffer>(); let bytes = 0;
@@ -421,6 +422,11 @@ export function generateSourceCheckReceipt(root: string, storePath: string, runI
     // multi-link or oversized files; nothing falls through to "missing".
     changedFilesSha256[changed] = digest(fileBytes(session.root, changed, 16 * 1024 * 1024));
   }
+  const recordedCommand = last.receipt.verification.command;
+  if (typeof recordedCommand !== 'string' || !recordedCommand.trim())
+    fail('source-check export requires the recorded executed command; re-run the gate on the current runner revision');
+  const recordedCwd = last.receipt.verification.cwd;
+  const executionCommand = recordedCwd ? `${recordedCommand} (cwd: ${recordedCwd})` : recordedCommand;
   const writeSet = [...new Set([...paths, path])].sort();
   const receipt = {
     schemaVersion: 1,
@@ -432,7 +438,7 @@ export function generateSourceCheckReceipt(root: string, storePath: string, runI
     writeSet,
     verifiedSource: { baseSha: session.approval.baseSha, changedFilesSha256 },
     execution: {
-      command: gate.kind === 'node' ? ['node --test --test-reporter=tap', ...(gate.targets ?? [])].join(' ') : `${gate.kind} acceptance gate`,
+      command: executionCommand,
       exitCode: last.receipt.verification.exitCode,
       tests: last.receipt.verification.tests,
       failed: last.receipt.verification.failed,
@@ -660,7 +666,7 @@ export class DevelopmentSession {
       // host-provisioned container; the DSN is produced by the trusted host
       // runner and never read back from the worker or the invoking process.
       const checked = gate.database === 'isolated-owner-postgres'
-        ? await withIsolatedOwnerDatabase((dsn: string) => runDevelopmentCheck({ snapshotRoot: snapshot!, kind: gate.kind, targets: gate.targets, cwd: gate.cwd, ownerDatabaseDsn: dsn }))
+        ? await withIsolatedOwnerDatabase((fixture: { dsn: string; socketDirectory?: string }) => runDevelopmentCheck({ snapshotRoot: snapshot!, kind: gate.kind, targets: gate.targets, cwd: gate.cwd, ownerDatabaseDsn: fixture.dsn, ...(fixture.socketDirectory ? { ownerDatabaseSocketDir: fixture.socketDirectory } : {}) }))
         : await runDevelopmentCheck({ snapshotRoot: snapshot, kind: gate.kind, targets: gate.targets, cwd: gate.cwd });
       const unchanged = hash === fingerprint(inputFiles(this.root, gate.inputs)) && phaseHash === phase(this.root, this.approval).fingerprint;
       const previous = receiptHistory(this.store, this.approval.runId, gateId);
@@ -672,7 +678,7 @@ export class DevelopmentSession {
         evidenceLayer: 'source', sourceSha: this.head(), approvalHash: digest(canonical(this.approval)), phaseHash, runnerHash: runnerHash(), inputHash: hash, dependencies,
         result: unchanged && dependenciesUnchanged ? checked.status : 'failed', checkedAt: new Date().toISOString(),
         verification: { tests: checked.tests, failed: checked.failed, skipped: checked.skipped, exitCode: checked.exitCode, outputSha256: digest(checked.output),
-          ...(reason ? { reason } : {}) } };
+          ...(checked.command ? { command: checked.command } : {}), ...(checked.cwd ? { cwd: checked.cwd } : {}), ...(reason ? { reason } : {}) } };
       appendReceipt(this.store, receipt);
       return { ...this.view(), ...(!dependenciesUnchanged ? { result: 'failed' } : {}), verification: receipt.verification };
     } finally { if (snapshot) rmSync(snapshot, { recursive: true, force: true }); unlinkSync(lock); }

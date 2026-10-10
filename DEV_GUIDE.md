@@ -267,13 +267,17 @@ test stay in one owner scope.
 A Go acceptance gate that can only be executed against a real PostgreSQL server
 declares the host-owned fixture with `"database": "isolated-owner-postgres"` on
 that gate. The host provisions one ephemeral container from the pinned compose
-image with trust authentication and a loopback-only published port, hands the
-sealed runner only that loopback admin DSN (as
-`OPL_OWNER_MIGRATION_TEST_ADMIN_DSN`, with `OPL_POSTGRES_TESTS=1`), and removes
-the container after the stage. The declaration is part of the approved record,
-so the stage receipt's approval hash binds which fixture the evidence came from;
-the runner refuses any DSN that is not an isolated loopback PostgreSQL admin
-endpoint, and neither the worker nor the invoking environment can supply one.
+image with trust authentication, a loopback-only published port and, on Linux, a
+host-created Unix-socket directory, and removes the container after the stage.
+The sealed runner receives only that endpoint as
+`OPL_OWNER_MIGRATION_TEST_ADMIN_DSN` with `OPL_POSTGRES_TESTS=1`; a Linux stage
+runs in a private network namespace that cannot reach the host's published
+port, so it connects through the bound socket directory. The runner validates
+the endpoint shape and the socket-directory pairing before any execution;
+provenance comes from the host entry being the only provisioner, which never
+reads a DSN or socket directory from the worker or the invoking environment.
+The declaration is part of the approved record, so the stage receipt's approval
+hash binds which fixture the evidence came from.
 
 ## Pre-Commit Checks
 
@@ -310,8 +314,11 @@ Git scope uses the merge base plus local index/worktree changes, not unrelated
 upstream changes. Whitespace checks cover committed, staged and unstaged diffs.
 The focused command outputs actual execution results; it does not automatically
 write a source-check receipt. The host's `dev:verify` separately runs an admitted
-stage and appends a runtime receipt to the host store. For a PR, the host
-generates the source-check from that executed record with
+stage and appends a runtime receipt to the host store; that receipt records
+the command line that actually executed and the executed cwd, and the exporter
+publishes the recorded command while refusing a historical receipt that never
+captured one. For a PR, the host generates the source-check from that executed
+record with
 `node tools/dev-session.ts source-check <host-store> <run-id> <gate-id>`. Do not
 hand-write a passing result or treat a runtime receipt as that PR record. Focused success proves only the selected checks, not
 downstream

@@ -17,6 +17,7 @@ import {
   parseVerifyLocalArgs,
   postgresImage,
   postgresVerificationSpecs,
+  resolveOwnerDatabaseFixture,
   runDevelopmentCheck,
   runVerification,
   focusedVerificationSteps,
@@ -356,10 +357,10 @@ test("full verification adds the temporary PostgreSQL modules after the default 
   const env = { OPL_POSTGRES_TESTS: "1" };
   const dependencies = {
     runStep: async (step: (typeof localVerificationSteps)[number]) => { events.push(`step:${step.name}`); },
-    withTemporaryPostgres: async (callback: (env: NodeJS.ProcessEnv) => Promise<unknown>) => {
+    withTemporaryPostgres: async (callback: (env: NodeJS.ProcessEnv, fixture: { socketDirectory?: string }) => Promise<unknown>) => {
       events.push("postgres:start");
       try {
-        await callback(env);
+        await callback(env, {});
       } finally {
         events.push("postgres:stop");
       }
@@ -636,6 +637,22 @@ test("an owner-database stage receives only the host-provided loopback DSN and r
     "not a dsn",
     ""
   ]) assert.equal(isLoopbackOwnerDatabaseDsn(refused), false, refused);
+
+  // The socket-directory pairing is validated before execution: the DSN host
+  // parameter must name the exact host-created directory on Linux, and the
+  // pairing is refused entirely on platforms without that fixture form.
+  const socketDirectory = "/run/opl-owner-db-fixture";
+  const socketDsn = `postgresql://postgres@localhost/postgres?host=${encodeURIComponent(socketDirectory)}&sslmode=disable`;
+  assert.deepEqual(resolveOwnerDatabaseFixture(undefined, socketDirectory, "linux"),
+    { blocked: "owner database socket DSN must name the exact host-created fixture directory" });
+  assert.deepEqual(resolveOwnerDatabaseFixture(socketDsn, "relative/dir", "linux"),
+    { blocked: "owner database socket fixture directory must be an absolute host directory" });
+  assert.deepEqual(resolveOwnerDatabaseFixture(socketDsn.replace(encodeURIComponent(socketDirectory), "%2Ftmp%2Fother"), socketDirectory, "linux"),
+    { blocked: "owner database socket DSN must name the exact host-created fixture directory" });
+  assert.deepEqual(resolveOwnerDatabaseFixture(socketDsn, socketDirectory, "darwin"),
+    { blocked: "owner database socket fixture only applies on Linux" });
+  assert.deepEqual(resolveOwnerDatabaseFixture(socketDsn, socketDirectory, "linux"),
+    { kind: "linux-socket", dsn: socketDsn, directory: socketDirectory });
 
   const { snapshotRoot } = await developmentFixture(t);
   const module = join(snapshotRoot, "ownerdb");

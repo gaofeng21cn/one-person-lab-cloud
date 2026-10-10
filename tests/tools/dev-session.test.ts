@@ -1123,6 +1123,47 @@ test('the host exports the executed stage result as the pull-request source-chec
 
 });
 
+test('the host records the actually executed command and refuses an export that has none', async t => {
+  const { root, store, approval } = fixture(t);
+  development.approveRun(root, store, approval);
+  const session = new development.DevelopmentSession(root, store, approval.runId);
+  session.context();
+  const input = session.read('owner/input.ts');
+  session.write(input.path, input.sha256, input.content + '// command evidence\n');
+  assert.equal((await session.verifyGate('acceptance')).result, 'passed');
+
+  // The stage receipt carries the command line that actually executed and the
+  // executed cwd when it was not the snapshot root; no environment value enters it.
+  const receiptPath = join(store, 'runs', approval.runId, 'receipts', 'acceptance-1.json');
+  const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
+  assert.equal(receipt.verification.command, 'node --test --test-reporter=tap owner/acceptance.test.mjs');
+  assert.equal(receipt.verification.cwd, undefined);
+  assert.equal(JSON.stringify(receipt).includes(root), false);
+
+  // The exported source-check publishes that recorded command verbatim.
+  const generated = development.generateSourceCheckReceipt(root, store, approval.runId, 'acceptance');
+  const written = JSON.parse(readFileSync(join(root, generated.path), 'utf8'));
+  assert.equal(written.execution.command, 'node --test --test-reporter=tap owner/acceptance.test.mjs');
+
+  // A historical record written before command capture stays a valid receipt,
+  // but it can never be exported as fresh passing evidence.
+  development.approveRun(root, store, { ...approval, runId: 'legacy-command' });
+  const legacy = new development.DevelopmentSession(root, store, 'legacy-command');
+  legacy.context();
+  const legacyInput = legacy.read('owner/input.ts');
+  legacy.write(legacyInput.path, legacyInput.sha256, legacyInput.content + '// legacy record\n');
+  assert.equal((await legacy.verifyGate('acceptance')).result, 'passed');
+  const legacyPath = join(store, 'runs', 'legacy-command', 'receipts', 'acceptance-1.json');
+  const legacyReceipt = JSON.parse(readFileSync(legacyPath, 'utf8'));
+  delete legacyReceipt.verification.command;
+  writeFileSync(legacyPath, JSON.stringify(legacyReceipt) + '\n');
+  assert.throws(
+    () => development.generateSourceCheckReceipt(root, store, 'legacy-command', 'acceptance'),
+    /recorded executed command/u,
+  );
+  assert.equal(existsSync(join(root, 'docs/evidence/source-checks/legacy-command-acceptance-1.json')), false);
+});
+
 test('the source-check export re-derives the current obligation and never trusts a stored past result', async t => {
   const { root, store, approval } = fixture(t);
   development.approveRun(root, store, approval);

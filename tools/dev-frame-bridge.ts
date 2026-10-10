@@ -94,13 +94,16 @@ function readJson(path: string, label: string): Json {
 
 function runDirectory(store: string, runId: string) { return join(store, 'runs', runId); }
 
-/** Every receipt of one host run, addressed by the same hash the host records. */
-function receiptEntries(store: string, runId: string): { hash: string; receipt: Record<string, any>; path: string }[] {
+/** The attempt sequence of one named gate, addressed by the same hash the host records. */
+function receiptEntries(store: string, runId: string, gateId: string): { hash: string; receipt: Record<string, any>; path: string }[] {
   const directory = join(runDirectory(store, runId), 'receipts');
   if (!existsSync(directory)) return [];
+  // Only the named gate's attempt files are opened or parsed; an unrelated
+  // gate's record (including a malformed one) never influences resolution.
+  const attempt = new RegExp(`^${gateId.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}-([1-9][0-9]*)\\.json$`, 'u');
   const entries: { hash: string; receipt: Record<string, any>; path: string }[] = [];
   for (const name of readdirSync(directory).sort()) {
-    if (!/^[A-Za-z0-9._-]+-[1-9][0-9]*\.json$/u.test(name)) continue;
+    if (!attempt.test(name)) continue;
     const path = join(directory, name);
     if (!lstatSync(path).isFile()) continue;
     const receipt = object(JSON.parse(readFileSync(path, 'utf8')), 'stage receipt');
@@ -128,7 +131,7 @@ export function resolveRequires(manifest: Record<string, any>, store: string): R
     const receiptHash = sha256(entry.receiptHash, 'requires receiptHash');
     const approval = object(readJson(join(runDirectory(store, runId), 'approval.json'), `approved run ${runId}`), 'upstream approval');
     const selectionId = identifier(object(approval.selection, 'upstream selection').id, 'upstream selection id');
-    const found = receiptEntries(store, runId).find(candidate => candidate.hash === receiptHash);
+    const found = receiptEntries(store, runId, gateId).find(candidate => candidate.hash === receiptHash);
     if (!found) fail(`EVIDENCE_INVALID: requires receipt hash is not present in the host store for ${runId}/${gateId}`);
     if (found.receipt.runId !== runId || found.receipt.gateId !== gateId) fail(`EVIDENCE_INVALID: requires receipt identity mismatch for ${runId}/${gateId}`);
     if (found.receipt.result !== 'passed') fail(`UPSTREAM_NOT_PASSED: required receipt ${runId}/${gateId} is ${found.receipt.result}`);
@@ -145,7 +148,7 @@ export function consumeReceiptReference(validators: FrameValidators, store: stri
   const gateId = identifier(ref.gateId, 'reference gateId');
   if (!Number.isInteger(ref.attempt) || ref.attempt < 1) fail('reference attempt must be an integer >= 1');
   const receiptHash = sha256(ref.receiptHash, 'reference receiptHash');
-  const entries = receiptEntries(store, runId);
+  const entries = receiptEntries(store, runId, gateId);
   const found = entries.find(candidate => candidate.hash === receiptHash);
   if (!found) fail(`EVIDENCE_INVALID: receipt hash is not present in the host store for ${runId}/${gateId}`);
   if (found.receipt.runId !== runId || found.receipt.gateId !== gateId || found.receipt.attempt !== ref.attempt) {
