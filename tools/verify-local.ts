@@ -702,8 +702,12 @@ function stepEnv() {
   return process.env;
 }
 
+// Progress banners are diagnostics. They must never share the standard output
+// stream: the development entry speaks JSON-RPC over stdio in serve mode, and
+// a stray stdout line corrupts that protocol. Step results themselves are
+// printed by their own callers, not here.
 function printStep(name: string) {
-  process.stdout.write(`\n==> ${name}\n`);
+  process.stderr.write(`\n==> ${name}\n`);
 }
 
 function runProcess(command: string, args: string[], { cwd = root, env = process.env, capture = false, allowFailure = false }: { cwd?: string; env?: NodeJS.ProcessEnv; capture?: boolean; allowFailure?: boolean } = {}): Promise<ProcessResult> {
@@ -794,7 +798,7 @@ async function withTemporaryPostgres(callback: (env: NodeJS.ProcessEnv) => Promi
       "--health-retries", "60",
       "--publish", "127.0.0.1::5432",
       postgresImage
-    ]);
+    ], { capture: true });
     started = true;
     await waitForHealthyPostgres(containerName);
     const portResult = await runProcess("docker", ["port", containerName, "5432/tcp"], { capture: true });
