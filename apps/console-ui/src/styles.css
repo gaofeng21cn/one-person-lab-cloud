@@ -3327,6 +3327,10 @@ tbody tr:last-child td {
     bottom: 0;
     left: 0;
     display: grid;
+    /* One row for every installed task: a wrapped tab bar grows past the
+       space the shell reserves for it and covers the page's last actions. */
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     min-height: 64px;
     border-top: 1px solid var(--line);
     background: #ffffff;
@@ -5089,10 +5093,6 @@ select:focus-visible,
     flex-wrap: wrap;
   }
 
-  .admin-mobile-nav {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-
   .admin-mobile-nav a.active {
     color: var(--green);
   }
@@ -5794,10 +5794,6 @@ select:focus-visible,
 @media (max-width: 820px) {
   .topbar-actions > :not(:first-child):not(:last-child) {
     display: none;
-  }
-
-  .mobile-bottom-nav:not(.admin-mobile-nav) {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .global-slide {

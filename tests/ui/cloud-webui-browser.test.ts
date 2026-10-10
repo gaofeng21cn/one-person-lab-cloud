@@ -79,13 +79,14 @@ test("Cloud Agent keeps the current turn locked until the Runtime completes it",
   }
 });
 
-test("Cloud publisher resolves the effective build defaults from the owner and never guesses a catalog row", { timeout: 30_000 }, async () => {
+test("Publisher presents one customer task with the owner facts behind technical details", { timeout: 30_000 }, async () => {
   const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
   process.env.VITE_CONSOLE_IDENTITY = "cloud";
   const server = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await launchBrowser({ headless: true });
   let policyActive = true;
-  // Publisher commands only: an unresolved default must not reach upload or build.
+  // Publisher commands only: an unavailable platform default must not reach
+  // upload or build, and the page must never substitute a catalog row.
   const commands: string[] = [];
   const stateChanging = (method: string, path: string) => method !== "GET" && /^\/api\/v2\/(builds|uploads|packages|namespaces|capability-versions)/.test(path);
   try {
@@ -116,33 +117,76 @@ test("Cloud publisher resolves the effective build defaults from the owner and n
     await page.getByLabel("密码").fill(CONSOLE_DEMO_CREDENTIALS.customer.password);
     await page.getByRole("button", { name: "登录", exact: true }).click();
     await page.goto(`${server.origin}/console/publisher`, { waitUntil: "networkidle" });
-    await page.getByText("Fail-closed boundary", { exact: true }).waitFor();
 
-    // No customer picker exists: the exact inputs are the owner's resolution.
+    // The page is one customer task: none of the development vocabulary is on the
+    // customer-visible surface, while the collapsed disclosure may carry the real
+    // owner facts in technical wording.
+    const pageRegion = page.locator(".publisher-page");
+    await pageRegion.getByRole("heading", { name: "上传智能体", exact: true }).waitFor({ state: "visible" });
+    for (const jargon of ["Draft / fixture-aware", "Fail-closed boundary", "owner readback", "Runtime Control 生效策略"]) {
+      const matches = page.getByText(jargon, { exact: false });
+      let visible = 0;
+      for (let index = 0; index < await matches.count(); index += 1) if (await matches.nth(index).isVisible()) visible += 1;
+      assert.equal(visible, 0, `${jargon} must not be customer-visible`);
+    }
+
+    // The customer supplies Package/name/version only: the platform resolves the
+    // Runtime and WebUI, and no picker is offered.
     assert.equal(await page.getByLabel("Runtime Release").count(), 0);
     assert.equal(await page.getByLabel("WebUI").count(), 0);
-    const readback = page.locator(".publisher-selection-readback");
-    const resolved = await readback.textContent() || "";
-    assert.match(resolved, /OPL App Runtime default · 26\.9\.26 · sha256:a{64}/);
-    assert.doesNotMatch(resolved, /First catalog row/);
-    assert.match(resolved, /Agent WebUI：不可用：平台生效的默认界面版本尚未对客户会话提供合法授权读取/);
 
-    // Runtime Control's effective default WebUI has no member-authorized read
-    // yet, so the Build command stays unavailable and nothing is submitted.
+    // The installed readback belongs behind one labelled disclosure, closed first.
+    const details = pageRegion.locator("details.publisher-technical-details");
+    assert.equal(await details.count(), 1, "the page must expose exactly one technical disclosure");
+    assert.equal(await details.evaluate((element: HTMLDetailsElement) => element.open), false, "technical details start closed");
+    assert.equal(await details.getByText("Runtime Release", { exact: false }).isVisible(), false);
+
+    // The unavailable owner fact is stated as one actionable customer sentence,
+    // never together with a contradictory loading message.
+    const blocked = pageRegion.getByRole("status").filter({ hasText: "暂时无法开始构建" });
+    await blocked.first().waitFor({ state: "visible" });
+    assert.equal(await page.getByText("正在读取平台默认输入…", { exact: true }).count(), 0, "loading and unavailable states must not coexist");
+
     const submit = page.getByRole("button", { name: "上传并构建 / 继续上传" });
     assert.equal(await submit.isDisabled(), true);
     assert.equal(commands.length, 0);
-    await page.keyboard.press("Tab");
-    assert.ok(await page.evaluate(() => document.activeElement?.getAttribute("aria-label") || document.activeElement?.tagName));
+
+    // The fixed tab bar must render every task on one row: a wrapped bar grows
+    // past the space the shell reserves and covers the page's last actions.
+    const navigationLinks = page.locator(".mobile-bottom-nav a");
+    assert.equal(await navigationLinks.count(), 5, "the cloud customer surface exposes five mobile tasks");
+    const navigationRows = await navigationLinks.evaluateAll((links) =>
+      [...new Set(links.map((link) => Math.round(link.getBoundingClientRect().y)))]);
+    assert.equal(navigationRows.length, 1, `mobile navigation must render one row: ${JSON.stringify(navigationRows)}`);
+
+    // Expanding the disclosure reveals the real owner facts, including that the
+    // effective default WebUI half has no member-authorized read yet.
+    const summary = details.locator("summary");
+    await summary.click();
+    await details.getByText("Runtime Release", { exact: false }).waitFor({ state: "visible" });
+    const facts = (await details.textContent()) || "";
+    assert.match(facts, /OPL App Runtime default/);
+    assert.doesNotMatch(facts, /First catalog row/);
+
+    // The primary action stays reachable above mobile navigation and focusable by keyboard.
+    const navigation = page.locator(".mobile-bottom-nav");
+    await submit.scrollIntoViewIfNeeded();
+    const [submitBox, navigationBox] = await Promise.all([submit.boundingBox(), navigation.boundingBox()]);
+    assert.ok(submitBox && navigationBox);
+    assert.ok(submitBox.height >= 44, `primary action must be a usable touch target: ${JSON.stringify(submitBox)}`);
+    assert.ok(submitBox.y + submitBox.height <= navigationBox.y + 1, `primary action is obscured by navigation: ${JSON.stringify({ submitBox, navigationBox })}`);
+    await summary.scrollIntoViewIfNeeded();
+    const [summaryBox, navigationBoxAtSummary] = await Promise.all([summary.boundingBox(), navigation.boundingBox()]);
+    assert.ok(summaryBox && navigationBoxAtSummary);
+    assert.ok(summaryBox.y + summaryBox.height <= navigationBoxAtSummary.y + 1, `technical details are obscured by navigation: ${JSON.stringify({ summaryBox, navigationBoxAtSummary })}`);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
     assert.equal(await page.evaluate(() => localStorage.length), 0);
     assert.equal(await page.evaluate(() => JSON.stringify(sessionStorage)), "{}");
 
-    // An inactive default policy is reported as the missing owner fact instead
-    // of falling back to an approved catalog row.
+    // An inactive default policy is still reported as the same customer state.
     policyActive = false;
     await page.reload({ waitUntil: "networkidle" });
-    await page.getByRole("status").filter({ hasText: "平台生效默认尚未就绪" }).first().waitFor();
+    await pageRegion.getByRole("status").filter({ hasText: "暂时无法开始构建" }).first().waitFor({ state: "visible" });
     assert.equal(await submit.isDisabled(), true);
     assert.equal(commands.length, 0);
   } finally {
