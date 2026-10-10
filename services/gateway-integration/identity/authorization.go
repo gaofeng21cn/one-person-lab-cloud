@@ -283,16 +283,17 @@ var workspaceLaunchActions = []api.AuthorizationActionEnum{
 }
 
 // workspaceDeletionActions is the continuation surface of an accepted
-// delete_workspace obligation: retiring the delivered runtime, releasing the
+// delete_workspace obligation: retiring the delivered runtime, observing the
 // frozen resources, recording the confirmed deletion evidence and settling the
 // original charge. It is a separate group from the launch obligation, so a
 // deletion cannot be issued under a launch grant or carry a launch's effects.
+// The canonical surface deliberately excludes the provisioning write: Fabric
+// authorizes its resource-creation entry points (EnsureResources and its
+// resume) with provisionAcceptedResources, so a deletion grant that carried
+// that write could replay resource creation. Resource release under the
+// deletion chain must arrive as its own owner action, not by widening this
+// grant.
 var workspaceDeletionActions = []api.AuthorizationActionEnum{
-	// Releasing a resource set currently authorizes itself with the accepted
-	// resources write because the contract has no separate release action. The
-	// grant still binds that write to the one accepted Workspace and its own
-	// resource set, and Fabric re-reads its persisted binding before mutating.
-	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RETIRERUNTIME,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT,

@@ -408,6 +408,14 @@ func TestWorkspaceDeletionGrantPostgres(t *testing.T) {
 		ContinuationResources: []*api.AuthorizationResource{{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, Id: proto.String("workspace-original")}},
 	}
 	f.s.WorkspaceCommit = &workspaceCommitReader{actual: proof}
+	// Provisioning is the Fabric owner's resource-creation write: EnsureResources
+	// and its resume both authorize themselves with provisionAcceptedResources.
+	// The canonical delete_workspace surface excludes it, so the deletion must be
+	// refused before any grant row exists; the boundary is enforced here, not
+	// asserted in prose.
+	if _, err := f.s.IssueAcceptedOperationGrant(ownerservice.WithPeerOwner(t.Context(), owneridentity.Workspace.Service()), &api.AcceptedOperationGrantRequest{AuthorizationContextId: d.GetAuthorizationContextId(), OwnerCommitEvidence: proto.Clone(proof).(*api.OwnerCommitEvidence), AllowedActions: []api.AuthorizationActionEnum{api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES}}); status.Code(err) != codes.PermissionDenied {
+		t.Fatal("deletion grant admitted the provisioning write", err)
+	}
 	actions := []api.AuthorizationActionEnum{
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RETIRERUNTIME,
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES,
@@ -424,9 +432,25 @@ func TestWorkspaceDeletionGrantPostgres(t *testing.T) {
 		t.Fatalf("deletion grant lost its own action or actor: %v", g)
 	}
 	// The launch's effects stay outside the deletion's surface, so the deletion
-	// cannot be turned into a second provisioning or charging path.
+	// cannot be turned into a second charging path or a resource-creation replay.
 	if _, err := f.s.IssueAcceptedOperationGrant(ownerservice.WithPeerOwner(t.Context(), owneridentity.Workspace.Service()), &api.AcceptedOperationGrantRequest{AuthorizationContextId: d.GetAuthorizationContextId(), OwnerCommitEvidence: proto.Clone(proof).(*api.OwnerCommitEvidence), AllowedActions: []api.AuthorizationActionEnum{api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CHARGEACCEPTEDOBLIGATION}}); status.Code(err) != codes.PermissionDenied {
 		t.Fatal("deletion grant admitted a launch-only effect", err)
+	}
+	// A grant row that still carries the provisioning write (for example one
+	// issued by the earlier surface, before this revision) must not authorize the
+	// Fabric creation continuation either: authorization rechecks the requested
+	// action against the canonical deletion surface before granting.
+	if _, err := f.db.ExecContext(t.Context(), `UPDATE tenant.accepted_operation_grants SET allowed_actions=array_append(allowed_actions,'PROVISIONACCEPTEDRESOURCES') WHERE id=$1`, g.Id); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if _, err := f.db.ExecContext(context.Background(), `UPDATE tenant.accepted_operation_grants SET allowed_actions=array_remove(allowed_actions,'PROVISIONACCEPTEDRESOURCES') WHERE id=$1`, g.Id); err != nil {
+			t.Error(err)
+		}
+	})
+	provision := workspaceContinuation(g, api.OwnerEnum_OWNER_ENUM_FABRIC, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES)
+	if _, err := f.s.AuthorizeAction(ownerservice.WithPeerOwner(t.Context(), owneridentity.Fabric.Service()), provision); status.Code(err) != codes.PermissionDenied {
+		t.Fatal("stale deletion grant authorized the provisioning continuation", err)
 	}
 	// The deletion's own closeout keeps exactly its surface after the interactive
 	// authority ends.
