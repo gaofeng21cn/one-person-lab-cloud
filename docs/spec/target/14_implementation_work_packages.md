@@ -171,7 +171,7 @@
 
 ### W02 独立服务启动、DB角色及共同操作协议
 
-**协调Owner：** 各服务Owner；**参与Owner：** gateway, tenant, capability, build, workspace, runtime_control, serve, resource_catalog, fabric, ledger。
+**协调Owner：** 各服务Owner；**参与Owner：** gateway, tenant, capability, build, workspace, runtime_control, serve, resource_catalog, fabric, ledger, cloud。
 **F范围：** F01, F17；**开始依赖：** W01；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
