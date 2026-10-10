@@ -45,10 +45,36 @@ can be read back.
 
 ## Priority Outcomes
 
+### First Tencent/TKE Default App Launch (2026-10-10)
+
+The [October 10 decision](decisions.md#2026-10-10-first-tencenttke-launch-without-cloud-model-configuration)
+narrows the first launch: Cloud Console model selection/update is not a release
+gate. Reuse the existing published default App OCI at its verified digest; retain
+authentication, tenant isolation, Gateway credentials, data safety, actual message
+execution, money reconciliation and exact deployment evidence. Runtime publication
+may omit undeclared model/Build capabilities; source consumers and Instance admission
+must adopt the approved schema without inventing defaults. Custom Agent Build still
+requires its original recipe/format contracts and has separate acceptance.
+
+Consume the existing Ingress repair, Candidate and binding receipts at their actual
+evidence layers. First implement only the affected admission/launch/UI seams, then
+integrate an exact branch SHA and build a Candidate if Cloud bytes changed. The
+Instance owner adopts the exact schema digest and qualifies those bytes. Finally
+resume the original operation and verify ready URL, App login, one real answer,
+original order/charge and Gateway/Ledger readback under the existing authorization
+limits. Unchanged checks are reused; changed boundaries receive focused tests. Do
+not start a new App release for the deferred model-management interface or repeat
+a Local full run by default. The broader table below is not the first-launch gate.
+
+The implementation handoff is complete only when each affected owner records its
+exact input SHA/contract digest, executed red/green checks, output/readback, upstream
+receipt references and the next consumer/command. This prose/schema change is not
+a deployed Candidate or final business PASS.
+
 | Priority | Outcome | Cloud owner | Current state | Completion evidence |
 | --- | --- | --- | --- | --- |
 | P0 | Move live model-configuration callers to Workspace/Gateway/Fabric/Serve | Workspace, Console BFF/UI, Control Plane migration | Owner-separated source path is implemented; retained callers still use Control Plane | BFF/UI uses the Workspace owner for read/write, old writer has no configured caller, owner and browser tests pass |
-| P0 | Complete live managed-key issuer and delegation | Gateway Integration plus Sub2API | Cloud coordination and stub tests pass; approved service issuer/delegation is unresolved | Isolated real Sub2API issuer, caller identity and key/usage readback; no raw key in Cloud persistence or receipts |
+| P0 | Complete live managed-key issuer and delegation | Gateway Integration plus Sub2API | Cloud coordination, scope-resolution and Secret-delivery source paths are implemented against the fixed service-issuance seam; the live Sub2API service route, its Instance secret wiring and a service revocation path are not yet qualified | Isolated real Sub2API service issuer, caller identity and key/usage readback; no raw key in Cloud persistence or receipts |
 | P0 | Finish Serve typed application execution and route activation | Serve; Instance owns ingress/DNS/TLS | Source route owner and model apply/readback exist; retained Fabric adapter and route performer remain | Typed execution contract, conditional route CAS, real TKE Service/readiness/access request and lost-response recovery |
 | P0 | Repair the Resource Catalog refund policy list encoding defect | Resource Catalog | `scanRefundPolicy` normalized neither separator when it mapped the stored hyphenated algorithm, so the required `algorithm` property silently became the unspecified member and the public encoder refused the administrator list page once a row existed; the source is repaired and the focused list-read test over a stored hyphenated algorithm passes, while the deployed instance still returns 502 until a Candidate built from the repaired source is deployed | [defect source check](evidence/source-checks/2026-10-08-refund-policy-list-enum-encoding-defect.json); [repair source check](evidence/source-checks/2026-10-09-refund-policy-algorithm-enum-encoding.json); the administrator refund policy list reads back at 200 on a Candidate built from the repaired source |
 | P0 | Complete runtime SecretInput delivery | Serve, Fabric and contract owners | Gateway-managed input is covered; other declared runtime inputs are refused | Approved opaque binding/version delivery through RuntimeDeployCommand, application authorization and readback tests |

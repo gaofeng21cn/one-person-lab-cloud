@@ -10320,6 +10320,13 @@ components:
     RuntimePublisherContract:
       type: object
       additionalProperties: false
+      description: >-
+        Runtime publication declares actual capabilities. Standalone default App delivery
+        may omit modelConfiguration and custom Agent Build fields; absence never claims
+        those capabilities. Custom Agent Build consumers still require and validate
+        buildRecipe, packageFormatVersions and packageFormatContracts. Cloud model updates
+        require a declared executable modelConfiguration interface. Present declarations
+        retain their full validation.
       properties:
         schemaVersion:
           type: string
@@ -10366,13 +10373,9 @@ components:
       - image
       - kind
       - runtimeAbiVersion
-      - packageFormatVersions
-      - buildRecipe
-      - modelConfiguration
       - applicationAccess
       - data
       - applicationRevisionTemplate
-      - packageFormatContracts
     WebuiPublisherContract:
       type: object
       additionalProperties: false

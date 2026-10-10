@@ -207,14 +207,15 @@ func (s *Service) ensureRuntimeGatewayBinding(ctx context.Context, op ownerstore
 	if s.Gateway == nil {
 		return errRuntimeAwaitingKeyOwner
 	}
+	// The declared selection may be empty: a default OPL App names no model slot,
+	// and the Gateway owner resolves the approved concrete scope from its own
+	// allowlist. Workspace forwards only the declared selection and validates the
+	// opaque handover it gets back instead of inventing a local scope.
 	modelIDs := make([]string, 0, len(command.GetModelSelections()))
 	for _, selection := range command.GetModelSelections() {
 		if id := strings.TrimSpace(selection.GetModelId()); id != "" {
 			modelIDs = append(modelIDs, id)
 		}
-	}
-	if len(modelIDs) == 0 {
-		return status.Error(codes.FailedPrecondition, "the frozen revision declares a Gateway credential but names no model")
 	}
 	key, err := s.Gateway.CreateManagedKey(ctx, &api.ManagedKeyCommand{Context: continuation(op, result.GrantID, "create_managed_key"), WorkspaceId: op.ResourceID, ModelIds: modelIDs, TargetRuntimeInstanceId: command.GetRuntimeInstanceId()})
 	if err != nil {

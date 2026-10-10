@@ -6287,6 +6287,7 @@ const (
 	FabricCoordination_ReadResources_FullMethodName    = "/opl.cloud.api.FabricCoordination/ReadResources"
 	FabricCoordination_BindSecret_FullMethodName       = "/opl.cloud.api.FabricCoordination/BindSecret"
 	FabricCoordination_RebindSecret_FullMethodName     = "/opl.cloud.api.FabricCoordination/RebindSecret"
+	FabricCoordination_PutManagedSecret_FullMethodName = "/opl.cloud.api.FabricCoordination/PutManagedSecret"
 )
 
 // FabricCoordinationClient is the client API for FabricCoordination service.
@@ -6303,6 +6304,7 @@ type FabricCoordinationClient interface {
 	ReadResources(ctx context.Context, in *ResourceReadbackRequest, opts ...grpc.CallOption) (*ResourceReadback, error)
 	BindSecret(ctx context.Context, in *SecretBindingCommand, opts ...grpc.CallOption) (*SecretBindingReadback, error)
 	RebindSecret(ctx context.Context, in *SecretBindingRebindCommand, opts ...grpc.CallOption) (*SecretBindingRebindReadback, error)
+	PutManagedSecret(ctx context.Context, in *ManagedSecretCommand, opts ...grpc.CallOption) (*ManagedSecretReadback, error)
 }
 
 type fabricCoordinationClient struct {
@@ -6413,6 +6415,16 @@ func (c *fabricCoordinationClient) RebindSecret(ctx context.Context, in *SecretB
 	return out, nil
 }
 
+func (c *fabricCoordinationClient) PutManagedSecret(ctx context.Context, in *ManagedSecretCommand, opts ...grpc.CallOption) (*ManagedSecretReadback, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ManagedSecretReadback)
+	err := c.cc.Invoke(ctx, FabricCoordination_PutManagedSecret_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // FabricCoordinationServer is the server API for FabricCoordination service.
 // All implementations must embed UnimplementedFabricCoordinationServer
 // for forward compatibility.
@@ -6427,6 +6439,7 @@ type FabricCoordinationServer interface {
 	ReadResources(context.Context, *ResourceReadbackRequest) (*ResourceReadback, error)
 	BindSecret(context.Context, *SecretBindingCommand) (*SecretBindingReadback, error)
 	RebindSecret(context.Context, *SecretBindingRebindCommand) (*SecretBindingRebindReadback, error)
+	PutManagedSecret(context.Context, *ManagedSecretCommand) (*ManagedSecretReadback, error)
 	mustEmbedUnimplementedFabricCoordinationServer()
 }
 
@@ -6466,6 +6479,9 @@ func (UnimplementedFabricCoordinationServer) BindSecret(context.Context, *Secret
 }
 func (UnimplementedFabricCoordinationServer) RebindSecret(context.Context, *SecretBindingRebindCommand) (*SecretBindingRebindReadback, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RebindSecret not implemented")
+}
+func (UnimplementedFabricCoordinationServer) PutManagedSecret(context.Context, *ManagedSecretCommand) (*ManagedSecretReadback, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PutManagedSecret not implemented")
 }
 func (UnimplementedFabricCoordinationServer) mustEmbedUnimplementedFabricCoordinationServer() {}
 func (UnimplementedFabricCoordinationServer) testEmbeddedByValue()                            {}
@@ -6668,6 +6684,24 @@ func _FabricCoordination_RebindSecret_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _FabricCoordination_PutManagedSecret_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ManagedSecretCommand)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FabricCoordinationServer).PutManagedSecret(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FabricCoordination_PutManagedSecret_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FabricCoordinationServer).PutManagedSecret(ctx, req.(*ManagedSecretCommand))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // FabricCoordination_ServiceDesc is the grpc.ServiceDesc for FabricCoordination service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -6714,6 +6748,10 @@ var FabricCoordination_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RebindSecret",
 			Handler:    _FabricCoordination_RebindSecret_Handler,
+		},
+		{
+			MethodName: "PutManagedSecret",
+			Handler:    _FabricCoordination_PutManagedSecret_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
