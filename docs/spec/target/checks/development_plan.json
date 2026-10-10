@@ -3991,9 +3991,7 @@
         "apps/console-ui/src/app",
         "apps/console-ui/src/pages",
         "apps/console-ui/src/styles.css",
-        "apps/console-ui/src/api/publisher-api.ts",
-        "docs/spec/target/checks/development_plan.json",
-        "docs/evidence/source-checks/"
+        "apps/console-ui/src/api/publisher-api.ts"
       ],
       "testWritePaths": [
         "tests/ui/workspace-experience-model.test.ts",
