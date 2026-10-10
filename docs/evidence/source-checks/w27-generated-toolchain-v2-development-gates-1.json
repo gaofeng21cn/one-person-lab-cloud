@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "8cd6c436cde9153a7e96a7afafb5a5a57d8ba69f",
+  "recordedAt": "2026-10-10T20:09:35.092Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w27-generated-toolchain-v1-generated-toolchain-2.json",
+    "docs/evidence/source-checks/w27-generated-toolchain-v2-development-gates-1.json",
+    "tests/tools/verify-local.test.ts",
+    "tools/verify-local.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "8cd6c436cde9153a7e96a7afafb5a5a57d8ba69f",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/w27-generated-toolchain-v1-generated-toolchain-2.json": "5b44520354d9120b54b61029bc56d24c23b245af9d2f390a922073d22286b36f",
+      "tests/tools/verify-local.test.ts": "f72a75f09c74edc77274bcd2ea776f0b256e516b296ab6da83f439002f0267f0",
+      "tools/verify-local.ts": "f1130b3ba215ab0c8417def71b4f983fcafe93835a15b8f5759bc5559d1efdac"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/check-pr-governance.test.ts",
+    "exitCode": 0,
+    "tests": 19,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "229076349ce59cc29322a40db30faf9dc649e05317b4bff38fcb1a3f03f28f33"
+  },
+  "sourceStage": {
+    "runId": "w27-generated-toolchain-v2",
+    "gateId": "development-gates",
+    "attempt": 1,
+    "receiptHash": "7ce49c396267a284a365e1ba9fa970d28e0394d62b12a8501ffb7353764581cd"
+  }
+}
