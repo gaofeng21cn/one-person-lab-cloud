@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "8aad06d11ef8d874f31f6afbee3dc39dc820c3af",
+  "recordedAt": "2026-10-10T18:46:14.542Z",
+  "writeSet": [
+    "AGENTS.md",
+    "DEV_GUIDE.md",
+    "docs/evidence/source-checks/w27-framework-reference-v1-development-gates-1.json",
+    "docs/evidence/source-checks/w27-framework-reference-v2-development-gates-1.json"
+  ],
+  "verifiedSource": {
+    "baseSha": "8aad06d11ef8d874f31f6afbee3dc39dc820c3af",
+    "changedFilesSha256": {
+      "AGENTS.md": "52d9389ceece58c1d4eb508a117647a9a0de36760b64225d6d26980380c4ba08",
+      "DEV_GUIDE.md": "adc41b9e034647ab39b5c745ddfb4520aecc19f3b45b388ba0242d62de6cd3d8",
+      "docs/evidence/source-checks/w27-framework-reference-v1-development-gates-1.json": "83bbbc4bb13e1acbd557538b6bf6e1929d178d6c3b237c8c4d326e679f0f4764"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/check-pr-governance.test.ts",
+    "exitCode": 0,
+    "tests": 19,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "3dd9953761dbdb42e703c276923b8f5e7798c1d8c72e76abb9abc743e667fb29"
+  },
+  "sourceStage": {
+    "runId": "w27-framework-reference-v2",
+    "gateId": "development-gates",
+    "attempt": 1,
+    "receiptHash": "876bda4d30b1a1ed6f7bd4b5475a12e3857e940f60de74119a1782b18ed9b86b"
+  }
+}
