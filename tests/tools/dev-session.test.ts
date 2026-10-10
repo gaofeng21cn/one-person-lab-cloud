@@ -887,6 +887,30 @@ test('a bounded Console surface fix admits only console paths under its own slic
   assert.throws(() => development.approveRun(root, store, { ...approval, runId: 'console-fix-borrow', owner: 'workspace', selection: { collection: 'workPackages', id: 'W16' } }), /DDD owner does not own phase record/);
 });
 
+test('only the enumerated isolated owner-database fixture may be declared on a Go acceptance gate', async t => {
+  const { root, store, git } = canonicalFixture(t);
+  // The declaration rides on an existing plan record owned by this shared
+  // runner's pilot (W02 owner readiness); no parallel business record is added.
+  const base = { schemaVersion: 1, runId: 'owner-db-declaration', planPath,
+    selection: { collection: 'executionSlices', id: 'W02.owner-readiness' }, owner: 'serve',
+    readPaths: ['services/serve/cmd'], writePaths: ['services/serve/cmd'],
+    requires: {} };
+  const gate = (extra: Record<string, unknown>) => [{ id: 'owner-suite', kind: 'go', cwd: 'services/serve', inputs: ['services/serve/'], needs: [], ...extra }];
+  const baseSha = git('rev-parse', 'HEAD').trim();
+  const accepted = { ...base, baseSha, gates: gate({ database: 'isolated-owner-postgres' }) };
+  development.approveRun(root, store, accepted);
+  const session = new development.DevelopmentSession(root, store, accepted.runId);
+  assert.equal(session.approval.gates[0].database, 'isolated-owner-postgres');
+  // The declaration is part of the approved record that the host store keeps,
+  // so the receipt's approval hash binds which fixture the evidence came from.
+  const stored = JSON.parse(readFileSync(join(store, 'runs', accepted.runId, 'approval.json'), 'utf8'));
+  assert.equal(stored.gates[0].database, 'isolated-owner-postgres');
+  assert.throws(() => development.approveRun(root, store, { ...accepted, runId: 'owner-db-unknown', gates: gate({ database: 'production-postgres' }) }),
+    /unknown isolated database fixture/);
+  assert.throws(() => development.approveRun(root, store, { ...accepted, runId: 'owner-db-node', gates: [{ id: 'n', kind: 'node', inputs: ['services/serve/'], targets: ['tests/tools/owner-db-declared.test.mjs'], needs: [], database: 'isolated-owner-postgres' }] }),
+    /isolated database fixture only applies to Go checks/);
+});
+
 test('the development-governance slice resolves to Cloud while its paths stay host-owned for restricted workers', async t => {
   const { root, store, git } = canonicalFixture(t);
   put(root, 'tools/host-entry.ts', 'export const hostOwned = true;\n');

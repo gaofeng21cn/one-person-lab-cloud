@@ -12,6 +12,7 @@ import {
   databaseFreeGoTestSpecs,
   goConfigurationEnv,
   goModules,
+  isLoopbackOwnerDatabaseDsn,
   localVerificationSteps,
   parseVerifyLocalArgs,
   postgresImage,
@@ -620,6 +621,78 @@ test("trusted Go probes read host configuration, never scratch Go paths", () => 
   // Non-installation scratch isolation flags stay in place for the probe.
   assert.equal(probe.GOPROXY, "off");
   assert.equal(probe.GOTOOLCHAIN, "local");
+});
+
+test("an owner-database stage receives only the host-provided loopback DSN and refuses anything else", async (t) => {
+  // The admission rule is a pure boundary: only a loopback PostgreSQL admin DSN
+  // that the host itself provisioned is admissible, so no production DSN can be
+  // smuggled into a sealed stage through the invoking process environment.
+  assert.equal(isLoopbackOwnerDatabaseDsn("postgresql://postgres@127.0.0.1:54321/postgres?sslmode=disable"), true);
+  for (const refused of [
+    "postgresql://postgres@db.production.example:5432/postgres?sslmode=disable",
+    "postgresql://postgres@10.0.0.5:5432/postgres",
+    "postgresql://postgres@127.0.0.1/postgres",
+    "mysql://postgres@127.0.0.1:3306/postgres",
+    "not a dsn",
+    ""
+  ]) assert.equal(isLoopbackOwnerDatabaseDsn(refused), false, refused);
+
+  const { snapshotRoot } = await developmentFixture(t);
+  const module = join(snapshotRoot, "ownerdb");
+  await mkdir(module);
+  await writeFile(join(module, "go.mod"), "module fixture.invalid/ownerdb\n\ngo 1.22\n".replaceAll("\\n", "\n"));
+  // The fixture asserts the exact sealed environment it observed, so the stage
+  // result itself is the readback of what the runner handed over.
+  await writeFile(join(module, "observed_test.go"), `package ownerdb
+
+import (
+	"encoding/json"
+	"os"
+	"testing"
+)
+
+func TestObserveSealedOwnerDatabaseEnvironment(t *testing.T) {
+	expected, err := os.ReadFile("expect.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want map[string]string
+	if err := json.Unmarshal(expected, &want); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{
+		"postgresTests": os.Getenv("OPL_POSTGRES_TESTS"),
+		"adminDsn":      os.Getenv("OPL_OWNER_MIGRATION_TEST_ADMIN_DSN"),
+	}
+	for key, value := range want {
+		if got[key] != value {
+			t.Fatalf("%s=%q want %q", key, got[key], value)
+		}
+	}
+}
+`);
+  const expect = (values: Record<string, string>) => writeFile(join(module, "expect.json"), JSON.stringify(values));
+  const run = (ownerDatabaseDsn?: string) => runDevelopmentCheck({ snapshotRoot, kind: "go", cwd: "ownerdb", ...(ownerDatabaseDsn === undefined ? {} : { ownerDatabaseDsn }) });
+
+  // A DSN that the host did not provision is refused before any execution.
+  await expect({ postgresTests: "1", adminDsn: "postgresql://postgres@db.production.example:5432/postgres?sslmode=disable" });
+  const smuggled = await run("postgresql://postgres@db.production.example:5432/postgres?sslmode=disable");
+  assert.equal(smuggled.status, "blocked", smuggled.reason + smuggled.output);
+  assert.match(smuggled.reason ?? "", /isolated loopback PostgreSQL admin DSN/u);
+
+  // Both positive handoff paths are required behavior evidence: a blocked
+  // prerequisite fails this test, so a blocked check can never be reported as
+  // passing evidence for behavior nobody exercised.
+  await expect({ postgresTests: "", adminDsn: "" });
+  const plain = await run();
+  assert.notEqual(plain.status, "blocked", plain.reason + plain.output);
+  assert.equal(plain.status, "passed", plain.reason + plain.output);
+
+  const dsn = "postgresql://postgres@127.0.0.1:54329/postgres?sslmode=disable";
+  await expect({ postgresTests: "1", adminDsn: dsn });
+  const declared = await run(dsn);
+  assert.notEqual(declared.status, "blocked", declared.reason + declared.output);
+  assert.equal(declared.status, "passed", declared.reason + declared.output);
 });
 
 test("generated checks require the actual checker freshness PASS and zero exit, and browser requires the approved manifest", async (t) => {
