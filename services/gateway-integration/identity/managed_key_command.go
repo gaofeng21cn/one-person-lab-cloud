@@ -65,6 +65,11 @@ type managedKeyCommandState struct {
 	KeyBindingID            string `json:"keyBindingId,omitempty"`
 	TargetRuntimeInstanceID string `json:"targetRuntimeInstanceId,omitempty"`
 	ExpiresAt               string `json:"expiresAt,omitempty"`
+	// ResolvedModelIDs is the concrete model scope the issuance authority
+	// resolved for this command. An empty declared selection means "resolve the
+	// approved scope", never "unrestricted": the resolved list is recorded with
+	// the confirmed binding and a later readback must match it exactly.
+	ResolvedModelIDs []string `json:"resolvedModelIds,omitempty"`
 }
 
 // ReserveManagedKeyCommand registers the original command before any external
@@ -185,13 +190,24 @@ func (s *GatewayStore) SettleManagedKeyCommand(ctx context.Context, reservation 
 	return nil
 }
 
+// managedKeyCommandDeclaredDefaultScope marks a command whose declared model
+// scope is empty: the default App names no model slot, so the approved scope is
+// resolved by the issuance authority. The marker is not a model id and can never
+// collide with one, and it keeps the fingerprint a function of the DECLARED
+// intent alone, so a replay matches regardless of later allowlist drift.
+const managedKeyCommandDeclaredDefaultScope = "<declared-default-scope>"
+
 // managedKeyCommandFingerprint fixes the immutable identity of one managed-key
-// command. The model list is a set, so its order is normalized; a different
-// workspace, runtime or model set under the same idempotency key is a different
-// command and is refused rather than silently re-interpreted.
+// command. The model list is a set, so its order is normalized; an empty declared
+// list is the canonical default-scope marker rather than "anything". A different
+// workspace, runtime or declared model set under the same idempotency key is a
+// different command and is refused rather than silently re-interpreted.
 func managedKeyCommandFingerprint(workspaceID, runtimeInstanceID string, modelIDs []string) string {
 	models := append([]string(nil), modelIDs...)
 	sort.Strings(models)
+	if len(models) == 0 {
+		models = []string{managedKeyCommandDeclaredDefaultScope}
+	}
 	parts := append([]string{"managed_key", workspaceID, runtimeInstanceID}, models...)
 	return hash(strings.Join(parts, "\x00"))
 }

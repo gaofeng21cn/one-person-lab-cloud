@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	contracts "opl-cloud/packages/contracts/go"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/services/internal/ownerservice"
@@ -356,8 +357,8 @@ func (s *Service) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand
 	if err := ownerservice.ValidateCallContext(ctx, r.GetContext()); err != nil {
 		return nil, err
 	}
-	if r.GetWorkspaceId() == "" || len(r.GetModelIds()) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "workspace and at least one model id are required")
+	if r.GetWorkspaceId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "a workspace is required")
 	}
 	tenantID := r.GetContext().GetScope().GetTenant().GetTenantId()
 	if tenantID == "" {
@@ -366,10 +367,11 @@ func (s *Service) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand
 	if err := s.authorizeManagedKey(ctx, r.GetContext(), tenantID, r.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
+	// The declared model selection may be empty: the default App names no model
+	// slot, so the approved concrete scope is resolved by the issuance authority
+	// and recorded from its readback. An empty declared list is never treated as
+	// "unrestricted" and never resolved locally.
 	modelIDs := normalizeManagedKeyModelIDs(r.GetModelIds())
-	if len(modelIDs) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "workspace and at least one model id are required")
-	}
 	call := r.GetContext()
 	if strings.TrimSpace(call.GetIdempotencyKey()) == "" {
 		return nil, owneridentity.WithErrorCode(status.Error(codes.InvalidArgument, "idempotency key is required"), api.ErrorCodeEnum_ERROR_CODE_ENUM_IDEMPOTENCY_REQUIRED)
@@ -399,7 +401,10 @@ func (s *Service) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand
 	if existing {
 		return s.managedKeyCommandAnswer(ctx, reservation, record, nil)
 	}
-	raw, externalKeyID, err := s.KeyIssuer.IssueWorkspaceKey(ctx, binding.BillingSub2APIUserID, r.GetWorkspaceId(), modelIDs)
+	issued, err := s.KeyIssuer.IssueWorkspaceKey(ctx, ManagedKeyIssueRequest{
+		Subject: binding.BillingSub2APIUserID, WorkspaceID: r.GetWorkspaceId(), LaunchOperationID: call.GetIdempotencyKey(),
+		ExactName: workspaceKeyExactName(r.GetWorkspaceId()), GroupName: s.WorkspaceKeyGroup, ModelIDs: modelIDs, IdempotencyKey: call.GetIdempotencyKey(),
+	})
 	if err != nil {
 		if !definiteManagedKeyRefusal(err) {
 			// The external effect may or may not exist. The original command stays
@@ -416,23 +421,51 @@ func (s *Service) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand
 		}
 		return nil, status.Error(codes.FailedPrecondition, "the managed key issuance was refused")
 	}
-	fingerprint := shortDigest(externalKeyID + ":" + raw)
+	externalKeyID, raw := issued.ExternalKeyID, issued.Raw
+	if _, parseErr := parseGatewaySubject(externalKeyID); parseErr != nil || strings.TrimSpace(raw) == "" {
+		// The issuance returned an unusable identity. The original command stays
+		// pending: re-issuing could mint a second key under the same accepted
+		// command, and the observed identity must be reconciled by its original
+		// issue identity instead.
+		return nil, status.Error(codes.Unavailable, "managed key issuance returned an invalid key identity")
+	}
+	resolvedModelIDs, err := validateResolvedWorkspaceKeyModels(issued.ModelIDs)
+	if err != nil {
+		// The authority returned a resolved scope this owner cannot record. The
+		// command stays unresolved and nothing is recorded: a scope that violates
+		// the bounded contract is never stored as an approved allowlist.
+		return nil, status.Error(codes.Unavailable, "managed key issuance returned an invalid resolved model scope")
+	}
+	// The fingerprint is Fabric's format - the SHA-256 of the raw value in
+	// lowercase hex - so the Serve-side Secret handover equality check against
+	// Fabric's provider readback holds.
+	digest := sha256.Sum256([]byte(raw))
+	fingerprint := "sha256:" + hex.EncodeToString(digest[:])
 	// The external identity this issuance actually produced is recorded before the
 	// Secret write, so a lost delivery is read back as this one original key
 	// instead of a second issuance.
 	if err = s.GatewayStore.AdvanceManagedKeyCommandPending(ctx, reservation, externalKeyID, fingerprint); err != nil {
 		return nil, status.Error(codes.Unavailable, "Gateway key command readback unavailable")
 	}
-	delivery, err := s.SecretStore.PutSecret(ctx, SecretDelivery{TenantID: tenantID, WorkspaceID: r.GetWorkspaceId(), Purpose: "workspace_managed", Fingerprint: fingerprint, Raw: raw})
+	delivery, err := s.SecretStore.PutSecret(ctx, SecretDelivery{
+		TenantID: tenantID, WorkspaceID: r.GetWorkspaceId(), Purpose: "workspace_managed", Fingerprint: fingerprint, Raw: raw,
+		ExternalKeyID: externalKeyID, Call: derivedManagedKeyCall(call),
+	})
 	if err != nil {
 		// The key exists but its delivery is unconfirmed; the command stays
 		// unresolved with the observed key identity recorded, and is read back
 		// rather than being re-issued.
 		return nil, status.Error(codes.Unavailable, "approved Secret store write failed")
 	}
+	if delivery.Reference != contracts.WorkspaceGatewaySecretRef(r.GetWorkspaceId()) || delivery.Fingerprint != fingerprint || delivery.Raw != "" {
+		// The approved store did not confirm the exact delivered Secret identity.
+		// The key exists, so the command stays unresolved with its observed
+		// identity rather than being re-issued.
+		return nil, status.Error(codes.Unavailable, "approved Secret store returned a different identity")
+	}
 	state := managedKeyCommandState{Outcome: "confirmed", ExternalKeyID: externalKeyID, Fingerprint: fingerprint,
 		SecretRef: delivery.Reference, KeyBindingID: "gateway-key-" + shortDigest(tenantID+":"+r.GetWorkspaceId()+":"+externalKeyID),
-		TargetRuntimeInstanceID: r.GetTargetRuntimeInstanceId()}
+		TargetRuntimeInstanceID: r.GetTargetRuntimeInstanceId(), ResolvedModelIDs: resolvedModelIDs}
 	body, marshalErr := json.Marshal(state)
 	if marshalErr != nil {
 		return nil, status.Error(codes.Unavailable, "Gateway key settlement unavailable")
@@ -440,7 +473,7 @@ func (s *Service) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand
 	keyBinding, err := s.GatewayStore.InsertConfirmedManagedKeyBinding(ctx, ManagedKeyBinding{
 		TenantID: tenantID, WorkspaceID: r.GetWorkspaceId(), ActorID: call.GetActorId(),
 		ExternalKeyID: externalKeyID, Fingerprint: fingerprint, SecretRef: delivery.Reference,
-		Purpose: "workspace_managed", ModelIDs: modelIDs, TargetRuntimeInstanceID: r.GetTargetRuntimeInstanceId(), TTL: managedKeyTTL,
+		Purpose: "workspace_managed", ModelIDs: resolvedModelIDs, TargetRuntimeInstanceID: r.GetTargetRuntimeInstanceId(), TTL: managedKeyTTL,
 	}, reservation, body)
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, "Gateway key binding unavailable")
@@ -492,6 +525,9 @@ func (s *Service) managedKeyCommandAnswer(ctx context.Context, reservation Manag
 		keyBinding.ExternalKeyID != state.ExternalKeyID || keyBinding.Fingerprint != state.Fingerprint ||
 		keyBinding.SecretRef != state.SecretRef {
 		return nil, status.Error(codes.DataLoss, "Gateway key binding differs from its original command")
+	}
+	if len(state.ResolvedModelIDs) == 0 || !equalStringSets(keyBinding.ModelIDs, state.ResolvedModelIDs) {
+		return nil, status.Error(codes.DataLoss, "Gateway key binding model scope differs from its original command")
 	}
 	out := &api.ManagedKeyBinding{KeyBindingId: keyBinding.ID, Fingerprint: keyBinding.Fingerprint, SecretDeliveryReference: keyBinding.SecretRef,
 		WorkspaceId: keyBinding.WorkspaceID, TargetRuntimeInstanceId: state.TargetRuntimeInstanceID}
@@ -643,6 +679,39 @@ func walletRequestFingerprint(req walletActionRequest) string {
 func shortDigest(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:16])
+}
+
+// derivedManagedKeyCall is the continuation context of the approved Secret write.
+// The caller's authorization context is never forwarded: Fabric reauthorizes the
+// original accepted obligation from its own evidence. The idempotency key stays
+// the original command's bounded key, so the approved store sees the same write
+// identity on every retry of this command.
+func derivedManagedKeyCall(call *api.CallContext) *api.CallContext {
+	if call == nil {
+		return nil
+	}
+	derived := proto.Clone(call).(*api.CallContext)
+	derived.AuthorizationContextId = ""
+	return derived
+}
+
+// equalStringSets compares two model scopes as sets, because a resolved scope is
+// an unordered selection and a readback must not fail on ordering alone.
+func equalStringSets(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	counts := make(map[string]int, len(left))
+	for _, value := range left {
+		counts[value]++
+	}
+	for _, value := range right {
+		if counts[value] == 0 {
+			return false
+		}
+		counts[value]--
+	}
+	return true
 }
 
 // gatewayAdjustmentCode derives the stable business code carried in the native
