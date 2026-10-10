@@ -1,10 +1,10 @@
 import { execFileSync, spawn } from "node:child_process";
 import { constants } from "node:fs";
-import { access, mkdir, mkdtemp, readFile, realpath, rm, stat } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse as parseYAML } from "yaml";
 import { generationInputs, generatedOutputs } from "./verify-generated-contracts.ts";
@@ -221,6 +221,10 @@ type DevelopmentCheckResult = {
   failed: number;
   skipped: number;
   output: string;
+  /** The command line that actually executed; absent when nothing executed. */
+  command?: string;
+  /** The executed cwd within the snapshot, when it was not the snapshot root. */
+  cwd?: string;
   reason?: string;
 };
 type CapturedProcess = { code: number | null; stdout: string; stderr: string; problem?: string };
@@ -230,6 +234,56 @@ const trustedToolDirectories = [dirname(process.execPath), "/usr/bin", "/bin", "
 function inside(directory: string, path: string) {
   const suffix = relative(directory, path);
   return suffix === "" || (!isAbsolute(suffix) && suffix !== ".." && !suffix.startsWith(`..${sep}`));
+}
+
+/** Only an isolated loopback PostgreSQL admin DSN is an admissible owner fixture. */
+export function isLoopbackOwnerDatabaseDsn(value: unknown): boolean {
+  if (typeof value !== "string" || !value || value.length > 512) return false;
+  let parsed: URL;
+  try { parsed = new URL(value); } catch { return false; }
+  if (parsed.protocol !== "postgresql:" && parsed.protocol !== "postgres:") return false;
+  if (!["127.0.0.1", "localhost", "[::1]", "::1"].includes(parsed.hostname)) return false;
+  const port = Number(parsed.port);
+  return /^[0-9]{1,5}$/u.test(parsed.port) && port > 0 && port <= 65535;
+}
+
+/**
+ * The owner-database fixture is one of two host-provisioned forms: the macOS
+ * loopback TCP DSN, or the Linux host-created Unix-socket directory. The
+ * pairing is checked before any execution. Shape and pairing are boundary
+ * guards, not a provenance proof: provenance comes from the host entry, which
+ * is the only provisioner and never reads a DSN from the worker or the
+ * invoking environment.
+ */
+export type OwnerDatabaseFixture =
+  | { kind: "loopback-tcp"; dsn: string }
+  | { kind: "linux-socket"; dsn: string; directory: string }
+  | { blocked: string };
+
+export function resolveOwnerDatabaseFixture(
+  dsn: unknown,
+  socketDirectory: unknown,
+  platform: NodeJS.Platform = process.platform
+): OwnerDatabaseFixture {
+  if (socketDirectory === undefined) {
+    if (typeof dsn !== "string" || !isLoopbackOwnerDatabaseDsn(dsn))
+      return { blocked: "owner database fixture must be an isolated loopback PostgreSQL admin DSN" };
+    return { kind: "loopback-tcp", dsn };
+  }
+  if (platform !== "linux") return { blocked: "owner database socket fixture only applies on Linux" };
+  if (typeof socketDirectory !== "string" || !socketDirectory || socketDirectory.length > 512 ||
+      !isAbsolute(socketDirectory) || /[\x00-\x1f]/u.test(socketDirectory))
+    return { blocked: "owner database socket fixture directory must be an absolute host directory" };
+  if (typeof dsn !== "string" || !dsn || dsn.length > 512)
+    return { blocked: "owner database socket DSN must name the exact host-created fixture directory" };
+  let parsed: URL;
+  try { parsed = new URL(dsn); } catch { return { blocked: "owner database socket DSN must name the exact host-created fixture directory" }; }
+  if (parsed.protocol !== "postgresql:" && parsed.protocol !== "postgres:")
+    return { blocked: "owner database socket DSN must name the exact host-created fixture directory" };
+  const host = parsed.searchParams.get("host") ?? "";
+  if (!host.startsWith("/") || /[\x00-\x1f]/u.test(host) || host !== socketDirectory)
+    return { blocked: "owner database socket DSN must name the exact host-created fixture directory" };
+  return { kind: "linux-socket", dsn, directory: socketDirectory };
 }
 
 function exactRelativePath(path: string) {
@@ -246,6 +300,20 @@ async function trustedTool(name: string) {
     } catch { /* Only these fixed installation locations are eligible. */ }
   }
   return undefined;
+}
+
+// The trusted Go configuration probe reads host runtime configuration. A
+// scratch-isolated GOPATH/GOENV/GOMODCACHE/GOROOT would silently redirect the
+// probe into empty scratch storage (an inherited scratch GOPATH resolves
+// GOMODCACHE under it), so only explicit host values survive and missing
+// variables fall back to the host Go defaults.
+export function goConfigurationEnv(scratchEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const configuration: NodeJS.ProcessEnv = { ...scratchEnv, HOME: process.env.HOME };
+  for (const name of ["GOPATH", "GOENV", "GOMODCACHE", "GOROOT"]) {
+    if (process.env[name] === undefined) delete configuration[name];
+    else configuration[name] = process.env[name];
+  }
+  return configuration;
 }
 
 // Both the execution deadline and retained output are bounded. SIGKILL targets
@@ -366,6 +434,18 @@ export async function runDevelopmentCheck(options: {
   targets?: string[];
   cwd?: string;
   timeoutMs?: number;
+  /**
+   * The host-owned isolated owner-database DSN for a stage whose gate declared
+   * `database: "isolated-owner-postgres"`. It is passed in by the host runner
+   * that provisioned the fixture, never inherited from the invoking process.
+   */
+  ownerDatabaseDsn?: string;
+  /**
+   * The Linux host-created socket directory of that same fixture. A private
+   * network namespace cannot reach the host's published TCP port, so the
+   * stage connects through this directory, which is the only fixture grant.
+   */
+  ownerDatabaseSocketDir?: string;
 }): Promise<DevelopmentCheckResult> {
   const blocked = (reason: string, output = ""): DevelopmentCheckResult =>
     ({ passed: false, status: "blocked", exitCode: null, tests: 0, failed: 0, skipped: 0, output, reason });
@@ -416,16 +496,41 @@ export async function runDevelopmentCheck(options: {
       npm_config_cache: join(scratch, "npm-cache"), npm_config_userconfig: "/dev/null", npm_config_globalconfig: join(scratch, "home/.npmrc-global"),
       npm_config_ignore_scripts: "true", npm_config_offline: "true", npm_config_update_notifier: "false", npm_config_audit: "false", npm_config_fund: "false"
     };
+    // A declared owner-database stage receives only the host-provisioned
+    // isolated endpoint. The invoking process environment is never a source
+    // for it, so no production DSN can leak into a sealed stage.
+    let ownerSocketDirectory: string | undefined;
+    if (options.ownerDatabaseDsn !== undefined || options.ownerDatabaseSocketDir !== undefined) {
+      const fixture = resolveOwnerDatabaseFixture(options.ownerDatabaseDsn, options.ownerDatabaseSocketDir);
+      if ("blocked" in fixture) return blocked(fixture.blocked);
+      if (fixture.kind === "linux-socket") {
+        let resolved: string | undefined;
+        try { resolved = await realpath(fixture.directory); } catch { resolved = undefined; }
+        if (!resolved || !(await stat(resolved)).isDirectory()) return blocked("owner database socket fixture directory is unavailable");
+        if (resolved !== fixture.directory) return blocked("owner database socket fixture directory must be the exact host-created directory");
+        ownerSocketDirectory = resolved;
+      }
+      env.OPL_POSTGRES_TESTS = "1";
+      env.OPL_OWNER_MIGRATION_TEST_ADMIN_DSN = fixture.dsn;
+    }
     let command = await realpath(process.execPath);
     let args: string[] = [];
     let tapTargets = targets;
     // Bind only runtime installations; never the tool's user HOME, signing store,
     // source checkout, Docker socket or a guessed shared cache parent directory.
     const readPaths = new Set<string>([snapshot, command]);
+    // A listed system path is bound only when it resolves on this host: an
+    // absent path (for example /usr/lib64 on a merged-/usr image) is skipped
+    // instead of becoming a bwrap source error, and a path that resolves is
+    // bound both where programs look for it and at its real location, so an
+    // ELF interpreter reached through a system symlink stays reachable.
     for (const path of process.platform === "darwin" ?
       ["/System/Library", "/usr/lib", "/usr/bin", "/bin", "/usr/share/zoneinfo", "/Library/Apple/System/Library"] :
       ["/usr/lib", "/usr/lib64", "/lib", "/lib64", "/usr/bin", "/bin", "/usr/share/zoneinfo", "/etc/ld.so.cache", "/etc/localtime"]) {
-      try { readPaths.add(path); readPaths.add(await realpath(path)); } catch { /* Absent system installation is not mounted. */ }
+      try {
+        const canonical = await realpath(path);
+        readPaths.add(path); readPaths.add(canonical);
+      } catch { /* Absent system installation is not mounted. */ }
     }
     try {
       const dependencies = await realpath(join(snapshot, "node_modules"));
@@ -495,8 +600,7 @@ export async function runDevelopmentCheck(options: {
       if (go) {
         // Trusted go env reads authoritative host runtime configuration, not a
         // snapshot go.mod or an attacker-supplied command. No tested code runs here.
-        const configurationEnv = { ...env, HOME: process.env.HOME, GOENV: process.env.GOENV,
-          GOMODCACHE: process.env.GOMODCACHE, GOROOT: process.env.GOROOT };
+        const configurationEnv = goConfigurationEnv(env);
         const configuration = await captureDevelopmentProcess(go, ["env", "-json", "GOROOT", "GOMODCACHE"], temporaryRoot, configurationEnv, 10_000);
         if (configuration.code !== 0 || configuration.problem) return blocked("trusted Go runtime configuration unavailable", configuration.stderr + configuration.stdout + (configuration.problem || ""));
         const values = JSON.parse(configuration.stdout);
@@ -576,6 +680,10 @@ export async function runDevelopmentCheck(options: {
       env.PLAYWRIGHT_BROWSERS_PATH = join(snapshot, ".cache/ms-playwright");
       env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
     }
+    // The stage receipt records the command line that actually executed. No
+    // environment value (such as a fixture DSN) enters the record.
+    const executedCommand = [basename(command), ...args].join(" ");
+    const executedCwd = relative(snapshot, cwd) || undefined;
     // An installation grant may not accidentally include source or the user's
     // complete home directory. Snapshot itself is the sole source read grant.
     for (const path of readPaths) {
@@ -606,10 +714,13 @@ export async function runDevelopmentCheck(options: {
       wrap = (executable, arguments_) => ["-p", profile, executable, ...arguments_];
     } else {
       const mounts = [...readPaths].flatMap((path) => ["--ro-bind", path, path]);
-      // A private network namespace has no host routes/interfaces. Bubblewrap
-      // sets up its loopback interface; no host Unix sockets are bound here.
+      // A private network namespace has no host routes/interfaces, so a
+      // declared owner-database stage reaches the host fixture through the
+      // bound Unix socket directory; that directory is the only fixture grant
+      // beyond snapshot and scratch.
+      const socketBind = ownerSocketDirectory ? ["--bind", ownerSocketDirectory, ownerSocketDirectory] : [];
       const prefix = ["--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL",
-        "--proc", "/proc", "--dev", "/dev", ...mounts, "--bind", scratch, scratch, "--chdir", cwd];
+        "--proc", "/proc", "--dev", "/dev", ...mounts, "--bind", scratch, scratch, ...socketBind, "--chdir", cwd];
       wrap = (executable, arguments_) => [...prefix, "--", executable, ...arguments_];
     }
     const probe = await captureDevelopmentProcess(isolationTool, wrap(await realpath(process.execPath), ["-e",
@@ -644,7 +755,7 @@ fs.writeFileSync(p.join(process.env.TMPDIR,'probe'),'scratch');console.log('sand
     const reason = execution.problem || (execution.code !== 0 ? `check exited ${execution.code}` : summary.reason);
     return { passed: !reason, status: reason ? "failed" : "passed", exitCode: execution.code,
       tests: summary.tests, failed: reason ? Math.max(1, summary.failed) : summary.failed, skipped: summary.skipped,
-      output, ...(reason ? { reason } : {}) };
+      output, command: executedCommand, ...(executedCwd ? { cwd: executedCwd } : {}), ...(reason ? { reason } : {}) };
   } catch (error) {
     return blocked(`development check prerequisites unavailable: ${error instanceof Error ? error.message : String(error)}`);
   } finally {
@@ -664,8 +775,12 @@ function stepEnv() {
   return process.env;
 }
 
+// Progress banners are diagnostics. They must never share the standard output
+// stream: the development entry speaks JSON-RPC over stdio in serve mode, and
+// a stray stdout line corrupts that protocol. Step results themselves are
+// printed by their own callers, not here.
 function printStep(name: string) {
-  process.stdout.write(`\n==> ${name}\n`);
+  process.stderr.write(`\n==> ${name}\n`);
 }
 
 function runProcess(command: string, args: string[], { cwd = root, env = process.env, capture = false, allowFailure = false }: { cwd?: string; env?: NodeJS.ProcessEnv; capture?: boolean; allowFailure?: boolean } = {}): Promise<ProcessResult> {
@@ -732,13 +847,22 @@ async function waitForHealthyPostgres(containerName: string) {
   throw new Error("temporary PostgreSQL did not become healthy within 60 seconds");
 }
 
-async function withTemporaryPostgres(callback: (env: NodeJS.ProcessEnv) => Promise<unknown>) {
+async function withTemporaryPostgres(callback: (env: NodeJS.ProcessEnv, fixture: { socketDirectory?: string }) => Promise<unknown>) {
   const containerName = `opl-cloud-verify-${process.pid}-${randomUUID().slice(0, 8)}`;
+  // Linux stages run in a private network namespace, so the fixture is also
+  // exposed as a Unix socket in a host-created directory. The macOS sandbox
+  // shares the host loopback stack and keeps the published TCP port.
+  const socketDirectory = process.platform === "linux"
+    ? await realpath(await mkdtemp(join(tmpdir(), "opl-owner-db-sock-")))
+    : undefined;
+  if (socketDirectory) await chmod(socketDirectory, 0o777);
   let started = false;
   const stop = async () => {
-    if (!started) return;
-    await runProcess("docker", ["rm", "--force", containerName], { capture: true, allowFailure: true });
-    started = false;
+    if (started) {
+      await runProcess("docker", ["rm", "--force", containerName], { capture: true, allowFailure: true });
+      started = false;
+    }
+    if (socketDirectory) await rm(socketDirectory, { recursive: true, force: true });
   };
   const interrupt = () => {
     void stop().finally(() => process.exit(130));
@@ -755,10 +879,12 @@ async function withTemporaryPostgres(callback: (env: NodeJS.ProcessEnv) => Promi
       "--health-timeout", "5s",
       "--health-retries", "60",
       "--publish", "127.0.0.1::5432",
+      ...(socketDirectory ? ["--volume", `${socketDirectory}:/var/run/postgresql`] : []),
       postgresImage
-    ]);
+    ], { capture: true });
     started = true;
     await waitForHealthyPostgres(containerName);
+    if (socketDirectory) await waitForOwnerSocket(socketDirectory);
     const portResult = await runProcess("docker", ["port", containerName, "5432/tcp"], { capture: true });
     const postgresEnv = {
       ...process.env,
@@ -775,12 +901,49 @@ async function withTemporaryPostgres(callback: (env: NodeJS.ProcessEnv) => Promi
       OPL_CAPACITY_TESTS: "1",
       OPL_FABRIC_LOCAL_DOCKER_INTEGRATION: "1"
     };
-    return await callback(postgresEnv);
+    return await callback(postgresEnv, { ...(socketDirectory ? { socketDirectory } : {}) });
   } finally {
     process.removeListener("SIGINT", interrupt);
     process.removeListener("SIGTERM", interrupt);
     await stop();
   }
+}
+
+async function waitForOwnerSocket(socketDirectory: string) {
+  const socketPath = join(socketDirectory, ".s.PGSQL.5432");
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    if (existsSync(socketPath)) return;
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 200));
+  }
+  throw new Error(`temporary PostgreSQL did not publish its Unix socket in ${socketDirectory} within 30 seconds`);
+}
+
+/**
+ * The host-owned isolated owner-database fixture for one acceptance stage: one
+ * ephemeral PostgreSQL container from the pinned compose image, trust auth,
+ * a loopback-only published port and, on Linux, a host-created Unix socket
+ * directory. Only that endpoint pair is handed to the stage; it is never read
+ * from the invoking environment.
+ */
+export async function withIsolatedOwnerDatabase<T>(
+  callback: (fixture: { dsn: string; socketDirectory?: string }) => Promise<T>
+): Promise<T> {
+  return withTemporaryPostgres(async (env, fixture) => {
+    const dsn = env.OPL_OWNER_MIGRATION_TEST_ADMIN_DSN;
+    if (typeof dsn !== "string" || !isLoopbackOwnerDatabaseDsn(dsn))
+      throw new Error("isolated owner database fixture did not report a loopback admin DSN");
+    if (fixture.socketDirectory) {
+      // The stage lives in a private network namespace, so the loopback TCP
+      // port is unreachable from it; the socket in the host-created directory
+      // crosses that boundary as a filesystem grant.
+      // libpq's socket form: the authority stays parseable while the `host`
+      // parameter carries the exact directory of the host-created socket.
+      const socketDsn = `postgresql://postgres@localhost/postgres?host=${encodeURIComponent(fixture.socketDirectory)}&sslmode=disable`;
+      return await callback({ dsn: socketDsn, socketDirectory: fixture.socketDirectory });
+    }
+    return await callback({ dsn });
+  }) as Promise<T>;
 }
 
 export function summarizeGoTestFailures(events: readonly GoTestEvent[]) {

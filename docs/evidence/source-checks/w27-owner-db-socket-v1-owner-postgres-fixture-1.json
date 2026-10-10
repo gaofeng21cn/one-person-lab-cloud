@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "0aa72ec21f0b103c621b1abd92f3105bfe4ab063",
+  "recordedAt": "2026-10-10T14:29:22.898Z",
+  "writeSet": [
+    "DEV_GUIDE.md",
+    "docs/evidence/source-checks/step4-closure-governance-governance-source-check-1.json",
+    "docs/evidence/source-checks/step4-closure-governance-v2-governance-source-check-1.json",
+    "docs/evidence/source-checks/step4-closure-governance-v3-owner-postgres-fixture-1.json",
+    "docs/evidence/source-checks/step4-frame-bridge-frame-bridge-4.json",
+    "docs/evidence/source-checks/step4-frame-bridge-v2-frame-bridge-1.json",
+    "docs/evidence/source-checks/step4-w01-selection-decoder-v2-contracts-decoder-2.json",
+    "docs/evidence/source-checks/step4-w02-owner-readiness-v2-owner-readiness-1.json",
+    "docs/evidence/source-checks/w27-owner-db-socket-v1-owner-postgres-fixture-1.json",
+    "tests/tools/dev-frame-bridge.test.ts",
+    "tests/tools/dev-session.test.ts",
+    "tests/tools/verify-local.test.ts",
+    "tools/dev-frame-bridge.ts",
+    "tools/dev-session.ts",
+    "tools/verify-local.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "0aa72ec21f0b103c621b1abd92f3105bfe4ab063",
+    "changedFilesSha256": {
+      "DEV_GUIDE.md": "237ca9b5e1678dd2ebc31840f5706133c4d97e6536dcaf861f1310413409a5c8",
+      "docs/evidence/source-checks/step4-closure-governance-governance-source-check-1.json": "a63a428172ee1e12a0539b9d180c838800d380f0d61a4851074e6566adb1da60",
+      "docs/evidence/source-checks/step4-closure-governance-v2-governance-source-check-1.json": "35e19ed999b66ec401fcdd6315d8d86840b828bf7d7d34dc4759589a59124a7d",
+      "docs/evidence/source-checks/step4-closure-governance-v3-owner-postgres-fixture-1.json": "4bab147abb72fbeace292d675cfbc0e5bc329f340bf23729a59ae7aa9a4a2e5f",
+      "docs/evidence/source-checks/step4-frame-bridge-frame-bridge-4.json": "c2cd06e7e26a5663e31839c00e06effa50b4851ac802e2f22f35e4a5931ae025",
+      "docs/evidence/source-checks/step4-frame-bridge-v2-frame-bridge-1.json": "c8333e4ed4303d14edc53e0d1e7899704e65a028b86e065d0a0260fc7d7bdcfd",
+      "docs/evidence/source-checks/step4-w01-selection-decoder-v2-contracts-decoder-2.json": "9ed85c3f4e7352e3ed1c84b4da3ac927c59403bd872287c6a546677765ba9091",
+      "docs/evidence/source-checks/step4-w02-owner-readiness-v2-owner-readiness-1.json": "0d858d4b463e0481eff5a31954e796448327aa3fc119a6e247bdfbbfaeddf89d",
+      "tests/tools/dev-frame-bridge.test.ts": "ed815efb42cc82e8e55d33835ef8ef119c722ac42e6392ced8b85dad2450b65d",
+      "tests/tools/dev-session.test.ts": "125ece2ab280061bfd974d86c0188d9bea8f24d5e8bc4dcc1fd29488cde59495",
+      "tests/tools/verify-local.test.ts": "d2ba366dfafd5cbbdcf6a4a47c89d0fb7797d395dcd3223ce9027faf8980e402",
+      "tools/dev-frame-bridge.ts": "1f47669d77e856880d0f4f4ee0ecc3972322561ae8d54008d17f1fb8dfbdf7bf",
+      "tools/dev-session.ts": "e5eb99725ab8682bb6fbdf1f6b921238f25cb04fccaa9d4512614c93b33e53a5",
+      "tools/verify-local.ts": "0f1518396796747fffb98b1b78d02798232ba43cc188fd24841dd09f67e2bdd4"
+    }
+  },
+  "execution": {
+    "command": "go test -count=1 -json ./... (cwd: services/internal/ownerservice)",
+    "exitCode": 0,
+    "tests": 38,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "39b2f6e184418d0d469a8ec2eb4cfa5776f3fb0865edbf5f5bc38ba9feb0a3a4"
+  },
+  "sourceStage": {
+    "runId": "w27-owner-db-socket-v1",
+    "gateId": "owner-postgres-fixture",
+    "attempt": 1,
+    "receiptHash": "e5d344b710e52f1486eca29365f05514ddc873402c3a89eef8d0f8c2c73b243b"
+  }
+}
