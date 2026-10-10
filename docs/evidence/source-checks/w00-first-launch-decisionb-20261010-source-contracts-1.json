@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "0aa72ec21f0b103c621b1abd92f3105bfe4ab063",
+  "recordedAt": "2026-10-10T12:36:56.309Z",
+  "writeSet": [
+    "docs/decisions.md",
+    "docs/evidence/source-checks/w00-first-launch-decision-20261010-source-contracts-1.json",
+    "docs/evidence/source-checks/w00-first-launch-decisionb-20261010-source-contracts-1.json"
+  ],
+  "verifiedSource": {
+    "baseSha": "0aa72ec21f0b103c621b1abd92f3105bfe4ab063",
+    "changedFilesSha256": {
+      "docs/decisions.md": "c2ef59ff9a3544197c7f9a108cd3cb634cca273d26bf5bf048b2e7245a324608",
+      "docs/evidence/source-checks/w00-first-launch-decision-20261010-source-contracts-1.json": "845140bd509027e3d2808ed6c59856363793201bc643146f09d4e40fbca3a069"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/contracts/module-physical-boundaries.test.ts tests/contracts/gateway-deployment-unit-principal.test.ts tests/contracts/owner-topology.test.ts",
+    "exitCode": 0,
+    "tests": 15,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "988859b03d27d67c4178bd0b94d927242b63042a45a25027d13b58153390f43c"
+  },
+  "sourceStage": {
+    "runId": "w00-first-launch-decisionb-20261010",
+    "gateId": "source-contracts",
+    "attempt": 1,
+    "receiptHash": "32a624a18f88c69e27e39c5399f6b799ce1a498648c79242a1ab72b0d9f7c754"
+  }
+}
