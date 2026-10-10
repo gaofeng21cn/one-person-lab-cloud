@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "d3d5b5b719e2e7aad30f25a7115c207ea198e8de",
+  "recordedAt": "2026-10-10T17:25:28.999Z",
+  "writeSet": [
+    "DEV_GUIDE.md",
+    "docs/evidence/source-checks/console-ui-plan-correction-20261010-development-gates-1.json",
+    "docs/evidence/source-checks/console-ui-plan-correction-20261010-development-plan-1.json",
+    "docs/evidence/source-checks/console-ui-plan-correction-20261011b-development-gates-1.json",
+    "docs/evidence/source-checks/console-ui-plan-correction-20261011b-development-plan-1.json",
+    "docs/evidence/source-checks/console-ui-plan-correction-20261011c-development-gates-1.json",
+    "docs/evidence/source-checks/console-ui-plan-correction-20261011c-development-plan-1.json",
+    "docs/evidence/source-checks/console-ui-plan-correction-20261011d-development-gates-1.json",
+    "docs/evidence/source-checks/console-ui-plan-correction-20261011d-development-plan-1.json",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/render_development_plan.py"
+  ],
+  "verifiedSource": {
+    "baseSha": "d3d5b5b719e2e7aad30f25a7115c207ea198e8de",
+    "changedFilesSha256": {
+      "DEV_GUIDE.md": "706ffd5df3414b8c9dffd186d4aba0fb324fc101b204307136f70da842855cc6",
+      "docs/evidence/source-checks/console-ui-plan-correction-20261010-development-gates-1.json": "5170e85549e50424f875bf381979f00b324654c115128f919b67d7d9cb64bc1c",
+      "docs/evidence/source-checks/console-ui-plan-correction-20261010-development-plan-1.json": "e630444e6cd064b0c4b2edc78a88e14562263e5f6e13fd12b2f2da1f31dfd2b4",
+      "docs/evidence/source-checks/console-ui-plan-correction-20261011b-development-gates-1.json": "cc9ebe77a96d3ec05a6151c0d957b56e5d32a02acf62fefccb476a6a202be5bf",
+      "docs/evidence/source-checks/console-ui-plan-correction-20261011b-development-plan-1.json": "7e94c9dcae30101942ac2706545c4fb816a69ef3fb735bf0b6e730f0a4d89fe4",
+      "docs/evidence/source-checks/console-ui-plan-correction-20261011c-development-gates-1.json": "9da7c9e9ade8c08ea8bdab6070b19737aafb473a0d9663d2c166a5eb1880a777",
+      "docs/evidence/source-checks/console-ui-plan-correction-20261011c-development-plan-1.json": "2884ebe2315aaa0bd08d6b63ed05474b18dc13e7c66cb392cbf74a278e88d523",
+      "docs/evidence/source-checks/console-ui-plan-correction-20261011d-development-plan-1.json": "f60b3fc2370f6456969343109cbc5ad1f48960fff8b4859c75c35dc1953b25ea",
+      "docs/spec/target/14_implementation_work_packages.md": "e832ac77d20601fb88c4118e6ba4eb776fefe9d676669be828131838653be83f",
+      "docs/spec/target/checks/development_plan.json": "c623bd3336cb9c34b279083080063fa43a24871e5904700360899b77c7fefb37",
+      "docs/spec/target/checks/render_development_plan.py": "0bde43a1ffbb939834ba0925f3395f9b82eb899a229c40bb44824b0624da572f"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/check-pr-governance.test.ts",
+    "exitCode": 0,
+    "tests": 19,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "5505fcace4253b5973f74e55514886f0354892201715c320c6db2bbc039ed154"
+  },
+  "sourceStage": {
+    "runId": "console-ui-plan-correction-20261011d",
+    "gateId": "development-gates",
+    "attempt": 1,
+    "receiptHash": "3e9517131e2912fc23bd76faf355470b6e2bdf64331ee852ba73ddae8b8afca4"
+  }
+}
