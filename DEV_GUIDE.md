@@ -306,6 +306,17 @@ dependency temporary writes stay in admitted scratch while the shared
 installation and the source checkout are never granted. Zero registered tests,
 failures, skips and TODOs all refuse PASS.
 
+W20 owner source closeout uses `W20.workspace-deletion-source` for the existing
+Workspace deletion/recovery files and `W20.deletion-grant-source` for Gateway's
+accepted-deletion authorization files. These exact-file slices consume typed
+source inputs and isolated owner tests, not completion receipts for the whole
+purchase, upgrade and renewal program. Their receipts prove only source checks;
+the full W20 dependencies and deletion/refund business acceptance remain intact.
+The Workspace source run requires the Gateway source run's actual receipt;
+the downstream serialized check consumes both on the same exact baseline.
+Legacy cleanup still uses its original owner and the existing Cloud
+chain PASS prerequisite; source checks never authorize production effects.
+
 ## Pre-Commit Checks
 
 ```bash

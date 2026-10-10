@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "a182922d9bc4961a6298c40630fd6b76d577fcf5",
+  "recordedAt": "2026-10-10T17:49:48.897Z",
+  "writeSet": [
+    "DEV_GUIDE.md",
+    "docs/evidence/source-checks/w20-plan-alignment-v3-development-gates-1.json",
+    "docs/evidence/source-checks/w20-plan-alignment-v3-development-plan-1.json",
+    "docs/evidence/source-checks/w20-plan-alignment-v4-development-gates-1.json",
+    "docs/evidence/source-checks/w20-plan-alignment-v4-development-plan-1.json",
+    "docs/evidence/source-checks/w20-plan-alignment-v5-development-gates-1.json",
+    "docs/evidence/source-checks/w20-plan-alignment-v5-development-plan-1.json",
+    "docs/evidence/source-checks/w20-plan-alignment-v6-development-gates-1.json",
+    "docs/evidence/source-checks/w20-plan-alignment-v6-development-plan-1.json",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/render_development_plan.py"
+  ],
+  "verifiedSource": {
+    "baseSha": "a182922d9bc4961a6298c40630fd6b76d577fcf5",
+    "changedFilesSha256": {
+      "DEV_GUIDE.md": "c87c869dde57123dd2e09b0b4a9fcdd77fc28c9f474d5acb5dad6ee97b861e3c",
+      "docs/evidence/source-checks/w20-plan-alignment-v3-development-gates-1.json": "1ccc1d53dde337acbedcb7dde328f47889706611071beedd818bc02fa770e184",
+      "docs/evidence/source-checks/w20-plan-alignment-v3-development-plan-1.json": "89c0695482f07b2c060b4320b76795031491382b33ff0ce22e4f10eb510e872d",
+      "docs/evidence/source-checks/w20-plan-alignment-v4-development-gates-1.json": "2f7a0d24663a16acebc16acee450c0a9da16d1cdf32d06e8e56a2b4168dcee4b",
+      "docs/evidence/source-checks/w20-plan-alignment-v4-development-plan-1.json": "0d1ef9469acbc0133ea0667fc1cc4f09b54b1f778003ed83c9238fb03a8d9efb",
+      "docs/evidence/source-checks/w20-plan-alignment-v5-development-gates-1.json": "6915d8ddeb323cdb3536eae203634843aa2028e787d4b46d805e72920819c94d",
+      "docs/evidence/source-checks/w20-plan-alignment-v5-development-plan-1.json": "cc352aad2d295d52bdd3198513979143f4d822f5d65fbf232f6207fa699761e1",
+      "docs/evidence/source-checks/w20-plan-alignment-v6-development-plan-1.json": "4e774106739ac3b6300944fdb12833e7399cb7efebf12d6c61b0dbdb802f3c69",
+      "docs/spec/target/14_implementation_work_packages.md": "8c117f6d619e107be371921c989596690fd8223df2f814ed29ad04acdb8d6229",
+      "docs/spec/target/checks/development_plan.json": "8d50e007c57229b7433b493dbd5fccb34c75949017f10dc1b1c737e9b360f380",
+      "docs/spec/target/checks/render_development_plan.py": "ecaca8c984c4908001988afe0d58c8f6ddcc5dba7f0283b70794f4dd176f7a87"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/check-pr-governance.test.ts",
+    "exitCode": 0,
+    "tests": 19,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "6ca013dbd56639f75dc9ca34cdd9ce2855a5c79d90d3e5b37cb8f4b1d7b06e81"
+  },
+  "sourceStage": {
+    "runId": "w20-plan-alignment-v6",
+    "gateId": "development-gates",
+    "attempt": 1,
+    "receiptHash": "5b0e983ada576db7b8916f2435ebcd87cfdc998f61edb0df7521cb96ad838307"
+  }
+}

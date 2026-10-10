@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "0e37902883cb4fab7aefe185e3dcec3f00d6ad2b",
+  "recordedAt": "2026-10-10T16:51:49.165Z",
+  "writeSet": [
+    "DEV_GUIDE.md",
+    "docs/evidence/source-checks/w20-plan-alignment-v3-development-gates-1.json",
+    "docs/evidence/source-checks/w20-plan-alignment-v3-development-plan-1.json",
+    "docs/evidence/source-checks/w20-plan-alignment-v4-development-gates-1.json",
+    "docs/evidence/source-checks/w20-plan-alignment-v4-development-plan-1.json",
+    "docs/evidence/source-checks/w20-plan-alignment-v5-development-gates-1.json",
+    "docs/evidence/source-checks/w20-plan-alignment-v5-development-plan-1.json",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/render_development_plan.py"
+  ],
+  "verifiedSource": {
+    "baseSha": "0e37902883cb4fab7aefe185e3dcec3f00d6ad2b",
+    "changedFilesSha256": {
+      "DEV_GUIDE.md": "c87c869dde57123dd2e09b0b4a9fcdd77fc28c9f474d5acb5dad6ee97b861e3c",
+      "docs/evidence/source-checks/w20-plan-alignment-v3-development-gates-1.json": "1ccc1d53dde337acbedcb7dde328f47889706611071beedd818bc02fa770e184",
+      "docs/evidence/source-checks/w20-plan-alignment-v3-development-plan-1.json": "89c0695482f07b2c060b4320b76795031491382b33ff0ce22e4f10eb510e872d",
+      "docs/evidence/source-checks/w20-plan-alignment-v4-development-gates-1.json": "2f7a0d24663a16acebc16acee450c0a9da16d1cdf32d06e8e56a2b4168dcee4b",
+      "docs/evidence/source-checks/w20-plan-alignment-v4-development-plan-1.json": "0d1ef9469acbc0133ea0667fc1cc4f09b54b1f778003ed83c9238fb03a8d9efb",
+      "docs/evidence/source-checks/w20-plan-alignment-v5-development-plan-1.json": "cc352aad2d295d52bdd3198513979143f4d822f5d65fbf232f6207fa699761e1",
+      "docs/spec/target/14_implementation_work_packages.md": "8c117f6d619e107be371921c989596690fd8223df2f814ed29ad04acdb8d6229",
+      "docs/spec/target/checks/development_plan.json": "48196e7ff06429b01f9dfb51a26fe24ff857d303843beed5b891009ab9471b98",
+      "docs/spec/target/checks/render_development_plan.py": "ecaca8c984c4908001988afe0d58c8f6ddcc5dba7f0283b70794f4dd176f7a87"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/check-pr-governance.test.ts",
+    "exitCode": 0,
+    "tests": 19,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "bbcb76059bdab9bc0509ec28754f4a0779560d22835243730c1e39e1fef0649b"
+  },
+  "sourceStage": {
+    "runId": "w20-plan-alignment-v5",
+    "gateId": "development-gates",
+    "attempt": 1,
+    "receiptHash": "66872a108fcd2a7d1106961286cc6296ab3e95466825badd15095efd2d9dcb9f"
+  }
+}
