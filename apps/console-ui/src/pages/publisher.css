@@ -12,10 +12,16 @@
 .publisher-page dd { margin: 5px 0 16px; overflow-wrap: anywhere; }
 .publisher-page code { overflow-wrap: anywhere; }
 .publisher-page [role="alert"] { color: #b42318; }
-@media (max-width: 640px) { .publisher-page fieldset { grid-template-columns: 1fr; } }
-.publisher-page > .panel-title { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
-.publisher-draft-badge { color: #7a4b00; background: #fff4d6; border: 1px solid #f0d28a; border-radius: 999px; padding: 5px 10px; font-size: 12px; white-space: nowrap; }
-.publisher-boundary { display: grid; gap: 6px; margin-bottom: 20px; padding: 12px 14px; border: 1px solid #f0d28a; border-radius: 10px; background: #fffaf0; color: #624a1f; }
-.publisher-selection-readback { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 12px; border-radius: 8px; background: #f6f8fa; color: #52677a; font-size: 13px; }
-.publisher-selection-readback span { overflow-wrap: anywhere; }
-@media (max-width: 640px) { .publisher-page > .panel-title, .publisher-selection-readback { display: grid; grid-template-columns: 1fr; } .publisher-draft-badge { white-space: normal; } }
+
+/* The progress and ready sections are the customer result of one task, not a
+   second task surface: they carry the stage and the next action, and the
+   technical readback lives in the disclosure below. */
+.publisher-page .publisher-progress p, .publisher-page [aria-label="已就绪版本"] p { margin: 0 0 12px; color: #52677a; }
+.publisher-page [aria-label="已就绪版本"] > p:first-of-type { color: inherit; overflow-wrap: anywhere; }
+
+.publisher-technical-details { margin-top: 28px; border-top: 1px solid #dce1e7; padding-top: 16px; }
+.publisher-technical-details > summary { cursor: pointer; font-weight: 600; color: #0f4c5c; }
+.publisher-technical-details > summary:focus-visible { outline: 2px solid var(--focus, #087f87); outline-offset: 2px; border-radius: 4px; }
+.publisher-technical-details__body { margin-top: 12px; }
+
+@media (max-width: 640px) { .publisher-page fieldset { grid-template-columns: 1fr; } .publisher-page { padding: 16px; } }

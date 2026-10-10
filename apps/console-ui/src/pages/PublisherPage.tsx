@@ -18,16 +18,30 @@ type Work = { selection?: Selection; fingerprint: string; key: string; packageId
 
 const base = "/api/v2";
 const stageLabel: Record<string, string> = { queued: "等待构建", validating: "校验输入", building: "正在构建", pushing: "上传镜像", registering: "登记版本", succeeded: "构建完成", failed: "构建失败", needs_attention: "结果待确认", cancelled: "已取消" };
-// One sentence per owner fact the Console refuses to invent. The Build stays
-// unavailable until the owner supplies the exact input, so a missing policy is
-// never replaced by a catalog row, an older release or a plausible guess.
-const defaultReasonText: Record<string, string> = {
-  effective_default_runtime_missing: "平台尚未激活默认运行底座（管理员需先设置生效默认策略）",
-  effective_default_runtime_ambiguous: "平台默认策略读取到多个默认运行底座，需要管理员确认",
-  effective_default_runtime_not_approved: "平台默认运行底座当前未获准，新的构建不能使用",
+// One customer sentence per owner fact the Console cannot supply. The Build
+// stays unavailable until the platform's effective default policy resolves the
+// exact inputs, so a missing policy is never replaced by a catalog row, an older
+// release or a plausible guess.
+const blockedReasonText: Record<string, string> = {
+  effective_default_runtime_missing: "平台尚未激活默认运行底座",
+  effective_default_runtime_ambiguous: "平台默认策略读取到多个运行底座，需要管理员确认",
+  effective_default_runtime_not_approved: "平台默认运行底座当前未获准",
   effective_default_runtime_digest_not_immutable: "平台默认运行底座的制品摘要不是不可变 digest",
-  effective_default_webui_not_readable: "平台生效的默认界面版本尚未对客户会话提供合法授权读取，本页不用目录顺序代替它"
+  effective_default_webui_not_readable: "平台生效的默认界面版本尚未对客户会话提供合法授权读取"
 };
+// Where a Build stops, the customer needs the next action rather than the code.
+const failureText: Record<string, string> = {
+  validation_failed: "输入校验未通过，请确认 Package、名称与版本后重试。",
+  build_failed: "构建失败，可修正 Package 后重试。",
+  build_result_unknown: "构建结果待确认，请稍后刷新状态。",
+  runtime_revoked: "所用运行底座已撤销，请联系平台管理员。",
+  webui_incompatible: "界面版本与运行底座不兼容，请联系平台管理员。",
+  policy_unconfigured: "平台尚未配置生效默认策略，请联系平台管理员。"
+};
+function blockedSentence(reasons: string[]) {
+  const facts = reasons.map((reason) => blockedReasonText[reason] || reason).join("；");
+  return `暂时无法开始构建：${facts || "平台生效默认读取失败"}。请联系平台管理员激活默认策略后再试。`;
+}
 async function sha256(bytes: ArrayBuffer) {
   const hash = await crypto.subtle.digest("SHA-256", bytes);
   return "sha256:" + Array.from(new Uint8Array(hash), (v) => v.toString(16).padStart(2, "0")).join("");
@@ -61,11 +75,6 @@ async function pages(path: string, signal: AbortSignal): Promise<Entry[]> {
   return entries;
 }
 
-function inputText(input: { name?: string; versionLabel?: string; artifactDigest: string } | undefined, labels: string[], reasons: string[]) {
-  if (input) return `${input.name || labels[0]} · ${input.versionLabel || "未标注版本"} · ${input.artifactDigest}`;
-  return `不可用：${reasons.map((reason) => defaultReasonText[reason] || reason).join("；")}`;
-}
-
 export function PublisherPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [namespaces, setNamespaces] = useState<Entry[]>([]);
@@ -78,7 +87,7 @@ export function PublisherPage() {
   const [versionLabel, setVersionLabel] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("正在读取发布权限和平台生效默认…");
+  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [build, setBuild] = useState<Build | null>(null);
   const [version, setVersion] = useState<Version | null>(null);
@@ -138,10 +147,14 @@ export function PublisherPage() {
       if (job.status === "succeeded" && job.resultCapabilityVersionId) {
         const result = await getJson<Version>(`${base}/capability-versions/${encodeURIComponent(job.resultCapabilityVersionId)}`, { signal });
         if (result.status !== "ready" || result.artifactDigest !== job.artifactDigest) throw new Error("构建与版本回读尚未一致，请刷新状态。");
-        if (!signal.aborted) { setVersion(result); setMessage("版本已就绪，镜像摘要与构建记录一致。"); }
+        if (!signal.aborted) { setVersion(result); setMessage("版本已就绪，应用镜像已生成。"); }
         return;
       }
-      if (["failed", "needs_attention", "cancelled"].includes(job.status)) return;
+      if (["failed", "needs_attention", "cancelled"].includes(job.status)) {
+        const code = (job as Build & { errorCode?: string }).errorCode;
+        if (!signal.aborted && code) setError(failureText[code] || `构建未完成（${code}）。`);
+        return;
+      }
       await delay(signal);
     }
   }
@@ -158,10 +171,10 @@ export function PublisherPage() {
       // comes from this form: Runtime and WebUI must be the platform's effective
       // defaults, so an unresolved default blocks the command instead of being
       // replaced by a catalog row.
-      if (!defaults?.runtime || !defaults?.webui) throw new Error(`平台生效默认输入不完整，无法提交构建：${defaults?.reasons.map((reason) => defaultReasonText[reason] || reason).join("；") || "默认输入读取失败"}`);
+      if (!defaults?.runtime || !defaults?.webui) throw new Error(blockedSentence(defaults?.reasons || []));
       const runtimeId = defaults.runtime.id; const webuiId = defaults.webui.id;
       if (!file || !versionLabel || (!namespaceId && !namespaceName) || (!packageId && !packageName)) throw new Error("请填写发布信息并选择 Package 文件。");
-      setMessage("正在校验 ZIP 文件…");
+      setMessage("正在读取并校验 Package 文件…");
       const bytes = await file.arrayBuffer(); const hash = await sha256(bytes);
       const fingerprint = JSON.stringify([namespaceId, namespaceName, packageId, packageName, versionLabel, runtimeId, webuiId, hash]);
       let current = work.current;
@@ -201,10 +214,13 @@ export function PublisherPage() {
   }
 
   const defaultsReady = Boolean(defaults?.runtime && defaults?.webui);
+  const loadingDefaults = session !== null && defaults === null && !error;
   const canSubmit = Boolean(session && !busy && defaultsReady && file && versionLabel.trim() && (namespaceId || namespaceName.trim()) && (packageId || packageName.trim()));
+  const readback = (input: { name?: string; versionLabel?: string; artifactDigest: string } | undefined, label: string) => input
+    ? `${input.name || label} · ${input.versionLabel || "未标注版本"} · ${input.artifactDigest}`
+    : "暂不可用";
   return <section className="panel publisher-page">
-    <div className="panel-title"><div><h2>Cloud WebUI / Agent Package</h2><p>只需提交标准 Package 与名称/版本；Runtime 与独立 WebUI 由平台生效默认提供，并在构建受理时冻结。</p></div><span className="publisher-draft-badge">Draft / fixture-aware</span></div>
-    <div className="publisher-boundary" role="note"><strong>Fail-closed boundary</strong><span>平台生效默认不完整时本页不提交构建：不回落到目录第一条、旧版本或任意镜像；不显示客户选版器。</span></div>
+    <div className="panel-title"><div><h2>上传智能体</h2><p>上传标准 Agent Package 并填写名称与版本；运行底座与界面版本由平台生效默认在受理构建时确定。</p></div></div>
     <form onSubmit={(e) => { e.preventDefault(); void run(); }}>
       <fieldset disabled={busy || !session}>
         <label>命名空间<select aria-label="命名空间" value={namespaceId} onChange={(e) => setNamespaceId(e.target.value)}><option value="">新建命名空间</option>{namespaces.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
@@ -213,19 +229,34 @@ export function PublisherPage() {
         {!packageId && <label>Package 名称<input value={packageName} onChange={(e) => setPackageName(e.target.value)} required /></label>}
         <label>版本名称<input value={versionLabel} onChange={(e) => setVersionLabel(e.target.value)} placeholder="例如 0.1.0" required /></label>
         <label>ZIP 文件<input type="file" accept=".zip,application/zip" onChange={(e) => setFile(e.target.files?.[0] || null)} required /></label>
-        <div className="publisher-selection-readback" aria-label="平台生效默认构建输入（owner readback）">
-          <span>Runtime Release：<code>{inputText(defaults?.runtime, ["默认运行底座"], defaults?.reasons || [])}</code></span>
-          <span>Agent WebUI：<code>{inputText(defaults?.webui, ["默认界面"], defaults?.reasons || [])}</code></span>
-          <span>输入来源：<code>Runtime Control 生效策略（defaultForNewBuilds）· 构建受理时冻结</code></span>
-        </div>
         <Button type="submit" disabled={!canSubmit}>上传并构建 / 继续上传</Button>
       </fieldset>
     </form>
-    <p role="status">{message}</p>
-    {defaults && !defaultsReady && <p role="status">平台生效默认尚未就绪：{defaults.reasons.map((reason) => defaultReasonText[reason] || reason).join("；")}。提交构建前需由平台管理员激活默认策略。</p>}
+    {message && <p role="status">{message}</p>}
+    {loadingDefaults && <p role="status">正在读取平台默认输入…</p>}
+    {defaults && !defaultsReady && <p role="status">{blockedSentence(defaults.reasons)}</p>}
     {error && <p role="alert">{error}</p>}
-    {packageVersion && <section aria-label="Package 版本读回"><h3>Package owner readback</h3><dl><dt>Package Version</dt><dd><code>{packageVersion.id}</code></dd><dt>状态</dt><dd>{packageVersion.status || "暂不可用"}</dd><dt>Package bytes sha256</dt><dd><code>{packageVersion.sha256 || "暂不可用"}</code></dd></dl></section>}
-    {build && <section aria-label="构建结果"><dl><dt>构建</dt><dd>{build.id}</dd><dt>状态</dt><dd>{stageLabel[build.status] || build.status}</dd><dt>Package ref</dt><dd><code>{build.packageVersionId || work.current?.packageVersionId || "暂不可用"}</code></dd><dt>Runtime Release ref</dt><dd><code>{build.runtimeVersionId || "暂不可用"}</code></dd><dt>WebUI ref</dt><dd><code>{build.webuiVersionId || "暂不可用"}</code></dd>{build.artifactDigest && <><dt>OCI digest（Build owner）</dt><dd><code>{build.artifactDigest}</code></dd></>}</dl><Button disabled={busy} variant="outline" onClick={() => void run(true)}>刷新构建状态</Button></section>}
-    {version && <section aria-label="已就绪版本"><h3>版本已就绪</h3><p>{version.id}</p><p>版本与构建结果一致</p><code>{version.deploymentDescriptorDigest}</code></section>}
+    {build && <section aria-label="构建进度" className="publisher-progress">
+      <h3>{stageLabel[build.status] || build.status}</h3>
+      <p>{build.status === "succeeded" ? "构建完成，应用镜像已生成。" : "正在处理本次构建；可继续上传或刷新状态。"}</p>
+      <Button disabled={busy} variant="outline" onClick={() => void run(true)}>刷新构建状态</Button>
+    </section>}
+    {version && <section aria-label="已就绪版本"><h3>版本已就绪</h3><p>{version.id}</p><p>该版本与本次构建结果一致，可在工作空间中使用。</p></section>}
+    <details className="publisher-technical-details">
+      <summary>技术详情</summary>
+      <div className="publisher-technical-details__body">
+        <section aria-label="平台生效默认（owner readback）">
+          <h3>平台生效默认</h3>
+          <dl>
+            <dt>Runtime Release</dt><dd><code>{readback(defaults?.runtime, "默认运行底座")}</code></dd>
+            <dt>Agent WebUI</dt><dd><code>{readback(defaults?.webui, "默认界面")}</code></dd>
+            <dt>来源</dt><dd><code>Runtime Control 生效策略（defaultForNewBuilds）· 构建受理时冻结</code></dd>
+          </dl>
+        </section>
+        {build && <section aria-label="构建结果"><h3>构建记录</h3><dl><dt>构建</dt><dd>{build.id}</dd><dt>状态</dt><dd>{stageLabel[build.status] || build.status}</dd><dt>Package ref</dt><dd><code>{build.packageVersionId || work.current?.packageVersionId || "暂不可用"}</code></dd><dt>Runtime Release ref</dt><dd><code>{build.runtimeVersionId || "暂不可用"}</code></dd><dt>WebUI ref</dt><dd><code>{build.webuiVersionId || "暂不可用"}</code></dd>{build.artifactDigest && <><dt>OCI digest（Build owner）</dt><dd><code>{build.artifactDigest}</code></dd></>}</dl></section>}
+        {packageVersion && <section aria-label="Package 版本读回"><h3>Package 版本读回</h3><dl><dt>Package Version</dt><dd><code>{packageVersion.id}</code></dd><dt>状态</dt><dd>{packageVersion.status || "暂不可用"}</dd><dt>Package bytes sha256</dt><dd><code>{packageVersion.sha256 || "暂不可用"}</code></dd></dl></section>}
+        {version && <section aria-label="已就绪版本读回"><h3>版本读回</h3><dl><dt>CapabilityVersion</dt><dd><code>{version.id}</code></dd><dt>deployment descriptor digest</dt><dd><code>{version.deploymentDescriptorDigest}</code></dd></dl></section>}
+      </div>
+    </details>
   </section>;
 }
