@@ -211,7 +211,7 @@ func evidenceID(prefix, idempotencyKey string) string {
 func validateReceiptInput(input ReceiptInput) error {
 	// Typed owner evidence has exactly one writer: its authenticated domain Inbox
 	// or coordination path. The generic HTTP writer must never mint these types.
-	if input.Type == LocalNoChargeReceiptType || input.Type == WalletActionReceiptType || input.Type == "package.uploaded.v1" || input.Type == "build.artifact_confirmed.v1" || input.Type == "build.failed.v1" || input.Type == "capability.version_registered.v1" || input.Type == "serve.agent_readiness_observed.v1" || input.Type == "catalog.policy_changed.v1" || input.Type == "serve.access_observed.v1" || input.Type == "fabric.resources_observed.v1" || input.Type == "wallet.operation_observed.v1" {
+	if input.Type == LocalNoChargeReceiptType || input.Type == WalletActionReceiptType || input.Type == DeletionReceiptType || input.Type == "package.uploaded.v1" || input.Type == "build.artifact_confirmed.v1" || input.Type == "build.failed.v1" || input.Type == "capability.version_registered.v1" || input.Type == "serve.agent_readiness_observed.v1" || input.Type == "catalog.policy_changed.v1" || input.Type == "serve.access_observed.v1" || input.Type == "fabric.resources_observed.v1" || input.Type == "wallet.operation_observed.v1" {
 		return ErrInvalidReceiptInput
 	}
 	if input.Type == "" || input.Status == "" || input.Surface == "" || input.IdempotencyKey == "" || input.WorkspaceID == "" && input.Type != "gateway.wallet_adjustment.v1" {

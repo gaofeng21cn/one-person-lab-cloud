@@ -302,9 +302,10 @@ func (s *PostgresStore) ListReceipts(ctx context.Context, query ReceiptQuery) (R
 	if err != nil {
 		return ReceiptPage{}, err
 	}
-	// Local coordination evidence carries private owner commitments and is read
-	// only through the authenticated typed LedgerCoordination boundary.
-	q := s.client.EvidenceReceipt.Query().Where(evidencereceipt.ReceiptTypeNEQ(LocalNoChargeReceiptType))
+	// Coordination evidence carries private owner commitments and is read only
+	// through the authenticated typed LedgerCoordination boundary, so the generic
+	// list must not project it.
+	q := s.client.EvidenceReceipt.Query().Where(evidencereceipt.ReceiptTypeNEQ(LocalNoChargeReceiptType), evidencereceipt.ReceiptTypeNEQ(DeletionReceiptType))
 	if query.AccountID != "" {
 		q = q.Where(evidencereceipt.AccountID(query.AccountID))
 	}
@@ -471,7 +472,7 @@ func (s *PostgresStore) mutateReceipt(ctx context.Context, service, idempotencyK
 	}
 	var payloadJSON string
 	var createdAt time.Time
-	if err := tx.QueryRowContext(ctx, "SELECT payload_json, created_at FROM evidence_receipts WHERE id = $1 AND receipt_type <> $2 FOR UPDATE /* ledger_receipt_mutation */", receiptID, LocalNoChargeReceiptType).Scan(&payloadJSON, &createdAt); errors.Is(err, sql.ErrNoRows) {
+	if err := tx.QueryRowContext(ctx, "SELECT payload_json, created_at FROM evidence_receipts WHERE id = $1 AND receipt_type <> $2 AND receipt_type <> $3 FOR UPDATE /* ledger_receipt_mutation */", receiptID, LocalNoChargeReceiptType, DeletionReceiptType).Scan(&payloadJSON, &createdAt); errors.Is(err, sql.ErrNoRows) {
 		return ReceiptRetentionResult{}, ErrReceiptNotFound
 	} else if err != nil {
 		return ReceiptRetentionResult{}, err
@@ -510,7 +511,7 @@ func (s *PostgresStore) receipt(ctx context.Context, receiptID string) (Receipt,
 	if err != nil {
 		return Receipt{}, err
 	}
-	if row.ReceiptType == LocalNoChargeReceiptType {
+	if row.ReceiptType == LocalNoChargeReceiptType || row.ReceiptType == DeletionReceiptType {
 		return Receipt{}, ErrReceiptNotFound
 	}
 	return receiptFromEnt(row)
