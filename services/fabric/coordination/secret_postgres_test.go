@@ -31,6 +31,11 @@ type secretDispatcher struct {
 
 func (d *secretDispatcher) Provider() string { return "local-docker" }
 
+// PutManagedSecret is not exercised by this fixture.
+func (d *secretDispatcher) PutManagedSecret(context.Context, coordination.PutManagedSecretIntent) (coordination.ManagedSecretResult, error) {
+	return coordination.ManagedSecretResult{}, status.Error(codes.Unimplemented, "fixture Secret write is not used")
+}
+
 func (d *secretDispatcher) EnsureResources(context.Context, coordination.ResourceIntent) (*coordination.ResourceResult, error) {
 	return nil, fmt.Errorf("resource dispatch not used")
 }
@@ -64,6 +69,11 @@ func (d *secretDispatcher) BindSecret(_ context.Context, in coordination.SecretB
 type rebindDispatcher struct{ calls int }
 
 func (d *rebindDispatcher) Provider() string { return "local-docker" }
+
+// PutManagedSecret is not exercised by this fixture.
+func (d *rebindDispatcher) PutManagedSecret(context.Context, coordination.PutManagedSecretIntent) (coordination.ManagedSecretResult, error) {
+	return coordination.ManagedSecretResult{}, status.Error(codes.Unimplemented, "fixture Secret write is not used")
+}
 
 func (d *rebindDispatcher) EnsureResources(context.Context, coordination.ResourceIntent) (*coordination.ResourceResult, error) {
 	return nil, fmt.Errorf("resource dispatch not used")

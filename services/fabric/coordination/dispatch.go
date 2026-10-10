@@ -71,6 +71,11 @@ type ResourceDispatcher interface {
 	// BindSecret asks the provider to confirm the exact approved-store Secret for
 	// one runtime and return its observed identity. It never writes a credential.
 	BindSecret(context.Context, SecretBindIntent) (SecretBindResult, error)
+	// PutManagedSecret writes one managed Gateway key into the provider's
+	// approved Secret store and returns the stored Secret identity. It is the
+	// only path that carries a raw credential, and it reuses the provider's
+	// existing idempotent Secret mutation instead of adding a second writer.
+	PutManagedSecret(context.Context, PutManagedSecretIntent) (ManagedSecretResult, error)
 }
 
 // SecretBindIntent is one committed request to confirm an approved-store Secret
@@ -88,6 +93,29 @@ type SecretBindIntent struct {
 // SecretBindResult is the provider-confirmed Secret identity: the reference, its
 // exact version and fingerprint, as read back from the approved store.
 type SecretBindResult struct {
+	SecretRef   string
+	Version     string
+	Fingerprint string
+}
+
+// PutManagedSecretIntent is one committed request to write an approved-store
+// Secret for a Workspace's managed Gateway key. The raw value exists only for the
+// duration of this call: the provider stores it in the approved store and every
+// durable record keeps the opaque reference, version and fingerprint.
+type PutManagedSecretIntent struct {
+	TenantID          string
+	WorkspaceID       string
+	WorkspaceAPIKeyID int64
+	SecretRef         string
+	Fingerprint       string
+	GatewayAPIKey     string
+	IdempotencyKey    string
+}
+
+// ManagedSecretResult is the provider-confirmed identity of the written Secret:
+// the approved reference, its stored version and the fingerprint of the value
+// that was actually stored.
+type ManagedSecretResult struct {
 	SecretRef   string
 	Version     string
 	Fingerprint string

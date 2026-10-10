@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	api "opl-cloud/packages/contracts/go/api"
@@ -46,6 +48,11 @@ func (d *tencentFixture) Provider() string { return "tencent-tke" }
 
 func (d *tencentFixture) BindSecret(context.Context, coordination.SecretBindIntent) (coordination.SecretBindResult, error) {
 	return coordination.SecretBindResult{}, fmt.Errorf("fixture_provider_bind_unavailable")
+}
+
+// PutManagedSecret is not exercised by this fixture.
+func (d *tencentFixture) PutManagedSecret(context.Context, coordination.PutManagedSecretIntent) (coordination.ManagedSecretResult, error) {
+	return coordination.ManagedSecretResult{}, status.Error(codes.Unimplemented, "fixture Secret write is not used")
 }
 
 func (d *tencentFixture) EnsureResources(_ context.Context, in coordination.ResourceIntent) (*coordination.ResourceResult, error) {
