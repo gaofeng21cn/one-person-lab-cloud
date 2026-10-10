@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "e4b9cac0ac94e3a905343ab95cfac3e98acf4f28",
+  "recordedAt": "2026-10-10T09:09:27.656Z",
+  "writeSet": [
+    "docs/evidence/source-checks/step4-frame-bridge-frame-bridge-4.json",
+    "docs/evidence/source-checks/step4-frame-bridge-v2-frame-bridge-1.json",
+    "docs/evidence/source-checks/step4-w01-selection-decoder-v2-contracts-decoder-2.json",
+    "docs/evidence/source-checks/step4-w02-owner-readiness-v2-owner-readiness-1.json",
+    "packages/contracts/go/workspace_application_selection.go",
+    "packages/contracts/go/workspace_application_selection_test.go",
+    "tests/tools/dev-frame-bridge.test.ts",
+    "tools/dev-frame-bridge.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "e4b9cac0ac94e3a905343ab95cfac3e98acf4f28",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/step4-frame-bridge-frame-bridge-4.json": "c2cd06e7e26a5663e31839c00e06effa50b4851ac802e2f22f35e4a5931ae025",
+      "docs/evidence/source-checks/step4-frame-bridge-v2-frame-bridge-1.json": "c8333e4ed4303d14edc53e0d1e7899704e65a028b86e065d0a0260fc7d7bdcfd",
+      "docs/evidence/source-checks/step4-w01-selection-decoder-v2-contracts-decoder-2.json": "9ed85c3f4e7352e3ed1c84b4da3ac927c59403bd872287c6a546677765ba9091",
+      "packages/contracts/go/workspace_application_selection.go": "86f14808103dcfe25e254997f35f932063d9a0f2a96722f521d8bf595896795e",
+      "packages/contracts/go/workspace_application_selection_test.go": "b17b24df003a30db27cfb569c0b3e83d9c0a43792fa4a0db951a63f56f956de8",
+      "tests/tools/dev-frame-bridge.test.ts": "d47d32c888c740487c48ebbd074e5524831db3338d7b75f729e3f027387ab04a",
+      "tools/dev-frame-bridge.ts": "ff6e679c6ce576612e723ceb99ccf0e5a19694f002df684b295ed7d3fc448848"
+    }
+  },
+  "execution": {
+    "command": "go acceptance gate",
+    "exitCode": 0,
+    "tests": 18,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "73b03bdd7da00b960bcce7a6b0dd25f20a15ea3f68f95a805f66c0c80e46a247"
+  },
+  "sourceStage": {
+    "runId": "step4-w02-owner-readiness-v2",
+    "gateId": "owner-readiness",
+    "attempt": 1,
+    "receiptHash": "81911bd74ba4186f35361cdaaffbdd4065b065f75ca39a700d203073df2e6178"
+  }
+}
