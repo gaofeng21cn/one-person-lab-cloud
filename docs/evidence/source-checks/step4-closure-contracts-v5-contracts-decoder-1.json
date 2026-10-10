@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "d00a765fff0ebb3b4b5a986bbcac558f92974d7d",
+  "recordedAt": "2026-10-10T09:22:49.932Z",
+  "writeSet": [
+    "docs/evidence/source-checks/step4-closure-contracts-v4-contracts-decoder-1.json",
+    "docs/evidence/source-checks/step4-closure-contracts-v5-contracts-decoder-1.json",
+    "packages/contracts/go/workspace_application_selection.go",
+    "packages/contracts/go/workspace_application_selection_test.go"
+  ],
+  "verifiedSource": {
+    "baseSha": "d00a765fff0ebb3b4b5a986bbcac558f92974d7d",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/step4-closure-contracts-v4-contracts-decoder-1.json": "9989e4fdbcdbcf8c07d67d0042f7f93033d8192f039b5f3caba50beb86a23c8d",
+      "packages/contracts/go/workspace_application_selection.go": "86f14808103dcfe25e254997f35f932063d9a0f2a96722f521d8bf595896795e",
+      "packages/contracts/go/workspace_application_selection_test.go": "b17b24df003a30db27cfb569c0b3e83d9c0a43792fa4a0db951a63f56f956de8"
+    }
+  },
+  "execution": {
+    "command": "go acceptance gate",
+    "exitCode": 0,
+    "tests": 122,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "b694f9452a358de0f298cca725c4f5b79ff4035f2f5401e9fe7221c8a0fbec11"
+  },
+  "sourceStage": {
+    "runId": "step4-closure-contracts-v5",
+    "gateId": "contracts-decoder",
+    "attempt": 1,
+    "receiptHash": "6a928354f84e8686f56ed8a859e1bed8facb1d9f8f7545a413fd3e6e2c598a65"
+  }
+}
