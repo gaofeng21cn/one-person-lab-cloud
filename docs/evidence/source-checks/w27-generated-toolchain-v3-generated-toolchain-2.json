@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "8cd6c436cde9153a7e96a7afafb5a5a57d8ba69f",
+  "recordedAt": "2026-10-10T21:28:01.789Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w27-generated-toolchain-v1-generated-toolchain-2.json",
+    "docs/evidence/source-checks/w27-generated-toolchain-v2-development-gates-1.json",
+    "docs/evidence/source-checks/w27-generated-toolchain-v3-development-gates-1.json",
+    "docs/evidence/source-checks/w27-generated-toolchain-v3-generated-toolchain-1.json",
+    "docs/evidence/source-checks/w27-generated-toolchain-v3-generated-toolchain-2.json",
+    "tests/tools/verify-local.test.ts",
+    "tools/verify-local.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "8cd6c436cde9153a7e96a7afafb5a5a57d8ba69f",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/w27-generated-toolchain-v1-generated-toolchain-2.json": "5b44520354d9120b54b61029bc56d24c23b245af9d2f390a922073d22286b36f",
+      "docs/evidence/source-checks/w27-generated-toolchain-v2-development-gates-1.json": "f5d23698e9d0198b3a5137bface66d40703fcfa53889730f3afbd4442026d4b9",
+      "docs/evidence/source-checks/w27-generated-toolchain-v3-development-gates-1.json": "993ef3a939aa0cfcfb606770f655090e4e05e3562d6deb1d4a024e196c37b74b",
+      "docs/evidence/source-checks/w27-generated-toolchain-v3-generated-toolchain-1.json": "afcfb9b0aaefe32b281843b3c43d0890721ddbee1656b5d7e1140446990bba95",
+      "tests/tools/verify-local.test.ts": "74d40bfa53e7eed278884345881a14a0cdde33ff1e9c07e174f5ca4655226302",
+      "tools/verify-local.ts": "b38ed13c4175d10e19229bc518f996f5b2be1de846bb5cd3080a18dbd56a08d3"
+    }
+  },
+  "execution": {
+    "command": "node tools/verify-generated-contracts.ts",
+    "exitCode": 0,
+    "tests": 0,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "1b8ed24bc5549ea16a8f84074c18c7da3d519a5e0ec67c686da9d8ebd6a3f99b"
+  },
+  "sourceStage": {
+    "runId": "w27-generated-toolchain-v3",
+    "gateId": "generated-toolchain",
+    "attempt": 2,
+    "receiptHash": "7349c2b6d4b977e968cae0dd82e6425e2f6367765e9615fa0407b3e53e7f3504"
+  }
+}
