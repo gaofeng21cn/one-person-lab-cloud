@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "34878da668b0c66f7d3cd4c79967cd94907f1cf3",
+  "recordedAt": "2026-10-10T08:31:44.278Z",
+  "writeSet": [
+    "docs/evidence/source-checks/step4-frame-bridge-frame-bridge-4.json",
+    "tests/tools/dev-frame-bridge.test.ts",
+    "tools/dev-frame-bridge.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "34878da668b0c66f7d3cd4c79967cd94907f1cf3",
+    "changedFilesSha256": {
+      "tests/tools/dev-frame-bridge.test.ts": "d47d32c888c740487c48ebbd074e5524831db3338d7b75f729e3f027387ab04a",
+      "tools/dev-frame-bridge.ts": "ff6e679c6ce576612e723ceb99ccf0e5a19694f002df684b295ed7d3fc448848"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/dev-frame-bridge.test.ts",
+    "exitCode": 0,
+    "tests": 9,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "7f0b0e382bd4e6713cfb897bf6907d8b94411f3eca4b3cdbe0862bef11eb272a"
+  },
+  "sourceStage": {
+    "runId": "step4-frame-bridge",
+    "gateId": "frame-bridge",
+    "attempt": 4,
+    "receiptHash": "a0e99670de94df457f51eb664ce7edacb6e67e218ce5992325bacd0962aaae09"
+  }
+}
