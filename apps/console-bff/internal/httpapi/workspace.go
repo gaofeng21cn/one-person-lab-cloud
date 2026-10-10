@@ -65,6 +65,29 @@ func (s *Server) registerWorkspaceRoutes(mux *http.ServeMux, workspace api.Works
 			}
 			return workspace.UpdateWorkspaceModels(r.Context(), &api.UpdateWorkspaceModelsRpcRequest{Context: call, Body: body.(*api.UpdateWorkspaceModelsRequest), WorkspaceId: r.PathValue("workspaceId")})
 		})
+	// Deleting a Workspace is one customer command that carries the caller's own
+	// confirmation of the exact Workspace name and of the data destruction the
+	// owner is about to perform. The BFF forwards that typed command and the
+	// accepted owner operation; it never executes, interprets or repairs the
+	// deletion itself.
+	s.publisherRoute(mux, "DELETE /api/v2/workspaces/{workspaceId}", owneridentity.Workspace, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEWORKSPACE, kind, "workspaceId", func() proto.Message { return &api.DeleteWorkspaceRequest{} },
+		func(r *http.Request, call *api.CallContext, body proto.Message) (proto.Message, error) {
+			if err := require(); err != nil {
+				return nil, err
+			}
+			return workspace.DeleteWorkspace(r.Context(), &api.DeleteWorkspaceRpcRequest{Context: call, Body: body.(*api.DeleteWorkspaceRequest), WorkspaceId: r.PathValue("workspaceId")})
+		})
+	// The deletion readback is the owner's own typed facts: resource deletion, data
+	// deletion and the refund are published by the owner as they happen. The BFF
+	// forwards that readback unchanged and never synthesizes a stage, a refund
+	// state or a not-found answer the owner did not return.
+	s.publisherRoute(mux, "GET /api/v2/workspaces/{workspaceId}/deletion", owneridentity.Workspace, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEDELETION, kind, "workspaceId", nil,
+		func(r *http.Request, call *api.CallContext, _ proto.Message) (proto.Message, error) {
+			if err := require(); err != nil {
+				return nil, err
+			}
+			return workspace.GetWorkspaceDeletion(r.Context(), &api.GetWorkspaceDeletionRpcRequest{Context: call, WorkspaceId: r.PathValue("workspaceId")})
+		})
 	// The canonical Workspace schema is the console-bff's derived read model: its
 	// applicationAvailability, accessUrl and modelConfigurationVersion are
 	// compositions of the Serve-owned deployment, runtime instance and access

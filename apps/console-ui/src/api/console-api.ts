@@ -64,8 +64,8 @@ export function putJson<T>(path: string, body: unknown, csrfToken = "", idempote
   return writeJson<T>("PUT", path, body, csrfToken, idempotencyKey, 10_000);
 }
 
-export function deleteJson<T>(path: string, csrfToken = "", idempotencyKey = ""): Promise<T> {
-  return writeJson<T>("DELETE", path, {}, csrfToken, idempotencyKey, 10_000);
+export function deleteJson<T>(path: string, csrfToken = "", idempotencyKey = "", body: unknown = {}): Promise<T> {
+  return writeJson<T>("DELETE", path, body, csrfToken, idempotencyKey, 10_000);
 }
 
 export async function getJson<T>(path: string, { signal }: { signal?: AbortSignal } = {}): Promise<T> {

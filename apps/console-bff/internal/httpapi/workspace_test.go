@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -19,10 +20,12 @@ import (
 
 type workspaceProbe struct {
 	api.WorkspaceProductServiceClient
-	created *api.CreateWorkspaceRpcRequest
-	listed  *api.ListWorkspacesRpcRequest
-	read    *api.GetWorkspaceRpcRequest
-	err     error
+	created  *api.CreateWorkspaceRpcRequest
+	listed   *api.ListWorkspacesRpcRequest
+	read     *api.GetWorkspaceRpcRequest
+	deleted  *api.DeleteWorkspaceRpcRequest
+	deletion *api.GetWorkspaceDeletionRpcRequest
+	err      error
 }
 
 func (p *workspaceProbe) CreateWorkspace(_ context.Context, r *api.CreateWorkspaceRpcRequest, _ ...grpc.CallOption) (*api.Operation, error) {
@@ -148,5 +151,92 @@ func TestWorkspaceReadPaginationAndFailure(t *testing.T) {
 	NewWorkspaceHandler(p, i).ServeHTTP(w, sessionRequest("GET", "/api/v2/workspaces/ws-1"))
 	if w.Code != 404 || p.read.GetWorkspaceId() != "ws-1" {
 		t.Fatalf("readback status=%d request=%v", w.Code, p.read)
+	}
+}
+
+func (p *workspaceProbe) DeleteWorkspace(_ context.Context, r *api.DeleteWorkspaceRpcRequest, _ ...grpc.CallOption) (*api.Operation, error) {
+	p.deleted = r
+	return &api.Operation{OperationId: "op-delete-1", ResourceId: r.WorkspaceId, Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_WORKSPACE, Kind: api.OperationKindEnum_OPERATION_KIND_ENUM_DELETE_WORKSPACE, Stage: api.OperationStageEnum_OPERATION_STAGE_ENUM_ADMISSION, RequestId: r.Context.RequestId, CreatedAt: timestamppb.Now(), UpdatedAt: timestamppb.Now(), Status: api.OperationStatusEnum_OPERATION_STATUS_ENUM_ACCEPTED, PollAfterSeconds: proto.Int32(5)}, p.err
+}
+
+func (p *workspaceProbe) GetWorkspaceDeletion(_ context.Context, r *api.GetWorkspaceDeletionRpcRequest, _ ...grpc.CallOption) (*api.WorkspaceDeletion, error) {
+	p.deletion = r
+	return &api.WorkspaceDeletion{
+		WorkspaceId:            r.WorkspaceId,
+		OperationId:            "op-delete-1",
+		ResourceDeletionStatus: api.WorkspaceDeletionResourceDeletionStatusEnum_WORKSPACE_DELETION_RESOURCE_DELETION_STATUS_ENUM_PENDING,
+		DataDeletionStatus:     api.WorkspaceDeletionDataDeletionStatusEnum_WORKSPACE_DELETION_DATA_DELETION_STATUS_ENUM_PENDING,
+		RefundStatus:           api.WorkspaceDeletionRefundStatusEnum_WORKSPACE_DELETION_REFUND_STATUS_ENUM_NOT_APPLICABLE,
+		UpdatedAt:              timestamppb.New(time.Date(2026, 9, 18, 5, 0, 0, 0, time.UTC)),
+	}, p.err
+}
+
+func workspaceDeleteRequest() *http.Request {
+	r := sessionRequest(http.MethodDelete, "/api/v2/workspaces/ws-1")
+	r.Body = io.NopCloser(strings.NewReader(`{"confirmationName":"Pilot Workspace","acknowledgeDataDestruction":true}`))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("X-CSRF-Token", "csrf-1")
+	r.Header.Set("Idempotency-Key", "delete-ws-1")
+	return r
+}
+
+func TestWorkspaceDeleteForwardsTheCallersOwnCommandToTheOwner(t *testing.T) {
+	p := &workspaceProbe{}
+	i := workspaceIdentity(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEWORKSPACE, "ws-1")
+	w := httptest.NewRecorder()
+	NewWorkspaceHandler(p, i).ServeHTTP(w, workspaceDeleteRequest())
+	if w.Code != 202 || w.Header().Get("Retry-After") != "5" || w.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("response: %d %v %s", w.Code, w.Header(), w.Body.String())
+	}
+	if p.deleted.GetWorkspaceId() != "ws-1" || p.deleted.GetBody().GetConfirmationName() != "Pilot Workspace" || !p.deleted.GetBody().GetAcknowledgeDataDestruction() {
+		t.Fatalf("owner call lost the caller's confirmation: %v", p.deleted)
+	}
+	call := p.deleted.GetContext()
+	if call.GetActorId() != "actor-1" || call.GetIdempotencyKey() != "delete-ws-1" || call.GetScope().GetTenant().GetTenantId() != "tenant-1" || call.GetAuthorizationContextId() != "workspace-authorization" {
+		t.Fatalf("caller context not preserved: %v", call)
+	}
+	if len(i.requests) != 1 {
+		t.Fatalf("authorization checks: %d", len(i.requests))
+	}
+	request := i.requests[0]
+	if request.GetAction() != api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEWORKSPACE || request.GetAudienceOwner() != api.OwnerEnum_OWNER_ENUM_WORKSPACE || request.GetResource().GetKind() != api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE || request.GetResource().GetId() != "ws-1" {
+		t.Fatalf("authorization request: %v", request)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["status"] != "accepted" || body["operationId"] != "op-delete-1" || body["kind"] != "delete_workspace" {
+		t.Fatalf("owner operation rewritten: %v", body)
+	}
+}
+
+func TestWorkspaceDeletionReadbackPreservesTheOwnersTypedFacts(t *testing.T) {
+	p := &workspaceProbe{}
+	i := workspaceIdentity(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEDELETION, "ws-1")
+	w := httptest.NewRecorder()
+	NewWorkspaceHandler(p, i).ServeHTTP(w, sessionRequest(http.MethodGet, "/api/v2/workspaces/ws-1/deletion"))
+	if w.Code != 200 || p.deletion.GetWorkspaceId() != "ws-1" {
+		t.Fatalf("readback status=%d request=%v body=%s", w.Code, p.deletion, w.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["workspaceId"] != "ws-1" || body["operationId"] != "op-delete-1" || body["resourceDeletionStatus"] != "pending" || body["dataDeletionStatus"] != "pending" || body["refundStatus"] != "not_applicable" || body["updatedAt"] != "2026-09-18T05:00:00Z" {
+		t.Fatalf("owner facts rewritten: %v", body)
+	}
+	if _, invented := body["status"]; invented {
+		t.Fatalf("readback invented a status: %v", body)
+	}
+	if request := i.requests[0]; request.GetAction() != api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEDELETION || request.GetAudienceOwner() != api.OwnerEnum_OWNER_ENUM_WORKSPACE || request.GetResource().GetId() != "ws-1" {
+		t.Fatalf("authorization request: %v", request)
+	}
+
+	absent := &workspaceProbe{err: status.Error(codes.NotFound, "workspace ws-1 is not found")}
+	deniedRead := httptest.NewRecorder()
+	NewWorkspaceHandler(absent, workspaceIdentity(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEDELETION, "ws-1")).ServeHTTP(deniedRead, sessionRequest(http.MethodGet, "/api/v2/workspaces/ws-1/deletion"))
+	if deniedRead.Code != 404 {
+		t.Fatalf("owner not-found was rewritten: %d %s", deniedRead.Code, deniedRead.Body.String())
 	}
 }

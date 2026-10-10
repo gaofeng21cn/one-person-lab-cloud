@@ -293,11 +293,13 @@ export function useConsoleController() {
   });
   const fabricRuntimeRead: FabricRuntimeReadController = fabricRuntimeReadCapability;
   const activeWorkspace = customerWorkspaceRead.activeWorkspace;
-  // The Control Plane's credential, deletion, renewal, application-installation
-  // and budget controllers all act on a Workspace the Control Plane owns. A
-  // cloud-identity Workspace belongs to the Workspace owner, so those
-  // controllers receive no Workspace under that identity instead of addressing
-  // Control Plane routes that do not describe it.
+  // The Control Plane's credential, renewal, application-installation and budget
+  // controllers all act on a Workspace the Control Plane owns. A cloud-identity
+  // Workspace belongs to the Workspace owner, so those controllers receive no
+  // Workspace under that identity instead of addressing Control Plane routes
+  // that do not describe it. The delete controller is wired with the Workspace
+  // the active identity actually read, because its own command routes per
+  // identity.
   const controlPlaneWorkspace = cloudIdentity ? null : activeWorkspace;
   const controlPlaneWorkspaceId = cloudIdentity ? "" : activeWorkspaceId;
 
@@ -330,8 +332,8 @@ export function useConsoleController() {
 
   const workspaceDeleteCapability = useWorkspaceDeleteController({
     session,
-    workspace: controlPlaneWorkspace,
-    activeWorkspaceId: controlPlaneWorkspaceId,
+    workspace: activeWorkspace,
+    activeWorkspaceId,
     currentMutationRequest,
     navigate,
     flash,
