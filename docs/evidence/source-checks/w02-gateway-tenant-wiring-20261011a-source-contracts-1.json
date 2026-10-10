@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "39aa94c6cc44f2e5be4a804dff327a5f5124223f",
+  "recordedAt": "2026-10-10T21:13:36.594Z",
+  "writeSet": [
+    "deploy/portable/opl-cloud-owner-topology.json",
+    "deploy/portable/opl-cloud.env.example",
+    "docs/evidence/source-checks/w02-gateway-tenant-wiring-20261011a-source-contracts-1.json",
+    "services/gateway-integration/cmd/server/main.go"
+  ],
+  "verifiedSource": {
+    "baseSha": "39aa94c6cc44f2e5be4a804dff327a5f5124223f",
+    "changedFilesSha256": {
+      "deploy/portable/opl-cloud-owner-topology.json": "3e4354506060417432992c8b43e1ca5c91eb6ef5f5c4cd92f3f908d31b923a5e",
+      "deploy/portable/opl-cloud.env.example": "64377ea29d94f9534cc4aee91a4a715ec3ceea9f5dceb0844d4cefbbdb6247a1",
+      "services/gateway-integration/cmd/server/main.go": "587a7e4b7187c2b093f3b00595f22bbd967b74446a36348820a8cc8d05f1b415"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/contracts/module-physical-boundaries.test.ts tests/contracts/gateway-deployment-unit-principal.test.ts tests/contracts/owner-topology.test.ts",
+    "exitCode": 0,
+    "tests": 15,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "1b6af1e8ad96bdd8aa8872a8f50f2972f215b68834d6095e2f76cada135c85f9"
+  },
+  "sourceStage": {
+    "runId": "w02-gateway-tenant-wiring-20261011a",
+    "gateId": "source-contracts",
+    "attempt": 1,
+    "receiptHash": "c29ffa681b77c2b40b94f4546ebbb6ff5ad83aa534d13b8b19fbd2b7b4ece332"
+  }
+}
