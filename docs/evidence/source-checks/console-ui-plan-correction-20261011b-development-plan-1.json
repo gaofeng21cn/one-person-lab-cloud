@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "6e83bfeab97fab63fe9c0b14b89bd4fb66bc5a70",
+  "recordedAt": "2026-10-10T16:49:35.272Z",
+  "writeSet": [
+    "DEV_GUIDE.md",
+    "docs/evidence/source-checks/console-ui-plan-correction-20261010-development-gates-1.json",
+    "docs/evidence/source-checks/console-ui-plan-correction-20261010-development-plan-1.json",
+    "docs/evidence/source-checks/console-ui-plan-correction-20261011b-development-plan-1.json",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/render_development_plan.py"
+  ],
+  "verifiedSource": {
+    "baseSha": "6e83bfeab97fab63fe9c0b14b89bd4fb66bc5a70",
+    "changedFilesSha256": {
+      "DEV_GUIDE.md": "b64dec06aaf27102d026f05bf8ca14a18cbb8a10e863b332a02d8ca618d44bf0",
+      "docs/evidence/source-checks/console-ui-plan-correction-20261010-development-gates-1.json": "5170e85549e50424f875bf381979f00b324654c115128f919b67d7d9cb64bc1c",
+      "docs/evidence/source-checks/console-ui-plan-correction-20261010-development-plan-1.json": "e630444e6cd064b0c4b2edc78a88e14562263e5f6e13fd12b2f2da1f31dfd2b4",
+      "docs/spec/target/14_implementation_work_packages.md": "e832ac77d20601fb88c4118e6ba4eb776fefe9d676669be828131838653be83f",
+      "docs/spec/target/checks/development_plan.json": "c623bd3336cb9c34b279083080063fa43a24871e5904700360899b77c7fefb37",
+      "docs/spec/target/checks/render_development_plan.py": "0bde43a1ffbb939834ba0925f3395f9b82eb899a229c40bb44824b0624da572f"
+    }
+  },
+  "execution": {
+    "command": "node tools/verify-development-plan.ts",
+    "exitCode": 0,
+    "tests": 0,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "0f5766315f9abdbd40600927b36600347cfbbc42591dd24284258508b2462452"
+  },
+  "sourceStage": {
+    "runId": "console-ui-plan-correction-20261011b",
+    "gateId": "development-plan",
+    "attempt": 1,
+    "receiptHash": "31cb9168c6c0d11c349eb27d9f10e6449bf3e96ac101553cee1cf930a3668c61"
+  }
+}
