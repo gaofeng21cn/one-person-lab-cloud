@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "34878da668b0c66f7d3cd4c79967cd94907f1cf3",
+  "recordedAt": "2026-10-10T08:39:04.294Z",
+  "writeSet": [
+    "docs/evidence/source-checks/workspace-handover-contracts2-20261010-source-contracts-2.json",
+    "docs/status.md",
+    "services/workspace/internal/launch/models_update_test.go",
+    "services/workspace/internal/launch/runtime.go"
+  ],
+  "verifiedSource": {
+    "baseSha": "34878da668b0c66f7d3cd4c79967cd94907f1cf3",
+    "changedFilesSha256": {
+      "docs/status.md": "444f55064250572d8c7346f99178227b6806e616731a576b3fa638a6ff485877",
+      "services/workspace/internal/launch/models_update_test.go": "b35f7855fee681f5e29ec0253a12d2a89fab20005adb9b582f0a95dbdb449d9c",
+      "services/workspace/internal/launch/runtime.go": "48504e9a3f9eb6f34824e90224e2963d5c355a38b23f07bb5071b44d3f845f6f"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/contracts/module-physical-boundaries.test.ts tests/contracts/gateway-deployment-unit-principal.test.ts tests/contracts/owner-topology.test.ts",
+    "exitCode": 0,
+    "tests": 15,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "989877d73994367611204c258095028dab21f02188abf3f151147b28261c6662"
+  },
+  "sourceStage": {
+    "runId": "workspace-handover-contracts2-20261010",
+    "gateId": "source-contracts",
+    "attempt": 2,
+    "receiptHash": "c5faf4d44ff2bfd223da6d0e225dea6d97db880512a8553dbd77856aa686218b"
+  }
+}

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -639,43 +640,58 @@ func TestUpdateWorkspaceModelsRebindsTheLaunchEstablishedBinding(t *testing.T) {
 	}
 }
 
-// TestEnsureRuntimeGatewayBindingIssuesAndBindsTheLaunchKey proves the F08 owner
-// path: for a runtime whose frozen revision declares the installation Gateway
-// credential, the Workspace issues the opaque binding through Gateway and binds its
-// Secret through Fabric before Deploy, records the binding on the command and the
-// launch result, and reuses the recorded binding on a restart rather than minting a
-// second key. A revision that declares no credential mints nothing.
-func TestEnsureRuntimeGatewayBindingIssuesAndBindsTheLaunchKey(t *testing.T) {
+// TestEnsureRuntimeGatewayBindingIssuesTheLaunchHandover proves the F08 owner path
+// for one launch: for a runtime whose frozen revision declares the installation
+// Gateway credential, the Workspace issues the opaque key binding through Gateway
+// and freezes the handover - key binding, fingerprint, Secret delivery reference and
+// publisher slot - on the command without ever binding into Fabric itself, because
+// Serve alone asks Fabric to bind the Secret. A restart reuses the recorded handover
+// instead of minting a second key, and a revision that declares no credential mints
+// nothing.
+func TestEnsureRuntimeGatewayBindingIssuesTheLaunchHandover(t *testing.T) {
 	revision := modelUpdateRevision(t, true)
 	command := &api.RuntimeDeployCommand{
 		WorkspaceId: "workspace-original", RuntimeInstanceId: "runtime-original",
 		DeploymentDescriptor: &api.DeploymentDescriptor{ApplicationRevision: revision},
 		ModelSelections:      []*api.ModelSelection{{Slot: "chat", ModelId: "model-a"}},
 	}
-	op := ownerstore.Operation{ID: "op-launch", RequestID: "request-launch", TenantID: "tenant-original", ActorID: "actor-original"}
+	op := ownerstore.Operation{ID: "op-launch", RequestID: "request-launch", TenantID: "tenant-original", ActorID: "actor-original", ResourceID: "workspace-original"}
 	result := &orderResult{GrantID: "grant-launch"}
 	gateway, fabric := &modelUpdateGateway{}, &modelUpdateFabric{}
 	service := &Service{Gateway: gateway, Fabric: fabric}
 
 	if err := service.ensureRuntimeGatewayBinding(context.Background(), op, result, command); err != nil {
-		t.Fatalf("ensure launch binding: %v", err)
+		t.Fatalf("ensure launch handover: %v", err)
 	}
-	if gateway.mints != 1 || fabric.binds != 1 {
-		t.Fatalf("launch key was not issued and bound: mints=%d binds=%d", gateway.mints, fabric.binds)
+	if gateway.mints != 1 || fabric.binds != 0 {
+		t.Fatalf("launch handover mints=%d fabric binds=%d, want the Gateway key alone", gateway.mints, fabric.binds)
 	}
-	if command.GetManagedKeyBinding().GetSecretBindingId() == "" || command.GetManagedKeyBinding().GetKeyBindingId() != "gateway-key-model-a" || command.GetManagedKeyBinding().GetTargetSlot() != "gateway" {
-		t.Fatalf("launch command binding=%+v", command.GetManagedKeyBinding())
+	binding := command.GetManagedKeyBinding()
+	if binding.GetKeyBindingId() != "gateway-key-model-a" || binding.GetFingerprint() == "" || binding.GetSecretDeliveryReference() != contracts.WorkspaceGatewaySecretRef("workspace-original") || binding.GetTargetSlot() != "gateway" {
+		t.Fatalf("launch command handover=%+v", binding)
+	}
+	// The Fabric-confirmed binding identity is Serve's alone: the Workspace handover
+	// must never carry one.
+	if binding.GetSecretBindingId() != "" || binding.GetSecretVersion() != "" {
+		t.Fatalf("launch handover supplied a Fabric-confirmed binding: %+v", binding)
 	}
 	if len(result.ManagedKeyBinding) == 0 {
-		t.Fatal("launch binding was not recorded on the order result")
+		t.Fatal("launch handover was not recorded on the order result")
 	}
-	// A restart reuses the recorded binding instead of minting a second key.
+	// A restart reuses the recorded handover instead of minting a second key.
 	replayed := &api.RuntimeDeployCommand{WorkspaceId: command.WorkspaceId, RuntimeInstanceId: command.RuntimeInstanceId, DeploymentDescriptor: command.DeploymentDescriptor, ModelSelections: command.ModelSelections}
 	if err := service.ensureRuntimeGatewayBinding(context.Background(), op, result, replayed); err != nil {
-		t.Fatalf("replay launch binding: %v", err)
+		t.Fatalf("replay launch handover: %v", err)
 	}
-	if gateway.mints != 1 || fabric.binds != 1 || replayed.GetManagedKeyBinding().GetSecretBindingId() != command.GetManagedKeyBinding().GetSecretBindingId() {
+	if gateway.mints != 1 || fabric.binds != 0 || !proto.Equal(replayed.GetManagedKeyBinding(), binding) {
 		t.Fatalf("restart reissued the launch key: mints=%d binds=%d", gateway.mints, fabric.binds)
+	}
+	// A stored handover that already carries a Fabric-confirmed binding is refused
+	// instead of being presented again as an unconfirmed handover.
+	stale := wire(&api.RuntimeManagedKeyBinding{KeyBindingId: binding.GetKeyBindingId(), SecretDeliveryReference: binding.GetSecretDeliveryReference(), Fingerprint: binding.GetFingerprint(), TargetSlot: "gateway", SecretBindingId: "sbx_stale", SecretVersion: "v1"})
+	fresh := &api.RuntimeDeployCommand{WorkspaceId: command.WorkspaceId, RuntimeInstanceId: command.RuntimeInstanceId, DeploymentDescriptor: command.DeploymentDescriptor, ModelSelections: command.ModelSelections}
+	if err := service.ensureRuntimeGatewayBinding(context.Background(), op, &orderResult{GrantID: "grant-launch", ManagedKeyBinding: stale}, fresh); status.Code(err) != codes.DataLoss || fresh.GetManagedKeyBinding() != nil {
+		t.Fatalf("stored confirmed binding err=%v handover=%+v want data loss and no handover", err, fresh.GetManagedKeyBinding())
 	}
 	// A revision that declares no credential mints nothing and carries no binding.
 	plain := &api.RuntimeDeployCommand{WorkspaceId: command.WorkspaceId, RuntimeInstanceId: command.RuntimeInstanceId, DeploymentDescriptor: &api.DeploymentDescriptor{ApplicationRevision: modelUpdateRevision(t, false)}, ModelSelections: command.ModelSelections}
@@ -684,5 +700,11 @@ func TestEnsureRuntimeGatewayBindingIssuesAndBindsTheLaunchKey(t *testing.T) {
 	}
 	if gateway.mints != 1 || plain.GetManagedKeyBinding() != nil {
 		t.Fatalf("a runtime without a declared credential minted a key")
+	}
+	// The Gateway owner is the only coordination this handover needs: an order that
+	// reaches it before Gateway is configured waits instead of deploying keyless.
+	waiting := &Service{}
+	if err := waiting.ensureRuntimeGatewayBinding(context.Background(), op, &orderResult{GrantID: "grant-launch"}, fresh); !errors.Is(err, errRuntimeAwaitingKeyOwner) {
+		t.Fatalf("unconfigured Gateway err=%v want the awaiting-owner wait", err)
 	}
 }
