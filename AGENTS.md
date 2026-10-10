@@ -162,6 +162,24 @@ agent declaring the plan current. Both gates run inside `npm run verify:local`. 
 not establish product runtime, Candidate qualification, Instance deployment, or
 production readiness.
 
+**Process-layer reference.** The generic owner-slice process — the S0–S7 step
+shape, the implementation-vs-recovery/evidence-refresh applicability of RED
+and GREEN, the receipt-reuse rules and the parallel/serial criterion — is
+owned by the process repository `RenDeHuang/opl-development-framework` at
+commit `5c63d9e8ecc4be88605fc20cb7fd01b0ed8c5213` (skill
+`skills/owner-slice-development/SKILL.md`, checklist
+`skills/owner-slice-development/references/slice-checklist.md`, design
+`docs/design/owner-slice-framework-v1.md`, wiring acceptance
+`docs/design/wiring-acceptance.md`). This document, `DEV_GUIDE.md` and the
+existing host entry remain the Cloud instance of that process: admission, the
+restricted runner, PR governance, CI and evidence stay governed here. Citing
+the framework, or attaching its tools, restricts nothing by itself and does
+not prove adoption; actual restricted adoption is shown only by real
+admitted-run execution evidence (`dev_context`/`dev_verify` results plus the
+host-exported PR source-check) under the framework's wiring-acceptance
+criteria — never by the citation, and this does not establish that all Codex
+sessions are restricted.
+
 ## Documentation
 
 Follow the hierarchy in `docs/README.md`. Lower layers may implement or report

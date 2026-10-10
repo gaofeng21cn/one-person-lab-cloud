@@ -115,6 +115,21 @@ does not restrict that chat. The source runner is not an Instance executor and
 does not consume an Instance receipt as source completion. Keep live
 business-chain work in its current owner session; its protected workflows and
 existing receipt validators remain authoritative.
+
+The generic owner-slice process shape — including the
+implementation-vs-recovery applicability of RED/GREEN, receipt reuse and the
+parallel/serial criterion — is owned by the process repository
+`RenDeHuang/opl-development-framework` at commit
+`5c63d9e8ecc4be88605fc20cb7fd01b0ed8c5213` (skill
+`skills/owner-slice-development/SKILL.md`, design
+`docs/design/owner-slice-framework-v1.md`, wiring acceptance
+`docs/design/wiring-acceptance.md`); this guide keeps the Cloud instance: the
+approved entry commands, host behavior, PR governance and CI. Citing the
+framework or attaching its tools does not restrict a chat; restricted
+adoption requires actual admitted-run execution evidence
+(`dev_context`/`dev_verify` plus the host-exported source-check) under the
+framework's wiring-acceptance criteria.
+
 Multiple checkouts are allowed: bind evidence to exact source and input hashes,
 not a directory name or a thread's completion claim. Do not discard ongoing
 owner work or rerun accepted production steps merely to adopt this entry.
