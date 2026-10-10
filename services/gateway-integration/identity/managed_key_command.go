@@ -68,7 +68,8 @@ type managedKeyCommandState struct {
 	// ResolvedModelIDs is the concrete model scope the issuance authority
 	// resolved for this command. An empty declared selection means "resolve the
 	// approved scope", never "unrestricted": the resolved list is recorded with
-	// the confirmed binding and a later readback must match it exactly.
+	// the pending observed identity and with the confirmed binding, and a later
+	// readback must match it exactly.
 	ResolvedModelIDs []string `json:"resolvedModelIds,omitempty"`
 }
 

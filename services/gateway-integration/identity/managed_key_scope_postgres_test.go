@@ -127,6 +127,93 @@ func TestManagedKeyCommandRejectsAnUnrecordableResolvedScope(t *testing.T) {
 	}
 }
 
+// TestManagedKeyCommandRefusesAScopeThatDiffersFromTheDeclaredSelection proves a
+// non-empty declared selection is the exact approved scope: the issuance
+// authority may neither widen it, narrow it, substitute an entry nor repeat one,
+// and a refused command stays unresolved for its original identity instead of
+// being confirmed with a scope the caller never declared. A refusal records no
+// success and never re-dispatches the issuance.
+func TestManagedKeyCommandRefusesAScopeThatDiffersFromTheDeclaredSelection(t *testing.T) {
+	issuer := &managedKeyIssuerStub{}
+	secrets := &managedKeySecretStore{}
+	service, workspace := managedKeyCoordination(t, issuer, secrets)
+	db := service.GatewayStore.DB()
+	for index, testCase := range []struct {
+		name     string
+		declared []string
+		resolved []string
+	}{
+		{"superset", []string{"model-a"}, []string{"model-a", "model-b"}},
+		{"missing item", []string{"model-a", "model-b"}, []string{"model-a"}},
+		{"substitution", []string{"model-a"}, []string{"model-b"}},
+		{"duplicate", []string{"model-a"}, []string{"model-a", "model-a"}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			issuer.mu.Lock()
+			issuer.resolvedOverride = testCase.resolved
+			issuer.mu.Unlock()
+			var bindingsBefore int
+			if err := db.QueryRowContext(t.Context(), `SELECT count(*) FROM gateway.key_bindings WHERE workspace_id = 'ws-1'`).Scan(&bindingsBefore); err != nil {
+				t.Fatal(err)
+			}
+			writesBefore := secrets.writeCount()
+			step := fmt.Sprintf("managed-key-mismatch-%d", index)
+			command := &api.ManagedKeyCommand{Context: grantedCaller(step, "grant-workspace"), WorkspaceId: "ws-1", ModelIds: testCase.declared, TargetRuntimeInstanceId: "runtime-1"}
+			if _, err := workspace.CreateManagedKey(t.Context(), command); status.Code(err) != codes.Unavailable {
+				t.Fatalf("err=%v want unresolved", err)
+			}
+			var stored int
+			var body string
+			if err := db.QueryRowContext(t.Context(), `SELECT response_status, response_body::text FROM gateway.idempotency_records
+				WHERE operation_name = 'CreateManagedKey' AND idempotency_key = $1`, "opl-test:"+step).Scan(&stored, &body); err != nil {
+				t.Fatal(err)
+			}
+			var recorded map[string]any
+			if stored != 202 || json.Unmarshal([]byte(body), &recorded) != nil || recorded["outcome"] != "pending" || recorded["externalKeyId"] != nil {
+				t.Fatalf("the mismatch was recorded instead of staying unresolved: status=%d body=%s", stored, body)
+			}
+			var bindingsAfter int
+			if err := db.QueryRowContext(t.Context(), `SELECT count(*) FROM gateway.key_bindings WHERE workspace_id = 'ws-1'`).Scan(&bindingsAfter); err != nil {
+				t.Fatal(err)
+			}
+			if bindingsAfter != bindingsBefore || secrets.writeCount() != writesBefore {
+				t.Fatalf("a mismatched scope was confirmed: bindings=%d->%d secret writes=%d->%d", bindingsBefore, bindingsAfter, writesBefore, secrets.writeCount())
+			}
+			// The unresolved original command is never re-dispatched.
+			issued := issuer.issued()
+			if _, err := workspace.CreateManagedKey(t.Context(), command); status.Code(err) != codes.Unavailable || issuer.issued() != issued {
+				t.Fatalf("re-issued: issuances=%d err=%v", issuer.issued(), err)
+			}
+		})
+	}
+}
+
+// TestManagedKeyCommandConfirmsAnExactDeclaredModelSet is the positive control
+// for a non-empty declared selection: when the authority returns exactly the
+// declared set - order carries no meaning - the command confirms and the recorded
+// scope is the authority-resolved list, replayed without a second issuance.
+func TestManagedKeyCommandConfirmsAnExactDeclaredModelSet(t *testing.T) {
+	issuer := &managedKeyIssuerStub{resolvedOverride: []string{"model-b", "model-a"}}
+	secrets := &managedKeySecretStore{}
+	service, workspace := managedKeyCoordination(t, issuer, secrets)
+	command := &api.ManagedKeyCommand{Context: grantedCaller("managed-key-exact-set", "grant-workspace"), WorkspaceId: "ws-1", ModelIds: []string{"model-a", "model-b"}, TargetRuntimeInstanceId: "runtime-1"}
+	first, err := workspace.CreateManagedKey(t.Context(), command)
+	if err != nil {
+		t.Fatalf("create managed key: %v", err)
+	}
+	var recordedModels string
+	if err = service.GatewayStore.DB().QueryRowContext(t.Context(), `SELECT model_ids::text FROM gateway.key_bindings WHERE workspace_id = 'ws-1'`).Scan(&recordedModels); err != nil {
+		t.Fatal(err)
+	}
+	if recordedModels != "{model-b,model-a}" {
+		t.Fatalf("binding model scope=%s want the resolved order of the exact declared set", recordedModels)
+	}
+	replay, err := workspace.CreateManagedKey(t.Context(), command)
+	if err != nil || replay.GetKeyBindingId() != first.GetKeyBindingId() || issuer.issued() != 1 || secrets.writeCount() != 1 {
+		t.Fatalf("replay err=%v binding=%v issuances=%d writes=%d", err, replay, issuer.issued(), secrets.writeCount())
+	}
+}
+
 // workspaceKeyExactNameForTest derives the legacy reserved-name convention
 // independently of the implementation: "opl-workspace-" plus the first 12 hex of
 // the Workspace id digest.

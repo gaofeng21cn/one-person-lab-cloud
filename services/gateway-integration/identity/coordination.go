@@ -436,6 +436,16 @@ func (s *Service) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand
 		// the bounded contract is never stored as an approved allowlist.
 		return nil, status.Error(codes.Unavailable, "managed key issuance returned an invalid resolved model scope")
 	}
+	// A declared non-empty selection is the exact approved scope: the authority
+	// may neither widen, narrow nor substitute it. A mismatch is refused like an
+	// unusable key identity - the observed key stays unconfirmed and nothing is
+	// recorded, so it is reconciled by its original issue identity instead of
+	// being delivered as approved for a scope the caller never declared. An empty
+	// declared selection keeps the separate approved-scope branch: the authority
+	// resolves the concrete allowlist and only the shape contract above applies.
+	if len(modelIDs) > 0 && !equalDeclaredModelScope(modelIDs, resolvedModelIDs) {
+		return nil, status.Error(codes.Unavailable, "managed key issuance returned a model scope that differs from the declared selection")
+	}
 	// The fingerprint is Fabric's format - the SHA-256 of the raw value in
 	// lowercase hex - so the Serve-side Secret handover equality check against
 	// Fabric's provider readback holds.
@@ -444,7 +454,7 @@ func (s *Service) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand
 	// The external identity this issuance actually produced is recorded before the
 	// Secret write, so a lost delivery is read back as this one original key
 	// instead of a second issuance.
-	if err = s.GatewayStore.AdvanceManagedKeyCommandPending(ctx, reservation, externalKeyID, fingerprint); err != nil {
+	if err = s.GatewayStore.AdvanceManagedKeyCommandPending(ctx, reservation, externalKeyID, fingerprint, resolvedModelIDs); err != nil {
 		return nil, status.Error(codes.Unavailable, "Gateway key command readback unavailable")
 	}
 	delivery, err := s.SecretStore.PutSecret(ctx, SecretDelivery{
@@ -693,6 +703,26 @@ func derivedManagedKeyCall(call *api.CallContext) *api.CallContext {
 	derived := proto.Clone(call).(*api.CallContext)
 	derived.AuthorizationContextId = ""
 	return derived
+}
+
+// equalDeclaredModelScope reports whether a shape-validated resolved scope is
+// exactly the declared selection as a set: no superset, no subset, no
+// substitution and no repeat. Ordering carries no meaning, and a repeated
+// declared entry names the same model as its first occurrence.
+func equalDeclaredModelScope(declared, resolved []string) bool {
+	unique := make(map[string]struct{}, len(declared))
+	for _, id := range declared {
+		unique[id] = struct{}{}
+	}
+	if len(unique) != len(resolved) {
+		return false
+	}
+	for _, id := range resolved {
+		if _, ok := unique[id]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // equalStringSets compares two model scopes as sets, because a resolved scope is

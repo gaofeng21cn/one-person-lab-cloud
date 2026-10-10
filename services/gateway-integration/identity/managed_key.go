@@ -152,14 +152,16 @@ func (s *GatewayStore) InsertConfirmedManagedKeyBinding(ctx context.Context, bin
 }
 
 // AdvanceManagedKeyCommandPending records the opaque external identity an
-// issuance actually produced while the command is still unresolved, so a lost
-// Secret delivery is read back as the one original key instead of a second
-// issuance. It never overwrites an already-recorded identity or answer.
-func (s *GatewayStore) AdvanceManagedKeyCommandPending(ctx context.Context, reservation ManagedKeyCommandReservation, externalKeyID, fingerprint string) error {
-	if strings.TrimSpace(externalKeyID) == "" || strings.TrimSpace(fingerprint) == "" {
-		return errors.New("an observed managed key effect requires its external key id and fingerprint")
+// issuance actually produced, together with the resolved model scope it is
+// approved for, while the command is still unresolved. A lost Secret delivery is
+// therefore read back and reconciled as the one original key and scope instead
+// of a second issuance, and the raw value never enters this state. It never
+// overwrites an already-recorded identity or answer.
+func (s *GatewayStore) AdvanceManagedKeyCommandPending(ctx context.Context, reservation ManagedKeyCommandReservation, externalKeyID, fingerprint string, resolvedModelIDs []string) error {
+	if strings.TrimSpace(externalKeyID) == "" || strings.TrimSpace(fingerprint) == "" || len(resolvedModelIDs) == 0 {
+		return errors.New("an observed managed key effect requires its external key id, fingerprint and resolved model scope")
 	}
-	state, err := json.Marshal(managedKeyCommandState{Outcome: "pending", ExternalKeyID: externalKeyID, Fingerprint: fingerprint})
+	state, err := json.Marshal(managedKeyCommandState{Outcome: "pending", ExternalKeyID: externalKeyID, Fingerprint: fingerprint, ResolvedModelIDs: resolvedModelIDs})
 	if err != nil {
 		return err
 	}
