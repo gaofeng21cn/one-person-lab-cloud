@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "8cd6c436cde9153a7e96a7afafb5a5a57d8ba69f",
+  "recordedAt": "2026-10-10T19:45:05.703Z",
+  "writeSet": [
+    "docs/evidence/source-checks/console-ui-w16-grant-20261011-development-gates-1.json",
+    "docs/evidence/source-checks/console-ui-w16-grant-20261011-development-plan-1.json",
+    "docs/evidence/source-checks/console-ui-w16-grant-20261011b-development-gates-1.json",
+    "docs/evidence/source-checks/console-ui-w16-grant-20261011b-development-plan-1.json",
+    "docs/evidence/source-checks/console-ui-w16-grant-20261011c-development-plan-1.json",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/render_development_plan.py"
+  ],
+  "verifiedSource": {
+    "baseSha": "8cd6c436cde9153a7e96a7afafb5a5a57d8ba69f",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/console-ui-w16-grant-20261011-development-gates-1.json": "2636e0da9b1ae17b624bf4edc652fcc5bd0a0686f25c0ed47b46a779949eea0f",
+      "docs/evidence/source-checks/console-ui-w16-grant-20261011-development-plan-1.json": "d2b677f30d8e4c08a54ba0c3ab51b4b8f291251548d5a191732c457ca667564c",
+      "docs/evidence/source-checks/console-ui-w16-grant-20261011b-development-gates-1.json": "afdc25056c64f7ad99a035b64feb521e728c89ea968150597859032d46e5a826",
+      "docs/evidence/source-checks/console-ui-w16-grant-20261011b-development-plan-1.json": "8690e38b1c1fa55c3b86f29ae0781bbea8b8cf7d6901d6d261d1315ecdf04166",
+      "docs/spec/target/14_implementation_work_packages.md": "2439da6e8efb3e53d50832b8145a3e48a859eab6968091609816856cb4328df2",
+      "docs/spec/target/checks/development_plan.json": "596ceb7a21b3070aa900ea3b2139701831960fbca4437ee9872e634b06c5c5cd",
+      "docs/spec/target/checks/render_development_plan.py": "53e5b609d953d82e9c28bb6c438d9d313c29ffd93fffb980568047c12d9f0bb3"
+    }
+  },
+  "execution": {
+    "command": "node tools/verify-development-plan.ts",
+    "exitCode": 0,
+    "tests": 0,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "0f5766315f9abdbd40600927b36600347cfbbc42591dd24284258508b2462452"
+  },
+  "sourceStage": {
+    "runId": "console-ui-w16-grant-20261011c",
+    "gateId": "development-plan",
+    "attempt": 1,
+    "receiptHash": "6e2b630b23ccd01aa6f9e72d0d9b1e4c7b601fe3dc4f22e0a478938fcf568afb"
+  }
+}
