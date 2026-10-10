@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "c62e6ee483d94674682ea281389313bc1ab93df3",
+  "recordedAt": "2026-10-10T10:58:30.200Z",
+  "writeSet": [
+    "docs/evidence/source-checks/step4-closure-contracts-v4-contracts-decoder-1.json",
+    "docs/evidence/source-checks/step4-closure-contracts-v5-contracts-decoder-1.json",
+    "docs/evidence/source-checks/step4-closure-contracts-v6-contracts-decoder-1.json",
+    "packages/contracts/go/workspace_application_selection.go",
+    "packages/contracts/go/workspace_application_selection_test.go"
+  ],
+  "verifiedSource": {
+    "baseSha": "c62e6ee483d94674682ea281389313bc1ab93df3",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/step4-closure-contracts-v4-contracts-decoder-1.json": "9989e4fdbcdbcf8c07d67d0042f7f93033d8192f039b5f3caba50beb86a23c8d",
+      "docs/evidence/source-checks/step4-closure-contracts-v5-contracts-decoder-1.json": "698b6f58db70ab4a2111e57c84dec78373b7df4054747787bd2d7a92353380ea",
+      "packages/contracts/go/workspace_application_selection.go": "86f14808103dcfe25e254997f35f932063d9a0f2a96722f521d8bf595896795e",
+      "packages/contracts/go/workspace_application_selection_test.go": "b17b24df003a30db27cfb569c0b3e83d9c0a43792fa4a0db951a63f56f956de8"
+    }
+  },
+  "execution": {
+    "command": "go acceptance gate",
+    "exitCode": 0,
+    "tests": 122,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "0f783d714ddce92460fc9a4cd236242656cf97e845d3e98e4b08f92f38124d91"
+  },
+  "sourceStage": {
+    "runId": "step4-closure-contracts-v6",
+    "gateId": "contracts-decoder",
+    "attempt": 1,
+    "receiptHash": "75e08de9574b61d40556552b00714c78f084f310c12d82f815cd5fe1b83afc97"
+  }
+}
