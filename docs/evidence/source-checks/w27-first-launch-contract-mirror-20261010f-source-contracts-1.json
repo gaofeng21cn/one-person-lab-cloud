@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "b8265878939df42ee3dfd9362fd3493084a5bdef",
+  "recordedAt": "2026-10-10T18:14:14.031Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w27-first-launch-contract-mirror-20261010-source-contracts-1.json",
+    "docs/evidence/source-checks/w27-first-launch-contract-mirror-20261010b-source-contracts-1.json",
+    "docs/evidence/source-checks/w27-first-launch-contract-mirror-20261010c-source-contracts-1.json",
+    "docs/evidence/source-checks/w27-first-launch-contract-mirror-20261010d-source-contracts-1.json",
+    "docs/evidence/source-checks/w27-first-launch-contract-mirror-20261010e-source-contracts-1.json",
+    "docs/evidence/source-checks/w27-first-launch-contract-mirror-20261010f-source-contracts-1.json",
+    "docs/spec/target/06_data_flow_and_state_machine.md",
+    "docs/spec/target/12_product_spec.md",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/contracts/internal.proto"
+  ],
+  "verifiedSource": {
+    "baseSha": "b8265878939df42ee3dfd9362fd3493084a5bdef",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/w27-first-launch-contract-mirror-20261010-source-contracts-1.json": "d61c8d8ba989a782b7ab479cff40b39a48849d48921206607076fd34b8517ee9",
+      "docs/evidence/source-checks/w27-first-launch-contract-mirror-20261010b-source-contracts-1.json": "831800507d55abc1678a5b60a0d8732055c1bcaf8c214a9c541ab9cc959cdde6",
+      "docs/evidence/source-checks/w27-first-launch-contract-mirror-20261010c-source-contracts-1.json": "27b59d25f48ad927936b3f15609ac4e16b6358b6b2b7df47060025bafe98abee",
+      "docs/evidence/source-checks/w27-first-launch-contract-mirror-20261010d-source-contracts-1.json": "f76867c041178009e4980923845b8682fd85f25f79ca542eeab9308531fe9e8c",
+      "docs/evidence/source-checks/w27-first-launch-contract-mirror-20261010e-source-contracts-1.json": "343c2d4f280dbc5fabf1d47e3292fe4d8bbaf6afd7599f8a10b44e383ce46c3b",
+      "docs/spec/target/06_data_flow_and_state_machine.md": "4a0f13dc7dfb5d410a0ae4d8eb24e229df9d878022d99de7231aa048c45b405e",
+      "docs/spec/target/12_product_spec.md": "cda36c7760c0e0ccdabe2add20508ab4946eadfd21c9af7d1f1b64be8ff6cb9b",
+      "docs/spec/target/14_implementation_work_packages.md": "58ead6c33b374c1bdea3830a7618ec751cfb88c0586fe0c12de5efb041b44bfb",
+      "docs/spec/target/checks/development_plan.json": "c1980d5f383fbd946f49489498f0d198b929020915a716e92954287f6bb13298",
+      "docs/spec/target/contracts/internal.proto": "3c3be07571726a7fc8159c89dfc003e4fdee82b708d2c70ef58e8c227b7ce75f"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/contracts/module-physical-boundaries.test.ts tests/contracts/gateway-deployment-unit-principal.test.ts tests/contracts/owner-topology.test.ts",
+    "exitCode": 0,
+    "tests": 15,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "665ca7673a43200e73ba0bfedda5ce9d5766b0355b39a879c8350b5fad2be13b"
+  },
+  "sourceStage": {
+    "runId": "w27-first-launch-contract-mirror-20261010f",
+    "gateId": "source-contracts",
+    "attempt": 1,
+    "receiptHash": "4f575f8e5755406125e1e7a98bd8f821b6574f1d9dab3c9390f7659fe6dfd6f1"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "6e83bfeab97fab63fe9c0b14b89bd4fb66bc5a70",
+  "recordedAt": "2026-10-10T16:46:39.217Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w27-first-launch-contract-mirror-20261010-source-contracts-1.json",
+    "docs/evidence/source-checks/w27-first-launch-contract-mirror-20261010b-source-contracts-1.json",
+    "docs/evidence/source-checks/w27-first-launch-contract-mirror-20261010c-source-contracts-1.json",
+    "docs/evidence/source-checks/w27-first-launch-contract-mirror-20261010d-source-contracts-1.json",
+    "docs/spec/target/06_data_flow_and_state_machine.md",
+    "docs/spec/target/12_product_spec.md",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/contracts/internal.proto"
+  ],
+  "verifiedSource": {
+    "baseSha": "6e83bfeab97fab63fe9c0b14b89bd4fb66bc5a70",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/w27-first-launch-contract-mirror-20261010-source-contracts-1.json": "d61c8d8ba989a782b7ab479cff40b39a48849d48921206607076fd34b8517ee9",
+      "docs/evidence/source-checks/w27-first-launch-contract-mirror-20261010b-source-contracts-1.json": "831800507d55abc1678a5b60a0d8732055c1bcaf8c214a9c541ab9cc959cdde6",
+      "docs/evidence/source-checks/w27-first-launch-contract-mirror-20261010c-source-contracts-1.json": "27b59d25f48ad927936b3f15609ac4e16b6358b6b2b7df47060025bafe98abee",
+      "docs/spec/target/06_data_flow_and_state_machine.md": "4a0f13dc7dfb5d410a0ae4d8eb24e229df9d878022d99de7231aa048c45b405e",
+      "docs/spec/target/12_product_spec.md": "cda36c7760c0e0ccdabe2add20508ab4946eadfd21c9af7d1f1b64be8ff6cb9b",
+      "docs/spec/target/14_implementation_work_packages.md": "b612e28c95306499567c7a3f4bf83e237c9d091d34af91f58dbe54a09baf4f76",
+      "docs/spec/target/checks/development_plan.json": "e9652df454312cde817141b7b81519a9c074473608baffcb65d879b1d2f4e529",
+      "docs/spec/target/contracts/internal.proto": "3c3be07571726a7fc8159c89dfc003e4fdee82b708d2c70ef58e8c227b7ce75f"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/contracts/module-physical-boundaries.test.ts tests/contracts/gateway-deployment-unit-principal.test.ts tests/contracts/owner-topology.test.ts",
+    "exitCode": 0,
+    "tests": 15,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "45b65544722719808ddd13e2bcecfffa2a153dab8fc4b477c55030c2fa40644a"
+  },
+  "sourceStage": {
+    "runId": "w27-first-launch-contract-mirror-20261010d",
+    "gateId": "source-contracts",
+    "attempt": 1,
+    "receiptHash": "e7a1f575a8a574dbe3320433c431791255375d736444fb9755e507184b45dc6d"
+  }
+}
