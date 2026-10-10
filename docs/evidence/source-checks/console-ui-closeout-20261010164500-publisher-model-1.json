@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "ff5de875ec8512ad5feeeadbc5a635a00cd06be9",
+  "recordedAt": "2026-10-10T10:58:57.533Z",
+  "writeSet": [
+    "apps/console-ui/src/pages/PublisherPage.tsx",
+    "apps/console-ui/src/pages/publisher.css",
+    "apps/console-ui/src/styles.css",
+    "docs/evidence/source-checks/console-ui-closeout-20261010164500-publisher-model-1.json",
+    "tests/ui/cloud-webui-browser.test.ts",
+    "tests/ui/workspace-task-experience-browser.test.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "ff5de875ec8512ad5feeeadbc5a635a00cd06be9",
+    "changedFilesSha256": {
+      "apps/console-ui/src/pages/PublisherPage.tsx": "84045dedace338d00034d2da35c781669db976229da7866f4bea6a8a1b80c2f2",
+      "apps/console-ui/src/pages/publisher.css": "1db764ac4741f5960d8094d8db9385586b70bd92d355b796e41cb9210f858527",
+      "apps/console-ui/src/styles.css": "2520146e0aa86eb2f93b1b73f9bdfc3d35824ddce71b081f651eb621c5e0e348",
+      "tests/ui/cloud-webui-browser.test.ts": "53236d569fb06fe468b721cd7520487a5576e5a8646aac6d74845f656d56f503",
+      "tests/ui/workspace-task-experience-browser.test.ts": "b12ef50a9cb33a9f55da0f67a32420b2a9e57b102d1b7a98b2cf7975b824afc0"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/ui/cloud-webui-model.test.ts",
+    "exitCode": 0,
+    "tests": 5,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "330a9221f8422e90e0867fa8e544efeeb91c8442885366363f2d230a60eb7227"
+  },
+  "sourceStage": {
+    "runId": "console-ui-closeout-20261010164500",
+    "gateId": "publisher-model",
+    "attempt": 1,
+    "receiptHash": "fdcf36be518c7d91eae72066dc40acf3fcf6849dad71d1930993f47592b0268e"
+  }
+}

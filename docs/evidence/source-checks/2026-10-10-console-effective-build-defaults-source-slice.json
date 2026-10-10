@@ -1,0 +1,205 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_console_effective_build_defaults_source_slice",
+  "revision": 1,
+  "recordedAt": "2026-10-09T16:57:12Z",
+  "owner": "OPL Cloud Console business slice: package-only customer Build input",
+  "evidenceLayer": "source_and_browser_fixture",
+  "baseSourceSHA": "bbb4120119a3b1c03e25fb669bd51adac8e78b1e",
+  "objective": "Remove the customer Runtime/WebUI pickers and the first-approved-catalog-row fallback from the Publisher page. The customer supplies only Package plus name/version; the exact Runtime and WebUI inputs must come from Runtime Control's effective default policy and stay frozen at Build admission.",
+  "adoptedIntent": [
+    "docs/decisions.md 2026-10-09: customers upload a standard Package, supply name/version and request a Build; they do not select Runtime, independent WebUI, repository or OCI references; Runtime Control's administrator-selected effective default policy resolves an approved compatible Runtime and WebUI; an unavailable or incompatible default is explained, not replaced by the first catalog entry or an older release.",
+    "docs/product/console-experience-guide.md: platform active Runtime/WebUI selection stays behind the owner boundary; an unavailable fact is never presented as zero, empty or healthy.",
+    "docs/roadmap.md#task-oriented-console-and-agent-version-lifecycle acceptance row 1: import is not activation; exact approved defaults are frozen; customer supplies only Package/name/version; actual Build produces a ready digest."
+  ],
+  "inputs": {
+    "changedFiles": [
+      {
+        "path": "apps/console-ui/src/pages/PublisherPage.tsx",
+        "baseSha256": "45a621bb4a8764cb4e92d36e0292f895501c8eba6c6988be24237e0f4342cbb2",
+        "newSha256": "eef6c66c887a1a679348adf54dc4c5c3f98977484170ecbf0529c8814c10ee1f"
+      },
+      {
+        "path": "apps/console-ui/src/api/publisher-api.ts",
+        "baseSha256": "85d11def6965f309600896d241aaa72cb9dde1629d4314ac9ac69c5c5765af72",
+        "newSha256": "6a14bc4be341449a829e038c17764a0ab7c2659e39bf9f94b2d6391fe4b25e5b"
+      },
+      {
+        "path": "apps/console-ui/src/app/cloud-webui-model.ts",
+        "baseSha256": "d3a48e19dea498e3bd59db05b5075e4a13c0bea76d0a71a04f3a47e0f40f12b7",
+        "newSha256": "51efc39265d488b2ddcc290d3af30e7d68fc1b30aae86404a4b4ba0c5165bdab"
+      },
+      {
+        "path": "tests/ui/cloud-webui-browser.test.ts",
+        "newSha256": "aeb3ea4ae7a41b27798cb5f58fd552a80a9676727c9d66b551e481a22a0c13d4"
+      },
+      {
+        "path": "tests/ui/cloud-webui-model.test.ts",
+        "newSha256": "6a0299d41c6d56abe1bdb4a897536b2601a8d630f92873a2971c031c6bfeeb40"
+      },
+      {
+        "path": "tests/ui/workspace-task-experience-browser.test.ts",
+        "newSha256": "7c9b5cc01e108ddc0e9a5011162a9c7f1ef1334c2f2f3f3dfe869c83f81b1f33"
+      }
+    ],
+    "notChanged": [
+      "docs/decisions.md, docs/roadmap.md, docs/product/** and every machine contract (docs/spec/target/**, packages/contracts/**) are unchanged; their remaining picker wording stays an open, reported conflict.",
+      "No service, BFF, proto, migration, deployment, wallet or provider state changed."
+    ],
+    "ownerFactsUsedByTheImplementation": [
+      {
+        "fact": "Runtime Control itself projects its effective policy onto the member-readable Runtime catalog.",
+        "evidence": "services/runtime-control/catalog/service.go:211 (cols computes COALESCE(r.id=(SELECT runtime_version_id FROM runtime_control.catalog_policies WHERE effective_at<=now() ORDER BY effective_at DESC,id DESC LIMIT 1),false) as RuntimeVersion.defaultForNewBuilds); services/runtime-control/catalog/service.go:232 ListRuntimeVersions"
+      },
+      {
+        "fact": "The member session is authorized to read that catalog.",
+        "evidence": "services/gateway-integration/identity/policy_generated.go:79 LISTRUNTIMEVERSIONS -> member; apps/console-bff/internal/httpapi/publisher.go:202 GET /api/v2/catalog/runtime-versions"
+      },
+      {
+        "fact": "RuntimeVersion.defaultForNewBuilds is a required, derived contract field.",
+        "evidence": "docs/spec/target/03_api_contract_complete.yaml:7284 (property), :7306 (required), :7326 (x-field-map derived sources runtime_control.catalog_policies.runtime_version_id/effective_at)"
+      },
+      {
+        "fact": "Build freezes the three exact inputs (Package, Runtime, WebUI) and Capability validates approval and compatibility.",
+        "evidence": "services/build/internal/build/service.go:153 create() requires packageVersionId+webuiVersionId+runtimeVersionId; services/build/internal/build/service.go:192 ResolveBuildInput; services/capability/catalog/coordination.go:44-102 approval, publisher admission, compatibility and snapshot digest"
+      }
+    ]
+  },
+  "unresolvedOwnerGap": {
+    "statement": "The effective default WebUI half of the same policy has no member-authorized read, so a customer session cannot obtain the exact WebUI input that CreateBuildRequest requires.",
+    "evidence": [
+      "docs/spec/target/03_api_contract_complete.yaml:4856 /api/v2/admin/catalog/build-policy is the only route that serves BuildRuntimePolicy; its operation declares x-permission platform_admin.",
+      "services/gateway-integration/identity/policy_generated.go:99 GETBUILDRUNTIMEPOLICY -> platform_admin only (line 100 SETBUILDRUNTIMEPOLICY likewise).",
+      "apps/console-bff/internal/httpapi/publisher.go:217-221 registers that read under /api/v2/admin/ (tenant scope cleared) and exposes no member equivalent.",
+      "capability.webui_versions carries no default projection: packages/contracts/proto/internal.proto:339 default_for_new_builds exists on RuntimeVersion only; services/capability/catalog/read_catalog.go:16 ListWebuiVersions returns approval/status facts without any effective-default marker.",
+      "docs/spec/target/03_api_contract_complete.yaml:7203-7216 CreateBuildRequest still requires webuiVersionId and describes the superseded customer-selection semantics ('客户显式选择获准的精确RuntimeRelease'), which the roadmap records as pending machine-contract work."
+    ],
+    "consoleBehaviorUntilTheOwnerReadExists": "The Publisher page reports 'the platform effective default WebUI is not readable by a customer session' as a named missing fact, keeps the Build command disabled and sends no state-changing request. It does not fall back to the first approved WebUI row, an older release or any local guess.",
+    "requiredNextOwnerChange": "Either a member-authorized Runtime Control projection of the effective build defaults (Runtime+WebUI, approved and compatible) surfaced through the Console BFF, or Build-side resolution of the policy defaults; in both cases the machine contract, its generated authorization policy and the F04 UI inventory must be reconciled with the decision before the customer Build can complete."
+  },
+  "verification": {
+    "red": [
+      {
+        "layer": "model",
+        "command": "node --test tests/ui/cloud-webui-model.test.ts (new test file, baseline apps/console-ui/src/app/cloud-webui-model.ts)",
+        "result": "FAIL as expected",
+        "observed": "SyntaxError: The requested module '../../apps/console-ui/src/app/cloud-webui-model.ts' does not provide an export named 'resolveEffectiveBuildDefaults'"
+      },
+      {
+        "layer": "browser",
+        "command": "node --test tests/ui/cloud-webui-browser.test.ts (new test file, baseline PublisherPage.tsx/publisher-api.ts)",
+        "result": "FAIL as expected",
+        "observed": "AssertionError [ERR_ASSERTION]: 1 !== 0 at tests/ui/cloud-webui-browser.test.ts:122 (assert.equal(await page.getByLabel(\"Runtime Release\").count(), 0)) - the baseline page still renders the customer Runtime/WebUI pickers"
+      },
+      {
+        "layer": "baseline source",
+        "observation": "The baseline page resolved both inputs by catalog order: setRuntimeId(runtimeRows.find(v => v.status === 'approved' && isImmutableDigest(v.artifactDigest))?.id || '') and setWebuiId(ui.find(v => v.status === 'approved')?.id || '') - the first approved row, not the policy default."
+      }
+    ],
+    "green": [
+      {
+        "command": "npm run verify:local:focused -- --base bbb4120119a3b1c03e25fb669bd51adac8e78b1e --test tests/ui/cloud-webui-browser.test.ts --test tests/ui/cloud-webui-model.test.ts --test tests/ui/workspace-task-experience-browser.test.ts",
+        "result": "PASS",
+        "executedChecks": [
+          "product boundary",
+          "TypeScript typecheck",
+          "Focused development tests",
+          "Focused E2E tests",
+          "Git committed whitespace",
+          "Git staged whitespace",
+          "Git whitespace"
+        ],
+        "testTotals": "development 5 passed / 0 failed; E2E 19 passed / 0 failed",
+        "log": {
+          "path": "output/console-business-ui-slice1/focused-verify.log",
+          "sha256": "ef63bb6c3bd54d7eff5ebfa7fcfb488fe5b722b79e09445738213b6fe415c30b"
+        },
+        "note": "All focused targets were executed with zero failures, skips or TODOs."
+      },
+      {
+        "command": "npm run lint (tsc -p apps/console-ui/tsconfig.json --noEmit --noUnusedLocals --noUnusedParameters)",
+        "result": "PASS"
+      },
+      {
+        "command": "npm run test:ownership",
+        "result": "PASS (All 75 console test files are reachable from a test script)"
+      }
+    ],
+    "browserFixtureObservation": {
+      "command": "node /tmp/console-slice1-shots.mts (one-off, cloud identity, effective policy active, policy default deliberately the second approved Runtime row)",
+      "observed": {
+        "readback": "Runtime Release: OPL App Runtime default · 26.9.26 · sha256:aaaa... | Agent WebUI: unavailable - the platform effective default WebUI is not authorized for this customer session, and the page does not substitute catalog order | source: Runtime Control effective policy (defaultForNewBuilds), frozen at Build admission",
+        "submitDisabled": true,
+        "stateChangingCommands": 0,
+        "responsive": "desktop 1280x900 and mobile 390x844 render without horizontal overflow"
+      },
+      "artifacts": [
+        {
+          "path": "output/console-business-ui-slice1/publisher-desktop.png",
+          "sha256": "d0e2ee5b743532ed0256a65fc840fa5898e5a1b15c0b6508695a12d356f8c896"
+        },
+        {
+          "path": "output/console-business-ui-slice1/publisher-mobile.png",
+          "sha256": "113c1bce192d0581084781379f1a2b146e0f951c19d3ad00e15b55721f4c43a7"
+        }
+      ],
+      "note": "Recorded artifacts for human review; the executing agent could not visually inspect the images and relies on the DOM assertions in tests/ui/cloud-webui-browser.test.ts and the one-off run."
+    },
+    "knownBreakageRequiringTheOwnerChange": [
+      {
+        "path": "tests/live/publisher-browser.ts:54",
+        "whyItNoLongerPasses": "The live build-tagged publisher journey clicks '上传并构建 / 继续上传' against real isolated owners. That command is now disabled whenever the effective default WebUI is unreadable, which is every customer session until the owner gap above is closed. The harness also registers its policy with an empty default WebUI (services/build/internal/build/owner_chain_live_test.go:176).",
+        "status": "not re-run here: npm run verify:package-to-oci needs the Local Docker BuildKit/PostgreSQL qualification environment, and the gap above must be closed before it can pass again."
+      }
+    ],
+    "notAttempted": [
+      {
+        "check": "npm run verify:local (exhaustive source/CI gate)",
+        "reason": "The change is Console UI plus UI tests; the focused gate executed every affected check. No persistence, schema, contract or retained-service behavior changed."
+      },
+      {
+        "check": "npm run verify:local:full / npm run verify:package-to-oci",
+        "reason": "Requires the Local Docker PostgreSQL/BuildKit qualification boundary; the live publisher journey cannot pass until the effective-WebUI owner read exists."
+      },
+      {
+        "check": "Go service tests",
+        "reason": "No Go module changed."
+      }
+    ]
+  },
+  "authorizationBoundary": {
+    "hostAdmission": "No host-signed development-stage admission exists for this base. The host store /Users/huangrende/.codex/opl-development-host contains exactly one run (governance-local-20261009130902679, base 8b9219d99d49b400f42183ffdf8badbfa862ae9e, selection W27.development-governance), so this work was executed by an unrestricted session and this receipt is source evidence only - it is not worker admission, not a host-signed stage receipt and not merge authorization.",
+    "branch": "codex/console-business-ui-20261009 (lane worktree /Users/huangrende/.codex/worktrees/console-business-ui/one-person-lab-cloud)",
+    "noMainWrite": true,
+    "noDeployment": true,
+    "noPurchase": true,
+    "noDeletion": true,
+    "noRefund": true,
+    "noSecretsAccessed": true,
+    "canonicalWritersUntouched": [
+      "docs/decisions.md",
+      "docs/roadmap.md",
+      "docs/status.md",
+      "docs/product/**",
+      "docs/spec/target/**",
+      "packages/contracts/**",
+      "services/**",
+      "apps/console-bff/**"
+    ]
+  },
+  "notClaimed": [
+    "any customer Build completing end to end (the effective-WebUI owner read is still missing)",
+    "machine-contract or authorization-policy change",
+    "roadmap acceptance row 1 closed (its browser leg now depends on the owner gap)",
+    "Candidate qualification, Instance deployment, production acceptance",
+    "real provider, wallet, charge or refund behavior",
+    "lint/test evidence for services other than the executed focused targets",
+    "host admission or merge authorization"
+  ],
+  "nextConsumer": {
+    "owner": "Runtime Control owner with the Console BFF/UI consumer and the monitoring supervisor",
+    "entry": "docs/roadmap.md#task-oriented-console-and-agent-version-lifecycle (acceptance row 'Active defaults and simple upload/build')",
+    "action": "Decide and implement the member-authorized effective build-defaults read (or Build-side resolution), reconcile docs/spec/target/03_api_contract_complete.yaml CreateBuildRequest semantics and the F04 UI inventory with the 2026-10-09 decision, then re-enable the publisher submit path and re-run npm run verify:package-to-oci against the exact revised inputs.",
+    "ssotWritePermission": false
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "8aa3d969c9c7599f5a81a50f95eb25d388d9bde3",
+  "recordedAt": "2026-10-10T20:16:24.274Z",
+  "writeSet": [
+    "apps/console-ui/src/api/publisher-api.ts",
+    "apps/console-ui/src/app/cloud-webui-model.ts",
+    "apps/console-ui/src/pages/PublisherPage.tsx",
+    "apps/console-ui/src/pages/publisher.css",
+    "apps/console-ui/src/styles.css",
+    "docs/evidence/source-checks/2026-10-10-console-effective-build-defaults-source-slice.json",
+    "docs/evidence/source-checks/console-ui-closeout-20261010164500-publisher-model-1.json",
+    "docs/evidence/source-checks/console-ui-closeout-20261011-account-patrol-source-1.json",
+    "tests/ui/cloud-webui-browser.test.ts",
+    "tests/ui/cloud-webui-model.test.ts",
+    "tests/ui/workspace-task-experience-browser.test.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "8aa3d969c9c7599f5a81a50f95eb25d388d9bde3",
+    "changedFilesSha256": {
+      "apps/console-ui/src/api/publisher-api.ts": "6a14bc4be341449a829e038c17764a0ab7c2659e39bf9f94b2d6391fe4b25e5b",
+      "apps/console-ui/src/app/cloud-webui-model.ts": "51efc39265d488b2ddcc290d3af30e7d68fc1b30aae86404a4b4ba0c5165bdab",
+      "apps/console-ui/src/pages/PublisherPage.tsx": "84045dedace338d00034d2da35c781669db976229da7866f4bea6a8a1b80c2f2",
+      "apps/console-ui/src/pages/publisher.css": "1db764ac4741f5960d8094d8db9385586b70bd92d355b796e41cb9210f858527",
+      "apps/console-ui/src/styles.css": "2520146e0aa86eb2f93b1b73f9bdfc3d35824ddce71b081f651eb621c5e0e348",
+      "docs/evidence/source-checks/2026-10-10-console-effective-build-defaults-source-slice.json": "bf6c608436f2a5f47f25ec2a25d7465f4e9dd6521b29c4db978d8308e945dd6d",
+      "docs/evidence/source-checks/console-ui-closeout-20261010164500-publisher-model-1.json": "f786d72b78a203eb7634f669aa2153d8d81ab414f34c5b3bc19320d3348dcb4f",
+      "tests/ui/cloud-webui-browser.test.ts": "53236d569fb06fe468b721cd7520487a5576e5a8646aac6d74845f656d56f503",
+      "tests/ui/cloud-webui-model.test.ts": "6a0299d41c6d56abe1bdb4a897536b2601a8d630f92873a2971c031c6bfeeb40",
+      "tests/ui/workspace-task-experience-browser.test.ts": "b12ef50a9cb33a9f55da0f67a32420b2a9e57b102d1b7a98b2cf7975b824afc0"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/ui/cloud-webui-model.test.ts",
+    "exitCode": 0,
+    "tests": 5,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "b5fab17ab08c7fee50600db9bfb2af03fc5e923bf268d89008b232647c60c691"
+  }
+}

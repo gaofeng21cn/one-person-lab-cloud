@@ -162,8 +162,10 @@ for (const identity of ["legacy", "cloud"] as const) {
           "/api/v2/workspaces/ws-1": ownerWorkspace,
           "/api/v2/namespaces": { items: [{ id: "namespace-1", name: "Fixture namespace" }] },
           "/api/v2/packages": { items: [] },
-          "/api/v2/catalog/webui-versions": { items: [{ id: "webui-1", name: "Fixture WebUI", versionLabel: "1.0.0", status: "approved" }] },
-          "/api/v2/catalog/runtime-versions": { items: [{ id: "runtime-1", name: "Fixture Runtime", versionLabel: "1.0.0", status: "approved", artifactDigest: "sha256:" + "a".repeat(64) }] },
+          // Runtime Control projects the one Runtime its effective policy names onto
+          // this member-readable catalog; the Publisher page must report that row
+          // and never fall back to another approved catalog entry.
+          "/api/v2/catalog/runtime-versions": { items: [{ id: "runtime-latest", name: "Newest catalog row", versionLabel: "1.0.1", status: "approved", artifactDigest: "sha256:" + "b".repeat(64) }, { id: "runtime-1", name: "Fixture Runtime", versionLabel: "1.0.0", status: "approved", artifactDigest: "sha256:" + "a".repeat(64), defaultForNewBuilds: true }] },
           "/api/v2/delivery/ws-1": {
             workspaceId: "ws-1",
             workspace: { owner: "workspace", state: "active", details: {} },
@@ -191,10 +193,27 @@ for (const identity of ["legacy", "cloud"] as const) {
         assert.ok(v2Requests.includes("/api/v2/delivery/ws-1"));
         await page.goto(`${demo.origin}/console/workspaces`, { waitUntil: "networkidle" });
         await page.getByRole("link", { name: "发布 Package", exact: true }).click();
-        await page.locator(".publisher-page").getByRole("heading", { name: "Cloud WebUI / Agent Package", exact: true }).waitFor({ state: "visible" });
-        await page.waitForFunction(() => (document.querySelector('[aria-label="WebUI"]') as HTMLSelectElement | null)?.value === "webui-1");
-        assert.equal(await page.locator(".publisher-page fieldset").isDisabled(), false);
+        const publisher = page.locator(".publisher-page");
+        await publisher.getByRole("heading", { name: "上传智能体", exact: true }).waitFor({ state: "visible" });
+        // The customer supplies only Package/name/version. The platform default
+        // Runtime Control resolved is an owner fact inside the collapsed
+        // disclosure; the customer surface keeps no picker and never shows the
+        // first approved catalog row as if it were the effective default.
+        assert.equal(await page.getByLabel("Runtime Release").count(), 0);
+        assert.equal(await page.getByLabel("WebUI").count(), 0);
+        const publisherDetails = publisher.locator("details.publisher-technical-details");
+        assert.equal(await publisherDetails.count(), 1);
+        assert.equal(await publisherDetails.evaluate((element: HTMLDetailsElement) => element.open), false);
+        await publisher.getByRole("status").filter({ hasText: "暂时无法开始构建" }).first().waitFor({ state: "visible" });
+        assert.equal(await page.getByRole("button", { name: "上传并构建 / 继续上传" }).isDisabled(), true);
+        await publisherDetails.locator("summary").click();
+        const publisherFacts = (await publisherDetails.textContent()) || "";
+        assert.match(publisherFacts, /Fixture Runtime · 1\.0\.0 · sha256:a{64}/);
+        assert.doesNotMatch(publisherFacts, /Newest catalog row/);
+        assert.match(publisherFacts, /Agent WebUI[\s\S]*暂不可用/);
         assert.ok(v2Requests.includes("/api/v2/namespaces"));
+        assert.ok(v2Requests.includes("/api/v2/catalog/runtime-versions"));
+        assert.ok(!v2Requests.includes("/api/v2/catalog/webui-versions"), "the page must not fall back to the WebUI catalog");
       }
 
       // A direct URL must obey the same build boundary as visible navigation.
@@ -204,8 +223,15 @@ for (const identity of ["legacy", "cloud"] as const) {
         assert.equal(await page.locator(".publisher-page").count(), 0);
         assert.deepEqual(v2Requests, []);
       } else {
-        await page.locator(".publisher-page").getByRole("heading", { name: "Cloud WebUI / Agent Package", exact: true }).waitFor({ state: "visible" });
+        const directPublisher = page.locator(".publisher-page");
+        await directPublisher.getByRole("heading", { name: "上传智能体", exact: true }).waitFor({ state: "visible" });
         assert.equal(await page.getByRole("heading", { name: "页面不存在", exact: true }).count(), 0);
+        // The direct URL obeys the same owner-resolved boundary: the platform
+        // resolves Runtime/WebUI, the customer keeps no picker and never receives
+        // a catalog first-row substitute.
+        assert.equal(await page.getByLabel("Runtime Release").count(), 0);
+        assert.equal(await page.getByLabel("WebUI").count(), 0);
+        await directPublisher.getByRole("status").filter({ hasText: "暂时无法开始构建" }).first().waitFor({ state: "visible" });
       }
       assertBrowserAuditClean(audit);
     } finally {
