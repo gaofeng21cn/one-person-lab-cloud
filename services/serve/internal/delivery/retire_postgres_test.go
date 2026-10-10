@@ -25,6 +25,33 @@ func (f *fabricMutationGuard) DeleteResources(_ context.Context, c *api.MutateRe
 	return &api.Operation{OperationId: "fabric-delete-" + c.GetResourceSetId()}, nil
 }
 
+// contextualFabricReadback is a Fabric readback that validates the call context
+// exactly as the real owner does: Fabric refuses a read whose context names no
+// actor, request, scope or authority. It exists so a retirement that derived its
+// owner calls from the persisted command's stripped context fails here instead of
+// only against a live Fabric.
+type contextualFabricReadback struct {
+	api.FabricCoordinationClient
+	reads int
+	last  *api.CallContext
+}
+
+func (c *contextualFabricReadback) ReadResources(_ context.Context, r *api.ResourceReadbackRequest, _ ...grpc.CallOption) (*api.ResourceReadback, error) {
+	c.reads++
+	c.last = r.GetContext()
+	if r.GetContext().GetActorId() == "" || r.GetContext().GetRequestId() == "" || r.GetContext().GetScope() == nil ||
+		(r.GetContext().GetSessionId() == "" && r.GetContext().GetAcceptedOperationGrantId() == "") {
+		return nil, status.Error(codes.Unauthenticated, "actor, request, scope and session or accepted grant are required")
+	}
+	return &api.ResourceReadback{ResourceSetId: r.GetResourceSetId(), WorkspaceId: "ws-first", Outcome: api.Observation_OBSERVATION_CONFIRMED,
+		ExecutionResources:   &api.ResourceExecutionBinding{AccountId: "account-original", ComputeAllocationId: "compute-original", StorageVolumeId: "volume-original", DataAttachmentId: "attachment-original", DataAttachmentOperationId: "attach-operation-original"},
+		ApplicationPlacement: &api.ApplicationExecutionPlacement{ComputeNodeName: "node-original", ComputePackageId: "basic", StoragePvcName: "pvc-original"}}, nil
+}
+
+func (c *contextualFabricReadback) DeleteResources(_ context.Context, r *api.MutateResourcesCommand, _ ...grpc.CallOption) (*api.Operation, error) {
+	return &api.Operation{OperationId: "fabric-delete-" + r.GetResourceSetId()}, nil
+}
+
 // retirementCall is the Workspace owner's own call context for the deletion step
 // that retires the application runtime.
 func retirementCall(r *api.RuntimeReservationCommand) *api.CallContext {
@@ -199,5 +226,42 @@ func TestRetireReportsOwnerConfirmedAbsenceOnly(t *testing.T) {
 	}
 	if replayed.GetOperationId() != operation.GetOperationId() {
 		t.Fatalf("replayed absent retire allocated a second operation: %v", replayed)
+	}
+}
+
+// TestRetireDerivesOwnerCallsFromTheAdmittedWorkspaceContext proves the retirement
+// reads the exact Fabric resource binding through the Workspace owner's own
+// admitted call context. The frozen start command carries no context, so a
+// retirement that forwarded the persisted command's stripped context would present
+// no actor, request, scope or authority and Fabric would refuse it; this test fails
+// in exactly that case instead of passing against a permissive stub.
+func TestRetireDerivesOwnerCallsFromTheAdmittedWorkspaceContext(t *testing.T) {
+	s, r, _ := reservationFixture(t)
+	ctx := workspaceContext()
+	resources := &contextualFabricReadback{}
+	runtime := &runtimeForServe{state: api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY, readiness: "ready-original"}
+	s.Resources = resources
+	s.Runtime = runtime
+	reservation, err := s.Reserve(ctx, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Deploy(ctx, deployReserved(r, reservation)); err != nil {
+		t.Fatalf("first delivery: %v", err)
+	}
+	stop := &api.RuntimeStopCommand{Context: retirementCall(r), RuntimeInstanceId: reservation.RuntimeInstanceId, DeploymentId: reservation.DeploymentId, RetainedDataAttachmentId: "attachment-original"}
+	operation, err := s.Retire(ctx, stop)
+	if err != nil {
+		t.Fatalf("retire: %v", err)
+	}
+	if operation.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED || operation.GetObservationResult() != api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_CONFIRMED {
+		t.Fatalf("retire operation=%v", operation)
+	}
+	if resources.reads == 0 || resources.last.GetActorId() != stop.GetContext().GetActorId() || resources.last.GetRequestId() != stop.GetContext().GetRequestId() ||
+		resources.last.GetAcceptedOperationGrantId() != stop.GetContext().GetAcceptedOperationGrantId() || resources.last.GetScope().GetTenant().GetTenantId() != stop.GetContext().GetScope().GetTenant().GetTenantId() {
+		t.Fatalf("Fabric readback was not derived from the admitted retirement context: %v", resources.last)
+	}
+	if !reflect.DeepEqual(runtime.lifecycle, []string{"suspended"}) {
+		t.Fatalf("lifecycle=%v", runtime.lifecycle)
 	}
 }

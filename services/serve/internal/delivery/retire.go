@@ -57,6 +57,12 @@ func (s *Service) Retire(ctx context.Context, command *api.RuntimeStopCommand) (
 	if err = s.authorize(ctx, command.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RETIRERUNTIME, deploy.command.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
+	// The frozen start command carries no call context by design. The retirement is
+	// a new admitted Workspace command, so its own call context is the one Serve
+	// derives every owner call from: the Fabric resource readback that resolves the
+	// exact provider object, and the lifecycle call applied to it, both name this
+	// retirement's original accepted authority rather than no authority at all.
+	deploy.command.Context = command.GetContext()
 	return s.retireRuntime(ctx, deploy)
 }
 
