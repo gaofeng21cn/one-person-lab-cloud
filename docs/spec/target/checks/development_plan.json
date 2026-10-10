@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "b8265878939df42ee3dfd9362fd3493084a5bdef",
+  "sourceSHA": "8cd6c436cde9153a7e96a7afafb5a5a57d8ba69f",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -217,7 +217,8 @@
         "serve",
         "resource_catalog",
         "fabric",
-        "ledger"
+        "ledger",
+        "cloud"
       ],
       "features": [
         "F01",

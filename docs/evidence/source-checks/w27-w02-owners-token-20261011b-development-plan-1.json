@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "a20d762a3e66e472355e8808f17edbfea753da93",
+  "recordedAt": "2026-10-10T20:46:11.470Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w27-w02-owners-token-20261011a-development-gates-1.json",
+    "docs/evidence/source-checks/w27-w02-owners-token-20261011a-development-plan-1.json",
+    "docs/evidence/source-checks/w27-w02-owners-token-20261011b-development-plan-1.json",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/render_development_plan.py"
+  ],
+  "verifiedSource": {
+    "baseSha": "a20d762a3e66e472355e8808f17edbfea753da93",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/w27-w02-owners-token-20261011a-development-gates-1.json": "0609f4ecfa5fcb0a8b04f004d87850416da40fe81e03536c7aeb4bf84089c719",
+      "docs/evidence/source-checks/w27-w02-owners-token-20261011a-development-plan-1.json": "58688dd9f266995d35a4a484376d92950deff02dcb20b3edcb9dcf74cf16fa7d",
+      "docs/spec/target/14_implementation_work_packages.md": "4cfb46bb0a2b4ed2a03617cce31df5da3c32f9d42c038da8f135295bd291722e",
+      "docs/spec/target/checks/development_plan.json": "39889ff16e778c5c7eb5414b1ebb89a9d8c0dca6712b5faa50b7d1722b77dba2",
+      "docs/spec/target/checks/render_development_plan.py": "9737f00ea7c41d2c863e08cab345546f632e439ca60dbfbebcf69d269e62e785"
+    }
+  },
+  "execution": {
+    "command": "node tools/verify-development-plan.ts",
+    "exitCode": 0,
+    "tests": 0,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "0f5766315f9abdbd40600927b36600347cfbbc42591dd24284258508b2462452"
+  },
+  "sourceStage": {
+    "runId": "w27-w02-owners-token-20261011b",
+    "gateId": "development-plan",
+    "attempt": 1,
+    "receiptHash": "238dbbd9e5b6cfb3824f9a0dee0bff6463ba61b65657ab3f1a232dc41b454bac"
+  }
+}

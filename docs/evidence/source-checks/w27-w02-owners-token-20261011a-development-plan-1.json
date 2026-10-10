@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "8aa3d969c9c7599f5a81a50f95eb25d388d9bde3",
+  "recordedAt": "2026-10-10T20:03:51.826Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w27-w02-owners-token-20261011a-development-plan-1.json",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/render_development_plan.py"
+  ],
+  "verifiedSource": {
+    "baseSha": "8aa3d969c9c7599f5a81a50f95eb25d388d9bde3",
+    "changedFilesSha256": {
+      "docs/spec/target/14_implementation_work_packages.md": "4cfb46bb0a2b4ed2a03617cce31df5da3c32f9d42c038da8f135295bd291722e",
+      "docs/spec/target/checks/development_plan.json": "39889ff16e778c5c7eb5414b1ebb89a9d8c0dca6712b5faa50b7d1722b77dba2",
+      "docs/spec/target/checks/render_development_plan.py": "9737f00ea7c41d2c863e08cab345546f632e439ca60dbfbebcf69d269e62e785"
+    }
+  },
+  "execution": {
+    "command": "node tools/verify-development-plan.ts",
+    "exitCode": 0,
+    "tests": 0,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "0f5766315f9abdbd40600927b36600347cfbbc42591dd24284258508b2462452"
+  },
+  "sourceStage": {
+    "runId": "w27-w02-owners-token-20261011a",
+    "gateId": "development-plan",
+    "attempt": 1,
+    "receiptHash": "cd688add7fca8d08e52d9497a6a8b351b6f4a4e410fbc7f7afd01e6efee7bec3"
+  }
+}
