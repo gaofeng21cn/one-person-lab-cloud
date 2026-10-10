@@ -1881,7 +1881,23 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
       const removed = await runProcess("docker", ["rm", "-f", registryContainer], { allowFailure: true });
       if (removed.code !== 0) failure ||= new Error("local source registry cleanup was not confirmed");
     }
-    if (!preserveRecoveryAuthority) await rm(tempRoot, { recursive: true, force: true });
+    if (!preserveRecoveryAuthority) {
+      // The PostgreSQL image chowns its bind-mounted data directory to the
+      // in-container postgres uid, so a non-root Linux qualifier is denied the
+      // scan of that single directory. That hygiene failure must not mask the
+      // stage failure this run exists to record: the scratch removal is
+      // attempted, and only a genuine non-EACCES removal error keeps the run
+      // failed. The denial is reported instead of silently dropped.
+      try {
+        await rm(tempRoot, { recursive: true, force: true });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException)?.code === "EACCES") {
+          console.error(`local qualification scratch cleanup was not confirmed: ${String((error as Error)?.message || error)}`);
+        } else {
+          failure ||= error;
+        }
+      }
+    }
   }
 
   if (failure) {
