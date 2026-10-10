@@ -40,7 +40,14 @@ export function canonical(value: any): string {
   return JSON.stringify(value);
 }
 export interface DevelopmentGate {
-  id: string; kind: 'node' | 'go' | 'browser' | 'generated' | 'developmentPlan'; inputs: string[]; targets?: string[]; cwd?: string; needs: string[];
+  id: string; kind: 'node' | 'go' | 'browser' | 'generated' | 'developmentPlan'; inputs: string[]; targets?: string[]; cwd?: string;
+  /**
+   * A stage that can only be executed against a real PostgreSQL server declares
+   * the host-owned isolated fixture. The host provisions it and hands only the
+   * loopback DSN to the sealed runner; the approval hash binds the declaration.
+   */
+  database?: 'isolated-owner-postgres';
+  needs: string[];
 }
 /** A host execution authorization references a phase record; it never copies business ownership or progress. */
 export interface RunApproval {
@@ -60,13 +67,17 @@ export function parseApproval(value: unknown): RunApproval {
   if (!Array.isArray(a.gates) || !a.gates.length) fail('acceptance gates required');
   const seen = new Set<string>();
   for (const raw of a.gates) {
-    const g = object(raw); keys(g, ['id', 'kind', 'inputs', 'targets', 'cwd', 'needs']); id(g.id);
+    const g = object(raw); keys(g, ['id', 'kind', 'inputs', 'targets', 'cwd', 'database', 'needs']); id(g.id);
     if (seen.has(g.id)) fail('duplicate gate'); seen.add(g.id);
     if (!['node', 'go', 'browser', 'generated', 'developmentPlan'].includes(g.kind)) fail('unknown acceptance runner');
     strings(g.inputs, 'gate inputs').forEach(p => pathName(p, true)); strings(g.needs, 'gate dependencies', false).forEach(id);
     if (g.kind === 'node') strings(g.targets, 'test targets').forEach(p => pathName(p));
     else if (g.targets !== undefined) fail('targets only apply to node tests');
     if (g.kind === 'go') pathName(g.cwd); else if (g.cwd !== undefined) fail('cwd only applies to Go checks');
+    if (g.database !== undefined) {
+      if (g.database !== 'isolated-owner-postgres') fail('unknown isolated database fixture');
+      if (g.kind !== 'go') fail('isolated database fixture only applies to Go checks');
+    }
   }
   const pending = new Map<string, Set<string>>(a.gates.map((g: DevelopmentGate) => [g.id, new Set(g.needs)]));
   while (pending.size) {
@@ -644,8 +655,13 @@ export class DevelopmentSession {
       // A Node stage resolves its dependencies from the approved host install
       // only when the stage declared the dependency manifest; the runner binds
       // that install and re-checks the locked manifests before execution.
-      const { runDevelopmentCheck } = await import('./verify-local.ts');
-      const checked = await runDevelopmentCheck({ snapshotRoot: snapshot, kind: gate.kind, targets: gate.targets, cwd: gate.cwd });
+      const { runDevelopmentCheck, withIsolatedOwnerDatabase } = await import('./verify-local.ts');
+      // A stage that declared the isolated fixture is executed against the
+      // host-provisioned container; the DSN is produced by the trusted host
+      // runner and never read back from the worker or the invoking process.
+      const checked = gate.database === 'isolated-owner-postgres'
+        ? await withIsolatedOwnerDatabase((dsn: string) => runDevelopmentCheck({ snapshotRoot: snapshot!, kind: gate.kind, targets: gate.targets, cwd: gate.cwd, ownerDatabaseDsn: dsn }))
+        : await runDevelopmentCheck({ snapshotRoot: snapshot, kind: gate.kind, targets: gate.targets, cwd: gate.cwd });
       const unchanged = hash === fingerprint(inputFiles(this.root, gate.inputs)) && phaseHash === phase(this.root, this.approval).fingerprint;
       const previous = receiptHistory(this.store, this.approval.runId, gateId);
       const currentEvidence = this.gateEvidence(gate);

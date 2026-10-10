@@ -232,6 +232,17 @@ function inside(directory: string, path: string) {
   return suffix === "" || (!isAbsolute(suffix) && suffix !== ".." && !suffix.startsWith(`..${sep}`));
 }
 
+/** Only an isolated loopback PostgreSQL admin DSN is an admissible owner fixture. */
+export function isLoopbackOwnerDatabaseDsn(value: unknown): boolean {
+  if (typeof value !== "string" || !value || value.length > 512) return false;
+  let parsed: URL;
+  try { parsed = new URL(value); } catch { return false; }
+  if (parsed.protocol !== "postgresql:" && parsed.protocol !== "postgres:") return false;
+  if (!["127.0.0.1", "localhost", "[::1]", "::1"].includes(parsed.hostname)) return false;
+  const port = Number(parsed.port);
+  return /^[0-9]{1,5}$/u.test(parsed.port) && port > 0 && port <= 65535;
+}
+
 function exactRelativePath(path: string) {
   return typeof path === "string" && path.length > 0 && path.split("/").every((part) =>
     /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(part) && part !== "." && part !== "..");
@@ -380,6 +391,12 @@ export async function runDevelopmentCheck(options: {
   targets?: string[];
   cwd?: string;
   timeoutMs?: number;
+  /**
+   * The host-owned isolated owner-database DSN for a stage whose gate declared
+   * `database: "isolated-owner-postgres"`. It is passed in by the host runner
+   * that provisioned the fixture, never inherited from the invoking process.
+   */
+  ownerDatabaseDsn?: string;
 }): Promise<DevelopmentCheckResult> {
   const blocked = (reason: string, output = ""): DevelopmentCheckResult =>
     ({ passed: false, status: "blocked", exitCode: null, tests: 0, failed: 0, skipped: 0, output, reason });
@@ -430,6 +447,14 @@ export async function runDevelopmentCheck(options: {
       npm_config_cache: join(scratch, "npm-cache"), npm_config_userconfig: "/dev/null", npm_config_globalconfig: join(scratch, "home/.npmrc-global"),
       npm_config_ignore_scripts: "true", npm_config_offline: "true", npm_config_update_notifier: "false", npm_config_audit: "false", npm_config_fund: "false"
     };
+    // A declared owner-database stage receives only the host-provisioned
+    // isolated loopback fixture. The invoking process environment is never a
+    // source for it, so no production DSN can leak into a sealed stage.
+    if (options.ownerDatabaseDsn !== undefined) {
+      if (!isLoopbackOwnerDatabaseDsn(options.ownerDatabaseDsn)) return blocked("owner database fixture must be an isolated loopback PostgreSQL admin DSN");
+      env.OPL_POSTGRES_TESTS = "1";
+      env.OPL_OWNER_MIGRATION_TEST_ADMIN_DSN = options.ownerDatabaseDsn;
+    }
     let command = await realpath(process.execPath);
     let args: string[] = [];
     let tapTargets = targets;
@@ -794,6 +819,21 @@ async function withTemporaryPostgres(callback: (env: NodeJS.ProcessEnv) => Promi
     process.removeListener("SIGTERM", interrupt);
     await stop();
   }
+}
+
+/**
+ * The host-owned isolated owner-database fixture for one acceptance stage: one
+ * ephemeral PostgreSQL container from the pinned compose image, trust auth and
+ * a loopback-only published port. Only the resulting loopback admin DSN is
+ * handed to the stage; it is never read from the invoking environment.
+ */
+export async function withIsolatedOwnerDatabase<T>(callback: (dsn: string) => Promise<T>): Promise<T> {
+  return withTemporaryPostgres(async (env) => {
+    const dsn = env.OPL_OWNER_MIGRATION_TEST_ADMIN_DSN;
+    if (typeof dsn !== "string" || !isLoopbackOwnerDatabaseDsn(dsn))
+      throw new Error("isolated owner database fixture did not report a loopback admin DSN");
+    return await callback(dsn);
+  }) as Promise<T>;
 }
 
 export function summarizeGoTestFailures(events: readonly GoTestEvent[]) {

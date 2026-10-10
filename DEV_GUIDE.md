@@ -264,6 +264,17 @@ existing console test files through `testWritePaths` (exact files under
 `tests/`, never a directory or a business owner) so the implementation and its
 test stay in one owner scope.
 
+A Go acceptance gate that can only be executed against a real PostgreSQL server
+declares the host-owned fixture with `"database": "isolated-owner-postgres"` on
+that gate. The host provisions one ephemeral container from the pinned compose
+image with trust authentication and a loopback-only published port, hands the
+sealed runner only that loopback admin DSN (as
+`OPL_OWNER_MIGRATION_TEST_ADMIN_DSN`, with `OPL_POSTGRES_TESTS=1`), and removes
+the container after the stage. The declaration is part of the approved record,
+so the stage receipt's approval hash binds which fixture the evidence came from;
+the runner refuses any DSN that is not an isolated loopback PostgreSQL admin
+endpoint, and neither the worker nor the invoking environment can supply one.
+
 ## Pre-Commit Checks
 
 ```bash
