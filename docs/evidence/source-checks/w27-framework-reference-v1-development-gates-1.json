@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "b8265878939df42ee3dfd9362fd3493084a5bdef",
+  "recordedAt": "2026-10-10T18:19:19.105Z",
+  "writeSet": [
+    "AGENTS.md",
+    "DEV_GUIDE.md",
+    "docs/evidence/source-checks/w27-framework-reference-v1-development-gates-1.json"
+  ],
+  "verifiedSource": {
+    "baseSha": "b8265878939df42ee3dfd9362fd3493084a5bdef",
+    "changedFilesSha256": {
+      "AGENTS.md": "52d9389ceece58c1d4eb508a117647a9a0de36760b64225d6d26980380c4ba08",
+      "DEV_GUIDE.md": "adc41b9e034647ab39b5c745ddfb4520aecc19f3b45b388ba0242d62de6cd3d8"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/check-pr-governance.test.ts",
+    "exitCode": 0,
+    "tests": 19,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "9eae00ba8e30b335e35f6fabe2c47bad23a1e9a2f88a9f692782f4bf885791a4"
+  },
+  "sourceStage": {
+    "runId": "w27-framework-reference-v1",
+    "gateId": "development-gates",
+    "attempt": 1,
+    "receiptHash": "c607891e417b92394aa075876c24cd8c649b35139669222b6760898a535679a5"
+  }
+}
