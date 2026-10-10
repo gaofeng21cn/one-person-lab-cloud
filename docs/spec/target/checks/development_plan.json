@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "b8265878939df42ee3dfd9362fd3493084a5bdef",
+  "sourceSHA": "8a5d113414b9efda1bae0424bc97e6449a95d745",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -3992,6 +3992,8 @@
         "apps/console-ui/src/pages",
         "apps/console-ui/src/styles.css",
         "apps/console-ui/src/api/publisher-api.ts",
+        "docs/spec/target/checks/render_development_plan.py",
+        "docs/spec/target/14_implementation_work_packages.md",
         "docs/spec/target/checks/development_plan.json",
         "docs/evidence/source-checks/"
       ],

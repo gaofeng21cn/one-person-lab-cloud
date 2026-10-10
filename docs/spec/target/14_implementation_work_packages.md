@@ -1523,7 +1523,7 @@
 
 **输入：** 既有Console页面/controller规格；既有Console unit/browser测试目标；真实owner readback（Workspace/Delivery读取）；docs/implementation-architecture.md当前Console/BFF路由
 
-**写集：** `apps/console-ui/src/app`, `apps/console-ui/src/pages`, `apps/console-ui/src/styles.css`, `apps/console-ui/src/api/publisher-api.ts`
+**写集：** `apps/console-ui/src/app`, `apps/console-ui/src/pages`, `apps/console-ui/src/styles.css`, `apps/console-ui/src/api/publisher-api.ts`, `docs/spec/target/checks/render_development_plan.py`, `docs/spec/target/14_implementation_work_packages.md`, `docs/spec/target/checks/development_plan.json`, `docs/evidence/source-checks/`
 
 **测试写授权（开发SSOT，仅精确文件）：** `tests/ui/workspace-experience-model.test.ts`, `tests/ui/workspace-task-experience-browser.test.ts`, `tests/ui/cloud-webui-browser.test.ts`, `tests/ui/cloud-webui-model.test.ts`
 
