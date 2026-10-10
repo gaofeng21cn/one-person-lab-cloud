@@ -124,8 +124,8 @@ source-check receipt fields. Complete stage-input and dependency-hash binding
 requires a host stage receipt. Passing behavior evidence requires a zero exit
 code and a positive count of registered tests actually executed with zero
 failures, skips or TODOs, plus the captured-output digest. A passing label or
-unchecked acceptance criterion is not evidence. Historical receipts remain
-unchanged but cannot serve as current PASS evidence.
+unchecked acceptance criterion is not evidence. Historical-receipt handling is
+owned by the process-layer reference in this section.
 
 Record compliance and merge eligibility are distinct. The fixed PR record and
 the `governance` job check declarations and freshness using the checker from the
