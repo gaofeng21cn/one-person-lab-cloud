@@ -230,6 +230,8 @@ type DevelopmentCheckResult = {
 type CapturedProcess = { code: number | null; stdout: string; stderr: string; problem?: string };
 const developmentOutputLimit = 2_000_000;
 const trustedToolDirectories = [dirname(process.execPath), "/usr/bin", "/bin", "/usr/local/bin", "/opt/homebrew/bin", "/usr/sbin", "/sbin"];
+const commandLineToolsPython = "/Library/Developer/CommandLineTools/usr/bin";
+const commandLineToolsPythonFramework = "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/";
 
 function inside(directory: string, path: string) {
   const suffix = relative(directory, path);
@@ -302,14 +304,48 @@ async function trustedTool(name: string) {
   return undefined;
 }
 
+/**
+ * Resolve one approved host interpreter from the fixed installation
+ * locations. On macOS /usr/bin/python3 is an Xcode selector stub, not an
+ * interpreter: executing it reads the developer selection under /var/select
+ * and fails inside a sealed stage, so the Command Line Tools runtime is
+ * resolved ahead of it. A candidate that resolves inside the snapshot is
+ * never an approved runtime.
+ */
+export async function resolveTrustedPython(directories: readonly string[], snapshot: string): Promise<string | undefined> {
+  for (const directory of directories) {
+    try {
+      const candidate = join(directory, "python3");
+      await access(candidate, constants.X_OK);
+      if ((await stat(candidate)).isFile()) {
+        const tool = await realpath(candidate);
+        if (!inside(snapshot, tool)) return tool;
+      }
+    } catch { /* Only fixed runtime installation locations are eligible. */ }
+  }
+  return undefined;
+}
+
+/**
+ * Grant exactly one resolved runtime installation: the invoked executable
+ * file plus, when the runtime ships as a multi-file installation, its own
+ * fixed installation root. A user HOME, the developer selection or a shared
+ * prefix such as /usr is never granted.
+ */
+function authorizeRuntimeTool(tool: string, readPaths: Set<string>) {
+  readPaths.add(tool);
+  if (tool.startsWith(commandLineToolsPythonFramework)) readPaths.add(resolve(dirname(tool), ".."));
+  else if (tool.startsWith("/opt/homebrew/Cellar/")) readPaths.add(tool.split("/").slice(0, 6).join("/"));
+}
+
 // The trusted Go configuration probe reads host runtime configuration. A
-// scratch-isolated GOPATH/GOENV/GOMODCACHE/GOROOT would silently redirect the
-// probe into empty scratch storage (an inherited scratch GOPATH resolves
-// GOMODCACHE under it), so only explicit host values survive and missing
-// variables fall back to the host Go defaults.
+// scratch-isolated GOPATH/GOBIN/GOENV/GOMODCACHE/GOROOT would silently
+// redirect the probe into empty scratch storage (an inherited scratch GOPATH
+// resolves GOMODCACHE under it), so only explicit host values survive and
+// missing variables fall back to the host Go defaults.
 export function goConfigurationEnv(scratchEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const configuration: NodeJS.ProcessEnv = { ...scratchEnv, HOME: process.env.HOME };
-  for (const name of ["GOPATH", "GOENV", "GOMODCACHE", "GOROOT"]) {
+  for (const name of ["GOPATH", "GOBIN", "GOENV", "GOMODCACHE", "GOROOT"]) {
     if (process.env[name] === undefined) delete configuration[name];
     else configuration[name] = process.env[name];
   }
@@ -644,7 +680,7 @@ export async function runDevelopmentCheck(options: {
         // Trusted go env reads authoritative host runtime configuration, not a
         // snapshot go.mod or an attacker-supplied command. No tested code runs here.
         const configurationEnv = goConfigurationEnv(env);
-        const configuration = await captureDevelopmentProcess(go, ["env", "-json", "GOROOT", "GOMODCACHE"], temporaryRoot, configurationEnv, 10_000);
+        const configuration = await captureDevelopmentProcess(go, ["env", "-json", "GOROOT", "GOMODCACHE", "GOBIN", "GOPATH"], temporaryRoot, configurationEnv, 10_000);
         if (configuration.code !== 0 || configuration.problem) return blocked("trusted Go runtime configuration unavailable", configuration.stderr + configuration.stdout + (configuration.problem || ""));
         const values = JSON.parse(configuration.stdout);
         const goroot = await realpath(values.GOROOT);
@@ -663,18 +699,63 @@ export async function runDevelopmentCheck(options: {
           const module = await realpath(join(cwd, "go.mod"));
           if (!inside(snapshot, module)) return blocked("Go module escapes snapshot");
         }
+        if (options.kind === "generated") {
+          // The generation chains run the two approved protoc plugins and
+          // gofmt. The plugins are resolved from the host's own Go plugin
+          // installation (GOBIN, or GOPATH/bin when GOBIN is unset) instead
+          // of a PATH lookup that could execute an unapproved binary, and the
+          // go toolchain's own bin directory provides the formatter.
+          env.PATH = join(goroot, "bin") + ":" + env.PATH;
+          const pluginDirectory = typeof values.GOBIN === "string" && values.GOBIN ? values.GOBIN :
+            typeof values.GOPATH === "string" && values.GOPATH ? join(values.GOPATH, "bin") : undefined;
+          if (!pluginDirectory || !isAbsolute(pluginDirectory)) return blocked("trusted Go plugin installation unavailable");
+          let gobin: string;
+          try { gobin = await realpath(pluginDirectory); } catch { return blocked("trusted Go plugin installation unavailable"); }
+          if (gobin === temporaryRoot || inside(root, gobin) || inside(gobin, root) || inside(snapshot, gobin) ||
+              inside(gobin, process.env.HOME || root)) return blocked("unsafe Go plugin installation");
+          for (const name of ["protoc-gen-go", "protoc-gen-go-grpc"]) {
+            const plugin = join(gobin, name);
+            let resolved: string;
+            try {
+              if (!((await stat(plugin)).isFile())) return blocked(`trusted protoc plugin unavailable: ${name}`);
+              await access(plugin, constants.X_OK);
+              resolved = await realpath(plugin);
+            } catch { return blocked(`trusted protoc plugin unavailable: ${name}`); }
+            if (inside(snapshot, resolved) || inside(root, resolved)) return blocked("unsafe Go plugin installation");
+            readPaths.add(resolved);
+          }
+          env.PATH = gobin + ":" + env.PATH;
+        }
       }
     }
     if (options.kind === "generated") {
       const checker = await realpath(join(snapshot, "tools/verify-generated-contracts.ts"));
       if (!inside(snapshot, checker)) return blocked("generated checker escapes snapshot");
       args = ["tools/verify-generated-contracts.ts"];
-      for (const name of ["python3", "protoc", "buf"]) {
-        const tool = await trustedTool(name);
-        if (tool && !inside(snapshot, tool)) {
-          readPaths.add(tool);
-          // Homebrew's versioned runtime is a tool installation, not user data.
-          if (tool.startsWith("/opt/homebrew/Cellar/")) readPaths.add(tool.split("/").slice(0, 6).join("/"));
+      // The generation chains run the approved interpreter, and the pinned
+      // generator packages (grpcio-tools, PyYAML) are installed in that
+      // interpreter's user site, which the sealed stage would never reach
+      // through its scratch HOME: the interpreter itself reports the
+      // directory, and exactly that installation is bound read-only and
+      // exposed through PYTHONPATH. Nothing else of the user HOME is granted.
+      const pythonDirectories = process.platform === "darwin" ?
+        [commandLineToolsPython, ...trustedToolDirectories] : trustedToolDirectories;
+      const python = await resolveTrustedPython(pythonDirectories, snapshot);
+      if (!python) return blocked("trusted Python runtime unavailable");
+      authorizeRuntimeTool(python, readPaths);
+      env.PATH = dirname(python) + ":" + env.PATH;
+      const site = await captureDevelopmentProcess(python, ["-c", "import site;print(site.getusersitepackages())"],
+        temporaryRoot, { HOME: process.env.HOME ?? temporaryRoot }, 10_000);
+      if (site.code !== 0 || site.problem) return blocked("trusted Python runtime configuration unavailable", site.stderr + site.stdout + (site.problem || ""));
+      const userSite = site.stdout.trim();
+      if (userSite) {
+        if (!isAbsolute(userSite)) return blocked("unsafe Python user-site installation");
+        let resolved: string | undefined;
+        try { resolved = await realpath(userSite); } catch { /* A missing user-site installation keeps the interpreter's own import path. */ }
+        if (resolved) {
+          if (inside(snapshot, resolved) || inside(resolved, snapshot) || inside(root, resolved) || inside(resolved, root) ||
+              inside(resolved, process.env.HOME || root)) return blocked("unsafe Python user-site installation");
+          readPaths.add(resolved); env.PYTHONPATH = resolved;
         }
       }
     }
@@ -682,27 +763,15 @@ export async function runDevelopmentCheck(options: {
       const checker = await realpath(join(snapshot, "tools/verify-development-plan.ts"));
       if (!inside(snapshot, checker)) return blocked("development plan checker escapes snapshot");
       args = ["tools/verify-development-plan.ts"];
-      // The plan gate regenerates into an isolated tree and byte-compares; it only
-      // needs the trusted python3 interpreter, never protoc or the network.
-      // On macOS /usr/bin/python3 is an Xcode selector, not an interpreter.
-      // Resolve the installed runtime from a fixed host installation location;
-      // do not grant the worker access to developer selection/configuration.
+      // The plan gate regenerates into an isolated tree and byte-compares; it
+      // only needs the approved interpreter, never protoc, plugins or the
+      // network.
       const pythonDirectories = process.platform === "darwin" ?
-        ["/Library/Developer/CommandLineTools/usr/bin", ...trustedToolDirectories] : trustedToolDirectories;
-      let tool: string | undefined;
-      for (const directory of pythonDirectories) {
-        try {
-          const candidate = join(directory, "python3");
-          await access(candidate, constants.X_OK);
-          if ((await stat(candidate)).isFile()) { tool = await realpath(candidate); break; }
-        } catch { /* Only fixed runtime installation locations are eligible. */ }
-      }
-      if (!tool || inside(snapshot, tool)) return blocked("trusted Python runtime unavailable");
-      readPaths.add(tool);
-      const framework = "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/";
-      if (tool.startsWith(framework)) readPaths.add(resolve(dirname(tool), ".."));
-      else if (tool.startsWith("/opt/homebrew/Cellar/")) readPaths.add(tool.split("/").slice(0, 6).join("/"));
-      env.PATH = dirname(tool) + ":" + env.PATH;
+        [commandLineToolsPython, ...trustedToolDirectories] : trustedToolDirectories;
+      const python = await resolveTrustedPython(pythonDirectories, snapshot);
+      if (!python) return blocked("trusted Python runtime unavailable");
+      authorizeRuntimeTool(python, readPaths);
+      env.PATH = dirname(python) + ":" + env.PATH;
     }
     let browserApplication: ApprovedBrowser | undefined;
     if (options.kind === "browser") {

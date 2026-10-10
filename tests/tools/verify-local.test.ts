@@ -19,6 +19,7 @@ import {
   postgresVerificationSpecs,
   resolveApprovedBrowser,
   resolveOwnerDatabaseFixture,
+  resolveTrustedPython,
   runDevelopmentCheck,
   runVerification,
   focusedVerificationSteps,
@@ -610,7 +611,7 @@ test("development Go checks consume real JSON summaries and reject zero tests, s
 });
 
 test("trusted Go probes read host configuration, never scratch Go paths", () => {
-  const scratch: Record<string, string> = { GOPATH: "/scratch/go-path", GOENV: "off",
+  const scratch: Record<string, string> = { GOPATH: "/scratch/go-path", GOBIN: "/scratch/go-bin", GOENV: "off",
     GOMODCACHE: "/scratch/pkg/mod", GOROOT: "/scratch/goroot" };
   const probe = goConfigurationEnv({ PATH: "/usr/bin", HOME: "/scratch/home", ...scratch,
     GOPROXY: "off", GOTOOLCHAIN: "local", GOCACHE: "/scratch/go-cache" });
@@ -623,6 +624,28 @@ test("trusted Go probes read host configuration, never scratch Go paths", () => 
   // Non-installation scratch isolation flags stay in place for the probe.
   assert.equal(probe.GOPROXY, "off");
   assert.equal(probe.GOTOOLCHAIN, "local");
+});
+
+test("trusted Python resolution prefers the installed runtime and refuses snapshot candidates", async (t) => {
+  const { snapshotRoot } = await developmentFixture(t);
+  // A candidate that resolves inside the snapshot is never an approved runtime.
+  const snapshotTools = join(snapshotRoot, "tools");
+  await mkdir(snapshotTools, { recursive: true });
+  await writeFile(join(snapshotTools, "python3"), "#!/bin/sh\nexit 1\n");
+  await chmod(join(snapshotTools, "python3"), 0o755);
+  // Production callers pass the canonicalized snapshot root (runDevelopmentCheck
+  // realpaths it before resolving tools); mirror that precondition here.
+  assert.equal(await resolveTrustedPython([snapshotTools], await realpath(snapshotRoot)), undefined);
+
+  // On macOS /usr/bin/python3 is an Xcode selector stub, not an interpreter;
+  // the Command Line Tools runtime is resolved ahead of the selector.
+  if (process.platform === "darwin") {
+    const resolved = await resolveTrustedPython(
+      ["/Library/Developer/CommandLineTools/usr/bin", "/usr/bin", "/bin"], await realpath(snapshotRoot));
+    assert.ok(resolved, "the Command Line Tools interpreter must resolve on this approved host");
+    assert.ok(resolved.startsWith("/Library/Developer/CommandLineTools/"), resolved);
+    assert.notEqual(resolved, await realpath("/usr/bin/python3"));
+  }
 });
 
 test("an owner-database stage receives only the host-provided loopback DSN and refuses anything else", async (t) => {
