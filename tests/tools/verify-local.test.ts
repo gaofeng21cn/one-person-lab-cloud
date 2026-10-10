@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { execFile as execFileCallback } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,6 +17,7 @@ import {
   parseVerifyLocalArgs,
   postgresImage,
   postgresVerificationSpecs,
+  resolveApprovedBrowser,
   resolveOwnerDatabaseFixture,
   runDevelopmentCheck,
   runVerification,
@@ -728,28 +729,64 @@ test("generated checks require the actual checker freshness PASS and zero exit, 
     assert.equal(result.tests, 0);
   }
   await writeFile(join(snapshotRoot, "package.json"), JSON.stringify({ scripts: { "test:browser:suite": "exit 0" } }));
-  const browser = await runDevelopmentCheck({ snapshotRoot, kind: "browser" });
+  await writeFile(join(snapshotRoot, "tests/browser-control.test.ts"), "import test from 'node:test';test('control',()=>{});\n");
+  const untargeted = await runDevelopmentCheck({ snapshotRoot, kind: "browser" });
+  assert.equal(untargeted.status, "blocked");
+  assert.match(untargeted.reason || "", /require explicit test file targets/);
+  const browser = await runDevelopmentCheck({ snapshotRoot, kind: "browser", targets: ["tests/browser-control.test.ts"] });
   assert.equal(browser.status, "blocked");
   assert.match(browser.reason || "", /approved.*manifest/);
 });
 
-
-test("development check admits only approved locked dependency symlinks, read-only, without exposing the source repository", async (t) => {
+test("approved browser stages execute only the declared suite inventory", async (t) => {
   const { snapshotRoot } = await developmentFixture(t);
   const source = process.cwd();
   await writeFile(join(snapshotRoot, "package.json"), await readFile(join(source, "package.json")));
   await writeFile(join(snapshotRoot, "package-lock.json"), await readFile(join(source, "package-lock.json")));
-  await symlink(join(source, "node_modules"), join(snapshotRoot, "node_modules"));
+  await writeFile(join(snapshotRoot, "tests/invented-browser.test.ts"), "import test from 'node:test';test('invented',()=>{});\n");
+  const result = await runDevelopmentCheck({ snapshotRoot, kind: "browser", targets: ["tests/invented-browser.test.ts"] });
+  assert.equal(result.status, "blocked");
+  assert.equal(result.tests, 0);
+  assert.match(result.reason || "", /approved suite inventory/);
+});
+
+test("approved browser resolution admits only a complete fixed installation", async (t) => {
+  const { directory } = await developmentFixture(t);
+  const application = join(directory, "Fake Browser.app");
+  const executable = join(application, "Contents/MacOS/Fake Browser");
+  await mkdir(join(application, "Contents/MacOS"), { recursive: true });
+  assert.equal(await resolveApprovedBrowser([{ application, executable: "Contents/MacOS/Fake Browser" }]), undefined);
+  await writeFile(executable, "#!/bin/sh\n");
+  await chmod(executable, 0o755);
+  assert.deepEqual(await resolveApprovedBrowser([{ application, executable: "Contents/MacOS/Fake Browser" }]),
+    { application: await realpath(application), executable: await realpath(executable) });
+  await chmod(executable, 0o644);
+  assert.equal(await resolveApprovedBrowser([{ application, executable: "Contents/MacOS/Fake Browser" }]), undefined);
+});
+
+
+test("declared stages resolve the approved locked installation as a private writable scratch copy", async (t) => {
+  const { snapshotRoot } = await developmentFixture(t);
+  const source = process.cwd();
+  const approvedManifest = join(source, "node_modules/yaml/package.json");
+  const approvedBytes = await readFile(approvedManifest);
+  await writeFile(join(snapshotRoot, "package.json"), await readFile(join(source, "package.json")));
+  await writeFile(join(snapshotRoot, "package-lock.json"), await readFile(join(source, "package-lock.json")));
   await writeFile(join(snapshotRoot, "tests/dependency.test.mjs"), `import test from 'node:test';
 import assert from 'node:assert/strict';import fs from 'node:fs';import {parse} from 'yaml';
 test('locked dependency boundary',()=>{
   assert.deepEqual(parse('key: approved'),{key:'approved'});
   assert.throws(()=>fs.readFileSync(${JSON.stringify(join(source, "package.json"))}));
-  assert.throws(()=>{const f=fs.openSync(${JSON.stringify(join(source, "node_modules/yaml/package.json"))},'r+');fs.closeSync(f)});
+  assert.throws(()=>fs.readFileSync(${JSON.stringify(approvedManifest)}));
+  const copied = fs.realpathSync(process.cwd() + '/node_modules/yaml/package.json');
+  assert.ok(!copied.startsWith(${JSON.stringify(source + "/")}));
+  fs.writeFileSync(copied + '.stage-write', 'scratch');
 });`);
   const approved = await runDevelopmentCheck({ snapshotRoot, kind: "node", targets: ["tests/dependency.test.mjs"] });
-  if (approved.status === "blocked") { assert.equal(approved.passed, false); t.diagnostic(approved.reason + approved.output); }
-  else assert.equal(approved.status, "passed", approved.reason + approved.output);
+  assert.notEqual(approved.status, "blocked", approved.reason + approved.output);
+  assert.equal(approved.status, "passed", approved.reason + approved.output);
+  assert.equal(approved.tests, 1);
+  assert.deepEqual(await readFile(approvedManifest), approvedBytes);
   await writeFile(join(snapshotRoot, "package-lock.json"), "{}");
   const unapproved = await runDevelopmentCheck({ snapshotRoot, kind: "node", targets: ["tests/dependency.test.mjs"] });
   assert.equal(unapproved.status, "blocked");
