@@ -1291,6 +1291,8 @@
 | `W14.publisher-ui` | artifacts | W09.agent-build, W13.console-entry | Package+Runtime+独立WebUI由真实Console构建，缺项拒绝，关闭/刷新继续原任务 |
 | `W16.workspace-ui` | integration | W15.first-create, W13.console-entry | 默认App无需进入Publisher；选套餐一次确认，显示订单/资源/应用/证据各自状态并打开真实URL |
 | `W16.console-ui-fixes` | integration | 无 | 既有Console表现层回归的最小修复：从owner读回派生展示结论，复用现有unit/browser目标；不新增业务语义、不写后端或业务SSOT |
+| `W20.workspace-deletion-source` | integration | W20.deletion-grant-source | Workspace owner删除/恢复与状态读回的局部源码收口：absence及删除receipt前不退款；退款非终态读回原命令而不重发；资源与退款状态分开；不接管Legacy原单 |
+| `W20.deletion-grant-source` | integration | 无 | Gateway删除授权边界局部源码收口：按原accepted delete obligation发放/恢复续执行权限，与create obligation分组；不扩权、不建立钱包或转移Workspace结算权 |
 | `W27.runnable-candidate` | integration | W02.owner-readiness | 精确SHA/digest的可测试Candidate，声明必需owner/ports/DB/identity/工具；非正式发布 |
 | `W27.development-governance` | integration | 无 | 开发治理统一入口：PR body机器校验(base SHA/DDD owner/phase/write set/source-check执行摘要)、开发SSOT phase入口与hard-entry审计；host-owned，restricted worker不获得这些写权限 |
 | `W26.default-source` | integration | W16.workspace-ui, W05.receipts | 本地真实服务/隔离外部权威证明默认App原单到应用；无真实provider冒充 |
@@ -1528,6 +1530,30 @@
 **验收：** npm run typecheck；node --test tests/ui/workspace-experience-model.test.ts；npm run test:browser:workspace-lifecycle
 
 **交付证据：** 真实执行的既有Console unit/browser目标(0 fail/skip)与source-check receipt；不声称业务链或W16包完成
+
+**未知结果：** 按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。
+
+#### W20.workspace-deletion-source
+
+**输入：** 现有Workspace删除源码及RED/GREEN证据；W20.deletion-grant-source实际Host receipt；同exact baseline的typed owner contracts、原单/授权/资源/钱包读回接口；隔离PostgreSQL及显式runner依赖输入；docs/invariants.md#workspace-lifecycle
+
+**写集：** `services/workspace/internal/launch/deletion.go`, `services/workspace/internal/launch/deletion_test.go`, `services/workspace/internal/launch/recovery.go`, `services/workspace/internal/launch/service.go`
+
+**验收：** OPL_POSTGRES_TESTS=1 go -C services/workspace test -json -count=1 ./internal/launch；原单/授权/absence/金额错配拒绝、非终态恢复不重复退款；实际测试数>0且0 fail/skip/TODO；runner只使用声明的隔离输入
+
+**交付证据：** Host从实际owner测试生成的source-check/stage receipt，绑定exact source/输入/输出/命令统计；下游串行联合验证按hash消费；不声称整个W20、真实删除、退款到账或Instance PASS
+
+**未知结果：** 按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。
+
+#### W20.deletion-grant-source
+
+**输入：** 现有Gateway accepted-operation grant源码与typed接口；同exact baseline的Workspace commit/action/audience合同；隔离PostgreSQL及显式runner依赖输入；docs/invariants.md#workspace-lifecycle
+
+**写集：** `services/gateway-integration/identity/authorization.go`, `services/gateway-integration/identity/workspace_grants_postgres_test.go`
+
+**验收：** OPL_POSTGRES_TESTS=1 go -C services/gateway-integration test -json -count=1 ./identity；错误accepted action/audience/资源拒绝；删除续执行不获得开通专用权限；实际测试数>0且0 fail/skip/TODO；runner只使用声明的隔离输入
+
+**交付证据：** Host从实际授权测试生成的source-check/stage receipt，绑定exact source/输入/输出/命令统计；Workspace source run在requires中消费本phase的实际receipt hash，再交串行联合验证；不声称真实钱包退款、整个W20或Instance PASS
 
 **未知结果：** 按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。
 

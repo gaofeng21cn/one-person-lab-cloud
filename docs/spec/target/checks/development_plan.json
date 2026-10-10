@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "34878da668b0c66f7d3cd4c79967cd94907f1cf3",
+  "sourceSHA": "2c4077d313ddf1c6e44b25c2c4f962b299e74b4e",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -4004,6 +4004,59 @@
         "npm run test:browser:workspace-lifecycle"
       ],
       "completionEvidence": "真实执行的既有Console unit/browser目标(0 fail/skip)与source-check receipt；不声称业务链或W16包完成",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W20.workspace-deletion-source",
+      "workPackage": "W20",
+      "window": "integration",
+      "startAfter": [
+        "W20.deletion-grant-source"
+      ],
+      "writePaths": [
+        "services/workspace/internal/launch/deletion.go",
+        "services/workspace/internal/launch/deletion_test.go",
+        "services/workspace/internal/launch/recovery.go",
+        "services/workspace/internal/launch/service.go"
+      ],
+      "inputRefs": [
+        "现有Workspace删除源码及RED/GREEN证据",
+        "W20.deletion-grant-source实际Host receipt",
+        "同exact baseline的typed owner contracts、原单/授权/资源/钱包读回接口",
+        "隔离PostgreSQL及显式runner依赖输入",
+        "docs/invariants.md#workspace-lifecycle"
+      ],
+      "deliverable": "Workspace owner删除/恢复与状态读回的局部源码收口：absence及删除receipt前不退款；退款非终态读回原命令而不重发；资源与退款状态分开；不接管Legacy原单",
+      "verification": [
+        "OPL_POSTGRES_TESTS=1 go -C services/workspace test -json -count=1 ./internal/launch",
+        "原单/授权/absence/金额错配拒绝、非终态恢复不重复退款",
+        "实际测试数>0且0 fail/skip/TODO；runner只使用声明的隔离输入"
+      ],
+      "completionEvidence": "Host从实际owner测试生成的source-check/stage receipt，绑定exact source/输入/输出/命令统计；下游串行联合验证按hash消费；不声称整个W20、真实删除、退款到账或Instance PASS",
+      "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
+    },
+    {
+      "id": "W20.deletion-grant-source",
+      "workPackage": "W20",
+      "window": "integration",
+      "startAfter": [],
+      "writePaths": [
+        "services/gateway-integration/identity/authorization.go",
+        "services/gateway-integration/identity/workspace_grants_postgres_test.go"
+      ],
+      "inputRefs": [
+        "现有Gateway accepted-operation grant源码与typed接口",
+        "同exact baseline的Workspace commit/action/audience合同",
+        "隔离PostgreSQL及显式runner依赖输入",
+        "docs/invariants.md#workspace-lifecycle"
+      ],
+      "deliverable": "Gateway删除授权边界局部源码收口：按原accepted delete obligation发放/恢复续执行权限，与create obligation分组；不扩权、不建立钱包或转移Workspace结算权",
+      "verification": [
+        "OPL_POSTGRES_TESTS=1 go -C services/gateway-integration test -json -count=1 ./identity",
+        "错误accepted action/audience/资源拒绝；删除续执行不获得开通专用权限",
+        "实际测试数>0且0 fail/skip/TODO；runner只使用声明的隔离输入"
+      ],
+      "completionEvidence": "Host从实际授权测试生成的source-check/stage receipt，绑定exact source/输入/输出/命令统计；Workspace source run在requires中消费本phase的实际receipt hash，再交串行联合验证；不声称真实钱包退款、整个W20或Instance PASS",
       "onUnknown": "按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。"
     },
     {
