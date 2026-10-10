@@ -71,8 +71,8 @@ export function parseApproval(value: unknown): RunApproval {
     if (seen.has(g.id)) fail('duplicate gate'); seen.add(g.id);
     if (!['node', 'go', 'browser', 'generated', 'developmentPlan'].includes(g.kind)) fail('unknown acceptance runner');
     strings(g.inputs, 'gate inputs').forEach(p => pathName(p, true)); strings(g.needs, 'gate dependencies', false).forEach(id);
-    if (g.kind === 'node') strings(g.targets, 'test targets').forEach(p => pathName(p));
-    else if (g.targets !== undefined) fail('targets only apply to node tests');
+    if (g.kind === 'node' || g.kind === 'browser') strings(g.targets, 'test targets').forEach(p => pathName(p));
+    else if (g.targets !== undefined) fail('targets only apply to node and browser tests');
     if (g.kind === 'go') pathName(g.cwd); else if (g.cwd !== undefined) fail('cwd only applies to Go checks');
     if (g.database !== undefined) {
       if (g.database !== 'isolated-owner-postgres') fail('unknown isolated database fixture');

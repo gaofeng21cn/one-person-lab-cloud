@@ -291,6 +291,20 @@ reads a DSN or socket directory from the worker or the invoking environment.
 The declaration is part of the approved record, so the stage receipt's approval
 hash binds which fixture the evidence came from.
 
+A browser acceptance gate (`"kind": "browser"`) names its exact test targets
+from the approved `test:browser:suite` inventory; a target outside that
+inventory is refused before any browser is resolved. The host resolves one
+fixed installed browser (macOS: `/Applications/Google Chrome.app`, Linux:
+`/opt/google/chrome`), launches it inside the OS sandbox before any repository
+test executes, and refuses absent installations instead of falling back to a
+downloaded bundle: `PLAYWRIGHT_BROWSERS_PATH` is redirected to an absent
+scratch path and browser downloads stay disabled. When a stage declares the
+locked `package.json`/`package-lock.json`, the host materializes the approved
+`node_modules` as a private writable scratch copy, so Vite's configuration and
+dependency temporary writes stay in admitted scratch while the shared
+installation and the source checkout are never granted. Zero registered tests,
+failures, skips and TODOs all refuse PASS.
+
 ## Pre-Commit Checks
 
 ```bash
