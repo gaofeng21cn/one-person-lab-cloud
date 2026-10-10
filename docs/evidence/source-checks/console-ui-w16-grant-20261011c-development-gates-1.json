@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "8cd6c436cde9153a7e96a7afafb5a5a57d8ba69f",
+  "recordedAt": "2026-10-10T19:45:06.826Z",
+  "writeSet": [
+    "docs/evidence/source-checks/console-ui-w16-grant-20261011-development-gates-1.json",
+    "docs/evidence/source-checks/console-ui-w16-grant-20261011-development-plan-1.json",
+    "docs/evidence/source-checks/console-ui-w16-grant-20261011b-development-gates-1.json",
+    "docs/evidence/source-checks/console-ui-w16-grant-20261011b-development-plan-1.json",
+    "docs/evidence/source-checks/console-ui-w16-grant-20261011c-development-gates-1.json",
+    "docs/evidence/source-checks/console-ui-w16-grant-20261011c-development-plan-1.json",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/render_development_plan.py"
+  ],
+  "verifiedSource": {
+    "baseSha": "8cd6c436cde9153a7e96a7afafb5a5a57d8ba69f",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/console-ui-w16-grant-20261011-development-gates-1.json": "2636e0da9b1ae17b624bf4edc652fcc5bd0a0686f25c0ed47b46a779949eea0f",
+      "docs/evidence/source-checks/console-ui-w16-grant-20261011-development-plan-1.json": "d2b677f30d8e4c08a54ba0c3ab51b4b8f291251548d5a191732c457ca667564c",
+      "docs/evidence/source-checks/console-ui-w16-grant-20261011b-development-gates-1.json": "afdc25056c64f7ad99a035b64feb521e728c89ea968150597859032d46e5a826",
+      "docs/evidence/source-checks/console-ui-w16-grant-20261011b-development-plan-1.json": "8690e38b1c1fa55c3b86f29ae0781bbea8b8cf7d6901d6d261d1315ecdf04166",
+      "docs/evidence/source-checks/console-ui-w16-grant-20261011c-development-plan-1.json": "83310fc3b854df9973e9272cef1c911f646ad99131a0fd70dee7eccc1cf343ac",
+      "docs/spec/target/14_implementation_work_packages.md": "2439da6e8efb3e53d50832b8145a3e48a859eab6968091609816856cb4328df2",
+      "docs/spec/target/checks/development_plan.json": "596ceb7a21b3070aa900ea3b2139701831960fbca4437ee9872e634b06c5c5cd",
+      "docs/spec/target/checks/render_development_plan.py": "53e5b609d953d82e9c28bb6c438d9d313c29ffd93fffb980568047c12d9f0bb3"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/check-pr-governance.test.ts",
+    "exitCode": 0,
+    "tests": 19,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "b8ca639e1417bb08c43a8eaba308a379e1f3c7f31b7e57831c0b7cbd93172dea"
+  },
+  "sourceStage": {
+    "runId": "console-ui-w16-grant-20261011c",
+    "gateId": "development-gates",
+    "attempt": 1,
+    "receiptHash": "a1503b1e9a660b03d669518c3e06781a59df7e30f8b1243664f0c288ae56cd55"
+  }
+}
