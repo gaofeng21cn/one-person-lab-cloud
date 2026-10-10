@@ -10744,6 +10744,7 @@ components:
       - createUpload
       - createUploadPart
       - createWorkspace
+      - deleteAcceptedResources
       - deleteCapabilityVersion
       - deleteTenant
       - deleteWorkspace
@@ -13089,6 +13090,7 @@ x-service-action-allowlist:
   - claimNextPeriodObligation
   - createQuote
   - debitScheduledPeriod
+  - deleteAcceptedResources
   - executeScheduledPlanChange
   - fenceRouteEpoch
   - getCapabilityVersion
@@ -13207,6 +13209,7 @@ x-accepted-operation-actions:
   - appendReceipt
   delete_workspace:
   - retireRuntime
+  - deleteAcceptedResources
   - observeResources
   - readWalletAction
   - refundConfirmedDeletion
