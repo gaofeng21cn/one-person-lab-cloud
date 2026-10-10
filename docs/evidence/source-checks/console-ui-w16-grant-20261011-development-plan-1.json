@@ -3,7 +3,7 @@
   "receiptType": "opl_development_source_check",
   "evidenceLayer": "source",
   "result": "pass",
-  "sourceBaseSha": "a9f3084d58548a054ce709c632c016ad1e1a0c69",
+  "sourceBaseSha": "8cd6c436cde9153a7e96a7afafb5a5a57d8ba69f",
   "recordedAt": "2026-10-10T18:36:20.065Z",
   "writeSet": [
     "docs/evidence/source-checks/console-ui-w16-grant-20261011-development-plan-1.json",
@@ -12,7 +12,7 @@
     "docs/spec/target/checks/render_development_plan.py"
   ],
   "verifiedSource": {
-    "baseSha": "a9f3084d58548a054ce709c632c016ad1e1a0c69",
+    "baseSha": "8cd6c436cde9153a7e96a7afafb5a5a57d8ba69f",
     "changedFilesSha256": {
       "docs/spec/target/14_implementation_work_packages.md": "2439da6e8efb3e53d50832b8145a3e48a859eab6968091609816856cb4328df2",
       "docs/spec/target/checks/development_plan.json": "596ceb7a21b3070aa900ea3b2139701831960fbca4437ee9872e634b06c5c5cd",
