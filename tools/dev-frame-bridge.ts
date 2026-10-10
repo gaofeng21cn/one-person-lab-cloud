@@ -218,7 +218,7 @@ export async function convertManifest(options: ConvertOptions) {
   for (const raw of rawDefinitions) {
     const definition = object(raw, 'gate definition');
     for (const key of Object.keys(definition)) {
-      if (!['id', 'kind', 'inputs', 'targets', 'cwd', 'needs'].includes(key)) fail(`unknown gate field: ${key}`);
+      if (!['id', 'kind', 'inputs', 'targets', 'cwd', 'database', 'needs'].includes(key)) fail(`unknown gate field: ${key}`);
     }
     const gateId = identifier(definition.id, 'gate id');
     if (definitions.has(gateId)) fail(`duplicate gate definition: ${gateId}`);
@@ -233,6 +233,12 @@ export async function convertManifest(options: ConvertOptions) {
     } else if (definition.targets !== undefined) fail('targets only apply to node tests');
     if (definition.kind === 'go') repoPath(definition.cwd, 'gate cwd', true);
     else if (definition.cwd !== undefined) fail('cwd only applies to Go checks');
+    // The host-owned isolated fixture declaration travels through the shared
+    // converter unchanged; the host admission re-validates it before approval.
+    if (definition.database !== undefined) {
+      if (definition.database !== 'isolated-owner-postgres') fail(`unknown isolated database fixture: ${gateId}`);
+      if (definition.kind !== 'go') fail(`isolated database fixture only applies to Go checks: ${gateId}`);
+    }
     definitions.set(gateId, definition);
   }
   for (const gateId of gateIds) if (!definitions.has(gateId)) fail(`gate definitions do not cover the manifest gates: ${gateId}`);

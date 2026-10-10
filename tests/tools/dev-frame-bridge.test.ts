@@ -225,6 +225,31 @@ test('refuses gate definitions that do not match the manifest gate ids', async (
   }
 });
 
+test('carries the host-owned isolated database declaration and refuses misuse', async () => {
+  const root = tempRoot('frame-database-gate-');
+  try {
+    writeStubFramework(root);
+    const manifestPath = join(root, 'manifest.json');
+    const gatesPath = join(root, 'gates.json');
+    writeJson(manifestPath, manifestFixture());
+    writeJson(gatesPath, [{ ...gatesFixture()[0], database: 'isolated-owner-postgres' }]);
+    const approval = await convertManifest({ manifestPath, frameworkRoot: root, gatesPath, store: join(root, 'store'), planPath: 'docs/spec/target/checks/development_plan.json' });
+    assert.equal(approval.gates[0].database, 'isolated-owner-postgres');
+    writeJson(gatesPath, [{ ...gatesFixture()[0], database: 'production-postgres' }]);
+    await assert.rejects(
+      () => convertManifest({ manifestPath, frameworkRoot: root, gatesPath, store: join(root, 'store'), planPath: 'docs/spec/target/checks/development_plan.json' }),
+      /unknown isolated database fixture/u,
+    );
+    writeJson(gatesPath, [{ id: 'contracts-decoder', kind: 'node', inputs: ['packages/contracts/go'], targets: ['tests/tools/dev-frame-bridge.test.ts'], needs: [], database: 'isolated-owner-postgres' }]);
+    await assert.rejects(
+      () => convertManifest({ manifestPath, frameworkRoot: root, gatesPath, store: join(root, 'store'), planPath: 'docs/spec/target/checks/development_plan.json' }),
+      /only applies to Go checks/u,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('resolves a downstream requires binding by the upstream record and its receipt hash', () => {
   const root = tempRoot('frame-requires-');
   try {
