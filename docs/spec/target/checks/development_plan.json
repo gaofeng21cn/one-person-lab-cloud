@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "e1b8c65e2a0e2872fea4928d1ed72ba5c8ae02e2",
+  "sourceSHA": "34878da668b0c66f7d3cd4c79967cd94907f1cf3",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -3982,11 +3982,13 @@
       "startAfter": [],
       "writePaths": [
         "apps/console-ui/src/app",
-        "apps/console-ui/src/pages"
+        "apps/console-ui/src/pages",
+        "apps/console-ui/src/styles.css"
       ],
       "testWritePaths": [
         "tests/ui/workspace-experience-model.test.ts",
-        "tests/ui/workspace-task-experience-browser.test.ts"
+        "tests/ui/workspace-task-experience-browser.test.ts",
+        "tests/ui/cloud-webui-browser.test.ts"
       ],
       "inputRefs": [
         "既有Console页面/controller规格",
