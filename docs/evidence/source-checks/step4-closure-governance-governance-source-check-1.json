@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "34878da668b0c66f7d3cd4c79967cd94907f1cf3",
+  "recordedAt": "2026-10-10T09:13:23.931Z",
+  "writeSet": [
+    "docs/evidence/source-checks/step4-closure-governance-governance-source-check-1.json",
+    "docs/evidence/source-checks/step4-frame-bridge-frame-bridge-4.json",
+    "docs/evidence/source-checks/step4-frame-bridge-v2-frame-bridge-1.json",
+    "docs/evidence/source-checks/step4-w01-selection-decoder-v2-contracts-decoder-2.json",
+    "docs/evidence/source-checks/step4-w02-owner-readiness-v2-owner-readiness-1.json",
+    "tests/tools/dev-frame-bridge.test.ts",
+    "tests/tools/verify-local.test.ts",
+    "tools/dev-frame-bridge.ts",
+    "tools/verify-local.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "34878da668b0c66f7d3cd4c79967cd94907f1cf3",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/step4-frame-bridge-frame-bridge-4.json": "c2cd06e7e26a5663e31839c00e06effa50b4851ac802e2f22f35e4a5931ae025",
+      "docs/evidence/source-checks/step4-frame-bridge-v2-frame-bridge-1.json": "c8333e4ed4303d14edc53e0d1e7899704e65a028b86e065d0a0260fc7d7bdcfd",
+      "docs/evidence/source-checks/step4-w01-selection-decoder-v2-contracts-decoder-2.json": "9ed85c3f4e7352e3ed1c84b4da3ac927c59403bd872287c6a546677765ba9091",
+      "docs/evidence/source-checks/step4-w02-owner-readiness-v2-owner-readiness-1.json": "0d858d4b463e0481eff5a31954e796448327aa3fc119a6e247bdfbbfaeddf89d",
+      "tests/tools/dev-frame-bridge.test.ts": "d47d32c888c740487c48ebbd074e5524831db3338d7b75f729e3f027387ab04a",
+      "tests/tools/verify-local.test.ts": "4ecfdd8697f17f4fd54984ebc2bb7035e6bfc8d4660edff43bc01c42d5cb9972",
+      "tools/dev-frame-bridge.ts": "ff6e679c6ce576612e723ceb99ccf0e5a19694f002df684b295ed7d3fc448848",
+      "tools/verify-local.ts": "c807a162129e4bd6b4cd8e4dc31df410205429a5f7fe5def575068e5ff9763a0"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/dev-frame-bridge.test.ts",
+    "exitCode": 0,
+    "tests": 9,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "5fcd0b9477274f719232b5a0c3d1b39a7f2e44939344346ee66f73cc39ba9838"
+  },
+  "sourceStage": {
+    "runId": "step4-closure-governance",
+    "gateId": "governance-source-check",
+    "attempt": 1,
+    "receiptHash": "682e6ebe7820ba7806f9423ccdc114e30c1c08952beb63148f90e80be4ef8259"
+  }
+}

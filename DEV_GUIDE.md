@@ -180,10 +180,17 @@ npm run check:pr-body -- --body-file /absolute/pr-body.md --base origin/main
 
 The workflow is real local focused execution results, host-generated PR
 source-check evidence, PR record and freshness checks, actual CI `validate`
-execution for the current revision, `gaofeng21cn` review, then merge by a user-authorized agent or
-`gaofeng21cn` under the existing merge rules. Updating the revision requires
-current CI results and fresh evidence for changed inputs; editing the PR body
-reruns record validation.
+execution for the current revision, a recorded technical review, then a
+separately authorized merge. The review is user-controlled: a user-authorized
+reviewer examines and records it against the exact source head and base,
+covering SSOT/owner/write-set compliance, the real focused behavior evidence
+and the fresh host source-check; when the contributor account authored the pull
+request the review is recorded as a COMMENT review rather than a
+self-approval, and no specific GitHub username is required. Merge still
+requires actual successful current-revision CI, the repository's actual
+protection requirements and merge authorization by a separately authorized
+actor. Updating the revision requires current CI results and fresh evidence for
+changed inputs; editing the PR body reruns record validation.
 
 The host owns approval and authoritative run receipts in runtime storage. After
 `dev:verify` records a passed stage in the approved run, the host exports exactly
@@ -249,11 +256,16 @@ manufacture a retired acceptance receipt or switch to the head checker to get a
 passing record. Actual CI and the existing review/merge rules still decide
 whether that source revision can merge.
 
-`gaofeng21cn` review and existing user merge authorization remain unchanged.
-Merge requires actual successful CI results for the current revision and the
-applicable review rules; a valid record alone is insufficient. These workflow
-checks do not establish that remote branch protection is configured. The
-workflow uses `pull_request`, never `pull_request_target`, and reads no secrets.
+Review and merge authorization remain user-controlled: a user-authorized
+reviewer records the technical review against the exact source head and base
+(a COMMENT review rather than self-approval when the contributor account
+authored the pull request), and a separately authorized actor performs the
+merge under the repository's actual protection requirements; no specific
+GitHub username is required. Merge requires actual successful CI results for
+the current revision and the applicable review rules; a valid record alone is
+insufficient. These workflow checks do not establish that remote branch
+protection is configured. The workflow uses `pull_request`, never
+`pull_request_target`, and reads no secrets.
 
 Restricted workers cannot write `AGENTS.md`, `DEV_GUIDE.md`, `.github/**`,
 `tools/**`, `tests/tools/**`, `package.json` or the development plan; the
@@ -263,6 +275,21 @@ presentation fix uses `W16.console-ui-fixes`; its phase record grants the two
 existing console test files through `testWritePaths` (exact files under
 `tests/`, never a directory or a business owner) so the implementation and its
 test stay in one owner scope.
+
+A Go acceptance gate that can only be executed against a real PostgreSQL server
+declares the host-owned fixture with `"database": "isolated-owner-postgres"` on
+that gate. The host provisions one ephemeral container from the pinned compose
+image with trust authentication, a loopback-only published port and, on Linux, a
+host-created Unix-socket directory, and removes the container after the stage.
+The sealed runner receives only that endpoint as
+`OPL_OWNER_MIGRATION_TEST_ADMIN_DSN` with `OPL_POSTGRES_TESTS=1`; a Linux stage
+runs in a private network namespace that cannot reach the host's published
+port, so it connects through the bound socket directory. The runner validates
+the endpoint shape and the socket-directory pairing before any execution;
+provenance comes from the host entry being the only provisioner, which never
+reads a DSN or socket directory from the worker or the invoking environment.
+The declaration is part of the approved record, so the stage receipt's approval
+hash binds which fixture the evidence came from.
 
 ## Pre-Commit Checks
 
@@ -299,8 +326,11 @@ Git scope uses the merge base plus local index/worktree changes, not unrelated
 upstream changes. Whitespace checks cover committed, staged and unstaged diffs.
 The focused command outputs actual execution results; it does not automatically
 write a source-check receipt. The host's `dev:verify` separately runs an admitted
-stage and appends a runtime receipt to the host store. For a PR, the host
-generates the source-check from that executed record with
+stage and appends a runtime receipt to the host store; that receipt records
+the command line that actually executed and the executed cwd, and the exporter
+publishes the recorded command while refusing a historical receipt that never
+captured one. For a PR, the host generates the source-check from that executed
+record with
 `node tools/dev-session.ts source-check <host-store> <run-id> <gate-id>`. Do not
 hand-write a passing result or treat a runtime receipt as that PR record. Focused success proves only the selected checks, not
 downstream

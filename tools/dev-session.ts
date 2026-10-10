@@ -40,7 +40,14 @@ export function canonical(value: any): string {
   return JSON.stringify(value);
 }
 export interface DevelopmentGate {
-  id: string; kind: 'node' | 'go' | 'browser' | 'generated' | 'developmentPlan'; inputs: string[]; targets?: string[]; cwd?: string; needs: string[];
+  id: string; kind: 'node' | 'go' | 'browser' | 'generated' | 'developmentPlan'; inputs: string[]; targets?: string[]; cwd?: string;
+  /**
+   * A stage that can only be executed against a real PostgreSQL server declares
+   * the host-owned isolated fixture. The host provisions it and hands only the
+   * loopback DSN to the sealed runner; the approval hash binds the declaration.
+   */
+  database?: 'isolated-owner-postgres';
+  needs: string[];
 }
 /** A host execution authorization references a phase record; it never copies business ownership or progress. */
 export interface RunApproval {
@@ -60,13 +67,17 @@ export function parseApproval(value: unknown): RunApproval {
   if (!Array.isArray(a.gates) || !a.gates.length) fail('acceptance gates required');
   const seen = new Set<string>();
   for (const raw of a.gates) {
-    const g = object(raw); keys(g, ['id', 'kind', 'inputs', 'targets', 'cwd', 'needs']); id(g.id);
+    const g = object(raw); keys(g, ['id', 'kind', 'inputs', 'targets', 'cwd', 'database', 'needs']); id(g.id);
     if (seen.has(g.id)) fail('duplicate gate'); seen.add(g.id);
     if (!['node', 'go', 'browser', 'generated', 'developmentPlan'].includes(g.kind)) fail('unknown acceptance runner');
     strings(g.inputs, 'gate inputs').forEach(p => pathName(p, true)); strings(g.needs, 'gate dependencies', false).forEach(id);
     if (g.kind === 'node') strings(g.targets, 'test targets').forEach(p => pathName(p));
     else if (g.targets !== undefined) fail('targets only apply to node tests');
     if (g.kind === 'go') pathName(g.cwd); else if (g.cwd !== undefined) fail('cwd only applies to Go checks');
+    if (g.database !== undefined) {
+      if (g.database !== 'isolated-owner-postgres') fail('unknown isolated database fixture');
+      if (g.kind !== 'go') fail('isolated database fixture only applies to Go checks');
+    }
   }
   const pending = new Map<string, Set<string>>(a.gates.map((g: DevelopmentGate) => [g.id, new Set(g.needs)]));
   while (pending.size) {
@@ -269,7 +280,8 @@ export interface StageReceipt {
   evidenceLayer: 'source'; sourceSha: string; approvalHash: string; phaseHash: string; runnerHash: string;
   inputHash: string; dependencies: { runId: string; gateId: string; receiptHash: string }[];
   result: 'passed' | 'failed' | 'blocked'; checkedAt: string;
-  verification: { tests: number; failed: number; skipped: number; exitCode: number | null; outputSha256: string; reason?: string };
+  verification: { tests: number; failed: number; skipped: number; exitCode: number | null; outputSha256: string;
+    command?: string; cwd?: string; reason?: string };
 }
 function inputFiles(root: string, paths: string[]) {
   const files = new Map<string, Buffer>(); let bytes = 0;
@@ -410,6 +422,11 @@ export function generateSourceCheckReceipt(root: string, storePath: string, runI
     // multi-link or oversized files; nothing falls through to "missing".
     changedFilesSha256[changed] = digest(fileBytes(session.root, changed, 16 * 1024 * 1024));
   }
+  const recordedCommand = last.receipt.verification.command;
+  if (typeof recordedCommand !== 'string' || !recordedCommand.trim())
+    fail('source-check export requires the recorded executed command; re-run the gate on the current runner revision');
+  const recordedCwd = last.receipt.verification.cwd;
+  const executionCommand = recordedCwd ? `${recordedCommand} (cwd: ${recordedCwd})` : recordedCommand;
   const writeSet = [...new Set([...paths, path])].sort();
   const receipt = {
     schemaVersion: 1,
@@ -421,7 +438,7 @@ export function generateSourceCheckReceipt(root: string, storePath: string, runI
     writeSet,
     verifiedSource: { baseSha: session.approval.baseSha, changedFilesSha256 },
     execution: {
-      command: gate.kind === 'node' ? ['node --test --test-reporter=tap', ...(gate.targets ?? [])].join(' ') : `${gate.kind} acceptance gate`,
+      command: executionCommand,
       exitCode: last.receipt.verification.exitCode,
       tests: last.receipt.verification.tests,
       failed: last.receipt.verification.failed,
@@ -644,8 +661,13 @@ export class DevelopmentSession {
       // A Node stage resolves its dependencies from the approved host install
       // only when the stage declared the dependency manifest; the runner binds
       // that install and re-checks the locked manifests before execution.
-      const { runDevelopmentCheck } = await import('./verify-local.ts');
-      const checked = await runDevelopmentCheck({ snapshotRoot: snapshot, kind: gate.kind, targets: gate.targets, cwd: gate.cwd });
+      const { runDevelopmentCheck, withIsolatedOwnerDatabase } = await import('./verify-local.ts');
+      // A stage that declared the isolated fixture is executed against the
+      // host-provisioned container; the DSN is produced by the trusted host
+      // runner and never read back from the worker or the invoking process.
+      const checked = gate.database === 'isolated-owner-postgres'
+        ? await withIsolatedOwnerDatabase((fixture: { dsn: string; socketDirectory?: string }) => runDevelopmentCheck({ snapshotRoot: snapshot!, kind: gate.kind, targets: gate.targets, cwd: gate.cwd, ownerDatabaseDsn: fixture.dsn, ...(fixture.socketDirectory ? { ownerDatabaseSocketDir: fixture.socketDirectory } : {}) }))
+        : await runDevelopmentCheck({ snapshotRoot: snapshot, kind: gate.kind, targets: gate.targets, cwd: gate.cwd });
       const unchanged = hash === fingerprint(inputFiles(this.root, gate.inputs)) && phaseHash === phase(this.root, this.approval).fingerprint;
       const previous = receiptHistory(this.store, this.approval.runId, gateId);
       const currentEvidence = this.gateEvidence(gate);
@@ -656,7 +678,7 @@ export class DevelopmentSession {
         evidenceLayer: 'source', sourceSha: this.head(), approvalHash: digest(canonical(this.approval)), phaseHash, runnerHash: runnerHash(), inputHash: hash, dependencies,
         result: unchanged && dependenciesUnchanged ? checked.status : 'failed', checkedAt: new Date().toISOString(),
         verification: { tests: checked.tests, failed: checked.failed, skipped: checked.skipped, exitCode: checked.exitCode, outputSha256: digest(checked.output),
-          ...(reason ? { reason } : {}) } };
+          ...(checked.command ? { command: checked.command } : {}), ...(checked.cwd ? { cwd: checked.cwd } : {}), ...(reason ? { reason } : {}) } };
       appendReceipt(this.store, receipt);
       return { ...this.view(), ...(!dependenciesUnchanged ? { result: 'failed' } : {}), verification: receipt.verification };
     } finally { if (snapshot) rmSync(snapshot, { recursive: true, force: true }); unlinkSync(lock); }

@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "e4b9cac0ac94e3a905343ab95cfac3e98acf4f28",
+  "recordedAt": "2026-10-10T09:02:45.553Z",
+  "writeSet": [
+    "docs/evidence/source-checks/step4-frame-bridge-frame-bridge-4.json",
+    "docs/evidence/source-checks/step4-frame-bridge-v2-frame-bridge-1.json",
+    "packages/contracts/go/workspace_application_selection.go",
+    "packages/contracts/go/workspace_application_selection_test.go",
+    "tests/tools/dev-frame-bridge.test.ts",
+    "tools/dev-frame-bridge.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "e4b9cac0ac94e3a905343ab95cfac3e98acf4f28",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/step4-frame-bridge-frame-bridge-4.json": "c2cd06e7e26a5663e31839c00e06effa50b4851ac802e2f22f35e4a5931ae025",
+      "packages/contracts/go/workspace_application_selection.go": "86f14808103dcfe25e254997f35f932063d9a0f2a96722f521d8bf595896795e",
+      "packages/contracts/go/workspace_application_selection_test.go": "b17b24df003a30db27cfb569c0b3e83d9c0a43792fa4a0db951a63f56f956de8",
+      "tests/tools/dev-frame-bridge.test.ts": "d47d32c888c740487c48ebbd074e5524831db3338d7b75f729e3f027387ab04a",
+      "tools/dev-frame-bridge.ts": "ff6e679c6ce576612e723ceb99ccf0e5a19694f002df684b295ed7d3fc448848"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/dev-frame-bridge.test.ts",
+    "exitCode": 0,
+    "tests": 9,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "8337723c96607d5478c51ac5dea3171fd9ff89387460464ba13116fa59cec8a8"
+  },
+  "sourceStage": {
+    "runId": "step4-frame-bridge-v2",
+    "gateId": "frame-bridge",
+    "attempt": 1,
+    "receiptHash": "2db205228e268479d80443a77e540186c2e809890b528811222979cfa9c7fdd9"
+  }
+}
