@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "0e37902883cb4fab7aefe185e3dcec3f00d6ad2b",
+  "recordedAt": "2026-10-10T16:52:55.706Z",
+  "writeSet": [
+    "docs/evidence/source-checks/step4-closure-contracts-v4-contracts-decoder-1.json",
+    "docs/evidence/source-checks/step4-closure-contracts-v5-contracts-decoder-1.json",
+    "docs/evidence/source-checks/step4-closure-contracts-v6-contracts-decoder-1.json",
+    "docs/evidence/source-checks/step4-closure-contracts-v7-contracts-decoder-1.json",
+    "packages/contracts/go/workspace_application_selection.go",
+    "packages/contracts/go/workspace_application_selection_test.go"
+  ],
+  "verifiedSource": {
+    "baseSha": "0e37902883cb4fab7aefe185e3dcec3f00d6ad2b",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/step4-closure-contracts-v4-contracts-decoder-1.json": "9989e4fdbcdbcf8c07d67d0042f7f93033d8192f039b5f3caba50beb86a23c8d",
+      "docs/evidence/source-checks/step4-closure-contracts-v5-contracts-decoder-1.json": "698b6f58db70ab4a2111e57c84dec78373b7df4054747787bd2d7a92353380ea",
+      "docs/evidence/source-checks/step4-closure-contracts-v6-contracts-decoder-1.json": "9c8363989d711c18659bd4ad73575ff62297693a3ca40fc965699bc6f8664b5c",
+      "packages/contracts/go/workspace_application_selection.go": "86f14808103dcfe25e254997f35f932063d9a0f2a96722f521d8bf595896795e",
+      "packages/contracts/go/workspace_application_selection_test.go": "b17b24df003a30db27cfb569c0b3e83d9c0a43792fa4a0db951a63f56f956de8"
+    }
+  },
+  "execution": {
+    "command": "go test -count=1 -json ./... (cwd: packages/contracts/go)",
+    "exitCode": 0,
+    "tests": 123,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "c1c1f31d0b9248e3ffa4540c7845d4b39c3df32f2f74271d6ea5783c00b69535"
+  },
+  "sourceStage": {
+    "runId": "step4-closure-contracts-v7",
+    "gateId": "contracts-decoder",
+    "attempt": 1,
+    "receiptHash": "993bbc9fed32f439a52ddb29fee5df10eaf48f888a8f9ab2b6b8a5d0bbbed5af"
+  }
+}
