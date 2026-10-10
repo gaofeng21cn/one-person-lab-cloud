@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "b06bcb88849176344944dc741305a6072b4f567e",
+  "recordedAt": "2026-10-10T22:53:53.219Z",
+  "writeSet": [
+    "docs/evidence/source-checks/console-ui-l3-closeout-20261011-final-publisher-model-1.json"
+  ],
+  "verifiedSource": {
+    "baseSha": "b06bcb88849176344944dc741305a6072b4f567e",
+    "changedFilesSha256": {}
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/ui/cloud-webui-model.test.ts",
+    "exitCode": 0,
+    "tests": 5,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "0aefc050d7b0c1800d8b7aaddde666c64e6fea5336e5e3d6f2320a429f8c48c7"
+  },
+  "sourceStage": {
+    "runId": "console-ui-l3-closeout-20261011-final",
+    "gateId": "publisher-model",
+    "attempt": 1,
+    "receiptHash": "13811778beb7750bae90514115119a3a7eb0010ef24eb366da8691e2fbfd9939"
+  }
+}
