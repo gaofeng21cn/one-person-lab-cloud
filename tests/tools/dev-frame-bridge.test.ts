@@ -282,6 +282,36 @@ test('an unrelated malformed receipt never affects the named gate consumption', 
   }
 });
 
+test('carries focused browser gates only with explicit exact targets', async () => {
+  const root = tempRoot('frame-browser-gate-');
+  try {
+    writeStubFramework(root);
+    const manifestPath = join(root, 'manifest.json');
+    const gatesPath = join(root, 'gates.json');
+    writeJson(manifestPath, manifestFixture());
+    writeJson(gatesPath, [{ id: 'contracts-decoder', kind: 'browser', inputs: ['tests/ui'], targets: ['tests/ui/cloud-webui-browser.test.ts'], needs: [] }]);
+    const approval = await convertManifest({ manifestPath, frameworkRoot: root, gatesPath, store: join(root, 'store'), planPath: 'docs/spec/target/checks/development_plan.json' });
+    assert.deepEqual(approval.gates[0].targets, ['tests/ui/cloud-webui-browser.test.ts']);
+    writeJson(gatesPath, [{ id: 'contracts-decoder', kind: 'browser', inputs: ['tests/ui'], needs: [] }]);
+    await assert.rejects(
+      () => convertManifest({ manifestPath, frameworkRoot: root, gatesPath, store: join(root, 'store'), planPath: 'docs/spec/target/checks/development_plan.json' }),
+      /Browser gates require explicit test targets/u,
+    );
+    writeJson(gatesPath, [{ id: 'contracts-decoder', kind: 'browser', inputs: ['tests/ui'], targets: ['/tmp/escape.test.ts'], needs: [] }]);
+    await assert.rejects(
+      () => convertManifest({ manifestPath, frameworkRoot: root, gatesPath, store: join(root, 'store'), planPath: 'docs/spec/target/checks/development_plan.json' }),
+      /must be a repository-relative path/u,
+    );
+    writeJson(gatesPath, [{ id: 'contracts-decoder', kind: 'generated', inputs: ['tests/ui'], targets: ['tests/ui/cloud-webui-browser.test.ts'], needs: [] }]);
+    await assert.rejects(
+      () => convertManifest({ manifestPath, frameworkRoot: root, gatesPath, store: join(root, 'store'), planPath: 'docs/spec/target/checks/development_plan.json' }),
+      /targets only apply to node and browser/u,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('resolves a downstream requires binding by the upstream record and its receipt hash', () => {
   const root = tempRoot('frame-requires-');
   try {

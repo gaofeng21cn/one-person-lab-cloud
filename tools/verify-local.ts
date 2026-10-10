@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from "node:child_process";
 import { constants } from "node:fs";
-import { access, chmod, mkdir, mkdtemp, readFile, realpath, rm, stat } from "node:fs/promises";
+import { access, chmod, cp, mkdir, mkdtemp, readFile, realpath, rm, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -428,6 +428,40 @@ function developmentGoJSON(stdout: string) {
   return { tests, failed, skipped, ...(reason ? { reason } : {}) };
 }
 
+/**
+ * The host approves one fixed system browser installation for browser stages;
+ * an unapproved download or user-home cache is never admitted. The stage probe
+ * launches this installation inside the OS sandbox before any test executes.
+ */
+export const approvedBrowserApplications = Object.freeze(
+  process.platform === "darwin"
+    ? [{ application: "/Applications/Google Chrome.app", executable: "Contents/MacOS/Google Chrome" }]
+    : [{ application: "/opt/google/chrome", executable: "chrome" }]
+);
+export type ApprovedBrowser = { application: string; executable: string };
+
+/** Resolve one complete approved browser installation; anything short of that stays absent. */
+export async function resolveApprovedBrowser(
+  applications: readonly { application: string; executable: string }[] = approvedBrowserApplications
+): Promise<ApprovedBrowser | undefined> {
+  for (const candidate of applications) {
+    try {
+      const application = await realpath(candidate.application);
+      const executable = await realpath(join(application, candidate.executable));
+      if (!inside(application, executable) || !(await stat(executable)).isFile()) continue;
+      await access(executable, constants.X_OK);
+      return { application, executable };
+    } catch { /* Only a complete fixed installation is an approved browser. */ }
+  }
+  return undefined;
+}
+
+// A browser stage boots the approved browser and its fixture server; the
+// focused Console target pair measured about five minutes in the open
+// environment, so a browser stage receives the runner's full bounded budget
+// instead of the two minutes that cover hermetic Node stages.
+const browserStageTimeoutMs = 900_000;
+
 export async function runDevelopmentCheck(options: {
   snapshotRoot: string;
   kind: "node" | "go" | "browser" | "generated" | "developmentPlan";
@@ -451,7 +485,7 @@ export async function runDevelopmentCheck(options: {
     ({ passed: false, status: "blocked", exitCode: null, tests: 0, failed: 0, skipped: 0, output, reason });
   let scratch: string | undefined;
   try {
-    const timeoutMs = options.timeoutMs ?? 120_000;
+    const timeoutMs = options.timeoutMs ?? (options.kind === "browser" ? browserStageTimeoutMs : 120_000);
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 900_000) return blocked("invalid timeoutMs (1..900000 required)");
     if (!["node", "go", "browser", "generated", "developmentPlan"].includes(options.kind)) return blocked("unsupported development check kind");
     const snapshot = await realpath(options.snapshotRoot);
@@ -470,13 +504,13 @@ export async function runDevelopmentCheck(options: {
     if (!inside(snapshot, cwd) || !(await stat(cwd)).isDirectory()) return blocked("cwd escapes snapshot");
     const targets = options.targets ?? [];
     if (!Array.isArray(targets)) return blocked("targets must be exact relative test files");
-    if (options.kind !== "node" && targets.length) return blocked("targets are supported only for Node checks");
-    if (options.kind === "node") {
-      if (targets.length === 0) return blocked("Node checks require explicit test file targets");
+    if (options.kind !== "node" && options.kind !== "browser" && targets.length) return blocked("targets are supported only for Node and browser checks");
+    if (options.kind === "node" || options.kind === "browser") {
+      if (targets.length === 0) return blocked(`${options.kind === "node" ? "Node" : "Browser"} checks require explicit test file targets`);
       for (const target of targets) {
-        if (!exactRelativePath(target) || !/\.(?:[cm]?[jt]s)$/.test(target)) return blocked("invalid Node target: flags, traversal and globs are forbidden");
+        if (!exactRelativePath(target) || !/\.(?:[cm]?[jt]s)$/.test(target)) return blocked("invalid test target: flags, traversal and globs are forbidden");
         const file = await realpath(resolve(cwd, target));
-        if (!inside(snapshot, file) || !(await stat(file)).isFile()) return blocked("Node target escapes snapshot or is not a file");
+        if (!inside(snapshot, file) || !(await stat(file)).isFile()) return blocked("test target escapes snapshot or is not a file");
       }
     }
     if ((options.kind === "browser" || options.kind === "generated" || options.kind === "developmentPlan") && cwd !== snapshot) return blocked("browser/generated/plan checks require the snapshot root cwd");
@@ -532,21 +566,30 @@ export async function runDevelopmentCheck(options: {
         readPaths.add(path); readPaths.add(canonical);
       } catch { /* Absent system installation is not mounted. */ }
     }
-    try {
-      const dependencies = await realpath(join(snapshot, "node_modules"));
-      if (!inside(snapshot, dependencies)) {
-        const approvedDependencies = await realpath(join(root, "node_modules"));
-        if (dependencies !== approvedDependencies ||
-            !(await readFile(join(snapshot, "package-lock.json"))).equals(await readFile(join(root, "package-lock.json")))) {
-          return blocked("snapshot dependencies are not the approved locked host installation");
-        }
-        if (!(await readFile(join(snapshot, "package.json"))).equals(await readFile(join(root, "package.json")))) {
+    // A stage that declares JavaScript dependencies must declare the complete
+    // locked manifest pair and nothing else: both files have to be the
+    // approved host manifests byte for byte. The installation itself is
+    // materialized below as a private scratch copy; the shared installation
+    // and the source checkout are never granted to the stage.
+    let approvedInstallation: string | undefined;
+    if (options.kind === "node" || options.kind === "browser") {
+      const declaredManifest = join(snapshot, "package.json");
+      if (existsSync(declaredManifest)) {
+        if (!(await readFile(declaredManifest)).equals(await readFile(join(root, "package.json")))) {
           return blocked("snapshot dependencies require the approved package manifest");
         }
-        readPaths.add(dependencies);
+        const declaredLock = join(snapshot, "package-lock.json");
+        if (!existsSync(declaredLock) || !(await readFile(declaredLock)).equals(await readFile(join(root, "package-lock.json")))) {
+          return blocked("snapshot dependencies are not the approved locked host installation");
+        }
+        try {
+          const installation = await realpath(join(root, "node_modules"));
+          if ((await stat(installation)).isDirectory()) approvedInstallation = installation;
+        } catch { /* An uninstalled host installation stays absent. */ }
+        if (!approvedInstallation) return blocked("approved locked host installation unavailable: the locked dependencies are not installed on the host");
+      } else if (options.kind === "browser") {
+        return blocked("browser checks require the approved package manifest in the stage inputs");
       }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
     // Repository fixtures execute Git. macOS /usr/bin/git is an Xcode selector
     // that needs developer-selection state the sandbox intentionally never
@@ -593,7 +636,7 @@ export async function runDevelopmentCheck(options: {
         env.PATH = dirname(git) + ":" + env.PATH;
       }
     }
-    if (options.kind === "node") args = ["--test", "--test-reporter=tap", ...targets];
+    if (options.kind === "node" || options.kind === "browser") args = ["--test", "--test-reporter=tap", ...targets];
     if (options.kind === "go" || options.kind === "generated") {
       const go = await trustedTool("go");
       if (options.kind === "go" && !go) return blocked("trusted Go installation unavailable");
@@ -661,24 +704,46 @@ export async function runDevelopmentCheck(options: {
       else if (tool.startsWith("/opt/homebrew/Cellar/")) readPaths.add(tool.split("/").slice(0, 6).join("/"));
       env.PATH = dirname(tool) + ":" + env.PATH;
     }
+    let browserApplication: ApprovedBrowser | undefined;
     if (options.kind === "browser") {
+      // Focused browser execution stays inside the approved suite inventory:
+      // the gate selects a subset of the existing public browser targets and
+      // can never point the browser stage at an undeclared target.
       if (!Buffer.from(await readFile(join(snapshot, "package.json"))).equals(await readFile(join(root, "package.json")))) {
         return blocked("browser snapshot package.json is not the approved host manifest");
       }
       const manifest = JSON.parse(await readFile(join(snapshot, "package.json"), "utf8"));
       const suite = manifest.scripts?.["test:browser:suite"];
       if (typeof suite !== "string") return blocked("approved browser suite is unavailable");
-      tapTargets = suite.split(/\s+/).filter((token: string) => exactRelativePath(token) && /\.test\.(?:[cm]?[jt]s)$/.test(token));
-      if (tapTargets.length === 0) return blocked("approved browser suite has no exact test targets");
-      const dependency = await realpath(join(snapshot, "node_modules/playwright/package.json"));
-      if (!inside(snapshot, dependency) && ![...readPaths].some((path) => path.endsWith("/node_modules") && inside(path, dependency))) return blocked("browser dependencies are not the approved snapshot installation");
-      const npm = await trustedTool("npm");
-      if (!npm) return blocked("trusted npm installation unavailable");
-      readPaths.add(resolve(dirname(npm), ".."));
-      args = [npm, "run", "test:browser:suite"];
-      env.NODE_OPTIONS = "--test-reporter=tap";
-      env.PLAYWRIGHT_BROWSERS_PATH = join(snapshot, ".cache/ms-playwright");
+      const inventory = new Set(suite.split(/\s+/).filter((token: string) => exactRelativePath(token) && /\.test\.(?:[cm]?[jt]s)$/.test(token)));
+      if (inventory.size === 0) return blocked("approved browser suite has no exact test targets");
+      for (const target of targets) {
+        if (!inventory.has(target)) return blocked(`browser target is not part of the approved suite inventory: ${target}`);
+      }
+      browserApplication = await resolveApprovedBrowser();
+      if (!browserApplication) return blocked("approved browser runtime unavailable: no complete fixed browser installation is present on the host");
+      // The approved installation is the only browser runtime grant. Bundled
+      // browser downloads are refused outright: a stage never reaches a
+      // user-home cache or downloads a browser during verification.
+      readPaths.add(browserApplication.application);
+      env.PLAYWRIGHT_BROWSERS_PATH = join(scratch, "browser-runtime-absent");
       env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+      // Chromium resolves its private temporary directory through this fixed
+      // macOS variable; without it the browser would attempt the per-user
+      // temporary directory that the stage intentionally never receives.
+      if (process.platform === "darwin") env.MAC_CHROMIUM_TMPDIR = join(scratch, "tmp");
+    }
+    // Materialize the approved locked installation as a private scratch copy.
+    // The directory keeps the basename `node_modules` so Node's own resolution
+    // walks from every copied package back into this tree, and the copy stays
+    // the only writable dependency location: Vite's config and dependency
+    // build writes land in admitted scratch, never in the shared installation.
+    if (approvedInstallation) {
+      const dependencies = join(scratch, "stage", "node_modules");
+      await mkdir(dirname(dependencies), { recursive: true });
+      if (existsSync(join(snapshot, "node_modules"))) return blocked("stage inputs must not contain node_modules; the host materializes the approved locked installation");
+      await cp(approvedInstallation, dependencies, { recursive: true, verbatimSymlinks: true, force: false, errorOnExist: true });
+      await symlink(dependencies, join(snapshot, "node_modules"));
     }
     // The stage receipt records the command line that actually executed. No
     // environment value (such as a fixture DSN) enters the record.
@@ -710,7 +775,16 @@ export async function runDevelopmentCheck(options: {
 (allow file-map-executable ${readFilters} (subpath ${JSON.stringify(scratch)}))
 (allow file-write* (subpath ${JSON.stringify(scratch)}) (literal "/dev/null"))
 (allow network-inbound (local ip "localhost:*"))
-(allow network-outbound (remote ip "localhost:*"))`;
+(allow network-outbound (remote ip "localhost:*")${browserApplication ? ` (subpath ${JSON.stringify(scratch)})` : ""})
+${browserApplication ? `(allow network-bind (subpath ${JSON.stringify(scratch)}))
+; The approved browser receives exactly the measured macOS services it needs:
+; per-process rendezvous, the window server sentinel, the system
+; configuration store, Launch Services and its power notification user
+; client. No other Mach service, user client or host socket is reachable.
+(allow mach-lookup (global-name-prefix "com.google.Chrome.MachPortRendezvousServer.") (global-name "com.apple.system.notification_center") (global-name "com.apple.windowserver.active") (global-name "com.apple.SystemConfiguration.configd") (global-name "com.apple.coreservices.launchservicesd"))
+(allow mach-register (global-name-prefix "com.google.Chrome.MachPortRendezvousServer."))
+(allow iokit-open (iokit-user-client-class "RootDomainUserClient"))
+` : ""}`;
       wrap = (executable, arguments_) => ["-p", profile, executable, ...arguments_];
     } else {
       const mounts = [...readPaths].flatMap((path) => ["--ro-bind", path, path]);
@@ -732,15 +806,17 @@ fs.writeFileSync(p.join(process.env.TMPDIR,'probe'),'scratch');console.log('sand
     if (probe.code !== 0 || probe.problem || probe.stdout.trim() !== "sandbox probe PASS") {
       return blocked("OS sandbox isolation probe unavailable or denied", probeOutput);
     }
-    if (options.kind === "browser") {
-      // Resolve/load and launch the approved browser dependency *inside* the OS
-      // sandbox; no snapshot package code is ever imported by the trusted host.
+    if (browserApplication) {
+      // Resolve, launch and render with the *approved* browser installation
+      // inside the OS sandbox before any repository test runs; no snapshot
+      // package code is ever imported by the trusted host. An absent or
+      // unusable approved browser fails closed with this diagnosis.
       const browserProbe = await captureDevelopmentProcess(isolationTool, wrap(await realpath(process.execPath), ["-e",
-        "require('playwright').chromium.launch({headless:true}).then(async b=>{await b.close();console.log('browser dependency probe PASS')}).catch(e=>{console.error(e.message);process.exitCode=1})"]),
-        cwd, env, Math.min(timeoutMs, 10_000));
-      if (browserProbe.code !== 0 || browserProbe.problem || browserProbe.stdout.trim() !== "browser dependency probe PASS") {
-        return blocked("approved browser runtime dependencies unavailable in OS sandbox",
-          `${probeOutput}\nbrowser dependency probe: exit=${browserProbe.code}; ${browserProbe.problem || ""}\n${browserProbe.stdout}${browserProbe.stderr}`.slice(0, developmentOutputLimit));
+        `const {chromium}=require('playwright');chromium.launch({channel:'chrome',headless:true}).then(async b=>{const page=await b.newPage();await page.setContent('<h1>approved-browser-probe</h1>');await page.getByText('approved-browser-probe',{exact:true}).waitFor({timeout:15000});await b.close();console.log('approved browser probe PASS')}).catch(e=>{console.error(e&&e.message||String(e));process.exitCode=1})`]),
+        cwd, env, Math.min(timeoutMs, 60_000));
+      if (browserProbe.code !== 0 || browserProbe.problem || browserProbe.stdout.trim() !== "approved browser probe PASS") {
+        return blocked("approved browser runtime unavailable in the OS sandbox",
+          `${probeOutput}\nbrowser runtime probe: exit=${browserProbe.code}; ${browserProbe.problem || ""}\n${browserProbe.stdout}${browserProbe.stderr}`.slice(0, developmentOutputLimit));
       }
     }
     const execution = await captureDevelopmentProcess(isolationTool, wrap(command, args), cwd, env, timeoutMs);

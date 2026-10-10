@@ -911,6 +911,39 @@ test('only the enumerated isolated owner-database fixture may be declared on a G
     /isolated database fixture only applies to Go checks/);
 });
 
+test('focused browser gates require explicit targets and a materialized inventory target', async t => {
+  const { root, store, git } = canonicalFixture(t);
+  put(root, 'package.json', readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+  put(root, 'package-lock.json', readFileSync(new URL('../../package-lock.json', import.meta.url), 'utf8'));
+  put(root, 'tests/ui/console-invented-browser.test.ts', "import test from 'node:test';test('invented',()=>{});\n");
+  // The stage resolves object code from the host installation; the fixture
+  // only needs the directory itself to exist so dependency admission passes.
+  mkdirSync(join(root, 'node_modules'), { recursive: true });
+  git('add', '.'); git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'focused browser gate fixture');
+  const baseSha = git('rev-parse', 'HEAD').trim();
+  const base = { schemaVersion: 1, runId: 'browser-targets', baseSha, planPath,
+    selection: { collection: 'executionSlices', id: 'W16.console-ui-fixes' }, owner: 'console',
+    readPaths: ['tests/ui'], writePaths: ['apps/console-ui/src/app'], requires: {} };
+  // The approval contract names the focused targets exactly; an untargeted
+  // browser gate is not an approvable stage.
+  assert.throws(() => development.approveRun(root, store, { ...base, runId: 'browser-untargeted',
+    gates: [{ id: 'publisher-browser', kind: 'browser', inputs: ['package.json', 'package-lock.json'], needs: [] }] }), /invalid test targets/);
+  // A materialized target that is not part of the approved suite inventory can
+  // never produce PASS; the stage is refused before any browser is resolved.
+  const approval = { ...base, gates: [{ id: 'publisher-browser', kind: 'browser',
+    inputs: ['package.json', 'package-lock.json', 'tests/ui/console-invented-browser.test.ts'],
+    targets: ['tests/ui/console-invented-browser.test.ts'], needs: [] }] };
+  development.approveRun(root, store, approval);
+  const session = new development.DevelopmentSession(root, store, approval.runId);
+  session.context();
+  const result = await session.verifyGate('publisher-browser');
+  const receipt = JSON.parse(readFileSync(join(store, 'runs', approval.runId, 'receipts', 'publisher-browser-1.json'), 'utf8'));
+  assert.equal(receipt.result, 'blocked');
+  assert.equal(receipt.verification.tests, 0);
+  assert.match(receipt.verification.reason ?? '', /approved suite inventory/);
+  assert.equal(result.stages.find((stage: any) => stage.gateId === 'publisher-browser')?.state, 'blocked');
+});
+
 test('the development-governance slice resolves to Cloud while its paths stay host-owned for restricted workers', async t => {
   const { root, store, git } = canonicalFixture(t);
   put(root, 'tools/host-entry.ts', 'export const hostOwned = true;\n');

@@ -230,10 +230,10 @@ export async function convertManifest(options: ConvertOptions) {
     definition.inputs.forEach((path: Json, index: number) => repoPath(path, `gate ${gateId} inputs[${index}]`, true));
     if (!Array.isArray(definition.needs)) fail(`gate needs must be an array: ${gateId}`);
     definition.needs.forEach((need: Json, index: number) => identifier(need, `gate ${gateId} needs[${index}]`));
-    if (definition.kind === 'node') {
-      if (!Array.isArray(definition.targets) || !definition.targets.length) fail(`Node gates require explicit test targets: ${gateId}`);
+    if (definition.kind === 'node' || definition.kind === 'browser') {
+      if (!Array.isArray(definition.targets) || !definition.targets.length) fail(`${definition.kind === 'node' ? 'Node' : 'Browser'} gates require explicit test targets: ${gateId}`);
       definition.targets.forEach((target: Json, index: number) => repoPath(target, `gate ${gateId} targets[${index}]`, false));
-    } else if (definition.targets !== undefined) fail('targets only apply to node tests');
+    } else if (definition.targets !== undefined) fail('targets only apply to node and browser tests');
     if (definition.kind === 'go') repoPath(definition.cwd, 'gate cwd', true);
     else if (definition.cwd !== undefined) fail('cwd only applies to Go checks');
     // The host-owned isolated fixture declaration travels through the shared

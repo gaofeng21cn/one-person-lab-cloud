@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "6cf6023ddfc0e7eb83d8b073cc1790aa65ebe87a",
+  "recordedAt": "2026-10-10T15:42:11.050Z",
+  "writeSet": [
+    "DEV_GUIDE.md",
+    "docs/evidence/source-checks/w27-browser-stage-v1-governance-source-check-1.json",
+    "tests/tools/dev-frame-bridge.test.ts",
+    "tests/tools/dev-session.test.ts",
+    "tests/tools/verify-local.test.ts",
+    "tools/dev-frame-bridge.ts",
+    "tools/dev-session.ts",
+    "tools/verify-local.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "6cf6023ddfc0e7eb83d8b073cc1790aa65ebe87a",
+    "changedFilesSha256": {
+      "DEV_GUIDE.md": "45419e49fc90577d6c73d8dc65205117d455f41ace0f358ace71ec56e92878cb",
+      "tests/tools/dev-frame-bridge.test.ts": "1843846b5346eee9f0fcea5d0375490f4113ae409906f5a3f030ebd160b2feab",
+      "tests/tools/dev-session.test.ts": "66d55e003c8f4bad60d94bb1e44722b09490cbb163bacbd80410037cec5e221d",
+      "tests/tools/verify-local.test.ts": "83ffd0d550867f8d6a35d3c6ed6863a41ecdf35d9ee578bf021fedfe4afd6d94",
+      "tools/dev-frame-bridge.ts": "789c607ececbe2dd341f377ae1a18f3fcb8d6099d83b76057f7deafcdd1266bd",
+      "tools/dev-session.ts": "9d9a935c14ba734d5dd721f79c162a108074fb07a30d77b921968f98d42d7892",
+      "tools/verify-local.ts": "93abe0530925bb8b2313065999aaea11335119b948977c2d46d4fc568c14292c"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/dev-frame-bridge.test.ts",
+    "exitCode": 0,
+    "tests": 12,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "9d245e4b1b579033c603e9cf93960e88d29eb6fc83eeedc45353fee8a8bb5911"
+  },
+  "sourceStage": {
+    "runId": "w27-browser-stage-v1",
+    "gateId": "governance-source-check",
+    "attempt": 1,
+    "receiptHash": "10233bb727b3f809881be7bbc82e292cdb4519c71dc9d754849cec1cf9495b8f"
+  }
+}
