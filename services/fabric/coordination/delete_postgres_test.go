@@ -399,7 +399,7 @@ func TestDeleteResourcesConfirmsEachKindFromOwnReadback(t *testing.T) {
 		lastResource := authority.last.GetResource()
 		audience := authority.last.GetAudienceOwner()
 		authority.mu.Unlock()
-		if audience != api.OwnerEnum_OWNER_ENUM_FABRIC || lastAction != api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES ||
+		if audience != api.OwnerEnum_OWNER_ENUM_FABRIC || lastAction != api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES ||
 			lastResource.GetKind() != api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE || lastResource.GetId() != r.WorkspaceId {
 			t.Fatalf("release was not authorized against the declared workspace: %v", authority.last)
 		}

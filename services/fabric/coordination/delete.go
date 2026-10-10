@@ -23,16 +23,12 @@ import (
 )
 
 // deleteResourcesAuthorizationAction is the typed CloudIdentity action Fabric
-// requires before it releases an accepted resource set. The contract admits one
-// Fabric mutation action for a Workspace's accepted resources —
-// PROVISIONACCEPTEDRESOURCES — and has no dedicated release action yet, so the
-// release runs under the same accepted-resource-set authority that admitted the
-// set. It is deliberately not OBSERVERESOURCES: a read permission is not a write
-// permission. When AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES lands in
-// packages/contracts/proto/internal.proto and is admitted for the Fabric
-// audience in services/gateway-integration/identity/authorization.go, this
-// constant is the one line that changes.
-const deleteResourcesAuthorizationAction = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES
+// requires before it releases an accepted resource set. The contract declares
+// DELETEACCEPTEDRESOURCES for exactly this owner write, so the release no longer
+// borrows the provisioning authority and a deletion cannot replay resource
+// creation. It is deliberately not OBSERVERESOURCES: a read permission is not a
+// write permission.
+const deleteResourcesAuthorizationAction = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES
 
 // DeleteResources releases exactly one Workspace's own accepted resource set.
 // The command names a resource set and a Workspace; Fabric binds both to its own
