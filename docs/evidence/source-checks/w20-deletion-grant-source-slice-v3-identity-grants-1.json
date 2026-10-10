@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "4c64437d0a7b20958726e16703fdf6b0a1b1210c",
+  "recordedAt": "2026-10-10T12:05:21.983Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w20-deletion-grant-source-slice-v3-identity-grants-1.json",
+    "services/gateway-integration/identity/authorization.go",
+    "services/gateway-integration/identity/workspace_grants_postgres_test.go"
+  ],
+  "verifiedSource": {
+    "baseSha": "4c64437d0a7b20958726e16703fdf6b0a1b1210c",
+    "changedFilesSha256": {
+      "services/gateway-integration/identity/authorization.go": "a59a7a9b84c9db83abd1b3a00c3c4ffd35b053ebda42be87de7337b28b77a645",
+      "services/gateway-integration/identity/workspace_grants_postgres_test.go": "9fae8f648a2eb44dcd700f217be03749fe654e9c1e066ffd40537bdaee3dee42"
+    }
+  },
+  "execution": {
+    "command": "go acceptance gate",
+    "exitCode": 0,
+    "tests": 108,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "e81e7abc0c953a381df2172da6aafdb88a6d0defa6e47918e394d124b6c29860"
+  },
+  "sourceStage": {
+    "runId": "w20-deletion-grant-source-slice-v3",
+    "gateId": "identity-grants",
+    "attempt": 1,
+    "receiptHash": "41cea9b471292a4d35641620defd481bcca374bc7fd7611509ec0554815db67b"
+  }
+}
