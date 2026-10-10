@@ -47,6 +47,22 @@ func (d *tencentDispatcher) BindSecret(ctx context.Context, in SecretBindIntent)
 	return SecretBindResult{SecretRef: bound.SecretRef, Version: bound.Version, Fingerprint: bound.Fingerprint}, nil
 }
 
+// PutManagedSecret writes the raw managed-key value through the provider's
+// existing idempotent Secret path and returns its confirmed identity. The
+// provider's provider-mutation journal replays one stored Secret for a retry of
+// the same original operation key instead of writing a second one.
+func (d *tencentDispatcher) PutManagedSecret(ctx context.Context, in PutManagedSecretIntent) (ManagedSecretResult, error) {
+	secret, err := d.service.UpsertGatewaySecret(ctx, fabric.GatewaySecretInput{
+		AccountID: in.TenantID, WorkspaceID: in.WorkspaceID, WorkspaceAPIKeyID: in.WorkspaceAPIKeyID,
+		Fingerprint: in.Fingerprint, GatewayAPIKey: in.GatewayAPIKey,
+		IdempotencyKey: in.IdempotencyKey + ":put_managed_secret",
+	})
+	if err != nil {
+		return ManagedSecretResult{}, err
+	}
+	return ManagedSecretResult{SecretRef: secret.SecretRef, Version: secret.Version, Fingerprint: secret.Fingerprint}, nil
+}
+
 func (d *tencentDispatcher) EnsureResources(ctx context.Context, in ResourceIntent) (*ResourceResult, error) {
 	bound, err := d.provider.ResolveAcceptedResourcePlan(in.TenantID, in.Plan)
 	if err != nil {

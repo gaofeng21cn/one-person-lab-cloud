@@ -86,6 +86,11 @@ func (d *localFixture) BindSecret(context.Context, coordination.SecretBindIntent
 	return coordination.SecretBindResult{}, fmt.Errorf("fixture_provider_bind_unavailable")
 }
 
+// PutManagedSecret is not exercised by this fixture.
+func (d *localFixture) PutManagedSecret(context.Context, coordination.PutManagedSecretIntent) (coordination.ManagedSecretResult, error) {
+	return coordination.ManagedSecretResult{}, status.Error(codes.Unimplemented, "fixture Secret write is not used")
+}
+
 func (d *localFixture) EnsureResources(_ context.Context, in coordination.ResourceIntent) (*coordination.ResourceResult, error) {
 	d.calls++
 	if d.fail {
