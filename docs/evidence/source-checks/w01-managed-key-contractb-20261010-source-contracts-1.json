@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "1fc0b1a04e33492a1625242a64e5c583373fdc62",
+  "recordedAt": "2026-10-10T11:59:38.016Z",
+  "writeSet": [
+    "docs/evidence/source-checks/2026-10-10-first-tke-default-app-without-cloud-model-config.json",
+    "docs/evidence/source-checks/w01-managed-key-contractb-20261010-source-contracts-1.json",
+    "docs/roadmap.md",
+    "docs/spec/target/03_api_contract_complete.yaml",
+    "docs/spec/target/contracts/publisher-contract.schema.json",
+    "docs/status.md",
+    "packages/contracts/go/api/internal.pb.go",
+    "packages/contracts/go/api/internal_grpc.pb.go",
+    "packages/contracts/go/publicjson/codec_test.go",
+    "packages/contracts/go/publicjson/shape_generated.go",
+    "packages/contracts/proto/internal.proto",
+    "services/workspace/internal/launch/models_update_test.go",
+    "services/workspace/internal/launch/runtime.go"
+  ],
+  "verifiedSource": {
+    "baseSha": "1fc0b1a04e33492a1625242a64e5c583373fdc62",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/2026-10-10-first-tke-default-app-without-cloud-model-config.json": "56d99546fd54ba951e8774ef85b49d975c726182fce2f293385874b57930c9d1",
+      "docs/roadmap.md": "61fcb5270266b3b7ea8632f614ff70bd58aab4ce56659e51cc520b5c6a1f201c",
+      "docs/spec/target/03_api_contract_complete.yaml": "f619a0da0c565c4a6a1a14ac1637a7ef19eec82d84e92bcc42ff143117b5313d",
+      "docs/spec/target/contracts/publisher-contract.schema.json": "176d492a0c0c491ca4e180d9e5d3e04a08ab9c621c4254806658ef529c77b5ef",
+      "docs/status.md": "014433d3f3648962c5c444824fe42ec603e50b9bde53f5d4affbc94ef3205ee0",
+      "packages/contracts/go/api/internal.pb.go": "0520da32c2a31de1d1836cd8b9a7d109614dc7a46a3869a7c1b35f924940e2c9",
+      "packages/contracts/go/api/internal_grpc.pb.go": "2bf6c88777649006847378695a5c3d96876ac6751a3e217205a2389cdd532cb0",
+      "packages/contracts/go/publicjson/codec_test.go": "5a612c0a9aa98c4fbe0cd1011f193491359777053e0787fcf03ccf788605fd67",
+      "packages/contracts/go/publicjson/shape_generated.go": "c79569889a249ef4d575a86d0f84cce29f8d9d76cd84e8196843d94f81550925",
+      "packages/contracts/proto/internal.proto": "290773a112f59fd244438fbfb90a599e6f95514d2db83abe7f347adbf546d02f",
+      "services/workspace/internal/launch/models_update_test.go": "901b7d045a954f9ce3c742396e516693c1153f7c94139b818886b647c8c2cc12",
+      "services/workspace/internal/launch/runtime.go": "12b981d3d00aaee16a3a139ccab3f4c843ae7b5dd31cb98cf8c3e083bd9e47d7"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/contracts/module-physical-boundaries.test.ts tests/contracts/gateway-deployment-unit-principal.test.ts tests/contracts/owner-topology.test.ts",
+    "exitCode": 0,
+    "tests": 15,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "3ef9169d07800b2038bd6f9cb04785884e97cee61bad529819121eee15aca9cf"
+  },
+  "sourceStage": {
+    "runId": "w01-managed-key-contractb-20261010",
+    "gateId": "source-contracts",
+    "attempt": 1,
+    "receiptHash": "f94c5af265e99d9375ec05d80c2cff42bf5d8ad9d66d8caa1b08ffbc5f1efe30"
+  }
+}

@@ -707,4 +707,20 @@ func TestEnsureRuntimeGatewayBindingIssuesTheLaunchHandover(t *testing.T) {
 	if err := waiting.ensureRuntimeGatewayBinding(context.Background(), op, &orderResult{GrantID: "grant-launch"}, fresh); !errors.Is(err, errRuntimeAwaitingKeyOwner) {
 		t.Fatalf("unconfigured Gateway err=%v want the awaiting-owner wait", err)
 	}
+	// A default OPL App declares no model selection at all. The Workspace must not
+	// refuse locally: it forwards the declared (empty) selection and the Gateway
+	// owner resolves the approved concrete scope, returning the opaque handover the
+	// Workspace records on the command.
+	defaultApp := &api.RuntimeDeployCommand{WorkspaceId: command.WorkspaceId, RuntimeInstanceId: command.RuntimeInstanceId, DeploymentDescriptor: command.DeploymentDescriptor}
+	defaultResult := &orderResult{GrantID: "grant-launch"}
+	if err := service.ensureRuntimeGatewayBinding(context.Background(), op, defaultResult, defaultApp); err != nil {
+		t.Fatalf("default App launch handover: %v", err)
+	}
+	if gateway.mints != 2 || len(gateway.lastMint.GetModelIds()) != 0 ||
+		defaultApp.GetManagedKeyBinding().GetKeyBindingId() == "" || defaultApp.GetManagedKeyBinding().GetSecretDeliveryReference() != contracts.WorkspaceGatewaySecretRef("workspace-original") {
+		t.Fatalf("default App launch mint=%d models=%v handover=%+v", gateway.mints, gateway.lastMint.GetModelIds(), defaultApp.GetManagedKeyBinding())
+	}
+	if len(defaultResult.ManagedKeyBinding) == 0 {
+		t.Fatal("the default App handover was not recorded on the order result")
+	}
 }

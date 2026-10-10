@@ -62,6 +62,51 @@ func TestPublisherJSONRejectsWrongWireVocabulary(t *testing.T) {
 	}
 }
 
+// A standalone Runtime can be deployed without claiming custom Agent Build
+// inputs or a Cloud-operated model configuration interface.
+func TestStandaloneRuntimeContractPreservesAbsentOptionalCapabilities(t *testing.T) {
+	raw, err := os.ReadFile("../../../../docs/spec/target/contracts/publisher-contract.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct{ Examples []json.RawMessage }
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	var input map[string]json.RawMessage
+	if len(doc.Examples) == 0 || json.Unmarshal(doc.Examples[0], &input) != nil || string(input["kind"]) != `"runtime"` {
+		t.Fatal("expected the existing standalone Runtime example")
+	}
+	absent := []string{"modelConfiguration", "buildRecipe", "packageFormatVersions", "packageFormatContracts"}
+	for _, name := range absent {
+		delete(input, name)
+	}
+	encoded, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var runtime api.RuntimePublisherContract
+	if err := Unmarshal(encoded, &runtime); err != nil {
+		t.Fatalf("standalone Runtime declaration rejected: %v", err)
+	}
+	encoded, err = Marshal(&runtime)
+	if err != nil {
+		t.Fatalf("standalone Runtime cannot be published without invented capabilities: %v", err)
+	}
+	var output map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range absent {
+		if _, exists := output[name]; exists {
+			t.Fatalf("undeclared capability %s was synthesized", name)
+		}
+	}
+	if runtime.GetModelConfiguration() != nil || runtime.GetBuildRecipe() != nil {
+		t.Fatal("absent capability became an executable declaration")
+	}
+}
+
 func TestPublisherPathPatternRejectsTraversal(t *testing.T) {
 	c := NewSchemaCompiler()
 	if err := c.AddResource("path.json", map[string]any{"type": "string", "pattern": `^(?!/)(?!.*(?:^|/)\.\.?(/|$))[A-Za-z0-9_./-]+$`}); err != nil {

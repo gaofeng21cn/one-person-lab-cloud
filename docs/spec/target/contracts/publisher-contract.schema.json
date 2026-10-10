@@ -508,14 +508,11 @@
         "image",
         "kind",
         "runtimeAbiVersion",
-        "packageFormatVersions",
-        "buildRecipe",
-        "modelConfiguration",
         "applicationAccess",
         "data",
-        "applicationRevisionTemplate",
-        "packageFormatContracts"
-      ]
+        "applicationRevisionTemplate"
+      ],
+      "description": "Runtime publication declares actual capabilities. Standalone default App delivery may omit modelConfiguration and custom Agent Build fields; absence never claims those capabilities. Custom Agent Build consumers still require and validate buildRecipe, packageFormatVersions and packageFormatContracts. Cloud model updates require a declared executable modelConfiguration interface. Present declarations retain their full validation."
     },
     "WebuiPublisherContract": {
       "type": "object",
