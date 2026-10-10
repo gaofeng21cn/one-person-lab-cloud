@@ -33,6 +33,17 @@ type SecretDelivery struct {
 	// Raw is the credential value. A SecretStore reads it to write the approved
 	// store; it is never returned to a caller or persisted in a Gateway table.
 	Raw string
+	// ExternalKeyID is the external key identity the issuer produced for this
+	// delivery. An approved SecretStore maps it to the provider-side key id the
+	// stored Secret is bound to; it is an opaque identity, never the raw key.
+	ExternalKeyID string
+	// Call is the derived owner-to-owner continuation context of the approved
+	// store write. It preserves the original command's tenant scope, actor,
+	// session or accepted-obligation grant and request identity, clears the
+	// caller's authorization context, and carries the bounded idempotency key a
+	// retry of this write must repeat. The store presents it to its own owner, so
+	// the store authorizes through its own audience rather than the caller's.
+	Call *api.CallContext
 }
 
 // SecretStore writes a raw credential into the deployment's approved Secret store
@@ -141,14 +152,16 @@ func (s *GatewayStore) InsertConfirmedManagedKeyBinding(ctx context.Context, bin
 }
 
 // AdvanceManagedKeyCommandPending records the opaque external identity an
-// issuance actually produced while the command is still unresolved, so a lost
-// Secret delivery is read back as the one original key instead of a second
-// issuance. It never overwrites an already-recorded identity or answer.
-func (s *GatewayStore) AdvanceManagedKeyCommandPending(ctx context.Context, reservation ManagedKeyCommandReservation, externalKeyID, fingerprint string) error {
-	if strings.TrimSpace(externalKeyID) == "" || strings.TrimSpace(fingerprint) == "" {
-		return errors.New("an observed managed key effect requires its external key id and fingerprint")
+// issuance actually produced, together with the resolved model scope it is
+// approved for, while the command is still unresolved. A lost Secret delivery is
+// therefore read back and reconciled as the one original key and scope instead
+// of a second issuance, and the raw value never enters this state. It never
+// overwrites an already-recorded identity or answer.
+func (s *GatewayStore) AdvanceManagedKeyCommandPending(ctx context.Context, reservation ManagedKeyCommandReservation, externalKeyID, fingerprint string, resolvedModelIDs []string) error {
+	if strings.TrimSpace(externalKeyID) == "" || strings.TrimSpace(fingerprint) == "" || len(resolvedModelIDs) == 0 {
+		return errors.New("an observed managed key effect requires its external key id, fingerprint and resolved model scope")
 	}
-	state, err := json.Marshal(managedKeyCommandState{Outcome: "pending", ExternalKeyID: externalKeyID, Fingerprint: fingerprint})
+	state, err := json.Marshal(managedKeyCommandState{Outcome: "pending", ExternalKeyID: externalKeyID, Fingerprint: fingerprint, ResolvedModelIDs: resolvedModelIDs})
 	if err != nil {
 		return err
 	}
@@ -240,10 +253,38 @@ func (b ManagedKeyBinding) GatewayKeyContract() *api.GatewayKey {
 	return out
 }
 
+// ManagedKeyIssueRequest is the declared issuance intent of one Workspace-managed
+// Gateway key. ModelIDs is the declared model scope; an empty list is the default
+// App's declared scope and never means "unrestricted": the issuer resolves the
+// approved concrete scope for the bound group and returns it. LaunchOperationID
+// and IdempotencyKey are the original command's bounded idempotency key, so an
+// ambiguous outcome is read back by its original issue identity instead of
+// minting a second key.
+type ManagedKeyIssueRequest struct {
+	Subject           string
+	WorkspaceID       string
+	LaunchOperationID string
+	ExactName         string
+	GroupName         string
+	ModelIDs          []string
+	IdempotencyKey    string
+}
+
+// ManagedKeyIssueResult is the issuer-confirmed identity of one issued key. The
+// raw value is handed straight to the approved Secret store and never persisted
+// in a Gateway table; ModelIDs is the resolved concrete scope, never empty.
+type ManagedKeyIssueResult struct {
+	Raw           string
+	ExternalKeyID string
+	GroupID       int64
+	ModelIDs      []string
+	Replayed      bool
+}
+
 // ManagedKeyIssuer mints and retires a Workspace-scoped Gateway key at the
 // external Gateway, returning the raw value only to the caller that immediately
 // hands it to the approved Secret store. A key issuer never persists the raw key.
 type ManagedKeyIssuer interface {
-	IssueWorkspaceKey(ctx context.Context, subject, workspaceID string, modelIDs []string) (raw, externalKeyID string, err error)
+	IssueWorkspaceKey(ctx context.Context, request ManagedKeyIssueRequest) (ManagedKeyIssueResult, error)
 	RevokeWorkspaceKey(ctx context.Context, subject, externalKeyID string) error
 }

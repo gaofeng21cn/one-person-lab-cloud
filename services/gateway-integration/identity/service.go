@@ -61,6 +61,11 @@ type Service struct {
 	GatewayStore *GatewayStore
 	SecretStore  SecretStore
 	KeyIssuer    ManagedKeyIssuer
+	// WorkspaceKeyGroup is the approved Sub2API group a Workspace-managed key is
+	// placed in. It is a deployment fact (OPL_GATEWAY_WORKSPACE_KEY_GROUP): the
+	// group carries the approved model allowlist the issuer resolves for a
+	// command whose declared selection names no model.
+	WorkspaceKeyGroup string
 }
 
 // Platform administrators are explicit deployment-owned Gateway subject IDs,

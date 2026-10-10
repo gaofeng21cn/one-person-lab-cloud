@@ -2,13 +2,20 @@ package identity_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
+	contracts "opl-cloud/packages/contracts/go"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/services/gateway-integration/identity"
 )
@@ -18,33 +25,62 @@ import (
 // external issuance was attempted, and can drop its response after the key
 // exists, so a test can prove the owner never mints a second key.
 type managedKeyIssuerStub struct {
-	mu            sync.Mutex
-	issues        int
-	revokes       int
-	applyThenFail bool
-	refuse        bool
-	probe         func() bool
-	registered    bool
-	probed        bool
+	mu             sync.Mutex
+	issues         int
+	revokes        int
+	applyThenFail  bool
+	refuse         bool
+	probe          func() bool
+	registered     bool
+	probed         bool
+	lastRequest    *identity.ManagedKeyIssueRequest
+	resolvedModels []string
+	// resolvedOverride forces the authority's resolved scope regardless of the
+	// declared selection, so a test can reproduce a superset, subset,
+	// substitution or duplicate answer.
+	resolvedOverride []string
 }
 
-func (s *managedKeyIssuerStub) IssueWorkspaceKey(_ context.Context, subject, workspaceID string, modelIDs []string) (string, string, error) {
+// resolvedScope models the issuance authority resolving an empty declared scope
+// into the approved concrete group allowlist. An explicit declared selection is
+// returned as-is, exactly like the real service does for a bound group.
+func (s *managedKeyIssuerStub) resolvedScope(declared []string) []string {
+	if s.resolvedOverride != nil {
+		return append([]string(nil), s.resolvedOverride...)
+	}
+	if len(declared) > 0 {
+		return append([]string(nil), declared...)
+	}
+	if len(s.resolvedModels) > 0 {
+		return append([]string(nil), s.resolvedModels...)
+	}
+	return []string{"default-model"}
+}
+
+func (s *managedKeyIssuerStub) IssueWorkspaceKey(_ context.Context, request identity.ManagedKeyIssueRequest) (identity.ManagedKeyIssueResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.issues++
+	s.lastRequest = &request
 	if s.probe != nil {
 		s.registered = s.probe()
 		s.probed = true
 	}
 	if s.refuse {
-		return "", "", status.Error(codes.PermissionDenied, "model not allowed for this subject")
+		return identity.ManagedKeyIssueResult{}, status.Error(codes.PermissionDenied, "model not allowed for this subject")
 	}
 	if s.applyThenFail {
-		// The external key exists; its response is lost. Without an approved lookup
-		// by the original issue identity the owner must not repeat this call.
-		return "", "", status.Error(codes.Unavailable, "response lost after key creation")
+		// The external key exists; its response is lost. The owner never repeats
+		// this call without an approved readback of the original issue identity.
+		return identity.ManagedKeyIssueResult{}, status.Error(codes.Unavailable, "response lost after key creation")
 	}
-	return "raw-managed-key-" + workspaceID, "ext-key-" + workspaceID + "-" + strings.Join(modelIDs, "_"), nil
+	declared := append([]string(nil), request.ModelIDs...)
+	resolved := s.resolvedScope(declared)
+	return identity.ManagedKeyIssueResult{
+		Raw:           "raw-managed-key-" + request.WorkspaceID,
+		ExternalKeyID: managedKeyExternalIDForTest(request.WorkspaceID, resolved),
+		GroupID:       9, ModelIDs: resolved,
+	}, nil
 }
 
 func (s *managedKeyIssuerStub) RevokeWorkspaceKey(context.Context, string, string) error {
@@ -66,16 +102,30 @@ func (s *managedKeyIssuerStub) registrationObserved() bool {
 	return s.probed && s.registered
 }
 
+// managedKeyExternalIDForTest is the deterministic numeric external key id the
+// fixture's authority issues, matching the real service contract (key_id is a
+// positive integer).
+func managedKeyExternalIDForTest(workspaceID string, resolved []string) string {
+	digest := sha256.Sum256([]byte(workspaceID + ":" + strings.Join(resolved, "_")))
+	return strconv.FormatInt(int64(binary.BigEndian.Uint64(digest[:8])%100000)+1, 10)
+}
+
 // managedKeySecretStore is one approved Secret store fixture. It keeps the raw
 // value out of its returned delivery and can fail the write to model an
 // unconfirmed delivery.
 type managedKeySecretStore struct {
-	mu       sync.Mutex
-	writes   int
-	fail     bool
-	refs     map[string]string
-	lastRaw  string
-	lastHash string
+	mu                     sync.Mutex
+	writes                 int
+	fail                   bool
+	refs                   map[string]string
+	lastRaw                string
+	lastHash               string
+	lastFingerprint        string
+	lastExternalKeyID      string
+	lastCallContextMissing bool
+	lastCall               *api.CallContext
+	referenceOverride      string
+	fingerprintOverride    string
 }
 
 func (s *managedKeySecretStore) PutSecret(_ context.Context, delivery identity.SecretDelivery) (identity.SecretDelivery, error) {
@@ -83,6 +133,12 @@ func (s *managedKeySecretStore) PutSecret(_ context.Context, delivery identity.S
 	defer s.mu.Unlock()
 	s.writes++
 	s.lastRaw = delivery.Raw
+	s.lastFingerprint = delivery.Fingerprint
+	s.lastExternalKeyID = delivery.ExternalKeyID
+	s.lastCallContextMissing = delivery.Call == nil
+	if delivery.Call != nil {
+		s.lastCall = proto.Clone(delivery.Call).(*api.CallContext)
+	}
 	if s.fail {
 		return identity.SecretDelivery{}, status.Error(codes.Unavailable, "approved Secret store unavailable")
 	}
@@ -91,11 +147,19 @@ func (s *managedKeySecretStore) PutSecret(_ context.Context, delivery identity.S
 	}
 	ref, ok := s.refs[delivery.WorkspaceID]
 	if !ok {
-		ref = "secretref-" + delivery.Fingerprint
+		// The approved store returns the Workspace's canonical Gateway Secret
+		// reference, exactly as Fabric's provider readback does.
+		ref = contracts.WorkspaceGatewaySecretRef(delivery.WorkspaceID)
 		s.refs[delivery.WorkspaceID] = ref
 	}
 	delivered := delivery
 	delivered.Reference = ref
+	if s.referenceOverride != "" {
+		delivered.Reference = s.referenceOverride
+	}
+	if s.fingerprintOverride != "" {
+		delivered.Fingerprint = s.fingerprintOverride
+	}
 	delivered.Raw = ""
 	return delivered, nil
 }
@@ -321,9 +385,9 @@ func TestManagedKeyCommandRequiresIdempotencyIdentity(t *testing.T) {
 }
 
 // TestManagedKeyLostSecretDeliveryRecordsObservedKeyAndNeverReissues proves the
-// exact external key identity is durable even when the Secret delivery is lost,
-// so the unresolved command is read back as that one original key instead of a
-// second issuance.
+// exact external key identity and the resolved model scope are durable even when
+// the Secret delivery is lost, so the unresolved command is read back as that
+// one original key and scope instead of a second issuance.
 func TestManagedKeyLostSecretDeliveryRecordsObservedKeyAndNeverReissues(t *testing.T) {
 	issuer := &managedKeyIssuerStub{}
 	secrets := &managedKeySecretStore{fail: true}
@@ -335,21 +399,36 @@ func TestManagedKeyLostSecretDeliveryRecordsObservedKeyAndNeverReissues(t *testi
 	if issuer.issued() != 1 {
 		t.Fatalf("unexpected issuance count: %d", issuer.issued())
 	}
-	_, err = workspace.CreateManagedKey(t.Context(), managedKeyCommand("managed-key", "model-a"))
-	if err == nil || status.Code(err) != codes.Unavailable {
-		t.Fatalf("the unresolved command was not read back: %v", err)
-	}
-	if issuer.issued() != 1 {
-		t.Fatalf("the unresolved original key was re-issued: issuances=%d", issuer.issued())
-	}
 	var stored int
-	var body string
+	var storedBody string
 	if err = service.GatewayStore.DB().QueryRowContext(t.Context(), `SELECT response_status, response_body::text FROM gateway.idempotency_records
-		WHERE operation_name = 'CreateManagedKey' AND idempotency_key = 'opl-test:managed-key'`).Scan(&stored, &body); err != nil {
+		WHERE operation_name = 'CreateManagedKey' AND idempotency_key = 'opl-test:managed-key'`).Scan(&stored, &storedBody); err != nil {
 		t.Fatal(err)
 	}
-	if stored != 202 || !strings.Contains(body, "ext-key-ws-1-model-a") {
-		t.Fatalf("the observed external key was not recorded: status=%d body=%s", stored, body)
+	if stored != 202 || !strings.Contains(storedBody, managedKeyExternalIDForTest("ws-1", []string{"model-a"})) {
+		t.Fatalf("the observed external key was not recorded: status=%d body=%s", stored, storedBody)
+	}
+	// The pending answer carries every confirmable fact the issuance observed -
+	// the external key identity, its fingerprint and the resolved scope - so the
+	// original command can be reconciled as the one original key. The raw value is
+	// never part of it.
+	var observed struct {
+		ExternalKeyID    string   `json:"externalKeyId"`
+		Fingerprint      string   `json:"fingerprint"`
+		ResolvedModelIDs []string `json:"resolvedModelIds"`
+	}
+	if json.Unmarshal([]byte(storedBody), &observed) != nil {
+		t.Fatalf("the pending answer is unreadable: %s", storedBody)
+	}
+	raw := "raw-managed-key-ws-1"
+	digest := sha256.Sum256([]byte(raw))
+	if observed.ExternalKeyID != managedKeyExternalIDForTest("ws-1", []string{"model-a"}) ||
+		observed.Fingerprint != "sha256:"+hex.EncodeToString(digest[:]) ||
+		strings.Join(observed.ResolvedModelIDs, ",") != "model-a" {
+		t.Fatalf("the pending answer did not preserve the observed identity and scope: %+v", observed)
+	}
+	if strings.Contains(storedBody, raw) {
+		t.Fatalf("the pending answer leaked the raw key: %s", storedBody)
 	}
 	var bindings int
 	if err = service.GatewayStore.DB().QueryRowContext(t.Context(), `SELECT count(*) FROM gateway.key_bindings WHERE workspace_id = 'ws-1'`).Scan(&bindings); err != nil {
@@ -357,6 +436,76 @@ func TestManagedKeyLostSecretDeliveryRecordsObservedKeyAndNeverReissues(t *testi
 	}
 	if bindings != 0 {
 		t.Fatalf("an unconfirmed delivery recorded a binding: %d", bindings)
+	}
+	// A retry of the very same command reads the recorded original identity and
+	// scope back: it neither mints a second key nor writes a second Secret, and
+	// the recorded facts stay the ones the original issuance observed.
+	_, err = workspace.CreateManagedKey(t.Context(), managedKeyCommand("managed-key", "model-a"))
+	if err == nil || status.Code(err) != codes.Unavailable {
+		t.Fatalf("the unresolved command was not read back: %v", err)
+	}
+	if issuer.issued() != 1 {
+		t.Fatalf("the unresolved original key was re-issued: issuances=%d", issuer.issued())
+	}
+	if secrets.writeCount() != 1 {
+		t.Fatalf("the unresolved original delivery was re-attempted: writes=%d", secrets.writeCount())
+	}
+	var replayed string
+	if err = service.GatewayStore.DB().QueryRowContext(t.Context(), `SELECT response_body::text FROM gateway.idempotency_records
+		WHERE operation_name = 'CreateManagedKey' AND idempotency_key = 'opl-test:managed-key'`).Scan(&replayed); err != nil {
+		t.Fatal(err)
+	}
+	if replayed != storedBody {
+		t.Fatalf("the retry changed the recorded original identity and scope: %s", replayed)
+	}
+}
+
+// TestManagedKeyCommandRefusesALegacyConfirmedAnswerWithoutItsResolvedScope
+// pins the strict confirmed-answer contract: a confirmed row recorded before the
+// resolved-scope fact existed can never be presented as an approved scope again.
+// The readback fails closed with no re-issuance, because the pre-branch format
+// stored only the declared selection, never the authority-resolved scope, so a
+// compatibility read would deliver a scope the owner cannot prove.
+func TestManagedKeyCommandRefusesALegacyConfirmedAnswerWithoutItsResolvedScope(t *testing.T) {
+	issuer := &managedKeyIssuerStub{}
+	secrets := &managedKeySecretStore{}
+	service, workspace := managedKeyCoordination(t, issuer, secrets)
+	first, err := workspace.CreateManagedKey(t.Context(), managedKeyCommand("managed-key", "model-a"))
+	if err != nil {
+		t.Fatalf("create managed key: %v", err)
+	}
+	db := service.GatewayStore.DB()
+	var storedBody string
+	if err = db.QueryRowContext(t.Context(), `SELECT response_body::text FROM gateway.idempotency_records
+		WHERE operation_name = 'CreateManagedKey' AND idempotency_key = 'opl-test:managed-key'`).Scan(&storedBody); err != nil {
+		t.Fatal(err)
+	}
+	var legacy map[string]any
+	if err = json.Unmarshal([]byte(storedBody), &legacy); err != nil || legacy["resolvedModelIds"] == nil {
+		t.Fatalf("the recorded confirmed answer is not the current format: %s", storedBody)
+	}
+	delete(legacy, "resolvedModelIds")
+	rewritten, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.ExecContext(t.Context(), `UPDATE gateway.idempotency_records SET response_body = $1
+		WHERE operation_name = 'CreateManagedKey' AND idempotency_key = 'opl-test:managed-key'`, rewritten); err != nil {
+		t.Fatal(err)
+	}
+	_, err = workspace.CreateManagedKey(t.Context(), managedKeyCommand("managed-key", "model-a"))
+	if err == nil || status.Code(err) != codes.DataLoss {
+		t.Fatalf("a legacy confirmed answer was trusted: %v", err)
+	}
+	if issuer.issued() != 1 || secrets.writeCount() != 1 {
+		t.Fatalf("the legacy readback re-issued the key: issuances=%d writes=%d", issuer.issued(), secrets.writeCount())
+	}
+	var bindings int
+	if err = db.QueryRowContext(t.Context(), `SELECT count(*) FROM gateway.key_bindings WHERE id = $1`, first.GetKeyBindingId()).Scan(&bindings); err != nil {
+		t.Fatal(err)
+	}
+	if bindings != 1 {
+		t.Fatalf("the confirmed binding disappeared: %d", bindings)
 	}
 }
 
