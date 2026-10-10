@@ -744,20 +744,42 @@ export async function runDevelopmentCheck(options: {
       if (!python) return blocked("trusted Python runtime unavailable");
       authorizeRuntimeTool(python, readPaths);
       env.PATH = dirname(python) + ":" + env.PATH;
-      const site = await captureDevelopmentProcess(python, ["-c", "import site;print(site.getusersitepackages())"],
-        temporaryRoot, { HOME: process.env.HOME ?? temporaryRoot }, 10_000);
-      if (site.code !== 0 || site.problem) return blocked("trusted Python runtime configuration unavailable", site.stderr + site.stdout + (site.problem || ""));
-      const userSite = site.stdout.trim();
-      if (userSite) {
-        if (!isAbsolute(userSite)) return blocked("unsafe Python user-site installation");
-        let resolved: string | undefined;
-        try { resolved = await realpath(userSite); } catch { /* A missing user-site installation keeps the interpreter's own import path. */ }
-        if (resolved) {
-          if (inside(snapshot, resolved) || inside(resolved, snapshot) || inside(root, resolved) || inside(resolved, root) ||
-              inside(resolved, process.env.HOME || root)) return blocked("unsafe Python user-site installation");
-          readPaths.add(resolved); env.PYTHONPATH = resolved;
-        }
+      // The locations probe runs with startup isolation: -E ignores every
+      // PYTHON* environment value and -S skips all site processing, so no
+      // .pth, sitecustomize or usercustomize from an installation directory
+      // executes while the configuration is resolved outside the sandbox.
+      // Its cwd is the fresh scratch directory, so the probe cannot import a
+      // stdlib module from the implicit script-directory sys.path entry.
+      const probe = await captureDevelopmentProcess(python,
+        ["-E", "-S", "-c", "import json, site; print(json.dumps({\"base\": site.getuserbase(), \"site\": site.getusersitepackages()}))"],
+        scratch, { HOME: process.env.HOME ?? temporaryRoot }, 10_000);
+      if (probe.code !== 0 || probe.problem) return blocked("trusted Python runtime configuration unavailable", probe.stderr + probe.stdout + (probe.problem || ""));
+      let reported: { base?: unknown; site?: unknown };
+      try { reported = JSON.parse(probe.stdout); } catch { return blocked("trusted Python runtime configuration unavailable", probe.stdout); }
+      const reportedBase = typeof reported.base === "string" ? reported.base : "";
+      const reportedSite = typeof reported.site === "string" ? reported.site : "";
+      if (!reportedBase || !reportedSite || !isAbsolute(reportedBase) || !isAbsolute(reportedSite)) {
+        return blocked("trusted Python user-site installation unavailable");
       }
+      // The approved origin is the user base the interpreter itself reports
+      // for this installation, itself under the real user HOME; the canonical
+      // site-packages must stay inside that origin and exist there. A missing
+      // installation blocks (the pinned generator packages would come from
+      // nowhere), and a site-packages symlink that resolves outside the
+      // origin is refused instead of becoming a whole-directory host read
+      // grant.
+      const userHome = process.env.HOME ?? temporaryRoot;
+      let resolvedHome: string, resolvedBase: string, resolvedUserSite: string;
+      try {
+        resolvedHome = await realpath(userHome);
+        resolvedBase = await realpath(reportedBase);
+        resolvedUserSite = await realpath(reportedSite);
+      } catch { return blocked("trusted Python user-site installation unavailable"); }
+      if (resolvedUserSite === resolvedBase || !inside(resolvedBase, resolvedUserSite) || !inside(resolvedHome, resolvedBase) ||
+          inside(snapshot, resolvedUserSite) || inside(resolvedUserSite, snapshot) || inside(root, resolvedUserSite) || inside(resolvedUserSite, root) ||
+          inside(resolvedUserSite, resolvedHome)) return blocked("unsafe Python user-site installation");
+      if (!(await stat(resolvedUserSite)).isDirectory()) return blocked("trusted Python user-site installation unavailable");
+      readPaths.add(resolvedUserSite); env.PYTHONPATH = resolvedUserSite;
     }
     if (options.kind === "developmentPlan") {
       const checker = await realpath(join(snapshot, "tools/verify-development-plan.ts"));

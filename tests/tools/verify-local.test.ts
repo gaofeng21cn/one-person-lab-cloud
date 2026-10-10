@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
-import { execFile as execFileCallback } from "node:child_process";
+import { execFile as execFileCallback, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import { parse as parseYAML } from "yaml";
@@ -392,6 +393,60 @@ async function developmentFixture(t: import("node:test").TestContext) {
   return { directory, snapshotRoot };
 }
 
+/** The interpreter the runner itself would resolve on this host. */
+async function approvedHostPython(snapshotRoot: string) {
+  const directories = process.platform === "darwin"
+    ? ["/Library/Developer/CommandLineTools/usr/bin", "/usr/bin", "/bin", "/opt/homebrew/bin"]
+    : ["/usr/bin", "/bin", "/usr/local/bin", "/opt/homebrew/bin"];
+  return resolveTrustedPython(directories, snapshotRoot);
+}
+
+/** Interpreter-reported official user-site locations for one fixture HOME. */
+function fixtureUserSiteLocations(python: string, home: string) {
+  const probe = spawnSync(python,
+    ["-c", "import json, site; print(json.dumps({'base': site.getuserbase(), 'site': site.getusersitepackages()}))"],
+    { env: { HOME: home }, encoding: "utf8" });
+  assert.equal(probe.status, 0, probe.stderr);
+  return JSON.parse(probe.stdout) as { base: string; site: string };
+}
+
+async function generatedFixture(t: import("node:test").TestContext, checker: string) {
+  const { directory, snapshotRoot } = await developmentFixture(t);
+  await mkdir(join(snapshotRoot, "tools"), { recursive: true });
+  await writeFile(join(snapshotRoot, "tools/verify-generated-contracts.ts"), checker);
+  const home = join(directory, "home");
+  await mkdir(home, { recursive: true });
+  // Canonical form, like the runner's own snapshot/HOME handling: /var is a
+  // symlink to /private/var and the sandbox filter matches the resolved path.
+  return { directory, snapshotRoot, home: await realpath(home) };
+}
+
+/** The host's real Go plugin installation; the generated stage cannot start without it. */
+function hostGoPluginInstallation(t: import("node:test").TestContext): string | undefined {
+  const probe = spawnSync("go", ["env", "GOBIN"], { encoding: "utf8" });
+  const directory = (process.env.GOBIN || (probe.status === 0 ? probe.stdout.trim() : "")).trim();
+  if (!directory || !["protoc-gen-go", "protoc-gen-go-grpc"].every((name) => existsSync(join(directory, name)))) {
+    t.diagnostic("no host Go plugin installation available; generated-stage fixture skipped");
+    return undefined;
+  }
+  return directory;
+}
+
+/**
+ * Run the real generated stage with the fixture as the invoking user HOME.
+ * The host's own Go plugin installation is pinned explicitly: its directory is
+ * otherwise derived from HOME, and HOME is a fixture here.
+ */
+async function runGeneratedWithHome(snapshotRoot: string, home: string, gobin: string) {
+  const originalHome = process.env.HOME; const originalGobin = process.env.GOBIN;
+  process.env.HOME = home; process.env.GOBIN = gobin;
+  try { return await runDevelopmentCheck({ snapshotRoot, kind: "generated" }); }
+  finally {
+    process.env.HOME = originalHome;
+    if (originalGobin === undefined) delete process.env.GOBIN; else process.env.GOBIN = originalGobin;
+  }
+}
+
 test("development check uses real isolation: writable scratch, read-only snapshot, no host key access or inherited secrets", async (t) => {
   const { directory, snapshotRoot } = await developmentFixture(t);
   const key = join(directory, "host-signing-key");
@@ -646,6 +701,68 @@ test("trusted Python resolution prefers the installed runtime and refuses snapsh
     assert.ok(resolved.startsWith("/Library/Developer/CommandLineTools/"), resolved);
     assert.notEqual(resolved, await realpath("/usr/bin/python3"));
   }
+});
+
+test("the generated stage never executes user-site startup code while resolving the interpreter", async (t) => {
+  const { directory, snapshotRoot, home } = await generatedFixture(t, "console.log('Generated contracts freshness: PASS')");
+  const gobin = hostGoPluginInstallation(t); if (!gobin) return;
+  const python = await approvedHostPython(snapshotRoot);
+  if (!python) { t.diagnostic("no approved host python on this platform"); return; }
+  const { site } = fixtureUserSiteLocations(python, home);
+  await mkdir(site, { recursive: true });
+  const pthMarker = join(directory, "startup-pth-executed");
+  const customizeMarker = join(directory, "startup-usercustomize-executed");
+  await writeFile(join(site, "resolution-probe.pth"),
+    `import pathlib; pathlib.Path(${JSON.stringify(pthMarker)}).write_text("executed")\n`);
+  await writeFile(join(site, "usercustomize.py"),
+    `import pathlib; pathlib.Path(${JSON.stringify(customizeMarker)}).write_text("executed")\n`);
+  const result = await runGeneratedWithHome(snapshotRoot, home, gobin);
+  assert.equal(existsSync(pthMarker), false, "a user-site .pth executed during configuration resolution");
+  assert.equal(existsSync(customizeMarker), false, "a user-site usercustomize module executed during configuration resolution");
+  assert.notEqual(result.status, "blocked", result.reason + result.output);
+  assert.equal(result.status, "passed", result.reason + result.output);
+});
+
+test("the generated stage refuses a user site that escapes its approved installation origin", async (t) => {
+  const { directory, snapshotRoot, home } = await generatedFixture(t, "console.log('Generated contracts freshness: PASS')");
+  const gobin = hostGoPluginInstallation(t); if (!gobin) return;
+  const python = await approvedHostPython(snapshotRoot);
+  if (!python) { t.diagnostic("no approved host python on this platform"); return; }
+  const { site } = fixtureUserSiteLocations(python, home);
+  const escaped = join(directory, "escaped-installation");
+  await mkdir(escaped);
+  await mkdir(dirname(site), { recursive: true });
+  await symlink(escaped, site);
+  const result = await runGeneratedWithHome(snapshotRoot, home, gobin);
+  assert.equal(result.status, "blocked", result.reason + result.output);
+  assert.match(result.reason || "", /user-site/i);
+});
+
+test("a missing user-site installation blocks instead of silently keeping the interpreter default", async (t) => {
+  // No user-site directory is materialized for this fixture HOME: the pinned
+  // generator packages have no approved origin, so the stage must refuse.
+  const { snapshotRoot, home } = await generatedFixture(t, "console.log('Generated contracts freshness: PASS')");
+  const gobin = hostGoPluginInstallation(t); if (!gobin) return;
+  const result = await runGeneratedWithHome(snapshotRoot, home, gobin);
+  assert.equal(result.status, "blocked", result.reason + result.output);
+  assert.match(result.reason || "", /user-site/i);
+});
+
+test("the approved user site is granted read-only as the exact resolved installation", async (t) => {
+  const { directory, snapshotRoot, home } = await generatedFixture(t, "placeholder");
+  const gobin = hostGoPluginInstallation(t); if (!gobin) return;
+  const python = await approvedHostPython(snapshotRoot);
+  if (!python) { t.diagnostic("no approved host python on this platform"); return; }
+  const { site } = fixtureUserSiteLocations(python, home);
+  await mkdir(site, { recursive: true });
+  const provenance = join(site, "provenance.txt");
+  await writeFile(provenance, "approved");
+  await writeFile(join(snapshotRoot, "tools/verify-generated-contracts.ts"),
+    `import { readFileSync } from "node:fs";\nif (readFileSync(${JSON.stringify(provenance)}, "utf8") !== "approved") process.exit(3);\nconsole.log('Generated contracts freshness: PASS');\n`);
+  const result = await runGeneratedWithHome(snapshotRoot, home, gobin);
+  assert.notEqual(result.status, "blocked", result.reason + result.output);
+  assert.equal(result.status, "passed", result.reason + result.output);
+  assert.equal(result.tests, 0);
 });
 
 test("an owner-database stage receives only the host-provided loopback DSN and refuses anything else", async (t) => {
