@@ -245,7 +245,10 @@ var buildActions = []api.AuthorizationActionEnum{api.AuthorizationActionEnum_AUT
 // catalog and never to a second owner's version.
 var workspaceListRuntimeVersions = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS
 
-var workspaceActions = []api.AuthorizationActionEnum{
+// workspaceLaunchActions is the continuation surface of an accepted
+// create_workspace obligation: the canonical x-accepted-operation-actions group
+// for that operation.
+var workspaceLaunchActions = []api.AuthorizationActionEnum{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETQUOTE,
@@ -268,21 +271,69 @@ var workspaceActions = []api.AuthorizationActionEnum{
 	// gateway-audience continuations of the same accepted obligation.
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REFUNDCONFIRMEDDELETION,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET,
+	// Deleting a Workspace stops the exact runtime the accepted order delivered
+	// before its resources are released. Serve owns that stop, so the retirement
+	// is a Serve-audience continuation of the same accepted obligation rather than
+	// a new effect under a fresh grant.
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RETIRERUNTIME,
 	// The default OPL App reads its frozen Runtime Release from Runtime Control
 	// through the same accepted obligation. The read names no other owner's
 	// resource, so it is a bound continuation rather than a widened grant.
 	workspaceListRuntimeVersions,
 }
 
-func (s *Service) grantOwner(owner api.OwnerEnum) (api.OwnerCommitReadbackClient, api.AuthorizationActionEnum, []api.AuthorizationActionEnum) {
+// workspaceDeletionActions is the continuation surface of an accepted
+// delete_workspace obligation: retiring the delivered runtime, releasing the
+// frozen resources, recording the confirmed deletion evidence and settling the
+// original charge. It is a separate group from the launch obligation, so a
+// deletion cannot be issued under a launch grant or carry a launch's effects.
+var workspaceDeletionActions = []api.AuthorizationActionEnum{
+	// Releasing a resource set currently authorizes itself with the accepted
+	// resources write because the contract has no separate release action. The
+	// grant still binds that write to the one accepted Workspace and its own
+	// resource set, and Fabric re-reads its persisted binding before mutating.
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RETIRERUNTIME,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REFUNDCONFIRMEDDELETION,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE,
+}
+
+// grantOwner resolves the owner readback, the accepted action and the
+// continuation surface for one accepted obligation. The accepted action decides
+// the surface: the same owner can accept more than one kind of obligation, and
+// each kind admits exactly its own contract-declared group.
+// containsAction reports whether one continuation surface admits an action. Close
+// out reuses it so an ended authority keeps exactly the surface the accepted
+// obligation already carried instead of a separately maintained list.
+func containsAction(actions []api.AuthorizationActionEnum, action api.AuthorizationActionEnum) bool {
+	for _, candidate := range actions {
+		if candidate == action {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) grantOwner(owner api.OwnerEnum, accepted api.AuthorizationActionEnum) (api.OwnerCommitReadbackClient, api.AuthorizationActionEnum, []api.AuthorizationActionEnum) {
 	switch owner {
 	case api.OwnerEnum_OWNER_ENUM_BUILD:
-		return s.BuildCommit, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEBUILD, buildActions
+		if accepted != api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEBUILD {
+			return nil, 0, nil
+		}
+		return s.BuildCommit, accepted, buildActions
 	case api.OwnerEnum_OWNER_ENUM_WORKSPACE:
-		return s.WorkspaceCommit, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEWORKSPACE, workspaceActions
-	default:
-		return nil, 0, nil
+		switch accepted {
+		case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEWORKSPACE:
+			return s.WorkspaceCommit, accepted, workspaceLaunchActions
+		case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEWORKSPACE:
+			return s.WorkspaceCommit, accepted, workspaceDeletionActions
+		}
 	}
+	return nil, 0, nil
 }
 
 // The accepting owner keeps the immutable input and original authorization
@@ -299,11 +350,14 @@ func validOwnerCommit(actual *api.OwnerCommitEvidence, d *api.AuthorizationDecis
 
 func (s *Service) IssueAcceptedOperationGrant(ctx context.Context, r *api.AcceptedOperationGrantRequest) (*api.AcceptedOperationGrant, error) {
 	claimed := r.GetOwnerCommitEvidence()
-	client, action, actions := s.grantOwner(claimed.GetOwner())
+	if claimed == nil {
+		return nil, denied()
+	}
+	client, action, actions := s.grantOwner(claimed.GetOwner(), claimed.GetAcceptedAction())
 	if e := peer(ctx, owneridentity.Service(ownerName(claimed.GetOwner()))); e != nil {
 		return nil, e
 	}
-	if client == nil || claimed == nil || r.GetRenewalConsentId() != "" || r.GetSubscriptionPeriodId() != "" {
+	if client == nil || r.GetRenewalConsentId() != "" || r.GetSubscriptionPeriodId() != "" {
 		return nil, denied()
 	}
 	actual, e := client.ReadOwnerCommit(ctx, &api.ReadOwnerCommitRequest{Owner: claimed.Owner, OperationId: claimed.OperationId, ResourceId: claimed.ResourceId})
@@ -414,7 +468,7 @@ func (s *Service) authorizeGrant(ctx context.Context, r *api.AuthorizationReques
 	if e != nil {
 		return nil, e
 	}
-	client, action, actions := s.grantOwner(g.AcceptedOperationOwner)
+	client, action, actions := s.grantOwner(g.AcceptedOperationOwner, g.AcceptedAction)
 	if g.Mode == api.AcceptedGrantMode_ACCEPTED_GRANT_MODE_REVOKED || g.ActorId != r.ActorId || !proto.Equal(g.Scope, r.Scope) || client == nil || g.AcceptedAction != action {
 		return nil, denied()
 	}
@@ -442,7 +496,15 @@ func (s *Service) authorizeGrant(ctx context.Context, r *api.AuthorizationReques
 	}
 	if !active || g.Mode == api.AcceptedGrantMode_ACCEPTED_GRANT_MODE_CLOSEOUT_ONLY {
 		closeout := r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION
-		if g.AcceptedOperationOwner == api.OwnerEnum_OWNER_ENUM_WORKSPACE {
+		switch {
+		case g.AcceptedOperationOwner == api.OwnerEnum_OWNER_ENUM_WORKSPACE && g.AcceptedAction == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEWORKSPACE:
+			// A deletion is itself the closeout of its Workspace: retiring the
+			// delivered runtime, releasing the frozen resources, recording the
+			// confirmed deletion and settling the original charge all finish the
+			// obligation that was already accepted. The surface stays exactly the
+			// deletion's own, so ending the interactive authority cannot widen it.
+			closeout = containsAction(workspaceDeletionActions, r.Action)
+		case g.AcceptedOperationOwner == api.OwnerEnum_OWNER_ENUM_WORKSPACE:
 			// A charge is a new effect and stops with the authority; the readback of the
 			// charge already issued stays available so an unknown obligation can still
 			// be reconciled against its own original code.
@@ -473,7 +535,7 @@ func (s *Service) authorizeGrant(ctx context.Context, r *api.AuthorizationReques
 				((r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_FABRIC && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES)) ||
 					(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETQUOTE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEACCEPTEDOBLIGATION)) ||
 					(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_LEDGER && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT)) ||
-					(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_SERVE && r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME) ||
+					(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_SERVE && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RETIRERUNTIME)) ||
 					(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_GATEWAY && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CHARGEACCEPTEDOBLIGATION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REFUNDCONFIRMEDDELETION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET)) ||
 					// Delivering the accepted model configuration splits the managed-key binding across
 					// its two owners: Gateway issues and allowlists the opaque key, while Fabric binds
