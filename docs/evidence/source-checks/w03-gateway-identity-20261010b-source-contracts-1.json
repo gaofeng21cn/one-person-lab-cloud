@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "0aa72ec21f0b103c621b1abd92f3105bfe4ab063",
+  "recordedAt": "2026-10-10T15:13:02.282Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w03-gateway-identity-20261010-source-contracts-1.json",
+    "docs/evidence/source-checks/w03-gateway-identity-20261010b-source-contracts-1.json",
+    "services/gateway-integration/identity/coordination.go",
+    "services/gateway-integration/identity/fabric_managed_secret.go",
+    "services/gateway-integration/identity/fabric_managed_secret_test.go",
+    "services/gateway-integration/identity/managed_key.go",
+    "services/gateway-integration/identity/managed_key_command.go",
+    "services/gateway-integration/identity/managed_key_command_postgres_test.go",
+    "services/gateway-integration/identity/managed_key_scope_postgres_test.go",
+    "services/gateway-integration/identity/service.go",
+    "services/gateway-integration/identity/sub2api_workspace_key.go",
+    "services/gateway-integration/identity/sub2api_workspace_key_test.go"
+  ],
+  "verifiedSource": {
+    "baseSha": "0aa72ec21f0b103c621b1abd92f3105bfe4ab063",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/w03-gateway-identity-20261010-source-contracts-1.json": "20bac1fe0efd0c7f4148ef291e88854407d05761094b966183415ea0bf5ad372",
+      "services/gateway-integration/identity/coordination.go": "1de2f348f9263cb2d1dfeed5e2ca1e1edede771dc1ef89401ecc6fcc7294fa4d",
+      "services/gateway-integration/identity/fabric_managed_secret.go": "a9f00dddb1793f1724ff2d46c58592710005ecae36887ca688392ec824d2bafb",
+      "services/gateway-integration/identity/fabric_managed_secret_test.go": "067b2f41566e94de0384d2c22106676022b5ef833a69b6d8e2ac06cc51d029d7",
+      "services/gateway-integration/identity/managed_key.go": "9049f9ee3aaeb82b558a97375ccd726a1d7f52df8676401842522b68731317af",
+      "services/gateway-integration/identity/managed_key_command.go": "06db5c8e6bf661b92fbf2fb314751bc5f5a09101d34d15103ad6bc799c089f89",
+      "services/gateway-integration/identity/managed_key_command_postgres_test.go": "3d8ee11296b49b1e2220c91a90b630fb5074c4ab1903a2b2513bc8e553a78427",
+      "services/gateway-integration/identity/managed_key_scope_postgres_test.go": "318f0c0f9ee5e98eb1dc6ba502f791855a71fa9430e2566e4a00c1e95578cc07",
+      "services/gateway-integration/identity/service.go": "308a1f20f6d820c034457180c359419d3c530374834cc1504cbef88712f6d60e",
+      "services/gateway-integration/identity/sub2api_workspace_key.go": "420fd75985ba517245a516700b5dfaf4a335e33de6688ca6c555bc1fa5243f97",
+      "services/gateway-integration/identity/sub2api_workspace_key_test.go": "c71bc8f34b6e82112dc0352f5ebfc2500ac45e749400acb767751827408c1a6d"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/contracts/module-physical-boundaries.test.ts tests/contracts/gateway-deployment-unit-principal.test.ts tests/contracts/owner-topology.test.ts",
+    "exitCode": 0,
+    "tests": 15,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "1ca5acb3365d5bc308eec05e35eb66974e1a4e5f07b061701823e38f292abded"
+  },
+  "sourceStage": {
+    "runId": "w03-gateway-identity-20261010b",
+    "gateId": "source-contracts",
+    "attempt": 1,
+    "receiptHash": "95fdfb1aa7e86eb368c9f6dedc7319f785deb67ce69fe6309ea5ddf26bda8d4e"
+  }
+}
