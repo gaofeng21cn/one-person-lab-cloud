@@ -248,6 +248,20 @@ async function trustedTool(name: string) {
   return undefined;
 }
 
+// The trusted Go configuration probe reads host runtime configuration. A
+// scratch-isolated GOPATH/GOENV/GOMODCACHE/GOROOT would silently redirect the
+// probe into empty scratch storage (an inherited scratch GOPATH resolves
+// GOMODCACHE under it), so only explicit host values survive and missing
+// variables fall back to the host Go defaults.
+export function goConfigurationEnv(scratchEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const configuration: NodeJS.ProcessEnv = { ...scratchEnv, HOME: process.env.HOME };
+  for (const name of ["GOPATH", "GOENV", "GOMODCACHE", "GOROOT"]) {
+    if (process.env[name] === undefined) delete configuration[name];
+    else configuration[name] = process.env[name];
+  }
+  return configuration;
+}
+
 // Both the execution deadline and retained output are bounded. SIGKILL targets
 // the process group, including a runner's tests/servers, not just its leader.
 // A killed child can hold inherited pipes open; never wait indefinitely for close.
@@ -495,8 +509,7 @@ export async function runDevelopmentCheck(options: {
       if (go) {
         // Trusted go env reads authoritative host runtime configuration, not a
         // snapshot go.mod or an attacker-supplied command. No tested code runs here.
-        const configurationEnv = { ...env, HOME: process.env.HOME, GOENV: process.env.GOENV,
-          GOMODCACHE: process.env.GOMODCACHE, GOROOT: process.env.GOROOT };
+        const configurationEnv = goConfigurationEnv(env);
         const configuration = await captureDevelopmentProcess(go, ["env", "-json", "GOROOT", "GOMODCACHE"], temporaryRoot, configurationEnv, 10_000);
         if (configuration.code !== 0 || configuration.problem) return blocked("trusted Go runtime configuration unavailable", configuration.stderr + configuration.stdout + (configuration.problem || ""));
         const values = JSON.parse(configuration.stdout);

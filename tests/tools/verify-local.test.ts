@@ -10,6 +10,7 @@ import { generationInputs, generatedOutputs } from "../../tools/verify-generated
 
 import {
   databaseFreeGoTestSpecs,
+  goConfigurationEnv,
   goModules,
   localVerificationSteps,
   parseVerifyLocalArgs,
@@ -603,6 +604,22 @@ test("development Go checks consume real JSON summaries and reject zero tests, s
   const missing = await runDevelopmentCheck({ snapshotRoot, kind: "go", cwd: "module" });
   assert.equal(missing.status, "failed", missing.output);
   assert.equal(missing.passed, false);
+});
+
+test("trusted Go probes read host configuration, never scratch Go paths", () => {
+  const scratch: Record<string, string> = { GOPATH: "/scratch/go-path", GOENV: "off",
+    GOMODCACHE: "/scratch/pkg/mod", GOROOT: "/scratch/goroot" };
+  const probe = goConfigurationEnv({ PATH: "/usr/bin", HOME: "/scratch/home", ...scratch,
+    GOPROXY: "off", GOTOOLCHAIN: "local", GOCACHE: "/scratch/go-cache" });
+  for (const [name, value] of Object.entries(scratch)) {
+    assert.notEqual(probe[name], value, `scratch ${name} leaked into the trusted Go probe`);
+    assert.equal(probe[name], process.env[name]);
+    assert.equal(Object.hasOwn(probe, name), process.env[name] !== undefined);
+  }
+  assert.equal(probe.HOME, process.env.HOME);
+  // Non-installation scratch isolation flags stay in place for the probe.
+  assert.equal(probe.GOPROXY, "off");
+  assert.equal(probe.GOTOOLCHAIN, "local");
 });
 
 test("generated checks require the actual checker freshness PASS and zero exit, and browser requires the approved manifest", async (t) => {
