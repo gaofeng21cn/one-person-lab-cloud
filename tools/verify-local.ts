@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from "node:child_process";
 import { constants } from "node:fs";
-import { access, chmod, cp, mkdir, mkdtemp, readFile, realpath, rm, stat, symlink } from "node:fs/promises";
+import { access, chmod, cp, lstat, mkdir, mkdtemp, readFile, realpath, rm, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -765,15 +765,44 @@ export async function runDevelopmentCheck(options: {
       // for this installation, itself under the real user HOME; the canonical
       // site-packages must stay inside that origin and exist there. A missing
       // installation blocks (the pinned generator packages would come from
-      // nowhere), and a site-packages symlink that resolves outside the
-      // origin is refused instead of becoming a whole-directory host read
-      // grant.
+      // nowhere). The origin may not be produced by redirecting the reported
+      // chain: every component from the real HOME through the base to the
+      // site is walked without following links, and a symlinked component is
+      // refused, so canonical containment alone can never admit an unrelated
+      // directory (such as a relocated host authority store) below the same
+      // HOME.
       const userHome = process.env.HOME ?? temporaryRoot;
-      let resolvedHome: string, resolvedBase: string, resolvedUserSite: string;
+      let resolvedHome: string;
+      try { resolvedHome = await realpath(userHome); } catch { return blocked("trusted Python user-site installation unavailable"); }
+      const chainParts = (start: string, target: string) => {
+        const suffix = relative(start, target);
+        if (!suffix || isAbsolute(suffix)) return undefined;
+        const parts = suffix.split(sep).filter((part) => part !== "");
+        return parts.length && !parts.some((part) => part === "." || part === "..") ? parts : undefined;
+      };
+      const baseParts = chainParts(userHome, reportedBase);
+      const siteParts = chainParts(reportedBase, reportedSite);
+      if (!baseParts || !siteParts) return blocked("unsafe Python user-site installation");
+      let resolvedBase = resolvedHome;
+      for (const part of baseParts) {
+        resolvedBase = join(resolvedBase, part);
+        let entry;
+        try { entry = await lstat(resolvedBase); } catch { return blocked("trusted Python user-site installation unavailable"); }
+        if (entry.isSymbolicLink()) return blocked("unsafe Python user-site installation");
+      }
+      let resolvedUserSite = resolvedBase;
+      for (const part of siteParts) {
+        resolvedUserSite = join(resolvedUserSite, part);
+        let entry;
+        try { entry = await lstat(resolvedUserSite); } catch { return blocked("trusted Python user-site installation unavailable"); }
+        if (entry.isSymbolicLink()) return blocked("unsafe Python user-site installation");
+      }
+      // With no symlinked component the canonical target is the reported
+      // chain itself; the remaining containment checks are defense in depth.
       try {
-        resolvedHome = await realpath(userHome);
-        resolvedBase = await realpath(reportedBase);
-        resolvedUserSite = await realpath(reportedSite);
+        if (await realpath(reportedBase) !== resolvedBase || await realpath(reportedSite) !== resolvedUserSite) {
+          return blocked("unsafe Python user-site installation");
+        }
       } catch { return blocked("trusted Python user-site installation unavailable"); }
       if (resolvedUserSite === resolvedBase || !inside(resolvedBase, resolvedUserSite) || !inside(resolvedHome, resolvedBase) ||
           inside(snapshot, resolvedUserSite) || inside(resolvedUserSite, snapshot) || inside(root, resolvedUserSite) || inside(resolvedUserSite, root) ||

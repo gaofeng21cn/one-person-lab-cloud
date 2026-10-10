@@ -765,6 +765,56 @@ test("the approved user site is granted read-only as the exact resolved installa
   assert.equal(result.tests, 0);
 });
 
+test("the generated stage refuses a user base redirected through a symlink into an unrelated HOME directory", async (t) => {
+  const { snapshotRoot, home } = await generatedFixture(t, "console.log('Generated contracts freshness: PASS')");
+  const gobin = hostGoPluginInstallation(t); if (!gobin) return;
+  const python = await approvedHostPython(snapshotRoot);
+  if (!python) { t.diagnostic("no approved host python on this platform"); return; }
+  // The reported base itself is a symlink into an unrelated directory below
+  // the same HOME (for example a relocated authority store): the canonical
+  // containment checks alone would accept it, so the chain walk must refuse.
+  const redirected = join(home, ".hidden-base");
+  await mkdir(join(redirected, "lib", "python", "site-packages"), { recursive: true });
+  await writeFile(join(redirected, "lib", "python", "site-packages", "authority.key"), "synthetic control\n");
+  await mkdir(join(home, "Library", "Python"), { recursive: true });
+  await symlink(redirected, join(home, "Library", "Python", "3.9"));
+  const result = await runGeneratedWithHome(snapshotRoot, home, gobin);
+  assert.equal(result.status, "blocked", result.reason + result.output);
+  assert.match(result.reason || "", /user-site/i);
+});
+
+test("the generated stage refuses a user base whose ancestor is a symlink into an unrelated HOME directory", async (t) => {
+  const { snapshotRoot, home } = await generatedFixture(t, "console.log('Generated contracts freshness: PASS')");
+  const gobin = hostGoPluginInstallation(t); if (!gobin) return;
+  const python = await approvedHostPython(snapshotRoot);
+  if (!python) { t.diagnostic("no approved host python on this platform"); return; }
+  // An ancestor of the reported base (here Library/Python) is the symlink; the
+  // base path itself is a real directory under the redirected tree.
+  const redirected = join(home, ".hidden-tree");
+  await mkdir(join(redirected, "3.9", "lib", "python", "site-packages"), { recursive: true });
+  await mkdir(join(home, "Library"), { recursive: true });
+  await symlink(redirected, join(home, "Library", "Python"));
+  const result = await runGeneratedWithHome(snapshotRoot, home, gobin);
+  assert.equal(result.status, "blocked", result.reason + result.output);
+  assert.match(result.reason || "", /user-site/i);
+});
+
+test("the generated site chain refuses a symlinked component even when it stays inside the base", async (t) => {
+  const { snapshotRoot, home } = await generatedFixture(t, "console.log('Generated contracts freshness: PASS')");
+  const gobin = hostGoPluginInstallation(t); if (!gobin) return;
+  const python = await approvedHostPython(snapshotRoot);
+  if (!python) { t.diagnostic("no approved host python on this platform"); return; }
+  // A directory between the base and the site (here lib) is a symlink to
+  // another location inside the base: canonical containment still accepts it.
+  await mkdir(join(home, "Library", "Python", "3.9"), { recursive: true });
+  const realLib = join(home, "Library", "Python", "3.9", "lib-real");
+  await mkdir(join(realLib, "python", "site-packages"), { recursive: true });
+  await symlink(realLib, join(home, "Library", "Python", "3.9", "lib"));
+  const result = await runGeneratedWithHome(snapshotRoot, home, gobin);
+  assert.equal(result.status, "blocked", result.reason + result.output);
+  assert.match(result.reason || "", /user-site/i);
+});
+
 test("an owner-database stage receives only the host-provided loopback DSN and refuses anything else", async (t) => {
   // The admission rule is a pure boundary: only a loopback PostgreSQL admin DSN
   // that the host itself provisioned is admissible, so no production DSN can be
