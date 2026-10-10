@@ -86,6 +86,10 @@ func (d *localFixture) BindSecret(context.Context, coordination.SecretBindIntent
 	return coordination.SecretBindResult{}, fmt.Errorf("fixture_provider_bind_unavailable")
 }
 
+func (d *localFixture) DeleteResource(context.Context, coordination.ResourceDeletionIntent, string) (coordination.ResourceDeletionFact, error) {
+	return coordination.ResourceDeletionFact{}, fmt.Errorf("fixture_provider_delete_unavailable")
+}
+
 func (d *localFixture) EnsureResources(_ context.Context, in coordination.ResourceIntent) (*coordination.ResourceResult, error) {
 	d.calls++
 	if d.fail {
