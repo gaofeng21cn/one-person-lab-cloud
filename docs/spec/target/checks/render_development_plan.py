@@ -233,12 +233,12 @@ delivery_slice('W16.workspace-ui','integration',['W15.first-create','W13.console
 # source owner, no business producer dependency, and the existing console test
 # targets. They no longer borrow the whole W16 package or the launch-only slice.
 delivery_slice('W16.console-ui-fixes','integration',[],
- ['apps/console-ui/src/app','apps/console-ui/src/pages','apps/console-ui/src/styles.css'],
+ ['apps/console-ui/src/app','apps/console-ui/src/pages','apps/console-ui/src/styles.css','apps/console-ui/src/api/publisher-api.ts'],
  ['既有Console页面/controller规格','既有Console unit/browser测试目标','真实owner readback（Workspace/Delivery读取）','docs/implementation-architecture.md当前Console/BFF路由'],
  '既有Console表现层回归的最小修复：从owner读回派生展示结论，复用现有unit/browser目标；不新增业务语义、不写后端或业务SSOT',
  ['npm run typecheck','node --test tests/ui/workspace-experience-model.test.ts','npm run test:browser:workspace-lifecycle'],
  '真实执行的既有Console unit/browser目标(0 fail/skip)与source-check receipt；不声称业务链或W16包完成',
- ['tests/ui/workspace-experience-model.test.ts','tests/ui/workspace-task-experience-browser.test.ts','tests/ui/cloud-webui-browser.test.ts'])
+ ['tests/ui/workspace-experience-model.test.ts','tests/ui/workspace-task-experience-browser.test.ts','tests/ui/cloud-webui-browser.test.ts','tests/ui/cloud-webui-model.test.ts'])
 # Source checks consume the existing typed owner inputs on one exact baseline;
 # they do not require completion of the entire purchase/upgrade/renewal program.
 # Whole W20 keeps its original dependencies and business acceptance obligations.
