@@ -3,7 +3,7 @@
   "receiptType": "opl_development_source_check",
   "evidenceLayer": "source",
   "result": "pass",
-  "sourceBaseSha": "8cd6c436cde9153a7e96a7afafb5a5a57d8ba69f",
+  "sourceBaseSha": "b8265878939df42ee3dfd9362fd3493084a5bdef",
   "recordedAt": "2026-10-10T18:36:20.065Z",
   "writeSet": [
     "docs/evidence/source-checks/console-ui-w16-grant-20261011-development-plan-1.json",
@@ -12,10 +12,10 @@
     "docs/spec/target/checks/render_development_plan.py"
   ],
   "verifiedSource": {
-    "baseSha": "8cd6c436cde9153a7e96a7afafb5a5a57d8ba69f",
+    "baseSha": "b8265878939df42ee3dfd9362fd3493084a5bdef",
     "changedFilesSha256": {
-      "docs/spec/target/14_implementation_work_packages.md": "2439da6e8efb3e53d50832b8145a3e48a859eab6968091609816856cb4328df2",
-      "docs/spec/target/checks/development_plan.json": "596ceb7a21b3070aa900ea3b2139701831960fbca4437ee9872e634b06c5c5cd",
+      "docs/spec/target/14_implementation_work_packages.md": "a8d0ef1e96d3beafbc10b7e0a35893cf3cfcdd3a3e402c503ec28b255ae21c86",
+      "docs/spec/target/checks/development_plan.json": "39c80b9cf8f8ace1180ddefe6997f76ba3c97626aa21d64b7b3892663c8c6562",
       "docs/spec/target/checks/render_development_plan.py": "53e5b609d953d82e9c28bb6c438d9d313c29ffd93fffb980568047c12d9f0bb3"
     }
   },
