@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "e1b8c65e2a0e2872fea4928d1ed72ba5c8ae02e2",
+  "sourceSHA": "34878da668b0c66f7d3cd4c79967cd94907f1cf3",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -1931,13 +1931,14 @@
         "services/control-plane/internal/server/wallet_adjustment.go"
       ],
       "plannedWritePaths": [
-        "services/workspace/internal/deletion",
-        "services/gateway-integration/internal/settlement"
+        "services/workspace/internal/launch",
+        "services/gateway-integration/identity"
       ],
       "deliverables": [
         "Workspace持久化删除意图并协调原单/退款；Serve负责Agent retirement、访问撤销与absence readback；Fabric负责资源删除事实",
         "base保留原policy；已applied升级supplement用自身coverage，不合并当整月款",
-        "与续费/plan change/rotation串行，不撤销用户保留Key，不删Package/Build历史"
+        "与续费/plan change/rotation串行，不撤销用户保留Key，不删Package/Build历史",
+        "当前实现按workspace与gateway两个owner写集拆分；交汇时使用互认coauthor admission和各自append-only receipt"
       ],
       "verification": [
         "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
