@@ -239,6 +239,21 @@ delivery_slice('W16.console-ui-fixes','integration',[],
  ['npm run typecheck','node --test tests/ui/workspace-experience-model.test.ts','npm run test:browser:workspace-lifecycle'],
  '真实执行的既有Console unit/browser目标(0 fail/skip)与source-check receipt；不声称业务链或W16包完成',
  ['tests/ui/workspace-experience-model.test.ts','tests/ui/workspace-task-experience-browser.test.ts','tests/ui/cloud-webui-browser.test.ts'])
+# Source checks consume the existing typed owner inputs on one exact baseline;
+# they do not require completion of the entire purchase/upgrade/renewal program.
+# Whole W20 keeps its original dependencies and business acceptance obligations.
+delivery_slice('W20.workspace-deletion-source','integration',['W20.deletion-grant-source'],
+ ['services/workspace/internal/launch/deletion.go','services/workspace/internal/launch/deletion_test.go','services/workspace/internal/launch/recovery.go','services/workspace/internal/launch/service.go'],
+ ['现有Workspace删除源码及RED/GREEN证据','W20.deletion-grant-source实际Host receipt','同exact baseline的typed owner contracts、原单/授权/资源/钱包读回接口','隔离PostgreSQL及显式runner依赖输入','docs/invariants.md#workspace-lifecycle'],
+ 'Workspace owner删除/恢复与状态读回的局部源码收口：absence及删除receipt前不退款；退款非终态读回原命令而不重发；资源与退款状态分开；不接管Legacy原单',
+ ['OPL_POSTGRES_TESTS=1 go -C services/workspace test -json -count=1 ./internal/launch','原单/授权/absence/金额错配拒绝、非终态恢复不重复退款','实际测试数>0且0 fail/skip/TODO；runner只使用声明的隔离输入'],
+ 'Host从实际owner测试生成的source-check/stage receipt，绑定exact source/输入/输出/命令统计；下游串行联合验证按hash消费；不声称整个W20、真实删除、退款到账或Instance PASS')
+delivery_slice('W20.deletion-grant-source','integration',[],
+ ['services/gateway-integration/identity/authorization.go','services/gateway-integration/identity/workspace_grants_postgres_test.go'],
+ ['现有Gateway accepted-operation grant源码与typed接口','同exact baseline的Workspace commit/action/audience合同','隔离PostgreSQL及显式runner依赖输入','docs/invariants.md#workspace-lifecycle'],
+ 'Gateway删除授权边界局部源码收口：按原accepted delete obligation发放/恢复续执行权限，与create obligation分组；不扩权、不建立钱包或转移Workspace结算权',
+ ['OPL_POSTGRES_TESTS=1 go -C services/gateway-integration test -json -count=1 ./identity','错误accepted action/audience/资源拒绝；删除续执行不获得开通专用权限','实际测试数>0且0 fail/skip/TODO；runner只使用声明的隔离输入'],
+ 'Host从实际授权测试生成的source-check/stage receipt，绑定exact source/输入/输出/命令统计；Workspace source run在requires中消费本phase的实际receipt hash，再交串行联合验证；不声称真实钱包退款、整个W20或Instance PASS')
 delivery_slice('W27.runnable-candidate','integration',['W02.owner-readiness'],
  ['Dockerfile','deploy/portable','.github/workflows/build-opl-cloud-candidate.yml'],
  ['同Cloud commit合同/owner集合','buildx/buildkit接线','安装配置schema'],

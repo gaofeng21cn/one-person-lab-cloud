@@ -276,6 +276,17 @@ so the stage receipt's approval hash binds which fixture the evidence came from;
 the runner refuses any DSN that is not an isolated loopback PostgreSQL admin
 endpoint, and neither the worker nor the invoking environment can supply one.
 
+W20 owner source closeout uses `W20.workspace-deletion-source` for the existing
+Workspace deletion/recovery files and `W20.deletion-grant-source` for Gateway's
+accepted-deletion authorization files. These exact-file slices consume typed
+source inputs and isolated owner tests, not completion receipts for the whole
+purchase, upgrade and renewal program. Their receipts prove only source checks;
+the full W20 dependencies and deletion/refund business acceptance remain intact.
+The Workspace source run requires the Gateway source run's actual receipt;
+the downstream serialized check consumes both on the same exact baseline.
+Legacy cleanup still uses its original owner and the existing Cloud
+chain PASS prerequisite; source checks never authorize production effects.
+
 ## Pre-Commit Checks
 
 ```bash
