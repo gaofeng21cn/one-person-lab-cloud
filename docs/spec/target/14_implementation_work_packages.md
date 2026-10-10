@@ -852,13 +852,14 @@
 - `services/control-plane/internal/server/wallet_adjustment.go`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `services/workspace/internal/deletion`
-- `services/gateway-integration/internal/settlement`
+- `services/workspace/internal/launch`
+- `services/gateway-integration/identity`
 
 **必须交付**：
 - Workspace持久化删除意图并协调原单/退款；Serve负责Agent retirement、访问撤销与absence readback；Fabric负责资源删除事实
 - base保留原policy；已applied升级supplement用自身coverage，不合并当整月款
 - 与续费/plan change/rotation串行，不撤销用户保留Key，不删Package/Build历史
+- 当前实现按workspace与gateway两个owner写集拆分；交汇时使用互认coauthor admission和各自append-only receipt
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`deleteWorkspace`, `getWorkspaceDeletion`
 
