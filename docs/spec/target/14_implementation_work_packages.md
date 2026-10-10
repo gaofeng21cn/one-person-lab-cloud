@@ -1521,9 +1521,9 @@
 
 **输入：** 既有Console页面/controller规格；既有Console unit/browser测试目标；真实owner readback（Workspace/Delivery读取）；docs/implementation-architecture.md当前Console/BFF路由
 
-**写集：** `apps/console-ui/src/app`, `apps/console-ui/src/pages`
+**写集：** `apps/console-ui/src/app`, `apps/console-ui/src/pages`, `apps/console-ui/src/styles.css`
 
-**测试写授权（开发SSOT，仅精确文件）：** `tests/ui/workspace-experience-model.test.ts`, `tests/ui/workspace-task-experience-browser.test.ts`
+**测试写授权（开发SSOT，仅精确文件）：** `tests/ui/workspace-experience-model.test.ts`, `tests/ui/workspace-task-experience-browser.test.ts`, `tests/ui/cloud-webui-browser.test.ts`
 
 **验收：** npm run typecheck；node --test tests/ui/workspace-experience-model.test.ts；npm run test:browser:workspace-lifecycle
 

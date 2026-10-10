@@ -259,8 +259,9 @@ Restricted workers cannot write `AGENTS.md`, `DEV_GUIDE.md`, `.github/**`,
 `tools/**`, `tests/tools/**`, `package.json` or the development plan; the
 development-governance work is a host-owned reference lane
 (`W27.development-governance`), not a worker grant. A bounded Console
-presentation fix uses `W16.console-ui-fixes`; its phase record grants the two
-existing console test files through `testWritePaths` (exact files under
+presentation fix uses `W16.console-ui-fixes`; its phase record includes the
+shared Console stylesheet and explicitly grants the listed existing console
+test files through `testWritePaths` (exact files under
 `tests/`, never a directory or a business owner) so the implementation and its
 test stay in one owner scope.
 
