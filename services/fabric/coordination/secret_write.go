@@ -79,22 +79,27 @@ func (s *Service) PutManagedSecret(ctx context.Context, r *api.ManagedSecretComm
 }
 
 // managedSecretDispatchError maps the provider's Secret write outcome to the
-// caller's retry decision. A pending or absent provider resource is retryable;
-// a conflict or an invalid provider input is a definite refusal; every other
-// failure is retryable rather than being reported as success.
+// caller's retry decision. Only outcomes that the reachable call path produces
+// as typed sentinels are classified: Fabric's own operation claim raises
+// fabric.ErrGatewaySecretIdempotencyConflict when one idempotency key is reused
+// for a different Secret, the provider readback raises
+// fabric.ErrLaunchStageBindingConflict when the stored Secret identity does not
+// match the requested identity, and it raises
+// fabric.ErrWorkspaceLaunchResourceAbsent while the write is not confirmed
+// yet. The first two are definite refusals and must not be retried; an absent
+// resource stays retryable. Every other failure — including a kubectl refusal
+// that the production provider returns as a plain, unclassified error — stays
+// unknown and retryable rather than being reported as success or as a definite
+// refusal. The Workspace launch-chain sentinels are not produced by this path
+// and must not be classified as refusals here.
 func managedSecretDispatchError(err error) error {
 	switch {
 	case errors.Is(err, fabric.ErrGatewaySecretIdempotencyConflict):
 		return status.Error(codes.AlreadyExists, "the Secret write identity was reused for a different Secret")
-	case errors.Is(err, fabric.ErrWorkspaceLaunchPending),
-		errors.Is(err, fabric.ErrWorkspaceLaunchResourceAbsent),
-		errors.Is(err, fabric.ErrWorkspaceLaunchComputeDispatchPending),
-		errors.Is(err, fabric.ErrWorkspaceLaunchOwnershipPending):
+	case errors.Is(err, fabric.ErrLaunchStageBindingConflict):
+		return status.Error(codes.FailedPrecondition, "the approved Secret store holds a conflicting Secret identity")
+	case errors.Is(err, fabric.ErrWorkspaceLaunchResourceAbsent):
 		return status.Error(codes.Unavailable, "the approved Secret store has not confirmed the write")
-	case errors.Is(err, fabric.ErrWorkspaceLaunchFrozen),
-		errors.Is(err, fabric.ErrWorkspaceLaunchInputInvalid),
-		errors.Is(err, fabric.ErrLaunchStageBindingConflict):
-		return status.Error(codes.FailedPrecondition, "the approved Secret store refused the write")
 	default:
 		return status.Error(codes.Unavailable, "the approved Secret store could not confirm the write")
 	}

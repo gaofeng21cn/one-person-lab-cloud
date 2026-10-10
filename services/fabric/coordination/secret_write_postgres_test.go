@@ -29,6 +29,7 @@ import (
 type managedSecretDispatcher struct {
 	writes, reads int
 	fail          bool
+	providerErr   error
 	results       map[string]coordination.ManagedSecretResult
 	fingerprints  map[string]string
 }
@@ -53,6 +54,9 @@ func (d *managedSecretDispatcher) PutManagedSecret(_ context.Context, in coordin
 			return coordination.ManagedSecretResult{}, fabric.ErrGatewaySecretIdempotencyConflict
 		}
 		return stored, nil
+	}
+	if d.providerErr != nil {
+		return coordination.ManagedSecretResult{}, d.providerErr
 	}
 	if d.fail {
 		return coordination.ManagedSecretResult{}, fabric.ErrWorkspaceLaunchPending
