@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "b06bcb88849176344944dc741305a6072b4f567e",
+  "recordedAt": "2026-10-11T00:14:02.178Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w20-deletion-grant-source-slice-v3-identity-grants-1.json",
+    "docs/evidence/source-checks/w20-deletion-grant-source-slice-v4-identity-grants-1.json",
+    "docs/evidence/source-checks/w20-deletion-grant-source-slice-v5-identity-grants-1.json",
+    "docs/evidence/source-checks/w20-deletion-grant-source-slice-v6-identity-grants-1.json",
+    "services/gateway-integration/identity/authorization.go",
+    "services/gateway-integration/identity/workspace_grants_postgres_test.go"
+  ],
+  "verifiedSource": {
+    "baseSha": "b06bcb88849176344944dc741305a6072b4f567e",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/w20-deletion-grant-source-slice-v3-identity-grants-1.json": "3a05fbb14e3f921b1d4cc8ea768bb1195b57e2ee80579bb85df528bfb26c655c",
+      "docs/evidence/source-checks/w20-deletion-grant-source-slice-v4-identity-grants-1.json": "7554f559e1118048710bc854d000494ff5e5e00597087e00103a1b6457d46fd7",
+      "docs/evidence/source-checks/w20-deletion-grant-source-slice-v5-identity-grants-1.json": "b679dc6ccd479b1607eb00d15881554ce86e6afae2c80206a52119ecb3ba3608",
+      "services/gateway-integration/identity/authorization.go": "05c8a8a20120f11f4ec5c62f8d855b98a0a0259353623306bf9df9f3d25d387d",
+      "services/gateway-integration/identity/workspace_grants_postgres_test.go": "3fac0c273c5281acd4c3de51c2c1c6f7ab3cfcfe4861d1454bb78b4b580b095a"
+    }
+  },
+  "execution": {
+    "command": "go test -count=1 -json ./... (cwd: services/gateway-integration)",
+    "exitCode": 0,
+    "tests": 123,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "ae4e4732f8b37058c7a02ab512f19e836320c80c3d858e7a39180175640b569d"
+  },
+  "sourceStage": {
+    "runId": "w20-deletion-grant-source-slice-v6",
+    "gateId": "identity-grants",
+    "attempt": 1,
+    "receiptHash": "a62b2a9128fd64a067d24c17d7f119d2a42391d80285be934a5173023341db2e"
+  }
+}
