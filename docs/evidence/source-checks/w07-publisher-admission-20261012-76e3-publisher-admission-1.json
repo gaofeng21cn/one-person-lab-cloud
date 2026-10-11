@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "76e3d21ffa5a506f0b96ada5b762d90bd2307873",
+  "recordedAt": "2026-10-11T17:19:07.412Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w07-publisher-admission-20261012-76e3-publisher-admission-1.json",
+    "services/capability/catalog/admission.go",
+    "services/capability/catalog/publisher_admission_postgres_test.go"
+  ],
+  "verifiedSource": {
+    "baseSha": "76e3d21ffa5a506f0b96ada5b762d90bd2307873",
+    "changedFilesSha256": {
+      "services/capability/catalog/admission.go": "73508a9e0e506e16da1ad6c4cef8752867e0048a09071664fd4e848b133914a7",
+      "services/capability/catalog/publisher_admission_postgres_test.go": "fbaad639207443291cbda41698a9534b83bfc08380fd1c77a1c57fee91ea3acd"
+    }
+  },
+  "execution": {
+    "command": "go test -count=1 -json ./catalog (cwd: services/capability)",
+    "exitCode": 0,
+    "tests": 43,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "3dde1d65a7bfd9fccac00060f993799283a33cf99454e0cb97f5bfdb788ae9bb"
+  },
+  "sourceStage": {
+    "runId": "w07-publisher-admission-20261012-76e3",
+    "gateId": "publisher-admission",
+    "attempt": 1,
+    "receiptHash": "b0c7c7d23c0c5b1e93283f0ef4d49fba62dd149cea242a070f829c341c2e3a1b"
+  }
+}

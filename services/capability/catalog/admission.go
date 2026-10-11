@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/lib/pq"
@@ -14,6 +15,11 @@ import (
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/publicjson"
 )
+
+// repositoryPrefixPattern is the approved PublisherNamespace.repositoryPrefix:
+// a full registry/repository path with no scheme, tag or digest, maxLength 512
+// (docs/spec/target/03_api_contract_complete.yaml).
+var repositoryPrefixPattern = regexp.MustCompile(`^[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]+)?/[a-z0-9]+(?:[._/-][a-z0-9]+)*$`)
 
 func (s *Service) ConfigurePublisherSchema(path, sha string) error {
 	data, e := os.ReadFile(path)
@@ -49,7 +55,7 @@ func (s *Service) CreatePublisherNamespace(ctx context.Context, r *api.CreatePub
 		return nil, status.Error(codes.InvalidArgument, "publisher identity and admission receipt required")
 	}
 	prefix := b.RepositoryPrefix
-	if prefix == "" || strings.TrimSpace(prefix) != prefix || strings.HasSuffix(prefix, "/") || strings.ContainsAny(prefix, "@?#\\ ") || strings.Contains(prefix, "..") || strings.Contains(prefix, "://") || strings.ToLower(prefix) != prefix {
+	if len(prefix) > 512 || !repositoryPrefixPattern.MatchString(prefix) {
 		return nil, status.Error(codes.InvalidArgument, "exact registry repository prefix required")
 	}
 	out := &api.PublisherNamespace{}
