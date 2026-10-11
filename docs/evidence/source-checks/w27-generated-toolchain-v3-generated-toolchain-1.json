@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "8cd6c436cde9153a7e96a7afafb5a5a57d8ba69f",
+  "recordedAt": "2026-10-10T20:58:14.067Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w27-generated-toolchain-v1-generated-toolchain-2.json",
+    "docs/evidence/source-checks/w27-generated-toolchain-v2-development-gates-1.json",
+    "docs/evidence/source-checks/w27-generated-toolchain-v3-generated-toolchain-1.json",
+    "tests/tools/verify-local.test.ts",
+    "tools/verify-local.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "8cd6c436cde9153a7e96a7afafb5a5a57d8ba69f",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/w27-generated-toolchain-v1-generated-toolchain-2.json": "5b44520354d9120b54b61029bc56d24c23b245af9d2f390a922073d22286b36f",
+      "docs/evidence/source-checks/w27-generated-toolchain-v2-development-gates-1.json": "f5d23698e9d0198b3a5137bface66d40703fcfa53889730f3afbd4442026d4b9",
+      "tests/tools/verify-local.test.ts": "32b83fa2af0afdbdd27daab30399b7f867a158d9ec029cb37cb0a1d07db638f9",
+      "tools/verify-local.ts": "325af7483746263576f5de68cff651d4ce25fdc07de7862bae6c278db0f77e50"
+    }
+  },
+  "execution": {
+    "command": "node tools/verify-generated-contracts.ts",
+    "exitCode": 0,
+    "tests": 0,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "1b8ed24bc5549ea16a8f84074c18c7da3d519a5e0ec67c686da9d8ebd6a3f99b"
+  },
+  "sourceStage": {
+    "runId": "w27-generated-toolchain-v3",
+    "gateId": "generated-toolchain",
+    "attempt": 1,
+    "receiptHash": "167c622a8278f9ca0f07c8724930035a7a4a63c463f065fccdb3d38205ebc6aa"
+  }
+}

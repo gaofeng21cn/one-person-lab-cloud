@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "74c1b29201277032b8634b0f1ea748278df5be8b",
+  "recordedAt": "2026-10-10T19:16:17.978Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w20-delete-action-contract-slice-v2-contracts-go-1.json",
+    "docs/spec/target/03_api_contract_complete.yaml",
+    "docs/spec/target/contracts/internal.proto",
+    "packages/contracts/go/api/internal.pb.go",
+    "packages/contracts/go/publicjson/shape_generated.go",
+    "packages/contracts/proto/internal.proto"
+  ],
+  "verifiedSource": {
+    "baseSha": "74c1b29201277032b8634b0f1ea748278df5be8b",
+    "changedFilesSha256": {
+      "docs/spec/target/03_api_contract_complete.yaml": "4202dd4fcbc8f3f65b7be4a3c4516cc70f6e6696107afa28ad8ae4a18e38e297",
+      "docs/spec/target/contracts/internal.proto": "e23623492b399f0de0ee39f749f90860bc80355a6d9c33910504cc9a64af7743",
+      "packages/contracts/go/api/internal.pb.go": "8c3192aae6fde9ef87f56cb8d809b7c35ea7db73c2b1168f0fc86d02f64594c5",
+      "packages/contracts/go/publicjson/shape_generated.go": "a0a86a8190c4e27477a01aee9f93070b25585b4baea8860fa59c777a93ad6150",
+      "packages/contracts/proto/internal.proto": "7ef3b89435616437aa1ddea18ba584442afa933dd515b61afe0bcb7530ce0609"
+    }
+  },
+  "execution": {
+    "command": "go test -count=1 -json ./... (cwd: packages/contracts/go)",
+    "exitCode": 0,
+    "tests": 123,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "577fbeb7b159d13039da0e691bc0a03fff2a10f16c7bc54e03eaca9d7a3ec23d"
+  },
+  "sourceStage": {
+    "runId": "w20-delete-action-contract-slice-v2",
+    "gateId": "contracts-go",
+    "attempt": 1,
+    "receiptHash": "63971c4bb9bded02c56f4b0431a21d6806d4ae423dd116134684ef6bd8bf6636"
+  }
+}
