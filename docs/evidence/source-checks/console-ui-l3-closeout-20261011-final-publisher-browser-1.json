@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "b06bcb88849176344944dc741305a6072b4f567e",
+  "recordedAt": "2026-10-10T22:53:53.987Z",
+  "writeSet": [
+    "docs/evidence/source-checks/console-ui-l3-closeout-20261011-final-publisher-browser-1.json",
+    "docs/evidence/source-checks/console-ui-l3-closeout-20261011-final-publisher-model-1.json"
+  ],
+  "verifiedSource": {
+    "baseSha": "b06bcb88849176344944dc741305a6072b4f567e",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/console-ui-l3-closeout-20261011-final-publisher-model-1.json": "b02101324739af33c6f43731bf950fabcf2c1fb245ffe2146190653daf3f4164"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/ui/cloud-webui-browser.test.ts tests/ui/workspace-task-experience-browser.test.ts",
+    "exitCode": 0,
+    "tests": 19,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "d0e847c6cac95f69ccd021234490cebcf991662a930472c1415d9e4e1037883f"
+  },
+  "sourceStage": {
+    "runId": "console-ui-l3-closeout-20261011-final",
+    "gateId": "publisher-browser",
+    "attempt": 1,
+    "receiptHash": "830224f1cdee369f1db7b73a5e9f52267721b45f2ffb60d0dd0c6bc6218705e4"
+  }
+}
