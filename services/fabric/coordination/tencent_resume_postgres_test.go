@@ -55,6 +55,10 @@ func (d *tencentFixture) PutManagedSecret(context.Context, coordination.PutManag
 	return coordination.ManagedSecretResult{}, status.Error(codes.Unimplemented, "fixture Secret write is not used")
 }
 
+func (d *tencentFixture) DeleteResource(context.Context, coordination.ResourceDeletionIntent, string) (coordination.ResourceDeletionFact, error) {
+	return coordination.ResourceDeletionFact{}, fmt.Errorf("fixture_provider_delete_unavailable")
+}
+
 func (d *tencentFixture) EnsureResources(_ context.Context, in coordination.ResourceIntent) (*coordination.ResourceResult, error) {
 	d.calls++
 	if in.ComputeID == "" || in.StorageID == "" || in.Plan.GetProvider() != "tencent-tke" || in.Plan.GetBillingMode() != "PREPAID_MONTHLY" {

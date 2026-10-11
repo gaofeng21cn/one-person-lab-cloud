@@ -232,6 +232,11 @@ func (s *Service) operation(ctx context.Context, id string) (*api.Operation, err
 	if err != nil {
 		return nil, persistenceError(err)
 	}
+	kindValue, ok := api.OperationKindEnum_value["OPERATION_KIND_ENUM_"+strings.ToUpper(r.Kind)]
+	if !ok {
+		return nil, status.Error(codes.DataLoss, "invalid Fabric operation kind")
+	}
+	kind := api.OperationKindEnum(kindValue)
 	state, ok := api.OperationStatusEnum_value["OPERATION_STATUS_ENUM_"+strings.ToUpper(r.Status)]
 	if !ok {
 		return nil, status.Error(codes.DataLoss, "invalid Fabric operation status")
@@ -240,7 +245,7 @@ func (s *Service) operation(ctx context.Context, id string) (*api.Operation, err
 	if !ok {
 		return nil, status.Error(codes.DataLoss, "invalid Fabric operation stage")
 	}
-	out := &api.Operation{OperationId: r.ID, Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_FABRIC, Kind: api.OperationKindEnum_OPERATION_KIND_ENUM_RESOURCE_PROVISION, ResourceId: r.ResourceID, Status: api.OperationStatusEnum(state), Stage: api.OperationStageEnum(stage), RequestId: r.RequestID, CreatedAt: timestamppb.New(r.CreatedAt), UpdatedAt: timestamppb.New(r.UpdatedAt)}
+	out := &api.Operation{OperationId: r.ID, Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_FABRIC, Kind: kind, ResourceId: r.ResourceID, Status: api.OperationStatusEnum(state), Stage: api.OperationStageEnum(stage), RequestId: r.RequestID, CreatedAt: timestamppb.New(r.CreatedAt), UpdatedAt: timestamppb.New(r.UpdatedAt)}
 	if r.Observation != "" {
 		observation, exists := api.OperationObservationResultEnum_value["OPERATION_OBSERVATION_RESULT_ENUM_"+strings.ToUpper(r.Observation)]
 		if !exists {

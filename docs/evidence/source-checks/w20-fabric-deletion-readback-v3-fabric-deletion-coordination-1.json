@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "2539978b48442d1b70d81faeadacefeba56103ed",
+  "recordedAt": "2026-10-11T17:59:09.666Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w20-fabric-deletion-readback-v1-fabric-deletion-coordination-1.json",
+    "docs/evidence/source-checks/w20-fabric-deletion-readback-v2-fabric-deletion-coordination-1.json",
+    "docs/evidence/source-checks/w20-fabric-deletion-readback-v3-fabric-deletion-coordination-1.json",
+    "services/fabric/coordination/delete.go",
+    "services/fabric/coordination/delete_dispatch.go",
+    "services/fabric/coordination/delete_dispatch_test.go",
+    "services/fabric/coordination/delete_postgres_test.go",
+    "services/fabric/coordination/dispatch.go",
+    "services/fabric/coordination/local_dispatch.go",
+    "services/fabric/coordination/local_dispatch_host_test.go",
+    "services/fabric/coordination/read.go",
+    "services/fabric/coordination/secret_postgres_test.go",
+    "services/fabric/coordination/service.go",
+    "services/fabric/coordination/service_postgres_test.go",
+    "services/fabric/coordination/tencent_dispatch.go",
+    "services/fabric/coordination/tencent_resume_postgres_test.go",
+    "services/fabric/internal/fabric/compute_allocation.go",
+    "services/fabric/internal/fabric/storage.go",
+    "services/fabric/internal/fabric/types.go",
+    "services/fabric/internal/fabric/workspace_runtime.go"
+  ],
+  "verifiedSource": {
+    "baseSha": "2539978b48442d1b70d81faeadacefeba56103ed",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/w20-fabric-deletion-readback-v1-fabric-deletion-coordination-1.json": "a2dbb53c6c1ea54d72561f61bdf4702553766807600f6bc796bc09c4a64f69bf",
+      "docs/evidence/source-checks/w20-fabric-deletion-readback-v2-fabric-deletion-coordination-1.json": "0c7aff9d6d2f90dde3a5664a3b5272199f453363230df83720dde701c3408446",
+      "services/fabric/coordination/delete.go": "01a486d72259103a008ec28cc4c99cc7dc13c8f2a38b03e9e6d508d21ce3b333",
+      "services/fabric/coordination/delete_dispatch.go": "ba655fc3414e46eed0e564d4200b0d5e5eee2bbe83e5b695ad5e38873336ab1a",
+      "services/fabric/coordination/delete_dispatch_test.go": "2d074dba8cf509925354c5ca3f3715ffe1ca29b556435476f6419e0a3641679e",
+      "services/fabric/coordination/delete_postgres_test.go": "039c0ae87cb1fcbbe269bfccdd7f766b4ab8e27cbf2ad33a140d21f305256126",
+      "services/fabric/coordination/dispatch.go": "69cd83d2c5974c1a9c1a8144adce7dc1584845c4e934b793ab9f1e5e8d5b5af1",
+      "services/fabric/coordination/local_dispatch.go": "cd227ba45387c801cafebb727248cceb25fddc81890882519332103af7e7899b",
+      "services/fabric/coordination/local_dispatch_host_test.go": "2cf8d544198986f5888d0eb3bf6f05d5e46abc19f3854e0e13551f3ca7c2bd06",
+      "services/fabric/coordination/read.go": "30a8b46b77de428dc112d1f99f2709b3ab4c24a0ba71da5b6b801ca7ad9bed85",
+      "services/fabric/coordination/secret_postgres_test.go": "f081520bee13dcb3585df9ac997343f3ef7c086f23964dcc8d463256f7917c47",
+      "services/fabric/coordination/service.go": "fc491cd41b32281e52f313819737e98ae75d859c4875dc48c46ca0b957156534",
+      "services/fabric/coordination/service_postgres_test.go": "06453819bbd7bb78adcac9ea09dbc38d85ccf2dbabe2523121d96b98da514f5f",
+      "services/fabric/coordination/tencent_dispatch.go": "8739b6a470d4c5cd7f3f51d43e4b13c01540094aad53769fc4efa0c1742a984f",
+      "services/fabric/coordination/tencent_resume_postgres_test.go": "df8e299d1ee3d2e68bf939f4a516cf5b0c3dfc901ae807d27535c67d8b9b21ca",
+      "services/fabric/internal/fabric/compute_allocation.go": "34e784c84307763de160e7f9c65e5a48b56504c1765dcaa63d307038b22f0a0c",
+      "services/fabric/internal/fabric/storage.go": "60c7560b199c6fcd603cbaae5a8e01b31094a9f94b66651db042cbf25128dbef",
+      "services/fabric/internal/fabric/types.go": "f04536c6a24e51fefdbc88af1420c089e22c506de68002a4aebe231d7de224fe",
+      "services/fabric/internal/fabric/workspace_runtime.go": "f66116981372e7fc98852d331b644fe4e24dddcacb2b06d3a11c2bac3d94538f"
+    }
+  },
+  "execution": {
+    "command": "go test -count=1 -json ./coordination (cwd: services/fabric)",
+    "exitCode": 0,
+    "tests": 55,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "869100261d2a9fac0ad60e5c76d6c858031f99c83bb30de58232c63f2340ce5e"
+  },
+  "sourceStage": {
+    "runId": "w20-fabric-deletion-readback-v3",
+    "gateId": "fabric-deletion-coordination",
+    "attempt": 1,
+    "receiptHash": "864ca1b8213e272206d6f53c960e133d42cf43f7b10cc0eff7769d5796f499ef"
+  }
+}
