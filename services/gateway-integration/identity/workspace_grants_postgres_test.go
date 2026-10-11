@@ -131,7 +131,10 @@ func workspaceContinuation(g *api.AcceptedOperationGrant, owner api.OwnerEnum, a
 
 func workspaceAudience(action api.AuthorizationActionEnum) (api.OwnerEnum, owneridentity.Service) {
 	switch action {
-	case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES:
+	case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES,
+		// A deletion releases the accepted resource set through Fabric's own
+		// release write; the provisioning action stays on the launch surface.
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES:
 		return api.OwnerEnum_OWNER_ENUM_FABRIC, owneridentity.Fabric.Service()
 	case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETQUOTE, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEACCEPTEDOBLIGATION:
 		return api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG, owneridentity.ResourceCatalog.Service()
@@ -383,6 +386,10 @@ func TestWorkspaceGrantRejectsUnboundEvidencePostgres(t *testing.T) {
 // instead of the launch's.
 func TestWorkspaceDeletionGrantPostgres(t *testing.T) {
 	f := workspaceGrantSystem(t)
+	// Issue the launch grant before the deletion replaces the owner readback, so
+	// the comparison between the deletion's own surface and the launch's is made
+	// between two actually issued grants.
+	launchGrant := f.issue(t)
 	// The deletion is accepted by the session that asks for it; the chain then
 	// runs under that actor's own grant regardless of who placed the original
 	// order. The Workspace lane's own test covers the different-administrator
@@ -418,6 +425,7 @@ func TestWorkspaceDeletionGrantPostgres(t *testing.T) {
 	}
 	actions := []api.AuthorizationActionEnum{
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RETIRERUNTIME,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES,
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES,
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION,
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REFUNDCONFIRMEDDELETION,
@@ -430,6 +438,18 @@ func TestWorkspaceDeletionGrantPostgres(t *testing.T) {
 	}
 	if g.AcceptedAction != api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEWORKSPACE || g.ActorId != deletionRequest.ActorId {
 		t.Fatalf("deletion grant lost its own action or actor: %v", g)
+	}
+	// The deletion carries the contract's own resource-release action at the
+	// Fabric audience, so the release no longer needs the provisioning surface.
+	release := workspaceContinuation(g, api.OwnerEnum_OWNER_ENUM_FABRIC, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES)
+	if _, err := f.s.AuthorizeAction(ownerservice.WithPeerOwner(t.Context(), owneridentity.Fabric.Service()), release); err != nil {
+		t.Fatalf("deletion grant refused its own resource release: %v", err)
+	}
+	// The launch's grant keeps its own surface: a create_workspace acceptance
+	// does not authorize the deletion's release write.
+	launchRelease := workspaceContinuation(launchGrant, api.OwnerEnum_OWNER_ENUM_FABRIC, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES)
+	if _, err := f.s.AuthorizeAction(ownerservice.WithPeerOwner(t.Context(), owneridentity.Fabric.Service()), launchRelease); status.Code(err) != codes.PermissionDenied {
+		t.Fatal("launch grant authorized the deletion's resource release", err)
 	}
 	// The launch's effects stay outside the deletion's surface, so the deletion
 	// cannot be turned into a second charging path or a resource-creation replay.

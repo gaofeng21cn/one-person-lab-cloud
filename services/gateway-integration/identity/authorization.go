@@ -283,17 +283,20 @@ var workspaceLaunchActions = []api.AuthorizationActionEnum{
 }
 
 // workspaceDeletionActions is the continuation surface of an accepted
-// delete_workspace obligation: retiring the delivered runtime, observing the
-// frozen resources, recording the confirmed deletion evidence and settling the
-// original charge. It is a separate group from the launch obligation, so a
-// deletion cannot be issued under a launch grant or carry a launch's effects.
-// The canonical surface deliberately excludes the provisioning write: Fabric
-// authorizes its resource-creation entry points (EnsureResources and its
-// resume) with provisionAcceptedResources, so a deletion grant that carried
-// that write could replay resource creation. Resource release under the
-// deletion chain must arrive as its own owner action, not by widening this
-// grant.
+// delete_workspace obligation: retiring the delivered runtime, releasing the
+// accepted resource set, observing the frozen resources, recording the
+// confirmed deletion evidence and settling the original charge. It is a
+// separate group from the launch obligation, so a deletion cannot be issued
+// under a launch grant or carry a launch's effects. The canonical surface
+// deliberately excludes the provisioning write: Fabric authorizes its
+// resource-creation entry points (EnsureResources and its resume) with
+// provisionAcceptedResources, so a deletion grant that carried that write could
+// replay resource creation. The release arrives as the deletion's own
+// contract-declared owner action (deleteAcceptedResources), which Fabric's
+// DeleteResources requires, rather than by widening this grant with the
+// creation write.
 var workspaceDeletionActions = []api.AuthorizationActionEnum{
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RETIRERUNTIME,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT,
@@ -533,7 +536,7 @@ func (s *Service) authorizeGrant(ctx context.Context, r *api.AuthorizationReques
 		// matched as its own bounded clause rather than under the Workspace resource.
 		matched = (r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL && r.Action == workspaceListRuntimeVersions && r.Resource.Kind == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG && r.Resource.GetId() == "") ||
 			(r.Resource.Kind == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE && r.Resource.GetId() == g.ResourceId &&
-				((r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_FABRIC && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES)) ||
+				((r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_FABRIC && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES)) ||
 					(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETQUOTE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEACCEPTEDOBLIGATION)) ||
 					(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_LEDGER && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT)) ||
 					(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_SERVE && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RETIRERUNTIME)) ||
