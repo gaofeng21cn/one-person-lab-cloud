@@ -854,12 +854,14 @@
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
 - `services/workspace/internal/launch`
 - `services/gateway-integration/identity`
+- `services/fabric/coordination/delete.go`
+- `services/fabric/coordination/delete_postgres_test.go`
 
 **必须交付**：
 - Workspace持久化删除意图并协调原单/退款；Serve负责Agent retirement、访问撤销与absence readback；Fabric负责资源删除事实
 - base保留原policy；已applied升级supplement用自身coverage，不合并当整月款
 - 与续费/plan change/rotation串行，不撤销用户保留Key，不删Package/Build历史
-- 当前实现按workspace与gateway两个owner写集拆分；交汇时使用互认coauthor admission和各自append-only receipt
+- 当前实现按workspace、gateway与fabric三个owner写集拆分；交汇时使用互认coauthor admission和各自append-only receipt
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`deleteWorkspace`, `getWorkspaceDeletion`
 
@@ -1291,8 +1293,9 @@
 | `W14.publisher-ui` | artifacts | W09.agent-build, W13.console-entry | Package+Runtime+独立WebUI由真实Console构建，缺项拒绝，关闭/刷新继续原任务 |
 | `W16.workspace-ui` | integration | W15.first-create, W13.console-entry | 默认App无需进入Publisher；选套餐一次确认，显示订单/资源/应用/证据各自状态并打开真实URL |
 | `W16.console-ui-fixes` | integration | 无 | 既有Console表现层回归的最小修复：从owner读回派生展示结论，复用现有unit/browser目标；不新增业务语义、不写后端或业务SSOT |
-| `W20.workspace-deletion-source` | integration | W20.deletion-grant-source | Workspace owner删除/恢复与状态读回的局部源码收口：absence及删除receipt前不退款；退款非终态读回原命令而不重发；资源与退款状态分开；不接管Legacy原单 |
+| `W20.workspace-deletion-source` | integration | W20.deletion-grant-source, W20.fabric-deletion-source | Workspace owner删除/恢复与状态读回的局部源码收口：absence及删除receipt前不退款；退款非终态读回原命令而不重发；资源与退款状态分开；不接管Legacy原单 |
 | `W20.deletion-grant-source` | integration | 无 | Gateway删除授权边界局部源码收口：按原accepted delete obligation发放/恢复续执行权限，与create obligation分组；不扩权、不建立钱包或转移Workspace结算权 |
+| `W20.fabric-deletion-source` | integration | 无 | Fabric资源释放执行边界局部源码收口：按原accepted delete obligation以删除动作释放自身资源集合，与开通/绑定动作分组；每个kind由自身owner readback确认，pending/unknown如实上报且不当作absent；不扩权、不接管开通动作 |
 | `W27.runnable-candidate` | integration | W02.owner-readiness | 精确SHA/digest的可测试Candidate，声明必需owner/ports/DB/identity/工具；非正式发布 |
 | `W27.development-governance` | integration | 无 | 开发治理统一入口：PR body机器校验(base SHA/DDD owner/phase/write set/source-check执行摘要)、开发SSOT phase入口与hard-entry审计；host-owned，restricted worker不获得这些写权限 |
 | `W26.default-source` | integration | W16.workspace-ui, W05.receipts | 本地真实服务/隔离外部权威证明默认App原单到应用；无真实provider冒充 |
@@ -1535,7 +1538,7 @@
 
 #### W20.workspace-deletion-source
 
-**输入：** 现有Workspace删除源码及RED/GREEN证据；W20.deletion-grant-source实际Host receipt；同exact baseline的typed owner contracts、原单/授权/资源/钱包读回接口；隔离PostgreSQL及显式runner依赖输入；docs/invariants.md#workspace-lifecycle
+**输入：** 现有Workspace删除源码及RED/GREEN证据；W20.deletion-grant-source实际Host receipt；W20.fabric-deletion-source实际Host receipt；同exact baseline的typed owner contracts、原单/授权/资源/钱包读回接口；隔离PostgreSQL及显式runner依赖输入；docs/invariants.md#workspace-lifecycle
 
 **写集：** `services/workspace/internal/launch/deletion.go`, `services/workspace/internal/launch/deletion_test.go`, `services/workspace/internal/launch/recovery.go`, `services/workspace/internal/launch/service.go`
 
@@ -1554,6 +1557,18 @@
 **验收：** OPL_POSTGRES_TESTS=1 go -C services/gateway-integration test -json -count=1 ./identity；错误accepted action/audience/资源拒绝；删除续执行不获得开通专用权限；实际测试数>0且0 fail/skip/TODO；runner只使用声明的隔离输入
 
 **交付证据：** Host从实际授权测试生成的source-check/stage receipt，绑定exact source/输入/输出/命令统计；Workspace source run在requires中消费本phase的实际receipt hash，再交串行联合验证；不声称真实钱包退款、整个W20或Instance PASS
+
+**未知结果：** 按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。
+
+#### W20.fabric-deletion-source
+
+**输入：** 现有Fabric coordination资源释放源码与typed接口；已吸收的DELETEACCEPTEDRESOURCES接受删除动作合同；同exact baseline的typed Workspace grant边界与资源读回接口；隔离PostgreSQL及显式runner依赖输入；docs/invariants.md#workspace-lifecycle；docs/invariants.md#provider-resources
+
+**写集：** `services/fabric/coordination/delete.go`, `services/fabric/coordination/delete_postgres_test.go`
+
+**验收：** OPL_POSTGRES_TESTS=1 go -C services/fabric test -json -count=1 ./coordination；跨workspace/tenant、无typed授权、错误accepted动作拒绝；删除续执行不借用或重放开通专用权限；实际测试数>0且0 fail/skip/TODO；runner只使用声明的隔离输入
+
+**交付证据：** Host从实际coordination测试生成的source-check/stage receipt，绑定exact source/输入/输出/命令统计；Workspace source run在requires中消费本phase的实际receipt hash，再交串行联合验证；不声称真实provider删除、整个W20或Instance PASS
 
 **未知结果：** 按原owner Operation/effect identity读回；结果未明不新建副作用；已完成副作用但回执丢ACK则以原evidence key/hash重投并读回。
 
