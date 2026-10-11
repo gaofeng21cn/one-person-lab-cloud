@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "9584db08658a71ce05479366f173ccf13cbc8fbf",
+  "recordedAt": "2026-10-11T11:33:29.352Z",
+  "writeSet": [
+    "AGENTS.md",
+    "docs/evidence/source-checks/w27-framework-duplicate-d2-v4-development-gates-1.json"
+  ],
+  "verifiedSource": {
+    "baseSha": "9584db08658a71ce05479366f173ccf13cbc8fbf",
+    "changedFilesSha256": {
+      "AGENTS.md": "77bd0aca6ddc3ff6fe1116f7cb8e3a9e8db6487c101337e6a9f5cbff0d316287"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/check-pr-governance.test.ts",
+    "exitCode": 0,
+    "tests": 19,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "1fb05b2760ec1a37adf62f6bdad3aa0801633976370f928d47252a78fc4a8016"
+  },
+  "sourceStage": {
+    "runId": "w27-framework-duplicate-d2-v4",
+    "gateId": "development-gates",
+    "attempt": 1,
+    "receiptHash": "3082aef4996dc679e13bf0efcc25b0e439d5ce75ebde0325d0e3e475b539f494"
+  }
+}
