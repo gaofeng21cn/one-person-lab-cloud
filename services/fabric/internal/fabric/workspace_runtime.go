@@ -479,7 +479,16 @@ func (s *Service) ObserveWorkspaceRuntime(ctx context.Context, workspaceID strin
 
 func (s *Service) ObserveWorkspaceRuntimeGatewaySecret(ctx context.Context, workspaceID string) WorkspaceRuntimeGatewaySecretObservation {
 	binding, err := s.WorkspaceRuntimeGatewaySecret(ctx, workspaceID)
-	return workspaceRuntimeGatewaySecretOwnerObservation(workspaceID, binding, err)
+	observation := workspaceRuntimeGatewaySecretOwnerObservation(workspaceID, binding, err)
+	// The observing owner stamps when it read the binding fact and names that
+	// readback, exactly like the runtime delete observation. Only a conclusive
+	// readback result carries the identity; conflict and error results do not.
+	switch observation.State {
+	case WorkspaceOwnerObservationAbsent, WorkspaceOwnerObservationReady, WorkspaceOwnerObservationPending:
+		observation.ObservedAt = s.now().Format(time.RFC3339Nano)
+		observation.ReadbackID = stableID("workspace-runtime-gateway-secret-readback", workspaceID, observation.ObservedAt)
+	}
+	return observation
 }
 
 type workspaceRuntimeDeleteObservationProvider interface {

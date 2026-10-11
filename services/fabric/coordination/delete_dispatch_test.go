@@ -563,3 +563,44 @@ func TestLocalDispatcherComputeDeletionRetryReusesTheDispatchClaimWithoutSecondM
 		t.Fatalf("compute destroy calls=%d, want exactly 1", computeDestroy)
 	}
 }
+
+// secretDeletionProvider reports the Workspace gateway Secret binding absent on
+// the owning readback surface, exactly like the provider after a confirmed
+// cleanup. It is the typed provider boundary for the Secret readback coverage:
+// the release itself still runs through the real local dispatcher and the real
+// Fabric service.
+type secretDeletionProvider struct {
+	fabric.Provider
+}
+
+func (p *secretDeletionProvider) BindWorkspaceRuntimeGatewaySecret(context.Context, fabric.WorkspaceRuntimeGatewaySecretInput) (fabric.WorkspaceRuntimeGatewaySecretBinding, error) {
+	return fabric.WorkspaceRuntimeGatewaySecretBinding{}, errors.New("the secret readback fixture does not bind")
+}
+
+func (p *secretDeletionProvider) WorkspaceRuntimeGatewaySecret(context.Context, string) (fabric.WorkspaceRuntimeGatewaySecretBinding, error) {
+	return fabric.WorkspaceRuntimeGatewaySecretBinding{}, fabric.ErrWorkspaceLaunchResourceAbsent
+}
+
+// TestLocalDispatcherSecretDeletionConfirmsAbsenceFromOwnerReadback proves the
+// Gateway Secret binding release confirms absence from the owning readback and
+// carries that readback's own evidence identity: a confirmed Secret deletion is
+// never reported with an empty evidence reference.
+func TestLocalDispatcherSecretDeletionConfirmsAbsenceFromOwnerReadback(t *testing.T) {
+	const workspace = "workspace-secret-absent"
+	store := fabric.NewMemoryOperationStore()
+	service := fabric.NewServiceWithOperationStore(&secretDeletionProvider{}, store)
+	dispatcher := coordination.NewLocalDispatcher(service, fabric.NewLocalDockerProvider())
+	if dispatcher == nil {
+		t.Fatal("local dispatcher is unavailable")
+	}
+	fact, err := dispatcher.DeleteResource(context.Background(), deletionIntent(workspace, "", ""), coordination.DeletionKindSecret)
+	if err != nil {
+		t.Fatalf("secret deletion: %v", err)
+	}
+	if fact.State != coordination.DeletionStateAbsent {
+		t.Fatalf("secret state=%q, want %q", fact.State, coordination.DeletionStateAbsent)
+	}
+	if fact.ProviderStatus != "absent" || fact.EvidenceRef == "" || fact.ObservedAt.IsZero() {
+		t.Fatalf("secret absence fact lacks owner readback evidence: %+v", fact)
+	}
+}

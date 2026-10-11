@@ -78,6 +78,8 @@ func deleteSecretFromOwnSurface(ctx context.Context, service *fabric.Service, in
 		observation = service.ObserveWorkspaceRuntimeGatewaySecret(ctx, in.WorkspaceID)
 	}
 	fact.ProviderStatus = observation.State
+	fact.EvidenceRef = observation.ReadbackID
+	fact.ObservedAt = deletionObservedAt(observation.ObservedAt)
 	switch observation.State {
 	case fabric.WorkspaceOwnerObservationAbsent:
 		fact.State = DeletionStateAbsent

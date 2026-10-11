@@ -507,6 +507,11 @@ type WorkspaceRuntimeGatewaySecretObservation struct {
 	State         string                                `json:"state"`
 	WorkspaceID   string                                `json:"workspaceId"`
 	Binding       *WorkspaceRuntimeGatewaySecretBinding `json:"binding,omitempty"`
+	// ObservedAt is when Fabric read the gateway Secret binding back, and
+	// ReadbackID names that readback. Both are set only on a readback result,
+	// never on a persisted binding record.
+	ObservedAt string `json:"observedAt,omitempty"`
+	ReadbackID string `json:"readbackId,omitempty"`
 }
 
 const WorkspaceRuntimeDeleteObservationSchemaVersion = 1

@@ -2,8 +2,10 @@ package coordination_test
 
 import (
 	"context"
+	"errors"
 	"net"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -17,6 +19,7 @@ import (
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/services/fabric/coordination"
+	"opl-cloud/services/fabric/internal/fabric"
 	"opl-cloud/services/internal/ownerservice"
 )
 
@@ -359,6 +362,48 @@ func TestDeleteResourcesConfirmsEachKindFromOwnReadback(t *testing.T) {
 		}
 	})
 
+	t.Run("confirmed Secret deletion records the owner readback persisted for the binding", func(t *testing.T) {
+		r, setID := provision("secret-evidence")
+		fixture.markOwned(r.WorkspaceId, coordination.DeletionKindSecret)
+		first, err := client.DeleteResources(ctx, deleteCommand(r, setID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if first.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_AWAITING_CONFIRMATION ||
+			first.GetStage() != api.OperationStageEnum_OPERATION_STAGE_ENUM_SECRET_UNBINDING {
+			t.Fatalf("the fixture Secret did not stop at the owner readback: %v", first)
+		}
+		// The retained dispatch claim is now replayed by the real local dispatcher
+		// over a real Fabric service whose provider reports the binding absent.
+		// Only the Secret kind is reached: the runtime is already recorded as
+		// confirmed, and the mount binding after it has no real attachment identity.
+		store := fabric.NewMemoryOperationStore()
+		inner := fabric.NewServiceWithOperationStore(&secretEvidenceProvider{}, store)
+		real := coordination.NewLocalDispatcher(inner, fabric.NewLocalDockerProvider())
+		if real == nil {
+			t.Fatal("local dispatcher unavailable")
+		}
+		service.Dispatcher = real
+		t.Cleanup(func() { service.Dispatcher = fixture })
+		resumed, err := client.DeleteResources(ctx, deleteCommand(r, setID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resumed.OperationId != first.OperationId {
+			t.Fatalf("the release minted a second operation: %v", resumed)
+		}
+		var kind, observation, evidence string
+		if err = db.QueryRow(`SELECT COALESCE(approved_input->>'deletionKind',''),observation_result,COALESCE(evidence_ref,'') FROM fabric.resource_actions WHERE resource_set_id=$1 AND approved_input ? 'deletionKind' AND approved_input->>'deletionKind'=$2`, setID, coordination.DeletionKindSecret).Scan(&kind, &observation, &evidence); err != nil {
+			t.Fatal(err)
+		}
+		if observation != "confirmed" {
+			t.Fatalf("Secret release was not confirmed: %q %v", observation, resumed)
+		}
+		if strings.TrimSpace(evidence) == "" {
+			t.Fatalf("confirmed Secret deletion persisted an empty owner evidence reference: %v", resumed)
+		}
+	})
+
 	t.Run("identity is bound to the declared workspace and tenant", func(t *testing.T) {
 		r, setID := provision("identity")
 		foreign := deleteCommand(r, setID)
@@ -436,4 +481,20 @@ func TestDeleteResourcesConfirmsEachKindFromOwnReadback(t *testing.T) {
 			}
 		}
 	})
+}
+
+// secretEvidenceProvider reports the Workspace gateway Secret binding absent,
+// exactly like the owning provider after a confirmed cleanup. It is the typed
+// provider boundary for the Secret readback evidence test: the release itself
+// still runs through the real local dispatcher and the real Fabric service.
+type secretEvidenceProvider struct {
+	fabric.Provider
+}
+
+func (p *secretEvidenceProvider) BindWorkspaceRuntimeGatewaySecret(context.Context, fabric.WorkspaceRuntimeGatewaySecretInput) (fabric.WorkspaceRuntimeGatewaySecretBinding, error) {
+	return fabric.WorkspaceRuntimeGatewaySecretBinding{}, errors.New("the secret evidence probe does not bind")
+}
+
+func (p *secretEvidenceProvider) WorkspaceRuntimeGatewaySecret(context.Context, string) (fabric.WorkspaceRuntimeGatewaySecretBinding, error) {
+	return fabric.WorkspaceRuntimeGatewaySecretBinding{}, fabric.ErrWorkspaceLaunchResourceAbsent
 }
