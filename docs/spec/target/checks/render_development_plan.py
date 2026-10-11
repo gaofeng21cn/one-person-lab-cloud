@@ -265,7 +265,7 @@ delivery_slice('W27.runnable-candidate','integration',['W02.owner-readiness'],
 # governance pull request has an accurate phase/owner reference. Restricted
 # workers never obtain these writes; dev-session protects them separately.
 delivery_slice('W27.development-governance','integration',[],
- ['.github/','tools/','tests/tools/','AGENTS.md','DEV_GUIDE.md','package.json','docs/spec/target/','docs/evidence/source-checks/'],
+ ['.github/','tools/','tests/tools/','AGENTS.md','DEV_GUIDE.md','package.json','package-lock.json','docs/spec/target/','docs/evidence/source-checks/'],
  ['AGENTS.md#scoped-development-contract','DEV_GUIDE.md#scoped-host-and-worker-entry','现有PR合规清单(.github/PULL_REQUEST_TEMPLATE.md)'],
  '开发治理统一入口：PR body机器校验(base SHA/DDD owner/phase/write set/source-check执行摘要)、开发SSOT phase入口与hard-entry审计；host-owned，restricted worker不获得这些写权限',
  ['npm run test:development-gates','npm run verify:development-plan','npm run verify:local:focused -- --base origin/main'],

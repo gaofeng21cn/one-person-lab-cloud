@@ -1573,7 +1573,7 @@
 
 **输入：** AGENTS.md#scoped-development-contract；DEV_GUIDE.md#scoped-host-and-worker-entry；现有PR合规清单(.github/PULL_REQUEST_TEMPLATE.md)
 
-**写集：** `.github/`, `tools/`, `tests/tools/`, `AGENTS.md`, `DEV_GUIDE.md`, `package.json`, `docs/spec/target/`, `docs/evidence/source-checks/`
+**写集：** `.github/`, `tools/`, `tests/tools/`, `AGENTS.md`, `DEV_GUIDE.md`, `package.json`, `package-lock.json`, `docs/spec/target/`, `docs/evidence/source-checks/`
 
 **验收：** npm run test:development-gates；npm run verify:development-plan；npm run verify:local:focused -- --base origin/main
 
