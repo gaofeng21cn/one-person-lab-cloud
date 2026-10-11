@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "9133b1bdf54a98b8851d2353ac38e7e83201303d",
+  "recordedAt": "2026-10-11T06:35:07.883Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w20-fabric-admission-20261011a-development-gates-1.json",
+    "docs/evidence/source-checks/w20-fabric-admission-20261011a-development-plan-1.json",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/render_development_plan.py"
+  ],
+  "verifiedSource": {
+    "baseSha": "9133b1bdf54a98b8851d2353ac38e7e83201303d",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/w20-fabric-admission-20261011a-development-plan-1.json": "d8752d9bca57f22e37ec20b8d382730efb2b8b314e3614eb7382701afa4d72c6",
+      "docs/spec/target/14_implementation_work_packages.md": "af9efd0511ddc5fb4c79dd83ec86538b38a04818bbe0cf951708f5e6bcec6cd2",
+      "docs/spec/target/checks/development_plan.json": "3dc5cc4daa70d3b62e92461109b9d585ec295ace5ea43b7c7d92dc562e0413a0",
+      "docs/spec/target/checks/render_development_plan.py": "ba6a91a672224bf18deebd3a8cdd65b62474f0a29a34003a5b71faf2c6ba25c8"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/check-pr-governance.test.ts",
+    "exitCode": 0,
+    "tests": 19,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "ad7238030e3703a194e147e533d83bb9cbbfecbb2226aee57fb1b4e992c2afce"
+  },
+  "sourceStage": {
+    "runId": "w20-fabric-admission-20261011a",
+    "gateId": "development-gates",
+    "attempt": 1,
+    "receiptHash": "96128f8df112706fee821e3b0bc689e861ebc09d2e3657dbe02b275cc13fa869"
+  }
+}
