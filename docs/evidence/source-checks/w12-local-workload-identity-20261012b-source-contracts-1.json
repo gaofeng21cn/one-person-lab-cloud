@@ -3,8 +3,8 @@
   "receiptType": "opl_development_source_check",
   "evidenceLayer": "source",
   "result": "pass",
-  "sourceBaseSha": "52d96e1d4ea670051fc8380df4fe210df1b92238",
-  "recordedAt": "2026-10-12T04:00:00Z",
+  "sourceBaseSha": "76e3d21ffa5a506f0b96ada5b762d90bd2307873",
+  "recordedAt": "2026-10-11T17:24:36.890Z",
   "writeSet": [
     "docs/evidence/source-checks/w12-local-workload-identity-20261012b-source-contracts-1.json",
     "services/fabric/internal/fabric/local_docker_application_configuration.go",
@@ -23,7 +23,7 @@
     "services/fabric/internal/fabric/workspace_application_lifecycle_test.go"
   ],
   "verifiedSource": {
-    "baseSha": "52d96e1d4ea670051fc8380df4fe210df1b92238",
+    "baseSha": "76e3d21ffa5a506f0b96ada5b762d90bd2307873",
     "changedFilesSha256": {
       "services/fabric/internal/fabric/local_docker_application_configuration.go": "7fc308da6bc1e38f46c45b4cdb61b147bfeb0622dd82142a876cb54d913c3cfb",
       "services/fabric/internal/fabric/local_docker_application_execution.go": "727440d5af706093c2d5877c4d47705848e54ba44989e5c255a6d4eb0a408293",

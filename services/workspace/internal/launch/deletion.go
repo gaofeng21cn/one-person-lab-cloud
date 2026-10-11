@@ -151,11 +151,11 @@ func (s *Service) DeleteWorkspace(ctx context.Context, r *api.DeleteWorkspaceRpc
 		}
 		return deletionOperation(op)
 	}
-	// Re-read the Workspace under the command lock so the accepted intent and the
-	// one-deletion rule are decided against the current row, not a pre-lock read.
+	// The idempotency lock only serializes one actor/key. Lock the Workspace row
+	// as well so different administrators or keys cannot accept two deletions.
 	var currentName, currentState string
 	var currentVersion int64
-	err = tx.QueryRowContext(ctx, `SELECT name,status,version FROM workspace.workspaces WHERE id=$1 AND tenant_id=$2`, workspaceID, tid).Scan(&currentName, &currentState, &currentVersion)
+	err = tx.QueryRowContext(ctx, `SELECT name,status,version FROM workspace.workspaces WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, workspaceID, tid).Scan(&currentName, &currentState, &currentVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, status.Error(codes.NotFound, "Workspace not found")
 	}

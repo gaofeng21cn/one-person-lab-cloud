@@ -3,8 +3,8 @@
   "receiptType": "opl_development_source_check",
   "evidenceLayer": "source",
   "result": "pass",
-  "sourceBaseSha": "4143085898cd85d7a8243155714f4059e0d5b748",
-  "recordedAt": "2026-10-12T03:40:00Z",
+  "sourceBaseSha": "6e13b7a6f4e0c64fce8081e4d6b64be2f62cb2f1",
+  "recordedAt": "2026-10-11T18:29:41.223Z",
   "writeSet": [
     "docs/evidence/source-checks/w20-workspace-deletion-source-slice-v4-launch-deletion-1.json",
     "services/workspace/internal/launch/deletion.go",
@@ -13,7 +13,7 @@
     "services/workspace/internal/launch/service.go"
   ],
   "verifiedSource": {
-    "baseSha": "4143085898cd85d7a8243155714f4059e0d5b748",
+    "baseSha": "6e13b7a6f4e0c64fce8081e4d6b64be2f62cb2f1",
     "changedFilesSha256": {
       "services/workspace/internal/launch/deletion.go": "efc991b678c0a0194e9f63392334164b3f7af28f8b50879d6789dba2a2631fcf",
       "services/workspace/internal/launch/deletion_test.go": "a09e0ade2a4a0d6f36ee928ae3876a25e59cfe3f65749d62098aba6279c7b5b6",

@@ -3,8 +3,8 @@
   "receiptType": "opl_development_source_check",
   "evidenceLayer": "source",
   "result": "pass",
-  "sourceBaseSha": "c698740b3db2d4f1816e075a3a23b55e8f1fdfc6",
-  "recordedAt": "2026-10-12T03:25:00Z",
+  "sourceBaseSha": "6e13b7a6f4e0c64fce8081e4d6b64be2f62cb2f1",
+  "recordedAt": "2026-10-11T18:21:22.371Z",
   "writeSet": [
     "docs/evidence/source-checks/w07-publisher-admission-20261012-6e13-publisher-admission-1.json",
     "docs/evidence/source-checks/w07-publisher-admission-20261012-76e3-publisher-admission-1.json",
@@ -12,7 +12,7 @@
     "services/capability/catalog/publisher_admission_postgres_test.go"
   ],
   "verifiedSource": {
-    "baseSha": "c698740b3db2d4f1816e075a3a23b55e8f1fdfc6",
+    "baseSha": "6e13b7a6f4e0c64fce8081e4d6b64be2f62cb2f1",
     "changedFilesSha256": {
       "docs/evidence/source-checks/w07-publisher-admission-20261012-76e3-publisher-admission-1.json": "4888c4e73d700282c9ea1b43ddea2367c02cf1d65239c1d639a2e85eb9c526e4",
       "services/capability/catalog/admission.go": "73508a9e0e506e16da1ad6c4cef8752867e0048a09071664fd4e848b133914a7",

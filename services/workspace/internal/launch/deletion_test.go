@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -617,4 +618,100 @@ func workspaceStatus(t *testing.T, db *sql.DB) string {
 		t.Fatal(err)
 	}
 	return status
+}
+
+// Hold the first post-lock authorization while a second administrator enters.
+// The second call must wait on the Workspace row, rather than authorize a
+// second deletion before the first accepted intent commits.
+type concurrentDeletionIdentity struct {
+	*deletionIdentity
+	calls         atomic.Int32
+	firstEntered  chan struct{}
+	secondEntered chan struct{}
+	releaseFirst  chan struct{}
+}
+
+func (i *concurrentDeletionIdentity) AuthorizeAction(ctx context.Context, r *api.AuthorizationRequest, options ...grpc.CallOption) (*api.AuthorizationDecision, error) {
+	switch i.calls.Add(1) {
+	case 1:
+		close(i.firstEntered)
+		select {
+		case <-i.releaseFirst:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	case 2:
+		close(i.secondEntered)
+	}
+	return i.deletionIdentity.AuthorizeAction(ctx, r, options...)
+}
+func (i *concurrentDeletionIdentity) IssueAcceptedOperationGrant(context.Context, *api.AcceptedOperationGrantRequest, ...grpc.CallOption) (*api.AcceptedOperationGrant, error) {
+	return nil, status.Error(codes.Unavailable, "hold cleanup for acceptance test")
+}
+func TestConcurrentDeletionIntentsShareOneWorkspaceOperation(t *testing.T) {
+	db := runtimeDatabase(t)
+	// Two transactions hold connections while the observer checks the row lock.
+	db.SetMaxOpenConns(4)
+	service, call, ctx, _, _ := deletionWorkspace(t, db)
+	identity := &concurrentDeletionIdentity{deletionIdentity: &deletionIdentity{}, firstEntered: make(chan struct{}), secondEntered: make(chan struct{}), releaseFirst: make(chan struct{})}
+	service.Identity = identity
+	released := false
+	defer func() {
+		if !released {
+			close(identity.releaseFirst)
+		}
+	}()
+	type answer struct {
+		operation *api.Operation
+		err       error
+	}
+	replies := make(chan answer, 2)
+	request := func(actor, key string) {
+		own := proto.Clone(call).(*api.CallContext)
+		own.ActorId, own.IdempotencyKey = actor, key
+		op, err := service.DeleteWorkspace(ctx, &api.DeleteWorkspaceRpcRequest{Context: own, WorkspaceId: "workspace-original", Body: &api.DeleteWorkspaceRequest{ConfirmationName: "Original workspace", AcknowledgeDataDestruction: true}})
+		replies <- answer{op, err}
+	}
+	go request("admin-one", "delete-one")
+	select {
+	case <-identity.firstEntered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("first deletion did not reach authorization")
+	}
+	go request("admin-two", "delete-two")
+	// Either the row lock appears or the second authorization fires. This is a
+	// synchronization observation of the real database, not a timed race.
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	waiting := false
+	for !waiting {
+		select {
+		case <-identity.secondEntered:
+			waiting = true
+		case <-ticker.C:
+			if err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE 'SELECT name,status,version FROM workspace.workspaces%')`).Scan(&waiting); err != nil {
+				t.Fatal(err)
+			}
+		case <-deadline.C:
+			t.Fatal("second deletion neither waited nor reached authorization")
+		}
+	}
+	close(identity.releaseFirst)
+	released = true
+	first, second := <-replies, <-replies
+	if first.err != nil || second.err != nil {
+		t.Fatalf("deletion errors: %v / %v", first.err, second.err)
+	}
+	if first.operation.GetOperationId() != second.operation.GetOperationId() {
+		t.Fatalf("concurrent requests accepted distinct deletion operations: %s / %s", first.operation.GetOperationId(), second.operation.GetOperationId())
+	}
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM workspace.operations WHERE resource_id='workspace-original' AND kind='delete_workspace'`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("deletion intents=%d, want 1", count)
+	}
 }
