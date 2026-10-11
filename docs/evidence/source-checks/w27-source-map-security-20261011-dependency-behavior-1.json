@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "aeb8856127be51e24a828c58878cf72386a465d2",
+  "recordedAt": "2026-10-11T00:51:37.025Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w27-source-map-security-20261011-dependency-behavior-1.json",
+    "package-lock.json",
+    "tests/tools/source-map-dependency.test.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "aeb8856127be51e24a828c58878cf72386a465d2",
+    "changedFilesSha256": {
+      "package-lock.json": "d4f3608f6363d943d91653f6665ea712b3aaf4410458b760ea88337f9c7078b2",
+      "tests/tools/source-map-dependency.test.ts": "9fcf1ca6862ebdfd65cdba0f22893149be8c6ec88dea4f393161599a500d17f3"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/source-map-dependency.test.ts",
+    "exitCode": 0,
+    "tests": 3,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "65ab4917ef3130819db4e606f3d7687b728dcab1967b283eb3df2bf81a3f9325"
+  },
+  "sourceStage": {
+    "runId": "w27-source-map-security-20261011",
+    "gateId": "dependency-behavior",
+    "attempt": 1,
+    "receiptHash": "3f453c1a889a577be43a4562bec6293d162c1fa9defac57acf91ddce54373aa4"
+  }
+}
