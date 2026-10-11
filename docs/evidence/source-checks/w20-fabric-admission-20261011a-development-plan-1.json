@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "9133b1bdf54a98b8851d2353ac38e7e83201303d",
+  "recordedAt": "2026-10-11T06:35:06.728Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w20-fabric-admission-20261011a-development-plan-1.json",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/render_development_plan.py"
+  ],
+  "verifiedSource": {
+    "baseSha": "9133b1bdf54a98b8851d2353ac38e7e83201303d",
+    "changedFilesSha256": {
+      "docs/spec/target/14_implementation_work_packages.md": "af9efd0511ddc5fb4c79dd83ec86538b38a04818bbe0cf951708f5e6bcec6cd2",
+      "docs/spec/target/checks/development_plan.json": "3dc5cc4daa70d3b62e92461109b9d585ec295ace5ea43b7c7d92dc562e0413a0",
+      "docs/spec/target/checks/render_development_plan.py": "ba6a91a672224bf18deebd3a8cdd65b62474f0a29a34003a5b71faf2c6ba25c8"
+    }
+  },
+  "execution": {
+    "command": "node tools/verify-development-plan.ts",
+    "exitCode": 0,
+    "tests": 0,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "0f5766315f9abdbd40600927b36600347cfbbc42591dd24284258508b2462452"
+  },
+  "sourceStage": {
+    "runId": "w20-fabric-admission-20261011a",
+    "gateId": "development-plan",
+    "attempt": 1,
+    "receiptHash": "3bd0b3f7994baded3090c4b032aa32a07e8c247c59bfcad202344c4710f58a69"
+  }
+}
