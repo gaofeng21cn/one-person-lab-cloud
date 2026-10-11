@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "6e13b7a6f4e0c64fce8081e4d6b64be2f62cb2f1",
+  "recordedAt": "2026-10-11T18:22:07.919Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w20-deletion-grant-source-slice-v8-identity-grants-1.json"
+  ],
+  "verifiedSource": {
+    "baseSha": "6e13b7a6f4e0c64fce8081e4d6b64be2f62cb2f1",
+    "changedFilesSha256": {}
+  },
+  "execution": {
+    "command": "go test -count=1 -json ./... (cwd: services/gateway-integration)",
+    "exitCode": 0,
+    "tests": 123,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "2ae9ef3c912dcf984ebc74898d3cd2e4c4a617074f5b649e1b910a7f3b220ec9"
+  },
+  "sourceStage": {
+    "runId": "w20-deletion-grant-source-slice-v8",
+    "gateId": "identity-grants",
+    "attempt": 1,
+    "receiptHash": "36b90e92d874616ae27221c39beff23287a97f956054837112b1357c7da8efe9"
+  }
+}
