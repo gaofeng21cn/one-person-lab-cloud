@@ -8,6 +8,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse as parseYAML } from "yaml";
 import { generationInputs, generatedOutputs } from "./verify-generated-contracts.ts";
+import { approvedGoPackageTargets } from "./dev-session.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -540,7 +541,19 @@ export async function runDevelopmentCheck(options: {
     if (!inside(snapshot, cwd) || !(await stat(cwd)).isDirectory()) return blocked("cwd escapes snapshot");
     const targets = options.targets ?? [];
     if (!Array.isArray(targets)) return blocked("targets must be exact relative test files");
-    if (options.kind !== "node" && options.kind !== "browser" && targets.length) return blocked("targets are supported only for Node and browser checks");
+    if (options.kind !== "node" && options.kind !== "browser" && options.kind !== "go" && options.targets !== undefined) return blocked("targets are supported only for Node, browser and Go checks");
+    const goTargets = options.kind === "go" && options.targets !== undefined ? approvedGoPackageTargets(options.targets) : undefined;
+    if (goTargets) {
+      for (const target of goTargets) {
+        let directory = cwd;
+        for (const part of target === "." ? [] : target.slice(2).split("/")) {
+          directory = join(directory, part);
+          const entry = await lstat(directory);
+          if (entry.isSymbolicLink() || !entry.isDirectory() || await realpath(directory) !== directory) return blocked("Go package target must be a materialized directory without symlinks");
+          if (existsSync(join(directory, "go.mod"))) return blocked("Go package target crosses a nested module");
+        }
+      }
+    }
     if (options.kind === "node" || options.kind === "browser") {
       if (targets.length === 0) return blocked(`${options.kind === "node" ? "Node" : "Browser"} checks require explicit test file targets`);
       for (const target of targets) {
@@ -695,7 +708,7 @@ export async function runDevelopmentCheck(options: {
           readPaths.add(modcache); env.GOMODCACHE = modcache;
         } catch { /* Go reports missing dependencies as failure; never downloads. */ }
         if (options.kind === "go") {
-          command = go; args = ["test", "-count=1", "-json", "./..."];
+          command = go; args = ["test", "-count=1", "-json", ...(goTargets ?? ["./..."])];
           const module = await realpath(join(cwd, "go.mod"));
           if (!inside(snapshot, module)) return blocked("Go module escapes snapshot");
         }

@@ -911,6 +911,56 @@ test('only the enumerated isolated owner-database fixture may be declared on a G
     /isolated database fixture only applies to Go checks/);
 });
 
+test('Go gate admission binds exact module-relative packages and refuses flags or wildcard scopes', t => {
+  const { approval } = fixture(t);
+  const gate = { id: 'owner-packages', kind: 'go', cwd: 'owner', inputs: ['owner/'], needs: [] };
+  for (const targets of [['.'], ['./coordination'], ['./coordination', './internal/fabric']]) {
+    const accepted = development.parseApproval({ ...approval, gates: [{ ...gate, targets }] });
+    assert.deepEqual(accepted.gates[0].targets, targets);
+  }
+  for (const targets of [[], ['-run'], ['../other'], ['/tmp/other'], ['./...'], ['./pkg...'], ['./x/../other'], ['./x//y'], ['./x/'], ['fixture.invalid/other'], ['./x', './x'], ['./x;echo'], ['./x\n']]) {
+    assert.throws(() => development.parseApproval({ ...approval, gates: [{ ...gate, targets }] }), /Go package|duplicate|invalid/);
+  }
+  assert.equal(development.parseApproval({ ...approval, gates: [gate] }).gates[0].targets, undefined);
+});
+
+test('Go package admission checks original module boundaries even when snapshot inputs omit metadata', t => {
+  const { root, store, approval } = fixture(t);
+  put(root, 'owner/go.mod', 'module fixture.invalid/owner\n\ngo 1.22\n');
+  put(root, 'owner/nested/child/control_test.go', 'package child\nimport "testing"\nfunc TestApproved(t *testing.T) {}\n');
+  const gate = { id: 'owner-packages', kind: 'go', cwd: 'owner', inputs: ['owner/go.mod', 'owner/nested/child/control_test.go'], targets: ['./nested/child'], needs: [] };
+  const accepted = { ...approval, writePaths: ['owner/'], gates: [gate] };
+  assert.throws(() => development.approveRun(root, store, { ...accepted, runId: 'unbound-module', gates: [{ ...gate, inputs: ['owner/nested/child/control_test.go'] }] }), /Go module metadata.*declared/);
+  development.approveRun(root, store, accepted);
+  const session = new development.DevelopmentSession(root, store, accepted.runId); session.context();
+  put(root, 'owner/nested/go.mod', 'module fixture.invalid/nested\n\ngo 1.22\n');
+  assert.throws(() => session.context(), /Go package target crosses a nested module/);
+  assert.throws(() => development.approveRun(root, store, { ...accepted, runId: 'hidden-module' }), /Go package target crosses a nested module/);
+});
+
+test('host verification executes only its approved Go package and reuses the bound receipt', async t => {
+  const { root, store, approval } = fixture(t);
+  put(root, 'owner/go.mod', 'module fixture.invalid/owner\n\ngo 1.22\n');
+  put(root, 'owner/coordination/control_test.go', 'package coordination\nimport "testing"\nfunc TestApproved(t *testing.T) {}\n');
+  put(root, 'owner/unrelated/control_test.go', 'package unrelated\nimport "testing"\nfunc TestUnrelated(t *testing.T) { t.Fatal("unapproved package must not run") }\n');
+  const accepted = { ...approval, writePaths: ['owner/'], gates: [{ id: 'owner-packages', kind: 'go', cwd: 'owner', inputs: ['owner/'], targets: ['./coordination'], needs: [] }] };
+  development.approveRun(root, store, accepted);
+  const session = new development.DevelopmentSession(root, store, accepted.runId); session.context();
+  const result = await session.verifyGate('owner-packages');
+  assert.equal(result.result, 'passed', JSON.stringify(result));
+  const receiptPath = join(store, 'runs', accepted.runId, 'receipts', 'owner-packages-1.json');
+  const bytes = readFileSync(receiptPath); const receipt = JSON.parse(bytes.toString());
+  assert.equal(receipt.verification.tests, 1);
+  assert.equal(receipt.verification.failed, 0);
+  assert.equal(receipt.verification.skipped, 0);
+  assert.match(receipt.verification.command, /test -count=1 -json \.\/coordination$/);
+  assert.equal(receipt.approvalHash, sha(development.canonical(accepted)));
+  const recovered = await session.verifyGate('owner-packages');
+  assert.ok('reused' in recovered);
+  assert.equal(recovered.reused, true);
+  assert.deepEqual(readFileSync(receiptPath), bytes);
+});
+
 test('focused browser gates require explicit targets and a materialized inventory target', async t => {
   const { root, store, git } = canonicalFixture(t);
   put(root, 'package.json', readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
