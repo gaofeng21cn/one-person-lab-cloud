@@ -74,6 +74,11 @@ w20_fabric_delete_paths = [
     'coordination/tencent_resume_postgres_test.go',
     'internal/fabric/compute_allocation.go',
     'internal/fabric/storage.go',
+    # The gateway-secret owner readback must mint its own evidence identity.
+    # Keep these paths in the same Fabric slice so the coordinator cannot
+    # accept a confirmed Secret deletion with an empty evidence reference.
+    'internal/fabric/types.go',
+    'internal/fabric/workspace_runtime.go',
 ]
 task(20,'删除、base与supplement原单结算','Workspace（协调）',['workspace','gateway','fabric','serve','ledger'],['F13'],[4,5,15,18],[19],['services/control-plane/internal/server/workspace_delete.go','services/control-plane/internal/server/workspace_delete_refund.go','services/control-plane/internal/server/wallet_adjustment.go'],[('workspace','internal/launch'),('gateway','identity')]+[('fabric',path) for path in w20_fabric_delete_paths],['Workspace持久化删除意图并协调原单/退款；Serve负责Agent retirement、访问撤销与absence readback；Fabric负责资源删除事实','base保留原policy；已applied升级supplement用自身coverage，不合并当整月款','与续费/plan change/rotation串行，不撤销用户保留Key，不删Package/Build历史','当前实现按workspace、gateway与fabric三个owner写集拆分；交汇时使用互认coauthor admission和各自append-only receipt'],G+['资源已删丢响应、原身份/receipt错配、refund unknown/超额、窗口/退款上界','UI同时能显示已删+退款待确认；没有手工set success接口'],['无证据不退款，已删除不等于退款到账','不靠列表未找到或钱包余额差证明结果'])
 task(21,'Tenant开通、暂停/重新启用及删除恢复','CloudIdentity（协调）',['tenant','gateway','workspace','serve'],['F01','F15'],[3,4,15,20],[],['services/control-plane/internal/server/routes_admin.go'],[('gateway','internal/tenant_lifecycle'),('workspace','internal/tenant_actions')],['创建/绑定账单主体与个人登录分开；暂停权限及子Workspace结果可追踪','reenable只恢复原暂停且仍已付/原资源存在对象；删除后15天恢复是独立操作','删除资产转平台私有托管，不公开、不自动退款全部余额或重购资源'],G+['暂停后直接reenable不要求restoreUntil；误恢复/过期/子任务unknown','成员失权、生效窗口及账户历史权限不放大'],['Tenant权限和各Workspace运行结果分开','没有跨Tenant资源管理和删除后假复活数据'])
