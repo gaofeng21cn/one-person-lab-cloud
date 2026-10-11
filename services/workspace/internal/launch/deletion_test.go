@@ -28,6 +28,11 @@ import (
 type deletionIdentity struct {
 	api.CloudIdentityAuthorizationClient
 	denial error
+	// grantActions records what the deletion asked its own grant to carry. The
+	// real CloudIdentity issues a delete_workspace grant only from the canonical
+	// deletion surface, so the fixture refuses the provisioning write exactly
+	// like the owning surface does.
+	grantActions []api.AuthorizationActionEnum
 }
 
 func (i *deletionIdentity) AuthorizeAction(_ context.Context, r *api.AuthorizationRequest, _ ...grpc.CallOption) (*api.AuthorizationDecision, error) {
@@ -53,6 +58,12 @@ func (i *deletionIdentity) IssueAcceptedOperationGrant(_ context.Context, r *api
 	commit := r.GetOwnerCommitEvidence()
 	if commit.GetOwner() != api.OwnerEnum_OWNER_ENUM_WORKSPACE || commit.GetAcceptedAction() != api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEWORKSPACE {
 		return nil, status.Error(codes.PermissionDenied, "grant is not bound to a Workspace deletion")
+	}
+	i.grantActions = append([]api.AuthorizationActionEnum(nil), r.GetAllowedActions()...)
+	for _, action := range i.grantActions {
+		if action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES {
+			return nil, status.Error(codes.PermissionDenied, "the deletion's grant cannot carry the launch's provisioning write")
+		}
 	}
 	return &api.AcceptedOperationGrant{
 		Id: "grant-deletion-original", AcceptedOperationOwner: commit.GetOwner(), AcceptedOperationId: commit.GetOperationId(),
@@ -573,6 +584,23 @@ func TestDeleteWorkspaceRunsUnderItsOwnAcceptedGrant(t *testing.T) {
 	}
 	if result.GrantID != "grant-deletion-original" {
 		t.Fatalf("deletion grant=%q, want the deletion's own accepted grant", result.GrantID)
+	}
+	// The deletion's own grant carries the contract's resource release and never
+	// the launch's provisioning write: Fabric's DeleteResources authorizes itself
+	// with deleteAcceptedResources, while a grant that carried the creation write
+	// could replay resource creation.
+	identity := service.Identity.(*deletionIdentity)
+	releases := 0
+	for _, action := range identity.grantActions {
+		if action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES {
+			t.Fatalf("the deletion grant requested the launch's provisioning write: %v", identity.grantActions)
+		}
+		if action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES {
+			releases++
+		}
+	}
+	if releases != 1 {
+		t.Fatalf("the deletion grant does not carry the resource-release action: %v", identity.grantActions)
 	}
 	if serve, fabric, ledger, gateway := service.Serve.(*deletionServeClient), service.Fabric.(*deletionFabricClient), service.Ledger.(*deletionLedgerClient), service.Gateway.(*deletionGatewayClient); serve.stops != 1 || fabric.deleteCalls != 1 || ledger.appends != 1 || gateway.refunds != 1 {
 		t.Fatalf("retire=%d delete=%d receipt=%d refund=%d, want one each", serve.stops, fabric.deleteCalls, ledger.appends, gateway.refunds)
