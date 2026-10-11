@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "e823111b73793af84b9343c3d86ec5b19f6cb612",
+  "recordedAt": "2026-10-11T20:11:30.834Z",
+  "writeSet": [
+    "docs/evidence/source-checks/patrol-20261012-deletion-repair-v3-launch-1.json",
+    "docs/evidence/source-checks/w07-publisher-admission-20261012-6e13-publisher-admission-1.json",
+    "docs/evidence/source-checks/w12-local-workload-identity-20261012b-source-contracts-1.json",
+    "docs/evidence/source-checks/w20-workspace-deletion-source-slice-v4-launch-deletion-1.json",
+    "services/workspace/internal/launch/deletion.go",
+    "services/workspace/internal/launch/deletion_test.go"
+  ],
+  "verifiedSource": {
+    "baseSha": "e823111b73793af84b9343c3d86ec5b19f6cb612",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/w07-publisher-admission-20261012-6e13-publisher-admission-1.json": "e8ee3f2a93bad1eeba3577780d8879a2ba649d66b48637fd1c54caa3d2ce4c01",
+      "docs/evidence/source-checks/w12-local-workload-identity-20261012b-source-contracts-1.json": "6a64571d39fc47f95ba74cd73cd361a98afe3afaf85666e007f921cf2d2812e4",
+      "docs/evidence/source-checks/w20-workspace-deletion-source-slice-v4-launch-deletion-1.json": "facab49085e1ab90b053ef34839fa3097338f08a418e68f23f4b0acdbff8529a",
+      "services/workspace/internal/launch/deletion.go": "1dd4c44509c4bf7f80e6d5ce704ab6727394029dbb68c2dde6294291d73d3770",
+      "services/workspace/internal/launch/deletion_test.go": "1052b366a7e01515ba089cb451789936c4aa52205517b5f8cf7080d47eb7aaf1"
+    }
+  },
+  "execution": {
+    "command": "go test -count=1 -json ./internal/launch (cwd: services/workspace)",
+    "exitCode": 0,
+    "tests": 145,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "685d3ee9d363225ced012ddc4706059e46f6c64b846972640345eff633efdf99"
+  },
+  "sourceStage": {
+    "runId": "patrol-20261012-deletion-repair-v3",
+    "gateId": "launch",
+    "attempt": 1,
+    "receiptHash": "09959888640c9f9b1fe87c009cce9afa346348d4b932c54344e331ce26bde364"
+  }
+}
