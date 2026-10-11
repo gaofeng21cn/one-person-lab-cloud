@@ -65,6 +65,7 @@ w20_fabric_delete_paths = [
     'coordination/delete_postgres_test.go',
     'coordination/dispatch.go',
     'coordination/local_dispatch.go',
+    'coordination/local_dispatch_host_test.go',
     'coordination/tencent_dispatch.go',
     'coordination/read.go',
     'coordination/service.go',

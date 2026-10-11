@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "ef83932fabc78dbc7c0dfecfd9375f96b4b4ae29",
+  "sourceSHA": "64ad5ae9a04050b6796e0c60bf7765008d57b989",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -1942,6 +1942,7 @@
         "services/fabric/coordination/delete_postgres_test.go",
         "services/fabric/coordination/dispatch.go",
         "services/fabric/coordination/local_dispatch.go",
+        "services/fabric/coordination/local_dispatch_host_test.go",
         "services/fabric/coordination/tencent_dispatch.go",
         "services/fabric/coordination/read.go",
         "services/fabric/coordination/service.go",
@@ -4096,6 +4097,7 @@
         "services/fabric/coordination/delete_postgres_test.go",
         "services/fabric/coordination/dispatch.go",
         "services/fabric/coordination/local_dispatch.go",
+        "services/fabric/coordination/local_dispatch_host_test.go",
         "services/fabric/coordination/tencent_dispatch.go",
         "services/fabric/coordination/read.go",
         "services/fabric/coordination/service.go",

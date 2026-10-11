@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "64ad5ae9a04050b6796e0c60bf7765008d57b989",
+  "recordedAt": "2026-10-11T14:09:38.479Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w27-w20-fabric-fixture-scope-v1-development-gates-1.json",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/render_development_plan.py"
+  ],
+  "verifiedSource": {
+    "baseSha": "64ad5ae9a04050b6796e0c60bf7765008d57b989",
+    "changedFilesSha256": {
+      "docs/spec/target/14_implementation_work_packages.md": "2ba79b3428aff8e862b3c19ac694c9f0622a5daf4e78b70164427055dbb7cf1b",
+      "docs/spec/target/checks/development_plan.json": "ceb1772ff0a20edc9ad700a6233f3ffb43320580ffccd01947c2c58a62fd567c",
+      "docs/spec/target/checks/render_development_plan.py": "a4d93fbee07b3b844a10e53e71b9c72b13fa7b6f2eb13f0a6de9f89c63ce06de"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/check-pr-governance.test.ts",
+    "exitCode": 0,
+    "tests": 19,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "546b8aef99063f76d5411b8d05263f1f0191b40fb9737305d0e7e042a72a6f34"
+  },
+  "sourceStage": {
+    "runId": "w27-w20-fabric-fixture-scope-v1",
+    "gateId": "development-gates",
+    "attempt": 1,
+    "receiptHash": "4e43c61feb26a7ad052885cc7d8caacab074c10cde66b6920e6c295c6a58d11d"
+  }
+}

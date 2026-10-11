@@ -860,6 +860,7 @@
 - `services/fabric/coordination/delete_postgres_test.go`
 - `services/fabric/coordination/dispatch.go`
 - `services/fabric/coordination/local_dispatch.go`
+- `services/fabric/coordination/local_dispatch_host_test.go`
 - `services/fabric/coordination/tencent_dispatch.go`
 - `services/fabric/coordination/read.go`
 - `services/fabric/coordination/service.go`
@@ -1576,7 +1577,7 @@
 
 **输入：** 现有Fabric coordination资源释放源码与typed接口；已吸收的DELETEACCEPTEDRESOURCES接受删除动作合同；同exact baseline的typed Workspace grant边界与资源读回接口；隔离PostgreSQL及显式runner依赖输入；docs/invariants.md#workspace-lifecycle；docs/invariants.md#provider-resources
 
-**写集：** `services/fabric/coordination/delete.go`, `services/fabric/coordination/delete_dispatch.go`, `services/fabric/coordination/delete_dispatch_test.go`, `services/fabric/coordination/delete_postgres_test.go`, `services/fabric/coordination/dispatch.go`, `services/fabric/coordination/local_dispatch.go`, `services/fabric/coordination/tencent_dispatch.go`, `services/fabric/coordination/read.go`, `services/fabric/coordination/service.go`, `services/fabric/coordination/secret_postgres_test.go`, `services/fabric/coordination/service_postgres_test.go`, `services/fabric/coordination/tencent_resume_postgres_test.go`, `services/fabric/internal/fabric/compute_allocation.go`, `services/fabric/internal/fabric/storage.go`
+**写集：** `services/fabric/coordination/delete.go`, `services/fabric/coordination/delete_dispatch.go`, `services/fabric/coordination/delete_dispatch_test.go`, `services/fabric/coordination/delete_postgres_test.go`, `services/fabric/coordination/dispatch.go`, `services/fabric/coordination/local_dispatch.go`, `services/fabric/coordination/local_dispatch_host_test.go`, `services/fabric/coordination/tencent_dispatch.go`, `services/fabric/coordination/read.go`, `services/fabric/coordination/service.go`, `services/fabric/coordination/secret_postgres_test.go`, `services/fabric/coordination/service_postgres_test.go`, `services/fabric/coordination/tencent_resume_postgres_test.go`, `services/fabric/internal/fabric/compute_allocation.go`, `services/fabric/internal/fabric/storage.go`
 
 **验收：** OPL_POSTGRES_TESTS=1 go -C services/fabric test -json -count=1 ./coordination；跨workspace/tenant、无typed授权、错误accepted动作拒绝；删除续执行不借用或重放开通专用权限；受影响internal/fabric的ComputeDeletionAbsent与StorageDeletionAbsent须有真实owner读回覆盖；适用PostgreSQL/Local-Docker输入须显式准入，缺fixture保持未验收，不跳过或扩grant；实际测试数>0且0 fail/skip/TODO；runner只使用声明的隔离输入
 
