@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "c2dd4cdeeb84ceb4f13982e05cc910a15c5967ad",
+  "recordedAt": "2026-10-10T22:17:37.577Z",
+  "writeSet": [
+    ".github/workflows/build-opl-cloud-candidate.yml",
+    ".github/workflows/clean-host-qualification.yml",
+    "docs/evidence/source-checks/w27-clean-host-inputs-20261011a-development-plan-1.json",
+    "docs/evidence/source-checks/w27-clean-host-inputs-20261011a-workflow-contracts-1.json",
+    "docs/evidence/source-checks/w27-clean-host-inputs-20261011b-development-plan-1.json",
+    "docs/evidence/source-checks/w27-clean-host-inputs-20261011b-workflow-contracts-1.json",
+    "docs/evidence/source-checks/w27-clean-host-inputs-20261011e-development-plan-1.json",
+    "docs/evidence/source-checks/w27-clean-host-inputs-20261011e-workflow-contracts-1.json",
+    "tests/tools/opl-cloud-candidate-console-identity.test.ts",
+    "tools/local-workspace-qualification.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "c2dd4cdeeb84ceb4f13982e05cc910a15c5967ad",
+    "changedFilesSha256": {
+      ".github/workflows/build-opl-cloud-candidate.yml": "3438794f10a195bb08051e3085395f39b853555963ea98476d1162f90b13ff21",
+      ".github/workflows/clean-host-qualification.yml": "98a901862e10f3a16c6ed0fd9c9f8bdc54dbd0be043f98e36a04eec2cd04d43d",
+      "docs/evidence/source-checks/w27-clean-host-inputs-20261011a-development-plan-1.json": "0c3356e5b5c688e7d682a9f6612d8d08174f49514665187051e02729090daa1c",
+      "docs/evidence/source-checks/w27-clean-host-inputs-20261011a-workflow-contracts-1.json": "ab4e69a4795c2a1653b55f06da3bdb18ef5a52e0bc9cda48118abc9801420230",
+      "docs/evidence/source-checks/w27-clean-host-inputs-20261011b-development-plan-1.json": "f272f2475f4db06d6a6b9eaf90c846b3f5aff32a4639e83d447bf046640f33c8",
+      "docs/evidence/source-checks/w27-clean-host-inputs-20261011b-workflow-contracts-1.json": "14b070de407b9540946bda0a2fa054306fcfaf7c7475e9fb68388a0d6402b97f",
+      "docs/evidence/source-checks/w27-clean-host-inputs-20261011e-development-plan-1.json": "ea6c85db62d50b127aa9eb531537cc9a68a1ffac43e98bc6e6b147b0d71bd68d",
+      "tests/tools/opl-cloud-candidate-console-identity.test.ts": "d3da557095fd5e3d935d93d39c7a557770de7531040e2f91196d8052d5320413",
+      "tools/local-workspace-qualification.ts": "2e872718d138be762b3543e11f5cf37f4c0481d8638150b9523eedda3cdf9ce6"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/contracts/clean-host-qualification.test.ts tests/tools/opl-cloud-candidate-console-identity.test.ts",
+    "exitCode": 0,
+    "tests": 4,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "f464ca9b156632a85debf82b64ea2825d2cdf1c8ea4e12f68255e67055d5460e"
+  },
+  "sourceStage": {
+    "runId": "w27-clean-host-inputs-20261011e",
+    "gateId": "workflow-contracts",
+    "attempt": 1,
+    "receiptHash": "520e16860f270690b8340245428fe58db9b501b4746b5ad8b26393591457dd23"
+  }
+}

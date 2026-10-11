@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "c2dd4cdeeb84ceb4f13982e05cc910a15c5967ad",
+  "recordedAt": "2026-10-10T21:57:16.900Z",
+  "writeSet": [
+    ".github/workflows/build-opl-cloud-candidate.yml",
+    ".github/workflows/clean-host-qualification.yml",
+    "docs/evidence/source-checks/w27-clean-host-inputs-20261011a-development-plan-1.json",
+    "tests/tools/opl-cloud-candidate-console-identity.test.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "c2dd4cdeeb84ceb4f13982e05cc910a15c5967ad",
+    "changedFilesSha256": {
+      ".github/workflows/build-opl-cloud-candidate.yml": "3438794f10a195bb08051e3085395f39b853555963ea98476d1162f90b13ff21",
+      ".github/workflows/clean-host-qualification.yml": "8a971870d7ee8d88f7d8c019b45068c01cb0cedd6ccd659d50b123753a15b501",
+      "tests/tools/opl-cloud-candidate-console-identity.test.ts": "d3da557095fd5e3d935d93d39c7a557770de7531040e2f91196d8052d5320413"
+    }
+  },
+  "execution": {
+    "command": "node tools/verify-development-plan.ts",
+    "exitCode": 0,
+    "tests": 0,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "0f5766315f9abdbd40600927b36600347cfbbc42591dd24284258508b2462452"
+  },
+  "sourceStage": {
+    "runId": "w27-clean-host-inputs-20261011a",
+    "gateId": "development-plan",
+    "attempt": 1,
+    "receiptHash": "89e0304a91f6499f7e9fee3eed0d842076b536cbac8f8b7650e3ffa98661c87e"
+  }
+}

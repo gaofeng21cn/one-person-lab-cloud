@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "c2dd4cdeeb84ceb4f13982e05cc910a15c5967ad",
+  "recordedAt": "2026-10-10T22:07:29.197Z",
+  "writeSet": [
+    ".github/workflows/build-opl-cloud-candidate.yml",
+    ".github/workflows/clean-host-qualification.yml",
+    "docs/evidence/source-checks/w27-clean-host-inputs-20261011a-development-plan-1.json",
+    "docs/evidence/source-checks/w27-clean-host-inputs-20261011a-workflow-contracts-1.json",
+    "docs/evidence/source-checks/w27-clean-host-inputs-20261011b-development-plan-1.json",
+    "tests/tools/opl-cloud-candidate-console-identity.test.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "c2dd4cdeeb84ceb4f13982e05cc910a15c5967ad",
+    "changedFilesSha256": {
+      ".github/workflows/build-opl-cloud-candidate.yml": "3438794f10a195bb08051e3085395f39b853555963ea98476d1162f90b13ff21",
+      ".github/workflows/clean-host-qualification.yml": "98a901862e10f3a16c6ed0fd9c9f8bdc54dbd0be043f98e36a04eec2cd04d43d",
+      "docs/evidence/source-checks/w27-clean-host-inputs-20261011a-development-plan-1.json": "0c3356e5b5c688e7d682a9f6612d8d08174f49514665187051e02729090daa1c",
+      "docs/evidence/source-checks/w27-clean-host-inputs-20261011a-workflow-contracts-1.json": "ab4e69a4795c2a1653b55f06da3bdb18ef5a52e0bc9cda48118abc9801420230",
+      "tests/tools/opl-cloud-candidate-console-identity.test.ts": "d3da557095fd5e3d935d93d39c7a557770de7531040e2f91196d8052d5320413"
+    }
+  },
+  "execution": {
+    "command": "node tools/verify-development-plan.ts",
+    "exitCode": 0,
+    "tests": 0,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "0f5766315f9abdbd40600927b36600347cfbbc42591dd24284258508b2462452"
+  },
+  "sourceStage": {
+    "runId": "w27-clean-host-inputs-20261011b",
+    "gateId": "development-plan",
+    "attempt": 1,
+    "receiptHash": "faeea25cdff023c8a6de9472de49cd7395490b1a71c959b06553967baab5f83a"
+  }
+}

@@ -284,6 +284,7 @@ jobs:
               compose.fabric-tencent-tke.yaml \
               compose.local-workspace.yaml \
               opl-cloud.env.example \
+              opl-cloud-owner-topology.json \
               opl-cloud-candidate.json \
               > SHA256SUMS
           )
