@@ -1351,6 +1351,63 @@ async function writeEarlyNotReady(options, stage, errorCode, error) {
   });
 }
 
+// The run reports READY only after its own scratch root is actually gone. Any
+// unconfirmed removal — including the Linux EACCES raised when the PostgreSQL
+// image's chowned bind-mount directory blocks the qualifier's scan — keeps the
+// attempt failed, preserving the earliest stage failure when one exists, so
+// the receipt records NOT_READY instead of claiming a clean run. The removal
+// stays confined to the run-owned scratch root and never escalates privileges
+// to force the delete.
+export async function finishLocalWorkspaceQualification(state, dependencies = {}) {
+  const { options, startedAt, sourceTree, cloudImage, workspaceImage, stage, residuals } = state;
+  const { recovery, ownerDeletePending, finalReceipt } = state;
+  let { failure } = state;
+  if (!state.preserveRecoveryAuthority) {
+    const removeScratch = dependencies.removeScratch || ((target) => rm(target, { recursive: true, force: true }));
+    try {
+      await removeScratch(state.tempRoot);
+    } catch (error) {
+      failure ||= error;
+    }
+  }
+
+  if (failure) {
+    const notReady = {
+      schemaVersion: 1,
+      status: "NOT_READY",
+      startedAt,
+      completedAt: new Date().toISOString(),
+      source: { sha: options.sourceSha, tree: sourceTree },
+      images: {
+        cloud: { input: cloudImage || "unavailable", digest: immutableImageDigest(cloudImage) || "unavailable" },
+        workspace: { input: workspaceImage || "unavailable", digest: immutableImageDigest(workspaceImage) || "unavailable" }
+      },
+      command: receiptCommand({ ...options, cloudImage, workspaceImage }),
+      stage,
+      errorCode: "local_workspace_qualification_failed",
+      error: redactedError(failure),
+      residuals,
+      ...(recovery?.artifact ? {
+        recovery: {
+          status: recovery.artifact.status,
+          path: recovery.path,
+          operationIdDigest: recovery.artifact.authority.operationIdDigest,
+          workspaceIdDigest: recovery.artifact.authority.workspaceIdDigest,
+          externalWrites: recovery.artifact.authority.externalWrites,
+          compose: recovery.artifact.compose,
+          cleanup: recovery.artifact.cleanup
+        }
+      } : {}),
+      ...(ownerDeletePending ? { ownerDeletePending } : {}),
+      deferred: [...deferredCloudGates]
+    };
+    await writeJSONAtomic(options.receiptPath, notReady);
+    throw failure;
+  }
+  await writeJSONAtomic(options.receiptPath, finalReceipt);
+  return finalReceipt;
+}
+
 export async function runLocalWorkspaceQualification(options, dependencies = {}) {
   let liveAuthority = null;
   if (options.authorityMode === "live") {
@@ -1881,60 +1938,23 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
       const removed = await runProcess("docker", ["rm", "-f", registryContainer], { allowFailure: true });
       if (removed.code !== 0) failure ||= new Error("local source registry cleanup was not confirmed");
     }
-    if (!preserveRecoveryAuthority) {
-      // The PostgreSQL image chowns its bind-mounted data directory to the
-      // in-container postgres uid, so a non-root Linux qualifier is denied the
-      // scan of that single directory. That hygiene failure must not mask the
-      // stage failure this run exists to record: the scratch removal is
-      // attempted, and only a genuine non-EACCES removal error keeps the run
-      // failed. The denial is reported instead of silently dropped.
-      try {
-        await rm(tempRoot, { recursive: true, force: true });
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException)?.code === "EACCES") {
-          console.error(`local qualification scratch cleanup was not confirmed: ${String((error as Error)?.message || error)}`);
-        } else {
-          failure ||= error;
-        }
-      }
-    }
   }
 
-  if (failure) {
-    const notReady = {
-      schemaVersion: 1,
-      status: "NOT_READY",
-      startedAt,
-      completedAt: new Date().toISOString(),
-      source: { sha: options.sourceSha, tree: sourceTree },
-      images: {
-        cloud: { input: cloudImage || "unavailable", digest: immutableImageDigest(cloudImage) || "unavailable" },
-        workspace: { input: workspaceImage || "unavailable", digest: immutableImageDigest(workspaceImage) || "unavailable" }
-      },
-      command: receiptCommand({ ...options, cloudImage, workspaceImage }),
-      stage,
-      errorCode: "local_workspace_qualification_failed",
-      error: redactedError(failure),
-      residuals,
-      ...(recovery?.artifact ? {
-        recovery: {
-          status: recovery.artifact.status,
-          path: recovery.path,
-          operationIdDigest: recovery.artifact.authority.operationIdDigest,
-          workspaceIdDigest: recovery.artifact.authority.workspaceIdDigest,
-          externalWrites: recovery.artifact.authority.externalWrites,
-          compose: recovery.artifact.compose,
-          cleanup: recovery.artifact.cleanup
-        }
-      } : {}),
-      ...(ownerDeletePending ? { ownerDeletePending } : {}),
-      deferred: [...deferredCloudGates]
-    };
-    await writeJSONAtomic(options.receiptPath, notReady);
-    throw failure;
-  }
-  await writeJSONAtomic(options.receiptPath, finalReceipt);
-  return finalReceipt;
+  return finishLocalWorkspaceQualification({
+    options,
+    startedAt,
+    sourceTree,
+    cloudImage,
+    workspaceImage,
+    stage,
+    failure,
+    residuals,
+    recovery,
+    ownerDeletePending,
+    finalReceipt,
+    tempRoot,
+    preserveRecoveryAuthority
+  }, dependencies);
 }
 
 async function main() {

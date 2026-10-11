@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "2e64461ebb0f459ee05dd524cd10fd0c030ed2c8",
+  "recordedAt": "2026-10-11T04:24:18.136Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w27-cleanup-followup-20261011a-development-plan-1.json",
+    "docs/evidence/source-checks/w27-cleanup-followup-20261011a-workflow-contracts-1.json",
+    "tests/tools/local-workspace-qualification.test.ts",
+    "tools/local-workspace-qualification.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "2e64461ebb0f459ee05dd524cd10fd0c030ed2c8",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/w27-cleanup-followup-20261011a-development-plan-1.json": "3875b5c5426f7a253e2a883bc057a387b49713b12a0b790e773cd33a7d1f5a24",
+      "tests/tools/local-workspace-qualification.test.ts": "5e9a9e70d826b09e69e3db5105b5d1665f8b245298afafd834f73ea309e2a2cc",
+      "tools/local-workspace-qualification.ts": "0aa50c4faf938c9c9f646fc8e34c0354e7d977c3a2972a9548d445b0af3e47b0"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/contracts/clean-host-qualification.test.ts tests/tools/opl-cloud-candidate-console-identity.test.ts tests/tools/local-workspace-qualification.test.ts",
+    "exitCode": 0,
+    "tests": 35,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "5576140cd1a59fe9aa1cacc9e90b87c0ead25168962a9655fabab98acbff6371"
+  },
+  "sourceStage": {
+    "runId": "w27-cleanup-followup-20261011a",
+    "gateId": "workflow-contracts",
+    "attempt": 1,
+    "receiptHash": "2025a90aefbdf1981f56cbe92ba87583cf89c8569d01af66c787615a1b34af11"
+  }
+}
