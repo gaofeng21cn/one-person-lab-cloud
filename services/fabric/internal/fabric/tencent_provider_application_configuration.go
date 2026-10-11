@@ -48,8 +48,8 @@ func workspaceApplicationSecurityContext(input WorkspaceApplicationRuntimeInput,
 	security := map[string]any{"seccompProfile": map[string]any{"type": "RuntimeDefault"}}
 	execution := input.Revision.Execution
 	if component.Role == contracts.WorkspaceApplicationComponentMain {
-		security["runAsNonRoot"], security["runAsUser"], security["runAsGroup"] = true, 10001, 10001
-		security["fsGroup"], security["fsGroupChangePolicy"] = 10001, tencentWorkspaceFSGroupPolicy
+		security["runAsNonRoot"], security["runAsUser"], security["runAsGroup"] = true, workspaceApplicationWorkloadIdentity, workspaceApplicationWorkloadIdentity
+		security["fsGroup"], security["fsGroupChangePolicy"] = workspaceApplicationWorkloadIdentity, tencentWorkspaceFSGroupPolicy
 	} else if dependency, err := dependencySpecByName(input.Revision, component.Name); err == nil {
 		execution = dependency.Execution
 	}

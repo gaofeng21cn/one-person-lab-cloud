@@ -26,15 +26,24 @@ func applicationComponentExecution(revision contracts.WorkspaceApplicationRevisi
 	return contracts.WorkspaceApplicationExecution{}
 }
 
-func (p *LocalDockerProvider) applicationExecutionArgs(execution contracts.WorkspaceApplicationExecution) ([]string, error) {
+func (p *LocalDockerProvider) applicationExecutionArgs(execution contracts.WorkspaceApplicationExecution, defaultIdentity *localDockerWorkloadIdentity) ([]string, error) {
 	if err := contracts.ValidateWorkspaceApplicationExecution(execution); err != nil {
 		return nil, err
 	}
 	args := []string{}
-	if execution.UserID != nil {
-		user := strconv.FormatInt(*execution.UserID, 10)
-		if execution.GroupID != nil {
-			user += ":" + strconv.FormatInt(*execution.GroupID, 10)
+	uid, gid := execution.UserID, execution.GroupID
+	if defaultIdentity != nil {
+		if uid == nil {
+			uid = &defaultIdentity.uid
+		}
+		if gid == nil {
+			gid = &defaultIdentity.gid
+		}
+	}
+	if uid != nil {
+		user := strconv.FormatInt(*uid, 10)
+		if gid != nil {
+			user += ":" + strconv.FormatInt(*gid, 10)
 		}
 		args = append(args, "--user", user)
 	}
@@ -68,7 +77,7 @@ func (p *LocalDockerProvider) applicationExecutionArgs(execution contracts.Works
 
 func (p *LocalDockerProvider) validateApplicationExecutions(input WorkspaceApplicationRuntimeInput) error {
 	for _, component := range contracts.WorkspaceApplicationRuntimeComponents(input.Revision) {
-		if _, err := p.applicationExecutionArgs(applicationComponentExecution(input.Revision, component.Name)); err != nil {
+		if _, err := p.applicationExecutionArgs(applicationComponentExecution(input.Revision, component.Name), applicationComponentWorkloadIdentity(input.Revision, component.Name)); err != nil {
 			return err
 		}
 	}
@@ -77,7 +86,7 @@ func (p *LocalDockerProvider) validateApplicationExecutions(input WorkspaceAppli
 
 func (p *LocalDockerProvider) verifyApplicationExecution(input WorkspaceApplicationRuntimeInput, name string, container dockerContainerInspect) error {
 	execution := applicationComponentExecution(input.Revision, name)
-	args, err := p.applicationExecutionArgs(execution)
+	args, err := p.applicationExecutionArgs(execution, applicationComponentWorkloadIdentity(input.Revision, name))
 	if err != nil {
 		return err
 	}

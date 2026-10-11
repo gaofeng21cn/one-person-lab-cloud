@@ -318,8 +318,9 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 		}
 		return localDockerApplicationComponentState(component, container), nil
 	}
+	identity := applicationComponentWorkloadIdentity(input.Revision, component.Name)
 	args := append([]string{"run", "-d", "--name", name}, dockerLabelArgs(labels)...)
-	executionArgs, err := p.applicationExecutionArgs(applicationComponentExecution(input.Revision, component.Name))
+	executionArgs, err := p.applicationExecutionArgs(applicationComponentExecution(input.Revision, component.Name), identity)
 	if err != nil {
 		return component, err
 	}
@@ -343,7 +344,7 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 		if depErr != nil {
 			return localDockerApplicationComponentState(component, dockerContainerInspect{}), depErr
 		}
-		depArgs, depErr := localDockerDependencyRunArgs(input, dependency, storagePaths)
+		depArgs, depErr := p.localDockerDependencyRunArgs(input, dependency, storagePaths)
 		if depErr != nil {
 			return localDockerApplicationComponentState(component, dockerContainerInspect{}), depErr
 		}
@@ -370,6 +371,13 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 			if err := os.MkdirAll(source, 0755); err != nil {
 				return localDockerApplicationComponentState(component, dockerContainerInspect{}), err
 			}
+			// The main component's persistent data must belong to the identity it
+			// runs as, exactly as the Tencent fsGroup establishes for its volume.
+			if !mount.ReadOnly {
+				if err := p.workloadOwnership.Assign(source, identity.uid, identity.gid); err != nil {
+					return localDockerApplicationComponentState(component, dockerContainerInspect{}), err
+				}
+			}
 			binding := "type=bind,source=" + source + ",target=" + mount.MountPath + ",bind-propagation=rprivate"
 			if mount.ReadOnly {
 				binding += ",readonly"
@@ -377,7 +385,7 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 			args = append(args, "--mount", binding)
 		}
 		for _, mount := range input.Revision.ScratchMounts {
-			args = append(args, localDockerApplicationScratchArgs(mount)...)
+			args = append(args, localDockerApplicationScratchArgs(mount, identity)...)
 		}
 		if len(input.Revision.Entrypoint) > 0 {
 			args = append(args, "--entrypoint", input.Revision.Entrypoint[0])
@@ -440,7 +448,8 @@ func localDockerApplicationResourceArgs(compute contracts.WorkspaceApplicationCo
 // localDockerDependencyRunArgs returns Docker flags only: the component caller
 // appends the image once, followed by its process arguments. Dependency flags
 // do not inherit the main component's ports, environment, or mounts.
-func localDockerDependencyRunArgs(input WorkspaceApplicationRuntimeInput, dependency contracts.WorkspaceApplicationDependency, storagePaths localDockerStoragePaths) ([]string, error) {
+func (p *LocalDockerProvider) localDockerDependencyRunArgs(input WorkspaceApplicationRuntimeInput, dependency contracts.WorkspaceApplicationDependency, storagePaths localDockerStoragePaths) ([]string, error) {
+	identity := applicationComponentWorkloadIdentity(input.Revision, dependency.Name)
 	args := []string{}
 	for _, port := range dependency.Ports {
 		if port.Protocol == "TCP" {
@@ -458,6 +467,14 @@ func localDockerDependencyRunArgs(input WorkspaceApplicationRuntimeInput, depend
 		if err := os.MkdirAll(source, 0755); err != nil {
 			return nil, err
 		}
+		// A dependency that declares an identity owns the data it mounts just
+		// like the main component; an undeclared dependency keeps its image
+		// default and is not adopted.
+		if !mount.ReadOnly && identity != nil {
+			if err := p.workloadOwnership.Assign(source, identity.uid, identity.gid); err != nil {
+				return nil, err
+			}
+		}
 		binding := "type=bind,source=" + source + ",target=" + mount.MountPath + ",bind-propagation=rprivate"
 		if mount.ReadOnly {
 			binding += ",readonly"
@@ -465,7 +482,7 @@ func localDockerDependencyRunArgs(input WorkspaceApplicationRuntimeInput, depend
 		args = append(args, "--mount", binding)
 	}
 	for _, mount := range dependency.ScratchMounts {
-		args = append(args, localDockerApplicationScratchArgs(mount)...)
+		args = append(args, localDockerApplicationScratchArgs(mount, identity)...)
 	}
 	return args, nil
 }

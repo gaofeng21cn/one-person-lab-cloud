@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "52d96e1d4ea670051fc8380df4fe210df1b92238",
+  "recordedAt": "2026-10-12T04:00:00Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w12-local-workload-identity-20261012b-source-contracts-1.json",
+    "services/fabric/internal/fabric/local_docker_application_configuration.go",
+    "services/fabric/internal/fabric/local_docker_application_execution.go",
+    "services/fabric/internal/fabric/local_docker_application_execution_test.go",
+    "services/fabric/internal/fabric/local_docker_application_runtime.go",
+    "services/fabric/internal/fabric/local_docker_application_runtime_integration_test.go",
+    "services/fabric/internal/fabric/local_docker_application_runtime_test.go",
+    "services/fabric/internal/fabric/local_docker_application_scratch.go",
+    "services/fabric/internal/fabric/local_docker_application_scratch_test.go",
+    "services/fabric/internal/fabric/local_docker_application_secret_test.go",
+    "services/fabric/internal/fabric/local_docker_application_workload.go",
+    "services/fabric/internal/fabric/local_docker_application_workload_test.go",
+    "services/fabric/internal/fabric/local_docker_provider.go",
+    "services/fabric/internal/fabric/tencent_provider_application_configuration.go",
+    "services/fabric/internal/fabric/workspace_application_lifecycle_test.go"
+  ],
+  "verifiedSource": {
+    "baseSha": "52d96e1d4ea670051fc8380df4fe210df1b92238",
+    "changedFilesSha256": {
+      "services/fabric/internal/fabric/local_docker_application_configuration.go": "7fc308da6bc1e38f46c45b4cdb61b147bfeb0622dd82142a876cb54d913c3cfb",
+      "services/fabric/internal/fabric/local_docker_application_execution.go": "727440d5af706093c2d5877c4d47705848e54ba44989e5c255a6d4eb0a408293",
+      "services/fabric/internal/fabric/local_docker_application_execution_test.go": "bd91fdfe6720dbb68f388936f874923d6fbc31ed047032927fc087375370f3b8",
+      "services/fabric/internal/fabric/local_docker_application_runtime.go": "ff0906a4f3dab34cb5fd048165121529d70463165ae1961048b16cf9cfee7d1f",
+      "services/fabric/internal/fabric/local_docker_application_runtime_integration_test.go": "417f953cddb4044df69d38da8197fe145f350461f5e6073ce0f070f3ff99b122",
+      "services/fabric/internal/fabric/local_docker_application_runtime_test.go": "59487590b853916681d5b15dfac93d79d18e7560785174fdd7916ad4ee5ca8db",
+      "services/fabric/internal/fabric/local_docker_application_scratch.go": "6359f9c58517ff8ec19d2e2591c4e648619c08af3a7b50501da4eef5e56ba3cd",
+      "services/fabric/internal/fabric/local_docker_application_scratch_test.go": "8dd208330b7245112d7716e32caec65a15e3f77904642479ab74a01441c5d3cf",
+      "services/fabric/internal/fabric/local_docker_application_secret_test.go": "080184dba690de0506e442fe882171d338480e518e98b4dbbb94cc7562b1ea1c",
+      "services/fabric/internal/fabric/local_docker_application_workload.go": "62c712754b308892347d709e83c6355ab4ce21ff0ad829bb7e5cf5bbc5006844",
+      "services/fabric/internal/fabric/local_docker_application_workload_test.go": "6d313e73e718c35bf9e97203294b621a6e96fb36ae24309d0dae4f6084519d03",
+      "services/fabric/internal/fabric/local_docker_provider.go": "7d5bd6caf455d69d710a7b7a1b4be94dab0f243a86e649a58770e4f055dc6086",
+      "services/fabric/internal/fabric/tencent_provider_application_configuration.go": "a3bfb44126dfcacc0c5ba20adba6ac085870371cc37e7d3137789dd65e12f94b",
+      "services/fabric/internal/fabric/workspace_application_lifecycle_test.go": "ce8095521365b568a02c4651dbc2dc6241df2e8157ae049aa1a5fcde5aea6837"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/contracts/module-physical-boundaries.test.ts tests/contracts/gateway-deployment-unit-principal.test.ts tests/contracts/owner-topology.test.ts",
+    "exitCode": 0,
+    "tests": 15,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "89cf56c6f0fb08c8e62301a7178070781b8e8b00021e31f28499f73c10310dfa"
+  },
+  "sourceStage": {
+    "runId": "w12-local-workload-identity-20261012b",
+    "gateId": "source-contracts",
+    "attempt": 1,
+    "receiptHash": "15665e65d90ebda80c61d489d629722f72505cdd6ef1c0fbdb48b37bf3dff75d"
+  }
+}
