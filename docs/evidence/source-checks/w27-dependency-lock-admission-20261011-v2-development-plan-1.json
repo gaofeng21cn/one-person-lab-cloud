@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "2662f2bfbe295afc2d2747b2924288cf1252a5f3",
+  "recordedAt": "2026-10-11T00:35:24.428Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w27-dependency-lock-admission-20261011-development-plan-1.json",
+    "docs/evidence/source-checks/w27-dependency-lock-admission-20261011-v2-development-plan-1.json",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/render_development_plan.py"
+  ],
+  "verifiedSource": {
+    "baseSha": "2662f2bfbe295afc2d2747b2924288cf1252a5f3",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/w27-dependency-lock-admission-20261011-development-plan-1.json": "6ff73e11cc90b4cfea503abb9d4b7561575982e2094633ad63988b61c175d60a",
+      "docs/spec/target/14_implementation_work_packages.md": "91787dccb17a78b0070175df1225139d464a5297ccadd47494a6b5409aefb324",
+      "docs/spec/target/checks/development_plan.json": "e59e31bce3a0e30be20ff62a89d7499c9f93652d9129f3bc3aaaeebc993591b7",
+      "docs/spec/target/checks/render_development_plan.py": "da1d09af2b0ebb6bdb1a944b2540572b319c8f5a9492e92b4faf4436bf7690cd"
+    }
+  },
+  "execution": {
+    "command": "node tools/verify-development-plan.ts",
+    "exitCode": 0,
+    "tests": 0,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "0f5766315f9abdbd40600927b36600347cfbbc42591dd24284258508b2462452"
+  },
+  "sourceStage": {
+    "runId": "w27-dependency-lock-admission-20261011-v2",
+    "gateId": "development-plan",
+    "attempt": 1,
+    "receiptHash": "143538fa34c497858e799826458b14047783c4343271b99a133fe130d23f779f"
+  }
+}

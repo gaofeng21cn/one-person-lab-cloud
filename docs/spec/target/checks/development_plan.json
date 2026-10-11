@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "8cd6c436cde9153a7e96a7afafb5a5a57d8ba69f",
+  "sourceSHA": "2662f2bfbe295afc2d2747b2924288cf1252a5f3",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -4106,6 +4106,7 @@
         "AGENTS.md",
         "DEV_GUIDE.md",
         "package.json",
+        "package-lock.json",
         "docs/spec/target/",
         "docs/evidence/source-checks/"
       ],
