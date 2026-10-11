@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "6e13b7a6f4e0c64fce8081e4d6b64be2f62cb2f1",
+  "recordedAt": "2026-10-11T18:29:41.223Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w20-workspace-deletion-source-slice-v4-launch-deletion-1.json",
+    "services/workspace/internal/launch/deletion.go",
+    "services/workspace/internal/launch/deletion_test.go",
+    "services/workspace/internal/launch/recovery.go",
+    "services/workspace/internal/launch/service.go"
+  ],
+  "verifiedSource": {
+    "baseSha": "6e13b7a6f4e0c64fce8081e4d6b64be2f62cb2f1",
+    "changedFilesSha256": {
+      "services/workspace/internal/launch/deletion.go": "efc991b678c0a0194e9f63392334164b3f7af28f8b50879d6789dba2a2631fcf",
+      "services/workspace/internal/launch/deletion_test.go": "a09e0ade2a4a0d6f36ee928ae3876a25e59cfe3f65749d62098aba6279c7b5b6",
+      "services/workspace/internal/launch/recovery.go": "699afa2cb879de5e31778ffabcacc94243ba376bb8ffc54b476d1b27d89f33c3",
+      "services/workspace/internal/launch/service.go": "07d89adbaf0ca6990a364f09e5ae16ab1a940ec5f9bc0703f5d45087090513d6"
+    }
+  },
+  "execution": {
+    "command": "go test -count=1 -json ./internal/launch (cwd: services/workspace)",
+    "exitCode": 0,
+    "tests": 144,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "1817e6305412da851ef3d2ed0d9f3ebc5b3f0be48304ad2a154d11c4bfeb5155"
+  },
+  "sourceStage": {
+    "runId": "w20-workspace-deletion-source-slice-v4",
+    "gateId": "launch-deletion",
+    "attempt": 1,
+    "receiptHash": "bff31171efabe0f1cf8dd93d772c4f0404aae1a9bf52770582293f12950e2404"
+  }
+}
