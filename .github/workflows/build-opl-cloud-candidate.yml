@@ -22,7 +22,10 @@ jobs:
     # branch before its work lands on canonical main), so the job does not pin the
     # dispatched ref to main. The publication trust boundary is unchanged: only the
     # repository owner may dispatch, and the Release workflow still runs from main.
-    if: ${{ github.ref_type == 'branch' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner }}
+    # One-time branch bridge: on exactly this bridge ref, the named write
+    # collaborator may dispatch. The product bytes remain the exact product_sha
+    # commit; the Release workflow stays main-only and independently gated.
+    if: ${{ github.ref_type == 'branch' && github.actor == github.triggering_actor && (github.actor == github.repository_owner && github.triggering_actor == github.repository_owner || github.ref == 'refs/heads/codex/candidate-9133b1bd-bridge' && github.actor == 'RenDeHuang' && github.triggering_actor == 'RenDeHuang') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
