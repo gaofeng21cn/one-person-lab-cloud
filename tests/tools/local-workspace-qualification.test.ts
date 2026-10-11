@@ -11,6 +11,7 @@ import {
   cleanupLocalQualificationSecretRoot,
   createHTTP,
   exactRepoDigestFromInspection,
+  finishLocalWorkspaceQualification,
   immutableImageDigest,
   liveAuthorityAdjustmentReadback,
   login,
@@ -1209,5 +1210,90 @@ test("live authority configuration fails closed before Docker and writes a redac
       else process.env[name] = value;
     }
     await rm(receiptPath, { force: true });
+  }
+});
+
+const qualificationSettlement = (root, receiptPath, failure) => ({
+  options: {
+    sourceSha: sha,
+    cloudImage: `ghcr.io/example/cloud@${cloudDigest}`,
+    workspaceImage: workspaceReference,
+    receiptPath,
+    buildSourceImages: false,
+    authorityMode: "fixture"
+  },
+  startedAt: "2026-10-11T00:00:00.000Z",
+  sourceTree: "d".repeat(40),
+  cloudImage: `ghcr.io/example/cloud@${cloudDigest}`,
+  workspaceImage: workspaceReference,
+  stage: "qualification_cleanup",
+  failure,
+  residuals: { containers: 0, volumes: 0, networks: 0 },
+  recovery: null,
+  ownerDeletePending: null,
+  finalReceipt: undefined,
+  tempRoot: join(root, "scratch"),
+  preserveRecoveryAuthority: false
+});
+
+test("scratch cleanup failure preserves an earlier qualification stage failure", async () => {
+  const root = await mkdtemp(join(tmpdir(), "opl-qualification-settle-"));
+  const receiptPath = join(root, "receipt.json");
+  const earlier = new Error("Ledger deletion Receipt binding is invalid");
+  const denial = Object.assign(new Error(`EACCES: permission denied, scandir '${join(root, "scratch", "postgres")}'`), { code: "EACCES" });
+  try {
+    await assert.rejects(
+      () => finishLocalWorkspaceQualification(qualificationSettlement(root, receiptPath, earlier), {
+        removeScratch: async () => { throw denial; }
+      }),
+      (error) => error === earlier
+    );
+    const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+    assert.equal(receipt.status, "NOT_READY");
+    assert.equal(receipt.stage, "qualification_cleanup");
+    assert.equal(receipt.errorCode, "local_workspace_qualification_failed");
+    assert.equal(receipt.error, redactedError(earlier));
+    assert.doesNotMatch(receipt.error, /EACCES|permission denied/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("unconfirmed scratch cleanup fails an otherwise clean attempt with a receipt", async () => {
+  const root = await mkdtemp(join(tmpdir(), "opl-qualification-settle-"));
+  const receiptPath = join(root, "receipt.json");
+  const denial = Object.assign(new Error(`EACCES: permission denied, scandir '${join(root, "scratch", "postgres")}'`), { code: "EACCES" });
+  try {
+    await assert.rejects(
+      () => finishLocalWorkspaceQualification(qualificationSettlement(root, receiptPath, undefined), {
+        removeScratch: async () => { throw denial; }
+      }),
+      (error) => error === denial
+    );
+    const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+    assert.equal(receipt.status, "NOT_READY");
+    assert.equal(receipt.stage, "qualification_cleanup");
+    assert.equal(receipt.errorCode, "local_workspace_qualification_failed");
+    assert.equal(receipt.error, redactedError(denial));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("confirmed scratch cleanup leaves the READY result untouched", async () => {
+  const root = await mkdtemp(join(tmpdir(), "opl-qualification-settle-"));
+  const receiptPath = join(root, "receipt.json");
+  const ready = { schemaVersion: 1, status: "READY", source: { sha, tree: "d".repeat(40) } };
+  const removed = [];
+  try {
+    const settled = await finishLocalWorkspaceQualification(
+      { ...qualificationSettlement(root, receiptPath, undefined), finalReceipt: ready },
+      { removeScratch: async (target) => { removed.push(target); } }
+    );
+    assert.equal(settled, ready);
+    assert.deepEqual(removed, [join(root, "scratch")]);
+    assert.deepEqual(JSON.parse(await readFile(receiptPath, "utf8")), ready);
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
