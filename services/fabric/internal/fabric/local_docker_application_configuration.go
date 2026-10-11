@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 )
 
 func applicationEnvironmentArgs(input WorkspaceApplicationRuntimeInput) []string {
@@ -207,6 +208,10 @@ func (p *LocalDockerProvider) applicationCredentialFiles(input WorkspaceApplicat
 	parent := "application-credentials"
 	directory := parent + "/" + applicationRuntimeID(input)
 	expected := map[string][]byte{localDockerWebUIPasswordFile: credentials.Password, localDockerWebUISessionSecretFile: credentials.SessionSecret}
+	// The consuming workload runs as the main component's identity, so the
+	// platform-issued credential files are group-readable by that identity,
+	// exactly as the Tencent provider's secret volume does with its fsGroup.
+	identity := applicationComponentWorkloadIdentity(input.Revision, contracts.WorkspaceApplicationComponentMain)
 	if _, err := root.Lstat(directory); errors.Is(err, os.ErrNotExist) && prepare {
 		if err := ensureLocalDockerSecretDirectory(root, parent, 0711); err != nil {
 			return err
@@ -220,7 +225,10 @@ func (p *LocalDockerProvider) applicationCredentialFiles(input WorkspaceApplicat
 			return err
 		}
 		for name, value := range expected {
-			if err := writeLocalDockerSecretFile(root, temporary+"/"+name, value, 0400); err != nil {
+			if err := writeLocalDockerSecretFile(root, temporary+"/"+name, value, 0440); err != nil {
+				return err
+			}
+			if err := p.workloadOwnership.Assign(filepath.Join(p.gatewaySecretRoot, temporary, name), -1, identity.gid); err != nil {
 				return err
 			}
 		}
@@ -233,7 +241,11 @@ func (p *LocalDockerProvider) applicationCredentialFiles(input WorkspaceApplicat
 	}
 	for name, value := range expected {
 		info, err := root.Lstat(directory + "/" + name)
-		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0400 {
+		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0440 {
+			return ErrLaunchStageBindingConflict
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || int64(stat.Gid) != identity.gid {
 			return ErrLaunchStageBindingConflict
 		}
 		actual, err := root.ReadFile(directory + "/" + name)

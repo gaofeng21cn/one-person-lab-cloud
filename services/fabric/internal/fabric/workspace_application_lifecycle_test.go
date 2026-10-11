@@ -339,6 +339,7 @@ func TestWorkspaceApplicationOPLCredentialsAreVersionedAndSecretsRetireAfterCons
 		t.Fatal(err)
 	}
 	input := applicationRuntimeInput("opl-generation-1", applicationRevisionForTest())
+	input.Revision.Execution = applicationTestExecutionIdentity(t)
 	input.Revision.Credentials = []contracts.WorkspaceApplicationCredential{
 		{Name: "admin-password", Kind: contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword, Target: "/run/secrets/opl_webui_password", Username: "opl"},
 		{Name: "session-secret", Kind: contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret, Target: "/run/secrets/webui_session_secret"},

@@ -133,6 +133,7 @@ func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args .
 		name, image, labels := "", "", map[string]string{}
 		published := map[string]any{}
 		env := []string{}
+		user := ""
 		mounts := []map[string]any{}
 		for index := 1; index < len(args); index++ {
 			if args[index] == "-d" {
@@ -151,6 +152,8 @@ func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args .
 				}
 			case "--env":
 				env = append(env, args[index+1])
+			case "--user":
+				user = args[index+1]
 			case "--mount":
 				mount := map[string]any{"RW": true}
 				for _, part := range strings.Split(args[index+1], ",") {
@@ -180,7 +183,7 @@ func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args .
 		}
 		inspect := []map[string]any{{
 			"Id": "cid-" + name, "Name": "/" + name,
-			"Config":          map[string]any{"Image": image, "Labels": labels, "Env": env},
+			"Config":          map[string]any{"Image": image, "Labels": labels, "Env": env, "User": user},
 			"Mounts":          mounts,
 			"State":           map[string]any{"Status": "running", "Running": true, "StartedAt": time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano)},
 			"NetworkSettings": map[string]any{"Ports": published},
@@ -269,6 +272,7 @@ func applicationRuntimeProviderFixture(t *testing.T, workspaceID string) (*Local
 	provider := newLocalDockerProvider(LocalDockerProviderConfig{
 		GatewaySecretRoot: localDockerSecretTestRoot(t), HostStorageRoot: root, StorageQuotaBackend: localDockerStorageTestQuota(root),
 		ApplicationProbeImage: "repo.example/opl-cloud@sha256:" + strings.Repeat("c", 64),
+		WorkloadOwnership:     &fakeLocalDockerWorkloadOwnership{},
 	}, runner)
 	paths, err := provider.storagePaths(workspaceID)
 	if err != nil {

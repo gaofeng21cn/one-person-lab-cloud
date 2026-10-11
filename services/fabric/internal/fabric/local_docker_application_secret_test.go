@@ -265,6 +265,7 @@ func TestLocalDockerApplicationCredentialsMountOnlyDeclaredFiles(t *testing.T) {
 		t.Run(strings.Join(kinds, "+"), func(t *testing.T) {
 			provider, _, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
 			input := applicationRuntimeInput("declared-credentials", applicationRevisionForTest())
+			input.Revision.Execution = applicationTestExecutionIdentity(t)
 			for _, kind := range kinds {
 				credential := contracts.WorkspaceApplicationCredential{Name: kind, Kind: kind, Target: "/run/declared/" + kind}
 				if kind == contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword {

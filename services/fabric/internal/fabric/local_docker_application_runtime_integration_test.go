@@ -301,8 +301,16 @@ require('node:http').createServer((request, response) => {
 	// Recreate the service from the same store so the engine's resource maps
 	// replay the provisioned compute, storage and attachment.
 	service = NewServiceWithOperationStore(provider, store)
+	// The fixture's host state belongs to the test process itself, so it
+	// declares that identity rather than the OPL default the provider applies
+	// to an undeclared main component: ownership adoption becomes an exact
+	// no-op and the container runs as the same uid/gid that owns the mounts it
+	// writes. The default identity path is exercised by the unit fixtures and
+	// the privileged Linux qualification chain.
+	execution := applicationTestExecutionIdentity(t)
 	revision := contracts.WorkspaceApplicationRevision{
 		SchemaVersion: 1, ApplicationID: "fixture-opl-app", Version: "1.0.0", Platform: applicationPlatform,
+		Execution: execution,
 		// The fixture consumes each of these credentials; declare their actual
 		// requirements instead of relying on implicit Gateway-only injection.
 		Credentials: []contracts.WorkspaceApplicationCredential{

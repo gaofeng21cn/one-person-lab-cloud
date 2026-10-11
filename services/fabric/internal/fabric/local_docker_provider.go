@@ -53,6 +53,7 @@ type LocalDockerProviderConfig struct {
 	RuntimeGatewayContainer      string
 	ConfigureRuntimeGateway      bool
 	StorageQuotaBackend          localDockerProjectQuota
+	WorkloadOwnership            localDockerWorkloadOwnership
 	TrustedWorkspaceImageSources []string
 	ProviderProfileJSON          []byte
 }
@@ -106,6 +107,7 @@ type LocalDockerProvider struct {
 	trustedWorkspaceImageReferences   map[string]struct{}
 	now                               func() time.Time
 	storageQuota                      localDockerProjectQuota
+	workloadOwnership                 localDockerWorkloadOwnership
 	profile                           localDockerProviderProfile
 	plans                             map[string]localDockerPackageProfile
 	profileErr                        error
@@ -152,6 +154,10 @@ func newLocalDockerProvider(config LocalDockerProviderConfig, runner dockerRunne
 	if storageQuota == nil {
 		storageQuota = newLocalDockerProjectQuota(storageRoot)
 	}
+	workloadOwnership := config.WorkloadOwnership
+	if workloadOwnership == nil {
+		workloadOwnership = osLocalDockerWorkloadOwnership{}
+	}
 	profileJSON := config.ProviderProfileJSON
 	if len(bytes.TrimSpace(profileJSON)) == 0 {
 		profileJSON = []byte(strings.TrimSpace(os.Getenv(localDockerProviderProfileEnv)))
@@ -162,6 +168,7 @@ func newLocalDockerProvider(config LocalDockerProviderConfig, runner dockerRunne
 		runner: runner, gatewaySecretRoot: secretRoot, gatewaySecretRootErr: secretRootErr,
 		hostStorageRoot: storageRoot, hostStorageRootErr: storageRootErr,
 		storageQuota:                      storageQuota,
+		workloadOwnership:                 workloadOwnership,
 		runtimeHost:                       runtimeHost,
 		publishHost:                       firstNonEmpty(strings.TrimSpace(config.PublishHost), runtimeHost),
 		applicationProbeImage:             strings.TrimSpace(config.ApplicationProbeImage),
