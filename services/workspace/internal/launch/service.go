@@ -294,7 +294,15 @@ func (s *Service) ReadOwnerCommit(ctx context.Context, r *api.ReadOwnerCommitReq
 	if err != nil {
 		return nil, dbError(err)
 	}
-	if r.Owner != api.OwnerEnum_OWNER_ENUM_WORKSPACE || op.ResourceID != r.ResourceId || op.Kind != "create_workspace" {
+	if r.Owner != api.OwnerEnum_OWNER_ENUM_WORKSPACE || op.ResourceID != r.ResourceId {
+		return nil, status.Error(codes.FailedPrecondition, "Workspace commit identity mismatch")
+	}
+	if op.Kind == "delete_workspace" {
+		// A deletion is its own accepted commit: the confirmation input, the
+		// original launch/charge it froze and the delete action it accepted.
+		return deletionEvidence(op)
+	}
+	if op.Kind != "create_workspace" {
 		return nil, status.Error(codes.FailedPrecondition, "Workspace commit identity mismatch")
 	}
 	return evidence(op)
