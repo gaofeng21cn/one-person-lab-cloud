@@ -250,6 +250,25 @@ test('carries the host-owned isolated database declaration and refuses misuse', 
   }
 });
 
+test('converts approved Go package targets without permitting flags or recursive patterns', async () => {
+  const root = tempRoot('frame-go-packages-');
+  try {
+    writeStubFramework(root);
+    const manifestPath = join(root, 'manifest.json'); const gatesPath = join(root, 'gates.json');
+    writeJson(manifestPath, manifestFixture());
+    const options = { manifestPath, frameworkRoot: root, gatesPath, store: join(root, 'store'), planPath: 'docs/spec/target/checks/development_plan.json' };
+    writeJson(gatesPath, [{ ...gatesFixture()[0], targets: ['./owneridentity'] }]);
+    const converted = await convertManifest(options);
+    assert.deepEqual(converted.gates[0].targets, ['./owneridentity']);
+    for (const targets of [[], ['-run'], ['../other'], ['./...'], ['./pkg...'], ['./owneridentity', './owneridentity']]) {
+      writeJson(gatesPath, [{ ...gatesFixture()[0], targets }]);
+      await assert.rejects(() => convertManifest(options), /Go package|duplicate|invalid/);
+    }
+    writeJson(gatesPath, gatesFixture());
+    assert.equal((await convertManifest(options)).gates[0].targets, undefined);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('an unrelated malformed receipt never affects the named gate consumption', async () => {
   const root = tempRoot('frame-unrelated-receipt-');
   try {
@@ -305,7 +324,7 @@ test('carries focused browser gates only with explicit exact targets', async () 
     writeJson(gatesPath, [{ id: 'contracts-decoder', kind: 'generated', inputs: ['tests/ui'], targets: ['tests/ui/cloud-webui-browser.test.ts'], needs: [] }]);
     await assert.rejects(
       () => convertManifest({ manifestPath, frameworkRoot: root, gatesPath, store: join(root, 'store'), planPath: 'docs/spec/target/checks/development_plan.json' }),
-      /targets only apply to node and browser/u,
+      /targets only apply to node, browser and Go/u,
     );
   } finally {
     rmSync(root, { recursive: true, force: true });

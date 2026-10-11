@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "ef51bea36bf765a5b47f4e01bb163bac8c13b2e4",
+  "recordedAt": "2026-10-11T10:40:02.780Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w27-approved-go-packages-v7-development-governance-1.json",
+    "tests/tools/dev-frame-bridge.test.ts",
+    "tests/tools/dev-session.test.ts",
+    "tests/tools/verify-local.test.ts",
+    "tools/dev-frame-bridge.ts",
+    "tools/dev-session.ts",
+    "tools/verify-local.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "ef51bea36bf765a5b47f4e01bb163bac8c13b2e4",
+    "changedFilesSha256": {
+      "tests/tools/dev-frame-bridge.test.ts": "c9412cf59d921fb17eb42e2690f98882de7d1b462a6be83baf1318f4147d5086",
+      "tests/tools/dev-session.test.ts": "804121e96f3ac6f623eb71b88e098dfca6b56fd4823689c24262d1417276cc6f",
+      "tests/tools/verify-local.test.ts": "12530976c957741d06e03b784c9fbdf980e4c6279e97f3e9c11b51a680a8a308",
+      "tools/dev-frame-bridge.ts": "e5b3c9147a8eb3272f1ab8f34669f65dc8f382f8c426ba0f7a1074dc9ebce87d",
+      "tools/dev-session.ts": "53b9f97f80760beaa700fb25f680b1277ba743a4bb5f709db59f6866b9f51921",
+      "tools/verify-local.ts": "5ec009396a044a370925f78f9b48eb3c1ee4daeb0a006fa1acb1c2828bc8cbed"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/check-pr-governance.test.ts tests/tools/dev-frame-bridge.test.ts",
+    "exitCode": 0,
+    "tests": 32,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "923e65d4619d24b4c8f248673a125277d3c84776e0ec70852e0f0492f73c89da"
+  },
+  "sourceStage": {
+    "runId": "w27-approved-go-packages-v7",
+    "gateId": "development-governance",
+    "attempt": 1,
+    "receiptHash": "4a038e62f3ddf089c3711dd70635b43e374ddc42d60daf4b39551fe4e153342c"
+  }
+}

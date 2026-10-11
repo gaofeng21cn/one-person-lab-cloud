@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "ef51bea36bf765a5b47f4e01bb163bac8c13b2e4",
+  "recordedAt": "2026-10-11T10:42:04.550Z",
+  "writeSet": [
+    "docs/evidence/source-checks/w27-approved-go-packages-v7-development-governance-1.json",
+    "docs/evidence/source-checks/w27-approved-go-packages-v7-identity-package-pilot-1.json",
+    "tests/tools/dev-frame-bridge.test.ts",
+    "tests/tools/dev-session.test.ts",
+    "tests/tools/verify-local.test.ts",
+    "tools/dev-frame-bridge.ts",
+    "tools/dev-session.ts",
+    "tools/verify-local.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "ef51bea36bf765a5b47f4e01bb163bac8c13b2e4",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/w27-approved-go-packages-v7-development-governance-1.json": "863adfaf0515dbefaa4ec0cd5e7e672d0fed0ba44647cd11abc56761b719d4f6",
+      "tests/tools/dev-frame-bridge.test.ts": "c9412cf59d921fb17eb42e2690f98882de7d1b462a6be83baf1318f4147d5086",
+      "tests/tools/dev-session.test.ts": "804121e96f3ac6f623eb71b88e098dfca6b56fd4823689c24262d1417276cc6f",
+      "tests/tools/verify-local.test.ts": "12530976c957741d06e03b784c9fbdf980e4c6279e97f3e9c11b51a680a8a308",
+      "tools/dev-frame-bridge.ts": "e5b3c9147a8eb3272f1ab8f34669f65dc8f382f8c426ba0f7a1074dc9ebce87d",
+      "tools/dev-session.ts": "53b9f97f80760beaa700fb25f680b1277ba743a4bb5f709db59f6866b9f51921",
+      "tools/verify-local.ts": "5ec009396a044a370925f78f9b48eb3c1ee4daeb0a006fa1acb1c2828bc8cbed"
+    }
+  },
+  "execution": {
+    "command": "go test -count=1 -json ./identity (cwd: services/gateway-integration)",
+    "exitCode": 0,
+    "tests": 113,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "32cac7152a1525fc8b37c42e906a8f646344d081845d7382d3f6a619e8f5b081"
+  },
+  "sourceStage": {
+    "runId": "w27-approved-go-packages-v7",
+    "gateId": "identity-package-pilot",
+    "attempt": 1,
+    "receiptHash": "c8a1303294b414a2be9f1e3f328d11d699b7d53e34e3a7edd687b1d7157988af"
+  }
+}

@@ -665,6 +665,23 @@ test("development Go checks consume real JSON summaries and reject zero tests, s
   assert.equal(missing.passed, false);
 });
 
+test("development Go package targets reject missing inputs, traversal, symlinks and nested modules", async t => {
+  const { directory, snapshotRoot } = await developmentFixture(t);
+  const module = join(snapshotRoot, "module"); await mkdir(module);
+  await writeFile(join(module, "go.mod"), "module fixture.invalid/owner\n\ngo 1.22\n");
+  const outside = join(directory, "outside"); await mkdir(outside);
+  await symlink(outside, join(module, "escape"));
+  await mkdir(join(module, "nested"));
+  await writeFile(join(module, "nested/go.mod"), "module fixture.invalid/nested\n\ngo 1.22\n");
+  await mkdir(join(module, "nested/child"));
+  for (const targets of [[], ["-run"], ["../outside"], ["./..."], ["./pkg..."], ["./missing"], ["./escape"], ["./nested"], ["./nested/child"], ["./coordination/../other"]]) {
+    const result = await runDevelopmentCheck({ snapshotRoot, kind: "go", cwd: "module", targets });
+    assert.equal(result.status, "blocked", `${JSON.stringify(targets)}: ${result.output}`);
+    assert.equal(result.exitCode, null);
+    assert.equal(result.tests, 0);
+  }
+});
+
 test("trusted Go probes read host configuration, never scratch Go paths", () => {
   const scratch: Record<string, string> = { GOPATH: "/scratch/go-path", GOBIN: "/scratch/go-bin", GOENV: "off",
     GOMODCACHE: "/scratch/pkg/mod", GOROOT: "/scratch/goroot" };

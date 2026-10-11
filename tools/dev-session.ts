@@ -49,6 +49,16 @@ export interface DevelopmentGate {
   database?: 'isolated-owner-postgres';
   needs: string[];
 }
+/** Exact Go package arguments shared by host admission and the sealed runner. */
+export function approvedGoPackageTargets(value: unknown): string[] {
+  const targets = strings(value, 'Go package targets');
+  for (const target of targets) {
+    if (target.includes('...') || (target !== '.' && !(target.startsWith('./') && target.slice(2).split('/').every(part => /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/u.test(part))))) {
+      fail('invalid Go package target: exact module-relative packages required');
+    }
+  }
+  return targets;
+}
 /** A host execution authorization references a phase record; it never copies business ownership or progress. */
 export interface RunApproval {
   schemaVersion: 1; runId: string; baseSha: string; planPath: string;
@@ -72,7 +82,8 @@ export function parseApproval(value: unknown): RunApproval {
     if (!['node', 'go', 'browser', 'generated', 'developmentPlan'].includes(g.kind)) fail('unknown acceptance runner');
     strings(g.inputs, 'gate inputs').forEach(p => pathName(p, true)); strings(g.needs, 'gate dependencies', false).forEach(id);
     if (g.kind === 'node' || g.kind === 'browser') strings(g.targets, 'test targets').forEach(p => pathName(p));
-    else if (g.targets !== undefined) fail('targets only apply to node and browser tests');
+    else if (g.kind === 'go' && g.targets !== undefined) approvedGoPackageTargets(g.targets);
+    else if (g.targets !== undefined) fail('targets only apply to node, browser and Go tests');
     if (g.kind === 'go') pathName(g.cwd); else if (g.cwd !== undefined) fail('cwd only applies to Go checks');
     if (g.database !== undefined) {
       if (g.database !== 'isolated-owner-postgres') fail('unknown isolated database fixture');
@@ -270,6 +281,7 @@ function runDirectory(store: string, runId: string) { return resolve(store, 'run
 /** Approve a bounded execution reference before launching the restricted worker. Only the host exposes this operation. */
 export function approveRun(root: string, storePath: string, raw: unknown) {
   root = realpathSync(root); const approval = parseApproval(raw); phase(root, approval, true);
+  for (const gate of approval.gates) verifyGoPackageScope(root, gate);
   const store = storeRoot(root, storePath);
   const directory = runDirectory(store, approval.runId); mkdirSync(directory, { recursive: true, mode: 0o700 });
   writeRecord(resolve(directory, 'approval.json'), approval);
@@ -300,6 +312,25 @@ function inputFiles(root: string, paths: string[]) {
   };
   for (const path of paths) { pathName(path, true); walk(path.replace(/\/$/u, '')); }
   return files;
+}
+/** Omitted snapshot metadata must never turn a different module into this one. */
+function verifyGoPackageScope(root: string, gate: DevelopmentGate) {
+  if (gate.kind !== 'go' || gate.targets === undefined) return;
+  const modulePath = `${gate.cwd}/go.mod`;
+  const declaresModule = gate.inputs.some(path => {
+    const name = path.replace(/\/$/u, '');
+    return name === modulePath || (modulePath.startsWith(name + '/') && lstatSync(physical(root, name)).isDirectory());
+  });
+  if (!declaresModule) fail('Go module metadata must be declared in stage inputs');
+  fileBytes(root, modulePath);
+  for (const target of approvedGoPackageTargets(gate.targets)) {
+    let directory = gate.cwd!;
+    for (const part of target === '.' ? [] : target.slice(2).split('/')) {
+      directory += '/' + part;
+      const metadata = physical(root, `${directory}/go.mod`);
+      if (existsSync(metadata)) fail('Go package target crosses a nested module');
+    }
+  }
 }
 function fingerprint(files: Map<string, Buffer>) {
   return digest(canonical([...files].sort(([a], [b]) => a.localeCompare(b)).map(([path, bytes]) => ({ path, sha256: digest(bytes) }))));
@@ -589,6 +620,7 @@ export class DevelopmentSession {
     return { gateId, state: r.result, receiptHash: last.hash, blockers };
   }
   private gateEvidence(gate: DevelopmentGate, visiting = new Set<string>()) {
+    verifyGoPackageScope(this.root, gate);
     const external = this.dependencyEvidence(phase(this.root, this.approval).startAfter, visiting);
     const blockers: any[] = [...external.blockers]; const dependencies: StageReceipt['dependencies'] = [...external.dependencies];
     for (const dependency of gate.needs) {
