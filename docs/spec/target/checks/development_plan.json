@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "64ad5ae9a04050b6796e0c60bf7765008d57b989",
+  "sourceSHA": "76e3d21ffa5a506f0b96ada5b762d90bd2307873",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -1950,7 +1950,9 @@
         "services/fabric/coordination/service_postgres_test.go",
         "services/fabric/coordination/tencent_resume_postgres_test.go",
         "services/fabric/internal/fabric/compute_allocation.go",
-        "services/fabric/internal/fabric/storage.go"
+        "services/fabric/internal/fabric/storage.go",
+        "services/fabric/internal/fabric/types.go",
+        "services/fabric/internal/fabric/workspace_runtime.go"
       ],
       "deliverables": [
         "Workspace持久化删除意图并协调原单/退款；Serve负责Agent retirement、访问撤销与absence readback；Fabric负责资源删除事实",
@@ -4105,7 +4107,9 @@
         "services/fabric/coordination/service_postgres_test.go",
         "services/fabric/coordination/tencent_resume_postgres_test.go",
         "services/fabric/internal/fabric/compute_allocation.go",
-        "services/fabric/internal/fabric/storage.go"
+        "services/fabric/internal/fabric/storage.go",
+        "services/fabric/internal/fabric/types.go",
+        "services/fabric/internal/fabric/workspace_runtime.go"
       ],
       "inputRefs": [
         "现有Fabric coordination资源释放源码与typed接口",
