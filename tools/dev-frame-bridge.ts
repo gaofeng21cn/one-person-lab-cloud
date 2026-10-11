@@ -15,6 +15,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { approvedGoPackageTargets } from './dev-session.ts';
 
 type Json = unknown;
 type Validation = { valid: boolean; code?: string; detail?: string };
@@ -233,7 +234,8 @@ export async function convertManifest(options: ConvertOptions) {
     if (definition.kind === 'node' || definition.kind === 'browser') {
       if (!Array.isArray(definition.targets) || !definition.targets.length) fail(`${definition.kind === 'node' ? 'Node' : 'Browser'} gates require explicit test targets: ${gateId}`);
       definition.targets.forEach((target: Json, index: number) => repoPath(target, `gate ${gateId} targets[${index}]`, false));
-    } else if (definition.targets !== undefined) fail('targets only apply to node and browser tests');
+    } else if (definition.kind === 'go' && definition.targets !== undefined) approvedGoPackageTargets(definition.targets);
+    else if (definition.targets !== undefined) fail('targets only apply to node, browser and Go tests');
     if (definition.kind === 'go') repoPath(definition.cwd, 'gate cwd', true);
     else if (definition.cwd !== undefined) fail('cwd only applies to Go checks');
     // The host-owned isolated fixture declaration travels through the shared
