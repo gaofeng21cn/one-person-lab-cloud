@@ -120,7 +120,7 @@ The generic owner-slice process shape — including the
 implementation-vs-recovery applicability of RED/GREEN, receipt reuse and the
 parallel/serial criterion — is owned by the process repository
 `RenDeHuang/opl-development-framework` at commit
-`5c63d9e8ecc4be88605fc20cb7fd01b0ed8c5213` (skill
+`d995df3aaf6473a2b7714fc868327919bac4bbd4` (skill
 `skills/owner-slice-development/SKILL.md`, design
 `docs/design/owner-slice-framework-v1.md`, wiring acceptance
 `docs/design/wiring-acceptance.md`); this guide keeps the Cloud instance: the
