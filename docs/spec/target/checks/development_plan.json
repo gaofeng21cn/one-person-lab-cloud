@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "1c8bad51def44face0306ff3d4844cc3d4a7611e",
+  "sourceSHA": "f89ddb17d14ecdcf0c34c2b3dfe92ca39e7d2b1a",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -3540,7 +3540,8 @@
         "apps/console-bff/internal/httpapi",
         "services/gateway-integration/identity",
         "apps/console-ui/src/api",
-        "apps/console-ui/src/app",
+        "apps/console-ui/src/app/cloud-webui-model.ts",
+        "apps/console-ui/src/pages/PublisherPage.tsx",
         "tests/ui",
         "docs/spec/target/10_feature_traceability.md",
         "docs/spec/target/14_implementation_work_packages.md",
