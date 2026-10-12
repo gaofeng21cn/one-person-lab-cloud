@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 2,
+  "kind": "opl_cloud_candidate",
+  "product": {
+    "repository": "gaofeng21cn/one-person-lab-cloud",
+    "sha": "b6308f2103ab4276ce60d8aca1d5c5f12b40e022",
+    "tree": "d59572b9f302e02856b0f7fc2dcb3e7eef6a1f3f"
+  },
+  "cloudImage": {
+    "repository": "local/opl-cloud",
+    "indexRef": "opl-cloud@sha256:5b22eee9ffb6b304298b7be89716a511e60a475eede8f4c4a8c3f6eb664ad71e",
+    "indexDigest": "sha256:5b22eee9ffb6b304298b7be89716a511e60a475eede8f4c4a8c3f6eb664ad71e",
+    "revision": "b6308f2103ab4276ce60d8aca1d5c5f12b40e022",
+    "platforms": [
+      {
+        "platform": "linux/arm64",
+        "digest": "sha256:5b22eee9ffb6b304298b7be89716a511e60a475eede8f4c4a8c3f6eb664ad71e"
+      }
+    ]
+  },
+  "assets": [
+    {
+      "name": "compose.yaml",
+      "sha256": "06790c858e8b6b57aa1ecafbdcbc7427b9196e4de0d9e04d2e608b4fca08e6fa"
+    },
+    {
+      "name": "compose.deployment-platform-owned.yaml",
+      "sha256": "edd6de36f53efa78255e787466942a6991479083dc903be011feb60adfde7196"
+    },
+    {
+      "name": "compose.deployment-managed-tke.yaml",
+      "sha256": "985b32b3ac3655109fe56cf1001d0b9d887b4c06bd502abd5ae5becb9e4c77e0"
+    },
+    {
+      "name": "compose.deployment-customer-owned.yaml",
+      "sha256": "39505d283701c896f8e68d07881c15c5f39c6d28df29bf86b945b6f197bc42a7"
+    },
+    {
+      "name": "compose.fabric-local-docker.yaml",
+      "sha256": "be92335c4ee27b9b88320ec8086eb6c028b38532be69909bded35d52c0dd1ef6"
+    },
+    {
+      "name": "compose.fabric-tencent-tke.yaml",
+      "sha256": "18c2376538cb700cb3ef2be4fb7e14afcb81b096142778146b860fcabcf6ff34"
+    },
+    {
+      "name": "compose.local-workspace.yaml",
+      "sha256": "d95fecc6474c869a43f56c40601643f315e001b32b5d7ae348606d1cbbd69617"
+    },
+    {
+      "name": "opl-cloud.env.example",
+      "sha256": "64377ea29d94f9534cc4aee91a4a715ec3ceea9f5dceb0844d4cefbbdb6247a1"
+    },
+    {
+      "name": "opl-cloud-owner-topology.json",
+      "sha256": "3e4354506060417432992c8b43e1ca5c91eb6ef5f5c4cd92f3f908d31b923a5e"
+    }
+  ],
+  "provenance": {
+    "workflowRepository": "gaofeng21cn/one-person-lab-cloud",
+    "workflowSha": "b6308f2103ab4276ce60d8aca1d5c5f12b40e022",
+    "workflowRunId": "local-simulation",
+    "workflowRunAttempt": "1",
+    "buildType": "local",
+    "buildTimestamp": "2026-10-12T11:18:23Z"
+  }
+}
