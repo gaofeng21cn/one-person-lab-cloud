@@ -667,6 +667,24 @@ func (s *Service) confirmDeletedResources(ctx context.Context, op ownerstore.Ope
 			return false, err
 		}
 	}
+	// Crash recovery: if DeleteOperation exists but absence is not confirmed, re-drive
+	// Fabric's deletion to completion. After recording DeleteOperation (line 663) but
+	// before absence confirmation (line 685), a crash would leave Fabric's operation
+	// pending. Re-calling DeleteResources with the same request resumes via idempotency.
+	if len(result.DeleteOperation) > 0 {
+		storedOp := &api.Operation{}
+		if err := protojson.Unmarshal(result.DeleteOperation, storedOp); err == nil {
+			// Re-issue the delete command. Fabric's idempotency ensures this resumes
+			// the same operation rather than creating a duplicate.
+			request := &api.MutateResourcesCommand{
+				Context:       continuation(op, result.GrantID, "delete_resources_resume"),
+				WorkspaceId:   op.ResourceID,
+				ResourceSetId: order.ResourceSetID,
+			}
+			_, _ = s.Fabric.DeleteResources(ctx, request)
+			// Ignore errors - the readback below (line 674) will surface actual state.
+		}
+	}
 	request := &api.ResourceReadbackRequest{Context: continuation(op, result.GrantID, "read_resources"), ResourceSetId: order.ResourceSetID}
 	if err := s.beginStep(ctx, op, token, "read_resources", 2, "fabric", "storage_deletion", request); err != nil {
 		return false, err
