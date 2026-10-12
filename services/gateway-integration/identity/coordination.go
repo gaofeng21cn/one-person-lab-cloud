@@ -682,7 +682,7 @@ func walletBusinessKey(call *api.CallContext) string {
 }
 
 func walletRequestFingerprint(req walletActionRequest) string {
-	parts := []string{req.kind, req.workspaceID, req.businessKey, req.original, req.entitlement, req.deletionReceipt}
+	parts := []string{req.kind, req.workspaceID, req.businessKey, req.obligation, req.quoteAcceptanceID, req.original, req.entitlement, req.deletionReceipt}
 	return shortDigest(strings.Join(parts, "\x00") + "|" + itoa(req.amount))
 }
 
