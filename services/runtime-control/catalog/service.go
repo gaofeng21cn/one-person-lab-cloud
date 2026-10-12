@@ -296,6 +296,20 @@ func (s *Service) GetBuildRuntimePolicy(ctx context.Context, r *api.GetBuildRunt
 	}
 	return scanPolicy(s.DB.QueryRowContext(ctx, `SELECT id,runtime_version_id,default_webui_version_id,policy_version,effective_at,created_at FROM runtime_control.catalog_policies WHERE effective_at<=now() ORDER BY effective_at DESC,id DESC LIMIT 1`))
 }
+
+// GetEffectiveBuildRuntimePolicy is the same owner read a Publisher session makes
+// to freeze a new Build's inputs: the effective catalog_policies row that names
+// the default Runtime and the default WebUI. It adds no state and derives no
+// substitute — if the platform has not published a policy, there is nothing to
+// read and the caller must stay blocked rather than pick a catalog row itself.
+// It authorizes under its own read-only action so a member that may read this
+// fact does not thereby gain the administrator's policy read or command.
+func (s *Service) GetEffectiveBuildRuntimePolicy(ctx context.Context, r *api.GetEffectiveBuildRuntimePolicyRpcRequest) (*api.BuildRuntimePolicy, error) {
+	if e := s.auth(ctx, r.GetContext(), "GetEffectiveBuildRuntimePolicy", "", false); e != nil {
+		return nil, e
+	}
+	return scanPolicy(s.DB.QueryRowContext(ctx, `SELECT id,runtime_version_id,default_webui_version_id,policy_version,effective_at,created_at FROM runtime_control.catalog_policies WHERE effective_at<=now() ORDER BY effective_at DESC,id DESC LIMIT 1`))
+}
 func (s *Service) SetBuildRuntimePolicy(ctx context.Context, r *api.SetBuildRuntimePolicyRpcRequest) (*api.BuildRuntimePolicy, error) {
 	if e := s.auth(ctx, r.GetContext(), "SetBuildRuntimePolicy", "", true); e != nil {
 		return nil, e

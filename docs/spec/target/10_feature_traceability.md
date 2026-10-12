@@ -11,7 +11,7 @@
 | F01 登录、Tenant与成员权限 | /login、/console/settings/account、/console/settings/members、/admin/tenants/new | 16 | bff, tenant |
 | F02 分组与官方/私有Agent可见性 | /console/agents、/console/settings/groups | 9 | capability |
 | F03 管理员Runtime/WebUI与资源价格目录 | /admin/catalog/runtime、/admin/catalog/webui、/admin/catalog/publishers、/admin/catalog/build-policy、/admin/catalog/plans | 25 | capability, gateway, resource_catalog, runtime_control |
-| F04 上传Package与后续版本、确认构建 | /console/agents/upload、/console/agents/:packageId/upload | 12 | bff, build, capability |
+| F04 上传Package与后续版本、确认构建 | /console/agents/upload、/console/agents/:packageId/upload | 13 | bff, build, capability, runtime_control |
 | F05 构建进度、日志与失败重试 | /console/agents/builds、/console/agents/builds/:buildJobId | 7 | bff, build, capability |
 | F06 智能体详情、版本下架与引用保护 | /console/agents/:packageId | 9 | bff, capability |
 | F07 部署选择、准入与报价 | /console/workspaces/new | 10 | capability, gateway, resource_catalog, runtime_control |
@@ -205,6 +205,7 @@
 | `createPackage` | `POST /api/v2/packages` | CreatePackageRequest | 201 Package | capability |
 | `createUpload` | `POST /api/v2/packages/{packageId}/uploads` | CreateUploadRequest | 201 UploadSession | capability |
 | `createUploadPart` | `POST /api/v2/uploads/{uploadId}/parts` | CreateUploadPartRequest | 200 UploadPartAuthorization | capability |
+| `getEffectiveBuildRuntimePolicy` | `GET /api/v2/catalog/build-policy` | — | 200 BuildRuntimePolicy | runtime_control |
 | `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | bff |
 | `getPackage` | `GET /api/v2/packages/{packageId}` | — | 200 Package | capability |
 | `getPackageVersion` | `GET /api/v2/package-versions/{packageVersionId}` | — | 200 PackageVersion | capability |

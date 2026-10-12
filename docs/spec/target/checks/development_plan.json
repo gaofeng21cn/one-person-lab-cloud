@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "76e3d21ffa5a506f0b96ada5b762d90bd2307873",
+  "sourceSHA": "1393488f3c80d796c21d9634e95794e670721902",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -1042,6 +1042,7 @@
       "state": "not_implemented",
       "apiPrimary": [
         "getBuildRuntimePolicy",
+        "getEffectiveBuildRuntimePolicy",
         "listRuntimeVersions",
         "registerRuntimeVersion",
         "setBuildRuntimePolicy",
@@ -1055,6 +1056,7 @@
       "rpcImplements": [
         "RuntimeControlProductService.ListRuntimeVersions",
         "RuntimeControlProductService.GetBuildRuntimePolicy",
+        "RuntimeControlProductService.GetEffectiveBuildRuntimePolicy",
         "RuntimeControlProductService.SetBuildRuntimePolicy",
         "RuntimeControlProductService.RegisterRuntimeVersion",
         "RuntimeControlProductService.SetRuntimeVersionStatus"
@@ -1392,6 +1394,7 @@
         "getBuild",
         "getBuildRuntimePolicy",
         "getCapabilityVersion",
+        "getEffectiveBuildRuntimePolicy",
         "getOperation",
         "getPackage",
         "getPackageVersion",
@@ -3084,6 +3087,9 @@
       "W10"
     ],
     "RuntimeControlProductService.GetBuildRuntimePolicy": [
+      "W10"
+    ],
+    "RuntimeControlProductService.GetEffectiveBuildRuntimePolicy": [
       "W10"
     ],
     "RuntimeControlProductService.SetBuildRuntimePolicy": [

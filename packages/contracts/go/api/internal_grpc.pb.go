@@ -1973,11 +1973,12 @@ var CapabilityProductService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	RuntimeControlProductService_ListRuntimeVersions_FullMethodName     = "/opl.cloud.api.RuntimeControlProductService/ListRuntimeVersions"
-	RuntimeControlProductService_GetBuildRuntimePolicy_FullMethodName   = "/opl.cloud.api.RuntimeControlProductService/GetBuildRuntimePolicy"
-	RuntimeControlProductService_SetBuildRuntimePolicy_FullMethodName   = "/opl.cloud.api.RuntimeControlProductService/SetBuildRuntimePolicy"
-	RuntimeControlProductService_RegisterRuntimeVersion_FullMethodName  = "/opl.cloud.api.RuntimeControlProductService/RegisterRuntimeVersion"
-	RuntimeControlProductService_SetRuntimeVersionStatus_FullMethodName = "/opl.cloud.api.RuntimeControlProductService/SetRuntimeVersionStatus"
+	RuntimeControlProductService_ListRuntimeVersions_FullMethodName            = "/opl.cloud.api.RuntimeControlProductService/ListRuntimeVersions"
+	RuntimeControlProductService_GetBuildRuntimePolicy_FullMethodName          = "/opl.cloud.api.RuntimeControlProductService/GetBuildRuntimePolicy"
+	RuntimeControlProductService_GetEffectiveBuildRuntimePolicy_FullMethodName = "/opl.cloud.api.RuntimeControlProductService/GetEffectiveBuildRuntimePolicy"
+	RuntimeControlProductService_SetBuildRuntimePolicy_FullMethodName          = "/opl.cloud.api.RuntimeControlProductService/SetBuildRuntimePolicy"
+	RuntimeControlProductService_RegisterRuntimeVersion_FullMethodName         = "/opl.cloud.api.RuntimeControlProductService/RegisterRuntimeVersion"
+	RuntimeControlProductService_SetRuntimeVersionStatus_FullMethodName        = "/opl.cloud.api.RuntimeControlProductService/SetRuntimeVersionStatus"
 )
 
 // RuntimeControlProductServiceClient is the client API for RuntimeControlProductService service.
@@ -1986,6 +1987,7 @@ const (
 type RuntimeControlProductServiceClient interface {
 	ListRuntimeVersions(ctx context.Context, in *ListRuntimeVersionsRpcRequest, opts ...grpc.CallOption) (*RuntimeVersionPage, error)
 	GetBuildRuntimePolicy(ctx context.Context, in *GetBuildRuntimePolicyRpcRequest, opts ...grpc.CallOption) (*BuildRuntimePolicy, error)
+	GetEffectiveBuildRuntimePolicy(ctx context.Context, in *GetEffectiveBuildRuntimePolicyRpcRequest, opts ...grpc.CallOption) (*BuildRuntimePolicy, error)
 	SetBuildRuntimePolicy(ctx context.Context, in *SetBuildRuntimePolicyRpcRequest, opts ...grpc.CallOption) (*BuildRuntimePolicy, error)
 	RegisterRuntimeVersion(ctx context.Context, in *RegisterRuntimeVersionRpcRequest, opts ...grpc.CallOption) (*RuntimeVersion, error)
 	SetRuntimeVersionStatus(ctx context.Context, in *SetRuntimeVersionStatusRpcRequest, opts ...grpc.CallOption) (*RuntimeVersion, error)
@@ -2013,6 +2015,16 @@ func (c *runtimeControlProductServiceClient) GetBuildRuntimePolicy(ctx context.C
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(BuildRuntimePolicy)
 	err := c.cc.Invoke(ctx, RuntimeControlProductService_GetBuildRuntimePolicy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runtimeControlProductServiceClient) GetEffectiveBuildRuntimePolicy(ctx context.Context, in *GetEffectiveBuildRuntimePolicyRpcRequest, opts ...grpc.CallOption) (*BuildRuntimePolicy, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BuildRuntimePolicy)
+	err := c.cc.Invoke(ctx, RuntimeControlProductService_GetEffectiveBuildRuntimePolicy_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2055,6 +2067,7 @@ func (c *runtimeControlProductServiceClient) SetRuntimeVersionStatus(ctx context
 type RuntimeControlProductServiceServer interface {
 	ListRuntimeVersions(context.Context, *ListRuntimeVersionsRpcRequest) (*RuntimeVersionPage, error)
 	GetBuildRuntimePolicy(context.Context, *GetBuildRuntimePolicyRpcRequest) (*BuildRuntimePolicy, error)
+	GetEffectiveBuildRuntimePolicy(context.Context, *GetEffectiveBuildRuntimePolicyRpcRequest) (*BuildRuntimePolicy, error)
 	SetBuildRuntimePolicy(context.Context, *SetBuildRuntimePolicyRpcRequest) (*BuildRuntimePolicy, error)
 	RegisterRuntimeVersion(context.Context, *RegisterRuntimeVersionRpcRequest) (*RuntimeVersion, error)
 	SetRuntimeVersionStatus(context.Context, *SetRuntimeVersionStatusRpcRequest) (*RuntimeVersion, error)
@@ -2073,6 +2086,9 @@ func (UnimplementedRuntimeControlProductServiceServer) ListRuntimeVersions(conte
 }
 func (UnimplementedRuntimeControlProductServiceServer) GetBuildRuntimePolicy(context.Context, *GetBuildRuntimePolicyRpcRequest) (*BuildRuntimePolicy, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetBuildRuntimePolicy not implemented")
+}
+func (UnimplementedRuntimeControlProductServiceServer) GetEffectiveBuildRuntimePolicy(context.Context, *GetEffectiveBuildRuntimePolicyRpcRequest) (*BuildRuntimePolicy, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetEffectiveBuildRuntimePolicy not implemented")
 }
 func (UnimplementedRuntimeControlProductServiceServer) SetBuildRuntimePolicy(context.Context, *SetBuildRuntimePolicyRpcRequest) (*BuildRuntimePolicy, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetBuildRuntimePolicy not implemented")
@@ -2137,6 +2153,24 @@ func _RuntimeControlProductService_GetBuildRuntimePolicy_Handler(srv interface{}
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RuntimeControlProductServiceServer).GetBuildRuntimePolicy(ctx, req.(*GetBuildRuntimePolicyRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RuntimeControlProductService_GetEffectiveBuildRuntimePolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetEffectiveBuildRuntimePolicyRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeControlProductServiceServer).GetEffectiveBuildRuntimePolicy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RuntimeControlProductService_GetEffectiveBuildRuntimePolicy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeControlProductServiceServer).GetEffectiveBuildRuntimePolicy(ctx, req.(*GetEffectiveBuildRuntimePolicyRpcRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2209,6 +2243,10 @@ var RuntimeControlProductService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetBuildRuntimePolicy",
 			Handler:    _RuntimeControlProductService_GetBuildRuntimePolicy_Handler,
+		},
+		{
+			MethodName: "GetEffectiveBuildRuntimePolicy",
+			Handler:    _RuntimeControlProductService_GetEffectiveBuildRuntimePolicy_Handler,
 		},
 		{
 			MethodName: "SetBuildRuntimePolicy",

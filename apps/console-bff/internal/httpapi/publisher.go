@@ -210,6 +210,15 @@ func (s *Server) registerPublisherRoutes(mux *http.ServeMux) {
 	s.publisherRoute(mux, "POST /api/v2/admin/catalog/runtime-versions", owneridentity.RuntimeControl, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REGISTERRUNTIMEVERSION, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "", func() proto.Message { return &api.RegisterRuntimeVersionRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.runtimeControl.RegisterRuntimeVersion(r.Context(), &api.RegisterRuntimeVersionRpcRequest{Context: c, Body: body.(*api.RegisterRuntimeVersionRequest)})
 	})
+	// The member-readable half of the same owner fact. A Publisher session may
+	// read the effective policy to freeze a new Build's Runtime and WebUI inputs,
+	// so it is a separate read-only action rather than a widened administrator one:
+	// the shared boundary authorizes by action, never by URL path, so only distinct
+	// actions keep /api/v2/catalog/build-policy and /api/v2/admin/catalog/build-policy
+	// separate permissions. This route reads the owner's row; it never picks one.
+	s.publisherRoute(mux, "GET /api/v2/catalog/build-policy", owneridentity.RuntimeControl, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETEFFECTIVEBUILDRUNTIMEPOLICY, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		return s.runtimeControl.GetEffectiveBuildRuntimePolicy(r.Context(), &api.GetEffectiveBuildRuntimePolicyRpcRequest{Context: c})
+	})
 	// The administrator default-build-runtime policy: the read serves the
 	// Runtime Control owner's own effective policy and the command records the one
 	// default new Builds resolve, so neither the BFF nor the caller decides which

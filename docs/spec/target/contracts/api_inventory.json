@@ -1933,6 +1933,25 @@
       "operationKind": null
     },
     {
+      "path": "/api/v2/catalog/build-policy",
+      "method": "GET",
+      "operationId": "getEffectiveBuildRuntimePolicy",
+      "features": [
+        "F04"
+      ],
+      "owner": "runtime_control",
+      "request": null,
+      "response": "BuildRuntimePolicy",
+      "status": 200,
+      "permissions": [
+        "member"
+      ],
+      "tables": [
+        "runtime_control.catalog_policies"
+      ],
+      "operationKind": null
+    },
+    {
       "path": "/api/v2/admin/catalog/build-policy",
       "method": "PUT",
       "operationId": "setBuildRuntimePolicy",

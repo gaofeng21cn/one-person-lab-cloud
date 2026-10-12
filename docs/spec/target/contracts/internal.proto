@@ -2079,6 +2079,7 @@ message GetBuildRuntimePolicyRpcRequest {
  CallContext context = 1;
 }
 
+
 message SetBuildRuntimePolicyRpcRequest {
  CallContext context = 1;
  SetBuildRuntimePolicyRequest body = 2;
@@ -2201,6 +2202,7 @@ service CapabilityProductService {
 service RuntimeControlProductService {
  rpc ListRuntimeVersions(ListRuntimeVersionsRpcRequest) returns (RuntimeVersionPage);
  rpc GetBuildRuntimePolicy(GetBuildRuntimePolicyRpcRequest) returns (BuildRuntimePolicy);
+ rpc GetEffectiveBuildRuntimePolicy(GetEffectiveBuildRuntimePolicyRpcRequest) returns (BuildRuntimePolicy);
  rpc SetBuildRuntimePolicy(SetBuildRuntimePolicyRpcRequest) returns (BuildRuntimePolicy);
  rpc RegisterRuntimeVersion(RegisterRuntimeVersionRpcRequest) returns (RuntimeVersion);
  rpc SetRuntimeVersionStatus(SetRuntimeVersionStatusRpcRequest) returns (RuntimeVersion);
@@ -2818,6 +2820,18 @@ message EventEnvelope {
 }
 message DeliverEventRequest { EventEnvelope event = 1; string authenticated_producer = 2; }
 message InboxAck { string event_id = 1; string consumer = 2; bool committed = 3; bool duplicate = 4; int64 applied_aggregate_version = 5; string rejection_code = 6; }
+// The effective build policy a Publisher session reads to freeze a new Build's
+// inputs. It returns the same runtime_control.catalog_policies row as
+// GetBuildRuntimePolicy and adds no state of its own; the separate request keeps
+// the member read a distinct action from the administrator's policy read.
+//
+// It is declared at the end of the message region on purpose: the wire contract is
+// unaffected either way, and appending leaves every existing message's generated
+// index untouched, so this addition cannot shift unrelated generated code.
+message GetEffectiveBuildRuntimePolicyRpcRequest {
+ CallContext context = 1;
+}
+
 service DomainInbox { rpc Deliver(DeliverEventRequest) returns (InboxAck); }
 
 
@@ -3201,6 +3215,7 @@ enum AuthorizationActionEnum {
  AUTHORIZATION_ACTION_ENUM_DEBITSCHEDULEDPERIOD = 151;
  AUTHORIZATION_ACTION_ENUM_READPLANCHANGEFAILURE = 152;
 AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES = 153;
+AUTHORIZATION_ACTION_ENUM_GETEFFECTIVEBUILDRUNTIMEPOLICY = 154;
 }
 
 enum ServiceIdentityEnum {

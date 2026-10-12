@@ -84,6 +84,7 @@ var successStatus = map[api.AuthorizationActionEnum]int{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT:                            200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTQUALIFICATIONS:                    200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS:                   200,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETEFFECTIVEBUILDRUNTIMEPOLICY:        200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTWEBUIVERSIONS:                     200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTCOMPUTEPLANS:                      200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTSTORAGEPLANS:                      200,

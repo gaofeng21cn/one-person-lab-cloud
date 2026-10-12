@@ -30,6 +30,10 @@ type runtimeControlProbe struct {
 	setPolicy   *api.SetBuildRuntimePolicyRpcRequest
 	policyReads int
 	policySets  int
+	// The member-readable effective policy read is a distinct owner call from the
+	// administrator policy read, so the probe records the two separately.
+	effectiveRead  *api.GetEffectiveBuildRuntimePolicyRpcRequest
+	effectiveReads int
 }
 
 func (p *runtimeControlProbe) RegisterRuntimeVersion(_ context.Context, r *api.RegisterRuntimeVersionRpcRequest, _ ...grpc.CallOption) (*api.RuntimeVersion, error) {
@@ -43,6 +47,14 @@ func (p *runtimeControlProbe) RegisterRuntimeVersion(_ context.Context, r *api.R
 func (p *runtimeControlProbe) GetBuildRuntimePolicy(_ context.Context, r *api.GetBuildRuntimePolicyRpcRequest, _ ...grpc.CallOption) (*api.BuildRuntimePolicy, error) {
 	p.policyReads++
 	p.readPolicy = r
+	return &api.BuildRuntimePolicy{Id: "policy-1", RuntimeVersionId: "runtime-1", DefaultWebuiVersionId: proto.String("webui-1"), PolicyVersion: "policy-v1",
+		EffectiveAt: timestamppb.New(time.Unix(1759000000, 0)), CreatedAt: timestamppb.New(time.Unix(1759000000, 0))}, nil
+}
+
+func (p *runtimeControlProbe) GetEffectiveBuildRuntimePolicy(_ context.Context, r *api.GetEffectiveBuildRuntimePolicyRpcRequest, _ ...grpc.CallOption) (*api.BuildRuntimePolicy, error) {
+	p.effectiveReads++
+	p.effectiveRead = r
+	// The same owner fact the administrator read returns: one effective policy row.
 	return &api.BuildRuntimePolicy{Id: "policy-1", RuntimeVersionId: "runtime-1", DefaultWebuiVersionId: proto.String("webui-1"), PolicyVersion: "policy-v1",
 		EffectiveAt: timestamppb.New(time.Unix(1759000000, 0)), CreatedAt: timestamppb.New(time.Unix(1759000000, 0))}, nil
 }

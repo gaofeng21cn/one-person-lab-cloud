@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"slices"
 	"testing"
 
 	api "opl-cloud/packages/contracts/go/api"
@@ -44,7 +45,7 @@ func TestGeneratedPolicyCoversAssignedOwners(t *testing.T) {
 		api.OwnerEnum_OWNER_ENUM_CAPABILITY:       25,
 		api.OwnerEnum_OWNER_ENUM_BUILD:            5,
 		api.OwnerEnum_OWNER_ENUM_TENANT:           18,
-		api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL:  5,
+		api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL:  6,
 		api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG: 14,
 		api.OwnerEnum_OWNER_ENUM_SERVE:            5,
 		api.OwnerEnum_OWNER_ENUM_WORKSPACE:        18,
@@ -109,6 +110,33 @@ func TestGeneratedPolicyAudienceAndRoles(t *testing.T) {
 	// owner needs its own row for that read; the count is pinned by the surface test.
 	if policy := policyFor(t, "GETWORKSPACE"); policy.owner != api.OwnerEnum_OWNER_ENUM_WORKSPACE || policy.roles[0] != "member" {
 		t.Fatalf("GETWORKSPACE is %v/%v, expected the workspace member read", policy.owner, policy.roles)
+	}
+	// The effective build policy carries the one owner fact a Publisher session must
+	// read to freeze a new Build's inputs: the Runtime Control owner's own
+	// runtime_control.catalog_policies row, including the default WebUI half. It is
+	// deliberately a separate read-only action from the administrator's policy read,
+	// so granting a member this fact cannot also hand that member the administrator
+	// boundary. Both name Runtime Control, and neither may be widened into the other.
+	effective := policyFor(t, "GETEFFECTIVEBUILDRUNTIMEPOLICY")
+	if effective.owner != api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL || len(effective.roles) != 1 || effective.roles[0] != "member" {
+		t.Fatalf("GETEFFECTIVEBUILDRUNTIMEPOLICY is %v/%v, expected the runtime_control member read", effective.owner, effective.roles)
+	}
+	administrator := policyFor(t, "GETBUILDRUNTIMEPOLICY")
+	if administrator.owner != api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL || len(administrator.roles) != 1 || administrator.roles[0] != "platform_admin" {
+		t.Fatalf("GETBUILDRUNTIMEPOLICY is %v/%v, expected the runtime_control platform administrator read", administrator.owner, administrator.roles)
+	}
+	// The publisher route authorizes by action alone, so the two reads are only a
+	// real boundary while they are distinct actions. Aliasing them, or granting
+	// member the administrator action, would make /api/v2/catalog/build-policy and
+	// /api/v2/admin/catalog/build-policy the same permission.
+	if effective.owner == administrator.owner && len(effective.roles) == len(administrator.roles) &&
+		slices.Equal(effective.roles, administrator.roles) {
+		t.Fatal("the member effective-policy read and the administrator policy read must be distinct actions")
+	}
+	for _, role := range administrator.roles {
+		if role == "member" {
+			t.Fatal("member must not hold the administrator build-policy read")
+		}
 	}
 	// A serve-audience row must not exist for a workspace-only action, so the
 	// corrected ownership cannot be read as "serve may do anything workspace may".

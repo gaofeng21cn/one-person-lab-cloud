@@ -498,11 +498,11 @@
 - 撤销/退役只影响新Build准入，已固定Build输入和历史证据不被改写
 - 准入指定OPL App源的standalone/native UI发布事实，供默认App的报价/Serve读取与claim保护；批准不等于镜像已实际可用
 
-**主实现API（沿用03的唯一Owner，不是改变数据写权）**：`getBuildRuntimePolicy`, `listRuntimeVersions`, `registerRuntimeVersion`, `setBuildRuntimePolicy`, `setRuntimeVersionStatus`
+**主实现API（沿用03的唯一Owner，不是改变数据写权）**：`getBuildRuntimePolicy`, `getEffectiveBuildRuntimePolicy`, `listRuntimeVersions`, `registerRuntimeVersion`, `setBuildRuntimePolicy`, `setRuntimeVersionStatus`
 
 **主实现表（字段唯一来源02，不在此复制字段定义）**：`runtime_control.runtime_releases`, `runtime_control.catalog_policies`
 
-**内部协议实现/协作端口**：`RuntimeControlProductService.ListRuntimeVersions`, `RuntimeControlProductService.GetBuildRuntimePolicy`, `RuntimeControlProductService.SetBuildRuntimePolicy`, `RuntimeControlProductService.RegisterRuntimeVersion`, `RuntimeControlProductService.SetRuntimeVersionStatus`
+**内部协议实现/协作端口**：`RuntimeControlProductService.ListRuntimeVersions`, `RuntimeControlProductService.GetBuildRuntimePolicy`, `RuntimeControlProductService.GetEffectiveBuildRuntimePolicy`, `RuntimeControlProductService.SetBuildRuntimePolicy`, `RuntimeControlProductService.RegisterRuntimeVersion`, `RuntimeControlProductService.SetRuntimeVersionStatus`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
@@ -638,7 +638,7 @@
 - fixtures只用于并行开发；最后换真实BFF读写并验证关闭/刷新恢复
 - 目录下架/物理清除文案不混，技术详情只给有权限的角色
 
-**前端消费API**：`archiveNamespace`, `archivePackage`, `completeUpload`, `createBuild`, `createComputePlan`, `createNamespace`, `createPackage`, `createPricePolicyVersion`, `createPublisherNamespace`, `createRefundPolicyVersion`, `createRetentionPolicyVersion`, `createStoragePlan`, `createUpload`, `createUploadPart`, `deleteCapabilityVersion`, `getBuild`, `getBuildRuntimePolicy`, `getCapabilityVersion`, `getOperation`, `getPackage`, `getPackageVersion`, `getUpload`, `listBuildLogs`, `listBuilds`, `listCapabilityVersions`, `listComputePlans`, `listModels`, `listNamespaces`, `listPackageVersions`, `listPackages`, `listPricePolicyVersions`, `listPublisherNamespaces`, `listRefundPolicyVersions`, `listRetentionPolicyVersions`, `listRuntimeVersions`, `listStoragePlans`, `listWebuiVersions`, `publishOfficialPackage`, `registerRuntimeVersion`, `registerWebuiVersion`, `retryBuild`, `revokePublisherNamespace`, `setBuildRuntimePolicy`, `setComputePlanAvailability`, `setRuntimeVersionStatus`, `setStoragePlanAvailability`, `setWebuiVersionStatus`, `updateNamespace`, `updatePackage`
+**前端消费API**：`archiveNamespace`, `archivePackage`, `completeUpload`, `createBuild`, `createComputePlan`, `createNamespace`, `createPackage`, `createPricePolicyVersion`, `createPublisherNamespace`, `createRefundPolicyVersion`, `createRetentionPolicyVersion`, `createStoragePlan`, `createUpload`, `createUploadPart`, `deleteCapabilityVersion`, `getBuild`, `getBuildRuntimePolicy`, `getCapabilityVersion`, `getEffectiveBuildRuntimePolicy`, `getOperation`, `getPackage`, `getPackageVersion`, `getUpload`, `listBuildLogs`, `listBuilds`, `listCapabilityVersions`, `listComputePlans`, `listModels`, `listNamespaces`, `listPackageVersions`, `listPackages`, `listPricePolicyVersions`, `listPublisherNamespaces`, `listRefundPolicyVersions`, `listRetentionPolicyVersions`, `listRuntimeVersions`, `listStoragePlans`, `listWebuiVersions`, `publishOfficialPackage`, `registerRuntimeVersion`, `registerWebuiVersion`, `retryBuild`, `revokePublisherNamespace`, `setBuildRuntimePolicy`, `setComputePlanAvailability`, `setRuntimeVersionStatus`, `setStoragePlanAvailability`, `setWebuiVersionStatus`, `updateNamespace`, `updatePackage`
 
 **验证**：
 - 新增typed controller/model与browser用例

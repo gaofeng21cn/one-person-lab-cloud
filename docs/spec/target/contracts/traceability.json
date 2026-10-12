@@ -698,6 +698,7 @@
         "createPackage",
         "createUpload",
         "createUploadPart",
+        "getEffectiveBuildRuntimePolicy",
         "getOperation",
         "getPackage",
         "getPackageVersion",
@@ -844,7 +845,8 @@
       "owners": [
         "bff",
         "build",
-        "capability"
+        "capability",
+        "runtime_control"
       ],
       "documents": [
         "00_master_index.md",

@@ -3959,6 +3959,51 @@ paths:
       parameters:
       - *id001
       - *id002
+  /api/v2/catalog/build-policy:
+    get:
+      operationId: getEffectiveBuildRuntimePolicy
+      summary: getEffectiveBuildRuntimePolicy
+      description: >-
+        成员会话读取当前生效的 Build 策略，即 Runtime Control owner 自有的
+        runtime_control.catalog_policies 行，用于冻结一次新 Build 的 Runtime 与 WebUI 输入。
+        它与管理员读返回同一份 owner 事实、不新增任何业务状态，但使用独立的只读 action，
+        因此放宽成员读取不会连带放宽管理员策略边界。
+      tags:
+      - capability
+      x-feature-id:
+      - F04
+      x-owner: runtime_control
+      x-permission:
+      - member
+      x-tables:
+      - runtime_control.catalog_policies
+      responses:
+        '200':
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildRuntimePolicy'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+      parameters:
+      - *id001
   /api/v2/catalog/webui-versions:
     get:
       operationId: listWebuiVersions
@@ -10862,6 +10907,7 @@ components:
       - readExecutionPlan
       - restoreAfterResourceChange
       - debitScheduledPeriod
+      - getEffectiveBuildRuntimePolicy
       - readPlanChangeFailure
     ServiceIdentity:
       type: string
@@ -12991,6 +13037,7 @@ x-service-action-allowlist:
   - getBuildRuntimePolicy
   - getCapabilityVersion
   - getDeployment
+  - getEffectiveBuildRuntimePolicy
   - getLoginContext
   - getOperation
   - getPackage
