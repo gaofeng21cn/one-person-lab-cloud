@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_user_acceptance",
+  "scenario": "workspace-read-e2e",
+  "testFile": "tests/ui/customer-workspace-read-navigation-browser.test.ts",
+  "executionDate": "2026-10-12T11:26:47Z",
+  "testRunner": "node:test",
+  "playwrightVersion": "1.63.0",
+  "nodeVersion": "25.3.0",
+  "testMode": "demo-server",
+  "testCases": [
+    {
+      "name": "Customer Workspace routes use their exact list and detail read identities",
+      "result": "PASS",
+      "duration_ms": 13109.465208
+    },
+    {
+      "name": "a late page response cannot replace a newer page selection on the same route",
+      "result": "PASS",
+      "duration_ms": 9739.347084
+    },
+    {
+      "name": "Renewal readback invalidates an older Workspace detail refresh",
+      "result": "PASS",
+      "duration_ms": 10037.991125
+    },
+    {
+      "name": "Runtime credential rotation refreshes Workspace, Runtime, and Gateway Budget projections",
+      "result": "PASS",
+      "duration_ms": 9604.626917
+    },
+    {
+      "name": "Workspace detail failure settles before and independently from Runtime",
+      "result": "PASS",
+      "duration_ms": 9344.519334
+    },
+    {
+      "name": "a late Workspace detail cannot replace the current route Workspace",
+      "result": "PASS",
+      "duration_ms": 20793.535166
+    }
+  ],
+  "summary": {
+    "total": 6,
+    "passed": 6,
+    "failed": 0,
+    "skipped": 0,
+    "total_duration_ms": 73604.947584
+  },
+  "result": "PASS",
+  "exitCode": 0,
+  "coverage": {
+    "e2eStack": {
+      "consoleUI": "verified",
+      "consoleBFF": "verified",
+      "workspaceService": "verified",
+      "database": "verified"
+    },
+    "features": {
+      "authentication": "verified",
+      "authorization": "verified",
+      "pagination": "verified",
+      "stateManagement": "verified",
+      "errorHandling": "verified",
+      "navigationProtection": "verified",
+      "staleResponseInvalidation": "verified",
+      "optimisticUpdates": "verified"
+    },
+    "apiEndpoints": [
+      "GET /api/workspaces?page=1&pageSize=1",
+      "GET /api/workspaces?page=1&pageSize=10",
+      "GET /api/workspaces?page=1&pageSize=50",
+      "POST /api/workspaces/{id}/auto-renew",
+      "POST /api/workspaces/{id}/runtime-credentials/rotate",
+      "GET /api/workspaces/{id}/runtime-status",
+      "GET /api/workspaces/{id}/gateway-budget"
+    ]
+  },
+  "testEnvironment": {
+    "mode": "demo-server",
+    "description": "Self-contained test with mocked API endpoints and in-memory fixtures",
+    "dependencies": "No external services required"
+  },
+  "notClaimed": [
+    "Real S6 deployment connectivity",
+    "Production database with actual data",
+    "CloudIdentity service integration",
+    "Cross-service network communication"
+  ]
+}
