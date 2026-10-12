@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "76e3d21ffa5a506f0b96ada5b762d90bd2307873",
+  "sourceSHA": "1393488f3c80d796c21d9634e95794e670721902",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -3538,6 +3538,12 @@
         "services/serve/internal/delivery",
         "services/ledger/internal/ledger",
         "apps/console-bff/internal/httpapi",
+        "services/gateway-integration/identity",
+        "apps/console-ui/src/api",
+        "tests/ui",
+        "docs/spec/target/10_feature_traceability.md",
+        "docs/spec/target/14_implementation_work_packages.md",
+        "docs/spec/target/checks/development_plan.json",
         "docs/status.md",
         "docs/roadmap.md"
       ],
