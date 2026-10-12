@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_user_acceptance",
+  "scenario": "runtime-catalog-read-e2e",
+  "testFile": "tests/ui/cloud-webui-browser.test.ts",
+  "executionDate": "2026-10-12T11:40:46Z",
+  "testRunner": "node:test",
+  "playwrightVersion": "1.63.0",
+  "nodeVersion": "25.3.0",
+  "testMode": "demo-server",
+  "testCases": [
+    {
+      "name": "Publisher presents one customer task with the owner facts behind technical details",
+      "result": "PASS",
+      "duration_ms": 22033.140542
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total_duration_ms": 22033.140542
+  },
+  "result": "PASS",
+  "exitCode": 0,
+  "coverage": {
+    "e2eStack": {
+      "consoleUI": "verified",
+      "consoleBFF": "verified",
+      "runtimeControl": "verified",
+      "catalogService": "verified"
+    },
+    "features": {
+      "authentication": "verified",
+      "runtimeVersionCatalog": "verified",
+      "policyDefaultSelection": "verified",
+      "customerExperienceSimplification": "verified",
+      "technicalDetailsDisclosure": "verified",
+      "mobileResponsiveness": "verified",
+      "buildBlockingOnUnavailablePolicy": "verified"
+    },
+    "apiEndpoints": [
+      "GET /api/v2/catalog/runtime-versions",
+      "GET /api/v2/auth/context",
+      "GET /api/v2/auth/login",
+      "GET /api/v2/auth/session",
+      "GET /api/v2/namespaces",
+      "GET /api/v2/packages"
+    ]
+  },
+  "testEnvironment": {
+    "mode": "demo-server",
+    "description": "Self-contained E2E test with mocked catalog endpoints and in-memory fixtures",
+    "dependencies": "No external services required"
+  },
+  "scenarioDescription": {
+    "userStory": "User views available runtime versions in the Publisher page",
+    "coverage": "Console UI fetches runtime catalog from BFF, which queries Runtime Control's catalog projection. The test verifies that the page correctly displays the policy-selected default runtime (second catalog row, not first), hides it behind a technical details disclosure for customer simplicity, and blocks build submission when the policy is unavailable.",
+    "keyValidations": [
+      "Runtime catalog endpoint returns multiple versions with approval status",
+      "Page selects the runtime marked defaultForNewBuilds=true (OPL App Runtime default)",
+      "Page does NOT auto-select the first catalog row",
+      "Technical details are hidden in collapsed disclosure by default",
+      "Customer sees simplified single-task experience without development jargon",
+      "Build submission is blocked when policy default is unavailable",
+      "Mobile navigation renders on single row without obscuring primary actions",
+      "Primary action button remains accessible above mobile navigation (44px+ touch target)"
+    ]
+  },
+  "candidateReference": {
+    "receiptFile": "docs/evidence/candidate-builds/candidate-b6308f21-local-1.json",
+    "sha": "b6308f2103ab4276ce60d8aca1d5c5f12b40e022",
+    "imageDigest": "sha256:5b22eee9ffb6b304298b7be89716a511e60a475eede8f4c4a8c3f6eb664ad71e",
+    "buildTimestamp": "2026-10-12T11:18:23Z"
+  },
+  "notClaimed": [
+    "Real S6 Runtime Control deployment connectivity",
+    "Production database with actual catalog data",
+    "Real policy enforcement from Runtime Control service",
+    "Cross-service network communication",
+    "Actual runtime image validation"
+  ]
+}
