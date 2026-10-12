@@ -1,0 +1,70 @@
+name: Development Ratchet
+
+# Separate from Pull Request CI on purpose. This measures and checks the
+# development ratchet only; it does not replace, weaken, or gate on any existing
+# job. Once it has run clean for a stretch it can be added to the branch
+# protection required checks.
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, edited]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-ratchet-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  ratchet:
+    name: dev-ratchet
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout product revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      # The ratchet is owned by the process repository, not by this one. Pin it
+      # the same way the process-layer reference is pinned in AGENTS.md.
+      - name: Checkout pinned framework revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: RenDeHuang/opl-development-framework
+          ref: bcf6e82ed9c884ebdb45ce7f9853858107994166
+          fetch-depth: 1
+          persist-credentials: false
+          path: .opl-framework/${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Measure ratchet metrics from repository state
+        run: |
+          node scripts/measure-dev-ratchet.mjs \
+            --repo "$GITHUB_WORKSPACE" \
+            --ratchet "$GITHUB_WORKSPACE/dev-ratchet.toml" \
+            --out "$RUNNER_TEMP/dev-ratchet-measurements.json"
+
+      - name: Check ratchet
+        run: |
+          node scripts/check-dev-ratchet.mjs \
+            --framework-root "$GITHUB_WORKSPACE/.opl-framework/${{ github.run_id }}-${{ github.run_attempt }}" \
+            --ratchet "$GITHUB_WORKSPACE/dev-ratchet.toml" \
+            --measurements "$RUNNER_TEMP/dev-ratchet-measurements.json"
+
+      - name: Upload measurements
+        if: always()
+        uses: actions/upload-artifact@043fb46e1a93c77aae656e7c1c64a875d1fc0a0a # v7.0.1
+        with:
+          name: dev-ratchet-measurements-${{ github.event.pull_request.number }}
+          path: ${{ runner.temp }}/dev-ratchet-measurements.json
+          if-no-files-found: warn

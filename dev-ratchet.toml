@@ -1,0 +1,43 @@
+# Development-process ratchet for one-person-lab-cloud.
+#
+# Deliberately a separate file from .sentrux/rules.toml. That file belongs to
+# the Sentrux tool and carries its own vocabulary (min_quality, layers,
+# boundaries); mixing development-process ceilings into it would break that tool
+# and would mix in metrics this checker cannot measure.
+#
+# Each number is the value measured on 2026-10-12 against main @ 76e3d21f. A
+# ceiling may only be lowered. Loosening is a reviewable edit to this file, not
+# something a measurement can cause.
+#
+# Format: opl-development-framework validators/lib/ratchet.mjs
+# Docs:   opl-development-framework docs/design/dev-ratchet.md
+
+[constraints]
+# executionSlices pairs whose writeSet overlaps (directly, or by a directory
+# claim enclosing the other slice's path). Measured by scripts/measure-dev-ratchet.mjs.
+#
+# 30 of these are already serialised by the plan's own startAfter graph. The
+# number deliberately counts all of them so that it cannot be improved by
+# re-labelling; true hazards were 17 at the same commit.
+max_slice_writeset_conflicts = 47
+
+# Slices whose every write path is also claimed by at least one other slice, so
+# no slice owns anything. 12 of 29 at the measured commit.
+max_slices_without_exclusive_writes = 12
+
+# Slices with no machine-readable testWritePaths, i.e. no field that could bind
+# a verification target to the paths it must cover. Only W16.console-ui-fixes
+# declared one, so 28 of 29 at the measured commit.
+#
+# This is the metric that makes "the tests that should have run did not run"
+# visible as a number rather than as an opinion. Lowering it means adding
+# machine-readable verification declarations, not adding tests.
+max_slices_without_machine_verification = 28
+
+# Schema documents that parse but do not declare which validator enforces them.
+max_schemas_without_validator_codes = 0
+
+# NOTE: this file does not restate the architecture ceilings already pinned in
+# .sentrux/rules.toml (max_cycles, max_upward_violations, layers, boundaries).
+# Those are owned by Sentrux and are measured by Sentrux. Duplicating them here
+# would create a second number for the same fact.
