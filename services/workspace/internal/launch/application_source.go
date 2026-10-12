@@ -212,3 +212,49 @@ func (a *applicationSource) identity() string {
 	}
 	return a.RuntimeVersionID
 }
+
+// validateSourceReadiness checks that the accepted source is currently valid
+// and approved before funding or resource allocation. This prevents accepting
+// money for a source that was revoked or is no longer available.
+func (s *Service) validateSourceReadiness(ctx context.Context, op ownerstore.Operation, grant string, accepted *api.QuoteAcceptance) error {
+	selection, err := acceptedSelection(accepted.GetQuote())
+	if err != nil {
+		return err
+	}
+	if err := contracts.ValidateWorkspaceApplicationSelection(selection); err != nil {
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+
+	switch selection.GetKind() {
+	case api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_AGENT:
+		if s.Capability == nil {
+			return status.Error(codes.Unavailable, "Capability is not configured")
+		}
+		request := &api.GetCapabilityVersionRpcRequest{
+			Context:             continuation(op, grant, "validate_source"),
+			CapabilityVersionId: selection.GetCapabilityVersionId(),
+		}
+		version, err := s.Capability.GetCapabilityVersion(ctx, request)
+		if err != nil {
+			return status.Errorf(codes.FailedPrecondition, "application source is not available: %v", err)
+		}
+		if err := validateRuntimeVersion(accepted, version); err != nil {
+			return status.Errorf(codes.FailedPrecondition, "application source validation failed: %v", err)
+		}
+		return nil
+
+	case api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP:
+		if s.RuntimeReleases == nil {
+			return status.Error(codes.Unavailable, "Runtime Control is not configured")
+		}
+		_, err := s.runtimeRelease(ctx, continuation(op, grant, "validate_source"), selection.GetRuntimeVersionId())
+		if err != nil {
+			return status.Errorf(codes.FailedPrecondition, "runtime release is not available: %v", err)
+		}
+		// runtimeRelease already checks that status is APPROVED and has immutable contract
+		return nil
+
+	default:
+		return status.Error(codes.InvalidArgument, "unknown application selection kind")
+	}
+}

@@ -211,6 +211,10 @@ func (s *Service) Resume(ctx context.Context, operationID string) error {
 	if err = validateAcceptance(op, offer, accepted); err != nil {
 		return err
 	}
+		// Validate source readiness before resource allocation
+		if err = s.validateSourceReadiness(ctx, op, result.GrantID, accepted); err != nil {
+			return s.failedCall(ctx, op, token, "validate_source", "source_validation", result, err)
+		}
 	if result.FabricOperationID == "" || result.ResourceSetID == "" {
 		if err = s.ensureResources(ctx, op, token, accepted, "", &result); err != nil {
 			return err
