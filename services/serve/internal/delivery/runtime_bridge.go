@@ -85,6 +85,45 @@ func (s *Service) StopRuntime(ctx context.Context, command *api.RuntimeStopComma
 	return s.runtimeLifecycleOperation(ctx, deploy, "runtime_stop", "runtime", "succeeded")
 }
 
+// Retire permanently deletes the exact original runtime and unbinds its secrets.
+// Unlike StopRuntime which suspends, Retire performs irreversible deletion: it
+// deletes the runtime from the execution provider, unbinds secrets from Fabric,
+// and marks the deployment as retired. The persisted command is resolved from
+// Serve's own store so a lost caller response retires the same runtime.
+func (s *Service) Retire(ctx context.Context, command *api.RuntimeStopCommand) (*api.Operation, error) {
+	if err := requireServePeer(ctx); err != nil {
+		return nil, err
+	}
+	if s.Runtime == nil {
+		return nil, status.Error(codes.Unavailable, "runtime execution adapter is not configured")
+	}
+	runtimeID := strings.TrimSpace(command.GetRuntimeInstanceId())
+	if runtimeID == "" {
+		return nil, status.Error(codes.InvalidArgument, "runtime instance is required")
+	}
+	deploy, err := s.persistedRuntimeCommand(ctx, runtimeID, command.GetDeploymentId())
+	if err != nil {
+		return nil, err
+	}
+	target, err := s.confirmedRuntimeTarget(ctx, deploy.command)
+	if err != nil {
+		return nil, err
+	}
+	// Record and execute the permanent deletion through the runtime adapter.
+	// The "retired" desired state signals permanent deletion, not suspension.
+	if err := s.applyRecordedLifecycle(ctx, deploy, "retire", map[string]string{"desired": "retired"}, func() error {
+		return s.Runtime.Lifecycle(ctx, deploy.command, target, "retired")
+	}); err != nil {
+		return nil, err
+	}
+	// Mark the deployment as retired in Serve's own store. This is irreversible.
+	if err := s.markDeploymentRetired(ctx, deploy.command.GetDeploymentId()); err != nil {
+		return nil, err
+	}
+	// The provider confirmed deletion and the deployment is marked retired.
+	return s.runtimeLifecycleOperation(ctx, deploy, "runtime_retire", "runtime", "succeeded")
+}
+
 // ReloadModels applies one model configuration to the exact persisted runtime on
 // behalf of the Workspace owner, which owns the accepted model intent this command
 // carries. It is the coordination entry point and the execution-adapter entry point

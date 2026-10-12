@@ -788,3 +788,22 @@ func TestDeleteWorkspace_CrashRecovery(t *testing.T) {
 - [ ] 字段追踪 contract 文档
 
 **下一步：** 编写测试覆盖
+
+### 执行完成总结
+
+**commit:** a773977c
+**分支:** fix/r02-source-validation-timing
+
+**完整验证状态：**
+- [x] 代码编译通过
+- [x] 单元测试编译通过（需PG数据库运行）
+- [ ] 集成测试：真实 Catalog → Workspace，source 撤销场景（需PG + 真实服务）
+- [ ] Crash recovery 测试：validation 后 crash 恢复（需PG）
+- [ ] 字段追踪 contract 文档
+
+**实际修改：**
+1. `application_source.go`: 47 行新增 validateSourceReadiness()
+2. `recovery.go`: 4 行插入早期验证调用
+3. `source_validation_integration_test.go`: 60 行测试覆盖
+
+**下一项：** Sprint 1 → R01 (UI quote race) 或 R03 (Gateway obligationId)

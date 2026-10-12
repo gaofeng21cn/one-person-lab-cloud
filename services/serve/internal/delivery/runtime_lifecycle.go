@@ -139,3 +139,20 @@ func (s *Service) applyRecordedLifecycle(ctx context.Context, deploy *persistedR
 	}
 	return s.confirmRuntimeAction(ctx, id, action)
 }
+
+// markDeploymentRetired marks the deployment as permanently retired in Serve's
+// own store. This is irreversible and signals that the runtime has been deleted.
+func (s *Service) markDeploymentRetired(ctx context.Context, deploymentID string) error {
+	result, err := s.DB.ExecContext(ctx, `UPDATE serve.agent_deployments SET status='retired', updated_at=now() WHERE id=$1`, deploymentID)
+	if err != nil {
+		return dbError(err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return dbError(err)
+	}
+	if affected != 1 {
+		return status.Error(codes.NotFound, "deployment not found for retirement")
+	}
+	return nil
+}
