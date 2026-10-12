@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "1c8bad51def44face0306ff3d4844cc3d4a7611e",
+  "recordedAt": "2026-10-12T07:25:48.525Z",
+  "writeSet": [
+    "docs/evidence/source-checks/planscope-effectivewebui-governance-scope-regression-1.json",
+    "docs/evidence/source-checks/planscope-effectivewebui-governance-scope-regression-2.json",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/render_development_plan.py"
+  ],
+  "verifiedSource": {
+    "baseSha": "1c8bad51def44face0306ff3d4844cc3d4a7611e",
+    "changedFilesSha256": {
+      "docs/evidence/source-checks/planscope-effectivewebui-governance-scope-regression-1.json": "08c190a9f5be65014a7cd4c8b6db8b0ca21d3a3aa5c9c8afa89a07bcd3cb5f0c",
+      "docs/spec/target/14_implementation_work_packages.md": "437b3df94508967aaa07b339a4083228bec3b1565e6988e293105549171933b5",
+      "docs/spec/target/checks/development_plan.json": "5b28f810aa1aca7b0f352639e1d9a7cd471a4d76e573ce288c51f1c8dcdc1e68",
+      "docs/spec/target/checks/render_development_plan.py": "9c48509b89b792e59534ff776ef7e6e3e83247047433bfd258ff6d553ed15cf3"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/check-pr-governance.test.ts",
+    "exitCode": 0,
+    "tests": 19,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "d3cfbcf598ce8066305cd0f67a2b4b9ef3b3cff853ec7b3a8664466e720676b4"
+  },
+  "sourceStage": {
+    "runId": "planscope-effectivewebui",
+    "gateId": "governance-scope-regression",
+    "attempt": 2,
+    "receiptHash": "4e149531f566826a3d4f1360620e6a4d02435207030af2fee24656053e233bb1"
+  }
+}
