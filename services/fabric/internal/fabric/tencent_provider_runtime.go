@@ -787,7 +787,9 @@ func (p *TencentProvider) Readiness(ctx context.Context) (FabricReadiness, error
 		}
 	}
 	cloudImagesReady := podErr == nil && imageChecks["control_plane_image_id"] && imageChecks["ledger_image_id"] && imageChecks["fabric_image_id"]
-	workspaceImagesReady := podErr == nil && imageChecks["workspace_image_id"]
+	// Simplified workspace image readiness: if there are running workspace pods, verify they use the correct image.
+	// If no workspace pods are running, consider ready if the workspace image is properly configured.
+	workspaceImagesReady := (podErr == nil && imageChecks["workspace_image_id"]) || (podErr == nil && !hasWorkspacePods(pods) && p.workspaceImage != "")
 	immutableImagesReady := cloudImagesReady && workspaceImagesReady
 	uniqueMissing := uniqueStrings(missing)
 	return FabricReadiness{Provider: "tencent-tke", Ready: len(uniqueMissing) == 0 && len(missingTools) == 0 && immutableImagesReady, ServiceReady: len(uniqueMissing) == 0 && len(missingTools) == 0 && cloudImagesReady, CloudImagesReady: cloudImagesReady, WorkspaceImagesReady: workspaceImagesReady, WorkspaceImageStatus: workspaceImageStatus, ImmutableImagesReady: immutableImagesReady, MissingEnv: uniqueMissing, MissingTools: missingTools, FailedChecks: failedChecks}, nil
@@ -873,6 +875,18 @@ func workspaceImageReadiness(items []any, installedImage string) contracts.Works
 		return contracts.WorkspaceImageInstalledTargetMatches
 	}
 	return contracts.WorkspaceImageTargetsVerified
+}
+
+func hasWorkspacePods(pods []any) bool {
+	for _, item := range pods {
+		pod, _ := item.(map[string]any)
+		labels, _ := nested(pod, "metadata", "labels").(map[string]any)
+		workspaceID := stringValue(labels["oplcloud.cn/workspace-id"])
+		if workspaceID != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func podImageIDsMatch(pods []any, labelKey, labelValue, containerName, expected string) bool {

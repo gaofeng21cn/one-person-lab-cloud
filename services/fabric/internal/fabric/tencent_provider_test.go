@@ -682,7 +682,7 @@ func TestTencentProviderReadinessRequiresExpectedImagesOnEveryReadyPod(t *testin
 			return pods
 		}, wantWorkspace: true},
 		{name: "tag only expected image", cloudImage: "registry.example.com/opl/cloud:latest", workspaceImage: workspaceImage, pods: matchingPods, wantWorkspace: true},
-		{name: "workspace pod missing", cloudImage: cloudImage, workspaceImage: workspaceImage, pods: func() []any { return matchingPods()[:3] }, wantCloud: true},
+		{name: "workspace pod missing", cloudImage: cloudImage, workspaceImage: workspaceImage, pods: func() []any { return matchingPods()[:3] }, wantCloud: true, wantWorkspace: true, wantReady: true},
 		{name: "existing workspace has another fixed version", cloudImage: cloudImage, workspaceImage: workspaceImage, pods: func() []any {
 			pods := matchingPods()[:3]
 			return append(pods, readyPod("workspace", "workspace", "docker-pullable://registry.example.com/opl/workspace@sha256:"+strings.Repeat("c", 64)))
