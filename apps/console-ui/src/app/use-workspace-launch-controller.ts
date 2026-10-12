@@ -348,6 +348,11 @@ export function useWorkspaceLaunchController({
   const reviewAgentLaunch = () => {
     if (!session || intent.current || !canCreateAgentQuote(readiness) || (isDefaultApp ? !selectedRelease : !selectedCapability)) return;
     setAgentBusy(true);
+    // Capture current selection snapshot to validate against late-arriving quotes
+    const requestedApplicationKind = agentApplicationKind;
+    const requestedSourceId = isDefaultApp ? agentRuntimeVersionId : agentCapabilityVersionId;
+    const requestedComputePlanId = agentComputePlanId;
+    const requestedStoragePlanId = agentStoragePlanId;
     const applicationSelection = isDefaultApp
       ? { kind: "opl_app" as const, runtimeVersionId: selectedRelease!.id }
       : { kind: "agent" as const, capabilityVersionId: selectedCapability!.id };
@@ -355,6 +360,16 @@ export function useWorkspaceLaunchController({
       purpose: "deploy", applicationSelection, computePlanId: agentComputePlanId,
       storagePlanId: agentStoragePlanId, modelSelections, periodMonths: 1
     }, session.csrfToken, `workspace-quote:${crypto.randomUUID()}`).then((quote) => {
+      // Reject late-arriving quote if selection changed while quote was in flight
+      const currentSourceId = agentApplicationKind === "opl_app" ? agentRuntimeVersionId : agentCapabilityVersionId;
+      if (requestedApplicationKind !== agentApplicationKind ||
+          requestedSourceId !== currentSourceId ||
+          requestedComputePlanId !== agentComputePlanId ||
+          requestedStoragePlanId !== agentStoragePlanId) {
+        // Silently discard stale quote; user already changed selection and invalidateQuote() cleared agentQuote
+        setAgentBusy(false);
+        return;
+      }
       setAgentQuote(quote);
       setAgentConfirmed(false);
       setLaunchStep("confirm");
