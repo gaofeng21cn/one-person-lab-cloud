@@ -5,6 +5,7 @@ const root = new URL("../", import.meta.url);
 const workflowRoot = new URL(".github/workflows/", root);
 const allowedWorkflows = new Set([
   "build-opl-cloud-candidate.yml",
+  "build-opl-cloud-candidate-77e2024a-bridge.yml",
   "clean-host-qualification.yml",
   "codeql.yml",
   "pull-request-ci.yml",

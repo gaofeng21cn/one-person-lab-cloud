@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -37,7 +38,21 @@ func main() {
 	}
 	var sub2API clients.Sub2APIClient
 	if sub2APIConfig.BaseURL != "" {
-		sub2API, err = clients.NewSub2APIHTTPClient(sub2APIConfig, nil)
+		// Create HTTP client with proxy support from environment (HTTP_PROXY, HTTPS_PROXY, NO_PROXY)
+		httpClient := &http.Client{
+			Transport: &http.Transport{
+				Proxy: http.ProxyFromEnvironment,
+				DialContext: (&net.Dialer{
+					Timeout:   30 * time.Second,
+					KeepAlive: 30 * time.Second,
+				}).DialContext,
+				MaxIdleConns:          100,
+				IdleConnTimeout:       90 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+			},
+		}
+		sub2API, err = clients.NewSub2APIHTTPClient(sub2APIConfig, httpClient)
 		if err != nil {
 			log.Fatal(err)
 		}
