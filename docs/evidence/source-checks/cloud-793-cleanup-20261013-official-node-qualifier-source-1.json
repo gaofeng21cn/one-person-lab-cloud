@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "fdc222858ae24837fd2658d02cfaac7592af017a",
+  "recordedAt": "2026-10-13T12:52:26.989Z",
+  "writeSet": [
+    "docs/evidence/source-checks/cloud-793-cleanup-20261013-official-node-qualifier-source-1.json",
+    "tests/tools/local-workspace-qualification.test.ts",
+    "tools/local-workspace-qualification.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "fdc222858ae24837fd2658d02cfaac7592af017a",
+    "changedFilesSha256": {
+      "tests/tools/local-workspace-qualification.test.ts": "694595b6a53de331fd83e6fa03cbd7436f97c570a45cb8c62100710cc12bd631",
+      "tools/local-workspace-qualification.ts": "f154a2d9ab95c491a35573550c569b58c7f51aed57a225e735fc3742bd7e0af2"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/tools/local-workspace-qualification.test.ts",
+    "exitCode": 0,
+    "tests": 33,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "2dea4dedb2cca61f90a57d0d2c58ff46943e0130a16ea16f3622d9cb85f30ba7"
+  },
+  "sourceStage": {
+    "runId": "cloud-793-cleanup-20261013-official-node",
+    "gateId": "qualifier-source",
+    "attempt": 1,
+    "receiptHash": "d7ac99ee1c59ca0db5f32abf4af4fbc9e6d479cb0e0c37d0c358ad345cf96cfd"
+  }
+}
