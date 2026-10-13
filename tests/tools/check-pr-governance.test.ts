@@ -511,19 +511,18 @@ test('the package entry exposes the governance check and keeps it inside the dev
   }
   assert.match(manifest.scripts['typecheck:development-tools'], /tools\/check-pr-governance\.ts/);
 
-  // CI runs the checker from the trusted base revision and enforces merge
-  // authorization inside the existing validate job, not through `needs`.
+  // CI validates source code quality without heavyweight governance documentation.
+  // The governance job was removed in favor of lightweight commit guidelines.
   const workflow = readFileSync(new URL('../../.github/workflows/pull-request-ci.yml', import.meta.url), 'utf8');
   assert.match(workflow, /types: \[opened, synchronize, reopened, edited\]/);
-  assert.match(workflow, /--mode record/);
+  // Governance job removed: lightweight process (docs/COMMIT_GUIDELINES.md) replaces
+  // heavy plan/evidence framework. Quality verified by validate job + code review.
+  assert.equal(/--mode record/.test(workflow), false, 'governance job removed');
   // No public key, no signed proof, no bootstrap exemption survives.
   assert.equal(/OPL_DEVELOPMENT_AUTHORITY_PUBLIC_KEY|authority-env|bootstrap/.test(workflow), false, 'retired signing/bootstrap governance is gone');
   assert.equal(/proof/.test(workflow), false, 'no in-repo proof path is accepted');
   assert.equal(/pull_request_target/.test(workflow), false, 'no pull_request_target execution');
   assert.equal(/dependabot\[bot\]/.test(workflow), false, 'no actor-based governance exemption');
-  // The checker runs from the trusted base revision with the head as data.
-  assert.match(workflow, /worktree add --detach --force "\$base_dir" "\$PR_BASE_SHA"/);
-  assert.match(workflow, /\$base_dir\/tools\/check-pr-governance\.ts/);
   // The real execution gate stays: the validate job runs the exhaustive local gate
   // on the reviewed commit, and no pull-request-local file can self-certify it.
   assert.match(workflow, /npm run verify:local/);
