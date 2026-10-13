@@ -10,6 +10,7 @@ import type {
   ComputePlanDTO,
   StoragePlanDTO,
   LaunchModelDTO,
+  WorkspacePricePreview,
   WorkspaceQuoteDTO,
   WorkspaceOwnerOperationDTO,
   WorkspaceOwnerDTO,
@@ -18,6 +19,7 @@ import type {
   RuntimeVersionDTO,
   WorkspaceLaunchResponse
 } from "../api/dtos.ts";
+import { getPricingCatalog, previewPricing } from "../api/console-read-api.ts";
 import {
   createAgentWorkspace,
   createWorkspaceQuote,
@@ -37,8 +39,14 @@ import type { RemoteState, WorkspaceLaunchController, WorkspaceLaunchStep } from
 import {
   canCreateAgentQuote,
   canCreateAgentWorkspace,
+  canSubmitWorkspaceLaunch,
   operationPollDelayMs,
-  type AgentLaunchReadiness
+  workspaceLaunchPricingSelection,
+  workspaceLaunchReviewBlocked,
+  workspaceLaunchReviewReadiness,
+  workspacePricePreview,
+  type AgentLaunchReadiness,
+  type WorkspaceLaunchReviewState
 } from "./workspace-launch-controller-model.ts";
 
 const agentOperationStorageKey = "opl-cloud:agent-workspace-operation";
@@ -130,6 +138,7 @@ export function useWorkspaceLaunchController({
   friendlyError
 }: WorkspaceLaunchDependencies): WorkspaceLaunchCapability {
   const [catalog, setCatalog] = useState<RemoteState<PricingCatalogResponse>>(emptyCatalog);
+  const [previews, setPreviews] = useState<Partial<Record<PlanId, WorkspacePricePreview>>>({});
   const [launchName, setLaunchName] = useState("");
   const [launchAutoRenew, setLaunchAutoRenew] = useState(false);
   const [launchStep, setLaunchStep] = useState<WorkspaceLaunchStep>("configure");
@@ -171,6 +180,7 @@ export function useWorkspaceLaunchController({
 
   const reset = () => {
     setCatalog(emptyCatalog());
+    setPreviews({});
     setLaunchName("");
     setLaunchAutoRenew(false);
     setLaunchStep("configure");
@@ -199,7 +209,34 @@ export function useWorkspaceLaunchController({
     intent.current = null;
   };
 
-  const loadCatalog = async (generation: number, activeSession: AuthSession) => {
+  // The Resource Catalog owner is the only authority for the package plans and
+  // for every price shown before confirmation. This is a real read of the
+  // owner's catalog and the owner's own preview; a plan or a total the owner did
+  // not return stays absent so the page cannot offer a purchase it cannot price.
+  const loadPricingCatalog = async (generation: number, activeSession: AuthSession) => {
+    setCatalog((current) => ({ ...current, loading: true, error: "" }));
+    try {
+      const priced = await getPricingCatalog();
+      if (!isRequestCurrent(generation, activeSession.user.id)) return;
+      const entries = await Promise.all(priced.packages.filter((plan) => plan.available).map(async (plan) => {
+        try {
+          const preview = await previewPricing({ resourceType: "workspace", packageId: plan.id }, activeSession.csrfToken);
+          return [plan.id, workspacePricePreview(preview)] as const;
+        } catch {
+          return [plan.id, null] as const;
+        }
+      }));
+      if (!isRequestCurrent(generation, activeSession.user.id)) return;
+      setPreviews(Object.fromEntries(entries.filter((entry): entry is readonly [PlanId, WorkspacePricePreview] => entry[1] !== null)));
+      setCatalog({ value: priced, loading: false, error: "" });
+    } catch (error) {
+      if (!isRequestCurrent(generation, activeSession.user.id)) return;
+      setCatalog({ value: null, loading: false, error: friendlyError(error) });
+      setPreviews({});
+    }
+  };
+
+  const loadAgentCatalog = async (generation: number, activeSession: AuthSession) => {
     setAgentSourceLoading(true);
     setAgentSourceError("");
     try {
@@ -239,6 +276,12 @@ export function useWorkspaceLaunchController({
         setAgentQuote(null);
       }
     }
+  };
+
+  // The package plans and the Agent source plans are two products priced by the
+  // same owner; neither read decides whether the other is available.
+  const loadCatalog = async (generation: number, activeSession: AuthSession) => {
+    await Promise.all([loadPricingCatalog(generation, activeSession), loadAgentCatalog(generation, activeSession)]);
   };
 
   const readAccess = async (workspaceId: string, generation: number, activeSession: AuthSession) => {
@@ -468,12 +511,18 @@ export function useWorkspaceLaunchController({
 
   // Normal workspace launch implementation
   const reviewNormalWorkspaceLaunch = () => {
-    if (!normalLaunchPlan || !launchName.trim()) return;
+    if (workspaceLaunchReviewBlocked(reviewState)) return;
     setLaunchStep("confirm");
   };
 
   const submitNormalWorkspaceLaunch = async () => {
-    if (!session || !normalLaunchPlan || !launchName.trim() || normalLaunchBusy) return;
+    if (!session || !canSubmitWorkspaceLaunch({
+      ...workspaceLaunchReviewReadiness(reviewState),
+      sessionAvailable: true,
+      busy: launchBusy,
+      step: launchStep,
+      confirmed: launchConfirmed
+    })) return;
 
     const stillCurrent = currentMutationRequest();
     setNormalLaunchBusy(true);
@@ -514,12 +563,20 @@ export function useWorkspaceLaunchController({
   };
 
   // Determine selectedPlan from catalog
-  const selectedPlan = catalog.value?.packages.find((pkg) => pkg.id === normalLaunchPlan) || null;
-  const selectedPrice = null;
+  const { selectedPlan, selectedPrice } = workspaceLaunchPricingSelection({ catalog: catalog.value, planId: normalLaunchPlan, previews });
+  const balanceSufficient = agentWallet !== null;
+  const launchBusy = normalLaunchBusy || agentBusy;
+  const reviewState: WorkspaceLaunchReviewState = {
+    launchRecoveryState: "clear",
+    launchName,
+    selectedPlan,
+    selectedPrice,
+    balanceSufficient
+  };
 
   return {
     catalog,
-    previews: {},
+    previews,
     launchName,
     setLaunchName,
     launchPlan: normalLaunchPlan,
@@ -533,12 +590,13 @@ export function useWorkspaceLaunchController({
     selectedPlan,
     selectedPrice,
     walletUsdMicros: agentWallet?.balanceUSDMicros || null,
-    balanceSufficient: agentWallet !== null,
+    balanceSufficient,
     customerOwned: false,
     launchOperation: normalLaunchOperation,
     launchRecoveryState: "clear",
     launchPollIssue: "",
-    busy: normalLaunchBusy || agentBusy,
+    launchSessionAvailable: Boolean(session),
+    busy: launchBusy,
     reviewWorkspaceLaunch: reviewNormalWorkspaceLaunch,
     submitWorkspaceLaunch: submitNormalWorkspaceLaunch,
     openLaunchedWorkspace: openNormalWorkspace,
