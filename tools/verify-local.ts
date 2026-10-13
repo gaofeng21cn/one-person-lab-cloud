@@ -48,7 +48,11 @@ export const databaseFreeGoTestSpecs = Object.freeze([
   // PostgreSQL-gated suites need the full lane. This bounded run keeps the new
   // read surface gated without a database.
   { cwd: "services/control-plane", run: "^TestWorkspaceSettlementTrend", packages: ["./internal/server"] },
-  { cwd: "services/fabric", packages: ["./cmd/fabric", "./cmd/opl-tencent-provisioner", "./cmd/opl-node-image-retire", "./internal/http"] },
+  // Fabric's coordination guards decide which owner may write a Secret binding;
+  // run only those database-free tests here. The package's PostgreSQL binding
+  // readback suites belong to the full lane and must not turn a missing DSN into
+  // a false pass or a PR-gate failure.
+  { cwd: "services/fabric", run: "^TestSecretWriteGuards", packages: ["./cmd/fabric", "./cmd/opl-tencent-provisioner", "./cmd/opl-node-image-retire", "./internal/http", "./coordination"] },
   { cwd: "services/ledger", packages: ["./cmd/ledger", "./internal/http"] },
   { cwd: "services/internal/postgresmigrate", run: "^TestValidateTLS", packages: ["./..."] },
   // The owner runtime's startup and Operation readback rules hold without a database;

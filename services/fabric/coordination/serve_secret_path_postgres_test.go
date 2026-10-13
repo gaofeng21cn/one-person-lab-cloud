@@ -56,7 +56,7 @@ func startFabricSurface(t *testing.T, db *sql.DB) *fabricSurface {
 		t.Fatal(err)
 	}
 	token := "isolated-fabric-surface-token-00000001"
-	config := ownerservice.Config{Owner: ownerservice.OwnerFabric, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: map[owneridentity.Service]string{owneridentity.Workspace.Service(): token, owneridentity.Serve.Service(): token}}
+	config := ownerservice.Config{Owner: ownerservice.OwnerFabric, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: map[owneridentity.Service]string{owneridentity.Workspace.Service(): token, owneridentity.Serve.Service(): token, owneridentity.Build.Service(): token}}
 	server, err := ownerservice.NewServer(config)
 	if err != nil {
 		t.Fatal(err)
@@ -131,6 +131,7 @@ func TestServeSecretBindingRejectsDifferentRuntimeKeyOrSlot(t *testing.T) {
 	seedConfirmedExecutionResource(t, ctx, db, setID, workspace, tenant)
 	serve := surface.client(t, owneridentity.Serve.Service())
 	workspacePeer := surface.client(t, owneridentity.Workspace.Service())
+	buildPeer := surface.client(t, owneridentity.Build.Service())
 
 	const firstFingerprint = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	const secondFingerprint = "sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
@@ -179,12 +180,6 @@ func TestServeSecretBindingRejectsDifferentRuntimeKeyOrSlot(t *testing.T) {
 	if count, active := activeSecretBindingCount(t, ctx, db, setID, "gateway"); count != 1 || active != predecessor {
 		t.Fatalf("refused rebind changed state: active=%q count=%d", active, count)
 	}
-	if _, err = workspacePeer.RebindSecret(ctx, &api.SecretBindingRebindCommand{Context: call("rebind-workspace"), WorkspaceId: workspace, RuntimeInstanceId: "rt-a", ExpectedCurrentSecretBindingId: predecessor, KeyBindingId: "key-2", SecretDeliveryReference: "opl-gateway-" + workspace, TargetSlot: "gateway", Fingerprint: secondFingerprint}); status.Code(err) != codes.PermissionDenied {
-		t.Fatalf("retired Workspace rebind err=%v want permission denied", err)
-	}
-	if _, err = workspacePeer.BindSecret(ctx, &api.SecretBindingCommand{Context: call("bind-workspace"), WorkspaceId: workspace, RuntimeInstanceId: "rt-a", KeyBindingId: "key-9", SecretDeliveryReference: "opl-gateway-" + workspace, TargetSlot: "gateway", Fingerprint: secondFingerprint}); status.Code(err) != codes.PermissionDenied {
-		t.Fatalf("retired Workspace bind err=%v want permission denied", err)
-	}
 
 	replacement, err := rebind("rebind-replace", "rt-a", predecessor, "key-2", "gateway", secondFingerprint)
 	if err != nil || replacement.GetPreviousSecretBindingId() != predecessor || replacement.GetSecretBindingId() == predecessor || replacement.GetVersion() == "" || dispatcher.calls != 2 {
@@ -207,6 +202,33 @@ func TestServeSecretBindingRejectsDifferentRuntimeKeyOrSlot(t *testing.T) {
 	}
 	if count, active := activeSecretBindingCount(t, ctx, db, setID, "gateway"); count != 1 || active != replacement.GetSecretBindingId() {
 		t.Fatalf("stale requests changed the active binding: active=%q count=%d", active, count)
+	}
+
+	// The models handover caller is admitted on the same typed path as Serve, so
+	// its superseded requests are refused by the one-active-binding rules rather
+	// than by an outsider guard: it cannot replace the retired predecessor and it
+	// cannot relabel or replace the confirmed binding with a different Secret.
+	workspaceCall := func(key string) *api.CallContext { return call("workspace-" + key) }
+	if _, err = workspacePeer.RebindSecret(ctx, &api.SecretBindingRebindCommand{Context: workspaceCall("stale-predecessor"), WorkspaceId: workspace, RuntimeInstanceId: "rt-a", ExpectedCurrentSecretBindingId: predecessor, KeyBindingId: "key-3", SecretDeliveryReference: "opl-gateway-" + workspace, TargetSlot: "gateway", Fingerprint: firstFingerprint}); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("Workspace stale predecessor rebind err=%v want failed precondition", err)
+	}
+	if _, err = workspacePeer.BindSecret(ctx, &api.SecretBindingCommand{Context: workspaceCall("stale-initial"), WorkspaceId: workspace, RuntimeInstanceId: "rt-a", KeyBindingId: "key-1", SecretDeliveryReference: "opl-gateway-" + workspace, TargetSlot: "gateway", Fingerprint: firstFingerprint}); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("Workspace stale initial bind err=%v want already exists", err)
+	}
+	if _, err = workspacePeer.BindSecret(ctx, &api.SecretBindingCommand{Context: workspaceCall("other-secret"), WorkspaceId: workspace, RuntimeInstanceId: "rt-a", KeyBindingId: "key-9", SecretDeliveryReference: "opl-gateway-" + workspace, TargetSlot: "gateway", Fingerprint: secondFingerprint}); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("Workspace foreign key binding bind err=%v want already exists", err)
+	}
+	// An owner neither Secret write path authorises is still refused by the guard,
+	// even though it authenticates against the same allowlist with the same token.
+	buildCall := func(key string) *api.CallContext { return call("build-" + key) }
+	if _, err = buildPeer.BindSecret(ctx, &api.SecretBindingCommand{Context: buildCall("bind"), WorkspaceId: workspace, RuntimeInstanceId: "rt-a", KeyBindingId: "key-9", SecretDeliveryReference: "opl-gateway-" + workspace, TargetSlot: "gateway", Fingerprint: secondFingerprint}); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("unauthorised peer bind err=%v want permission denied", err)
+	}
+	if _, err = buildPeer.RebindSecret(ctx, &api.SecretBindingRebindCommand{Context: buildCall("rebind"), WorkspaceId: workspace, RuntimeInstanceId: "rt-a", ExpectedCurrentSecretBindingId: replacement.GetSecretBindingId(), KeyBindingId: "key-9", SecretDeliveryReference: "opl-gateway-" + workspace, TargetSlot: "gateway", Fingerprint: secondFingerprint}); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("unauthorised peer rebind err=%v want permission denied", err)
+	}
+	if count, active := activeSecretBindingCount(t, ctx, db, setID, "gateway"); count != 1 || active != replacement.GetSecretBindingId() || dispatcher.calls != 2 {
+		t.Fatalf("refused peers changed the active binding: active=%q count=%d provider confirmations=%d", active, count, dispatcher.calls)
 	}
 }
 
