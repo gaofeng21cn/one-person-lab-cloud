@@ -12,8 +12,8 @@ on:
         required: true
         type: string
       workspace_image_ref:
-        description: Exact immutable Workspace image reference.
-        required: true
+        description: Exact immutable Workspace image reference; empty builds only the existing qualification fixture.
+        required: false
         type: string
 
 permissions:
@@ -44,6 +44,39 @@ jobs:
 
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
+
+      - name: Prepare immutable qualification Workspace image
+        id: workspace
+        shell: bash
+        env:
+          SUPPLIED_WORKSPACE_IMAGE: ${{ inputs.workspace_image_ref }}
+          PRODUCT_SHA: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "$SUPPLIED_WORKSPACE_IMAGE" ]; then
+            [[ "$SUPPLIED_WORKSPACE_IMAGE" =~ ^[a-z0-9.-]+(:[1-9][0-9]*)?/[a-z0-9._/-]+@sha256:[a-f0-9]{64}$ ]]
+            printf 'image_ref=%s\n' "$SUPPLIED_WORKSPACE_IMAGE" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Build only the existing fixture. The supplied Cloud Candidate is
+          # still pulled and qualified by digest, without a source rebuild.
+          registry="opl-qualification-workspace-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          printf 'registry=%s\n' "$registry" >> "$GITHUB_OUTPUT"
+          docker run -d --name "$registry" -p 127.0.0.1::5000 \
+            registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
+          port="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "5000/tcp") 0).HostPort}}' "$registry")"
+          [[ "$port" =~ ^[1-9][0-9]*$ ]]
+          repository="127.0.0.1:$port/opl-qualification-workspace"
+          tag="$repository:fixture"
+          printf 'image_tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+          docker build --file deploy/portable/qualification-workspace.Dockerfile \
+            --label "org.opencontainers.image.revision=$PRODUCT_SHA" --tag "$tag" .
+          docker push "$tag"
+          image="$(docker image inspect --format '{{index .RepoDigests 0}}' "$tag")"
+          [[ "$image" == "$repository@sha256:"* ]]
+          [[ "${image##*@}" =~ ^sha256:[a-f0-9]{64}$ ]]
+          docker pull "$image"
+          printf 'image_ref=%s\n' "$image" >> "$GITHUB_OUTPUT"
 
       # The qualification binds this host's installation facts before Docker
       # starts: the quota-enabled Workspace storage root and the provider
@@ -89,7 +122,7 @@ jobs:
         env:
           PRODUCT_SHA: ${{ inputs.ref }}
           CLOUD_IMAGE_REF: ${{ inputs.cloud_image_ref }}
-          WORKSPACE_IMAGE_REF: ${{ inputs.workspace_image_ref }}
+          WORKSPACE_IMAGE_REF: ${{ steps.workspace.outputs.image_ref }}
           OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: ${{ steps.storage.outputs.storage_root }}
           OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: '{"schemaVersion":1,"packages":[{"id":"basic","name":"Basic Workspace","available":true,"compute":{"id":"local-basic","server":"configured","cpu":2,"memoryGb":4,"instanceType":"local-basic"},"storage":{"sizeGb":10,"quotaPolicy":"linux-project"}}]}'
         run: |
@@ -125,4 +158,20 @@ jobs:
           fi
           if test -d "$qualification_root"; then
             sudo rm -rf --one-file-system -- "$qualification_root"
+          fi
+
+      - name: Remove run-owned Workspace fixture registry
+        if: ${{ always() && steps.workspace.outputs.registry != '' }}
+        shell: bash
+        env:
+          REGISTRY: ${{ steps.workspace.outputs.registry }}
+          IMAGE_TAG: ${{ steps.workspace.outputs.image_tag }}
+        run: |
+          set -euo pipefail
+          test "$REGISTRY" = "opl-qualification-workspace-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          if docker container inspect "$REGISTRY" >/dev/null 2>&1; then
+            docker rm --force "$REGISTRY"
+          fi
+          if [ -n "$IMAGE_TAG" ] && docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
+            docker image rm "$IMAGE_TAG"
           fi
