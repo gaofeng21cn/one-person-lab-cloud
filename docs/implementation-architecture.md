@@ -1027,3 +1027,9 @@ owns Agent delivery/readiness/access, and Ledger owns evidence. During the
 transition, the old writer is retired only after its real callers and historical
 obligations are transferred and verified; no dual current-deployment writer is
 allowed.
+
+The publisher reads the Runtime Control effective Build policy through the
+member-authorized `GET /api/v2/catalog/build-policy`, and resolves its exact
+Runtime and WebUI identities against approved immutable catalog versions.
+Missing, withdrawn or inconsistent defaults keep Build unavailable. Policy
+writes remain platform-administrator-only at the existing admin route.

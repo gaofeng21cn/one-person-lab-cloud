@@ -96,7 +96,7 @@ var actions = map[api.AuthorizationActionEnum]actionPolicy{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRETENTIONPOLICYVERSIONS:           {api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATERETENTIONPOLICYVERSION:          {api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ADOPTWORKSPACE:                        {api.OwnerEnum_OWNER_ENUM_WORKSPACE, []string{"admin", "owner"}},
-	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETBUILDRUNTIMEPOLICY:                 {api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL, []string{"platform_admin"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETBUILDRUNTIMEPOLICY:                 {api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL, []string{"member", "platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETBUILDRUNTIMEPOLICY:                 {api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPUBLISHERNAMESPACES:               {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEPUBLISHERNAMESPACE:              {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"platform_admin"}},

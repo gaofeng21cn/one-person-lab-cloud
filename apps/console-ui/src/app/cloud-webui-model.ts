@@ -80,11 +80,9 @@ function effectiveInput(row: EffectiveRuntimeRow): EffectiveInput {
  * Console therefore reports the owner's own resolution and never substitutes
  * another approved release.
  *
- * The same policy also names the effective default WebUI. The only route that
- * serves `BuildRuntimePolicy` answers a platform administrator session, so a
- * customer session has no authorized read for that half yet; the caller passes
- * what the owner served it (`null` when there is none) and the Console keeps the
- * Build command unavailable instead of guessing an approved catalog entry.
+ * The same member-readable policy names the effective default WebUI. The caller
+ * resolves that exact identity against the approved immutable catalog and passes
+ * no input when it cannot read or verify it; this model never guesses a row.
  */
 export function resolveEffectiveBuildDefaults(runtimeRows: EffectiveRuntimeRow[], effectiveWebuiDefault: EffectiveInput | null): EffectiveBuildDefaults {
   const reasons: string[] = [];

@@ -1,4 +1,4 @@
-import { resolveEffectiveBuildDefaults, type EffectiveBuildDefaults, type EffectiveRuntimeRow } from "../app/cloud-webui-model.ts";
+import { isImmutableDigest, resolveEffectiveBuildDefaults, type EffectiveBuildDefaults, type EffectiveRuntimeRow } from "../app/cloud-webui-model.ts";
 import { getJson } from "./console-api.ts";
 
 // Only Capability's bounded signed permit authorizes this data-plane PUT.
@@ -26,11 +26,11 @@ export async function uploadPackagePart(permit: UploadPermit, bytes: ArrayBuffer
 
 interface OwnerPage<T> { items: T[]; nextCursor?: string }
 
-async function readRuntimeCatalog(signal: AbortSignal): Promise<EffectiveRuntimeRow[]> {
+async function readCatalog(path: string, signal: AbortSignal): Promise<EffectiveRuntimeRow[]> {
   const rows: EffectiveRuntimeRow[] = [];
   let cursor = "";
   for (;;) {
-    const page = await getJson<OwnerPage<EffectiveRuntimeRow>>(`/api/v2/catalog/runtime-versions?cursor=${encodeURIComponent(cursor)}`, { signal });
+    const page = await getJson<OwnerPage<EffectiveRuntimeRow>>(`${path}?cursor=${encodeURIComponent(cursor)}`, { signal });
     if (!Array.isArray(page.items)) throw new Error("上传目录返回了无效的 Runtime 版本页。");
     rows.push(...page.items);
     cursor = page.nextCursor || "";
@@ -41,12 +41,25 @@ async function readRuntimeCatalog(signal: AbortSignal): Promise<EffectiveRuntime
 /**
  * Read the effective default inputs of a new Agent Build for the signed-in
  * session. The Runtime half is the Runtime Control owner's own projection of its
- * effective policy onto the member-authorized catalog. The effective default
- * WebUI is the same policy's other half, and no route serves it to a customer
- * session yet, so this reader passes null for it: the caller must present the
- * missing fact and keep the Build command unavailable instead of substituting
- * an approved catalog row.
+ * effective policy onto the member-authorized catalog. Both frozen inputs must
+ * match that policy and an approved immutable catalog row; unreadable, withdrawn
+ * or inconsistent inputs keep the Build command unavailable.
  */
 export async function readEffectiveBuildDefaults(signal: AbortSignal): Promise<EffectiveBuildDefaults> {
-  return resolveEffectiveBuildDefaults(await readRuntimeCatalog(signal), null);
+  const [runtimes, webuis, policy] = await Promise.all([
+    readCatalog("/api/v2/catalog/runtime-versions", signal),
+    readCatalog("/api/v2/catalog/webui-versions", signal),
+    getJson<{ runtimeVersionId?: string; defaultWebuiVersionId?: string }>("/api/v2/catalog/build-policy", { signal })
+  ]);
+  const matches = webuis.filter(row => row.id === policy.defaultWebuiVersionId);
+  const row = matches.length === 1 ? matches[0] : undefined;
+  const webui = row?.status === "approved" && isImmutableDigest(row.artifactDigest)
+    ? { id: row.id, name: row.name, versionLabel: row.versionLabel, artifactDigest: row.artifactDigest! }
+    : null;
+  const result = resolveEffectiveBuildDefaults(runtimes, webui);
+  if (result.runtime && result.runtime.id !== policy.runtimeVersionId) {
+    result.runtime = undefined;
+    result.reasons.push("effective_default_runtime_policy_mismatch");
+  }
+  return result;
 }
