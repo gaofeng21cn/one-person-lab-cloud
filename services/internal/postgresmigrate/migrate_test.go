@@ -241,13 +241,11 @@ func openPostgres(t *testing.T, databaseURL string) *sql.DB {
 func isolatedPostgresURL(t *testing.T) string {
 	t.Helper()
 	databaseURL := os.Getenv("POSTGRES_MIGRATION_TEST_DATABASE_URL")
-	optional := false
 	if databaseURL == "" {
 		if os.Getenv("OPL_POSTGRES_TESTS") == "1" {
 			databaseURL = "connect_timeout=10"
 		} else {
-			databaseURL = "host=/var/run/postgresql dbname=postgres sslmode=disable"
-			optional = true
+			t.Skip("PostgreSQL test gate is not configured: set POSTGRES_MIGRATION_TEST_DATABASE_URL or OPL_POSTGRES_TESTS=1 for an isolated fixture")
 		}
 	}
 	admin, err := sql.Open("postgres", databaseURL)
@@ -256,9 +254,6 @@ func isolatedPostgresURL(t *testing.T) string {
 	}
 	if err := admin.Ping(); err != nil {
 		_ = admin.Close()
-		if optional {
-			t.Skipf("local PostgreSQL unavailable: %v", err)
-		}
 		t.Fatal(err)
 	}
 	schema := fmt.Sprintf("opl_migration_%d", time.Now().UnixNano())

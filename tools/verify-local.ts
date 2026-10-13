@@ -53,7 +53,6 @@ export const goModules = Object.freeze([
 export const databaseFreeCapabilityMarkers = Object.freeze([
   { capability: "isolated-owner-postgres", marker: "PostgreSQL test gate is not configured" },
   { capability: "isolated-owner-postgres", marker: "is required for PostgreSQL tests" },
-  { capability: "isolated-owner-postgres", marker: "local PostgreSQL unavailable:" },
   { capability: "isolated-owner-postgres", marker: "set OPL_OWNER_MIGRATION_TEST_ADMIN_DSN to an isolated PostgreSQL administrator DSN" },
   { capability: "isolated-data-scale", marker: "set OPL_CAPACITY_TESTS=1 to run the isolated 1000-user data-scale test" }
 ]);
@@ -1282,7 +1281,7 @@ export function databaseFreeCoverage(
   const output = new Map<string, string>();
   const started = new Set<string>();
   const terminal = new Map<string, "pass" | "fail" | "skip">();
-  const packages = new Set<string>();
+  const packages = new Map<string, string>();
   let invalid = false;
   for (const event of events) {
     if (!event || typeof event.Package !== "string" || !event.Package || typeof event.Action !== "string") { invalid = true; continue; }
@@ -1293,7 +1292,7 @@ export function databaseFreeCoverage(
       if (!started.has(id) || terminal.has(id)) invalid = true;
       terminal.set(id, event.Action as "pass" | "fail" | "skip");
     }
-    if (!id && ["pass", "fail", "skip"].includes(event.Action)) packages.add(event.Package);
+    if (!id && ["pass", "fail", "skip"].includes(event.Action)) packages.set(event.Package, event.Action);
   }
   const byName = new Map<string, { id: string; action: "pass" | "fail" | "skip" }>();
   for (const [id, action] of terminal) byName.set(id.split("\0")[1], { id, action });
@@ -1311,7 +1310,10 @@ export function databaseFreeCoverage(
     const name = id.split("\0")[1];
     const text = output.get(id) ?? "";
     if (action === "pass") { executed.push(name); continue; }
-    const declaredMarker = markers.find((candidate) => text.includes(candidate.marker));
+    // Only the fixture helper's sole reported reason can declare a missing
+    // capability. A marker elsewhere in the log cannot erase a real assertion.
+    const reasons = text.split(/\r?\n/).filter(line => /^\s+\S+\.go:\d+: /u.test(line));
+    const declaredMarker = reasons.length === 1 ? markers.find((candidate) => firstReason(text).includes(candidate.marker)) : undefined;
     if (declaredMarker) {
       excluded.set(name, { name, capability: declaredMarker.capability, reason: firstReason(text) });
       continue;
@@ -1329,7 +1331,10 @@ export function databaseFreeCoverage(
   const account = (name: string) => executed.includes(name) || excluded.has(name);
   const accounted = declared.filter(account);
   const missing = declared.filter((name) => !account(name));
+  const unexplainedPackages = [...packages].filter(([pkg, action]) => action === "fail" &&
+    ![...terminal].some(([id, testAction]) => id.startsWith(`${pkg}\0`) && testAction === "fail"));
   const reason = invalid || started.size !== terminal.size || packages.size === 0 ? "invalid or incomplete Go JSON summary" :
+    unexplainedPackages.length ? `Go package failed without a test failure: ${unexplainedPackages.map(([pkg]) => pkg).join(",")}` :
     executed.length === 0 ? "no Go tests executed" :
     failed.length > 0 ? `Go tests failed: ${failed.map((entry) => entry.name).join(",")}` :
     undeclared.length > 0 ? `tests skipped without a declared capability marker: ${undeclared.map((entry) => `${entry.name} (${entry.reason})`).join("; ")}` :
