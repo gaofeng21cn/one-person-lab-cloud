@@ -43,7 +43,7 @@ require(consumed==ops,'some REST operations have no frontend consumer task')
 actual_tables={f"{t['schema']}.{t['name']}" for t in db}
 require(set(plan['tablePrimary'])==actual_tables,'DB owner tables not fully assigned')
 for table,wid in plan['tablePrimary'].items():require(wid in W and table in W[wid].get('tablesPrimary',[]),'table task mapping mismatch: '+table)
-proto=(R/'contracts/internal.proto').read_text();rpcs=set()
+proto=(R.parents[2]/'packages/contracts/proto/internal.proto').read_text();rpcs=set()
 for m in re.finditer(r'service\s+(\w+)\s*\{(.*?)\}',proto,re.S):
  for method in re.findall(r'rpc\s+(\w+)',m[2]):rpcs.add(m[1]+'.'+method)
 require(set(plan['rpcImplementers'])==rpcs,'internal RPC implementation coverage differs')

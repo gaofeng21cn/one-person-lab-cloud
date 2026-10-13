@@ -155,10 +155,11 @@ def trace_check():
 
 def proto_check():
     import grpc_tools
-    proto=ROOT/'contracts/internal.proto';require(proto.is_file(),'internal.proto absent')
+    proto=ROOT.parents[2]/'packages/contracts/proto/internal.proto';require(proto.is_file(),'internal.proto absent')
     with tempfile.TemporaryDirectory(prefix='opl-proto-spec-') as temp:
         include=Path(grpc_tools.__file__).parent/'_proto'
-        r=subprocess.run([sys.executable,'-m','grpc_tools.protoc',f'-I{ROOT/"contracts"}',f'-I{include}',f'--descriptor_set_out={temp}/spec.pb','--include_imports',str(proto)],capture_output=True,text=True)
+        proto_dir=proto.parent
+        r=subprocess.run([sys.executable,'-m','grpc_tools.protoc',f'-I{proto_dir}',f'-I{include}',f'--descriptor_set_out={temp}/spec.pb','--include_imports',str(proto)],capture_output=True,text=True)
         require(r.returncode==0,'protobuf compile failed: '+r.stderr)
         if r.returncode:return
         from google.protobuf.descriptor_pb2 import FileDescriptorSet
