@@ -119,12 +119,15 @@ passed Clean Host `38420381927`, including owner DELETE, Ledger evidence and
 zero resource residuals. The original, validator-accepted READY receipt is
 preserved in [status](status.md#verified-clean-host-qualification).
 
-#787 remains open for canonical OPL App entry qualification and disposition of
-the patrol's separate original launch HTTP 502. The fixture success qualifies
-that Cloud Candidate's local harness path; it does not prove canonical Workspace
-application behavior, live Sub2API, TKE, production or original paid-order
-acceptance. Earlier generic DELETE errors were not reproduced in the successful
-runs; improved diagnostics do not establish their historical runtime cause.
+#787 remains open for disposition of the patrol's separate original launch
+HTTP 502: identify its actual failed owner/stage through an exact-image
+reproduction, or record an explicitly accepted historical disposition. The
+current immutable-Candidate/run-owned-fixture path is delivered and has valid
+READY evidence. Canonical App, live Sub2API, TKE and original paid-order
+acceptance remain separate product outcomes; they do not enlarge this issue's
+local qualification scope. Earlier generic DELETE errors were not reproduced
+in the successful runs; improved diagnostics do not establish their historical
+runtime cause.
 
 ## Cloud-Identity Customer Workspace Read (2026-09-30)
 
