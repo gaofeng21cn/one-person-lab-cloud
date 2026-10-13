@@ -156,6 +156,11 @@ export function useWorkspaceLaunchController({
   const [agentRecoveryPending, setAgentRecoveryPending] = useState(() => Boolean(sessionStorage.getItem(agentOperationStorageKey)));
   const intent = useRef<PersistedAgentIntent | null>(null);
 
+  // Normal workspace launch state
+  const [normalLaunchPlan, setNormalLaunchPlan] = useState<string>("basic");
+  const [normalLaunchBusy, setNormalLaunchBusy] = useState(false);
+  const [normalLaunchOperation, setNormalLaunchOperation] = useState<any | null>(null);
+
   const invalidateQuote = () => {
     setAgentQuote(null);
     setAgentConfirmed(false);
@@ -459,31 +464,82 @@ export function useWorkspaceLaunchController({
     window.open(agentAccess.url, "_blank", "noopener,noreferrer");
   };
 
+  // Normal workspace launch implementation
+  const reviewNormalWorkspaceLaunch = () => {
+    if (!normalLaunchPlan || !launchName.trim()) return;
+    setLaunchStep("confirm");
+  };
+
+  const submitNormalWorkspaceLaunch = async () => {
+    if (!session || !normalLaunchPlan || !launchName.trim() || normalLaunchBusy) return;
+
+    const stillCurrent = currentMutationRequest();
+    setNormalLaunchBusy(true);
+
+    try {
+      const { launchWorkspace } = await import("../api/workspaces-api.ts");
+      const operation = await launchWorkspace(
+        {
+          name: launchName.trim(),
+          packageId: normalLaunchPlan as any,
+          autoRenew: launchAutoRenew,
+          provisioningMode: "prepaid" as const
+        },
+        session.csrfToken,
+        workspaceLaunchIdempotencyKey()
+      );
+
+      if (!stillCurrent()) {
+        return;
+      }
+
+      setNormalLaunchOperation(operation);
+      setLaunchStep("operation");
+      flash("工作空间创建请求已提交", "good");
+    } catch (error) {
+      if (!stillCurrent()) return;
+      flash(friendlyError(error), "danger");
+    } finally {
+      if (stillCurrent()) {
+        setNormalLaunchBusy(false);
+      }
+    }
+  };
+
+  const openNormalWorkspace = () => {
+    if (!normalLaunchOperation?.workspaceId) return;
+    navigate(`/console/workspaces/${normalLaunchOperation.workspaceId}`);
+  };
+
+  // Determine selectedPlan from catalog
+  const selectedPlan = catalog.value?.packages.find((pkg) => pkg.id === normalLaunchPlan) || null;
+  const selectedPrice = selectedPlan?.price ?? null;
+
   return {
     catalog,
     previews: {},
     launchName,
     setLaunchName,
-    launchPlan: "basic",
-    setLaunchPlan: () => undefined,
+    launchPlan: normalLaunchPlan,
+    setLaunchPlan: setNormalLaunchPlan,
     launchAutoRenew,
     setLaunchAutoRenew: (value) => { setLaunchAutoRenew(value); invalidateQuote(); },
     launchStep,
     setLaunchStep,
     launchConfirmed,
     setLaunchConfirmed,
-    selectedPlan: null,
-    selectedPrice: null,
+    selectedPlan,
+    selectedPrice,
     walletUsdMicros: agentWallet?.balanceUSDMicros || null,
     balanceSufficient: agentWallet !== null,
     customerOwned: false,
-    launchOperation: null,
+    launchOperation: normalLaunchOperation,
     launchRecoveryState: "clear",
     launchPollIssue: "",
-    busy: agentBusy,
-    reviewWorkspaceLaunch: reviewAgentLaunch,
-    submitWorkspaceLaunch: submitAgentLaunch,
-    openLaunchedWorkspace: openAgentWorkspace,
+    busy: normalLaunchBusy || agentBusy,
+    reviewWorkspaceLaunch: reviewNormalWorkspaceLaunch,
+    submitWorkspaceLaunch: submitNormalWorkspaceLaunch,
+    openLaunchedWorkspace: openNormalWorkspace,
     openLaunchBilling: () => navigate("/console/billing"),
     prepareNewWorkspaceLaunch: () => { if (agentRecoveryPending) return; setAgentOperation(null); setAgentWorkspace(null); setAgentAccess(null); setLaunchStep("configure"); setAgentConfirmed(false); },
     agentCapabilityVersions,
