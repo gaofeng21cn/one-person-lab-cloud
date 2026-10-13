@@ -125,26 +125,28 @@ test("owner delete failure keeps only redacted last pending evidence", async () 
     operationId, workspaceId: "ws-secret-alpha", computeReadbacks: 1, maxComputeReadbacks: 8
   };
   const evidence = [];
+  const failures = [];
   let calls = 0;
   const http = {
     json: async (_path, _init, _auth, statuses) => {
       if (statuses.includes(202)) {
         calls += 1;
         if (calls === 1) return { response: { status: 202, headers: new Headers({ "retry-after": "1" }) }, payload: pending };
-        throw new Error(`HTTP 502 operation=${operationId} workspace=${pending.workspaceId}`);
+        throw new Error(`HTTP DELETE /api/workspaces/${pending.workspaceId} returned 409: {"reasonCode":"fabric_compute_readback_unavailable","operationId":"${operationId}"}`);
       }
       throw new Error("unexpected status set");
     }
   };
   await assert.rejects(() => continueWorkspaceDelete(http, "/api/workspaces/ws-secret-alpha", { method: "DELETE" }, null, {
-    operationId, workspaceId: pending.workspaceId, onPending: (value) => evidence.push(value)
+    operationId, workspaceId: pending.workspaceId, onPending: (value) => evidence.push(value), onFailure: (value) => failures.push(value)
   }, async () => {}), /continuation failed/);
   assert.equal(evidence.length, 1);
+  assert.deepEqual(failures, [{ status: 409, reasonCode: "fabric_compute_readback_unavailable" }]);
   assert.deepEqual(evidence[0], {
     phase: "storage_absent", ownerStage: "compute", ordinal: 1, max: 8,
     operationDigest: `sha256:${createHash("sha256").update(operationId).digest("hex")}`
   });
-  assert.doesNotMatch(JSON.stringify(evidence), /workspace-delete-secret-alpha|ws-secret-alpha/);
+  assert.doesNotMatch(JSON.stringify({ evidence, failures }), /workspace-delete-secret-alpha|ws-secret-alpha/);
 });
 
 test("qualification compose uses the runner-owned exact environment", () => {
@@ -1279,7 +1281,10 @@ test("scratch cleanup failure preserves an earlier qualification stage failure",
   const denial = Object.assign(new Error(`EACCES: permission denied, scandir '${join(root, "scratch", "postgres")}'`), { code: "EACCES" });
   try {
     await assert.rejects(
-      () => finishLocalWorkspaceQualification(qualificationSettlement(root, receiptPath, earlier), {
+      () => finishLocalWorkspaceQualification({
+        ...qualificationSettlement(root, receiptPath, earlier),
+        ownerDeleteFailure: { status: 409, reasonCode: "fabric_compute_readback_unavailable" }
+      }, {
         removeScratch: async () => { throw denial; }
       }),
       (error) => error === earlier
@@ -1289,6 +1294,7 @@ test("scratch cleanup failure preserves an earlier qualification stage failure",
     assert.equal(receipt.stage, "qualification_cleanup");
     assert.equal(receipt.errorCode, "local_workspace_qualification_failed");
     assert.equal(receipt.error, redactedError(earlier));
+    assert.deepEqual(receipt.ownerDeleteFailure, { status: 409, reasonCode: "fabric_compute_readback_unavailable" });
     assert.doesNotMatch(receipt.error, /EACCES|permission denied/);
   } finally {
     await rm(root, { recursive: true, force: true });

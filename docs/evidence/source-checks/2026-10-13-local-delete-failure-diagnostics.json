@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "action": "Preserve the bounded owner DELETE HTTP failure in local qualification receipts",
+  "recordedAt": "2026-10-13T15:04:17.226285+00:00",
+  "baseSha": "c8b33a251a3c4a595e995293c9984b055c88e225",
+  "necessity": "Clean Host run 38415379681 failed after the first compute pending response; the caller did not wire the existing failure callback and lost the owning reason code.",
+  "sourceFilesSha256": {
+    "tools/local-workspace-qualification.ts": "16fc9d60a550c78cc96e3e8957a5b64e1093f1e5b8d6081d338a20611a4fd2f8",
+    "tests/tools/local-workspace-qualification.test.ts": "137c21c41fed6796d5d12ac0c42cece71ad323943eb268626205d63758c62f6c"
+  },
+  "verification": {
+    "result": "passed",
+    "checks": [
+      "Focused local boundary/type checks and 33 owner tests; zero failures, skips or TODOs",
+      "HTTP status and reason are retained without raw operation or Workspace identifiers",
+      "Receipt settlement preserves the earliest failure and bounded owner diagnostics"
+    ]
+  },
+  "logs": [
+    {
+      "name": "cloud-delete-diagnostics-focused.log",
+      "sha256": "fa2f0ac3203b283e92e99bfe2151bad818004d517112c0ce11d299808ac3872c"
+    }
+  ],
+  "remainingBoundary": "Source diagnostics only. The original exact Candidate owner DELETE has not passed runtime acceptance."
+}

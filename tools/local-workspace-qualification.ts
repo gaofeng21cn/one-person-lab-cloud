@@ -1386,7 +1386,7 @@ async function writeEarlyNotReady(options, stage, errorCode, error) {
 // contents are cleared separately after confirmed Compose shutdown.
 export async function finishLocalWorkspaceQualification(state, dependencies = {}) {
   const { options, startedAt, sourceTree, cloudImage, workspaceImage, stage, residuals } = state;
-  const { recovery, ownerDeletePending, finalReceipt } = state;
+  const { recovery, ownerDeletePending, ownerDeleteFailure, finalReceipt } = state;
   let { failure } = state;
   if (!state.preserveRecoveryAuthority) {
     const removeScratch = dependencies.removeScratch || ((target) => rm(target, { recursive: true, force: true }));
@@ -1425,6 +1425,7 @@ export async function finishLocalWorkspaceQualification(state, dependencies = {}
         }
       } : {}),
       ...(ownerDeletePending ? { ownerDeletePending } : {}),
+      ...(ownerDeleteFailure ? { ownerDeleteFailure } : {}),
       deferred: [...deferredCloudGates]
     };
     await writeJSONAtomic(options.receiptPath, notReady);
@@ -1518,6 +1519,7 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
   let recovery = null;
   let preserveRecoveryAuthority = false;
   let ownerDeletePending = null;
+  let ownerDeleteFailure = null;
   let residuals = { containers: null, volumes: null, networks: null };
   const composePrefix = ["compose", "--project-name", project, "--env-file", envFile];
   for (const file of localQualificationComposeFiles(options.authorityMode)) composePrefix.push("-f", file);
@@ -1803,7 +1805,8 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
       method: "DELETE", headers: { "idempotency-key": `local-qualification-delete:${workspaceId}` }, body: {}
     }, restartedAuth, {
       operationId: expectedDeleteOperationId, workspaceId,
-      onPending: (pending) => { ownerDeletePending = pending; }
+      onPending: (pending) => { ownerDeletePending = pending; },
+      onFailure: (observed) => { ownerDeleteFailure = observed; }
     });
     // The purchase is resource-only: its v2 Delete binds the Launch and the
     // Launch Receipt, never the application installation's Runtime or Workspace
@@ -1984,6 +1987,7 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
     residuals,
     recovery,
     ownerDeletePending,
+    ownerDeleteFailure,
     finalReceipt,
     tempRoot,
     preserveRecoveryAuthority
