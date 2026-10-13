@@ -11,6 +11,9 @@ import type { AgentWorkspaceLaunchController } from "../../app/use-workspace-lau
 import {
   presentWorkspaceApplicationInstallation, presentWorkspaceLaunch, presentWorkspaceLaunchStage, presentWorkspaceQuote
 } from "../../app/workspace-experience-model.ts";
+import {
+  canSubmitWorkspaceLaunch, workspaceLaunchReviewBlocked, workspaceLaunchReviewReadiness
+} from "../../app/workspace-launch-controller-model.ts";
 import type { PlanId, PricingPlan } from "../../api/dtos.ts";
 import { Alert, Badge, Button, Checkbox, Field } from "../ui/index.ts";
 import { formatDate, formatUsdMicros } from "../../console-model.ts";
@@ -235,7 +238,7 @@ export function WorkspaceLaunchPage({
             {!controller.customerOwned ? <div className="launch-confirm-check"><Checkbox checked={controller.launchAutoRenew} label="自动续费" onChange={controller.setLaunchAutoRenew} /></div> : null}
           </section>
           <WorkspaceOrderSummary
-            action={<Button color="primary" disabled={!controller.launchName.trim() || !controller.selectedPlan || controller.selectedPrice === null || controller.balanceSufficient !== true} type="submit">核对开通信息<ArrowRight aria-hidden size={16} /></Button>}
+            action={<Button color="primary" disabled={workspaceLaunchReviewBlocked(controller)} type="submit">核对开通信息<ArrowRight aria-hidden size={16} /></Button>}
             controller={controller}
           />
         </form>
@@ -273,7 +276,13 @@ function WorkspaceLaunchConfirm({ controller }: { controller: WorkspaceLaunchCon
         <footer><Button onClick={() => { controller.setLaunchStep("configure"); controller.setLaunchConfirmed(false); }} variant="outline">返回修改</Button></footer>
       </section>
       <WorkspaceOrderSummary
-        action={<Button busy={controller.busy} color="primary" disabled={!quote.canConfirm || !controller.launchConfirmed || controller.balanceSufficient !== true} onClick={() => void controller.submitWorkspaceLaunch()}>{quote.submitLabel}</Button>}
+        action={<Button busy={controller.busy} color="primary" disabled={!quote.canConfirm || !canSubmitWorkspaceLaunch({
+          ...workspaceLaunchReviewReadiness(controller),
+          sessionAvailable: controller.launchSessionAvailable,
+          busy: controller.busy,
+          step: controller.launchStep,
+          confirmed: controller.launchConfirmed
+        })} onClick={() => void controller.submitWorkspaceLaunch()}>{quote.submitLabel}</Button>}
         controller={controller}
       />
     </div>

@@ -1,7 +1,11 @@
 import type {
+  PlanId,
   PricingCatalogResponse,
+  PricingPlan,
+  PricingPreviewResponse,
   WorkspaceLaunchRequest,
-  WorkspaceLaunchResponse
+  WorkspaceLaunchResponse,
+  WorkspacePricePreview
 } from "../api/dtos.ts";
 import { isTerminalWorkspaceLaunch } from "../api/workspaces-api.ts";
 
@@ -73,6 +77,66 @@ export function canSubmitWorkspaceLaunch(readiness: WorkspaceLaunchSubmitReadine
     && readiness.step === "confirm"
     && readiness.confirmed
     && canReviewWorkspaceLaunch(readiness);
+}
+
+// workspacePricePreview keeps only a complete owner quote. A partial response
+// carries no total, so it is reported as no price rather than as a zero or an
+// invented sum.
+export function workspacePricePreview(response: PricingPreviewResponse): WorkspacePricePreview | null {
+  const { compute, storage, totalChargeUsdMicros } = response;
+  if (!compute || !storage || typeof totalChargeUsdMicros !== "number") return null;
+  return {
+    resourceType: "workspace",
+    priceVersion: response.priceVersion,
+    packageId: response.packageId,
+    currency: response.currency,
+    displayCurrency: response.displayCurrency || response.currency,
+    billingUnit: response.billingUnit || "",
+    compute,
+    storage,
+    totalChargeUsdMicros
+  };
+}
+
+// workspaceLaunchPricingSelection is the single derivation of the selected plan
+// and its price. Both owners of the number are owner readbacks: the plan list
+// from the Resource Catalog and the price from the owner's own preview. A plan
+// the catalog did not return, or a price the owner did not quote, stays null.
+export function workspaceLaunchPricingSelection(state: {
+  catalog: PricingCatalogResponse | null;
+  planId: PlanId;
+  previews: Partial<Record<PlanId, WorkspacePricePreview>>;
+}): { selectedPlan: PricingPlan | null; selectedPrice: number | null } {
+  const selectedPlan = state.catalog?.packages.find((plan) => plan.id === state.planId) || null;
+  const selectedPrice = selectedPlan ? state.previews[selectedPlan.id]?.totalChargeUsdMicros ?? null : null;
+  return { selectedPlan, selectedPrice };
+}
+
+// WorkspaceLaunchReviewState is what a caller already holds. WorkspaceLaunchController
+// satisfies it structurally, so the page and the controller read the same fields.
+export interface WorkspaceLaunchReviewState {
+  launchRecoveryState: WorkspaceLaunchRecoveryState;
+  launchName: string;
+  selectedPlan: PricingPlan | null;
+  selectedPrice: number | null;
+  balanceSufficient: boolean | null;
+}
+
+export function workspaceLaunchReviewReadiness(state: WorkspaceLaunchReviewState): WorkspaceLaunchReviewReadiness {
+  return {
+    recoveryState: state.launchRecoveryState,
+    hasName: Boolean(state.launchName.trim()),
+    hasSelectedPlan: Boolean(state.selectedPlan),
+    selectedPriceKnown: state.selectedPrice !== null,
+    balanceSufficient: state.balanceSufficient === true
+  };
+}
+
+// The confirm button and the controller's own review action ask this one
+// function, so the page can no longer offer a step the controller refuses, and a
+// second readiness expression cannot drift away from the model.
+export function workspaceLaunchReviewBlocked(state: WorkspaceLaunchReviewState): boolean {
+  return !canReviewWorkspaceLaunch(workspaceLaunchReviewReadiness(state));
 }
 
 export function shouldRetainWorkspaceLaunchIntent(error: unknown): boolean {

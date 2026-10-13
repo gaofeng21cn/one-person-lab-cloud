@@ -172,6 +172,7 @@ export interface WorkspaceLaunchController {
   launchOperation: WorkspaceLaunchResponse | null;
   launchRecoveryState: WorkspaceLaunchRecoveryState;
   launchPollIssue: "" | "error" | "timeout" | "readback";
+  launchSessionAvailable: boolean;
   busy: boolean;
   reviewWorkspaceLaunch: () => void;
   submitWorkspaceLaunch: () => Promise<void>;
