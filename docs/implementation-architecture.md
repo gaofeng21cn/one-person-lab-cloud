@@ -57,8 +57,14 @@ table. `Reserve` allocates the deployment, runtime instance and epoch, verifies
 the exact Capability descriptor and binds a Serve-owned reference claim.
 `Deploy` requires Fabric's confirmed execution binding and uses the existing
 Fabric application adapter through a dedicated Serve identity. `ReadRuntime`
-observes the original persisted command; a Workspace-scoped database lock fences
-the observation and active-selection transaction. Access requires the resulting
+observes the original persisted command and re-applies it only while an initial,
+never-activated delivery and its runtime are still progressing, with no rejected
+original start or recorded stop or termination intent. Pending reads preserve a
+rejected start until an explicit Deploy or ready readback establishes a new result.
+Failed and terminal observations are recorded without
+Start; a previously activated delivery is not automatically restarted after
+degradation. A Workspace-scoped database lock fences the observation and
+active-selection transaction. Access requires the resulting
 ready deployment and a confirmed entry, never a seeded resource reference.
 
 Workspace's `internal/launch` worker resumes the original committed operation
