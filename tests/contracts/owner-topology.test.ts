@@ -388,3 +388,147 @@ test("the Console identity is an image fact the declaration and the image agree 
       `the declaration must state what the ${value} identity selects`);
   }
 });
+
+
+// An owner's peer allowlist is an admission list, not documentation. It decides
+// what the owner answers at run time: an owner whose allowlist lacks a real
+// caller refuses that caller with PermissionDenied, and an allowlist that names
+// a peer nothing dials is permission the owner never granted. The previous
+// assertions above only checked that the variable *name* appears in the
+// template, so every allowlist could have been emptied and the contract still
+// passed. The derivations below read the Go source instead, so the template's
+// peer keys are compared against the callers the processes actually construct.
+
+// transportPrincipalByEnvPrefix maps an environment name that carries an owner
+// address to the transport identity that owner answers with. GATEWAY is the one
+// owner whose deployment unit is another owner's principal, so the remap is read
+// from the wire convention rather than restated here.
+async function transportPrincipalByEnvPrefix(names: Map<string, string>): Promise<{ byPrefix: Map<string, string>; consoleBFF: string }> {
+  const source = await readFile("packages/contracts/go/owneridentity/transport.go", "utf8");
+  const consoleBFF = source.match(/^const ConsoleBFF Service = "([a-z_]+)"$/m);
+  assert.ok(consoleBFF, "the wire convention must declare the Console BFF transport identity");
+  const remap = new Map<string, string>();
+  for (const match of source.matchAll(/if owner == (\w+) \{\s*return (\w+)\.Service\(\)/g)) {
+    remap.set(names.get(`Owner${match[1]}`) as string, names.get(`Owner${match[2]}`) as string);
+  }
+  assert.ok(remap.size > 0, "the wire convention must still declare its deployment-unit remap");
+  const byPrefix = new Map<string, string>();
+  for (const [constant, owner] of names) {
+    const principal = remap.get(owner) ?? owner;
+    byPrefix.set(owner.toUpperCase(), principal);
+    byPrefix.set(constant, principal);
+  }
+  return { byPrefix, consoleBFF: consoleBFF[1] };
+}
+
+// processPrincipal names the transport identity one process presents on every
+// outbound owner call: the owner identity it loads its own configuration with,
+// or the Console BFF identity, which is a transport principal and not an owner.
+// A process that opens no owner connection (the legacy Control Plane) has none.
+async function processPrincipal(names: Map<string, string>, consoleBFF: string): Promise<Map<string, string>> {
+  const principals = new Map<string, string>();
+  for (const [service, directory] of ownerProcessDirectories) {
+    for (const file of await goFiles(directory)) {
+      const source = await readFile(file, "utf8");
+      for (const match of source.matchAll(/ownerservice\.LoadConfig\(\s*[\w.]+,\s*ownerservice\.(Owner\w+)/g)) {
+        principals.set(service, names.get(match[1]) as string);
+      }
+      if (/DialOptions\(\s*owneridentity\.ConsoleBFF\s*,/.test(source)) principals.set(service, consoleBFF);
+    }
+  }
+  assert.ok(principals.get("gateway-integration") === "tenant",
+    "the gateway-integration process must be recognised as the tenant deployment unit");
+  return principals;
+}
+
+// runsSharedAuthorizer reports whether a process opens the one owner call that
+// has no environment name of its own: the shared authorizer every owner uses to
+// reach user authorization over the CloudIdentity boundary.
+async function runsSharedAuthorizer(directory: string): Promise<boolean> {
+  for (const file of await goFiles(directory)) {
+    const source = await readFile(file, "utf8");
+    if (/ownerservice\.(?:Start|StartWithDatabase|AuthorizerFromConfig)\(/.test(source)) return true;
+  }
+  return false;
+}
+
+// dialTargets reads every owner a process's own source dials: the owner address
+// names it names, plus the owners it names only at run time.
+async function dialTargets(directory: string, byPrefix: Map<string, string>): Promise<Set<string>> {
+  const targets = new Set<string>();
+  for (const file of await goFiles(directory)) {
+    const source = await readFile(file, "utf8");
+    // An owner address name is OPL_<OWNER>_ADDR for an owner process and
+    // OPL_<OWNER>_URL for a caller that reaches an owner it does not own. A
+    // process that names one routes to that owner, however it spells the lookup:
+    // directly, or through a table of address names it dials in turn. Every
+    // other environment name is not a route to an owner and is not claimed here.
+    for (const match of source.matchAll(/"OPL_([A-Z_0-9]+)_(?:ADDR|URL)"/g)) {
+      const owner = byPrefix.get(match[1]);
+      if (owner) targets.add(owner);
+    }
+    // A process that composes the owner environment name from the owner it is
+    // looping over names no address literal to find, so the owner set it loops
+    // over is the only place that call is written down.
+    if (!/getenv\(prefix ?\+\s*"_(?:ADDR|TOKEN)"\)/.test(source)) continue;
+    for (const list of source.matchAll(/\[\]owneridentity\.Owner\{([^}]*)\}/g)) {
+      for (const owner of list[1].matchAll(/owneridentity\.(\w+)/g)) {
+        const target = byPrefix.get(`Owner${owner[1]}`);
+        if (target) targets.add(target);
+      }
+    }
+  }
+  return targets;
+}
+
+// peerCallers derives the callers every owner must admit from the source that
+// opens the connections.
+async function peerCallers(): Promise<Map<string, Set<string>>> {
+  const names = await ownerNameByConstant();
+  const { byPrefix, consoleBFF } = await transportPrincipalByEnvPrefix(names);
+  const principals = await processPrincipal(names, consoleBFF);
+  // Every owner reaches user authorization over the CloudIdentity gRPC boundary
+  // except the owner that answers it, so the tenant process is not its own
+  // caller. The startup path states that exception; if it stops doing so the
+  // allowlist below would be quietly one key short.
+  const bootstrap = await readFile("services/internal/ownerservice/bootstrap.go", "utf8");
+  assert.ok(bootstrap.includes("config.Owner != OwnerTenant"),
+    "the startup path must still exempt the tenant owner from calling the CloudIdentity boundary");
+
+  const callers = new Map<string, Set<string>>();
+  for (const [service, directory] of ownerProcessDirectories) {
+    const principal = principals.get(service);
+    if (!principal) continue;
+    const targets = await dialTargets(directory, byPrefix);
+    if (principal !== "tenant" && await runsSharedAuthorizer(directory)) targets.add("tenant");
+    targets.delete(principal);
+    for (const target of targets) {
+      const admitted = callers.get(target) ?? new Set<string>();
+      admitted.add(principal);
+      callers.set(target, admitted);
+    }
+  }
+  return callers;
+}
+
+test("each peer allowlist names exactly the callers that reach that owner", async () => {
+  const topology = await loadTopology();
+  const template = await readFile(envExamplePath, "utf8");
+  const declared = new Map<string, string>();
+  for (const process of topology.processes) {
+    if (!process.peerTokensEnv || !process.ownerName) continue;
+    declared.set(process.peerTokensEnv, process.ownerName);
+  }
+  assert.ok(declared.size >= 8, `expected the owner peer allowlists, saw ${[...declared.keys()].join(",")}`);
+  const written = new Map<string, string>();
+  for (const match of template.matchAll(/^(OPL_[A-Z0-9_]*PEER_TOKENS)=(\S*)$/gm)) written.set(match[1], match[2]);
+  assert.deepEqual([...written.keys()].sort(), [...declared.keys()].sort(),
+    `${envExamplePath} must set exactly the peer allowlists the installation contract declares`);
+
+  const callers = await peerCallers();
+  for (const [env, owner] of [...declared].sort()) {
+    const peers = Object.keys(JSON.parse(written.get(env) as string)).sort();
+    assert.deepEqual(peers, [...(callers.get(owner) ?? [])].sort(),
+      `${env} must admit exactly the callers that dial ${owner}, and no peer nothing dials`);
+  }
+});
