@@ -2,6 +2,7 @@ import type {
   PlanId,
   PricingCatalogResponse,
   PricingPlan,
+  PricingPreviewRequest,
   PricingPreviewResponse,
   WorkspaceLaunchRequest,
   WorkspaceLaunchResponse,
@@ -197,14 +198,29 @@ export function shouldPollWorkspaceLaunch(operation: WorkspaceLaunchResponse): b
 }
 
 // workspaceLaunchProvisioningMode is the one place this client states its
-// provisioning shape. A customer Launch delivers resourced capacity only; the
-// application is deployed afterwards as its own authorized operation.
-export const workspaceLaunchProvisioningMode = "resource_only" as const;
+// provisioning shape. A new customer Launch confirms an application and a plan
+// in one step: with neither a Package nor a separate WebUI selected, Cloud
+// deploys the exact approved OPL App Runtime Release
+// (docs/spec/target/00_master_index.md D01, 04_frontend_interaction_spec.md:15,
+// 11_ui_ux_design.md:89). The Control Plane runs its default application
+// reconciliation branch for every mode other than resource_only
+// (routes_workspace_launch.go:45-49), so this states that default App product.
+// resource_only is the retained historical contract for pre-existing
+// resource-only purchases (docs/spec/target/09_legacy_migration.md:9) and must
+// not be sent for a new Launch.
+export const workspaceLaunchProvisioningMode = "full" as const;
 
 // WorkspaceLaunchIntentInput is what a customer chooses: a name, a plan and
 // whether the monthly charge renews. The provisioning shape is not theirs to
 // pick, so submission is the single owner that composes the wire request.
 export type WorkspaceLaunchIntentInput = Omit<WorkspaceLaunchRequest, "provisioningMode">;
+
+// workspaceLaunchPreviewRequest asks for the package purchase itself. A
+// component preview carries no total, so asking the owner for the wrong resource
+// type would return a number this client cannot turn into a price.
+export function workspaceLaunchPreviewRequest(planId: PlanId): PricingPreviewRequest {
+  return { resourceType: "workspace", packageId: planId };
+}
 
 export function workspaceLaunchSubmission(
   input: WorkspaceLaunchIntentInput,

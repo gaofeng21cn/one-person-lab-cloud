@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type { ApiError } from "../../apps/console-ui/src/api/console-api.ts";
 import { getPricingCatalog, previewPricing } from "../../apps/console-ui/src/api/console-read-api.ts";
@@ -23,15 +25,56 @@ import {
   shouldPollWorkspaceLaunch,
   shouldRetainWorkspaceLaunchIntent,
   workspaceLaunchBalance,
+  workspaceLaunchPreviewRequest,
   workspaceLaunchPricingSelection,
+  workspaceLaunchProvisioningMode,
   workspaceLaunchReviewBlocked,
   workspaceLaunchReviewReadiness,
   workspaceLaunchSubmission,
   workspaceLaunchUnpricedPackages,
   workspacePricePreview,
   type WorkspaceLaunchIntent,
+  type WorkspaceLaunchIntentInput,
   type WorkspaceLaunchReviewState
 } from "../../apps/console-ui/src/app/workspace-launch-controller-model.ts";
+
+const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
+const consoleUiRoot = join(repositoryRoot, "apps/console-ui/src");
+
+function sourceText(relativePath: string): string {
+  return readFileSync(join(repositoryRoot, relativePath), "utf8");
+}
+
+function consoleUiSources(directory = consoleUiRoot): Array<{ path: string; text: string }> {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(directory, entry.name);
+    if (entry.isDirectory()) return consoleUiSources(full);
+    if (!/\.(ts|tsx)$/.test(entry.name)) return [];
+    return [{ path: full.slice(repositoryRoot.length + 1), text: readFileSync(full, "utf8") }];
+  });
+}
+
+// callArguments returns the argument text of every call to the named function, so
+// a test can assert what the call site actually passes rather than that a symbol
+// appears somewhere in the file. A declaration is not a call.
+function callArguments(source: string, callee: string): string[] {
+  const argumentsList: string[] = [];
+  for (let index = source.indexOf(callee); index !== -1; index = source.indexOf(callee, index + 1)) {
+    if (/[A-Za-z0-9_$]/.test(source[index - 1] || "")) continue;
+    if (/\bfunction\s+$/.test(source.slice(Math.max(0, index - 16), index))) continue;
+    let depth = 0;
+    let cursor = index + callee.length - 1;
+    for (; cursor < source.length; cursor += 1) {
+      if ("([{<".includes(source[cursor])) depth += 1;
+      else if (")]}>".includes(source[cursor])) {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+    argumentsList.push(source.slice(index + callee.length, cursor).trim());
+  }
+  return argumentsList;
+}
 
 const basicRequest: WorkspaceLaunchRequest = {
   name: "Alpha",
@@ -162,19 +205,30 @@ test("Workspace launch polling stops for manual review and terminal operations",
 });
 
 test("resource billing mode none disables Workspace auto-renew", () => {
-  const original = { ...basicRequest };
-  assert.deepEqual(workspaceLaunchSubmission(basicRequest, "none"), {
-    ...basicRequest,
+  const input: WorkspaceLaunchIntentInput = { name: "Alpha", packageId: "basic", autoRenew: true };
+  assert.deepEqual(workspaceLaunchSubmission(input, "none"), {
+    ...input,
+    provisioningMode: workspaceLaunchProvisioningMode,
     autoRenew: false
   });
-  assert.deepEqual(workspaceLaunchSubmission(basicRequest, "enabled"), basicRequest);
-  assert.deepEqual(basicRequest, original);
+  assert.deepEqual(workspaceLaunchSubmission(input, "enabled"), {
+    ...input,
+    provisioningMode: workspaceLaunchProvisioningMode
+  });
+  assert.deepEqual(input, { name: "Alpha", packageId: "basic", autoRenew: true });
 });
 
-test("a customer Workspace Launch always opens resources only", () => {
-  const submitted = workspaceLaunchSubmission({ ...basicRequest, provisioningMode: "full" }, "enabled");
-  assert.equal(submitted.provisioningMode, "resource_only");
-  assert.deepEqual(workspaceLaunchSubmission(basicRequest, "enabled"), basicRequest);
+test("a new customer Workspace Launch states the default App product, not the legacy resource-only contract", () => {
+  // 00_master_index.md D01 and 04_frontend_interaction_spec.md:15: a Launch that
+  // selects neither a Package nor a separate WebUI deploys the approved OPL App
+  // Runtime Release. 09_legacy_migration.md:9 keeps resource_only as the retained
+  // historical contract for pre-existing purchases, so this client must not send
+  // it for a new Launch.
+  const input: WorkspaceLaunchIntentInput = { name: "Alpha", packageId: "basic", autoRenew: true };
+  assert.equal(workspaceLaunchProvisioningMode, "full");
+  assert.deepEqual(workspaceLaunchSubmission(input, "enabled"), {
+    name: "Alpha", packageId: "basic", autoRenew: true, provisioningMode: "full"
+  });
 });
 
 test("an intent that changes provisioning mode is a conflict, not a silent reuse", () => {
@@ -456,5 +510,41 @@ test("the launch controller states the provisioning shape only through the singl
     { name: "Alpha", packageId: "basic", autoRenew: true },
     "enabled"
   );
-  assert.equal(submitted.provisioningMode, "resource_only");
+  assert.equal(submitted.provisioningMode, "full");
+});
+
+test("no second provisioning writer appears anywhere under the Console UI", () => {
+  const modelPath = "apps/console-ui/src/app/workspace-launch-controller-model.ts";
+  // A typed wire field is a declaration, not a writer. A provisioning shape typed
+  // as a literal is a writer, wherever it sits.
+  const writers = consoleUiSources().flatMap(({ path, text }) =>
+    path === modelPath ? [] : [...text.matchAll(/provisioningMode\s*[:=]\s*["'`]/g)].map((match) => `${path}: ${match[0]}`)
+  );
+
+  assert.deepEqual(writers, [], "only workspace-launch-controller-model.ts may state a provisioning shape");
+});
+
+test("the launch call sites pass the owner's product shape, not a hardcoded one", () => {
+  const controller = sourceText("apps/console-ui/src/app/use-workspace-launch-controller.ts");
+
+  // The billing mode decides auto-renew, so the call site has to carry the
+  // owner's value instead of a literal that silently drops it.
+  const submitArguments = callArguments(controller, "workspaceLaunchSubmission(");
+  assert.equal(submitArguments.length, 1, "exactly one submission call site");
+  assert.match(submitArguments[0], /resourceBillingMode/, "the submission call site must read the owner's billing mode");
+  assert.equal(
+    /"none"/.test(submitArguments[0]),
+    false,
+    "the submission call site must not hardcode the unbilled mode"
+  );
+
+  // A component preview carries no total, so the wrong resource type would come
+  // back unpriceable instead of failing loudly.
+  const previewCallSites = consoleUiSources().flatMap(({ path, text }) =>
+    callArguments(text, "previewPricing(").map((argumentsText) => `${path}: ${argumentsText}`)
+  );
+  assert.equal(previewCallSites.length, 1, `previewPricing call sites: ${previewCallSites.join(" | ")}`);
+  assert.match(previewCallSites[0], /workspaceLaunchPreviewRequest\(/);
+
+  assert.deepEqual(workspaceLaunchPreviewRequest("pro"), { resourceType: "workspace", packageId: "pro" });
 });
