@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "1393488f3c80d796c21d9634e95794e670721902",
+  "sourceSHA": "8b8d0617970e3f22ccb3ffe847a36a092909c255",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -1793,7 +1793,8 @@
         "WorkspaceProductService.RenewWorkspace",
         "WorkspaceProductService.GetSubscription",
         "WorkspaceProductService.UpdateRenewalSettings",
-        "WorkspaceAuthorizationReadback.ReadRenewalConsent"
+        "WorkspaceAuthorizationReadback.ReadRenewalConsent",
+        "WorkspaceAccessReadback.ReadWorkspaceAccess"
       ],
       "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
       "contractRefs": [
@@ -3506,6 +3507,9 @@
       "W15",
       "W19",
       "W21"
+    ],
+    "WorkspaceAccessReadback.ReadWorkspaceAccess": [
+      "W18"
     ]
   },
   "baselineCommands": {
