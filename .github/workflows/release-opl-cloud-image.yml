@@ -99,7 +99,25 @@ jobs:
               (.head_sha | test("^[0-9a-f]{40}$"))
             ' "$file" >/dev/null
           }
-          validate_run "$authority/candidate-run.json" "$CANDIDATE_RUN_ID" "$PRODUCT_REPOSITORY" ".github/workflows/build-opl-cloud-candidate.yml"
+          # This workflow is the promotion authority. The Candidate build admits any
+          # workflow-admitted branch, so this gate must not re-impose the Candidate
+          # run's dispatch branch: a head_branch predicate here silently refuses every
+          # Candidate built from an integration branch. It binds the run to the source
+          # commit being released instead, which is strictly more precise than a branch
+          # name, because the workflow definition in effect is then provably the one
+          # committed at that exact ref. The released commit must still be reachable
+          # from canonical main, which the Candidate validation step below proves.
+          validate_candidate_run() {
+            local file="$1" run_id="$2" repository="$3" workflow="$4"
+            jq -e --arg run_id "$run_id" --arg repository "$repository" --arg workflow "$workflow" --arg product_sha "$PRODUCT_SHA" '
+              (.id | tostring) == $run_id and .repository.full_name == $repository and
+              .path == $workflow and .event == "workflow_dispatch" and
+              .status == "completed" and .conclusion == "success" and
+              (.head_sha | test("^[0-9a-f]{40}$")) and
+              .head_sha == $product_sha
+            ' "$file" >/dev/null
+          }
+          validate_candidate_run "$authority/candidate-run.json" "$CANDIDATE_RUN_ID" "$PRODUCT_REPOSITORY" ".github/workflows/build-opl-cloud-candidate.yml"
           validate_run "$authority/local-run.json" "$LOCAL_QUALIFICATION_RUN_ID" "$PRODUCT_REPOSITORY" ".github/workflows/clean-host-qualification.yml"
           validate_run "$authority/instance-decision-run.json" "$INSTANCE_DECISION_RUN_ID" "$INSTANCE_REPOSITORY" ".github/workflows/qualification-decision.yml"
           validate_run "$authority/instance-workspace-run.json" "$INSTANCE_WORKSPACE_RUN_ID" "$INSTANCE_REPOSITORY" ".github/workflows/verify.yml"
@@ -208,6 +226,15 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C product-source rev-parse HEAD)" = "$PRODUCT_SHA"
+          # Admitting the Candidate run by source SHA instead of by dispatch branch must
+          # not weaken the published-source invariant. The released commit stays bound
+          # to canonical main history, so a commit that exists only on an unmerged
+          # branch can never be published even when its branch built a valid Candidate.
+          git -C product-source fetch --no-tags "https://github.com/$PRODUCT_REPOSITORY.git" main:refs/remotes/promotion-source/main
+          if ! git -C product-source merge-base --is-ancestor "$PRODUCT_SHA" refs/remotes/promotion-source/main; then
+            echo "Released Product SHA is not an ancestor of canonical main." >&2
+            exit 1
+          fi
           product_tree="$(git -C product-source rev-parse 'HEAD^{tree}')"
           node --experimental-strip-types product-source/tools/cloud-candidate-receipt.ts validate-bundle --bundle evidence/candidate
           node --experimental-strip-types product-source/tools/cloud-candidate-receipt.ts export-env \

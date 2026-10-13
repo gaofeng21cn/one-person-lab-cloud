@@ -22,6 +22,10 @@ jobs:
     # branch before its work lands on canonical main), so the job does not pin the
     # dispatched ref to main. The publication trust boundary is unchanged: only the
     # repository owner may dispatch, and the Release workflow still runs from main.
+    # Promotion is decided by .github/workflows/release-opl-cloud-image.yml: it admits
+    # this run by its recorded source SHA and artifact digest and requires that commit
+    # to be reachable from canonical main. A contract test fails when the two
+    # workflows disagree about which branches may produce a promotable Candidate.
     if: ${{ github.ref_type == 'branch' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
