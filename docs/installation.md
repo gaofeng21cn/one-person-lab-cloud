@@ -50,37 +50,21 @@ readback for the downloaded bytes.
 
 ### Start the control services
 
-Create `.env` from **`deploy/portable/opl-cloud.env.example`** — not from a root
-`.env.example`. The two templates are not interchangeable: the portable template
-declares 165 variables and the root `.env.example` declares 14, and they share
-only 13 names. Fabric's `OPL_FABRIC_PROVIDER` exists only in the portable one.
-Replace every placeholder, and keep all database passwords, service tokens,
-capability keys, and password seeds independent.
+Create `.env` from `opl-cloud.env.example`, replace every placeholder, and keep
+all database passwords, service tokens, capability keys, and password seeds
+independent. Then start only the base file:
 
-> **Starting the base file alone does not work.** `-f compose.yaml` on its own is
-> not a usable installation. The base file's `fabric` service does not pass
-> `OPL_FABRIC_PROVIDER`, `OPL_FABRIC_SERVE_CAPABILITY_KEY`, or
-> `OPL_FABRIC_SERVE_SERVICE_TOKEN` into the container, so Fabric exits at
-> startup with `OPL_FABRIC_PROVIDER is required` and, under
-> `restart: unless-stopped`, restarts silently forever. This has been observed
-> at 631 restarts over roughly nine hours with no alarm.
->
-> Adding only `OPL_FABRIC_PROVIDER` to the base file is **not** a fix. The
-> Local-Docker provider accepts every `OPL_FABRIC_LOCAL_DOCKER_*` value as
-> optional — it falls back to a default or to an empty string and validates none
-> of them. Fabric would then start, pass its health check, and be unable to
-> provision anything. A crash is at least honest; a healthy Fabric that does
-> nothing is not.
->
-> Use the Candidate assets under `deploy/portable/` described in
-> [Current Candidate Format](#current-candidate-format), which include the two
-> Fabric overlays that supply the provider and its profile.
+```bash
+docker compose --env-file .env -f compose.yaml pull
+docker compose --env-file .env -f compose.yaml up -d
+docker compose --env-file .env -f compose.yaml ps
+curl --fail http://127.0.0.1:8787/api/healthz
+```
 
-The commands below start PostgreSQL, Ledger, and Control Plane. Fabric stays in
-its crash-restart state until a Fabric overlay is supplied, so `ps` shows Fabric
-cycling rather than healthy. Only Control Plane is published to the host, and
-`/api/healthz` proves nothing about Fabric, Workspace creation, provider
-delivery, billing correctness, or Instance readiness.
+This starts PostgreSQL, Ledger, Fabric, and Control Plane as separate processes.
+Only Control Plane is published to the host. `/api/healthz` is a Control Plane
+liveness check; it does not prove Fabric provider readiness, Workspace creation,
+provider delivery, billing correctness, or Instance readiness.
 
 The services require verified PostgreSQL TLS or, when TLS is explicitly
 disabled, an RFC1918 address. If the default Docker subnet conflicts with
@@ -106,12 +90,6 @@ This is the historical `v0.1.7` Local-Docker path. It is not the current source
 Candidate path and must not be supplemented with newer overlays copied from
 `main`.
 
-> It is historical, not the only way Fabric can start. The current formal
-> deployment path is the Candidate format below, whose `compose.fabric-*.yaml`
-> overlays also supply `OPL_FABRIC_PROVIDER`. A customer following this section
-> alone today reaches the crash-restart state described under
-> [Start the control services](#start-the-control-services).
-
 ## Current Candidate Format
 
 Current source constructs a Candidate with nine portable assets plus
@@ -121,17 +99,34 @@ environment template and `opl-cloud-owner-topology.json`. The Candidate receipt
 contract and builder own this exact set. The formal Product Release contract
 still lists its separate ten-file promotion format with
 `opl-cloud-release.json`; neither set describes the five public `v0.1.7` assets.
-Deployment mode and Fabric
-provider are independent selections. This Candidate set — the base file, the
-deployment overlays, the two Fabric overlays, the Local-Workspace overlay, the
-environment template and `opl-cloud-owner-topology.json` — is the **current
-formal deployment path**, and the only one in this document that starts Fabric.
-The current Local-Docker provider also
-requires Workspace storage on a dedicated ext4/XFS mount with project quota
-enabled and rejects unsupported layouts before Launch mutation.
+Deployment mode and Fabric provider are independent selections. Pair the base
+`compose.yaml` with the selected deployment overlay and exactly one Fabric
+overlay: `compose.fabric-local-docker.yaml` or `compose.fabric-tencent-tke.yaml`.
+The current `compose.local-workspace.yaml` enables Workspace workers and supplies
+local PostgreSQL storage; it does not select a Fabric provider or replace its
+overlay.
 
-The base Compose profile still starts the retained Control Plane, Fabric and
-Ledger processes. The product image also carries Console BFF and the extracted
+Create `.env` from the same Candidate's bundled `opl-cloud.env.example`. For
+source development, its source is `deploy/portable/opl-cloud.env.example`; the
+root `.env.example` is not a replacement. Compose uses `.env` for interpolation;
+a value there is not automatically passed into a service container. The current
+base file does not forward `OPL_FABRIC_PROVIDER`; the selected Fabric overlay
+sets it and supplies the provider configuration and mounts. Current Fabric
+rejects an absent provider with `OPL_FABRIC_PROVIDER is required`. On a clean
+Compose startup, this prevents Control Plane from starting because it depends
+on Fabric being healthy. This current-source requirement does not apply to the
+historical `v0.1.7` base file above.
+
+Fabric's `/healthz` is a liveness check, while `/fabric/readiness` calls the
+provider's readiness checks. The Local-Docker provider validates its Secret
+root, storage root and provider profile, and readiness reports those validation
+errors. It also requires Workspace storage on a dedicated ext4/XFS mount with
+project quota enabled and rejects unsupported layouts before Launch mutation.
+These configuration and health checks do not establish Candidate qualification;
+see [Candidate Qualification](runtime/release.md#candidate-qualification).
+
+The retained Compose services are Control Plane, Fabric and Ledger. The product
+image also carries Console BFF and the extracted
 domain-owner executables, but the base profile does not install them. A conforming
 owner-backed installation materializes the addresses, databases, peer identities,
 required variables and browser HTTP surfaces declared by
