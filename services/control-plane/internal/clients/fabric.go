@@ -809,7 +809,7 @@ func (c *fabricHTTPClient) doJSON(req *http.Request, output any) error {
 	c.authorize(req)
 	res, err := c.client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("fabric service unreachable at %s: %w (check FABRIC_URL and ensure fabric service is running)", c.baseURL, err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
