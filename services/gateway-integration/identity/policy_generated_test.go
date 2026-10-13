@@ -19,6 +19,21 @@ func policyFor(t *testing.T, action string) actionPolicy {
 	return policy
 }
 
+func TestMemberCanReadEffectiveBuildPolicyButCannotWriteIt(t *testing.T) {
+	read, write := policyFor(t, "GETBUILDRUNTIMEPOLICY"), policyFor(t, "SETBUILDRUNTIMEPOLICY")
+	if read.owner != api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL || !permitted(read, "member", false) {
+		t.Fatal("catalog member cannot read the Runtime Control effective defaults")
+	}
+	for _, role := range []string{"member", "admin", "owner"} {
+		if permitted(write, role, false) {
+			t.Fatalf("tenant role %s may change platform Build policy", role)
+		}
+	}
+	if !permitted(write, "", true) || !permitted(read, "", true) {
+		t.Fatal("platform administrator policy authority was removed")
+	}
+}
+
 // TestGeneratedPolicyCoversAssignedOwners fixes the generated surface to the
 // contract's per-owner operation counts and to the exact audience/role of the
 // operations the coordinator assigned. A hand-added row, a missing owner or a

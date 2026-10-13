@@ -104,6 +104,8 @@ test("Publisher presents one customer task with the owner facts behind technical
       // Runtime Control projects the one Runtime its effective policy names onto
       // this member-readable catalog. The policy default here is deliberately the
       // second approved row, so a page that picks the first catalog entry fails.
+      if (url.pathname === "/api/v2/catalog/build-policy") return json({ runtimeVersionId: "runtime-default", defaultWebuiVersionId: "webui-default" });
+      if (url.pathname === "/api/v2/catalog/webui-versions") return json({ items: [] });
       if (url.pathname === "/api/v2/catalog/runtime-versions") return json({ items: [
         { id: "runtime-first", name: "First catalog row", versionLabel: "0.0.1", status: "approved", artifactDigest: "sha256:" + "b".repeat(64) },
         { id: "runtime-default", name: "OPL App Runtime default", versionLabel: "26.9.26", status: "approved", artifactDigest: digest, defaultForNewBuilds: policyActive },

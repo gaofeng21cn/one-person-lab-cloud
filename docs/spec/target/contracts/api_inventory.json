@@ -1914,7 +1914,7 @@
       "operationKind": "adopt_workspace"
     },
     {
-      "path": "/api/v2/admin/catalog/build-policy",
+      "path": "/api/v2/catalog/build-policy",
       "method": "GET",
       "operationId": "getBuildRuntimePolicy",
       "features": [
@@ -1925,6 +1925,7 @@
       "response": "BuildRuntimePolicy",
       "status": 200,
       "permissions": [
+        "member",
         "platform_admin"
       ],
       "tables": [

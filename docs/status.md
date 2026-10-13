@@ -3,11 +3,15 @@
 Owner: `opl-cloud`
 Purpose: `replaceable_current_evidence_snapshot`
 State: `current_snapshot`
-Snapshot source: `9db27a91bc236cdf294253a352a3e1682fd35235` on `main`
-Snapshot date: 2026-10-01
+Baseline evidence source: `9db27a91bc236cdf294253a352a3e1682fd35235` on `main`
+Baseline evidence date: 2026-10-01
 
-This page answers one question: what is proven in the Cloud repository at the
-current source revision? It does not describe the target architecture, an
+This page keeps the dated baseline evidence above and explicitly dated source
+updates below. The baseline SHA does not describe the later changes or qualify
+them: each receipt retains its original source, run and environment. The latest
+source review is 2026-10-14 at
+[`9c6d8fe882ace96f2b94d1a4d75afabaef38dca1`](https://github.com/gaofeng21cn/one-person-lab-cloud/tree/9c6d8fe882ace96f2b94d1a4d75afabaef38dca1).
+It answers what the cited evidence proves within its declared scope. It does not describe the target architecture, an
 Instance installation, or a Product Release. The target boundary is in
 [architecture.md](architecture.md), durable decisions are in
 [decisions.md](decisions.md), and open work is in
@@ -45,8 +49,8 @@ headers or entry URL persisted. Real HTTP lifecycle tests exercise both failures
 and the unchanged success path. These local tests do not diagnose the earlier
 patrol's launch 502 or establish new hosted READY evidence.
 
-Clean Host READY evidence is now available below. Current-revision CI for this
-governance change and the patrol's separate launch 502 remain unverified.
+Clean Host READY evidence is now available below. The governance source change passed its current-head PR CI; this does not
+explain the patrol's separate historical launch 502.
 
 ### Exact Candidate Follow-Up
 
@@ -175,8 +179,8 @@ never owns Agent lifecycle, and Ledger never authorizes continuation.
 | Runtime Control | Approved Runtime Release catalog and compatibility facts are implemented | [exact Runtime local build](evidence/source-checks/2026-09-28-exact-runtime-local-build.json) | Approved production Runtime/native-UI inputs and Instance readback remain open |
 | Resource Catalog and Workspace order | Approved plan, quote, acceptance, Workspace order and owner-local recovery are implemented | [Workspace original-order](evidence/source-checks/2026-09-26-workspace-resource-original-order.json), [refund list encoding defect](evidence/source-checks/2026-10-08-refund-policy-list-enum-encoding-defect.json) | Paid production purchase and provider acceptance are Instance obligations; the administrator refund policy list reader now normalizes the stored hyphenated algorithm onto its wire member ([repair source check](evidence/source-checks/2026-10-09-refund-policy-algorithm-enum-encoding.json)), and the repaired source is included in the verified `78dbe9b4` Instance Candidate; current administrator-page HTTP acceptance still requires its own readback |
 | Gateway managed key | Gateway Integration owns issuance, allowlist, Secret delivery reference and revocation; Workspace consumes only opaque binding identity. A production issuer now calls the Sub2API owner's service issuance route (`POST /api/v1/service/workspace-keys`) with the deployment's own service token, and an empty declared selection is resolved by that authority into a concrete, bounded model scope that is recorded with the binding and the original command; the raw key is written only through Fabric's approved Secret store (`FabricCoordination.PutManagedSecret`) | [model update owner](evidence/source-checks/2026-10-01-workspace-model-configuration-update-owner.json) | The live Sub2API service route, its Instance secret wiring and a service revocation path remain to be qualified; the owner tests use the HTTP contract fixture, not the live authority. Production revocation remains refused; the refusal is now recorded as a `RevokeManagedKey` attempt with outcome and cause code, without marking the key revoked |
-| Fabric Secret binding | Serve is the only approved caller: a launch freezes the Workspace's opaque Gateway key handover on its deploy command and Serve alone confirms the initial bind through Fabric, preserving one active binding; explicit predecessor-checked `RebindSecret` stays Serve-owned | [Secret rebind](evidence/source-checks/2026-10-01-fabric-secret-rebind-second-configuration.json), [launch handover](evidence/source-checks/workspace-handover-contracts2-20261010-source-contracts-2.json) | The Workspace model-configuration update still binds through Fabric directly and presents a Fabric-confirmed binding to Serve; it must move onto the Serve handover before that surface is usable. Declared non-Gateway runtime Secret inputs still need an end-to-end delivery contract |
-| Serve model apply/readback | Serve resolves the frozen publisher contract, applies through the declared interface and records only the application's readback | [Serve model readback](evidence/source-checks/2026-09-30-serve-model-configuration-apply-readback.json) | Console/Control Plane callers have not moved; live TKE execution and route acceptance are open |
+| Fabric Secret binding | Serve performs the initial launch handover; authenticated Workspace model updates may bind/rebind through Fabric as well. Both guards retain predecessor and opaque binding/version checks. The current caller fix is [PR 837](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/837) | [Secret rebind](evidence/source-checks/2026-10-01-fabric-secret-rebind-second-configuration.json), [launch handover](evidence/source-checks/workspace-handover-contracts2-20261010-source-contracts-2.json) | Workspace presents a Fabric-confirmed binding to Serve; that source route is admitted. Production mTLS/Secret handover and declared non-Gateway runtime inputs remain separately unqualified |
+| Serve model apply/readback | Serve resolves the frozen publisher contract, applies through the declared interface and records only the application's readback | [Serve model readback](evidence/source-checks/2026-09-30-serve-model-configuration-apply-readback.json) | Console BFF/UI model routes use the Workspace owner; the retained Control Plane routes have separate callers; live TKE execution and route acceptance are open |
 | Serve delivery and access | Deployment/readiness/access ownership and the stable Instance ingress boundary are implemented in source; initial dependency progression is bounded by existing deployment, runtime and lifecycle facts | [Serve access data plane](evidence/source-checks/2026-10-01-serve-access-data-plane-rebase-on-merged-ssot.json); [PostgreSQL progression boundaries](../services/serve/internal/delivery/dependency_progression_postgres_test.go) and [executor dependency/read boundaries](../services/serve/internal/tkeapply/executor_test.go) | Typed application execution, route activation, DNS/TLS and a real Instance request remain unqualified |
 | Owner topology and browser identity | Portable owner topology, HTTP surface and baked Console identity are declared and contract-tested | [topology](evidence/source-checks/2026-09-30-owner-topology-installation-contract.json), [HTTP/identity](evidence/source-checks/2026-09-30-http-surface-and-console-identity-declaration.json) | The Instance manifest still has to install and route the complete set |
 | Ledger | Append-only receipts, evidence and reconciliation boundaries remain in the retained Ledger owner | [local receipts](evidence/source-checks/2026-09-26-ledger-local-receipts.json) | Current Candidate and Instance evidence must be bound to the same bytes |
@@ -200,9 +204,11 @@ confirmed replay, retained attachment identity and no restart on repeated polls.
 These results do not
 qualify a real TKE application, Candidate or Instance.
 
-The current source gate that is safe to claim from this checkout is:
+The retained source-check receipts report the following checks for their own
+revisions. This documentation change does not rerun those suites or rebind a
+historical result to the latest source review:
 
-- `npm run verify:local` passes the repository contract validators, source
+- `npm run verify:local` passed the repository contract validators, source
   tests, Console browser suite, typecheck, lint, build, Go compilation and
   database-free owner tests.
 - Focused PostgreSQL owner tests for Workspace, Serve, Gateway Integration and
@@ -236,16 +242,24 @@ into production.
    [managed-key serving](evidence/source-checks/2026-09-30-tke-serial-managed-key-serving-boundary.json);
    the approved service issuance route itself is owned and implemented by the
    Sub2API owner and still requires live qualification.
-2. Serve's application execution still has an old Fabric adapter path in the
-   retained caller set. The typed application-execution boundary and route
-   activation performer must be completed before the access owner can be
-   qualified on TKE. See [execution and route boundary](evidence/source-checks/2026-09-30-tke-serial-serve-exec-route-boundary.json).
+2. Serve's application execution still reaches Fabric over the retained signed
+   HTTP adapter, and the frozen contract still declares no typed
+   application-execution RPC in `FabricCoordination`. That half of the boundary
+   is unchanged. The Serve-owned route activation performer is no longer
+   missing: Serve fences and activates the Workspace's current route inside the
+   same transaction that records the readiness. What the receipt was still
+   waiting on, and what the Cloud source still does not produce, is the
+   installation Ingress/route-object conditional switch, so the access owner is
+   still unqualified on TKE. See [execution and route boundary](evidence/source-checks/2026-09-30-tke-serial-serve-exec-route-boundary.json).
 3. A Runtime that declares an authorization Secret input other than the
    Gateway-managed input is refused until the runtime Secret delivery channel
    carries the declared binding, version and value through the approved owner
    boundary.
-4. The Console BFF/UI model-configuration callers still use the retained
-   Control Plane path. Source ownership is settled; caller retirement is not.
+4. The Console BFF/UI model-configuration callers no longer use the retained
+   Control Plane path: the UI calls the BFF model routes and both BFF model
+   routes target the Workspace owner for read/write. Source ownership is
+   settled and those callers have moved; this page makes no claim about the
+   remaining unmigrated Control Plane callers.
 5. The installed Instance inspected on September 30 still contained only the
    legacy Control Plane, Fabric and Ledger set. The Cloud topology declaration
    does not install those owners by itself; see

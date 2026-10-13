@@ -41,29 +41,77 @@ export const goModules = Object.freeze([
   "apps/console-bff"
 ]);
 
-export const databaseFreeGoTestSpecs = Object.freeze([
-  { cwd: "packages/contracts/go", packages: ["./..."] },
-  { cwd: "services/control-plane", packages: ["./cmd/control-plane", "./internal/clients"] },
-  // The customer settlement trend owner tests live in internal/server, whose
-  // PostgreSQL-gated suites need the full lane. This bounded run keeps the new
-  // read surface gated without a database.
-  { cwd: "services/control-plane", run: "^TestWorkspaceSettlementTrend", packages: ["./internal/server"] },
-  // Fabric's coordination guards decide which owner may write a Secret binding;
-  // run only those database-free tests here. The package's PostgreSQL binding
-  // readback suites belong to the full lane and must not turn a missing DSN into
-  // a false pass or a PR-gate failure.
-  { cwd: "services/fabric", run: "^TestSecretWriteGuards", packages: ["./cmd/fabric", "./cmd/opl-tencent-provisioner", "./cmd/opl-node-image-retire", "./internal/http", "./coordination"] },
-  { cwd: "services/ledger", packages: ["./cmd/ledger", "./internal/http"] },
-  { cwd: "services/internal/postgresmigrate", run: "^TestValidateTLS", packages: ["./..."] },
-  // The owner runtime's startup and Operation readback rules hold without a database;
-  // its PostgreSQL-gated readiness proof runs in the full lane.
-  { cwd: "services/internal/protectedresource", packages: ["./..."] },
-  // The owner runtime's startup and Operation readback rules hold without a database;
-  // its PostgreSQL-gated readiness proof runs in the full lane.
-  { cwd: "services/internal/ownerservice", run: "^Test(Ready|Register|Operations|Operation|Start)", packages: ["./..."] }
+/**
+ * External capabilities this gate does not provision. A test leaves a
+ * database-free lane only when it declares the requirement itself: a skip whose
+ * reason carries one of these markers, or a failure carrying the
+ * fixture-absent message the owning test helper emits when the capability is
+ * missing. Nothing is filtered by name, so a new money or business test runs in
+ * the lane by default. Anything that is neither executed nor self-declared
+ * fails the gate instead of disappearing.
+ */
+export const databaseFreeCapabilityMarkers = Object.freeze([
+  { capability: "isolated-owner-postgres", marker: "PostgreSQL test gate is not configured" },
+  { capability: "isolated-owner-postgres", marker: "is required for PostgreSQL tests" },
+  { capability: "isolated-owner-postgres", marker: "set OPL_OWNER_MIGRATION_TEST_ADMIN_DSN to an isolated PostgreSQL administrator DSN" },
+  { capability: "isolated-data-scale", marker: "set OPL_CAPACITY_TESTS=1 to run the isolated 1000-user data-scale test" }
 ]);
 
-export const localVerificationSteps = Object.freeze([
+/**
+ * The money and business chain the control-plane database-free lane must always
+ * account for. Each name must appear in that lane's own run as an executed
+ * test, or as a test excluded by a declared capability marker. A name that
+ * stops running, is renamed, or is filtered away fails the gate rather than
+ * quietly reducing coverage.
+ */
+export const declaredMoneyChainTests = Object.freeze([
+  "TestD1FinanceBusinessChain",
+  "TestD1RefundReservationPostgres",
+  "TestD1RenewalRejectsConflictingTransactionBeforeFulfillment",
+  "TestD1RenewalRefundRequiresTheOriginalConfirmedDebit",
+  "TestD1RenewalUnknownDebitWaitsForAuthoritativeHistoryAcrossRestart",
+  "TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp",
+  "TestGatewayRevealAuditFailureDoesNotReturnKey",
+  "TestGatewayRevealDoesNotLeakAcrossAccounts",
+  "TestGatewayRevealFailsClosed"
+]);
+
+export type DatabaseFreeGoTestSpec = {
+  cwd: string;
+  packages: string[];
+  /** Tests this lane must always execute or explicitly exclude. */
+  declaredTests?: readonly string[];
+};
+
+export const databaseFreeGoTestSpecs: readonly DatabaseFreeGoTestSpec[] = Object.freeze([
+  { cwd: "packages/contracts/go", packages: ["./..."] },
+  { cwd: "services/control-plane", packages: ["./cmd/control-plane", "./internal/clients"] },
+  // The customer settlement, refund, renewal and Gateway reconciliation chain
+  // lives in internal/server, together with PostgreSQL-gated suites. The whole
+  // package runs here: the gated suites declare their own capability and are
+  // reported as excluded, and the declared money chain below proves it.
+  { cwd: "services/control-plane", packages: ["./internal/server"], declaredTests: declaredMoneyChainTests },
+  { cwd: "services/fabric", packages: ["./cmd/fabric", "./cmd/opl-tencent-provisioner", "./cmd/opl-node-image-retire", "./internal/http", "./coordination"] },
+  { cwd: "services/ledger", packages: ["./cmd/ledger", "./internal/http"] },
+  { cwd: "services/internal/postgresmigrate", packages: ["./..."] },
+  // The owner runtime's startup and Operation readback rules hold without a
+  // database; its PostgreSQL-gated isolation proof declares the capability it
+  // needs and is reported as excluded here instead of being name-filtered out.
+  { cwd: "services/internal/protectedresource", packages: ["./..."] },
+  { cwd: "services/internal/ownerservice", packages: ["./..."] }
+]);
+
+type VerificationStep = {
+  name: string;
+  command: string;
+  args: string[];
+  cwd?: string;
+  evidence?: "node" | "go" | "go-coverage";
+  /** Tests a database-free lane must execute or explicitly exclude. */
+  declaredTests?: readonly string[];
+};
+
+export const localVerificationSteps: readonly VerificationStep[] = Object.freeze([
   { name: "product boundary", command: "npm", args: ["run", "validate:product-boundary"] },
   { name: "Generated contracts freshness", command: "npm", args: ["run", "verify:generated-contracts"] },
   { name: "Development tools typecheck", command: "npm", args: ["run", "typecheck:development-tools"] },
@@ -81,13 +129,13 @@ export const localVerificationSteps = Object.freeze([
   ...databaseFreeGoTestSpecs.map((spec) => ({
     name: `${spec.cwd} database-free tests`,
     command: "go",
-    args: ["test", "-count=1", ...(spec.run ? ["-run", spec.run] : []), ...spec.packages],
-    cwd: spec.cwd
+    args: ["test", "-count=1", "-json", ...spec.packages],
+    cwd: spec.cwd,
+    evidence: "go-coverage" as const,
+    ...(spec.declaredTests ? { declaredTests: spec.declaredTests } : {})
   })),
   { name: "Git whitespace", command: "git", args: ["diff", "--check"] }
 ]);
-
-type VerificationStep = { name: string; command: string; args: string[]; cwd?: string; evidence?: "node" | "go" };
 
 const developmentToolPaths = ["tools/", "tests/tools/", "AGENTS.md", "DEV_GUIDE.md", "package.json", ".github/"];
 const generatedContractPaths = ["packages/contracts/proto/", "packages/contracts/go/", "services/gateway-integration/identity/", "apps/console-bff/internal/httpapi/"];
@@ -1029,6 +1077,12 @@ function runProcess(command: string, args: string[], { cwd = root, env = process
 
 async function runStep(step: VerificationStep) {
   printStep(step.name);
+  if (step.evidence === "go-coverage") {
+    const coverage = await runDatabaseFreeGoLane(step, stepEnv());
+    process.stderr.write(`${databaseFreeCoverageReport(coverage)}\n`);
+    if (coverage.reason) throw new Error(`${step.name}: ${coverage.reason}`);
+    return;
+  }
   const result = await runProcess(step.command, step.args, { cwd: stepCwd(step), env: stepEnv(), capture: Boolean(step.evidence) });
   if (step.evidence) {
     process.stdout.write(result.stdout);
@@ -1179,6 +1233,152 @@ export function summarizeGoTestFailures(events: readonly GoTestEvent[]) {
     other.package === candidate.package && other.name.startsWith(`${candidate.name}/`)
   )).sort((left, right) => left.package.localeCompare(right.package) || left.name.localeCompare(right.name));
   return { tests, packages: [...failedPackages].sort() };
+}
+
+/** Parse one captured `go test -json` stream into its events, in order. */
+export function parseGoTestEvents(stdout: string): GoTestEvent[] {
+  const events: GoTestEvent[] = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const event = JSON.parse(line);
+      if (event && typeof event === "object") events.push(event as GoTestEvent);
+    } catch { events.push({ Output: line }); }
+  }
+  return events;
+}
+
+export type DatabaseFreeExclusion = { name: string; capability: string; reason: string };
+export type DatabaseFreeCoverage = {
+  executed: string[];
+  excluded: DatabaseFreeExclusion[];
+  failed: { name: string; output: string }[];
+  undeclared: { name: string; reason: string }[];
+  declared: { accounted: string[]; missing: string[] };
+  reason?: string;
+};
+
+function firstReason(text: string) {
+  for (const line of text.split(/\r?\n/)) {
+    const match = line.match(/^\s+\S+\.go:\d+: (.*\S)\s*$/u);
+    if (match) return match[1];
+  }
+  return "no reported reason";
+}
+
+/**
+ * Classify one database-free lane run against the declared capability markers.
+ * Executed tests, capability-excluded tests, real failures, undeclared skips
+ * and unaccounted declared tests are all reported separately, so coverage that
+ * shrinks — by rename, deletion or filtering — is visible instead of silent.
+ */
+export function databaseFreeCoverage(
+  events: readonly GoTestEvent[],
+  options: { markers?: readonly { capability: string; marker: string }[]; declared?: readonly string[] } = {}
+): DatabaseFreeCoverage {
+  const markers = options.markers ?? databaseFreeCapabilityMarkers;
+  const declared = options.declared ?? [];
+  const output = new Map<string, string>();
+  const started = new Set<string>();
+  const terminal = new Map<string, "pass" | "fail" | "skip">();
+  const packages = new Map<string, string>();
+  let invalid = false;
+  for (const event of events) {
+    if (!event || typeof event.Package !== "string" || !event.Package || typeof event.Action !== "string") { invalid = true; continue; }
+    const id = typeof event.Test === "string" && event.Test ? `${event.Package}\0${event.Test}` : undefined;
+    if (id && typeof event.Output === "string") output.set(id, `${output.get(id) ?? ""}${event.Output}`);
+    if (id && event.Action === "run") started.add(id);
+    if (id && ["pass", "fail", "skip"].includes(event.Action)) {
+      if (!started.has(id) || terminal.has(id)) invalid = true;
+      terminal.set(id, event.Action as "pass" | "fail" | "skip");
+    }
+    if (!id && ["pass", "fail", "skip"].includes(event.Action)) packages.set(event.Package, event.Action);
+  }
+  const byName = new Map<string, { id: string; action: "pass" | "fail" | "skip" }>();
+  for (const [id, action] of terminal) byName.set(id.split("\0")[1], { id, action });
+  const executed: string[] = [];
+  const excluded = new Map<string, DatabaseFreeExclusion>();
+  const failed: { name: string; output: string }[] = [];
+  const undeclared: { name: string; reason: string }[] = [];
+  // Subtests are decided before their parents so a parent that fails only
+  // because its capability-gated children never ran is excluded with them.
+  const order = [...terminal].sort((left, right) => {
+    const depth = (id: string) => id.split("\0")[1].split("/").length;
+    return depth(right[0]) - depth(left[0]) || left[0].localeCompare(right[0]);
+  });
+  for (const [id, action] of order) {
+    const name = id.split("\0")[1];
+    const text = output.get(id) ?? "";
+    if (action === "pass") { executed.push(name); continue; }
+    // Only the fixture helper's sole reported reason can declare a missing
+    // capability. A marker elsewhere in the log cannot erase a real assertion.
+    const reasons = text.split(/\r?\n/).filter(line => /^\s+\S+\.go:\d+: /u.test(line));
+    const declaredMarker = reasons.length === 1 ? markers.find((candidate) => firstReason(text).includes(candidate.marker)) : undefined;
+    if (declaredMarker) {
+      excluded.set(name, { name, capability: declaredMarker.capability, reason: firstReason(text) });
+      continue;
+    }
+    if (action === "skip") { undeclared.push({ name, reason: firstReason(text) }); continue; }
+    const children = [...byName].filter(([child]) => child.startsWith(`${name}/`));
+    const inherited = [...new Set(children.map(([child]) => excluded.get(child)?.capability).filter(Boolean) as string[])].sort();
+    const childFailure = children.some(([child, entry]) => entry.action === "fail" && !excluded.has(child));
+    if (inherited.length > 0 && !childFailure) {
+      excluded.set(name, { name, capability: inherited[0], reason: `children require ${inherited.join(", ")}` });
+      continue;
+    }
+    failed.push({ name, output: text });
+  }
+  const account = (name: string) => executed.includes(name) || excluded.has(name);
+  const accounted = declared.filter(account);
+  const missing = declared.filter((name) => !account(name));
+  const unexplainedPackages = [...packages].filter(([pkg, action]) => action === "fail" &&
+    ![...terminal].some(([id, testAction]) => id.startsWith(`${pkg}\0`) && testAction === "fail"));
+  const reason = invalid || started.size !== terminal.size || packages.size === 0 ? "invalid or incomplete Go JSON summary" :
+    unexplainedPackages.length ? `Go package failed without a test failure: ${unexplainedPackages.map(([pkg]) => pkg).join(",")}` :
+    executed.length === 0 ? "no Go tests executed" :
+    failed.length > 0 ? `Go tests failed: ${failed.map((entry) => entry.name).join(",")}` :
+    undeclared.length > 0 ? `tests skipped without a declared capability marker: ${undeclared.map((entry) => `${entry.name} (${entry.reason})`).join("; ")}` :
+    missing.length > 0 ? `declared coverage is not accounted for: ${missing.join(",")}` : undefined;
+  return {
+    executed: executed.sort(), excluded: [...excluded.values()].sort((left, right) => left.name.localeCompare(right.name)),
+    failed: failed.sort((left, right) => left.name.localeCompare(right.name)), undeclared: undeclared.sort((left, right) => left.name.localeCompare(right.name)),
+    declared: { accounted, missing }, ...(reason ? { reason } : {})
+  };
+}
+
+/** The visible account of one lane: every executed, excluded or failed test. */
+export function databaseFreeCoverageReport(coverage: DatabaseFreeCoverage) {
+  const lines = [`database-free coverage: executed=${coverage.executed.length} excluded=${coverage.excluded.length} declared=${coverage.declared.accounted.length}/${coverage.declared.accounted.length + coverage.declared.missing.length}`];
+  const byCapability = new Map<string, string[]>();
+  for (const item of coverage.excluded) byCapability.set(item.capability, [...(byCapability.get(item.capability) ?? []), `${item.name} (${item.reason})`]);
+  for (const [capability, names] of byCapability) {
+    lines.push(`  excluded by unprovisioned capability ${capability}: ${names.length}`);
+    for (const name of names) lines.push(`    ${name}`);
+  }
+  for (const item of coverage.failed) {
+    lines.push(`  failed ${item.name}`);
+    for (const line of item.output.split(/\r?\n/).filter((value) => value.trim()).slice(-8)) lines.push(`    ${line.trim()}`);
+  }
+  for (const item of coverage.undeclared) lines.push(`  skipped without a declared capability marker ${item.name}: ${item.reason}`);
+  for (const name of coverage.declared.missing) lines.push(`  declared but not accounted for ${name}`);
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * Execute one whole-package database-free lane and classify its own run. The
+ * non-zero exit code of a capability-gated suite is classified, not trusted:
+ * only a declared capability marker excuses it.
+ */
+export async function runDatabaseFreeGoLane(step: VerificationStep, env: NodeJS.ProcessEnv = process.env): Promise<DatabaseFreeCoverage> {
+  const result = await runProcess(step.command, step.args, { cwd: stepCwd(step), env, capture: true, allowFailure: true });
+  const coverage = databaseFreeCoverage(parseGoTestEvents(result.stdout), { declared: step.declaredTests ?? [] });
+  // A build or invocation failure produces no test events at all; the compiler
+  // output is the only evidence, so it becomes the reason instead of a
+  // misleading "no tests" verdict.
+  if (coverage.executed.length + coverage.excluded.length + coverage.failed.length + coverage.undeclared.length === 0) {
+    return { ...coverage, reason: `go test executed no tests (${result.signal || `exit ${result.code}`}): ${result.stderr.trim().slice(-2000)}` };
+  }
+  return coverage;
 }
 
 function runGoJSONWithoutSkips(args: string[], { cwd, env }: { cwd: string; env: NodeJS.ProcessEnv }): Promise<GoTestSummary> {

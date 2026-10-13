@@ -165,6 +165,8 @@ for (const identity of ["legacy", "cloud"] as const) {
           // Runtime Control projects the one Runtime its effective policy names onto
           // this member-readable catalog; the Publisher page must report that row
           // and never fall back to another approved catalog entry.
+          "/api/v2/catalog/build-policy": { runtimeVersionId: "runtime-1", defaultWebuiVersionId: "webui-missing" },
+          "/api/v2/catalog/webui-versions": { items: [{ id: "webui-other", name: "Unrelated approved WebUI", versionLabel: "1.0.1", status: "approved", artifactDigest: "sha256:" + "c".repeat(64) }] },
           "/api/v2/catalog/runtime-versions": { items: [{ id: "runtime-latest", name: "Newest catalog row", versionLabel: "1.0.1", status: "approved", artifactDigest: "sha256:" + "b".repeat(64) }, { id: "runtime-1", name: "Fixture Runtime", versionLabel: "1.0.0", status: "approved", artifactDigest: "sha256:" + "a".repeat(64), defaultForNewBuilds: true }] },
           "/api/v2/delivery/ws-1": {
             workspaceId: "ws-1",
@@ -213,7 +215,9 @@ for (const identity of ["legacy", "cloud"] as const) {
         assert.match(publisherFacts, /Agent WebUI[\s\S]*暂不可用/);
         assert.ok(v2Requests.includes("/api/v2/namespaces"));
         assert.ok(v2Requests.includes("/api/v2/catalog/runtime-versions"));
-        assert.ok(!v2Requests.includes("/api/v2/catalog/webui-versions"), "the page must not fall back to the WebUI catalog");
+        assert.ok(v2Requests.includes("/api/v2/catalog/build-policy"));
+        assert.ok(v2Requests.includes("/api/v2/catalog/webui-versions"));
+        assert.doesNotMatch(publisherFacts, /Unrelated approved WebUI/);
       }
 
       // A direct URL must obey the same build boundary as visible navigation.

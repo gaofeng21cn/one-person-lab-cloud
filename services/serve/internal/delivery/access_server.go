@@ -45,7 +45,7 @@ func startAccessEntry(server *ownerservice.Server, entry *AccessEntry, address s
 	// refuse a Workspace whose entitlement the owner has closed, and that is
 	// visible in the process log rather than discovered at an incident.
 	if entry.Entitlement == nil {
-		log.Printf("serve access entry has no entitlement gate wired: expiry is an owner verdict that Serve does not compute, so this entry resolves on binding readiness alone")
+		log.Printf("serve access entry has no entitlement gate wired: expiry is an owner verdict that Serve does not compute, so this entry refuses application requests")
 	}
 	go func() {
 		log.Printf("serve access entry listening on %s", listener.Addr())

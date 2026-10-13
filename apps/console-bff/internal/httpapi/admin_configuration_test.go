@@ -54,6 +54,29 @@ func (p *runtimeControlProbe) SetBuildRuntimePolicy(_ context.Context, r *api.Se
 		EffectiveAt: timestamppb.New(time.Unix(1759000000, 0)), CreatedAt: timestamppb.New(time.Unix(1759000000, 0))}, nil
 }
 
+func TestMemberBuildPolicyReadUsesTenantAuthorityAndDoesNotWrite(t *testing.T) {
+	identity := allowedIdentity()
+	identity.decision.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETBUILDRUNTIMEPOLICY
+	identity.decision.AudienceOwner = api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL
+	identity.decision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG}
+	probe := &runtimeControlProbe{}
+	handler := NewPublisherHandler(nil, probe, nil, identity)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/catalog/build-policy"))
+	if response.Code != http.StatusOK || probe.policyReads != 1 || probe.policySets != 0 {
+		t.Fatalf("status=%d reads=%d writes=%d body=%s", response.Code, probe.policyReads, probe.policySets, response.Body.String())
+	}
+	if c := probe.readPolicy.GetContext(); c.GetActorId() != "actor-1" || c.GetScope().GetTenant().GetTenantId() != "tenant-1" || c.GetScope().GetPlatform() != nil {
+		t.Fatalf("member policy read lost tenant authority: %v", c)
+	}
+	identity.decision.Result = api.AuthorizationResult_AUTHORIZATION_RESULT_DENIED
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/catalog/build-policy"))
+	if response.Code != http.StatusForbidden || probe.policyReads != 1 {
+		t.Fatalf("denied read status=%d reads=%d", response.Code, probe.policyReads)
+	}
+}
+
 // TestRuntimeVersionRegisterRouteCarriesPlatformScopeAndOwnerIdempotency proves
 // the administrator runtime admission route answers with the contract's 201,
 // forwards only the authenticated caller's platform scope, the caller's

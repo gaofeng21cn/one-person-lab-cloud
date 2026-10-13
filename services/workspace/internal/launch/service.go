@@ -27,6 +27,7 @@ import (
 type Service struct {
 	api.UnimplementedWorkspaceProductServiceServer
 	api.UnimplementedOwnerCommitReadbackServer
+	api.UnimplementedWorkspaceAccessReadbackServer
 	Store      *ownerstore.Store
 	Auth       *ownerservice.Authorizer
 	Catalog    api.CatalogCoordinationClient
@@ -42,7 +43,8 @@ type Service struct {
 	// Gateway is the wallet authority the original order is charged from. A Local
 	// no-charge order funds itself through the Ledger receipt, so an unset Gateway
 	// leaves a paid order awaiting its funding owner instead of inventing a charge.
-	Gateway api.GatewayCoordinationClient
+	Gateway   api.GatewayCoordinationClient
+	accessNow func() time.Time
 }
 
 func New(db *sql.DB, auth *ownerservice.Authorizer, catalog api.CatalogCoordinationClient, fabric api.FabricCoordinationClient, identity api.CloudIdentityAuthorizationClient) (*Service, error) {
@@ -59,6 +61,7 @@ func (s *Service) Register(server *ownerservice.Server) error {
 	return server.RegisterGroup("WorkspaceProductService", func(g *grpc.Server) {
 		api.RegisterWorkspaceProductServiceServer(g, s)
 		api.RegisterOwnerCommitReadbackServer(g, s)
+		api.RegisterWorkspaceAccessReadbackServer(g, s)
 	})
 }
 func id(prefix string) string {

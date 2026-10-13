@@ -4853,7 +4853,7 @@ paths:
             schema:
               $ref: '#/components/schemas/AdoptWorkspaceRequest'
       x-operation-kind: adopt_workspace
-  /api/v2/admin/catalog/build-policy:
+  /api/v2/catalog/build-policy:
     get:
       operationId: getBuildRuntimePolicy
       summary: getBuildRuntimePolicy
@@ -4863,6 +4863,7 @@ paths:
       - F03
       x-owner: runtime_control
       x-permission:
+      - member
       - platform_admin
       x-tables:
       - runtime_control.catalog_policies
@@ -4891,6 +4892,7 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
         '503':
           $ref: '#/components/responses/ErrorResponse'
+  /api/v2/admin/catalog/build-policy:
     put:
       operationId: setBuildRuntimePolicy
       summary: setBuildRuntimePolicy

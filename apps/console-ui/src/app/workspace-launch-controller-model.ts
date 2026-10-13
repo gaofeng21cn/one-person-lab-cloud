@@ -1,7 +1,12 @@
 import type {
+  PlanId,
   PricingCatalogResponse,
+  PricingPlan,
+  PricingPreviewRequest,
+  PricingPreviewResponse,
   WorkspaceLaunchRequest,
-  WorkspaceLaunchResponse
+  WorkspaceLaunchResponse,
+  WorkspacePricePreview
 } from "../api/dtos.ts";
 import { isTerminalWorkspaceLaunch } from "../api/workspaces-api.ts";
 
@@ -75,6 +80,99 @@ export function canSubmitWorkspaceLaunch(readiness: WorkspaceLaunchSubmitReadine
     && canReviewWorkspaceLaunch(readiness);
 }
 
+// workspacePricePreview keeps a quote only when the owner priced it in full.
+// "No price" means the owner returned no total or no components, and that is
+// reported as no price rather than as a fabricated amount. A total of zero is
+// not that case: when resource billing is off the owner zeroes every component
+// and returns 0, which is the owner's own price for this purchase.
+export function workspacePricePreview(response: PricingPreviewResponse): WorkspacePricePreview | null {
+  const { compute, storage, totalChargeUsdMicros } = response;
+  if (!compute || !storage || typeof totalChargeUsdMicros !== "number") return null;
+  return {
+    resourceType: "workspace",
+    priceVersion: response.priceVersion,
+    packageId: response.packageId,
+    currency: response.currency,
+    displayCurrency: response.displayCurrency || response.currency,
+    billingUnit: response.billingUnit || "",
+    compute,
+    storage,
+    totalChargeUsdMicros
+  };
+}
+
+// workspaceLaunchPricingSelection is the single derivation of the selected plan
+// and its price. Both owners of the number are owner readbacks: the plan list
+// from the Resource Catalog and the price from the owner's own preview. A plan
+// the catalog did not return, or a price the owner did not quote, stays null.
+export function workspaceLaunchPricingSelection(state: {
+  catalog: PricingCatalogResponse | null;
+  planId: PlanId;
+  previews: Partial<Record<PlanId, WorkspacePricePreview>>;
+}): { selectedPlan: PricingPlan | null; selectedPrice: number | null } {
+  const selectedPlan = state.catalog?.packages.find((plan) => plan.id === state.planId) || null;
+  const selectedPrice = selectedPlan ? state.previews[selectedPlan.id]?.totalChargeUsdMicros ?? null : null;
+  return { selectedPlan, selectedPrice };
+}
+
+// WorkspaceLaunchReviewState is what a caller already holds. WorkspaceLaunchController
+// satisfies it structurally, so the page and the controller read the same fields.
+export interface WorkspaceLaunchReviewState {
+  launchRecoveryState: WorkspaceLaunchRecoveryState;
+  launchName: string;
+  selectedPlan: PricingPlan | null;
+  selectedPrice: number | null;
+  balanceSufficient: boolean | null;
+}
+
+export function workspaceLaunchReviewReadiness(state: WorkspaceLaunchReviewState): WorkspaceLaunchReviewReadiness {
+  return {
+    recoveryState: state.launchRecoveryState,
+    hasName: Boolean(state.launchName.trim()),
+    hasSelectedPlan: Boolean(state.selectedPlan),
+    selectedPriceKnown: state.selectedPrice !== null,
+    balanceSufficient: state.balanceSufficient === true
+  };
+}
+
+// The confirm button and the controller's own review action ask this one
+// function, so the page can no longer offer a step the controller refuses, and a
+// second readiness expression cannot drift away from the model.
+export function workspaceLaunchReviewBlocked(state: WorkspaceLaunchReviewState): boolean {
+  return !canReviewWorkspaceLaunch(workspaceLaunchReviewReadiness(state));
+}
+
+function micros(value: string | null): bigint | null {
+  return value !== null && /^\d+$/.test(value) ? BigInt(value) : null;
+}
+
+// A read that priced only some packages names the ones it could not price, so
+// the page can say which plan is unpriced instead of reporting the whole catalog
+// as unavailable. Any other error means the catalog itself could not be read.
+export function workspaceLaunchUnpricedPackages(error: string): string[] {
+  const match = /^unpriced_packages:(.+)$/.exec(error);
+  return match ? match[1].split(",").filter(Boolean) : [];
+}
+
+// A package purchase is prepaid from the customer's own Gateway balance, so that
+// balance is the number that answers this question. The Agent launch wallet
+// belongs to the Agent product and says nothing about whether this purchase can
+// be paid for. null means the owner has not told us yet, and null blocks review:
+// an unpriced or unread purchase must not be offered as affordable.
+export function workspaceLaunchBalance(state: {
+  resourceBillingMode: "enabled" | "none" | undefined;
+  customerOwned: boolean;
+  selectedPrice: number | null;
+  walletUsdMicros: string | null;
+}): boolean | null {
+  if (state.customerOwned) return true;
+  // Nothing is charged when resource billing is off, so no balance is owed.
+  if (state.resourceBillingMode === "none") return true;
+  if (state.selectedPrice === null || !Number.isSafeInteger(state.selectedPrice) || state.selectedPrice < 0) return null;
+  const balance = micros(state.walletUsdMicros);
+  return balance === null ? null : balance >= BigInt(state.selectedPrice);
+}
+
 export function shouldRetainWorkspaceLaunchIntent(error: unknown): boolean {
   if (!error || typeof error !== "object" || !("payload" in error)) return false;
   const payload = (error as { payload?: unknown }).payload;
@@ -100,14 +198,29 @@ export function shouldPollWorkspaceLaunch(operation: WorkspaceLaunchResponse): b
 }
 
 // workspaceLaunchProvisioningMode is the one place this client states its
-// provisioning shape. A customer Launch delivers resourced capacity only; the
-// application is deployed afterwards as its own authorized operation.
-export const workspaceLaunchProvisioningMode = "resource_only" as const;
+// provisioning shape. A new customer Launch confirms an application and a plan
+// in one step: with neither a Package nor a separate WebUI selected, Cloud
+// deploys the exact approved OPL App Runtime Release
+// (docs/spec/target/00_master_index.md D01, 04_frontend_interaction_spec.md:15,
+// 11_ui_ux_design.md:89). The Control Plane runs its default application
+// reconciliation branch for every mode other than resource_only
+// (routes_workspace_launch.go:45-49), so this states that default App product.
+// resource_only is the retained historical contract for pre-existing
+// resource-only purchases (docs/spec/target/09_legacy_migration.md:9) and must
+// not be sent for a new Launch.
+export const workspaceLaunchProvisioningMode = "full" as const;
 
 // WorkspaceLaunchIntentInput is what a customer chooses: a name, a plan and
 // whether the monthly charge renews. The provisioning shape is not theirs to
 // pick, so submission is the single owner that composes the wire request.
 export type WorkspaceLaunchIntentInput = Omit<WorkspaceLaunchRequest, "provisioningMode">;
+
+// workspaceLaunchPreviewRequest asks for the package purchase itself. A
+// component preview carries no total, so asking the owner for the wrong resource
+// type would return a number this client cannot turn into a price.
+export function workspaceLaunchPreviewRequest(planId: PlanId): PricingPreviewRequest {
+  return { resourceType: "workspace", packageId: planId };
+}
 
 export function workspaceLaunchSubmission(
   input: WorkspaceLaunchIntentInput,

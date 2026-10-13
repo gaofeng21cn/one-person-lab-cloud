@@ -222,6 +222,20 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 	if err != nil {
 		return err
 	}
+	if address := strings.TrimSpace(os.Getenv("OPL_WORKSPACE_ADDR")); address != "" {
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Workspace), os.Getenv("OPL_WORKSPACE_TOKEN"))
+		if err != nil {
+			return err
+		}
+		conn, err := grpc.NewClient(address, options...)
+		if err != nil {
+			return err
+		}
+		if err = server.TrackCloser(conn); err != nil {
+			return err
+		}
+		accessEntry.Entitlement = WorkspaceEntitlement{Client: api.NewWorkspaceAccessReadbackClient(conn)}
+	}
 	service.Access = accessEntry
 	if err := startAccessEntry(server, accessEntry, os.Getenv("OPL_SERVE_ACCESS_ADDR")); err != nil {
 		return err

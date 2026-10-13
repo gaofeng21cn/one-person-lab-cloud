@@ -11,7 +11,11 @@ import { generationInputs, generatedOutputs } from "../../tools/verify-generated
 import { generatedPlanArtifacts } from "../../tools/verify-development-plan.ts";
 
 import {
+  databaseFreeCapabilityMarkers,
+  databaseFreeCoverage,
+  databaseFreeCoverageReport,
   databaseFreeGoTestSpecs,
+  declaredMoneyChainTests,
   goConfigurationEnv,
   goModules,
   isLoopbackOwnerDatabaseDsn,
@@ -22,6 +26,7 @@ import {
   resolveApprovedBrowser,
   resolveOwnerDatabaseFixture,
   resolveTrustedPython,
+  runDatabaseFreeGoLane,
   runDevelopmentCheck,
   runVerification,
   focusedVerificationSteps,
@@ -161,6 +166,156 @@ test("PR validate keeps the exhaustive source gate and dispatches the plan gate 
   }
   await assert.rejects(invoke("", "0"), /explicit base and head Git SHAs/);
   await assert.rejects(invoke("0".repeat(40), "0"));
+});
+
+test("no database-free lane decides coverage by a test name prefix", () => {
+  for (const spec of databaseFreeGoTestSpecs) {
+    assert.ok(!("run" in spec), `${spec.cwd} still selects tests by name prefix`);
+  }
+  const lane = localVerificationSteps.find((step) => step.cwd === "services/control-plane" && step.args.includes("./internal/server"));
+  assert.ok(lane, "control-plane internal/server must run in the database-free lane");
+  assert.deepEqual(lane!.args, ["test", "-count=1", "-json", "./internal/server"]);
+  assert.equal(lane!.evidence, "go-coverage");
+  assert.deepEqual(lane!.declaredTests, declaredMoneyChainTests);
+  for (const name of [
+    "TestGatewayRevealFailsClosed",
+    "TestGatewayRevealDoesNotLeakAcrossAccounts",
+    "TestGatewayRevealAuditFailureDoesNotReturnKey"
+  ]) {
+    assert.ok(declaredMoneyChainTests.includes(name), `${name} must be declared coverage`);
+  }
+  assert.deepEqual(
+    databaseFreeGoTestSpecs.filter((spec) => spec.declaredTests),
+    [{ cwd: "services/control-plane", packages: ["./internal/server"], declaredTests: declaredMoneyChainTests }]
+  );
+});
+
+const coveragePackage = "opl-cloud/services/control-plane/internal/server";
+function coverageEvents(...events: Record<string, unknown>[]) {
+  return [
+    { Action: "start", Package: coveragePackage },
+    ...events.map((event) => ({ Package: coveragePackage, ...event })),
+    { Action: events.some(event => event.Action === "fail") ? "fail" : "pass", Package: coveragePackage }
+  ];
+}
+const fixtureAbsent = "  d1_finance_chain_test.go:28: CONTROL_PLANE_TEST_DATABASE_URL or OPL_POSTGRES_TESTS=1 is required for PostgreSQL tests\n";
+const skipDeclared = "  d2_finance_chain_test.go:20: PostgreSQL test gate is not configured\n";
+
+test("database-free coverage separates executed, capability-excluded and failed tests", () => {
+  const coverage = databaseFreeCoverage(coverageEvents(
+    { Action: "run", Test: "TestGatewayRevealFailsClosed" },
+    { Action: "output", Test: "TestGatewayRevealFailsClosed", Output: "=== RUN   TestGatewayRevealFailsClosed\n" },
+    { Action: "pass", Test: "TestGatewayRevealFailsClosed" },
+    { Action: "run", Test: "TestD1FinanceBusinessChain" },
+    { Action: "output", Test: "TestD1FinanceBusinessChain", Output: skipDeclared },
+    { Action: "skip", Test: "TestD1FinanceBusinessChain" },
+    { Action: "run", Test: "TestD1RefundReservationPostgres" },
+    { Action: "output", Test: "TestD1RefundReservationPostgres", Output: "=== RUN   TestD1RefundReservationPostgres\n" },
+    { Action: "fail", Test: "TestD1RefundReservationPostgres" },
+    { Action: "run", Test: "TestD1RefundReservationPostgres/postgres" },
+    { Action: "output", Test: "TestD1RefundReservationPostgres/postgres", Output: fixtureAbsent },
+    { Action: "fail", Test: "TestD1RefundReservationPostgres/postgres" },
+    { Action: "run", Test: "TestSettlementRoundTrips" },
+    { Action: "output", Test: "TestSettlementRoundTrips", Output: "    chain_test.go:90: settlement mismatch\n" },
+    { Action: "fail", Test: "TestSettlementRoundTrips" }
+  ), { declared: declaredMoneyChainTests });
+  assert.deepEqual(coverage.executed, ["TestGatewayRevealFailsClosed"]);
+  assert.deepEqual(coverage.excluded.map((entry) => entry.name), [
+    "TestD1FinanceBusinessChain", "TestD1RefundReservationPostgres", "TestD1RefundReservationPostgres/postgres"
+  ]);
+  assert.equal(coverage.excluded[0].capability, "isolated-owner-postgres");
+  // A parent fails only because its capability-gated child never ran.
+  assert.equal(coverage.excluded[1].reason, "children require isolated-owner-postgres");
+  assert.deepEqual(coverage.failed.map((entry) => entry.name), ["TestSettlementRoundTrips"]);
+  assert.deepEqual(coverage.declared.missing, [
+    "TestD1RenewalRejectsConflictingTransactionBeforeFulfillment",
+    "TestD1RenewalRefundRequiresTheOriginalConfirmedDebit",
+    "TestD1RenewalUnknownDebitWaitsForAuthoritativeHistoryAcrossRestart",
+    "TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp",
+    "TestGatewayRevealAuditFailureDoesNotReturnKey",
+    "TestGatewayRevealDoesNotLeakAcrossAccounts"
+  ]);
+  // A real failure outranks every other finding.
+  assert.equal(coverage.reason, "Go tests failed: TestSettlementRoundTrips");
+  const report = databaseFreeCoverageReport(coverage);
+  assert.match(report, /database-free coverage: executed=1 excluded=3 declared=3\/9/);
+  assert.match(report, /excluded by unprovisioned capability isolated-owner-postgres: 3/);
+  assert.match(report, /\n {4}TestD1FinanceBusinessChain \(PostgreSQL test gate is not configured\)/);
+  assert.match(report, /failed TestSettlementRoundTrips/);
+  assert.match(report, /declared but not accounted for TestGatewayRevealAuditFailureDoesNotReturnKey$/m);
+});
+
+test("database-free coverage refuses an undeclared skip and an unaccounted declared test", () => {
+  const quiet = databaseFreeCoverage(coverageEvents(
+    { Action: "run", Test: "TestGatewayRevealFailsClosed" },
+    { Action: "pass", Test: "TestGatewayRevealFailsClosed" }
+  ), { declared: ["TestGatewayRevealFailsClosed"] });
+  assert.equal(quiet.reason, undefined);
+
+  const hidden = databaseFreeCoverage(coverageEvents(
+    { Action: "run", Test: "TestGatewayRevealFailsClosed" },
+    { Action: "pass", Test: "TestGatewayRevealFailsClosed" },
+    { Action: "run", Test: "TestSettlementFlaky" },
+    { Action: "output", Test: "TestSettlementFlaky", Output: "    chain_test.go:12: too flaky for today\n" },
+    { Action: "skip", Test: "TestSettlementFlaky" }
+  ));
+  assert.deepEqual(hidden.undeclared.map((entry) => entry.name), ["TestSettlementFlaky"]);
+  assert.equal(hidden.reason, "tests skipped without a declared capability marker: TestSettlementFlaky (too flaky for today)");
+  assert.match(databaseFreeCoverageReport(hidden), /skipped without a declared capability marker TestSettlementFlaky/);
+
+  const renamed = databaseFreeCoverage(coverageEvents(
+    { Action: "run", Test: "TestSomethingElse" },
+    { Action: "pass", Test: "TestSomethingElse" }
+  ), { declared: ["TestGatewayRevealAuditFailureDoesNotReturnKey"] });
+  assert.deepEqual(renamed.declared.accounted, []);
+  assert.equal(renamed.reason, "declared coverage is not accounted for: TestGatewayRevealAuditFailureDoesNotReturnKey");
+
+  // Every marker is a capability this gate deliberately leaves unprovisioned.
+  assert.deepEqual([...new Set(databaseFreeCapabilityMarkers.map((entry) => entry.capability))].sort(),
+    ["isolated-data-scale", "isolated-owner-postgres"]);
+});
+
+test("capability declarations do not mask assertions or unrelated package failures", () => {
+  const marker = databaseFreeCapabilityMarkers[0].marker;
+  const mixed = databaseFreeCoverage(coverageEvents(
+    { Action: "run", Test: "TestMoney" },
+    { Action: "output", Test: "TestMoney", Output: `    fixture_test.go:12: ${marker}\n    money_test.go:20: wrong refund\n` },
+    { Action: "fail", Test: "TestMoney" }
+  ));
+  assert.deepEqual(mixed.excluded, []);
+  assert.deepEqual(mixed.failed.map(entry => entry.name), ["TestMoney"]);
+  const packageFailure = databaseFreeCoverage([
+    ...coverageEvents({ Action: "run", Test: "TestPassing" }, { Action: "pass", Test: "TestPassing" }),
+    { Package: "broken/package", Action: "fail" }
+  ]);
+  assert.match(packageFailure.reason!, /Go package failed without a test failure: broken\/package/);
+});
+
+test("the real database-free lane executes the Gateway reveal family and names its excluded PostgreSQL suites", async (t) => {
+  if (spawnSync("go", ["version"], { encoding: "utf8" }).status !== 0) {
+    t.diagnostic("no Go toolchain available; control-plane lane fixture skipped");
+    return;
+  }
+  const lane = localVerificationSteps.find((step) => step.cwd === "services/control-plane" && step.args.includes("./internal/server"));
+  assert.ok(lane);
+  const env = { ...process.env };
+  for (const name of ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]) delete env[name];
+  const coverage = await runDatabaseFreeGoLane(lane!, env);
+  assert.equal(coverage.reason, undefined, databaseFreeCoverageReport(coverage));
+  for (const name of [
+    "TestGatewayRevealFailsClosed",
+    "TestGatewayRevealDoesNotLeakAcrossAccounts",
+    "TestGatewayRevealAuditFailureDoesNotReturnKey"
+  ]) {
+    assert.ok(coverage.executed.includes(name), `${name} must execute in the database-free lane`);
+    assert.ok(!coverage.excluded.some((entry) => entry.name === name), `${name} must not be excluded`);
+    assert.ok(!coverage.failed.some((entry) => entry.name === name), `${name} must not fail`);
+  }
+  assert.deepEqual(coverage.declared.missing, []);
+  const excluded = coverage.excluded.find((entry) => entry.name === "TestD1FinanceBusinessChain");
+  assert.equal(excluded?.capability, "isolated-owner-postgres");
+  assert.ok(coverage.executed.length > 1000, `only ${coverage.executed.length} tests executed`);
+  assert.match(databaseFreeCoverageReport(coverage), /declared=9\/9/);
 });
 
 test("focused verification selects only gates affected by an explicit change set", () => {

@@ -12,10 +12,8 @@ package delivery
 //
 // EntitlementGate is therefore the narrow shape of that answer: one verdict per
 // Workspace and nothing else — no term, no deadline comparison, no stored copy.
-// No owner-side implementation is declared here on purpose. Which owner fact
-// backs the gate, how it reaches the data plane, and whether an unanswered
-// verdict may still be served are owner decisions; this file only makes the
-// question askable and the answer decidable.
+// WorkspaceEntitlement reads that answer from Workspace on each request.
+// Missing or unverified answers refuse access.
 
 import "context"
 

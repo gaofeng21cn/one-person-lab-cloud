@@ -789,7 +789,7 @@
 
 **主实现表（字段唯一来源02，不在此复制字段定义）**：`workspace.subscriptions`, `workspace.subscription_periods`
 
-**内部协议实现/协作端口**：`WorkspaceProductService.RenewWorkspace`, `WorkspaceProductService.GetSubscription`, `WorkspaceProductService.UpdateRenewalSettings`, `WorkspaceAuthorizationReadback.ReadRenewalConsent`
+**内部协议实现/协作端口**：`WorkspaceProductService.RenewWorkspace`, `WorkspaceProductService.GetSubscription`, `WorkspaceProductService.UpdateRenewalSettings`, `WorkspaceAuthorizationReadback.ReadRenewalConsent`, `WorkspaceAccessReadback.ReadWorkspaceAccess`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder

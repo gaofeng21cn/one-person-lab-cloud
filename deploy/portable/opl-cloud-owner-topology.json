@@ -199,7 +199,9 @@
     "OPL_SYSTEM_COMPUTE_NODE_NAME",
     "OPL_SYSTEM_COMPUTE_MACHINE_TYPE",
     "OPL_SYSTEM_COMPUTE_CVM_ID",
-    "OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON"
+    "OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON",
+    "OPL_WORKSPACE_ADDR",
+    "OPL_WORKSPACE_TOKEN"
    ],
    "optionalEnv": [],
    "externalEnv": [],
@@ -359,7 +361,13 @@
    ],
    "notes": [
     "Owns infrastructure resource mutation and readback only. The legacy signed HTTP application-runtime surface is the migration bridge that I06 retires."
-   ]
+   ],
+   "ownerName": "fabric",
+   "ownerConstant": "OwnerFabric",
+   "peerTokensEnv": "OPL_FABRIC_PEER_TOKENS",
+   "rpcAddressEnv": "OPL_FABRIC_ADDR",
+   "defaultRPCAddress": ":8187",
+   "rpcDatabaseEnv": "OPL_FABRIC_DATABASE_URL"
   },
   {
    "service": "control-plane",

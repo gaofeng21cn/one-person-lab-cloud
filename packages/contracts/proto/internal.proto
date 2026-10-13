@@ -4349,3 +4349,11 @@ enum ListCapabilityVersionsRpcRequestStatusEnum {
  LIST_CAPABILITY_VERSIONS_RPC_REQUEST_STATUS_ENUM_DELETING = 3;
  LIST_CAPABILITY_VERSIONS_RPC_REQUEST_STATUS_ENUM_DELETED = 4;
 }
+
+// Workspace is the sole entitlement authority; Serve asks for a verdict per
+// request, without copying or interpreting the paid term. Only the authenticated
+// Serve peer may read this bounded application-access answer.
+enum WorkspaceAccessVerdict { WORKSPACE_ACCESS_VERDICT_UNSPECIFIED = 0; WORKSPACE_ACCESS_VERDICT_PERMITTED = 1; WORKSPACE_ACCESS_VERDICT_CLOSED = 2; WORKSPACE_ACCESS_VERDICT_UNVERIFIED = 3; }
+message ReadWorkspaceAccessRequest { string workspace_id = 1; }
+message WorkspaceAccessDecision { string workspace_id = 1; WorkspaceAccessVerdict verdict = 2; }
+service WorkspaceAccessReadback { rpc ReadWorkspaceAccess(ReadWorkspaceAccessRequest) returns (WorkspaceAccessDecision); }

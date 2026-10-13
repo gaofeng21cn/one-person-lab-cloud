@@ -210,13 +210,17 @@ func (s *Server) registerPublisherRoutes(mux *http.ServeMux) {
 	s.publisherRoute(mux, "POST /api/v2/admin/catalog/runtime-versions", owneridentity.RuntimeControl, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REGISTERRUNTIMEVERSION, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "", func() proto.Message { return &api.RegisterRuntimeVersionRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.runtimeControl.RegisterRuntimeVersion(r.Context(), &api.RegisterRuntimeVersionRpcRequest{Context: c, Body: body.(*api.RegisterRuntimeVersionRequest)})
 	})
-	// The administrator default-build-runtime policy: the read serves the
+	// The effective default-build policy is readable by catalog members; writes
+	// remain administrator-only. The legacy administrator read is an alias.
+	// The read serves the
 	// Runtime Control owner's own effective policy and the command records the one
 	// default new Builds resolve, so neither the BFF nor the caller decides which
 	// approved RuntimeVersion is default.
-	s.publisherRoute(mux, "GET /api/v2/admin/catalog/build-policy", owneridentity.RuntimeControl, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETBUILDRUNTIMEPOLICY, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
-		return s.runtimeControl.GetBuildRuntimePolicy(r.Context(), &api.GetBuildRuntimePolicyRpcRequest{Context: c})
-	})
+	for _, path := range []string{"GET /api/v2/catalog/build-policy", "GET /api/v2/admin/catalog/build-policy"} {
+		s.publisherRoute(mux, path, owneridentity.RuntimeControl, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETBUILDRUNTIMEPOLICY, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+			return s.runtimeControl.GetBuildRuntimePolicy(r.Context(), &api.GetBuildRuntimePolicyRpcRequest{Context: c})
+		})
+	}
 	s.publisherRoute(mux, "PUT /api/v2/admin/catalog/build-policy", owneridentity.RuntimeControl, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETBUILDRUNTIMEPOLICY, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "", func() proto.Message { return &api.SetBuildRuntimePolicyRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.runtimeControl.SetBuildRuntimePolicy(r.Context(), &api.SetBuildRuntimePolicyRpcRequest{Context: c, Body: body.(*api.SetBuildRuntimePolicyRequest)})
 	})
