@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import type {
   AuthSession,
   GatewayWallet,
+  PlanId,
   PricingCatalogResponse,
   SourceEnvelope,
   CapabilityVersionDTO,
@@ -14,7 +15,8 @@ import type {
   WorkspaceOwnerDTO,
   WorkspaceOwnerAccessDTO,
   GatewayWalletReadbackDTO,
-  RuntimeVersionDTO
+  RuntimeVersionDTO,
+  WorkspaceLaunchResponse
 } from "../api/dtos.ts";
 import {
   createAgentWorkspace,
@@ -157,9 +159,9 @@ export function useWorkspaceLaunchController({
   const intent = useRef<PersistedAgentIntent | null>(null);
 
   // Normal workspace launch state
-  const [normalLaunchPlan, setNormalLaunchPlan] = useState<string>("basic");
+  const [normalLaunchPlan, setNormalLaunchPlan] = useState<PlanId>("basic");
   const [normalLaunchBusy, setNormalLaunchBusy] = useState(false);
-  const [normalLaunchOperation, setNormalLaunchOperation] = useState<any | null>(null);
+  const [normalLaunchOperation, setNormalLaunchOperation] = useState<WorkspaceLaunchResponse | null>(null);
 
   const invalidateQuote = () => {
     setAgentQuote(null);
@@ -481,9 +483,9 @@ export function useWorkspaceLaunchController({
       const operation = await launchWorkspace(
         {
           name: launchName.trim(),
-          packageId: normalLaunchPlan as any,
+          packageId: normalLaunchPlan,
           autoRenew: launchAutoRenew,
-          provisioningMode: "prepaid" as const
+          provisioningMode: "full"
         },
         session.csrfToken,
         workspaceLaunchIdempotencyKey()
@@ -494,7 +496,7 @@ export function useWorkspaceLaunchController({
       }
 
       setNormalLaunchOperation(operation);
-      setLaunchStep("operation");
+      setLaunchStep("confirm");
       flash("工作空间创建请求已提交", "good");
     } catch (error) {
       if (!stillCurrent()) return;
@@ -506,14 +508,14 @@ export function useWorkspaceLaunchController({
     }
   };
 
-  const openNormalWorkspace = () => {
+  const openNormalWorkspace = async () => {
     if (!normalLaunchOperation?.workspaceId) return;
     navigate(`/console/workspaces/${normalLaunchOperation.workspaceId}`);
   };
 
   // Determine selectedPlan from catalog
   const selectedPlan = catalog.value?.packages.find((pkg) => pkg.id === normalLaunchPlan) || null;
-  const selectedPrice = selectedPlan?.price ?? null;
+  const selectedPrice = null;
 
   return {
     catalog,
