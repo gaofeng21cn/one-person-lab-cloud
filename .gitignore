@@ -12,3 +12,9 @@ npm-debug.log*
 .codegraph/
 /tmp/
 docs/site/latest/
+
+# Stray `go build ./cmd/server` artifact in a service root. The release path
+# builds this service to /out/opl-gateway-integration (see Dockerfile), so a
+# binary at this exact path is never a build input. Anchored to the repository
+# root so it cannot match services/gateway-integration/cmd/server/.
+/services/gateway-integration/server
