@@ -70,6 +70,31 @@ the response side the application may set whatever cookies it needs, but a
 `Domain` attribute is removed so a cookie cannot widen onto a sibling binding or
 onto the Console's origin.
 
+Serve's access entry resolves a request in one order, and entitlement is the
+first thing it may refuse on. It names the Workspace from the origin, then asks
+the owner's entitlement verdict, and only then reads the binding and the
+runtime-instance row. The verdict is one of `unverified`, `permitted` or
+`closed`, and it is the entry's only entitlement input: Serve reads no
+subscription term, stores no copy of one and compares no deadline, so it cannot
+become a second authority for expiry.
+
+A `closed` verdict answers `403` `workspace_application_entitlement_closed`, on
+the application origin and on the retained path entry alike. A verdict this
+build does not name — an empty answer, a misspelling, or a value an owner adds
+later — and a verdict the entry could not read at all answer `503`
+`workspace_application_entitlement_unavailable`; an owner answer Serve cannot
+interpret is never passed through as permission. `unverified` and `permitted`
+both proceed, which is the posture the entry has always run in; whether an
+unanswered Workspace may be served is an owner decision that this page records
+rather than settles. An entry wired to no verdict source resolves on binding
+readiness alone and logs that once at startup, so the gap is visible in the
+process log instead of being implicit in the resolve path.
+
+This stage is what makes "an expired Workspace is refused at access" executable
+at all. It is not expiry enforcement by itself: whether a Workspace ever
+reaches `closed` depends on the owner's renewal sweep reaching the data plane,
+and that link is not built yet.
+
 The proxy states the external origin itself: `X-Forwarded-Host` from the request
 and `X-Forwarded-Proto` from the installation's TLS fact. A client-supplied value
 is overwritten, because an application that builds absolute redirects or cookie
@@ -150,6 +175,9 @@ is not rewritten. An existing proxied connection rechecks entitlement at its
 paid-through boundary: a confirmed renewal extends the connection's deadline;
 unpaid, deleted or unconfirmed access closes it. Runtime suspension and recovery
 remain Fabric operations described in the lifecycle implementation reference.
+Whether Control Plane's renewal sweep must be running for that verdict to stay
+current is not settled by this page and is not asserted by current source; it
+needs an owner decision before it can be called a precondition.
 
 Fabric runs the Workspace image in `cloud` deployment mode with `password`
 authentication. Fabric derives the runtime password and session secret from a

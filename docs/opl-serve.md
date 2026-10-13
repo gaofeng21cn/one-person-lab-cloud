@@ -135,11 +135,25 @@ or embed component.
 | Workspace identity, membership, entitlement, resource plan and target authorization | Workspace |
 | Per-Workspace Agent delivery operation and unique current-Agent deployment state | OPL Serve |
 | API / Embed / Hosted UI access policy and routing to the current Agent | OPL Serve |
+| Whether a Workspace's paid term is closed, and the entitlement verdict a served request is admitted against | Workspace owns entitlement; OPL Serve asks the owner one verdict at resolve time and never computes, stores or compares a term |
 | Account-wide policy and financial governance | OPL Console / owning policy module |
 | Compute, storage, network provisioning/binding and resource readback | OPL Fabric |
 | Model access, provider policy, routing and model usage | OPL Gateway |
 | External data and tool access | OPL Connect |
 | Immutable evidence and opaque references (where the product requires receipts) | OPL Ledger |
+
+The entitlement boundary is explicit because the data plane and the owner decide
+different things. Workspace owns the term and the verdict that says whether it
+is closed; OPL Serve owns no term, stores no copy of one and compares no
+deadline. Serve's access entry takes that verdict as its only entitlement input,
+asks for it before it reads any binding or runtime row, and refuses a closed
+verdict even when the binding is confirmed and the runtime is ready — readiness
+describes the instance, not the right to reach it. Current source wires no
+verdict source, so an entry with none keeps resolving on binding readiness alone
+and reports that posture once at startup; which owner fact backs the verdict and
+whether an unanswered Workspace may still be served are owner decisions that
+source deliberately does not settle. `docs/implementation/workspace-runtime-access.md`
+owns the current resolve order and refusal codes.
 
 ## Provider Model
 

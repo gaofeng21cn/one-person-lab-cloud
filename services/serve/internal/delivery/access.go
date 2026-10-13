@@ -16,12 +16,12 @@ package delivery
 //     an origin that no longer matches the current target is refused instead of
 //     being served by the replacement application.
 //   - Expiry is an owner verdict, never a Serve computation. Serve reads no
-//     subscription term, stores no copy of one and compares no deadline. When an
-//     EntitlementGate is wired, only its closed verdict refuses; an entry with no
-//     gate wired keeps its pre-existing posture of resolving on binding
-//     readiness alone, and reports that posture in the process log. Whether an
-//     unanswered entitlement may still be served is the owner's decision to
-//     make, not one this file settles.
+//     subscription term, stores no copy of one and compares no deadline. A wired
+//     EntitlementGate refuses on a closed verdict and on a verdict this build
+//     cannot interpret, and an entry with no gate wired keeps its pre-existing
+//     posture of resolving on binding readiness alone while reporting that
+//     posture in the process log. Whether an unanswered entitlement may still be
+//     served is the owner's decision to make, not one this file settles.
 
 import (
 	"context"
@@ -69,9 +69,10 @@ var (
 	// A confirmed binding and a ready runtime do not restore the right to be
 	// served, so this refusal is reached before either is read.
 	errAccessEntitlementClosed = accessRefusal{status: http.StatusForbidden, code: "workspace_application_entitlement_closed"}
-	// errAccessEntitlementUnavailable: the owner's verdict could not be read.
-	// Serve refuses the read as unavailable rather than guessing that a Workspace
-	// whose answer it could not obtain is either entitled or not.
+	// errAccessEntitlementUnavailable: the owner's verdict could not be read, or
+	// was a verdict this build does not name. Serve refuses that answer as
+	// unavailable rather than guessing that a Workspace whose answer it cannot
+	// interpret is either entitled or not.
 	errAccessEntitlementUnavailable = accessRefusal{status: http.StatusServiceUnavailable, code: "workspace_application_entitlement_unavailable"}
 )
 
@@ -176,11 +177,27 @@ func (e *AccessEntry) Resolve(ctx context.Context, host, requestPath string) (ac
 	// so it never reaches a destination this process could forward to.
 	if e.Entitlement != nil {
 		verdict, err := e.Entitlement.Verdict(ctx, workspaceID)
-		switch {
-		case err != nil:
+		if err != nil {
 			return accessRoute{}, errAccessEntitlementUnavailable
-		case verdict == EntitlementClosed:
+		}
+		switch verdict {
+		case EntitlementPermitted:
+			// The owner confirmed this Workspace may be served.
+		case EntitlementUnverified:
+			// The owner has not answered. Whether an unanswered Workspace may
+			// still be served is the owner's decision and is not settled here;
+			// today it is served, which is the posture this entry has always run
+			// in. TestServeAccessEntryServesUnverifiedEntitlement pins that so
+			// changing it is a deliberate edit rather than a silent widening.
+		case EntitlementClosed:
 			return accessRoute{}, errAccessEntitlementClosed
+		default:
+			// A verdict this build does not name — an empty answer, a misspelling,
+			// or a value an owner adds later — is an answer Serve cannot
+			// interpret, not permission. Refusing it exactly as a failed read is
+			// refused keeps it from passing silently at the one place that can
+			// see it.
+			return accessRoute{}, errAccessEntitlementUnavailable
 		}
 	}
 	route := accessRoute{WorkspaceID: workspaceID, pathBased: pathBased}

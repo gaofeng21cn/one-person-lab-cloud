@@ -2,6 +2,7 @@ package delivery_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -355,6 +356,22 @@ func (g staticEntitlementGate) Verdict(_ context.Context, _ string) (delivery.En
 	return g.verdict, g.err
 }
 
+// entitlementEntry starts one access entry per case. Every case owns its own
+// entry and its own server, so no case can observe another case's gate and the
+// gate is never rewritten while a server built from the same entry is serving.
+func entitlementEntry(t *testing.T, db *sql.DB, upstream *httptest.Server, gate delivery.EntitlementGate) *httptest.Server {
+	t.Helper()
+	entry, err := delivery.NewAccessEntry(db, accessOrigin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry.Transport = serviceTransport{byService: map[string]*httptest.Server{"app-main": upstream}}
+	entry.Entitlement = gate
+	server := httptest.NewServer(entry.Handler())
+	t.Cleanup(server.Close)
+	return server
+}
+
 // TestServeAccessEntryRefusesClosedEntitlementDespiteReadyBinding is the control
 // for issue #824. Readiness is a fact about the instance, so before any
 // entitlement fact reached the data plane a Workspace whose paid term had ended
@@ -375,14 +392,7 @@ func TestServeAccessEntryRefusesClosedEntitlementDespiteReadyBinding(t *testing.
 	// The premise is proven first on the very same fixture: with the owner
 	// permitting the Workspace, a ready target serves. Without this the control
 	// could pass simply because nothing was ever servable.
-	entry, err := delivery.NewAccessEntry(db, accessOrigin())
-	if err != nil {
-		t.Fatal(err)
-	}
-	entry.Transport = serviceTransport{byService: map[string]*httptest.Server{"app-main": upstream}}
-	entry.Entitlement = staticEntitlementGate{verdict: delivery.EntitlementPermitted}
-	permitted := httptest.NewServer(entry.Handler())
-	defer permitted.Close()
+	permitted := entitlementEntry(t, db, upstream, staticEntitlementGate{verdict: delivery.EntitlementPermitted})
 	if response := accessGet(t, permitted.URL, host, "/"); response.StatusCode != http.StatusOK || response.Body != "application-response" {
 		t.Fatalf("permitted status=%d body=%s", response.StatusCode, response.Body)
 	}
@@ -390,9 +400,7 @@ func TestServeAccessEntryRefusesClosedEntitlementDespiteReadyBinding(t *testing.
 	// The owner closes the entitlement. The binding is still confirmed, the
 	// runtime is still ready and the upstream is still reachable, and the entry
 	// must still refuse.
-	entry.Entitlement = staticEntitlementGate{verdict: delivery.EntitlementClosed}
-	closed := httptest.NewServer(entry.Handler())
-	defer closed.Close()
+	closed := entitlementEntry(t, db, upstream, staticEntitlementGate{verdict: delivery.EntitlementClosed})
 	response := accessGet(t, closed.URL, host, "/")
 	if response.StatusCode != http.StatusForbidden || !strings.Contains(response.Body, "workspace_application_entitlement_closed") {
 		t.Fatalf("closed entitlement status=%d body=%s", response.StatusCode, response.Body)
@@ -403,13 +411,20 @@ func TestServeAccessEntryRefusesClosedEntitlementDespiteReadyBinding(t *testing.
 		t.Fatalf("closed entitlement path status=%d body=%s", pathResponse.StatusCode, pathResponse.Body)
 	}
 
-	// An owner verdict Serve cannot read is refused as unavailable, not answered
-	// as permitted and not answered as closed.
-	entry.Entitlement = staticEntitlementGate{verdict: "", err: errors.New("entitlement owner unreachable")}
-	unavailable := httptest.NewServer(entry.Handler())
-	defer unavailable.Close()
-	if unavailableResponse := accessGet(t, unavailable.URL, host, "/"); unavailableResponse.StatusCode != http.StatusServiceUnavailable || !strings.Contains(unavailableResponse.Body, "workspace_application_entitlement_unavailable") {
-		t.Fatalf("unreadable entitlement status=%d body=%s", unavailableResponse.StatusCode, unavailableResponse.Body)
+	// An owner verdict Serve cannot read, and a verdict this build does not
+	// name, are both refused as unavailable — neither is answered as permitted
+	// and neither is answered as closed.
+	for name, gate := range map[string]delivery.EntitlementGate{
+		"unreadable":    staticEntitlementGate{verdict: "", err: errors.New("entitlement owner unreachable")},
+		"unnamed":       staticEntitlementGate{verdict: delivery.EntitlementVerdict("granted")},
+		"empty verdict": staticEntitlementGate{},
+	} {
+		t.Run(name, func(t *testing.T) {
+			server := entitlementEntry(t, db, upstream, gate)
+			if response := accessGet(t, server.URL, host, "/"); response.StatusCode != http.StatusServiceUnavailable || !strings.Contains(response.Body, "workspace_application_entitlement_unavailable") {
+				t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
+			}
+		})
 	}
 }
 
@@ -426,25 +441,17 @@ func TestServeAccessEntryServesUnverifiedEntitlement(t *testing.T) {
 		_, _ = io.WriteString(w, "application-response")
 	}))
 	defer upstream.Close()
+	host := applicationHost(t, workspace)
 
-	entry, err := delivery.NewAccessEntry(db, accessOrigin())
-	if err != nil {
-		t.Fatal(err)
-	}
-	entry.Transport = serviceTransport{byService: map[string]*httptest.Server{"app-main": upstream}}
-	entry.Entitlement = staticEntitlementGate{verdict: delivery.EntitlementUnverified}
-	server := httptest.NewServer(entry.Handler())
-	defer server.Close()
-	if response := accessGet(t, server.URL, applicationHost(t, workspace), "/"); response.StatusCode != http.StatusOK {
+	unverified := entitlementEntry(t, db, upstream, staticEntitlementGate{verdict: delivery.EntitlementUnverified})
+	if response := accessGet(t, unverified.URL, host, "/"); response.StatusCode != http.StatusOK {
 		t.Fatalf("unverified entitlement status=%d body=%s", response.StatusCode, response.Body)
 	}
 
 	// An installation that wires no gate at all is the same posture, which is
 	// what startAccessEntry reports once at startup.
-	entry.Entitlement = nil
-	unwired := httptest.NewServer(entry.Handler())
-	defer unwired.Close()
-	if response := accessGet(t, unwired.URL, applicationHost(t, workspace), "/"); response.StatusCode != http.StatusOK {
+	unwired := entitlementEntry(t, db, upstream, nil)
+	if response := accessGet(t, unwired.URL, host, "/"); response.StatusCode != http.StatusOK {
 		t.Fatalf("unwired entitlement status=%d body=%s", response.StatusCode, response.Body)
 	}
 }
