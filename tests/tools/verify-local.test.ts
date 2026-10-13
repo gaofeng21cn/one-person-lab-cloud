@@ -195,8 +195,7 @@ function coverageEvents(...events: Record<string, unknown>[]) {
   return [
     { Action: "start", Package: coveragePackage },
     ...events.map((event) => ({ Package: coveragePackage, ...event })),
-    { Action: "fail", Package: coveragePackage },
-    { Action: "output", Package: coveragePackage, Output: "FAIL\t" + coveragePackage + "\n" }
+    { Action: events.some(event => event.Action === "fail") ? "fail" : "pass", Package: coveragePackage }
   ];
 }
 const fixtureAbsent = "  d1_finance_chain_test.go:28: CONTROL_PLANE_TEST_DATABASE_URL or OPL_POSTGRES_TESTS=1 is required for PostgreSQL tests\n";
@@ -276,6 +275,22 @@ test("database-free coverage refuses an undeclared skip and an unaccounted decla
     ["isolated-data-scale", "isolated-owner-postgres"]);
 });
 
+test("capability declarations do not mask assertions or unrelated package failures", () => {
+  const marker = databaseFreeCapabilityMarkers[0].marker;
+  const mixed = databaseFreeCoverage(coverageEvents(
+    { Action: "run", Test: "TestMoney" },
+    { Action: "output", Test: "TestMoney", Output: `    fixture_test.go:12: ${marker}\n    money_test.go:20: wrong refund\n` },
+    { Action: "fail", Test: "TestMoney" }
+  ));
+  assert.deepEqual(mixed.excluded, []);
+  assert.deepEqual(mixed.failed.map(entry => entry.name), ["TestMoney"]);
+  const packageFailure = databaseFreeCoverage([
+    ...coverageEvents({ Action: "run", Test: "TestPassing" }, { Action: "pass", Test: "TestPassing" }),
+    { Package: "broken/package", Action: "fail" }
+  ]);
+  assert.match(packageFailure.reason!, /Go package failed without a test failure: broken\/package/);
+});
+
 test("the real database-free lane executes the Gateway reveal family and names its excluded PostgreSQL suites", async (t) => {
   if (spawnSync("go", ["version"], { encoding: "utf8" }).status !== 0) {
     t.diagnostic("no Go toolchain available; control-plane lane fixture skipped");
@@ -283,10 +298,10 @@ test("the real database-free lane executes the Gateway reveal family and names i
   }
   const lane = localVerificationSteps.find((step) => step.cwd === "services/control-plane" && step.args.includes("./internal/server"));
   assert.ok(lane);
-  const coverage = await runDatabaseFreeGoLane(lane!);
-  // A host HTTP proxy can break unrelated websocket tests, so this asserts the
-  // lane's coverage account, not this host's exit code: the declared money
-  // chain runs, and the PostgreSQL suites that cannot run here are named.
+  const env = { ...process.env };
+  for (const name of ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]) delete env[name];
+  const coverage = await runDatabaseFreeGoLane(lane!, env);
+  assert.equal(coverage.reason, undefined, databaseFreeCoverageReport(coverage));
   for (const name of [
     "TestGatewayRevealFailsClosed",
     "TestGatewayRevealDoesNotLeakAcrossAccounts",
