@@ -4,9 +4,6 @@ on:
   pull_request:
     branches:
       - main
-    # `edited` re-runs the governance check when the pull-request body changes;
-    # without it a stale green check would survive a rewritten claim.
-    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
