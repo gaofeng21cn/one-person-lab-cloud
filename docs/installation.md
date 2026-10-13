@@ -133,6 +133,13 @@ required variables and browser HTTP surfaces declared by
 `opl-cloud-owner-topology.json`. The Instance owner supplies its concrete
 manifest, Secrets and certificates.
 
+Fabric keeps its HTTP provider bridge and owner RPC boundary in the same process.
+The optional RPC surface uses `OPL_FABRIC_ADDR` (default `:8187`),
+`OPL_FABRIC_DATABASE_URL` and `OPL_FABRIC_PEER_TOKENS`. Its template admits the
+actual Workspace, Serve and Tenant transport principals; method-level guards
+still decide which of those peers may perform each operation. Installation must
+configure the RPC peer tokens separately from the HTTP service token.
+
 Console identity is an image-level fact: `VITE_CONSOLE_IDENTITY` is a build
 argument with default `legacy`, recorded by the image label
 `opl.cloud.console-identity`. `legacy` uses the retained Control Plane APIs;

@@ -359,7 +359,13 @@
    ],
    "notes": [
     "Owns infrastructure resource mutation and readback only. The legacy signed HTTP application-runtime surface is the migration bridge that I06 retires."
-   ]
+   ],
+   "ownerName": "fabric",
+   "ownerConstant": "OwnerFabric",
+   "peerTokensEnv": "OPL_FABRIC_PEER_TOKENS",
+   "rpcAddressEnv": "OPL_FABRIC_ADDR",
+   "defaultRPCAddress": ":8187",
+   "rpcDatabaseEnv": "OPL_FABRIC_DATABASE_URL"
   },
   {
    "service": "control-plane",
