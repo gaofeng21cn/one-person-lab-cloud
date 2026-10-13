@@ -115,7 +115,7 @@ func (s *PostgresStore) RecordProviderActionReceipt(ctx context.Context, r *api.
 			return nil, marshalErr
 		}
 		input := ReceiptInput{Type: ProviderActionReceiptType, Status: "completed", Surface: "cloud", OrganizationID: tenant, WorkspaceID: workspaceID,
-			RequestID: r.Context.RequestId, Actor: map[string]any{"id": actor}, Owner: map[string]any{"name": "workspace", "evidenceReference": r.OwnerEvidenceReference},
+			RequestID: r.Context.RequestId, SubscriptionPeriodID: r.GetSubscriptionPeriodId(), Actor: map[string]any{"id": actor}, Owner: map[string]any{"name": "workspace", "evidenceReference": r.OwnerEvidenceReference},
 			InputRefs: map[string]any{"providerAction": json.RawMessage(encoded)}}
 		payload, marshalErr := json.Marshal(receiptPayload{ReceiptInput: input})
 		if marshalErr != nil {

@@ -129,7 +129,7 @@ func (s *PostgresStore) RecordLocalNoChargeReceipt(ctx context.Context, r *api.A
 			return nil, marshalErr
 		}
 		input := ReceiptInput{Type: LocalNoChargeReceiptType, Status: "completed", Surface: "cloud", OrganizationID: tenant, WorkspaceID: r.QuoteAcceptance.WorkspaceId,
-			RequestID: r.Context.RequestId, Actor: map[string]any{"id": actor}, Owner: map[string]any{"name": "workspace", "evidenceReference": r.OwnerEvidenceReference},
+			RequestID: r.Context.RequestId, SubscriptionPeriodID: r.GetSubscriptionPeriodId(), Actor: map[string]any{"id": actor}, Owner: map[string]any{"name": "workspace", "evidenceReference": r.OwnerEvidenceReference},
 			InputRefs: map[string]any{"localNoCharge": json.RawMessage(encoded)}, Cost: map[string]any{"billingMode": "LOCAL_NO_CHARGE", "amountUsdMicros": "0"}}
 		payload, marshalErr := json.Marshal(receiptPayload{ReceiptInput: input})
 		if marshalErr != nil {

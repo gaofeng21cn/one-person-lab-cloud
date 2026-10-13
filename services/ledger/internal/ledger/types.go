@@ -42,6 +42,7 @@ type ReceiptInput struct {
 	JobID               string         `json:"jobId"`
 	ArtifactID          string         `json:"artifactId"`
 	ReviewID            string         `json:"reviewId"`
+	SubscriptionPeriodID string         `json:"subscriptionPeriodId,omitempty"`
 	ContinuationID      string         `json:"continuationId"`
 	Actor               map[string]any `json:"actor"`
 	Plan                map[string]any `json:"plan"`

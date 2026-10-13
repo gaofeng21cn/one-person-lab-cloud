@@ -76,7 +76,7 @@ func (s *Service) Debit(ctx context.Context, r *api.WalletDebitCommand) (*api.Wa
 	return s.walletAction(ctx, walletActionRequest{
 		call: r.GetContext(), kind: "charge", workspaceID: r.GetWorkspaceId(), amount: r.GetAmountUsdMicros(),
 		currency: r.GetCurrency(), businessKey: walletBusinessKey(r.GetContext()), obligation: r.GetObligationId(),
-		quoteAcceptanceID: r.GetQuoteAcceptanceId(),
+		quoteAcceptanceID: r.GetQuoteAcceptanceId(), subscriptionPeriodId: r.GetSubscriptionPeriodId(),
 	})
 }
 
@@ -90,7 +90,7 @@ func (s *Service) Refund(ctx context.Context, r *api.WalletRefundCommand) (*api.
 	return s.walletAction(ctx, walletActionRequest{
 		call: r.GetContext(), kind: "refund", workspaceID: r.GetWorkspaceId(), amount: r.GetAmountUsdMicros(),
 		currency: "USD", businessKey: walletBusinessKey(r.GetContext()), original: r.GetOriginalWalletOperationId(),
-		entitlement: r.GetRefundPolicyVersionId(), deletionReceipt: r.GetConfirmedDeletionReceiptId(),
+		entitlement: r.GetRefundPolicyVersionId(), deletionReceipt: r.GetConfirmedDeletionReceiptId(), subscriptionPeriodId: r.GetSubscriptionPeriodId(),
 	})
 }
 
@@ -149,6 +149,7 @@ type walletActionRequest struct {
 	businessKey       string
 	obligation        string
 	quoteAcceptanceID string
+	subscriptionPeriodId string
 	original          string
 	entitlement       string
 	deletionReceipt   string
@@ -682,7 +683,7 @@ func walletBusinessKey(call *api.CallContext) string {
 }
 
 func walletRequestFingerprint(req walletActionRequest) string {
-	parts := []string{req.kind, req.workspaceID, req.businessKey, req.obligation, req.quoteAcceptanceID, req.original, req.entitlement, req.deletionReceipt}
+	parts := []string{req.kind, req.workspaceID, req.businessKey, req.obligation, req.quoteAcceptanceID, req.subscriptionPeriodId, req.original, req.entitlement, req.deletionReceipt}
 	return shortDigest(strings.Join(parts, "\x00") + "|" + itoa(req.amount))
 }
 

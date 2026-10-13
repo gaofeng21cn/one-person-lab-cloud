@@ -37814,6 +37814,7 @@ type AppendReceiptRequest struct {
 	QuoteAcceptance        *QuoteAcceptance       `protobuf:"bytes,5,opt,name=quote_acceptance,json=quoteAcceptance,proto3" json:"quote_acceptance,omitempty"`
 	OwnerCommitEvidence    *OwnerCommitEvidence   `protobuf:"bytes,6,opt,name=owner_commit_evidence,json=ownerCommitEvidence,proto3" json:"owner_commit_evidence,omitempty"`
 	WalletOperation        *WalletOperation       `protobuf:"bytes,7,opt,name=wallet_operation,json=walletOperation,proto3" json:"wallet_operation,omitempty"`
+	SubscriptionPeriodId   string                 `protobuf:"bytes,8,opt,name=subscription_period_id,json=subscriptionPeriodId,proto3" json:"subscription_period_id,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -37897,6 +37898,13 @@ func (x *AppendReceiptRequest) GetWalletOperation() *WalletOperation {
 	return nil
 }
 
+
+func (x *AppendReceiptRequest) GetSubscriptionPeriodId() string {
+	if x != nil {
+		return x.SubscriptionPeriodId
+	}
+	return ""
+}
 type GetReceiptByReferenceRequest struct {
 	state                  protoimpl.MessageState `protogen:"open.v1"`
 	Context                *CallContext           `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`

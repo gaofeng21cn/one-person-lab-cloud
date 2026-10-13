@@ -2568,7 +2568,7 @@ service TenantWorkspaceCoordination {
  rpc DeleteTenantWorkspaces(TenantWorkspaceLifecycleCommand) returns (TenantWorkspaceLifecycleReadback);
  rpc ResumeTenantWorkspaces(ResumeTenantWorkspacesRequest) returns (TenantWorkspaceLifecycleReadback);
 }
-message AppendReceiptRequest { CallContext context = 1; Receipt receipt = 2; string evidence_digest = 3; string owner_evidence_reference = 4; QuoteAcceptance quote_acceptance = 5; OwnerCommitEvidence owner_commit_evidence = 6; WalletOperation wallet_operation = 7; }
+message AppendReceiptRequest { CallContext context = 1; Receipt receipt = 2; string evidence_digest = 3; string owner_evidence_reference = 4; QuoteAcceptance quote_acceptance = 5; OwnerCommitEvidence owner_commit_evidence = 6; WalletOperation wallet_operation = 7; string subscription_period_id = 8; }
 message GetReceiptByReferenceRequest { CallContext context = 1; string owner = 2; string owner_evidence_reference = 3; }
 message LocalNoChargeReceiptEvidence { Receipt receipt = 1; QuoteAcceptance quote_acceptance = 2; OwnerCommitEvidence owner_commit_evidence = 3; string evidence_digest = 4; }
 // WalletActionReceiptEvidence is the owner-authoritative funded-charge proof the

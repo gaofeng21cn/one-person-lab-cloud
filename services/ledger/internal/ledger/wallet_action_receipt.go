@@ -143,7 +143,7 @@ func (s *PostgresStore) RecordWalletActionReceipt(ctx context.Context, r *api.Ap
 			return nil, marshalErr
 		}
 		input := ReceiptInput{Type: WalletActionReceiptType, Status: "completed", Surface: "cloud", OrganizationID: tenant, WorkspaceID: r.QuoteAcceptance.WorkspaceId,
-			RequestID: r.Context.RequestId, Actor: map[string]any{"id": actor}, Owner: map[string]any{"name": "workspace", "evidenceReference": r.OwnerEvidenceReference},
+			RequestID: r.Context.RequestId, SubscriptionPeriodID: r.GetSubscriptionPeriodId(), Actor: map[string]any{"id": actor}, Owner: map[string]any{"name": "workspace", "evidenceReference": r.OwnerEvidenceReference},
 			InputRefs: map[string]any{"walletAction": json.RawMessage(encoded)}, Cost: map[string]any{"amountUsdMicros": r.WalletOperation.AmountUsdMicros, "currency": "USD", "walletOperationId": r.WalletOperation.Id}}
 		payload, marshalErr := json.Marshal(receiptPayload{ReceiptInput: input})
 		if marshalErr != nil {
