@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "status": "NOT_READY",
+  "startedAt": "2026-10-13T13:55:00.546Z",
+  "completedAt": "2026-10-13T13:58:10.308Z",
+  "source": {
+    "sha": "a894a7478739d1b99a9e5b0d38dcae05b8220dab",
+    "tree": "8b2f7390beec0fee4a71809c5e7b5b01362cca81"
+  },
+  "images": {
+    "cloud": {
+      "input": "ghcr.io/gaofeng21cn/one-person-lab-cloud@sha256:fb60b2917c19400fb940062bb913bd04ad4af3d7f63ea07cce3b91b6ae9119c5",
+      "digest": "sha256:fb60b2917c19400fb940062bb913bd04ad4af3d7f63ea07cce3b91b6ae9119c5"
+    },
+    "workspace": {
+      "input": "ghcr.io/gaofeng21cn/one-person-lab-webui@sha256:f6ce30fe1b0cdf8e1c6722a4c96d893ff8286e6af718940dab5a1d778ba70b71",
+      "digest": "sha256:f6ce30fe1b0cdf8e1c6722a4c96d893ff8286e6af718940dab5a1d778ba70b71"
+    }
+  },
+  "command": "npm run qualify:local:workspace -- --source-sha a894a7478739d1b99a9e5b0d38dcae05b8220dab --cloud-image ghcr.io/gaofeng21cn/one-person-lab-cloud@sha256:fb60b2917c19400fb940062bb913bd04ad4af3d7f63ea07cce3b91b6ae9119c5 --workspace-image ghcr.io/gaofeng21cn/one-person-lab-webui@sha256:f6ce30fe1b0cdf8e1c6722a4c96d893ff8286e6af718940dab5a1d778ba70b71 --authority-mode fixture --receipt /home/runner/work/_temp/local-workspace-qualification.json",
+  "stage": "terminal_readback",
+  "errorCode": "local_workspace_qualification_failed",
+  "error": "Workspace Runtime open failed",
+  "residuals": {
+    "containers": 1,
+    "volumes": 0,
+    "networks": 1
+  },
+  "deferred": [
+    "tencent-tke",
+    "tcr-and-tke-image-pull",
+    "kubernetes-secret-and-pod-readiness",
+    "production-sub2api",
+    "production-secrets-and-network",
+    "instance-deployment-and-rollback"
+  ]
+}

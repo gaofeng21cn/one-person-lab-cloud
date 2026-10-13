@@ -42,6 +42,28 @@ image inputs. Fresh Clean Host `READY` evidence, current-revision CI and the
 patrol's separately observed launch HTTP 502 remain unverified; Cloud issues
 #787 and #793 remain open for those respective acceptance obligations.
 
+### Exact Candidate Follow-Up
+
+Clean Host run `38408791877` on 2026-10-13 used PR #801's exact Candidate
+source `a894a7478739d1b99a9e5b0d38dcae05b8220dab`, Cloud index digest
+`sha256:fb60b2917c19400fb940062bb913bd04ad4af3d7f63ea07cce3b91b6ae9119c5`
+and the canonical `ghcr.io/gaofeng21cn/one-person-lab-webui` Workspace digest
+`sha256:f6ce30fe1b0cdf8e1c6722a4c96d893ff8286e6af718940dab5a1d778ba70b71`.
+Anonymous manifest readback matched, and the hosted runner pulled that Workspace
+image. The Candidate bundle's existing validator accepted its asset checksums
+and neutral receipt.
+
+The uploaded [unchanged failure receipt](evidence/local-qualification/2026-10-13-clean-host-38408791877-not-ready.json)
+is `NOT_READY / terminal_readback`, with `Workspace Runtime open failed` and
+residual containers/volumes/networks `1 / 0 / 1`. Source flow reaches this check
+after launch success and application-installation readiness. Its error combines
+an unsuccessful entry response and a missing qualification-fixture marker;
+the receipt does not distinguish those predicates. The workflow storage cleanup
+succeeded, but resource absence and full owner deletion are unproved. No new
+PostgreSQL `EACCES` was observed; this earlier failure does not qualify PR #801's
+successful scratch cleanup. The patrol's original SHA and HTTP 502 still need
+separate attribution. No real Sub2API, Instance or production acceptance follows.
+
 ## First Tencent/TKE Launch Scope Alignment (2026-10-10)
 
 The [October 10 decision](decisions.md#2026-10-10-first-tencenttke-launch-without-cloud-model-configuration)

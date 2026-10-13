@@ -111,6 +111,8 @@ Cloud qualification tooling owns #793's PostgreSQL scratch cleanup and #787's
 image/launch verification path. PR #801 owns the PostgreSQL repair; this change adds separate exact-image
 versus source-build workflow paths, with local evidence in
 [status](status.md#local-qualification-repairs-2026-10-13).
+Exact Candidate run `38408791877` now establishes pullable canonical inputs
+but remains `NOT_READY` at application entry readback, with retained resources.
 Completion still requires current-revision CI, a clean-host `READY` receipt bound
 to the intended source and exact images, and bounded attribution or resolution
 of the patrol's independently observed launch HTTP 502. A source-built run does
