@@ -463,7 +463,7 @@ func recordStartActionTx(ctx context.Context, tx *sql.Tx, r *api.RuntimeDeployCo
 	}
 	return nil
 }
-func (s *Service) finishFirstDelivery(ctx context.Context, tx *sql.Tx, r *api.RuntimeDeployCommand, o RuntimeObservation) error {
+func (s *Service) finishFirstDelivery(ctx context.Context, tx *sql.Tx, r *api.RuntimeDeployCommand, o RuntimeObservation, start bool, previousState string) error {
 	var err error
 	var recordedStatus, recordedEvidence string
 	var recordedAt time.Time
@@ -491,7 +491,21 @@ func (s *Service) finishFirstDelivery(ctx context.Context, tx *sql.Tx, r *api.Ru
 	if err != nil {
 		return dbError(err)
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_actions SET observation_result='confirmed',evidence_ref=NULLIF($2,''),updated_at=now() WHERE command_id=$1`, stableID("start_", r.DeploymentId), o.ReadinessEvidenceRef)
+	startResult := "confirmed"
+	switch o.State {
+	case api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_FAILED,
+		api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_STOPPED,
+		api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_TERMINATING,
+		api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_TERMINATED:
+		startResult = "rejected"
+	}
+	if !start && (previousState == "failed" || previousState == "stopped" || previousState == "terminating" || previousState == "terminated") {
+		startResult = "rejected"
+	}
+	// Pending reads cannot turn a rejected start into mutation authority. An
+	// explicit Deploy or a ready readback establishes its own observed result.
+	preserveRejection := !start && o.State != api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY
+	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_actions SET observation_result=CASE WHEN $2='rejected' OR ($3 AND observation_result='rejected') THEN 'rejected' ELSE 'confirmed' END,evidence_ref=NULLIF($4,''),updated_at=now() WHERE command_id=$1`, stableID("start_", r.DeploymentId), startResult, preserveRejection, o.ReadinessEvidenceRef)
 	if err != nil {
 		return dbError(err)
 	}
@@ -727,32 +741,42 @@ func (s *Service) observeAndFinishDeliveryTx(ctx context.Context, tx *sql.Tx, co
 	if err != nil {
 		return err
 	}
-	// A poll that only observes can never finish a deployment.
-	//
-	// Ensure admits a component when it already exists OR its dependencies are
-	// ready right now (tkeapply/runtime.go). A main component whose dependency
-	// was still converging on the first apply is therefore filtered out of the
-	// manifest, and ReadWorkspaceApplicationRuntime is read-only by contract and
-	// never re-applies it. Without this, every subsequent poll observes the same
-	// absent component and the deployment stays pending forever, no matter how
-	// long the dependency takes.
-	//
-	// Re-driving is safe here: Ensure is idempotent (create-if-absent secrets at
-	// tkeapply/configuration.go:206, idempotent kubectl apply), Start never
-	// claims readiness, and this path already records observations and advances
-	// deployment status, so ReadRuntime is a reconcile-on-read, not a pure read.
-	if !start && observation.State != api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY {
-		if _, err = s.Runtime.Start(ctx, command, target); err != nil && !isExecutionPending(err) {
+	var previousState string
+	// Ensure admits missing components only after their dependencies are ready.
+	// Reapply the original command while its initial delivery is progressing;
+	// a failed/terminal observation or a lifecycle intent is not permission to
+	// start it. validateReserved holds the runtime row lock, which also serializes
+	// insertion of lifecycle actions through their runtime foreign key.
+	if !start && (observation.State == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_PENDING || observation.State == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_STARTING) {
+		var progressing bool
+		err = tx.QueryRowContext(ctx, `
+			SELECT d.status IN ('deploying','verifying') AND d.activated_at IS NULL
+			       AND i.status IN ('pending','starting')
+			       AND NOT EXISTS (
+			           SELECT 1 FROM serve.agent_runtime_actions a
+			           WHERE a.runtime_instance_id=i.id AND (
+			               a.action IN ('stop','terminate')
+			               OR (a.command_id=$3 AND a.observation_result='rejected')
+			           )
+			       ), i.status
+			FROM serve.agent_deployments d
+			JOIN serve.agent_runtime_instances i ON i.deployment_id=d.id
+			WHERE d.id=$1 AND i.id=$2`, command.DeploymentId, command.RuntimeInstanceId, stableID("start_", command.DeploymentId)).Scan(&progressing, &previousState)
+		if err != nil {
 			return err
 		}
-		// Pending is not a failure: the components are converging and the
-		// second read carries the live state.
-		if observation, err = s.Runtime.Observe(ctx, command, target); err != nil {
-			return err
+		if progressing {
+			if _, err = s.Runtime.Start(ctx, command, target); err != nil && !isExecutionPending(err) {
+				return err
+			}
+			// The separate read, including a definite failure, owns the result.
+			if observation, err = s.Runtime.Observe(ctx, command, target); err != nil {
+				return err
+			}
 		}
 	}
 	if _, err = recordDeploymentObservation(ctx, tx, command, observation); err != nil {
 		return err
 	}
-	return s.finishFirstDelivery(ctx, tx, command, observation)
+	return s.finishFirstDelivery(ctx, tx, command, observation, start, previousState)
 }

@@ -177,7 +177,7 @@ never owns Agent lifecycle, and Ledger never authorizes continuation.
 | Gateway managed key | Gateway Integration owns issuance, allowlist, Secret delivery reference and revocation; Workspace consumes only opaque binding identity. A production issuer now calls the Sub2API owner's service issuance route (`POST /api/v1/service/workspace-keys`) with the deployment's own service token, and an empty declared selection is resolved by that authority into a concrete, bounded model scope that is recorded with the binding and the original command; the raw key is written only through Fabric's approved Secret store (`FabricCoordination.PutManagedSecret`) | [model update owner](evidence/source-checks/2026-10-01-workspace-model-configuration-update-owner.json) | The live Sub2API service route, its Instance secret wiring and a service revocation path remain to be qualified; the owner tests use the HTTP contract fixture, not the live authority |
 | Fabric Secret binding | Serve is the only approved caller: a launch freezes the Workspace's opaque Gateway key handover on its deploy command and Serve alone confirms the initial bind through Fabric, preserving one active binding; explicit predecessor-checked `RebindSecret` stays Serve-owned | [Secret rebind](evidence/source-checks/2026-10-01-fabric-secret-rebind-second-configuration.json), [launch handover](evidence/source-checks/workspace-handover-contracts2-20261010-source-contracts-2.json) | The Workspace model-configuration update still binds through Fabric directly and presents a Fabric-confirmed binding to Serve; it must move onto the Serve handover before that surface is usable. Declared non-Gateway runtime Secret inputs still need an end-to-end delivery contract |
 | Serve model apply/readback | Serve resolves the frozen publisher contract, applies through the declared interface and records only the application's readback | [Serve model readback](evidence/source-checks/2026-09-30-serve-model-configuration-apply-readback.json) | Console/Control Plane callers have not moved; live TKE execution and route acceptance are open |
-| Serve delivery and access | Deployment/readiness/access ownership and the stable Instance ingress boundary are implemented in source | [Serve access data plane](evidence/source-checks/2026-10-01-serve-access-data-plane-rebase-on-merged-ssot.json) | Typed application execution, route activation, DNS/TLS and a real Instance request remain unqualified |
+| Serve delivery and access | Deployment/readiness/access ownership and the stable Instance ingress boundary are implemented in source; initial dependency progression is bounded by existing deployment, runtime and lifecycle facts | [Serve access data plane](evidence/source-checks/2026-10-01-serve-access-data-plane-rebase-on-merged-ssot.json); [PostgreSQL progression boundaries](../services/serve/internal/delivery/dependency_progression_postgres_test.go) and [executor dependency/read boundaries](../services/serve/internal/tkeapply/executor_test.go) | Typed application execution, route activation, DNS/TLS and a real Instance request remain unqualified |
 | Owner topology and browser identity | Portable owner topology, HTTP surface and baked Console identity are declared and contract-tested | [topology](evidence/source-checks/2026-09-30-owner-topology-installation-contract.json), [HTTP/identity](evidence/source-checks/2026-09-30-http-surface-and-console-identity-declaration.json) | The Instance manifest still has to install and route the complete set |
 | Ledger | Append-only receipts, evidence and reconciliation boundaries remain in the retained Ledger owner | [local receipts](evidence/source-checks/2026-09-26-ledger-local-receipts.json) | Current Candidate and Instance evidence must be bound to the same bytes |
 
@@ -186,6 +186,15 @@ owner tests and caller readback prove it. The table does not claim that a
 portable image, Candidate, Instance or public endpoint has adopted every row.
 
 ## Source Qualification
+
+The 2026-10-14 Serve repair passed
+`npm run verify:local:focused -- --base 132d251a088538087ec5a36c11dc31e9a8366cd1`:
+104 delivery test/subtest results and 14 executor tests passed with no failures
+or skips. The delivery tests use an isolated PostgreSQL database and typed runtime
+fixtures; the executor tests use the real executor with the Kubernetes fixture.
+They cover dependency progression, repeated reads after failure, lifecycle intent,
+retired replacement isolation and an explicit Deploy retry. These results do not
+qualify a real TKE application, Candidate or Instance.
 
 The current source gate that is safe to claim from this checkout is:
 

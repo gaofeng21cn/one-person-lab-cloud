@@ -384,6 +384,78 @@ func TestExecutorAppliesTheWorkloadOntoTheConfirmedPlacement(t *testing.T) {
 	}
 }
 
+func TestExecutorProgressesTheOriginalDependencyChainOnlyOnEnsure(t *testing.T) {
+	cluster := newFakeCluster()
+	cluster.store(pvcObject())
+	executor := testExecutor(cluster, testInstallation(map[string]string{"app.kubernetes.io/component": "serve"}))
+	input := testInput(t)
+	input.Revision.Dependencies = []contracts.WorkspaceApplicationDependency{
+		{Name: "database", Image: input.Revision.Image},
+		{Name: "service", Image: input.Revision.Image, DependsOn: []string{"database"}},
+	}
+	for attempt := 0; attempt < 3; attempt++ {
+		observation, err := executor.EnsureWorkspaceApplicationRuntime(context.Background(), input, testPlacement())
+		if attempt == 2 {
+			if err != nil || observation.Status != "ready" {
+				t.Fatalf("final observation=%+v err=%v", observation, err)
+			}
+			continue
+		}
+		if !errors.Is(err, ErrWorkspaceLaunchPending) || observation.Status != "pending" {
+			t.Fatalf("attempt=%d observation=%+v err=%v", attempt, observation, err)
+		}
+		if observation.Components[0].State != "absent" {
+			t.Fatalf("main was admitted before its dependencies: %+v", observation.Components)
+		}
+		for _, component := range observation.Components {
+			if component.Name == "database" && component.State != "ready" {
+				t.Fatalf("database did not settle: %+v", component)
+			}
+			if component.Name == "service" {
+				want := "absent"
+				if attempt == 1 {
+					want = "ready"
+				}
+				if component.State != want {
+					t.Fatalf("service=%s want=%s", component.State, want)
+				}
+			}
+		}
+		// Read the settled dependencies repeatedly. No read may create the
+		// next component that was absent from the original apply.
+		objects := len(cluster.objects)
+		for poll := 0; poll < 2; poll++ {
+			readback, err := executor.ReadWorkspaceApplicationRuntime(context.Background(), input)
+			if err != nil || readback.Status != "pending" || readback.Components[0].State != "absent" {
+				t.Fatalf("readback=%+v err=%v", readback, err)
+			}
+			if len(cluster.objects) != objects {
+				t.Fatal("read created runtime objects")
+			}
+		}
+	}
+}
+
+func TestExecutorImageConflictRemainsReadableAsFailure(t *testing.T) {
+	cluster := newFakeCluster()
+	cluster.store(pvcObject())
+	executor := testExecutor(cluster, testInstallation(map[string]string{"app.kubernetes.io/component": "serve"}))
+	input := testInput(t)
+	if _, err := executor.EnsureWorkspaceApplicationRuntime(context.Background(), input, testPlacement()); err != nil {
+		t.Fatal(err)
+	}
+	deployment := cluster.objects["Deployment/"+workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)]
+	containers := nested(deployment, "spec", "template", "spec", "containers").([]any)
+	containers[0].(map[string]any)["image"] = "registry.test/app@sha256:" + strings.Repeat("2", 64)
+	readback, err := executor.ReadWorkspaceApplicationRuntime(context.Background(), input)
+	if err != nil || readback.Status != "failed" {
+		t.Fatalf("readback=%+v err=%v", readback, err)
+	}
+	if _, err = executor.EnsureWorkspaceApplicationRuntime(context.Background(), input, testPlacement()); err == nil || err.Error() != "tencent_application_component_conflict" {
+		t.Fatalf("image conflict=%v", err)
+	}
+}
+
 // TestExecutorRefusesAnInstallationFactItNeeds proves the executor never applies a
 // workload onto an unconfirmed placement or with a missing installation fact.
 func TestExecutorRefusesAnInstallationFactItNeeds(t *testing.T) {
