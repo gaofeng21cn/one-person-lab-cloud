@@ -1,6 +1,6 @@
 # Deprecated: Development Framework
 
-**Status:** DEPRECATED as of 2025-01-XX  
+**Status:** DEPRECATED as of 2025-01-XX
 **Reason:** Over-engineered for single-developer workflow
 
 ## Background

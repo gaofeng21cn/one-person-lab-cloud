@@ -1,7 +1,7 @@
 # OPL Cloud SSOT 审计执行摘要
 
-**审计日期:** 2026-10-13  
-**分支:** `fix/workspace-launch-deployment-config`  
+**审计日期:** 2026-10-13
+**分支:** `fix/workspace-launch-deployment-config`
 **审计深度:** 7 层全栈扫描
 
 ---
@@ -72,28 +72,28 @@ services/control-plane/internal/server/workspace_default_application.go
 ## ✅ 5 个正确的 SSOT 实践
 
 ### 1. Owner 身份定义
-**权威源:** `packages/contracts/go/owneridentity/owneridentity.go`  
-**消费方式:** 所有服务通过 import 使用，无重复定义  
+**权威源:** `packages/contracts/go/owneridentity/owneridentity.go`
+**消费方式:** 所有服务通过 import 使用，无重复定义
 **评价:** 🏆 教科书级别的 SSOT 实践
 
 ### 2. TypeScript 类型系统
-**权威源:** `apps/console-ui/src/api/dtos.ts` (1318 行)  
-**消费方式:** 所有前端组件导入使用  
+**权威源:** `apps/console-ui/src/api/dtos.ts` (1318 行)
+**消费方式:** 所有前端组件导入使用
 **评价:** ✅ 完美的集中类型定义
 
 ### 3. Docker Compose Overlay
-**基础:** `compose.yaml`  
-**Overlay:** 8 个按需组合的 overlay 文件  
+**基础:** `compose.yaml`
+**Overlay:** 8 个按需组合的 overlay 文件
 **评价:** ✅ 标准的 Docker Compose 多环境模式
 
 ### 4. 环境变量分层
-**开发:** `.env.example` (35 行, HTTP 模式)  
-**生产:** `deploy/portable/opl-cloud.env.example` (360 行, Owner Topology 模式)  
+**开发:** `.env.example` (35 行, HTTP 模式)
+**生产:** `deploy/portable/opl-cloud.env.example` (360 行, Owner Topology 模式)
 **评价:** ✅ 设计性差异，符合开发/生产分离原则
 
 ### 5. Schema 版本管理
-**模式:** 每个领域独立维护 `schemaVersion`  
-**位置:** development tools, receipts, qualification tools  
+**模式:** 每个领域独立维护 `schemaVersion`
+**位置:** development tools, receipts, qualification tools
 **评价:** ✅ 符合领域驱动设计
 
 ---
@@ -200,5 +200,5 @@ services/control-plane/internal/server/workspace_default_application.go
 
 ---
 
-**审计完成** ✅  
+**审计完成** ✅
 **总体评价:** OPL Cloud 的 SSOT 架构健康，主要需要补充文档说明现有的架构模式。

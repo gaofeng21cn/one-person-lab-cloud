@@ -1,7 +1,7 @@
 # OPL Cloud SSOT 冲突深度审计报告
 
-生成时间: 2026-10-13  
-审计人: Claude (Opus 5)  
+生成时间: 2026-10-13
+审计人: Claude (Opus 5)
 分支: `fix/workspace-launch-deployment-config`
 
 ---

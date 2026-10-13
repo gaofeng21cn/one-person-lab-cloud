@@ -1,6 +1,6 @@
 # SSOT (Single Source of Truth) 审计报告
 
-生成时间: 2026-10-13  
+生成时间: 2026-10-13
 分支: `fix/workspace-launch-deployment-config`
 
 ---
@@ -270,7 +270,7 @@ npm run check:pr-body -- --body-file /absolute/pr-body.md --base origin/main
 ## 📚 相关文档引用
 
 - **SSOT 所有权**: `CONTRIBUTING.md` 第 7-16 行
-- **冲突解决**: `CONTRIBUTING.md` 第 20-24 行  
+- **冲突解决**: `CONTRIBUTING.md` 第 20-24 行
 - **开发流程**: `DEV_GUIDE.md` 第 21-68 行
 - **PR 治理**: `DEV_GUIDE.md` 第 178-284 行
 - **环境配置**: `.env.example`, `deploy/portable/opl-cloud.env.example`
