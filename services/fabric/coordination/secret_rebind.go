@@ -18,7 +18,8 @@ import (
 )
 
 // RebindSecret is Fabric's explicit replacement path for a changed Gateway
-// Secret. Serve is the only approved caller, exactly as for the initial bind.
+// Secret. Workspace and Serve are the approved callers, exactly as for the initial
+// bind: Workspace owns the accepted configuration change that names the predecessor.
 // BindSecret stays initial-bind and same-request replay only, so a second
 // model configuration that changes the managed key cannot be expressed as another
 // BindSecret; it must name the exact predecessor it replaces. Fabric compares that
@@ -35,7 +36,7 @@ import (
 // failure rolls the whole transaction back, so the predecessor binding stays
 // active and no replacement is recorded.
 func (s *Service) RebindSecret(ctx context.Context, r *api.SecretBindingRebindCommand) (*api.SecretBindingRebindReadback, error) {
-	if err := peer(ctx, owneridentity.Serve.Service()); err != nil {
+	if err := peer(ctx, owneridentity.Workspace.Service(), owneridentity.Serve.Service()); err != nil {
 		return nil, err
 	}
 	if err := ownerservice.ValidateCallContext(ctx, r.GetContext()); err != nil {
