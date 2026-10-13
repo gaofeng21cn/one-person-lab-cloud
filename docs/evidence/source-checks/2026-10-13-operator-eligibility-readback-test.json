@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "evidenceLayer": "source_check",
+  "result": "pass",
+  "scope": [
+    "tests/ui/operator-account-controller-browser.test.ts"
+  ],
+  "problem": "Repeated identical error text let the second eligibility retry assertion run before its account readback.",
+  "execution": {
+    "command": "npm run verify:local:focused -- --base 0f6dfb9024e970a685ccc52f32ef4d2006ae9002",
+    "executedTests": 10,
+    "failures": 0,
+    "skips": 0,
+    "todos": 0
+  },
+  "observedAt": "2026-10-13T15:53:10.360952+00:00",
+  "limitations": [
+    "Browser route fixtures exercise Console retry behavior; this is not production account mutation or Candidate qualification."
+  ]
+}
