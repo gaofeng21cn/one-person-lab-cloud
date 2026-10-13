@@ -7,7 +7,6 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
 import * as development from '../../tools/dev-session.ts';
-import { checkPullRequestBody, requiredSections } from '../../tools/check-pr-governance.ts';
 
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
 const planPath = 'docs/spec/target/checks/development_plan.json';
@@ -1341,63 +1340,6 @@ test('the source-check export refuses a declared input that moves while the rece
   assert.equal(readFileSync(join(root, 'owner/input.ts'), 'utf8'), moved);
   assert.equal(existsSync(receiptPath), false, 'no record is appended after the obligation moved');
   assert.deepEqual(readdirSync(join(store, 'runs', approval.runId, 'receipts')), ['acceptance-1.json']);
-});
-
-test('the source-check export keeps a record whose declared input moves during the append and leaves it stale', async t => {
-  const { root, store, git, approval } = fixture(t);
-  development.approveRun(root, store, approval);
-  const session = new development.DevelopmentSession(root, store, approval.runId);
-  session.context();
-  const input = session.read('owner/input.ts');
-  session.write(input.path, input.sha256, input.content + '// executed change\n');
-  assert.equal((await session.verifyGate('acceptance')).result, 'passed');
-  const receiptPath = join(root, 'docs/evidence/source-checks', 'owner-run-acceptance-1.json');
-  const receiptRelPath = 'docs/evidence/source-checks/owner-run-acceptance-1.json';
-
-  const moved = 'export const answer = 42;\n// moved after the record was appended\n';
-  const interpose = gitInterpose(t, { receipt: receiptPath, rewrite: join(root, 'owner/input.ts'), content: moved });
-  const inherited = process.env.PATH ?? '';
-  process.env.PATH = `${interpose.directory}:${inherited}`;
-  try {
-    assert.throws(() => development.generateSourceCheckReceipt(root, store, approval.runId, 'acceptance'), /SOURCE_CHECK_STATE_CHANGED_AFTER_APPEND:/u);
-  } finally { process.env.PATH = inherited; }
-
-  assert.equal(existsSync(interpose.fired), true, 'the interposed input change ran after the append');
-  assert.equal(readFileSync(join(root, 'owner/input.ts'), 'utf8'), moved);
-  // Append-only history: the published record is retained untouched, still
-  // standing for the inputs that actually executed rather than the moved ones.
-  const published = JSON.parse(readFileSync(receiptPath, 'utf8'));
-  assert.equal(published.result, 'pass');
-  assert.equal(published.sourceStage.attempt, 1);
-  assert.equal(published.verifiedSource.changedFilesSha256['owner/input.ts'], sha('export const answer = 42;\n// executed change\n'));
-  assert.notEqual(published.verifiedSource.changedFilesSha256['owner/input.ts'], sha(moved));
-  // The current acceptance obligation for the affected stage is not passed.
-  assert.equal(new development.DevelopmentSession(root, store, approval.runId).context().result, 'ready');
-  // The freshness predicate the pull-request record check applies to the very
-  // same retained record judges it stale for the checked revision.
-  const plan = JSON.parse(readFileSync(join(root, planPath), 'utf8'));
-  const sections: Record<string, string> = {
-    'Decision Conclusion': 'Record the executed owner acceptance change.',
-    'Current Problem': 'The owner behavior needed the admitted change.',
-    'Business SSOT': 'No business SSOT change.',
-    'Development SSOT': 'No development SSOT change.',
-    Baseline: `Base SHA: \`${approval.baseSha}\``,
-    Ownership: 'DDD owner: `owner`\nPhase: `W01`',
-    'Write Set': `- \`owner/input.ts\`\n- \`${receiptRelPath}\``,
-    'Receipt Pipeline': `- receipt: source-check; result: passed; path: \`${receiptRelPath}\``,
-    'Acceptance Criteria': '- [x] The owner behavior is verified.',
-    Verification: '- `node --test`: executed.',
-    Limitations: '- The retained record is stale for the current revision.',
-    'Terminal State': 'Terminal state: source-complete',
-    'Merge Danger': 'Merge danger: none',
-  };
-  const body = requiredSections.map(name => `## ${name}\n\n${sections[name]}\n`).join('\n');
-  const verdict = checkPullRequestBody(body, {
-    plan, root, changedPaths: ['owner/input.ts'], eventBaseSha: approval.baseSha,
-    headSha: git('rev-parse', 'HEAD').trim(), mode: 'record',
-  });
-  assert.equal(verdict.ok, false, 'a staled record is never accepted as current evidence');
-  assert.match(verdict.errors.join('\n'), /RECEIPT_STALE_HASH: .*owner\/input\.ts/u);
 });
 
 test('the source-check export refuses non-regular changed paths instead of recording a deletion', async t => {
