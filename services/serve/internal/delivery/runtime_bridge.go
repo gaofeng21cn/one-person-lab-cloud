@@ -81,8 +81,61 @@ func (s *Service) StopRuntime(ctx context.Context, command *api.RuntimeStopComma
 	}); err != nil {
 		return nil, err
 	}
-	// The provider confirmed the suspended state, so the retire action completes.
+	// The provider confirmed the suspended state, so the stop action completes.
 	return s.runtimeLifecycleOperation(ctx, deploy, "runtime_stop", "runtime", "succeeded")
+}
+
+// Retire is the Workspace-owner coordination entry point for deleting a workspace's
+// runtime. It is deliberately not an alias of StopRuntime: a stop suspends the
+// runtime so the same instance can be resumed later, while a retirement releases
+// the runtime for good. Fabric refuses to move a runtime back out of "absent", and
+// the provider's own lifecycle vocabulary has no way to resume an absent runtime,
+// so resuming a retired runtime is impossible rather than merely discouraged.
+//
+// The two operations therefore differ in three observable ways, and the Workspace's
+// deletion evidence is bound to all three: this records the runtime_retire operation
+// kind, it drives the provider to "absent" rather than "suspended", and it confirms
+// the observation. StopRuntime records the runtime_stop kind and leaves the
+// observation unconfirmed, so its result is not a retirement.
+//
+// The retained data attachment named by the command is what the deletion keeps:
+// the provider's absent lifecycle removes the runtime's compute objects and leaves
+// persistent volumes in place, so the attachment survives this call and is released
+// separately by the Fabric deletion that follows it.
+func (s *Service) Retire(ctx context.Context, command *api.RuntimeStopCommand) (*api.Operation, error) {
+	if err := requirePeer(ctx, owneridentity.Workspace); err != nil {
+		return nil, err
+	}
+	if s.Runtime == nil {
+		return nil, status.Error(codes.Unavailable, "runtime execution adapter is not configured")
+	}
+	runtimeID := strings.TrimSpace(command.GetRuntimeInstanceId())
+	if runtimeID == "" {
+		return nil, status.Error(codes.InvalidArgument, "runtime instance is required")
+	}
+	deploy, err := s.persistedRuntimeCommand(ctx, runtimeID, command.GetDeploymentId())
+	if err != nil {
+		return nil, err
+	}
+	target, err := s.confirmedRuntimeTarget(ctx, deploy.command)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.applyRecordedLifecycle(ctx, deploy, "retire", map[string]string{"desired": "absent", "retainedDataAttachmentId": command.GetRetainedDataAttachmentId()}, func() error {
+		return s.Runtime.Lifecycle(ctx, deploy.command, target, "absent")
+	}); err != nil {
+		return nil, err
+	}
+	retired, err := s.runtimeLifecycleOperation(ctx, deploy, "runtime_retire", "retirement", "succeeded")
+	if err != nil {
+		return nil, err
+	}
+	// The provider confirmed the runtime is absent, so the retirement itself is an
+	// observed fact. The deletion's evidence is the confirmation, not the request.
+	if _, err = s.DB.ExecContext(ctx, `UPDATE serve.operations SET observation_result='confirmed',updated_at=now() WHERE id=$1`, retired.GetOperationId()); err != nil {
+		return nil, dbError(err)
+	}
+	return s.operationByID(ctx, retired.GetOperationId())
 }
 
 // ReloadModels applies one model configuration to the exact persisted runtime on
