@@ -111,20 +111,17 @@ func main() {
 				s.KeyIssuer = issuer
 				s.WorkspaceKeyGroup = group
 			} else if rawURL != "" || serviceToken != "" || group != "" {
-				log.Printf("WARNING: Workspace key issuer disabled due to incomplete configuration. Required: OPL_SUB2API_URL=%q OPL_SUB2API_SERVICE_TOKEN=%s OPL_GATEWAY_WORKSPACE_KEY_GROUP=%q", rawURL != "", serviceToken != "", group)
-				log.Printf("  Missing: %s", func() string {
-					missing := []string{}
-					if rawURL == "" {
-						missing = append(missing, "OPL_SUB2API_URL")
-					}
-					if serviceToken == "" {
-						missing = append(missing, "OPL_SUB2API_SERVICE_TOKEN")
-					}
-					if group == "" {
-						missing = append(missing, "OPL_GATEWAY_WORKSPACE_KEY_GROUP")
-					}
-					return strings.Join(missing, ", ")
-				}())
+				missing := []string{}
+				if rawURL == "" {
+					missing = append(missing, "OPL_SUB2API_URL")
+				}
+				if serviceToken == "" {
+					missing = append(missing, "OPL_SUB2API_SERVICE_TOKEN")
+				}
+				if group == "" {
+					missing = append(missing, "OPL_GATEWAY_WORKSPACE_KEY_GROUP")
+				}
+				log.Printf("WARNING: Workspace key issuer disabled due to incomplete configuration. Missing: %s", strings.Join(missing, ", "))
 			}
 			if fabricAddr, fabricToken := strings.TrimSpace(os.Getenv("OPL_FABRIC_ADDR")), strings.TrimSpace(os.Getenv("OPL_FABRIC_TOKEN")); fabricAddr != "" && fabricToken != "" {
 				options, err := config.TLS.DialOptions(owneridentity.Tenant.Service(), owneridentity.Fabric.Service(), fabricToken)
