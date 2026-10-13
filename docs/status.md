@@ -261,6 +261,20 @@ Historical local and provider-fixture evidence remains provenance for the
 retained Control Plane/Fabric lifecycle. It is not current Candidate,
 production, wallet or medical acceptance evidence.
 
+## Local Clean Host Qualification
+
+[Clean Host run 38420381927](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/38420381927)
+qualified Product `78dbe9b474e6b614ca0def565fd2ab60cdb37e4e` and its exact
+Candidate image with the existing Workspace fixture. The unchanged
+[validated READY receipt](evidence/source-checks/2026-10-13-clean-host-qualification-38420381927.json)
+binds startup, application access, restart continuity, owner DELETE and its
+Ledger receipt, and zero container/volume/network residuals after cleanup.
+This fixture run does not qualify the canonical OPL App Workspace image,
+live Sub2API, TKE, or the original paid-order obligations.
+The earlier owner-delete failure in run 38415379681 was not reproduced in this
+run; the new bounded failure callback improves diagnosis but does not establish
+the runtime root cause of that earlier failure.
+
 ## Readiness
 
 OPL Cloud currently has a coherent source architecture and a broad local owner
