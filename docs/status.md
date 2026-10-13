@@ -188,12 +188,16 @@ portable image, Candidate, Instance or public endpoint has adopted every row.
 ## Source Qualification
 
 The 2026-10-14 Serve repair passed
-`npm run verify:local:focused -- --base 132d251a088538087ec5a36c11dc31e9a8366cd1`:
-104 delivery test/subtest results and 14 executor tests passed with no failures
+`npm run verify:local:focused -- --base ea07b16405a30b6b69208361a9b1c933e916495d`:
+110 delivery test/subtest results and 14 executor tests passed with no failures
 or skips. The delivery tests use an isolated PostgreSQL database and typed runtime
 fixtures; the executor tests use the real executor with the Kubernetes fixture.
 They cover dependency progression, repeated reads after failure, lifecycle intent,
-retired replacement isolation and an explicit Deploy retry. These results do not
+retired replacement isolation and an explicit Deploy retry. Workspace retirement
+uses the existing `terminate` action rather than a value rejected by the owner
+schema. Its tests cover actual PostgreSQL persistence, provider failure and retry,
+confirmed replay, retained attachment identity and no restart on repeated polls.
+These results do not
 qualify a real TKE application, Candidate or Instance.
 
 The current source gate that is safe to claim from this checkout is:
