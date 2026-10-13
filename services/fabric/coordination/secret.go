@@ -17,17 +17,17 @@ import (
 )
 
 // BindSecret records that one accepted delivery's Gateway Secret is bound into the
-// resource set its runtime actually consumes. Serve is the only approved caller:
-// the accepted obligation hands Serve the opaque Gateway binding, and Workspace no
-// longer binds into Fabric directly. The caller supplies only opaque identities:
-// the runtime instance, the Gateway key binding and the approved Secret delivery
-// reference. Fabric resolves the execution resource from its own resource set, has
-// the provider confirm the exact stored Secret, then writes the immutable
-// fabric.secret_bindings row. A retry for the same runtime, slot, key binding and
-// Secret replays that same binding instead of minting a second one; a retry that
-// names any different original is a conflict.
+// resource set its runtime actually consumes. Workspace and Serve are the approved
+// callers: Workspace owns the accepted configuration and hands Fabric the opaque
+// Gateway binding before Serve is asked to apply anything. The caller supplies only
+// opaque identities: the runtime instance, the Gateway key binding and the approved
+// Secret delivery reference. Fabric resolves the execution resource from its own
+// resource set, has the provider confirm the exact stored Secret, then writes the
+// immutable fabric.secret_bindings row. A retry for the same runtime, slot, key
+// binding and Secret replays that same binding instead of minting a second one; a
+// retry that names any different original is a conflict.
 func (s *Service) BindSecret(ctx context.Context, r *api.SecretBindingCommand) (*api.SecretBindingReadback, error) {
-	if err := peer(ctx, owneridentity.Serve.Service()); err != nil {
+	if err := peer(ctx, owneridentity.Workspace.Service(), owneridentity.Serve.Service()); err != nil {
 		return nil, err
 	}
 	if err := ownerservice.ValidateCallContext(ctx, r.GetContext()); err != nil {

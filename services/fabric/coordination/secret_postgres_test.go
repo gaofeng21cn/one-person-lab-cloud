@@ -192,8 +192,8 @@ func TestBindSecretRecordsProviderConfirmedBindingOnce(t *testing.T) {
 // contract: an initial Serve BindSecret creates the one active binding,
 // RebindSecret with the exact predecessor retires it and writes the replacement as
 // the one active binding (never two), a replayed RebindSecret returns the same
-// readback without a second retirement, a wrong predecessor is refused, and the
-// retired Workspace caller is refused.
+// readback without a second retirement, a wrong predecessor is refused, and an
+// owner neither Secret write path authorises stays refused by the guard.
 func TestRebindSecretReplacesOnlyTheExpectedPredecessor(t *testing.T) {
 	db := database(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
@@ -309,7 +309,9 @@ func TestRebindSecretReplacesOnlyTheExpectedPredecessor(t *testing.T) {
 	if _, err = client.RebindSecret(ctx, conflict); status.Code(err) != codes.AlreadyExists {
 		t.Fatalf("idempotency conflict err=%v want already exists", err)
 	}
-	// Workspace is no longer admitted: Serve is the only Secret-binding caller.
+	// The models handover caller is admitted on the same typed path, so its request
+	// is refused for its own reason — the replayed idempotency key names a
+	// different command — not for being an outsider.
 	workspaceOpts, err := config.TLS.DialOptions(owneridentity.Workspace.Service(), owneridentity.Fabric.Service(), token)
 	if err != nil {
 		t.Fatal(err)
@@ -319,8 +321,22 @@ func TestRebindSecretReplacesOnlyTheExpectedPredecessor(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { workspaceConn.Close() })
-	if _, err = api.NewFabricCoordinationClient(workspaceConn).RebindSecret(ctx, conflict); status.Code(err) != codes.PermissionDenied {
-		t.Fatalf("retired Workspace peer err=%v want permission denied", err)
+	if _, err = api.NewFabricCoordinationClient(workspaceConn).RebindSecret(ctx, conflict); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("admitted Workspace peer conflict err=%v want already exists", err)
+	}
+	// An owner neither Secret write path authorises stays refused by the guard even
+	// though it authenticates against the same allowlist with the same token.
+	buildOpts, err := config.TLS.DialOptions(owneridentity.Build.Service(), owneridentity.Fabric.Service(), token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buildConn, err := grpc.NewClient(fabricListener.Addr().String(), buildOpts...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { buildConn.Close() })
+	if _, err = api.NewFabricCoordinationClient(buildConn).RebindSecret(ctx, conflict); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("unauthorised peer rebind err=%v want permission denied", err)
 	}
 	// A denied authorization (wrong tenant/owner) is refused before any retirement.
 	authority.deny = true
