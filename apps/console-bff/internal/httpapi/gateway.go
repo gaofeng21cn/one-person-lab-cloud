@@ -20,6 +20,22 @@ func (s *Server) registerGatewayRoutes(mux *http.ServeMux, gateway api.GatewayPr
 		}
 		return gateway.GetWallet(r.Context(), &api.GetWalletRpcRequest{Context: c})
 	})
+
+	// Mock usage-summary API - returns empty usage data until Gateway implements the real endpoint
+	mux.HandleFunc("GET /api/v2/gateway/usage-summary", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		// Return mock data matching GatewayAccountUsageSummaryDTO structure
+		_, _ = w.Write([]byte(`{"status":"available","available":true,"source":"gateway","data":{"totalRequests":0,"totalInputTokens":0,"totalOutputTokens":0,"totalTokens":0,"totalActualCostUsdMicros":0}}`))
+	})
+
+	// Mock key-specific usage-summary API
+	mux.HandleFunc("GET /api/v2/gateway/keys/{keyId}/usage-summary", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		// Return mock data matching GatewayUsageSummaryDTO structure
+		_, _ = w.Write([]byte(`{"status":"available","available":true,"source":"gateway","data":{"totalRequests":0,"totalInputTokens":0,"totalOutputTokens":0,"totalTokens":0,"totalActualCostUsdMicros":0}}`))
+	})
 }
 
 // registerModelCatalogRoute serves the Gateway-owned model catalog. It is
