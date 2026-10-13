@@ -15,8 +15,9 @@ Instance installation, or a Product Release. The target boundary is in
 
 ## Local Qualification Repairs (2026-10-13)
 
-PostgreSQL scratch-root recovery is implemented separately in Cloud PR #801,
-source `a894a7478739d1b99a9e5b0d38dcae05b8220dab`. It clears only the exact
+PostgreSQL scratch-root recovery and optional Workspace-fixture construction
+were merged through Cloud PR #801 at
+`c8b33a251a3c4a595e995293c9984b055c88e225`. It clears only the exact
 run-owned bind root after confirmed Compose shutdown using the pinned PostgreSQL
 image, then returns the empty `0700` directory to the actual host owner. Recovery
 authority and earlier qualification failures remain preserved. This change does
@@ -29,18 +30,23 @@ implementation; they do not validate PR #801 or complete Candidate qualification
 PR #801's owning evidence remains in that PR. Candidate construction run
 `38401075308` succeeded for its exact source; qualification remains separate.
 
-Working-tree verification against base
-`76acce0dd48c018203e5128cb1cc6d038a446f20` covers qualification input selection,
-source-check artifact separation and development-gate scope. The source tests
-run without a current task-book freshness dependency; plan changes retain their
-separate freshness check.
+Verification of this change uses base
+`c8b33a251a3c4a595e995293c9984b055c88e225`. Ordinary source tests run without a
+current task-book freshness dependency; plan changes retain their separate
+freshness check. Existing Clean Host selects an explicit immutable Workspace
+image or constructs only its qualification fixture while retaining the exact
+supplied Cloud image. This change does not replace that merged workflow.
 
-Clean Host retains its default immutable-image qualification path and adds an
-explicit source-build check with a separate artifact. Workflow admission and
-qualifier regression tests cover both selections and reject mixed or mutable
-image inputs. Fresh Clean Host `READY` evidence, current-revision CI and the
-patrol's separately observed launch HTTP 502 remain unverified; Cloud issues
-#787 and #793 remain open for those respective acceptance obligations.
+The application-entry check retains HTTP success plus the qualification fixture
+marker as its acceptance criteria. It now reports `workspace_open_http_failed`
+with only the HTTP status, or `workspace_open_fixture_marker_missing`; both
+paths retain `NOT_READY` and `workspace_open`, with no response body, private
+headers or entry URL persisted. Real HTTP lifecycle tests exercise both failures
+and the unchanged success path. These local tests do not diagnose the earlier
+patrol's launch 502 or establish new hosted READY evidence.
+
+Fresh Clean Host `READY`, current-revision CI and the patrol's separate launch
+502 remain unverified. #787 and #793 retain their respective acceptance duties.
 
 ### Exact Candidate Follow-Up
 

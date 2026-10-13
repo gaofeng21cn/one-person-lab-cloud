@@ -108,8 +108,9 @@ canonical owners rather than disappearing when execution-plan coupling is remove
 ## Clean Host Qualification Recovery (2026-10-13)
 
 Cloud qualification tooling owns #793's PostgreSQL scratch cleanup and #787's
-image/launch verification path. PR #801 owns the PostgreSQL repair; this change adds separate exact-image
-versus source-build workflow paths, with local evidence in
+image/launch verification path. Merged PR #801 owns PostgreSQL teardown and
+Workspace-fixture admission while preserving the supplied Cloud digest. This
+change distinguishes HTTP failure from a missing fixture marker, with evidence in
 [status](status.md#local-qualification-repairs-2026-10-13).
 Exact Candidate run `38408791877` now establishes pullable canonical inputs
 but remains `NOT_READY` at application entry readback, with retained resources.

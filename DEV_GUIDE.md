@@ -380,15 +380,14 @@ readiness. A Docker Desktop daemon does not qualify a macOS Fabric process's
 filesystem, and fixture quota backends do not prove kernel enforcement.
 
 The manual [Clean Host Qualification workflow](.github/workflows/clean-host-qualification.yml)
-owns its current dispatch inputs. Its default `qualification_mode: exact-image`
-requires an exact Product commit in `ref` and immutable `cloud_image_ref` and
-`workspace_image_ref`, retaining the `local-workspace-qualification` artifact.
-Explicit `source-check` uses the exact `ref`, omits both image refs and builds
-source images, emitting the separate `local-workspace-source-check` artifact.
-This source validation is optional, is not an ordinary PR JSON requirement and
-does not replace qualification of the published Candidate's exact bytes. Runtime
-ownership and installed-product claims still require their own authoritative
-readback; neither this entry nor ordinary PR CI proves those layers by itself.
+requires the intended exact Product commit and immutable Cloud Candidate image.
+It accepts an explicit immutable Workspace image or builds only the existing
+qualification Workspace fixture into a run-owned loopback registry. Cloud is
+always pulled by the supplied digest. The current dispatch workflow and
+[release procedure](docs/runtime/release.md) own that selection; a fixture result
+does not establish production application or live Sub2API acceptance. Local
+source-image construction remains a separate CLI option and cannot qualify an
+existing published Candidate's bytes.
 
 For generated-field changes, run `npm run verify:generated-contracts` to
 regenerate the covered outputs from their declared source inputs and compare
