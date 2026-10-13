@@ -188,7 +188,7 @@ portable image, Candidate, Instance or public endpoint has adopted every row.
 ## Source Qualification
 
 The 2026-10-14 Serve repair passed
-`npm run verify:local:focused -- --base d3614b6d92dd065a7891bb35a9aa675e0128b6cf`:
+`npm run verify:local:focused -- --base ea07b16405a30b6b69208361a9b1c933e916495d`:
 110 delivery test/subtest results and 14 executor tests passed with no failures
 or skips. The delivery tests use an isolated PostgreSQL database and typed runtime
 fixtures; the executor tests use the real executor with the Kubernetes fixture.
