@@ -100,7 +100,7 @@ Canonical evidence summaries remain explicit owner-maintained changes.
 
 Use the development-governance path in order: execute real local focused checks,
 record actual results, have the host generate and validate PR source-check
-evidence, declare the PR record and verify its freshness, then obtain actual CI
+evidence, then obtain actual CI
 `validate` results for the current revision and a recorded technical review
 against the exact source head and base before a separately authorized merge.
 The review is user-controlled: a user-authorized reviewer records it (as a
@@ -127,16 +127,13 @@ failures, skips or TODOs, plus the captured-output digest. A passing label or
 unchecked acceptance criterion is not evidence. Historical-receipt handling is
 owned by the process-layer reference in this section.
 
-Record compliance and merge eligibility are distinct. The fixed PR record and
-the `governance` job check declarations and freshness using the checker from the
-PR base commit; head is inspected as data, and a missing base checker fails
-closed. The `validate` job actually executes the source gate. Local receipts
-cannot replace CI execution, and `source-complete` proves only the exercised
-source layer, not business-chain E2E or Instance acceptance. Merge eligibility
-comes from current-revision CI results and the existing review/merge rules, not
-an additional development-stage receipt. This does not establish that remote
-branch protection is configured. See the
-[Pull Request Governance Record](DEV_GUIDE.md#pull-request-governance-record).
+Record compliance and merge eligibility are distinct. The `validate` job
+actually executes the source gate. Local receipts cannot replace CI execution,
+and `source-complete` proves only the exercised source layer, not business-chain
+E2E or Instance acceptance. Merge eligibility comes from current-revision CI
+results and the existing review/merge rules, not an additional development-stage
+receipt. See the
+[Pull Request Evidence And Review](DEV_GUIDE.md#pull-request-evidence-and-review).
 
 Enforcement belongs at the trusted host entry, not in a particular model loop.
 The host must require current context before file operations, validate the
@@ -172,7 +169,7 @@ commit `d995df3aaf6473a2b7714fc868327919bac4bbd4` (skill
 `docs/design/owner-slice-framework-v1.md`, wiring acceptance
 `docs/design/wiring-acceptance.md`). This document, `DEV_GUIDE.md` and the
 existing host entry remain the Cloud instance of that process: admission, the
-restricted runner, PR governance, CI and evidence stay governed here. Citing
+restricted runner, PR evidence, CI and evidence stay governed here. Citing
 the framework, or attaching its tools, restricts nothing by itself and does
 not prove adoption; actual restricted adoption is shown only by real
 admitted-run execution evidence (`dev_context`/`dev_verify` results plus the

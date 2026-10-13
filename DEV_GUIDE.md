@@ -124,7 +124,7 @@ parallel/serial criterion — is owned by the process repository
 `skills/owner-slice-development/SKILL.md`, design
 `docs/design/owner-slice-framework-v1.md`, wiring acceptance
 `docs/design/wiring-acceptance.md`); this guide keeps the Cloud instance: the
-approved entry commands, host behavior, PR governance and CI. Citing the
+approved entry commands, host behavior, PR evidence and CI. Citing the
 framework or attaching its tools does not restrict a chat; restricted
 adoption requires actual admitted-run execution evidence
 (`dev_context`/`dev_verify` plus the host-exported source-check) under the
@@ -175,37 +175,26 @@ checks; business and Instance receipts stay in their existing owner formats and
 qualification paths. Neither
 layer is accepted as evidence of completion of the other.
 
-## Pull Request Governance Record
+## Pull Request Evidence And Review
 
-Every pull request carries a governance record in its description. The required
-sections, their exact structure and the terminal states are machine-enforced by
-`npm run check:pr-body` and by the
-`governance` job in
-[pull request CI](.github/workflows/pull-request-ci.yml). A missing, duplicated
-or empty section, an incomplete base SHA, an owner that does not own the
-declared phase record, a changed path outside the declared write set, an untyped
-or inconsistent receipt entry, stale changed-content hashes, or a
-completion claim without executed evidence and closed acceptance criteria is
-refused; a changed path without a declared phase record fails the
-same way instead of being grandfathered in.
-
-```bash
-npm run check:pr-body -- --body-file /absolute/pr-body.md --base origin/main
-```
+A pull request description is written for its reader, not for a checker. The
+[pull request template](.github/PULL_REQUEST_TEMPLATE.md) asks for four things:
+what changed, which DDD owner and phase it belongs to, how it was verified, and
+how it is rolled back. Linking the governing Issue is encouraged; restating the
+decision inside the pull request is not.
 
 The workflow is real local focused execution results, host-generated PR
-source-check evidence, PR record and freshness checks, actual CI `validate`
-execution for the current revision, a recorded technical review, then a
-separately authorized merge. The review is user-controlled: a user-authorized
-reviewer examines and records it against the exact source head and base,
-covering SSOT/owner/write-set compliance, the real focused behavior evidence
-and the fresh host source-check; when the contributor account authored the pull
-request the review is recorded as a COMMENT review rather than a
-self-approval, and no specific GitHub username is required. Merge still
+source-check evidence, actual CI `validate` execution for the current revision, a
+recorded technical review, then a separately authorized merge. The review is
+user-controlled: a user-authorized reviewer examines and records it against the
+exact source head and base, covering owner/write-set compliance, the real focused
+behavior evidence and the fresh host source-check; when the contributor account
+authored the pull request the review is recorded as a COMMENT review rather than
+a self-approval, and no specific GitHub username is required. Merge still
 requires actual successful current-revision CI, the repository's actual
 protection requirements and merge authorization by a separately authorized
 actor. Updating the revision requires current CI results and fresh evidence for
-changed inputs; editing the PR body reruns record validation.
+changed inputs.
 
 The host owns approval and authoritative run receipts in runtime storage. After
 `dev:verify` records a passed stage in the approved run, the host exports exactly
@@ -254,22 +243,19 @@ E2E, Instance qualification or production readiness. Neither label grants merge
 permission. `blocked` carries open obligations and preserves failed or pending
 evidence instead of claiming success.
 
-Record validity and merge eligibility are separate. The `governance` CI job
-executes `tools/check-pr-governance.ts` from the PR **base commit** in `record`
-mode, with head treated only as inspected data. If the base has no checker, the
-job fails closed; it never executes a PR head checker or grants an actor
-exception. The existing `validate` job independently runs its full source
-commands against the checked-out current revision, including the changed
-implementation and its tests. A local receipt cannot substitute for that actual
-CI execution. The record checker establishes record validity and freshness,
-not the provenance of a claimed execution or permission to merge.
+Record validity and merge eligibility are separate. The `validate` job in
+[pull request CI](.github/workflows/pull-request-ci.yml) independently runs its
+full source commands against the checked-out current revision, including the
+changed implementation and its tests. A local receipt cannot substitute for that
+actual CI execution, and a pull request description cannot grant merge
+permission.
 
-When the base checker still requires the retired acceptance gate for a
-`merge-ready` label, use `source-complete` with genuine executed source evidence
-for this governance transition. Keep the base checker in record mode; do not
-manufacture a retired acceptance receipt or switch to the head checker to get a
-passing record. Actual CI and the existing review/merge rules still decide
-whether that source revision can merge.
+This section previously described a `governance` CI job that executed
+`tools/check-pr-governance.ts` from the PR base commit in `record` mode and
+refused a pull request body with a missing or empty section. That job, its
+checker and its pull request body contract were removed in PR #790. The
+description is no longer machine-enforced; the host admission rules above still
+are.
 
 Review and merge authorization remain user-controlled: a user-authorized
 reviewer records the technical review against the exact source head and base
