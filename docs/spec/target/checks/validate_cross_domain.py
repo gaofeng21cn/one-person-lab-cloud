@@ -13,7 +13,8 @@ import yaml
 from jsonschema import RefResolver, Draft202012Validator
 from openapi_schema_validator import OAS30Validator
 ROOT=Path(__file__).resolve().parents[1]
-SOURCE_FILES=['03_api_contract_complete.yaml','contracts/schema.sql','contracts/db_inventory.json','contracts/internal.proto','contracts/publisher-contract.schema.json','checks/semantics_cases.json','checks/validate_cross_domain.py','13_plan_change_policy.md','contracts/plan-change-policy.json']
+PROTO_DIR=ROOT.parents[2]/'packages/contracts/proto'
+SOURCE_FILES=['03_api_contract_complete.yaml','contracts/schema.sql','contracts/db_inventory.json','../../../packages/contracts/proto/internal.proto','contracts/publisher-contract.schema.json','checks/semantics_cases.json','checks/validate_cross_domain.py','13_plan_change_policy.md','contracts/plan-change-policy.json']
 API=yaml.safe_load((ROOT/SOURCE_FILES[0]).read_text()); SCHEMAS=API['components']['schemas']
 INVENTORY=json.loads((ROOT/'contracts/db_inventory.json').read_text())
 PUBLISHER=json.loads((ROOT/'contracts/publisher-contract.schema.json').read_text())
@@ -51,7 +52,8 @@ def sql_insert(table,data):
 
 def protocol_module(directory):
  import grpc_tools
- p=subprocess.run([sys.executable,'-m','grpc_tools.protoc','-I',str(ROOT/'contracts'),'-I',str(Path(grpc_tools.__file__).parent/'_proto'),'--python_out='+str(directory),str(ROOT/'contracts/internal.proto')],capture_output=True,text=True)
+ proto_dir=ROOT.parents[2]/'packages/contracts/proto'
+ p=subprocess.run([sys.executable,'-m','grpc_tools.protoc','-I',str(proto_dir),'-I',str(Path(grpc_tools.__file__).parent/'_proto'),'--python_out='+str(directory),str(proto_dir/'internal.proto')],capture_output=True,text=True)
  if p.returncode:raise RuntimeError('protobuf compile failed: '+p.stderr)
  sys.path.insert(0,str(directory));return importlib.import_module('internal_pb2')
 

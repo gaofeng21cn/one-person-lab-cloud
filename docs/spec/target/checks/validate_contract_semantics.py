@@ -8,7 +8,8 @@ import tempfile,subprocess,grpc_tools
 B=Path(__file__).resolve().parents[1]
 _tmp=tempfile.TemporaryDirectory(prefix='opl-handoff-proto-')
 _include=Path(grpc_tools.__file__).parent/'_proto'
-subprocess.run([sys.executable,'-m','grpc_tools.protoc',f'-I{B/"contracts"}',f'-I{_include}',f'--python_out={_tmp.name}',str(B/'contracts/internal.proto')],check=True)
+_proto_dir=B.parents[2]/'packages/contracts/proto'
+subprocess.run([sys.executable,'-m','grpc_tools.protoc',f'-I{_proto_dir}',f'-I{_include}',f'--python_out={_tmp.name}',str(_proto_dir/'internal.proto')],check=True)
 sys.path.insert(0,_tmp.name);import internal_pb2 as pb
 api=yaml.safe_load((B/'03_api_contract_complete.yaml').read_text());sc=api['components']['schemas'];pub=json.loads((B/'contracts/publisher-contract.schema.json').read_text());events=json.loads((B/'contracts/events.json').read_text());results=[];resolve=RefResolver.from_schema(api)
 def check(name,ok):

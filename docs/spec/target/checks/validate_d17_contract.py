@@ -8,7 +8,8 @@ import tempfile,subprocess,grpc_tools
 B=Path(__file__).resolve().parents[1]
 _tmp=tempfile.TemporaryDirectory(prefix='opl-d17-proto-')
 _include=Path(grpc_tools.__file__).parent/'_proto'
-subprocess.run([sys.executable,'-m','grpc_tools.protoc',f'-I{B/"contracts"}',f'-I{_include}',f'--python_out={_tmp.name}',str(B/'contracts/internal.proto')],check=True)
+_proto_dir=B.parents[2]/'packages/contracts/proto'
+subprocess.run([sys.executable,'-m','grpc_tools.protoc',f'-I{_proto_dir}',f'-I{_include}',f'--python_out={_tmp.name}',str(_proto_dir/'internal.proto')],check=True)
 sys.path.insert(0,_tmp.name);import internal_pb2 as pb
 api=yaml.safe_load((B/'03_api_contract_complete.yaml').read_text());S=api['components']['schemas'];policy=json.loads((B/'contracts/plan-change-policy.json').read_text());events=json.loads((B/'contracts/events.json').read_text());resolver=RefResolver.from_schema(api);out=[];MAX=9223372036854775807
 validate(api);Draft202012Validator.check_schema(policy);Draft202012Validator(policy).validate(policy['x-policy']);Draft202012Validator.check_schema(events)
