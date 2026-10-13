@@ -13,6 +13,119 @@ Instance installation, or a Product Release. The target boundary is in
 [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Local Qualification Repairs (2026-10-13)
+
+PostgreSQL scratch-root recovery and optional Workspace-fixture construction
+were merged through Cloud PR #801 at
+`c8b33a251a3c4a595e995293c9984b055c88e225`. It clears only the exact
+run-owned bind root after confirmed Compose shutdown using the pinned PostgreSQL
+image, then returns the empty `0700` directory to the actual host owner. Recovery
+authority and earlier qualification failures remain preserved. This change does
+not introduce a competing cleanup implementation.
+
+Independent local Linux/Docker ownership experiments at runner UIDs 10001 and
+12037 reproduced `EACCES` and verified ownership transfer without widening mode
+or following external symlinks. Those experiments exercised a retained alternate
+implementation; they do not validate PR #801 or complete Candidate qualification.
+PR #801's owning evidence remains in that PR. Candidate construction run
+`38401075308` succeeded for its exact source; qualification remains separate.
+
+Verification of this change uses base
+`c8b33a251a3c4a595e995293c9984b055c88e225`. Ordinary source tests run without a
+current task-book freshness dependency; plan changes retain their separate
+freshness check. Existing Clean Host selects an explicit immutable Workspace
+image or constructs only its qualification fixture while retaining the exact
+supplied Cloud image. This change does not replace that merged workflow.
+
+The application-entry check retains HTTP success plus the qualification fixture
+marker as its acceptance criteria. It now reports `workspace_open_http_failed`
+with only the HTTP status, or `workspace_open_fixture_marker_missing`; both
+paths retain `NOT_READY` and `workspace_open`, with no response body, private
+headers or entry URL persisted. Real HTTP lifecycle tests exercise both failures
+and the unchanged success path. These local tests do not diagnose the earlier
+patrol's launch 502 or establish new hosted READY evidence.
+
+Clean Host READY evidence is now available below. Current-revision CI for this
+governance change and the patrol's separate launch 502 remain unverified.
+
+### Exact Candidate Follow-Up
+
+Clean Host run `38408791877` on 2026-10-13 used PR #801's exact Candidate
+source `a894a7478739d1b99a9e5b0d38dcae05b8220dab`, Cloud index digest
+`sha256:fb60b2917c19400fb940062bb913bd04ad4af3d7f63ea07cce3b91b6ae9119c5`
+and the canonical `ghcr.io/gaofeng21cn/one-person-lab-webui` Workspace digest
+`sha256:f6ce30fe1b0cdf8e1c6722a4c96d893ff8286e6af718940dab5a1d778ba70b71`.
+Anonymous manifest readback matched, and the hosted runner pulled that Workspace
+image. The Candidate bundle's existing validator accepted its asset checksums
+and neutral receipt.
+
+The uploaded [unchanged failure receipt](evidence/local-qualification/2026-10-13-clean-host-38408791877-not-ready.json)
+is `NOT_READY / terminal_readback`, with `Workspace Runtime open failed` and
+residual containers/volumes/networks `1 / 0 / 1`. Source flow reaches this check
+after launch success and application-installation readiness. Its error combines
+an unsuccessful entry response and a missing qualification-fixture marker;
+the receipt does not distinguish those predicates. The workflow storage cleanup
+succeeded, but resource absence and full owner deletion are unproved. No new
+PostgreSQL `EACCES` was observed; this earlier failure does not qualify PR #801's
+successful scratch cleanup. The patrol's original SHA and HTTP 502 still need
+separate attribution. No real Sub2API, Instance or production acceptance follows.
+
+The later owner-dispatched run `38415379681` used the merged workflow,
+retained that same Cloud Candidate and built only a run-owned Workspace fixture.
+Its [unchanged receipt](evidence/local-qualification/2026-10-13-clean-host-38415379681-not-ready.json)
+reports `NOT_READY / owner_delete`, `owner Workspace DELETE continuation failed`,
+residuals `0 / 0 / 1`, and the last pending readback `storage_absent / compute`,
+ordinal 1 of 8. This flow passed application open and restart but did not prove
+completed owner deletion or resource absence. Its receipt carries no specific
+failed DELETE response status or upstream reason; do not infer a provider cause
+or successful scratch cleanup. The built fixture digest is bound to this run,
+not a portable Workspace distribution reference.
+
+### Verified Clean Host Qualification
+
+[Clean Host run 38420381927](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/38420381927)
+qualified Product `78dbe9b474e6b614ca0def565fd2ab60cdb37e4e` and exact Cloud
+Candidate digest `sha256:05992806bf27789adfc0956c2df5bdf10d8e127c3b0641430cf38028e8f6e987` with the existing Workspace fixture. The unchanged
+[validated READY receipt](evidence/local-qualification/2026-10-13-clean-host-qualification-38420381927.json)
+binds startup, application access, restart continuity, owner DELETE and its
+Ledger receipt, and zero container/volume/network residuals after cleanup.
+This fixture run does not qualify the canonical OPL App Workspace image,
+live Sub2API, TKE, or the original paid-order obligations.
+The earlier owner-delete failure in run 38415379681 was not reproduced in this
+run; the new bounded failure callback improves diagnosis but does not establish
+the runtime root cause of that earlier failure.
+
+The original artifact bytes match the preserved receipt and the current producing
+validator accepts it. Run `38421676224` independently returned a valid READY
+receipt for the same Cloud Candidate, with zero resource residuals. This closes
+#793's clean-host PostgreSQL harness acceptance. The implemented qualification
+path retains the supplied immutable Cloud Candidate and may build the declared
+run-owned Workspace fixture; this is a valid local harness path. #787 remains
+open for owner disposition of the patrol's separate original launch HTTP 502;
+the exact old-input replay stopped before login or launch at the known cleanup
+failure, so it remains a historical, non-reproducible event. Canonical
+App, live-authority and Instance business acceptance remain separate product
+outcomes, not additional prerequisites for closing that local qualification
+issue. The READY evidence does not qualify the older `d5903d7a` recovery
+Candidate or establish its current Instance state.
+
+The newer Candidate construction `38428936740` produced source
+`d430825c08c73c294d44ce886228ecfd66c72704` / Cloud digest
+`sha256:5fb282fa50cae0c06d0e0bbeb02473f9a1c65807e898edf38d6de0740a505d0b`.
+Its complete neutral bundle validates. [Clean Host run 38430143919](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/38430143919)
+returned [unchanged, validator-accepted READY evidence](evidence/local-qualification/2026-10-13-clean-host-qualification-38430143919.json)
+with fixture authority and zero container/volume/network residuals. This newer
+build has local harness evidence; these artifacts do not establish its Instance
+adoption.
+
+The Instance owner separately deployed source `78dbe9b4` / digest `05992806…`
+in Deploy `38425411874`. [Fresh protected verification 38428162906](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/38428162906)
+binds those exact bytes and reports all twelve checks true with zero
+Kubernetes/provider/business mutations. The [Instance receipt owner](https://github.com/gaofeng21cn/opl-instance-medopl/tree/main/receipts)
+preserves its deployment and verification evidence. This proves the inspected
+ten-owner topology and health boundary, not the newer build's adoption, an
+administrator refund-policy page, or original paid-order application acceptance.
+
 ## First Tencent/TKE Launch Scope Alignment (2026-10-10)
 
 The [October 10 decision](decisions.md#2026-10-10-first-tencenttke-launch-without-cloud-model-configuration)
@@ -60,7 +173,7 @@ never owns Agent lifecycle, and Ledger never authorizes continuation.
 | Package, WebUI and Capability catalog | Package/version/reference-claim reads and admission are implemented | [runtime capability readback](evidence/source-checks/2026-09-28-runtime-capability-readback-repair.json) | Original external OMA candidate and hosted publication remain unverified |
 | Build and immutable OCI evidence | Build admission, BuildKit/OCI readback and artifact registration are implemented | [package-to-registry readback](evidence/source-checks/2026-09-29-build-package-to-real-registry-readback.json) | A hosted Candidate must prove the real tenant destination and exact publication path |
 | Runtime Control | Approved Runtime Release catalog and compatibility facts are implemented | [exact Runtime local build](evidence/source-checks/2026-09-28-exact-runtime-local-build.json) | Approved production Runtime/native-UI inputs and Instance readback remain open |
-| Resource Catalog and Workspace order | Approved plan, quote, acceptance, Workspace order and owner-local recovery are implemented | [Workspace original-order](evidence/source-checks/2026-09-26-workspace-resource-original-order.json), [refund list encoding defect](evidence/source-checks/2026-10-08-refund-policy-list-enum-encoding-defect.json) | Paid production purchase and provider acceptance are Instance obligations; the administrator refund policy list reader now normalizes the stored hyphenated algorithm onto its wire member ([repair source check](evidence/source-checks/2026-10-09-refund-policy-algorithm-enum-encoding.json)), and the live 502 remains until a Candidate built from the repaired source is deployed |
+| Resource Catalog and Workspace order | Approved plan, quote, acceptance, Workspace order and owner-local recovery are implemented | [Workspace original-order](evidence/source-checks/2026-09-26-workspace-resource-original-order.json), [refund list encoding defect](evidence/source-checks/2026-10-08-refund-policy-list-enum-encoding-defect.json) | Paid production purchase and provider acceptance are Instance obligations; the administrator refund policy list reader now normalizes the stored hyphenated algorithm onto its wire member ([repair source check](evidence/source-checks/2026-10-09-refund-policy-algorithm-enum-encoding.json)), and the repaired source is included in the verified `78dbe9b4` Instance Candidate; current administrator-page HTTP acceptance still requires its own readback |
 | Gateway managed key | Gateway Integration owns issuance, allowlist, Secret delivery reference and revocation; Workspace consumes only opaque binding identity. A production issuer now calls the Sub2API owner's service issuance route (`POST /api/v1/service/workspace-keys`) with the deployment's own service token, and an empty declared selection is resolved by that authority into a concrete, bounded model scope that is recorded with the binding and the original command; the raw key is written only through Fabric's approved Secret store (`FabricCoordination.PutManagedSecret`) | [model update owner](evidence/source-checks/2026-10-01-workspace-model-configuration-update-owner.json) | The live Sub2API service route, its Instance secret wiring and a service revocation path remain to be qualified; the owner tests use the HTTP contract fixture, not the live authority |
 | Fabric Secret binding | Serve is the only approved caller: a launch freezes the Workspace's opaque Gateway key handover on its deploy command and Serve alone confirms the initial bind through Fabric, preserving one active binding; explicit predecessor-checked `RebindSecret` stays Serve-owned | [Secret rebind](evidence/source-checks/2026-10-01-fabric-secret-rebind-second-configuration.json), [launch handover](evidence/source-checks/workspace-handover-contracts2-20261010-source-contracts-2.json) | The Workspace model-configuration update still binds through Fabric directly and presents a Fabric-confirmed binding to Serve; it must move onto the Serve handover before that surface is usable. Declared non-Gateway runtime Secret inputs still need an end-to-end delivery contract |
 | Serve model apply/readback | Serve resolves the frozen publisher contract, applies through the declared interface and records only the application's readback | [Serve model readback](evidence/source-checks/2026-09-30-serve-model-configuration-apply-readback.json) | Console/Control Plane callers have not moved; live TKE execution and route acceptance are open |
@@ -260,20 +373,6 @@ Runtime ready.
 Historical local and provider-fixture evidence remains provenance for the
 retained Control Plane/Fabric lifecycle. It is not current Candidate,
 production, wallet or medical acceptance evidence.
-
-## Local Clean Host Qualification
-
-[Clean Host run 38420381927](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/38420381927)
-qualified Product `78dbe9b474e6b614ca0def565fd2ab60cdb37e4e` and its exact
-Candidate image with the existing Workspace fixture. The unchanged
-[validated READY receipt](evidence/source-checks/2026-10-13-clean-host-qualification-38420381927.json)
-binds startup, application access, restart continuity, owner DELETE and its
-Ledger receipt, and zero container/volume/network residuals after cleanup.
-This fixture run does not qualify the canonical OPL App Workspace image,
-live Sub2API, TKE, or the original paid-order obligations.
-The earlier owner-delete failure in run 38415379681 was not reproduced in this
-run; the new bounded failure callback improves diagnosis but does not establish
-the runtime root cause of that earlier failure.
 
 ## Readiness
 

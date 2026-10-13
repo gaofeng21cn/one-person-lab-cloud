@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import test from "node:test";
 import { parse as parseYAML } from "yaml";
 import { generationInputs, generatedOutputs } from "../../tools/verify-generated-contracts.ts";
+import { generatedPlanArtifacts } from "../../tools/verify-development-plan.ts";
 
 import {
   databaseFreeGoTestSpecs,
@@ -25,6 +26,8 @@ import {
   runVerification,
   focusedVerificationSteps,
   focusedChangeScope,
+  developmentPlanVerificationSteps,
+  pullRequestChangedPaths,
   summarizeGoTestFailures
 } from "../../tools/verify-local.ts";
 
@@ -34,6 +37,7 @@ test("verify-local exposes one default gate across Node, builds, and every Go mo
   assert.throws(() => parseVerifyLocalArgs(["--production"]), /unknown verify-local argument/);
 
   const names = localVerificationSteps.map((step) => step.name);
+  assert.ok(!names.includes("Development plan freshness"));
   for (const expected of [
     "product boundary",
     "Generated contracts freshness",
@@ -57,6 +61,106 @@ test("verify-local exposes one default gate across Node, builds, and every Go mo
     databaseFreeGoTestSpecs.find((spec) => spec.cwd === "packages/contracts/go"),
     { cwd: "packages/contracts/go", packages: ["./..."] }
   );
+});
+
+test("dedicated plan verification preserves the target-spec scope and explicit migration command", async () => {
+  const manifest = JSON.parse(await readFile("package.json", "utf8"));
+  assert.equal(manifest.scripts["verify:development-plan"], "node tools/verify-development-plan.ts");
+  for (const path of [
+    ...generatedPlanArtifacts,
+    "docs/spec/target/checks/render_development_plan.py",
+    "docs/spec/target/checks/validate_development_plan.py",
+    "docs/spec/target/contracts/api_inventory.json",
+    "docs/spec/target/contracts/db_inventory.json",
+    "docs/spec/target/contracts/ui_inventory.json",
+    "docs/spec/target/contracts/internal.proto"
+  ]) {
+    assert.deepEqual(developmentPlanVerificationSteps([path]), [
+      { name: "Development plan freshness", command: "npm", args: ["run", "verify:development-plan"] }
+    ], path);
+    assert.ok(focusedVerificationSteps([path]).some(step => step.name === "Development plan freshness"), path);
+  }
+  assert.deepEqual(developmentPlanVerificationSteps([
+    "services/workspace/internal/launch.go", "tools/verify-local.ts", "docs/decisions.md",
+    "docs/spec/target-other/contracts/api_inventory.json"
+  ]), []);
+});
+
+test("PR validate keeps the exhaustive source gate and dispatches the plan gate only from explicit committed SHAs", async t => {
+  const workflow = parseYAML(await readFile(".github/workflows/pull-request-ci.yml", "utf8"));
+  assert.deepEqual(Object.keys(workflow.jobs).sort(), ["dependency_review", "validate"]);
+  const steps = workflow.jobs.validate.steps;
+  const source = steps.find((step: any) => step.name === "Validate source");
+  const plan = steps.find((step: any) => step.name === "Validate changed development plan");
+  assert.equal(source.if, undefined);
+  assert.match(source.run, /npm run verify:local\s*$/u);
+  assert.equal(plan.if, undefined);
+  assert.equal(plan.env.PR_BASE_SHA, "${{ github.event.pull_request.base.sha }}");
+  assert.equal(plan.env.PR_HEAD_SHA, "${{ github.event.pull_request.head.sha }}");
+  assert.equal(steps.find((step: any) => step.name === "Checkout").with["fetch-depth"], 0);
+  assert.ok(steps.indexOf(source) < steps.indexOf(plan));
+
+  const repo = await mkdtemp(join(tmpdir(), "opl-pr-plan-scope-"));
+  t.after(() => rm(repo, { recursive: true, force: true }));
+  const run = promisify(execFileCallback);
+  const git = (...args: string[]) => run("git", ["-C", repo, ...args]);
+  const commit = async () => {
+    await git("add", ".");
+    await git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "scope fixture");
+    return (await git("rev-parse", "HEAD")).stdout.trim();
+  };
+  await git("init", "-q");
+  await mkdir(join(repo, "tools"));
+  await symlink(await realpath("tools/verify-local.ts"), join(repo, "tools/verify-local.ts"));
+  // This control records actual subprocess dispatch and its failure propagation;
+  // verify-development-plan.test.ts exercises the real regeneration and rejection.
+  await writeFile(join(repo, "package.json"), JSON.stringify({ scripts: { "verify:development-plan": "node plan-check.cjs" } }));
+  await writeFile(join(repo, "plan-check.cjs"), 'console.log("dedicated-plan-check-ran"); process.exit(Number(process.env.PLAN_CHECK_EXIT_CODE));\n');
+  const input = "docs/spec/target/contracts/api_inventory.json";
+  const output = generatedPlanArtifacts[0];
+  await mkdir(dirname(join(repo, input)), { recursive: true });
+  await mkdir(dirname(join(repo, output)), { recursive: true });
+  await writeFile(join(repo, input), "baseline\n");
+  await writeFile(join(repo, output), "baseline\n");
+  const base = await commit();
+  await git("checkout", "-qb", "upstream");
+  await writeFile(join(repo, input), "upstream only\n");
+  const upstream = await commit();
+  await git("checkout", "-qb", "source", base);
+  await writeFile(join(repo, "ordinary.ts"), "export const value = 1;\n");
+  const sourceHead = await commit();
+  await git("checkout", "-qb", "plan-input");
+  await writeFile(join(repo, input), "changed input\n");
+  const inputHead = await commit();
+  await git("checkout", "-qb", "plan-output", sourceHead);
+  await rm(join(repo, output));
+  const outputHead = await commit();
+  await git("checkout", "-qb", "plan-rename", sourceHead);
+  await git("mv", input, "moved-inventory.json");
+  const renameHead = await commit();
+  // HEAD, the index, the working tree and untracked paths are deliberately
+  // different from the PR event. None may alter its committed change scope.
+  await git("checkout", "upstream");
+  await writeFile(join(repo, output), "staged plan\n"); await git("add", output);
+  await writeFile(join(repo, input), "unstaged plan\n");
+  await writeFile(join(repo, "docs/spec/target/untracked-plan.json"), "untracked\n");
+  const invoke = (head: string, exitCode = "0", baseSha = upstream) => run("bash", ["-e", "-c", plan.run], {
+    cwd: repo, env: { ...process.env, PR_BASE_SHA: baseSha, PR_HEAD_SHA: head, PLAN_CHECK_EXIT_CODE: exitCode }
+  });
+  assert.deepEqual(pullRequestChangedPaths(upstream, sourceHead, repo), ["ordinary.ts"]);
+  assert.doesNotMatch((await invoke(sourceHead)).stdout, /^dedicated-plan-check-ran$/m);
+  for (const head of [inputHead, outputHead, renameHead]) {
+    assert.match((await invoke(head)).stdout, /^dedicated-plan-check-ran$/m);
+  }
+  assert.deepEqual(pullRequestChangedPaths(upstream, outputHead, repo), [output, "ordinary.ts"]);
+  assert.deepEqual(pullRequestChangedPaths(upstream, renameHead, repo), [input, "moved-inventory.json", "ordinary.ts"]);
+  await assert.rejects(invoke(inputHead, "19"), (error: any) => error.code !== 0 && /^dedicated-plan-check-ran$/m.test(error.stdout));
+  for (const invalid of ["", "HEAD", "origin/main", "--cached"]) {
+    assert.throws(() => pullRequestChangedPaths(invalid, sourceHead, repo), /explicit base and head Git SHAs/);
+    assert.throws(() => pullRequestChangedPaths(upstream, invalid, repo), /explicit base and head Git SHAs/);
+  }
+  await assert.rejects(invoke("", "0"), /explicit base and head Git SHAs/);
+  await assert.rejects(invoke("0".repeat(40), "0"));
 });
 
 test("focused verification selects only gates affected by an explicit change set", () => {
@@ -376,10 +480,13 @@ test("full verification adds the temporary PostgreSQL modules after the default 
 
   await runVerification({ withPostgres: true }, dependencies);
   assert.equal(events[0], `step:${localVerificationSteps[0].name}`);
+  assert.deepEqual(events.slice(0, -3), localVerificationSteps.map(step => `step:${step.name}`));
+  assert.ok(!events.includes("step:Development plan freshness"));
   assert.deepEqual(events.slice(-3), ["postgres:start", "postgres:tests", "postgres:stop"]);
 
   events.length = 0;
   await runVerification({ withPostgres: false }, dependencies);
+  assert.deepEqual(events, localVerificationSteps.map(step => `step:${step.name}`));
   assert.equal(events.some((event) => event.startsWith("postgres:")), false);
 });
 

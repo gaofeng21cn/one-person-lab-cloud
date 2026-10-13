@@ -76,15 +76,59 @@ a deployed Candidate or final business PASS.
 | P0 | Move live model-configuration callers to Workspace/Gateway/Fabric/Serve | Workspace, Console BFF/UI, Control Plane migration | Owner-separated source path is implemented; retained callers still use Control Plane | BFF/UI uses the Workspace owner for read/write, old writer has no configured caller, owner and browser tests pass |
 | P0 | Complete live managed-key issuer and delegation | Gateway Integration plus Sub2API | Cloud coordination, scope-resolution and Secret-delivery source paths are implemented against the fixed service-issuance seam; the live Sub2API service route, its Instance secret wiring and a service revocation path are not yet qualified | Isolated real Sub2API service issuer, caller identity and key/usage readback; no raw key in Cloud persistence or receipts |
 | P0 | Finish Serve typed application execution and route activation | Serve; Instance owns ingress/DNS/TLS | Source route owner and model apply/readback exist; retained Fabric adapter and route performer remain | Typed execution contract, conditional route CAS, real TKE Service/readiness/access request and lost-response recovery |
-| P0 | Repair the Resource Catalog refund policy list encoding defect | Resource Catalog | `scanRefundPolicy` normalized neither separator when it mapped the stored hyphenated algorithm, so the required `algorithm` property silently became the unspecified member and the public encoder refused the administrator list page once a row existed; the source is repaired and the focused list-read test over a stored hyphenated algorithm passes, while the deployed instance still returns 502 until a Candidate built from the repaired source is deployed | [defect source check](evidence/source-checks/2026-10-08-refund-policy-list-enum-encoding-defect.json); [repair source check](evidence/source-checks/2026-10-09-refund-policy-algorithm-enum-encoding.json); the administrator refund policy list reads back at 200 on a Candidate built from the repaired source |
+| P0 | Repair the Resource Catalog refund policy list encoding defect | Resource Catalog | `scanRefundPolicy` normalized neither separator when it mapped the stored hyphenated algorithm, so the required `algorithm` property silently became the unspecified member and the public encoder refused the administrator list page once a row existed; the source is repaired and the focused list-read test over a stored hyphenated algorithm passes, while the repaired source has reached the verified `78dbe9b4` Instance Candidate but the administrator list page still needs a fresh owner-authoritative readback | [defect source check](evidence/source-checks/2026-10-08-refund-policy-list-enum-encoding-defect.json); [repair source check](evidence/source-checks/2026-10-09-refund-policy-algorithm-enum-encoding.json); the administrator refund policy list reads back at 200 on a Candidate built from the repaired source |
 | P0 | Complete runtime SecretInput delivery | Serve, Fabric and contract owners | Gateway-managed input is covered; other declared runtime inputs are refused | Approved opaque binding/version delivery through RuntimeDeployCommand, application authorization and readback tests |
-| P0 | Build one exact Candidate and install the complete owner topology | Cloud release owner; Instance deployment owner | Topology and Candidate preconditions are declared; installed Instance still has the legacy three-service set | Exact SHA/tree/index/digest manifest, complete owner deployment, protected health/readiness and route readback |
+| P0 | Build one exact Candidate and install the complete owner topology | Cloud release owner; Instance deployment owner | The `78dbe9b4` Candidate has a verified ten-owner deployment and twelve passing checks; newer `d430825c` has local fixture READY evidence but no Instance adoption evidence in this snapshot | Exact SHA/tree/index/digest manifest, complete owner deployment, protected health/readiness and route readback |
 | P0 | Qualify Default App and Custom Agent on the same Candidate | Serve, Workspace, Instance | Local owner journeys exist; no protected TKE user acceptance | One confirmation reaches a ready application in each mode, restart and response-loss recovery, exact image and route evidence |
 | P1 | Retire retained Control Plane application route and duplicate DTOs | Control Plane migration owner and Serve | Retained route/proxy remains for un-migrated callers | Caller inventory is empty or explicitly historical, old route writer and current-selection projection are removed |
 | P1 | Public registration, administrator top-up and controlled purchase | Control Plane, CloudIdentity, Console | Existing operator/admin path exists; public self-service chain is incomplete | Concurrent registration, zero initial balance, one audited top-up, quote/purchase idempotency and protected browser readback |
 | P1 | Backup, restore, alert and data-exit contracts | Cloud owners; Instance operates them | Owner boundaries are described; production schedules and receivers are external | Isolated restore identity/readback, stable active/recovered signals, stop-purchase boundary and export/delete receipts |
 | P1 | MAP domain contracts and evaluation gate | MAP medical domain owner/Instance | Cloud logical Connect boundary is documented; no clinical domain or qualified MAP adapter/backend combination is claimed | MAP task/adapter contract, selected OPL Connect backend, approved data classes, source/evidence model, human review states, evaluation set, release gate and institution acceptance; no medical-specific Cloud adapter is required |
 | P2 | Customer-operated payment, multi-user Workspace, HA/GPU and broader provider profiles | Product and Instance owners | Deliberately outside the current beta cut | Separate product decision, owner and qualification evidence before admission |
+
+## Development Governance Migration (2026-10-13)
+
+Cloud development tooling owns adoption of the
+[ordinary source development decision](decisions.md#2026-10-13-ordinary-source-development-uses-git-scope-and-current-ci).
+Local changes reconcile host admission, verification selection, CI and
+contributor instructions with the adopted default. Their current-revision CI
+and merge are still pending. Ordinary PRs
+use actual local results and current-revision CI without a separate source-check
+JSON, and independent agents may perform their technical review; high-consequence
+operations retain owner review and authorization.
+
+Completion requires the actual entry points, focused checks, CI, `AGENTS.md`,
+`DEV_GUIDE.md` and PR template to agree with the adopted rules. Routine source
+maintenance must work without a restricted-host admission, while explicitly
+admitted host runs retain scope enforcement and actual execution evidence.
+Verification must exercise both paths and preserve Candidate and Instance
+evidence requirements. Unfinished migration outcomes remain tracked by their
+canonical owners rather than disappearing when execution-plan coupling is removed.
+
+## Clean Host Qualification Recovery (2026-10-13)
+
+Cloud qualification tooling owns #793's PostgreSQL scratch cleanup and #787's
+image/launch verification path. Merged #801 owns teardown and Workspace-fixture
+admission while preserving the supplied Cloud digest; #804 preserves bounded
+DELETE failure diagnostics.
+
+#793's harness acceptance is complete: exact Candidate
+`78dbe9b474e6b614ca0def565fd2ab60cdb37e4e` / Cloud digest
+`sha256:05992806bf27789adfc0956c2df5bdf10d8e127c3b0641430cf38028e8f6e987`
+passed Clean Host `38420381927`, including owner DELETE, Ledger evidence and
+zero resource residuals. The original, validator-accepted READY receipt is
+preserved in [status](status.md#verified-clean-host-qualification).
+
+#787 remains open for owner disposition of the patrol's separate original launch
+HTTP 502. The current immutable-Candidate/run-owned-fixture path is delivered
+and has valid READY evidence. The exact old-input replay reached the known
+pre-launch cleanup failure before login or launch, so it cannot identify the
+historical owner or stage. The current immutable-Candidate/run-owned-fixture path is delivered and has valid
+READY evidence. Canonical App, live Sub2API, TKE and original paid-order
+acceptance remain separate product outcomes; they do not enlarge this issue's
+local qualification scope. Earlier generic DELETE errors were not reproduced
+in the successful runs; improved diagnostics do not establish their historical
+runtime cause.
 
 ## Cloud-Identity Customer Workspace Read (2026-09-30)
 

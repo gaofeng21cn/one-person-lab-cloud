@@ -62,7 +62,6 @@ export const databaseFreeGoTestSpecs = Object.freeze([
 export const localVerificationSteps = Object.freeze([
   { name: "product boundary", command: "npm", args: ["run", "validate:product-boundary"] },
   { name: "Generated contracts freshness", command: "npm", args: ["run", "verify:generated-contracts"] },
-  { name: "Development plan freshness", command: "npm", args: ["run", "verify:development-plan"] },
   { name: "Development tools typecheck", command: "npm", args: ["run", "typecheck:development-tools"] },
   { name: "Node source tests", command: "npm", args: ["run", "test:source"] },
   // One bounded-concurrency invocation instead of nine sequential ones: each
@@ -93,6 +92,13 @@ function anyPath(paths: readonly string[], prefixes: readonly string[]) {
   return paths.some((path) => prefixes.some((prefix) => path === prefix || (prefix.endsWith("/") && path.startsWith(prefix))));
 }
 
+/** Keep the existing target-spec scope classification separate from the source gate. */
+export function developmentPlanVerificationSteps(changedPaths: readonly string[]): VerificationStep[] {
+  return changedPaths.some((path) => path.startsWith("docs/spec/target/"))
+    ? [{ name: "Development plan freshness", command: "npm", args: ["run", "verify:development-plan"] }]
+    : [];
+}
+
 /** Select the smallest local evidence set for an explicit Git change scope. */
 export function focusedVerificationSteps(changedPaths: readonly string[], testTargets: readonly string[] = [], mergeBase?: string): VerificationStep[] {
   const steps: VerificationStep[] = [];
@@ -102,9 +108,7 @@ export function focusedVerificationSteps(changedPaths: readonly string[], testTa
   if (anyPath(changedPaths, [...generatedContractPaths, ...generationInputs, ...generatedOutputs, "tools/verify-generated-contracts.ts"])) {
     add({ name: "Generated contracts freshness", command: "npm", args: ["run", "verify:generated-contracts"] });
   }
-  if (changedPaths.some((path) => path.startsWith("docs/spec/target/"))) {
-    add({ name: "Development plan freshness", command: "npm", args: ["run", "verify:development-plan"] });
-  }
+  steps.push(...developmentPlanVerificationSteps(changedPaths));
   if (anyPath(changedPaths, developmentToolPaths)) {
     add({ name: "Development tools typecheck", command: "npm", args: ["run", "typecheck:development-tools"] });
   }
@@ -1274,6 +1278,15 @@ const defaultDependencies = Object.freeze({
   withTemporaryPostgres,
   runPostgresVerification
 });
+
+/** PR scope contains only the committed change relative to its explicit event SHAs. */
+export function pullRequestChangedPaths(baseSha: string, headSha: string, repositoryRoot = root): string[] {
+  if (![baseSha, headSha].every((sha) => typeof sha === "string" && /^[0-9a-f]{40}$/u.test(sha))) {
+    throw new Error("pull request scope requires explicit base and head Git SHAs");
+  }
+  return execFileSync("git", ["-C", repositoryRoot, "diff", "--name-only", "-z", "--no-renames", `${baseSha}...${headSha}`, "--"],
+    { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).split("\0").filter(Boolean).sort();
+}
 
 export function focusedChangeScope(base: string, repositoryRoot = root) {
   const git = (args: string[]) => execFileSync("git", ["-C", repositoryRoot, ...args], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
