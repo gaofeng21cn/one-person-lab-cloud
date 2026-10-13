@@ -32,7 +32,9 @@ for f in flows:
 cross_paths=sorted((root/'checks/runs').glob('cross-domain-*.json'));need(bool(cross_paths),'no cross-domain receipt')
 cross=json.loads(cross_paths[-1].read_text()) if cross_paths else {}
 need(cross.get('passed') is True and cross.get('sourceUnchangedDuringRun') is True,'cross-domain execution did not pass exact input')
-for name,digest in cross.get('sourceHashes',{}).items():need(hashlib.sha256((root/name).read_bytes()).hexdigest()==digest,'cross-domain source changed: '+name)
+for name,digest in cross.get('sourceHashes',{}).items():
+ path=root/name if not name.startswith('packages/') else root.parents[2]/name
+ need(hashlib.sha256(path.read_bytes()).hexdigest()==digest,'cross-domain source changed: '+name)
 need(cross.get('cleanup',{}).get('containerAbsent') is True,'DB cleanup not confirmed')
 # Canonical Go source, not only our duplicated schema.
 go_paths=sorted((root/'checks/runs').glob('publisher-source-*.json'));need(bool(go_paths),'no canonical publisher validation')
