@@ -15,13 +15,9 @@ package delivery
 //   - The application origin carries the application identity, so a request for
 //     an origin that no longer matches the current target is refused instead of
 //     being served by the replacement application.
-//   - Expiry is an owner verdict, never a Serve computation. Serve reads no
-//     subscription term, stores no copy of one and compares no deadline. A wired
-//     EntitlementGate refuses on a closed verdict and on a verdict this build
-//     cannot interpret, and an entry with no gate wired keeps its pre-existing
-//     posture of resolving on binding readiness alone while reporting that
-//     posture in the process log. Whether an unanswered entitlement may still be
-//     served is the owner's decision to make, not one this file settles.
+//   - Expiry is a Workspace owner verdict. Every request must obtain a permitted
+//     verdict; an unwired, unreadable or unverified answer refuses access. Serve
+//     neither stores a subscription term nor computes its deadline.
 
 import (
 	"context"
@@ -86,8 +82,7 @@ type AccessEntry struct {
 	// reverse proxy's own defaults.
 	Transport http.RoundTripper
 	// Entitlement is the owner's answer about this Workspace's paid term. It
-	// stays nil in an installation that has not wired one, and the entry then
-	// resolves on binding readiness alone and says so in the process log.
+	// must be wired by the installation; a missing gate refuses access.
 	Entitlement EntitlementGate
 	// Now reads the observation time a served response reports. It is overridable
 	// only so a test can pin it.
@@ -175,30 +170,27 @@ func (e *AccessEntry) Resolve(ctx context.Context, host, requestPath string) (ac
 	// The owner's entitlement verdict is asked before any binding or runtime row
 	// is read: a Workspace the owner has closed must not resolve a route at all,
 	// so it never reaches a destination this process could forward to.
-	if e.Entitlement != nil {
-		verdict, err := e.Entitlement.Verdict(ctx, workspaceID)
-		if err != nil {
-			return accessRoute{}, errAccessEntitlementUnavailable
-		}
-		switch verdict {
-		case EntitlementPermitted:
-			// The owner confirmed this Workspace may be served.
-		case EntitlementUnverified:
-			// The owner has not answered. Whether an unanswered Workspace may
-			// still be served is the owner's decision and is not settled here;
-			// today it is served, which is the posture this entry has always run
-			// in. TestServeAccessEntryServesUnverifiedEntitlement pins that so
-			// changing it is a deliberate edit rather than a silent widening.
-		case EntitlementClosed:
-			return accessRoute{}, errAccessEntitlementClosed
-		default:
-			// A verdict this build does not name — an empty answer, a misspelling,
-			// or a value an owner adds later — is an answer Serve cannot
-			// interpret, not permission. Refusing it exactly as a failed read is
-			// refused keeps it from passing silently at the one place that can
-			// see it.
-			return accessRoute{}, errAccessEntitlementUnavailable
-		}
+	if e.Entitlement == nil {
+		return accessRoute{}, errAccessEntitlementUnavailable
+	}
+	verdict, err := e.Entitlement.Verdict(ctx, workspaceID)
+	if err != nil {
+		return accessRoute{}, errAccessEntitlementUnavailable
+	}
+	switch verdict {
+	case EntitlementPermitted:
+		// The owner confirmed this Workspace may be served.
+	case EntitlementUnverified:
+		return accessRoute{}, errAccessEntitlementUnavailable
+	case EntitlementClosed:
+		return accessRoute{}, errAccessEntitlementClosed
+	default:
+		// A verdict this build does not name — an empty answer, a misspelling,
+		// or a value an owner adds later — is an answer Serve cannot
+		// interpret, not permission. Refusing it exactly as a failed read is
+		// refused keeps it from passing silently at the one place that can
+		// see it.
+		return accessRoute{}, errAccessEntitlementUnavailable
 	}
 	route := accessRoute{WorkspaceID: workspaceID, pathBased: pathBased}
 	err := e.DB.QueryRowContext(ctx, `

@@ -247,3 +247,7 @@ in that Release manifest, then run `docker compose pull` and
 procedure with another available admitted Release. Because only `v0.1.7` is
 currently public, there is no earlier public rollback target. Mutable `latest`
 and `stable` tags are not publication or rollback evidence.
+
+Serve application access requires the Workspace peer read: set
+`OPL_WORKSPACE_ADDR` and `OPL_WORKSPACE_TOKEN`, and include `serve` in
+`OPL_WORKSPACE_PEER_TOKENS`. An absent/unreadable verdict never permits a route.

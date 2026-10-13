@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -197,5 +198,73 @@ func TestServeProcessRefusesReadinessWithoutCloudIdentity(t *testing.T) {
 	err = bootstrap.Server.Ready(ctx)
 	if err == nil || !strings.Contains(err.Error(), "cloud_identity") {
 		t.Fatalf("serve without CloudIdentity reported ready: %v", err)
+	}
+}
+
+type workspaceAccessWireProbe struct {
+	api.UnimplementedWorkspaceAccessReadbackServer
+	seen chan string
+}
+
+func (p *workspaceAccessWireProbe) ReadWorkspaceAccess(ctx context.Context, r *api.ReadWorkspaceAccessRequest) (*api.WorkspaceAccessDecision, error) {
+	md, _ := metadata.FromIncomingContext(ctx)
+	if strings.Join(md.Get(owneridentity.PeerHeader), "") != "serve" || strings.Join(md.Get(owneridentity.TokenHeader), "") != serveToken {
+		return nil, errors.New("incorrect Workspace peer authority")
+	}
+	p.seen <- r.GetWorkspaceId()
+	return &api.WorkspaceAccessDecision{WorkspaceId: r.GetWorkspaceId(), Verdict: api.WorkspaceAccessVerdict_WORKSPACE_ACCESS_VERDICT_CLOSED}, nil
+}
+
+// The actual process wiring must consult the owner before reading a route.
+// The Workspace verdict here is a wire fixture; its real SQL is tested by Workspace.
+func TestServeProcessWiresWorkspaceEntitlementBeforeRoute(t *testing.T) {
+	_, _, runtimeDSN := fixture(t)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	probe := &workspaceAccessWireProbe{seen: make(chan string, 1)}
+	rpc := grpc.NewServer()
+	api.RegisterWorkspaceAccessReadbackServer(rpc, probe)
+	go func() { _ = rpc.Serve(listener) }()
+	t.Cleanup(rpc.Stop)
+	t.Setenv("OPL_WORKSPACE_ADDR", listener.Addr().String())
+	t.Setenv("OPL_WORKSPACE_TOKEN", serveToken)
+	t.Setenv("OPL_WORKSPACE_DOMAIN", "workspace.example")
+	database := serveDatabase(t, runtimeDSN)
+	accessListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := accessListener.Addr().String()
+	_ = accessListener.Close()
+	t.Setenv("OPL_SERVE_ACCESS_ADDR", address)
+	config := serveConfig(startStubCloudIdentity(t))
+	bootstrap, err := ownerservice.StartWithDatabase(t.Context(), database, config, noMigrations{}, configure(config))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bootstrap.Close() })
+	client := &http.Client{Timeout: 5 * time.Second}
+	request, err := http.NewRequest(http.MethodGet, "http://"+address+"/w/ws-expired/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Host = "workspace.example"
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("status=%d", response.StatusCode)
+	}
+	select {
+	case workspace := <-probe.seen:
+		if workspace != "ws-expired" {
+			t.Fatalf("Workspace=%s", workspace)
+		}
+	default:
+		t.Fatal("process did not read Workspace verdict")
 	}
 }

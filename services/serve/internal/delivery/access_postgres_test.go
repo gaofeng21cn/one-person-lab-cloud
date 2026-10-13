@@ -87,6 +87,7 @@ func TestServeAccessEntryServesConfirmedTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	entry.Entitlement = staticEntitlementGate{verdict: delivery.EntitlementPermitted}
 	entry.Transport = serviceTransport{byService: map[string]*httptest.Server{"app-main": upstream}}
 	server := httptest.NewServer(entry.Handler())
 	defer server.Close()
@@ -141,6 +142,7 @@ func TestServeAccessEntryStripsPlatformCredentialsAndConfinesCookies(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	entry.Entitlement = staticEntitlementGate{verdict: delivery.EntitlementPermitted}
 	entry.Transport = serviceTransport{byService: map[string]*httptest.Server{"app-main": upstream}}
 	server := httptest.NewServer(entry.Handler())
 	defer server.Close()
@@ -206,6 +208,7 @@ func TestServeAccessEntryRefusesUnconfirmedSupersededAndUnready(t *testing.T) {
 		_, _ = io.WriteString(w, "application-response")
 	}))
 	defer upstream.Close()
+	entry.Entitlement = staticEntitlementGate{verdict: delivery.EntitlementPermitted}
 	entry.Transport = serviceTransport{byService: map[string]*httptest.Server{"app-main": upstream}}
 	server := httptest.NewServer(entry.Handler())
 	defer server.Close()
@@ -273,6 +276,7 @@ func TestServeAccessEntryKeepsWorkspacesSeparate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	entry.Entitlement = staticEntitlementGate{verdict: delivery.EntitlementPermitted}
 	entry.Transport = serviceTransport{byService: map[string]*httptest.Server{"app-main": first, "app-other": second}}
 	server := httptest.NewServer(entry.Handler())
 	defer server.Close()
@@ -318,6 +322,7 @@ func TestServeAccessEntryStreamsResponses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	entry.Entitlement = staticEntitlementGate{verdict: delivery.EntitlementPermitted}
 	entry.Transport = serviceTransport{byService: map[string]*httptest.Server{"app-main": upstream}}
 	server := httptest.NewServer(entry.Handler())
 	defer server.Close()
@@ -428,11 +433,9 @@ func TestServeAccessEntryRefusesClosedEntitlementDespiteReadyBinding(t *testing.
 	}
 }
 
-// TestServeAccessEntryServesUnverifiedEntitlement pins the posture an entry
-// without a decided verdict currently runs in. It is written so that changing
-// it is a deliberate, visible edit to this test rather than a silent widening or
-// narrowing of what the entry refuses.
-func TestServeAccessEntryServesUnverifiedEntitlement(t *testing.T) {
+// TestServeAccessEntryRefusesUnverifiedEntitlement proves neither a missing
+// owner answer nor an unwired entry can serve a ready target.
+func TestServeAccessEntryRefusesUnverifiedEntitlement(t *testing.T) {
 	service, tenant, workspace, runtimeInstance, db := routeFixture(t)
 	markRouteTargetReady(t, db, runtimeInstance)
 	activateRoute(t, service, tenant, workspace, runtimeInstance)
@@ -444,14 +447,14 @@ func TestServeAccessEntryServesUnverifiedEntitlement(t *testing.T) {
 	host := applicationHost(t, workspace)
 
 	unverified := entitlementEntry(t, db, upstream, staticEntitlementGate{verdict: delivery.EntitlementUnverified})
-	if response := accessGet(t, unverified.URL, host, "/"); response.StatusCode != http.StatusOK {
+	if response := accessGet(t, unverified.URL, host, "/"); response.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("unverified entitlement status=%d body=%s", response.StatusCode, response.Body)
 	}
 
 	// An installation that wires no gate at all is the same posture, which is
 	// what startAccessEntry reports once at startup.
 	unwired := entitlementEntry(t, db, upstream, nil)
-	if response := accessGet(t, unwired.URL, host, "/"); response.StatusCode != http.StatusOK {
+	if response := accessGet(t, unwired.URL, host, "/"); response.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("unwired entitlement status=%d body=%s", response.StatusCode, response.Body)
 	}
 }

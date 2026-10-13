@@ -197,3 +197,16 @@ evidence belongs in [status](status.md); an accepted Serve implementation
 outcome belongs in the [roadmap](roadmap.md). Existing OCI/Workspace runtime
 operations, if present, do not by themselves prove the Package upload -> Build
 -> Serve delivery -> API/Embed/Hosted UI end-to-end path.
+
+### Workspace entitlement at application entry
+
+Each application request asks the authenticated Workspace owner for a current
+access verdict before resolving a ready route. Workspace alone compares its
+confirmed subscription period with the current time; Serve stores no term.
+Expired, future, deleting or missing Workspaces refuse access. Missing confirmed
+entitlement, owner read errors and unwired gates refuse access as unavailable.
+This includes Local no-charge orders still awaiting their separate activation
+decision: runtime readiness does not establish a zero-fee entitlement.
+The installation must wire `OPL_WORKSPACE_ADDR` and `OPL_WORKSPACE_TOKEN` in Serve
+and admit the `serve` peer in Workspace. Source verification does not prove that
+a deployed installation has this wiring or that production expiry was exercised.
