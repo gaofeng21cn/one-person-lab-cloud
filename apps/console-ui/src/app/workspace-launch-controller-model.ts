@@ -79,9 +79,11 @@ export function canSubmitWorkspaceLaunch(readiness: WorkspaceLaunchSubmitReadine
     && canReviewWorkspaceLaunch(readiness);
 }
 
-// workspacePricePreview keeps only a complete owner quote. A partial response
-// carries no total, so it is reported as no price rather than as a zero or an
-// invented sum.
+// workspacePricePreview keeps a quote only when the owner priced it in full.
+// "No price" means the owner returned no total or no components, and that is
+// reported as no price rather than as a fabricated amount. A total of zero is
+// not that case: when resource billing is off the owner zeroes every component
+// and returns 0, which is the owner's own price for this purchase.
 export function workspacePricePreview(response: PricingPreviewResponse): WorkspacePricePreview | null {
   const { compute, storage, totalChargeUsdMicros } = response;
   if (!compute || !storage || typeof totalChargeUsdMicros !== "number") return null;
@@ -137,6 +139,37 @@ export function workspaceLaunchReviewReadiness(state: WorkspaceLaunchReviewState
 // second readiness expression cannot drift away from the model.
 export function workspaceLaunchReviewBlocked(state: WorkspaceLaunchReviewState): boolean {
   return !canReviewWorkspaceLaunch(workspaceLaunchReviewReadiness(state));
+}
+
+function micros(value: string | null): bigint | null {
+  return value !== null && /^\d+$/.test(value) ? BigInt(value) : null;
+}
+
+// A read that priced only some packages names the ones it could not price, so
+// the page can say which plan is unpriced instead of reporting the whole catalog
+// as unavailable. Any other error means the catalog itself could not be read.
+export function workspaceLaunchUnpricedPackages(error: string): string[] {
+  const match = /^unpriced_packages:(.+)$/.exec(error);
+  return match ? match[1].split(",").filter(Boolean) : [];
+}
+
+// A package purchase is prepaid from the customer's own Gateway balance, so that
+// balance is the number that answers this question. The Agent launch wallet
+// belongs to the Agent product and says nothing about whether this purchase can
+// be paid for. null means the owner has not told us yet, and null blocks review:
+// an unpriced or unread purchase must not be offered as affordable.
+export function workspaceLaunchBalance(state: {
+  resourceBillingMode: "enabled" | "none" | undefined;
+  customerOwned: boolean;
+  selectedPrice: number | null;
+  walletUsdMicros: string | null;
+}): boolean | null {
+  if (state.customerOwned) return true;
+  // Nothing is charged when resource billing is off, so no balance is owed.
+  if (state.resourceBillingMode === "none") return true;
+  if (state.selectedPrice === null || !Number.isSafeInteger(state.selectedPrice) || state.selectedPrice < 0) return null;
+  const balance = micros(state.walletUsdMicros);
+  return balance === null ? null : balance >= BigInt(state.selectedPrice);
 }
 
 export function shouldRetainWorkspaceLaunchIntent(error: unknown): boolean {
