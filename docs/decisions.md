@@ -4,6 +4,44 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-10-14: Workspace-Managed Key Revocation Authority Is Undecided
+
+The Gateway can issue a Workspace-managed key through one approved Sub2API
+service route. It cannot revoke one: no approved revocation route exists in the
+contract this Cloud implements, and `RevokeManagedKey` therefore always fails
+against the production issuer. The presence of the handler is not evidence that
+a key can be revoked.
+
+Whether Sub2API should expose an approved service revocation endpoint at all —
+and if so its route, request shape, idempotency and refusal vocabulary — is an
+open owner decision. Cloud does not invent that route, and no administrative or
+provider-side call substitutes for it. Until it is answered the honest
+revocation authority for this owner is "none", and the issuer keeps reporting
+`Unimplemented` rather than a fabricated success.
+
+Until that decision lands, an asked-for revocation must be a durable, queryable
+fact rather than an error that vanishes with the call. The attempt is recorded in
+this owner's own `gateway.idempotency_records` under its own operation name. It
+is deliberately **not** written into `gateway.key_bindings.observation_result`:
+that column already carries two different meanings of `confirmed` (issuance
+observed confirmed on insert, revocation confirmed in `MarkManagedKeyRevoked`) and
+is `CHECK` constrained to exactly `('confirmed','rejected','unknown')`, so it can
+carry neither a cause code nor a per-attempt history. Recording a third meaning
+there would make `confirmed` ambiguous for every reader.
+
+An attempt records one of `confirmed` (the issuer retired the key and this
+owner's record committed), `refused` (a definite answer that no revocation
+happened, e.g. `Unimplemented`) or `unknown` (the outcome could not be observed,
+e.g. a lost answer), together with the gRPC code that produced it. Repeated
+attempts under one command identity keep their first recorded answer, so a
+definite refusal is never erased by a later, vaguer attempt. Recording an attempt
+never marks the key revoked and never changes the issuer's own error code.
+
+The public `GatewayKey` read model still reports such a key `ACTIVE`, because
+`GatewayKeyStatusEnum` has no value for an unconfirmed revocation and adding one
+is a contract change for the owner to approve. The binding remains not revoked,
+which is true; the recorded attempt carries the rest.
+
 ## 2026-10-13: Ordinary Source Development Uses Git Scope And Current CI
 
 Ordinary Cloud source development uses an explicit Git change scope, relevant
