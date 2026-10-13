@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "1c8bad51def44face0306ff3d4844cc3d4a7611e",
+  "recordedAt": "2026-10-13T03:46:07.062Z",
+  "subject": "Clean Host Qualification had never produced a successful run. It required two externally published immutable image references, but the runner rejects any image whose org.opencontainers.image.revision label differs from the source SHA under qualification, and a published image only carries the label of the commit it was built from. Registry authentication was a second, independent failure: runs 35804960457 and 38255657782 both failed with TCR unauthorized because the job never ran docker login. The workflow now builds both images from its own checkout via --build-source-images, which needs no registry and no credential and makes the revision label correct by construction.",
+  "writeSet": [
+    ".github/workflows/clean-host-qualification.yml",
+    "docs/evidence/source-checks/w27-clean-host-build-source-images-1.json",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/render_development_plan.py",
+    "tests/contracts/clean-host-qualification.test.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "1c8bad51def44face0306ff3d4844cc3d4a7611e",
+    "changedFilesSha256": {
+      ".github/workflows/clean-host-qualification.yml": "c6b7240d344bf99b9570a05bab02a34adb3b887b874d2aa1e8d29dca233230b3",
+      "docs/spec/target/14_implementation_work_packages.md": "f4c19bc7284c7810800c0a9c9ef26e883c7b8e7bec756eee041a89560378ed9e",
+      "docs/spec/target/checks/development_plan.json": "a7ce19999a0caa65ab05590a323cb7563c112df803a66a0090b7aec91748cd74",
+      "docs/spec/target/checks/render_development_plan.py": "2ffcf2f682f4333cbe06de199c4f21e85b0a81a995d4708977c49be789fc1e8b",
+      "tests/contracts/clean-host-qualification.test.ts": "8169f041c80f9a1a708b15a4c4c24b2b0a81985a2362bfecfada777585a18169"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/contracts/clean-host-qualification.test.ts tests/tools/check-pr-governance.test.ts",
+    "exitCode": 0,
+    "tests": 21,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "ff58b235612dc98746e6d04356c9638338dacd6646afc993bea1ba9c9f86bbc3"
+  }
+}

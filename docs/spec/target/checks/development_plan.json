@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "1393488f3c80d796c21d9634e95794e670721902",
+  "sourceSHA": "1c8bad51def44face0306ff3d4844cc3d4a7611e",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -4170,6 +4170,7 @@
         ".github/",
         "tools/",
         "tests/tools/",
+        "tests/contracts/",
         "AGENTS.md",
         "DEV_GUIDE.md",
         "package.json",
