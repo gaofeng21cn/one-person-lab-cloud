@@ -12,7 +12,7 @@ import {
   presentWorkspaceApplicationInstallation, presentWorkspaceLaunch, presentWorkspaceLaunchStage, presentWorkspaceQuote
 } from "../../app/workspace-experience-model.ts";
 import {
-  canSubmitWorkspaceLaunch, workspaceLaunchReviewBlocked, workspaceLaunchReviewReadiness
+  canSubmitWorkspaceLaunch, workspaceLaunchReviewBlocked, workspaceLaunchReviewReadiness, workspaceLaunchUnpricedPackages
 } from "../../app/workspace-launch-controller-model.ts";
 import type { PlanId, PricingPlan } from "../../api/dtos.ts";
 import { Alert, Badge, Button, Checkbox, Field } from "../ui/index.ts";
@@ -232,7 +232,7 @@ export function WorkspaceLaunchPage({
             <Field label="工作空间名称" maxLength={80} onChange={(event) => controller.setLaunchName(event.currentTarget.value)} placeholder="例如：产品研发" required value={controller.launchName} />
             <fieldset><legend>选择套餐</legend>
               {controller.catalog.loading && !catalog ? <div className="source-loading"><span className="spinner" />正在读取计划与价格</div> : null}
-              {controller.catalog.error ? <div className="inline-error"><AlertCircle aria-hidden size={16} />计划与价格暂不可用<Button onClick={() => void onRefresh()} size="sm" variant="ghost">重试</Button></div> : null}
+              {controller.catalog.error ? <div className="inline-error"><AlertCircle aria-hidden size={16} />{workspaceLaunchUnpricedPackages(controller.catalog.error).length ? `以下套餐暂无报价：${workspaceLaunchUnpricedPackages(controller.catalog.error).join("、")}` : "计划与价格暂不可用"}<Button onClick={() => void onRefresh()} size="sm" variant="ghost">重试</Button></div> : null}
               {catalog ? <RadioGroup<PlanId> aria-label="工作空间套餐" className="workspace-plan-list" direction="col" name="workspace-plan" onChange={controller.setLaunchPlan} value={controller.launchPlan}>{catalog.packages.filter((plan) => plan.available && (plan.id === "basic" || plan.id === "pro")).map((plan) => <PlanOption controller={controller} key={plan.id} plan={plan} />)}</RadioGroup> : null}
             </fieldset>
             {!controller.customerOwned ? <div className="launch-confirm-check"><Checkbox checked={controller.launchAutoRenew} label="自动续费" onChange={controller.setLaunchAutoRenew} /></div> : null}

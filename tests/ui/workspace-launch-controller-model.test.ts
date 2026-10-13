@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 
 import type { ApiError } from "../../apps/console-ui/src/api/console-api.ts";
+import { getPricingCatalog, previewPricing } from "../../apps/console-ui/src/api/console-read-api.ts";
 import type {
   PlanId,
   PricingCatalogResponse,
@@ -20,10 +22,12 @@ import {
   resolveWorkspaceLaunchIntent,
   shouldPollWorkspaceLaunch,
   shouldRetainWorkspaceLaunchIntent,
+  workspaceLaunchBalance,
   workspaceLaunchPricingSelection,
   workspaceLaunchReviewBlocked,
   workspaceLaunchReviewReadiness,
   workspaceLaunchSubmission,
+  workspaceLaunchUnpricedPackages,
   workspacePricePreview,
   type WorkspaceLaunchIntent,
   type WorkspaceLaunchReviewState
@@ -324,4 +328,133 @@ test("the confirm button and the model reach the same verdict on one readiness s
       `the page and the model disagree about "${label}"`
     );
   }
+});
+
+test("a zero total is the owner's own price, not a missing one", () => {
+  // Resource billing off: the owner zeroes every component and returns 0.
+  const unbilled = { ...ownerPreview("basic", 0, 0), totalChargeUsdMicros: 0 };
+  const preview = workspacePricePreview(unbilled);
+  assert.ok(preview);
+  assert.equal(preview.totalChargeUsdMicros, 0);
+
+  const selection = workspaceLaunchPricingSelection({ catalog: pricedCatalog, planId: "basic", previews: { basic: preview } });
+  assert.equal(selection.selectedPrice, 0);
+  assert.equal(canReviewWorkspaceLaunch(workspaceLaunchReviewReadiness({
+    launchRecoveryState: "clear",
+    launchName: "Alpha",
+    selectedPlan: selection.selectedPlan,
+    selectedPrice: selection.selectedPrice,
+    balanceSufficient: workspaceLaunchBalance({ resourceBillingMode: "none", customerOwned: false, selectedPrice: 0, walletUsdMicros: null })
+  })), true, "an unbilled purchase is affordable without a balance read");
+});
+
+test("balance compares the Gateway balance against the selected price, not the Agent wallet", () => {
+  const price = { resourceBillingMode: "enabled", customerOwned: false, selectedPrice: 52_580_000 } as const;
+  assert.equal(workspaceLaunchBalance({ ...price, walletUsdMicros: "500000000" }), true);
+  assert.equal(workspaceLaunchBalance({ ...price, walletUsdMicros: "52580000" }), true);
+  assert.equal(workspaceLaunchBalance({ ...price, walletUsdMicros: "52579999" }), false);
+  assert.equal(workspaceLaunchBalance({ ...price, walletUsdMicros: null }), null, "an unread balance is not an affordable one");
+  assert.equal(workspaceLaunchBalance({ ...price, walletUsdMicros: "not-a-number" }), null);
+  assert.equal(workspaceLaunchBalance({ ...price, selectedPrice: null, walletUsdMicros: "500000000" }), null);
+  assert.equal(workspaceLaunchBalance({ ...price, selectedPrice: 1.5, walletUsdMicros: "500000000" }), null);
+  assert.equal(workspaceLaunchBalance({ resourceBillingMode: undefined, customerOwned: false, selectedPrice: 1, walletUsdMicros: "500000000" }), true);
+  assert.equal(workspaceLaunchBalance({ resourceBillingMode: "none", customerOwned: false, selectedPrice: 52_580_000, walletUsdMicros: null }), true);
+  assert.equal(workspaceLaunchBalance({ resourceBillingMode: "enabled", customerOwned: true, selectedPrice: 52_580_000, walletUsdMicros: null }), true);
+});
+
+test("the pricing read reaches the selection and the verdict over the real routes", async () => {
+  const originalFetch = globalThis.fetch;
+  const requested: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const path = String(input);
+    requested.push(path);
+    if (path === "/api/pricing/catalog") {
+      return new Response(JSON.stringify(pricedCatalog), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    const packageId = JSON.parse(String((input as Request).init?.body || "{}")).packageId as PlanId;
+    return new Response(JSON.stringify(ownerPreview(packageId, packageId === "pro" ? 214_280_000 : 50_000_000, packageId === "pro" ? 25_800_000 : 2_580_000)), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    const catalog = await getPricingCatalog();
+    const entries = await Promise.all(catalog.packages.filter((plan) => plan.available).map(async (plan) =>
+      [plan.id, workspacePricePreview(await previewPricing({ resourceType: "workspace", packageId: plan.id }, "csrf-1"))] as const
+    ));
+    const selection = workspaceLaunchPricingSelection({
+      catalog,
+      planId: "basic",
+      previews: Object.fromEntries(entries.filter((entry) => entry[1] !== null))
+    });
+
+    assert.deepEqual(requested, [
+      "/api/pricing/catalog",
+      "/api/pricing/preview",
+      "/api/pricing/preview"
+    ]);
+    assert.equal(selection.selectedPlan?.id, "basic");
+    assert.equal(selection.selectedPrice, 52_580_000);
+    assert.equal(workspaceLaunchReviewBlocked({
+      launchRecoveryState: "clear",
+      launchName: "Alpha",
+      selectedPlan: selection.selectedPlan,
+      selectedPrice: selection.selectedPrice,
+      balanceSufficient: workspaceLaunchBalance({ resourceBillingMode: catalog.resourceBillingMode, customerOwned: false, selectedPrice: selection.selectedPrice, walletUsdMicros: "500000000" })
+    }), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a package the owner does not offer earns no price and is named as unpriced", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const path = String(input);
+    if (path === "/api/pricing/catalog") {
+      return new Response(JSON.stringify({
+        ...pricedCatalog,
+        // The Control Plane only offers a package that has a fabric compute pool.
+        packages: [{ id: "basic", name: "Basic", available: true }, { id: "pro", name: "Pro", available: false }]
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response(JSON.stringify({ error: "package_unavailable" }), { status: 409, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    const catalog = await getPricingCatalog();
+    const entries = await Promise.all(catalog.packages.filter((plan) => plan.available).map(async (plan) => {
+      try {
+        return [plan.id, workspacePricePreview(await previewPricing({ resourceType: "workspace", packageId: plan.id }, "csrf-1"))] as const;
+      } catch {
+        return [plan.id, null] as const;
+      }
+    }));
+    const unpriced = entries.filter((entry) => entry[1] === null).map(([planId]) => planId);
+
+    assert.deepEqual(unpriced, ["basic"]);
+    assert.deepEqual(workspaceLaunchUnpricedPackages("unpriced_packages:basic"), ["basic"]);
+    assert.deepEqual(workspaceLaunchUnpricedPackages("pricing_catalog_unavailable"), []);
+    assert.equal(catalog.packages.find((plan) => plan.id === "pro")?.available, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("the launch controller states the provisioning shape only through the single writer", () => {
+  const controllerSource = readFileSync(
+    new URL("../../apps/console-ui/src/app/use-workspace-launch-controller.ts", import.meta.url),
+    "utf8"
+  );
+
+  assert.equal(controllerSource.includes("workspaceLaunchSubmission("), true, "the submit call site must use the single writer");
+  assert.equal(
+    /provisioningMode\s*:/.test(controllerSource),
+    false,
+    "the controller must not state a provisioning shape of its own"
+  );
+
+  const submitted: WorkspaceLaunchRequest = workspaceLaunchSubmission(
+    { name: "Alpha", packageId: "basic", autoRenew: true },
+    "enabled"
+  );
+  assert.equal(submitted.provisioningMode, "resource_only");
 });

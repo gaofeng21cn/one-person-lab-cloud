@@ -41,9 +41,11 @@ import {
   canCreateAgentWorkspace,
   canSubmitWorkspaceLaunch,
   operationPollDelayMs,
+  workspaceLaunchBalance,
   workspaceLaunchPricingSelection,
   workspaceLaunchReviewBlocked,
   workspaceLaunchReviewReadiness,
+  workspaceLaunchSubmission,
   workspacePricePreview,
   type AgentLaunchReadiness,
   type WorkspaceLaunchReviewState
@@ -117,6 +119,13 @@ export interface WorkspaceLaunchCapability extends AgentWorkspaceLaunchControlle
 
 const emptyCatalog = (): RemoteState<PricingCatalogResponse> => ({ value: null, loading: false, error: "" });
 
+// A package purchase is prepaid from the customer's own Gateway balance. An
+// unavailable envelope carries no balance rather than a zero balance.
+function gatewayBalanceMicros(wallet: RemoteState<SourceEnvelope<GatewayWallet>>): string | null {
+  const value = wallet.value;
+  return value && "data" in value ? value.data.usdMicros : null;
+}
+
 function operationIsTerminal(operation: WorkspaceOwnerOperationDTO): boolean {
   return ["succeeded", "failed", "needs_attention", "cancelled"].includes(operation.status);
 }
@@ -130,6 +139,7 @@ function selectionList(requirements: CapabilityVersionDTO["modelRequirements"], 
 
 export function useWorkspaceLaunchController({
   session,
+  wallet,
   isRequestCurrent,
   currentMutationRequest,
   currentRequestGeneration,
@@ -209,10 +219,12 @@ export function useWorkspaceLaunchController({
     intent.current = null;
   };
 
-  // The Resource Catalog owner is the only authority for the package plans and
-  // for every price shown before confirmation. This is a real read of the
-  // owner's catalog and the owner's own preview; a plan or a total the owner did
-  // not return stays absent so the page cannot offer a purchase it cannot price.
+  // The Control Plane pricing routes are the authority for the package plans and
+  // for every price shown before confirmation. A package is only offered when the
+  // owner reports a fabric compute pool for it, so a plan can read back as
+  // unavailable and earn no preview. A plan the owner did not price stays
+  // unpriced, and an unread price is reported through catalog.error so the page
+  // says so and offers a retry instead of leaving a dead button unexplained.
   const loadPricingCatalog = async (generation: number, activeSession: AuthSession) => {
     setCatalog((current) => ({ ...current, loading: true, error: "" }));
     try {
@@ -227,8 +239,13 @@ export function useWorkspaceLaunchController({
         }
       }));
       if (!isRequestCurrent(generation, activeSession.user.id)) return;
+      const unread = entries.filter((entry) => entry[1] === null).map(([planId]) => planId);
       setPreviews(Object.fromEntries(entries.filter((entry): entry is readonly [PlanId, WorkspacePricePreview] => entry[1] !== null)));
-      setCatalog({ value: priced, loading: false, error: "" });
+      setCatalog({
+        value: priced,
+        loading: false,
+        error: unread.length ? `unpriced_packages:${unread.join(",")}` : ""
+      });
     } catch (error) {
       if (!isRequestCurrent(generation, activeSession.user.id)) return;
       setCatalog({ value: null, loading: false, error: friendlyError(error) });
@@ -278,8 +295,9 @@ export function useWorkspaceLaunchController({
     }
   };
 
-  // The package plans and the Agent source plans are two products priced by the
-  // same owner; neither read decides whether the other is available.
+  // The package plans and the Agent source plans are different products that share
+  // the Control Plane pricing surface. Neither read decides whether the other is
+  // available, and neither one's balance answers for the other's purchase.
   const loadCatalog = async (generation: number, activeSession: AuthSession) => {
     await Promise.all([loadPricingCatalog(generation, activeSession), loadAgentCatalog(generation, activeSession)]);
   };
@@ -530,12 +548,10 @@ export function useWorkspaceLaunchController({
     try {
       const { launchWorkspace } = await import("../api/workspaces-api.ts");
       const operation = await launchWorkspace(
-        {
-          name: launchName.trim(),
-          packageId: normalLaunchPlan,
-          autoRenew: launchAutoRenew,
-          provisioningMode: "full"
-        },
+        workspaceLaunchSubmission(
+          { name: launchName.trim(), packageId: normalLaunchPlan, autoRenew: launchAutoRenew },
+          catalog.value?.resourceBillingMode ?? "enabled"
+        ),
         session.csrfToken,
         workspaceLaunchIdempotencyKey()
       );
@@ -564,7 +580,13 @@ export function useWorkspaceLaunchController({
 
   // Determine selectedPlan from catalog
   const { selectedPlan, selectedPrice } = workspaceLaunchPricingSelection({ catalog: catalog.value, planId: normalLaunchPlan, previews });
-  const balanceSufficient = agentWallet !== null;
+  const customerOwned = false;
+  const balanceSufficient = workspaceLaunchBalance({
+    resourceBillingMode: catalog.value?.resourceBillingMode,
+    customerOwned,
+    selectedPrice,
+    walletUsdMicros: gatewayBalanceMicros(wallet)
+  });
   const launchBusy = normalLaunchBusy || agentBusy;
   const reviewState: WorkspaceLaunchReviewState = {
     launchRecoveryState: "clear",
@@ -589,9 +611,9 @@ export function useWorkspaceLaunchController({
     setLaunchConfirmed,
     selectedPlan,
     selectedPrice,
-    walletUsdMicros: agentWallet?.balanceUSDMicros || null,
+    walletUsdMicros: gatewayBalanceMicros(wallet),
     balanceSufficient,
-    customerOwned: false,
+    customerOwned,
     launchOperation: normalLaunchOperation,
     launchRecoveryState: "clear",
     launchPollIssue: "",
