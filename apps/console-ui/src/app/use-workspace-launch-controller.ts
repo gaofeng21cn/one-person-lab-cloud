@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import type {
   AuthSession,
   GatewayWallet,
+  PlanId,
   PricingCatalogResponse,
   SourceEnvelope,
   CapabilityVersionDTO,
@@ -14,7 +15,8 @@ import type {
   WorkspaceOwnerDTO,
   WorkspaceOwnerAccessDTO,
   GatewayWalletReadbackDTO,
-  RuntimeVersionDTO
+  RuntimeVersionDTO,
+  WorkspaceLaunchResponse
 } from "../api/dtos.ts";
 import {
   createAgentWorkspace,
@@ -155,6 +157,11 @@ export function useWorkspaceLaunchController({
   const [agentPollIssue, setAgentPollIssue] = useState<"" | "unavailable" | "timeout" | "unknown">("");
   const [agentRecoveryPending, setAgentRecoveryPending] = useState(() => Boolean(sessionStorage.getItem(agentOperationStorageKey)));
   const intent = useRef<PersistedAgentIntent | null>(null);
+
+  // Normal workspace launch state
+  const [normalLaunchPlan, setNormalLaunchPlan] = useState<PlanId>("basic");
+  const [normalLaunchBusy, setNormalLaunchBusy] = useState(false);
+  const [normalLaunchOperation, setNormalLaunchOperation] = useState<WorkspaceLaunchResponse | null>(null);
 
   const invalidateQuote = () => {
     setAgentQuote(null);
@@ -348,6 +355,11 @@ export function useWorkspaceLaunchController({
   const reviewAgentLaunch = () => {
     if (!session || intent.current || !canCreateAgentQuote(readiness) || (isDefaultApp ? !selectedRelease : !selectedCapability)) return;
     setAgentBusy(true);
+    // Capture current selection snapshot to validate against late-arriving quotes
+    const requestedApplicationKind = agentApplicationKind;
+    const requestedSourceId = isDefaultApp ? agentRuntimeVersionId : agentCapabilityVersionId;
+    const requestedComputePlanId = agentComputePlanId;
+    const requestedStoragePlanId = agentStoragePlanId;
     const applicationSelection = isDefaultApp
       ? { kind: "opl_app" as const, runtimeVersionId: selectedRelease!.id }
       : { kind: "agent" as const, capabilityVersionId: selectedCapability!.id };
@@ -355,6 +367,16 @@ export function useWorkspaceLaunchController({
       purpose: "deploy", applicationSelection, computePlanId: agentComputePlanId,
       storagePlanId: agentStoragePlanId, modelSelections, periodMonths: 1
     }, session.csrfToken, `workspace-quote:${crypto.randomUUID()}`).then((quote) => {
+      // Reject late-arriving quote if selection changed while quote was in flight
+      const currentSourceId = agentApplicationKind === "opl_app" ? agentRuntimeVersionId : agentCapabilityVersionId;
+      if (requestedApplicationKind !== agentApplicationKind ||
+          requestedSourceId !== currentSourceId ||
+          requestedComputePlanId !== agentComputePlanId ||
+          requestedStoragePlanId !== agentStoragePlanId) {
+        // Silently discard stale quote; user already changed selection and invalidateQuote() cleared agentQuote
+        setAgentBusy(false);
+        return;
+      }
       setAgentQuote(quote);
       setAgentConfirmed(false);
       setLaunchStep("confirm");
@@ -444,31 +466,82 @@ export function useWorkspaceLaunchController({
     window.open(agentAccess.url, "_blank", "noopener,noreferrer");
   };
 
+  // Normal workspace launch implementation
+  const reviewNormalWorkspaceLaunch = () => {
+    if (!normalLaunchPlan || !launchName.trim()) return;
+    setLaunchStep("confirm");
+  };
+
+  const submitNormalWorkspaceLaunch = async () => {
+    if (!session || !normalLaunchPlan || !launchName.trim() || normalLaunchBusy) return;
+
+    const stillCurrent = currentMutationRequest();
+    setNormalLaunchBusy(true);
+
+    try {
+      const { launchWorkspace } = await import("../api/workspaces-api.ts");
+      const operation = await launchWorkspace(
+        {
+          name: launchName.trim(),
+          packageId: normalLaunchPlan,
+          autoRenew: launchAutoRenew,
+          provisioningMode: "full"
+        },
+        session.csrfToken,
+        workspaceLaunchIdempotencyKey()
+      );
+
+      if (!stillCurrent()) {
+        return;
+      }
+
+      setNormalLaunchOperation(operation);
+      setLaunchStep("confirm");
+      flash("工作空间创建请求已提交", "good");
+    } catch (error) {
+      if (!stillCurrent()) return;
+      flash(friendlyError(error), "danger");
+    } finally {
+      if (stillCurrent()) {
+        setNormalLaunchBusy(false);
+      }
+    }
+  };
+
+  const openNormalWorkspace = async () => {
+    if (!normalLaunchOperation?.workspaceId) return;
+    navigate(`/console/workspaces/${normalLaunchOperation.workspaceId}`);
+  };
+
+  // Determine selectedPlan from catalog
+  const selectedPlan = catalog.value?.packages.find((pkg) => pkg.id === normalLaunchPlan) || null;
+  const selectedPrice = null;
+
   return {
     catalog,
     previews: {},
     launchName,
     setLaunchName,
-    launchPlan: "basic",
-    setLaunchPlan: () => undefined,
+    launchPlan: normalLaunchPlan,
+    setLaunchPlan: setNormalLaunchPlan,
     launchAutoRenew,
     setLaunchAutoRenew: (value) => { setLaunchAutoRenew(value); invalidateQuote(); },
     launchStep,
     setLaunchStep,
     launchConfirmed,
     setLaunchConfirmed,
-    selectedPlan: null,
-    selectedPrice: null,
+    selectedPlan,
+    selectedPrice,
     walletUsdMicros: agentWallet?.balanceUSDMicros || null,
     balanceSufficient: agentWallet !== null,
     customerOwned: false,
-    launchOperation: null,
+    launchOperation: normalLaunchOperation,
     launchRecoveryState: "clear",
     launchPollIssue: "",
-    busy: agentBusy,
-    reviewWorkspaceLaunch: reviewAgentLaunch,
-    submitWorkspaceLaunch: submitAgentLaunch,
-    openLaunchedWorkspace: openAgentWorkspace,
+    busy: normalLaunchBusy || agentBusy,
+    reviewWorkspaceLaunch: reviewNormalWorkspaceLaunch,
+    submitWorkspaceLaunch: submitNormalWorkspaceLaunch,
+    openLaunchedWorkspace: openNormalWorkspace,
     openLaunchBilling: () => navigate("/console/billing"),
     prepareNewWorkspaceLaunch: () => { if (agentRecoveryPending) return; setAgentOperation(null); setAgentWorkspace(null); setAgentAccess(null); setLaunchStep("configure"); setAgentConfirmed(false); },
     agentCapabilityVersions,
