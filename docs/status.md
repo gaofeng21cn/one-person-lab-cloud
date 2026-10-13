@@ -100,8 +100,9 @@ validator accepts it. Run `38421676224` independently returned a valid READY
 receipt for the same Cloud Candidate, with zero resource residuals. This closes
 #793's clean-host PostgreSQL harness acceptance. The implemented qualification
 path retains the supplied immutable Cloud Candidate and may build the declared
-run-owned Workspace fixture; this is a valid local harness path. #787 retains
-the disposition of the patrol's separate original launch HTTP 502. Canonical
+run-owned Workspace fixture; this is a valid local harness path. #787 is closed
+as superseded for that delivered path; the patrol's separate original launch
+HTTP 502 remains recorded as a historical, non-reproducible event. Canonical
 App, live-authority and Instance business acceptance remain separate product
 outcomes, not additional prerequisites for closing that local qualification
 issue. The READY evidence does not qualify the older `d5903d7a` recovery
