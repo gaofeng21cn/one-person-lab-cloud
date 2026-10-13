@@ -5,6 +5,8 @@ import { RadioGroup } from "@openai/apps-sdk-ui/components/RadioGroup";
 import { useEffect, useRef, type ReactNode } from "react";
 
 import type { WorkspaceLaunchController } from "../../app/console-controller-types.ts";
+import { cloudIdentity } from "../../app/console-identity.ts";
+import { isAgentLaunchSurface } from "../../app/workspace-launch-controller-model.ts";
 import type { AgentWorkspaceLaunchController } from "../../app/use-workspace-launch-controller.ts";
 import {
   presentWorkspaceApplicationInstallation, presentWorkspaceLaunch, presentWorkspaceLaunchStage, presentWorkspaceQuote
@@ -186,7 +188,7 @@ export function WorkspaceLaunchPage({
   onRefresh: () => Promise<void>;
 }) {
   const agentController = controller as WorkspaceLaunchController & Partial<AgentWorkspaceLaunchController>;
-  if (agentController.agentCapabilityVersions && agentController.reviewAgentLaunch) {
+  if (isAgentLaunchSurface({ ...agentController, cloudIdentity })) {
     return <AgentLaunchPage controller={agentController as AgentWorkspaceLaunchController} onBack={onBack} onRefresh={onRefresh} />;
   }
   const catalog = controller.catalog.value;

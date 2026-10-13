@@ -145,6 +145,29 @@ export function canCreateAgentWorkspace(readiness: AgentLaunchReadiness, confirm
   return canCreateAgentQuote(readiness) && readiness.walletSufficient && readiness.quoteReady && readiness.quoteCurrent && confirmed;
 }
 
+// The GLOSSARY splits Workspaces in two: a Legacy Workspace is opened through
+// the Control Plane, a Cloud Workspace through the Workspace owner. Which of the
+// two a build can open is decided by the build identity alone — the same identity
+// that picks the customer Workspace owner, the customer menu and the routes.
+//
+// A loaded CapabilityVersion list is deliberately not part of that decision. An
+// empty array is truthy in JS and once read as "this account belongs to the
+// Agent/BFF flow", which handed every Legacy Workspace identity a page built
+// entirely on /api/v2. It is also the wrong signal the other way: the default OPL
+// App opens from an approved Runtime Release and carries no CapabilityVersion at
+// all. Owner reads stay reported where the customer already reads them — the
+// Agent page's loading, error and empty states.
+export interface AgentLaunchSurfaceProbe {
+  readonly cloudIdentity: boolean;
+  readonly agentCapabilityVersions?: unknown;
+  readonly reviewAgentLaunch?: unknown;
+}
+
+export function isAgentLaunchSurface(probe: AgentLaunchSurfaceProbe): boolean {
+  if (!probe.cloudIdentity) return false;
+  return typeof probe.reviewAgentLaunch === "function";
+}
+
 export function operationPollDelayMs(pollAfterSeconds: number | undefined): number {
   if (!Number.isInteger(pollAfterSeconds) || pollAfterSeconds === undefined || pollAfterSeconds < 1 || pollAfterSeconds > 300) {
     throw new Error("invalid_operation_poll_after_seconds");
