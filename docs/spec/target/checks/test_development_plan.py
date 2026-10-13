@@ -25,7 +25,7 @@ class RepositoryPlacementTests(unittest.TestCase):
             '12_product_spec.md', 'checks/development_plan.json',
             'checks/render_development_plan.py', 'checks/validate_development_plan.py',
             'contracts/api_inventory.json', 'contracts/db_inventory.json',
-            'contracts/ui_inventory.json', 'contracts/internal.proto',
+            'contracts/ui_inventory.json',
         ]:
             target = self.spec / relative
             target.parent.mkdir(parents=True, exist_ok=True)

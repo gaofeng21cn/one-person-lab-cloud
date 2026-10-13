@@ -1,5 +1,7 @@
 # OPL Cloud Development Rules
 
+> **职责范围**: 本文档承担**源码权威性规则**和**开发协作边界**，不承担流程治理。轻量化流程见 [commit guidelines](docs/LIGHTWEIGHT_PROCESS.md)。
+
 `one-person-lab-cloud` is the single GitHub product repository for OPL Cloud architecture,
 Console/BFF, domain services, contracts, portable distribution, and reusable
 release mechanisms. A domain is not a separate GitHub repository.

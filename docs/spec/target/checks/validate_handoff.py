@@ -15,7 +15,7 @@ for name,digest in sr['artifacts'].items():
  if name.startswith('checks/runs/') or name in ['checks/handoff_readiness.json']:continue
  path=root/name
  need(path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest()==digest,'static receipt stale: '+name)
-proto=(root/'contracts/internal.proto').read_text();rpcs={}
+proto=(root.parents[2]/'packages/contracts/proto/internal.proto').read_text();rpcs={}
 for m in re.finditer(r'service\s+(\w+)\s*\{(.*?)\}',proto,re.S):
  for n in re.finditer(r'rpc\s+(\w+)\((\w+)\)\s+returns\s*\((\w+)\)',m[2]):rpcs[f'{m[1]}.{n[1]}']=(n[2],n[3])
 api=read('contracts/api_inventory.json');ops={x['operationId'] for x in api['operations']}
