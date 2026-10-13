@@ -27,6 +27,9 @@ type ProcessEntry = {
   binary: string;
   addressEnv: string;
   peerTokensEnv?: string;
+  rpcAddressEnv?: string;
+  defaultRPCAddress?: string;
+  rpcDatabaseEnv?: string;
   defaultAddress: string;
   databaseEnv?: string | null;
   env: string[];
@@ -454,23 +457,29 @@ async function runsSharedAuthorizer(directory: string): Promise<boolean> {
 
 // dialTargets reads every owner a process's own source dials: the owner address
 // names it names, plus the owners it names only at run time.
-async function dialTargets(directory: string, byPrefix: Map<string, string>): Promise<Set<string>> {
+function dialTargetsFromSource(source: string, byPrefix: Map<string, string>): Set<string> {
   const targets = new Set<string>();
-  for (const file of await goFiles(directory)) {
-    const source = await readFile(file, "utf8");
     // An owner address name is OPL_<OWNER>_ADDR for an owner process and
     // OPL_<OWNER>_URL for a caller that reaches an owner it does not own. A
     // process that names one routes to that owner, however it spells the lookup:
     // directly, or through a table of address names it dials in turn. Every
     // other environment name is not a route to an owner and is not claimed here.
     for (const match of source.matchAll(/"OPL_([A-Z_0-9]+)_(?:ADDR|URL)"/g)) {
-      const owner = byPrefix.get(match[1]);
+      const owner = byPrefix.get(match[1]) ?? byPrefix.get(match[1].replace(/_COORDINATION$/, ""));
       if (owner) targets.add(owner);
     }
     // A process that composes the owner environment name from the owner it is
     // looping over names no address literal to find, so the owner set it loops
     // over is the only place that call is written down.
-    if (!/getenv\(prefix ?\+\s*"_(?:ADDR|TOKEN)"\)/.test(source)) continue;
+    if (/os\.Getenv\("OPL_"\s*\+/.test(source)) {
+      for (const helper of source.matchAll(/func\s+(\w+)\([^\n]*target owneridentity\.Owner/g)) {
+        for (const call of source.matchAll(new RegExp(`\\b${helper[1]}\\([^\\n]*?owneridentity\\.(\\w+)`, "g"))) {
+          const target = byPrefix.get(`Owner${call[1]}`);
+          if (target) targets.add(target);
+        }
+      }
+    }
+    if (/getenv\(prefix ?\+\s*"_(?:ADDR|TOKEN)"\)/.test(source)) {
     for (const list of source.matchAll(/\[\]owneridentity\.Owner\{([^}]*)\}/g)) {
       for (const owner of list[1].matchAll(/owneridentity\.(\w+)/g)) {
         const target = byPrefix.get(`Owner${owner[1]}`);
@@ -480,6 +489,38 @@ async function dialTargets(directory: string, byPrefix: Map<string, string>): Pr
   }
   return targets;
 }
+
+async function dialTargets(directory: string, byPrefix: Map<string, string>): Promise<Set<string>> {
+  const targets = new Set<string>();
+  for (const file of await goFiles(directory)) {
+    for (const target of dialTargetsFromSource(await readFile(file, "utf8"), byPrefix)) targets.add(target);
+  }
+  return targets;
+}
+
+test("dynamic peer helpers retain their actual owner arguments without address literals", () => {
+  const source = `
+    peer, err := dialPeer(config, tls, owneridentity.Gateway, config.CloudIdentityAddr)
+    func dialPeer(config ownerservice.Config, tls owneridentity.TLSConfig, target owneridentity.Owner, address string) {
+      token := os.Getenv("OPL_" + strings.ToUpper(target.String()) + "_TOKEN")
+    }
+  `;
+  assert.deepEqual([...dialTargetsFromSource(source, new Map([["OwnerGateway", "tenant"]]))], ["tenant"]);
+});
+
+test("the Fabric HTTP process also declares its real owner RPC admission surface", async () => {
+  const topology = await loadTopology();
+  const fabric = topology.processes.find(process => process.service === "fabric")!;
+  const source = await readFile("services/fabric/coordination/process.go", "utf8");
+  assert.match(source, /ownerservice.LoadConfig\(ownerEnv, ownerservice.OwnerFabric, ":8187"\)/);
+  assert.match(source, /key == "DATABASE_URL"[\s\S]*getenv\("OPL_FABRIC_DATABASE_URL"\)/);
+  assert.equal(fabric.ownerName, "fabric");
+  assert.equal(fabric.ownerConstant, "OwnerFabric");
+  assert.equal(fabric.peerTokensEnv, "OPL_FABRIC_PEER_TOKENS");
+  assert.equal(fabric.rpcAddressEnv, "OPL_FABRIC_ADDR");
+  assert.equal(fabric.defaultRPCAddress, ":8187");
+  assert.equal(fabric.rpcDatabaseEnv, "OPL_FABRIC_DATABASE_URL");
+});
 
 // peerCallers derives the callers every owner must admit from the source that
 // opens the connections.
