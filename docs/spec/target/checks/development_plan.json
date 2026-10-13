@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "1393488f3c80d796c21d9634e95794e670721902",
+  "sourceSHA": "7b64396dee33dcd1090632bef400626a0cda11a0",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -445,7 +445,8 @@
         "TenantProductService.RemoveMember",
         "CloudIdentityAuthorization.AuthorizeAction",
         "CloudIdentityAuthorization.GetAuthorizationContext",
-        "CloudIdentityAuthorization.IssueAcceptedOperationGrant"
+        "CloudIdentityAuthorization.IssueAcceptedOperationGrant",
+        "CloudIdentityAuthorization.GetTenantRepositoryBinding"
       ],
       "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
       "contractRefs": [
@@ -3315,6 +3316,9 @@
       "W03"
     ],
     "CloudIdentityAuthorization.IssueAcceptedOperationGrant": [
+      "W03"
+    ],
+    "CloudIdentityAuthorization.GetTenantRepositoryBinding": [
       "W03"
     ],
     "CatalogCoordination.AcceptQuote": [
