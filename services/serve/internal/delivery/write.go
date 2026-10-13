@@ -727,6 +727,30 @@ func (s *Service) observeAndFinishDeliveryTx(ctx context.Context, tx *sql.Tx, co
 	if err != nil {
 		return err
 	}
+	// A poll that only observes can never finish a deployment.
+	//
+	// Ensure admits a component when it already exists OR its dependencies are
+	// ready right now (tkeapply/runtime.go). A main component whose dependency
+	// was still converging on the first apply is therefore filtered out of the
+	// manifest, and ReadWorkspaceApplicationRuntime is read-only by contract and
+	// never re-applies it. Without this, every subsequent poll observes the same
+	// absent component and the deployment stays pending forever, no matter how
+	// long the dependency takes.
+	//
+	// Re-driving is safe here: Ensure is idempotent (create-if-absent secrets at
+	// tkeapply/configuration.go:206, idempotent kubectl apply), Start never
+	// claims readiness, and this path already records observations and advances
+	// deployment status, so ReadRuntime is a reconcile-on-read, not a pure read.
+	if !start && observation.State != api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY {
+		if _, err = s.Runtime.Start(ctx, command, target); err != nil && !isExecutionPending(err) {
+			return err
+		}
+		// Pending is not a failure: the components are converging and the
+		// second read carries the live state.
+		if observation, err = s.Runtime.Observe(ctx, command, target); err != nil {
+			return err
+		}
+	}
 	if _, err = recordDeploymentObservation(ctx, tx, command, observation); err != nil {
 		return err
 	}
