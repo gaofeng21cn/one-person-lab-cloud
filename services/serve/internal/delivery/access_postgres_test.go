@@ -2,6 +2,7 @@ package delivery_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -338,6 +339,113 @@ func TestServeAccessEntryStreamsResponses(t *testing.T) {
 	}
 	if string(first) != "data: first\n\n" {
 		t.Fatalf("first event=%q", string(first))
+	}
+}
+
+// staticEntitlementGate answers with one fixed verdict per Workspace, standing in
+// for the owner's answer. It proves the entry reads a verdict rather than
+// re-deriving one: the Workspace below is closed no matter how ready its runtime
+// is.
+type staticEntitlementGate struct {
+	verdict delivery.EntitlementVerdict
+	err     error
+}
+
+func (g staticEntitlementGate) Verdict(_ context.Context, _ string) (delivery.EntitlementVerdict, error) {
+	return g.verdict, g.err
+}
+
+// TestServeAccessEntryRefusesClosedEntitlementDespiteReadyBinding is the control
+// for issue #824. Readiness is a fact about the instance, so before any
+// entitlement fact reached the data plane a Workspace whose paid term had ended
+// still resolved a working route as long as its binding was confirmed and its
+// runtime was ready. A closed owner verdict must refuse that same Workspace
+// before any binding row is read.
+func TestServeAccessEntryRefusesClosedEntitlementDespiteReadyBinding(t *testing.T) {
+	service, tenant, workspace, runtimeInstance, db := routeFixture(t)
+	markRouteTargetReady(t, db, runtimeInstance)
+	activateRoute(t, service, tenant, workspace, runtimeInstance)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "application-response")
+	}))
+	defer upstream.Close()
+	host := applicationHost(t, workspace)
+
+	// The premise is proven first on the very same fixture: with the owner
+	// permitting the Workspace, a ready target serves. Without this the control
+	// could pass simply because nothing was ever servable.
+	entry, err := delivery.NewAccessEntry(db, accessOrigin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry.Transport = serviceTransport{byService: map[string]*httptest.Server{"app-main": upstream}}
+	entry.Entitlement = staticEntitlementGate{verdict: delivery.EntitlementPermitted}
+	permitted := httptest.NewServer(entry.Handler())
+	defer permitted.Close()
+	if response := accessGet(t, permitted.URL, host, "/"); response.StatusCode != http.StatusOK || response.Body != "application-response" {
+		t.Fatalf("permitted status=%d body=%s", response.StatusCode, response.Body)
+	}
+
+	// The owner closes the entitlement. The binding is still confirmed, the
+	// runtime is still ready and the upstream is still reachable, and the entry
+	// must still refuse.
+	entry.Entitlement = staticEntitlementGate{verdict: delivery.EntitlementClosed}
+	closed := httptest.NewServer(entry.Handler())
+	defer closed.Close()
+	response := accessGet(t, closed.URL, host, "/")
+	if response.StatusCode != http.StatusForbidden || !strings.Contains(response.Body, "workspace_application_entitlement_closed") {
+		t.Fatalf("closed entitlement status=%d body=%s", response.StatusCode, response.Body)
+	}
+	// The retained path entry resolves the same Workspace, so it must not be a
+	// way around the verdict.
+	if pathResponse := accessGet(t, closed.URL, "workspace.example", "/w/"+workspace+"/"); pathResponse.StatusCode != http.StatusForbidden || !strings.Contains(pathResponse.Body, "workspace_application_entitlement_closed") {
+		t.Fatalf("closed entitlement path status=%d body=%s", pathResponse.StatusCode, pathResponse.Body)
+	}
+
+	// An owner verdict Serve cannot read is refused as unavailable, not answered
+	// as permitted and not answered as closed.
+	entry.Entitlement = staticEntitlementGate{verdict: "", err: errors.New("entitlement owner unreachable")}
+	unavailable := httptest.NewServer(entry.Handler())
+	defer unavailable.Close()
+	if unavailableResponse := accessGet(t, unavailable.URL, host, "/"); unavailableResponse.StatusCode != http.StatusServiceUnavailable || !strings.Contains(unavailableResponse.Body, "workspace_application_entitlement_unavailable") {
+		t.Fatalf("unreadable entitlement status=%d body=%s", unavailableResponse.StatusCode, unavailableResponse.Body)
+	}
+}
+
+// TestServeAccessEntryServesUnverifiedEntitlement pins the posture an entry
+// without a decided verdict currently runs in. It is written so that changing
+// it is a deliberate, visible edit to this test rather than a silent widening or
+// narrowing of what the entry refuses.
+func TestServeAccessEntryServesUnverifiedEntitlement(t *testing.T) {
+	service, tenant, workspace, runtimeInstance, db := routeFixture(t)
+	markRouteTargetReady(t, db, runtimeInstance)
+	activateRoute(t, service, tenant, workspace, runtimeInstance)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "application-response")
+	}))
+	defer upstream.Close()
+
+	entry, err := delivery.NewAccessEntry(db, accessOrigin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry.Transport = serviceTransport{byService: map[string]*httptest.Server{"app-main": upstream}}
+	entry.Entitlement = staticEntitlementGate{verdict: delivery.EntitlementUnverified}
+	server := httptest.NewServer(entry.Handler())
+	defer server.Close()
+	if response := accessGet(t, server.URL, applicationHost(t, workspace), "/"); response.StatusCode != http.StatusOK {
+		t.Fatalf("unverified entitlement status=%d body=%s", response.StatusCode, response.Body)
+	}
+
+	// An installation that wires no gate at all is the same posture, which is
+	// what startAccessEntry reports once at startup.
+	entry.Entitlement = nil
+	unwired := httptest.NewServer(entry.Handler())
+	defer unwired.Close()
+	if response := accessGet(t, unwired.URL, applicationHost(t, workspace), "/"); response.StatusCode != http.StatusOK {
+		t.Fatalf("unwired entitlement status=%d body=%s", response.StatusCode, response.Body)
 	}
 }
 

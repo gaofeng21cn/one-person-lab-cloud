@@ -15,6 +15,13 @@ package delivery
 //   - The application origin carries the application identity, so a request for
 //     an origin that no longer matches the current target is refused instead of
 //     being served by the replacement application.
+//   - Expiry is an owner verdict, never a Serve computation. Serve reads no
+//     subscription term, stores no copy of one and compares no deadline. When an
+//     EntitlementGate is wired, only its closed verdict refuses; an entry with no
+//     gate wired keeps its pre-existing posture of resolving on binding
+//     readiness alone, and reports that posture in the process log. Whether an
+//     unanswered entitlement may still be served is the owner's decision to
+//     make, not one this file settles.
 
 import (
 	"context"
@@ -58,6 +65,14 @@ var (
 	// errAccessApplicationSuperseded: the origin's application label does not
 	// describe the confirmed target.
 	errAccessApplicationSuperseded = accessRefusal{status: http.StatusGone, code: "workspace_application_origin_retired"}
+	// errAccessEntitlementClosed: the owner withdrew the Workspace's entitlement.
+	// A confirmed binding and a ready runtime do not restore the right to be
+	// served, so this refusal is reached before either is read.
+	errAccessEntitlementClosed = accessRefusal{status: http.StatusForbidden, code: "workspace_application_entitlement_closed"}
+	// errAccessEntitlementUnavailable: the owner's verdict could not be read.
+	// Serve refuses the read as unavailable rather than guessing that a Workspace
+	// whose answer it could not obtain is either entitled or not.
+	errAccessEntitlementUnavailable = accessRefusal{status: http.StatusServiceUnavailable, code: "workspace_application_entitlement_unavailable"}
 )
 
 // AccessEntry is Serve's Workspace application entry.
@@ -69,6 +84,10 @@ type AccessEntry struct {
 	// Transport is the proxy transport. It stays nil in production, keeping the
 	// reverse proxy's own defaults.
 	Transport http.RoundTripper
+	// Entitlement is the owner's answer about this Workspace's paid term. It
+	// stays nil in an installation that has not wired one, and the entry then
+	// resolves on binding readiness alone and says so in the process log.
+	Entitlement EntitlementGate
 	// Now reads the observation time a served response reports. It is overridable
 	// only so a test can pin it.
 	Now func() time.Time
@@ -151,6 +170,18 @@ func (e *AccessEntry) Resolve(ctx context.Context, host, requestPath string) (ac
 	workspaceID, applicationLabel, pathBased, refusal := e.resolveIdentity(host, requestPath)
 	if refusal != nil {
 		return accessRoute{}, refusal
+	}
+	// The owner's entitlement verdict is asked before any binding or runtime row
+	// is read: a Workspace the owner has closed must not resolve a route at all,
+	// so it never reaches a destination this process could forward to.
+	if e.Entitlement != nil {
+		verdict, err := e.Entitlement.Verdict(ctx, workspaceID)
+		switch {
+		case err != nil:
+			return accessRoute{}, errAccessEntitlementUnavailable
+		case verdict == EntitlementClosed:
+			return accessRoute{}, errAccessEntitlementClosed
+		}
 	}
 	route := accessRoute{WorkspaceID: workspaceID, pathBased: pathBased}
 	err := e.DB.QueryRowContext(ctx, `

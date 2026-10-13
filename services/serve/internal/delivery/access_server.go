@@ -40,6 +40,13 @@ func startAccessEntry(server *ownerservice.Server, entry *AccessEntry, address s
 		_ = listener.Close()
 		return err
 	}
+	// The posture an unwired entry runs in is reported once, here, instead of
+	// being left implicit in the resolve path: with no gate the entry cannot
+	// refuse a Workspace whose entitlement the owner has closed, and that is
+	// visible in the process log rather than discovered at an incident.
+	if entry.Entitlement == nil {
+		log.Printf("serve access entry has no entitlement gate wired: expiry is an owner verdict that Serve does not compute, so this entry resolves on binding readiness alone")
+	}
 	go func() {
 		log.Printf("serve access entry listening on %s", listener.Addr())
 		if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
