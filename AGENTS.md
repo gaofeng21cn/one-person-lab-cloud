@@ -1,5 +1,7 @@
 # OPL Cloud Development Rules
 
+> **DEPRECATED**: 本文档的治理框架已于2026-10-13退役，见 [docs/DEPRECATED_FRAMEWORK.md](docs/DEPRECATED_FRAMEWORK.md)
+
 `one-person-lab-cloud` is the single GitHub product repository for OPL Cloud architecture,
 Console/BFF, domain services, contracts, portable distribution, and reusable
 release mechanisms. A domain is not a separate GitHub repository.
