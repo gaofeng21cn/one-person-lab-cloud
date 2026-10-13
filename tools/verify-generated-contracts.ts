@@ -18,7 +18,6 @@ export const generationInputs = [
   `${proto}/generate_event_identity.py`,
   `${proto}/internal.proto`,
   `${proto}/events.json`,
-  `${target}/contracts/internal.proto`,
   `${target}/contracts/publisher-contract.schema.json`,
   `${target}/03_api_contract_complete.yaml`,
   `${identity}/generate_policy.py`
