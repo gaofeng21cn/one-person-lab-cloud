@@ -615,7 +615,11 @@ test("Operator Account eligibility retains its key across command and readback m
     assert.equal(reads, 1);
     assert.equal(await page.getByText("已撤销 Workspace 新购资格", { exact: true }).count(), 0);
 
-    await revoke.click();
+    await Promise.all([
+      page.waitForResponse((response) => response.request().method() === "GET"
+        && new URL(response.url()).pathname === "/api/operator/accounts"),
+      revoke.click()
+    ]);
     await page.getByText(unknownWriteMessage, { exact: true }).waitFor({ state: "visible" });
     assert.equal(reads, 2);
     assert.equal(await page.getByText("已撤销 Workspace 新购资格", { exact: true }).count(), 0);
