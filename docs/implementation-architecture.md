@@ -64,7 +64,11 @@ rejected start until an explicit Deploy or ready readback establishes a new resu
 Failed and terminal observations are recorded without
 Start; a previously activated delivery is not automatically restarted after
 degradation. A Workspace-scoped database lock fences the observation and
-active-selection transaction. Access requires the resulting
+active-selection transaction. Workspace retirement records the existing
+`terminate` action before requesting the runtime's `absent` lifecycle; its
+`runtime_retire` operation remains distinct from suspension. Both unknown and
+confirmed retirement intent prevent initial polling from restarting the runtime.
+Access requires the resulting
 ready deployment and a confirmed entry, never a seeded resource reference.
 
 Workspace's `internal/launch` worker resumes the original committed operation

@@ -121,7 +121,7 @@ func (s *Service) Retire(ctx context.Context, command *api.RuntimeStopCommand) (
 	if err != nil {
 		return nil, err
 	}
-	if err := s.applyRecordedLifecycle(ctx, deploy, "retire", map[string]string{"desired": "absent", "retainedDataAttachmentId": command.GetRetainedDataAttachmentId()}, func() error {
+	if err := s.applyRecordedLifecycle(ctx, deploy, "terminate", map[string]string{"desired": "absent", "retainedDataAttachmentId": command.GetRetainedDataAttachmentId()}, func() error {
 		return s.Runtime.Lifecycle(ctx, deploy.command, target, "absent")
 	}); err != nil {
 		return nil, err

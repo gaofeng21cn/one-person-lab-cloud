@@ -293,6 +293,84 @@ func TestPollDoesNotOverrideRecordedSuspension(t *testing.T) {
 	}
 }
 
+func TestPollHonorsWorkspaceRetirement(t *testing.T) {
+	for _, confirmed := range []bool{false, true} {
+		name := "unknown"
+		if confirmed {
+			name = "confirmed"
+		}
+		t.Run(name, func(t *testing.T) {
+			s, r, _ := reservationFixture(t)
+			ctx := workspaceContext()
+			reservation, err := s.Reserve(ctx, r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.Resources = &resourcesForServe{confirmed: true}
+			s.Runtime = &lateDependencyRuntime{}
+			if _, err = s.Deploy(ctx, deployReserved(r, reservation)); err != nil {
+				t.Fatal(err)
+			}
+			runtime := &progressionBoundaryRuntime{
+				runtimeForServe: runtimeForServe{state: api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_STARTING},
+				startErr:        errors.New("a retiring runtime must not be restarted"),
+			}
+			if !confirmed {
+				runtime.lifecycleErr = errors.New("retirement response lost")
+			}
+			s.Runtime = runtime
+			command := &api.RuntimeStopCommand{Context: r.Context, RuntimeInstanceId: reservation.RuntimeInstanceId, DeploymentId: reservation.DeploymentId, RetainedDataAttachmentId: "attachment-retained"}
+			retired, retireErr := s.Retire(ctx, command)
+			if confirmed && retireErr != nil {
+				t.Fatalf("retirement did not reach its lifecycle boundary: %v", retireErr)
+			}
+			if !confirmed && !errors.Is(retireErr, runtime.lifecycleErr) {
+				t.Fatalf("retirement lost its provider error: %v", retireErr)
+			}
+			var action, result, retained string
+			if err = s.DB.QueryRowContext(ctx, `SELECT action,observation_result,input_snapshot->>'retainedDataAttachmentId' FROM serve.agent_runtime_actions WHERE runtime_instance_id=$1 AND action='terminate'`, reservation.RuntimeInstanceId).Scan(&action, &result, &retained); err != nil {
+				t.Fatal(err)
+			}
+			wantResult := "unknown"
+			if confirmed {
+				wantResult = "confirmed"
+			}
+			if result != wantResult || retained != command.RetainedDataAttachmentId {
+				t.Fatalf("retirement action=%s result=%s retained=%s", action, result, retained)
+			}
+			request := &api.RuntimeReadbackRequest{Context: r.Context, RuntimeInstanceId: reservation.RuntimeInstanceId, DeploymentId: reservation.DeploymentId}
+			for poll := 0; poll < 2; poll++ {
+				if _, err = s.ReadRuntime(ctx, request); err != nil {
+					t.Fatalf("poll=%d: %v", poll, err)
+				}
+			}
+			if runtime.starts != 0 || len(runtime.lifecycle) != 1 || runtime.lifecycle[0] != "absent" {
+				t.Fatalf("starts=%d lifecycle=%v", runtime.starts, runtime.lifecycle)
+			}
+			// An unknown outcome can be retried; a confirmed one reuses its result.
+			runtime.lifecycleErr = nil
+			replayed, err := s.Retire(ctx, command)
+			if err != nil || replayed.GetKind() != api.OperationKindEnum_OPERATION_KIND_ENUM_RUNTIME_RETIRE || replayed.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED || replayed.GetObservationResult() != api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_CONFIRMED {
+				t.Fatalf("retirement=%v err=%v", replayed, err)
+			}
+			if confirmed && replayed.GetOperationId() != retired.GetOperationId() {
+				t.Fatal("confirmed retirement created a different operation")
+			}
+			calls := len(runtime.lifecycle)
+			if _, err = s.Retire(ctx, command); err != nil || len(runtime.lifecycle) != calls {
+				t.Fatalf("confirmed retirement reissued lifecycle: calls=%v err=%v", runtime.lifecycle, err)
+			}
+			wantCalls := 1
+			if !confirmed {
+				wantCalls = 2
+			}
+			if calls != wantCalls {
+				t.Fatalf("lifecycle calls=%d want=%d", calls, wantCalls)
+			}
+		})
+	}
+}
+
 func TestPollRefusesToReapplyAfterTheProviderReportedFailure(t *testing.T) {
 	s, r, _ := reservationFixture(t)
 	ctx := workspaceContext()
