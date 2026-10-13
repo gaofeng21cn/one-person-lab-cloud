@@ -43,6 +43,7 @@ import {
   operationPollDelayMs,
   workspaceLaunchBalance,
   workspaceLaunchPricingSelection,
+  workspaceLaunchPreviewRequest,
   workspaceLaunchReviewBlocked,
   workspaceLaunchReviewReadiness,
   workspaceLaunchSubmission,
@@ -232,7 +233,7 @@ export function useWorkspaceLaunchController({
       if (!isRequestCurrent(generation, activeSession.user.id)) return;
       const entries = await Promise.all(priced.packages.filter((plan) => plan.available).map(async (plan) => {
         try {
-          const preview = await previewPricing({ resourceType: "workspace", packageId: plan.id }, activeSession.csrfToken);
+          const preview = await previewPricing(workspaceLaunchPreviewRequest(plan.id), activeSession.csrfToken);
           return [plan.id, workspacePricePreview(preview)] as const;
         } catch {
           return [plan.id, null] as const;
