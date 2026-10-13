@@ -550,15 +550,19 @@ func (s *Service) managedKeyCommandAnswer(ctx context.Context, reservation Manag
 // RevokeManagedKey retires one Workspace-managed key binding. The key is revoked
 // through the issuer first; a lost revoke response leaves the binding non-terminal
 // so a later pass re-reads the native state rather than claiming success.
+//
+// Every outcome this owner cannot confirm is recorded as a revocation attempt
+// (see managed_key_revocation.go), including the case where no issuer is wired at
+// all - which is the default production state - so an asked-for revocation is
+// never left indistinguishable from one nobody ever asked for. Recording an
+// attempt never marks the key revoked: only the issuer can do that, and its
+// refusal still reaches the caller unchanged.
 func (s *Service) RevokeManagedKey(ctx context.Context, r *api.ManagedKeyRevoke) (*api.Operation, error) {
 	if err := s.coordinationCaller(ctx, owneridentity.Workspace.Service()); err != nil {
 		return nil, err
 	}
 	if s.GatewayStore == nil {
 		return nil, status.Error(codes.Unavailable, "Gateway key persistence is not configured")
-	}
-	if s.KeyIssuer == nil {
-		return nil, status.Error(codes.FailedPrecondition, "no approved Gateway key issuer is configured")
 	}
 	if err := ownerservice.ValidateCallContext(ctx, r.GetContext()); err != nil {
 		return nil, err
@@ -580,22 +584,54 @@ func (s *Service) RevokeManagedKey(ctx context.Context, r *api.ManagedKeyRevoke)
 	if key.TenantID != tenantID || key.WorkspaceID != r.GetWorkspaceId() {
 		return nil, status.Error(codes.PermissionDenied, "key binding belongs to another tenant or workspace")
 	}
+	// The absent-issuer check sits here rather than at the top of the handler:
+	// checking it first made the default production state - no Sub2API
+	// configuration - fail closed before anything could be recorded, so the most
+	// common way this revoke fails left no trace at all. It is still fail-closed:
+	// nothing is minted or revoked without an approved issuer.
+	if s.KeyIssuer == nil {
+		return nil, s.revocationFailed(ctx, r, tenantID, key, status.Error(codes.FailedPrecondition, "no approved Gateway key issuer is configured"))
+	}
 	binding, err := s.GatewayStore.ReadActiveWalletBinding(ctx, tenantID)
 	if err != nil {
 		return nil, status.Error(codes.FailedPrecondition, "the tenant has no active wallet binding")
 	}
 	if key.RevokedAt.IsZero() {
 		if err := s.KeyIssuer.RevokeWorkspaceKey(ctx, binding.BillingSub2APIUserID, key.ExternalKeyID); err != nil {
-			return nil, err
+			return nil, s.revocationFailed(ctx, r, tenantID, key, err)
 		}
 		if _, err := s.GatewayStore.MarkManagedKeyRevoked(ctx, key.ID); err != nil {
-			return nil, status.Error(codes.Unavailable, "Gateway key revocation readback unavailable")
+			// The issuer confirmed the revocation but this owner's record of it did
+			// not commit, so whether the key is retired is unconfirmed rather than
+			// settled. The outcome is recorded as unknown, never as confirmed.
+			return nil, s.revocationFailed(ctx, r, tenantID, key,
+				status.Error(codes.Unavailable, "Gateway key revocation readback unavailable"))
 		}
+	}
+	if err = s.noteRevocationAttempt(ctx, tenantID, r.GetContext().GetActorId(), r.GetContext().GetIdempotencyKey(), key,
+		managedKeyRevocationOutcomeConfirmed, nil); err != nil {
+		return nil, status.Errorf(codes.Unavailable, "the Gateway key revocation was confirmed but recording it failed: %v", err)
 	}
 	now := time.Now().UTC()
 	return &api.Operation{OperationId: key.ID, Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_GATEWAY, Kind: api.OperationKindEnum_OPERATION_KIND_ENUM_REVOKE_KEY,
 		ResourceId: key.ID, Status: api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED, Stage: api.OperationStageEnum_OPERATION_STAGE_ENUM_SUCCEEDED,
 		RequestId: r.GetContext().GetRequestId(), CreatedAt: stampOf(key.CreatedAt), UpdatedAt: stampOf(now)}, nil
+}
+
+// revocationFailed records one refused or unconfirmed revocation attempt and
+// returns the error the caller must see.
+//
+// The issuer's own code is preserved exactly, because that refusal is the fact
+// the caller acts on and rewriting it would misreport why the key is still live.
+// When the attempt could not be written down either, the returned message says so
+// instead of failing silently: an unrecorded refusal is exactly the state this
+// record exists to end.
+func (s *Service) revocationFailed(ctx context.Context, r *api.ManagedKeyRevoke, tenantID string, key ManagedKeyBinding, cause error) error {
+	if recordErr := s.noteRevocationAttempt(ctx, tenantID, r.GetContext().GetActorId(), r.GetContext().GetIdempotencyKey(), key,
+		managedKeyRevocationOutcome(cause), cause); recordErr != nil {
+		return status.Errorf(status.Code(cause), "%s (the attempt could not be recorded: %v)", status.Convert(cause).Message(), recordErr)
+	}
+	return cause
 }
 
 // coordinationCaller refuses a call whose authenticated peer is not one of the
