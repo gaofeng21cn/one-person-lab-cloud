@@ -108,18 +108,23 @@ canonical owners rather than disappearing when execution-plan coupling is remove
 ## Clean Host Qualification Recovery (2026-10-13)
 
 Cloud qualification tooling owns #793's PostgreSQL scratch cleanup and #787's
-image/launch verification path. Merged PR #801 owns PostgreSQL teardown and
-Workspace-fixture admission while preserving the supplied Cloud digest. This
-change distinguishes HTTP failure from a missing fixture marker, with evidence in
-[status](status.md#local-qualification-repairs-2026-10-13).
-Exact Candidate run `38408791877` now establishes pullable canonical inputs
-but remains `NOT_READY` at application entry readback, with retained resources.
-Later run `38415379681` passed that entry with a run-owned fixture but stopped
-at owner-delete continuation, leaving one network.
-Completion still requires current-revision CI, a clean-host `READY` receipt bound
-to the intended source and exact images, and bounded attribution or resolution
-of the patrol's independently observed launch HTTP 502. A source-built run does
-not replace qualification of an existing published Candidate.
+image/launch verification path. Merged #801 owns teardown and Workspace-fixture
+admission while preserving the supplied Cloud digest; #804 preserves bounded
+DELETE failure diagnostics.
+
+#793's harness acceptance is complete: exact Candidate
+`78dbe9b474e6b614ca0def565fd2ab60cdb37e4e` / Cloud digest
+`sha256:05992806bf27789adfc0956c2df5bdf10d8e127c3b0641430cf38028e8f6e987`
+passed Clean Host `38420381927`, including owner DELETE, Ledger evidence and
+zero resource residuals. The original, validator-accepted READY receipt is
+preserved in [status](status.md#verified-clean-host-qualification).
+
+#787 remains open for canonical OPL App entry qualification and disposition of
+the patrol's separate original launch HTTP 502. The fixture success qualifies
+that Cloud Candidate's local harness path; it does not prove canonical Workspace
+application behavior, live Sub2API, TKE, production or original paid-order
+acceptance. Earlier generic DELETE errors were not reproduced in the successful
+runs; improved diagnostics do not establish their historical runtime cause.
 
 ## Cloud-Identity Customer Workspace Read (2026-09-30)
 

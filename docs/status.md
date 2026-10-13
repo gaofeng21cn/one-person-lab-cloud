@@ -45,8 +45,8 @@ headers or entry URL persisted. Real HTTP lifecycle tests exercise both failures
 and the unchanged success path. These local tests do not diagnose the earlier
 patrol's launch 502 or establish new hosted READY evidence.
 
-Fresh Clean Host `READY`, current-revision CI and the patrol's separate launch
-502 remain unverified. #787 and #793 retain their respective acceptance duties.
+Clean Host READY evidence is now available below. Current-revision CI for this
+governance change and the patrol's separate launch 502 remain unverified.
 
 ### Exact Candidate Follow-Up
 
@@ -80,6 +80,27 @@ completed owner deletion or resource absence. Its receipt carries no specific
 failed DELETE response status or upstream reason; do not infer a provider cause
 or successful scratch cleanup. The built fixture digest is bound to this run,
 not a portable Workspace distribution reference.
+
+### Verified Clean Host Qualification
+
+[Clean Host run 38420381927](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/38420381927)
+qualified Product `78dbe9b474e6b614ca0def565fd2ab60cdb37e4e` and exact Cloud
+Candidate digest `sha256:05992806bf27789adfc0956c2df5bdf10d8e127c3b0641430cf38028e8f6e987` with the existing Workspace fixture. The unchanged
+[validated READY receipt](evidence/local-qualification/2026-10-13-clean-host-qualification-38420381927.json)
+binds startup, application access, restart continuity, owner DELETE and its
+Ledger receipt, and zero container/volume/network residuals after cleanup.
+This fixture run does not qualify the canonical OPL App Workspace image,
+live Sub2API, TKE, or the original paid-order obligations.
+The earlier owner-delete failure in run 38415379681 was not reproduced in this
+run; the new bounded failure callback improves diagnosis but does not establish
+the runtime root cause of that earlier failure.
+
+The original artifact bytes match the preserved receipt and the current producing
+validator accepts it. Run `38421676224` independently returned a valid READY
+receipt for the same Cloud Candidate, with zero resource residuals. This closes
+#793's clean-host PostgreSQL harness acceptance; #787 retains its canonical
+application and original-launch-502 obligations. This evidence does not qualify
+the older `d5903d7a` recovery Candidate or establish its current Instance state.
 
 ## First Tencent/TKE Launch Scope Alignment (2026-10-10)
 
@@ -328,20 +349,6 @@ Runtime ready.
 Historical local and provider-fixture evidence remains provenance for the
 retained Control Plane/Fabric lifecycle. It is not current Candidate,
 production, wallet or medical acceptance evidence.
-
-## Local Clean Host Qualification
-
-[Clean Host run 38420381927](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/38420381927)
-qualified Product `78dbe9b474e6b614ca0def565fd2ab60cdb37e4e` and its exact
-Candidate image with the existing Workspace fixture. The unchanged
-[validated READY receipt](evidence/source-checks/2026-10-13-clean-host-qualification-38420381927.json)
-binds startup, application access, restart continuity, owner DELETE and its
-Ledger receipt, and zero container/volume/network residuals after cleanup.
-This fixture run does not qualify the canonical OPL App Workspace image,
-live Sub2API, TKE, or the original paid-order obligations.
-The earlier owner-delete failure in run 38415379681 was not reproduced in this
-run; the new bounded failure callback improves diagnosis but does not establish
-the runtime root cause of that earlier failure.
 
 ## Readiness
 
