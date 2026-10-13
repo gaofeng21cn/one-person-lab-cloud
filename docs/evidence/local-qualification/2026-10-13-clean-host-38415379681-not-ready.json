@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "status": "NOT_READY",
+  "startedAt": "2026-10-13T14:41:19.831Z",
+  "completedAt": "2026-10-13T14:44:48.797Z",
+  "source": {
+    "sha": "a894a7478739d1b99a9e5b0d38dcae05b8220dab",
+    "tree": "8b2f7390beec0fee4a71809c5e7b5b01362cca81"
+  },
+  "images": {
+    "cloud": {
+      "input": "ghcr.io/gaofeng21cn/one-person-lab-cloud@sha256:fb60b2917c19400fb940062bb913bd04ad4af3d7f63ea07cce3b91b6ae9119c5",
+      "digest": "sha256:fb60b2917c19400fb940062bb913bd04ad4af3d7f63ea07cce3b91b6ae9119c5"
+    },
+    "workspace": {
+      "input": "127.0.0.1:32768/opl-qualification-workspace@sha256:205c4252d2b6594e5cd12eb45309e516e39046529f43670bc3853cc94414f6eb",
+      "digest": "sha256:205c4252d2b6594e5cd12eb45309e516e39046529f43670bc3853cc94414f6eb"
+    }
+  },
+  "command": "npm run qualify:local:workspace -- --source-sha a894a7478739d1b99a9e5b0d38dcae05b8220dab --cloud-image ghcr.io/gaofeng21cn/one-person-lab-cloud@sha256:fb60b2917c19400fb940062bb913bd04ad4af3d7f63ea07cce3b91b6ae9119c5 --workspace-image 127.0.0.1:32768/opl-qualification-workspace@sha256:205c4252d2b6594e5cd12eb45309e516e39046529f43670bc3853cc94414f6eb --authority-mode fixture --receipt /home/runner/work/_temp/local-workspace-qualification.json",
+  "stage": "owner_delete",
+  "errorCode": "local_workspace_qualification_failed",
+  "error": "owner Workspace DELETE continuation failed",
+  "residuals": {
+    "containers": 0,
+    "volumes": 0,
+    "networks": 1
+  },
+  "ownerDeletePending": {
+    "phase": "storage_absent",
+    "ownerStage": "compute",
+    "ordinal": 1,
+    "max": 8,
+    "operationDigest": "sha256:1630b0c0f4de9ad3e14e726596ef0edb64ea3e4f44ad9f3d8d38ed244ae5c4d7"
+  },
+  "deferred": [
+    "tencent-tke",
+    "tcr-and-tke-image-pull",
+    "kubernetes-secret-and-pod-readiness",
+    "production-sub2api",
+    "production-secrets-and-network",
+    "instance-deployment-and-rollback"
+  ]
+}

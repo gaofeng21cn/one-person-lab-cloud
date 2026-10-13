@@ -114,6 +114,8 @@ change distinguishes HTTP failure from a missing fixture marker, with evidence i
 [status](status.md#local-qualification-repairs-2026-10-13).
 Exact Candidate run `38408791877` now establishes pullable canonical inputs
 but remains `NOT_READY` at application entry readback, with retained resources.
+Later run `38415379681` passed that entry with a run-owned fixture but stopped
+at owner-delete continuation, leaving one network.
 Completion still requires current-revision CI, a clean-host `READY` receipt bound
 to the intended source and exact images, and bounded attribution or resolution
 of the patrol's independently observed launch HTTP 502. A source-built run does

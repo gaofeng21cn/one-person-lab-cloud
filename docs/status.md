@@ -70,6 +70,17 @@ PostgreSQL `EACCES` was observed; this earlier failure does not qualify PR #801'
 successful scratch cleanup. The patrol's original SHA and HTTP 502 still need
 separate attribution. No real Sub2API, Instance or production acceptance follows.
 
+The later owner-dispatched run `38415379681` used the merged workflow,
+retained that same Cloud Candidate and built only a run-owned Workspace fixture.
+Its [unchanged receipt](evidence/local-qualification/2026-10-13-clean-host-38415379681-not-ready.json)
+reports `NOT_READY / owner_delete`, `owner Workspace DELETE continuation failed`,
+residuals `0 / 0 / 1`, and the last pending readback `storage_absent / compute`,
+ordinal 1 of 8. This flow passed application open and restart but did not prove
+completed owner deletion or resource absence. Its receipt carries no specific
+failed DELETE response status or upstream reason; do not infer a provider cause
+or successful scratch cleanup. The built fixture digest is bound to this run,
+not a portable Workspace distribution reference.
+
 ## First Tencent/TKE Launch Scope Alignment (2026-10-10)
 
 The [October 10 decision](decisions.md#2026-10-10-first-tencenttke-launch-without-cloud-model-configuration)
