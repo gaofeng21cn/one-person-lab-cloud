@@ -121,21 +121,25 @@ func (s *Service) runtimeLifecycleOperation(ctx context.Context, deploy *persist
 // call, and a retry presenting different input is refused rather than silently
 // re-targeting the runtime. The provider call is repeated only when the earlier
 // outcome was never confirmed, which is the one case where it is unknown.
-func (s *Service) applyRecordedLifecycle(ctx context.Context, deploy *persistedRuntime, action string, snapshot map[string]string, apply func() error) error {
+//
+// It returns the recorded action's identity, so a caller that reports an
+// observation on its own operation can read that observation back from this row
+// instead of assuming the provider confirmed it.
+func (s *Service) applyRecordedLifecycle(ctx context.Context, deploy *persistedRuntime, action string, snapshot map[string]string, apply func() error) (string, error) {
 	raw, err := json.Marshal(snapshot)
 	if err != nil {
-		return status.Error(codes.Internal, "cannot record the runtime lifecycle action")
+		return "", status.Error(codes.Internal, "cannot record the runtime lifecycle action")
 	}
 	id := stableID("act_", action, deploy.command.GetRuntimeInstanceId(), deploy.operationID)
 	confirmed, err := s.recordRuntimeAction(ctx, id, deploy.command.GetRuntimeInstanceId(), action, deploy.command.GetDeploymentId(), raw)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if confirmed {
-		return nil
+		return id, nil
 	}
 	if err = apply(); err != nil {
-		return err
+		return "", err
 	}
-	return s.confirmRuntimeAction(ctx, id, action)
+	return id, s.confirmRuntimeAction(ctx, id, action)
 }

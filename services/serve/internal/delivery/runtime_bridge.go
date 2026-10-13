@@ -76,7 +76,7 @@ func (s *Service) StopRuntime(ctx context.Context, command *api.RuntimeStopComma
 	if err != nil {
 		return nil, err
 	}
-	if err := s.applyRecordedLifecycle(ctx, deploy, "stop", map[string]string{"desired": "suspended"}, func() error {
+	if _, err := s.applyRecordedLifecycle(ctx, deploy, "stop", map[string]string{"desired": "suspended"}, func() error {
 		return s.Runtime.Lifecycle(ctx, deploy.command, target, "suspended")
 	}); err != nil {
 		return nil, err
@@ -85,23 +85,25 @@ func (s *Service) StopRuntime(ctx context.Context, command *api.RuntimeStopComma
 	return s.runtimeLifecycleOperation(ctx, deploy, "runtime_stop", "runtime", "succeeded")
 }
 
+// RetirementAction is the lifecycle action Serve records when the Workspace owner
+// retires a runtime for deletion. serve.agent_runtime_actions admits exactly
+// start, stop, terminate, reload and verify, so a retirement is recorded as
+// "terminate": it is this vocabulary's own word for the action, and no later
+// migration has widened the check.
+const RetirementAction = "terminate"
+
 // Retire is the Workspace-owner coordination entry point for deleting a workspace's
-// runtime. It is deliberately not an alias of StopRuntime: a stop suspends the
-// runtime so the same instance can be resumed later, while a retirement releases
-// the runtime for good. Fabric refuses to move a runtime back out of "absent", and
-// the provider's own lifecycle vocabulary has no way to resume an absent runtime,
-// so resuming a retired runtime is impossible rather than merely discouraged.
+// runtime. It is deliberately not an alias of StopRuntime: a stop suspends a runtime
+// that may be resumed later, while a retirement releases the runtime for good.
+// Fabric refuses to move a runtime back out of "absent", and the provider has no
+// path from absent back to running, so resuming a retired runtime is impossible
+// rather than merely discouraged.
 //
-// The two operations therefore differ in three observable ways, and the Workspace's
-// deletion evidence is bound to all three: this records the runtime_retire operation
-// kind, it drives the provider to "absent" rather than "suspended", and it confirms
-// the observation. StopRuntime records the runtime_stop kind and leaves the
-// observation unconfirmed, so its result is not a retirement.
-//
-// The retained data attachment named by the command is what the deletion keeps:
-// the provider's absent lifecycle removes the runtime's compute objects and leaves
-// persistent volumes in place, so the attachment survives this call and is released
-// separately by the Fabric deletion that follows it.
+// The two operations therefore differ in ways the Workspace's deletion evidence is
+// bound to. This records the runtime_retire operation kind, drives the provider to
+// "absent" rather than "suspended", and reports a confirmed observation.
+// StopRuntime records the runtime_stop kind and never confirms an observation, so
+// its result is not a retirement.
 func (s *Service) Retire(ctx context.Context, command *api.RuntimeStopCommand) (*api.Operation, error) {
 	if err := requirePeer(ctx, owneridentity.Workspace); err != nil {
 		return nil, err
@@ -121,21 +123,40 @@ func (s *Service) Retire(ctx context.Context, command *api.RuntimeStopCommand) (
 	if err != nil {
 		return nil, err
 	}
-	if err := s.applyRecordedLifecycle(ctx, deploy, "retire", map[string]string{"desired": "absent", "retainedDataAttachmentId": command.GetRetainedDataAttachmentId()}, func() error {
+	actionID, err := s.applyRecordedLifecycle(ctx, deploy, RetirementAction, map[string]string{"desired": "absent"}, func() error {
 		return s.Runtime.Lifecycle(ctx, deploy.command, target, "absent")
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
 	retired, err := s.runtimeLifecycleOperation(ctx, deploy, "runtime_retire", "retirement", "succeeded")
 	if err != nil {
 		return nil, err
 	}
-	// The provider confirmed the runtime is absent, so the retirement itself is an
-	// observed fact. The deletion's evidence is the confirmation, not the request.
-	if _, err = s.DB.ExecContext(ctx, `UPDATE serve.operations SET observation_result='confirmed',updated_at=now() WHERE id=$1`, retired.GetOperationId()); err != nil {
+	return s.confirmedRetirement(ctx, retired.GetOperationId(), actionID)
+}
+
+// confirmedRetirement reports the retirement operation with the observation the
+// provider actually recorded. Applying a desired state and confirming it are two
+// separate facts, so the operation is not marked confirmed on this caller's word:
+// the observation is read back from the action row the provider readback wrote, and
+// an operation whose action is still unconfirmed is refused rather than reported as
+// a confirmed retirement. Binding the readback to the action identity keeps the
+// confirmation attached to the termination that actually ran.
+func (s *Service) confirmedRetirement(ctx context.Context, operationID, actionID string) (*api.Operation, error) {
+	var observation string
+	if err := s.DB.QueryRowContext(ctx, `SELECT observation_result FROM serve.agent_runtime_actions WHERE command_id=$1`, actionID).Scan(&observation); err != nil {
 		return nil, dbError(err)
 	}
-	return s.operationByID(ctx, retired.GetOperationId())
+	if observation != "confirmed" {
+		return nil, status.Error(codes.FailedPrecondition, "runtime termination was not confirmed by the provider")
+	}
+	// A succeeded operation carries its own completion, matching the operation row
+	// the deploy path writes once the provider confirmed that delivery.
+	if _, err := s.DB.ExecContext(ctx, `UPDATE serve.operations SET observation_result='confirmed',completed_at=COALESCE(completed_at,now()),updated_at=now() WHERE id=$1`, operationID); err != nil {
+		return nil, dbError(err)
+	}
+	return s.operationByID(ctx, operationID)
 }
 
 // ReloadModels applies one model configuration to the exact persisted runtime on

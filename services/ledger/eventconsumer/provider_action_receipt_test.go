@@ -36,38 +36,13 @@ func providerActionRequest() *api.AppendReceiptRequest {
 
 const unsupportedKindMessage = "unsupported receipt kind for this owner"
 
-// TestAppendReceiptRefusesProviderActionPendingItsEvidenceAuthority records the
-// second break in the deletion closure, and the one this change does not fix.
-//
-// A confirmed deletion is a provider action: the runtime and the provider
-// resources it held are both absent. It is not a zero-charge order and it is not a
-// funded wallet action, so neither funded kind may stand in for it. Ledger refuses
-// it today because every admitted kind has exactly one evidence authority, and a
-// provider action does not yet have one:
-//
-//   - its persisted evidence message does not exist. The contract defines
-//     LocalNoChargeReceiptEvidence and WalletActionReceiptEvidence and nothing for
-//     a provider action, and both typed readbacks cover only those two;
-//   - its store writer would need a third ReceiptInput shape, because both
-//     existing writers take the workspace id from QuoteAcceptance, which a
-//     deletion receipt does not carry.
-//
-// Choosing that authority is a Ledger-owner decision, so this test pins the current
-// refusal rather than inventing an acceptance rule. When the owner decides, this
-// test is the one to flip: the dispatch admits the kind into its own writer, and
-// the two kinds below stay refused.
-func TestAppendReceiptRefusesProviderActionPendingItsEvidenceAuthority(t *testing.T) {
-	ctx := ownerservice.WithPeerOwner(context.Background(), owneridentity.Workspace.Service())
-	_, err := (&Server{}).AppendReceipt(ctx, providerActionRequest())
-	if status.Code(err) != codes.InvalidArgument {
-		t.Fatalf("code=%v err=%v, want InvalidArgument until a provider-action evidence authority exists", status.Code(err), err)
-	}
-}
-
 // TestAppendReceiptDecidesKindBeforeAnyOwnerAccess proves the dispatch chooses the
 // evidence authority before it touches a store or an authorizer. The zero-value
 // Server has no store, catalog, workspace or authorizer, so the only way to observe
 // a decision rather than a nil dereference is to be refused by the dispatch itself.
+// A provider action is deliberately absent from this list: whether the Workspace
+// peer may write one is an open Ledger-owner decision, and asserting either way here
+// would pin a choice this change does not own.
 func TestAppendReceiptDecidesKindBeforeAnyOwnerAccess(t *testing.T) {
 	ctx := ownerservice.WithPeerOwner(context.Background(), owneridentity.Workspace.Service())
 	for name, kind := range map[string]api.ReceiptKindEnum{
