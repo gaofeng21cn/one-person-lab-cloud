@@ -1,0 +1,203 @@
+{
+  "schemaVersion": 1,
+  "status": "READY",
+  "startedAt": "2026-10-13T16:24:34.919Z",
+  "completedAt": "2026-10-13T16:27:53.810Z",
+  "source": {
+    "sha": "d430825c08c73c294d44ce886228ecfd66c72704",
+    "tree": "cbe29053135f8f3813af9a2a4a1b09f7a69c2b5e"
+  },
+  "images": {
+    "cloud": {
+      "input": "ghcr.io/gaofeng21cn/one-person-lab-cloud@sha256:5fb282fa50cae0c06d0e0bbeb02473f9a1c65807e898edf38d6de0740a505d0b",
+      "repoDigest": "ghcr.io/gaofeng21cn/one-person-lab-cloud@sha256:5fb282fa50cae0c06d0e0bbeb02473f9a1c65807e898edf38d6de0740a505d0b",
+      "digest": "sha256:5fb282fa50cae0c06d0e0bbeb02473f9a1c65807e898edf38d6de0740a505d0b",
+      "runningDigest": "sha256:4174b11706529005e2a4d25bbbe9d421a59e469c1612896b7efebeed5d3fc373"
+    },
+    "workspace": {
+      "input": "127.0.0.1:32768/opl-qualification-workspace@sha256:f90a1526154cd274208023591d511986e178ed7652c00f7c02f93b6f41c71e32",
+      "repoDigest": "127.0.0.1:32768/opl-qualification-workspace@sha256:f90a1526154cd274208023591d511986e178ed7652c00f7c02f93b6f41c71e32",
+      "digest": "sha256:f90a1526154cd274208023591d511986e178ed7652c00f7c02f93b6f41c71e32",
+      "runningDigest": "sha256:4e32d3b0f010ffcb60f38671f772aba52f6b5388dbc2770933b06186988fb668"
+    }
+  },
+  "command": "npm run qualify:local:workspace -- --source-sha d430825c08c73c294d44ce886228ecfd66c72704 --cloud-image ghcr.io/gaofeng21cn/one-person-lab-cloud@sha256:5fb282fa50cae0c06d0e0bbeb02473f9a1c65807e898edf38d6de0740a505d0b --workspace-image 127.0.0.1:32768/opl-qualification-workspace@sha256:f90a1526154cd274208023591d511986e178ed7652c00f7c02f93b6f41c71e32 --authority-mode fixture --receipt /home/runner/work/_temp/local-workspace-qualification.json",
+  "processes": {
+    "console": "ready",
+    "controlPlane": "ready",
+    "fabric": "ready",
+    "ledger": "ready"
+  },
+  "stores": {
+    "controlPlane": "durable",
+    "fabric": "durable",
+    "ledger": "durable",
+    "ownerSeparated": true
+  },
+  "identities": {
+    "accountId": "acct-admin",
+    "sub2apiUserId": "41",
+    "launchOperationId": "workspace-launch-56717b61fb3ba4326f",
+    "deleteOperationId": "workspace-delete-ba08905f4bce70511b",
+    "deletionReceiptId": "receipt_1791908873699901685",
+    "workspaceId": "ws-ce7880ea9f70b58ab7",
+    "runtimeId": "rt_app_970d3dab62a55b8bb11f4d618149a272",
+    "keyId": "701",
+    "debitCode": "opl:5dd853d380efc11ff2f7add10290",
+    "purchaseReceiptId": "receipt_1791908774446192967"
+  },
+  "debit": {
+    "count": 1,
+    "accountId": "acct-admin",
+    "operationId": "workspace-launch-56717b61fb3ba4326f",
+    "workspaceId": "ws-ce7880ea9f70b58ab7",
+    "code": "opl:5dd853d380efc11ff2f7add10290",
+    "userId": "41",
+    "amountUsdMicros": "52580000"
+  },
+  "wallet": {
+    "beforeUsdMicros": "1000000000",
+    "afterUsdMicros": "947420000",
+    "afterDeleteUsdMicros": "999926972"
+  },
+  "receipt": {
+    "count": 1,
+    "id": "receipt_1791908774446192967",
+    "accountId": "acct-admin",
+    "operationId": "workspace-launch-56717b61fb3ba4326f",
+    "workspaceId": "ws-ce7880ea9f70b58ab7",
+    "provisioningMode": "resource_only",
+    "computeAllocationId": "ca_3cedce834c3b10550d",
+    "storageId": "vol_653a5e08c6741c57",
+    "attachmentId": "att_b50da7c7f856cb680f",
+    "chargeReference": "opl:5dd853d380efc11ff2f7add10290",
+    "amountUsdMicros": "52580000"
+  },
+  "application": {
+    "status": "ready",
+    "operationId": "workspace-application-deploy-ed28232f0dde384c9d8941dd77e7bf4c73b096fd",
+    "applicationId": "opl-app",
+    "revision": "85295fa0d981e473557c140c0728e668449b982482852034e0e7f7d965bad2c4",
+    "entryUrl": "http://127.0.0.1:32769/",
+    "runtimeId": "rt_app_970d3dab62a55b8bb11f4d618149a272",
+    "keyId": "701",
+    "resumed": false
+  },
+  "restart": {
+    "performed": true,
+    "operationStable": true,
+    "workspaceStable": true,
+    "runtimeStable": true,
+    "receiptStable": true
+  },
+  "deletion": {
+    "ownerAuthorized": true,
+    "accountId": "acct-admin",
+    "operationId": "workspace-delete-ba08905f4bce70511b",
+    "deletionReceiptId": "receipt_1791908873699901685",
+    "workspaceId": "ws-ce7880ea9f70b58ab7",
+    "runtimeId": "",
+    "workspaceApiKeyId": "0",
+    "workspaceAbsent": true,
+    "runtimeAbsent": true,
+    "workspaceKeyRetained": true,
+    "fabricSecretAbsent": true
+  },
+  "deletionReceipt": {
+    "count": 1,
+    "id": "receipt_1791908873699901685",
+    "type": "workspace.deleted.v1",
+    "operationId": "workspace-delete-ba08905f4bce70511b",
+    "workspaceId": "ws-ce7880ea9f70b58ab7",
+    "launchReceiptId": "receipt_1791908774446192967",
+    "resourceType": "workspace",
+    "resourceId": "ws-ce7880ea9f70b58ab7",
+    "resourceStatus": {
+      "attachmentStatus": "absent",
+      "computeStatus": "absent",
+      "gatewaySecretStatus": "absent",
+      "runtimeStatus": "absent",
+      "storageStatus": "absent",
+      "workspaceStatus": "absent"
+    },
+    "stageEvidence": [
+      {
+        "stage": "runtime_absent",
+        "result": "absent",
+        "evidenceKind": "provider_readback",
+        "observedAt": "2026-10-13T16:27:51.576815983Z",
+        "evidenceRef": "deletion-evidence:e7167715a52b5749d3484b13ae150d276ce4c230652403ca141fbd2a159896f3"
+      },
+      {
+        "stage": "attachment_absent",
+        "result": "released",
+        "evidenceKind": "local_transition",
+        "observedAt": "2026-10-13T16:27:51.580468443Z",
+        "evidenceRef": "deletion-evidence:1c4cfd442c7b71e1b32dba3c98a88ac7b8ba10691253df490a4988541955cf28"
+      },
+      {
+        "stage": "storage_absent",
+        "result": "absent",
+        "evidenceKind": "provider_readback",
+        "observedAt": "2026-10-13T16:27:51.592263608Z",
+        "evidenceRef": "deletion-evidence:6cd700c1df4d8b8398030ec153f44dd4f907c857bdaebcab560e6fcbb37ed115"
+      },
+      {
+        "stage": "compute_absent",
+        "result": "absent",
+        "evidenceKind": "provider_readback",
+        "observedAt": "2026-10-13T16:27:53.691734654Z",
+        "evidenceRef": "deletion-evidence:f6b7476d0b8f4a9edee14f45a6ee7ab71f4d26c1087914fcdc20f4334a79d1ee"
+      },
+      {
+        "stage": "workspace_absent",
+        "result": "removed",
+        "evidenceKind": "local_transition",
+        "observedAt": "2026-10-13T16:27:53.694180657Z",
+        "evidenceRef": "deletion-evidence:7964be2b93faf9b2a807b10954c3d461603a0618b7d71ba098b4d8e6dd098b68"
+      }
+    ]
+  },
+  "residuals": {
+    "containers": 0,
+    "volumes": 0,
+    "networks": 0
+  },
+  "authorityWriteCounts": {
+    "keyCreates": 1,
+    "keyDeletes": 0,
+    "debits": 1,
+    "refunds": 1
+  },
+  "mutationCounts": {
+    "workspaceLaunchPosts": 1,
+    "workspaceDeleteRequests": 1,
+    "refundPosts": 0
+  },
+  "refund": {
+    "count": 1,
+    "walletOperationId": "wallet-adjustment-delete-697ea2a4f590c60d085a62bc",
+    "receiptId": "receipt_1791908873758198139",
+    "amountUsdMicros": "52506972",
+    "code": "opl:20bafeca48d7a365771529035985",
+    "userId": "41",
+    "relatedOperationId": "workspace-launch-56717b61fb3ba4326f"
+  },
+  "usage": {
+    "source": "sub2api",
+    "status": "available",
+    "totalRequests": 0
+  },
+  "qualification": {
+    "authorityMode": "fixture",
+    "p0Ready": false
+  },
+  "deferred": [
+    "tencent-tke",
+    "tcr-and-tke-image-pull",
+    "kubernetes-secret-and-pod-readiness",
+    "production-sub2api",
+    "production-secrets-and-network",
+    "instance-deployment-and-rollback"
+  ]
+}
