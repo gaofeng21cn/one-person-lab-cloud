@@ -129,6 +129,14 @@ resource-only provisioning and selected-application behavior follow the
 - Unpaid expiry denies new access, ends existing proxied access, and stops the
   original Runtime through Fabric. It does not authorize new procurement or
   silently extend entitlement. Stop/resume preserves storage and Key identity.
+- Expiry is decided by the owner that holds the term and executed by the data
+  plane, and the two are not the same authority. A serving owner computes no
+  term, stores no copy of one and compares no deadline; it admits a request only
+  against one owner verdict, taken before any binding or runtime row is read, and
+  refuses a closed verdict even when the target is confirmed and ready. A
+  runtime reporting `ready` is an instance fact and never restores access, and an
+  entry wired to no verdict source at all must report that posture rather than
+  leave it implicit.
 - Expired recovery requires fresh explicit owner authorization, the original
   anchored period, exact charge confirmation, original resources still present,
   and Runtime ready. Balance changes alone cannot restore access. Older power
