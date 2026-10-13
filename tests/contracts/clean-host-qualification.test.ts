@@ -45,3 +45,33 @@ test("clean-host workflow delegates qualification to the reusable local runner",
   assert.equal(upload?.with?.path, "${{ runner.temp }}/local-workspace-qualification.json");
   assert.equal(upload?.with?.["if-no-files-found"], "error");
 });
+
+test("clean-host workflow authenticates to TCR before it pulls the qualified digests", async () => {
+  const workflow = parse(await readFile(workflowPath, "utf8"));
+  const steps = workflow.jobs?.clean_host_qualification?.steps as Array<{
+    name?: string;
+    run?: string;
+    env?: Record<string, string>;
+    if?: string;
+  }>;
+
+  const login = steps.find((step) => step.name === "Log in to TCR");
+  assert.ok(login, "missing TCR login for the private Cloud and Workspace image digests");
+  assert.match(login.run || "", /docker login uswccr\.ccs\.tencentyun\.com/);
+  // The password must reach Docker through stdin, never as a command argument.
+  assert.match(login.run || "", /--password-stdin/);
+  assert.doesNotMatch(login.run || "", /TCR_PASSWORD"?\s*$/m);
+  assert.equal(login.env?.TCR_USERNAME, "${{ secrets.TCR_USERNAME }}");
+  assert.equal(login.env?.TCR_PASSWORD, "${{ secrets.TCR_PASSWORD }}");
+
+  const qualification = steps.findIndex((step) => step.name === "Run local Workspace qualification");
+  const loginIndex = steps.indexOf(login);
+  assert.ok(
+    loginIndex < qualification,
+    "TCR login must run before the qualification pulls its image digests"
+  );
+
+  const logout = steps.find((step) => step.name === "Log out from TCR");
+  assert.match(logout?.run || "", /docker logout uswccr\.ccs\.tencentyun\.com/);
+  assert.equal(logout?.if, "${{ always() }}");
+});

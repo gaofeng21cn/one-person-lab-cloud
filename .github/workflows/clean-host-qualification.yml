@@ -84,6 +84,19 @@ jobs:
           sudo chown "$(id -u):$(id -g)" "$qualification_root/storage"
           printf 'storage_root=%s\n' "$qualification_root/storage" >> "$GITHUB_OUTPUT"
 
+      # The Cloud and Workspace image references are private TCR images, so the
+      # exact digests this run qualifies cannot be pulled until the host is
+      # authenticated. The login is the last step before the pull so the stored
+      # credential is present only for the window that needs it.
+      - name: Log in to TCR
+        shell: bash
+        env:
+          TCR_USERNAME: ${{ secrets.TCR_USERNAME }}
+          TCR_PASSWORD: ${{ secrets.TCR_PASSWORD }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$TCR_PASSWORD" | docker login uswccr.ccs.tencentyun.com --username "$TCR_USERNAME" --password-stdin
+
       - name: Run local Workspace qualification
         shell: bash
         env:
@@ -126,3 +139,8 @@ jobs:
           if test -d "$qualification_root"; then
             sudo rm -rf --one-file-system -- "$qualification_root"
           fi
+
+      - name: Log out from TCR
+        if: ${{ always() }}
+        shell: bash
+        run: docker logout uswccr.ccs.tencentyun.com >/dev/null 2>&1 || true

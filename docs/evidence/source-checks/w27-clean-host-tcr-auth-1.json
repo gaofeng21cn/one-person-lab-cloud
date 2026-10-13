@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "1c8bad51def44face0306ff3d4844cc3d4a7611e",
+  "recordedAt": "2026-10-13T03:00:09.451Z",
+  "subject": "The Clean Host Qualification workflow pulled private TCR image digests without ever authenticating to TCR, so every exact-digest run failed with docker 401 unauthorized. The TCR_USERNAME and TCR_PASSWORD repository secrets already existed but no workflow referenced them.",
+  "writeSet": [
+    ".github/workflows/clean-host-qualification.yml",
+    "docs/evidence/source-checks/w27-clean-host-tcr-auth-1.json",
+    "docs/spec/target/14_implementation_work_packages.md",
+    "docs/spec/target/checks/development_plan.json",
+    "docs/spec/target/checks/render_development_plan.py",
+    "tests/contracts/clean-host-qualification.test.ts"
+  ],
+  "verifiedSource": {
+    "baseSha": "1c8bad51def44face0306ff3d4844cc3d4a7611e",
+    "changedFilesSha256": {
+      ".github/workflows/clean-host-qualification.yml": "239a8e0440601da40b63e015f20337109f5dbc7715696ea213a977779b103b02",
+      "docs/spec/target/14_implementation_work_packages.md": "f4c19bc7284c7810800c0a9c9ef26e883c7b8e7bec756eee041a89560378ed9e",
+      "docs/spec/target/checks/development_plan.json": "a7ce19999a0caa65ab05590a323cb7563c112df803a66a0090b7aec91748cd74",
+      "docs/spec/target/checks/render_development_plan.py": "2ffcf2f682f4333cbe06de199c4f21e85b0a81a995d4708977c49be789fc1e8b",
+      "tests/contracts/clean-host-qualification.test.ts": "32685226c39aeb2cddaa718bb4713df599ee80099600695838f2c4632a982dd2"
+    }
+  },
+  "execution": {
+    "command": "node --test --test-reporter=tap tests/contracts/clean-host-qualification.test.ts tests/tools/check-pr-governance.test.ts",
+    "exitCode": 0,
+    "tests": 21,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "78be1211cf2eac81ec937055308927b93d355936b6a4789981f4dbfecb20d2a3"
+  }
+}
