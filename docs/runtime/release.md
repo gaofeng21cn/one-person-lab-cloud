@@ -69,6 +69,11 @@ bundle includes the generic environment template from the same Product SHA.
 The local installation owner qualifies that Candidate on a supported clean Linux
 Docker host using an explicit Local-Docker Provider Profile and immutable
 Workspace image, then returns a local owner-authoritative receipt.
+The Clean Host workflow accepts an explicit immutable Workspace reference or
+builds only the existing qualification Workspace fixture into a run-owned
+loopback registry. It always qualifies the supplied Cloud Candidate digest;
+fixture construction never rebuilds the Cloud image. Fixture acceptance does
+not establish a production application or live Sub2API acceptance.
 `opl-instance-medopl` independently binds the same Candidate SHA and digest,
 deploys through Instance `main` with its explicit `.com` domains, Tencent/TKE
 Provider Profile and immutable Workspace image, performs the required rollout

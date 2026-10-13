@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { chmod, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +9,7 @@ import test from "node:test";
 import {
   continueWorkspaceDelete,
   cleanupLocalQualificationSecretRoot,
+  cleanupLocalQualificationPostgresRoot,
   createHTTP,
   exactRepoDigestFromInspection,
   finishLocalWorkspaceQualification,
@@ -181,6 +182,41 @@ test("qualification teardown clears the root-owned secret bind mount through Fab
     () => cleanupLocalQualificationSecretRoot(async () => ({ code: 1 }), "/tmp/opl-local-qualification-123/fabric-secrets"),
     /secret cleanup failed/
   );
+});
+
+test("PostgreSQL teardown confines privileged cleanup to the exact data root and actual runner owner", async () => {
+  const scratch = await mkdtemp(join(tmpdir(), "opl-local-qualification-"));
+  const data = join(scratch, "postgres");
+  const outside = await mkdtemp(join(tmpdir(), "opl-postgres-outside-"));
+  await mkdir(data, { mode: 0o700 });
+  const owner = await lstat(scratch);
+  const calls = [];
+  const execute = async (command, args, settings) => {
+    calls.push({ command, args, settings });
+    return { code: 0 };
+  };
+  try {
+    await cleanupLocalQualificationPostgresRoot(scratch, data, execute);
+    assert.equal(calls.length, 1);
+    const { command, args, settings } = calls[0];
+    assert.equal(command, "docker");
+    assert.deepEqual(args.slice(0, 9), ["run", "--rm", "--network", "none", "--read-only", "--user", "0:0", "--mount", `type=bind,source=${await realpath(data)},target=/qualification-postgres`]);
+    assert.match(args[11], /^postgres:.*@sha256:[0-9a-f]{64}$/);
+    assert.deepEqual(args.slice(-2), [String(owner.uid), String(owner.gid)]);
+    assert.deepEqual(settings, { allowFailure: true });
+    await assert.rejects(() => cleanupLocalQualificationPostgresRoot(scratch, outside, execute), /exact run-owned data root/);
+    await rm(data, { recursive: true });
+    await symlink(outside, data);
+    await assert.rejects(() => cleanupLocalQualificationPostgresRoot(scratch, data, execute), /exact run-owned data root/);
+    assert.equal(calls.length, 1);
+    await rm(data);
+    await mkdir(data, { mode: 0o700 });
+    await assert.rejects(() => cleanupLocalQualificationPostgresRoot(scratch, data, async () => ({ code: 1 })),
+      new RegExp(`cleanup failed for .*postgres \\(owner ${owner.uid}:${owner.gid}\\)`));
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
 });
 
 test("source image tag inspection hands off one exact immutable RepoDigest", () => {
@@ -1293,6 +1329,19 @@ test("confirmed scratch cleanup leaves the READY result untouched", async () => 
     assert.equal(settled, ready);
     assert.deepEqual(removed, [join(root, "scratch")]);
     assert.deepEqual(JSON.parse(await readFile(receiptPath, "utf8")), ready);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("scratch teardown retains recovery authority without attempting removal", async () => {
+  const root = await mkdtemp(join(tmpdir(), "opl-qualification-settle-"));
+  const earlier = new Error("launch recovery readback pending");
+  try {
+    await assert.rejects(() => finishLocalWorkspaceQualification({
+      ...qualificationSettlement(root, join(root, "receipt.json"), earlier), preserveRecoveryAuthority: true
+    }, { removeScratch: async () => assert.fail("recovery scratch must be retained") }), error => error === earlier);
+    assert.equal(JSON.parse(await readFile(join(root, "receipt.json"), "utf8")).status, "NOT_READY");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

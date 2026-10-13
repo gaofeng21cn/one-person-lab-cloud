@@ -20,9 +20,10 @@ test("clean-host workflow delegates qualification to the reusable local runner",
 
   assert.equal(job?.["runs-on"], "ubuntu-latest");
   assert.equal(job?.environment, undefined);
-  for (const input of ["ref", "cloud_image_ref", "workspace_image_ref"]) {
+  for (const input of ["ref", "cloud_image_ref"]) {
     assert.equal(trigger?.workflow_dispatch?.inputs?.[input]?.required, true);
   }
+  assert.equal(trigger?.workflow_dispatch?.inputs?.workspace_image_ref?.required, false);
 
   const checkout = steps.find((step) => step.name === "Checkout exact product source");
   assert.equal(checkout?.with?.ref, "${{ inputs.ref }}");
@@ -37,6 +38,7 @@ test("clean-host workflow delegates qualification to the reusable local runner",
   assert.match(qualification.run, /--workspace-image "\$WORKSPACE_IMAGE_REF"/);
   assert.match(qualification.run, /--authority-mode fixture/);
   assert.match(qualification.run, /--receipt "\$RUNNER_TEMP\/local-workspace-qualification\.json"/);
+  assert.equal(qualification.env?.WORKSPACE_IMAGE_REF, "${{ steps.workspace.outputs.image_ref }}");
 
   const upload = steps.find((step) => step.name === "Upload local qualification receipt");
   assert.match(upload?.uses || "", /^actions\/upload-artifact@[0-9a-f]{40}$/);

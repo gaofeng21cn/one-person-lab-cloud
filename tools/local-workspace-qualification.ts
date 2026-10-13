@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { constants, existsSync } from "node:fs";
-import { mkdir, mkdtemp, open, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, open, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
@@ -1134,6 +1134,32 @@ export async function cleanupLocalQualificationSecretRoot(compose, fabricSecretR
   if (cleanup.code !== 0) throw new Error("qualification-owned secret cleanup failed");
 }
 
+// Only call after Compose down has confirmed that PostgreSQL is stopped. The
+// pinned PostgreSQL image can traverse its own chowned data; the host cannot on
+// Linux. Mount only this run's data root, clear it without following symlinks,
+// then return the empty 0700 directory to the actual scratch-root owner.
+export async function cleanupLocalQualificationPostgresRoot(tempRoot, postgresDataRoot, execute = runProcess) {
+  const [scratch, data, scratchPath, dataPath] = await Promise.all([
+    lstat(tempRoot), lstat(postgresDataRoot), realpath(tempRoot), realpath(postgresDataRoot)
+  ]);
+  if (!scratch.isDirectory() || !data.isDirectory() || scratch.isSymbolicLink() || data.isSymbolicLink() ||
+    dataPath !== join(scratchPath, "postgres")) {
+    throw new Error("qualification PostgreSQL cleanup requires the exact run-owned data root");
+  }
+  const image = parseDocument(await readFile(join(root, "compose.yaml"), "utf8")).getIn(["services", "postgres", "image"]);
+  if (!immutableImageDigest(image)) throw new Error("qualification PostgreSQL cleanup requires the pinned Compose image");
+  const cleanup = await execute("docker", [
+    "run", "--rm", "--network", "none", "--read-only", "--user", "0:0",
+    "--mount", `type=bind,source=${dataPath},target=/qualification-postgres`,
+    "--entrypoint", "sh", image, "-ceu",
+    'find /qualification-postgres -xdev -mindepth 1 -delete; chown "$1:$2" /qualification-postgres; chmod 0700 /qualification-postgres',
+    "opl-qualification-postgres-cleanup", String(scratch.uid), String(scratch.gid)
+  ], { allowFailure: true });
+  if (cleanup.code !== 0) {
+    throw new Error(`qualification PostgreSQL cleanup failed for ${postgresDataRoot} (owner ${data.uid}:${data.gid})`);
+  }
+}
+
 export async function cleanupLocalQualificationResources(accountId, workspaceId, beforeNetworks = async () => {}) {
   for (const id of await exactLabelIDs("containers", accountId, workspaceId)) {
     await runProcess("docker", ["stop", "--time", "10", id], { allowFailure: true });
@@ -1356,8 +1382,8 @@ async function writeEarlyNotReady(options, stage, errorCode, error) {
 // image's chowned bind-mount directory blocks the qualifier's scan — keeps the
 // attempt failed, preserving the earliest stage failure when one exists, so
 // the receipt records NOT_READY instead of claiming a clean run. The removal
-// stays confined to the run-owned scratch root and never escalates privileges
-// to force the delete.
+// stays confined to the run-owned scratch root. PostgreSQL's container-owned
+// contents are cleared separately after confirmed Compose shutdown.
 export async function finishLocalWorkspaceQualification(state, dependencies = {}) {
   const { options, startedAt, sourceTree, cloudImage, workspaceImage, stage, residuals } = state;
   const { recovery, ownerDeletePending, finalReceipt } = state;
@@ -1929,6 +1955,13 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
       }
       const stop = await compose(["stop", "--timeout", "30", "control-plane", "fabric"], { allowFailure: true });
       const down = await compose(["down", "--volumes", "--remove-orphans"], { allowFailure: true });
+      if (down.code === 0) {
+        try {
+          await cleanupLocalQualificationPostgresRoot(tempRoot, postgresDataRoot);
+        } catch (error) {
+          failure ||= error;
+        }
+      }
       const observed = await residualCounts(accountId, workspaceId).catch(() => null);
       if (stop.code !== 0 || !observed || down.code !== 0) failure ||= new Error("local qualification teardown was not confirmed");
       if (observed) residuals = observed;
