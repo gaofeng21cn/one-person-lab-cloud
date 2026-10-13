@@ -23,10 +23,6 @@ jobs:
         with:
           fail-on-severity: moderate
 
-  # Governance job removed: opl-development-framework deprecated in favor of
-  # lightweight commit guidelines (docs/COMMIT_GUIDELINES.md). Clear commit
-  # messages and code review replace heavy plan/evidence documentation.
-
   validate:
     name: validate
     runs-on: ubuntu-latest
@@ -81,6 +77,20 @@ jobs:
           go_bin="$(go env GOPATH)/bin"
           echo "$go_bin" >> "$GITHUB_PATH"
           PATH="$PATH:$go_bin" npm run verify:local
+
+      - name: Validate changed development plan
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { developmentPlanVerificationSteps, pullRequestChangedPaths } from './tools/verify-local.ts';
+          const paths = pullRequestChangedPaths(process.env.PR_BASE_SHA, process.env.PR_HEAD_SHA, process.cwd());
+          for (const step of developmentPlanVerificationSteps(paths)) {
+            execFileSync(step.command, step.args, { stdio: 'inherit' });
+          }
+          NODE
 
       - name: Check diff whitespace
         run: git diff --check "origin/${{ github.base_ref }}...HEAD"

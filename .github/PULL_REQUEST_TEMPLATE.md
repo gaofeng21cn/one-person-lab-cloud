@@ -1,39 +1,11 @@
-Keep this short. This template exists so a reader can understand and reproduce the change months from now — not to satisfy a checker.
+## Problem And Behavior
 
-Decision records belong in Issues, not here. Link the Issue instead of restating it.
+<!-- Describe the observed problem and resulting behavior. Link the canonical decision, contract or related issue when relevant. -->
 
-## What changed
+## Verification
 
-<!-- 2-3 sentences. Link the Issue this implements, if any. -->
+<!-- Record commands actually executed and their results, including failures and unverified boundaries. For behavior tests, include executed counts and any failures, skips or TODOs. Use relevant checks for the Git change scope. Ordinary PRs need no independent source-check JSON or phase-plan record. Current-revision CI must succeed before merge; local results do not prove CI ran. -->
 
-## Ownership
+## Risks And Follow-Up
 
-<!-- DDD owner + phase, if this change belongs to a declared phase. -->
-
-- Owner:
-- Phase:
-
-## How to verify
-
-<!-- The commands you actually ran and their real results.
-     CI re-runs `npm run verify:local` on every revision, so write the part
-     CI does NOT cover: what you checked by hand, and which risk you were
-     watching for. -->
-
-- `<command>`: `<actual result>`
-
-## Risk and rollback
-
-<!-- What could break once merged (contract ordering, coordinated deploys,
-     migrations), and how to back it out. -->
-
-- Risk:
-- Rollback:
-
----
-
-<!-- 作者自查，合并前可删 -->
-
-- [ ] 分支已同步 main
-- [ ] CI 在当前 revision 绿
-- [ ] 不含 secret、客户数据或原始 provider 响应
+<!-- Describe contract or migration ordering, deployment coordination, rollback needs and remaining risks, or state none. An independent agent may perform ordinary technical review against the exact source head and base. Production, money and resource changes retain owner review and explicit authorization; include existing owner evidence or Candidate/Instance receipt references when applicable. For an explicitly admitted host run, reference its execution evidence when needed. Review and evidence do not replace actual branch protection or authorize merge, publication or Instance operations. Keep secrets and customer data out of the PR. -->

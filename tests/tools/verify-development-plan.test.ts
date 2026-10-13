@@ -12,32 +12,55 @@ import { runDevelopmentCheck } from "../../tools/verify-local.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
-function materializePlanSnapshot(scratch: string) {
+function renderPlanSnapshot(scratch: string) {
+  const out = mkdtempSync(join(tmpdir(), "opl-plan-fixture-render-"));
+  try {
+    const rendered = runPlanGenerator("python3", ["docs/spec/target/checks/render_development_plan.py", "--check"], {
+      ...process.env, OPL_DEVELOPMENT_PLAN_OUT: out, PYTHONDONTWRITEBYTECODE: "1"
+    }, scratch);
+    assert.equal(rendered.status, 0, rendered.stderr + rendered.stdout);
+    for (const artifact of generatedPlanArtifacts) {
+      mkdirSync(dirname(join(scratch, artifact)), { recursive: true });
+      cpSync(join(out, artifact.replace(/^docs\/spec\/target\//u, "")), join(scratch, artifact));
+    }
+    return JSON.parse(readFileSync(join(scratch, generatedPlanArtifacts[0]), "utf8"));
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+}
+
+function materializePlanSnapshot(scratch: string, inputRoot = root) {
   const target = "docs/spec/target";
   const inputs = [
     "00_master_index.md", "01_domain_ownership_matrix.md", "03_api_contract_complete.yaml", "12_product_spec.md",
     "checks/render_development_plan.py", "checks/validate_development_plan.py",
     "contracts/api_inventory.json", "contracts/db_inventory.json", "contracts/ui_inventory.json", "contracts/internal.proto"
   ].map((path) => join(target, path));
-  const plan = JSON.parse(readFileSync(join(root, generatedPlanArtifacts[0]), "utf8"));
-  // Path presence is also a render input. Preserve the admitted paths' actual
-  // files/directories, without importing Git metadata or unrelated source trees.
+  // Source tests build their own fresh projection from generator inputs. The
+  // checked-in task book and plan JSON are exclusively freshness-gate inputs.
+  for (const path of [...inputs, "tools/verify-development-plan.ts"]) {
+    mkdirSync(dirname(join(scratch, path)), { recursive: true });
+    cpSync(join(inputRoot, path), join(scratch, path));
+  }
+  const plan = renderPlanSnapshot(scratch);
+  // Rendering consumes only reference path presence, not product source bytes.
+  // Populate those references in this fixture; test grants need regular files.
   const readPaths: string[] = plan.workPackages.flatMap((item: { existingReadPaths: string[] }) => item.existingReadPaths);
-  // Development test grants must be materialized too: the validator refuses a
-  // grant that does not resolve to a real file in the checked tree.
   const testWritePaths: string[] = (plan.executionSlices ?? []).flatMap((item: { testWritePaths?: string[] }) => item.testWritePaths ?? []);
-  for (const path of new Set([...inputs, ...generatedPlanArtifacts, "tools/verify-development-plan.ts", ...readPaths, ...testWritePaths])) {
-    const source = join(root, path);
+  for (const path of new Set(testWritePaths)) {
     const destination = join(scratch, path);
-    if (statSync(source).isDirectory()) mkdirSync(destination, { recursive: true });
-    else {
+    if (!existsSync(destination)) {
       mkdirSync(dirname(destination), { recursive: true });
-      cpSync(source, destination);
+      writeFileSync(destination, "fixture test grant\n");
     }
   }
-  for (const [owner, path] of Object.entries(plan.sourceRoots) as [string, string][]) {
-    if (owner !== "instance" && existsSync(join(root, path))) mkdirSync(join(scratch, path), { recursive: true });
+  for (const path of new Set(readPaths)) {
+    if (!existsSync(join(scratch, path))) mkdirSync(join(scratch, path), { recursive: true });
   }
+  for (const [owner, path] of Object.entries(plan.sourceRoots) as [string, string][]) {
+    if (owner !== "instance") mkdirSync(join(scratch, path), { recursive: true });
+  }
+  renderPlanSnapshot(scratch);
 }
 
 function snapshotState(scratch: string) {
@@ -48,9 +71,24 @@ function snapshotState(scratch: string) {
   });
 }
 
-test("real regeneration byte-matches the checked-in plan artifacts and validates", () => {
-  const result = verifyDevelopmentPlan({ root });
-  assert.deepEqual(result.artifacts, [...generatedPlanArtifacts]);
+test("real regeneration byte-matches a fresh isolated fixture and validates", (t) => {
+  const scratch = mkdtempSync(join(tmpdir(), "opl-plan-fresh-"));
+  t.after(() => rmSync(scratch, { recursive: true, force: true }));
+  materializePlanSnapshot(scratch);
+  assert.deepEqual(verifyDevelopmentPlan({ root: scratch }).artifacts, [...generatedPlanArtifacts]);
+});
+
+test("source fixtures ignore stale repository projections while the explicit freshness checker rejects them", (t) => {
+  const source = mkdtempSync(join(tmpdir(), "opl-plan-input-fixture-"));
+  const scratch = mkdtempSync(join(tmpdir(), "opl-plan-independent-fixture-"));
+  t.after(() => rmSync(source, { recursive: true, force: true }));
+  t.after(() => rmSync(scratch, { recursive: true, force: true }));
+  materializePlanSnapshot(source);
+  writeFileSync(join(source, generatedPlanArtifacts[1]), "unrelated hand-edited task book prose\n");
+  assert.throws(() => verifyDevelopmentPlan({ root: source }), /stale generated plan artifact/u);
+  writeFileSync(join(source, generatedPlanArtifacts[0]), "not JSON\n");
+  materializePlanSnapshot(scratch, source);
+  assert.deepEqual(verifyDevelopmentPlan({ root: scratch }).artifacts, [...generatedPlanArtifacts]);
 });
 
 test("public renderer reports Instance as external-owner/unverified regardless of sibling presence", () => {
@@ -275,20 +313,30 @@ test("default generation in a Git-free snapshot fails before emitting artifacts 
   }
 });
 
-test("default generation retains the real checkout SHA even when launched outside the checkout", () => {
+test("default generation retains an isolated fixture's real Git SHA when launched outside its checkout", () => {
+  const scratch = mkdtempSync(join(tmpdir(), "opl-plan-git-fixture-"));
   const out = mkdtempSync(join(tmpdir(), "opl-plan-provenance-output-"));
   try {
-    const revision = spawnSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" });
+    materializePlanSnapshot(scratch);
+    for (const args of [
+      ["init", "-q"], ["add", "."],
+      ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "plan fixture baseline"]
+    ]) {
+      const result = spawnSync("git", ["-C", scratch, ...args], { encoding: "utf8" });
+      assert.equal(result.status, 0, result.stderr);
+    }
+    const revision = spawnSync("git", ["-C", scratch, "rev-parse", "HEAD"], { encoding: "utf8" });
     assert.equal(revision.status, 0, revision.stderr);
-    const rendered = spawnSync("python3", [join(root, "docs/spec/target/checks/render_development_plan.py")], {
+    const rendered = spawnSync("python3", [join(scratch, "docs/spec/target/checks/render_development_plan.py")], {
       cwd: out,
       env: { ...process.env, OPL_DEVELOPMENT_PLAN_OUT: out, PYTHONDONTWRITEBYTECODE: "1" },
       encoding: "utf8"
     });
     assert.equal(rendered.status, 0, rendered.stderr);
     assert.equal(JSON.parse(readFileSync(join(out, "checks/development_plan.json"), "utf8")).sourceSHA, revision.stdout.trim());
-    assert.ok(readFileSync(join(out, "14_implementation_work_packages.md")).equals(readFileSync(join(root, generatedPlanArtifacts[1]))));
+    assert.ok(readFileSync(join(out, "14_implementation_work_packages.md")).equals(readFileSync(join(scratch, generatedPlanArtifacts[1]))));
   } finally {
+    rmSync(scratch, { recursive: true, force: true });
     rmSync(out, { recursive: true, force: true });
   }
 });
@@ -327,21 +375,27 @@ test("a stale or hand-edited plan artifact is rejected before validation", () =>
       () => verifyDevelopmentPlan({ root: scratch }),
       /stale generated plan artifact/u
     );
+    renderPlanSnapshot(scratch);
+    writeFileSync(join(scratch, generatedPlanArtifacts[1]), "stale task book prose\n");
+    assert.throws(() => verifyDevelopmentPlan({ root: scratch }), /stale generated plan artifact: docs\/spec\/target\/14_implementation_work_packages\.md/u);
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
 });
 
-test("a failing renderer or validator blocks the gate instead of passing", () => {
+test("a failing renderer or validator blocks the gate instead of passing", (t) => {
+  const scratch = mkdtempSync(join(tmpdir(), "opl-plan-failing-fixture-"));
+  t.after(() => rmSync(scratch, { recursive: true, force: true }));
+  materializePlanSnapshot(scratch);
   const failing = () => ({ status: 2, stdout: "", stderr: "renderer crashed" });
-  assert.throws(() => verifyDevelopmentPlan({ root, runner: failing }), /plan renderer failed/u);
+  assert.throws(() => verifyDevelopmentPlan({ root: scratch, runner: failing }), /plan renderer failed/u);
   let call = 0;
   const validateFails = (command: string, args: string[], env: NodeJS.ProcessEnv, executionRoot: string) => {
     call += 1;
     if (call === 1) return runPlanGenerator(command, args, env, executionRoot); // renderer OK
     return { status: 1, stdout: "{\"passed\":false}", stderr: "" }; // validator fails
   };
-  assert.throws(() => verifyDevelopmentPlan({ root, runner: validateFails }), /development plan validation failed/u);
+  assert.throws(() => verifyDevelopmentPlan({ root: scratch, runner: validateFails }), /development plan validation failed/u);
 });
 
 

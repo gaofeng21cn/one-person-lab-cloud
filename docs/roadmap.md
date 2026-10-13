@@ -86,6 +86,36 @@ a deployed Candidate or final business PASS.
 | P1 | MAP domain contracts and evaluation gate | MAP medical domain owner/Instance | Cloud logical Connect boundary is documented; no clinical domain or qualified MAP adapter/backend combination is claimed | MAP task/adapter contract, selected OPL Connect backend, approved data classes, source/evidence model, human review states, evaluation set, release gate and institution acceptance; no medical-specific Cloud adapter is required |
 | P2 | Customer-operated payment, multi-user Workspace, HA/GPU and broader provider profiles | Product and Instance owners | Deliberately outside the current beta cut | Separate product decision, owner and qualification evidence before admission |
 
+## Development Governance Migration (2026-10-13)
+
+Cloud development tooling owns adoption of the
+[ordinary source development decision](decisions.md#2026-10-13-ordinary-source-development-uses-git-scope-and-current-ci).
+Local changes reconcile host admission, verification selection, CI and
+contributor instructions with the adopted default. Their current-revision CI
+and merge are still pending. Ordinary PRs
+use actual local results and current-revision CI without a separate source-check
+JSON, and independent agents may perform their technical review; high-consequence
+operations retain owner review and authorization.
+
+Completion requires the actual entry points, focused checks, CI, `AGENTS.md`,
+`DEV_GUIDE.md` and PR template to agree with the adopted rules. Routine source
+maintenance must work without a restricted-host admission, while explicitly
+admitted host runs retain scope enforcement and actual execution evidence.
+Verification must exercise both paths and preserve Candidate and Instance
+evidence requirements. Unfinished migration outcomes remain tracked by their
+canonical owners rather than disappearing when execution-plan coupling is removed.
+
+## Clean Host Qualification Recovery (2026-10-13)
+
+Cloud qualification tooling owns #793's PostgreSQL scratch cleanup and #787's
+image/launch verification path. PR #801 owns the PostgreSQL repair; this change adds separate exact-image
+versus source-build workflow paths, with local evidence in
+[status](status.md#local-qualification-repairs-2026-10-13).
+Completion still requires current-revision CI, a clean-host `READY` receipt bound
+to the intended source and exact images, and bounded attribution or resolution
+of the patrol's independently observed launch HTTP 502. A source-built run does
+not replace qualification of an existing published Candidate.
+
 ## Cloud-Identity Customer Workspace Read (2026-09-30)
 
 The cloud Console identity reads Workspaces from the Workspace owner through the

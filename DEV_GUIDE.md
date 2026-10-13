@@ -89,7 +89,41 @@ receipts to this repository.
   request usage.
 - Ledger owns append-only receipts and reconciliation evidence.
 
+## Ordinary Pull Request Flow
+
+The [2026-10-13 decision](docs/decisions.md#2026-10-13-ordinary-source-development-uses-git-scope-and-current-ci)
+sets the default for ordinary source maintenance:
+
+1. Establish the verified Git base and actual change scope, then identify the
+   canonical module or document owner and real callers. Disjoint write sets may
+   share a workspace; isolate or coordinate overlapping changes as needed.
+2. Run the relevant local behavior checks described in
+   [Pre-Commit Checks](#pre-commit-checks). Record actual commands, results and
+   unverified boundaries; typecheck alone does not prove behavior.
+3. Open a PR that describes the observed problem, resulting behavior, verification
+   and risks using the repository template. Ordinary PRs need no phase-plan
+   registration, fixed owner/write-set form or independent source-check JSON.
+4. Assess the exact source head and base during technical review. An independent
+   agent may perform ordinary PR review. Production, money and resource changes
+   retain owner review and explicit authorization.
+5. Obtain actual successful CI for the current revision and satisfy the
+   repository's existing review, branch protection and merge authorization
+   requirements. A revision change needs CI for the new revision and renewed
+   verification or review wherever the changed inputs affect earlier evidence.
+
+[Pull Request CI](.github/workflows/pull-request-ci.yml) currently runs dependency
+review and `validate`; `validate` executes `npm run verify:local`. It does not run
+a PR-body governance job or invoke `check:pr-body`. Local results and review
+cannot replace that CI execution or authorize a merge, publication or Instance
+operation. The workflow file does not prove remote branch protection is configured.
+Candidate, Instance, money and resource evidence retains its existing owners and
+requirements.
+
 ## Scoped Host And Worker Entry
+
+Use this entry only for tasks that explicitly require controlled delegation.
+Its phase-plan, admission and receipt machinery applies to admitted migration
+tasks, not every source change or ordinary PR.
 
 Follow [Scoped Development Contract](AGENTS.md#scoped-development-contract) for
 per-run admission, restricted worker capabilities, isolated stage inputs and
@@ -123,12 +157,12 @@ parallel/serial criterion — is owned by the process repository
 `d995df3aaf6473a2b7714fc868327919bac4bbd4` (skill
 `skills/owner-slice-development/SKILL.md`, design
 `docs/design/owner-slice-framework-v1.md`, wiring acceptance
-`docs/design/wiring-acceptance.md`); this guide keeps the Cloud instance: the
-approved entry commands, host behavior, PR evidence and CI. Citing the
-framework or attaching its tools does not restrict a chat; restricted
-adoption requires actual admitted-run execution evidence
-(`dev_context`/`dev_verify` plus the host-exported source-check) under the
-framework's wiring-acceptance criteria.
+`docs/design/wiring-acceptance.md`); this guide keeps the Cloud wiring for the
+selected host branch. Citing the framework or attaching its tools does not
+restrict a chat; restricted adoption requires actual admitted-run execution
+evidence under the framework's wiring-acceptance criteria. The host export below
+remains available for assessing that wiring. None of these references establishes
+that all Codex sessions are restricted.
 
 Multiple checkouts are allowed: bind evidence to exact source and input hashes,
 not a directory name or a thread's completion claim. Do not discard ongoing
@@ -175,98 +209,31 @@ checks; business and Instance receipts stay in their existing owner formats and
 qualification paths. Neither
 layer is accepted as evidence of completion of the other.
 
-## Pull Request Evidence And Review
+### Host Source-Check Reference
 
-A pull request description is written for its reader, not for a checker. The
-[pull request template](.github/PULL_REQUEST_TEMPLATE.md) asks for four things:
-what changed, which DDD owner and phase it belongs to, how it was verified, and
-how it is rolled back. Linking the governing Issue is encouraged; restating the
-decision inside the pull request is not.
-
-The workflow is real local focused execution results, host-generated PR
-source-check evidence, actual CI `validate` execution for the current revision, a
-recorded technical review, then a separately authorized merge. The review is
-user-controlled: a user-authorized reviewer examines and records it against the
-exact source head and base, covering owner/write-set compliance, the real focused
-behavior evidence and the fresh host source-check; when the contributor account
-authored the pull request the review is recorded as a COMMENT review rather than
-a self-approval, and no specific GitHub username is required. Merge still
-requires actual successful current-revision CI, the repository's actual
-protection requirements and merge authorization by a separately authorized
-actor. Updating the revision requires current CI results and fresh evidence for
-changed inputs.
-
-The host owns approval and authoritative run receipts in runtime storage. After
-`dev:verify` records a passed stage in the approved run, the host exports exactly
-that executed result as the PR source-check receipt:
+An admitted host run retains its authoritative execution receipts in runtime
+storage. When that run needs a repository evidence reference, the host may
+export its current passed stage:
 
 ```bash
 node tools/dev-session.ts source-check /absolute/host-store <run-id> <gate-id>
 ```
 
-The exporter refuses a run, gate or gate state without a recorded passed stage
-receipt, writes `docs/evidence/source-checks/<run-id>-<gate-id>-<attempt>.json` from the
-current change scope and stage verification fields, and never accepts a
-hand-written `result: pass`. Neither the focused command nor `dev:verify`
-creates the PR record by itself; only this host exit does, and it is a host
-operation outside worker scope. Its repository reference does not grant workers
-permission to write host approval, run state or receipts. The current checker
-owns validation of its format, not a separately hand-maintained schema in this
-guide. Source-check validation covers the complete
-base SHA, actual write set, corresponding changed-content hashes and execution
-summary. Owner and phase are constrained by PR context and host approval, not
-validated as source-check receipt fields. Complete declared-input and dependency
-receipt-hash binding belongs to host stage receipts; a PR source-check alone does
-not provide it. Every actual changed path is bound to its content hash; the
-current receipt's own path is the sole self-hash exclusion. A deleted path uses
-the explicit `deleted` marker, checked against the actual Git deletion.
-Execution evidence records the command actually run, its exit code, actual test
-counts and the SHA-256 digest of captured output. Passing behavior evidence
-requires a zero exit code, a positive count of registered tests actually run and
-zero failures, skips or TODOs; a `result: pass` label, a planned command or
-unchecked acceptance criteria cannot establish completion. Each attempt appends
-new evidence rather than rewriting an earlier result. Historical receipts are
-neither migrated nor overwritten and cannot serve as current PASS evidence.
+Export is optional for the host branch and is not an ordinary PR prerequisite.
+The exporter writes
+`docs/evidence/source-checks/<run-id>-<gate-id>-<attempt>.json` only from a current
+passed stage and its recorded command. It refuses stale or absent execution
+evidence and appends a new record without rewriting a previous attempt. This
+host operation does not grant workers access to approval, run state or receipts.
 
-The record separates the evidence layers instead of merging them. Declare only
-applicable receipts, and retain failed or unavailable execution as such:
+The host exporter binds the actual base and changed content to its recorded
+execution. Complete declared-input and upstream receipt-hash binding remains in
+host stage receipts. Historical receipts stay unchanged and cannot serve as
+current PASS evidence. The former PR-body checker is retired; host evidence never
+substitutes for actual current-revision CI, review, merge authorization,
+business-chain E2E or Instance acceptance.
 
-| Receipt entry | Names | Layer it proves |
-| --- | --- | --- |
-| `source-check` | a host-generated source-check reference in the format accepted by the current checker | The recorded source execution for the bound base, actual write set and changed contents; no complete stage-input or dependency binding |
-| `business` / `instance` | the existing owner receipt reference | The business or Instance layer in its own format; never a substitute for source evidence |
-
-`Terminal state: merge-ready` records closed acceptance criteria and passed
-declared receipts; it requires no additional development-stage acceptance.
-`source-complete` records only the exercised source layer, not business-chain
-E2E, Instance qualification or production readiness. Neither label grants merge
-permission. `blocked` carries open obligations and preserves failed or pending
-evidence instead of claiming success.
-
-Record validity and merge eligibility are separate. The `validate` job in
-[pull request CI](.github/workflows/pull-request-ci.yml) independently runs its
-full source commands against the checked-out current revision, including the
-changed implementation and its tests. A local receipt cannot substitute for that
-actual CI execution, and a pull request description cannot grant merge
-permission.
-
-This section previously described a `governance` CI job that executed
-`tools/check-pr-governance.ts` from the PR base commit in `record` mode and
-refused a pull request body with a missing or empty section. That job, its
-checker and its pull request body contract were removed in PR #790. The
-description is no longer machine-enforced; the host admission rules above still
-are.
-
-Review and merge authorization remain user-controlled: a user-authorized
-reviewer records the technical review against the exact source head and base
-(a COMMENT review rather than self-approval when the contributor account
-authored the pull request), and a separately authorized actor performs the
-merge under the repository's actual protection requirements; no specific
-GitHub username is required. Merge requires actual successful CI results for
-the current revision and the applicable review rules; a valid record alone is
-insufficient. These workflow checks do not establish that remote branch
-protection is configured. The workflow uses `pull_request`, never
-`pull_request_target`, and reads no secrets.
+### Scoped Acceptance Inputs
 
 Restricted workers cannot write `AGENTS.md`, `DEV_GUIDE.md`, `.github/**`,
 `tools/**`, `tests/tools/**`, `package.json` or the development plan; the
@@ -318,6 +285,20 @@ the downstream serialized check consumes both on the same exact baseline.
 Legacy cleanup still uses its original owner and the existing Cloud
 chain PASS prerequisite; source checks never authorize production effects.
 
+## Development Plan Verification
+
+Ordinary exhaustive source checks do not compare the current migration task
+book with generated projections. The existing PR `validate` job uses its explicit
+base and head SHAs to select the dedicated development-plan freshness check for
+affected target-spec paths. Focused local selection uses the same scope classifier.
+Plan verification tests exercise isolated fresh and stale projections; they do
+not turn unrelated task-book edits into ordinary source-test failures.
+
+The old PR-body checker and its command are retired. Host admission and execution
+receipts remain available for explicitly controlled tasks. Adoption and remaining
+qualification evidence are maintained in the canonical
+[development governance outcome](docs/roadmap.md#development-governance-migration-2026-10-13).
+
 ## Pre-Commit Checks
 
 ```bash
@@ -351,17 +332,12 @@ exhaustive lane, not an implicit way to start unrelated integration suites. Unre
 browser suites, builds and full repository tests are not selected automatically.
 Git scope uses the merge base plus local index/worktree changes, not unrelated
 upstream changes. Whitespace checks cover committed, staged and unstaged diffs.
-The focused command outputs actual execution results; it does not automatically
-write a source-check receipt. The host's `dev:verify` separately runs an admitted
-stage and appends a runtime receipt to the host store; that receipt records
-the command line that actually executed and the executed cwd, and the exporter
-publishes the recorded command while refusing a historical receipt that never
-captured one. For a PR, the host generates the source-check from that executed
-record with
-`node tools/dev-session.ts source-check <host-store> <run-id> <gate-id>`. Do not
-hand-write a passing result or treat a runtime receipt as that PR record. Focused success proves only the selected checks, not
-downstream
-completeness, business-chain E2E, Instance acceptance or production readiness.
+The focused command outputs actual execution results. Record them in the ordinary
+PR; no independent source-check JSON is required. Explicitly admitted host runs
+retain their separate runtime receipts and may use
+[Host Source-Check Reference](#host-source-check-reference) when needed. Focused
+success proves only the selected checks, not downstream completeness,
+business-chain E2E, Instance acceptance or production readiness.
 The exhaustive source gate remains available for CI or explicit local rehearsal:
 
 ```bash
@@ -403,12 +379,26 @@ qualification; it does not deploy an Instance or establish installed product
 readiness. A Docker Desktop daemon does not qualify a macOS Fabric process's
 filesystem, and fixture quota backends do not prove kernel enforcement.
 
+The manual [Clean Host Qualification workflow](.github/workflows/clean-host-qualification.yml)
+owns its current dispatch inputs. Its default `qualification_mode: exact-image`
+requires an exact Product commit in `ref` and immutable `cloud_image_ref` and
+`workspace_image_ref`, retaining the `local-workspace-qualification` artifact.
+Explicit `source-check` uses the exact `ref`, omits both image refs and builds
+source images, emitting the separate `local-workspace-source-check` artifact.
+This source validation is optional, is not an ordinary PR JSON requirement and
+does not replace qualification of the published Candidate's exact bytes. Runtime
+ownership and installed-product claims still require their own authoritative
+readback; neither this entry nor ordinary PR CI proves those layers by itself.
+
 For generated-field changes, run `npm run verify:generated-contracts` to
 regenerate the covered outputs from their declared source inputs and compare
-exact bytes. Run `npm run verify:development-plan` to regenerate the plan task
+exact bytes. For migration-plan inputs or projections, run
+`npm run verify:development-plan` to regenerate the plan task
 book into an isolated tree, compare exact task-book bytes and canonicalized plan
 JSON with the checked-in projection and validate its coverage read-only; a stale or hand-edited plan projection is refused
-instead of being treated as current state. Freshness is separate from production/spec reconciliation, W01
+instead of being treated as current state. CI runs this check separately for affected target-spec paths; see
+[Development Plan Verification](#development-plan-verification).
+Freshness is separate from production/spec reconciliation, W01
 migration and real consumer verification; it does not freeze handwritten
 business fields. See [contract ownership](packages/contracts/README.md).
 Fixture and source passes are evidence only for the exercised layer, not

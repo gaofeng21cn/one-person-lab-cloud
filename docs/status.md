@@ -13,6 +13,35 @@ Instance installation, or a Product Release. The target boundary is in
 [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Local Qualification Repairs (2026-10-13)
+
+PostgreSQL scratch-root recovery is implemented separately in Cloud PR #801,
+source `a894a7478739d1b99a9e5b0d38dcae05b8220dab`. It clears only the exact
+run-owned bind root after confirmed Compose shutdown using the pinned PostgreSQL
+image, then returns the empty `0700` directory to the actual host owner. Recovery
+authority and earlier qualification failures remain preserved. This change does
+not introduce a competing cleanup implementation.
+
+Independent local Linux/Docker ownership experiments at runner UIDs 10001 and
+12037 reproduced `EACCES` and verified ownership transfer without widening mode
+or following external symlinks. Those experiments exercised a retained alternate
+implementation; they do not validate PR #801 or complete Candidate qualification.
+PR #801's owning evidence remains in that PR. Candidate construction run
+`38401075308` succeeded for its exact source; qualification remains separate.
+
+Working-tree verification against base
+`76acce0dd48c018203e5128cb1cc6d038a446f20` covers qualification input selection,
+source-check artifact separation and development-gate scope. The source tests
+run without a current task-book freshness dependency; plan changes retain their
+separate freshness check.
+
+Clean Host retains its default immutable-image qualification path and adds an
+explicit source-build check with a separate artifact. Workflow admission and
+qualifier regression tests cover both selections and reject mixed or mutable
+image inputs. Fresh Clean Host `READY` evidence, current-revision CI and the
+patrol's separately observed launch HTTP 502 remain unverified; Cloud issues
+#787 and #793 remain open for those respective acceptance obligations.
+
 ## First Tencent/TKE Launch Scope Alignment (2026-10-10)
 
 The [October 10 decision](decisions.md#2026-10-10-first-tencenttke-launch-without-cloud-model-configuration)

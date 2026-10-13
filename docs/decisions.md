@@ -4,6 +4,33 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-10-13: Ordinary Source Development Uses Git Scope And Current CI
+
+Ordinary Cloud source development uses an explicit Git change scope, relevant
+local behavior checks, a pull request and CI results for its current revision.
+The canonical module and document owners define responsibility. Restricted-host
+execution is selected for tasks that explicitly require controlled delegation;
+it is not the default prerequisite for every source change.
+
+This separates routine source maintenance from the migration plan's execution
+machinery. An admitted restricted-host run retains its enforced scope and
+host-owned execution evidence. Source checks and CI establish their source
+layer; Instance qualification, deployment, money and resource effects retain
+their protected entry points, authorization and owner receipts.
+
+Ordinary PRs do not require a separate source-check JSON record. Their actual
+local results and current-revision CI provide source evidence. Admitted host
+runs retain their host-owned execution records; Candidate and Instance receipts
+retain their existing requirements.
+
+An independent agent may perform technical review for an ordinary PR against
+its exact source head and base. Production, money and resource changes retain
+owner review and authorization. Review does not replace actual branch
+protection requirements or authorize a merge, publication or Instance operation.
+The tooling, CI and documentation migration is an
+[open outcome](roadmap.md#development-governance-migration-2026-10-13);
+recording the policy does not establish that those integrations already follow it.
+
 ## 2026-10-10: First Tencent/TKE Launch Without Cloud Model Configuration
 
 The first Tencent/TKE launch slice deploys the approved default OPL App from an
