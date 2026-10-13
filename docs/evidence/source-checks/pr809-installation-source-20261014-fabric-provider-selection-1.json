@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_development_source_check",
+  "evidenceLayer": "source",
+  "result": "pass",
+  "sourceBaseSha": "132d251a088538087ec5a36c11dc31e9a8366cd1",
+  "recordedAt": "2026-10-13T19:18:38.121Z",
+  "writeSet": [
+    "docs/evidence/source-checks/pr809-installation-source-20261014-fabric-provider-selection-1.json",
+    "docs/installation.md"
+  ],
+  "verifiedSource": {
+    "baseSha": "132d251a088538087ec5a36c11dc31e9a8366cd1",
+    "changedFilesSha256": {
+      "docs/installation.md": "f469ec97704abf944562488bd2a851004a3557931279a47d8db43fcd861e665a"
+    }
+  },
+  "execution": {
+    "command": "go test -count=1 -json ./cmd/fabric (cwd: services/fabric)",
+    "exitCode": 0,
+    "tests": 12,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0,
+    "outputSha256": "57adbf5e09b4815958b26fe143e9c8f4614860b70ba05512f78e3ba5359f1f1b"
+  },
+  "sourceStage": {
+    "runId": "pr809-installation-source-20261014",
+    "gateId": "fabric-provider-selection",
+    "attempt": 1,
+    "receiptHash": "64e2ef87f89cef758c09ed1bee0a2b1f5311cd9bbffc0ff9b05a1cdf3ae73107"
+  }
+}
