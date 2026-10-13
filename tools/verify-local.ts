@@ -62,6 +62,7 @@ export const databaseFreeGoTestSpecs = Object.freeze([
 export const localVerificationSteps = Object.freeze([
   { name: "product boundary", command: "npm", args: ["run", "validate:product-boundary"] },
   { name: "Generated contracts freshness", command: "npm", args: ["run", "verify:generated-contracts"] },
+  { name: "Evidence layer gate", command: "npm", args: ["run", "verify:evidence"] },
   { name: "Development plan freshness", command: "npm", args: ["run", "verify:development-plan"] },
   { name: "Development tools typecheck", command: "npm", args: ["run", "typecheck:development-tools"] },
   { name: "Node source tests", command: "npm", args: ["run", "test:source"] },

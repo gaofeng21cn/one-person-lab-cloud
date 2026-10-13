@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_real_env_loop0_receipt",
+  "evidenceLayer": "real_env",
+  "result": "partial",
+  "sourceBaseSha": "d94e541b00000000000000000000000000000000",
+  "recordedAt": "2026-10-13T14:20:00Z",
+  "rebasedOnto": "c8b33a2500000000000000000000000000000000",
+  "rebaseNote": "Observed against d94e541b. origin/main advanced to c8b33a25 (PR #801) while this receipt was being written; PR #801 removed the mock handlers this receipt names. Findings were re-checked against c8b33a25 and only the mock-existence statement changed.",
+  "claim": "CloudIdentity/Control-Plane login to Gateway usage page yields non-zero usage sourced from the real Gateway owner",
+  "verdict": "The chain runs end to end against the real Sub2API owner. The non-zero assertion does NOT hold, for a legitimate reason unrelated to plumbing: the account's entire usage history predates the widest supported query window. The system reports this as status=available, available=true, which is the actual defect this receipt records.",
+  "environment": {
+    "owner": "Sub2API (gateway.medopl.com)",
+    "ownerEndpointModesVerified": ["GET / -> 200", "GET /api/v1/usage/stats unauthenticated -> 401"],
+    "controlPlane": "127.0.0.1:8787, DATABASE_URL on RFC1918 literal 172.19.152.119:5432",
+    "seeding": "control_plane_users + control_plane_accounts inserted directly; sub2api_user_id=58. No in-repo bootstrap path exists (POST /api/operator/accounts is itself protected)."
+  },
+  "steps": [
+    {
+      "name": "Sub2API user authentication",
+      "command": "POST https://gateway.medopl.com/api/v1/auth/login",
+      "exitCode": 0,
+      "observed": "code=0; data.user.id=58; balance=189.058499; total_recharged=200; status=active"
+    },
+    {
+      "name": "Control Plane login delegates to Sub2API",
+      "command": "POST http://127.0.0.1:8787/api/auth/login",
+      "exitCode": 0,
+      "httpStatus": 200,
+      "observed": "opl_session cookie issued; user role=owner; accountId=acct-customer-56728d31793e006dc5"
+    },
+    {
+      "name": "Session accepted by Control Plane",
+      "command": "GET http://127.0.0.1:8787/api/auth/me",
+      "exitCode": 0,
+      "httpStatus": 200,
+      "observed": "sub2apiUserId=58; source=sub2api; fetchedAt present"
+    },
+    {
+      "name": "Gateway account usage via real owner",
+      "command": "GET http://127.0.0.1:8787/api/gateway/usage-summary?period=month",
+      "exitCode": 0,
+      "httpStatus": 200,
+      "observed": "source=sub2api; status=available; available=true; totalRequests=0; totalTokens=0; totalActualCostUsdMicros=0"
+    },
+    {
+      "name": "Gateway key usage via real owner",
+      "command": "GET http://127.0.0.1:8787/api/gateway/keys/371/usage-summary?period=month",
+      "exitCode": 0,
+      "httpStatus": 200,
+      "observed": "identical all-zero available payload"
+    }
+  ],
+  "counterEvidence": {
+    "purpose": "Prove the zeros are a window artefact, not an unused account.",
+    "command": "GET https://gateway.medopl.com/api/v1/usage/stats with Sub2API access_token",
+    "results": [
+      {"range": "2026-08-29..2026-09-15", "total_requests": 26, "total_tokens": 389691, "total_cost": 1.105389},
+      {"range": "2026-09-01..2026-09-30", "total_requests": 0, "total_tokens": 0, "total_cost": 0},
+      {"range": "2026-09-13..2026-10-13", "total_requests": 0, "total_tokens": 0, "total_cost": 0},
+      {"range": "2026-10-01..2026-10-13", "total_requests": 0, "total_tokens": 0, "total_cost": 0}
+    ],
+    "conclusion": "All 26 requests fall in 2026-08-29..2026-09-15. The account has been idle since. routes_gateway.go:916 accepts only today|week|month, so month (last 30 days = since 2026-09-13) structurally cannot show any of it."
+  },
+  "findings": [
+    {
+      "id": "loop0-01",
+      "severity": "high",
+      "finding": "available:true with an all-zero payload is indistinguishable from the mock that HEAD d94e541b added.",
+      "detail": "The real owner response {status:available, available:true, source:sub2api, data:{zeros}, fetchedAt} differs from the mock {status:available, available:true, source:gateway, data:{zeros}} only by the source string and fetchedAt. A reviewer cannot tell them apart from the payload.",
+      "consequence": "The audit's causal claim (the mock is why zeros appear) is inverted for the default path: apps/console-ui never issues an /api/v2/gateway request (zero grep hits), so the mock was unreachable. Removing it changes nothing the page shows. PR #801 (merge c8b33a25) subsequently deleted both mock handlers; this receipt was taken against the pre-#801 baseline d94e541b, and the finding survives the deletion because the real owner returns the same shape.",
+      "status": "mock removed upstream by c8b33a25; the ambiguity between 'no usage in window' and 'usage exists' is unresolved"
+    },
+    {
+      "id": "loop0-02",
+      "severity": "high",
+      "finding": "The UI's default period cannot represent usage older than 30 days.",
+      "detail": "routes_gateway.go:916 admits only today|week|month and defaults to month. use-gateway-account-read-controller.ts:206 calls getGatewayAccountUsageSummary(\"month\"). A funded account with 26 real requests still renders 0.",
+      "consequence": "'I have no usage in this window' and 'I can never show you usage' present identically."
+    },
+    {
+      "id": "loop0-03",
+      "severity": "medium",
+      "finding": "services/gateway-integration/identity has no usage capability at all.",
+      "detail": "identity.Gateway implements Login/Read/Balance/Models only; grep for usage|stats across the package's non-test files returns zero matches. The CloudIdentity owner cannot answer a usage question, so no BFF-side usage route can exist yet.",
+      "consequence": "A BFF path for usage has no owner to call. This is a code gap, not a config gap."
+    },
+    {
+      "id": "loop0-04",
+      "severity": "medium",
+      "finding": "No bootstrap path exists for a fresh Control Plane database.",
+      "detail": "OPL_CONSOLE_USERS_JSON is retired (auth.go:52) and POST /api/operator/accounts is itself protected (routes_admin.go:489), so a fresh database cannot obtain its first user through the API. This receipt seeded by direct SQL.",
+      "consequence": "Every local run repeats this manual step; nothing fails loudly when it is skipped."
+    },
+    {
+      "id": "loop0-05",
+      "severity": "low",
+      "finding": "tools/local-sub2api-authority-fixture.ts can never return non-zero usage.",
+      "detail": "It answers /api/v1/admin/usage/stats with literal zeros, /api/v1/admin/usage with an empty page, hardcodes quota_used and usage_5h/1d/7d to 0, and does not implement the /api/v1/usage/stats user endpoint at all (customer_owned mode gets a 404).",
+      "consequence": "Any qualification lane relying on it can never evidence a non-zero usage claim."
+    }
+  ],
+  "notProven": [
+    "The BFF/CloudIdentity session path was not exercised: it is not deployed by compose.yaml or Dockerfile, and OPL_CLOUD_IDENTITY_URL/TOKEN are absent from .env.",
+    "Audit item (c) (legacy Workspace create entering the BFF/Agent path) was not traced.",
+    "No browser render was captured; the readout was taken at the HTTP layer with a real session cookie.",
+    "Nothing was spent: the gateway was read only. No billable model call was made, so no new usage was created."
+  ],
+  "realEnvReadback": [
+    {
+      "kind": "owner_api",
+      "target": "Sub2API gateway.medopl.com /api/v1/auth/login and /api/v1/usage/stats for user id 58; observed total_requests=26 total_tokens=389691 total_cost=1.105389 over 2026-08-29..2026-09-15",
+      "observedAt": "2026-10-13T14:19:00Z"
+    },
+    {
+      "kind": "public_endpoint",
+      "target": "Control Plane 127.0.0.1:8787 /api/auth/login, /api/auth/me, /api/gateway/usage-summary, /api/gateway/keys/371/usage-summary; observed HTTP 200 with a well-formed source envelope whose data was all zero",
+      "observedAt": "2026-10-13T14:17:00Z"
+    }
+  ]
+}
