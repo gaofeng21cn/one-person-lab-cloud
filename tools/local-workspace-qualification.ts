@@ -1030,7 +1030,7 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
     const runtimeImage = await readRuntime({ accountId: provision.accountId, workspaceId, runtimeId: evidence.runtime.runtimeId });
     onStage("workspace_open");
     const opened = await fetchApplicationEntry(evidence.current.entryUrl);
-    if (!opened.response.ok || !opened.text.includes("OPL Workspace READY")) throw new Error("Workspace Runtime open failed");
+    assertWorkspaceOpenQualification(opened);
 
     onStage("accounting_readback");
     const [usage, walletAfter, keys, historyPage, receipts, debit] = await Promise.all([
@@ -1269,6 +1269,15 @@ export function localApplicationEntryPort(url) {
   return port >= 1 && port <= 65535 ? port : 0;
 }
 
+function assertWorkspaceOpenQualification(opened) {
+  if (!opened.response.ok) {
+    throw namedQualificationError("workspace_open_http_failed", `Workspace Runtime open returned HTTP ${opened.response.status}`);
+  }
+  if (!opened.text.includes("OPL Workspace READY")) {
+    throw namedQualificationError("workspace_open_fixture_marker_missing", "Workspace Runtime open is missing the qualification fixture marker");
+  }
+}
+
 async function fetchApplicationEntry(url) {
   const response = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(30_000) });
   return { response, text: await response.text() };
@@ -1410,7 +1419,8 @@ export async function finishLocalWorkspaceQualification(state, dependencies = {}
       },
       command: receiptCommand({ ...options, cloudImage, workspaceImage }),
       stage,
-      errorCode: "local_workspace_qualification_failed",
+      errorCode: ["workspace_open_http_failed", "workspace_open_fixture_marker_missing"].includes(failure?.code)
+        ? failure.code : "local_workspace_qualification_failed",
       error: redactedError(failure),
       residuals,
       ...(recovery?.artifact ? {
@@ -1750,8 +1760,9 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
     stage = "terminal_readback";
     const evidence = await readWorkspaceEvidence(http, auth, operationId, workspaceId, receiptId);
     if (localApplicationEntryPort(evidence.current.entryUrl) === 0) throw new Error("Workspace application entry is invalid");
+    stage = "workspace_open";
     const opened = await fetchApplicationEntry(evidence.current.entryUrl);
-    if (!opened.response.ok || !opened.text.includes("OPL Workspace READY")) throw new Error("Workspace Runtime open failed");
+    assertWorkspaceOpenQualification(opened);
     const runtimeContainer = await applicationRuntimeImageReadback(accountId, workspaceId, workspaceImage, workspaceInspection.Id, evidence.runtime.runtimeId);
     const usage = sourceData((await http.json("/api/gateway/usage-summary?period=month", {}, auth)).payload, "sub2api");
     const walletAfterCharge = sourceData((await http.json("/api/gateway/wallet", {}, auth)).payload, "sub2api");

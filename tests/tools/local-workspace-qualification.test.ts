@@ -933,7 +933,14 @@ test("sourceData and createHTTP/login preserve account mapping scope without Wor
   }
 });
 
-test("canonical J1 HTTP preview covers every live stage and validates exact local cleanup", async () => {
+for (const scenario of [
+  { name: "covers every live stage and validates exact local cleanup", status: 200, marker: true },
+  { name: "classifies HTTP 502 without a marker", status: 502, marker: false, errorCode: "workspace_open_http_failed", error: "Workspace Runtime open returned HTTP 502" },
+  { name: "rejects HTTP 502 even with the fixture marker", status: 502, marker: true, errorCode: "workspace_open_http_failed", error: "Workspace Runtime open returned HTTP 502" },
+  { name: "rejects HTTP 200 without the fixture marker", status: 200, marker: false, errorCode: "workspace_open_fixture_marker_missing", error: "Workspace Runtime open is missing the qualification fixture marker" },
+  { name: "rejects HTTP 204 without the fixture marker", status: 204, marker: false, errorCode: "workspace_open_fixture_marker_missing", error: "Workspace Runtime open is missing the qualification fixture marker" }
+]) {
+test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
   const accountEmail = "customer@example.test";
   const accountPassword = "customer-password";
   const accountProvisionKey = "account-provision-j1";
@@ -1022,9 +1029,15 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
     if (method === "GET" && url.pathname === "/api/gateway/balance-history") return send(response, 200, envelope("sub2api", { items: [{ valueUsdMicros: `-${amountUsdMicros}`, status: "used" }], total: 1, page: 1, pageSize: 20, pages: 1 }));
     return send(response, 404, { error: "not_found" });
   });
+  const privateBody = "body-private-value https://private-entry.example.test/path?token=body-secret";
+  const privateHeader = "header-private-value";
+  const privateStatusText = "status-text-private-value";
+  let entryRequests = 0;
   const entryServer = createServer((_request, response) => {
-    response.writeHead(200, { "content-type": "text/html" });
-    response.end("<html>OPL Workspace READY</html>");
+    entryRequests += 1;
+    assert.equal(stages.at(-1), "workspace_open");
+    response.writeHead(scenario.status, privateStatusText, { "content-type": "text/html", "x-private-value": privateHeader });
+    response.end(`<html>${scenario.marker ? "OPL Workspace READY" : "unqualified application"} ${privateBody}</html>`);
   });
   await new Promise((resolvePromise, reject) => { entryServer.once("error", reject); entryServer.listen(0, "127.0.0.1", resolvePromise); });
   entryURL = `http://127.0.0.1:${entryServer.address().port}/`;
@@ -1054,7 +1067,9 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
       schemaVersion: 1,
       packages: [{ id: "basic", name: "Basic Workspace", available: true, compute: { id: "local-basic", server: "2c4g", cpu: 2, memoryGb: 4, instanceType: "local-2c4g" }, storage: { sizeGb: 10, quotaPolicy: "linux-project" } }]
     });
-    const result = await runLocalWorkspaceQualification(options, {
+    let runtimeReadbacks = 0;
+    let debitReadbacks = 0;
+    const qualify = () => runLocalWorkspaceQualification(options, {
       loadLiveAuthority: async () => ({ baseURL: "https://sandbox.example.test", adminEmail: "admin@example.test", adminPassword: "admin-password", authorityClass: "sandbox", qualificationUserEmail: "admin@example.test", qualificationUserPassword: "admin-password" }),
       readSourceIdentity: async () => ({ sha, tree: "d".repeat(40), clean: true }),
       runLiveJ1: async ({ j0Ready }) => runLocalWorkspaceJ1HTTPQualification({
@@ -1062,10 +1077,14 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
         accountProvisionKey, launchKey, operationId, workspaceId, workspaceName: "J1", wait: async () => {},
         onStage: (stage) => stages.push(stage),
         readRuntime: async ({ runtimeId: observedRuntimeId }) => {
+          runtimeReadbacks += 1;
           if (observedRuntimeId !== runtimeId) throw new Error("Runtime readback identity is invalid");
           return { runningDigest: workspaceDigest };
         },
-        readDebit: async ({ code, sub2apiUserId, amountUsdMicros: value }) => ({ code, userId: sub2apiUserId, amountUsdMicros: value, count: 1 }),
+        readDebit: async ({ code, sub2apiUserId, amountUsdMicros: value }) => {
+          debitReadbacks += 1;
+          return { code, userId: sub2apiUserId, amountUsdMicros: value, count: 1 };
+        },
         cleanup: async (scope) => { cleanupCalls.push(scope); return { containers: 0, volumes: 0, networks: 0 }; },
         receiptBase: {
           schemaVersion: 1, status: "READY", source: { sha, tree: "d".repeat(40) },
@@ -1076,12 +1095,53 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
         }
       })
     });
-    assert.equal(result.status, "READY");
-    const writtenReceipt = JSON.parse(await readFile(outputPath, "utf8"));
-    assert.equal(writtenReceipt.j0Ready.digest, result.j0Ready.digest);
-    assert.deepEqual(writtenReceipt.j0Ready.source, { sha, tree: "d".repeat(40), clean: true });
-    assert.deepEqual(stages, ["bootstrap_ready", "admin_login", "account_provision", "qualification_login", "wallet_usage_baseline", "pricing_preview", "workspace_launch", "application_installation", "terminal_readback", "workspace_open", "accounting_readback", "receipt_validation", "qualification_cleanup"]);
-    assert.deepEqual(cleanupCalls, [{ accountId, workspaceId }]);
+    if (scenario.errorCode) {
+      let failure;
+      await assert.rejects(qualify, (error) => {
+        failure = error;
+        assert.equal(error.code, scenario.errorCode);
+        assert.equal(error.message, scenario.error);
+        assert.equal(redactedError(error), scenario.error);
+        return true;
+      });
+      assert.deepEqual(stages, ["bootstrap_ready", "admin_login", "account_provision", "qualification_login", "wallet_usage_baseline", "pricing_preview", "workspace_launch", "application_installation", "terminal_readback", "workspace_open"]);
+      assert.equal(runtimeReadbacks, 1);
+      assert.equal(debitReadbacks, 0);
+      assert.equal(cleanupCalls.length, 1);
+      assert.equal(cleanupCalls[0].failed, true);
+      assert.equal(cleanupCalls[0].launchSubmitted, true);
+      assert.equal(cleanupCalls[0].accountId, accountId);
+      assert.equal(cleanupCalls[0].workspaceId, workspaceId);
+      // Settle the actual lifecycle failure through the same NOT_READY writer
+      // used by the Docker runner, including preservation through scratch failure.
+      await assert.rejects(() => finishLocalWorkspaceQualification({
+        ...qualificationSettlement(j0Root, outputPath, failure),
+        options,
+        stage: stages.at(-1)
+      }, {
+        removeScratch: async () => { throw Object.assign(new Error("scratch-private-value"), { code: "EACCES" }); }
+      }), (error) => error === failure);
+      const writtenReceipt = JSON.parse(await readFile(outputPath, "utf8"));
+      assert.equal(writtenReceipt.status, "NOT_READY");
+      assert.equal(writtenReceipt.stage, "workspace_open");
+      assert.equal(writtenReceipt.errorCode, scenario.errorCode);
+      assert.equal(writtenReceipt.error, scenario.error);
+      const diagnostics = JSON.stringify({ code: failure.code, error: redactedError(failure), stage: writtenReceipt.stage, errorCode: writtenReceipt.errorCode, receiptError: writtenReceipt.error });
+      for (const forbidden of [privateBody, "body-private-value", "private-entry.example.test", "body-secret", privateHeader, privateStatusText, entryURL, "127.0.0.1", accountPassword, "scratch-private-value"]) {
+        assert.equal(diagnostics.includes(forbidden), false, forbidden);
+      }
+    } else {
+      const result = await qualify();
+      assert.equal(result.status, "READY");
+      const writtenReceipt = JSON.parse(await readFile(outputPath, "utf8"));
+      assert.equal(writtenReceipt.j0Ready.digest, result.j0Ready.digest);
+      assert.deepEqual(writtenReceipt.j0Ready.source, { sha, tree: "d".repeat(40), clean: true });
+      assert.deepEqual(stages, ["bootstrap_ready", "admin_login", "account_provision", "qualification_login", "wallet_usage_baseline", "pricing_preview", "workspace_launch", "application_installation", "terminal_readback", "workspace_open", "accounting_readback", "receipt_validation", "qualification_cleanup"]);
+      assert.deepEqual(cleanupCalls, [{ accountId, workspaceId }]);
+      assert.equal(runtimeReadbacks, 1);
+      assert.equal(debitReadbacks, 1);
+    }
+    assert.equal(entryRequests, 1);
     assert.deepEqual(counts, { mappingPosts: 1, workspacePosts: 1, keyCreates: 1, debits: 1, refunds: 0, deletes: 0, restarts: 0 });
     assert.equal(requests.filter((request) => request.method === "POST" && request.path === "/api/workspace-launches").length, 1);
     assert.equal(requests.some((request) => request.method === "DELETE"), false);
@@ -1096,6 +1156,7 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
     await rm(j0Root, { recursive: true, force: true });
   }
 });
+}
 
 test("canonical J1 HTTP preview cleans a failure before Workspace Create", async () => {
   const cleanupCalls = [];
