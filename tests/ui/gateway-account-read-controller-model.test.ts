@@ -144,7 +144,7 @@ test("projection loading and completion update only their owning state", () => {
     activeScope: walletScope,
     responseScope: walletScope,
     source: available(wallet)
-  });
+  }, false);
   assert.ok(walletSettled);
   assert.deepEqual(walletSettled.wallet.value, available(wallet));
   assert.equal(walletSettled.wallet.loading, false);
@@ -158,7 +158,7 @@ test("projection loading and completion update only their owning state", () => {
     activeScope: endpointScope,
     responseScope: endpointScope,
     source: available(endpoint)
-  });
+  }, false);
   assert.ok(endpointSettled);
   assert.deepEqual(endpointSettled.endpoint.value, available(endpoint));
   assert.deepEqual(endpointSettled.wallet.value, available(wallet));
@@ -170,7 +170,7 @@ test("projection loading and completion update only their owning state", () => {
     }),
     responseScope: usageScope,
     source: available(accountUsage)
-  });
+  }, false);
   assert.equal(staleUsage, null);
   assert.deepEqual(walletSettled.wallet.value, available(wallet));
 });
@@ -186,7 +186,7 @@ test("history advances its committed page only after a matching available comple
     responseScope: pageTwoScope,
     source: unavailable<GatewayBalanceHistoryPageDTO>(),
     error: "请求失败，请重试"
-  });
+  }, false);
 
   assert.ok(failed);
   assert.equal(failed.balanceHistoryPage, 1);
@@ -197,7 +197,7 @@ test("history advances its committed page only after a matching available comple
     activeScope: pageTwoScope,
     responseScope: pageTwoScope,
     source: available(history(2))
-  });
+  }, false);
   assert.ok(settled);
   assert.equal(settled.balanceHistoryPage, 2);
   assert.deepEqual(settled.endpoint, state.endpoint);

@@ -160,7 +160,7 @@ export function useGatewayAccountReadController({
   }, [currentScopeFor, currentSession]);
 
   const commit = useCallback((completion: GatewayAccountReadCompletion) => {
-    setState((current) => applyGatewayAccountReadCompletion(current, completion) ?? current);
+    setState((current) => applyGatewayAccountReadCompletion(current, completion, cloudIdentity) ?? current);
   }, []);
 
   const settle = useCallback(async <K extends GatewayAccountReadProjectionKind>(

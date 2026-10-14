@@ -195,7 +195,13 @@ export function beginGatewayAccountReadProjection(
 
 export function applyGatewayAccountReadCompletion(
   state: GatewayAccountReadState,
-  completion: GatewayAccountReadCompletion
+  completion: GatewayAccountReadCompletion,
+  // Required on purpose. The wallet's owner follows the baked console identity,
+  // so the apply guard must be evaluated with the same identity the settle layer
+  // accepted the read with. A default here let the cloud completion be dropped
+  // against the retained build's expected owner, leaving the projection loading
+  // forever with no error.
+  cloud: boolean
 ): GatewayAccountReadState | null {
   if (completion.kind !== completion.activeScope.kind
     || completion.kind !== completion.responseScope.kind
@@ -205,26 +211,26 @@ export function applyGatewayAccountReadCompletion(
 
   switch (completion.kind) {
     case "wallet":
-      if (!gatewayAccountReadSourceMatchesScope(completion.responseScope, completion.source)) return null;
+      if (!gatewayAccountReadSourceMatchesScope(completion.responseScope, completion.source, cloud)) return null;
       return {
         ...state,
         wallet: { value: completion.source, loading: false, error: completion.error || "" }
       };
     case "accountUsage":
-      if (!gatewayAccountReadSourceMatchesScope(completion.responseScope, completion.source)) return null;
+      if (!gatewayAccountReadSourceMatchesScope(completion.responseScope, completion.source, cloud)) return null;
       return {
         ...state,
         accountUsage: { value: completion.source, loading: false, error: completion.error || "" }
       };
     case "balanceHistory":
-      if (!gatewayAccountReadSourceMatchesScope(completion.responseScope, completion.source)) return null;
+      if (!gatewayAccountReadSourceMatchesScope(completion.responseScope, completion.source, cloud)) return null;
       return {
         ...state,
         balanceHistory: { value: completion.source, loading: false, error: completion.error || "" },
         balanceHistoryPage: completion.source.available ? completion.responseScope.page : state.balanceHistoryPage
       };
     case "endpoint":
-      if (!gatewayAccountReadSourceMatchesScope(completion.responseScope, completion.source)) return null;
+      if (!gatewayAccountReadSourceMatchesScope(completion.responseScope, completion.source, cloud)) return null;
       return {
         ...state,
         endpoint: { value: completion.source, loading: false, error: completion.error || "" }
