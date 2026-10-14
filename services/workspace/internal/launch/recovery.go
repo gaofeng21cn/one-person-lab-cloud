@@ -37,6 +37,7 @@ func (s *Service) Run(ctx context.Context) error {
 func (s *Service) RunOnce(ctx context.Context) error {
 	rows, err := s.Store.DB().QueryContext(ctx, `SELECT o.id FROM workspace.operations o
 		WHERE o.kind IN ('create_workspace','delete_workspace') AND o.status IN ('accepted','running','awaiting_confirmation','needs_attention')
+		AND NOT (o.kind='delete_workspace' AND o.status='needs_attention')
 		AND (o.worker_lease_until IS NULL OR o.worker_lease_until<now())
 		AND NOT EXISTS (SELECT 1 FROM workspace.saga_steps st WHERE st.operation_id=o.id AND st.next_attempt_at>now())
 		ORDER BY o.updated_at,o.id LIMIT 20`)
