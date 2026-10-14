@@ -1349,16 +1349,6 @@ const modelsUnappliedConfiguration: WorkspaceModelConfigurationDTO = {
   status: "needs_attention"
 };
 
-// The owner confirms the reload before it attempts the predecessor-key
-// revocation, so a refused revocation leaves a configuration whose applied
-// version already equals its own under a needs_attention operation. The running
-// application really does hold this configuration.
-const modelsAppliedCloseoutConfiguration: WorkspaceModelConfigurationDTO = {
-  ...modelsPendingConfiguration,
-  appliedVersion: "2",
-  status: "needs_attention"
-};
-
 const modelsNeedsAttentionOperation: WorkspaceOwnerOperationDTO = {
   operationId: "op-models-1",
   owner: "workspace",
@@ -1371,15 +1361,6 @@ const modelsNeedsAttentionOperation: WorkspaceOwnerOperationDTO = {
   updatedAt: modelsFixtureUpdatedAt
 };
 
-// The owner marks the configuration confirmed before it retires the predecessor
-// key, so the same configuration whose applied version already equals its own is
-// reachable while the operation is still running. The running application really
-// does hold this configuration, and only the closeout is unfinished.
-const modelsSettlingConfiguration: WorkspaceModelConfigurationDTO = {
-  ...modelsPendingConfiguration,
-  appliedVersion: "2"
-};
-
 const modelsRunningOperation: WorkspaceOwnerOperationDTO = {
   ...modelsNeedsAttentionOperation,
   status: "running"
@@ -1389,7 +1370,7 @@ interface WorkspaceModelsRouteOptions {
   // The owner's first readback, before its original operation has been read.
   readonly initialConfiguration?: WorkspaceModelConfigurationDTO;
   // The owner's readback for every configuration read after the first one.
-  readonly settledConfiguration: WorkspaceModelConfigurationDTO;
+  readonly settledConfiguration: WorkspaceModelConfigurationDTO | "unavailable";
   // The owner's answer for the original operation, or "unavailable" for a read
   // whose answer cannot be decoded.
   readonly operation?: WorkspaceOwnerOperationDTO | "unavailable";
@@ -1410,10 +1391,10 @@ async function openWorkspaceModelsRoute(
     if (path === "/api/v2/workspaces/ws-models") return route.fulfill({ json: modelsWorkspaceFixture });
     if (path === "/api/v2/workspaces/ws-models/models") {
       configurationReads += 1;
-      // The persisted intent is still pending unless the fixture says the owner
-      // already confirmed it; the operation answer decides whether the owner's
-      // later readback carries the applied facts.
-      return route.fulfill({ json: configurationReads === 1 ? (options.initialConfiguration ?? modelsPendingConfiguration) : options.settledConfiguration });
+      // The configuration confirms application independently of closeout.
+      if (configurationReads === 1) return route.fulfill({ json: options.initialConfiguration ?? modelsPendingConfiguration });
+      if (options.settledConfiguration === "unavailable") return route.fulfill({ json: { unexpected: "unreadable_model_readback" } });
+      return route.fulfill({ json: options.settledConfiguration });
     }
     if (path === "/api/v2/operations/workspace/op-models-1") {
       operationReads.push(`${request.method()} ${path}`);
@@ -1458,7 +1439,8 @@ test("Workspace model readback keeps a needs_attention closeout out of the failu
     await page.reload({ waitUntil: "domcontentloaded" });
     await modelStatusCell(page).getByText("已生效", { exact: true }).waitFor({ state: "visible" });
     assert.equal(await page.getByText("模型配置未生效", { exact: true }).count(), 0, "a reload of a confirmed applied readback must stay applied without the failure alert");
-    assert.deepEqual(models.operationReads, ["GET /api/v2/operations/workspace/op-models-1"], "an applied readback needs no operation read on reload");
+    await page.getByText("模型配置已生效，收尾待处理", { exact: true }).waitFor({ state: "visible" });
+    assert.deepEqual(models.operationReads, ["GET /api/v2/operations/workspace/op-models-1", "GET /api/v2/operations/workspace/op-models-1"], "an applied readback still reads its independent operation closeout on reload");
 
     assert.deepEqual(models.unexpectedRequests, []);
     assertBrowserAuditClean(audit);
@@ -1475,11 +1457,11 @@ test("Workspace model readback keeps an applied configuration visible while its 
     const page = await browser.newPage({ viewport: viewports[0] });
     const audit = await installBrowserAudit(page, demo.origin);
     await loginCloudFixture(page, demo.origin);
-    const models = await openWorkspaceModelsRoute(page, demo.origin, { settledConfiguration: modelsAppliedCloseoutConfiguration });
+    const models = await openWorkspaceModelsRoute(page, demo.origin, { initialConfiguration: modelsAppliedConfiguration, settledConfiguration: modelsAppliedConfiguration });
     assert.ok(models.configurationReads() >= 2, "the terminal operation answer must be decided by the owner's configuration readback");
     assert.equal(await page.getByText("模型配置未生效", { exact: true }).count(), 0, "a confirmed applied version must not render the failure alert when only its closeout is unsettled");
     await page.getByText("模型配置已生效，收尾待处理", { exact: true }).waitFor({ state: "visible" });
-    await modelStatusCell(page).getByText("待收尾", { exact: true }).waitFor({ state: "visible" });
+    await modelStatusCell(page).getByText("已生效", { exact: true }).waitFor({ state: "visible" });
     assert.deepEqual(models.unexpectedRequests, []);
     assertBrowserAuditClean(audit);
   } finally {
@@ -1501,11 +1483,11 @@ test("Workspace model readback keeps a confirmed configuration visible while its
     const audit = await installBrowserAudit(page, demo.origin);
     await loginCloudFixture(page, demo.origin);
     const models = await openWorkspaceModelsRoute(page, demo.origin, {
-      initialConfiguration: modelsSettlingConfiguration,
-      settledConfiguration: modelsSettlingConfiguration,
+      initialConfiguration: modelsAppliedConfiguration,
+      settledConfiguration: modelsAppliedConfiguration,
       operation: modelsRunningOperation
     });
-    await modelStatusCell(page).getByText("收尾中", { exact: true }).waitFor({ state: "visible" });
+    await modelStatusCell(page).getByText("已生效", { exact: true }).waitFor({ state: "visible" });
     assert.equal(await page.getByText("模型配置结果待确认", { exact: true }).count(), 0, "an operation that is still running must not retract the configuration the runtime already confirmed");
     assert.equal(await page.getByText("模型配置未生效", { exact: true }).count(), 0, "a confirmed applied version is never a failed update");
     await page.getByText("模型配置已生效，原操作收尾中", { exact: true }).waitFor({ state: "visible" });
@@ -1530,14 +1512,14 @@ test("Workspace model readback keeps a confirmed configuration visible when its 
     const audit = await installBrowserAudit(page, demo.origin);
     await loginCloudFixture(page, demo.origin);
     const models = await openWorkspaceModelsRoute(page, demo.origin, {
-      initialConfiguration: modelsSettlingConfiguration,
-      settledConfiguration: modelsSettlingConfiguration,
+      initialConfiguration: modelsAppliedConfiguration,
+      settledConfiguration: modelsAppliedConfiguration,
       operation: "unavailable"
     });
-    await modelStatusCell(page).getByText("收尾中", { exact: true }).waitFor({ state: "visible" });
+    await modelStatusCell(page).getByText("已生效", { exact: true }).waitFor({ state: "visible" });
     assert.equal(await page.getByText("模型配置结果待确认", { exact: true }).count(), 0, "an unreadable operation must not retract the configuration the runtime already confirmed");
     assert.equal(await page.getByText("模型配置未生效", { exact: true }).count(), 0, "a confirmed applied version is never a failed update");
-    await page.getByText("模型配置已生效，原操作收尾中", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.getByText("模型配置已生效，原操作收尾中", { exact: true }).count(), 0, "an unread operation cannot prove a running closeout");
     await page.getByText("原操作读回不可用", { exact: true }).waitFor({ state: "visible" });
     assert.equal(models.configurationReads(), 1, "an unreadable operation owes no further configuration readback");
     assert.deepEqual(models.operationReads, ["GET /api/v2/operations/workspace/op-models-1"]);
@@ -1654,6 +1636,186 @@ test("an unanswered model configuration readback never turns into the unapplied 
     assert.deepEqual(unexpectedRequests, []);
     assertBrowserAuditClean(audit);
   } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+// Regression: a terminal operation does not retract a confirmed reload when the
+// second configuration read fails. Exercise every terminal closeout answer.
+for (const status of ["needs_attention", "failed", "cancelled", "succeeded"] as const) {
+  test(`a confirmed model configuration survives an unreadable second read after ${status}`, { timeout: 60_000 }, async () => {
+    const demo = await startCloudConsoleDemo();
+    const browser = await launchBrowser({ headless: true });
+    try {
+      const page = await browser.newPage({ viewport: viewports[0] });
+      const audit = await installBrowserAudit(page, demo.origin);
+      await loginCloudFixture(page, demo.origin);
+      const models = await openWorkspaceModelsRoute(page, demo.origin, {
+        initialConfiguration: modelsAppliedConfiguration,
+        settledConfiguration: "unavailable",
+        operation: { ...modelsNeedsAttentionOperation, status }
+      });
+      await page.getByText("读取模型配置失败", { exact: true }).waitFor({ state: "visible" });
+      await modelStatusCell(page).getByText("已生效", { exact: true }).waitFor({ state: "visible" });
+      assert.equal(await page.getByText("模型配置结果待确认", { exact: true }).count(), 0, "a failed second read cannot retract the first confirmed read");
+      assert.equal(await page.getByText("模型配置未生效", { exact: true }).count(), 0);
+      assert.equal(await page.getByText("原操作读回不可用", { exact: true }).count(), 0, "the terminal operation itself remains read back");
+      if (status === "succeeded") {
+        assert.equal(await page.getByText("模型配置已生效，收尾待处理", { exact: true }).count(), 0);
+      } else {
+        await page.getByText("模型配置已生效，收尾待处理", { exact: true }).waitFor({ state: "visible" });
+      }
+      assert.equal(models.configurationReads(), 2);
+      assert.deepEqual(models.operationReads, ["GET /api/v2/operations/workspace/op-models-1"]);
+      assert.deepEqual(models.unexpectedRequests, []);
+      assertBrowserAuditClean(audit);
+    } finally {
+      await browser.close();
+      await demo.close();
+    }
+  });
+}
+
+// Identity regressions exercise the actual React controller and page. The owner
+// may answer a command before creating its configuration, or another client may
+// replace the latest configuration between the two GETs.
+async function openModelsIdentityRoute(page: Page, origin: string, scenario: "key_failure" | "replacement", nextOperation: WorkspaceOwnerOperationDTO | "unavailable", gate?: { release: ReturnType<typeof deferred> }) {
+  const reads: string[] = [];
+  const prior: WorkspaceModelConfigurationDTO = { ...modelsAppliedConfiguration };
+  const next: WorkspaceModelConfigurationDTO = { ...prior, version: "3", appliedVersion: "3", selections: [{ slot: "default", modelId: "model-2" }], operationId: "op-models-2" };
+  const priorOperation: WorkspaceOwnerOperationDTO = { ...modelsNeedsAttentionOperation, status: "succeeded", stage: "succeeded" };
+  const failedCommand: WorkspaceOwnerOperationDTO = { ...modelsNeedsAttentionOperation, operationId: "op-models-2", status: "needs_attention", stage: "key", observationResult: "unknown", errorCode: "Unavailable" };
+  let configurationReads = 0;
+  let loggedOut = false;
+  await page.route("**/api/v2/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path === "/api/v2/auth/logout" && gate) {
+      loggedOut = true;
+      return route.fulfill({ json: {} });
+    }
+    if (path === "/api/v2/auth/session") return route.fulfill({ status: loggedOut ? 401 : 200, json: { actorId: "user-customer", tenantId: "acct-1", displayName: "Customer", role: "owner", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
+    if (path === "/api/v2/workspaces/ws-models") return route.fulfill({ json: modelsWorkspaceFixture });
+    if (path === "/api/v2/catalog/models") return route.fulfill({ json: modelsCatalogFixture });
+    reads.push(`${request.method()} ${path}`);
+    if (path === "/api/v2/workspaces/ws-models/models") {
+      if (request.method() === "PUT") {
+        assert.equal(scenario, "key_failure");
+        assert.deepEqual(request.postDataJSON(), { expectedVersion: "2", selections: [{ slot: "default", modelId: "model-2" }] });
+        assert.ok(request.headers()["idempotency-key"]);
+        return route.fulfill({ status: 202, json: failedCommand });
+      }
+      configurationReads += 1;
+      return route.fulfill({ json: scenario === "replacement" ? (configurationReads > 1 ? next : modelsPendingConfiguration) : prior });
+    }
+    if (path === "/api/v2/operations/workspace/op-models-1") return route.fulfill({ json: priorOperation });
+    if (path === "/api/v2/operations/workspace/op-models-2") {
+      if (scenario === "key_failure") return route.fulfill({ json: failedCommand });
+      if (gate) {
+        await gate.release.promise;
+      }
+      return route.fulfill({ json: nextOperation === "unavailable" ? { unexpected: "unreadable_operation_readback" } : nextOperation });
+    }
+    assert.fail(`unexpected identity request: ${request.method()} ${path}`);
+  });
+  await page.goto(`${origin}/console/workspaces/ws-models/models`, { waitUntil: gate ? "domcontentloaded" : "networkidle" });
+  await page.locator(".workspace-models-body").waitFor({ state: "visible" });
+  return { reads, configurationReads: () => configurationReads };
+}
+
+test("Workspace model identity keeps a prior applied configuration separate from a new key failure", { timeout: 60_000 }, async () => {
+  const demo = await startCloudConsoleDemo();
+  const browser = await launchBrowser({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: viewports[0] });
+    const audit = await installBrowserAudit(page, demo.origin);
+    await loginCloudFixture(page, demo.origin);
+    const models = await openModelsIdentityRoute(page, demo.origin, "key_failure", "unavailable");
+    await page.locator(".workspace-models-slots .console-select").getByRole("button").click();
+    await page.getByRole("option", { name: "Backup Model", exact: true }).click();
+    const readback = page.waitForResponse((response) => response.request().method() === "GET" && new URL(response.url()).pathname === "/api/v2/workspaces/ws-models/models");
+    await page.getByRole("button", { name: "保存模型配置", exact: true }).click();
+    await readback;
+    await page.waitForFunction(() => !document.querySelector('.workspace-models-panel button[aria-busy="true"]'));
+    assert.equal(await page.getByText("模型配置已生效，收尾待处理", { exact: true }).count(), 0, "a key failure before configuration creation cannot be called an applied command's closeout");
+    assert.equal(await page.getByText("模型配置已生效，原操作收尾中", { exact: true }).count(), 0);
+    await modelStatusCell(page).getByText("已生效", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.getByText("本次模型配置更新未确认生效，请以原操作结果核实。", { exact: true }).count(), 1, "the failed new command must not disappear behind the prior applied configuration");
+    assert.equal(await page.getByLabel("default", { exact: true }).inputValue(), "model-1");
+    assert.ok(models.reads.includes("GET /api/v2/operations/workspace/op-models-2"), "the failed command must itself be read back");
+    assert.equal(models.configurationReads(), 3);
+    assertBrowserAuditClean(audit);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+for (const status of ["needs_attention", "running", "succeeded", "unavailable"] as const) {
+  test(`Workspace model identity follows A then A operation then B configuration to B operation ${status}`, { timeout: 60_000 }, async () => {
+    const demo = await startCloudConsoleDemo();
+    const browser = await launchBrowser({ headless: true });
+    try {
+      const page = await browser.newPage({ viewport: viewports[0] });
+      const audit = await installBrowserAudit(page, demo.origin);
+      await loginCloudFixture(page, demo.origin);
+      const nextOperation: WorkspaceOwnerOperationDTO | "unavailable" = status === "unavailable" ? status : { ...modelsNeedsAttentionOperation, operationId: "op-models-2", status };
+      const models = await openModelsIdentityRoute(page, demo.origin, "replacement", nextOperation);
+      assert.deepEqual(models.reads, [
+        "GET /api/v2/workspaces/ws-models/models",
+        "GET /api/v2/operations/workspace/op-models-1",
+        "GET /api/v2/workspaces/ws-models/models",
+        "GET /api/v2/operations/workspace/op-models-2"
+      ], "closeout must follow the latest configuration's own operation without chasing configuration again");
+      await modelStatusCell(page).getByText("已生效", { exact: true }).waitFor({ state: "visible" });
+      assert.equal(await page.getByLabel("default", { exact: true }).inputValue(), "model-2");
+      assert.equal(await page.getByText("模型配置结果待确认", { exact: true }).count(), 0);
+      if (status === "needs_attention" || status === "running") {
+        await page.getByText(status === "running" ? "模型配置已生效，原操作收尾中" : "模型配置已生效，收尾待处理", { exact: true }).waitFor({ state: "visible" });
+        await page.getByRole("button", { name: "刷新原操作", exact: true }).click();
+        await page.waitForFunction(() => !document.querySelector('.workspace-models-panel button[aria-busy="true"]'));
+        assert.equal(models.reads.filter((read) => read.endsWith("/op-models-1")).length, 1, "refresh must not return to operation A");
+        assert.equal(models.reads.filter((read) => read.endsWith("/op-models-2")).length, 2);
+      } else {
+        assert.equal(await page.getByText("模型配置已生效，原操作收尾中", { exact: true }).count(), 0);
+        assert.equal(await page.getByText("模型配置已生效，收尾待处理", { exact: true }).count(), 0);
+        assert.equal(await page.getByText("原操作读回不可用", { exact: true }).count(), status === "unavailable" ? 1 : 0);
+      }
+      assertBrowserAuditClean(audit);
+    } finally {
+      await browser.close();
+      await demo.close();
+    }
+  });
+}
+
+
+test("Workspace model identity rejects a late B operation after the session is logged out", { timeout: 60_000 }, async () => {
+  const demo = await startCloudConsoleDemo();
+  const browser = await launchBrowser({ headless: true });
+  const gate = { release: deferred() };
+  try {
+    const page = await browser.newPage({ viewport: viewports[0] });
+    const audit = await installBrowserAudit(page, demo.origin);
+    await loginCloudFixture(page, demo.origin);
+    const [, models] = await Promise.all([
+      page.waitForRequest((request) => request.method() === "GET" && new URL(request.url()).pathname === "/api/v2/operations/workspace/op-models-2"),
+      openModelsIdentityRoute(page, demo.origin, "replacement", { ...modelsNeedsAttentionOperation, operationId: "op-models-2" }, gate)
+    ]);
+    await page.locator("header").getByRole("button", { name: "账号信息", exact: true }).click();
+    await page.getByRole("complementary", { name: "账号信息", exact: true }).getByRole("button", { name: "退出登录", exact: true }).click();
+    await page.waitForURL((url) => url.pathname === "/");
+    const lateResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v2/operations/workspace/op-models-2");
+    gate.release.resolve();
+    await lateResponse;
+    await page.getByRole("heading", { name: "OPL Cloud", exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.locator(".workspace-models-panel").count(), 0);
+    assert.equal(await page.getByText("模型配置已生效，收尾待处理", { exact: true }).count(), 0);
+    assert.equal(models.configurationReads(), 2, "a revoked session must not start another configuration read after the late operation");
+    assertBrowserAuditClean(audit);
+  } finally {
+    gate.release.resolve();
     await browser.close();
     await demo.close();
   }
