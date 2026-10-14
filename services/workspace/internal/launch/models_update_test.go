@@ -516,6 +516,49 @@ func TestUpdateWorkspaceModelsRebindsTheSecondConfiguration(t *testing.T) {
 	}
 }
 
+// TestUpdateWorkspaceModelsReportsAnUnconfirmedRevocationToTheCustomerRead proves
+// the customer read never presents an unconfirmed key revocation as applied. The
+// runtime configuration really was applied - the architecture revokes the predecessor
+// only after that readback - so the Workspace's applied version has advanced and the
+// read keeps reporting it. The revocation itself is unresolved and the predecessor key
+// is still live, so the status must carry that: APPLIED would present an operation
+// nobody will ever finish as a finished one, and hide the one key the customer cannot
+// see.
+func TestUpdateWorkspaceModelsReportsAnUnconfirmedRevocationToTheCustomerRead(t *testing.T) {
+	db := runtimeDatabase(t)
+	service, gateway, fabric, serve := modelUpdateWorkspace(t, db, true)
+	call, ctx := modelUpdateContext("tenant-original", "revocation-unconfirmed-first")
+	if _, err := service.UpdateWorkspaceModels(ctx, modelUpdateRequest(call, "workspace-original", 0, []*api.ModelSelection{{Slot: "chat", ModelId: "model-a"}})); err != nil {
+		t.Fatalf("first update: %v", err)
+	}
+	// The only production issuer refuses revocation, so the predecessor key stays
+	// live with its own model allowlist while the runtime has already moved.
+	gateway.revokeErr = status.Error(codes.Unimplemented, "no approved Sub2API service revocation endpoint is configured")
+	second := &api.CallContext{RequestId: call.GetRequestId() + "-2", IdempotencyKey: call.GetIdempotencyKey() + "-2", ActorId: call.GetActorId(), SessionId: call.SessionId, Scope: call.GetScope()}
+	operation, err := service.UpdateWorkspaceModels(ctx, modelUpdateRequest(second, "workspace-original", 1, []*api.ModelSelection{{Slot: "chat", ModelId: "model-b"}}))
+	if err != nil {
+		t.Fatalf("second update: %v", err)
+	}
+	if operation.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_NEEDS_ATTENTION || gateway.revokes != 1 || gateway.lastRevoke.GetKeyBindingId() != "gateway-key-model-a" {
+		t.Fatalf("a refused revocation did not leave the update unresolved: %v revokes=%d last=%+v", operation, gateway.revokes, gateway.lastRevoke)
+	}
+	// The reload was genuinely applied and confirmed before the revoke was attempted,
+	// so that fact is real and the read must not hide it either.
+	if applied := appliedWorkspaceModelVersion(t, db); applied != 2 || fabric.rebinds != 1 || serve.reloads != 2 {
+		t.Fatalf("applied version=%d rebinds=%d reloads=%d", applied, fabric.rebinds, serve.reloads)
+	}
+	configuration, err := service.GetWorkspaceModels(ctx, &api.GetWorkspaceModelsRpcRequest{Context: call, WorkspaceId: "workspace-original"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if configuration.GetVersion() != 2 || configuration.GetAppliedVersion() != 2 || configuration.GetOperationId() != operation.GetOperationId() {
+		t.Fatalf("the confirmed configuration is not reported: %v", configuration)
+	}
+	if configuration.GetStatus() != api.ModelConfigurationStatusEnum_MODEL_CONFIGURATION_STATUS_ENUM_NEEDS_ATTENTION {
+		t.Fatalf("an unconfirmed key revocation is presented as %v", configuration.GetStatus())
+	}
+}
+
 // TestUpdateWorkspaceModelsRefusesARebindFabricDidNotConfirm proves fail-closed at
 // the replacement readback: a Fabric replacement whose readback does not name the
 // expected predecessor (or a changed fingerprint) is refused before Serve, the

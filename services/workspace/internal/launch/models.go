@@ -122,18 +122,27 @@ func (s *Service) latestModelConfiguration(ctx context.Context, workspaceID stri
 }
 
 // modelConfigurationStatus derives the customer-facing status from the facts the
-// Workspace owns: a version the runtime confirmed as applied is applied, a failed
-// operation is failed, an unconfirmed observation or a needs_attention operation is
-// needs_attention, and anything else is still pending. The requested version is
-// never reported as applied.
+// Workspace owns: a failed operation is failed, an unconfirmed observation or a
+// needs_attention operation is needs_attention, a version the runtime confirmed as
+// applied by an operation that finished is applied, and anything else is still
+// pending. The requested version is never reported as applied.
+//
+// The operation's own lifecycle state is read before the configuration's, because it
+// is written last: confirmModelConfiguration marks the configuration confirmed and
+// advances the applied version before the superseded key is revoked, and the revoke is
+// the last thing the update still owes. Reading the configuration first reported that
+// intermediate state as APPLIED, so an update whose revocation Gateway refused - the
+// only production issuer answers codes.Unimplemented - was presented to the customer as
+// finished while its predecessor key stayed live with the previous model allowlist.
+// Only a succeeded operation may now be reported applied.
 func modelConfigurationStatus(latest modelConfigurationRow, appliedVersion int64) api.ModelConfigurationStatusEnum {
 	switch {
-	case latest.version == appliedVersion && latest.observation == "confirmed":
-		return api.ModelConfigurationStatusEnum_MODEL_CONFIGURATION_STATUS_ENUM_APPLIED
 	case latest.operationState == "failed":
 		return api.ModelConfigurationStatusEnum_MODEL_CONFIGURATION_STATUS_ENUM_FAILED
 	case latest.observation == "unknown" || latest.operationState == "needs_attention":
 		return api.ModelConfigurationStatusEnum_MODEL_CONFIGURATION_STATUS_ENUM_NEEDS_ATTENTION
+	case latest.operationState == "succeeded" && latest.version == appliedVersion && latest.observation == "confirmed":
+		return api.ModelConfigurationStatusEnum_MODEL_CONFIGURATION_STATUS_ENUM_APPLIED
 	default:
 		return api.ModelConfigurationStatusEnum_MODEL_CONFIGURATION_STATUS_ENUM_PENDING
 	}
