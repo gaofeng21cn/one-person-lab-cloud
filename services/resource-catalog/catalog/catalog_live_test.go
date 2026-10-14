@@ -156,8 +156,28 @@ func liveGatewayFixture(t *testing.T) string {
 				actor = 101
 			case "member@example.test":
 				actor = 104
+			case "directory@example.test":
+				actor = 900
 			default:
 				w.WriteHeader(401)
+				return
+			}
+		} else if strings.HasPrefix(r.URL.Path, "/api/v1/admin/users/") {
+			// This is the service's synthetic read-only directory identity.
+			// Unknown subjects and member credentials are refused.
+			if r.Method != http.MethodGet || r.Header.Get("Authorization") != "Bearer isolated-gateway-directory@example.test" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			switch r.URL.Path {
+			case "/api/v1/admin/users/103":
+				actor, email = 103, "platform-admin@example.test"
+			case "/api/v1/admin/users/101":
+				actor, email = 101, "tenant-admin@example.test"
+			case "/api/v1/admin/users/104":
+				actor, email = 104, "member@example.test"
+			default:
+				w.WriteHeader(http.StatusNotFound)
 				return
 			}
 		} else if r.URL.Path == "/api/v1/auth/me" {
@@ -205,7 +225,7 @@ func newLiveSystem(t *testing.T) *liveSystem {
 		INSERT INTO tenant.tenant_members(id,tenant_id,actor_id,role) VALUES('member-admin','tenant-live','101','admin'),('member-member','tenant-live','104','member')`); err != nil {
 		t.Fatal(err)
 	}
-	gateway, err := cloudidentity.NewGateway(liveGatewayFixture(t))
+	gateway, err := cloudidentity.NewGatewayWithDirectory(liveGatewayFixture(t), &cloudidentity.GatewayDirectory{Email: "directory@example.test", Password: "isolated-password"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -497,7 +517,7 @@ func TestLiveCatalogCloudIdentityDecisionCoversCatalogActions(t *testing.T) {
 		INSERT INTO tenant.tenant_members(id,tenant_id,actor_id,role) VALUES('member-admin','tenant-live','101','admin'),('member-member','tenant-live','104','member')`); err != nil {
 		t.Fatal(err)
 	}
-	gateway, err := cloudidentity.NewGateway(liveGatewayFixture(t))
+	gateway, err := cloudidentity.NewGatewayWithDirectory(liveGatewayFixture(t), &cloudidentity.GatewayDirectory{Email: "directory@example.test", Password: "isolated-password"})
 	if err != nil {
 		t.Fatal(err)
 	}

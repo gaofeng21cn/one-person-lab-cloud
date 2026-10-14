@@ -105,11 +105,34 @@ func liveGateway(t *testing.T) *httptest.Server {
 			return 201, true
 		case "other-member@example.test":
 			return 202, true
+		case "directory@example.test":
+			return 900, true
 		default:
 			return 0, false
 		}
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Only this service's synthetic directory credential may read an exact
+		// logged-in subject; it never authenticates as a member.
+		if strings.HasPrefix(r.URL.Path, "/api/v1/admin/users/") {
+			if r.Method != http.MethodGet || r.Header.Get("Authorization") != "Bearer isolated-gateway-directory@example.test" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			email := ""
+			switch r.URL.Path {
+			case "/api/v1/admin/users/201":
+				email = "serve-member@example.test"
+			case "/api/v1/admin/users/202":
+				email = "other-member@example.test"
+			default:
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			actor, _ := actorFor(email)
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": identity.GatewayIdentity{ID: actor, Email: email, Status: "active"}})
+			return
+		}
 		if r.URL.Path != "/api/v1/auth/login" && r.URL.Path != "/api/v1/auth/me" {
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -169,7 +192,7 @@ func newLiveIdentityChain(t *testing.T, ctx context.Context, dsn string) *liveId
 		liveTenant, liveOtherTenant, liveMemberActor, liveForeignActor); err != nil {
 		t.Fatalf("seed known local members: %v", err)
 	}
-	gateway, err := identity.NewGateway(liveGateway(t).URL)
+	gateway, err := identity.NewGatewayWithDirectory(liveGateway(t).URL, &identity.GatewayDirectory{Email: "directory@example.test", Password: livePassword})
 	if err != nil {
 		t.Fatal(err)
 	}
