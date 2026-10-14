@@ -156,11 +156,11 @@ export function useWorkspaceModelsController({
         setConfiguration({ value: settledConfiguration(configurationRead), loading: false, error: "" });
         setUpdateError("");
         if (workspaceModelConfigurationApplied(configurationRead)) {
+          // The reload was confirmed, so the submitted change needs no
+          // resubmission even if the operation closeout still needs attention.
           clearCompletedIntent(configurationRead);
-          setIssue("");
-        } else {
-          setIssue("unconfirmed");
         }
+        setIssue(workspaceModelConfigurationIssue(configurationRead));
         return read;
       }
       if (workspaceModelOperationRejected(read)) {

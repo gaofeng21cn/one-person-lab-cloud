@@ -1349,6 +1349,16 @@ const modelsUnappliedConfiguration: WorkspaceModelConfigurationDTO = {
   status: "needs_attention"
 };
 
+// The owner confirms the reload before it attempts the predecessor-key
+// revocation, so a refused revocation leaves a configuration whose applied
+// version already equals its own under a needs_attention operation. The running
+// application really does hold this configuration.
+const modelsAppliedCloseoutConfiguration: WorkspaceModelConfigurationDTO = {
+  ...modelsPendingConfiguration,
+  appliedVersion: "2",
+  status: "needs_attention"
+};
+
 const modelsNeedsAttentionOperation: WorkspaceOwnerOperationDTO = {
   operationId: "op-models-1",
   owner: "workspace",
@@ -1424,6 +1434,26 @@ test("Workspace model readback keeps a needs_attention closeout out of the failu
     assert.equal(await page.getByText("模型配置未生效", { exact: true }).count(), 0, "a reload of a confirmed applied readback must stay applied without the failure alert");
     assert.deepEqual(models.operationReads, ["GET /api/v2/operations/workspace/op-models-1"], "an applied readback needs no operation read on reload");
 
+    assert.deepEqual(models.unexpectedRequests, []);
+    assertBrowserAuditClean(audit);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("Workspace model readback keeps an applied configuration visible while its closeout needs attention", { timeout: 60_000 }, async () => {
+  const demo = await startCloudConsoleDemo();
+  const browser = await launchBrowser({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: viewports[0] });
+    const audit = await installBrowserAudit(page, demo.origin);
+    await loginCloudFixture(page, demo.origin);
+    const models = await openWorkspaceModelsRoute(page, demo.origin, () => modelsAppliedCloseoutConfiguration);
+    assert.ok(models.configurationReads() >= 2, "the terminal operation answer must be decided by the owner's configuration readback");
+    assert.equal(await page.getByText("模型配置未生效", { exact: true }).count(), 0, "a confirmed applied version must not render the failure alert when only its closeout is unsettled");
+    await page.getByText("模型配置已生效，收尾待处理", { exact: true }).waitFor({ state: "visible" });
+    await modelStatusCell(page).getByText("待收尾", { exact: true }).waitFor({ state: "visible" });
     assert.deepEqual(models.unexpectedRequests, []);
     assertBrowserAuditClean(audit);
   } finally {
