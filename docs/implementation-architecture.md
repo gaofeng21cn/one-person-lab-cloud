@@ -253,11 +253,27 @@ surfaces. The Dockerfile defaults to `legacy` and labels the built digest with
 | `cloud` | Authentication, Workspace, Publisher and delivery use same-origin Console BFF `/api/v2/*`, CloudIdentity session and owner authorization | Workspace owner list/detail, composed resource/delivery/access facts; no retained Control Plane Workspace read or maintenance fallback |
 | `legacy` | Retained Control Plane authentication and Workspace `/api/*` | Existing Control Plane Workspace rows, lifecycle and Runtime projections |
 
-Shared Gateway wallet/Key/usage, Billing, announcement and operator panels still
-use their retained `/api/*` adapters in either build. Cloud identity does not
-redirect these callers to BFF; their API availability and authorization remain
-deployment requirements. The BFF wallet used by the cloud launch flow is a
-separate owner surface, not a migration of the shared Gateway controller.
+The shared Gateway wallet read follows the baked Console identity; the other
+shared readers stay retained. A cloud build requests the same-origin Console
+BFF `/api/v2/wallet`, which authorizes the call and returns the Gateway owner's
+own readback. The shared reader in
+`apps/console-ui/src/api/console-read-api.ts` selects that route from
+`VITE_CONSOLE_IDENTITY`. A legacy build keeps requesting the retained Control
+Plane `/api/gateway/wallet`, which projects the Sub2API answer it already
+returned. The projection's owner tag follows the same identity, so a wallet
+response commits only under the identity that requested it.
+
+Gateway Key, per-Key Usage, account usage, balance history and endpoint reads,
+Billing, announcement and operator panels keep their retained `/api/*` adapters
+in either build; only the wallet read changed route. Cloud identity does not
+redirect those callers to BFF, and their API availability and authorization
+remain deployment requirements.
+
+The launch flow's wallet and catalog reads are a separate caller in
+`apps/console-ui/src/api/workspaces-api.ts`; they already targeted the BFF route
+and are not an identity branch of the shared reader. Neither caller moves
+balance authority: the BFF holds no wallet state of its own and returns the
+Gateway owner's readback.
 
 The cloud detail exposes the owner's lifecycle, resource readiness, application
 availability, period end and access URL. Workspace-owner renewal, deletion,

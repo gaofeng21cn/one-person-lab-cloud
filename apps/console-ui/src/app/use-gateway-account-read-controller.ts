@@ -11,6 +11,7 @@ import type {
   SourceEnvelope
 } from "../api/dtos.ts";
 import type { GatewayAccountReadController } from "./console-controller-types.ts";
+import { cloudIdentity } from "./console-identity.ts";
 import {
   GATEWAY_BALANCE_HISTORY_PAGE_SIZE,
   applyGatewayAccountReadCompletion,
@@ -20,7 +21,9 @@ import {
   gatewayAccountReadPlan,
   gatewayAccountReadScopeIsCurrent,
   gatewayAccountReadSourceMatchesScope,
+  walletSourceTag,
   invalidateGatewayAccountReadEpoch,
+  sub2apiAccountReadSourceTag,
   type GatewayAccountReadCompletion,
   type GatewayAccountReadEpoch,
   type GatewayAccountReadProjectionKind,
@@ -44,6 +47,13 @@ export interface GatewayAccountReadCapability extends GatewayAccountReadControll
 }
 
 type ProjectionGenerations = Record<GatewayAccountReadProjectionKind, number>;
+
+// The unavailable projection must name the same owner the successful read does,
+// otherwise the scope guard rejects the failure and the customer never sees that
+// the read is unavailable.
+function unavailableSourceTag(kind: GatewayAccountReadProjectionKind): string {
+  return kind === "wallet" ? walletSourceTag(cloudIdentity) : sub2apiAccountReadSourceTag;
+}
 
 const createProjectionGenerations = (): ProjectionGenerations => ({
   wallet: 0,
@@ -150,7 +160,7 @@ export function useGatewayAccountReadController({
   }, [currentScopeFor, currentSession]);
 
   const commit = useCallback((completion: GatewayAccountReadCompletion) => {
-    setState((current) => applyGatewayAccountReadCompletion(current, completion) ?? current);
+    setState((current) => applyGatewayAccountReadCompletion(current, completion, cloudIdentity) ?? current);
   }, []);
 
   const settle = useCallback(async <K extends GatewayAccountReadProjectionKind>(
@@ -164,7 +174,7 @@ export function useGatewayAccountReadController({
     try {
       const result = await request();
       if (!requestOwnsScope(requestScope, userId, csrfToken)) return;
-      if (!gatewayAccountReadSourceMatchesScope(requestScope, result)) {
+      if (!gatewayAccountReadSourceMatchesScope(requestScope, result, cloudIdentity)) {
         throw new Error(`gateway_account_${requestScope.kind}_identity_mismatch`);
       }
       if (requestScope.kind === "balanceHistory" && result.available) {
@@ -182,7 +192,7 @@ export function useGatewayAccountReadController({
         kind: requestScope.kind,
         activeScope: requestScope,
         responseScope: requestScope,
-        source: unavailableSource<GatewayAccountReadProjectionValueMap[K]>("sub2api"),
+        source: unavailableSource<GatewayAccountReadProjectionValueMap[K]>(unavailableSourceTag(requestScope.kind)),
         error: friendlyError(error)
       } as unknown as GatewayAccountReadCompletion);
     }
