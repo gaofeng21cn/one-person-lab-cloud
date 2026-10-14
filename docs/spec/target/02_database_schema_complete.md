@@ -333,13 +333,14 @@ CloudIdentity owns Tenant authorization; permission_version advances on access c
 
 #### tenant.sessions
 
-只存cookie/CSRF摘要及Gateway会话Secret Store引用；每次请求复验Tenant/member。覆盖 F01, F15。
+存储 cookie/CSRF 摘要、非 bearer 会话引用和登录时的展示名，不存 member token、Key 或密码。每次请求从数据库读回会话，使用只读 directory 身份复验 Gateway actor active 与当前 Tenant/member；跨 replica 和重启不依赖登录进程内存。覆盖 F01, F15。
 
 | 字段 | 类型 | 可空 | 默认 | 字段来源 |
 |---|---|---|---|---|
 | `id` | `text` | 否 | `—` | `02_database_schema_complete.md#tenant.sessions.id` |
 | `session_hash` | `text` | 否 | `—` | `02_database_schema_complete.md#tenant.sessions.session_hash` |
 | `actor_id` | `text` | 否 | `—` | `02_database_schema_complete.md#tenant.sessions.actor_id` |
+| `display_name` | `text` | NULL | `—` | `services/gateway-integration/migrations/0003_session_display_name.sql` |
 | `tenant_id` | `text` | NULL | `—` | `02_database_schema_complete.md#tenant.sessions.tenant_id` |
 | `gateway_session_ref` | `text` | 否 | `—` | `02_database_schema_complete.md#tenant.sessions.gateway_session_ref` |
 | `csrf_hash` | `text` | 否 | `—` | `02_database_schema_complete.md#tenant.sessions.csrf_hash` |
@@ -355,6 +356,8 @@ CloudIdentity owns Tenant authorization; permission_version advances on access c
 索引：
 - `sessions_actor`: `(actor_id)`
 - `sessions_tenant`: `(tenant_id)`
+
+`0003` 为 expand 迁移：已有行以 `actor_id` 回填，旧 writer 可继续省略 `display_name`，reader 使用 `COALESCE(display_name, actor_id)`。本轮源码没有 required-column 的 `0004`；contract 迁移须等旧 writer 退出且镜像回滚窗口关闭，不把源码兼容性当成 Instance 已执行迁移。
 
 #### tenant.audit_events
 
