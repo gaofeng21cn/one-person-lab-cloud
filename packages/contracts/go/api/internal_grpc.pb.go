@@ -7731,10 +7731,11 @@ var TenantWorkspaceCoordination_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	LedgerCoordination_AppendReceipt_FullMethodName            = "/opl.cloud.api.LedgerCoordination/AppendReceipt"
-	LedgerCoordination_ReadReceiptByReference_FullMethodName   = "/opl.cloud.api.LedgerCoordination/ReadReceiptByReference"
-	LedgerCoordination_ReadLocalNoChargeReceipt_FullMethodName = "/opl.cloud.api.LedgerCoordination/ReadLocalNoChargeReceipt"
-	LedgerCoordination_ReadWalletActionReceipt_FullMethodName  = "/opl.cloud.api.LedgerCoordination/ReadWalletActionReceipt"
+	LedgerCoordination_AppendReceipt_FullMethodName             = "/opl.cloud.api.LedgerCoordination/AppendReceipt"
+	LedgerCoordination_ReadReceiptByReference_FullMethodName    = "/opl.cloud.api.LedgerCoordination/ReadReceiptByReference"
+	LedgerCoordination_ReadLocalNoChargeReceipt_FullMethodName  = "/opl.cloud.api.LedgerCoordination/ReadLocalNoChargeReceipt"
+	LedgerCoordination_ReadWalletActionReceipt_FullMethodName   = "/opl.cloud.api.LedgerCoordination/ReadWalletActionReceipt"
+	LedgerCoordination_ReadProviderActionReceipt_FullMethodName = "/opl.cloud.api.LedgerCoordination/ReadProviderActionReceipt"
 )
 
 // LedgerCoordinationClient is the client API for LedgerCoordination service.
@@ -7745,6 +7746,7 @@ type LedgerCoordinationClient interface {
 	ReadReceiptByReference(ctx context.Context, in *GetReceiptByReferenceRequest, opts ...grpc.CallOption) (*Receipt, error)
 	ReadLocalNoChargeReceipt(ctx context.Context, in *GetReceiptByReferenceRequest, opts ...grpc.CallOption) (*LocalNoChargeReceiptEvidence, error)
 	ReadWalletActionReceipt(ctx context.Context, in *GetReceiptByReferenceRequest, opts ...grpc.CallOption) (*WalletActionReceiptEvidence, error)
+	ReadProviderActionReceipt(ctx context.Context, in *GetReceiptByReferenceRequest, opts ...grpc.CallOption) (*ProviderActionReceiptEvidence, error)
 }
 
 type ledgerCoordinationClient struct {
@@ -7795,6 +7797,16 @@ func (c *ledgerCoordinationClient) ReadWalletActionReceipt(ctx context.Context, 
 	return out, nil
 }
 
+func (c *ledgerCoordinationClient) ReadProviderActionReceipt(ctx context.Context, in *GetReceiptByReferenceRequest, opts ...grpc.CallOption) (*ProviderActionReceiptEvidence, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProviderActionReceiptEvidence)
+	err := c.cc.Invoke(ctx, LedgerCoordination_ReadProviderActionReceipt_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LedgerCoordinationServer is the server API for LedgerCoordination service.
 // All implementations must embed UnimplementedLedgerCoordinationServer
 // for forward compatibility.
@@ -7803,6 +7815,7 @@ type LedgerCoordinationServer interface {
 	ReadReceiptByReference(context.Context, *GetReceiptByReferenceRequest) (*Receipt, error)
 	ReadLocalNoChargeReceipt(context.Context, *GetReceiptByReferenceRequest) (*LocalNoChargeReceiptEvidence, error)
 	ReadWalletActionReceipt(context.Context, *GetReceiptByReferenceRequest) (*WalletActionReceiptEvidence, error)
+	ReadProviderActionReceipt(context.Context, *GetReceiptByReferenceRequest) (*ProviderActionReceiptEvidence, error)
 	mustEmbedUnimplementedLedgerCoordinationServer()
 }
 
@@ -7824,6 +7837,9 @@ func (UnimplementedLedgerCoordinationServer) ReadLocalNoChargeReceipt(context.Co
 }
 func (UnimplementedLedgerCoordinationServer) ReadWalletActionReceipt(context.Context, *GetReceiptByReferenceRequest) (*WalletActionReceiptEvidence, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReadWalletActionReceipt not implemented")
+}
+func (UnimplementedLedgerCoordinationServer) ReadProviderActionReceipt(context.Context, *GetReceiptByReferenceRequest) (*ProviderActionReceiptEvidence, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReadProviderActionReceipt not implemented")
 }
 func (UnimplementedLedgerCoordinationServer) mustEmbedUnimplementedLedgerCoordinationServer() {}
 func (UnimplementedLedgerCoordinationServer) testEmbeddedByValue()                            {}
@@ -7918,6 +7934,24 @@ func _LedgerCoordination_ReadWalletActionReceipt_Handler(srv interface{}, ctx co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LedgerCoordination_ReadProviderActionReceipt_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetReceiptByReferenceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerCoordinationServer).ReadProviderActionReceipt(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerCoordination_ReadProviderActionReceipt_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerCoordinationServer).ReadProviderActionReceipt(ctx, req.(*GetReceiptByReferenceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LedgerCoordination_ServiceDesc is the grpc.ServiceDesc for LedgerCoordination service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -7940,6 +7974,10 @@ var LedgerCoordination_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReadWalletActionReceipt",
 			Handler:    _LedgerCoordination_ReadWalletActionReceipt_Handler,
+		},
+		{
+			MethodName: "ReadProviderActionReceipt",
+			Handler:    _LedgerCoordination_ReadProviderActionReceipt_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

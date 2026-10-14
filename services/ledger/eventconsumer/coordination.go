@@ -24,16 +24,53 @@ func (s *Server) AppendReceipt(ctx context.Context, r *api.AppendReceiptRequest)
 	}
 	// The receipt kind decides the writer and the evidence authority: a Local
 	// no-charge receipt is funded by its own accepted zero-charge order, a wallet
-	// action receipt is funded by the Gateway charge it names. Neither can stand in
-	// for the other, so an unknown kind is refused rather than routed to a default.
+	// action receipt is funded by the Gateway charge it names, and a provider
+	// action receipt is bound to the Workspace owner commit that accepted the
+	// action. None can stand in for another, so an unknown kind is refused rather
+	// than routed to a default.
 	switch r.GetReceipt().GetKind() {
 	case api.ReceiptKindEnum_RECEIPT_KIND_ENUM_WALLET_ACTION:
 		return s.appendWalletActionReceipt(ctx, r)
 	case api.ReceiptKindEnum_RECEIPT_KIND_ENUM_LOCAL_NO_CHARGE:
 		return s.appendLocalNoChargeReceipt(ctx, r)
+	case api.ReceiptKindEnum_RECEIPT_KIND_ENUM_PROVIDER_ACTION:
+		return s.appendProviderActionReceipt(ctx, r)
 	default:
 		return nil, status.Error(codes.InvalidArgument, "unsupported receipt kind for this owner")
 	}
+}
+
+// appendProviderActionReceipt records the owner-authoritative absence proof for a
+// confirmed Workspace provider action, such as a deletion whose runtime and
+// provider resources are both gone. The evidence authority is the Workspace owner
+// commit itself, which is re-read from its own owner before anything is stored,
+// so a fabricated or replayed deletion is refused. There is no accepted quote and
+// no wallet operation to read: this receipt moves no money, and a confirmed
+// absence is stored only against its own Workspace commit.
+func (s *Server) appendProviderActionReceipt(ctx context.Context, r *api.AppendReceiptRequest) (*api.Receipt, error) {
+	if err := ledger.ValidateProviderActionReceiptInput(r); err != nil {
+		return nil, receiptError(err)
+	}
+	commit := r.OwnerCommitEvidence
+	workspaceID := commit.GetResourceId()
+	if err := s.authorizeReceipt(ctx, r.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT, workspaceID, commit.Scope.GetTenant().GetTenantId(), commit.ActorId); err != nil {
+		return nil, err
+	}
+	if s.Workspace == nil {
+		return nil, status.Error(codes.Unavailable, "Workspace owner readback required")
+	}
+	if err := s.readWorkspaceCommit(ctx, r); err != nil {
+		return nil, err
+	}
+	stored, err := s.store.RecordProviderActionReceipt(ctx, r, func(ctx context.Context) error {
+		freshCall := proto.Clone(r.Context).(*api.CallContext)
+		freshCall.AuthorizationContextId = ""
+		return s.authorizeReceipt(ctx, freshCall, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT, workspaceID, commit.Scope.GetTenant().GetTenantId(), commit.ActorId)
+	})
+	if err != nil {
+		return nil, receiptError(err)
+	}
+	return stored.Evidence.Receipt, nil
 }
 
 func (s *Server) appendLocalNoChargeReceipt(ctx context.Context, r *api.AppendReceiptRequest) (*api.Receipt, error) {
@@ -151,9 +188,11 @@ func (s *Server) readGatewayCharge(ctx context.Context, r *api.AppendReceiptRequ
 }
 
 func (s *Server) ReadReceiptByReference(ctx context.Context, r *api.GetReceiptByReferenceRequest) (*api.Receipt, error) {
-	// One obligation is funded exactly one way, so the two stored receipt types are
-	// disjoint. The reference is read as a wallet action first, then as a Local
-	// no-charge receipt; a reference absent from both is not a funding proof.
+	// The three stored receipt types are disjoint: an obligation is funded exactly
+	// one way, and a provider action is a confirmed absence that funds nothing.
+	// The reference is read as a wallet action, then as a Local no-charge receipt,
+	// then as a provider action; a reference absent from all three is not a
+	// recorded fact.
 	evidence, err := s.ReadWalletActionReceipt(ctx, r)
 	if err == nil {
 		return evidence.Receipt, nil
@@ -162,10 +201,17 @@ func (s *Server) ReadReceiptByReference(ctx context.Context, r *api.GetReceiptBy
 		return nil, err
 	}
 	local, localErr := s.ReadLocalNoChargeReceipt(ctx, r)
-	if localErr != nil {
+	if localErr == nil {
+		return local.Receipt, nil
+	}
+	if status.Code(localErr) != codes.NotFound {
 		return nil, localErr
 	}
-	return local.Receipt, nil
+	provider, providerErr := s.ReadProviderActionReceipt(ctx, r)
+	if providerErr != nil {
+		return nil, providerErr
+	}
+	return provider.Receipt, nil
 }
 
 func (s *Server) ReadWalletActionReceipt(ctx context.Context, r *api.GetReceiptByReferenceRequest) (*api.WalletActionReceiptEvidence, error) {
@@ -201,6 +247,31 @@ func (s *Server) ReadLocalNoChargeReceipt(ctx context.Context, r *api.GetReceipt
 		return nil, status.Error(codes.InvalidArgument, "original Workspace owner reference required")
 	}
 	stored, err := s.store.ReadLocalNoChargeReceipt(ctx, r.OwnerEvidenceReference)
+	if err != nil {
+		return nil, receiptError(err)
+	}
+	if err := s.authorizeReceipt(ctx, r.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT, stored.WorkspaceID, stored.TenantID, stored.ActorID); err != nil {
+		return nil, err
+	}
+	return stored.Evidence, nil
+}
+
+// ReadProviderActionReceipt returns the typed absence proof recorded for a
+// confirmed Workspace provider action. It is the third disjoint readback: like
+// the two funded kinds it is reachable only through the authenticated
+// coordination boundary and only under its own Workspace authorization.
+func (s *Server) ReadProviderActionReceipt(ctx context.Context, r *api.GetReceiptByReferenceRequest) (*api.ProviderActionReceiptEvidence, error) {
+	peer, ok := ownerservice.PeerOwner(ctx)
+	if !ok || (peer != owneridentity.Workspace.Service() && peer != owneridentity.Fabric.Service()) {
+		return nil, status.Error(codes.Unauthenticated, "verified Workspace or Fabric peer required")
+	}
+	if err := ownerservice.ValidateCallContext(ctx, r.GetContext()); err != nil {
+		return nil, err
+	}
+	if r.GetOwner() != "workspace" || strings.TrimSpace(r.GetOwnerEvidenceReference()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "original Workspace owner reference required")
+	}
+	stored, err := s.store.ReadProviderActionReceipt(ctx, r.OwnerEvidenceReference)
 	if err != nil {
 		return nil, receiptError(err)
 	}

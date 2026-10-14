@@ -36,31 +36,46 @@ func providerActionRequest() *api.AppendReceiptRequest {
 
 const unsupportedKindMessage = "unsupported receipt kind for this owner"
 
-// TestAppendReceiptRefusesProviderActionPendingItsEvidenceAuthority records the
-// second break in the deletion closure, and the one this change does not fix.
+// TestAppendReceiptAdmitsProviderActionIntoItsOwnWriter records the choice this
+// change makes: a confirmed deletion is a provider action, it is not a zero-charge
+// order and it is not a funded wallet action, and it now has its own evidence
+// authority instead of being refused.
 //
-// A confirmed deletion is a provider action: the runtime and the provider
-// resources it held are both absent. It is not a zero-charge order and it is not a
-// funded wallet action, so neither funded kind may stand in for it. Ledger refuses
-// it today because every admitted kind has exactly one evidence authority, and a
-// provider action does not yet have one:
+//   - its persisted evidence message is ProviderActionReceiptEvidence, which
+//     carries the Workspace owner commit and the digest that commit froze and no
+//     quote acceptance or wallet operation, so the Workspace identity is the
+//     commit's own resource id rather than a funding identity;
+//   - its store writer takes that Workspace id from the owner commit, not from a
+//     QuoteAcceptance a deletion never carries.
 //
-//   - its persisted evidence message does not exist. The contract defines
-//     LocalNoChargeReceiptEvidence and WalletActionReceiptEvidence and nothing for
-//     a provider action, and both typed readbacks cover only those two;
-//   - its store writer would need a third ReceiptInput shape, because both
-//     existing writers take the workspace id from QuoteAcceptance, which a
-//     deletion receipt does not carry.
-//
-// Choosing that authority is a Ledger-owner decision, so this test pins the current
-// refusal rather than inventing an acceptance rule. When the owner decides, this
-// test is the one to flip: the dispatch admits the kind into its own writer, and
-// the two kinds below stay refused.
-func TestAppendReceiptRefusesProviderActionPendingItsEvidenceAuthority(t *testing.T) {
+// The dispatch admits only this kind into the new writer. The two funded kinds
+// stay in their own writers, and every other kind below is still refused.
+func TestAppendReceiptAdmitsProviderActionIntoItsOwnWriter(t *testing.T) {
 	ctx := ownerservice.WithPeerOwner(context.Background(), owneridentity.Workspace.Service())
 	_, err := (&Server{}).AppendReceipt(ctx, providerActionRequest())
-	if status.Code(err) != codes.InvalidArgument {
-		t.Fatalf("code=%v err=%v, want InvalidArgument until a provider-action evidence authority exists", status.Code(err), err)
+	if err == nil || err.Error() == "rpc error: code = "+codes.InvalidArgument.String()+" desc = "+unsupportedKindMessage {
+		t.Fatalf("err=%v, want the dispatch to admit the provider-action kind into its own writer", err)
+	}
+}
+
+// TestAppendReceiptKeepsTheTwoFundedKindsInTheirOwnWriters is the control for the
+// test above: the same zero-value Server admits the two funded kinds past the
+// dispatch, so the refusals are decisions about the kind and not artifacts of the
+// empty Server.
+func TestAppendReceiptKeepsTheTwoFundedKindsInTheirOwnWriters(t *testing.T) {
+	ctx := ownerservice.WithPeerOwner(context.Background(), owneridentity.Workspace.Service())
+	for name, kind := range map[string]api.ReceiptKindEnum{
+		"local no charge": api.ReceiptKindEnum_RECEIPT_KIND_ENUM_LOCAL_NO_CHARGE,
+		"wallet action":   api.ReceiptKindEnum_RECEIPT_KIND_ENUM_WALLET_ACTION,
+	} {
+		t.Run(name, func(t *testing.T) {
+			request := providerActionRequest()
+			request.Receipt.Kind = kind
+			_, err := (&Server{}).AppendReceipt(ctx, request)
+			if err == nil || err.Error() == "rpc error: code = "+codes.InvalidArgument.String()+" desc = "+unsupportedKindMessage {
+				t.Fatalf("kind=%v err=%v, want the dispatch to admit this kind into its own writer", kind, err)
+			}
+		})
 	}
 }
 
@@ -80,26 +95,6 @@ func TestAppendReceiptDecidesKindBeforeAnyOwnerAccess(t *testing.T) {
 			request.Receipt.Kind = kind
 			if _, err := (&Server{}).AppendReceipt(ctx, request); status.Code(err) != codes.InvalidArgument {
 				t.Fatalf("code=%v err=%v, want InvalidArgument", status.Code(err), err)
-			}
-		})
-	}
-}
-
-// TestAppendReceiptAdmitsTheTwoFundedKinds is the control for the two tests above:
-// the same zero-value Server admits the kinds it does own past the dispatch, so
-// the refusals are decisions about the kind and not artifacts of the empty Server.
-func TestAppendReceiptAdmitsTheTwoFundedKinds(t *testing.T) {
-	ctx := ownerservice.WithPeerOwner(context.Background(), owneridentity.Workspace.Service())
-	for name, kind := range map[string]api.ReceiptKindEnum{
-		"local no charge": api.ReceiptKindEnum_RECEIPT_KIND_ENUM_LOCAL_NO_CHARGE,
-		"wallet action":   api.ReceiptKindEnum_RECEIPT_KIND_ENUM_WALLET_ACTION,
-	} {
-		t.Run(name, func(t *testing.T) {
-			request := providerActionRequest()
-			request.Receipt.Kind = kind
-			_, err := (&Server{}).AppendReceipt(ctx, request)
-			if err == nil || err.Error() == "rpc error: code = "+codes.InvalidArgument.String()+" desc = "+unsupportedKindMessage {
-				t.Fatalf("kind=%v err=%v, want the dispatch to admit this kind into its own writer", kind, err)
 			}
 		})
 	}

@@ -2576,11 +2576,22 @@ message LocalNoChargeReceiptEvidence { Receipt receipt = 1; QuoteAcceptance quot
 // the Gateway wallet operation that moved the money, and the Workspace owner
 // commit that accepted the obligation. It names a receipt, never a raw key.
 message WalletActionReceiptEvidence { Receipt receipt = 1; QuoteAcceptance quote_acceptance = 2; WalletOperation wallet_operation = 3; OwnerCommitEvidence owner_commit_evidence = 4; string evidence_digest = 5; }
+// ProviderActionReceiptEvidence is the owner-authoritative absence proof the
+// Ledger records for a confirmed Workspace provider action, such as a deletion
+// whose runtime and provider resources are both gone. It binds the confirmed
+// receipt to the Workspace owner commit that accepted the action and to the
+// digest of the input that commit froze; the Workspace identity is the commit's
+// own resource id, not an accepted quote. It carries no quote acceptance and no
+// wallet operation on purpose: an absence fact is not a funding fact, so it can
+// never be satisfied by, or stand in for, either funded evidence type. It names
+// a receipt, never a raw key.
+message ProviderActionReceiptEvidence { Receipt receipt = 1; OwnerCommitEvidence owner_commit_evidence = 2; string evidence_digest = 3; }
 service LedgerCoordination {
  rpc AppendReceipt(AppendReceiptRequest) returns (Receipt);
  rpc ReadReceiptByReference(GetReceiptByReferenceRequest) returns (Receipt);
  rpc ReadLocalNoChargeReceipt(GetReceiptByReferenceRequest) returns (LocalNoChargeReceiptEvidence);
  rpc ReadWalletActionReceipt(GetReceiptByReferenceRequest) returns (WalletActionReceiptEvidence);
+ rpc ReadProviderActionReceipt(GetReceiptByReferenceRequest) returns (ProviderActionReceiptEvidence);
 }
 
 // D17: fixed approved policy-v1. RPC groups below live in the existing Workspace,
