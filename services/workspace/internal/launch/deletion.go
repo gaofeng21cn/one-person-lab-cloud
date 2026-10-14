@@ -60,7 +60,13 @@ type deletionOrder struct {
 // deletionResult records the exact identities this deletion already obtained from
 // their owners. A resume replays these identities instead of issuing a second
 // retire, delete, receipt or refund.
+// Automatic recovery stops after twelve consecutive unconfirmed passes of one
+// step. This is an attention boundary, never proof of absence or refund failure.
+const deletionRecoveryLimit = 12
+
 type deletionResult struct {
+	PendingStep     string `json:"pendingStep,omitempty"`
+	PendingAttempts int    `json:"pendingAttempts,omitempty"`
 	// GrantID is the accepted-operation grant of this deletion. The deletion is
 	// its own accepted Workspace obligation with its own action set, so it is not
 	// bound to the actor or the action surface of the original launch.
@@ -149,7 +155,7 @@ func (s *Service) DeleteWorkspace(ctx context.Context, r *api.DeleteWorkspaceRpc
 		if err != nil {
 			return nil, dbError(err)
 		}
-		return deletionOperation(op)
+		return s.replayDeletion(ctx, op)
 	}
 	// The idempotency lock only serializes one actor/key. Lock the Workspace row
 	// as well so different administrators or keys cannot accept two deletions.
@@ -183,7 +189,7 @@ func (s *Service) DeleteWorkspace(ctx context.Context, r *api.DeleteWorkspaceRpc
 			if err != nil {
 				return nil, dbError(err)
 			}
-			return deletionOperation(op)
+			return s.replayDeletion(ctx, op)
 		}
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -243,6 +249,21 @@ func (s *Service) DeleteWorkspace(ctx context.Context, r *api.DeleteWorkspaceRpc
 	op, err = s.Store.ReadOperation(ctx, oid)
 	if err != nil {
 		return nil, dbError(err)
+	}
+	return deletionOperation(op)
+}
+
+// replayDeletion lets a freshly authorized, explicitly acknowledged delete
+// request retry the same attention-bound operation once. It neither resets the
+// frozen input nor creates a new command/refund identity.
+func (s *Service) replayDeletion(ctx context.Context, op ownerstore.Operation) (*api.Operation, error) {
+	if op.Status == "needs_attention" {
+		_ = s.Resume(ctx, op.ID)
+		var err error
+		op, err = s.Store.ReadOperation(ctx, op.ID)
+		if err != nil {
+			return nil, dbError(err)
+		}
 	}
 	return deletionOperation(op)
 }
@@ -531,7 +552,7 @@ func (s *Service) ensureDeletionGrant(ctx context.Context, op ownerstore.Operati
 		return nil
 	}
 	if s.Identity == nil {
-		return status.Error(codes.Unavailable, "Workspace deletion requires the CloudIdentity authorization owner")
+		return s.failedDeletionCall(ctx, op, token, "grant", "identity_verification", *result, status.Error(codes.Unavailable, "Workspace deletion requires the CloudIdentity authorization owner"))
 	}
 	commit, err := deletionEvidence(op)
 	if err != nil {
@@ -552,7 +573,7 @@ func (s *Service) ensureDeletionGrant(ctx context.Context, op ownerstore.Operati
 		return s.failedDeletionCall(ctx, op, token, "grant", "identity_verification", *result, status.Error(codes.DataLoss, "accepted grant does not identify the Workspace deletion"))
 	}
 	result.GrantID = grant.GetId()
-	return s.checkpointDeletion(ctx, op, token, "grant", "retirement", "running", "confirmed", grant.GetId(), "", *result)
+	return s.checkpointDeletion(ctx, op, token, "grant", "retirement", "running", "confirmed", grant.GetId(), "", result)
 }
 
 // failedDeletionCall records the outcome of one failed deletion step. A
@@ -562,7 +583,7 @@ func (s *Service) failedDeletionCall(ctx context.Context, op ownerstore.Operatio
 	state, observation, code := callFailure(step, cause)
 	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	if err := s.checkpointDeletion(writeCtx, op, token, step, stage, state, observation, "", code, result); err != nil {
+	if err := s.checkpointDeletion(writeCtx, op, token, step, stage, state, observation, "", code, &result); err != nil {
 		return err
 	}
 	return cause
@@ -570,7 +591,18 @@ func (s *Service) failedDeletionCall(ctx context.Context, op ownerstore.Operatio
 
 // checkpointDeletion persists one deletion result under the same worker lease as
 // every other step.
-func (s *Service) checkpointDeletion(ctx context.Context, op ownerstore.Operation, token, step, stage, state, observation, ownerRef, code string, result deletionResult) error {
+func (s *Service) checkpointDeletion(ctx context.Context, op ownerstore.Operation, token, step, stage, state, observation, ownerRef, code string, result *deletionResult) error {
+	if state == "awaiting_confirmation" || state == "needs_attention" {
+		if result.PendingStep != step {
+			result.PendingStep, result.PendingAttempts = step, 0
+		}
+		result.PendingAttempts++
+		if result.PendingAttempts >= deletionRecoveryLimit {
+			state = "needs_attention"
+		}
+	} else if observation == "confirmed" && result.PendingStep == step {
+		result.PendingStep, result.PendingAttempts = "", 0
+	}
 	raw, err := json.Marshal(result)
 	if err != nil {
 		return status.Error(codes.Internal, "Workspace deletion result cannot be encoded")
@@ -593,7 +625,7 @@ func (s *Service) retireDeletedRuntime(ctx context.Context, op ownerstore.Operat
 		// Retiring the application runtime belongs to Serve. Without that owner the
 		// deletion cannot retire anything, so it waits here instead of advancing
 		// Fabric to release resources the application still uses.
-		if err := s.checkpointDeletion(ctx, op, token, "retire_runtime", "retirement", "awaiting_confirmation", "unknown", "", "DEPENDENCY_UNAVAILABLE", *result); err != nil {
+		if err := s.checkpointDeletion(ctx, op, token, "retire_runtime", "retirement", "awaiting_confirmation", "unknown", "", "DEPENDENCY_UNAVAILABLE", result); err != nil {
 			return false, err
 		}
 		return false, nil
@@ -610,7 +642,7 @@ func (s *Service) retireDeletedRuntime(ctx context.Context, op ownerstore.Operat
 		return false, s.failedDeletionCall(ctx, op, token, "retire_runtime", "retirement", *result, err)
 	}
 	result.RetirementOperation = wire(retired)
-	if err = s.checkpointDeletion(ctx, op, token, "retire_runtime", "retirement", "running", "confirmed", retired.GetOperationId(), "", *result); err != nil {
+	if err = s.checkpointDeletion(ctx, op, token, "retire_runtime", "retirement", "running", "confirmed", retired.GetOperationId(), "", result); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -632,8 +664,9 @@ func validateRetirement(op ownerstore.Operation, order deletionOrder, retired *a
 // absence from Fabric's own readback. The delete request alone never advances the
 // deletion: only a readback that confirms every original resource absent does.
 func (s *Service) confirmDeletedResources(ctx context.Context, op ownerstore.Operation, token string, order deletionOrder, result *deletionResult) (bool, error) {
+	alreadyDispatched := len(result.DeleteOperation) > 0
 	if s.Fabric == nil {
-		return false, nil
+		return false, s.checkpointDeletion(ctx, op, token, "delete_resources", "attachment_deletion", "awaiting_confirmation", "unknown", "", "DEPENDENCY_UNAVAILABLE", result)
 	}
 	if len(result.DeleteOperation) == 0 {
 		// The resource set's identity is frozen when the deletion is accepted; its
@@ -663,7 +696,7 @@ func (s *Service) confirmDeletedResources(ctx context.Context, op ownerstore.Ope
 		result.DeleteOperation = wire(deleted)
 		// The delete request is recorded but absence is not proven yet, so the step
 		// stays unknown until Fabric's own readback confirms it.
-		if err = s.checkpointDeletion(ctx, op, token, "delete_resources", "attachment_deletion", "running", "unknown", deleted.GetOperationId(), "DEPENDENCY_UNAVAILABLE", *result); err != nil {
+		if err = s.checkpointDeletion(ctx, op, token, "delete_resources", "attachment_deletion", "running", "unknown", deleted.GetOperationId(), "DEPENDENCY_UNAVAILABLE", result); err != nil {
 			return false, err
 		}
 	}
@@ -681,7 +714,7 @@ func (s *Service) confirmDeletedResources(ctx context.Context, op ownerstore.Ope
 	result.ResourceReadback = wire(readback)
 	switch {
 	case readback.GetOutcome() == api.Observation_OBSERVATION_REJECTED:
-		return false, s.checkpointDeletion(ctx, op, token, "read_resources", "storage_deletion", "needs_attention", "rejected", order.ResourceSetID, readback.GetErrorCode(), *result)
+		return false, s.checkpointDeletion(ctx, op, token, "read_resources", "storage_deletion", "needs_attention", "rejected", order.ResourceSetID, readback.GetErrorCode(), result)
 	case readback.GetOutcome() == api.Observation_OBSERVATION_CONFIRMED && readback.GetAbsenceConfirmed():
 		// The deletion instant is frozen the moment absence is confirmed, before
 		// any refund is computed, so a retry of the refund settles the same hour
@@ -689,13 +722,39 @@ func (s *Service) confirmDeletedResources(ctx context.Context, op ownerstore.Ope
 		if result.DeletedAt == "" {
 			result.DeletedAt = time.Now().UTC().Format(time.RFC3339Nano)
 		}
-		if err = s.checkpointDeletion(ctx, op, token, "read_resources", "compute_deletion", "running", "confirmed", order.ResourceSetID, "", *result); err != nil {
+		if err = s.checkpointDeletion(ctx, op, token, "read_resources", "compute_deletion", "running", "confirmed", order.ResourceSetID, "", result); err != nil {
 			return false, err
 		}
 		return true, nil
 	default:
+		// ReadResources is read-only and cannot advance Fabric's pending delete.
+		// After reading its still-unconfirmed state, replay the frozen original
+		// command once; Fabric resumes its existing operation/per-kind actions.
+		// Do not immediately dispatch twice on the first pass.
+		if alreadyDispatched {
+			var raw []byte
+			if err = s.Store.DB().QueryRowContext(ctx, `SELECT input_snapshot FROM workspace.saga_steps WHERE operation_id=$1 AND step_key='delete_resources'`, op.ID).Scan(&raw); err != nil {
+				return false, s.failedDeletionCall(ctx, op, token, "read_resources", "storage_deletion", *result, dbError(err))
+			}
+			original := &api.MutateResourcesCommand{}
+			previous := &api.Operation{}
+			if protojson.Unmarshal(raw, original) != nil || protojson.Unmarshal(result.DeleteOperation, previous) != nil || original.GetWorkspaceId() != op.ResourceID || original.GetResourceSetId() != order.ResourceSetID || original.GetContext().GetIdempotencyKey() != op.ID+":delete_resources" {
+				return false, s.failedDeletionCall(ctx, op, token, "read_resources", "storage_deletion", *result, status.Error(codes.DataLoss, "stored Fabric delete command is invalid"))
+			}
+			resumed, resumeErr := s.Fabric.DeleteResources(ctx, original)
+			if resumeErr != nil {
+				return false, s.failedDeletionCall(ctx, op, token, "read_resources", "storage_deletion", *result, resumeErr)
+			}
+			if err = validateResourceDeletion(op, order, resumed); err != nil {
+				return false, s.failedDeletionCall(ctx, op, token, "read_resources", "storage_deletion", *result, err)
+			}
+			if resumed.GetOperationId() != previous.GetOperationId() {
+				return false, s.failedDeletionCall(ctx, op, token, "read_resources", "storage_deletion", *result, status.Error(codes.DataLoss, "Fabric resume changed the original delete operation"))
+			}
+			result.DeleteOperation = wire(resumed)
+		}
 		// A present or unanswered resource is a wait, never an absence.
-		if err = s.checkpointDeletion(ctx, op, token, "read_resources", "storage_deletion", "awaiting_confirmation", "unknown", order.ResourceSetID, "DEPENDENCY_UNAVAILABLE", *result); err != nil {
+		if err = s.checkpointDeletion(ctx, op, token, "read_resources", "storage_deletion", "awaiting_confirmation", "unknown", order.ResourceSetID, "DEPENDENCY_UNAVAILABLE", result); err != nil {
 			return false, err
 		}
 		return false, nil
@@ -732,7 +791,7 @@ func (s *Service) recordDeletionReceipt(ctx context.Context, op ownerstore.Opera
 		// The confirmed deletion is recorded by its evidence owner before any refund
 		// is issued. Without Ledger the absence evidence stays pending rather than
 		// settling money against a receipt that does not exist.
-		if err := s.checkpointDeletion(ctx, op, token, "deletion_receipt", "deletion_evidence", "awaiting_confirmation", "unknown", "", "DEPENDENCY_UNAVAILABLE", *result); err != nil {
+		if err := s.checkpointDeletion(ctx, op, token, "deletion_receipt", "deletion_evidence", "awaiting_confirmation", "unknown", "", "DEPENDENCY_UNAVAILABLE", result); err != nil {
 			return "", err
 		}
 		return "", nil
@@ -766,7 +825,7 @@ func (s *Service) recordDeletionReceipt(ctx context.Context, op ownerstore.Opera
 		return "", s.failedDeletionCall(ctx, op, token, "read_deletion_receipt", "deletion_evidence", *result, status.Error(codes.DataLoss, "Ledger returned a different deletion receipt"))
 	}
 	result.DeletionReceipt = wire(readback)
-	if err = s.checkpointDeletion(ctx, op, token, "deletion_receipt", "deletion_evidence", "running", "confirmed", readback.GetId(), "", *result); err != nil {
+	if err = s.checkpointDeletion(ctx, op, token, "deletion_receipt", "deletion_evidence", "running", "confirmed", readback.GetId(), "", result); err != nil {
 		return "", err
 	}
 	return readback.GetId(), nil
@@ -799,13 +858,13 @@ func (s *Service) refundConfirmedDeletion(ctx context.Context, op ownerstore.Ope
 		// A Local no-charge order has no original platform charge to settle, so its
 		// deletion has no refund entitlement.
 		result.RefundStatus, result.RefundAmountUSDMicros = "not_applicable", 0
-		return s.checkpointDeletion(ctx, op, token, "refund_confirmed_deletion", "refund", "running", "confirmed", "", "", *result)
+		return s.checkpointDeletion(ctx, op, token, "refund_confirmed_deletion", "refund", "running", "confirmed", "", "", result)
 	}
 	if s.Gateway == nil {
 		// The wallet authority is not configured on this deployment, so the original
 		// charge cannot be settled yet. The deletion stays awaiting its funding owner
 		// instead of reporting a refund that was never issued.
-		if err := s.checkpointDeletion(ctx, op, token, "refund_confirmed_deletion", "refund", "awaiting_confirmation", "unknown", "", "DEPENDENCY_UNAVAILABLE", *result); err != nil {
+		if err := s.checkpointDeletion(ctx, op, token, "refund_confirmed_deletion", "refund", "awaiting_confirmation", "unknown", "", "DEPENDENCY_UNAVAILABLE", result); err != nil {
 			return err
 		}
 		return nil
@@ -824,7 +883,7 @@ func (s *Service) refundConfirmedDeletion(ctx context.Context, op ownerstore.Ope
 	}
 	if amount == 0 {
 		result.RefundStatus, result.RefundAmountUSDMicros = "not_applicable", 0
-		return s.checkpointDeletion(ctx, op, token, "refund_confirmed_deletion", "refund", "running", "confirmed", "", "", *result)
+		return s.checkpointDeletion(ctx, op, token, "refund_confirmed_deletion", "refund", "running", "confirmed", "", "", result)
 	}
 	command := &api.WalletRefundCommand{Context: continuation(op, result.GrantID, "refund_confirmed_deletion"), WorkspaceId: op.ResourceID, OriginalWalletOperationId: order.OriginalChargeWalletOperationID, AmountUsdMicros: amount, RefundPolicyVersionId: order.RefundPolicyVersionID, ConfirmedDeletionReceiptId: receiptID, SubscriptionPeriodId: order.SubscriptionPeriodID}
 	if len(result.WalletRefund) > 0 {
@@ -884,16 +943,16 @@ func (s *Service) settleRefund(ctx context.Context, op ownerstore.Operation, tok
 	switch refunded.GetStatus() {
 	case api.WalletOperationStatusEnum_WALLET_OPERATION_STATUS_ENUM_CONFIRMED:
 		result.RefundStatus = "confirmed"
-		return s.checkpointDeletion(ctx, op, token, "refund_confirmed_deletion", "refund", "running", "confirmed", refunded.GetId(), "", *result)
+		return s.checkpointDeletion(ctx, op, token, "refund_confirmed_deletion", "refund", "running", "confirmed", refunded.GetId(), "", result)
 	case api.WalletOperationStatusEnum_WALLET_OPERATION_STATUS_ENUM_REJECTED:
 		result.RefundStatus = "rejected"
 		if !validErrorCode(refunded.GetErrorCode()) {
 			return s.failedDeletionCall(ctx, op, token, "refund_confirmed_deletion", "refund", *result, status.Error(codes.DataLoss, "rejected refund names no cause"))
 		}
-		return s.checkpointDeletion(ctx, op, token, "refund_confirmed_deletion", "refund", "needs_attention", "rejected", refunded.GetId(), errorCodeText(refunded.GetErrorCode()), *result)
+		return s.checkpointDeletion(ctx, op, token, "refund_confirmed_deletion", "refund", "needs_attention", "rejected", refunded.GetId(), errorCodeText(refunded.GetErrorCode()), result)
 	default:
 		result.RefundStatus = "requested"
-		return s.checkpointDeletion(ctx, op, token, "refund_confirmed_deletion", "refund", "awaiting_confirmation", "unknown", refunded.GetId(), "DEPENDENCY_UNAVAILABLE", *result)
+		return s.checkpointDeletion(ctx, op, token, "refund_confirmed_deletion", "refund", "awaiting_confirmation", "unknown", refunded.GetId(), "DEPENDENCY_UNAVAILABLE", result)
 	}
 }
 

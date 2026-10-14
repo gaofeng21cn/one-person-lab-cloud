@@ -715,3 +715,154 @@ func TestConcurrentDeletionIntentsShareOneWorkspaceOperation(t *testing.T) {
 		t.Fatalf("deletion intents=%d, want 1", count)
 	}
 }
+
+// A persistent dependency refusal cannot keep the automatic worker issuing
+// commands forever. Attention retains the original identities and unknown fact;
+// an explicitly authorized replay may resume them after the owner is repaired.
+type refusingDeletionLedger struct {
+	*deletionLedgerClient
+	calls int
+}
+
+func (l *refusingDeletionLedger) AppendReceipt(context.Context, *api.AppendReceiptRequest, ...grpc.CallOption) (*api.Receipt, error) {
+	l.calls++
+	return nil, status.Error(codes.Unavailable, "Ledger temporarily unavailable")
+}
+func TestDeletionRecoveryStopsAndExplicitReplayUsesOriginalIntent(t *testing.T) {
+	for _, missingFabric := range []bool{false, true} {
+		name := "ledger_refusal"
+		if missingFabric {
+			name = "missing_fabric"
+		}
+		t.Run(name, func(t *testing.T) {
+			db := runtimeDatabase(t)
+			service, call, ctx, _, _ := deletionWorkspace(t, db)
+			fabric := service.Fabric
+			ledger := service.Ledger
+			refusing := &refusingDeletionLedger{deletionLedgerClient: &deletionLedgerClient{}}
+			if missingFabric {
+				service.Fabric = nil
+			} else {
+				service.Ledger = refusing
+			}
+			call.IdempotencyKey = "bounded-delete"
+			request := &api.DeleteWorkspaceRpcRequest{Context: call, WorkspaceId: "workspace-original", Body: &api.DeleteWorkspaceRequest{ConfirmationName: "Original workspace", AcknowledgeDataDestruction: true}}
+			accepted, err := service.DeleteWorkspace(ctx, request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			operationID := accepted.GetOperationId()
+			original, err := service.Store.ReadOperation(ctx, operationID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for attempt := 1; attempt < deletionRecoveryLimit; attempt++ {
+				// Advance only the test clock's persisted scheduling gate, without sleep.
+				if _, err = db.ExecContext(ctx, `UPDATE workspace.saga_steps SET next_attempt_at=NULL WHERE operation_id=$1`, operationID); err != nil {
+					t.Fatal(err)
+				}
+				_ = service.RunOnce(ctx)
+			}
+			stored, err := service.Store.ReadOperation(ctx, operationID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, result, err := decodeDeletion(stored)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if stored.Status != "needs_attention" || stored.Observation != "unknown" {
+				t.Fatalf("unconfirmed recovery=%+v result=%+v", stored, result)
+			}
+			if service.Gateway.(*deletionGatewayClient).refunds != 0 {
+				t.Fatal("refunded without Ledger/absence evidence")
+			}
+			var workspaceState string
+			if err = db.QueryRowContext(ctx, `SELECT status FROM workspace.workspaces WHERE id=$1`, "workspace-original").Scan(&workspaceState); err != nil {
+				t.Fatal(err)
+			}
+			if workspaceState != "deleting" {
+				t.Fatalf("workspace=%s", workspaceState)
+			}
+			before := refusing.calls
+			for i := 0; i < 3; i++ {
+				if err = service.RunOnce(ctx); err != nil {
+					t.Fatal(err)
+				}
+			}
+			after, err := service.Store.ReadOperation(ctx, operationID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if refusing.calls != before || string(after.Result) != string(stored.Result) {
+				t.Fatal("automatic worker continued after attention")
+			}
+			// Read-only polls do not resume. Restoring the dependency alone does not
+			// authorize another automatic command after the attention boundary.
+			service.Fabric, service.Ledger = fabric, ledger
+			if err = service.RunOnce(ctx); err != nil {
+				t.Fatal(err)
+			}
+			replayed, err := service.DeleteWorkspace(ctx, request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			completed, err := service.Store.ReadOperation(ctx, operationID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if replayed.GetOperationId() != operationID || completed.Status != "succeeded" || string(completed.AcceptedInput) != string(original.AcceptedInput) {
+				t.Fatal("replay did not complete the original immutable intent")
+			}
+			if service.Serve.(*deletionServeClient).stops != 1 || service.Fabric.(*deletionFabricClient).deleteCalls != 1 || service.Gateway.(*deletionGatewayClient).refunds != 1 {
+				t.Fatal("recovery duplicated retirement/deletion/refund")
+			}
+		})
+	}
+}
+
+// This owner fixture advances only on the original DeleteResources caller, just
+// as the real Fabric owner does. ReadResources alone must not pass this test.
+type pendingCallerDeletionFabric struct {
+	*deletionFabricClient
+	first *api.MutateResourcesCommand
+}
+
+func (f *pendingCallerDeletionFabric) DeleteResources(ctx context.Context, r *api.MutateResourcesCommand, options ...grpc.CallOption) (*api.Operation, error) {
+	if f.first == nil {
+		f.first = proto.Clone(r).(*api.MutateResourcesCommand)
+	} else if !proto.Equal(f.first, r) {
+		return nil, status.Error(codes.DataLoss, "retry changed frozen delete request")
+	}
+	out, err := f.deletionFabricClient.DeleteResources(ctx, r, options...)
+	if f.deleteCalls >= 2 {
+		f.present = false
+	}
+	return out, err
+}
+func TestPendingFabricDeletionResumesThroughItsOriginalCaller(t *testing.T) {
+	db := runtimeDatabase(t)
+	service, call, ctx, _, _ := deletionWorkspace(t, db)
+	fabric := &pendingCallerDeletionFabric{deletionFabricClient: &deletionFabricClient{present: true}}
+	service.Fabric = fabric
+	call.IdempotencyKey = "pending-fabric-delete"
+	created, err := service.DeleteWorkspace(ctx, &api.DeleteWorkspaceRpcRequest{Context: call, WorkspaceId: "workspace-original", Body: &api.DeleteWorkspaceRequest{ConfirmationName: "Original workspace", AcknowledgeDataDestruction: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err = db.ExecContext(ctx, `UPDATE workspace.saga_steps SET next_attempt_at=NULL WHERE operation_id=$1`, created.GetOperationId()); err != nil {
+			t.Fatal(err)
+		}
+		if err = service.RunOnce(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stored, err := service.Store.ReadOperation(ctx, created.GetOperationId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != "succeeded" || fabric.deleteCalls != 2 || service.Gateway.(*deletionGatewayClient).refunds != 1 {
+		t.Fatalf("pending deletion status=%s calls=%d refunds=%d", stored.Status, fabric.deleteCalls, service.Gateway.(*deletionGatewayClient).refunds)
+	}
+}

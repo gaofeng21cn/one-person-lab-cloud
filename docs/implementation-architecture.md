@@ -1067,3 +1067,24 @@ through its authenticated peer connection. Workspace grants only active
 Workspaces inside their confirmed subscription period; Serve refuses missing,
 unverified or unreadable verdicts before reading a route. This source change
 does not activate Local no-charge terms or certify production peer wiring.
+
+### Extracted Workspace deletion recovery
+
+The extracted Workspace service persists consecutive unconfirmed passes per
+pending deletion step in its own operation result. Twelve automatic passes stop
+at `needs_attention`; the worker does not automatically select that deletion
+again. This preserves the original unknown/rejected observation, frozen intent,
+owner references and refundable charge rather than marking deletion failed or
+inventing absence. Missing Fabric/CloudIdentity dependencies record a durable
+wait. A freshly authorized `DeleteWorkspace` request with the exact confirmation
+name and destruction acknowledgement may resume the existing attention-bound
+operation once, including when its original idempotency key is reused. A read or
+poll never resumes it. Successful confirmation clears that step's pending count.
+
+Fabric's `ReadResources` only reads persisted facts. When an already-dispatched
+delete remains unconfirmed, Workspace reads it first, then resumes Fabric using
+the original command snapshot and idempotency key; the operation identity must
+remain unchanged. Confirmation still comes from a subsequent absence readback,
+and Ledger receipt/refund gates still follow it. These are source behavior facts;
+isolated PostgreSQL worker tests with synthetic owners do not prove provider
+absence, a real Gateway refund, deployment or Instance acceptance.
