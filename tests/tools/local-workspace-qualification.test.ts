@@ -1002,7 +1002,7 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
       return send(response, 200, envelope("control-plane+sub2api", { items: [{ accountId, email: accountEmail, status: "active", sub2apiUserId: "41" }], total: 1, page: 1, pageSize: 50 }));
     }
     if (method === "GET" && url.pathname === "/api/auth/me") return send(response, 200, envelope("sub2api", { accountId, email: accountEmail, role: "owner", status: "active", sub2apiUserId: "41" }));
-    if (method === "GET" && url.pathname === "/api/gateway/wallet") return send(response, 200, envelope("sub2api", { userId: "41", currency: "USD", usdMicros: counts.debits ? "947420000" : "1000000000", status: "active" }));
+    if (method === "GET" && url.pathname === "/api/v2/wallet") return send(response, 200, { source: "gateway", status: "available", fetchedAt: "2026-10-13T00:00:00Z", currency: "USD", balanceUSDMicros: counts.debits ? "947420000" : "1000000000" });
     if (method === "GET" && url.pathname === "/api/gateway/usage-summary") return send(response, 200, envelope("sub2api", { totalRequests: 0 }));
     if (method === "GET" && url.pathname === "/api/gateway/keys") {
       const items = counts.keyCreates ? [historicalKey, { id: keyId, name: keyName, kind: "workspace", status: "active" }] : [historicalKey];
@@ -1213,7 +1213,7 @@ test("canonical J1 HTTP preview preserves exact recovery authority after Workspa
       if (path === "/api/operator/accounts" && init.method === "POST") return { payload: { status: "succeeded", accountId, operationId: provisionOperationId } };
       if (path.startsWith("/api/operator/accounts?")) return { payload: { source: "control-plane+sub2api", available: true, status: "available", data: { items: [{ accountId, email: "customer@example.test", status: "active", sub2apiUserId: "41" }], total: 1, page: 1, pageSize: 50 } } };
       if (path === "/api/auth/me") return { payload: { source: "sub2api", available: true, status: "available", data: { accountId, email: "customer@example.test", role: "owner", status: "active", sub2apiUserId: "41" } } };
-      if (path === "/api/gateway/wallet") return { payload: { source: "sub2api", available: true, status: "available", data: { usdMicros: "100000000" } } };
+      if (path === "/api/v2/wallet") return { payload: { source: "gateway", status: "available", fetchedAt: "2026-10-13T00:00:00Z", currency: "USD", balanceUSDMicros: "100000000" } };
       if (path === "/api/gateway/usage-summary?period=month") return { payload: { source: "sub2api", available: true, status: "available", data: { totalRequests: 0 } } };
       if (path === "/api/gateway/keys?page=1&pageSize=100") return { payload: { source: "sub2api", available: true, status: "available", data: { items: [], total: 0, page: 1, pageSize: 100, pages: 1 } } };
       if (path === "/api/billing/receipts?limit=100") return { payload: { source: "ledger", available: true, status: "available", data: { receipts: [], hasMore: false } } };
@@ -1254,7 +1254,7 @@ test("canonical J1 HTTP preview still forbids cleanup when the post-Create owner
       if (path === "/api/operator/accounts" && init.method === "POST") return { payload: { status: "succeeded", accountId, operationId: `account-provision-${stableID("mapping", "customer@example.test").slice(0, 18)}` } };
       if (path.startsWith("/api/operator/accounts?")) return { payload: { source: "control-plane+sub2api", available: true, status: "available", data: { items: [{ accountId, email: "customer@example.test", status: "active", sub2apiUserId: "41" }], total: 1, page: 1, pageSize: 50 } } };
       if (path === "/api/auth/me") return { payload: { source: "sub2api", available: true, status: "available", data: { accountId, email: "customer@example.test", role: "owner", status: "active", sub2apiUserId: "41" } } };
-      if (path === "/api/gateway/wallet") return { payload: { source: "sub2api", available: true, status: "available", data: { usdMicros: "100000000" } } };
+      if (path === "/api/v2/wallet") return { payload: { source: "gateway", status: "available", fetchedAt: "2026-10-13T00:00:00Z", currency: "USD", balanceUSDMicros: "100000000" } };
       if (path === "/api/gateway/usage-summary?period=month") return { payload: { source: "sub2api", available: true, status: "available", data: { totalRequests: 0 } } };
       if (path === "/api/gateway/keys?page=1&pageSize=100") return { payload: { source: "sub2api", available: true, status: "available", data: { items: [], total: 0, page: 1, pageSize: 100, pages: 1 } } };
       if (path === "/api/billing/receipts?limit=100") return { payload: { source: "ledger", available: true, status: "available", data: { receipts: [], hasMore: false } } };

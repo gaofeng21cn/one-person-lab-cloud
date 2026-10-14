@@ -619,6 +619,16 @@ export function sourceData(envelope, expectedSource) {
   return envelope.data;
 }
 
+export function gatewayWalletData(readback) {
+  // The Gateway owner answers on the authenticated BFF and returns its own
+  // readback, not a Sub2API source envelope.
+  if (!readback || readback.source !== "gateway" || readback.status !== "available" || readback.currency !== "USD"
+    || typeof readback.balanceUSDMicros !== "string" || !/^[1-9][0-9]*$/.test(readback.balanceUSDMicros)) {
+    throw new Error("gateway wallet readback is unavailable");
+  }
+  return { currency: readback.currency, usdMicros: readback.balanceUSDMicros, fetchedAt: readback.fetchedAt };
+}
+
 function responseCookie(headers) {
   const value = headers.get("set-cookie");
   return value ? value.split(";", 1)[0] : "";
@@ -991,7 +1001,7 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
       throw new Error("qualification authority identity binding is invalid");
     }
     onStage("wallet_usage_baseline");
-    const walletBefore = sourceData((await http.json("/api/gateway/wallet", {}, auth)).payload, "sub2api");
+    const walletBefore = gatewayWalletData((await http.json("/api/v2/wallet", {}, auth)).payload);
     const usageBefore = sourceData((await http.json("/api/gateway/usage-summary?period=month", {}, auth)).payload, "sub2api");
     const beforeMicros = String(walletBefore?.usdMicros || "");
     if (!/^[1-9][0-9]*$/.test(beforeMicros) || typeof usageBefore?.totalRequests !== "number") {
@@ -1035,7 +1045,7 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
     onStage("accounting_readback");
     const [usage, walletAfter, keys, historyPage, receipts, debit] = await Promise.all([
       http.json("/api/gateway/usage-summary?period=month", {}, auth).then((result) => sourceData(result.payload, "sub2api")),
-      http.json("/api/gateway/wallet", {}, auth).then((result) => sourceData(result.payload, "sub2api")),
+      http.json("/api/v2/wallet", {}, auth).then((result) => gatewayWalletData(result.payload)),
       readAllGatewayKeys(http, auth),
       http.json("/api/gateway/balance-history?page=1&pageSize=20", {}, auth).then((result) => sourceData(result.payload, "sub2api")),
       readAllBillingReceipts(http, auth),
@@ -1729,7 +1739,7 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
     if (me?.accountId !== accountId || !/^[1-9][0-9]*$/.test(sub2apiUserId) || me?.status !== "active") {
       throw new Error("qualification authority identity binding is invalid");
     }
-    const walletBefore = sourceData((await http.json("/api/gateway/wallet", {}, auth)).payload, "sub2api");
+    const walletBefore = gatewayWalletData((await http.json("/api/v2/wallet", {}, auth)).payload);
     const beforeMicros = String(walletBefore?.usdMicros || "");
     if (!/^[1-9][0-9]*$/.test(beforeMicros)) throw new Error("qualification wallet readback is invalid");
 
@@ -1765,7 +1775,7 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
     assertWorkspaceOpenQualification(opened);
     const runtimeContainer = await applicationRuntimeImageReadback(accountId, workspaceId, workspaceImage, workspaceInspection.Id, evidence.runtime.runtimeId);
     const usage = sourceData((await http.json("/api/gateway/usage-summary?period=month", {}, auth)).payload, "sub2api");
-    const walletAfterCharge = sourceData((await http.json("/api/gateway/wallet", {}, auth)).payload, "sub2api");
+    const walletAfterCharge = gatewayWalletData((await http.json("/api/v2/wallet", {}, auth)).payload);
     const chargedMicros = String(walletAfterCharge?.usdMicros || "");
     if (!usage || typeof usage.totalRequests !== "number") throw new Error("Sub2API usage readback is invalid");
     const authorityBeforeDelete = options.authorityMode === "fixture" ? await authorityState(authorityPort, authorityToken) : null;

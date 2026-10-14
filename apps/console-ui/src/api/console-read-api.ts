@@ -22,6 +22,7 @@ import type {
   GatewayKeyUsagePageDTO,
   GatewayUsageSummaryDTO,
   GatewayWallet,
+  GatewayWalletReadbackDTO,
   ManagementState,
   AnnouncementDraftRequest,
   AnnouncementScheduleRequest,
@@ -114,7 +115,30 @@ function sourceDelete<T>(path: string, csrfToken: string, idempotencyKey: string
 }
 
 export function getGatewayWallet(signal?: AbortSignal): Promise<SourceEnvelope<GatewayWallet>> {
-  return sourceGet<GatewayWallet>("/api/gateway/wallet", signal);
+  // The Gateway owner already serves this read on the authenticated BFF. The
+  // retained Control Plane copy answered a Sub2API session, so a CloudIdentity
+  // login could never read a balance through it.
+  return getJson<unknown>("/api/v2/wallet", { signal }).then((value) => {
+    if (!value || typeof value !== "object") throw new Error("invalid_gateway_wallet_readback");
+    const readback = value as GatewayWalletReadbackDTO;
+    if (readback.source !== "gateway" || readback.status !== "available" || readback.currency !== "USD"
+      || typeof readback.balanceUSDMicros !== "string" || !/^(0|[1-9]\d*)$/.test(readback.balanceUSDMicros)
+      || typeof readback.fetchedAt !== "string" || !readback.fetchedAt.trim()) {
+      throw new Error("invalid_gateway_wallet_readback");
+    }
+    return {
+      source: readback.source,
+      status: "available" as const,
+      available: true as const,
+      fetchedAt: readback.fetchedAt,
+      data: {
+        currency: readback.currency,
+        usdMicros: readback.balanceUSDMicros,
+        // The owner readback reports the read, not an account lifecycle state.
+        status: "active"
+      }
+    };
+  });
 }
 
 export function getGatewayKeys(query: GatewayKeyListQuery = {}, signal?: AbortSignal): Promise<SourceEnvelope<GatewayKeyPageDTO>> {

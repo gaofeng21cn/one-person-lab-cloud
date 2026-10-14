@@ -622,7 +622,9 @@ export interface PricingPreviewResponse {
 }
 
 export interface GatewayWallet {
-  userId: string;
+  // The Gateway owner readback that now serves this projection carries no user
+  // identifier; the projection is already scoped to the caller's own session.
+  userId?: string;
   currency: "USD";
   usdMicros: string;
   status: string;

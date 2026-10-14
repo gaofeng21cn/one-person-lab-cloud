@@ -12,6 +12,12 @@ export const GATEWAY_BALANCE_HISTORY_PAGE_SIZE = 20;
 export type GatewayAccountReadRouteScope = "inactive" | "overview" | "workspace_launch" | "api_overview" | "keys";
 export type GatewayAccountReadProjectionKind = "wallet" | "accountUsage" | "balanceHistory" | "endpoint";
 
+// Each projection names the owner that actually answered it. The wallet is read
+// from the Gateway owner on the authenticated BFF; the rest still come from the
+// retained Sub2API reader behind the legacy Control Plane.
+export const gatewayAccountReadSourceTag = { wallet: "gateway" } as const;
+export const sub2apiAccountReadSourceTag = "sub2api";
+
 export interface GatewayAccountReadEpoch {
   sessionGeneration: number;
   routeGeneration: number;
@@ -143,7 +149,10 @@ export function gatewayAccountReadSourceMatchesScope<K extends GatewayAccountRea
   scope: GatewayAccountReadRequestScopeMap[K],
   source: GatewayAccountReadProjectionSourceMap[K]
 ): boolean {
-  if (source.source !== "sub2api") return false;
+  // The wallet projection is served by the Gateway owner on the authenticated
+  // BFF; the remaining reads still come from the retained Sub2API reader.
+  if (scope.kind === "wallet") return source.source === gatewayAccountReadSourceTag.wallet;
+  if (source.source !== sub2apiAccountReadSourceTag) return false;
   if (scope.kind !== "balanceHistory") return true;
   const historySource = source as GatewayAccountReadProjectionSourceMap["balanceHistory"];
   if (!historySource.available) return true;

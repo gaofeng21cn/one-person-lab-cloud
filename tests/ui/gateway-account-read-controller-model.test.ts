@@ -17,7 +17,9 @@ import {
   gatewayAccountReadPlan,
   gatewayAccountReadScopeIsCurrent,
   gatewayAccountReadSourceMatchesScope,
+  gatewayAccountReadSourceTag,
   invalidateGatewayAccountReadEpoch,
+  sub2apiAccountReadSourceTag,
   type GatewayAccountReadEpoch
 } from "../../apps/console-ui/src/app/gateway-account-read-controller-model.ts";
 
@@ -126,6 +128,28 @@ test("balance history accepts only Sub2API data for the requested page and fixed
   assert.equal(gatewayAccountReadSourceMatchesScope(scope, unavailable("control-plane")), false);
 });
 
+test("the wallet projection accepts the Gateway owner tag and rejects the legacy reader tag", () => {
+  const walletScope = createGatewayAccountReadRequestScope("wallet", {
+    ...epoch(), routeScope: "overview", requestGeneration: 1
+  });
+
+  // The Gateway owner answers this read on the authenticated BFF.
+  assert.equal(gatewayAccountReadSourceMatchesScope(walletScope, available(wallet, gatewayAccountReadSourceTag.wallet)), true);
+  // A failure of that same owner must still project as unavailable rather than be
+  // dropped by the scope guard.
+  assert.equal(gatewayAccountReadSourceMatchesScope(walletScope, unavailable(gatewayAccountReadSourceTag.wallet)), true);
+  // The retained Sub2API reader must no longer satisfy this projection.
+  assert.equal(gatewayAccountReadSourceMatchesScope(walletScope, available(wallet, sub2apiAccountReadSourceTag)), false);
+  assert.equal(gatewayAccountReadSourceMatchesScope(walletScope, unavailable(sub2apiAccountReadSourceTag)), false);
+
+  // The other projections keep their existing owner.
+  const usageScope = createGatewayAccountReadRequestScope("accountUsage", {
+    ...epoch(), routeScope: "overview", requestGeneration: 1
+  });
+  assert.equal(gatewayAccountReadSourceMatchesScope(usageScope, available(accountUsage, sub2apiAccountReadSourceTag)), true);
+  assert.equal(gatewayAccountReadSourceMatchesScope(usageScope, available(accountUsage, gatewayAccountReadSourceTag.wallet)), false);
+});
+
 test("projection loading and completion update only their owning state", () => {
   const original = createGatewayAccountReadState();
   const walletScope = createGatewayAccountReadRequestScope("wallet", {
@@ -143,10 +167,10 @@ test("projection loading and completion update only their owning state", () => {
     kind: "wallet",
     activeScope: walletScope,
     responseScope: walletScope,
-    source: available(wallet)
+    source: available(wallet, gatewayAccountReadSourceTag.wallet)
   });
   assert.ok(walletSettled);
-  assert.deepEqual(walletSettled.wallet.value, available(wallet));
+  assert.deepEqual(walletSettled.wallet.value, available(wallet, gatewayAccountReadSourceTag.wallet));
   assert.equal(walletSettled.wallet.loading, false);
   assert.deepEqual(walletSettled.accountUsage, original.accountUsage);
 
@@ -161,7 +185,7 @@ test("projection loading and completion update only their owning state", () => {
   });
   assert.ok(endpointSettled);
   assert.deepEqual(endpointSettled.endpoint.value, available(endpoint));
-  assert.deepEqual(endpointSettled.wallet.value, available(wallet));
+  assert.deepEqual(endpointSettled.wallet.value, available(wallet, gatewayAccountReadSourceTag.wallet));
 
   const staleUsage = applyGatewayAccountReadCompletion(endpointSettled, {
     kind: "accountUsage",
@@ -172,7 +196,7 @@ test("projection loading and completion update only their owning state", () => {
     source: available(accountUsage)
   });
   assert.equal(staleUsage, null);
-  assert.deepEqual(walletSettled.wallet.value, available(wallet));
+  assert.deepEqual(walletSettled.wallet.value, available(wallet, gatewayAccountReadSourceTag.wallet));
 });
 
 test("history advances its committed page only after a matching available completion", () => {

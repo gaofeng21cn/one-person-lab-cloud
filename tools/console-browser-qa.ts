@@ -657,7 +657,7 @@ export async function apiFixture(route, state, session = state) {
     announcement.read = true;
     return fulfillJson(route, { announcementId: announcement.id, readAt: NOW });
   }
-  if (path === "/api/gateway/wallet") return fulfillJson(route, source({ userId: session.sub2apiUserId, currency: "USD", usdMicros: "500000000", status: "active" }, "sub2api"));
+  if (path === "/api/v2/wallet") return fulfillJson(route, { source: "gateway", status: "available", fetchedAt: NOW, currency: "USD", balanceUSDMicros: "500000000" });
   if (path === "/api/gateway/usage-summary") return fulfillJson(route, source({ totalRequests: 1, totalInputTokens: 10, totalOutputTokens: 2, totalTokens: 12, totalActualCostUsdMicros: 25_000 }, "sub2api"));
   if (path === "/api/gateway/balance-history") {
     const page = Number(url.searchParams.get("page"));

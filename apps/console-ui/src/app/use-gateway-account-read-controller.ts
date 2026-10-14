@@ -20,7 +20,9 @@ import {
   gatewayAccountReadPlan,
   gatewayAccountReadScopeIsCurrent,
   gatewayAccountReadSourceMatchesScope,
+  gatewayAccountReadSourceTag,
   invalidateGatewayAccountReadEpoch,
+  sub2apiAccountReadSourceTag,
   type GatewayAccountReadCompletion,
   type GatewayAccountReadEpoch,
   type GatewayAccountReadProjectionKind,
@@ -44,6 +46,13 @@ export interface GatewayAccountReadCapability extends GatewayAccountReadControll
 }
 
 type ProjectionGenerations = Record<GatewayAccountReadProjectionKind, number>;
+
+// The unavailable projection must name the same owner the successful read does,
+// otherwise the scope guard rejects the failure and the customer never sees that
+// the read is unavailable.
+function unavailableSourceTag(kind: GatewayAccountReadProjectionKind): string {
+  return kind === "wallet" ? gatewayAccountReadSourceTag.wallet : sub2apiAccountReadSourceTag;
+}
 
 const createProjectionGenerations = (): ProjectionGenerations => ({
   wallet: 0,
@@ -182,7 +191,7 @@ export function useGatewayAccountReadController({
         kind: requestScope.kind,
         activeScope: requestScope,
         responseScope: requestScope,
-        source: unavailableSource<GatewayAccountReadProjectionValueMap[K]>("sub2api"),
+        source: unavailableSource<GatewayAccountReadProjectionValueMap[K]>(unavailableSourceTag(requestScope.kind)),
         error: friendlyError(error)
       } as unknown as GatewayAccountReadCompletion);
     }
