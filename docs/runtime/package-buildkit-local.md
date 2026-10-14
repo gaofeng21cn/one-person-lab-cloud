@@ -125,13 +125,16 @@ configure these through approved instance configuration/Secret stores:
   registration, wallet, Key, charge or provider operation.
 - `OPL_SESSION_SIGNING_KEY`: at least 32 secret bytes. Login challenges and CSRF
   values are signed by CloudIdentity; cookies are Secure, HttpOnly and SameSite.
-- `OPL_GATEWAY_DIRECTORY_EMAIL`, `OPL_GATEWAY_DIRECTORY_PASSWORD`: optional and
-  required together. CloudIdentity's own read-only administrative identity in the
-  Gateway authority, used only to resolve `Member.displayName` and to confirm an
-  invited Gateway subject exists. It is not a member credential and never acts as
-  a member. When it is absent, `displayName` stays empty and an invitation is not
-  subject-checked; neither fact is fabricated. Supplying one value without the
-  other fails startup.
+- `OPL_GATEWAY_DIRECTORY_EMAIL`, `OPL_GATEWAY_DIRECTORY_PASSWORD`: required on
+  every replica, and required together. CloudIdentity's own read-only
+  administrative identity in the Gateway authority, used to resolve
+  `Member.displayName`, to confirm an invited Gateway subject exists, and to
+  confirm on each session read that the actor is still active. It is not a member
+  credential and never acts as a member. The process starts without it, but every
+  session read then fails closed with `FailedPrecondition`, so login and every
+  authorized operation are refused. Without it `displayName` stays empty and an
+  invitation is not subject-checked; neither fact is fabricated. Supplying one
+  value without the other fails startup.
 - `OPL_INVITATION_TTL`: how long a pending Tenant invitation may be accepted, as a
   Go duration such as `168h`. The canonical contract fixes `Invitation.expiresAt`
   but names no window, so the deployment supplies it and CloudIdentity **refuses to
