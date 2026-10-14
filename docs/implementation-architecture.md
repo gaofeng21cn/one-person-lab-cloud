@@ -80,6 +80,18 @@ typed Local no-charge receipt. Ledger reads the original Catalog acceptance and
 Workspace commit, stores evidence in its existing append-only receipt store and
 exposes the nested evidence only on the authenticated typed coordination path.
 Fabric verifies that evidence before its existing Local adapter dispatches.
+Ledger has a third typed writer and readback for the Workspace provider action:
+a confirmed deletion whose runtime and provider resources are both absent is
+stored as `workspace.provider_action.v1` in the same `evidence_receipts` table,
+with no migration and no typed readback RPC, because the deletion path already
+reads its receipt back through the generic `ReadReceiptByReference` and compares
+in Receipt space. That evidence is non-financial: it carries no accepted quote,
+no wallet operation, no billing mode and no amount, so a confirmed absence can
+never be read back as a charge. It is bound to the Workspace owner commit, which
+is re-read from the Workspace owner before anything is stored, and the Workspace
+identity comes from that commit's resource id rather than from a funding
+identity. As with the two funded kinds, read authority comes from the immutable
+commit evidence rather than from the privacy-mutable receipt provenance block.
 
 The Workspace order carries one explicit application selection: an approved
 Runtime Release for default `opl_app`, or a built CapabilityVersion for `agent`.

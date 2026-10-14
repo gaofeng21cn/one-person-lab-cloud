@@ -178,5 +178,9 @@ func decodeLocalNoCharge(payload string) (*LocalNoChargeRecord, error) {
 	if err = protojson.Unmarshal(raw, evidence); err != nil {
 		return nil, err
 	}
+	// ActorID is the stored receipt's own provenance projection. It is
+	// caller-owned and privacy-mutable, so it is reporting only: a privacy
+	// redaction clears it and leaves it empty. It is never authorization
+	// authority — that is the immutable OwnerCommitEvidence above.
 	return &LocalNoChargeRecord{Evidence: evidence, TenantID: stored.OrganizationID, ActorID: stringFromAny(stored.Actor["id"]), WorkspaceID: stored.WorkspaceID}, nil
 }
