@@ -194,7 +194,9 @@ func (s *Service) Login(ctx context.Context, r *api.LoginRpcRequest) (*api.Sessi
 	expires := time.Now().Add(12 * time.Hour)
 	// The display name is captured here so any replica can answer this session
 	// from the row alone. It is the email the identity owner just returned, not
-	// a secret, and it keeps the Gateway token out of every request path.
+	// a secret, and it keeps the member's Gateway credential out of every request
+	// path. A row written by an image that predates the column resolves the name
+	// from the actor id instead.
 	_, e = s.DB.ExecContext(ctx, `INSERT INTO tenant.sessions(id,session_hash,actor_id,tenant_id,gateway_session_ref,csrf_hash,expires_at,display_name) VALUES($1,$2,$3,$4,$1,$5,$6,$7)`, ref, hash(cookie), actor, tenant, hash(s.mac("csrf:"+cookie)), expires, user.Email)
 	if e != nil {
 		return nil, persistence(e)
@@ -209,14 +211,38 @@ func (s *Service) Login(ctx context.Context, r *api.LoginRpcRequest) (*api.Sessi
 	}
 	return out, nil
 }
+// activeSubject is the authoritative check that the actor behind a session row may
+// still act. The row proves that a login happened; only the Gateway owner knows
+// whether the subject behind it is still active, so an account disabled there must
+// not obtain new interactive authorization through an unexpired Cloud session.
+//
+// The read authenticates as this service's own configured directory identity rather
+// than as the member credential the login returned. That is what keeps the check
+// cross-replica: the directory credential is a deployment fact every replica holds,
+// so no per-login credential has to be kept in process memory or written into the
+// session table for the check to be possible. Anything the Gateway cannot answer
+// fails closed rather than falling back to the row.
+func (s *Service) activeSubject(ctx context.Context, actor string) error {
+	subject, e := s.Gateway.directoryIdentity(ctx, actor)
+	if e != nil {
+		return e
+	}
+	if subject.Status != "active" {
+		return status.Error(codes.Unauthenticated, "Gateway identity is no longer active")
+	}
+	return nil
+}
 func (s *Service) session(ctx context.Context, ref string) (*api.Session, int64, bool, error) {
 	out := &api.Session{}
 	var tenant, role sql.NullString
 	var expires time.Time
 	var version int64
-	e := s.DB.QueryRowContext(ctx, `SELECT s.actor_id,s.tenant_id,s.expires_at,s.display_name,m.role,COALESCE(t.permission_version,0)+1 FROM tenant.sessions s LEFT JOIN tenant.tenants t ON t.id=s.tenant_id LEFT JOIN tenant.tenant_members m ON m.tenant_id=s.tenant_id AND m.actor_id=s.actor_id AND m.revoked_at IS NULL WHERE s.id=$1 AND s.revoked_at IS NULL AND s.expires_at>now() AND (s.tenant_id IS NULL OR (t.status='active' AND m.id IS NOT NULL))`, ref).Scan(&out.ActorId, &tenant, &expires, &out.DisplayName, &role, &version)
+	e := s.DB.QueryRowContext(ctx, `SELECT s.actor_id,s.tenant_id,s.expires_at,COALESCE(s.display_name,s.actor_id),m.role,COALESCE(t.permission_version,0)+1 FROM tenant.sessions s LEFT JOIN tenant.tenants t ON t.id=s.tenant_id LEFT JOIN tenant.tenant_members m ON m.tenant_id=s.tenant_id AND m.actor_id=s.actor_id AND m.revoked_at IS NULL WHERE s.id=$1 AND s.revoked_at IS NULL AND s.expires_at>now() AND (s.tenant_id IS NULL OR (t.status='active' AND m.id IS NOT NULL))`, ref).Scan(&out.ActorId, &tenant, &expires, &out.DisplayName, &role, &version)
 	if e != nil {
 		return nil, 0, false, persistence(e)
+	}
+	if e = s.activeSubject(ctx, out.ActorId); e != nil {
+		return nil, 0, false, e
 	}
 	out.ExpiresAt = timestamppb.New(expires)
 	if tenant.Valid {
