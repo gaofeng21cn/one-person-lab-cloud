@@ -61,11 +61,15 @@ current implementation documentation.
   becomes a Gateway-key writer.
 - Privacy redaction must not change authorization authority. A stored receipt's
   own provenance block is caller-owned and privacy-mutable, so it is reporting
-  only and is never the fence that admits a read. Read authority binds to the
-  immutable owner-accepted commit evidence the evidence owner re-read at write
-  time. Redacting a receipt may remove a value from what an owner is shown; it
-  may never widen who may read it. A record whose authority cannot be
-  established is refused, never read without its fence.
+  only and is never the fence that admits a read. Where a receipt's payload
+  carries private owner commitments, that evidence is served only by the
+  authenticated typed owner-coordination read, which binds the read to the
+  immutable owner-accepted commit the evidence owner re-read at write time; a
+  generic receipt reader admits only receipt types whose own stored account and
+  Workspace projections identify the caller. Redacting a receipt may remove a
+  value from what an owner is shown; it may never widen who may read it. A
+  record whose authority cannot be established is refused, never read without
+  its fence.
 
 ## Money
 
