@@ -4,6 +4,7 @@ import { decodeDto } from "../../apps/console-ui/src/api/dtos.ts";
 
 import type {
   WorkspaceModelConfigurationDTO,
+  WorkspaceOwnerOperationDTO,
   WorkspaceDTO,
   WorkspaceGatewayBudgetDTO,
   WorkspaceLaunchResponse,
@@ -599,44 +600,70 @@ test("Workspace model configuration status presentation keeps its exact verdicts
   });
 });
 
-// A confirmed reload is application evidence the customer can act on. When only
-// the closeout is unsettled - the owning operation still running, or a
-// predecessor-key revocation Gateway refused - the owner answers needs_attention
-// on a configuration whose applied version already equals its own. Telling the
-// customer that configuration was never applied would distrust a configuration
-// the runtime is demonstrably running.
+const modelCloseoutOperation: WorkspaceOwnerOperationDTO = {
+  operationId: "operation-models-2",
+  owner: "workspace",
+  kind: "update_models",
+  resourceId: "workspace-alpha",
+  status: "needs_attention",
+  stage: "verification",
+  observationResult: "unknown",
+  errorCode: "Unimplemented",
+  requestId: "request-models-2",
+  createdAt: "2026-09-01T00:00:00Z",
+  updatedAt: "2026-09-01T00:00:00Z"
+};
+
+// Application and closeout are separate reads: APPLIED does not claim revocation.
 test("Workspace model configuration closeout keeps its applied evidence", () => {
-  const closeout = configuration({ status: "needs_attention" });
-  assert.equal(workspaceModelConfigurationApplied(closeout), true);
-  assert.equal(workspaceModelConfigurationIssue(closeout), "closeout_unconfirmed");
-  assert.deepEqual(presentWorkspaceModelStatus(closeout), {
-    label: "待收尾",
-    tone: "warning",
-    description: "运行中的应用已确认加载当前模型配置；本次更新的收尾尚未确认，需要管理员处理。"
-  });
-  assert.deepEqual(presentWorkspaceModelCloseout(closeout), {
-    color: "danger",
-    title: "模型配置已生效，收尾待处理",
-    description: "运行中的应用已确认加载当前模型配置；本次更新的收尾尚未确认（包括旧模型密钥的退役），需要管理员处理。"
-  });
+  const applied = configuration();
+  for (const status of ["needs_attention", "failed", "cancelled"] as const) {
+    const operation: WorkspaceOwnerOperationDTO = { ...modelCloseoutOperation, status };
+    assert.equal(workspaceModelConfigurationApplied(applied), true);
+    assert.equal(workspaceModelConfigurationIssue(applied, operation), "closeout_unconfirmed");
+    assert.deepEqual(presentWorkspaceModelStatus(applied), {
+      label: "已生效",
+      tone: "good",
+      description: "运行中的应用已确认加载当前模型配置。"
+    });
+    assert.deepEqual(presentWorkspaceModelCloseout(applied, operation), {
+      color: "danger",
+      title: "模型配置已生效，收尾待处理",
+      description: "运行中的应用已确认加载当前模型配置；本次更新的收尾尚未确认（包括旧模型密钥的退役），需要管理员处理。"
+    });
+  }
 });
 
-// The owner reaches pending with equal versions between confirming the reload
-// and finishing the operation. The application fact is already true there, so the
-// page reports a settling closeout rather than either a failure or a completed
-// operation.
 test("Workspace model configuration closeout reports a settling operation as settling", () => {
-  const settling = configuration({ status: "pending" });
-  assert.equal(workspaceModelConfigurationApplied(settling), true);
-  assert.equal(workspaceModelConfigurationIssue(settling), "closeout_unconfirmed");
-  assert.deepEqual(presentWorkspaceModelStatus(settling), {
-    label: "收尾中",
-    tone: "warning",
-    description: "运行中的应用已确认加载当前模型配置；原操作仍在收尾，请以原操作读回为准。"
-  });
-  assert.deepEqual(presentWorkspaceModelCloseout(settling), {
-    color: "warning",
-    title: "模型配置已生效，原操作收尾中",
-    description: "运行中的应用已确认加载当前模型配置；原操作仍在收尾，完成前请以原操作读回为准。"
-  });
+  const applied = configuration();
+  for (const status of ["accepted", "running", "awaiting_confirmation"] as const) {
+    const operation: WorkspaceOwnerOperationDTO = { ...modelCloseoutOperation, status };
+    assert.equal(workspaceModelConfigurationIssue(applied, operation), "closeout_unconfirmed");
+    assert.deepEqual(presentWorkspaceModelCloseout(applied, operation), {
+      color: "warning",
+      title: "模型配置已生效，原操作收尾中",
+      description: "运行中的应用已确认加载当前模型配置；原操作仍在收尾，完成前请以原操作读回为准。"
+    });
+  }
+  assert.equal(workspaceModelConfigurationIssue(applied), "");
+  assert.equal(presentWorkspaceModelCloseout(applied, null), null, "an unread operation cannot imply a running closeout");
+  const succeeded: WorkspaceOwnerOperationDTO = { ...modelCloseoutOperation, status: "succeeded" };
+  assert.equal(workspaceModelConfigurationIssue(applied, succeeded), "");
+  assert.equal(presentWorkspaceModelCloseout(applied, succeeded), null);
+  assert.equal(workspaceModelConfigurationIssue(configuration({ status: "pending", appliedVersion: "1" }), succeeded), "unconfirmed", "operation success alone does not prove reload");
+});
+
+
+test("Workspace model identity never borrows closeout from another command or Workspace", () => {
+  const applied = configuration();
+  for (const operation of [
+    { ...modelCloseoutOperation, operationId: "other-operation" },
+    { ...modelCloseoutOperation, resourceId: "other-workspace" },
+    { ...modelCloseoutOperation, owner: "serve" },
+    { ...modelCloseoutOperation, kind: "create_workspace" }
+  ]) {
+    assert.equal(workspaceModelConfigurationIssue(applied, operation), "", "only the configuration's own Workspace update operation proves its closeout");
+    assert.equal(presentWorkspaceModelCloseout(applied, operation), null);
+  }
+  assert.equal(workspaceModelConfigurationIssue(configuration({ operationId: undefined }), modelCloseoutOperation), "", "launch application evidence cannot prove a later command was applied");
 });

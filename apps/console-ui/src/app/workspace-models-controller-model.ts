@@ -69,16 +69,28 @@ export function workspaceModelConfigurationApplied(configuration: WorkspaceModel
   return configuration.appliedVersion === configuration.version;
 }
 
-// The page issue comes from the owner's configuration readback alone, and it
-// separates application evidence from operation closeout. A version the runtime
-// already confirmed stays applied no matter how its operation ended, so an
-// unsettled closeout - still running, or a predecessor-key revocation Gateway
-// refused - reports as closeout_unconfirmed instead of claiming the configuration
-// was never applied. A reload the runtime has not confirmed stays explicitly
-// unconfirmed, and any other readback reports the update as not applied.
-export function workspaceModelConfigurationIssue(configuration: WorkspaceModelConfigurationDTO): WorkspaceModelsIssue {
+// A configuration can predate the accepted command or be replaced by another
+// client. Only its own Workspace operation is evidence about its closeout.
+export function workspaceModelOperationMatchesConfiguration(
+  configuration: WorkspaceModelConfigurationDTO,
+  operation: WorkspaceOwnerOperationDTO
+): boolean {
+  return Boolean(configuration.operationId)
+    && configuration.operationId === operation.operationId
+    && configuration.workspaceId === operation.resourceId
+    && operation.owner === "workspace"
+    && operation.kind === "update_models";
+}
+
+// Configuration readback decides application; the original operation separately
+// decides closeout. An unread operation has no verdict and uses its error channel.
+export function workspaceModelConfigurationIssue(
+  configuration: WorkspaceModelConfigurationDTO,
+  operation?: WorkspaceOwnerOperationDTO | null
+): WorkspaceModelsIssue {
   if (workspaceModelConfigurationApplied(configuration)) {
-    return configuration.status === "applied" ? "" : "closeout_unconfirmed";
+    return operation && workspaceModelOperationMatchesConfiguration(configuration, operation)
+      && !workspaceModelOperationConfirmed(operation) ? "closeout_unconfirmed" : "";
   }
   return configuration.status === "pending" ? "unconfirmed" : "failed";
 }
@@ -89,27 +101,9 @@ export interface WorkspaceModelStatusPresentation {
   readonly description: string;
 }
 
-// A configuration the runtime confirmed is presented as applied whatever the
-// operation still owes, so the customer is never told a working configuration
-// was not applied. The verdict cell names only the unfinished closeout, as the
-// unapplied branch names only its failure, and the description carries the
-// application evidence.
+// The status cell describes application only; operation closeout has its own alert.
 export function presentWorkspaceModelStatus(configuration: WorkspaceModelConfigurationDTO): WorkspaceModelStatusPresentation {
   if (workspaceModelConfigurationApplied(configuration)) {
-    if (configuration.status === "needs_attention") {
-      return {
-        label: "待收尾",
-        tone: "warning",
-        description: "运行中的应用已确认加载当前模型配置；本次更新的收尾尚未确认，需要管理员处理。"
-      };
-    }
-    if (configuration.status === "pending") {
-      return {
-        label: "收尾中",
-        tone: "warning",
-        description: "运行中的应用已确认加载当前模型配置；原操作仍在收尾，请以原操作读回为准。"
-      };
-    }
     return {
       label: "已生效",
       tone: "good",
@@ -150,12 +144,16 @@ export interface WorkspaceModelCloseoutPresentation {
   readonly description: string;
 }
 
-// The closeout alert reports only what the operation still owes, and never that
-// the configuration was not applied. An operation still running is settling; an
-// operation that needs attention is left to an administrator, and its cause is
-// the predecessor-key retirement the owner owes after the confirmed readback.
-export function presentWorkspaceModelCloseout(configuration: WorkspaceModelConfigurationDTO): WorkspaceModelCloseoutPresentation {
-  if (configuration.status === "needs_attention") {
+// Only an actual operation read can report closeout. Failure after application
+// cannot be presented as a failure to load the confirmed configuration.
+export function presentWorkspaceModelCloseout(
+  configuration: WorkspaceModelConfigurationDTO | null,
+  operation: WorkspaceOwnerOperationDTO | null
+): WorkspaceModelCloseoutPresentation | null {
+  if (!configuration || !workspaceModelConfigurationApplied(configuration) || !operation
+    || !workspaceModelOperationMatchesConfiguration(configuration, operation)
+    || workspaceModelOperationConfirmed(operation)) return null;
+  if (workspaceModelOperationRejected(operation)) {
     return {
       color: "danger",
       title: "模型配置已生效，收尾待处理",

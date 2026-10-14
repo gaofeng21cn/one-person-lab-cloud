@@ -18,9 +18,9 @@ import { sourceData } from "./workspace-shared.tsx";
 
 // The model configuration page renders the Workspace owner's own facts: the
 // persisted intent version, the version the runtime confirmed, and the owner's
-// operation that carries the reload. A submitted change stays "等待应用" until
-// that original operation and the owner's readback confirm it; the page never
-// advances the applied version itself.
+// operation that carries the reload. The configuration read confirms application;
+// the original operation reports closeout independently. The page never advances
+// the applied version itself.
 export function WorkspaceModelsPage({ controller }: { controller: ConsoleController }) {
   const models = controller.workspaceModels;
   const workspace = sourceData(controller.customerWorkspaceRead.detail.value);
@@ -71,7 +71,7 @@ export function WorkspaceModelsPage({ controller }: { controller: ConsoleControl
   };
 
   const statusPresentation = configuration ? presentWorkspaceModelStatus(configuration) : null;
-  const modelCloseout = configuration ? presentWorkspaceModelCloseout(configuration) : null;
+  const modelCloseout = presentWorkspaceModelCloseout(configuration, models.operation.value);
   const retry = <Button onClick={() => void models.refresh()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重试</Button>;
 
   return (
@@ -96,7 +96,7 @@ export function WorkspaceModelsPage({ controller }: { controller: ConsoleControl
             description="配置已提交，运行中的应用尚未确认加载。按原操作读回确认前不显示为已生效；请勿重复提交。"
             actions={<div className="workspace-actions"><Button busy={models.busy} onClick={() => void models.refreshOperation()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />刷新原操作</Button></div>}
           /> : null}
-          {models.issue === "closeout_unconfirmed" && configuration ? <Alert
+          {models.issue === "closeout_unconfirmed" && modelCloseout ? <Alert
             color={modelCloseout.color}
             indicator={<AlertCircle size={18} />}
             title={modelCloseout.title}
@@ -151,7 +151,7 @@ export function WorkspaceModelsPage({ controller }: { controller: ConsoleControl
                 />)}
               </div>
               {catalogError ? <Alert color="warning" title="模型目录暂不可用" description={catalogError} /> : null}
-              {models.updateError ? <Alert color="danger" title="提交失败" description={models.updateError} /> : null}
+              {models.updateError ? <Alert color="danger" title="更新未完成" description={models.updateError} /> : null}
               <div className="workspace-actions">
                 <Button busy={models.busy} color="primary" disabled={!mayUpdate || !workspaceModelDraftReady(configuration, draft) || !dirty} onClick={save}><Save aria-hidden size={16} />保存模型配置</Button>
                 {!mayUpdate ? <span className="workspace-models-note">当前角色仅可查看模型配置。</span> : null}
