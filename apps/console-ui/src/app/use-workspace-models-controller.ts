@@ -219,8 +219,10 @@ export function useWorkspaceModelsController({
           // command replaced B, retain its configuration and refresh C next time.
           if (!workspaceModelOperationMatchesConfiguration(latest, configurationOperation)) {
             setOperation(emptyRemote());
+            setIssue(latest.operationId ? "unconfirmed" : workspaceModelConfigurationIssue(latest));
+          } else {
+            setIssue(workspaceModelConfigurationIssue(latest, configurationOperation));
           }
-          setIssue(workspaceModelConfigurationIssue(latest, configurationOperation));
         } else {
           setIssue(workspaceModelConfigurationIssue(configurationRead, configurationOperation));
         }
