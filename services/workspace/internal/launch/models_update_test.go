@@ -7,14 +7,19 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	contracts "opl-cloud/packages/contracts/go"
 	api "opl-cloud/packages/contracts/go/api"
@@ -33,6 +38,7 @@ type modelUpdateGateway struct {
 	lastMint       *api.ManagedKeyCommand
 	lastRevoke     *api.ManagedKeyRevoke
 	mintErr        error
+	mintBinding    *api.ManagedKeyBinding
 	revokeErr      error
 }
 
@@ -41,6 +47,9 @@ func (g *modelUpdateGateway) CreateManagedKey(_ context.Context, r *api.ManagedK
 	g.lastMint = proto.Clone(r).(*api.ManagedKeyCommand)
 	if g.mintErr != nil {
 		return nil, g.mintErr
+	}
+	if g.mintBinding != nil {
+		return proto.Clone(g.mintBinding).(*api.ManagedKeyBinding), nil
 	}
 	return &api.ManagedKeyBinding{KeyBindingId: "gateway-key-" + strings.Join(r.GetModelIds(), "_"), Fingerprint: "sha256:" + strings.Repeat("cd", 32), SecretDeliveryReference: contracts.WorkspaceGatewaySecretRef(r.GetWorkspaceId()), WorkspaceId: r.GetWorkspaceId(), TargetRuntimeInstanceId: r.GetTargetRuntimeInstanceId()}, nil
 }
@@ -128,18 +137,24 @@ func (f *modelUpdateFabric) RebindSecret(_ context.Context, r *api.SecretBinding
 // opaque binding the Workspace presented is observable.
 type modelUpdateServe struct {
 	api.ServeAgentCoordinationClient
-	reloads      int
-	lastReload   *api.RuntimeReloadCommand
-	reloadErr    error
-	serveStatus  api.OperationStatusEnum
-	operationNil bool
+	reloads            int
+	lastReload         *api.RuntimeReloadCommand
+	reloadErr          error
+	serveStatus        api.OperationStatusEnum
+	operationNil       bool
+	beforeReloadAnswer func(context.Context, *api.RuntimeReloadCommand) error
 }
 
-func (s *modelUpdateServe) ReloadModels(_ context.Context, r *api.RuntimeReloadCommand, _ ...grpc.CallOption) (*api.Operation, error) {
+func (s *modelUpdateServe) ReloadModels(ctx context.Context, r *api.RuntimeReloadCommand, _ ...grpc.CallOption) (*api.Operation, error) {
 	s.reloads++
 	s.lastReload = proto.Clone(r).(*api.RuntimeReloadCommand)
 	if s.reloadErr != nil {
 		return nil, s.reloadErr
+	}
+	if s.beforeReloadAnswer != nil {
+		if err := s.beforeReloadAnswer(ctx, r); err != nil {
+			return nil, err
+		}
 	}
 	operationStatus := s.serveStatus
 	if operationStatus == api.OperationStatusEnum_OPERATION_STATUS_ENUM_UNSPECIFIED {
@@ -765,5 +780,468 @@ func TestEnsureRuntimeGatewayBindingIssuesTheLaunchHandover(t *testing.T) {
 	}
 	if len(defaultResult.ManagedKeyBinding) == 0 {
 		t.Fatal("the default App handover was not recorded on the order result")
+	}
+}
+
+// modelUpdateOperationIdentity binds the authorization fixture to the verified
+// Workspace service and the exact Console actor/session/resource, rather than
+// accepting an arbitrary request or echoing an unverified actor grant.
+type modelUpdateOperationIdentity struct {
+	api.UnimplementedCloudIdentityAuthorizationServer
+	mu          sync.RWMutex
+	operationID string
+}
+
+func (i *modelUpdateOperationIdentity) AuthorizeAction(ctx context.Context, r *api.AuthorizationRequest) (*api.AuthorizationDecision, error) {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	peer, verified := ownerservice.PeerOwner(ctx)
+	if !verified || peer != owneridentity.Workspace.Service() || r.GetActorId() != "actor-original" || r.GetSessionId() != "session-models" || r.GetAcceptedOperationGrantId() != "" || r.GetScope().GetTenant().GetTenantId() != "tenant-original" || r.GetAudienceOwner() != api.OwnerEnum_OWNER_ENUM_WORKSPACE {
+		return nil, status.Error(codes.PermissionDenied, "fixture authorization identity mismatch")
+	}
+	switch r.GetAction() {
+	case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATEWORKSPACEMODELS, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEMODELS:
+		if r.GetResource().GetKind() != api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE || r.GetResource().GetId() != "workspace-original" {
+			return nil, status.Error(codes.PermissionDenied, "fixture update resource mismatch")
+		}
+	case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATION:
+		if i.operationID == "" || r.GetResource().GetKind() != api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_OPERATION || r.GetResource().GetId() != i.operationID {
+			return nil, status.Error(codes.PermissionDenied, "fixture operation resource mismatch")
+		}
+	default:
+		return nil, status.Error(codes.PermissionDenied, "fixture action mismatch")
+	}
+	return &api.AuthorizationDecision{
+		Issuer: api.AuthorizationIssuer_AUTHORIZATION_ISSUER_CLOUD_IDENTITY, Result: api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED,
+		ActorId: "actor-original", Scope: r.GetScope(), SessionId: proto.String("session-models"),
+		AudienceOwner: api.OwnerEnum_OWNER_ENUM_WORKSPACE, Action: r.GetAction(), Resource: r.GetResource(),
+		PermissionVersion: 1, IssuedAt: timestamppb.New(time.Now().Add(-time.Second)), ExpiresAt: timestamppb.New(time.Now().Add(time.Minute)),
+	}, nil
+}
+
+func modelUpdateNativeServer(t *testing.T, owner owneridentity.Owner, caller owneridentity.Service, register func(*ownerservice.Server) error) string {
+	t.Helper()
+	server, err := ownerservice.NewServer(ownerservice.Config{Owner: owner, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: map[owneridentity.Service]string{caller: modelUpdateNativeToken}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = register(server); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	served := make(chan error, 1)
+	go func() { served <- server.ServeOn(listener) }()
+	t.Cleanup(func() {
+		server.Stop()
+		select {
+		case err := <-served:
+			if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+				t.Errorf("native owner server: %v", err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Error("native owner server did not stop")
+		}
+	})
+	return listener.Addr().String()
+}
+
+const modelUpdateNativeToken = "synthetic-model-update-owner-token-0001"
+
+func modelUpdateNativeDial(t *testing.T, address string, caller, target owneridentity.Service) *grpc.ClientConn {
+	t.Helper()
+	options, err := (owneridentity.TLSConfig{AllowInsecureLocal: true}).DialOptions(caller, target, modelUpdateNativeToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := grpc.NewClient(address, options...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	return conn
+}
+
+// TestUpdateWorkspaceModelsNativeFailureReadback drives the registered Workspace
+// producer, PostgreSQL row and registered OwnerOperations.Read over authenticated
+// loopback gRPC. Only downstream coordination and CloudIdentity decisions are
+// fixtures; neither the persisted operation nor its public reader is stubbed.
+func TestUpdateWorkspaceModelsNativeFailureReadback(t *testing.T) {
+	cases := []struct {
+		name        string
+		arrange     func(*modelUpdateGateway, *modelUpdateFabric, *modelUpdateServe)
+		first       bool
+		stage       api.OperationStageEnum
+		observation api.OperationObservationResultEnum
+		code        api.ErrorCodeEnum
+		applied     int64
+	}{
+		{"key unavailable", func(g *modelUpdateGateway, _ *modelUpdateFabric, _ *modelUpdateServe) {
+			g.mintErr = status.Error(codes.Unavailable, "synthetic Gateway response lost")
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_KEY, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN, api.ErrorCodeEnum_ERROR_CODE_ENUM_DEPENDENCY_UNAVAILABLE, 0},
+		{"key precondition refused", func(g *modelUpdateGateway, _ *modelUpdateFabric, _ *modelUpdateServe) {
+			g.mintErr = status.Error(codes.FailedPrecondition, "synthetic key admission refused")
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_KEY, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_REJECTED, api.ErrorCodeEnum_ERROR_CODE_ENUM_VALIDATION_FAILED, 0},
+		{"key typed model refusal", func(g *modelUpdateGateway, _ *modelUpdateFabric, _ *modelUpdateServe) {
+			g.mintErr = owneridentity.WithErrorCode(status.Error(codes.FailedPrecondition, "synthetic model refusal"), api.ErrorCodeEnum_ERROR_CODE_ENUM_MODEL_NOT_ALLOWED)
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_KEY, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_REJECTED, api.ErrorCodeEnum_ERROR_CODE_ENUM_MODEL_NOT_ALLOWED, 0},
+		{"bind unavailable", func(_ *modelUpdateGateway, f *modelUpdateFabric, _ *modelUpdateServe) {
+			f.bindErr = status.Error(codes.Unavailable, "synthetic Fabric response lost")
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_CONFIGURATION, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN, api.ErrorCodeEnum_ERROR_CODE_ENUM_DEPENDENCY_UNAVAILABLE, 0},
+		{"rebind unavailable", func(_ *modelUpdateGateway, f *modelUpdateFabric, _ *modelUpdateServe) {
+			f.rebindErr = status.Error(codes.Unavailable, "synthetic Fabric replacement response lost")
+		}, true, api.OperationStageEnum_OPERATION_STAGE_ENUM_CONFIGURATION, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN, api.ErrorCodeEnum_ERROR_CODE_ENUM_DEPENDENCY_UNAVAILABLE, 1},
+		{"bind readback refused", func(_ *modelUpdateGateway, f *modelUpdateFabric, _ *modelUpdateServe) { f.rejected = true }, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_CONFIGURATION, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_REJECTED, api.ErrorCodeEnum_ERROR_CODE_ENUM_VALIDATION_FAILED, 0},
+		{"reload precondition refused", func(_ *modelUpdateGateway, _ *modelUpdateFabric, s *modelUpdateServe) {
+			s.reloadErr = status.Error(codes.FailedPrecondition, "synthetic reload admission refused")
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_RELOAD, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_REJECTED, api.ErrorCodeEnum_ERROR_CODE_ENUM_VALIDATION_FAILED, 0},
+		{"reload unavailable", func(_ *modelUpdateGateway, _ *modelUpdateFabric, s *modelUpdateServe) {
+			s.reloadErr = status.Error(codes.Unavailable, "synthetic Serve response lost")
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_RELOAD, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN, api.ErrorCodeEnum_ERROR_CODE_ENUM_DEPENDENCY_UNAVAILABLE, 0},
+		{"reload typed access refusal", func(_ *modelUpdateGateway, _ *modelUpdateFabric, s *modelUpdateServe) {
+			s.reloadErr = owneridentity.WithErrorCode(status.Error(codes.FailedPrecondition, "synthetic unsupported entry"), api.ErrorCodeEnum_ERROR_CODE_ENUM_APP_ACCESS_UNAVAILABLE)
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_RELOAD, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_REJECTED, api.ErrorCodeEnum_ERROR_CODE_ENUM_APP_ACCESS_UNAVAILABLE, 0},
+		{"revoke unimplemented", func(g *modelUpdateGateway, _ *modelUpdateFabric, _ *modelUpdateServe) {
+			g.revokeErr = status.Error(codes.Unimplemented, "synthetic revocation capability absent")
+		}, true, api.OperationStageEnum_OPERATION_STAGE_ENUM_VERIFICATION, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN, api.ErrorCodeEnum_ERROR_CODE_ENUM_OWNER_CAPABILITY_UNAVAILABLE, 2},
+		{"key typed unknown", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			g.mintErr = owneridentity.WithErrorCode(status.Error(codes.FailedPrecondition, "synthetic external key outcome unconfirmed"), api.ErrorCodeEnum_ERROR_CODE_ENUM_EXTERNAL_OUTCOME_UNKNOWN)
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_KEY, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN, api.ErrorCodeEnum_ERROR_CODE_ENUM_EXTERNAL_OUTCOME_UNKNOWN, 0},
+		{"reload typed unknown", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			s.reloadErr = owneridentity.WithErrorCode(status.Error(codes.FailedPrecondition, "synthetic runtime outcome unconfirmed"), api.ErrorCodeEnum_ERROR_CODE_ENUM_EXTERNAL_OUTCOME_UNKNOWN)
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_RELOAD, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN, api.ErrorCodeEnum_ERROR_CODE_ENUM_EXTERNAL_OUTCOME_UNKNOWN, 0},
+		{"revoke typed unknown", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			g.revokeErr = owneridentity.WithErrorCode(status.Error(codes.FailedPrecondition, "synthetic retirement outcome unconfirmed"), api.ErrorCodeEnum_ERROR_CODE_ENUM_EXTERNAL_OUTCOME_UNKNOWN)
+		}, true, api.OperationStageEnum_OPERATION_STAGE_ENUM_VERIFICATION, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN, api.ErrorCodeEnum_ERROR_CODE_ENUM_EXTERNAL_OUTCOME_UNKNOWN, 2},
+		{"key typed unspecified", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			g.mintErr = modelUpdateNativeErrorInfo(t, "UNSPECIFIED")
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_KEY, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN, api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR, 0},
+		{"reload typed numeric undefined", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			s.reloadErr = modelUpdateNativeErrorInfo(t, "2147483647")
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_RELOAD, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN, api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR, 0},
+		{"reload typed reason undeclared", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			s.reloadErr = modelUpdateNativeErrorInfo(t, "UNDECLARED_OWNER_REASON")
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_RELOAD, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN, api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR, 0},
+		{"bind active binding conflict", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			f.bindErr = status.Error(codes.AlreadyExists, "the runtime instance already holds an active Secret binding for this slot")
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_CONFIGURATION, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_REJECTED, api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR, 0},
+		{"rebind input conflict", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			f.rebindErr = status.Error(codes.AlreadyExists, "idempotency key has a different Secret replacement")
+		}, true, api.OperationStageEnum_OPERATION_STAGE_ENUM_CONFIGURATION, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_REJECTED, api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR, 1},
+		{"reload original input conflict", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			s.reloadErr = status.Error(codes.AlreadyExists, "managed_key_unavailable: the reload input differs from its original command")
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_RELOAD, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_REJECTED, api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR, 0},
+		{"key typed idempotency conflict", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			g.mintErr = owneridentity.WithErrorCode(status.Error(codes.AlreadyExists, "idempotency key reused with a different managed key command"), api.ErrorCodeEnum_ERROR_CODE_ENUM_IDEMPOTENCY_CONFLICT)
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_KEY, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_REJECTED, api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR, 0},
+		{"key stored answer data loss", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			g.mintErr = status.Error(codes.DataLoss, "stored managed key command answer is invalid")
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_KEY, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN, api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR, 0},
+		{"key invalid binding readback", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			g.mintBinding = &api.ManagedKeyBinding{KeyBindingId: "observed-key", WorkspaceId: "another-workspace"}
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_KEY, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN, api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR, 0},
+		{"rebind stored readback data loss", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			f.rebindErr = status.Error(codes.DataLoss, "stored Secret rebind readback is invalid")
+		}, true, api.OperationStageEnum_OPERATION_STAGE_ENUM_CONFIGURATION, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN, api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR, 1},
+		{"reload snapshot data loss", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			s.reloadErr = status.Error(codes.DataLoss, "stored runtime reload snapshot is invalid")
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_RELOAD, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN, api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR, 0},
+		{"reload effect without applied version", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			s.reloadErr = status.Error(codes.Internal, "the execution boundary reported no applied model configuration version")
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_RELOAD, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN, api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR, 0},
+		{"reload aborted outcome", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			s.reloadErr = status.Error(codes.Aborted, "synthetic aborted acknowledgement without outcome readback")
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_RELOAD, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN, api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR, 0},
+		{"key raw unauthenticated", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			g.mintErr = status.Error(codes.Unauthenticated, "synthetic downstream accepted grant is unauthenticated")
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_KEY, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_REJECTED, api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR, 0},
+		{"key typed synchronous unauthenticated", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			g.mintErr = owneridentity.WithErrorCode(status.Error(codes.Unauthenticated, "synthetic downstream identity failure"), api.ErrorCodeEnum_ERROR_CODE_ENUM_UNAUTHENTICATED)
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_KEY, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_REJECTED, api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR, 0},
+		{"key typed synchronous csrf", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			g.mintErr = owneridentity.WithErrorCode(status.Error(codes.PermissionDenied, "synthetic dependency synchronous csrf refusal"), api.ErrorCodeEnum_ERROR_CODE_ENUM_CSRF_INVALID)
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_KEY, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_REJECTED, api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR, 0},
+		{"key typed synchronous origin", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			g.mintErr = owneridentity.WithErrorCode(status.Error(codes.PermissionDenied, "synthetic dependency synchronous origin refusal"), api.ErrorCodeEnum_ERROR_CODE_ENUM_ORIGIN_REJECTED)
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_KEY, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_REJECTED, api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR, 0},
+		{"key typed synchronous idempotency required", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			g.mintErr = owneridentity.WithErrorCode(status.Error(codes.InvalidArgument, "synthetic dependency idempotency identity missing"), api.ErrorCodeEnum_ERROR_CODE_ENUM_IDEMPOTENCY_REQUIRED)
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_KEY, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_REJECTED, api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR, 0},
+		{"key typed synchronous uncertain", func(g *modelUpdateGateway, f *modelUpdateFabric, s *modelUpdateServe) {
+			g.mintErr = owneridentity.WithErrorCode(status.Error(codes.Unavailable, "synthetic transport lost synchronous conflict outcome"), api.ErrorCodeEnum_ERROR_CODE_ENUM_IDEMPOTENCY_CONFLICT)
+		}, false, api.OperationStageEnum_OPERATION_STAGE_ENUM_KEY, api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN, api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := runtimeDatabase(t)
+			service, gateway, fabric, serve := modelUpdateWorkspace(t, db, true)
+			identity := &modelUpdateOperationIdentity{}
+			identityAddress := modelUpdateNativeServer(t, owneridentity.Tenant, owneridentity.Workspace.Service(), func(s *ownerservice.Server) error {
+				return s.Register(func(g *grpc.Server) { api.RegisterCloudIdentityAuthorizationServer(g, identity) })
+			})
+			identityConn := modelUpdateNativeDial(t, identityAddress, owneridentity.Workspace.Service(), owneridentity.Tenant.Service())
+			service.Auth = ownerservice.NewAuthorizer(ownerservice.OwnerWorkspace, api.NewCloudIdentityAuthorizationClient(identityConn))
+			operations, err := ownerservice.NewOperations(ownerservice.OwnerWorkspace, service.Store, service.Auth)
+			if err != nil {
+				t.Fatal(err)
+			}
+			workspaceAddress := modelUpdateNativeServer(t, owneridentity.Workspace, owneridentity.ConsoleBFF, func(s *ownerservice.Server) error {
+				if err := service.Register(s); err != nil {
+					return err
+				}
+				return operations.Register(s)
+			})
+			conn := modelUpdateNativeDial(t, workspaceAddress, owneridentity.ConsoleBFF, owneridentity.Workspace.Service())
+			writer, reader := api.NewWorkspaceProductServiceClient(conn), api.NewOwnerOperationsClient(conn)
+			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+			defer cancel()
+			expected := int64(0)
+			if tc.first {
+				call, _ := modelUpdateContext("tenant-original", "native-first")
+				first, err := writer.UpdateWorkspaceModels(ctx, modelUpdateRequest(call, "workspace-original", 0, []*api.ModelSelection{{Slot: "chat", ModelId: "model-a"}}))
+				if err != nil || first.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
+					t.Fatalf("setup update: %v %v", first, err)
+				}
+				expected = 1
+			}
+			tc.arrange(gateway, fabric, serve)
+			call, _ := modelUpdateContext("tenant-original", "native-failure")
+			request := modelUpdateRequest(call, "workspace-original", expected, []*api.ModelSelection{{Slot: "chat", ModelId: "model-b"}})
+			put, err := writer.UpdateWorkspaceModels(ctx, request)
+			operationID := put.GetOperationId()
+			if err != nil || operationID == "" {
+				t.Errorf("registered update returned no readable operation: %v %v", put, err)
+				// Recover the actually accepted identity from its own request, so a
+				// failure response cannot hide a stranded running operation.
+				if err := db.QueryRowContext(ctx, `SELECT id FROM workspace.operations WHERE request_id=$1 AND kind='update_models'`, call.GetRequestId()).Scan(&operationID); err != nil {
+					t.Fatalf("read accepted operation identity: %v", err)
+				}
+			}
+			identity.mu.Lock()
+			identity.operationID = operationID
+			identity.mu.Unlock()
+			row, err := service.Store.ReadOperation(ctx, operationID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("persisted operation=%s stage=%s state=%s observation=%s errorCode=%s applied=%d", row.ID, row.Stage, row.Status, row.Observation, row.ErrorCode, appliedWorkspaceModelVersion(t, db))
+			if row.ErrorCode != errorCodeText(tc.code) {
+				t.Errorf("stored error code=%q want %s", row.ErrorCode, tc.code)
+			}
+			get, readErr := reader.Read(ctx, &api.OwnerOperationRequest{Context: call, OperationId: operationID})
+			if readErr != nil {
+				t.Errorf("registered OwnerOperations.Read rejected the producer row: %v", readErr)
+			}
+			for name, operation := range map[string]*api.Operation{"PUT": put, "GET": get} {
+				if operation == nil {
+					t.Errorf("%s omitted the accepted operation", name)
+					continue
+				}
+				if operation.GetOperationId() != row.ID || operation.GetOwner() != api.OperationOwnerEnum_OPERATION_OWNER_ENUM_WORKSPACE || operation.GetResourceId() != "workspace-original" || operation.GetKind() != api.OperationKindEnum_OPERATION_KIND_ENUM_UPDATE_MODELS || operation.GetStage() != tc.stage || operation.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_NEEDS_ATTENTION || operation.GetObservationResult() != tc.observation || operation.ErrorCode == nil || operation.GetErrorCode() != tc.code || operation.GetPollAfterSeconds() != 5 {
+					t.Errorf("%s does not report the persisted failure: %v; want stage=%s observation=%s code=%s", name, operation, tc.stage, tc.observation, tc.code)
+				}
+				if _, err := publicjson.Marshal(operation); err != nil {
+					t.Errorf("%s public JSON: %v", name, err)
+				}
+			}
+			if appliedWorkspaceModelVersion(t, db) != tc.applied {
+				t.Errorf("applied version differs from confirmed effect: want %d", tc.applied)
+			}
+			if row.Status != "needs_attention" || row.Observation != strings.ToLower(strings.TrimPrefix(tc.observation.String(), "OPERATION_OBSERVATION_RESULT_ENUM_")) {
+				t.Errorf("accepted operation was stranded or lost its observation: status=%s observation=%s", row.Status, row.Observation)
+			}
+			if tc.stage != api.OperationStageEnum_OPERATION_STAGE_ENUM_KEY {
+				var persistedObservation string
+				if err := db.QueryRowContext(ctx, `SELECT runtime_reload_observation FROM workspace.model_configurations WHERE operation_id=$1`, row.ID).Scan(&persistedObservation); err != nil {
+					t.Fatal(err)
+				}
+				wantObservation := row.Observation
+				if tc.stage == api.OperationStageEnum_OPERATION_STAGE_ENUM_VERIFICATION {
+					wantObservation = "confirmed" // apply succeeded before retirement failed
+				}
+				if persistedObservation != wantObservation {
+					t.Errorf("configuration observation=%s want %s", persistedObservation, wantObservation)
+				}
+				configuration, err := writer.GetWorkspaceModels(ctx, &api.GetWorkspaceModelsRpcRequest{Context: call, WorkspaceId: "workspace-original"})
+				if err != nil || configuration.GetOperationId() != row.ID || configuration.GetAppliedVersion() != tc.applied || configuration.GetStatus() != api.ModelConfigurationStatusEnum_MODEL_CONFIGURATION_STATUS_ENUM_NEEDS_ATTENTION {
+					t.Errorf("registered configuration read lost the original operation/outcome: %v %v", configuration, err)
+				}
+			}
+			mints, binds, rebinds, reloads, revokes := gateway.mints, fabric.binds, fabric.rebinds, serve.reloads, gateway.revokes
+			replay, err := writer.UpdateWorkspaceModels(ctx, request)
+			if err != nil || !proto.Equal(put, replay) {
+				t.Errorf("same-intent replay: %v %v, original %v", replay, err, put)
+			}
+			if mints != gateway.mints || binds != fabric.binds || rebinds != fabric.rebinds || reloads != serve.reloads || revokes != gateway.revokes {
+				t.Error("replay repeated a downstream effect")
+			}
+			// The strict shared reader must still refuse transport spellings stored
+			// outside the fixed producer; no decoder expansion is part of this repair.
+			if _, err := db.ExecContext(ctx, `UPDATE workspace.operations SET error_code='Unavailable' WHERE id=$1`, row.ID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := reader.Read(ctx, &api.OwnerOperationRequest{Context: call, OperationId: row.ID}); status.Code(err) != codes.Internal {
+				t.Errorf("strict reader accepted invalid stored code: %v", err)
+			}
+			if _, err := writer.UpdateWorkspaceModels(ctx, request); status.Code(err) != codes.Internal {
+				t.Errorf("PUT replay accepted invalid stored code: %v", err)
+			}
+			for name, change := range map[string]func(*api.CallContext){
+				"actor":   func(c *api.CallContext) { c.ActorId = "another-actor" },
+				"tenant":  func(c *api.CallContext) { c.Scope.GetTenant().TenantId = "another-tenant" },
+				"session": func(c *api.CallContext) { c.SessionId = proto.String("another-session") },
+				"grant":   func(c *api.CallContext) { c.AcceptedOperationGrantId = proto.String("unbound-grant") },
+			} {
+				other := proto.Clone(call).(*api.CallContext)
+				change(other)
+				if _, err := reader.Read(ctx, &api.OwnerOperationRequest{Context: other, OperationId: row.ID}); status.Code(err) != codes.PermissionDenied {
+					t.Errorf("reader did not bind %s: %v", name, err)
+				}
+			}
+			wrongPeer := modelUpdateNativeDial(t, workspaceAddress, owneridentity.Workspace.Service(), owneridentity.Workspace.Service())
+			if _, err := api.NewOwnerOperationsClient(wrongPeer).Read(ctx, &api.OwnerOperationRequest{Context: call, OperationId: row.ID}); status.Code(err) != codes.PermissionDenied {
+				t.Errorf("reader did not require the admitted Console BFF service identity: %v", err)
+			}
+		})
+	}
+}
+
+// modelUpdateNativeErrorInfo sends malformed canonical metadata through the real
+// producer boundary. WithErrorCode intentionally cannot construct these claims.
+func modelUpdateNativeErrorInfo(t *testing.T, reason string) error {
+	t.Helper()
+	st, err := status.New(codes.FailedPrecondition, "synthetic invalid owner reason").WithDetails(&errdetails.ErrorInfo{Domain: owneridentity.ErrorDomain, Reason: reason})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return st.Err()
+}
+
+// TestUpdateWorkspaceModelsNativeAppliedVersionCAS holds the same accepted intent
+// and reload response constant, changing only the owner's applied version before
+// confirmation. It exercises the registered producer, real transaction and
+// registered operation readback, including predecessor-key retirement ordering.
+func TestUpdateWorkspaceModelsNativeAppliedVersionCAS(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		concurrentApplied int64
+	}{
+		{"stale higher applied", 2},
+		{"stale already target applied", 1},
+		{"adjacent expected applied", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := runtimeDatabase(t)
+			service, gateway, fabric, serve := modelUpdateWorkspace(t, db, true)
+			seedLaunchManagedKeyBinding(t, db, "sbx_launch_binding", "gateway-key-launch", "runtime-original")
+			fabric.active = "sbx_launch_binding"
+			fabric.rows = map[string]*api.SecretBindingReadback{"runtime-original:gateway": {
+				SecretBindingId: "sbx_launch_binding", RuntimeInstanceId: "runtime-original", Fingerprint: "sha256:" + strings.Repeat("ab", 32), Version: "vlaunch", Outcome: api.Observation_OBSERVATION_CONFIRMED,
+			}}
+			identity := &modelUpdateOperationIdentity{}
+			identityAddress := modelUpdateNativeServer(t, owneridentity.Tenant, owneridentity.Workspace.Service(), func(s *ownerservice.Server) error {
+				return s.Register(func(g *grpc.Server) { api.RegisterCloudIdentityAuthorizationServer(g, identity) })
+			})
+			identityConn := modelUpdateNativeDial(t, identityAddress, owneridentity.Workspace.Service(), owneridentity.Tenant.Service())
+			service.Auth = ownerservice.NewAuthorizer(ownerservice.OwnerWorkspace, api.NewCloudIdentityAuthorizationClient(identityConn))
+			operations, err := ownerservice.NewOperations(ownerservice.OwnerWorkspace, service.Store, service.Auth)
+			if err != nil {
+				t.Fatal(err)
+			}
+			workspaceAddress := modelUpdateNativeServer(t, owneridentity.Workspace, owneridentity.ConsoleBFF, func(s *ownerservice.Server) error {
+				if err := service.Register(s); err != nil {
+					return err
+				}
+				return operations.Register(s)
+			})
+			conn := modelUpdateNativeDial(t, workspaceAddress, owneridentity.ConsoleBFF, owneridentity.Workspace.Service())
+			writer, reader := api.NewWorkspaceProductServiceClient(conn), api.NewOwnerOperationsClient(conn)
+			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+			defer cancel()
+			serve.beforeReloadAnswer = func(ctx context.Context, r *api.RuntimeReloadCommand) error {
+				if r.GetExpectedAppliedVersion() != 0 || r.GetTargetVersion() != 1 {
+					return status.Error(codes.Internal, "fixture did not receive captured expected/target versions")
+				}
+				if tc.concurrentApplied == 0 {
+					return nil
+				}
+				_, err := db.ExecContext(ctx, `UPDATE workspace.workspaces SET model_configuration_version=$1,version=version+1 WHERE id='workspace-original'`, tc.concurrentApplied)
+				return err
+			}
+			call, _ := modelUpdateContext("tenant-original", "native-applied-cas")
+			request := modelUpdateRequest(call, "workspace-original", 0, []*api.ModelSelection{{Slot: "chat", ModelId: "model-b"}})
+			put, callErr := writer.UpdateWorkspaceModels(ctx, request)
+			if callErr != nil || put.GetOperationId() == "" {
+				t.Errorf("accepted CAS update returned no operation: %v %v", put, callErr)
+			}
+			var operationID string
+			if err := db.QueryRowContext(ctx, `SELECT id FROM workspace.operations WHERE request_id=$1 AND kind='update_models'`, call.GetRequestId()).Scan(&operationID); err != nil {
+				t.Fatal(err)
+			}
+			identity.mu.Lock()
+			identity.operationID = operationID
+			identity.mu.Unlock()
+			get, err := reader.Read(ctx, &api.OwnerOperationRequest{Context: call, OperationId: operationID})
+			if err != nil {
+				t.Fatal(err)
+			}
+			row, err := service.Store.ReadOperation(ctx, operationID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var applied, workspaceVersion int64
+			var configurationID, observation string
+			var evidence sql.NullString
+			if err := db.QueryRowContext(ctx, `SELECT model_configuration_version,version FROM workspace.workspaces WHERE id='workspace-original'`).Scan(&applied, &workspaceVersion); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.QueryRowContext(ctx, `SELECT id,runtime_reload_observation,verification_evidence_ref FROM workspace.model_configurations WHERE operation_id=$1`, operationID).Scan(&configurationID, &observation, &evidence); err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("CAS captured=0 target=1 concurrent=%d applied=%d workspaceVersion=%d operation=%s state=%s observation=%s errorCode=%s configurationObservation=%s verificationEvidencePresent=%t revokes=%d", tc.concurrentApplied, applied, workspaceVersion, operationID, row.Status, row.Observation, row.ErrorCode, observation, evidence.Valid, gateway.revokes)
+			if tc.concurrentApplied != 0 {
+				if applied != tc.concurrentApplied || workspaceVersion != 2 {
+					t.Errorf("stale callback changed newer owner facts: applied=%d version=%d want %d/2", applied, workspaceVersion, tc.concurrentApplied)
+				}
+				if observation != "unknown" || evidence.Valid {
+					t.Errorf("failed confirmation transaction did not roll back: observation=%s evidence=%v", observation, evidence)
+				}
+				if gateway.revokes != 0 {
+					t.Errorf("stale callback retired %d predecessor keys", gateway.revokes)
+				}
+				if row.Status != "needs_attention" || row.Observation != "unknown" || row.ErrorCode != errorCodeText(api.ErrorCodeEnum_ERROR_CODE_ENUM_VERSION_CONFLICT) {
+					t.Errorf("CAS rejection was not durably classified on original operation: %+v", row)
+				}
+				for name, operation := range map[string]*api.Operation{"PUT": put, "GET": get} {
+					if operation == nil || operation.GetOperationId() != operationID || operation.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_NEEDS_ATTENTION || operation.GetObservationResult() != api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN || operation.ErrorCode == nil || operation.GetErrorCode() != api.ErrorCodeEnum_ERROR_CODE_ENUM_VERSION_CONFLICT {
+						t.Errorf("%s does not report original CAS conflict: %v", name, operation)
+					}
+				}
+			} else {
+				if applied != 1 || workspaceVersion != 2 || observation != "confirmed" || !evidence.Valid || evidence.String != "workspace-model-configuration://"+configurationID+"/vmodel-b" {
+					t.Errorf("adjacent happy confirmation did not commit atomically: applied=%d version=%d observation=%s evidence=%v", applied, workspaceVersion, observation, evidence)
+				}
+				if gateway.revokes != 1 || gateway.lastRevoke.GetKeyBindingId() != "gateway-key-launch" {
+					t.Errorf("happy confirmation did not retire predecessor after apply: revokes=%d last=%v", gateway.revokes, gateway.lastRevoke)
+				}
+				if put.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED || !proto.Equal(put, get) {
+					t.Errorf("happy PUT/GET mismatch: %v / %v", put, get)
+				}
+			}
+			if gateway.mints != 1 || fabric.binds != 0 || fabric.rebinds != 1 || serve.reloads != 1 {
+				t.Errorf("unexpected dispatch counts mints=%d binds=%d rebinds=%d reloads=%d", gateway.mints, fabric.binds, fabric.rebinds, serve.reloads)
+			}
+			configuration, err := writer.GetWorkspaceModels(ctx, &api.GetWorkspaceModelsRpcRequest{Context: call, WorkspaceId: "workspace-original"})
+			if err != nil || configuration.GetOperationId() != operationID || configuration.GetAppliedVersion() != applied {
+				t.Errorf("registered configuration read does not retain owner facts: %v %v", configuration, err)
+			}
+			wantRevokes := gateway.revokes
+			replay, err := writer.UpdateWorkspaceModels(ctx, request)
+			if err != nil || !proto.Equal(replay, get) || gateway.mints != 1 || fabric.rebinds != 1 || serve.reloads != 1 || gateway.revokes != wantRevokes {
+				t.Errorf("CAS replay repeated effects or changed original identity: %v %v", replay, err)
+			}
+		})
 	}
 }

@@ -55,7 +55,7 @@ export function workspaceModelOperationConfirmed(operation: WorkspaceOwnerOperat
 }
 
 export function workspaceModelOperationRejected(operation: WorkspaceOwnerOperationDTO): boolean {
-  return operation.status === "failed" || operation.status === "needs_attention" || operation.status === "cancelled";
+  return operation.status === "failed" || operation.status === "cancelled";
 }
 
 // The displayed target is the persisted intent version; the applied version only
@@ -92,7 +92,7 @@ export function workspaceModelConfigurationIssue(
     return operation && workspaceModelOperationMatchesConfiguration(configuration, operation)
       && !workspaceModelOperationConfirmed(operation) ? "closeout_unconfirmed" : "";
   }
-  return configuration.status === "pending" ? "unconfirmed" : "failed";
+  return configuration.status === "pending" || configuration.status === "needs_attention" ? "unconfirmed" : "failed";
 }
 
 export interface WorkspaceModelStatusPresentation {
@@ -133,7 +133,7 @@ export function presentWorkspaceModelStatus(configuration: WorkspaceModelConfigu
       return {
         label: "需要处理",
         tone: "danger",
-        description: "本次模型配置结果需要管理员确认，运行中的应用保留上一次已确认的配置。"
+        description: "本次模型配置结果尚未确认，请按原操作核实实际加载结果。"
       };
   }
 }
@@ -153,7 +153,7 @@ export function presentWorkspaceModelCloseout(
   if (!configuration || !workspaceModelConfigurationApplied(configuration) || !operation
     || !workspaceModelOperationMatchesConfiguration(configuration, operation)
     || workspaceModelOperationConfirmed(operation)) return null;
-  if (workspaceModelOperationRejected(operation)) {
+  if (workspaceModelOperationRejected(operation) || operation.status === "needs_attention") {
     return {
       color: "danger",
       title: "模型配置已生效，收尾待处理",

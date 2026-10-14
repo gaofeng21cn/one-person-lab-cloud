@@ -573,7 +573,7 @@ test("Workspace model configuration applied readback is applied and issue-free",
 // update as not applied.
 test("Workspace model configuration issue follows the owner's readback", () => {
   assert.equal(workspaceModelConfigurationIssue(configuration({ status: "pending", appliedVersion: "1" })), "unconfirmed");
-  assert.equal(workspaceModelConfigurationIssue(configuration({ status: "needs_attention", appliedVersion: "1" })), "failed");
+  assert.equal(workspaceModelConfigurationIssue(configuration({ status: "needs_attention", appliedVersion: "1" })), "unconfirmed");
   assert.equal(workspaceModelConfigurationIssue(configuration({ status: "failed", appliedVersion: "1" })), "failed");
 });
 
@@ -591,7 +591,7 @@ test("Workspace model configuration status presentation keeps its exact verdicts
   assert.deepEqual(presentWorkspaceModelStatus(configuration({ status: "needs_attention", appliedVersion: "1" })), {
     label: "需要处理",
     tone: "danger",
-    description: "本次模型配置结果需要管理员确认，运行中的应用保留上一次已确认的配置。"
+    description: "本次模型配置结果尚未确认，请按原操作核实实际加载结果。"
   });
   assert.deepEqual(presentWorkspaceModelStatus(configuration({ status: "failed", appliedVersion: "1" })), {
     label: "更新失败",
@@ -608,7 +608,7 @@ const modelCloseoutOperation: WorkspaceOwnerOperationDTO = {
   status: "needs_attention",
   stage: "verification",
   observationResult: "unknown",
-  errorCode: "Unimplemented",
+  errorCode: "OWNER_CAPABILITY_UNAVAILABLE",
   requestId: "request-models-2",
   createdAt: "2026-09-01T00:00:00Z",
   updatedAt: "2026-09-01T00:00:00Z"

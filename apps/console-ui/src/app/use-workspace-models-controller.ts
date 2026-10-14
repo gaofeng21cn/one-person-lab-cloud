@@ -71,6 +71,7 @@ export function useWorkspaceModelsController({
   const [updateError, setUpdateError] = useState("");
 
   const intent = useRef<WorkspaceModelUpdateIntent | null>(null);
+  const acceptedOperationId = useRef("");
   const generation = useRef(0);
   const busyClaim = useRef<symbol | null>(null);
   const sessionIdentityRef = useRef("");
@@ -85,6 +86,7 @@ export function useWorkspaceModelsController({
   const reset = useCallback(() => {
     generation.current += 1;
     intent.current = null;
+    acceptedOperationId.current = "";
     busyClaim.current = null;
     setConfiguration(emptyRemote());
     setOperation(emptyRemote());
@@ -129,7 +131,7 @@ export function useWorkspaceModelsController({
 
   const clearCompletedIntent = useCallback((read: WorkspaceModelConfigurationDTO) => {
     const current = intent.current;
-    if (!current || current.workspaceId !== workspaceId) return;
+    if (!current || current.workspaceId !== workspaceId || acceptedOperationId.current) return;
     if (workspaceModelSelectionsSignature(current.selections) === workspaceModelSelectionsSignature(read.selections)
       && read.version !== current.expectedVersion
       && workspaceModelConfigurationApplied(read)) {
@@ -137,69 +139,97 @@ export function useWorkspaceModelsController({
     }
   }, [workspaceId]);
 
-  // Configuration readback and original operation are separate owner facts.
-  // Re-read configuration after a terminal answer, retaining the previous
-  // application fact and the operation if that second configuration read fails.
+  // Configuration and operation are independent facts. Preserve a submitted
+  // command until its own terminal answer, even if it has not written a new
+  // configuration. Each terminal/attention answer requires a business readback.
   const readOwnerOperation = useCallback(async (
     operationId: string,
     applicationConfiguration: WorkspaceModelConfigurationDTO | null,
     requestGeneration: number,
     userId: string,
-    csrfToken: string,
-    submittedCommand = false
+    csrfToken: string
   ): Promise<WorkspaceOwnerOperationDTO | null> => {
+    const submittedCommand = acceptedOperationId.current === operationId;
+    const readConfiguration = async (read: WorkspaceOwnerOperationDTO, previous: WorkspaceModelConfigurationDTO | null) => {
+      try {
+        const configurationRead = await getWorkspaceModels(workspaceId);
+        if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return null;
+        setConfiguration({ value: settledConfiguration(configurationRead), loading: false, error: "" });
+        if (workspaceModelConfigurationApplied(configurationRead)) clearCompletedIntent(configurationRead);
+        return configurationRead;
+      } catch (error) {
+        if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return null;
+        setConfiguration((current) => ({ ...current, error: friendlyError(error) }));
+        setIssue(submittedCommand && (!previous || !workspaceModelOperationMatchesConfiguration(previous, read))
+          ? "unconfirmed" : previous ? workspaceModelConfigurationIssue(previous, read) : "unconfirmed");
+        return null;
+      }
+    };
+    const readModelsOperation = async (id: string) => {
+      const read = await getWorkspaceOwnerOperation(id);
+      if (read.kind !== "update_models" || read.resourceId !== workspaceId) throw new Error("invalid_workspace_models_operation_readback");
+      return read;
+    };
+    const needsReadback = (read: WorkspaceOwnerOperationDTO) => workspaceModelOperationConfirmed(read)
+      || workspaceModelOperationRejected(read) || read.status === "needs_attention";
     try {
-      const read = await getWorkspaceOwnerOperation(operationId);
+      const read = await readModelsOperation(operationId);
       if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return null;
       setOperation({ value: read, loading: false, error: "" });
-      const applicationIssue = applicationConfiguration
-        ? workspaceModelConfigurationIssue(applicationConfiguration, read)
-        : "unconfirmed";
-      if (workspaceModelOperationConfirmed(read) || workspaceModelOperationRejected(read)) {
-        if (workspaceModelOperationRejected(read)) intent.current = null;
-        try {
-          const configurationRead = await getWorkspaceModels(workspaceId);
-          if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return null;
-          setConfiguration({ value: settledConfiguration(configurationRead), loading: false, error: "" });
-          if (workspaceModelOperationConfirmed(read)) setUpdateError("");
-          if (workspaceModelConfigurationApplied(configurationRead)) clearCompletedIntent(configurationRead);
-          const matches = workspaceModelOperationMatchesConfiguration(configurationRead, read);
-          if (submittedCommand && !matches && workspaceModelOperationRejected(read)) {
-            // An accepted command can fail before it records any configuration.
-            // The previous applied version does not prove this command applied.
-            setUpdateError("本次模型配置更新未确认生效，请以原操作结果核实。");
-          }
-          setIssue(workspaceModelConfigurationIssue(configurationRead, read));
-          if (configurationRead.operationId && !matches) {
-            // The latest read belongs to a different command. Bind closeout to
-            // that exact operation, without another configuration read that
-            // could recursively chase concurrent updates.
-            setOperation({ value: null, loading: true, error: "" });
-            try {
-              const configurationOperation = await getWorkspaceOwnerOperation(configurationRead.operationId);
-              if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return null;
-              setOperation({ value: configurationOperation, loading: false, error: "" });
-              setIssue(workspaceModelConfigurationIssue(configurationRead, configurationOperation));
-            } catch (error) {
-              if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return null;
-              setOperation({ value: null, loading: false, error: friendlyError(error) });
-              setIssue(workspaceModelConfigurationIssue(configurationRead));
-            }
-          }
-        } catch (error) {
-          if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return null;
-          setConfiguration((current) => ({ ...current, error: friendlyError(error) }));
-          setIssue(applicationIssue);
-        }
+      const terminal = workspaceModelOperationConfirmed(read) || workspaceModelOperationRejected(read);
+      if (submittedCommand && terminal) {
+        intent.current = null;
+        acceptedOperationId.current = "";
+      }
+      if (!needsReadback(read)) {
+        setIssue(submittedCommand && (!applicationConfiguration || !workspaceModelOperationMatchesConfiguration(applicationConfiguration, read))
+          ? "unconfirmed"
+          : applicationConfiguration ? workspaceModelConfigurationIssue(applicationConfiguration, read) : "unconfirmed");
         return read;
       }
-      setIssue(applicationIssue);
+      const configurationRead = await readConfiguration(read, applicationConfiguration);
+      if (!configurationRead) return read;
+      const matches = workspaceModelOperationMatchesConfiguration(configurationRead, read);
+      if (submittedCommand && !matches && !workspaceModelOperationConfirmed(read)) {
+        // A Key-stage command may be accepted without creating a configuration.
+        // Keep its own recovery target instead of replacing it with the old one.
+        setUpdateError("本次模型配置更新未确认生效，请以原操作结果核实。");
+        setIssue(terminal ? workspaceModelConfigurationIssue(configurationRead) : "unconfirmed");
+        return read;
+      }
+      if (submittedCommand && workspaceModelOperationConfirmed(read)) setUpdateError("");
+      setIssue(workspaceModelConfigurationIssue(configurationRead, read));
+      if (configurationRead.operationId && !matches) {
+        setOperation({ value: null, loading: true, error: "" });
+        let configurationOperation: WorkspaceOwnerOperationDTO;
+        try {
+          configurationOperation = await readModelsOperation(configurationRead.operationId);
+        } catch (error) {
+          if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return null;
+          setOperation({ value: null, loading: false, error: friendlyError(error) });
+          setIssue(workspaceModelConfigurationIssue(configurationRead));
+          return read;
+        }
+        if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return null;
+        setOperation({ value: configurationOperation, loading: false, error: "" });
+        if (needsReadback(configurationOperation)) {
+          const latest = await readConfiguration(configurationOperation, configurationRead);
+          if (!latest) return read;
+          // One refresh observes at most two operation identities. If another
+          // command replaced B, retain its configuration and refresh C next time.
+          if (!workspaceModelOperationMatchesConfiguration(latest, configurationOperation)) {
+            setOperation(emptyRemote());
+          }
+          setIssue(workspaceModelConfigurationIssue(latest, configurationOperation));
+        } else {
+          setIssue(workspaceModelConfigurationIssue(configurationRead, configurationOperation));
+        }
+      }
       return read;
     } catch (error) {
       if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return null;
-      // The operation read failed, so report no inferred closeout verdict.
       setOperation({ value: null, loading: false, error: friendlyError(error) });
-      setIssue(applicationConfiguration ? workspaceModelConfigurationIssue(applicationConfiguration) : "unconfirmed");
+      setIssue(submittedCommand ? "unconfirmed" : applicationConfiguration ? workspaceModelConfigurationIssue(applicationConfiguration) : "unconfirmed");
       return null;
     }
   }, [clearCompletedIntent, friendlyError, owns, workspaceId]);
@@ -222,8 +252,9 @@ export function useWorkspaceModelsController({
       setIssue(configurationIssue);
       // APPLIED confirms the reload, not predecessor-key retirement. Read the
       // original operation even for an applied configuration to expose closeout.
-      if (configurationRead.operationId) {
-        await readOwnerOperation(configurationRead.operationId, configurationRead, requestGeneration, userId, csrfToken);
+      const operationId = acceptedOperationId.current || configurationRead.operationId;
+      if (operationId) {
+        await readOwnerOperation(operationId, configurationRead, requestGeneration, userId, csrfToken);
       }
     } catch (error) {
       if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return;
@@ -240,6 +271,10 @@ export function useWorkspaceModelsController({
     const userId = session.user.id;
     const csrfToken = session.csrfToken;
     if (busyClaim.current !== null) return false;
+    if (acceptedOperationId.current) {
+      setUpdateError("上次模型配置更新结果待确认，请先按原操作刷新。");
+      return false;
+    }
     const nextIntent = resolveWorkspaceModelUpdateIntent(intent.current, workspaceId, current.version, selections, () => crypto.randomUUID());
     if (intent.current && intent.current !== nextIntent) {
       // An earlier command's result is still unconfirmed. Overwriting its
@@ -262,11 +297,13 @@ export function useWorkspaceModelsController({
         nextIntent.idempotencyKey
       );
       if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return false;
+      if (accepted.resourceId !== workspaceId) throw new Error("invalid_workspace_models_operation");
+      acceptedOperationId.current = accepted.operationId;
       setOperation({ value: accepted, loading: false, error: "" });
       setIssue("unconfirmed");
       // Only a configuration read for this command can establish its application.
       let applicationConfiguration: WorkspaceModelConfigurationDTO | null = null;
-      if (!workspaceModelOperationConfirmed(accepted) && !workspaceModelOperationRejected(accepted)) {
+      if (!workspaceModelOperationConfirmed(accepted) && !workspaceModelOperationRejected(accepted) && accepted.status !== "needs_attention") {
         // The command is persisted. Read the owner's own intent readback so the
         // displayed target version is what the owner stored, never an optimistic
         // local value; the applied version still only advances from confirmation.
@@ -280,7 +317,7 @@ export function useWorkspaceModelsController({
           // stays displayed and the pending recovery stays available.
         }
       }
-      const read = await readOwnerOperation(accepted.operationId, applicationConfiguration, requestGeneration, userId, csrfToken, true);
+      const read = await readOwnerOperation(accepted.operationId, applicationConfiguration, requestGeneration, userId, csrfToken);
       return read ? workspaceModelOperationConfirmed(read) : false;
     } catch (error) {
       if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return false;
@@ -301,7 +338,7 @@ export function useWorkspaceModelsController({
     const session = currentSession();
     syncSessionBoundary(session);
     const currentConfiguration = configuration.value?.available ? configuration.value.data : null;
-    const operationId = operation.value?.operationId || currentConfiguration?.operationId || "";
+    const operationId = acceptedOperationId.current || operation.value?.operationId || currentConfiguration?.operationId || "";
     if (!session || !active || !operationId || busyClaim.current !== null) return;
     const claim = Symbol("workspace-models-refresh");
     busyClaim.current = claim;
