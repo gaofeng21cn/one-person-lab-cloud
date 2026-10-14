@@ -631,6 +631,98 @@ func TestUpdateWorkspaceModelsKeepsThePredecessorKeyWhenRebindFails(t *testing.T
 	}
 }
 
+// TestUpdateWorkspaceModelsUsesTheLatestConfirmedBindingAfterRevokeNeedsAttention
+// proves that a confirmed Serve/Fabric replacement remains the active predecessor
+// even when the later Gateway revocation cannot be confirmed. A subsequent update
+// must continue from that replacement binding rather than replaying an older one.
+func TestUpdateWorkspaceModelsBlocksAfterRevokeNeedsAttention(t *testing.T) {
+	db := runtimeDatabase(t)
+	service, gateway, fabric, _ := modelUpdateWorkspace(t, db, true)
+	call, ctx := modelUpdateContext("tenant-original", "revoke-recovery-first")
+	first, err := service.UpdateWorkspaceModels(ctx, modelUpdateRequest(call, "workspace-original", 0, []*api.ModelSelection{{Slot: "chat", ModelId: "model-a"}}))
+	if err != nil || first.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
+		t.Fatalf("first update=%v %v", first, err)
+	}
+	firstBinding := fabric.active
+
+	gateway.revokeErr = status.Error(codes.Unimplemented, "revocation authority is unavailable")
+	second := &api.CallContext{RequestId: call.GetRequestId() + "-2", IdempotencyKey: call.GetIdempotencyKey() + "-2", ActorId: call.GetActorId(), SessionId: call.SessionId, Scope: call.GetScope()}
+	attention, err := service.UpdateWorkspaceModels(ctx, modelUpdateRequest(second, "workspace-original", 1, []*api.ModelSelection{{Slot: "chat", ModelId: "model-b"}}))
+	if err != nil || attention.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_NEEDS_ATTENTION {
+		t.Fatalf("revoke-unconfirmed update=%v %v", attention, err)
+	}
+	secondBinding := fabric.active
+	if secondBinding == "" || secondBinding == firstBinding {
+		t.Fatalf("confirmed replacement binding=%q, first=%q", secondBinding, firstBinding)
+	}
+	if applied := appliedWorkspaceModelVersion(t, db); applied != 2 {
+		t.Fatalf("applied version after confirmed replacement=%d want 2", applied)
+	}
+
+	// The external refusal is cleared, but the accepted closeout is still unresolved.
+	// A later update must block before creating another key rather than leaving the
+	// launch-era key live behind an additional model generation.
+	gateway.revokeErr = nil
+	third := &api.CallContext{RequestId: call.GetRequestId() + "-3", IdempotencyKey: call.GetIdempotencyKey() + "-3", ActorId: call.GetActorId(), SessionId: call.SessionId, Scope: call.GetScope()}
+	if _, err = service.UpdateWorkspaceModels(ctx, modelUpdateRequest(third, "workspace-original", 2, []*api.ModelSelection{{Slot: "chat", ModelId: "model-c"}})); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("unresolved revoke retry err=%v want failed precondition", err)
+	}
+	if gateway.mints != 2 || fabric.rebinds != 1 {
+		t.Fatalf("blocked retry created side effects: mints=%d rebinds=%d", gateway.mints, fabric.rebinds)
+	}
+}
+
+// TestUpdateWorkspaceModelsBlocksAfterServeRejectsAConfirmedFabricReplacement
+// proves a failed Serve apply does not make Workspace reuse an older Fabric
+// predecessor. The next model update must stop before minting a new Gateway key
+// until the unresolved replacement has been reconciled.
+func TestUpdateWorkspaceModelsBlocksAfterServeRejectsAConfirmedFabricReplacement(t *testing.T) {
+	db := runtimeDatabase(t)
+	service, gateway, fabric, serve := modelUpdateWorkspace(t, db, true)
+	call, ctx := modelUpdateContext("tenant-original", "serve-recovery-first")
+	first, err := service.UpdateWorkspaceModels(ctx, modelUpdateRequest(call, "workspace-original", 0, []*api.ModelSelection{{Slot: "chat", ModelId: "model-a"}}))
+	if err != nil || first.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
+		t.Fatalf("first update=%v %v", first, err)
+	}
+
+	serve.reloadErr = status.Error(codes.Unavailable, "Serve rejected the replacement")
+	second := &api.CallContext{RequestId: call.GetRequestId() + "-2", IdempotencyKey: call.GetIdempotencyKey() + "-2", ActorId: call.GetActorId(), SessionId: call.SessionId, Scope: call.GetScope()}
+	attention, err := service.UpdateWorkspaceModels(ctx, modelUpdateRequest(second, "workspace-original", 1, []*api.ModelSelection{{Slot: "chat", ModelId: "model-b"}}))
+	if err != nil || attention.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_NEEDS_ATTENTION {
+		t.Fatalf("Serve-rejected update=%v %v", attention, err)
+	}
+	mintsBeforeBlockedRetry := gateway.mints
+	rebindsBeforeBlockedRetry := fabric.rebinds
+
+	serve.reloadErr = nil
+	third := &api.CallContext{RequestId: call.GetRequestId() + "-3", IdempotencyKey: call.GetIdempotencyKey() + "-3", ActorId: call.GetActorId(), SessionId: call.SessionId, Scope: call.GetScope()}
+	if _, err = service.UpdateWorkspaceModels(ctx, modelUpdateRequest(third, "workspace-original", 2, []*api.ModelSelection{{Slot: "chat", ModelId: "model-c"}})); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("unresolved replacement retry err=%v want failed precondition", err)
+	}
+	if gateway.mints != mintsBeforeBlockedRetry || fabric.rebinds != rebindsBeforeBlockedRetry {
+		t.Fatalf("blocked retry created side effects: mints=%d/%d rebinds=%d/%d", gateway.mints, mintsBeforeBlockedRetry, fabric.rebinds, rebindsBeforeBlockedRetry)
+	}
+}
+
+// TestUpdateWorkspaceModelsRefusesASecondAcceptedUpdateWhileOneIsRunning proves
+// different idempotency keys cannot reserve the same configuration version and
+// race into cross-owner side effects.
+func TestUpdateWorkspaceModelsRefusesASecondAcceptedUpdateWhileOneIsRunning(t *testing.T) {
+	db := runtimeDatabase(t)
+	service, gateway, _, _ := modelUpdateWorkspace(t, db, true)
+	if _, err := db.ExecContext(t.Context(), `INSERT INTO workspace.operations(id,tenant_id,actor_id,kind,resource_id,status,stage,request_id,accepted_input,observation_result)
+		VALUES('op-models-pending','tenant-original','actor-original','update_models','workspace-original','running','key','request-pending','{}'::jsonb,'unknown')`); err != nil {
+		t.Fatal(err)
+	}
+	call, ctx := modelUpdateContext("tenant-original", "update-models-concurrent")
+	if _, err := service.UpdateWorkspaceModels(ctx, modelUpdateRequest(call, "workspace-original", 0, []*api.ModelSelection{{Slot: "chat", ModelId: "model-a"}})); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("concurrent accepted update err=%v want failed precondition", err)
+	}
+	if gateway.mints != 0 {
+		t.Fatalf("a concurrent update minted %d keys", gateway.mints)
+	}
+}
+
 // TestUpdateWorkspaceModelsValidatesTheSelections proves a selection set that names
 // no model, an empty slot or a duplicate slot is refused before any side effect.
 func TestUpdateWorkspaceModelsValidatesTheSelections(t *testing.T) {

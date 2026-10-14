@@ -80,6 +80,13 @@ func (s *Service) UpdateWorkspaceModels(ctx context.Context, r *api.UpdateWorksp
 	if replay {
 		return modelUpdateOperation(op)
 	}
+	// Admission serializes this Workspace's model updates, but the initial read
+	// happened before that admission lock. Refresh the owner-owned applied fact so
+	// Serve receives the version the accepted operation actually follows.
+	_, appliedVersion, err = s.modelConfigurationWorkspace(ctx, workspaceID)
+	if err != nil {
+		return s.failModelUpdate(ctx, op, "admission", err)
+	}
 	return s.runModelUpdate(ctx, op, launch, credential, selections, appliedVersion, targetVersion)
 }
 
@@ -279,6 +286,19 @@ func (s *Service) acceptModelUpdate(ctx context.Context, c *api.CallContext, wor
 	if err = tx.QueryRowContext(ctx, `SELECT model_configuration_version FROM workspace.workspaces WHERE id=$1 FOR UPDATE`, workspaceID).Scan(&applied); err != nil {
 		return ownerstore.Operation{}, 0, false, dbError(err)
 	}
+	// The Workspace row lock serializes admissions with different command keys.
+	// Check pending work after acquiring it so a waiting transaction sees the
+	// operation committed by the preceding admission before it creates a new one.
+	var pending bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM workspace.operations
+		WHERE resource_id=$1 AND kind='update_models' AND status NOT IN ('succeeded','failed','cancelled')
+	)`, workspaceID).Scan(&pending); err != nil {
+		return ownerstore.Operation{}, 0, false, dbError(err)
+	}
+	if pending {
+		return ownerstore.Operation{}, 0, false, status.Error(codes.FailedPrecondition, "another Workspace model update is still unresolved")
+	}
 	recorded, found, err := latestModelConfigurationTx(ctx, tx, workspaceID)
 	if err != nil {
 		return ownerstore.Operation{}, 0, false, err
@@ -324,6 +344,14 @@ func (s *Service) runModelUpdate(ctx context.Context, op ownerstore.Operation, l
 	for _, selection := range selections {
 		modelIDs = append(modelIDs, selection.GetModelId())
 	}
+	// Resolve the actual Fabric predecessor before minting another Gateway key.
+	// An unresolved prior replacement must block new side effects until its owner
+	// fact is readable; falling back to an older confirmed binding would make Fabric
+	// reject the next update after a Serve refusal or a lost Workspace closeout.
+	predecessor, err := s.activeModelSecretBindingID(ctx, op.ResourceID)
+	if err != nil {
+		return s.failModelUpdate(ctx, op, "configuration", err)
+	}
 	// 1-2. Gateway issues and allowlists the managed key for exactly this model set
 	// and this runtime; the raw key never reaches Workspace.
 	if err := s.advanceModelUpdate(ctx, op, "key"); err != nil {
@@ -352,10 +380,6 @@ func (s *Service) runModelUpdate(ctx context.Context, op ownerstore.Operation, l
 	// never silently replaces a different Secret, so the two operations stay
 	// distinct and the predecessor stays active until the replacement is confirmed.
 	if err = s.advanceModelUpdate(ctx, op, "configuration"); err != nil {
-		return nil, err
-	}
-	predecessor, err := s.activeModelSecretBindingID(ctx, op.ResourceID)
-	if err != nil {
 		return nil, err
 	}
 	secretBindingID, secretVersion, err := s.bindOrRebindModelSecret(ctx, op, launch, credential.Name, predecessor, binding)
@@ -403,16 +427,24 @@ func (s *Service) runModelUpdate(ctx context.Context, op ownerstore.Operation, l
 // configuration it confirmed, not a value the caller can choose.
 func (s *Service) activeModelSecretBindingID(ctx context.Context, workspaceID string) (string, error) {
 	var raw []byte
-	err := s.Store.DB().QueryRowContext(ctx, `SELECT COALESCE(result,'{}'::jsonb) FROM workspace.operations
-		WHERE resource_id=$1 AND kind='update_models' AND status='succeeded'
-		ORDER BY created_at DESC, id DESC LIMIT 1`, workspaceID).Scan(&raw)
+	var observation, operationState string
+	err := s.Store.DB().QueryRowContext(ctx, `SELECT c.runtime_reload_observation,COALESCE(o.result,'{}'::jsonb),o.status
+		FROM workspace.model_configurations c
+		JOIN workspace.operations o ON o.id=c.operation_id
+		WHERE c.workspace_id=$1 ORDER BY c.version DESC LIMIT 1`, workspaceID).Scan(&observation, &raw, &operationState)
 	if err == nil {
+		if observation != "confirmed" || operationState != "succeeded" {
+			return "", status.Error(codes.Unavailable, "the previous model configuration closeout is unresolved")
+		}
 		var result orderResult
 		if json.Unmarshal(raw, &result) != nil {
 			return "", status.Error(codes.DataLoss, "stored Workspace model update result is invalid")
 		}
-		// A prior confirmed configuration already bound the runtime Secret, so its
-		// recorded binding is the exact predecessor to replace.
+		if strings.TrimSpace(result.SecretBindingID) == "" {
+			return "", status.Error(codes.DataLoss, "confirmed model configuration has no recoverable Secret binding")
+		}
+		// Only a completed confirmed configuration supplies the predecessor for new
+		// side effects. Application confirmation alone does not settle key retirement.
 		return strings.TrimSpace(result.SecretBindingID), nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
