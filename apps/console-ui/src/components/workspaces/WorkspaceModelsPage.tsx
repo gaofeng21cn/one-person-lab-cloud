@@ -93,7 +93,7 @@ export function WorkspaceModelsPage({ controller }: { controller: ConsoleControl
             color="warning"
             indicator={<AlertCircle size={18} />}
             title="模型配置结果待确认"
-            description="配置已提交，运行中的应用尚未确认加载。按原操作读回确认前不显示为已生效；请勿重复提交。"
+            description="本次更新结果尚未确认，请按原操作核实；配置表保留已读回的版本事实，请勿重复提交。"
             actions={<div className="workspace-actions"><Button busy={models.busy} onClick={() => void models.refreshOperation()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />刷新原操作</Button></div>}
           /> : null}
           {models.issue === "closeout_unconfirmed" && modelCloseout ? <Alert
@@ -117,7 +117,7 @@ export function WorkspaceModelsPage({ controller }: { controller: ConsoleControl
             actions={retry}
           /> : null}
           {models.configuration.error && configurationSource?.available !== false ? <Alert color="danger" title="读取模型配置失败" description={models.configuration.error} actions={retry} /> : null}
-          {models.operation.error ? <Alert color="warning" title="原操作读回不可用" description="暂时无法确认原操作结果，请稍后重试。" actions={retry} /> : null}
+          {models.operation.error ? <Alert color="warning" title="原操作读回不可用" description="暂时无法确认原操作结果，请稍后重试。" actions={<Button busy={models.busy} onClick={() => void models.refreshOperation()} size="sm" variant="outline">刷新原操作</Button>} /> : null}
 
           {!configurationSource ? <div className="source-loading" aria-live="polite"><span className="spinner" />正在读取</div> : null}
           {configuration ? <div className="workspace-models-body">

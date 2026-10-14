@@ -16,6 +16,7 @@ import (
 	"errors"
 	"strings"
 
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -24,6 +25,7 @@ import (
 
 	contracts "opl-cloud/packages/contracts/go"
 	api "opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/packages/contracts/go/publicjson"
 	"opl-cloud/services/internal/ownerservice"
 	"opl-cloud/services/internal/ownerstore"
@@ -376,14 +378,19 @@ func (s *Service) runModelUpdate(ctx context.Context, op ownerstore.Operation, l
 	}
 	// 6. Only now does the Workspace advance its applied version, in the same
 	// transaction that records the confirmed reload.
-	if err = s.confirmModelConfiguration(ctx, op, configurationID, secretVersion, targetVersion); err != nil {
-		return nil, err
+	if err = s.confirmModelConfiguration(ctx, op, configurationID, secretVersion, appliedVersion, targetVersion); err != nil {
+		// Serve confirmed an effect, but Workspace could not commit its matching
+		// applied fact. Keep the original operation uncertain and do not retire
+		// its predecessor key on a refused or unconfirmed owner commit.
+		_, code := modelUpdateFailure(err)
+		return s.finishModelUpdate(ctx, op, "verification", "needs_attention", "unknown", "", code, orderResult{ConfigurationID: configurationID, ConfigurationVersion: targetVersion, KeyBindingID: binding.GetKeyBindingId(), SecretBindingID: secretBindingID, ServeOperationID: reloaded.GetOperationId()})
 	}
 	// The superseded key is retired after the new one is confirmed, so a
 	// configuration change never leaves the previous generation live.
 	revoked, revokeErr := s.revokeSupersededKey(ctx, op, launch, targetVersion)
 	if revokeErr != nil {
-		return s.finishModelUpdate(ctx, op, "verification", "needs_attention", "unknown", "", status.Code(revokeErr).String(), orderResult{ConfigurationID: configurationID, ConfigurationVersion: targetVersion, KeyBindingID: binding.GetKeyBindingId(), SecretBindingID: secretBindingID, ServeOperationID: reloaded.GetOperationId(), RevokedKeyBindingID: revoked})
+		_, code := modelUpdateFailure(revokeErr)
+		return s.finishModelUpdate(ctx, op, "verification", "needs_attention", "unknown", "", code, orderResult{ConfigurationID: configurationID, ConfigurationVersion: targetVersion, KeyBindingID: binding.GetKeyBindingId(), SecretBindingID: secretBindingID, ServeOperationID: reloaded.GetOperationId(), RevokedKeyBindingID: revoked})
 	}
 	return s.finishModelUpdate(ctx, op, "succeeded", "succeeded", "confirmed", "", "", orderResult{ConfigurationID: configurationID, ConfigurationVersion: targetVersion, KeyBindingID: binding.GetKeyBindingId(), SecretBindingID: secretBindingID, ServeOperationID: reloaded.GetOperationId(), RevokedKeyBindingID: revoked})
 }
@@ -489,7 +496,7 @@ func (s *Service) recordModelConfigurationIntent(ctx context.Context, configurat
 // Workspace's applied model configuration version in one transaction. The
 // compare-and-set requires the version the caller expected, so a configuration
 // that the application did not confirm can never be recorded as applied.
-func (s *Service) confirmModelConfiguration(ctx context.Context, op ownerstore.Operation, configurationID, secretVersion string, targetVersion int64) error {
+func (s *Service) confirmModelConfiguration(ctx context.Context, op ownerstore.Operation, configurationID, secretVersion string, expectedAppliedVersion, targetVersion int64) error {
 	tx, err := s.Store.DB().BeginTx(ctx, nil)
 	if err != nil {
 		return dbError(err)
@@ -500,14 +507,14 @@ func (s *Service) confirmModelConfiguration(ctx context.Context, op ownerstore.O
 		return dbError(err)
 	}
 	if affected, err := res.RowsAffected(); err != nil || affected != 1 {
-		return status.Error(codes.FailedPrecondition, "the model configuration is no longer awaiting its confirmation")
+		return owneridentity.WithErrorCode(status.Error(codes.FailedPrecondition, "the model configuration is no longer awaiting its confirmation"), api.ErrorCodeEnum_ERROR_CODE_ENUM_VERSION_CONFLICT)
 	}
-	res, err = tx.ExecContext(ctx, `UPDATE workspace.workspaces SET model_configuration_version=$2,version=version+1,updated_at=now() WHERE id=$1 AND model_configuration_version<>$2`, op.ResourceID, targetVersion)
+	res, err = tx.ExecContext(ctx, `UPDATE workspace.workspaces SET model_configuration_version=$2,version=version+1,updated_at=now() WHERE id=$1 AND model_configuration_version=$3`, op.ResourceID, targetVersion, expectedAppliedVersion)
 	if err != nil {
 		return dbError(err)
 	}
 	if affected, err := res.RowsAffected(); err != nil || affected != 1 {
-		return status.Error(codes.FailedPrecondition, "the Workspace applied model configuration changed during the update")
+		return owneridentity.WithErrorCode(status.Error(codes.FailedPrecondition, "the Workspace applied model configuration changed during the update"), api.ErrorCodeEnum_ERROR_CODE_ENUM_VERSION_CONFLICT)
 	}
 	if err = tx.Commit(); err != nil {
 		return dbError(err)
@@ -570,13 +577,65 @@ func (s *Service) rejectModelConfiguration(ctx context.Context, op ownerstore.Op
 // rejected; a transport or availability failure leaves the outcome unknown, so an
 // unanswered reload is never recorded as a refusal.
 func modelUpdateFailure(cause error) (observation, code string) {
-	code = status.Code(cause).String()
+	observation = "unknown"
 	switch status.Code(cause) {
-	case codes.InvalidArgument, codes.FailedPrecondition, codes.AlreadyExists, codes.NotFound, codes.PermissionDenied, codes.Unauthenticated, codes.ResourceExhausted, codes.OutOfRange, codes.DataLoss:
-		return "rejected", code
-	default:
-		return "unknown", code
+	case codes.InvalidArgument, codes.FailedPrecondition, codes.AlreadyExists, codes.NotFound, codes.PermissionDenied, codes.Unauthenticated, codes.ResourceExhausted, codes.OutOfRange:
+		observation = "rejected"
 	}
+	// An owner's explicit unknown outcome is stronger evidence than the transport
+	// category. Integrity failures likewise cannot prove that an effect was refused.
+	if ownerCode, found := owneridentity.ErrorCode(cause); found {
+		if !validErrorCode(ownerCode) {
+			return "unknown", errorCodeText(api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR)
+		}
+		// These reasons are synchronous-only in the current API contract. Once
+		// Workspace accepted the operation, an inadmissible dependency reason
+		// is its internal call/translation failure, not a new business conflict.
+		switch ownerCode {
+		case api.ErrorCodeEnum_ERROR_CODE_ENUM_UNAUTHENTICATED,
+			api.ErrorCodeEnum_ERROR_CODE_ENUM_CSRF_INVALID,
+			api.ErrorCodeEnum_ERROR_CODE_ENUM_ORIGIN_REJECTED,
+			api.ErrorCodeEnum_ERROR_CODE_ENUM_IDEMPOTENCY_REQUIRED,
+			api.ErrorCodeEnum_ERROR_CODE_ENUM_IDEMPOTENCY_CONFLICT:
+			ownerCode = api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR
+		}
+		if ownerCode == api.ErrorCodeEnum_ERROR_CODE_ENUM_EXTERNAL_OUTCOME_UNKNOWN {
+			observation = "unknown"
+		}
+		return observation, errorCodeText(ownerCode)
+	}
+	// Same-domain metadata with an undefined reason is an invalid owner answer,
+	// not an untyped refusal. Do not guess a business outcome from its transport.
+	for _, detail := range status.Convert(cause).Details() {
+		if info, ok := detail.(*errdetails.ErrorInfo); ok && info.GetDomain() == owneridentity.ErrorDomain {
+			return "unknown", errorCodeText(api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR)
+		}
+	}
+	var ownerCode api.ErrorCodeEnum
+	switch status.Code(cause) {
+	case codes.InvalidArgument, codes.FailedPrecondition, codes.OutOfRange:
+		ownerCode = api.ErrorCodeEnum_ERROR_CODE_ENUM_VALIDATION_FAILED
+	case codes.NotFound:
+		ownerCode = api.ErrorCodeEnum_ERROR_CODE_ENUM_NOT_FOUND
+	case codes.PermissionDenied:
+		ownerCode = api.ErrorCodeEnum_ERROR_CODE_ENUM_FORBIDDEN
+	case codes.Unauthenticated:
+		ownerCode = api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR
+	case codes.ResourceExhausted:
+		ownerCode = api.ErrorCodeEnum_ERROR_CODE_ENUM_RATE_LIMITED
+	case codes.Unavailable, codes.DeadlineExceeded:
+		ownerCode = api.ErrorCodeEnum_ERROR_CODE_ENUM_DEPENDENCY_UNAVAILABLE
+	case codes.Unimplemented:
+		ownerCode = api.ErrorCodeEnum_ERROR_CODE_ENUM_OWNER_CAPABILITY_UNAVAILABLE
+	case codes.Canceled, codes.Unknown:
+		ownerCode = api.ErrorCodeEnum_ERROR_CODE_ENUM_EXTERNAL_OUTCOME_UNKNOWN
+	default:
+		// DataLoss/Internal cannot confirm an outcome. Untyped conflicts do not
+		// identify VERSION_CONFLICT or IDEMPOTENCY_CONFLICT. Record Workspace's
+		// translation failure without dropping the accepted operation's observation.
+		ownerCode = api.ErrorCodeEnum_ERROR_CODE_ENUM_INTERNAL_ERROR
+	}
+	return observation, errorCodeText(ownerCode)
 }
 
 // finishModelUpdate records the terminal state of one update attempt together with
@@ -624,6 +683,14 @@ func modelUpdateOperation(op ownerstore.Operation) (*api.Operation, error) {
 		}
 		value := api.OperationObservationResultEnum(observation)
 		out.ObservationResult = &value
+	}
+	if op.ErrorCode != "" {
+		code, ok := api.ErrorCodeEnum_value["ERROR_CODE_ENUM_"+strings.ToUpper(strings.TrimSpace(op.ErrorCode))]
+		if !ok {
+			return nil, status.Error(codes.Internal, "stored Workspace operation error code is invalid")
+		}
+		value := api.ErrorCodeEnum(code)
+		out.ErrorCode = &value
 	}
 	if !op.Terminal() {
 		out.PollAfterSeconds = proto.Int32(5)
