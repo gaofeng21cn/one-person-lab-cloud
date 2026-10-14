@@ -41,11 +41,15 @@ owner's returned URL and facts; the root passes no cloud Workspace to retained
 credential, deletion, renewal, budget or application-installation controllers.
 Missing owner maintenance routes remain a [roadmap gap](../roadmap.md#cloud-identity-customer-workspace-read-2026-09-30).
 
-Gateway Account Read/Usage, Billing, announcement and operator controllers keep
+Gateway Account Read's wallet projection follows the same baked identity as the
+reader: a cloud build commits the Gateway owner's envelope, a legacy build the
+retained Sub2API envelope, and the apply guard refuses the other identity's
+answer. Gateway Account Read's account-usage, balance-history and endpoint
+projections, Gateway Usage, Billing, announcement and operator controllers keep
 their retained Control Plane `/api/*` adapters in both identity builds. The
-cloud launch flow's BFF wallet/catalog reads do not change those shared panel
-callers. This composition does not prove that a deployment exposes or authorizes
-all retained APIs for a CloudIdentity session.
+launch flow's own BFF wallet/catalog read is a separate caller and does not go
+through Gateway Account Read. This composition does not prove that a deployment
+exposes or authorizes all retained APIs for a CloudIdentity session.
 
 A response commits only for its current Session, route, request generation and
 selected identity. Pagination parameters and source identity must match.
