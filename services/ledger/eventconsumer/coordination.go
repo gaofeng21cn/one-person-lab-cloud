@@ -216,7 +216,7 @@ func (s *Server) ReadReceiptByReference(ctx context.Context, r *api.GetReceiptBy
 	if storeErr != nil {
 		return nil, receiptError(storeErr)
 	}
-	if err = s.authorizeReceipt(ctx, r.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT, stored.WorkspaceID, stored.TenantID, stored.ActorID); err != nil {
+	if err = s.authorizeStoredReceipt(ctx, r, stored.WorkspaceID, stored.TenantID, stored.Evidence.GetOwnerCommitEvidence()); err != nil {
 		return nil, err
 	}
 	return stored.Evidence.Receipt, nil
@@ -237,7 +237,7 @@ func (s *Server) ReadWalletActionReceipt(ctx context.Context, r *api.GetReceiptB
 	if err != nil {
 		return nil, receiptError(err)
 	}
-	if err := s.authorizeReceipt(ctx, r.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT, stored.WorkspaceID, stored.TenantID, stored.ActorID); err != nil {
+	if err := s.authorizeStoredReceipt(ctx, r, stored.WorkspaceID, stored.TenantID, stored.Evidence.GetOwnerCommitEvidence()); err != nil {
 		return nil, err
 	}
 	return stored.Evidence, nil
@@ -258,10 +258,33 @@ func (s *Server) ReadLocalNoChargeReceipt(ctx context.Context, r *api.GetReceipt
 	if err != nil {
 		return nil, receiptError(err)
 	}
-	if err := s.authorizeReceipt(ctx, r.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT, stored.WorkspaceID, stored.TenantID, stored.ActorID); err != nil {
+	if err := s.authorizeStoredReceipt(ctx, r, stored.WorkspaceID, stored.TenantID, stored.Evidence.GetOwnerCommitEvidence()); err != nil {
 		return nil, err
 	}
 	return stored.Evidence, nil
+}
+
+// authorizeStoredReceipt admits a stored receipt read under the Workspace that owns
+// it and the actor that committed it.
+//
+// The authority is the immutable OwnerCommitEvidence the evidence owner accepted and
+// Ledger re-read at write time — never the stored receipt's own provenance block.
+// That block is caller-owned and privacy-mutable: a privacy redaction clears
+// receipt.Actor, and Authorizer treats an empty scope actor as "no actor fence"
+// rather than "refuse", so binding reads to it silently widens every redacted
+// receipt to any actor that clears the tenant and workspace fences. The commit
+// lives inside the evidence blob, which redaction does not touch, so the fence
+// survives. Tenant and Workspace identity still come from the stored row, because
+// neither is privacy-mutable and both are what scope the read.
+//
+// An evidence blob that names no committing actor is refused rather than read
+// unrestricted: fail closed, so a missing actor can never degrade into no fence.
+func (s *Server) authorizeStoredReceipt(ctx context.Context, r *api.GetReceiptByReferenceRequest, workspaceID, tenantID string, commit *api.OwnerCommitEvidence) error {
+	actor := commit.GetActorId()
+	if actor == "" {
+		return status.Error(codes.FailedPrecondition, "stored receipt evidence names no committing actor")
+	}
+	return s.authorizeReceipt(ctx, r.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT, workspaceID, tenantID, actor)
 }
 
 func (s *Server) authorizeReceipt(ctx context.Context, call *api.CallContext, action api.AuthorizationActionEnum, workspaceID, tenantID, actorID string) error {

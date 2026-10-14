@@ -59,6 +59,13 @@ current implementation documentation.
   binding and a confirmed runtime Secret-binding readback. Serve receives the
   opaque `RuntimeManagedKeyBinding` and applies the publisher contract; it never
   becomes a Gateway-key writer.
+- Privacy redaction must not change authorization authority. A stored receipt's
+  own provenance block is caller-owned and privacy-mutable, so it is reporting
+  only and is never the fence that admits a read. Read authority binds to the
+  immutable owner-accepted commit evidence the evidence owner re-read at write
+  time. Redacting a receipt may remove a value from what an owner is shown; it
+  may never widen who may read it. A record whose authority cannot be
+  established is refused, never read without its fence.
 
 ## Money
 
