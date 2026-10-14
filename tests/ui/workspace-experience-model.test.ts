@@ -24,6 +24,7 @@ import {
   presentWorkspaceRuntime
 } from "../../apps/console-ui/src/app/workspace-experience-model.ts";
 import {
+  presentWorkspaceModelCloseout,
   presentWorkspaceModelStatus,
   workspaceModelConfigurationApplied,
   workspaceModelConfigurationIssue
@@ -595,5 +596,47 @@ test("Workspace model configuration status presentation keeps its exact verdicts
     label: "更新失败",
     tone: "danger",
     description: "本次模型配置未应用，运行中的应用保留上一次已确认的配置。"
+  });
+});
+
+// A confirmed reload is application evidence the customer can act on. When only
+// the closeout is unsettled - the owning operation still running, or a
+// predecessor-key revocation Gateway refused - the owner answers needs_attention
+// on a configuration whose applied version already equals its own. Telling the
+// customer that configuration was never applied would distrust a configuration
+// the runtime is demonstrably running.
+test("Workspace model configuration closeout keeps its applied evidence", () => {
+  const closeout = configuration({ status: "needs_attention" });
+  assert.equal(workspaceModelConfigurationApplied(closeout), true);
+  assert.equal(workspaceModelConfigurationIssue(closeout), "closeout_unconfirmed");
+  assert.deepEqual(presentWorkspaceModelStatus(closeout), {
+    label: "待收尾",
+    tone: "warning",
+    description: "运行中的应用已确认加载当前模型配置；本次更新的收尾尚未确认，需要管理员处理。"
+  });
+  assert.deepEqual(presentWorkspaceModelCloseout(closeout), {
+    color: "danger",
+    title: "模型配置已生效，收尾待处理",
+    description: "运行中的应用已确认加载当前模型配置；本次更新的收尾尚未确认（包括旧模型密钥的退役），需要管理员处理。"
+  });
+});
+
+// The owner reaches pending with equal versions between confirming the reload
+// and finishing the operation. The application fact is already true there, so the
+// page reports a settling closeout rather than either a failure or a completed
+// operation.
+test("Workspace model configuration closeout reports a settling operation as settling", () => {
+  const settling = configuration({ status: "pending" });
+  assert.equal(workspaceModelConfigurationApplied(settling), true);
+  assert.equal(workspaceModelConfigurationIssue(settling), "closeout_unconfirmed");
+  assert.deepEqual(presentWorkspaceModelStatus(settling), {
+    label: "收尾中",
+    tone: "warning",
+    description: "运行中的应用已确认加载当前模型配置；原操作仍在收尾，请以原操作读回为准。"
+  });
+  assert.deepEqual(presentWorkspaceModelCloseout(settling), {
+    color: "warning",
+    title: "模型配置已生效，原操作收尾中",
+    description: "运行中的应用已确认加载当前模型配置；原操作仍在收尾，完成前请以原操作读回为准。"
   });
 });

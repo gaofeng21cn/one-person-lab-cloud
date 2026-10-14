@@ -88,7 +88,7 @@ export interface CustomerWorkspaceReadController {
   changePage: (page: number) => Promise<void>;
 }
 
-export type WorkspaceModelsIssue = "" | "unavailable" | "unconfirmed" | "failed";
+export type WorkspaceModelsIssue = "" | "unavailable" | "unconfirmed" | "closeout_unconfirmed" | "failed";
 
 export interface WorkspaceModelsController {
   configuration: RemoteState<SourceEnvelope<WorkspaceModelConfigurationDTO>>;

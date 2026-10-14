@@ -1349,6 +1349,16 @@ const modelsUnappliedConfiguration: WorkspaceModelConfigurationDTO = {
   status: "needs_attention"
 };
 
+// The owner confirms the reload before it attempts the predecessor-key
+// revocation, so a refused revocation leaves a configuration whose applied
+// version already equals its own under a needs_attention operation. The running
+// application really does hold this configuration.
+const modelsAppliedCloseoutConfiguration: WorkspaceModelConfigurationDTO = {
+  ...modelsPendingConfiguration,
+  appliedVersion: "2",
+  status: "needs_attention"
+};
+
 const modelsNeedsAttentionOperation: WorkspaceOwnerOperationDTO = {
   operationId: "op-models-1",
   owner: "workspace",
@@ -1361,10 +1371,34 @@ const modelsNeedsAttentionOperation: WorkspaceOwnerOperationDTO = {
   updatedAt: modelsFixtureUpdatedAt
 };
 
+// The owner marks the configuration confirmed before it retires the predecessor
+// key, so the same configuration whose applied version already equals its own is
+// reachable while the operation is still running. The running application really
+// does hold this configuration, and only the closeout is unfinished.
+const modelsSettlingConfiguration: WorkspaceModelConfigurationDTO = {
+  ...modelsPendingConfiguration,
+  appliedVersion: "2"
+};
+
+const modelsRunningOperation: WorkspaceOwnerOperationDTO = {
+  ...modelsNeedsAttentionOperation,
+  status: "running"
+};
+
+interface WorkspaceModelsRouteOptions {
+  // The owner's first readback, before its original operation has been read.
+  readonly initialConfiguration?: WorkspaceModelConfigurationDTO;
+  // The owner's readback for every configuration read after the first one.
+  readonly settledConfiguration: WorkspaceModelConfigurationDTO;
+  // The owner's answer for the original operation, or "unavailable" for a read
+  // whose answer cannot be decoded.
+  readonly operation?: WorkspaceOwnerOperationDTO | "unavailable";
+}
+
 async function openWorkspaceModelsRoute(
   page: Page,
   origin: string,
-  settledConfiguration: () => WorkspaceModelConfigurationDTO
+  options: WorkspaceModelsRouteOptions
 ) {
   const operationReads: string[] = [];
   const unexpectedRequests: string[] = [];
@@ -1376,13 +1410,15 @@ async function openWorkspaceModelsRoute(
     if (path === "/api/v2/workspaces/ws-models") return route.fulfill({ json: modelsWorkspaceFixture });
     if (path === "/api/v2/workspaces/ws-models/models") {
       configurationReads += 1;
-      // The persisted intent is still pending; the terminal operation answer
-      // forces the readback that carries the owner's applied facts.
-      return route.fulfill({ json: configurationReads === 1 ? modelsPendingConfiguration : settledConfiguration() });
+      // The persisted intent is still pending unless the fixture says the owner
+      // already confirmed it; the operation answer decides whether the owner's
+      // later readback carries the applied facts.
+      return route.fulfill({ json: configurationReads === 1 ? (options.initialConfiguration ?? modelsPendingConfiguration) : options.settledConfiguration });
     }
     if (path === "/api/v2/operations/workspace/op-models-1") {
       operationReads.push(`${request.method()} ${path}`);
-      return route.fulfill({ json: modelsNeedsAttentionOperation });
+      if (options.operation === "unavailable") return route.fulfill({ json: { unexpected: "unreadable_operation_readback" } });
+      return route.fulfill({ json: options.operation ?? modelsNeedsAttentionOperation });
     }
     if (path === "/api/v2/catalog/models") return route.fulfill({ json: modelsCatalogFixture });
     unexpectedRequests.push(`${request.method()} ${path}`);
@@ -1413,7 +1449,7 @@ test("Workspace model readback keeps a needs_attention closeout out of the failu
     const page = await browser.newPage({ viewport: viewports[0] });
     const audit = await installBrowserAudit(page, demo.origin);
     await loginCloudFixture(page, demo.origin);
-    const models = await openWorkspaceModelsRoute(page, demo.origin, () => modelsAppliedConfiguration);
+    const models = await openWorkspaceModelsRoute(page, demo.origin, { settledConfiguration: modelsAppliedConfiguration });
     assert.equal(await page.getByText("模型配置未生效", { exact: true }).count(), 0, "a confirmed applied version must not render the failure alert even when the closeout needs attention");
     await modelStatusCell(page).getByText("已生效", { exact: true }).waitFor({ state: "visible" });
     assert.deepEqual(models.operationReads, ["GET /api/v2/operations/workspace/op-models-1"]);
@@ -1432,6 +1468,87 @@ test("Workspace model readback keeps a needs_attention closeout out of the failu
   }
 });
 
+test("Workspace model readback keeps an applied configuration visible while its closeout needs attention", { timeout: 60_000 }, async () => {
+  const demo = await startCloudConsoleDemo();
+  const browser = await launchBrowser({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: viewports[0] });
+    const audit = await installBrowserAudit(page, demo.origin);
+    await loginCloudFixture(page, demo.origin);
+    const models = await openWorkspaceModelsRoute(page, demo.origin, { settledConfiguration: modelsAppliedCloseoutConfiguration });
+    assert.ok(models.configurationReads() >= 2, "the terminal operation answer must be decided by the owner's configuration readback");
+    assert.equal(await page.getByText("模型配置未生效", { exact: true }).count(), 0, "a confirmed applied version must not render the failure alert when only its closeout is unsettled");
+    await page.getByText("模型配置已生效，收尾待处理", { exact: true }).waitFor({ state: "visible" });
+    await modelStatusCell(page).getByText("待收尾", { exact: true }).waitFor({ state: "visible" });
+    assert.deepEqual(models.unexpectedRequests, []);
+    assertBrowserAuditClean(audit);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+// The owner confirms the reload before it retires the predecessor key, so the
+// applied version already equals the persisted version while the original
+// operation is still running. The running operation only refines the closeout:
+// the page must keep saying that the runtime already confirmed this
+// configuration instead of contradicting its own status cell.
+test("Workspace model readback keeps a confirmed configuration visible while its operation is still running", { timeout: 60_000 }, async () => {
+  const demo = await startCloudConsoleDemo();
+  const browser = await launchBrowser({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: viewports[0] });
+    const audit = await installBrowserAudit(page, demo.origin);
+    await loginCloudFixture(page, demo.origin);
+    const models = await openWorkspaceModelsRoute(page, demo.origin, {
+      initialConfiguration: modelsSettlingConfiguration,
+      settledConfiguration: modelsSettlingConfiguration,
+      operation: modelsRunningOperation
+    });
+    await modelStatusCell(page).getByText("收尾中", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.getByText("模型配置结果待确认", { exact: true }).count(), 0, "an operation that is still running must not retract the configuration the runtime already confirmed");
+    assert.equal(await page.getByText("模型配置未生效", { exact: true }).count(), 0, "a confirmed applied version is never a failed update");
+    await page.getByText("模型配置已生效，原操作收尾中", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(models.configurationReads(), 1, "an operation that is still running owes no further configuration readback");
+    assert.deepEqual(models.operationReads, ["GET /api/v2/operations/workspace/op-models-1"]);
+    assert.deepEqual(models.unexpectedRequests, []);
+    assertBrowserAuditClean(audit);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+// An operation read the owner never answered is its own uncertainty, reported
+// through the operation error channel. It must not become a verdict about the
+// configuration the owner's own readback already confirmed.
+test("Workspace model readback keeps a confirmed configuration visible when its operation read fails", { timeout: 60_000 }, async () => {
+  const demo = await startCloudConsoleDemo();
+  const browser = await launchBrowser({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: viewports[0] });
+    const audit = await installBrowserAudit(page, demo.origin);
+    await loginCloudFixture(page, demo.origin);
+    const models = await openWorkspaceModelsRoute(page, demo.origin, {
+      initialConfiguration: modelsSettlingConfiguration,
+      settledConfiguration: modelsSettlingConfiguration,
+      operation: "unavailable"
+    });
+    await modelStatusCell(page).getByText("收尾中", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.getByText("模型配置结果待确认", { exact: true }).count(), 0, "an unreadable operation must not retract the configuration the runtime already confirmed");
+    assert.equal(await page.getByText("模型配置未生效", { exact: true }).count(), 0, "a confirmed applied version is never a failed update");
+    await page.getByText("模型配置已生效，原操作收尾中", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("原操作读回不可用", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(models.configurationReads(), 1, "an unreadable operation owes no further configuration readback");
+    assert.deepEqual(models.operationReads, ["GET /api/v2/operations/workspace/op-models-1"]);
+    assert.deepEqual(models.unexpectedRequests, []);
+    assertBrowserAuditClean(audit);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
 test("Workspace model readback keeps an unapplied closeout on the failure alert", { timeout: 60_000 }, async () => {
   const demo = await startCloudConsoleDemo();
   const browser = await launchBrowser({ headless: true });
@@ -1439,7 +1556,7 @@ test("Workspace model readback keeps an unapplied closeout on the failure alert"
     const page = await browser.newPage({ viewport: viewports[0] });
     const audit = await installBrowserAudit(page, demo.origin);
     await loginCloudFixture(page, demo.origin);
-    const models = await openWorkspaceModelsRoute(page, demo.origin, () => modelsUnappliedConfiguration);
+    const models = await openWorkspaceModelsRoute(page, demo.origin, { settledConfiguration: modelsUnappliedConfiguration });
     assert.ok(models.configurationReads() >= 2, "the terminal operation answer must be decided by the owner's configuration readback");
     await page.getByText("模型配置未生效", { exact: true }).waitFor({ state: "visible" });
     await modelStatusCell(page).getByText("需要处理", { exact: true }).waitFor({ state: "visible" });

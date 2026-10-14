@@ -140,8 +140,17 @@ export function useWorkspaceModelsController({
   // application can already carry the requested version while the closeout still
   // needs attention. The applied version is never advanced from the operation
   // status alone.
+  //
+  // applicationIssue is the application fact the caller already derived from the
+  // owner's own configuration readback. The operation refines only the closeout:
+  // one that is still running, and one the owner never answered, say nothing
+  // about which version the runtime is running, so neither may retract a version
+  // the readback confirmed. Both keep reporting their own uncertainty: the
+  // running one through closeout_unconfirmed, the unread one through the
+  // operation's own error channel.
   const readOwnerOperation = useCallback(async (
     operationId: string,
+    applicationIssue: WorkspaceModelsIssue,
     requestGeneration: number,
     userId: string,
     csrfToken: string
@@ -156,11 +165,11 @@ export function useWorkspaceModelsController({
         setConfiguration({ value: settledConfiguration(configurationRead), loading: false, error: "" });
         setUpdateError("");
         if (workspaceModelConfigurationApplied(configurationRead)) {
+          // The reload was confirmed, so the submitted change needs no
+          // resubmission even if the operation closeout still needs attention.
           clearCompletedIntent(configurationRead);
-          setIssue("");
-        } else {
-          setIssue("unconfirmed");
         }
+        setIssue(workspaceModelConfigurationIssue(configurationRead));
         return read;
       }
       if (workspaceModelOperationRejected(read)) {
@@ -187,12 +196,16 @@ export function useWorkspaceModelsController({
         }
         return read;
       }
-      setIssue("unconfirmed");
+      // The operation is still settling: it owes the closeout and nothing else,
+      // so the owner's configuration readback keeps deciding the application.
+      setIssue(applicationIssue);
       return read;
     } catch (error) {
       if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return null;
+      // The read the owner never answered is reported through the operation's
+      // own error channel and leaves the application fact alone.
       setOperation({ value: null, loading: false, error: friendlyError(error) });
-      setIssue("unconfirmed");
+      setIssue(applicationIssue);
       return null;
     }
   }, [clearCompletedIntent, friendlyError, owns, workspaceId]);
@@ -218,9 +231,10 @@ export function useWorkspaceModelsController({
       }
       setIssue(configurationIssue);
       // A configuration whose reload is still pending is recovered from its own
-      // original operation instead of resubmitting the command.
+      // original operation instead of resubmitting the command. The operation
+      // answer refines that readback, never replaces it.
       if (configurationRead.status === "pending" && configurationRead.operationId) {
-        await readOwnerOperation(configurationRead.operationId, requestGeneration, userId, csrfToken);
+        await readOwnerOperation(configurationRead.operationId, configurationIssue, requestGeneration, userId, csrfToken);
       }
     } catch (error) {
       if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return;
@@ -261,6 +275,10 @@ export function useWorkspaceModelsController({
       if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return false;
       setOperation({ value: accepted, loading: false, error: "" });
       setIssue("unconfirmed");
+      // The accepted command only records the intent, so the application fact
+      // stays unconfirmed until the owner's own configuration readback answers
+      // it, even when that readback already carries the applied version.
+      let applicationIssue: WorkspaceModelsIssue = "unconfirmed";
       if (!workspaceModelOperationConfirmed(accepted) && !workspaceModelOperationRejected(accepted)) {
         // The command is persisted. Read the owner's own intent readback so the
         // displayed target version is what the owner stored, never an optimistic
@@ -268,13 +286,14 @@ export function useWorkspaceModelsController({
         try {
           const readback = await getWorkspaceModels(workspaceId);
           if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return false;
+          applicationIssue = workspaceModelConfigurationIssue(readback);
           setConfiguration({ value: settledConfiguration(readback), loading: false, error: "" });
         } catch {
           // The accepted operation remains authoritative; the previous readback
           // stays displayed and the pending recovery stays available.
         }
       }
-      const read = await readOwnerOperation(accepted.operationId, requestGeneration, userId, csrfToken);
+      const read = await readOwnerOperation(accepted.operationId, applicationIssue, requestGeneration, userId, csrfToken);
       return read ? workspaceModelOperationConfirmed(read) : false;
     } catch (error) {
       if (!owns(requestGeneration, true, userId, csrfToken, workspaceId)) return false;
@@ -294,14 +313,16 @@ export function useWorkspaceModelsController({
   const refreshOperation = useCallback(async () => {
     const session = currentSession();
     syncSessionBoundary(session);
-    const operationId = operation.value?.operationId || (configuration.value?.available ? configuration.value.data.operationId : "");
+    const currentConfiguration = configuration.value?.available ? configuration.value.data : null;
+    const operationId = operation.value?.operationId || currentConfiguration?.operationId || "";
     if (!session || !active || !operationId || busyClaim.current !== null) return;
+    const applicationIssue = currentConfiguration ? workspaceModelConfigurationIssue(currentConfiguration) : "unconfirmed";
     const claim = Symbol("workspace-models-refresh");
     busyClaim.current = claim;
     setBusy(true);
     const requestGeneration = ++generation.current;
     try {
-      const read = await readOwnerOperation(operationId, requestGeneration, session.user.id, session.csrfToken);
+      const read = await readOwnerOperation(operationId, applicationIssue, requestGeneration, session.user.id, session.csrfToken);
       if (read && workspaceModelOperationConfirmed(read)) flash("模型配置已生效");
     } finally {
       if (busyClaim.current === claim) {

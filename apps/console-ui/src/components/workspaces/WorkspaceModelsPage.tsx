@@ -5,6 +5,7 @@ import type { ConsoleController } from "../../app/use-console-controller.ts";
 import type { LaunchModelDTO } from "../../api/dtos.ts";
 import { listAvailableLaunchModels } from "../../api/workspaces-api.ts";
 import {
+  presentWorkspaceModelCloseout,
   presentWorkspaceModelStatus,
   workspaceModelDraft,
   workspaceModelDraftDirty,
@@ -70,6 +71,7 @@ export function WorkspaceModelsPage({ controller }: { controller: ConsoleControl
   };
 
   const statusPresentation = configuration ? presentWorkspaceModelStatus(configuration) : null;
+  const modelCloseout = configuration ? presentWorkspaceModelCloseout(configuration) : null;
   const retry = <Button onClick={() => void models.refresh()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重试</Button>;
 
   return (
@@ -92,6 +94,13 @@ export function WorkspaceModelsPage({ controller }: { controller: ConsoleControl
             indicator={<AlertCircle size={18} />}
             title="模型配置结果待确认"
             description="配置已提交，运行中的应用尚未确认加载。按原操作读回确认前不显示为已生效；请勿重复提交。"
+            actions={<div className="workspace-actions"><Button busy={models.busy} onClick={() => void models.refreshOperation()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />刷新原操作</Button></div>}
+          /> : null}
+          {models.issue === "closeout_unconfirmed" && configuration ? <Alert
+            color={modelCloseout.color}
+            indicator={<AlertCircle size={18} />}
+            title={modelCloseout.title}
+            description={modelCloseout.description}
             actions={<div className="workspace-actions"><Button busy={models.busy} onClick={() => void models.refreshOperation()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />刷新原操作</Button></div>}
           /> : null}
           {models.issue === "failed" ? <Alert

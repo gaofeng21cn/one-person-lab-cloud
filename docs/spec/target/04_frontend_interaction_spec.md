@@ -298,7 +298,7 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 |---|---|
 | 布局/优先级 | 工作区列表是名称、资源/应用两态、完整周期、打开/详情。详情内概览、模型、部署历史、账单周期、危险操作分tab；主操作Open优先。 |
 | 控件/标注 | 搜索/cursor分页、打开、模型select+保存；模型配置同时显示目标version与appliedVersion。只有当前授权访问结果提供URL，客户端不拼地址。 应用登录信息按钮只给owner，且必须当前应用支持并实际ready；普通成员用应用自己的账户登录。 |
-| 步骤/业务链 | getWorkspaceAccess重新准入后打开，应用保留自己的登录。更新模型带expectedVersion，Operation及reload读回完成前不显示已生效。 |
+| 步骤/业务链 | getWorkspaceAccess重新准入后打开，应用保留自己的登录。更新模型带expectedVersion；已生效版本仅由owner的configuration读回单独判定，读回中appliedVersion等于version即显示为已生效。未完成的收尾单独以状态徽章呈现，不因此扣留已生效版本。仍在运行的Operation与owner从未应答的Operation各自上报自身不确定性，且不得撤回读回已确认的版本。运行时未确认的版本一律不显示为已生效。 |
 | 返回/草稿/刷新 | 列表筛选可保存；模型未提交选择离页提示并可丢弃。已提交用原Operation恢复，不重新保存；切换Tenant清除旧配置草稿。 应用username/password只留在显式单次对话框，关闭立即清除DOM与内存。 |
 | 失败/权限/不可用 | 部分源失败单独禁用对应动作，不隐藏有效资源事实。expired/suspended不同于deleted；没有选中应用的旧资源显示待部署。 拟模型/应用若不兼容scheduled目标资源，变更前返回SCHEDULED_PLAN_APPLICATION_CONFLICT，先取消可取消计划再改；兼容变更不因scheduled而一律锁死。 |
 | 窄屏/焦点 | 列表转结果优先卡；打开按钮先于筛选。模型错误内联；多tab可横向局部滚动，不出现整页横向滚动。 |

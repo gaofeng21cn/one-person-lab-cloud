@@ -214,6 +214,42 @@ func TestManagedKeyCommandConfirmsAnExactDeclaredModelSet(t *testing.T) {
 	}
 }
 
+// TestManagedKeyExactNameIsAPureFunctionOfTheWorkspace locks the one inference any
+// future revocation implementation rests on: the issuance authority is idempotent by
+// (subject, exact name), so one reserved name per Workspace makes a model change read
+// back the ORIGINAL key rather than mint a second one. That also means the key a
+// configuration change calls superseded may be the very key the runtime is using - a
+// reason to settle the question before RevokeWorkspaceKey is implemented. If the name
+// ever carries the model set, the two generations become distinct keys and the premise
+// changes; this test fails then, on purpose.
+func TestManagedKeyExactNameIsAPureFunctionOfTheWorkspace(t *testing.T) {
+	issuer := &managedKeyIssuerStub{}
+	secrets := &managedKeySecretStore{}
+	_, workspace := managedKeyCoordination(t, issuer, secrets)
+	names := map[string]string{}
+	for index, models := range [][]string{{"model-a"}, {"model-b", "model-c"}, nil} {
+		step := fmt.Sprintf("managed-key-name-%d", index)
+		if _, err := workspace.CreateManagedKey(t.Context(), &api.ManagedKeyCommand{Context: grantedCaller(step, "grant-workspace"), WorkspaceId: "ws-1", ModelIds: models, TargetRuntimeInstanceId: "runtime-1"}); err != nil {
+			t.Fatalf("issue for %v: %v", models, err)
+		}
+		request := issuer.lastRequest
+		if request == nil {
+			t.Fatalf("no issuance request was sent for %v", models)
+		}
+		names[strings.Join(models, ",")] = request.ExactName
+	}
+	// Every model set of the same Workspace resolves to the one reserved name.
+	want := workspaceKeyExactNameForTest("ws-1")
+	for models, name := range names {
+		if name != want {
+			t.Fatalf("model set %q named %q, want the Workspace-only name %q", models, name, want)
+		}
+	}
+	if issuer.issued() != len(names) {
+		t.Fatalf("issuances=%d want one per declared model set", issuer.issued())
+	}
+}
+
 // workspaceKeyExactNameForTest derives the legacy reserved-name convention
 // independently of the implementation: "opl-workspace-" plus the first 12 hex of
 // the Workspace id digest.

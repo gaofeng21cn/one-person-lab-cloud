@@ -222,6 +222,10 @@ func TestModelConfigurationStatusFollowsTheOwningFacts(t *testing.T) {
 		"unconfirmed observation":                api.ModelConfigurationStatusEnum_MODEL_CONFIGURATION_STATUS_ENUM_NEEDS_ATTENTION,
 		"needs attention operation":              api.ModelConfigurationStatusEnum_MODEL_CONFIGURATION_STATUS_ENUM_NEEDS_ATTENTION,
 		"failed operation":                       api.ModelConfigurationStatusEnum_MODEL_CONFIGURATION_STATUS_ENUM_FAILED,
+		// The revoke is attempted only after the runtime confirmed the reload, so
+		// an unconfirmed revocation leaves a confirmed configuration at the applied
+		// version under an operation that never succeeded.
+		"confirmed configuration with an unresolved operation": api.ModelConfigurationStatusEnum_MODEL_CONFIGURATION_STATUS_ENUM_NEEDS_ATTENTION,
 	} {
 		t.Run(name, func(t *testing.T) {
 			var row modelConfigurationRow
@@ -238,6 +242,8 @@ func TestModelConfigurationStatusFollowsTheOwningFacts(t *testing.T) {
 				row = modelConfigurationRow{version: 2, observation: "rejected", operationState: "needs_attention"}
 			case "failed operation":
 				row = modelConfigurationRow{version: 2, observation: "unknown", operationState: "failed"}
+			case "confirmed configuration with an unresolved operation":
+				row = modelConfigurationRow{version: 2, observation: "confirmed", operationState: "needs_attention"}
 			}
 			if got := modelConfigurationStatus(row, 2); got != want {
 				t.Fatalf("status=%v want %v", got, want)

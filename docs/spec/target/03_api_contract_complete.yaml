@@ -8674,7 +8674,7 @@ components:
           - workspace.model_configurations.runtime_reload_observation
           - workspace.operations.status
           - serve.agent_runtime_instances.applied_model_configuration_version
-          rule: version=appliedVersion且验证confirmed=>applied；Operationfailed=>failed；unknown/needs_attention=>needs_attention；否则pending
+          rule: Operationstatusfailed=>failed；验证unknown或Operationneeds_attention=>needs_attention；version=appliedVersion且验证confirmed且Operationstatus succeeded=>applied；否则pending
         appliedVersion: serve.agent_runtime_instances.applied_model_configuration_version
         operationId: workspace.model_configurations.operation_id
         updatedAt: workspace.model_configurations.updated_at
