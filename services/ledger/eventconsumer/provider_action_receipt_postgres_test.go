@@ -45,7 +45,7 @@ func providerActionDeletionRequest(workspaceID, operationID string) *api.AppendR
 // by the original owner reference so the refund may be issued against evidence
 // that really exists.
 func TestProviderActionDeletionReceiptPostgresWirePersistence(t *testing.T) {
-	db, s, owners, client, fabric := coordinatedService(t)
+	db, s, owners, client, _ := coordinatedService(t)
 	ctx := context.Background()
 	request := providerActionDeletionRequest("workspace-local", "op_delete_original")
 	owners.commit = proto.Clone(request.OwnerCommitEvidence).(*api.OwnerCommitEvidence)
@@ -72,19 +72,24 @@ func TestProviderActionDeletionReceiptPostgresWirePersistence(t *testing.T) {
 	if err != nil || !proto.Equal(public, appended) {
 		t.Fatalf("public read-by-reference=%v %v, want the stored deletion receipt", public, err)
 	}
-	evidence, err := fabric.ReadProviderActionReceipt(ctx, read)
+	// The evidence envelope is the persisted shape of the stored row. It is read
+	// through the store rather than over the wire: no owner asks for the typed
+	// absence, because a caller that already holds the appended Receipt reads it
+	// back in Receipt space, which is what the two assertions above proved.
+	evidence, err := ledger.NewPostgresStore(db).ReadProviderActionReceipt(ctx, request.OwnerEvidenceReference)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !proto.Equal(evidence.GetReceipt(), appended) || !proto.Equal(evidence.GetOwnerCommitEvidence(), request.OwnerCommitEvidence) ||
-		evidence.GetEvidenceDigest() != request.EvidenceDigest {
-		t.Fatalf("typed provider-action evidence differs")
+	if !proto.Equal(evidence.Evidence.GetReceipt(), appended) || !proto.Equal(evidence.Evidence.GetOwnerCommitEvidence(), request.OwnerCommitEvidence) ||
+		evidence.Evidence.GetEvidenceDigest() != request.EvidenceDigest {
+		t.Fatalf("stored provider-action evidence differs")
 	}
 	// A restart reads the same persisted evidence from the same row.
-	stored, err := ledger.NewPostgresStore(db).ReadProviderActionReceipt(ctx, request.OwnerEvidenceReference)
-	if err != nil || !proto.Equal(stored.Evidence, evidence) {
+	restarted, err := ledger.NewPostgresStore(db).ReadProviderActionReceipt(ctx, request.OwnerEvidenceReference)
+	if err != nil || !proto.Equal(restarted.Evidence, evidence.Evidence) {
 		t.Fatalf("restart read=%v", err)
 	}
+	stored := evidence
 	if stored.WorkspaceID != "workspace-local" || stored.TenantID != "tenant-local" || stored.ActorID != "actor-local" {
 		t.Fatalf("stored identity workspace=%q tenant=%q actor=%q", stored.WorkspaceID, stored.TenantID, stored.ActorID)
 	}

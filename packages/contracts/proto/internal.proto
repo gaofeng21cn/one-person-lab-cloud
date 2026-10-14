@@ -2591,7 +2591,6 @@ service LedgerCoordination {
  rpc ReadReceiptByReference(GetReceiptByReferenceRequest) returns (Receipt);
  rpc ReadLocalNoChargeReceipt(GetReceiptByReferenceRequest) returns (LocalNoChargeReceiptEvidence);
  rpc ReadWalletActionReceipt(GetReceiptByReferenceRequest) returns (WalletActionReceiptEvidence);
- rpc ReadProviderActionReceipt(GetReceiptByReferenceRequest) returns (ProviderActionReceiptEvidence);
 }
 
 // D17: fixed approved policy-v1. RPC groups below live in the existing Workspace,

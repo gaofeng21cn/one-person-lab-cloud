@@ -207,11 +207,19 @@ func (s *Server) ReadReceiptByReference(ctx context.Context, r *api.GetReceiptBy
 	if status.Code(localErr) != codes.NotFound {
 		return nil, localErr
 	}
-	provider, providerErr := s.ReadProviderActionReceipt(ctx, r)
-	if providerErr != nil {
-		return nil, providerErr
+	// The provider action is the third arm of this resolver and is deliberately not
+	// a separate RPC: no owner reads its typed evidence envelope, because a caller
+	// that already holds the appended Receipt reads it back in Receipt space. So the
+	// arm reaches the store directly, under the same Workspace authorization the two
+	// funded readbacks apply, and returns the stored Receipt.
+	stored, storeErr := s.store.ReadProviderActionReceipt(ctx, r.GetOwnerEvidenceReference())
+	if storeErr != nil {
+		return nil, receiptError(storeErr)
 	}
-	return provider.Receipt, nil
+	if err = s.authorizeReceipt(ctx, r.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT, stored.WorkspaceID, stored.TenantID, stored.ActorID); err != nil {
+		return nil, err
+	}
+	return stored.Evidence.Receipt, nil
 }
 
 func (s *Server) ReadWalletActionReceipt(ctx context.Context, r *api.GetReceiptByReferenceRequest) (*api.WalletActionReceiptEvidence, error) {
@@ -247,31 +255,6 @@ func (s *Server) ReadLocalNoChargeReceipt(ctx context.Context, r *api.GetReceipt
 		return nil, status.Error(codes.InvalidArgument, "original Workspace owner reference required")
 	}
 	stored, err := s.store.ReadLocalNoChargeReceipt(ctx, r.OwnerEvidenceReference)
-	if err != nil {
-		return nil, receiptError(err)
-	}
-	if err := s.authorizeReceipt(ctx, r.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT, stored.WorkspaceID, stored.TenantID, stored.ActorID); err != nil {
-		return nil, err
-	}
-	return stored.Evidence, nil
-}
-
-// ReadProviderActionReceipt returns the typed absence proof recorded for a
-// confirmed Workspace provider action. It is the third disjoint readback: like
-// the two funded kinds it is reachable only through the authenticated
-// coordination boundary and only under its own Workspace authorization.
-func (s *Server) ReadProviderActionReceipt(ctx context.Context, r *api.GetReceiptByReferenceRequest) (*api.ProviderActionReceiptEvidence, error) {
-	peer, ok := ownerservice.PeerOwner(ctx)
-	if !ok || (peer != owneridentity.Workspace.Service() && peer != owneridentity.Fabric.Service()) {
-		return nil, status.Error(codes.Unauthenticated, "verified Workspace or Fabric peer required")
-	}
-	if err := ownerservice.ValidateCallContext(ctx, r.GetContext()); err != nil {
-		return nil, err
-	}
-	if r.GetOwner() != "workspace" || strings.TrimSpace(r.GetOwnerEvidenceReference()) == "" {
-		return nil, status.Error(codes.InvalidArgument, "original Workspace owner reference required")
-	}
-	stored, err := s.store.ReadProviderActionReceipt(ctx, r.OwnerEvidenceReference)
 	if err != nil {
 		return nil, receiptError(err)
 	}
