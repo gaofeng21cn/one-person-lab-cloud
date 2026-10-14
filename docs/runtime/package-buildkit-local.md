@@ -130,11 +130,11 @@ configure these through approved instance configuration/Secret stores:
   administrative identity in the Gateway authority, used to resolve
   `Member.displayName`, to confirm an invited Gateway subject exists, and to
   confirm on each session read that the actor is still active. It is not a member
-  credential and never acts as a member. The process starts without it, but every
-  session read then fails closed with `FailedPrecondition`, so login and every
-  authorized operation are refused. Without it `displayName` stays empty and an
-  invitation is not subject-checked; neither fact is fabricated. Supplying one
-  value without the other fails startup.
+  credential and never acts as a member. Startup refuses a missing or partial
+  directory configuration, so an instance cannot start with an identity that
+  would reject every session read. These values must resolve to the approved
+  read-only directory identity; startup validation does not prove its live
+  credentials or the instance rollout.
 - `OPL_INVITATION_TTL`: how long a pending Tenant invitation may be accepted, as a
   Go duration such as `168h`. The canonical contract fixes `Invitation.expiresAt`
   but names no window, so the deployment supplies it and CloudIdentity **refuses to
@@ -163,12 +163,18 @@ issuer. The default retained-runtime build stays on its existing identity path
 until the instance adopts the successor endpoints and data. Route all `/api/v2`
 requests to BFF on the same public origin.
 
-CloudIdentity stores only cookie/CSRF hashes and non-bearer references. Delegated
-Gateway access credentials live in its bounded-lifetime process memory, as in
-the retained credential-vault model: an identity-process restart requires browser
-reauthentication. Accepted grants survive in PostgreSQL and original obligations
-remain available after logout/restart. Every interactive call checks the live
-Gateway identity and current Tenant membership/permission epoch; every accepted
+CloudIdentity stores cookie/CSRF hashes, non-bearer references and the login
+display name in PostgreSQL. Session readback uses that durable row on every
+replica and after a process restart, and does not require the member login token
+to remain in process memory. Each read still resolves the active Gateway subject
+through the read-only directory identity and checks the current Tenant membership
+and permission epoch; an inactive actor or revoked membership is refused.
+Migration `0003` adds nullable `display_name`, backfills existing rows from
+`actor_id`, and readers use `COALESCE(display_name, actor_id)` so old-image writers
+and image rollback remain compatible. A future required-column migration is not
+part of this source and must wait until old writers and the rollback window are
+retired. Accepted grants and original obligations remain durable after
+logout/restart; every accepted
 Build grant is bound to a separately read owner commit and its exact inputs.
 Revoked/downgraded access permits bounded readback/cleanup, not new claims.
 

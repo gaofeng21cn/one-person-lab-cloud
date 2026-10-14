@@ -226,8 +226,8 @@ migration and qualification outcomes.
   the extracted services. Move a capability and its real callers together, then
   retire its old write path while preserving historical obligations.
 - Console's `cloud` identity uses `apps/console-bff` for authentication,
-  Workspace, Publisher and delivery surfaces; shared Gateway/Billing and other
-  unmigrated panels still use Control Plane APIs. `legacy` retains its current
+  Workspace, Publisher, delivery and wallet/model-catalog reads; other
+  unmigrated Gateway/Billing panels still use Control Plane APIs. `legacy` retains its current
   Control Plane authentication and Workspace APIs. The identity is baked into
   the image and declared by its label and installation topology, not changed at
   runtime.
