@@ -254,7 +254,7 @@ export function useWorkspaceModelsController({
       setIssue(configurationIssue);
       // APPLIED confirms the reload, not predecessor-key retirement. Read the
       // original operation even for an applied configuration to expose closeout.
-      const operationId = acceptedOperationId.current || configurationRead.operationId;
+      const operationId = acceptedOperationId.current || operation.value?.operationId || configurationRead.operationId;
       if (operationId) {
         await readOwnerOperation(operationId, configurationRead, requestGeneration, userId, csrfToken);
       }
@@ -263,7 +263,7 @@ export function useWorkspaceModelsController({
       setConfiguration({ value: unavailableSource("workspace"), loading: false, error: friendlyError(error) });
       setIssue("unavailable");
     }
-  }, [active, clearCompletedIntent, currentSession, friendlyError, owns, readOwnerOperation, syncSessionBoundary, unavailableSource, workspaceId]);
+  }, [active, clearCompletedIntent, configuration, currentSession, friendlyError, operation, owns, readOwnerOperation, syncSessionBoundary, unavailableSource, workspaceId]);
 
   const update = useCallback(async (selections: WorkspaceModelSelectionDTO[]): Promise<boolean> => {
     const session = currentSession();
@@ -358,7 +358,18 @@ export function useWorkspaceModelsController({
   }, [active, configuration, currentSession, flash, readOwnerOperation, operation, syncSessionBoundary]);
 
   const refresh = useCallback(async () => {
-    await load();
+    if (busyClaim.current !== null) return;
+    const claim = Symbol("workspace-models-load");
+    busyClaim.current = claim;
+    setBusy(true);
+    try {
+      await load();
+    } finally {
+      if (busyClaim.current === claim) {
+        busyClaim.current = null;
+        setBusy(false);
+      }
+    }
   }, [load]);
 
   return { configuration, operation, busy, issue, updateError, update, refresh, refreshOperation, load, reset };
