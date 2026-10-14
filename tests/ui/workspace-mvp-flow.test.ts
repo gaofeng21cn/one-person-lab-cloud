@@ -45,9 +45,9 @@ test("Control Plane launch reads owner prices, refuses missing prices and zero b
         }
         if (url.pathname === "/@vite/client") return route.fulfill({ contentType: "application/javascript", body: viteClientWithoutHmrTransport });
         if (url.pathname === "/api/pricing/preview" && !pricesAvailable) return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "price_unavailable" }) });
-        if (url.pathname === "/api/v2/wallet") return route.fulfill({ contentType: "application/json", body: JSON.stringify({
-          source: "gateway", status: "available", fetchedAt: new Date().toISOString(),
-          currency: "USD", balanceUSDMicros: balance
+        if (url.pathname === "/api/gateway/wallet") return route.fulfill({ contentType: "application/json", body: JSON.stringify({
+          available: true, source: "sub2api", status: "available", fetchedAt: new Date().toISOString(),
+          data: { userId: "customer", currency: "USD", usdMicros: balance, status: "active" }
         }) });
         if (url.pathname === "/api/workspace-launches" && route.request().method() === "POST") {
           writes.push({ body: route.request().postDataJSON(), key: route.request().headers()["idempotency-key"] || "", csrf: route.request().headers()["x-opl-csrf"] || "" });

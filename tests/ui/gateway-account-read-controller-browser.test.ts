@@ -34,12 +34,6 @@ function source<T>(data: T): SourceEnvelope<T> {
   };
 }
 
-// The Gateway owner serves the wallet on the authenticated BFF and answers with
-// its own readback, not with a Sub2API source envelope.
-function walletReadback(balanceUSDMicros: string) {
-  return { source: "gateway", status: "available", balanceUSDMicros, currency: "USD", fetchedAt };
-}
-
 const wallet: GatewayWallet = {
   userId: "41",
   currency: "USD",
@@ -101,7 +95,7 @@ test("Gateway Account Read settles API overview projections independently", { ti
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await login(page, demo.origin);
-    await page.route("**/api/v2/wallet", (route) => fulfill(route, walletReadback(wallet.usdMicros)));
+    await page.route("**/api/gateway/wallet", (route) => fulfill(route, source(wallet)));
     await page.route("**/api/gateway/usage-summary?*", (route) => route.abort("failed"));
     await page.route("**/api/gateway/balance-history?*", (route) => fulfill(route, source(history(1))));
     await page.route("**/api/gateway/endpoint", (route) => fulfill(route, source(endpoint)));
@@ -135,16 +129,16 @@ test("Gateway Account Read rejects wallet and history completions from an earlie
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await login(page, demo.origin);
-    await page.route("**/api/v2/wallet", async (route) => {
+    await page.route("**/api/gateway/wallet", async (route) => {
       walletReads += 1;
       if (walletReads === 1) {
         oldWalletHeld.resolve();
         await releaseOldReads.promise;
-        await fulfill(route, walletReadback(staleWallet.usdMicros));
+        await fulfill(route, source(staleWallet));
         oldWalletSettled.resolve();
         return;
       }
-      await fulfill(route, walletReadback(freshWallet.usdMicros));
+      await fulfill(route, source(freshWallet));
     });
     await page.route("**/api/gateway/balance-history?*", async (route) => {
       historyReads += 1;
@@ -199,16 +193,16 @@ test("Gateway Account Read rejects wallet and history completions from a logged-
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await login(page, demo.origin);
-    await page.route("**/api/v2/wallet", async (route) => {
+    await page.route("**/api/gateway/wallet", async (route) => {
       walletReads += 1;
       if (walletReads === 1) {
         oldWalletHeld.resolve();
         await releaseOldSessionReads.promise;
-        await fulfill(route, walletReadback(staleWallet.usdMicros));
+        await fulfill(route, source(staleWallet));
         oldWalletSettled.resolve();
         return;
       }
-      await fulfill(route, walletReadback(freshWallet.usdMicros));
+      await fulfill(route, source(freshWallet));
     });
     await page.route("**/api/gateway/balance-history?*", async (route) => {
       historyReads += 1;
@@ -312,9 +306,9 @@ test("Gateway Account Read follows the route plan and leaves one endpoint owner 
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await login(page, demo.origin);
-    await page.route("**/api/v2/wallet", async (route) => {
+    await page.route("**/api/gateway/wallet", async (route) => {
       reads.wallet += 1;
-      await fulfill(route, walletReadback(wallet.usdMicros));
+      await fulfill(route, source(wallet));
     });
     await page.route("**/api/gateway/usage-summary?*", async (route) => {
       reads.accountUsage += 1;
@@ -331,11 +325,7 @@ test("Gateway Account Read follows the route plan and leaves one endpoint owner 
 
     await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "新建工作空间", exact: true }).waitFor({ state: "visible" });
-    // Two owners read the wallet on this route and now share one endpoint: the
-    // account-read projection in its `workspace_launch` plan, and the launch
-    // controller's own wallet readback. Neither of the other three projections
-    // belongs to this route.
-    assert.deepEqual(reads, { wallet: 2, accountUsage: 0, balanceHistory: 0, endpoint: 0 });
+    assert.deepEqual(reads, { wallet: 1, accountUsage: 0, balanceHistory: 0, endpoint: 0 });
 
     reads.wallet = 0;
     reads.accountUsage = 0;

@@ -1,5 +1,6 @@
 import type { WorkspaceApplicationConfigurationDTO, WorkspaceApplicationSecretBindingDTO } from "./dtos.ts";
 import { decodeDto, decodeSource } from "./dtos.ts";
+import { cloudIdentity } from "../app/console-identity.ts";
 import type {
   AnnouncementPageDTO,
   AnnouncementDTO,
@@ -58,6 +59,8 @@ import type {
 } from "./dtos.ts";
 import { deleteJson, getJson, patchJson, postJson, putJson, type ApiError } from "./console-api.ts";
 
+const nonnegativeInt64 = /^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|92233720368547758[0-6]|922337203685477580[0-7]|922337203685477580[0-6]|922337203685477580[0-7])$/;
+
 function decodeConsoleSource<T>(value: unknown): SourceEnvelope<T> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const dto = value as Record<string, unknown>;
@@ -114,31 +117,39 @@ function sourceDelete<T>(path: string, csrfToken: string, idempotencyKey: string
   return sourceWrite<T>(() => deleteJson<unknown>(path, csrfToken, idempotencyKey));
 }
 
+// The baked console identity decides which owner answers the wallet. Exported so
+// both decisions are pinned by tests instead of only by the build environment.
+export function walletReadRoute(cloud: boolean): "/api/v2/wallet" | "/api/gateway/wallet" {
+  return cloud ? "/api/v2/wallet" : "/api/gateway/wallet";
+}
+
+// A valid readback is a nonnegative balance, including the zero a charge leaves
+// behind. Rejecting zero would report an unavailable balance instead of an empty
+// one, so the sufficiency decision belongs at the purchase-before boundary.
+export function decodeGatewayWalletReadback(value: unknown): GatewayWallet {
+  if (!value || typeof value !== "object") throw new Error("invalid_gateway_wallet_readback");
+  const readback = value as GatewayWalletReadbackDTO;
+  if (readback.source !== "gateway" || readback.status !== "available" || readback.currency !== "USD"
+    || typeof readback.balanceUSDMicros !== "string" || !nonnegativeInt64.test(readback.balanceUSDMicros)
+    || typeof readback.fetchedAt !== "string" || !readback.fetchedAt.trim()) {
+    throw new Error("invalid_gateway_wallet_readback");
+  }
+  return { currency: readback.currency, usdMicros: readback.balanceUSDMicros, status: "active" };
+}
+
 export function getGatewayWallet(signal?: AbortSignal): Promise<SourceEnvelope<GatewayWallet>> {
-  // The Gateway owner already serves this read on the authenticated BFF. The
-  // retained Control Plane copy answered a Sub2API session, so a CloudIdentity
-  // login could never read a balance through it.
-  return getJson<unknown>("/api/v2/wallet", { signal }).then((value) => {
-    if (!value || typeof value !== "object") throw new Error("invalid_gateway_wallet_readback");
-    const readback = value as GatewayWalletReadbackDTO;
-    if (readback.source !== "gateway" || readback.status !== "available" || readback.currency !== "USD"
-      || typeof readback.balanceUSDMicros !== "string" || !/^(0|[1-9]\d*)$/.test(readback.balanceUSDMicros)
-      || typeof readback.fetchedAt !== "string" || !readback.fetchedAt.trim()) {
-      throw new Error("invalid_gateway_wallet_readback");
-    }
-    return {
-      source: readback.source,
-      status: "available" as const,
-      available: true as const,
-      fetchedAt: readback.fetchedAt,
-      data: {
-        currency: readback.currency,
-        usdMicros: readback.balanceUSDMicros,
-        // The owner readback reports the read, not an account lifecycle state.
-        status: "active"
-      }
-    };
-  });
+  // Identity decides the owner. A cloud build authenticates through CloudIdentity
+  // on the BFF, which serves the Gateway owner readback; a retained build
+  // authenticates through /api/auth/login and must keep reading the Control Plane
+  // answer it already had. This is a baked decision, not a fallback path.
+  if (!cloudIdentity) return sourceGet<GatewayWallet>(walletReadRoute(false), signal);
+  return getJson<unknown>(walletReadRoute(true), { signal }).then((value) => ({
+    source: "gateway",
+    status: "available" as const,
+    available: true as const,
+    fetchedAt: (value as { fetchedAt: string }).fetchedAt,
+    data: decodeGatewayWalletReadback(value)
+  }));
 }
 
 export function getGatewayKeys(query: GatewayKeyListQuery = {}, signal?: AbortSignal): Promise<SourceEnvelope<GatewayKeyPageDTO>> {

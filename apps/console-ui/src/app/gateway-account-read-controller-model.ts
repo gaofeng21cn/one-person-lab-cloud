@@ -18,6 +18,12 @@ export type GatewayAccountReadProjectionKind = "wallet" | "accountUsage" | "bala
 export const gatewayAccountReadSourceTag = { wallet: "gateway" } as const;
 export const sub2apiAccountReadSourceTag = "sub2api";
 
+// The wallet's owner follows the baked console identity, exactly as the reader
+// does. A retained build keeps the Sub2API tag it has always answered with.
+export function walletSourceTag(cloud: boolean): string {
+  return cloud ? gatewayAccountReadSourceTag.wallet : sub2apiAccountReadSourceTag;
+}
+
 export interface GatewayAccountReadEpoch {
   sessionGeneration: number;
   routeGeneration: number;
@@ -147,11 +153,14 @@ export function gatewayAccountReadScopeIsCurrent(
 
 export function gatewayAccountReadSourceMatchesScope<K extends GatewayAccountReadProjectionKind>(
   scope: GatewayAccountReadRequestScopeMap[K],
-  source: GatewayAccountReadProjectionSourceMap[K]
+  source: GatewayAccountReadProjectionSourceMap[K],
+  // Defaults to the retained build, which is what an unset VITE_CONSOLE_IDENTITY
+  // produces. Callers that know the baked identity pass it explicitly.
+  cloud: boolean = false
 ): boolean {
   // The wallet projection is served by the Gateway owner on the authenticated
   // BFF; the remaining reads still come from the retained Sub2API reader.
-  if (scope.kind === "wallet") return source.source === gatewayAccountReadSourceTag.wallet;
+  if (scope.kind === "wallet") return source.source === walletSourceTag(cloud);
   if (source.source !== sub2apiAccountReadSourceTag) return false;
   if (scope.kind !== "balanceHistory") return true;
   const historySource = source as GatewayAccountReadProjectionSourceMap["balanceHistory"];

@@ -11,6 +11,7 @@ import type {
   SourceEnvelope
 } from "../api/dtos.ts";
 import type { GatewayAccountReadController } from "./console-controller-types.ts";
+import { cloudIdentity } from "./console-identity.ts";
 import {
   GATEWAY_BALANCE_HISTORY_PAGE_SIZE,
   applyGatewayAccountReadCompletion,
@@ -20,7 +21,7 @@ import {
   gatewayAccountReadPlan,
   gatewayAccountReadScopeIsCurrent,
   gatewayAccountReadSourceMatchesScope,
-  gatewayAccountReadSourceTag,
+  walletSourceTag,
   invalidateGatewayAccountReadEpoch,
   sub2apiAccountReadSourceTag,
   type GatewayAccountReadCompletion,
@@ -51,7 +52,7 @@ type ProjectionGenerations = Record<GatewayAccountReadProjectionKind, number>;
 // otherwise the scope guard rejects the failure and the customer never sees that
 // the read is unavailable.
 function unavailableSourceTag(kind: GatewayAccountReadProjectionKind): string {
-  return kind === "wallet" ? gatewayAccountReadSourceTag.wallet : sub2apiAccountReadSourceTag;
+  return kind === "wallet" ? walletSourceTag(cloudIdentity) : sub2apiAccountReadSourceTag;
 }
 
 const createProjectionGenerations = (): ProjectionGenerations => ({
@@ -173,7 +174,7 @@ export function useGatewayAccountReadController({
     try {
       const result = await request();
       if (!requestOwnsScope(requestScope, userId, csrfToken)) return;
-      if (!gatewayAccountReadSourceMatchesScope(requestScope, result)) {
+      if (!gatewayAccountReadSourceMatchesScope(requestScope, result, cloudIdentity)) {
         throw new Error(`gateway_account_${requestScope.kind}_identity_mismatch`);
       }
       if (requestScope.kind === "balanceHistory" && result.available) {
