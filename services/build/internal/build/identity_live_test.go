@@ -75,8 +75,28 @@ func newLiveIdentity(t *testing.T, ctx context.Context, dsn string) *liveIdentit
 				actor = 102
 			case "admin@example.test":
 				actor = 103
+			case "directory@example.test":
+				actor = 900
 			default:
 				w.WriteHeader(401)
+				return
+			}
+		} else if strings.HasPrefix(r.URL.Path, "/api/v1/admin/users/") {
+			// This is the service's synthetic read-only directory identity.
+			// Unknown subjects and member credentials are refused.
+			if r.Method != http.MethodGet || r.Header.Get("Authorization") != "Bearer isolated-gateway-directory@example.test" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			switch r.URL.Path {
+			case "/api/v1/admin/users/101":
+				actor, email = 101, "publisher@example.test"
+			case "/api/v1/admin/users/102":
+				actor, email = 102, "other@example.test"
+			case "/api/v1/admin/users/103":
+				actor, email = 103, "admin@example.test"
+			default:
+				w.WriteHeader(http.StatusNotFound)
 				return
 			}
 		} else if r.URL.Path == "/api/v1/auth/me" {
@@ -122,7 +142,7 @@ func newLiveIdentity(t *testing.T, ctx context.Context, dsn string) *liveIdentit
 	if registryHost == "" {
 		t.Fatal("OPL_BUILD_TEST_REGISTRY_HOST must be set for the live Build destination resolver")
 	}
-	g, e := cloudidentity.NewGateway(gateway.URL)
+	g, e := cloudidentity.NewGatewayWithDirectory(gateway.URL, &cloudidentity.GatewayDirectory{Email: "directory@example.test", Password: "isolated-password"})
 	if e != nil {
 		t.Fatal(e)
 	}

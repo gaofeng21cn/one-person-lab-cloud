@@ -40,6 +40,7 @@ func (r *commitReader) ReadOwnerCommit(_ context.Context, _ *api.ReadOwnerCommit
 	r.reads++
 	return proto.Clone(r.actual).(*api.OwnerCommitEvidence), nil
 }
+
 // gatewayFixture is the synthetic Gateway the identity tests read through. The
 // subject status is what the authoritative directory read reports, and the read
 // counter is what proves an authorization decision actually consulted the Gateway
@@ -418,6 +419,28 @@ func TestSessionAnswersOnAReplicaThatDidNotLogin(t *testing.T) {
 	}
 	if _, e = c.GetSession(ctx, &api.GetSessionRpcRequest{Context: &api.CallContext{SessionId: &raw}}); e == nil {
 		t.Fatal("logged out session accepted")
+	}
+}
+
+// A running identity service must not accept a configuration that can only fail
+// every session read: session authorization always checks the Gateway directory.
+func TestServiceRequiresDirectoryIdentityAtStartupPostgres(t *testing.T) {
+	_, db, _, _, fixture := systemWithFixture(t)
+
+	withoutDirectory, e := identity.NewGateway(fixture.url)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = identity.New(db, withoutDirectory, bytes.Repeat([]byte("s"), 32), nil, time.Hour); e == nil {
+		t.Fatal("identity startup accepted a Gateway without the directory required by session authorization")
+	}
+
+	withDirectory, e := identity.NewGatewayWithDirectory(fixture.url, &identity.GatewayDirectory{Email: "directory@example.test", Password: "password"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = identity.New(db, withDirectory, bytes.Repeat([]byte("s"), 32), nil, time.Hour); e != nil {
+		t.Fatalf("configured identity startup failed: %v", e)
 	}
 }
 

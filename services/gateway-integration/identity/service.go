@@ -69,6 +69,9 @@ func New(db *sql.DB, gateway *Gateway, signing []byte, admins []string, invitati
 	if db == nil || gateway == nil || len(signing) < 32 {
 		return nil, fmt.Errorf("tenant DB, Gateway and session signing secret required")
 	}
+	if !gateway.DirectoryConfigured() {
+		return nil, fmt.Errorf("Gateway directory identity required for session authorization")
+	}
 	if invitationTTL <= 0 {
 		return nil, fmt.Errorf("an explicit positive invitation validity window is required")
 	}
@@ -211,6 +214,7 @@ func (s *Service) Login(ctx context.Context, r *api.LoginRpcRequest) (*api.Sessi
 	}
 	return out, nil
 }
+
 // activeSubject is the authoritative check that the actor behind a session row may
 // still act. The row proves that a login happened; only the Gateway owner knows
 // whether the subject behind it is still active, so an account disabled there must
