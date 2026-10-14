@@ -104,7 +104,7 @@ func TestLocalFirstApplicationDeploymentQualification(t *testing.T) {
 	if _, err = tenantDB.ExecContext(ctx, `INSERT INTO tenant.tenants(id,name) VALUES('tenant-live','Qualification Tenant'); INSERT INTO tenant.tenant_members(id,tenant_id,actor_id,role) VALUES('qualification-admin','tenant-live','101','admin')`); err != nil {
 		t.Fatal(err)
 	}
-	gateway, err := cloudidentity.NewGateway(liveGatewayFixture(t))
+	gateway, err := cloudidentity.NewGatewayWithDirectory(liveGatewayFixture(t), &cloudidentity.GatewayDirectory{Email: "directory@example.test", Password: "isolated-password"})
 	if err != nil {
 		t.Fatal(err)
 	}
