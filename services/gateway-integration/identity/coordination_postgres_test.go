@@ -28,9 +28,10 @@ import (
 )
 
 // gatewayWalletStub is a minimal Sub2API admin server: it authenticates the
-// directory identity, applies one balance change per business code, and answers
-// native balance history. It counts balance POSTs so a test can prove a lost
-// response is not repeated.
+// directory identity, serves the administrative subject read the authoritative
+// active-subject check depends on, applies one balance change per business code,
+// and answers native balance history. It counts balance POSTs so a test can prove a
+// lost response is not repeated.
 type gatewayWalletStub struct {
 	mu          sync.Mutex
 	adjustments int
@@ -55,6 +56,15 @@ func (s *gatewayWalletStub) handler() http.Handler {
 	})
 	mux.HandleFunc("/api/v1/admin/users/77", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"id": 77, "email": "billing@example.test", "status": "active"}})
+	})
+	// The authoritative active-subject check reads the actor behind the session
+	// through this service's own directory identity on every session
+	// authorization. This fixture answer is synthetic and stands in for the real
+	// Sub2API directory: it says only that actor 101, the subject this fixture
+	// logs in as, is still active. A subject that is not 101 is refused by the
+	// adapter itself, so no other subject can be invented through this route.
+	mux.HandleFunc("/api/v1/admin/users/101", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"id": 101, "email": "admin@example.test", "status": "active"}})
 	})
 	mux.HandleFunc("/api/v1/admin/users/77/balance", func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()

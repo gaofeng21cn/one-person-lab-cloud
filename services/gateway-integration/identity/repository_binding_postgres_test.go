@@ -65,6 +65,15 @@ func bindingSystem(t *testing.T) (*identity.Service, api.TenantProductServiceCli
 			json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"access_token": "admin-token", "user": user}})
 			return
 		}
+		// The authoritative active-subject check reads the actor behind the session
+		// through this service's own directory identity. This answer is synthetic
+		// and stands in for the real Sub2API directory: it says only that actor
+		// 103, the subject this fixture logs in as, is still active. The adapter
+		// refuses a directory answer about any other subject id.
+		if r.URL.Path == "/api/v1/admin/users/103" && r.Header.Get("Authorization") == "Bearer admin-token" {
+			json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": user})
+			return
+		}
 		if r.URL.Path != "/api/v1/auth/me" || r.Header.Get("Authorization") != "Bearer admin-token" {
 			w.WriteHeader(401)
 			return
@@ -72,7 +81,7 @@ func bindingSystem(t *testing.T) (*identity.Service, api.TenantProductServiceCli
 		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": user})
 	}))
 	t.Cleanup(gateway.Close)
-	g, e := identity.NewGateway(gateway.URL)
+	g, e := identity.NewGatewayWithDirectory(gateway.URL, &identity.GatewayDirectory{Email: "admin@example.test", Password: "password"})
 	if e != nil {
 		t.Fatal(e)
 	}
