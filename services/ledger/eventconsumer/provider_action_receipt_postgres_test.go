@@ -161,6 +161,22 @@ func TestProviderActionDeletionReceiptRefusesForeignOrInventedEvidence(t *testin
 		{"digest that is not the commit's accepted input", func(r *api.AppendReceiptRequest) {
 			r.EvidenceDigest = "sha256:" + strings.Repeat("d", 64)
 		}, codes.InvalidArgument},
+		{"quote funding on a nonfinancial receipt", func(r *api.AppendReceiptRequest) {
+			r.QuoteAcceptance = paidCoordinationRequest().QuoteAcceptance
+		}, codes.InvalidArgument},
+		{"wallet funding on a nonfinancial receipt", func(r *api.AppendReceiptRequest) {
+			r.WalletOperation = paidCoordinationRequest().WalletOperation
+		}, codes.InvalidArgument},
+		{"both funding types on a nonfinancial receipt", func(r *api.AppendReceiptRequest) {
+			funded := paidCoordinationRequest()
+			r.QuoteAcceptance, r.WalletOperation = funded.QuoteAcceptance, funded.WalletOperation
+		}, codes.InvalidArgument},
+		{"empty quote funding on a nonfinancial receipt", func(r *api.AppendReceiptRequest) {
+			r.QuoteAcceptance = &api.QuoteAcceptance{}
+		}, codes.InvalidArgument},
+		{"empty wallet funding on a nonfinancial receipt", func(r *api.AppendReceiptRequest) {
+			r.WalletOperation = &api.WalletOperation{}
+		}, codes.InvalidArgument},
 		{"foreign actor", func(r *api.AppendReceiptRequest) { r.Context.ActorId = "actor-foreign" }, codes.InvalidArgument},
 		{"missing owner commit", func(r *api.AppendReceiptRequest) { r.OwnerCommitEvidence = nil }, codes.InvalidArgument},
 	} {

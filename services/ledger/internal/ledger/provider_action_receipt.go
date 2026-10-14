@@ -41,7 +41,8 @@ type ProviderActionRecord struct {
 func ValidateProviderActionReceiptInput(r *api.AppendReceiptRequest) error {
 	c, receipt := r.GetOwnerCommitEvidence(), r.GetReceipt()
 	call := r.GetContext()
-	if c == nil || receipt == nil || call == nil || call.GetIdempotencyKey() == "" || len(call.GetIdempotencyKey()) > 512 ||
+	if c == nil || receipt == nil || call == nil || r.GetQuoteAcceptance() != nil || r.GetWalletOperation() != nil ||
+		call.GetIdempotencyKey() == "" || len(call.GetIdempotencyKey()) > 512 ||
 		call.GetScope().GetTenant().GetTenantId() == "" || call.GetActorId() == "" || r.GetOwnerEvidenceReference() == "" ||
 		receipt.GetId() != "" || receipt.GetCreatedAt() != nil || receipt.GetSourceSha() != "" || receipt.GetArtifactDigest() != "" || receipt.GetWorkflowRunId() != "" ||
 		receipt.GetKind() != api.ReceiptKindEnum_RECEIPT_KIND_ENUM_PROVIDER_ACTION || receipt.GetOwner() != api.OwnerEnum_OWNER_ENUM_WORKSPACE ||

@@ -248,3 +248,178 @@ func TestProviderActionReceiptIsNotReadableThroughTheGenericHTTPReader(t *testin
 // evidence. It is referenced from the collection assertion as a literal-free probe
 // so the test fails if the generic list ever starts serving the row.
 const ProviderActionReceiptTypeProbe = "workspace.provider_action.v1"
+
+// TestWalletActionReceiptIsNotReadableThroughTheGenericHTTPReader covers the
+// funded sibling of the provider-action boundary. All three typed writers store
+// private owner commitments without an Account projection. Real Ledger gRPC and
+// PostgreSQL feed the production HTTP handler; upstream owners are typed stubs.
+func TestWalletActionReceiptIsNotReadableThroughTheGenericHTTPReader(t *testing.T) {
+	db, service, owners, client, fabric := coordinatedService(t)
+	ctx := context.Background()
+	request := paidCoordinationRequest()
+	owners.quote = proto.Clone(request.QuoteAcceptance).(*api.QuoteAcceptance)
+	owners.wallet = proto.Clone(request.WalletOperation).(*api.WalletOperation)
+	owners.commit = proto.Clone(request.OwnerCommitEvidence).(*api.OwnerCommitEvidence)
+	receipt, err := client.AppendReceipt(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := ledgerhttp.NewServerWithAuth(service.store, coordinationToken, httpBoundaryCapabilityKey)
+	// The same valid account capability must still serve its own ordinary receipt.
+	ordinary, err := service.store.RecordReceipt(ctx, ledger.ReceiptInput{Type: "source_check", Status: "completed", Surface: "cloud", AccountID: httpBoundaryAccount, WorkspaceID: "workspace-local", IdempotencyKey: "wallet-boundary-ordinary"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	positive := httpBoundaryRead(t, handler, httpBoundaryReceiptTarget(ordinary.ReceiptID), "receipt", ordinary.ReceiptID, "read_receipt")
+	if positive.Code != http.StatusOK || !strings.Contains(positive.Body.String(), ordinary.ReceiptID) {
+		t.Fatalf("ordinary account receipt status=%d body=%s", positive.Code, positive.Body.String())
+	}
+	check := func(stage string) {
+		t.Helper()
+		result := httpBoundaryRead(t, handler, httpBoundaryReceiptTarget(receipt.GetId()), "receipt", receipt.GetId(), "read_receipt")
+		if result.Code != http.StatusForbidden {
+			t.Errorf("%s wallet HTTP status=%d body=%s, want 403", stage, result.Code, result.Body.String())
+		}
+		for _, private := range []string{commitActor, "ownerCommitEvidence", "walletAction", "authorizationContextId"} {
+			if strings.Contains(result.Body.String(), private) {
+				t.Errorf("%s generic reader leaked %q", stage, private)
+			}
+		}
+		// Both typed entry points retain the actor and tenant fences.
+		for _, identity := range []struct{ actor, tenant string }{{foreignActor, commitTenant}, {commitActor, foreignTenant}} {
+			read := redactingCall(request.OwnerEvidenceReference, identity.actor, identity.tenant)
+			if _, err := client.ReadWalletActionReceipt(ctx, read); status.Code(err) != codes.PermissionDenied {
+				t.Errorf("%s typed wallet read actor=%s tenant=%s: %v", stage, identity.actor, identity.tenant, err)
+			}
+			if _, err := client.ReadReceiptByReference(ctx, read); status.Code(err) != codes.PermissionDenied {
+				t.Errorf("%s resolver actor=%s tenant=%s: %v", stage, identity.actor, identity.tenant, err)
+			}
+		}
+		read := redactingCall(request.OwnerEvidenceReference, commitActor, commitTenant)
+		typed, err := fabric.ReadWalletActionReceipt(ctx, read)
+		if err != nil || !proto.Equal(typed.GetReceipt(), receipt) || !proto.Equal(typed.GetWalletOperation(), request.WalletOperation) {
+			t.Fatalf("%s authorized Fabric funding read changed: %v", stage, err)
+		}
+		resolved, err := client.ReadReceiptByReference(ctx, read)
+		if err != nil || !proto.Equal(resolved, receipt) {
+			t.Fatalf("%s authorized resolver: %v", stage, err)
+		}
+	}
+	check("before privacy")
+	// Direct owner retention/privacy operations still reach the typed row.
+	if _, err := service.store.UpdateReceiptRetention(ctx, ledger.ReceiptRetentionInput{ReceiptID: receipt.GetId(), IdempotencyKey: "wallet-http-retention", RetainUntil: time.Now().Add(-time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.store.PrivacyDeleteReceipt(ctx, ledger.ReceiptPrivacyDeleteInput{ReceiptID: receipt.GetId(), IdempotencyKey: "wallet-http-privacy", Reason: "synthetic privacy request"}); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := ledger.NewPostgresStore(db).ReadWalletActionReceipt(ctx, request.OwnerEvidenceReference)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.ActorID != "" || stored.Evidence.GetOwnerCommitEvidence().GetActorId() != commitActor {
+		t.Fatal("privacy mutation changed immutable authorization evidence or retained provenance")
+	}
+	check("after privacy")
+	// Legacy Billing consumes an account-bound gateway adjustment, not the
+	// accountless typed funding envelope. Keep its actual detail/list shapes on
+	// both implementations while the PostgreSQL store also holds typed evidence.
+	for _, legacy := range []struct {
+		name  string
+		store ledger.Store
+	}{{"postgres", service.store}, {"memory", ledger.NewMemoryStore()}} {
+		t.Run("legacy billing "+legacy.name, func(t *testing.T) {
+			input := ledger.ReceiptInput{Type: "gateway.wallet_adjustment.v1", Status: "completed", Surface: "control_plane", AccountID: httpBoundaryAccount,
+				RequestID: "wallet-adjustment-alpha", Actor: map[string]any{"userId": "usr-admin"},
+				Execution: map[string]any{"operationId": "wallet-adjustment-alpha", "kind": "business_refund", "amountUsdMicros": int64(2_500_000)},
+				InputRefs: map[string]any{"balanceHistoryRef": "sub2api:balance-history:41:history-alpha", "relatedOperationId": "workspace-launch-alpha"},
+				Owner:     map[string]any{"accountId": httpBoundaryAccount}, IdempotencyKey: "wallet-adjustment-alpha:receipt"}
+			created, err := legacy.store.RecordReceipt(ctx, input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			replay, err := legacy.store.RecordReceipt(ctx, input)
+			if err != nil || !replay.Replayed || replay.ReceiptID != created.ReceiptID {
+				t.Fatalf("legacy replay=%v err=%v", replay, err)
+			}
+			guarded := ledgerhttp.NewServerWithAuth(legacy.store, coordinationToken, httpBoundaryCapabilityKey)
+			response := httpBoundaryRead(t, guarded, httpBoundaryReceiptTarget(created.ReceiptID), "receipt", created.ReceiptID, "read_receipt")
+			var readback ledger.Receipt
+			decoder := json.NewDecoder(strings.NewReader(response.Body.String()))
+			decoder.UseNumber()
+			if err := decoder.Decode(&readback); err != nil {
+				t.Fatal(err)
+			}
+			if response.Code != http.StatusOK || readback.ReceiptID != created.ReceiptID || readback.AccountID != input.AccountID || readback.Type != input.Type || readback.Execution["kind"] != "business_refund" {
+				t.Fatalf("legacy detail status=%d receipt=%v", response.Code, readback)
+			}
+			if amount, ok := readback.Execution["amountUsdMicros"].(json.Number); !ok || amount.String() != "2500000" {
+				t.Fatalf("legacy refund amount=%v", readback.Execution["amountUsdMicros"])
+			}
+			target := "/ledger/receipts?accountId=" + httpBoundaryAccount + "&typePrefix=billing.&includeType=gateway.wallet_adjustment.v1&includeExecutionKind=business_refund"
+			response = httpBoundaryRead(t, guarded, target, "receipt_collection", httpBoundaryAccount, "list_receipts")
+			var page ledger.ReceiptPage
+			if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
+				t.Fatal(err)
+			}
+			if response.Code != http.StatusOK || len(page.Receipts) != 1 || page.Receipts[0].ReceiptID != created.ReceiptID {
+				t.Fatalf("legacy inclusive Billing list status=%d page=%v", response.Code, page)
+			}
+		})
+	}
+	// This bearer-only handler observes the store filter directly, without an
+	// account query hiding accountless rows before their type admission is tested.
+	unguarded := ledgerhttp.NewServer(service.store, coordinationToken)
+	paths := []struct {
+		target   string
+		ordinary bool
+	}{
+		{"/ledger/receipts?workspaceId=workspace-local", true},
+		{"/ledger/receipts?workspaceId=workspace-local&type=" + ledger.WalletActionReceiptType, false},
+		{"/ledger/receipts?workspaceId=workspace-local&typePrefix=workspace.", false},
+		{"/ledger/receipts?workspaceId=workspace-local&typePrefix=source_&includeType=" + ledger.WalletActionReceiptType, true},
+	}
+	for _, tc := range paths {
+		req := httptest.NewRequest(http.MethodGet, tc.target, nil)
+		req.Header.Set("Authorization", "Bearer "+coordinationToken)
+		rec := httptest.NewRecorder()
+		unguarded.ServeHTTP(rec, req)
+		var page ledger.ReceiptPage
+		if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
+			t.Fatal(err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Errorf("collection %s status=%d", tc.target, rec.Code)
+		}
+		want := 0
+		if tc.ordinary {
+			want = 1
+		}
+		if len(page.Receipts) != want || (want == 1 && page.Receipts[0].ReceiptID != ordinary.ReceiptID) {
+			t.Errorf("collection %s receipts=%v, want only expected ordinary rows", tc.target, page.Receipts)
+		}
+		for _, private := range []string{"walletAction", "ownerCommitEvidence", commitActor} {
+			if strings.Contains(rec.Body.String(), private) {
+				t.Errorf("collection %s leaked %q", tc.target, private)
+			}
+		}
+	}
+	req := httptest.NewRequest(http.MethodGet, "/ledger/receipts/"+receipt.GetId(), nil)
+	req.Header.Set("Authorization", "Bearer "+coordinationToken)
+	rec := httptest.NewRecorder()
+	unguarded.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("single store boundary status=%d body=%s, want 404", rec.Code, rec.Body.String())
+	}
+	// Idempotent append and owner-reference replay preserve the funded receipt.
+	replay := proto.Clone(request).(*api.AppendReceiptRequest)
+	replay.Context.IdempotencyKey += "-retry"
+	repeated, err := client.AppendReceipt(ctx, replay)
+	if err != nil || !proto.Equal(repeated, receipt) {
+		t.Fatalf("wallet replay changed: %v", err)
+	}
+	var rows int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM evidence_receipts WHERE receipt_type=$1`, ledger.WalletActionReceiptType).Scan(&rows); err != nil || rows != 1 {
+		t.Fatalf("wallet rows=%d err=%v, want one", rows, err)
+	}
+}

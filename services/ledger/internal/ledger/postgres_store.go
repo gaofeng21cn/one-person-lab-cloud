@@ -304,10 +304,10 @@ func (s *PostgresStore) ListReceipts(ctx context.Context, query ReceiptQuery) (R
 	}
 	// Typed coordination evidence carries private owner commitments and is read
 	// only through the authenticated typed LedgerCoordination boundary, which
-	// binds the read to that immutable commit. Neither kind has a generic account
-	// projection to compare a requested account against, so neither is admitted
+	// binds the read to that immutable commit. These kinds have no generic account
+	// projection to compare a requested account against, so none is admitted
 	// here.
-	q := s.client.EvidenceReceipt.Query().Where(evidencereceipt.ReceiptTypeNotIn(LocalNoChargeReceiptType, ProviderActionReceiptType))
+	q := s.client.EvidenceReceipt.Query().Where(evidencereceipt.ReceiptTypeNotIn(LocalNoChargeReceiptType, WalletActionReceiptType, ProviderActionReceiptType))
 	if query.AccountID != "" {
 		q = q.Where(evidencereceipt.AccountID(query.AccountID))
 	}
@@ -515,12 +515,12 @@ func (s *PostgresStore) receipt(ctx context.Context, receiptID string) (Receipt,
 	}
 	// The generic reader cannot admit typed coordination evidence: the caller-facing
 	// admission it feeds is an account and Workspace comparison against this row,
-	// and neither typed kind stores an account at all. A row with no stored
+	// and these typed kinds store no account. A row with no stored
 	// account would leave the caller's requested account unbound, so the private
 	// owner commit behind it would be served to any valid capability naming any
 	// account. The generic mutation path is deliberately not fenced the same way:
 	// retention and the data-subject privacy obligation must still reach the row.
-	if row.ReceiptType == LocalNoChargeReceiptType || row.ReceiptType == ProviderActionReceiptType {
+	if row.ReceiptType == LocalNoChargeReceiptType || row.ReceiptType == WalletActionReceiptType || row.ReceiptType == ProviderActionReceiptType {
 		return Receipt{}, ErrReceiptNotFound
 	}
 	return receiptFromEnt(row)
