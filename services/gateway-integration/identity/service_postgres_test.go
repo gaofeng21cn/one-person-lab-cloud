@@ -283,3 +283,56 @@ func TestPublisherSessionAndGrantPostgres(t *testing.T) {
 		t.Fatal("expired grant accepted")
 	}
 }
+
+// A session has to answer on whichever replica receives the request. `other` is a
+// second Service over the same database whose Gateway rejects every call, which
+// is what the process that did not perform the login looks like. Under the
+// removed in-process credential this returned "reauthentication required after
+// credential expiry or process restart".
+func TestSessionAnswersOnAReplicaThatDidNotLogin(t *testing.T) {
+	_, db, c, _ := system(t)
+	raw, session := login(t, c)
+	ref := owneridentity.SessionReference(raw)
+	ctx := t.Context()
+
+	var stored string
+	if e := db.QueryRowContext(ctx, `SELECT display_name FROM tenant.sessions WHERE id=$1`, ref).Scan(&stored); e != nil {
+		t.Fatal(e)
+	}
+	if stored != session.GetDisplayName() {
+		t.Fatalf("session row display name %q does not match the issued session %q", stored, session.GetDisplayName())
+	}
+	var persisted string
+	if e := db.QueryRowContext(ctx, `SELECT row_to_json(s)::text FROM tenant.sessions s WHERE id=$1`, ref).Scan(&persisted); e != nil {
+		t.Fatal(e)
+	}
+	if strings.Contains(persisted, "private-gateway-token") {
+		t.Fatal("gateway credential persisted to make the session portable")
+	}
+
+	unreachable := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(unreachable.Close)
+	g, e := identity.NewGateway(unreachable.URL)
+	if e != nil {
+		t.Fatal(e)
+	}
+	other, e := identity.New(db, g, bytes.Repeat([]byte("s"), 32), nil, time.Hour)
+	if e != nil {
+		t.Fatal(e)
+	}
+	request := &api.AuthorizationRequest{Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-test"}}}, ActorId: "101", SessionId: &ref, AudienceOwner: api.OwnerEnum_OWNER_ENUM_BUILD, Action: api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEBUILD, Resource: &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, Id: proto.String("package-version")}, RequestId: "replica"}
+	if _, e = other.AuthorizeAction(ownerservice.WithPeerOwner(ctx, owneridentity.ConsoleBFF), request); e != nil {
+		t.Fatal("a session must not depend on the process that logged in", e)
+	}
+
+	// Revocation stays the owner's own boundary and still ends the session
+	// everywhere, not only in the replica that revoked it.
+	if _, e = other.Logout(ownerservice.WithPeerOwner(ctx, owneridentity.ConsoleBFF), &api.LogoutRpcRequest{Context: &api.CallContext{SessionId: &ref}}); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = other.AuthorizeAction(ownerservice.WithPeerOwner(ctx, owneridentity.ConsoleBFF), request); e == nil {
+		t.Fatal("revoked session still authorized on another replica")
+	}
+}
