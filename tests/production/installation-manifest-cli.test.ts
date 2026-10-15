@@ -260,6 +260,13 @@ test("installation CLI rejects unserviceable supplied live endpoints", async () 
   assert.equal(malformedSliceResult.status, 1);
   assert.ok(malformedSliceResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
 
+  const malformedSliceAddress = withLiveWorkspaceBackends();
+  malformedSliceAddress.list.items = malformedSliceAddress.list.items.filter(item => item !== malformedSliceAddress.endpoints);
+  malformedSliceAddress.slice.endpoints.push({ addresses: ["not-an-ip"], targetRef: malformedSliceAddress.slice.endpoints[0].targetRef, conditions: { ready: false } });
+  const malformedSliceAddressResult = await invoke(malformedSliceAddress.list);
+  assert.equal(malformedSliceAddressResult.status, 1);
+  assert.ok(malformedSliceAddressResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+
   const malformedEndpoints = withLiveWorkspaceBackends();
   malformedEndpoints.endpoints.subsets[0].notReadyAddresses = "invalid";
   const malformedEndpointsResult = await invoke(malformedEndpoints.list);

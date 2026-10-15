@@ -273,7 +273,8 @@ function servicePublishesNotReady(service: Resource): boolean {
   return service.spec?.publishNotReadyAddresses === true;
 }
 function endpointServiceability(endpoint: unknown, service: Resource): "serviceable" | "unserviceable" | undefined {
-  if (!object(endpoint)) return;
+  if (!object(endpoint) || !Array.isArray(endpoint.addresses) || endpoint.addresses.length === 0 ||
+      endpoint.addresses.some((address: unknown) => typeof address !== "string" || isIP(address) === 0)) return;
   const conditions = endpoint.conditions;
   if (conditions !== undefined && (!object(conditions) || Object.keys(conditions).some(key => !["ready", "serving", "terminating"].includes(key)) ||
       ["ready", "serving", "terminating"].some(key => conditions[key] !== undefined && typeof conditions[key] !== "boolean"))) return;
