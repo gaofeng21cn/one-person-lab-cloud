@@ -24,7 +24,7 @@
 | F14 钱包、用量、Key及管理员充值记录 | /console/api、/console/api/usage、/console/api/keys、/admin/recharge-records | 10 | gateway |
 | F15 Tenant停用、删除与窗口内恢复 | /admin/tenants/:tenantId | 12 | bff, tenant |
 | F16 旧资源与应用迁移后的可见状态和采用Agent | /console/workspaces/:workspaceId、/console/workspaces/:workspaceId/adopt | 10 | bff, capability, gateway, serve, workspace |
-| F17 管理员操作、审计与实例资格读回 | /admin/operations、/admin/qualifications | 7 | bff, ledger, tenant |
+| F17 管理员操作、审计与实例资格读回 | /admin/operations、/admin/qualifications | 8 | bff, ledger, tenant |
 
 ## F01 登录、Tenant与成员权限
 
@@ -897,6 +897,7 @@
 |---|---|---|---|---|
 | `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | bff |
 | `getReceipt` | `GET /api/v2/admin/receipts/{receiptId}` | — | 200 Receipt | ledger |
+| `getWorkspaceFinancialReceipt` | `GET /api/v2/workspaces/{workspaceId}/financial-receipts/{receiptId}` | — | 200 WorkspaceFinancialReceipt | ledger |
 | `listAdminOperations` | `GET /api/v2/admin/operations` | — | 200 AdminOperationPage | bff |
 | `listAuditEvents` | `GET /api/v2/admin/audit-events` | — | 200 AuditEventPage | tenant |
 | `listQualifications` | `GET /api/v2/admin/qualifications` | — | 200 QualificationPage | ledger |
@@ -910,6 +911,7 @@
 - `Operation`：`createdAt`、`errorCode`、`kind`、`observationResult`、`operationId`、`owner`、`pollAfterSeconds`、`requestId`、`resourceId`、`stage`、`status`、`updatedAt`
 - `Qualification`：`artifactDigest`、`candidateSourceSha`、`createdAt`、`id`、`instanceReceiptId`、`localReceiptId`、`status`
 - `Receipt`：`artifactDigest`、`createdAt`、`evidenceSummary`、`id`、`kind`、`operationId`、`outcome`、`owner`、`sourceSha`、`workflowRunId`
+- `WorkspaceFinancialReceipt`：`evidenceDigest`、`quote`、`receipt`、`walletOperation`、`workspaceId`
 
 **数据表及写入Owner**：`build.build_artifacts`、`build.idempotency_records`、`build.inbox_events`、`build.operations`、`build.outbox_deliveries`、`build.outbox_events`、`capability.idempotency_records`、`capability.inbox_events`、`capability.operations`、`capability.outbox_deliveries`、`capability.outbox_events`、`fabric.idempotency_records`、`fabric.inbox_events`、`fabric.operations`、`fabric.outbox_deliveries`、`fabric.outbox_events`、`fabric.resource_actions`、`gateway.idempotency_records`、`gateway.inbox_events`、`gateway.operations`、`gateway.outbox_deliveries`、`gateway.outbox_events`、`ledger.idempotency_records`、`ledger.inbox_events`、`ledger.outbox_deliveries`、`ledger.outbox_events`、`ledger.receipts`、`ledger.reconciliations`、`resource_catalog.idempotency_records`、`resource_catalog.inbox_events`、`resource_catalog.operations`、`resource_catalog.outbox_deliveries`、`resource_catalog.outbox_events`、`runtime_control.idempotency_records`、`runtime_control.inbox_events`、`runtime_control.operations`、`runtime_control.outbox_deliveries`、`runtime_control.outbox_events`、`serve.idempotency_records`、`serve.inbox_events`、`serve.operations`、`serve.outbox_deliveries`、`serve.outbox_events`、`tenant.audit_events`、`tenant.authorization_contexts`、`tenant.idempotency_records`、`tenant.inbox_events`、`tenant.operations`、`tenant.outbox_deliveries`、`tenant.outbox_events`、`workspace.idempotency_records`、`workspace.inbox_events`、`workspace.operations`、`workspace.outbox_deliveries`、`workspace.outbox_events`
 

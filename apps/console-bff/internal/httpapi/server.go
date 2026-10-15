@@ -33,6 +33,7 @@ type Server struct {
 	tenant          api.TenantProductServiceClient
 	catalog         api.ResourceCatalogProductServiceClient
 	gateway         api.GatewayProductServiceClient
+	ledger          api.LedgerProductServiceClient
 	// gatewayCoordination is the Gateway owner's typed settlement surface. The
 	// one administrator wallet binding command reaches it; every other fact the
 	// BFF serves still comes from the product read clients.
@@ -96,6 +97,11 @@ func NewServer(reader OwnerReader, identity IdentityReader) *Server {
 	}); ok {
 		s.workspace = p.WorkspaceClient()
 	}
+	if p, ok := reader.(interface {
+		LedgerClient() api.LedgerProductServiceClient
+	}); ok {
+		s.ledger = p.LedgerClient()
+	}
 	return s
 }
 
@@ -110,6 +116,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerMemberRoutes(mux)
 	s.registerCatalogRoutes(mux, s.catalog)
 	s.registerGatewayRoutes(mux, s.gateway)
+	s.registerFinancialReceiptRoutes(mux)
 	s.registerWalletBindingRoute(mux)
 	s.registerWorkspaceRoutes(mux, s.workspace)
 	if reader, ok := s.reader.(ServeDeliveryReader); ok {

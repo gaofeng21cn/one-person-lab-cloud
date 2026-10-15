@@ -19,6 +19,7 @@ import (
 type Server struct {
 	api.UnimplementedDomainInboxServer
 	api.UnimplementedLedgerCoordinationServer
+	api.UnimplementedLedgerProductServiceServer
 	store      *ledger.PostgresStore
 	Authorizer *ownerservice.Authorizer
 	Catalog    api.CatalogCoordinationClient
@@ -82,5 +83,6 @@ func (s *Server) NewGRPC(config ownerservice.Config) (*grpc.Server, error) {
 	server := grpc.NewServer(options...)
 	api.RegisterDomainInboxServer(server, s)
 	api.RegisterLedgerCoordinationServer(server, s)
+	api.RegisterLedgerProductServiceServer(server, s)
 	return server, nil
 }
