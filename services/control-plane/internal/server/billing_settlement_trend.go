@@ -228,6 +228,10 @@ func (app *controlPlaneServer) projectWorkspaceSettlementTrend(
 	accountID string,
 	now time.Time,
 ) (workspaceSettlementTrend, error) {
+	return app.projectWorkspaceSettlementTrendForOwner(ctx, service, accountID, "", now)
+}
+
+func (app *controlPlaneServer) projectWorkspaceSettlementTrendForOwner(ctx context.Context, service *controlplane.Service, accountID, ownerUserID string, now time.Time) (workspaceSettlementTrend, error) {
 	trend := newWorkspaceSettlementTrend(now)
 	if accountID == "" {
 		return trend, errMonthlyAccountUnmapped
@@ -257,6 +261,15 @@ func (app *controlPlaneServer) projectWorkspaceSettlementTrend(
 				if settlement.accountID != accountID {
 					trend.record(workspaceSettlementMeasurement{state: workspaceSettlementUnconfirmed})
 					continue
+				}
+				if ownerUserID != "" {
+					originalID := settlement.operationID
+					if settlement.kind == "refund" {
+						originalID = settlement.relatedOperationID
+					}
+					if !app.billingOperationOwnedByUser(ctx, originalID, accountID, ownerUserID) {
+						return trend, errCloudUserLineage
+					}
 				}
 				settlements = append(settlements, settlement)
 			}

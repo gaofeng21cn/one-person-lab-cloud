@@ -40,15 +40,20 @@ export const adminMenu = Object.freeze([
   { id: "admin.announcements", label: "公告管理", path: "/admin/announcements", icon: "Megaphone" }
 ] as const satisfies readonly ConsoleMenuItem[]);
 
-export function formatUsdMicros(value: unknown): string {
-  let micros: bigint;
+export function parseUsdMicros(value: unknown): bigint | null {
+  if (typeof value === "bigint") return value;
   if (typeof value === "string" && /^-?(0|[1-9][0-9]*)$/.test(value)) {
-    micros = BigInt(value);
-  } else if (typeof value === "number" && Number.isSafeInteger(value)) {
-    micros = BigInt(value);
-  } else {
-    return "-";
+    return BigInt(value);
   }
+  if (typeof value === "number" && Number.isSafeInteger(value)) {
+    return BigInt(value);
+  }
+  return null;
+}
+
+export function formatUsdMicros(value: unknown): string {
+  const micros = parseUsdMicros(value);
+  if (micros === null) return "-";
   const negative = micros < 0n;
   const absolute = negative ? -micros : micros;
   const roundedCents = (absolute + 5_000n) / 10_000n;
