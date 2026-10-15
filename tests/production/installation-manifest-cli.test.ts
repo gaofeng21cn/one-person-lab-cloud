@@ -74,7 +74,7 @@ test("installation CLI admits Serve access and independent Build catalog wiring"
   assert.equal(report.checkedRequirements, 2);
 });
 
-for (const scenario of ["address", "token", "peer", "network", "wrong-token", "listener", "wrong-service", "egress", "duplicate-env"] as const) {
+for (const scenario of ["address", "token", "peer", "network", "wrong-token", "invalid-peer-principal", "short-peer-token", "listener", "wrong-service", "egress", "duplicate-env"] as const) {
   test(`installation CLI rejects missing or conflicting ${scenario} at the public seam`, async () => {
     const v = installation();
     const env = container(v, "serve").env;
@@ -83,6 +83,8 @@ for (const scenario of ["address", "token", "peer", "network", "wrong-token", "l
     if (scenario === "peer") v.secrets.items[0].stringData.OPL_WORKSPACE_PEER_TOKENS = "{}";
     if (scenario === "network") v.manifest.items = v.manifest.items.filter(i => i.metadata.name !== "serve-workspace");
     if (scenario === "wrong-token") v.secrets.items[0].stringData.OPL_WORKSPACE_PEER_TOKENS = JSON.stringify({ serve: "other-token-".repeat(8) });
+    if (scenario === "invalid-peer-principal") v.secrets.items[0].stringData.OPL_WORKSPACE_PEER_TOKENS = JSON.stringify({ serve: "synthetic-only-private-token-".repeat(3), unexpected: "synthetic-only-private-token-".repeat(3) });
+    if (scenario === "short-peer-token") v.secrets.items[0].stringData.OPL_WORKSPACE_PEER_TOKENS = JSON.stringify({ serve: "synthetic-only-private-token-".repeat(3), build: "short" });
     if (scenario === "listener") env.find((e: any) => e.name === "OPL_WORKSPACE_ADDR").value = ":8184";
     if (scenario === "wrong-service") v.manifest.items.find(i => i.kind === "Service" && i.metadata.name === "workspace").spec.selector.component = "build";
     if (scenario === "egress") v.manifest.items.push({ kind: "NetworkPolicy", metadata: { name: "serve-egress-deny" }, spec: {

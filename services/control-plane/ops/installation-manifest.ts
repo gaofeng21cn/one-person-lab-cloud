@@ -176,7 +176,10 @@ export function validateInstallationManifest(manifest: any, bindings: any, secre
         if (Object.hasOwn(tokenEntry ?? {}, "value") || Object.hasOwn(peersEntry ?? {}, "value")) throw new Error("secret_reference");
         const token = secretText(tokenEntry?.valueFrom?.secretKeyRef, caller.namespace).trim();
         const peers = JSON.parse(secretText(peersEntry?.valueFrom?.secretKeyRef, target.namespace));
-        if (token.length < 32 || !record(peers) || typeof peers[r.callerPrincipal] !== "string" || peers[r.callerPrincipal].trim() !== token) throw new Error("peer_admission");
+        const validPrincipals = new Set(["console_bff", "control_plane", "gateway", ...topology.processes.map((process: ObjectValue) => process.ownerName).filter((name: unknown): name is string => typeof name === "string")]);
+        if (token.length < 32 || !record(peers) || Object.entries(peers).some(([principal, peerToken]) =>
+          !validPrincipals.has(principal.trim()) || typeof peerToken !== "string" || peerToken.trim().length < 32) ||
+          typeof peers[r.callerPrincipal] !== "string" || peers[r.callerPrincipal].trim() !== token) throw new Error("peer_admission");
         const policies = items.filter(i => i.kind === "NetworkPolicy");
         const allows = (direction: "Ingress" | "Egress", local: typeof caller, remote: typeof caller) => {
           const localLabels = local.deployment.spec.template.metadata?.labels ?? {};
