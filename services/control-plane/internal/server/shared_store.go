@@ -24,6 +24,7 @@ type SharedStore interface {
 	ApplyAnnouncementMutation(ctx context.Context, mutation announcementMutation) (map[string]any, error)
 	ListAnnouncementReads(ctx context.Context, userID string) ([]map[string]any, error)
 	MarkAnnouncementRead(ctx context.Context, announcementID, userID, readAt string) (map[string]any, error)
+	MarkCloudAnnouncementRead(ctx context.Context, announcementID, cloudUserID, legacyUserID, readAt string) (map[string]any, error)
 	ReserveProductionE2EAttempt(ctx context.Context, claim productionE2EAttemptClaim) (map[string]any, error)
 	GetProductionE2EAttempt(ctx context.Context, id string) (map[string]any, bool, error)
 	CompleteProductionE2EAttempt(ctx context.Context, id, binding string) (map[string]any, error)

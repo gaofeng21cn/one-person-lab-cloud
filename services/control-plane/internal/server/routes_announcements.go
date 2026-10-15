@@ -10,32 +10,13 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
-type AnnouncementDTO struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Body        string `json:"body"`
-	Status      string `json:"status"`
-	StartsAt    string `json:"startsAt,omitempty"`
-	EndsAt      string `json:"endsAt,omitempty"`
-	PublishedAt string `json:"publishedAt,omitempty"`
-	CreatedAt   string `json:"createdAt"`
-	UpdatedAt   string `json:"updatedAt"`
-	Read        bool   `json:"read"`
-}
-
-type AnnouncementPageDTO struct {
-	Items    []AnnouncementDTO `json:"items"`
-	Total    int               `json:"total"`
-	Page     int               `json:"page"`
-	PageSize int               `json:"pageSize"`
-}
-
-type AnnouncementReadDTO struct {
-	AnnouncementID string `json:"announcementId"`
-	ReadAt         string `json:"readAt"`
-}
+type AnnouncementDTO = contracts.Announcement
+type AnnouncementPageDTO = contracts.AnnouncementPage
+type AnnouncementReadDTO = contracts.AnnouncementRead
 
 type AnnouncementDraftRequest struct {
 	Title    string `json:"title"`
@@ -50,6 +31,8 @@ type AnnouncementScheduleRequest struct {
 }
 
 func registerAnnouncementRoutes(mux *http.ServeMux, app *controlPlaneServer) {
+	mux.HandleFunc("GET /internal/cloud/announcements", app.cloudAnnouncementHandler(false))
+	mux.HandleFunc("POST /internal/cloud/announcements/{announcementId}/read", app.cloudAnnouncementHandler(true))
 	mux.HandleFunc("GET /api/announcements", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
 		app.listActiveAnnouncements(w, r)
 	}))
@@ -129,13 +112,17 @@ func writeAnnouncementPage(w http.ResponseWriter, page, pageSize int, items []An
 		return firstNonEmpty(items[i].PublishedAt, items[i].CreatedAt, items[i].ID) > firstNonEmpty(items[j].PublishedAt, items[j].CreatedAt, items[j].ID)
 	})
 	total := len(items)
-	start := (page - 1) * pageSize
+	// Bound by the actual slice before multiplying an untrusted page number.
+	start := total
+	if page-1 <= total/pageSize {
+		start = (page - 1) * pageSize
+	}
 	if start >= total {
 		items = []AnnouncementDTO{}
 	} else {
-		end := start + pageSize
-		if end > total {
-			end = total
+		end := total
+		if pageSize < total-start {
+			end = start + pageSize
 		}
 		items = items[start:end]
 	}

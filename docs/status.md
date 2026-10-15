@@ -41,6 +41,31 @@ validation. Their adoption and authenticated exact-Candidate acceptance remain
 [open outcomes](roadmap.md#workspace-key-and-customer-read-boundaries). Earlier
 evidence below retains its original source, scope and observation date.
 
+## Cloud Announcement Source Repair (2026-10-15)
+
+The #871 source change switches the Cloud Console's list/ACK caller to the BFF,
+which reaches the original Control Plane announcement owner. The owner revalidates
+each Cloud session and Gateway binding and proves historical ownership from its
+unique external-subject Account link and reciprocal owner User. No Tenant is
+required. ACKs remain in the original table; the owner serializes them with
+publication/withdrawal and folds verified aliases while keeping the earliest
+original read timestamp. The retained Console keeps its existing session routes.
+
+The failing baseline was `34a53d629205d93696aeebf8e73e4ee381d3eff4`: the old
+announcement route refused a Cloud cookie, and the BFF announcement routes were
+missing. Current local checks execute the BFF-to-owner client and guards, real
+Gateway binding/session tests on isolated PostgreSQL, original-owner inheritance
+and concurrent ACK tests on Memory/SQLite/PostgreSQL, and all nine announcement
+browser tests, including a Cloud User without a Tenant. The owner race check
+passed. These are local source/fixture results, not installed authentication or
+real production data evidence.
+
+The portable topology now declares the independent BFF-to-Control-Plane token,
+Control Plane's `control_plane` certificate/CloudIdentity peer, and private typed
+HTTP surface. Actual Instance wiring, current-revision CI and same-Candidate
+customer acceptance remain separate obligations. Other #840 financial/Gateway
+reads and the Key lifecycle/model-update issues remain open.
+
 ## Local Qualification Repairs (2026-10-13)
 
 PostgreSQL scratch-root recovery and optional Workspace-fixture construction

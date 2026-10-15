@@ -118,7 +118,7 @@ func bindingSystemWithHistory(t *testing.T, seed func(*sql.DB)) (*identity.Servi
 	}
 	s.GatewayStore = gatewayStoreSystem(t)
 	s.ConfigureRegistry("uswccr.ccs.tencentyun.com", "oplcloud")
-	config := ownerservice.Config{Owner: owneridentity.Tenant, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: map[owneridentity.Service]string{owneridentity.ConsoleBFF: bindingPeerToken, owneridentity.Build.Service(): bindingPeerToken}}
+	config := ownerservice.Config{Owner: owneridentity.Tenant, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: map[owneridentity.Service]string{owneridentity.ConsoleBFF: bindingPeerToken, owneridentity.Build.Service(): bindingPeerToken, owneridentity.ControlPlane: bindingPeerToken}}
 	l, e := net.Listen("tcp", "127.0.0.1:0")
 	if e != nil {
 		t.Fatal(e)

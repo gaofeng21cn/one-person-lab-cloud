@@ -33,6 +33,8 @@ const (
 // Config holds the owner addresses, this process's identity token per owner, and
 // the CloudIdentity session/authorization boundary.
 type Config struct {
+	ControlPlaneURL    string
+	ControlPlaneToken  string
 	Addresses          map[owneridentity.Owner]string
 	Tokens             map[owneridentity.Owner]string
 	CloudIdentityAddr  string
@@ -44,7 +46,9 @@ type Config struct {
 // environment.
 func ConfigFromEnv(getenv func(string) string) Config {
 	return Config{
-		TLS: owneridentity.TLSFromEnv(getenv),
+		ControlPlaneURL:   strings.TrimSpace(getenv("OPL_CONTROL_PLANE_URL")),
+		ControlPlaneToken: strings.TrimSpace(getenv("OPL_CONTROL_PLANE_TOKEN")),
+		TLS:               owneridentity.TLSFromEnv(getenv),
 		Addresses: map[owneridentity.Owner]string{
 			owneridentity.Capability:      strings.TrimSpace(getenv("OPL_CAPABILITY_URL")),
 			owneridentity.RuntimeControl:  strings.TrimSpace(getenv("OPL_RUNTIME_CONTROL_URL")),
@@ -86,6 +90,7 @@ func ReachableOwners() []owneridentity.Owner {
 // Clients holds one typed client per owner the BFF reaches, plus the
 // CloudIdentity session and authorization boundary.
 type Clients struct {
+	controlPlane   *controlPlaneReader
 	capability     api.CapabilityProductServiceClient
 	runtimeControl api.RuntimeControlProductServiceClient
 	build          api.BuildProductServiceClient
@@ -106,7 +111,11 @@ type Clients struct {
 // Dial opens one connection per configured owner. An owner that is not configured
 // is simply absent; a call to it returns ErrUpstreamUnconfigured.
 func Dial(config Config) (*Clients, error) {
-	clients := &Clients{owner: make(map[owneridentity.Owner]api.OwnerOperationsClient)}
+	controlPlane, err := newControlPlaneReader(config.ControlPlaneURL, config.ControlPlaneToken)
+	if err != nil {
+		return nil, err
+	}
+	clients := &Clients{owner: make(map[owneridentity.Owner]api.OwnerOperationsClient), controlPlane: controlPlane}
 	for _, owner := range ReachableOwners() {
 		addr := strings.TrimSpace(config.Addresses[owner])
 		if addr == "" {
