@@ -213,6 +213,70 @@ development and qualification, use the repository-owned tooling and
 [developer guide](../DEV_GUIDE.md); do not present a locally generated Candidate
 as a public Release.
 
+## Kubernetes Installation Admission CLI
+
+From the exact Product checkout matching the installation, validate the full
+Kubernetes `v1/List`, including Deployments, Services, NetworkPolicies and referenced
+ConfigMaps:
+
+```bash
+node /path/to/exact-product/tools/validate-production-manifest.ts \
+  --installation-manifest installation-bound.json > installation-report.json
+```
+
+The Instance renderer must bind the approved namespace before this call. This
+entry performs local manifest analysis; it neither resolves live cluster DNS nor
+reads Secrets or connects to private endpoints. The existing `--manifest` mode
+retains its production-environment validation behavior.
+
+`deploy/portable/opl-cloud-owner-topology.json` owns the explicit owner RPC edges,
+transport principals, activation requirements and token minimum length. Gateway's
+transport principal is `tenant`; BFF is `console_bff`. The declarations cover the
+BFF owner clients, shared CloudIdentity authorizer, owner coordination/readback
+clients, Build's additional `OPL_TENANT_TOKEN` call at the CloudIdentity address,
+and Serve's distinct Fabric coordination address/token. Configured optional edges
+are checked without making unrelated provider/profile variables mandatory.
+Retained HTTP transports, including variables not consumed by this checkout's
+BFF, are outside this owner-RPC contract.
+
+The report has `ok`, fixed-code `errors` and `communication`. Successful
+`communication.edges` contain `caller`, `target`, `addressEnv`, `tokenEnv`,
+`callerDeployment`, `targetDeployment`, `port`, `tokenRef: {name,key}`,
+`peerRef: {name,key}`, `ingressPolicies` and `egressPolicies`. `port` is the
+resolved target container TCP port, after Service `port`/`targetPort` mapping.
+`peerRef` comes from the actual target container's declared peer-token environment.
+Policy arrays identify selecting policies; they do not assert policy ownership.
+`communication.security.tokenMinimumLength` is mandatory (currently 32), so a
+protected executor can validate Secret contents without inventing Product policy.
+The executor must reject missing/invalid security requirements, short tokens,
+missing caller principals and token mismatches; the CLI itself checks references
+and never reads Secret contents.
+
+The CLI proves Service selection, the target listener, non-optional Secret
+references, target ingress admission and caller egress admission when egress is
+isolated. It evaluates additive policies, selector conjunction, namespace facts,
+named ports and ranges. An absent/empty listener uses the Product-declared
+`defaultAddress` or `defaultRPCAddress`; an explicit invalid value is refused.
+Same ports in different Pods are valid. Same-Deployment Service calls still need
+policy proof because a Service can route to another replica. ConfigMap `envFrom`
+and relevant `configMapKeyRef` values are resolved from the List in Kubernetes
+precedence order; explicit env overrides imported ConfigMap data. Unrelated
+profile placeholders are not rendered or printed.
+
+This report format supports one Product namespace and one provable Deployment
+per transport principal. Ambiguous Service backends, opaque Secret `envFrom`,
+host networking, arbitrary IP targets and policies whose required namespace/IP
+facts cannot be proved are refused. A non-isolated ingress is refused rather than
+reported as protected closure. This is manifest-level communication admission,
+not live CNI enforcement, certificate validity, application health or business
+qualification evidence.
+
+Successful admission exits 0. Failure exits 1 with no executable edges; stdout
+remains JSON and stderr contains `installation_manifest_invalid`. Values of
+addresses, tokens and profiles are omitted. Input errors still include the Product
+security requirement; an unreadable/invalid Product security contract instead
+returns `security: null`, an error and no edges, which must never be executed.
+
 ## Local Qualification Fixture
 
 `deploy/portable/compose.local-qualification.yaml` runs the repository-owned
