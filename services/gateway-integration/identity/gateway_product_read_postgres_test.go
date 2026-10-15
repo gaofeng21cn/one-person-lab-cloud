@@ -218,8 +218,7 @@ func TestGatewayProductReadsRequireAuthorizedEndpoints(t *testing.T) {
 		t.Fatal("an unauthenticated in-process call reached GetUsageSummary")
 	}
 
-	// The generated policy grants the member read and denies it the admin-only
-	// wallet read.
+	// Catalog remains role-authorized; personal reads are session-bound.
 	peerCtx := ownerservice.WithPeerOwner(context.Background(), owneridentity.ConsoleBFF)
 	scope := &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-test"}}}
 	allowed := &api.AuthorizationRequest{Scope: scope, ActorId: "101", SessionId: proto.String(ref), AudienceOwner: api.OwnerEnum_OWNER_ENUM_GATEWAY, Action: api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTMODELS, Resource: &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG}, RequestId: "request"}
@@ -228,14 +227,14 @@ func TestGatewayProductReadsRequireAuthorizedEndpoints(t *testing.T) {
 	}
 	usageAllowed := proto.Clone(allowed).(*api.AuthorizationRequest)
 	usageAllowed.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY
-	usageAllowed.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT}
+	usageAllowed.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: proto.String("tenant-test")}
 	if _, err := service.AuthorizeAction(peerCtx, usageAllowed); err != nil {
 		t.Fatalf("member GetUsageSummary was denied: %v", err)
 	}
 	denied := proto.Clone(allowed).(*api.AuthorizationRequest)
 	denied.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET
 	if _, err := service.AuthorizeAction(peerCtx, denied); err == nil {
-		t.Fatal("member was granted the admin-only GetWallet action")
+		t.Fatal("wallet read accepted the wrong resource kind")
 	}
 }
 
@@ -264,5 +263,65 @@ func TestGatewayProductReadsResolveOpaqueActorThroughDurableMapping(t *testing.T
 	models, err := gatewayClient.ListModels(t.Context(), &api.ListModelsRpcRequest{Context: call})
 	if err != nil || len(models.GetItems()) != 2 {
 		t.Fatalf("mapped models=%v err=%v", models, err)
+	}
+}
+
+func TestPersonalGatewayAuthorizationDoesNotRequireTenantRole(t *testing.T) {
+	for _, role := range []string{"", "member", "admin", "owner"} {
+		t.Run("role="+role, func(t *testing.T) {
+			gatewayClient, tenantClient, service := gatewayProductSystem(t)
+			if role == "" {
+				if _, err := service.DB.ExecContext(t.Context(), `DELETE FROM tenant.tenant_members WHERE actor_id='101'`); err != nil {
+					t.Fatal(err)
+				}
+			} else if _, err := service.DB.ExecContext(t.Context(), `UPDATE tenant.tenant_members SET role=$1 WHERE actor_id='101'`, role); err != nil {
+				t.Fatal(err)
+			}
+			raw, _ := login(t, tenantClient)
+			ref := owneridentity.SessionReference(raw)
+			scope := &api.AuthorizationScope{Scope: &api.AuthorizationScope_Platform{Platform: &api.PlatformScope{}}}
+			tenantID := ""
+			if role != "" {
+				tenantID = "tenant-test"
+				scope = &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: tenantID}}}
+			}
+			peerCtx := ownerservice.WithPeerOwner(t.Context(), owneridentity.ConsoleBFF)
+			for _, action := range []api.AuthorizationActionEnum{api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY} {
+				request := &api.AuthorizationRequest{Scope: scope, ActorId: "101", SessionId: proto.String(ref), AudienceOwner: api.OwnerEnum_OWNER_ENUM_GATEWAY, Action: action, Resource: &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: proto.String(tenantID)}, RequestId: "personal-" + action.String()}
+				if tenantID == "" {
+					request.Resource.Id = nil
+				}
+				decision, err := service.AuthorizeAction(peerCtx, request)
+				if err != nil {
+					t.Fatalf("personal read denied: %v", err)
+				}
+				replay := proto.Clone(request).(*api.AuthorizationRequest)
+				replay.AuthorizationContextId = proto.String(decision.GetAuthorizationContextId())
+				if _, err := service.AuthorizeAction(peerCtx, replay); err != nil {
+					t.Fatalf("exact replay: %v", err)
+				}
+				for _, mutate := range []func(*api.AuthorizationRequest){
+					func(r *api.AuthorizationRequest) { r.ActorId = "102" },
+					func(r *api.AuthorizationRequest) { r.Resource.Id = proto.String("other-tenant") },
+					func(r *api.AuthorizationRequest) {
+						r.Scope = &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "other-tenant"}}}
+					},
+					func(r *api.AuthorizationRequest) { r.AudienceOwner = api.OwnerEnum_OWNER_ENUM_WORKSPACE },
+				} {
+					forged := proto.Clone(request).(*api.AuthorizationRequest)
+					mutate(forged)
+					if _, err := service.AuthorizeAction(peerCtx, forged); err == nil {
+						t.Fatal("cross-subject authorization accepted")
+					}
+				}
+			}
+			call := &api.CallContext{SessionId: proto.String(ref)}
+			if wallet, err := gatewayClient.GetWallet(t.Context(), &api.GetWalletRpcRequest{Context: call}); err != nil || wallet.GetBalanceUsdMicros() != 12_500_000 {
+				t.Fatalf("wallet=%v err=%v", wallet, err)
+			}
+			if usage, err := gatewayClient.GetUsageSummary(t.Context(), &api.GetUsageSummaryRpcRequest{Context: call, Period: "month"}); err != nil || usage.GetTotalRequests() != 17 {
+				t.Fatalf("usage=%v err=%v", usage, err)
+			}
+		})
 	}
 }

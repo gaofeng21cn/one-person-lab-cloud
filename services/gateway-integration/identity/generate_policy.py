@@ -50,7 +50,7 @@ runtime={'listRuntimeVersions','registerRuntimeVersion','setRuntimeVersionStatus
 # own (getOperation is a route-resolved session read and stays exempt).
 audience_overrides={'getWorkspaceAccess':'serve','listAdminOperations':'workspace','reconcileOperation':'workspace'}
 session_only={'getLoginContext','login','logout','getSession','getSelfUserExternalBinding'}
-subject_bound={'acceptInvitation'}
+subject_bound={'acceptInvitation','getWallet','getUsageSummary'}
 # An Operation is read through an explicit owner route, so the contract names no
 # single Operation writer and getOperation carries no x-owner of its own. The
 # audience is the route the caller chose, so CloudIdentity decides it as a

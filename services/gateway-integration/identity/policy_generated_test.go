@@ -63,7 +63,7 @@ func TestGeneratedPolicyCoversAssignedOwners(t *testing.T) {
 		api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG: 14,
 		api.OwnerEnum_OWNER_ENUM_SERVE:            5,
 		api.OwnerEnum_OWNER_ENUM_WORKSPACE:        18,
-		api.OwnerEnum_OWNER_ENUM_GATEWAY:          10,
+		api.OwnerEnum_OWNER_ENUM_GATEWAY:          8,
 	} {
 		if counts[owner] != want {
 			t.Fatalf("owner %v has %d policy rows, expected %d", owner, counts[owner], want)
@@ -94,10 +94,6 @@ func TestGeneratedPolicyAudienceAndRoles(t *testing.T) {
 		if policy.owner != api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG || len(policy.roles) != 1 || policy.roles[0] != "member" {
 			t.Fatalf("%s is %v/%v, expected the resource_catalog member read", action, policy.owner, policy.roles)
 		}
-	}
-	usage := policyFor(t, "GETUSAGESUMMARY")
-	if usage.owner != api.OwnerEnum_OWNER_ENUM_GATEWAY || len(usage.roles) != 1 || usage.roles[0] != "member" {
-		t.Fatalf("GETUSAGESUMMARY is %v/%v, expected the Gateway member read", usage.owner, usage.roles)
 	}
 	for _, action := range []string{"LISTDEPLOYMENTS", "GETDEPLOYMENT"} {
 		policy := policyFor(t, action)

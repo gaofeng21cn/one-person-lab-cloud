@@ -2912,8 +2912,7 @@ paths:
       - F14
       x-owner: gateway
       x-permission:
-      - admin
-      - owner
+      - authenticated
       x-tables: []
       responses:
         '200':
@@ -3015,7 +3014,7 @@ paths:
       - F14
       x-owner: gateway
       x-permission:
-      - member
+      - authenticated
       x-tables: []
       responses:
         '200':
