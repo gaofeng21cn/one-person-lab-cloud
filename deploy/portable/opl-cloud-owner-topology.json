@@ -79,7 +79,14 @@
    "notes": [
     "Package/WebUI/build-result catalog owner. OPL_CAPABILITY_STORAGE_KIND selects the object store; the COS_* set is required only for the object-store kind."
    ],
-   "transportPrincipal": "capability"
+   "transportPrincipal": "capability",
+   "daemonArgs": [],
+   "additionalListeners": [
+    {
+     "addressEnv": "OPL_CAPABILITY_OBJECT_LISTEN_ADDR",
+     "valueSemantics": "raw"
+    }
+   ]
   },
   {
    "service": "build",
@@ -111,7 +118,8 @@
    "notes": [
     "Runs the admitted BuildKit build; OPL_BUILD_BUILDER and OPL_BUILD_WORKDIR are installation facts for the build host."
    ],
-   "transportPrincipal": "build"
+   "transportPrincipal": "build",
+   "daemonArgs": []
   },
   {
    "service": "runtime-control",
@@ -136,7 +144,8 @@
    "notes": [
     "Owns Runtime Release admission and immutable release readback. It never owns a running instance."
    ],
-   "transportPrincipal": "runtime_control"
+   "transportPrincipal": "runtime_control",
+   "daemonArgs": []
   },
   {
    "service": "workspace",
@@ -166,7 +175,8 @@
    "notes": [
     "Owns the accepted order and resource intent; it persists no second current-deployment pointer."
    ],
-   "transportPrincipal": "workspace"
+   "transportPrincipal": "workspace",
+   "daemonArgs": []
   },
   {
    "service": "serve",
@@ -223,7 +233,15 @@
     "Serve owns application execution. A TKE installation declares its namespace, kubeconfig Secret reference, image-pull Secret, credential seed, the ingress peers allowed to reach a Workspace application, and the same protected-compute facts Fabric's provider is bounded by; Serve then applies, observes, scales and retires the workload itself.",
     "OPL_FABRIC_APPLICATION_URL with its service token and capability key remains only for the provider whose in-process executor has not moved yet. An installation that declares both OPL_K8S_NAMESPACE and OPL_FABRIC_APPLICATION_URL is refused at startup, because that would be two writers for one workload."
    ],
-   "transportPrincipal": "serve"
+   "transportPrincipal": "serve",
+   "daemonArgs": [],
+   "additionalListeners": [
+    {
+     "addressEnv": "OPL_SERVE_ACCESS_ADDR",
+     "defaultAddress": ":8188",
+     "valueSemantics": "trimmed"
+    }
+   ]
   },
   {
    "service": "resource-catalog",
@@ -246,7 +264,8 @@
     "CatalogCoordination"
    ],
    "notes": [],
-   "transportPrincipal": "resource_catalog"
+   "transportPrincipal": "resource_catalog",
+   "daemonArgs": []
   },
   {
    "service": "ledger",
@@ -277,7 +296,16 @@
     "OPL_POSTGRES_TESTS only selects the isolated database harness; production never sets it."
    ],
    "transportPrincipal": "ledger",
-   "rpcEnabledByEnv": "OPL_LEDGER_ADDR"
+   "rpcEnabledByEnv": "OPL_LEDGER_ADDR",
+   "daemonArgs": [],
+   "rpcEnabledByEnvSemantics": "raw-nonempty",
+   "additionalListeners": [
+    {
+     "addressEnv": "LEDGER_ADDR",
+     "defaultAddress": ":8081",
+     "valueSemantics": "raw"
+    }
+   ]
   },
   {
    "service": "gateway-integration",
@@ -316,7 +344,8 @@
    "notes": [
     "CloudIdentity/Tenant and Gateway Integration share one process, but remain distinct database and writer owners. DATABASE_URL opens Tenant; OPL_GATEWAY_DATABASE_URL opens Gateway. Without the latter, the Gateway product and coordination surfaces are not registered."
    ],
-   "transportPrincipal": "tenant"
+   "transportPrincipal": "tenant",
+   "daemonArgs": []
   },
   {
    "service": "fabric",
@@ -381,7 +410,9 @@
    "defaultRPCAddress": ":8187",
    "rpcDatabaseEnv": "OPL_FABRIC_DATABASE_URL",
    "transportPrincipal": "fabric",
-   "rpcEnabledByEnv": "OPL_FABRIC_DATABASE_URL"
+   "rpcEnabledByEnv": "OPL_FABRIC_DATABASE_URL",
+   "daemonArgs": [],
+   "rpcEnabledByEnvSemantics": "trimmed-nonempty"
   },
   {
    "service": "control-plane",
@@ -436,7 +467,9 @@
     "Migration source, not a permanent second writer; it also serves the Console static bundle.",
     "Cloud announcement reads use the authenticated BFF-only typed HTTP boundary; Control Plane revalidates its Cloud session with Gateway under the control_plane transport principal and retains publication/ACK persistence."
    ],
-   "transportPrincipal": "control_plane"
+   "transportPrincipal": "control_plane",
+   "daemonArgs": [],
+   "addressPortEnv": "PORT"
   },
   {
    "service": "console-bff",
@@ -473,7 +506,8 @@
    "notes": [
     "The BFF owns no business data and holds no database. It reaches each owner through OPL_<OWNER>_URL/OPL_<OWNER>_TOKEN, while an owner process listens on OPL_<OWNER>_ADDR and admits callers through OPL_<OWNER>_PEER_TOKENS: an installation must set both spellings for the same target."
    ],
-   "transportPrincipal": "console_bff"
+   "transportPrincipal": "console_bff",
+   "daemonArgs": []
   }
  ],
  "consoleBundle": {
@@ -583,8 +617,8 @@
   "schemaVersion": 1,
   "scope": "Current owner gRPC transports only; retained signed HTTP and object-store transports are separate contracts.",
   "principals": "caller and target are transport principals. gateway resolves to tenant in the gateway-integration deployment unit; console_bff is a transport principal, not a business owner.",
-  "activation": "required edges apply when the caller RPC surface is installed. configured edges apply only when their address or token has a non-empty explicit env entry. rpcEnabledByEnv disables an optional RPC surface when absent or explicitly empty. An unrelated env/optionalEnv entry is never made mandatory by this contract.",
-  "deploymentIdentity": "A container command[0] must equal the process binary exactly. Deployment names and labels are installation facts, never service-name heuristics.",
+  "activation": "required edges apply when the caller RPC surface is installed. configured edges retain address-or-token admission: address activation and the dialed address value follow that edge's configuredAddressSemantics (raw-nonempty or trimmed-nonempty using Go strings.TrimSpace); token and activationEnv activation always use Go strings.TrimSpace. Unresolved references cannot disable a potentially configured edge. rpcEnabledByEnvSemantics separately declares optional process RPC activation: Ledger uses raw-nonempty; Fabric uses trimmed-nonempty. Listener defaulting is separate from activation. An unrelated env/optionalEnv entry is never made mandatory by this contract.",
+  "deploymentIdentity": "An explicit Kubernetes command plus args must exactly match the process binary followed by daemonArgs. Absent/empty command and args use defaultCommand only for a proven Product image. An args-only override cannot prove the inherited image entrypoint. Probe and unsupported argv cannot prove a daemon. Deployment names and labels are installation facts, never service-name heuristics.",
   "edges": [
    {
     "caller": "capability",
@@ -612,7 +646,8 @@
     "target": "serve",
     "addressEnv": "OPL_SERVE_ADDR",
     "tokenEnv": "OPL_SERVE_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "raw-nonempty"
    },
    {
     "caller": "build",
@@ -661,70 +696,80 @@
     "target": "ledger",
     "addressEnv": "OPL_LEDGER_ADDR",
     "tokenEnv": "OPL_LEDGER_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "workspace",
     "target": "capability",
     "addressEnv": "OPL_CAPABILITY_ADDR",
     "tokenEnv": "OPL_CAPABILITY_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "workspace",
     "target": "runtime_control",
     "addressEnv": "OPL_RUNTIME_CONTROL_ADDR",
     "tokenEnv": "OPL_RUNTIME_CONTROL_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "workspace",
     "target": "serve",
     "addressEnv": "OPL_SERVE_ADDR",
     "tokenEnv": "OPL_SERVE_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "workspace",
     "target": "tenant",
     "addressEnv": "OPL_GATEWAY_ADDR",
     "tokenEnv": "OPL_GATEWAY_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "serve",
     "target": "capability",
     "addressEnv": "OPL_CAPABILITY_ADDR",
     "tokenEnv": "OPL_CAPABILITY_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "raw-nonempty"
    },
    {
     "caller": "serve",
     "target": "runtime_control",
     "addressEnv": "OPL_RUNTIME_CONTROL_ADDR",
     "tokenEnv": "OPL_RUNTIME_CONTROL_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "raw-nonempty"
    },
    {
     "caller": "serve",
     "target": "fabric",
     "addressEnv": "OPL_FABRIC_COORDINATION_ADDR",
     "tokenEnv": "OPL_FABRIC_COORDINATION_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "raw-nonempty"
    },
    {
     "caller": "serve",
     "target": "tenant",
     "addressEnv": "OPL_GATEWAY_ADDR",
     "tokenEnv": "OPL_GATEWAY_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "raw-nonempty"
    },
    {
     "caller": "serve",
     "target": "ledger",
     "addressEnv": "OPL_LEDGER_ADDR",
     "tokenEnv": "OPL_LEDGER_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "serve",
@@ -738,28 +783,32 @@
     "target": "ledger",
     "addressEnv": "OPL_LEDGER_ADDR",
     "tokenEnv": "OPL_LEDGER_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "tenant",
     "target": "fabric",
     "addressEnv": "OPL_FABRIC_ADDR",
     "tokenEnv": "OPL_FABRIC_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "tenant",
     "target": "build",
     "addressEnv": "OPL_BUILD_ADDR",
     "tokenEnv": "OPL_BUILD_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "tenant",
     "target": "workspace",
     "addressEnv": "OPL_WORKSPACE_ADDR",
     "tokenEnv": "OPL_WORKSPACE_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "fabric",
@@ -780,70 +829,80 @@
     "target": "resource_catalog",
     "addressEnv": "OPL_RESOURCE_CATALOG_ADDR",
     "tokenEnv": "OPL_RESOURCE_CATALOG_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "ledger",
     "target": "workspace",
     "addressEnv": "OPL_WORKSPACE_ADDR",
     "tokenEnv": "OPL_WORKSPACE_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "ledger",
     "target": "tenant",
     "addressEnv": "OPL_GATEWAY_ADDR",
     "tokenEnv": "OPL_GATEWAY_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "console_bff",
     "target": "capability",
     "addressEnv": "OPL_CAPABILITY_URL",
     "tokenEnv": "OPL_CAPABILITY_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "console_bff",
     "target": "runtime_control",
     "addressEnv": "OPL_RUNTIME_CONTROL_URL",
     "tokenEnv": "OPL_RUNTIME_CONTROL_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "console_bff",
     "target": "build",
     "addressEnv": "OPL_BUILD_URL",
     "tokenEnv": "OPL_BUILD_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "console_bff",
     "target": "workspace",
     "addressEnv": "OPL_WORKSPACE_URL",
     "tokenEnv": "OPL_WORKSPACE_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "console_bff",
     "target": "serve",
     "addressEnv": "OPL_SERVE_URL",
     "tokenEnv": "OPL_SERVE_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "console_bff",
     "target": "resource_catalog",
     "addressEnv": "OPL_RESOURCE_CATALOG_URL",
     "tokenEnv": "OPL_RESOURCE_CATALOG_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "console_bff",
     "target": "tenant",
     "addressEnv": "OPL_GATEWAY_URL",
     "tokenEnv": "OPL_GATEWAY_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "capability",
@@ -899,7 +958,8 @@
     "target": "tenant",
     "addressEnv": "OPL_CLOUD_IDENTITY_URL",
     "tokenEnv": "OPL_CLOUD_IDENTITY_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "console_bff",
@@ -913,7 +973,8 @@
     "target": "tenant",
     "addressEnv": "OPL_CLOUD_IDENTITY_URL",
     "tokenEnv": "OPL_CLOUD_IDENTITY_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "control_plane",
@@ -921,14 +982,16 @@
     "addressEnv": "OPL_CLOUD_IDENTITY_URL",
     "tokenEnv": "OPL_CLOUD_IDENTITY_TOKEN",
     "activation": "configured",
-    "activationEnv": "OPL_CONTROL_PLANE_BFF_TOKEN"
+    "activationEnv": "OPL_CONTROL_PLANE_BFF_TOKEN",
+    "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
     "caller": "console_bff",
     "target": "ledger",
     "addressEnv": "OPL_LEDGER_URL",
     "tokenEnv": "OPL_LEDGER_TOKEN",
-    "activation": "configured"
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
    }
   ],
   "evidence": [
