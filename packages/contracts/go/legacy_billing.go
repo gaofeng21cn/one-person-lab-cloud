@@ -1,6 +1,11 @@
 package contracts
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"strconv"
+)
 
 // LegacyBillingReceipt is the original owner's immutable customer projection.
 // Optional original components are retained as exact JSON rather than decoded
@@ -34,12 +39,93 @@ type LegacyBillingReceipt struct {
 	Fulfillment        json.RawMessage `json:"fulfillment,omitempty"`
 }
 
+func parseLegacyInt64(raw json.RawMessage) (int64, error) {
+	value := bytes.TrimSpace(raw)
+	if len(value) > 0 && value[0] == '"' {
+		var text string
+		if err := json.Unmarshal(value, &text); err != nil {
+			return 0, err
+		}
+		return strconv.ParseInt(text, 10, 64)
+	}
+	var number json.Number
+	if err := json.Unmarshal(value, &number); err != nil {
+		return 0, err
+	}
+	return number.Int64()
+}
+
+func rewriteLegacyMoneyObject(raw []byte, keys []string, asString bool) ([]byte, error) {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err != nil {
+		return nil, err
+	}
+	for _, key := range keys {
+		value, ok := object[key]
+		if !ok {
+			continue
+		}
+		amount, err := parseLegacyInt64(value)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", key, err)
+		}
+		if asString {
+			object[key], err = json.Marshal(strconv.FormatInt(amount, 10))
+		} else {
+			object[key] = json.RawMessage(strconv.FormatInt(amount, 10))
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	return json.Marshal(object)
+}
+
+func rewriteLegacyReceiptMoney(raw []byte, asString bool) ([]byte, error) {
+	rewritten, err := rewriteLegacyMoneyObject(raw, []string{"chargeUsdMicros", "totalUsdMicros", "refundUsdMicros"}, asString)
+	if err != nil {
+		return nil, err
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(rewritten, &object); err != nil {
+		return nil, err
+	}
+	if components, ok := object["components"]; ok && len(components) > 0 && string(components) != "null" {
+		components, err = rewriteLegacyMoneyObject(components, []string{"chargeUsdMicros"}, asString)
+		if err != nil {
+			return nil, err
+		}
+		var componentObject map[string]json.RawMessage
+		if err := json.Unmarshal(components, &componentObject); err != nil {
+			return nil, err
+		}
+		for _, name := range []string{"compute", "storage"} {
+			if child, ok := componentObject[name]; ok && len(child) > 0 && string(child) != "null" {
+				child, err = rewriteLegacyMoneyObject(child, []string{"chargeUsdMicros"}, asString)
+				if err != nil {
+					return nil, err
+				}
+				componentObject[name] = child
+			}
+		}
+		object["components"], err = json.Marshal(componentObject)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return json.Marshal(object)
+}
+
 // The retained owner has multiple historical receipt variants. Preserve its
 // entire projection, including fields a newer reader does not yet render.
 func (r *LegacyBillingReceipt) UnmarshalJSON(raw []byte) error {
+	normalized, err := rewriteLegacyReceiptMoney(raw, false)
+	if err != nil {
+		return err
+	}
 	type fields LegacyBillingReceipt
 	var parsed fields
-	if err := json.Unmarshal(raw, &parsed); err != nil {
+	if err := json.Unmarshal(normalized, &parsed); err != nil {
 		return err
 	}
 	*r = LegacyBillingReceipt(parsed)
@@ -48,11 +134,16 @@ func (r *LegacyBillingReceipt) UnmarshalJSON(raw []byte) error {
 }
 
 func (r LegacyBillingReceipt) MarshalJSON() ([]byte, error) {
-	if r.original != nil {
-		return r.original, nil
+	raw := r.original
+	if raw == nil {
+		type fields LegacyBillingReceipt
+		var err error
+		raw, err = json.Marshal(fields(r))
+		if err != nil {
+			return nil, err
+		}
 	}
-	type fields LegacyBillingReceipt
-	return json.Marshal(fields(r))
+	return rewriteLegacyReceiptMoney(raw, true)
 }
 
 type LegacyBillingPage struct {
@@ -70,6 +161,29 @@ type LegacySettlementDay struct {
 	RefundCount       int64  `json:"refundCount"`
 }
 
+func (d LegacySettlementDay) MarshalJSON() ([]byte, error) {
+	type fields LegacySettlementDay
+	raw, err := json.Marshal(fields(d))
+	if err != nil {
+		return nil, err
+	}
+	return rewriteLegacyMoneyObject(raw, []string{"chargedUsdMicros", "refundedUsdMicros", "netUsdMicros"}, true)
+}
+
+func (d *LegacySettlementDay) UnmarshalJSON(raw []byte) error {
+	normalized, err := rewriteLegacyMoneyObject(raw, []string{"chargedUsdMicros", "refundedUsdMicros", "netUsdMicros"}, false)
+	if err != nil {
+		return err
+	}
+	type fields LegacySettlementDay
+	var parsed fields
+	if err := json.Unmarshal(normalized, &parsed); err != nil {
+		return err
+	}
+	*d = LegacySettlementDay(parsed)
+	return nil
+}
+
 type LegacySettlementTrend struct {
 	Timezone          string                `json:"timezone"`
 	AsOf              string                `json:"asOf"`
@@ -85,6 +199,29 @@ type LegacySettlementTrend struct {
 	UnattributedCount int64                 `json:"unattributedCount"`
 	OutOfWindowCount  int64                 `json:"outOfWindowCount"`
 	Complete          bool                  `json:"complete"`
+}
+
+func (t LegacySettlementTrend) MarshalJSON() ([]byte, error) {
+	type fields LegacySettlementTrend
+	raw, err := json.Marshal(fields(t))
+	if err != nil {
+		return nil, err
+	}
+	return rewriteLegacyMoneyObject(raw, []string{"chargedUsdMicros", "refundedUsdMicros", "netUsdMicros"}, true)
+}
+
+func (t *LegacySettlementTrend) UnmarshalJSON(raw []byte) error {
+	normalized, err := rewriteLegacyMoneyObject(raw, []string{"chargedUsdMicros", "refundedUsdMicros", "netUsdMicros"}, false)
+	if err != nil {
+		return err
+	}
+	type fields LegacySettlementTrend
+	var parsed fields
+	if err := json.Unmarshal(normalized, &parsed); err != nil {
+		return err
+	}
+	*t = LegacySettlementTrend(parsed)
+	return nil
 }
 
 type LegacyBillingSource[T any] struct {

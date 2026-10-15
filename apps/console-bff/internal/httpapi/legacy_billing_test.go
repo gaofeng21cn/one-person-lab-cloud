@@ -25,7 +25,7 @@ func TestLegacyBillingBFFUsesSessionOnlyAndPreservesOriginalMoney(t *testing.T) 
 		if ownerStatus != 200 {
 			return
 		}
-		amount := int64(9007199254740991)
+		amount := int64(9007199254740993)
 		receipt := contracts.LegacyBillingReceipt{ReceiptID: "original", Type: "billing.workspace_purchased.v1", Currency: "USD", ChargeUSDMicros: &amount, Components: json.RawMessage(`{"original":9007199254740991}`), RefundCode: "original-refund-code", AccountID: "original-account", LaunchReceiptID: "original-launch", ResourceStatus: json.RawMessage(`{"workspaceStatus":"absent"}`), StageEvidence: json.RawMessage(`[{"stage":"confirmed"}]`)}
 		switch r.URL.Path {
 		case "/internal/cloud/legacy-billing/receipts":

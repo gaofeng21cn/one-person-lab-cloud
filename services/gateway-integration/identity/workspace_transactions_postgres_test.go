@@ -197,6 +197,10 @@ func TestWorkspaceTransactionTrendUsesOriginalConfirmationTimesAndWholeWindow(t 
  VALUES('refund-confirmed','tenant-test','old','deleted-workspace','refund','confirmed',3,'i','i','i',now()-interval '1 day',now(),'confirmed-old-created','refund-i'),
  ('refund-unknown','tenant-test','old','deleted-workspace','refund','unknown',5,'j','j',NULL,NULL,now(),'confirmed-old-created','refund-j'),
  ('refund-requested','tenant-test','old','deleted-workspace','refund','requested',2,'k','k',NULL,NULL,now(),'confirmed-old-created','refund-k');
+ INSERT INTO gateway.wallet_operations(id,tenant_id,wallet_binding_id,workspace_id,kind,status,amount_usd_micros,business_idempotency_key,request_fingerprint,external_reference,confirmed_at,created_at)
+ VALUES('charge-over','tenant-test','old','deleted-workspace','charge','confirmed',10,'over-charge','over-charge','over-charge',now()-interval '1 day',now()-interval '1 day');
+ INSERT INTO gateway.wallet_operations(id,tenant_id,wallet_binding_id,workspace_id,kind,status,amount_usd_micros,business_idempotency_key,request_fingerprint,original_wallet_operation_id,refund_entitlement_ref,external_reference,confirmed_at,created_at)
+ VALUES('refund-over','tenant-test','old','deleted-workspace','refund','confirmed',20,'over-refund','over-refund','charge-over','refund-over','over-refund',now()-interval '1 day',now());
  INSERT INTO gateway.wallet_operations(id,tenant_id,wallet_binding_id,workspace_id,kind,status,amount_usd_micros,business_idempotency_key,request_fingerprint,external_reference,confirmed_at)
  SELECT 'batch-'||n,'tenant-test','old','deleted-workspace','charge','confirmed',10,'batch-'||n,'batch','batch-'||n,now() FROM generate_series(1,30) n;`)
 	if err != nil {
@@ -208,7 +212,7 @@ func TestWorkspaceTransactionTrendUsesOriginalConfirmationTimesAndWholeWindow(t 
 		t.Fatal(err)
 	}
 	start := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -13)
-	if trend.GetWorkspaceId() != "deleted-workspace" || len(trend.GetDays()) != 14 || !trend.GetPeriodStart().AsTime().Equal(start) || trend.Days[12].GetConfirmedChargeUsdMicros() != 9007199254740993 || trend.Days[12].GetConfirmedRefundUsdMicros() != 3 || trend.Days[13].GetConfirmedChargeUsdMicros() != 300 || trend.GetUnknownChargeUsdMicros() != 7 || trend.GetUnknownRefundUsdMicros() != 5 || trend.GetRequestedChargeUsdMicros() != 11 || trend.GetRequestedRefundUsdMicros() != 2 {
+	if trend.GetWorkspaceId() != "deleted-workspace" || len(trend.GetDays()) != 14 || !trend.GetPeriodStart().AsTime().Equal(start) || trend.Days[12].GetConfirmedChargeUsdMicros() != 9007199254740993 || trend.Days[12].GetConfirmedRefundUsdMicros() != 3 || trend.Days[13].GetConfirmedChargeUsdMicros() != 300 || trend.GetUnknownChargeUsdMicros() != 7 || trend.GetUnknownRefundUsdMicros() != 25 || trend.GetRequestedChargeUsdMicros() != 11 || trend.GetRequestedRefundUsdMicros() != 2 {
 		t.Fatalf("wrong aggregate: %v", trend)
 	}
 	for i, day := range trend.Days {

@@ -23,7 +23,7 @@ func registerBillingRoutes(mux *http.ServeMux, app *controlPlaneServer, service 
 			writeError(w, http.StatusUnauthorized, "not_authenticated")
 			return
 		}
-		app.listBillingReceiptsForAccount(w, r, service, stringValue(user["accountId"]))
+		app.listBillingReceiptsForAccount(w, r, service, stringValue(user["accountId"]), "")
 	}))
 	mux.HandleFunc("GET /api/billing/receipts/{id}", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
 		user, ok := app.sessionUserContext(r)
@@ -31,7 +31,7 @@ func registerBillingRoutes(mux *http.ServeMux, app *controlPlaneServer, service 
 			writeError(w, http.StatusUnauthorized, "not_authenticated")
 			return
 		}
-		app.getBillingReceiptForAccount(w, r, service, stringValue(user["accountId"]))
+		app.getBillingReceiptForAccount(w, r, service, stringValue(user["accountId"]), "")
 	}))
 	mux.HandleFunc("GET /api/billing/workspace-settlements", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
 		user, ok := app.sessionUserContext(r)
@@ -39,7 +39,7 @@ func registerBillingRoutes(mux *http.ServeMux, app *controlPlaneServer, service 
 			writeError(w, http.StatusUnauthorized, "not_authenticated")
 			return
 		}
-		app.workspaceSettlementTrendForAccount(w, r, service, stringValue(user["accountId"]))
+		app.workspaceSettlementTrendForAccount(w, r, service, stringValue(user["accountId"]), "")
 	}))
 	app.registerCloudLegacyBillingRoutes(mux, service)
 	mux.HandleFunc("POST /api/billing/reconciliation", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
@@ -349,6 +349,45 @@ func projectCustomerBillingReceipt(receipt clients.Receipt) (map[string]any, boo
 	return body, true
 }
 
+func (app *controlPlaneServer) billingReceiptOwnedByUser(ctx context.Context, receipt clients.Receipt, accountID, ownerUserID string) bool {
+	if accountID == "" || receipt.AccountID != accountID {
+		return false
+	}
+	if ownerUserID == "" {
+		return true
+	}
+	if receiptOwner := stringValue(receipt.Owner["ownerUserId"]); receiptOwner != "" {
+		return stringValue(receipt.Owner["accountId"]) == accountID && receiptOwner == ownerUserID
+	}
+	if receipt.Type != "gateway.wallet_adjustment.v1" || receipt.Execution["kind"] != "business_refund" {
+		return false
+	}
+	relatedID := stringValue(receipt.InputRefs["relatedOperationId"])
+	if relatedID == "" {
+		return false
+	}
+	for _, action := range []string{"workspace.launch", "workspace.launch.v2", "workspace.renewal"} {
+		rows, err := queryRuntimeOperations(ctx, app.tables, runtimeOperationQuery{Action: action})
+		if err != nil {
+			return false
+		}
+		for _, row := range rows {
+			if stringValue(row["id"]) != relatedID && stringValue(row["operationId"]) != relatedID {
+				continue
+			}
+			switch action {
+			case "workspace.launch", "workspace.launch.v2":
+				operation, decodeErr := decodeWorkspaceLaunchReconcileOperation(row)
+				return decodeErr == nil && operation.stringFact("ownerUserId") == ownerUserID
+			case "workspace.renewal":
+				operation, decodeErr := decodeWorkspaceRenewalOperation(row)
+				return decodeErr == nil && operation.OwnerUserID == ownerUserID
+			}
+		}
+	}
+	return false
+}
+
 func requiredNonNegativeInteger(input map[string]any, key string) (int64, bool) {
 	var result int64
 	switch value := input[key].(type) {
@@ -373,7 +412,7 @@ func requiredNonNegativeInteger(input map[string]any, key string) (int64, bool) 
 	return result, result >= 0
 }
 
-func (app *controlPlaneServer) listBillingReceiptsForAccount(w http.ResponseWriter, r *http.Request, service *controlplane.Service, accountID string) {
+func (app *controlPlaneServer) listBillingReceiptsForAccount(w http.ResponseWriter, r *http.Request, service *controlplane.Service, accountID, ownerUserID string) {
 	limit := 50
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 		parsed, err := strconv.Atoi(raw)
@@ -390,6 +429,10 @@ func (app *controlPlaneServer) listBillingReceiptsForAccount(w http.ResponseWrit
 	}
 	receipts := make([]any, 0, len(page.Receipts))
 	for _, receipt := range page.Receipts {
+		if !app.billingReceiptOwnedByUser(r.Context(), receipt, accountID, ownerUserID) {
+			writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
+			return
+		}
 		if receipt.AccountID != accountID {
 			writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
 			return
@@ -412,7 +455,7 @@ func (app *controlPlaneServer) listBillingReceiptsForAccount(w http.ResponseWrit
 	writeSourceEnvelope(w, http.StatusOK, "ledger", status, map[string]any{"receipts": receipts, "nextCursor": page.NextCursor, "hasMore": page.HasMore})
 }
 
-func (app *controlPlaneServer) getBillingReceiptForAccount(w http.ResponseWriter, r *http.Request, service *controlplane.Service, accountID string) {
+func (app *controlPlaneServer) getBillingReceiptForAccount(w http.ResponseWriter, r *http.Request, service *controlplane.Service, accountID, ownerUserID string) {
 	receiptID := strings.TrimSpace(r.PathValue("id"))
 	receipt, err := service.BillingReceiptForAccount(r.Context(), accountID, "", receiptID)
 	if err != nil {
@@ -425,6 +468,10 @@ func (app *controlPlaneServer) getBillingReceiptForAccount(w http.ResponseWriter
 	}
 	if receipt.AccountID != accountID {
 		writeError(w, http.StatusNotFound, "billing_receipt_not_found")
+		return
+	}
+	if !app.billingReceiptOwnedByUser(r.Context(), receipt, accountID, ownerUserID) {
+		writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
 		return
 	}
 	var projected map[string]any
@@ -446,7 +493,7 @@ func (app *controlPlaneServer) getBillingReceiptForAccount(w http.ResponseWriter
 	writeSourceEnvelope(w, http.StatusOK, "ledger", "available", projected)
 }
 
-func (app *controlPlaneServer) workspaceSettlementTrendForAccount(w http.ResponseWriter, r *http.Request, service *controlplane.Service, accountID string) {
+func (app *controlPlaneServer) workspaceSettlementTrendForAccount(w http.ResponseWriter, r *http.Request, service *controlplane.Service, accountID, ownerUserID string) {
 	trend, err := app.projectWorkspaceSettlementTrend(r.Context(), service, accountID, time.Now())
 	if err != nil {
 		writeSourceEnvelope(w, http.StatusBadGateway, "control_plane", "unavailable", nil)

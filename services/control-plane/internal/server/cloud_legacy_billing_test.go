@@ -23,7 +23,18 @@ func TestCloudLegacyBillingPreservesOriginalAccountAndDeletedWorkspaceHistory(t 
 			ledger := &customerFactsLedger{receipt: receipt, page: clients.ReceiptPage{Receipts: []clients.Receipt{receipt}, NextCursor: "opaque-next", HasMore: true}}
 			gateway := &customerFactsSub2API{testSub2APIClient: &testSub2APIClient{balance: 1_000_000, charges: map[string]int64{}}, history: map[int64][]clients.Sub2APIBalanceHistoryEntry{}}
 			f := newCloudAnnouncementHTTPFixture(t, store, controlplane.NewService(ledger, &fakeFabricClient{}, gateway))
-			mustStore(t, store.SaveRuntimeOperation(t.Context(), d2CustomerRefundOriginal(t, true)))
+			originalRow := d2CustomerRefundOriginal(t, true)
+			var originalResult map[string]any
+			if err := json.Unmarshal([]byte(stringValue(originalRow["result"])), &originalResult); err != nil {
+				t.Fatal(err)
+			}
+			originalResult["ownerUserId"] = "alpha"
+			encodedOriginal, err := json.Marshal(originalResult)
+			if err != nil {
+				t.Fatal(err)
+			}
+			originalRow["result"] = string(encodedOriginal)
+			mustStore(t, store.SaveRuntimeOperation(t.Context(), originalRow))
 			alice := f.gateway.bind("legacy-alice", "cloud-alice", "901")
 			// The actor spelling does not transfer alpha's original Account to beta.
 			bob := f.gateway.bind("legacy-bob", "alpha", "902")
@@ -54,6 +65,20 @@ func TestCloudLegacyBillingPreservesOriginalAccountAndDeletedWorkspaceHistory(t 
 			var settlement contracts.LegacyBillingSource[contracts.LegacySettlementTrend]
 			if trend.code != 200 || json.Unmarshal(trend.body, &settlement) != nil || settlement.Data == nil || len(settlement.Data.Days) != 14 || settlement.Data.Complete || settlement.Data.UnconfirmedCount != 1 {
 				t.Fatalf("unknown original money must remain unknown=%d %s", trend.code, trend.body)
+			}
+			var mismatchedResult map[string]any
+			if err := json.Unmarshal([]byte(stringValue(originalRow["result"])), &mismatchedResult); err != nil {
+				t.Fatal(err)
+			}
+			mismatchedResult["ownerUserId"] = "beta"
+			encodedMismatch, err := json.Marshal(mismatchedResult)
+			if err != nil {
+				t.Fatal(err)
+			}
+			originalRow["result"] = string(encodedMismatch)
+			mustStore(t, store.SaveRuntimeOperation(t.Context(), originalRow))
+			if mismatched := f.request(t, "GET", base+"/refund-receipt", alice, ""); mismatched.code != 502 {
+				t.Fatalf("original order owner mismatch=%d %s", mismatched.code, mismatched.body)
 			}
 			f.gateway.fail(alice, codes.PermissionDenied)
 			if revoked := f.request(t, "GET", base, alice, ""); revoked.code != 403 {
