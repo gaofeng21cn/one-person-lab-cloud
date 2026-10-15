@@ -21,6 +21,7 @@ func TestWorkspaceFixtureBillingPeriodRemainsActiveWithoutWeakeningExpiry(t *tes
 	for _, clock := range []time.Time{
 		time.Date(2026, 9, 14, 23, 59, 59, 0, time.UTC),
 		time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC),
 		time.Date(2031, 2, 28, 12, 0, 0, 0, time.UTC),
 	} {
 		for _, anchor := range []int{12, 15, 31} {

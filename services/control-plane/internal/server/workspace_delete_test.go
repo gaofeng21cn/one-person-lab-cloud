@@ -457,11 +457,12 @@ func (f *workspaceDeleteFabric) recordedCalls() []string {
 }
 
 type workspaceDeleteFixture struct {
-	server    http.Handler
-	store     controlPlaneTableStore
-	session   *httptest.ResponseRecorder
-	fabric    *workspaceDeleteFabric
-	workspace map[string]any
+	server             http.Handler
+	store              controlPlaneTableStore
+	session            *httptest.ResponseRecorder
+	fabric             *workspaceDeleteFabric
+	workspace          map[string]any
+	billingPeriodStart time.Time
 }
 
 type workspaceDeleteSub2API struct {
@@ -579,14 +580,15 @@ func (s *workspaceDeleteSub2API) Refund(_ context.Context, input clients.Sub2API
 
 type workspaceDeleteLedger struct {
 	fakeLedgerClient
-	mu       sync.Mutex
-	purchase clients.Receipt
-	reads    int
-	receipts []clients.ReceiptInput
-	keys     []string
-	recorded map[string]clients.Receipt
-	failures int
-	events   *workspaceDeleteEvents
+	mu               sync.Mutex
+	purchase         clients.Receipt
+	reads            int
+	receipts         []clients.ReceiptInput
+	keys             []string
+	recorded         map[string]clients.Receipt
+	failures         int
+	receiptCreatedAt string
+	events           *workspaceDeleteEvents
 }
 
 func (l *workspaceDeleteLedger) Receipt(_ context.Context, receiptID string) (clients.Receipt, error) {
@@ -627,7 +629,11 @@ func (l *workspaceDeleteLedger) RecordReceipt(_ context.Context, input clients.R
 	if len(l.receipts) > 1 {
 		receiptID = "receipt-delete-alpha-" + strconv.Itoa(len(l.receipts))
 	}
-	receipt := clients.Receipt{ReceiptInput: input, ReceiptID: receiptID, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	createdAt := time.Now().UTC().Format(time.RFC3339Nano)
+	if l.receiptCreatedAt != "" {
+		createdAt = l.receiptCreatedAt
+	}
+	receipt := clients.Receipt{ReceiptInput: input, ReceiptID: receiptID, CreatedAt: createdAt}
 	if l.recorded == nil {
 		l.recorded = map[string]clients.Receipt{}
 	}
@@ -740,7 +746,13 @@ func newWorkspaceDeleteCompletionFixtureWith(t *testing.T, store controlPlaneTab
 	if err != nil {
 		t.Fatal(err)
 	}
-	periodStart, paidThrough := workspaceFixtureCurrentBillingPeriod(time.Now(), 15)
+	fixtureClock := time.Now().UTC()
+	periodStart, paidThrough := workspaceFixtureCurrentBillingPeriod(fixtureClock, 15)
+	fixture.billingPeriodStart = periodStart
+	if !fixtureClock.After(periodStart) {
+		fixtureClock = periodStart.Add(time.Nanosecond)
+	}
+	ledger.receiptCreatedAt = fixtureClock.Format(time.RFC3339Nano)
 	readyFacts := map[string]any{
 		"sub2apiRedeemCode": "opl:workspace-purchase-alpha",
 		"workspaceApiKeyId": int64(19), "workspaceKeyStatus": workspaceKeyCodexGroupBound, "workspaceKeyFingerprint": "sha256:" + strings.Repeat("a", 64),
