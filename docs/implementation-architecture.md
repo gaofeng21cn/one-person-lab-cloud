@@ -289,6 +289,25 @@ and are not an identity branch of the shared reader. Neither caller moves
 balance authority: the BFF holds no wallet state of its own and returns the
 Gateway owner's readback.
 
+The current identity and writer boundary is:
+
+| Fact | Current owner and caller | Retained boundary |
+| --- | --- | --- |
+| Cloud session, Tenant membership and authorization | Tenant database in `gateway-integration`; Console BFF and owner authorization clients | Control Plane sessions resolve their own Account mapping; a Tenant ID is not a retained Account ID |
+| Wallet and account usage | Sub2API truth, projected by Gateway through the BFF for cloud identity | Legacy builds keep the Control Plane projection; neither projection creates a second wallet writer |
+| Managed key binding and revocation attempt | Gateway database in the same process, configured by `OPL_GATEWAY_DATABASE_URL`; Workspace drives model-update closeout | Sub2API owns the external key. The production issuer refuses revocation without an approved service contract; a recorded attempt does not retire a key |
+| Application deployment and access for cloud Workspace | Workspace admits the order; Serve writes deployment, current selection and access facts; Fabric writes infrastructure facts | Retained Control Plane launch/application routes still serve legacy Workspace rows and must not be used as maintenance fallbacks for a cloud Workspace |
+| Billing receipts and Workspace settlements | Retained Control Plane reads Ledger evidence and its original Account/purchase bindings | No CloudIdentity fee/settlement reader is registered by the current BFF. Migrating it requires an authorized original binding, not substitution of a Tenant ID |
+| Announcements and read acknowledgements | Retained Control Plane publication and Account/session mapping | No CloudIdentity announcement reader or acknowledgement writer is registered by the current BFF |
+
+The two databases in `gateway-integration` have separate migrations, connection
+pools and writers even though the transport principal and deployment unit are
+shared. Enabling a process or routing `/api/` alongside `/api/v2/` does not
+translate identities or complete a retained-data migration. The retained
+billing, announcement and Workspace-maintenance gaps remain in the
+[roadmap](roadmap.md); this map describes their current callers rather than
+admitting a second writer or an administrative impersonation bridge.
+
 The cloud detail exposes the owner's lifecycle, resource readiness, application
 availability, period end and access URL. Workspace-owner renewal, deletion,
 credentials and application-installation BFF routes remain unimplemented, so
