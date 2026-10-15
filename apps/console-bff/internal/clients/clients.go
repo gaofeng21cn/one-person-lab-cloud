@@ -57,6 +57,7 @@ func ConfigFromEnv(getenv func(string) string) Config {
 			owneridentity.Serve:           strings.TrimSpace(getenv("OPL_SERVE_URL")),
 			owneridentity.ResourceCatalog: strings.TrimSpace(getenv("OPL_RESOURCE_CATALOG_URL")),
 			owneridentity.Gateway:         strings.TrimSpace(getenv("OPL_GATEWAY_URL")),
+			owneridentity.Ledger:          strings.TrimSpace(getenv("OPL_LEDGER_URL")),
 		},
 		Tokens: map[owneridentity.Owner]string{
 			owneridentity.Capability:      strings.TrimSpace(getenv("OPL_CAPABILITY_TOKEN")),
@@ -66,6 +67,7 @@ func ConfigFromEnv(getenv func(string) string) Config {
 			owneridentity.Serve:           strings.TrimSpace(getenv("OPL_SERVE_TOKEN")),
 			owneridentity.ResourceCatalog: strings.TrimSpace(getenv("OPL_RESOURCE_CATALOG_TOKEN")),
 			owneridentity.Gateway:         strings.TrimSpace(getenv("OPL_GATEWAY_TOKEN")),
+			owneridentity.Ledger:          strings.TrimSpace(getenv("OPL_LEDGER_TOKEN")),
 		},
 		CloudIdentityAddr:  strings.TrimSpace(getenv(CloudIdentityAddressEnv)),
 		CloudIdentityToken: strings.TrimSpace(getenv(CloudIdentityTokenEnv)),
@@ -99,6 +101,7 @@ type Clients struct {
 	tenant         api.TenantProductServiceClient
 	catalog        api.ResourceCatalogProductServiceClient
 	gateway        api.GatewayProductServiceClient
+	ledger         api.LedgerProductServiceClient
 	// gatewayCoordination is the Gateway owner's typed settlement surface. The
 	// BFF drives it for the one administrator wallet binding command whose owner
 	// (tenant) authorizes the action itself; the BFF decides nothing.
@@ -162,6 +165,20 @@ func Dial(config Config) (*Clients, error) {
 		}
 		clients.conns = append(clients.conns, conn)
 		clients.catalog = api.NewResourceCatalogProductServiceClient(conn)
+	}
+	if addr := strings.TrimSpace(config.Addresses[owneridentity.Ledger]); addr != "" {
+		options, err := config.TLS.DialOptions(owneridentity.ConsoleBFF, owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Ledger), config.Tokens[owneridentity.Ledger])
+		if err != nil {
+			clients.Close()
+			return nil, err
+		}
+		conn, err := grpc.NewClient(addr, options...)
+		if err != nil {
+			clients.Close()
+			return nil, fmt.Errorf("dial Ledger: %w", err)
+		}
+		clients.conns = append(clients.conns, conn)
+		clients.ledger = api.NewLedgerProductServiceClient(conn)
 	}
 	if addr := strings.TrimSpace(config.CloudIdentityAddr); addr != "" {
 		options, err := config.TLS.DialOptions(owneridentity.ConsoleBFF, owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Tenant), config.CloudIdentityToken)
@@ -316,3 +333,5 @@ func (c *Clients) ListRuntimeVersions(ctx context.Context, cursor string) (*api.
 func (c *Clients) RuntimeControlClient() api.RuntimeControlProductServiceClient {
 	return c.runtimeControl
 }
+
+func (c *Clients) LedgerClient() api.LedgerProductServiceClient { return c.ledger }

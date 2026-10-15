@@ -257,6 +257,7 @@ var required = map[protoreflect.Name]map[string]bool{
 	"CreateGatewayKeyRequest":                   {"name": true, "modelIds": true},
 	"GatewayKeySecret":                          {"key": true, "secret": true},
 	"AuditEvent":                                {"id": true, "actorId": true, "action": true, "resourceId": true, "outcome": true, "requestId": true, "createdAt": true},
+	"WorkspaceFinancialReceipt":                 {"workspaceId": true, "receipt": true, "walletOperation": true, "quote": true, "evidenceDigest": true},
 	"Receipt":                                   {"id": true, "kind": true, "owner": true, "outcome": true, "evidenceSummary": true, "createdAt": true},
 	"ReconcileOperationRequest":                 {"reason": true},
 	"AdminOperation":                            {"operation": true, "tenantId": true},

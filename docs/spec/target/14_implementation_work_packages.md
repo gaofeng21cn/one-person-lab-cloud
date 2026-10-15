@@ -336,11 +336,11 @@
 - 保留旧receipt字节/类型/ID与幂等义务，新索引只投影
 - 提供管理员只读证据和资格投影，不让Ledger编排业务
 
-**主实现API（沿用03的唯一Owner，不是改变数据写权）**：`getReceipt`, `listQualifications`, `listReceipts`
+**主实现API（沿用03的唯一Owner，不是改变数据写权）**：`getReceipt`, `getWorkspaceFinancialReceipt`, `listQualifications`, `listReceipts`
 
 **主实现表（字段唯一来源02，不在此复制字段定义）**：`ledger.receipts`, `ledger.reconciliations`
 
-**内部协议实现/协作端口**：`LedgerProductService.ListReceipts`, `LedgerProductService.GetReceipt`, `LedgerProductService.ListQualifications`, `LedgerCoordination.AppendReceipt`, `LedgerCoordination.ReadReceiptByReference`, `LedgerCoordination.ReadLocalNoChargeReceipt`, `LedgerCoordination.ReadWalletActionReceipt`, `LedgerPlanChangeEvidence.AppendPlanChangeReceipt`, `LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt`, `DomainInbox.Deliver`
+**内部协议实现/协作端口**：`LedgerProductService.GetWorkspaceFinancialReceipt`, `LedgerProductService.ListReceipts`, `LedgerProductService.GetReceipt`, `LedgerProductService.ListQualifications`, `LedgerCoordination.AppendReceipt`, `LedgerCoordination.ReadReceiptByReference`, `LedgerCoordination.ReadLocalNoChargeReceipt`, `LedgerCoordination.ReadWalletActionReceipt`, `LedgerPlanChangeEvidence.AppendPlanChangeReceipt`, `LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt`, `DomainInbox.Deliver`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
@@ -613,7 +613,7 @@
 
 **内部协议实现/协作端口**：`WorkspaceProductService.GetOperation`
 
-**前端消费API**：`acceptInvitation`, `bindTenantWallet`, `createTenant`, `getAdminTenant`, `getLoginContext`, `getOperation`, `getReceipt`, `getSelfUserExternalBinding`, `getSession`, `getTenant`, `inviteMember`, `listAdminOperations`, `listAuditEvents`, `listInvitations`, `listMembers`, `listQualifications`, `listReceipts`, `login`, `logout`, `reconcileOperation`, `removeMember`, `revokeInvitation`, `updateMemberRole`
+**前端消费API**：`acceptInvitation`, `bindTenantWallet`, `createTenant`, `getAdminTenant`, `getLoginContext`, `getOperation`, `getReceipt`, `getSelfUserExternalBinding`, `getSession`, `getTenant`, `getWorkspaceFinancialReceipt`, `inviteMember`, `listAdminOperations`, `listAuditEvents`, `listInvitations`, `listMembers`, `listQualifications`, `listReceipts`, `login`, `logout`, `reconcileOperation`, `removeMember`, `revokeInvitation`, `updateMemberRole`
 
 **验证**：
 - go -C apps/console-bff test ./...
@@ -983,7 +983,7 @@
 - Tenant子操作/访问恢复分离，技术证据仅授权详情
 - 只读资格/操作查询，不能从Console dispatch生产部署或直接改状态
 
-**前端消费API**：`bindTenantWallet`, `createComputePlan`, `createPricePolicyVersion`, `createPublisherNamespace`, `createRefundPolicyVersion`, `createRetentionPolicyVersion`, `createStoragePlan`, `createTenant`, `deleteTenant`, `getAdminTenant`, `getBuildRuntimePolicy`, `getOperation`, `getReceipt`, `getTenant`, `getTenantAssetCustody`, `getTenantLifecycleOperation`, `listAdminOperations`, `listAuditEvents`, `listComputePlans`, `listModels`, `listPricePolicyVersions`, `listPublisherNamespaces`, `listQualifications`, `listReceipts`, `listRefundPolicyVersions`, `listRetentionPolicyVersions`, `listRuntimeVersions`, `listStoragePlans`, `listTenants`, `listWebuiVersions`, `publishOfficialPackage`, `reconcileOperation`, `reenableTenant`, `registerRuntimeVersion`, `registerWebuiVersion`, `restoreTenant`, `revokePublisherNamespace`, `setBuildRuntimePolicy`, `setComputePlanAvailability`, `setRuntimeVersionStatus`, `setStoragePlanAvailability`, `setWebuiVersionStatus`, `suspendTenant`
+**前端消费API**：`bindTenantWallet`, `createComputePlan`, `createPricePolicyVersion`, `createPublisherNamespace`, `createRefundPolicyVersion`, `createRetentionPolicyVersion`, `createStoragePlan`, `createTenant`, `deleteTenant`, `getAdminTenant`, `getBuildRuntimePolicy`, `getOperation`, `getReceipt`, `getTenant`, `getTenantAssetCustody`, `getTenantLifecycleOperation`, `getWorkspaceFinancialReceipt`, `listAdminOperations`, `listAuditEvents`, `listComputePlans`, `listModels`, `listPricePolicyVersions`, `listPublisherNamespaces`, `listQualifications`, `listReceipts`, `listRefundPolicyVersions`, `listRetentionPolicyVersions`, `listRuntimeVersions`, `listStoragePlans`, `listTenants`, `listWebuiVersions`, `publishOfficialPackage`, `reconcileOperation`, `reenableTenant`, `registerRuntimeVersion`, `registerWebuiVersion`, `restoreTenant`, `revokePublisherNamespace`, `setBuildRuntimePolicy`, `setComputePlanAvailability`, `setRuntimeVersionStatus`, `setStoragePlanAvailability`, `setWebuiVersionStatus`, `suspendTenant`
 
 **验证**：
 - npm run test:browser:operator-account
