@@ -65,12 +65,13 @@ function validList(value: unknown): value is Resource {
       (resource.spec.selector === undefined || stringMap(resource.spec.selector)) &&
       (resource.spec.ports === undefined || Array.isArray(resource.spec.ports) && resource.spec.ports.every(object));
     if (resource.kind !== "Deployment") return true;
+    const initContainers = resource.spec?.template?.spec?.initContainers;
+    const containers = resource.spec?.template?.spec?.containers;
     return resource.apiVersion === "apps/v1" && object(resource.spec?.template?.spec) &&
       (resource.spec.template.metadata?.labels === undefined || stringMap(resource.spec.template.metadata.labels)) &&
-      Array.isArray(resource.spec.template.spec.containers) && resource.spec.template.spec.containers.length > 0 &&
-      resource.spec.template.spec.containers.every(validContainer) &&
-      (resource.spec.template.spec.initContainers === undefined ||
-        Array.isArray(resource.spec.template.spec.initContainers) && resource.spec.template.spec.initContainers.every(validContainer));
+      Array.isArray(containers) && containers.length > 0 && containers.every(validContainer) &&
+      (initContainers === undefined || Array.isArray(initContainers) && initContainers.every(validContainer)) &&
+      new Set([...containers, ...(initContainers ?? [])].map(container => container.name)).size === containers.length + (initContainers?.length ?? 0);
   });
 }
 type InstalledProcess = { contract: ProcessContract; deployment: Resource; container: Resource; env: Map<string, Resource> };
@@ -151,9 +152,10 @@ function ownedBackend(resource: Resource, target: Resource, resources: Resource[
   return false;
 }
 function autoServiceAccountVolume(volume: unknown): boolean {
-  if (!object(volume) || typeof volume.name !== "string" || !/^kube-api-access-[a-z0-9-]+$/.test(volume.name) ||
+  if (!object(volume) || typeof volume.name !== "string" || !/^kube-api-access-[a-z0-9]{5}$/.test(volume.name) ||
       Object.keys(volume).some(key => !["name", "projected"].includes(key)) || !object(volume.projected) ||
-      Object.keys(volume.projected).some(key => !["sources", "defaultMode"].includes(key)) || !Array.isArray(volume.projected.sources)) return false;
+      Object.keys(volume.projected).some(key => !["sources", "defaultMode"].includes(key)) ||
+      volume.projected.defaultMode !== undefined && volume.projected.defaultMode !== 420 || !Array.isArray(volume.projected.sources)) return false;
   const sources = volume.projected.sources;
   if (sources.length !== 3) return false;
   const token = sources.find((source: unknown) => object(source) && Object.hasOwn(source, "serviceAccountToken"));
@@ -167,11 +169,14 @@ function autoServiceAccountVolume(volume: unknown): boolean {
   return object(tokenSpec) && tokenSpec.path === "token" &&
     Object.keys(tokenSpec).every(key => ["audience", "expirationSeconds", "path"].includes(key)) &&
     (tokenSpec.audience === undefined || typeof tokenSpec.audience === "string") &&
-    (tokenSpec.expirationSeconds === undefined || Number.isSafeInteger(tokenSpec.expirationSeconds) && tokenSpec.expirationSeconds > 0) &&
-    object(caSpec) && caSpec.name === "kube-root-ca.crt" && Array.isArray(caSpec.items) && caSpec.items.length === 1 &&
-    object(caSpec.items[0]) && caSpec.items[0].key === "ca.crt" && caSpec.items[0].path === "ca.crt" &&
-    object(namespaceSpec) && Array.isArray(namespaceSpec.items) && namespaceSpec.items.length === 1 &&
-    object(namespaceSpec.items[0]) && namespaceSpec.items[0].path === "namespace" && object(namespaceSpec.items[0].fieldRef) &&
+    (tokenSpec.expirationSeconds === undefined || Number.isSafeInteger(tokenSpec.expirationSeconds) && tokenSpec.expirationSeconds >= 600 && tokenSpec.expirationSeconds <= 86400) &&
+    object(caSpec) && caSpec.name === "kube-root-ca.crt" && (caSpec.optional === undefined || caSpec.optional === false) &&
+    Object.keys(caSpec).every(key => ["name", "items", "optional"].includes(key)) && Array.isArray(caSpec.items) && caSpec.items.length === 1 &&
+    object(caSpec.items[0]) && Object.keys(caSpec.items[0]).every(key => ["key", "path", "mode"].includes(key)) &&
+    caSpec.items[0].key === "ca.crt" && caSpec.items[0].path === "ca.crt" &&
+    object(namespaceSpec) && Object.keys(namespaceSpec).every(key => key === "items") && Array.isArray(namespaceSpec.items) && namespaceSpec.items.length === 1 &&
+    object(namespaceSpec.items[0]) && Object.keys(namespaceSpec.items[0]).every(key => ["path", "fieldRef", "mode"].includes(key)) &&
+    namespaceSpec.items[0].path === "namespace" && object(namespaceSpec.items[0].fieldRef) &&
     namespaceSpec.items[0].fieldRef.apiVersion === "v1" && namespaceSpec.items[0].fieldRef.fieldPath === "metadata.namespace";
 }
 function normalizedPodField(spec: Resource, field: string): unknown {
@@ -233,6 +238,10 @@ function sameContainerList(live: unknown, declared: unknown, ordered = false): b
 }
 function sameLivePodShape(pod: Resource, deployment: Resource): boolean {
   const declared = deployment.spec.template.spec;
+  const liveContainers = [...pod.spec.containers, ...(pod.spec.initContainers ?? [])];
+  const declaredContainers = [...declared.containers, ...(declared.initContainers ?? [])];
+  if (new Set(liveContainers.map(container => container.name)).size !== liveContainers.length ||
+      new Set(declaredContainers.map(container => container.name)).size !== declaredContainers.length) return false;
   return samePodSecurityShape(pod.spec, declared) &&
     sameContainerList(pod.spec.containers, declared.containers) &&
     sameContainerList(pod.spec.initContainers ?? [], declared.initContainers ?? [], true);

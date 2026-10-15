@@ -217,6 +217,13 @@ test("installation CLI accepts live replicas only through exact controller and e
   const reorderedInitResult = await invoke(reorderedInit.list);
   assert.equal(reorderedInitResult.status, 1, reorderedInitResult.stdout);
   assert.ok(reorderedInitResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+  const duplicateAcrossContainerLists = withLiveWorkspaceBackends();
+  const duplicateInit = { name: "owner", image: "example.invalid/init:1" };
+  duplicateAcrossContainerLists.target.spec.template.spec.initContainers = [duplicateInit];
+  duplicateAcrossContainerLists.pod.spec.initContainers = [duplicateInit];
+  const duplicateAcrossListsResult = await invoke(duplicateAcrossContainerLists.list);
+  assert.equal(duplicateAcrossListsResult.status, 1, duplicateAcrossListsResult.stdout);
+  assert.ok(duplicateAcrossListsResult.report.errors.some(error => ["installation_manifest_shape_invalid", "rpc_service_backend_ambiguous"].includes(error.code)));
 });
 
 
