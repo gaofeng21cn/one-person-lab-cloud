@@ -366,24 +366,27 @@ func (app *controlPlaneServer) billingReceiptOwnedByUser(ctx context.Context, re
 	if relatedID == "" {
 		return false
 	}
-	for _, action := range []string{"workspace.launch", "workspace.launch.v2", "workspace.renewal"} {
-		rows, err := queryRuntimeOperations(ctx, app.tables, runtimeOperationQuery{Action: action})
-		if err != nil {
-			return false
+	return app.billingOperationOwnedByUser(ctx, relatedID, accountID, ownerUserID)
+}
+
+func (app *controlPlaneServer) billingOperationOwnedByUser(ctx context.Context, operationID, accountID, ownerUserID string) bool {
+	if operationID == "" || accountID == "" || ownerUserID == "" {
+		return false
+	}
+	row, found, err := app.tables.GetRuntimeOperation(ctx, operationID)
+	if err != nil || !found || stringValue(row["accountId"]) != accountID {
+		return false
+	}
+	switch stringValue(row["action"]) {
+	case "workspace.launch", "workspace.launch.v2":
+		if history, retained := readWorkspaceLaunchBillingHistory(row); retained {
+			return history.AccountID == accountID && history.OwnerUserID == ownerUserID
 		}
-		for _, row := range rows {
-			if stringValue(row["id"]) != relatedID && stringValue(row["operationId"]) != relatedID {
-				continue
-			}
-			switch action {
-			case "workspace.launch", "workspace.launch.v2":
-				operation, decodeErr := decodeWorkspaceLaunchReconcileOperation(row)
-				return decodeErr == nil && operation.stringFact("ownerUserId") == ownerUserID
-			case "workspace.renewal":
-				operation, decodeErr := decodeWorkspaceRenewalOperation(row)
-				return decodeErr == nil && operation.OwnerUserID == ownerUserID
-			}
-		}
+		operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+		return err == nil && operation.stringFact("accountId") == accountID && operation.stringFact("ownerUserId") == ownerUserID
+	case "workspace.renewal":
+		operation, err := decodeWorkspaceRenewalOperation(row)
+		return err == nil && operation.AccountID == accountID && operation.OwnerUserID == ownerUserID
 	}
 	return false
 }
@@ -494,7 +497,7 @@ func (app *controlPlaneServer) getBillingReceiptForAccount(w http.ResponseWriter
 }
 
 func (app *controlPlaneServer) workspaceSettlementTrendForAccount(w http.ResponseWriter, r *http.Request, service *controlplane.Service, accountID, ownerUserID string) {
-	trend, err := app.projectWorkspaceSettlementTrend(r.Context(), service, accountID, time.Now())
+	trend, err := app.projectWorkspaceSettlementTrendForOwner(r.Context(), service, accountID, ownerUserID, time.Now())
 	if err != nil {
 		writeSourceEnvelope(w, http.StatusBadGateway, "control_plane", "unavailable", nil)
 		return

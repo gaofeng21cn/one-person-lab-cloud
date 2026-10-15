@@ -80,6 +80,12 @@ func TestCloudLegacyBillingPreservesOriginalAccountAndDeletedWorkspaceHistory(t 
 			if mismatched := f.request(t, "GET", base+"/refund-receipt", alice, ""); mismatched.code != 502 {
 				t.Fatalf("original order owner mismatch=%d %s", mismatched.code, mismatched.body)
 			}
+			if mismatched := f.request(t, "GET", base, alice, ""); mismatched.code != http.StatusBadGateway {
+				t.Fatalf("original order owner mismatch in list=%d %s", mismatched.code, mismatched.body)
+			}
+			if mismatched := f.request(t, "GET", "/internal/cloud/legacy-billing/workspace-settlements", alice, ""); mismatched.code != http.StatusBadGateway {
+				t.Fatalf("original order owner mismatch in trend=%d %s", mismatched.code, mismatched.body)
+			}
 			f.gateway.fail(alice, codes.PermissionDenied)
 			if revoked := f.request(t, "GET", base, alice, ""); revoked.code != 403 {
 				t.Fatalf("revoked binding=%d", revoked.code)

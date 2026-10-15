@@ -212,7 +212,7 @@ func TestWorkspaceTransactionTrendUsesOriginalConfirmationTimesAndWholeWindow(t 
 		t.Fatal(err)
 	}
 	start := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -13)
-	if trend.GetWorkspaceId() != "deleted-workspace" || len(trend.GetDays()) != 14 || !trend.GetPeriodStart().AsTime().Equal(start) || trend.Days[12].GetConfirmedChargeUsdMicros() != 9007199254740993 || trend.Days[12].GetConfirmedRefundUsdMicros() != 3 || trend.Days[13].GetConfirmedChargeUsdMicros() != 300 || trend.GetUnknownChargeUsdMicros() != 7 || trend.GetUnknownRefundUsdMicros() != 25 || trend.GetRequestedChargeUsdMicros() != 11 || trend.GetRequestedRefundUsdMicros() != 2 {
+	if trend.GetWorkspaceId() != "deleted-workspace" || len(trend.GetDays()) != 14 || !trend.GetPeriodStart().AsTime().Equal(start) || trend.Days[12].GetConfirmedChargeUsdMicros() != 9007199254741003 || trend.Days[12].GetConfirmedRefundUsdMicros() != 3 || trend.Days[13].GetConfirmedChargeUsdMicros() != 300 || trend.GetUnknownChargeUsdMicros() != 7 || trend.GetUnknownRefundUsdMicros() != 25 || trend.GetRequestedChargeUsdMicros() != 11 || trend.GetRequestedRefundUsdMicros() != 2 {
 		t.Fatalf("wrong aggregate: %v", trend)
 	}
 	for i, day := range trend.Days {
@@ -221,7 +221,7 @@ func TestWorkspaceTransactionTrendUsesOriginalConfirmationTimesAndWholeWindow(t 
 		}
 	}
 	wire, err := publicjson.Marshal(trend)
-	if err != nil || !strings.Contains(string(wire), `"confirmedChargeUSDMicros":"9007199254740993"`) {
+	if err != nil || !strings.Contains(string(wire), `"confirmedChargeUSDMicros":"9007199254741003"`) {
 		t.Fatalf("lossy trend: %s err=%v", wire, err)
 	}
 	forged := proto.Clone(request).(*api.GetWorkspaceTransactionTrendRpcRequest)

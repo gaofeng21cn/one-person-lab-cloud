@@ -128,7 +128,7 @@ func (s *Service) GetWorkspaceTransactionTrend(ctx context.Context, r *api.GetWo
 			SELECT r.original_wallet_operation_id, sum(r.amount_usd_micros)::bigint AS total_refund_usd_micros
 			FROM gateway.wallet_operations r
 			JOIN gateway.wallet_operations original ON original.id=r.original_wallet_operation_id
-			WHERE r.kind='refund' AND r.status IN ('requested','unknown','confirmed')
+			WHERE r.tenant_id=$1 AND r.workspace_id=$2 AND r.kind='refund' AND r.status IN ('requested','unknown','confirmed')
 				AND r.tenant_id=original.tenant_id AND r.workspace_id=original.workspace_id
 			GROUP BY r.original_wallet_operation_id
 		), normalized AS (
@@ -143,6 +143,7 @@ func (s *Service) GetWorkspaceTransactionTrend(ctx context.Context, r *api.GetWo
 					ELSE w.status
 				END AS effective_status,
 				CASE
+					WHEN w.status='confirmed' AND w.kind='charge' THEN w.confirmed_at
 					WHEN w.status='confirmed' AND w.kind='refund'
 						AND original.kind='charge' AND original.status='confirmed'
 						AND original.tenant_id=w.tenant_id AND original.workspace_id=w.workspace_id
