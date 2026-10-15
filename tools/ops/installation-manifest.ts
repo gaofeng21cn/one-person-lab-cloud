@@ -34,6 +34,16 @@ export function installationFailure(code: string, security: InstallationSecurity
 function stringMap(value: unknown): boolean {
   return object(value) && Object.values(value).every(entry => typeof entry === "string");
 }
+function deepEqual(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (left === undefined || right === undefined || left === null || right === null || typeof left !== "object" || typeof right !== "object") return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((entry, index) => deepEqual(entry, right[index]));
+  }
+  if (!object(left) || !object(right)) return false;
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  return [...keys].every(key => deepEqual(left[key], right[key]));
+}
 function validContainer(value: unknown): value is Resource {
   return object(value) && typeof value.name === "string" && typeof value.image === "string" &&
     (value.command === undefined || Array.isArray(value.command) && value.command.every((arg: unknown) => typeof arg === "string")) &&
@@ -140,6 +150,57 @@ function ownedBackend(resource: Resource, target: Resource, resources: Resource[
   }
   return false;
 }
+function normalizedPodField(spec: Resource, field: string): unknown {
+  const value = spec[field];
+  if (["hostNetwork", "hostPID", "hostIPC", "shareProcessNamespace"].includes(field)) return value === true;
+  if (field === "serviceAccountName") return value ?? "default";
+  if (field === "restartPolicy") return value ?? "Always";
+  if (field === "dnsPolicy") return value ?? "ClusterFirst";
+  if (field === "enableServiceLinks") return value === undefined ? true : value;
+  if (field === "securityContext" && object(value) && Object.keys(value).length === 0) return undefined;
+  if (field === "volumes" && Array.isArray(value)) return value.filter(volume => object(volume) && !/^kube-api-access-[a-z0-9-]+$/.test(volume.name ?? ""));
+  return value;
+}
+function samePodSecurityShape(live: Resource, declared: Resource): boolean {
+  const fields = [
+    "hostNetwork", "hostPID", "hostIPC", "shareProcessNamespace", "serviceAccountName",
+    "automountServiceAccountToken", "securityContext", "volumes", "imagePullSecrets", "hostAliases",
+    "dnsConfig", "dnsPolicy", "enableServiceLinks", "restartPolicy"
+  ];
+  return fields.every(field => deepEqual(normalizedPodField(live, field), normalizedPodField(declared, field)));
+}
+const liveContainerFields = [
+  "name", "image", "command", "args", "env", "envFrom", "ports", "securityContext", "volumeMounts",
+  "volumeDevices", "lifecycle", "readinessProbe", "livenessProbe", "startupProbe", "resources", "workingDir",
+  "stdin", "stdinOnce", "tty", "restartPolicy"
+];
+function sameContainerShape(live: Resource, declared: Resource): boolean {
+  return liveContainerFields.every(field => deepEqual(live[field], declared[field]));
+}
+function sameContainerList(live: unknown, declared: unknown): boolean {
+  if (!Array.isArray(live) || !Array.isArray(declared) || live.length !== declared.length) return false;
+  const declaredByName = new Map(declared.map(container => [container.name, container]));
+  return live.every(container => object(container) && declaredByName.has(container.name) && sameContainerShape(container, declaredByName.get(container.name)!));
+}
+function sameLivePodShape(pod: Resource, deployment: Resource): boolean {
+  const declared = deployment.spec.template.spec;
+  return samePodSecurityShape(pod.spec, declared) &&
+    sameContainerList(pod.spec.containers, declared.containers) &&
+    sameContainerList(pod.spec.initContainers ?? [], declared.initContainers ?? []);
+}
+function servicePublishesNotReady(service: Resource): boolean {
+  return service.spec?.publishNotReadyAddresses === true;
+}
+function endpointIsServiceable(endpoint: Resource, service: Resource): boolean {
+  const conditions = endpoint.conditions;
+  if (conditions === undefined) return true;
+  if (!object(conditions) || Object.keys(conditions).some(key => !["ready", "serving", "terminating"].includes(key)) ||
+      ["ready", "serving", "terminating"].some(key => conditions[key] !== undefined && typeof conditions[key] !== "boolean")) return false;
+  if (conditions.ready === false && !servicePublishesNotReady(service)) return false;
+  if (conditions.serving === false) return false;
+  if (conditions.terminating === true && conditions.serving !== true) return false;
+  return true;
+}
 function endpointBackend(resource: Resource, service: Resource, target: InstalledProcess, servicePort: Resource, port: number, resources: Resource[], topology: InstallationTopology): boolean {
   const provesPort = (ports: unknown): boolean => {
     if (!Array.isArray(ports)) return false;
@@ -172,8 +233,7 @@ function endpointBackend(resource: Resource, service: Resource, target: Installe
     const liveInitContainers = pod.spec.initContainers ?? [];
     const targetName = target.container.name;
     const liveTarget = liveContainers.find((container: Resource) => container.name === targetName);
-    if (!liveTarget || ["image", "command", "args", "env", "envFrom", "ports"].some(field =>
-        JSON.stringify(liveTarget[field]) !== JSON.stringify(target.container[field]))) return false;
+    if (!liveTarget || !sameLivePodShape(pod, target.deployment) || !sameContainerShape(liveTarget, target.container)) return false;
     if (new Set(liveContainers.map((container: Resource) => container.name)).size !== liveContainers.length) return false;
     const listenerEnvNames = new Set(topology.processes.flatMap(process => [process.addressEnv, process.rpcAddressEnv, process.rpcEnabledByEnv,
       ...(process.additionalListeners ?? []).map(listener => listener.addressEnv)].filter((name): name is string => Boolean(name))));
@@ -199,7 +259,7 @@ function endpointBackend(resource: Resource, service: Resource, target: Installe
     return resource.apiVersion === "discovery.k8s.io/v1" && controller(resource, "Service", resources) === service &&
       (resource.addressType === "IPv4" || resource.addressType === "IPv6") &&
       Array.isArray(resource.endpoints) && resource.endpoints.length > 0 && resource.endpoints.every((endpoint: unknown) =>
-        object(endpoint) && provesPort(resource.ports) && provesPod(endpoint.targetRef, endpoint.addresses, resource.addressType));
+        object(endpoint) && endpointIsServiceable(endpoint, service) && provesPort(resource.ports) && provesPod(endpoint.targetRef, endpoint.addresses, resource.addressType));
   }
   // The legacy Endpoints controller does not attach a Service ownerReference.
   // Its exact Service name plus every Pod UID and address must still agree.
@@ -209,6 +269,7 @@ function endpointBackend(resource: Resource, service: Resource, target: Installe
     const addresses = subset.addresses === undefined ? [] : Array.isArray(subset.addresses) ? subset.addresses : undefined;
     const notReadyAddresses = subset.notReadyAddresses === undefined ? [] :
       Array.isArray(subset.notReadyAddresses) ? subset.notReadyAddresses : undefined;
+    if (notReadyAddresses && notReadyAddresses.length > 0 && !servicePublishesNotReady(service)) return false;
     const entries = addresses && notReadyAddresses ? [...addresses, ...notReadyAddresses] : undefined;
     return entries !== undefined && entries.length > 0 && entries.every(entry =>
       object(entry) && provesPort(subset.ports) && provesPod(entry.targetRef, [entry.ip]));

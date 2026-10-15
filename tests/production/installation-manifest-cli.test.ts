@@ -144,6 +144,16 @@ test("installation CLI accepts live replicas only through exact controller and e
     ["malformed Pod IP list", ({ pod }) => { pod.status.podIPs = [null]; }],
     ["contradictory Pod IP list", ({ pod }) => { pod.status.podIP = "192.0.2.99"; }],
     ["drifted live target container", ({ pod }) => { pod.spec.containers.find((container: any) => container.name === "owner").image = "example.invalid/foreign:1"; }],
+    ["drifted live target command", ({ pod }) => { pod.spec.containers.find((container: any) => container.name === "owner").command = ["/usr/local/bin/foreign"]; }],
+    ["drifted live target args", ({ pod }) => { pod.spec.containers.find((container: any) => container.name === "owner").args = ["--foreign"]; }],
+    ["drifted live target env", ({ pod }) => { pod.spec.containers.find((container: any) => container.name === "owner").env = []; }],
+    ["drifted live target envFrom", ({ pod }) => { pod.spec.containers.find((container: any) => container.name === "owner").envFrom = [{ configMapRef: { name: "foreign" } }]; }],
+    ["drifted live target ports", ({ pod }) => { pod.spec.containers.find((container: any) => container.name === "owner").ports[0].containerPort = 9999; }],
+    ["duplicate live container name", ({ pod }) => { pod.spec.containers.push(structuredClone(pod.spec.containers[0])); }],
+    ["live host network", ({ pod }) => { pod.spec.hostNetwork = true; }],
+    ["live host PID namespace", ({ pod }) => { pod.spec.hostPID = true; }],
+    ["live privileged sidecar", ({ pod }) => { pod.spec.containers.push({ name: "live-sidecar", image: "example.invalid/sidecar:1", securityContext: { privileged: true } }); }],
+    ["live host path volume", ({ pod }) => { pod.spec.volumes = [{ name: "escape", hostPath: { path: "/" } }]; }],
     ["missing live containers", ({ pod }) => { delete pod.spec.containers; }],
     ["malformed live init containers", ({ pod }) => { pod.spec.initContainers = "invalid"; }],
     ["stale slice Service UID", ({ service }) => { service.metadata.uid = "replaced-service"; }],
@@ -165,6 +175,14 @@ test("installation CLI accepts live replicas only through exact controller and e
     assert.ok(result.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
     assert.deepEqual(result.report.communication.edges, []);
   });
+  const reordered = withLiveWorkspaceBackends();
+  const owner = reordered.pod.spec.containers[0];
+  reordered.pod.spec.containers[0] = {
+    ports: owner.ports, env: owner.env, command: owner.command, image: owner.image, name: owner.name
+  };
+  const reorderedResult = await invoke(reordered.list);
+  assert.equal(reorderedResult.status, 0, reorderedResult.stdout + reorderedResult.stderr);
+  assert.equal(reorderedResult.report.communication.edges.length, 46);
 });
 
 
@@ -181,6 +199,31 @@ test("installation CLI refuses empty or incomplete live endpoint inventories", a
     assert.ok(result.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
     assert.deepEqual(result.report.communication.edges, []);
   });
+});
+
+test("installation CLI rejects live endpoints that are not serviceable", async t => {
+  for (const [name, change] of [
+    ["EndpointSlice ready=false", (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.slice.endpoints[0].conditions = { ready: false }; }],
+    ["EndpointSlice serving=false", (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.slice.endpoints[0].conditions = { serving: false }; }],
+    ["Endpoints notReadyAddresses", (live: ReturnType<typeof withLiveWorkspaceBackends>) => {
+      live.endpoints.subsets[0].notReadyAddresses = live.endpoints.subsets[0].addresses;
+      delete live.endpoints.subsets[0].addresses;
+    }],
+  ] as const) await t.test(name, async () => {
+    const live = withLiveWorkspaceBackends();
+    change(live);
+    const result = await invoke(live.list);
+    assert.equal(result.status, 1, result.stdout);
+    assert.ok(result.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+    assert.deepEqual(result.report.communication.edges, []);
+  });
+  const published = withLiveWorkspaceBackends();
+  published.service.spec.publishNotReadyAddresses = true;
+  published.endpoints.subsets[0].notReadyAddresses = published.endpoints.subsets[0].addresses;
+  delete published.endpoints.subsets[0].addresses;
+  const allowed = await invoke(published.list);
+  assert.equal(allowed.status, 0, allowed.stdout + allowed.stderr);
+  assert.equal(allowed.report.communication.edges.length, 46);
 });
 
 test("installation CLI rejects malformed initContainers through its consumable error report", async t => {
