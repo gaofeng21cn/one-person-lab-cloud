@@ -158,6 +158,7 @@ test("installation CLI accepts live replicas only through exact controller and e
     ["drifted live image pull policy", ({ pod }) => { pod.spec.containers.find((container: any) => container.name === "owner").imagePullPolicy = "Never"; }],
     ["drifted live termination message path", ({ pod }) => { pod.spec.containers.find((container: any) => container.name === "owner").terminationMessagePath = "/tmp/foreign"; }],
     ["live privileged sidecar", ({ pod }) => { pod.spec.containers.push({ name: "live-sidecar", image: "example.invalid/sidecar:1", securityContext: { privileged: true } }); }],
+    ["live ephemeral container", ({ pod }) => { pod.spec.ephemeralContainers = [{ name: "debugger", image: "example.invalid/debugger:1" }]; }],
     ["live host path volume", ({ pod }) => { pod.spec.volumes = [{ name: "escape", hostPath: { path: "/" } }]; }],
     ["missing live containers", ({ pod }) => { delete pod.spec.containers; }],
     ["malformed live init containers", ({ pod }) => { pod.spec.initContainers = "invalid"; }],
@@ -204,6 +205,14 @@ test("installation CLI accepts live replicas only through exact controller and e
   const forgedVolumeResult = await invoke(forgedServiceAccountVolume.list);
   assert.equal(forgedVolumeResult.status, 1, forgedVolumeResult.stdout);
   assert.ok(forgedVolumeResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+  const reorderedInit = withLiveWorkspaceBackends();
+  const initA = { name: "init-a", image: "example.invalid/init-a:1" };
+  const initB = { name: "init-b", image: "example.invalid/init-b:1" };
+  reorderedInit.target.spec.template.spec.initContainers = [initA, initB];
+  reorderedInit.pod.spec.initContainers = [initB, initA];
+  const reorderedInitResult = await invoke(reorderedInit.list);
+  assert.equal(reorderedInitResult.status, 1, reorderedInitResult.stdout);
+  assert.ok(reorderedInitResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
 });
 
 

@@ -152,13 +152,23 @@ function ownedBackend(resource: Resource, target: Resource, resources: Resource[
 }
 function autoServiceAccountVolume(volume: unknown): boolean {
   if (!object(volume) || typeof volume.name !== "string" || !/^kube-api-access-[a-z0-9-]+$/.test(volume.name) ||
-      !object(volume.projected) || !Array.isArray(volume.projected.sources)) return false;
+      Object.keys(volume).some(key => !["name", "projected"].includes(key)) || !object(volume.projected) ||
+      Object.keys(volume.projected).some(key => !["sources", "defaultMode"].includes(key)) || !Array.isArray(volume.projected.sources)) return false;
   const sources = volume.projected.sources;
   return sources.some((source: unknown) => object(source) && object(source.serviceAccountToken)) && sources.every((source: unknown) => {
-    if (!object(source)) return false;
-    if (source.serviceAccountToken !== undefined) return object(source.serviceAccountToken);
-    if (source.configMap !== undefined) return object(source.configMap) && source.configMap.name === "kube-root-ca.crt";
-    if (source.downwardAPI !== undefined) return object(source.downwardAPI);
+    if (!object(source) || Object.keys(source).length !== 1) return false;
+    if (source.serviceAccountToken !== undefined) {
+      return object(source.serviceAccountToken) && typeof source.serviceAccountToken.path === "string" &&
+        Object.keys(source.serviceAccountToken).every(key => ["audience", "expirationSeconds", "path"].includes(key));
+    }
+    if (source.configMap !== undefined) {
+      return object(source.configMap) && source.configMap.name === "kube-root-ca.crt" &&
+        Object.keys(source.configMap).every(key => ["name", "items", "optional"].includes(key));
+    }
+    if (source.downwardAPI !== undefined) {
+      return object(source.downwardAPI) && Array.isArray(source.downwardAPI.items) && source.downwardAPI.items.every((item: unknown) =>
+        object(item) && item.path === "namespace" && object(item.fieldRef) && item.fieldRef.fieldPath === "metadata.namespace");
+    }
     return false;
   });
 }
@@ -188,6 +198,7 @@ function samePodSecurityShape(live: Resource, declared: Resource): boolean {
   if (booleanFields.some(field => [live[field], declared[field]].some(value => value !== undefined && typeof value !== "boolean"))) return false;
   if (stringFields.some(field => [live[field], declared[field]].some(value => value !== undefined && typeof value !== "string"))) return false;
   if ([live.securityContext, declared.securityContext].some(value => value !== undefined && !object(value))) return false;
+  if (live.ephemeralContainers !== undefined && (!Array.isArray(live.ephemeralContainers) || live.ephemeralContainers.length > 0)) return false;
   return fields.every(field => deepEqual(normalizedPodField(live, field), normalizedPodField(declared, field)));
 }
 const liveContainerFields = [
@@ -211,8 +222,10 @@ function normalizedContainerField(container: Resource, field: string): unknown {
 function sameContainerShape(live: Resource, declared: Resource): boolean {
   return liveContainerFields.every(field => deepEqual(normalizedContainerField(live, field), normalizedContainerField(declared, field)));
 }
-function sameContainerList(live: unknown, declared: unknown): boolean {
+function sameContainerList(live: unknown, declared: unknown, ordered = false): boolean {
   if (!Array.isArray(live) || !Array.isArray(declared) || live.length !== declared.length) return false;
+  if (new Set(live.map(container => container.name)).size !== live.length || new Set(declared.map(container => container.name)).size !== declared.length) return false;
+  if (ordered) return live.every((container, index) => object(container) && object(declared[index]) && sameContainerShape(container, declared[index]));
   const declaredByName = new Map(declared.map(container => [container.name, container]));
   return live.every(container => object(container) && declaredByName.has(container.name) && sameContainerShape(container, declaredByName.get(container.name)!));
 }
@@ -220,7 +233,7 @@ function sameLivePodShape(pod: Resource, deployment: Resource): boolean {
   const declared = deployment.spec.template.spec;
   return samePodSecurityShape(pod.spec, declared) &&
     sameContainerList(pod.spec.containers, declared.containers) &&
-    sameContainerList(pod.spec.initContainers ?? [], declared.initContainers ?? []);
+    sameContainerList(pod.spec.initContainers ?? [], declared.initContainers ?? [], true);
 }
 function servicePublishesNotReady(service: Resource): boolean {
   return service.spec?.publishNotReadyAddresses === true;
