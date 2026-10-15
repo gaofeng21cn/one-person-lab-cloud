@@ -146,10 +146,17 @@ test("installation CLI accepts live replicas only through exact controller and e
     ["missing live containers", ({ pod }) => { delete pod.spec.containers; }],
     ["malformed Pod IP list", ({ pod }) => { pod.status.podIPs = [null]; }],
     ["stale slice Service UID", ({ service }) => { service.metadata.uid = "replaced-service"; }],
-    ["live sidecar listener", ({ pod }) => { pod.spec.containers.push({ name: "live-sidecar", image: "example.invalid/sidecar:1", ports: [{ containerPort: 8184 }] }); }],
-    ["live restartable init listener", ({ pod }) => { pod.spec.initContainers = [{ name: "live-sidecar", image: "example.invalid/sidecar:1", restartPolicy: "Always", ports: [{ containerPort: 8184 }] }]; }],
+    ["live sidecar listener", ({ pod, replicaSet }) => {
+      const sidecar = { name: "live-sidecar", image: "example.invalid/sidecar:1", ports: [{ containerPort: 8184 }] };
+      pod.spec.containers.push(structuredClone(sidecar)); replicaSet.spec.template.spec.containers.push(sidecar);
+    }],
+    ["live restartable init listener", ({ pod, replicaSet }) => {
+      const init = { name: "live-sidecar", image: "example.invalid/sidecar:1", restartPolicy: "Always", ports: [{ containerPort: 8184 }] };
+      pod.spec.initContainers = [structuredClone(init)]; replicaSet.spec.template.spec.initContainers = [init];
+    }],
     ["malformed live sidecar ports", ({ pod }) => { pod.spec.containers.push({ name: "live-sidecar", image: "example.invalid/sidecar:1", ports: "invalid" }); }],
     ["malformed live initContainers", ({ pod }) => { pod.spec.initContainers = "invalid"; }],
+    ["malformed ReplicaSet containers", ({ replicaSet }) => { replicaSet.spec.template.spec.containers = [null]; }],
     ["drifted live target image", ({ pod }) => { pod.spec.containers[0].image = "example.invalid/foreign:1"; }],
     ["drifted live target command", ({ pod }) => { pod.spec.containers[0].command = ["/bin/sh", "-c", "exec sleep 3600"]; }],
     ["drifted live target args", ({ pod }) => { pod.spec.containers[0].args = ["probe-workspace-access"]; }],
@@ -194,13 +201,19 @@ test("installation CLI binds live init identity and canonical projected ServiceA
   const initB = { name: "init-b", image: "example.invalid/init-b:1" };
   ordered.replicaSet.spec.template.spec.initContainers = [initA, initB];
   ordered.pod.spec.initContainers = [initB, initA];
-  assert.equal((await invoke(ordered.list)).status, 1);
+  const orderedResult = await invoke(ordered.list);
+  assert.equal(orderedResult.status, 1);
+  assert.ok(orderedResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+  assert.deepEqual(orderedResult.report.communication.edges, []);
 
   const duplicate = withLiveWorkspaceBackends();
   const duplicateInit = { name: "owner", image: "example.invalid/init:1" };
   duplicate.replicaSet.spec.template.spec.initContainers = [duplicateInit];
   duplicate.pod.spec.initContainers = [duplicateInit];
-  assert.equal((await invoke(duplicate.list)).status, 1);
+  const duplicateResult = await invoke(duplicate.list);
+  assert.equal(duplicateResult.status, 1);
+  assert.ok(duplicateResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+  assert.deepEqual(duplicateResult.report.communication.edges, []);
 
   const injected = withLiveWorkspaceBackends();
   injected.pod.spec.volumes = [{ name: "kube-api-access-abc12", projected: { sources: [
@@ -209,12 +222,17 @@ test("installation CLI binds live init identity and canonical projected ServiceA
     { downwardAPI: { items: [{ fieldRef: { apiVersion: "v1", fieldPath: "metadata.namespace" }, path: "namespace" }] } }
   ] } }];
   injected.pod.spec.containers[0].volumeMounts = [{ name: "kube-api-access-abc12", mountPath: "/var/run/secrets/kubernetes.io/serviceaccount", readOnly: true }];
-  assert.equal((await invoke(injected.list)).status, 0);
+  const injectedResult = await invoke(injected.list);
+  assert.equal(injectedResult.status, 0);
+  assert.equal(injectedResult.report.communication.edges.length, 46);
   const forged = withLiveWorkspaceBackends();
   forged.pod.spec.volumes = [{ name: "kube-api-access-abc12", projected: { sources: [
     { serviceAccountToken: { path: "evil" } }, { secret: { name: "foreign" } }
   ] } }];
-  assert.equal((await invoke(forged.list)).status, 1);
+  const forgedResult = await invoke(forged.list);
+  assert.equal(forgedResult.status, 1);
+  assert.ok(forgedResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+  assert.deepEqual(forgedResult.report.communication.edges, []);
 });
 
 test("installation CLI rejects unserviceable supplied live endpoints", async () => {
@@ -229,8 +247,24 @@ test("installation CLI rejects unserviceable supplied live endpoints", async () 
     assert.equal((await invoke(live.list)).status, 1);
   }
   const mixed = withLiveWorkspaceBackends();
+  mixed.list.items = mixed.list.items.filter(item => item !== mixed.endpoints);
   mixed.slice.endpoints.push({ addresses: ["2001:db8::1"], targetRef: mixed.slice.endpoints[0].targetRef, conditions: { ready: false } });
-  assert.equal((await invoke(mixed.list)).status, 0);
+  const mixedResult = await invoke(mixed.list);
+  assert.equal(mixedResult.status, 0);
+  assert.ok(mixedResult.report.communication.edges.some(edge => edge.target === "workspace"));
+
+  const malformedSlice = withLiveWorkspaceBackends();
+  malformedSlice.list.items = malformedSlice.list.items.filter(item => item !== malformedSlice.endpoints);
+  malformedSlice.slice.endpoints.push({ addresses: ["2001:db8::1"], targetRef: malformedSlice.slice.endpoints[0].targetRef, conditions: { ready: "unknown" } });
+  const malformedSliceResult = await invoke(malformedSlice.list);
+  assert.equal(malformedSliceResult.status, 1);
+  assert.ok(malformedSliceResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+
+  const malformedEndpoints = withLiveWorkspaceBackends();
+  malformedEndpoints.endpoints.subsets[0].notReadyAddresses = "invalid";
+  const malformedEndpointsResult = await invoke(malformedEndpoints.list);
+  assert.equal(malformedEndpointsResult.status, 1);
+  assert.ok(malformedEndpointsResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
 });
 
 test("installation CLI refuses empty or incomplete live endpoint inventories", async t => {

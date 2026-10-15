@@ -54,6 +54,10 @@ function validContainer(value: unknown): value is Resource {
       (entry.valueFrom === undefined || object(entry.valueFrom)) && !(entry.value !== undefined && entry.valueFrom !== undefined))) &&
     (value.ports === undefined || Array.isArray(value.ports) && value.ports.every((entry: unknown) => object(entry) && validPort(entry.containerPort)));
 }
+function validContainerList(value: unknown, required = false): value is Resource[] {
+  return Array.isArray(value) && (!required || value.length > 0) && value.every(validContainer) &&
+    new Set(value.map(container => container.name)).size === value.length;
+}
 function validList(value: unknown): value is Resource {
   if (!object(value) || value.apiVersion !== "v1" || value.kind !== "List" || !Array.isArray(value.items) || value.items.length === 0) return false;
   return value.items.every((resource: unknown) => {
@@ -69,8 +73,8 @@ function validList(value: unknown): value is Resource {
     const containers = resource.spec?.template?.spec?.containers;
     return resource.apiVersion === "apps/v1" && object(resource.spec?.template?.spec) &&
       (resource.spec.template.metadata?.labels === undefined || stringMap(resource.spec.template.metadata.labels)) &&
-      Array.isArray(containers) && containers.length > 0 && containers.every(validContainer) &&
-      (initContainers === undefined || Array.isArray(initContainers) && initContainers.every(validContainer)) &&
+      validContainerList(containers, true) &&
+      (initContainers === undefined || validContainerList(initContainers)) &&
       new Set([...containers, ...(initContainers ?? [])].map(container => container.name)).size === containers.length + (initContainers?.length ?? 0);
   });
 }
@@ -255,6 +259,9 @@ function sameContainerList(live: unknown, declared: unknown, ordered = false): b
   return live.every(container => object(container) && declaredByName.has(container.name) && sameContainerShape(container, declaredByName.get(container.name)!));
 }
 function sameLivePodShape(pod: Resource, declared: Resource): boolean {
+  if (!validContainerList(pod.spec?.containers, true) || !validContainerList(declared.containers, true) ||
+      pod.spec.initContainers !== undefined && !validContainerList(pod.spec.initContainers) ||
+      declared.initContainers !== undefined && !validContainerList(declared.initContainers)) return false;
   const liveContainers = [...pod.spec.containers, ...(pod.spec.initContainers ?? [])];
   const declaredContainers = [...declared.containers, ...(declared.initContainers ?? [])];
   if (new Set(liveContainers.map(container => container.name)).size !== liveContainers.length ||
@@ -265,15 +272,14 @@ function sameLivePodShape(pod: Resource, declared: Resource): boolean {
 function servicePublishesNotReady(service: Resource): boolean {
   return service.spec?.publishNotReadyAddresses === true;
 }
-function endpointIsServiceable(endpoint: unknown, service: Resource): endpoint is Resource {
-  if (!object(endpoint)) return false;
+function endpointServiceability(endpoint: unknown, service: Resource): "serviceable" | "unserviceable" | undefined {
+  if (!object(endpoint)) return;
   const conditions = endpoint.conditions;
-  if (conditions === undefined) return true;
-  if (!object(conditions) || Object.keys(conditions).some(key => !["ready", "serving", "terminating"].includes(key)) ||
-      ["ready", "serving", "terminating"].some(key => conditions[key] !== undefined && typeof conditions[key] !== "boolean")) return false;
-  if (conditions.ready === false && !servicePublishesNotReady(service)) return false;
-  if (conditions.serving === false || conditions.terminating === true) return false;
-  return true;
+  if (conditions !== undefined && (!object(conditions) || Object.keys(conditions).some(key => !["ready", "serving", "terminating"].includes(key)) ||
+      ["ready", "serving", "terminating"].some(key => conditions[key] !== undefined && typeof conditions[key] !== "boolean"))) return;
+  if (conditions?.serving === false || conditions?.terminating === true ||
+      conditions?.ready === false && !servicePublishesNotReady(service)) return "unserviceable";
+  return "serviceable";
 }
 function endpointBackend(resource: Resource, service: Resource, target: Resource, targetContainer: Resource, servicePort: Resource, port: number, resources: Resource[], defaultCommand: string[], topology: InstallationTopology,
   processContract: (container: Resource) => ProcessContract | undefined): boolean {
@@ -289,8 +295,8 @@ function endpointBackend(resource: Resource, service: Resource, target: Resource
     const pod = resources.find(candidate => candidate.kind === "Pod" && candidate.apiVersion === "v1" &&
       namespace(candidate) === namespace(service) && candidate.metadata.name === ref.name && candidate.metadata.uid === ref.uid);
     if (!pod || !ownedBackend(pod, target, resources) || !labelsMatch(service.spec.selector, pod.metadata.labels ?? {})) return false;
-    if (!Array.isArray(pod.spec?.containers) || pod.spec.containers.length === 0 || !pod.spec.containers.every(validContainer) ||
-        pod.spec.initContainers !== undefined && (!Array.isArray(pod.spec.initContainers) || !pod.spec.initContainers.every(validContainer))) return false;
+    if (!validContainerList(pod.spec?.containers, true) ||
+        pod.spec.initContainers !== undefined && !validContainerList(pod.spec.initContainers)) return false;
     const liveContainers = pod.spec.containers;
     const liveInitContainers = pod.spec.initContainers ?? [];
     const targetName = targetContainer.name;
@@ -300,7 +306,9 @@ function endpointBackend(resource: Resource, service: Resource, target: Resource
     // the new desired image here would prevent a legitimate upgrade preflight.
     const replicaSpec = controller(pod, "ReplicaSet", resources)?.spec?.template?.spec;
     const replicaContainers = replicaSpec?.containers;
-    if (!object(replicaSpec) || !Array.isArray(replicaContainers) || !sameLivePodShape(pod, replicaSpec)) return false;
+    if (!object(replicaSpec) || !validContainerList(replicaContainers, true) ||
+        replicaSpec.initContainers !== undefined && !validContainerList(replicaSpec.initContainers) ||
+        !sameLivePodShape(pod, replicaSpec)) return false;
     const replicaTargets = replicaContainers.filter((container: unknown) => validContainer(container) && container.name === targetName);
     if (liveTargets.length !== 1 || replicaTargets.length !== 1 || !sameContainerShape(liveTargets[0], replicaTargets[0])) return false;
     const expectedArgv = productArgv(replicaTargets[0], defaultCommand);
@@ -350,19 +358,24 @@ function endpointBackend(resource: Resource, service: Resource, target: Resource
   if (resource.kind === "EndpointSlice") {
     return resource.apiVersion === "discovery.k8s.io/v1" && controller(resource, "Service", resources) === service &&
       (resource.addressType === "IPv4" || resource.addressType === "IPv6") &&
-      Array.isArray(resource.endpoints) && resource.endpoints.some((endpoint: unknown) => endpointIsServiceable(endpoint, service)) &&
-      resource.endpoints.filter((endpoint: unknown) => endpointIsServiceable(endpoint, service)).every((endpoint: unknown) =>
-        object(endpoint) && provesPort(resource.ports) && provesPod(endpoint.targetRef, endpoint.addresses, resource.addressType));
+      Array.isArray(resource.endpoints) && resource.endpoints.length > 0 && (() => {
+        const states = resource.endpoints.map((endpoint: unknown) => endpointServiceability(endpoint, service));
+        if (states.some(state => state === undefined)) return false;
+        const serviceable = resource.endpoints.filter((_: unknown, index: number) => states[index] === "serviceable");
+        return serviceable.length > 0 && serviceable.every((endpoint: unknown) =>
+          object(endpoint) && provesPort(resource.ports) && provesPod(endpoint.targetRef, endpoint.addresses, resource.addressType));
+      })();
   }
   // The legacy Endpoints controller does not attach a Service ownerReference.
   // Its exact Service name plus every Pod UID and address must still agree.
   if (resource.apiVersion !== "v1" || !Array.isArray(resource.subsets) || resource.subsets.length === 0) return false;
   return resource.subsets.every((subset: unknown) => {
     if (!object(subset)) return false;
-    const addresses = subset.addresses === undefined ? [] : Array.isArray(subset.addresses) ? subset.addresses : undefined;
-    const notReadyAddresses = subset.notReadyAddresses === undefined ? [] :
-      Array.isArray(subset.notReadyAddresses) ? subset.notReadyAddresses : undefined;
-    const readyEntries = addresses ?? [];
+    if (subset.addresses !== undefined && !Array.isArray(subset.addresses) ||
+        subset.notReadyAddresses !== undefined && !Array.isArray(subset.notReadyAddresses)) return false;
+    const addresses = subset.addresses ?? [];
+    const notReadyAddresses = subset.notReadyAddresses ?? [];
+    const readyEntries = addresses;
     const notReadyEntries = servicePublishesNotReady(service) ? notReadyAddresses ?? [] : [];
     const entries = readyEntries.length > 0 || notReadyEntries.length > 0 ? [...readyEntries, ...notReadyEntries] : undefined;
     return entries !== undefined && entries.length > 0 && entries.every(entry =>
