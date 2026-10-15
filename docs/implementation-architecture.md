@@ -141,7 +141,7 @@ Cloud announcement reads and ACKs use `apps/console-bff/internal/httpapi/announc
 and the typed HTTP client in `apps/console-bff/internal/clients/announcements.go`.
 The BFF checks the Cloud session and same-origin CSRF for ACKs. Control Plane
 accepts only its independently authenticated BFF peer and revalidates the session
-reference through `GatewayCoordination.GetSelfUserExternalBinding`, using the
+reference through `GatewayCoordination.GetSelfUserIdentity`, using the
 `control_plane` transport principal. This adds no target data owner or process.
 The original owner resolves the verified external subject against its unique
 Account mapping and reciprocal owner User before reading historical ACKs; email,
@@ -151,7 +151,9 @@ When an original-owner link becomes available, the same announcement row lock
 folds both references into the original User and preserves the earliest original
 ACK timestamp. Publication/withdrawal and ACK persistence remain in Control Plane.
 
-All valid Cloud Users may read active announcements without a Tenant. The retained owner resolves Gateway identity-only session proof; OCI destination readiness remains a separate Build qualification and is not required for announcements. Missing
+All valid Cloud Users may read active announcements without a Tenant. The retained
+owner resolves Gateway identity-only session proof; OCI destination readiness
+remains a separate Build qualification and is not required for announcements. Missing
 configuration, identity proof or an unavailable dependency is an explicit failure.
 `deploy/portable/opl-cloud-owner-topology.json` and the environment example declare
 the BFF-to-Control-Plane token and Control Plane's CloudIdentity peer/certificate
