@@ -60,7 +60,21 @@ func TestNodePoolReadbackSDKProbe(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var captured []*tke2022.DescribeNodePoolsRequest
+			api := &fakeNativeTkeAPI{nodePoolId: "np-historical", replicas: 1}
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.Header.Get("X-TC-Action") == "DescribeClusterMachines" {
+					request := tke2022.NewDescribeClusterMachinesRequest()
+					if err := json.NewDecoder(r.Body).Decode(request); err != nil {
+						t.Error(err)
+					}
+					response, err := api.DescribeClusterMachines(request)
+					if err != nil {
+						t.Error(err)
+					}
+					_ = json.NewEncoder(w).Encode(response)
+					return
+				}
 				if r.Header.Get("X-TC-Action") != "DescribeNodePools" {
 					t.Errorf("unexpected provider action: %s", r.Header.Get("X-TC-Action"))
 				}
@@ -69,7 +83,6 @@ func TestNodePoolReadbackSDKProbe(t *testing.T) {
 					t.Error(err)
 				}
 				captured = append(captured, request)
-				w.Header().Set("Content-Type", "application/json")
 				_, _ = io.WriteString(w, tc.payload)
 			}))
 			defer server.Close()
@@ -80,7 +93,8 @@ func TestNodePoolReadbackSDKProbe(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			client := newFakeTencentSDKClient(&fakeNativeTkeAPI{})
+			client := newFakeTencentSDKClient(api)
+			client.nativeCvmClient = &fakeNativeCvmAPI{instanceName: "compute-alpha", tags: computeOwnershipTags()}
 			client.nativeTkeClient = sdk
 			response := handleWithClient(nodePoolReadbackSyncRequest(), protectedResourceEnv(), client)
 			assertNodePoolReadbackFailure(t, response, tc.code, tc.requestID)
@@ -127,7 +141,7 @@ func TestNodePoolReadbackFixtures(t *testing.T) {
 		{name: "unsafe SDK code", err: tcerrors.NewTencentCloudSDKError("AuthFailure provider-secret", "provider-secret", "req-sensitive"), code: "tencent_describe_node_pool_failed", requestID: "req-sensitive"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			api := &nodePoolReadbackFixture{fakeNativeTkeAPI: &fakeNativeTkeAPI{}, err: tc.err}
+			api := &nodePoolReadbackFixture{fakeNativeTkeAPI: &fakeNativeTkeAPI{nodePoolId: "np-historical", replicas: 1}, err: tc.err}
 			if !tc.missingResult {
 				api.response = &tke2022.DescribeNodePoolsResponse{Response: tc.response}
 			}
@@ -137,6 +151,7 @@ func TestNodePoolReadbackFixtures(t *testing.T) {
 			}
 			client := newFakeTencentSDKClient(api.fakeNativeTkeAPI)
 			client.nativeTkeClient = api
+			client.nativeCvmClient = &fakeNativeCvmAPI{instanceName: "compute-alpha", tags: computeOwnershipTags()}
 			request := nodePoolReadbackSyncRequest()
 			before, _ := json.Marshal(request)
 			response := client.SyncComputeAllocation(request, nil)
@@ -148,7 +163,7 @@ func TestNodePoolReadbackFixtures(t *testing.T) {
 				t.Errorf("unexpected provider code: %#v", response.ProviderData)
 			}
 			after, _ := json.Marshal(request)
-			if string(before) != string(after) || !reflect.DeepEqual(api.calls, []string{"DescribeNodePools"}) {
+			if string(before) != string(after) || !reflect.DeepEqual(api.calls, []string{"DescribeClusterMachines", "DescribeNodePools"}) {
 				t.Fatalf("failed readback changed input or continued: calls=%v before=%s after=%s", api.calls, before, after)
 			}
 		})

@@ -3909,17 +3909,6 @@ func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[str
 	if strings.TrimSpace(request.AccountId) == "" || strings.TrimSpace(request.PackageId) == "" || strings.TrimSpace(request.Pool.Id) == "" || strings.TrimSpace(request.Pool.NodePoolId) == "" || strings.TrimSpace(request.Allocation.Id) == "" || !strings.HasPrefix(request.Allocation.InstanceId, "ins-") || strings.TrimSpace(request.Zone) == "" || !validOwnershipTags(request.Tags) || request.Tags["opl_account_id"] != request.AccountId || request.Tags["opl_resource_id"] != request.Allocation.Id {
 		return Response{Ok: false, ErrorCode: "compute_sync_identity_required", Message: "Exact compute account, resource, CVM instance, Zone, and ownership tags are required for compute sync.", Retryable: false}
 	}
-	pool, poolRequestID, err := client.describeNativeNodePool(request.Pool.NodePoolId)
-	if err != nil {
-		response := sdkErrorResponse("tencent_describe_node_pool_failed", err)
-		if poolRequestID != "" {
-			response.ProviderRequestId = poolRequestID
-		}
-		return response
-	}
-	if failure := readbackNodePoolFailure(pool, request, poolRequestID); failure != nil {
-		return *failure
-	}
 	machines, requestId, err := client.describeClusterMachines(request.Pool.NodePoolId)
 	if err != nil {
 		response := sdkErrorResponse("tencent_describe_cluster_machines_failed", err)
@@ -3978,8 +3967,21 @@ func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[str
 		return Response{
 			Ok: false, ErrorCode: code, Message: "Tencent compute identity is only partially present.",
 			Observation: observation, InstanceId: cvm.InstanceId, CVMStatus: cvm.CVMStatus, ProviderData: cvm.ProviderData,
-			ProviderRequestId: firstNonEmpty(cvm.ProviderRequestId, requestId, poolRequestID), Retryable: true,
+			ProviderRequestId: firstNonEmpty(cvm.ProviderRequestId, requestId), Retryable: true,
 		}
+	}
+	// Retained Machine/CVM absence and owned orphan CVMs are observable after
+	// pool retirement. A live allocation still needs the original pool checks.
+	pool, poolRequestID, err := client.describeNativeNodePool(request.Pool.NodePoolId)
+	if err != nil {
+		response := sdkErrorResponse("tencent_describe_node_pool_failed", err)
+		if poolRequestID != "" {
+			response.ProviderRequestId = poolRequestID
+		}
+		return response
+	}
+	if failure := readbackNodePoolFailure(pool, request, poolRequestID); failure != nil {
+		return *failure
 	}
 	privateIP := firstNonEmpty(stringValue(machine.LanIP), request.Allocation.PrivateIp)
 	nodeName := firstNonEmpty(kubernetesNodeName(machine), request.Allocation.NodeName)
