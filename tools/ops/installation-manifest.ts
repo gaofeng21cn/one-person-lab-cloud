@@ -140,7 +140,7 @@ function ownedBackend(resource: Resource, target: Resource, resources: Resource[
   }
   return false;
 }
-function endpointBackend(resource: Resource, service: Resource, target: Resource, servicePort: Resource, port: number, resources: Resource[]): boolean {
+function endpointBackend(resource: Resource, service: Resource, target: Resource, targetContainerName: string, servicePort: Resource, port: number, resources: Resource[]): boolean {
   const provesPort = (ports: unknown): boolean => {
     if (!Array.isArray(ports)) return false;
     const matching = ports.filter(entry => object(entry) && (entry.name ?? "") === (servicePort.name ?? "") && (entry.protocol ?? "TCP") === "TCP");
@@ -153,6 +153,16 @@ function endpointBackend(resource: Resource, service: Resource, target: Resource
     const pod = resources.find(candidate => candidate.kind === "Pod" && candidate.apiVersion === "v1" &&
       namespace(candidate) === namespace(service) && candidate.metadata.name === ref.name && candidate.metadata.uid === ref.uid);
     if (!pod || !ownedBackend(pod, target, resources) || !labelsMatch(service.spec.selector, pod.metadata.labels ?? {})) return false;
+    if (!Array.isArray(pod.spec?.containers) || pod.spec.containers.length === 0 || !pod.spec.containers.every(validContainer) ||
+        pod.spec.initContainers !== undefined && (!Array.isArray(pod.spec.initContainers) || !pod.spec.initContainers.every(validContainer))) return false;
+    const liveContainers = pod.spec.containers;
+    const liveInitContainers = pod.spec.initContainers ?? [];
+    const targetName = targetContainerName;
+    if (liveContainers.filter((container: Resource) => container.name === targetName).length !== 1) return false;
+    const competingLiveContainers = [...liveContainers.filter((container: Resource) => container?.name !== targetName),
+      ...liveInitContainers.filter((container: Resource) => container?.restartPolicy === "Always")];
+    if (competingLiveContainers.some((container: Resource) => (container?.ports ?? []).some((entry: Resource) =>
+      (entry?.protocol ?? "TCP") === "TCP" && entry?.containerPort === port))) return false;
     const podIP = pod.status?.podIP;
     if (typeof podIP !== "string" || isIP(podIP) === 0) return false;
     const podIPs = pod.status?.podIPs;
@@ -283,9 +293,7 @@ function podListenerError(processes: InstalledProcess[]): string | undefined {
     if (contract.rpcAddressEnv || rpcEnabled(process)) addresses.push(listenerAddress(process, contract.addressEnv, contract.defaultAddress,
       contract.kind === "ownerservice", contract.addressPortEnv));
     if (contract.rpcAddressEnv && rpcEnabled(process)) addresses.push(rpcListenerAddress(process));
-    const additionalListeners = (contract.additionalListeners ?? []).
-      filter(listener => envEntry(process, listener.addressEnv) !== undefined || listener.defaultAddress !== undefined).
-      map(listener => ({
+    const additionalListeners = (contract.additionalListeners ?? []).map(listener => ({
         address: listenerAddress(process, listener.addressEnv, listener.defaultAddress, listener.valueSemantics === "trimmed"),
         required: true
       }));
@@ -465,7 +473,7 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     const endpoints = resources.filter(resource => namespace(resource) === namespace(service) &&
       (resource.kind === "Endpoints" && resource.metadata.name === service.metadata.name ||
        resource.kind === "EndpointSlice" && resource.metadata.labels?.["kubernetes.io/service-name"] === service.metadata.name));
-    if (conflict || endpoints.some(resource => !endpointBackend(resource, service, target.deployment, servicePort, targetPort, resources))) {
+    if (conflict || endpoints.some(resource => !endpointBackend(resource, service, target.deployment, target.container.name, servicePort, targetPort, resources))) {
       fail("rpc_service_backend_ambiguous"); continue;
     }
     const tokenRef = secretReference(envEntry(caller, edge.tokenEnv));

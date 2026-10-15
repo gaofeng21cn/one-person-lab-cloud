@@ -143,6 +143,11 @@ test("installation CLI accepts live replicas only through exact controller and e
     ["wrong slice address family", ({ slice }) => { slice.addressType = "IPv4"; }],
     ["malformed Pod IP list", ({ pod }) => { pod.status.podIPs = [null]; }],
     ["stale slice Service UID", ({ service }) => { service.metadata.uid = "replaced-service"; }],
+    ["live sidecar listener", ({ pod }) => { pod.spec.containers.push({ name: "live-sidecar", image: "example.invalid/sidecar:1", ports: [{ containerPort: 8184 }] }); }],
+    ["live restartable init listener", ({ pod }) => { pod.spec.initContainers = [{ name: "live-sidecar", image: "example.invalid/sidecar:1", restartPolicy: "Always", ports: [{ containerPort: 8184 }] }]; }],
+    ["malformed live sidecar ports", ({ pod }) => { pod.spec.containers.push({ name: "live-sidecar", image: "example.invalid/sidecar:1", ports: "invalid" }); }],
+    ["malformed live initContainers", ({ pod }) => { pod.spec.initContainers = "invalid"; }],
+    ["missing live target container", ({ pod }) => { pod.spec.containers = [{ name: "other", image: "example.invalid/other:1" }]; }],
     ["wrong endpoint port", ({ endpoints }) => { endpoints.subsets[0].ports[0].port = 9999; }],
     ["wrong slice port", ({ slice }) => { slice.ports[0].port = 9999; }]
   ];
@@ -679,6 +684,16 @@ test("installation CLI refuses shared Pod wildcard listener collisions for numer
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.equal(result.report.communication.edges.length, 46);
   });
+});
+
+test("installation CLI requires Capability object listener when the topology has no default", async () => {
+  const list = workedInstallation();
+  const process = container(list, "capability");
+  process.env = process.env.filter(entry => entry.name !== "OPL_CAPABILITY_OBJECT_LISTEN_ADDR");
+  const result = await invoke(list);
+  assert.equal(result.status, 1, result.stdout);
+  assert.ok(result.report.errors.some(error => error.code === "installation_listener_unproven"));
+  assert.deepEqual(result.report.communication.edges, []);
 });
 
 test("installation CLI refuses malformed explicit additional listeners", async t => {
