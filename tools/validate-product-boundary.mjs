@@ -150,7 +150,7 @@ if (candidateContract.schemaVersion !== 2 || candidateReceipt?.schemaVersion !==
     candidateReceipt?.checksumManifest !== "SHA256SUMS") {
   throw new Error("Candidate receipt contract boundary is invalid");
 }
-if (contract.schemaVersion !== 3 || contract.productRepository !== "gaofeng21cn/one-person-lab-cloud" ||
+if (contract.schemaVersion !== 4 || contract.productRepository !== "gaofeng21cn/one-person-lab-cloud" ||
     contract.instanceHandoff?.repository !== "gaofeng21cn/opl-instance-medopl" ||
     contract.candidate?.formalPublication !== false ||
     contract.candidate?.instanceDeployment !== false ||
@@ -169,7 +169,7 @@ if (contract.schemaVersion !== 3 || contract.productRepository !== "gaofeng21cn/
     contract.candidate?.artifactLocator?.artifactNameRunAttemptField !== "provenance.workflowRunAttempt" ||
     contract.distribution?.publication?.promotionMode !== "qualified_candidate_digest_without_rebuild" ||
     JSON.stringify(contract.distribution?.publication?.requiredEvidence) !== JSON.stringify([
-      "candidate", "local_qualification", "instance_qualification_decision", "instance_workspace_verified"
+      "candidate", "local_qualification", "instance_deployment_verified", "instance_qualification_decision", "instance_workspace_verified"
     ]) ||
     contract.distribution?.publication?.instanceEvidenceReader?.secret !== "OPL_INSTANCE_EVIDENCE_TOKEN" ||
     contract.distribution?.publication?.instanceEvidenceReader?.repository !== "gaofeng21cn/opl-instance-medopl" ||
