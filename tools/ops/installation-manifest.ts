@@ -201,11 +201,16 @@ function normalizedPodField(spec: Resource, field: string): unknown {
   if (field === "priority") return value === undefined ? 0 : value;
   if (field === "preemptionPolicy") return value ?? "PreemptLowerPriority";
   if (field === "securityContext" && object(value) && Object.keys(value).length === 0) return undefined;
+  if (field === "imagePullSecrets" && Array.isArray(value) && value.length === 0) return undefined;
   if (field === "volumes" && Array.isArray(value)) {
     const filtered = value.filter(volume => !autoServiceAccountVolume(volume));
     return filtered.length === 0 ? undefined : filtered;
   }
   return value;
+}
+function admissionFieldAbsent(value: unknown, field: string): boolean {
+  return value === undefined || field === "imagePullSecrets" && Array.isArray(value) && value.length === 0 ||
+    field === "resources" && object(value) && Object.keys(value).length === 0;
 }
 function samePodSecurityShape(live: Resource, declared: Resource): boolean {
   const fields = [
@@ -222,7 +227,7 @@ function samePodSecurityShape(live: Resource, declared: Resource): boolean {
   if ([live.securityContext, declared.securityContext].some(value => value !== undefined && !object(value))) return false;
   if (live.ephemeralContainers !== undefined && (!Array.isArray(live.ephemeralContainers) || live.ephemeralContainers.length > 0)) return false;
   return fields.every(field => {
-    if (field === "imagePullSecrets" && declared[field] === undefined && live[field] !== undefined)
+    if (field === "imagePullSecrets" && admissionFieldAbsent(declared[field], field) && live[field] !== undefined)
       return validImagePullSecrets(live[field]);
     return deepEqual(normalizedPodField(live, field), normalizedPodField(declared, field));
   });
@@ -235,6 +240,7 @@ const liveContainerFields = [
 ];
 function normalizedContainerField(container: Resource, field: string): unknown {
   const value = container[field];
+  if (field === "resources" && object(value) && Object.keys(value).length === 0) return undefined;
   if (field === "volumeMounts" && Array.isArray(value)) {
     const filtered = value.filter(mount => !(object(mount) && /^kube-api-access-[a-z0-9]{5}$/.test(mount.name ?? "") &&
       mount.mountPath === "/var/run/secrets/kubernetes.io/serviceaccount" &&
@@ -262,7 +268,7 @@ function validResourceRequirements(value: unknown): boolean {
 }
 function sameContainerShape(live: Resource, declared: Resource): boolean {
   return liveContainerFields.every(field => {
-    if (field === "resources" && declared[field] === undefined && live[field] !== undefined)
+    if (field === "resources" && admissionFieldAbsent(declared[field], field) && live[field] !== undefined)
       return validResourceRequirements(live[field]);
     return deepEqual(normalizedContainerField(live, field), normalizedContainerField(declared, field));
   });

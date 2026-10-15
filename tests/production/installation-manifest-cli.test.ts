@@ -201,6 +201,14 @@ test("installation CLI accepts structurally valid Kubernetes admission additions
   pod.spec.containers[0].resources = { limits: { cpu: "1" }, requests: { cpu: "100m" } };
   const result = await invoke(list);
   assert.equal(result.status, 0, result.stdout + result.stderr);
+
+  const explicitEmpty = withLiveWorkspaceBackends();
+  explicitEmpty.replicaSet.spec.template.spec.imagePullSecrets = [];
+  explicitEmpty.replicaSet.spec.template.spec.containers[0].resources = {};
+  explicitEmpty.pod.spec.imagePullSecrets = [{ name: "registry-auth" }];
+  explicitEmpty.pod.spec.containers[0].resources = { limits: { cpu: "1" } };
+  const explicitEmptyResult = await invoke(explicitEmpty.list);
+  assert.equal(explicitEmptyResult.status, 0, explicitEmptyResult.stdout + explicitEmptyResult.stderr);
 });
 
 test("installation CLI binds live init identity and canonical projected ServiceAccount volume", async () => {
