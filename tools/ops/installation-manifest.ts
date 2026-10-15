@@ -18,7 +18,7 @@ export type ProcessContract = {
   addressPortEnv?: string; additionalListeners?: { addressEnv: string; defaultAddress?: string; valueSemantics: "raw" | "trimmed" }[];
   addressEnv: string; defaultAddress: string; rpcAddressEnv?: string; defaultRPCAddress?: string; peerTokensEnv?: string; rpcEnabledByEnv?: string;
 };
-export type EdgeContract = { caller: string; target: string; addressEnv: string; tokenEnv: string; activation: "required" | "configured"; activationEnv?: string };
+export type EdgeContract = { caller: string; target: string; addressEnv: string; tokenEnv: string; activation: "required" | "configured"; activationEnv?: string; configuredAddressSemantics?: "raw-nonempty" | "trimmed-nonempty" };
 export type InstallationTopology = { image: { defaultCommand: string[] }; processes: ProcessContract[]; communication: { schemaVersion: number; edges: EdgeContract[]; security: InstallationSecurity } };
 type Resource = Record<string, any>;
 function object(value: unknown): value is Resource {
@@ -96,8 +96,9 @@ function effectiveEnv(deployment: Resource, container: Resource, names: Set<stri
 function envEntry(process: InstalledProcess, name: string) {
   return process.env.get(name);
 }
-function configured(entry: Resource | undefined) {
-  return entry !== undefined && (entry.valueFrom !== undefined || (typeof entry.value === "string" && entry.value.trim() !== ""));
+function configured(entry: Resource | undefined, semantics: "raw-nonempty" | "trimmed-nonempty") {
+  return entry !== undefined && (entry.valueFrom !== undefined || typeof entry.value === "string" &&
+    (semantics === "raw-nonempty" ? entry.value : trimRuntimeSpace(entry.value)) !== "");
 }
 
 function secretReference(entry: Resource | undefined): SecretRef | undefined {
@@ -232,6 +233,9 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
   if (topology.processes.some(process => !Array.isArray(process.daemonArgs) || process.daemonArgs.some(arg => typeof arg !== "string") ||
       process.rpcEnabledByEnv && !["raw-nonempty", "trimmed-nonempty"].includes(process.rpcEnabledByEnvSemantics!)))
     return failure("installation_topology_process_invalid");
+  if (topology.communication.edges.some(edge => edge.activation === "configured" &&
+      !["raw-nonempty", "trimmed-nonempty"].includes(edge.configuredAddressSemantics!)))
+    return failure("installation_topology_edge_invalid");
   if (!validList(manifest)) return failure("installation_manifest_shape_invalid");
   const report: InstallationReport = { ok: true, errors: [], communication: { edges: [], security } };
   const resources: Resource[] = manifest.items;
@@ -298,12 +302,17 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     const caller = installed.get(edge.caller);
     if (!caller) continue;
     const address = envEntry(caller, edge.addressEnv);
-    if (edge.activation === "configured" && !configured(address) && !configured(envEntry(caller, edge.tokenEnv)) &&
-        !(edge.activationEnv && configured(envEntry(caller, edge.activationEnv)))) continue;
+    const addressSemantics = edge.activation === "configured" ? edge.configuredAddressSemantics! : "trimmed-nonempty";
+    // Native address activation varies per caller; tokens and the extra
+    // activation variable use Go TrimSpace. Keep address-or-token admission.
+    if (edge.activation === "configured" && !configured(address, addressSemantics) && !configured(envEntry(caller, edge.tokenEnv), "trimmed-nonempty") &&
+        !(edge.activationEnv && configured(envEntry(caller, edge.activationEnv), "trimmed-nonempty"))) continue;
     const fail = (code: string) => report.errors.push({ code, service: caller.contract.service,
       caller: edge.caller, target: edge.target, addressEnv: edge.addressEnv, tokenEnv: edge.tokenEnv });
-    if (!address || !configured(address)) { fail("rpc_address_required"); continue; }
-    const parsed = parseServiceAddress(address.value, namespace(caller.deployment));
+    if (!address || !configured(address, addressSemantics)) { fail("rpc_address_required"); continue; }
+    const addressValue = edge.activation === "configured" && addressSemantics === "trimmed-nonempty" && typeof address.value === "string"
+      ? trimRuntimeSpace(address.value) : address.value;
+    const parsed = parseServiceAddress(addressValue, namespace(caller.deployment));
     if (!parsed) { fail("rpc_address_invalid"); continue; }
     const target = installed.get(edge.target);
     if (!target) { fail("rpc_target_missing"); continue; }

@@ -569,3 +569,72 @@ test("installation CLI refuses unknown Pod-producing APIs with a sanitized proof
     assert.deepEqual(result.report.communication.edges, []);
   });
 });
+
+test("configured RPC edges follow each native caller's address semantics and retain address-or-token admission", async t => {
+  // Independent inventory from the actual Go call sites, not the topology under test.
+  const groups: [string, "raw" | "go-trim", string[]][] = [
+    ["capability", "raw", ["SERVE"]],
+    ["workspace", "go-trim", ["LEDGER", "CAPABILITY", "RUNTIME_CONTROL", "SERVE", "GATEWAY"]],
+    ["serve", "raw", ["CAPABILITY", "RUNTIME_CONTROL", "FABRIC_COORDINATION", "GATEWAY"]],
+    ["serve", "go-trim", ["LEDGER"]],
+    ["resource-catalog", "go-trim", ["LEDGER"]],
+    ["gateway-integration", "go-trim", ["FABRIC", "BUILD", "WORKSPACE", "CLOUD_IDENTITY"]],
+    ["ledger", "go-trim", ["RESOURCE_CATALOG", "WORKSPACE", "GATEWAY", "CLOUD_IDENTITY"]],
+    ["console-bff", "go-trim", ["CAPABILITY", "RUNTIME_CONTROL", "BUILD", "WORKSPACE", "SERVE", "RESOURCE_CATALOG", "GATEWAY"]],
+    ["control-plane", "go-trim", ["CLOUD_IDENTITY"]],
+  ];
+  const setup = (owner: string) => {
+    const list = workedInstallation();
+    if (owner === "control-plane") {
+      const control = structuredClone(deployment(list, "console-bff"));
+      control.metadata.name = "unit-control-plane";
+      control.spec.template.metadata.labels = { unit: "control-plane" };
+      control.spec.template.spec.containers[0].command = ["/usr/local/bin/opl-control-plane"];
+      control.spec.template.spec.containers[0].env = [];
+      list.items.push(control);
+    }
+    return list;
+  };
+  for (const [owner, semantics, peers] of groups) for (const peer of peers) {
+    const addressEnv = `OPL_${peer}_${peer === "CLOUD_IDENTITY" || owner === "console-bff" ? "URL" : "ADDR"}`;
+    const tokenEnv = `OPL_${peer}_TOKEN`;
+    const principal = owner === "gateway-integration" ? "tenant" : owner.replaceAll("-", "_");
+    for (const [value, rawEnabled, trimEnabled] of [[" ", true, false], ["\u0085", true, false], ["\uFEFF", true, true], ["", false, false]] as const) {
+      await t.test(`${owner} ${addressEnv} ${JSON.stringify(value)}`, async () => {
+        const list = setup(owner), process = container(list, owner);
+        process.env = process.env.filter(entry => ![addressEnv, tokenEnv].includes(entry.name));
+        process.env.push({ name: addressEnv, value });
+        const enabled = semantics === "raw" ? rawEnabled : trimEnabled;
+        const result = await invoke(list);
+        assert.equal(result.status, enabled ? 1 : 0, result.stdout + result.stderr);
+        if (enabled) {
+          assert.ok(result.report.errors.some(error => error.caller === principal && error.addressEnv === addressEnv));
+          assert.deepEqual(result.report.communication.edges, []);
+        } else assert.ok(!result.report.communication.edges.some(edge => edge.caller === principal && edge.addressEnv === addressEnv));
+      });
+    }
+    for (const [value, enabled] of [[" ", false], ["\u0085", false], ["\uFEFF", true]] as const) {
+      await t.test(`${owner} token-only ${tokenEnv} ${JSON.stringify(value)}`, async () => {
+        const list = setup(owner), process = container(list, owner);
+        process.env = process.env.filter(entry => ![addressEnv, tokenEnv].includes(entry.name));
+        process.env.push({ name: tokenEnv, value });
+        const result = await invoke(list);
+        assert.equal(result.status, enabled ? 1 : 0, result.stdout + result.stderr);
+        if (enabled) assert.ok(result.report.errors.some(error => error.code === "rpc_address_required" && error.caller === principal && error.addressEnv === addressEnv));
+      });
+    }
+  }
+  for (const [value, enabled] of [["\u0085", false], ["\uFEFF", true]] as const) await t.test(`Control Plane activationEnv ${JSON.stringify(value)}`, async () => {
+    const list = setup("control-plane");
+    container(list, "control-plane").env.push({ name: "OPL_CONTROL_PLANE_BFF_TOKEN", value });
+    const result = await invoke(list);
+    assert.equal(result.status, enabled ? 1 : 0, result.stdout + result.stderr);
+  });
+  for (const [addressEnv, enabled] of [["OPL_LEDGER_ADDR", true], ["OPL_FABRIC_COORDINATION_ADDR", false]] as const) await t.test(`Serve uses native address value for ${addressEnv}`, async () => {
+    const list = workedInstallation();
+    const entry = container(list, "serve").env.find(entry => entry.name === addressEnv);
+    entry.value = `\u0085 ${entry.value} \u0085`;
+    const result = await invoke(list);
+    assert.equal(result.status, enabled ? 0 : 1, result.stdout + result.stderr);
+  });
+});
