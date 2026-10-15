@@ -2,7 +2,7 @@
 
 > F16唯一迁移规格。只定义后续实施动作；本轮没有读取生产数据库、创建仓库、发布、扣费或迁移任何客户资源。
 >
-> **已采用业务与待迁移wire分开**：2026-09-29确认的新默认`opl_app(runtimeVersionId)`+nativeUI与`agent(capabilityVersionId)`走06同一购买/Serve完整部署链，绝不是legacy_resource_only。本文件M0–M5只处理有冻结来源证明的旧对象；06第17节仍保留W01迁移前wire baseline；03/SQL/proto/events/机器flows中的新判别联合/来源约束须由W01集成负责人协调W01成套贯通，不宣称已实现。
+> **已采用业务与待迁移wire分开**：2026-09-29确认的新默认`opl_app(runtimeVersionId)`+nativeUI与`agent(capabilityVersionId)`走06同一购买/Serve完整部署链，绝不是legacy_resource_only。本文件M0–M5只处理有冻结来源证明的旧对象；06第17节仍保留W01迁移前wire baseline；03/SQL/proto/events/机器flows中的新判别联合/来源约束须由W01集成负责人协调W01成套贯通，不宣称已实现。生命周期、客户读权及历史继承以[2026-10-15 生命周期与客户读权限决定](../../decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads)为权威；本次不改机器契约或执行迁移，缺失的契约/消费者升级与来源证明由[roadmap](../../roadmap.md)记录。
 
 ## 1. 来源与目标，不混淆证据层
 
@@ -30,7 +30,7 @@
 | 已部署OPL App或其他应用 | 导入真实应用revision/digest/binding/选中部署和持久卷；deliveryModel=imported_application | 显示现有应用/版本、真实ready与原访问入口 | 继续使用；显式更新才进入F10 | 为迁移重新build、重启、换Key、改数据目录 |
 | retained full Launch仍进行中 | 保留原provisioningMode/full阶段、idempotency keys与义务；新系统只读展示进度 | “历史操作处理中”，显示真实阶段 | 原Owner将该操作推进至确定终态，再交接Workspace写权 | 按新agent_saas stage重跑历史扣费/采购 |
 | 未决扣费/续费/退款/删除 | 保留原operationId、Code、账户/周期/金额、provider action与收据 | 分开显示资源/付款/退款状态，不合成成功 | 按原单精确读回/继续原义务；完结后迁移 | 以当前余额推断、换原单ID、丢弃unknown |
-| 已删/过期/停用Workspace | 保留历史、原付费/删除证据、实际剩余资源事实 | 停用/历史页；无真实资源不显示可恢复 | 需新环境时按新购买，不复活不存在资源 | 创建影子资源假装恢复 |
+| 已删/过期/停用Workspace | 保留历史、原付费/删除证据、实际资源及managed key事实 | 停用/历史页；无真实资源不显示可恢复 | 核实原Workspace/key/subject归属及保留义务后按06生命周期停用或授权恢复原key；恢复仍需原权益/资源/安全条件 | 部署/迁移批量改key、影子资源恢复、重扣/重购冒充恢复 |
 | 现有应用无可确认digest/持久数据契约 | 保存原始事实和失败原因，暂不切写权 | 旧路径仍负责该对象并显示迁移待处理 | 先用Owner读回补齐精确身份再迁移 | 以tag/current policy/latest猜digest |
 
 导入旧应用OCI不虚构Package或Build。对于按旧应用迁移合同登记的CapabilityVersion，保留明确provenance=legacy_application及真实digest/原manifest，Package/Build来源可空；不能把它当新Agent Build或重标成新默认App。新Agent Build产物须具备完整Package/Runtime/Build及独立approved WebUI来源，保留三项真实输入及claim，不接受缺独立WebUI的第三种Agent组合。新默认App直接引用RuntimeRelease OCI/发布者运行合同，根本不登记CapabilityVersion，因而无需借用legacy_application来源豁免。该区别是来源事实，不是兼容分支。
@@ -46,7 +46,7 @@
 | 原表/字段 | 目标Owner/事实 | 转换与校验 |
 |---|---|---|
 | control_plane_accounts.id | Tenant身份/原account关联 | 原ID原样保留或明确一对一sourceRef；不随机重新编号 |
-| accounts.owner_user_id, sub2api_user_id | Gateway映射、billingSub2apiUserId、Tenant owner membership | 确认Gateway身份；旧单用户Tenant只有一个billing主体，不用邮箱重新创建钱包 |
+| accounts.owner_user_id, sub2api_user_id | Gateway映射、原付款主体及历史owner来源、Tenant owner membership | 原Owner证明Cloud User→legacy User/Account→原单及原读权；历史账单仅原owner本人可读，不随Tenant admin继承，不用邮箱重新创建钱包 |
 | accounts.name,status,workspace_purchase_enabled | Tenant显示名/权限准入 | 原限制必须保留；false不能迁移成默认可购买 |
 | control_plane_users.id,account_id,email,role,status | 成员身份/展示/角色 | ID保留；旧owner按明确映射保留为owner（租户所有者），其他role不得猜映射 |
 | users.password_hash | 不进入目标 | 源约束要求为空；若非空记录迁移失败，不复制/展示 |
@@ -60,7 +60,7 @@
 | workspaces.storage_id,current_compute_allocation_id,current_attachment_id | Fabric资源引用；Workspace仅业务绑定 | 原ID和provider实体不变；Fabric权威回读确认 |
 | workspaces.runtime_id | Serve导入原运行实例引用 | 原Runtime与应用实例有对应才导入；不能创建空壳假ready |
 | workspaces.runtime_service_name,runtime_service_name_root,service_name | Serve访问/实例绑定及来源档案；底层基础网络资源仍归Fabric | 保留名字/URL及实际路由revision/generation；Serve readback与原绑定一致，不由Fabric写current/路由 |
-| workspaces.workspace_api_key_id | Gateway Key映射 | 原Key ID原样；无Key的resource_only不伪造已有Key |
+| workspaces.workspace_api_key_id | Gateway Key映射 | 保留原Key ID；由Owner证明原外部subject/Workspace/external key精确关联及保留义务后适用同一生命周期；不以名称或binding generation代替证明，无Key的resource_only不伪造已有Key |
 | workspaces.access_token_status,access_account,access_username | 安全访问事实/非秘密账户展示 | 只传白名单；不把应用凭据误认Cloud Identity |
 | workspaces.credential_status,credential_version,credential_secret_ref,access_requires_login | Secret绑定/访问契约 | 只迁引用/版本，不读取秘密正文；由授权运行边界核验 |
 | workspaces.verification_slot_id,customer_product | 对象用途和范围 | qualification fixture与客户Workspace不得混合迁移/收费 |
@@ -87,15 +87,17 @@
 | control_plane_admin_audit_events/archived_* | Ledger或明确审计owner只读档案 | 历史原样/原actor/时间与来源摘要，秘密按现有边界处理 |
 | project_task_sync_heads/workspace_sync_events/announcements/reads/production_e2e_records | 保留在现有独立能力owner，未纳入本轮迁移则不删不改 | 新Agent链不能借“瘦身”丢掉无关客户历史与产品能力 |
 
+历史账单保留原记录/金额/时间及已删Workspace历史。默认钱包/Token改由会话User本人读取、不要求Tenant，不因此改写历史付款/退款归属。公告及ACK留在原Owner：所有有效Cloud登录User均为当前公告受众，无Tenant门槛；原Owner核实同人来源后继承legacy ACK及原时间，重复ACK不改原时间。邮箱/同名/共享Tenant或Account不能证明同人，不能永久拆出一份Cloud ACK历史代替继承。现有typed reader/持久化/真实caller升级仍未交付，不在本文杜撰列或RPC。
+
 这张表不授权所有表一次大搬家。每个领域移交有独立写集；未移交能力继续由原Owner负责，真实调用方切换后才退休旧writer。
 
 ## 4. 首批实施需同步的正式仓库文档
 
-当前包描述已确认业务目标，不以本轮文档推断各模块实现程度。W01集成负责人须协调以下消费者后由实施变更落地；它们不在本轮三文件写集内：
+当前包描述已确认业务目标，不以本轮文档推断各模块实现程度。W01集成负责人须协调以下消费者后由实施变更落地；下列超出本次七份规则文档写集的联动仍待对应Owner交付：
 
 1. 在docs/architecture.md及docs/decisions.md、00/01/12同步TKE主线与默认App/Agent双分支、一次确认完整交付；默认App直接RuntimeRelease OCI，Runtime Control仅目录、Fabric仅资源、Serve唯一部署。不新增服务，保留2026-09-17“客户只买资源”为旧Launch历史解释。
 2. docs/implementation-architecture.md仍描述实际已迁移模块，不把目标提前填成现行架构。
-3. docs/status.md写每个来源SHA/测试/迁移证据；docs/roadmap.md对应F功能与未完成Instance义务。
+3. docs/status.md写每个来源SHA/测试/迁移证据；docs/roadmap.md记录F功能与未交付的机器契约/消费者、外部API/身份来源证明、Cloud业务资格和Instance部署证据义务。
 4. docs/README.md指向唯一目标/实施/迁移Owner；退休重复当前writer，不保留两套同名“最终架构”。
 5. W01同步02/03、SQL/proto/events和packages/contracts中实际消费者需要的判别联合/来源约束、Build UI正规化、资源先于Serve Reserve/Key的交接；更新Console/BFF、Workspace、Catalog、Runtime Control、Capability/Build、Serve、Fabric、Gateway、Ledger及边界测试。不把inventories整体塞入机器契约。
 6. 同步04/05/07/10/11/13/14及其UI/任务/traceability消费者；再协调generators与机器flows、06第17节的再生成和完整检查。新业务已采用但尚无新wire贯通证据，不复用旧checks报告宣称通过。
@@ -106,7 +108,7 @@ M0–M5的对象集合必须来自M0冻结的旧对象清单及同批次屏障�
 
 ### M0：冻结精确来源
 
-记录sourceSHA、现有schema migration版本、目标schema版本、UTC时间、owner许可、各表行数/主键集合/规范化行hash、未决操作清单、镜像digest和provider profile来源。生产数据只在Instance授权runner内导出/校验，输出receipt仅含脱敏摘要。
+记录sourceSHA、现有schema migration版本、目标schema版本、UTC时间、owner许可、各表行数/主键集合/规范化行hash、未决操作清单、镜像digest和provider profile来源。生产数据由Cloud数据Owner经明确授权的受保护入口导出/校验，本机不得直连生产；Instance只提供安装配置/Secrets边界，输出receipt仅含脱敏摘要。
 
 逐个来源对象记录resource_only、已有应用、retained full或未决义务分类及原writer；不能只按Capability ID是否为空分类，因为新默认App本来就无CapabilityVersion。
 
@@ -138,15 +140,15 @@ W01先贯通目标应用选择/来源约束及Owner wire，再执行02对应目�
 
 ### M5：真实功能验收与旧writer退休
 
-在同一候选制品上对本批旧对象执行F16及适用的F01/F09/F10/F11/F12/F13，确认原Workspace URL/数据、账期、Key引用和访问边界不变；旧裸资源显式部署默认App或Agent均不新购，retained full由原owner完成后才交接。新默认App/Agent的F07/F08另按08验收，不作为legacy转换步骤。需要真实资金/资源的验收必须另有Instance受限授权；普通CI只测本地/隔离边界，不触发真钱。
+在同一候选制品上对本批旧对象执行F16及适用的F01/F09/F10/F11/F12/F13，确认原Workspace URL/数据、账期、Key引用和访问边界不变；旧裸资源显式部署默认App或Agent均不新购，retained full由原owner完成后才交接。新默认App/Agent的F07/F08另按08验收，不作为legacy转换步骤。需要真实资金/资源的业务验收必须另有受限授权并经Cloud owners受保护入口执行；普通CI只测本地/隔离边界，不触发真钱。
 
-保存同SHA/digest的Local和Instance回执；再删除旧writer/退休旧路由。旧表保留只读档案和数据保留义务，不写死90天自动DROP。
+保存同SHA/digest的Local、Cloud迁移/业务资格及Instance部署回执；再删除旧writer/退休旧路由。部署回执不能代替数据Owner的业务验收，部署不能批量变更历史key。旧表保留只读档案和数据保留义务，不写死90天自动DROP。
 
 ## 6. 回滚不是切回旧域名
 
 - 新Owner尚未接收业务写：校验迁移档案后可撤销路由切换，恢复原Owner写屏障；无新资金/资源副作用。
 - 新Owner已写：先冻结新写，按同一来源映射导出新事实/未决义务，验证旧格式能无损表达且原Owner具备继续能力，再反向迁移/切路由。没有该证明，不允许简单切旧代码。
-- 已出现旧格式无法表达的数据：保持新Owner、修复前进；不得丢新记录或把它当临时兜底。发布前必须明确不可回滚边界和Instance恢复手册。
+- 已出现旧格式无法表达的数据：保持新Owner、修复前进；不得丢新记录或把它当临时兜底。发布前必须明确不可回滚边界、数据Owner恢复程序和Instance安装回滚手册。
 - runtime镜像回滚与平台数据/Owner迁移回滚是两件事；前者不能自动完成后者。
 
 ## 7. F16验收断言与接收者
@@ -156,9 +158,9 @@ W01先贯通目标应用选择/来源约束及Owner wire，再执行02对应目�
 | 所有源ID与必要字段有映射/归档，未决义务无丢失 | 各数据Owner | 表/字段映射、集合/hash/金额对账 |
 | 无重复付款/退款/购买/删除，原Code和provider身份保持 | Workspace/Gateway/Fabric | 原单读回、重放测试、明确absence |
 | 旧resource_only显式部署App或Agent，原购买历史不变；新默认不标legacy | Workspace/Serve/Console | 浏览器剧本+资源identity读回 |
-| 已有应用可继续打开，数据/模型配置/Key不改变 | Serve/Fabric/Gateway/Console | 真实应用readiness/数据探针/访问边界 |
+| 已有应用可继续打开，部署/迁移不暗改数据/模型配置/Key；授权生命周期沿原key | Serve/Fabric/Gateway/Console | 真实应用readiness/数据探针/访问边界及原subject/Workspace/key读回 |
 | 权限不放大、单writer成立、旧worker被fence | Identity/各Owner | 跨Tenant/迟到worker/双写反例 |
-| rollback实际可回放或不可逆边界如实声明 | Instance/数据Owner | 隔离恢复演练receipt |
+| 业务数据rollback实际可回放或不可逆边界如实声明；安装回滚另验 | 数据Owner；Instance仅安装回滚 | 分属Owner且绑定同Candidate的隔离恢复/安装回滚receipt |
 
 只有全部功能和数据义务接受后，该批次迁移才算完成。源代码commit、生成SQL或启动新服务都不是迁移receipt。
 

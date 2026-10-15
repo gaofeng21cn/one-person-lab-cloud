@@ -3,7 +3,7 @@
 > 定稿范围：本次确认的F01–F17，D17升级/降配规则已由用户确认。业务规划可按14的W01切片直接开工；全量技术闭合以checks/handoff_readiness.json及其绑定证据为准，两者不得混同。开发规格不等于业务代码已实现、已迁移或已上线。
 > 本轮目标：主攻 Tencent/TKE；客户一次确认默认 OPL App 或自定义 Agent 与计算/存储套餐，后台完成应用可用；旧资源购买路径按09迁移。
 > 2026-09-29业务决定已采用；03/02记录待W01贯通的合同迁移，旧机器合同/原型和历史READY不能证明新默认路径可用。可以直接启动14的W01切片，不再等待产品决定。
-> 用户批准范围：修齐方案、字段、API、前端展示、交互、迁移与验收；不修改业务代码，不部署，不进行真实扣费或资源采购。
+> 生命周期与客户读权限采用[2026-10-15 决定](../../decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads)；现有机器契约和真实消费者的成套迁移仍由[roadmap](../../roadmap.md#workspace-key-and-customer-read-boundaries)跟踪。规格确定目标，不证明接口、权限、迁移或运行验收已交付，也不授权真实业务副作用。
 
 ## 1. 一句话产品与边界
 
@@ -16,7 +16,7 @@
 - Sub2API 是身份认证、可消费钱包、Key、Token 用量权威；Cloud 不存密码、不复制可消费余额、不创建第二钱包。
 - Cloud 拥有 Workspace 套餐价格/报价/订阅编排，Gateway 拥有模型价格与钱包记账。资源套餐报价不是 Token 定价。
 - Ledger 保存不可变业务证据，不重复维护可消费钱包。
-- Framework/OPL App 拥有 Runtime 实现；Cloud Runtime Control 只管理获准Runtime Release目录与不可变引用，供Build和默认App准入固定输入，不管理运行实例。Instance拥有生产配置、Secrets、Cloud服务部署/回滚和资格回执。Serve在Cloud产品内拥有Agent OCI向Workspace的交付/部署/运行状态及访问入口。
+- Framework/OPL App 拥有 Runtime 实现；Cloud Runtime Control 只管理获准Runtime Release目录与不可变引用，供Build和默认App准入固定输入，不管理运行实例。Instance只拥有生产配置/Secrets、Cloud安装部署、health、安装回滚及部署证据；Cloud业务操作及其资格由Cloud owners负责。Serve在Cloud产品内拥有Agent OCI向Workspace的交付/部署/运行状态及访问入口。
 - 单一GitHub仓库只覆盖Cloud产品：`apps/`、`services/`和`packages/`共同演进；不合并Instance、Sub2API、Framework/OPL App等外部Owner。领域服务独立不等于独立仓库，目录/module/进程映射以01第3节为准。
 
 ## 2. 本次收敛决定（不是等待再次选择的选项）
@@ -33,10 +33,10 @@
 | D08 | Package、OCI引用和Build历史不随Workspace删除；Package归档不物理级联历史；无自动90天清除 | 遵守用户已明确的保留决定；显式制品删除需引用保护，历史记录不删除 |
 | D09 | 新ID为不透明string，API不强制UUID；已有ID、原扣费键、原收据和时间原样保留 | 历史迁移不能重新生成身份或付款义务 |
 | D10 | 金额统一USDMicros；PostgreSQL bigint、protobuf int64、JSON十进制字符串；时间UTC RFC3339；客户按本地时区显示 | 不用JS浮点货币；整数上限int64 |
-| D11 | 登录身份与Tenant钱包主体分开：成员使用自己的Gateway身份，Tenant绑定唯一billingSub2apiUserId；用户初期只属于一个活动Tenant | 企业多人不共享登录密码；钱包委托只在Gateway owner核准边界内 |
+| D11 | 登录User与Tenant付款主体分开：默认钱包/Token读本人，无需Tenant；Tenant工作区财务与已证明legacy账单按12第2节授权；原付款/退款归属不变 | 企业多人不共享登录密码；用户初期最多一个活动Tenant，不能以角色继承他人钱包 |
 | D12 | UI沿用现仓React/TypeScript；不迁移Vue；不要求客户理解OCI、Saga、Pod | 旧稿.vue仅误写，不构成技术迁移决定 |
 | D13 | Public Marketplace、自助第三方WebUI发布、跨Tenant私有OCI共享、任意Runtime自选、公开注册不在本次交付 | 管理员仍可准入第三方Runtime；不得用未来功能遮盖本期缺口 |
-| D14 | 资源申请遵循现有批准的预付包月政策；文档/CI/本机验证不授权真实费用、采购、销毁或生产访问 | Instance保护流程独占高后果动作 |
+| D14 | 资源申请遵循现有批准的预付包月政策；文档/CI/本机验证不授权真实费用、采购、销毁或生产访问 | Cloud业务及其资格走Cloud owners受保护入口；Instance只负责安装部署边界，本机不得直连生产 |
 | D15 | 本规格不设未获依据的50人容量承诺、3分钟上线承诺、10包配额、自动保留期或退款百分比 | 实例策略显式配置且UI展示；必要策略缺失则准入拒绝 |
 | D16 | 保留期、报价和退款规则均版本化；按用户接受的报价快照执行，不能用最新价格覆盖既有义务 | Cloud产品价格与Gateway模型价格分权 |
 
@@ -113,7 +113,7 @@
 | F14 | 钱包/用量/Key管理、管理员充值记录 | Gateway唯一资金/Key权威，UI不伪造余额 |
 | F15 | Tenant停用/删除/15天内恢复与资产托管 | 成员访问立即撤销，Workspace删除独立可追踪，私有制品不公开 |
 | F16 | 旧Workspace/账户/义务/运行路径迁移 | 历史完整、单writer、零重复扣费/重购 |
-| F17 | 运维操作/审计/资格与同制品发布 | 运行证据与源码测试分层；Instance执行 |
+| F17 | 运维操作/审计/资格与同制品发布 | 源码、Cloud业务资格、Instance部署证据分层，绑定同一精确Candidate |
 
 ## 5. 统一状态与事实（其他文件不得新增同义状态）
 
@@ -189,7 +189,7 @@
 
 本次确认范围内，正常/失败/unknown/重复/越权/重启/取消/账期竞争及明确不支持的结果都有Owner、接口、字段和客户表现。实施中不再重新决定D17怎么收费、哪个Domain写什么或页面意味着什么；正常实现/联调/运行验收仍必须完成，规格检查不替代它们。
 
-当前Cloud源码仍是迁移起点；具体provider可执行能力、代码交付、Instance资格和上线分别按08/09验证。不能因为本包定稿，就说生产已经有这些新服务或每种CVM/CBS都支持任意变更。
+当前Cloud源码仍是迁移起点；具体provider可执行能力、代码交付、Cloud业务资格、Instance部署及上线分别按08/09验证。不能因为本包定稿，就说生产已经有这些新服务或每种CVM/CBS都支持任意变更。
 
 旧稿和上一轮评审保留在同级history及已有审计记录，不再作为当前产品规则。无新工作流引擎、事件总线、第二钱包、第二Registry或万能插件Host。
 

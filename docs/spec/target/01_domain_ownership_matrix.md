@@ -24,7 +24,7 @@ Framework/OPL App ──发布Runtime实现与兼容契约──> Runtime Contro
 Instance ──提供Registry/Storage/Provider/Secrets/部署配置──> 各Owner执行边界
 ```
 
-Cloud产品仓库负责可移植服务和发布，Instance负责真实实例配置/部署/资格。图上的边是明确API或事件，不是跨库读取权限。
+Cloud产品仓库负责可移植服务、业务操作及其资格和发布；Instance只负责配置/Secrets、安装部署、health、安装回滚及部署证据。生产业务与资格经Cloud owners受保护入口执行，本机不得直连生产，安装部署不得触发客户购买/续费/删除/退款或Key变更。权威见[2026-10-15 生命周期与客户读权限决定](../../decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads)；图上的边是明确API或事件，不是跨库读取权限。
 
 ## 2. 领域分工与内部lane
 
@@ -35,14 +35,14 @@ Cloud产品仓库负责可移植服务和发布，Instance负责真实实例配�
 | Capability | Namespace可见性；Package身份、元数据、上传/字节校验、PackageVersion；WebUI准入与版本；Package/Build结果的CapabilityVersion登记 | Package、PackageVersion、WebUI目录、reference claims及本域事件 | BFF/Build/Workspace/Serve | OCI构建、Runtime Release目录、Workspace部署/运行事实、钱包、Registry执行 |
 | Runtime Control | OPL App/Agent Runtime实现的准入与获批Release目录；精确OCI引用、ABI/Package兼容信息、退役状态 | RuntimeRelease目录及本域审计/Operation | BFF/管理员、Build/Workspace/Serve读取 | Build执行、Workspace Runtime实例/部署、Agent运行状态 |
 | Build | 固定PackageVersion+WebUI Version+Runtime Release输入；隔离构建；推送并读回OCI；向Capability交接构建完成证据 | BuildJob/输入摘要/步骤/OCI产物/日志索引 | BFF/Capability/Runtime Control | Package元数据writer、运行资源购买、Agent部署状态、Runtime/WebUI目录writer |
-| Workspace | Workspace身份、Tenant成员授权、权益/订阅、资源方案、报价接受、购买/资源/续费/删除/退款Saga；校验Agent交付目标授权 | Workspace/周期义务/业务Operation/steps；不存Agent Deployment/active字段 | BFF/Serve/到期worker/管理员命令 | Agent Package、OCI、Agent部署/运行事实、可消费余额、provider资源事实 |
+| Workspace | Workspace身份、Tenant成员授权、权益/订阅、资源方案、报价接受、购买/资源/续费/删除/退款Saga；校验Agent交付目标授权，编排managed key期望状态与原Operation收敛 | Workspace/周期义务/业务Operation/steps；不存Agent Deployment/active字段 | BFF/Serve/到期worker/管理员命令 | Agent Package、OCI、Agent部署/运行事实、可消费余额、provider资源事实 |
 | Serve | 按Workspace执行默认App或Agent OCI交付；异步部署/替换/回滚；唯一当前应用、readiness和对外访问路由；API/Embed/Hosted UI | Agent deployments、deploy operations、runtime observations/access bindings及本域事件 | BFF/Workspace/外部消费者 | Package/Runtime版本元数据writer、Workspace权益/成员writer、Fabric资源writer |
 | Fabric | Provider适配；Compute/Storage/Network等资源开通、绑定、资源状态读回；所需资源Secret引用绑定 | provider resource set/resources/attachments/resource actions | Workspace/Serve/受保护operator | Agent OCI部署、Agent Runtime启停/readiness、Serve路由、套餐销售价格、客户余额 |
-| Gateway Integration | CloudIdentity负责session/Tenant成员授权；gateway负责User↔Sub2API User、User↔OCI Destination及原生Gateway适配 | tenant库保存session/授权；gateway库的`gateway.identity_mappings`唯一保存两个User绑定，另保留钱包/Key原有事实 | BFF/Build/Workspace | 可花费余额缓存、密码、第二套资金流水权威 |
+| Gateway Integration | CloudIdentity负责session/Tenant成员授权；gateway负责User↔Sub2API User、User↔OCI Destination及原生Gateway适配，协调同一Workspace/external key的状态与approved scope读回 | tenant库保存session/授权；gateway库的`gateway.identity_mappings`唯一保存两个User绑定，另保留钱包/Key原有事实 | BFF/Build/Workspace | 可花费余额缓存、密码、第二套资金流水权威 |
 | Resource Catalog | provider-neutral套餐；价格版本；兼容性/可售性；报价生成 | 套餐/价格策略/不可变报价及有效期限 | BFF/Workspace/Fabric preflight读取 | 资源执行、钱包记账、已接受订阅义务writer |
 | Ledger | 类型化receipt验证；append-only保存；索引；对账证据 | Receipt/证据索引/对账报告 | 所有业务owner | provider mutation、业务Saga、付款重试 |
 
-BFF鉴权不意味着拥有Identity。Tenant权限属于Cloud业务映射，认证结果来自Gateway。一个Tenant的钱包主体与成员登录身份显式区分，不能把“知道用户ID”当成跨用户扣费授权。
+BFF鉴权不意味着拥有Identity。Tenant权限属于Cloud业务映射，认证结果来自Gateway。个人钱包/Token按会话User授权，不附加Tenant门槛；Tenant工作区财务按角色授权，历史账单/公告ACK按原Owner证明的同人来源授权，客户权限见12第2节。账单与公告仍由原数据Owner单写，经BFF/typed reader接入，不新增权威；知道用户ID或具有Tenant admin角色不构成他人财务授权。
 
 ### 2.1 默认App不增加领域或第二份资产目录
 
@@ -135,7 +135,7 @@ opl-cloud/                         # 唯一Cloud产品GitHub仓库
 | Storage Provider | Put/Head/Read/Verify/Delete已授权对象；对象引用+sha256+size；只读短期凭据 | storage adapter/Instance凭据 | 精确对象版本与摘要、续传/过期/隔离、删除引用保护 | PostgreSQL存包二进制、长效bucket key到客户端 |
 | OCI Registry | repository+digest；push/head/read manifest；受限凭据 | 外部Registry；Build推送；Capability保存引用 | 远端manifest与平台匹配、共享digest引用、权限 | Cloud再造Registry |
 | Fabric Provider | typed capability/preflight/execute/observe；resource profile版本 | Fabric adapter | 可用能力、资源/存储/Secret/readiness事实、相同输入读回 | 偷换provider、TKE字段进入客户DTO |
-| Gateway Adapter | authenticate/authorize billing principal/charge/read/refund/key/usage | Sub2API权威，Integration适配 | 原单幂等、授权、金额精度、未知结果读回 | 新钱包、余额双写、retry造成多扣 |
+| Gateway Adapter | authenticate/authorize billing principal/charge/read/refund/key/usage；待交付的managed key可逆状态与原key scope能力 | Sub2API权威，Integration适配 | 原单幂等、精确外部subject/Workspace/key、授权scope、状态/用量权威读回 | 新钱包、余额双写、猜测外部端点或以不可逆revoke代替停用 |
 
 Runtime/WebUI目录必须记录具体可验证contract，而不只给“兼容=true”。当前OPL App适配器可实现发布者现行约定，但路径仅属于该适配器。第三方Runtime需提供相同能力事实，不能以启发式探测冒充准入。
 
@@ -149,8 +149,8 @@ CloudIdentity是本规格已定义的Gateway Integration内Cloud身份/租户子
 
 具体执行：
 
-1. BFF登录后取得服务端session上下文；内部请求带CallContext.actor/tenant/request/action/resource及session/context reference。mTLS caller从连接提取，不能相信body中的自报caller。
-2. 接收Owner调用CloudIdentity的typed AuthorizeAction，明确audience=本Owner、动作、资源、当前请求hash、交互session或accepted-operation grant。CloudIdentity查自己持久的成员/授权版本/Tenant/session状态，返回typed允许或拒绝、权限版本和依据。
+1. BFF登录后取得服务端session上下文；内部请求带现有CallContext及session/context reference。个人钱包/Token和公告的无Tenant授权须随真实reader/consumer升级现有wire，不能把当前tenant字段当成产品门槛；Tenant业务仍校验适用成员关系。mTLS caller从连接提取，不能相信body中的自报caller。
+2. 接收Owner调用CloudIdentity的typed AuthorizeAction，明确audience=本Owner、动作、资源、当前请求hash、交互session或accepted-operation grant。CloudIdentity查自己持久的session/授权版本及该动作适用的成员/Tenant事实，返回typed允许或拒绝、权限版本和依据；无Tenant个人读取不套用Tenant成员检查。
 3. Owner同时检查自身资源归属、生命周期和版本前置。上游“允许”不替代下游对本域对象的校验。
 4. 首次命令通过后，业务Owner持久Operation和确切输入，再为该已接受义务绑定受限operation grant。grant只能完成该operation的列明动作/资源/钱包原单，不能创建另一个Workspace或换Tenant。后台worker不借用浏览器session做永久授权。
 5. 后续阶段验证该grant及Owner的原意图/epoch。用户退出只撤销交互session，不丢已接受付款/资源义务；Tenant停用/删除禁止新增购买/采购，已有动作只允许必要读回、释放、按原单结算和证据收尾。不能用过期session绕过停用。
@@ -171,7 +171,7 @@ CloudIdentity是本规格已定义的Gateway Integration内Cloud身份/租户子
 | Build→Capability Inbox | 构建产物确认后 | 版本事件+Build owner的完整artifact readback引用 | 唯一CapabilityVersion | 不由Build直接写Capability数据库 |
 | Workspace→Capability | F07/F08/F10/F16准入与引用 | 版本、完整DeploymentDescriptor identity、claim、namespace可见性 | 固定版本/数据/执行契约 | 不能只拿一个digest再猜启动参数 |
 | Workspace→Catalog | F07/F08/F11/F12报价/接受 | 选定套餐、purpose、周期、准入事实、原义务 | 不可变报价；AcceptQuote绑定唯一Operation | Catalog不扣款，Quote不是容量预留 |
-| Workspace→Gateway | 购买/续费/退款/Key | 租户钱包映射、原Code、金额、原单、受限grant | 确定/拒绝/未知观察、Key Secret引用 | 余额变化不是该原单成功证据 |
+| Workspace→Gateway | 购买/续费/退款/Key生命周期及模型scope | 原付款主体/Code/金额/原单、受限grant；精确Workspace/external key与批准目标 | 确定/拒绝/未知观察、原Key状态/scope与Secret引用 | 余额变化不是原单证据；binding generation不等于external key身份 |
 | Build→Runtime Control | F04/F05/F10 | 精确RuntimeReleaseId、OCI digest/平台、runtime ABI/Package格式兼容输入 | 获批不可变Runtime版本及兼容契约读回；Build固定入BuildInputSnapshot | 不传可变tag，不将Runtime目录读回当成Agent已运行 |
 | Workspace→Serve | F08/F09/F10/F16 | tenant/workspace opaque refs、授权grant、capabilityVersion/OCI digest、Fabric resource refs、expected current deployment | Serve AgentDeployment与Operation身份、部署/readiness/access读回 | Workspace不写active Agent；Serve不写Workspace entitlement |
 | Workspace→Fabric | 资源购买/生命周期 | Workspace opaque ref、批准plan refs、provider capability、幂等operation | resource set/resource refs与资源状态权威读回 | Fabric不接Agent OCI/deployment命令 |
@@ -203,9 +203,9 @@ CloudIdentity是本规格已定义的Gateway Integration内Cloud身份/租户子
 
 ## 7. 真实外部接口的交付边界
 
-新租户钱包委托、报价接受、Runtime config reload、Build Receipt无Workspace类型等能力要么由当前owner接口证实，要么在明确的owner开发项中补齐；在能力未具备前相关命令返回可解释的准入错误，不能把“接口写在本文”当作owner已提供。
+新租户钱包委托、managed key可逆停用/启用与同key scope更新/readback、无Tenant客户读权限、历史同人证明、报价接受、Runtime config reload、Build Receipt无Workspace类型等能力要么由当前owner接口证实，要么在明确的owner开发项中补齐；在能力未具备前相关命令返回可解释的准入错误，不能把“接口写在本文”当作owner已提供。
 
-这不是兜底：缺失的必要能力必须在对应功能验收前完成。不得借用管理员无限权限、二次钱包、假收据、假ready或客户手动执行CLI代替产品功能。
+上述缺失能力仍未交付，须由现有契约与真实消费者共同升级并在[roadmap](../../roadmap.md)记录；本文不命名尚不存在的RPC/字段。缺失的必要能力必须在对应功能验收前完成。不得借用管理员无限权限、二次钱包、假收据、假ready或客户手动执行CLI代替产品功能。
 
 ## 8. 结构收敛，不再扩大架构
 

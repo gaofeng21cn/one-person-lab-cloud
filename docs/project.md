@@ -43,10 +43,14 @@ Resource Catalog owns the extracted plans and price policies; Control Plane
 retains its legacy catalog for existing callers. The Instance does not
 copy this repository's runtime code or product contracts.
 
-Medopl-specific manifests, production workflows, Secrets, runbooks, rollback,
-canaries, and receipts belong only in that instance repository. This repository
-retains provider adapter source and portable product-release mechanisms, but no
-automatic instance deployment writer.
+Medopl-specific installation manifests, deployment workflows, Secrets, deployment
+runbooks, installation rollback, service-health canaries and deployment receipts
+belong in that instance repository. Cloud's existing product owners retain
+customer operations and business qualification; deploying Cloud does not perform
+those operations. Their protected execution and evidence migration remain an
+[open outcome](roadmap.md#workspace-key-and-customer-read-boundaries).
+This repository retains provider adapter source and portable product-release
+mechanisms, but no automatic instance deployment writer.
 
 ## External
 

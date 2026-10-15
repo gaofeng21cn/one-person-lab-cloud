@@ -16,8 +16,11 @@ release mechanisms. A domain is not a separate GitHub repository.
 - `packages/contracts` owns only machine-readable facts that have a current
   cross-module, public-interface, security, integrity, or irreversible-side-
   effect consumer.
-- `opl-instance-medopl` owns the medopl domains, provider profile, production
-  environment and Secrets, deployment, rollback, acceptance, and receipts.
+- `opl-instance-medopl` owns medopl installation configuration, production
+  environment and Secrets, deployment, installation rollback and deployment
+  receipts. Product-operation and qualification ownership follows
+  [the current decision](docs/decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads);
+  unfinished execution/evidence migration stays in `docs/roadmap.md`.
 
 `opl-cloud` is the product's package, image, service, namespace, and runner name.
 The current repository identity is `gaofeng21cn/one-person-lab-cloud`, as declared
@@ -170,8 +173,11 @@ wiring. This does not establish that all Codex sessions are restricted.
 
 ## Documentation
 
-Follow the hierarchy in `docs/README.md`. Lower layers may implement or report
-an upper-layer decision; they do not redefine it.
+Use [the documentation index](docs/README.md#entrypoints-and-consumers) to locate
+canonical owners and their consumers. This file owns agent execution rules and
+required entrypoints, not product specifications or a second documentation tree.
+Lower layers may implement or report an upper-layer decision; they do not
+redefine it.
 
 Keep active documentation limited to current truth, open gaps, and reusable
 operations. Completed plans, freezes, task checklists, shell transcripts, and
@@ -287,7 +293,10 @@ require a production environment to build the product.
 During pre-1.0, build a replaceable candidate from an exact Cloud SHA and image
 digest on a branch admitted by the Candidate workflow. Formal publication still
 requires that exact source to be merged into canonical `main`. The instance owner
-deploys and qualifies that candidate in its protected environment. A formal Product Release promotes the same qualified
+deploys that Candidate and proves installation identity and health in its
+protected environment. Cloud product owners retain business qualification;
+current release-evidence migration is an explicit roadmap gap, not permission
+to remove admission checks. A formal Product Release promotes the same qualified
 bytes without a rebuild.
 
 Candidate construction and local development do not authorize formal
@@ -370,10 +379,12 @@ host-owned execution receipts. Deployment and qualification retain their
 required owner receipts. Failed or unavailable verification records the attempted
 action and reason rather than implying pass.
 
-Cloud owns source evidence and roadmap state. Instance owns immutable
-Candidate, launch/use, deployment, rollback and provider qualification receipts
-under its `receipts/` surface; use its current validators and schemas instead of
-copying an Instance receipt format into this file. Bind applicable source SHA,
+Cloud owns source evidence, roadmap state and product business qualification.
+Instance owns installation, deployment and deployment-rollback evidence. Current
+launch/use and qualification receipt producers and release consumers have not
+yet migrated to that target; preserve their existing schemas and checks until
+both owners implement the migration in the same change. Do not copy receipt
+formats into this file. Bind applicable source SHA,
 image digests, timestamps, workflow provenance and actual focused readback.
 Append a new receipt for a new action and never overwrite a prior receipt.
 Receipts contain no credentials, raw Keys, customer data or private addresses.

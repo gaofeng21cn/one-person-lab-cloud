@@ -88,6 +88,20 @@ x-approved-wire-migration:
       and artifact history. Do not restore CloudIdentity GetTenantRepositoryBinding as a
       current route. Reconcile api versus planned v226 package mapping in W01 without
       creating parallel generated contracts. Default App does not require a Build repository.
+  - boundary: Workspace key lifecycle / same-key model updates / personal reads / announcements
+    change: >-
+      The 2026-10-15 decision in ../../decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads
+      supersedes ordinary model-update key replacement and retained-active-key policy.
+      Closure disables the exact managed key; authorized recovery re-enables the original;
+      verified historical Workspaces follow the same rule without deployment-triggered mutation.
+      Model updates keep the same external key and approved scope; failed apply after a scope
+      change must reconcile the original operation with actual configuration before success.
+      Personal wallet/Token reads bind the logged-in User without a Tenant role requirement;
+      Tenant bills allow owner/admin, and personal historical bills require original-owner proof.
+      All valid authenticated Users can read active announcements; proven same-User historical
+      ACKs retain original timestamps. Existing role rows, active/revoked key vocabulary and
+      generated consumers below do not yet implement this delta. Migrate each actual consumer
+      with its owner under issues 868-871; do not infer delivery from this annotation.
   acceptance:
   - Application selection rejects mixed, missing and unknown discriminator inputs; CreateBuild requires all three real inputs.
   - Default App quote-to-Serve works with no Package, BuildJob, CapabilityVersion or independent WebUI.
@@ -8865,7 +8879,13 @@ components:
       required:
       - expectedVersion
       - selections
-      description: Runtime reload readback appliedVersion==目标version后才成功。Gateway managed-key binding is created and returned internally by Gateway for the exact selections; the public request never carries gatewayKeyBindingId. When an existing runtime configuration changes its managed Secret, the owner uses the internal Fabric RebindSecret path with predecessor CAS; the predecessor Gateway key is revoked only after the new runtime readback is confirmed.
+      description: >-
+        目标规则见2026-10-15决定：普通模型更新保留同一个外部Key，仅更新已批准模型权限，
+        不发行新Key再撤旧Key；公开请求不接收gatewayKeyBindingId。Gateway权限、Fabric
+        Secret与Serve实际应用读回一致后，Workspace以CAS推进appliedVersion。
+        权限已变更而应用拒绝时，沿原Operation收敛权限与真实配置，确认前不报成功或继续依赖变更。
+        当前create/rebind/predecessor-revoke消费者由#869整体替换；本说明不改变现有wire或生成权限表。
+        真正需要替换Secret的独立操作仍保留Fabric predecessor CAS和单活绑定约束。
     Deployment:
       type: object
       additionalProperties: false
