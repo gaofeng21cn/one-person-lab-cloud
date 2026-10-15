@@ -46,13 +46,12 @@ type Service struct {
 	admins        map[string]bool
 	mu            sync.Mutex
 	// RegistryHost / RegistryNamespace are installation facts used to reserve a
-	// Tenant's application OCI destination. They carry no credential.
+	// User's application OCI destination. They carry no credential.
 	registryHost      string
 	registryNamespace string
 
-	// The fields below wire the gateway data owner's typed coordination surface.
-	// They are optional: a deployment without the gateway database or an approved
-	// Secret store leaves them nil and the corresponding RPC fails closed.
+	// GatewayStore is required before service registration or authentication.
+	// Secret delivery remains separately configured for managed-key operations.
 	GatewayStore *GatewayStore
 	SecretStore  SecretStore
 	KeyIssuer    ManagedKeyIssuer
@@ -90,14 +89,13 @@ func New(db *sql.DB, gateway *Gateway, signing []byte, admins []string, invitati
 	return s, nil
 }
 func (s *Service) Register(server *ownerservice.Server) error {
-	required := []string{"TenantProductService", "GatewayProductService"}
-	// The gateway data owner's settlement/key surface is only declared when this
-	// process actually owns the gateway database. A deployment without it omits the
-	// group entirely, and readiness names the missing dependency rather than
-	// serving a money path with no writer.
-	if s.GatewayStore != nil {
-		required = append(required, "GatewayCoordination")
+	if s.GatewayStore == nil {
+		return fmt.Errorf("Gateway User binding persistence is required before registering handlers")
 	}
+	if err := server.AddReadinessCheck("gateway_bindings", s.GatewayStore.Ready); err != nil {
+		return err
+	}
+	required := []string{"TenantProductService", "GatewayProductService", "GatewayCoordination"}
 	if err := server.RequireProductGroups(required...); err != nil {
 		return err
 	}
@@ -107,12 +105,10 @@ func (s *Service) Register(server *ownerservice.Server) error {
 	}); err != nil {
 		return err
 	}
-	if s.GatewayStore != nil {
-		if err := server.RegisterGroup("GatewayCoordination", func(g *grpc.Server) {
-			api.RegisterGatewayCoordinationServer(g, s)
-		}); err != nil {
-			return err
-		}
+	if err := server.RegisterGroup("GatewayCoordination", func(g *grpc.Server) {
+		api.RegisterGatewayCoordinationServer(g, s)
+	}); err != nil {
+		return err
 	}
 	return server.RegisterGroup("GatewayProductService", func(g *grpc.Server) {
 		api.RegisterGatewayProductServiceServer(g, s)
@@ -125,6 +121,8 @@ func (s *Service) ConfigureRegistry(host, namespace string) {
 	s.registryHost = strings.ToLower(strings.TrimSpace(host))
 	s.registryNamespace = strings.ToLower(strings.TrimSpace(namespace))
 }
+func stampOf(v time.Time) *timestamppb.Timestamp { return timestamppb.New(v) }
+
 func randomID() string {
 	var b [32]byte
 	if _, e := rand.Read(b[:]); e != nil {
@@ -187,6 +185,16 @@ func (s *Service) Login(ctx context.Context, r *api.LoginRpcRequest) (*api.Sessi
 		return nil, e
 	}
 	actor := strconv.FormatInt(user.ID, 10)
+	if s.GatewayStore == nil {
+		return nil, status.Error(codes.Unavailable, "Gateway User binding persistence is not configured")
+	}
+	host, namespace, repository, e := s.authenticatedUserDestination(ctx, actor, user.Email)
+	if e != nil {
+		return nil, e
+	}
+	if _, e = s.GatewayStore.bindAuthenticatedUser(ctx, actor, strconv.FormatInt(user.ID, 10), host, namespace, repository); e != nil {
+		return nil, e
+	}
 	var tenant sql.NullString
 	e = s.DB.QueryRowContext(ctx, `SELECT tenant_id FROM tenant.tenant_members m JOIN tenant.tenants t ON t.id=m.tenant_id WHERE m.actor_id=$1 AND m.revoked_at IS NULL AND t.status='active'`, actor).Scan(&tenant)
 	if e != nil && e != sql.ErrNoRows {
@@ -227,7 +235,11 @@ func (s *Service) Login(ctx context.Context, r *api.LoginRpcRequest) (*api.Sessi
 // session table for the check to be possible. Anything the Gateway cannot answer
 // fails closed rather than falling back to the row.
 func (s *Service) activeSubject(ctx context.Context, actor string) error {
-	subject, e := s.Gateway.directoryIdentity(ctx, actor)
+	binding, e := s.userBinding(ctx, actor)
+	if e != nil {
+		return e
+	}
+	subject, e := s.Gateway.directoryIdentity(ctx, binding.Sub2APIUserID)
 	if e != nil {
 		return e
 	}
@@ -311,7 +323,11 @@ func (s *Service) GetWallet(ctx context.Context, r *api.GetWalletRpcRequest) (*a
 	if err != nil {
 		return nil, err
 	}
-	balance, err := s.Gateway.Balance(ctx, out.GetActorId())
+	binding, err := s.userBinding(ctx, out.GetActorId())
+	if err != nil {
+		return nil, err
+	}
+	balance, err := s.Gateway.Balance(ctx, binding.Sub2APIUserID)
 	if err != nil {
 		return nil, err
 	}
@@ -337,7 +353,11 @@ func (s *Service) GetUsageSummary(ctx context.Context, r *api.GetUsageSummaryRpc
 	if err != nil {
 		return nil, err
 	}
-	stats, err := s.Gateway.UsageStats(ctx, out.GetActorId(), r.GetPeriod())
+	binding, err := s.userBinding(ctx, out.GetActorId())
+	if err != nil {
+		return nil, err
+	}
+	stats, err := s.Gateway.UsageStats(ctx, binding.Sub2APIUserID, r.GetPeriod())
 	if err != nil {
 		return nil, err
 	}
@@ -365,7 +385,11 @@ func (s *Service) ListModels(ctx context.Context, r *api.ListModelsRpcRequest) (
 	if err != nil {
 		return nil, err
 	}
-	models, err := s.Gateway.Models(ctx, out.GetActorId())
+	binding, err := s.userBinding(ctx, out.GetActorId())
+	if err != nil {
+		return nil, err
+	}
+	models, err := s.Gateway.Models(ctx, binding.Sub2APIUserID)
 	if err != nil {
 		return nil, err
 	}

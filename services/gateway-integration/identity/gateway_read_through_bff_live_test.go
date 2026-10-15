@@ -103,6 +103,8 @@ func TestLiveGatewayReadThroughBFF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	service.GatewayStore = gatewayStoreSystem(t)
+	service.ConfigureRegistry("uswccr.ccs.tencentyun.com", "oplcloud")
 	const token = "isolated-gateway-read-token-0000001"
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -125,7 +127,7 @@ func TestLiveGatewayReadThroughBFF(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(reader.Close)
-	handler := bff.NewGatewayReadHandler(reader.GatewayClient(), reader)
+	handler := bff.NewGatewayReadHandler(reader.GatewayClient(), reader.GatewayCoordinationClient(), reader)
 
 	// Sign in through the real CloudIdentity owner to obtain the browser cookie.
 	loginConn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithUnaryInterceptor(owneridentity.OutboundInterceptor(owneridentity.ConsoleBFF, token)))
@@ -146,6 +148,20 @@ func TestLiveGatewayReadThroughBFF(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, request)
 			return response
+		}
+		binding := read("/api/v2/auth/external-bindings?actorId=another-user&repository=forged")
+		if binding.Code != http.StatusOK {
+			t.Fatalf("binding status=%d body=%s", binding.Code, binding.Body.String())
+		}
+		for _, fact := range []string{`"actorId":"101"`, `"sub2apiUserId":"101"`, `"registryHost":"uswccr.ccs.tencentyun.com"`, `"registryNamespace":"oplcloud"`, `"repository":"customer"`} {
+			if !strings.Contains(binding.Body.String(), fact) {
+				t.Fatalf("binding omitted %s: %s", fact, binding.Body.String())
+			}
+		}
+		anonymousBinding := httptest.NewRecorder()
+		handler.ServeHTTP(anonymousBinding, httptest.NewRequest(http.MethodGet, "/api/v2/auth/external-bindings", nil))
+		if anonymousBinding.Code != http.StatusUnauthorized {
+			t.Fatalf("anonymous binding status=%d body=%s", anonymousBinding.Code, anonymousBinding.Body.String())
 		}
 		wallet := read("/api/v2/wallet")
 		if wallet.Code != http.StatusOK || !strings.Contains(wallet.Body.String(), `"balanceUSDMicros":"12500000"`) {

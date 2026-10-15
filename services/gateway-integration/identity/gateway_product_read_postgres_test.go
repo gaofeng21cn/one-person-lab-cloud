@@ -123,6 +123,7 @@ func gatewayProductSystem(t *testing.T) (api.GatewayProductServiceClient, api.Te
 	if e != nil {
 		t.Fatal(e)
 	}
+	service.GatewayStore = gatewayStoreSystem(t)
 	const token = "isolated-identity-test-token-00000001"
 	config := ownerservice.Config{Owner: owneridentity.Tenant, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: map[owneridentity.Service]string{owneridentity.ConsoleBFF: token}}
 	listener, e := net.Listen("tcp", "127.0.0.1:0")
@@ -235,5 +236,33 @@ func TestGatewayProductReadsRequireAuthorizedEndpoints(t *testing.T) {
 	denied.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET
 	if _, err := service.AuthorizeAction(peerCtx, denied); err == nil {
 		t.Fatal("member was granted the admin-only GetWallet action")
+	}
+}
+
+// Existing installations may hold an opaque CloudIdentity actor independent of
+// the upstream subject representation. Seed that identity shape by relocating
+// the rows created through real authentication, then exercise the real reads.
+func TestGatewayProductReadsResolveOpaqueActorThroughDurableMapping(t *testing.T) {
+	gatewayClient, tenantClient, service := gatewayProductSystem(t)
+	raw, _ := login(t, tenantClient)
+	ref := owneridentity.SessionReference(raw)
+	if _, err := service.DB.ExecContext(t.Context(), `UPDATE tenant.tenant_members SET actor_id='cloud-user-opaque' WHERE actor_id='101';UPDATE tenant.sessions SET actor_id='cloud-user-opaque' WHERE actor_id='101'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.GatewayStore.DB().ExecContext(t.Context(), `UPDATE gateway.identity_mappings SET actor_id='cloud-user-opaque' WHERE actor_id='101'`); err != nil {
+		t.Fatal(err)
+	}
+	call := &api.CallContext{SessionId: proto.String(ref)}
+	wallet, err := gatewayClient.GetWallet(t.Context(), &api.GetWalletRpcRequest{Context: call})
+	if err != nil || wallet.GetBalanceUsdMicros() != 12_500_000 {
+		t.Fatalf("mapped wallet=%v err=%v", wallet, err)
+	}
+	usage, err := gatewayClient.GetUsageSummary(t.Context(), &api.GetUsageSummaryRpcRequest{Context: call, Period: "month"})
+	if err != nil || usage.GetTotalRequests() != 17 {
+		t.Fatalf("mapped usage=%v err=%v", usage, err)
+	}
+	models, err := gatewayClient.ListModels(t.Context(), &api.ListModelsRpcRequest{Context: call})
+	if err != nil || len(models.GetItems()) != 2 {
+		t.Fatalf("mapped models=%v err=%v", models, err)
 	}
 }

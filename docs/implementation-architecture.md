@@ -30,9 +30,12 @@ Integration implements CloudIdentity sessions, Tenant governance and accepted
 operation authorization in `services/gateway-integration`. The public JSON
 boundary resolves property names and 64-bit scalar forms from the canonical
 contract, so a published spelling such as `monthlyPriceUSDMicros` and its decimal
-string form are authoritative over protobuf's own derivation. Its Gateway
-coordination and product surfaces are registered only when a separate Gateway
-database is configured; Tenant and Gateway remain separate writers and pools
+string form are authoritative over protobuf's own derivation. Gateway DB is
+required by login and session validation, which consume the Gateway store for
+User bindings. `OPL_GATEWAY_DATABASE_URL` must be configured
+and must identify a database distinct from the Tenant DSN
+(`OPL_TENANT_DATABASE_URL`); a different spelling of the same DSN is not a
+separate database. Tenant and Gateway retain separate writer roles and pools
 inside one deployment unit. Sub2API retains wallet, Key, model and usage truth.
 The service also serves Tenant member
 and invitation governance (list, invite, accept, revoke, role change and removal,
@@ -43,10 +46,11 @@ and the Console BFF's HTTP success status per routed action is compiled from the
 same contract rather than hand-listed. `getWorkspaceAccess` is a Serve-audience
 read because Serve owns the access fact, and each owner fact in a composed BFF
 view is authorized against the owner that reports it. `Member.displayName` uses
-the authorized Gateway identity-directory read. Tenant lifecycle handlers and
-repository binding are implemented in the same owner; their presence does not
-prove retained identity-data migration or Instance qualification. The exact
-remaining outcomes belong to [roadmap](roadmap.md).
+the authorized Gateway identity-directory read. Tenant lifecycle handlers use
+the CloudIdentity store; both User external
+bindings use the Gateway store in the same process. Source presence does not
+prove acceptance or Instance qualification. Remaining outcomes belong to
+[roadmap](roadmap.md).
 
 Serve implements its read surface in `services/serve/internal/delivery`: the
 owner-local current Deployment, the delivery history and the current Agent's
@@ -193,7 +197,7 @@ packages/contracts/*.json -> consumed artifact and cross-owner byte contracts
 | --- | --- | --- | --- | --- |
 | Console UI | `apps/console-ui`, TypeScript build | presentation and customer interaction | migrated cloud surfaces use same-origin BFF `/api/v2/*`; retained callers use Control Plane `/api/*` | direct Fabric, Ledger, Sub2API, Tencent, Kubernetes, persistence, or server implementation imports |
 | Console BFF | `apps/console-bff`, independent Go module and process | browser REST, session security and typed owner DTO aggregation | CloudIdentity and generated gRPC owner clients | business persistence, Saga state or another owner's implementation imports |
-| CloudIdentity / Gateway Integration | `services/gateway-integration`, one independent module/process, separate Tenant/Gateway databases | Tenant/session/member policy, accepted-operation authorization and native Gateway integration | external Sub2API APIs and typed owner readbacks | a second wallet, copied live balance or cross-owner table writes |
+| CloudIdentity / Gateway Integration | `services/gateway-integration`, one independent module/process, separate Tenant/Gateway databases | CloudIdentity: User/session/Tenant/member policy and accepted-operation authorization; Gateway: both User↔Sub2API User and User↔OCI Destination in `gateway.identity_mappings`, plus native Gateway integration | external Sub2API APIs and typed owner readbacks | a second wallet, copied live balance, email/account-id binding keys or cross-owner table writes |
 | Capability / Build / Runtime Control | `services/capability`, `services/build`, `services/runtime-control`, independent modules/processes and stores | immutable Package/catalog facts, fixed-input OCI jobs/artifacts, approved Runtime Releases respectively | generated owner clients and current object/BuildKit adapters | another owner's store, Runtime implementation or deployment/current-selection authority |
 | Workspace / Resource Catalog / Serve | `services/workspace`, `services/resource-catalog`, `services/serve`, independent modules/processes and stores | accepted Workspace operations/Saga, plans and pricing policies, application delivery/current selection/readiness/access respectively | generated owner clients, Fabric/Ledger coordination and the retained first-delivery execution adapter | cross-owner writes, duplicate current deployment or inferred provider/financial success |
 | Control Plane | independent `go.mod`, binary, Deployment and schema | session/account mapping, Workspace entitlement, Launch cursor/attempt/lease/CAS, account/settlement coordination and customer DTOs | typed HTTP clients for Fabric, Ledger and Sub2API; narrow PostgreSQL migration helper | resource-stage reducers, Fabric operation derivation, Fabric/Ledger implementation imports, provider fields/SDKs/Kubernetes, provider mutations, or downstream table writes |
@@ -1040,28 +1044,40 @@ publication admission, same-digest promotion, recovery and public readback.
 [Status](status.md) owns retained release and Instance evidence, while
 [roadmap](roadmap.md) owns unresolved qualification outcomes.
 
-### Current Tenant-to-TCR Build Path
+### User External Bindings And TCR Build Path
 
-`services/gateway-integration/identity.CreateTenant` is the Cloud Tenant
-admission entry. It writes `tenant.tenants`, the owner membership and one
-`tenant.tenant_repository_bindings` row in one command transaction. The binding
-uses the installation's `OPL_WORKSPACE_REGISTRY_HOST` /
-`OPL_WORKSPACE_REGISTRY_NAMESPACE` and derives the initial repository-name
-candidate from the verified owner email local-part, with a deterministic suffix
-on collision. Tenant-owner startup backfills pre-binding Tenants with a stable
-`tenant-<sha256-prefix>` derived from their durable Tenant IDs; it does not call
-Gateway and never replaces an existing binding. `GetTenantRepositoryBinding`
-exposes it to Build and the Console BFF only, guarded by the signed mTLS peer.
+The source change uses the existing Gateway-owned `gateway.identity_mappings`
+for both User bindings. Its additive migration is
+`services/gateway-integration/gatewaymigrations/0002_user_external_bindings.sql`;
+`identity/user_external_binding.go` owns writes and readbacks through the
+Gateway store. `verified_at` is nullable; the destination tuple,
+`destination_verified_at` and `revoked_at` express verification and revocation.
+Status is derived for the DTO. Unique identity and destination reservations
+include revoked rows. No Tenant-owned destination table is introduced.
 
-`services/build/internal/build.Runner.DestinationRepository` joins the resolved
-binding into `host/namespace/repository`, and `CreateBuild` stores
-`<repository>:<build-job-id>` as the immutable `executor_ref`. The isolated live
-BuildKit tests exercise the same resolver against a disposable loopback
-Registry. This is the selected personal-TCR destination policy
-`uswccr.ccs.tencentyun.com/oplcloud/<tenant-repository>`. What remains open is
-the hosted proof: no recorded Build job is bound to the existing
-`oplcloud/huangrende` artifact, and no Tencent/TKE-hosted Cloud Build has pushed
-a Tenant-resolved destination yet.
+Login persists the authenticated Sub2API subject mapping before issuing a
+CloudIdentity session. Session validation consumes the Gateway store, so a
+Gateway database is required even when settlement and Key changes are outside
+this work. CloudIdentity retains its own session/member store and authorization
+boundary. GatewayStore does not read or write the Tenant database.
+
+`GET /api/v2/auth/external-bindings` routes to
+`GatewayCoordination.GetSelfUserExternalBinding`, which resolves the actor from
+the live session, with no target actor or Tenant-role selector. Build calls
+`GatewayCoordination.ReadUserExternalIdentity` for that same authenticated
+actor. `BindUserExternalIdentity` is a platform-admin command for an already
+authenticated identity; it cannot override the installation registry host or
+namespace. The Tencent destination shape is
+`uswccr.ccs.tencentyun.com/oplcloud/<user-repository>`. Email is only a possible
+initial name candidate, not the binding key.
+
+CloudIdentity may read the historical `tenant.tenant_repository_bindings`
+through its own store to verify an unambiguous handover and protect reserved
+paths. The old reservations stay read-only. New output selection reads Gateway;
+existing Build `executor_ref` and artifact history retain their original values.
+Build still owns OCI construction, push and digest readback. The source work is
+under validation; local tests, Candidate adoption and Instance acceptance remain
+separate obligations recorded in [status](status.md) and [roadmap](roadmap.md).
 
 
 ## Owner Transition

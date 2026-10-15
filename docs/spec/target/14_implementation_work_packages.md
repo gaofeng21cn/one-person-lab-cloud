@@ -156,7 +156,7 @@
 - 沿用packages/contracts/go/go.mod；W01核对已运行api协议与旧v226规划的精确差异后统一生产/规格/生成消费者，不机械改包名、不另建module或并行协议副本
 - 必要消费者go.mod/go.sum调整属于契约写集：记录实际依赖链与选定版本，不为旧测试或保持diff不变增加兼容字段、强压依赖或另建模块
 - 先贯通03 x-approved-wire-migration与02第0节：应用来源判别联合、Agent必选独立WebUI、descriptor provenance、claims、Quote/Serve持久化与真实消费者同版交付
-- 同步已有TenantRepositoryBinding生产RPC与规格、明确api/v226生成映射；修Runtime REST owner和per-owner Operation路由，不复制第二套合同
+- 同步Gateway UserExternalBinding三个RPC与规格、保留Tenant reservation只读历史及旧Build executor、明确api/v226生成映射；修Runtime REST owner和per-owner Operation路由，不复制第二套合同
 - 默认App不得伪造Package/Build/CapabilityVersion/Build receipt；Agent必须保留Package/Runtime/独立WebUI三个真实输入及claim
 
 **验证**：
@@ -262,7 +262,9 @@
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`acceptInvitation`, `getLoginContext`, `getSession`, `getTenant`, `inviteMember`, `listInvitations`, `listMembers`, `login`, `logout`, `removeMember`, `revokeInvitation`, `updateMemberRole`
 
-**主实现表（字段唯一来源02，不在此复制字段定义）**：`tenant.tenants`, `tenant.tenant_members`, `tenant.invitations`, `tenant.sessions`, `tenant.audit_events`, `tenant.authorization_contexts`, `tenant.accepted_operation_grants`
+**Session-only API（live session，不生成Tenant role规则）**：`getLoginContext`, `getSession`, `login`, `logout`
+
+**主实现表（字段唯一来源02，不在此复制字段定义）**：`tenant.tenants`, `tenant.tenant_members`, `tenant.tenant_repository_bindings`, `tenant.invitations`, `tenant.sessions`, `tenant.audit_events`, `tenant.authorization_contexts`, `tenant.accepted_operation_grants`
 
 **内部协议实现/协作端口**：`TenantProductService.GetLoginContext`, `TenantProductService.Login`, `TenantProductService.GetSession`, `TenantProductService.Logout`, `TenantProductService.GetTenant`, `TenantProductService.ListMembers`, `TenantProductService.ListInvitations`, `TenantProductService.InviteMember`, `TenantProductService.AcceptInvitation`, `TenantProductService.RevokeInvitation`, `TenantProductService.UpdateMemberRole`, `TenantProductService.RemoveMember`, `CloudIdentityAuthorization.AuthorizeAction`, `CloudIdentityAuthorization.GetAuthorizationContext`, `CloudIdentityAuthorization.IssueAcceptedOperationGrant`
 
@@ -287,23 +289,27 @@
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
 - `services/gateway-integration/identity`
-- `services/gateway-integration/migrations`
+- `services/gateway-integration/gatewaymigrations`
 
 **必须交付**：
 - 沿用Sub2API真实接口/身份和一次性Code，完成base/supplement/period/refund原单读回
 - 仅映射/操作证据，无余额镜像；unknown禁止新财务副作用
 - 个人Key管理与托管Workspace Key边界明确；明文仅授权一次性响应
+- Gateway identity_mappings唯一持有User↔Sub2API User与User↔OCI Destination；GetSelfUserExternalBinding为session-only，CloudIdentity授权但不成为绑定writer；Gateway DB为login/session必需且与Tenant DSN隔离
 
-**主实现API（沿用03的唯一Owner，不是改变数据写权）**：`createGatewayKey`, `getUsageSummary`, `getWallet`, `listGatewayKeys`, `listModels`, `listRechargeRecords`, `listUsage`, `listWorkspaceTransactions`, `revealGatewayKey`, `revokeGatewayKey`
+**主实现API（沿用03的唯一Owner，不是改变数据写权）**：`createGatewayKey`, `getSelfUserExternalBinding`, `getUsageSummary`, `getWallet`, `listGatewayKeys`, `listModels`, `listRechargeRecords`, `listUsage`, `listWorkspaceTransactions`, `revealGatewayKey`, `revokeGatewayKey`
+
+**Session-only API（live session，不生成Tenant role规则）**：`getSelfUserExternalBinding`
 
 **主实现表（字段唯一来源02，不在此复制字段定义）**：`gateway.identity_mappings`, `gateway.tenant_wallet_bindings`, `gateway.key_bindings`, `gateway.wallet_operations`
 
-**内部协议实现/协作端口**：`GatewayProductService.ListWorkspaceTransactions`, `GatewayProductService.GetWallet`, `GatewayProductService.ListUsage`, `GatewayProductService.GetUsageSummary`, `GatewayProductService.ListGatewayKeys`, `GatewayProductService.CreateGatewayKey`, `GatewayProductService.RevealGatewayKey`, `GatewayProductService.RevokeGatewayKey`, `GatewayProductService.ListRechargeRecords`, `GatewayProductService.ListModels`, `GatewayCoordination.BindWallet`, `GatewayCoordination.Debit`, `GatewayCoordination.Refund`, `GatewayCoordination.ReadWalletAction`, `GatewayCoordination.CreateManagedKey`, `GatewayCoordination.RevokeManagedKey`, `GatewayPlanChangeSettlement.DebitSupplement`, `GatewayPlanChangeSettlement.DebitScheduledPeriod`, `GatewayPlanChangeSettlement.RefundFailure`, `GatewayPlanChangeSettlement.RefundSupplementOnDeletion`
+**内部协议实现/协作端口**：`GatewayProductService.ListWorkspaceTransactions`, `GatewayProductService.GetWallet`, `GatewayProductService.ListUsage`, `GatewayProductService.GetUsageSummary`, `GatewayProductService.ListGatewayKeys`, `GatewayProductService.CreateGatewayKey`, `GatewayProductService.RevealGatewayKey`, `GatewayProductService.RevokeGatewayKey`, `GatewayProductService.ListRechargeRecords`, `GatewayProductService.ListModels`, `GatewayCoordination.GetSelfUserExternalBinding`, `GatewayCoordination.BindUserExternalIdentity`, `GatewayCoordination.ReadUserExternalIdentity`, `GatewayCoordination.BindWallet`, `GatewayCoordination.Debit`, `GatewayCoordination.Refund`, `GatewayCoordination.ReadWalletAction`, `GatewayCoordination.CreateManagedKey`, `GatewayCoordination.RevokeManagedKey`, `GatewayPlanChangeSettlement.DebitSupplement`, `GatewayPlanChangeSettlement.DebitScheduledPeriod`, `GatewayPlanChangeSettlement.RefundFailure`, `GatewayPlanChangeSettlement.RefundSupplementOnDeletion`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
 - Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local
 - 该命令只作实施后要求；本轮没有执行新产品实现测试
+- User自身读取及跨User/未验证/撤销/冲突拒绝；旧Tenant reservation只读与旧executor不改写；Gateway DB缺失或复用Tenant数据库必须拒绝
 - 实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/clients -run '^(TestAuthenticateUserReturnsDelegatedCredential|TestSub2APIFinancialHistoryUsesNativeExactNotesAndAllPages|TestSub2APIAdjustmentConnectionLossDoesNotRepeatDebit|TestSub2APIRefundRequiresReadOnlyRebatePolicy)$' -count=1
 
 **完成判定**：
@@ -607,7 +613,7 @@
 
 **内部协议实现/协作端口**：`WorkspaceProductService.GetOperation`
 
-**前端消费API**：`acceptInvitation`, `bindTenantWallet`, `createTenant`, `getAdminTenant`, `getLoginContext`, `getOperation`, `getReceipt`, `getSession`, `getTenant`, `inviteMember`, `listAdminOperations`, `listAuditEvents`, `listInvitations`, `listMembers`, `listQualifications`, `listReceipts`, `login`, `logout`, `reconcileOperation`, `removeMember`, `revokeInvitation`, `updateMemberRole`
+**前端消费API**：`acceptInvitation`, `bindTenantWallet`, `createTenant`, `getAdminTenant`, `getLoginContext`, `getOperation`, `getReceipt`, `getSelfUserExternalBinding`, `getSession`, `getTenant`, `inviteMember`, `listAdminOperations`, `listAuditEvents`, `listInvitations`, `listMembers`, `listQualifications`, `listReceipts`, `login`, `logout`, `reconcileOperation`, `removeMember`, `revokeInvitation`, `updateMemberRole`
 
 **验证**：
 - go -C apps/console-bff test ./...
@@ -910,7 +916,7 @@
 - 创建/绑定账单主体与个人登录分开；暂停权限及子Workspace结果可追踪
 - reenable只恢复原暂停且仍已付/原资源存在对象；删除后15天恢复是独立操作
 - 删除资产转平台私有托管，不公开、不自动退款全部余额或重购资源
-- W21.tenant-admission先交付开通/owner membership/已支持钱包主体与repository binding，供首链使用；暂停/删除/恢复作为后续切片，不以预置测试Tenant代替产品开通
+- W21.tenant-admission交付开通/owner membership/已支持钱包主体；User OCI由Gateway identity_mappings绑定，Tenant reservation只读保留，供首链授权使用；暂停/删除/恢复作为后续切片，不以预置测试Tenant代替产品开通
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`bindTenantWallet`, `createTenant`, `deleteTenant`, `getAdminTenant`, `getTenantAssetCustody`, `getTenantLifecycleOperation`, `listTenants`, `reenableTenant`, `restoreTenant`, `suspendTenant`
 
@@ -1289,11 +1295,11 @@
 
 | 原工作包内切片 | 窗口 | 消费的已完成切片 | 实际交付 |
 |---|---|---|---|
-| `W01.application-contracts` | integration | 无 | 默认App/Agent与Agent必选独立WebUI的typed合同、SQL约束/加载链、真实decoder和全部消费者一致；含Tenant binding既有漂移 |
+| `W01.application-contracts` | integration | 无 | 默认App/Agent与Agent必选独立WebUI的typed合同、SQL约束/加载链、真实decoder和全部消费者一致；含User external binding与旧Tenant reservation只读交接 |
 | `W02.owner-readiness` | integration | W01.application-contracts | 身份/DB/peer/readiness真实，Cloud镜像含buildx及必需owner；Tenant自身授权与Operation也可用 |
 | `W03.identity` | business | W02.owner-readiness | 个人身份、membership、accepted operation grant、跨租户/撤权边界可用 |
 | `W04.payment-key` | business | W03.identity | 受支持的Tenant钱包授权、原单扣退款/Key创建与Secret引用交接；不以用户余额读取冒充委托 |
-| `W21.tenant-admission` | business | W03.identity, W04.payment-key | 真实开通Tenant/owner membership/已支持钱包主体，Package构建使用稳定repository；不等删除恢复全功能 |
+| `W21.tenant-admission` | business | W03.identity, W04.payment-key | 真实开通Tenant/owner membership/已支持钱包主体，Package构建使用Gateway User绑定的稳定repository；不等删除恢复全功能 |
 | `W07.publisher-admission` | artifacts | W03.identity | 批准发布者身份/registry来源及Runtime引用保护基础；不要求独立WebUI制品或Package上传 |
 | `W10.app-release` | artifacts | W07.publisher-admission | 默认App及Agent构建所需批准Release/默认策略、native UI证据、descriptor和引用保护 |
 | `W07.webui-catalog` | artifacts | W07.publisher-admission, W10.app-release | 独立WebUI精确制品/平台/contract准入并可选；默认App不依赖此结果 |
@@ -1361,7 +1367,7 @@
 
 **输入：** GatewayCoordination；原Code/账户/金额/Key读回；06财务阶段
 
-**写集：** `services/gateway-integration/identity`, `services/gateway-integration/migrations`
+**写集：** `services/gateway-integration/identity`, `services/gateway-integration/gatewaymigrations`
 
 **验收：** 丢响应原单回读不再扣；未知授权明确拒绝；原Key/Secret版本恢复无泄漏
 
@@ -1371,7 +1377,7 @@
 
 #### W21.tenant-admission
 
-**输入：** CreateTenant；Tenant repository binding；钱包主体准入
+**输入：** CreateTenant；Gateway User external binding readback；钱包主体准入
 
 **写集：** `services/gateway-integration/identity`
 
@@ -1771,7 +1777,7 @@ W25/W30专门处理旧客户的M0–M5与唯一writer移交；新默认App不得
 
 1. 03已批准union贯穿QuoteRequest/Quote/Admission/accepted snapshot/Serve Reserve和Deploy/公开读取；新建订单两种应用均runtime readback required，不把缺CapabilityVersion当纯资源单。CreateWorkspace只消费原quoteId；原单禁止接受第二份镜像/金额。
 2. 默认App新增runtime_release provenance，原始descriptor bytes/digest/object reference贯通；Agent仍保留Package/Runtime/独立WebUI及三claim。Capability/Runtime的per-use准入、撤销排序和Serve提交证明按06，不以跨库锁或TTL猜释放。
-3. 真实新增SQL migration及loader、存量历史规则、生产proto及规格、严格publicjson、全部生成物和consumer同时对齐。保留生产TenantRepositoryBinding/owner_email，不机械改api/v226包名；唯一生产协议与生成映射在canonical owner收敛后验证。
+3. 真实新增SQL migration及loader、存量历史规则、生产proto及规格、严格publicjson、全部生成物和consumer同时对齐。对齐Gateway UserExternalBinding/owner_email并保留旧Tenant reservation只读及原Build executor，不机械改api/v226包名；唯一生产协议与生成映射在canonical owner收敛后验证。
 4. W05逐条配对06矩阵的producer/event或ReceiptKind/Ledger decoder/readback。Operation accepted不是effect confirmed，effect confirmed不是receipt committed；未知不重做，ACK丢失原key+hash恢复。
 5. 移交凭证列source/schema/generator hashes、真实decoder/consumer/SQL测试与剩余未测项。只有字段接线及持久化消费者实际通过后移除03的pending状态；仅文档、类型定义或generator成功均不够。
 
@@ -1807,7 +1813,7 @@ Instance只安装Cloud及安装配置/Secrets/证书、进行授权的安装/资
 
 **对应原工作包：** W01, W02, W03, W13
 
-**实施：** 按03/02/06一次贯通selection union、runtime_release provenance、原始descriptor bytes/digest、Quote及接受快照、Serve预留/部署/读取、持久化迁移和严格decoder；默认App必须runtime readback required。Agent仍必需Package/Runtime/独立WebUI及三claim。统一生产/spec proto、api/v226映射、TenantRepositoryBinding和授权生成器。修CloudIdentity自身readiness、Operation对象授权及全部实际continuation动作。
+**实施：** 按03/02/06一次贯通selection union、runtime_release provenance、原始descriptor bytes/digest、Quote及接受快照、Serve预留/部署/读取、持久化迁移和严格decoder；默认App必须runtime readback required。Agent仍必需Package/Runtime/独立WebUI及三claim。统一生产/spec proto、api/v226映射、Gateway UserExternalBinding和session-only授权生成器。修CloudIdentity自身readiness、Operation对象授权及全部实际continuation动作。
 
 **验收后进入下一段：** 两种真实owner正例及混合/缺项/撤销/跨Tenant反例；真实migration loader执行和历史义务保真，所有消费者同版，才移除pending迁移标记。
 
@@ -1839,7 +1845,7 @@ Instance只安装Cloud及安装配置/Secrets/证书、进行授权的安装/资
 
 **对应原工作包：** W07, W08, W09, W10, W13, W14, W16, W26
 
-**实施：** 先验证默认App不依赖Build，再验证OMA Package→COS→精确Runtime+独立WebUI→BuildKit→Tenant OCI digest回读→Capability→同一购买部署链。接真实BFF/Console而非fixture DTO，统一进度/Operation/receipt与访问入口。真实TCR输入的tag列表不能代替获准descriptor/字节身份。
+**实施：** 先验证默认App不依赖Build，再验证OMA Package→COS→精确Runtime+独立WebUI→BuildKit→User OCI digest回读→Capability→同一购买部署链。接真实BFF/Console而非fixture DTO，统一进度/Operation/receipt与访问入口。真实TCR输入的tag列表不能代替获准descriptor/字节身份。
 
 **验收后进入下一段：** npm run verify:local:full及相关browser/livebuild检查，真实PG独立owner/mTLS/幂等恢复；刷新、响应丢失、余额拒绝、未准入、半选组合、错receipt/版本、路由失败均有证据。原型与规格receipt按实际测试更新，不只改hash。
 

@@ -8,7 +8,7 @@
 
 | 功能 | 页面 | API操作数 | 数据Owner |
 |---|---|---:|---|
-| F01 登录、Tenant与成员权限 | /login、/console/settings/account、/console/settings/members、/admin/tenants/new | 16 | bff, tenant |
+| F01 登录、Tenant与成员权限 | /login、/console/settings/account、/console/settings/members、/admin/tenants/new | 17 | bff, gateway, tenant |
 | F02 分组与官方/私有Agent可见性 | /console/agents、/console/settings/groups | 9 | capability |
 | F03 管理员Runtime/WebUI与资源价格目录 | /admin/catalog/runtime、/admin/catalog/webui、/admin/catalog/publishers、/admin/catalog/build-policy、/admin/catalog/plans | 25 | capability, gateway, resource_catalog, runtime_control |
 | F04 上传Package与后续版本、确认构建 | /console/agents/upload、/console/agents/:packageId/upload | 12 | bff, build, capability |
@@ -21,7 +21,7 @@
 | F11 立即升级补差与下期降配计划 | /console/workspaces/:workspaceId?tab=plan-changes、/console/workspaces/:workspaceId?tab=plan-changes&planChangeId=:planChangeId | 14 | bff, gateway, resource_catalog, workspace |
 | F12 续费、到期停用与恢复 | /console/billing、/console/workspaces/:workspaceId/billing | 9 | bff, gateway, resource_catalog, workspace |
 | F13 删除Workspace、资源确认与退款 | /console/workspaces/:workspaceId/settings | 7 | bff, gateway, resource_catalog, workspace |
-| F14 钱包、用量、Key及管理员充值记录 | /console/api、/console/api/usage、/console/api/keys、/admin/recharge-records | 8 | gateway |
+| F14 钱包、用量、Key及管理员充值记录 | /console/api、/console/api/usage、/console/api/keys、/admin/recharge-records | 10 | gateway |
 | F15 Tenant停用、删除与窗口内恢复 | /admin/tenants/:tenantId | 12 | bff, tenant |
 | F16 旧资源与应用迁移后的可见状态和采用Agent | /console/workspaces/:workspaceId、/console/workspaces/:workspaceId/adopt | 10 | bff, capability, gateway, serve, workspace |
 | F17 管理员操作、审计与实例资格读回 | /admin/operations、/admin/qualifications | 7 | bff, ledger, tenant |
@@ -38,6 +38,7 @@
 | `getAdminTenant` | `GET /api/v2/admin/tenants/{tenantId}` | — | 200 Tenant | tenant |
 | `getLoginContext` | `GET /api/v2/auth/context` | — | 200 LoginContext | tenant |
 | `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | bff |
+| `getSelfUserExternalBinding` | `GET /api/v2/auth/external-bindings` | — | 200 UserExternalBindingReadback | gateway |
 | `getSession` | `GET /api/v2/auth/session` | — | 200 Session | tenant |
 | `getTenant` | `GET /api/v2/tenant` | — | 200 Tenant | tenant |
 | `inviteMember` | `POST /api/v2/tenant/invitations` | InviteMemberRequest | 201 Invitation | tenant |
@@ -114,7 +115,7 @@
 | `createRefundPolicyVersion` | `POST /api/v2/admin/catalog/refund-policies` | CreateRefundPolicyRequest | 201 RefundPolicyVersion | resource_catalog |
 | `createRetentionPolicyVersion` | `POST /api/v2/admin/catalog/retention-policies` | CreateRetentionPolicyRequest | 201 RetentionPolicyVersion | resource_catalog |
 | `createStoragePlan` | `POST /api/v2/admin/catalog/storage-plans` | CreateStoragePlanRequest | 201 StoragePlan | resource_catalog |
-| `getBuildRuntimePolicy` | `GET /api/v2/admin/catalog/build-policy` | — | 200 BuildRuntimePolicy | runtime_control |
+| `getBuildRuntimePolicy` | `GET /api/v2/catalog/build-policy` | — | 200 BuildRuntimePolicy | runtime_control |
 | `listComputePlans` | `GET /api/v2/catalog/compute-plans` | — | 200 ComputePlanPage | resource_catalog |
 | `listModels` | `GET /api/v2/catalog/models` | — | 200 ModelPage | gateway |
 | `listPricePolicyVersions` | `GET /api/v2/admin/catalog/price-policies` | — | 200 PricePolicyVersionPage | resource_catalog |
@@ -740,6 +741,8 @@
 | operationId | 请求 | 请求DTO | 成功响应DTO | 唯一Owner |
 |---|---|---|---|---|
 | `createGatewayKey` | `POST /api/v2/gateway-keys` | CreateGatewayKeyRequest | 201 GatewayKeySecret | gateway |
+| `getSelfUserExternalBinding` | `GET /api/v2/auth/external-bindings` | — | 200 UserExternalBindingReadback | gateway |
+| `getUsageSummary` | `GET /api/v2/usage/summary` | — | 200 UsageSummary | gateway |
 | `getWallet` | `GET /api/v2/wallet` | — | 200 Wallet | gateway |
 | `listGatewayKeys` | `GET /api/v2/gateway-keys` | — | 200 GatewayKeyPage | gateway |
 | `listRechargeRecords` | `GET /api/v2/admin/recharge-records` | — | 200 WalletOperationPage | gateway |
@@ -754,6 +757,7 @@
 - `GatewayKeySecret`：`key`、`secret`
 - `Operation`：`createdAt`、`errorCode`、`kind`、`observationResult`、`operationId`、`owner`、`pollAfterSeconds`、`requestId`、`resourceId`、`stage`、`status`、`updatedAt`
 - `Usage`：`costUSDMicros`、`createdAt`、`id`、`inputTokens`、`modelId`、`outputTokens`、`periodEnd`、`periodStart`、`source`
+- `UsageSummary`：`totalActualCostUSDMicros`、`totalInputTokens`、`totalOutputTokens`、`totalRequests`、`totalTokens`
 - `Wallet`：`balanceUSDMicros`、`currency`、`fetchedAt`、`source`、`status`
 - `WalletOperation`：`amountUSDMicros`、`coverageEnd`、`coverageEndMilliseconds`、`coverageStart`、`coverageStartMilliseconds`、`createdAt`、`errorCode`、`externalReference`、`id`、`kind`、`originalChargeOperationId`、`planChangeId`、`purpose`、`receiptId`、`status`、`updatedAt`、`workspaceId`
 

@@ -54,7 +54,7 @@ func main() {
 		if err := runner.Validate(); err != nil {
 			return err
 		}
-		service, err := buildservice.New(database.Store(), ownerservice.NewAuthorizer(config.Owner, api.NewCloudIdentityAuthorizationClient(identityConn)), api.NewCapabilityCoordinationClient(capabilityConn), api.NewCapabilityProductServiceClient(capabilityConn), map[string]api.DomainInboxClient{"capability": api.NewDomainInboxClient(capabilityConn), "ledger": api.NewDomainInboxClient(ledgerConn)}, api.NewCloudIdentityAuthorizationClient(identityConn), runner)
+		service, err := buildservice.New(database.Store(), ownerservice.NewAuthorizer(config.Owner, api.NewCloudIdentityAuthorizationClient(identityConn)), api.NewCapabilityCoordinationClient(capabilityConn), api.NewCapabilityProductServiceClient(capabilityConn), map[string]api.DomainInboxClient{"capability": api.NewDomainInboxClient(capabilityConn), "ledger": api.NewDomainInboxClient(ledgerConn)}, api.NewCloudIdentityAuthorizationClient(identityConn), api.NewGatewayCoordinationClient(identityConn), runner)
 		if err != nil {
 			return err
 		}

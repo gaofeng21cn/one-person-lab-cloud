@@ -134,7 +134,7 @@ and [status](status.md); neither proves Instance installation.
 | --- | --- | --- |
 | `apps/console-ui/` | React/TypeScript application | Presentation; calls Console BFF only |
 | `apps/console-bff/` | Independent Go module and process | Browser REST, server-side session security and DTO aggregation; no business persistence or business Saga |
-| `services/gateway-integration/` | Independent Go module and process | `tenant` / CloudIdentity and `gateway` integration: two distinct database/writer owners in one deployment unit; Sub2API remains the external wallet/Gateway authority |
+| `services/gateway-integration/` | Independent Go module and process | `tenant` / CloudIdentity owns sessions and Tenant authorization; `gateway` owns both User external bindings in `gateway.identity_mappings`; two distinct database/writer owners in one deployment unit; Sub2API remains the external wallet/Gateway authority |
 | `services/capability/` | Independent Go module and process | `capability`: publishers, Packages, versions and catalog metadata |
 | `services/build/` | Independent Go module and process | `build`: build jobs, immutable input references and artifact evidence |
 | `services/workspace/` | Independent Go module and process | `workspace`: Workspace lifecycle and business Saga |
@@ -424,10 +424,10 @@ implicit retry into the default App when a chosen Agent fails.
 
 Runtime Control supplies the approved App release and its immutable publisher
 contract. The default App is deployed directly by digest; no synthetic
-Package/Build/CapabilityVersion or redundant Tenant-registry copy is created.
+Package/Build/CapabilityVersion or redundant User-registry copy is created.
 For an Agent, Capability supplies the Package and compatible independent
 WebUI, Runtime Control supplies the exact approved Runtime, and Build requires
-all three inputs to produce the immutable Tenant OCI. There is no Agent with
+all three inputs to produce the immutable User OCI. There is no Agent with
 built-in UI branch; missing either Package or independent WebUI is rejected. Package formats, App UI implementation and ABI remain
 publisher-owned; a mutable tag or a guessed filesystem path is not admission.
 
@@ -528,31 +528,44 @@ browse credential into Control Plane while the runtime keeps its own pull
 credential. The browsable namespace boundary is server-side admission policy, so
 configuring an endpoint never widens it.
 
-### Tenant-Scoped Application Repository Policy
+### User-Scoped Application Repository Policy
 
-For the current Tencent TCR personal installation, application output uses the
-installation-owned namespace `oplcloud` and one private repository reserved for
-each admitted Cloud Tenant. The Tenant owner reserves a stable
-`tenant_id -> repository` binding; the verified email local-part is only the
-initial name candidate and collision handling must preserve that binding. Build
-reads the binding through an authenticated owner boundary and is the only writer
-of the OCI result. Neither the browser nor a Build request can select another
-Tenant's repository. Instance configures the installation's TCR account,
-namespace and scoped credential references once; it does not create a Tenant
-repository or deploy a Tenant application for each Build.
+For the Tencent TCR personal installation, application output uses the
+installation-owned host `uswccr.ccs.tencentyun.com` and namespace `oplcloud`,
+with one private repository bound to each CloudIdentity User. User `actor_id`
+is the stable binding key. Gateway is the data owner for both `User <-> Sub2API
+User` and `User <-> OCI Destination`, stored together in the existing
+`gateway.identity_mappings` table. CloudIdentity owns live sessions and Tenant
+membership authorization; the `tenant` data owner does not write these bindings.
+Tenant remains the authorization scope for tenant-scoped business requests.
+The self-binding read uses the live session and does not require a Tenant role
+or accept a target actor. A shared Tenant does not grant access to another
+User's destination.
 
-Cloud Capability namespace, TCR namespace and TCR repository are three different
-identities. The stable OCI identity returned to Capability and Serve remains
-`host/namespace/repository@sha256`, not a mutable tag. The Tencent personal TCR
-repository is materialized on the first authorized Build push.
+The Gateway mapping contains `sub2api_user_id`, `registry_host`,
+`registry_namespace`, `repository`, nullable `verified_at`,
+`destination_verified_at` and `revoked_at`. Missing verification timestamps
+mean unverified; `revoked_at` means revoked. Readback status is derived, not a
+second stored status. Identity and destination reservations remain unique after
+revocation. A verified email local-part is only an initial repository-name
+candidate; changing an email does not change the User or destination.
 
-Cloud source implements this binding: CloudIdentity `CreateTenant` reserves one
-stable destination in the same transaction as the Tenant and its owner
-membership, and `GetTenantRepositoryBinding` exposes it to Build over the
-authenticated owner boundary. Build resolves its output repository from that
-binding. The live local BuildKit chain exercises the same resolver against a
-disposable registry. A Tencent/TKE-hosted Cloud Build pushing a Tenant-resolved
-destination remains the open hosted proof.
+Build consumes Gateway's authenticated `ReadUserExternalIdentity` readback for
+the session User. Browser and Build inputs cannot override the destination,
+installation host, namespace or credentials. Build owns the OCI push and digest
+readback, not the binding. Instance supplies the installation configuration and
+protected credentials; Cloud does not introduce another registry. The physical
+repository is materialized on the first authorized Build push. Capability
+namespace, TCR namespace and repository remain distinct identities, and the
+immutable output remains `host/namespace/repository@sha256`.
+
+Historical `tenant.tenant_repository_bindings` reservations remain read-only for
+an unambiguous owner handover and artifact-history protection. They are not a
+second current binding writer. Accepted Build `executor_ref` values and their
+original output history are preserved. Source implementation and hosted
+qualification are separate evidence layers; this decision does not claim
+acceptance. The current path is recorded in
+[implementation architecture](implementation-architecture.md#user-external-bindings-and-tcr-build-path).
 
 New Agent versions are produced from the approved Package + Runtime + WebUI
 chain and are selected by the customer for a specific Workspace and quote.

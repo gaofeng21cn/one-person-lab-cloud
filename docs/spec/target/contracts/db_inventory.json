@@ -323,6 +323,101 @@
     },
     {
       "owner": "tenant",
+      "name": "tenant_repository_bindings",
+      "database": "opl_tenant",
+      "schema": "tenant",
+      "schemaOwnerRole": "opl_tenant_owner",
+      "writerRole": "opl_tenant_writer",
+      "purpose": "历史 OCI reservation；Gateway User destination 接管后只读保留，CloudIdentity执行有限交接读回",
+      "features": [
+        "F08",
+        "F16"
+      ],
+      "fields": [
+        {
+          "name": "tenant_id",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "description": "",
+          "source": "02_database_schema_complete.md#tenant.tenant_repository_bindings.tenant_id"
+        },
+        {
+          "name": "registry_host",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "description": "",
+          "source": "02_database_schema_complete.md#tenant.tenant_repository_bindings.registry_host"
+        },
+        {
+          "name": "registry_namespace",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "description": "",
+          "source": "02_database_schema_complete.md#tenant.tenant_repository_bindings.registry_namespace"
+        },
+        {
+          "name": "repository",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "description": "",
+          "source": "02_database_schema_complete.md#tenant.tenant_repository_bindings.repository"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": false,
+          "default": "'reserved'",
+          "description": "",
+          "source": "02_database_schema_complete.md#tenant.tenant_repository_bindings.status"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "description": "",
+          "source": "02_database_schema_complete.md#tenant.tenant_repository_bindings.created_at"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "description": "",
+          "source": "02_database_schema_complete.md#tenant.tenant_repository_bindings.updated_at"
+        }
+      ],
+      "constraints": [
+        "PRIMARY KEY (tenant_id)",
+        "FOREIGN KEY (tenant_id) REFERENCES tenant.tenants (id) ON DELETE RESTRICT",
+        "CHECK (status IN ('reserved','active','retired'))",
+        "CHECK (registry_host <> '' AND registry_host = lower(registry_host) AND position('://' in registry_host) = 0 AND right(registry_host,1) <> '/')",
+        "CHECK (registry_namespace <> '' AND registry_namespace = lower(registry_namespace))",
+        "CHECK (repository <> '' AND repository = lower(repository))",
+        "CHECK (repository !~ '[/@?#\\\\ ]' AND position('..' in repository) = 0)"
+      ],
+      "indexes": [
+        {
+          "name": "tenant_repository_bindings_destination",
+          "columns": "registry_host, registry_namespace, repository",
+          "unique": true,
+          "where": null
+        }
+      ],
+      "sourceLineage": [
+        "00_master_index.md",
+        "02_database_schema_complete.md#tenant"
+      ],
+      "postCreateConstraints": [
+        "REVOKE INSERT, UPDATE, DELETE ON tenant.tenant_repository_bindings FROM opl_tenant_writer"
+      ]
+    },
+    {
+      "owner": "tenant",
       "name": "invitations",
       "database": "opl_tenant",
       "schema": "tenant",
@@ -5342,7 +5437,7 @@
       "schema": "gateway",
       "schemaOwnerRole": "opl_gateway_owner",
       "writerRole": "opl_gateway_writer",
-      "purpose": "每成员独立Gateway身份；与Tenant钱包付款主体分开",
+      "purpose": "Gateway唯一拥有User↔Sub2API User和User↔OCI Destination；CloudIdentity负责session授权，Tenant仅业务授权范围",
       "features": [
         "F01",
         "F14",
@@ -5384,7 +5479,7 @@
         {
           "name": "verified_at",
           "type": "timestamptz",
-          "nullable": false,
+          "nullable": true,
           "default": null,
           "description": "",
           "source": "02_database_schema_complete.md#gateway.identity_mappings.verified_at"
@@ -5404,18 +5499,69 @@
           "default": "now()",
           "description": "",
           "source": "02_database_schema_complete.md#gateway.identity_mappings.updated_at"
+        },
+        {
+          "name": "registry_host",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "description": "",
+          "source": "02_database_schema_complete.md#gateway.identity_mappings.registry_host"
+        },
+        {
+          "name": "registry_namespace",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "description": "",
+          "source": "02_database_schema_complete.md#gateway.identity_mappings.registry_namespace"
+        },
+        {
+          "name": "repository",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "description": "",
+          "source": "02_database_schema_complete.md#gateway.identity_mappings.repository"
+        },
+        {
+          "name": "destination_verified_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "description": "",
+          "source": "02_database_schema_complete.md#gateway.identity_mappings.destination_verified_at"
+        },
+        {
+          "name": "revoked_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "description": "",
+          "source": "02_database_schema_complete.md#gateway.identity_mappings.revoked_at"
         }
       ],
       "constraints": [
         "PRIMARY KEY (id)",
         "UNIQUE (actor_id)",
-        "UNIQUE (sub2api_user_id)"
+        "UNIQUE (sub2api_user_id)",
+        "CONSTRAINT identity_mappings_identity_nonempty CHECK ( actor_id <> '' AND actor_id = btrim(actor_id) AND sub2api_user_id <> '' AND sub2api_user_id = btrim(sub2api_user_id))",
+        "CONSTRAINT identity_mappings_destination_complete CHECK ( (registry_host IS NULL AND registry_namespace IS NULL AND repository IS NULL AND destination_verified_at IS NULL) OR (registry_host IS NOT NULL AND registry_namespace IS NOT NULL AND repository IS NOT NULL))",
+        "CONSTRAINT identity_mappings_host_safe CHECK ( registry_host IS NULL OR registry_host ~ '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?$')",
+        "CONSTRAINT identity_mappings_namespace_safe CHECK ( registry_namespace IS NULL OR (registry_namespace ~ '^[a-z0-9]([a-z0-9._-]{0,126}[a-z0-9])?$' AND position('..' in registry_namespace) = 0))",
+        "CONSTRAINT identity_mappings_repository_safe CHECK ( repository IS NULL OR (repository ~ '^[a-z0-9]([a-z0-9._-]{0,126}[a-z0-9])?$' AND position('..' in repository) = 0))"
       ],
       "indexes": [
         {
           "name": "identity_mappings_external",
           "columns": "external_identity_ref",
           "unique": false,
+          "where": null
+        },
+        {
+          "name": "identity_mappings_destination",
+          "columns": "registry_host, registry_namespace, repository",
+          "unique": true,
           "where": null
         }
       ],

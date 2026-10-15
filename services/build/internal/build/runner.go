@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/publicjson"
 )
@@ -54,6 +55,8 @@ type Runner struct {
 
 var digestPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 var repositoryPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9.:-]*(/[a-z0-9][a-z0-9._-]*)+$`)
+var registryHostPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{1,5})?$`)
+var repositoryComponentPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$`)
 var pathPattern = regexp.MustCompile(`^/[A-Za-z0-9._/-]+$`)
 
 func digest(b []byte) string { s := sha256.Sum256(b); return "sha256:" + hex.EncodeToString(s[:]) }
@@ -68,18 +71,34 @@ func (r *Runner) Validate() error {
 	return nil
 }
 
-// DestinationRepository joins one Tenant-reserved destination to the immutable
-// output identity. The destination comes from the Tenant owner; Build never
-// derives it from a request or from a caller-supplied value.
-func (r *Runner) DestinationRepository(binding *api.TenantRepositoryBinding) (string, error) {
-	if binding == nil || binding.GetRegistryHost() == "" || binding.GetRegistryNamespace() == "" || binding.GetRepository() == "" {
-		return "", errors.New("tenant repository binding is incomplete")
+// DestinationRepository validates a confirmed User-owned output destination
+// against this installation's registry host and namespace. RegistryPrefix starts
+// with host/namespace; the namespace is not a repository suffix to strip.
+func (r *Runner) DestinationRepository(binding *api.UserExternalBindingReadback) (string, error) {
+	if binding.GetActorId() == "" || binding.GetSub2ApiUserId() == "" || binding.GetStatus() != api.UserExternalBindingReadbackStatusEnum_USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_ACTIVE || binding.GetVerification() != api.UserExternalBindingReadbackVerificationEnum_USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_CONFIRMED || binding.GetVerificationEvidenceRef() == "" {
+		return "", errors.New("active, verified user external binding is required")
 	}
-	repo := binding.GetRegistryHost() + "/" + binding.GetRegistryNamespace() + "/" + binding.GetRepository()
-	if !repositoryPattern.MatchString(repo) {
-		return "", errors.New("tenant repository binding is not a safe output identity")
+	for _, timestamp := range []*timestamppb.Timestamp{binding.GetVerifiedAt(), binding.GetDestinationVerifiedAt(), binding.GetCreatedAt(), binding.GetUpdatedAt()} {
+		if timestamp == nil || timestamp.CheckValid() != nil || timestamp.AsTime().IsZero() {
+			return "", errors.New("user external binding timestamps are incomplete or invalid")
+		}
 	}
-	return repo, nil
+	parts := strings.Split(r.RegistryPrefix, "/")
+	if len(parts) != 2 || !registryHostPattern.MatchString(parts[0]) || strings.Contains(parts[0], "..") {
+		return "", errors.New("approved registry host and namespace are required")
+	}
+	for _, part := range parts[1:] {
+		if !repositoryComponentPattern.MatchString(part) || strings.Contains(part, "..") {
+			return "", errors.New("approved registry prefix is unsafe")
+		}
+	}
+	if !registryHostPattern.MatchString(binding.GetRegistryHost()) || !repositoryComponentPattern.MatchString(binding.GetRegistryNamespace()) || !repositoryComponentPattern.MatchString(binding.GetRepository()) || strings.Contains(binding.GetRegistryHost(), "..") || strings.Contains(binding.GetRegistryNamespace(), "..") || strings.Contains(binding.GetRepository(), "..") {
+		return "", errors.New("user OCI destination has unsafe components")
+	}
+	if binding.GetRegistryHost() != parts[0] || binding.GetRegistryNamespace() != parts[1] {
+		return "", errors.New("user OCI destination is outside the approved installation")
+	}
+	return binding.GetRegistryHost() + "/" + binding.GetRegistryNamespace() + "/" + binding.GetRepository(), nil
 }
 func platform(p *api.ImagePlatform) (string, error) {
 	if p.GetOs() != api.ImagePlatformOsEnum_IMAGE_PLATFORM_OS_ENUM_LINUX {

@@ -56,6 +56,27 @@
       "operationKind": null
     },
     {
+      "path": "/api/v2/auth/external-bindings",
+      "method": "GET",
+      "operationId": "getSelfUserExternalBinding",
+      "features": [
+        "F01",
+        "F14"
+      ],
+      "owner": "gateway",
+      "request": null,
+      "response": "UserExternalBindingReadback",
+      "status": 200,
+      "permissions": [
+        "authenticated"
+      ],
+      "authorizationMode": "session-only",
+      "tables": [
+        "gateway.identity_mappings"
+      ],
+      "operationKind": null
+    },
+    {
       "path": "/api/v2/auth/logout",
       "method": "POST",
       "operationId": "logout",

@@ -4,6 +4,50 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-10-15: CloudIdentity User Owns External Bindings
+
+CloudIdentity User and Cloud Tenant remain distinct concepts. Opaque `actor_id`
+identifies the User. Gateway owns both `User <-> Sub2API User` and
+`User <-> OCI Destination` in its existing `gateway.identity_mappings` table.
+CloudIdentity owns session security and Tenant/member authorization; `tenant`
+is not a new binding writer and no separate User destination table is added.
+Sub2API remains the external identity, wallet, Key, routing and usage authority.
+
+The mapping adds `registry_host`, `registry_namespace`, `repository`,
+`destination_verified_at` and `revoked_at`; `verified_at` is nullable to express
+an unverified identity. A destination is usable only when both verifications
+are present and `revoked_at` is absent. There is no persisted `status` column.
+Identity and destination uniqueness includes revoked mappings, so revocation
+cannot release another User's identity or artifact history for reassignment.
+
+Tenant remains the authorization scope of tenant-scoped business operations.
+CloudIdentity validates the live session and current applicable membership;
+Tenant membership does not transfer ownership of a User binding. The
+session-only `GET /api/v2/auth/external-bindings` resolves its User from the
+session and accepts no target actor, Tenant role or destination selector.
+Build reads that User's destination through GatewayCoordination, while the
+protected bind command requires platform-admin authorization.
+
+For the Tencent personal TCR installation, the agreed User and destination are:
+
+```text
+User display: testcloud4@medopl.com
+User key: opaque actor_id
+OCI destination: uswccr.ccs.tencentyun.com/oplcloud/testcloud4
+```
+
+The host and `oplcloud` namespace are installation facts. A verified email
+local-part is only an initial repository-name candidate, never a stable key,
+account ID or lookup rule. An email change cannot replace an existing binding.
+Registry credentials stay in the installation's protected secret boundary.
+
+Historical Tenant reservations remain read-only for an unambiguous owner
+handover and history protection. Existing Build executor references and artifact
+history are not rewritten. This supersedes only the Tenant-owned binding in
+the 2026-09-29 and 2026-10-08 decisions. It does not expand this work to
+receipts, settlements or announcements, or claim implementation acceptance or
+Instance qualification.
+
 ## 2026-10-14: Workspace-Managed Key Revocation Authority Is Undecided
 
 The Gateway can issue a Workspace-managed key through one approved Sub2API
@@ -121,11 +165,13 @@ does not claim implementation, Candidate qualification or production PASS.
 A Gateway-authenticated User and a Cloud Tenant are distinct concepts. A User
 such as `testcloud4@medopl.com` may be admitted as the `owner` of a Tenant,
 but the User identity is not itself the Tenant. The Tenant is the authorization
-boundary for its members, repository binding, Packages, Builds and Cloud
-Workspaces.
+boundary for its members, Packages, Builds and Cloud Workspaces. The User owns
+the User-to-Sub2API and User-to-OCI bindings; Tenant membership only authorizes
+their use.
 
 For the agreed first Cloud chain, the designated User is admitted as the owner
-of one Tenant whose installation-owned repository binding is
+of one Tenant and has a Gateway-owned binding to the installation-approved
+OCI destination
 `oplcloud/testcloud4`. Tenant admission and Cloud Workspace creation are
 separate operations: the protected administrator path admits the Tenant, then
 the customer creates the Cloud Workspace through the Cloud product path. The
@@ -227,7 +273,7 @@ Runtime Release with its publisher-declared built-in WebUI. This is a running
 application, not `resource_only`, a legacy import, or a failure fallback. Do not
 invent a Package, BuildJob or CapabilityVersion to fit the earlier mandatory-
 Agent schema. A default App does not need a redundant Cloud Build or a copy in
-the Tenant output repository merely to become deployable.
+the User output repository merely to become deployable.
 
 For a custom Agent, Build requires all three exact inputs: Package, approved
 Runtime and compatible approved independent WebUI. These and default App are
@@ -385,6 +431,10 @@ implementing and testing a bounded Tencent/TKE first-use slice. First-use proof
 must not be relabelled complete F01–F17 or formal release qualification.
 
 ## 2026-09-29: Tenant-Scoped Application OCI Repositories On Personal TCR
+
+> Superseded by [2026-10-15: CloudIdentity User Owns External
+> Bindings](#2026-10-15-cloudidentity-user-owns-external-bindings). The text below
+> records the prior Tenant-owned model and is not the current owner decision.
 
 The customer TCR account is Tencent TCR personal edition, so application output
 uses one installation-owned namespace, `oplcloud`, and one private repository

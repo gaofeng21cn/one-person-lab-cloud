@@ -27,7 +27,7 @@ OPL Cloud让用户直接开通默认OPL App，或选择/制作一个智能体，
 | 用户选择 | 制品来源 | 是否构建 | 客户最终得到 |
 |---|---|---|---|
 | 不选Package，也不选独立WebUI | 获准OPL App Runtime Release的精确OCI及其发布者声明的内置UI | 不走Cloud Build | 可打开的OPL App工作台，不是空资源 |
-| 选择Package并选择独立WebUI | Package＋获准精确Runtime＋获准兼容独立WebUI（三项精确输入） | Build固定三项输入并输出Tenant OCI | 使用选定独立WebUI的Agent |
+| 选择Package并选择独立WebUI | Package＋获准精确Runtime＋获准兼容独立WebUI（三项精确输入） | Build固定三项输入并输出User绑定目的地的OCI | 使用选定独立WebUI的Agent |
 
 本次严格只有以上两种组合，没有第三种。非法半选组合（只选Package不选独立WebUI、只选独立WebUI不选Package、在默认App上叠加独立WebUI）一律由服务端拒绝：不自动补Package、不自动补独立WebUI、不静默降级为默认App、也不为非法组合伪造空包或空界面。
 
@@ -35,7 +35,7 @@ OPL Cloud让用户直接开通默认OPL App，或选择/制作一个智能体，
 
 原始Runtime来源由安装配置绑定`uswccr.ccs.tencentyun.com/oplcloud/one-person-lab-app`，独立WebUI来源绑定`uswccr.ccs.tencentyun.com/oplcloud/webui`。这些是本次TKE接入目标，不在通用服务代码里写死。管理员通过各目录owner验证digest、平台、发布合同、入口/健康/挂载/数据兼容后准入；浏览器不直接拿registry凭据或把任意tag当可执行版本。实际镜像必须证明包含native UI；缺失则不能宣称支持默认App，不能临时拼一个假UI兜底。
 
-**默认路径没有客户Build**：直接部署批准的App OCI；无需创建Package/BuildJob/CapabilityVersion或复制到Tenant输出仓库。注册和部署证据不伪装成构建证据。只有Package＋独立WebUI组合才按实际三项输入产生Build与CapabilityVersion。
+**默认路径没有客户Build**：直接部署批准的App OCI；无需创建Package/BuildJob/CapabilityVersion或复制到User输出仓库。注册和部署证据不伪装成构建证据。只有Package＋独立WebUI组合才按实际三项输入产生Build与CapabilityVersion。
 
 ### 1.2 两类应用的生命周期必须一致
 

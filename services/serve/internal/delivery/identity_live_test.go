@@ -40,9 +40,11 @@ import (
 	bff "opl-cloud/apps/console-bff"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/services/gateway-integration/gatewaymigrations"
 	"opl-cloud/services/gateway-integration/identity"
 	identitymigrations "opl-cloud/services/gateway-integration/migrations"
 	"opl-cloud/services/internal/ownerservice"
+	"opl-cloud/services/internal/ownerstore"
 	"opl-cloud/services/internal/ownerstore/ownerstoretest"
 )
 
@@ -67,28 +69,24 @@ const (
 	liveForeignActor = "202"
 )
 
-// liveTenantDB provisions and installs the identity owner's own database through
-// its real migration entrypoint.
-func liveTenantDB(t *testing.T, ctx context.Context, dsn string) *sql.DB {
+// liveOwnerDB provisions one owner's isolated database through its real
+// migration entrypoint.
+func liveOwnerDB(t *testing.T, ctx context.Context, dsn, name string, source ownerstore.MigrationSource) *sql.DB {
 	t.Helper()
 	h, err := ownerstoretest.Setup(ctx, ownerstoretest.Config{
-		AdminDSN: dsn, Owner: "tenant", Database: "opl_tenant",
-		SchemaOwnerRole: "opl_tenant_owner", WriterRole: "opl_tenant_writer", RuntimeRole: "opl_tenant_runtime",
+		AdminDSN: dsn, Owner: name, Database: "opl_" + name,
+		SchemaOwnerRole: "opl_" + name + "_owner", WriterRole: "opl_" + name + "_writer", RuntimeRole: "opl_" + name + "_runtime",
 	})
 	if err != nil {
-		t.Fatalf("provision isolated tenant database: %v", err)
+		t.Fatalf("provision isolated %s database: %v", name, err)
 	}
 	t.Cleanup(func() { _ = h.Close(context.Background()) })
-	source, err := identitymigrations.Source()
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err = h.Install(ctx, h.OwnerDSN, h.DatabaseName(), source); err != nil {
-		t.Fatalf("install tenant migrations: %v", err)
+		t.Fatalf("install %s migrations: %v", name, err)
 	}
 	db, err := h.Open(ctx, h.RuntimeDSN, h.DatabaseName())
 	if err != nil {
-		t.Fatalf("open tenant database: %v", err)
+		t.Fatalf("open %s database: %v", name, err)
 	}
 	t.Cleanup(func() { db.Close() })
 	return db
@@ -182,7 +180,11 @@ type liveIdentityChain struct {
 
 func newLiveIdentityChain(t *testing.T, ctx context.Context, dsn string) *liveIdentityChain {
 	t.Helper()
-	db := liveTenantDB(t, ctx, dsn)
+	identitySource, err := identitymigrations.Source()
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := liveOwnerDB(t, ctx, dsn, "tenant", identitySource)
 	// Known test Tenant membership is a declared local deployment prerequisite,
 	// exactly as the existing publisher identity chain documents.
 	if _, err := db.ExecContext(ctx, `INSERT INTO tenant.tenants(id,name) VALUES($1,'Serve Live Tenant'),($2,'Other Live Tenant')`, liveTenant, liveOtherTenant); err != nil {
@@ -197,6 +199,14 @@ func newLiveIdentityChain(t *testing.T, ctx context.Context, dsn string) *liveId
 		t.Fatal(err)
 	}
 	service, err := identity.New(db, gateway, bytes.Repeat([]byte("k"), 32), nil, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gatewaySource, err := gatewaymigrations.Source()
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.GatewayStore, err = identity.NewGatewayStore(liveOwnerDB(t, ctx, dsn, "gateway", gatewaySource))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "77f737969df982abe8ccbf30c2f1ec6a7c0408bb",
+  "sourceSHA": "e0a425285db26d2f8eb632d21664af3ef800357d",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -92,6 +92,7 @@
       "state": "not_implemented",
       "apiPrimary": [],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
       "contractRefs": [
         "00_master_index.md",
@@ -172,7 +173,7 @@
         "沿用packages/contracts/go/go.mod；W01核对已运行api协议与旧v226规划的精确差异后统一生产/规格/生成消费者，不机械改包名、不另建module或并行协议副本",
         "必要消费者go.mod/go.sum调整属于契约写集：记录实际依赖链与选定版本，不为旧测试或保持diff不变增加兼容字段、强压依赖或另建模块",
         "先贯通03 x-approved-wire-migration与02第0节：应用来源判别联合、Agent必选独立WebUI、descriptor provenance、claims、Quote/Serve持久化与真实消费者同版交付",
-        "同步已有TenantRepositoryBinding生产RPC与规格、明确api/v226生成映射；修Runtime REST owner和per-owner Operation路由，不复制第二套合同",
+        "同步Gateway UserExternalBinding三个RPC与规格、保留Tenant reservation只读历史及旧Build executor、明确api/v226生成映射；修Runtime REST owner和per-owner Operation路由，不复制第二套合同",
         "默认App不得伪造Package/Build/CapabilityVersion/Build receipt；Agent必须保留Package/Runtime/独立WebUI三个真实输入及claim"
       ],
       "verification": [
@@ -188,6 +189,7 @@
       "state": "not_implemented",
       "apiPrimary": [],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
       "contractRefs": [
         "00_master_index.md",
@@ -295,6 +297,7 @@
       "state": "not_implemented",
       "apiPrimary": [],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "tablesPrimary": [
         "tenant.outbox_events",
         "tenant.outbox_deliveries",
@@ -421,9 +424,16 @@
         "updateMemberRole"
       ],
       "apiConsumes": [],
+      "sessionOnlyOperations": [
+        "getLoginContext",
+        "getSession",
+        "login",
+        "logout"
+      ],
       "tablesPrimary": [
         "tenant.tenants",
         "tenant.tenant_members",
+        "tenant.tenant_repository_bindings",
         "tenant.invitations",
         "tenant.sessions",
         "tenant.audit_events",
@@ -483,17 +493,19 @@
       ],
       "plannedWritePaths": [
         "services/gateway-integration/identity",
-        "services/gateway-integration/migrations"
+        "services/gateway-integration/gatewaymigrations"
       ],
       "deliverables": [
         "沿用Sub2API真实接口/身份和一次性Code，完成base/supplement/period/refund原单读回",
         "仅映射/操作证据，无余额镜像；unknown禁止新财务副作用",
-        "个人Key管理与托管Workspace Key边界明确；明文仅授权一次性响应"
+        "个人Key管理与托管Workspace Key边界明确；明文仅授权一次性响应",
+        "Gateway identity_mappings唯一持有User↔Sub2API User与User↔OCI Destination；GetSelfUserExternalBinding为session-only，CloudIdentity授权但不成为绑定writer；Gateway DB为login/session必需且与Tenant DSN隔离"
       ],
       "verification": [
         "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
         "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
         "该命令只作实施后要求；本轮没有执行新产品实现测试",
+        "User自身读取及跨User/未验证/撤销/冲突拒绝；旧Tenant reservation只读与旧executor不改写；Gateway DB缺失或复用Tenant数据库必须拒绝",
         "实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/clients -run '^(TestAuthenticateUserReturnsDelegatedCredential|TestSub2APIFinancialHistoryUsesNativeExactNotesAndAllPages|TestSub2APIAdjustmentConnectionLossDoesNotRepeatDebit|TestSub2APIRefundRequiresReadOnlyRebatePolicy)$' -count=1"
       ],
       "acceptance": [
@@ -503,6 +515,7 @@
       "state": "not_implemented",
       "apiPrimary": [
         "createGatewayKey",
+        "getSelfUserExternalBinding",
         "getUsageSummary",
         "getWallet",
         "listGatewayKeys",
@@ -514,6 +527,9 @@
         "revokeGatewayKey"
       ],
       "apiConsumes": [],
+      "sessionOnlyOperations": [
+        "getSelfUserExternalBinding"
+      ],
       "tablesPrimary": [
         "gateway.identity_mappings",
         "gateway.tenant_wallet_bindings",
@@ -531,6 +547,9 @@
         "GatewayProductService.RevokeGatewayKey",
         "GatewayProductService.ListRechargeRecords",
         "GatewayProductService.ListModels",
+        "GatewayCoordination.GetSelfUserExternalBinding",
+        "GatewayCoordination.BindUserExternalIdentity",
+        "GatewayCoordination.ReadUserExternalIdentity",
         "GatewayCoordination.BindWallet",
         "GatewayCoordination.Debit",
         "GatewayCoordination.Refund",
@@ -606,6 +625,7 @@
         "listReceipts"
       ],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "tablesPrimary": [
         "ledger.receipts",
         "ledger.reconciliations"
@@ -696,6 +716,7 @@
         "setStoragePlanAvailability"
       ],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "tablesPrimary": [
         "resource_catalog.compute_plans",
         "resource_catalog.storage_plans",
@@ -779,6 +800,7 @@
         "setWebuiVersionStatus"
       ],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "tablesPrimary": [
         "capability.webui_versions",
         "capability.publisher_namespaces"
@@ -867,6 +889,7 @@
         "updatePackage"
       ],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "tablesPrimary": [
         "capability.namespaces",
         "capability.packages",
@@ -963,6 +986,7 @@
         "retryBuild"
       ],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "tablesPrimary": [
         "capability.capability_versions",
         "build.build_jobs",
@@ -1050,6 +1074,7 @@
         "setRuntimeVersionStatus"
       ],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "tablesPrimary": [
         "runtime_control.runtime_releases",
         "runtime_control.catalog_policies"
@@ -1120,6 +1145,7 @@
       "state": "not_implemented",
       "apiPrimary": [],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "rpcImplements": [
         "FabricCoordination.AdmitResources",
         "FabricCoordination.EnsureResources",
@@ -1195,6 +1221,7 @@
       "state": "not_implemented",
       "apiPrimary": [],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "tablesPrimary": [
         "fabric.resource_sets",
         "fabric.resources",
@@ -1293,6 +1320,7 @@
         "getLoginContext",
         "getOperation",
         "getReceipt",
+        "getSelfUserExternalBinding",
         "getSession",
         "getTenant",
         "inviteMember",
@@ -1309,6 +1337,7 @@
         "revokeInvitation",
         "updateMemberRole"
       ],
+      "sessionOnlyOperations": [],
       "rpcImplements": [
         "WorkspaceProductService.GetOperation"
       ],
@@ -1426,6 +1455,7 @@
         "updateNamespace",
         "updatePackage"
       ],
+      "sessionOnlyOperations": [],
       "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
       "contractRefs": [
         "00_master_index.md",
@@ -1498,6 +1528,7 @@
         "listWorkspaces"
       ],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "tablesPrimary": [
         "workspace.workspaces",
         "workspace.saga_steps",
@@ -1608,6 +1639,7 @@
         "updateWorkspaceModels",
         "updateWorkspaceVersion"
       ],
+      "sessionOnlyOperations": [],
       "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
       "contractRefs": [
         "00_master_index.md",
@@ -1687,6 +1719,7 @@
         "updateWorkspaceVersion"
       ],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "tablesPrimary": [
         "serve.agent_deployments",
         "workspace.model_configurations",
@@ -1787,6 +1820,7 @@
         "updateRenewalSettings"
       ],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "tablesPrimary": [
         "workspace.subscriptions",
         "workspace.subscription_periods"
@@ -1872,6 +1906,7 @@
         "resizeWorkspace"
       ],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "tablesPrimary": [
         "workspace.plan_changes",
         "workspace.subscription_period_obligations"
@@ -1981,6 +2016,7 @@
         "getWorkspaceDeletion"
       ],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "rpcImplements": [
         "WorkspaceProductService.DeleteWorkspace",
         "WorkspaceProductService.GetWorkspaceDeletion"
@@ -2032,7 +2068,7 @@
         "创建/绑定账单主体与个人登录分开；暂停权限及子Workspace结果可追踪",
         "reenable只恢复原暂停且仍已付/原资源存在对象；删除后15天恢复是独立操作",
         "删除资产转平台私有托管，不公开、不自动退款全部余额或重购资源",
-        "W21.tenant-admission先交付开通/owner membership/已支持钱包主体与repository binding，供首链使用；暂停/删除/恢复作为后续切片，不以预置测试Tenant代替产品开通"
+        "W21.tenant-admission交付开通/owner membership/已支持钱包主体；User OCI由Gateway identity_mappings绑定，Tenant reservation只读保留，供首链授权使用；暂停/删除/恢复作为后续切片，不以预置测试Tenant代替产品开通"
       ],
       "verification": [
         "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
@@ -2060,6 +2096,7 @@
         "suspendTenant"
       ],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "rpcImplements": [
         "TenantProductService.ListTenants",
         "TenantProductService.CreateTenant",
@@ -2163,6 +2200,7 @@
         "revokeGatewayKey",
         "updateRenewalSettings"
       ],
+      "sessionOnlyOperations": [],
       "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
       "contractRefs": [
         "00_master_index.md",
@@ -2267,6 +2305,7 @@
         "setWebuiVersionStatus",
         "suspendTenant"
       ],
+      "sessionOnlyOperations": [],
       "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
       "contractRefs": [
         "00_master_index.md",
@@ -2334,6 +2373,7 @@
         "reconcileOperation"
       ],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "rpcImplements": [
         "TenantProductService.ListAuditEvents",
         "WorkspaceProductService.ListAdminOperations",
@@ -2421,6 +2461,7 @@
         "adoptWorkspace"
       ],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "rpcImplements": [
         "WorkspaceProductService.AdoptWorkspace"
       ],
@@ -2522,6 +2563,7 @@
       "state": "not_implemented",
       "apiPrimary": [],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
       "contractRefs": [
         "00_master_index.md",
@@ -2594,6 +2636,7 @@
       "state": "not_implemented",
       "apiPrimary": [],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
       "contractRefs": [
         "00_master_index.md",
@@ -2650,6 +2693,7 @@
       "state": "not_implemented",
       "apiPrimary": [],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
       "contractRefs": [
         "00_master_index.md",
@@ -2704,6 +2748,7 @@
       "state": "not_implemented",
       "apiPrimary": [],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
       "contractRefs": [
         "00_master_index.md",
@@ -2762,6 +2807,7 @@
       "state": "not_implemented",
       "apiPrimary": [],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
       "contractRefs": [
         "00_master_index.md",
@@ -2819,6 +2865,7 @@
       "state": "not_implemented",
       "apiPrimary": [],
       "apiConsumes": [],
+      "sessionOnlyOperations": [],
       "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
       "contractRefs": [
         "00_master_index.md",
@@ -2839,6 +2886,7 @@
   "tablePrimary": {
     "tenant.tenants": "W03",
     "tenant.tenant_members": "W03",
+    "tenant.tenant_repository_bindings": "W03",
     "tenant.invitations": "W03",
     "tenant.sessions": "W03",
     "tenant.audit_events": "W03",
@@ -3333,6 +3381,15 @@
     "WorkspaceAdmission.CheckAdmission": [
       "W15"
     ],
+    "GatewayCoordination.GetSelfUserExternalBinding": [
+      "W04"
+    ],
+    "GatewayCoordination.BindUserExternalIdentity": [
+      "W04"
+    ],
+    "GatewayCoordination.ReadUserExternalIdentity": [
+      "W04"
+    ],
     "GatewayCoordination.BindWallet": [
       "W04"
     ],
@@ -3563,7 +3620,7 @@
         "02第0节",
         "06异步交接"
       ],
-      "deliverable": "默认App/Agent与Agent必选独立WebUI的typed合同、SQL约束/加载链、真实decoder和全部消费者一致；含Tenant binding既有漂移",
+      "deliverable": "默认App/Agent与Agent必选独立WebUI的typed合同、SQL约束/加载链、真实decoder和全部消费者一致；含User external binding与旧Tenant reservation只读交接",
       "verification": [
         "default无Package/Build/CapabilityVersion正例",
         "混合来源/伪WebUI/错误digest/原单替换拒绝",
@@ -3631,7 +3688,7 @@
       ],
       "writePaths": [
         "services/gateway-integration/identity",
-        "services/gateway-integration/migrations"
+        "services/gateway-integration/gatewaymigrations"
       ],
       "inputRefs": [
         "GatewayCoordination",
@@ -3660,10 +3717,10 @@
       ],
       "inputRefs": [
         "CreateTenant",
-        "Tenant repository binding",
+        "Gateway User external binding readback",
         "钱包主体准入"
       ],
-      "deliverable": "真实开通Tenant/owner membership/已支持钱包主体，Package构建使用稳定repository；不等删除恢复全功能",
+      "deliverable": "真实开通Tenant/owner membership/已支持钱包主体，Package构建使用Gateway User绑定的稳定repository；不等删除恢复全功能",
       "verification": [
         "通过产品API开通而非SQL预置",
         "重复创建不增身份",
@@ -4609,7 +4666,7 @@
           "W03",
           "W13"
         ],
-        "action": "按03/02/06一次贯通selection union、runtime_release provenance、原始descriptor bytes/digest、Quote及接受快照、Serve预留/部署/读取、持久化迁移和严格decoder；默认App必须runtime readback required。Agent仍必需Package/Runtime/独立WebUI及三claim。统一生产/spec proto、api/v226映射、TenantRepositoryBinding和授权生成器。修CloudIdentity自身readiness、Operation对象授权及全部实际continuation动作。",
+        "action": "按03/02/06一次贯通selection union、runtime_release provenance、原始descriptor bytes/digest、Quote及接受快照、Serve预留/部署/读取、持久化迁移和严格decoder；默认App必须runtime readback required。Agent仍必需Package/Runtime/独立WebUI及三claim。统一生产/spec proto、api/v226映射、Gateway UserExternalBinding和session-only授权生成器。修CloudIdentity自身readiness、Operation对象授权及全部实际continuation动作。",
         "accept": "两种真实owner正例及混合/缺项/撤销/跨Tenant反例；真实migration loader执行和历史义务保真，所有消费者同版，才移除pending迁移标记。"
       },
       {
@@ -4661,7 +4718,7 @@
           "W16",
           "W26"
         ],
-        "action": "先验证默认App不依赖Build，再验证OMA Package→COS→精确Runtime+独立WebUI→BuildKit→Tenant OCI digest回读→Capability→同一购买部署链。接真实BFF/Console而非fixture DTO，统一进度/Operation/receipt与访问入口。真实TCR输入的tag列表不能代替获准descriptor/字节身份。",
+        "action": "先验证默认App不依赖Build，再验证OMA Package→COS→精确Runtime+独立WebUI→BuildKit→User OCI digest回读→Capability→同一购买部署链。接真实BFF/Console而非fixture DTO，统一进度/Operation/receipt与访问入口。真实TCR输入的tag列表不能代替获准descriptor/字节身份。",
         "accept": "npm run verify:local:full及相关browser/livebuild检查，真实PG独立owner/mTLS/幂等恢复；刷新、响应丢失、余额拒绝、未准入、半选组合、错receipt/版本、路由失败均有证据。原型与规格receipt按实际测试更新，不只改hash。"
       },
       {

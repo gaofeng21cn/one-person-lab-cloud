@@ -3,22 +3,20 @@ package identity_test
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"database/sql"
 	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/services/gateway-integration/identity"
@@ -29,10 +27,13 @@ import (
 
 const bindingPeerToken = "isolated-binding-peer-token-0000001"
 
-// bindingSystem stands up the real Tenant owner with a platform-admin actor and
-// a Build peer, so CreateTenant and the cross-owner binding read run their
-// actual handlers over one isolated PostgreSQL database.
+// bindingSystem serves real Tenant and Gateway owners over isolated, separate
+// PostgreSQL databases. Only the external Sub2API response is simulated.
 func bindingSystem(t *testing.T) (*identity.Service, api.TenantProductServiceClient, string) {
+	return bindingSystemWithHistory(t, nil)
+}
+
+func bindingSystemWithHistory(t *testing.T, seed func(*sql.DB)) (*identity.Service, api.TenantProductServiceClient, string) {
 	t.Helper()
 	ctx := t.Context()
 	dsn := ownerstoretest.EnsureAdminDSNOrSkip(os.Getenv, t.Skip)
@@ -48,6 +49,14 @@ func bindingSystem(t *testing.T) (*identity.Service, api.TenantProductServiceCli
 	if e = h.Install(ctx, h.OwnerDSN, h.DatabaseName(), source); e != nil {
 		t.Fatal(e)
 	}
+	if seed != nil {
+		ownerDB, err := h.Open(ctx, h.OwnerDSN, h.DatabaseName())
+		if err != nil {
+			t.Fatal(err)
+		}
+		seed(ownerDB)
+		ownerDB.Close()
+	}
 	db, e := h.Open(ctx, h.RuntimeDSN, h.DatabaseName())
 	if e != nil {
 		t.Fatal(e)
@@ -58,6 +67,18 @@ func bindingSystem(t *testing.T) (*identity.Service, api.TenantProductServiceCli
 		if r.URL.Path == "/api/v1/auth/login" {
 			var body map[string]string
 			json.NewDecoder(r.Body).Decode(&body)
+			switch body["email"] {
+			case "admin@example.test":
+			case "testcloud4@medopl.com", "renamed@medopl.com":
+				user = identity.GatewayIdentity{ID: 201, Email: body["email"], Status: "active"}
+			case "other@example.test":
+				user = identity.GatewayIdentity{ID: 202, Email: body["email"], Status: "active"}
+			case "testcloud4@other.example":
+				user = identity.GatewayIdentity{ID: 203, Email: body["email"], Status: "active"}
+			default:
+				w.WriteHeader(401)
+				return
+			}
 			if body["password"] != "password" {
 				w.WriteHeader(401)
 				return
@@ -70,7 +91,13 @@ func bindingSystem(t *testing.T) (*identity.Service, api.TenantProductServiceCli
 		// and stands in for the real Sub2API directory: it says only that actor
 		// 103, the subject this fixture logs in as, is still active. The adapter
 		// refuses a directory answer about any other subject id.
-		if r.URL.Path == "/api/v1/admin/users/103" && r.Header.Get("Authorization") == "Bearer admin-token" {
+		if strings.HasPrefix(r.URL.Path, "/api/v1/admin/users/") && r.Header.Get("Authorization") == "Bearer admin-token" {
+			subject, err := strconv.ParseInt(strings.TrimPrefix(r.URL.Path, "/api/v1/admin/users/"), 10, 64)
+			if err != nil || (subject != 103 && subject != 201 && subject != 202 && subject != 203) {
+				w.WriteHeader(404)
+				return
+			}
+			user.ID = subject
 			json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": user})
 			return
 		}
@@ -89,6 +116,7 @@ func bindingSystem(t *testing.T) (*identity.Service, api.TenantProductServiceCli
 	if e != nil {
 		t.Fatal(e)
 	}
+	s.GatewayStore = gatewayStoreSystem(t)
 	s.ConfigureRegistry("uswccr.ccs.tencentyun.com", "oplcloud")
 	config := ownerservice.Config{Owner: owneridentity.Tenant, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: map[owneridentity.Service]string{owneridentity.ConsoleBFF: bindingPeerToken, owneridentity.Build.Service(): bindingPeerToken}}
 	l, e := net.Listen("tcp", "127.0.0.1:0")
@@ -130,83 +158,6 @@ func platformAdminCall(t *testing.T, c api.TenantProductServiceClient) *api.Call
 	return &api.CallContext{SessionId: &ref, ActorId: session.ActorId, Scope: scope, RequestId: "admit-" + session.ActorId, IdempotencyKey: "admit-" + session.ActorId}
 }
 
-func TestTenantRepositoryBindingPostgres(t *testing.T) {
-	_, c, address := bindingSystem(t)
-	ctx := t.Context()
-	base := platformAdminCall(t, c)
-
-	create := func(key, name, email, ownerSubject string) *api.Operation {
-		t.Helper()
-		call := proto.Clone(base).(*api.CallContext)
-		call.RequestId = key
-		call.IdempotencyKey = key
-		op, e := c.CreateTenant(ctx, &api.CreateTenantRpcRequest{Context: call, Body: &api.CreateTenantRequest{Name: name, OwnerGatewaySubjectId: ownerSubject, OwnerEmail: email}})
-		if e != nil {
-			t.Fatal(e)
-		}
-		return op
-	}
-	first := create("create-a", "Alpha", "huangrende@fenggaolab.org", "201")
-	if first.Status != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED || first.ResourceId == "" {
-		t.Fatalf("createTenant did not succeed: %v", first)
-	}
-	// A second Tenant with the same local-part must not alias the first; the
-	// binding gets a deterministic suffix.
-	second := create("create-b", "Beta", "huangrende@other.example", "202")
-	if second.ResourceId == first.ResourceId {
-		t.Fatal("two Tenants received the same id")
-	}
-
-	buildConn, e := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithUnaryInterceptor(owneridentity.OutboundInterceptor(owneridentity.Build.Service(), bindingPeerToken)))
-	if e != nil {
-		t.Fatal(e)
-	}
-	t.Cleanup(func() { buildConn.Close() })
-	bindings := api.NewCloudIdentityAuthorizationClient(buildConn)
-
-	a, e := bindings.GetTenantRepositoryBinding(ctx, &api.GetTenantRepositoryBindingRequest{TenantId: first.ResourceId})
-	if e != nil {
-		t.Fatal(e)
-	}
-	if a.GetRegistryHost() != "uswccr.ccs.tencentyun.com" || a.GetRegistryNamespace() != "oplcloud" || a.GetRepository() != "huangrende" {
-		t.Fatalf("first binding = %v", a)
-	}
-	b, e := bindings.GetTenantRepositoryBinding(ctx, &api.GetTenantRepositoryBindingRequest{TenantId: second.ResourceId})
-	if e != nil {
-		t.Fatal(e)
-	}
-	if b.GetRepository() != "huangrende-1" {
-		t.Fatalf("collision suffix = %q, want huangrende-1", b.GetRepository())
-	}
-	// Re-reading the same Tenant is stable and never re-derives from email.
-	again, e := bindings.GetTenantRepositoryBinding(ctx, &api.GetTenantRepositoryBindingRequest{TenantId: first.ResourceId})
-	if e != nil || again.GetRepository() != "huangrende" {
-		t.Fatalf("binding is not stable: %v %v", again, e)
-	}
-	// An unknown Tenant has no binding.
-	if _, e := bindings.GetTenantRepositoryBinding(ctx, &api.GetTenantRepositoryBindingRequest{TenantId: "does-not-exist"}); status.Code(e) != codes.NotFound {
-		t.Fatalf("unknown tenant read code = %v", status.Code(e))
-	}
-
-	// ConsoleBFF may read too, but no other peer may.
-	consoleConn, e := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithUnaryInterceptor(owneridentity.OutboundInterceptor(owneridentity.ConsoleBFF, bindingPeerToken)))
-	if e != nil {
-		t.Fatal(e)
-	}
-	t.Cleanup(func() { consoleConn.Close() })
-	if _, e := api.NewCloudIdentityAuthorizationClient(consoleConn).GetTenantRepositoryBinding(ctx, &api.GetTenantRepositoryBindingRequest{TenantId: first.ResourceId}); e != nil {
-		t.Fatalf("console bff read refused: %v", e)
-	}
-	ledgerConn, e := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithUnaryInterceptor(owneridentity.OutboundInterceptor(owneridentity.Ledger.Service(), bindingPeerToken)))
-	if e != nil {
-		t.Fatal(e)
-	}
-	t.Cleanup(func() { ledgerConn.Close() })
-	if _, e := api.NewCloudIdentityAuthorizationClient(ledgerConn).GetTenantRepositoryBinding(ctx, &api.GetTenantRepositoryBindingRequest{TenantId: first.ResourceId}); e == nil {
-		t.Fatal("a non-Build/non-BFF peer read the binding")
-	}
-}
-
 func TestCreateTenantRequiresPlatformAdminPostgres(t *testing.T) {
 	s, c, _ := bindingSystem(t)
 	ctx := t.Context()
@@ -216,48 +167,6 @@ func TestCreateTenantRequiresPlatformAdminPostgres(t *testing.T) {
 		t.Fatal("non-admin admitted a Tenant")
 	}
 	_ = s
-}
-
-func TestBackfillTenantRepositoryBindingsPostgres(t *testing.T) {
-	s, _, address := bindingSystem(t)
-	ctx := t.Context()
-	if _, e := s.DB.ExecContext(ctx, `INSERT INTO tenant.tenants(id,name) VALUES('tenant-existing-a','Existing A'),('tenant-existing-b','Existing B')`); e != nil {
-		t.Fatal(e)
-	}
-	if _, e := s.DB.ExecContext(ctx, `INSERT INTO tenant.tenant_repository_bindings(tenant_id,registry_host,registry_namespace,repository) VALUES('tenant-existing-a','uswccr.ccs.tencentyun.com','oplcloud','preserved-destination')`); e != nil {
-		t.Fatal(e)
-	}
-	if e := s.BackfillTenantRepositoryBindings(ctx); e != nil {
-		t.Fatal(e)
-	}
-	// Repeating owner startup does not replace or allocate another binding.
-	if e := s.BackfillTenantRepositoryBindings(ctx); e != nil {
-		t.Fatal(e)
-	}
-	conn, e := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithUnaryInterceptor(owneridentity.OutboundInterceptor(owneridentity.Build.Service(), bindingPeerToken)))
-	if e != nil {
-		t.Fatal(e)
-	}
-	t.Cleanup(func() { conn.Close() })
-	bindings := api.NewCloudIdentityAuthorizationClient(conn)
-	for _, tenantID := range []string{"tenant-existing-a", "tenant-existing-b"} {
-		binding, e := bindings.GetTenantRepositoryBinding(ctx, &api.GetTenantRepositoryBindingRequest{TenantId: tenantID})
-		if e != nil {
-			t.Fatal(e)
-		}
-		sum := sha256.Sum256([]byte(tenantID))
-		wantRepository := "tenant-" + hex.EncodeToString(sum[:])[:24]
-		if tenantID == "tenant-existing-a" {
-			wantRepository = "preserved-destination"
-		}
-		if binding.GetRegistryHost() != "uswccr.ccs.tencentyun.com" || binding.GetRegistryNamespace() != "oplcloud" || binding.GetRepository() != wantRepository {
-			t.Fatalf("backfilled binding for %s = %v", tenantID, binding)
-		}
-	}
-	var count int
-	if e := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM tenant.tenant_repository_bindings WHERE tenant_id IN ('tenant-existing-a','tenant-existing-b')`).Scan(&count); e != nil || count != 2 {
-		t.Fatalf("backfilled binding count = %d, %v", count, e)
-	}
 }
 
 func strPtr(v string) *string { return &v }

@@ -22,6 +22,7 @@ import (
 	"opl-cloud/apps/console-bff"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/services/gateway-integration/gatewaymigrations"
 	cloudidentity "opl-cloud/services/gateway-integration/identity"
 	identitymigrations "opl-cloud/services/gateway-integration/migrations"
 	"opl-cloud/services/internal/ownerservice"
@@ -135,9 +136,8 @@ func newLiveIdentity(t *testing.T, ctx context.Context, dsn string) *liveIdentit
 	if _, e = db.ExecContext(ctx, `INSERT INTO tenant.tenants(id,name) VALUES('tenant-live','Test Tenant'),('another-tenant','Other Tenant'); INSERT INTO tenant.tenant_members(id,tenant_id,actor_id,role) VALUES('member-live','tenant-live','101','admin'),('member-other','another-tenant','102','admin')`); e != nil {
 		t.Fatal(e)
 	}
-	// These Tenants predate tenant_repository_bindings. The Tenant owner must
-	// backfill their destinations before Build reads them, using only durable
-	// Tenant ids and the disposable installation registry configuration.
+	// Each authenticated User receives an explicit destination binding through
+	// the owner RPC. No Tenant backfill supplies new Build destinations.
 	registryHost := os.Getenv("OPL_BUILD_TEST_REGISTRY_HOST")
 	if registryHost == "" {
 		t.Fatal("OPL_BUILD_TEST_REGISTRY_HOST must be set for the live Build destination resolver")
@@ -155,7 +155,13 @@ func newLiveIdentity(t *testing.T, ctx context.Context, dsn string) *liveIdentit
 		registryNamespace = "result"
 	}
 	service.ConfigureRegistry(registryHost, registryNamespace)
-	if e = service.BackfillTenantRepositoryBindings(ctx); e != nil {
+	gatewaySource, e := gatewaymigrations.Source()
+	if e != nil {
+		t.Fatal(e)
+	}
+	gatewayDB, _ := liveOwnerDB(t, ctx, dsn, "gateway", gatewaySource)
+	service.GatewayStore, e = cloudidentity.NewGatewayStore(gatewayDB)
+	if e != nil {
 		t.Fatal(e)
 	}
 	cfg := ownerservice.Config{Owner: owneridentity.Tenant, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: map[owneridentity.Service]string{}}
@@ -192,6 +198,18 @@ func newLiveIdentity(t *testing.T, ctx context.Context, dsn string) *liveIdentit
 		}
 		out.cookies[tid] = cookie
 		out.csrf[tid] = session.CsrfToken
+	}
+	// Login establishes the authenticated User↔Sub2API mapping. The administrator
+	// explicitly confirms each destination through the typed owner boundary.
+	coordination := api.NewGatewayCoordinationClient(identityConn(t, out.address, owneridentity.ConsoleBFF))
+	for _, user := range []struct{ actor, repository string }{{"101", "publisher"}, {"102", "other"}, {"103", "admin"}} {
+		_, e = coordination.BindUserExternalIdentity(ctx, &api.UserExternalBindingCommand{
+			Context: out.call("bind-user-"+user.actor, "platform"), ActorId: user.actor, Sub2ApiUserId: user.actor,
+			RegistryHost: registryHost, RegistryNamespace: registryNamespace, Repository: user.repository,
+		})
+		if e != nil {
+			t.Fatal(e)
+		}
 	}
 	return out
 }
