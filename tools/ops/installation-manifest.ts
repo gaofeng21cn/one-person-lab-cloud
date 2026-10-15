@@ -7,7 +7,7 @@ export type SecretRef = { name: string; key: string };
 export type CommunicationEdge = {
   caller: string; target: string; addressEnv: string; tokenEnv: string;
   callerDeployment: string; targetDeployment: string; port: number;
-  tokenRef: SecretRef; peerRef: SecretRef; ingressPolicies: string[]; egressPolicies: string[];
+  tokenRef: SecretRef; peerRef: SecretRef; serviceRef: { name: string; namespace: string }; ingressPolicies: string[]; egressPolicies: string[];
 };
 export type InstallationError = { code: string; service?: string; caller?: string; target?: string; addressEnv?: string; tokenEnv?: string };
 export type InstallationSecurity = { tokenMinimumLength: number };
@@ -362,7 +362,8 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     report.communication.edges.push({
       caller: edge.caller, target: edge.target, addressEnv: edge.addressEnv, tokenEnv: edge.tokenEnv,
       callerDeployment: caller.deployment.metadata.name, targetDeployment: target.deployment.metadata.name, port: targetPort,
-      tokenRef, peerRef, ingressPolicies: policies.ingressPolicies, egressPolicies: policies.egressPolicies
+      tokenRef, peerRef, serviceRef: { name: service.metadata.name, namespace: namespace(service) },
+      ingressPolicies: policies.ingressPolicies, egressPolicies: policies.egressPolicies
     });
   }
   report.ok = report.errors.length === 0;

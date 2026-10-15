@@ -242,7 +242,10 @@ BFF, are outside this owner-RPC contract.
 The report has `ok`, fixed-code `errors` and `communication`. Successful
 `communication.edges` contain `caller`, `target`, `addressEnv`, `tokenEnv`,
 `callerDeployment`, `targetDeployment`, `port`, `tokenRef: {name,key}`,
-`peerRef: {name,key}`, `ingressPolicies` and `egressPolicies`. `port` is the
+`peerRef: {name,key}`, `serviceRef: {name,namespace}`, `ingressPolicies` and
+`egressPolicies`. The Service reference is resolved by Product after applying the
+caller's declared address semantics; installers consume that identity directly
+instead of parsing addresses a second time. `port` is the
 resolved target container TCP port, after Service `port`/`targetPort` mapping.
 `peerRef` comes from the actual target container's declared peer-token environment.
 Policy arrays identify selecting policies; they do not assert policy ownership.

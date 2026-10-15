@@ -29,7 +29,7 @@ test("installation CLI returns executable Serve and BFF RPC edges from a worked 
     caller: "serve", target: "workspace", addressEnv: "OPL_WORKSPACE_ADDR", tokenEnv: "OPL_WORKSPACE_TOKEN",
     callerDeployment: "unit-serve", targetDeployment: "unit-workspace", port: 8184,
     tokenRef: { name: "serve-auth", key: "OPL_WORKSPACE_TOKEN" }, peerRef: { name: "workspace-admission", key: "peers" },
-    ingressPolicies: ["workspace-rpc"], egressPolicies: []
+    serviceRef: { name: "workspace-rpc", namespace: "installation" }, ingressPolicies: ["workspace-rpc"], egressPolicies: []
   });
   assert.ok(result.report.communication.edges.some(edge => edge.caller === "console_bff" && edge.target === "workspace" && edge.addressEnv === "OPL_WORKSPACE_URL"));
   assert.ok(result.report.communication.edges.some(edge => edge.caller === "console_bff" && edge.target === "runtime_control"));
@@ -391,7 +391,7 @@ test("installation CLI retains the current Control Plane CloudIdentity caller fr
     caller: "control_plane", target: "tenant", addressEnv: "OPL_CLOUD_IDENTITY_URL", tokenEnv: "OPL_CLOUD_IDENTITY_TOKEN",
     callerDeployment: "retained-http", targetDeployment: "unit-gateway-integration", port: 8187,
     tokenRef: { name: "http-auth", key: "outbound" }, peerRef: { name: "gateway-integration-admission", key: "peers" },
-    ingressPolicies: ["gateway-integration-rpc"], egressPolicies: [],
+    serviceRef: { name: "gateway-integration-rpc", namespace: "installation" }, ingressPolicies: ["gateway-integration-rpc"], egressPolicies: [],
   });
   const retained = list.items.find(item => item.metadata.name === "retained-http").spec.template.spec.containers[0];
   retained.env = retained.env.filter(e => !["OPL_CLOUD_IDENTITY_URL", "OPL_CLOUD_IDENTITY_TOKEN"].includes(e.name));
@@ -637,4 +637,17 @@ test("configured RPC edges follow each native caller's address semantics and ret
     const result = await invoke(list);
     assert.equal(result.status, enabled ? 0 : 1, result.stdout + result.stderr);
   });
+});
+
+
+test("installation CLI supplies Product-resolved Service identity for configured Go-trimmed addresses", async () => {
+  const list = workedInstallation();
+  const address = container(list, "serve").env.find(e => e.name === "OPL_LEDGER_ADDR");
+  address.value = `\u0085 ${address.value} \u3000`;
+  const result = await invoke(list);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.deepEqual(result.report.communication.edges.find(e => e.caller === "serve" && e.target === "ledger").serviceRef,
+    { name: "ledger-rpc", namespace: "installation" });
+  assert.deepEqual(result.report.communication.edges.find(e => e.caller === "serve" && e.target === "workspace").serviceRef,
+    { name: "workspace-rpc", namespace: "installation" });
 });
