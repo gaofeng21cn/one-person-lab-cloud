@@ -167,7 +167,7 @@ func Dial(config Config) (*Clients, error) {
 		clients.catalog = api.NewResourceCatalogProductServiceClient(conn)
 	}
 	if addr := strings.TrimSpace(config.Addresses[owneridentity.Ledger]); addr != "" {
-		options, err := config.TLS.DialOptions(owneridentity.ConsoleBFF, owneridentity.Ledger.Service(), config.Tokens[owneridentity.Ledger])
+		options, err := config.TLS.DialOptions(owneridentity.ConsoleBFF, owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Ledger), config.Tokens[owneridentity.Ledger])
 		if err != nil {
 			clients.Close()
 			return nil, err
