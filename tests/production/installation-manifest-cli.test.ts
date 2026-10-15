@@ -208,6 +208,7 @@ test("installation CLI binds live init identity and canonical projected ServiceA
     { configMap: { name: "kube-root-ca.crt", items: [{ key: "ca.crt", path: "ca.crt" }] } },
     { downwardAPI: { items: [{ fieldRef: { apiVersion: "v1", fieldPath: "metadata.namespace" }, path: "namespace" }] } }
   ] } }];
+  injected.pod.spec.containers[0].volumeMounts = [{ name: "kube-api-access-abc12", mountPath: "/var/run/secrets/kubernetes.io/serviceaccount", readOnly: true }];
   assert.equal((await invoke(injected.list)).status, 0);
   const forged = withLiveWorkspaceBackends();
   forged.pod.spec.volumes = [{ name: "kube-api-access-abc12", projected: { sources: [
@@ -227,6 +228,9 @@ test("installation CLI rejects unserviceable supplied live endpoints", async () 
     change(live);
     assert.equal((await invoke(live.list)).status, 1);
   }
+  const mixed = withLiveWorkspaceBackends();
+  mixed.slice.endpoints.push({ addresses: ["2001:db8::1"], targetRef: mixed.slice.endpoints[0].targetRef, conditions: { ready: false } });
+  assert.equal((await invoke(mixed.list)).status, 0);
 });
 
 test("installation CLI refuses empty or incomplete live endpoint inventories", async t => {
