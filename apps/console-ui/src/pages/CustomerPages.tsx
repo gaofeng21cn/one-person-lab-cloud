@@ -33,7 +33,7 @@ import { WorkspaceListPage, WorkspaceSummaryRow } from "../components/workspaces
 import { WorkspaceModelsPage } from "../components/workspaces/WorkspaceModelsPage.tsx";
 import { SourceState } from "../components/source/SourceState.tsx";
 import { Badge, Button, SegmentedControl } from "../components/ui/index.ts";
-import { apiMenu, formatCount, formatDate, formatUsdMicros } from "../console-model.ts";
+import { apiMenu, formatCount, formatDate, formatUsdMicros, parseUsdMicros } from "../console-model.ts";
 
 type CustomerApiRoute = Extract<CustomerConsoleRoute, { navigationId: "customer.api" }>;
 
@@ -59,22 +59,33 @@ function Metric({ label, value, note, emphasis }: { label: string; value: string
  * keeps its own colour so a reversal is never read as a charge.
  */
 function TrendChart({ trend }: { trend: WorkspaceSettlementTrend }) {
-  const peak = trend.days.reduce((max, day) => Math.max(max, Math.abs(day.netUsdMicros)), 0);
+  const peak = trend.days.reduce((max, day) => {
+    const value = parseUsdMicros(day.netUsdMicros);
+    if (value === null) return max;
+    const absolute = value < 0n ? -value : value;
+    return absolute > max ? absolute : max;
+  }, 0n);
   const mixedLabel = trend.timezone === "Asia/Shanghai" ? "北京时间" : trend.timezone;
   // 资金结果未知时，图上只可能是「已确认部分」，不能宣称没有扣款。
   const incomplete = trend.complete === false;
   const chartLabel = incomplete
     ? `工作空间近 ${trend.days.length} 天每日净扣款条形图（已确认部分），另有 ${trend.unconfirmedCount} 笔资金结果待确认`
-    : `工作空间近 ${trend.days.length} 天每日净扣款条形图，最高 ${peak ? formatUsdMicros(peak) : "无扣款"}`;
+    : `工作空间近 ${trend.days.length} 天每日净扣款条形图，最高 ${peak > 0n ? formatUsdMicros(peak) : "无扣款"}`;
   return <>
     <div className="trend-chart" role="img" aria-label={chartLabel}>
       {trend.days.map((day, index) => (
         <div className="trend-col" key={day.date} title={`${settlementDayLabel(day.date)} · 扣款 ${formatUsdMicros(day.chargedUsdMicros)} · 退款 ${formatUsdMicros(day.refundedUsdMicros)} · 净额 ${formatUsdMicros(day.netUsdMicros)}`}>
           <span
             className="trend-bar"
-            data-empty={day.netUsdMicros === 0}
-            data-refund={day.netUsdMicros < 0}
-            style={day.netUsdMicros !== 0 && peak ? { height: `${Math.max(6, Math.round(Math.abs(day.netUsdMicros) / peak * 100))}%` } : undefined}
+            data-empty={parseUsdMicros(day.netUsdMicros) === 0n}
+            data-refund={(parseUsdMicros(day.netUsdMicros) ?? 0n) < 0n}
+            style={(() => {
+              const value = parseUsdMicros(day.netUsdMicros);
+              if (value === null || value === 0n || peak === 0n) return undefined;
+              const absolute = value < 0n ? -value : value;
+              const height = Number((absolute * 100n) / peak);
+              return { height: `${Math.max(6, Math.min(100, height))}%` };
+            })()}
           />
           <small>{settlementDayShortLabel(day.date, index, trend.days.length)}</small>
         </div>

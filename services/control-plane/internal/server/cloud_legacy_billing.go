@@ -15,7 +15,7 @@ import (
 func (app *controlPlaneServer) registerCloudLegacyBillingRoutes(mux *http.ServeMux, service *controlplane.Service) {
 	for _, route := range []struct {
 		path       string
-		read       func(http.ResponseWriter, *http.Request, *controlplane.Service, string)
+		read       func(http.ResponseWriter, *http.Request, *controlplane.Service, string, string)
 		pagination bool
 	}{
 		{"GET /internal/cloud/legacy-billing/receipts", app.listBillingReceiptsForAccount, true},
@@ -57,7 +57,7 @@ func (app *controlPlaneServer) registerCloudLegacyBillingRoutes(mux *http.ServeM
 				writeError(w, http.StatusNotFound, "legacy_billing_account_not_found")
 				return
 			}
-			route.read(w, r, service, identity.legacyAccountID)
+			route.read(w, r, service, identity.legacyAccountID, identity.legacyUserID)
 		})
 	}
 }

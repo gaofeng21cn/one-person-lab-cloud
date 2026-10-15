@@ -124,13 +124,42 @@ func (s *Service) GetWorkspaceTransactionTrend(ctx context.Context, r *api.GetWo
 		result.Days = append(result.Days, day)
 	}
 	rows, err := s.GatewayStore.db.QueryContext(ctx, `
-		SELECT ((CASE WHEN status='confirmed' THEN confirmed_at ELSE created_at END) AT TIME ZONE 'UTC')::date::text,
-		status, kind, sum(amount_usd_micros)::bigint
-		FROM gateway.wallet_operations
-		WHERE tenant_id=$1 AND workspace_id=$2 AND kind IN ('charge','refund')
-		AND status IN ('confirmed','unknown','requested')
-		AND (CASE WHEN status='confirmed' THEN confirmed_at ELSE created_at END)>=$3
-		AND (CASE WHEN status='confirmed' THEN confirmed_at ELSE created_at END)<$4
+		WITH refund_totals AS (
+			SELECT r.original_wallet_operation_id, sum(r.amount_usd_micros)::bigint AS total_refund_usd_micros
+			FROM gateway.wallet_operations r
+			JOIN gateway.wallet_operations original ON original.id=r.original_wallet_operation_id
+			WHERE r.tenant_id=$1 AND r.workspace_id=$2 AND r.kind='refund' AND r.status IN ('requested','unknown','confirmed')
+				AND r.tenant_id=original.tenant_id AND r.workspace_id=original.workspace_id
+			GROUP BY r.original_wallet_operation_id
+		), normalized AS (
+			SELECT w.*,
+				CASE
+					WHEN w.status='confirmed' AND w.kind='refund'
+						AND original.kind='charge' AND original.status='confirmed'
+						AND original.tenant_id=w.tenant_id AND original.workspace_id=w.workspace_id
+						AND COALESCE(refund_totals.total_refund_usd_micros, 0) <= original.amount_usd_micros
+					THEN 'confirmed'
+					WHEN w.status='confirmed' AND w.kind='refund' THEN 'unknown'
+					ELSE w.status
+				END AS effective_status,
+				CASE
+					WHEN w.status='confirmed' AND w.kind='charge' THEN w.confirmed_at
+					WHEN w.status='confirmed' AND w.kind='refund'
+						AND original.kind='charge' AND original.status='confirmed'
+						AND original.tenant_id=w.tenant_id AND original.workspace_id=w.workspace_id
+						AND COALESCE(refund_totals.total_refund_usd_micros, 0) <= original.amount_usd_micros
+					THEN w.confirmed_at
+					ELSE w.created_at
+					END AS effective_at
+			FROM gateway.wallet_operations w
+			LEFT JOIN gateway.wallet_operations original ON original.id=w.original_wallet_operation_id
+			LEFT JOIN refund_totals ON refund_totals.original_wallet_operation_id=w.original_wallet_operation_id
+			WHERE w.tenant_id=$1 AND w.workspace_id=$2 AND w.kind IN ('charge','refund')
+			AND w.status IN ('confirmed','unknown','requested')
+		)
+		SELECT (effective_at AT TIME ZONE 'UTC')::date::text, effective_status, kind, sum(amount_usd_micros)::bigint
+		FROM normalized
+		WHERE effective_at>=$3 AND effective_at<$4
 		GROUP BY 1,2,3`, tenantID, r.GetWorkspaceId(), start, end)
 	if err != nil {
 		return nil, transactionTrendError(err)

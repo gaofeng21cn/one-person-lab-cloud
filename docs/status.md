@@ -98,6 +98,14 @@ evidence below retains its original source, scope and observation date.
 
 ## Personal Historical Billing Source Repair (2026-10-16)
 
+The current reader also verifies the original order User for list, detail and
+trend, including retained schema-2 history. Monetary JSON fields, including
+receipt components and trend totals, cross the BFF as decimal strings; the UI
+uses integer arithmetic. Gateway confirmed refunds need an original confirmed
+charge and a valid cumulative refund bound, while confirmed charge dates retain
+the original confirmation time. Isolated PostgreSQL and real BFF JSON tests
+cover these corrections; no customer money was changed.
+
 The Cloud Console now reads personal original-account bill lists, receipt detail
 and Workspace net-settlement trends through `/api/v2/legacy-billing/*`. The BFF
 passes only the live session reference to the original Control Plane owner,
@@ -105,8 +113,8 @@ which rechecks Gateway identity proof and its unique reciprocal Account/User
 lineage. It reuses the existing financial projections and original Ledger reader;
 no second financial writer, Account mapping, settlement algorithm or Tenant-admin
 inheritance is introduced. A deleted Workspace does not erase its original bill.
-The UI identifies personal historical bills and explicitly says Tenant bills are
-not yet exposed.
+The UI identifies personal historical bills separately from the current Tenant
+Workspace transaction and original financial-receipt views.
 
 Local owner tests exercise real HTTP/gRPC plus Memory, SQLite and isolated
 PostgreSQL; they cover original refund amounts/timestamps, pagination, deleted
@@ -114,8 +122,9 @@ Workspace history, wrong-owner responses, unknown settlement, revoked bindings,
 expired sessions and rejected Account/Tenant selectors. BFF transport checks
 preserve integer amounts and unknown settlement facts and reject unavailable
 owners. These checks prove source/fixture behavior, not installed authentication
-or actual historical identity linkage. Tenant fee/settlement reads, other Gateway
-reads and exact-Candidate installed acceptance remain open. The same retained-reader
+or actual historical identity linkage. Current Tenant transaction and receipt
+source reads are delivered separately; Key/group reads and exact-Candidate
+installed acceptance remain open. The same retained-reader
 repair also aligns announcement page size with the original owner (50) and raises
 the list response budget to the bounded maximum of 50 accepted 20,000-rune notices;
 the previous 1 MiB cap could reject a valid full page. ACK retains its smaller cap.

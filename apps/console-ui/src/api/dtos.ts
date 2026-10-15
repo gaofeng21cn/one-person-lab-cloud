@@ -804,13 +804,13 @@ export interface BillingReceipt {
   currency: "USD";
   periodStart: string;
   paidThrough: string;
-  chargeUsdMicros?: number;
-  totalUsdMicros?: number;
-  refundUsdMicros?: number;
+  chargeUsdMicros?: string | number;
+  totalUsdMicros?: string | number;
+  refundUsdMicros?: string | number;
   chargeReference?: string;
   components?: {
-    compute: { resourceType: "compute"; resourceId: string; chargeUsdMicros: number };
-    storage: { resourceType: "storage"; resourceId: string; sizeGb: number; chargeUsdMicros: number };
+    compute: { resourceType: "compute"; resourceId: string; chargeUsdMicros: string | number };
+    storage: { resourceType: "storage"; resourceId: string; sizeGb: number; chargeUsdMicros: string | number };
   };
   fulfillment?: {
     computeAllocationId: string;
@@ -834,9 +834,9 @@ export interface BillingReceiptPage {
  */
 export interface WorkspaceSettlementTrendDay {
   date: string;
-  chargedUsdMicros: number;
-  refundedUsdMicros: number;
-  netUsdMicros: number;
+  chargedUsdMicros: string | number;
+  refundedUsdMicros: string | number;
+  netUsdMicros: string | number;
   chargeCount: number;
   refundCount: number;
 }
@@ -847,9 +847,9 @@ export interface WorkspaceSettlementTrend {
   windowStart: string;
   windowEnd: string;
   days: WorkspaceSettlementTrendDay[];
-  chargedUsdMicros: number;
-  refundedUsdMicros: number;
-  netUsdMicros: number;
+  chargedUsdMicros: string | number;
+  refundedUsdMicros: string | number;
+  netUsdMicros: string | number;
   settledCount: number;
   inFlightCount: number;
   unconfirmedCount: number;

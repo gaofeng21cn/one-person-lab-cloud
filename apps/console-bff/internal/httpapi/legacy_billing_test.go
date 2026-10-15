@@ -25,8 +25,8 @@ func TestLegacyBillingBFFUsesSessionOnlyAndPreservesOriginalMoney(t *testing.T) 
 		if ownerStatus != 200 {
 			return
 		}
-		amount := int64(9007199254740991)
-		receipt := contracts.LegacyBillingReceipt{ReceiptID: "original", Type: "billing.workspace_purchased.v1", Currency: "USD", ChargeUSDMicros: &amount, Components: json.RawMessage(`{"original":9007199254740991}`), RefundCode: "original-refund-code", AccountID: "original-account", LaunchReceiptID: "original-launch", ResourceStatus: json.RawMessage(`{"workspaceStatus":"absent"}`), StageEvidence: json.RawMessage(`[{"stage":"confirmed"}]`)}
+		amount := int64(9007199254740993)
+		receipt := contracts.LegacyBillingReceipt{ReceiptID: "original", Type: "billing.workspace_purchased.v1", Currency: "USD", ChargeUSDMicros: &amount, Components: json.RawMessage(`{"original":9007199254740991,"compute":{"chargeUsdMicros":9007199254740993}}`), RefundCode: "original-refund-code", AccountID: "original-account", LaunchReceiptID: "original-launch", ResourceStatus: json.RawMessage(`{"workspaceStatus":"absent"}`), StageEvidence: json.RawMessage(`[{"stage":"confirmed"}]`)}
 		switch r.URL.Path {
 		case "/internal/cloud/legacy-billing/receipts":
 			if r.URL.Query().Get("cursor") != "opaque" || r.URL.Query().Get("limit") != "1" {
@@ -59,10 +59,21 @@ func TestLegacyBillingBFFUsesSessionOnlyAndPreservesOriginalMoney(t *testing.T) 
 		if w.Code != 200 {
 			t.Fatalf("%s=%d %s", path, w.Code, w.Body.String())
 		}
-		if strings.Contains(path, "receipts") && !strings.Contains(w.Body.String(), `9007199254740991`) {
+		if strings.Contains(path, "receipts") && !strings.Contains(w.Body.String(), `"chargeUsdMicros":"9007199254740993"`) {
 			t.Fatal("original money changed")
 		}
 		if strings.Contains(path, "receipts") {
+			var envelope map[string]any
+			if err := json.Unmarshal(w.Body.Bytes(), &envelope); err != nil {
+				t.Fatal(err)
+			}
+			data := envelope["data"].(map[string]any)
+			if page, ok := data["receipts"].([]any); ok {
+				data = page[0].(map[string]any)
+			}
+			if data["chargeUsdMicros"] != "9007199254740993" || data["components"].(map[string]any)["compute"].(map[string]any)["chargeUsdMicros"] != "9007199254740993" {
+				t.Fatalf("browser JSON loses micros: %s", w.Body.String())
+			}
 			for _, original := range []string{"original-refund-code", "original-account", "original-launch", `"workspaceStatus":"absent"`, `"stage":"confirmed"`} {
 				if !strings.Contains(w.Body.String(), original) {
 					t.Fatalf("original receipt field lost: %s", original)

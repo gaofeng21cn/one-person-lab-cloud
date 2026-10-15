@@ -172,8 +172,11 @@ for an Account, recalculate settlement from receipt totals, or modify an order.
 The typed HTTP DTOs retain original amounts, timestamps, pagination and unknown
 settlement state. A missing historical Account is an explicit not-found result,
 not a successful empty financial history. The Console labels this scope as
-personal history. Tenant Workspace fee/settlement readers remain a separate
-undelivered capability; Tenant administrators receive no legacy-history access.
+personal history. Current Tenant Workspace transactions and original financial
+receipts use their separate Gateway/Ledger readers; Tenant administrators receive
+no legacy-history access. The original-order User check applies to list, detail
+and trend. Monetary fields use decimal strings at the BFF JSON boundary, including
+receipt components and daily totals; Console renders and scales them with BigInt.
 
 Sub2API is external and remains the only spendable-balance, API-key, routing,
 and request-usage owner. The repository reads those records on demand and does
