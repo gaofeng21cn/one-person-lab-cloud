@@ -111,6 +111,63 @@ function validPort(value: unknown): value is number { return Number.isInteger(va
 function labelsMatch(selector: Resource, labels: Resource) {
   return Object.entries(selector).every(([key, value]) => typeof value === "string" && Object.hasOwn(labels, key) && labels[key] === value);
 }
+function podTemplate(resource: Resource): Resource | undefined {
+  if (resource.kind === "Pod") return resource;
+  if (resource.kind === "CronJob") return resource.spec?.jobTemplate?.spec?.template;
+  if (["Deployment", "StatefulSet", "DaemonSet", "ReplicaSet", "ReplicationController", "Job"].includes(resource.kind)) return resource.spec?.template;
+}
+function controller(resource: Resource, kind: string, resources: Resource[]): Resource | undefined {
+  const refs = resource.metadata.ownerReferences;
+  if (!Array.isArray(refs)) return;
+  const owners = refs.filter(ref => object(ref) && ref.controller === true);
+  if (owners.length !== 1 || owners[0].kind !== kind || typeof owners[0].uid !== "string" || !owners[0].uid) return;
+  const ref = owners[0];
+  return resources.find(candidate => candidate.kind === kind && candidate.apiVersion === ref.apiVersion &&
+    namespace(candidate) === namespace(resource) && candidate.metadata.name === ref.name && candidate.metadata.uid === ref.uid);
+}
+// A live Deployment's generated replicas are not independent Service producers.
+// Names or selectors alone do not establish this relationship; every hop must
+// resolve the Kubernetes controller reference to the exact object UID.
+function ownedBackend(resource: Resource, target: Resource, resources: Resource[]): boolean {
+  if (resource === target) return true;
+  if (resource.kind === "ReplicaSet") return controller(resource, "Deployment", resources) === target;
+  if (resource.kind === "Pod") {
+    const replicaSet = controller(resource, "ReplicaSet", resources);
+    return replicaSet !== undefined && controller(replicaSet, "Deployment", resources) === target;
+  }
+  return false;
+}
+function endpointBackend(resource: Resource, service: Resource, target: Resource, servicePort: Resource, port: number, resources: Resource[]): boolean {
+  const provesPort = (ports: unknown): boolean => {
+    if (!Array.isArray(ports)) return false;
+    const matching = ports.filter(entry => object(entry) && (entry.name ?? "") === (servicePort.name ?? "") && (entry.protocol ?? "TCP") === "TCP");
+    return matching.length === 1 && matching[0].port === port;
+  };
+  const provesPod = (ref: unknown, addresses: unknown): boolean => {
+    if (!object(ref) || ref.kind !== "Pod" || ref.apiVersion !== undefined && ref.apiVersion !== "v1" ||
+        typeof ref.uid !== "string" || !ref.uid || (ref.namespace ?? namespace(service)) !== namespace(service) ||
+        !Array.isArray(addresses) || addresses.length === 0) return false;
+    const pod = resources.find(candidate => candidate.kind === "Pod" && candidate.apiVersion === "v1" &&
+      namespace(candidate) === namespace(service) && candidate.metadata.name === ref.name && candidate.metadata.uid === ref.uid);
+    if (!pod || !ownedBackend(pod, target, resources) || !labelsMatch(service.spec.selector, pod.metadata.labels ?? {})) return false;
+    const ips = new Set([pod.status?.podIP, ...(Array.isArray(pod.status?.podIPs) ? pod.status.podIPs.map((entry: Resource) => entry.ip) : [])]);
+    return addresses.every(address => typeof address === "string" && ips.has(address));
+  };
+  if (resource.kind === "EndpointSlice") {
+    return resource.apiVersion === "discovery.k8s.io/v1" && controller(resource, "Service", resources) === service &&
+      Array.isArray(resource.endpoints) && resource.endpoints.every((endpoint: unknown) =>
+        object(endpoint) && provesPort(resource.ports) && provesPod(endpoint.targetRef, endpoint.addresses));
+  }
+  // The legacy Endpoints controller does not attach a Service ownerReference.
+  // Its exact Service name plus every Pod UID and address must still agree.
+  return resource.apiVersion === "v1" && (resource.subsets === undefined || Array.isArray(resource.subsets) &&
+    resource.subsets.every((subset: unknown) => object(subset) && [subset.addresses, subset.notReadyAddresses].every(entries =>
+      entries === undefined || Array.isArray(entries) && entries.every(entry => object(entry) && provesPort(subset.ports) && provesPod(entry.targetRef, [entry.ip])))));
+}
+function listenerAddress(process: InstalledProcess, name: string, defaultAddress: string | undefined): string | undefined {
+  const entry = envEntry(process, name);
+  return entry?.valueFrom ? undefined : typeof entry?.value === "string" && entry.value.trim() !== "" ? entry.value.trim() : defaultAddress;
+}
 function parseServiceAddress(raw: unknown, callerNamespace: string): { name: string; namespace: string; port: number } | undefined {
   if (typeof raw !== "string") return;
   const address = /^(?:dns:\/\/\/)?([a-z0-9](?:[-a-z0-9.]*[a-z0-9])?):([0-9]+)$/.exec(raw);
@@ -144,9 +201,11 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
       topology.processes.some(process => container.command?.[0] === process.binary))
       .map((container: Resource) => container.image)));
   const processContract = (container: Resource) => topology.processes.find(process =>
-    container.command?.[0] === process.binary || container.command === undefined && container.args === undefined &&
-      productImages.has(container.image) && process.binary === topology.image.defaultCommand[0]);
+    !container.args?.length && (container.command?.length === 1 && container.command[0] === process.binary ||
+      !container.command?.length && productImages.has(container.image) && topology.image.defaultCommand.length === 1 &&
+      process.binary === topology.image.defaultCommand[0]));
   const recognized = new Set<Resource>();
+  const processes = new Map<Resource, InstalledProcess>();
   const productNamespaces = new Set<string>();
   for (const deployment of deployments) {
     for (const container of deployment.spec.template.spec.containers) {
@@ -165,6 +224,7 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
       const resolved = effectiveEnv(deployment, container, names, resources);
       if (resolved.error) return failure(resolved.error);
       const process = { contract, deployment, container, env: resolved.env };
+      processes.set(container, process);
       if (contract.rpcEnabledByEnv && !configured(envEntry(process, contract.rpcEnabledByEnv))) continue;
       if (installed.has(contract.transportPrincipal!)) return failure("installation_process_ambiguous");
       installed.set(contract.transportPrincipal!, process);
@@ -206,12 +266,11 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
         !labelsMatch(selector, target.deployment.spec.template.metadata?.labels ?? {})) {
       fail("rpc_service_target_mismatch"); continue;
     }
-    const backends = deployments.filter(deployment => namespace(deployment) === namespace(service) &&
-      labelsMatch(selector, deployment.spec.template.metadata?.labels ?? {}));
-    if (backends.length !== 1 || backends[0] !== target.deployment ||
-        target.deployment.spec.template.spec.containers.some((container: Resource) => container !== target.container &&
-          (container.ports ?? []).some((port: Resource) => (port.protocol ?? "TCP") === "TCP" &&
-            (port.name === service.spec.ports?.find((entry: Resource) => entry.port === parsed.port)?.targetPort)))) {
+    const backends = resources.filter(resource => {
+      const template = podTemplate(resource);
+      return template !== undefined && namespace(resource) === namespace(service) && labelsMatch(selector, template.metadata?.labels ?? {});
+    });
+    if (backends.some(backend => !ownedBackend(backend, target.deployment, resources))) {
       fail("rpc_service_backend_ambiguous"); continue;
     }
     const matching = Array.isArray(service.spec.ports) ? service.spec.ports.filter((entry: Resource) => entry?.port === parsed.port && (entry.protocol ?? "TCP") === "TCP") : [];
@@ -224,14 +283,44 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
       targetPort = ports[0].containerPort;
     }
     if (!validPort(targetPort)) { fail("rpc_target_port_invalid"); continue; }
-    const listenerEntry = envEntry(target, target.contract.rpcAddressEnv ?? target.contract.addressEnv);
     // This is ownerservice.LoadConfig's declared runtime behavior, not a repair
     // of an explicit invalid binding. Unresolved valueFrom never selects a default.
-    const listener = listenerEntry?.valueFrom ? undefined :
-      typeof listenerEntry?.value === "string" && listenerEntry.value.trim() !== "" ? listenerEntry.value.trim() :
-      target.contract.rpcAddressEnv ? target.contract.defaultRPCAddress : target.contract.defaultAddress;
+    const listener = listenerAddress(target, target.contract.rpcAddressEnv ?? target.contract.addressEnv,
+      target.contract.rpcAddressEnv ? target.contract.defaultRPCAddress : target.contract.defaultAddress);
     const listenMatch = typeof listener === "string" && /^(?:|0\.0\.0\.0|\[::\]):([0-9]+)$/.exec(listener);
     if (!listenMatch || Number(listenMatch[1]) !== targetPort) { fail("rpc_target_listener_invalid"); continue; }
+    const pod = target.deployment.spec.template.spec;
+    const competitors = [...pod.containers, ...(pod.initContainers ?? []).filter((container: Resource) => container.restartPolicy === "Always")];
+    const otherListener = target.contract.rpcAddressEnv ? listenerAddress(target, target.contract.addressEnv, target.contract.defaultAddress) : null;
+    let conflict = otherListener === undefined || otherListener !== null && Number(/:([0-9]+)$/.exec(otherListener)?.[1]) === targetPort;
+    for (const container of competitors) {
+      if (container === target.container) continue;
+      if ((container.ports ?? []).some((port: Resource) => (port.protocol ?? "TCP") === "TCP" &&
+          (port.containerPort === targetPort || typeof servicePort.targetPort === "string" && port.name === servicePort.targetPort))) {
+        conflict = true; break;
+      }
+      const contract = processContract(container);
+      if (!contract) continue;
+      const resolved = processes.get(container) ?? (() => {
+        const result = effectiveEnv(target.deployment, container,
+          new Set([contract.addressEnv, contract.rpcAddressEnv, contract.rpcEnabledByEnv].filter((name): name is string => Boolean(name))), resources);
+        return result.error ? undefined : { contract, deployment: target.deployment, container, env: result.env };
+      })();
+      if (!resolved) { conflict = true; break; }
+      const addresses: (string | undefined)[] = [];
+      const rpcEnabled = !contract.rpcEnabledByEnv || configured(envEntry(resolved, contract.rpcEnabledByEnv));
+      if (contract.rpcAddressEnv || rpcEnabled) addresses.push(listenerAddress(resolved, contract.addressEnv, contract.defaultAddress));
+      if (contract.rpcAddressEnv && rpcEnabled) addresses.push(listenerAddress(resolved, contract.rpcAddressEnv, contract.defaultRPCAddress));
+      if (addresses.some(address => address === undefined || Number(/:([0-9]+)$/.exec(address)?.[1]) === targetPort)) {
+        conflict = true; break;
+      }
+    }
+    const endpoints = resources.filter(resource => namespace(resource) === namespace(service) &&
+      (resource.kind === "Endpoints" && resource.metadata.name === service.metadata.name ||
+       resource.kind === "EndpointSlice" && resource.metadata.labels?.["kubernetes.io/service-name"] === service.metadata.name));
+    if (conflict || endpoints.some(resource => !endpointBackend(resource, service, target.deployment, servicePort, targetPort, resources))) {
+      fail("rpc_service_backend_ambiguous"); continue;
+    }
     const tokenRef = secretReference(envEntry(caller, edge.tokenEnv));
     if (!tokenRef) { fail("rpc_token_ref_invalid"); continue; }
     const peerRef = secretReference(envEntry(target, target.contract.peerTokensEnv!));

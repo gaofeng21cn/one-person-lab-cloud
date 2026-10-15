@@ -35,6 +35,124 @@ test("installation CLI returns executable Serve and BFF RPC edges from a worked 
   assert.ok(result.report.communication.edges.some(edge => edge.caller === "console_bff" && edge.target === "runtime_control"));
 });
 
+test("installation CLI refuses one-shot commands as service processes", async t => {
+  for (const form of ["args", "command", "unique-image"]) await t.test(form, async () => {
+    const list = workedInstallation();
+    const serve = container(list, "serve");
+    if (form === "command") serve.command.push("probe-workspace-access");
+    else serve.args = ["probe-workspace-access"];
+    if (form === "unique-image") serve.image = "example.invalid/alternate@sha256:" + "b".repeat(64);
+    const result = await invoke(list);
+    assert.equal(result.status, 1, result.stdout);
+    assert.ok(result.report.errors.some(error => error.code === "installation_process_unproven"));
+    assert.deepEqual(result.report.communication.edges, []);
+  });
+  const list = workedInstallation();
+  container(list, "serve").args = [];
+  assert.equal((await invoke(list)).status, 0, "empty args retain the service entrypoint");
+});
+
+test("installation CLI rejects competing listeners in one Pod network namespace", async t => {
+  for (const form of ["numeric-target", "different-port-name", "product-listener-without-ports", "restartable-init-container"]) await t.test(form, async () => {
+    const list = workedInstallation();
+    const pod = deployment(list, "workspace").spec.template.spec;
+    const sidecar: any = { name: "other-listener", image: "example.invalid/sidecar:1", ports: [{ name: "other", containerPort: 8184 }] };
+    if (form === "numeric-target") list.items.find(item => item.kind === "Service" && item.metadata.name === "workspace-rpc").spec.ports[0].targetPort = 8184;
+    if (form === "product-listener-without-ports") {
+      sidecar.image = container(list, "workspace").image;
+      sidecar.command = ["/usr/local/bin/opl-control-plane"];
+      sidecar.env = [{ name: "CONTROL_PLANE_ADDR", value: ":8184" }];
+      delete sidecar.ports;
+    }
+    if (form === "restartable-init-container") pod.initContainers = [{ ...sidecar, restartPolicy: "Always" }];
+    else pod.containers.push(sidecar);
+    const result = await invoke(list);
+    assert.equal(result.status, 1, result.stdout);
+    assert.ok(result.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+    assert.deepEqual(result.report.communication.edges, []);
+  });
+  const list = workedInstallation();
+  deployment(list, "workspace").spec.template.spec.containers.push({ name: "non-conflicting", image: "example.invalid/sidecar:1",
+    ports: [{ name: "udp", containerPort: 8184, protocol: "UDP" }, { name: "https", containerPort: 9443 }] });
+  const result = await invoke(list);
+  assert.equal(result.status, 0, result.stdout);
+  const dualListener = workedInstallation();
+  container(dualListener, "fabric").env.push({ name: "FABRIC_ADDR", value: ":8188" });
+  const conflict = await invoke(dualListener);
+  assert.equal(conflict.status, 1, conflict.stdout);
+  assert.ok(conflict.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+});
+
+test("installation CLI rejects other declared Service backend producers", async t => {
+  for (const kind of ["Pod", "StatefulSet", "DaemonSet", "ReplicaSet", "ReplicationController", "Job", "CronJob", "Endpoints", "EndpointSlice"]) await t.test(kind, async () => {
+    const list = workedInstallation();
+    const template = structuredClone(deployment(list, "workspace").spec.template);
+    template.spec.containers = [{ name: "foreign", image: "example.invalid/foreign:1" }];
+    const metadata = { name: "foreign-backend", namespace: "installation" };
+    if (kind === "Pod") list.items.push({ apiVersion: "v1", kind, metadata: { ...metadata, labels: template.metadata.labels }, spec: template.spec });
+    else if (kind === "Endpoints") list.items.push({ apiVersion: "v1", kind, metadata: { ...metadata, name: "workspace-rpc" }, subsets: [{ addresses: [{ ip: "192.0.2.1" }], ports: [{ port: 8184 }] }] });
+    else if (kind === "EndpointSlice") list.items.push({ apiVersion: "discovery.k8s.io/v1", kind, metadata: { ...metadata, labels: { "kubernetes.io/service-name": "workspace-rpc" } }, addressType: "IPv4", endpoints: [{ addresses: ["192.0.2.1"] }], ports: [{ port: 8184 }] });
+    else list.items.push({ apiVersion: ["Job", "CronJob"].includes(kind) ? "batch/v1" : kind === "ReplicationController" ? "v1" : "apps/v1", kind, metadata,
+      spec: kind === "CronJob" ? { schedule: "* * * * *", jobTemplate: { spec: { template } } } : { template } });
+    const result = await invoke(list);
+    assert.equal(result.status, 1, result.stdout);
+    assert.ok(result.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+    assert.deepEqual(result.report.communication.edges, []);
+  });
+  const list = workedInstallation();
+  list.items.push({ apiVersion: "v1", kind: "Pod", metadata: { name: "unrelated", namespace: "installation", labels: { unit: "other" } }, spec: { containers: [{ name: "foreign", image: "example.invalid/foreign:1" }] } });
+  list.items.push({ apiVersion: "apps/v1", kind: "StatefulSet", metadata: { name: "other-namespace", namespace: "other" }, spec: { template: structuredClone(deployment(list, "workspace").spec.template) } });
+  const result = await invoke(list);
+  assert.equal(result.status, 0, result.stdout);
+});
+
+function withLiveWorkspaceBackends() {
+  const list = workedInstallation();
+  const target = deployment(list, "workspace");
+  target.metadata.uid = "workspace-deployment-uid";
+  const reference = (resource: any) => ({ apiVersion: resource.apiVersion, kind: resource.kind, name: resource.metadata.name, uid: resource.metadata.uid, controller: true });
+  const replicaSet = { apiVersion: "apps/v1", kind: "ReplicaSet", metadata: { name: "workspace-revision", namespace: "installation", uid: "workspace-replicaset-uid", ownerReferences: [reference(target)] }, spec: { template: structuredClone(target.spec.template) } };
+  const pod = { apiVersion: "v1", kind: "Pod", metadata: { ...structuredClone(target.spec.template.metadata), name: "workspace-pod", namespace: "installation", uid: "workspace-pod-uid", ownerReferences: [reference(replicaSet)] }, spec: structuredClone(target.spec.template.spec), status: { podIP: "192.0.2.1", podIPs: [{ ip: "192.0.2.1" }, { ip: "2001:db8::1" }] } };
+  const service = list.items.find(item => item.kind === "Service" && item.metadata.name === "workspace-rpc");
+  service.metadata.uid = "workspace-service-uid";
+  const targetRef = { apiVersion: "v1", kind: "Pod", name: pod.metadata.name, namespace: "installation", uid: pod.metadata.uid };
+  const endpoints = { apiVersion: "v1", kind: "Endpoints", metadata: { name: service.metadata.name, namespace: "installation" }, subsets: [{ addresses: [{ ip: "192.0.2.1", targetRef }], ports: [{ name: "rpc", port: 8184 }] }] };
+  const slice = { apiVersion: "discovery.k8s.io/v1", kind: "EndpointSlice", metadata: { name: "workspace-slice", namespace: "installation", labels: { "kubernetes.io/service-name": service.metadata.name }, ownerReferences: [reference(service)] }, addressType: "IPv6", endpoints: [{ addresses: ["2001:db8::1"], targetRef }], ports: [{ name: "rpc", port: 8184 }] };
+  list.items.push(replicaSet, pod, endpoints, slice);
+  return { list, target, replicaSet, pod, service, endpoints, slice };
+}
+
+test("installation CLI accepts live replicas only through exact controller and endpoint identities", async t => {
+  const live = withLiveWorkspaceBackends();
+  const success = await invoke(live.list);
+  assert.equal(success.status, 0, success.stdout);
+  assert.equal(success.report.communication.edges.length, 46);
+  const cases: [string, (fixture: ReturnType<typeof withLiveWorkspaceBackends>) => void][] = [
+    ["stale Deployment UID", ({ target }) => { target.metadata.uid = "replaced-deployment"; }],
+    ["stale ReplicaSet UID", ({ replicaSet }) => { replicaSet.metadata.uid = "replaced-replicaset"; }],
+    ["unmanaged Pod", ({ pod }) => { pod.metadata.ownerReferences = []; }],
+    ["non-controller reference", ({ pod }) => { pod.metadata.ownerReferences[0].controller = false; }],
+    ["conflicting controller references", ({ pod }) => { pod.metadata.ownerReferences.push(structuredClone(pod.metadata.ownerReferences[0])); }],
+    ["foreign ReplicaSet", ({ replicaSet }) => { replicaSet.metadata.ownerReferences[0].name = "other-deployment"; }],
+    ["unselected endpoint Pod", ({ pod }) => { pod.metadata.labels.unit = "foreign"; }],
+    ["stale endpoint Pod UID", ({ endpoints }) => { endpoints.subsets[0].addresses[0].targetRef.uid = "replaced-pod"; }],
+    ["wrong endpoint namespace", ({ endpoints }) => { endpoints.subsets[0].addresses[0].targetRef.namespace = "other"; }],
+    ["forged endpoint address", ({ endpoints }) => { endpoints.subsets[0].addresses[0].ip = "192.0.2.99"; }],
+    ["forged slice address", ({ slice }) => { slice.endpoints[0].addresses[0] = "2001:db8::99"; }],
+    ["stale slice Service UID", ({ service }) => { service.metadata.uid = "replaced-service"; }],
+    ["wrong endpoint port", ({ endpoints }) => { endpoints.subsets[0].ports[0].port = 9999; }],
+    ["wrong slice port", ({ slice }) => { slice.ports[0].port = 9999; }]
+  ];
+  for (const [name, change] of cases) await t.test(name, async () => {
+    const fixture = withLiveWorkspaceBackends();
+    change(fixture);
+    const result = await invoke(fixture.list);
+    assert.equal(result.status, 1, result.stdout);
+    assert.ok(result.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+    assert.deepEqual(result.report.communication.edges, []);
+  });
+});
+
 
 test("installation CLI rejects malformed inputs with a sanitized consumable report", async () => {
   for (const manifest of [null, {}, { kind: "List", items: [] }, { apiVersion: "v1", kind: "List", items: "bad" },
