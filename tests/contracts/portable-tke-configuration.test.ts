@@ -164,6 +164,15 @@ test("managed-TKE portable bundle resolves the runtime inputs and fails closed w
   const root = await mkdtemp(join(tmpdir(), "opl-cloud-managed-tke-"));
   try {
     await prepareManagedTKEComposeFixture(root);
+    const releaseIdentity = {
+      OPL_RELEASE_SHA: "1".repeat(40),
+      OPL_RELEASE_TREE: "2".repeat(40)
+    };
+    let fixtureEnvironment = await readFile(join(root, "opl-cloud.env"), "utf8");
+    for (const [name, value] of Object.entries(releaseIdentity)) {
+      fixtureEnvironment = fixtureEnvironment.replace(new RegExp(`^${name}=.*$`, "m"), `${name}=${value}`);
+    }
+    await writeFile(join(root, "opl-cloud.env"), fixtureEnvironment);
     const resolved = composeConfig(root, "opl-cloud.env", "--format", "json");
     assert.equal(resolved.error, undefined);
     assert.equal(resolved.status, 0, [resolved.stdout, resolved.stderr].filter(Boolean).join("\n"));
@@ -192,9 +201,12 @@ test("managed-TKE portable bundle resolves the runtime inputs and fails closed w
     assert.equal(controlPlaneEnvironment.OPL_WORKSPACE_LAUNCH_WORKER_ENABLED, "1");
     assert.equal(controlPlaneEnvironment.OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED, "1");
     assert.equal(controlPlaneEnvironment.OPL_MONTHLY_BILLING_WORKER_ENABLED, "1");
+    for (const [name, value] of Object.entries(releaseIdentity)) {
+      assert.equal(controlPlaneEnvironment[name], value, `${name} must reach the managed workers unchanged`);
+    }
 
     const environment = await readFile(join(root, "opl-cloud.env"), "utf8");
-    for (const name of Object.keys(inputs)) {
+    for (const name of Object.keys({ ...inputs, ...releaseIdentity })) {
       for (const replacement of ["", `${name}=\n`]) {
         const missingPath = join(root, "opl-cloud.missing.env");
         await writeFile(missingPath, environment.replace(new RegExp(`^${name}=.*\\n`, "m"), replacement), { mode: 0o600 });
