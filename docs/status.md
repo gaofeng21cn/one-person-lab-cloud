@@ -17,6 +17,20 @@ Instance installation, or a Product Release. The target boundary is in
 [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Team Workspace Transaction Reads (2026-10-16)
+
+Cloud now exposes the Gateway's original Workspace charge/refund records through
+the BFF and Workspace detail page. The live session's Tenant and owner/admin role
+bind every query; members and other Tenants cannot read the records. Retiring a
+wallet binding or deleting a Workspace does not erase its financial history.
+The detail view preserves original amounts, statuses, references, plan-change
+and coverage fields. It is not a complete Ledger receipt reader.
+
+The owner's independent 14-UTC-day trend uses original confirmation time, across
+all matching rows rather than the displayed page. Requested and unknown amounts
+stay separate from confirmed charges/refunds. Local PostgreSQL, BFF and browser
+checks prove source behavior; no installed data or business settlement was read.
+
 ## Product Communication Installation Admission (2026-10-16)
 
 The portable topology now declares the required owner communication graph and

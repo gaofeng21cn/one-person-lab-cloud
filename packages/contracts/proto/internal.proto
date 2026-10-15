@@ -2293,6 +2293,7 @@ service ServeProductService {
 
 service GatewayProductService {
  rpc ListWorkspaceTransactions(ListWorkspaceTransactionsRpcRequest) returns (WalletOperationPage);
+ rpc GetWorkspaceTransactionTrend(GetWorkspaceTransactionTrendRpcRequest) returns (WorkspaceTransactionTrend);
  rpc GetWallet(GetWalletRpcRequest) returns (Wallet);
  rpc ListUsage(ListUsageRpcRequest) returns (UsagePage);
  rpc GetUsageSummary(GetUsageSummaryRpcRequest) returns (UsageSummary);
@@ -3334,6 +3335,7 @@ enum AuthorizationActionEnum {
 AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES = 153;
  AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY = 154;
  AUTHORIZATION_ACTION_ENUM_GETSELFUSEREXTERNALBINDING = 155;
+ AUTHORIZATION_ACTION_ENUM_GETWORKSPACETRANSACTIONTREND = 156;
 }
 
 enum ServiceIdentityEnum {
@@ -4412,3 +4414,25 @@ enum WorkspaceAccessVerdict { WORKSPACE_ACCESS_VERDICT_UNSPECIFIED = 0; WORKSPAC
 message ReadWorkspaceAccessRequest { string workspace_id = 1; }
 message WorkspaceAccessDecision { string workspace_id = 1; WorkspaceAccessVerdict verdict = 2; }
 service WorkspaceAccessReadback { rpc ReadWorkspaceAccess(ReadWorkspaceAccessRequest) returns (WorkspaceAccessDecision); }
+
+message WorkspaceTransactionTrendDay {
+ string date = 1;
+ int64 confirmed_charge_usd_micros = 2;
+ int64 confirmed_refund_usd_micros = 3;
+}
+
+message WorkspaceTransactionTrend {
+ string workspace_id = 1;
+ google.protobuf.Timestamp period_start = 2;
+ google.protobuf.Timestamp period_end = 3;
+ repeated WorkspaceTransactionTrendDay days = 4;
+ int64 unknown_charge_usd_micros = 5;
+ int64 unknown_refund_usd_micros = 6;
+ int64 requested_charge_usd_micros = 7;
+ int64 requested_refund_usd_micros = 8;
+}
+
+message GetWorkspaceTransactionTrendRpcRequest {
+ CallContext context = 1;
+ string workspace_id = 2;
+}

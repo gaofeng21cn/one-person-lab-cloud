@@ -1887,3 +1887,89 @@ for (const result of ["unavailable", "replacement", "applied_replacement"] as co
     }
   });
 }
+
+test("Cloud Workspace transactions preserve exact money, roles, paging and navigation freshness", { timeout: 90_000 }, async () => {
+  const demo = await startCloudConsoleDemo();
+  const browser = await launchBrowser({ headless: true });
+  const heldPage = deferred();
+  const releasePage = deferred();
+  let role = "owner";
+  let denied = false;
+  let holdNext = false;
+  let transactionReads = 0;
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    const workspace = (id: string) => ({ id, name: `Team ${id}`, capabilityVersionId: "cap-1", computePlanId: "compute-1", storagePlanId: "storage-1", deliveryModel: "agent_saas", status: "active", resourceReadiness: "ready", applicationAvailability: "available", createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z", version: "1" });
+    const transaction = (id: string, workspaceId: string) => ({ id, workspaceId, kind: "refund", status: "unknown", amountUSDMicros: "9007199254740993", originalChargeOperationId: "original-charge-1", createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-02T00:00:00Z" });
+    await page.route("**/api/v2/**", async (route) => {
+      const url = new URL(route.request().url());
+      const path = url.pathname;
+      if (path === "/api/v2/auth/session") return route.fulfill({ json: { actorId: "user-customer", tenantId: "tenant-1", role, displayName: "Team member", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
+      if (path === "/api/v2/workspaces") return route.fulfill({ json: { items: [workspace("ws-a"), workspace("ws-b")] } });
+      if (path === "/api/v2/workspaces/ws-a" || path === "/api/v2/workspaces/ws-b") return route.fulfill({ json: workspace(path.endsWith("ws-a") ? "ws-a" : "ws-b") });
+      if (path.endsWith("/transactions/trend")) {
+        if (denied) return route.fulfill({ status: 403, json: { code: "FORBIDDEN", message: "denied" } });
+        const workspaceId = path.includes("ws-b") ? "ws-b" : "ws-a";
+        const start = Date.parse("2026-10-03T00:00:00Z");
+        return route.fulfill({ json: { workspaceId, periodStart: "2026-10-03T00:00:00Z", periodEnd: "2026-10-16T12:00:00Z", days: Array.from({ length: 14 }, (_, index) => ({ date: new Date(start + index * 86400000).toISOString().slice(0, 10), confirmedChargeUSDMicros: workspaceId === "ws-a" && index === 12 ? "9007199254740992" : "0", confirmedRefundUSDMicros: "0" })), unknownChargeUSDMicros: "7", unknownRefundUSDMicros: "3", requestedChargeUSDMicros: "11", requestedRefundUSDMicros: "2" } });
+      }
+      if (path.endsWith("/transactions")) {
+        transactionReads += 1;
+        assert.equal(route.request().method(), "GET");
+        assert.equal(url.searchParams.get("limit"), "25");
+        if (denied) return route.fulfill({ status: 403, json: { code: "FORBIDDEN", message: "denied" } });
+        if (path.includes("ws-b")) return route.fulfill({ json: { items: [] } });
+        if (url.searchParams.get("cursor")) {
+          assert.equal(url.searchParams.get("cursor"), "page-two");
+          if (holdNext) { heldPage.resolve(); await releasePage.promise; }
+          return route.fulfill({ json: { items: [transaction("stale-refund", "ws-a")] } }).catch(() => undefined);
+        }
+        return route.fulfill({ json: { items: [transaction("first-refund", "ws-a")], nextCursor: "page-two" } });
+      }
+      return route.fulfill({ status: 503, json: { code: "DEPENDENCY_UNAVAILABLE", message: "not part of this fixture" } });
+    });
+    await loginCloudFixture(page, demo.origin);
+    await page.goto(`${demo.origin}/console/workspaces/ws-a`, { waitUntil: "domcontentloaded" });
+    const panel = page.getByRole("region", { name: "工作空间交易记录" });
+    await panel.getByText("$9,007,199,254.740993", { exact: true }).waitFor();
+    await panel.getByText("结果未确认", { exact: true }).waitFor();
+    const trend = page.getByRole("region", { name: "最近14天结算趋势" });
+    await trend.getByText("$9,007,199,254.740992", { exact: true }).waitFor();
+    await trend.getByText("本窗口创建、结果未知的交易：扣款 $0.000007；退款 $0.000003。", { exact: true }).waitFor();
+    await panel.getByText("查看交易详情", { exact: true }).click();
+    await panel.getByText("original-charge-1", { exact: true }).waitFor();
+    await panel.getByRole("button", { name: "下一页交易" }).click();
+    await panel.getByRole("button", { name: "返回第一页" }).waitFor();
+    await panel.getByText("查看交易详情", { exact: true }).click();
+    await panel.getByText("stale-refund", { exact: true }).waitFor();
+    await panel.getByRole("button", { name: "返回第一页" }).click();
+    await panel.getByRole("button", { name: "下一页交易" }).waitFor();
+    holdNext = true;
+    await panel.getByRole("button", { name: "下一页交易" }).click();
+    await heldPage.promise;
+    await page.evaluate(() => { history.pushState({}, "", "/console/workspaces/ws-b"); window.dispatchEvent(new PopStateEvent("popstate")); });
+    await page.getByRole("heading", { name: "Team ws-b", exact: true }).waitFor();
+    await panel.getByText("暂无交易记录。", { exact: true }).waitFor();
+    releasePage.resolve();
+    assert.equal(await panel.getByText("$9,007,199,254.740993", { exact: true }).count(), 0);
+    denied = true;
+    await panel.getByRole("button", { name: "刷新交易" }).click();
+    await panel.getByText("当前账号无权查看团队交易。", { exact: true }).waitFor();
+    await trend.getByText("当前账号无权查看团队结算趋势。", { exact: true }).waitFor();
+    assert.equal(await panel.getByRole("table").count(), 0);
+    role = "member";
+    const beforeMember = transactionReads;
+    await page.reload({ waitUntil: "networkidle" });
+    await panel.getByText("团队交易仅向本团队管理员和所有者开放。", { exact: true }).waitFor();
+    assert.equal(transactionReads, beforeMember, "member UI must not request team financial records");
+    role = "admin";
+    denied = false;
+    await page.reload({ waitUntil: "networkidle" });
+    await panel.getByText("暂无交易记录。", { exact: true }).waitFor();
+    assert.ok(transactionReads > beforeMember, "admin must read the owner route");
+  } finally {
+    releasePage.resolve();
+    await browser.close();
+    await demo.close();
+  }
+});

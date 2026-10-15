@@ -2102,6 +2102,7 @@
         "tenant.operations",
         "tenant.outbox_deliveries",
         "tenant.outbox_events",
+        "tenant.tenant_repository_bindings",
         "workspace.idempotency_records",
         "workspace.inbox_events",
         "workspace.model_configurations",
@@ -3075,6 +3076,7 @@
         "getSubscription",
         "getWallet",
         "getWorkspace",
+        "getWorkspaceTransactionTrend",
         "listWorkspaceTransactions",
         "renewWorkspace",
         "updateRenewalSettings"
@@ -3221,7 +3223,17 @@
         "Workspace.status",
         "Workspace.storagePlanId",
         "Workspace.updatedAt",
-        "Workspace.version"
+        "Workspace.version",
+        "WorkspaceTransactionTrend.periodEnd",
+        "WorkspaceTransactionTrend.periodStart",
+        "WorkspaceTransactionTrend.requestedChargeUSDMicros",
+        "WorkspaceTransactionTrend.requestedRefundUSDMicros",
+        "WorkspaceTransactionTrend.unknownChargeUSDMicros",
+        "WorkspaceTransactionTrend.unknownRefundUSDMicros",
+        "WorkspaceTransactionTrend.workspaceId",
+        "WorkspaceTransactionTrendDay.confirmedChargeUSDMicros",
+        "WorkspaceTransactionTrendDay.confirmedRefundUSDMicros",
+        "WorkspaceTransactionTrendDay.date"
       ],
       "tables": [
         "build.idempotency_records",
@@ -4277,6 +4289,7 @@
         "serve.outbox_events",
         "tenant.idempotency_records",
         "tenant.outbox_events",
+        "tenant.tenant_repository_bindings",
         "tenant.tenants",
         "workspace.idempotency_records",
         "workspace.operations",

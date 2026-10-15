@@ -63,7 +63,7 @@ func TestGeneratedPolicyCoversAssignedOwners(t *testing.T) {
 		api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG: 14,
 		api.OwnerEnum_OWNER_ENUM_SERVE:            5,
 		api.OwnerEnum_OWNER_ENUM_WORKSPACE:        18,
-		api.OwnerEnum_OWNER_ENUM_GATEWAY:          8,
+		api.OwnerEnum_OWNER_ENUM_GATEWAY:          9,
 	} {
 		if counts[owner] != want {
 			t.Fatalf("owner %v has %d policy rows, expected %d", owner, counts[owner], want)

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "e0a425285db26d2f8eb632d21664af3ef800357d",
+  "sourceSHA": "d74984bf3943e30dd5063c187a0cbe6fa4a93bc2",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -518,6 +518,7 @@
         "getSelfUserExternalBinding",
         "getUsageSummary",
         "getWallet",
+        "getWorkspaceTransactionTrend",
         "listGatewayKeys",
         "listModels",
         "listRechargeRecords",
@@ -538,6 +539,7 @@
       ],
       "rpcImplements": [
         "GatewayProductService.ListWorkspaceTransactions",
+        "GatewayProductService.GetWorkspaceTransactionTrend",
         "GatewayProductService.GetWallet",
         "GatewayProductService.ListUsage",
         "GatewayProductService.GetUsageSummary",
@@ -2187,6 +2189,7 @@
         "getWorkspace",
         "getWorkspaceDeletion",
         "getWorkspaceModels",
+        "getWorkspaceTransactionTrend",
         "listComputePlans",
         "listGatewayKeys",
         "listPlanChanges",
@@ -3277,6 +3280,9 @@
       "W17"
     ],
     "GatewayProductService.ListWorkspaceTransactions": [
+      "W04"
+    ],
+    "GatewayProductService.GetWorkspaceTransactionTrend": [
       "W04"
     ],
     "GatewayProductService.GetWallet": [
