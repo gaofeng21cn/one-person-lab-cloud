@@ -66,6 +66,23 @@ HTTP surface. Actual Instance wiring, current-revision CI and same-Candidate
 customer acceptance remain separate obligations. Other #840 financial/Gateway
 reads and the Key lifecycle/model-update issues remain open.
 
+## Installation Communication Source Admission (2026-10-16)
+
+The #884 source slice extends the existing production-manifest CLI with a
+Kubernetes installation mode consuming the Product topology's explicit migrated
+communication requirements. It covers Serve-to-Workspace and the independent
+Build-to-Capability relationship. Synthetic public-CLI tests reproduce the
+previous `manifest_path_required` refusal and exercise valid installations,
+missing/conflicting address, Token, peer and network requirements, ConfigMap
+precedence, listener/Service binding and egress refusal. The logical environment
+validation mode remains separate and retains its existing tests.
+
+These are local declaration/Secret-fixture checks. They establish neither a live
+authenticated owner connection nor an installed Candidate. Instance Preflight and
+Deploy adoption, current-revision CI and exact-Candidate protected readback retain
+their own evidence. Other communication relationships are outside this initial
+migration and are not asserted covered by this CLI mode.
+
 ## Local Qualification Repairs (2026-10-13)
 
 PostgreSQL scratch-root recovery and optional Workspace-fixture construction

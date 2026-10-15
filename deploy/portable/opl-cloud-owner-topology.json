@@ -458,6 +458,32 @@
    ]
   }
  ],
+ "communicationCoverage": {
+  "scope": "partial",
+  "description": "Only Serve-to-Workspace application access and Build-to-Capability RPC requirements are migrated here. The array is not a full communication graph: all other owner RPC edges, including CloudIdentity, Gateway deployment-unit aliases and Fabric coordination aliases, are not migrated. HTTP BFF-to-Control Plane communication is not migrated. An installed caller requires its declared target; absence of an edge from this array does not declare that communication optional or unnecessary."
+ },
+ "communicationRequirements": [
+  {
+   "id": "serve-workspace-access",
+   "caller": "serve",
+   "target": "workspace",
+   "callerPrincipal": "serve",
+   "targetPrincipal": "workspace",
+   "addressEnv": "OPL_WORKSPACE_ADDR",
+   "tokenEnv": "OPL_WORKSPACE_TOKEN",
+   "peerTokensEnv": "OPL_WORKSPACE_PEER_TOKENS"
+  },
+  {
+   "id": "build-capability",
+   "caller": "build",
+   "target": "capability",
+   "callerPrincipal": "build",
+   "targetPrincipal": "capability",
+   "addressEnv": "OPL_CAPABILITY_ADDR",
+   "tokenEnv": "OPL_CAPABILITY_TOKEN",
+   "peerTokensEnv": "OPL_CAPABILITY_PEER_TOKENS"
+  }
+ ],
  "consoleBundle": {
   "buildArg": "VITE_CONSOLE_IDENTITY",
   "values": [

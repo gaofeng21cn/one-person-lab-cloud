@@ -583,3 +583,105 @@ test("each peer allowlist names exactly the callers that reach that owner", asyn
       `${env} must admit exactly the callers that dial ${owner}, and no peer nothing dials`);
   }
 });
+
+
+type CommunicationRequirement = {
+  id: string;
+  caller: string;
+  target: string;
+  callerPrincipal: string;
+  targetPrincipal: string;
+  addressEnv: string;
+  tokenEnv: string;
+  peerTokensEnv: string;
+};
+type CommunicationTopology = Topology & {
+  communicationRequirements: CommunicationRequirement[];
+  communicationCoverage: { scope: string; description: string };
+};
+
+// These two migrated relationships are installation requirements with real
+// startup callers. Do not reuse dialTargetsFromSource: finding an environment
+// spelling does not prove a required RPC connection, and optional registrations
+// elsewhere are outside this first communication-admission slice.
+test("communication requirements expose only the two migrated RPC relationships", async () => {
+  const topology = JSON.parse(await readFile(topologyPath, "utf8")) as CommunicationTopology;
+  assert.ok(Array.isArray(topology.communicationRequirements), "Product must declare communication requirements");
+  assert.deepEqual(topology.communicationRequirements.map((requirement) => requirement.id).sort(),
+    ["build-capability", "serve-workspace-access"]);
+  assert.equal(topology.communicationCoverage.scope, "partial");
+  assert.match(topology.communicationCoverage.description, /Serve.*Workspace/);
+  assert.match(topology.communicationCoverage.description, /Build.*Capability/);
+  assert.match(topology.communicationCoverage.description, /HTTP BFF.*Control Plane.*not migrated/);
+  assert.match(topology.communicationCoverage.description, /other.*not migrated/);
+  for (const requirement of topology.communicationRequirements) {
+    assert.deepEqual(Object.keys(requirement).sort(),
+      ["id", "caller", "target", "callerPrincipal", "targetPrincipal", "addressEnv", "tokenEnv", "peerTokensEnv"].sort());
+    assert.match(requirement.id, /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/);
+    assert.ok(topology.processes.some((process) => process.service === requirement.caller));
+    const target = topology.processes.find((process) => process.service === requirement.target);
+    assert.ok(target, `target process for ${requirement.id} must exist`);
+    assert.equal(requirement.peerTokensEnv, target.peerTokensEnv);
+  }
+});
+
+test("serve-workspace-access is anchored to the application entry's real Workspace RPC caller", async () => {
+  const topology = JSON.parse(await readFile(topologyPath, "utf8")) as CommunicationTopology;
+  const requirement = topology.communicationRequirements?.find((entry) => entry.id === "serve-workspace-access");
+  assert.ok(requirement, "Serve's required Workspace access read must be declared");
+  const [entrypoint, wiring, entitlement, access, registration, workspaceStartup] = await Promise.all([
+    readFile("services/serve/cmd/server/main.go", "utf8"),
+    readFile("services/serve/internal/delivery/service.go", "utf8"),
+    readFile("services/serve/internal/delivery/workspace_entitlement.go", "utf8"),
+    readFile("services/workspace/internal/launch/access.go", "utf8"),
+    readFile("services/workspace/internal/launch/service.go", "utf8"),
+    readFile("services/workspace/cmd/server/main.go", "utf8"),
+  ]);
+  const caller = entrypoint.match(/ownerservice\.LoadConfig\(os\.Getenv, ownerservice\.(Owner\w+),/);
+  assert.ok(caller);
+  assert.match(entrypoint, /return delivery\.Configure\(server, database, config\)/);
+  // Capture the address, target identity and token from the actual connection
+  // block, and require that same connection to feed the typed access client.
+  const connection = wiring.match(/if address := strings\.TrimSpace\(os\.Getenv\("([A-Z_]+)"\)\); address != "" \{\s*options, err := config\.TLS\.DialOptions\(config\.Owner\.Service\(\), owneridentity\.DeploymentUnitTransportPrincipal\(owneridentity\.(Workspace)\), os\.Getenv\("([A-Z_]+)"\)\)[\s\S]*?conn, err := grpc\.NewClient\(address, options\.\.\.\)[\s\S]*?accessEntry\.Entitlement = WorkspaceEntitlement\{Client: api\.NewWorkspaceAccessReadbackClient\(conn\)\}/);
+  assert.ok(connection, "the declared binding must construct Serve's Workspace access client");
+  const names = await ownerNameByConstant();
+  assert.equal(requirement.caller, "serve");
+  assert.equal(requirement.callerPrincipal, names.get(caller[1]));
+  assert.equal(requirement.target, "workspace");
+  assert.equal(requirement.targetPrincipal, names.get(`Owner${connection[2]}`));
+  assert.equal(requirement.addressEnv, connection[1]);
+  assert.equal(requirement.tokenEnv, connection[3]);
+  assert.match(workspaceStartup, /ownerservice\.LoadConfig\(os\.Getenv, ownerservice\.OwnerWorkspace,/);
+  assert.match(registration, /api\.RegisterWorkspaceAccessReadbackServer\(g, s\)/);
+  assert.match(access, /peer != owneridentity\.Serve\.Service\(\)/);
+  assert.match(entitlement, /g\.Client\.ReadWorkspaceAccess\(ctx, &api\.ReadWorkspaceAccessRequest\{WorkspaceId: workspaceID\}\)/);
+  assert.match(entitlement, /if g\.Client == nil \{\s*return "", errors\.New\("Workspace entitlement owner unavailable"\)/);
+});
+
+test("build-capability is anchored to Build's required typed Capability clients and transport token", async () => {
+  const topology = JSON.parse(await readFile(topologyPath, "utf8")) as CommunicationTopology;
+  const requirement = topology.communicationRequirements?.find((entry) => entry.id === "build-capability");
+  assert.ok(requirement, "Build's required Capability connection must be declared");
+  const [entrypoint, targetStartup] = await Promise.all([
+    readFile("services/build/cmd/server/main.go", "utf8"),
+    readFile("services/capability/cmd/server/main.go", "utf8"),
+  ]);
+  const caller = entrypoint.match(/ownerservice\.LoadConfig\(os\.Getenv, ownerservice\.(Owner\w+),/);
+  const connection = entrypoint.match(/capabilityConn, err := dialPeer\(config, tls, owneridentity\.(\w+), os\.Getenv\("([A-Z_]+)"\)\)\s*if err != nil \{\s*return err\s*\}/);
+  assert.ok(caller);
+  assert.ok(connection, "Build must construct and require the connection before its typed clients");
+  assert.match(entrypoint, /api\.NewCapabilityCoordinationClient\(capabilityConn\), api\.NewCapabilityProductServiceClient\(capabilityConn\)/);
+  assert.match(entrypoint, /func dialPeer\(config ownerservice\.Config, tls owneridentity\.TLSConfig, target owneridentity\.Owner, address string\)[\s\S]*?if address == "" \{\s*return nil, fmt\.Errorf\("%s address is required", target\)\s*\}\s*token := os\.Getenv\("OPL_" \+ strings\.ToUpper\(target\.String\(\)\) \+ "_TOKEN"\)\s*options, err := tls\.DialOptions\(config\.Owner\.Service\(\), target\.Service\(\), token\)[\s\S]*?return grpc\.NewClient\(address, options\.\.\.\)/);
+  const names = await ownerNameByConstant();
+  const target = names.get(`Owner${connection[1]}`);
+  assert.ok(target);
+  assert.equal(requirement.caller, "build");
+  assert.equal(requirement.callerPrincipal, names.get(caller[1]));
+  assert.equal(requirement.target, "capability");
+  assert.equal(requirement.targetPrincipal, target);
+  assert.equal(requirement.addressEnv, connection[2]);
+  // This follows the helper's proven token construction for its actual typed
+  // target argument, rather than inferring a relationship from an env prefix.
+  assert.equal(requirement.tokenEnv, `OPL_${target.toUpperCase()}_TOKEN`);
+  assert.match(targetStartup, /ownerservice\.LoadConfig\(os\.Getenv, ownerservice\.OwnerCapability,/);
+});

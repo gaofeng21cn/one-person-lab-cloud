@@ -267,3 +267,57 @@ and `stable` tags are not publication or rollback evidence.
 Serve application access requires the Workspace peer read: set
 `OPL_WORKSPACE_ADDR` and `OPL_WORKSPACE_TOKEN`, and include `serve` in
 `OPL_WORKSPACE_PEER_TOKENS`. An absent/unreadable verdict never permits a route.
+
+### Candidate installation communication admission
+
+The selected Product checkout supplies `communicationRequirements` in the
+existing owner topology declaration. The initial migrated relationships are
+Serve's Workspace access read and Build's Capability catalog call; the declaration
+explicitly identifies this coverage. Other communication paths retain their
+existing installation checks. This is declaration admission, not proof of a live
+TLS session or customer operation.
+
+The existing public CLI retains `--manifest` for logical environment validation.
+For a Kubernetes installation, use Node 24 and the CLI from the exact selected
+Candidate checkout:
+
+```bash
+node tools/validate-production-manifest.ts \
+  --installation-manifest /protected/rendered-installation.json \
+  --installation-bindings /protected/installation-bindings.json \
+  --installation-secrets /protected/installation-secrets.json
+```
+
+The manifest is a Kubernetes `List` of Deployments, Services, ConfigMaps and
+NetworkPolicies. Bindings use this shape (names and namespace are supplied by the
+installer, not Product defaults):
+
+```json
+{
+  "schemaVersion": 1,
+  "namespace": "example",
+  "processes": {
+    "serve": { "deployment": "example-serve", "container": "serve" },
+    "workspace": { "deployment": "example-workspace", "container": "workspace" },
+    "build": { "deployment": "example-build", "container": "build" },
+    "capability": { "deployment": "example-capability", "container": "capability" }
+  }
+}
+```
+
+Each binding names the actual Product executable. A process may override its
+namespace; `clusterDomain` defaults to Kubernetes' `cluster.local`. Admission
+resolves ConfigMap/environment precedence, Service selectors, TCP/named ports
+and the target listener. It checks caller Token Secret references against the
+actual target peer-allowlist material, and applies additive ingress and egress
+NetworkPolicy rules. IP-block-only rules cannot establish a Pod relationship
+before Pod IP assignment and do not qualify it through this seam.
+
+The Secret input is a separate Kubernetes `List` of existing or planned `Secret`
+objects with `data` or `stringData`. Keep it in protected temporary storage with
+restricted permissions; never publish it or attach it to an Issue, PR, artifact
+or receipt. The validator emits only Product requirement IDs and fixed check
+codes. It performs no network request, Secret provisioning, rollout or business
+command. The Instance remains responsible for Secret custody, TLS material,
+network realization and fresh authenticated runtime readback. A historical
+Candidate without this interface cannot acquire it from a later Product checkout.
