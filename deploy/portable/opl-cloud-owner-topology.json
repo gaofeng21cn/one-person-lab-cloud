@@ -426,13 +426,15 @@
     "OPL_SUB2API_ADMIN_PASSWORD",
     "OPL_SUB2API_USER_EMAIL",
     "OPL_SUB2API_USER_PASSWORD",
-    "OPL_SUB2API_REQUEST_TIMEOUT_MS"
+    "OPL_SUB2API_REQUEST_TIMEOUT_MS",
+    "OPL_CONTROL_PLANE_BFF_TOKEN"
    ],
    "registers": [
     "legacy Control Plane HTTP surface"
    ],
    "notes": [
-    "Migration source, not a permanent second writer; it also serves the Console static bundle."
+    "Migration source, not a permanent second writer; it also serves the Console static bundle.",
+    "Cloud announcement reads use the authenticated BFF-only typed HTTP boundary; Control Plane revalidates its Cloud session with Gateway under the control_plane transport principal and retains publication/ACK persistence."
    ]
   },
   {
@@ -458,7 +460,9 @@
     "OPL_RESOURCE_CATALOG_TOKEN",
     "OPL_GATEWAY_TOKEN",
     "OPL_BFF_ADDR",
-    "OPL_PUBLIC_URL"
+    "OPL_PUBLIC_URL",
+    "OPL_CONTROL_PLANE_URL",
+    "OPL_CONTROL_PLANE_TOKEN"
    ],
    "registers": [
     "Console BFF REST surface"
@@ -560,6 +564,14 @@
     ],
     "browserFacing": false,
     "evidence": "services/ledger registers GET /readyz for its readiness probe"
+   },
+   {
+    "prefix": "/internal/",
+    "processes": [
+     "control-plane"
+    ],
+    "browserFacing": false,
+    "evidence": "Control Plane registers /internal/cloud/announcements for the authenticated BFF; the original owner revalidates the Cloud session with Gateway."
    }
   ],
   "requirement": "The Console is served from one origin and calls both browser-facing surfaces, so a browser-facing installation routes /api/ to control-plane and /api/v2/ to console-bff on the same public host. An installation that routes only one of them serves a Console whose other half cannot answer."

@@ -511,3 +511,57 @@ test("Customer Announcement session reset admits a new claim and rejects stale c
     await demo.close();
   }
 });
+
+// The browser is real; publication and session responses are isolated fixtures.
+// This verifies the baked cloud caller, including a User without a Tenant,
+// rather than treating a retained login as CloudIdentity acceptance.
+test("Cloud announcements use the BFF with no Tenant and preserve ACK intent", { timeout: 60_000 }, async () => {
+  const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
+  process.env.VITE_CONSOLE_IDENTITY = "cloud";
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await launchBrowser({ headless: true });
+  const target = announcement("cloud-notice", "Cloud announcement without a Tenant");
+  const retained: string[] = [];
+  const ackKeys: string[] = [];
+  let read = false;
+  try {
+    const page = await browser.newPage();
+    await page.route("**/api/**", async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (!path.startsWith("/api/")) return route.continue();
+      if (path.startsWith("/api/announcements")) retained.push(path);
+      if (path === "/api/v2/auth/session") return fulfill(route, {
+        actorId: "cloud-user-with-no-tenant", displayName: "Reader", permissions: [],
+        csrfToken: "cloud-csrf", expiresAt: "2099-01-01T00:00:00Z"
+      });
+      if (path === "/api/v2/announcements" && request.method() === "GET") {
+        const pageSize = Number(new URL(request.url()).searchParams.get("pageSize"));
+        return fulfill(route, announcementPage([{ ...target, read }], pageSize));
+      }
+      if (path === "/api/v2/announcements/cloud-notice/read") {
+        assert.equal(request.method(), "POST");
+        assert.equal(request.headers()["x-csrf-token"], "cloud-csrf");
+        assert.equal(request.headers()["x-opl-csrf"], undefined);
+        const key = request.headers()["idempotency-key"];
+        assert.ok(key);
+        ackKeys.push(key);
+        read = true;
+        return fulfill(route, receipt(target.id));
+      }
+      return fulfill(route, { error: "isolated_owner_unavailable" }, 503);
+    });
+    await page.goto(`${demo.origin}/console/announcements`, { waitUntil: "domcontentloaded" });
+    const card = announcementCard(page, target.title);
+    await card.waitFor({ state: "visible" });
+    await card.getByRole("button", { name: "标记已读", exact: true }).click();
+    await card.getByText("已读", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(ackKeys.length, 1);
+    assert.deepEqual(retained, []);
+  } finally {
+    await browser.close();
+    await demo.close();
+    if (previousIdentity === undefined) delete process.env.VITE_CONSOLE_IDENTITY;
+    else process.env.VITE_CONSOLE_IDENTITY = previousIdentity;
+  }
+});

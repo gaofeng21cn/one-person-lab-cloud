@@ -75,6 +75,22 @@ func (s *memoryTableStore) GetAccount(_ context.Context, id string) (map[string]
 	return cloneMap(row), row != nil, nil
 }
 
+func (s *memoryTableStore) GetAccountBySub2APIUserID(_ context.Context, subjectID int64) (map[string]any, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var match map[string]any
+	for _, row := range s.accounts {
+		subject, ok := positiveIntegerField(row, "sub2apiUserId")
+		if ok && subject == subjectID {
+			if match != nil {
+				return nil, false, errSub2APIAccountMappingConflict
+			}
+			match = row
+		}
+	}
+	return cloneMap(match), match != nil, nil
+}
+
 func (s *memoryTableStore) PageAccounts(_ context.Context, query tablePageQuery) (tablePage, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1059,6 +1075,38 @@ func (s *memoryTableStore) MarkAnnouncementRead(_ context.Context, announcementI
 		"createdAt": readAt, "updatedAt": readAt,
 	}
 	s.announcementReads[id] = row
+	return cloneMap(row), nil
+}
+
+func (s *memoryTableStore) MarkCloudAnnouncementRead(_ context.Context, announcementID, cloudUserID, legacyUserID, readAt string) (map[string]any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	canonical, alias := announcementReadReferences(cloudUserID, legacyUserID)
+	return s.markAnnouncementReadAliases(announcementID, canonical, alias, readAt)
+}
+
+func (s *memoryTableStore) markAnnouncementReadAliases(announcementID, userID, aliasUserID, readAt string) (map[string]any, error) {
+	readTime, ok := optionalAnnouncementTime(readAt)
+	if announcementID == "" || userID == "" || !ok || readTime.IsZero() || !announcementIsActive(s.announcements[announcementID], time.Now().UTC()) {
+		return nil, errAnnouncementNotActive
+	}
+	var rows []map[string]any
+	for _, ref := range []string{userID, aliasUserID} {
+		if ref == "" {
+			continue
+		}
+		if existing := s.announcementReads[announcementReadID(announcementID, ref)]; existing != nil {
+			rows = append(rows, existing)
+		}
+	}
+	row, err := mergedAnnouncementRead(announcementID, userID, readAt, rows)
+	if err != nil {
+		return nil, err
+	}
+	s.announcementReads[stringValue(row["id"])] = cloneMap(row)
+	if aliasUserID != "" {
+		delete(s.announcementReads, announcementReadID(announcementID, aliasUserID))
+	}
 	return cloneMap(row), nil
 }
 

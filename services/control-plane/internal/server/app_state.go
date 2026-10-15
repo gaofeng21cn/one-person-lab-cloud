@@ -30,6 +30,7 @@ type controlPlaneServer struct {
 	store                  StateStore
 	tables                 controlPlaneTableStore
 	sessionCredentials     *SessionCredentialVault
+	cloudAnnouncements     *cloudAnnouncementSource
 	// ponytail: per-process limiter; move to Redis when login traffic spans multiple replicas.
 	loginRateLimits map[string]loginFailure
 	deployment      deploymentProfile

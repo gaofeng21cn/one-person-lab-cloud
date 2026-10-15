@@ -126,11 +126,39 @@ Browser Console
        -> typed gRPC owner APIs: Catalog, Workspace, Capability, Build,
           Runtime Control, Serve and Gateway Integration
        -> Workspace/Serve coordination -> Fabric resource facts and Ledger evidence
+  -> cloud announcements:
+       same-origin Console BFF /api/v2/announcements
+       -> retained Control Plane typed HTTP /internal/cloud/announcements
+       -> Gateway live session + persisted external binding proof
+       -> original publication and ACK store
   -> shared Gateway/Billing and other unmigrated panels, legacy Workspace:
        retained Control Plane /api/*
        -> Sub2API management API: balance, Key/usage, original debit/refund
        -> typed Fabric/Ledger HTTP APIs: retained resource and receipt obligations
 ```
+
+Cloud announcement reads and ACKs use `apps/console-bff/internal/httpapi/announcements.go`
+and the typed HTTP client in `apps/console-bff/internal/clients/announcements.go`.
+The BFF checks the Cloud session and same-origin CSRF for ACKs. Control Plane
+accepts only its independently authenticated BFF peer and revalidates the session
+reference through `GatewayCoordination.GetSelfUserIdentity`, using the
+`control_plane` transport principal. This adds no target data owner or process.
+The original owner resolves the verified external subject against its unique
+Account mapping and reciprocal owner User before reading historical ACKs; email,
+Tenant membership and actor spelling grant no historical authority. Users without
+a retained Account use the same ACK table with an explicit Cloud User reference.
+When an original-owner link becomes available, the same announcement row lock
+folds both references into the original User and preserves the earliest original
+ACK timestamp. Publication/withdrawal and ACK persistence remain in Control Plane.
+
+All valid Cloud Users may read active announcements without a Tenant. The retained
+owner resolves Gateway identity-only session proof; OCI destination readiness
+remains a separate Build qualification and is not required for announcements. Missing
+configuration, identity proof or an unavailable dependency is an explicit failure.
+`deploy/portable/opl-cloud-owner-topology.json` and the environment example declare
+the BFF-to-Control-Plane token and Control Plane's CloudIdentity peer/certificate
+requirements. This source path does not prove an installed Candidate uses that
+wiring; [status](status.md) and [roadmap](roadmap.md) retain that acceptance boundary.
 
 Sub2API is external and remains the only spendable-balance, API-key, routing,
 and request-usage owner. The repository reads those records on demand and does
@@ -1132,3 +1160,10 @@ remain unchanged. Confirmation still comes from a subsequent absence readback,
 and Ledger receipt/refund gates still follow it. These are source behavior facts;
 isolated PostgreSQL worker tests with synthetic owners do not prove provider
 absence, a real Gateway refund, deployment or Instance acceptance.
+
+
+Personal wallet and usage-summary authorization is bound to the live Cloud User,
+including Users without a Tenant and members. The BFF still requests the exact
+session-bound authorization decision; the Gateway reads the User's persisted
+Sub2API mapping. Tenant payment subjects and financial record permissions remain
+separate. This source capability does not prove installed authenticated behavior.

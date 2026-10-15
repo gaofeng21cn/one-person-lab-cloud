@@ -254,11 +254,11 @@ export function getBillingReceipt(receiptId: string, signal?: AbortSignal): Prom
 }
 
 export function getAnnouncements(page = 1, pageSize = 20, signal?: AbortSignal): Promise<SourceEnvelope<AnnouncementPageDTO>> {
-  return sourceGet<AnnouncementPageDTO>(`/api/announcements?${new URLSearchParams({ page: String(page), pageSize: String(pageSize) })}`, signal);
+  return sourceGet<AnnouncementPageDTO>(`${cloudIdentity ? "/api/v2/announcements" : "/api/announcements"}?${new URLSearchParams({ page: String(page), pageSize: String(pageSize) })}`, signal);
 }
 
 export function markAnnouncementRead(announcementId: string, csrfToken: string, idempotencyKey: string): Promise<AnnouncementReadDTO> {
-  return postJson<unknown>(`/api/announcements/${encodeURIComponent(announcementId)}/read`, {}, csrfToken, idempotencyKey).then(decodeDto<AnnouncementReadDTO>);
+  return postJson<unknown>(`${cloudIdentity ? "/api/v2/announcements" : "/api/announcements"}/${encodeURIComponent(announcementId)}/read`, {}, csrfToken, idempotencyKey).then(decodeDto<AnnouncementReadDTO>);
 }
 
 export function getPricingCatalog(): Promise<PricingCatalogResponse> {

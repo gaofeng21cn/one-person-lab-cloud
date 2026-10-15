@@ -72,6 +72,19 @@ func (s *Service) AuthorizeAction(ctx context.Context, r *api.AuthorizationReque
 	if session.ActorId != r.ActorId || (r.ExpectedPermissionVersion != nil && r.GetExpectedPermissionVersion() != version) {
 		return nil, denied()
 	}
+	if r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY {
+		// These are the live User's own Gateway reads, independent of Tenant
+		// membership. Scope/resource still bind this exact session and cannot
+		// select another Tenant, payer or User. Gateway resolves the persisted
+		// User-to-Sub2API binding again before reading either value.
+		if r.AudienceOwner != api.OwnerEnum_OWNER_ENUM_GATEWAY || r.Resource.GetKind() != api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT || r.Resource.GetId() != session.GetTenantId() || !scopeMatchesSession(session, r.Scope) {
+			return nil, denied()
+		}
+		if r.AuthorizationContextId != nil {
+			return s.verifyOriginalContext(ctx, r, version)
+		}
+		return s.saveDecision(ctx, r, version)
+	}
 	if r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACCEPTINVITATION {
 		// Accepting an invitation is bound to the invitee's own live session rather
 		// than to a Tenant role, because the invitee is not yet a member of the
