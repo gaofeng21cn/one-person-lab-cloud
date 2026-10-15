@@ -95,6 +95,63 @@ func TestTeamFinancialReceiptReadsOriginalMonetaryEvidenceWithoutPrivateActor(t 
 			}
 		})
 	}
+	// Exercise the persisted-data decoder through the actual authenticated reader.
+	// The normal writer already rejects these shapes; this is not a claim that a
+	// customer can forge a receipt through that writer.
+	var persisted, originalPayload string
+	if err := db.QueryRow(`SELECT payload_json, payload_json::jsonb #>> '{inputRefs,walletAction}' FROM evidence_receipts WHERE id=$1`, receipt.Id).Scan(&originalPayload, &persisted); err != nil {
+		t.Fatal(err)
+	}
+	original := &api.WalletActionReceiptEvidence{}
+	if err := protojson.Unmarshal([]byte(persisted), original); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name   string
+		mutate func(*api.WalletActionReceiptEvidence)
+	}{
+		{"missing receipt", func(e *api.WalletActionReceiptEvidence) { e.Receipt = nil }},
+		{"unconfirmed receipt", func(e *api.WalletActionReceiptEvidence) { e.Receipt.Outcome = 0 }},
+		{"nonfinancial receipt", func(e *api.WalletActionReceiptEvidence) { e.Receipt.Kind = 0 }},
+		{"other receipt owner", func(e *api.WalletActionReceiptEvidence) { e.Receipt.Owner = 0 }},
+		{"missing wallet", func(e *api.WalletActionReceiptEvidence) { e.WalletOperation = nil }},
+		{"missing wallet identity", func(e *api.WalletActionReceiptEvidence) { e.WalletOperation.Id = "" }},
+		{"unconfirmed charge", func(e *api.WalletActionReceiptEvidence) { e.WalletOperation.Status = 0 }},
+		{"noncharge operation", func(e *api.WalletActionReceiptEvidence) { e.WalletOperation.Kind = 0 }},
+		{"amount mismatch", func(e *api.WalletActionReceiptEvidence) { e.WalletOperation.AmountUsdMicros-- }},
+		{"missing quote acceptance", func(e *api.WalletActionReceiptEvidence) { e.QuoteAcceptance = nil }},
+		{"missing quote", func(e *api.WalletActionReceiptEvidence) { e.QuoteAcceptance.Quote = nil }},
+		{"unaccepted quote", func(e *api.WalletActionReceiptEvidence) { e.QuoteAcceptance.Quote.Status = 0 }},
+		{"other quote workspace", func(e *api.WalletActionReceiptEvidence) {
+			e.QuoteAcceptance.Quote.WorkspaceId = proto.String("other-workspace")
+		}},
+		{"zero funding", func(e *api.WalletActionReceiptEvidence) {
+			e.QuoteAcceptance.Quote.TotalUsdMicros = 0
+			e.WalletOperation.AmountUsdMicros = 0
+		}},
+		{"missing digest", func(e *api.WalletActionReceiptEvidence) { e.EvidenceDigest = "" }},
+	} {
+		t.Run("persisted "+tc.name, func(t *testing.T) {
+			changed := proto.Clone(original).(*api.WalletActionReceiptEvidence)
+			tc.mutate(changed)
+			raw, err := protojson.Marshal(changed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(`UPDATE evidence_receipts SET payload_json=jsonb_set($1::jsonb, '{inputRefs,walletAction}', $2::jsonb)::text WHERE id=$3`, originalPayload, string(raw), receipt.Id); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := client.GetWorkspaceFinancialReceipt(t.Context(), read); status.Code(err) != codes.InvalidArgument || got != nil {
+				t.Fatalf("invalid persisted funding returned: %v %v", got, err)
+			}
+		})
+	}
+	if _, err := db.Exec(`UPDATE evidence_receipts SET payload_json=$1 WHERE id=$2`, originalPayload, receipt.Id); err != nil {
+		t.Fatal(err)
+	}
+	if restored, err := client.GetWorkspaceFinancialReceipt(t.Context(), read); err != nil || !proto.Equal(got, restored) {
+		t.Fatalf("valid persisted financial evidence changed: %v %v", restored, err)
+	}
 	owners.mu.Lock()
 	owners.deny = true
 	owners.mu.Unlock()
