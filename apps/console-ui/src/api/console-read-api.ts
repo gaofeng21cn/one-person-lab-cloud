@@ -166,7 +166,7 @@ export function getGatewayGroups(signal?: AbortSignal): Promise<SourceEnvelope<G
 }
 
 export function getGatewayEndpoint(signal?: AbortSignal): Promise<SourceEnvelope<GatewayEndpointDTO>> {
-  return sourceGet<GatewayEndpointDTO>("/api/gateway/endpoint", signal);
+  return sourceGet<GatewayEndpointDTO>(cloudIdentity ? "/api/v2/gateway/endpoint" : "/api/gateway/endpoint", signal);
 }
 
 export function getGatewayKey(keyId: string, signal?: AbortSignal): Promise<SourceEnvelope<GatewayKeySummaryDTO>> {
@@ -187,7 +187,7 @@ export function deleteGatewayKey(keyId: string, csrfToken: string, idempotencyKe
 
 export function getGatewayBalanceHistory(page = 1, pageSize = 20, signal?: AbortSignal): Promise<SourceEnvelope<GatewayBalanceHistoryPageDTO>> {
   const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-  return sourceGet<GatewayBalanceHistoryPageDTO>(`/api/gateway/balance-history?${params}`, signal);
+  return sourceGet<GatewayBalanceHistoryPageDTO>(`${cloudIdentity ? "/api/v2/gateway" : "/api/gateway"}/balance-history?${params}`, signal);
 }
 
 export function revealGatewayKey(keyId: string, csrfToken: string): Promise<SourceEnvelope<GatewayKeySecretDTO>> {

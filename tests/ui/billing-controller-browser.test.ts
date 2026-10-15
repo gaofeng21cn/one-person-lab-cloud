@@ -866,7 +866,8 @@ test("Cloud billing uses session-bound history routes and labels the original sc
         actorId: "cloud-owner-without-tenant", displayName: "Original owner", permissions: [],
         csrfToken: "cloud-csrf", expiresAt: "2099-01-01T00:00:00Z"
       });
-      if (path.startsWith("/api/v2/legacy-billing/")) reads.push(path);
+      if (path.startsWith("/api/v2/legacy-billing/") || path === "/api/v2/gateway/balance-history") reads.push(path);
+      if (path === "/api/v2/gateway/balance-history") return fulfill(route, { source: "sub2api", status: "available", available: true, fetchedAt: "2026-10-16T00:00:00Z", data: { items: [{type: "balance", valueUsdMicros: "1230000", status: "used", usedAt: null, createdAt: "2026-10-16T00:00:00Z"}], total: 1, page: 1, pageSize: 20, pages: 1 } });
       if (path === "/api/v2/legacy-billing/receipts") return fulfill(route, receiptSource([original]));
       if (path === "/api/v2/legacy-billing/receipts/original-history") return fulfill(route, detailSource(original));
       return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ code: "isolated_owner_unavailable" }) });
@@ -878,6 +879,10 @@ test("Cloud billing uses session-bound history routes and labels the original sc
     await page.locator(".billing-table-desktop").getByRole("button", { name: "查看", exact: true }).click();
     await page.getByRole("heading", { name: "收据详情", exact: true }).waitFor({ state: "visible" });
     assert.ok(reads.includes("/api/v2/legacy-billing/receipts/original-history"));
+    await page.goto(`${demo.origin}/console/api`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("heading", { name: "余额历史", exact: true }).waitFor({ state: "visible" });
+    await page.getByText("$1.23", { exact: true }).waitFor({ state: "visible" });
+    assert.ok(reads.includes("/api/v2/gateway/balance-history"));
     assert.deepEqual(retained, []);
   } finally {
     await browser.close();

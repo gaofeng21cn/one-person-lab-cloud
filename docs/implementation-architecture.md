@@ -1182,3 +1182,8 @@ including Users without a Tenant and members. The BFF still requests the exact
 session-bound authorization decision; the Gateway reads the User's persisted
 Sub2API mapping. Tenant payment subjects and financial record permissions remain
 separate. This source capability does not prove installed authenticated behavior.
+
+The retained personal Gateway history/endpoint adapter uses the same live-session
+identity proof as original-history reads, but requires no legacy Account. The
+Control Plane reuses its Sub2API adjustment-history and configured endpoint
+readers; BFF forwards only the session reference and validated pagination.

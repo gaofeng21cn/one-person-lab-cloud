@@ -485,3 +485,13 @@ The medical platform described in
 [medical-agent-platform.md](medical-agent-platform.md) is a target boundary and
 gap analysis. No clinical workflow, patient-data production use or medical
 quality claim is made by this Cloud source snapshot.
+
+### Personal balance-history and endpoint source repair (2026-10-16)
+
+The Cloud Console routes its own balance-adjustment history and public Gateway
+endpoint through the session-bound BFF and retained Sub2API reader. The original
+owner projection and pagination are reused; the fresh verified User binding
+selects the subject without requiring a legacy Account or Tenant. Exact decimal
+strings and unavailable results are preserved. This is adjustment history, not
+a claim that every type of API usage or financial settlement is represented.
+Installed authentication and external provider completeness remain unproved.

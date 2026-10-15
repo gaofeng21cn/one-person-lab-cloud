@@ -17,6 +17,7 @@ import (
 )
 
 func registerGatewayRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
+	app.registerCloudGatewayReadRoutes(mux, service)
 	mux.HandleFunc("GET /api/gateway/endpoint", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "private, no-store")
 		endpoint, err := service.GatewayPublicEndpoint()
@@ -125,27 +126,7 @@ func registerGatewayRoutes(mux *http.ServeMux, app *controlPlaneServer, service 
 		if !ok {
 			return
 		}
-		history, err := service.GatewayBalanceHistoryPage(r.Context(), userID, clients.Sub2APIBalanceHistoryPageQuery{Page: pageNumber, PageSize: pageSize})
-		if err != nil {
-			writeGatewaySourceError(w, err)
-			return
-		}
-		items := make([]any, 0, len(history.Items))
-		for _, entry := range history.Items {
-			var usedAt any
-			if entry.UsedAt != nil {
-				usedAt = entry.UsedAt.UTC().Format(time.RFC3339Nano)
-			}
-			items = append(items, map[string]any{
-				"type": entry.Type, "valueUsdMicros": strconv.FormatInt(entry.ValueUSDMicros, 10), "status": entry.Status,
-				"usedAt": usedAt, "createdAt": entry.CreatedAt.UTC().Format(time.RFC3339Nano),
-			})
-		}
-		status := "available"
-		if len(items) == 0 {
-			status = "empty"
-		}
-		writeSourceEnvelope(w, http.StatusOK, "sub2api", status, map[string]any{"items": items, "total": history.Total, "page": history.Page, "pageSize": history.PageSize, "pages": history.Pages})
+		app.gatewayBalanceHistoryForUser(w, r, service, userID, pageNumber, pageSize)
 	}))
 }
 
@@ -1014,4 +995,28 @@ func (app *controlPlaneServer) gatewaySub2APIUserID(w http.ResponseWriter, r *ht
 		return 0, false
 	}
 	return userID, true
+}
+
+func (app *controlPlaneServer) gatewayBalanceHistoryForUser(w http.ResponseWriter, r *http.Request, service *controlplane.Service, userID int64, pageNumber, pageSize int) {
+	history, err := service.GatewayBalanceHistoryPage(r.Context(), userID, clients.Sub2APIBalanceHistoryPageQuery{Page: pageNumber, PageSize: pageSize})
+	if err != nil {
+		writeGatewaySourceError(w, err)
+		return
+	}
+	items := make([]any, 0, len(history.Items))
+	for _, entry := range history.Items {
+		var usedAt any
+		if entry.UsedAt != nil {
+			usedAt = entry.UsedAt.UTC().Format(time.RFC3339Nano)
+		}
+		items = append(items, map[string]any{
+			"type": entry.Type, "valueUsdMicros": strconv.FormatInt(entry.ValueUSDMicros, 10), "status": entry.Status,
+			"usedAt": usedAt, "createdAt": entry.CreatedAt.UTC().Format(time.RFC3339Nano),
+		})
+	}
+	status := "available"
+	if len(items) == 0 {
+		status = "empty"
+	}
+	writeSourceEnvelope(w, http.StatusOK, "sub2api", status, map[string]any{"items": items, "total": history.Total, "page": history.Page, "pageSize": history.PageSize, "pages": history.Pages})
 }
