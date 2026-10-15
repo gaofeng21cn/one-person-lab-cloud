@@ -57,11 +57,14 @@ async function tencentProviderRequiredFacts() {
 
 async function prepareManagedTKEComposeFixture(root) {
   const environment = await readFile("deploy/portable/opl-cloud.env.example", "utf8");
+  const releaseEnvironment = environment
+    .replace(/^OPL_RELEASE_SHA=.*$/m, "OPL_RELEASE_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    .replace(/^OPL_RELEASE_TREE=.*$/m, "OPL_RELEASE_TREE=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
   await Promise.all([
     copyFile("compose.yaml", join(root, "compose.yaml")),
     copyFile("deploy/portable/compose.fabric-tencent-tke.yaml", join(root, "compose.fabric-tencent-tke.yaml")),
     copyFile("deploy/portable/compose.deployment-managed-tke.yaml", join(root, "compose.deployment-managed-tke.yaml")),
-    writeFile(join(root, "opl-cloud.env"), environment.replace(/^OPL_WORKSPACE_IMAGE_RELEASES_JSON=.*$/m, "OPL_WORKSPACE_IMAGE_RELEASES_JSON={\"releases\":[]}"))
+    writeFile(join(root, "opl-cloud.env"), releaseEnvironment.replace(/^OPL_WORKSPACE_IMAGE_RELEASES_JSON=.*$/m, "OPL_WORKSPACE_IMAGE_RELEASES_JSON={\"releases\":[]}"))
   ]);
 }
 
@@ -192,6 +195,8 @@ test("managed-TKE portable bundle resolves the runtime inputs and fails closed w
     assert.equal(controlPlaneEnvironment.OPL_WORKSPACE_LAUNCH_WORKER_ENABLED, "1");
     assert.equal(controlPlaneEnvironment.OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED, "1");
     assert.equal(controlPlaneEnvironment.OPL_MONTHLY_BILLING_WORKER_ENABLED, "1");
+    assert.equal(controlPlaneEnvironment.OPL_RELEASE_SHA, "a".repeat(40));
+    assert.equal(controlPlaneEnvironment.OPL_RELEASE_TREE, "b".repeat(40));
 
     const environment = await readFile(join(root, "opl-cloud.env"), "utf8");
     for (const name of Object.keys(inputs)) {
@@ -199,6 +204,16 @@ test("managed-TKE portable bundle resolves the runtime inputs and fails closed w
         const missingPath = join(root, "opl-cloud.missing.env");
         await writeFile(missingPath, environment.replace(new RegExp(`^${name}=.*\\n`, "m"), replacement), { mode: 0o600 });
         const missing = composeConfig(root, "opl-cloud.missing.env", "--quiet");
+        assert.equal(missing.error, undefined);
+        assert.notEqual(missing.status, 0, `${name} must fail Compose resolution when missing or empty`);
+        assert.match(missing.stderr, new RegExp(name));
+      }
+    }
+    for (const name of ["OPL_RELEASE_SHA", "OPL_RELEASE_TREE"]) {
+      for (const replacement of ["", `${name}=\n`]) {
+        const missingPath = join(root, "opl-cloud.missing-release.env");
+        await writeFile(missingPath, environment.replace(new RegExp(`^${name}=.*\\n`, "m"), replacement), { mode: 0o600 });
+        const missing = composeConfig(root, "opl-cloud.missing-release.env", "--quiet");
         assert.equal(missing.error, undefined);
         assert.notEqual(missing.status, 0, `${name} must fail Compose resolution when missing or empty`);
         assert.match(missing.stderr, new RegExp(name));
