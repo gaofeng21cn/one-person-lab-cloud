@@ -7,7 +7,10 @@
  "image": {
   "env": "OPL_CLOUD_IMAGE",
   "fact": "One product image carries every owner executable; the installation selects which processes to run.",
-  "binaryDirectory": "/usr/local/bin"
+  "binaryDirectory": "/usr/local/bin",
+  "defaultCommand": [
+   "/usr/local/bin/opl-control-plane"
+  ]
  },
  "sharedEnv": {
   "tls": [
@@ -34,7 +37,7 @@
   "peerTokensShape": "JSON object {\"<peer owner identity>\":\"<at least 32 characters>\"}"
  },
  "distinctAddressesRequired": true,
- "distinctAddressesEvidence": "services/ledger/cmd/ledger/main.go and services/resource-catalog/cmd/server/main.go both default their listen address to \":8186\", so an installation that leaves both addresses empty runs two owners on one port. Every address must therefore be set explicitly.",
+ "distinctAddressesEvidence": "services/ledger/cmd/ledger/main.go and services/resource-catalog/cmd/server/main.go both declare \":8186\". They conflict only when sharing one Pod/network namespace. Separate Deployments may use the same declared default listen port. ownerservice.LoadConfig uses defaultAddress (Fabric defaultRPCAddress) when the effective listen env is absent or whitespace-empty; an explicit nonempty listen env overrides that default and must match the Service targetPort.",
  "processes": [
   {
    "service": "capability",
@@ -75,7 +78,8 @@
    ],
    "notes": [
     "Package/WebUI/build-result catalog owner. OPL_CAPABILITY_STORAGE_KIND selects the object store; the COS_* set is required only for the object-store kind."
-   ]
+   ],
+   "transportPrincipal": "capability"
   },
   {
    "service": "build",
@@ -106,7 +110,8 @@
    ],
    "notes": [
     "Runs the admitted BuildKit build; OPL_BUILD_BUILDER and OPL_BUILD_WORKDIR are installation facts for the build host."
-   ]
+   ],
+   "transportPrincipal": "build"
   },
   {
    "service": "runtime-control",
@@ -130,7 +135,8 @@
    ],
    "notes": [
     "Owns Runtime Release admission and immutable release readback. It never owns a running instance."
-   ]
+   ],
+   "transportPrincipal": "runtime_control"
   },
   {
    "service": "workspace",
@@ -159,7 +165,8 @@
    ],
    "notes": [
     "Owns the accepted order and resource intent; it persists no second current-deployment pointer."
-   ]
+   ],
+   "transportPrincipal": "workspace"
   },
   {
    "service": "serve",
@@ -215,7 +222,8 @@
     "Sole writer of default-App and Agent deployment/readiness/access facts, and the owner of the Workspace route binding and its access data plane. OPL_SERVE_ACCESS_ADDR names the application entry Serve serves itself; OPL_PUBLIC_URL, OPL_WORKSPACE_DOMAIN and OPL_WORKSPACE_APPLICATION_DOMAIN are the installation's declared route origin for that entry. No installation route provider is configured by any environment variable: the route object is Serve's own access binding.",
     "Serve owns application execution. A TKE installation declares its namespace, kubeconfig Secret reference, image-pull Secret, credential seed, the ingress peers allowed to reach a Workspace application, and the same protected-compute facts Fabric's provider is bounded by; Serve then applies, observes, scales and retires the workload itself.",
     "OPL_FABRIC_APPLICATION_URL with its service token and capability key remains only for the provider whose in-process executor has not moved yet. An installation that declares both OPL_K8S_NAMESPACE and OPL_FABRIC_APPLICATION_URL is refused at startup, because that would be two writers for one workload."
-   ]
+   ],
+   "transportPrincipal": "serve"
   },
   {
    "service": "resource-catalog",
@@ -237,7 +245,8 @@
     "ResourceCatalogProductService",
     "CatalogCoordination"
    ],
-   "notes": []
+   "notes": [],
+   "transportPrincipal": "resource_catalog"
   },
   {
    "service": "ledger",
@@ -266,7 +275,9 @@
    "notes": [
     "The legacy LEDGER_ADDR spelling is still read for the retained HTTP surface.",
     "OPL_POSTGRES_TESTS only selects the isolated database harness; production never sets it."
-   ]
+   ],
+   "transportPrincipal": "ledger",
+   "rpcEnabledByEnv": "OPL_LEDGER_ADDR"
   },
   {
    "service": "gateway-integration",
@@ -304,7 +315,8 @@
    ],
    "notes": [
     "CloudIdentity/Tenant and Gateway Integration share one process, but remain distinct database and writer owners. DATABASE_URL opens Tenant; OPL_GATEWAY_DATABASE_URL opens Gateway. Without the latter, the Gateway product and coordination surfaces are not registered."
-   ]
+   ],
+   "transportPrincipal": "tenant"
   },
   {
    "service": "fabric",
@@ -367,7 +379,9 @@
    "peerTokensEnv": "OPL_FABRIC_PEER_TOKENS",
    "rpcAddressEnv": "OPL_FABRIC_ADDR",
    "defaultRPCAddress": ":8187",
-   "rpcDatabaseEnv": "OPL_FABRIC_DATABASE_URL"
+   "rpcDatabaseEnv": "OPL_FABRIC_DATABASE_URL",
+   "transportPrincipal": "fabric",
+   "rpcEnabledByEnv": "OPL_FABRIC_DATABASE_URL"
   },
   {
    "service": "control-plane",
@@ -421,7 +435,8 @@
    "notes": [
     "Migration source, not a permanent second writer; it also serves the Console static bundle.",
     "Cloud announcement reads use the authenticated BFF-only typed HTTP boundary; Control Plane revalidates its Cloud session with Gateway under the control_plane transport principal and retains publication/ACK persistence."
-   ]
+   ],
+   "transportPrincipal": "control_plane"
   },
   {
    "service": "console-bff",
@@ -455,7 +470,8 @@
    ],
    "notes": [
     "The BFF owns no business data and holds no database. It reaches each owner through OPL_<OWNER>_URL/OPL_<OWNER>_TOKEN, while an owner process listens on OPL_<OWNER>_ADDR and admits callers through OPL_<OWNER>_PEER_TOKENS: an installation must set both spellings for the same target."
-   ]
+   ],
+   "transportPrincipal": "console_bff"
   }
  ],
  "consoleBundle": {
@@ -560,5 +576,372 @@
    }
   ],
   "requirement": "The Console is served from one origin and calls both browser-facing surfaces, so a browser-facing installation routes /api/ to control-plane and /api/v2/ to console-bff on the same public host. An installation that routes only one of them serves a Console whose other half cannot answer."
- }
+ },
+ "communication": {
+  "schemaVersion": 1,
+  "scope": "Current owner gRPC transports only; retained signed HTTP and object-store transports are separate contracts.",
+  "principals": "caller and target are transport principals. gateway resolves to tenant in the gateway-integration deployment unit; console_bff is a transport principal, not a business owner.",
+  "activation": "required edges apply when the caller RPC surface is installed. configured edges apply only when their address or token has a non-empty explicit env entry. rpcEnabledByEnv disables an optional RPC surface when absent or explicitly empty. An unrelated env/optionalEnv entry is never made mandatory by this contract.",
+  "deploymentIdentity": "A container command[0] must equal the process binary exactly. Deployment names and labels are installation facts, never service-name heuristics.",
+  "edges": [
+   {
+    "caller": "capability",
+    "target": "runtime_control",
+    "addressEnv": "OPL_RUNTIME_CONTROL_ADDR",
+    "tokenEnv": "OPL_RUNTIME_CONTROL_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "capability",
+    "target": "build",
+    "addressEnv": "OPL_BUILD_ADDR",
+    "tokenEnv": "OPL_BUILD_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "capability",
+    "target": "ledger",
+    "addressEnv": "OPL_LEDGER_ADDR",
+    "tokenEnv": "OPL_LEDGER_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "capability",
+    "target": "serve",
+    "addressEnv": "OPL_SERVE_ADDR",
+    "tokenEnv": "OPL_SERVE_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "build",
+    "target": "capability",
+    "addressEnv": "OPL_CAPABILITY_ADDR",
+    "tokenEnv": "OPL_CAPABILITY_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "build",
+    "target": "ledger",
+    "addressEnv": "OPL_LEDGER_ADDR",
+    "tokenEnv": "OPL_LEDGER_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "build",
+    "target": "tenant",
+    "addressEnv": "OPL_CLOUD_IDENTITY_URL",
+    "tokenEnv": "OPL_TENANT_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "runtime_control",
+    "target": "capability",
+    "addressEnv": "OPL_CAPABILITY_ADDR",
+    "tokenEnv": "OPL_CAPABILITY_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "workspace",
+    "target": "resource_catalog",
+    "addressEnv": "OPL_RESOURCE_CATALOG_ADDR",
+    "tokenEnv": "OPL_RESOURCE_CATALOG_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "workspace",
+    "target": "fabric",
+    "addressEnv": "OPL_FABRIC_ADDR",
+    "tokenEnv": "OPL_FABRIC_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "workspace",
+    "target": "ledger",
+    "addressEnv": "OPL_LEDGER_ADDR",
+    "tokenEnv": "OPL_LEDGER_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "workspace",
+    "target": "capability",
+    "addressEnv": "OPL_CAPABILITY_ADDR",
+    "tokenEnv": "OPL_CAPABILITY_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "workspace",
+    "target": "runtime_control",
+    "addressEnv": "OPL_RUNTIME_CONTROL_ADDR",
+    "tokenEnv": "OPL_RUNTIME_CONTROL_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "workspace",
+    "target": "serve",
+    "addressEnv": "OPL_SERVE_ADDR",
+    "tokenEnv": "OPL_SERVE_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "workspace",
+    "target": "tenant",
+    "addressEnv": "OPL_GATEWAY_ADDR",
+    "tokenEnv": "OPL_GATEWAY_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "serve",
+    "target": "capability",
+    "addressEnv": "OPL_CAPABILITY_ADDR",
+    "tokenEnv": "OPL_CAPABILITY_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "serve",
+    "target": "runtime_control",
+    "addressEnv": "OPL_RUNTIME_CONTROL_ADDR",
+    "tokenEnv": "OPL_RUNTIME_CONTROL_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "serve",
+    "target": "fabric",
+    "addressEnv": "OPL_FABRIC_COORDINATION_ADDR",
+    "tokenEnv": "OPL_FABRIC_COORDINATION_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "serve",
+    "target": "tenant",
+    "addressEnv": "OPL_GATEWAY_ADDR",
+    "tokenEnv": "OPL_GATEWAY_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "serve",
+    "target": "ledger",
+    "addressEnv": "OPL_LEDGER_ADDR",
+    "tokenEnv": "OPL_LEDGER_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "serve",
+    "target": "workspace",
+    "addressEnv": "OPL_WORKSPACE_ADDR",
+    "tokenEnv": "OPL_WORKSPACE_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "resource_catalog",
+    "target": "ledger",
+    "addressEnv": "OPL_LEDGER_ADDR",
+    "tokenEnv": "OPL_LEDGER_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "tenant",
+    "target": "fabric",
+    "addressEnv": "OPL_FABRIC_ADDR",
+    "tokenEnv": "OPL_FABRIC_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "tenant",
+    "target": "build",
+    "addressEnv": "OPL_BUILD_ADDR",
+    "tokenEnv": "OPL_BUILD_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "tenant",
+    "target": "workspace",
+    "addressEnv": "OPL_WORKSPACE_ADDR",
+    "tokenEnv": "OPL_WORKSPACE_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "fabric",
+    "target": "resource_catalog",
+    "addressEnv": "OPL_RESOURCE_CATALOG_ADDR",
+    "tokenEnv": "OPL_RESOURCE_CATALOG_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "fabric",
+    "target": "ledger",
+    "addressEnv": "OPL_LEDGER_ADDR",
+    "tokenEnv": "OPL_LEDGER_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "ledger",
+    "target": "resource_catalog",
+    "addressEnv": "OPL_RESOURCE_CATALOG_ADDR",
+    "tokenEnv": "OPL_RESOURCE_CATALOG_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "ledger",
+    "target": "workspace",
+    "addressEnv": "OPL_WORKSPACE_ADDR",
+    "tokenEnv": "OPL_WORKSPACE_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "ledger",
+    "target": "tenant",
+    "addressEnv": "OPL_GATEWAY_ADDR",
+    "tokenEnv": "OPL_GATEWAY_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "console_bff",
+    "target": "capability",
+    "addressEnv": "OPL_CAPABILITY_URL",
+    "tokenEnv": "OPL_CAPABILITY_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "console_bff",
+    "target": "runtime_control",
+    "addressEnv": "OPL_RUNTIME_CONTROL_URL",
+    "tokenEnv": "OPL_RUNTIME_CONTROL_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "console_bff",
+    "target": "build",
+    "addressEnv": "OPL_BUILD_URL",
+    "tokenEnv": "OPL_BUILD_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "console_bff",
+    "target": "workspace",
+    "addressEnv": "OPL_WORKSPACE_URL",
+    "tokenEnv": "OPL_WORKSPACE_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "console_bff",
+    "target": "serve",
+    "addressEnv": "OPL_SERVE_URL",
+    "tokenEnv": "OPL_SERVE_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "console_bff",
+    "target": "resource_catalog",
+    "addressEnv": "OPL_RESOURCE_CATALOG_URL",
+    "tokenEnv": "OPL_RESOURCE_CATALOG_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "console_bff",
+    "target": "tenant",
+    "addressEnv": "OPL_GATEWAY_URL",
+    "tokenEnv": "OPL_GATEWAY_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "capability",
+    "target": "tenant",
+    "addressEnv": "OPL_CLOUD_IDENTITY_URL",
+    "tokenEnv": "OPL_CLOUD_IDENTITY_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "build",
+    "target": "tenant",
+    "addressEnv": "OPL_CLOUD_IDENTITY_URL",
+    "tokenEnv": "OPL_CLOUD_IDENTITY_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "runtime_control",
+    "target": "tenant",
+    "addressEnv": "OPL_CLOUD_IDENTITY_URL",
+    "tokenEnv": "OPL_CLOUD_IDENTITY_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "workspace",
+    "target": "tenant",
+    "addressEnv": "OPL_CLOUD_IDENTITY_URL",
+    "tokenEnv": "OPL_CLOUD_IDENTITY_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "serve",
+    "target": "tenant",
+    "addressEnv": "OPL_CLOUD_IDENTITY_URL",
+    "tokenEnv": "OPL_CLOUD_IDENTITY_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "resource_catalog",
+    "target": "tenant",
+    "addressEnv": "OPL_CLOUD_IDENTITY_URL",
+    "tokenEnv": "OPL_CLOUD_IDENTITY_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "fabric",
+    "target": "tenant",
+    "addressEnv": "OPL_CLOUD_IDENTITY_URL",
+    "tokenEnv": "OPL_CLOUD_IDENTITY_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "ledger",
+    "target": "tenant",
+    "addressEnv": "OPL_CLOUD_IDENTITY_URL",
+    "tokenEnv": "OPL_CLOUD_IDENTITY_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "console_bff",
+    "target": "tenant",
+    "addressEnv": "OPL_CLOUD_IDENTITY_URL",
+    "tokenEnv": "OPL_CLOUD_IDENTITY_TOKEN",
+    "activation": "required"
+   },
+   {
+    "caller": "tenant",
+    "target": "tenant",
+    "addressEnv": "OPL_CLOUD_IDENTITY_URL",
+    "tokenEnv": "OPL_CLOUD_IDENTITY_TOKEN",
+    "activation": "configured"
+   },
+   {
+    "caller": "control_plane",
+    "target": "tenant",
+    "addressEnv": "OPL_CLOUD_IDENTITY_URL",
+    "tokenEnv": "OPL_CLOUD_IDENTITY_TOKEN",
+    "activation": "configured",
+    "activationEnv": "OPL_CONTROL_PLANE_BFF_TOKEN"
+   }
+  ],
+  "evidence": [
+   "apps/console-bff/internal/clients/clients.go",
+   "services/internal/ownerservice/authorization.go",
+   "services/internal/ownerservice/bootstrap.go",
+   "services/capability/cmd/server/main.go",
+   "services/build/cmd/server/main.go",
+   "services/runtime-control/cmd/server/main.go",
+   "services/workspace/cmd/server/main.go",
+   "services/serve/internal/delivery/service.go",
+   "services/resource-catalog/cmd/server/main.go",
+   "services/gateway-integration/cmd/server/main.go",
+   "services/fabric/coordination/process.go",
+   "services/ledger/eventconsumer/configure.go",
+   "packages/contracts/go/owneridentity/transport.go",
+   "packages/contracts/go/owneridentity/owneridentity.go: MinimumTokenLength",
+   "services/control-plane/internal/server/cloud_announcements.go"
+  ],
+  "security": {
+   "tokenMinimumLength": 32
+  }
+ },
+ "distinctAddressesScope": "pod_network_namespace"
 }
