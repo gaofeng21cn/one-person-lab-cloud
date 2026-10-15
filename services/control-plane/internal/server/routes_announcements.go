@@ -316,7 +316,7 @@ func decodeAnnouncementBody(w http.ResponseWriter, r *http.Request, target any) 
 
 func validAnnouncementText(title, body string) bool {
 	title, body = strings.TrimSpace(title), strings.TrimSpace(body)
-	return title != "" && body != "" && utf8.RuneCountInString(title) <= 160 && utf8.RuneCountInString(body) <= 20_000 &&
+	return title != "" && body != "" && utf8.RuneCountInString(title) <= contracts.AnnouncementMaxTitleRunes && utf8.RuneCountInString(body) <= contracts.AnnouncementMaxBodyRunes &&
 		!strings.ContainsRune(title, '\x00') && !strings.ContainsRune(body, '\x00')
 }
 

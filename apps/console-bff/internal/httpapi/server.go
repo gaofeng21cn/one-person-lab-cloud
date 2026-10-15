@@ -22,15 +22,17 @@ import (
 
 // Server serves the Console BFF REST surface over typed owner reads.
 type Server struct {
-	announcements  AnnouncementReader
-	reader         OwnerReader
-	identity       IdentityReader
-	capability     api.CapabilityProductServiceClient
-	runtimeControl api.RuntimeControlProductServiceClient
-	build          api.BuildProductServiceClient
-	tenant         api.TenantProductServiceClient
-	catalog        api.ResourceCatalogProductServiceClient
-	gateway        api.GatewayProductServiceClient
+	personalGateway PersonalGatewayReader
+	legacyBilling   LegacyBillingReader
+	announcements   AnnouncementReader
+	reader          OwnerReader
+	identity        IdentityReader
+	capability      api.CapabilityProductServiceClient
+	runtimeControl  api.RuntimeControlProductServiceClient
+	build           api.BuildProductServiceClient
+	tenant          api.TenantProductServiceClient
+	catalog         api.ResourceCatalogProductServiceClient
+	gateway         api.GatewayProductServiceClient
 	// gatewayCoordination is the Gateway owner's typed settlement surface. The
 	// one administrator wallet binding command reaches it; every other fact the
 	// BFF serves still comes from the product read clients.
@@ -50,6 +52,12 @@ type OwnerReader interface {
 // and authorization preconditions are resolved through.
 func NewServer(reader OwnerReader, identity IdentityReader) *Server {
 	s := &Server{reader: reader, identity: identity}
+	if p, ok := reader.(PersonalGatewayReader); ok {
+		s.personalGateway = p
+	}
+	if b, ok := reader.(LegacyBillingReader); ok {
+		s.legacyBilling = b
+	}
 	if a, ok := reader.(AnnouncementReader); ok {
 		s.announcements = a
 	}
@@ -96,6 +104,8 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	s.registerAuthRoutes(mux)
 	s.registerAnnouncementRoutes(mux)
+	s.registerLegacyBillingRoutes(mux)
+	s.registerPersonalGatewayReadRoutes(mux)
 	s.registerPublisherRoutes(mux)
 	s.registerMemberRoutes(mux)
 	s.registerCatalogRoutes(mux, s.catalog)
