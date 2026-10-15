@@ -38,15 +38,15 @@ type Service struct {
 	versions   api.CapabilityProductServiceClient
 	inboxes    map[string]api.DomainInboxClient
 	identity   api.CloudIdentityAuthorizationClient
-	tenantRepo api.CloudIdentityAuthorizationClient
+	gateway    api.GatewayCoordinationClient
 	runner     *Runner
 }
 
-func New(store *ownerstore.Store, auth *ownerservice.Authorizer, capability api.CapabilityCoordinationClient, versions api.CapabilityProductServiceClient, inboxes map[string]api.DomainInboxClient, identity api.CloudIdentityAuthorizationClient, runner *Runner) (*Service, error) {
-	if store == nil || store.Schema() != "build" || capability == nil || versions == nil || runner == nil {
-		return nil, errors.New("build store, Capability clients and isolated runner are required")
+func New(store *ownerstore.Store, auth *ownerservice.Authorizer, capability api.CapabilityCoordinationClient, versions api.CapabilityProductServiceClient, inboxes map[string]api.DomainInboxClient, identity api.CloudIdentityAuthorizationClient, gateway api.GatewayCoordinationClient, runner *Runner) (*Service, error) {
+	if store == nil || store.Schema() != "build" || capability == nil || versions == nil || identity == nil || gateway == nil || runner == nil {
+		return nil, errors.New("build store, Capability clients, identity and Gateway clients and isolated runner are required")
 	}
-	return &Service{store: store, auth: auth, capability: capability, versions: versions, inboxes: inboxes, identity: identity, tenantRepo: identity, runner: runner}, nil
+	return &Service{store: store, auth: auth, capability: capability, versions: versions, inboxes: inboxes, identity: identity, gateway: gateway, runner: runner}, nil
 }
 func (s *Service) Register(server *ownerservice.Server) error {
 	return server.RegisterGroup("BuildProductService", func(g *grpc.Server) {
@@ -199,9 +199,12 @@ func (s *Service) create(ctx context.Context, call *api.CallContext, body *api.C
 	if err = s.runner.ValidateInput(input); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
-	binding, err := s.tenantRepo.GetTenantRepositoryBinding(ctx, &api.GetTenantRepositoryBindingRequest{TenantId: tenant(call)})
+	binding, err := s.gateway.ReadUserExternalIdentity(ctx, &api.UserExternalBindingReadRequest{Context: call, ActorId: call.ActorId})
 	if err != nil {
 		return nil, err
+	}
+	if binding.GetActorId() != call.ActorId || call.ActorId == "" {
+		return nil, status.Error(codes.FailedPrecondition, "user external binding actor mismatch")
 	}
 	repository, err := s.runner.DestinationRepository(binding)
 	if err != nil {

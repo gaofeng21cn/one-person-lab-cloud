@@ -101,7 +101,7 @@ W[25]['deliverables'].append('修改真实migration加载链：CP ent_state_stor
 W[0]['deliverables'][0] = '把12已确认默认App/可选Agent、TKE主线、D17和逐域single-writer移交同步canonical owner；新默认不等于历史resource_only'
 W[1]['deliverables'].extend([
  '先贯通03 x-approved-wire-migration与02第0节：应用来源判别联合、Agent必选独立WebUI、descriptor provenance、claims、Quote/Serve持久化与真实消费者同版交付',
- '同步已有TenantRepositoryBinding生产RPC与规格、明确api/v226生成映射；修Runtime REST owner和per-owner Operation路由，不复制第二套合同',
+ '同步Gateway UserExternalBinding三个RPC与规格、保留Tenant reservation只读历史及旧Build executor、明确api/v226生成映射；修Runtime REST owner和per-owner Operation路由，不复制第二套合同',
  '默认App不得伪造Package/Build/CapabilityVersion/Build receipt；Agent必须保留Package/Runtime/独立WebUI三个真实输入及claim'])
 W[1]['plannedWritePaths'] += ['docs/spec/target/02_database_schema_complete.md','docs/spec/target/03_api_contract_complete.yaml','docs/spec/target/contracts','services/runtime-control/migrations','services/capability/migrations','services/build/migrations','services/resource-catalog/migrations','services/workspace/migrations','services/serve/migrations']
 W[1]['deliverables'][3] = '沿用packages/contracts/go/go.mod；W01核对已运行api协议与旧v226规划的精确差异后统一生产/规格/生成消费者，不机械改包名、不另建module或并行协议副本'
@@ -121,7 +121,7 @@ W[17]['deliverables'] += ['先独立实现首次TKE交付供W15消费，再完�
  '默认App runtime_release provenance与Agent build provenance共用Serve聚合；TKE应用Deployment/Service/route由Serve写，CVM/CBS/attachment归Fabric']
 W[21]['startAfter']=['W03','W04']
 W[21]['acceptAfter']=['W15','W20']
-W[21]['deliverables'] += ['W21.tenant-admission先交付开通/owner membership/已支持钱包主体与repository binding，供首链使用；暂停/删除/恢复作为后续切片，不以预置测试Tenant代替产品开通']
+W[21]['deliverables'] += ['W21.tenant-admission交付开通/owner membership/已支持钱包主体；User OCI由Gateway identity_mappings绑定，Tenant reservation只读保留，供首链授权使用；暂停/删除/恢复作为后续切片，不以预置测试Tenant代替产品开通']
 W[26]['startAfter']=['W13','W15']
 W[26]['deliverables'][0]='真实Console/BFF→owner/DB/RPC→资源→Serve→应用；分别验默认App、Package+独立WebUI的Agent；每项标source/Local/TKE与真实或隔离财务边界'
 W[27]['deliverables'] += ['W27.runnable-candidate提供早期可执行同字节候选供TKE首链，不等待全F验收；W27全包完成与W31发布仍满足现有综合资格']
@@ -134,7 +134,9 @@ W[8]['plannedWritePaths']=['services/capability/catalog','services/capability/mi
 W[9]['plannedWritePaths']=['services/build/internal/build','services/capability/catalog']
 W[10]['plannedWritePaths']=['services/runtime-control/catalog','services/runtime-control/migrations']
 W[15]['plannedWritePaths']=['services/workspace/internal/launch','services/resource-catalog/catalog','services/serve/internal/delivery']
-W[4]['plannedWritePaths']=['services/gateway-integration/identity','services/gateway-integration/migrations']
+W[4]['plannedWritePaths']=['services/gateway-integration/identity','services/gateway-integration/gatewaymigrations']
+W[4]['deliverables'] += ['Gateway identity_mappings唯一持有User↔Sub2API User与User↔OCI Destination；GetSelfUserExternalBinding为session-only，CloudIdentity授权但不成为绑定writer；Gateway DB为login/session必需且与Tenant DSN隔离']
+W[4]['verification'] += ['User自身读取及跨User/未验证/撤销/冲突拒绝；旧Tenant reservation只读与旧executor不改写；Gateway DB缺失或复用Tenant数据库必须拒绝']
 W[3]['plannedWritePaths']=['services/gateway-integration/identity','services/gateway-integration/cmd/server']
 
 slices=[]
@@ -146,7 +148,7 @@ def delivery_slice(key, window, deps, writes, input_refs, output, checks, eviden
 delivery_slice('W01.application-contracts','integration',[],
  ['docs/spec/target/02_database_schema_complete.md','docs/spec/target/03_api_contract_complete.yaml','docs/spec/target/contracts','packages/contracts/proto','packages/contracts/go','services/*/migrations','services/resource-catalog/catalog','services/workspace/internal/launch','services/runtime-control/catalog','services/capability/catalog','services/build/internal/build','services/serve/internal/delivery','services/ledger/internal/ledger','apps/console-bff/internal/httpapi','services/gateway-integration/identity','apps/console-ui/src/api','tests/ui','docs/spec/target/10_feature_traceability.md','docs/spec/target/14_implementation_work_packages.md','docs/spec/target/checks/development_plan.json','docs/status.md','docs/roadmap.md'],
  ['12产品组合','03 x-approved-wire-migration','02第0节','06异步交接'],
- '默认App/Agent与Agent必选独立WebUI的typed合同、SQL约束/加载链、真实decoder和全部消费者一致；含Tenant binding既有漂移',
+ '默认App/Agent与Agent必选独立WebUI的typed合同、SQL约束/加载链、真实decoder和全部消费者一致；含User external binding与旧Tenant reservation只读交接',
  ['default无Package/Build/CapabilityVersion正例','混合来源/伪WebUI/错误digest/原单替换拒绝','go/proto/JSON同版消费者编译与DB约束（此切片不要求真实provider部署）'],
  '精确source/schema/generator hashes与聚焦消费者测试；同步docs/status.md和docs/roadmap.md中的本次源码事实，不把源码验收写成部署完成；移除03 pending迁移标记前须实际贯通，不只生成成功')
 delivery_slice('W02.owner-readiness','integration',['W01.application-contracts'],
@@ -162,15 +164,15 @@ delivery_slice('W03.identity','business',['W02.owner-readiness'],
  ['真实BFF登录到owner','session过期后原已接受操作恢复','伪actor/audience拒绝'],
  '真实身份链及拒绝测试；外部fixture明确标注')
 delivery_slice('W04.payment-key','business',['W03.identity'],
- ['services/gateway-integration/identity','services/gateway-integration/migrations'],
+ ['services/gateway-integration/identity','services/gateway-integration/gatewaymigrations'],
  ['GatewayCoordination','原Code/账户/金额/Key读回','06财务阶段'],
  '受支持的Tenant钱包授权、原单扣退款/Key创建与Secret引用交接；不以用户余额读取冒充委托',
  ['丢响应原单回读不再扣','未知授权明确拒绝','原Key/Secret版本恢复无泄漏'],
  'Gateway权威合同和原单/Key读回；真实费用仅另行授权')
 delivery_slice('W21.tenant-admission','business',['W03.identity','W04.payment-key'],
  ['services/gateway-integration/identity'],
- ['CreateTenant','Tenant repository binding','钱包主体准入'],
- '真实开通Tenant/owner membership/已支持钱包主体，Package构建使用稳定repository；不等删除恢复全功能',
+ ['CreateTenant','Gateway User external binding readback','钱包主体准入'],
+ '真实开通Tenant/owner membership/已支持钱包主体，Package构建使用Gateway User绑定的稳定repository；不等删除恢复全功能',
  ['通过产品API开通而非SQL预置','重复创建不增身份','冲突/越权/委托不支持拒绝'],
  'Tenant/owner/binding原身份与授权证据')
 delivery_slice('W07.publisher-admission','artifacts',['W03.identity'],
@@ -391,7 +393,7 @@ serial_integration = dict(
    action='记录当前HEAD、tracked patch与所有untracked源码hash；保留A/B/C/D和SSOT未提交变更，不从旧HEAD开空worktree丢失成果。审计现有PR的已移植/剩余范围后在codex/分支整理，不盲目合并#684/#688/#689/#686。补Serve/Workspace的COS依赖与livebuild模块sum；恢复checksum验证，不以关闭GOSUMDB永久绕过。',
    accept='受影响普通及livebuild编译通过，生成器可重复；旧四回执保持不可变，后续动作新回执。'),
   dict(order=2, title='W01两组合真实合同与消费者迁移', workPackages=['W01','W02','W03','W13'],
-   action='按03/02/06一次贯通selection union、runtime_release provenance、原始descriptor bytes/digest、Quote及接受快照、Serve预留/部署/读取、持久化迁移和严格decoder；默认App必须runtime readback required。Agent仍必需Package/Runtime/独立WebUI及三claim。统一生产/spec proto、api/v226映射、TenantRepositoryBinding和授权生成器。修CloudIdentity自身readiness、Operation对象授权及全部实际continuation动作。',
+   action='按03/02/06一次贯通selection union、runtime_release provenance、原始descriptor bytes/digest、Quote及接受快照、Serve预留/部署/读取、持久化迁移和严格decoder；默认App必须runtime readback required。Agent仍必需Package/Runtime/独立WebUI及三claim。统一生产/spec proto、api/v226映射、Gateway UserExternalBinding和session-only授权生成器。修CloudIdentity自身readiness、Operation对象授权及全部实际continuation动作。',
    accept='两种真实owner正例及混合/缺项/撤销/跨Tenant反例；真实migration loader执行和历史义务保真，所有消费者同版，才移除pending迁移标记。'),
   dict(order=3, title='Gateway交易、Key与Ledger资金证明', workPackages=['W04','W05','W15','W21'],
    action='在既有Gateway Integration单元实现并注册GatewayCoordination，而不是仅Workspace客户端。以Sub2API为唯一钱包，持久原扣退款/Key意图及owner readback。用已有WALLET_ACTION事实核对是否足够；补真实producer、Ledger decoder/持久化/read-by-reference和Fabric消费，不机械按B旧回执再造enum，也不按C假设伪装证据owner。准入真实Tenant/成员和钱包授权。',
@@ -403,7 +405,7 @@ serial_integration = dict(
    action='D的TKEApplicationAdapter仍POST旧Fabric应用端点，只是迁移中的调用适配，不是执行writer已迁走。将TKE应用执行能力连同真实caller迁到Serve，串行切换后按09退出对应旧writer。Serve以本域access_bindings的generation/accepted epoch执行Fence/Activate/Observe与兼容Rollback，Deploy确认readiness和当前Deployment/绑定同事务提交；接入按绑定读回的access data plane，迁移实际入口和调用者并清退Control Plane应用proxy/当前路由解析器，不保留RouteProvider或路由fallback。Instance只提供稳定Ingress/DNS/TLS到Serve。补Secret配置、模型实际应用及读回、Stop/Reload/凭据获取和失败退役。不得把请求的modelConfigurationVersion直接写成applied。',
    accept='进程实际注册/启动的路径贯穿部署、readiness、route与Ledger；已发布URL不是拼字符串，真实HTML/静态/API/SSE、跨Tenant拒绝、旧epoch、unknown switch、Secret隔离及重启恢复均通过。'),
   dict(order=6, title='两组合Console到服务整链与回归', workPackages=['W07','W08','W09','W10','W13','W14','W16','W26'],
-   action='先验证默认App不依赖Build，再验证OMA Package→COS→精确Runtime+独立WebUI→BuildKit→Tenant OCI digest回读→Capability→同一购买部署链。接真实BFF/Console而非fixture DTO，统一进度/Operation/receipt与访问入口。真实TCR输入的tag列表不能代替获准descriptor/字节身份。',
+   action='先验证默认App不依赖Build，再验证OMA Package→COS→精确Runtime+独立WebUI→BuildKit→User OCI digest回读→Capability→同一购买部署链。接真实BFF/Console而非fixture DTO，统一进度/Operation/receipt与访问入口。真实TCR输入的tag列表不能代替获准descriptor/字节身份。',
    accept='npm run verify:local:full及相关browser/livebuild检查，真实PG独立owner/mTLS/幂等恢复；刷新、响应丢失、余额拒绝、未准入、半选组合、错receipt/版本、路由失败均有证据。原型与规格receipt按实际测试更新，不只改hash。'),
   dict(order=7, title='同SHA Candidate与Instance安装准备', workPackages=['W02','W27','W28','W29'],
    action='补镜像内buildx、明确Console cloud模式、所需owners/DB/roles/mTLS、BuildKit隔离、COS/TCR Secret引用和Serve路由配置。经CI及受保护合入得到canonical Cloud SHA，构建不可变Candidate；按既有规则完成合格Linux验证。Instance #348仍是未合并提案，必须以当时remote main为准审核补齐安装清单，不复制每用户业务编排。',
@@ -441,9 +443,15 @@ for op in api:
  elif owner=='ledger':n=5
  else:raise ValueError((owner,name))
  W[n]['apiPrimary'].append(name)
+# Session-only reads are owned by their data owner, never converted to Tenant role rules.
+session_only={op['operationId'] for op in api if op['permissions'] and set(op['permissions']) <= {'anonymous','authenticated'}}
+for w in W:
+ w['sessionOnlyOperations']=sorted(set(w['apiPrimary']) & session_only)
 # Frontend consumers derive from its actual feature inventory, not invented endpoints.
 for n in [13,14,16,22,23]:
  features=set(W[n]['features']);W[n]['apiConsumes']=sorted({op for f in ui if f['featureId'] in features for op in f['operationIds']})
+# BFF session infrastructure also consumes session-only reads without adding a new page.
+W[13]['apiConsumes']=sorted(set(W[13]['apiConsumes']) | session_only)
 # Each persisted table has a primary schema/implementation task; domain writer never changes here.
 table_primary={}
 for t in db:
@@ -469,7 +477,7 @@ for m in re.finditer(r'service\s+(\w+)\s*\{(.*?)\}',(P/'contracts/internal.proto
  service=m[1]
  for method in re.findall(r'rpc\s+(\w+)',m[2]):
   key=service+'.'+method
-  if service.endswith('ProductService'):ids=[method_primary[method]]
+  if service.endswith('ProductService') or key=='GatewayCoordination.GetSelfUserExternalBinding':ids=[method_primary[method]]
   else:ids=[f'W{i:02d}' for i in service_tasks[service]]
   rpc_assignments[key]=ids
   for wid in ids:W[int(wid[1:])].setdefault('rpcImplements',[]).append(key)
@@ -507,6 +515,7 @@ for w in W:
  for x in w['plannedWritePaths']:lines.append('- `'+display_path(x)+'`')
  lines+=['','**必须交付**：']+['- '+x for x in w['deliverables']]
  if w['apiPrimary']:lines+=['','**主实现API（沿用03的唯一Owner，不是改变数据写权）**：'+', '.join('`'+x+'`' for x in w['apiPrimary'])]
+ if w.get('sessionOnlyOperations'):lines+=['','**Session-only API（live session，不生成Tenant role规则）**：'+', '.join('`'+x+'`' for x in w['sessionOnlyOperations'])]
  if w.get('tablesPrimary'):lines+=['','**主实现表（字段唯一来源02，不在此复制字段定义）**：'+', '.join('`'+x+'`' for x in w['tablesPrimary'])]
  if w.get('rpcImplements'):lines+=['','**内部协议实现/协作端口**：'+', '.join('`'+x+'`' for x in w['rpcImplements'])]
  if work_notes.get(w['id']):lines+=['','**补充说明**：']+['- '+x for x in work_notes[w['id']]]
@@ -553,7 +562,7 @@ for entry in parallel_preparation:
 lines += ['', '### 10.1 W01移交必须实际证明的内容', '',
  '1. 03已批准union贯穿QuoteRequest/Quote/Admission/accepted snapshot/Serve Reserve和Deploy/公开读取；新建订单两种应用均runtime readback required，不把缺CapabilityVersion当纯资源单。CreateWorkspace只消费原quoteId；原单禁止接受第二份镜像/金额。',
  '2. 默认App新增runtime_release provenance，原始descriptor bytes/digest/object reference贯通；Agent仍保留Package/Runtime/独立WebUI及三claim。Capability/Runtime的per-use准入、撤销排序和Serve提交证明按06，不以跨库锁或TTL猜释放。',
- '3. 真实新增SQL migration及loader、存量历史规则、生产proto及规格、严格publicjson、全部生成物和consumer同时对齐。保留生产TenantRepositoryBinding/owner_email，不机械改api/v226包名；唯一生产协议与生成映射在canonical owner收敛后验证。',
+ '3. 真实新增SQL migration及loader、存量历史规则、生产proto及规格、严格publicjson、全部生成物和consumer同时对齐。对齐Gateway UserExternalBinding/owner_email并保留旧Tenant reservation只读及原Build executor，不机械改api/v226包名；唯一生产协议与生成映射在canonical owner收敛后验证。',
  '4. W05逐条配对06矩阵的producer/event或ReceiptKind/Ledger decoder/readback。Operation accepted不是effect confirmed，effect confirmed不是receipt committed；未知不重做，ACK丢失原key+hash恢复。',
  '5. 移交凭证列source/schema/generator hashes、真实decoder/consumer/SQL测试与剩余未测项。只有字段接线及持久化消费者实际通过后移除03的pending状态；仅文档、类型定义或generator成功均不够。', '',
  '### 10.2 整条线的完成顺序', '',

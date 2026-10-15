@@ -53,7 +53,8 @@ func TestLiveWorkerProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	conn := liveConn(t, config.CapabilityAddress, owneridentity.Build.Service())
-	service, err := New(store, ownerservice.NewAuthorizer(ownerservice.OwnerBuild, api.NewCloudIdentityAuthorizationClient(identityConn(t, config.IdentityAddress, owneridentity.Build.Service()))), api.NewCapabilityCoordinationClient(conn), api.NewCapabilityProductServiceClient(conn), nil, api.NewCloudIdentityAuthorizationClient(identityConn(t, config.IdentityAddress, owneridentity.Build.Service())), config.Runner)
+	identityClientConn := identityConn(t, config.IdentityAddress, owneridentity.Build.Service())
+	service, err := New(store, ownerservice.NewAuthorizer(ownerservice.OwnerBuild, api.NewCloudIdentityAuthorizationClient(identityClientConn)), api.NewCapabilityCoordinationClient(conn), api.NewCapabilityProductServiceClient(conn), nil, api.NewCloudIdentityAuthorizationClient(identityClientConn), api.NewGatewayCoordinationClient(identityClientConn), config.Runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +145,7 @@ func verifyInterruptedWorker(t *testing.T, ctx context.Context, dsn, capAddr str
 	if rec.Job.Status != api.BuildJobStatusEnum_BUILD_JOB_STATUS_ENUM_BUILDING {
 		t.Fatalf("not awaiting exporter acknowledgement: %s", rec.Job.Status)
 	}
-	binding, err := api.NewCloudIdentityAuthorizationClient(identityConn(t, client.identity.address, owneridentity.Build.Service())).GetTenantRepositoryBinding(ctx, &api.GetTenantRepositoryBindingRequest{TenantId: "tenant-live"})
+	binding, err := api.NewGatewayCoordinationClient(identityConn(t, client.identity.address, owneridentity.Build.Service())).ReadUserExternalIdentity(ctx, &api.UserExternalBindingReadRequest{Context: client.identity.call("worker-destination", "tenant-live"), ActorId: "101"})
 	if err != nil {
 		t.Fatal(err)
 	}

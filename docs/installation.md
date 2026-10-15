@@ -133,6 +133,17 @@ required variables and browser HTTP surfaces declared by
 `opl-cloud-owner-topology.json`. The Instance owner supplies its concrete
 manifest, Secrets and certificates.
 
+For an owner-backed installation, Gateway Integration requires both its Tenant
+and Gateway databases. Set `OPL_TENANT_DATABASE_URL` for CloudIdentity and
+`OPL_GATEWAY_DATABASE_URL` for Gateway. These must identify distinct databases
+with their own writer roles and connection pools; changing only DSN formatting
+does not provide isolation. Login and live-session validation consume the
+Gateway store for the User↔Sub2API User and User↔OCI Destination mappings, so
+Gateway DB is required even when settlement and Key operations are not selected
+for development. Supply these values through the installation's protected
+configuration. This requirement does not change the historical v0.1.7 procedure
+above or establish that an Instance has adopted the source change.
+
 Fabric keeps its HTTP provider bridge and owner RPC boundary in the same process.
 The optional RPC surface uses `OPL_FABRIC_ADDR` (default `:8187`),
 `OPL_FABRIC_DATABASE_URL` and `OPL_FABRIC_PEER_TOKENS`. Its template admits the

@@ -79,12 +79,15 @@ x-approved-wire-migration:
       Customer progress reads only a tenant/object-authorized owner projection, not the
       platform-admin Ledger list. Lost initial responses replay only the identical request
       against a proven durable idempotent acceptance endpoint to recover its original identity.
-  - boundary: tenant repository binding and source package mapping
+  - boundary: User external bindings and source package mapping
     change: >-
-      Reconcile production TenantRepositoryBinding/GetTenantRepositoryBinding and owner_email
-      into the specification, plus the current api versus planned v226 package mapping, in W01.
-      Preserve real protocol consumers; do not rename imports or duplicate generated contracts
-      merely to make textual paths agree. Default App does not require a Build output repository.
+      Gateway owns both bindings in gateway.identity_mappings using opaque actor_id;
+      CloudIdentity owns sessions and Tenant authorization. Use GatewayCoordination's
+      GetSelfUserExternalBinding, BindUserExternalIdentity and ReadUserExternalIdentity.
+      Historical Tenant reservations remain read-only; preserve accepted Build executor_ref
+      and artifact history. Do not restore CloudIdentity GetTenantRepositoryBinding as a
+      current route. Reconcile api versus planned v226 package mapping in W01 without
+      creating parallel generated contracts. Default App does not require a Build repository.
   acceptance:
   - Application selection rejects mixed, missing and unknown discriminator inputs; CreateBuild requires all three real inputs.
   - Default App quote-to-Serve works with no Package, BuildJob, CapabilityVersion or independent WebUI.
@@ -221,6 +224,54 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Session'
+          headers:
+            Cache-Control:
+              description: 禁止缓存
+              schema:
+                type: string
+                enum:
+                - no-store
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v2/auth/external-bindings:
+    get:
+      operationId: getSelfUserExternalBinding
+      summary: 读取当前User的外部身份与OCI目的地绑定
+      description: Gateway从CloudIdentity live session解析actor；session-only，不要求Tenant role，不接受target actor、registry或repository选择。缺失、未验证、撤销或安装范围冲突时拒绝，不返回伪造active。
+      tags:
+      - gateway
+      x-feature-id:
+      - F01
+      - F14
+      x-owner: gateway
+      x-permission:
+      - authenticated
+      x-authorization-mode: session-only
+      x-tables:
+      - gateway.identity_mappings
+      responses:
+        '200':
+          description: 当前session User的已验证、未撤销绑定；不返回凭据。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserExternalBindingReadback'
           headers:
             Cache-Control:
               description: 禁止缓存
@@ -6335,7 +6386,89 @@ components:
       - csrfToken
       - expiresAt
       x-owner: tenant
-      description: 尚未接受Tenant邀请时tenant/role缺省，只能退出或接受绑定本人Gateway subject的邀请。HttpOnly Secure SameSite=Lax cookie。
+      description: 尚未接受Tenant邀请时tenant/role缺省，仍可退出、读取本User external-bindings或接受绑定本人Gateway subject的邀请；不获得Tenant业务权限。HttpOnly Secure SameSite=Lax cookie。
+    UserExternalBindingReadback:
+      type: object
+      additionalProperties: false
+      description: Gateway拥有两个User绑定的读回。actor来自live session；不暴露密码、token、raw Key或registry credential。
+      properties:
+        actorId:
+          $ref: '#/components/schemas/OpaqueId'
+        sub2apiUserId:
+          $ref: '#/components/schemas/OpaqueId'
+        registryHost:
+          type: string
+          minLength: 1
+        registryNamespace:
+          type: string
+          minLength: 1
+        repository:
+          type: string
+          minLength: 1
+        status:
+          type: string
+          enum:
+          - active
+          description: 派生状态；仅已验证且未撤销绑定可返回成功。数据库不保存status。
+        verification:
+          type: string
+          enum:
+          - confirmed
+          description: 对应内部Observation confirmed；缺失任一验证时间时拒绝。
+        verificationEvidenceRef:
+          $ref: '#/components/schemas/OpaqueId'
+        verifiedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        destinationVerifiedAt:
+          type: string
+          format: date-time
+      required:
+      - actorId
+      - sub2apiUserId
+      - registryHost
+      - registryNamespace
+      - repository
+      - status
+      - verification
+      - verificationEvidenceRef
+      - verifiedAt
+      - createdAt
+      - updatedAt
+      - destinationVerifiedAt
+      x-owner: gateway
+      x-table: gateway.identity_mappings
+      x-field-map:
+        actorId: gateway.identity_mappings.actor_id
+        sub2apiUserId: gateway.identity_mappings.sub2api_user_id
+        registryHost: gateway.identity_mappings.registry_host
+        registryNamespace: gateway.identity_mappings.registry_namespace
+        repository: gateway.identity_mappings.repository
+        status:
+          kind: derived
+          sources:
+          - gateway.identity_mappings.verified_at
+          - gateway.identity_mappings.destination_verified_at
+          - gateway.identity_mappings.revoked_at
+          rule: verified_at和destination_verified_at均非NULL且revoked_at为NULL时为active；否则拒绝读取，不存status。
+        verification:
+          kind: derived
+          sources:
+          - gateway.identity_mappings.verified_at
+          - gateway.identity_mappings.destination_verified_at
+          - gateway.identity_mappings.revoked_at
+          rule: 身份与目的地均已验证且未撤销时为confirmed；对应内部Observation，不制造receipt。
+        verificationEvidenceRef: gateway.identity_mappings.external_identity_ref
+        verifiedAt: gateway.identity_mappings.verified_at
+        createdAt: gateway.identity_mappings.created_at
+        updatedAt: gateway.identity_mappings.updated_at
+        destinationVerifiedAt: gateway.identity_mappings.destination_verified_at
     Tenant:
       type: object
       additionalProperties: false
@@ -10827,6 +10960,7 @@ components:
       - getQuote
       - getReceipt
       - getSession
+      - getSelfUserExternalBinding
       - getSubscription
       - getTenant
       - getTenantAssetCustody
@@ -13063,6 +13197,7 @@ x-service-action-allowlist:
   - getQuote
   - getReceipt
   - getSession
+  - getSelfUserExternalBinding
   - getSubscription
   - getTenant
   - getTenantAssetCustody
@@ -13317,6 +13452,8 @@ x-authorization-rules:
   contextLifetimeSeconds: 30
   interactive: AuthorizeAction live-checks session, current tenant/platform permissions, exact action/resource/audience; no
     cached allow
+  sessionOnly: getSelfUserExternalBinding authenticates the live CloudIdentity session and resolves only its actor;
+    no Tenant role or target actor selector. Gateway owns the returned binding, not the session.
   background: IssueAcceptedOperationGrant checks real Owner committed state, original context scope/acceptance timestamp and
     exact allowed action intersection; no caller-authored proof
   inactiveTenant: new entitlement/debit/procurement rejected; original readback/closeout/refund remain bounded to accepted

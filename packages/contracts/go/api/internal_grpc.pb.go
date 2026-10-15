@@ -5557,7 +5557,6 @@ const (
 	CloudIdentityAuthorization_AuthorizeAction_FullMethodName             = "/opl.cloud.api.CloudIdentityAuthorization/AuthorizeAction"
 	CloudIdentityAuthorization_GetAuthorizationContext_FullMethodName     = "/opl.cloud.api.CloudIdentityAuthorization/GetAuthorizationContext"
 	CloudIdentityAuthorization_IssueAcceptedOperationGrant_FullMethodName = "/opl.cloud.api.CloudIdentityAuthorization/IssueAcceptedOperationGrant"
-	CloudIdentityAuthorization_GetTenantRepositoryBinding_FullMethodName  = "/opl.cloud.api.CloudIdentityAuthorization/GetTenantRepositoryBinding"
 )
 
 // CloudIdentityAuthorizationClient is the client API for CloudIdentityAuthorization service.
@@ -5567,9 +5566,6 @@ type CloudIdentityAuthorizationClient interface {
 	AuthorizeAction(ctx context.Context, in *AuthorizationRequest, opts ...grpc.CallOption) (*AuthorizationDecision, error)
 	GetAuthorizationContext(ctx context.Context, in *GetAuthorizationContextRequest, opts ...grpc.CallOption) (*AuthorizationDecision, error)
 	IssueAcceptedOperationGrant(ctx context.Context, in *AcceptedOperationGrantRequest, opts ...grpc.CallOption) (*AcceptedOperationGrant, error)
-	// Read the Tenant's reserved application OCI destination. Build resolves its
-	// output repository here; the destination is never accepted from a caller.
-	GetTenantRepositoryBinding(ctx context.Context, in *GetTenantRepositoryBindingRequest, opts ...grpc.CallOption) (*TenantRepositoryBinding, error)
 }
 
 type cloudIdentityAuthorizationClient struct {
@@ -5610,16 +5606,6 @@ func (c *cloudIdentityAuthorizationClient) IssueAcceptedOperationGrant(ctx conte
 	return out, nil
 }
 
-func (c *cloudIdentityAuthorizationClient) GetTenantRepositoryBinding(ctx context.Context, in *GetTenantRepositoryBindingRequest, opts ...grpc.CallOption) (*TenantRepositoryBinding, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(TenantRepositoryBinding)
-	err := c.cc.Invoke(ctx, CloudIdentityAuthorization_GetTenantRepositoryBinding_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // CloudIdentityAuthorizationServer is the server API for CloudIdentityAuthorization service.
 // All implementations must embed UnimplementedCloudIdentityAuthorizationServer
 // for forward compatibility.
@@ -5627,9 +5613,6 @@ type CloudIdentityAuthorizationServer interface {
 	AuthorizeAction(context.Context, *AuthorizationRequest) (*AuthorizationDecision, error)
 	GetAuthorizationContext(context.Context, *GetAuthorizationContextRequest) (*AuthorizationDecision, error)
 	IssueAcceptedOperationGrant(context.Context, *AcceptedOperationGrantRequest) (*AcceptedOperationGrant, error)
-	// Read the Tenant's reserved application OCI destination. Build resolves its
-	// output repository here; the destination is never accepted from a caller.
-	GetTenantRepositoryBinding(context.Context, *GetTenantRepositoryBindingRequest) (*TenantRepositoryBinding, error)
 	mustEmbedUnimplementedCloudIdentityAuthorizationServer()
 }
 
@@ -5648,9 +5631,6 @@ func (UnimplementedCloudIdentityAuthorizationServer) GetAuthorizationContext(con
 }
 func (UnimplementedCloudIdentityAuthorizationServer) IssueAcceptedOperationGrant(context.Context, *AcceptedOperationGrantRequest) (*AcceptedOperationGrant, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method IssueAcceptedOperationGrant not implemented")
-}
-func (UnimplementedCloudIdentityAuthorizationServer) GetTenantRepositoryBinding(context.Context, *GetTenantRepositoryBindingRequest) (*TenantRepositoryBinding, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetTenantRepositoryBinding not implemented")
 }
 func (UnimplementedCloudIdentityAuthorizationServer) mustEmbedUnimplementedCloudIdentityAuthorizationServer() {
 }
@@ -5728,24 +5708,6 @@ func _CloudIdentityAuthorization_IssueAcceptedOperationGrant_Handler(srv interfa
 	return interceptor(ctx, in, info, handler)
 }
 
-func _CloudIdentityAuthorization_GetTenantRepositoryBinding_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetTenantRepositoryBindingRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(CloudIdentityAuthorizationServer).GetTenantRepositoryBinding(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: CloudIdentityAuthorization_GetTenantRepositoryBinding_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CloudIdentityAuthorizationServer).GetTenantRepositoryBinding(ctx, req.(*GetTenantRepositoryBindingRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // CloudIdentityAuthorization_ServiceDesc is the grpc.ServiceDesc for CloudIdentityAuthorization service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -5764,10 +5726,6 @@ var CloudIdentityAuthorization_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "IssueAcceptedOperationGrant",
 			Handler:    _CloudIdentityAuthorization_IssueAcceptedOperationGrant_Handler,
-		},
-		{
-			MethodName: "GetTenantRepositoryBinding",
-			Handler:    _CloudIdentityAuthorization_GetTenantRepositoryBinding_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -6023,18 +5981,24 @@ var WorkspaceAdmission_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	GatewayCoordination_BindWallet_FullMethodName       = "/opl.cloud.api.GatewayCoordination/BindWallet"
-	GatewayCoordination_Debit_FullMethodName            = "/opl.cloud.api.GatewayCoordination/Debit"
-	GatewayCoordination_Refund_FullMethodName           = "/opl.cloud.api.GatewayCoordination/Refund"
-	GatewayCoordination_ReadWalletAction_FullMethodName = "/opl.cloud.api.GatewayCoordination/ReadWalletAction"
-	GatewayCoordination_CreateManagedKey_FullMethodName = "/opl.cloud.api.GatewayCoordination/CreateManagedKey"
-	GatewayCoordination_RevokeManagedKey_FullMethodName = "/opl.cloud.api.GatewayCoordination/RevokeManagedKey"
+	GatewayCoordination_GetSelfUserExternalBinding_FullMethodName = "/opl.cloud.api.GatewayCoordination/GetSelfUserExternalBinding"
+	GatewayCoordination_BindUserExternalIdentity_FullMethodName   = "/opl.cloud.api.GatewayCoordination/BindUserExternalIdentity"
+	GatewayCoordination_ReadUserExternalIdentity_FullMethodName   = "/opl.cloud.api.GatewayCoordination/ReadUserExternalIdentity"
+	GatewayCoordination_BindWallet_FullMethodName                 = "/opl.cloud.api.GatewayCoordination/BindWallet"
+	GatewayCoordination_Debit_FullMethodName                      = "/opl.cloud.api.GatewayCoordination/Debit"
+	GatewayCoordination_Refund_FullMethodName                     = "/opl.cloud.api.GatewayCoordination/Refund"
+	GatewayCoordination_ReadWalletAction_FullMethodName           = "/opl.cloud.api.GatewayCoordination/ReadWalletAction"
+	GatewayCoordination_CreateManagedKey_FullMethodName           = "/opl.cloud.api.GatewayCoordination/CreateManagedKey"
+	GatewayCoordination_RevokeManagedKey_FullMethodName           = "/opl.cloud.api.GatewayCoordination/RevokeManagedKey"
 )
 
 // GatewayCoordinationClient is the client API for GatewayCoordination service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type GatewayCoordinationClient interface {
+	GetSelfUserExternalBinding(ctx context.Context, in *GetSelfUserExternalBindingRequest, opts ...grpc.CallOption) (*UserExternalBindingReadback, error)
+	BindUserExternalIdentity(ctx context.Context, in *UserExternalBindingCommand, opts ...grpc.CallOption) (*UserExternalBindingReadback, error)
+	ReadUserExternalIdentity(ctx context.Context, in *UserExternalBindingReadRequest, opts ...grpc.CallOption) (*UserExternalBindingReadback, error)
 	BindWallet(ctx context.Context, in *WalletBindingCommand, opts ...grpc.CallOption) (*WalletBindingReadback, error)
 	Debit(ctx context.Context, in *WalletDebitCommand, opts ...grpc.CallOption) (*WalletOperation, error)
 	Refund(ctx context.Context, in *WalletRefundCommand, opts ...grpc.CallOption) (*WalletOperation, error)
@@ -6049,6 +6013,36 @@ type gatewayCoordinationClient struct {
 
 func NewGatewayCoordinationClient(cc grpc.ClientConnInterface) GatewayCoordinationClient {
 	return &gatewayCoordinationClient{cc}
+}
+
+func (c *gatewayCoordinationClient) GetSelfUserExternalBinding(ctx context.Context, in *GetSelfUserExternalBindingRequest, opts ...grpc.CallOption) (*UserExternalBindingReadback, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UserExternalBindingReadback)
+	err := c.cc.Invoke(ctx, GatewayCoordination_GetSelfUserExternalBinding_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gatewayCoordinationClient) BindUserExternalIdentity(ctx context.Context, in *UserExternalBindingCommand, opts ...grpc.CallOption) (*UserExternalBindingReadback, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UserExternalBindingReadback)
+	err := c.cc.Invoke(ctx, GatewayCoordination_BindUserExternalIdentity_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gatewayCoordinationClient) ReadUserExternalIdentity(ctx context.Context, in *UserExternalBindingReadRequest, opts ...grpc.CallOption) (*UserExternalBindingReadback, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UserExternalBindingReadback)
+	err := c.cc.Invoke(ctx, GatewayCoordination_ReadUserExternalIdentity_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *gatewayCoordinationClient) BindWallet(ctx context.Context, in *WalletBindingCommand, opts ...grpc.CallOption) (*WalletBindingReadback, error) {
@@ -6115,6 +6109,9 @@ func (c *gatewayCoordinationClient) RevokeManagedKey(ctx context.Context, in *Ma
 // All implementations must embed UnimplementedGatewayCoordinationServer
 // for forward compatibility.
 type GatewayCoordinationServer interface {
+	GetSelfUserExternalBinding(context.Context, *GetSelfUserExternalBindingRequest) (*UserExternalBindingReadback, error)
+	BindUserExternalIdentity(context.Context, *UserExternalBindingCommand) (*UserExternalBindingReadback, error)
+	ReadUserExternalIdentity(context.Context, *UserExternalBindingReadRequest) (*UserExternalBindingReadback, error)
 	BindWallet(context.Context, *WalletBindingCommand) (*WalletBindingReadback, error)
 	Debit(context.Context, *WalletDebitCommand) (*WalletOperation, error)
 	Refund(context.Context, *WalletRefundCommand) (*WalletOperation, error)
@@ -6131,6 +6128,15 @@ type GatewayCoordinationServer interface {
 // pointer dereference when methods are called.
 type UnimplementedGatewayCoordinationServer struct{}
 
+func (UnimplementedGatewayCoordinationServer) GetSelfUserExternalBinding(context.Context, *GetSelfUserExternalBindingRequest) (*UserExternalBindingReadback, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetSelfUserExternalBinding not implemented")
+}
+func (UnimplementedGatewayCoordinationServer) BindUserExternalIdentity(context.Context, *UserExternalBindingCommand) (*UserExternalBindingReadback, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BindUserExternalIdentity not implemented")
+}
+func (UnimplementedGatewayCoordinationServer) ReadUserExternalIdentity(context.Context, *UserExternalBindingReadRequest) (*UserExternalBindingReadback, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReadUserExternalIdentity not implemented")
+}
 func (UnimplementedGatewayCoordinationServer) BindWallet(context.Context, *WalletBindingCommand) (*WalletBindingReadback, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method BindWallet not implemented")
 }
@@ -6168,6 +6174,60 @@ func RegisterGatewayCoordinationServer(s grpc.ServiceRegistrar, srv GatewayCoord
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&GatewayCoordination_ServiceDesc, srv)
+}
+
+func _GatewayCoordination_GetSelfUserExternalBinding_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSelfUserExternalBindingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayCoordinationServer).GetSelfUserExternalBinding(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayCoordination_GetSelfUserExternalBinding_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayCoordinationServer).GetSelfUserExternalBinding(ctx, req.(*GetSelfUserExternalBindingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GatewayCoordination_BindUserExternalIdentity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UserExternalBindingCommand)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayCoordinationServer).BindUserExternalIdentity(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayCoordination_BindUserExternalIdentity_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayCoordinationServer).BindUserExternalIdentity(ctx, req.(*UserExternalBindingCommand))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GatewayCoordination_ReadUserExternalIdentity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UserExternalBindingReadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayCoordinationServer).ReadUserExternalIdentity(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayCoordination_ReadUserExternalIdentity_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayCoordinationServer).ReadUserExternalIdentity(ctx, req.(*UserExternalBindingReadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _GatewayCoordination_BindWallet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -6285,6 +6345,18 @@ var GatewayCoordination_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "opl.cloud.api.GatewayCoordination",
 	HandlerType: (*GatewayCoordinationServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetSelfUserExternalBinding",
+			Handler:    _GatewayCoordination_GetSelfUserExternalBinding_Handler,
+		},
+		{
+			MethodName: "BindUserExternalIdentity",
+			Handler:    _GatewayCoordination_BindUserExternalIdentity_Handler,
+		},
+		{
+			MethodName: "ReadUserExternalIdentity",
+			Handler:    _GatewayCoordination_ReadUserExternalIdentity_Handler,
+		},
 		{
 			MethodName: "BindWallet",
 			Handler:    _GatewayCoordination_BindWallet_Handler,

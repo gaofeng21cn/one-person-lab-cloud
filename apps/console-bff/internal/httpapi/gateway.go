@@ -6,6 +6,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	"opl-cloud/apps/console-bff/internal/clients"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 )
@@ -14,6 +15,30 @@ import (
 // launch journey consumes. The BFF holds no wallet or model state of its own; the
 // Gateway owner performs authorization and returns its own live readback.
 func (s *Server) registerGatewayRoutes(mux *http.ServeMux, gateway api.GatewayProductServiceClient) {
+	mux.HandleFunc("GET /api/v2/auth/external-bindings", func(w http.ResponseWriter, r *http.Request) {
+		publisherRequestID(r)
+		w.Header().Set("Cache-Control", "no-store")
+		caller, err := RequireSession(r.Context(), s.identity, r)
+		if err != nil {
+			writePublisherIdentityError(w, r, err)
+			return
+		}
+		if s.gatewayCoordination == nil {
+			writePublisherError(w, r, 503, "owner_unconfigured", "gateway coordination owner is not configured")
+			return
+		}
+		ctx := WithCaller(r.Context(), caller, r.Header.Get(requestIDHeader))
+		out, err := s.gatewayCoordination.GetSelfUserExternalBinding(ctx, &api.GetSelfUserExternalBindingRequest{Context: clients.CallContext(ctx)})
+		if err != nil {
+			writeOwnerCallFailure(w, r, err)
+			return
+		}
+		if out == nil || out.GetActorId() != caller.Session.GetActorId() {
+			writePublisherError(w, r, 502, "invalid_owner_response", "gateway binding actor differs from the authenticated User")
+			return
+		}
+		authJSON(w, out)
+	})
 	s.publisherRoute(mux, "GET /api/v2/wallet", owneridentity.Gateway, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", nil, func(r *http.Request, c *api.CallContext, _ proto.Message) (proto.Message, error) {
 		if gateway == nil {
 			return nil, status.Error(codes.Unavailable, "gateway owner is not configured")
@@ -70,8 +95,8 @@ func (s *Server) registerWalletBindingRoute(mux *http.ServeMux) {
 // usage summary and model catalog) over the BFF's authenticated boundary. It exists so a caller
 // outside apps/console-bff, which cannot reach the internal package, can still
 // drive the real route guard, authorization precondition and serialization.
-func NewGatewayReadHandler(gateway api.GatewayProductServiceClient, identity IdentityReader) http.Handler {
-	s := &Server{identity: identity, gateway: gateway}
+func NewGatewayReadHandler(gateway api.GatewayProductServiceClient, coordination api.GatewayCoordinationClient, identity IdentityReader) http.Handler {
+	s := &Server{identity: identity, gateway: gateway, gatewayCoordination: coordination}
 	mux := http.NewServeMux()
 	s.registerGatewayRoutes(mux, gateway)
 	s.registerModelCatalogRoute(mux, gateway)

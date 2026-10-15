@@ -153,6 +153,7 @@ func newMemberSystem(t *testing.T) memberSystem {
 	if e != nil {
 		t.Fatal(e)
 	}
+	s.GatewayStore = gatewayStoreSystem(t)
 	config := ownerservice.Config{Owner: owneridentity.Tenant, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: map[owneridentity.Service]string{owneridentity.ConsoleBFF: memberPeerToken}}
 	l, e := net.Listen("tcp", "127.0.0.1:0")
 	if e != nil {

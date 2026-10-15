@@ -20,6 +20,7 @@ import (
 	"opl-cloud/packages/contracts/go/owneridentity"
 	fabric "opl-cloud/services/fabric/coordination"
 	fabricmigrations "opl-cloud/services/fabric/ownermigrations"
+	"opl-cloud/services/gateway-integration/gatewaymigrations"
 	cloudidentity "opl-cloud/services/gateway-integration/identity"
 	identitymigrations "opl-cloud/services/gateway-integration/migrations"
 	"opl-cloud/services/internal/ownerservice"
@@ -227,6 +228,14 @@ func TestLiveAcceptedWorkspaceResourceReference(t *testing.T) {
 		t.Fatal(err)
 	}
 	identity, err := cloudidentity.New(tenantDB, gateway, bytes.Repeat([]byte("k"), 32), []string{"103"}, 168*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gatewaySource, err := gatewaymigrations.Source()
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity.GatewayStore, err = cloudidentity.NewGatewayStore(liveOwnerDB(t, ctx, dsn, "gateway", gatewaySource))
 	if err != nil {
 		t.Fatal(err)
 	}

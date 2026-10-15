@@ -14,12 +14,8 @@ import (
 	"opl-cloud/packages/contracts/go/owneridentity"
 )
 
-// CreateTenant is the Cloud Tenant admission entry. It is a platform-admin
-// operation: the actor's platform role is re-verified here, the Tenant owner
-// writes the Tenant, its owner membership, its stable application-OCI repository
-// binding and its durable operation in one transaction, and no caller-supplied
-// destination is accepted. The owner email is an admission input used only to
-// derive the initial repository-name candidate.
+// CreateTenant admits the Tenant and its owner membership. User external
+// bindings belong to the Gateway owner and are not a Tenant creation side effect.
 func (s *Service) CreateTenant(ctx context.Context, r *api.CreateTenantRpcRequest) (*api.Operation, error) {
 	if e := peer(ctx, owneridentity.ConsoleBFF); e != nil {
 		return nil, e
@@ -43,9 +39,6 @@ func (s *Service) CreateTenant(ctx context.Context, r *api.CreateTenantRpcReques
 	if decision.GetResult() != api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED {
 		return nil, status.Error(codes.PermissionDenied, "platform administrator authorization required")
 	}
-	if s.registryHost == "" || s.registryNamespace == "" {
-		return nil, status.Error(codes.FailedPrecondition, "installation registry host and namespace are required before admitting a Tenant")
-	}
 	b := r.GetBody()
 	name := strings.TrimSpace(b.GetName())
 	ownerSubject := strings.TrimSpace(b.GetOwnerGatewaySubjectId())
@@ -62,18 +55,14 @@ func (s *Service) CreateTenant(ctx context.Context, r *api.CreateTenantRpcReques
 		if _, e := tx.ExecContext(ctx, `INSERT INTO tenant.tenant_members(id,tenant_id,actor_id,role) VALUES($1,$2,$3,'owner')`, "member_"+randomID()[:20], tenantID, ownerSubject); e != nil {
 			return persistence(e)
 		}
-		binding, e := s.reserveRepositoryBinding(ctx, tx, tenantID, b.GetOwnerEmail())
-		if e != nil {
-			return e
-		}
 		accepted, _ := json.Marshal(map[string]any{"name": name, "ownerEmailProvided": strings.TrimSpace(b.GetOwnerEmail()) != ""})
-		// The durable operation commits atomically with the Tenant and binding.
+		// The durable operation commits atomically with the Tenant and membership.
 		// Status/stage reuse the ownerstore vocabulary and the tenant schema's
 		// own CHECK constraints unchanged.
 		if _, e := tx.ExecContext(ctx, `INSERT INTO tenant.operations(id,tenant_id,actor_id,kind,resource_id,status,stage,observation_result,request_id,accepted_input,result,completed_at) VALUES($1,$2,$3,'create_tenant',$4,'succeeded','create_tenant','confirmed',$5,$6,$6,now())`, operationID, tenantID, c.GetActorId(), tenantID, c.GetRequestId(), accepted); e != nil {
 			return persistence(e)
 		}
-		if e := s.recordAudit(ctx, tx, auditEvent{tenantID: tenantID, actorID: c.GetActorId(), action: "tenant.create", resourceType: "tenant", resourceID: tenantID, requestID: c.GetRequestId(), details: map[string]any{"repository": binding.GetRepository(), "registryHost": binding.GetRegistryHost(), "registryNamespace": binding.GetRegistryNamespace(), "ownerEmailProvided": strings.TrimSpace(b.GetOwnerEmail()) != ""}, outcome: "succeeded"}); e != nil {
+		if e := s.recordAudit(ctx, tx, auditEvent{tenantID: tenantID, actorID: c.GetActorId(), action: "tenant.create", resourceType: "tenant", resourceID: tenantID, requestID: c.GetRequestId(), details: map[string]any{"ownerEmailProvided": strings.TrimSpace(b.GetOwnerEmail()) != ""}, outcome: "succeeded"}); e != nil {
 			return e
 		}
 		proto.Merge(out, &api.Operation{OperationId: operationID, Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_TENANT, Kind: api.OperationKindEnum_OPERATION_KIND_ENUM_CREATE_TENANT, ResourceId: tenantID, Status: api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED, Stage: api.OperationStageEnum_OPERATION_STAGE_ENUM_SUCCEEDED, RequestId: c.GetRequestId(), CreatedAt: timestamppb.Now(), UpdatedAt: timestamppb.Now()})

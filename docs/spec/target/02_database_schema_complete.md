@@ -20,6 +20,10 @@
 
 默认App↔Agent替换保留同Workspace/原购买事实，兼容性和数据迁移由发布者合同加Serve执行控制；没有可证明无损的旧格式回退，不宣称可回滚。历史`legacy_resource_only`/`legacy_application`仍按09保存原身份与义务；不套用默认App创建语义。
 
+## 0.1 2026-10-15 User外部绑定字段对齐
+
+本次只扩展既有Gateway数据owner的`gateway.identity_mappings`；字段、约束、SQL及inventory与`0002_user_external_bindings.sql`对齐。新增三个GatewayCoordination RPC，CloudIdentity旧Tenant repository RPC不作为新路径。历史Tenant reservation只读保留、旧Build executor不改写。旧隔离DB证据只证明其原始schema哈希；本次未据此宣称新字段或Instance已验收。
+
 ## 1. 数据库与写入身份
 
 | 数据Owner | 独立database/schema | 所属业务服务 |
@@ -30,7 +34,7 @@
 | workspace | opl_workspace / workspace | Workspace |
 | runtime_control | opl_runtime_control / runtime_control | Runtime Control |
 | fabric | opl_fabric / fabric | Fabric |
-| gateway | opl_gateway / gateway | Gateway Integration的外部Gateway适配模块 |
+| gateway | opl_gateway / gateway | Gateway Integration：User↔Sub2API User、User↔OCI Destination及外部Gateway适配 |
 | resource_catalog | opl_resource_catalog / resource_catalog | Resource Catalog |
 | ledger | opl_ledger / ledger | Ledger |
 | serve | opl_serve / serve | Serve：默认App和Agent的部署/运行/访问 |
@@ -49,7 +53,8 @@
 
 - `tenant_members`唯一活动actor索引约束“初期一个活动Tenant”；成员操作锁Tenant行，禁止撤销最后一位owner。每次业务请求复验Tenant与membership，停用/撤销立即拒绝，不等待旧session自然过期。
 - Invitation状态从accepted_at/revoked_at/expires_at确定，不双写status。接受时锁邀请和目标actor的活动membership约束。令牌只存hash，邀请目标是明确Gateway subject；Tenant钱包主体不从邀请身份推导。
-- `gateway.identity_mappings`属于逐个成员；`gateway.tenant_wallet_bindings`属于Tenant付款主体。Cloud不认证密码、不复制Sub2API余额、不用Cloud服务令牌冒充成员。**当前Gateway是否支持跨身份钱包委托必须以Gateway Owner契约与运行证据确认**；缺失时多人涉及资金动作明确拒绝，不能假装已具备。迁移旧账户的1:1身份/钱包映射保持原样。
+- `gateway.identity_mappings`由Gateway唯一写入，同一行保存User（opaque `actor_id`）↔Sub2API User与User↔OCI Destination。CloudIdentity负责session及Tenant/member授权；`tenant_id`不是绑定键，不新增Tenant destination表。`verified_at IS NULL`表达身份未验证，`destination_verified_at IS NULL`表达目的地未验证，`revoked_at IS NOT NULL`拒绝使用；不另存status，撤销也不释放身份和目的地唯一约束。email仅为初始repository名称候选，改email不换绑定。
+- `gateway.tenant_wallet_bindings`保留Tenant付款主体原有义务，与两个User绑定分开。Cloud不认证密码、不复制Sub2API余额、不用Cloud服务令牌冒充成员。跨身份钱包委托仍须Gateway Owner契约与运行证据，本次不新增资金路径。
 - Tenant删除请求先设置`deletion_requested_at`；正式删除状态确认时写`deleted_at`及`restore_until=deleted_at+15天`，撤销成员访问并记录Tenant Operation关联的Workspace删除Operation。Workspace逐项销毁/退款仍由Workspace编排并独立读回。Tenant恢复只恢复仍保留的私有制品与权限；不公开私有包、不复活已删除硬盘、不自动重购或续费。
 - `AssetCustody`是Tenant Operation、Capability/Build资产列表及Workspace删除进度的授权聚合DTO，不新增计数表。Package/Build数量实时按各Owner确定查询计算，不把count用作删除安全依据。
 
@@ -302,6 +307,32 @@ CloudIdentity owns Tenant authorization; permission_version advances on access c
 索引：
 - `tenant_members_one_active`: UNIQUE `(actor_id)` WHERE `revoked_at IS NULL`
 - `tenant_members_tenant`: `(tenant_id, created_at DESC, id DESC)`
+
+#### tenant.tenant_repository_bindings
+
+历史 OCI reservation。Gateway User destination 接管后保留读回，不再由 Tenant owner 新增、更新或删除；运行时 writer 只有 SELECT。覆盖 Build 历史交接。
+
+| 字段 | 类型 | 可空 | 默认 | 字段来源 |
+|---|---|---|---|---|
+| `tenant_id` | `text` | 否 | `—` | `02_database_schema_complete.md#tenant.tenant_repository_bindings.tenant_id` |
+| `registry_host` | `text` | 否 | `—` | `02_database_schema_complete.md#tenant.tenant_repository_bindings.registry_host` |
+| `registry_namespace` | `text` | 否 | `—` | `02_database_schema_complete.md#tenant.tenant_repository_bindings.registry_namespace` |
+| `repository` | `text` | 否 | `—` | `02_database_schema_complete.md#tenant.tenant_repository_bindings.repository` |
+| `status` | `text` | 否 | `'reserved'` | `02_database_schema_complete.md#tenant.tenant_repository_bindings.status` |
+| `created_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#tenant.tenant_repository_bindings.created_at` |
+| `updated_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#tenant.tenant_repository_bindings.updated_at` |
+
+约束：
+- `PRIMARY KEY (tenant_id)`
+- `FOREIGN KEY (tenant_id) REFERENCES tenant.tenants (id) ON DELETE RESTRICT`
+- `CHECK (status IN ('reserved','active','retired'))`
+- `CHECK (registry_host <> '' AND registry_host = lower(registry_host) AND position('://' in registry_host) = 0 AND right(registry_host,1) <> '/')`
+- `CHECK (registry_namespace <> '' AND registry_namespace = lower(registry_namespace))`
+- `CHECK (repository <> '' AND repository = lower(repository))`
+- `CHECK (repository !~ '[/@?#\\ ]' AND position('..' in repository) = 0)`
+
+索引：
+- `tenant_repository_bindings_destination`: UNIQUE `(registry_host, registry_namespace, repository)`
 
 #### tenant.invitations
 
@@ -2558,7 +2589,11 @@ Database `opl_gateway` · Schema `gateway` · Writer `opl_gateway_writer`。
 
 #### gateway.identity_mappings
 
-每成员独立Gateway身份；与Tenant钱包付款主体分开。覆盖 F01, F14, F16。
+Gateway唯一拥有User↔Sub2API User和User↔OCI Destination；CloudIdentity负责session授权，Tenant仅业务授权范围。覆盖 F01, F14, F16。
+
+身份与目的地的验证时间分别存储；目的地三字段必须同空或同有，未验证的完整tuple允许保存但禁止使用。readback仅在身份和目的地均验证且未撤销时返回`status=active`、`verification=confirmed`，两者为派生值。唯一约束覆盖撤销行，不重新分配User身份或历史制品路径。host/namespace必须符合安装准入，repository为单一路径段，禁止遍历与覆盖他人绑定。
+
+`tenant.tenant_repository_bindings`只保留历史reservation及明确owner交接读回，不再新增或更新；Gateway store不读取Tenant库，历史检查由CloudIdentity用自身连接完成。已接受Build的`executor_ref`与原始artifact历史保持不变。本节及SQL/inventory是目标字段投影，源码测试与Instance验收仍需独立证据。
 
 | 字段 | 类型 | 可空 | 默认 | 字段来源 |
 |---|---|---|---|---|
@@ -2566,17 +2601,28 @@ Database `opl_gateway` · Schema `gateway` · Writer `opl_gateway_writer`。
 | `actor_id` | `text` | 否 | `—` | `02_database_schema_complete.md#gateway.identity_mappings.actor_id` |
 | `sub2api_user_id` | `text` | 否 | `—` | `02_database_schema_complete.md#gateway.identity_mappings.sub2api_user_id` |
 | `external_identity_ref` | `text` | 否 | `—` | `02_database_schema_complete.md#gateway.identity_mappings.external_identity_ref` |
-| `verified_at` | `timestamptz` | 否 | `—` | `02_database_schema_complete.md#gateway.identity_mappings.verified_at` |
+| `verified_at` | `timestamptz` | NULL | `—` | `02_database_schema_complete.md#gateway.identity_mappings.verified_at` |
 | `created_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#gateway.identity_mappings.created_at` |
 | `updated_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#gateway.identity_mappings.updated_at` |
+| `registry_host` | `text` | NULL | `—` | `02_database_schema_complete.md#gateway.identity_mappings.registry_host` |
+| `registry_namespace` | `text` | NULL | `—` | `02_database_schema_complete.md#gateway.identity_mappings.registry_namespace` |
+| `repository` | `text` | NULL | `—` | `02_database_schema_complete.md#gateway.identity_mappings.repository` |
+| `destination_verified_at` | `timestamptz` | NULL | `—` | `02_database_schema_complete.md#gateway.identity_mappings.destination_verified_at` |
+| `revoked_at` | `timestamptz` | NULL | `—` | `02_database_schema_complete.md#gateway.identity_mappings.revoked_at` |
 
 约束：
 - `PRIMARY KEY (id)`
 - `UNIQUE (actor_id)`
 - `UNIQUE (sub2api_user_id)`
+- `CONSTRAINT identity_mappings_identity_nonempty CHECK ( actor_id <> '' AND actor_id = btrim(actor_id) AND sub2api_user_id <> '' AND sub2api_user_id = btrim(sub2api_user_id))`
+- `CONSTRAINT identity_mappings_destination_complete CHECK ( (registry_host IS NULL AND registry_namespace IS NULL AND repository IS NULL AND destination_verified_at IS NULL) OR (registry_host IS NOT NULL AND registry_namespace IS NOT NULL AND repository IS NOT NULL))`
+- `CONSTRAINT identity_mappings_host_safe CHECK ( registry_host IS NULL OR registry_host ~ '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?$')`
+- `CONSTRAINT identity_mappings_namespace_safe CHECK ( registry_namespace IS NULL OR (registry_namespace ~ '^[a-z0-9]([a-z0-9._-]{0,126}[a-z0-9])?$' AND position('..' in registry_namespace) = 0))`
+- `CONSTRAINT identity_mappings_repository_safe CHECK ( repository IS NULL OR (repository ~ '^[a-z0-9]([a-z0-9._-]{0,126}[a-z0-9])?$' AND position('..' in repository) = 0))`
 
 索引：
 - `identity_mappings_external`: `(external_identity_ref)`
+- `identity_mappings_destination`: UNIQUE `(registry_host, registry_namespace, repository)`（包含撤销行；未配置tuple为NULL）
 
 #### gateway.tenant_wallet_bindings
 

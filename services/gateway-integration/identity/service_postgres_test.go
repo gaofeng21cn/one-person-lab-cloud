@@ -159,6 +159,7 @@ func systemWithFixture(t *testing.T) (*identity.Service, *sql.DB, api.TenantProd
 	if e != nil {
 		t.Fatal(e)
 	}
+	s.GatewayStore = gatewayStoreSystem(t)
 	const token = "isolated-identity-test-token-00000001"
 	config := ownerservice.Config{Owner: owneridentity.Tenant, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: map[owneridentity.Service]string{owneridentity.ConsoleBFF: token}}
 	l, e := net.Listen("tcp", "127.0.0.1:0")
@@ -342,6 +343,7 @@ func TestPublisherSessionAndGrantPostgres(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	restarted.GatewayStore = s.GatewayStore
 	restarted.BuildCommit = commits
 	if _, e = restarted.AuthorizeAction(capCtx, continuation); e != nil {
 		t.Fatal("restart lost original grant", e)
@@ -391,6 +393,7 @@ func TestSessionAnswersOnAReplicaThatDidNotLogin(t *testing.T) {
 		t.Fatal(e)
 	}
 	request := &api.AuthorizationRequest{Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-test"}}}, ActorId: "101", SessionId: &ref, AudienceOwner: api.OwnerEnum_OWNER_ENUM_BUILD, Action: api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEBUILD, Resource: &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, Id: proto.String("package-version")}, RequestId: "replica"}
+	replica.GatewayStore = s.GatewayStore
 	before := fixture.subjectReads()
 	if _, e = replica.AuthorizeAction(ownerservice.WithPeerOwner(ctx, owneridentity.ConsoleBFF), request); e != nil {
 		t.Fatal("a session must not depend on the process that logged in", e)

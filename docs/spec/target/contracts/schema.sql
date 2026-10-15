@@ -57,6 +57,27 @@ CREATE TABLE tenant.tenant_members (
 CREATE UNIQUE INDEX tenant_members_one_active ON tenant.tenant_members (actor_id) WHERE revoked_at IS NULL;
 CREATE INDEX tenant_members_tenant ON tenant.tenant_members (tenant_id, created_at DESC, id DESC);
 
+-- Historical OCI reservations remain readable during the handover to the
+-- Gateway-owned User destination. The post-handover writer grant is revoked
+-- below; CloudIdentity performs the bounded historical read only.
+CREATE TABLE tenant.tenant_repository_bindings (
+  tenant_id text NOT NULL,
+  registry_host text NOT NULL,
+  registry_namespace text NOT NULL,
+  repository text NOT NULL,
+  status text NOT NULL DEFAULT 'reserved',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_id),
+  FOREIGN KEY (tenant_id) REFERENCES tenant.tenants (id) ON DELETE RESTRICT,
+  CHECK (status IN ('reserved','active','retired')),
+  CHECK (registry_host <> '' AND registry_host = lower(registry_host) AND position('://' in registry_host) = 0 AND right(registry_host,1) <> '/'),
+  CHECK (registry_namespace <> '' AND registry_namespace = lower(registry_namespace)),
+  CHECK (repository <> '' AND repository = lower(repository)),
+  CHECK (repository !~ '[/@?#\\ ]' AND position('..' in repository) = 0)
+);
+CREATE UNIQUE INDEX tenant_repository_bindings_destination ON tenant.tenant_repository_bindings (registry_host, registry_namespace, repository);
+
 -- 邀请token只存hash；接受时锁invite并校验actor活动Tenant
 CREATE TABLE tenant.invitations (
   id text NOT NULL,
@@ -297,6 +318,7 @@ CREATE INDEX operation_grants_open ON tenant.accepted_operation_grants (issued_a
 ALTER TABLE tenant.authorization_contexts ADD CONSTRAINT authorization_context_grant_fk FOREIGN KEY (accepted_operation_grant_id) REFERENCES tenant.accepted_operation_grants (id) ON DELETE RESTRICT;
 GRANT USAGE ON SCHEMA tenant TO opl_tenant_writer;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA tenant TO opl_tenant_writer;
+REVOKE INSERT, UPDATE, DELETE ON tenant.tenant_repository_bindings FROM opl_tenant_writer;
 REVOKE UPDATE, DELETE ON tenant.outbox_events FROM opl_tenant_writer;
 REVOKE UPDATE, DELETE ON tenant.audit_events FROM opl_tenant_writer;
 COMMIT;
@@ -2103,20 +2125,31 @@ REVOKE ALL ON DATABASE opl_gateway FROM PUBLIC;
 GRANT CONNECT ON DATABASE opl_gateway TO opl_gateway_writer;
 SET LOCAL ROLE opl_gateway_owner;
 
--- 每成员独立Gateway身份；与Tenant钱包付款主体分开
+-- Gateway唯一拥有User↔Sub2API User和User↔OCI Destination；CloudIdentity负责session授权，Tenant仅业务授权范围
 CREATE TABLE gateway.identity_mappings (
   id text NOT NULL,
   actor_id text NOT NULL,
   sub2api_user_id text NOT NULL,
   external_identity_ref text NOT NULL,
-  verified_at timestamptz NOT NULL,
+  verified_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
+  registry_host text,
+  registry_namespace text,
+  repository text,
+  destination_verified_at timestamptz,
+  revoked_at timestamptz,
   PRIMARY KEY (id),
   UNIQUE (actor_id),
-  UNIQUE (sub2api_user_id)
+  UNIQUE (sub2api_user_id),
+  CONSTRAINT identity_mappings_identity_nonempty CHECK ( actor_id <> '' AND actor_id = btrim(actor_id) AND sub2api_user_id <> '' AND sub2api_user_id = btrim(sub2api_user_id)),
+  CONSTRAINT identity_mappings_destination_complete CHECK ( (registry_host IS NULL AND registry_namespace IS NULL AND repository IS NULL AND destination_verified_at IS NULL) OR (registry_host IS NOT NULL AND registry_namespace IS NOT NULL AND repository IS NOT NULL)),
+  CONSTRAINT identity_mappings_host_safe CHECK ( registry_host IS NULL OR registry_host ~ '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?$'),
+  CONSTRAINT identity_mappings_namespace_safe CHECK ( registry_namespace IS NULL OR (registry_namespace ~ '^[a-z0-9]([a-z0-9._-]{0,126}[a-z0-9])?$' AND position('..' in registry_namespace) = 0)),
+  CONSTRAINT identity_mappings_repository_safe CHECK ( repository IS NULL OR (repository ~ '^[a-z0-9]([a-z0-9._-]{0,126}[a-z0-9])?$' AND position('..' in repository) = 0))
 );
 CREATE INDEX identity_mappings_external ON gateway.identity_mappings (external_identity_ref);
+CREATE UNIQUE INDEX identity_mappings_destination ON gateway.identity_mappings (registry_host, registry_namespace, repository);
 
 -- 唯一活动钱包主体映射；跨成员费用动作必须外部Gateway明确委托能力，未证实不可擅自模拟
 CREATE TABLE gateway.tenant_wallet_bindings (

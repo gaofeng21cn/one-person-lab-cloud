@@ -25,13 +25,14 @@ type GatewayReadClient interface {
 	IdentityReader
 	httpapi.LoginReader
 	GatewayClient() api.GatewayProductServiceClient
+	GatewayCoordinationClient() api.GatewayCoordinationClient
 	Close()
 }
 
 // NewGatewayReadHandler exposes the authenticated Gateway product reads (wallet
 // and model catalog) over the supplied owner client and identity authority.
-func NewGatewayReadHandler(gateway api.GatewayProductServiceClient, identity IdentityReader) http.Handler {
-	return httpapi.NewGatewayReadHandler(gateway, identity)
+func NewGatewayReadHandler(gateway api.GatewayProductServiceClient, coordination api.GatewayCoordinationClient, identity IdentityReader) http.Handler {
+	return httpapi.NewGatewayReadHandler(gateway, coordination, identity)
 }
 
 // DialGatewayReader dials Gateway Integration for the wallet/model read surface

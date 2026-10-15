@@ -60,8 +60,9 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	regName := "opl-build-test-reg-" + suffix
 	bkName := "opl-build-test-kit-" + suffix
 	registry := "127.0.0.1:" + rp
-	// Build resolves each Tenant's destination from the Tenant owner. The default
-	// harness points those reserved bindings at this disposable registry. An
+	fixturePrefix := registry + "/fixtures"
+	// Build resolves each User's destination from the authenticated owner. The
+	// default harness explicitly binds Users to this disposable registry. An
 	// operator may instead name a real registry so the same owner chain writes to
 	// it; the fixtures below stay on the loopback registry either way.
 	if os.Getenv("OPL_BUILD_TEST_REGISTRY_HOST") == "" {
@@ -136,7 +137,7 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 		// Keep the opt-in integration test loopback-only. The Dockerfile frontend
 		// is an immutable local fixture pushed into the disposable registry before
 		// the remote BuildKit worker starts consuming it.
-		frontendRepo := registry + "/frontend"
+		frontendRepo := fixturePrefix + "/frontend"
 		frontendTag := "fixture"
 		docker("tag", "docker/dockerfile:1", frontendRepo+":"+frontendTag)
 		pushed := docker("push", frontendRepo+":"+frontendTag)
@@ -154,7 +155,11 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	// Fixtures live on the loopback registry, which is reachable only over http.
 	// The immutable output may be written to a real https registry instead, so the
 	// transport is decided per host rather than by one global switch.
-	r := &Runner{Builder: "isolated", RegistryPrefix: registry + "/result", DockerConfig: dc, WorkDir: root, MaxPackageBytes: 1 << 20, MaxExpandedBytes: 2 << 20, MaxFiles: 128, Timeout: 3 * time.Minute, AllowHTTP: true, InsecureHTTPHosts: []string{registry}, RegistryToken: os.Getenv("OPL_BUILD_TEST_REGISTRY_TOKEN")}
+	outputNamespace := os.Getenv("OPL_BUILD_TEST_REGISTRY_NAMESPACE")
+	if outputNamespace == "" {
+		outputNamespace = "result"
+	}
+	r := &Runner{Builder: "isolated", RegistryPrefix: os.Getenv("OPL_BUILD_TEST_REGISTRY_HOST") + "/" + outputNamespace, DockerConfig: dc, WorkDir: root, MaxPackageBytes: 1 << 20, MaxExpandedBytes: 2 << 20, MaxFiles: 128, Timeout: 3 * time.Minute, AllowHTTP: true, InsecureHTTPHosts: []string{registry}, RegistryToken: os.Getenv("OPL_BUILD_TEST_REGISTRY_TOKEN")}
 	seed := func(name, filename, body string) *api.ArtifactReference {
 		t.Helper()
 		d := filepath.Join(root, name)
@@ -162,12 +167,12 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 		os.WriteFile(filepath.Join(d, filename), []byte(body), 0644)
 		os.WriteFile(filepath.Join(d, "Dockerfile"), []byte("FROM scratch\nCOPY "+filename+" /"+filename+"\n"), 0644)
 		job := "build_" + strings.Repeat("1", 32)
-		bx("build", "--builder", "isolated", "--platform", "linux/arm64", "--provenance=false", "--sbom=false", "--tag", registry+"/"+name+":"+job, "--push", d)
-		m, e := r.ReadManifest(ctx, registry+"/"+name, job, p)
+		bx("build", "--builder", "isolated", "--platform", "linux/arm64", "--provenance=false", "--sbom=false", "--tag", fixturePrefix+"/"+name+":"+job, "--push", d)
+		m, e := r.ReadManifest(ctx, fixturePrefix+"/"+name, job, p)
 		if e != nil {
 			t.Fatal(e)
 		}
-		return &api.ArtifactReference{Repository: registry + "/" + name, Digest: m.Digest, Platform: p}
+		return &api.ArtifactReference{Repository: fixturePrefix + "/" + name, Digest: m.Digest, Platform: p}
 	}
 	var runtime *api.ArtifactReference
 	if ref := os.Getenv("OPL_RUNTIME_IMAGE"); ref != "" {
@@ -179,7 +184,7 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	} else {
 		runtime = seed("runtime", "runtime.txt", "approved runtime\n")
 	}
-	webui := buildCloudAgentWebUI(t, docker, registry)
+	webui := buildCloudAgentWebUI(t, docker, fixturePrefix)
 	schemaBytes, err := os.ReadFile("../../../../docs/spec/target/contracts/publisher-contract.schema.json")
 	if err != nil {
 		t.Fatal(err)
@@ -211,7 +216,7 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	recipeContract.PackageInput.TargetPath = "/agent"
 	recipeContract.WebuiInput.SourcePath = "/web"
 	recipeContract.WebuiInput.TargetPath = "/web"
-	recipeContract.Recipe.Repository = registry + "/recipe"
+	recipeContract.Recipe.Repository = fixturePrefix + "/recipe"
 	input := &api.BuildInputSnapshot{RuntimeVersionId: "runtime-live", WebuiVersionId: "webui-live", RuntimeArtifact: runtime, WebuiArtifact: webui, RuntimeContract: runtimeContract, WebuiContract: webuiContract, RuntimeContractReference: &api.PublisherContractReference{Kind: api.PublisherContractReferenceKindEnum_PUBLISHER_CONTRACT_REFERENCE_KIND_ENUM_RUNTIME}, WebuiContractReference: &api.PublisherContractReference{Kind: api.PublisherContractReferenceKindEnum_PUBLISHER_CONTRACT_REFERENCE_KIND_ENUM_WEBUI}}
 	var pkg []byte
 	if packagePath := os.Getenv("OPL_BUILD_TEST_PACKAGE"); packagePath != "" {
@@ -271,7 +276,7 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	t.Logf("BUILD_INPUT_SNAPSHOT package_object=%s/%s package_sha256=%s runtime=%s@%s webui=%s@%s recipe=%s@%s snapshot=%s", input.PackageObject.StorageObjectId, input.PackageObject.VersionId, input.PackageObject.Sha256, input.RuntimeArtifact.Repository, input.RuntimeArtifact.Digest, input.WebuiArtifact.Repository, input.WebuiArtifact.Digest, input.RuntimeContract.BuildRecipe.Recipe.Repository, input.RuntimeContract.BuildRecipe.Recipe.Digest, input.SnapshotDigest)
 	verifyOwnerChain(t, ctx, dsn, capability, capabilityAddr, r, input, identity)
 	jobID := "build_" + strings.Repeat("2", 32)
-	binding, err := api.NewCloudIdentityAuthorizationClient(identityConn(t, identity.address, owneridentity.Build.Service())).GetTenantRepositoryBinding(ctx, &api.GetTenantRepositoryBindingRequest{TenantId: "tenant-live"})
+	binding, err := api.NewGatewayCoordinationClient(identityConn(t, identity.address, owneridentity.Build.Service())).ReadUserExternalIdentity(ctx, &api.UserExternalBindingReadRequest{Context: identity.call("runner-destination", "tenant-live"), ActorId: "101"})
 	if err != nil {
 		t.Fatal(err)
 	}

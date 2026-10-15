@@ -227,6 +227,7 @@ func TestWorkspaceAcceptedGrantPostgres(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.GatewayStore = f.s.GatewayStore
 	s.WorkspaceCommit = f.reader
 	f.s = s
 	if replay := f.issue(t); replay.Id != g.Id {

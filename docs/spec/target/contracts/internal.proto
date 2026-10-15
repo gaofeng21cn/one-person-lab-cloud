@@ -2375,6 +2375,41 @@ message QuoteResourcePlanRequest { CallContext context = 1; string quote_id = 2;
 // carry the exact Workspace and obligation binding; this call makes no writes.
 service CatalogCoordination { rpc AcceptQuote(AcceptQuoteRequest) returns (QuoteAcceptance); rpc ReadQuoteResourcePlan(QuoteResourcePlanRequest) returns (QuoteAcceptance); }
 service WorkspaceAdmission { rpc CheckAdmission(AdmissionRequest) returns (AdmissionResult); }
+message UserExternalBindingCommand {
+ CallContext context = 1;
+ string actor_id = 2;
+ string sub2api_user_id = 3;
+ string registry_host = 4;
+ string registry_namespace = 5;
+ string repository = 6;
+ reserved 7;
+}
+message UserExternalBindingReadRequest { CallContext context = 1; string actor_id = 2; }
+// Resolve the User from the live session; no target actor or destination is accepted.
+message GetSelfUserExternalBindingRequest { CallContext context = 1; }
+message UserExternalBindingReadback {
+ string actor_id = 1;
+ string sub2api_user_id = 2;
+ string registry_host = 3;
+ string registry_namespace = 4;
+ string repository = 5;
+ UserExternalBindingReadbackStatusEnum status = 6;
+ UserExternalBindingReadbackVerificationEnum verification = 7;
+ string verification_evidence_ref = 8;
+ google.protobuf.Timestamp verified_at = 9;
+ google.protobuf.Timestamp created_at = 10;
+ google.protobuf.Timestamp updated_at = 11;
+ google.protobuf.Timestamp destination_verified_at = 12;
+}
+enum UserExternalBindingReadbackStatusEnum {
+ USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_UNSPECIFIED = 0;
+ USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_ACTIVE = 1;
+}
+enum UserExternalBindingReadbackVerificationEnum {
+ USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_UNSPECIFIED = 0;
+ USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_CONFIRMED = 1;
+}
+
 message WalletBindingCommand { CallContext context = 1; string target_tenant_id = 2; string billing_sub2api_user_id = 3; int64 expected_binding_version = 4; string authorization_receipt_id = 5; }
 message WalletBindingReadback { string tenant_id = 1; string billing_sub2api_user_id = 2; int64 binding_version = 3; Observation outcome = 4; string authorization_receipt_id = 5; }
 message WalletDebitCommand { CallContext context = 1; string workspace_id = 2; string obligation_id = 3; string quote_acceptance_id = 4; int64 amount_usd_micros = 5; string currency = 6; string subscription_period_id = 7; }
@@ -2384,6 +2419,9 @@ message ManagedKeyCommand { CallContext context = 1; string workspace_id = 2; re
 message ManagedKeyBinding { string key_binding_id = 1; string fingerprint = 2; string secret_delivery_reference = 3; string workspace_id = 4; string target_runtime_instance_id = 5; google.protobuf.Timestamp expires_at = 6; }
 message ManagedKeyRevoke { CallContext context = 1; string key_binding_id = 2; string workspace_id = 3; }
 service GatewayCoordination {
+ rpc GetSelfUserExternalBinding(GetSelfUserExternalBindingRequest) returns (UserExternalBindingReadback);
+ rpc BindUserExternalIdentity(UserExternalBindingCommand) returns (UserExternalBindingReadback);
+ rpc ReadUserExternalIdentity(UserExternalBindingReadRequest) returns (UserExternalBindingReadback);
  rpc BindWallet(WalletBindingCommand) returns (WalletBindingReadback);
  rpc Debit(WalletDebitCommand) returns (WalletOperation);
  rpc Refund(WalletRefundCommand) returns (WalletOperation);
@@ -3216,6 +3254,7 @@ enum AuthorizationActionEnum {
  AUTHORIZATION_ACTION_ENUM_READPLANCHANGEFAILURE = 152;
 AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES = 153;
  AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY = 154;
+ AUTHORIZATION_ACTION_ENUM_GETSELFUSEREXTERNALBINDING = 155;
 }
 
 enum ServiceIdentityEnum {

@@ -105,7 +105,7 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	if err = capability.ConfigurePublisherSchema(schemaPathForWebui, digest(schemaData)); err != nil {
 		t.Fatal(err)
 	}
-	publisher, err := capClient.CreatePublisherNamespace(ctx, &api.CreatePublisherNamespaceRpcRequest{Context: identity.call("publisher-admit", "platform"), Body: &api.CreatePublisherNamespaceRequest{Name: "local-publisher", Kind: api.CreatePublisherNamespaceRequestKindEnum_CREATE_PUBLISHER_NAMESPACE_REQUEST_KIND_ENUM_OFFICIAL, RegistryId: "local-registry", RepositoryPrefix: runner.RegistryPrefix[:len(runner.RegistryPrefix)-len("/result")], AdmissionReceiptId: "isolated-publisher-admission"}})
+	publisher, err := capClient.CreatePublisherNamespace(ctx, &api.CreatePublisherNamespaceRpcRequest{Context: identity.call("publisher-admit", "platform"), Body: &api.CreatePublisherNamespaceRequest{Name: "local-publisher", Kind: api.CreatePublisherNamespaceRequestKindEnum_CREATE_PUBLISHER_NAMESPACE_REQUEST_KIND_ENUM_OFFICIAL, RegistryId: "local-registry", RepositoryPrefix: input.WebuiArtifact.GetRepository()[:strings.LastIndex(input.WebuiArtifact.GetRepository(), "/")], AdmissionReceiptId: "isolated-publisher-admission"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +196,9 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	capDrop := &lostInboxAck{DomainInboxClient: api.NewDomainInboxClient(capConn)}
 	ledgerDB, ledgerBuild, ledgerCapability := liveLedger(t, ctx)
 	capability.LedgerInbox = ledgerCapability
-	service, err := New(store, ownerservice.NewAuthorizer(ownerservice.OwnerBuild, identity.auth(t, owneridentity.Build)), api.NewCapabilityCoordinationClient(capConn), api.NewCapabilityProductServiceClient(capConn), map[string]api.DomainInboxClient{"capability": capDrop, "ledger": ledgerBuild}, identity.auth(t, owneridentity.Build), runner)
+	identityClientConn := identityConn(t, identity.address, owneridentity.Build.Service())
+	identityClient := api.NewCloudIdentityAuthorizationClient(identityClientConn)
+	service, err := New(store, ownerservice.NewAuthorizer(ownerservice.OwnerBuild, identityClient), api.NewCapabilityCoordinationClient(capConn), api.NewCapabilityProductServiceClient(capConn), map[string]api.DomainInboxClient{"capability": capDrop, "ledger": ledgerBuild}, identityClient, api.NewGatewayCoordinationClient(identityClientConn), runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +291,7 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("registration did not converge: state=%s pending=%d/%d ledger errors=%v / %v", rec.Job.Status, buildPending, capPending, ledgerBuild.lastError, ledgerCapability.lastError)
+			t.Fatalf("registration did not converge: state=%s pending=%d/%d inbox errors=%v / %v ledger errors=%v / %v", rec.Job.Status, buildPending, capPending, capDrop.lastError, buildDrop.lastError, ledgerBuild.lastError, ledgerCapability.lastError)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}

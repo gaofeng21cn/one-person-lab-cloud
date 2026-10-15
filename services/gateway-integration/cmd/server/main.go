@@ -24,6 +24,10 @@ func main() {
 	if e != nil {
 		log.Fatal(e)
 	}
+	gatewayDSN := strings.TrimSpace(os.Getenv("OPL_GATEWAY_DATABASE_URL"))
+	if gatewayDSN == "" {
+		log.Fatal("OPL_GATEWAY_DATABASE_URL is required for durable User identity and OCI bindings")
+	}
 	// The Gateway directory identity is optional and all-or-nothing: it is the
 	// service's own administrative read-only identity used to resolve a member's
 	// display name and to confirm an invited subject exists. Without it those two
@@ -63,69 +67,62 @@ func main() {
 			return fmt.Errorf("OPL_WORKSPACE_REGISTRY_HOST and OPL_WORKSPACE_REGISTRY_NAMESPACE must be supplied together")
 		}
 		s.ConfigureRegistry(registryHost, registryNamespace)
-		if err := s.BackfillTenantRepositoryBindings(ctx); err != nil {
-			return err
+		// Gateway is a distinct, required data owner in this deployment unit.
+		// Login and every live session consume its durable identity mapping.
+		gatewayDB, e := ownerservice.OpenDatabase(ctx, owneridentity.Gateway, gatewayDSN)
+		if e != nil {
+			return e
 		}
-		// The gateway data owner is a second, distinct database in the same
-		// deployment unit. It is optional: an absent OPL_GATEWAY_DATABASE_URL leaves
-		// the settlement/key surface unregistered rather than serving a money path
-		// with no writer.
-		if gatewayDSN := strings.TrimSpace(os.Getenv("OPL_GATEWAY_DATABASE_URL")); gatewayDSN != "" {
-			gatewayDB, e := ownerservice.OpenDatabase(ctx, owneridentity.Gateway, gatewayDSN)
-			if e != nil {
-				return e
+		gatewaySource, e := gatewaymigrations.Source()
+		if e != nil {
+			gatewayDB.Close()
+			return e
+		}
+		if e = gatewayDB.Migrate(ctx, gatewaySource); e != nil {
+			gatewayDB.Close()
+			return e
+		}
+		if e = server.TrackCloser(gatewayDB); e != nil {
+			gatewayDB.Close()
+			return e
+		}
+		store, e := identity.NewGatewayStore(gatewayDB.DB())
+		if e != nil {
+			return e
+		}
+		if e = server.AddReadinessCheck("gateway_database", gatewayDB.Ready); e != nil {
+			return e
+		}
+		s.GatewayStore = store
+		// The managed-key issuance and delivery surface is wired only when the
+		// deployment supplies every approved fact: the Sub2API service endpoint
+		// and its independent service token, the approved Workspace key group,
+		// and the Fabric Secret store peer. A partial configuration leaves the
+		// issuer or the store absent, and the surface fails closed instead of
+		// minting or storing a credential through an unapproved path.
+		rawURL, serviceToken, group := strings.TrimSpace(os.Getenv("OPL_SUB2API_URL")), strings.TrimSpace(os.Getenv("OPL_SUB2API_SERVICE_TOKEN")), strings.TrimSpace(os.Getenv("OPL_GATEWAY_WORKSPACE_KEY_GROUP"))
+		if rawURL != "" && serviceToken != "" && group != "" {
+			issuer, err := identity.NewSub2APIWorkspaceKeyIssuer(rawURL, serviceToken, group)
+			if err != nil {
+				return err
 			}
-			gatewaySource, e := gatewaymigrations.Source()
-			if e != nil {
-				gatewayDB.Close()
-				return e
+			s.KeyIssuer = issuer
+			s.WorkspaceKeyGroup = group
+		}
+		if fabricAddr, fabricToken := strings.TrimSpace(os.Getenv("OPL_FABRIC_ADDR")), strings.TrimSpace(os.Getenv("OPL_FABRIC_TOKEN")); fabricAddr != "" && fabricToken != "" {
+			options, err := config.TLS.DialOptions(owneridentity.Tenant.Service(), owneridentity.Fabric.Service(), fabricToken)
+			if err != nil {
+				return err
 			}
-			if e = gatewayDB.Migrate(ctx, gatewaySource); e != nil {
-				gatewayDB.Close()
-				return e
+			conn, err := grpc.NewClient(fabricAddr, options...)
+			if err != nil {
+				return err
 			}
-			if e = server.TrackCloser(gatewayDB); e != nil {
-				gatewayDB.Close()
-				return e
+			if err = server.TrackCloser(conn); err != nil {
+				conn.Close()
+				return err
 			}
-			store, e := identity.NewGatewayStore(gatewayDB.DB())
-			if e != nil {
-				return e
-			}
-			if e = server.AddReadinessCheck("gateway_database", gatewayDB.Ready); e != nil {
-				return e
-			}
-			s.GatewayStore = store
-			// The managed-key issuance and delivery surface is wired only when the
-			// deployment supplies every approved fact: the Sub2API service endpoint
-			// and its independent service token, the approved Workspace key group,
-			// and the Fabric Secret store peer. A partial configuration leaves the
-			// issuer or the store absent, and the surface fails closed instead of
-			// minting or storing a credential through an unapproved path.
-			rawURL, serviceToken, group := strings.TrimSpace(os.Getenv("OPL_SUB2API_URL")), strings.TrimSpace(os.Getenv("OPL_SUB2API_SERVICE_TOKEN")), strings.TrimSpace(os.Getenv("OPL_GATEWAY_WORKSPACE_KEY_GROUP"))
-			if rawURL != "" && serviceToken != "" && group != "" {
-				issuer, err := identity.NewSub2APIWorkspaceKeyIssuer(rawURL, serviceToken, group)
-				if err != nil {
-					return err
-				}
-				s.KeyIssuer = issuer
-				s.WorkspaceKeyGroup = group
-			}
-			if fabricAddr, fabricToken := strings.TrimSpace(os.Getenv("OPL_FABRIC_ADDR")), strings.TrimSpace(os.Getenv("OPL_FABRIC_TOKEN")); fabricAddr != "" && fabricToken != "" {
-				options, err := config.TLS.DialOptions(owneridentity.Tenant.Service(), owneridentity.Fabric.Service(), fabricToken)
-				if err != nil {
-					return err
-				}
-				conn, err := grpc.NewClient(fabricAddr, options...)
-				if err != nil {
-					return err
-				}
-				if err = server.TrackCloser(conn); err != nil {
-					conn.Close()
-					return err
-				}
-				s.SecretStore = identity.NewFabricManagedSecretStore(api.NewFabricCoordinationClient(conn))
-			}
+			s.SecretStore = identity.NewFabricManagedSecretStore(api.NewFabricCoordinationClient(conn))
 		}
 		// Owner-commit readback for grant issuance is wired only for an owner whose
 		// address this deployment actually configures. An absent address is a

@@ -37,6 +37,7 @@ import (
 	"opl-cloud/apps/console-bff"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/services/gateway-integration/gatewaymigrations"
 	cloudidentity "opl-cloud/services/gateway-integration/identity"
 	identitymigrations "opl-cloud/services/gateway-integration/migrations"
 	"opl-cloud/services/internal/ownerservice"
@@ -232,6 +233,14 @@ func newLiveSystem(t *testing.T) *liveSystem {
 	// The platform administrator is the deployment-owned Gateway subject allowlist,
 	// never a Tenant membership.
 	identityService, err := cloudidentity.New(tenantDB, gateway, bytes.Repeat([]byte("k"), 32), []string{"103"}, 168*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gatewaySource, err := gatewaymigrations.Source()
+	if err != nil {
+		t.Fatal(err)
+	}
+	identityService.GatewayStore, err = cloudidentity.NewGatewayStore(liveOwnerDB(t, ctx, dsn, "gateway", gatewaySource))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -522,6 +531,14 @@ func TestLiveCatalogCloudIdentityDecisionCoversCatalogActions(t *testing.T) {
 		t.Fatal(err)
 	}
 	identityService, err := cloudidentity.New(tenantDB, gateway, bytes.Repeat([]byte("k"), 32), []string{"103"}, 168*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gatewaySource, err := gatewaymigrations.Source()
+	if err != nil {
+		t.Fatal(err)
+	}
+	identityService.GatewayStore, err = cloudidentity.NewGatewayStore(liveOwnerDB(t, ctx, dsn, "gateway", gatewaySource))
 	if err != nil {
 		t.Fatal(err)
 	}

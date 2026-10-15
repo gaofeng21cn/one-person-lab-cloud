@@ -38,7 +38,7 @@ Cloud产品仓库负责可移植服务和发布，Instance负责真实实例配�
 | Workspace | Workspace身份、Tenant成员授权、权益/订阅、资源方案、报价接受、购买/资源/续费/删除/退款Saga；校验Agent交付目标授权 | Workspace/周期义务/业务Operation/steps；不存Agent Deployment/active字段 | BFF/Serve/到期worker/管理员命令 | Agent Package、OCI、Agent部署/运行事实、可消费余额、provider资源事实 |
 | Serve | 按Workspace执行默认App或Agent OCI交付；异步部署/替换/回滚；唯一当前应用、readiness和对外访问路由；API/Embed/Hosted UI | Agent deployments、deploy operations、runtime observations/access bindings及本域事件 | BFF/Workspace/外部消费者 | Package/Runtime版本元数据writer、Workspace权益/成员writer、Fabric资源writer |
 | Fabric | Provider适配；Compute/Storage/Network等资源开通、绑定、资源状态读回；所需资源Secret引用绑定 | provider resource set/resources/attachments/resource actions | Workspace/Serve/受保护operator | Agent OCI部署、Agent Runtime启停/readiness、Serve路由、套餐销售价格、客户余额 |
-| Gateway Integration | Gateway身份适配；Cloud主体/Tenant权限映射；钱包主体委托；Key；扣退款一次性调用与回读 | 映射/授权上下文/交易请求身份及观察结果 | BFF/Workspace | 可花费余额缓存、密码、第二套资金流水权威 |
+| Gateway Integration | CloudIdentity负责session/Tenant成员授权；gateway负责User↔Sub2API User、User↔OCI Destination及原生Gateway适配 | tenant库保存session/授权；gateway库的`gateway.identity_mappings`唯一保存两个User绑定，另保留钱包/Key原有事实 | BFF/Build/Workspace | 可花费余额缓存、密码、第二套资金流水权威 |
 | Resource Catalog | provider-neutral套餐；价格版本；兼容性/可售性；报价生成 | 套餐/价格策略/不可变报价及有效期限 | BFF/Workspace/Fabric preflight读取 | 资源执行、钱包记账、已接受订阅义务writer |
 | Ledger | 类型化receipt验证；append-only保存；索引；对账证据 | Receipt/证据索引/对账报告 | 所有业务owner | provider mutation、业务Saga、付款重试 |
 

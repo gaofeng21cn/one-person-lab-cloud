@@ -9,7 +9,9 @@ import (
 	"testing"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"opl-cloud/apps/console-bff/internal/clients"
@@ -26,9 +28,18 @@ import (
 // in-process probe.
 type gatewayOwnerServer struct {
 	api.UnimplementedGatewayProductServiceServer
-	walletRequest *api.GetWalletRpcRequest
-	usageRequest  *api.GetUsageSummaryRpcRequest
-	modelRequest  *api.ListModelsRpcRequest
+	api.UnimplementedGatewayCoordinationServer
+	bindingRequest  *api.GetSelfUserExternalBindingRequest
+	bindingResponse *api.UserExternalBindingReadback
+	bindingErr      error
+	walletRequest   *api.GetWalletRpcRequest
+	usageRequest    *api.GetUsageSummaryRpcRequest
+	modelRequest    *api.ListModelsRpcRequest
+}
+
+func (s *gatewayOwnerServer) GetSelfUserExternalBinding(_ context.Context, r *api.GetSelfUserExternalBindingRequest) (*api.UserExternalBindingReadback, error) {
+	s.bindingRequest = r
+	return s.bindingResponse, s.bindingErr
 }
 
 func (s *gatewayOwnerServer) GetWallet(_ context.Context, r *api.GetWalletRpcRequest) (*api.Wallet, error) {
@@ -56,6 +67,9 @@ func dialGatewayOwner(t *testing.T, server api.GatewayProductServiceServer) *cli
 	}
 	grpcServer := grpc.NewServer()
 	api.RegisterGatewayProductServiceServer(grpcServer, server)
+	if coordination, ok := server.(api.GatewayCoordinationServer); ok {
+		api.RegisterGatewayCoordinationServer(grpcServer, coordination)
+	}
 	api.RegisterOwnerOperationsServer(grpcServer, &api.UnimplementedOwnerOperationsServer{})
 	api.RegisterTenantProductServiceServer(grpcServer, &api.UnimplementedTenantProductServiceServer{})
 	go func() { _ = grpcServer.Serve(listener) }()
@@ -155,3 +169,50 @@ func TestWalletRouteFailsClosedWhenTheGatewayOwnerIsAbsent(t *testing.T) {
 }
 
 var _ = insecure.NewCredentials
+
+// The browser can resolve only its own binding. Actor-like query parameters are
+// never forwarded, and an upstream actor mismatch cannot cross the BFF boundary.
+func TestSelfExternalBindingsTravelThroughBFFWire(t *testing.T) {
+	owner := &gatewayOwnerServer{}
+	client := dialGatewayOwner(t, owner)
+	identity := allowedIdentity()
+	handler := NewServer(client, identity).Handler()
+	for _, tc := range []struct {
+		name   string
+		output *api.UserExternalBindingReadback
+		err    error
+		code   int
+	}{
+		{"self", &api.UserExternalBindingReadback{ActorId: "actor-1", Sub2ApiUserId: "101", RegistryHost: "uswccr.ccs.tencentyun.com", RegistryNamespace: "oplcloud", Repository: "testcloud4", Status: api.UserExternalBindingReadbackStatusEnum_USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_ACTIVE, Verification: api.UserExternalBindingReadbackVerificationEnum_USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_CONFIRMED}, nil, 200},
+		{"different_actor", &api.UserExternalBindingReadback{ActorId: "actor-2"}, nil, 502},
+		{"absent", nil, status.Error(codes.NotFound, "binding absent"), 404},
+		{"revoked", nil, status.Error(codes.PermissionDenied, "binding revoked"), 403},
+		{"unverified", nil, status.Error(codes.FailedPrecondition, "binding unverified"), 422},
+		{"unavailable", nil, status.Error(codes.Unavailable, "owner unavailable"), 503},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			owner.bindingResponse, owner.bindingErr, owner.bindingRequest = tc.output, tc.err, nil
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/auth/external-bindings?actorId=actor-2&repository=forged"))
+			if response.Code != tc.code {
+				t.Fatalf("status=%d want=%d body=%s", response.Code, tc.code, response.Body.String())
+			}
+			call := owner.bindingRequest.GetContext()
+			if call.GetActorId() != "actor-1" || call.GetSessionId() != owneridentity.SessionReference("session-1") || call.GetScope().GetTenant().GetTenantId() != "tenant-1" {
+				t.Fatalf("binding context=%v", call)
+			}
+			if response.Header().Get("Cache-Control") != "no-store" {
+				t.Fatal("private binding response is cacheable")
+			}
+			if tc.name == "self" && (!strings.Contains(response.Body.String(), `"repository":"testcloud4"`) || !strings.Contains(response.Body.String(), `"sub2apiUserId":"101"`)) {
+				t.Fatalf("self binding=%s", response.Body.String())
+			}
+		})
+	}
+	owner.bindingRequest = nil
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v2/auth/external-bindings", nil))
+	if response.Code != 401 || owner.bindingRequest != nil {
+		t.Fatalf("anonymous status=%d reached owner=%v", response.Code, owner.bindingRequest != nil)
+	}
+}

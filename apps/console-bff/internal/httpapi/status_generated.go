@@ -10,6 +10,7 @@ var successStatus = map[api.AuthorizationActionEnum]int{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETLOGINCONTEXT:                       200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LOGIN:                                 200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETSESSION:                            200,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETSELFUSEREXTERNALBINDING:            200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LOGOUT:                                204,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANT:                             200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTMEMBERS:                           200,

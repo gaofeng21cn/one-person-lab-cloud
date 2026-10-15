@@ -405,6 +405,98 @@ func (AcceptedGrantMode) EnumDescriptor() ([]byte, []int) {
 	return file_internal_proto_rawDescGZIP(), []int{6}
 }
 
+type UserExternalBindingReadbackStatusEnum int32
+
+const (
+	UserExternalBindingReadbackStatusEnum_USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_UNSPECIFIED UserExternalBindingReadbackStatusEnum = 0
+	UserExternalBindingReadbackStatusEnum_USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_ACTIVE      UserExternalBindingReadbackStatusEnum = 1
+)
+
+// Enum value maps for UserExternalBindingReadbackStatusEnum.
+var (
+	UserExternalBindingReadbackStatusEnum_name = map[int32]string{
+		0: "USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_UNSPECIFIED",
+		1: "USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_ACTIVE",
+	}
+	UserExternalBindingReadbackStatusEnum_value = map[string]int32{
+		"USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_UNSPECIFIED": 0,
+		"USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_ACTIVE":      1,
+	}
+)
+
+func (x UserExternalBindingReadbackStatusEnum) Enum() *UserExternalBindingReadbackStatusEnum {
+	p := new(UserExternalBindingReadbackStatusEnum)
+	*p = x
+	return p
+}
+
+func (x UserExternalBindingReadbackStatusEnum) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (UserExternalBindingReadbackStatusEnum) Descriptor() protoreflect.EnumDescriptor {
+	return file_internal_proto_enumTypes[7].Descriptor()
+}
+
+func (UserExternalBindingReadbackStatusEnum) Type() protoreflect.EnumType {
+	return &file_internal_proto_enumTypes[7]
+}
+
+func (x UserExternalBindingReadbackStatusEnum) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use UserExternalBindingReadbackStatusEnum.Descriptor instead.
+func (UserExternalBindingReadbackStatusEnum) EnumDescriptor() ([]byte, []int) {
+	return file_internal_proto_rawDescGZIP(), []int{7}
+}
+
+type UserExternalBindingReadbackVerificationEnum int32
+
+const (
+	UserExternalBindingReadbackVerificationEnum_USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_UNSPECIFIED UserExternalBindingReadbackVerificationEnum = 0
+	UserExternalBindingReadbackVerificationEnum_USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_CONFIRMED   UserExternalBindingReadbackVerificationEnum = 1
+)
+
+// Enum value maps for UserExternalBindingReadbackVerificationEnum.
+var (
+	UserExternalBindingReadbackVerificationEnum_name = map[int32]string{
+		0: "USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_UNSPECIFIED",
+		1: "USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_CONFIRMED",
+	}
+	UserExternalBindingReadbackVerificationEnum_value = map[string]int32{
+		"USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_UNSPECIFIED": 0,
+		"USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_CONFIRMED":   1,
+	}
+)
+
+func (x UserExternalBindingReadbackVerificationEnum) Enum() *UserExternalBindingReadbackVerificationEnum {
+	p := new(UserExternalBindingReadbackVerificationEnum)
+	*p = x
+	return p
+}
+
+func (x UserExternalBindingReadbackVerificationEnum) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (UserExternalBindingReadbackVerificationEnum) Descriptor() protoreflect.EnumDescriptor {
+	return file_internal_proto_enumTypes[8].Descriptor()
+}
+
+func (UserExternalBindingReadbackVerificationEnum) Type() protoreflect.EnumType {
+	return &file_internal_proto_enumTypes[8]
+}
+
+func (x UserExternalBindingReadbackVerificationEnum) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use UserExternalBindingReadbackVerificationEnum.Descriptor instead.
+func (UserExternalBindingReadbackVerificationEnum) EnumDescriptor() ([]byte, []int) {
+	return file_internal_proto_rawDescGZIP(), []int{8}
+}
+
 type AgentRuntimeObservationState int32
 
 const (
@@ -453,11 +545,11 @@ func (x AgentRuntimeObservationState) String() string {
 }
 
 func (AgentRuntimeObservationState) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[7].Descriptor()
+	return file_internal_proto_enumTypes[9].Descriptor()
 }
 
 func (AgentRuntimeObservationState) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[7]
+	return &file_internal_proto_enumTypes[9]
 }
 
 func (x AgentRuntimeObservationState) Number() protoreflect.EnumNumber {
@@ -466,7 +558,7 @@ func (x AgentRuntimeObservationState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AgentRuntimeObservationState.Descriptor instead.
 func (AgentRuntimeObservationState) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{7}
+	return file_internal_proto_rawDescGZIP(), []int{9}
 }
 
 type PeriodObligationStatus int32
@@ -511,11 +603,11 @@ func (x PeriodObligationStatus) String() string {
 }
 
 func (PeriodObligationStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[8].Descriptor()
+	return file_internal_proto_enumTypes[10].Descriptor()
 }
 
 func (PeriodObligationStatus) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[8]
+	return &file_internal_proto_enumTypes[10]
 }
 
 func (x PeriodObligationStatus) Number() protoreflect.EnumNumber {
@@ -524,7 +616,7 @@ func (x PeriodObligationStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PeriodObligationStatus.Descriptor instead.
 func (PeriodObligationStatus) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{8}
+	return file_internal_proto_rawDescGZIP(), []int{10}
 }
 
 type TransitionReversibility int32
@@ -563,11 +655,11 @@ func (x TransitionReversibility) String() string {
 }
 
 func (TransitionReversibility) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[9].Descriptor()
+	return file_internal_proto_enumTypes[11].Descriptor()
 }
 
 func (TransitionReversibility) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[9]
+	return &file_internal_proto_enumTypes[11]
 }
 
 func (x TransitionReversibility) Number() protoreflect.EnumNumber {
@@ -576,7 +668,7 @@ func (x TransitionReversibility) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TransitionReversibility.Descriptor instead.
 func (TransitionReversibility) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{9}
+	return file_internal_proto_rawDescGZIP(), []int{11}
 }
 
 type PlanChangeExecutionStrategy int32
@@ -612,11 +704,11 @@ func (x PlanChangeExecutionStrategy) String() string {
 }
 
 func (PlanChangeExecutionStrategy) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[10].Descriptor()
+	return file_internal_proto_enumTypes[12].Descriptor()
 }
 
 func (PlanChangeExecutionStrategy) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[10]
+	return &file_internal_proto_enumTypes[12]
 }
 
 func (x PlanChangeExecutionStrategy) Number() protoreflect.EnumNumber {
@@ -625,7 +717,7 @@ func (x PlanChangeExecutionStrategy) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangeExecutionStrategy.Descriptor instead.
 func (PlanChangeExecutionStrategy) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{10}
+	return file_internal_proto_rawDescGZIP(), []int{12}
 }
 
 type PlanChangeStorageAction int32
@@ -661,11 +753,11 @@ func (x PlanChangeStorageAction) String() string {
 }
 
 func (PlanChangeStorageAction) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[11].Descriptor()
+	return file_internal_proto_enumTypes[13].Descriptor()
 }
 
 func (PlanChangeStorageAction) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[11]
+	return &file_internal_proto_enumTypes[13]
 }
 
 func (x PlanChangeStorageAction) Number() protoreflect.EnumNumber {
@@ -674,7 +766,7 @@ func (x PlanChangeStorageAction) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangeStorageAction.Descriptor instead.
 func (PlanChangeStorageAction) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{11}
+	return file_internal_proto_rawDescGZIP(), []int{13}
 }
 
 type ErrorCodeEnum int32
@@ -920,11 +1012,11 @@ func (x ErrorCodeEnum) String() string {
 }
 
 func (ErrorCodeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[12].Descriptor()
+	return file_internal_proto_enumTypes[14].Descriptor()
 }
 
 func (ErrorCodeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[12]
+	return &file_internal_proto_enumTypes[14]
 }
 
 func (x ErrorCodeEnum) Number() protoreflect.EnumNumber {
@@ -933,7 +1025,7 @@ func (x ErrorCodeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ErrorCodeEnum.Descriptor instead.
 func (ErrorCodeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{12}
+	return file_internal_proto_rawDescGZIP(), []int{14}
 }
 
 type OwnerEnum int32
@@ -993,11 +1085,11 @@ func (x OwnerEnum) String() string {
 }
 
 func (OwnerEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[13].Descriptor()
+	return file_internal_proto_enumTypes[15].Descriptor()
 }
 
 func (OwnerEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[13]
+	return &file_internal_proto_enumTypes[15]
 }
 
 func (x OwnerEnum) Number() protoreflect.EnumNumber {
@@ -1006,7 +1098,7 @@ func (x OwnerEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use OwnerEnum.Descriptor instead.
 func (OwnerEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{13}
+	return file_internal_proto_rawDescGZIP(), []int{15}
 }
 
 type TenantRoleEnum int32
@@ -1045,11 +1137,11 @@ func (x TenantRoleEnum) String() string {
 }
 
 func (TenantRoleEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[14].Descriptor()
+	return file_internal_proto_enumTypes[16].Descriptor()
 }
 
 func (TenantRoleEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[14]
+	return &file_internal_proto_enumTypes[16]
 }
 
 func (x TenantRoleEnum) Number() protoreflect.EnumNumber {
@@ -1058,7 +1150,7 @@ func (x TenantRoleEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TenantRoleEnum.Descriptor instead.
 func (TenantRoleEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{14}
+	return file_internal_proto_rawDescGZIP(), []int{16}
 }
 
 type OperationKindEnum int32
@@ -1190,11 +1282,11 @@ func (x OperationKindEnum) String() string {
 }
 
 func (OperationKindEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[15].Descriptor()
+	return file_internal_proto_enumTypes[17].Descriptor()
 }
 
 func (OperationKindEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[15]
+	return &file_internal_proto_enumTypes[17]
 }
 
 func (x OperationKindEnum) Number() protoreflect.EnumNumber {
@@ -1203,7 +1295,7 @@ func (x OperationKindEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use OperationKindEnum.Descriptor instead.
 func (OperationKindEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{15}
+	return file_internal_proto_rawDescGZIP(), []int{17}
 }
 
 type OperationStageEnum int32
@@ -1452,11 +1544,11 @@ func (x OperationStageEnum) String() string {
 }
 
 func (OperationStageEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[16].Descriptor()
+	return file_internal_proto_enumTypes[18].Descriptor()
 }
 
 func (OperationStageEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[16]
+	return &file_internal_proto_enumTypes[18]
 }
 
 func (x OperationStageEnum) Number() protoreflect.EnumNumber {
@@ -1465,7 +1557,7 @@ func (x OperationStageEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use OperationStageEnum.Descriptor instead.
 func (OperationStageEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{16}
+	return file_internal_proto_rawDescGZIP(), []int{18}
 }
 
 type OperationOwnerEnum int32
@@ -1522,11 +1614,11 @@ func (x OperationOwnerEnum) String() string {
 }
 
 func (OperationOwnerEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[17].Descriptor()
+	return file_internal_proto_enumTypes[19].Descriptor()
 }
 
 func (OperationOwnerEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[17]
+	return &file_internal_proto_enumTypes[19]
 }
 
 func (x OperationOwnerEnum) Number() protoreflect.EnumNumber {
@@ -1535,7 +1627,7 @@ func (x OperationOwnerEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use OperationOwnerEnum.Descriptor instead.
 func (OperationOwnerEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{17}
+	return file_internal_proto_rawDescGZIP(), []int{19}
 }
 
 type AuthorizationActionEnum int32
@@ -1696,6 +1788,7 @@ const (
 	AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READPLANCHANGEFAILURE                 AuthorizationActionEnum = 152
 	AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES               AuthorizationActionEnum = 153
 	AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY                       AuthorizationActionEnum = 154
+	AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETSELFUSEREXTERNALBINDING            AuthorizationActionEnum = 155
 )
 
 // Enum value maps for AuthorizationActionEnum.
@@ -1856,6 +1949,7 @@ var (
 		152: "AUTHORIZATION_ACTION_ENUM_READPLANCHANGEFAILURE",
 		153: "AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES",
 		154: "AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY",
+		155: "AUTHORIZATION_ACTION_ENUM_GETSELFUSEREXTERNALBINDING",
 	}
 	AuthorizationActionEnum_value = map[string]int32{
 		"AUTHORIZATION_ACTION_ENUM_UNSPECIFIED":                           0,
@@ -2013,6 +2107,7 @@ var (
 		"AUTHORIZATION_ACTION_ENUM_READPLANCHANGEFAILURE":                 152,
 		"AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES":               153,
 		"AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY":                       154,
+		"AUTHORIZATION_ACTION_ENUM_GETSELFUSEREXTERNALBINDING":            155,
 	}
 )
 
@@ -2027,11 +2122,11 @@ func (x AuthorizationActionEnum) String() string {
 }
 
 func (AuthorizationActionEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[18].Descriptor()
+	return file_internal_proto_enumTypes[20].Descriptor()
 }
 
 func (AuthorizationActionEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[18]
+	return &file_internal_proto_enumTypes[20]
 }
 
 func (x AuthorizationActionEnum) Number() protoreflect.EnumNumber {
@@ -2040,7 +2135,7 @@ func (x AuthorizationActionEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AuthorizationActionEnum.Descriptor instead.
 func (AuthorizationActionEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{18}
+	return file_internal_proto_rawDescGZIP(), []int{20}
 }
 
 type ServiceIdentityEnum int32
@@ -2097,11 +2192,11 @@ func (x ServiceIdentityEnum) String() string {
 }
 
 func (ServiceIdentityEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[19].Descriptor()
+	return file_internal_proto_enumTypes[21].Descriptor()
 }
 
 func (ServiceIdentityEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[19]
+	return &file_internal_proto_enumTypes[21]
 }
 
 func (x ServiceIdentityEnum) Number() protoreflect.EnumNumber {
@@ -2110,7 +2205,7 @@ func (x ServiceIdentityEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ServiceIdentityEnum.Descriptor instead.
 func (ServiceIdentityEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{19}
+	return file_internal_proto_rawDescGZIP(), []int{21}
 }
 
 type OperationStatusEnum int32
@@ -2161,11 +2256,11 @@ func (x OperationStatusEnum) String() string {
 }
 
 func (OperationStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[20].Descriptor()
+	return file_internal_proto_enumTypes[22].Descriptor()
 }
 
 func (OperationStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[20]
+	return &file_internal_proto_enumTypes[22]
 }
 
 func (x OperationStatusEnum) Number() protoreflect.EnumNumber {
@@ -2174,7 +2269,7 @@ func (x OperationStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use OperationStatusEnum.Descriptor instead.
 func (OperationStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{20}
+	return file_internal_proto_rawDescGZIP(), []int{22}
 }
 
 type OperationObservationResultEnum int32
@@ -2213,11 +2308,11 @@ func (x OperationObservationResultEnum) String() string {
 }
 
 func (OperationObservationResultEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[21].Descriptor()
+	return file_internal_proto_enumTypes[23].Descriptor()
 }
 
 func (OperationObservationResultEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[21]
+	return &file_internal_proto_enumTypes[23]
 }
 
 func (x OperationObservationResultEnum) Number() protoreflect.EnumNumber {
@@ -2226,7 +2321,7 @@ func (x OperationObservationResultEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use OperationObservationResultEnum.Descriptor instead.
 func (OperationObservationResultEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{21}
+	return file_internal_proto_rawDescGZIP(), []int{23}
 }
 
 type TenantStatusEnum int32
@@ -2268,11 +2363,11 @@ func (x TenantStatusEnum) String() string {
 }
 
 func (TenantStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[22].Descriptor()
+	return file_internal_proto_enumTypes[24].Descriptor()
 }
 
 func (TenantStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[22]
+	return &file_internal_proto_enumTypes[24]
 }
 
 func (x TenantStatusEnum) Number() protoreflect.EnumNumber {
@@ -2281,7 +2376,7 @@ func (x TenantStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TenantStatusEnum.Descriptor instead.
 func (TenantStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{22}
+	return file_internal_proto_rawDescGZIP(), []int{24}
 }
 
 type TenantAssetCustodyStatusEnum int32
@@ -2320,11 +2415,11 @@ func (x TenantAssetCustodyStatusEnum) String() string {
 }
 
 func (TenantAssetCustodyStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[23].Descriptor()
+	return file_internal_proto_enumTypes[25].Descriptor()
 }
 
 func (TenantAssetCustodyStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[23]
+	return &file_internal_proto_enumTypes[25]
 }
 
 func (x TenantAssetCustodyStatusEnum) Number() protoreflect.EnumNumber {
@@ -2333,7 +2428,7 @@ func (x TenantAssetCustodyStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TenantAssetCustodyStatusEnum.Descriptor instead.
 func (TenantAssetCustodyStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{23}
+	return file_internal_proto_rawDescGZIP(), []int{25}
 }
 
 type MemberStatusEnum int32
@@ -2369,11 +2464,11 @@ func (x MemberStatusEnum) String() string {
 }
 
 func (MemberStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[24].Descriptor()
+	return file_internal_proto_enumTypes[26].Descriptor()
 }
 
 func (MemberStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[24]
+	return &file_internal_proto_enumTypes[26]
 }
 
 func (x MemberStatusEnum) Number() protoreflect.EnumNumber {
@@ -2382,7 +2477,7 @@ func (x MemberStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use MemberStatusEnum.Descriptor instead.
 func (MemberStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{24}
+	return file_internal_proto_rawDescGZIP(), []int{26}
 }
 
 type InvitationRoleEnum int32
@@ -2418,11 +2513,11 @@ func (x InvitationRoleEnum) String() string {
 }
 
 func (InvitationRoleEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[25].Descriptor()
+	return file_internal_proto_enumTypes[27].Descriptor()
 }
 
 func (InvitationRoleEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[25]
+	return &file_internal_proto_enumTypes[27]
 }
 
 func (x InvitationRoleEnum) Number() protoreflect.EnumNumber {
@@ -2431,7 +2526,7 @@ func (x InvitationRoleEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use InvitationRoleEnum.Descriptor instead.
 func (InvitationRoleEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{25}
+	return file_internal_proto_rawDescGZIP(), []int{27}
 }
 
 type InvitationStatusEnum int32
@@ -2473,11 +2568,11 @@ func (x InvitationStatusEnum) String() string {
 }
 
 func (InvitationStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[26].Descriptor()
+	return file_internal_proto_enumTypes[28].Descriptor()
 }
 
 func (InvitationStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[26]
+	return &file_internal_proto_enumTypes[28]
 }
 
 func (x InvitationStatusEnum) Number() protoreflect.EnumNumber {
@@ -2486,7 +2581,7 @@ func (x InvitationStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use InvitationStatusEnum.Descriptor instead.
 func (InvitationStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{26}
+	return file_internal_proto_rawDescGZIP(), []int{28}
 }
 
 type InviteMemberRequestRoleEnum int32
@@ -2522,11 +2617,11 @@ func (x InviteMemberRequestRoleEnum) String() string {
 }
 
 func (InviteMemberRequestRoleEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[27].Descriptor()
+	return file_internal_proto_enumTypes[29].Descriptor()
 }
 
 func (InviteMemberRequestRoleEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[27]
+	return &file_internal_proto_enumTypes[29]
 }
 
 func (x InviteMemberRequestRoleEnum) Number() protoreflect.EnumNumber {
@@ -2535,7 +2630,7 @@ func (x InviteMemberRequestRoleEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use InviteMemberRequestRoleEnum.Descriptor instead.
 func (InviteMemberRequestRoleEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{27}
+	return file_internal_proto_rawDescGZIP(), []int{29}
 }
 
 type AssetCustodyStatusEnum int32
@@ -2571,11 +2666,11 @@ func (x AssetCustodyStatusEnum) String() string {
 }
 
 func (AssetCustodyStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[28].Descriptor()
+	return file_internal_proto_enumTypes[30].Descriptor()
 }
 
 func (AssetCustodyStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[28]
+	return &file_internal_proto_enumTypes[30]
 }
 
 func (x AssetCustodyStatusEnum) Number() protoreflect.EnumNumber {
@@ -2584,7 +2679,7 @@ func (x AssetCustodyStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AssetCustodyStatusEnum.Descriptor instead.
 func (AssetCustodyStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{28}
+	return file_internal_proto_rawDescGZIP(), []int{30}
 }
 
 type NamespaceStatusEnum int32
@@ -2620,11 +2715,11 @@ func (x NamespaceStatusEnum) String() string {
 }
 
 func (NamespaceStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[29].Descriptor()
+	return file_internal_proto_enumTypes[31].Descriptor()
 }
 
 func (NamespaceStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[29]
+	return &file_internal_proto_enumTypes[31]
 }
 
 func (x NamespaceStatusEnum) Number() protoreflect.EnumNumber {
@@ -2633,7 +2728,7 @@ func (x NamespaceStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use NamespaceStatusEnum.Descriptor instead.
 func (NamespaceStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{29}
+	return file_internal_proto_rawDescGZIP(), []int{31}
 }
 
 type PackageVisibilityEnum int32
@@ -2669,11 +2764,11 @@ func (x PackageVisibilityEnum) String() string {
 }
 
 func (PackageVisibilityEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[30].Descriptor()
+	return file_internal_proto_enumTypes[32].Descriptor()
 }
 
 func (PackageVisibilityEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[30]
+	return &file_internal_proto_enumTypes[32]
 }
 
 func (x PackageVisibilityEnum) Number() protoreflect.EnumNumber {
@@ -2682,7 +2777,7 @@ func (x PackageVisibilityEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PackageVisibilityEnum.Descriptor instead.
 func (PackageVisibilityEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{30}
+	return file_internal_proto_rawDescGZIP(), []int{32}
 }
 
 type PackageStatusEnum int32
@@ -2718,11 +2813,11 @@ func (x PackageStatusEnum) String() string {
 }
 
 func (PackageStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[31].Descriptor()
+	return file_internal_proto_enumTypes[33].Descriptor()
 }
 
 func (PackageStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[31]
+	return &file_internal_proto_enumTypes[33]
 }
 
 func (x PackageStatusEnum) Number() protoreflect.EnumNumber {
@@ -2731,7 +2826,7 @@ func (x PackageStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PackageStatusEnum.Descriptor instead.
 func (PackageStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{31}
+	return file_internal_proto_rawDescGZIP(), []int{33}
 }
 
 type PackageVersionStatusEnum int32
@@ -2770,11 +2865,11 @@ func (x PackageVersionStatusEnum) String() string {
 }
 
 func (PackageVersionStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[32].Descriptor()
+	return file_internal_proto_enumTypes[34].Descriptor()
 }
 
 func (PackageVersionStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[32]
+	return &file_internal_proto_enumTypes[34]
 }
 
 func (x PackageVersionStatusEnum) Number() protoreflect.EnumNumber {
@@ -2783,7 +2878,7 @@ func (x PackageVersionStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PackageVersionStatusEnum.Descriptor instead.
 func (PackageVersionStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{32}
+	return file_internal_proto_rawDescGZIP(), []int{34}
 }
 
 type UploadSessionStatusEnum int32
@@ -2822,11 +2917,11 @@ func (x UploadSessionStatusEnum) String() string {
 }
 
 func (UploadSessionStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[33].Descriptor()
+	return file_internal_proto_enumTypes[35].Descriptor()
 }
 
 func (UploadSessionStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[33]
+	return &file_internal_proto_enumTypes[35]
 }
 
 func (x UploadSessionStatusEnum) Number() protoreflect.EnumNumber {
@@ -2835,7 +2930,7 @@ func (x UploadSessionStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use UploadSessionStatusEnum.Descriptor instead.
 func (UploadSessionStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{33}
+	return file_internal_proto_rawDescGZIP(), []int{35}
 }
 
 type UploadPartAuthorizationMethodEnum int32
@@ -2868,11 +2963,11 @@ func (x UploadPartAuthorizationMethodEnum) String() string {
 }
 
 func (UploadPartAuthorizationMethodEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[34].Descriptor()
+	return file_internal_proto_enumTypes[36].Descriptor()
 }
 
 func (UploadPartAuthorizationMethodEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[34]
+	return &file_internal_proto_enumTypes[36]
 }
 
 func (x UploadPartAuthorizationMethodEnum) Number() protoreflect.EnumNumber {
@@ -2881,7 +2976,7 @@ func (x UploadPartAuthorizationMethodEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use UploadPartAuthorizationMethodEnum.Descriptor instead.
 func (UploadPartAuthorizationMethodEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{34}
+	return file_internal_proto_rawDescGZIP(), []int{36}
 }
 
 type ModelRequirementCapabilityEnum int32
@@ -2923,11 +3018,11 @@ func (x ModelRequirementCapabilityEnum) String() string {
 }
 
 func (ModelRequirementCapabilityEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[35].Descriptor()
+	return file_internal_proto_enumTypes[37].Descriptor()
 }
 
 func (ModelRequirementCapabilityEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[35]
+	return &file_internal_proto_enumTypes[37]
 }
 
 func (x ModelRequirementCapabilityEnum) Number() protoreflect.EnumNumber {
@@ -2936,7 +3031,7 @@ func (x ModelRequirementCapabilityEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ModelRequirementCapabilityEnum.Descriptor instead.
 func (ModelRequirementCapabilityEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{35}
+	return file_internal_proto_rawDescGZIP(), []int{37}
 }
 
 type CapabilityVersionStatusEnum int32
@@ -2978,11 +3073,11 @@ func (x CapabilityVersionStatusEnum) String() string {
 }
 
 func (CapabilityVersionStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[36].Descriptor()
+	return file_internal_proto_enumTypes[38].Descriptor()
 }
 
 func (CapabilityVersionStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[36]
+	return &file_internal_proto_enumTypes[38]
 }
 
 func (x CapabilityVersionStatusEnum) Number() protoreflect.EnumNumber {
@@ -2991,7 +3086,7 @@ func (x CapabilityVersionStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use CapabilityVersionStatusEnum.Descriptor instead.
 func (CapabilityVersionStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{36}
+	return file_internal_proto_rawDescGZIP(), []int{38}
 }
 
 type CapabilityVersionProvenanceEnum int32
@@ -3027,11 +3122,11 @@ func (x CapabilityVersionProvenanceEnum) String() string {
 }
 
 func (CapabilityVersionProvenanceEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[37].Descriptor()
+	return file_internal_proto_enumTypes[39].Descriptor()
 }
 
 func (CapabilityVersionProvenanceEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[37]
+	return &file_internal_proto_enumTypes[39]
 }
 
 func (x CapabilityVersionProvenanceEnum) Number() protoreflect.EnumNumber {
@@ -3040,7 +3135,7 @@ func (x CapabilityVersionProvenanceEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use CapabilityVersionProvenanceEnum.Descriptor instead.
 func (CapabilityVersionProvenanceEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{37}
+	return file_internal_proto_rawDescGZIP(), []int{39}
 }
 
 type BuildJobStatusEnum int32
@@ -3094,11 +3189,11 @@ func (x BuildJobStatusEnum) String() string {
 }
 
 func (BuildJobStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[38].Descriptor()
+	return file_internal_proto_enumTypes[40].Descriptor()
 }
 
 func (BuildJobStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[38]
+	return &file_internal_proto_enumTypes[40]
 }
 
 func (x BuildJobStatusEnum) Number() protoreflect.EnumNumber {
@@ -3107,7 +3202,7 @@ func (x BuildJobStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use BuildJobStatusEnum.Descriptor instead.
 func (BuildJobStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{38}
+	return file_internal_proto_rawDescGZIP(), []int{40}
 }
 
 type BuildLogLevelEnum int32
@@ -3146,11 +3241,11 @@ func (x BuildLogLevelEnum) String() string {
 }
 
 func (BuildLogLevelEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[39].Descriptor()
+	return file_internal_proto_enumTypes[41].Descriptor()
 }
 
 func (BuildLogLevelEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[39]
+	return &file_internal_proto_enumTypes[41]
 }
 
 func (x BuildLogLevelEnum) Number() protoreflect.EnumNumber {
@@ -3159,7 +3254,7 @@ func (x BuildLogLevelEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use BuildLogLevelEnum.Descriptor instead.
 func (BuildLogLevelEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{39}
+	return file_internal_proto_rawDescGZIP(), []int{41}
 }
 
 type RuntimeVersionStatusEnum int32
@@ -3198,11 +3293,11 @@ func (x RuntimeVersionStatusEnum) String() string {
 }
 
 func (RuntimeVersionStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[40].Descriptor()
+	return file_internal_proto_enumTypes[42].Descriptor()
 }
 
 func (RuntimeVersionStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[40]
+	return &file_internal_proto_enumTypes[42]
 }
 
 func (x RuntimeVersionStatusEnum) Number() protoreflect.EnumNumber {
@@ -3211,7 +3306,7 @@ func (x RuntimeVersionStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use RuntimeVersionStatusEnum.Descriptor instead.
 func (RuntimeVersionStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{40}
+	return file_internal_proto_rawDescGZIP(), []int{42}
 }
 
 type WebuiVersionStatusEnum int32
@@ -3250,11 +3345,11 @@ func (x WebuiVersionStatusEnum) String() string {
 }
 
 func (WebuiVersionStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[41].Descriptor()
+	return file_internal_proto_enumTypes[43].Descriptor()
 }
 
 func (WebuiVersionStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[41]
+	return &file_internal_proto_enumTypes[43]
 }
 
 func (x WebuiVersionStatusEnum) Number() protoreflect.EnumNumber {
@@ -3263,7 +3358,7 @@ func (x WebuiVersionStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WebuiVersionStatusEnum.Descriptor instead.
 func (WebuiVersionStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{41}
+	return file_internal_proto_rawDescGZIP(), []int{43}
 }
 
 type CatalogStatusRequestStatusEnum int32
@@ -3299,11 +3394,11 @@ func (x CatalogStatusRequestStatusEnum) String() string {
 }
 
 func (CatalogStatusRequestStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[42].Descriptor()
+	return file_internal_proto_enumTypes[44].Descriptor()
 }
 
 func (CatalogStatusRequestStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[42]
+	return &file_internal_proto_enumTypes[44]
 }
 
 func (x CatalogStatusRequestStatusEnum) Number() protoreflect.EnumNumber {
@@ -3312,7 +3407,7 @@ func (x CatalogStatusRequestStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use CatalogStatusRequestStatusEnum.Descriptor instead.
 func (CatalogStatusRequestStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{42}
+	return file_internal_proto_rawDescGZIP(), []int{44}
 }
 
 type ComputePlanAvailabilityEnum int32
@@ -3351,11 +3446,11 @@ func (x ComputePlanAvailabilityEnum) String() string {
 }
 
 func (ComputePlanAvailabilityEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[43].Descriptor()
+	return file_internal_proto_enumTypes[45].Descriptor()
 }
 
 func (ComputePlanAvailabilityEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[43]
+	return &file_internal_proto_enumTypes[45]
 }
 
 func (x ComputePlanAvailabilityEnum) Number() protoreflect.EnumNumber {
@@ -3364,7 +3459,7 @@ func (x ComputePlanAvailabilityEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ComputePlanAvailabilityEnum.Descriptor instead.
 func (ComputePlanAvailabilityEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{43}
+	return file_internal_proto_rawDescGZIP(), []int{45}
 }
 
 type ComputePlanBillingModeEnum int32
@@ -3400,11 +3495,11 @@ func (x ComputePlanBillingModeEnum) String() string {
 }
 
 func (ComputePlanBillingModeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[44].Descriptor()
+	return file_internal_proto_enumTypes[46].Descriptor()
 }
 
 func (ComputePlanBillingModeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[44]
+	return &file_internal_proto_enumTypes[46]
 }
 
 func (x ComputePlanBillingModeEnum) Number() protoreflect.EnumNumber {
@@ -3413,7 +3508,7 @@ func (x ComputePlanBillingModeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ComputePlanBillingModeEnum.Descriptor instead.
 func (ComputePlanBillingModeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{44}
+	return file_internal_proto_rawDescGZIP(), []int{46}
 }
 
 type StoragePlanAvailabilityEnum int32
@@ -3452,11 +3547,11 @@ func (x StoragePlanAvailabilityEnum) String() string {
 }
 
 func (StoragePlanAvailabilityEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[45].Descriptor()
+	return file_internal_proto_enumTypes[47].Descriptor()
 }
 
 func (StoragePlanAvailabilityEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[45]
+	return &file_internal_proto_enumTypes[47]
 }
 
 func (x StoragePlanAvailabilityEnum) Number() protoreflect.EnumNumber {
@@ -3465,7 +3560,7 @@ func (x StoragePlanAvailabilityEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use StoragePlanAvailabilityEnum.Descriptor instead.
 func (StoragePlanAvailabilityEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{45}
+	return file_internal_proto_rawDescGZIP(), []int{47}
 }
 
 type StoragePlanBillingModeEnum int32
@@ -3501,11 +3596,11 @@ func (x StoragePlanBillingModeEnum) String() string {
 }
 
 func (StoragePlanBillingModeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[46].Descriptor()
+	return file_internal_proto_enumTypes[48].Descriptor()
 }
 
 func (StoragePlanBillingModeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[46]
+	return &file_internal_proto_enumTypes[48]
 }
 
 func (x StoragePlanBillingModeEnum) Number() protoreflect.EnumNumber {
@@ -3514,7 +3609,7 @@ func (x StoragePlanBillingModeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use StoragePlanBillingModeEnum.Descriptor instead.
 func (StoragePlanBillingModeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{46}
+	return file_internal_proto_rawDescGZIP(), []int{48}
 }
 
 type PlanAvailabilityRequestAvailabilityEnum int32
@@ -3553,11 +3648,11 @@ func (x PlanAvailabilityRequestAvailabilityEnum) String() string {
 }
 
 func (PlanAvailabilityRequestAvailabilityEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[47].Descriptor()
+	return file_internal_proto_enumTypes[49].Descriptor()
 }
 
 func (PlanAvailabilityRequestAvailabilityEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[47]
+	return &file_internal_proto_enumTypes[49]
 }
 
 func (x PlanAvailabilityRequestAvailabilityEnum) Number() protoreflect.EnumNumber {
@@ -3566,7 +3661,7 @@ func (x PlanAvailabilityRequestAvailabilityEnum) Number() protoreflect.EnumNumbe
 
 // Deprecated: Use PlanAvailabilityRequestAvailabilityEnum.Descriptor instead.
 func (PlanAvailabilityRequestAvailabilityEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{47}
+	return file_internal_proto_rawDescGZIP(), []int{49}
 }
 
 type PricePolicyVersionCurrencyEnum int32
@@ -3599,11 +3694,11 @@ func (x PricePolicyVersionCurrencyEnum) String() string {
 }
 
 func (PricePolicyVersionCurrencyEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[48].Descriptor()
+	return file_internal_proto_enumTypes[50].Descriptor()
 }
 
 func (PricePolicyVersionCurrencyEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[48]
+	return &file_internal_proto_enumTypes[50]
 }
 
 func (x PricePolicyVersionCurrencyEnum) Number() protoreflect.EnumNumber {
@@ -3612,7 +3707,7 @@ func (x PricePolicyVersionCurrencyEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PricePolicyVersionCurrencyEnum.Descriptor instead.
 func (PricePolicyVersionCurrencyEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{48}
+	return file_internal_proto_rawDescGZIP(), []int{50}
 }
 
 type PricePolicyVersionPlanChangePolicyVersionEnum int32
@@ -3645,11 +3740,11 @@ func (x PricePolicyVersionPlanChangePolicyVersionEnum) String() string {
 }
 
 func (PricePolicyVersionPlanChangePolicyVersionEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[49].Descriptor()
+	return file_internal_proto_enumTypes[51].Descriptor()
 }
 
 func (PricePolicyVersionPlanChangePolicyVersionEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[49]
+	return &file_internal_proto_enumTypes[51]
 }
 
 func (x PricePolicyVersionPlanChangePolicyVersionEnum) Number() protoreflect.EnumNumber {
@@ -3658,7 +3753,7 @@ func (x PricePolicyVersionPlanChangePolicyVersionEnum) Number() protoreflect.Enu
 
 // Deprecated: Use PricePolicyVersionPlanChangePolicyVersionEnum.Descriptor instead.
 func (PricePolicyVersionPlanChangePolicyVersionEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{49}
+	return file_internal_proto_rawDescGZIP(), []int{51}
 }
 
 type CreatePricePolicyRequestPlanChangePolicyVersionEnum int32
@@ -3691,11 +3786,11 @@ func (x CreatePricePolicyRequestPlanChangePolicyVersionEnum) String() string {
 }
 
 func (CreatePricePolicyRequestPlanChangePolicyVersionEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[50].Descriptor()
+	return file_internal_proto_enumTypes[52].Descriptor()
 }
 
 func (CreatePricePolicyRequestPlanChangePolicyVersionEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[50]
+	return &file_internal_proto_enumTypes[52]
 }
 
 func (x CreatePricePolicyRequestPlanChangePolicyVersionEnum) Number() protoreflect.EnumNumber {
@@ -3704,7 +3799,7 @@ func (x CreatePricePolicyRequestPlanChangePolicyVersionEnum) Number() protorefle
 
 // Deprecated: Use CreatePricePolicyRequestPlanChangePolicyVersionEnum.Descriptor instead.
 func (CreatePricePolicyRequestPlanChangePolicyVersionEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{50}
+	return file_internal_proto_rawDescGZIP(), []int{52}
 }
 
 type RefundPolicyVersionAlgorithmEnum int32
@@ -3737,11 +3832,11 @@ func (x RefundPolicyVersionAlgorithmEnum) String() string {
 }
 
 func (RefundPolicyVersionAlgorithmEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[51].Descriptor()
+	return file_internal_proto_enumTypes[53].Descriptor()
 }
 
 func (RefundPolicyVersionAlgorithmEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[51]
+	return &file_internal_proto_enumTypes[53]
 }
 
 func (x RefundPolicyVersionAlgorithmEnum) Number() protoreflect.EnumNumber {
@@ -3750,7 +3845,7 @@ func (x RefundPolicyVersionAlgorithmEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use RefundPolicyVersionAlgorithmEnum.Descriptor instead.
 func (RefundPolicyVersionAlgorithmEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{51}
+	return file_internal_proto_rawDescGZIP(), []int{53}
 }
 
 type CreateRefundPolicyRequestAlgorithmEnum int32
@@ -3783,11 +3878,11 @@ func (x CreateRefundPolicyRequestAlgorithmEnum) String() string {
 }
 
 func (CreateRefundPolicyRequestAlgorithmEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[52].Descriptor()
+	return file_internal_proto_enumTypes[54].Descriptor()
 }
 
 func (CreateRefundPolicyRequestAlgorithmEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[52]
+	return &file_internal_proto_enumTypes[54]
 }
 
 func (x CreateRefundPolicyRequestAlgorithmEnum) Number() protoreflect.EnumNumber {
@@ -3796,7 +3891,7 @@ func (x CreateRefundPolicyRequestAlgorithmEnum) Number() protoreflect.EnumNumber
 
 // Deprecated: Use CreateRefundPolicyRequestAlgorithmEnum.Descriptor instead.
 func (CreateRefundPolicyRequestAlgorithmEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{52}
+	return file_internal_proto_rawDescGZIP(), []int{54}
 }
 
 type RetentionPolicyVersionWorkspaceDataDispositionEnum int32
@@ -3829,11 +3924,11 @@ func (x RetentionPolicyVersionWorkspaceDataDispositionEnum) String() string {
 }
 
 func (RetentionPolicyVersionWorkspaceDataDispositionEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[53].Descriptor()
+	return file_internal_proto_enumTypes[55].Descriptor()
 }
 
 func (RetentionPolicyVersionWorkspaceDataDispositionEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[53]
+	return &file_internal_proto_enumTypes[55]
 }
 
 func (x RetentionPolicyVersionWorkspaceDataDispositionEnum) Number() protoreflect.EnumNumber {
@@ -3842,7 +3937,7 @@ func (x RetentionPolicyVersionWorkspaceDataDispositionEnum) Number() protoreflec
 
 // Deprecated: Use RetentionPolicyVersionWorkspaceDataDispositionEnum.Descriptor instead.
 func (RetentionPolicyVersionWorkspaceDataDispositionEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{53}
+	return file_internal_proto_rawDescGZIP(), []int{55}
 }
 
 type RetentionPolicyVersionPackageHistoryDispositionEnum int32
@@ -3875,11 +3970,11 @@ func (x RetentionPolicyVersionPackageHistoryDispositionEnum) String() string {
 }
 
 func (RetentionPolicyVersionPackageHistoryDispositionEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[54].Descriptor()
+	return file_internal_proto_enumTypes[56].Descriptor()
 }
 
 func (RetentionPolicyVersionPackageHistoryDispositionEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[54]
+	return &file_internal_proto_enumTypes[56]
 }
 
 func (x RetentionPolicyVersionPackageHistoryDispositionEnum) Number() protoreflect.EnumNumber {
@@ -3888,7 +3983,7 @@ func (x RetentionPolicyVersionPackageHistoryDispositionEnum) Number() protorefle
 
 // Deprecated: Use RetentionPolicyVersionPackageHistoryDispositionEnum.Descriptor instead.
 func (RetentionPolicyVersionPackageHistoryDispositionEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{54}
+	return file_internal_proto_rawDescGZIP(), []int{56}
 }
 
 type RetentionPolicyVersionBuildHistoryDispositionEnum int32
@@ -3921,11 +4016,11 @@ func (x RetentionPolicyVersionBuildHistoryDispositionEnum) String() string {
 }
 
 func (RetentionPolicyVersionBuildHistoryDispositionEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[55].Descriptor()
+	return file_internal_proto_enumTypes[57].Descriptor()
 }
 
 func (RetentionPolicyVersionBuildHistoryDispositionEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[55]
+	return &file_internal_proto_enumTypes[57]
 }
 
 func (x RetentionPolicyVersionBuildHistoryDispositionEnum) Number() protoreflect.EnumNumber {
@@ -3934,7 +4029,7 @@ func (x RetentionPolicyVersionBuildHistoryDispositionEnum) Number() protoreflect
 
 // Deprecated: Use RetentionPolicyVersionBuildHistoryDispositionEnum.Descriptor instead.
 func (RetentionPolicyVersionBuildHistoryDispositionEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{55}
+	return file_internal_proto_rawDescGZIP(), []int{57}
 }
 
 type QuoteRequestPurposeEnum int32
@@ -3973,11 +4068,11 @@ func (x QuoteRequestPurposeEnum) String() string {
 }
 
 func (QuoteRequestPurposeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[56].Descriptor()
+	return file_internal_proto_enumTypes[58].Descriptor()
 }
 
 func (QuoteRequestPurposeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[56]
+	return &file_internal_proto_enumTypes[58]
 }
 
 func (x QuoteRequestPurposeEnum) Number() protoreflect.EnumNumber {
@@ -3986,7 +4081,7 @@ func (x QuoteRequestPurposeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use QuoteRequestPurposeEnum.Descriptor instead.
 func (QuoteRequestPurposeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{56}
+	return file_internal_proto_rawDescGZIP(), []int{58}
 }
 
 type QuoteLineKindEnum int32
@@ -4028,11 +4123,11 @@ func (x QuoteLineKindEnum) String() string {
 }
 
 func (QuoteLineKindEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[57].Descriptor()
+	return file_internal_proto_enumTypes[59].Descriptor()
 }
 
 func (QuoteLineKindEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[57]
+	return &file_internal_proto_enumTypes[59]
 }
 
 func (x QuoteLineKindEnum) Number() protoreflect.EnumNumber {
@@ -4041,7 +4136,7 @@ func (x QuoteLineKindEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use QuoteLineKindEnum.Descriptor instead.
 func (QuoteLineKindEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{57}
+	return file_internal_proto_rawDescGZIP(), []int{59}
 }
 
 type WorkspaceApplicationSelectionKindEnum int32
@@ -4077,11 +4172,11 @@ func (x WorkspaceApplicationSelectionKindEnum) String() string {
 }
 
 func (WorkspaceApplicationSelectionKindEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[58].Descriptor()
+	return file_internal_proto_enumTypes[60].Descriptor()
 }
 
 func (WorkspaceApplicationSelectionKindEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[58]
+	return &file_internal_proto_enumTypes[60]
 }
 
 func (x WorkspaceApplicationSelectionKindEnum) Number() protoreflect.EnumNumber {
@@ -4090,7 +4185,7 @@ func (x WorkspaceApplicationSelectionKindEnum) Number() protoreflect.EnumNumber 
 
 // Deprecated: Use WorkspaceApplicationSelectionKindEnum.Descriptor instead.
 func (WorkspaceApplicationSelectionKindEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{58}
+	return file_internal_proto_rawDescGZIP(), []int{60}
 }
 
 type QuotePurposeEnum int32
@@ -4129,11 +4224,11 @@ func (x QuotePurposeEnum) String() string {
 }
 
 func (QuotePurposeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[59].Descriptor()
+	return file_internal_proto_enumTypes[61].Descriptor()
 }
 
 func (QuotePurposeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[59]
+	return &file_internal_proto_enumTypes[61]
 }
 
 func (x QuotePurposeEnum) Number() protoreflect.EnumNumber {
@@ -4142,7 +4237,7 @@ func (x QuotePurposeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use QuotePurposeEnum.Descriptor instead.
 func (QuotePurposeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{59}
+	return file_internal_proto_rawDescGZIP(), []int{61}
 }
 
 type QuoteStatusEnum int32
@@ -4181,11 +4276,11 @@ func (x QuoteStatusEnum) String() string {
 }
 
 func (QuoteStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[60].Descriptor()
+	return file_internal_proto_enumTypes[62].Descriptor()
 }
 
 func (QuoteStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[60]
+	return &file_internal_proto_enumTypes[62]
 }
 
 func (x QuoteStatusEnum) Number() protoreflect.EnumNumber {
@@ -4194,7 +4289,7 @@ func (x QuoteStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use QuoteStatusEnum.Descriptor instead.
 func (QuoteStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{60}
+	return file_internal_proto_rawDescGZIP(), []int{62}
 }
 
 type QuoteRuntimeReadbackRequirementEnum int32
@@ -4230,11 +4325,11 @@ func (x QuoteRuntimeReadbackRequirementEnum) String() string {
 }
 
 func (QuoteRuntimeReadbackRequirementEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[61].Descriptor()
+	return file_internal_proto_enumTypes[63].Descriptor()
 }
 
 func (QuoteRuntimeReadbackRequirementEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[61]
+	return &file_internal_proto_enumTypes[63]
 }
 
 func (x QuoteRuntimeReadbackRequirementEnum) Number() protoreflect.EnumNumber {
@@ -4243,7 +4338,7 @@ func (x QuoteRuntimeReadbackRequirementEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use QuoteRuntimeReadbackRequirementEnum.Descriptor instead.
 func (QuoteRuntimeReadbackRequirementEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{61}
+	return file_internal_proto_rawDescGZIP(), []int{63}
 }
 
 type WorkspaceStatusEnum int32
@@ -4297,11 +4392,11 @@ func (x WorkspaceStatusEnum) String() string {
 }
 
 func (WorkspaceStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[62].Descriptor()
+	return file_internal_proto_enumTypes[64].Descriptor()
 }
 
 func (WorkspaceStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[62]
+	return &file_internal_proto_enumTypes[64]
 }
 
 func (x WorkspaceStatusEnum) Number() protoreflect.EnumNumber {
@@ -4310,7 +4405,7 @@ func (x WorkspaceStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WorkspaceStatusEnum.Descriptor instead.
 func (WorkspaceStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{62}
+	return file_internal_proto_rawDescGZIP(), []int{64}
 }
 
 type WorkspaceResourceReadinessEnum int32
@@ -4352,11 +4447,11 @@ func (x WorkspaceResourceReadinessEnum) String() string {
 }
 
 func (WorkspaceResourceReadinessEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[63].Descriptor()
+	return file_internal_proto_enumTypes[65].Descriptor()
 }
 
 func (WorkspaceResourceReadinessEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[63]
+	return &file_internal_proto_enumTypes[65]
 }
 
 func (x WorkspaceResourceReadinessEnum) Number() protoreflect.EnumNumber {
@@ -4365,7 +4460,7 @@ func (x WorkspaceResourceReadinessEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WorkspaceResourceReadinessEnum.Descriptor instead.
 func (WorkspaceResourceReadinessEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{63}
+	return file_internal_proto_rawDescGZIP(), []int{65}
 }
 
 type WorkspaceApplicationAvailabilityEnum int32
@@ -4407,11 +4502,11 @@ func (x WorkspaceApplicationAvailabilityEnum) String() string {
 }
 
 func (WorkspaceApplicationAvailabilityEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[64].Descriptor()
+	return file_internal_proto_enumTypes[66].Descriptor()
 }
 
 func (WorkspaceApplicationAvailabilityEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[64]
+	return &file_internal_proto_enumTypes[66]
 }
 
 func (x WorkspaceApplicationAvailabilityEnum) Number() protoreflect.EnumNumber {
@@ -4420,7 +4515,7 @@ func (x WorkspaceApplicationAvailabilityEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WorkspaceApplicationAvailabilityEnum.Descriptor instead.
 func (WorkspaceApplicationAvailabilityEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{64}
+	return file_internal_proto_rawDescGZIP(), []int{66}
 }
 
 type WorkspaceDeliveryModelEnum int32
@@ -4459,11 +4554,11 @@ func (x WorkspaceDeliveryModelEnum) String() string {
 }
 
 func (WorkspaceDeliveryModelEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[65].Descriptor()
+	return file_internal_proto_enumTypes[67].Descriptor()
 }
 
 func (WorkspaceDeliveryModelEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[65]
+	return &file_internal_proto_enumTypes[67]
 }
 
 func (x WorkspaceDeliveryModelEnum) Number() protoreflect.EnumNumber {
@@ -4472,7 +4567,7 @@ func (x WorkspaceDeliveryModelEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WorkspaceDeliveryModelEnum.Descriptor instead.
 func (WorkspaceDeliveryModelEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{65}
+	return file_internal_proto_rawDescGZIP(), []int{67}
 }
 
 type CreateWorkspaceRequestRenewalModeEnum int32
@@ -4508,11 +4603,11 @@ func (x CreateWorkspaceRequestRenewalModeEnum) String() string {
 }
 
 func (CreateWorkspaceRequestRenewalModeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[66].Descriptor()
+	return file_internal_proto_enumTypes[68].Descriptor()
 }
 
 func (CreateWorkspaceRequestRenewalModeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[66]
+	return &file_internal_proto_enumTypes[68]
 }
 
 func (x CreateWorkspaceRequestRenewalModeEnum) Number() protoreflect.EnumNumber {
@@ -4521,7 +4616,7 @@ func (x CreateWorkspaceRequestRenewalModeEnum) Number() protoreflect.EnumNumber 
 
 // Deprecated: Use CreateWorkspaceRequestRenewalModeEnum.Descriptor instead.
 func (CreateWorkspaceRequestRenewalModeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{66}
+	return file_internal_proto_rawDescGZIP(), []int{68}
 }
 
 type WorkspaceAccessAuthenticationModeEnum int32
@@ -4560,11 +4655,11 @@ func (x WorkspaceAccessAuthenticationModeEnum) String() string {
 }
 
 func (WorkspaceAccessAuthenticationModeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[67].Descriptor()
+	return file_internal_proto_enumTypes[69].Descriptor()
 }
 
 func (WorkspaceAccessAuthenticationModeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[67]
+	return &file_internal_proto_enumTypes[69]
 }
 
 func (x WorkspaceAccessAuthenticationModeEnum) Number() protoreflect.EnumNumber {
@@ -4573,7 +4668,7 @@ func (x WorkspaceAccessAuthenticationModeEnum) Number() protoreflect.EnumNumber 
 
 // Deprecated: Use WorkspaceAccessAuthenticationModeEnum.Descriptor instead.
 func (WorkspaceAccessAuthenticationModeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{67}
+	return file_internal_proto_rawDescGZIP(), []int{69}
 }
 
 type ModelConfigurationStatusEnum int32
@@ -4615,11 +4710,11 @@ func (x ModelConfigurationStatusEnum) String() string {
 }
 
 func (ModelConfigurationStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[68].Descriptor()
+	return file_internal_proto_enumTypes[70].Descriptor()
 }
 
 func (ModelConfigurationStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[68]
+	return &file_internal_proto_enumTypes[70]
 }
 
 func (x ModelConfigurationStatusEnum) Number() protoreflect.EnumNumber {
@@ -4628,7 +4723,7 @@ func (x ModelConfigurationStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ModelConfigurationStatusEnum.Descriptor instead.
 func (ModelConfigurationStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{68}
+	return file_internal_proto_rawDescGZIP(), []int{70}
 }
 
 type DeploymentStatusEnum int32
@@ -4685,11 +4780,11 @@ func (x DeploymentStatusEnum) String() string {
 }
 
 func (DeploymentStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[69].Descriptor()
+	return file_internal_proto_enumTypes[71].Descriptor()
 }
 
 func (DeploymentStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[69]
+	return &file_internal_proto_enumTypes[71]
 }
 
 func (x DeploymentStatusEnum) Number() protoreflect.EnumNumber {
@@ -4698,7 +4793,7 @@ func (x DeploymentStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DeploymentStatusEnum.Descriptor instead.
 func (DeploymentStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{69}
+	return file_internal_proto_rawDescGZIP(), []int{71}
 }
 
 type WorkspaceDeletionResourceDeletionStatusEnum int32
@@ -4740,11 +4835,11 @@ func (x WorkspaceDeletionResourceDeletionStatusEnum) String() string {
 }
 
 func (WorkspaceDeletionResourceDeletionStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[70].Descriptor()
+	return file_internal_proto_enumTypes[72].Descriptor()
 }
 
 func (WorkspaceDeletionResourceDeletionStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[70]
+	return &file_internal_proto_enumTypes[72]
 }
 
 func (x WorkspaceDeletionResourceDeletionStatusEnum) Number() protoreflect.EnumNumber {
@@ -4753,7 +4848,7 @@ func (x WorkspaceDeletionResourceDeletionStatusEnum) Number() protoreflect.EnumN
 
 // Deprecated: Use WorkspaceDeletionResourceDeletionStatusEnum.Descriptor instead.
 func (WorkspaceDeletionResourceDeletionStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{70}
+	return file_internal_proto_rawDescGZIP(), []int{72}
 }
 
 type WorkspaceDeletionDataDeletionStatusEnum int32
@@ -4795,11 +4890,11 @@ func (x WorkspaceDeletionDataDeletionStatusEnum) String() string {
 }
 
 func (WorkspaceDeletionDataDeletionStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[71].Descriptor()
+	return file_internal_proto_enumTypes[73].Descriptor()
 }
 
 func (WorkspaceDeletionDataDeletionStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[71]
+	return &file_internal_proto_enumTypes[73]
 }
 
 func (x WorkspaceDeletionDataDeletionStatusEnum) Number() protoreflect.EnumNumber {
@@ -4808,7 +4903,7 @@ func (x WorkspaceDeletionDataDeletionStatusEnum) Number() protoreflect.EnumNumbe
 
 // Deprecated: Use WorkspaceDeletionDataDeletionStatusEnum.Descriptor instead.
 func (WorkspaceDeletionDataDeletionStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{71}
+	return file_internal_proto_rawDescGZIP(), []int{73}
 }
 
 type WorkspaceDeletionRefundStatusEnum int32
@@ -4853,11 +4948,11 @@ func (x WorkspaceDeletionRefundStatusEnum) String() string {
 }
 
 func (WorkspaceDeletionRefundStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[72].Descriptor()
+	return file_internal_proto_enumTypes[74].Descriptor()
 }
 
 func (WorkspaceDeletionRefundStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[72]
+	return &file_internal_proto_enumTypes[74]
 }
 
 func (x WorkspaceDeletionRefundStatusEnum) Number() protoreflect.EnumNumber {
@@ -4866,7 +4961,7 @@ func (x WorkspaceDeletionRefundStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WorkspaceDeletionRefundStatusEnum.Descriptor instead.
 func (WorkspaceDeletionRefundStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{72}
+	return file_internal_proto_rawDescGZIP(), []int{74}
 }
 
 type SubscriptionStatusEnum int32
@@ -4908,11 +5003,11 @@ func (x SubscriptionStatusEnum) String() string {
 }
 
 func (SubscriptionStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[73].Descriptor()
+	return file_internal_proto_enumTypes[75].Descriptor()
 }
 
 func (SubscriptionStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[73]
+	return &file_internal_proto_enumTypes[75]
 }
 
 func (x SubscriptionStatusEnum) Number() protoreflect.EnumNumber {
@@ -4921,7 +5016,7 @@ func (x SubscriptionStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SubscriptionStatusEnum.Descriptor instead.
 func (SubscriptionStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{73}
+	return file_internal_proto_rawDescGZIP(), []int{75}
 }
 
 type SubscriptionProvenanceEnum int32
@@ -4957,11 +5052,11 @@ func (x SubscriptionProvenanceEnum) String() string {
 }
 
 func (SubscriptionProvenanceEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[74].Descriptor()
+	return file_internal_proto_enumTypes[76].Descriptor()
 }
 
 func (SubscriptionProvenanceEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[74]
+	return &file_internal_proto_enumTypes[76]
 }
 
 func (x SubscriptionProvenanceEnum) Number() protoreflect.EnumNumber {
@@ -4970,7 +5065,7 @@ func (x SubscriptionProvenanceEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SubscriptionProvenanceEnum.Descriptor instead.
 func (SubscriptionProvenanceEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{74}
+	return file_internal_proto_rawDescGZIP(), []int{76}
 }
 
 type SubscriptionRenewalModeEnum int32
@@ -5006,11 +5101,11 @@ func (x SubscriptionRenewalModeEnum) String() string {
 }
 
 func (SubscriptionRenewalModeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[75].Descriptor()
+	return file_internal_proto_enumTypes[77].Descriptor()
 }
 
 func (SubscriptionRenewalModeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[75]
+	return &file_internal_proto_enumTypes[77]
 }
 
 func (x SubscriptionRenewalModeEnum) Number() protoreflect.EnumNumber {
@@ -5019,7 +5114,7 @@ func (x SubscriptionRenewalModeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SubscriptionRenewalModeEnum.Descriptor instead.
 func (SubscriptionRenewalModeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{75}
+	return file_internal_proto_rawDescGZIP(), []int{77}
 }
 
 type WalletOperationKindEnum int32
@@ -5058,11 +5153,11 @@ func (x WalletOperationKindEnum) String() string {
 }
 
 func (WalletOperationKindEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[76].Descriptor()
+	return file_internal_proto_enumTypes[78].Descriptor()
 }
 
 func (WalletOperationKindEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[76]
+	return &file_internal_proto_enumTypes[78]
 }
 
 func (x WalletOperationKindEnum) Number() protoreflect.EnumNumber {
@@ -5071,7 +5166,7 @@ func (x WalletOperationKindEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WalletOperationKindEnum.Descriptor instead.
 func (WalletOperationKindEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{76}
+	return file_internal_proto_rawDescGZIP(), []int{78}
 }
 
 type WalletOperationStatusEnum int32
@@ -5113,11 +5208,11 @@ func (x WalletOperationStatusEnum) String() string {
 }
 
 func (WalletOperationStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[77].Descriptor()
+	return file_internal_proto_enumTypes[79].Descriptor()
 }
 
 func (WalletOperationStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[77]
+	return &file_internal_proto_enumTypes[79]
 }
 
 func (x WalletOperationStatusEnum) Number() protoreflect.EnumNumber {
@@ -5126,7 +5221,7 @@ func (x WalletOperationStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WalletOperationStatusEnum.Descriptor instead.
 func (WalletOperationStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{77}
+	return file_internal_proto_rawDescGZIP(), []int{79}
 }
 
 type WalletOperationPurposeEnum int32
@@ -5177,11 +5272,11 @@ func (x WalletOperationPurposeEnum) String() string {
 }
 
 func (WalletOperationPurposeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[78].Descriptor()
+	return file_internal_proto_enumTypes[80].Descriptor()
 }
 
 func (WalletOperationPurposeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[78]
+	return &file_internal_proto_enumTypes[80]
 }
 
 func (x WalletOperationPurposeEnum) Number() protoreflect.EnumNumber {
@@ -5190,7 +5285,7 @@ func (x WalletOperationPurposeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WalletOperationPurposeEnum.Descriptor instead.
 func (WalletOperationPurposeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{78}
+	return file_internal_proto_rawDescGZIP(), []int{80}
 }
 
 type WalletSourceEnum int32
@@ -5223,11 +5318,11 @@ func (x WalletSourceEnum) String() string {
 }
 
 func (WalletSourceEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[79].Descriptor()
+	return file_internal_proto_enumTypes[81].Descriptor()
 }
 
 func (WalletSourceEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[79]
+	return &file_internal_proto_enumTypes[81]
 }
 
 func (x WalletSourceEnum) Number() protoreflect.EnumNumber {
@@ -5236,7 +5331,7 @@ func (x WalletSourceEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WalletSourceEnum.Descriptor instead.
 func (WalletSourceEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{79}
+	return file_internal_proto_rawDescGZIP(), []int{81}
 }
 
 type WalletStatusEnum int32
@@ -5269,11 +5364,11 @@ func (x WalletStatusEnum) String() string {
 }
 
 func (WalletStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[80].Descriptor()
+	return file_internal_proto_enumTypes[82].Descriptor()
 }
 
 func (WalletStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[80]
+	return &file_internal_proto_enumTypes[82]
 }
 
 func (x WalletStatusEnum) Number() protoreflect.EnumNumber {
@@ -5282,7 +5377,7 @@ func (x WalletStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WalletStatusEnum.Descriptor instead.
 func (WalletStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{80}
+	return file_internal_proto_rawDescGZIP(), []int{82}
 }
 
 type WalletCurrencyEnum int32
@@ -5315,11 +5410,11 @@ func (x WalletCurrencyEnum) String() string {
 }
 
 func (WalletCurrencyEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[81].Descriptor()
+	return file_internal_proto_enumTypes[83].Descriptor()
 }
 
 func (WalletCurrencyEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[81]
+	return &file_internal_proto_enumTypes[83]
 }
 
 func (x WalletCurrencyEnum) Number() protoreflect.EnumNumber {
@@ -5328,7 +5423,7 @@ func (x WalletCurrencyEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WalletCurrencyEnum.Descriptor instead.
 func (WalletCurrencyEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{81}
+	return file_internal_proto_rawDescGZIP(), []int{83}
 }
 
 type UsageSourceEnum int32
@@ -5361,11 +5456,11 @@ func (x UsageSourceEnum) String() string {
 }
 
 func (UsageSourceEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[82].Descriptor()
+	return file_internal_proto_enumTypes[84].Descriptor()
 }
 
 func (UsageSourceEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[82]
+	return &file_internal_proto_enumTypes[84]
 }
 
 func (x UsageSourceEnum) Number() protoreflect.EnumNumber {
@@ -5374,7 +5469,7 @@ func (x UsageSourceEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use UsageSourceEnum.Descriptor instead.
 func (UsageSourceEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{82}
+	return file_internal_proto_rawDescGZIP(), []int{84}
 }
 
 type GatewayKeyPurposeEnum int32
@@ -5410,11 +5505,11 @@ func (x GatewayKeyPurposeEnum) String() string {
 }
 
 func (GatewayKeyPurposeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[83].Descriptor()
+	return file_internal_proto_enumTypes[85].Descriptor()
 }
 
 func (GatewayKeyPurposeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[83]
+	return &file_internal_proto_enumTypes[85]
 }
 
 func (x GatewayKeyPurposeEnum) Number() protoreflect.EnumNumber {
@@ -5423,7 +5518,7 @@ func (x GatewayKeyPurposeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use GatewayKeyPurposeEnum.Descriptor instead.
 func (GatewayKeyPurposeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{83}
+	return file_internal_proto_rawDescGZIP(), []int{85}
 }
 
 type GatewayKeyStatusEnum int32
@@ -5459,11 +5554,11 @@ func (x GatewayKeyStatusEnum) String() string {
 }
 
 func (GatewayKeyStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[84].Descriptor()
+	return file_internal_proto_enumTypes[86].Descriptor()
 }
 
 func (GatewayKeyStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[84]
+	return &file_internal_proto_enumTypes[86]
 }
 
 func (x GatewayKeyStatusEnum) Number() protoreflect.EnumNumber {
@@ -5472,7 +5567,7 @@ func (x GatewayKeyStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use GatewayKeyStatusEnum.Descriptor instead.
 func (GatewayKeyStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{84}
+	return file_internal_proto_rawDescGZIP(), []int{86}
 }
 
 type AuditEventOutcomeEnum int32
@@ -5511,11 +5606,11 @@ func (x AuditEventOutcomeEnum) String() string {
 }
 
 func (AuditEventOutcomeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[85].Descriptor()
+	return file_internal_proto_enumTypes[87].Descriptor()
 }
 
 func (AuditEventOutcomeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[85]
+	return &file_internal_proto_enumTypes[87]
 }
 
 func (x AuditEventOutcomeEnum) Number() protoreflect.EnumNumber {
@@ -5524,7 +5619,7 @@ func (x AuditEventOutcomeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AuditEventOutcomeEnum.Descriptor instead.
 func (AuditEventOutcomeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{85}
+	return file_internal_proto_rawDescGZIP(), []int{87}
 }
 
 type ReceiptKindEnum int32
@@ -5596,11 +5691,11 @@ func (x ReceiptKindEnum) String() string {
 }
 
 func (ReceiptKindEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[86].Descriptor()
+	return file_internal_proto_enumTypes[88].Descriptor()
 }
 
 func (ReceiptKindEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[86]
+	return &file_internal_proto_enumTypes[88]
 }
 
 func (x ReceiptKindEnum) Number() protoreflect.EnumNumber {
@@ -5609,7 +5704,7 @@ func (x ReceiptKindEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ReceiptKindEnum.Descriptor instead.
 func (ReceiptKindEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{86}
+	return file_internal_proto_rawDescGZIP(), []int{88}
 }
 
 type ReceiptOutcomeEnum int32
@@ -5648,11 +5743,11 @@ func (x ReceiptOutcomeEnum) String() string {
 }
 
 func (ReceiptOutcomeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[87].Descriptor()
+	return file_internal_proto_enumTypes[89].Descriptor()
 }
 
 func (ReceiptOutcomeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[87]
+	return &file_internal_proto_enumTypes[89]
 }
 
 func (x ReceiptOutcomeEnum) Number() protoreflect.EnumNumber {
@@ -5661,7 +5756,7 @@ func (x ReceiptOutcomeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ReceiptOutcomeEnum.Descriptor instead.
 func (ReceiptOutcomeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{87}
+	return file_internal_proto_rawDescGZIP(), []int{89}
 }
 
 type QualificationStatusEnum int32
@@ -5700,11 +5795,11 @@ func (x QualificationStatusEnum) String() string {
 }
 
 func (QualificationStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[88].Descriptor()
+	return file_internal_proto_enumTypes[90].Descriptor()
 }
 
 func (QualificationStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[88]
+	return &file_internal_proto_enumTypes[90]
 }
 
 func (x QualificationStatusEnum) Number() protoreflect.EnumNumber {
@@ -5713,7 +5808,7 @@ func (x QualificationStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use QualificationStatusEnum.Descriptor instead.
 func (QualificationStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{88}
+	return file_internal_proto_rawDescGZIP(), []int{90}
 }
 
 type ImagePlatformOsEnum int32
@@ -5746,11 +5841,11 @@ func (x ImagePlatformOsEnum) String() string {
 }
 
 func (ImagePlatformOsEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[89].Descriptor()
+	return file_internal_proto_enumTypes[91].Descriptor()
 }
 
 func (ImagePlatformOsEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[89]
+	return &file_internal_proto_enumTypes[91]
 }
 
 func (x ImagePlatformOsEnum) Number() protoreflect.EnumNumber {
@@ -5759,7 +5854,7 @@ func (x ImagePlatformOsEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ImagePlatformOsEnum.Descriptor instead.
 func (ImagePlatformOsEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{89}
+	return file_internal_proto_rawDescGZIP(), []int{91}
 }
 
 type ImagePlatformArchitectureEnum int32
@@ -5795,11 +5890,11 @@ func (x ImagePlatformArchitectureEnum) String() string {
 }
 
 func (ImagePlatformArchitectureEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[90].Descriptor()
+	return file_internal_proto_enumTypes[92].Descriptor()
 }
 
 func (ImagePlatformArchitectureEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[90]
+	return &file_internal_proto_enumTypes[92]
 }
 
 func (x ImagePlatformArchitectureEnum) Number() protoreflect.EnumNumber {
@@ -5808,7 +5903,7 @@ func (x ImagePlatformArchitectureEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ImagePlatformArchitectureEnum.Descriptor instead.
 func (ImagePlatformArchitectureEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{90}
+	return file_internal_proto_rawDescGZIP(), []int{92}
 }
 
 type RecipeArtifactMediaTypeEnum int32
@@ -5841,11 +5936,11 @@ func (x RecipeArtifactMediaTypeEnum) String() string {
 }
 
 func (RecipeArtifactMediaTypeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[91].Descriptor()
+	return file_internal_proto_enumTypes[93].Descriptor()
 }
 
 func (RecipeArtifactMediaTypeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[91]
+	return &file_internal_proto_enumTypes[93]
 }
 
 func (x RecipeArtifactMediaTypeEnum) Number() protoreflect.EnumNumber {
@@ -5854,7 +5949,7 @@ func (x RecipeArtifactMediaTypeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use RecipeArtifactMediaTypeEnum.Descriptor instead.
 func (RecipeArtifactMediaTypeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{91}
+	return file_internal_proto_rawDescGZIP(), []int{93}
 }
 
 type PackageBuildInputContextNameEnum int32
@@ -5887,11 +5982,11 @@ func (x PackageBuildInputContextNameEnum) String() string {
 }
 
 func (PackageBuildInputContextNameEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[92].Descriptor()
+	return file_internal_proto_enumTypes[94].Descriptor()
 }
 
 func (PackageBuildInputContextNameEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[92]
+	return &file_internal_proto_enumTypes[94]
 }
 
 func (x PackageBuildInputContextNameEnum) Number() protoreflect.EnumNumber {
@@ -5900,7 +5995,7 @@ func (x PackageBuildInputContextNameEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PackageBuildInputContextNameEnum.Descriptor instead.
 func (PackageBuildInputContextNameEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{92}
+	return file_internal_proto_rawDescGZIP(), []int{94}
 }
 
 type WebuiBuildInputContextNameEnum int32
@@ -5933,11 +6028,11 @@ func (x WebuiBuildInputContextNameEnum) String() string {
 }
 
 func (WebuiBuildInputContextNameEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[93].Descriptor()
+	return file_internal_proto_enumTypes[95].Descriptor()
 }
 
 func (WebuiBuildInputContextNameEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[93]
+	return &file_internal_proto_enumTypes[95]
 }
 
 func (x WebuiBuildInputContextNameEnum) Number() protoreflect.EnumNumber {
@@ -5946,7 +6041,7 @@ func (x WebuiBuildInputContextNameEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WebuiBuildInputContextNameEnum.Descriptor instead.
 func (WebuiBuildInputContextNameEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{93}
+	return file_internal_proto_rawDescGZIP(), []int{95}
 }
 
 type BuildRecipeContractVersionEnum int32
@@ -5979,11 +6074,11 @@ func (x BuildRecipeContractVersionEnum) String() string {
 }
 
 func (BuildRecipeContractVersionEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[94].Descriptor()
+	return file_internal_proto_enumTypes[96].Descriptor()
 }
 
 func (BuildRecipeContractVersionEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[94]
+	return &file_internal_proto_enumTypes[96]
 }
 
 func (x BuildRecipeContractVersionEnum) Number() protoreflect.EnumNumber {
@@ -5992,7 +6087,7 @@ func (x BuildRecipeContractVersionEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use BuildRecipeContractVersionEnum.Descriptor instead.
 func (BuildRecipeContractVersionEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{94}
+	return file_internal_proto_rawDescGZIP(), []int{96}
 }
 
 type BuildRecipeContractRuntimeContextNameEnum int32
@@ -6025,11 +6120,11 @@ func (x BuildRecipeContractRuntimeContextNameEnum) String() string {
 }
 
 func (BuildRecipeContractRuntimeContextNameEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[95].Descriptor()
+	return file_internal_proto_enumTypes[97].Descriptor()
 }
 
 func (BuildRecipeContractRuntimeContextNameEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[95]
+	return &file_internal_proto_enumTypes[97]
 }
 
 func (x BuildRecipeContractRuntimeContextNameEnum) Number() protoreflect.EnumNumber {
@@ -6038,7 +6133,7 @@ func (x BuildRecipeContractRuntimeContextNameEnum) Number() protoreflect.EnumNum
 
 // Deprecated: Use BuildRecipeContractRuntimeContextNameEnum.Descriptor instead.
 func (BuildRecipeContractRuntimeContextNameEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{95}
+	return file_internal_proto_rawDescGZIP(), []int{97}
 }
 
 type BuildRecipeContractNetworkPolicyEnum int32
@@ -6071,11 +6166,11 @@ func (x BuildRecipeContractNetworkPolicyEnum) String() string {
 }
 
 func (BuildRecipeContractNetworkPolicyEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[96].Descriptor()
+	return file_internal_proto_enumTypes[98].Descriptor()
 }
 
 func (BuildRecipeContractNetworkPolicyEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[96]
+	return &file_internal_proto_enumTypes[98]
 }
 
 func (x BuildRecipeContractNetworkPolicyEnum) Number() protoreflect.EnumNumber {
@@ -6084,7 +6179,7 @@ func (x BuildRecipeContractNetworkPolicyEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use BuildRecipeContractNetworkPolicyEnum.Descriptor instead.
 func (BuildRecipeContractNetworkPolicyEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{96}
+	return file_internal_proto_rawDescGZIP(), []int{98}
 }
 
 type ModelConfigurationContractProtocolEnum int32
@@ -6117,11 +6212,11 @@ func (x ModelConfigurationContractProtocolEnum) String() string {
 }
 
 func (ModelConfigurationContractProtocolEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[97].Descriptor()
+	return file_internal_proto_enumTypes[99].Descriptor()
 }
 
 func (ModelConfigurationContractProtocolEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[97]
+	return &file_internal_proto_enumTypes[99]
 }
 
 func (x ModelConfigurationContractProtocolEnum) Number() protoreflect.EnumNumber {
@@ -6130,7 +6225,7 @@ func (x ModelConfigurationContractProtocolEnum) Number() protoreflect.EnumNumber
 
 // Deprecated: Use ModelConfigurationContractProtocolEnum.Descriptor instead.
 func (ModelConfigurationContractProtocolEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{97}
+	return file_internal_proto_rawDescGZIP(), []int{99}
 }
 
 type ModelConfigurationContractRequestFieldsEnum int32
@@ -6166,11 +6261,11 @@ func (x ModelConfigurationContractRequestFieldsEnum) String() string {
 }
 
 func (ModelConfigurationContractRequestFieldsEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[98].Descriptor()
+	return file_internal_proto_enumTypes[100].Descriptor()
 }
 
 func (ModelConfigurationContractRequestFieldsEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[98]
+	return &file_internal_proto_enumTypes[100]
 }
 
 func (x ModelConfigurationContractRequestFieldsEnum) Number() protoreflect.EnumNumber {
@@ -6179,7 +6274,7 @@ func (x ModelConfigurationContractRequestFieldsEnum) Number() protoreflect.EnumN
 
 // Deprecated: Use ModelConfigurationContractRequestFieldsEnum.Descriptor instead.
 func (ModelConfigurationContractRequestFieldsEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{98}
+	return file_internal_proto_rawDescGZIP(), []int{100}
 }
 
 type ModelConfigurationContractReadbackFieldsEnum int32
@@ -6215,11 +6310,11 @@ func (x ModelConfigurationContractReadbackFieldsEnum) String() string {
 }
 
 func (ModelConfigurationContractReadbackFieldsEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[99].Descriptor()
+	return file_internal_proto_enumTypes[101].Descriptor()
 }
 
 func (ModelConfigurationContractReadbackFieldsEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[99]
+	return &file_internal_proto_enumTypes[101]
 }
 
 func (x ModelConfigurationContractReadbackFieldsEnum) Number() protoreflect.EnumNumber {
@@ -6228,7 +6323,7 @@ func (x ModelConfigurationContractReadbackFieldsEnum) Number() protoreflect.Enum
 
 // Deprecated: Use ModelConfigurationContractReadbackFieldsEnum.Descriptor instead.
 func (ModelConfigurationContractReadbackFieldsEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{99}
+	return file_internal_proto_rawDescGZIP(), []int{101}
 }
 
 type DataUpgradeContractModeEnum int32
@@ -6264,11 +6359,11 @@ func (x DataUpgradeContractModeEnum) String() string {
 }
 
 func (DataUpgradeContractModeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[100].Descriptor()
+	return file_internal_proto_enumTypes[102].Descriptor()
 }
 
 func (DataUpgradeContractModeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[100]
+	return &file_internal_proto_enumTypes[102]
 }
 
 func (x DataUpgradeContractModeEnum) Number() protoreflect.EnumNumber {
@@ -6277,7 +6372,7 @@ func (x DataUpgradeContractModeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DataUpgradeContractModeEnum.Descriptor instead.
 func (DataUpgradeContractModeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{100}
+	return file_internal_proto_rawDescGZIP(), []int{102}
 }
 
 type RuntimePublisherContractSchemaVersionEnum int32
@@ -6310,11 +6405,11 @@ func (x RuntimePublisherContractSchemaVersionEnum) String() string {
 }
 
 func (RuntimePublisherContractSchemaVersionEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[101].Descriptor()
+	return file_internal_proto_enumTypes[103].Descriptor()
 }
 
 func (RuntimePublisherContractSchemaVersionEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[101]
+	return &file_internal_proto_enumTypes[103]
 }
 
 func (x RuntimePublisherContractSchemaVersionEnum) Number() protoreflect.EnumNumber {
@@ -6323,7 +6418,7 @@ func (x RuntimePublisherContractSchemaVersionEnum) Number() protoreflect.EnumNum
 
 // Deprecated: Use RuntimePublisherContractSchemaVersionEnum.Descriptor instead.
 func (RuntimePublisherContractSchemaVersionEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{101}
+	return file_internal_proto_rawDescGZIP(), []int{103}
 }
 
 type RuntimePublisherContractKindEnum int32
@@ -6356,11 +6451,11 @@ func (x RuntimePublisherContractKindEnum) String() string {
 }
 
 func (RuntimePublisherContractKindEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[102].Descriptor()
+	return file_internal_proto_enumTypes[104].Descriptor()
 }
 
 func (RuntimePublisherContractKindEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[102]
+	return &file_internal_proto_enumTypes[104]
 }
 
 func (x RuntimePublisherContractKindEnum) Number() protoreflect.EnumNumber {
@@ -6369,7 +6464,7 @@ func (x RuntimePublisherContractKindEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use RuntimePublisherContractKindEnum.Descriptor instead.
 func (RuntimePublisherContractKindEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{102}
+	return file_internal_proto_rawDescGZIP(), []int{104}
 }
 
 type WebuiPublisherContractSchemaVersionEnum int32
@@ -6402,11 +6497,11 @@ func (x WebuiPublisherContractSchemaVersionEnum) String() string {
 }
 
 func (WebuiPublisherContractSchemaVersionEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[103].Descriptor()
+	return file_internal_proto_enumTypes[105].Descriptor()
 }
 
 func (WebuiPublisherContractSchemaVersionEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[103]
+	return &file_internal_proto_enumTypes[105]
 }
 
 func (x WebuiPublisherContractSchemaVersionEnum) Number() protoreflect.EnumNumber {
@@ -6415,7 +6510,7 @@ func (x WebuiPublisherContractSchemaVersionEnum) Number() protoreflect.EnumNumbe
 
 // Deprecated: Use WebuiPublisherContractSchemaVersionEnum.Descriptor instead.
 func (WebuiPublisherContractSchemaVersionEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{103}
+	return file_internal_proto_rawDescGZIP(), []int{105}
 }
 
 type WebuiPublisherContractKindEnum int32
@@ -6448,11 +6543,11 @@ func (x WebuiPublisherContractKindEnum) String() string {
 }
 
 func (WebuiPublisherContractKindEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[104].Descriptor()
+	return file_internal_proto_enumTypes[106].Descriptor()
 }
 
 func (WebuiPublisherContractKindEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[104]
+	return &file_internal_proto_enumTypes[106]
 }
 
 func (x WebuiPublisherContractKindEnum) Number() protoreflect.EnumNumber {
@@ -6461,7 +6556,7 @@ func (x WebuiPublisherContractKindEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WebuiPublisherContractKindEnum.Descriptor instead.
 func (WebuiPublisherContractKindEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{104}
+	return file_internal_proto_rawDescGZIP(), []int{106}
 }
 
 type WebuiPublisherContractUiProtocolVersionEnum int32
@@ -6494,11 +6589,11 @@ func (x WebuiPublisherContractUiProtocolVersionEnum) String() string {
 }
 
 func (WebuiPublisherContractUiProtocolVersionEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[105].Descriptor()
+	return file_internal_proto_enumTypes[107].Descriptor()
 }
 
 func (WebuiPublisherContractUiProtocolVersionEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[105]
+	return &file_internal_proto_enumTypes[107]
 }
 
 func (x WebuiPublisherContractUiProtocolVersionEnum) Number() protoreflect.EnumNumber {
@@ -6507,7 +6602,7 @@ func (x WebuiPublisherContractUiProtocolVersionEnum) Number() protoreflect.EnumN
 
 // Deprecated: Use WebuiPublisherContractUiProtocolVersionEnum.Descriptor instead.
 func (WebuiPublisherContractUiProtocolVersionEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{105}
+	return file_internal_proto_rawDescGZIP(), []int{107}
 }
 
 type WebuiPublisherContractIntegrationModeEnum int32
@@ -6540,11 +6635,11 @@ func (x WebuiPublisherContractIntegrationModeEnum) String() string {
 }
 
 func (WebuiPublisherContractIntegrationModeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[106].Descriptor()
+	return file_internal_proto_enumTypes[108].Descriptor()
 }
 
 func (WebuiPublisherContractIntegrationModeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[106]
+	return &file_internal_proto_enumTypes[108]
 }
 
 func (x WebuiPublisherContractIntegrationModeEnum) Number() protoreflect.EnumNumber {
@@ -6553,7 +6648,7 @@ func (x WebuiPublisherContractIntegrationModeEnum) Number() protoreflect.EnumNum
 
 // Deprecated: Use WebuiPublisherContractIntegrationModeEnum.Descriptor instead.
 func (WebuiPublisherContractIntegrationModeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{106}
+	return file_internal_proto_rawDescGZIP(), []int{108}
 }
 
 type WebuiPublisherContractAuthenticationProtocolEnum int32
@@ -6586,11 +6681,11 @@ func (x WebuiPublisherContractAuthenticationProtocolEnum) String() string {
 }
 
 func (WebuiPublisherContractAuthenticationProtocolEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[107].Descriptor()
+	return file_internal_proto_enumTypes[109].Descriptor()
 }
 
 func (WebuiPublisherContractAuthenticationProtocolEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[107]
+	return &file_internal_proto_enumTypes[109]
 }
 
 func (x WebuiPublisherContractAuthenticationProtocolEnum) Number() protoreflect.EnumNumber {
@@ -6599,7 +6694,7 @@ func (x WebuiPublisherContractAuthenticationProtocolEnum) Number() protoreflect.
 
 // Deprecated: Use WebuiPublisherContractAuthenticationProtocolEnum.Descriptor instead.
 func (WebuiPublisherContractAuthenticationProtocolEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{107}
+	return file_internal_proto_rawDescGZIP(), []int{109}
 }
 
 type PublisherContractReferenceKindEnum int32
@@ -6635,11 +6730,11 @@ func (x PublisherContractReferenceKindEnum) String() string {
 }
 
 func (PublisherContractReferenceKindEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[108].Descriptor()
+	return file_internal_proto_enumTypes[110].Descriptor()
 }
 
 func (PublisherContractReferenceKindEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[108]
+	return &file_internal_proto_enumTypes[110]
 }
 
 func (x PublisherContractReferenceKindEnum) Number() protoreflect.EnumNumber {
@@ -6648,7 +6743,7 @@ func (x PublisherContractReferenceKindEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PublisherContractReferenceKindEnum.Descriptor instead.
 func (PublisherContractReferenceKindEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{108}
+	return file_internal_proto_rawDescGZIP(), []int{110}
 }
 
 type DeploymentDescriptorSchemaVersionEnum int32
@@ -6681,11 +6776,11 @@ func (x DeploymentDescriptorSchemaVersionEnum) String() string {
 }
 
 func (DeploymentDescriptorSchemaVersionEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[109].Descriptor()
+	return file_internal_proto_enumTypes[111].Descriptor()
 }
 
 func (DeploymentDescriptorSchemaVersionEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[109]
+	return &file_internal_proto_enumTypes[111]
 }
 
 func (x DeploymentDescriptorSchemaVersionEnum) Number() protoreflect.EnumNumber {
@@ -6694,7 +6789,7 @@ func (x DeploymentDescriptorSchemaVersionEnum) Number() protoreflect.EnumNumber 
 
 // Deprecated: Use DeploymentDescriptorSchemaVersionEnum.Descriptor instead.
 func (DeploymentDescriptorSchemaVersionEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{109}
+	return file_internal_proto_rawDescGZIP(), []int{111}
 }
 
 type DeploymentDescriptorProvenanceEnum int32
@@ -6736,11 +6831,11 @@ func (x DeploymentDescriptorProvenanceEnum) String() string {
 }
 
 func (DeploymentDescriptorProvenanceEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[110].Descriptor()
+	return file_internal_proto_enumTypes[112].Descriptor()
 }
 
 func (DeploymentDescriptorProvenanceEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[110]
+	return &file_internal_proto_enumTypes[112]
 }
 
 func (x DeploymentDescriptorProvenanceEnum) Number() protoreflect.EnumNumber {
@@ -6749,7 +6844,7 @@ func (x DeploymentDescriptorProvenanceEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DeploymentDescriptorProvenanceEnum.Descriptor instead.
 func (DeploymentDescriptorProvenanceEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{110}
+	return file_internal_proto_rawDescGZIP(), []int{112}
 }
 
 type PublisherNamespaceKindEnum int32
@@ -6785,11 +6880,11 @@ func (x PublisherNamespaceKindEnum) String() string {
 }
 
 func (PublisherNamespaceKindEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[111].Descriptor()
+	return file_internal_proto_enumTypes[113].Descriptor()
 }
 
 func (PublisherNamespaceKindEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[111]
+	return &file_internal_proto_enumTypes[113]
 }
 
 func (x PublisherNamespaceKindEnum) Number() protoreflect.EnumNumber {
@@ -6798,7 +6893,7 @@ func (x PublisherNamespaceKindEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PublisherNamespaceKindEnum.Descriptor instead.
 func (PublisherNamespaceKindEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{111}
+	return file_internal_proto_rawDescGZIP(), []int{113}
 }
 
 type PublisherNamespaceStatusEnum int32
@@ -6834,11 +6929,11 @@ func (x PublisherNamespaceStatusEnum) String() string {
 }
 
 func (PublisherNamespaceStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[112].Descriptor()
+	return file_internal_proto_enumTypes[114].Descriptor()
 }
 
 func (PublisherNamespaceStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[112]
+	return &file_internal_proto_enumTypes[114]
 }
 
 func (x PublisherNamespaceStatusEnum) Number() protoreflect.EnumNumber {
@@ -6847,7 +6942,7 @@ func (x PublisherNamespaceStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PublisherNamespaceStatusEnum.Descriptor instead.
 func (PublisherNamespaceStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{112}
+	return file_internal_proto_rawDescGZIP(), []int{114}
 }
 
 type CreatePublisherNamespaceRequestKindEnum int32
@@ -6883,11 +6978,11 @@ func (x CreatePublisherNamespaceRequestKindEnum) String() string {
 }
 
 func (CreatePublisherNamespaceRequestKindEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[113].Descriptor()
+	return file_internal_proto_enumTypes[115].Descriptor()
 }
 
 func (CreatePublisherNamespaceRequestKindEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[113]
+	return &file_internal_proto_enumTypes[115]
 }
 
 func (x CreatePublisherNamespaceRequestKindEnum) Number() protoreflect.EnumNumber {
@@ -6896,7 +6991,7 @@ func (x CreatePublisherNamespaceRequestKindEnum) Number() protoreflect.EnumNumbe
 
 // Deprecated: Use CreatePublisherNamespaceRequestKindEnum.Descriptor instead.
 func (CreatePublisherNamespaceRequestKindEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{113}
+	return file_internal_proto_rawDescGZIP(), []int{115}
 }
 
 type RenewalPolicyVersionEnum int32
@@ -6929,11 +7024,11 @@ func (x RenewalPolicyVersionEnum) String() string {
 }
 
 func (RenewalPolicyVersionEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[114].Descriptor()
+	return file_internal_proto_enumTypes[116].Descriptor()
 }
 
 func (RenewalPolicyVersionEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[114]
+	return &file_internal_proto_enumTypes[116]
 }
 
 func (x RenewalPolicyVersionEnum) Number() protoreflect.EnumNumber {
@@ -6942,7 +7037,7 @@ func (x RenewalPolicyVersionEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use RenewalPolicyVersionEnum.Descriptor instead.
 func (RenewalPolicyVersionEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{114}
+	return file_internal_proto_rawDescGZIP(), []int{116}
 }
 
 type RenewalPolicyTriggerEnum int32
@@ -6975,11 +7070,11 @@ func (x RenewalPolicyTriggerEnum) String() string {
 }
 
 func (RenewalPolicyTriggerEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[115].Descriptor()
+	return file_internal_proto_enumTypes[117].Descriptor()
 }
 
 func (RenewalPolicyTriggerEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[115]
+	return &file_internal_proto_enumTypes[117]
 }
 
 func (x RenewalPolicyTriggerEnum) Number() protoreflect.EnumNumber {
@@ -6988,7 +7083,7 @@ func (x RenewalPolicyTriggerEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use RenewalPolicyTriggerEnum.Descriptor instead.
 func (RenewalPolicyTriggerEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{115}
+	return file_internal_proto_rawDescGZIP(), []int{117}
 }
 
 type RenewalPolicyEffectiveStartEnum int32
@@ -7021,11 +7116,11 @@ func (x RenewalPolicyEffectiveStartEnum) String() string {
 }
 
 func (RenewalPolicyEffectiveStartEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[116].Descriptor()
+	return file_internal_proto_enumTypes[118].Descriptor()
 }
 
 func (RenewalPolicyEffectiveStartEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[116]
+	return &file_internal_proto_enumTypes[118]
 }
 
 func (x RenewalPolicyEffectiveStartEnum) Number() protoreflect.EnumNumber {
@@ -7034,7 +7129,7 @@ func (x RenewalPolicyEffectiveStartEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use RenewalPolicyEffectiveStartEnum.Descriptor instead.
 func (RenewalPolicyEffectiveStartEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{116}
+	return file_internal_proto_rawDescGZIP(), []int{118}
 }
 
 type WorkspaceApplicationCredentialKindEnum int32
@@ -7073,11 +7168,11 @@ func (x WorkspaceApplicationCredentialKindEnum) String() string {
 }
 
 func (WorkspaceApplicationCredentialKindEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[117].Descriptor()
+	return file_internal_proto_enumTypes[119].Descriptor()
 }
 
 func (WorkspaceApplicationCredentialKindEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[117]
+	return &file_internal_proto_enumTypes[119]
 }
 
 func (x WorkspaceApplicationCredentialKindEnum) Number() protoreflect.EnumNumber {
@@ -7086,7 +7181,7 @@ func (x WorkspaceApplicationCredentialKindEnum) Number() protoreflect.EnumNumber
 
 // Deprecated: Use WorkspaceApplicationCredentialKindEnum.Descriptor instead.
 func (WorkspaceApplicationCredentialKindEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{117}
+	return file_internal_proto_rawDescGZIP(), []int{119}
 }
 
 type WorkspaceApplicationPortProtocolEnum int32
@@ -7122,11 +7217,11 @@ func (x WorkspaceApplicationPortProtocolEnum) String() string {
 }
 
 func (WorkspaceApplicationPortProtocolEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[118].Descriptor()
+	return file_internal_proto_enumTypes[120].Descriptor()
 }
 
 func (WorkspaceApplicationPortProtocolEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[118]
+	return &file_internal_proto_enumTypes[120]
 }
 
 func (x WorkspaceApplicationPortProtocolEnum) Number() protoreflect.EnumNumber {
@@ -7135,7 +7230,7 @@ func (x WorkspaceApplicationPortProtocolEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WorkspaceApplicationPortProtocolEnum.Descriptor instead.
 func (WorkspaceApplicationPortProtocolEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{118}
+	return file_internal_proto_rawDescGZIP(), []int{120}
 }
 
 type WorkspaceApplicationDependencyHealthCheckTypeEnum int32
@@ -7174,11 +7269,11 @@ func (x WorkspaceApplicationDependencyHealthCheckTypeEnum) String() string {
 }
 
 func (WorkspaceApplicationDependencyHealthCheckTypeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[119].Descriptor()
+	return file_internal_proto_enumTypes[121].Descriptor()
 }
 
 func (WorkspaceApplicationDependencyHealthCheckTypeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[119]
+	return &file_internal_proto_enumTypes[121]
 }
 
 func (x WorkspaceApplicationDependencyHealthCheckTypeEnum) Number() protoreflect.EnumNumber {
@@ -7187,7 +7282,7 @@ func (x WorkspaceApplicationDependencyHealthCheckTypeEnum) Number() protoreflect
 
 // Deprecated: Use WorkspaceApplicationDependencyHealthCheckTypeEnum.Descriptor instead.
 func (WorkspaceApplicationDependencyHealthCheckTypeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{119}
+	return file_internal_proto_rawDescGZIP(), []int{121}
 }
 
 type WorkspaceApplicationRevisionExposurePolicyEnum int32
@@ -7226,11 +7321,11 @@ func (x WorkspaceApplicationRevisionExposurePolicyEnum) String() string {
 }
 
 func (WorkspaceApplicationRevisionExposurePolicyEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[120].Descriptor()
+	return file_internal_proto_enumTypes[122].Descriptor()
 }
 
 func (WorkspaceApplicationRevisionExposurePolicyEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[120]
+	return &file_internal_proto_enumTypes[122]
 }
 
 func (x WorkspaceApplicationRevisionExposurePolicyEnum) Number() protoreflect.EnumNumber {
@@ -7239,7 +7334,7 @@ func (x WorkspaceApplicationRevisionExposurePolicyEnum) Number() protoreflect.En
 
 // Deprecated: Use WorkspaceApplicationRevisionExposurePolicyEnum.Descriptor instead.
 func (WorkspaceApplicationRevisionExposurePolicyEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{120}
+	return file_internal_proto_rawDescGZIP(), []int{122}
 }
 
 type ApplicationOwnedAccessContractModeEnum int32
@@ -7272,11 +7367,11 @@ func (x ApplicationOwnedAccessContractModeEnum) String() string {
 }
 
 func (ApplicationOwnedAccessContractModeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[121].Descriptor()
+	return file_internal_proto_enumTypes[123].Descriptor()
 }
 
 func (ApplicationOwnedAccessContractModeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[121]
+	return &file_internal_proto_enumTypes[123]
 }
 
 func (x ApplicationOwnedAccessContractModeEnum) Number() protoreflect.EnumNumber {
@@ -7285,7 +7380,7 @@ func (x ApplicationOwnedAccessContractModeEnum) Number() protoreflect.EnumNumber
 
 // Deprecated: Use ApplicationOwnedAccessContractModeEnum.Descriptor instead.
 func (ApplicationOwnedAccessContractModeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{121}
+	return file_internal_proto_rawDescGZIP(), []int{123}
 }
 
 type CloudPrivateAccessContractModeEnum int32
@@ -7318,11 +7413,11 @@ func (x CloudPrivateAccessContractModeEnum) String() string {
 }
 
 func (CloudPrivateAccessContractModeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[122].Descriptor()
+	return file_internal_proto_enumTypes[124].Descriptor()
 }
 
 func (CloudPrivateAccessContractModeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[122]
+	return &file_internal_proto_enumTypes[124]
 }
 
 func (x CloudPrivateAccessContractModeEnum) Number() protoreflect.EnumNumber {
@@ -7331,7 +7426,7 @@ func (x CloudPrivateAccessContractModeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use CloudPrivateAccessContractModeEnum.Descriptor instead.
 func (CloudPrivateAccessContractModeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{122}
+	return file_internal_proto_rawDescGZIP(), []int{124}
 }
 
 type CloudPrivateAccessContractEntryContractEnum int32
@@ -7364,11 +7459,11 @@ func (x CloudPrivateAccessContractEntryContractEnum) String() string {
 }
 
 func (CloudPrivateAccessContractEntryContractEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[123].Descriptor()
+	return file_internal_proto_enumTypes[125].Descriptor()
 }
 
 func (CloudPrivateAccessContractEntryContractEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[123]
+	return &file_internal_proto_enumTypes[125]
 }
 
 func (x CloudPrivateAccessContractEntryContractEnum) Number() protoreflect.EnumNumber {
@@ -7377,7 +7472,7 @@ func (x CloudPrivateAccessContractEntryContractEnum) Number() protoreflect.EnumN
 
 // Deprecated: Use CloudPrivateAccessContractEntryContractEnum.Descriptor instead.
 func (CloudPrivateAccessContractEntryContractEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{123}
+	return file_internal_proto_rawDescGZIP(), []int{125}
 }
 
 type AnonymousAccessContractModeEnum int32
@@ -7410,11 +7505,11 @@ func (x AnonymousAccessContractModeEnum) String() string {
 }
 
 func (AnonymousAccessContractModeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[124].Descriptor()
+	return file_internal_proto_enumTypes[126].Descriptor()
 }
 
 func (AnonymousAccessContractModeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[124]
+	return &file_internal_proto_enumTypes[126]
 }
 
 func (x AnonymousAccessContractModeEnum) Number() protoreflect.EnumNumber {
@@ -7423,7 +7518,7 @@ func (x AnonymousAccessContractModeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AnonymousAccessContractModeEnum.Descriptor instead.
 func (AnonymousAccessContractModeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{124}
+	return file_internal_proto_rawDescGZIP(), []int{126}
 }
 
 type TenantWorkspaceActionActionEnum int32
@@ -7462,11 +7557,11 @@ func (x TenantWorkspaceActionActionEnum) String() string {
 }
 
 func (TenantWorkspaceActionActionEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[125].Descriptor()
+	return file_internal_proto_enumTypes[127].Descriptor()
 }
 
 func (TenantWorkspaceActionActionEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[125]
+	return &file_internal_proto_enumTypes[127]
 }
 
 func (x TenantWorkspaceActionActionEnum) Number() protoreflect.EnumNumber {
@@ -7475,7 +7570,7 @@ func (x TenantWorkspaceActionActionEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TenantWorkspaceActionActionEnum.Descriptor instead.
 func (TenantWorkspaceActionActionEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{125}
+	return file_internal_proto_rawDescGZIP(), []int{127}
 }
 
 type TenantWorkspaceActionOperationOwnerEnum int32
@@ -7508,11 +7603,11 @@ func (x TenantWorkspaceActionOperationOwnerEnum) String() string {
 }
 
 func (TenantWorkspaceActionOperationOwnerEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[126].Descriptor()
+	return file_internal_proto_enumTypes[128].Descriptor()
 }
 
 func (TenantWorkspaceActionOperationOwnerEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[126]
+	return &file_internal_proto_enumTypes[128]
 }
 
 func (x TenantWorkspaceActionOperationOwnerEnum) Number() protoreflect.EnumNumber {
@@ -7521,7 +7616,7 @@ func (x TenantWorkspaceActionOperationOwnerEnum) Number() protoreflect.EnumNumbe
 
 // Deprecated: Use TenantWorkspaceActionOperationOwnerEnum.Descriptor instead.
 func (TenantWorkspaceActionOperationOwnerEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{126}
+	return file_internal_proto_rawDescGZIP(), []int{128}
 }
 
 type TenantWorkspaceActionStatusEnum int32
@@ -7572,11 +7667,11 @@ func (x TenantWorkspaceActionStatusEnum) String() string {
 }
 
 func (TenantWorkspaceActionStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[127].Descriptor()
+	return file_internal_proto_enumTypes[129].Descriptor()
 }
 
 func (TenantWorkspaceActionStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[127]
+	return &file_internal_proto_enumTypes[129]
 }
 
 func (x TenantWorkspaceActionStatusEnum) Number() protoreflect.EnumNumber {
@@ -7585,7 +7680,7 @@ func (x TenantWorkspaceActionStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TenantWorkspaceActionStatusEnum.Descriptor instead.
 func (TenantWorkspaceActionStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{127}
+	return file_internal_proto_rawDescGZIP(), []int{129}
 }
 
 type TenantWorkspaceSkipReasonEnum int32
@@ -7633,11 +7728,11 @@ func (x TenantWorkspaceSkipReasonEnum) String() string {
 }
 
 func (TenantWorkspaceSkipReasonEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[128].Descriptor()
+	return file_internal_proto_enumTypes[130].Descriptor()
 }
 
 func (TenantWorkspaceSkipReasonEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[128]
+	return &file_internal_proto_enumTypes[130]
 }
 
 func (x TenantWorkspaceSkipReasonEnum) Number() protoreflect.EnumNumber {
@@ -7646,7 +7741,7 @@ func (x TenantWorkspaceSkipReasonEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TenantWorkspaceSkipReasonEnum.Descriptor instead.
 func (TenantWorkspaceSkipReasonEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{128}
+	return file_internal_proto_rawDescGZIP(), []int{130}
 }
 
 type TenantLifecycleProgressAccessStatusEnum int32
@@ -7682,11 +7777,11 @@ func (x TenantLifecycleProgressAccessStatusEnum) String() string {
 }
 
 func (TenantLifecycleProgressAccessStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[129].Descriptor()
+	return file_internal_proto_enumTypes[131].Descriptor()
 }
 
 func (TenantLifecycleProgressAccessStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[129]
+	return &file_internal_proto_enumTypes[131]
 }
 
 func (x TenantLifecycleProgressAccessStatusEnum) Number() protoreflect.EnumNumber {
@@ -7695,7 +7790,7 @@ func (x TenantLifecycleProgressAccessStatusEnum) Number() protoreflect.EnumNumbe
 
 // Deprecated: Use TenantLifecycleProgressAccessStatusEnum.Descriptor instead.
 func (TenantLifecycleProgressAccessStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{129}
+	return file_internal_proto_rawDescGZIP(), []int{131}
 }
 
 type UpdateRenewalSettingsRequestRenewalModeEnum int32
@@ -7731,11 +7826,11 @@ func (x UpdateRenewalSettingsRequestRenewalModeEnum) String() string {
 }
 
 func (UpdateRenewalSettingsRequestRenewalModeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[130].Descriptor()
+	return file_internal_proto_enumTypes[132].Descriptor()
 }
 
 func (UpdateRenewalSettingsRequestRenewalModeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[130]
+	return &file_internal_proto_enumTypes[132]
 }
 
 func (x UpdateRenewalSettingsRequestRenewalModeEnum) Number() protoreflect.EnumNumber {
@@ -7744,7 +7839,7 @@ func (x UpdateRenewalSettingsRequestRenewalModeEnum) Number() protoreflect.EnumN
 
 // Deprecated: Use UpdateRenewalSettingsRequestRenewalModeEnum.Descriptor instead.
 func (UpdateRenewalSettingsRequestRenewalModeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{130}
+	return file_internal_proto_rawDescGZIP(), []int{132}
 }
 
 type PackageFormatContractReferenceOwnerEnum int32
@@ -7777,11 +7872,11 @@ func (x PackageFormatContractReferenceOwnerEnum) String() string {
 }
 
 func (PackageFormatContractReferenceOwnerEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[131].Descriptor()
+	return file_internal_proto_enumTypes[133].Descriptor()
 }
 
 func (PackageFormatContractReferenceOwnerEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[131]
+	return &file_internal_proto_enumTypes[133]
 }
 
 func (x PackageFormatContractReferenceOwnerEnum) Number() protoreflect.EnumNumber {
@@ -7790,7 +7885,7 @@ func (x PackageFormatContractReferenceOwnerEnum) Number() protoreflect.EnumNumbe
 
 // Deprecated: Use PackageFormatContractReferenceOwnerEnum.Descriptor instead.
 func (PackageFormatContractReferenceOwnerEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{131}
+	return file_internal_proto_rawDescGZIP(), []int{133}
 }
 
 type UpgradePlanRulesKindEnum int32
@@ -7823,11 +7918,11 @@ func (x UpgradePlanRulesKindEnum) String() string {
 }
 
 func (UpgradePlanRulesKindEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[132].Descriptor()
+	return file_internal_proto_enumTypes[134].Descriptor()
 }
 
 func (UpgradePlanRulesKindEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[132]
+	return &file_internal_proto_enumTypes[134]
 }
 
 func (x UpgradePlanRulesKindEnum) Number() protoreflect.EnumNumber {
@@ -7836,7 +7931,7 @@ func (x UpgradePlanRulesKindEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use UpgradePlanRulesKindEnum.Descriptor instead.
 func (UpgradePlanRulesKindEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{132}
+	return file_internal_proto_rawDescGZIP(), []int{134}
 }
 
 type UpgradePlanRulesEffectiveWhenEnum int32
@@ -7869,11 +7964,11 @@ func (x UpgradePlanRulesEffectiveWhenEnum) String() string {
 }
 
 func (UpgradePlanRulesEffectiveWhenEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[133].Descriptor()
+	return file_internal_proto_enumTypes[135].Descriptor()
 }
 
 func (UpgradePlanRulesEffectiveWhenEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[133]
+	return &file_internal_proto_enumTypes[135]
 }
 
 func (x UpgradePlanRulesEffectiveWhenEnum) Number() protoreflect.EnumNumber {
@@ -7882,7 +7977,7 @@ func (x UpgradePlanRulesEffectiveWhenEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use UpgradePlanRulesEffectiveWhenEnum.Descriptor instead.
 func (UpgradePlanRulesEffectiveWhenEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{133}
+	return file_internal_proto_rawDescGZIP(), []int{135}
 }
 
 type UpgradePlanRulesOldPriceSourceEnum int32
@@ -7915,11 +8010,11 @@ func (x UpgradePlanRulesOldPriceSourceEnum) String() string {
 }
 
 func (UpgradePlanRulesOldPriceSourceEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[134].Descriptor()
+	return file_internal_proto_enumTypes[136].Descriptor()
 }
 
 func (UpgradePlanRulesOldPriceSourceEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[134]
+	return &file_internal_proto_enumTypes[136]
 }
 
 func (x UpgradePlanRulesOldPriceSourceEnum) Number() protoreflect.EnumNumber {
@@ -7928,7 +8023,7 @@ func (x UpgradePlanRulesOldPriceSourceEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use UpgradePlanRulesOldPriceSourceEnum.Descriptor instead.
 func (UpgradePlanRulesOldPriceSourceEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{134}
+	return file_internal_proto_rawDescGZIP(), []int{136}
 }
 
 type UpgradePlanRulesChargeClockEnum int32
@@ -7961,11 +8056,11 @@ func (x UpgradePlanRulesChargeClockEnum) String() string {
 }
 
 func (UpgradePlanRulesChargeClockEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[135].Descriptor()
+	return file_internal_proto_enumTypes[137].Descriptor()
 }
 
 func (UpgradePlanRulesChargeClockEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[135]
+	return &file_internal_proto_enumTypes[137]
 }
 
 func (x UpgradePlanRulesChargeClockEnum) Number() protoreflect.EnumNumber {
@@ -7974,7 +8069,7 @@ func (x UpgradePlanRulesChargeClockEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use UpgradePlanRulesChargeClockEnum.Descriptor instead.
 func (UpgradePlanRulesChargeClockEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{135}
+	return file_internal_proto_rawDescGZIP(), []int{137}
 }
 
 type UpgradePlanRulesTimeUnitEnum int32
@@ -8007,11 +8102,11 @@ func (x UpgradePlanRulesTimeUnitEnum) String() string {
 }
 
 func (UpgradePlanRulesTimeUnitEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[136].Descriptor()
+	return file_internal_proto_enumTypes[138].Descriptor()
 }
 
 func (UpgradePlanRulesTimeUnitEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[136]
+	return &file_internal_proto_enumTypes[138]
 }
 
 func (x UpgradePlanRulesTimeUnitEnum) Number() protoreflect.EnumNumber {
@@ -8020,7 +8115,7 @@ func (x UpgradePlanRulesTimeUnitEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use UpgradePlanRulesTimeUnitEnum.Descriptor instead.
 func (UpgradePlanRulesTimeUnitEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{136}
+	return file_internal_proto_rawDescGZIP(), []int{138}
 }
 
 type UpgradePlanRulesChargeRoundingEnum int32
@@ -8053,11 +8148,11 @@ func (x UpgradePlanRulesChargeRoundingEnum) String() string {
 }
 
 func (UpgradePlanRulesChargeRoundingEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[137].Descriptor()
+	return file_internal_proto_enumTypes[139].Descriptor()
 }
 
 func (UpgradePlanRulesChargeRoundingEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[137]
+	return &file_internal_proto_enumTypes[139]
 }
 
 func (x UpgradePlanRulesChargeRoundingEnum) Number() protoreflect.EnumNumber {
@@ -8066,7 +8161,7 @@ func (x UpgradePlanRulesChargeRoundingEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use UpgradePlanRulesChargeRoundingEnum.Descriptor instead.
 func (UpgradePlanRulesChargeRoundingEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{137}
+	return file_internal_proto_rawDescGZIP(), []int{139}
 }
 
 type UpgradePlanRulesZeroChargeEnum int32
@@ -8099,11 +8194,11 @@ func (x UpgradePlanRulesZeroChargeEnum) String() string {
 }
 
 func (UpgradePlanRulesZeroChargeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[138].Descriptor()
+	return file_internal_proto_enumTypes[140].Descriptor()
 }
 
 func (UpgradePlanRulesZeroChargeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[138]
+	return &file_internal_proto_enumTypes[140]
 }
 
 func (x UpgradePlanRulesZeroChargeEnum) Number() protoreflect.EnumNumber {
@@ -8112,7 +8207,7 @@ func (x UpgradePlanRulesZeroChargeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use UpgradePlanRulesZeroChargeEnum.Descriptor instead.
 func (UpgradePlanRulesZeroChargeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{138}
+	return file_internal_proto_rawDescGZIP(), []int{140}
 }
 
 type UpgradePlanRulesKnownFailureCompensationEnum int32
@@ -8145,11 +8240,11 @@ func (x UpgradePlanRulesKnownFailureCompensationEnum) String() string {
 }
 
 func (UpgradePlanRulesKnownFailureCompensationEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[139].Descriptor()
+	return file_internal_proto_enumTypes[141].Descriptor()
 }
 
 func (UpgradePlanRulesKnownFailureCompensationEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[139]
+	return &file_internal_proto_enumTypes[141]
 }
 
 func (x UpgradePlanRulesKnownFailureCompensationEnum) Number() protoreflect.EnumNumber {
@@ -8158,7 +8253,7 @@ func (x UpgradePlanRulesKnownFailureCompensationEnum) Number() protoreflect.Enum
 
 // Deprecated: Use UpgradePlanRulesKnownFailureCompensationEnum.Descriptor instead.
 func (UpgradePlanRulesKnownFailureCompensationEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{139}
+	return file_internal_proto_rawDescGZIP(), []int{141}
 }
 
 type UpgradePlanRulesUnknownOutcomeEnum int32
@@ -8191,11 +8286,11 @@ func (x UpgradePlanRulesUnknownOutcomeEnum) String() string {
 }
 
 func (UpgradePlanRulesUnknownOutcomeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[140].Descriptor()
+	return file_internal_proto_enumTypes[142].Descriptor()
 }
 
 func (UpgradePlanRulesUnknownOutcomeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[140]
+	return &file_internal_proto_enumTypes[142]
 }
 
 func (x UpgradePlanRulesUnknownOutcomeEnum) Number() protoreflect.EnumNumber {
@@ -8204,7 +8299,7 @@ func (x UpgradePlanRulesUnknownOutcomeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use UpgradePlanRulesUnknownOutcomeEnum.Descriptor instead.
 func (UpgradePlanRulesUnknownOutcomeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{140}
+	return file_internal_proto_rawDescGZIP(), []int{142}
 }
 
 type UpgradePlanRulesIrreversibleResidualCostOwnerEnum int32
@@ -8237,11 +8332,11 @@ func (x UpgradePlanRulesIrreversibleResidualCostOwnerEnum) String() string {
 }
 
 func (UpgradePlanRulesIrreversibleResidualCostOwnerEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[141].Descriptor()
+	return file_internal_proto_enumTypes[143].Descriptor()
 }
 
 func (UpgradePlanRulesIrreversibleResidualCostOwnerEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[141]
+	return &file_internal_proto_enumTypes[143]
 }
 
 func (x UpgradePlanRulesIrreversibleResidualCostOwnerEnum) Number() protoreflect.EnumNumber {
@@ -8250,7 +8345,7 @@ func (x UpgradePlanRulesIrreversibleResidualCostOwnerEnum) Number() protoreflect
 
 // Deprecated: Use UpgradePlanRulesIrreversibleResidualCostOwnerEnum.Descriptor instead.
 func (UpgradePlanRulesIrreversibleResidualCostOwnerEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{141}
+	return file_internal_proto_rawDescGZIP(), []int{143}
 }
 
 type UpgradePlanRulesSupplementDeleteRefundEnum int32
@@ -8283,11 +8378,11 @@ func (x UpgradePlanRulesSupplementDeleteRefundEnum) String() string {
 }
 
 func (UpgradePlanRulesSupplementDeleteRefundEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[142].Descriptor()
+	return file_internal_proto_enumTypes[144].Descriptor()
 }
 
 func (UpgradePlanRulesSupplementDeleteRefundEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[142]
+	return &file_internal_proto_enumTypes[144]
 }
 
 func (x UpgradePlanRulesSupplementDeleteRefundEnum) Number() protoreflect.EnumNumber {
@@ -8296,7 +8391,7 @@ func (x UpgradePlanRulesSupplementDeleteRefundEnum) Number() protoreflect.EnumNu
 
 // Deprecated: Use UpgradePlanRulesSupplementDeleteRefundEnum.Descriptor instead.
 func (UpgradePlanRulesSupplementDeleteRefundEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{142}
+	return file_internal_proto_rawDescGZIP(), []int{144}
 }
 
 type DowngradePlanRulesKindEnum int32
@@ -8329,11 +8424,11 @@ func (x DowngradePlanRulesKindEnum) String() string {
 }
 
 func (DowngradePlanRulesKindEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[143].Descriptor()
+	return file_internal_proto_enumTypes[145].Descriptor()
 }
 
 func (DowngradePlanRulesKindEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[143]
+	return &file_internal_proto_enumTypes[145]
 }
 
 func (x DowngradePlanRulesKindEnum) Number() protoreflect.EnumNumber {
@@ -8342,7 +8437,7 @@ func (x DowngradePlanRulesKindEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DowngradePlanRulesKindEnum.Descriptor instead.
 func (DowngradePlanRulesKindEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{143}
+	return file_internal_proto_rawDescGZIP(), []int{145}
 }
 
 type DowngradePlanRulesPlannedBoundaryEnum int32
@@ -8375,11 +8470,11 @@ func (x DowngradePlanRulesPlannedBoundaryEnum) String() string {
 }
 
 func (DowngradePlanRulesPlannedBoundaryEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[144].Descriptor()
+	return file_internal_proto_enumTypes[146].Descriptor()
 }
 
 func (DowngradePlanRulesPlannedBoundaryEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[144]
+	return &file_internal_proto_enumTypes[146]
 }
 
 func (x DowngradePlanRulesPlannedBoundaryEnum) Number() protoreflect.EnumNumber {
@@ -8388,7 +8483,7 @@ func (x DowngradePlanRulesPlannedBoundaryEnum) Number() protoreflect.EnumNumber 
 
 // Deprecated: Use DowngradePlanRulesPlannedBoundaryEnum.Descriptor instead.
 func (DowngradePlanRulesPlannedBoundaryEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{144}
+	return file_internal_proto_rawDescGZIP(), []int{146}
 }
 
 type DowngradePlanRulesCurrentPeriodRefundEnum int32
@@ -8421,11 +8516,11 @@ func (x DowngradePlanRulesCurrentPeriodRefundEnum) String() string {
 }
 
 func (DowngradePlanRulesCurrentPeriodRefundEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[145].Descriptor()
+	return file_internal_proto_enumTypes[147].Descriptor()
 }
 
 func (DowngradePlanRulesCurrentPeriodRefundEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[145]
+	return &file_internal_proto_enumTypes[147]
 }
 
 func (x DowngradePlanRulesCurrentPeriodRefundEnum) Number() protoreflect.EnumNumber {
@@ -8434,7 +8529,7 @@ func (x DowngradePlanRulesCurrentPeriodRefundEnum) Number() protoreflect.EnumNum
 
 // Deprecated: Use DowngradePlanRulesCurrentPeriodRefundEnum.Descriptor instead.
 func (DowngradePlanRulesCurrentPeriodRefundEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{145}
+	return file_internal_proto_rawDescGZIP(), []int{147}
 }
 
 type DowngradePlanRulesNextPeriodPriceEnum int32
@@ -8467,11 +8562,11 @@ func (x DowngradePlanRulesNextPeriodPriceEnum) String() string {
 }
 
 func (DowngradePlanRulesNextPeriodPriceEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[146].Descriptor()
+	return file_internal_proto_enumTypes[148].Descriptor()
 }
 
 func (DowngradePlanRulesNextPeriodPriceEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[146]
+	return &file_internal_proto_enumTypes[148]
 }
 
 func (x DowngradePlanRulesNextPeriodPriceEnum) Number() protoreflect.EnumNumber {
@@ -8480,7 +8575,7 @@ func (x DowngradePlanRulesNextPeriodPriceEnum) Number() protoreflect.EnumNumber 
 
 // Deprecated: Use DowngradePlanRulesNextPeriodPriceEnum.Descriptor instead.
 func (DowngradePlanRulesNextPeriodPriceEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{146}
+	return file_internal_proto_rawDescGZIP(), []int{148}
 }
 
 type DowngradePlanRulesCancelBeforeEnum int32
@@ -8513,11 +8608,11 @@ func (x DowngradePlanRulesCancelBeforeEnum) String() string {
 }
 
 func (DowngradePlanRulesCancelBeforeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[147].Descriptor()
+	return file_internal_proto_enumTypes[149].Descriptor()
 }
 
 func (DowngradePlanRulesCancelBeforeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[147]
+	return &file_internal_proto_enumTypes[149]
 }
 
 func (x DowngradePlanRulesCancelBeforeEnum) Number() protoreflect.EnumNumber {
@@ -8526,7 +8621,7 @@ func (x DowngradePlanRulesCancelBeforeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DowngradePlanRulesCancelBeforeEnum.Descriptor instead.
 func (DowngradePlanRulesCancelBeforeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{147}
+	return file_internal_proto_rawDescGZIP(), []int{149}
 }
 
 type DowngradePlanRulesEarlyPaidChangeEnum int32
@@ -8559,11 +8654,11 @@ func (x DowngradePlanRulesEarlyPaidChangeEnum) String() string {
 }
 
 func (DowngradePlanRulesEarlyPaidChangeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[148].Descriptor()
+	return file_internal_proto_enumTypes[150].Descriptor()
 }
 
 func (DowngradePlanRulesEarlyPaidChangeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[148]
+	return &file_internal_proto_enumTypes[150]
 }
 
 func (x DowngradePlanRulesEarlyPaidChangeEnum) Number() protoreflect.EnumNumber {
@@ -8572,7 +8667,7 @@ func (x DowngradePlanRulesEarlyPaidChangeEnum) Number() protoreflect.EnumNumber 
 
 // Deprecated: Use DowngradePlanRulesEarlyPaidChangeEnum.Descriptor instead.
 func (DowngradePlanRulesEarlyPaidChangeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{148}
+	return file_internal_proto_rawDescGZIP(), []int{150}
 }
 
 type DowngradePlanRulesManualUnpaidBoundaryEnum int32
@@ -8605,11 +8700,11 @@ func (x DowngradePlanRulesManualUnpaidBoundaryEnum) String() string {
 }
 
 func (DowngradePlanRulesManualUnpaidBoundaryEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[149].Descriptor()
+	return file_internal_proto_enumTypes[151].Descriptor()
 }
 
 func (DowngradePlanRulesManualUnpaidBoundaryEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[149]
+	return &file_internal_proto_enumTypes[151]
 }
 
 func (x DowngradePlanRulesManualUnpaidBoundaryEnum) Number() protoreflect.EnumNumber {
@@ -8618,7 +8713,7 @@ func (x DowngradePlanRulesManualUnpaidBoundaryEnum) Number() protoreflect.EnumNu
 
 // Deprecated: Use DowngradePlanRulesManualUnpaidBoundaryEnum.Descriptor instead.
 func (DowngradePlanRulesManualUnpaidBoundaryEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{149}
+	return file_internal_proto_rawDescGZIP(), []int{151}
 }
 
 type DowngradePlanRulesKnownFailureCompensationEnum int32
@@ -8651,11 +8746,11 @@ func (x DowngradePlanRulesKnownFailureCompensationEnum) String() string {
 }
 
 func (DowngradePlanRulesKnownFailureCompensationEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[150].Descriptor()
+	return file_internal_proto_enumTypes[152].Descriptor()
 }
 
 func (DowngradePlanRulesKnownFailureCompensationEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[150]
+	return &file_internal_proto_enumTypes[152]
 }
 
 func (x DowngradePlanRulesKnownFailureCompensationEnum) Number() protoreflect.EnumNumber {
@@ -8664,7 +8759,7 @@ func (x DowngradePlanRulesKnownFailureCompensationEnum) Number() protoreflect.En
 
 // Deprecated: Use DowngradePlanRulesKnownFailureCompensationEnum.Descriptor instead.
 func (DowngradePlanRulesKnownFailureCompensationEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{150}
+	return file_internal_proto_rawDescGZIP(), []int{152}
 }
 
 type DowngradePlanRulesFallbackEnum int32
@@ -8697,11 +8792,11 @@ func (x DowngradePlanRulesFallbackEnum) String() string {
 }
 
 func (DowngradePlanRulesFallbackEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[151].Descriptor()
+	return file_internal_proto_enumTypes[153].Descriptor()
 }
 
 func (DowngradePlanRulesFallbackEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[151]
+	return &file_internal_proto_enumTypes[153]
 }
 
 func (x DowngradePlanRulesFallbackEnum) Number() protoreflect.EnumNumber {
@@ -8710,7 +8805,7 @@ func (x DowngradePlanRulesFallbackEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DowngradePlanRulesFallbackEnum.Descriptor instead.
 func (DowngradePlanRulesFallbackEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{151}
+	return file_internal_proto_rawDescGZIP(), []int{153}
 }
 
 type PlanChangePolicyVersionEnum int32
@@ -8743,11 +8838,11 @@ func (x PlanChangePolicyVersionEnum) String() string {
 }
 
 func (PlanChangePolicyVersionEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[152].Descriptor()
+	return file_internal_proto_enumTypes[154].Descriptor()
 }
 
 func (PlanChangePolicyVersionEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[152]
+	return &file_internal_proto_enumTypes[154]
 }
 
 func (x PlanChangePolicyVersionEnum) Number() protoreflect.EnumNumber {
@@ -8756,7 +8851,7 @@ func (x PlanChangePolicyVersionEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangePolicyVersionEnum.Descriptor instead.
 func (PlanChangePolicyVersionEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{152}
+	return file_internal_proto_rawDescGZIP(), []int{154}
 }
 
 type PlanChangePolicyApprovalStatusEnum int32
@@ -8789,11 +8884,11 @@ func (x PlanChangePolicyApprovalStatusEnum) String() string {
 }
 
 func (PlanChangePolicyApprovalStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[153].Descriptor()
+	return file_internal_proto_enumTypes[155].Descriptor()
 }
 
 func (PlanChangePolicyApprovalStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[153]
+	return &file_internal_proto_enumTypes[155]
 }
 
 func (x PlanChangePolicyApprovalStatusEnum) Number() protoreflect.EnumNumber {
@@ -8802,7 +8897,7 @@ func (x PlanChangePolicyApprovalStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangePolicyApprovalStatusEnum.Descriptor instead.
 func (PlanChangePolicyApprovalStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{153}
+	return file_internal_proto_rawDescGZIP(), []int{155}
 }
 
 type PlanChangePolicyClassificationEnum int32
@@ -8835,11 +8930,11 @@ func (x PlanChangePolicyClassificationEnum) String() string {
 }
 
 func (PlanChangePolicyClassificationEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[154].Descriptor()
+	return file_internal_proto_enumTypes[156].Descriptor()
 }
 
 func (PlanChangePolicyClassificationEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[154]
+	return &file_internal_proto_enumTypes[156]
 }
 
 func (x PlanChangePolicyClassificationEnum) Number() protoreflect.EnumNumber {
@@ -8848,7 +8943,7 @@ func (x PlanChangePolicyClassificationEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangePolicyClassificationEnum.Descriptor instead.
 func (PlanChangePolicyClassificationEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{154}
+	return file_internal_proto_rawDescGZIP(), []int{156}
 }
 
 type PlanChangePolicyMixedOrIncomparableTransitionEnum int32
@@ -8881,11 +8976,11 @@ func (x PlanChangePolicyMixedOrIncomparableTransitionEnum) String() string {
 }
 
 func (PlanChangePolicyMixedOrIncomparableTransitionEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[155].Descriptor()
+	return file_internal_proto_enumTypes[157].Descriptor()
 }
 
 func (PlanChangePolicyMixedOrIncomparableTransitionEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[155]
+	return &file_internal_proto_enumTypes[157]
 }
 
 func (x PlanChangePolicyMixedOrIncomparableTransitionEnum) Number() protoreflect.EnumNumber {
@@ -8894,7 +8989,7 @@ func (x PlanChangePolicyMixedOrIncomparableTransitionEnum) Number() protoreflect
 
 // Deprecated: Use PlanChangePolicyMixedOrIncomparableTransitionEnum.Descriptor instead.
 func (PlanChangePolicyMixedOrIncomparableTransitionEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{155}
+	return file_internal_proto_rawDescGZIP(), []int{157}
 }
 
 type PlanChangePolicyNoOpTransitionEnum int32
@@ -8927,11 +9022,11 @@ func (x PlanChangePolicyNoOpTransitionEnum) String() string {
 }
 
 func (PlanChangePolicyNoOpTransitionEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[156].Descriptor()
+	return file_internal_proto_enumTypes[158].Descriptor()
 }
 
 func (PlanChangePolicyNoOpTransitionEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[156]
+	return &file_internal_proto_enumTypes[158]
 }
 
 func (x PlanChangePolicyNoOpTransitionEnum) Number() protoreflect.EnumNumber {
@@ -8940,7 +9035,7 @@ func (x PlanChangePolicyNoOpTransitionEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangePolicyNoOpTransitionEnum.Descriptor instead.
 func (PlanChangePolicyNoOpTransitionEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{156}
+	return file_internal_proto_rawDescGZIP(), []int{158}
 }
 
 type PlanChangePolicyStorageShrinkEnum int32
@@ -8973,11 +9068,11 @@ func (x PlanChangePolicyStorageShrinkEnum) String() string {
 }
 
 func (PlanChangePolicyStorageShrinkEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[157].Descriptor()
+	return file_internal_proto_enumTypes[159].Descriptor()
 }
 
 func (PlanChangePolicyStorageShrinkEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[157]
+	return &file_internal_proto_enumTypes[159]
 }
 
 func (x PlanChangePolicyStorageShrinkEnum) Number() protoreflect.EnumNumber {
@@ -8986,7 +9081,7 @@ func (x PlanChangePolicyStorageShrinkEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangePolicyStorageShrinkEnum.Descriptor instead.
 func (PlanChangePolicyStorageShrinkEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{157}
+	return file_internal_proto_rawDescGZIP(), []int{159}
 }
 
 type PlanChangePolicyConcurrencyEnum int32
@@ -9019,11 +9114,11 @@ func (x PlanChangePolicyConcurrencyEnum) String() string {
 }
 
 func (PlanChangePolicyConcurrencyEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[158].Descriptor()
+	return file_internal_proto_enumTypes[160].Descriptor()
 }
 
 func (PlanChangePolicyConcurrencyEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[158]
+	return &file_internal_proto_enumTypes[160]
 }
 
 func (x PlanChangePolicyConcurrencyEnum) Number() protoreflect.EnumNumber {
@@ -9032,7 +9127,7 @@ func (x PlanChangePolicyConcurrencyEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangePolicyConcurrencyEnum.Descriptor instead.
 func (PlanChangePolicyConcurrencyEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{158}
+	return file_internal_proto_rawDescGZIP(), []int{160}
 }
 
 type PlanChangePolicyCancelAndReplaceEnum int32
@@ -9065,11 +9160,11 @@ func (x PlanChangePolicyCancelAndReplaceEnum) String() string {
 }
 
 func (PlanChangePolicyCancelAndReplaceEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[159].Descriptor()
+	return file_internal_proto_enumTypes[161].Descriptor()
 }
 
 func (PlanChangePolicyCancelAndReplaceEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[159]
+	return &file_internal_proto_enumTypes[161]
 }
 
 func (x PlanChangePolicyCancelAndReplaceEnum) Number() protoreflect.EnumNumber {
@@ -9078,7 +9173,7 @@ func (x PlanChangePolicyCancelAndReplaceEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangePolicyCancelAndReplaceEnum.Descriptor instead.
 func (PlanChangePolicyCancelAndReplaceEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{159}
+	return file_internal_proto_rawDescGZIP(), []int{161}
 }
 
 type PlanChangePolicyBaseRefundPolicyEnum int32
@@ -9111,11 +9206,11 @@ func (x PlanChangePolicyBaseRefundPolicyEnum) String() string {
 }
 
 func (PlanChangePolicyBaseRefundPolicyEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[160].Descriptor()
+	return file_internal_proto_enumTypes[162].Descriptor()
 }
 
 func (PlanChangePolicyBaseRefundPolicyEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[160]
+	return &file_internal_proto_enumTypes[162]
 }
 
 func (x PlanChangePolicyBaseRefundPolicyEnum) Number() protoreflect.EnumNumber {
@@ -9124,7 +9219,7 @@ func (x PlanChangePolicyBaseRefundPolicyEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangePolicyBaseRefundPolicyEnum.Descriptor instead.
 func (PlanChangePolicyBaseRefundPolicyEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{160}
+	return file_internal_proto_rawDescGZIP(), []int{162}
 }
 
 type PlanChangePolicyProviderExecutionPlanEnum int32
@@ -9157,11 +9252,11 @@ func (x PlanChangePolicyProviderExecutionPlanEnum) String() string {
 }
 
 func (PlanChangePolicyProviderExecutionPlanEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[161].Descriptor()
+	return file_internal_proto_enumTypes[163].Descriptor()
 }
 
 func (PlanChangePolicyProviderExecutionPlanEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[161]
+	return &file_internal_proto_enumTypes[163]
 }
 
 func (x PlanChangePolicyProviderExecutionPlanEnum) Number() protoreflect.EnumNumber {
@@ -9170,7 +9265,7 @@ func (x PlanChangePolicyProviderExecutionPlanEnum) Number() protoreflect.EnumNum
 
 // Deprecated: Use PlanChangePolicyProviderExecutionPlanEnum.Descriptor instead.
 func (PlanChangePolicyProviderExecutionPlanEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{161}
+	return file_internal_proto_rawDescGZIP(), []int{163}
 }
 
 type UpgradeProrationRoundingEnum int32
@@ -9203,11 +9298,11 @@ func (x UpgradeProrationRoundingEnum) String() string {
 }
 
 func (UpgradeProrationRoundingEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[162].Descriptor()
+	return file_internal_proto_enumTypes[164].Descriptor()
 }
 
 func (UpgradeProrationRoundingEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[162]
+	return &file_internal_proto_enumTypes[164]
 }
 
 func (x UpgradeProrationRoundingEnum) Number() protoreflect.EnumNumber {
@@ -9216,7 +9311,7 @@ func (x UpgradeProrationRoundingEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use UpgradeProrationRoundingEnum.Descriptor instead.
 func (UpgradeProrationRoundingEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{162}
+	return file_internal_proto_rawDescGZIP(), []int{164}
 }
 
 type PlanChangeCalculationPolicyVersionEnum int32
@@ -9249,11 +9344,11 @@ func (x PlanChangeCalculationPolicyVersionEnum) String() string {
 }
 
 func (PlanChangeCalculationPolicyVersionEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[163].Descriptor()
+	return file_internal_proto_enumTypes[165].Descriptor()
 }
 
 func (PlanChangeCalculationPolicyVersionEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[163]
+	return &file_internal_proto_enumTypes[165]
 }
 
 func (x PlanChangeCalculationPolicyVersionEnum) Number() protoreflect.EnumNumber {
@@ -9262,7 +9357,7 @@ func (x PlanChangeCalculationPolicyVersionEnum) Number() protoreflect.EnumNumber
 
 // Deprecated: Use PlanChangeCalculationPolicyVersionEnum.Descriptor instead.
 func (PlanChangeCalculationPolicyVersionEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{163}
+	return file_internal_proto_rawDescGZIP(), []int{165}
 }
 
 type PlanChangeCalculationKindEnum int32
@@ -9298,11 +9393,11 @@ func (x PlanChangeCalculationKindEnum) String() string {
 }
 
 func (PlanChangeCalculationKindEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[164].Descriptor()
+	return file_internal_proto_enumTypes[166].Descriptor()
 }
 
 func (PlanChangeCalculationKindEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[164]
+	return &file_internal_proto_enumTypes[166]
 }
 
 func (x PlanChangeCalculationKindEnum) Number() protoreflect.EnumNumber {
@@ -9311,7 +9406,7 @@ func (x PlanChangeCalculationKindEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangeCalculationKindEnum.Descriptor instead.
 func (PlanChangeCalculationKindEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{164}
+	return file_internal_proto_rawDescGZIP(), []int{166}
 }
 
 type PlanChangeKindEnum int32
@@ -9347,11 +9442,11 @@ func (x PlanChangeKindEnum) String() string {
 }
 
 func (PlanChangeKindEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[165].Descriptor()
+	return file_internal_proto_enumTypes[167].Descriptor()
 }
 
 func (PlanChangeKindEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[165]
+	return &file_internal_proto_enumTypes[167]
 }
 
 func (x PlanChangeKindEnum) Number() protoreflect.EnumNumber {
@@ -9360,7 +9455,7 @@ func (x PlanChangeKindEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangeKindEnum.Descriptor instead.
 func (PlanChangeKindEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{165}
+	return file_internal_proto_rawDescGZIP(), []int{167}
 }
 
 type PlanChangeStatusEnum int32
@@ -9414,11 +9509,11 @@ func (x PlanChangeStatusEnum) String() string {
 }
 
 func (PlanChangeStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[166].Descriptor()
+	return file_internal_proto_enumTypes[168].Descriptor()
 }
 
 func (PlanChangeStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[166]
+	return &file_internal_proto_enumTypes[168]
 }
 
 func (x PlanChangeStatusEnum) Number() protoreflect.EnumNumber {
@@ -9427,7 +9522,7 @@ func (x PlanChangeStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangeStatusEnum.Descriptor instead.
 func (PlanChangeStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{166}
+	return file_internal_proto_rawDescGZIP(), []int{168}
 }
 
 type PlanChangeChargeStatusEnum int32
@@ -9475,11 +9570,11 @@ func (x PlanChangeChargeStatusEnum) String() string {
 }
 
 func (PlanChangeChargeStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[167].Descriptor()
+	return file_internal_proto_enumTypes[169].Descriptor()
 }
 
 func (PlanChangeChargeStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[167]
+	return &file_internal_proto_enumTypes[169]
 }
 
 func (x PlanChangeChargeStatusEnum) Number() protoreflect.EnumNumber {
@@ -9488,7 +9583,7 @@ func (x PlanChangeChargeStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangeChargeStatusEnum.Descriptor instead.
 func (PlanChangeChargeStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{167}
+	return file_internal_proto_rawDescGZIP(), []int{169}
 }
 
 type PlanChangeNextPeriodChargeStatusEnum int32
@@ -9536,11 +9631,11 @@ func (x PlanChangeNextPeriodChargeStatusEnum) String() string {
 }
 
 func (PlanChangeNextPeriodChargeStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[168].Descriptor()
+	return file_internal_proto_enumTypes[170].Descriptor()
 }
 
 func (PlanChangeNextPeriodChargeStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[168]
+	return &file_internal_proto_enumTypes[170]
 }
 
 func (x PlanChangeNextPeriodChargeStatusEnum) Number() protoreflect.EnumNumber {
@@ -9549,7 +9644,7 @@ func (x PlanChangeNextPeriodChargeStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangeNextPeriodChargeStatusEnum.Descriptor instead.
 func (PlanChangeNextPeriodChargeStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{168}
+	return file_internal_proto_rawDescGZIP(), []int{170}
 }
 
 type PlanChangeObservationResultEnum int32
@@ -9588,11 +9683,11 @@ func (x PlanChangeObservationResultEnum) String() string {
 }
 
 func (PlanChangeObservationResultEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[169].Descriptor()
+	return file_internal_proto_enumTypes[171].Descriptor()
 }
 
 func (PlanChangeObservationResultEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[169]
+	return &file_internal_proto_enumTypes[171]
 }
 
 func (x PlanChangeObservationResultEnum) Number() protoreflect.EnumNumber {
@@ -9601,7 +9696,7 @@ func (x PlanChangeObservationResultEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangeObservationResultEnum.Descriptor instead.
 func (PlanChangeObservationResultEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{169}
+	return file_internal_proto_rawDescGZIP(), []int{171}
 }
 
 type PlanChangeDeliveryOutcomeEnum int32
@@ -9643,11 +9738,11 @@ func (x PlanChangeDeliveryOutcomeEnum) String() string {
 }
 
 func (PlanChangeDeliveryOutcomeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[170].Descriptor()
+	return file_internal_proto_enumTypes[172].Descriptor()
 }
 
 func (PlanChangeDeliveryOutcomeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[170]
+	return &file_internal_proto_enumTypes[172]
 }
 
 func (x PlanChangeDeliveryOutcomeEnum) Number() protoreflect.EnumNumber {
@@ -9656,7 +9751,7 @@ func (x PlanChangeDeliveryOutcomeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangeDeliveryOutcomeEnum.Descriptor instead.
 func (PlanChangeDeliveryOutcomeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{170}
+	return file_internal_proto_rawDescGZIP(), []int{172}
 }
 
 type PlanChangeResourceOutcomeEnum int32
@@ -9701,11 +9796,11 @@ func (x PlanChangeResourceOutcomeEnum) String() string {
 }
 
 func (PlanChangeResourceOutcomeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[171].Descriptor()
+	return file_internal_proto_enumTypes[173].Descriptor()
 }
 
 func (PlanChangeResourceOutcomeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[171]
+	return &file_internal_proto_enumTypes[173]
 }
 
 func (x PlanChangeResourceOutcomeEnum) Number() protoreflect.EnumNumber {
@@ -9714,7 +9809,7 @@ func (x PlanChangeResourceOutcomeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangeResourceOutcomeEnum.Descriptor instead.
 func (PlanChangeResourceOutcomeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{171}
+	return file_internal_proto_rawDescGZIP(), []int{173}
 }
 
 type PlanChangeRuntimeReadbackRequirementEnum int32
@@ -9750,11 +9845,11 @@ func (x PlanChangeRuntimeReadbackRequirementEnum) String() string {
 }
 
 func (PlanChangeRuntimeReadbackRequirementEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[172].Descriptor()
+	return file_internal_proto_enumTypes[174].Descriptor()
 }
 
 func (PlanChangeRuntimeReadbackRequirementEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[172]
+	return &file_internal_proto_enumTypes[174]
 }
 
 func (x PlanChangeRuntimeReadbackRequirementEnum) Number() protoreflect.EnumNumber {
@@ -9763,7 +9858,7 @@ func (x PlanChangeRuntimeReadbackRequirementEnum) Number() protoreflect.EnumNumb
 
 // Deprecated: Use PlanChangeRuntimeReadbackRequirementEnum.Descriptor instead.
 func (PlanChangeRuntimeReadbackRequirementEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{172}
+	return file_internal_proto_rawDescGZIP(), []int{174}
 }
 
 type PlanChangeCurrentRequirementValidationEnum int32
@@ -9802,11 +9897,11 @@ func (x PlanChangeCurrentRequirementValidationEnum) String() string {
 }
 
 func (PlanChangeCurrentRequirementValidationEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[173].Descriptor()
+	return file_internal_proto_enumTypes[175].Descriptor()
 }
 
 func (PlanChangeCurrentRequirementValidationEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[173]
+	return &file_internal_proto_enumTypes[175]
 }
 
 func (x PlanChangeCurrentRequirementValidationEnum) Number() protoreflect.EnumNumber {
@@ -9815,7 +9910,7 @@ func (x PlanChangeCurrentRequirementValidationEnum) Number() protoreflect.EnumNu
 
 // Deprecated: Use PlanChangeCurrentRequirementValidationEnum.Descriptor instead.
 func (PlanChangeCurrentRequirementValidationEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{173}
+	return file_internal_proto_rawDescGZIP(), []int{175}
 }
 
 type PlanChangeEvidenceKindEnum int32
@@ -9851,11 +9946,11 @@ func (x PlanChangeEvidenceKindEnum) String() string {
 }
 
 func (PlanChangeEvidenceKindEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[174].Descriptor()
+	return file_internal_proto_enumTypes[176].Descriptor()
 }
 
 func (PlanChangeEvidenceKindEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[174]
+	return &file_internal_proto_enumTypes[176]
 }
 
 func (x PlanChangeEvidenceKindEnum) Number() protoreflect.EnumNumber {
@@ -9864,7 +9959,7 @@ func (x PlanChangeEvidenceKindEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangeEvidenceKindEnum.Descriptor instead.
 func (PlanChangeEvidenceKindEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{174}
+	return file_internal_proto_rawDescGZIP(), []int{176}
 }
 
 type PlanChangeEvidencePolicyVersionEnum int32
@@ -9897,11 +9992,11 @@ func (x PlanChangeEvidencePolicyVersionEnum) String() string {
 }
 
 func (PlanChangeEvidencePolicyVersionEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[175].Descriptor()
+	return file_internal_proto_enumTypes[177].Descriptor()
 }
 
 func (PlanChangeEvidencePolicyVersionEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[175]
+	return &file_internal_proto_enumTypes[177]
 }
 
 func (x PlanChangeEvidencePolicyVersionEnum) Number() protoreflect.EnumNumber {
@@ -9910,7 +10005,7 @@ func (x PlanChangeEvidencePolicyVersionEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangeEvidencePolicyVersionEnum.Descriptor instead.
 func (PlanChangeEvidencePolicyVersionEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{175}
+	return file_internal_proto_rawDescGZIP(), []int{177}
 }
 
 type PlanChangeEvidenceOutcomeEnum int32
@@ -9955,11 +10050,11 @@ func (x PlanChangeEvidenceOutcomeEnum) String() string {
 }
 
 func (PlanChangeEvidenceOutcomeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[176].Descriptor()
+	return file_internal_proto_enumTypes[178].Descriptor()
 }
 
 func (PlanChangeEvidenceOutcomeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[176]
+	return &file_internal_proto_enumTypes[178]
 }
 
 func (x PlanChangeEvidenceOutcomeEnum) Number() protoreflect.EnumNumber {
@@ -9968,7 +10063,7 @@ func (x PlanChangeEvidenceOutcomeEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlanChangeEvidenceOutcomeEnum.Descriptor instead.
 func (PlanChangeEvidenceOutcomeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{176}
+	return file_internal_proto_rawDescGZIP(), []int{178}
 }
 
 type PlanChangeEvidenceDeliveryOutcomeEnum int32
@@ -10010,11 +10105,11 @@ func (x PlanChangeEvidenceDeliveryOutcomeEnum) String() string {
 }
 
 func (PlanChangeEvidenceDeliveryOutcomeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[177].Descriptor()
+	return file_internal_proto_enumTypes[179].Descriptor()
 }
 
 func (PlanChangeEvidenceDeliveryOutcomeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[177]
+	return &file_internal_proto_enumTypes[179]
 }
 
 func (x PlanChangeEvidenceDeliveryOutcomeEnum) Number() protoreflect.EnumNumber {
@@ -10023,7 +10118,7 @@ func (x PlanChangeEvidenceDeliveryOutcomeEnum) Number() protoreflect.EnumNumber 
 
 // Deprecated: Use PlanChangeEvidenceDeliveryOutcomeEnum.Descriptor instead.
 func (PlanChangeEvidenceDeliveryOutcomeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{177}
+	return file_internal_proto_rawDescGZIP(), []int{179}
 }
 
 type PlanChangeEvidenceResourceOutcomeEnum int32
@@ -10068,11 +10163,11 @@ func (x PlanChangeEvidenceResourceOutcomeEnum) String() string {
 }
 
 func (PlanChangeEvidenceResourceOutcomeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[178].Descriptor()
+	return file_internal_proto_enumTypes[180].Descriptor()
 }
 
 func (PlanChangeEvidenceResourceOutcomeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[178]
+	return &file_internal_proto_enumTypes[180]
 }
 
 func (x PlanChangeEvidenceResourceOutcomeEnum) Number() protoreflect.EnumNumber {
@@ -10081,7 +10176,7 @@ func (x PlanChangeEvidenceResourceOutcomeEnum) Number() protoreflect.EnumNumber 
 
 // Deprecated: Use PlanChangeEvidenceResourceOutcomeEnum.Descriptor instead.
 func (PlanChangeEvidenceResourceOutcomeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{178}
+	return file_internal_proto_rawDescGZIP(), []int{180}
 }
 
 type PlanChangeEvidenceRuntimeReadbackRequirementEnum int32
@@ -10117,11 +10212,11 @@ func (x PlanChangeEvidenceRuntimeReadbackRequirementEnum) String() string {
 }
 
 func (PlanChangeEvidenceRuntimeReadbackRequirementEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[179].Descriptor()
+	return file_internal_proto_enumTypes[181].Descriptor()
 }
 
 func (PlanChangeEvidenceRuntimeReadbackRequirementEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[179]
+	return &file_internal_proto_enumTypes[181]
 }
 
 func (x PlanChangeEvidenceRuntimeReadbackRequirementEnum) Number() protoreflect.EnumNumber {
@@ -10130,7 +10225,7 @@ func (x PlanChangeEvidenceRuntimeReadbackRequirementEnum) Number() protoreflect.
 
 // Deprecated: Use PlanChangeEvidenceRuntimeReadbackRequirementEnum.Descriptor instead.
 func (PlanChangeEvidenceRuntimeReadbackRequirementEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{179}
+	return file_internal_proto_rawDescGZIP(), []int{181}
 }
 
 type SupplementalRefundEvidencePurposeEnum int32
@@ -10169,11 +10264,11 @@ func (x SupplementalRefundEvidencePurposeEnum) String() string {
 }
 
 func (SupplementalRefundEvidencePurposeEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[180].Descriptor()
+	return file_internal_proto_enumTypes[182].Descriptor()
 }
 
 func (SupplementalRefundEvidencePurposeEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[180]
+	return &file_internal_proto_enumTypes[182]
 }
 
 func (x SupplementalRefundEvidencePurposeEnum) Number() protoreflect.EnumNumber {
@@ -10182,7 +10277,7 @@ func (x SupplementalRefundEvidencePurposeEnum) Number() protoreflect.EnumNumber 
 
 // Deprecated: Use SupplementalRefundEvidencePurposeEnum.Descriptor instead.
 func (SupplementalRefundEvidencePurposeEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{180}
+	return file_internal_proto_rawDescGZIP(), []int{182}
 }
 
 type SupplementalRefundEvidencePolicyVersionEnum int32
@@ -10215,11 +10310,11 @@ func (x SupplementalRefundEvidencePolicyVersionEnum) String() string {
 }
 
 func (SupplementalRefundEvidencePolicyVersionEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[181].Descriptor()
+	return file_internal_proto_enumTypes[183].Descriptor()
 }
 
 func (SupplementalRefundEvidencePolicyVersionEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[181]
+	return &file_internal_proto_enumTypes[183]
 }
 
 func (x SupplementalRefundEvidencePolicyVersionEnum) Number() protoreflect.EnumNumber {
@@ -10228,7 +10323,7 @@ func (x SupplementalRefundEvidencePolicyVersionEnum) Number() protoreflect.EnumN
 
 // Deprecated: Use SupplementalRefundEvidencePolicyVersionEnum.Descriptor instead.
 func (SupplementalRefundEvidencePolicyVersionEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{181}
+	return file_internal_proto_rawDescGZIP(), []int{183}
 }
 
 type ListPackagesRpcRequestVisibilityEnum int32
@@ -10267,11 +10362,11 @@ func (x ListPackagesRpcRequestVisibilityEnum) String() string {
 }
 
 func (ListPackagesRpcRequestVisibilityEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[182].Descriptor()
+	return file_internal_proto_enumTypes[184].Descriptor()
 }
 
 func (ListPackagesRpcRequestVisibilityEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[182]
+	return &file_internal_proto_enumTypes[184]
 }
 
 func (x ListPackagesRpcRequestVisibilityEnum) Number() protoreflect.EnumNumber {
@@ -10280,7 +10375,7 @@ func (x ListPackagesRpcRequestVisibilityEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ListPackagesRpcRequestVisibilityEnum.Descriptor instead.
 func (ListPackagesRpcRequestVisibilityEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{182}
+	return file_internal_proto_rawDescGZIP(), []int{184}
 }
 
 type ListPackagesRpcRequestStatusEnum int32
@@ -10316,11 +10411,11 @@ func (x ListPackagesRpcRequestStatusEnum) String() string {
 }
 
 func (ListPackagesRpcRequestStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[183].Descriptor()
+	return file_internal_proto_enumTypes[185].Descriptor()
 }
 
 func (ListPackagesRpcRequestStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[183]
+	return &file_internal_proto_enumTypes[185]
 }
 
 func (x ListPackagesRpcRequestStatusEnum) Number() protoreflect.EnumNumber {
@@ -10329,7 +10424,7 @@ func (x ListPackagesRpcRequestStatusEnum) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ListPackagesRpcRequestStatusEnum.Descriptor instead.
 func (ListPackagesRpcRequestStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{183}
+	return file_internal_proto_rawDescGZIP(), []int{185}
 }
 
 type ListCapabilityVersionsRpcRequestStatusEnum int32
@@ -10371,11 +10466,11 @@ func (x ListCapabilityVersionsRpcRequestStatusEnum) String() string {
 }
 
 func (ListCapabilityVersionsRpcRequestStatusEnum) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[184].Descriptor()
+	return file_internal_proto_enumTypes[186].Descriptor()
 }
 
 func (ListCapabilityVersionsRpcRequestStatusEnum) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[184]
+	return &file_internal_proto_enumTypes[186]
 }
 
 func (x ListCapabilityVersionsRpcRequestStatusEnum) Number() protoreflect.EnumNumber {
@@ -10384,7 +10479,7 @@ func (x ListCapabilityVersionsRpcRequestStatusEnum) Number() protoreflect.EnumNu
 
 // Deprecated: Use ListCapabilityVersionsRpcRequestStatusEnum.Descriptor instead.
 func (ListCapabilityVersionsRpcRequestStatusEnum) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{184}
+	return file_internal_proto_rawDescGZIP(), []int{186}
 }
 
 // Workspace is the sole entitlement authority; Serve asks for a verdict per
@@ -10426,11 +10521,11 @@ func (x WorkspaceAccessVerdict) String() string {
 }
 
 func (WorkspaceAccessVerdict) Descriptor() protoreflect.EnumDescriptor {
-	return file_internal_proto_enumTypes[185].Descriptor()
+	return file_internal_proto_enumTypes[187].Descriptor()
 }
 
 func (WorkspaceAccessVerdict) Type() protoreflect.EnumType {
-	return &file_internal_proto_enumTypes[185]
+	return &file_internal_proto_enumTypes[187]
 }
 
 func (x WorkspaceAccessVerdict) Number() protoreflect.EnumNumber {
@@ -10439,7 +10534,7 @@ func (x WorkspaceAccessVerdict) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WorkspaceAccessVerdict.Descriptor instead.
 func (WorkspaceAccessVerdict) EnumDescriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{185}
+	return file_internal_proto_rawDescGZIP(), []int{187}
 }
 
 // Target contract, not current runtime evidence. Internal services authenticate mTLS
@@ -11183,153 +11278,6 @@ func (x *CreateTenantRequest) GetOwnerEmail() string {
 	return ""
 }
 
-// Tenant-scoped application OCI destination. The Tenant owner reserves one
-// stable binding per Tenant; Build reads it and never accepts a destination
-// from a request. Registry host/namespace are installation facts.
-type TenantRepositoryBinding struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	TenantId          string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
-	RegistryHost      string                 `protobuf:"bytes,2,opt,name=registry_host,json=registryHost,proto3" json:"registry_host,omitempty"`
-	RegistryNamespace string                 `protobuf:"bytes,3,opt,name=registry_namespace,json=registryNamespace,proto3" json:"registry_namespace,omitempty"`
-	Repository        string                 `protobuf:"bytes,4,opt,name=repository,proto3" json:"repository,omitempty"`
-	Status            string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
-	CreatedAt         *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt         *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
-}
-
-func (x *TenantRepositoryBinding) Reset() {
-	*x = TenantRepositoryBinding{}
-	mi := &file_internal_proto_msgTypes[9]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *TenantRepositoryBinding) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*TenantRepositoryBinding) ProtoMessage() {}
-
-func (x *TenantRepositoryBinding) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[9]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use TenantRepositoryBinding.ProtoReflect.Descriptor instead.
-func (*TenantRepositoryBinding) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{9}
-}
-
-func (x *TenantRepositoryBinding) GetTenantId() string {
-	if x != nil {
-		return x.TenantId
-	}
-	return ""
-}
-
-func (x *TenantRepositoryBinding) GetRegistryHost() string {
-	if x != nil {
-		return x.RegistryHost
-	}
-	return ""
-}
-
-func (x *TenantRepositoryBinding) GetRegistryNamespace() string {
-	if x != nil {
-		return x.RegistryNamespace
-	}
-	return ""
-}
-
-func (x *TenantRepositoryBinding) GetRepository() string {
-	if x != nil {
-		return x.Repository
-	}
-	return ""
-}
-
-func (x *TenantRepositoryBinding) GetStatus() string {
-	if x != nil {
-		return x.Status
-	}
-	return ""
-}
-
-func (x *TenantRepositoryBinding) GetCreatedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.CreatedAt
-	}
-	return nil
-}
-
-func (x *TenantRepositoryBinding) GetUpdatedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.UpdatedAt
-	}
-	return nil
-}
-
-type GetTenantRepositoryBindingRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Context       *CallContext           `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
-	TenantId      string                 `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetTenantRepositoryBindingRequest) Reset() {
-	*x = GetTenantRepositoryBindingRequest{}
-	mi := &file_internal_proto_msgTypes[10]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetTenantRepositoryBindingRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetTenantRepositoryBindingRequest) ProtoMessage() {}
-
-func (x *GetTenantRepositoryBindingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[10]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetTenantRepositoryBindingRequest.ProtoReflect.Descriptor instead.
-func (*GetTenantRepositoryBindingRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{10}
-}
-
-func (x *GetTenantRepositoryBindingRequest) GetContext() *CallContext {
-	if x != nil {
-		return x.Context
-	}
-	return nil
-}
-
-func (x *GetTenantRepositoryBindingRequest) GetTenantId() string {
-	if x != nil {
-		return x.TenantId
-	}
-	return ""
-}
-
 type BindTenantWalletRequest struct {
 	state                  protoimpl.MessageState `protogen:"open.v1"`
 	BillingSub2ApiUserId   string                 `protobuf:"bytes,1,opt,name=billing_sub2api_user_id,json=billingSub2apiUserId,proto3" json:"billing_sub2api_user_id,omitempty"`
@@ -11340,7 +11288,7 @@ type BindTenantWalletRequest struct {
 
 func (x *BindTenantWalletRequest) Reset() {
 	*x = BindTenantWalletRequest{}
-	mi := &file_internal_proto_msgTypes[11]
+	mi := &file_internal_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11352,7 +11300,7 @@ func (x *BindTenantWalletRequest) String() string {
 func (*BindTenantWalletRequest) ProtoMessage() {}
 
 func (x *BindTenantWalletRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[11]
+	mi := &file_internal_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11365,7 +11313,7 @@ func (x *BindTenantWalletRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BindTenantWalletRequest.ProtoReflect.Descriptor instead.
 func (*BindTenantWalletRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{11}
+	return file_internal_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *BindTenantWalletRequest) GetBillingSub2ApiUserId() string {
@@ -11396,7 +11344,7 @@ type Member struct {
 
 func (x *Member) Reset() {
 	*x = Member{}
-	mi := &file_internal_proto_msgTypes[12]
+	mi := &file_internal_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11408,7 +11356,7 @@ func (x *Member) String() string {
 func (*Member) ProtoMessage() {}
 
 func (x *Member) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[12]
+	mi := &file_internal_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11421,7 +11369,7 @@ func (x *Member) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Member.ProtoReflect.Descriptor instead.
 func (*Member) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{12}
+	return file_internal_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Member) GetId() string {
@@ -11480,7 +11428,7 @@ type Invitation struct {
 
 func (x *Invitation) Reset() {
 	*x = Invitation{}
-	mi := &file_internal_proto_msgTypes[13]
+	mi := &file_internal_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11492,7 +11440,7 @@ func (x *Invitation) String() string {
 func (*Invitation) ProtoMessage() {}
 
 func (x *Invitation) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[13]
+	mi := &file_internal_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11505,7 +11453,7 @@ func (x *Invitation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Invitation.ProtoReflect.Descriptor instead.
 func (*Invitation) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{13}
+	return file_internal_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Invitation) GetId() string {
@@ -11560,7 +11508,7 @@ type InviteMemberRequest struct {
 
 func (x *InviteMemberRequest) Reset() {
 	*x = InviteMemberRequest{}
-	mi := &file_internal_proto_msgTypes[14]
+	mi := &file_internal_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11572,7 +11520,7 @@ func (x *InviteMemberRequest) String() string {
 func (*InviteMemberRequest) ProtoMessage() {}
 
 func (x *InviteMemberRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[14]
+	mi := &file_internal_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11585,7 +11533,7 @@ func (x *InviteMemberRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InviteMemberRequest.ProtoReflect.Descriptor instead.
 func (*InviteMemberRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{14}
+	return file_internal_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *InviteMemberRequest) GetInviteeGatewaySubjectId() string {
@@ -11611,7 +11559,7 @@ type UpdateMemberRoleRequest struct {
 
 func (x *UpdateMemberRoleRequest) Reset() {
 	*x = UpdateMemberRoleRequest{}
-	mi := &file_internal_proto_msgTypes[15]
+	mi := &file_internal_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11623,7 +11571,7 @@ func (x *UpdateMemberRoleRequest) String() string {
 func (*UpdateMemberRoleRequest) ProtoMessage() {}
 
 func (x *UpdateMemberRoleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[15]
+	mi := &file_internal_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11636,7 +11584,7 @@ func (x *UpdateMemberRoleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateMemberRoleRequest.ProtoReflect.Descriptor instead.
 func (*UpdateMemberRoleRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{15}
+	return file_internal_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *UpdateMemberRoleRequest) GetRole() TenantRoleEnum {
@@ -11655,7 +11603,7 @@ type TenantActionRequest struct {
 
 func (x *TenantActionRequest) Reset() {
 	*x = TenantActionRequest{}
-	mi := &file_internal_proto_msgTypes[16]
+	mi := &file_internal_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11667,7 +11615,7 @@ func (x *TenantActionRequest) String() string {
 func (*TenantActionRequest) ProtoMessage() {}
 
 func (x *TenantActionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[16]
+	mi := &file_internal_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11680,7 +11628,7 @@ func (x *TenantActionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TenantActionRequest.ProtoReflect.Descriptor instead.
 func (*TenantActionRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{16}
+	return file_internal_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *TenantActionRequest) GetReason() string {
@@ -11700,7 +11648,7 @@ type DeleteTenantRequest struct {
 
 func (x *DeleteTenantRequest) Reset() {
 	*x = DeleteTenantRequest{}
-	mi := &file_internal_proto_msgTypes[17]
+	mi := &file_internal_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11712,7 +11660,7 @@ func (x *DeleteTenantRequest) String() string {
 func (*DeleteTenantRequest) ProtoMessage() {}
 
 func (x *DeleteTenantRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[17]
+	mi := &file_internal_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11725,7 +11673,7 @@ func (x *DeleteTenantRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTenantRequest.ProtoReflect.Descriptor instead.
 func (*DeleteTenantRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{17}
+	return file_internal_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *DeleteTenantRequest) GetConfirmationName() string {
@@ -11756,7 +11704,7 @@ type AssetCustody struct {
 
 func (x *AssetCustody) Reset() {
 	*x = AssetCustody{}
-	mi := &file_internal_proto_msgTypes[18]
+	mi := &file_internal_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11768,7 +11716,7 @@ func (x *AssetCustody) String() string {
 func (*AssetCustody) ProtoMessage() {}
 
 func (x *AssetCustody) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[18]
+	mi := &file_internal_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11781,7 +11729,7 @@ func (x *AssetCustody) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssetCustody.ProtoReflect.Descriptor instead.
 func (*AssetCustody) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{18}
+	return file_internal_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *AssetCustody) GetTenantId() string {
@@ -11839,7 +11787,7 @@ type Namespace struct {
 
 func (x *Namespace) Reset() {
 	*x = Namespace{}
-	mi := &file_internal_proto_msgTypes[19]
+	mi := &file_internal_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11851,7 +11799,7 @@ func (x *Namespace) String() string {
 func (*Namespace) ProtoMessage() {}
 
 func (x *Namespace) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[19]
+	mi := &file_internal_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11864,7 +11812,7 @@ func (x *Namespace) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Namespace.ProtoReflect.Descriptor instead.
 func (*Namespace) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{19}
+	return file_internal_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *Namespace) GetId() string {
@@ -11911,7 +11859,7 @@ type NamespaceWriteRequest struct {
 
 func (x *NamespaceWriteRequest) Reset() {
 	*x = NamespaceWriteRequest{}
-	mi := &file_internal_proto_msgTypes[20]
+	mi := &file_internal_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11923,7 +11871,7 @@ func (x *NamespaceWriteRequest) String() string {
 func (*NamespaceWriteRequest) ProtoMessage() {}
 
 func (x *NamespaceWriteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[20]
+	mi := &file_internal_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11936,7 +11884,7 @@ func (x *NamespaceWriteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NamespaceWriteRequest.ProtoReflect.Descriptor instead.
 func (*NamespaceWriteRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{20}
+	return file_internal_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *NamespaceWriteRequest) GetName() string {
@@ -11963,7 +11911,7 @@ type Package struct {
 
 func (x *Package) Reset() {
 	*x = Package{}
-	mi := &file_internal_proto_msgTypes[21]
+	mi := &file_internal_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11975,7 +11923,7 @@ func (x *Package) String() string {
 func (*Package) ProtoMessage() {}
 
 func (x *Package) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[21]
+	mi := &file_internal_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11988,7 +11936,7 @@ func (x *Package) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Package.ProtoReflect.Descriptor instead.
 func (*Package) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{21}
+	return file_internal_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *Package) GetId() string {
@@ -12065,7 +12013,7 @@ type CreatePackageRequest struct {
 
 func (x *CreatePackageRequest) Reset() {
 	*x = CreatePackageRequest{}
-	mi := &file_internal_proto_msgTypes[22]
+	mi := &file_internal_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12077,7 +12025,7 @@ func (x *CreatePackageRequest) String() string {
 func (*CreatePackageRequest) ProtoMessage() {}
 
 func (x *CreatePackageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[22]
+	mi := &file_internal_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12090,7 +12038,7 @@ func (x *CreatePackageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePackageRequest.ProtoReflect.Descriptor instead.
 func (*CreatePackageRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{22}
+	return file_internal_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *CreatePackageRequest) GetNamespaceId() string {
@@ -12125,7 +12073,7 @@ type UpdatePackageRequest struct {
 
 func (x *UpdatePackageRequest) Reset() {
 	*x = UpdatePackageRequest{}
-	mi := &file_internal_proto_msgTypes[23]
+	mi := &file_internal_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12137,7 +12085,7 @@ func (x *UpdatePackageRequest) String() string {
 func (*UpdatePackageRequest) ProtoMessage() {}
 
 func (x *UpdatePackageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[23]
+	mi := &file_internal_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12150,7 +12098,7 @@ func (x *UpdatePackageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePackageRequest.ProtoReflect.Descriptor instead.
 func (*UpdatePackageRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{23}
+	return file_internal_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *UpdatePackageRequest) GetNamespaceId() string {
@@ -12183,7 +12131,7 @@ type PublishPackageRequest struct {
 
 func (x *PublishPackageRequest) Reset() {
 	*x = PublishPackageRequest{}
-	mi := &file_internal_proto_msgTypes[24]
+	mi := &file_internal_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12195,7 +12143,7 @@ func (x *PublishPackageRequest) String() string {
 func (*PublishPackageRequest) ProtoMessage() {}
 
 func (x *PublishPackageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[24]
+	mi := &file_internal_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12208,7 +12156,7 @@ func (x *PublishPackageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishPackageRequest.ProtoReflect.Descriptor instead.
 func (*PublishPackageRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{24}
+	return file_internal_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *PublishPackageRequest) GetAdmissionReceiptId() string {
@@ -12233,7 +12181,7 @@ type PackageVersion struct {
 
 func (x *PackageVersion) Reset() {
 	*x = PackageVersion{}
-	mi := &file_internal_proto_msgTypes[25]
+	mi := &file_internal_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12245,7 +12193,7 @@ func (x *PackageVersion) String() string {
 func (*PackageVersion) ProtoMessage() {}
 
 func (x *PackageVersion) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[25]
+	mi := &file_internal_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12258,7 +12206,7 @@ func (x *PackageVersion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PackageVersion.ProtoReflect.Descriptor instead.
 func (*PackageVersion) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{25}
+	return file_internal_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *PackageVersion) GetId() string {
@@ -12322,7 +12270,7 @@ type CreateUploadRequest struct {
 
 func (x *CreateUploadRequest) Reset() {
 	*x = CreateUploadRequest{}
-	mi := &file_internal_proto_msgTypes[26]
+	mi := &file_internal_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12334,7 +12282,7 @@ func (x *CreateUploadRequest) String() string {
 func (*CreateUploadRequest) ProtoMessage() {}
 
 func (x *CreateUploadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[26]
+	mi := &file_internal_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12347,7 +12295,7 @@ func (x *CreateUploadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateUploadRequest.ProtoReflect.Descriptor instead.
 func (*CreateUploadRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{26}
+	return file_internal_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *CreateUploadRequest) GetVersionLabel() string {
@@ -12390,7 +12338,7 @@ type UploadPart struct {
 
 func (x *UploadPart) Reset() {
 	*x = UploadPart{}
-	mi := &file_internal_proto_msgTypes[27]
+	mi := &file_internal_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12402,7 +12350,7 @@ func (x *UploadPart) String() string {
 func (*UploadPart) ProtoMessage() {}
 
 func (x *UploadPart) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[27]
+	mi := &file_internal_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12415,7 +12363,7 @@ func (x *UploadPart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadPart.ProtoReflect.Descriptor instead.
 func (*UploadPart) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{27}
+	return file_internal_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *UploadPart) GetPartNumber() int32 {
@@ -12462,7 +12410,7 @@ type UploadSession struct {
 
 func (x *UploadSession) Reset() {
 	*x = UploadSession{}
-	mi := &file_internal_proto_msgTypes[28]
+	mi := &file_internal_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12474,7 +12422,7 @@ func (x *UploadSession) String() string {
 func (*UploadSession) ProtoMessage() {}
 
 func (x *UploadSession) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[28]
+	mi := &file_internal_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12487,7 +12435,7 @@ func (x *UploadSession) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadSession.ProtoReflect.Descriptor instead.
 func (*UploadSession) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{28}
+	return file_internal_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *UploadSession) GetId() string {
@@ -12557,7 +12505,7 @@ type CreateUploadPartRequest struct {
 
 func (x *CreateUploadPartRequest) Reset() {
 	*x = CreateUploadPartRequest{}
-	mi := &file_internal_proto_msgTypes[29]
+	mi := &file_internal_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12569,7 +12517,7 @@ func (x *CreateUploadPartRequest) String() string {
 func (*CreateUploadPartRequest) ProtoMessage() {}
 
 func (x *CreateUploadPartRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[29]
+	mi := &file_internal_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12582,7 +12530,7 @@ func (x *CreateUploadPartRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateUploadPartRequest.ProtoReflect.Descriptor instead.
 func (*CreateUploadPartRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{29}
+	return file_internal_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *CreateUploadPartRequest) GetPartNumber() int32 {
@@ -12622,7 +12570,7 @@ type UploadPartAuthorization struct {
 
 func (x *UploadPartAuthorization) Reset() {
 	*x = UploadPartAuthorization{}
-	mi := &file_internal_proto_msgTypes[30]
+	mi := &file_internal_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12634,7 +12582,7 @@ func (x *UploadPartAuthorization) String() string {
 func (*UploadPartAuthorization) ProtoMessage() {}
 
 func (x *UploadPartAuthorization) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[30]
+	mi := &file_internal_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12647,7 +12595,7 @@ func (x *UploadPartAuthorization) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadPartAuthorization.ProtoReflect.Descriptor instead.
 func (*UploadPartAuthorization) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{30}
+	return file_internal_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *UploadPartAuthorization) GetUploadId() string {
@@ -12715,7 +12663,7 @@ type CompleteUploadRequest struct {
 
 func (x *CompleteUploadRequest) Reset() {
 	*x = CompleteUploadRequest{}
-	mi := &file_internal_proto_msgTypes[31]
+	mi := &file_internal_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12727,7 +12675,7 @@ func (x *CompleteUploadRequest) String() string {
 func (*CompleteUploadRequest) ProtoMessage() {}
 
 func (x *CompleteUploadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[31]
+	mi := &file_internal_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12740,7 +12688,7 @@ func (x *CompleteUploadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompleteUploadRequest.ProtoReflect.Descriptor instead.
 func (*CompleteUploadRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{31}
+	return file_internal_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *CompleteUploadRequest) GetParts() []*UploadPart {
@@ -12762,7 +12710,7 @@ type ModelRequirement struct {
 
 func (x *ModelRequirement) Reset() {
 	*x = ModelRequirement{}
-	mi := &file_internal_proto_msgTypes[32]
+	mi := &file_internal_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12774,7 +12722,7 @@ func (x *ModelRequirement) String() string {
 func (*ModelRequirement) ProtoMessage() {}
 
 func (x *ModelRequirement) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[32]
+	mi := &file_internal_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12787,7 +12735,7 @@ func (x *ModelRequirement) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelRequirement.ProtoReflect.Descriptor instead.
 func (*ModelRequirement) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{32}
+	return file_internal_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ModelRequirement) GetSlot() string {
@@ -12831,7 +12779,7 @@ type DataCompatibility struct {
 
 func (x *DataCompatibility) Reset() {
 	*x = DataCompatibility{}
-	mi := &file_internal_proto_msgTypes[33]
+	mi := &file_internal_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12843,7 +12791,7 @@ func (x *DataCompatibility) String() string {
 func (*DataCompatibility) ProtoMessage() {}
 
 func (x *DataCompatibility) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[33]
+	mi := &file_internal_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12856,7 +12804,7 @@ func (x *DataCompatibility) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataCompatibility.ProtoReflect.Descriptor instead.
 func (*DataCompatibility) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{33}
+	return file_internal_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *DataCompatibility) GetDataSchemaVersion() string {
@@ -12922,7 +12870,7 @@ type CapabilityVersion struct {
 
 func (x *CapabilityVersion) Reset() {
 	*x = CapabilityVersion{}
-	mi := &file_internal_proto_msgTypes[34]
+	mi := &file_internal_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12934,7 +12882,7 @@ func (x *CapabilityVersion) String() string {
 func (*CapabilityVersion) ProtoMessage() {}
 
 func (x *CapabilityVersion) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[34]
+	mi := &file_internal_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12947,7 +12895,7 @@ func (x *CapabilityVersion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CapabilityVersion.ProtoReflect.Descriptor instead.
 func (*CapabilityVersion) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{34}
+	return file_internal_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *CapabilityVersion) GetId() string {
@@ -13106,7 +13054,7 @@ type BuildJob struct {
 
 func (x *BuildJob) Reset() {
 	*x = BuildJob{}
-	mi := &file_internal_proto_msgTypes[35]
+	mi := &file_internal_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13118,7 +13066,7 @@ func (x *BuildJob) String() string {
 func (*BuildJob) ProtoMessage() {}
 
 func (x *BuildJob) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[35]
+	mi := &file_internal_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13131,7 +13079,7 @@ func (x *BuildJob) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildJob.ProtoReflect.Descriptor instead.
 func (*BuildJob) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{35}
+	return file_internal_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *BuildJob) GetId() string {
@@ -13250,7 +13198,7 @@ type CreateBuildRequest struct {
 
 func (x *CreateBuildRequest) Reset() {
 	*x = CreateBuildRequest{}
-	mi := &file_internal_proto_msgTypes[36]
+	mi := &file_internal_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13262,7 +13210,7 @@ func (x *CreateBuildRequest) String() string {
 func (*CreateBuildRequest) ProtoMessage() {}
 
 func (x *CreateBuildRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[36]
+	mi := &file_internal_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13275,7 +13223,7 @@ func (x *CreateBuildRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateBuildRequest.ProtoReflect.Descriptor instead.
 func (*CreateBuildRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{36}
+	return file_internal_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *CreateBuildRequest) GetPackageVersionId() string {
@@ -13314,7 +13262,7 @@ type BuildLog struct {
 
 func (x *BuildLog) Reset() {
 	*x = BuildLog{}
-	mi := &file_internal_proto_msgTypes[37]
+	mi := &file_internal_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13326,7 +13274,7 @@ func (x *BuildLog) String() string {
 func (*BuildLog) ProtoMessage() {}
 
 func (x *BuildLog) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[37]
+	mi := &file_internal_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13339,7 +13287,7 @@ func (x *BuildLog) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildLog.ProtoReflect.Descriptor instead.
 func (*BuildLog) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{37}
+	return file_internal_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *BuildLog) GetId() string {
@@ -13413,7 +13361,7 @@ type RuntimeVersion struct {
 
 func (x *RuntimeVersion) Reset() {
 	*x = RuntimeVersion{}
-	mi := &file_internal_proto_msgTypes[38]
+	mi := &file_internal_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13425,7 +13373,7 @@ func (x *RuntimeVersion) String() string {
 func (*RuntimeVersion) ProtoMessage() {}
 
 func (x *RuntimeVersion) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[38]
+	mi := &file_internal_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13438,7 +13386,7 @@ func (x *RuntimeVersion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeVersion.ProtoReflect.Descriptor instead.
 func (*RuntimeVersion) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{38}
+	return file_internal_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *RuntimeVersion) GetId() string {
@@ -13560,7 +13508,7 @@ type WebuiVersion struct {
 
 func (x *WebuiVersion) Reset() {
 	*x = WebuiVersion{}
-	mi := &file_internal_proto_msgTypes[39]
+	mi := &file_internal_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13572,7 +13520,7 @@ func (x *WebuiVersion) String() string {
 func (*WebuiVersion) ProtoMessage() {}
 
 func (x *WebuiVersion) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[39]
+	mi := &file_internal_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13585,7 +13533,7 @@ func (x *WebuiVersion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WebuiVersion.ProtoReflect.Descriptor instead.
 func (*WebuiVersion) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{39}
+	return file_internal_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *WebuiVersion) GetId() string {
@@ -13692,7 +13640,7 @@ type RegisterRuntimeVersionRequest struct {
 
 func (x *RegisterRuntimeVersionRequest) Reset() {
 	*x = RegisterRuntimeVersionRequest{}
-	mi := &file_internal_proto_msgTypes[40]
+	mi := &file_internal_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13704,7 +13652,7 @@ func (x *RegisterRuntimeVersionRequest) String() string {
 func (*RegisterRuntimeVersionRequest) ProtoMessage() {}
 
 func (x *RegisterRuntimeVersionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[40]
+	mi := &file_internal_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13717,7 +13665,7 @@ func (x *RegisterRuntimeVersionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterRuntimeVersionRequest.ProtoReflect.Descriptor instead.
 func (*RegisterRuntimeVersionRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{40}
+	return file_internal_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *RegisterRuntimeVersionRequest) GetName() string {
@@ -13768,7 +13716,7 @@ type RegisterWebuiVersionRequest struct {
 
 func (x *RegisterWebuiVersionRequest) Reset() {
 	*x = RegisterWebuiVersionRequest{}
-	mi := &file_internal_proto_msgTypes[41]
+	mi := &file_internal_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13780,7 +13728,7 @@ func (x *RegisterWebuiVersionRequest) String() string {
 func (*RegisterWebuiVersionRequest) ProtoMessage() {}
 
 func (x *RegisterWebuiVersionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[41]
+	mi := &file_internal_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13793,7 +13741,7 @@ func (x *RegisterWebuiVersionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterWebuiVersionRequest.ProtoReflect.Descriptor instead.
 func (*RegisterWebuiVersionRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{41}
+	return file_internal_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *RegisterWebuiVersionRequest) GetName() string {
@@ -13841,7 +13789,7 @@ type CatalogStatusRequest struct {
 
 func (x *CatalogStatusRequest) Reset() {
 	*x = CatalogStatusRequest{}
-	mi := &file_internal_proto_msgTypes[42]
+	mi := &file_internal_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13853,7 +13801,7 @@ func (x *CatalogStatusRequest) String() string {
 func (*CatalogStatusRequest) ProtoMessage() {}
 
 func (x *CatalogStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[42]
+	mi := &file_internal_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13866,7 +13814,7 @@ func (x *CatalogStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CatalogStatusRequest.ProtoReflect.Descriptor instead.
 func (*CatalogStatusRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{42}
+	return file_internal_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *CatalogStatusRequest) GetStatus() CatalogStatusRequestStatusEnum {
@@ -13903,7 +13851,7 @@ type ComputePlan struct {
 
 func (x *ComputePlan) Reset() {
 	*x = ComputePlan{}
-	mi := &file_internal_proto_msgTypes[43]
+	mi := &file_internal_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13915,7 +13863,7 @@ func (x *ComputePlan) String() string {
 func (*ComputePlan) ProtoMessage() {}
 
 func (x *ComputePlan) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[43]
+	mi := &file_internal_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13928,7 +13876,7 @@ func (x *ComputePlan) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ComputePlan.ProtoReflect.Descriptor instead.
 func (*ComputePlan) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{43}
+	return file_internal_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *ComputePlan) GetId() string {
@@ -14034,7 +13982,7 @@ type StoragePlan struct {
 
 func (x *StoragePlan) Reset() {
 	*x = StoragePlan{}
-	mi := &file_internal_proto_msgTypes[44]
+	mi := &file_internal_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14046,7 +13994,7 @@ func (x *StoragePlan) String() string {
 func (*StoragePlan) ProtoMessage() {}
 
 func (x *StoragePlan) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[44]
+	mi := &file_internal_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14059,7 +14007,7 @@ func (x *StoragePlan) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoragePlan.ProtoReflect.Descriptor instead.
 func (*StoragePlan) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{44}
+	return file_internal_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *StoragePlan) GetId() string {
@@ -14155,7 +14103,7 @@ type CreateComputePlanRequest struct {
 
 func (x *CreateComputePlanRequest) Reset() {
 	*x = CreateComputePlanRequest{}
-	mi := &file_internal_proto_msgTypes[45]
+	mi := &file_internal_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14167,7 +14115,7 @@ func (x *CreateComputePlanRequest) String() string {
 func (*CreateComputePlanRequest) ProtoMessage() {}
 
 func (x *CreateComputePlanRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[45]
+	mi := &file_internal_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14180,7 +14128,7 @@ func (x *CreateComputePlanRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateComputePlanRequest.ProtoReflect.Descriptor instead.
 func (*CreateComputePlanRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{45}
+	return file_internal_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *CreateComputePlanRequest) GetName() string {
@@ -14254,7 +14202,7 @@ type CreateStoragePlanRequest struct {
 
 func (x *CreateStoragePlanRequest) Reset() {
 	*x = CreateStoragePlanRequest{}
-	mi := &file_internal_proto_msgTypes[46]
+	mi := &file_internal_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14266,7 +14214,7 @@ func (x *CreateStoragePlanRequest) String() string {
 func (*CreateStoragePlanRequest) ProtoMessage() {}
 
 func (x *CreateStoragePlanRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[46]
+	mi := &file_internal_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14279,7 +14227,7 @@ func (x *CreateStoragePlanRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateStoragePlanRequest.ProtoReflect.Descriptor instead.
 func (*CreateStoragePlanRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{46}
+	return file_internal_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *CreateStoragePlanRequest) GetName() string {
@@ -14341,7 +14289,7 @@ type PlanAvailabilityRequest struct {
 
 func (x *PlanAvailabilityRequest) Reset() {
 	*x = PlanAvailabilityRequest{}
-	mi := &file_internal_proto_msgTypes[47]
+	mi := &file_internal_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14353,7 +14301,7 @@ func (x *PlanAvailabilityRequest) String() string {
 func (*PlanAvailabilityRequest) ProtoMessage() {}
 
 func (x *PlanAvailabilityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[47]
+	mi := &file_internal_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14366,7 +14314,7 @@ func (x *PlanAvailabilityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanAvailabilityRequest.ProtoReflect.Descriptor instead.
 func (*PlanAvailabilityRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{47}
+	return file_internal_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *PlanAvailabilityRequest) GetAvailability() PlanAvailabilityRequestAvailabilityEnum {
@@ -14406,7 +14354,7 @@ type PricePolicyVersion struct {
 
 func (x *PricePolicyVersion) Reset() {
 	*x = PricePolicyVersion{}
-	mi := &file_internal_proto_msgTypes[48]
+	mi := &file_internal_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14418,7 +14366,7 @@ func (x *PricePolicyVersion) String() string {
 func (*PricePolicyVersion) ProtoMessage() {}
 
 func (x *PricePolicyVersion) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[48]
+	mi := &file_internal_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14431,7 +14379,7 @@ func (x *PricePolicyVersion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PricePolicyVersion.ProtoReflect.Descriptor instead.
 func (*PricePolicyVersion) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{48}
+	return file_internal_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *PricePolicyVersion) GetId() string {
@@ -14558,7 +14506,7 @@ type CreatePricePolicyRequest struct {
 
 func (x *CreatePricePolicyRequest) Reset() {
 	*x = CreatePricePolicyRequest{}
-	mi := &file_internal_proto_msgTypes[49]
+	mi := &file_internal_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14570,7 +14518,7 @@ func (x *CreatePricePolicyRequest) String() string {
 func (*CreatePricePolicyRequest) ProtoMessage() {}
 
 func (x *CreatePricePolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[49]
+	mi := &file_internal_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14583,7 +14531,7 @@ func (x *CreatePricePolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePricePolicyRequest.ProtoReflect.Descriptor instead.
 func (*CreatePricePolicyRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{49}
+	return file_internal_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *CreatePricePolicyRequest) GetVersionLabel() string {
@@ -14679,7 +14627,7 @@ type RefundPolicyVersion struct {
 
 func (x *RefundPolicyVersion) Reset() {
 	*x = RefundPolicyVersion{}
-	mi := &file_internal_proto_msgTypes[50]
+	mi := &file_internal_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14691,7 +14639,7 @@ func (x *RefundPolicyVersion) String() string {
 func (*RefundPolicyVersion) ProtoMessage() {}
 
 func (x *RefundPolicyVersion) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[50]
+	mi := &file_internal_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14704,7 +14652,7 @@ func (x *RefundPolicyVersion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefundPolicyVersion.ProtoReflect.Descriptor instead.
 func (*RefundPolicyVersion) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{50}
+	return file_internal_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *RefundPolicyVersion) GetId() string {
@@ -14777,7 +14725,7 @@ type CreateRefundPolicyRequest struct {
 
 func (x *CreateRefundPolicyRequest) Reset() {
 	*x = CreateRefundPolicyRequest{}
-	mi := &file_internal_proto_msgTypes[51]
+	mi := &file_internal_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14789,7 +14737,7 @@ func (x *CreateRefundPolicyRequest) String() string {
 func (*CreateRefundPolicyRequest) ProtoMessage() {}
 
 func (x *CreateRefundPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[51]
+	mi := &file_internal_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14802,7 +14750,7 @@ func (x *CreateRefundPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateRefundPolicyRequest.ProtoReflect.Descriptor instead.
 func (*CreateRefundPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{51}
+	return file_internal_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *CreateRefundPolicyRequest) GetVersionLabel() string {
@@ -14863,7 +14811,7 @@ type RetentionPolicyVersion struct {
 
 func (x *RetentionPolicyVersion) Reset() {
 	*x = RetentionPolicyVersion{}
-	mi := &file_internal_proto_msgTypes[52]
+	mi := &file_internal_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14875,7 +14823,7 @@ func (x *RetentionPolicyVersion) String() string {
 func (*RetentionPolicyVersion) ProtoMessage() {}
 
 func (x *RetentionPolicyVersion) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[52]
+	mi := &file_internal_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14888,7 +14836,7 @@ func (x *RetentionPolicyVersion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RetentionPolicyVersion.ProtoReflect.Descriptor instead.
 func (*RetentionPolicyVersion) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{52}
+	return file_internal_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *RetentionPolicyVersion) GetId() string {
@@ -14957,7 +14905,7 @@ type CreateRetentionPolicyRequest struct {
 
 func (x *CreateRetentionPolicyRequest) Reset() {
 	*x = CreateRetentionPolicyRequest{}
-	mi := &file_internal_proto_msgTypes[53]
+	mi := &file_internal_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14969,7 +14917,7 @@ func (x *CreateRetentionPolicyRequest) String() string {
 func (*CreateRetentionPolicyRequest) ProtoMessage() {}
 
 func (x *CreateRetentionPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[53]
+	mi := &file_internal_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14982,7 +14930,7 @@ func (x *CreateRetentionPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateRetentionPolicyRequest.ProtoReflect.Descriptor instead.
 func (*CreateRetentionPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{53}
+	return file_internal_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *CreateRetentionPolicyRequest) GetVersionLabel() string {
@@ -15012,7 +14960,7 @@ type Model struct {
 
 func (x *Model) Reset() {
 	*x = Model{}
-	mi := &file_internal_proto_msgTypes[54]
+	mi := &file_internal_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15024,7 +14972,7 @@ func (x *Model) String() string {
 func (*Model) ProtoMessage() {}
 
 func (x *Model) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[54]
+	mi := &file_internal_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15037,7 +14985,7 @@ func (x *Model) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Model.ProtoReflect.Descriptor instead.
 func (*Model) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{54}
+	return file_internal_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *Model) GetId() string {
@@ -15085,7 +15033,7 @@ type ModelSelection struct {
 
 func (x *ModelSelection) Reset() {
 	*x = ModelSelection{}
-	mi := &file_internal_proto_msgTypes[55]
+	mi := &file_internal_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15097,7 +15045,7 @@ func (x *ModelSelection) String() string {
 func (*ModelSelection) ProtoMessage() {}
 
 func (x *ModelSelection) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[55]
+	mi := &file_internal_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15110,7 +15058,7 @@ func (x *ModelSelection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelSelection.ProtoReflect.Descriptor instead.
 func (*ModelSelection) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{55}
+	return file_internal_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ModelSelection) GetSlot() string {
@@ -15144,7 +15092,7 @@ type WorkspaceApplicationSelection struct {
 
 func (x *WorkspaceApplicationSelection) Reset() {
 	*x = WorkspaceApplicationSelection{}
-	mi := &file_internal_proto_msgTypes[56]
+	mi := &file_internal_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15156,7 +15104,7 @@ func (x *WorkspaceApplicationSelection) String() string {
 func (*WorkspaceApplicationSelection) ProtoMessage() {}
 
 func (x *WorkspaceApplicationSelection) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[56]
+	mi := &file_internal_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15169,7 +15117,7 @@ func (x *WorkspaceApplicationSelection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspaceApplicationSelection.ProtoReflect.Descriptor instead.
 func (*WorkspaceApplicationSelection) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{56}
+	return file_internal_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *WorkspaceApplicationSelection) GetKind() WorkspaceApplicationSelectionKindEnum {
@@ -15214,7 +15162,7 @@ type QuoteRequest struct {
 
 func (x *QuoteRequest) Reset() {
 	*x = QuoteRequest{}
-	mi := &file_internal_proto_msgTypes[57]
+	mi := &file_internal_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15226,7 +15174,7 @@ func (x *QuoteRequest) String() string {
 func (*QuoteRequest) ProtoMessage() {}
 
 func (x *QuoteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[57]
+	mi := &file_internal_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15239,7 +15187,7 @@ func (x *QuoteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuoteRequest.ProtoReflect.Descriptor instead.
 func (*QuoteRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{57}
+	return file_internal_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *QuoteRequest) GetPurpose() QuoteRequestPurposeEnum {
@@ -15319,7 +15267,7 @@ type QuoteLine struct {
 
 func (x *QuoteLine) Reset() {
 	*x = QuoteLine{}
-	mi := &file_internal_proto_msgTypes[58]
+	mi := &file_internal_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15331,7 +15279,7 @@ func (x *QuoteLine) String() string {
 func (*QuoteLine) ProtoMessage() {}
 
 func (x *QuoteLine) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[58]
+	mi := &file_internal_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15344,7 +15292,7 @@ func (x *QuoteLine) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuoteLine.ProtoReflect.Descriptor instead.
 func (*QuoteLine) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{58}
+	return file_internal_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *QuoteLine) GetKind() QuoteLineKindEnum {
@@ -15419,7 +15367,7 @@ type Quote struct {
 
 func (x *Quote) Reset() {
 	*x = Quote{}
-	mi := &file_internal_proto_msgTypes[59]
+	mi := &file_internal_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15431,7 +15379,7 @@ func (x *Quote) String() string {
 func (*Quote) ProtoMessage() {}
 
 func (x *Quote) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[59]
+	mi := &file_internal_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15444,7 +15392,7 @@ func (x *Quote) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Quote.ProtoReflect.Descriptor instead.
 func (*Quote) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{59}
+	return file_internal_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *Quote) GetId() string {
@@ -15656,7 +15604,7 @@ type Workspace struct {
 
 func (x *Workspace) Reset() {
 	*x = Workspace{}
-	mi := &file_internal_proto_msgTypes[60]
+	mi := &file_internal_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15668,7 +15616,7 @@ func (x *Workspace) String() string {
 func (*Workspace) ProtoMessage() {}
 
 func (x *Workspace) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[60]
+	mi := &file_internal_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15681,7 +15629,7 @@ func (x *Workspace) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Workspace.ProtoReflect.Descriptor instead.
 func (*Workspace) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{60}
+	return file_internal_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *Workspace) GetId() string {
@@ -15808,7 +15756,7 @@ type CreateWorkspaceRequest struct {
 
 func (x *CreateWorkspaceRequest) Reset() {
 	*x = CreateWorkspaceRequest{}
-	mi := &file_internal_proto_msgTypes[61]
+	mi := &file_internal_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15820,7 +15768,7 @@ func (x *CreateWorkspaceRequest) String() string {
 func (*CreateWorkspaceRequest) ProtoMessage() {}
 
 func (x *CreateWorkspaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[61]
+	mi := &file_internal_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15833,7 +15781,7 @@ func (x *CreateWorkspaceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateWorkspaceRequest.ProtoReflect.Descriptor instead.
 func (*CreateWorkspaceRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{61}
+	return file_internal_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *CreateWorkspaceRequest) GetName() string {
@@ -15877,7 +15825,7 @@ type WorkspaceAccess struct {
 
 func (x *WorkspaceAccess) Reset() {
 	*x = WorkspaceAccess{}
-	mi := &file_internal_proto_msgTypes[62]
+	mi := &file_internal_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15889,7 +15837,7 @@ func (x *WorkspaceAccess) String() string {
 func (*WorkspaceAccess) ProtoMessage() {}
 
 func (x *WorkspaceAccess) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[62]
+	mi := &file_internal_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15902,7 +15850,7 @@ func (x *WorkspaceAccess) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspaceAccess.ProtoReflect.Descriptor instead.
 func (*WorkspaceAccess) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{62}
+	return file_internal_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *WorkspaceAccess) GetWorkspaceId() string {
@@ -15955,7 +15903,7 @@ type ModelConfiguration struct {
 
 func (x *ModelConfiguration) Reset() {
 	*x = ModelConfiguration{}
-	mi := &file_internal_proto_msgTypes[63]
+	mi := &file_internal_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15967,7 +15915,7 @@ func (x *ModelConfiguration) String() string {
 func (*ModelConfiguration) ProtoMessage() {}
 
 func (x *ModelConfiguration) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[63]
+	mi := &file_internal_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15980,7 +15928,7 @@ func (x *ModelConfiguration) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelConfiguration.ProtoReflect.Descriptor instead.
 func (*ModelConfiguration) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{63}
+	return file_internal_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *ModelConfiguration) GetWorkspaceId() string {
@@ -16042,7 +15990,7 @@ type UpdateWorkspaceModelsRequest struct {
 
 func (x *UpdateWorkspaceModelsRequest) Reset() {
 	*x = UpdateWorkspaceModelsRequest{}
-	mi := &file_internal_proto_msgTypes[64]
+	mi := &file_internal_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16054,7 +16002,7 @@ func (x *UpdateWorkspaceModelsRequest) String() string {
 func (*UpdateWorkspaceModelsRequest) ProtoMessage() {}
 
 func (x *UpdateWorkspaceModelsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[64]
+	mi := &file_internal_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16067,7 +16015,7 @@ func (x *UpdateWorkspaceModelsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateWorkspaceModelsRequest.ProtoReflect.Descriptor instead.
 func (*UpdateWorkspaceModelsRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{64}
+	return file_internal_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *UpdateWorkspaceModelsRequest) GetExpectedVersion() int64 {
@@ -16101,7 +16049,7 @@ type Deployment struct {
 
 func (x *Deployment) Reset() {
 	*x = Deployment{}
-	mi := &file_internal_proto_msgTypes[65]
+	mi := &file_internal_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16113,7 +16061,7 @@ func (x *Deployment) String() string {
 func (*Deployment) ProtoMessage() {}
 
 func (x *Deployment) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[65]
+	mi := &file_internal_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16126,7 +16074,7 @@ func (x *Deployment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Deployment.ProtoReflect.Descriptor instead.
 func (*Deployment) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{65}
+	return file_internal_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *Deployment) GetId() string {
@@ -16202,7 +16150,7 @@ type UpdateWorkspaceVersionRequest struct {
 
 func (x *UpdateWorkspaceVersionRequest) Reset() {
 	*x = UpdateWorkspaceVersionRequest{}
-	mi := &file_internal_proto_msgTypes[66]
+	mi := &file_internal_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16214,7 +16162,7 @@ func (x *UpdateWorkspaceVersionRequest) String() string {
 func (*UpdateWorkspaceVersionRequest) ProtoMessage() {}
 
 func (x *UpdateWorkspaceVersionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[66]
+	mi := &file_internal_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16227,7 +16175,7 @@ func (x *UpdateWorkspaceVersionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateWorkspaceVersionRequest.ProtoReflect.Descriptor instead.
 func (*UpdateWorkspaceVersionRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{66}
+	return file_internal_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *UpdateWorkspaceVersionRequest) GetCapabilityVersionId() string {
@@ -16254,7 +16202,7 @@ type RollbackWorkspaceRequest struct {
 
 func (x *RollbackWorkspaceRequest) Reset() {
 	*x = RollbackWorkspaceRequest{}
-	mi := &file_internal_proto_msgTypes[67]
+	mi := &file_internal_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16266,7 +16214,7 @@ func (x *RollbackWorkspaceRequest) String() string {
 func (*RollbackWorkspaceRequest) ProtoMessage() {}
 
 func (x *RollbackWorkspaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[67]
+	mi := &file_internal_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16279,7 +16227,7 @@ func (x *RollbackWorkspaceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollbackWorkspaceRequest.ProtoReflect.Descriptor instead.
 func (*RollbackWorkspaceRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{67}
+	return file_internal_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *RollbackWorkspaceRequest) GetTargetDeploymentId() string {
@@ -16305,7 +16253,7 @@ type ApplyQuoteRequest struct {
 
 func (x *ApplyQuoteRequest) Reset() {
 	*x = ApplyQuoteRequest{}
-	mi := &file_internal_proto_msgTypes[68]
+	mi := &file_internal_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16317,7 +16265,7 @@ func (x *ApplyQuoteRequest) String() string {
 func (*ApplyQuoteRequest) ProtoMessage() {}
 
 func (x *ApplyQuoteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[68]
+	mi := &file_internal_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16330,7 +16278,7 @@ func (x *ApplyQuoteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyQuoteRequest.ProtoReflect.Descriptor instead.
 func (*ApplyQuoteRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{68}
+	return file_internal_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *ApplyQuoteRequest) GetQuoteId() string {
@@ -16350,7 +16298,7 @@ type DeleteWorkspaceRequest struct {
 
 func (x *DeleteWorkspaceRequest) Reset() {
 	*x = DeleteWorkspaceRequest{}
-	mi := &file_internal_proto_msgTypes[69]
+	mi := &file_internal_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16362,7 +16310,7 @@ func (x *DeleteWorkspaceRequest) String() string {
 func (*DeleteWorkspaceRequest) ProtoMessage() {}
 
 func (x *DeleteWorkspaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[69]
+	mi := &file_internal_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16375,7 +16323,7 @@ func (x *DeleteWorkspaceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteWorkspaceRequest.ProtoReflect.Descriptor instead.
 func (*DeleteWorkspaceRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{69}
+	return file_internal_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *DeleteWorkspaceRequest) GetConfirmationName() string {
@@ -16407,7 +16355,7 @@ type WorkspaceDeletion struct {
 
 func (x *WorkspaceDeletion) Reset() {
 	*x = WorkspaceDeletion{}
-	mi := &file_internal_proto_msgTypes[70]
+	mi := &file_internal_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16419,7 +16367,7 @@ func (x *WorkspaceDeletion) String() string {
 func (*WorkspaceDeletion) ProtoMessage() {}
 
 func (x *WorkspaceDeletion) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[70]
+	mi := &file_internal_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16432,7 +16380,7 @@ func (x *WorkspaceDeletion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspaceDeletion.ProtoReflect.Descriptor instead.
 func (*WorkspaceDeletion) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{70}
+	return file_internal_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *WorkspaceDeletion) GetWorkspaceId() string {
@@ -16514,7 +16462,7 @@ type Subscription struct {
 
 func (x *Subscription) Reset() {
 	*x = Subscription{}
-	mi := &file_internal_proto_msgTypes[71]
+	mi := &file_internal_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16526,7 +16474,7 @@ func (x *Subscription) String() string {
 func (*Subscription) ProtoMessage() {}
 
 func (x *Subscription) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[71]
+	mi := &file_internal_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16539,7 +16487,7 @@ func (x *Subscription) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Subscription.ProtoReflect.Descriptor instead.
 func (*Subscription) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{71}
+	return file_internal_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *Subscription) GetId() string {
@@ -16714,7 +16662,7 @@ type WalletOperation struct {
 
 func (x *WalletOperation) Reset() {
 	*x = WalletOperation{}
-	mi := &file_internal_proto_msgTypes[72]
+	mi := &file_internal_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16726,7 +16674,7 @@ func (x *WalletOperation) String() string {
 func (*WalletOperation) ProtoMessage() {}
 
 func (x *WalletOperation) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[72]
+	mi := &file_internal_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16739,7 +16687,7 @@ func (x *WalletOperation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WalletOperation.ProtoReflect.Descriptor instead.
 func (*WalletOperation) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{72}
+	return file_internal_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *WalletOperation) GetId() string {
@@ -16874,7 +16822,7 @@ type Wallet struct {
 
 func (x *Wallet) Reset() {
 	*x = Wallet{}
-	mi := &file_internal_proto_msgTypes[73]
+	mi := &file_internal_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16886,7 +16834,7 @@ func (x *Wallet) String() string {
 func (*Wallet) ProtoMessage() {}
 
 func (x *Wallet) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[73]
+	mi := &file_internal_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16899,7 +16847,7 @@ func (x *Wallet) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Wallet.ProtoReflect.Descriptor instead.
 func (*Wallet) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{73}
+	return file_internal_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *Wallet) GetSource() WalletSourceEnum {
@@ -16954,7 +16902,7 @@ type Usage struct {
 
 func (x *Usage) Reset() {
 	*x = Usage{}
-	mi := &file_internal_proto_msgTypes[74]
+	mi := &file_internal_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16966,7 +16914,7 @@ func (x *Usage) String() string {
 func (*Usage) ProtoMessage() {}
 
 func (x *Usage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[74]
+	mi := &file_internal_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16979,7 +16927,7 @@ func (x *Usage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Usage.ProtoReflect.Descriptor instead.
 func (*Usage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{74}
+	return file_internal_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *Usage) GetId() string {
@@ -17062,7 +17010,7 @@ type GatewayKey struct {
 
 func (x *GatewayKey) Reset() {
 	*x = GatewayKey{}
-	mi := &file_internal_proto_msgTypes[75]
+	mi := &file_internal_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17074,7 +17022,7 @@ func (x *GatewayKey) String() string {
 func (*GatewayKey) ProtoMessage() {}
 
 func (x *GatewayKey) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[75]
+	mi := &file_internal_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17087,7 +17035,7 @@ func (x *GatewayKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayKey.ProtoReflect.Descriptor instead.
 func (*GatewayKey) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{75}
+	return file_internal_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *GatewayKey) GetId() string {
@@ -17164,7 +17112,7 @@ type CreateGatewayKeyRequest struct {
 
 func (x *CreateGatewayKeyRequest) Reset() {
 	*x = CreateGatewayKeyRequest{}
-	mi := &file_internal_proto_msgTypes[76]
+	mi := &file_internal_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17176,7 +17124,7 @@ func (x *CreateGatewayKeyRequest) String() string {
 func (*CreateGatewayKeyRequest) ProtoMessage() {}
 
 func (x *CreateGatewayKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[76]
+	mi := &file_internal_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17189,7 +17137,7 @@ func (x *CreateGatewayKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateGatewayKeyRequest.ProtoReflect.Descriptor instead.
 func (*CreateGatewayKeyRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{76}
+	return file_internal_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *CreateGatewayKeyRequest) GetName() string {
@@ -17223,7 +17171,7 @@ type GatewayKeySecret struct {
 
 func (x *GatewayKeySecret) Reset() {
 	*x = GatewayKeySecret{}
-	mi := &file_internal_proto_msgTypes[77]
+	mi := &file_internal_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17235,7 +17183,7 @@ func (x *GatewayKeySecret) String() string {
 func (*GatewayKeySecret) ProtoMessage() {}
 
 func (x *GatewayKeySecret) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[77]
+	mi := &file_internal_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17248,7 +17196,7 @@ func (x *GatewayKeySecret) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayKeySecret.ProtoReflect.Descriptor instead.
 func (*GatewayKeySecret) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{77}
+	return file_internal_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *GatewayKeySecret) GetKey() *GatewayKey {
@@ -17280,7 +17228,7 @@ type AuditEvent struct {
 
 func (x *AuditEvent) Reset() {
 	*x = AuditEvent{}
-	mi := &file_internal_proto_msgTypes[78]
+	mi := &file_internal_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17292,7 +17240,7 @@ func (x *AuditEvent) String() string {
 func (*AuditEvent) ProtoMessage() {}
 
 func (x *AuditEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[78]
+	mi := &file_internal_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17305,7 +17253,7 @@ func (x *AuditEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditEvent.ProtoReflect.Descriptor instead.
 func (*AuditEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{78}
+	return file_internal_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *AuditEvent) GetId() string {
@@ -17375,7 +17323,7 @@ type Receipt struct {
 
 func (x *Receipt) Reset() {
 	*x = Receipt{}
-	mi := &file_internal_proto_msgTypes[79]
+	mi := &file_internal_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17387,7 +17335,7 @@ func (x *Receipt) String() string {
 func (*Receipt) ProtoMessage() {}
 
 func (x *Receipt) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[79]
+	mi := &file_internal_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17400,7 +17348,7 @@ func (x *Receipt) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Receipt.ProtoReflect.Descriptor instead.
 func (*Receipt) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{79}
+	return file_internal_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *Receipt) GetId() string {
@@ -17482,7 +17430,7 @@ type ReconcileOperationRequest struct {
 
 func (x *ReconcileOperationRequest) Reset() {
 	*x = ReconcileOperationRequest{}
-	mi := &file_internal_proto_msgTypes[80]
+	mi := &file_internal_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17494,7 +17442,7 @@ func (x *ReconcileOperationRequest) String() string {
 func (*ReconcileOperationRequest) ProtoMessage() {}
 
 func (x *ReconcileOperationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[80]
+	mi := &file_internal_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17507,7 +17455,7 @@ func (x *ReconcileOperationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReconcileOperationRequest.ProtoReflect.Descriptor instead.
 func (*ReconcileOperationRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{80}
+	return file_internal_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *ReconcileOperationRequest) GetReason() string {
@@ -17527,7 +17475,7 @@ type AdminOperation struct {
 
 func (x *AdminOperation) Reset() {
 	*x = AdminOperation{}
-	mi := &file_internal_proto_msgTypes[81]
+	mi := &file_internal_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17539,7 +17487,7 @@ func (x *AdminOperation) String() string {
 func (*AdminOperation) ProtoMessage() {}
 
 func (x *AdminOperation) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[81]
+	mi := &file_internal_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17552,7 +17500,7 @@ func (x *AdminOperation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdminOperation.ProtoReflect.Descriptor instead.
 func (*AdminOperation) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{81}
+	return file_internal_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *AdminOperation) GetOperation() *Operation {
@@ -17584,7 +17532,7 @@ type Qualification struct {
 
 func (x *Qualification) Reset() {
 	*x = Qualification{}
-	mi := &file_internal_proto_msgTypes[82]
+	mi := &file_internal_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17596,7 +17544,7 @@ func (x *Qualification) String() string {
 func (*Qualification) ProtoMessage() {}
 
 func (x *Qualification) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[82]
+	mi := &file_internal_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17609,7 +17557,7 @@ func (x *Qualification) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Qualification.ProtoReflect.Descriptor instead.
 func (*Qualification) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{82}
+	return file_internal_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *Qualification) GetId() string {
@@ -17671,7 +17619,7 @@ type MemberPage struct {
 
 func (x *MemberPage) Reset() {
 	*x = MemberPage{}
-	mi := &file_internal_proto_msgTypes[83]
+	mi := &file_internal_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17683,7 +17631,7 @@ func (x *MemberPage) String() string {
 func (*MemberPage) ProtoMessage() {}
 
 func (x *MemberPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[83]
+	mi := &file_internal_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17696,7 +17644,7 @@ func (x *MemberPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemberPage.ProtoReflect.Descriptor instead.
 func (*MemberPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{83}
+	return file_internal_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *MemberPage) GetItems() []*Member {
@@ -17723,7 +17671,7 @@ type InvitationPage struct {
 
 func (x *InvitationPage) Reset() {
 	*x = InvitationPage{}
-	mi := &file_internal_proto_msgTypes[84]
+	mi := &file_internal_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17735,7 +17683,7 @@ func (x *InvitationPage) String() string {
 func (*InvitationPage) ProtoMessage() {}
 
 func (x *InvitationPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[84]
+	mi := &file_internal_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17748,7 +17696,7 @@ func (x *InvitationPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InvitationPage.ProtoReflect.Descriptor instead.
 func (*InvitationPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{84}
+	return file_internal_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *InvitationPage) GetItems() []*Invitation {
@@ -17775,7 +17723,7 @@ type NamespacePage struct {
 
 func (x *NamespacePage) Reset() {
 	*x = NamespacePage{}
-	mi := &file_internal_proto_msgTypes[85]
+	mi := &file_internal_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17787,7 +17735,7 @@ func (x *NamespacePage) String() string {
 func (*NamespacePage) ProtoMessage() {}
 
 func (x *NamespacePage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[85]
+	mi := &file_internal_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17800,7 +17748,7 @@ func (x *NamespacePage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NamespacePage.ProtoReflect.Descriptor instead.
 func (*NamespacePage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{85}
+	return file_internal_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *NamespacePage) GetItems() []*Namespace {
@@ -17827,7 +17775,7 @@ type PackagePage struct {
 
 func (x *PackagePage) Reset() {
 	*x = PackagePage{}
-	mi := &file_internal_proto_msgTypes[86]
+	mi := &file_internal_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17839,7 +17787,7 @@ func (x *PackagePage) String() string {
 func (*PackagePage) ProtoMessage() {}
 
 func (x *PackagePage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[86]
+	mi := &file_internal_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17852,7 +17800,7 @@ func (x *PackagePage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PackagePage.ProtoReflect.Descriptor instead.
 func (*PackagePage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{86}
+	return file_internal_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *PackagePage) GetItems() []*Package {
@@ -17879,7 +17827,7 @@ type PackageVersionPage struct {
 
 func (x *PackageVersionPage) Reset() {
 	*x = PackageVersionPage{}
-	mi := &file_internal_proto_msgTypes[87]
+	mi := &file_internal_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17891,7 +17839,7 @@ func (x *PackageVersionPage) String() string {
 func (*PackageVersionPage) ProtoMessage() {}
 
 func (x *PackageVersionPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[87]
+	mi := &file_internal_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17904,7 +17852,7 @@ func (x *PackageVersionPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PackageVersionPage.ProtoReflect.Descriptor instead.
 func (*PackageVersionPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{87}
+	return file_internal_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *PackageVersionPage) GetItems() []*PackageVersion {
@@ -17931,7 +17879,7 @@ type CapabilityVersionPage struct {
 
 func (x *CapabilityVersionPage) Reset() {
 	*x = CapabilityVersionPage{}
-	mi := &file_internal_proto_msgTypes[88]
+	mi := &file_internal_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17943,7 +17891,7 @@ func (x *CapabilityVersionPage) String() string {
 func (*CapabilityVersionPage) ProtoMessage() {}
 
 func (x *CapabilityVersionPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[88]
+	mi := &file_internal_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17956,7 +17904,7 @@ func (x *CapabilityVersionPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CapabilityVersionPage.ProtoReflect.Descriptor instead.
 func (*CapabilityVersionPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{88}
+	return file_internal_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *CapabilityVersionPage) GetItems() []*CapabilityVersion {
@@ -17983,7 +17931,7 @@ type BuildJobPage struct {
 
 func (x *BuildJobPage) Reset() {
 	*x = BuildJobPage{}
-	mi := &file_internal_proto_msgTypes[89]
+	mi := &file_internal_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17995,7 +17943,7 @@ func (x *BuildJobPage) String() string {
 func (*BuildJobPage) ProtoMessage() {}
 
 func (x *BuildJobPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[89]
+	mi := &file_internal_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18008,7 +17956,7 @@ func (x *BuildJobPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildJobPage.ProtoReflect.Descriptor instead.
 func (*BuildJobPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{89}
+	return file_internal_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *BuildJobPage) GetItems() []*BuildJob {
@@ -18035,7 +17983,7 @@ type BuildLogPage struct {
 
 func (x *BuildLogPage) Reset() {
 	*x = BuildLogPage{}
-	mi := &file_internal_proto_msgTypes[90]
+	mi := &file_internal_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18047,7 +17995,7 @@ func (x *BuildLogPage) String() string {
 func (*BuildLogPage) ProtoMessage() {}
 
 func (x *BuildLogPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[90]
+	mi := &file_internal_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18060,7 +18008,7 @@ func (x *BuildLogPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildLogPage.ProtoReflect.Descriptor instead.
 func (*BuildLogPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{90}
+	return file_internal_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *BuildLogPage) GetItems() []*BuildLog {
@@ -18087,7 +18035,7 @@ type RuntimeVersionPage struct {
 
 func (x *RuntimeVersionPage) Reset() {
 	*x = RuntimeVersionPage{}
-	mi := &file_internal_proto_msgTypes[91]
+	mi := &file_internal_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18099,7 +18047,7 @@ func (x *RuntimeVersionPage) String() string {
 func (*RuntimeVersionPage) ProtoMessage() {}
 
 func (x *RuntimeVersionPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[91]
+	mi := &file_internal_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18112,7 +18060,7 @@ func (x *RuntimeVersionPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeVersionPage.ProtoReflect.Descriptor instead.
 func (*RuntimeVersionPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{91}
+	return file_internal_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *RuntimeVersionPage) GetItems() []*RuntimeVersion {
@@ -18139,7 +18087,7 @@ type WebuiVersionPage struct {
 
 func (x *WebuiVersionPage) Reset() {
 	*x = WebuiVersionPage{}
-	mi := &file_internal_proto_msgTypes[92]
+	mi := &file_internal_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18151,7 +18099,7 @@ func (x *WebuiVersionPage) String() string {
 func (*WebuiVersionPage) ProtoMessage() {}
 
 func (x *WebuiVersionPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[92]
+	mi := &file_internal_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18164,7 +18112,7 @@ func (x *WebuiVersionPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WebuiVersionPage.ProtoReflect.Descriptor instead.
 func (*WebuiVersionPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{92}
+	return file_internal_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *WebuiVersionPage) GetItems() []*WebuiVersion {
@@ -18191,7 +18139,7 @@ type ComputePlanPage struct {
 
 func (x *ComputePlanPage) Reset() {
 	*x = ComputePlanPage{}
-	mi := &file_internal_proto_msgTypes[93]
+	mi := &file_internal_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18203,7 +18151,7 @@ func (x *ComputePlanPage) String() string {
 func (*ComputePlanPage) ProtoMessage() {}
 
 func (x *ComputePlanPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[93]
+	mi := &file_internal_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18216,7 +18164,7 @@ func (x *ComputePlanPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ComputePlanPage.ProtoReflect.Descriptor instead.
 func (*ComputePlanPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{93}
+	return file_internal_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *ComputePlanPage) GetItems() []*ComputePlan {
@@ -18243,7 +18191,7 @@ type StoragePlanPage struct {
 
 func (x *StoragePlanPage) Reset() {
 	*x = StoragePlanPage{}
-	mi := &file_internal_proto_msgTypes[94]
+	mi := &file_internal_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18255,7 +18203,7 @@ func (x *StoragePlanPage) String() string {
 func (*StoragePlanPage) ProtoMessage() {}
 
 func (x *StoragePlanPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[94]
+	mi := &file_internal_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18268,7 +18216,7 @@ func (x *StoragePlanPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoragePlanPage.ProtoReflect.Descriptor instead.
 func (*StoragePlanPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{94}
+	return file_internal_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *StoragePlanPage) GetItems() []*StoragePlan {
@@ -18295,7 +18243,7 @@ type PricePolicyVersionPage struct {
 
 func (x *PricePolicyVersionPage) Reset() {
 	*x = PricePolicyVersionPage{}
-	mi := &file_internal_proto_msgTypes[95]
+	mi := &file_internal_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18307,7 +18255,7 @@ func (x *PricePolicyVersionPage) String() string {
 func (*PricePolicyVersionPage) ProtoMessage() {}
 
 func (x *PricePolicyVersionPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[95]
+	mi := &file_internal_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18320,7 +18268,7 @@ func (x *PricePolicyVersionPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PricePolicyVersionPage.ProtoReflect.Descriptor instead.
 func (*PricePolicyVersionPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{95}
+	return file_internal_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *PricePolicyVersionPage) GetItems() []*PricePolicyVersion {
@@ -18347,7 +18295,7 @@ type RefundPolicyVersionPage struct {
 
 func (x *RefundPolicyVersionPage) Reset() {
 	*x = RefundPolicyVersionPage{}
-	mi := &file_internal_proto_msgTypes[96]
+	mi := &file_internal_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18359,7 +18307,7 @@ func (x *RefundPolicyVersionPage) String() string {
 func (*RefundPolicyVersionPage) ProtoMessage() {}
 
 func (x *RefundPolicyVersionPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[96]
+	mi := &file_internal_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18372,7 +18320,7 @@ func (x *RefundPolicyVersionPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefundPolicyVersionPage.ProtoReflect.Descriptor instead.
 func (*RefundPolicyVersionPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{96}
+	return file_internal_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *RefundPolicyVersionPage) GetItems() []*RefundPolicyVersion {
@@ -18399,7 +18347,7 @@ type RetentionPolicyVersionPage struct {
 
 func (x *RetentionPolicyVersionPage) Reset() {
 	*x = RetentionPolicyVersionPage{}
-	mi := &file_internal_proto_msgTypes[97]
+	mi := &file_internal_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18411,7 +18359,7 @@ func (x *RetentionPolicyVersionPage) String() string {
 func (*RetentionPolicyVersionPage) ProtoMessage() {}
 
 func (x *RetentionPolicyVersionPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[97]
+	mi := &file_internal_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18424,7 +18372,7 @@ func (x *RetentionPolicyVersionPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RetentionPolicyVersionPage.ProtoReflect.Descriptor instead.
 func (*RetentionPolicyVersionPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{97}
+	return file_internal_proto_rawDescGZIP(), []int{95}
 }
 
 func (x *RetentionPolicyVersionPage) GetItems() []*RetentionPolicyVersion {
@@ -18451,7 +18399,7 @@ type ModelPage struct {
 
 func (x *ModelPage) Reset() {
 	*x = ModelPage{}
-	mi := &file_internal_proto_msgTypes[98]
+	mi := &file_internal_proto_msgTypes[96]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18463,7 +18411,7 @@ func (x *ModelPage) String() string {
 func (*ModelPage) ProtoMessage() {}
 
 func (x *ModelPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[98]
+	mi := &file_internal_proto_msgTypes[96]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18476,7 +18424,7 @@ func (x *ModelPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelPage.ProtoReflect.Descriptor instead.
 func (*ModelPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{98}
+	return file_internal_proto_rawDescGZIP(), []int{96}
 }
 
 func (x *ModelPage) GetItems() []*Model {
@@ -18503,7 +18451,7 @@ type WorkspacePage struct {
 
 func (x *WorkspacePage) Reset() {
 	*x = WorkspacePage{}
-	mi := &file_internal_proto_msgTypes[99]
+	mi := &file_internal_proto_msgTypes[97]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18515,7 +18463,7 @@ func (x *WorkspacePage) String() string {
 func (*WorkspacePage) ProtoMessage() {}
 
 func (x *WorkspacePage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[99]
+	mi := &file_internal_proto_msgTypes[97]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18528,7 +18476,7 @@ func (x *WorkspacePage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspacePage.ProtoReflect.Descriptor instead.
 func (*WorkspacePage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{99}
+	return file_internal_proto_rawDescGZIP(), []int{97}
 }
 
 func (x *WorkspacePage) GetItems() []*Workspace {
@@ -18555,7 +18503,7 @@ type DeploymentPage struct {
 
 func (x *DeploymentPage) Reset() {
 	*x = DeploymentPage{}
-	mi := &file_internal_proto_msgTypes[100]
+	mi := &file_internal_proto_msgTypes[98]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18567,7 +18515,7 @@ func (x *DeploymentPage) String() string {
 func (*DeploymentPage) ProtoMessage() {}
 
 func (x *DeploymentPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[100]
+	mi := &file_internal_proto_msgTypes[98]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18580,7 +18528,7 @@ func (x *DeploymentPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeploymentPage.ProtoReflect.Descriptor instead.
 func (*DeploymentPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{100}
+	return file_internal_proto_rawDescGZIP(), []int{98}
 }
 
 func (x *DeploymentPage) GetItems() []*Deployment {
@@ -18607,7 +18555,7 @@ type WalletOperationPage struct {
 
 func (x *WalletOperationPage) Reset() {
 	*x = WalletOperationPage{}
-	mi := &file_internal_proto_msgTypes[101]
+	mi := &file_internal_proto_msgTypes[99]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18619,7 +18567,7 @@ func (x *WalletOperationPage) String() string {
 func (*WalletOperationPage) ProtoMessage() {}
 
 func (x *WalletOperationPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[101]
+	mi := &file_internal_proto_msgTypes[99]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18632,7 +18580,7 @@ func (x *WalletOperationPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WalletOperationPage.ProtoReflect.Descriptor instead.
 func (*WalletOperationPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{101}
+	return file_internal_proto_rawDescGZIP(), []int{99}
 }
 
 func (x *WalletOperationPage) GetItems() []*WalletOperation {
@@ -18659,7 +18607,7 @@ type UsagePage struct {
 
 func (x *UsagePage) Reset() {
 	*x = UsagePage{}
-	mi := &file_internal_proto_msgTypes[102]
+	mi := &file_internal_proto_msgTypes[100]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18671,7 +18619,7 @@ func (x *UsagePage) String() string {
 func (*UsagePage) ProtoMessage() {}
 
 func (x *UsagePage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[102]
+	mi := &file_internal_proto_msgTypes[100]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18684,7 +18632,7 @@ func (x *UsagePage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UsagePage.ProtoReflect.Descriptor instead.
 func (*UsagePage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{102}
+	return file_internal_proto_rawDescGZIP(), []int{100}
 }
 
 func (x *UsagePage) GetItems() []*Usage {
@@ -18714,7 +18662,7 @@ type UsageSummary struct {
 
 func (x *UsageSummary) Reset() {
 	*x = UsageSummary{}
-	mi := &file_internal_proto_msgTypes[103]
+	mi := &file_internal_proto_msgTypes[101]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18726,7 +18674,7 @@ func (x *UsageSummary) String() string {
 func (*UsageSummary) ProtoMessage() {}
 
 func (x *UsageSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[103]
+	mi := &file_internal_proto_msgTypes[101]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18739,7 +18687,7 @@ func (x *UsageSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UsageSummary.ProtoReflect.Descriptor instead.
 func (*UsageSummary) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{103}
+	return file_internal_proto_rawDescGZIP(), []int{101}
 }
 
 func (x *UsageSummary) GetTotalRequests() int64 {
@@ -18787,7 +18735,7 @@ type GatewayKeyPage struct {
 
 func (x *GatewayKeyPage) Reset() {
 	*x = GatewayKeyPage{}
-	mi := &file_internal_proto_msgTypes[104]
+	mi := &file_internal_proto_msgTypes[102]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18799,7 +18747,7 @@ func (x *GatewayKeyPage) String() string {
 func (*GatewayKeyPage) ProtoMessage() {}
 
 func (x *GatewayKeyPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[104]
+	mi := &file_internal_proto_msgTypes[102]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18812,7 +18760,7 @@ func (x *GatewayKeyPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayKeyPage.ProtoReflect.Descriptor instead.
 func (*GatewayKeyPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{104}
+	return file_internal_proto_rawDescGZIP(), []int{102}
 }
 
 func (x *GatewayKeyPage) GetItems() []*GatewayKey {
@@ -18839,7 +18787,7 @@ type TenantPage struct {
 
 func (x *TenantPage) Reset() {
 	*x = TenantPage{}
-	mi := &file_internal_proto_msgTypes[105]
+	mi := &file_internal_proto_msgTypes[103]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18851,7 +18799,7 @@ func (x *TenantPage) String() string {
 func (*TenantPage) ProtoMessage() {}
 
 func (x *TenantPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[105]
+	mi := &file_internal_proto_msgTypes[103]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18864,7 +18812,7 @@ func (x *TenantPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TenantPage.ProtoReflect.Descriptor instead.
 func (*TenantPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{105}
+	return file_internal_proto_rawDescGZIP(), []int{103}
 }
 
 func (x *TenantPage) GetItems() []*Tenant {
@@ -18891,7 +18839,7 @@ type AuditEventPage struct {
 
 func (x *AuditEventPage) Reset() {
 	*x = AuditEventPage{}
-	mi := &file_internal_proto_msgTypes[106]
+	mi := &file_internal_proto_msgTypes[104]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18903,7 +18851,7 @@ func (x *AuditEventPage) String() string {
 func (*AuditEventPage) ProtoMessage() {}
 
 func (x *AuditEventPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[106]
+	mi := &file_internal_proto_msgTypes[104]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18916,7 +18864,7 @@ func (x *AuditEventPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditEventPage.ProtoReflect.Descriptor instead.
 func (*AuditEventPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{106}
+	return file_internal_proto_rawDescGZIP(), []int{104}
 }
 
 func (x *AuditEventPage) GetItems() []*AuditEvent {
@@ -18943,7 +18891,7 @@ type ReceiptPage struct {
 
 func (x *ReceiptPage) Reset() {
 	*x = ReceiptPage{}
-	mi := &file_internal_proto_msgTypes[107]
+	mi := &file_internal_proto_msgTypes[105]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18955,7 +18903,7 @@ func (x *ReceiptPage) String() string {
 func (*ReceiptPage) ProtoMessage() {}
 
 func (x *ReceiptPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[107]
+	mi := &file_internal_proto_msgTypes[105]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18968,7 +18916,7 @@ func (x *ReceiptPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReceiptPage.ProtoReflect.Descriptor instead.
 func (*ReceiptPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{107}
+	return file_internal_proto_rawDescGZIP(), []int{105}
 }
 
 func (x *ReceiptPage) GetItems() []*Receipt {
@@ -18995,7 +18943,7 @@ type AdminOperationPage struct {
 
 func (x *AdminOperationPage) Reset() {
 	*x = AdminOperationPage{}
-	mi := &file_internal_proto_msgTypes[108]
+	mi := &file_internal_proto_msgTypes[106]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19007,7 +18955,7 @@ func (x *AdminOperationPage) String() string {
 func (*AdminOperationPage) ProtoMessage() {}
 
 func (x *AdminOperationPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[108]
+	mi := &file_internal_proto_msgTypes[106]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19020,7 +18968,7 @@ func (x *AdminOperationPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdminOperationPage.ProtoReflect.Descriptor instead.
 func (*AdminOperationPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{108}
+	return file_internal_proto_rawDescGZIP(), []int{106}
 }
 
 func (x *AdminOperationPage) GetItems() []*AdminOperation {
@@ -19047,7 +18995,7 @@ type QualificationPage struct {
 
 func (x *QualificationPage) Reset() {
 	*x = QualificationPage{}
-	mi := &file_internal_proto_msgTypes[109]
+	mi := &file_internal_proto_msgTypes[107]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19059,7 +19007,7 @@ func (x *QualificationPage) String() string {
 func (*QualificationPage) ProtoMessage() {}
 
 func (x *QualificationPage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[109]
+	mi := &file_internal_proto_msgTypes[107]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19072,7 +19020,7 @@ func (x *QualificationPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualificationPage.ProtoReflect.Descriptor instead.
 func (*QualificationPage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{109}
+	return file_internal_proto_rawDescGZIP(), []int{107}
 }
 
 func (x *QualificationPage) GetItems() []*Qualification {
@@ -19100,7 +19048,7 @@ type AdoptWorkspaceRequest struct {
 
 func (x *AdoptWorkspaceRequest) Reset() {
 	*x = AdoptWorkspaceRequest{}
-	mi := &file_internal_proto_msgTypes[110]
+	mi := &file_internal_proto_msgTypes[108]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19112,7 +19060,7 @@ func (x *AdoptWorkspaceRequest) String() string {
 func (*AdoptWorkspaceRequest) ProtoMessage() {}
 
 func (x *AdoptWorkspaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[110]
+	mi := &file_internal_proto_msgTypes[108]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19125,7 +19073,7 @@ func (x *AdoptWorkspaceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdoptWorkspaceRequest.ProtoReflect.Descriptor instead.
 func (*AdoptWorkspaceRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{110}
+	return file_internal_proto_rawDescGZIP(), []int{108}
 }
 
 func (x *AdoptWorkspaceRequest) GetCapabilityVersionId() string {
@@ -19163,7 +19111,7 @@ type BuildRuntimePolicy struct {
 
 func (x *BuildRuntimePolicy) Reset() {
 	*x = BuildRuntimePolicy{}
-	mi := &file_internal_proto_msgTypes[111]
+	mi := &file_internal_proto_msgTypes[109]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19175,7 +19123,7 @@ func (x *BuildRuntimePolicy) String() string {
 func (*BuildRuntimePolicy) ProtoMessage() {}
 
 func (x *BuildRuntimePolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[111]
+	mi := &file_internal_proto_msgTypes[109]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19188,7 +19136,7 @@ func (x *BuildRuntimePolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildRuntimePolicy.ProtoReflect.Descriptor instead.
 func (*BuildRuntimePolicy) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{111}
+	return file_internal_proto_rawDescGZIP(), []int{109}
 }
 
 func (x *BuildRuntimePolicy) GetId() string {
@@ -19244,7 +19192,7 @@ type SetBuildRuntimePolicyRequest struct {
 
 func (x *SetBuildRuntimePolicyRequest) Reset() {
 	*x = SetBuildRuntimePolicyRequest{}
-	mi := &file_internal_proto_msgTypes[112]
+	mi := &file_internal_proto_msgTypes[110]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19256,7 +19204,7 @@ func (x *SetBuildRuntimePolicyRequest) String() string {
 func (*SetBuildRuntimePolicyRequest) ProtoMessage() {}
 
 func (x *SetBuildRuntimePolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[112]
+	mi := &file_internal_proto_msgTypes[110]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19269,7 +19217,7 @@ func (x *SetBuildRuntimePolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetBuildRuntimePolicyRequest.ProtoReflect.Descriptor instead.
 func (*SetBuildRuntimePolicyRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{112}
+	return file_internal_proto_rawDescGZIP(), []int{110}
 }
 
 func (x *SetBuildRuntimePolicyRequest) GetRuntimeVersionId() string {
@@ -19304,7 +19252,7 @@ type ImagePlatform struct {
 
 func (x *ImagePlatform) Reset() {
 	*x = ImagePlatform{}
-	mi := &file_internal_proto_msgTypes[113]
+	mi := &file_internal_proto_msgTypes[111]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19316,7 +19264,7 @@ func (x *ImagePlatform) String() string {
 func (*ImagePlatform) ProtoMessage() {}
 
 func (x *ImagePlatform) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[113]
+	mi := &file_internal_proto_msgTypes[111]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19329,7 +19277,7 @@ func (x *ImagePlatform) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImagePlatform.ProtoReflect.Descriptor instead.
 func (*ImagePlatform) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{113}
+	return file_internal_proto_rawDescGZIP(), []int{111}
 }
 
 func (x *ImagePlatform) GetOs() ImagePlatformOsEnum {
@@ -19364,7 +19312,7 @@ type ArtifactReference struct {
 
 func (x *ArtifactReference) Reset() {
 	*x = ArtifactReference{}
-	mi := &file_internal_proto_msgTypes[114]
+	mi := &file_internal_proto_msgTypes[112]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19376,7 +19324,7 @@ func (x *ArtifactReference) String() string {
 func (*ArtifactReference) ProtoMessage() {}
 
 func (x *ArtifactReference) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[114]
+	mi := &file_internal_proto_msgTypes[112]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19389,7 +19337,7 @@ func (x *ArtifactReference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArtifactReference.ProtoReflect.Descriptor instead.
 func (*ArtifactReference) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{114}
+	return file_internal_proto_rawDescGZIP(), []int{112}
 }
 
 func (x *ArtifactReference) GetRepository() string {
@@ -19425,7 +19373,7 @@ type RecipeArtifact struct {
 
 func (x *RecipeArtifact) Reset() {
 	*x = RecipeArtifact{}
-	mi := &file_internal_proto_msgTypes[115]
+	mi := &file_internal_proto_msgTypes[113]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19437,7 +19385,7 @@ func (x *RecipeArtifact) String() string {
 func (*RecipeArtifact) ProtoMessage() {}
 
 func (x *RecipeArtifact) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[115]
+	mi := &file_internal_proto_msgTypes[113]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19450,7 +19398,7 @@ func (x *RecipeArtifact) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecipeArtifact.ProtoReflect.Descriptor instead.
 func (*RecipeArtifact) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{115}
+	return file_internal_proto_rawDescGZIP(), []int{113}
 }
 
 func (x *RecipeArtifact) GetRepository() string {
@@ -19495,7 +19443,7 @@ type PackageBuildInput struct {
 
 func (x *PackageBuildInput) Reset() {
 	*x = PackageBuildInput{}
-	mi := &file_internal_proto_msgTypes[116]
+	mi := &file_internal_proto_msgTypes[114]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19507,7 +19455,7 @@ func (x *PackageBuildInput) String() string {
 func (*PackageBuildInput) ProtoMessage() {}
 
 func (x *PackageBuildInput) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[116]
+	mi := &file_internal_proto_msgTypes[114]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19520,7 +19468,7 @@ func (x *PackageBuildInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PackageBuildInput.ProtoReflect.Descriptor instead.
 func (*PackageBuildInput) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{116}
+	return file_internal_proto_rawDescGZIP(), []int{114}
 }
 
 func (x *PackageBuildInput) GetContextName() PackageBuildInputContextNameEnum {
@@ -19578,7 +19526,7 @@ type WebuiBuildInput struct {
 
 func (x *WebuiBuildInput) Reset() {
 	*x = WebuiBuildInput{}
-	mi := &file_internal_proto_msgTypes[117]
+	mi := &file_internal_proto_msgTypes[115]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19590,7 +19538,7 @@ func (x *WebuiBuildInput) String() string {
 func (*WebuiBuildInput) ProtoMessage() {}
 
 func (x *WebuiBuildInput) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[117]
+	mi := &file_internal_proto_msgTypes[115]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19603,7 +19551,7 @@ func (x *WebuiBuildInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WebuiBuildInput.ProtoReflect.Descriptor instead.
 func (*WebuiBuildInput) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{117}
+	return file_internal_proto_rawDescGZIP(), []int{115}
 }
 
 func (x *WebuiBuildInput) GetContextName() WebuiBuildInputContextNameEnum {
@@ -19658,7 +19606,7 @@ type BuildRecipeContract struct {
 
 func (x *BuildRecipeContract) Reset() {
 	*x = BuildRecipeContract{}
-	mi := &file_internal_proto_msgTypes[118]
+	mi := &file_internal_proto_msgTypes[116]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19670,7 +19618,7 @@ func (x *BuildRecipeContract) String() string {
 func (*BuildRecipeContract) ProtoMessage() {}
 
 func (x *BuildRecipeContract) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[118]
+	mi := &file_internal_proto_msgTypes[116]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19683,7 +19631,7 @@ func (x *BuildRecipeContract) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildRecipeContract.ProtoReflect.Descriptor instead.
 func (*BuildRecipeContract) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{118}
+	return file_internal_proto_rawDescGZIP(), []int{116}
 }
 
 func (x *BuildRecipeContract) GetVersion() BuildRecipeContractVersionEnum {
@@ -19764,7 +19712,7 @@ type ModelConfigurationContract struct {
 
 func (x *ModelConfigurationContract) Reset() {
 	*x = ModelConfigurationContract{}
-	mi := &file_internal_proto_msgTypes[119]
+	mi := &file_internal_proto_msgTypes[117]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19776,7 +19724,7 @@ func (x *ModelConfigurationContract) String() string {
 func (*ModelConfigurationContract) ProtoMessage() {}
 
 func (x *ModelConfigurationContract) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[119]
+	mi := &file_internal_proto_msgTypes[117]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19789,7 +19737,7 @@ func (x *ModelConfigurationContract) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelConfigurationContract.ProtoReflect.Descriptor instead.
 func (*ModelConfigurationContract) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{119}
+	return file_internal_proto_rawDescGZIP(), []int{117}
 }
 
 func (x *ModelConfigurationContract) GetProtocol() ModelConfigurationContractProtocolEnum {
@@ -19855,7 +19803,7 @@ type ApplicationAccessContract struct {
 
 func (x *ApplicationAccessContract) Reset() {
 	*x = ApplicationAccessContract{}
-	mi := &file_internal_proto_msgTypes[120]
+	mi := &file_internal_proto_msgTypes[118]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19867,7 +19815,7 @@ func (x *ApplicationAccessContract) String() string {
 func (*ApplicationAccessContract) ProtoMessage() {}
 
 func (x *ApplicationAccessContract) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[120]
+	mi := &file_internal_proto_msgTypes[118]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19880,7 +19828,7 @@ func (x *ApplicationAccessContract) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplicationAccessContract.ProtoReflect.Descriptor instead.
 func (*ApplicationAccessContract) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{120}
+	return file_internal_proto_rawDescGZIP(), []int{118}
 }
 
 func (x *ApplicationAccessContract) GetValue() isApplicationAccessContract_Value {
@@ -19954,7 +19902,7 @@ type DataUpgradeContract struct {
 
 func (x *DataUpgradeContract) Reset() {
 	*x = DataUpgradeContract{}
-	mi := &file_internal_proto_msgTypes[121]
+	mi := &file_internal_proto_msgTypes[119]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19966,7 +19914,7 @@ func (x *DataUpgradeContract) String() string {
 func (*DataUpgradeContract) ProtoMessage() {}
 
 func (x *DataUpgradeContract) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[121]
+	mi := &file_internal_proto_msgTypes[119]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19979,7 +19927,7 @@ func (x *DataUpgradeContract) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataUpgradeContract.ProtoReflect.Descriptor instead.
 func (*DataUpgradeContract) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{121}
+	return file_internal_proto_rawDescGZIP(), []int{119}
 }
 
 func (x *DataUpgradeContract) GetMode() DataUpgradeContractModeEnum {
@@ -20027,7 +19975,7 @@ type DataRollbackContract struct {
 
 func (x *DataRollbackContract) Reset() {
 	*x = DataRollbackContract{}
-	mi := &file_internal_proto_msgTypes[122]
+	mi := &file_internal_proto_msgTypes[120]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20039,7 +19987,7 @@ func (x *DataRollbackContract) String() string {
 func (*DataRollbackContract) ProtoMessage() {}
 
 func (x *DataRollbackContract) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[122]
+	mi := &file_internal_proto_msgTypes[120]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20052,7 +20000,7 @@ func (x *DataRollbackContract) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataRollbackContract.ProtoReflect.Descriptor instead.
 func (*DataRollbackContract) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{122}
+	return file_internal_proto_rawDescGZIP(), []int{120}
 }
 
 func (x *DataRollbackContract) GetSafe() bool {
@@ -20081,7 +20029,7 @@ type DataContract struct {
 
 func (x *DataContract) Reset() {
 	*x = DataContract{}
-	mi := &file_internal_proto_msgTypes[123]
+	mi := &file_internal_proto_msgTypes[121]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20093,7 +20041,7 @@ func (x *DataContract) String() string {
 func (*DataContract) ProtoMessage() {}
 
 func (x *DataContract) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[123]
+	mi := &file_internal_proto_msgTypes[121]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20106,7 +20054,7 @@ func (x *DataContract) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataContract.ProtoReflect.Descriptor instead.
 func (*DataContract) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{123}
+	return file_internal_proto_rawDescGZIP(), []int{121}
 }
 
 func (x *DataContract) GetSchemaVersion() string {
@@ -20157,7 +20105,7 @@ type RuntimePublisherContract struct {
 
 func (x *RuntimePublisherContract) Reset() {
 	*x = RuntimePublisherContract{}
-	mi := &file_internal_proto_msgTypes[124]
+	mi := &file_internal_proto_msgTypes[122]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20169,7 +20117,7 @@ func (x *RuntimePublisherContract) String() string {
 func (*RuntimePublisherContract) ProtoMessage() {}
 
 func (x *RuntimePublisherContract) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[124]
+	mi := &file_internal_proto_msgTypes[122]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20182,7 +20130,7 @@ func (x *RuntimePublisherContract) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimePublisherContract.ProtoReflect.Descriptor instead.
 func (*RuntimePublisherContract) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{124}
+	return file_internal_proto_rawDescGZIP(), []int{122}
 }
 
 func (x *RuntimePublisherContract) GetSchemaVersion() RuntimePublisherContractSchemaVersionEnum {
@@ -20291,7 +20239,7 @@ type WebuiPublisherContract struct {
 
 func (x *WebuiPublisherContract) Reset() {
 	*x = WebuiPublisherContract{}
-	mi := &file_internal_proto_msgTypes[125]
+	mi := &file_internal_proto_msgTypes[123]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20303,7 +20251,7 @@ func (x *WebuiPublisherContract) String() string {
 func (*WebuiPublisherContract) ProtoMessage() {}
 
 func (x *WebuiPublisherContract) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[125]
+	mi := &file_internal_proto_msgTypes[123]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20316,7 +20264,7 @@ func (x *WebuiPublisherContract) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WebuiPublisherContract.ProtoReflect.Descriptor instead.
 func (*WebuiPublisherContract) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{125}
+	return file_internal_proto_rawDescGZIP(), []int{123}
 }
 
 func (x *WebuiPublisherContract) GetSchemaVersion() WebuiPublisherContractSchemaVersionEnum {
@@ -20430,7 +20378,7 @@ type PublisherContract struct {
 
 func (x *PublisherContract) Reset() {
 	*x = PublisherContract{}
-	mi := &file_internal_proto_msgTypes[126]
+	mi := &file_internal_proto_msgTypes[124]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20442,7 +20390,7 @@ func (x *PublisherContract) String() string {
 func (*PublisherContract) ProtoMessage() {}
 
 func (x *PublisherContract) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[126]
+	mi := &file_internal_proto_msgTypes[124]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20455,7 +20403,7 @@ func (x *PublisherContract) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublisherContract.ProtoReflect.Descriptor instead.
 func (*PublisherContract) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{126}
+	return file_internal_proto_rawDescGZIP(), []int{124}
 }
 
 func (x *PublisherContract) GetValue() isPublisherContract_Value {
@@ -20512,7 +20460,7 @@ type PublisherContractReference struct {
 
 func (x *PublisherContractReference) Reset() {
 	*x = PublisherContractReference{}
-	mi := &file_internal_proto_msgTypes[127]
+	mi := &file_internal_proto_msgTypes[125]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20524,7 +20472,7 @@ func (x *PublisherContractReference) String() string {
 func (*PublisherContractReference) ProtoMessage() {}
 
 func (x *PublisherContractReference) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[127]
+	mi := &file_internal_proto_msgTypes[125]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20537,7 +20485,7 @@ func (x *PublisherContractReference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublisherContractReference.ProtoReflect.Descriptor instead.
 func (*PublisherContractReference) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{127}
+	return file_internal_proto_rawDescGZIP(), []int{125}
 }
 
 func (x *PublisherContractReference) GetPublisherNamespaceId() string {
@@ -20599,7 +20547,7 @@ type DeploymentDescriptor struct {
 
 func (x *DeploymentDescriptor) Reset() {
 	*x = DeploymentDescriptor{}
-	mi := &file_internal_proto_msgTypes[128]
+	mi := &file_internal_proto_msgTypes[126]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20611,7 +20559,7 @@ func (x *DeploymentDescriptor) String() string {
 func (*DeploymentDescriptor) ProtoMessage() {}
 
 func (x *DeploymentDescriptor) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[128]
+	mi := &file_internal_proto_msgTypes[126]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20624,7 +20572,7 @@ func (x *DeploymentDescriptor) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeploymentDescriptor.ProtoReflect.Descriptor instead.
 func (*DeploymentDescriptor) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{128}
+	return file_internal_proto_rawDescGZIP(), []int{126}
 }
 
 func (x *DeploymentDescriptor) GetSchemaVersion() DeploymentDescriptorSchemaVersionEnum {
@@ -20727,7 +20675,7 @@ type PublisherNamespace struct {
 
 func (x *PublisherNamespace) Reset() {
 	*x = PublisherNamespace{}
-	mi := &file_internal_proto_msgTypes[129]
+	mi := &file_internal_proto_msgTypes[127]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20739,7 +20687,7 @@ func (x *PublisherNamespace) String() string {
 func (*PublisherNamespace) ProtoMessage() {}
 
 func (x *PublisherNamespace) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[129]
+	mi := &file_internal_proto_msgTypes[127]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20752,7 +20700,7 @@ func (x *PublisherNamespace) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublisherNamespace.ProtoReflect.Descriptor instead.
 func (*PublisherNamespace) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{129}
+	return file_internal_proto_rawDescGZIP(), []int{127}
 }
 
 func (x *PublisherNamespace) GetId() string {
@@ -20824,7 +20772,7 @@ type CreatePublisherNamespaceRequest struct {
 
 func (x *CreatePublisherNamespaceRequest) Reset() {
 	*x = CreatePublisherNamespaceRequest{}
-	mi := &file_internal_proto_msgTypes[130]
+	mi := &file_internal_proto_msgTypes[128]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20836,7 +20784,7 @@ func (x *CreatePublisherNamespaceRequest) String() string {
 func (*CreatePublisherNamespaceRequest) ProtoMessage() {}
 
 func (x *CreatePublisherNamespaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[130]
+	mi := &file_internal_proto_msgTypes[128]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20849,7 +20797,7 @@ func (x *CreatePublisherNamespaceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePublisherNamespaceRequest.ProtoReflect.Descriptor instead.
 func (*CreatePublisherNamespaceRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{130}
+	return file_internal_proto_rawDescGZIP(), []int{128}
 }
 
 func (x *CreatePublisherNamespaceRequest) GetName() string {
@@ -20896,7 +20844,7 @@ type RevokePublisherNamespaceRequest struct {
 
 func (x *RevokePublisherNamespaceRequest) Reset() {
 	*x = RevokePublisherNamespaceRequest{}
-	mi := &file_internal_proto_msgTypes[131]
+	mi := &file_internal_proto_msgTypes[129]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20908,7 +20856,7 @@ func (x *RevokePublisherNamespaceRequest) String() string {
 func (*RevokePublisherNamespaceRequest) ProtoMessage() {}
 
 func (x *RevokePublisherNamespaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[131]
+	mi := &file_internal_proto_msgTypes[129]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20921,7 +20869,7 @@ func (x *RevokePublisherNamespaceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokePublisherNamespaceRequest.ProtoReflect.Descriptor instead.
 func (*RevokePublisherNamespaceRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{131}
+	return file_internal_proto_rawDescGZIP(), []int{129}
 }
 
 func (x *RevokePublisherNamespaceRequest) GetReason() string {
@@ -20941,7 +20889,7 @@ type PublisherNamespacePage struct {
 
 func (x *PublisherNamespacePage) Reset() {
 	*x = PublisherNamespacePage{}
-	mi := &file_internal_proto_msgTypes[132]
+	mi := &file_internal_proto_msgTypes[130]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20953,7 +20901,7 @@ func (x *PublisherNamespacePage) String() string {
 func (*PublisherNamespacePage) ProtoMessage() {}
 
 func (x *PublisherNamespacePage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[132]
+	mi := &file_internal_proto_msgTypes[130]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20966,7 +20914,7 @@ func (x *PublisherNamespacePage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublisherNamespacePage.ProtoReflect.Descriptor instead.
 func (*PublisherNamespacePage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{132}
+	return file_internal_proto_rawDescGZIP(), []int{130}
 }
 
 func (x *PublisherNamespacePage) GetItems() []*PublisherNamespace {
@@ -20992,7 +20940,7 @@ type ReenableTenantRequest struct {
 
 func (x *ReenableTenantRequest) Reset() {
 	*x = ReenableTenantRequest{}
-	mi := &file_internal_proto_msgTypes[133]
+	mi := &file_internal_proto_msgTypes[131]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21004,7 +20952,7 @@ func (x *ReenableTenantRequest) String() string {
 func (*ReenableTenantRequest) ProtoMessage() {}
 
 func (x *ReenableTenantRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[133]
+	mi := &file_internal_proto_msgTypes[131]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21017,7 +20965,7 @@ func (x *ReenableTenantRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReenableTenantRequest.ProtoReflect.Descriptor instead.
 func (*ReenableTenantRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{133}
+	return file_internal_proto_rawDescGZIP(), []int{131}
 }
 
 func (x *ReenableTenantRequest) GetReason() string {
@@ -21040,7 +20988,7 @@ type RenewalPolicy struct {
 
 func (x *RenewalPolicy) Reset() {
 	*x = RenewalPolicy{}
-	mi := &file_internal_proto_msgTypes[134]
+	mi := &file_internal_proto_msgTypes[132]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21052,7 +21000,7 @@ func (x *RenewalPolicy) String() string {
 func (*RenewalPolicy) ProtoMessage() {}
 
 func (x *RenewalPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[134]
+	mi := &file_internal_proto_msgTypes[132]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21065,7 +21013,7 @@ func (x *RenewalPolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenewalPolicy.ProtoReflect.Descriptor instead.
 func (*RenewalPolicy) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{134}
+	return file_internal_proto_rawDescGZIP(), []int{132}
 }
 
 func (x *RenewalPolicy) GetVersion() RenewalPolicyVersionEnum {
@@ -21115,7 +21063,7 @@ type WorkspaceApplicationExecution struct {
 
 func (x *WorkspaceApplicationExecution) Reset() {
 	*x = WorkspaceApplicationExecution{}
-	mi := &file_internal_proto_msgTypes[135]
+	mi := &file_internal_proto_msgTypes[133]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21127,7 +21075,7 @@ func (x *WorkspaceApplicationExecution) String() string {
 func (*WorkspaceApplicationExecution) ProtoMessage() {}
 
 func (x *WorkspaceApplicationExecution) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[135]
+	mi := &file_internal_proto_msgTypes[133]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21140,7 +21088,7 @@ func (x *WorkspaceApplicationExecution) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspaceApplicationExecution.ProtoReflect.Descriptor instead.
 func (*WorkspaceApplicationExecution) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{135}
+	return file_internal_proto_rawDescGZIP(), []int{133}
 }
 
 func (x *WorkspaceApplicationExecution) GetUserId() int32 {
@@ -21183,7 +21131,7 @@ type WorkspaceApplicationCompute struct {
 
 func (x *WorkspaceApplicationCompute) Reset() {
 	*x = WorkspaceApplicationCompute{}
-	mi := &file_internal_proto_msgTypes[136]
+	mi := &file_internal_proto_msgTypes[134]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21195,7 +21143,7 @@ func (x *WorkspaceApplicationCompute) String() string {
 func (*WorkspaceApplicationCompute) ProtoMessage() {}
 
 func (x *WorkspaceApplicationCompute) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[136]
+	mi := &file_internal_proto_msgTypes[134]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21208,7 +21156,7 @@ func (x *WorkspaceApplicationCompute) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspaceApplicationCompute.ProtoReflect.Descriptor instead.
 func (*WorkspaceApplicationCompute) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{136}
+	return file_internal_proto_rawDescGZIP(), []int{134}
 }
 
 func (x *WorkspaceApplicationCompute) GetCpuRequestMilli() int32 {
@@ -21252,7 +21200,7 @@ type WorkspaceApplicationCredential struct {
 
 func (x *WorkspaceApplicationCredential) Reset() {
 	*x = WorkspaceApplicationCredential{}
-	mi := &file_internal_proto_msgTypes[137]
+	mi := &file_internal_proto_msgTypes[135]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21264,7 +21212,7 @@ func (x *WorkspaceApplicationCredential) String() string {
 func (*WorkspaceApplicationCredential) ProtoMessage() {}
 
 func (x *WorkspaceApplicationCredential) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[137]
+	mi := &file_internal_proto_msgTypes[135]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21277,7 +21225,7 @@ func (x *WorkspaceApplicationCredential) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspaceApplicationCredential.ProtoReflect.Descriptor instead.
 func (*WorkspaceApplicationCredential) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{137}
+	return file_internal_proto_rawDescGZIP(), []int{135}
 }
 
 func (x *WorkspaceApplicationCredential) GetName() string {
@@ -21326,7 +21274,7 @@ type WorkspaceApplicationPort struct {
 
 func (x *WorkspaceApplicationPort) Reset() {
 	*x = WorkspaceApplicationPort{}
-	mi := &file_internal_proto_msgTypes[138]
+	mi := &file_internal_proto_msgTypes[136]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21338,7 +21286,7 @@ func (x *WorkspaceApplicationPort) String() string {
 func (*WorkspaceApplicationPort) ProtoMessage() {}
 
 func (x *WorkspaceApplicationPort) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[138]
+	mi := &file_internal_proto_msgTypes[136]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21351,7 +21299,7 @@ func (x *WorkspaceApplicationPort) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspaceApplicationPort.ProtoReflect.Descriptor instead.
 func (*WorkspaceApplicationPort) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{138}
+	return file_internal_proto_rawDescGZIP(), []int{136}
 }
 
 func (x *WorkspaceApplicationPort) GetName() string {
@@ -21386,7 +21334,7 @@ type WorkspaceApplicationHealthCheck struct {
 
 func (x *WorkspaceApplicationHealthCheck) Reset() {
 	*x = WorkspaceApplicationHealthCheck{}
-	mi := &file_internal_proto_msgTypes[139]
+	mi := &file_internal_proto_msgTypes[137]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21398,7 +21346,7 @@ func (x *WorkspaceApplicationHealthCheck) String() string {
 func (*WorkspaceApplicationHealthCheck) ProtoMessage() {}
 
 func (x *WorkspaceApplicationHealthCheck) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[139]
+	mi := &file_internal_proto_msgTypes[137]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21411,7 +21359,7 @@ func (x *WorkspaceApplicationHealthCheck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspaceApplicationHealthCheck.ProtoReflect.Descriptor instead.
 func (*WorkspaceApplicationHealthCheck) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{139}
+	return file_internal_proto_rawDescGZIP(), []int{137}
 }
 
 func (x *WorkspaceApplicationHealthCheck) GetPort() int32 {
@@ -21451,7 +21399,7 @@ type WorkspaceApplicationMount struct {
 
 func (x *WorkspaceApplicationMount) Reset() {
 	*x = WorkspaceApplicationMount{}
-	mi := &file_internal_proto_msgTypes[140]
+	mi := &file_internal_proto_msgTypes[138]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21463,7 +21411,7 @@ func (x *WorkspaceApplicationMount) String() string {
 func (*WorkspaceApplicationMount) ProtoMessage() {}
 
 func (x *WorkspaceApplicationMount) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[140]
+	mi := &file_internal_proto_msgTypes[138]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21476,7 +21424,7 @@ func (x *WorkspaceApplicationMount) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspaceApplicationMount.ProtoReflect.Descriptor instead.
 func (*WorkspaceApplicationMount) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{140}
+	return file_internal_proto_rawDescGZIP(), []int{138}
 }
 
 func (x *WorkspaceApplicationMount) GetName() string {
@@ -21546,7 +21494,7 @@ type WorkspaceApplicationSecretInput struct {
 
 func (x *WorkspaceApplicationSecretInput) Reset() {
 	*x = WorkspaceApplicationSecretInput{}
-	mi := &file_internal_proto_msgTypes[141]
+	mi := &file_internal_proto_msgTypes[139]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21558,7 +21506,7 @@ func (x *WorkspaceApplicationSecretInput) String() string {
 func (*WorkspaceApplicationSecretInput) ProtoMessage() {}
 
 func (x *WorkspaceApplicationSecretInput) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[141]
+	mi := &file_internal_proto_msgTypes[139]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21571,7 +21519,7 @@ func (x *WorkspaceApplicationSecretInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspaceApplicationSecretInput.ProtoReflect.Descriptor instead.
 func (*WorkspaceApplicationSecretInput) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{141}
+	return file_internal_proto_rawDescGZIP(), []int{139}
 }
 
 func (x *WorkspaceApplicationSecretInput) GetName() string {
@@ -21605,7 +21553,7 @@ type WorkspaceApplicationConfigInput struct {
 
 func (x *WorkspaceApplicationConfigInput) Reset() {
 	*x = WorkspaceApplicationConfigInput{}
-	mi := &file_internal_proto_msgTypes[142]
+	mi := &file_internal_proto_msgTypes[140]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21617,7 +21565,7 @@ func (x *WorkspaceApplicationConfigInput) String() string {
 func (*WorkspaceApplicationConfigInput) ProtoMessage() {}
 
 func (x *WorkspaceApplicationConfigInput) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[142]
+	mi := &file_internal_proto_msgTypes[140]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21630,7 +21578,7 @@ func (x *WorkspaceApplicationConfigInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspaceApplicationConfigInput.ProtoReflect.Descriptor instead.
 func (*WorkspaceApplicationConfigInput) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{142}
+	return file_internal_proto_rawDescGZIP(), []int{140}
 }
 
 func (x *WorkspaceApplicationConfigInput) GetName() string {
@@ -21658,7 +21606,7 @@ type WorkspaceApplicationDependencyCommand struct {
 
 func (x *WorkspaceApplicationDependencyCommand) Reset() {
 	*x = WorkspaceApplicationDependencyCommand{}
-	mi := &file_internal_proto_msgTypes[143]
+	mi := &file_internal_proto_msgTypes[141]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21670,7 +21618,7 @@ func (x *WorkspaceApplicationDependencyCommand) String() string {
 func (*WorkspaceApplicationDependencyCommand) ProtoMessage() {}
 
 func (x *WorkspaceApplicationDependencyCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[143]
+	mi := &file_internal_proto_msgTypes[141]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21683,7 +21631,7 @@ func (x *WorkspaceApplicationDependencyCommand) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use WorkspaceApplicationDependencyCommand.ProtoReflect.Descriptor instead.
 func (*WorkspaceApplicationDependencyCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{143}
+	return file_internal_proto_rawDescGZIP(), []int{141}
 }
 
 func (x *WorkspaceApplicationDependencyCommand) GetEntrypoint() []string {
@@ -21720,7 +21668,7 @@ type WorkspaceApplicationDependencyHealthCheck struct {
 
 func (x *WorkspaceApplicationDependencyHealthCheck) Reset() {
 	*x = WorkspaceApplicationDependencyHealthCheck{}
-	mi := &file_internal_proto_msgTypes[144]
+	mi := &file_internal_proto_msgTypes[142]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21732,7 +21680,7 @@ func (x *WorkspaceApplicationDependencyHealthCheck) String() string {
 func (*WorkspaceApplicationDependencyHealthCheck) ProtoMessage() {}
 
 func (x *WorkspaceApplicationDependencyHealthCheck) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[144]
+	mi := &file_internal_proto_msgTypes[142]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21745,7 +21693,7 @@ func (x *WorkspaceApplicationDependencyHealthCheck) ProtoReflect() protoreflect.
 
 // Deprecated: Use WorkspaceApplicationDependencyHealthCheck.ProtoReflect.Descriptor instead.
 func (*WorkspaceApplicationDependencyHealthCheck) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{144}
+	return file_internal_proto_rawDescGZIP(), []int{142}
 }
 
 func (x *WorkspaceApplicationDependencyHealthCheck) GetType() WorkspaceApplicationDependencyHealthCheckTypeEnum {
@@ -21803,7 +21751,7 @@ type WorkspaceApplicationDependency struct {
 
 func (x *WorkspaceApplicationDependency) Reset() {
 	*x = WorkspaceApplicationDependency{}
-	mi := &file_internal_proto_msgTypes[145]
+	mi := &file_internal_proto_msgTypes[143]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21815,7 +21763,7 @@ func (x *WorkspaceApplicationDependency) String() string {
 func (*WorkspaceApplicationDependency) ProtoMessage() {}
 
 func (x *WorkspaceApplicationDependency) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[145]
+	mi := &file_internal_proto_msgTypes[143]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21828,7 +21776,7 @@ func (x *WorkspaceApplicationDependency) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspaceApplicationDependency.ProtoReflect.Descriptor instead.
 func (*WorkspaceApplicationDependency) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{145}
+	return file_internal_proto_rawDescGZIP(), []int{143}
 }
 
 func (x *WorkspaceApplicationDependency) GetName() string {
@@ -21941,7 +21889,7 @@ type WorkspaceApplicationRevision struct {
 
 func (x *WorkspaceApplicationRevision) Reset() {
 	*x = WorkspaceApplicationRevision{}
-	mi := &file_internal_proto_msgTypes[146]
+	mi := &file_internal_proto_msgTypes[144]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21953,7 +21901,7 @@ func (x *WorkspaceApplicationRevision) String() string {
 func (*WorkspaceApplicationRevision) ProtoMessage() {}
 
 func (x *WorkspaceApplicationRevision) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[146]
+	mi := &file_internal_proto_msgTypes[144]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21966,7 +21914,7 @@ func (x *WorkspaceApplicationRevision) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspaceApplicationRevision.ProtoReflect.Descriptor instead.
 func (*WorkspaceApplicationRevision) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{146}
+	return file_internal_proto_rawDescGZIP(), []int{144}
 }
 
 func (x *WorkspaceApplicationRevision) GetSchemaVersion() int32 {
@@ -22105,7 +22053,7 @@ type DataMountPolicy struct {
 
 func (x *DataMountPolicy) Reset() {
 	*x = DataMountPolicy{}
-	mi := &file_internal_proto_msgTypes[147]
+	mi := &file_internal_proto_msgTypes[145]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22117,7 +22065,7 @@ func (x *DataMountPolicy) String() string {
 func (*DataMountPolicy) ProtoMessage() {}
 
 func (x *DataMountPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[147]
+	mi := &file_internal_proto_msgTypes[145]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22130,7 +22078,7 @@ func (x *DataMountPolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataMountPolicy.ProtoReflect.Descriptor instead.
 func (*DataMountPolicy) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{147}
+	return file_internal_proto_rawDescGZIP(), []int{145}
 }
 
 func (x *DataMountPolicy) GetMountName() string {
@@ -22159,7 +22107,7 @@ type ApplicationOwnedAccessContract struct {
 
 func (x *ApplicationOwnedAccessContract) Reset() {
 	*x = ApplicationOwnedAccessContract{}
-	mi := &file_internal_proto_msgTypes[148]
+	mi := &file_internal_proto_msgTypes[146]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22171,7 +22119,7 @@ func (x *ApplicationOwnedAccessContract) String() string {
 func (*ApplicationOwnedAccessContract) ProtoMessage() {}
 
 func (x *ApplicationOwnedAccessContract) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[148]
+	mi := &file_internal_proto_msgTypes[146]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22184,7 +22132,7 @@ func (x *ApplicationOwnedAccessContract) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplicationOwnedAccessContract.ProtoReflect.Descriptor instead.
 func (*ApplicationOwnedAccessContract) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{148}
+	return file_internal_proto_rawDescGZIP(), []int{146}
 }
 
 func (x *ApplicationOwnedAccessContract) GetMode() ApplicationOwnedAccessContractModeEnum {
@@ -22226,7 +22174,7 @@ type CloudPrivateAccessContract struct {
 
 func (x *CloudPrivateAccessContract) Reset() {
 	*x = CloudPrivateAccessContract{}
-	mi := &file_internal_proto_msgTypes[149]
+	mi := &file_internal_proto_msgTypes[147]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22238,7 +22186,7 @@ func (x *CloudPrivateAccessContract) String() string {
 func (*CloudPrivateAccessContract) ProtoMessage() {}
 
 func (x *CloudPrivateAccessContract) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[149]
+	mi := &file_internal_proto_msgTypes[147]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22251,7 +22199,7 @@ func (x *CloudPrivateAccessContract) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloudPrivateAccessContract.ProtoReflect.Descriptor instead.
 func (*CloudPrivateAccessContract) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{149}
+	return file_internal_proto_rawDescGZIP(), []int{147}
 }
 
 func (x *CloudPrivateAccessContract) GetMode() CloudPrivateAccessContractModeEnum {
@@ -22284,7 +22232,7 @@ type AnonymousAccessContract struct {
 
 func (x *AnonymousAccessContract) Reset() {
 	*x = AnonymousAccessContract{}
-	mi := &file_internal_proto_msgTypes[150]
+	mi := &file_internal_proto_msgTypes[148]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22296,7 +22244,7 @@ func (x *AnonymousAccessContract) String() string {
 func (*AnonymousAccessContract) ProtoMessage() {}
 
 func (x *AnonymousAccessContract) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[150]
+	mi := &file_internal_proto_msgTypes[148]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22309,7 +22257,7 @@ func (x *AnonymousAccessContract) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnonymousAccessContract.ProtoReflect.Descriptor instead.
 func (*AnonymousAccessContract) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{150}
+	return file_internal_proto_rawDescGZIP(), []int{148}
 }
 
 func (x *AnonymousAccessContract) GetMode() AnonymousAccessContractModeEnum {
@@ -22332,7 +22280,7 @@ type CreditSource struct {
 
 func (x *CreditSource) Reset() {
 	*x = CreditSource{}
-	mi := &file_internal_proto_msgTypes[151]
+	mi := &file_internal_proto_msgTypes[149]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22344,7 +22292,7 @@ func (x *CreditSource) String() string {
 func (*CreditSource) ProtoMessage() {}
 
 func (x *CreditSource) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[151]
+	mi := &file_internal_proto_msgTypes[149]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22357,7 +22305,7 @@ func (x *CreditSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreditSource.ProtoReflect.Descriptor instead.
 func (*CreditSource) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{151}
+	return file_internal_proto_rawDescGZIP(), []int{149}
 }
 
 func (x *CreditSource) GetOriginalWalletOperationId() string {
@@ -22408,7 +22356,7 @@ type TenantWorkspaceAction struct {
 
 func (x *TenantWorkspaceAction) Reset() {
 	*x = TenantWorkspaceAction{}
-	mi := &file_internal_proto_msgTypes[152]
+	mi := &file_internal_proto_msgTypes[150]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22420,7 +22368,7 @@ func (x *TenantWorkspaceAction) String() string {
 func (*TenantWorkspaceAction) ProtoMessage() {}
 
 func (x *TenantWorkspaceAction) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[152]
+	mi := &file_internal_proto_msgTypes[150]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22433,7 +22381,7 @@ func (x *TenantWorkspaceAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TenantWorkspaceAction.ProtoReflect.Descriptor instead.
 func (*TenantWorkspaceAction) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{152}
+	return file_internal_proto_rawDescGZIP(), []int{150}
 }
 
 func (x *TenantWorkspaceAction) GetWorkspaceId() string {
@@ -22481,7 +22429,7 @@ type TenantWorkspaceSkip struct {
 
 func (x *TenantWorkspaceSkip) Reset() {
 	*x = TenantWorkspaceSkip{}
-	mi := &file_internal_proto_msgTypes[153]
+	mi := &file_internal_proto_msgTypes[151]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22493,7 +22441,7 @@ func (x *TenantWorkspaceSkip) String() string {
 func (*TenantWorkspaceSkip) ProtoMessage() {}
 
 func (x *TenantWorkspaceSkip) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[153]
+	mi := &file_internal_proto_msgTypes[151]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22506,7 +22454,7 @@ func (x *TenantWorkspaceSkip) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TenantWorkspaceSkip.ProtoReflect.Descriptor instead.
 func (*TenantWorkspaceSkip) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{153}
+	return file_internal_proto_rawDescGZIP(), []int{151}
 }
 
 func (x *TenantWorkspaceSkip) GetWorkspaceId() string {
@@ -22536,7 +22484,7 @@ type TenantLifecycleProgress struct {
 
 func (x *TenantLifecycleProgress) Reset() {
 	*x = TenantLifecycleProgress{}
-	mi := &file_internal_proto_msgTypes[154]
+	mi := &file_internal_proto_msgTypes[152]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22548,7 +22496,7 @@ func (x *TenantLifecycleProgress) String() string {
 func (*TenantLifecycleProgress) ProtoMessage() {}
 
 func (x *TenantLifecycleProgress) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[154]
+	mi := &file_internal_proto_msgTypes[152]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22561,7 +22509,7 @@ func (x *TenantLifecycleProgress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TenantLifecycleProgress.ProtoReflect.Descriptor instead.
 func (*TenantLifecycleProgress) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{154}
+	return file_internal_proto_rawDescGZIP(), []int{152}
 }
 
 func (x *TenantLifecycleProgress) GetTenantId() string {
@@ -22609,7 +22557,7 @@ type BuildRecipeContractOutputImageCommand struct {
 
 func (x *BuildRecipeContractOutputImageCommand) Reset() {
 	*x = BuildRecipeContractOutputImageCommand{}
-	mi := &file_internal_proto_msgTypes[155]
+	mi := &file_internal_proto_msgTypes[153]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22621,7 +22569,7 @@ func (x *BuildRecipeContractOutputImageCommand) String() string {
 func (*BuildRecipeContractOutputImageCommand) ProtoMessage() {}
 
 func (x *BuildRecipeContractOutputImageCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[155]
+	mi := &file_internal_proto_msgTypes[153]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22634,7 +22582,7 @@ func (x *BuildRecipeContractOutputImageCommand) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use BuildRecipeContractOutputImageCommand.ProtoReflect.Descriptor instead.
 func (*BuildRecipeContractOutputImageCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{155}
+	return file_internal_proto_rawDescGZIP(), []int{153}
 }
 
 func (x *BuildRecipeContractOutputImageCommand) GetEntrypoint() []string {
@@ -22662,7 +22610,7 @@ type UpdateRenewalSettingsRequest struct {
 
 func (x *UpdateRenewalSettingsRequest) Reset() {
 	*x = UpdateRenewalSettingsRequest{}
-	mi := &file_internal_proto_msgTypes[156]
+	mi := &file_internal_proto_msgTypes[154]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22674,7 +22622,7 @@ func (x *UpdateRenewalSettingsRequest) String() string {
 func (*UpdateRenewalSettingsRequest) ProtoMessage() {}
 
 func (x *UpdateRenewalSettingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[156]
+	mi := &file_internal_proto_msgTypes[154]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22687,7 +22635,7 @@ func (x *UpdateRenewalSettingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateRenewalSettingsRequest.ProtoReflect.Descriptor instead.
 func (*UpdateRenewalSettingsRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{156}
+	return file_internal_proto_rawDescGZIP(), []int{154}
 }
 
 func (x *UpdateRenewalSettingsRequest) GetRenewalMode() UpdateRenewalSettingsRequestRenewalModeEnum {
@@ -22722,7 +22670,7 @@ type WorkspaceApplicationEntry struct {
 
 func (x *WorkspaceApplicationEntry) Reset() {
 	*x = WorkspaceApplicationEntry{}
-	mi := &file_internal_proto_msgTypes[157]
+	mi := &file_internal_proto_msgTypes[155]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22734,7 +22682,7 @@ func (x *WorkspaceApplicationEntry) String() string {
 func (*WorkspaceApplicationEntry) ProtoMessage() {}
 
 func (x *WorkspaceApplicationEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[157]
+	mi := &file_internal_proto_msgTypes[155]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22747,7 +22695,7 @@ func (x *WorkspaceApplicationEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspaceApplicationEntry.ProtoReflect.Descriptor instead.
 func (*WorkspaceApplicationEntry) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{157}
+	return file_internal_proto_rawDescGZIP(), []int{155}
 }
 
 func (x *WorkspaceApplicationEntry) GetServiceName() string {
@@ -22785,7 +22733,7 @@ type PackageFormatContractReference struct {
 
 func (x *PackageFormatContractReference) Reset() {
 	*x = PackageFormatContractReference{}
-	mi := &file_internal_proto_msgTypes[158]
+	mi := &file_internal_proto_msgTypes[156]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22797,7 +22745,7 @@ func (x *PackageFormatContractReference) String() string {
 func (*PackageFormatContractReference) ProtoMessage() {}
 
 func (x *PackageFormatContractReference) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[158]
+	mi := &file_internal_proto_msgTypes[156]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22810,7 +22758,7 @@ func (x *PackageFormatContractReference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PackageFormatContractReference.ProtoReflect.Descriptor instead.
 func (*PackageFormatContractReference) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{158}
+	return file_internal_proto_rawDescGZIP(), []int{156}
 }
 
 func (x *PackageFormatContractReference) GetOwner() PackageFormatContractReferenceOwnerEnum {
@@ -22867,7 +22815,7 @@ type WorkspaceApplicationCredentials struct {
 
 func (x *WorkspaceApplicationCredentials) Reset() {
 	*x = WorkspaceApplicationCredentials{}
-	mi := &file_internal_proto_msgTypes[159]
+	mi := &file_internal_proto_msgTypes[157]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22879,7 +22827,7 @@ func (x *WorkspaceApplicationCredentials) String() string {
 func (*WorkspaceApplicationCredentials) ProtoMessage() {}
 
 func (x *WorkspaceApplicationCredentials) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[159]
+	mi := &file_internal_proto_msgTypes[157]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22892,7 +22840,7 @@ func (x *WorkspaceApplicationCredentials) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspaceApplicationCredentials.ProtoReflect.Descriptor instead.
 func (*WorkspaceApplicationCredentials) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{159}
+	return file_internal_proto_rawDescGZIP(), []int{157}
 }
 
 func (x *WorkspaceApplicationCredentials) GetWorkspaceId() string {
@@ -22943,7 +22891,7 @@ type UpgradePlanRules struct {
 
 func (x *UpgradePlanRules) Reset() {
 	*x = UpgradePlanRules{}
-	mi := &file_internal_proto_msgTypes[160]
+	mi := &file_internal_proto_msgTypes[158]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22955,7 +22903,7 @@ func (x *UpgradePlanRules) String() string {
 func (*UpgradePlanRules) ProtoMessage() {}
 
 func (x *UpgradePlanRules) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[160]
+	mi := &file_internal_proto_msgTypes[158]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22968,7 +22916,7 @@ func (x *UpgradePlanRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpgradePlanRules.ProtoReflect.Descriptor instead.
 func (*UpgradePlanRules) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{160}
+	return file_internal_proto_rawDescGZIP(), []int{158}
 }
 
 func (x *UpgradePlanRules) GetKind() UpgradePlanRulesKindEnum {
@@ -23073,7 +23021,7 @@ type DowngradePlanRules struct {
 
 func (x *DowngradePlanRules) Reset() {
 	*x = DowngradePlanRules{}
-	mi := &file_internal_proto_msgTypes[161]
+	mi := &file_internal_proto_msgTypes[159]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -23085,7 +23033,7 @@ func (x *DowngradePlanRules) String() string {
 func (*DowngradePlanRules) ProtoMessage() {}
 
 func (x *DowngradePlanRules) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[161]
+	mi := &file_internal_proto_msgTypes[159]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -23098,7 +23046,7 @@ func (x *DowngradePlanRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DowngradePlanRules.ProtoReflect.Descriptor instead.
 func (*DowngradePlanRules) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{161}
+	return file_internal_proto_rawDescGZIP(), []int{159}
 }
 
 func (x *DowngradePlanRules) GetKind() DowngradePlanRulesKindEnum {
@@ -23191,7 +23139,7 @@ type PlanChangePolicy struct {
 
 func (x *PlanChangePolicy) Reset() {
 	*x = PlanChangePolicy{}
-	mi := &file_internal_proto_msgTypes[162]
+	mi := &file_internal_proto_msgTypes[160]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -23203,7 +23151,7 @@ func (x *PlanChangePolicy) String() string {
 func (*PlanChangePolicy) ProtoMessage() {}
 
 func (x *PlanChangePolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[162]
+	mi := &file_internal_proto_msgTypes[160]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -23216,7 +23164,7 @@ func (x *PlanChangePolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanChangePolicy.ProtoReflect.Descriptor instead.
 func (*PlanChangePolicy) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{162}
+	return file_internal_proto_rawDescGZIP(), []int{160}
 }
 
 func (x *PlanChangePolicy) GetVersion() PlanChangePolicyVersionEnum {
@@ -23315,7 +23263,7 @@ type UpgradeProration struct {
 
 func (x *UpgradeProration) Reset() {
 	*x = UpgradeProration{}
-	mi := &file_internal_proto_msgTypes[163]
+	mi := &file_internal_proto_msgTypes[161]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -23327,7 +23275,7 @@ func (x *UpgradeProration) String() string {
 func (*UpgradeProration) ProtoMessage() {}
 
 func (x *UpgradeProration) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[163]
+	mi := &file_internal_proto_msgTypes[161]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -23340,7 +23288,7 @@ func (x *UpgradeProration) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpgradeProration.ProtoReflect.Descriptor instead.
 func (*UpgradeProration) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{163}
+	return file_internal_proto_rawDescGZIP(), []int{161}
 }
 
 func (x *UpgradeProration) GetPeriodMilliseconds() int64 {
@@ -23383,7 +23331,7 @@ type NextPeriodPlanQuote struct {
 
 func (x *NextPeriodPlanQuote) Reset() {
 	*x = NextPeriodPlanQuote{}
-	mi := &file_internal_proto_msgTypes[164]
+	mi := &file_internal_proto_msgTypes[162]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -23395,7 +23343,7 @@ func (x *NextPeriodPlanQuote) String() string {
 func (*NextPeriodPlanQuote) ProtoMessage() {}
 
 func (x *NextPeriodPlanQuote) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[164]
+	mi := &file_internal_proto_msgTypes[162]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -23408,7 +23356,7 @@ func (x *NextPeriodPlanQuote) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NextPeriodPlanQuote.ProtoReflect.Descriptor instead.
 func (*NextPeriodPlanQuote) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{164}
+	return file_internal_proto_rawDescGZIP(), []int{162}
 }
 
 func (x *NextPeriodPlanQuote) GetPeriodStart() *timestamppb.Timestamp {
@@ -23474,7 +23422,7 @@ type PlanChangeCalculation struct {
 
 func (x *PlanChangeCalculation) Reset() {
 	*x = PlanChangeCalculation{}
-	mi := &file_internal_proto_msgTypes[165]
+	mi := &file_internal_proto_msgTypes[163]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -23486,7 +23434,7 @@ func (x *PlanChangeCalculation) String() string {
 func (*PlanChangeCalculation) ProtoMessage() {}
 
 func (x *PlanChangeCalculation) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[165]
+	mi := &file_internal_proto_msgTypes[163]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -23499,7 +23447,7 @@ func (x *PlanChangeCalculation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanChangeCalculation.ProtoReflect.Descriptor instead.
 func (*PlanChangeCalculation) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{165}
+	return file_internal_proto_rawDescGZIP(), []int{163}
 }
 
 func (x *PlanChangeCalculation) GetPolicyVersion() PlanChangeCalculationPolicyVersionEnum {
@@ -23753,7 +23701,7 @@ type PlanChange struct {
 
 func (x *PlanChange) Reset() {
 	*x = PlanChange{}
-	mi := &file_internal_proto_msgTypes[166]
+	mi := &file_internal_proto_msgTypes[164]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -23765,7 +23713,7 @@ func (x *PlanChange) String() string {
 func (*PlanChange) ProtoMessage() {}
 
 func (x *PlanChange) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[166]
+	mi := &file_internal_proto_msgTypes[164]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -23778,7 +23726,7 @@ func (x *PlanChange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanChange.ProtoReflect.Descriptor instead.
 func (*PlanChange) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{166}
+	return file_internal_proto_rawDescGZIP(), []int{164}
 }
 
 func (x *PlanChange) GetId() string {
@@ -24162,7 +24110,7 @@ type PlanChangePage struct {
 
 func (x *PlanChangePage) Reset() {
 	*x = PlanChangePage{}
-	mi := &file_internal_proto_msgTypes[167]
+	mi := &file_internal_proto_msgTypes[165]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -24174,7 +24122,7 @@ func (x *PlanChangePage) String() string {
 func (*PlanChangePage) ProtoMessage() {}
 
 func (x *PlanChangePage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[167]
+	mi := &file_internal_proto_msgTypes[165]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -24187,7 +24135,7 @@ func (x *PlanChangePage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanChangePage.ProtoReflect.Descriptor instead.
 func (*PlanChangePage) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{167}
+	return file_internal_proto_rawDescGZIP(), []int{165}
 }
 
 func (x *PlanChangePage) GetItems() []*PlanChange {
@@ -24214,7 +24162,7 @@ type CancelPlanChangeRequest struct {
 
 func (x *CancelPlanChangeRequest) Reset() {
 	*x = CancelPlanChangeRequest{}
-	mi := &file_internal_proto_msgTypes[168]
+	mi := &file_internal_proto_msgTypes[166]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -24226,7 +24174,7 @@ func (x *CancelPlanChangeRequest) String() string {
 func (*CancelPlanChangeRequest) ProtoMessage() {}
 
 func (x *CancelPlanChangeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[168]
+	mi := &file_internal_proto_msgTypes[166]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -24239,7 +24187,7 @@ func (x *CancelPlanChangeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelPlanChangeRequest.ProtoReflect.Descriptor instead.
 func (*CancelPlanChangeRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{168}
+	return file_internal_proto_rawDescGZIP(), []int{166}
 }
 
 func (x *CancelPlanChangeRequest) GetExpectedScheduleVersion() int64 {
@@ -24300,7 +24248,7 @@ type PlanChangeEvidence struct {
 
 func (x *PlanChangeEvidence) Reset() {
 	*x = PlanChangeEvidence{}
-	mi := &file_internal_proto_msgTypes[169]
+	mi := &file_internal_proto_msgTypes[167]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -24312,7 +24260,7 @@ func (x *PlanChangeEvidence) String() string {
 func (*PlanChangeEvidence) ProtoMessage() {}
 
 func (x *PlanChangeEvidence) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[169]
+	mi := &file_internal_proto_msgTypes[167]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -24325,7 +24273,7 @@ func (x *PlanChangeEvidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanChangeEvidence.ProtoReflect.Descriptor instead.
 func (*PlanChangeEvidence) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{169}
+	return file_internal_proto_rawDescGZIP(), []int{167}
 }
 
 func (x *PlanChangeEvidence) GetSchemaVersion() int32 {
@@ -24599,7 +24547,7 @@ type SupplementalRefundEvidence struct {
 
 func (x *SupplementalRefundEvidence) Reset() {
 	*x = SupplementalRefundEvidence{}
-	mi := &file_internal_proto_msgTypes[170]
+	mi := &file_internal_proto_msgTypes[168]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -24611,7 +24559,7 @@ func (x *SupplementalRefundEvidence) String() string {
 func (*SupplementalRefundEvidence) ProtoMessage() {}
 
 func (x *SupplementalRefundEvidence) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[170]
+	mi := &file_internal_proto_msgTypes[168]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -24624,7 +24572,7 @@ func (x *SupplementalRefundEvidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SupplementalRefundEvidence.ProtoReflect.Descriptor instead.
 func (*SupplementalRefundEvidence) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{170}
+	return file_internal_proto_rawDescGZIP(), []int{168}
 }
 
 func (x *SupplementalRefundEvidence) GetSchemaVersion() int32 {
@@ -24762,7 +24710,7 @@ type GetLoginContextRpcRequest struct {
 
 func (x *GetLoginContextRpcRequest) Reset() {
 	*x = GetLoginContextRpcRequest{}
-	mi := &file_internal_proto_msgTypes[171]
+	mi := &file_internal_proto_msgTypes[169]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -24774,7 +24722,7 @@ func (x *GetLoginContextRpcRequest) String() string {
 func (*GetLoginContextRpcRequest) ProtoMessage() {}
 
 func (x *GetLoginContextRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[171]
+	mi := &file_internal_proto_msgTypes[169]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -24787,7 +24735,7 @@ func (x *GetLoginContextRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLoginContextRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetLoginContextRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{171}
+	return file_internal_proto_rawDescGZIP(), []int{169}
 }
 
 func (x *GetLoginContextRpcRequest) GetContext() *CallContext {
@@ -24807,7 +24755,7 @@ type LoginRpcRequest struct {
 
 func (x *LoginRpcRequest) Reset() {
 	*x = LoginRpcRequest{}
-	mi := &file_internal_proto_msgTypes[172]
+	mi := &file_internal_proto_msgTypes[170]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -24819,7 +24767,7 @@ func (x *LoginRpcRequest) String() string {
 func (*LoginRpcRequest) ProtoMessage() {}
 
 func (x *LoginRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[172]
+	mi := &file_internal_proto_msgTypes[170]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -24832,7 +24780,7 @@ func (x *LoginRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LoginRpcRequest.ProtoReflect.Descriptor instead.
 func (*LoginRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{172}
+	return file_internal_proto_rawDescGZIP(), []int{170}
 }
 
 func (x *LoginRpcRequest) GetContext() *CallContext {
@@ -24858,7 +24806,7 @@ type GetSessionRpcRequest struct {
 
 func (x *GetSessionRpcRequest) Reset() {
 	*x = GetSessionRpcRequest{}
-	mi := &file_internal_proto_msgTypes[173]
+	mi := &file_internal_proto_msgTypes[171]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -24870,7 +24818,7 @@ func (x *GetSessionRpcRequest) String() string {
 func (*GetSessionRpcRequest) ProtoMessage() {}
 
 func (x *GetSessionRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[173]
+	mi := &file_internal_proto_msgTypes[171]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -24883,7 +24831,7 @@ func (x *GetSessionRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSessionRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetSessionRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{173}
+	return file_internal_proto_rawDescGZIP(), []int{171}
 }
 
 func (x *GetSessionRpcRequest) GetContext() *CallContext {
@@ -24902,7 +24850,7 @@ type LogoutRpcRequest struct {
 
 func (x *LogoutRpcRequest) Reset() {
 	*x = LogoutRpcRequest{}
-	mi := &file_internal_proto_msgTypes[174]
+	mi := &file_internal_proto_msgTypes[172]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -24914,7 +24862,7 @@ func (x *LogoutRpcRequest) String() string {
 func (*LogoutRpcRequest) ProtoMessage() {}
 
 func (x *LogoutRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[174]
+	mi := &file_internal_proto_msgTypes[172]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -24927,7 +24875,7 @@ func (x *LogoutRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogoutRpcRequest.ProtoReflect.Descriptor instead.
 func (*LogoutRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{174}
+	return file_internal_proto_rawDescGZIP(), []int{172}
 }
 
 func (x *LogoutRpcRequest) GetContext() *CallContext {
@@ -24946,7 +24894,7 @@ type GetTenantRpcRequest struct {
 
 func (x *GetTenantRpcRequest) Reset() {
 	*x = GetTenantRpcRequest{}
-	mi := &file_internal_proto_msgTypes[175]
+	mi := &file_internal_proto_msgTypes[173]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -24958,7 +24906,7 @@ func (x *GetTenantRpcRequest) String() string {
 func (*GetTenantRpcRequest) ProtoMessage() {}
 
 func (x *GetTenantRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[175]
+	mi := &file_internal_proto_msgTypes[173]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -24971,7 +24919,7 @@ func (x *GetTenantRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTenantRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetTenantRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{175}
+	return file_internal_proto_rawDescGZIP(), []int{173}
 }
 
 func (x *GetTenantRpcRequest) GetContext() *CallContext {
@@ -24992,7 +24940,7 @@ type ListMembersRpcRequest struct {
 
 func (x *ListMembersRpcRequest) Reset() {
 	*x = ListMembersRpcRequest{}
-	mi := &file_internal_proto_msgTypes[176]
+	mi := &file_internal_proto_msgTypes[174]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25004,7 +24952,7 @@ func (x *ListMembersRpcRequest) String() string {
 func (*ListMembersRpcRequest) ProtoMessage() {}
 
 func (x *ListMembersRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[176]
+	mi := &file_internal_proto_msgTypes[174]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25017,7 +24965,7 @@ func (x *ListMembersRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMembersRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListMembersRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{176}
+	return file_internal_proto_rawDescGZIP(), []int{174}
 }
 
 func (x *ListMembersRpcRequest) GetContext() *CallContext {
@@ -25052,7 +25000,7 @@ type ListInvitationsRpcRequest struct {
 
 func (x *ListInvitationsRpcRequest) Reset() {
 	*x = ListInvitationsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[177]
+	mi := &file_internal_proto_msgTypes[175]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25064,7 +25012,7 @@ func (x *ListInvitationsRpcRequest) String() string {
 func (*ListInvitationsRpcRequest) ProtoMessage() {}
 
 func (x *ListInvitationsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[177]
+	mi := &file_internal_proto_msgTypes[175]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25077,7 +25025,7 @@ func (x *ListInvitationsRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListInvitationsRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListInvitationsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{177}
+	return file_internal_proto_rawDescGZIP(), []int{175}
 }
 
 func (x *ListInvitationsRpcRequest) GetContext() *CallContext {
@@ -25111,7 +25059,7 @@ type InviteMemberRpcRequest struct {
 
 func (x *InviteMemberRpcRequest) Reset() {
 	*x = InviteMemberRpcRequest{}
-	mi := &file_internal_proto_msgTypes[178]
+	mi := &file_internal_proto_msgTypes[176]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25123,7 +25071,7 @@ func (x *InviteMemberRpcRequest) String() string {
 func (*InviteMemberRpcRequest) ProtoMessage() {}
 
 func (x *InviteMemberRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[178]
+	mi := &file_internal_proto_msgTypes[176]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25136,7 +25084,7 @@ func (x *InviteMemberRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InviteMemberRpcRequest.ProtoReflect.Descriptor instead.
 func (*InviteMemberRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{178}
+	return file_internal_proto_rawDescGZIP(), []int{176}
 }
 
 func (x *InviteMemberRpcRequest) GetContext() *CallContext {
@@ -25163,7 +25111,7 @@ type AcceptInvitationRpcRequest struct {
 
 func (x *AcceptInvitationRpcRequest) Reset() {
 	*x = AcceptInvitationRpcRequest{}
-	mi := &file_internal_proto_msgTypes[179]
+	mi := &file_internal_proto_msgTypes[177]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25175,7 +25123,7 @@ func (x *AcceptInvitationRpcRequest) String() string {
 func (*AcceptInvitationRpcRequest) ProtoMessage() {}
 
 func (x *AcceptInvitationRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[179]
+	mi := &file_internal_proto_msgTypes[177]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25188,7 +25136,7 @@ func (x *AcceptInvitationRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcceptInvitationRpcRequest.ProtoReflect.Descriptor instead.
 func (*AcceptInvitationRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{179}
+	return file_internal_proto_rawDescGZIP(), []int{177}
 }
 
 func (x *AcceptInvitationRpcRequest) GetContext() *CallContext {
@@ -25215,7 +25163,7 @@ type RevokeInvitationRpcRequest struct {
 
 func (x *RevokeInvitationRpcRequest) Reset() {
 	*x = RevokeInvitationRpcRequest{}
-	mi := &file_internal_proto_msgTypes[180]
+	mi := &file_internal_proto_msgTypes[178]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25227,7 +25175,7 @@ func (x *RevokeInvitationRpcRequest) String() string {
 func (*RevokeInvitationRpcRequest) ProtoMessage() {}
 
 func (x *RevokeInvitationRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[180]
+	mi := &file_internal_proto_msgTypes[178]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25240,7 +25188,7 @@ func (x *RevokeInvitationRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeInvitationRpcRequest.ProtoReflect.Descriptor instead.
 func (*RevokeInvitationRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{180}
+	return file_internal_proto_rawDescGZIP(), []int{178}
 }
 
 func (x *RevokeInvitationRpcRequest) GetContext() *CallContext {
@@ -25268,7 +25216,7 @@ type UpdateMemberRoleRpcRequest struct {
 
 func (x *UpdateMemberRoleRpcRequest) Reset() {
 	*x = UpdateMemberRoleRpcRequest{}
-	mi := &file_internal_proto_msgTypes[181]
+	mi := &file_internal_proto_msgTypes[179]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25280,7 +25228,7 @@ func (x *UpdateMemberRoleRpcRequest) String() string {
 func (*UpdateMemberRoleRpcRequest) ProtoMessage() {}
 
 func (x *UpdateMemberRoleRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[181]
+	mi := &file_internal_proto_msgTypes[179]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25293,7 +25241,7 @@ func (x *UpdateMemberRoleRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateMemberRoleRpcRequest.ProtoReflect.Descriptor instead.
 func (*UpdateMemberRoleRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{181}
+	return file_internal_proto_rawDescGZIP(), []int{179}
 }
 
 func (x *UpdateMemberRoleRpcRequest) GetContext() *CallContext {
@@ -25327,7 +25275,7 @@ type RemoveMemberRpcRequest struct {
 
 func (x *RemoveMemberRpcRequest) Reset() {
 	*x = RemoveMemberRpcRequest{}
-	mi := &file_internal_proto_msgTypes[182]
+	mi := &file_internal_proto_msgTypes[180]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25339,7 +25287,7 @@ func (x *RemoveMemberRpcRequest) String() string {
 func (*RemoveMemberRpcRequest) ProtoMessage() {}
 
 func (x *RemoveMemberRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[182]
+	mi := &file_internal_proto_msgTypes[180]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25352,7 +25300,7 @@ func (x *RemoveMemberRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveMemberRpcRequest.ProtoReflect.Descriptor instead.
 func (*RemoveMemberRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{182}
+	return file_internal_proto_rawDescGZIP(), []int{180}
 }
 
 func (x *RemoveMemberRpcRequest) GetContext() *CallContext {
@@ -25380,7 +25328,7 @@ type ListNamespacesRpcRequest struct {
 
 func (x *ListNamespacesRpcRequest) Reset() {
 	*x = ListNamespacesRpcRequest{}
-	mi := &file_internal_proto_msgTypes[183]
+	mi := &file_internal_proto_msgTypes[181]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25392,7 +25340,7 @@ func (x *ListNamespacesRpcRequest) String() string {
 func (*ListNamespacesRpcRequest) ProtoMessage() {}
 
 func (x *ListNamespacesRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[183]
+	mi := &file_internal_proto_msgTypes[181]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25405,7 +25353,7 @@ func (x *ListNamespacesRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNamespacesRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListNamespacesRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{183}
+	return file_internal_proto_rawDescGZIP(), []int{181}
 }
 
 func (x *ListNamespacesRpcRequest) GetContext() *CallContext {
@@ -25439,7 +25387,7 @@ type CreateNamespaceRpcRequest struct {
 
 func (x *CreateNamespaceRpcRequest) Reset() {
 	*x = CreateNamespaceRpcRequest{}
-	mi := &file_internal_proto_msgTypes[184]
+	mi := &file_internal_proto_msgTypes[182]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25451,7 +25399,7 @@ func (x *CreateNamespaceRpcRequest) String() string {
 func (*CreateNamespaceRpcRequest) ProtoMessage() {}
 
 func (x *CreateNamespaceRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[184]
+	mi := &file_internal_proto_msgTypes[182]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25464,7 +25412,7 @@ func (x *CreateNamespaceRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateNamespaceRpcRequest.ProtoReflect.Descriptor instead.
 func (*CreateNamespaceRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{184}
+	return file_internal_proto_rawDescGZIP(), []int{182}
 }
 
 func (x *CreateNamespaceRpcRequest) GetContext() *CallContext {
@@ -25492,7 +25440,7 @@ type UpdateNamespaceRpcRequest struct {
 
 func (x *UpdateNamespaceRpcRequest) Reset() {
 	*x = UpdateNamespaceRpcRequest{}
-	mi := &file_internal_proto_msgTypes[185]
+	mi := &file_internal_proto_msgTypes[183]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25504,7 +25452,7 @@ func (x *UpdateNamespaceRpcRequest) String() string {
 func (*UpdateNamespaceRpcRequest) ProtoMessage() {}
 
 func (x *UpdateNamespaceRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[185]
+	mi := &file_internal_proto_msgTypes[183]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25517,7 +25465,7 @@ func (x *UpdateNamespaceRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateNamespaceRpcRequest.ProtoReflect.Descriptor instead.
 func (*UpdateNamespaceRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{185}
+	return file_internal_proto_rawDescGZIP(), []int{183}
 }
 
 func (x *UpdateNamespaceRpcRequest) GetContext() *CallContext {
@@ -25551,7 +25499,7 @@ type ArchiveNamespaceRpcRequest struct {
 
 func (x *ArchiveNamespaceRpcRequest) Reset() {
 	*x = ArchiveNamespaceRpcRequest{}
-	mi := &file_internal_proto_msgTypes[186]
+	mi := &file_internal_proto_msgTypes[184]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25563,7 +25511,7 @@ func (x *ArchiveNamespaceRpcRequest) String() string {
 func (*ArchiveNamespaceRpcRequest) ProtoMessage() {}
 
 func (x *ArchiveNamespaceRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[186]
+	mi := &file_internal_proto_msgTypes[184]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25576,7 +25524,7 @@ func (x *ArchiveNamespaceRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchiveNamespaceRpcRequest.ProtoReflect.Descriptor instead.
 func (*ArchiveNamespaceRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{186}
+	return file_internal_proto_rawDescGZIP(), []int{184}
 }
 
 func (x *ArchiveNamespaceRpcRequest) GetContext() *CallContext {
@@ -25608,7 +25556,7 @@ type ListPackagesRpcRequest struct {
 
 func (x *ListPackagesRpcRequest) Reset() {
 	*x = ListPackagesRpcRequest{}
-	mi := &file_internal_proto_msgTypes[187]
+	mi := &file_internal_proto_msgTypes[185]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25620,7 +25568,7 @@ func (x *ListPackagesRpcRequest) String() string {
 func (*ListPackagesRpcRequest) ProtoMessage() {}
 
 func (x *ListPackagesRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[187]
+	mi := &file_internal_proto_msgTypes[185]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25633,7 +25581,7 @@ func (x *ListPackagesRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPackagesRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListPackagesRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{187}
+	return file_internal_proto_rawDescGZIP(), []int{185}
 }
 
 func (x *ListPackagesRpcRequest) GetContext() *CallContext {
@@ -25695,7 +25643,7 @@ type CreatePackageRpcRequest struct {
 
 func (x *CreatePackageRpcRequest) Reset() {
 	*x = CreatePackageRpcRequest{}
-	mi := &file_internal_proto_msgTypes[188]
+	mi := &file_internal_proto_msgTypes[186]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25707,7 +25655,7 @@ func (x *CreatePackageRpcRequest) String() string {
 func (*CreatePackageRpcRequest) ProtoMessage() {}
 
 func (x *CreatePackageRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[188]
+	mi := &file_internal_proto_msgTypes[186]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25720,7 +25668,7 @@ func (x *CreatePackageRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePackageRpcRequest.ProtoReflect.Descriptor instead.
 func (*CreatePackageRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{188}
+	return file_internal_proto_rawDescGZIP(), []int{186}
 }
 
 func (x *CreatePackageRpcRequest) GetContext() *CallContext {
@@ -25747,7 +25695,7 @@ type GetPackageRpcRequest struct {
 
 func (x *GetPackageRpcRequest) Reset() {
 	*x = GetPackageRpcRequest{}
-	mi := &file_internal_proto_msgTypes[189]
+	mi := &file_internal_proto_msgTypes[187]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25759,7 +25707,7 @@ func (x *GetPackageRpcRequest) String() string {
 func (*GetPackageRpcRequest) ProtoMessage() {}
 
 func (x *GetPackageRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[189]
+	mi := &file_internal_proto_msgTypes[187]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25772,7 +25720,7 @@ func (x *GetPackageRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPackageRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetPackageRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{189}
+	return file_internal_proto_rawDescGZIP(), []int{187}
 }
 
 func (x *GetPackageRpcRequest) GetContext() *CallContext {
@@ -25800,7 +25748,7 @@ type UpdatePackageRpcRequest struct {
 
 func (x *UpdatePackageRpcRequest) Reset() {
 	*x = UpdatePackageRpcRequest{}
-	mi := &file_internal_proto_msgTypes[190]
+	mi := &file_internal_proto_msgTypes[188]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25812,7 +25760,7 @@ func (x *UpdatePackageRpcRequest) String() string {
 func (*UpdatePackageRpcRequest) ProtoMessage() {}
 
 func (x *UpdatePackageRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[190]
+	mi := &file_internal_proto_msgTypes[188]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25825,7 +25773,7 @@ func (x *UpdatePackageRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePackageRpcRequest.ProtoReflect.Descriptor instead.
 func (*UpdatePackageRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{190}
+	return file_internal_proto_rawDescGZIP(), []int{188}
 }
 
 func (x *UpdatePackageRpcRequest) GetContext() *CallContext {
@@ -25859,7 +25807,7 @@ type ArchivePackageRpcRequest struct {
 
 func (x *ArchivePackageRpcRequest) Reset() {
 	*x = ArchivePackageRpcRequest{}
-	mi := &file_internal_proto_msgTypes[191]
+	mi := &file_internal_proto_msgTypes[189]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25871,7 +25819,7 @@ func (x *ArchivePackageRpcRequest) String() string {
 func (*ArchivePackageRpcRequest) ProtoMessage() {}
 
 func (x *ArchivePackageRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[191]
+	mi := &file_internal_proto_msgTypes[189]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25884,7 +25832,7 @@ func (x *ArchivePackageRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchivePackageRpcRequest.ProtoReflect.Descriptor instead.
 func (*ArchivePackageRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{191}
+	return file_internal_proto_rawDescGZIP(), []int{189}
 }
 
 func (x *ArchivePackageRpcRequest) GetContext() *CallContext {
@@ -25912,7 +25860,7 @@ type CreateUploadRpcRequest struct {
 
 func (x *CreateUploadRpcRequest) Reset() {
 	*x = CreateUploadRpcRequest{}
-	mi := &file_internal_proto_msgTypes[192]
+	mi := &file_internal_proto_msgTypes[190]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25924,7 +25872,7 @@ func (x *CreateUploadRpcRequest) String() string {
 func (*CreateUploadRpcRequest) ProtoMessage() {}
 
 func (x *CreateUploadRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[192]
+	mi := &file_internal_proto_msgTypes[190]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25937,7 +25885,7 @@ func (x *CreateUploadRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateUploadRpcRequest.ProtoReflect.Descriptor instead.
 func (*CreateUploadRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{192}
+	return file_internal_proto_rawDescGZIP(), []int{190}
 }
 
 func (x *CreateUploadRpcRequest) GetContext() *CallContext {
@@ -25971,7 +25919,7 @@ type GetUploadRpcRequest struct {
 
 func (x *GetUploadRpcRequest) Reset() {
 	*x = GetUploadRpcRequest{}
-	mi := &file_internal_proto_msgTypes[193]
+	mi := &file_internal_proto_msgTypes[191]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25983,7 +25931,7 @@ func (x *GetUploadRpcRequest) String() string {
 func (*GetUploadRpcRequest) ProtoMessage() {}
 
 func (x *GetUploadRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[193]
+	mi := &file_internal_proto_msgTypes[191]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25996,7 +25944,7 @@ func (x *GetUploadRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUploadRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetUploadRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{193}
+	return file_internal_proto_rawDescGZIP(), []int{191}
 }
 
 func (x *GetUploadRpcRequest) GetContext() *CallContext {
@@ -26024,7 +25972,7 @@ type CreateUploadPartRpcRequest struct {
 
 func (x *CreateUploadPartRpcRequest) Reset() {
 	*x = CreateUploadPartRpcRequest{}
-	mi := &file_internal_proto_msgTypes[194]
+	mi := &file_internal_proto_msgTypes[192]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26036,7 +25984,7 @@ func (x *CreateUploadPartRpcRequest) String() string {
 func (*CreateUploadPartRpcRequest) ProtoMessage() {}
 
 func (x *CreateUploadPartRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[194]
+	mi := &file_internal_proto_msgTypes[192]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26049,7 +25997,7 @@ func (x *CreateUploadPartRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateUploadPartRpcRequest.ProtoReflect.Descriptor instead.
 func (*CreateUploadPartRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{194}
+	return file_internal_proto_rawDescGZIP(), []int{192}
 }
 
 func (x *CreateUploadPartRpcRequest) GetContext() *CallContext {
@@ -26084,7 +26032,7 @@ type CompleteUploadRpcRequest struct {
 
 func (x *CompleteUploadRpcRequest) Reset() {
 	*x = CompleteUploadRpcRequest{}
-	mi := &file_internal_proto_msgTypes[195]
+	mi := &file_internal_proto_msgTypes[193]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26096,7 +26044,7 @@ func (x *CompleteUploadRpcRequest) String() string {
 func (*CompleteUploadRpcRequest) ProtoMessage() {}
 
 func (x *CompleteUploadRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[195]
+	mi := &file_internal_proto_msgTypes[193]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26109,7 +26057,7 @@ func (x *CompleteUploadRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompleteUploadRpcRequest.ProtoReflect.Descriptor instead.
 func (*CompleteUploadRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{195}
+	return file_internal_proto_rawDescGZIP(), []int{193}
 }
 
 func (x *CompleteUploadRpcRequest) GetContext() *CallContext {
@@ -26145,7 +26093,7 @@ type ListPackageVersionsRpcRequest struct {
 
 func (x *ListPackageVersionsRpcRequest) Reset() {
 	*x = ListPackageVersionsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[196]
+	mi := &file_internal_proto_msgTypes[194]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26157,7 +26105,7 @@ func (x *ListPackageVersionsRpcRequest) String() string {
 func (*ListPackageVersionsRpcRequest) ProtoMessage() {}
 
 func (x *ListPackageVersionsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[196]
+	mi := &file_internal_proto_msgTypes[194]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26170,7 +26118,7 @@ func (x *ListPackageVersionsRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPackageVersionsRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListPackageVersionsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{196}
+	return file_internal_proto_rawDescGZIP(), []int{194}
 }
 
 func (x *ListPackageVersionsRpcRequest) GetContext() *CallContext {
@@ -26211,7 +26159,7 @@ type GetPackageVersionRpcRequest struct {
 
 func (x *GetPackageVersionRpcRequest) Reset() {
 	*x = GetPackageVersionRpcRequest{}
-	mi := &file_internal_proto_msgTypes[197]
+	mi := &file_internal_proto_msgTypes[195]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26223,7 +26171,7 @@ func (x *GetPackageVersionRpcRequest) String() string {
 func (*GetPackageVersionRpcRequest) ProtoMessage() {}
 
 func (x *GetPackageVersionRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[197]
+	mi := &file_internal_proto_msgTypes[195]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26236,7 +26184,7 @@ func (x *GetPackageVersionRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPackageVersionRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetPackageVersionRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{197}
+	return file_internal_proto_rawDescGZIP(), []int{195}
 }
 
 func (x *GetPackageVersionRpcRequest) GetContext() *CallContext {
@@ -26263,7 +26211,7 @@ type CreateBuildRpcRequest struct {
 
 func (x *CreateBuildRpcRequest) Reset() {
 	*x = CreateBuildRpcRequest{}
-	mi := &file_internal_proto_msgTypes[198]
+	mi := &file_internal_proto_msgTypes[196]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26275,7 +26223,7 @@ func (x *CreateBuildRpcRequest) String() string {
 func (*CreateBuildRpcRequest) ProtoMessage() {}
 
 func (x *CreateBuildRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[198]
+	mi := &file_internal_proto_msgTypes[196]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26288,7 +26236,7 @@ func (x *CreateBuildRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateBuildRpcRequest.ProtoReflect.Descriptor instead.
 func (*CreateBuildRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{198}
+	return file_internal_proto_rawDescGZIP(), []int{196}
 }
 
 func (x *CreateBuildRpcRequest) GetContext() *CallContext {
@@ -26317,7 +26265,7 @@ type ListBuildsRpcRequest struct {
 
 func (x *ListBuildsRpcRequest) Reset() {
 	*x = ListBuildsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[199]
+	mi := &file_internal_proto_msgTypes[197]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26329,7 +26277,7 @@ func (x *ListBuildsRpcRequest) String() string {
 func (*ListBuildsRpcRequest) ProtoMessage() {}
 
 func (x *ListBuildsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[199]
+	mi := &file_internal_proto_msgTypes[197]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26342,7 +26290,7 @@ func (x *ListBuildsRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBuildsRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListBuildsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{199}
+	return file_internal_proto_rawDescGZIP(), []int{197}
 }
 
 func (x *ListBuildsRpcRequest) GetContext() *CallContext {
@@ -26383,7 +26331,7 @@ type GetBuildRpcRequest struct {
 
 func (x *GetBuildRpcRequest) Reset() {
 	*x = GetBuildRpcRequest{}
-	mi := &file_internal_proto_msgTypes[200]
+	mi := &file_internal_proto_msgTypes[198]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26395,7 +26343,7 @@ func (x *GetBuildRpcRequest) String() string {
 func (*GetBuildRpcRequest) ProtoMessage() {}
 
 func (x *GetBuildRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[200]
+	mi := &file_internal_proto_msgTypes[198]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26408,7 +26356,7 @@ func (x *GetBuildRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBuildRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetBuildRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{200}
+	return file_internal_proto_rawDescGZIP(), []int{198}
 }
 
 func (x *GetBuildRpcRequest) GetContext() *CallContext {
@@ -26437,7 +26385,7 @@ type ListBuildLogsRpcRequest struct {
 
 func (x *ListBuildLogsRpcRequest) Reset() {
 	*x = ListBuildLogsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[201]
+	mi := &file_internal_proto_msgTypes[199]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26449,7 +26397,7 @@ func (x *ListBuildLogsRpcRequest) String() string {
 func (*ListBuildLogsRpcRequest) ProtoMessage() {}
 
 func (x *ListBuildLogsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[201]
+	mi := &file_internal_proto_msgTypes[199]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26462,7 +26410,7 @@ func (x *ListBuildLogsRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBuildLogsRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListBuildLogsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{201}
+	return file_internal_proto_rawDescGZIP(), []int{199}
 }
 
 func (x *ListBuildLogsRpcRequest) GetContext() *CallContext {
@@ -26503,7 +26451,7 @@ type RetryBuildRpcRequest struct {
 
 func (x *RetryBuildRpcRequest) Reset() {
 	*x = RetryBuildRpcRequest{}
-	mi := &file_internal_proto_msgTypes[202]
+	mi := &file_internal_proto_msgTypes[200]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26515,7 +26463,7 @@ func (x *RetryBuildRpcRequest) String() string {
 func (*RetryBuildRpcRequest) ProtoMessage() {}
 
 func (x *RetryBuildRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[202]
+	mi := &file_internal_proto_msgTypes[200]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26528,7 +26476,7 @@ func (x *RetryBuildRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RetryBuildRpcRequest.ProtoReflect.Descriptor instead.
 func (*RetryBuildRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{202}
+	return file_internal_proto_rawDescGZIP(), []int{200}
 }
 
 func (x *RetryBuildRpcRequest) GetContext() *CallContext {
@@ -26558,7 +26506,7 @@ type ListCapabilityVersionsRpcRequest struct {
 
 func (x *ListCapabilityVersionsRpcRequest) Reset() {
 	*x = ListCapabilityVersionsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[203]
+	mi := &file_internal_proto_msgTypes[201]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26570,7 +26518,7 @@ func (x *ListCapabilityVersionsRpcRequest) String() string {
 func (*ListCapabilityVersionsRpcRequest) ProtoMessage() {}
 
 func (x *ListCapabilityVersionsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[203]
+	mi := &file_internal_proto_msgTypes[201]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26583,7 +26531,7 @@ func (x *ListCapabilityVersionsRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCapabilityVersionsRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListCapabilityVersionsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{203}
+	return file_internal_proto_rawDescGZIP(), []int{201}
 }
 
 func (x *ListCapabilityVersionsRpcRequest) GetContext() *CallContext {
@@ -26631,7 +26579,7 @@ type GetCapabilityVersionRpcRequest struct {
 
 func (x *GetCapabilityVersionRpcRequest) Reset() {
 	*x = GetCapabilityVersionRpcRequest{}
-	mi := &file_internal_proto_msgTypes[204]
+	mi := &file_internal_proto_msgTypes[202]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26643,7 +26591,7 @@ func (x *GetCapabilityVersionRpcRequest) String() string {
 func (*GetCapabilityVersionRpcRequest) ProtoMessage() {}
 
 func (x *GetCapabilityVersionRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[204]
+	mi := &file_internal_proto_msgTypes[202]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26656,7 +26604,7 @@ func (x *GetCapabilityVersionRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCapabilityVersionRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetCapabilityVersionRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{204}
+	return file_internal_proto_rawDescGZIP(), []int{202}
 }
 
 func (x *GetCapabilityVersionRpcRequest) GetContext() *CallContext {
@@ -26683,7 +26631,7 @@ type DeleteCapabilityVersionRpcRequest struct {
 
 func (x *DeleteCapabilityVersionRpcRequest) Reset() {
 	*x = DeleteCapabilityVersionRpcRequest{}
-	mi := &file_internal_proto_msgTypes[205]
+	mi := &file_internal_proto_msgTypes[203]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26695,7 +26643,7 @@ func (x *DeleteCapabilityVersionRpcRequest) String() string {
 func (*DeleteCapabilityVersionRpcRequest) ProtoMessage() {}
 
 func (x *DeleteCapabilityVersionRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[205]
+	mi := &file_internal_proto_msgTypes[203]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26708,7 +26656,7 @@ func (x *DeleteCapabilityVersionRpcRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use DeleteCapabilityVersionRpcRequest.ProtoReflect.Descriptor instead.
 func (*DeleteCapabilityVersionRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{205}
+	return file_internal_proto_rawDescGZIP(), []int{203}
 }
 
 func (x *DeleteCapabilityVersionRpcRequest) GetContext() *CallContext {
@@ -26736,7 +26684,7 @@ type PublishOfficialPackageRpcRequest struct {
 
 func (x *PublishOfficialPackageRpcRequest) Reset() {
 	*x = PublishOfficialPackageRpcRequest{}
-	mi := &file_internal_proto_msgTypes[206]
+	mi := &file_internal_proto_msgTypes[204]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26748,7 +26696,7 @@ func (x *PublishOfficialPackageRpcRequest) String() string {
 func (*PublishOfficialPackageRpcRequest) ProtoMessage() {}
 
 func (x *PublishOfficialPackageRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[206]
+	mi := &file_internal_proto_msgTypes[204]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26761,7 +26709,7 @@ func (x *PublishOfficialPackageRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishOfficialPackageRpcRequest.ProtoReflect.Descriptor instead.
 func (*PublishOfficialPackageRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{206}
+	return file_internal_proto_rawDescGZIP(), []int{204}
 }
 
 func (x *PublishOfficialPackageRpcRequest) GetContext() *CallContext {
@@ -26795,7 +26743,7 @@ type CreateQuoteRpcRequest struct {
 
 func (x *CreateQuoteRpcRequest) Reset() {
 	*x = CreateQuoteRpcRequest{}
-	mi := &file_internal_proto_msgTypes[207]
+	mi := &file_internal_proto_msgTypes[205]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26807,7 +26755,7 @@ func (x *CreateQuoteRpcRequest) String() string {
 func (*CreateQuoteRpcRequest) ProtoMessage() {}
 
 func (x *CreateQuoteRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[207]
+	mi := &file_internal_proto_msgTypes[205]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26820,7 +26768,7 @@ func (x *CreateQuoteRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateQuoteRpcRequest.ProtoReflect.Descriptor instead.
 func (*CreateQuoteRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{207}
+	return file_internal_proto_rawDescGZIP(), []int{205}
 }
 
 func (x *CreateQuoteRpcRequest) GetContext() *CallContext {
@@ -26847,7 +26795,7 @@ type GetQuoteRpcRequest struct {
 
 func (x *GetQuoteRpcRequest) Reset() {
 	*x = GetQuoteRpcRequest{}
-	mi := &file_internal_proto_msgTypes[208]
+	mi := &file_internal_proto_msgTypes[206]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26859,7 +26807,7 @@ func (x *GetQuoteRpcRequest) String() string {
 func (*GetQuoteRpcRequest) ProtoMessage() {}
 
 func (x *GetQuoteRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[208]
+	mi := &file_internal_proto_msgTypes[206]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26872,7 +26820,7 @@ func (x *GetQuoteRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetQuoteRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetQuoteRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{208}
+	return file_internal_proto_rawDescGZIP(), []int{206}
 }
 
 func (x *GetQuoteRpcRequest) GetContext() *CallContext {
@@ -26899,7 +26847,7 @@ type CreateWorkspaceRpcRequest struct {
 
 func (x *CreateWorkspaceRpcRequest) Reset() {
 	*x = CreateWorkspaceRpcRequest{}
-	mi := &file_internal_proto_msgTypes[209]
+	mi := &file_internal_proto_msgTypes[207]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26911,7 +26859,7 @@ func (x *CreateWorkspaceRpcRequest) String() string {
 func (*CreateWorkspaceRpcRequest) ProtoMessage() {}
 
 func (x *CreateWorkspaceRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[209]
+	mi := &file_internal_proto_msgTypes[207]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26924,7 +26872,7 @@ func (x *CreateWorkspaceRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateWorkspaceRpcRequest.ProtoReflect.Descriptor instead.
 func (*CreateWorkspaceRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{209}
+	return file_internal_proto_rawDescGZIP(), []int{207}
 }
 
 func (x *CreateWorkspaceRpcRequest) GetContext() *CallContext {
@@ -26952,7 +26900,7 @@ type ListWorkspacesRpcRequest struct {
 
 func (x *ListWorkspacesRpcRequest) Reset() {
 	*x = ListWorkspacesRpcRequest{}
-	mi := &file_internal_proto_msgTypes[210]
+	mi := &file_internal_proto_msgTypes[208]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26964,7 +26912,7 @@ func (x *ListWorkspacesRpcRequest) String() string {
 func (*ListWorkspacesRpcRequest) ProtoMessage() {}
 
 func (x *ListWorkspacesRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[210]
+	mi := &file_internal_proto_msgTypes[208]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26977,7 +26925,7 @@ func (x *ListWorkspacesRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListWorkspacesRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListWorkspacesRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{210}
+	return file_internal_proto_rawDescGZIP(), []int{208}
 }
 
 func (x *ListWorkspacesRpcRequest) GetContext() *CallContext {
@@ -27011,7 +26959,7 @@ type GetWorkspaceRpcRequest struct {
 
 func (x *GetWorkspaceRpcRequest) Reset() {
 	*x = GetWorkspaceRpcRequest{}
-	mi := &file_internal_proto_msgTypes[211]
+	mi := &file_internal_proto_msgTypes[209]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27023,7 +26971,7 @@ func (x *GetWorkspaceRpcRequest) String() string {
 func (*GetWorkspaceRpcRequest) ProtoMessage() {}
 
 func (x *GetWorkspaceRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[211]
+	mi := &file_internal_proto_msgTypes[209]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27036,7 +26984,7 @@ func (x *GetWorkspaceRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWorkspaceRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetWorkspaceRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{211}
+	return file_internal_proto_rawDescGZIP(), []int{209}
 }
 
 func (x *GetWorkspaceRpcRequest) GetContext() *CallContext {
@@ -27064,7 +27012,7 @@ type DeleteWorkspaceRpcRequest struct {
 
 func (x *DeleteWorkspaceRpcRequest) Reset() {
 	*x = DeleteWorkspaceRpcRequest{}
-	mi := &file_internal_proto_msgTypes[212]
+	mi := &file_internal_proto_msgTypes[210]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27076,7 +27024,7 @@ func (x *DeleteWorkspaceRpcRequest) String() string {
 func (*DeleteWorkspaceRpcRequest) ProtoMessage() {}
 
 func (x *DeleteWorkspaceRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[212]
+	mi := &file_internal_proto_msgTypes[210]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27089,7 +27037,7 @@ func (x *DeleteWorkspaceRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteWorkspaceRpcRequest.ProtoReflect.Descriptor instead.
 func (*DeleteWorkspaceRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{212}
+	return file_internal_proto_rawDescGZIP(), []int{210}
 }
 
 func (x *DeleteWorkspaceRpcRequest) GetContext() *CallContext {
@@ -27123,7 +27071,7 @@ type GetWorkspaceAccessRpcRequest struct {
 
 func (x *GetWorkspaceAccessRpcRequest) Reset() {
 	*x = GetWorkspaceAccessRpcRequest{}
-	mi := &file_internal_proto_msgTypes[213]
+	mi := &file_internal_proto_msgTypes[211]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27135,7 +27083,7 @@ func (x *GetWorkspaceAccessRpcRequest) String() string {
 func (*GetWorkspaceAccessRpcRequest) ProtoMessage() {}
 
 func (x *GetWorkspaceAccessRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[213]
+	mi := &file_internal_proto_msgTypes[211]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27148,7 +27096,7 @@ func (x *GetWorkspaceAccessRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWorkspaceAccessRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetWorkspaceAccessRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{213}
+	return file_internal_proto_rawDescGZIP(), []int{211}
 }
 
 func (x *GetWorkspaceAccessRpcRequest) GetContext() *CallContext {
@@ -27175,7 +27123,7 @@ type GetWorkspaceModelsRpcRequest struct {
 
 func (x *GetWorkspaceModelsRpcRequest) Reset() {
 	*x = GetWorkspaceModelsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[214]
+	mi := &file_internal_proto_msgTypes[212]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27187,7 +27135,7 @@ func (x *GetWorkspaceModelsRpcRequest) String() string {
 func (*GetWorkspaceModelsRpcRequest) ProtoMessage() {}
 
 func (x *GetWorkspaceModelsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[214]
+	mi := &file_internal_proto_msgTypes[212]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27200,7 +27148,7 @@ func (x *GetWorkspaceModelsRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWorkspaceModelsRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetWorkspaceModelsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{214}
+	return file_internal_proto_rawDescGZIP(), []int{212}
 }
 
 func (x *GetWorkspaceModelsRpcRequest) GetContext() *CallContext {
@@ -27228,7 +27176,7 @@ type UpdateWorkspaceModelsRpcRequest struct {
 
 func (x *UpdateWorkspaceModelsRpcRequest) Reset() {
 	*x = UpdateWorkspaceModelsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[215]
+	mi := &file_internal_proto_msgTypes[213]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27240,7 +27188,7 @@ func (x *UpdateWorkspaceModelsRpcRequest) String() string {
 func (*UpdateWorkspaceModelsRpcRequest) ProtoMessage() {}
 
 func (x *UpdateWorkspaceModelsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[215]
+	mi := &file_internal_proto_msgTypes[213]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27253,7 +27201,7 @@ func (x *UpdateWorkspaceModelsRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateWorkspaceModelsRpcRequest.ProtoReflect.Descriptor instead.
 func (*UpdateWorkspaceModelsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{215}
+	return file_internal_proto_rawDescGZIP(), []int{213}
 }
 
 func (x *UpdateWorkspaceModelsRpcRequest) GetContext() *CallContext {
@@ -27289,7 +27237,7 @@ type ListDeploymentsRpcRequest struct {
 
 func (x *ListDeploymentsRpcRequest) Reset() {
 	*x = ListDeploymentsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[216]
+	mi := &file_internal_proto_msgTypes[214]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27301,7 +27249,7 @@ func (x *ListDeploymentsRpcRequest) String() string {
 func (*ListDeploymentsRpcRequest) ProtoMessage() {}
 
 func (x *ListDeploymentsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[216]
+	mi := &file_internal_proto_msgTypes[214]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27314,7 +27262,7 @@ func (x *ListDeploymentsRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDeploymentsRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListDeploymentsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{216}
+	return file_internal_proto_rawDescGZIP(), []int{214}
 }
 
 func (x *ListDeploymentsRpcRequest) GetContext() *CallContext {
@@ -27356,7 +27304,7 @@ type GetDeploymentRpcRequest struct {
 
 func (x *GetDeploymentRpcRequest) Reset() {
 	*x = GetDeploymentRpcRequest{}
-	mi := &file_internal_proto_msgTypes[217]
+	mi := &file_internal_proto_msgTypes[215]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27368,7 +27316,7 @@ func (x *GetDeploymentRpcRequest) String() string {
 func (*GetDeploymentRpcRequest) ProtoMessage() {}
 
 func (x *GetDeploymentRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[217]
+	mi := &file_internal_proto_msgTypes[215]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27381,7 +27329,7 @@ func (x *GetDeploymentRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDeploymentRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetDeploymentRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{217}
+	return file_internal_proto_rawDescGZIP(), []int{215}
 }
 
 func (x *GetDeploymentRpcRequest) GetContext() *CallContext {
@@ -27416,7 +27364,7 @@ type UpdateWorkspaceVersionRpcRequest struct {
 
 func (x *UpdateWorkspaceVersionRpcRequest) Reset() {
 	*x = UpdateWorkspaceVersionRpcRequest{}
-	mi := &file_internal_proto_msgTypes[218]
+	mi := &file_internal_proto_msgTypes[216]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27428,7 +27376,7 @@ func (x *UpdateWorkspaceVersionRpcRequest) String() string {
 func (*UpdateWorkspaceVersionRpcRequest) ProtoMessage() {}
 
 func (x *UpdateWorkspaceVersionRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[218]
+	mi := &file_internal_proto_msgTypes[216]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27441,7 +27389,7 @@ func (x *UpdateWorkspaceVersionRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateWorkspaceVersionRpcRequest.ProtoReflect.Descriptor instead.
 func (*UpdateWorkspaceVersionRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{218}
+	return file_internal_proto_rawDescGZIP(), []int{216}
 }
 
 func (x *UpdateWorkspaceVersionRpcRequest) GetContext() *CallContext {
@@ -27476,7 +27424,7 @@ type RollbackWorkspaceRpcRequest struct {
 
 func (x *RollbackWorkspaceRpcRequest) Reset() {
 	*x = RollbackWorkspaceRpcRequest{}
-	mi := &file_internal_proto_msgTypes[219]
+	mi := &file_internal_proto_msgTypes[217]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27488,7 +27436,7 @@ func (x *RollbackWorkspaceRpcRequest) String() string {
 func (*RollbackWorkspaceRpcRequest) ProtoMessage() {}
 
 func (x *RollbackWorkspaceRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[219]
+	mi := &file_internal_proto_msgTypes[217]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27501,7 +27449,7 @@ func (x *RollbackWorkspaceRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollbackWorkspaceRpcRequest.ProtoReflect.Descriptor instead.
 func (*RollbackWorkspaceRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{219}
+	return file_internal_proto_rawDescGZIP(), []int{217}
 }
 
 func (x *RollbackWorkspaceRpcRequest) GetContext() *CallContext {
@@ -27536,7 +27484,7 @@ type ResizeWorkspaceRpcRequest struct {
 
 func (x *ResizeWorkspaceRpcRequest) Reset() {
 	*x = ResizeWorkspaceRpcRequest{}
-	mi := &file_internal_proto_msgTypes[220]
+	mi := &file_internal_proto_msgTypes[218]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27548,7 +27496,7 @@ func (x *ResizeWorkspaceRpcRequest) String() string {
 func (*ResizeWorkspaceRpcRequest) ProtoMessage() {}
 
 func (x *ResizeWorkspaceRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[220]
+	mi := &file_internal_proto_msgTypes[218]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27561,7 +27509,7 @@ func (x *ResizeWorkspaceRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResizeWorkspaceRpcRequest.ProtoReflect.Descriptor instead.
 func (*ResizeWorkspaceRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{220}
+	return file_internal_proto_rawDescGZIP(), []int{218}
 }
 
 func (x *ResizeWorkspaceRpcRequest) GetContext() *CallContext {
@@ -27596,7 +27544,7 @@ type RenewWorkspaceRpcRequest struct {
 
 func (x *RenewWorkspaceRpcRequest) Reset() {
 	*x = RenewWorkspaceRpcRequest{}
-	mi := &file_internal_proto_msgTypes[221]
+	mi := &file_internal_proto_msgTypes[219]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27608,7 +27556,7 @@ func (x *RenewWorkspaceRpcRequest) String() string {
 func (*RenewWorkspaceRpcRequest) ProtoMessage() {}
 
 func (x *RenewWorkspaceRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[221]
+	mi := &file_internal_proto_msgTypes[219]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27621,7 +27569,7 @@ func (x *RenewWorkspaceRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenewWorkspaceRpcRequest.ProtoReflect.Descriptor instead.
 func (*RenewWorkspaceRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{221}
+	return file_internal_proto_rawDescGZIP(), []int{219}
 }
 
 func (x *RenewWorkspaceRpcRequest) GetContext() *CallContext {
@@ -27655,7 +27603,7 @@ type GetSubscriptionRpcRequest struct {
 
 func (x *GetSubscriptionRpcRequest) Reset() {
 	*x = GetSubscriptionRpcRequest{}
-	mi := &file_internal_proto_msgTypes[222]
+	mi := &file_internal_proto_msgTypes[220]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27667,7 +27615,7 @@ func (x *GetSubscriptionRpcRequest) String() string {
 func (*GetSubscriptionRpcRequest) ProtoMessage() {}
 
 func (x *GetSubscriptionRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[222]
+	mi := &file_internal_proto_msgTypes[220]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27680,7 +27628,7 @@ func (x *GetSubscriptionRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSubscriptionRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetSubscriptionRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{222}
+	return file_internal_proto_rawDescGZIP(), []int{220}
 }
 
 func (x *GetSubscriptionRpcRequest) GetContext() *CallContext {
@@ -27707,7 +27655,7 @@ type GetWorkspaceDeletionRpcRequest struct {
 
 func (x *GetWorkspaceDeletionRpcRequest) Reset() {
 	*x = GetWorkspaceDeletionRpcRequest{}
-	mi := &file_internal_proto_msgTypes[223]
+	mi := &file_internal_proto_msgTypes[221]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27719,7 +27667,7 @@ func (x *GetWorkspaceDeletionRpcRequest) String() string {
 func (*GetWorkspaceDeletionRpcRequest) ProtoMessage() {}
 
 func (x *GetWorkspaceDeletionRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[223]
+	mi := &file_internal_proto_msgTypes[221]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27732,7 +27680,7 @@ func (x *GetWorkspaceDeletionRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWorkspaceDeletionRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetWorkspaceDeletionRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{223}
+	return file_internal_proto_rawDescGZIP(), []int{221}
 }
 
 func (x *GetWorkspaceDeletionRpcRequest) GetContext() *CallContext {
@@ -27761,7 +27709,7 @@ type ListWorkspaceTransactionsRpcRequest struct {
 
 func (x *ListWorkspaceTransactionsRpcRequest) Reset() {
 	*x = ListWorkspaceTransactionsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[224]
+	mi := &file_internal_proto_msgTypes[222]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27773,7 +27721,7 @@ func (x *ListWorkspaceTransactionsRpcRequest) String() string {
 func (*ListWorkspaceTransactionsRpcRequest) ProtoMessage() {}
 
 func (x *ListWorkspaceTransactionsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[224]
+	mi := &file_internal_proto_msgTypes[222]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27786,7 +27734,7 @@ func (x *ListWorkspaceTransactionsRpcRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use ListWorkspaceTransactionsRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListWorkspaceTransactionsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{224}
+	return file_internal_proto_rawDescGZIP(), []int{222}
 }
 
 func (x *ListWorkspaceTransactionsRpcRequest) GetContext() *CallContext {
@@ -27828,7 +27776,7 @@ type GetOperationRpcRequest struct {
 
 func (x *GetOperationRpcRequest) Reset() {
 	*x = GetOperationRpcRequest{}
-	mi := &file_internal_proto_msgTypes[225]
+	mi := &file_internal_proto_msgTypes[223]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27840,7 +27788,7 @@ func (x *GetOperationRpcRequest) String() string {
 func (*GetOperationRpcRequest) ProtoMessage() {}
 
 func (x *GetOperationRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[225]
+	mi := &file_internal_proto_msgTypes[223]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27853,7 +27801,7 @@ func (x *GetOperationRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOperationRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetOperationRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{225}
+	return file_internal_proto_rawDescGZIP(), []int{223}
 }
 
 func (x *GetOperationRpcRequest) GetContext() *CallContext {
@@ -27886,7 +27834,7 @@ type GetWalletRpcRequest struct {
 
 func (x *GetWalletRpcRequest) Reset() {
 	*x = GetWalletRpcRequest{}
-	mi := &file_internal_proto_msgTypes[226]
+	mi := &file_internal_proto_msgTypes[224]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27898,7 +27846,7 @@ func (x *GetWalletRpcRequest) String() string {
 func (*GetWalletRpcRequest) ProtoMessage() {}
 
 func (x *GetWalletRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[226]
+	mi := &file_internal_proto_msgTypes[224]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27911,7 +27859,7 @@ func (x *GetWalletRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWalletRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetWalletRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{226}
+	return file_internal_proto_rawDescGZIP(), []int{224}
 }
 
 func (x *GetWalletRpcRequest) GetContext() *CallContext {
@@ -27935,7 +27883,7 @@ type ListUsageRpcRequest struct {
 
 func (x *ListUsageRpcRequest) Reset() {
 	*x = ListUsageRpcRequest{}
-	mi := &file_internal_proto_msgTypes[227]
+	mi := &file_internal_proto_msgTypes[225]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27947,7 +27895,7 @@ func (x *ListUsageRpcRequest) String() string {
 func (*ListUsageRpcRequest) ProtoMessage() {}
 
 func (x *ListUsageRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[227]
+	mi := &file_internal_proto_msgTypes[225]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27960,7 +27908,7 @@ func (x *ListUsageRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUsageRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListUsageRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{227}
+	return file_internal_proto_rawDescGZIP(), []int{225}
 }
 
 func (x *ListUsageRpcRequest) GetContext() *CallContext {
@@ -28015,7 +27963,7 @@ type GetUsageSummaryRpcRequest struct {
 
 func (x *GetUsageSummaryRpcRequest) Reset() {
 	*x = GetUsageSummaryRpcRequest{}
-	mi := &file_internal_proto_msgTypes[228]
+	mi := &file_internal_proto_msgTypes[226]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28027,7 +27975,7 @@ func (x *GetUsageSummaryRpcRequest) String() string {
 func (*GetUsageSummaryRpcRequest) ProtoMessage() {}
 
 func (x *GetUsageSummaryRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[228]
+	mi := &file_internal_proto_msgTypes[226]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28040,7 +27988,7 @@ func (x *GetUsageSummaryRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUsageSummaryRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetUsageSummaryRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{228}
+	return file_internal_proto_rawDescGZIP(), []int{226}
 }
 
 func (x *GetUsageSummaryRpcRequest) GetContext() *CallContext {
@@ -28068,7 +28016,7 @@ type ListGatewayKeysRpcRequest struct {
 
 func (x *ListGatewayKeysRpcRequest) Reset() {
 	*x = ListGatewayKeysRpcRequest{}
-	mi := &file_internal_proto_msgTypes[229]
+	mi := &file_internal_proto_msgTypes[227]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28080,7 +28028,7 @@ func (x *ListGatewayKeysRpcRequest) String() string {
 func (*ListGatewayKeysRpcRequest) ProtoMessage() {}
 
 func (x *ListGatewayKeysRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[229]
+	mi := &file_internal_proto_msgTypes[227]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28093,7 +28041,7 @@ func (x *ListGatewayKeysRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGatewayKeysRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListGatewayKeysRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{229}
+	return file_internal_proto_rawDescGZIP(), []int{227}
 }
 
 func (x *ListGatewayKeysRpcRequest) GetContext() *CallContext {
@@ -28127,7 +28075,7 @@ type CreateGatewayKeyRpcRequest struct {
 
 func (x *CreateGatewayKeyRpcRequest) Reset() {
 	*x = CreateGatewayKeyRpcRequest{}
-	mi := &file_internal_proto_msgTypes[230]
+	mi := &file_internal_proto_msgTypes[228]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28139,7 +28087,7 @@ func (x *CreateGatewayKeyRpcRequest) String() string {
 func (*CreateGatewayKeyRpcRequest) ProtoMessage() {}
 
 func (x *CreateGatewayKeyRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[230]
+	mi := &file_internal_proto_msgTypes[228]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28152,7 +28100,7 @@ func (x *CreateGatewayKeyRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateGatewayKeyRpcRequest.ProtoReflect.Descriptor instead.
 func (*CreateGatewayKeyRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{230}
+	return file_internal_proto_rawDescGZIP(), []int{228}
 }
 
 func (x *CreateGatewayKeyRpcRequest) GetContext() *CallContext {
@@ -28179,7 +28127,7 @@ type RevealGatewayKeyRpcRequest struct {
 
 func (x *RevealGatewayKeyRpcRequest) Reset() {
 	*x = RevealGatewayKeyRpcRequest{}
-	mi := &file_internal_proto_msgTypes[231]
+	mi := &file_internal_proto_msgTypes[229]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28191,7 +28139,7 @@ func (x *RevealGatewayKeyRpcRequest) String() string {
 func (*RevealGatewayKeyRpcRequest) ProtoMessage() {}
 
 func (x *RevealGatewayKeyRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[231]
+	mi := &file_internal_proto_msgTypes[229]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28204,7 +28152,7 @@ func (x *RevealGatewayKeyRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevealGatewayKeyRpcRequest.ProtoReflect.Descriptor instead.
 func (*RevealGatewayKeyRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{231}
+	return file_internal_proto_rawDescGZIP(), []int{229}
 }
 
 func (x *RevealGatewayKeyRpcRequest) GetContext() *CallContext {
@@ -28231,7 +28179,7 @@ type RevokeGatewayKeyRpcRequest struct {
 
 func (x *RevokeGatewayKeyRpcRequest) Reset() {
 	*x = RevokeGatewayKeyRpcRequest{}
-	mi := &file_internal_proto_msgTypes[232]
+	mi := &file_internal_proto_msgTypes[230]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28243,7 +28191,7 @@ func (x *RevokeGatewayKeyRpcRequest) String() string {
 func (*RevokeGatewayKeyRpcRequest) ProtoMessage() {}
 
 func (x *RevokeGatewayKeyRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[232]
+	mi := &file_internal_proto_msgTypes[230]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28256,7 +28204,7 @@ func (x *RevokeGatewayKeyRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeGatewayKeyRpcRequest.ProtoReflect.Descriptor instead.
 func (*RevokeGatewayKeyRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{232}
+	return file_internal_proto_rawDescGZIP(), []int{230}
 }
 
 func (x *RevokeGatewayKeyRpcRequest) GetContext() *CallContext {
@@ -28285,7 +28233,7 @@ type ListRechargeRecordsRpcRequest struct {
 
 func (x *ListRechargeRecordsRpcRequest) Reset() {
 	*x = ListRechargeRecordsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[233]
+	mi := &file_internal_proto_msgTypes[231]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28297,7 +28245,7 @@ func (x *ListRechargeRecordsRpcRequest) String() string {
 func (*ListRechargeRecordsRpcRequest) ProtoMessage() {}
 
 func (x *ListRechargeRecordsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[233]
+	mi := &file_internal_proto_msgTypes[231]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28310,7 +28258,7 @@ func (x *ListRechargeRecordsRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRechargeRecordsRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListRechargeRecordsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{233}
+	return file_internal_proto_rawDescGZIP(), []int{231}
 }
 
 func (x *ListRechargeRecordsRpcRequest) GetContext() *CallContext {
@@ -28352,7 +28300,7 @@ type ListTenantsRpcRequest struct {
 
 func (x *ListTenantsRpcRequest) Reset() {
 	*x = ListTenantsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[234]
+	mi := &file_internal_proto_msgTypes[232]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28364,7 +28312,7 @@ func (x *ListTenantsRpcRequest) String() string {
 func (*ListTenantsRpcRequest) ProtoMessage() {}
 
 func (x *ListTenantsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[234]
+	mi := &file_internal_proto_msgTypes[232]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28377,7 +28325,7 @@ func (x *ListTenantsRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTenantsRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListTenantsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{234}
+	return file_internal_proto_rawDescGZIP(), []int{232}
 }
 
 func (x *ListTenantsRpcRequest) GetContext() *CallContext {
@@ -28411,7 +28359,7 @@ type CreateTenantRpcRequest struct {
 
 func (x *CreateTenantRpcRequest) Reset() {
 	*x = CreateTenantRpcRequest{}
-	mi := &file_internal_proto_msgTypes[235]
+	mi := &file_internal_proto_msgTypes[233]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28423,7 +28371,7 @@ func (x *CreateTenantRpcRequest) String() string {
 func (*CreateTenantRpcRequest) ProtoMessage() {}
 
 func (x *CreateTenantRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[235]
+	mi := &file_internal_proto_msgTypes[233]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28436,7 +28384,7 @@ func (x *CreateTenantRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTenantRpcRequest.ProtoReflect.Descriptor instead.
 func (*CreateTenantRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{235}
+	return file_internal_proto_rawDescGZIP(), []int{233}
 }
 
 func (x *CreateTenantRpcRequest) GetContext() *CallContext {
@@ -28463,7 +28411,7 @@ type GetAdminTenantRpcRequest struct {
 
 func (x *GetAdminTenantRpcRequest) Reset() {
 	*x = GetAdminTenantRpcRequest{}
-	mi := &file_internal_proto_msgTypes[236]
+	mi := &file_internal_proto_msgTypes[234]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28475,7 +28423,7 @@ func (x *GetAdminTenantRpcRequest) String() string {
 func (*GetAdminTenantRpcRequest) ProtoMessage() {}
 
 func (x *GetAdminTenantRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[236]
+	mi := &file_internal_proto_msgTypes[234]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28488,7 +28436,7 @@ func (x *GetAdminTenantRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAdminTenantRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetAdminTenantRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{236}
+	return file_internal_proto_rawDescGZIP(), []int{234}
 }
 
 func (x *GetAdminTenantRpcRequest) GetContext() *CallContext {
@@ -28516,7 +28464,7 @@ type DeleteTenantRpcRequest struct {
 
 func (x *DeleteTenantRpcRequest) Reset() {
 	*x = DeleteTenantRpcRequest{}
-	mi := &file_internal_proto_msgTypes[237]
+	mi := &file_internal_proto_msgTypes[235]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28528,7 +28476,7 @@ func (x *DeleteTenantRpcRequest) String() string {
 func (*DeleteTenantRpcRequest) ProtoMessage() {}
 
 func (x *DeleteTenantRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[237]
+	mi := &file_internal_proto_msgTypes[235]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28541,7 +28489,7 @@ func (x *DeleteTenantRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTenantRpcRequest.ProtoReflect.Descriptor instead.
 func (*DeleteTenantRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{237}
+	return file_internal_proto_rawDescGZIP(), []int{235}
 }
 
 func (x *DeleteTenantRpcRequest) GetContext() *CallContext {
@@ -28576,7 +28524,7 @@ type BindTenantWalletRpcRequest struct {
 
 func (x *BindTenantWalletRpcRequest) Reset() {
 	*x = BindTenantWalletRpcRequest{}
-	mi := &file_internal_proto_msgTypes[238]
+	mi := &file_internal_proto_msgTypes[236]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28588,7 +28536,7 @@ func (x *BindTenantWalletRpcRequest) String() string {
 func (*BindTenantWalletRpcRequest) ProtoMessage() {}
 
 func (x *BindTenantWalletRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[238]
+	mi := &file_internal_proto_msgTypes[236]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28601,7 +28549,7 @@ func (x *BindTenantWalletRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BindTenantWalletRpcRequest.ProtoReflect.Descriptor instead.
 func (*BindTenantWalletRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{238}
+	return file_internal_proto_rawDescGZIP(), []int{236}
 }
 
 func (x *BindTenantWalletRpcRequest) GetContext() *CallContext {
@@ -28636,7 +28584,7 @@ type SuspendTenantRpcRequest struct {
 
 func (x *SuspendTenantRpcRequest) Reset() {
 	*x = SuspendTenantRpcRequest{}
-	mi := &file_internal_proto_msgTypes[239]
+	mi := &file_internal_proto_msgTypes[237]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28648,7 +28596,7 @@ func (x *SuspendTenantRpcRequest) String() string {
 func (*SuspendTenantRpcRequest) ProtoMessage() {}
 
 func (x *SuspendTenantRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[239]
+	mi := &file_internal_proto_msgTypes[237]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28661,7 +28609,7 @@ func (x *SuspendTenantRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SuspendTenantRpcRequest.ProtoReflect.Descriptor instead.
 func (*SuspendTenantRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{239}
+	return file_internal_proto_rawDescGZIP(), []int{237}
 }
 
 func (x *SuspendTenantRpcRequest) GetContext() *CallContext {
@@ -28696,7 +28644,7 @@ type RestoreTenantRpcRequest struct {
 
 func (x *RestoreTenantRpcRequest) Reset() {
 	*x = RestoreTenantRpcRequest{}
-	mi := &file_internal_proto_msgTypes[240]
+	mi := &file_internal_proto_msgTypes[238]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28708,7 +28656,7 @@ func (x *RestoreTenantRpcRequest) String() string {
 func (*RestoreTenantRpcRequest) ProtoMessage() {}
 
 func (x *RestoreTenantRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[240]
+	mi := &file_internal_proto_msgTypes[238]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28721,7 +28669,7 @@ func (x *RestoreTenantRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreTenantRpcRequest.ProtoReflect.Descriptor instead.
 func (*RestoreTenantRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{240}
+	return file_internal_proto_rawDescGZIP(), []int{238}
 }
 
 func (x *RestoreTenantRpcRequest) GetContext() *CallContext {
@@ -28755,7 +28703,7 @@ type GetTenantAssetCustodyRpcRequest struct {
 
 func (x *GetTenantAssetCustodyRpcRequest) Reset() {
 	*x = GetTenantAssetCustodyRpcRequest{}
-	mi := &file_internal_proto_msgTypes[241]
+	mi := &file_internal_proto_msgTypes[239]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28767,7 +28715,7 @@ func (x *GetTenantAssetCustodyRpcRequest) String() string {
 func (*GetTenantAssetCustodyRpcRequest) ProtoMessage() {}
 
 func (x *GetTenantAssetCustodyRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[241]
+	mi := &file_internal_proto_msgTypes[239]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28780,7 +28728,7 @@ func (x *GetTenantAssetCustodyRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTenantAssetCustodyRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetTenantAssetCustodyRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{241}
+	return file_internal_proto_rawDescGZIP(), []int{239}
 }
 
 func (x *GetTenantAssetCustodyRpcRequest) GetContext() *CallContext {
@@ -28810,7 +28758,7 @@ type ListAdminOperationsRpcRequest struct {
 
 func (x *ListAdminOperationsRpcRequest) Reset() {
 	*x = ListAdminOperationsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[242]
+	mi := &file_internal_proto_msgTypes[240]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28822,7 +28770,7 @@ func (x *ListAdminOperationsRpcRequest) String() string {
 func (*ListAdminOperationsRpcRequest) ProtoMessage() {}
 
 func (x *ListAdminOperationsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[242]
+	mi := &file_internal_proto_msgTypes[240]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28835,7 +28783,7 @@ func (x *ListAdminOperationsRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAdminOperationsRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListAdminOperationsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{242}
+	return file_internal_proto_rawDescGZIP(), []int{240}
 }
 
 func (x *ListAdminOperationsRpcRequest) GetContext() *CallContext {
@@ -28885,7 +28833,7 @@ type ReconcileOperationRpcRequest struct {
 
 func (x *ReconcileOperationRpcRequest) Reset() {
 	*x = ReconcileOperationRpcRequest{}
-	mi := &file_internal_proto_msgTypes[243]
+	mi := &file_internal_proto_msgTypes[241]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28897,7 +28845,7 @@ func (x *ReconcileOperationRpcRequest) String() string {
 func (*ReconcileOperationRpcRequest) ProtoMessage() {}
 
 func (x *ReconcileOperationRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[243]
+	mi := &file_internal_proto_msgTypes[241]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28910,7 +28858,7 @@ func (x *ReconcileOperationRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReconcileOperationRpcRequest.ProtoReflect.Descriptor instead.
 func (*ReconcileOperationRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{243}
+	return file_internal_proto_rawDescGZIP(), []int{241}
 }
 
 func (x *ReconcileOperationRpcRequest) GetContext() *CallContext {
@@ -28953,7 +28901,7 @@ type ListAuditEventsRpcRequest struct {
 
 func (x *ListAuditEventsRpcRequest) Reset() {
 	*x = ListAuditEventsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[244]
+	mi := &file_internal_proto_msgTypes[242]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28965,7 +28913,7 @@ func (x *ListAuditEventsRpcRequest) String() string {
 func (*ListAuditEventsRpcRequest) ProtoMessage() {}
 
 func (x *ListAuditEventsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[244]
+	mi := &file_internal_proto_msgTypes[242]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28978,7 +28926,7 @@ func (x *ListAuditEventsRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAuditEventsRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListAuditEventsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{244}
+	return file_internal_proto_rawDescGZIP(), []int{242}
 }
 
 func (x *ListAuditEventsRpcRequest) GetContext() *CallContext {
@@ -29021,7 +28969,7 @@ type ListReceiptsRpcRequest struct {
 
 func (x *ListReceiptsRpcRequest) Reset() {
 	*x = ListReceiptsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[245]
+	mi := &file_internal_proto_msgTypes[243]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29033,7 +28981,7 @@ func (x *ListReceiptsRpcRequest) String() string {
 func (*ListReceiptsRpcRequest) ProtoMessage() {}
 
 func (x *ListReceiptsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[245]
+	mi := &file_internal_proto_msgTypes[243]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29046,7 +28994,7 @@ func (x *ListReceiptsRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListReceiptsRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListReceiptsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{245}
+	return file_internal_proto_rawDescGZIP(), []int{243}
 }
 
 func (x *ListReceiptsRpcRequest) GetContext() *CallContext {
@@ -29087,7 +29035,7 @@ type GetReceiptRpcRequest struct {
 
 func (x *GetReceiptRpcRequest) Reset() {
 	*x = GetReceiptRpcRequest{}
-	mi := &file_internal_proto_msgTypes[246]
+	mi := &file_internal_proto_msgTypes[244]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29099,7 +29047,7 @@ func (x *GetReceiptRpcRequest) String() string {
 func (*GetReceiptRpcRequest) ProtoMessage() {}
 
 func (x *GetReceiptRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[246]
+	mi := &file_internal_proto_msgTypes[244]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29112,7 +29060,7 @@ func (x *GetReceiptRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetReceiptRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetReceiptRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{246}
+	return file_internal_proto_rawDescGZIP(), []int{244}
 }
 
 func (x *GetReceiptRpcRequest) GetContext() *CallContext {
@@ -29141,7 +29089,7 @@ type ListQualificationsRpcRequest struct {
 
 func (x *ListQualificationsRpcRequest) Reset() {
 	*x = ListQualificationsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[247]
+	mi := &file_internal_proto_msgTypes[245]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29153,7 +29101,7 @@ func (x *ListQualificationsRpcRequest) String() string {
 func (*ListQualificationsRpcRequest) ProtoMessage() {}
 
 func (x *ListQualificationsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[247]
+	mi := &file_internal_proto_msgTypes[245]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29166,7 +29114,7 @@ func (x *ListQualificationsRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListQualificationsRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListQualificationsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{247}
+	return file_internal_proto_rawDescGZIP(), []int{245}
 }
 
 func (x *ListQualificationsRpcRequest) GetContext() *CallContext {
@@ -29208,7 +29156,7 @@ type ListRuntimeVersionsRpcRequest struct {
 
 func (x *ListRuntimeVersionsRpcRequest) Reset() {
 	*x = ListRuntimeVersionsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[248]
+	mi := &file_internal_proto_msgTypes[246]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29220,7 +29168,7 @@ func (x *ListRuntimeVersionsRpcRequest) String() string {
 func (*ListRuntimeVersionsRpcRequest) ProtoMessage() {}
 
 func (x *ListRuntimeVersionsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[248]
+	mi := &file_internal_proto_msgTypes[246]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29233,7 +29181,7 @@ func (x *ListRuntimeVersionsRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRuntimeVersionsRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListRuntimeVersionsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{248}
+	return file_internal_proto_rawDescGZIP(), []int{246}
 }
 
 func (x *ListRuntimeVersionsRpcRequest) GetContext() *CallContext {
@@ -29268,7 +29216,7 @@ type ListWebuiVersionsRpcRequest struct {
 
 func (x *ListWebuiVersionsRpcRequest) Reset() {
 	*x = ListWebuiVersionsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[249]
+	mi := &file_internal_proto_msgTypes[247]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29280,7 +29228,7 @@ func (x *ListWebuiVersionsRpcRequest) String() string {
 func (*ListWebuiVersionsRpcRequest) ProtoMessage() {}
 
 func (x *ListWebuiVersionsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[249]
+	mi := &file_internal_proto_msgTypes[247]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29293,7 +29241,7 @@ func (x *ListWebuiVersionsRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListWebuiVersionsRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListWebuiVersionsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{249}
+	return file_internal_proto_rawDescGZIP(), []int{247}
 }
 
 func (x *ListWebuiVersionsRpcRequest) GetContext() *CallContext {
@@ -29329,7 +29277,7 @@ type ListComputePlansRpcRequest struct {
 
 func (x *ListComputePlansRpcRequest) Reset() {
 	*x = ListComputePlansRpcRequest{}
-	mi := &file_internal_proto_msgTypes[250]
+	mi := &file_internal_proto_msgTypes[248]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29341,7 +29289,7 @@ func (x *ListComputePlansRpcRequest) String() string {
 func (*ListComputePlansRpcRequest) ProtoMessage() {}
 
 func (x *ListComputePlansRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[250]
+	mi := &file_internal_proto_msgTypes[248]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29354,7 +29302,7 @@ func (x *ListComputePlansRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListComputePlansRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListComputePlansRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{250}
+	return file_internal_proto_rawDescGZIP(), []int{248}
 }
 
 func (x *ListComputePlansRpcRequest) GetContext() *CallContext {
@@ -29397,7 +29345,7 @@ type ListStoragePlansRpcRequest struct {
 
 func (x *ListStoragePlansRpcRequest) Reset() {
 	*x = ListStoragePlansRpcRequest{}
-	mi := &file_internal_proto_msgTypes[251]
+	mi := &file_internal_proto_msgTypes[249]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29409,7 +29357,7 @@ func (x *ListStoragePlansRpcRequest) String() string {
 func (*ListStoragePlansRpcRequest) ProtoMessage() {}
 
 func (x *ListStoragePlansRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[251]
+	mi := &file_internal_proto_msgTypes[249]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29422,7 +29370,7 @@ func (x *ListStoragePlansRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListStoragePlansRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListStoragePlansRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{251}
+	return file_internal_proto_rawDescGZIP(), []int{249}
 }
 
 func (x *ListStoragePlansRpcRequest) GetContext() *CallContext {
@@ -29464,7 +29412,7 @@ type ListModelsRpcRequest struct {
 
 func (x *ListModelsRpcRequest) Reset() {
 	*x = ListModelsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[252]
+	mi := &file_internal_proto_msgTypes[250]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29476,7 +29424,7 @@ func (x *ListModelsRpcRequest) String() string {
 func (*ListModelsRpcRequest) ProtoMessage() {}
 
 func (x *ListModelsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[252]
+	mi := &file_internal_proto_msgTypes[250]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29489,7 +29437,7 @@ func (x *ListModelsRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListModelsRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListModelsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{252}
+	return file_internal_proto_rawDescGZIP(), []int{250}
 }
 
 func (x *ListModelsRpcRequest) GetContext() *CallContext {
@@ -29523,7 +29471,7 @@ type RegisterRuntimeVersionRpcRequest struct {
 
 func (x *RegisterRuntimeVersionRpcRequest) Reset() {
 	*x = RegisterRuntimeVersionRpcRequest{}
-	mi := &file_internal_proto_msgTypes[253]
+	mi := &file_internal_proto_msgTypes[251]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29535,7 +29483,7 @@ func (x *RegisterRuntimeVersionRpcRequest) String() string {
 func (*RegisterRuntimeVersionRpcRequest) ProtoMessage() {}
 
 func (x *RegisterRuntimeVersionRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[253]
+	mi := &file_internal_proto_msgTypes[251]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29548,7 +29496,7 @@ func (x *RegisterRuntimeVersionRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterRuntimeVersionRpcRequest.ProtoReflect.Descriptor instead.
 func (*RegisterRuntimeVersionRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{253}
+	return file_internal_proto_rawDescGZIP(), []int{251}
 }
 
 func (x *RegisterRuntimeVersionRpcRequest) GetContext() *CallContext {
@@ -29576,7 +29524,7 @@ type SetRuntimeVersionStatusRpcRequest struct {
 
 func (x *SetRuntimeVersionStatusRpcRequest) Reset() {
 	*x = SetRuntimeVersionStatusRpcRequest{}
-	mi := &file_internal_proto_msgTypes[254]
+	mi := &file_internal_proto_msgTypes[252]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29588,7 +29536,7 @@ func (x *SetRuntimeVersionStatusRpcRequest) String() string {
 func (*SetRuntimeVersionStatusRpcRequest) ProtoMessage() {}
 
 func (x *SetRuntimeVersionStatusRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[254]
+	mi := &file_internal_proto_msgTypes[252]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29601,7 +29549,7 @@ func (x *SetRuntimeVersionStatusRpcRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use SetRuntimeVersionStatusRpcRequest.ProtoReflect.Descriptor instead.
 func (*SetRuntimeVersionStatusRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{254}
+	return file_internal_proto_rawDescGZIP(), []int{252}
 }
 
 func (x *SetRuntimeVersionStatusRpcRequest) GetContext() *CallContext {
@@ -29635,7 +29583,7 @@ type RegisterWebuiVersionRpcRequest struct {
 
 func (x *RegisterWebuiVersionRpcRequest) Reset() {
 	*x = RegisterWebuiVersionRpcRequest{}
-	mi := &file_internal_proto_msgTypes[255]
+	mi := &file_internal_proto_msgTypes[253]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29647,7 +29595,7 @@ func (x *RegisterWebuiVersionRpcRequest) String() string {
 func (*RegisterWebuiVersionRpcRequest) ProtoMessage() {}
 
 func (x *RegisterWebuiVersionRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[255]
+	mi := &file_internal_proto_msgTypes[253]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29660,7 +29608,7 @@ func (x *RegisterWebuiVersionRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterWebuiVersionRpcRequest.ProtoReflect.Descriptor instead.
 func (*RegisterWebuiVersionRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{255}
+	return file_internal_proto_rawDescGZIP(), []int{253}
 }
 
 func (x *RegisterWebuiVersionRpcRequest) GetContext() *CallContext {
@@ -29688,7 +29636,7 @@ type SetWebuiVersionStatusRpcRequest struct {
 
 func (x *SetWebuiVersionStatusRpcRequest) Reset() {
 	*x = SetWebuiVersionStatusRpcRequest{}
-	mi := &file_internal_proto_msgTypes[256]
+	mi := &file_internal_proto_msgTypes[254]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29700,7 +29648,7 @@ func (x *SetWebuiVersionStatusRpcRequest) String() string {
 func (*SetWebuiVersionStatusRpcRequest) ProtoMessage() {}
 
 func (x *SetWebuiVersionStatusRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[256]
+	mi := &file_internal_proto_msgTypes[254]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29713,7 +29661,7 @@ func (x *SetWebuiVersionStatusRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetWebuiVersionStatusRpcRequest.ProtoReflect.Descriptor instead.
 func (*SetWebuiVersionStatusRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{256}
+	return file_internal_proto_rawDescGZIP(), []int{254}
 }
 
 func (x *SetWebuiVersionStatusRpcRequest) GetContext() *CallContext {
@@ -29747,7 +29695,7 @@ type CreateComputePlanRpcRequest struct {
 
 func (x *CreateComputePlanRpcRequest) Reset() {
 	*x = CreateComputePlanRpcRequest{}
-	mi := &file_internal_proto_msgTypes[257]
+	mi := &file_internal_proto_msgTypes[255]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29759,7 +29707,7 @@ func (x *CreateComputePlanRpcRequest) String() string {
 func (*CreateComputePlanRpcRequest) ProtoMessage() {}
 
 func (x *CreateComputePlanRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[257]
+	mi := &file_internal_proto_msgTypes[255]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29772,7 +29720,7 @@ func (x *CreateComputePlanRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateComputePlanRpcRequest.ProtoReflect.Descriptor instead.
 func (*CreateComputePlanRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{257}
+	return file_internal_proto_rawDescGZIP(), []int{255}
 }
 
 func (x *CreateComputePlanRpcRequest) GetContext() *CallContext {
@@ -29800,7 +29748,7 @@ type SetComputePlanAvailabilityRpcRequest struct {
 
 func (x *SetComputePlanAvailabilityRpcRequest) Reset() {
 	*x = SetComputePlanAvailabilityRpcRequest{}
-	mi := &file_internal_proto_msgTypes[258]
+	mi := &file_internal_proto_msgTypes[256]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29812,7 +29760,7 @@ func (x *SetComputePlanAvailabilityRpcRequest) String() string {
 func (*SetComputePlanAvailabilityRpcRequest) ProtoMessage() {}
 
 func (x *SetComputePlanAvailabilityRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[258]
+	mi := &file_internal_proto_msgTypes[256]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29825,7 +29773,7 @@ func (x *SetComputePlanAvailabilityRpcRequest) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use SetComputePlanAvailabilityRpcRequest.ProtoReflect.Descriptor instead.
 func (*SetComputePlanAvailabilityRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{258}
+	return file_internal_proto_rawDescGZIP(), []int{256}
 }
 
 func (x *SetComputePlanAvailabilityRpcRequest) GetContext() *CallContext {
@@ -29859,7 +29807,7 @@ type CreateStoragePlanRpcRequest struct {
 
 func (x *CreateStoragePlanRpcRequest) Reset() {
 	*x = CreateStoragePlanRpcRequest{}
-	mi := &file_internal_proto_msgTypes[259]
+	mi := &file_internal_proto_msgTypes[257]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29871,7 +29819,7 @@ func (x *CreateStoragePlanRpcRequest) String() string {
 func (*CreateStoragePlanRpcRequest) ProtoMessage() {}
 
 func (x *CreateStoragePlanRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[259]
+	mi := &file_internal_proto_msgTypes[257]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29884,7 +29832,7 @@ func (x *CreateStoragePlanRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateStoragePlanRpcRequest.ProtoReflect.Descriptor instead.
 func (*CreateStoragePlanRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{259}
+	return file_internal_proto_rawDescGZIP(), []int{257}
 }
 
 func (x *CreateStoragePlanRpcRequest) GetContext() *CallContext {
@@ -29912,7 +29860,7 @@ type SetStoragePlanAvailabilityRpcRequest struct {
 
 func (x *SetStoragePlanAvailabilityRpcRequest) Reset() {
 	*x = SetStoragePlanAvailabilityRpcRequest{}
-	mi := &file_internal_proto_msgTypes[260]
+	mi := &file_internal_proto_msgTypes[258]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29924,7 +29872,7 @@ func (x *SetStoragePlanAvailabilityRpcRequest) String() string {
 func (*SetStoragePlanAvailabilityRpcRequest) ProtoMessage() {}
 
 func (x *SetStoragePlanAvailabilityRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[260]
+	mi := &file_internal_proto_msgTypes[258]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29937,7 +29885,7 @@ func (x *SetStoragePlanAvailabilityRpcRequest) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use SetStoragePlanAvailabilityRpcRequest.ProtoReflect.Descriptor instead.
 func (*SetStoragePlanAvailabilityRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{260}
+	return file_internal_proto_rawDescGZIP(), []int{258}
 }
 
 func (x *SetStoragePlanAvailabilityRpcRequest) GetContext() *CallContext {
@@ -29972,7 +29920,7 @@ type ListPricePolicyVersionsRpcRequest struct {
 
 func (x *ListPricePolicyVersionsRpcRequest) Reset() {
 	*x = ListPricePolicyVersionsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[261]
+	mi := &file_internal_proto_msgTypes[259]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29984,7 +29932,7 @@ func (x *ListPricePolicyVersionsRpcRequest) String() string {
 func (*ListPricePolicyVersionsRpcRequest) ProtoMessage() {}
 
 func (x *ListPricePolicyVersionsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[261]
+	mi := &file_internal_proto_msgTypes[259]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29997,7 +29945,7 @@ func (x *ListPricePolicyVersionsRpcRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use ListPricePolicyVersionsRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListPricePolicyVersionsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{261}
+	return file_internal_proto_rawDescGZIP(), []int{259}
 }
 
 func (x *ListPricePolicyVersionsRpcRequest) GetContext() *CallContext {
@@ -30031,7 +29979,7 @@ type CreatePricePolicyVersionRpcRequest struct {
 
 func (x *CreatePricePolicyVersionRpcRequest) Reset() {
 	*x = CreatePricePolicyVersionRpcRequest{}
-	mi := &file_internal_proto_msgTypes[262]
+	mi := &file_internal_proto_msgTypes[260]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30043,7 +29991,7 @@ func (x *CreatePricePolicyVersionRpcRequest) String() string {
 func (*CreatePricePolicyVersionRpcRequest) ProtoMessage() {}
 
 func (x *CreatePricePolicyVersionRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[262]
+	mi := &file_internal_proto_msgTypes[260]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30056,7 +30004,7 @@ func (x *CreatePricePolicyVersionRpcRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use CreatePricePolicyVersionRpcRequest.ProtoReflect.Descriptor instead.
 func (*CreatePricePolicyVersionRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{262}
+	return file_internal_proto_rawDescGZIP(), []int{260}
 }
 
 func (x *CreatePricePolicyVersionRpcRequest) GetContext() *CallContext {
@@ -30084,7 +30032,7 @@ type ListRefundPolicyVersionsRpcRequest struct {
 
 func (x *ListRefundPolicyVersionsRpcRequest) Reset() {
 	*x = ListRefundPolicyVersionsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[263]
+	mi := &file_internal_proto_msgTypes[261]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30096,7 +30044,7 @@ func (x *ListRefundPolicyVersionsRpcRequest) String() string {
 func (*ListRefundPolicyVersionsRpcRequest) ProtoMessage() {}
 
 func (x *ListRefundPolicyVersionsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[263]
+	mi := &file_internal_proto_msgTypes[261]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30109,7 +30057,7 @@ func (x *ListRefundPolicyVersionsRpcRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use ListRefundPolicyVersionsRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListRefundPolicyVersionsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{263}
+	return file_internal_proto_rawDescGZIP(), []int{261}
 }
 
 func (x *ListRefundPolicyVersionsRpcRequest) GetContext() *CallContext {
@@ -30143,7 +30091,7 @@ type CreateRefundPolicyVersionRpcRequest struct {
 
 func (x *CreateRefundPolicyVersionRpcRequest) Reset() {
 	*x = CreateRefundPolicyVersionRpcRequest{}
-	mi := &file_internal_proto_msgTypes[264]
+	mi := &file_internal_proto_msgTypes[262]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30155,7 +30103,7 @@ func (x *CreateRefundPolicyVersionRpcRequest) String() string {
 func (*CreateRefundPolicyVersionRpcRequest) ProtoMessage() {}
 
 func (x *CreateRefundPolicyVersionRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[264]
+	mi := &file_internal_proto_msgTypes[262]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30168,7 +30116,7 @@ func (x *CreateRefundPolicyVersionRpcRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use CreateRefundPolicyVersionRpcRequest.ProtoReflect.Descriptor instead.
 func (*CreateRefundPolicyVersionRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{264}
+	return file_internal_proto_rawDescGZIP(), []int{262}
 }
 
 func (x *CreateRefundPolicyVersionRpcRequest) GetContext() *CallContext {
@@ -30196,7 +30144,7 @@ type ListRetentionPolicyVersionsRpcRequest struct {
 
 func (x *ListRetentionPolicyVersionsRpcRequest) Reset() {
 	*x = ListRetentionPolicyVersionsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[265]
+	mi := &file_internal_proto_msgTypes[263]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30208,7 +30156,7 @@ func (x *ListRetentionPolicyVersionsRpcRequest) String() string {
 func (*ListRetentionPolicyVersionsRpcRequest) ProtoMessage() {}
 
 func (x *ListRetentionPolicyVersionsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[265]
+	mi := &file_internal_proto_msgTypes[263]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30221,7 +30169,7 @@ func (x *ListRetentionPolicyVersionsRpcRequest) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use ListRetentionPolicyVersionsRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListRetentionPolicyVersionsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{265}
+	return file_internal_proto_rawDescGZIP(), []int{263}
 }
 
 func (x *ListRetentionPolicyVersionsRpcRequest) GetContext() *CallContext {
@@ -30255,7 +30203,7 @@ type CreateRetentionPolicyVersionRpcRequest struct {
 
 func (x *CreateRetentionPolicyVersionRpcRequest) Reset() {
 	*x = CreateRetentionPolicyVersionRpcRequest{}
-	mi := &file_internal_proto_msgTypes[266]
+	mi := &file_internal_proto_msgTypes[264]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30267,7 +30215,7 @@ func (x *CreateRetentionPolicyVersionRpcRequest) String() string {
 func (*CreateRetentionPolicyVersionRpcRequest) ProtoMessage() {}
 
 func (x *CreateRetentionPolicyVersionRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[266]
+	mi := &file_internal_proto_msgTypes[264]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30280,7 +30228,7 @@ func (x *CreateRetentionPolicyVersionRpcRequest) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use CreateRetentionPolicyVersionRpcRequest.ProtoReflect.Descriptor instead.
 func (*CreateRetentionPolicyVersionRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{266}
+	return file_internal_proto_rawDescGZIP(), []int{264}
 }
 
 func (x *CreateRetentionPolicyVersionRpcRequest) GetContext() *CallContext {
@@ -30308,7 +30256,7 @@ type AdoptWorkspaceRpcRequest struct {
 
 func (x *AdoptWorkspaceRpcRequest) Reset() {
 	*x = AdoptWorkspaceRpcRequest{}
-	mi := &file_internal_proto_msgTypes[267]
+	mi := &file_internal_proto_msgTypes[265]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30320,7 +30268,7 @@ func (x *AdoptWorkspaceRpcRequest) String() string {
 func (*AdoptWorkspaceRpcRequest) ProtoMessage() {}
 
 func (x *AdoptWorkspaceRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[267]
+	mi := &file_internal_proto_msgTypes[265]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30333,7 +30281,7 @@ func (x *AdoptWorkspaceRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdoptWorkspaceRpcRequest.ProtoReflect.Descriptor instead.
 func (*AdoptWorkspaceRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{267}
+	return file_internal_proto_rawDescGZIP(), []int{265}
 }
 
 func (x *AdoptWorkspaceRpcRequest) GetContext() *CallContext {
@@ -30366,7 +30314,7 @@ type GetBuildRuntimePolicyRpcRequest struct {
 
 func (x *GetBuildRuntimePolicyRpcRequest) Reset() {
 	*x = GetBuildRuntimePolicyRpcRequest{}
-	mi := &file_internal_proto_msgTypes[268]
+	mi := &file_internal_proto_msgTypes[266]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30378,7 +30326,7 @@ func (x *GetBuildRuntimePolicyRpcRequest) String() string {
 func (*GetBuildRuntimePolicyRpcRequest) ProtoMessage() {}
 
 func (x *GetBuildRuntimePolicyRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[268]
+	mi := &file_internal_proto_msgTypes[266]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30391,7 +30339,7 @@ func (x *GetBuildRuntimePolicyRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBuildRuntimePolicyRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetBuildRuntimePolicyRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{268}
+	return file_internal_proto_rawDescGZIP(), []int{266}
 }
 
 func (x *GetBuildRuntimePolicyRpcRequest) GetContext() *CallContext {
@@ -30411,7 +30359,7 @@ type SetBuildRuntimePolicyRpcRequest struct {
 
 func (x *SetBuildRuntimePolicyRpcRequest) Reset() {
 	*x = SetBuildRuntimePolicyRpcRequest{}
-	mi := &file_internal_proto_msgTypes[269]
+	mi := &file_internal_proto_msgTypes[267]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30423,7 +30371,7 @@ func (x *SetBuildRuntimePolicyRpcRequest) String() string {
 func (*SetBuildRuntimePolicyRpcRequest) ProtoMessage() {}
 
 func (x *SetBuildRuntimePolicyRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[269]
+	mi := &file_internal_proto_msgTypes[267]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30436,7 +30384,7 @@ func (x *SetBuildRuntimePolicyRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetBuildRuntimePolicyRpcRequest.ProtoReflect.Descriptor instead.
 func (*SetBuildRuntimePolicyRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{269}
+	return file_internal_proto_rawDescGZIP(), []int{267}
 }
 
 func (x *SetBuildRuntimePolicyRpcRequest) GetContext() *CallContext {
@@ -30464,7 +30412,7 @@ type ListPublisherNamespacesRpcRequest struct {
 
 func (x *ListPublisherNamespacesRpcRequest) Reset() {
 	*x = ListPublisherNamespacesRpcRequest{}
-	mi := &file_internal_proto_msgTypes[270]
+	mi := &file_internal_proto_msgTypes[268]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30476,7 +30424,7 @@ func (x *ListPublisherNamespacesRpcRequest) String() string {
 func (*ListPublisherNamespacesRpcRequest) ProtoMessage() {}
 
 func (x *ListPublisherNamespacesRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[270]
+	mi := &file_internal_proto_msgTypes[268]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30489,7 +30437,7 @@ func (x *ListPublisherNamespacesRpcRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use ListPublisherNamespacesRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListPublisherNamespacesRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{270}
+	return file_internal_proto_rawDescGZIP(), []int{268}
 }
 
 func (x *ListPublisherNamespacesRpcRequest) GetContext() *CallContext {
@@ -30523,7 +30471,7 @@ type CreatePublisherNamespaceRpcRequest struct {
 
 func (x *CreatePublisherNamespaceRpcRequest) Reset() {
 	*x = CreatePublisherNamespaceRpcRequest{}
-	mi := &file_internal_proto_msgTypes[271]
+	mi := &file_internal_proto_msgTypes[269]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30535,7 +30483,7 @@ func (x *CreatePublisherNamespaceRpcRequest) String() string {
 func (*CreatePublisherNamespaceRpcRequest) ProtoMessage() {}
 
 func (x *CreatePublisherNamespaceRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[271]
+	mi := &file_internal_proto_msgTypes[269]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30548,7 +30496,7 @@ func (x *CreatePublisherNamespaceRpcRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use CreatePublisherNamespaceRpcRequest.ProtoReflect.Descriptor instead.
 func (*CreatePublisherNamespaceRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{271}
+	return file_internal_proto_rawDescGZIP(), []int{269}
 }
 
 func (x *CreatePublisherNamespaceRpcRequest) GetContext() *CallContext {
@@ -30576,7 +30524,7 @@ type RevokePublisherNamespaceRpcRequest struct {
 
 func (x *RevokePublisherNamespaceRpcRequest) Reset() {
 	*x = RevokePublisherNamespaceRpcRequest{}
-	mi := &file_internal_proto_msgTypes[272]
+	mi := &file_internal_proto_msgTypes[270]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30588,7 +30536,7 @@ func (x *RevokePublisherNamespaceRpcRequest) String() string {
 func (*RevokePublisherNamespaceRpcRequest) ProtoMessage() {}
 
 func (x *RevokePublisherNamespaceRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[272]
+	mi := &file_internal_proto_msgTypes[270]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30601,7 +30549,7 @@ func (x *RevokePublisherNamespaceRpcRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use RevokePublisherNamespaceRpcRequest.ProtoReflect.Descriptor instead.
 func (*RevokePublisherNamespaceRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{272}
+	return file_internal_proto_rawDescGZIP(), []int{270}
 }
 
 func (x *RevokePublisherNamespaceRpcRequest) GetContext() *CallContext {
@@ -30636,7 +30584,7 @@ type ReenableTenantRpcRequest struct {
 
 func (x *ReenableTenantRpcRequest) Reset() {
 	*x = ReenableTenantRpcRequest{}
-	mi := &file_internal_proto_msgTypes[273]
+	mi := &file_internal_proto_msgTypes[271]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30648,7 +30596,7 @@ func (x *ReenableTenantRpcRequest) String() string {
 func (*ReenableTenantRpcRequest) ProtoMessage() {}
 
 func (x *ReenableTenantRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[273]
+	mi := &file_internal_proto_msgTypes[271]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30661,7 +30609,7 @@ func (x *ReenableTenantRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReenableTenantRpcRequest.ProtoReflect.Descriptor instead.
 func (*ReenableTenantRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{273}
+	return file_internal_proto_rawDescGZIP(), []int{271}
 }
 
 func (x *ReenableTenantRpcRequest) GetContext() *CallContext {
@@ -30696,7 +30644,7 @@ type GetTenantLifecycleOperationRpcRequest struct {
 
 func (x *GetTenantLifecycleOperationRpcRequest) Reset() {
 	*x = GetTenantLifecycleOperationRpcRequest{}
-	mi := &file_internal_proto_msgTypes[274]
+	mi := &file_internal_proto_msgTypes[272]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30708,7 +30656,7 @@ func (x *GetTenantLifecycleOperationRpcRequest) String() string {
 func (*GetTenantLifecycleOperationRpcRequest) ProtoMessage() {}
 
 func (x *GetTenantLifecycleOperationRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[274]
+	mi := &file_internal_proto_msgTypes[272]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30721,7 +30669,7 @@ func (x *GetTenantLifecycleOperationRpcRequest) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use GetTenantLifecycleOperationRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetTenantLifecycleOperationRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{274}
+	return file_internal_proto_rawDescGZIP(), []int{272}
 }
 
 func (x *GetTenantLifecycleOperationRpcRequest) GetContext() *CallContext {
@@ -30756,7 +30704,7 @@ type UpdateRenewalSettingsRpcRequest struct {
 
 func (x *UpdateRenewalSettingsRpcRequest) Reset() {
 	*x = UpdateRenewalSettingsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[275]
+	mi := &file_internal_proto_msgTypes[273]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30768,7 +30716,7 @@ func (x *UpdateRenewalSettingsRpcRequest) String() string {
 func (*UpdateRenewalSettingsRpcRequest) ProtoMessage() {}
 
 func (x *UpdateRenewalSettingsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[275]
+	mi := &file_internal_proto_msgTypes[273]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30781,7 +30729,7 @@ func (x *UpdateRenewalSettingsRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateRenewalSettingsRpcRequest.ProtoReflect.Descriptor instead.
 func (*UpdateRenewalSettingsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{275}
+	return file_internal_proto_rawDescGZIP(), []int{273}
 }
 
 func (x *UpdateRenewalSettingsRpcRequest) GetContext() *CallContext {
@@ -30815,7 +30763,7 @@ type RevealWorkspaceApplicationCredentialsRpcRequest struct {
 
 func (x *RevealWorkspaceApplicationCredentialsRpcRequest) Reset() {
 	*x = RevealWorkspaceApplicationCredentialsRpcRequest{}
-	mi := &file_internal_proto_msgTypes[276]
+	mi := &file_internal_proto_msgTypes[274]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30827,7 +30775,7 @@ func (x *RevealWorkspaceApplicationCredentialsRpcRequest) String() string {
 func (*RevealWorkspaceApplicationCredentialsRpcRequest) ProtoMessage() {}
 
 func (x *RevealWorkspaceApplicationCredentialsRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[276]
+	mi := &file_internal_proto_msgTypes[274]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30840,7 +30788,7 @@ func (x *RevealWorkspaceApplicationCredentialsRpcRequest) ProtoReflect() protore
 
 // Deprecated: Use RevealWorkspaceApplicationCredentialsRpcRequest.ProtoReflect.Descriptor instead.
 func (*RevealWorkspaceApplicationCredentialsRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{276}
+	return file_internal_proto_rawDescGZIP(), []int{274}
 }
 
 func (x *RevealWorkspaceApplicationCredentialsRpcRequest) GetContext() *CallContext {
@@ -30869,7 +30817,7 @@ type ListPlanChangesRpcRequest struct {
 
 func (x *ListPlanChangesRpcRequest) Reset() {
 	*x = ListPlanChangesRpcRequest{}
-	mi := &file_internal_proto_msgTypes[277]
+	mi := &file_internal_proto_msgTypes[275]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30881,7 +30829,7 @@ func (x *ListPlanChangesRpcRequest) String() string {
 func (*ListPlanChangesRpcRequest) ProtoMessage() {}
 
 func (x *ListPlanChangesRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[277]
+	mi := &file_internal_proto_msgTypes[275]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30894,7 +30842,7 @@ func (x *ListPlanChangesRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPlanChangesRpcRequest.ProtoReflect.Descriptor instead.
 func (*ListPlanChangesRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{277}
+	return file_internal_proto_rawDescGZIP(), []int{275}
 }
 
 func (x *ListPlanChangesRpcRequest) GetContext() *CallContext {
@@ -30936,7 +30884,7 @@ type GetPlanChangeRpcRequest struct {
 
 func (x *GetPlanChangeRpcRequest) Reset() {
 	*x = GetPlanChangeRpcRequest{}
-	mi := &file_internal_proto_msgTypes[278]
+	mi := &file_internal_proto_msgTypes[276]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30948,7 +30896,7 @@ func (x *GetPlanChangeRpcRequest) String() string {
 func (*GetPlanChangeRpcRequest) ProtoMessage() {}
 
 func (x *GetPlanChangeRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[278]
+	mi := &file_internal_proto_msgTypes[276]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30961,7 +30909,7 @@ func (x *GetPlanChangeRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPlanChangeRpcRequest.ProtoReflect.Descriptor instead.
 func (*GetPlanChangeRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{278}
+	return file_internal_proto_rawDescGZIP(), []int{276}
 }
 
 func (x *GetPlanChangeRpcRequest) GetContext() *CallContext {
@@ -30997,7 +30945,7 @@ type CancelPlanChangeRpcRequest struct {
 
 func (x *CancelPlanChangeRpcRequest) Reset() {
 	*x = CancelPlanChangeRpcRequest{}
-	mi := &file_internal_proto_msgTypes[279]
+	mi := &file_internal_proto_msgTypes[277]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31009,7 +30957,7 @@ func (x *CancelPlanChangeRpcRequest) String() string {
 func (*CancelPlanChangeRpcRequest) ProtoMessage() {}
 
 func (x *CancelPlanChangeRpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[279]
+	mi := &file_internal_proto_msgTypes[277]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31022,7 +30970,7 @@ func (x *CancelPlanChangeRpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelPlanChangeRpcRequest.ProtoReflect.Descriptor instead.
 func (*CancelPlanChangeRpcRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{279}
+	return file_internal_proto_rawDescGZIP(), []int{277}
 }
 
 func (x *CancelPlanChangeRpcRequest) GetContext() *CallContext {
@@ -31063,7 +31011,7 @@ type OwnerOperationRequest struct {
 
 func (x *OwnerOperationRequest) Reset() {
 	*x = OwnerOperationRequest{}
-	mi := &file_internal_proto_msgTypes[280]
+	mi := &file_internal_proto_msgTypes[278]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31075,7 +31023,7 @@ func (x *OwnerOperationRequest) String() string {
 func (*OwnerOperationRequest) ProtoMessage() {}
 
 func (x *OwnerOperationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[280]
+	mi := &file_internal_proto_msgTypes[278]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31088,7 +31036,7 @@ func (x *OwnerOperationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OwnerOperationRequest.ProtoReflect.Descriptor instead.
 func (*OwnerOperationRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{280}
+	return file_internal_proto_rawDescGZIP(), []int{278}
 }
 
 func (x *OwnerOperationRequest) GetContext() *CallContext {
@@ -31117,7 +31065,7 @@ type SourceObjectReference struct {
 
 func (x *SourceObjectReference) Reset() {
 	*x = SourceObjectReference{}
-	mi := &file_internal_proto_msgTypes[281]
+	mi := &file_internal_proto_msgTypes[279]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31129,7 +31077,7 @@ func (x *SourceObjectReference) String() string {
 func (*SourceObjectReference) ProtoMessage() {}
 
 func (x *SourceObjectReference) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[281]
+	mi := &file_internal_proto_msgTypes[279]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31142,7 +31090,7 @@ func (x *SourceObjectReference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceObjectReference.ProtoReflect.Descriptor instead.
 func (*SourceObjectReference) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{281}
+	return file_internal_proto_rawDescGZIP(), []int{279}
 }
 
 func (x *SourceObjectReference) GetStorageObjectId() string {
@@ -31185,7 +31133,7 @@ type BuildInputRequest struct {
 
 func (x *BuildInputRequest) Reset() {
 	*x = BuildInputRequest{}
-	mi := &file_internal_proto_msgTypes[282]
+	mi := &file_internal_proto_msgTypes[280]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31197,7 +31145,7 @@ func (x *BuildInputRequest) String() string {
 func (*BuildInputRequest) ProtoMessage() {}
 
 func (x *BuildInputRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[282]
+	mi := &file_internal_proto_msgTypes[280]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31210,7 +31158,7 @@ func (x *BuildInputRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildInputRequest.ProtoReflect.Descriptor instead.
 func (*BuildInputRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{282}
+	return file_internal_proto_rawDescGZIP(), []int{280}
 }
 
 func (x *BuildInputRequest) GetContext() *CallContext {
@@ -31264,7 +31212,7 @@ type BuildInputSnapshot struct {
 
 func (x *BuildInputSnapshot) Reset() {
 	*x = BuildInputSnapshot{}
-	mi := &file_internal_proto_msgTypes[283]
+	mi := &file_internal_proto_msgTypes[281]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31276,7 +31224,7 @@ func (x *BuildInputSnapshot) String() string {
 func (*BuildInputSnapshot) ProtoMessage() {}
 
 func (x *BuildInputSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[283]
+	mi := &file_internal_proto_msgTypes[281]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31289,7 +31237,7 @@ func (x *BuildInputSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildInputSnapshot.ProtoReflect.Descriptor instead.
 func (*BuildInputSnapshot) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{283}
+	return file_internal_proto_rawDescGZIP(), []int{281}
 }
 
 func (x *BuildInputSnapshot) GetPackageId() string {
@@ -31415,7 +31363,7 @@ type ReferenceTarget struct {
 
 func (x *ReferenceTarget) Reset() {
 	*x = ReferenceTarget{}
-	mi := &file_internal_proto_msgTypes[284]
+	mi := &file_internal_proto_msgTypes[282]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31427,7 +31375,7 @@ func (x *ReferenceTarget) String() string {
 func (*ReferenceTarget) ProtoMessage() {}
 
 func (x *ReferenceTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[284]
+	mi := &file_internal_proto_msgTypes[282]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31440,7 +31388,7 @@ func (x *ReferenceTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReferenceTarget.ProtoReflect.Descriptor instead.
 func (*ReferenceTarget) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{284}
+	return file_internal_proto_rawDescGZIP(), []int{282}
 }
 
 func (x *ReferenceTarget) GetTarget() isReferenceTarget_Target {
@@ -31526,7 +31474,7 @@ type ReferenceClaimRequest struct {
 
 func (x *ReferenceClaimRequest) Reset() {
 	*x = ReferenceClaimRequest{}
-	mi := &file_internal_proto_msgTypes[285]
+	mi := &file_internal_proto_msgTypes[283]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31538,7 +31486,7 @@ func (x *ReferenceClaimRequest) String() string {
 func (*ReferenceClaimRequest) ProtoMessage() {}
 
 func (x *ReferenceClaimRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[285]
+	mi := &file_internal_proto_msgTypes[283]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31551,7 +31499,7 @@ func (x *ReferenceClaimRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReferenceClaimRequest.ProtoReflect.Descriptor instead.
 func (*ReferenceClaimRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{285}
+	return file_internal_proto_rawDescGZIP(), []int{283}
 }
 
 func (x *ReferenceClaimRequest) GetContext() *CallContext {
@@ -31602,7 +31550,7 @@ type OwnerCommitEvidence struct {
 
 func (x *OwnerCommitEvidence) Reset() {
 	*x = OwnerCommitEvidence{}
-	mi := &file_internal_proto_msgTypes[286]
+	mi := &file_internal_proto_msgTypes[284]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31614,7 +31562,7 @@ func (x *OwnerCommitEvidence) String() string {
 func (*OwnerCommitEvidence) ProtoMessage() {}
 
 func (x *OwnerCommitEvidence) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[286]
+	mi := &file_internal_proto_msgTypes[284]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31627,7 +31575,7 @@ func (x *OwnerCommitEvidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OwnerCommitEvidence.ProtoReflect.Descriptor instead.
 func (*OwnerCommitEvidence) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{286}
+	return file_internal_proto_rawDescGZIP(), []int{284}
 }
 
 func (x *OwnerCommitEvidence) GetOwner() OwnerEnum {
@@ -31725,7 +31673,7 @@ type BindReferenceRequest struct {
 
 func (x *BindReferenceRequest) Reset() {
 	*x = BindReferenceRequest{}
-	mi := &file_internal_proto_msgTypes[287]
+	mi := &file_internal_proto_msgTypes[285]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31737,7 +31685,7 @@ func (x *BindReferenceRequest) String() string {
 func (*BindReferenceRequest) ProtoMessage() {}
 
 func (x *BindReferenceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[287]
+	mi := &file_internal_proto_msgTypes[285]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31750,7 +31698,7 @@ func (x *BindReferenceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BindReferenceRequest.ProtoReflect.Descriptor instead.
 func (*BindReferenceRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{287}
+	return file_internal_proto_rawDescGZIP(), []int{285}
 }
 
 func (x *BindReferenceRequest) GetContext() *CallContext {
@@ -31788,7 +31736,7 @@ type ReleaseEvidence struct {
 
 func (x *ReleaseEvidence) Reset() {
 	*x = ReleaseEvidence{}
-	mi := &file_internal_proto_msgTypes[288]
+	mi := &file_internal_proto_msgTypes[286]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31800,7 +31748,7 @@ func (x *ReleaseEvidence) String() string {
 func (*ReleaseEvidence) ProtoMessage() {}
 
 func (x *ReleaseEvidence) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[288]
+	mi := &file_internal_proto_msgTypes[286]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31813,7 +31761,7 @@ func (x *ReleaseEvidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReleaseEvidence.ProtoReflect.Descriptor instead.
 func (*ReleaseEvidence) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{288}
+	return file_internal_proto_rawDescGZIP(), []int{286}
 }
 
 func (x *ReleaseEvidence) GetOwner() OwnerEnum {
@@ -31869,7 +31817,7 @@ type ReleaseReferenceRequest struct {
 
 func (x *ReleaseReferenceRequest) Reset() {
 	*x = ReleaseReferenceRequest{}
-	mi := &file_internal_proto_msgTypes[289]
+	mi := &file_internal_proto_msgTypes[287]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31881,7 +31829,7 @@ func (x *ReleaseReferenceRequest) String() string {
 func (*ReleaseReferenceRequest) ProtoMessage() {}
 
 func (x *ReleaseReferenceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[289]
+	mi := &file_internal_proto_msgTypes[287]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31894,7 +31842,7 @@ func (x *ReleaseReferenceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReleaseReferenceRequest.ProtoReflect.Descriptor instead.
 func (*ReleaseReferenceRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{289}
+	return file_internal_proto_rawDescGZIP(), []int{287}
 }
 
 func (x *ReleaseReferenceRequest) GetContext() *CallContext {
@@ -31935,7 +31883,7 @@ type ReferenceClaim struct {
 
 func (x *ReferenceClaim) Reset() {
 	*x = ReferenceClaim{}
-	mi := &file_internal_proto_msgTypes[290]
+	mi := &file_internal_proto_msgTypes[288]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31947,7 +31895,7 @@ func (x *ReferenceClaim) String() string {
 func (*ReferenceClaim) ProtoMessage() {}
 
 func (x *ReferenceClaim) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[290]
+	mi := &file_internal_proto_msgTypes[288]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31960,7 +31908,7 @@ func (x *ReferenceClaim) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReferenceClaim.ProtoReflect.Descriptor instead.
 func (*ReferenceClaim) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{290}
+	return file_internal_proto_rawDescGZIP(), []int{288}
 }
 
 func (x *ReferenceClaim) GetId() string {
@@ -32038,7 +31986,7 @@ type ReadClaimUsageRequest struct {
 
 func (x *ReadClaimUsageRequest) Reset() {
 	*x = ReadClaimUsageRequest{}
-	mi := &file_internal_proto_msgTypes[291]
+	mi := &file_internal_proto_msgTypes[289]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32050,7 +31998,7 @@ func (x *ReadClaimUsageRequest) String() string {
 func (*ReadClaimUsageRequest) ProtoMessage() {}
 
 func (x *ReadClaimUsageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[291]
+	mi := &file_internal_proto_msgTypes[289]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32063,7 +32011,7 @@ func (x *ReadClaimUsageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadClaimUsageRequest.ProtoReflect.Descriptor instead.
 func (*ReadClaimUsageRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{291}
+	return file_internal_proto_rawDescGZIP(), []int{289}
 }
 
 func (x *ReadClaimUsageRequest) GetContext() *CallContext {
@@ -32117,7 +32065,7 @@ type ClaimUsageEvidence struct {
 
 func (x *ClaimUsageEvidence) Reset() {
 	*x = ClaimUsageEvidence{}
-	mi := &file_internal_proto_msgTypes[292]
+	mi := &file_internal_proto_msgTypes[290]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32129,7 +32077,7 @@ func (x *ClaimUsageEvidence) String() string {
 func (*ClaimUsageEvidence) ProtoMessage() {}
 
 func (x *ClaimUsageEvidence) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[292]
+	mi := &file_internal_proto_msgTypes[290]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32142,7 +32090,7 @@ func (x *ClaimUsageEvidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClaimUsageEvidence.ProtoReflect.Descriptor instead.
 func (*ClaimUsageEvidence) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{292}
+	return file_internal_proto_rawDescGZIP(), []int{290}
 }
 
 func (x *ClaimUsageEvidence) GetClaimId() string {
@@ -32260,7 +32208,7 @@ type ResolvePublisherContractRequest struct {
 
 func (x *ResolvePublisherContractRequest) Reset() {
 	*x = ResolvePublisherContractRequest{}
-	mi := &file_internal_proto_msgTypes[293]
+	mi := &file_internal_proto_msgTypes[291]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32272,7 +32220,7 @@ func (x *ResolvePublisherContractRequest) String() string {
 func (*ResolvePublisherContractRequest) ProtoMessage() {}
 
 func (x *ResolvePublisherContractRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[293]
+	mi := &file_internal_proto_msgTypes[291]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32285,7 +32233,7 @@ func (x *ResolvePublisherContractRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolvePublisherContractRequest.ProtoReflect.Descriptor instead.
 func (*ResolvePublisherContractRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{293}
+	return file_internal_proto_rawDescGZIP(), []int{291}
 }
 
 func (x *ResolvePublisherContractRequest) GetContext() *CallContext {
@@ -32314,7 +32262,7 @@ type ResolvedPublisherContract struct {
 
 func (x *ResolvedPublisherContract) Reset() {
 	*x = ResolvedPublisherContract{}
-	mi := &file_internal_proto_msgTypes[294]
+	mi := &file_internal_proto_msgTypes[292]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32326,7 +32274,7 @@ func (x *ResolvedPublisherContract) String() string {
 func (*ResolvedPublisherContract) ProtoMessage() {}
 
 func (x *ResolvedPublisherContract) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[294]
+	mi := &file_internal_proto_msgTypes[292]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32339,7 +32287,7 @@ func (x *ResolvedPublisherContract) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolvedPublisherContract.ProtoReflect.Descriptor instead.
 func (*ResolvedPublisherContract) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{294}
+	return file_internal_proto_rawDescGZIP(), []int{292}
 }
 
 func (x *ResolvedPublisherContract) GetReference() *PublisherContractReference {
@@ -32380,7 +32328,7 @@ type ReadBuildArtifactRequest struct {
 
 func (x *ReadBuildArtifactRequest) Reset() {
 	*x = ReadBuildArtifactRequest{}
-	mi := &file_internal_proto_msgTypes[295]
+	mi := &file_internal_proto_msgTypes[293]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32392,7 +32340,7 @@ func (x *ReadBuildArtifactRequest) String() string {
 func (*ReadBuildArtifactRequest) ProtoMessage() {}
 
 func (x *ReadBuildArtifactRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[295]
+	mi := &file_internal_proto_msgTypes[293]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32405,7 +32353,7 @@ func (x *ReadBuildArtifactRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadBuildArtifactRequest.ProtoReflect.Descriptor instead.
 func (*ReadBuildArtifactRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{295}
+	return file_internal_proto_rawDescGZIP(), []int{293}
 }
 
 func (x *ReadBuildArtifactRequest) GetContext() *CallContext {
@@ -32441,7 +32389,7 @@ type BuildArtifactReadback struct {
 
 func (x *BuildArtifactReadback) Reset() {
 	*x = BuildArtifactReadback{}
-	mi := &file_internal_proto_msgTypes[296]
+	mi := &file_internal_proto_msgTypes[294]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32453,7 +32401,7 @@ func (x *BuildArtifactReadback) String() string {
 func (*BuildArtifactReadback) ProtoMessage() {}
 
 func (x *BuildArtifactReadback) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[296]
+	mi := &file_internal_proto_msgTypes[294]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32466,7 +32414,7 @@ func (x *BuildArtifactReadback) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildArtifactReadback.ProtoReflect.Descriptor instead.
 func (*BuildArtifactReadback) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{296}
+	return file_internal_proto_rawDescGZIP(), []int{294}
 }
 
 func (x *BuildArtifactReadback) GetBuildJobId() string {
@@ -32554,7 +32502,7 @@ type PlatformScope struct {
 
 func (x *PlatformScope) Reset() {
 	*x = PlatformScope{}
-	mi := &file_internal_proto_msgTypes[297]
+	mi := &file_internal_proto_msgTypes[295]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32566,7 +32514,7 @@ func (x *PlatformScope) String() string {
 func (*PlatformScope) ProtoMessage() {}
 
 func (x *PlatformScope) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[297]
+	mi := &file_internal_proto_msgTypes[295]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32579,7 +32527,7 @@ func (x *PlatformScope) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlatformScope.ProtoReflect.Descriptor instead.
 func (*PlatformScope) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{297}
+	return file_internal_proto_rawDescGZIP(), []int{295}
 }
 
 type TenantScope struct {
@@ -32591,7 +32539,7 @@ type TenantScope struct {
 
 func (x *TenantScope) Reset() {
 	*x = TenantScope{}
-	mi := &file_internal_proto_msgTypes[298]
+	mi := &file_internal_proto_msgTypes[296]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32603,7 +32551,7 @@ func (x *TenantScope) String() string {
 func (*TenantScope) ProtoMessage() {}
 
 func (x *TenantScope) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[298]
+	mi := &file_internal_proto_msgTypes[296]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32616,7 +32564,7 @@ func (x *TenantScope) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TenantScope.ProtoReflect.Descriptor instead.
 func (*TenantScope) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{298}
+	return file_internal_proto_rawDescGZIP(), []int{296}
 }
 
 func (x *TenantScope) GetTenantId() string {
@@ -32639,7 +32587,7 @@ type AuthorizationScope struct {
 
 func (x *AuthorizationScope) Reset() {
 	*x = AuthorizationScope{}
-	mi := &file_internal_proto_msgTypes[299]
+	mi := &file_internal_proto_msgTypes[297]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32651,7 +32599,7 @@ func (x *AuthorizationScope) String() string {
 func (*AuthorizationScope) ProtoMessage() {}
 
 func (x *AuthorizationScope) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[299]
+	mi := &file_internal_proto_msgTypes[297]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32664,7 +32612,7 @@ func (x *AuthorizationScope) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizationScope.ProtoReflect.Descriptor instead.
 func (*AuthorizationScope) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{299}
+	return file_internal_proto_rawDescGZIP(), []int{297}
 }
 
 func (x *AuthorizationScope) GetScope() isAuthorizationScope_Scope {
@@ -32718,7 +32666,7 @@ type AuthorizationResource struct {
 
 func (x *AuthorizationResource) Reset() {
 	*x = AuthorizationResource{}
-	mi := &file_internal_proto_msgTypes[300]
+	mi := &file_internal_proto_msgTypes[298]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32730,7 +32678,7 @@ func (x *AuthorizationResource) String() string {
 func (*AuthorizationResource) ProtoMessage() {}
 
 func (x *AuthorizationResource) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[300]
+	mi := &file_internal_proto_msgTypes[298]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32743,7 +32691,7 @@ func (x *AuthorizationResource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizationResource.ProtoReflect.Descriptor instead.
 func (*AuthorizationResource) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{300}
+	return file_internal_proto_rawDescGZIP(), []int{298}
 }
 
 func (x *AuthorizationResource) GetKind() AuthorizationResourceKind {
@@ -32778,7 +32726,7 @@ type AuthorizationRequest struct {
 
 func (x *AuthorizationRequest) Reset() {
 	*x = AuthorizationRequest{}
-	mi := &file_internal_proto_msgTypes[301]
+	mi := &file_internal_proto_msgTypes[299]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32790,7 +32738,7 @@ func (x *AuthorizationRequest) String() string {
 func (*AuthorizationRequest) ProtoMessage() {}
 
 func (x *AuthorizationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[301]
+	mi := &file_internal_proto_msgTypes[299]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32803,7 +32751,7 @@ func (x *AuthorizationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizationRequest.ProtoReflect.Descriptor instead.
 func (*AuthorizationRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{301}
+	return file_internal_proto_rawDescGZIP(), []int{299}
 }
 
 func (x *AuthorizationRequest) GetScope() *AuthorizationScope {
@@ -32898,7 +32846,7 @@ type AuthorizationDecision struct {
 
 func (x *AuthorizationDecision) Reset() {
 	*x = AuthorizationDecision{}
-	mi := &file_internal_proto_msgTypes[302]
+	mi := &file_internal_proto_msgTypes[300]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32910,7 +32858,7 @@ func (x *AuthorizationDecision) String() string {
 func (*AuthorizationDecision) ProtoMessage() {}
 
 func (x *AuthorizationDecision) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[302]
+	mi := &file_internal_proto_msgTypes[300]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32923,7 +32871,7 @@ func (x *AuthorizationDecision) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizationDecision.ProtoReflect.Descriptor instead.
 func (*AuthorizationDecision) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{302}
+	return file_internal_proto_rawDescGZIP(), []int{300}
 }
 
 func (x *AuthorizationDecision) GetResult() AuthorizationResult {
@@ -33037,7 +32985,7 @@ type GetAuthorizationContextRequest struct {
 
 func (x *GetAuthorizationContextRequest) Reset() {
 	*x = GetAuthorizationContextRequest{}
-	mi := &file_internal_proto_msgTypes[303]
+	mi := &file_internal_proto_msgTypes[301]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33049,7 +32997,7 @@ func (x *GetAuthorizationContextRequest) String() string {
 func (*GetAuthorizationContextRequest) ProtoMessage() {}
 
 func (x *GetAuthorizationContextRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[303]
+	mi := &file_internal_proto_msgTypes[301]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33062,7 +33010,7 @@ func (x *GetAuthorizationContextRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAuthorizationContextRequest.ProtoReflect.Descriptor instead.
 func (*GetAuthorizationContextRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{303}
+	return file_internal_proto_rawDescGZIP(), []int{301}
 }
 
 func (x *GetAuthorizationContextRequest) GetAuthorizationContextId() string {
@@ -33113,7 +33061,7 @@ type AcceptedOperationGrantRequest struct {
 
 func (x *AcceptedOperationGrantRequest) Reset() {
 	*x = AcceptedOperationGrantRequest{}
-	mi := &file_internal_proto_msgTypes[304]
+	mi := &file_internal_proto_msgTypes[302]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33125,7 +33073,7 @@ func (x *AcceptedOperationGrantRequest) String() string {
 func (*AcceptedOperationGrantRequest) ProtoMessage() {}
 
 func (x *AcceptedOperationGrantRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[304]
+	mi := &file_internal_proto_msgTypes[302]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33138,7 +33086,7 @@ func (x *AcceptedOperationGrantRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcceptedOperationGrantRequest.ProtoReflect.Descriptor instead.
 func (*AcceptedOperationGrantRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{304}
+	return file_internal_proto_rawDescGZIP(), []int{302}
 }
 
 func (x *AcceptedOperationGrantRequest) GetAuthorizationContextId() string {
@@ -33198,7 +33146,7 @@ type AcceptedOperationGrant struct {
 
 func (x *AcceptedOperationGrant) Reset() {
 	*x = AcceptedOperationGrant{}
-	mi := &file_internal_proto_msgTypes[305]
+	mi := &file_internal_proto_msgTypes[303]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33210,7 +33158,7 @@ func (x *AcceptedOperationGrant) String() string {
 func (*AcceptedOperationGrant) ProtoMessage() {}
 
 func (x *AcceptedOperationGrant) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[305]
+	mi := &file_internal_proto_msgTypes[303]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33223,7 +33171,7 @@ func (x *AcceptedOperationGrant) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcceptedOperationGrant.ProtoReflect.Descriptor instead.
 func (*AcceptedOperationGrant) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{305}
+	return file_internal_proto_rawDescGZIP(), []int{303}
 }
 
 func (x *AcceptedOperationGrant) GetId() string {
@@ -33349,7 +33297,7 @@ type ReadOwnerCommitRequest struct {
 
 func (x *ReadOwnerCommitRequest) Reset() {
 	*x = ReadOwnerCommitRequest{}
-	mi := &file_internal_proto_msgTypes[306]
+	mi := &file_internal_proto_msgTypes[304]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33361,7 +33309,7 @@ func (x *ReadOwnerCommitRequest) String() string {
 func (*ReadOwnerCommitRequest) ProtoMessage() {}
 
 func (x *ReadOwnerCommitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[306]
+	mi := &file_internal_proto_msgTypes[304]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33374,7 +33322,7 @@ func (x *ReadOwnerCommitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadOwnerCommitRequest.ProtoReflect.Descriptor instead.
 func (*ReadOwnerCommitRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{306}
+	return file_internal_proto_rawDescGZIP(), []int{304}
 }
 
 func (x *ReadOwnerCommitRequest) GetOwner() OwnerEnum {
@@ -33410,7 +33358,7 @@ type ReadRenewalConsentRequest struct {
 
 func (x *ReadRenewalConsentRequest) Reset() {
 	*x = ReadRenewalConsentRequest{}
-	mi := &file_internal_proto_msgTypes[307]
+	mi := &file_internal_proto_msgTypes[305]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33422,7 +33370,7 @@ func (x *ReadRenewalConsentRequest) String() string {
 func (*ReadRenewalConsentRequest) ProtoMessage() {}
 
 func (x *ReadRenewalConsentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[307]
+	mi := &file_internal_proto_msgTypes[305]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33435,7 +33383,7 @@ func (x *ReadRenewalConsentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadRenewalConsentRequest.ProtoReflect.Descriptor instead.
 func (*ReadRenewalConsentRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{307}
+	return file_internal_proto_rawDescGZIP(), []int{305}
 }
 
 func (x *ReadRenewalConsentRequest) GetContext() *CallContext {
@@ -33483,7 +33431,7 @@ type RenewalConsentReadback struct {
 
 func (x *RenewalConsentReadback) Reset() {
 	*x = RenewalConsentReadback{}
-	mi := &file_internal_proto_msgTypes[308]
+	mi := &file_internal_proto_msgTypes[306]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33495,7 +33443,7 @@ func (x *RenewalConsentReadback) String() string {
 func (*RenewalConsentReadback) ProtoMessage() {}
 
 func (x *RenewalConsentReadback) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[308]
+	mi := &file_internal_proto_msgTypes[306]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33508,7 +33456,7 @@ func (x *RenewalConsentReadback) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenewalConsentReadback.ProtoReflect.Descriptor instead.
 func (*RenewalConsentReadback) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{308}
+	return file_internal_proto_rawDescGZIP(), []int{306}
 }
 
 func (x *RenewalConsentReadback) GetSubscriptionId() string {
@@ -33589,7 +33537,7 @@ type AdmissionRequest struct {
 
 func (x *AdmissionRequest) Reset() {
 	*x = AdmissionRequest{}
-	mi := &file_internal_proto_msgTypes[309]
+	mi := &file_internal_proto_msgTypes[307]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33601,7 +33549,7 @@ func (x *AdmissionRequest) String() string {
 func (*AdmissionRequest) ProtoMessage() {}
 
 func (x *AdmissionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[309]
+	mi := &file_internal_proto_msgTypes[307]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33614,7 +33562,7 @@ func (x *AdmissionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdmissionRequest.ProtoReflect.Descriptor instead.
 func (*AdmissionRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{309}
+	return file_internal_proto_rawDescGZIP(), []int{307}
 }
 
 func (x *AdmissionRequest) GetContext() *CallContext {
@@ -33682,7 +33630,7 @@ type AdmissionResult struct {
 
 func (x *AdmissionResult) Reset() {
 	*x = AdmissionResult{}
-	mi := &file_internal_proto_msgTypes[310]
+	mi := &file_internal_proto_msgTypes[308]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33694,7 +33642,7 @@ func (x *AdmissionResult) String() string {
 func (*AdmissionResult) ProtoMessage() {}
 
 func (x *AdmissionResult) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[310]
+	mi := &file_internal_proto_msgTypes[308]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33707,7 +33655,7 @@ func (x *AdmissionResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdmissionResult.ProtoReflect.Descriptor instead.
 func (*AdmissionResult) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{310}
+	return file_internal_proto_rawDescGZIP(), []int{308}
 }
 
 func (x *AdmissionResult) GetOutcome() Observation {
@@ -33782,7 +33730,7 @@ type AcceptQuoteRequest struct {
 
 func (x *AcceptQuoteRequest) Reset() {
 	*x = AcceptQuoteRequest{}
-	mi := &file_internal_proto_msgTypes[311]
+	mi := &file_internal_proto_msgTypes[309]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33794,7 +33742,7 @@ func (x *AcceptQuoteRequest) String() string {
 func (*AcceptQuoteRequest) ProtoMessage() {}
 
 func (x *AcceptQuoteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[311]
+	mi := &file_internal_proto_msgTypes[309]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33807,7 +33755,7 @@ func (x *AcceptQuoteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcceptQuoteRequest.ProtoReflect.Descriptor instead.
 func (*AcceptQuoteRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{311}
+	return file_internal_proto_rawDescGZIP(), []int{309}
 }
 
 func (x *AcceptQuoteRequest) GetContext() *CallContext {
@@ -33882,7 +33830,7 @@ type QuoteAcceptance struct {
 
 func (x *QuoteAcceptance) Reset() {
 	*x = QuoteAcceptance{}
-	mi := &file_internal_proto_msgTypes[312]
+	mi := &file_internal_proto_msgTypes[310]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33894,7 +33842,7 @@ func (x *QuoteAcceptance) String() string {
 func (*QuoteAcceptance) ProtoMessage() {}
 
 func (x *QuoteAcceptance) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[312]
+	mi := &file_internal_proto_msgTypes[310]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33907,7 +33855,7 @@ func (x *QuoteAcceptance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuoteAcceptance.ProtoReflect.Descriptor instead.
 func (*QuoteAcceptance) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{312}
+	return file_internal_proto_rawDescGZIP(), []int{310}
 }
 
 func (x *QuoteAcceptance) GetQuote() *Quote {
@@ -33976,7 +33924,7 @@ type QuoteResourcePlanRequest struct {
 
 func (x *QuoteResourcePlanRequest) Reset() {
 	*x = QuoteResourcePlanRequest{}
-	mi := &file_internal_proto_msgTypes[313]
+	mi := &file_internal_proto_msgTypes[311]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33988,7 +33936,7 @@ func (x *QuoteResourcePlanRequest) String() string {
 func (*QuoteResourcePlanRequest) ProtoMessage() {}
 
 func (x *QuoteResourcePlanRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[313]
+	mi := &file_internal_proto_msgTypes[311]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34001,7 +33949,7 @@ func (x *QuoteResourcePlanRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuoteResourcePlanRequest.ProtoReflect.Descriptor instead.
 func (*QuoteResourcePlanRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{313}
+	return file_internal_proto_rawDescGZIP(), []int{311}
 }
 
 func (x *QuoteResourcePlanRequest) GetContext() *CallContext {
@@ -34018,6 +33966,319 @@ func (x *QuoteResourcePlanRequest) GetQuoteId() string {
 	return ""
 }
 
+type UserExternalBindingCommand struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Context           *CallContext           `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	ActorId           string                 `protobuf:"bytes,2,opt,name=actor_id,json=actorId,proto3" json:"actor_id,omitempty"`
+	Sub2ApiUserId     string                 `protobuf:"bytes,3,opt,name=sub2api_user_id,json=sub2apiUserId,proto3" json:"sub2api_user_id,omitempty"`
+	RegistryHost      string                 `protobuf:"bytes,4,opt,name=registry_host,json=registryHost,proto3" json:"registry_host,omitempty"`
+	RegistryNamespace string                 `protobuf:"bytes,5,opt,name=registry_namespace,json=registryNamespace,proto3" json:"registry_namespace,omitempty"`
+	Repository        string                 `protobuf:"bytes,6,opt,name=repository,proto3" json:"repository,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *UserExternalBindingCommand) Reset() {
+	*x = UserExternalBindingCommand{}
+	mi := &file_internal_proto_msgTypes[312]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UserExternalBindingCommand) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UserExternalBindingCommand) ProtoMessage() {}
+
+func (x *UserExternalBindingCommand) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_proto_msgTypes[312]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UserExternalBindingCommand.ProtoReflect.Descriptor instead.
+func (*UserExternalBindingCommand) Descriptor() ([]byte, []int) {
+	return file_internal_proto_rawDescGZIP(), []int{312}
+}
+
+func (x *UserExternalBindingCommand) GetContext() *CallContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *UserExternalBindingCommand) GetActorId() string {
+	if x != nil {
+		return x.ActorId
+	}
+	return ""
+}
+
+func (x *UserExternalBindingCommand) GetSub2ApiUserId() string {
+	if x != nil {
+		return x.Sub2ApiUserId
+	}
+	return ""
+}
+
+func (x *UserExternalBindingCommand) GetRegistryHost() string {
+	if x != nil {
+		return x.RegistryHost
+	}
+	return ""
+}
+
+func (x *UserExternalBindingCommand) GetRegistryNamespace() string {
+	if x != nil {
+		return x.RegistryNamespace
+	}
+	return ""
+}
+
+func (x *UserExternalBindingCommand) GetRepository() string {
+	if x != nil {
+		return x.Repository
+	}
+	return ""
+}
+
+type UserExternalBindingReadRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *CallContext           `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	ActorId       string                 `protobuf:"bytes,2,opt,name=actor_id,json=actorId,proto3" json:"actor_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UserExternalBindingReadRequest) Reset() {
+	*x = UserExternalBindingReadRequest{}
+	mi := &file_internal_proto_msgTypes[313]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UserExternalBindingReadRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UserExternalBindingReadRequest) ProtoMessage() {}
+
+func (x *UserExternalBindingReadRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_proto_msgTypes[313]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UserExternalBindingReadRequest.ProtoReflect.Descriptor instead.
+func (*UserExternalBindingReadRequest) Descriptor() ([]byte, []int) {
+	return file_internal_proto_rawDescGZIP(), []int{313}
+}
+
+func (x *UserExternalBindingReadRequest) GetContext() *CallContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *UserExternalBindingReadRequest) GetActorId() string {
+	if x != nil {
+		return x.ActorId
+	}
+	return ""
+}
+
+// Resolve the User from the live session; no target actor or destination is accepted.
+type GetSelfUserExternalBindingRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *CallContext           `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSelfUserExternalBindingRequest) Reset() {
+	*x = GetSelfUserExternalBindingRequest{}
+	mi := &file_internal_proto_msgTypes[314]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSelfUserExternalBindingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSelfUserExternalBindingRequest) ProtoMessage() {}
+
+func (x *GetSelfUserExternalBindingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_proto_msgTypes[314]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSelfUserExternalBindingRequest.ProtoReflect.Descriptor instead.
+func (*GetSelfUserExternalBindingRequest) Descriptor() ([]byte, []int) {
+	return file_internal_proto_rawDescGZIP(), []int{314}
+}
+
+func (x *GetSelfUserExternalBindingRequest) GetContext() *CallContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+type UserExternalBindingReadback struct {
+	state                   protoimpl.MessageState                      `protogen:"open.v1"`
+	ActorId                 string                                      `protobuf:"bytes,1,opt,name=actor_id,json=actorId,proto3" json:"actor_id,omitempty"`
+	Sub2ApiUserId           string                                      `protobuf:"bytes,2,opt,name=sub2api_user_id,json=sub2apiUserId,proto3" json:"sub2api_user_id,omitempty"`
+	RegistryHost            string                                      `protobuf:"bytes,3,opt,name=registry_host,json=registryHost,proto3" json:"registry_host,omitempty"`
+	RegistryNamespace       string                                      `protobuf:"bytes,4,opt,name=registry_namespace,json=registryNamespace,proto3" json:"registry_namespace,omitempty"`
+	Repository              string                                      `protobuf:"bytes,5,opt,name=repository,proto3" json:"repository,omitempty"`
+	Status                  UserExternalBindingReadbackStatusEnum       `protobuf:"varint,6,opt,name=status,proto3,enum=opl.cloud.api.UserExternalBindingReadbackStatusEnum" json:"status,omitempty"`
+	Verification            UserExternalBindingReadbackVerificationEnum `protobuf:"varint,7,opt,name=verification,proto3,enum=opl.cloud.api.UserExternalBindingReadbackVerificationEnum" json:"verification,omitempty"`
+	VerificationEvidenceRef string                                      `protobuf:"bytes,8,opt,name=verification_evidence_ref,json=verificationEvidenceRef,proto3" json:"verification_evidence_ref,omitempty"`
+	VerifiedAt              *timestamppb.Timestamp                      `protobuf:"bytes,9,opt,name=verified_at,json=verifiedAt,proto3" json:"verified_at,omitempty"`
+	CreatedAt               *timestamppb.Timestamp                      `protobuf:"bytes,10,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt               *timestamppb.Timestamp                      `protobuf:"bytes,11,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	DestinationVerifiedAt   *timestamppb.Timestamp                      `protobuf:"bytes,12,opt,name=destination_verified_at,json=destinationVerifiedAt,proto3" json:"destination_verified_at,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
+}
+
+func (x *UserExternalBindingReadback) Reset() {
+	*x = UserExternalBindingReadback{}
+	mi := &file_internal_proto_msgTypes[315]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UserExternalBindingReadback) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UserExternalBindingReadback) ProtoMessage() {}
+
+func (x *UserExternalBindingReadback) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_proto_msgTypes[315]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UserExternalBindingReadback.ProtoReflect.Descriptor instead.
+func (*UserExternalBindingReadback) Descriptor() ([]byte, []int) {
+	return file_internal_proto_rawDescGZIP(), []int{315}
+}
+
+func (x *UserExternalBindingReadback) GetActorId() string {
+	if x != nil {
+		return x.ActorId
+	}
+	return ""
+}
+
+func (x *UserExternalBindingReadback) GetSub2ApiUserId() string {
+	if x != nil {
+		return x.Sub2ApiUserId
+	}
+	return ""
+}
+
+func (x *UserExternalBindingReadback) GetRegistryHost() string {
+	if x != nil {
+		return x.RegistryHost
+	}
+	return ""
+}
+
+func (x *UserExternalBindingReadback) GetRegistryNamespace() string {
+	if x != nil {
+		return x.RegistryNamespace
+	}
+	return ""
+}
+
+func (x *UserExternalBindingReadback) GetRepository() string {
+	if x != nil {
+		return x.Repository
+	}
+	return ""
+}
+
+func (x *UserExternalBindingReadback) GetStatus() UserExternalBindingReadbackStatusEnum {
+	if x != nil {
+		return x.Status
+	}
+	return UserExternalBindingReadbackStatusEnum_USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_UNSPECIFIED
+}
+
+func (x *UserExternalBindingReadback) GetVerification() UserExternalBindingReadbackVerificationEnum {
+	if x != nil {
+		return x.Verification
+	}
+	return UserExternalBindingReadbackVerificationEnum_USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_UNSPECIFIED
+}
+
+func (x *UserExternalBindingReadback) GetVerificationEvidenceRef() string {
+	if x != nil {
+		return x.VerificationEvidenceRef
+	}
+	return ""
+}
+
+func (x *UserExternalBindingReadback) GetVerifiedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.VerifiedAt
+	}
+	return nil
+}
+
+func (x *UserExternalBindingReadback) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *UserExternalBindingReadback) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *UserExternalBindingReadback) GetDestinationVerifiedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DestinationVerifiedAt
+	}
+	return nil
+}
+
 type WalletBindingCommand struct {
 	state                  protoimpl.MessageState `protogen:"open.v1"`
 	Context                *CallContext           `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
@@ -34031,7 +34292,7 @@ type WalletBindingCommand struct {
 
 func (x *WalletBindingCommand) Reset() {
 	*x = WalletBindingCommand{}
-	mi := &file_internal_proto_msgTypes[314]
+	mi := &file_internal_proto_msgTypes[316]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34043,7 +34304,7 @@ func (x *WalletBindingCommand) String() string {
 func (*WalletBindingCommand) ProtoMessage() {}
 
 func (x *WalletBindingCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[314]
+	mi := &file_internal_proto_msgTypes[316]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34056,7 +34317,7 @@ func (x *WalletBindingCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WalletBindingCommand.ProtoReflect.Descriptor instead.
 func (*WalletBindingCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{314}
+	return file_internal_proto_rawDescGZIP(), []int{316}
 }
 
 func (x *WalletBindingCommand) GetContext() *CallContext {
@@ -34107,7 +34368,7 @@ type WalletBindingReadback struct {
 
 func (x *WalletBindingReadback) Reset() {
 	*x = WalletBindingReadback{}
-	mi := &file_internal_proto_msgTypes[315]
+	mi := &file_internal_proto_msgTypes[317]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34119,7 +34380,7 @@ func (x *WalletBindingReadback) String() string {
 func (*WalletBindingReadback) ProtoMessage() {}
 
 func (x *WalletBindingReadback) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[315]
+	mi := &file_internal_proto_msgTypes[317]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34132,7 +34393,7 @@ func (x *WalletBindingReadback) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WalletBindingReadback.ProtoReflect.Descriptor instead.
 func (*WalletBindingReadback) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{315}
+	return file_internal_proto_rawDescGZIP(), []int{317}
 }
 
 func (x *WalletBindingReadback) GetTenantId() string {
@@ -34185,7 +34446,7 @@ type WalletDebitCommand struct {
 
 func (x *WalletDebitCommand) Reset() {
 	*x = WalletDebitCommand{}
-	mi := &file_internal_proto_msgTypes[316]
+	mi := &file_internal_proto_msgTypes[318]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34197,7 +34458,7 @@ func (x *WalletDebitCommand) String() string {
 func (*WalletDebitCommand) ProtoMessage() {}
 
 func (x *WalletDebitCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[316]
+	mi := &file_internal_proto_msgTypes[318]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34210,7 +34471,7 @@ func (x *WalletDebitCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WalletDebitCommand.ProtoReflect.Descriptor instead.
 func (*WalletDebitCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{316}
+	return file_internal_proto_rawDescGZIP(), []int{318}
 }
 
 func (x *WalletDebitCommand) GetContext() *CallContext {
@@ -34278,7 +34539,7 @@ type WalletRefundCommand struct {
 
 func (x *WalletRefundCommand) Reset() {
 	*x = WalletRefundCommand{}
-	mi := &file_internal_proto_msgTypes[317]
+	mi := &file_internal_proto_msgTypes[319]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34290,7 +34551,7 @@ func (x *WalletRefundCommand) String() string {
 func (*WalletRefundCommand) ProtoMessage() {}
 
 func (x *WalletRefundCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[317]
+	mi := &file_internal_proto_msgTypes[319]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34303,7 +34564,7 @@ func (x *WalletRefundCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WalletRefundCommand.ProtoReflect.Descriptor instead.
 func (*WalletRefundCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{317}
+	return file_internal_proto_rawDescGZIP(), []int{319}
 }
 
 func (x *WalletRefundCommand) GetContext() *CallContext {
@@ -34373,7 +34634,7 @@ type WalletReadbackRequest struct {
 
 func (x *WalletReadbackRequest) Reset() {
 	*x = WalletReadbackRequest{}
-	mi := &file_internal_proto_msgTypes[318]
+	mi := &file_internal_proto_msgTypes[320]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34385,7 +34646,7 @@ func (x *WalletReadbackRequest) String() string {
 func (*WalletReadbackRequest) ProtoMessage() {}
 
 func (x *WalletReadbackRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[318]
+	mi := &file_internal_proto_msgTypes[320]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34398,7 +34659,7 @@ func (x *WalletReadbackRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WalletReadbackRequest.ProtoReflect.Descriptor instead.
 func (*WalletReadbackRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{318}
+	return file_internal_proto_rawDescGZIP(), []int{320}
 }
 
 func (x *WalletReadbackRequest) GetContext() *CallContext {
@@ -34434,7 +34695,7 @@ type ManagedKeyCommand struct {
 
 func (x *ManagedKeyCommand) Reset() {
 	*x = ManagedKeyCommand{}
-	mi := &file_internal_proto_msgTypes[319]
+	mi := &file_internal_proto_msgTypes[321]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34446,7 +34707,7 @@ func (x *ManagedKeyCommand) String() string {
 func (*ManagedKeyCommand) ProtoMessage() {}
 
 func (x *ManagedKeyCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[319]
+	mi := &file_internal_proto_msgTypes[321]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34459,7 +34720,7 @@ func (x *ManagedKeyCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ManagedKeyCommand.ProtoReflect.Descriptor instead.
 func (*ManagedKeyCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{319}
+	return file_internal_proto_rawDescGZIP(), []int{321}
 }
 
 func (x *ManagedKeyCommand) GetContext() *CallContext {
@@ -34504,7 +34765,7 @@ type ManagedKeyBinding struct {
 
 func (x *ManagedKeyBinding) Reset() {
 	*x = ManagedKeyBinding{}
-	mi := &file_internal_proto_msgTypes[320]
+	mi := &file_internal_proto_msgTypes[322]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34516,7 +34777,7 @@ func (x *ManagedKeyBinding) String() string {
 func (*ManagedKeyBinding) ProtoMessage() {}
 
 func (x *ManagedKeyBinding) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[320]
+	mi := &file_internal_proto_msgTypes[322]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34529,7 +34790,7 @@ func (x *ManagedKeyBinding) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ManagedKeyBinding.ProtoReflect.Descriptor instead.
 func (*ManagedKeyBinding) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{320}
+	return file_internal_proto_rawDescGZIP(), []int{322}
 }
 
 func (x *ManagedKeyBinding) GetKeyBindingId() string {
@@ -34585,7 +34846,7 @@ type ManagedKeyRevoke struct {
 
 func (x *ManagedKeyRevoke) Reset() {
 	*x = ManagedKeyRevoke{}
-	mi := &file_internal_proto_msgTypes[321]
+	mi := &file_internal_proto_msgTypes[323]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34597,7 +34858,7 @@ func (x *ManagedKeyRevoke) String() string {
 func (*ManagedKeyRevoke) ProtoMessage() {}
 
 func (x *ManagedKeyRevoke) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[321]
+	mi := &file_internal_proto_msgTypes[323]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34610,7 +34871,7 @@ func (x *ManagedKeyRevoke) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ManagedKeyRevoke.ProtoReflect.Descriptor instead.
 func (*ManagedKeyRevoke) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{321}
+	return file_internal_proto_rawDescGZIP(), []int{323}
 }
 
 func (x *ManagedKeyRevoke) GetContext() *CallContext {
@@ -34656,7 +34917,7 @@ type ResourcePlanSnapshot struct {
 
 func (x *ResourcePlanSnapshot) Reset() {
 	*x = ResourcePlanSnapshot{}
-	mi := &file_internal_proto_msgTypes[322]
+	mi := &file_internal_proto_msgTypes[324]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34668,7 +34929,7 @@ func (x *ResourcePlanSnapshot) String() string {
 func (*ResourcePlanSnapshot) ProtoMessage() {}
 
 func (x *ResourcePlanSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[322]
+	mi := &file_internal_proto_msgTypes[324]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34681,7 +34942,7 @@ func (x *ResourcePlanSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourcePlanSnapshot.ProtoReflect.Descriptor instead.
 func (*ResourcePlanSnapshot) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{322}
+	return file_internal_proto_rawDescGZIP(), []int{324}
 }
 
 func (x *ResourcePlanSnapshot) GetComputePlanId() string {
@@ -34795,7 +35056,7 @@ type ResourceAdmissionRequest struct {
 
 func (x *ResourceAdmissionRequest) Reset() {
 	*x = ResourceAdmissionRequest{}
-	mi := &file_internal_proto_msgTypes[323]
+	mi := &file_internal_proto_msgTypes[325]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34807,7 +35068,7 @@ func (x *ResourceAdmissionRequest) String() string {
 func (*ResourceAdmissionRequest) ProtoMessage() {}
 
 func (x *ResourceAdmissionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[323]
+	mi := &file_internal_proto_msgTypes[325]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34820,7 +35081,7 @@ func (x *ResourceAdmissionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceAdmissionRequest.ProtoReflect.Descriptor instead.
 func (*ResourceAdmissionRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{323}
+	return file_internal_proto_rawDescGZIP(), []int{325}
 }
 
 func (x *ResourceAdmissionRequest) GetContext() *CallContext {
@@ -34873,7 +35134,7 @@ type EnsureResourcesCommand struct {
 
 func (x *EnsureResourcesCommand) Reset() {
 	*x = EnsureResourcesCommand{}
-	mi := &file_internal_proto_msgTypes[324]
+	mi := &file_internal_proto_msgTypes[326]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34885,7 +35146,7 @@ func (x *EnsureResourcesCommand) String() string {
 func (*EnsureResourcesCommand) ProtoMessage() {}
 
 func (x *EnsureResourcesCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[324]
+	mi := &file_internal_proto_msgTypes[326]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34898,7 +35159,7 @@ func (x *EnsureResourcesCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnsureResourcesCommand.ProtoReflect.Descriptor instead.
 func (*EnsureResourcesCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{324}
+	return file_internal_proto_rawDescGZIP(), []int{326}
 }
 
 func (x *EnsureResourcesCommand) GetContext() *CallContext {
@@ -34963,7 +35224,7 @@ type MutateResourcesCommand struct {
 
 func (x *MutateResourcesCommand) Reset() {
 	*x = MutateResourcesCommand{}
-	mi := &file_internal_proto_msgTypes[325]
+	mi := &file_internal_proto_msgTypes[327]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34975,7 +35236,7 @@ func (x *MutateResourcesCommand) String() string {
 func (*MutateResourcesCommand) ProtoMessage() {}
 
 func (x *MutateResourcesCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[325]
+	mi := &file_internal_proto_msgTypes[327]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34988,7 +35249,7 @@ func (x *MutateResourcesCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MutateResourcesCommand.ProtoReflect.Descriptor instead.
 func (*MutateResourcesCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{325}
+	return file_internal_proto_rawDescGZIP(), []int{327}
 }
 
 func (x *MutateResourcesCommand) GetContext() *CallContext {
@@ -35046,7 +35307,7 @@ type ResizeResourcesCommand struct {
 
 func (x *ResizeResourcesCommand) Reset() {
 	*x = ResizeResourcesCommand{}
-	mi := &file_internal_proto_msgTypes[326]
+	mi := &file_internal_proto_msgTypes[328]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35058,7 +35319,7 @@ func (x *ResizeResourcesCommand) String() string {
 func (*ResizeResourcesCommand) ProtoMessage() {}
 
 func (x *ResizeResourcesCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[326]
+	mi := &file_internal_proto_msgTypes[328]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35071,7 +35332,7 @@ func (x *ResizeResourcesCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResizeResourcesCommand.ProtoReflect.Descriptor instead.
 func (*ResizeResourcesCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{326}
+	return file_internal_proto_rawDescGZIP(), []int{328}
 }
 
 func (x *ResizeResourcesCommand) GetContext() *CallContext {
@@ -35173,7 +35434,7 @@ type RenewResourcesCommand struct {
 
 func (x *RenewResourcesCommand) Reset() {
 	*x = RenewResourcesCommand{}
-	mi := &file_internal_proto_msgTypes[327]
+	mi := &file_internal_proto_msgTypes[329]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35185,7 +35446,7 @@ func (x *RenewResourcesCommand) String() string {
 func (*RenewResourcesCommand) ProtoMessage() {}
 
 func (x *RenewResourcesCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[327]
+	mi := &file_internal_proto_msgTypes[329]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35198,7 +35459,7 @@ func (x *RenewResourcesCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenewResourcesCommand.ProtoReflect.Descriptor instead.
 func (*RenewResourcesCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{327}
+	return file_internal_proto_rawDescGZIP(), []int{329}
 }
 
 func (x *RenewResourcesCommand) GetContext() *CallContext {
@@ -35261,7 +35522,7 @@ type ResourceReadbackRequest struct {
 
 func (x *ResourceReadbackRequest) Reset() {
 	*x = ResourceReadbackRequest{}
-	mi := &file_internal_proto_msgTypes[328]
+	mi := &file_internal_proto_msgTypes[330]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35273,7 +35534,7 @@ func (x *ResourceReadbackRequest) String() string {
 func (*ResourceReadbackRequest) ProtoMessage() {}
 
 func (x *ResourceReadbackRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[328]
+	mi := &file_internal_proto_msgTypes[330]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35286,7 +35547,7 @@ func (x *ResourceReadbackRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceReadbackRequest.ProtoReflect.Descriptor instead.
 func (*ResourceReadbackRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{328}
+	return file_internal_proto_rawDescGZIP(), []int{330}
 }
 
 func (x *ResourceReadbackRequest) GetContext() *CallContext {
@@ -35323,7 +35584,7 @@ type ResourceFact struct {
 
 func (x *ResourceFact) Reset() {
 	*x = ResourceFact{}
-	mi := &file_internal_proto_msgTypes[329]
+	mi := &file_internal_proto_msgTypes[331]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35335,7 +35596,7 @@ func (x *ResourceFact) String() string {
 func (*ResourceFact) ProtoMessage() {}
 
 func (x *ResourceFact) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[329]
+	mi := &file_internal_proto_msgTypes[331]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35348,7 +35609,7 @@ func (x *ResourceFact) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceFact.ProtoReflect.Descriptor instead.
 func (*ResourceFact) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{329}
+	return file_internal_proto_rawDescGZIP(), []int{331}
 }
 
 func (x *ResourceFact) GetId() string {
@@ -35400,7 +35661,7 @@ type ResourceExecutionBinding struct {
 
 func (x *ResourceExecutionBinding) Reset() {
 	*x = ResourceExecutionBinding{}
-	mi := &file_internal_proto_msgTypes[330]
+	mi := &file_internal_proto_msgTypes[332]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35412,7 +35673,7 @@ func (x *ResourceExecutionBinding) String() string {
 func (*ResourceExecutionBinding) ProtoMessage() {}
 
 func (x *ResourceExecutionBinding) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[330]
+	mi := &file_internal_proto_msgTypes[332]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35425,7 +35686,7 @@ func (x *ResourceExecutionBinding) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceExecutionBinding.ProtoReflect.Descriptor instead.
 func (*ResourceExecutionBinding) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{330}
+	return file_internal_proto_rawDescGZIP(), []int{332}
 }
 
 func (x *ResourceExecutionBinding) GetComputeAllocationId() string {
@@ -35482,7 +35743,7 @@ type ResourceReadback struct {
 
 func (x *ResourceReadback) Reset() {
 	*x = ResourceReadback{}
-	mi := &file_internal_proto_msgTypes[331]
+	mi := &file_internal_proto_msgTypes[333]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35494,7 +35755,7 @@ func (x *ResourceReadback) String() string {
 func (*ResourceReadback) ProtoMessage() {}
 
 func (x *ResourceReadback) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[331]
+	mi := &file_internal_proto_msgTypes[333]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35507,7 +35768,7 @@ func (x *ResourceReadback) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceReadback.ProtoReflect.Descriptor instead.
 func (*ResourceReadback) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{331}
+	return file_internal_proto_rawDescGZIP(), []int{333}
 }
 
 func (x *ResourceReadback) GetResourceSetId() string {
@@ -35608,7 +35869,7 @@ type ApplicationExecutionPlacement struct {
 
 func (x *ApplicationExecutionPlacement) Reset() {
 	*x = ApplicationExecutionPlacement{}
-	mi := &file_internal_proto_msgTypes[332]
+	mi := &file_internal_proto_msgTypes[334]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35620,7 +35881,7 @@ func (x *ApplicationExecutionPlacement) String() string {
 func (*ApplicationExecutionPlacement) ProtoMessage() {}
 
 func (x *ApplicationExecutionPlacement) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[332]
+	mi := &file_internal_proto_msgTypes[334]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35633,7 +35894,7 @@ func (x *ApplicationExecutionPlacement) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplicationExecutionPlacement.ProtoReflect.Descriptor instead.
 func (*ApplicationExecutionPlacement) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{332}
+	return file_internal_proto_rawDescGZIP(), []int{334}
 }
 
 func (x *ApplicationExecutionPlacement) GetComputeNodeName() string {
@@ -35693,7 +35954,7 @@ type SecretBindingCommand struct {
 
 func (x *SecretBindingCommand) Reset() {
 	*x = SecretBindingCommand{}
-	mi := &file_internal_proto_msgTypes[333]
+	mi := &file_internal_proto_msgTypes[335]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35705,7 +35966,7 @@ func (x *SecretBindingCommand) String() string {
 func (*SecretBindingCommand) ProtoMessage() {}
 
 func (x *SecretBindingCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[333]
+	mi := &file_internal_proto_msgTypes[335]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35718,7 +35979,7 @@ func (x *SecretBindingCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecretBindingCommand.ProtoReflect.Descriptor instead.
 func (*SecretBindingCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{333}
+	return file_internal_proto_rawDescGZIP(), []int{335}
 }
 
 func (x *SecretBindingCommand) GetContext() *CallContext {
@@ -35784,7 +36045,7 @@ type SecretBindingReadback struct {
 
 func (x *SecretBindingReadback) Reset() {
 	*x = SecretBindingReadback{}
-	mi := &file_internal_proto_msgTypes[334]
+	mi := &file_internal_proto_msgTypes[336]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35796,7 +36057,7 @@ func (x *SecretBindingReadback) String() string {
 func (*SecretBindingReadback) ProtoMessage() {}
 
 func (x *SecretBindingReadback) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[334]
+	mi := &file_internal_proto_msgTypes[336]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35809,7 +36070,7 @@ func (x *SecretBindingReadback) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecretBindingReadback.ProtoReflect.Descriptor instead.
 func (*SecretBindingReadback) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{334}
+	return file_internal_proto_rawDescGZIP(), []int{336}
 }
 
 func (x *SecretBindingReadback) GetSecretBindingId() string {
@@ -35875,7 +36136,7 @@ type SecretBindingRebindCommand struct {
 
 func (x *SecretBindingRebindCommand) Reset() {
 	*x = SecretBindingRebindCommand{}
-	mi := &file_internal_proto_msgTypes[335]
+	mi := &file_internal_proto_msgTypes[337]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35887,7 +36148,7 @@ func (x *SecretBindingRebindCommand) String() string {
 func (*SecretBindingRebindCommand) ProtoMessage() {}
 
 func (x *SecretBindingRebindCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[335]
+	mi := &file_internal_proto_msgTypes[337]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35900,7 +36161,7 @@ func (x *SecretBindingRebindCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecretBindingRebindCommand.ProtoReflect.Descriptor instead.
 func (*SecretBindingRebindCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{335}
+	return file_internal_proto_rawDescGZIP(), []int{337}
 }
 
 func (x *SecretBindingRebindCommand) GetContext() *CallContext {
@@ -35974,7 +36235,7 @@ type SecretBindingRebindReadback struct {
 
 func (x *SecretBindingRebindReadback) Reset() {
 	*x = SecretBindingRebindReadback{}
-	mi := &file_internal_proto_msgTypes[336]
+	mi := &file_internal_proto_msgTypes[338]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35986,7 +36247,7 @@ func (x *SecretBindingRebindReadback) String() string {
 func (*SecretBindingRebindReadback) ProtoMessage() {}
 
 func (x *SecretBindingRebindReadback) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[336]
+	mi := &file_internal_proto_msgTypes[338]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35999,7 +36260,7 @@ func (x *SecretBindingRebindReadback) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecretBindingRebindReadback.ProtoReflect.Descriptor instead.
 func (*SecretBindingRebindReadback) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{336}
+	return file_internal_proto_rawDescGZIP(), []int{338}
 }
 
 func (x *SecretBindingRebindReadback) GetPreviousSecretBindingId() string {
@@ -36074,7 +36335,7 @@ type ManagedSecretCommand struct {
 
 func (x *ManagedSecretCommand) Reset() {
 	*x = ManagedSecretCommand{}
-	mi := &file_internal_proto_msgTypes[337]
+	mi := &file_internal_proto_msgTypes[339]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -36086,7 +36347,7 @@ func (x *ManagedSecretCommand) String() string {
 func (*ManagedSecretCommand) ProtoMessage() {}
 
 func (x *ManagedSecretCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[337]
+	mi := &file_internal_proto_msgTypes[339]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -36099,7 +36360,7 @@ func (x *ManagedSecretCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ManagedSecretCommand.ProtoReflect.Descriptor instead.
 func (*ManagedSecretCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{337}
+	return file_internal_proto_rawDescGZIP(), []int{339}
 }
 
 func (x *ManagedSecretCommand) GetContext() *CallContext {
@@ -36155,7 +36416,7 @@ type ManagedSecretReadback struct {
 
 func (x *ManagedSecretReadback) Reset() {
 	*x = ManagedSecretReadback{}
-	mi := &file_internal_proto_msgTypes[338]
+	mi := &file_internal_proto_msgTypes[340]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -36167,7 +36428,7 @@ func (x *ManagedSecretReadback) String() string {
 func (*ManagedSecretReadback) ProtoMessage() {}
 
 func (x *ManagedSecretReadback) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[338]
+	mi := &file_internal_proto_msgTypes[340]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -36180,7 +36441,7 @@ func (x *ManagedSecretReadback) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ManagedSecretReadback.ProtoReflect.Descriptor instead.
 func (*ManagedSecretReadback) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{338}
+	return file_internal_proto_rawDescGZIP(), []int{340}
 }
 
 func (x *ManagedSecretReadback) GetSecretRef() string {
@@ -36223,7 +36484,7 @@ type RuntimeReservationCommand struct {
 
 func (x *RuntimeReservationCommand) Reset() {
 	*x = RuntimeReservationCommand{}
-	mi := &file_internal_proto_msgTypes[339]
+	mi := &file_internal_proto_msgTypes[341]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -36235,7 +36496,7 @@ func (x *RuntimeReservationCommand) String() string {
 func (*RuntimeReservationCommand) ProtoMessage() {}
 
 func (x *RuntimeReservationCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[339]
+	mi := &file_internal_proto_msgTypes[341]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -36248,7 +36509,7 @@ func (x *RuntimeReservationCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeReservationCommand.ProtoReflect.Descriptor instead.
 func (*RuntimeReservationCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{339}
+	return file_internal_proto_rawDescGZIP(), []int{341}
 }
 
 func (x *RuntimeReservationCommand) GetContext() *CallContext {
@@ -36344,7 +36605,7 @@ type RuntimeReservation struct {
 
 func (x *RuntimeReservation) Reset() {
 	*x = RuntimeReservation{}
-	mi := &file_internal_proto_msgTypes[340]
+	mi := &file_internal_proto_msgTypes[342]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -36356,7 +36617,7 @@ func (x *RuntimeReservation) String() string {
 func (*RuntimeReservation) ProtoMessage() {}
 
 func (x *RuntimeReservation) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[340]
+	mi := &file_internal_proto_msgTypes[342]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -36369,7 +36630,7 @@ func (x *RuntimeReservation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeReservation.ProtoReflect.Descriptor instead.
 func (*RuntimeReservation) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{340}
+	return file_internal_proto_rawDescGZIP(), []int{342}
 }
 
 func (x *RuntimeReservation) GetRuntimeInstanceId() string {
@@ -36442,7 +36703,7 @@ type RuntimeManagedKeyBinding struct {
 
 func (x *RuntimeManagedKeyBinding) Reset() {
 	*x = RuntimeManagedKeyBinding{}
-	mi := &file_internal_proto_msgTypes[341]
+	mi := &file_internal_proto_msgTypes[343]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -36454,7 +36715,7 @@ func (x *RuntimeManagedKeyBinding) String() string {
 func (*RuntimeManagedKeyBinding) ProtoMessage() {}
 
 func (x *RuntimeManagedKeyBinding) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[341]
+	mi := &file_internal_proto_msgTypes[343]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -36467,7 +36728,7 @@ func (x *RuntimeManagedKeyBinding) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeManagedKeyBinding.ProtoReflect.Descriptor instead.
 func (*RuntimeManagedKeyBinding) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{341}
+	return file_internal_proto_rawDescGZIP(), []int{343}
 }
 
 func (x *RuntimeManagedKeyBinding) GetKeyBindingId() string {
@@ -36537,7 +36798,7 @@ type RuntimeDeployCommand struct {
 
 func (x *RuntimeDeployCommand) Reset() {
 	*x = RuntimeDeployCommand{}
-	mi := &file_internal_proto_msgTypes[342]
+	mi := &file_internal_proto_msgTypes[344]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -36549,7 +36810,7 @@ func (x *RuntimeDeployCommand) String() string {
 func (*RuntimeDeployCommand) ProtoMessage() {}
 
 func (x *RuntimeDeployCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[342]
+	mi := &file_internal_proto_msgTypes[344]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -36562,7 +36823,7 @@ func (x *RuntimeDeployCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeDeployCommand.ProtoReflect.Descriptor instead.
 func (*RuntimeDeployCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{342}
+	return file_internal_proto_rawDescGZIP(), []int{344}
 }
 
 func (x *RuntimeDeployCommand) GetContext() *CallContext {
@@ -36695,7 +36956,7 @@ type RuntimeReadbackRequest struct {
 
 func (x *RuntimeReadbackRequest) Reset() {
 	*x = RuntimeReadbackRequest{}
-	mi := &file_internal_proto_msgTypes[343]
+	mi := &file_internal_proto_msgTypes[345]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -36707,7 +36968,7 @@ func (x *RuntimeReadbackRequest) String() string {
 func (*RuntimeReadbackRequest) ProtoMessage() {}
 
 func (x *RuntimeReadbackRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[343]
+	mi := &file_internal_proto_msgTypes[345]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -36720,7 +36981,7 @@ func (x *RuntimeReadbackRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeReadbackRequest.ProtoReflect.Descriptor instead.
 func (*RuntimeReadbackRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{343}
+	return file_internal_proto_rawDescGZIP(), []int{345}
 }
 
 func (x *RuntimeReadbackRequest) GetContext() *CallContext {
@@ -36769,7 +37030,7 @@ type RuntimeReadback struct {
 
 func (x *RuntimeReadback) Reset() {
 	*x = RuntimeReadback{}
-	mi := &file_internal_proto_msgTypes[344]
+	mi := &file_internal_proto_msgTypes[346]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -36781,7 +37042,7 @@ func (x *RuntimeReadback) String() string {
 func (*RuntimeReadback) ProtoMessage() {}
 
 func (x *RuntimeReadback) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[344]
+	mi := &file_internal_proto_msgTypes[346]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -36794,7 +37055,7 @@ func (x *RuntimeReadback) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeReadback.ProtoReflect.Descriptor instead.
 func (*RuntimeReadback) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{344}
+	return file_internal_proto_rawDescGZIP(), []int{346}
 }
 
 func (x *RuntimeReadback) GetRuntimeInstanceId() string {
@@ -36934,7 +37195,7 @@ type RuntimeReloadCommand struct {
 
 func (x *RuntimeReloadCommand) Reset() {
 	*x = RuntimeReloadCommand{}
-	mi := &file_internal_proto_msgTypes[345]
+	mi := &file_internal_proto_msgTypes[347]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -36946,7 +37207,7 @@ func (x *RuntimeReloadCommand) String() string {
 func (*RuntimeReloadCommand) ProtoMessage() {}
 
 func (x *RuntimeReloadCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[345]
+	mi := &file_internal_proto_msgTypes[347]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -36959,7 +37220,7 @@ func (x *RuntimeReloadCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeReloadCommand.ProtoReflect.Descriptor instead.
 func (*RuntimeReloadCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{345}
+	return file_internal_proto_rawDescGZIP(), []int{347}
 }
 
 func (x *RuntimeReloadCommand) GetContext() *CallContext {
@@ -37016,7 +37277,7 @@ type RuntimeStopCommand struct {
 
 func (x *RuntimeStopCommand) Reset() {
 	*x = RuntimeStopCommand{}
-	mi := &file_internal_proto_msgTypes[346]
+	mi := &file_internal_proto_msgTypes[348]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37028,7 +37289,7 @@ func (x *RuntimeStopCommand) String() string {
 func (*RuntimeStopCommand) ProtoMessage() {}
 
 func (x *RuntimeStopCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[346]
+	mi := &file_internal_proto_msgTypes[348]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37041,7 +37302,7 @@ func (x *RuntimeStopCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeStopCommand.ProtoReflect.Descriptor instead.
 func (*RuntimeStopCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{346}
+	return file_internal_proto_rawDescGZIP(), []int{348}
 }
 
 func (x *RuntimeStopCommand) GetContext() *CallContext {
@@ -37085,7 +37346,7 @@ type ReadApplicationCredentialsRequest struct {
 
 func (x *ReadApplicationCredentialsRequest) Reset() {
 	*x = ReadApplicationCredentialsRequest{}
-	mi := &file_internal_proto_msgTypes[347]
+	mi := &file_internal_proto_msgTypes[349]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37097,7 +37358,7 @@ func (x *ReadApplicationCredentialsRequest) String() string {
 func (*ReadApplicationCredentialsRequest) ProtoMessage() {}
 
 func (x *ReadApplicationCredentialsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[347]
+	mi := &file_internal_proto_msgTypes[349]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37110,7 +37371,7 @@ func (x *ReadApplicationCredentialsRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use ReadApplicationCredentialsRequest.ProtoReflect.Descriptor instead.
 func (*ReadApplicationCredentialsRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{347}
+	return file_internal_proto_rawDescGZIP(), []int{349}
 }
 
 func (x *ReadApplicationCredentialsRequest) GetContext() *CallContext {
@@ -37151,7 +37412,7 @@ type RouteAbsence struct {
 
 func (x *RouteAbsence) Reset() {
 	*x = RouteAbsence{}
-	mi := &file_internal_proto_msgTypes[348]
+	mi := &file_internal_proto_msgTypes[350]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37163,7 +37424,7 @@ func (x *RouteAbsence) String() string {
 func (*RouteAbsence) ProtoMessage() {}
 
 func (x *RouteAbsence) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[348]
+	mi := &file_internal_proto_msgTypes[350]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37176,7 +37437,7 @@ func (x *RouteAbsence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteAbsence.ProtoReflect.Descriptor instead.
 func (*RouteAbsence) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{348}
+	return file_internal_proto_rawDescGZIP(), []int{350}
 }
 
 // RouteRevisionPrecondition is the route revision the caller read from the
@@ -37199,7 +37460,7 @@ type RouteRevisionPrecondition struct {
 
 func (x *RouteRevisionPrecondition) Reset() {
 	*x = RouteRevisionPrecondition{}
-	mi := &file_internal_proto_msgTypes[349]
+	mi := &file_internal_proto_msgTypes[351]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37211,7 +37472,7 @@ func (x *RouteRevisionPrecondition) String() string {
 func (*RouteRevisionPrecondition) ProtoMessage() {}
 
 func (x *RouteRevisionPrecondition) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[349]
+	mi := &file_internal_proto_msgTypes[351]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37224,7 +37485,7 @@ func (x *RouteRevisionPrecondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteRevisionPrecondition.ProtoReflect.Descriptor instead.
 func (*RouteRevisionPrecondition) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{349}
+	return file_internal_proto_rawDescGZIP(), []int{351}
 }
 
 func (x *RouteRevisionPrecondition) GetCondition() isRouteRevisionPrecondition_Condition {
@@ -37282,7 +37543,7 @@ type FenceRouteEpochCommand struct {
 
 func (x *FenceRouteEpochCommand) Reset() {
 	*x = FenceRouteEpochCommand{}
-	mi := &file_internal_proto_msgTypes[350]
+	mi := &file_internal_proto_msgTypes[352]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37294,7 +37555,7 @@ func (x *FenceRouteEpochCommand) String() string {
 func (*FenceRouteEpochCommand) ProtoMessage() {}
 
 func (x *FenceRouteEpochCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[350]
+	mi := &file_internal_proto_msgTypes[352]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37307,7 +37568,7 @@ func (x *FenceRouteEpochCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FenceRouteEpochCommand.ProtoReflect.Descriptor instead.
 func (*FenceRouteEpochCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{350}
+	return file_internal_proto_rawDescGZIP(), []int{352}
 }
 
 func (x *FenceRouteEpochCommand) GetContext() *CallContext {
@@ -37370,7 +37631,7 @@ type RouteActivateCommand struct {
 
 func (x *RouteActivateCommand) Reset() {
 	*x = RouteActivateCommand{}
-	mi := &file_internal_proto_msgTypes[351]
+	mi := &file_internal_proto_msgTypes[353]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37382,7 +37643,7 @@ func (x *RouteActivateCommand) String() string {
 func (*RouteActivateCommand) ProtoMessage() {}
 
 func (x *RouteActivateCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[351]
+	mi := &file_internal_proto_msgTypes[353]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37395,7 +37656,7 @@ func (x *RouteActivateCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteActivateCommand.ProtoReflect.Descriptor instead.
 func (*RouteActivateCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{351}
+	return file_internal_proto_rawDescGZIP(), []int{353}
 }
 
 func (x *RouteActivateCommand) GetContext() *CallContext {
@@ -37479,7 +37740,7 @@ type RouteObserveRequest struct {
 
 func (x *RouteObserveRequest) Reset() {
 	*x = RouteObserveRequest{}
-	mi := &file_internal_proto_msgTypes[352]
+	mi := &file_internal_proto_msgTypes[354]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37491,7 +37752,7 @@ func (x *RouteObserveRequest) String() string {
 func (*RouteObserveRequest) ProtoMessage() {}
 
 func (x *RouteObserveRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[352]
+	mi := &file_internal_proto_msgTypes[354]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37504,7 +37765,7 @@ func (x *RouteObserveRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteObserveRequest.ProtoReflect.Descriptor instead.
 func (*RouteObserveRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{352}
+	return file_internal_proto_rawDescGZIP(), []int{354}
 }
 
 func (x *RouteObserveRequest) GetContext() *CallContext {
@@ -37547,7 +37808,7 @@ type RouteRollbackCommand struct {
 
 func (x *RouteRollbackCommand) Reset() {
 	*x = RouteRollbackCommand{}
-	mi := &file_internal_proto_msgTypes[353]
+	mi := &file_internal_proto_msgTypes[355]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37559,7 +37820,7 @@ func (x *RouteRollbackCommand) String() string {
 func (*RouteRollbackCommand) ProtoMessage() {}
 
 func (x *RouteRollbackCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[353]
+	mi := &file_internal_proto_msgTypes[355]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37572,7 +37833,7 @@ func (x *RouteRollbackCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteRollbackCommand.ProtoReflect.Descriptor instead.
 func (*RouteRollbackCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{353}
+	return file_internal_proto_rawDescGZIP(), []int{355}
 }
 
 func (x *RouteRollbackCommand) GetContext() *CallContext {
@@ -37675,7 +37936,7 @@ type RouteReadback struct {
 
 func (x *RouteReadback) Reset() {
 	*x = RouteReadback{}
-	mi := &file_internal_proto_msgTypes[354]
+	mi := &file_internal_proto_msgTypes[356]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37687,7 +37948,7 @@ func (x *RouteReadback) String() string {
 func (*RouteReadback) ProtoMessage() {}
 
 func (x *RouteReadback) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[354]
+	mi := &file_internal_proto_msgTypes[356]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37700,7 +37961,7 @@ func (x *RouteReadback) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteReadback.ProtoReflect.Descriptor instead.
 func (*RouteReadback) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{354}
+	return file_internal_proto_rawDescGZIP(), []int{356}
 }
 
 func (x *RouteReadback) GetWorkspaceId() string {
@@ -37799,7 +38060,7 @@ type TenantWorkspaceLifecycleCommand struct {
 
 func (x *TenantWorkspaceLifecycleCommand) Reset() {
 	*x = TenantWorkspaceLifecycleCommand{}
-	mi := &file_internal_proto_msgTypes[355]
+	mi := &file_internal_proto_msgTypes[357]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37811,7 +38072,7 @@ func (x *TenantWorkspaceLifecycleCommand) String() string {
 func (*TenantWorkspaceLifecycleCommand) ProtoMessage() {}
 
 func (x *TenantWorkspaceLifecycleCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[355]
+	mi := &file_internal_proto_msgTypes[357]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37824,7 +38085,7 @@ func (x *TenantWorkspaceLifecycleCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TenantWorkspaceLifecycleCommand.ProtoReflect.Descriptor instead.
 func (*TenantWorkspaceLifecycleCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{355}
+	return file_internal_proto_rawDescGZIP(), []int{357}
 }
 
 func (x *TenantWorkspaceLifecycleCommand) GetContext() *CallContext {
@@ -37867,7 +38128,7 @@ type TenantWorkspaceLifecycleReadback struct {
 
 func (x *TenantWorkspaceLifecycleReadback) Reset() {
 	*x = TenantWorkspaceLifecycleReadback{}
-	mi := &file_internal_proto_msgTypes[356]
+	mi := &file_internal_proto_msgTypes[358]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37879,7 +38140,7 @@ func (x *TenantWorkspaceLifecycleReadback) String() string {
 func (*TenantWorkspaceLifecycleReadback) ProtoMessage() {}
 
 func (x *TenantWorkspaceLifecycleReadback) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[356]
+	mi := &file_internal_proto_msgTypes[358]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37892,7 +38153,7 @@ func (x *TenantWorkspaceLifecycleReadback) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TenantWorkspaceLifecycleReadback.ProtoReflect.Descriptor instead.
 func (*TenantWorkspaceLifecycleReadback) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{356}
+	return file_internal_proto_rawDescGZIP(), []int{358}
 }
 
 func (x *TenantWorkspaceLifecycleReadback) GetTargetTenantId() string {
@@ -37935,7 +38196,7 @@ type ResumeTenantWorkspacesRequest struct {
 
 func (x *ResumeTenantWorkspacesRequest) Reset() {
 	*x = ResumeTenantWorkspacesRequest{}
-	mi := &file_internal_proto_msgTypes[357]
+	mi := &file_internal_proto_msgTypes[359]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37947,7 +38208,7 @@ func (x *ResumeTenantWorkspacesRequest) String() string {
 func (*ResumeTenantWorkspacesRequest) ProtoMessage() {}
 
 func (x *ResumeTenantWorkspacesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[357]
+	mi := &file_internal_proto_msgTypes[359]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37960,7 +38221,7 @@ func (x *ResumeTenantWorkspacesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResumeTenantWorkspacesRequest.ProtoReflect.Descriptor instead.
 func (*ResumeTenantWorkspacesRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{357}
+	return file_internal_proto_rawDescGZIP(), []int{359}
 }
 
 func (x *ResumeTenantWorkspacesRequest) GetContext() *CallContext {
@@ -38006,7 +38267,7 @@ type AppendReceiptRequest struct {
 
 func (x *AppendReceiptRequest) Reset() {
 	*x = AppendReceiptRequest{}
-	mi := &file_internal_proto_msgTypes[358]
+	mi := &file_internal_proto_msgTypes[360]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38018,7 +38279,7 @@ func (x *AppendReceiptRequest) String() string {
 func (*AppendReceiptRequest) ProtoMessage() {}
 
 func (x *AppendReceiptRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[358]
+	mi := &file_internal_proto_msgTypes[360]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38031,7 +38292,7 @@ func (x *AppendReceiptRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppendReceiptRequest.ProtoReflect.Descriptor instead.
 func (*AppendReceiptRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{358}
+	return file_internal_proto_rawDescGZIP(), []int{360}
 }
 
 func (x *AppendReceiptRequest) GetContext() *CallContext {
@@ -38094,7 +38355,7 @@ type GetReceiptByReferenceRequest struct {
 
 func (x *GetReceiptByReferenceRequest) Reset() {
 	*x = GetReceiptByReferenceRequest{}
-	mi := &file_internal_proto_msgTypes[359]
+	mi := &file_internal_proto_msgTypes[361]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38106,7 +38367,7 @@ func (x *GetReceiptByReferenceRequest) String() string {
 func (*GetReceiptByReferenceRequest) ProtoMessage() {}
 
 func (x *GetReceiptByReferenceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[359]
+	mi := &file_internal_proto_msgTypes[361]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38119,7 +38380,7 @@ func (x *GetReceiptByReferenceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetReceiptByReferenceRequest.ProtoReflect.Descriptor instead.
 func (*GetReceiptByReferenceRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{359}
+	return file_internal_proto_rawDescGZIP(), []int{361}
 }
 
 func (x *GetReceiptByReferenceRequest) GetContext() *CallContext {
@@ -38155,7 +38416,7 @@ type LocalNoChargeReceiptEvidence struct {
 
 func (x *LocalNoChargeReceiptEvidence) Reset() {
 	*x = LocalNoChargeReceiptEvidence{}
-	mi := &file_internal_proto_msgTypes[360]
+	mi := &file_internal_proto_msgTypes[362]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38167,7 +38428,7 @@ func (x *LocalNoChargeReceiptEvidence) String() string {
 func (*LocalNoChargeReceiptEvidence) ProtoMessage() {}
 
 func (x *LocalNoChargeReceiptEvidence) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[360]
+	mi := &file_internal_proto_msgTypes[362]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38180,7 +38441,7 @@ func (x *LocalNoChargeReceiptEvidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LocalNoChargeReceiptEvidence.ProtoReflect.Descriptor instead.
 func (*LocalNoChargeReceiptEvidence) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{360}
+	return file_internal_proto_rawDescGZIP(), []int{362}
 }
 
 func (x *LocalNoChargeReceiptEvidence) GetReceipt() *Receipt {
@@ -38228,7 +38489,7 @@ type WalletActionReceiptEvidence struct {
 
 func (x *WalletActionReceiptEvidence) Reset() {
 	*x = WalletActionReceiptEvidence{}
-	mi := &file_internal_proto_msgTypes[361]
+	mi := &file_internal_proto_msgTypes[363]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38240,7 +38501,7 @@ func (x *WalletActionReceiptEvidence) String() string {
 func (*WalletActionReceiptEvidence) ProtoMessage() {}
 
 func (x *WalletActionReceiptEvidence) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[361]
+	mi := &file_internal_proto_msgTypes[363]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38253,7 +38514,7 @@ func (x *WalletActionReceiptEvidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WalletActionReceiptEvidence.ProtoReflect.Descriptor instead.
 func (*WalletActionReceiptEvidence) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{361}
+	return file_internal_proto_rawDescGZIP(), []int{363}
 }
 
 func (x *WalletActionReceiptEvidence) GetReceipt() *Receipt {
@@ -38311,7 +38572,7 @@ type ProviderActionReceiptEvidence struct {
 
 func (x *ProviderActionReceiptEvidence) Reset() {
 	*x = ProviderActionReceiptEvidence{}
-	mi := &file_internal_proto_msgTypes[362]
+	mi := &file_internal_proto_msgTypes[364]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38323,7 +38584,7 @@ func (x *ProviderActionReceiptEvidence) String() string {
 func (*ProviderActionReceiptEvidence) ProtoMessage() {}
 
 func (x *ProviderActionReceiptEvidence) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[362]
+	mi := &file_internal_proto_msgTypes[364]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38336,7 +38597,7 @@ func (x *ProviderActionReceiptEvidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProviderActionReceiptEvidence.ProtoReflect.Descriptor instead.
 func (*ProviderActionReceiptEvidence) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{362}
+	return file_internal_proto_rawDescGZIP(), []int{364}
 }
 
 func (x *ProviderActionReceiptEvidence) GetReceipt() *Receipt {
@@ -38373,7 +38634,7 @@ type ReadSubscriptionPlanStateRequest struct {
 
 func (x *ReadSubscriptionPlanStateRequest) Reset() {
 	*x = ReadSubscriptionPlanStateRequest{}
-	mi := &file_internal_proto_msgTypes[363]
+	mi := &file_internal_proto_msgTypes[365]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38385,7 +38646,7 @@ func (x *ReadSubscriptionPlanStateRequest) String() string {
 func (*ReadSubscriptionPlanStateRequest) ProtoMessage() {}
 
 func (x *ReadSubscriptionPlanStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[363]
+	mi := &file_internal_proto_msgTypes[365]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38398,7 +38659,7 @@ func (x *ReadSubscriptionPlanStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadSubscriptionPlanStateRequest.ProtoReflect.Descriptor instead.
 func (*ReadSubscriptionPlanStateRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{363}
+	return file_internal_proto_rawDescGZIP(), []int{365}
 }
 
 func (x *ReadSubscriptionPlanStateRequest) GetContext() *CallContext {
@@ -38449,7 +38710,7 @@ type SubscriptionPlanState struct {
 
 func (x *SubscriptionPlanState) Reset() {
 	*x = SubscriptionPlanState{}
-	mi := &file_internal_proto_msgTypes[364]
+	mi := &file_internal_proto_msgTypes[366]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38461,7 +38722,7 @@ func (x *SubscriptionPlanState) String() string {
 func (*SubscriptionPlanState) ProtoMessage() {}
 
 func (x *SubscriptionPlanState) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[364]
+	mi := &file_internal_proto_msgTypes[366]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38474,7 +38735,7 @@ func (x *SubscriptionPlanState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscriptionPlanState.ProtoReflect.Descriptor instead.
 func (*SubscriptionPlanState) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{364}
+	return file_internal_proto_rawDescGZIP(), []int{366}
 }
 
 func (x *SubscriptionPlanState) GetSubscriptionId() string {
@@ -38670,7 +38931,7 @@ type ReadPlanChangeRequest struct {
 
 func (x *ReadPlanChangeRequest) Reset() {
 	*x = ReadPlanChangeRequest{}
-	mi := &file_internal_proto_msgTypes[365]
+	mi := &file_internal_proto_msgTypes[367]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38682,7 +38943,7 @@ func (x *ReadPlanChangeRequest) String() string {
 func (*ReadPlanChangeRequest) ProtoMessage() {}
 
 func (x *ReadPlanChangeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[365]
+	mi := &file_internal_proto_msgTypes[367]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38695,7 +38956,7 @@ func (x *ReadPlanChangeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadPlanChangeRequest.ProtoReflect.Descriptor instead.
 func (*ReadPlanChangeRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{365}
+	return file_internal_proto_rawDescGZIP(), []int{367}
 }
 
 func (x *ReadPlanChangeRequest) GetContext() *CallContext {
@@ -38731,7 +38992,7 @@ type ReadNextPeriodObligationRequest struct {
 
 func (x *ReadNextPeriodObligationRequest) Reset() {
 	*x = ReadNextPeriodObligationRequest{}
-	mi := &file_internal_proto_msgTypes[366]
+	mi := &file_internal_proto_msgTypes[368]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38743,7 +39004,7 @@ func (x *ReadNextPeriodObligationRequest) String() string {
 func (*ReadNextPeriodObligationRequest) ProtoMessage() {}
 
 func (x *ReadNextPeriodObligationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[366]
+	mi := &file_internal_proto_msgTypes[368]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38756,7 +39017,7 @@ func (x *ReadNextPeriodObligationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadNextPeriodObligationRequest.ProtoReflect.Descriptor instead.
 func (*ReadNextPeriodObligationRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{366}
+	return file_internal_proto_rawDescGZIP(), []int{368}
 }
 
 func (x *ReadNextPeriodObligationRequest) GetContext() *CallContext {
@@ -38816,7 +39077,7 @@ type NextPeriodObligation struct {
 
 func (x *NextPeriodObligation) Reset() {
 	*x = NextPeriodObligation{}
-	mi := &file_internal_proto_msgTypes[367]
+	mi := &file_internal_proto_msgTypes[369]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38828,7 +39089,7 @@ func (x *NextPeriodObligation) String() string {
 func (*NextPeriodObligation) ProtoMessage() {}
 
 func (x *NextPeriodObligation) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[367]
+	mi := &file_internal_proto_msgTypes[369]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38841,7 +39102,7 @@ func (x *NextPeriodObligation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NextPeriodObligation.ProtoReflect.Descriptor instead.
 func (*NextPeriodObligation) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{367}
+	return file_internal_proto_rawDescGZIP(), []int{369}
 }
 
 func (x *NextPeriodObligation) GetId() string {
@@ -39003,7 +39264,7 @@ type ReadPlanChangeFailureRequest struct {
 
 func (x *ReadPlanChangeFailureRequest) Reset() {
 	*x = ReadPlanChangeFailureRequest{}
-	mi := &file_internal_proto_msgTypes[368]
+	mi := &file_internal_proto_msgTypes[370]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39015,7 +39276,7 @@ func (x *ReadPlanChangeFailureRequest) String() string {
 func (*ReadPlanChangeFailureRequest) ProtoMessage() {}
 
 func (x *ReadPlanChangeFailureRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[368]
+	mi := &file_internal_proto_msgTypes[370]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39028,7 +39289,7 @@ func (x *ReadPlanChangeFailureRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadPlanChangeFailureRequest.ProtoReflect.Descriptor instead.
 func (*ReadPlanChangeFailureRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{368}
+	return file_internal_proto_rawDescGZIP(), []int{370}
 }
 
 func (x *ReadPlanChangeFailureRequest) GetContext() *CallContext {
@@ -39075,7 +39336,7 @@ type PlanTransitionRequest struct {
 
 func (x *PlanTransitionRequest) Reset() {
 	*x = PlanTransitionRequest{}
-	mi := &file_internal_proto_msgTypes[369]
+	mi := &file_internal_proto_msgTypes[371]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39087,7 +39348,7 @@ func (x *PlanTransitionRequest) String() string {
 func (*PlanTransitionRequest) ProtoMessage() {}
 
 func (x *PlanTransitionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[369]
+	mi := &file_internal_proto_msgTypes[371]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39100,7 +39361,7 @@ func (x *PlanTransitionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanTransitionRequest.ProtoReflect.Descriptor instead.
 func (*PlanTransitionRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{369}
+	return file_internal_proto_rawDescGZIP(), []int{371}
 }
 
 func (x *PlanTransitionRequest) GetContext() *CallContext {
@@ -39183,7 +39444,7 @@ type ApprovedPlanTransition struct {
 
 func (x *ApprovedPlanTransition) Reset() {
 	*x = ApprovedPlanTransition{}
-	mi := &file_internal_proto_msgTypes[370]
+	mi := &file_internal_proto_msgTypes[372]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39195,7 +39456,7 @@ func (x *ApprovedPlanTransition) String() string {
 func (*ApprovedPlanTransition) ProtoMessage() {}
 
 func (x *ApprovedPlanTransition) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[370]
+	mi := &file_internal_proto_msgTypes[372]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39208,7 +39469,7 @@ func (x *ApprovedPlanTransition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApprovedPlanTransition.ProtoReflect.Descriptor instead.
 func (*ApprovedPlanTransition) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{370}
+	return file_internal_proto_rawDescGZIP(), []int{372}
 }
 
 func (x *ApprovedPlanTransition) GetId() string {
@@ -39334,7 +39595,7 @@ type ConfirmedPlanChangeCharge struct {
 
 func (x *ConfirmedPlanChangeCharge) Reset() {
 	*x = ConfirmedPlanChangeCharge{}
-	mi := &file_internal_proto_msgTypes[371]
+	mi := &file_internal_proto_msgTypes[373]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39346,7 +39607,7 @@ func (x *ConfirmedPlanChangeCharge) String() string {
 func (*ConfirmedPlanChangeCharge) ProtoMessage() {}
 
 func (x *ConfirmedPlanChangeCharge) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[371]
+	mi := &file_internal_proto_msgTypes[373]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39359,7 +39620,7 @@ func (x *ConfirmedPlanChangeCharge) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfirmedPlanChangeCharge.ProtoReflect.Descriptor instead.
 func (*ConfirmedPlanChangeCharge) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{371}
+	return file_internal_proto_rawDescGZIP(), []int{373}
 }
 
 func (x *ConfirmedPlanChangeCharge) GetWalletOperationId() string {
@@ -39392,7 +39653,7 @@ type ZeroAmountPlanChangeEvidence struct {
 
 func (x *ZeroAmountPlanChangeEvidence) Reset() {
 	*x = ZeroAmountPlanChangeEvidence{}
-	mi := &file_internal_proto_msgTypes[372]
+	mi := &file_internal_proto_msgTypes[374]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39404,7 +39665,7 @@ func (x *ZeroAmountPlanChangeEvidence) String() string {
 func (*ZeroAmountPlanChangeEvidence) ProtoMessage() {}
 
 func (x *ZeroAmountPlanChangeEvidence) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[372]
+	mi := &file_internal_proto_msgTypes[374]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39417,7 +39678,7 @@ func (x *ZeroAmountPlanChangeEvidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ZeroAmountPlanChangeEvidence.ProtoReflect.Descriptor instead.
 func (*ZeroAmountPlanChangeEvidence) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{372}
+	return file_internal_proto_rawDescGZIP(), []int{374}
 }
 
 func (x *ZeroAmountPlanChangeEvidence) GetZeroAmountReceiptId() string {
@@ -39440,7 +39701,7 @@ type PlanChangeFundingEvidence struct {
 
 func (x *PlanChangeFundingEvidence) Reset() {
 	*x = PlanChangeFundingEvidence{}
-	mi := &file_internal_proto_msgTypes[373]
+	mi := &file_internal_proto_msgTypes[375]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39452,7 +39713,7 @@ func (x *PlanChangeFundingEvidence) String() string {
 func (*PlanChangeFundingEvidence) ProtoMessage() {}
 
 func (x *PlanChangeFundingEvidence) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[373]
+	mi := &file_internal_proto_msgTypes[375]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39465,7 +39726,7 @@ func (x *PlanChangeFundingEvidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanChangeFundingEvidence.ProtoReflect.Descriptor instead.
 func (*PlanChangeFundingEvidence) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{373}
+	return file_internal_proto_rawDescGZIP(), []int{375}
 }
 
 func (x *PlanChangeFundingEvidence) GetFunding() isPlanChangeFundingEvidence_Funding {
@@ -39531,7 +39792,7 @@ type PlanChangeSupplementChargeCommand struct {
 
 func (x *PlanChangeSupplementChargeCommand) Reset() {
 	*x = PlanChangeSupplementChargeCommand{}
-	mi := &file_internal_proto_msgTypes[374]
+	mi := &file_internal_proto_msgTypes[376]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39543,7 +39804,7 @@ func (x *PlanChangeSupplementChargeCommand) String() string {
 func (*PlanChangeSupplementChargeCommand) ProtoMessage() {}
 
 func (x *PlanChangeSupplementChargeCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[374]
+	mi := &file_internal_proto_msgTypes[376]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39556,7 +39817,7 @@ func (x *PlanChangeSupplementChargeCommand) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use PlanChangeSupplementChargeCommand.ProtoReflect.Descriptor instead.
 func (*PlanChangeSupplementChargeCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{374}
+	return file_internal_proto_rawDescGZIP(), []int{376}
 }
 
 func (x *PlanChangeSupplementChargeCommand) GetContext() *CallContext {
@@ -39676,7 +39937,7 @@ type ScheduledPeriodChargeCommand struct {
 
 func (x *ScheduledPeriodChargeCommand) Reset() {
 	*x = ScheduledPeriodChargeCommand{}
-	mi := &file_internal_proto_msgTypes[375]
+	mi := &file_internal_proto_msgTypes[377]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39688,7 +39949,7 @@ func (x *ScheduledPeriodChargeCommand) String() string {
 func (*ScheduledPeriodChargeCommand) ProtoMessage() {}
 
 func (x *ScheduledPeriodChargeCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[375]
+	mi := &file_internal_proto_msgTypes[377]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39701,7 +39962,7 @@ func (x *ScheduledPeriodChargeCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScheduledPeriodChargeCommand.ProtoReflect.Descriptor instead.
 func (*ScheduledPeriodChargeCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{375}
+	return file_internal_proto_rawDescGZIP(), []int{377}
 }
 
 func (x *ScheduledPeriodChargeCommand) GetContext() *CallContext {
@@ -39793,7 +40054,7 @@ type PlanChangeFailureRefundCommand struct {
 
 func (x *PlanChangeFailureRefundCommand) Reset() {
 	*x = PlanChangeFailureRefundCommand{}
-	mi := &file_internal_proto_msgTypes[376]
+	mi := &file_internal_proto_msgTypes[378]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39805,7 +40066,7 @@ func (x *PlanChangeFailureRefundCommand) String() string {
 func (*PlanChangeFailureRefundCommand) ProtoMessage() {}
 
 func (x *PlanChangeFailureRefundCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[376]
+	mi := &file_internal_proto_msgTypes[378]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39818,7 +40079,7 @@ func (x *PlanChangeFailureRefundCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanChangeFailureRefundCommand.ProtoReflect.Descriptor instead.
 func (*PlanChangeFailureRefundCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{376}
+	return file_internal_proto_rawDescGZIP(), []int{378}
 }
 
 func (x *PlanChangeFailureRefundCommand) GetContext() *CallContext {
@@ -39861,7 +40122,7 @@ type SupplementDeletionRefundCommand struct {
 
 func (x *SupplementDeletionRefundCommand) Reset() {
 	*x = SupplementDeletionRefundCommand{}
-	mi := &file_internal_proto_msgTypes[377]
+	mi := &file_internal_proto_msgTypes[379]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39873,7 +40134,7 @@ func (x *SupplementDeletionRefundCommand) String() string {
 func (*SupplementDeletionRefundCommand) ProtoMessage() {}
 
 func (x *SupplementDeletionRefundCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[377]
+	mi := &file_internal_proto_msgTypes[379]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39886,7 +40147,7 @@ func (x *SupplementDeletionRefundCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SupplementDeletionRefundCommand.ProtoReflect.Descriptor instead.
 func (*SupplementDeletionRefundCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{377}
+	return file_internal_proto_rawDescGZIP(), []int{379}
 }
 
 func (x *SupplementDeletionRefundCommand) GetContext() *CallContext {
@@ -39935,7 +40196,7 @@ type RestorePlanChangeRuntimeCommand struct {
 
 func (x *RestorePlanChangeRuntimeCommand) Reset() {
 	*x = RestorePlanChangeRuntimeCommand{}
-	mi := &file_internal_proto_msgTypes[378]
+	mi := &file_internal_proto_msgTypes[380]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39947,7 +40208,7 @@ func (x *RestorePlanChangeRuntimeCommand) String() string {
 func (*RestorePlanChangeRuntimeCommand) ProtoMessage() {}
 
 func (x *RestorePlanChangeRuntimeCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[378]
+	mi := &file_internal_proto_msgTypes[380]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39960,7 +40221,7 @@ func (x *RestorePlanChangeRuntimeCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestorePlanChangeRuntimeCommand.ProtoReflect.Descriptor instead.
 func (*RestorePlanChangeRuntimeCommand) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{378}
+	return file_internal_proto_rawDescGZIP(), []int{380}
 }
 
 func (x *RestorePlanChangeRuntimeCommand) GetContext() *CallContext {
@@ -40048,7 +40309,7 @@ type PlanChangeRuntimeReadback struct {
 
 func (x *PlanChangeRuntimeReadback) Reset() {
 	*x = PlanChangeRuntimeReadback{}
-	mi := &file_internal_proto_msgTypes[379]
+	mi := &file_internal_proto_msgTypes[381]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40060,7 +40321,7 @@ func (x *PlanChangeRuntimeReadback) String() string {
 func (*PlanChangeRuntimeReadback) ProtoMessage() {}
 
 func (x *PlanChangeRuntimeReadback) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[379]
+	mi := &file_internal_proto_msgTypes[381]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40073,7 +40334,7 @@ func (x *PlanChangeRuntimeReadback) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanChangeRuntimeReadback.ProtoReflect.Descriptor instead.
 func (*PlanChangeRuntimeReadback) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{379}
+	return file_internal_proto_rawDescGZIP(), []int{381}
 }
 
 func (x *PlanChangeRuntimeReadback) GetWorkspaceId() string {
@@ -40138,7 +40399,7 @@ type AppendPlanChangeReceiptRequest struct {
 
 func (x *AppendPlanChangeReceiptRequest) Reset() {
 	*x = AppendPlanChangeReceiptRequest{}
-	mi := &file_internal_proto_msgTypes[380]
+	mi := &file_internal_proto_msgTypes[382]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40150,7 +40411,7 @@ func (x *AppendPlanChangeReceiptRequest) String() string {
 func (*AppendPlanChangeReceiptRequest) ProtoMessage() {}
 
 func (x *AppendPlanChangeReceiptRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[380]
+	mi := &file_internal_proto_msgTypes[382]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40163,7 +40424,7 @@ func (x *AppendPlanChangeReceiptRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppendPlanChangeReceiptRequest.ProtoReflect.Descriptor instead.
 func (*AppendPlanChangeReceiptRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{380}
+	return file_internal_proto_rawDescGZIP(), []int{382}
 }
 
 func (x *AppendPlanChangeReceiptRequest) GetContext() *CallContext {
@@ -40214,7 +40475,7 @@ type AppendPlanChangeRefundReceiptRequest struct {
 
 func (x *AppendPlanChangeRefundReceiptRequest) Reset() {
 	*x = AppendPlanChangeRefundReceiptRequest{}
-	mi := &file_internal_proto_msgTypes[381]
+	mi := &file_internal_proto_msgTypes[383]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40226,7 +40487,7 @@ func (x *AppendPlanChangeRefundReceiptRequest) String() string {
 func (*AppendPlanChangeRefundReceiptRequest) ProtoMessage() {}
 
 func (x *AppendPlanChangeRefundReceiptRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[381]
+	mi := &file_internal_proto_msgTypes[383]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40239,7 +40500,7 @@ func (x *AppendPlanChangeRefundReceiptRequest) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use AppendPlanChangeRefundReceiptRequest.ProtoReflect.Descriptor instead.
 func (*AppendPlanChangeRefundReceiptRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{381}
+	return file_internal_proto_rawDescGZIP(), []int{383}
 }
 
 func (x *AppendPlanChangeRefundReceiptRequest) GetContext() *CallContext {
@@ -40289,7 +40550,7 @@ type ProviderPlanChangeExecutionPlanReference struct {
 
 func (x *ProviderPlanChangeExecutionPlanReference) Reset() {
 	*x = ProviderPlanChangeExecutionPlanReference{}
-	mi := &file_internal_proto_msgTypes[382]
+	mi := &file_internal_proto_msgTypes[384]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40301,7 +40562,7 @@ func (x *ProviderPlanChangeExecutionPlanReference) String() string {
 func (*ProviderPlanChangeExecutionPlanReference) ProtoMessage() {}
 
 func (x *ProviderPlanChangeExecutionPlanReference) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[382]
+	mi := &file_internal_proto_msgTypes[384]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40314,7 +40575,7 @@ func (x *ProviderPlanChangeExecutionPlanReference) ProtoReflect() protoreflect.M
 
 // Deprecated: Use ProviderPlanChangeExecutionPlanReference.ProtoReflect.Descriptor instead.
 func (*ProviderPlanChangeExecutionPlanReference) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{382}
+	return file_internal_proto_rawDescGZIP(), []int{384}
 }
 
 func (x *ProviderPlanChangeExecutionPlanReference) GetId() string {
@@ -40356,7 +40617,7 @@ type ReadProviderExecutionPlanRequest struct {
 
 func (x *ReadProviderExecutionPlanRequest) Reset() {
 	*x = ReadProviderExecutionPlanRequest{}
-	mi := &file_internal_proto_msgTypes[383]
+	mi := &file_internal_proto_msgTypes[385]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40368,7 +40629,7 @@ func (x *ReadProviderExecutionPlanRequest) String() string {
 func (*ReadProviderExecutionPlanRequest) ProtoMessage() {}
 
 func (x *ReadProviderExecutionPlanRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[383]
+	mi := &file_internal_proto_msgTypes[385]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40381,7 +40642,7 @@ func (x *ReadProviderExecutionPlanRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadProviderExecutionPlanRequest.ProtoReflect.Descriptor instead.
 func (*ReadProviderExecutionPlanRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{383}
+	return file_internal_proto_rawDescGZIP(), []int{385}
 }
 
 func (x *ReadProviderExecutionPlanRequest) GetContext() *CallContext {
@@ -40429,7 +40690,7 @@ type ProviderPlanChangeExecutionPlan struct {
 
 func (x *ProviderPlanChangeExecutionPlan) Reset() {
 	*x = ProviderPlanChangeExecutionPlan{}
-	mi := &file_internal_proto_msgTypes[384]
+	mi := &file_internal_proto_msgTypes[386]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40441,7 +40702,7 @@ func (x *ProviderPlanChangeExecutionPlan) String() string {
 func (*ProviderPlanChangeExecutionPlan) ProtoMessage() {}
 
 func (x *ProviderPlanChangeExecutionPlan) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[384]
+	mi := &file_internal_proto_msgTypes[386]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40454,7 +40715,7 @@ func (x *ProviderPlanChangeExecutionPlan) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProviderPlanChangeExecutionPlan.ProtoReflect.Descriptor instead.
 func (*ProviderPlanChangeExecutionPlan) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{384}
+	return file_internal_proto_rawDescGZIP(), []int{386}
 }
 
 func (x *ProviderPlanChangeExecutionPlan) GetReference() *ProviderPlanChangeExecutionPlanReference {
@@ -40591,7 +40852,7 @@ type SourceFinancialSnapshot struct {
 
 func (x *SourceFinancialSnapshot) Reset() {
 	*x = SourceFinancialSnapshot{}
-	mi := &file_internal_proto_msgTypes[385]
+	mi := &file_internal_proto_msgTypes[387]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40603,7 +40864,7 @@ func (x *SourceFinancialSnapshot) String() string {
 func (*SourceFinancialSnapshot) ProtoMessage() {}
 
 func (x *SourceFinancialSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[385]
+	mi := &file_internal_proto_msgTypes[387]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40616,7 +40877,7 @@ func (x *SourceFinancialSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceFinancialSnapshot.ProtoReflect.Descriptor instead.
 func (*SourceFinancialSnapshot) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{385}
+	return file_internal_proto_rawDescGZIP(), []int{387}
 }
 
 func (x *SourceFinancialSnapshot) GetSchemaVersion() int32 {
@@ -40729,7 +40990,7 @@ type PackageUploadedEvent struct {
 
 func (x *PackageUploadedEvent) Reset() {
 	*x = PackageUploadedEvent{}
-	mi := &file_internal_proto_msgTypes[386]
+	mi := &file_internal_proto_msgTypes[388]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40741,7 +41002,7 @@ func (x *PackageUploadedEvent) String() string {
 func (*PackageUploadedEvent) ProtoMessage() {}
 
 func (x *PackageUploadedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[386]
+	mi := &file_internal_proto_msgTypes[388]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40754,7 +41015,7 @@ func (x *PackageUploadedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PackageUploadedEvent.ProtoReflect.Descriptor instead.
 func (*PackageUploadedEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{386}
+	return file_internal_proto_rawDescGZIP(), []int{388}
 }
 
 func (x *PackageUploadedEvent) GetPackageVersionId() string {
@@ -40800,7 +41061,7 @@ type BuildArtifactConfirmedEvent struct {
 
 func (x *BuildArtifactConfirmedEvent) Reset() {
 	*x = BuildArtifactConfirmedEvent{}
-	mi := &file_internal_proto_msgTypes[387]
+	mi := &file_internal_proto_msgTypes[389]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40812,7 +41073,7 @@ func (x *BuildArtifactConfirmedEvent) String() string {
 func (*BuildArtifactConfirmedEvent) ProtoMessage() {}
 
 func (x *BuildArtifactConfirmedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[387]
+	mi := &file_internal_proto_msgTypes[389]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40825,7 +41086,7 @@ func (x *BuildArtifactConfirmedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildArtifactConfirmedEvent.ProtoReflect.Descriptor instead.
 func (*BuildArtifactConfirmedEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{387}
+	return file_internal_proto_rawDescGZIP(), []int{389}
 }
 
 func (x *BuildArtifactConfirmedEvent) GetBuildJobId() string {
@@ -40888,7 +41149,7 @@ type CapabilityVersionRegisteredEvent struct {
 
 func (x *CapabilityVersionRegisteredEvent) Reset() {
 	*x = CapabilityVersionRegisteredEvent{}
-	mi := &file_internal_proto_msgTypes[388]
+	mi := &file_internal_proto_msgTypes[390]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40900,7 +41161,7 @@ func (x *CapabilityVersionRegisteredEvent) String() string {
 func (*CapabilityVersionRegisteredEvent) ProtoMessage() {}
 
 func (x *CapabilityVersionRegisteredEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[388]
+	mi := &file_internal_proto_msgTypes[390]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40913,7 +41174,7 @@ func (x *CapabilityVersionRegisteredEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CapabilityVersionRegisteredEvent.ProtoReflect.Descriptor instead.
 func (*CapabilityVersionRegisteredEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{388}
+	return file_internal_proto_rawDescGZIP(), []int{390}
 }
 
 func (x *CapabilityVersionRegisteredEvent) GetCapabilityVersionId() string {
@@ -40947,7 +41208,7 @@ type BuildFailedEvent struct {
 
 func (x *BuildFailedEvent) Reset() {
 	*x = BuildFailedEvent{}
-	mi := &file_internal_proto_msgTypes[389]
+	mi := &file_internal_proto_msgTypes[391]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40959,7 +41220,7 @@ func (x *BuildFailedEvent) String() string {
 func (*BuildFailedEvent) ProtoMessage() {}
 
 func (x *BuildFailedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[389]
+	mi := &file_internal_proto_msgTypes[391]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40972,7 +41233,7 @@ func (x *BuildFailedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildFailedEvent.ProtoReflect.Descriptor instead.
 func (*BuildFailedEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{389}
+	return file_internal_proto_rawDescGZIP(), []int{391}
 }
 
 func (x *BuildFailedEvent) GetBuildJobId() string {
@@ -41009,7 +41270,7 @@ type WalletOperationObservedEvent struct {
 
 func (x *WalletOperationObservedEvent) Reset() {
 	*x = WalletOperationObservedEvent{}
-	mi := &file_internal_proto_msgTypes[390]
+	mi := &file_internal_proto_msgTypes[392]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41021,7 +41282,7 @@ func (x *WalletOperationObservedEvent) String() string {
 func (*WalletOperationObservedEvent) ProtoMessage() {}
 
 func (x *WalletOperationObservedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[390]
+	mi := &file_internal_proto_msgTypes[392]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41034,7 +41295,7 @@ func (x *WalletOperationObservedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WalletOperationObservedEvent.ProtoReflect.Descriptor instead.
 func (*WalletOperationObservedEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{390}
+	return file_internal_proto_rawDescGZIP(), []int{392}
 }
 
 func (x *WalletOperationObservedEvent) GetWalletOperationId() string {
@@ -41135,7 +41396,7 @@ type ResourcesObservedEvent struct {
 
 func (x *ResourcesObservedEvent) Reset() {
 	*x = ResourcesObservedEvent{}
-	mi := &file_internal_proto_msgTypes[391]
+	mi := &file_internal_proto_msgTypes[393]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41147,7 +41408,7 @@ func (x *ResourcesObservedEvent) String() string {
 func (*ResourcesObservedEvent) ProtoMessage() {}
 
 func (x *ResourcesObservedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[391]
+	mi := &file_internal_proto_msgTypes[393]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41160,7 +41421,7 @@ func (x *ResourcesObservedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourcesObservedEvent.ProtoReflect.Descriptor instead.
 func (*ResourcesObservedEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{391}
+	return file_internal_proto_rawDescGZIP(), []int{393}
 }
 
 func (x *ResourcesObservedEvent) GetResourceSetId() string {
@@ -41221,7 +41482,7 @@ type RuntimeReadinessObservedEvent struct {
 
 func (x *RuntimeReadinessObservedEvent) Reset() {
 	*x = RuntimeReadinessObservedEvent{}
-	mi := &file_internal_proto_msgTypes[392]
+	mi := &file_internal_proto_msgTypes[394]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41233,7 +41494,7 @@ func (x *RuntimeReadinessObservedEvent) String() string {
 func (*RuntimeReadinessObservedEvent) ProtoMessage() {}
 
 func (x *RuntimeReadinessObservedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[392]
+	mi := &file_internal_proto_msgTypes[394]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41246,7 +41507,7 @@ func (x *RuntimeReadinessObservedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeReadinessObservedEvent.ProtoReflect.Descriptor instead.
 func (*RuntimeReadinessObservedEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{392}
+	return file_internal_proto_rawDescGZIP(), []int{394}
 }
 
 func (x *RuntimeReadinessObservedEvent) GetRuntimeInstanceId() string {
@@ -41316,7 +41577,7 @@ type WorkspaceStateChangedEvent struct {
 
 func (x *WorkspaceStateChangedEvent) Reset() {
 	*x = WorkspaceStateChangedEvent{}
-	mi := &file_internal_proto_msgTypes[393]
+	mi := &file_internal_proto_msgTypes[395]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41328,7 +41589,7 @@ func (x *WorkspaceStateChangedEvent) String() string {
 func (*WorkspaceStateChangedEvent) ProtoMessage() {}
 
 func (x *WorkspaceStateChangedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[393]
+	mi := &file_internal_proto_msgTypes[395]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41341,7 +41602,7 @@ func (x *WorkspaceStateChangedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspaceStateChangedEvent.ProtoReflect.Descriptor instead.
 func (*WorkspaceStateChangedEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{393}
+	return file_internal_proto_rawDescGZIP(), []int{395}
 }
 
 func (x *WorkspaceStateChangedEvent) GetWorkspaceId() string {
@@ -41378,7 +41639,7 @@ type WorkspaceDeletionConfirmedEvent struct {
 
 func (x *WorkspaceDeletionConfirmedEvent) Reset() {
 	*x = WorkspaceDeletionConfirmedEvent{}
-	mi := &file_internal_proto_msgTypes[394]
+	mi := &file_internal_proto_msgTypes[396]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41390,7 +41651,7 @@ func (x *WorkspaceDeletionConfirmedEvent) String() string {
 func (*WorkspaceDeletionConfirmedEvent) ProtoMessage() {}
 
 func (x *WorkspaceDeletionConfirmedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[394]
+	mi := &file_internal_proto_msgTypes[396]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41403,7 +41664,7 @@ func (x *WorkspaceDeletionConfirmedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspaceDeletionConfirmedEvent.ProtoReflect.Descriptor instead.
 func (*WorkspaceDeletionConfirmedEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{394}
+	return file_internal_proto_rawDescGZIP(), []int{396}
 }
 
 func (x *WorkspaceDeletionConfirmedEvent) GetWorkspaceId() string {
@@ -41453,7 +41714,7 @@ type TenantAccessRevokedEvent struct {
 
 func (x *TenantAccessRevokedEvent) Reset() {
 	*x = TenantAccessRevokedEvent{}
-	mi := &file_internal_proto_msgTypes[395]
+	mi := &file_internal_proto_msgTypes[397]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41465,7 +41726,7 @@ func (x *TenantAccessRevokedEvent) String() string {
 func (*TenantAccessRevokedEvent) ProtoMessage() {}
 
 func (x *TenantAccessRevokedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[395]
+	mi := &file_internal_proto_msgTypes[397]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41478,7 +41739,7 @@ func (x *TenantAccessRevokedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TenantAccessRevokedEvent.ProtoReflect.Descriptor instead.
 func (*TenantAccessRevokedEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{395}
+	return file_internal_proto_rawDescGZIP(), []int{397}
 }
 
 func (x *TenantAccessRevokedEvent) GetTargetTenantId() string {
@@ -41520,7 +41781,7 @@ type TenantRestoredEvent struct {
 
 func (x *TenantRestoredEvent) Reset() {
 	*x = TenantRestoredEvent{}
-	mi := &file_internal_proto_msgTypes[396]
+	mi := &file_internal_proto_msgTypes[398]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41532,7 +41793,7 @@ func (x *TenantRestoredEvent) String() string {
 func (*TenantRestoredEvent) ProtoMessage() {}
 
 func (x *TenantRestoredEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[396]
+	mi := &file_internal_proto_msgTypes[398]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41545,7 +41806,7 @@ func (x *TenantRestoredEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TenantRestoredEvent.ProtoReflect.Descriptor instead.
 func (*TenantRestoredEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{396}
+	return file_internal_proto_rawDescGZIP(), []int{398}
 }
 
 func (x *TenantRestoredEvent) GetTargetTenantId() string {
@@ -41581,7 +41842,7 @@ type ReceiptRecordedEvent struct {
 
 func (x *ReceiptRecordedEvent) Reset() {
 	*x = ReceiptRecordedEvent{}
-	mi := &file_internal_proto_msgTypes[397]
+	mi := &file_internal_proto_msgTypes[399]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41593,7 +41854,7 @@ func (x *ReceiptRecordedEvent) String() string {
 func (*ReceiptRecordedEvent) ProtoMessage() {}
 
 func (x *ReceiptRecordedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[397]
+	mi := &file_internal_proto_msgTypes[399]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41606,7 +41867,7 @@ func (x *ReceiptRecordedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReceiptRecordedEvent.ProtoReflect.Descriptor instead.
 func (*ReceiptRecordedEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{397}
+	return file_internal_proto_rawDescGZIP(), []int{399}
 }
 
 func (x *ReceiptRecordedEvent) GetReceiptId() string {
@@ -41648,7 +41909,7 @@ type CatalogPolicyChangedEvent struct {
 
 func (x *CatalogPolicyChangedEvent) Reset() {
 	*x = CatalogPolicyChangedEvent{}
-	mi := &file_internal_proto_msgTypes[398]
+	mi := &file_internal_proto_msgTypes[400]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41660,7 +41921,7 @@ func (x *CatalogPolicyChangedEvent) String() string {
 func (*CatalogPolicyChangedEvent) ProtoMessage() {}
 
 func (x *CatalogPolicyChangedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[398]
+	mi := &file_internal_proto_msgTypes[400]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41673,7 +41934,7 @@ func (x *CatalogPolicyChangedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CatalogPolicyChangedEvent.ProtoReflect.Descriptor instead.
 func (*CatalogPolicyChangedEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{398}
+	return file_internal_proto_rawDescGZIP(), []int{400}
 }
 
 func (x *CatalogPolicyChangedEvent) GetPolicyVersionId() string {
@@ -41709,7 +41970,7 @@ type TenantReenabledEvent struct {
 
 func (x *TenantReenabledEvent) Reset() {
 	*x = TenantReenabledEvent{}
-	mi := &file_internal_proto_msgTypes[399]
+	mi := &file_internal_proto_msgTypes[401]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41721,7 +41982,7 @@ func (x *TenantReenabledEvent) String() string {
 func (*TenantReenabledEvent) ProtoMessage() {}
 
 func (x *TenantReenabledEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[399]
+	mi := &file_internal_proto_msgTypes[401]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41734,7 +41995,7 @@ func (x *TenantReenabledEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TenantReenabledEvent.ProtoReflect.Descriptor instead.
 func (*TenantReenabledEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{399}
+	return file_internal_proto_rawDescGZIP(), []int{401}
 }
 
 func (x *TenantReenabledEvent) GetTargetTenantId() string {
@@ -41778,7 +42039,7 @@ type RenewalSettingsChangedEvent struct {
 
 func (x *RenewalSettingsChangedEvent) Reset() {
 	*x = RenewalSettingsChangedEvent{}
-	mi := &file_internal_proto_msgTypes[400]
+	mi := &file_internal_proto_msgTypes[402]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41790,7 +42051,7 @@ func (x *RenewalSettingsChangedEvent) String() string {
 func (*RenewalSettingsChangedEvent) ProtoMessage() {}
 
 func (x *RenewalSettingsChangedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[400]
+	mi := &file_internal_proto_msgTypes[402]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41803,7 +42064,7 @@ func (x *RenewalSettingsChangedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenewalSettingsChangedEvent.ProtoReflect.Descriptor instead.
 func (*RenewalSettingsChangedEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{400}
+	return file_internal_proto_rawDescGZIP(), []int{402}
 }
 
 func (x *RenewalSettingsChangedEvent) GetWorkspaceId() string {
@@ -41858,7 +42119,7 @@ type RouteObservedEvent struct {
 
 func (x *RouteObservedEvent) Reset() {
 	*x = RouteObservedEvent{}
-	mi := &file_internal_proto_msgTypes[401]
+	mi := &file_internal_proto_msgTypes[403]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41870,7 +42131,7 @@ func (x *RouteObservedEvent) String() string {
 func (*RouteObservedEvent) ProtoMessage() {}
 
 func (x *RouteObservedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[401]
+	mi := &file_internal_proto_msgTypes[403]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41883,7 +42144,7 @@ func (x *RouteObservedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteObservedEvent.ProtoReflect.Descriptor instead.
 func (*RouteObservedEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{401}
+	return file_internal_proto_rawDescGZIP(), []int{403}
 }
 
 func (x *RouteObservedEvent) GetWorkspaceId() string {
@@ -41968,7 +42229,7 @@ type PlanChangeStateChangedEvent struct {
 
 func (x *PlanChangeStateChangedEvent) Reset() {
 	*x = PlanChangeStateChangedEvent{}
-	mi := &file_internal_proto_msgTypes[402]
+	mi := &file_internal_proto_msgTypes[404]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41980,7 +42241,7 @@ func (x *PlanChangeStateChangedEvent) String() string {
 func (*PlanChangeStateChangedEvent) ProtoMessage() {}
 
 func (x *PlanChangeStateChangedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[402]
+	mi := &file_internal_proto_msgTypes[404]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41993,7 +42254,7 @@ func (x *PlanChangeStateChangedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanChangeStateChangedEvent.ProtoReflect.Descriptor instead.
 func (*PlanChangeStateChangedEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{402}
+	return file_internal_proto_rawDescGZIP(), []int{404}
 }
 
 func (x *PlanChangeStateChangedEvent) GetPlanChangeId() string {
@@ -42092,7 +42353,7 @@ type PeriodObligationChangedEvent struct {
 
 func (x *PeriodObligationChangedEvent) Reset() {
 	*x = PeriodObligationChangedEvent{}
-	mi := &file_internal_proto_msgTypes[403]
+	mi := &file_internal_proto_msgTypes[405]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42104,7 +42365,7 @@ func (x *PeriodObligationChangedEvent) String() string {
 func (*PeriodObligationChangedEvent) ProtoMessage() {}
 
 func (x *PeriodObligationChangedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[403]
+	mi := &file_internal_proto_msgTypes[405]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42117,7 +42378,7 @@ func (x *PeriodObligationChangedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeriodObligationChangedEvent.ProtoReflect.Descriptor instead.
 func (*PeriodObligationChangedEvent) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{403}
+	return file_internal_proto_rawDescGZIP(), []int{405}
 }
 
 func (x *PeriodObligationChangedEvent) GetObligationId() string {
@@ -42246,7 +42507,7 @@ type EventEnvelope struct {
 
 func (x *EventEnvelope) Reset() {
 	*x = EventEnvelope{}
-	mi := &file_internal_proto_msgTypes[404]
+	mi := &file_internal_proto_msgTypes[406]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42258,7 +42519,7 @@ func (x *EventEnvelope) String() string {
 func (*EventEnvelope) ProtoMessage() {}
 
 func (x *EventEnvelope) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[404]
+	mi := &file_internal_proto_msgTypes[406]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42271,7 +42532,7 @@ func (x *EventEnvelope) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventEnvelope.ProtoReflect.Descriptor instead.
 func (*EventEnvelope) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{404}
+	return file_internal_proto_rawDescGZIP(), []int{406}
 }
 
 func (x *EventEnvelope) GetEventId() string {
@@ -42635,7 +42896,7 @@ type DeliverEventRequest struct {
 
 func (x *DeliverEventRequest) Reset() {
 	*x = DeliverEventRequest{}
-	mi := &file_internal_proto_msgTypes[405]
+	mi := &file_internal_proto_msgTypes[407]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42647,7 +42908,7 @@ func (x *DeliverEventRequest) String() string {
 func (*DeliverEventRequest) ProtoMessage() {}
 
 func (x *DeliverEventRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[405]
+	mi := &file_internal_proto_msgTypes[407]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42660,7 +42921,7 @@ func (x *DeliverEventRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeliverEventRequest.ProtoReflect.Descriptor instead.
 func (*DeliverEventRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{405}
+	return file_internal_proto_rawDescGZIP(), []int{407}
 }
 
 func (x *DeliverEventRequest) GetEvent() *EventEnvelope {
@@ -42691,7 +42952,7 @@ type InboxAck struct {
 
 func (x *InboxAck) Reset() {
 	*x = InboxAck{}
-	mi := &file_internal_proto_msgTypes[406]
+	mi := &file_internal_proto_msgTypes[408]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42703,7 +42964,7 @@ func (x *InboxAck) String() string {
 func (*InboxAck) ProtoMessage() {}
 
 func (x *InboxAck) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[406]
+	mi := &file_internal_proto_msgTypes[408]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42716,7 +42977,7 @@ func (x *InboxAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InboxAck.ProtoReflect.Descriptor instead.
 func (*InboxAck) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{406}
+	return file_internal_proto_rawDescGZIP(), []int{408}
 }
 
 func (x *InboxAck) GetEventId() string {
@@ -42770,7 +43031,7 @@ type ReadWorkspaceAccessRequest struct {
 
 func (x *ReadWorkspaceAccessRequest) Reset() {
 	*x = ReadWorkspaceAccessRequest{}
-	mi := &file_internal_proto_msgTypes[407]
+	mi := &file_internal_proto_msgTypes[409]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42782,7 +43043,7 @@ func (x *ReadWorkspaceAccessRequest) String() string {
 func (*ReadWorkspaceAccessRequest) ProtoMessage() {}
 
 func (x *ReadWorkspaceAccessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[407]
+	mi := &file_internal_proto_msgTypes[409]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42795,7 +43056,7 @@ func (x *ReadWorkspaceAccessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadWorkspaceAccessRequest.ProtoReflect.Descriptor instead.
 func (*ReadWorkspaceAccessRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{407}
+	return file_internal_proto_rawDescGZIP(), []int{409}
 }
 
 func (x *ReadWorkspaceAccessRequest) GetWorkspaceId() string {
@@ -42815,7 +43076,7 @@ type WorkspaceAccessDecision struct {
 
 func (x *WorkspaceAccessDecision) Reset() {
 	*x = WorkspaceAccessDecision{}
-	mi := &file_internal_proto_msgTypes[408]
+	mi := &file_internal_proto_msgTypes[410]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42827,7 +43088,7 @@ func (x *WorkspaceAccessDecision) String() string {
 func (*WorkspaceAccessDecision) ProtoMessage() {}
 
 func (x *WorkspaceAccessDecision) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_msgTypes[408]
+	mi := &file_internal_proto_msgTypes[410]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42840,7 +43101,7 @@ func (x *WorkspaceAccessDecision) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspaceAccessDecision.ProtoReflect.Descriptor instead.
 func (*WorkspaceAccessDecision) Descriptor() ([]byte, []int) {
-	return file_internal_proto_rawDescGZIP(), []int{408}
+	return file_internal_proto_rawDescGZIP(), []int{410}
 }
 
 func (x *WorkspaceAccessDecision) GetWorkspaceId() string {
@@ -42950,22 +43211,7 @@ const file_internal_proto_rawDesc = "" +
 	"\x17billing_sub2api_user_id\x18\x02 \x01(\tR\x14billingSub2apiUserId\x127\n" +
 	"\x18owner_gateway_subject_id\x18\x03 \x01(\tR\x15ownerGatewaySubjectId\x12\x1f\n" +
 	"\vowner_email\x18\x04 \x01(\tR\n" +
-	"ownerEmail\"\xb8\x02\n" +
-	"\x17TenantRepositoryBinding\x12\x1b\n" +
-	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12#\n" +
-	"\rregistry_host\x18\x02 \x01(\tR\fregistryHost\x12-\n" +
-	"\x12registry_namespace\x18\x03 \x01(\tR\x11registryNamespace\x12\x1e\n" +
-	"\n" +
-	"repository\x18\x04 \x01(\tR\n" +
-	"repository\x12\x16\n" +
-	"\x06status\x18\x05 \x01(\tR\x06status\x129\n" +
-	"\n" +
-	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
-	"\n" +
-	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"v\n" +
-	"!GetTenantRepositoryBindingRequest\x124\n" +
-	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12\x1b\n" +
-	"\ttenant_id\x18\x02 \x01(\tR\btenantId\"\x8a\x01\n" +
+	"ownerEmail\"\x8a\x01\n" +
 	"\x17BindTenantWalletRequest\x125\n" +
 	"\x17billing_sub2api_user_id\x18\x01 \x01(\tR\x14billingSub2apiUserId\x128\n" +
 	"\x18expected_binding_version\x18\x02 \x01(\x03R\x16expectedBindingVersion\"\xfd\x01\n" +
@@ -45247,7 +45493,40 @@ const file_internal_proto_rawDesc = "" +
 	"!_source_financial_snapshot_digest\"k\n" +
 	"\x18QuoteResourcePlanRequest\x124\n" +
 	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12\x19\n" +
-	"\bquote_id\x18\x02 \x01(\tR\aquoteId\"\xa1\x02\n" +
+	"\bquote_id\x18\x02 \x01(\tR\aquoteId\"\x8f\x02\n" +
+	"\x1aUserExternalBindingCommand\x124\n" +
+	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12\x19\n" +
+	"\bactor_id\x18\x02 \x01(\tR\aactorId\x12&\n" +
+	"\x0fsub2api_user_id\x18\x03 \x01(\tR\rsub2apiUserId\x12#\n" +
+	"\rregistry_host\x18\x04 \x01(\tR\fregistryHost\x12-\n" +
+	"\x12registry_namespace\x18\x05 \x01(\tR\x11registryNamespace\x12\x1e\n" +
+	"\n" +
+	"repository\x18\x06 \x01(\tR\n" +
+	"repositoryJ\x04\b\a\x10\b\"q\n" +
+	"\x1eUserExternalBindingReadRequest\x124\n" +
+	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12\x19\n" +
+	"\bactor_id\x18\x02 \x01(\tR\aactorId\"Y\n" +
+	"!GetSelfUserExternalBindingRequest\x124\n" +
+	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\"\xc5\x05\n" +
+	"\x1bUserExternalBindingReadback\x12\x19\n" +
+	"\bactor_id\x18\x01 \x01(\tR\aactorId\x12&\n" +
+	"\x0fsub2api_user_id\x18\x02 \x01(\tR\rsub2apiUserId\x12#\n" +
+	"\rregistry_host\x18\x03 \x01(\tR\fregistryHost\x12-\n" +
+	"\x12registry_namespace\x18\x04 \x01(\tR\x11registryNamespace\x12\x1e\n" +
+	"\n" +
+	"repository\x18\x05 \x01(\tR\n" +
+	"repository\x12L\n" +
+	"\x06status\x18\x06 \x01(\x0e24.opl.cloud.api.UserExternalBindingReadbackStatusEnumR\x06status\x12^\n" +
+	"\fverification\x18\a \x01(\x0e2:.opl.cloud.api.UserExternalBindingReadbackVerificationEnumR\fverification\x12:\n" +
+	"\x19verification_evidence_ref\x18\b \x01(\tR\x17verificationEvidenceRef\x12;\n" +
+	"\vverified_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"verifiedAt\x129\n" +
+	"\n" +
+	"created_at\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12R\n" +
+	"\x17destination_verified_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\x15destinationVerifiedAt\"\xa1\x02\n" +
 	"\x14WalletBindingCommand\x124\n" +
 	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12(\n" +
 	"\x10target_tenant_id\x18\x02 \x01(\tR\x0etargetTenantId\x125\n" +
@@ -46137,7 +46416,13 @@ const file_internal_proto_rawDesc = "" +
 	"\x1fACCEPTED_GRANT_MODE_UNSPECIFIED\x10\x00\x12)\n" +
 	"%ACCEPTED_GRANT_MODE_CONTINUE_ORIGINAL\x10\x01\x12%\n" +
 	"!ACCEPTED_GRANT_MODE_CLOSEOUT_ONLY\x10\x02\x12\x1f\n" +
-	"\x1bACCEPTED_GRANT_MODE_REVOKED\x10\x03*\xc7\x02\n" +
+	"\x1bACCEPTED_GRANT_MODE_REVOKED\x10\x03*\x9a\x01\n" +
+	"%UserExternalBindingReadbackStatusEnum\x12:\n" +
+	"6USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_UNSPECIFIED\x10\x00\x125\n" +
+	"1USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_ACTIVE\x10\x01*\xaf\x01\n" +
+	"+UserExternalBindingReadbackVerificationEnum\x12@\n" +
+	"<USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_UNSPECIFIED\x10\x00\x12>\n" +
+	":USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_CONFIRMED\x10\x01*\xc7\x02\n" +
 	"\x1cAgentRuntimeObservationState\x12&\n" +
 	"\"RUNTIME_INSTANCE_STATE_UNSPECIFIED\x10\x00\x12\"\n" +
 	"\x1eRUNTIME_INSTANCE_STATE_PENDING\x10\x01\x12#\n" +
@@ -46383,7 +46668,7 @@ const file_internal_proto_rawDesc = "" +
 	"\x1bOPERATION_OWNER_ENUM_FABRIC\x10\x06\x12 \n" +
 	"\x1cOPERATION_OWNER_ENUM_GATEWAY\x10\a\x12)\n" +
 	"%OPERATION_OWNER_ENUM_RESOURCE_CATALOG\x10\b\x12\x1e\n" +
-	"\x1aOPERATION_OWNER_ENUM_SERVE\x10\t*\xa9<\n" +
+	"\x1aOPERATION_OWNER_ENUM_SERVE\x10\t*\xe4<\n" +
 	"\x17AuthorizationActionEnum\x12)\n" +
 	"%AUTHORIZATION_ACTION_ENUM_UNSPECIFIED\x10\x00\x12.\n" +
 	"*AUTHORIZATION_ACTION_ENUM_ACCEPTINVITATION\x10\x01\x12.\n" +
@@ -46540,7 +46825,8 @@ const file_internal_proto_rawDesc = "" +
 	".AUTHORIZATION_ACTION_ENUM_DEBITSCHEDULEDPERIOD\x10\x97\x01\x124\n" +
 	"/AUTHORIZATION_ACTION_ENUM_READPLANCHANGEFAILURE\x10\x98\x01\x126\n" +
 	"1AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES\x10\x99\x01\x12.\n" +
-	")AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY\x10\x9a\x01*\x99\x03\n" +
+	")AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY\x10\x9a\x01\x129\n" +
+	"4AUTHORIZATION_ACTION_ENUM_GETSELFUSEREXTERNALBINDING\x10\x9b\x01*\x99\x03\n" +
 	"\x13ServiceIdentityEnum\x12%\n" +
 	"!SERVICE_IDENTITY_ENUM_UNSPECIFIED\x10\x00\x12%\n" +
 	"!SERVICE_IDENTITY_ENUM_CONSOLE_BFF\x10\x01\x12$\n" +
@@ -47420,18 +47706,20 @@ const file_internal_proto_rawDesc = "" +
 	"\x13OwnerCommitReadback\x12\\\n" +
 	"\x0fReadOwnerCommit\x12%.opl.cloud.api.ReadOwnerCommitRequest\x1a\".opl.cloud.api.OwnerCommitEvidence2\x87\x01\n" +
 	"\x1eWorkspaceAuthorizationReadback\x12e\n" +
-	"\x12ReadRenewalConsent\x12(.opl.cloud.api.ReadRenewalConsentRequest\x1a%.opl.cloud.api.RenewalConsentReadback2\xd6\x03\n" +
+	"\x12ReadRenewalConsent\x12(.opl.cloud.api.ReadRenewalConsentRequest\x1a%.opl.cloud.api.RenewalConsentReadback2\xde\x02\n" +
 	"\x1aCloudIdentityAuthorization\x12\\\n" +
 	"\x0fAuthorizeAction\x12#.opl.cloud.api.AuthorizationRequest\x1a$.opl.cloud.api.AuthorizationDecision\x12n\n" +
 	"\x17GetAuthorizationContext\x12-.opl.cloud.api.GetAuthorizationContextRequest\x1a$.opl.cloud.api.AuthorizationDecision\x12r\n" +
-	"\x1bIssueAcceptedOperationGrant\x12,.opl.cloud.api.AcceptedOperationGrantRequest\x1a%.opl.cloud.api.AcceptedOperationGrant\x12v\n" +
-	"\x1aGetTenantRepositoryBinding\x120.opl.cloud.api.GetTenantRepositoryBindingRequest\x1a&.opl.cloud.api.TenantRepositoryBinding2\xc9\x01\n" +
+	"\x1bIssueAcceptedOperationGrant\x12,.opl.cloud.api.AcceptedOperationGrantRequest\x1a%.opl.cloud.api.AcceptedOperationGrant2\xc9\x01\n" +
 	"\x13CatalogCoordination\x12P\n" +
 	"\vAcceptQuote\x12!.opl.cloud.api.AcceptQuoteRequest\x1a\x1e.opl.cloud.api.QuoteAcceptance\x12`\n" +
 	"\x15ReadQuoteResourcePlan\x12'.opl.cloud.api.QuoteResourcePlanRequest\x1a\x1e.opl.cloud.api.QuoteAcceptance2g\n" +
 	"\x12WorkspaceAdmission\x12Q\n" +
-	"\x0eCheckAdmission\x12\x1f.opl.cloud.api.AdmissionRequest\x1a\x1e.opl.cloud.api.AdmissionResult2\x89\x04\n" +
-	"\x13GatewayCoordination\x12W\n" +
+	"\x0eCheckAdmission\x12\x1f.opl.cloud.api.AdmissionRequest\x1a\x1e.opl.cloud.api.AdmissionResult2\xef\x06\n" +
+	"\x13GatewayCoordination\x12z\n" +
+	"\x1aGetSelfUserExternalBinding\x120.opl.cloud.api.GetSelfUserExternalBindingRequest\x1a*.opl.cloud.api.UserExternalBindingReadback\x12q\n" +
+	"\x18BindUserExternalIdentity\x12).opl.cloud.api.UserExternalBindingCommand\x1a*.opl.cloud.api.UserExternalBindingReadback\x12u\n" +
+	"\x18ReadUserExternalIdentity\x12-.opl.cloud.api.UserExternalBindingReadRequest\x1a*.opl.cloud.api.UserExternalBindingReadback\x12W\n" +
 	"\n" +
 	"BindWallet\x12#.opl.cloud.api.WalletBindingCommand\x1a$.opl.cloud.api.WalletBindingReadback\x12J\n" +
 	"\x05Debit\x12!.opl.cloud.api.WalletDebitCommand\x1a\x1e.opl.cloud.api.WalletOperation\x12L\n" +
@@ -47513,8 +47801,8 @@ func file_internal_proto_rawDescGZIP() []byte {
 	return file_internal_proto_rawDescData
 }
 
-var file_internal_proto_enumTypes = make([]protoimpl.EnumInfo, 186)
-var file_internal_proto_msgTypes = make([]protoimpl.MessageInfo, 410)
+var file_internal_proto_enumTypes = make([]protoimpl.EnumInfo, 188)
+var file_internal_proto_msgTypes = make([]protoimpl.MessageInfo, 412)
 var file_internal_proto_goTypes = []any{
 	(Observation)(0),                                         // 0: opl.cloud.api.Observation
 	(ReferenceClaimState)(0),                                 // 1: opl.cloud.api.ReferenceClaimState
@@ -47523,196 +47811,196 @@ var file_internal_proto_goTypes = []any{
 	(AuthorizationResult)(0),                                 // 4: opl.cloud.api.AuthorizationResult
 	(AuthorizationIssuer)(0),                                 // 5: opl.cloud.api.AuthorizationIssuer
 	(AcceptedGrantMode)(0),                                   // 6: opl.cloud.api.AcceptedGrantMode
-	(AgentRuntimeObservationState)(0),                        // 7: opl.cloud.api.AgentRuntimeObservationState
-	(PeriodObligationStatus)(0),                              // 8: opl.cloud.api.PeriodObligationStatus
-	(TransitionReversibility)(0),                             // 9: opl.cloud.api.TransitionReversibility
-	(PlanChangeExecutionStrategy)(0),                         // 10: opl.cloud.api.PlanChangeExecutionStrategy
-	(PlanChangeStorageAction)(0),                             // 11: opl.cloud.api.PlanChangeStorageAction
-	(ErrorCodeEnum)(0),                                       // 12: opl.cloud.api.ErrorCodeEnum
-	(OwnerEnum)(0),                                           // 13: opl.cloud.api.OwnerEnum
-	(TenantRoleEnum)(0),                                      // 14: opl.cloud.api.TenantRoleEnum
-	(OperationKindEnum)(0),                                   // 15: opl.cloud.api.OperationKindEnum
-	(OperationStageEnum)(0),                                  // 16: opl.cloud.api.OperationStageEnum
-	(OperationOwnerEnum)(0),                                  // 17: opl.cloud.api.OperationOwnerEnum
-	(AuthorizationActionEnum)(0),                             // 18: opl.cloud.api.AuthorizationActionEnum
-	(ServiceIdentityEnum)(0),                                 // 19: opl.cloud.api.ServiceIdentityEnum
-	(OperationStatusEnum)(0),                                 // 20: opl.cloud.api.OperationStatusEnum
-	(OperationObservationResultEnum)(0),                      // 21: opl.cloud.api.OperationObservationResultEnum
-	(TenantStatusEnum)(0),                                    // 22: opl.cloud.api.TenantStatusEnum
-	(TenantAssetCustodyStatusEnum)(0),                        // 23: opl.cloud.api.TenantAssetCustodyStatusEnum
-	(MemberStatusEnum)(0),                                    // 24: opl.cloud.api.MemberStatusEnum
-	(InvitationRoleEnum)(0),                                  // 25: opl.cloud.api.InvitationRoleEnum
-	(InvitationStatusEnum)(0),                                // 26: opl.cloud.api.InvitationStatusEnum
-	(InviteMemberRequestRoleEnum)(0),                         // 27: opl.cloud.api.InviteMemberRequestRoleEnum
-	(AssetCustodyStatusEnum)(0),                              // 28: opl.cloud.api.AssetCustodyStatusEnum
-	(NamespaceStatusEnum)(0),                                 // 29: opl.cloud.api.NamespaceStatusEnum
-	(PackageVisibilityEnum)(0),                               // 30: opl.cloud.api.PackageVisibilityEnum
-	(PackageStatusEnum)(0),                                   // 31: opl.cloud.api.PackageStatusEnum
-	(PackageVersionStatusEnum)(0),                            // 32: opl.cloud.api.PackageVersionStatusEnum
-	(UploadSessionStatusEnum)(0),                             // 33: opl.cloud.api.UploadSessionStatusEnum
-	(UploadPartAuthorizationMethodEnum)(0),                   // 34: opl.cloud.api.UploadPartAuthorizationMethodEnum
-	(ModelRequirementCapabilityEnum)(0),                      // 35: opl.cloud.api.ModelRequirementCapabilityEnum
-	(CapabilityVersionStatusEnum)(0),                         // 36: opl.cloud.api.CapabilityVersionStatusEnum
-	(CapabilityVersionProvenanceEnum)(0),                     // 37: opl.cloud.api.CapabilityVersionProvenanceEnum
-	(BuildJobStatusEnum)(0),                                  // 38: opl.cloud.api.BuildJobStatusEnum
-	(BuildLogLevelEnum)(0),                                   // 39: opl.cloud.api.BuildLogLevelEnum
-	(RuntimeVersionStatusEnum)(0),                            // 40: opl.cloud.api.RuntimeVersionStatusEnum
-	(WebuiVersionStatusEnum)(0),                              // 41: opl.cloud.api.WebuiVersionStatusEnum
-	(CatalogStatusRequestStatusEnum)(0),                      // 42: opl.cloud.api.CatalogStatusRequestStatusEnum
-	(ComputePlanAvailabilityEnum)(0),                         // 43: opl.cloud.api.ComputePlanAvailabilityEnum
-	(ComputePlanBillingModeEnum)(0),                          // 44: opl.cloud.api.ComputePlanBillingModeEnum
-	(StoragePlanAvailabilityEnum)(0),                         // 45: opl.cloud.api.StoragePlanAvailabilityEnum
-	(StoragePlanBillingModeEnum)(0),                          // 46: opl.cloud.api.StoragePlanBillingModeEnum
-	(PlanAvailabilityRequestAvailabilityEnum)(0),             // 47: opl.cloud.api.PlanAvailabilityRequestAvailabilityEnum
-	(PricePolicyVersionCurrencyEnum)(0),                      // 48: opl.cloud.api.PricePolicyVersionCurrencyEnum
-	(PricePolicyVersionPlanChangePolicyVersionEnum)(0),       // 49: opl.cloud.api.PricePolicyVersionPlanChangePolicyVersionEnum
-	(CreatePricePolicyRequestPlanChangePolicyVersionEnum)(0), // 50: opl.cloud.api.CreatePricePolicyRequestPlanChangePolicyVersionEnum
-	(RefundPolicyVersionAlgorithmEnum)(0),                    // 51: opl.cloud.api.RefundPolicyVersionAlgorithmEnum
-	(CreateRefundPolicyRequestAlgorithmEnum)(0),              // 52: opl.cloud.api.CreateRefundPolicyRequestAlgorithmEnum
-	(RetentionPolicyVersionWorkspaceDataDispositionEnum)(0),  // 53: opl.cloud.api.RetentionPolicyVersionWorkspaceDataDispositionEnum
-	(RetentionPolicyVersionPackageHistoryDispositionEnum)(0), // 54: opl.cloud.api.RetentionPolicyVersionPackageHistoryDispositionEnum
-	(RetentionPolicyVersionBuildHistoryDispositionEnum)(0),   // 55: opl.cloud.api.RetentionPolicyVersionBuildHistoryDispositionEnum
-	(QuoteRequestPurposeEnum)(0),                             // 56: opl.cloud.api.QuoteRequestPurposeEnum
-	(QuoteLineKindEnum)(0),                                   // 57: opl.cloud.api.QuoteLineKindEnum
-	(WorkspaceApplicationSelectionKindEnum)(0),               // 58: opl.cloud.api.WorkspaceApplicationSelectionKindEnum
-	(QuotePurposeEnum)(0),                                    // 59: opl.cloud.api.QuotePurposeEnum
-	(QuoteStatusEnum)(0),                                     // 60: opl.cloud.api.QuoteStatusEnum
-	(QuoteRuntimeReadbackRequirementEnum)(0),                 // 61: opl.cloud.api.QuoteRuntimeReadbackRequirementEnum
-	(WorkspaceStatusEnum)(0),                                 // 62: opl.cloud.api.WorkspaceStatusEnum
-	(WorkspaceResourceReadinessEnum)(0),                      // 63: opl.cloud.api.WorkspaceResourceReadinessEnum
-	(WorkspaceApplicationAvailabilityEnum)(0),                // 64: opl.cloud.api.WorkspaceApplicationAvailabilityEnum
-	(WorkspaceDeliveryModelEnum)(0),                          // 65: opl.cloud.api.WorkspaceDeliveryModelEnum
-	(CreateWorkspaceRequestRenewalModeEnum)(0),               // 66: opl.cloud.api.CreateWorkspaceRequestRenewalModeEnum
-	(WorkspaceAccessAuthenticationModeEnum)(0),               // 67: opl.cloud.api.WorkspaceAccessAuthenticationModeEnum
-	(ModelConfigurationStatusEnum)(0),                        // 68: opl.cloud.api.ModelConfigurationStatusEnum
-	(DeploymentStatusEnum)(0),                                // 69: opl.cloud.api.DeploymentStatusEnum
-	(WorkspaceDeletionResourceDeletionStatusEnum)(0),         // 70: opl.cloud.api.WorkspaceDeletionResourceDeletionStatusEnum
-	(WorkspaceDeletionDataDeletionStatusEnum)(0),             // 71: opl.cloud.api.WorkspaceDeletionDataDeletionStatusEnum
-	(WorkspaceDeletionRefundStatusEnum)(0),                   // 72: opl.cloud.api.WorkspaceDeletionRefundStatusEnum
-	(SubscriptionStatusEnum)(0),                              // 73: opl.cloud.api.SubscriptionStatusEnum
-	(SubscriptionProvenanceEnum)(0),                          // 74: opl.cloud.api.SubscriptionProvenanceEnum
-	(SubscriptionRenewalModeEnum)(0),                         // 75: opl.cloud.api.SubscriptionRenewalModeEnum
-	(WalletOperationKindEnum)(0),                             // 76: opl.cloud.api.WalletOperationKindEnum
-	(WalletOperationStatusEnum)(0),                           // 77: opl.cloud.api.WalletOperationStatusEnum
-	(WalletOperationPurposeEnum)(0),                          // 78: opl.cloud.api.WalletOperationPurposeEnum
-	(WalletSourceEnum)(0),                                    // 79: opl.cloud.api.WalletSourceEnum
-	(WalletStatusEnum)(0),                                    // 80: opl.cloud.api.WalletStatusEnum
-	(WalletCurrencyEnum)(0),                                  // 81: opl.cloud.api.WalletCurrencyEnum
-	(UsageSourceEnum)(0),                                     // 82: opl.cloud.api.UsageSourceEnum
-	(GatewayKeyPurposeEnum)(0),                               // 83: opl.cloud.api.GatewayKeyPurposeEnum
-	(GatewayKeyStatusEnum)(0),                                // 84: opl.cloud.api.GatewayKeyStatusEnum
-	(AuditEventOutcomeEnum)(0),                               // 85: opl.cloud.api.AuditEventOutcomeEnum
-	(ReceiptKindEnum)(0),                                     // 86: opl.cloud.api.ReceiptKindEnum
-	(ReceiptOutcomeEnum)(0),                                  // 87: opl.cloud.api.ReceiptOutcomeEnum
-	(QualificationStatusEnum)(0),                             // 88: opl.cloud.api.QualificationStatusEnum
-	(ImagePlatformOsEnum)(0),                                 // 89: opl.cloud.api.ImagePlatformOsEnum
-	(ImagePlatformArchitectureEnum)(0),                       // 90: opl.cloud.api.ImagePlatformArchitectureEnum
-	(RecipeArtifactMediaTypeEnum)(0),                         // 91: opl.cloud.api.RecipeArtifactMediaTypeEnum
-	(PackageBuildInputContextNameEnum)(0),                    // 92: opl.cloud.api.PackageBuildInputContextNameEnum
-	(WebuiBuildInputContextNameEnum)(0),                      // 93: opl.cloud.api.WebuiBuildInputContextNameEnum
-	(BuildRecipeContractVersionEnum)(0),                      // 94: opl.cloud.api.BuildRecipeContractVersionEnum
-	(BuildRecipeContractRuntimeContextNameEnum)(0),           // 95: opl.cloud.api.BuildRecipeContractRuntimeContextNameEnum
-	(BuildRecipeContractNetworkPolicyEnum)(0),                // 96: opl.cloud.api.BuildRecipeContractNetworkPolicyEnum
-	(ModelConfigurationContractProtocolEnum)(0),              // 97: opl.cloud.api.ModelConfigurationContractProtocolEnum
-	(ModelConfigurationContractRequestFieldsEnum)(0),         // 98: opl.cloud.api.ModelConfigurationContractRequestFieldsEnum
-	(ModelConfigurationContractReadbackFieldsEnum)(0),        // 99: opl.cloud.api.ModelConfigurationContractReadbackFieldsEnum
-	(DataUpgradeContractModeEnum)(0),                         // 100: opl.cloud.api.DataUpgradeContractModeEnum
-	(RuntimePublisherContractSchemaVersionEnum)(0),           // 101: opl.cloud.api.RuntimePublisherContractSchemaVersionEnum
-	(RuntimePublisherContractKindEnum)(0),                    // 102: opl.cloud.api.RuntimePublisherContractKindEnum
-	(WebuiPublisherContractSchemaVersionEnum)(0),             // 103: opl.cloud.api.WebuiPublisherContractSchemaVersionEnum
-	(WebuiPublisherContractKindEnum)(0),                      // 104: opl.cloud.api.WebuiPublisherContractKindEnum
-	(WebuiPublisherContractUiProtocolVersionEnum)(0),         // 105: opl.cloud.api.WebuiPublisherContractUiProtocolVersionEnum
-	(WebuiPublisherContractIntegrationModeEnum)(0),           // 106: opl.cloud.api.WebuiPublisherContractIntegrationModeEnum
-	(WebuiPublisherContractAuthenticationProtocolEnum)(0),    // 107: opl.cloud.api.WebuiPublisherContractAuthenticationProtocolEnum
-	(PublisherContractReferenceKindEnum)(0),                  // 108: opl.cloud.api.PublisherContractReferenceKindEnum
-	(DeploymentDescriptorSchemaVersionEnum)(0),               // 109: opl.cloud.api.DeploymentDescriptorSchemaVersionEnum
-	(DeploymentDescriptorProvenanceEnum)(0),                  // 110: opl.cloud.api.DeploymentDescriptorProvenanceEnum
-	(PublisherNamespaceKindEnum)(0),                          // 111: opl.cloud.api.PublisherNamespaceKindEnum
-	(PublisherNamespaceStatusEnum)(0),                        // 112: opl.cloud.api.PublisherNamespaceStatusEnum
-	(CreatePublisherNamespaceRequestKindEnum)(0),             // 113: opl.cloud.api.CreatePublisherNamespaceRequestKindEnum
-	(RenewalPolicyVersionEnum)(0),                            // 114: opl.cloud.api.RenewalPolicyVersionEnum
-	(RenewalPolicyTriggerEnum)(0),                            // 115: opl.cloud.api.RenewalPolicyTriggerEnum
-	(RenewalPolicyEffectiveStartEnum)(0),                     // 116: opl.cloud.api.RenewalPolicyEffectiveStartEnum
-	(WorkspaceApplicationCredentialKindEnum)(0),              // 117: opl.cloud.api.WorkspaceApplicationCredentialKindEnum
-	(WorkspaceApplicationPortProtocolEnum)(0),                // 118: opl.cloud.api.WorkspaceApplicationPortProtocolEnum
-	(WorkspaceApplicationDependencyHealthCheckTypeEnum)(0),   // 119: opl.cloud.api.WorkspaceApplicationDependencyHealthCheckTypeEnum
-	(WorkspaceApplicationRevisionExposurePolicyEnum)(0),      // 120: opl.cloud.api.WorkspaceApplicationRevisionExposurePolicyEnum
-	(ApplicationOwnedAccessContractModeEnum)(0),              // 121: opl.cloud.api.ApplicationOwnedAccessContractModeEnum
-	(CloudPrivateAccessContractModeEnum)(0),                  // 122: opl.cloud.api.CloudPrivateAccessContractModeEnum
-	(CloudPrivateAccessContractEntryContractEnum)(0),         // 123: opl.cloud.api.CloudPrivateAccessContractEntryContractEnum
-	(AnonymousAccessContractModeEnum)(0),                     // 124: opl.cloud.api.AnonymousAccessContractModeEnum
-	(TenantWorkspaceActionActionEnum)(0),                     // 125: opl.cloud.api.TenantWorkspaceActionActionEnum
-	(TenantWorkspaceActionOperationOwnerEnum)(0),             // 126: opl.cloud.api.TenantWorkspaceActionOperationOwnerEnum
-	(TenantWorkspaceActionStatusEnum)(0),                     // 127: opl.cloud.api.TenantWorkspaceActionStatusEnum
-	(TenantWorkspaceSkipReasonEnum)(0),                       // 128: opl.cloud.api.TenantWorkspaceSkipReasonEnum
-	(TenantLifecycleProgressAccessStatusEnum)(0),             // 129: opl.cloud.api.TenantLifecycleProgressAccessStatusEnum
-	(UpdateRenewalSettingsRequestRenewalModeEnum)(0),         // 130: opl.cloud.api.UpdateRenewalSettingsRequestRenewalModeEnum
-	(PackageFormatContractReferenceOwnerEnum)(0),             // 131: opl.cloud.api.PackageFormatContractReferenceOwnerEnum
-	(UpgradePlanRulesKindEnum)(0),                            // 132: opl.cloud.api.UpgradePlanRulesKindEnum
-	(UpgradePlanRulesEffectiveWhenEnum)(0),                   // 133: opl.cloud.api.UpgradePlanRulesEffectiveWhenEnum
-	(UpgradePlanRulesOldPriceSourceEnum)(0),                  // 134: opl.cloud.api.UpgradePlanRulesOldPriceSourceEnum
-	(UpgradePlanRulesChargeClockEnum)(0),                     // 135: opl.cloud.api.UpgradePlanRulesChargeClockEnum
-	(UpgradePlanRulesTimeUnitEnum)(0),                        // 136: opl.cloud.api.UpgradePlanRulesTimeUnitEnum
-	(UpgradePlanRulesChargeRoundingEnum)(0),                  // 137: opl.cloud.api.UpgradePlanRulesChargeRoundingEnum
-	(UpgradePlanRulesZeroChargeEnum)(0),                      // 138: opl.cloud.api.UpgradePlanRulesZeroChargeEnum
-	(UpgradePlanRulesKnownFailureCompensationEnum)(0),        // 139: opl.cloud.api.UpgradePlanRulesKnownFailureCompensationEnum
-	(UpgradePlanRulesUnknownOutcomeEnum)(0),                  // 140: opl.cloud.api.UpgradePlanRulesUnknownOutcomeEnum
-	(UpgradePlanRulesIrreversibleResidualCostOwnerEnum)(0),   // 141: opl.cloud.api.UpgradePlanRulesIrreversibleResidualCostOwnerEnum
-	(UpgradePlanRulesSupplementDeleteRefundEnum)(0),          // 142: opl.cloud.api.UpgradePlanRulesSupplementDeleteRefundEnum
-	(DowngradePlanRulesKindEnum)(0),                          // 143: opl.cloud.api.DowngradePlanRulesKindEnum
-	(DowngradePlanRulesPlannedBoundaryEnum)(0),               // 144: opl.cloud.api.DowngradePlanRulesPlannedBoundaryEnum
-	(DowngradePlanRulesCurrentPeriodRefundEnum)(0),           // 145: opl.cloud.api.DowngradePlanRulesCurrentPeriodRefundEnum
-	(DowngradePlanRulesNextPeriodPriceEnum)(0),               // 146: opl.cloud.api.DowngradePlanRulesNextPeriodPriceEnum
-	(DowngradePlanRulesCancelBeforeEnum)(0),                  // 147: opl.cloud.api.DowngradePlanRulesCancelBeforeEnum
-	(DowngradePlanRulesEarlyPaidChangeEnum)(0),               // 148: opl.cloud.api.DowngradePlanRulesEarlyPaidChangeEnum
-	(DowngradePlanRulesManualUnpaidBoundaryEnum)(0),          // 149: opl.cloud.api.DowngradePlanRulesManualUnpaidBoundaryEnum
-	(DowngradePlanRulesKnownFailureCompensationEnum)(0),      // 150: opl.cloud.api.DowngradePlanRulesKnownFailureCompensationEnum
-	(DowngradePlanRulesFallbackEnum)(0),                      // 151: opl.cloud.api.DowngradePlanRulesFallbackEnum
-	(PlanChangePolicyVersionEnum)(0),                         // 152: opl.cloud.api.PlanChangePolicyVersionEnum
-	(PlanChangePolicyApprovalStatusEnum)(0),                  // 153: opl.cloud.api.PlanChangePolicyApprovalStatusEnum
-	(PlanChangePolicyClassificationEnum)(0),                  // 154: opl.cloud.api.PlanChangePolicyClassificationEnum
-	(PlanChangePolicyMixedOrIncomparableTransitionEnum)(0),   // 155: opl.cloud.api.PlanChangePolicyMixedOrIncomparableTransitionEnum
-	(PlanChangePolicyNoOpTransitionEnum)(0),                  // 156: opl.cloud.api.PlanChangePolicyNoOpTransitionEnum
-	(PlanChangePolicyStorageShrinkEnum)(0),                   // 157: opl.cloud.api.PlanChangePolicyStorageShrinkEnum
-	(PlanChangePolicyConcurrencyEnum)(0),                     // 158: opl.cloud.api.PlanChangePolicyConcurrencyEnum
-	(PlanChangePolicyCancelAndReplaceEnum)(0),                // 159: opl.cloud.api.PlanChangePolicyCancelAndReplaceEnum
-	(PlanChangePolicyBaseRefundPolicyEnum)(0),                // 160: opl.cloud.api.PlanChangePolicyBaseRefundPolicyEnum
-	(PlanChangePolicyProviderExecutionPlanEnum)(0),           // 161: opl.cloud.api.PlanChangePolicyProviderExecutionPlanEnum
-	(UpgradeProrationRoundingEnum)(0),                        // 162: opl.cloud.api.UpgradeProrationRoundingEnum
-	(PlanChangeCalculationPolicyVersionEnum)(0),              // 163: opl.cloud.api.PlanChangeCalculationPolicyVersionEnum
-	(PlanChangeCalculationKindEnum)(0),                       // 164: opl.cloud.api.PlanChangeCalculationKindEnum
-	(PlanChangeKindEnum)(0),                                  // 165: opl.cloud.api.PlanChangeKindEnum
-	(PlanChangeStatusEnum)(0),                                // 166: opl.cloud.api.PlanChangeStatusEnum
-	(PlanChangeChargeStatusEnum)(0),                          // 167: opl.cloud.api.PlanChangeChargeStatusEnum
-	(PlanChangeNextPeriodChargeStatusEnum)(0),                // 168: opl.cloud.api.PlanChangeNextPeriodChargeStatusEnum
-	(PlanChangeObservationResultEnum)(0),                     // 169: opl.cloud.api.PlanChangeObservationResultEnum
-	(PlanChangeDeliveryOutcomeEnum)(0),                       // 170: opl.cloud.api.PlanChangeDeliveryOutcomeEnum
-	(PlanChangeResourceOutcomeEnum)(0),                       // 171: opl.cloud.api.PlanChangeResourceOutcomeEnum
-	(PlanChangeRuntimeReadbackRequirementEnum)(0),            // 172: opl.cloud.api.PlanChangeRuntimeReadbackRequirementEnum
-	(PlanChangeCurrentRequirementValidationEnum)(0),          // 173: opl.cloud.api.PlanChangeCurrentRequirementValidationEnum
-	(PlanChangeEvidenceKindEnum)(0),                          // 174: opl.cloud.api.PlanChangeEvidenceKindEnum
-	(PlanChangeEvidencePolicyVersionEnum)(0),                 // 175: opl.cloud.api.PlanChangeEvidencePolicyVersionEnum
-	(PlanChangeEvidenceOutcomeEnum)(0),                       // 176: opl.cloud.api.PlanChangeEvidenceOutcomeEnum
-	(PlanChangeEvidenceDeliveryOutcomeEnum)(0),               // 177: opl.cloud.api.PlanChangeEvidenceDeliveryOutcomeEnum
-	(PlanChangeEvidenceResourceOutcomeEnum)(0),               // 178: opl.cloud.api.PlanChangeEvidenceResourceOutcomeEnum
-	(PlanChangeEvidenceRuntimeReadbackRequirementEnum)(0),    // 179: opl.cloud.api.PlanChangeEvidenceRuntimeReadbackRequirementEnum
-	(SupplementalRefundEvidencePurposeEnum)(0),               // 180: opl.cloud.api.SupplementalRefundEvidencePurposeEnum
-	(SupplementalRefundEvidencePolicyVersionEnum)(0),         // 181: opl.cloud.api.SupplementalRefundEvidencePolicyVersionEnum
-	(ListPackagesRpcRequestVisibilityEnum)(0),                // 182: opl.cloud.api.ListPackagesRpcRequestVisibilityEnum
-	(ListPackagesRpcRequestStatusEnum)(0),                    // 183: opl.cloud.api.ListPackagesRpcRequestStatusEnum
-	(ListCapabilityVersionsRpcRequestStatusEnum)(0),          // 184: opl.cloud.api.ListCapabilityVersionsRpcRequestStatusEnum
-	(WorkspaceAccessVerdict)(0),                              // 185: opl.cloud.api.WorkspaceAccessVerdict
-	(*CallContext)(nil),                                      // 186: opl.cloud.api.CallContext
-	(*FieldError)(nil),                                       // 187: opl.cloud.api.FieldError
-	(*Error)(nil),                                            // 188: opl.cloud.api.Error
-	(*Operation)(nil),                                        // 189: opl.cloud.api.Operation
-	(*LoginContext)(nil),                                     // 190: opl.cloud.api.LoginContext
-	(*LoginRequest)(nil),                                     // 191: opl.cloud.api.LoginRequest
-	(*Session)(nil),                                          // 192: opl.cloud.api.Session
-	(*Tenant)(nil),                                           // 193: opl.cloud.api.Tenant
-	(*CreateTenantRequest)(nil),                              // 194: opl.cloud.api.CreateTenantRequest
-	(*TenantRepositoryBinding)(nil),                          // 195: opl.cloud.api.TenantRepositoryBinding
-	(*GetTenantRepositoryBindingRequest)(nil),                // 196: opl.cloud.api.GetTenantRepositoryBindingRequest
+	(UserExternalBindingReadbackStatusEnum)(0),               // 7: opl.cloud.api.UserExternalBindingReadbackStatusEnum
+	(UserExternalBindingReadbackVerificationEnum)(0),         // 8: opl.cloud.api.UserExternalBindingReadbackVerificationEnum
+	(AgentRuntimeObservationState)(0),                        // 9: opl.cloud.api.AgentRuntimeObservationState
+	(PeriodObligationStatus)(0),                              // 10: opl.cloud.api.PeriodObligationStatus
+	(TransitionReversibility)(0),                             // 11: opl.cloud.api.TransitionReversibility
+	(PlanChangeExecutionStrategy)(0),                         // 12: opl.cloud.api.PlanChangeExecutionStrategy
+	(PlanChangeStorageAction)(0),                             // 13: opl.cloud.api.PlanChangeStorageAction
+	(ErrorCodeEnum)(0),                                       // 14: opl.cloud.api.ErrorCodeEnum
+	(OwnerEnum)(0),                                           // 15: opl.cloud.api.OwnerEnum
+	(TenantRoleEnum)(0),                                      // 16: opl.cloud.api.TenantRoleEnum
+	(OperationKindEnum)(0),                                   // 17: opl.cloud.api.OperationKindEnum
+	(OperationStageEnum)(0),                                  // 18: opl.cloud.api.OperationStageEnum
+	(OperationOwnerEnum)(0),                                  // 19: opl.cloud.api.OperationOwnerEnum
+	(AuthorizationActionEnum)(0),                             // 20: opl.cloud.api.AuthorizationActionEnum
+	(ServiceIdentityEnum)(0),                                 // 21: opl.cloud.api.ServiceIdentityEnum
+	(OperationStatusEnum)(0),                                 // 22: opl.cloud.api.OperationStatusEnum
+	(OperationObservationResultEnum)(0),                      // 23: opl.cloud.api.OperationObservationResultEnum
+	(TenantStatusEnum)(0),                                    // 24: opl.cloud.api.TenantStatusEnum
+	(TenantAssetCustodyStatusEnum)(0),                        // 25: opl.cloud.api.TenantAssetCustodyStatusEnum
+	(MemberStatusEnum)(0),                                    // 26: opl.cloud.api.MemberStatusEnum
+	(InvitationRoleEnum)(0),                                  // 27: opl.cloud.api.InvitationRoleEnum
+	(InvitationStatusEnum)(0),                                // 28: opl.cloud.api.InvitationStatusEnum
+	(InviteMemberRequestRoleEnum)(0),                         // 29: opl.cloud.api.InviteMemberRequestRoleEnum
+	(AssetCustodyStatusEnum)(0),                              // 30: opl.cloud.api.AssetCustodyStatusEnum
+	(NamespaceStatusEnum)(0),                                 // 31: opl.cloud.api.NamespaceStatusEnum
+	(PackageVisibilityEnum)(0),                               // 32: opl.cloud.api.PackageVisibilityEnum
+	(PackageStatusEnum)(0),                                   // 33: opl.cloud.api.PackageStatusEnum
+	(PackageVersionStatusEnum)(0),                            // 34: opl.cloud.api.PackageVersionStatusEnum
+	(UploadSessionStatusEnum)(0),                             // 35: opl.cloud.api.UploadSessionStatusEnum
+	(UploadPartAuthorizationMethodEnum)(0),                   // 36: opl.cloud.api.UploadPartAuthorizationMethodEnum
+	(ModelRequirementCapabilityEnum)(0),                      // 37: opl.cloud.api.ModelRequirementCapabilityEnum
+	(CapabilityVersionStatusEnum)(0),                         // 38: opl.cloud.api.CapabilityVersionStatusEnum
+	(CapabilityVersionProvenanceEnum)(0),                     // 39: opl.cloud.api.CapabilityVersionProvenanceEnum
+	(BuildJobStatusEnum)(0),                                  // 40: opl.cloud.api.BuildJobStatusEnum
+	(BuildLogLevelEnum)(0),                                   // 41: opl.cloud.api.BuildLogLevelEnum
+	(RuntimeVersionStatusEnum)(0),                            // 42: opl.cloud.api.RuntimeVersionStatusEnum
+	(WebuiVersionStatusEnum)(0),                              // 43: opl.cloud.api.WebuiVersionStatusEnum
+	(CatalogStatusRequestStatusEnum)(0),                      // 44: opl.cloud.api.CatalogStatusRequestStatusEnum
+	(ComputePlanAvailabilityEnum)(0),                         // 45: opl.cloud.api.ComputePlanAvailabilityEnum
+	(ComputePlanBillingModeEnum)(0),                          // 46: opl.cloud.api.ComputePlanBillingModeEnum
+	(StoragePlanAvailabilityEnum)(0),                         // 47: opl.cloud.api.StoragePlanAvailabilityEnum
+	(StoragePlanBillingModeEnum)(0),                          // 48: opl.cloud.api.StoragePlanBillingModeEnum
+	(PlanAvailabilityRequestAvailabilityEnum)(0),             // 49: opl.cloud.api.PlanAvailabilityRequestAvailabilityEnum
+	(PricePolicyVersionCurrencyEnum)(0),                      // 50: opl.cloud.api.PricePolicyVersionCurrencyEnum
+	(PricePolicyVersionPlanChangePolicyVersionEnum)(0),       // 51: opl.cloud.api.PricePolicyVersionPlanChangePolicyVersionEnum
+	(CreatePricePolicyRequestPlanChangePolicyVersionEnum)(0), // 52: opl.cloud.api.CreatePricePolicyRequestPlanChangePolicyVersionEnum
+	(RefundPolicyVersionAlgorithmEnum)(0),                    // 53: opl.cloud.api.RefundPolicyVersionAlgorithmEnum
+	(CreateRefundPolicyRequestAlgorithmEnum)(0),              // 54: opl.cloud.api.CreateRefundPolicyRequestAlgorithmEnum
+	(RetentionPolicyVersionWorkspaceDataDispositionEnum)(0),  // 55: opl.cloud.api.RetentionPolicyVersionWorkspaceDataDispositionEnum
+	(RetentionPolicyVersionPackageHistoryDispositionEnum)(0), // 56: opl.cloud.api.RetentionPolicyVersionPackageHistoryDispositionEnum
+	(RetentionPolicyVersionBuildHistoryDispositionEnum)(0),   // 57: opl.cloud.api.RetentionPolicyVersionBuildHistoryDispositionEnum
+	(QuoteRequestPurposeEnum)(0),                             // 58: opl.cloud.api.QuoteRequestPurposeEnum
+	(QuoteLineKindEnum)(0),                                   // 59: opl.cloud.api.QuoteLineKindEnum
+	(WorkspaceApplicationSelectionKindEnum)(0),               // 60: opl.cloud.api.WorkspaceApplicationSelectionKindEnum
+	(QuotePurposeEnum)(0),                                    // 61: opl.cloud.api.QuotePurposeEnum
+	(QuoteStatusEnum)(0),                                     // 62: opl.cloud.api.QuoteStatusEnum
+	(QuoteRuntimeReadbackRequirementEnum)(0),                 // 63: opl.cloud.api.QuoteRuntimeReadbackRequirementEnum
+	(WorkspaceStatusEnum)(0),                                 // 64: opl.cloud.api.WorkspaceStatusEnum
+	(WorkspaceResourceReadinessEnum)(0),                      // 65: opl.cloud.api.WorkspaceResourceReadinessEnum
+	(WorkspaceApplicationAvailabilityEnum)(0),                // 66: opl.cloud.api.WorkspaceApplicationAvailabilityEnum
+	(WorkspaceDeliveryModelEnum)(0),                          // 67: opl.cloud.api.WorkspaceDeliveryModelEnum
+	(CreateWorkspaceRequestRenewalModeEnum)(0),               // 68: opl.cloud.api.CreateWorkspaceRequestRenewalModeEnum
+	(WorkspaceAccessAuthenticationModeEnum)(0),               // 69: opl.cloud.api.WorkspaceAccessAuthenticationModeEnum
+	(ModelConfigurationStatusEnum)(0),                        // 70: opl.cloud.api.ModelConfigurationStatusEnum
+	(DeploymentStatusEnum)(0),                                // 71: opl.cloud.api.DeploymentStatusEnum
+	(WorkspaceDeletionResourceDeletionStatusEnum)(0),         // 72: opl.cloud.api.WorkspaceDeletionResourceDeletionStatusEnum
+	(WorkspaceDeletionDataDeletionStatusEnum)(0),             // 73: opl.cloud.api.WorkspaceDeletionDataDeletionStatusEnum
+	(WorkspaceDeletionRefundStatusEnum)(0),                   // 74: opl.cloud.api.WorkspaceDeletionRefundStatusEnum
+	(SubscriptionStatusEnum)(0),                              // 75: opl.cloud.api.SubscriptionStatusEnum
+	(SubscriptionProvenanceEnum)(0),                          // 76: opl.cloud.api.SubscriptionProvenanceEnum
+	(SubscriptionRenewalModeEnum)(0),                         // 77: opl.cloud.api.SubscriptionRenewalModeEnum
+	(WalletOperationKindEnum)(0),                             // 78: opl.cloud.api.WalletOperationKindEnum
+	(WalletOperationStatusEnum)(0),                           // 79: opl.cloud.api.WalletOperationStatusEnum
+	(WalletOperationPurposeEnum)(0),                          // 80: opl.cloud.api.WalletOperationPurposeEnum
+	(WalletSourceEnum)(0),                                    // 81: opl.cloud.api.WalletSourceEnum
+	(WalletStatusEnum)(0),                                    // 82: opl.cloud.api.WalletStatusEnum
+	(WalletCurrencyEnum)(0),                                  // 83: opl.cloud.api.WalletCurrencyEnum
+	(UsageSourceEnum)(0),                                     // 84: opl.cloud.api.UsageSourceEnum
+	(GatewayKeyPurposeEnum)(0),                               // 85: opl.cloud.api.GatewayKeyPurposeEnum
+	(GatewayKeyStatusEnum)(0),                                // 86: opl.cloud.api.GatewayKeyStatusEnum
+	(AuditEventOutcomeEnum)(0),                               // 87: opl.cloud.api.AuditEventOutcomeEnum
+	(ReceiptKindEnum)(0),                                     // 88: opl.cloud.api.ReceiptKindEnum
+	(ReceiptOutcomeEnum)(0),                                  // 89: opl.cloud.api.ReceiptOutcomeEnum
+	(QualificationStatusEnum)(0),                             // 90: opl.cloud.api.QualificationStatusEnum
+	(ImagePlatformOsEnum)(0),                                 // 91: opl.cloud.api.ImagePlatformOsEnum
+	(ImagePlatformArchitectureEnum)(0),                       // 92: opl.cloud.api.ImagePlatformArchitectureEnum
+	(RecipeArtifactMediaTypeEnum)(0),                         // 93: opl.cloud.api.RecipeArtifactMediaTypeEnum
+	(PackageBuildInputContextNameEnum)(0),                    // 94: opl.cloud.api.PackageBuildInputContextNameEnum
+	(WebuiBuildInputContextNameEnum)(0),                      // 95: opl.cloud.api.WebuiBuildInputContextNameEnum
+	(BuildRecipeContractVersionEnum)(0),                      // 96: opl.cloud.api.BuildRecipeContractVersionEnum
+	(BuildRecipeContractRuntimeContextNameEnum)(0),           // 97: opl.cloud.api.BuildRecipeContractRuntimeContextNameEnum
+	(BuildRecipeContractNetworkPolicyEnum)(0),                // 98: opl.cloud.api.BuildRecipeContractNetworkPolicyEnum
+	(ModelConfigurationContractProtocolEnum)(0),              // 99: opl.cloud.api.ModelConfigurationContractProtocolEnum
+	(ModelConfigurationContractRequestFieldsEnum)(0),         // 100: opl.cloud.api.ModelConfigurationContractRequestFieldsEnum
+	(ModelConfigurationContractReadbackFieldsEnum)(0),        // 101: opl.cloud.api.ModelConfigurationContractReadbackFieldsEnum
+	(DataUpgradeContractModeEnum)(0),                         // 102: opl.cloud.api.DataUpgradeContractModeEnum
+	(RuntimePublisherContractSchemaVersionEnum)(0),           // 103: opl.cloud.api.RuntimePublisherContractSchemaVersionEnum
+	(RuntimePublisherContractKindEnum)(0),                    // 104: opl.cloud.api.RuntimePublisherContractKindEnum
+	(WebuiPublisherContractSchemaVersionEnum)(0),             // 105: opl.cloud.api.WebuiPublisherContractSchemaVersionEnum
+	(WebuiPublisherContractKindEnum)(0),                      // 106: opl.cloud.api.WebuiPublisherContractKindEnum
+	(WebuiPublisherContractUiProtocolVersionEnum)(0),         // 107: opl.cloud.api.WebuiPublisherContractUiProtocolVersionEnum
+	(WebuiPublisherContractIntegrationModeEnum)(0),           // 108: opl.cloud.api.WebuiPublisherContractIntegrationModeEnum
+	(WebuiPublisherContractAuthenticationProtocolEnum)(0),    // 109: opl.cloud.api.WebuiPublisherContractAuthenticationProtocolEnum
+	(PublisherContractReferenceKindEnum)(0),                  // 110: opl.cloud.api.PublisherContractReferenceKindEnum
+	(DeploymentDescriptorSchemaVersionEnum)(0),               // 111: opl.cloud.api.DeploymentDescriptorSchemaVersionEnum
+	(DeploymentDescriptorProvenanceEnum)(0),                  // 112: opl.cloud.api.DeploymentDescriptorProvenanceEnum
+	(PublisherNamespaceKindEnum)(0),                          // 113: opl.cloud.api.PublisherNamespaceKindEnum
+	(PublisherNamespaceStatusEnum)(0),                        // 114: opl.cloud.api.PublisherNamespaceStatusEnum
+	(CreatePublisherNamespaceRequestKindEnum)(0),             // 115: opl.cloud.api.CreatePublisherNamespaceRequestKindEnum
+	(RenewalPolicyVersionEnum)(0),                            // 116: opl.cloud.api.RenewalPolicyVersionEnum
+	(RenewalPolicyTriggerEnum)(0),                            // 117: opl.cloud.api.RenewalPolicyTriggerEnum
+	(RenewalPolicyEffectiveStartEnum)(0),                     // 118: opl.cloud.api.RenewalPolicyEffectiveStartEnum
+	(WorkspaceApplicationCredentialKindEnum)(0),              // 119: opl.cloud.api.WorkspaceApplicationCredentialKindEnum
+	(WorkspaceApplicationPortProtocolEnum)(0),                // 120: opl.cloud.api.WorkspaceApplicationPortProtocolEnum
+	(WorkspaceApplicationDependencyHealthCheckTypeEnum)(0),   // 121: opl.cloud.api.WorkspaceApplicationDependencyHealthCheckTypeEnum
+	(WorkspaceApplicationRevisionExposurePolicyEnum)(0),      // 122: opl.cloud.api.WorkspaceApplicationRevisionExposurePolicyEnum
+	(ApplicationOwnedAccessContractModeEnum)(0),              // 123: opl.cloud.api.ApplicationOwnedAccessContractModeEnum
+	(CloudPrivateAccessContractModeEnum)(0),                  // 124: opl.cloud.api.CloudPrivateAccessContractModeEnum
+	(CloudPrivateAccessContractEntryContractEnum)(0),         // 125: opl.cloud.api.CloudPrivateAccessContractEntryContractEnum
+	(AnonymousAccessContractModeEnum)(0),                     // 126: opl.cloud.api.AnonymousAccessContractModeEnum
+	(TenantWorkspaceActionActionEnum)(0),                     // 127: opl.cloud.api.TenantWorkspaceActionActionEnum
+	(TenantWorkspaceActionOperationOwnerEnum)(0),             // 128: opl.cloud.api.TenantWorkspaceActionOperationOwnerEnum
+	(TenantWorkspaceActionStatusEnum)(0),                     // 129: opl.cloud.api.TenantWorkspaceActionStatusEnum
+	(TenantWorkspaceSkipReasonEnum)(0),                       // 130: opl.cloud.api.TenantWorkspaceSkipReasonEnum
+	(TenantLifecycleProgressAccessStatusEnum)(0),             // 131: opl.cloud.api.TenantLifecycleProgressAccessStatusEnum
+	(UpdateRenewalSettingsRequestRenewalModeEnum)(0),         // 132: opl.cloud.api.UpdateRenewalSettingsRequestRenewalModeEnum
+	(PackageFormatContractReferenceOwnerEnum)(0),             // 133: opl.cloud.api.PackageFormatContractReferenceOwnerEnum
+	(UpgradePlanRulesKindEnum)(0),                            // 134: opl.cloud.api.UpgradePlanRulesKindEnum
+	(UpgradePlanRulesEffectiveWhenEnum)(0),                   // 135: opl.cloud.api.UpgradePlanRulesEffectiveWhenEnum
+	(UpgradePlanRulesOldPriceSourceEnum)(0),                  // 136: opl.cloud.api.UpgradePlanRulesOldPriceSourceEnum
+	(UpgradePlanRulesChargeClockEnum)(0),                     // 137: opl.cloud.api.UpgradePlanRulesChargeClockEnum
+	(UpgradePlanRulesTimeUnitEnum)(0),                        // 138: opl.cloud.api.UpgradePlanRulesTimeUnitEnum
+	(UpgradePlanRulesChargeRoundingEnum)(0),                  // 139: opl.cloud.api.UpgradePlanRulesChargeRoundingEnum
+	(UpgradePlanRulesZeroChargeEnum)(0),                      // 140: opl.cloud.api.UpgradePlanRulesZeroChargeEnum
+	(UpgradePlanRulesKnownFailureCompensationEnum)(0),        // 141: opl.cloud.api.UpgradePlanRulesKnownFailureCompensationEnum
+	(UpgradePlanRulesUnknownOutcomeEnum)(0),                  // 142: opl.cloud.api.UpgradePlanRulesUnknownOutcomeEnum
+	(UpgradePlanRulesIrreversibleResidualCostOwnerEnum)(0),   // 143: opl.cloud.api.UpgradePlanRulesIrreversibleResidualCostOwnerEnum
+	(UpgradePlanRulesSupplementDeleteRefundEnum)(0),          // 144: opl.cloud.api.UpgradePlanRulesSupplementDeleteRefundEnum
+	(DowngradePlanRulesKindEnum)(0),                          // 145: opl.cloud.api.DowngradePlanRulesKindEnum
+	(DowngradePlanRulesPlannedBoundaryEnum)(0),               // 146: opl.cloud.api.DowngradePlanRulesPlannedBoundaryEnum
+	(DowngradePlanRulesCurrentPeriodRefundEnum)(0),           // 147: opl.cloud.api.DowngradePlanRulesCurrentPeriodRefundEnum
+	(DowngradePlanRulesNextPeriodPriceEnum)(0),               // 148: opl.cloud.api.DowngradePlanRulesNextPeriodPriceEnum
+	(DowngradePlanRulesCancelBeforeEnum)(0),                  // 149: opl.cloud.api.DowngradePlanRulesCancelBeforeEnum
+	(DowngradePlanRulesEarlyPaidChangeEnum)(0),               // 150: opl.cloud.api.DowngradePlanRulesEarlyPaidChangeEnum
+	(DowngradePlanRulesManualUnpaidBoundaryEnum)(0),          // 151: opl.cloud.api.DowngradePlanRulesManualUnpaidBoundaryEnum
+	(DowngradePlanRulesKnownFailureCompensationEnum)(0),      // 152: opl.cloud.api.DowngradePlanRulesKnownFailureCompensationEnum
+	(DowngradePlanRulesFallbackEnum)(0),                      // 153: opl.cloud.api.DowngradePlanRulesFallbackEnum
+	(PlanChangePolicyVersionEnum)(0),                         // 154: opl.cloud.api.PlanChangePolicyVersionEnum
+	(PlanChangePolicyApprovalStatusEnum)(0),                  // 155: opl.cloud.api.PlanChangePolicyApprovalStatusEnum
+	(PlanChangePolicyClassificationEnum)(0),                  // 156: opl.cloud.api.PlanChangePolicyClassificationEnum
+	(PlanChangePolicyMixedOrIncomparableTransitionEnum)(0),   // 157: opl.cloud.api.PlanChangePolicyMixedOrIncomparableTransitionEnum
+	(PlanChangePolicyNoOpTransitionEnum)(0),                  // 158: opl.cloud.api.PlanChangePolicyNoOpTransitionEnum
+	(PlanChangePolicyStorageShrinkEnum)(0),                   // 159: opl.cloud.api.PlanChangePolicyStorageShrinkEnum
+	(PlanChangePolicyConcurrencyEnum)(0),                     // 160: opl.cloud.api.PlanChangePolicyConcurrencyEnum
+	(PlanChangePolicyCancelAndReplaceEnum)(0),                // 161: opl.cloud.api.PlanChangePolicyCancelAndReplaceEnum
+	(PlanChangePolicyBaseRefundPolicyEnum)(0),                // 162: opl.cloud.api.PlanChangePolicyBaseRefundPolicyEnum
+	(PlanChangePolicyProviderExecutionPlanEnum)(0),           // 163: opl.cloud.api.PlanChangePolicyProviderExecutionPlanEnum
+	(UpgradeProrationRoundingEnum)(0),                        // 164: opl.cloud.api.UpgradeProrationRoundingEnum
+	(PlanChangeCalculationPolicyVersionEnum)(0),              // 165: opl.cloud.api.PlanChangeCalculationPolicyVersionEnum
+	(PlanChangeCalculationKindEnum)(0),                       // 166: opl.cloud.api.PlanChangeCalculationKindEnum
+	(PlanChangeKindEnum)(0),                                  // 167: opl.cloud.api.PlanChangeKindEnum
+	(PlanChangeStatusEnum)(0),                                // 168: opl.cloud.api.PlanChangeStatusEnum
+	(PlanChangeChargeStatusEnum)(0),                          // 169: opl.cloud.api.PlanChangeChargeStatusEnum
+	(PlanChangeNextPeriodChargeStatusEnum)(0),                // 170: opl.cloud.api.PlanChangeNextPeriodChargeStatusEnum
+	(PlanChangeObservationResultEnum)(0),                     // 171: opl.cloud.api.PlanChangeObservationResultEnum
+	(PlanChangeDeliveryOutcomeEnum)(0),                       // 172: opl.cloud.api.PlanChangeDeliveryOutcomeEnum
+	(PlanChangeResourceOutcomeEnum)(0),                       // 173: opl.cloud.api.PlanChangeResourceOutcomeEnum
+	(PlanChangeRuntimeReadbackRequirementEnum)(0),            // 174: opl.cloud.api.PlanChangeRuntimeReadbackRequirementEnum
+	(PlanChangeCurrentRequirementValidationEnum)(0),          // 175: opl.cloud.api.PlanChangeCurrentRequirementValidationEnum
+	(PlanChangeEvidenceKindEnum)(0),                          // 176: opl.cloud.api.PlanChangeEvidenceKindEnum
+	(PlanChangeEvidencePolicyVersionEnum)(0),                 // 177: opl.cloud.api.PlanChangeEvidencePolicyVersionEnum
+	(PlanChangeEvidenceOutcomeEnum)(0),                       // 178: opl.cloud.api.PlanChangeEvidenceOutcomeEnum
+	(PlanChangeEvidenceDeliveryOutcomeEnum)(0),               // 179: opl.cloud.api.PlanChangeEvidenceDeliveryOutcomeEnum
+	(PlanChangeEvidenceResourceOutcomeEnum)(0),               // 180: opl.cloud.api.PlanChangeEvidenceResourceOutcomeEnum
+	(PlanChangeEvidenceRuntimeReadbackRequirementEnum)(0),    // 181: opl.cloud.api.PlanChangeEvidenceRuntimeReadbackRequirementEnum
+	(SupplementalRefundEvidencePurposeEnum)(0),               // 182: opl.cloud.api.SupplementalRefundEvidencePurposeEnum
+	(SupplementalRefundEvidencePolicyVersionEnum)(0),         // 183: opl.cloud.api.SupplementalRefundEvidencePolicyVersionEnum
+	(ListPackagesRpcRequestVisibilityEnum)(0),                // 184: opl.cloud.api.ListPackagesRpcRequestVisibilityEnum
+	(ListPackagesRpcRequestStatusEnum)(0),                    // 185: opl.cloud.api.ListPackagesRpcRequestStatusEnum
+	(ListCapabilityVersionsRpcRequestStatusEnum)(0),          // 186: opl.cloud.api.ListCapabilityVersionsRpcRequestStatusEnum
+	(WorkspaceAccessVerdict)(0),                              // 187: opl.cloud.api.WorkspaceAccessVerdict
+	(*CallContext)(nil),                                      // 188: opl.cloud.api.CallContext
+	(*FieldError)(nil),                                       // 189: opl.cloud.api.FieldError
+	(*Error)(nil),                                            // 190: opl.cloud.api.Error
+	(*Operation)(nil),                                        // 191: opl.cloud.api.Operation
+	(*LoginContext)(nil),                                     // 192: opl.cloud.api.LoginContext
+	(*LoginRequest)(nil),                                     // 193: opl.cloud.api.LoginRequest
+	(*Session)(nil),                                          // 194: opl.cloud.api.Session
+	(*Tenant)(nil),                                           // 195: opl.cloud.api.Tenant
+	(*CreateTenantRequest)(nil),                              // 196: opl.cloud.api.CreateTenantRequest
 	(*BindTenantWalletRequest)(nil),                          // 197: opl.cloud.api.BindTenantWalletRequest
 	(*Member)(nil),                                           // 198: opl.cloud.api.Member
 	(*Invitation)(nil),                                       // 199: opl.cloud.api.Invitation
@@ -48016,1290 +48304,1304 @@ var file_internal_proto_goTypes = []any{
 	(*AcceptQuoteRequest)(nil),                               // 497: opl.cloud.api.AcceptQuoteRequest
 	(*QuoteAcceptance)(nil),                                  // 498: opl.cloud.api.QuoteAcceptance
 	(*QuoteResourcePlanRequest)(nil),                         // 499: opl.cloud.api.QuoteResourcePlanRequest
-	(*WalletBindingCommand)(nil),                             // 500: opl.cloud.api.WalletBindingCommand
-	(*WalletBindingReadback)(nil),                            // 501: opl.cloud.api.WalletBindingReadback
-	(*WalletDebitCommand)(nil),                               // 502: opl.cloud.api.WalletDebitCommand
-	(*WalletRefundCommand)(nil),                              // 503: opl.cloud.api.WalletRefundCommand
-	(*WalletReadbackRequest)(nil),                            // 504: opl.cloud.api.WalletReadbackRequest
-	(*ManagedKeyCommand)(nil),                                // 505: opl.cloud.api.ManagedKeyCommand
-	(*ManagedKeyBinding)(nil),                                // 506: opl.cloud.api.ManagedKeyBinding
-	(*ManagedKeyRevoke)(nil),                                 // 507: opl.cloud.api.ManagedKeyRevoke
-	(*ResourcePlanSnapshot)(nil),                             // 508: opl.cloud.api.ResourcePlanSnapshot
-	(*ResourceAdmissionRequest)(nil),                         // 509: opl.cloud.api.ResourceAdmissionRequest
-	(*EnsureResourcesCommand)(nil),                           // 510: opl.cloud.api.EnsureResourcesCommand
-	(*MutateResourcesCommand)(nil),                           // 511: opl.cloud.api.MutateResourcesCommand
-	(*ResizeResourcesCommand)(nil),                           // 512: opl.cloud.api.ResizeResourcesCommand
-	(*RenewResourcesCommand)(nil),                            // 513: opl.cloud.api.RenewResourcesCommand
-	(*ResourceReadbackRequest)(nil),                          // 514: opl.cloud.api.ResourceReadbackRequest
-	(*ResourceFact)(nil),                                     // 515: opl.cloud.api.ResourceFact
-	(*ResourceExecutionBinding)(nil),                         // 516: opl.cloud.api.ResourceExecutionBinding
-	(*ResourceReadback)(nil),                                 // 517: opl.cloud.api.ResourceReadback
-	(*ApplicationExecutionPlacement)(nil),                    // 518: opl.cloud.api.ApplicationExecutionPlacement
-	(*SecretBindingCommand)(nil),                             // 519: opl.cloud.api.SecretBindingCommand
-	(*SecretBindingReadback)(nil),                            // 520: opl.cloud.api.SecretBindingReadback
-	(*SecretBindingRebindCommand)(nil),                       // 521: opl.cloud.api.SecretBindingRebindCommand
-	(*SecretBindingRebindReadback)(nil),                      // 522: opl.cloud.api.SecretBindingRebindReadback
-	(*ManagedSecretCommand)(nil),                             // 523: opl.cloud.api.ManagedSecretCommand
-	(*ManagedSecretReadback)(nil),                            // 524: opl.cloud.api.ManagedSecretReadback
-	(*RuntimeReservationCommand)(nil),                        // 525: opl.cloud.api.RuntimeReservationCommand
-	(*RuntimeReservation)(nil),                               // 526: opl.cloud.api.RuntimeReservation
-	(*RuntimeManagedKeyBinding)(nil),                         // 527: opl.cloud.api.RuntimeManagedKeyBinding
-	(*RuntimeDeployCommand)(nil),                             // 528: opl.cloud.api.RuntimeDeployCommand
-	(*RuntimeReadbackRequest)(nil),                           // 529: opl.cloud.api.RuntimeReadbackRequest
-	(*RuntimeReadback)(nil),                                  // 530: opl.cloud.api.RuntimeReadback
-	(*RuntimeReloadCommand)(nil),                             // 531: opl.cloud.api.RuntimeReloadCommand
-	(*RuntimeStopCommand)(nil),                               // 532: opl.cloud.api.RuntimeStopCommand
-	(*ReadApplicationCredentialsRequest)(nil),                // 533: opl.cloud.api.ReadApplicationCredentialsRequest
-	(*RouteAbsence)(nil),                                     // 534: opl.cloud.api.RouteAbsence
-	(*RouteRevisionPrecondition)(nil),                        // 535: opl.cloud.api.RouteRevisionPrecondition
-	(*FenceRouteEpochCommand)(nil),                           // 536: opl.cloud.api.FenceRouteEpochCommand
-	(*RouteActivateCommand)(nil),                             // 537: opl.cloud.api.RouteActivateCommand
-	(*RouteObserveRequest)(nil),                              // 538: opl.cloud.api.RouteObserveRequest
-	(*RouteRollbackCommand)(nil),                             // 539: opl.cloud.api.RouteRollbackCommand
-	(*RouteReadback)(nil),                                    // 540: opl.cloud.api.RouteReadback
-	(*TenantWorkspaceLifecycleCommand)(nil),                  // 541: opl.cloud.api.TenantWorkspaceLifecycleCommand
-	(*TenantWorkspaceLifecycleReadback)(nil),                 // 542: opl.cloud.api.TenantWorkspaceLifecycleReadback
-	(*ResumeTenantWorkspacesRequest)(nil),                    // 543: opl.cloud.api.ResumeTenantWorkspacesRequest
-	(*AppendReceiptRequest)(nil),                             // 544: opl.cloud.api.AppendReceiptRequest
-	(*GetReceiptByReferenceRequest)(nil),                     // 545: opl.cloud.api.GetReceiptByReferenceRequest
-	(*LocalNoChargeReceiptEvidence)(nil),                     // 546: opl.cloud.api.LocalNoChargeReceiptEvidence
-	(*WalletActionReceiptEvidence)(nil),                      // 547: opl.cloud.api.WalletActionReceiptEvidence
-	(*ProviderActionReceiptEvidence)(nil),                    // 548: opl.cloud.api.ProviderActionReceiptEvidence
-	(*ReadSubscriptionPlanStateRequest)(nil),                 // 549: opl.cloud.api.ReadSubscriptionPlanStateRequest
-	(*SubscriptionPlanState)(nil),                            // 550: opl.cloud.api.SubscriptionPlanState
-	(*ReadPlanChangeRequest)(nil),                            // 551: opl.cloud.api.ReadPlanChangeRequest
-	(*ReadNextPeriodObligationRequest)(nil),                  // 552: opl.cloud.api.ReadNextPeriodObligationRequest
-	(*NextPeriodObligation)(nil),                             // 553: opl.cloud.api.NextPeriodObligation
-	(*ReadPlanChangeFailureRequest)(nil),                     // 554: opl.cloud.api.ReadPlanChangeFailureRequest
-	(*PlanTransitionRequest)(nil),                            // 555: opl.cloud.api.PlanTransitionRequest
-	(*ApprovedPlanTransition)(nil),                           // 556: opl.cloud.api.ApprovedPlanTransition
-	(*ConfirmedPlanChangeCharge)(nil),                        // 557: opl.cloud.api.ConfirmedPlanChangeCharge
-	(*ZeroAmountPlanChangeEvidence)(nil),                     // 558: opl.cloud.api.ZeroAmountPlanChangeEvidence
-	(*PlanChangeFundingEvidence)(nil),                        // 559: opl.cloud.api.PlanChangeFundingEvidence
-	(*PlanChangeSupplementChargeCommand)(nil),                // 560: opl.cloud.api.PlanChangeSupplementChargeCommand
-	(*ScheduledPeriodChargeCommand)(nil),                     // 561: opl.cloud.api.ScheduledPeriodChargeCommand
-	(*PlanChangeFailureRefundCommand)(nil),                   // 562: opl.cloud.api.PlanChangeFailureRefundCommand
-	(*SupplementDeletionRefundCommand)(nil),                  // 563: opl.cloud.api.SupplementDeletionRefundCommand
-	(*RestorePlanChangeRuntimeCommand)(nil),                  // 564: opl.cloud.api.RestorePlanChangeRuntimeCommand
-	(*PlanChangeRuntimeReadback)(nil),                        // 565: opl.cloud.api.PlanChangeRuntimeReadback
-	(*AppendPlanChangeReceiptRequest)(nil),                   // 566: opl.cloud.api.AppendPlanChangeReceiptRequest
-	(*AppendPlanChangeRefundReceiptRequest)(nil),             // 567: opl.cloud.api.AppendPlanChangeRefundReceiptRequest
-	(*ProviderPlanChangeExecutionPlanReference)(nil),         // 568: opl.cloud.api.ProviderPlanChangeExecutionPlanReference
-	(*ReadProviderExecutionPlanRequest)(nil),                 // 569: opl.cloud.api.ReadProviderExecutionPlanRequest
-	(*ProviderPlanChangeExecutionPlan)(nil),                  // 570: opl.cloud.api.ProviderPlanChangeExecutionPlan
-	(*SourceFinancialSnapshot)(nil),                          // 571: opl.cloud.api.SourceFinancialSnapshot
-	(*PackageUploadedEvent)(nil),                             // 572: opl.cloud.api.PackageUploadedEvent
-	(*BuildArtifactConfirmedEvent)(nil),                      // 573: opl.cloud.api.BuildArtifactConfirmedEvent
-	(*CapabilityVersionRegisteredEvent)(nil),                 // 574: opl.cloud.api.CapabilityVersionRegisteredEvent
-	(*BuildFailedEvent)(nil),                                 // 575: opl.cloud.api.BuildFailedEvent
-	(*WalletOperationObservedEvent)(nil),                     // 576: opl.cloud.api.WalletOperationObservedEvent
-	(*ResourcesObservedEvent)(nil),                           // 577: opl.cloud.api.ResourcesObservedEvent
-	(*RuntimeReadinessObservedEvent)(nil),                    // 578: opl.cloud.api.RuntimeReadinessObservedEvent
-	(*WorkspaceStateChangedEvent)(nil),                       // 579: opl.cloud.api.WorkspaceStateChangedEvent
-	(*WorkspaceDeletionConfirmedEvent)(nil),                  // 580: opl.cloud.api.WorkspaceDeletionConfirmedEvent
-	(*TenantAccessRevokedEvent)(nil),                         // 581: opl.cloud.api.TenantAccessRevokedEvent
-	(*TenantRestoredEvent)(nil),                              // 582: opl.cloud.api.TenantRestoredEvent
-	(*ReceiptRecordedEvent)(nil),                             // 583: opl.cloud.api.ReceiptRecordedEvent
-	(*CatalogPolicyChangedEvent)(nil),                        // 584: opl.cloud.api.CatalogPolicyChangedEvent
-	(*TenantReenabledEvent)(nil),                             // 585: opl.cloud.api.TenantReenabledEvent
-	(*RenewalSettingsChangedEvent)(nil),                      // 586: opl.cloud.api.RenewalSettingsChangedEvent
-	(*RouteObservedEvent)(nil),                               // 587: opl.cloud.api.RouteObservedEvent
-	(*PlanChangeStateChangedEvent)(nil),                      // 588: opl.cloud.api.PlanChangeStateChangedEvent
-	(*PeriodObligationChangedEvent)(nil),                     // 589: opl.cloud.api.PeriodObligationChangedEvent
-	(*EventEnvelope)(nil),                                    // 590: opl.cloud.api.EventEnvelope
-	(*DeliverEventRequest)(nil),                              // 591: opl.cloud.api.DeliverEventRequest
-	(*InboxAck)(nil),                                         // 592: opl.cloud.api.InboxAck
-	(*ReadWorkspaceAccessRequest)(nil),                       // 593: opl.cloud.api.ReadWorkspaceAccessRequest
-	(*WorkspaceAccessDecision)(nil),                          // 594: opl.cloud.api.WorkspaceAccessDecision
-	nil,                                                      // 595: opl.cloud.api.WorkspaceApplicationDependencyCommand.EnvEntry
-	(*timestamppb.Timestamp)(nil),                            // 596: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),                                    // 597: google.protobuf.Empty
+	(*UserExternalBindingCommand)(nil),                       // 500: opl.cloud.api.UserExternalBindingCommand
+	(*UserExternalBindingReadRequest)(nil),                   // 501: opl.cloud.api.UserExternalBindingReadRequest
+	(*GetSelfUserExternalBindingRequest)(nil),                // 502: opl.cloud.api.GetSelfUserExternalBindingRequest
+	(*UserExternalBindingReadback)(nil),                      // 503: opl.cloud.api.UserExternalBindingReadback
+	(*WalletBindingCommand)(nil),                             // 504: opl.cloud.api.WalletBindingCommand
+	(*WalletBindingReadback)(nil),                            // 505: opl.cloud.api.WalletBindingReadback
+	(*WalletDebitCommand)(nil),                               // 506: opl.cloud.api.WalletDebitCommand
+	(*WalletRefundCommand)(nil),                              // 507: opl.cloud.api.WalletRefundCommand
+	(*WalletReadbackRequest)(nil),                            // 508: opl.cloud.api.WalletReadbackRequest
+	(*ManagedKeyCommand)(nil),                                // 509: opl.cloud.api.ManagedKeyCommand
+	(*ManagedKeyBinding)(nil),                                // 510: opl.cloud.api.ManagedKeyBinding
+	(*ManagedKeyRevoke)(nil),                                 // 511: opl.cloud.api.ManagedKeyRevoke
+	(*ResourcePlanSnapshot)(nil),                             // 512: opl.cloud.api.ResourcePlanSnapshot
+	(*ResourceAdmissionRequest)(nil),                         // 513: opl.cloud.api.ResourceAdmissionRequest
+	(*EnsureResourcesCommand)(nil),                           // 514: opl.cloud.api.EnsureResourcesCommand
+	(*MutateResourcesCommand)(nil),                           // 515: opl.cloud.api.MutateResourcesCommand
+	(*ResizeResourcesCommand)(nil),                           // 516: opl.cloud.api.ResizeResourcesCommand
+	(*RenewResourcesCommand)(nil),                            // 517: opl.cloud.api.RenewResourcesCommand
+	(*ResourceReadbackRequest)(nil),                          // 518: opl.cloud.api.ResourceReadbackRequest
+	(*ResourceFact)(nil),                                     // 519: opl.cloud.api.ResourceFact
+	(*ResourceExecutionBinding)(nil),                         // 520: opl.cloud.api.ResourceExecutionBinding
+	(*ResourceReadback)(nil),                                 // 521: opl.cloud.api.ResourceReadback
+	(*ApplicationExecutionPlacement)(nil),                    // 522: opl.cloud.api.ApplicationExecutionPlacement
+	(*SecretBindingCommand)(nil),                             // 523: opl.cloud.api.SecretBindingCommand
+	(*SecretBindingReadback)(nil),                            // 524: opl.cloud.api.SecretBindingReadback
+	(*SecretBindingRebindCommand)(nil),                       // 525: opl.cloud.api.SecretBindingRebindCommand
+	(*SecretBindingRebindReadback)(nil),                      // 526: opl.cloud.api.SecretBindingRebindReadback
+	(*ManagedSecretCommand)(nil),                             // 527: opl.cloud.api.ManagedSecretCommand
+	(*ManagedSecretReadback)(nil),                            // 528: opl.cloud.api.ManagedSecretReadback
+	(*RuntimeReservationCommand)(nil),                        // 529: opl.cloud.api.RuntimeReservationCommand
+	(*RuntimeReservation)(nil),                               // 530: opl.cloud.api.RuntimeReservation
+	(*RuntimeManagedKeyBinding)(nil),                         // 531: opl.cloud.api.RuntimeManagedKeyBinding
+	(*RuntimeDeployCommand)(nil),                             // 532: opl.cloud.api.RuntimeDeployCommand
+	(*RuntimeReadbackRequest)(nil),                           // 533: opl.cloud.api.RuntimeReadbackRequest
+	(*RuntimeReadback)(nil),                                  // 534: opl.cloud.api.RuntimeReadback
+	(*RuntimeReloadCommand)(nil),                             // 535: opl.cloud.api.RuntimeReloadCommand
+	(*RuntimeStopCommand)(nil),                               // 536: opl.cloud.api.RuntimeStopCommand
+	(*ReadApplicationCredentialsRequest)(nil),                // 537: opl.cloud.api.ReadApplicationCredentialsRequest
+	(*RouteAbsence)(nil),                                     // 538: opl.cloud.api.RouteAbsence
+	(*RouteRevisionPrecondition)(nil),                        // 539: opl.cloud.api.RouteRevisionPrecondition
+	(*FenceRouteEpochCommand)(nil),                           // 540: opl.cloud.api.FenceRouteEpochCommand
+	(*RouteActivateCommand)(nil),                             // 541: opl.cloud.api.RouteActivateCommand
+	(*RouteObserveRequest)(nil),                              // 542: opl.cloud.api.RouteObserveRequest
+	(*RouteRollbackCommand)(nil),                             // 543: opl.cloud.api.RouteRollbackCommand
+	(*RouteReadback)(nil),                                    // 544: opl.cloud.api.RouteReadback
+	(*TenantWorkspaceLifecycleCommand)(nil),                  // 545: opl.cloud.api.TenantWorkspaceLifecycleCommand
+	(*TenantWorkspaceLifecycleReadback)(nil),                 // 546: opl.cloud.api.TenantWorkspaceLifecycleReadback
+	(*ResumeTenantWorkspacesRequest)(nil),                    // 547: opl.cloud.api.ResumeTenantWorkspacesRequest
+	(*AppendReceiptRequest)(nil),                             // 548: opl.cloud.api.AppendReceiptRequest
+	(*GetReceiptByReferenceRequest)(nil),                     // 549: opl.cloud.api.GetReceiptByReferenceRequest
+	(*LocalNoChargeReceiptEvidence)(nil),                     // 550: opl.cloud.api.LocalNoChargeReceiptEvidence
+	(*WalletActionReceiptEvidence)(nil),                      // 551: opl.cloud.api.WalletActionReceiptEvidence
+	(*ProviderActionReceiptEvidence)(nil),                    // 552: opl.cloud.api.ProviderActionReceiptEvidence
+	(*ReadSubscriptionPlanStateRequest)(nil),                 // 553: opl.cloud.api.ReadSubscriptionPlanStateRequest
+	(*SubscriptionPlanState)(nil),                            // 554: opl.cloud.api.SubscriptionPlanState
+	(*ReadPlanChangeRequest)(nil),                            // 555: opl.cloud.api.ReadPlanChangeRequest
+	(*ReadNextPeriodObligationRequest)(nil),                  // 556: opl.cloud.api.ReadNextPeriodObligationRequest
+	(*NextPeriodObligation)(nil),                             // 557: opl.cloud.api.NextPeriodObligation
+	(*ReadPlanChangeFailureRequest)(nil),                     // 558: opl.cloud.api.ReadPlanChangeFailureRequest
+	(*PlanTransitionRequest)(nil),                            // 559: opl.cloud.api.PlanTransitionRequest
+	(*ApprovedPlanTransition)(nil),                           // 560: opl.cloud.api.ApprovedPlanTransition
+	(*ConfirmedPlanChangeCharge)(nil),                        // 561: opl.cloud.api.ConfirmedPlanChangeCharge
+	(*ZeroAmountPlanChangeEvidence)(nil),                     // 562: opl.cloud.api.ZeroAmountPlanChangeEvidence
+	(*PlanChangeFundingEvidence)(nil),                        // 563: opl.cloud.api.PlanChangeFundingEvidence
+	(*PlanChangeSupplementChargeCommand)(nil),                // 564: opl.cloud.api.PlanChangeSupplementChargeCommand
+	(*ScheduledPeriodChargeCommand)(nil),                     // 565: opl.cloud.api.ScheduledPeriodChargeCommand
+	(*PlanChangeFailureRefundCommand)(nil),                   // 566: opl.cloud.api.PlanChangeFailureRefundCommand
+	(*SupplementDeletionRefundCommand)(nil),                  // 567: opl.cloud.api.SupplementDeletionRefundCommand
+	(*RestorePlanChangeRuntimeCommand)(nil),                  // 568: opl.cloud.api.RestorePlanChangeRuntimeCommand
+	(*PlanChangeRuntimeReadback)(nil),                        // 569: opl.cloud.api.PlanChangeRuntimeReadback
+	(*AppendPlanChangeReceiptRequest)(nil),                   // 570: opl.cloud.api.AppendPlanChangeReceiptRequest
+	(*AppendPlanChangeRefundReceiptRequest)(nil),             // 571: opl.cloud.api.AppendPlanChangeRefundReceiptRequest
+	(*ProviderPlanChangeExecutionPlanReference)(nil),         // 572: opl.cloud.api.ProviderPlanChangeExecutionPlanReference
+	(*ReadProviderExecutionPlanRequest)(nil),                 // 573: opl.cloud.api.ReadProviderExecutionPlanRequest
+	(*ProviderPlanChangeExecutionPlan)(nil),                  // 574: opl.cloud.api.ProviderPlanChangeExecutionPlan
+	(*SourceFinancialSnapshot)(nil),                          // 575: opl.cloud.api.SourceFinancialSnapshot
+	(*PackageUploadedEvent)(nil),                             // 576: opl.cloud.api.PackageUploadedEvent
+	(*BuildArtifactConfirmedEvent)(nil),                      // 577: opl.cloud.api.BuildArtifactConfirmedEvent
+	(*CapabilityVersionRegisteredEvent)(nil),                 // 578: opl.cloud.api.CapabilityVersionRegisteredEvent
+	(*BuildFailedEvent)(nil),                                 // 579: opl.cloud.api.BuildFailedEvent
+	(*WalletOperationObservedEvent)(nil),                     // 580: opl.cloud.api.WalletOperationObservedEvent
+	(*ResourcesObservedEvent)(nil),                           // 581: opl.cloud.api.ResourcesObservedEvent
+	(*RuntimeReadinessObservedEvent)(nil),                    // 582: opl.cloud.api.RuntimeReadinessObservedEvent
+	(*WorkspaceStateChangedEvent)(nil),                       // 583: opl.cloud.api.WorkspaceStateChangedEvent
+	(*WorkspaceDeletionConfirmedEvent)(nil),                  // 584: opl.cloud.api.WorkspaceDeletionConfirmedEvent
+	(*TenantAccessRevokedEvent)(nil),                         // 585: opl.cloud.api.TenantAccessRevokedEvent
+	(*TenantRestoredEvent)(nil),                              // 586: opl.cloud.api.TenantRestoredEvent
+	(*ReceiptRecordedEvent)(nil),                             // 587: opl.cloud.api.ReceiptRecordedEvent
+	(*CatalogPolicyChangedEvent)(nil),                        // 588: opl.cloud.api.CatalogPolicyChangedEvent
+	(*TenantReenabledEvent)(nil),                             // 589: opl.cloud.api.TenantReenabledEvent
+	(*RenewalSettingsChangedEvent)(nil),                      // 590: opl.cloud.api.RenewalSettingsChangedEvent
+	(*RouteObservedEvent)(nil),                               // 591: opl.cloud.api.RouteObservedEvent
+	(*PlanChangeStateChangedEvent)(nil),                      // 592: opl.cloud.api.PlanChangeStateChangedEvent
+	(*PeriodObligationChangedEvent)(nil),                     // 593: opl.cloud.api.PeriodObligationChangedEvent
+	(*EventEnvelope)(nil),                                    // 594: opl.cloud.api.EventEnvelope
+	(*DeliverEventRequest)(nil),                              // 595: opl.cloud.api.DeliverEventRequest
+	(*InboxAck)(nil),                                         // 596: opl.cloud.api.InboxAck
+	(*ReadWorkspaceAccessRequest)(nil),                       // 597: opl.cloud.api.ReadWorkspaceAccessRequest
+	(*WorkspaceAccessDecision)(nil),                          // 598: opl.cloud.api.WorkspaceAccessDecision
+	nil,                                                      // 599: opl.cloud.api.WorkspaceApplicationDependencyCommand.EnvEntry
+	(*timestamppb.Timestamp)(nil),                            // 600: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),                                    // 601: google.protobuf.Empty
 }
 var file_internal_proto_depIdxs = []int32{
-	485, // 0: opl.cloud.api.CallContext.scope:type_name -> opl.cloud.api.AuthorizationScope
-	596, // 1: opl.cloud.api.CallContext.deadline_at:type_name -> google.protobuf.Timestamp
-	12,  // 2: opl.cloud.api.FieldError.code:type_name -> opl.cloud.api.ErrorCodeEnum
-	12,  // 3: opl.cloud.api.Error.code:type_name -> opl.cloud.api.ErrorCodeEnum
-	187, // 4: opl.cloud.api.Error.field_errors:type_name -> opl.cloud.api.FieldError
-	17,  // 5: opl.cloud.api.Operation.owner:type_name -> opl.cloud.api.OperationOwnerEnum
-	15,  // 6: opl.cloud.api.Operation.kind:type_name -> opl.cloud.api.OperationKindEnum
-	20,  // 7: opl.cloud.api.Operation.status:type_name -> opl.cloud.api.OperationStatusEnum
-	16,  // 8: opl.cloud.api.Operation.stage:type_name -> opl.cloud.api.OperationStageEnum
-	21,  // 9: opl.cloud.api.Operation.observation_result:type_name -> opl.cloud.api.OperationObservationResultEnum
-	12,  // 10: opl.cloud.api.Operation.error_code:type_name -> opl.cloud.api.ErrorCodeEnum
-	596, // 11: opl.cloud.api.Operation.created_at:type_name -> google.protobuf.Timestamp
-	596, // 12: opl.cloud.api.Operation.updated_at:type_name -> google.protobuf.Timestamp
-	596, // 13: opl.cloud.api.LoginContext.expires_at:type_name -> google.protobuf.Timestamp
-	14,  // 14: opl.cloud.api.Session.role:type_name -> opl.cloud.api.TenantRoleEnum
-	18,  // 15: opl.cloud.api.Session.permissions:type_name -> opl.cloud.api.AuthorizationActionEnum
-	596, // 16: opl.cloud.api.Session.expires_at:type_name -> google.protobuf.Timestamp
-	22,  // 17: opl.cloud.api.Tenant.status:type_name -> opl.cloud.api.TenantStatusEnum
-	596, // 18: opl.cloud.api.Tenant.restore_until:type_name -> google.protobuf.Timestamp
-	23,  // 19: opl.cloud.api.Tenant.asset_custody_status:type_name -> opl.cloud.api.TenantAssetCustodyStatusEnum
-	596, // 20: opl.cloud.api.Tenant.created_at:type_name -> google.protobuf.Timestamp
-	596, // 21: opl.cloud.api.Tenant.updated_at:type_name -> google.protobuf.Timestamp
-	596, // 22: opl.cloud.api.TenantRepositoryBinding.created_at:type_name -> google.protobuf.Timestamp
-	596, // 23: opl.cloud.api.TenantRepositoryBinding.updated_at:type_name -> google.protobuf.Timestamp
-	186, // 24: opl.cloud.api.GetTenantRepositoryBindingRequest.context:type_name -> opl.cloud.api.CallContext
-	14,  // 25: opl.cloud.api.Member.role:type_name -> opl.cloud.api.TenantRoleEnum
-	24,  // 26: opl.cloud.api.Member.status:type_name -> opl.cloud.api.MemberStatusEnum
-	596, // 27: opl.cloud.api.Member.created_at:type_name -> google.protobuf.Timestamp
-	25,  // 28: opl.cloud.api.Invitation.role:type_name -> opl.cloud.api.InvitationRoleEnum
-	26,  // 29: opl.cloud.api.Invitation.status:type_name -> opl.cloud.api.InvitationStatusEnum
-	596, // 30: opl.cloud.api.Invitation.expires_at:type_name -> google.protobuf.Timestamp
-	596, // 31: opl.cloud.api.Invitation.created_at:type_name -> google.protobuf.Timestamp
-	27,  // 32: opl.cloud.api.InviteMemberRequest.role:type_name -> opl.cloud.api.InviteMemberRequestRoleEnum
-	14,  // 33: opl.cloud.api.UpdateMemberRoleRequest.role:type_name -> opl.cloud.api.TenantRoleEnum
-	28,  // 34: opl.cloud.api.AssetCustody.status:type_name -> opl.cloud.api.AssetCustodyStatusEnum
-	596, // 35: opl.cloud.api.AssetCustody.restore_until:type_name -> google.protobuf.Timestamp
-	29,  // 36: opl.cloud.api.Namespace.status:type_name -> opl.cloud.api.NamespaceStatusEnum
-	596, // 37: opl.cloud.api.Namespace.created_at:type_name -> google.protobuf.Timestamp
-	30,  // 38: opl.cloud.api.Package.visibility:type_name -> opl.cloud.api.PackageVisibilityEnum
-	31,  // 39: opl.cloud.api.Package.status:type_name -> opl.cloud.api.PackageStatusEnum
-	596, // 40: opl.cloud.api.Package.created_at:type_name -> google.protobuf.Timestamp
-	596, // 41: opl.cloud.api.Package.updated_at:type_name -> google.protobuf.Timestamp
-	32,  // 42: opl.cloud.api.PackageVersion.status:type_name -> opl.cloud.api.PackageVersionStatusEnum
-	596, // 43: opl.cloud.api.PackageVersion.created_at:type_name -> google.protobuf.Timestamp
-	33,  // 44: opl.cloud.api.UploadSession.status:type_name -> opl.cloud.api.UploadSessionStatusEnum
-	213, // 45: opl.cloud.api.UploadSession.completed_parts:type_name -> opl.cloud.api.UploadPart
-	596, // 46: opl.cloud.api.UploadSession.expires_at:type_name -> google.protobuf.Timestamp
-	34,  // 47: opl.cloud.api.UploadPartAuthorization.method:type_name -> opl.cloud.api.UploadPartAuthorizationMethodEnum
-	596, // 48: opl.cloud.api.UploadPartAuthorization.expires_at:type_name -> google.protobuf.Timestamp
-	213, // 49: opl.cloud.api.CompleteUploadRequest.parts:type_name -> opl.cloud.api.UploadPart
-	35,  // 50: opl.cloud.api.ModelRequirement.capability:type_name -> opl.cloud.api.ModelRequirementCapabilityEnum
-	36,  // 51: opl.cloud.api.CapabilityVersion.status:type_name -> opl.cloud.api.CapabilityVersionStatusEnum
-	218, // 52: opl.cloud.api.CapabilityVersion.model_requirements:type_name -> opl.cloud.api.ModelRequirement
-	219, // 53: opl.cloud.api.CapabilityVersion.data_compatibility:type_name -> opl.cloud.api.DataCompatibility
-	596, // 54: opl.cloud.api.CapabilityVersion.created_at:type_name -> google.protobuf.Timestamp
-	37,  // 55: opl.cloud.api.CapabilityVersion.provenance:type_name -> opl.cloud.api.CapabilityVersionProvenanceEnum
-	300, // 56: opl.cloud.api.CapabilityVersion.artifact:type_name -> opl.cloud.api.ArtifactReference
-	314, // 57: opl.cloud.api.CapabilityVersion.deployment_descriptor:type_name -> opl.cloud.api.DeploymentDescriptor
-	38,  // 58: opl.cloud.api.BuildJob.status:type_name -> opl.cloud.api.BuildJobStatusEnum
-	12,  // 59: opl.cloud.api.BuildJob.error_code:type_name -> opl.cloud.api.ErrorCodeEnum
-	596, // 60: opl.cloud.api.BuildJob.created_at:type_name -> google.protobuf.Timestamp
-	596, // 61: opl.cloud.api.BuildJob.updated_at:type_name -> google.protobuf.Timestamp
-	39,  // 62: opl.cloud.api.BuildLog.level:type_name -> opl.cloud.api.BuildLogLevelEnum
-	596, // 63: opl.cloud.api.BuildLog.created_at:type_name -> google.protobuf.Timestamp
-	40,  // 64: opl.cloud.api.RuntimeVersion.status:type_name -> opl.cloud.api.RuntimeVersionStatusEnum
-	596, // 65: opl.cloud.api.RuntimeVersion.created_at:type_name -> google.protobuf.Timestamp
-	310, // 66: opl.cloud.api.RuntimeVersion.publisher_contract:type_name -> opl.cloud.api.RuntimePublisherContract
-	41,  // 67: opl.cloud.api.WebuiVersion.status:type_name -> opl.cloud.api.WebuiVersionStatusEnum
-	596, // 68: opl.cloud.api.WebuiVersion.created_at:type_name -> google.protobuf.Timestamp
-	311, // 69: opl.cloud.api.WebuiVersion.publisher_contract:type_name -> opl.cloud.api.WebuiPublisherContract
-	310, // 70: opl.cloud.api.RegisterRuntimeVersionRequest.publisher_contract:type_name -> opl.cloud.api.RuntimePublisherContract
-	311, // 71: opl.cloud.api.RegisterWebuiVersionRequest.publisher_contract:type_name -> opl.cloud.api.WebuiPublisherContract
-	42,  // 72: opl.cloud.api.CatalogStatusRequest.status:type_name -> opl.cloud.api.CatalogStatusRequestStatusEnum
-	43,  // 73: opl.cloud.api.ComputePlan.availability:type_name -> opl.cloud.api.ComputePlanAvailabilityEnum
-	44,  // 74: opl.cloud.api.ComputePlan.billing_mode:type_name -> opl.cloud.api.ComputePlanBillingModeEnum
-	596, // 75: opl.cloud.api.ComputePlan.valid_from:type_name -> google.protobuf.Timestamp
-	596, // 76: opl.cloud.api.ComputePlan.valid_until:type_name -> google.protobuf.Timestamp
-	596, // 77: opl.cloud.api.ComputePlan.created_at:type_name -> google.protobuf.Timestamp
-	45,  // 78: opl.cloud.api.StoragePlan.availability:type_name -> opl.cloud.api.StoragePlanAvailabilityEnum
-	46,  // 79: opl.cloud.api.StoragePlan.billing_mode:type_name -> opl.cloud.api.StoragePlanBillingModeEnum
-	596, // 80: opl.cloud.api.StoragePlan.valid_from:type_name -> google.protobuf.Timestamp
-	596, // 81: opl.cloud.api.StoragePlan.valid_until:type_name -> google.protobuf.Timestamp
-	596, // 82: opl.cloud.api.StoragePlan.created_at:type_name -> google.protobuf.Timestamp
-	596, // 83: opl.cloud.api.CreateComputePlanRequest.valid_from:type_name -> google.protobuf.Timestamp
-	596, // 84: opl.cloud.api.CreateComputePlanRequest.valid_until:type_name -> google.protobuf.Timestamp
-	596, // 85: opl.cloud.api.CreateStoragePlanRequest.valid_from:type_name -> google.protobuf.Timestamp
-	596, // 86: opl.cloud.api.CreateStoragePlanRequest.valid_until:type_name -> google.protobuf.Timestamp
-	47,  // 87: opl.cloud.api.PlanAvailabilityRequest.availability:type_name -> opl.cloud.api.PlanAvailabilityRequestAvailabilityEnum
-	48,  // 88: opl.cloud.api.PricePolicyVersion.currency:type_name -> opl.cloud.api.PricePolicyVersionCurrencyEnum
-	596, // 89: opl.cloud.api.PricePolicyVersion.valid_from:type_name -> google.protobuf.Timestamp
-	596, // 90: opl.cloud.api.PricePolicyVersion.valid_until:type_name -> google.protobuf.Timestamp
-	596, // 91: opl.cloud.api.PricePolicyVersion.created_at:type_name -> google.protobuf.Timestamp
-	320, // 92: opl.cloud.api.PricePolicyVersion.renewal_policy:type_name -> opl.cloud.api.RenewalPolicy
-	49,  // 93: opl.cloud.api.PricePolicyVersion.plan_change_policy_version:type_name -> opl.cloud.api.PricePolicyVersionPlanChangePolicyVersionEnum
-	348, // 94: opl.cloud.api.PricePolicyVersion.plan_change_policy:type_name -> opl.cloud.api.PlanChangePolicy
-	596, // 95: opl.cloud.api.CreatePricePolicyRequest.valid_from:type_name -> google.protobuf.Timestamp
-	596, // 96: opl.cloud.api.CreatePricePolicyRequest.valid_until:type_name -> google.protobuf.Timestamp
-	320, // 97: opl.cloud.api.CreatePricePolicyRequest.renewal_policy:type_name -> opl.cloud.api.RenewalPolicy
-	50,  // 98: opl.cloud.api.CreatePricePolicyRequest.plan_change_policy_version:type_name -> opl.cloud.api.CreatePricePolicyRequestPlanChangePolicyVersionEnum
-	51,  // 99: opl.cloud.api.RefundPolicyVersion.algorithm:type_name -> opl.cloud.api.RefundPolicyVersionAlgorithmEnum
-	596, // 100: opl.cloud.api.RefundPolicyVersion.valid_from:type_name -> google.protobuf.Timestamp
-	596, // 101: opl.cloud.api.RefundPolicyVersion.valid_until:type_name -> google.protobuf.Timestamp
-	596, // 102: opl.cloud.api.RefundPolicyVersion.created_at:type_name -> google.protobuf.Timestamp
-	52,  // 103: opl.cloud.api.CreateRefundPolicyRequest.algorithm:type_name -> opl.cloud.api.CreateRefundPolicyRequestAlgorithmEnum
-	596, // 104: opl.cloud.api.CreateRefundPolicyRequest.valid_from:type_name -> google.protobuf.Timestamp
-	596, // 105: opl.cloud.api.CreateRefundPolicyRequest.valid_until:type_name -> google.protobuf.Timestamp
-	53,  // 106: opl.cloud.api.RetentionPolicyVersion.workspace_data_disposition:type_name -> opl.cloud.api.RetentionPolicyVersionWorkspaceDataDispositionEnum
-	54,  // 107: opl.cloud.api.RetentionPolicyVersion.package_history_disposition:type_name -> opl.cloud.api.RetentionPolicyVersionPackageHistoryDispositionEnum
-	55,  // 108: opl.cloud.api.RetentionPolicyVersion.build_history_disposition:type_name -> opl.cloud.api.RetentionPolicyVersionBuildHistoryDispositionEnum
-	596, // 109: opl.cloud.api.RetentionPolicyVersion.created_at:type_name -> google.protobuf.Timestamp
-	596, // 110: opl.cloud.api.Model.fetched_at:type_name -> google.protobuf.Timestamp
-	58,  // 111: opl.cloud.api.WorkspaceApplicationSelection.kind:type_name -> opl.cloud.api.WorkspaceApplicationSelectionKindEnum
-	56,  // 112: opl.cloud.api.QuoteRequest.purpose:type_name -> opl.cloud.api.QuoteRequestPurposeEnum
-	241, // 113: opl.cloud.api.QuoteRequest.model_selections:type_name -> opl.cloud.api.ModelSelection
-	242, // 114: opl.cloud.api.QuoteRequest.application_selection:type_name -> opl.cloud.api.WorkspaceApplicationSelection
-	57,  // 115: opl.cloud.api.QuoteLine.kind:type_name -> opl.cloud.api.QuoteLineKindEnum
-	337, // 116: opl.cloud.api.QuoteLine.credit_source:type_name -> opl.cloud.api.CreditSource
-	59,  // 117: opl.cloud.api.Quote.purpose:type_name -> opl.cloud.api.QuotePurposeEnum
-	241, // 118: opl.cloud.api.Quote.model_selections:type_name -> opl.cloud.api.ModelSelection
-	596, // 119: opl.cloud.api.Quote.period_start:type_name -> google.protobuf.Timestamp
-	596, // 120: opl.cloud.api.Quote.period_end:type_name -> google.protobuf.Timestamp
-	244, // 121: opl.cloud.api.Quote.line_items:type_name -> opl.cloud.api.QuoteLine
-	60,  // 122: opl.cloud.api.Quote.status:type_name -> opl.cloud.api.QuoteStatusEnum
-	596, // 123: opl.cloud.api.Quote.expires_at:type_name -> google.protobuf.Timestamp
-	596, // 124: opl.cloud.api.Quote.created_at:type_name -> google.protobuf.Timestamp
-	351, // 125: opl.cloud.api.Quote.plan_change_calculation:type_name -> opl.cloud.api.PlanChangeCalculation
-	61,  // 126: opl.cloud.api.Quote.runtime_readback_requirement:type_name -> opl.cloud.api.QuoteRuntimeReadbackRequirementEnum
-	62,  // 127: opl.cloud.api.Workspace.status:type_name -> opl.cloud.api.WorkspaceStatusEnum
-	63,  // 128: opl.cloud.api.Workspace.resource_readiness:type_name -> opl.cloud.api.WorkspaceResourceReadinessEnum
-	64,  // 129: opl.cloud.api.Workspace.application_availability:type_name -> opl.cloud.api.WorkspaceApplicationAvailabilityEnum
-	596, // 130: opl.cloud.api.Workspace.current_period_end:type_name -> google.protobuf.Timestamp
-	596, // 131: opl.cloud.api.Workspace.created_at:type_name -> google.protobuf.Timestamp
-	596, // 132: opl.cloud.api.Workspace.updated_at:type_name -> google.protobuf.Timestamp
-	65,  // 133: opl.cloud.api.Workspace.delivery_model:type_name -> opl.cloud.api.WorkspaceDeliveryModelEnum
-	66,  // 134: opl.cloud.api.CreateWorkspaceRequest.renewal_mode:type_name -> opl.cloud.api.CreateWorkspaceRequestRenewalModeEnum
-	67,  // 135: opl.cloud.api.WorkspaceAccess.authentication_mode:type_name -> opl.cloud.api.WorkspaceAccessAuthenticationModeEnum
-	596, // 136: opl.cloud.api.WorkspaceAccess.expires_at:type_name -> google.protobuf.Timestamp
-	241, // 137: opl.cloud.api.ModelConfiguration.selections:type_name -> opl.cloud.api.ModelSelection
-	68,  // 138: opl.cloud.api.ModelConfiguration.status:type_name -> opl.cloud.api.ModelConfigurationStatusEnum
-	596, // 139: opl.cloud.api.ModelConfiguration.updated_at:type_name -> google.protobuf.Timestamp
-	241, // 140: opl.cloud.api.UpdateWorkspaceModelsRequest.selections:type_name -> opl.cloud.api.ModelSelection
-	69,  // 141: opl.cloud.api.Deployment.status:type_name -> opl.cloud.api.DeploymentStatusEnum
-	219, // 142: opl.cloud.api.Deployment.data_compatibility:type_name -> opl.cloud.api.DataCompatibility
-	596, // 143: opl.cloud.api.Deployment.created_at:type_name -> google.protobuf.Timestamp
-	596, // 144: opl.cloud.api.Deployment.updated_at:type_name -> google.protobuf.Timestamp
-	70,  // 145: opl.cloud.api.WorkspaceDeletion.resource_deletion_status:type_name -> opl.cloud.api.WorkspaceDeletionResourceDeletionStatusEnum
-	71,  // 146: opl.cloud.api.WorkspaceDeletion.data_deletion_status:type_name -> opl.cloud.api.WorkspaceDeletionDataDeletionStatusEnum
-	72,  // 147: opl.cloud.api.WorkspaceDeletion.refund_status:type_name -> opl.cloud.api.WorkspaceDeletionRefundStatusEnum
-	596, // 148: opl.cloud.api.WorkspaceDeletion.updated_at:type_name -> google.protobuf.Timestamp
-	596, // 149: opl.cloud.api.Subscription.current_period_start:type_name -> google.protobuf.Timestamp
-	596, // 150: opl.cloud.api.Subscription.current_period_end:type_name -> google.protobuf.Timestamp
-	73,  // 151: opl.cloud.api.Subscription.status:type_name -> opl.cloud.api.SubscriptionStatusEnum
-	596, // 152: opl.cloud.api.Subscription.created_at:type_name -> google.protobuf.Timestamp
-	74,  // 153: opl.cloud.api.Subscription.provenance:type_name -> opl.cloud.api.SubscriptionProvenanceEnum
-	75,  // 154: opl.cloud.api.Subscription.renewal_mode:type_name -> opl.cloud.api.SubscriptionRenewalModeEnum
-	76,  // 155: opl.cloud.api.WalletOperation.kind:type_name -> opl.cloud.api.WalletOperationKindEnum
-	77,  // 156: opl.cloud.api.WalletOperation.status:type_name -> opl.cloud.api.WalletOperationStatusEnum
-	12,  // 157: opl.cloud.api.WalletOperation.error_code:type_name -> opl.cloud.api.ErrorCodeEnum
-	596, // 158: opl.cloud.api.WalletOperation.created_at:type_name -> google.protobuf.Timestamp
-	596, // 159: opl.cloud.api.WalletOperation.updated_at:type_name -> google.protobuf.Timestamp
-	78,  // 160: opl.cloud.api.WalletOperation.purpose:type_name -> opl.cloud.api.WalletOperationPurposeEnum
-	596, // 161: opl.cloud.api.WalletOperation.coverage_start:type_name -> google.protobuf.Timestamp
-	596, // 162: opl.cloud.api.WalletOperation.coverage_end:type_name -> google.protobuf.Timestamp
-	79,  // 163: opl.cloud.api.Wallet.source:type_name -> opl.cloud.api.WalletSourceEnum
-	80,  // 164: opl.cloud.api.Wallet.status:type_name -> opl.cloud.api.WalletStatusEnum
-	81,  // 165: opl.cloud.api.Wallet.currency:type_name -> opl.cloud.api.WalletCurrencyEnum
-	596, // 166: opl.cloud.api.Wallet.fetched_at:type_name -> google.protobuf.Timestamp
-	596, // 167: opl.cloud.api.Usage.period_start:type_name -> google.protobuf.Timestamp
-	596, // 168: opl.cloud.api.Usage.period_end:type_name -> google.protobuf.Timestamp
-	82,  // 169: opl.cloud.api.Usage.source:type_name -> opl.cloud.api.UsageSourceEnum
-	596, // 170: opl.cloud.api.Usage.created_at:type_name -> google.protobuf.Timestamp
-	83,  // 171: opl.cloud.api.GatewayKey.purpose:type_name -> opl.cloud.api.GatewayKeyPurposeEnum
-	84,  // 172: opl.cloud.api.GatewayKey.status:type_name -> opl.cloud.api.GatewayKeyStatusEnum
-	596, // 173: opl.cloud.api.GatewayKey.created_at:type_name -> google.protobuf.Timestamp
-	596, // 174: opl.cloud.api.GatewayKey.expires_at:type_name -> google.protobuf.Timestamp
-	596, // 175: opl.cloud.api.CreateGatewayKeyRequest.expires_at:type_name -> google.protobuf.Timestamp
-	261, // 176: opl.cloud.api.GatewayKeySecret.key:type_name -> opl.cloud.api.GatewayKey
-	85,  // 177: opl.cloud.api.AuditEvent.outcome:type_name -> opl.cloud.api.AuditEventOutcomeEnum
-	596, // 178: opl.cloud.api.AuditEvent.created_at:type_name -> google.protobuf.Timestamp
-	86,  // 179: opl.cloud.api.Receipt.kind:type_name -> opl.cloud.api.ReceiptKindEnum
-	13,  // 180: opl.cloud.api.Receipt.owner:type_name -> opl.cloud.api.OwnerEnum
-	87,  // 181: opl.cloud.api.Receipt.outcome:type_name -> opl.cloud.api.ReceiptOutcomeEnum
-	596, // 182: opl.cloud.api.Receipt.created_at:type_name -> google.protobuf.Timestamp
-	189, // 183: opl.cloud.api.AdminOperation.operation:type_name -> opl.cloud.api.Operation
-	88,  // 184: opl.cloud.api.Qualification.status:type_name -> opl.cloud.api.QualificationStatusEnum
-	596, // 185: opl.cloud.api.Qualification.created_at:type_name -> google.protobuf.Timestamp
-	198, // 186: opl.cloud.api.MemberPage.items:type_name -> opl.cloud.api.Member
-	199, // 187: opl.cloud.api.InvitationPage.items:type_name -> opl.cloud.api.Invitation
-	205, // 188: opl.cloud.api.NamespacePage.items:type_name -> opl.cloud.api.Namespace
-	207, // 189: opl.cloud.api.PackagePage.items:type_name -> opl.cloud.api.Package
-	211, // 190: opl.cloud.api.PackageVersionPage.items:type_name -> opl.cloud.api.PackageVersion
-	220, // 191: opl.cloud.api.CapabilityVersionPage.items:type_name -> opl.cloud.api.CapabilityVersion
-	221, // 192: opl.cloud.api.BuildJobPage.items:type_name -> opl.cloud.api.BuildJob
-	223, // 193: opl.cloud.api.BuildLogPage.items:type_name -> opl.cloud.api.BuildLog
-	224, // 194: opl.cloud.api.RuntimeVersionPage.items:type_name -> opl.cloud.api.RuntimeVersion
-	225, // 195: opl.cloud.api.WebuiVersionPage.items:type_name -> opl.cloud.api.WebuiVersion
-	229, // 196: opl.cloud.api.ComputePlanPage.items:type_name -> opl.cloud.api.ComputePlan
-	230, // 197: opl.cloud.api.StoragePlanPage.items:type_name -> opl.cloud.api.StoragePlan
-	234, // 198: opl.cloud.api.PricePolicyVersionPage.items:type_name -> opl.cloud.api.PricePolicyVersion
-	236, // 199: opl.cloud.api.RefundPolicyVersionPage.items:type_name -> opl.cloud.api.RefundPolicyVersion
-	238, // 200: opl.cloud.api.RetentionPolicyVersionPage.items:type_name -> opl.cloud.api.RetentionPolicyVersion
-	240, // 201: opl.cloud.api.ModelPage.items:type_name -> opl.cloud.api.Model
-	246, // 202: opl.cloud.api.WorkspacePage.items:type_name -> opl.cloud.api.Workspace
-	251, // 203: opl.cloud.api.DeploymentPage.items:type_name -> opl.cloud.api.Deployment
-	258, // 204: opl.cloud.api.WalletOperationPage.items:type_name -> opl.cloud.api.WalletOperation
-	260, // 205: opl.cloud.api.UsagePage.items:type_name -> opl.cloud.api.Usage
-	261, // 206: opl.cloud.api.GatewayKeyPage.items:type_name -> opl.cloud.api.GatewayKey
-	193, // 207: opl.cloud.api.TenantPage.items:type_name -> opl.cloud.api.Tenant
-	264, // 208: opl.cloud.api.AuditEventPage.items:type_name -> opl.cloud.api.AuditEvent
-	265, // 209: opl.cloud.api.ReceiptPage.items:type_name -> opl.cloud.api.Receipt
-	267, // 210: opl.cloud.api.AdminOperationPage.items:type_name -> opl.cloud.api.AdminOperation
-	268, // 211: opl.cloud.api.QualificationPage.items:type_name -> opl.cloud.api.Qualification
-	241, // 212: opl.cloud.api.AdoptWorkspaceRequest.model_selections:type_name -> opl.cloud.api.ModelSelection
-	596, // 213: opl.cloud.api.BuildRuntimePolicy.effective_at:type_name -> google.protobuf.Timestamp
-	596, // 214: opl.cloud.api.BuildRuntimePolicy.created_at:type_name -> google.protobuf.Timestamp
-	89,  // 215: opl.cloud.api.ImagePlatform.os:type_name -> opl.cloud.api.ImagePlatformOsEnum
-	90,  // 216: opl.cloud.api.ImagePlatform.architecture:type_name -> opl.cloud.api.ImagePlatformArchitectureEnum
-	299, // 217: opl.cloud.api.ArtifactReference.platform:type_name -> opl.cloud.api.ImagePlatform
-	91,  // 218: opl.cloud.api.RecipeArtifact.media_type:type_name -> opl.cloud.api.RecipeArtifactMediaTypeEnum
-	92,  // 219: opl.cloud.api.PackageBuildInput.context_name:type_name -> opl.cloud.api.PackageBuildInputContextNameEnum
-	93,  // 220: opl.cloud.api.WebuiBuildInput.context_name:type_name -> opl.cloud.api.WebuiBuildInputContextNameEnum
-	94,  // 221: opl.cloud.api.BuildRecipeContract.version:type_name -> opl.cloud.api.BuildRecipeContractVersionEnum
-	300, // 222: opl.cloud.api.BuildRecipeContract.frontend:type_name -> opl.cloud.api.ArtifactReference
-	301, // 223: opl.cloud.api.BuildRecipeContract.recipe:type_name -> opl.cloud.api.RecipeArtifact
-	95,  // 224: opl.cloud.api.BuildRecipeContract.runtime_context_name:type_name -> opl.cloud.api.BuildRecipeContractRuntimeContextNameEnum
-	302, // 225: opl.cloud.api.BuildRecipeContract.package_input:type_name -> opl.cloud.api.PackageBuildInput
-	303, // 226: opl.cloud.api.BuildRecipeContract.webui_input:type_name -> opl.cloud.api.WebuiBuildInput
-	96,  // 227: opl.cloud.api.BuildRecipeContract.network_policy:type_name -> opl.cloud.api.BuildRecipeContractNetworkPolicyEnum
-	299, // 228: opl.cloud.api.BuildRecipeContract.output_platform:type_name -> opl.cloud.api.ImagePlatform
-	341, // 229: opl.cloud.api.BuildRecipeContract.output_image_command:type_name -> opl.cloud.api.BuildRecipeContractOutputImageCommand
-	97,  // 230: opl.cloud.api.ModelConfigurationContract.protocol:type_name -> opl.cloud.api.ModelConfigurationContractProtocolEnum
-	98,  // 231: opl.cloud.api.ModelConfigurationContract.request_fields:type_name -> opl.cloud.api.ModelConfigurationContractRequestFieldsEnum
-	99,  // 232: opl.cloud.api.ModelConfigurationContract.readback_fields:type_name -> opl.cloud.api.ModelConfigurationContractReadbackFieldsEnum
-	334, // 233: opl.cloud.api.ApplicationAccessContract.application_owned_access_contract:type_name -> opl.cloud.api.ApplicationOwnedAccessContract
-	335, // 234: opl.cloud.api.ApplicationAccessContract.cloud_private_access_contract:type_name -> opl.cloud.api.CloudPrivateAccessContract
-	336, // 235: opl.cloud.api.ApplicationAccessContract.anonymous_access_contract:type_name -> opl.cloud.api.AnonymousAccessContract
-	100, // 236: opl.cloud.api.DataUpgradeContract.mode:type_name -> opl.cloud.api.DataUpgradeContractModeEnum
-	300, // 237: opl.cloud.api.DataUpgradeContract.migration_artifact:type_name -> opl.cloud.api.ArtifactReference
-	307, // 238: opl.cloud.api.DataContract.upgrade:type_name -> opl.cloud.api.DataUpgradeContract
-	308, // 239: opl.cloud.api.DataContract.rollback:type_name -> opl.cloud.api.DataRollbackContract
-	333, // 240: opl.cloud.api.DataContract.mount_policies:type_name -> opl.cloud.api.DataMountPolicy
-	101, // 241: opl.cloud.api.RuntimePublisherContract.schema_version:type_name -> opl.cloud.api.RuntimePublisherContractSchemaVersionEnum
-	300, // 242: opl.cloud.api.RuntimePublisherContract.image:type_name -> opl.cloud.api.ArtifactReference
-	102, // 243: opl.cloud.api.RuntimePublisherContract.kind:type_name -> opl.cloud.api.RuntimePublisherContractKindEnum
-	304, // 244: opl.cloud.api.RuntimePublisherContract.build_recipe:type_name -> opl.cloud.api.BuildRecipeContract
-	305, // 245: opl.cloud.api.RuntimePublisherContract.model_configuration:type_name -> opl.cloud.api.ModelConfigurationContract
-	306, // 246: opl.cloud.api.RuntimePublisherContract.application_access:type_name -> opl.cloud.api.ApplicationAccessContract
-	309, // 247: opl.cloud.api.RuntimePublisherContract.data:type_name -> opl.cloud.api.DataContract
-	332, // 248: opl.cloud.api.RuntimePublisherContract.application_revision_template:type_name -> opl.cloud.api.WorkspaceApplicationRevision
-	344, // 249: opl.cloud.api.RuntimePublisherContract.package_format_contracts:type_name -> opl.cloud.api.PackageFormatContractReference
-	103, // 250: opl.cloud.api.WebuiPublisherContract.schema_version:type_name -> opl.cloud.api.WebuiPublisherContractSchemaVersionEnum
-	300, // 251: opl.cloud.api.WebuiPublisherContract.image:type_name -> opl.cloud.api.ArtifactReference
-	104, // 252: opl.cloud.api.WebuiPublisherContract.kind:type_name -> opl.cloud.api.WebuiPublisherContractKindEnum
-	105, // 253: opl.cloud.api.WebuiPublisherContract.ui_protocol_version:type_name -> opl.cloud.api.WebuiPublisherContractUiProtocolVersionEnum
-	106, // 254: opl.cloud.api.WebuiPublisherContract.integration_mode:type_name -> opl.cloud.api.WebuiPublisherContractIntegrationModeEnum
-	107, // 255: opl.cloud.api.WebuiPublisherContract.authentication_protocol:type_name -> opl.cloud.api.WebuiPublisherContractAuthenticationProtocolEnum
-	310, // 256: opl.cloud.api.PublisherContract.runtime_publisher_contract:type_name -> opl.cloud.api.RuntimePublisherContract
-	311, // 257: opl.cloud.api.PublisherContract.webui_publisher_contract:type_name -> opl.cloud.api.WebuiPublisherContract
-	108, // 258: opl.cloud.api.PublisherContractReference.kind:type_name -> opl.cloud.api.PublisherContractReferenceKindEnum
-	109, // 259: opl.cloud.api.DeploymentDescriptor.schema_version:type_name -> opl.cloud.api.DeploymentDescriptorSchemaVersionEnum
-	300, // 260: opl.cloud.api.DeploymentDescriptor.artifact:type_name -> opl.cloud.api.ArtifactReference
-	310, // 261: opl.cloud.api.DeploymentDescriptor.runtime_contract:type_name -> opl.cloud.api.RuntimePublisherContract
-	313, // 262: opl.cloud.api.DeploymentDescriptor.runtime_contract_reference:type_name -> opl.cloud.api.PublisherContractReference
-	311, // 263: opl.cloud.api.DeploymentDescriptor.webui_contract:type_name -> opl.cloud.api.WebuiPublisherContract
-	313, // 264: opl.cloud.api.DeploymentDescriptor.webui_contract_reference:type_name -> opl.cloud.api.PublisherContractReference
-	110, // 265: opl.cloud.api.DeploymentDescriptor.provenance:type_name -> opl.cloud.api.DeploymentDescriptorProvenanceEnum
-	332, // 266: opl.cloud.api.DeploymentDescriptor.application_revision:type_name -> opl.cloud.api.WorkspaceApplicationRevision
-	242, // 267: opl.cloud.api.DeploymentDescriptor.application_selection:type_name -> opl.cloud.api.WorkspaceApplicationSelection
-	111, // 268: opl.cloud.api.PublisherNamespace.kind:type_name -> opl.cloud.api.PublisherNamespaceKindEnum
-	112, // 269: opl.cloud.api.PublisherNamespace.status:type_name -> opl.cloud.api.PublisherNamespaceStatusEnum
-	596, // 270: opl.cloud.api.PublisherNamespace.created_at:type_name -> google.protobuf.Timestamp
-	113, // 271: opl.cloud.api.CreatePublisherNamespaceRequest.kind:type_name -> opl.cloud.api.CreatePublisherNamespaceRequestKindEnum
-	315, // 272: opl.cloud.api.PublisherNamespacePage.items:type_name -> opl.cloud.api.PublisherNamespace
-	114, // 273: opl.cloud.api.RenewalPolicy.version:type_name -> opl.cloud.api.RenewalPolicyVersionEnum
-	115, // 274: opl.cloud.api.RenewalPolicy.trigger:type_name -> opl.cloud.api.RenewalPolicyTriggerEnum
-	116, // 275: opl.cloud.api.RenewalPolicy.effective_start:type_name -> opl.cloud.api.RenewalPolicyEffectiveStartEnum
-	117, // 276: opl.cloud.api.WorkspaceApplicationCredential.kind:type_name -> opl.cloud.api.WorkspaceApplicationCredentialKindEnum
-	118, // 277: opl.cloud.api.WorkspaceApplicationPort.protocol:type_name -> opl.cloud.api.WorkspaceApplicationPortProtocolEnum
-	595, // 278: opl.cloud.api.WorkspaceApplicationDependencyCommand.env:type_name -> opl.cloud.api.WorkspaceApplicationDependencyCommand.EnvEntry
-	119, // 279: opl.cloud.api.WorkspaceApplicationDependencyHealthCheck.type:type_name -> opl.cloud.api.WorkspaceApplicationDependencyHealthCheckTypeEnum
-	321, // 280: opl.cloud.api.WorkspaceApplicationDependency.execution:type_name -> opl.cloud.api.WorkspaceApplicationExecution
-	324, // 281: opl.cloud.api.WorkspaceApplicationDependency.ports:type_name -> opl.cloud.api.WorkspaceApplicationPort
-	330, // 282: opl.cloud.api.WorkspaceApplicationDependency.health_checks:type_name -> opl.cloud.api.WorkspaceApplicationDependencyHealthCheck
-	326, // 283: opl.cloud.api.WorkspaceApplicationDependency.persistent_mounts:type_name -> opl.cloud.api.WorkspaceApplicationMount
-	326, // 284: opl.cloud.api.WorkspaceApplicationDependency.scratch_mounts:type_name -> opl.cloud.api.WorkspaceApplicationMount
-	329, // 285: opl.cloud.api.WorkspaceApplicationDependency.command:type_name -> opl.cloud.api.WorkspaceApplicationDependencyCommand
-	327, // 286: opl.cloud.api.WorkspaceApplicationDependency.secret_inputs:type_name -> opl.cloud.api.WorkspaceApplicationSecretInput
-	328, // 287: opl.cloud.api.WorkspaceApplicationDependency.config_inputs:type_name -> opl.cloud.api.WorkspaceApplicationConfigInput
-	322, // 288: opl.cloud.api.WorkspaceApplicationDependency.compute:type_name -> opl.cloud.api.WorkspaceApplicationCompute
-	321, // 289: opl.cloud.api.WorkspaceApplicationRevision.execution:type_name -> opl.cloud.api.WorkspaceApplicationExecution
-	323, // 290: opl.cloud.api.WorkspaceApplicationRevision.credentials:type_name -> opl.cloud.api.WorkspaceApplicationCredential
-	324, // 291: opl.cloud.api.WorkspaceApplicationRevision.ports:type_name -> opl.cloud.api.WorkspaceApplicationPort
-	325, // 292: opl.cloud.api.WorkspaceApplicationRevision.health_checks:type_name -> opl.cloud.api.WorkspaceApplicationHealthCheck
-	326, // 293: opl.cloud.api.WorkspaceApplicationRevision.persistent_mounts:type_name -> opl.cloud.api.WorkspaceApplicationMount
-	326, // 294: opl.cloud.api.WorkspaceApplicationRevision.scratch_mounts:type_name -> opl.cloud.api.WorkspaceApplicationMount
-	327, // 295: opl.cloud.api.WorkspaceApplicationRevision.secret_inputs:type_name -> opl.cloud.api.WorkspaceApplicationSecretInput
-	328, // 296: opl.cloud.api.WorkspaceApplicationRevision.config_inputs:type_name -> opl.cloud.api.WorkspaceApplicationConfigInput
-	331, // 297: opl.cloud.api.WorkspaceApplicationRevision.dependencies:type_name -> opl.cloud.api.WorkspaceApplicationDependency
-	120, // 298: opl.cloud.api.WorkspaceApplicationRevision.exposure_policy:type_name -> opl.cloud.api.WorkspaceApplicationRevisionExposurePolicyEnum
-	322, // 299: opl.cloud.api.WorkspaceApplicationRevision.compute:type_name -> opl.cloud.api.WorkspaceApplicationCompute
-	121, // 300: opl.cloud.api.ApplicationOwnedAccessContract.mode:type_name -> opl.cloud.api.ApplicationOwnedAccessContractModeEnum
-	122, // 301: opl.cloud.api.CloudPrivateAccessContract.mode:type_name -> opl.cloud.api.CloudPrivateAccessContractModeEnum
-	123, // 302: opl.cloud.api.CloudPrivateAccessContract.entry_contract:type_name -> opl.cloud.api.CloudPrivateAccessContractEntryContractEnum
-	124, // 303: opl.cloud.api.AnonymousAccessContract.mode:type_name -> opl.cloud.api.AnonymousAccessContractModeEnum
-	125, // 304: opl.cloud.api.TenantWorkspaceAction.action:type_name -> opl.cloud.api.TenantWorkspaceActionActionEnum
-	126, // 305: opl.cloud.api.TenantWorkspaceAction.operation_owner:type_name -> opl.cloud.api.TenantWorkspaceActionOperationOwnerEnum
-	127, // 306: opl.cloud.api.TenantWorkspaceAction.status:type_name -> opl.cloud.api.TenantWorkspaceActionStatusEnum
-	128, // 307: opl.cloud.api.TenantWorkspaceSkip.reason:type_name -> opl.cloud.api.TenantWorkspaceSkipReasonEnum
-	189, // 308: opl.cloud.api.TenantLifecycleProgress.operation:type_name -> opl.cloud.api.Operation
-	129, // 309: opl.cloud.api.TenantLifecycleProgress.access_status:type_name -> opl.cloud.api.TenantLifecycleProgressAccessStatusEnum
-	338, // 310: opl.cloud.api.TenantLifecycleProgress.workspace_actions:type_name -> opl.cloud.api.TenantWorkspaceAction
-	339, // 311: opl.cloud.api.TenantLifecycleProgress.skipped:type_name -> opl.cloud.api.TenantWorkspaceSkip
-	130, // 312: opl.cloud.api.UpdateRenewalSettingsRequest.renewal_mode:type_name -> opl.cloud.api.UpdateRenewalSettingsRequestRenewalModeEnum
-	131, // 313: opl.cloud.api.PackageFormatContractReference.owner:type_name -> opl.cloud.api.PackageFormatContractReferenceOwnerEnum
-	300, // 314: opl.cloud.api.PackageFormatContractReference.validator_artifact:type_name -> opl.cloud.api.ArtifactReference
-	132, // 315: opl.cloud.api.UpgradePlanRules.kind:type_name -> opl.cloud.api.UpgradePlanRulesKindEnum
-	133, // 316: opl.cloud.api.UpgradePlanRules.effective_when:type_name -> opl.cloud.api.UpgradePlanRulesEffectiveWhenEnum
-	134, // 317: opl.cloud.api.UpgradePlanRules.old_price_source:type_name -> opl.cloud.api.UpgradePlanRulesOldPriceSourceEnum
-	135, // 318: opl.cloud.api.UpgradePlanRules.charge_clock:type_name -> opl.cloud.api.UpgradePlanRulesChargeClockEnum
-	136, // 319: opl.cloud.api.UpgradePlanRules.time_unit:type_name -> opl.cloud.api.UpgradePlanRulesTimeUnitEnum
-	137, // 320: opl.cloud.api.UpgradePlanRules.charge_rounding:type_name -> opl.cloud.api.UpgradePlanRulesChargeRoundingEnum
-	138, // 321: opl.cloud.api.UpgradePlanRules.zero_charge:type_name -> opl.cloud.api.UpgradePlanRulesZeroChargeEnum
-	139, // 322: opl.cloud.api.UpgradePlanRules.known_failure_compensation:type_name -> opl.cloud.api.UpgradePlanRulesKnownFailureCompensationEnum
-	140, // 323: opl.cloud.api.UpgradePlanRules.unknown_outcome:type_name -> opl.cloud.api.UpgradePlanRulesUnknownOutcomeEnum
-	141, // 324: opl.cloud.api.UpgradePlanRules.irreversible_residual_cost_owner:type_name -> opl.cloud.api.UpgradePlanRulesIrreversibleResidualCostOwnerEnum
-	142, // 325: opl.cloud.api.UpgradePlanRules.supplement_delete_refund:type_name -> opl.cloud.api.UpgradePlanRulesSupplementDeleteRefundEnum
-	143, // 326: opl.cloud.api.DowngradePlanRules.kind:type_name -> opl.cloud.api.DowngradePlanRulesKindEnum
-	144, // 327: opl.cloud.api.DowngradePlanRules.planned_boundary:type_name -> opl.cloud.api.DowngradePlanRulesPlannedBoundaryEnum
-	145, // 328: opl.cloud.api.DowngradePlanRules.current_period_refund:type_name -> opl.cloud.api.DowngradePlanRulesCurrentPeriodRefundEnum
-	146, // 329: opl.cloud.api.DowngradePlanRules.next_period_price:type_name -> opl.cloud.api.DowngradePlanRulesNextPeriodPriceEnum
-	147, // 330: opl.cloud.api.DowngradePlanRules.cancel_before:type_name -> opl.cloud.api.DowngradePlanRulesCancelBeforeEnum
-	148, // 331: opl.cloud.api.DowngradePlanRules.early_paid_change:type_name -> opl.cloud.api.DowngradePlanRulesEarlyPaidChangeEnum
-	149, // 332: opl.cloud.api.DowngradePlanRules.manual_unpaid_boundary:type_name -> opl.cloud.api.DowngradePlanRulesManualUnpaidBoundaryEnum
-	150, // 333: opl.cloud.api.DowngradePlanRules.known_failure_compensation:type_name -> opl.cloud.api.DowngradePlanRulesKnownFailureCompensationEnum
-	151, // 334: opl.cloud.api.DowngradePlanRules.fallback:type_name -> opl.cloud.api.DowngradePlanRulesFallbackEnum
-	152, // 335: opl.cloud.api.PlanChangePolicy.version:type_name -> opl.cloud.api.PlanChangePolicyVersionEnum
-	153, // 336: opl.cloud.api.PlanChangePolicy.approval_status:type_name -> opl.cloud.api.PlanChangePolicyApprovalStatusEnum
-	346, // 337: opl.cloud.api.PlanChangePolicy.upgrade:type_name -> opl.cloud.api.UpgradePlanRules
-	347, // 338: opl.cloud.api.PlanChangePolicy.downgrade:type_name -> opl.cloud.api.DowngradePlanRules
-	154, // 339: opl.cloud.api.PlanChangePolicy.classification:type_name -> opl.cloud.api.PlanChangePolicyClassificationEnum
-	155, // 340: opl.cloud.api.PlanChangePolicy.mixed_or_incomparable_transition:type_name -> opl.cloud.api.PlanChangePolicyMixedOrIncomparableTransitionEnum
-	156, // 341: opl.cloud.api.PlanChangePolicy.no_op_transition:type_name -> opl.cloud.api.PlanChangePolicyNoOpTransitionEnum
-	157, // 342: opl.cloud.api.PlanChangePolicy.storage_shrink:type_name -> opl.cloud.api.PlanChangePolicyStorageShrinkEnum
-	158, // 343: opl.cloud.api.PlanChangePolicy.concurrency:type_name -> opl.cloud.api.PlanChangePolicyConcurrencyEnum
-	159, // 344: opl.cloud.api.PlanChangePolicy.cancel_and_replace:type_name -> opl.cloud.api.PlanChangePolicyCancelAndReplaceEnum
-	160, // 345: opl.cloud.api.PlanChangePolicy.base_refund_policy:type_name -> opl.cloud.api.PlanChangePolicyBaseRefundPolicyEnum
-	161, // 346: opl.cloud.api.PlanChangePolicy.provider_execution_plan:type_name -> opl.cloud.api.PlanChangePolicyProviderExecutionPlanEnum
-	162, // 347: opl.cloud.api.UpgradeProration.rounding:type_name -> opl.cloud.api.UpgradeProrationRoundingEnum
-	596, // 348: opl.cloud.api.NextPeriodPlanQuote.period_start:type_name -> google.protobuf.Timestamp
-	596, // 349: opl.cloud.api.NextPeriodPlanQuote.period_end:type_name -> google.protobuf.Timestamp
-	163, // 350: opl.cloud.api.PlanChangeCalculation.policy_version:type_name -> opl.cloud.api.PlanChangeCalculationPolicyVersionEnum
-	164, // 351: opl.cloud.api.PlanChangeCalculation.kind:type_name -> opl.cloud.api.PlanChangeCalculationKindEnum
-	596, // 352: opl.cloud.api.PlanChangeCalculation.quote_at:type_name -> google.protobuf.Timestamp
-	596, // 353: opl.cloud.api.PlanChangeCalculation.period_start:type_name -> google.protobuf.Timestamp
-	596, // 354: opl.cloud.api.PlanChangeCalculation.period_end:type_name -> google.protobuf.Timestamp
-	596, // 355: opl.cloud.api.PlanChangeCalculation.planned_effective_at:type_name -> google.protobuf.Timestamp
-	349, // 356: opl.cloud.api.PlanChangeCalculation.upgrade_proration:type_name -> opl.cloud.api.UpgradeProration
-	350, // 357: opl.cloud.api.PlanChangeCalculation.next_period:type_name -> opl.cloud.api.NextPeriodPlanQuote
-	165, // 358: opl.cloud.api.PlanChange.kind:type_name -> opl.cloud.api.PlanChangeKindEnum
-	166, // 359: opl.cloud.api.PlanChange.status:type_name -> opl.cloud.api.PlanChangeStatusEnum
-	152, // 360: opl.cloud.api.PlanChange.policy_version:type_name -> opl.cloud.api.PlanChangePolicyVersionEnum
-	596, // 361: opl.cloud.api.PlanChange.quote_at:type_name -> google.protobuf.Timestamp
-	596, // 362: opl.cloud.api.PlanChange.period_start:type_name -> google.protobuf.Timestamp
-	596, // 363: opl.cloud.api.PlanChange.period_end:type_name -> google.protobuf.Timestamp
-	596, // 364: opl.cloud.api.PlanChange.planned_effective_at:type_name -> google.protobuf.Timestamp
-	596, // 365: opl.cloud.api.PlanChange.applied_at:type_name -> google.protobuf.Timestamp
-	167, // 366: opl.cloud.api.PlanChange.charge_status:type_name -> opl.cloud.api.PlanChangeChargeStatusEnum
-	596, // 367: opl.cloud.api.PlanChange.next_period_start:type_name -> google.protobuf.Timestamp
-	596, // 368: opl.cloud.api.PlanChange.next_period_end:type_name -> google.protobuf.Timestamp
-	168, // 369: opl.cloud.api.PlanChange.next_period_charge_status:type_name -> opl.cloud.api.PlanChangeNextPeriodChargeStatusEnum
-	169, // 370: opl.cloud.api.PlanChange.observation_result:type_name -> opl.cloud.api.PlanChangeObservationResultEnum
-	12,  // 371: opl.cloud.api.PlanChange.error_code:type_name -> opl.cloud.api.ErrorCodeEnum
-	596, // 372: opl.cloud.api.PlanChange.created_at:type_name -> google.protobuf.Timestamp
-	596, // 373: opl.cloud.api.PlanChange.updated_at:type_name -> google.protobuf.Timestamp
-	170, // 374: opl.cloud.api.PlanChange.delivery_outcome:type_name -> opl.cloud.api.PlanChangeDeliveryOutcomeEnum
-	171, // 375: opl.cloud.api.PlanChange.resource_outcome:type_name -> opl.cloud.api.PlanChangeResourceOutcomeEnum
-	172, // 376: opl.cloud.api.PlanChange.runtime_readback_requirement:type_name -> opl.cloud.api.PlanChangeRuntimeReadbackRequirementEnum
-	173, // 377: opl.cloud.api.PlanChange.current_requirement_validation:type_name -> opl.cloud.api.PlanChangeCurrentRequirementValidationEnum
-	12,  // 378: opl.cloud.api.PlanChange.risk_code:type_name -> opl.cloud.api.ErrorCodeEnum
-	596, // 379: opl.cloud.api.PlanChange.last_validated_at:type_name -> google.protobuf.Timestamp
-	352, // 380: opl.cloud.api.PlanChangePage.items:type_name -> opl.cloud.api.PlanChange
-	174, // 381: opl.cloud.api.PlanChangeEvidence.kind:type_name -> opl.cloud.api.PlanChangeEvidenceKindEnum
-	175, // 382: opl.cloud.api.PlanChangeEvidence.policy_version:type_name -> opl.cloud.api.PlanChangeEvidencePolicyVersionEnum
-	596, // 383: opl.cloud.api.PlanChangeEvidence.quote_at:type_name -> google.protobuf.Timestamp
-	596, // 384: opl.cloud.api.PlanChangeEvidence.period_start:type_name -> google.protobuf.Timestamp
-	596, // 385: opl.cloud.api.PlanChangeEvidence.period_end:type_name -> google.protobuf.Timestamp
-	596, // 386: opl.cloud.api.PlanChangeEvidence.applied_at:type_name -> google.protobuf.Timestamp
-	176, // 387: opl.cloud.api.PlanChangeEvidence.outcome:type_name -> opl.cloud.api.PlanChangeEvidenceOutcomeEnum
-	177, // 388: opl.cloud.api.PlanChangeEvidence.delivery_outcome:type_name -> opl.cloud.api.PlanChangeEvidenceDeliveryOutcomeEnum
-	178, // 389: opl.cloud.api.PlanChangeEvidence.resource_outcome:type_name -> opl.cloud.api.PlanChangeEvidenceResourceOutcomeEnum
-	179, // 390: opl.cloud.api.PlanChangeEvidence.runtime_readback_requirement:type_name -> opl.cloud.api.PlanChangeEvidenceRuntimeReadbackRequirementEnum
-	180, // 391: opl.cloud.api.SupplementalRefundEvidence.purpose:type_name -> opl.cloud.api.SupplementalRefundEvidencePurposeEnum
-	181, // 392: opl.cloud.api.SupplementalRefundEvidence.policy_version:type_name -> opl.cloud.api.SupplementalRefundEvidencePolicyVersionEnum
-	596, // 393: opl.cloud.api.SupplementalRefundEvidence.coverage_start:type_name -> google.protobuf.Timestamp
-	596, // 394: opl.cloud.api.SupplementalRefundEvidence.coverage_end:type_name -> google.protobuf.Timestamp
-	596, // 395: opl.cloud.api.SupplementalRefundEvidence.delete_confirmed_at:type_name -> google.protobuf.Timestamp
-	186, // 396: opl.cloud.api.GetLoginContextRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 397: opl.cloud.api.LoginRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	191, // 398: opl.cloud.api.LoginRpcRequest.body:type_name -> opl.cloud.api.LoginRequest
-	186, // 399: opl.cloud.api.GetSessionRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 400: opl.cloud.api.LogoutRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 401: opl.cloud.api.GetTenantRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 402: opl.cloud.api.ListMembersRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 403: opl.cloud.api.ListInvitationsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 404: opl.cloud.api.InviteMemberRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	200, // 405: opl.cloud.api.InviteMemberRpcRequest.body:type_name -> opl.cloud.api.InviteMemberRequest
-	186, // 406: opl.cloud.api.AcceptInvitationRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 407: opl.cloud.api.RevokeInvitationRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 408: opl.cloud.api.UpdateMemberRoleRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	201, // 409: opl.cloud.api.UpdateMemberRoleRpcRequest.body:type_name -> opl.cloud.api.UpdateMemberRoleRequest
-	186, // 410: opl.cloud.api.RemoveMemberRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 411: opl.cloud.api.ListNamespacesRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 412: opl.cloud.api.CreateNamespaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	206, // 413: opl.cloud.api.CreateNamespaceRpcRequest.body:type_name -> opl.cloud.api.NamespaceWriteRequest
-	186, // 414: opl.cloud.api.UpdateNamespaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	206, // 415: opl.cloud.api.UpdateNamespaceRpcRequest.body:type_name -> opl.cloud.api.NamespaceWriteRequest
-	186, // 416: opl.cloud.api.ArchiveNamespaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 417: opl.cloud.api.ListPackagesRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	182, // 418: opl.cloud.api.ListPackagesRpcRequest.query_visibility:type_name -> opl.cloud.api.ListPackagesRpcRequestVisibilityEnum
-	183, // 419: opl.cloud.api.ListPackagesRpcRequest.query_status:type_name -> opl.cloud.api.ListPackagesRpcRequestStatusEnum
-	186, // 420: opl.cloud.api.CreatePackageRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	208, // 421: opl.cloud.api.CreatePackageRpcRequest.body:type_name -> opl.cloud.api.CreatePackageRequest
-	186, // 422: opl.cloud.api.GetPackageRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 423: opl.cloud.api.UpdatePackageRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	209, // 424: opl.cloud.api.UpdatePackageRpcRequest.body:type_name -> opl.cloud.api.UpdatePackageRequest
-	186, // 425: opl.cloud.api.ArchivePackageRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 426: opl.cloud.api.CreateUploadRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	212, // 427: opl.cloud.api.CreateUploadRpcRequest.body:type_name -> opl.cloud.api.CreateUploadRequest
-	186, // 428: opl.cloud.api.GetUploadRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 429: opl.cloud.api.CreateUploadPartRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	215, // 430: opl.cloud.api.CreateUploadPartRpcRequest.body:type_name -> opl.cloud.api.CreateUploadPartRequest
-	186, // 431: opl.cloud.api.CompleteUploadRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	217, // 432: opl.cloud.api.CompleteUploadRpcRequest.body:type_name -> opl.cloud.api.CompleteUploadRequest
-	186, // 433: opl.cloud.api.ListPackageVersionsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 434: opl.cloud.api.GetPackageVersionRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 435: opl.cloud.api.CreateBuildRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	222, // 436: opl.cloud.api.CreateBuildRpcRequest.body:type_name -> opl.cloud.api.CreateBuildRequest
-	186, // 437: opl.cloud.api.ListBuildsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 438: opl.cloud.api.GetBuildRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 439: opl.cloud.api.ListBuildLogsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 440: opl.cloud.api.RetryBuildRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 441: opl.cloud.api.ListCapabilityVersionsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	184, // 442: opl.cloud.api.ListCapabilityVersionsRpcRequest.query_status:type_name -> opl.cloud.api.ListCapabilityVersionsRpcRequestStatusEnum
-	186, // 443: opl.cloud.api.GetCapabilityVersionRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 444: opl.cloud.api.DeleteCapabilityVersionRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 445: opl.cloud.api.PublishOfficialPackageRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	210, // 446: opl.cloud.api.PublishOfficialPackageRpcRequest.body:type_name -> opl.cloud.api.PublishPackageRequest
-	186, // 447: opl.cloud.api.CreateQuoteRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	243, // 448: opl.cloud.api.CreateQuoteRpcRequest.body:type_name -> opl.cloud.api.QuoteRequest
-	186, // 449: opl.cloud.api.GetQuoteRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 450: opl.cloud.api.CreateWorkspaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	247, // 451: opl.cloud.api.CreateWorkspaceRpcRequest.body:type_name -> opl.cloud.api.CreateWorkspaceRequest
-	186, // 452: opl.cloud.api.ListWorkspacesRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 453: opl.cloud.api.GetWorkspaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 454: opl.cloud.api.DeleteWorkspaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	255, // 455: opl.cloud.api.DeleteWorkspaceRpcRequest.body:type_name -> opl.cloud.api.DeleteWorkspaceRequest
-	186, // 456: opl.cloud.api.GetWorkspaceAccessRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 457: opl.cloud.api.GetWorkspaceModelsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 458: opl.cloud.api.UpdateWorkspaceModelsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	250, // 459: opl.cloud.api.UpdateWorkspaceModelsRpcRequest.body:type_name -> opl.cloud.api.UpdateWorkspaceModelsRequest
-	186, // 460: opl.cloud.api.ListDeploymentsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 461: opl.cloud.api.GetDeploymentRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 462: opl.cloud.api.UpdateWorkspaceVersionRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	252, // 463: opl.cloud.api.UpdateWorkspaceVersionRpcRequest.body:type_name -> opl.cloud.api.UpdateWorkspaceVersionRequest
-	186, // 464: opl.cloud.api.RollbackWorkspaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	253, // 465: opl.cloud.api.RollbackWorkspaceRpcRequest.body:type_name -> opl.cloud.api.RollbackWorkspaceRequest
-	186, // 466: opl.cloud.api.ResizeWorkspaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	254, // 467: opl.cloud.api.ResizeWorkspaceRpcRequest.body:type_name -> opl.cloud.api.ApplyQuoteRequest
-	186, // 468: opl.cloud.api.RenewWorkspaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	254, // 469: opl.cloud.api.RenewWorkspaceRpcRequest.body:type_name -> opl.cloud.api.ApplyQuoteRequest
-	186, // 470: opl.cloud.api.GetSubscriptionRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 471: opl.cloud.api.GetWorkspaceDeletionRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 472: opl.cloud.api.ListWorkspaceTransactionsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 473: opl.cloud.api.GetOperationRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	17,  // 474: opl.cloud.api.GetOperationRpcRequest.owner:type_name -> opl.cloud.api.OperationOwnerEnum
-	186, // 475: opl.cloud.api.GetWalletRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 476: opl.cloud.api.ListUsageRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	596, // 477: opl.cloud.api.ListUsageRpcRequest.query_from:type_name -> google.protobuf.Timestamp
-	596, // 478: opl.cloud.api.ListUsageRpcRequest.query_until:type_name -> google.protobuf.Timestamp
-	186, // 479: opl.cloud.api.GetUsageSummaryRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 480: opl.cloud.api.ListGatewayKeysRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 481: opl.cloud.api.CreateGatewayKeyRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	262, // 482: opl.cloud.api.CreateGatewayKeyRpcRequest.body:type_name -> opl.cloud.api.CreateGatewayKeyRequest
-	186, // 483: opl.cloud.api.RevealGatewayKeyRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 484: opl.cloud.api.RevokeGatewayKeyRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 485: opl.cloud.api.ListRechargeRecordsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 486: opl.cloud.api.ListTenantsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 487: opl.cloud.api.CreateTenantRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	194, // 488: opl.cloud.api.CreateTenantRpcRequest.body:type_name -> opl.cloud.api.CreateTenantRequest
-	186, // 489: opl.cloud.api.GetAdminTenantRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 490: opl.cloud.api.DeleteTenantRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	203, // 491: opl.cloud.api.DeleteTenantRpcRequest.body:type_name -> opl.cloud.api.DeleteTenantRequest
-	186, // 492: opl.cloud.api.BindTenantWalletRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	197, // 493: opl.cloud.api.BindTenantWalletRpcRequest.body:type_name -> opl.cloud.api.BindTenantWalletRequest
-	186, // 494: opl.cloud.api.SuspendTenantRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	202, // 495: opl.cloud.api.SuspendTenantRpcRequest.body:type_name -> opl.cloud.api.TenantActionRequest
-	186, // 496: opl.cloud.api.RestoreTenantRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	202, // 497: opl.cloud.api.RestoreTenantRpcRequest.body:type_name -> opl.cloud.api.TenantActionRequest
-	186, // 498: opl.cloud.api.GetTenantAssetCustodyRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 499: opl.cloud.api.ListAdminOperationsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	17,  // 500: opl.cloud.api.ListAdminOperationsRpcRequest.query_owner:type_name -> opl.cloud.api.OperationOwnerEnum
-	186, // 501: opl.cloud.api.ReconcileOperationRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	266, // 502: opl.cloud.api.ReconcileOperationRpcRequest.body:type_name -> opl.cloud.api.ReconcileOperationRequest
-	17,  // 503: opl.cloud.api.ReconcileOperationRpcRequest.owner:type_name -> opl.cloud.api.OperationOwnerEnum
-	186, // 504: opl.cloud.api.ListAuditEventsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 505: opl.cloud.api.ListReceiptsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 506: opl.cloud.api.GetReceiptRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 507: opl.cloud.api.ListQualificationsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 508: opl.cloud.api.ListRuntimeVersionsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 509: opl.cloud.api.ListWebuiVersionsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 510: opl.cloud.api.ListComputePlansRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 511: opl.cloud.api.ListStoragePlansRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 512: opl.cloud.api.ListModelsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 513: opl.cloud.api.RegisterRuntimeVersionRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	226, // 514: opl.cloud.api.RegisterRuntimeVersionRpcRequest.body:type_name -> opl.cloud.api.RegisterRuntimeVersionRequest
-	186, // 515: opl.cloud.api.SetRuntimeVersionStatusRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	228, // 516: opl.cloud.api.SetRuntimeVersionStatusRpcRequest.body:type_name -> opl.cloud.api.CatalogStatusRequest
-	186, // 517: opl.cloud.api.RegisterWebuiVersionRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	227, // 518: opl.cloud.api.RegisterWebuiVersionRpcRequest.body:type_name -> opl.cloud.api.RegisterWebuiVersionRequest
-	186, // 519: opl.cloud.api.SetWebuiVersionStatusRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	228, // 520: opl.cloud.api.SetWebuiVersionStatusRpcRequest.body:type_name -> opl.cloud.api.CatalogStatusRequest
-	186, // 521: opl.cloud.api.CreateComputePlanRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	231, // 522: opl.cloud.api.CreateComputePlanRpcRequest.body:type_name -> opl.cloud.api.CreateComputePlanRequest
-	186, // 523: opl.cloud.api.SetComputePlanAvailabilityRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	233, // 524: opl.cloud.api.SetComputePlanAvailabilityRpcRequest.body:type_name -> opl.cloud.api.PlanAvailabilityRequest
-	186, // 525: opl.cloud.api.CreateStoragePlanRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	232, // 526: opl.cloud.api.CreateStoragePlanRpcRequest.body:type_name -> opl.cloud.api.CreateStoragePlanRequest
-	186, // 527: opl.cloud.api.SetStoragePlanAvailabilityRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	233, // 528: opl.cloud.api.SetStoragePlanAvailabilityRpcRequest.body:type_name -> opl.cloud.api.PlanAvailabilityRequest
-	186, // 529: opl.cloud.api.ListPricePolicyVersionsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 530: opl.cloud.api.CreatePricePolicyVersionRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	235, // 531: opl.cloud.api.CreatePricePolicyVersionRpcRequest.body:type_name -> opl.cloud.api.CreatePricePolicyRequest
-	186, // 532: opl.cloud.api.ListRefundPolicyVersionsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 533: opl.cloud.api.CreateRefundPolicyVersionRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	237, // 534: opl.cloud.api.CreateRefundPolicyVersionRpcRequest.body:type_name -> opl.cloud.api.CreateRefundPolicyRequest
-	186, // 535: opl.cloud.api.ListRetentionPolicyVersionsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 536: opl.cloud.api.CreateRetentionPolicyVersionRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	239, // 537: opl.cloud.api.CreateRetentionPolicyVersionRpcRequest.body:type_name -> opl.cloud.api.CreateRetentionPolicyRequest
-	186, // 538: opl.cloud.api.AdoptWorkspaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	296, // 539: opl.cloud.api.AdoptWorkspaceRpcRequest.body:type_name -> opl.cloud.api.AdoptWorkspaceRequest
-	186, // 540: opl.cloud.api.GetBuildRuntimePolicyRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 541: opl.cloud.api.SetBuildRuntimePolicyRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	298, // 542: opl.cloud.api.SetBuildRuntimePolicyRpcRequest.body:type_name -> opl.cloud.api.SetBuildRuntimePolicyRequest
-	186, // 543: opl.cloud.api.ListPublisherNamespacesRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 544: opl.cloud.api.CreatePublisherNamespaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	316, // 545: opl.cloud.api.CreatePublisherNamespaceRpcRequest.body:type_name -> opl.cloud.api.CreatePublisherNamespaceRequest
-	186, // 546: opl.cloud.api.RevokePublisherNamespaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	317, // 547: opl.cloud.api.RevokePublisherNamespaceRpcRequest.body:type_name -> opl.cloud.api.RevokePublisherNamespaceRequest
-	186, // 548: opl.cloud.api.ReenableTenantRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	319, // 549: opl.cloud.api.ReenableTenantRpcRequest.body:type_name -> opl.cloud.api.ReenableTenantRequest
-	186, // 550: opl.cloud.api.GetTenantLifecycleOperationRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 551: opl.cloud.api.UpdateRenewalSettingsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	342, // 552: opl.cloud.api.UpdateRenewalSettingsRpcRequest.body:type_name -> opl.cloud.api.UpdateRenewalSettingsRequest
-	186, // 553: opl.cloud.api.RevealWorkspaceApplicationCredentialsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 554: opl.cloud.api.ListPlanChangesRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 555: opl.cloud.api.GetPlanChangeRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 556: opl.cloud.api.CancelPlanChangeRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	354, // 557: opl.cloud.api.CancelPlanChangeRpcRequest.body:type_name -> opl.cloud.api.CancelPlanChangeRequest
-	186, // 558: opl.cloud.api.OwnerOperationRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 559: opl.cloud.api.BuildInputRequest.context:type_name -> opl.cloud.api.CallContext
-	467, // 560: opl.cloud.api.BuildInputSnapshot.package_object:type_name -> opl.cloud.api.SourceObjectReference
-	300, // 561: opl.cloud.api.BuildInputSnapshot.runtime_artifact:type_name -> opl.cloud.api.ArtifactReference
-	300, // 562: opl.cloud.api.BuildInputSnapshot.webui_artifact:type_name -> opl.cloud.api.ArtifactReference
-	310, // 563: opl.cloud.api.BuildInputSnapshot.runtime_contract:type_name -> opl.cloud.api.RuntimePublisherContract
-	311, // 564: opl.cloud.api.BuildInputSnapshot.webui_contract:type_name -> opl.cloud.api.WebuiPublisherContract
-	313, // 565: opl.cloud.api.BuildInputSnapshot.runtime_contract_reference:type_name -> opl.cloud.api.PublisherContractReference
-	313, // 566: opl.cloud.api.BuildInputSnapshot.webui_contract_reference:type_name -> opl.cloud.api.PublisherContractReference
-	186, // 567: opl.cloud.api.ReferenceClaimRequest.context:type_name -> opl.cloud.api.CallContext
-	470, // 568: opl.cloud.api.ReferenceClaimRequest.target:type_name -> opl.cloud.api.ReferenceTarget
-	13,  // 569: opl.cloud.api.ReferenceClaimRequest.claimant_owner:type_name -> opl.cloud.api.OwnerEnum
-	13,  // 570: opl.cloud.api.OwnerCommitEvidence.owner:type_name -> opl.cloud.api.OwnerEnum
-	596, // 571: opl.cloud.api.OwnerCommitEvidence.accepted_at:type_name -> google.protobuf.Timestamp
-	485, // 572: opl.cloud.api.OwnerCommitEvidence.scope:type_name -> opl.cloud.api.AuthorizationScope
-	18,  // 573: opl.cloud.api.OwnerCommitEvidence.accepted_action:type_name -> opl.cloud.api.AuthorizationActionEnum
-	486, // 574: opl.cloud.api.OwnerCommitEvidence.authorization_resource:type_name -> opl.cloud.api.AuthorizationResource
-	486, // 575: opl.cloud.api.OwnerCommitEvidence.continuation_resources:type_name -> opl.cloud.api.AuthorizationResource
-	186, // 576: opl.cloud.api.BindReferenceRequest.context:type_name -> opl.cloud.api.CallContext
-	472, // 577: opl.cloud.api.BindReferenceRequest.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
-	13,  // 578: opl.cloud.api.ReleaseEvidence.owner:type_name -> opl.cloud.api.OwnerEnum
-	2,   // 579: opl.cloud.api.ReleaseEvidence.terminal_status:type_name -> opl.cloud.api.TerminalOperationStatus
-	186, // 580: opl.cloud.api.ReleaseReferenceRequest.context:type_name -> opl.cloud.api.CallContext
-	474, // 581: opl.cloud.api.ReleaseReferenceRequest.release_evidence:type_name -> opl.cloud.api.ReleaseEvidence
-	470, // 582: opl.cloud.api.ReferenceClaim.target:type_name -> opl.cloud.api.ReferenceTarget
-	13,  // 583: opl.cloud.api.ReferenceClaim.claimant_owner:type_name -> opl.cloud.api.OwnerEnum
-	1,   // 584: opl.cloud.api.ReferenceClaim.state:type_name -> opl.cloud.api.ReferenceClaimState
-	596, // 585: opl.cloud.api.ReferenceClaim.acquired_at:type_name -> google.protobuf.Timestamp
-	596, // 586: opl.cloud.api.ReferenceClaim.released_at:type_name -> google.protobuf.Timestamp
-	186, // 587: opl.cloud.api.ReadClaimUsageRequest.context:type_name -> opl.cloud.api.CallContext
-	13,  // 588: opl.cloud.api.ClaimUsageEvidence.owner:type_name -> opl.cloud.api.OwnerEnum
-	20,  // 589: opl.cloud.api.ClaimUsageEvidence.operation_status:type_name -> opl.cloud.api.OperationStatusEnum
-	0,   // 590: opl.cloud.api.ClaimUsageEvidence.outcome:type_name -> opl.cloud.api.Observation
-	596, // 591: opl.cloud.api.ClaimUsageEvidence.observed_at:type_name -> google.protobuf.Timestamp
-	186, // 592: opl.cloud.api.ResolvePublisherContractRequest.context:type_name -> opl.cloud.api.CallContext
-	313, // 593: opl.cloud.api.ResolvePublisherContractRequest.reference:type_name -> opl.cloud.api.PublisherContractReference
-	313, // 594: opl.cloud.api.ResolvedPublisherContract.reference:type_name -> opl.cloud.api.PublisherContractReference
-	312, // 595: opl.cloud.api.ResolvedPublisherContract.contract:type_name -> opl.cloud.api.PublisherContract
-	300, // 596: opl.cloud.api.ResolvedPublisherContract.image:type_name -> opl.cloud.api.ArtifactReference
-	0,   // 597: opl.cloud.api.ResolvedPublisherContract.outcome:type_name -> opl.cloud.api.Observation
-	186, // 598: opl.cloud.api.ReadBuildArtifactRequest.context:type_name -> opl.cloud.api.CallContext
-	469, // 599: opl.cloud.api.BuildArtifactReadback.input:type_name -> opl.cloud.api.BuildInputSnapshot
-	300, // 600: opl.cloud.api.BuildArtifactReadback.artifact:type_name -> opl.cloud.api.ArtifactReference
-	218, // 601: opl.cloud.api.BuildArtifactReadback.model_requirements:type_name -> opl.cloud.api.ModelRequirement
-	219, // 602: opl.cloud.api.BuildArtifactReadback.data_compatibility:type_name -> opl.cloud.api.DataCompatibility
-	0,   // 603: opl.cloud.api.BuildArtifactReadback.outcome:type_name -> opl.cloud.api.Observation
-	314, // 604: opl.cloud.api.BuildArtifactReadback.deployment_descriptor:type_name -> opl.cloud.api.DeploymentDescriptor
-	483, // 605: opl.cloud.api.AuthorizationScope.platform:type_name -> opl.cloud.api.PlatformScope
-	484, // 606: opl.cloud.api.AuthorizationScope.tenant:type_name -> opl.cloud.api.TenantScope
-	3,   // 607: opl.cloud.api.AuthorizationResource.kind:type_name -> opl.cloud.api.AuthorizationResourceKind
-	485, // 608: opl.cloud.api.AuthorizationRequest.scope:type_name -> opl.cloud.api.AuthorizationScope
-	13,  // 609: opl.cloud.api.AuthorizationRequest.audience_owner:type_name -> opl.cloud.api.OwnerEnum
-	18,  // 610: opl.cloud.api.AuthorizationRequest.action:type_name -> opl.cloud.api.AuthorizationActionEnum
-	486, // 611: opl.cloud.api.AuthorizationRequest.resource:type_name -> opl.cloud.api.AuthorizationResource
-	4,   // 612: opl.cloud.api.AuthorizationDecision.result:type_name -> opl.cloud.api.AuthorizationResult
-	5,   // 613: opl.cloud.api.AuthorizationDecision.issuer:type_name -> opl.cloud.api.AuthorizationIssuer
-	485, // 614: opl.cloud.api.AuthorizationDecision.scope:type_name -> opl.cloud.api.AuthorizationScope
-	13,  // 615: opl.cloud.api.AuthorizationDecision.audience_owner:type_name -> opl.cloud.api.OwnerEnum
-	18,  // 616: opl.cloud.api.AuthorizationDecision.action:type_name -> opl.cloud.api.AuthorizationActionEnum
-	486, // 617: opl.cloud.api.AuthorizationDecision.resource:type_name -> opl.cloud.api.AuthorizationResource
-	596, // 618: opl.cloud.api.AuthorizationDecision.issued_at:type_name -> google.protobuf.Timestamp
-	596, // 619: opl.cloud.api.AuthorizationDecision.expires_at:type_name -> google.protobuf.Timestamp
-	12,  // 620: opl.cloud.api.AuthorizationDecision.denial_code:type_name -> opl.cloud.api.ErrorCodeEnum
-	13,  // 621: opl.cloud.api.GetAuthorizationContextRequest.expected_audience_owner:type_name -> opl.cloud.api.OwnerEnum
-	18,  // 622: opl.cloud.api.GetAuthorizationContextRequest.expected_action:type_name -> opl.cloud.api.AuthorizationActionEnum
-	486, // 623: opl.cloud.api.GetAuthorizationContextRequest.expected_resource:type_name -> opl.cloud.api.AuthorizationResource
-	472, // 624: opl.cloud.api.AcceptedOperationGrantRequest.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
-	18,  // 625: opl.cloud.api.AcceptedOperationGrantRequest.allowed_actions:type_name -> opl.cloud.api.AuthorizationActionEnum
-	485, // 626: opl.cloud.api.AcceptedOperationGrant.scope:type_name -> opl.cloud.api.AuthorizationScope
-	13,  // 627: opl.cloud.api.AcceptedOperationGrant.accepted_operation_owner:type_name -> opl.cloud.api.OwnerEnum
-	18,  // 628: opl.cloud.api.AcceptedOperationGrant.accepted_action:type_name -> opl.cloud.api.AuthorizationActionEnum
-	18,  // 629: opl.cloud.api.AcceptedOperationGrant.allowed_actions:type_name -> opl.cloud.api.AuthorizationActionEnum
-	6,   // 630: opl.cloud.api.AcceptedOperationGrant.mode:type_name -> opl.cloud.api.AcceptedGrantMode
-	596, // 631: opl.cloud.api.AcceptedOperationGrant.issued_at:type_name -> google.protobuf.Timestamp
-	596, // 632: opl.cloud.api.AcceptedOperationGrant.expires_at:type_name -> google.protobuf.Timestamp
-	596, // 633: opl.cloud.api.AcceptedOperationGrant.revoked_at:type_name -> google.protobuf.Timestamp
-	596, // 634: opl.cloud.api.AcceptedOperationGrant.obligation_completed_at:type_name -> google.protobuf.Timestamp
-	13,  // 635: opl.cloud.api.ReadOwnerCommitRequest.owner:type_name -> opl.cloud.api.OwnerEnum
-	186, // 636: opl.cloud.api.ReadRenewalConsentRequest.context:type_name -> opl.cloud.api.CallContext
-	596, // 637: opl.cloud.api.RenewalConsentReadback.accepted_at:type_name -> google.protobuf.Timestamp
-	0,   // 638: opl.cloud.api.RenewalConsentReadback.outcome:type_name -> opl.cloud.api.Observation
-	186, // 639: opl.cloud.api.AdmissionRequest.context:type_name -> opl.cloud.api.CallContext
-	241, // 640: opl.cloud.api.AdmissionRequest.model_selections:type_name -> opl.cloud.api.ModelSelection
-	0,   // 641: opl.cloud.api.AdmissionResult.outcome:type_name -> opl.cloud.api.Observation
-	596, // 642: opl.cloud.api.AdmissionResult.expires_at:type_name -> google.protobuf.Timestamp
-	186, // 643: opl.cloud.api.AcceptQuoteRequest.context:type_name -> opl.cloud.api.CallContext
-	245, // 644: opl.cloud.api.QuoteAcceptance.quote:type_name -> opl.cloud.api.Quote
-	508, // 645: opl.cloud.api.QuoteAcceptance.resource_plan:type_name -> opl.cloud.api.ResourcePlanSnapshot
-	186, // 646: opl.cloud.api.QuoteResourcePlanRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 647: opl.cloud.api.WalletBindingCommand.context:type_name -> opl.cloud.api.CallContext
-	0,   // 648: opl.cloud.api.WalletBindingReadback.outcome:type_name -> opl.cloud.api.Observation
-	186, // 649: opl.cloud.api.WalletDebitCommand.context:type_name -> opl.cloud.api.CallContext
-	186, // 650: opl.cloud.api.WalletRefundCommand.context:type_name -> opl.cloud.api.CallContext
-	186, // 651: opl.cloud.api.WalletReadbackRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 652: opl.cloud.api.ManagedKeyCommand.context:type_name -> opl.cloud.api.CallContext
-	596, // 653: opl.cloud.api.ManagedKeyBinding.expires_at:type_name -> google.protobuf.Timestamp
-	186, // 654: opl.cloud.api.ManagedKeyRevoke.context:type_name -> opl.cloud.api.CallContext
-	186, // 655: opl.cloud.api.ResourceAdmissionRequest.context:type_name -> opl.cloud.api.CallContext
-	508, // 656: opl.cloud.api.ResourceAdmissionRequest.plan:type_name -> opl.cloud.api.ResourcePlanSnapshot
-	186, // 657: opl.cloud.api.EnsureResourcesCommand.context:type_name -> opl.cloud.api.CallContext
-	508, // 658: opl.cloud.api.EnsureResourcesCommand.plan:type_name -> opl.cloud.api.ResourcePlanSnapshot
-	498, // 659: opl.cloud.api.EnsureResourcesCommand.quote_acceptance:type_name -> opl.cloud.api.QuoteAcceptance
-	186, // 660: opl.cloud.api.MutateResourcesCommand.context:type_name -> opl.cloud.api.CallContext
-	186, // 661: opl.cloud.api.ResizeResourcesCommand.context:type_name -> opl.cloud.api.CallContext
-	508, // 662: opl.cloud.api.ResizeResourcesCommand.target:type_name -> opl.cloud.api.ResourcePlanSnapshot
-	559, // 663: opl.cloud.api.ResizeResourcesCommand.funding_evidence:type_name -> opl.cloud.api.PlanChangeFundingEvidence
-	568, // 664: opl.cloud.api.ResizeResourcesCommand.execution_plan:type_name -> opl.cloud.api.ProviderPlanChangeExecutionPlanReference
-	186, // 665: opl.cloud.api.RenewResourcesCommand.context:type_name -> opl.cloud.api.CallContext
-	186, // 666: opl.cloud.api.ResourceReadbackRequest.context:type_name -> opl.cloud.api.CallContext
-	0,   // 667: opl.cloud.api.ResourceReadback.outcome:type_name -> opl.cloud.api.Observation
-	515, // 668: opl.cloud.api.ResourceReadback.resources:type_name -> opl.cloud.api.ResourceFact
-	596, // 669: opl.cloud.api.ResourceReadback.observed_at:type_name -> google.protobuf.Timestamp
-	516, // 670: opl.cloud.api.ResourceReadback.execution_resources:type_name -> opl.cloud.api.ResourceExecutionBinding
-	518, // 671: opl.cloud.api.ResourceReadback.application_placement:type_name -> opl.cloud.api.ApplicationExecutionPlacement
-	186, // 672: opl.cloud.api.SecretBindingCommand.context:type_name -> opl.cloud.api.CallContext
-	0,   // 673: opl.cloud.api.SecretBindingReadback.outcome:type_name -> opl.cloud.api.Observation
-	186, // 674: opl.cloud.api.SecretBindingRebindCommand.context:type_name -> opl.cloud.api.CallContext
-	0,   // 675: opl.cloud.api.SecretBindingRebindReadback.outcome:type_name -> opl.cloud.api.Observation
-	186, // 676: opl.cloud.api.ManagedSecretCommand.context:type_name -> opl.cloud.api.CallContext
-	186, // 677: opl.cloud.api.RuntimeReservationCommand.context:type_name -> opl.cloud.api.CallContext
-	300, // 678: opl.cloud.api.RuntimeReservationCommand.artifact:type_name -> opl.cloud.api.ArtifactReference
-	314, // 679: opl.cloud.api.RuntimeReservationCommand.deployment_descriptor:type_name -> opl.cloud.api.DeploymentDescriptor
-	242, // 680: opl.cloud.api.RuntimeReservationCommand.application_selection:type_name -> opl.cloud.api.WorkspaceApplicationSelection
-	300, // 681: opl.cloud.api.RuntimeReservation.artifact:type_name -> opl.cloud.api.ArtifactReference
-	186, // 682: opl.cloud.api.RuntimeDeployCommand.context:type_name -> opl.cloud.api.CallContext
-	314, // 683: opl.cloud.api.RuntimeDeployCommand.deployment_descriptor:type_name -> opl.cloud.api.DeploymentDescriptor
-	241, // 684: opl.cloud.api.RuntimeDeployCommand.model_selections:type_name -> opl.cloud.api.ModelSelection
-	219, // 685: opl.cloud.api.RuntimeDeployCommand.data_compatibility:type_name -> opl.cloud.api.DataCompatibility
-	242, // 686: opl.cloud.api.RuntimeDeployCommand.application_selection:type_name -> opl.cloud.api.WorkspaceApplicationSelection
-	527, // 687: opl.cloud.api.RuntimeDeployCommand.managed_key_binding:type_name -> opl.cloud.api.RuntimeManagedKeyBinding
-	186, // 688: opl.cloud.api.RuntimeReadbackRequest.context:type_name -> opl.cloud.api.CallContext
-	7,   // 689: opl.cloud.api.RuntimeReadback.state:type_name -> opl.cloud.api.AgentRuntimeObservationState
-	300, // 690: opl.cloud.api.RuntimeReadback.artifact:type_name -> opl.cloud.api.ArtifactReference
-	0,   // 691: opl.cloud.api.RuntimeReadback.outcome:type_name -> opl.cloud.api.Observation
-	596, // 692: opl.cloud.api.RuntimeReadback.observed_at:type_name -> google.protobuf.Timestamp
-	343, // 693: opl.cloud.api.RuntimeReadback.application_entry:type_name -> opl.cloud.api.WorkspaceApplicationEntry
-	186, // 694: opl.cloud.api.RuntimeReloadCommand.context:type_name -> opl.cloud.api.CallContext
-	241, // 695: opl.cloud.api.RuntimeReloadCommand.selections:type_name -> opl.cloud.api.ModelSelection
-	527, // 696: opl.cloud.api.RuntimeReloadCommand.managed_key_binding:type_name -> opl.cloud.api.RuntimeManagedKeyBinding
-	186, // 697: opl.cloud.api.RuntimeStopCommand.context:type_name -> opl.cloud.api.CallContext
-	186, // 698: opl.cloud.api.ReadApplicationCredentialsRequest.context:type_name -> opl.cloud.api.CallContext
-	534, // 699: opl.cloud.api.RouteRevisionPrecondition.require_absent:type_name -> opl.cloud.api.RouteAbsence
-	186, // 700: opl.cloud.api.FenceRouteEpochCommand.context:type_name -> opl.cloud.api.CallContext
-	535, // 701: opl.cloud.api.FenceRouteEpochCommand.revision_precondition:type_name -> opl.cloud.api.RouteRevisionPrecondition
-	186, // 702: opl.cloud.api.RouteActivateCommand.context:type_name -> opl.cloud.api.CallContext
-	535, // 703: opl.cloud.api.RouteActivateCommand.revision_precondition:type_name -> opl.cloud.api.RouteRevisionPrecondition
-	186, // 704: opl.cloud.api.RouteObserveRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 705: opl.cloud.api.RouteRollbackCommand.context:type_name -> opl.cloud.api.CallContext
-	535, // 706: opl.cloud.api.RouteRollbackCommand.revision_precondition:type_name -> opl.cloud.api.RouteRevisionPrecondition
-	0,   // 707: opl.cloud.api.RouteReadback.observation:type_name -> opl.cloud.api.Observation
-	596, // 708: opl.cloud.api.RouteReadback.observed_at:type_name -> google.protobuf.Timestamp
-	12,  // 709: opl.cloud.api.RouteReadback.error_code:type_name -> opl.cloud.api.ErrorCodeEnum
-	186, // 710: opl.cloud.api.TenantWorkspaceLifecycleCommand.context:type_name -> opl.cloud.api.CallContext
-	338, // 711: opl.cloud.api.TenantWorkspaceLifecycleReadback.workspace_actions:type_name -> opl.cloud.api.TenantWorkspaceAction
-	0,   // 712: opl.cloud.api.TenantWorkspaceLifecycleReadback.outcome:type_name -> opl.cloud.api.Observation
-	339, // 713: opl.cloud.api.TenantWorkspaceLifecycleReadback.skipped:type_name -> opl.cloud.api.TenantWorkspaceSkip
-	186, // 714: opl.cloud.api.ResumeTenantWorkspacesRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 715: opl.cloud.api.AppendReceiptRequest.context:type_name -> opl.cloud.api.CallContext
-	265, // 716: opl.cloud.api.AppendReceiptRequest.receipt:type_name -> opl.cloud.api.Receipt
-	498, // 717: opl.cloud.api.AppendReceiptRequest.quote_acceptance:type_name -> opl.cloud.api.QuoteAcceptance
-	472, // 718: opl.cloud.api.AppendReceiptRequest.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
-	258, // 719: opl.cloud.api.AppendReceiptRequest.wallet_operation:type_name -> opl.cloud.api.WalletOperation
-	186, // 720: opl.cloud.api.GetReceiptByReferenceRequest.context:type_name -> opl.cloud.api.CallContext
-	265, // 721: opl.cloud.api.LocalNoChargeReceiptEvidence.receipt:type_name -> opl.cloud.api.Receipt
-	498, // 722: opl.cloud.api.LocalNoChargeReceiptEvidence.quote_acceptance:type_name -> opl.cloud.api.QuoteAcceptance
-	472, // 723: opl.cloud.api.LocalNoChargeReceiptEvidence.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
-	265, // 724: opl.cloud.api.WalletActionReceiptEvidence.receipt:type_name -> opl.cloud.api.Receipt
-	498, // 725: opl.cloud.api.WalletActionReceiptEvidence.quote_acceptance:type_name -> opl.cloud.api.QuoteAcceptance
-	258, // 726: opl.cloud.api.WalletActionReceiptEvidence.wallet_operation:type_name -> opl.cloud.api.WalletOperation
-	472, // 727: opl.cloud.api.WalletActionReceiptEvidence.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
-	265, // 728: opl.cloud.api.ProviderActionReceiptEvidence.receipt:type_name -> opl.cloud.api.Receipt
-	472, // 729: opl.cloud.api.ProviderActionReceiptEvidence.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
-	186, // 730: opl.cloud.api.ReadSubscriptionPlanStateRequest.context:type_name -> opl.cloud.api.CallContext
-	596, // 731: opl.cloud.api.SubscriptionPlanState.period_start:type_name -> google.protobuf.Timestamp
-	596, // 732: opl.cloud.api.SubscriptionPlanState.period_end:type_name -> google.protobuf.Timestamp
-	596, // 733: opl.cloud.api.SubscriptionPlanState.next_period_start:type_name -> google.protobuf.Timestamp
-	596, // 734: opl.cloud.api.SubscriptionPlanState.next_period_end:type_name -> google.protobuf.Timestamp
-	75,  // 735: opl.cloud.api.SubscriptionPlanState.renewal_mode:type_name -> opl.cloud.api.SubscriptionRenewalModeEnum
-	0,   // 736: opl.cloud.api.SubscriptionPlanState.outcome:type_name -> opl.cloud.api.Observation
-	571, // 737: opl.cloud.api.SubscriptionPlanState.source_financial_snapshot:type_name -> opl.cloud.api.SourceFinancialSnapshot
-	186, // 738: opl.cloud.api.ReadPlanChangeRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 739: opl.cloud.api.ReadNextPeriodObligationRequest.context:type_name -> opl.cloud.api.CallContext
-	596, // 740: opl.cloud.api.ReadNextPeriodObligationRequest.period_start:type_name -> google.protobuf.Timestamp
-	596, // 741: opl.cloud.api.NextPeriodObligation.period_start:type_name -> google.protobuf.Timestamp
-	596, // 742: opl.cloud.api.NextPeriodObligation.period_end:type_name -> google.protobuf.Timestamp
-	8,   // 743: opl.cloud.api.NextPeriodObligation.status:type_name -> opl.cloud.api.PeriodObligationStatus
-	0,   // 744: opl.cloud.api.NextPeriodObligation.outcome:type_name -> opl.cloud.api.Observation
-	186, // 745: opl.cloud.api.ReadPlanChangeFailureRequest.context:type_name -> opl.cloud.api.CallContext
-	186, // 746: opl.cloud.api.PlanTransitionRequest.context:type_name -> opl.cloud.api.CallContext
-	165, // 747: opl.cloud.api.ApprovedPlanTransition.kind:type_name -> opl.cloud.api.PlanChangeKindEnum
-	508, // 748: opl.cloud.api.ApprovedPlanTransition.source:type_name -> opl.cloud.api.ResourcePlanSnapshot
-	508, // 749: opl.cloud.api.ApprovedPlanTransition.target:type_name -> opl.cloud.api.ResourcePlanSnapshot
-	9,   // 750: opl.cloud.api.ApprovedPlanTransition.reversibility:type_name -> opl.cloud.api.TransitionReversibility
-	596, // 751: opl.cloud.api.ApprovedPlanTransition.observed_at:type_name -> google.protobuf.Timestamp
-	596, // 752: opl.cloud.api.ApprovedPlanTransition.expires_at:type_name -> google.protobuf.Timestamp
-	0,   // 753: opl.cloud.api.ApprovedPlanTransition.outcome:type_name -> opl.cloud.api.Observation
-	568, // 754: opl.cloud.api.ApprovedPlanTransition.execution_plan:type_name -> opl.cloud.api.ProviderPlanChangeExecutionPlanReference
-	557, // 755: opl.cloud.api.PlanChangeFundingEvidence.confirmed_charge:type_name -> opl.cloud.api.ConfirmedPlanChangeCharge
-	558, // 756: opl.cloud.api.PlanChangeFundingEvidence.zero_amount:type_name -> opl.cloud.api.ZeroAmountPlanChangeEvidence
-	186, // 757: opl.cloud.api.PlanChangeSupplementChargeCommand.context:type_name -> opl.cloud.api.CallContext
-	596, // 758: opl.cloud.api.PlanChangeSupplementChargeCommand.coverage_start:type_name -> google.protobuf.Timestamp
-	596, // 759: opl.cloud.api.PlanChangeSupplementChargeCommand.coverage_end:type_name -> google.protobuf.Timestamp
-	186, // 760: opl.cloud.api.ScheduledPeriodChargeCommand.context:type_name -> opl.cloud.api.CallContext
-	596, // 761: opl.cloud.api.ScheduledPeriodChargeCommand.period_start:type_name -> google.protobuf.Timestamp
-	596, // 762: opl.cloud.api.ScheduledPeriodChargeCommand.period_end:type_name -> google.protobuf.Timestamp
-	186, // 763: opl.cloud.api.PlanChangeFailureRefundCommand.context:type_name -> opl.cloud.api.CallContext
-	356, // 764: opl.cloud.api.PlanChangeFailureRefundCommand.evidence:type_name -> opl.cloud.api.SupplementalRefundEvidence
-	186, // 765: opl.cloud.api.SupplementDeletionRefundCommand.context:type_name -> opl.cloud.api.CallContext
-	356, // 766: opl.cloud.api.SupplementDeletionRefundCommand.evidence:type_name -> opl.cloud.api.SupplementalRefundEvidence
-	186, // 767: opl.cloud.api.RestorePlanChangeRuntimeCommand.context:type_name -> opl.cloud.api.CallContext
-	508, // 768: opl.cloud.api.RestorePlanChangeRuntimeCommand.target:type_name -> opl.cloud.api.ResourcePlanSnapshot
-	530, // 769: opl.cloud.api.PlanChangeRuntimeReadback.runtime:type_name -> opl.cloud.api.RuntimeReadback
-	517, // 770: opl.cloud.api.PlanChangeRuntimeReadback.resources:type_name -> opl.cloud.api.ResourceReadback
-	0,   // 771: opl.cloud.api.PlanChangeRuntimeReadback.outcome:type_name -> opl.cloud.api.Observation
-	186, // 772: opl.cloud.api.AppendPlanChangeReceiptRequest.context:type_name -> opl.cloud.api.CallContext
-	86,  // 773: opl.cloud.api.AppendPlanChangeReceiptRequest.kind:type_name -> opl.cloud.api.ReceiptKindEnum
-	355, // 774: opl.cloud.api.AppendPlanChangeReceiptRequest.evidence:type_name -> opl.cloud.api.PlanChangeEvidence
-	351, // 775: opl.cloud.api.AppendPlanChangeReceiptRequest.accepted_calculation:type_name -> opl.cloud.api.PlanChangeCalculation
-	186, // 776: opl.cloud.api.AppendPlanChangeRefundReceiptRequest.context:type_name -> opl.cloud.api.CallContext
-	86,  // 777: opl.cloud.api.AppendPlanChangeRefundReceiptRequest.kind:type_name -> opl.cloud.api.ReceiptKindEnum
-	356, // 778: opl.cloud.api.AppendPlanChangeRefundReceiptRequest.evidence:type_name -> opl.cloud.api.SupplementalRefundEvidence
-	258, // 779: opl.cloud.api.AppendPlanChangeRefundReceiptRequest.wallet_readback:type_name -> opl.cloud.api.WalletOperation
-	10,  // 780: opl.cloud.api.ProviderPlanChangeExecutionPlanReference.strategy:type_name -> opl.cloud.api.PlanChangeExecutionStrategy
-	186, // 781: opl.cloud.api.ReadProviderExecutionPlanRequest.context:type_name -> opl.cloud.api.CallContext
-	568, // 782: opl.cloud.api.ReadProviderExecutionPlanRequest.reference:type_name -> opl.cloud.api.ProviderPlanChangeExecutionPlanReference
-	568, // 783: opl.cloud.api.ProviderPlanChangeExecutionPlan.reference:type_name -> opl.cloud.api.ProviderPlanChangeExecutionPlanReference
-	508, // 784: opl.cloud.api.ProviderPlanChangeExecutionPlan.source:type_name -> opl.cloud.api.ResourcePlanSnapshot
-	508, // 785: opl.cloud.api.ProviderPlanChangeExecutionPlan.target:type_name -> opl.cloud.api.ResourcePlanSnapshot
-	11,  // 786: opl.cloud.api.ProviderPlanChangeExecutionPlan.storage_action:type_name -> opl.cloud.api.PlanChangeStorageAction
-	596, // 787: opl.cloud.api.ProviderPlanChangeExecutionPlan.approved_at:type_name -> google.protobuf.Timestamp
-	596, // 788: opl.cloud.api.WalletOperationObservedEvent.coverage_start:type_name -> google.protobuf.Timestamp
-	596, // 789: opl.cloud.api.WalletOperationObservedEvent.coverage_end:type_name -> google.protobuf.Timestamp
-	596, // 790: opl.cloud.api.WorkspaceDeletionConfirmedEvent.deleted_at:type_name -> google.protobuf.Timestamp
-	596, // 791: opl.cloud.api.TenantAccessRevokedEvent.restore_until:type_name -> google.protobuf.Timestamp
-	596, // 792: opl.cloud.api.TenantRestoredEvent.restored_at:type_name -> google.protobuf.Timestamp
-	596, // 793: opl.cloud.api.CatalogPolicyChangedEvent.valid_from:type_name -> google.protobuf.Timestamp
-	596, // 794: opl.cloud.api.TenantReenabledEvent.enabled_at:type_name -> google.protobuf.Timestamp
-	596, // 795: opl.cloud.api.PlanChangeStateChangedEvent.applied_at:type_name -> google.protobuf.Timestamp
-	596, // 796: opl.cloud.api.PeriodObligationChangedEvent.period_start:type_name -> google.protobuf.Timestamp
-	596, // 797: opl.cloud.api.PeriodObligationChangedEvent.period_end:type_name -> google.protobuf.Timestamp
-	596, // 798: opl.cloud.api.EventEnvelope.occurred_at:type_name -> google.protobuf.Timestamp
-	572, // 799: opl.cloud.api.EventEnvelope.package_uploaded:type_name -> opl.cloud.api.PackageUploadedEvent
-	573, // 800: opl.cloud.api.EventEnvelope.build_artifact_confirmed:type_name -> opl.cloud.api.BuildArtifactConfirmedEvent
-	574, // 801: opl.cloud.api.EventEnvelope.capability_version_registered:type_name -> opl.cloud.api.CapabilityVersionRegisteredEvent
-	575, // 802: opl.cloud.api.EventEnvelope.build_failed:type_name -> opl.cloud.api.BuildFailedEvent
-	576, // 803: opl.cloud.api.EventEnvelope.wallet_operation_observed:type_name -> opl.cloud.api.WalletOperationObservedEvent
-	577, // 804: opl.cloud.api.EventEnvelope.resources_observed:type_name -> opl.cloud.api.ResourcesObservedEvent
-	578, // 805: opl.cloud.api.EventEnvelope.runtime_readiness_observed:type_name -> opl.cloud.api.RuntimeReadinessObservedEvent
-	579, // 806: opl.cloud.api.EventEnvelope.workspace_state_changed:type_name -> opl.cloud.api.WorkspaceStateChangedEvent
-	580, // 807: opl.cloud.api.EventEnvelope.workspace_deletion_confirmed:type_name -> opl.cloud.api.WorkspaceDeletionConfirmedEvent
-	581, // 808: opl.cloud.api.EventEnvelope.tenant_access_revoked:type_name -> opl.cloud.api.TenantAccessRevokedEvent
-	582, // 809: opl.cloud.api.EventEnvelope.tenant_restored:type_name -> opl.cloud.api.TenantRestoredEvent
-	583, // 810: opl.cloud.api.EventEnvelope.receipt_recorded:type_name -> opl.cloud.api.ReceiptRecordedEvent
-	584, // 811: opl.cloud.api.EventEnvelope.catalog_policy_changed:type_name -> opl.cloud.api.CatalogPolicyChangedEvent
-	585, // 812: opl.cloud.api.EventEnvelope.tenant_reenabled:type_name -> opl.cloud.api.TenantReenabledEvent
-	586, // 813: opl.cloud.api.EventEnvelope.renewal_settings_changed:type_name -> opl.cloud.api.RenewalSettingsChangedEvent
-	587, // 814: opl.cloud.api.EventEnvelope.route_observed:type_name -> opl.cloud.api.RouteObservedEvent
-	588, // 815: opl.cloud.api.EventEnvelope.plan_change_state_changed:type_name -> opl.cloud.api.PlanChangeStateChangedEvent
-	589, // 816: opl.cloud.api.EventEnvelope.period_obligation_changed:type_name -> opl.cloud.api.PeriodObligationChangedEvent
-	590, // 817: opl.cloud.api.DeliverEventRequest.event:type_name -> opl.cloud.api.EventEnvelope
-	185, // 818: opl.cloud.api.WorkspaceAccessDecision.verdict:type_name -> opl.cloud.api.WorkspaceAccessVerdict
-	357, // 819: opl.cloud.api.TenantProductService.GetLoginContext:input_type -> opl.cloud.api.GetLoginContextRpcRequest
-	358, // 820: opl.cloud.api.TenantProductService.Login:input_type -> opl.cloud.api.LoginRpcRequest
-	359, // 821: opl.cloud.api.TenantProductService.GetSession:input_type -> opl.cloud.api.GetSessionRpcRequest
-	360, // 822: opl.cloud.api.TenantProductService.Logout:input_type -> opl.cloud.api.LogoutRpcRequest
-	361, // 823: opl.cloud.api.TenantProductService.GetTenant:input_type -> opl.cloud.api.GetTenantRpcRequest
-	362, // 824: opl.cloud.api.TenantProductService.ListMembers:input_type -> opl.cloud.api.ListMembersRpcRequest
-	363, // 825: opl.cloud.api.TenantProductService.ListInvitations:input_type -> opl.cloud.api.ListInvitationsRpcRequest
-	364, // 826: opl.cloud.api.TenantProductService.InviteMember:input_type -> opl.cloud.api.InviteMemberRpcRequest
-	365, // 827: opl.cloud.api.TenantProductService.AcceptInvitation:input_type -> opl.cloud.api.AcceptInvitationRpcRequest
-	366, // 828: opl.cloud.api.TenantProductService.RevokeInvitation:input_type -> opl.cloud.api.RevokeInvitationRpcRequest
-	367, // 829: opl.cloud.api.TenantProductService.UpdateMemberRole:input_type -> opl.cloud.api.UpdateMemberRoleRpcRequest
-	368, // 830: opl.cloud.api.TenantProductService.RemoveMember:input_type -> opl.cloud.api.RemoveMemberRpcRequest
-	420, // 831: opl.cloud.api.TenantProductService.ListTenants:input_type -> opl.cloud.api.ListTenantsRpcRequest
-	421, // 832: opl.cloud.api.TenantProductService.CreateTenant:input_type -> opl.cloud.api.CreateTenantRpcRequest
-	422, // 833: opl.cloud.api.TenantProductService.GetAdminTenant:input_type -> opl.cloud.api.GetAdminTenantRpcRequest
-	423, // 834: opl.cloud.api.TenantProductService.DeleteTenant:input_type -> opl.cloud.api.DeleteTenantRpcRequest
-	424, // 835: opl.cloud.api.TenantProductService.BindTenantWallet:input_type -> opl.cloud.api.BindTenantWalletRpcRequest
-	425, // 836: opl.cloud.api.TenantProductService.SuspendTenant:input_type -> opl.cloud.api.SuspendTenantRpcRequest
-	426, // 837: opl.cloud.api.TenantProductService.RestoreTenant:input_type -> opl.cloud.api.RestoreTenantRpcRequest
-	427, // 838: opl.cloud.api.TenantProductService.GetTenantAssetCustody:input_type -> opl.cloud.api.GetTenantAssetCustodyRpcRequest
-	430, // 839: opl.cloud.api.TenantProductService.ListAuditEvents:input_type -> opl.cloud.api.ListAuditEventsRpcRequest
-	459, // 840: opl.cloud.api.TenantProductService.ReenableTenant:input_type -> opl.cloud.api.ReenableTenantRpcRequest
-	460, // 841: opl.cloud.api.TenantProductService.GetTenantLifecycleOperation:input_type -> opl.cloud.api.GetTenantLifecycleOperationRpcRequest
-	369, // 842: opl.cloud.api.CapabilityProductService.ListNamespaces:input_type -> opl.cloud.api.ListNamespacesRpcRequest
-	370, // 843: opl.cloud.api.CapabilityProductService.CreateNamespace:input_type -> opl.cloud.api.CreateNamespaceRpcRequest
-	371, // 844: opl.cloud.api.CapabilityProductService.UpdateNamespace:input_type -> opl.cloud.api.UpdateNamespaceRpcRequest
-	372, // 845: opl.cloud.api.CapabilityProductService.ArchiveNamespace:input_type -> opl.cloud.api.ArchiveNamespaceRpcRequest
-	373, // 846: opl.cloud.api.CapabilityProductService.ListPackages:input_type -> opl.cloud.api.ListPackagesRpcRequest
-	374, // 847: opl.cloud.api.CapabilityProductService.CreatePackage:input_type -> opl.cloud.api.CreatePackageRpcRequest
-	375, // 848: opl.cloud.api.CapabilityProductService.GetPackage:input_type -> opl.cloud.api.GetPackageRpcRequest
-	376, // 849: opl.cloud.api.CapabilityProductService.UpdatePackage:input_type -> opl.cloud.api.UpdatePackageRpcRequest
-	377, // 850: opl.cloud.api.CapabilityProductService.ArchivePackage:input_type -> opl.cloud.api.ArchivePackageRpcRequest
-	378, // 851: opl.cloud.api.CapabilityProductService.CreateUpload:input_type -> opl.cloud.api.CreateUploadRpcRequest
-	379, // 852: opl.cloud.api.CapabilityProductService.GetUpload:input_type -> opl.cloud.api.GetUploadRpcRequest
-	380, // 853: opl.cloud.api.CapabilityProductService.CreateUploadPart:input_type -> opl.cloud.api.CreateUploadPartRpcRequest
-	381, // 854: opl.cloud.api.CapabilityProductService.CompleteUpload:input_type -> opl.cloud.api.CompleteUploadRpcRequest
-	382, // 855: opl.cloud.api.CapabilityProductService.ListPackageVersions:input_type -> opl.cloud.api.ListPackageVersionsRpcRequest
-	383, // 856: opl.cloud.api.CapabilityProductService.GetPackageVersion:input_type -> opl.cloud.api.GetPackageVersionRpcRequest
-	389, // 857: opl.cloud.api.CapabilityProductService.ListCapabilityVersions:input_type -> opl.cloud.api.ListCapabilityVersionsRpcRequest
-	390, // 858: opl.cloud.api.CapabilityProductService.GetCapabilityVersion:input_type -> opl.cloud.api.GetCapabilityVersionRpcRequest
-	391, // 859: opl.cloud.api.CapabilityProductService.DeleteCapabilityVersion:input_type -> opl.cloud.api.DeleteCapabilityVersionRpcRequest
-	392, // 860: opl.cloud.api.CapabilityProductService.PublishOfficialPackage:input_type -> opl.cloud.api.PublishOfficialPackageRpcRequest
-	435, // 861: opl.cloud.api.CapabilityProductService.ListWebuiVersions:input_type -> opl.cloud.api.ListWebuiVersionsRpcRequest
-	441, // 862: opl.cloud.api.CapabilityProductService.RegisterWebuiVersion:input_type -> opl.cloud.api.RegisterWebuiVersionRpcRequest
-	442, // 863: opl.cloud.api.CapabilityProductService.SetWebuiVersionStatus:input_type -> opl.cloud.api.SetWebuiVersionStatusRpcRequest
-	456, // 864: opl.cloud.api.CapabilityProductService.ListPublisherNamespaces:input_type -> opl.cloud.api.ListPublisherNamespacesRpcRequest
-	457, // 865: opl.cloud.api.CapabilityProductService.CreatePublisherNamespace:input_type -> opl.cloud.api.CreatePublisherNamespaceRpcRequest
-	458, // 866: opl.cloud.api.CapabilityProductService.RevokePublisherNamespace:input_type -> opl.cloud.api.RevokePublisherNamespaceRpcRequest
-	434, // 867: opl.cloud.api.RuntimeControlProductService.ListRuntimeVersions:input_type -> opl.cloud.api.ListRuntimeVersionsRpcRequest
-	454, // 868: opl.cloud.api.RuntimeControlProductService.GetBuildRuntimePolicy:input_type -> opl.cloud.api.GetBuildRuntimePolicyRpcRequest
-	455, // 869: opl.cloud.api.RuntimeControlProductService.SetBuildRuntimePolicy:input_type -> opl.cloud.api.SetBuildRuntimePolicyRpcRequest
-	439, // 870: opl.cloud.api.RuntimeControlProductService.RegisterRuntimeVersion:input_type -> opl.cloud.api.RegisterRuntimeVersionRpcRequest
-	440, // 871: opl.cloud.api.RuntimeControlProductService.SetRuntimeVersionStatus:input_type -> opl.cloud.api.SetRuntimeVersionStatusRpcRequest
-	384, // 872: opl.cloud.api.BuildProductService.CreateBuild:input_type -> opl.cloud.api.CreateBuildRpcRequest
-	385, // 873: opl.cloud.api.BuildProductService.ListBuilds:input_type -> opl.cloud.api.ListBuildsRpcRequest
-	386, // 874: opl.cloud.api.BuildProductService.GetBuild:input_type -> opl.cloud.api.GetBuildRpcRequest
-	387, // 875: opl.cloud.api.BuildProductService.ListBuildLogs:input_type -> opl.cloud.api.ListBuildLogsRpcRequest
-	388, // 876: opl.cloud.api.BuildProductService.RetryBuild:input_type -> opl.cloud.api.RetryBuildRpcRequest
-	393, // 877: opl.cloud.api.ResourceCatalogProductService.CreateQuote:input_type -> opl.cloud.api.CreateQuoteRpcRequest
-	394, // 878: opl.cloud.api.ResourceCatalogProductService.GetQuote:input_type -> opl.cloud.api.GetQuoteRpcRequest
-	436, // 879: opl.cloud.api.ResourceCatalogProductService.ListComputePlans:input_type -> opl.cloud.api.ListComputePlansRpcRequest
-	437, // 880: opl.cloud.api.ResourceCatalogProductService.ListStoragePlans:input_type -> opl.cloud.api.ListStoragePlansRpcRequest
-	443, // 881: opl.cloud.api.ResourceCatalogProductService.CreateComputePlan:input_type -> opl.cloud.api.CreateComputePlanRpcRequest
-	444, // 882: opl.cloud.api.ResourceCatalogProductService.SetComputePlanAvailability:input_type -> opl.cloud.api.SetComputePlanAvailabilityRpcRequest
-	445, // 883: opl.cloud.api.ResourceCatalogProductService.CreateStoragePlan:input_type -> opl.cloud.api.CreateStoragePlanRpcRequest
-	446, // 884: opl.cloud.api.ResourceCatalogProductService.SetStoragePlanAvailability:input_type -> opl.cloud.api.SetStoragePlanAvailabilityRpcRequest
-	447, // 885: opl.cloud.api.ResourceCatalogProductService.ListPricePolicyVersions:input_type -> opl.cloud.api.ListPricePolicyVersionsRpcRequest
-	448, // 886: opl.cloud.api.ResourceCatalogProductService.CreatePricePolicyVersion:input_type -> opl.cloud.api.CreatePricePolicyVersionRpcRequest
-	449, // 887: opl.cloud.api.ResourceCatalogProductService.ListRefundPolicyVersions:input_type -> opl.cloud.api.ListRefundPolicyVersionsRpcRequest
-	450, // 888: opl.cloud.api.ResourceCatalogProductService.CreateRefundPolicyVersion:input_type -> opl.cloud.api.CreateRefundPolicyVersionRpcRequest
-	451, // 889: opl.cloud.api.ResourceCatalogProductService.ListRetentionPolicyVersions:input_type -> opl.cloud.api.ListRetentionPolicyVersionsRpcRequest
-	452, // 890: opl.cloud.api.ResourceCatalogProductService.CreateRetentionPolicyVersion:input_type -> opl.cloud.api.CreateRetentionPolicyVersionRpcRequest
-	395, // 891: opl.cloud.api.WorkspaceProductService.CreateWorkspace:input_type -> opl.cloud.api.CreateWorkspaceRpcRequest
-	396, // 892: opl.cloud.api.WorkspaceProductService.ListWorkspaces:input_type -> opl.cloud.api.ListWorkspacesRpcRequest
-	397, // 893: opl.cloud.api.WorkspaceProductService.GetWorkspace:input_type -> opl.cloud.api.GetWorkspaceRpcRequest
-	398, // 894: opl.cloud.api.WorkspaceProductService.DeleteWorkspace:input_type -> opl.cloud.api.DeleteWorkspaceRpcRequest
-	400, // 895: opl.cloud.api.WorkspaceProductService.GetWorkspaceModels:input_type -> opl.cloud.api.GetWorkspaceModelsRpcRequest
-	401, // 896: opl.cloud.api.WorkspaceProductService.UpdateWorkspaceModels:input_type -> opl.cloud.api.UpdateWorkspaceModelsRpcRequest
-	406, // 897: opl.cloud.api.WorkspaceProductService.ResizeWorkspace:input_type -> opl.cloud.api.ResizeWorkspaceRpcRequest
-	407, // 898: opl.cloud.api.WorkspaceProductService.RenewWorkspace:input_type -> opl.cloud.api.RenewWorkspaceRpcRequest
-	408, // 899: opl.cloud.api.WorkspaceProductService.GetSubscription:input_type -> opl.cloud.api.GetSubscriptionRpcRequest
-	409, // 900: opl.cloud.api.WorkspaceProductService.GetWorkspaceDeletion:input_type -> opl.cloud.api.GetWorkspaceDeletionRpcRequest
-	411, // 901: opl.cloud.api.WorkspaceProductService.GetOperation:input_type -> opl.cloud.api.GetOperationRpcRequest
-	428, // 902: opl.cloud.api.WorkspaceProductService.ListAdminOperations:input_type -> opl.cloud.api.ListAdminOperationsRpcRequest
-	429, // 903: opl.cloud.api.WorkspaceProductService.ReconcileOperation:input_type -> opl.cloud.api.ReconcileOperationRpcRequest
-	453, // 904: opl.cloud.api.WorkspaceProductService.AdoptWorkspace:input_type -> opl.cloud.api.AdoptWorkspaceRpcRequest
-	461, // 905: opl.cloud.api.WorkspaceProductService.UpdateRenewalSettings:input_type -> opl.cloud.api.UpdateRenewalSettingsRpcRequest
-	462, // 906: opl.cloud.api.WorkspaceProductService.RevealWorkspaceApplicationCredentials:input_type -> opl.cloud.api.RevealWorkspaceApplicationCredentialsRpcRequest
-	463, // 907: opl.cloud.api.WorkspaceProductService.ListPlanChanges:input_type -> opl.cloud.api.ListPlanChangesRpcRequest
-	464, // 908: opl.cloud.api.WorkspaceProductService.GetPlanChange:input_type -> opl.cloud.api.GetPlanChangeRpcRequest
-	465, // 909: opl.cloud.api.WorkspaceProductService.CancelPlanChange:input_type -> opl.cloud.api.CancelPlanChangeRpcRequest
-	402, // 910: opl.cloud.api.ServeProductService.ListDeployments:input_type -> opl.cloud.api.ListDeploymentsRpcRequest
-	403, // 911: opl.cloud.api.ServeProductService.GetDeployment:input_type -> opl.cloud.api.GetDeploymentRpcRequest
-	404, // 912: opl.cloud.api.ServeProductService.UpdateWorkspaceVersion:input_type -> opl.cloud.api.UpdateWorkspaceVersionRpcRequest
-	405, // 913: opl.cloud.api.ServeProductService.RollbackWorkspace:input_type -> opl.cloud.api.RollbackWorkspaceRpcRequest
-	399, // 914: opl.cloud.api.ServeProductService.GetWorkspaceAccess:input_type -> opl.cloud.api.GetWorkspaceAccessRpcRequest
-	410, // 915: opl.cloud.api.GatewayProductService.ListWorkspaceTransactions:input_type -> opl.cloud.api.ListWorkspaceTransactionsRpcRequest
-	412, // 916: opl.cloud.api.GatewayProductService.GetWallet:input_type -> opl.cloud.api.GetWalletRpcRequest
-	413, // 917: opl.cloud.api.GatewayProductService.ListUsage:input_type -> opl.cloud.api.ListUsageRpcRequest
-	414, // 918: opl.cloud.api.GatewayProductService.GetUsageSummary:input_type -> opl.cloud.api.GetUsageSummaryRpcRequest
-	415, // 919: opl.cloud.api.GatewayProductService.ListGatewayKeys:input_type -> opl.cloud.api.ListGatewayKeysRpcRequest
-	416, // 920: opl.cloud.api.GatewayProductService.CreateGatewayKey:input_type -> opl.cloud.api.CreateGatewayKeyRpcRequest
-	417, // 921: opl.cloud.api.GatewayProductService.RevealGatewayKey:input_type -> opl.cloud.api.RevealGatewayKeyRpcRequest
-	418, // 922: opl.cloud.api.GatewayProductService.RevokeGatewayKey:input_type -> opl.cloud.api.RevokeGatewayKeyRpcRequest
-	419, // 923: opl.cloud.api.GatewayProductService.ListRechargeRecords:input_type -> opl.cloud.api.ListRechargeRecordsRpcRequest
-	438, // 924: opl.cloud.api.GatewayProductService.ListModels:input_type -> opl.cloud.api.ListModelsRpcRequest
-	431, // 925: opl.cloud.api.LedgerProductService.ListReceipts:input_type -> opl.cloud.api.ListReceiptsRpcRequest
-	432, // 926: opl.cloud.api.LedgerProductService.GetReceipt:input_type -> opl.cloud.api.GetReceiptRpcRequest
-	433, // 927: opl.cloud.api.LedgerProductService.ListQualifications:input_type -> opl.cloud.api.ListQualificationsRpcRequest
-	477, // 928: opl.cloud.api.ClaimUsageReadback.ReadClaimUsage:input_type -> opl.cloud.api.ReadClaimUsageRequest
-	468, // 929: opl.cloud.api.CapabilityCoordination.ResolveBuildInput:input_type -> opl.cloud.api.BuildInputRequest
-	479, // 930: opl.cloud.api.CapabilityCoordination.ResolvePublisherContract:input_type -> opl.cloud.api.ResolvePublisherContractRequest
-	471, // 931: opl.cloud.api.CapabilityCoordination.AcquireReference:input_type -> opl.cloud.api.ReferenceClaimRequest
-	473, // 932: opl.cloud.api.CapabilityCoordination.BindReference:input_type -> opl.cloud.api.BindReferenceRequest
-	475, // 933: opl.cloud.api.CapabilityCoordination.ReleaseReference:input_type -> opl.cloud.api.ReleaseReferenceRequest
-	481, // 934: opl.cloud.api.BuildCoordination.ReadArtifact:input_type -> opl.cloud.api.ReadBuildArtifactRequest
-	466, // 935: opl.cloud.api.OwnerOperations.Read:input_type -> opl.cloud.api.OwnerOperationRequest
-	429, // 936: opl.cloud.api.OwnerOperations.Reconcile:input_type -> opl.cloud.api.ReconcileOperationRpcRequest
-	492, // 937: opl.cloud.api.OwnerCommitReadback.ReadOwnerCommit:input_type -> opl.cloud.api.ReadOwnerCommitRequest
-	493, // 938: opl.cloud.api.WorkspaceAuthorizationReadback.ReadRenewalConsent:input_type -> opl.cloud.api.ReadRenewalConsentRequest
-	487, // 939: opl.cloud.api.CloudIdentityAuthorization.AuthorizeAction:input_type -> opl.cloud.api.AuthorizationRequest
-	489, // 940: opl.cloud.api.CloudIdentityAuthorization.GetAuthorizationContext:input_type -> opl.cloud.api.GetAuthorizationContextRequest
-	490, // 941: opl.cloud.api.CloudIdentityAuthorization.IssueAcceptedOperationGrant:input_type -> opl.cloud.api.AcceptedOperationGrantRequest
-	196, // 942: opl.cloud.api.CloudIdentityAuthorization.GetTenantRepositoryBinding:input_type -> opl.cloud.api.GetTenantRepositoryBindingRequest
-	497, // 943: opl.cloud.api.CatalogCoordination.AcceptQuote:input_type -> opl.cloud.api.AcceptQuoteRequest
-	499, // 944: opl.cloud.api.CatalogCoordination.ReadQuoteResourcePlan:input_type -> opl.cloud.api.QuoteResourcePlanRequest
-	495, // 945: opl.cloud.api.WorkspaceAdmission.CheckAdmission:input_type -> opl.cloud.api.AdmissionRequest
-	500, // 946: opl.cloud.api.GatewayCoordination.BindWallet:input_type -> opl.cloud.api.WalletBindingCommand
-	502, // 947: opl.cloud.api.GatewayCoordination.Debit:input_type -> opl.cloud.api.WalletDebitCommand
-	503, // 948: opl.cloud.api.GatewayCoordination.Refund:input_type -> opl.cloud.api.WalletRefundCommand
-	504, // 949: opl.cloud.api.GatewayCoordination.ReadWalletAction:input_type -> opl.cloud.api.WalletReadbackRequest
-	505, // 950: opl.cloud.api.GatewayCoordination.CreateManagedKey:input_type -> opl.cloud.api.ManagedKeyCommand
-	507, // 951: opl.cloud.api.GatewayCoordination.RevokeManagedKey:input_type -> opl.cloud.api.ManagedKeyRevoke
-	509, // 952: opl.cloud.api.FabricCoordination.AdmitResources:input_type -> opl.cloud.api.ResourceAdmissionRequest
-	510, // 953: opl.cloud.api.FabricCoordination.EnsureResources:input_type -> opl.cloud.api.EnsureResourcesCommand
-	512, // 954: opl.cloud.api.FabricCoordination.ResizeResources:input_type -> opl.cloud.api.ResizeResourcesCommand
-	513, // 955: opl.cloud.api.FabricCoordination.RenewResources:input_type -> opl.cloud.api.RenewResourcesCommand
-	511, // 956: opl.cloud.api.FabricCoordination.SuspendResources:input_type -> opl.cloud.api.MutateResourcesCommand
-	511, // 957: opl.cloud.api.FabricCoordination.ResumeResources:input_type -> opl.cloud.api.MutateResourcesCommand
-	511, // 958: opl.cloud.api.FabricCoordination.DeleteResources:input_type -> opl.cloud.api.MutateResourcesCommand
-	514, // 959: opl.cloud.api.FabricCoordination.ReadResources:input_type -> opl.cloud.api.ResourceReadbackRequest
-	519, // 960: opl.cloud.api.FabricCoordination.BindSecret:input_type -> opl.cloud.api.SecretBindingCommand
-	521, // 961: opl.cloud.api.FabricCoordination.RebindSecret:input_type -> opl.cloud.api.SecretBindingRebindCommand
-	523, // 962: opl.cloud.api.FabricCoordination.PutManagedSecret:input_type -> opl.cloud.api.ManagedSecretCommand
-	525, // 963: opl.cloud.api.ServeAgentCoordination.Reserve:input_type -> opl.cloud.api.RuntimeReservationCommand
-	528, // 964: opl.cloud.api.ServeAgentCoordination.Deploy:input_type -> opl.cloud.api.RuntimeDeployCommand
-	531, // 965: opl.cloud.api.ServeAgentCoordination.ReloadModels:input_type -> opl.cloud.api.RuntimeReloadCommand
-	529, // 966: opl.cloud.api.ServeAgentCoordination.ReadRuntime:input_type -> opl.cloud.api.RuntimeReadbackRequest
-	532, // 967: opl.cloud.api.ServeAgentCoordination.Retire:input_type -> opl.cloud.api.RuntimeStopCommand
-	533, // 968: opl.cloud.api.ServeRuntimeAdapter.ReadApplicationCredentials:input_type -> opl.cloud.api.ReadApplicationCredentialsRequest
-	528, // 969: opl.cloud.api.ServeRuntimeAdapter.StartRuntime:input_type -> opl.cloud.api.RuntimeDeployCommand
-	532, // 970: opl.cloud.api.ServeRuntimeAdapter.StopRuntime:input_type -> opl.cloud.api.RuntimeStopCommand
-	531, // 971: opl.cloud.api.ServeRuntimeAdapter.ReloadRuntime:input_type -> opl.cloud.api.RuntimeReloadCommand
-	529, // 972: opl.cloud.api.ServeRuntimeAdapter.ObserveRuntime:input_type -> opl.cloud.api.RuntimeReadbackRequest
-	536, // 973: opl.cloud.api.ServeAccessControl.FenceRouteEpoch:input_type -> opl.cloud.api.FenceRouteEpochCommand
-	537, // 974: opl.cloud.api.ServeAccessControl.ActivateRoute:input_type -> opl.cloud.api.RouteActivateCommand
-	538, // 975: opl.cloud.api.ServeAccessControl.ObserveRoute:input_type -> opl.cloud.api.RouteObserveRequest
-	539, // 976: opl.cloud.api.ServeAccessControl.RollbackRoute:input_type -> opl.cloud.api.RouteRollbackCommand
-	541, // 977: opl.cloud.api.TenantWorkspaceCoordination.SuspendTenantWorkspaces:input_type -> opl.cloud.api.TenantWorkspaceLifecycleCommand
-	541, // 978: opl.cloud.api.TenantWorkspaceCoordination.DeleteTenantWorkspaces:input_type -> opl.cloud.api.TenantWorkspaceLifecycleCommand
-	543, // 979: opl.cloud.api.TenantWorkspaceCoordination.ResumeTenantWorkspaces:input_type -> opl.cloud.api.ResumeTenantWorkspacesRequest
-	544, // 980: opl.cloud.api.LedgerCoordination.AppendReceipt:input_type -> opl.cloud.api.AppendReceiptRequest
-	545, // 981: opl.cloud.api.LedgerCoordination.ReadReceiptByReference:input_type -> opl.cloud.api.GetReceiptByReferenceRequest
-	545, // 982: opl.cloud.api.LedgerCoordination.ReadLocalNoChargeReceipt:input_type -> opl.cloud.api.GetReceiptByReferenceRequest
-	545, // 983: opl.cloud.api.LedgerCoordination.ReadWalletActionReceipt:input_type -> opl.cloud.api.GetReceiptByReferenceRequest
-	549, // 984: opl.cloud.api.WorkspacePlanChangeReadback.ReadSubscriptionPlanState:input_type -> opl.cloud.api.ReadSubscriptionPlanStateRequest
-	551, // 985: opl.cloud.api.WorkspacePlanChangeReadback.ReadPlanChange:input_type -> opl.cloud.api.ReadPlanChangeRequest
-	552, // 986: opl.cloud.api.WorkspacePlanChangeReadback.ReadNextPeriodObligation:input_type -> opl.cloud.api.ReadNextPeriodObligationRequest
-	554, // 987: opl.cloud.api.WorkspacePlanChangeReadback.ReadPlanChangeFailure:input_type -> opl.cloud.api.ReadPlanChangeFailureRequest
-	555, // 988: opl.cloud.api.FabricPlanTransitionReadback.ReadApprovedPlanTransition:input_type -> opl.cloud.api.PlanTransitionRequest
-	569, // 989: opl.cloud.api.FabricPlanTransitionReadback.ReadExecutionPlan:input_type -> opl.cloud.api.ReadProviderExecutionPlanRequest
-	560, // 990: opl.cloud.api.GatewayPlanChangeSettlement.DebitSupplement:input_type -> opl.cloud.api.PlanChangeSupplementChargeCommand
-	561, // 991: opl.cloud.api.GatewayPlanChangeSettlement.DebitScheduledPeriod:input_type -> opl.cloud.api.ScheduledPeriodChargeCommand
-	562, // 992: opl.cloud.api.GatewayPlanChangeSettlement.RefundFailure:input_type -> opl.cloud.api.PlanChangeFailureRefundCommand
-	563, // 993: opl.cloud.api.GatewayPlanChangeSettlement.RefundSupplementOnDeletion:input_type -> opl.cloud.api.SupplementDeletionRefundCommand
-	564, // 994: opl.cloud.api.ServePlanChangeControl.RestoreAfterResourceChange:input_type -> opl.cloud.api.RestorePlanChangeRuntimeCommand
-	566, // 995: opl.cloud.api.LedgerPlanChangeEvidence.AppendPlanChangeReceipt:input_type -> opl.cloud.api.AppendPlanChangeReceiptRequest
-	567, // 996: opl.cloud.api.LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt:input_type -> opl.cloud.api.AppendPlanChangeRefundReceiptRequest
-	591, // 997: opl.cloud.api.DomainInbox.Deliver:input_type -> opl.cloud.api.DeliverEventRequest
-	593, // 998: opl.cloud.api.WorkspaceAccessReadback.ReadWorkspaceAccess:input_type -> opl.cloud.api.ReadWorkspaceAccessRequest
-	190, // 999: opl.cloud.api.TenantProductService.GetLoginContext:output_type -> opl.cloud.api.LoginContext
-	192, // 1000: opl.cloud.api.TenantProductService.Login:output_type -> opl.cloud.api.Session
-	192, // 1001: opl.cloud.api.TenantProductService.GetSession:output_type -> opl.cloud.api.Session
-	597, // 1002: opl.cloud.api.TenantProductService.Logout:output_type -> google.protobuf.Empty
-	193, // 1003: opl.cloud.api.TenantProductService.GetTenant:output_type -> opl.cloud.api.Tenant
-	269, // 1004: opl.cloud.api.TenantProductService.ListMembers:output_type -> opl.cloud.api.MemberPage
-	270, // 1005: opl.cloud.api.TenantProductService.ListInvitations:output_type -> opl.cloud.api.InvitationPage
-	199, // 1006: opl.cloud.api.TenantProductService.InviteMember:output_type -> opl.cloud.api.Invitation
-	198, // 1007: opl.cloud.api.TenantProductService.AcceptInvitation:output_type -> opl.cloud.api.Member
-	199, // 1008: opl.cloud.api.TenantProductService.RevokeInvitation:output_type -> opl.cloud.api.Invitation
-	198, // 1009: opl.cloud.api.TenantProductService.UpdateMemberRole:output_type -> opl.cloud.api.Member
-	597, // 1010: opl.cloud.api.TenantProductService.RemoveMember:output_type -> google.protobuf.Empty
-	291, // 1011: opl.cloud.api.TenantProductService.ListTenants:output_type -> opl.cloud.api.TenantPage
-	189, // 1012: opl.cloud.api.TenantProductService.CreateTenant:output_type -> opl.cloud.api.Operation
-	193, // 1013: opl.cloud.api.TenantProductService.GetAdminTenant:output_type -> opl.cloud.api.Tenant
-	189, // 1014: opl.cloud.api.TenantProductService.DeleteTenant:output_type -> opl.cloud.api.Operation
-	189, // 1015: opl.cloud.api.TenantProductService.BindTenantWallet:output_type -> opl.cloud.api.Operation
-	189, // 1016: opl.cloud.api.TenantProductService.SuspendTenant:output_type -> opl.cloud.api.Operation
-	189, // 1017: opl.cloud.api.TenantProductService.RestoreTenant:output_type -> opl.cloud.api.Operation
-	204, // 1018: opl.cloud.api.TenantProductService.GetTenantAssetCustody:output_type -> opl.cloud.api.AssetCustody
-	292, // 1019: opl.cloud.api.TenantProductService.ListAuditEvents:output_type -> opl.cloud.api.AuditEventPage
-	189, // 1020: opl.cloud.api.TenantProductService.ReenableTenant:output_type -> opl.cloud.api.Operation
-	340, // 1021: opl.cloud.api.TenantProductService.GetTenantLifecycleOperation:output_type -> opl.cloud.api.TenantLifecycleProgress
-	271, // 1022: opl.cloud.api.CapabilityProductService.ListNamespaces:output_type -> opl.cloud.api.NamespacePage
-	205, // 1023: opl.cloud.api.CapabilityProductService.CreateNamespace:output_type -> opl.cloud.api.Namespace
-	205, // 1024: opl.cloud.api.CapabilityProductService.UpdateNamespace:output_type -> opl.cloud.api.Namespace
-	205, // 1025: opl.cloud.api.CapabilityProductService.ArchiveNamespace:output_type -> opl.cloud.api.Namespace
-	272, // 1026: opl.cloud.api.CapabilityProductService.ListPackages:output_type -> opl.cloud.api.PackagePage
-	207, // 1027: opl.cloud.api.CapabilityProductService.CreatePackage:output_type -> opl.cloud.api.Package
-	207, // 1028: opl.cloud.api.CapabilityProductService.GetPackage:output_type -> opl.cloud.api.Package
-	207, // 1029: opl.cloud.api.CapabilityProductService.UpdatePackage:output_type -> opl.cloud.api.Package
-	207, // 1030: opl.cloud.api.CapabilityProductService.ArchivePackage:output_type -> opl.cloud.api.Package
-	214, // 1031: opl.cloud.api.CapabilityProductService.CreateUpload:output_type -> opl.cloud.api.UploadSession
-	214, // 1032: opl.cloud.api.CapabilityProductService.GetUpload:output_type -> opl.cloud.api.UploadSession
-	216, // 1033: opl.cloud.api.CapabilityProductService.CreateUploadPart:output_type -> opl.cloud.api.UploadPartAuthorization
-	189, // 1034: opl.cloud.api.CapabilityProductService.CompleteUpload:output_type -> opl.cloud.api.Operation
-	273, // 1035: opl.cloud.api.CapabilityProductService.ListPackageVersions:output_type -> opl.cloud.api.PackageVersionPage
-	211, // 1036: opl.cloud.api.CapabilityProductService.GetPackageVersion:output_type -> opl.cloud.api.PackageVersion
-	274, // 1037: opl.cloud.api.CapabilityProductService.ListCapabilityVersions:output_type -> opl.cloud.api.CapabilityVersionPage
-	220, // 1038: opl.cloud.api.CapabilityProductService.GetCapabilityVersion:output_type -> opl.cloud.api.CapabilityVersion
-	189, // 1039: opl.cloud.api.CapabilityProductService.DeleteCapabilityVersion:output_type -> opl.cloud.api.Operation
-	207, // 1040: opl.cloud.api.CapabilityProductService.PublishOfficialPackage:output_type -> opl.cloud.api.Package
-	278, // 1041: opl.cloud.api.CapabilityProductService.ListWebuiVersions:output_type -> opl.cloud.api.WebuiVersionPage
-	225, // 1042: opl.cloud.api.CapabilityProductService.RegisterWebuiVersion:output_type -> opl.cloud.api.WebuiVersion
-	225, // 1043: opl.cloud.api.CapabilityProductService.SetWebuiVersionStatus:output_type -> opl.cloud.api.WebuiVersion
-	318, // 1044: opl.cloud.api.CapabilityProductService.ListPublisherNamespaces:output_type -> opl.cloud.api.PublisherNamespacePage
-	315, // 1045: opl.cloud.api.CapabilityProductService.CreatePublisherNamespace:output_type -> opl.cloud.api.PublisherNamespace
-	315, // 1046: opl.cloud.api.CapabilityProductService.RevokePublisherNamespace:output_type -> opl.cloud.api.PublisherNamespace
-	277, // 1047: opl.cloud.api.RuntimeControlProductService.ListRuntimeVersions:output_type -> opl.cloud.api.RuntimeVersionPage
-	297, // 1048: opl.cloud.api.RuntimeControlProductService.GetBuildRuntimePolicy:output_type -> opl.cloud.api.BuildRuntimePolicy
-	297, // 1049: opl.cloud.api.RuntimeControlProductService.SetBuildRuntimePolicy:output_type -> opl.cloud.api.BuildRuntimePolicy
-	224, // 1050: opl.cloud.api.RuntimeControlProductService.RegisterRuntimeVersion:output_type -> opl.cloud.api.RuntimeVersion
-	224, // 1051: opl.cloud.api.RuntimeControlProductService.SetRuntimeVersionStatus:output_type -> opl.cloud.api.RuntimeVersion
-	221, // 1052: opl.cloud.api.BuildProductService.CreateBuild:output_type -> opl.cloud.api.BuildJob
-	275, // 1053: opl.cloud.api.BuildProductService.ListBuilds:output_type -> opl.cloud.api.BuildJobPage
-	221, // 1054: opl.cloud.api.BuildProductService.GetBuild:output_type -> opl.cloud.api.BuildJob
-	276, // 1055: opl.cloud.api.BuildProductService.ListBuildLogs:output_type -> opl.cloud.api.BuildLogPage
-	221, // 1056: opl.cloud.api.BuildProductService.RetryBuild:output_type -> opl.cloud.api.BuildJob
-	245, // 1057: opl.cloud.api.ResourceCatalogProductService.CreateQuote:output_type -> opl.cloud.api.Quote
-	245, // 1058: opl.cloud.api.ResourceCatalogProductService.GetQuote:output_type -> opl.cloud.api.Quote
-	279, // 1059: opl.cloud.api.ResourceCatalogProductService.ListComputePlans:output_type -> opl.cloud.api.ComputePlanPage
-	280, // 1060: opl.cloud.api.ResourceCatalogProductService.ListStoragePlans:output_type -> opl.cloud.api.StoragePlanPage
-	229, // 1061: opl.cloud.api.ResourceCatalogProductService.CreateComputePlan:output_type -> opl.cloud.api.ComputePlan
-	229, // 1062: opl.cloud.api.ResourceCatalogProductService.SetComputePlanAvailability:output_type -> opl.cloud.api.ComputePlan
-	230, // 1063: opl.cloud.api.ResourceCatalogProductService.CreateStoragePlan:output_type -> opl.cloud.api.StoragePlan
-	230, // 1064: opl.cloud.api.ResourceCatalogProductService.SetStoragePlanAvailability:output_type -> opl.cloud.api.StoragePlan
-	281, // 1065: opl.cloud.api.ResourceCatalogProductService.ListPricePolicyVersions:output_type -> opl.cloud.api.PricePolicyVersionPage
-	234, // 1066: opl.cloud.api.ResourceCatalogProductService.CreatePricePolicyVersion:output_type -> opl.cloud.api.PricePolicyVersion
-	282, // 1067: opl.cloud.api.ResourceCatalogProductService.ListRefundPolicyVersions:output_type -> opl.cloud.api.RefundPolicyVersionPage
-	236, // 1068: opl.cloud.api.ResourceCatalogProductService.CreateRefundPolicyVersion:output_type -> opl.cloud.api.RefundPolicyVersion
-	283, // 1069: opl.cloud.api.ResourceCatalogProductService.ListRetentionPolicyVersions:output_type -> opl.cloud.api.RetentionPolicyVersionPage
-	238, // 1070: opl.cloud.api.ResourceCatalogProductService.CreateRetentionPolicyVersion:output_type -> opl.cloud.api.RetentionPolicyVersion
-	189, // 1071: opl.cloud.api.WorkspaceProductService.CreateWorkspace:output_type -> opl.cloud.api.Operation
-	285, // 1072: opl.cloud.api.WorkspaceProductService.ListWorkspaces:output_type -> opl.cloud.api.WorkspacePage
-	246, // 1073: opl.cloud.api.WorkspaceProductService.GetWorkspace:output_type -> opl.cloud.api.Workspace
-	189, // 1074: opl.cloud.api.WorkspaceProductService.DeleteWorkspace:output_type -> opl.cloud.api.Operation
-	249, // 1075: opl.cloud.api.WorkspaceProductService.GetWorkspaceModels:output_type -> opl.cloud.api.ModelConfiguration
-	189, // 1076: opl.cloud.api.WorkspaceProductService.UpdateWorkspaceModels:output_type -> opl.cloud.api.Operation
-	189, // 1077: opl.cloud.api.WorkspaceProductService.ResizeWorkspace:output_type -> opl.cloud.api.Operation
-	189, // 1078: opl.cloud.api.WorkspaceProductService.RenewWorkspace:output_type -> opl.cloud.api.Operation
-	257, // 1079: opl.cloud.api.WorkspaceProductService.GetSubscription:output_type -> opl.cloud.api.Subscription
-	256, // 1080: opl.cloud.api.WorkspaceProductService.GetWorkspaceDeletion:output_type -> opl.cloud.api.WorkspaceDeletion
-	189, // 1081: opl.cloud.api.WorkspaceProductService.GetOperation:output_type -> opl.cloud.api.Operation
-	294, // 1082: opl.cloud.api.WorkspaceProductService.ListAdminOperations:output_type -> opl.cloud.api.AdminOperationPage
-	189, // 1083: opl.cloud.api.WorkspaceProductService.ReconcileOperation:output_type -> opl.cloud.api.Operation
-	189, // 1084: opl.cloud.api.WorkspaceProductService.AdoptWorkspace:output_type -> opl.cloud.api.Operation
-	189, // 1085: opl.cloud.api.WorkspaceProductService.UpdateRenewalSettings:output_type -> opl.cloud.api.Operation
-	345, // 1086: opl.cloud.api.WorkspaceProductService.RevealWorkspaceApplicationCredentials:output_type -> opl.cloud.api.WorkspaceApplicationCredentials
-	353, // 1087: opl.cloud.api.WorkspaceProductService.ListPlanChanges:output_type -> opl.cloud.api.PlanChangePage
-	352, // 1088: opl.cloud.api.WorkspaceProductService.GetPlanChange:output_type -> opl.cloud.api.PlanChange
-	189, // 1089: opl.cloud.api.WorkspaceProductService.CancelPlanChange:output_type -> opl.cloud.api.Operation
-	286, // 1090: opl.cloud.api.ServeProductService.ListDeployments:output_type -> opl.cloud.api.DeploymentPage
-	251, // 1091: opl.cloud.api.ServeProductService.GetDeployment:output_type -> opl.cloud.api.Deployment
-	189, // 1092: opl.cloud.api.ServeProductService.UpdateWorkspaceVersion:output_type -> opl.cloud.api.Operation
-	189, // 1093: opl.cloud.api.ServeProductService.RollbackWorkspace:output_type -> opl.cloud.api.Operation
-	248, // 1094: opl.cloud.api.ServeProductService.GetWorkspaceAccess:output_type -> opl.cloud.api.WorkspaceAccess
-	287, // 1095: opl.cloud.api.GatewayProductService.ListWorkspaceTransactions:output_type -> opl.cloud.api.WalletOperationPage
-	259, // 1096: opl.cloud.api.GatewayProductService.GetWallet:output_type -> opl.cloud.api.Wallet
-	288, // 1097: opl.cloud.api.GatewayProductService.ListUsage:output_type -> opl.cloud.api.UsagePage
-	289, // 1098: opl.cloud.api.GatewayProductService.GetUsageSummary:output_type -> opl.cloud.api.UsageSummary
-	290, // 1099: opl.cloud.api.GatewayProductService.ListGatewayKeys:output_type -> opl.cloud.api.GatewayKeyPage
-	263, // 1100: opl.cloud.api.GatewayProductService.CreateGatewayKey:output_type -> opl.cloud.api.GatewayKeySecret
-	263, // 1101: opl.cloud.api.GatewayProductService.RevealGatewayKey:output_type -> opl.cloud.api.GatewayKeySecret
-	189, // 1102: opl.cloud.api.GatewayProductService.RevokeGatewayKey:output_type -> opl.cloud.api.Operation
-	287, // 1103: opl.cloud.api.GatewayProductService.ListRechargeRecords:output_type -> opl.cloud.api.WalletOperationPage
-	284, // 1104: opl.cloud.api.GatewayProductService.ListModels:output_type -> opl.cloud.api.ModelPage
-	293, // 1105: opl.cloud.api.LedgerProductService.ListReceipts:output_type -> opl.cloud.api.ReceiptPage
-	265, // 1106: opl.cloud.api.LedgerProductService.GetReceipt:output_type -> opl.cloud.api.Receipt
-	295, // 1107: opl.cloud.api.LedgerProductService.ListQualifications:output_type -> opl.cloud.api.QualificationPage
-	478, // 1108: opl.cloud.api.ClaimUsageReadback.ReadClaimUsage:output_type -> opl.cloud.api.ClaimUsageEvidence
-	469, // 1109: opl.cloud.api.CapabilityCoordination.ResolveBuildInput:output_type -> opl.cloud.api.BuildInputSnapshot
-	480, // 1110: opl.cloud.api.CapabilityCoordination.ResolvePublisherContract:output_type -> opl.cloud.api.ResolvedPublisherContract
-	476, // 1111: opl.cloud.api.CapabilityCoordination.AcquireReference:output_type -> opl.cloud.api.ReferenceClaim
-	476, // 1112: opl.cloud.api.CapabilityCoordination.BindReference:output_type -> opl.cloud.api.ReferenceClaim
-	476, // 1113: opl.cloud.api.CapabilityCoordination.ReleaseReference:output_type -> opl.cloud.api.ReferenceClaim
-	482, // 1114: opl.cloud.api.BuildCoordination.ReadArtifact:output_type -> opl.cloud.api.BuildArtifactReadback
-	189, // 1115: opl.cloud.api.OwnerOperations.Read:output_type -> opl.cloud.api.Operation
-	189, // 1116: opl.cloud.api.OwnerOperations.Reconcile:output_type -> opl.cloud.api.Operation
-	472, // 1117: opl.cloud.api.OwnerCommitReadback.ReadOwnerCommit:output_type -> opl.cloud.api.OwnerCommitEvidence
-	494, // 1118: opl.cloud.api.WorkspaceAuthorizationReadback.ReadRenewalConsent:output_type -> opl.cloud.api.RenewalConsentReadback
-	488, // 1119: opl.cloud.api.CloudIdentityAuthorization.AuthorizeAction:output_type -> opl.cloud.api.AuthorizationDecision
-	488, // 1120: opl.cloud.api.CloudIdentityAuthorization.GetAuthorizationContext:output_type -> opl.cloud.api.AuthorizationDecision
-	491, // 1121: opl.cloud.api.CloudIdentityAuthorization.IssueAcceptedOperationGrant:output_type -> opl.cloud.api.AcceptedOperationGrant
-	195, // 1122: opl.cloud.api.CloudIdentityAuthorization.GetTenantRepositoryBinding:output_type -> opl.cloud.api.TenantRepositoryBinding
-	498, // 1123: opl.cloud.api.CatalogCoordination.AcceptQuote:output_type -> opl.cloud.api.QuoteAcceptance
-	498, // 1124: opl.cloud.api.CatalogCoordination.ReadQuoteResourcePlan:output_type -> opl.cloud.api.QuoteAcceptance
-	496, // 1125: opl.cloud.api.WorkspaceAdmission.CheckAdmission:output_type -> opl.cloud.api.AdmissionResult
-	501, // 1126: opl.cloud.api.GatewayCoordination.BindWallet:output_type -> opl.cloud.api.WalletBindingReadback
-	258, // 1127: opl.cloud.api.GatewayCoordination.Debit:output_type -> opl.cloud.api.WalletOperation
-	258, // 1128: opl.cloud.api.GatewayCoordination.Refund:output_type -> opl.cloud.api.WalletOperation
-	258, // 1129: opl.cloud.api.GatewayCoordination.ReadWalletAction:output_type -> opl.cloud.api.WalletOperation
-	506, // 1130: opl.cloud.api.GatewayCoordination.CreateManagedKey:output_type -> opl.cloud.api.ManagedKeyBinding
-	189, // 1131: opl.cloud.api.GatewayCoordination.RevokeManagedKey:output_type -> opl.cloud.api.Operation
-	496, // 1132: opl.cloud.api.FabricCoordination.AdmitResources:output_type -> opl.cloud.api.AdmissionResult
-	189, // 1133: opl.cloud.api.FabricCoordination.EnsureResources:output_type -> opl.cloud.api.Operation
-	189, // 1134: opl.cloud.api.FabricCoordination.ResizeResources:output_type -> opl.cloud.api.Operation
-	189, // 1135: opl.cloud.api.FabricCoordination.RenewResources:output_type -> opl.cloud.api.Operation
-	189, // 1136: opl.cloud.api.FabricCoordination.SuspendResources:output_type -> opl.cloud.api.Operation
-	189, // 1137: opl.cloud.api.FabricCoordination.ResumeResources:output_type -> opl.cloud.api.Operation
-	189, // 1138: opl.cloud.api.FabricCoordination.DeleteResources:output_type -> opl.cloud.api.Operation
-	517, // 1139: opl.cloud.api.FabricCoordination.ReadResources:output_type -> opl.cloud.api.ResourceReadback
-	520, // 1140: opl.cloud.api.FabricCoordination.BindSecret:output_type -> opl.cloud.api.SecretBindingReadback
-	522, // 1141: opl.cloud.api.FabricCoordination.RebindSecret:output_type -> opl.cloud.api.SecretBindingRebindReadback
-	524, // 1142: opl.cloud.api.FabricCoordination.PutManagedSecret:output_type -> opl.cloud.api.ManagedSecretReadback
-	526, // 1143: opl.cloud.api.ServeAgentCoordination.Reserve:output_type -> opl.cloud.api.RuntimeReservation
-	530, // 1144: opl.cloud.api.ServeAgentCoordination.Deploy:output_type -> opl.cloud.api.RuntimeReadback
-	189, // 1145: opl.cloud.api.ServeAgentCoordination.ReloadModels:output_type -> opl.cloud.api.Operation
-	530, // 1146: opl.cloud.api.ServeAgentCoordination.ReadRuntime:output_type -> opl.cloud.api.RuntimeReadback
-	189, // 1147: opl.cloud.api.ServeAgentCoordination.Retire:output_type -> opl.cloud.api.Operation
-	345, // 1148: opl.cloud.api.ServeRuntimeAdapter.ReadApplicationCredentials:output_type -> opl.cloud.api.WorkspaceApplicationCredentials
-	530, // 1149: opl.cloud.api.ServeRuntimeAdapter.StartRuntime:output_type -> opl.cloud.api.RuntimeReadback
-	189, // 1150: opl.cloud.api.ServeRuntimeAdapter.StopRuntime:output_type -> opl.cloud.api.Operation
-	189, // 1151: opl.cloud.api.ServeRuntimeAdapter.ReloadRuntime:output_type -> opl.cloud.api.Operation
-	530, // 1152: opl.cloud.api.ServeRuntimeAdapter.ObserveRuntime:output_type -> opl.cloud.api.RuntimeReadback
-	540, // 1153: opl.cloud.api.ServeAccessControl.FenceRouteEpoch:output_type -> opl.cloud.api.RouteReadback
-	540, // 1154: opl.cloud.api.ServeAccessControl.ActivateRoute:output_type -> opl.cloud.api.RouteReadback
-	540, // 1155: opl.cloud.api.ServeAccessControl.ObserveRoute:output_type -> opl.cloud.api.RouteReadback
-	540, // 1156: opl.cloud.api.ServeAccessControl.RollbackRoute:output_type -> opl.cloud.api.RouteReadback
-	542, // 1157: opl.cloud.api.TenantWorkspaceCoordination.SuspendTenantWorkspaces:output_type -> opl.cloud.api.TenantWorkspaceLifecycleReadback
-	542, // 1158: opl.cloud.api.TenantWorkspaceCoordination.DeleteTenantWorkspaces:output_type -> opl.cloud.api.TenantWorkspaceLifecycleReadback
-	542, // 1159: opl.cloud.api.TenantWorkspaceCoordination.ResumeTenantWorkspaces:output_type -> opl.cloud.api.TenantWorkspaceLifecycleReadback
-	265, // 1160: opl.cloud.api.LedgerCoordination.AppendReceipt:output_type -> opl.cloud.api.Receipt
-	265, // 1161: opl.cloud.api.LedgerCoordination.ReadReceiptByReference:output_type -> opl.cloud.api.Receipt
-	546, // 1162: opl.cloud.api.LedgerCoordination.ReadLocalNoChargeReceipt:output_type -> opl.cloud.api.LocalNoChargeReceiptEvidence
-	547, // 1163: opl.cloud.api.LedgerCoordination.ReadWalletActionReceipt:output_type -> opl.cloud.api.WalletActionReceiptEvidence
-	550, // 1164: opl.cloud.api.WorkspacePlanChangeReadback.ReadSubscriptionPlanState:output_type -> opl.cloud.api.SubscriptionPlanState
-	352, // 1165: opl.cloud.api.WorkspacePlanChangeReadback.ReadPlanChange:output_type -> opl.cloud.api.PlanChange
-	553, // 1166: opl.cloud.api.WorkspacePlanChangeReadback.ReadNextPeriodObligation:output_type -> opl.cloud.api.NextPeriodObligation
-	355, // 1167: opl.cloud.api.WorkspacePlanChangeReadback.ReadPlanChangeFailure:output_type -> opl.cloud.api.PlanChangeEvidence
-	556, // 1168: opl.cloud.api.FabricPlanTransitionReadback.ReadApprovedPlanTransition:output_type -> opl.cloud.api.ApprovedPlanTransition
-	570, // 1169: opl.cloud.api.FabricPlanTransitionReadback.ReadExecutionPlan:output_type -> opl.cloud.api.ProviderPlanChangeExecutionPlan
-	258, // 1170: opl.cloud.api.GatewayPlanChangeSettlement.DebitSupplement:output_type -> opl.cloud.api.WalletOperation
-	258, // 1171: opl.cloud.api.GatewayPlanChangeSettlement.DebitScheduledPeriod:output_type -> opl.cloud.api.WalletOperation
-	258, // 1172: opl.cloud.api.GatewayPlanChangeSettlement.RefundFailure:output_type -> opl.cloud.api.WalletOperation
-	258, // 1173: opl.cloud.api.GatewayPlanChangeSettlement.RefundSupplementOnDeletion:output_type -> opl.cloud.api.WalletOperation
-	565, // 1174: opl.cloud.api.ServePlanChangeControl.RestoreAfterResourceChange:output_type -> opl.cloud.api.PlanChangeRuntimeReadback
-	265, // 1175: opl.cloud.api.LedgerPlanChangeEvidence.AppendPlanChangeReceipt:output_type -> opl.cloud.api.Receipt
-	265, // 1176: opl.cloud.api.LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt:output_type -> opl.cloud.api.Receipt
-	592, // 1177: opl.cloud.api.DomainInbox.Deliver:output_type -> opl.cloud.api.InboxAck
-	594, // 1178: opl.cloud.api.WorkspaceAccessReadback.ReadWorkspaceAccess:output_type -> opl.cloud.api.WorkspaceAccessDecision
-	999, // [999:1179] is the sub-list for method output_type
-	819, // [819:999] is the sub-list for method input_type
-	819, // [819:819] is the sub-list for extension type_name
-	819, // [819:819] is the sub-list for extension extendee
-	0,   // [0:819] is the sub-list for field type_name
+	485,  // 0: opl.cloud.api.CallContext.scope:type_name -> opl.cloud.api.AuthorizationScope
+	600,  // 1: opl.cloud.api.CallContext.deadline_at:type_name -> google.protobuf.Timestamp
+	14,   // 2: opl.cloud.api.FieldError.code:type_name -> opl.cloud.api.ErrorCodeEnum
+	14,   // 3: opl.cloud.api.Error.code:type_name -> opl.cloud.api.ErrorCodeEnum
+	189,  // 4: opl.cloud.api.Error.field_errors:type_name -> opl.cloud.api.FieldError
+	19,   // 5: opl.cloud.api.Operation.owner:type_name -> opl.cloud.api.OperationOwnerEnum
+	17,   // 6: opl.cloud.api.Operation.kind:type_name -> opl.cloud.api.OperationKindEnum
+	22,   // 7: opl.cloud.api.Operation.status:type_name -> opl.cloud.api.OperationStatusEnum
+	18,   // 8: opl.cloud.api.Operation.stage:type_name -> opl.cloud.api.OperationStageEnum
+	23,   // 9: opl.cloud.api.Operation.observation_result:type_name -> opl.cloud.api.OperationObservationResultEnum
+	14,   // 10: opl.cloud.api.Operation.error_code:type_name -> opl.cloud.api.ErrorCodeEnum
+	600,  // 11: opl.cloud.api.Operation.created_at:type_name -> google.protobuf.Timestamp
+	600,  // 12: opl.cloud.api.Operation.updated_at:type_name -> google.protobuf.Timestamp
+	600,  // 13: opl.cloud.api.LoginContext.expires_at:type_name -> google.protobuf.Timestamp
+	16,   // 14: opl.cloud.api.Session.role:type_name -> opl.cloud.api.TenantRoleEnum
+	20,   // 15: opl.cloud.api.Session.permissions:type_name -> opl.cloud.api.AuthorizationActionEnum
+	600,  // 16: opl.cloud.api.Session.expires_at:type_name -> google.protobuf.Timestamp
+	24,   // 17: opl.cloud.api.Tenant.status:type_name -> opl.cloud.api.TenantStatusEnum
+	600,  // 18: opl.cloud.api.Tenant.restore_until:type_name -> google.protobuf.Timestamp
+	25,   // 19: opl.cloud.api.Tenant.asset_custody_status:type_name -> opl.cloud.api.TenantAssetCustodyStatusEnum
+	600,  // 20: opl.cloud.api.Tenant.created_at:type_name -> google.protobuf.Timestamp
+	600,  // 21: opl.cloud.api.Tenant.updated_at:type_name -> google.protobuf.Timestamp
+	16,   // 22: opl.cloud.api.Member.role:type_name -> opl.cloud.api.TenantRoleEnum
+	26,   // 23: opl.cloud.api.Member.status:type_name -> opl.cloud.api.MemberStatusEnum
+	600,  // 24: opl.cloud.api.Member.created_at:type_name -> google.protobuf.Timestamp
+	27,   // 25: opl.cloud.api.Invitation.role:type_name -> opl.cloud.api.InvitationRoleEnum
+	28,   // 26: opl.cloud.api.Invitation.status:type_name -> opl.cloud.api.InvitationStatusEnum
+	600,  // 27: opl.cloud.api.Invitation.expires_at:type_name -> google.protobuf.Timestamp
+	600,  // 28: opl.cloud.api.Invitation.created_at:type_name -> google.protobuf.Timestamp
+	29,   // 29: opl.cloud.api.InviteMemberRequest.role:type_name -> opl.cloud.api.InviteMemberRequestRoleEnum
+	16,   // 30: opl.cloud.api.UpdateMemberRoleRequest.role:type_name -> opl.cloud.api.TenantRoleEnum
+	30,   // 31: opl.cloud.api.AssetCustody.status:type_name -> opl.cloud.api.AssetCustodyStatusEnum
+	600,  // 32: opl.cloud.api.AssetCustody.restore_until:type_name -> google.protobuf.Timestamp
+	31,   // 33: opl.cloud.api.Namespace.status:type_name -> opl.cloud.api.NamespaceStatusEnum
+	600,  // 34: opl.cloud.api.Namespace.created_at:type_name -> google.protobuf.Timestamp
+	32,   // 35: opl.cloud.api.Package.visibility:type_name -> opl.cloud.api.PackageVisibilityEnum
+	33,   // 36: opl.cloud.api.Package.status:type_name -> opl.cloud.api.PackageStatusEnum
+	600,  // 37: opl.cloud.api.Package.created_at:type_name -> google.protobuf.Timestamp
+	600,  // 38: opl.cloud.api.Package.updated_at:type_name -> google.protobuf.Timestamp
+	34,   // 39: opl.cloud.api.PackageVersion.status:type_name -> opl.cloud.api.PackageVersionStatusEnum
+	600,  // 40: opl.cloud.api.PackageVersion.created_at:type_name -> google.protobuf.Timestamp
+	35,   // 41: opl.cloud.api.UploadSession.status:type_name -> opl.cloud.api.UploadSessionStatusEnum
+	213,  // 42: opl.cloud.api.UploadSession.completed_parts:type_name -> opl.cloud.api.UploadPart
+	600,  // 43: opl.cloud.api.UploadSession.expires_at:type_name -> google.protobuf.Timestamp
+	36,   // 44: opl.cloud.api.UploadPartAuthorization.method:type_name -> opl.cloud.api.UploadPartAuthorizationMethodEnum
+	600,  // 45: opl.cloud.api.UploadPartAuthorization.expires_at:type_name -> google.protobuf.Timestamp
+	213,  // 46: opl.cloud.api.CompleteUploadRequest.parts:type_name -> opl.cloud.api.UploadPart
+	37,   // 47: opl.cloud.api.ModelRequirement.capability:type_name -> opl.cloud.api.ModelRequirementCapabilityEnum
+	38,   // 48: opl.cloud.api.CapabilityVersion.status:type_name -> opl.cloud.api.CapabilityVersionStatusEnum
+	218,  // 49: opl.cloud.api.CapabilityVersion.model_requirements:type_name -> opl.cloud.api.ModelRequirement
+	219,  // 50: opl.cloud.api.CapabilityVersion.data_compatibility:type_name -> opl.cloud.api.DataCompatibility
+	600,  // 51: opl.cloud.api.CapabilityVersion.created_at:type_name -> google.protobuf.Timestamp
+	39,   // 52: opl.cloud.api.CapabilityVersion.provenance:type_name -> opl.cloud.api.CapabilityVersionProvenanceEnum
+	300,  // 53: opl.cloud.api.CapabilityVersion.artifact:type_name -> opl.cloud.api.ArtifactReference
+	314,  // 54: opl.cloud.api.CapabilityVersion.deployment_descriptor:type_name -> opl.cloud.api.DeploymentDescriptor
+	40,   // 55: opl.cloud.api.BuildJob.status:type_name -> opl.cloud.api.BuildJobStatusEnum
+	14,   // 56: opl.cloud.api.BuildJob.error_code:type_name -> opl.cloud.api.ErrorCodeEnum
+	600,  // 57: opl.cloud.api.BuildJob.created_at:type_name -> google.protobuf.Timestamp
+	600,  // 58: opl.cloud.api.BuildJob.updated_at:type_name -> google.protobuf.Timestamp
+	41,   // 59: opl.cloud.api.BuildLog.level:type_name -> opl.cloud.api.BuildLogLevelEnum
+	600,  // 60: opl.cloud.api.BuildLog.created_at:type_name -> google.protobuf.Timestamp
+	42,   // 61: opl.cloud.api.RuntimeVersion.status:type_name -> opl.cloud.api.RuntimeVersionStatusEnum
+	600,  // 62: opl.cloud.api.RuntimeVersion.created_at:type_name -> google.protobuf.Timestamp
+	310,  // 63: opl.cloud.api.RuntimeVersion.publisher_contract:type_name -> opl.cloud.api.RuntimePublisherContract
+	43,   // 64: opl.cloud.api.WebuiVersion.status:type_name -> opl.cloud.api.WebuiVersionStatusEnum
+	600,  // 65: opl.cloud.api.WebuiVersion.created_at:type_name -> google.protobuf.Timestamp
+	311,  // 66: opl.cloud.api.WebuiVersion.publisher_contract:type_name -> opl.cloud.api.WebuiPublisherContract
+	310,  // 67: opl.cloud.api.RegisterRuntimeVersionRequest.publisher_contract:type_name -> opl.cloud.api.RuntimePublisherContract
+	311,  // 68: opl.cloud.api.RegisterWebuiVersionRequest.publisher_contract:type_name -> opl.cloud.api.WebuiPublisherContract
+	44,   // 69: opl.cloud.api.CatalogStatusRequest.status:type_name -> opl.cloud.api.CatalogStatusRequestStatusEnum
+	45,   // 70: opl.cloud.api.ComputePlan.availability:type_name -> opl.cloud.api.ComputePlanAvailabilityEnum
+	46,   // 71: opl.cloud.api.ComputePlan.billing_mode:type_name -> opl.cloud.api.ComputePlanBillingModeEnum
+	600,  // 72: opl.cloud.api.ComputePlan.valid_from:type_name -> google.protobuf.Timestamp
+	600,  // 73: opl.cloud.api.ComputePlan.valid_until:type_name -> google.protobuf.Timestamp
+	600,  // 74: opl.cloud.api.ComputePlan.created_at:type_name -> google.protobuf.Timestamp
+	47,   // 75: opl.cloud.api.StoragePlan.availability:type_name -> opl.cloud.api.StoragePlanAvailabilityEnum
+	48,   // 76: opl.cloud.api.StoragePlan.billing_mode:type_name -> opl.cloud.api.StoragePlanBillingModeEnum
+	600,  // 77: opl.cloud.api.StoragePlan.valid_from:type_name -> google.protobuf.Timestamp
+	600,  // 78: opl.cloud.api.StoragePlan.valid_until:type_name -> google.protobuf.Timestamp
+	600,  // 79: opl.cloud.api.StoragePlan.created_at:type_name -> google.protobuf.Timestamp
+	600,  // 80: opl.cloud.api.CreateComputePlanRequest.valid_from:type_name -> google.protobuf.Timestamp
+	600,  // 81: opl.cloud.api.CreateComputePlanRequest.valid_until:type_name -> google.protobuf.Timestamp
+	600,  // 82: opl.cloud.api.CreateStoragePlanRequest.valid_from:type_name -> google.protobuf.Timestamp
+	600,  // 83: opl.cloud.api.CreateStoragePlanRequest.valid_until:type_name -> google.protobuf.Timestamp
+	49,   // 84: opl.cloud.api.PlanAvailabilityRequest.availability:type_name -> opl.cloud.api.PlanAvailabilityRequestAvailabilityEnum
+	50,   // 85: opl.cloud.api.PricePolicyVersion.currency:type_name -> opl.cloud.api.PricePolicyVersionCurrencyEnum
+	600,  // 86: opl.cloud.api.PricePolicyVersion.valid_from:type_name -> google.protobuf.Timestamp
+	600,  // 87: opl.cloud.api.PricePolicyVersion.valid_until:type_name -> google.protobuf.Timestamp
+	600,  // 88: opl.cloud.api.PricePolicyVersion.created_at:type_name -> google.protobuf.Timestamp
+	320,  // 89: opl.cloud.api.PricePolicyVersion.renewal_policy:type_name -> opl.cloud.api.RenewalPolicy
+	51,   // 90: opl.cloud.api.PricePolicyVersion.plan_change_policy_version:type_name -> opl.cloud.api.PricePolicyVersionPlanChangePolicyVersionEnum
+	348,  // 91: opl.cloud.api.PricePolicyVersion.plan_change_policy:type_name -> opl.cloud.api.PlanChangePolicy
+	600,  // 92: opl.cloud.api.CreatePricePolicyRequest.valid_from:type_name -> google.protobuf.Timestamp
+	600,  // 93: opl.cloud.api.CreatePricePolicyRequest.valid_until:type_name -> google.protobuf.Timestamp
+	320,  // 94: opl.cloud.api.CreatePricePolicyRequest.renewal_policy:type_name -> opl.cloud.api.RenewalPolicy
+	52,   // 95: opl.cloud.api.CreatePricePolicyRequest.plan_change_policy_version:type_name -> opl.cloud.api.CreatePricePolicyRequestPlanChangePolicyVersionEnum
+	53,   // 96: opl.cloud.api.RefundPolicyVersion.algorithm:type_name -> opl.cloud.api.RefundPolicyVersionAlgorithmEnum
+	600,  // 97: opl.cloud.api.RefundPolicyVersion.valid_from:type_name -> google.protobuf.Timestamp
+	600,  // 98: opl.cloud.api.RefundPolicyVersion.valid_until:type_name -> google.protobuf.Timestamp
+	600,  // 99: opl.cloud.api.RefundPolicyVersion.created_at:type_name -> google.protobuf.Timestamp
+	54,   // 100: opl.cloud.api.CreateRefundPolicyRequest.algorithm:type_name -> opl.cloud.api.CreateRefundPolicyRequestAlgorithmEnum
+	600,  // 101: opl.cloud.api.CreateRefundPolicyRequest.valid_from:type_name -> google.protobuf.Timestamp
+	600,  // 102: opl.cloud.api.CreateRefundPolicyRequest.valid_until:type_name -> google.protobuf.Timestamp
+	55,   // 103: opl.cloud.api.RetentionPolicyVersion.workspace_data_disposition:type_name -> opl.cloud.api.RetentionPolicyVersionWorkspaceDataDispositionEnum
+	56,   // 104: opl.cloud.api.RetentionPolicyVersion.package_history_disposition:type_name -> opl.cloud.api.RetentionPolicyVersionPackageHistoryDispositionEnum
+	57,   // 105: opl.cloud.api.RetentionPolicyVersion.build_history_disposition:type_name -> opl.cloud.api.RetentionPolicyVersionBuildHistoryDispositionEnum
+	600,  // 106: opl.cloud.api.RetentionPolicyVersion.created_at:type_name -> google.protobuf.Timestamp
+	600,  // 107: opl.cloud.api.Model.fetched_at:type_name -> google.protobuf.Timestamp
+	60,   // 108: opl.cloud.api.WorkspaceApplicationSelection.kind:type_name -> opl.cloud.api.WorkspaceApplicationSelectionKindEnum
+	58,   // 109: opl.cloud.api.QuoteRequest.purpose:type_name -> opl.cloud.api.QuoteRequestPurposeEnum
+	241,  // 110: opl.cloud.api.QuoteRequest.model_selections:type_name -> opl.cloud.api.ModelSelection
+	242,  // 111: opl.cloud.api.QuoteRequest.application_selection:type_name -> opl.cloud.api.WorkspaceApplicationSelection
+	59,   // 112: opl.cloud.api.QuoteLine.kind:type_name -> opl.cloud.api.QuoteLineKindEnum
+	337,  // 113: opl.cloud.api.QuoteLine.credit_source:type_name -> opl.cloud.api.CreditSource
+	61,   // 114: opl.cloud.api.Quote.purpose:type_name -> opl.cloud.api.QuotePurposeEnum
+	241,  // 115: opl.cloud.api.Quote.model_selections:type_name -> opl.cloud.api.ModelSelection
+	600,  // 116: opl.cloud.api.Quote.period_start:type_name -> google.protobuf.Timestamp
+	600,  // 117: opl.cloud.api.Quote.period_end:type_name -> google.protobuf.Timestamp
+	244,  // 118: opl.cloud.api.Quote.line_items:type_name -> opl.cloud.api.QuoteLine
+	62,   // 119: opl.cloud.api.Quote.status:type_name -> opl.cloud.api.QuoteStatusEnum
+	600,  // 120: opl.cloud.api.Quote.expires_at:type_name -> google.protobuf.Timestamp
+	600,  // 121: opl.cloud.api.Quote.created_at:type_name -> google.protobuf.Timestamp
+	351,  // 122: opl.cloud.api.Quote.plan_change_calculation:type_name -> opl.cloud.api.PlanChangeCalculation
+	63,   // 123: opl.cloud.api.Quote.runtime_readback_requirement:type_name -> opl.cloud.api.QuoteRuntimeReadbackRequirementEnum
+	64,   // 124: opl.cloud.api.Workspace.status:type_name -> opl.cloud.api.WorkspaceStatusEnum
+	65,   // 125: opl.cloud.api.Workspace.resource_readiness:type_name -> opl.cloud.api.WorkspaceResourceReadinessEnum
+	66,   // 126: opl.cloud.api.Workspace.application_availability:type_name -> opl.cloud.api.WorkspaceApplicationAvailabilityEnum
+	600,  // 127: opl.cloud.api.Workspace.current_period_end:type_name -> google.protobuf.Timestamp
+	600,  // 128: opl.cloud.api.Workspace.created_at:type_name -> google.protobuf.Timestamp
+	600,  // 129: opl.cloud.api.Workspace.updated_at:type_name -> google.protobuf.Timestamp
+	67,   // 130: opl.cloud.api.Workspace.delivery_model:type_name -> opl.cloud.api.WorkspaceDeliveryModelEnum
+	68,   // 131: opl.cloud.api.CreateWorkspaceRequest.renewal_mode:type_name -> opl.cloud.api.CreateWorkspaceRequestRenewalModeEnum
+	69,   // 132: opl.cloud.api.WorkspaceAccess.authentication_mode:type_name -> opl.cloud.api.WorkspaceAccessAuthenticationModeEnum
+	600,  // 133: opl.cloud.api.WorkspaceAccess.expires_at:type_name -> google.protobuf.Timestamp
+	241,  // 134: opl.cloud.api.ModelConfiguration.selections:type_name -> opl.cloud.api.ModelSelection
+	70,   // 135: opl.cloud.api.ModelConfiguration.status:type_name -> opl.cloud.api.ModelConfigurationStatusEnum
+	600,  // 136: opl.cloud.api.ModelConfiguration.updated_at:type_name -> google.protobuf.Timestamp
+	241,  // 137: opl.cloud.api.UpdateWorkspaceModelsRequest.selections:type_name -> opl.cloud.api.ModelSelection
+	71,   // 138: opl.cloud.api.Deployment.status:type_name -> opl.cloud.api.DeploymentStatusEnum
+	219,  // 139: opl.cloud.api.Deployment.data_compatibility:type_name -> opl.cloud.api.DataCompatibility
+	600,  // 140: opl.cloud.api.Deployment.created_at:type_name -> google.protobuf.Timestamp
+	600,  // 141: opl.cloud.api.Deployment.updated_at:type_name -> google.protobuf.Timestamp
+	72,   // 142: opl.cloud.api.WorkspaceDeletion.resource_deletion_status:type_name -> opl.cloud.api.WorkspaceDeletionResourceDeletionStatusEnum
+	73,   // 143: opl.cloud.api.WorkspaceDeletion.data_deletion_status:type_name -> opl.cloud.api.WorkspaceDeletionDataDeletionStatusEnum
+	74,   // 144: opl.cloud.api.WorkspaceDeletion.refund_status:type_name -> opl.cloud.api.WorkspaceDeletionRefundStatusEnum
+	600,  // 145: opl.cloud.api.WorkspaceDeletion.updated_at:type_name -> google.protobuf.Timestamp
+	600,  // 146: opl.cloud.api.Subscription.current_period_start:type_name -> google.protobuf.Timestamp
+	600,  // 147: opl.cloud.api.Subscription.current_period_end:type_name -> google.protobuf.Timestamp
+	75,   // 148: opl.cloud.api.Subscription.status:type_name -> opl.cloud.api.SubscriptionStatusEnum
+	600,  // 149: opl.cloud.api.Subscription.created_at:type_name -> google.protobuf.Timestamp
+	76,   // 150: opl.cloud.api.Subscription.provenance:type_name -> opl.cloud.api.SubscriptionProvenanceEnum
+	77,   // 151: opl.cloud.api.Subscription.renewal_mode:type_name -> opl.cloud.api.SubscriptionRenewalModeEnum
+	78,   // 152: opl.cloud.api.WalletOperation.kind:type_name -> opl.cloud.api.WalletOperationKindEnum
+	79,   // 153: opl.cloud.api.WalletOperation.status:type_name -> opl.cloud.api.WalletOperationStatusEnum
+	14,   // 154: opl.cloud.api.WalletOperation.error_code:type_name -> opl.cloud.api.ErrorCodeEnum
+	600,  // 155: opl.cloud.api.WalletOperation.created_at:type_name -> google.protobuf.Timestamp
+	600,  // 156: opl.cloud.api.WalletOperation.updated_at:type_name -> google.protobuf.Timestamp
+	80,   // 157: opl.cloud.api.WalletOperation.purpose:type_name -> opl.cloud.api.WalletOperationPurposeEnum
+	600,  // 158: opl.cloud.api.WalletOperation.coverage_start:type_name -> google.protobuf.Timestamp
+	600,  // 159: opl.cloud.api.WalletOperation.coverage_end:type_name -> google.protobuf.Timestamp
+	81,   // 160: opl.cloud.api.Wallet.source:type_name -> opl.cloud.api.WalletSourceEnum
+	82,   // 161: opl.cloud.api.Wallet.status:type_name -> opl.cloud.api.WalletStatusEnum
+	83,   // 162: opl.cloud.api.Wallet.currency:type_name -> opl.cloud.api.WalletCurrencyEnum
+	600,  // 163: opl.cloud.api.Wallet.fetched_at:type_name -> google.protobuf.Timestamp
+	600,  // 164: opl.cloud.api.Usage.period_start:type_name -> google.protobuf.Timestamp
+	600,  // 165: opl.cloud.api.Usage.period_end:type_name -> google.protobuf.Timestamp
+	84,   // 166: opl.cloud.api.Usage.source:type_name -> opl.cloud.api.UsageSourceEnum
+	600,  // 167: opl.cloud.api.Usage.created_at:type_name -> google.protobuf.Timestamp
+	85,   // 168: opl.cloud.api.GatewayKey.purpose:type_name -> opl.cloud.api.GatewayKeyPurposeEnum
+	86,   // 169: opl.cloud.api.GatewayKey.status:type_name -> opl.cloud.api.GatewayKeyStatusEnum
+	600,  // 170: opl.cloud.api.GatewayKey.created_at:type_name -> google.protobuf.Timestamp
+	600,  // 171: opl.cloud.api.GatewayKey.expires_at:type_name -> google.protobuf.Timestamp
+	600,  // 172: opl.cloud.api.CreateGatewayKeyRequest.expires_at:type_name -> google.protobuf.Timestamp
+	261,  // 173: opl.cloud.api.GatewayKeySecret.key:type_name -> opl.cloud.api.GatewayKey
+	87,   // 174: opl.cloud.api.AuditEvent.outcome:type_name -> opl.cloud.api.AuditEventOutcomeEnum
+	600,  // 175: opl.cloud.api.AuditEvent.created_at:type_name -> google.protobuf.Timestamp
+	88,   // 176: opl.cloud.api.Receipt.kind:type_name -> opl.cloud.api.ReceiptKindEnum
+	15,   // 177: opl.cloud.api.Receipt.owner:type_name -> opl.cloud.api.OwnerEnum
+	89,   // 178: opl.cloud.api.Receipt.outcome:type_name -> opl.cloud.api.ReceiptOutcomeEnum
+	600,  // 179: opl.cloud.api.Receipt.created_at:type_name -> google.protobuf.Timestamp
+	191,  // 180: opl.cloud.api.AdminOperation.operation:type_name -> opl.cloud.api.Operation
+	90,   // 181: opl.cloud.api.Qualification.status:type_name -> opl.cloud.api.QualificationStatusEnum
+	600,  // 182: opl.cloud.api.Qualification.created_at:type_name -> google.protobuf.Timestamp
+	198,  // 183: opl.cloud.api.MemberPage.items:type_name -> opl.cloud.api.Member
+	199,  // 184: opl.cloud.api.InvitationPage.items:type_name -> opl.cloud.api.Invitation
+	205,  // 185: opl.cloud.api.NamespacePage.items:type_name -> opl.cloud.api.Namespace
+	207,  // 186: opl.cloud.api.PackagePage.items:type_name -> opl.cloud.api.Package
+	211,  // 187: opl.cloud.api.PackageVersionPage.items:type_name -> opl.cloud.api.PackageVersion
+	220,  // 188: opl.cloud.api.CapabilityVersionPage.items:type_name -> opl.cloud.api.CapabilityVersion
+	221,  // 189: opl.cloud.api.BuildJobPage.items:type_name -> opl.cloud.api.BuildJob
+	223,  // 190: opl.cloud.api.BuildLogPage.items:type_name -> opl.cloud.api.BuildLog
+	224,  // 191: opl.cloud.api.RuntimeVersionPage.items:type_name -> opl.cloud.api.RuntimeVersion
+	225,  // 192: opl.cloud.api.WebuiVersionPage.items:type_name -> opl.cloud.api.WebuiVersion
+	229,  // 193: opl.cloud.api.ComputePlanPage.items:type_name -> opl.cloud.api.ComputePlan
+	230,  // 194: opl.cloud.api.StoragePlanPage.items:type_name -> opl.cloud.api.StoragePlan
+	234,  // 195: opl.cloud.api.PricePolicyVersionPage.items:type_name -> opl.cloud.api.PricePolicyVersion
+	236,  // 196: opl.cloud.api.RefundPolicyVersionPage.items:type_name -> opl.cloud.api.RefundPolicyVersion
+	238,  // 197: opl.cloud.api.RetentionPolicyVersionPage.items:type_name -> opl.cloud.api.RetentionPolicyVersion
+	240,  // 198: opl.cloud.api.ModelPage.items:type_name -> opl.cloud.api.Model
+	246,  // 199: opl.cloud.api.WorkspacePage.items:type_name -> opl.cloud.api.Workspace
+	251,  // 200: opl.cloud.api.DeploymentPage.items:type_name -> opl.cloud.api.Deployment
+	258,  // 201: opl.cloud.api.WalletOperationPage.items:type_name -> opl.cloud.api.WalletOperation
+	260,  // 202: opl.cloud.api.UsagePage.items:type_name -> opl.cloud.api.Usage
+	261,  // 203: opl.cloud.api.GatewayKeyPage.items:type_name -> opl.cloud.api.GatewayKey
+	195,  // 204: opl.cloud.api.TenantPage.items:type_name -> opl.cloud.api.Tenant
+	264,  // 205: opl.cloud.api.AuditEventPage.items:type_name -> opl.cloud.api.AuditEvent
+	265,  // 206: opl.cloud.api.ReceiptPage.items:type_name -> opl.cloud.api.Receipt
+	267,  // 207: opl.cloud.api.AdminOperationPage.items:type_name -> opl.cloud.api.AdminOperation
+	268,  // 208: opl.cloud.api.QualificationPage.items:type_name -> opl.cloud.api.Qualification
+	241,  // 209: opl.cloud.api.AdoptWorkspaceRequest.model_selections:type_name -> opl.cloud.api.ModelSelection
+	600,  // 210: opl.cloud.api.BuildRuntimePolicy.effective_at:type_name -> google.protobuf.Timestamp
+	600,  // 211: opl.cloud.api.BuildRuntimePolicy.created_at:type_name -> google.protobuf.Timestamp
+	91,   // 212: opl.cloud.api.ImagePlatform.os:type_name -> opl.cloud.api.ImagePlatformOsEnum
+	92,   // 213: opl.cloud.api.ImagePlatform.architecture:type_name -> opl.cloud.api.ImagePlatformArchitectureEnum
+	299,  // 214: opl.cloud.api.ArtifactReference.platform:type_name -> opl.cloud.api.ImagePlatform
+	93,   // 215: opl.cloud.api.RecipeArtifact.media_type:type_name -> opl.cloud.api.RecipeArtifactMediaTypeEnum
+	94,   // 216: opl.cloud.api.PackageBuildInput.context_name:type_name -> opl.cloud.api.PackageBuildInputContextNameEnum
+	95,   // 217: opl.cloud.api.WebuiBuildInput.context_name:type_name -> opl.cloud.api.WebuiBuildInputContextNameEnum
+	96,   // 218: opl.cloud.api.BuildRecipeContract.version:type_name -> opl.cloud.api.BuildRecipeContractVersionEnum
+	300,  // 219: opl.cloud.api.BuildRecipeContract.frontend:type_name -> opl.cloud.api.ArtifactReference
+	301,  // 220: opl.cloud.api.BuildRecipeContract.recipe:type_name -> opl.cloud.api.RecipeArtifact
+	97,   // 221: opl.cloud.api.BuildRecipeContract.runtime_context_name:type_name -> opl.cloud.api.BuildRecipeContractRuntimeContextNameEnum
+	302,  // 222: opl.cloud.api.BuildRecipeContract.package_input:type_name -> opl.cloud.api.PackageBuildInput
+	303,  // 223: opl.cloud.api.BuildRecipeContract.webui_input:type_name -> opl.cloud.api.WebuiBuildInput
+	98,   // 224: opl.cloud.api.BuildRecipeContract.network_policy:type_name -> opl.cloud.api.BuildRecipeContractNetworkPolicyEnum
+	299,  // 225: opl.cloud.api.BuildRecipeContract.output_platform:type_name -> opl.cloud.api.ImagePlatform
+	341,  // 226: opl.cloud.api.BuildRecipeContract.output_image_command:type_name -> opl.cloud.api.BuildRecipeContractOutputImageCommand
+	99,   // 227: opl.cloud.api.ModelConfigurationContract.protocol:type_name -> opl.cloud.api.ModelConfigurationContractProtocolEnum
+	100,  // 228: opl.cloud.api.ModelConfigurationContract.request_fields:type_name -> opl.cloud.api.ModelConfigurationContractRequestFieldsEnum
+	101,  // 229: opl.cloud.api.ModelConfigurationContract.readback_fields:type_name -> opl.cloud.api.ModelConfigurationContractReadbackFieldsEnum
+	334,  // 230: opl.cloud.api.ApplicationAccessContract.application_owned_access_contract:type_name -> opl.cloud.api.ApplicationOwnedAccessContract
+	335,  // 231: opl.cloud.api.ApplicationAccessContract.cloud_private_access_contract:type_name -> opl.cloud.api.CloudPrivateAccessContract
+	336,  // 232: opl.cloud.api.ApplicationAccessContract.anonymous_access_contract:type_name -> opl.cloud.api.AnonymousAccessContract
+	102,  // 233: opl.cloud.api.DataUpgradeContract.mode:type_name -> opl.cloud.api.DataUpgradeContractModeEnum
+	300,  // 234: opl.cloud.api.DataUpgradeContract.migration_artifact:type_name -> opl.cloud.api.ArtifactReference
+	307,  // 235: opl.cloud.api.DataContract.upgrade:type_name -> opl.cloud.api.DataUpgradeContract
+	308,  // 236: opl.cloud.api.DataContract.rollback:type_name -> opl.cloud.api.DataRollbackContract
+	333,  // 237: opl.cloud.api.DataContract.mount_policies:type_name -> opl.cloud.api.DataMountPolicy
+	103,  // 238: opl.cloud.api.RuntimePublisherContract.schema_version:type_name -> opl.cloud.api.RuntimePublisherContractSchemaVersionEnum
+	300,  // 239: opl.cloud.api.RuntimePublisherContract.image:type_name -> opl.cloud.api.ArtifactReference
+	104,  // 240: opl.cloud.api.RuntimePublisherContract.kind:type_name -> opl.cloud.api.RuntimePublisherContractKindEnum
+	304,  // 241: opl.cloud.api.RuntimePublisherContract.build_recipe:type_name -> opl.cloud.api.BuildRecipeContract
+	305,  // 242: opl.cloud.api.RuntimePublisherContract.model_configuration:type_name -> opl.cloud.api.ModelConfigurationContract
+	306,  // 243: opl.cloud.api.RuntimePublisherContract.application_access:type_name -> opl.cloud.api.ApplicationAccessContract
+	309,  // 244: opl.cloud.api.RuntimePublisherContract.data:type_name -> opl.cloud.api.DataContract
+	332,  // 245: opl.cloud.api.RuntimePublisherContract.application_revision_template:type_name -> opl.cloud.api.WorkspaceApplicationRevision
+	344,  // 246: opl.cloud.api.RuntimePublisherContract.package_format_contracts:type_name -> opl.cloud.api.PackageFormatContractReference
+	105,  // 247: opl.cloud.api.WebuiPublisherContract.schema_version:type_name -> opl.cloud.api.WebuiPublisherContractSchemaVersionEnum
+	300,  // 248: opl.cloud.api.WebuiPublisherContract.image:type_name -> opl.cloud.api.ArtifactReference
+	106,  // 249: opl.cloud.api.WebuiPublisherContract.kind:type_name -> opl.cloud.api.WebuiPublisherContractKindEnum
+	107,  // 250: opl.cloud.api.WebuiPublisherContract.ui_protocol_version:type_name -> opl.cloud.api.WebuiPublisherContractUiProtocolVersionEnum
+	108,  // 251: opl.cloud.api.WebuiPublisherContract.integration_mode:type_name -> opl.cloud.api.WebuiPublisherContractIntegrationModeEnum
+	109,  // 252: opl.cloud.api.WebuiPublisherContract.authentication_protocol:type_name -> opl.cloud.api.WebuiPublisherContractAuthenticationProtocolEnum
+	310,  // 253: opl.cloud.api.PublisherContract.runtime_publisher_contract:type_name -> opl.cloud.api.RuntimePublisherContract
+	311,  // 254: opl.cloud.api.PublisherContract.webui_publisher_contract:type_name -> opl.cloud.api.WebuiPublisherContract
+	110,  // 255: opl.cloud.api.PublisherContractReference.kind:type_name -> opl.cloud.api.PublisherContractReferenceKindEnum
+	111,  // 256: opl.cloud.api.DeploymentDescriptor.schema_version:type_name -> opl.cloud.api.DeploymentDescriptorSchemaVersionEnum
+	300,  // 257: opl.cloud.api.DeploymentDescriptor.artifact:type_name -> opl.cloud.api.ArtifactReference
+	310,  // 258: opl.cloud.api.DeploymentDescriptor.runtime_contract:type_name -> opl.cloud.api.RuntimePublisherContract
+	313,  // 259: opl.cloud.api.DeploymentDescriptor.runtime_contract_reference:type_name -> opl.cloud.api.PublisherContractReference
+	311,  // 260: opl.cloud.api.DeploymentDescriptor.webui_contract:type_name -> opl.cloud.api.WebuiPublisherContract
+	313,  // 261: opl.cloud.api.DeploymentDescriptor.webui_contract_reference:type_name -> opl.cloud.api.PublisherContractReference
+	112,  // 262: opl.cloud.api.DeploymentDescriptor.provenance:type_name -> opl.cloud.api.DeploymentDescriptorProvenanceEnum
+	332,  // 263: opl.cloud.api.DeploymentDescriptor.application_revision:type_name -> opl.cloud.api.WorkspaceApplicationRevision
+	242,  // 264: opl.cloud.api.DeploymentDescriptor.application_selection:type_name -> opl.cloud.api.WorkspaceApplicationSelection
+	113,  // 265: opl.cloud.api.PublisherNamespace.kind:type_name -> opl.cloud.api.PublisherNamespaceKindEnum
+	114,  // 266: opl.cloud.api.PublisherNamespace.status:type_name -> opl.cloud.api.PublisherNamespaceStatusEnum
+	600,  // 267: opl.cloud.api.PublisherNamespace.created_at:type_name -> google.protobuf.Timestamp
+	115,  // 268: opl.cloud.api.CreatePublisherNamespaceRequest.kind:type_name -> opl.cloud.api.CreatePublisherNamespaceRequestKindEnum
+	315,  // 269: opl.cloud.api.PublisherNamespacePage.items:type_name -> opl.cloud.api.PublisherNamespace
+	116,  // 270: opl.cloud.api.RenewalPolicy.version:type_name -> opl.cloud.api.RenewalPolicyVersionEnum
+	117,  // 271: opl.cloud.api.RenewalPolicy.trigger:type_name -> opl.cloud.api.RenewalPolicyTriggerEnum
+	118,  // 272: opl.cloud.api.RenewalPolicy.effective_start:type_name -> opl.cloud.api.RenewalPolicyEffectiveStartEnum
+	119,  // 273: opl.cloud.api.WorkspaceApplicationCredential.kind:type_name -> opl.cloud.api.WorkspaceApplicationCredentialKindEnum
+	120,  // 274: opl.cloud.api.WorkspaceApplicationPort.protocol:type_name -> opl.cloud.api.WorkspaceApplicationPortProtocolEnum
+	599,  // 275: opl.cloud.api.WorkspaceApplicationDependencyCommand.env:type_name -> opl.cloud.api.WorkspaceApplicationDependencyCommand.EnvEntry
+	121,  // 276: opl.cloud.api.WorkspaceApplicationDependencyHealthCheck.type:type_name -> opl.cloud.api.WorkspaceApplicationDependencyHealthCheckTypeEnum
+	321,  // 277: opl.cloud.api.WorkspaceApplicationDependency.execution:type_name -> opl.cloud.api.WorkspaceApplicationExecution
+	324,  // 278: opl.cloud.api.WorkspaceApplicationDependency.ports:type_name -> opl.cloud.api.WorkspaceApplicationPort
+	330,  // 279: opl.cloud.api.WorkspaceApplicationDependency.health_checks:type_name -> opl.cloud.api.WorkspaceApplicationDependencyHealthCheck
+	326,  // 280: opl.cloud.api.WorkspaceApplicationDependency.persistent_mounts:type_name -> opl.cloud.api.WorkspaceApplicationMount
+	326,  // 281: opl.cloud.api.WorkspaceApplicationDependency.scratch_mounts:type_name -> opl.cloud.api.WorkspaceApplicationMount
+	329,  // 282: opl.cloud.api.WorkspaceApplicationDependency.command:type_name -> opl.cloud.api.WorkspaceApplicationDependencyCommand
+	327,  // 283: opl.cloud.api.WorkspaceApplicationDependency.secret_inputs:type_name -> opl.cloud.api.WorkspaceApplicationSecretInput
+	328,  // 284: opl.cloud.api.WorkspaceApplicationDependency.config_inputs:type_name -> opl.cloud.api.WorkspaceApplicationConfigInput
+	322,  // 285: opl.cloud.api.WorkspaceApplicationDependency.compute:type_name -> opl.cloud.api.WorkspaceApplicationCompute
+	321,  // 286: opl.cloud.api.WorkspaceApplicationRevision.execution:type_name -> opl.cloud.api.WorkspaceApplicationExecution
+	323,  // 287: opl.cloud.api.WorkspaceApplicationRevision.credentials:type_name -> opl.cloud.api.WorkspaceApplicationCredential
+	324,  // 288: opl.cloud.api.WorkspaceApplicationRevision.ports:type_name -> opl.cloud.api.WorkspaceApplicationPort
+	325,  // 289: opl.cloud.api.WorkspaceApplicationRevision.health_checks:type_name -> opl.cloud.api.WorkspaceApplicationHealthCheck
+	326,  // 290: opl.cloud.api.WorkspaceApplicationRevision.persistent_mounts:type_name -> opl.cloud.api.WorkspaceApplicationMount
+	326,  // 291: opl.cloud.api.WorkspaceApplicationRevision.scratch_mounts:type_name -> opl.cloud.api.WorkspaceApplicationMount
+	327,  // 292: opl.cloud.api.WorkspaceApplicationRevision.secret_inputs:type_name -> opl.cloud.api.WorkspaceApplicationSecretInput
+	328,  // 293: opl.cloud.api.WorkspaceApplicationRevision.config_inputs:type_name -> opl.cloud.api.WorkspaceApplicationConfigInput
+	331,  // 294: opl.cloud.api.WorkspaceApplicationRevision.dependencies:type_name -> opl.cloud.api.WorkspaceApplicationDependency
+	122,  // 295: opl.cloud.api.WorkspaceApplicationRevision.exposure_policy:type_name -> opl.cloud.api.WorkspaceApplicationRevisionExposurePolicyEnum
+	322,  // 296: opl.cloud.api.WorkspaceApplicationRevision.compute:type_name -> opl.cloud.api.WorkspaceApplicationCompute
+	123,  // 297: opl.cloud.api.ApplicationOwnedAccessContract.mode:type_name -> opl.cloud.api.ApplicationOwnedAccessContractModeEnum
+	124,  // 298: opl.cloud.api.CloudPrivateAccessContract.mode:type_name -> opl.cloud.api.CloudPrivateAccessContractModeEnum
+	125,  // 299: opl.cloud.api.CloudPrivateAccessContract.entry_contract:type_name -> opl.cloud.api.CloudPrivateAccessContractEntryContractEnum
+	126,  // 300: opl.cloud.api.AnonymousAccessContract.mode:type_name -> opl.cloud.api.AnonymousAccessContractModeEnum
+	127,  // 301: opl.cloud.api.TenantWorkspaceAction.action:type_name -> opl.cloud.api.TenantWorkspaceActionActionEnum
+	128,  // 302: opl.cloud.api.TenantWorkspaceAction.operation_owner:type_name -> opl.cloud.api.TenantWorkspaceActionOperationOwnerEnum
+	129,  // 303: opl.cloud.api.TenantWorkspaceAction.status:type_name -> opl.cloud.api.TenantWorkspaceActionStatusEnum
+	130,  // 304: opl.cloud.api.TenantWorkspaceSkip.reason:type_name -> opl.cloud.api.TenantWorkspaceSkipReasonEnum
+	191,  // 305: opl.cloud.api.TenantLifecycleProgress.operation:type_name -> opl.cloud.api.Operation
+	131,  // 306: opl.cloud.api.TenantLifecycleProgress.access_status:type_name -> opl.cloud.api.TenantLifecycleProgressAccessStatusEnum
+	338,  // 307: opl.cloud.api.TenantLifecycleProgress.workspace_actions:type_name -> opl.cloud.api.TenantWorkspaceAction
+	339,  // 308: opl.cloud.api.TenantLifecycleProgress.skipped:type_name -> opl.cloud.api.TenantWorkspaceSkip
+	132,  // 309: opl.cloud.api.UpdateRenewalSettingsRequest.renewal_mode:type_name -> opl.cloud.api.UpdateRenewalSettingsRequestRenewalModeEnum
+	133,  // 310: opl.cloud.api.PackageFormatContractReference.owner:type_name -> opl.cloud.api.PackageFormatContractReferenceOwnerEnum
+	300,  // 311: opl.cloud.api.PackageFormatContractReference.validator_artifact:type_name -> opl.cloud.api.ArtifactReference
+	134,  // 312: opl.cloud.api.UpgradePlanRules.kind:type_name -> opl.cloud.api.UpgradePlanRulesKindEnum
+	135,  // 313: opl.cloud.api.UpgradePlanRules.effective_when:type_name -> opl.cloud.api.UpgradePlanRulesEffectiveWhenEnum
+	136,  // 314: opl.cloud.api.UpgradePlanRules.old_price_source:type_name -> opl.cloud.api.UpgradePlanRulesOldPriceSourceEnum
+	137,  // 315: opl.cloud.api.UpgradePlanRules.charge_clock:type_name -> opl.cloud.api.UpgradePlanRulesChargeClockEnum
+	138,  // 316: opl.cloud.api.UpgradePlanRules.time_unit:type_name -> opl.cloud.api.UpgradePlanRulesTimeUnitEnum
+	139,  // 317: opl.cloud.api.UpgradePlanRules.charge_rounding:type_name -> opl.cloud.api.UpgradePlanRulesChargeRoundingEnum
+	140,  // 318: opl.cloud.api.UpgradePlanRules.zero_charge:type_name -> opl.cloud.api.UpgradePlanRulesZeroChargeEnum
+	141,  // 319: opl.cloud.api.UpgradePlanRules.known_failure_compensation:type_name -> opl.cloud.api.UpgradePlanRulesKnownFailureCompensationEnum
+	142,  // 320: opl.cloud.api.UpgradePlanRules.unknown_outcome:type_name -> opl.cloud.api.UpgradePlanRulesUnknownOutcomeEnum
+	143,  // 321: opl.cloud.api.UpgradePlanRules.irreversible_residual_cost_owner:type_name -> opl.cloud.api.UpgradePlanRulesIrreversibleResidualCostOwnerEnum
+	144,  // 322: opl.cloud.api.UpgradePlanRules.supplement_delete_refund:type_name -> opl.cloud.api.UpgradePlanRulesSupplementDeleteRefundEnum
+	145,  // 323: opl.cloud.api.DowngradePlanRules.kind:type_name -> opl.cloud.api.DowngradePlanRulesKindEnum
+	146,  // 324: opl.cloud.api.DowngradePlanRules.planned_boundary:type_name -> opl.cloud.api.DowngradePlanRulesPlannedBoundaryEnum
+	147,  // 325: opl.cloud.api.DowngradePlanRules.current_period_refund:type_name -> opl.cloud.api.DowngradePlanRulesCurrentPeriodRefundEnum
+	148,  // 326: opl.cloud.api.DowngradePlanRules.next_period_price:type_name -> opl.cloud.api.DowngradePlanRulesNextPeriodPriceEnum
+	149,  // 327: opl.cloud.api.DowngradePlanRules.cancel_before:type_name -> opl.cloud.api.DowngradePlanRulesCancelBeforeEnum
+	150,  // 328: opl.cloud.api.DowngradePlanRules.early_paid_change:type_name -> opl.cloud.api.DowngradePlanRulesEarlyPaidChangeEnum
+	151,  // 329: opl.cloud.api.DowngradePlanRules.manual_unpaid_boundary:type_name -> opl.cloud.api.DowngradePlanRulesManualUnpaidBoundaryEnum
+	152,  // 330: opl.cloud.api.DowngradePlanRules.known_failure_compensation:type_name -> opl.cloud.api.DowngradePlanRulesKnownFailureCompensationEnum
+	153,  // 331: opl.cloud.api.DowngradePlanRules.fallback:type_name -> opl.cloud.api.DowngradePlanRulesFallbackEnum
+	154,  // 332: opl.cloud.api.PlanChangePolicy.version:type_name -> opl.cloud.api.PlanChangePolicyVersionEnum
+	155,  // 333: opl.cloud.api.PlanChangePolicy.approval_status:type_name -> opl.cloud.api.PlanChangePolicyApprovalStatusEnum
+	346,  // 334: opl.cloud.api.PlanChangePolicy.upgrade:type_name -> opl.cloud.api.UpgradePlanRules
+	347,  // 335: opl.cloud.api.PlanChangePolicy.downgrade:type_name -> opl.cloud.api.DowngradePlanRules
+	156,  // 336: opl.cloud.api.PlanChangePolicy.classification:type_name -> opl.cloud.api.PlanChangePolicyClassificationEnum
+	157,  // 337: opl.cloud.api.PlanChangePolicy.mixed_or_incomparable_transition:type_name -> opl.cloud.api.PlanChangePolicyMixedOrIncomparableTransitionEnum
+	158,  // 338: opl.cloud.api.PlanChangePolicy.no_op_transition:type_name -> opl.cloud.api.PlanChangePolicyNoOpTransitionEnum
+	159,  // 339: opl.cloud.api.PlanChangePolicy.storage_shrink:type_name -> opl.cloud.api.PlanChangePolicyStorageShrinkEnum
+	160,  // 340: opl.cloud.api.PlanChangePolicy.concurrency:type_name -> opl.cloud.api.PlanChangePolicyConcurrencyEnum
+	161,  // 341: opl.cloud.api.PlanChangePolicy.cancel_and_replace:type_name -> opl.cloud.api.PlanChangePolicyCancelAndReplaceEnum
+	162,  // 342: opl.cloud.api.PlanChangePolicy.base_refund_policy:type_name -> opl.cloud.api.PlanChangePolicyBaseRefundPolicyEnum
+	163,  // 343: opl.cloud.api.PlanChangePolicy.provider_execution_plan:type_name -> opl.cloud.api.PlanChangePolicyProviderExecutionPlanEnum
+	164,  // 344: opl.cloud.api.UpgradeProration.rounding:type_name -> opl.cloud.api.UpgradeProrationRoundingEnum
+	600,  // 345: opl.cloud.api.NextPeriodPlanQuote.period_start:type_name -> google.protobuf.Timestamp
+	600,  // 346: opl.cloud.api.NextPeriodPlanQuote.period_end:type_name -> google.protobuf.Timestamp
+	165,  // 347: opl.cloud.api.PlanChangeCalculation.policy_version:type_name -> opl.cloud.api.PlanChangeCalculationPolicyVersionEnum
+	166,  // 348: opl.cloud.api.PlanChangeCalculation.kind:type_name -> opl.cloud.api.PlanChangeCalculationKindEnum
+	600,  // 349: opl.cloud.api.PlanChangeCalculation.quote_at:type_name -> google.protobuf.Timestamp
+	600,  // 350: opl.cloud.api.PlanChangeCalculation.period_start:type_name -> google.protobuf.Timestamp
+	600,  // 351: opl.cloud.api.PlanChangeCalculation.period_end:type_name -> google.protobuf.Timestamp
+	600,  // 352: opl.cloud.api.PlanChangeCalculation.planned_effective_at:type_name -> google.protobuf.Timestamp
+	349,  // 353: opl.cloud.api.PlanChangeCalculation.upgrade_proration:type_name -> opl.cloud.api.UpgradeProration
+	350,  // 354: opl.cloud.api.PlanChangeCalculation.next_period:type_name -> opl.cloud.api.NextPeriodPlanQuote
+	167,  // 355: opl.cloud.api.PlanChange.kind:type_name -> opl.cloud.api.PlanChangeKindEnum
+	168,  // 356: opl.cloud.api.PlanChange.status:type_name -> opl.cloud.api.PlanChangeStatusEnum
+	154,  // 357: opl.cloud.api.PlanChange.policy_version:type_name -> opl.cloud.api.PlanChangePolicyVersionEnum
+	600,  // 358: opl.cloud.api.PlanChange.quote_at:type_name -> google.protobuf.Timestamp
+	600,  // 359: opl.cloud.api.PlanChange.period_start:type_name -> google.protobuf.Timestamp
+	600,  // 360: opl.cloud.api.PlanChange.period_end:type_name -> google.protobuf.Timestamp
+	600,  // 361: opl.cloud.api.PlanChange.planned_effective_at:type_name -> google.protobuf.Timestamp
+	600,  // 362: opl.cloud.api.PlanChange.applied_at:type_name -> google.protobuf.Timestamp
+	169,  // 363: opl.cloud.api.PlanChange.charge_status:type_name -> opl.cloud.api.PlanChangeChargeStatusEnum
+	600,  // 364: opl.cloud.api.PlanChange.next_period_start:type_name -> google.protobuf.Timestamp
+	600,  // 365: opl.cloud.api.PlanChange.next_period_end:type_name -> google.protobuf.Timestamp
+	170,  // 366: opl.cloud.api.PlanChange.next_period_charge_status:type_name -> opl.cloud.api.PlanChangeNextPeriodChargeStatusEnum
+	171,  // 367: opl.cloud.api.PlanChange.observation_result:type_name -> opl.cloud.api.PlanChangeObservationResultEnum
+	14,   // 368: opl.cloud.api.PlanChange.error_code:type_name -> opl.cloud.api.ErrorCodeEnum
+	600,  // 369: opl.cloud.api.PlanChange.created_at:type_name -> google.protobuf.Timestamp
+	600,  // 370: opl.cloud.api.PlanChange.updated_at:type_name -> google.protobuf.Timestamp
+	172,  // 371: opl.cloud.api.PlanChange.delivery_outcome:type_name -> opl.cloud.api.PlanChangeDeliveryOutcomeEnum
+	173,  // 372: opl.cloud.api.PlanChange.resource_outcome:type_name -> opl.cloud.api.PlanChangeResourceOutcomeEnum
+	174,  // 373: opl.cloud.api.PlanChange.runtime_readback_requirement:type_name -> opl.cloud.api.PlanChangeRuntimeReadbackRequirementEnum
+	175,  // 374: opl.cloud.api.PlanChange.current_requirement_validation:type_name -> opl.cloud.api.PlanChangeCurrentRequirementValidationEnum
+	14,   // 375: opl.cloud.api.PlanChange.risk_code:type_name -> opl.cloud.api.ErrorCodeEnum
+	600,  // 376: opl.cloud.api.PlanChange.last_validated_at:type_name -> google.protobuf.Timestamp
+	352,  // 377: opl.cloud.api.PlanChangePage.items:type_name -> opl.cloud.api.PlanChange
+	176,  // 378: opl.cloud.api.PlanChangeEvidence.kind:type_name -> opl.cloud.api.PlanChangeEvidenceKindEnum
+	177,  // 379: opl.cloud.api.PlanChangeEvidence.policy_version:type_name -> opl.cloud.api.PlanChangeEvidencePolicyVersionEnum
+	600,  // 380: opl.cloud.api.PlanChangeEvidence.quote_at:type_name -> google.protobuf.Timestamp
+	600,  // 381: opl.cloud.api.PlanChangeEvidence.period_start:type_name -> google.protobuf.Timestamp
+	600,  // 382: opl.cloud.api.PlanChangeEvidence.period_end:type_name -> google.protobuf.Timestamp
+	600,  // 383: opl.cloud.api.PlanChangeEvidence.applied_at:type_name -> google.protobuf.Timestamp
+	178,  // 384: opl.cloud.api.PlanChangeEvidence.outcome:type_name -> opl.cloud.api.PlanChangeEvidenceOutcomeEnum
+	179,  // 385: opl.cloud.api.PlanChangeEvidence.delivery_outcome:type_name -> opl.cloud.api.PlanChangeEvidenceDeliveryOutcomeEnum
+	180,  // 386: opl.cloud.api.PlanChangeEvidence.resource_outcome:type_name -> opl.cloud.api.PlanChangeEvidenceResourceOutcomeEnum
+	181,  // 387: opl.cloud.api.PlanChangeEvidence.runtime_readback_requirement:type_name -> opl.cloud.api.PlanChangeEvidenceRuntimeReadbackRequirementEnum
+	182,  // 388: opl.cloud.api.SupplementalRefundEvidence.purpose:type_name -> opl.cloud.api.SupplementalRefundEvidencePurposeEnum
+	183,  // 389: opl.cloud.api.SupplementalRefundEvidence.policy_version:type_name -> opl.cloud.api.SupplementalRefundEvidencePolicyVersionEnum
+	600,  // 390: opl.cloud.api.SupplementalRefundEvidence.coverage_start:type_name -> google.protobuf.Timestamp
+	600,  // 391: opl.cloud.api.SupplementalRefundEvidence.coverage_end:type_name -> google.protobuf.Timestamp
+	600,  // 392: opl.cloud.api.SupplementalRefundEvidence.delete_confirmed_at:type_name -> google.protobuf.Timestamp
+	188,  // 393: opl.cloud.api.GetLoginContextRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 394: opl.cloud.api.LoginRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	193,  // 395: opl.cloud.api.LoginRpcRequest.body:type_name -> opl.cloud.api.LoginRequest
+	188,  // 396: opl.cloud.api.GetSessionRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 397: opl.cloud.api.LogoutRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 398: opl.cloud.api.GetTenantRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 399: opl.cloud.api.ListMembersRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 400: opl.cloud.api.ListInvitationsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 401: opl.cloud.api.InviteMemberRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	200,  // 402: opl.cloud.api.InviteMemberRpcRequest.body:type_name -> opl.cloud.api.InviteMemberRequest
+	188,  // 403: opl.cloud.api.AcceptInvitationRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 404: opl.cloud.api.RevokeInvitationRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 405: opl.cloud.api.UpdateMemberRoleRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	201,  // 406: opl.cloud.api.UpdateMemberRoleRpcRequest.body:type_name -> opl.cloud.api.UpdateMemberRoleRequest
+	188,  // 407: opl.cloud.api.RemoveMemberRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 408: opl.cloud.api.ListNamespacesRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 409: opl.cloud.api.CreateNamespaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	206,  // 410: opl.cloud.api.CreateNamespaceRpcRequest.body:type_name -> opl.cloud.api.NamespaceWriteRequest
+	188,  // 411: opl.cloud.api.UpdateNamespaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	206,  // 412: opl.cloud.api.UpdateNamespaceRpcRequest.body:type_name -> opl.cloud.api.NamespaceWriteRequest
+	188,  // 413: opl.cloud.api.ArchiveNamespaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 414: opl.cloud.api.ListPackagesRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	184,  // 415: opl.cloud.api.ListPackagesRpcRequest.query_visibility:type_name -> opl.cloud.api.ListPackagesRpcRequestVisibilityEnum
+	185,  // 416: opl.cloud.api.ListPackagesRpcRequest.query_status:type_name -> opl.cloud.api.ListPackagesRpcRequestStatusEnum
+	188,  // 417: opl.cloud.api.CreatePackageRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	208,  // 418: opl.cloud.api.CreatePackageRpcRequest.body:type_name -> opl.cloud.api.CreatePackageRequest
+	188,  // 419: opl.cloud.api.GetPackageRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 420: opl.cloud.api.UpdatePackageRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	209,  // 421: opl.cloud.api.UpdatePackageRpcRequest.body:type_name -> opl.cloud.api.UpdatePackageRequest
+	188,  // 422: opl.cloud.api.ArchivePackageRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 423: opl.cloud.api.CreateUploadRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	212,  // 424: opl.cloud.api.CreateUploadRpcRequest.body:type_name -> opl.cloud.api.CreateUploadRequest
+	188,  // 425: opl.cloud.api.GetUploadRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 426: opl.cloud.api.CreateUploadPartRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	215,  // 427: opl.cloud.api.CreateUploadPartRpcRequest.body:type_name -> opl.cloud.api.CreateUploadPartRequest
+	188,  // 428: opl.cloud.api.CompleteUploadRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	217,  // 429: opl.cloud.api.CompleteUploadRpcRequest.body:type_name -> opl.cloud.api.CompleteUploadRequest
+	188,  // 430: opl.cloud.api.ListPackageVersionsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 431: opl.cloud.api.GetPackageVersionRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 432: opl.cloud.api.CreateBuildRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	222,  // 433: opl.cloud.api.CreateBuildRpcRequest.body:type_name -> opl.cloud.api.CreateBuildRequest
+	188,  // 434: opl.cloud.api.ListBuildsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 435: opl.cloud.api.GetBuildRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 436: opl.cloud.api.ListBuildLogsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 437: opl.cloud.api.RetryBuildRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 438: opl.cloud.api.ListCapabilityVersionsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	186,  // 439: opl.cloud.api.ListCapabilityVersionsRpcRequest.query_status:type_name -> opl.cloud.api.ListCapabilityVersionsRpcRequestStatusEnum
+	188,  // 440: opl.cloud.api.GetCapabilityVersionRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 441: opl.cloud.api.DeleteCapabilityVersionRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 442: opl.cloud.api.PublishOfficialPackageRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	210,  // 443: opl.cloud.api.PublishOfficialPackageRpcRequest.body:type_name -> opl.cloud.api.PublishPackageRequest
+	188,  // 444: opl.cloud.api.CreateQuoteRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	243,  // 445: opl.cloud.api.CreateQuoteRpcRequest.body:type_name -> opl.cloud.api.QuoteRequest
+	188,  // 446: opl.cloud.api.GetQuoteRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 447: opl.cloud.api.CreateWorkspaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	247,  // 448: opl.cloud.api.CreateWorkspaceRpcRequest.body:type_name -> opl.cloud.api.CreateWorkspaceRequest
+	188,  // 449: opl.cloud.api.ListWorkspacesRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 450: opl.cloud.api.GetWorkspaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 451: opl.cloud.api.DeleteWorkspaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	255,  // 452: opl.cloud.api.DeleteWorkspaceRpcRequest.body:type_name -> opl.cloud.api.DeleteWorkspaceRequest
+	188,  // 453: opl.cloud.api.GetWorkspaceAccessRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 454: opl.cloud.api.GetWorkspaceModelsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 455: opl.cloud.api.UpdateWorkspaceModelsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	250,  // 456: opl.cloud.api.UpdateWorkspaceModelsRpcRequest.body:type_name -> opl.cloud.api.UpdateWorkspaceModelsRequest
+	188,  // 457: opl.cloud.api.ListDeploymentsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 458: opl.cloud.api.GetDeploymentRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 459: opl.cloud.api.UpdateWorkspaceVersionRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	252,  // 460: opl.cloud.api.UpdateWorkspaceVersionRpcRequest.body:type_name -> opl.cloud.api.UpdateWorkspaceVersionRequest
+	188,  // 461: opl.cloud.api.RollbackWorkspaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	253,  // 462: opl.cloud.api.RollbackWorkspaceRpcRequest.body:type_name -> opl.cloud.api.RollbackWorkspaceRequest
+	188,  // 463: opl.cloud.api.ResizeWorkspaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	254,  // 464: opl.cloud.api.ResizeWorkspaceRpcRequest.body:type_name -> opl.cloud.api.ApplyQuoteRequest
+	188,  // 465: opl.cloud.api.RenewWorkspaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	254,  // 466: opl.cloud.api.RenewWorkspaceRpcRequest.body:type_name -> opl.cloud.api.ApplyQuoteRequest
+	188,  // 467: opl.cloud.api.GetSubscriptionRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 468: opl.cloud.api.GetWorkspaceDeletionRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 469: opl.cloud.api.ListWorkspaceTransactionsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 470: opl.cloud.api.GetOperationRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	19,   // 471: opl.cloud.api.GetOperationRpcRequest.owner:type_name -> opl.cloud.api.OperationOwnerEnum
+	188,  // 472: opl.cloud.api.GetWalletRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 473: opl.cloud.api.ListUsageRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	600,  // 474: opl.cloud.api.ListUsageRpcRequest.query_from:type_name -> google.protobuf.Timestamp
+	600,  // 475: opl.cloud.api.ListUsageRpcRequest.query_until:type_name -> google.protobuf.Timestamp
+	188,  // 476: opl.cloud.api.GetUsageSummaryRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 477: opl.cloud.api.ListGatewayKeysRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 478: opl.cloud.api.CreateGatewayKeyRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	262,  // 479: opl.cloud.api.CreateGatewayKeyRpcRequest.body:type_name -> opl.cloud.api.CreateGatewayKeyRequest
+	188,  // 480: opl.cloud.api.RevealGatewayKeyRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 481: opl.cloud.api.RevokeGatewayKeyRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 482: opl.cloud.api.ListRechargeRecordsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 483: opl.cloud.api.ListTenantsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 484: opl.cloud.api.CreateTenantRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	196,  // 485: opl.cloud.api.CreateTenantRpcRequest.body:type_name -> opl.cloud.api.CreateTenantRequest
+	188,  // 486: opl.cloud.api.GetAdminTenantRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 487: opl.cloud.api.DeleteTenantRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	203,  // 488: opl.cloud.api.DeleteTenantRpcRequest.body:type_name -> opl.cloud.api.DeleteTenantRequest
+	188,  // 489: opl.cloud.api.BindTenantWalletRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	197,  // 490: opl.cloud.api.BindTenantWalletRpcRequest.body:type_name -> opl.cloud.api.BindTenantWalletRequest
+	188,  // 491: opl.cloud.api.SuspendTenantRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	202,  // 492: opl.cloud.api.SuspendTenantRpcRequest.body:type_name -> opl.cloud.api.TenantActionRequest
+	188,  // 493: opl.cloud.api.RestoreTenantRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	202,  // 494: opl.cloud.api.RestoreTenantRpcRequest.body:type_name -> opl.cloud.api.TenantActionRequest
+	188,  // 495: opl.cloud.api.GetTenantAssetCustodyRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 496: opl.cloud.api.ListAdminOperationsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	19,   // 497: opl.cloud.api.ListAdminOperationsRpcRequest.query_owner:type_name -> opl.cloud.api.OperationOwnerEnum
+	188,  // 498: opl.cloud.api.ReconcileOperationRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	266,  // 499: opl.cloud.api.ReconcileOperationRpcRequest.body:type_name -> opl.cloud.api.ReconcileOperationRequest
+	19,   // 500: opl.cloud.api.ReconcileOperationRpcRequest.owner:type_name -> opl.cloud.api.OperationOwnerEnum
+	188,  // 501: opl.cloud.api.ListAuditEventsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 502: opl.cloud.api.ListReceiptsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 503: opl.cloud.api.GetReceiptRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 504: opl.cloud.api.ListQualificationsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 505: opl.cloud.api.ListRuntimeVersionsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 506: opl.cloud.api.ListWebuiVersionsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 507: opl.cloud.api.ListComputePlansRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 508: opl.cloud.api.ListStoragePlansRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 509: opl.cloud.api.ListModelsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 510: opl.cloud.api.RegisterRuntimeVersionRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	226,  // 511: opl.cloud.api.RegisterRuntimeVersionRpcRequest.body:type_name -> opl.cloud.api.RegisterRuntimeVersionRequest
+	188,  // 512: opl.cloud.api.SetRuntimeVersionStatusRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	228,  // 513: opl.cloud.api.SetRuntimeVersionStatusRpcRequest.body:type_name -> opl.cloud.api.CatalogStatusRequest
+	188,  // 514: opl.cloud.api.RegisterWebuiVersionRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	227,  // 515: opl.cloud.api.RegisterWebuiVersionRpcRequest.body:type_name -> opl.cloud.api.RegisterWebuiVersionRequest
+	188,  // 516: opl.cloud.api.SetWebuiVersionStatusRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	228,  // 517: opl.cloud.api.SetWebuiVersionStatusRpcRequest.body:type_name -> opl.cloud.api.CatalogStatusRequest
+	188,  // 518: opl.cloud.api.CreateComputePlanRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	231,  // 519: opl.cloud.api.CreateComputePlanRpcRequest.body:type_name -> opl.cloud.api.CreateComputePlanRequest
+	188,  // 520: opl.cloud.api.SetComputePlanAvailabilityRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	233,  // 521: opl.cloud.api.SetComputePlanAvailabilityRpcRequest.body:type_name -> opl.cloud.api.PlanAvailabilityRequest
+	188,  // 522: opl.cloud.api.CreateStoragePlanRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	232,  // 523: opl.cloud.api.CreateStoragePlanRpcRequest.body:type_name -> opl.cloud.api.CreateStoragePlanRequest
+	188,  // 524: opl.cloud.api.SetStoragePlanAvailabilityRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	233,  // 525: opl.cloud.api.SetStoragePlanAvailabilityRpcRequest.body:type_name -> opl.cloud.api.PlanAvailabilityRequest
+	188,  // 526: opl.cloud.api.ListPricePolicyVersionsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 527: opl.cloud.api.CreatePricePolicyVersionRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	235,  // 528: opl.cloud.api.CreatePricePolicyVersionRpcRequest.body:type_name -> opl.cloud.api.CreatePricePolicyRequest
+	188,  // 529: opl.cloud.api.ListRefundPolicyVersionsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 530: opl.cloud.api.CreateRefundPolicyVersionRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	237,  // 531: opl.cloud.api.CreateRefundPolicyVersionRpcRequest.body:type_name -> opl.cloud.api.CreateRefundPolicyRequest
+	188,  // 532: opl.cloud.api.ListRetentionPolicyVersionsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 533: opl.cloud.api.CreateRetentionPolicyVersionRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	239,  // 534: opl.cloud.api.CreateRetentionPolicyVersionRpcRequest.body:type_name -> opl.cloud.api.CreateRetentionPolicyRequest
+	188,  // 535: opl.cloud.api.AdoptWorkspaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	296,  // 536: opl.cloud.api.AdoptWorkspaceRpcRequest.body:type_name -> opl.cloud.api.AdoptWorkspaceRequest
+	188,  // 537: opl.cloud.api.GetBuildRuntimePolicyRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 538: opl.cloud.api.SetBuildRuntimePolicyRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	298,  // 539: opl.cloud.api.SetBuildRuntimePolicyRpcRequest.body:type_name -> opl.cloud.api.SetBuildRuntimePolicyRequest
+	188,  // 540: opl.cloud.api.ListPublisherNamespacesRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 541: opl.cloud.api.CreatePublisherNamespaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	316,  // 542: opl.cloud.api.CreatePublisherNamespaceRpcRequest.body:type_name -> opl.cloud.api.CreatePublisherNamespaceRequest
+	188,  // 543: opl.cloud.api.RevokePublisherNamespaceRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	317,  // 544: opl.cloud.api.RevokePublisherNamespaceRpcRequest.body:type_name -> opl.cloud.api.RevokePublisherNamespaceRequest
+	188,  // 545: opl.cloud.api.ReenableTenantRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	319,  // 546: opl.cloud.api.ReenableTenantRpcRequest.body:type_name -> opl.cloud.api.ReenableTenantRequest
+	188,  // 547: opl.cloud.api.GetTenantLifecycleOperationRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 548: opl.cloud.api.UpdateRenewalSettingsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	342,  // 549: opl.cloud.api.UpdateRenewalSettingsRpcRequest.body:type_name -> opl.cloud.api.UpdateRenewalSettingsRequest
+	188,  // 550: opl.cloud.api.RevealWorkspaceApplicationCredentialsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 551: opl.cloud.api.ListPlanChangesRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 552: opl.cloud.api.GetPlanChangeRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 553: opl.cloud.api.CancelPlanChangeRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	354,  // 554: opl.cloud.api.CancelPlanChangeRpcRequest.body:type_name -> opl.cloud.api.CancelPlanChangeRequest
+	188,  // 555: opl.cloud.api.OwnerOperationRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 556: opl.cloud.api.BuildInputRequest.context:type_name -> opl.cloud.api.CallContext
+	467,  // 557: opl.cloud.api.BuildInputSnapshot.package_object:type_name -> opl.cloud.api.SourceObjectReference
+	300,  // 558: opl.cloud.api.BuildInputSnapshot.runtime_artifact:type_name -> opl.cloud.api.ArtifactReference
+	300,  // 559: opl.cloud.api.BuildInputSnapshot.webui_artifact:type_name -> opl.cloud.api.ArtifactReference
+	310,  // 560: opl.cloud.api.BuildInputSnapshot.runtime_contract:type_name -> opl.cloud.api.RuntimePublisherContract
+	311,  // 561: opl.cloud.api.BuildInputSnapshot.webui_contract:type_name -> opl.cloud.api.WebuiPublisherContract
+	313,  // 562: opl.cloud.api.BuildInputSnapshot.runtime_contract_reference:type_name -> opl.cloud.api.PublisherContractReference
+	313,  // 563: opl.cloud.api.BuildInputSnapshot.webui_contract_reference:type_name -> opl.cloud.api.PublisherContractReference
+	188,  // 564: opl.cloud.api.ReferenceClaimRequest.context:type_name -> opl.cloud.api.CallContext
+	470,  // 565: opl.cloud.api.ReferenceClaimRequest.target:type_name -> opl.cloud.api.ReferenceTarget
+	15,   // 566: opl.cloud.api.ReferenceClaimRequest.claimant_owner:type_name -> opl.cloud.api.OwnerEnum
+	15,   // 567: opl.cloud.api.OwnerCommitEvidence.owner:type_name -> opl.cloud.api.OwnerEnum
+	600,  // 568: opl.cloud.api.OwnerCommitEvidence.accepted_at:type_name -> google.protobuf.Timestamp
+	485,  // 569: opl.cloud.api.OwnerCommitEvidence.scope:type_name -> opl.cloud.api.AuthorizationScope
+	20,   // 570: opl.cloud.api.OwnerCommitEvidence.accepted_action:type_name -> opl.cloud.api.AuthorizationActionEnum
+	486,  // 571: opl.cloud.api.OwnerCommitEvidence.authorization_resource:type_name -> opl.cloud.api.AuthorizationResource
+	486,  // 572: opl.cloud.api.OwnerCommitEvidence.continuation_resources:type_name -> opl.cloud.api.AuthorizationResource
+	188,  // 573: opl.cloud.api.BindReferenceRequest.context:type_name -> opl.cloud.api.CallContext
+	472,  // 574: opl.cloud.api.BindReferenceRequest.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
+	15,   // 575: opl.cloud.api.ReleaseEvidence.owner:type_name -> opl.cloud.api.OwnerEnum
+	2,    // 576: opl.cloud.api.ReleaseEvidence.terminal_status:type_name -> opl.cloud.api.TerminalOperationStatus
+	188,  // 577: opl.cloud.api.ReleaseReferenceRequest.context:type_name -> opl.cloud.api.CallContext
+	474,  // 578: opl.cloud.api.ReleaseReferenceRequest.release_evidence:type_name -> opl.cloud.api.ReleaseEvidence
+	470,  // 579: opl.cloud.api.ReferenceClaim.target:type_name -> opl.cloud.api.ReferenceTarget
+	15,   // 580: opl.cloud.api.ReferenceClaim.claimant_owner:type_name -> opl.cloud.api.OwnerEnum
+	1,    // 581: opl.cloud.api.ReferenceClaim.state:type_name -> opl.cloud.api.ReferenceClaimState
+	600,  // 582: opl.cloud.api.ReferenceClaim.acquired_at:type_name -> google.protobuf.Timestamp
+	600,  // 583: opl.cloud.api.ReferenceClaim.released_at:type_name -> google.protobuf.Timestamp
+	188,  // 584: opl.cloud.api.ReadClaimUsageRequest.context:type_name -> opl.cloud.api.CallContext
+	15,   // 585: opl.cloud.api.ClaimUsageEvidence.owner:type_name -> opl.cloud.api.OwnerEnum
+	22,   // 586: opl.cloud.api.ClaimUsageEvidence.operation_status:type_name -> opl.cloud.api.OperationStatusEnum
+	0,    // 587: opl.cloud.api.ClaimUsageEvidence.outcome:type_name -> opl.cloud.api.Observation
+	600,  // 588: opl.cloud.api.ClaimUsageEvidence.observed_at:type_name -> google.protobuf.Timestamp
+	188,  // 589: opl.cloud.api.ResolvePublisherContractRequest.context:type_name -> opl.cloud.api.CallContext
+	313,  // 590: opl.cloud.api.ResolvePublisherContractRequest.reference:type_name -> opl.cloud.api.PublisherContractReference
+	313,  // 591: opl.cloud.api.ResolvedPublisherContract.reference:type_name -> opl.cloud.api.PublisherContractReference
+	312,  // 592: opl.cloud.api.ResolvedPublisherContract.contract:type_name -> opl.cloud.api.PublisherContract
+	300,  // 593: opl.cloud.api.ResolvedPublisherContract.image:type_name -> opl.cloud.api.ArtifactReference
+	0,    // 594: opl.cloud.api.ResolvedPublisherContract.outcome:type_name -> opl.cloud.api.Observation
+	188,  // 595: opl.cloud.api.ReadBuildArtifactRequest.context:type_name -> opl.cloud.api.CallContext
+	469,  // 596: opl.cloud.api.BuildArtifactReadback.input:type_name -> opl.cloud.api.BuildInputSnapshot
+	300,  // 597: opl.cloud.api.BuildArtifactReadback.artifact:type_name -> opl.cloud.api.ArtifactReference
+	218,  // 598: opl.cloud.api.BuildArtifactReadback.model_requirements:type_name -> opl.cloud.api.ModelRequirement
+	219,  // 599: opl.cloud.api.BuildArtifactReadback.data_compatibility:type_name -> opl.cloud.api.DataCompatibility
+	0,    // 600: opl.cloud.api.BuildArtifactReadback.outcome:type_name -> opl.cloud.api.Observation
+	314,  // 601: opl.cloud.api.BuildArtifactReadback.deployment_descriptor:type_name -> opl.cloud.api.DeploymentDescriptor
+	483,  // 602: opl.cloud.api.AuthorizationScope.platform:type_name -> opl.cloud.api.PlatformScope
+	484,  // 603: opl.cloud.api.AuthorizationScope.tenant:type_name -> opl.cloud.api.TenantScope
+	3,    // 604: opl.cloud.api.AuthorizationResource.kind:type_name -> opl.cloud.api.AuthorizationResourceKind
+	485,  // 605: opl.cloud.api.AuthorizationRequest.scope:type_name -> opl.cloud.api.AuthorizationScope
+	15,   // 606: opl.cloud.api.AuthorizationRequest.audience_owner:type_name -> opl.cloud.api.OwnerEnum
+	20,   // 607: opl.cloud.api.AuthorizationRequest.action:type_name -> opl.cloud.api.AuthorizationActionEnum
+	486,  // 608: opl.cloud.api.AuthorizationRequest.resource:type_name -> opl.cloud.api.AuthorizationResource
+	4,    // 609: opl.cloud.api.AuthorizationDecision.result:type_name -> opl.cloud.api.AuthorizationResult
+	5,    // 610: opl.cloud.api.AuthorizationDecision.issuer:type_name -> opl.cloud.api.AuthorizationIssuer
+	485,  // 611: opl.cloud.api.AuthorizationDecision.scope:type_name -> opl.cloud.api.AuthorizationScope
+	15,   // 612: opl.cloud.api.AuthorizationDecision.audience_owner:type_name -> opl.cloud.api.OwnerEnum
+	20,   // 613: opl.cloud.api.AuthorizationDecision.action:type_name -> opl.cloud.api.AuthorizationActionEnum
+	486,  // 614: opl.cloud.api.AuthorizationDecision.resource:type_name -> opl.cloud.api.AuthorizationResource
+	600,  // 615: opl.cloud.api.AuthorizationDecision.issued_at:type_name -> google.protobuf.Timestamp
+	600,  // 616: opl.cloud.api.AuthorizationDecision.expires_at:type_name -> google.protobuf.Timestamp
+	14,   // 617: opl.cloud.api.AuthorizationDecision.denial_code:type_name -> opl.cloud.api.ErrorCodeEnum
+	15,   // 618: opl.cloud.api.GetAuthorizationContextRequest.expected_audience_owner:type_name -> opl.cloud.api.OwnerEnum
+	20,   // 619: opl.cloud.api.GetAuthorizationContextRequest.expected_action:type_name -> opl.cloud.api.AuthorizationActionEnum
+	486,  // 620: opl.cloud.api.GetAuthorizationContextRequest.expected_resource:type_name -> opl.cloud.api.AuthorizationResource
+	472,  // 621: opl.cloud.api.AcceptedOperationGrantRequest.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
+	20,   // 622: opl.cloud.api.AcceptedOperationGrantRequest.allowed_actions:type_name -> opl.cloud.api.AuthorizationActionEnum
+	485,  // 623: opl.cloud.api.AcceptedOperationGrant.scope:type_name -> opl.cloud.api.AuthorizationScope
+	15,   // 624: opl.cloud.api.AcceptedOperationGrant.accepted_operation_owner:type_name -> opl.cloud.api.OwnerEnum
+	20,   // 625: opl.cloud.api.AcceptedOperationGrant.accepted_action:type_name -> opl.cloud.api.AuthorizationActionEnum
+	20,   // 626: opl.cloud.api.AcceptedOperationGrant.allowed_actions:type_name -> opl.cloud.api.AuthorizationActionEnum
+	6,    // 627: opl.cloud.api.AcceptedOperationGrant.mode:type_name -> opl.cloud.api.AcceptedGrantMode
+	600,  // 628: opl.cloud.api.AcceptedOperationGrant.issued_at:type_name -> google.protobuf.Timestamp
+	600,  // 629: opl.cloud.api.AcceptedOperationGrant.expires_at:type_name -> google.protobuf.Timestamp
+	600,  // 630: opl.cloud.api.AcceptedOperationGrant.revoked_at:type_name -> google.protobuf.Timestamp
+	600,  // 631: opl.cloud.api.AcceptedOperationGrant.obligation_completed_at:type_name -> google.protobuf.Timestamp
+	15,   // 632: opl.cloud.api.ReadOwnerCommitRequest.owner:type_name -> opl.cloud.api.OwnerEnum
+	188,  // 633: opl.cloud.api.ReadRenewalConsentRequest.context:type_name -> opl.cloud.api.CallContext
+	600,  // 634: opl.cloud.api.RenewalConsentReadback.accepted_at:type_name -> google.protobuf.Timestamp
+	0,    // 635: opl.cloud.api.RenewalConsentReadback.outcome:type_name -> opl.cloud.api.Observation
+	188,  // 636: opl.cloud.api.AdmissionRequest.context:type_name -> opl.cloud.api.CallContext
+	241,  // 637: opl.cloud.api.AdmissionRequest.model_selections:type_name -> opl.cloud.api.ModelSelection
+	0,    // 638: opl.cloud.api.AdmissionResult.outcome:type_name -> opl.cloud.api.Observation
+	600,  // 639: opl.cloud.api.AdmissionResult.expires_at:type_name -> google.protobuf.Timestamp
+	188,  // 640: opl.cloud.api.AcceptQuoteRequest.context:type_name -> opl.cloud.api.CallContext
+	245,  // 641: opl.cloud.api.QuoteAcceptance.quote:type_name -> opl.cloud.api.Quote
+	512,  // 642: opl.cloud.api.QuoteAcceptance.resource_plan:type_name -> opl.cloud.api.ResourcePlanSnapshot
+	188,  // 643: opl.cloud.api.QuoteResourcePlanRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 644: opl.cloud.api.UserExternalBindingCommand.context:type_name -> opl.cloud.api.CallContext
+	188,  // 645: opl.cloud.api.UserExternalBindingReadRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 646: opl.cloud.api.GetSelfUserExternalBindingRequest.context:type_name -> opl.cloud.api.CallContext
+	7,    // 647: opl.cloud.api.UserExternalBindingReadback.status:type_name -> opl.cloud.api.UserExternalBindingReadbackStatusEnum
+	8,    // 648: opl.cloud.api.UserExternalBindingReadback.verification:type_name -> opl.cloud.api.UserExternalBindingReadbackVerificationEnum
+	600,  // 649: opl.cloud.api.UserExternalBindingReadback.verified_at:type_name -> google.protobuf.Timestamp
+	600,  // 650: opl.cloud.api.UserExternalBindingReadback.created_at:type_name -> google.protobuf.Timestamp
+	600,  // 651: opl.cloud.api.UserExternalBindingReadback.updated_at:type_name -> google.protobuf.Timestamp
+	600,  // 652: opl.cloud.api.UserExternalBindingReadback.destination_verified_at:type_name -> google.protobuf.Timestamp
+	188,  // 653: opl.cloud.api.WalletBindingCommand.context:type_name -> opl.cloud.api.CallContext
+	0,    // 654: opl.cloud.api.WalletBindingReadback.outcome:type_name -> opl.cloud.api.Observation
+	188,  // 655: opl.cloud.api.WalletDebitCommand.context:type_name -> opl.cloud.api.CallContext
+	188,  // 656: opl.cloud.api.WalletRefundCommand.context:type_name -> opl.cloud.api.CallContext
+	188,  // 657: opl.cloud.api.WalletReadbackRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 658: opl.cloud.api.ManagedKeyCommand.context:type_name -> opl.cloud.api.CallContext
+	600,  // 659: opl.cloud.api.ManagedKeyBinding.expires_at:type_name -> google.protobuf.Timestamp
+	188,  // 660: opl.cloud.api.ManagedKeyRevoke.context:type_name -> opl.cloud.api.CallContext
+	188,  // 661: opl.cloud.api.ResourceAdmissionRequest.context:type_name -> opl.cloud.api.CallContext
+	512,  // 662: opl.cloud.api.ResourceAdmissionRequest.plan:type_name -> opl.cloud.api.ResourcePlanSnapshot
+	188,  // 663: opl.cloud.api.EnsureResourcesCommand.context:type_name -> opl.cloud.api.CallContext
+	512,  // 664: opl.cloud.api.EnsureResourcesCommand.plan:type_name -> opl.cloud.api.ResourcePlanSnapshot
+	498,  // 665: opl.cloud.api.EnsureResourcesCommand.quote_acceptance:type_name -> opl.cloud.api.QuoteAcceptance
+	188,  // 666: opl.cloud.api.MutateResourcesCommand.context:type_name -> opl.cloud.api.CallContext
+	188,  // 667: opl.cloud.api.ResizeResourcesCommand.context:type_name -> opl.cloud.api.CallContext
+	512,  // 668: opl.cloud.api.ResizeResourcesCommand.target:type_name -> opl.cloud.api.ResourcePlanSnapshot
+	563,  // 669: opl.cloud.api.ResizeResourcesCommand.funding_evidence:type_name -> opl.cloud.api.PlanChangeFundingEvidence
+	572,  // 670: opl.cloud.api.ResizeResourcesCommand.execution_plan:type_name -> opl.cloud.api.ProviderPlanChangeExecutionPlanReference
+	188,  // 671: opl.cloud.api.RenewResourcesCommand.context:type_name -> opl.cloud.api.CallContext
+	188,  // 672: opl.cloud.api.ResourceReadbackRequest.context:type_name -> opl.cloud.api.CallContext
+	0,    // 673: opl.cloud.api.ResourceReadback.outcome:type_name -> opl.cloud.api.Observation
+	519,  // 674: opl.cloud.api.ResourceReadback.resources:type_name -> opl.cloud.api.ResourceFact
+	600,  // 675: opl.cloud.api.ResourceReadback.observed_at:type_name -> google.protobuf.Timestamp
+	520,  // 676: opl.cloud.api.ResourceReadback.execution_resources:type_name -> opl.cloud.api.ResourceExecutionBinding
+	522,  // 677: opl.cloud.api.ResourceReadback.application_placement:type_name -> opl.cloud.api.ApplicationExecutionPlacement
+	188,  // 678: opl.cloud.api.SecretBindingCommand.context:type_name -> opl.cloud.api.CallContext
+	0,    // 679: opl.cloud.api.SecretBindingReadback.outcome:type_name -> opl.cloud.api.Observation
+	188,  // 680: opl.cloud.api.SecretBindingRebindCommand.context:type_name -> opl.cloud.api.CallContext
+	0,    // 681: opl.cloud.api.SecretBindingRebindReadback.outcome:type_name -> opl.cloud.api.Observation
+	188,  // 682: opl.cloud.api.ManagedSecretCommand.context:type_name -> opl.cloud.api.CallContext
+	188,  // 683: opl.cloud.api.RuntimeReservationCommand.context:type_name -> opl.cloud.api.CallContext
+	300,  // 684: opl.cloud.api.RuntimeReservationCommand.artifact:type_name -> opl.cloud.api.ArtifactReference
+	314,  // 685: opl.cloud.api.RuntimeReservationCommand.deployment_descriptor:type_name -> opl.cloud.api.DeploymentDescriptor
+	242,  // 686: opl.cloud.api.RuntimeReservationCommand.application_selection:type_name -> opl.cloud.api.WorkspaceApplicationSelection
+	300,  // 687: opl.cloud.api.RuntimeReservation.artifact:type_name -> opl.cloud.api.ArtifactReference
+	188,  // 688: opl.cloud.api.RuntimeDeployCommand.context:type_name -> opl.cloud.api.CallContext
+	314,  // 689: opl.cloud.api.RuntimeDeployCommand.deployment_descriptor:type_name -> opl.cloud.api.DeploymentDescriptor
+	241,  // 690: opl.cloud.api.RuntimeDeployCommand.model_selections:type_name -> opl.cloud.api.ModelSelection
+	219,  // 691: opl.cloud.api.RuntimeDeployCommand.data_compatibility:type_name -> opl.cloud.api.DataCompatibility
+	242,  // 692: opl.cloud.api.RuntimeDeployCommand.application_selection:type_name -> opl.cloud.api.WorkspaceApplicationSelection
+	531,  // 693: opl.cloud.api.RuntimeDeployCommand.managed_key_binding:type_name -> opl.cloud.api.RuntimeManagedKeyBinding
+	188,  // 694: opl.cloud.api.RuntimeReadbackRequest.context:type_name -> opl.cloud.api.CallContext
+	9,    // 695: opl.cloud.api.RuntimeReadback.state:type_name -> opl.cloud.api.AgentRuntimeObservationState
+	300,  // 696: opl.cloud.api.RuntimeReadback.artifact:type_name -> opl.cloud.api.ArtifactReference
+	0,    // 697: opl.cloud.api.RuntimeReadback.outcome:type_name -> opl.cloud.api.Observation
+	600,  // 698: opl.cloud.api.RuntimeReadback.observed_at:type_name -> google.protobuf.Timestamp
+	343,  // 699: opl.cloud.api.RuntimeReadback.application_entry:type_name -> opl.cloud.api.WorkspaceApplicationEntry
+	188,  // 700: opl.cloud.api.RuntimeReloadCommand.context:type_name -> opl.cloud.api.CallContext
+	241,  // 701: opl.cloud.api.RuntimeReloadCommand.selections:type_name -> opl.cloud.api.ModelSelection
+	531,  // 702: opl.cloud.api.RuntimeReloadCommand.managed_key_binding:type_name -> opl.cloud.api.RuntimeManagedKeyBinding
+	188,  // 703: opl.cloud.api.RuntimeStopCommand.context:type_name -> opl.cloud.api.CallContext
+	188,  // 704: opl.cloud.api.ReadApplicationCredentialsRequest.context:type_name -> opl.cloud.api.CallContext
+	538,  // 705: opl.cloud.api.RouteRevisionPrecondition.require_absent:type_name -> opl.cloud.api.RouteAbsence
+	188,  // 706: opl.cloud.api.FenceRouteEpochCommand.context:type_name -> opl.cloud.api.CallContext
+	539,  // 707: opl.cloud.api.FenceRouteEpochCommand.revision_precondition:type_name -> opl.cloud.api.RouteRevisionPrecondition
+	188,  // 708: opl.cloud.api.RouteActivateCommand.context:type_name -> opl.cloud.api.CallContext
+	539,  // 709: opl.cloud.api.RouteActivateCommand.revision_precondition:type_name -> opl.cloud.api.RouteRevisionPrecondition
+	188,  // 710: opl.cloud.api.RouteObserveRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 711: opl.cloud.api.RouteRollbackCommand.context:type_name -> opl.cloud.api.CallContext
+	539,  // 712: opl.cloud.api.RouteRollbackCommand.revision_precondition:type_name -> opl.cloud.api.RouteRevisionPrecondition
+	0,    // 713: opl.cloud.api.RouteReadback.observation:type_name -> opl.cloud.api.Observation
+	600,  // 714: opl.cloud.api.RouteReadback.observed_at:type_name -> google.protobuf.Timestamp
+	14,   // 715: opl.cloud.api.RouteReadback.error_code:type_name -> opl.cloud.api.ErrorCodeEnum
+	188,  // 716: opl.cloud.api.TenantWorkspaceLifecycleCommand.context:type_name -> opl.cloud.api.CallContext
+	338,  // 717: opl.cloud.api.TenantWorkspaceLifecycleReadback.workspace_actions:type_name -> opl.cloud.api.TenantWorkspaceAction
+	0,    // 718: opl.cloud.api.TenantWorkspaceLifecycleReadback.outcome:type_name -> opl.cloud.api.Observation
+	339,  // 719: opl.cloud.api.TenantWorkspaceLifecycleReadback.skipped:type_name -> opl.cloud.api.TenantWorkspaceSkip
+	188,  // 720: opl.cloud.api.ResumeTenantWorkspacesRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 721: opl.cloud.api.AppendReceiptRequest.context:type_name -> opl.cloud.api.CallContext
+	265,  // 722: opl.cloud.api.AppendReceiptRequest.receipt:type_name -> opl.cloud.api.Receipt
+	498,  // 723: opl.cloud.api.AppendReceiptRequest.quote_acceptance:type_name -> opl.cloud.api.QuoteAcceptance
+	472,  // 724: opl.cloud.api.AppendReceiptRequest.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
+	258,  // 725: opl.cloud.api.AppendReceiptRequest.wallet_operation:type_name -> opl.cloud.api.WalletOperation
+	188,  // 726: opl.cloud.api.GetReceiptByReferenceRequest.context:type_name -> opl.cloud.api.CallContext
+	265,  // 727: opl.cloud.api.LocalNoChargeReceiptEvidence.receipt:type_name -> opl.cloud.api.Receipt
+	498,  // 728: opl.cloud.api.LocalNoChargeReceiptEvidence.quote_acceptance:type_name -> opl.cloud.api.QuoteAcceptance
+	472,  // 729: opl.cloud.api.LocalNoChargeReceiptEvidence.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
+	265,  // 730: opl.cloud.api.WalletActionReceiptEvidence.receipt:type_name -> opl.cloud.api.Receipt
+	498,  // 731: opl.cloud.api.WalletActionReceiptEvidence.quote_acceptance:type_name -> opl.cloud.api.QuoteAcceptance
+	258,  // 732: opl.cloud.api.WalletActionReceiptEvidence.wallet_operation:type_name -> opl.cloud.api.WalletOperation
+	472,  // 733: opl.cloud.api.WalletActionReceiptEvidence.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
+	265,  // 734: opl.cloud.api.ProviderActionReceiptEvidence.receipt:type_name -> opl.cloud.api.Receipt
+	472,  // 735: opl.cloud.api.ProviderActionReceiptEvidence.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
+	188,  // 736: opl.cloud.api.ReadSubscriptionPlanStateRequest.context:type_name -> opl.cloud.api.CallContext
+	600,  // 737: opl.cloud.api.SubscriptionPlanState.period_start:type_name -> google.protobuf.Timestamp
+	600,  // 738: opl.cloud.api.SubscriptionPlanState.period_end:type_name -> google.protobuf.Timestamp
+	600,  // 739: opl.cloud.api.SubscriptionPlanState.next_period_start:type_name -> google.protobuf.Timestamp
+	600,  // 740: opl.cloud.api.SubscriptionPlanState.next_period_end:type_name -> google.protobuf.Timestamp
+	77,   // 741: opl.cloud.api.SubscriptionPlanState.renewal_mode:type_name -> opl.cloud.api.SubscriptionRenewalModeEnum
+	0,    // 742: opl.cloud.api.SubscriptionPlanState.outcome:type_name -> opl.cloud.api.Observation
+	575,  // 743: opl.cloud.api.SubscriptionPlanState.source_financial_snapshot:type_name -> opl.cloud.api.SourceFinancialSnapshot
+	188,  // 744: opl.cloud.api.ReadPlanChangeRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 745: opl.cloud.api.ReadNextPeriodObligationRequest.context:type_name -> opl.cloud.api.CallContext
+	600,  // 746: opl.cloud.api.ReadNextPeriodObligationRequest.period_start:type_name -> google.protobuf.Timestamp
+	600,  // 747: opl.cloud.api.NextPeriodObligation.period_start:type_name -> google.protobuf.Timestamp
+	600,  // 748: opl.cloud.api.NextPeriodObligation.period_end:type_name -> google.protobuf.Timestamp
+	10,   // 749: opl.cloud.api.NextPeriodObligation.status:type_name -> opl.cloud.api.PeriodObligationStatus
+	0,    // 750: opl.cloud.api.NextPeriodObligation.outcome:type_name -> opl.cloud.api.Observation
+	188,  // 751: opl.cloud.api.ReadPlanChangeFailureRequest.context:type_name -> opl.cloud.api.CallContext
+	188,  // 752: opl.cloud.api.PlanTransitionRequest.context:type_name -> opl.cloud.api.CallContext
+	167,  // 753: opl.cloud.api.ApprovedPlanTransition.kind:type_name -> opl.cloud.api.PlanChangeKindEnum
+	512,  // 754: opl.cloud.api.ApprovedPlanTransition.source:type_name -> opl.cloud.api.ResourcePlanSnapshot
+	512,  // 755: opl.cloud.api.ApprovedPlanTransition.target:type_name -> opl.cloud.api.ResourcePlanSnapshot
+	11,   // 756: opl.cloud.api.ApprovedPlanTransition.reversibility:type_name -> opl.cloud.api.TransitionReversibility
+	600,  // 757: opl.cloud.api.ApprovedPlanTransition.observed_at:type_name -> google.protobuf.Timestamp
+	600,  // 758: opl.cloud.api.ApprovedPlanTransition.expires_at:type_name -> google.protobuf.Timestamp
+	0,    // 759: opl.cloud.api.ApprovedPlanTransition.outcome:type_name -> opl.cloud.api.Observation
+	572,  // 760: opl.cloud.api.ApprovedPlanTransition.execution_plan:type_name -> opl.cloud.api.ProviderPlanChangeExecutionPlanReference
+	561,  // 761: opl.cloud.api.PlanChangeFundingEvidence.confirmed_charge:type_name -> opl.cloud.api.ConfirmedPlanChangeCharge
+	562,  // 762: opl.cloud.api.PlanChangeFundingEvidence.zero_amount:type_name -> opl.cloud.api.ZeroAmountPlanChangeEvidence
+	188,  // 763: opl.cloud.api.PlanChangeSupplementChargeCommand.context:type_name -> opl.cloud.api.CallContext
+	600,  // 764: opl.cloud.api.PlanChangeSupplementChargeCommand.coverage_start:type_name -> google.protobuf.Timestamp
+	600,  // 765: opl.cloud.api.PlanChangeSupplementChargeCommand.coverage_end:type_name -> google.protobuf.Timestamp
+	188,  // 766: opl.cloud.api.ScheduledPeriodChargeCommand.context:type_name -> opl.cloud.api.CallContext
+	600,  // 767: opl.cloud.api.ScheduledPeriodChargeCommand.period_start:type_name -> google.protobuf.Timestamp
+	600,  // 768: opl.cloud.api.ScheduledPeriodChargeCommand.period_end:type_name -> google.protobuf.Timestamp
+	188,  // 769: opl.cloud.api.PlanChangeFailureRefundCommand.context:type_name -> opl.cloud.api.CallContext
+	356,  // 770: opl.cloud.api.PlanChangeFailureRefundCommand.evidence:type_name -> opl.cloud.api.SupplementalRefundEvidence
+	188,  // 771: opl.cloud.api.SupplementDeletionRefundCommand.context:type_name -> opl.cloud.api.CallContext
+	356,  // 772: opl.cloud.api.SupplementDeletionRefundCommand.evidence:type_name -> opl.cloud.api.SupplementalRefundEvidence
+	188,  // 773: opl.cloud.api.RestorePlanChangeRuntimeCommand.context:type_name -> opl.cloud.api.CallContext
+	512,  // 774: opl.cloud.api.RestorePlanChangeRuntimeCommand.target:type_name -> opl.cloud.api.ResourcePlanSnapshot
+	534,  // 775: opl.cloud.api.PlanChangeRuntimeReadback.runtime:type_name -> opl.cloud.api.RuntimeReadback
+	521,  // 776: opl.cloud.api.PlanChangeRuntimeReadback.resources:type_name -> opl.cloud.api.ResourceReadback
+	0,    // 777: opl.cloud.api.PlanChangeRuntimeReadback.outcome:type_name -> opl.cloud.api.Observation
+	188,  // 778: opl.cloud.api.AppendPlanChangeReceiptRequest.context:type_name -> opl.cloud.api.CallContext
+	88,   // 779: opl.cloud.api.AppendPlanChangeReceiptRequest.kind:type_name -> opl.cloud.api.ReceiptKindEnum
+	355,  // 780: opl.cloud.api.AppendPlanChangeReceiptRequest.evidence:type_name -> opl.cloud.api.PlanChangeEvidence
+	351,  // 781: opl.cloud.api.AppendPlanChangeReceiptRequest.accepted_calculation:type_name -> opl.cloud.api.PlanChangeCalculation
+	188,  // 782: opl.cloud.api.AppendPlanChangeRefundReceiptRequest.context:type_name -> opl.cloud.api.CallContext
+	88,   // 783: opl.cloud.api.AppendPlanChangeRefundReceiptRequest.kind:type_name -> opl.cloud.api.ReceiptKindEnum
+	356,  // 784: opl.cloud.api.AppendPlanChangeRefundReceiptRequest.evidence:type_name -> opl.cloud.api.SupplementalRefundEvidence
+	258,  // 785: opl.cloud.api.AppendPlanChangeRefundReceiptRequest.wallet_readback:type_name -> opl.cloud.api.WalletOperation
+	12,   // 786: opl.cloud.api.ProviderPlanChangeExecutionPlanReference.strategy:type_name -> opl.cloud.api.PlanChangeExecutionStrategy
+	188,  // 787: opl.cloud.api.ReadProviderExecutionPlanRequest.context:type_name -> opl.cloud.api.CallContext
+	572,  // 788: opl.cloud.api.ReadProviderExecutionPlanRequest.reference:type_name -> opl.cloud.api.ProviderPlanChangeExecutionPlanReference
+	572,  // 789: opl.cloud.api.ProviderPlanChangeExecutionPlan.reference:type_name -> opl.cloud.api.ProviderPlanChangeExecutionPlanReference
+	512,  // 790: opl.cloud.api.ProviderPlanChangeExecutionPlan.source:type_name -> opl.cloud.api.ResourcePlanSnapshot
+	512,  // 791: opl.cloud.api.ProviderPlanChangeExecutionPlan.target:type_name -> opl.cloud.api.ResourcePlanSnapshot
+	13,   // 792: opl.cloud.api.ProviderPlanChangeExecutionPlan.storage_action:type_name -> opl.cloud.api.PlanChangeStorageAction
+	600,  // 793: opl.cloud.api.ProviderPlanChangeExecutionPlan.approved_at:type_name -> google.protobuf.Timestamp
+	600,  // 794: opl.cloud.api.WalletOperationObservedEvent.coverage_start:type_name -> google.protobuf.Timestamp
+	600,  // 795: opl.cloud.api.WalletOperationObservedEvent.coverage_end:type_name -> google.protobuf.Timestamp
+	600,  // 796: opl.cloud.api.WorkspaceDeletionConfirmedEvent.deleted_at:type_name -> google.protobuf.Timestamp
+	600,  // 797: opl.cloud.api.TenantAccessRevokedEvent.restore_until:type_name -> google.protobuf.Timestamp
+	600,  // 798: opl.cloud.api.TenantRestoredEvent.restored_at:type_name -> google.protobuf.Timestamp
+	600,  // 799: opl.cloud.api.CatalogPolicyChangedEvent.valid_from:type_name -> google.protobuf.Timestamp
+	600,  // 800: opl.cloud.api.TenantReenabledEvent.enabled_at:type_name -> google.protobuf.Timestamp
+	600,  // 801: opl.cloud.api.PlanChangeStateChangedEvent.applied_at:type_name -> google.protobuf.Timestamp
+	600,  // 802: opl.cloud.api.PeriodObligationChangedEvent.period_start:type_name -> google.protobuf.Timestamp
+	600,  // 803: opl.cloud.api.PeriodObligationChangedEvent.period_end:type_name -> google.protobuf.Timestamp
+	600,  // 804: opl.cloud.api.EventEnvelope.occurred_at:type_name -> google.protobuf.Timestamp
+	576,  // 805: opl.cloud.api.EventEnvelope.package_uploaded:type_name -> opl.cloud.api.PackageUploadedEvent
+	577,  // 806: opl.cloud.api.EventEnvelope.build_artifact_confirmed:type_name -> opl.cloud.api.BuildArtifactConfirmedEvent
+	578,  // 807: opl.cloud.api.EventEnvelope.capability_version_registered:type_name -> opl.cloud.api.CapabilityVersionRegisteredEvent
+	579,  // 808: opl.cloud.api.EventEnvelope.build_failed:type_name -> opl.cloud.api.BuildFailedEvent
+	580,  // 809: opl.cloud.api.EventEnvelope.wallet_operation_observed:type_name -> opl.cloud.api.WalletOperationObservedEvent
+	581,  // 810: opl.cloud.api.EventEnvelope.resources_observed:type_name -> opl.cloud.api.ResourcesObservedEvent
+	582,  // 811: opl.cloud.api.EventEnvelope.runtime_readiness_observed:type_name -> opl.cloud.api.RuntimeReadinessObservedEvent
+	583,  // 812: opl.cloud.api.EventEnvelope.workspace_state_changed:type_name -> opl.cloud.api.WorkspaceStateChangedEvent
+	584,  // 813: opl.cloud.api.EventEnvelope.workspace_deletion_confirmed:type_name -> opl.cloud.api.WorkspaceDeletionConfirmedEvent
+	585,  // 814: opl.cloud.api.EventEnvelope.tenant_access_revoked:type_name -> opl.cloud.api.TenantAccessRevokedEvent
+	586,  // 815: opl.cloud.api.EventEnvelope.tenant_restored:type_name -> opl.cloud.api.TenantRestoredEvent
+	587,  // 816: opl.cloud.api.EventEnvelope.receipt_recorded:type_name -> opl.cloud.api.ReceiptRecordedEvent
+	588,  // 817: opl.cloud.api.EventEnvelope.catalog_policy_changed:type_name -> opl.cloud.api.CatalogPolicyChangedEvent
+	589,  // 818: opl.cloud.api.EventEnvelope.tenant_reenabled:type_name -> opl.cloud.api.TenantReenabledEvent
+	590,  // 819: opl.cloud.api.EventEnvelope.renewal_settings_changed:type_name -> opl.cloud.api.RenewalSettingsChangedEvent
+	591,  // 820: opl.cloud.api.EventEnvelope.route_observed:type_name -> opl.cloud.api.RouteObservedEvent
+	592,  // 821: opl.cloud.api.EventEnvelope.plan_change_state_changed:type_name -> opl.cloud.api.PlanChangeStateChangedEvent
+	593,  // 822: opl.cloud.api.EventEnvelope.period_obligation_changed:type_name -> opl.cloud.api.PeriodObligationChangedEvent
+	594,  // 823: opl.cloud.api.DeliverEventRequest.event:type_name -> opl.cloud.api.EventEnvelope
+	187,  // 824: opl.cloud.api.WorkspaceAccessDecision.verdict:type_name -> opl.cloud.api.WorkspaceAccessVerdict
+	357,  // 825: opl.cloud.api.TenantProductService.GetLoginContext:input_type -> opl.cloud.api.GetLoginContextRpcRequest
+	358,  // 826: opl.cloud.api.TenantProductService.Login:input_type -> opl.cloud.api.LoginRpcRequest
+	359,  // 827: opl.cloud.api.TenantProductService.GetSession:input_type -> opl.cloud.api.GetSessionRpcRequest
+	360,  // 828: opl.cloud.api.TenantProductService.Logout:input_type -> opl.cloud.api.LogoutRpcRequest
+	361,  // 829: opl.cloud.api.TenantProductService.GetTenant:input_type -> opl.cloud.api.GetTenantRpcRequest
+	362,  // 830: opl.cloud.api.TenantProductService.ListMembers:input_type -> opl.cloud.api.ListMembersRpcRequest
+	363,  // 831: opl.cloud.api.TenantProductService.ListInvitations:input_type -> opl.cloud.api.ListInvitationsRpcRequest
+	364,  // 832: opl.cloud.api.TenantProductService.InviteMember:input_type -> opl.cloud.api.InviteMemberRpcRequest
+	365,  // 833: opl.cloud.api.TenantProductService.AcceptInvitation:input_type -> opl.cloud.api.AcceptInvitationRpcRequest
+	366,  // 834: opl.cloud.api.TenantProductService.RevokeInvitation:input_type -> opl.cloud.api.RevokeInvitationRpcRequest
+	367,  // 835: opl.cloud.api.TenantProductService.UpdateMemberRole:input_type -> opl.cloud.api.UpdateMemberRoleRpcRequest
+	368,  // 836: opl.cloud.api.TenantProductService.RemoveMember:input_type -> opl.cloud.api.RemoveMemberRpcRequest
+	420,  // 837: opl.cloud.api.TenantProductService.ListTenants:input_type -> opl.cloud.api.ListTenantsRpcRequest
+	421,  // 838: opl.cloud.api.TenantProductService.CreateTenant:input_type -> opl.cloud.api.CreateTenantRpcRequest
+	422,  // 839: opl.cloud.api.TenantProductService.GetAdminTenant:input_type -> opl.cloud.api.GetAdminTenantRpcRequest
+	423,  // 840: opl.cloud.api.TenantProductService.DeleteTenant:input_type -> opl.cloud.api.DeleteTenantRpcRequest
+	424,  // 841: opl.cloud.api.TenantProductService.BindTenantWallet:input_type -> opl.cloud.api.BindTenantWalletRpcRequest
+	425,  // 842: opl.cloud.api.TenantProductService.SuspendTenant:input_type -> opl.cloud.api.SuspendTenantRpcRequest
+	426,  // 843: opl.cloud.api.TenantProductService.RestoreTenant:input_type -> opl.cloud.api.RestoreTenantRpcRequest
+	427,  // 844: opl.cloud.api.TenantProductService.GetTenantAssetCustody:input_type -> opl.cloud.api.GetTenantAssetCustodyRpcRequest
+	430,  // 845: opl.cloud.api.TenantProductService.ListAuditEvents:input_type -> opl.cloud.api.ListAuditEventsRpcRequest
+	459,  // 846: opl.cloud.api.TenantProductService.ReenableTenant:input_type -> opl.cloud.api.ReenableTenantRpcRequest
+	460,  // 847: opl.cloud.api.TenantProductService.GetTenantLifecycleOperation:input_type -> opl.cloud.api.GetTenantLifecycleOperationRpcRequest
+	369,  // 848: opl.cloud.api.CapabilityProductService.ListNamespaces:input_type -> opl.cloud.api.ListNamespacesRpcRequest
+	370,  // 849: opl.cloud.api.CapabilityProductService.CreateNamespace:input_type -> opl.cloud.api.CreateNamespaceRpcRequest
+	371,  // 850: opl.cloud.api.CapabilityProductService.UpdateNamespace:input_type -> opl.cloud.api.UpdateNamespaceRpcRequest
+	372,  // 851: opl.cloud.api.CapabilityProductService.ArchiveNamespace:input_type -> opl.cloud.api.ArchiveNamespaceRpcRequest
+	373,  // 852: opl.cloud.api.CapabilityProductService.ListPackages:input_type -> opl.cloud.api.ListPackagesRpcRequest
+	374,  // 853: opl.cloud.api.CapabilityProductService.CreatePackage:input_type -> opl.cloud.api.CreatePackageRpcRequest
+	375,  // 854: opl.cloud.api.CapabilityProductService.GetPackage:input_type -> opl.cloud.api.GetPackageRpcRequest
+	376,  // 855: opl.cloud.api.CapabilityProductService.UpdatePackage:input_type -> opl.cloud.api.UpdatePackageRpcRequest
+	377,  // 856: opl.cloud.api.CapabilityProductService.ArchivePackage:input_type -> opl.cloud.api.ArchivePackageRpcRequest
+	378,  // 857: opl.cloud.api.CapabilityProductService.CreateUpload:input_type -> opl.cloud.api.CreateUploadRpcRequest
+	379,  // 858: opl.cloud.api.CapabilityProductService.GetUpload:input_type -> opl.cloud.api.GetUploadRpcRequest
+	380,  // 859: opl.cloud.api.CapabilityProductService.CreateUploadPart:input_type -> opl.cloud.api.CreateUploadPartRpcRequest
+	381,  // 860: opl.cloud.api.CapabilityProductService.CompleteUpload:input_type -> opl.cloud.api.CompleteUploadRpcRequest
+	382,  // 861: opl.cloud.api.CapabilityProductService.ListPackageVersions:input_type -> opl.cloud.api.ListPackageVersionsRpcRequest
+	383,  // 862: opl.cloud.api.CapabilityProductService.GetPackageVersion:input_type -> opl.cloud.api.GetPackageVersionRpcRequest
+	389,  // 863: opl.cloud.api.CapabilityProductService.ListCapabilityVersions:input_type -> opl.cloud.api.ListCapabilityVersionsRpcRequest
+	390,  // 864: opl.cloud.api.CapabilityProductService.GetCapabilityVersion:input_type -> opl.cloud.api.GetCapabilityVersionRpcRequest
+	391,  // 865: opl.cloud.api.CapabilityProductService.DeleteCapabilityVersion:input_type -> opl.cloud.api.DeleteCapabilityVersionRpcRequest
+	392,  // 866: opl.cloud.api.CapabilityProductService.PublishOfficialPackage:input_type -> opl.cloud.api.PublishOfficialPackageRpcRequest
+	435,  // 867: opl.cloud.api.CapabilityProductService.ListWebuiVersions:input_type -> opl.cloud.api.ListWebuiVersionsRpcRequest
+	441,  // 868: opl.cloud.api.CapabilityProductService.RegisterWebuiVersion:input_type -> opl.cloud.api.RegisterWebuiVersionRpcRequest
+	442,  // 869: opl.cloud.api.CapabilityProductService.SetWebuiVersionStatus:input_type -> opl.cloud.api.SetWebuiVersionStatusRpcRequest
+	456,  // 870: opl.cloud.api.CapabilityProductService.ListPublisherNamespaces:input_type -> opl.cloud.api.ListPublisherNamespacesRpcRequest
+	457,  // 871: opl.cloud.api.CapabilityProductService.CreatePublisherNamespace:input_type -> opl.cloud.api.CreatePublisherNamespaceRpcRequest
+	458,  // 872: opl.cloud.api.CapabilityProductService.RevokePublisherNamespace:input_type -> opl.cloud.api.RevokePublisherNamespaceRpcRequest
+	434,  // 873: opl.cloud.api.RuntimeControlProductService.ListRuntimeVersions:input_type -> opl.cloud.api.ListRuntimeVersionsRpcRequest
+	454,  // 874: opl.cloud.api.RuntimeControlProductService.GetBuildRuntimePolicy:input_type -> opl.cloud.api.GetBuildRuntimePolicyRpcRequest
+	455,  // 875: opl.cloud.api.RuntimeControlProductService.SetBuildRuntimePolicy:input_type -> opl.cloud.api.SetBuildRuntimePolicyRpcRequest
+	439,  // 876: opl.cloud.api.RuntimeControlProductService.RegisterRuntimeVersion:input_type -> opl.cloud.api.RegisterRuntimeVersionRpcRequest
+	440,  // 877: opl.cloud.api.RuntimeControlProductService.SetRuntimeVersionStatus:input_type -> opl.cloud.api.SetRuntimeVersionStatusRpcRequest
+	384,  // 878: opl.cloud.api.BuildProductService.CreateBuild:input_type -> opl.cloud.api.CreateBuildRpcRequest
+	385,  // 879: opl.cloud.api.BuildProductService.ListBuilds:input_type -> opl.cloud.api.ListBuildsRpcRequest
+	386,  // 880: opl.cloud.api.BuildProductService.GetBuild:input_type -> opl.cloud.api.GetBuildRpcRequest
+	387,  // 881: opl.cloud.api.BuildProductService.ListBuildLogs:input_type -> opl.cloud.api.ListBuildLogsRpcRequest
+	388,  // 882: opl.cloud.api.BuildProductService.RetryBuild:input_type -> opl.cloud.api.RetryBuildRpcRequest
+	393,  // 883: opl.cloud.api.ResourceCatalogProductService.CreateQuote:input_type -> opl.cloud.api.CreateQuoteRpcRequest
+	394,  // 884: opl.cloud.api.ResourceCatalogProductService.GetQuote:input_type -> opl.cloud.api.GetQuoteRpcRequest
+	436,  // 885: opl.cloud.api.ResourceCatalogProductService.ListComputePlans:input_type -> opl.cloud.api.ListComputePlansRpcRequest
+	437,  // 886: opl.cloud.api.ResourceCatalogProductService.ListStoragePlans:input_type -> opl.cloud.api.ListStoragePlansRpcRequest
+	443,  // 887: opl.cloud.api.ResourceCatalogProductService.CreateComputePlan:input_type -> opl.cloud.api.CreateComputePlanRpcRequest
+	444,  // 888: opl.cloud.api.ResourceCatalogProductService.SetComputePlanAvailability:input_type -> opl.cloud.api.SetComputePlanAvailabilityRpcRequest
+	445,  // 889: opl.cloud.api.ResourceCatalogProductService.CreateStoragePlan:input_type -> opl.cloud.api.CreateStoragePlanRpcRequest
+	446,  // 890: opl.cloud.api.ResourceCatalogProductService.SetStoragePlanAvailability:input_type -> opl.cloud.api.SetStoragePlanAvailabilityRpcRequest
+	447,  // 891: opl.cloud.api.ResourceCatalogProductService.ListPricePolicyVersions:input_type -> opl.cloud.api.ListPricePolicyVersionsRpcRequest
+	448,  // 892: opl.cloud.api.ResourceCatalogProductService.CreatePricePolicyVersion:input_type -> opl.cloud.api.CreatePricePolicyVersionRpcRequest
+	449,  // 893: opl.cloud.api.ResourceCatalogProductService.ListRefundPolicyVersions:input_type -> opl.cloud.api.ListRefundPolicyVersionsRpcRequest
+	450,  // 894: opl.cloud.api.ResourceCatalogProductService.CreateRefundPolicyVersion:input_type -> opl.cloud.api.CreateRefundPolicyVersionRpcRequest
+	451,  // 895: opl.cloud.api.ResourceCatalogProductService.ListRetentionPolicyVersions:input_type -> opl.cloud.api.ListRetentionPolicyVersionsRpcRequest
+	452,  // 896: opl.cloud.api.ResourceCatalogProductService.CreateRetentionPolicyVersion:input_type -> opl.cloud.api.CreateRetentionPolicyVersionRpcRequest
+	395,  // 897: opl.cloud.api.WorkspaceProductService.CreateWorkspace:input_type -> opl.cloud.api.CreateWorkspaceRpcRequest
+	396,  // 898: opl.cloud.api.WorkspaceProductService.ListWorkspaces:input_type -> opl.cloud.api.ListWorkspacesRpcRequest
+	397,  // 899: opl.cloud.api.WorkspaceProductService.GetWorkspace:input_type -> opl.cloud.api.GetWorkspaceRpcRequest
+	398,  // 900: opl.cloud.api.WorkspaceProductService.DeleteWorkspace:input_type -> opl.cloud.api.DeleteWorkspaceRpcRequest
+	400,  // 901: opl.cloud.api.WorkspaceProductService.GetWorkspaceModels:input_type -> opl.cloud.api.GetWorkspaceModelsRpcRequest
+	401,  // 902: opl.cloud.api.WorkspaceProductService.UpdateWorkspaceModels:input_type -> opl.cloud.api.UpdateWorkspaceModelsRpcRequest
+	406,  // 903: opl.cloud.api.WorkspaceProductService.ResizeWorkspace:input_type -> opl.cloud.api.ResizeWorkspaceRpcRequest
+	407,  // 904: opl.cloud.api.WorkspaceProductService.RenewWorkspace:input_type -> opl.cloud.api.RenewWorkspaceRpcRequest
+	408,  // 905: opl.cloud.api.WorkspaceProductService.GetSubscription:input_type -> opl.cloud.api.GetSubscriptionRpcRequest
+	409,  // 906: opl.cloud.api.WorkspaceProductService.GetWorkspaceDeletion:input_type -> opl.cloud.api.GetWorkspaceDeletionRpcRequest
+	411,  // 907: opl.cloud.api.WorkspaceProductService.GetOperation:input_type -> opl.cloud.api.GetOperationRpcRequest
+	428,  // 908: opl.cloud.api.WorkspaceProductService.ListAdminOperations:input_type -> opl.cloud.api.ListAdminOperationsRpcRequest
+	429,  // 909: opl.cloud.api.WorkspaceProductService.ReconcileOperation:input_type -> opl.cloud.api.ReconcileOperationRpcRequest
+	453,  // 910: opl.cloud.api.WorkspaceProductService.AdoptWorkspace:input_type -> opl.cloud.api.AdoptWorkspaceRpcRequest
+	461,  // 911: opl.cloud.api.WorkspaceProductService.UpdateRenewalSettings:input_type -> opl.cloud.api.UpdateRenewalSettingsRpcRequest
+	462,  // 912: opl.cloud.api.WorkspaceProductService.RevealWorkspaceApplicationCredentials:input_type -> opl.cloud.api.RevealWorkspaceApplicationCredentialsRpcRequest
+	463,  // 913: opl.cloud.api.WorkspaceProductService.ListPlanChanges:input_type -> opl.cloud.api.ListPlanChangesRpcRequest
+	464,  // 914: opl.cloud.api.WorkspaceProductService.GetPlanChange:input_type -> opl.cloud.api.GetPlanChangeRpcRequest
+	465,  // 915: opl.cloud.api.WorkspaceProductService.CancelPlanChange:input_type -> opl.cloud.api.CancelPlanChangeRpcRequest
+	402,  // 916: opl.cloud.api.ServeProductService.ListDeployments:input_type -> opl.cloud.api.ListDeploymentsRpcRequest
+	403,  // 917: opl.cloud.api.ServeProductService.GetDeployment:input_type -> opl.cloud.api.GetDeploymentRpcRequest
+	404,  // 918: opl.cloud.api.ServeProductService.UpdateWorkspaceVersion:input_type -> opl.cloud.api.UpdateWorkspaceVersionRpcRequest
+	405,  // 919: opl.cloud.api.ServeProductService.RollbackWorkspace:input_type -> opl.cloud.api.RollbackWorkspaceRpcRequest
+	399,  // 920: opl.cloud.api.ServeProductService.GetWorkspaceAccess:input_type -> opl.cloud.api.GetWorkspaceAccessRpcRequest
+	410,  // 921: opl.cloud.api.GatewayProductService.ListWorkspaceTransactions:input_type -> opl.cloud.api.ListWorkspaceTransactionsRpcRequest
+	412,  // 922: opl.cloud.api.GatewayProductService.GetWallet:input_type -> opl.cloud.api.GetWalletRpcRequest
+	413,  // 923: opl.cloud.api.GatewayProductService.ListUsage:input_type -> opl.cloud.api.ListUsageRpcRequest
+	414,  // 924: opl.cloud.api.GatewayProductService.GetUsageSummary:input_type -> opl.cloud.api.GetUsageSummaryRpcRequest
+	415,  // 925: opl.cloud.api.GatewayProductService.ListGatewayKeys:input_type -> opl.cloud.api.ListGatewayKeysRpcRequest
+	416,  // 926: opl.cloud.api.GatewayProductService.CreateGatewayKey:input_type -> opl.cloud.api.CreateGatewayKeyRpcRequest
+	417,  // 927: opl.cloud.api.GatewayProductService.RevealGatewayKey:input_type -> opl.cloud.api.RevealGatewayKeyRpcRequest
+	418,  // 928: opl.cloud.api.GatewayProductService.RevokeGatewayKey:input_type -> opl.cloud.api.RevokeGatewayKeyRpcRequest
+	419,  // 929: opl.cloud.api.GatewayProductService.ListRechargeRecords:input_type -> opl.cloud.api.ListRechargeRecordsRpcRequest
+	438,  // 930: opl.cloud.api.GatewayProductService.ListModels:input_type -> opl.cloud.api.ListModelsRpcRequest
+	431,  // 931: opl.cloud.api.LedgerProductService.ListReceipts:input_type -> opl.cloud.api.ListReceiptsRpcRequest
+	432,  // 932: opl.cloud.api.LedgerProductService.GetReceipt:input_type -> opl.cloud.api.GetReceiptRpcRequest
+	433,  // 933: opl.cloud.api.LedgerProductService.ListQualifications:input_type -> opl.cloud.api.ListQualificationsRpcRequest
+	477,  // 934: opl.cloud.api.ClaimUsageReadback.ReadClaimUsage:input_type -> opl.cloud.api.ReadClaimUsageRequest
+	468,  // 935: opl.cloud.api.CapabilityCoordination.ResolveBuildInput:input_type -> opl.cloud.api.BuildInputRequest
+	479,  // 936: opl.cloud.api.CapabilityCoordination.ResolvePublisherContract:input_type -> opl.cloud.api.ResolvePublisherContractRequest
+	471,  // 937: opl.cloud.api.CapabilityCoordination.AcquireReference:input_type -> opl.cloud.api.ReferenceClaimRequest
+	473,  // 938: opl.cloud.api.CapabilityCoordination.BindReference:input_type -> opl.cloud.api.BindReferenceRequest
+	475,  // 939: opl.cloud.api.CapabilityCoordination.ReleaseReference:input_type -> opl.cloud.api.ReleaseReferenceRequest
+	481,  // 940: opl.cloud.api.BuildCoordination.ReadArtifact:input_type -> opl.cloud.api.ReadBuildArtifactRequest
+	466,  // 941: opl.cloud.api.OwnerOperations.Read:input_type -> opl.cloud.api.OwnerOperationRequest
+	429,  // 942: opl.cloud.api.OwnerOperations.Reconcile:input_type -> opl.cloud.api.ReconcileOperationRpcRequest
+	492,  // 943: opl.cloud.api.OwnerCommitReadback.ReadOwnerCommit:input_type -> opl.cloud.api.ReadOwnerCommitRequest
+	493,  // 944: opl.cloud.api.WorkspaceAuthorizationReadback.ReadRenewalConsent:input_type -> opl.cloud.api.ReadRenewalConsentRequest
+	487,  // 945: opl.cloud.api.CloudIdentityAuthorization.AuthorizeAction:input_type -> opl.cloud.api.AuthorizationRequest
+	489,  // 946: opl.cloud.api.CloudIdentityAuthorization.GetAuthorizationContext:input_type -> opl.cloud.api.GetAuthorizationContextRequest
+	490,  // 947: opl.cloud.api.CloudIdentityAuthorization.IssueAcceptedOperationGrant:input_type -> opl.cloud.api.AcceptedOperationGrantRequest
+	497,  // 948: opl.cloud.api.CatalogCoordination.AcceptQuote:input_type -> opl.cloud.api.AcceptQuoteRequest
+	499,  // 949: opl.cloud.api.CatalogCoordination.ReadQuoteResourcePlan:input_type -> opl.cloud.api.QuoteResourcePlanRequest
+	495,  // 950: opl.cloud.api.WorkspaceAdmission.CheckAdmission:input_type -> opl.cloud.api.AdmissionRequest
+	502,  // 951: opl.cloud.api.GatewayCoordination.GetSelfUserExternalBinding:input_type -> opl.cloud.api.GetSelfUserExternalBindingRequest
+	500,  // 952: opl.cloud.api.GatewayCoordination.BindUserExternalIdentity:input_type -> opl.cloud.api.UserExternalBindingCommand
+	501,  // 953: opl.cloud.api.GatewayCoordination.ReadUserExternalIdentity:input_type -> opl.cloud.api.UserExternalBindingReadRequest
+	504,  // 954: opl.cloud.api.GatewayCoordination.BindWallet:input_type -> opl.cloud.api.WalletBindingCommand
+	506,  // 955: opl.cloud.api.GatewayCoordination.Debit:input_type -> opl.cloud.api.WalletDebitCommand
+	507,  // 956: opl.cloud.api.GatewayCoordination.Refund:input_type -> opl.cloud.api.WalletRefundCommand
+	508,  // 957: opl.cloud.api.GatewayCoordination.ReadWalletAction:input_type -> opl.cloud.api.WalletReadbackRequest
+	509,  // 958: opl.cloud.api.GatewayCoordination.CreateManagedKey:input_type -> opl.cloud.api.ManagedKeyCommand
+	511,  // 959: opl.cloud.api.GatewayCoordination.RevokeManagedKey:input_type -> opl.cloud.api.ManagedKeyRevoke
+	513,  // 960: opl.cloud.api.FabricCoordination.AdmitResources:input_type -> opl.cloud.api.ResourceAdmissionRequest
+	514,  // 961: opl.cloud.api.FabricCoordination.EnsureResources:input_type -> opl.cloud.api.EnsureResourcesCommand
+	516,  // 962: opl.cloud.api.FabricCoordination.ResizeResources:input_type -> opl.cloud.api.ResizeResourcesCommand
+	517,  // 963: opl.cloud.api.FabricCoordination.RenewResources:input_type -> opl.cloud.api.RenewResourcesCommand
+	515,  // 964: opl.cloud.api.FabricCoordination.SuspendResources:input_type -> opl.cloud.api.MutateResourcesCommand
+	515,  // 965: opl.cloud.api.FabricCoordination.ResumeResources:input_type -> opl.cloud.api.MutateResourcesCommand
+	515,  // 966: opl.cloud.api.FabricCoordination.DeleteResources:input_type -> opl.cloud.api.MutateResourcesCommand
+	518,  // 967: opl.cloud.api.FabricCoordination.ReadResources:input_type -> opl.cloud.api.ResourceReadbackRequest
+	523,  // 968: opl.cloud.api.FabricCoordination.BindSecret:input_type -> opl.cloud.api.SecretBindingCommand
+	525,  // 969: opl.cloud.api.FabricCoordination.RebindSecret:input_type -> opl.cloud.api.SecretBindingRebindCommand
+	527,  // 970: opl.cloud.api.FabricCoordination.PutManagedSecret:input_type -> opl.cloud.api.ManagedSecretCommand
+	529,  // 971: opl.cloud.api.ServeAgentCoordination.Reserve:input_type -> opl.cloud.api.RuntimeReservationCommand
+	532,  // 972: opl.cloud.api.ServeAgentCoordination.Deploy:input_type -> opl.cloud.api.RuntimeDeployCommand
+	535,  // 973: opl.cloud.api.ServeAgentCoordination.ReloadModels:input_type -> opl.cloud.api.RuntimeReloadCommand
+	533,  // 974: opl.cloud.api.ServeAgentCoordination.ReadRuntime:input_type -> opl.cloud.api.RuntimeReadbackRequest
+	536,  // 975: opl.cloud.api.ServeAgentCoordination.Retire:input_type -> opl.cloud.api.RuntimeStopCommand
+	537,  // 976: opl.cloud.api.ServeRuntimeAdapter.ReadApplicationCredentials:input_type -> opl.cloud.api.ReadApplicationCredentialsRequest
+	532,  // 977: opl.cloud.api.ServeRuntimeAdapter.StartRuntime:input_type -> opl.cloud.api.RuntimeDeployCommand
+	536,  // 978: opl.cloud.api.ServeRuntimeAdapter.StopRuntime:input_type -> opl.cloud.api.RuntimeStopCommand
+	535,  // 979: opl.cloud.api.ServeRuntimeAdapter.ReloadRuntime:input_type -> opl.cloud.api.RuntimeReloadCommand
+	533,  // 980: opl.cloud.api.ServeRuntimeAdapter.ObserveRuntime:input_type -> opl.cloud.api.RuntimeReadbackRequest
+	540,  // 981: opl.cloud.api.ServeAccessControl.FenceRouteEpoch:input_type -> opl.cloud.api.FenceRouteEpochCommand
+	541,  // 982: opl.cloud.api.ServeAccessControl.ActivateRoute:input_type -> opl.cloud.api.RouteActivateCommand
+	542,  // 983: opl.cloud.api.ServeAccessControl.ObserveRoute:input_type -> opl.cloud.api.RouteObserveRequest
+	543,  // 984: opl.cloud.api.ServeAccessControl.RollbackRoute:input_type -> opl.cloud.api.RouteRollbackCommand
+	545,  // 985: opl.cloud.api.TenantWorkspaceCoordination.SuspendTenantWorkspaces:input_type -> opl.cloud.api.TenantWorkspaceLifecycleCommand
+	545,  // 986: opl.cloud.api.TenantWorkspaceCoordination.DeleteTenantWorkspaces:input_type -> opl.cloud.api.TenantWorkspaceLifecycleCommand
+	547,  // 987: opl.cloud.api.TenantWorkspaceCoordination.ResumeTenantWorkspaces:input_type -> opl.cloud.api.ResumeTenantWorkspacesRequest
+	548,  // 988: opl.cloud.api.LedgerCoordination.AppendReceipt:input_type -> opl.cloud.api.AppendReceiptRequest
+	549,  // 989: opl.cloud.api.LedgerCoordination.ReadReceiptByReference:input_type -> opl.cloud.api.GetReceiptByReferenceRequest
+	549,  // 990: opl.cloud.api.LedgerCoordination.ReadLocalNoChargeReceipt:input_type -> opl.cloud.api.GetReceiptByReferenceRequest
+	549,  // 991: opl.cloud.api.LedgerCoordination.ReadWalletActionReceipt:input_type -> opl.cloud.api.GetReceiptByReferenceRequest
+	553,  // 992: opl.cloud.api.WorkspacePlanChangeReadback.ReadSubscriptionPlanState:input_type -> opl.cloud.api.ReadSubscriptionPlanStateRequest
+	555,  // 993: opl.cloud.api.WorkspacePlanChangeReadback.ReadPlanChange:input_type -> opl.cloud.api.ReadPlanChangeRequest
+	556,  // 994: opl.cloud.api.WorkspacePlanChangeReadback.ReadNextPeriodObligation:input_type -> opl.cloud.api.ReadNextPeriodObligationRequest
+	558,  // 995: opl.cloud.api.WorkspacePlanChangeReadback.ReadPlanChangeFailure:input_type -> opl.cloud.api.ReadPlanChangeFailureRequest
+	559,  // 996: opl.cloud.api.FabricPlanTransitionReadback.ReadApprovedPlanTransition:input_type -> opl.cloud.api.PlanTransitionRequest
+	573,  // 997: opl.cloud.api.FabricPlanTransitionReadback.ReadExecutionPlan:input_type -> opl.cloud.api.ReadProviderExecutionPlanRequest
+	564,  // 998: opl.cloud.api.GatewayPlanChangeSettlement.DebitSupplement:input_type -> opl.cloud.api.PlanChangeSupplementChargeCommand
+	565,  // 999: opl.cloud.api.GatewayPlanChangeSettlement.DebitScheduledPeriod:input_type -> opl.cloud.api.ScheduledPeriodChargeCommand
+	566,  // 1000: opl.cloud.api.GatewayPlanChangeSettlement.RefundFailure:input_type -> opl.cloud.api.PlanChangeFailureRefundCommand
+	567,  // 1001: opl.cloud.api.GatewayPlanChangeSettlement.RefundSupplementOnDeletion:input_type -> opl.cloud.api.SupplementDeletionRefundCommand
+	568,  // 1002: opl.cloud.api.ServePlanChangeControl.RestoreAfterResourceChange:input_type -> opl.cloud.api.RestorePlanChangeRuntimeCommand
+	570,  // 1003: opl.cloud.api.LedgerPlanChangeEvidence.AppendPlanChangeReceipt:input_type -> opl.cloud.api.AppendPlanChangeReceiptRequest
+	571,  // 1004: opl.cloud.api.LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt:input_type -> opl.cloud.api.AppendPlanChangeRefundReceiptRequest
+	595,  // 1005: opl.cloud.api.DomainInbox.Deliver:input_type -> opl.cloud.api.DeliverEventRequest
+	597,  // 1006: opl.cloud.api.WorkspaceAccessReadback.ReadWorkspaceAccess:input_type -> opl.cloud.api.ReadWorkspaceAccessRequest
+	192,  // 1007: opl.cloud.api.TenantProductService.GetLoginContext:output_type -> opl.cloud.api.LoginContext
+	194,  // 1008: opl.cloud.api.TenantProductService.Login:output_type -> opl.cloud.api.Session
+	194,  // 1009: opl.cloud.api.TenantProductService.GetSession:output_type -> opl.cloud.api.Session
+	601,  // 1010: opl.cloud.api.TenantProductService.Logout:output_type -> google.protobuf.Empty
+	195,  // 1011: opl.cloud.api.TenantProductService.GetTenant:output_type -> opl.cloud.api.Tenant
+	269,  // 1012: opl.cloud.api.TenantProductService.ListMembers:output_type -> opl.cloud.api.MemberPage
+	270,  // 1013: opl.cloud.api.TenantProductService.ListInvitations:output_type -> opl.cloud.api.InvitationPage
+	199,  // 1014: opl.cloud.api.TenantProductService.InviteMember:output_type -> opl.cloud.api.Invitation
+	198,  // 1015: opl.cloud.api.TenantProductService.AcceptInvitation:output_type -> opl.cloud.api.Member
+	199,  // 1016: opl.cloud.api.TenantProductService.RevokeInvitation:output_type -> opl.cloud.api.Invitation
+	198,  // 1017: opl.cloud.api.TenantProductService.UpdateMemberRole:output_type -> opl.cloud.api.Member
+	601,  // 1018: opl.cloud.api.TenantProductService.RemoveMember:output_type -> google.protobuf.Empty
+	291,  // 1019: opl.cloud.api.TenantProductService.ListTenants:output_type -> opl.cloud.api.TenantPage
+	191,  // 1020: opl.cloud.api.TenantProductService.CreateTenant:output_type -> opl.cloud.api.Operation
+	195,  // 1021: opl.cloud.api.TenantProductService.GetAdminTenant:output_type -> opl.cloud.api.Tenant
+	191,  // 1022: opl.cloud.api.TenantProductService.DeleteTenant:output_type -> opl.cloud.api.Operation
+	191,  // 1023: opl.cloud.api.TenantProductService.BindTenantWallet:output_type -> opl.cloud.api.Operation
+	191,  // 1024: opl.cloud.api.TenantProductService.SuspendTenant:output_type -> opl.cloud.api.Operation
+	191,  // 1025: opl.cloud.api.TenantProductService.RestoreTenant:output_type -> opl.cloud.api.Operation
+	204,  // 1026: opl.cloud.api.TenantProductService.GetTenantAssetCustody:output_type -> opl.cloud.api.AssetCustody
+	292,  // 1027: opl.cloud.api.TenantProductService.ListAuditEvents:output_type -> opl.cloud.api.AuditEventPage
+	191,  // 1028: opl.cloud.api.TenantProductService.ReenableTenant:output_type -> opl.cloud.api.Operation
+	340,  // 1029: opl.cloud.api.TenantProductService.GetTenantLifecycleOperation:output_type -> opl.cloud.api.TenantLifecycleProgress
+	271,  // 1030: opl.cloud.api.CapabilityProductService.ListNamespaces:output_type -> opl.cloud.api.NamespacePage
+	205,  // 1031: opl.cloud.api.CapabilityProductService.CreateNamespace:output_type -> opl.cloud.api.Namespace
+	205,  // 1032: opl.cloud.api.CapabilityProductService.UpdateNamespace:output_type -> opl.cloud.api.Namespace
+	205,  // 1033: opl.cloud.api.CapabilityProductService.ArchiveNamespace:output_type -> opl.cloud.api.Namespace
+	272,  // 1034: opl.cloud.api.CapabilityProductService.ListPackages:output_type -> opl.cloud.api.PackagePage
+	207,  // 1035: opl.cloud.api.CapabilityProductService.CreatePackage:output_type -> opl.cloud.api.Package
+	207,  // 1036: opl.cloud.api.CapabilityProductService.GetPackage:output_type -> opl.cloud.api.Package
+	207,  // 1037: opl.cloud.api.CapabilityProductService.UpdatePackage:output_type -> opl.cloud.api.Package
+	207,  // 1038: opl.cloud.api.CapabilityProductService.ArchivePackage:output_type -> opl.cloud.api.Package
+	214,  // 1039: opl.cloud.api.CapabilityProductService.CreateUpload:output_type -> opl.cloud.api.UploadSession
+	214,  // 1040: opl.cloud.api.CapabilityProductService.GetUpload:output_type -> opl.cloud.api.UploadSession
+	216,  // 1041: opl.cloud.api.CapabilityProductService.CreateUploadPart:output_type -> opl.cloud.api.UploadPartAuthorization
+	191,  // 1042: opl.cloud.api.CapabilityProductService.CompleteUpload:output_type -> opl.cloud.api.Operation
+	273,  // 1043: opl.cloud.api.CapabilityProductService.ListPackageVersions:output_type -> opl.cloud.api.PackageVersionPage
+	211,  // 1044: opl.cloud.api.CapabilityProductService.GetPackageVersion:output_type -> opl.cloud.api.PackageVersion
+	274,  // 1045: opl.cloud.api.CapabilityProductService.ListCapabilityVersions:output_type -> opl.cloud.api.CapabilityVersionPage
+	220,  // 1046: opl.cloud.api.CapabilityProductService.GetCapabilityVersion:output_type -> opl.cloud.api.CapabilityVersion
+	191,  // 1047: opl.cloud.api.CapabilityProductService.DeleteCapabilityVersion:output_type -> opl.cloud.api.Operation
+	207,  // 1048: opl.cloud.api.CapabilityProductService.PublishOfficialPackage:output_type -> opl.cloud.api.Package
+	278,  // 1049: opl.cloud.api.CapabilityProductService.ListWebuiVersions:output_type -> opl.cloud.api.WebuiVersionPage
+	225,  // 1050: opl.cloud.api.CapabilityProductService.RegisterWebuiVersion:output_type -> opl.cloud.api.WebuiVersion
+	225,  // 1051: opl.cloud.api.CapabilityProductService.SetWebuiVersionStatus:output_type -> opl.cloud.api.WebuiVersion
+	318,  // 1052: opl.cloud.api.CapabilityProductService.ListPublisherNamespaces:output_type -> opl.cloud.api.PublisherNamespacePage
+	315,  // 1053: opl.cloud.api.CapabilityProductService.CreatePublisherNamespace:output_type -> opl.cloud.api.PublisherNamespace
+	315,  // 1054: opl.cloud.api.CapabilityProductService.RevokePublisherNamespace:output_type -> opl.cloud.api.PublisherNamespace
+	277,  // 1055: opl.cloud.api.RuntimeControlProductService.ListRuntimeVersions:output_type -> opl.cloud.api.RuntimeVersionPage
+	297,  // 1056: opl.cloud.api.RuntimeControlProductService.GetBuildRuntimePolicy:output_type -> opl.cloud.api.BuildRuntimePolicy
+	297,  // 1057: opl.cloud.api.RuntimeControlProductService.SetBuildRuntimePolicy:output_type -> opl.cloud.api.BuildRuntimePolicy
+	224,  // 1058: opl.cloud.api.RuntimeControlProductService.RegisterRuntimeVersion:output_type -> opl.cloud.api.RuntimeVersion
+	224,  // 1059: opl.cloud.api.RuntimeControlProductService.SetRuntimeVersionStatus:output_type -> opl.cloud.api.RuntimeVersion
+	221,  // 1060: opl.cloud.api.BuildProductService.CreateBuild:output_type -> opl.cloud.api.BuildJob
+	275,  // 1061: opl.cloud.api.BuildProductService.ListBuilds:output_type -> opl.cloud.api.BuildJobPage
+	221,  // 1062: opl.cloud.api.BuildProductService.GetBuild:output_type -> opl.cloud.api.BuildJob
+	276,  // 1063: opl.cloud.api.BuildProductService.ListBuildLogs:output_type -> opl.cloud.api.BuildLogPage
+	221,  // 1064: opl.cloud.api.BuildProductService.RetryBuild:output_type -> opl.cloud.api.BuildJob
+	245,  // 1065: opl.cloud.api.ResourceCatalogProductService.CreateQuote:output_type -> opl.cloud.api.Quote
+	245,  // 1066: opl.cloud.api.ResourceCatalogProductService.GetQuote:output_type -> opl.cloud.api.Quote
+	279,  // 1067: opl.cloud.api.ResourceCatalogProductService.ListComputePlans:output_type -> opl.cloud.api.ComputePlanPage
+	280,  // 1068: opl.cloud.api.ResourceCatalogProductService.ListStoragePlans:output_type -> opl.cloud.api.StoragePlanPage
+	229,  // 1069: opl.cloud.api.ResourceCatalogProductService.CreateComputePlan:output_type -> opl.cloud.api.ComputePlan
+	229,  // 1070: opl.cloud.api.ResourceCatalogProductService.SetComputePlanAvailability:output_type -> opl.cloud.api.ComputePlan
+	230,  // 1071: opl.cloud.api.ResourceCatalogProductService.CreateStoragePlan:output_type -> opl.cloud.api.StoragePlan
+	230,  // 1072: opl.cloud.api.ResourceCatalogProductService.SetStoragePlanAvailability:output_type -> opl.cloud.api.StoragePlan
+	281,  // 1073: opl.cloud.api.ResourceCatalogProductService.ListPricePolicyVersions:output_type -> opl.cloud.api.PricePolicyVersionPage
+	234,  // 1074: opl.cloud.api.ResourceCatalogProductService.CreatePricePolicyVersion:output_type -> opl.cloud.api.PricePolicyVersion
+	282,  // 1075: opl.cloud.api.ResourceCatalogProductService.ListRefundPolicyVersions:output_type -> opl.cloud.api.RefundPolicyVersionPage
+	236,  // 1076: opl.cloud.api.ResourceCatalogProductService.CreateRefundPolicyVersion:output_type -> opl.cloud.api.RefundPolicyVersion
+	283,  // 1077: opl.cloud.api.ResourceCatalogProductService.ListRetentionPolicyVersions:output_type -> opl.cloud.api.RetentionPolicyVersionPage
+	238,  // 1078: opl.cloud.api.ResourceCatalogProductService.CreateRetentionPolicyVersion:output_type -> opl.cloud.api.RetentionPolicyVersion
+	191,  // 1079: opl.cloud.api.WorkspaceProductService.CreateWorkspace:output_type -> opl.cloud.api.Operation
+	285,  // 1080: opl.cloud.api.WorkspaceProductService.ListWorkspaces:output_type -> opl.cloud.api.WorkspacePage
+	246,  // 1081: opl.cloud.api.WorkspaceProductService.GetWorkspace:output_type -> opl.cloud.api.Workspace
+	191,  // 1082: opl.cloud.api.WorkspaceProductService.DeleteWorkspace:output_type -> opl.cloud.api.Operation
+	249,  // 1083: opl.cloud.api.WorkspaceProductService.GetWorkspaceModels:output_type -> opl.cloud.api.ModelConfiguration
+	191,  // 1084: opl.cloud.api.WorkspaceProductService.UpdateWorkspaceModels:output_type -> opl.cloud.api.Operation
+	191,  // 1085: opl.cloud.api.WorkspaceProductService.ResizeWorkspace:output_type -> opl.cloud.api.Operation
+	191,  // 1086: opl.cloud.api.WorkspaceProductService.RenewWorkspace:output_type -> opl.cloud.api.Operation
+	257,  // 1087: opl.cloud.api.WorkspaceProductService.GetSubscription:output_type -> opl.cloud.api.Subscription
+	256,  // 1088: opl.cloud.api.WorkspaceProductService.GetWorkspaceDeletion:output_type -> opl.cloud.api.WorkspaceDeletion
+	191,  // 1089: opl.cloud.api.WorkspaceProductService.GetOperation:output_type -> opl.cloud.api.Operation
+	294,  // 1090: opl.cloud.api.WorkspaceProductService.ListAdminOperations:output_type -> opl.cloud.api.AdminOperationPage
+	191,  // 1091: opl.cloud.api.WorkspaceProductService.ReconcileOperation:output_type -> opl.cloud.api.Operation
+	191,  // 1092: opl.cloud.api.WorkspaceProductService.AdoptWorkspace:output_type -> opl.cloud.api.Operation
+	191,  // 1093: opl.cloud.api.WorkspaceProductService.UpdateRenewalSettings:output_type -> opl.cloud.api.Operation
+	345,  // 1094: opl.cloud.api.WorkspaceProductService.RevealWorkspaceApplicationCredentials:output_type -> opl.cloud.api.WorkspaceApplicationCredentials
+	353,  // 1095: opl.cloud.api.WorkspaceProductService.ListPlanChanges:output_type -> opl.cloud.api.PlanChangePage
+	352,  // 1096: opl.cloud.api.WorkspaceProductService.GetPlanChange:output_type -> opl.cloud.api.PlanChange
+	191,  // 1097: opl.cloud.api.WorkspaceProductService.CancelPlanChange:output_type -> opl.cloud.api.Operation
+	286,  // 1098: opl.cloud.api.ServeProductService.ListDeployments:output_type -> opl.cloud.api.DeploymentPage
+	251,  // 1099: opl.cloud.api.ServeProductService.GetDeployment:output_type -> opl.cloud.api.Deployment
+	191,  // 1100: opl.cloud.api.ServeProductService.UpdateWorkspaceVersion:output_type -> opl.cloud.api.Operation
+	191,  // 1101: opl.cloud.api.ServeProductService.RollbackWorkspace:output_type -> opl.cloud.api.Operation
+	248,  // 1102: opl.cloud.api.ServeProductService.GetWorkspaceAccess:output_type -> opl.cloud.api.WorkspaceAccess
+	287,  // 1103: opl.cloud.api.GatewayProductService.ListWorkspaceTransactions:output_type -> opl.cloud.api.WalletOperationPage
+	259,  // 1104: opl.cloud.api.GatewayProductService.GetWallet:output_type -> opl.cloud.api.Wallet
+	288,  // 1105: opl.cloud.api.GatewayProductService.ListUsage:output_type -> opl.cloud.api.UsagePage
+	289,  // 1106: opl.cloud.api.GatewayProductService.GetUsageSummary:output_type -> opl.cloud.api.UsageSummary
+	290,  // 1107: opl.cloud.api.GatewayProductService.ListGatewayKeys:output_type -> opl.cloud.api.GatewayKeyPage
+	263,  // 1108: opl.cloud.api.GatewayProductService.CreateGatewayKey:output_type -> opl.cloud.api.GatewayKeySecret
+	263,  // 1109: opl.cloud.api.GatewayProductService.RevealGatewayKey:output_type -> opl.cloud.api.GatewayKeySecret
+	191,  // 1110: opl.cloud.api.GatewayProductService.RevokeGatewayKey:output_type -> opl.cloud.api.Operation
+	287,  // 1111: opl.cloud.api.GatewayProductService.ListRechargeRecords:output_type -> opl.cloud.api.WalletOperationPage
+	284,  // 1112: opl.cloud.api.GatewayProductService.ListModels:output_type -> opl.cloud.api.ModelPage
+	293,  // 1113: opl.cloud.api.LedgerProductService.ListReceipts:output_type -> opl.cloud.api.ReceiptPage
+	265,  // 1114: opl.cloud.api.LedgerProductService.GetReceipt:output_type -> opl.cloud.api.Receipt
+	295,  // 1115: opl.cloud.api.LedgerProductService.ListQualifications:output_type -> opl.cloud.api.QualificationPage
+	478,  // 1116: opl.cloud.api.ClaimUsageReadback.ReadClaimUsage:output_type -> opl.cloud.api.ClaimUsageEvidence
+	469,  // 1117: opl.cloud.api.CapabilityCoordination.ResolveBuildInput:output_type -> opl.cloud.api.BuildInputSnapshot
+	480,  // 1118: opl.cloud.api.CapabilityCoordination.ResolvePublisherContract:output_type -> opl.cloud.api.ResolvedPublisherContract
+	476,  // 1119: opl.cloud.api.CapabilityCoordination.AcquireReference:output_type -> opl.cloud.api.ReferenceClaim
+	476,  // 1120: opl.cloud.api.CapabilityCoordination.BindReference:output_type -> opl.cloud.api.ReferenceClaim
+	476,  // 1121: opl.cloud.api.CapabilityCoordination.ReleaseReference:output_type -> opl.cloud.api.ReferenceClaim
+	482,  // 1122: opl.cloud.api.BuildCoordination.ReadArtifact:output_type -> opl.cloud.api.BuildArtifactReadback
+	191,  // 1123: opl.cloud.api.OwnerOperations.Read:output_type -> opl.cloud.api.Operation
+	191,  // 1124: opl.cloud.api.OwnerOperations.Reconcile:output_type -> opl.cloud.api.Operation
+	472,  // 1125: opl.cloud.api.OwnerCommitReadback.ReadOwnerCommit:output_type -> opl.cloud.api.OwnerCommitEvidence
+	494,  // 1126: opl.cloud.api.WorkspaceAuthorizationReadback.ReadRenewalConsent:output_type -> opl.cloud.api.RenewalConsentReadback
+	488,  // 1127: opl.cloud.api.CloudIdentityAuthorization.AuthorizeAction:output_type -> opl.cloud.api.AuthorizationDecision
+	488,  // 1128: opl.cloud.api.CloudIdentityAuthorization.GetAuthorizationContext:output_type -> opl.cloud.api.AuthorizationDecision
+	491,  // 1129: opl.cloud.api.CloudIdentityAuthorization.IssueAcceptedOperationGrant:output_type -> opl.cloud.api.AcceptedOperationGrant
+	498,  // 1130: opl.cloud.api.CatalogCoordination.AcceptQuote:output_type -> opl.cloud.api.QuoteAcceptance
+	498,  // 1131: opl.cloud.api.CatalogCoordination.ReadQuoteResourcePlan:output_type -> opl.cloud.api.QuoteAcceptance
+	496,  // 1132: opl.cloud.api.WorkspaceAdmission.CheckAdmission:output_type -> opl.cloud.api.AdmissionResult
+	503,  // 1133: opl.cloud.api.GatewayCoordination.GetSelfUserExternalBinding:output_type -> opl.cloud.api.UserExternalBindingReadback
+	503,  // 1134: opl.cloud.api.GatewayCoordination.BindUserExternalIdentity:output_type -> opl.cloud.api.UserExternalBindingReadback
+	503,  // 1135: opl.cloud.api.GatewayCoordination.ReadUserExternalIdentity:output_type -> opl.cloud.api.UserExternalBindingReadback
+	505,  // 1136: opl.cloud.api.GatewayCoordination.BindWallet:output_type -> opl.cloud.api.WalletBindingReadback
+	258,  // 1137: opl.cloud.api.GatewayCoordination.Debit:output_type -> opl.cloud.api.WalletOperation
+	258,  // 1138: opl.cloud.api.GatewayCoordination.Refund:output_type -> opl.cloud.api.WalletOperation
+	258,  // 1139: opl.cloud.api.GatewayCoordination.ReadWalletAction:output_type -> opl.cloud.api.WalletOperation
+	510,  // 1140: opl.cloud.api.GatewayCoordination.CreateManagedKey:output_type -> opl.cloud.api.ManagedKeyBinding
+	191,  // 1141: opl.cloud.api.GatewayCoordination.RevokeManagedKey:output_type -> opl.cloud.api.Operation
+	496,  // 1142: opl.cloud.api.FabricCoordination.AdmitResources:output_type -> opl.cloud.api.AdmissionResult
+	191,  // 1143: opl.cloud.api.FabricCoordination.EnsureResources:output_type -> opl.cloud.api.Operation
+	191,  // 1144: opl.cloud.api.FabricCoordination.ResizeResources:output_type -> opl.cloud.api.Operation
+	191,  // 1145: opl.cloud.api.FabricCoordination.RenewResources:output_type -> opl.cloud.api.Operation
+	191,  // 1146: opl.cloud.api.FabricCoordination.SuspendResources:output_type -> opl.cloud.api.Operation
+	191,  // 1147: opl.cloud.api.FabricCoordination.ResumeResources:output_type -> opl.cloud.api.Operation
+	191,  // 1148: opl.cloud.api.FabricCoordination.DeleteResources:output_type -> opl.cloud.api.Operation
+	521,  // 1149: opl.cloud.api.FabricCoordination.ReadResources:output_type -> opl.cloud.api.ResourceReadback
+	524,  // 1150: opl.cloud.api.FabricCoordination.BindSecret:output_type -> opl.cloud.api.SecretBindingReadback
+	526,  // 1151: opl.cloud.api.FabricCoordination.RebindSecret:output_type -> opl.cloud.api.SecretBindingRebindReadback
+	528,  // 1152: opl.cloud.api.FabricCoordination.PutManagedSecret:output_type -> opl.cloud.api.ManagedSecretReadback
+	530,  // 1153: opl.cloud.api.ServeAgentCoordination.Reserve:output_type -> opl.cloud.api.RuntimeReservation
+	534,  // 1154: opl.cloud.api.ServeAgentCoordination.Deploy:output_type -> opl.cloud.api.RuntimeReadback
+	191,  // 1155: opl.cloud.api.ServeAgentCoordination.ReloadModels:output_type -> opl.cloud.api.Operation
+	534,  // 1156: opl.cloud.api.ServeAgentCoordination.ReadRuntime:output_type -> opl.cloud.api.RuntimeReadback
+	191,  // 1157: opl.cloud.api.ServeAgentCoordination.Retire:output_type -> opl.cloud.api.Operation
+	345,  // 1158: opl.cloud.api.ServeRuntimeAdapter.ReadApplicationCredentials:output_type -> opl.cloud.api.WorkspaceApplicationCredentials
+	534,  // 1159: opl.cloud.api.ServeRuntimeAdapter.StartRuntime:output_type -> opl.cloud.api.RuntimeReadback
+	191,  // 1160: opl.cloud.api.ServeRuntimeAdapter.StopRuntime:output_type -> opl.cloud.api.Operation
+	191,  // 1161: opl.cloud.api.ServeRuntimeAdapter.ReloadRuntime:output_type -> opl.cloud.api.Operation
+	534,  // 1162: opl.cloud.api.ServeRuntimeAdapter.ObserveRuntime:output_type -> opl.cloud.api.RuntimeReadback
+	544,  // 1163: opl.cloud.api.ServeAccessControl.FenceRouteEpoch:output_type -> opl.cloud.api.RouteReadback
+	544,  // 1164: opl.cloud.api.ServeAccessControl.ActivateRoute:output_type -> opl.cloud.api.RouteReadback
+	544,  // 1165: opl.cloud.api.ServeAccessControl.ObserveRoute:output_type -> opl.cloud.api.RouteReadback
+	544,  // 1166: opl.cloud.api.ServeAccessControl.RollbackRoute:output_type -> opl.cloud.api.RouteReadback
+	546,  // 1167: opl.cloud.api.TenantWorkspaceCoordination.SuspendTenantWorkspaces:output_type -> opl.cloud.api.TenantWorkspaceLifecycleReadback
+	546,  // 1168: opl.cloud.api.TenantWorkspaceCoordination.DeleteTenantWorkspaces:output_type -> opl.cloud.api.TenantWorkspaceLifecycleReadback
+	546,  // 1169: opl.cloud.api.TenantWorkspaceCoordination.ResumeTenantWorkspaces:output_type -> opl.cloud.api.TenantWorkspaceLifecycleReadback
+	265,  // 1170: opl.cloud.api.LedgerCoordination.AppendReceipt:output_type -> opl.cloud.api.Receipt
+	265,  // 1171: opl.cloud.api.LedgerCoordination.ReadReceiptByReference:output_type -> opl.cloud.api.Receipt
+	550,  // 1172: opl.cloud.api.LedgerCoordination.ReadLocalNoChargeReceipt:output_type -> opl.cloud.api.LocalNoChargeReceiptEvidence
+	551,  // 1173: opl.cloud.api.LedgerCoordination.ReadWalletActionReceipt:output_type -> opl.cloud.api.WalletActionReceiptEvidence
+	554,  // 1174: opl.cloud.api.WorkspacePlanChangeReadback.ReadSubscriptionPlanState:output_type -> opl.cloud.api.SubscriptionPlanState
+	352,  // 1175: opl.cloud.api.WorkspacePlanChangeReadback.ReadPlanChange:output_type -> opl.cloud.api.PlanChange
+	557,  // 1176: opl.cloud.api.WorkspacePlanChangeReadback.ReadNextPeriodObligation:output_type -> opl.cloud.api.NextPeriodObligation
+	355,  // 1177: opl.cloud.api.WorkspacePlanChangeReadback.ReadPlanChangeFailure:output_type -> opl.cloud.api.PlanChangeEvidence
+	560,  // 1178: opl.cloud.api.FabricPlanTransitionReadback.ReadApprovedPlanTransition:output_type -> opl.cloud.api.ApprovedPlanTransition
+	574,  // 1179: opl.cloud.api.FabricPlanTransitionReadback.ReadExecutionPlan:output_type -> opl.cloud.api.ProviderPlanChangeExecutionPlan
+	258,  // 1180: opl.cloud.api.GatewayPlanChangeSettlement.DebitSupplement:output_type -> opl.cloud.api.WalletOperation
+	258,  // 1181: opl.cloud.api.GatewayPlanChangeSettlement.DebitScheduledPeriod:output_type -> opl.cloud.api.WalletOperation
+	258,  // 1182: opl.cloud.api.GatewayPlanChangeSettlement.RefundFailure:output_type -> opl.cloud.api.WalletOperation
+	258,  // 1183: opl.cloud.api.GatewayPlanChangeSettlement.RefundSupplementOnDeletion:output_type -> opl.cloud.api.WalletOperation
+	569,  // 1184: opl.cloud.api.ServePlanChangeControl.RestoreAfterResourceChange:output_type -> opl.cloud.api.PlanChangeRuntimeReadback
+	265,  // 1185: opl.cloud.api.LedgerPlanChangeEvidence.AppendPlanChangeReceipt:output_type -> opl.cloud.api.Receipt
+	265,  // 1186: opl.cloud.api.LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt:output_type -> opl.cloud.api.Receipt
+	596,  // 1187: opl.cloud.api.DomainInbox.Deliver:output_type -> opl.cloud.api.InboxAck
+	598,  // 1188: opl.cloud.api.WorkspaceAccessReadback.ReadWorkspaceAccess:output_type -> opl.cloud.api.WorkspaceAccessDecision
+	1007, // [1007:1189] is the sub-list for method output_type
+	825,  // [825:1007] is the sub-list for method input_type
+	825,  // [825:825] is the sub-list for extension type_name
+	825,  // [825:825] is the sub-list for extension extendee
+	0,    // [0:825] is the sub-list for field type_name
 }
 
 func init() { file_internal_proto_init() }
@@ -49311,25 +49613,27 @@ func file_internal_proto_init() {
 	file_internal_proto_msgTypes[3].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[6].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[7].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[21].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[19].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[31].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[32].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[33].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[34].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[35].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[43].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[44].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[56].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[41].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[42].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[54].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[55].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[57].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[58].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[59].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[60].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[61].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[62].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[63].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[65].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[68].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[69].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[70].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[71].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[72].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[75].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[79].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[73].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[77].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[80].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[81].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[82].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[83].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[84].OneofWrappers = []any{}
@@ -49349,116 +49653,114 @@ func file_internal_proto_init() {
 	file_internal_proto_msgTypes[98].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[99].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[100].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[101].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[102].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[103].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[104].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[105].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[106].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[107].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[108].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[109].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[110].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[111].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[112].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[113].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[120].OneofWrappers = []any{
+	file_internal_proto_msgTypes[118].OneofWrappers = []any{
 		(*ApplicationAccessContract_ApplicationOwnedAccessContract)(nil),
 		(*ApplicationAccessContract_CloudPrivateAccessContract)(nil),
 		(*ApplicationAccessContract_AnonymousAccessContract)(nil),
 	}
-	file_internal_proto_msgTypes[121].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[126].OneofWrappers = []any{
+	file_internal_proto_msgTypes[119].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[124].OneofWrappers = []any{
 		(*PublisherContract_RuntimePublisherContract)(nil),
 		(*PublisherContract_WebuiPublisherContract)(nil),
 	}
-	file_internal_proto_msgTypes[128].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[132].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[126].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[130].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[133].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[134].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[135].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[136].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[137].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[138].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[139].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[140].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[141].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[142].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[144].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[146].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[148].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[156].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[157].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[166].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[154].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[155].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[164].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[165].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[167].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[169].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[170].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[176].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[177].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[183].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[187].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[196].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[168].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[174].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[175].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[181].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[185].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[194].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[197].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[199].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[201].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[203].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[210].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[216].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[224].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[208].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[214].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[222].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[225].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[227].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[229].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[233].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[234].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[231].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[232].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[240].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[242].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[244].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[243].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[245].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[246].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[247].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[248].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[249].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[250].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[251].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[252].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[259].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[261].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[263].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[265].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[270].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[277].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[284].OneofWrappers = []any{
+	file_internal_proto_msgTypes[268].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[275].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[282].OneofWrappers = []any{
 		(*ReferenceTarget_PackageVersionId)(nil),
 		(*ReferenceTarget_RuntimeVersionId)(nil),
 		(*ReferenceTarget_WebuiVersionId)(nil),
 		(*ReferenceTarget_CapabilityVersionId)(nil),
 	}
+	file_internal_proto_msgTypes[286].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[288].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[290].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[292].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[299].OneofWrappers = []any{
+	file_internal_proto_msgTypes[297].OneofWrappers = []any{
 		(*AuthorizationScope_Platform)(nil),
 		(*AuthorizationScope_Tenant)(nil),
 	}
+	file_internal_proto_msgTypes[298].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[299].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[300].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[301].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[302].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[304].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[305].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[311].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[312].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[349].OneofWrappers = []any{
+	file_internal_proto_msgTypes[303].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[309].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[310].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[351].OneofWrappers = []any{
 		(*RouteRevisionPrecondition_ExactRevision)(nil),
 		(*RouteRevisionPrecondition_RequireAbsent)(nil),
 	}
-	file_internal_proto_msgTypes[352].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[354].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[364].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[356].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[366].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[367].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[373].OneofWrappers = []any{
+	file_internal_proto_msgTypes[368].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[369].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[375].OneofWrappers = []any{
 		(*PlanChangeFundingEvidence_ConfirmedCharge)(nil),
 		(*PlanChangeFundingEvidence_ZeroAmount)(nil),
 	}
-	file_internal_proto_msgTypes[375].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[384].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[390].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[391].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[377].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[386].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[392].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[400].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[401].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[393].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[394].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[402].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[403].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[404].OneofWrappers = []any{
+	file_internal_proto_msgTypes[404].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[405].OneofWrappers = []any{}
+	file_internal_proto_msgTypes[406].OneofWrappers = []any{
 		(*EventEnvelope_PackageUploaded)(nil),
 		(*EventEnvelope_BuildArtifactConfirmed)(nil),
 		(*EventEnvelope_CapabilityVersionRegistered)(nil),
@@ -49483,8 +49785,8 @@ func file_internal_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_proto_rawDesc), len(file_internal_proto_rawDesc)),
-			NumEnums:      186,
-			NumMessages:   410,
+			NumEnums:      188,
+			NumMessages:   412,
 			NumExtensions: 0,
 			NumServices:   32,
 		},

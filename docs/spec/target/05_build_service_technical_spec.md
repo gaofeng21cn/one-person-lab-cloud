@@ -27,7 +27,7 @@
 | runtimeVersionId | 用户确认的获准精确RuntimeRelease；策略仅提供尚未选择时的候选 | 接受任务时按该ID读回并固定repository/digest/platform和发布契约，不能由管理员默认策略覆盖，也不能执行时改用latest |
 | builderContractVersion | 本Build服务批准的构建契约 | 记录模板/构建前端版本digest；不靠字符串猜路径 |
 | targetPlatform | Runtime/Package/独立WebUI三输入的兼容结果 | 精确os/arch与镜像平台；不静默跨架构 |
-| targetRepository | Tenant Namespace→批准Registry配置 | 服务端派生，用户不可指定他人repository |
+| targetRepository | Gateway `ReadUserExternalIdentity`返回当前session User的已验证OCI destination | `actor_id`绑定，Tenant仅授权范围；用户不能覆盖host/namespace/repository；旧executor_ref不改写 |
 | inputDigest | 上述规范化不可变输入的摘要 | 用作审计/重放一致性，不替代租户授权 |
 | registry/storageCredentialRef | Instance核准的短期credential绑定 | 只在执行边界获取，任务表/日志无明文 |
 
