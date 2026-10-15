@@ -217,7 +217,9 @@ as a public Release.
 
 From the exact Product checkout matching the installation, validate the full
 Kubernetes `v1/List`, including Deployments, Services, NetworkPolicies and referenced
-ConfigMaps:
+ConfigMaps. When validating a live installation, also supply Pods, ReplicaSets,
+other workload controllers, Endpoints and EndpointSlices from that same namespace.
+Preserve their live UIDs, controller references, Pod IPs and endpoint targetRefs:
 
 ```bash
 node /path/to/exact-product/tools/validate-production-manifest.ts \
@@ -242,7 +244,10 @@ BFF, are outside this owner-RPC contract.
 The report has `ok`, fixed-code `errors` and `communication`. Successful
 `communication.edges` contain `caller`, `target`, `addressEnv`, `tokenEnv`,
 `callerDeployment`, `targetDeployment`, `port`, `tokenRef: {name,key}`,
-`peerRef: {name,key}`, `ingressPolicies` and `egressPolicies`. `port` is the
+`peerRef: {name,key}`, `serviceRef: {name,namespace}`, `ingressPolicies` and
+`egressPolicies`. The Service reference is resolved by Product after applying the
+caller's declared address semantics; installers consume that identity directly
+instead of parsing addresses a second time. `port` is the
 resolved target container TCP port, after Service `port`/`targetPort` mapping.
 `peerRef` comes from the actual target container's declared peer-token environment.
 Policy arrays identify selecting policies; they do not assert policy ownership.
@@ -251,6 +256,16 @@ protected executor can validate Secret contents without inventing Product policy
 The executor must reject missing/invalid security requirements, short tokens,
 missing caller principals and token mismatches; the CLI itself checks references
 and never reads Secret contents.
+
+Service process recognition requires the declared long-running binary entrypoint;
+probe arguments do not establish a running service. A Pod cannot declare another
+listener for the target TCP port, including a restartable init container or a
+known Product process. Generated replicas are accepted only through the exact
+Pod-to-ReplicaSet-to-Deployment controller UID chain. Every supplied endpoint
+must identify an owned Pod, its observed address and the target port; an
+EndpointSlice must also belong to the exact Service UID. Unmanaged Pods and other
+workload producers sharing the Service selector are refused. These are checks
+of supplied declarations and inventory, not an observation of live connectivity.
 
 The CLI proves Service selection, the target listener, non-optional Secret
 references, target ingress admission and caller egress admission when egress is
