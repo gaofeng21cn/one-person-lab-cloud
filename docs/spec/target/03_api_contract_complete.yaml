@@ -2940,6 +2940,47 @@ paths:
         required: false
         schema:
           $ref: '#/components/schemas/OpaqueId'
+  /api/v2/usage/summary:
+    get:
+      operationId: getUsageSummary
+      summary: getUsageSummary
+      tags:
+      - gateway
+      x-feature-id:
+      - F14
+      x-owner: gateway
+      x-permission:
+      - member
+      x-tables: []
+      responses:
+        '200':
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageSummary'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+      parameters:
+      - name: period
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - today
+          - week
+          - month
   /api/v2/gateway-keys:
     get:
       operationId: listGatewayKeys
@@ -9183,6 +9224,27 @@ components:
       - costUSDMicros
       - source
       - createdAt
+      x-owner: gateway
+    UsageSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        totalRequests:
+          $ref: '#/components/schemas/NonnegativeInt64'
+        totalInputTokens:
+          $ref: '#/components/schemas/NonnegativeInt64'
+        totalOutputTokens:
+          $ref: '#/components/schemas/NonnegativeInt64'
+        totalTokens:
+          $ref: '#/components/schemas/NonnegativeInt64'
+        totalActualCostUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+      required:
+      - totalRequests
+      - totalInputTokens
+      - totalOutputTokens
+      - totalTokens
+      - totalActualCostUSDMicros
       x-owner: gateway
     GatewayKey:
       type: object

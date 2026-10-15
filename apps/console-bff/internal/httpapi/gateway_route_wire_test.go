@@ -27,12 +27,18 @@ import (
 type gatewayOwnerServer struct {
 	api.UnimplementedGatewayProductServiceServer
 	walletRequest *api.GetWalletRpcRequest
+	usageRequest  *api.GetUsageSummaryRpcRequest
 	modelRequest  *api.ListModelsRpcRequest
 }
 
 func (s *gatewayOwnerServer) GetWallet(_ context.Context, r *api.GetWalletRpcRequest) (*api.Wallet, error) {
 	s.walletRequest = r
 	return &api.Wallet{Source: api.WalletSourceEnum_WALLET_SOURCE_ENUM_GATEWAY, Status: api.WalletStatusEnum_WALLET_STATUS_ENUM_AVAILABLE, BalanceUsdMicros: 12_500_000, Currency: api.WalletCurrencyEnum_WALLET_CURRENCY_ENUM_USD, FetchedAt: timestamppb.Now()}, nil
+}
+
+func (s *gatewayOwnerServer) GetUsageSummary(_ context.Context, r *api.GetUsageSummaryRpcRequest) (*api.UsageSummary, error) {
+	s.usageRequest = r
+	return &api.UsageSummary{TotalRequests: 17, TotalInputTokens: 170, TotalOutputTokens: 34, TotalTokens: 204, TotalActualCostUsdMicros: 125001}, nil
 }
 
 func (s *gatewayOwnerServer) ListModels(_ context.Context, r *api.ListModelsRpcRequest) (*api.ModelPage, error) {
@@ -91,6 +97,22 @@ func TestWalletAndModelRoutesTravelThroughTheBFFClientWire(t *testing.T) {
 	// The BFF forwards the caller's own session to the owner and asserts nothing.
 	if owner.walletRequest.GetContext().GetSessionId() != owneridentity.SessionReference("session-1") {
 		t.Fatalf("owner wallet context=%v", owner.walletRequest.GetContext())
+	}
+
+	usageIdentity := allowedIdentity()
+	usageIdentity.decision.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY
+	usageIdentity.decision.AudienceOwner = api.OwnerEnum_OWNER_ENUM_GATEWAY
+	usageIdentity.decision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: ptr("tenant-1")}
+	response = httptest.NewRecorder()
+	NewServer(client, usageIdentity).Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/usage/summary?period=month"))
+	if response.Code != http.StatusOK || owner.usageRequest == nil {
+		t.Fatalf("usage status=%d reachedOwner=%v body=%s", response.Code, owner.usageRequest != nil, response.Body.String())
+	}
+	if owner.usageRequest.GetPeriod() != "month" || owner.usageRequest.GetContext().GetSessionId() != owneridentity.SessionReference("session-1") {
+		t.Fatalf("owner usage request=%v", owner.usageRequest)
+	}
+	if !strings.Contains(response.Body.String(), `"totalRequests":"17"`) || !strings.Contains(response.Body.String(), `"totalActualCostUSDMicros":"125001"`) {
+		t.Fatalf("usage wire=%s", response.Body.String())
 	}
 
 	modelIdentity := allowedIdentity()

@@ -203,8 +203,39 @@ export function getGatewayKeyUsageSummary(keyId: string, period: GatewayUsagePer
   return sourceGet<GatewayUsageSummaryDTO>(`/api/gateway/keys/${encodeURIComponent(keyId)}/usage-summary?${new URLSearchParams({ period })}`, signal);
 }
 
+export function gatewayUsageSummaryRoute(cloud: boolean): "/api/v2/usage/summary" | "/api/gateway/usage-summary" {
+  return cloud ? "/api/v2/usage/summary" : "/api/gateway/usage-summary";
+}
+
+function decodeGatewayUsageCount(value: unknown, field: string): number {
+  if (typeof value !== "string" || !nonnegativeInt64.test(value)) throw new Error(`invalid_gateway_usage_summary_${field}`);
+  const decoded = Number(value);
+  if (!Number.isSafeInteger(decoded)) throw new Error(`invalid_gateway_usage_summary_${field}`);
+  return decoded;
+}
+
+export function decodeGatewayUsageSummaryReadback(value: unknown): GatewayAccountUsageSummaryDTO {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid_gateway_usage_summary");
+  const readback = value as Record<string, unknown>;
+  return {
+    totalRequests: decodeGatewayUsageCount(readback.totalRequests, "requests"),
+    totalInputTokens: decodeGatewayUsageCount(readback.totalInputTokens, "input_tokens"),
+    totalOutputTokens: decodeGatewayUsageCount(readback.totalOutputTokens, "output_tokens"),
+    totalTokens: decodeGatewayUsageCount(readback.totalTokens, "tokens"),
+    totalActualCostUsdMicros: decodeGatewayUsageCount(readback.totalActualCostUSDMicros, "actual_cost_usd_micros")
+  };
+}
+
 export function getGatewayAccountUsageSummary(period: GatewayUsagePeriod = "month", signal?: AbortSignal): Promise<SourceEnvelope<GatewayAccountUsageSummaryDTO>> {
-  return sourceGet<GatewayAccountUsageSummaryDTO>(`/api/gateway/usage-summary?${new URLSearchParams({ period })}`, signal);
+  const path = `${gatewayUsageSummaryRoute(cloudIdentity)}?${new URLSearchParams({ period })}`;
+  if (!cloudIdentity) return sourceGet<GatewayAccountUsageSummaryDTO>(path, signal);
+  return getJson<unknown>(path, { signal }).then((value) => ({
+    source: "gateway",
+    status: "available" as const,
+    available: true as const,
+    fetchedAt: new Date().toISOString(),
+    data: decodeGatewayUsageSummaryReadback(value)
+  }));
 }
 
 export function getBillingReceipts(cursor = "", limit = 20, signal?: AbortSignal): Promise<SourceEnvelope<BillingReceiptPage>> {

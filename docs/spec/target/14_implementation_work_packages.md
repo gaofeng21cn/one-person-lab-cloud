@@ -294,11 +294,11 @@
 - 仅映射/操作证据，无余额镜像；unknown禁止新财务副作用
 - 个人Key管理与托管Workspace Key边界明确；明文仅授权一次性响应
 
-**主实现API（沿用03的唯一Owner，不是改变数据写权）**：`createGatewayKey`, `getWallet`, `listGatewayKeys`, `listModels`, `listRechargeRecords`, `listUsage`, `listWorkspaceTransactions`, `revealGatewayKey`, `revokeGatewayKey`
+**主实现API（沿用03的唯一Owner，不是改变数据写权）**：`createGatewayKey`, `getUsageSummary`, `getWallet`, `listGatewayKeys`, `listModels`, `listRechargeRecords`, `listUsage`, `listWorkspaceTransactions`, `revealGatewayKey`, `revokeGatewayKey`
 
 **主实现表（字段唯一来源02，不在此复制字段定义）**：`gateway.identity_mappings`, `gateway.tenant_wallet_bindings`, `gateway.key_bindings`, `gateway.wallet_operations`
 
-**内部协议实现/协作端口**：`GatewayProductService.ListWorkspaceTransactions`, `GatewayProductService.GetWallet`, `GatewayProductService.ListUsage`, `GatewayProductService.ListGatewayKeys`, `GatewayProductService.CreateGatewayKey`, `GatewayProductService.RevealGatewayKey`, `GatewayProductService.RevokeGatewayKey`, `GatewayProductService.ListRechargeRecords`, `GatewayProductService.ListModels`, `GatewayCoordination.BindWallet`, `GatewayCoordination.Debit`, `GatewayCoordination.Refund`, `GatewayCoordination.ReadWalletAction`, `GatewayCoordination.CreateManagedKey`, `GatewayCoordination.RevokeManagedKey`, `GatewayPlanChangeSettlement.DebitSupplement`, `GatewayPlanChangeSettlement.DebitScheduledPeriod`, `GatewayPlanChangeSettlement.RefundFailure`, `GatewayPlanChangeSettlement.RefundSupplementOnDeletion`
+**内部协议实现/协作端口**：`GatewayProductService.ListWorkspaceTransactions`, `GatewayProductService.GetWallet`, `GatewayProductService.ListUsage`, `GatewayProductService.GetUsageSummary`, `GatewayProductService.ListGatewayKeys`, `GatewayProductService.CreateGatewayKey`, `GatewayProductService.RevealGatewayKey`, `GatewayProductService.RevokeGatewayKey`, `GatewayProductService.ListRechargeRecords`, `GatewayProductService.ListModels`, `GatewayCoordination.BindWallet`, `GatewayCoordination.Debit`, `GatewayCoordination.Refund`, `GatewayCoordination.ReadWalletAction`, `GatewayCoordination.CreateManagedKey`, `GatewayCoordination.RevokeManagedKey`, `GatewayPlanChangeSettlement.DebitSupplement`, `GatewayPlanChangeSettlement.DebitScheduledPeriod`, `GatewayPlanChangeSettlement.RefundFailure`, `GatewayPlanChangeSettlement.RefundSupplementOnDeletion`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
@@ -948,7 +948,7 @@
 - 精确BigInt金额展示而非业务重算；31天19.354839不可隐藏实际更多小数
 - 订阅/交易/Token各有原始来源；Key与应用密码只内存/离页清理
 
-**前端消费API**：`cancelPlanChange`, `createGatewayKey`, `createQuote`, `deleteWorkspace`, `getOperation`, `getPlanChange`, `getQuote`, `getSubscription`, `getWallet`, `getWorkspace`, `getWorkspaceDeletion`, `getWorkspaceModels`, `listComputePlans`, `listGatewayKeys`, `listPlanChanges`, `listRechargeRecords`, `listStoragePlans`, `listUsage`, `listWorkspaceTransactions`, `renewWorkspace`, `resizeWorkspace`, `revealGatewayKey`, `revokeGatewayKey`, `updateRenewalSettings`
+**前端消费API**：`cancelPlanChange`, `createGatewayKey`, `createQuote`, `deleteWorkspace`, `getOperation`, `getPlanChange`, `getQuote`, `getSubscription`, `getUsageSummary`, `getWallet`, `getWorkspace`, `getWorkspaceDeletion`, `getWorkspaceModels`, `listComputePlans`, `listGatewayKeys`, `listPlanChanges`, `listRechargeRecords`, `listStoragePlans`, `listUsage`, `listWorkspaceTransactions`, `renewWorkspace`, `resizeWorkspace`, `revealGatewayKey`, `revokeGatewayKey`, `updateRenewalSettings`
 
 **验证**：
 - npm run test:browser:billing

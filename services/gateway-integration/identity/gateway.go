@@ -30,6 +30,15 @@ type GatewayBalance struct {
 	USDMicros int64
 	Status    string
 }
+
+type GatewayUsageStats struct {
+	TotalRequests            int64
+	TotalInputTokens         int64
+	TotalOutputTokens        int64
+	TotalTokens              int64
+	TotalActualCostUSDMicros int64
+}
+
 type Gateway struct {
 	base   string
 	client *http.Client
@@ -111,11 +120,7 @@ func (g *Gateway) directoryIdentity(ctx context.Context, subject string) (Gatewa
 	var out GatewayIdentity
 	if err = g.request(ctx, "/api/v1/admin/users/"+strconv.FormatInt(id, 10), token, nil, &out); err != nil {
 		if status.Code(err) == codes.Unauthenticated {
-			// The cached administrative credential is no longer accepted; drop it so
-			// the next call re-authenticates instead of failing permanently.
-			g.mu.Lock()
-			g.token, g.until = "", time.Time{}
-			g.mu.Unlock()
+			g.invalidateDirectoryToken()
 			return GatewayIdentity{}, status.Error(codes.Unauthenticated, "Gateway directory credential rejected")
 		}
 		return GatewayIdentity{}, err
@@ -128,6 +133,12 @@ func (g *Gateway) directoryIdentity(ctx context.Context, subject string) (Gatewa
 
 // directoryToken returns a cached administrative access token, authenticating as
 // this service's own directory identity when none is live.
+func (g *Gateway) invalidateDirectoryToken() {
+	g.mu.Lock()
+	g.token, g.until = "", time.Time{}
+	g.mu.Unlock()
+}
+
 func (g *Gateway) directoryToken(ctx context.Context) (string, error) {
 	g.mu.Lock()
 	if g.token != "" && g.until.After(time.Now().Add(time.Minute)) {
@@ -245,6 +256,9 @@ func (g *Gateway) Balance(ctx context.Context, subject string) (GatewayBalance, 
 		Status  string      `json:"status"`
 	}
 	if err := g.request(ctx, "/api/v1/admin/users/"+strconv.FormatInt(id, 10), token, nil, &out); err != nil {
+		if status.Code(err) == codes.Unauthenticated {
+			g.invalidateDirectoryToken()
+		}
 		return GatewayBalance{}, err
 	}
 	if out.ID != id || (out.Status != "active" && out.Status != "disabled") {
@@ -282,6 +296,82 @@ type ModelEntry struct {
 	Available    bool
 }
 
+// UsageStats reads directory-scoped usage totals from the Gateway provider.
+// The service authenticates with its own configured directory identity and
+// rejects malformed or negative provider facts.
+func (g *Gateway) UsageStats(ctx context.Context, subject, period string) (GatewayUsageStats, error) {
+	id, err := strconv.ParseInt(strings.TrimSpace(subject), 10, 64)
+	if err != nil || id <= 0 {
+		return GatewayUsageStats{}, status.Error(codes.InvalidArgument, "a positive Gateway subject id is required")
+	}
+	startDate, endDate, ok := gatewayUsageDateRange(period, time.Now())
+	if !ok {
+		return GatewayUsageStats{}, status.Error(codes.InvalidArgument, "a valid usage period is required")
+	}
+	if !g.DirectoryConfigured() {
+		return GatewayUsageStats{}, status.Error(codes.FailedPrecondition, "the Gateway directory identity is not configured")
+	}
+	token, err := g.directoryToken(ctx)
+	if err != nil {
+		return GatewayUsageStats{}, err
+	}
+	values := url.Values{
+		"end_date":   {endDate},
+		"start_date": {startDate},
+		"timezone":   {"Asia/Shanghai"},
+		"user_id":    {strconv.FormatInt(id, 10)},
+	}
+	var data struct {
+		TotalRequests     *int64       `json:"total_requests"`
+		TotalInputTokens  *int64       `json:"total_input_tokens"`
+		TotalOutputTokens *int64       `json:"total_output_tokens"`
+		TotalTokens       *int64       `json:"total_tokens"`
+		TotalActualCost   *json.Number `json:"total_actual_cost"`
+	}
+	if err := g.request(ctx, "/api/v1/admin/usage/stats?"+values.Encode(), token, nil, &data); err != nil {
+		if status.Code(err) == codes.Unauthenticated {
+			g.invalidateDirectoryToken()
+		}
+		return GatewayUsageStats{}, err
+	}
+	if data.TotalRequests == nil ||
+		data.TotalInputTokens == nil ||
+		data.TotalOutputTokens == nil ||
+		data.TotalTokens == nil ||
+		data.TotalActualCost == nil ||
+		*data.TotalRequests < 0 ||
+		*data.TotalInputTokens < 0 ||
+		*data.TotalOutputTokens < 0 ||
+		*data.TotalTokens < 0 {
+		return GatewayUsageStats{}, status.Error(codes.Unavailable, "invalid Gateway usage stats")
+	}
+	cost, err := floorUSDDecimalToMicros(*data.TotalActualCost)
+	if err != nil {
+		return GatewayUsageStats{}, status.Error(codes.Unavailable, "invalid Gateway usage stats cost")
+	}
+	return GatewayUsageStats{
+		TotalRequests: *data.TotalRequests, TotalInputTokens: *data.TotalInputTokens,
+		TotalOutputTokens: *data.TotalOutputTokens, TotalTokens: *data.TotalTokens,
+		TotalActualCostUSDMicros: cost,
+	}, nil
+}
+
+func gatewayUsageDateRange(period string, now time.Time) (string, string, bool) {
+	location := time.FixedZone("Asia/Shanghai", 8*60*60)
+	today := now.In(location)
+	start := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, location)
+	switch strings.TrimSpace(period) {
+	case "today":
+	case "week":
+		start = start.AddDate(0, 0, -(int(today.Weekday())+6)%7)
+	case "month":
+		start = time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, location)
+	default:
+		return "", "", false
+	}
+	return start.Format("2006-01-02"), today.Format("2006-01-02"), true
+}
+
 // Models reads the Codex model catalog from the Gateway provider using the
 // caller's own active API key. A caller without an active key, or an
 // unresolvable or malformed catalog, fails closed; no model or price is
@@ -305,6 +395,9 @@ func (g *Gateway) Models(ctx context.Context, subject string) ([]ModelEntry, err
 		} `json:"items"`
 	}
 	if err := g.request(ctx, "/api/v1/admin/users/"+strconv.FormatInt(id, 10)+"/api-keys", admin, nil, &keys); err != nil {
+		if status.Code(err) == codes.Unauthenticated {
+			g.invalidateDirectoryToken()
+		}
 		return nil, err
 	}
 	key := ""

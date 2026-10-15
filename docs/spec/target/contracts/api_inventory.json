@@ -1152,6 +1152,23 @@
       "operationKind": null
     },
     {
+      "path": "/api/v2/usage/summary",
+      "method": "GET",
+      "operationId": "getUsageSummary",
+      "features": [
+        "F14"
+      ],
+      "owner": "gateway",
+      "request": null,
+      "response": "UsageSummary",
+      "status": 200,
+      "permissions": [
+        "member"
+      ],
+      "tables": [],
+      "operationKind": null
+    },
+    {
       "path": "/api/v2/gateway-keys",
       "method": "GET",
       "operationId": "listGatewayKeys",

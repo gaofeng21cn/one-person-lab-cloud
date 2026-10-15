@@ -12,16 +12,20 @@ export const GATEWAY_BALANCE_HISTORY_PAGE_SIZE = 20;
 export type GatewayAccountReadRouteScope = "inactive" | "overview" | "workspace_launch" | "api_overview" | "keys";
 export type GatewayAccountReadProjectionKind = "wallet" | "accountUsage" | "balanceHistory" | "endpoint";
 
-// Each projection names the owner that actually answered it. The wallet is read
-// from the Gateway owner on the authenticated BFF; the rest still come from the
-// retained Sub2API reader behind the legacy Control Plane.
-export const gatewayAccountReadSourceTag = { wallet: "gateway" } as const;
+// Each projection names the owner that actually answered it. Cloud wallet and
+// account usage are read from the Gateway owner on the authenticated BFF; the
+// remaining projections still come from the retained Sub2API reader.
+export const gatewayAccountReadSourceTag = { wallet: "gateway", accountUsage: "gateway" } as const;
 export const sub2apiAccountReadSourceTag = "sub2api";
 
 // The wallet's owner follows the baked console identity, exactly as the reader
 // does. A retained build keeps the Sub2API tag it has always answered with.
 export function walletSourceTag(cloud: boolean): string {
   return cloud ? gatewayAccountReadSourceTag.wallet : sub2apiAccountReadSourceTag;
+}
+
+export function accountUsageSourceTag(cloud: boolean): string {
+  return cloud ? gatewayAccountReadSourceTag.accountUsage : sub2apiAccountReadSourceTag;
 }
 
 export interface GatewayAccountReadEpoch {
@@ -158,9 +162,11 @@ export function gatewayAccountReadSourceMatchesScope<K extends GatewayAccountRea
   // produces. Callers that know the baked identity pass it explicitly.
   cloud: boolean = false
 ): boolean {
-  // The wallet projection is served by the Gateway owner on the authenticated
-  // BFF; the remaining reads still come from the retained Sub2API reader.
+  // Cloud wallet and account usage projections are served by the Gateway owner
+  // on the authenticated BFF; the remaining projections still come from the retained
+  // Sub2API reader.
   if (scope.kind === "wallet") return source.source === walletSourceTag(cloud);
+  if (scope.kind === "accountUsage") return source.source === accountUsageSourceTag(cloud);
   if (source.source !== sub2apiAccountReadSourceTag) return false;
   if (scope.kind !== "balanceHistory") return true;
   const historySource = source as GatewayAccountReadProjectionSourceMap["balanceHistory"];

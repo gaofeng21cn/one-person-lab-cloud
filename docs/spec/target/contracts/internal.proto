@@ -881,6 +881,14 @@ message UsagePage {
  optional string next_cursor = 2;
 }
 
+message UsageSummary {
+ int64 total_requests = 1;
+ int64 total_input_tokens = 2;
+ int64 total_output_tokens = 3;
+ int64 total_tokens = 4;
+ int64 total_actual_cost_usd_micros = 5;
+}
+
 message GatewayKeyPage {
  repeated GatewayKey items = 1;
  optional string next_cursor = 2;
@@ -1846,6 +1854,11 @@ message ListUsageRpcRequest {
  optional string query_model_id = 6;
 }
 
+message GetUsageSummaryRpcRequest {
+ CallContext context = 1;
+ string period = 2;
+}
+
 message ListGatewayKeysRpcRequest {
  CallContext context = 1;
  optional string query_cursor = 2;
@@ -2265,6 +2278,7 @@ service GatewayProductService {
  rpc ListWorkspaceTransactions(ListWorkspaceTransactionsRpcRequest) returns (WalletOperationPage);
  rpc GetWallet(GetWalletRpcRequest) returns (Wallet);
  rpc ListUsage(ListUsageRpcRequest) returns (UsagePage);
+ rpc GetUsageSummary(GetUsageSummaryRpcRequest) returns (UsageSummary);
  rpc ListGatewayKeys(ListGatewayKeysRpcRequest) returns (GatewayKeyPage);
  rpc CreateGatewayKey(CreateGatewayKeyRpcRequest) returns (GatewayKeySecret);
  rpc RevealGatewayKey(RevealGatewayKeyRpcRequest) returns (GatewayKeySecret);
@@ -3201,6 +3215,7 @@ enum AuthorizationActionEnum {
  AUTHORIZATION_ACTION_ENUM_DEBITSCHEDULEDPERIOD = 151;
  AUTHORIZATION_ACTION_ENUM_READPLANCHANGEFAILURE = 152;
 AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES = 153;
+ AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY = 154;
 }
 
 enum ServiceIdentityEnum {

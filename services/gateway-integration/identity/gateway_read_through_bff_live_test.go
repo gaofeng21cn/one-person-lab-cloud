@@ -81,6 +81,12 @@ func TestLiveGatewayReadThroughBFF(t *testing.T) {
 			envelope(map[string]any{"id": 101, "balance": "12.5", "status": "active"})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/admin/users/101/api-keys":
 			envelope(map[string]any{"items": []map[string]any{{"key": "sk-caller", "status": "active"}}})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/admin/usage/stats":
+			if r.URL.Query().Get("user_id") != "101" || r.URL.Query().Get("timezone") != "Asia/Shanghai" || r.URL.Query().Get("start_date") == "" || r.URL.Query().Get("end_date") == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			envelope(map[string]any{"total_requests": 17, "total_input_tokens": 170, "total_output_tokens": 34, "total_tokens": 204, "total_actual_cost": "0.1250019"})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
 			_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"gpt-5.6-sol"}]}`))
 		default:
@@ -144,6 +150,10 @@ func TestLiveGatewayReadThroughBFF(t *testing.T) {
 		wallet := read("/api/v2/wallet")
 		if wallet.Code != http.StatusOK || !strings.Contains(wallet.Body.String(), `"balanceUSDMicros":"12500000"`) {
 			t.Fatalf("wallet status=%d body=%s", wallet.Code, wallet.Body.String())
+		}
+		usage := read("/api/v2/usage/summary?period=month")
+		if usage.Code != http.StatusOK || !strings.Contains(usage.Body.String(), `"totalRequests":"17"`) || !strings.Contains(usage.Body.String(), `"totalActualCostUSDMicros":"125001"`) {
+			t.Fatalf("usage status=%d body=%s", usage.Code, usage.Body.String())
 		}
 		models := read("/api/v2/catalog/models")
 		if models.Code != http.StatusOK || !strings.Contains(models.Body.String(), `"id":"gpt-5.6-sol"`) {

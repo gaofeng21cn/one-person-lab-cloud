@@ -249,6 +249,7 @@ var required = map[protoreflect.Name]map[string]bool{
 	"WalletOperation":                           {"id": true, "kind": true, "amountUSDMicros": true, "status": true, "createdAt": true, "updatedAt": true},
 	"Wallet":                                    {"source": true, "status": true, "balanceUSDMicros": true, "currency": true, "fetchedAt": true},
 	"Usage":                                     {"id": true, "modelId": true, "periodStart": true, "periodEnd": true, "inputTokens": true, "outputTokens": true, "costUSDMicros": true, "source": true, "createdAt": true},
+	"UsageSummary":                              {"totalRequests": true, "totalInputTokens": true, "totalOutputTokens": true, "totalTokens": true, "totalActualCostUSDMicros": true},
 	"GatewayKey":                                {"id": true, "name": true, "fingerprint": true, "purpose": true, "status": true, "modelIds": true, "createdAt": true},
 	"CreateGatewayKeyRequest":                   {"name": true, "modelIds": true},
 	"GatewayKeySecret":                          {"key": true, "secret": true},
@@ -361,6 +362,7 @@ var publicToField = map[protoreflect.Name]map[string]string{
 	"UpdateWorkspaceVersionRequest": {"expectedCurrentDeploymentId": "expected_current_agent_deployment_id"},
 	"UpgradeProration":              {"priceDeltaUSDMicros": "price_delta_usd_micros"},
 	"Usage":                         {"costUSDMicros": "cost_usd_micros"},
+	"UsageSummary":                  {"totalActualCostUSDMicros": "total_actual_cost_usd_micros"},
 	"Wallet":                        {"balanceUSDMicros": "balance_usd_micros"},
 	"WalletOperation":               {"amountUSDMicros": "amount_usd_micros"},
 }
@@ -385,6 +387,7 @@ var fieldToPublic = map[protoreflect.Name]map[string]string{
 	"UpdateWorkspaceVersionRequest": {"expected_current_agent_deployment_id": "expectedCurrentDeploymentId"},
 	"UpgradeProration":              {"price_delta_usd_micros": "priceDeltaUSDMicros"},
 	"Usage":                         {"cost_usd_micros": "costUSDMicros"},
+	"UsageSummary":                  {"total_actual_cost_usd_micros": "totalActualCostUSDMicros"},
 	"Wallet":                        {"balance_usd_micros": "balanceUSDMicros"},
 	"WalletOperation":               {"amount_usd_micros": "amountUSDMicros"},
 }
@@ -421,6 +424,7 @@ var stringScalars = map[protoreflect.Name]map[string]bool{
 	"UploadPart":                   {"size_bytes": true},
 	"UploadSession":                {"part_size_bytes": true, "size_bytes": true},
 	"Usage":                        {"cost_usd_micros": true, "input_tokens": true, "output_tokens": true},
+	"UsageSummary":                 {"total_actual_cost_usd_micros": true, "total_input_tokens": true, "total_output_tokens": true, "total_requests": true, "total_tokens": true},
 	"Wallet":                       {"balance_usd_micros": true},
 	"WalletOperation":              {"amount_usd_micros": true, "coverage_end_milliseconds": true, "coverage_start_milliseconds": true},
 	"Workspace":                    {"model_configuration_version": true, "version": true},

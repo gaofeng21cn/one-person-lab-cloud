@@ -4123,6 +4123,7 @@ const (
 	GatewayProductService_ListWorkspaceTransactions_FullMethodName = "/opl.cloud.api.GatewayProductService/ListWorkspaceTransactions"
 	GatewayProductService_GetWallet_FullMethodName                 = "/opl.cloud.api.GatewayProductService/GetWallet"
 	GatewayProductService_ListUsage_FullMethodName                 = "/opl.cloud.api.GatewayProductService/ListUsage"
+	GatewayProductService_GetUsageSummary_FullMethodName           = "/opl.cloud.api.GatewayProductService/GetUsageSummary"
 	GatewayProductService_ListGatewayKeys_FullMethodName           = "/opl.cloud.api.GatewayProductService/ListGatewayKeys"
 	GatewayProductService_CreateGatewayKey_FullMethodName          = "/opl.cloud.api.GatewayProductService/CreateGatewayKey"
 	GatewayProductService_RevealGatewayKey_FullMethodName          = "/opl.cloud.api.GatewayProductService/RevealGatewayKey"
@@ -4138,6 +4139,7 @@ type GatewayProductServiceClient interface {
 	ListWorkspaceTransactions(ctx context.Context, in *ListWorkspaceTransactionsRpcRequest, opts ...grpc.CallOption) (*WalletOperationPage, error)
 	GetWallet(ctx context.Context, in *GetWalletRpcRequest, opts ...grpc.CallOption) (*Wallet, error)
 	ListUsage(ctx context.Context, in *ListUsageRpcRequest, opts ...grpc.CallOption) (*UsagePage, error)
+	GetUsageSummary(ctx context.Context, in *GetUsageSummaryRpcRequest, opts ...grpc.CallOption) (*UsageSummary, error)
 	ListGatewayKeys(ctx context.Context, in *ListGatewayKeysRpcRequest, opts ...grpc.CallOption) (*GatewayKeyPage, error)
 	CreateGatewayKey(ctx context.Context, in *CreateGatewayKeyRpcRequest, opts ...grpc.CallOption) (*GatewayKeySecret, error)
 	RevealGatewayKey(ctx context.Context, in *RevealGatewayKeyRpcRequest, opts ...grpc.CallOption) (*GatewayKeySecret, error)
@@ -4178,6 +4180,16 @@ func (c *gatewayProductServiceClient) ListUsage(ctx context.Context, in *ListUsa
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(UsagePage)
 	err := c.cc.Invoke(ctx, GatewayProductService_ListUsage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gatewayProductServiceClient) GetUsageSummary(ctx context.Context, in *GetUsageSummaryRpcRequest, opts ...grpc.CallOption) (*UsageSummary, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UsageSummary)
+	err := c.cc.Invoke(ctx, GatewayProductService_GetUsageSummary_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -4251,6 +4263,7 @@ type GatewayProductServiceServer interface {
 	ListWorkspaceTransactions(context.Context, *ListWorkspaceTransactionsRpcRequest) (*WalletOperationPage, error)
 	GetWallet(context.Context, *GetWalletRpcRequest) (*Wallet, error)
 	ListUsage(context.Context, *ListUsageRpcRequest) (*UsagePage, error)
+	GetUsageSummary(context.Context, *GetUsageSummaryRpcRequest) (*UsageSummary, error)
 	ListGatewayKeys(context.Context, *ListGatewayKeysRpcRequest) (*GatewayKeyPage, error)
 	CreateGatewayKey(context.Context, *CreateGatewayKeyRpcRequest) (*GatewayKeySecret, error)
 	RevealGatewayKey(context.Context, *RevealGatewayKeyRpcRequest) (*GatewayKeySecret, error)
@@ -4275,6 +4288,9 @@ func (UnimplementedGatewayProductServiceServer) GetWallet(context.Context, *GetW
 }
 func (UnimplementedGatewayProductServiceServer) ListUsage(context.Context, *ListUsageRpcRequest) (*UsagePage, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListUsage not implemented")
+}
+func (UnimplementedGatewayProductServiceServer) GetUsageSummary(context.Context, *GetUsageSummaryRpcRequest) (*UsageSummary, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetUsageSummary not implemented")
 }
 func (UnimplementedGatewayProductServiceServer) ListGatewayKeys(context.Context, *ListGatewayKeysRpcRequest) (*GatewayKeyPage, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListGatewayKeys not implemented")
@@ -4365,6 +4381,24 @@ func _GatewayProductService_ListUsage_Handler(srv interface{}, ctx context.Conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(GatewayProductServiceServer).ListUsage(ctx, req.(*ListUsageRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GatewayProductService_GetUsageSummary_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetUsageSummaryRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayProductServiceServer).GetUsageSummary(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayProductService_GetUsageSummary_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayProductServiceServer).GetUsageSummary(ctx, req.(*GetUsageSummaryRpcRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -4495,6 +4529,10 @@ var GatewayProductService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListUsage",
 			Handler:    _GatewayProductService_ListUsage_Handler,
+		},
+		{
+			MethodName: "GetUsageSummary",
+			Handler:    _GatewayProductService_GetUsageSummary_Handler,
 		},
 		{
 			MethodName: "ListGatewayKeys",

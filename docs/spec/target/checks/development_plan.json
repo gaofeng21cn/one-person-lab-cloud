@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "8b8d0617970e3f22ccb3ffe847a36a092909c255",
+  "sourceSHA": "77f737969df982abe8ccbf30c2f1ec6a7c0408bb",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -503,6 +503,7 @@
       "state": "not_implemented",
       "apiPrimary": [
         "createGatewayKey",
+        "getUsageSummary",
         "getWallet",
         "listGatewayKeys",
         "listModels",
@@ -523,6 +524,7 @@
         "GatewayProductService.ListWorkspaceTransactions",
         "GatewayProductService.GetWallet",
         "GatewayProductService.ListUsage",
+        "GatewayProductService.GetUsageSummary",
         "GatewayProductService.ListGatewayKeys",
         "GatewayProductService.CreateGatewayKey",
         "GatewayProductService.RevealGatewayKey",
@@ -2143,6 +2145,7 @@
         "getPlanChange",
         "getQuote",
         "getSubscription",
+        "getUsageSummary",
         "getWallet",
         "getWorkspace",
         "getWorkspaceDeletion",
@@ -3232,6 +3235,9 @@
       "W04"
     ],
     "GatewayProductService.ListUsage": [
+      "W04"
+    ],
+    "GatewayProductService.GetUsageSummary": [
       "W04"
     ],
     "GatewayProductService.ListGatewayKeys": [

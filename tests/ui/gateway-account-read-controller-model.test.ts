@@ -10,6 +10,7 @@ import type {
 } from "../../apps/console-ui/src/api/dtos.ts";
 import {
   GATEWAY_BALANCE_HISTORY_PAGE_SIZE,
+  accountUsageSourceTag,
   applyGatewayAccountReadCompletion,
   beginGatewayAccountReadProjection,
   createGatewayAccountReadRequestScope,
@@ -110,6 +111,19 @@ test("each projection request has an independent current scope", () => {
   assert.equal(gatewayAccountReadScopeIsCurrent(walletScope, createGatewayAccountReadRequestScope("wallet", {
     ...epoch(), routeScope: "workspace_launch", requestGeneration: 2
   })), false);
+});
+
+test("cloud account usage accepts only the Gateway owner while retained usage stays on Sub2API", () => {
+  const scope = createGatewayAccountReadRequestScope("accountUsage", {
+    ...epoch(), routeScope: "overview", requestGeneration: 1
+  });
+  assert.equal(accountUsageSourceTag(true), "gateway");
+  assert.equal(accountUsageSourceTag(false), "sub2api");
+  assert.equal(gatewayAccountReadSourceMatchesScope(scope, available(accountUsage, "gateway"), true), true);
+  assert.equal(gatewayAccountReadSourceMatchesScope(scope, available(accountUsage, "sub2api"), true), false);
+  assert.equal(gatewayAccountReadSourceMatchesScope(scope, available(accountUsage, "sub2api"), false), true);
+  assert.equal(gatewayAccountReadSourceMatchesScope(scope, unavailable("gateway"), true), true);
+  assert.equal(gatewayAccountReadSourceMatchesScope(scope, unavailable("sub2api"), true), false);
 });
 
 test("balance history accepts only Sub2API data for the requested page and fixed page size", () => {
