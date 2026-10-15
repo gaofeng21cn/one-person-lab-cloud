@@ -161,8 +161,20 @@ func (s *Service) startComputeAllocation(operation FabricOperation, allocation C
 		s.mu.Unlock()
 		return
 	}
+	if current, exists := s.computes[allocation.ID]; exists {
+		// A replay can hold an older started operation while another worker
+		// commits its result. It may resume an unfinished operation, but it
+		// must not replace a later projection with the stale reservation.
+		if current.Status != "provisioning" || current.AccountID != allocation.AccountID ||
+			current.WorkspaceID != allocation.WorkspaceID || current.PackageID != allocation.PackageID ||
+			current.NodePoolID != allocation.NodePoolID {
+			s.mu.Unlock()
+			return
+		}
+	} else {
+		s.computes[allocation.ID] = allocation
+	}
 	s.reconciling[allocation.ID] = true
-	s.computes[allocation.ID] = allocation
 	s.mu.Unlock()
 	go func() {
 		defer func() {
