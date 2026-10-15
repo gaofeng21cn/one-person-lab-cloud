@@ -3845,11 +3845,11 @@ func (client *tencentSDKClient) computeDestroyProviderIdentityFailure(request Re
 	return nil
 }
 
-func (client *tencentSDKClient) classifyMissingComputeMachine(request Request) string {
+func (client *tencentSDKClient) classifyMissingComputeMachine(request Request) (string, string, error) {
 	const base = "compute_provider_partial_identity_machine_missing"
-	instances, _, err := client.describeClusterInstancePages(nil)
+	instances, requestID, err := client.describeClusterInstancePages(nil)
 	if err != nil {
-		return base
+		return "", requestID, err
 	}
 	matches := []*tke2022.Instance{}
 	for _, instance := range instances {
@@ -3871,22 +3871,22 @@ func (client *tencentSDKClient) classifyMissingComputeMachine(request Request) s
 		}
 	}
 	if len(matches) == 0 {
-		return base + "_tke_instance_missing"
+		return base + "_tke_instance_missing", requestID, nil
 	}
 	if len(matches) != 1 {
-		return base + "_tke_instance_ambiguous"
+		return base + "_tke_instance_ambiguous", requestID, nil
 	}
 	instance := matches[0]
 	native := instance.Native
 	if native == nil || stringValue(instance.InstanceId) != request.Allocation.MachineName ||
 		stringValue(native.MachineName) != request.Allocation.MachineName || stringValue(native.InstanceId) != request.Allocation.InstanceId ||
 		stringValue(instance.LanIP) != request.Allocation.PrivateIp || stringValue(native.LanIp) != request.Allocation.PrivateIp {
-		return base + "_tke_instance_identity_mismatch"
+		return base + "_tke_instance_identity_mismatch", requestID, nil
 	}
 	if stringValue(instance.NodePoolId) != request.Pool.NodePoolId {
-		return base + "_tke_instance_wrong_pool"
+		return base + "_tke_instance_wrong_pool", requestID, nil
 	}
-	return base + "_machine_inventory_missing"
+	return base + "_machine_inventory_missing", requestID, nil
 }
 
 func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[string]string) (result Response) {
@@ -3909,24 +3909,12 @@ func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[str
 	if strings.TrimSpace(request.AccountId) == "" || strings.TrimSpace(request.PackageId) == "" || strings.TrimSpace(request.Pool.Id) == "" || strings.TrimSpace(request.Pool.NodePoolId) == "" || strings.TrimSpace(request.Allocation.Id) == "" || !strings.HasPrefix(request.Allocation.InstanceId, "ins-") || strings.TrimSpace(request.Zone) == "" || !validOwnershipTags(request.Tags) || request.Tags["opl_account_id"] != request.AccountId || request.Tags["opl_resource_id"] != request.Allocation.Id {
 		return Response{Ok: false, ErrorCode: "compute_sync_identity_required", Message: "Exact compute account, resource, CVM instance, Zone, and ownership tags are required for compute sync.", Retryable: false}
 	}
-	pool, poolRequestID, err := client.describeNativeNodePool(request.Pool.NodePoolId)
-	if err != nil {
-		response := sdkErrorResponse("tencent_describe_node_pool_failed", err)
-		if poolRequestID != "" {
-			response.ProviderRequestId = poolRequestID
-		}
-		return response
-	}
-	if failure := readbackNodePoolFailure(pool, request, poolRequestID); failure != nil {
-		return *failure
-	}
-	machines, requestId, err := client.describeClusterMachines(request.Pool.NodePoolId)
+	machine, requestId, err := client.readDestroyMachine(request)
 	if err != nil {
 		response := sdkErrorResponse("tencent_describe_cluster_machines_failed", err)
 		response.ProviderData = map[string]string{"nodePoolId": request.Pool.NodePoolId, "machineName": request.Allocation.MachineName, "nodeName": request.Allocation.NodeName, "privateIp": request.Allocation.PrivateIp}
 		return response
 	}
-	machine := findComputeMachine(machines, request.Allocation)
 	cvm := client.computeRenewalReadback(request)
 	if !cvm.Ok {
 		if cvm.ErrorCode != "compute_instance_type_mismatch" && cvm.ErrorCode != "compute_resource_shape_mismatch" {
@@ -3966,11 +3954,25 @@ func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[str
 	}
 	if machine == nil || cvm.Status == "external_deleted" {
 		code := "compute_provider_partial_identity_machine_missing"
+		diagnosticRequestID := ""
 		var observation *contracts.ResourceObservation
 		if machine != nil {
 			code = "compute_provider_partial_identity_cvm_missing"
 		} else {
-			code = client.classifyMissingComputeMachine(request)
+			var diagnosticErr error
+			code, diagnosticRequestID, diagnosticErr = client.classifyMissingComputeMachine(request)
+			if diagnosticErr != nil {
+				failure := sdkErrorResponse("tencent_describe_tke_instance_failed", diagnosticErr)
+				code = failure.ErrorCode
+				diagnosticRequestID = firstNonEmpty(failure.ProviderRequestId, diagnosticRequestID)
+				failure.ProviderData["providerErrorMessage"] = code
+				if providerCode := safeTencentProviderErrorCode(diagnosticErr); providerCode != "" {
+					failure.ProviderData["providerErrorCode"] = providerCode
+				}
+				for key, value := range failure.ProviderData {
+					cvm.ProviderData[key] = value
+				}
+			}
 			// CVM ownership is verified above even when its TKE binding is gone.
 			observation = computeCVMObservation(request, cvm)
 			observation.ReasonCode = code
@@ -3978,8 +3980,21 @@ func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[str
 		return Response{
 			Ok: false, ErrorCode: code, Message: "Tencent compute identity is only partially present.",
 			Observation: observation, InstanceId: cvm.InstanceId, CVMStatus: cvm.CVMStatus, ProviderData: cvm.ProviderData,
-			ProviderRequestId: firstNonEmpty(cvm.ProviderRequestId, requestId, poolRequestID), Retryable: true,
+			ProviderRequestId: firstNonEmpty(diagnosticRequestID, cvm.ProviderRequestId, requestId), Retryable: true,
 		}
+	}
+	// Retained Machine/CVM absence and owned orphan CVMs are observable after
+	// pool retirement. A live allocation still needs the original pool checks.
+	pool, poolRequestID, err := client.describeNativeNodePool(request.Pool.NodePoolId)
+	if err != nil {
+		response := sdkErrorResponse("tencent_describe_node_pool_failed", err)
+		if poolRequestID != "" {
+			response.ProviderRequestId = poolRequestID
+		}
+		return response
+	}
+	if failure := readbackNodePoolFailure(pool, request, poolRequestID); failure != nil {
+		return *failure
 	}
 	privateIP := firstNonEmpty(stringValue(machine.LanIP), request.Allocation.PrivateIp)
 	nodeName := firstNonEmpty(kubernetesNodeName(machine), request.Allocation.NodeName)
@@ -4306,6 +4321,11 @@ func (client *tencentSDKClient) describeClusterMachinePages(filters []*tke2022.F
 			totalCount = pageTotal
 		}
 		requestID = firstNonEmpty(requestID, stringValue(response.Response.RequestId))
+		for _, machine := range response.Response.Machines {
+			if machine == nil || strings.TrimSpace(stringValue(machine.MachineName)) == "" {
+				return nil, requestID, fmt.Errorf("Tencent TKE DescribeClusterMachines returned an unidentified machine")
+			}
+		}
 		machines = append(machines, response.Response.Machines...)
 		if int64(len(machines)) == totalCount {
 			return machines, requestID, nil
@@ -4386,6 +4406,9 @@ func (client *tencentSDKClient) describeClusterMachines(nodePoolId string) ([]*t
 }
 
 func (client *tencentSDKClient) readDestroyMachine(request Request) (*tke2022.Machine, string, error) {
+	if strings.TrimSpace(request.Allocation.MachineName) == "" {
+		return nil, "", fmt.Errorf("the retained machine name is required for exact readback")
+	}
 	poolMachines, requestID, err := client.describeClusterMachines(request.Pool.NodePoolId)
 	if err != nil {
 		return nil, requestID, err

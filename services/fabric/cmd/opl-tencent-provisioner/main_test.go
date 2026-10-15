@@ -8134,3 +8134,94 @@ func TestComputeObservationRequiresConfirmedProviderAbsence(t *testing.T) {
 		})
 	}
 }
+
+func TestComputeObservationReadsConfirmedAbsenceAfterPoolRetirement(t *testing.T) {
+	request := nodePoolReadbackSyncRequest()
+	tkeAPI := &fakeNativeTkeAPI{nodePoolId: request.Pool.NodePoolId, describeNodePoolErr: errors.New("retired pool")}
+	cvmAPI := &fakeNativeCvmAPI{empty: true}
+	client := newFakeTencentSDKClient(tkeAPI)
+	client.nativeCvmClient = cvmAPI
+	result := handleWithClient(request, protectedResourceEnv(), client)
+	if !result.Ok || result.Observation == nil || !result.Observation.Available || result.Observation.State != contracts.ResourceObservedAbsent {
+		t.Fatalf("confirmed absence depends on retired pool: %#v", result)
+	}
+	if result.NodePoolId != request.Pool.NodePoolId || result.InstanceId != request.Allocation.InstanceId {
+		t.Fatalf("retained identity changed: %#v", result)
+	}
+	assertProviderTruthDescribeOnly(t, tkeAPI.calls)
+	assertProviderTruthReadOnly(t, tkeAPI, cvmAPI)
+}
+
+func TestComputeObservationPreservesRetainedCVMStateAfterPoolRetirement(t *testing.T) {
+	request := nodePoolReadbackSyncRequest()
+	for _, tc := range []struct {
+		state string
+		want  contracts.ResourceObservedState
+	}{
+		{state: "STOPPED", want: contracts.ResourceObservedStopped},
+		{state: "SHUTDOWN", want: contracts.ResourceObservedPendingDeletion},
+		{state: "TERMINATING", want: contracts.ResourceObservedDeleting},
+		{state: "UNRECOGNIZED", want: contracts.ResourceObservedUnknown},
+	} {
+		t.Run(tc.state, func(t *testing.T) {
+			tkeAPI := &fakeNativeTkeAPI{nodePoolId: request.Pool.NodePoolId, describeNodePoolErr: errors.New("retired pool")}
+			cvmAPI := &fakeNativeCvmAPI{instanceName: request.Allocation.Id, tags: computeOwnershipTags(), instanceState: tc.state}
+			client := newFakeTencentSDKClient(tkeAPI)
+			client.nativeCvmClient = cvmAPI
+			before, _ := json.Marshal(request)
+			result := handleWithClient(request, protectedResourceEnv(), client)
+			if result.Ok || contracts.ErrorCode(result.ErrorCode) != errComputePartialMachineMissingTKEInstanceMissing || result.Observation == nil ||
+				result.Observation.State != tc.want || result.Observation.Available != (tc.want != contracts.ResourceObservedUnknown) {
+				t.Fatalf("retired pool hid or changed retained CVM state: %#v", result)
+			}
+			if result.Observation.Available && (result.InstanceId != request.Allocation.InstanceId || result.Observation.ProviderID != request.Allocation.InstanceId) {
+				t.Fatalf("retained CVM identity changed: %#v", result)
+			}
+			after, _ := json.Marshal(request)
+			if string(before) != string(after) || result.MutationCount != 0 {
+				t.Fatal("read changed retained input or provider state")
+			}
+			assertProviderTruthDescribeOnly(t, tkeAPI.calls)
+			assertProviderTruthReadOnly(t, tkeAPI, cvmAPI)
+		})
+	}
+}
+
+func TestComputeObservationDoesNotInferAbsenceFromPoolRetirement(t *testing.T) {
+	request := nodePoolReadbackSyncRequest()
+	for _, tc := range []struct {
+		name      string
+		configure func(*fakeNativeTkeAPI, *fakeNativeCvmAPI)
+	}{
+		{name: "Machine read denied", configure: func(tke *fakeNativeTkeAPI, _ *fakeNativeCvmAPI) {
+			tke.describeMachineErr = tcerrors.NewTencentCloudSDKError("AuthFailure.UnauthorizedOperation", "denied", "req-machine-denied")
+		}},
+		{name: "CVM read denied", configure: func(_ *fakeNativeTkeAPI, cvm *fakeNativeCvmAPI) {
+			cvm.empty = false
+			cvm.err = tcerrors.NewTencentCloudSDKError("AuthFailure.UnauthorizedOperation", "denied", "req-cvm-denied")
+		}},
+		{name: "foreign CVM", configure: func(_ *fakeNativeTkeAPI, cvm *fakeNativeCvmAPI) {
+			cvm.empty, cvm.instanceName = false, "compute-foreign"
+		}},
+		{name: "CVM gone but Machine remains", configure: func(tke *fakeNativeTkeAPI, _ *fakeNativeCvmAPI) {
+			tke.replicas = 1
+		}},
+		{name: "live pair with unavailable pool", configure: func(tke *fakeNativeTkeAPI, cvm *fakeNativeCvmAPI) {
+			tke.replicas, cvm.empty = 1, false
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tkeAPI := &fakeNativeTkeAPI{nodePoolId: request.Pool.NodePoolId, describeNodePoolErr: errors.New("retired pool")}
+			cvmAPI := &fakeNativeCvmAPI{empty: true, instanceName: request.Allocation.Id, tags: computeOwnershipTags()}
+			tc.configure(tkeAPI, cvmAPI)
+			client := newFakeTencentSDKClient(tkeAPI)
+			client.nativeCvmClient = cvmAPI
+			result := handleWithClient(request, protectedResourceEnv(), client)
+			if result.Ok || result.ErrorCode == "" || (result.Observation != nil && result.Observation.Available) {
+				t.Fatalf("unknown or conflicting identity became authoritative: %#v", result)
+			}
+			assertProviderTruthDescribeOnly(t, tkeAPI.calls)
+			assertProviderTruthReadOnly(t, tkeAPI, cvmAPI)
+		})
+	}
+}
