@@ -151,7 +151,7 @@ When an original-owner link becomes available, the same announcement row lock
 folds both references into the original User and preserves the earliest original
 ACK timestamp. Publication/withdrawal and ACK persistence remain in Control Plane.
 
-All valid Cloud Users may read active announcements without a Tenant. Missing
+All valid Cloud Users may read active announcements without a Tenant. The retained owner resolves Gateway identity-only session proof; OCI destination readiness remains a separate Build qualification and is not required for announcements. Missing
 configuration, identity proof or an unavailable dependency is an explicit failure.
 `deploy/portable/opl-cloud-owner-topology.json` and the environment example declare
 the BFF-to-Control-Plane token and Control Plane's CloudIdentity peer/certificate
