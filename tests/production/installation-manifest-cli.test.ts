@@ -176,7 +176,9 @@ test("installation CLI admits an upgrade while exact old ReplicaSet backends rem
 });
 
 test("installation CLI accepts API defaulted live container fields", async () => {
-  const { list, pod } = withLiveWorkspaceBackends();
+  const { list, target, replicaSet, pod } = withLiveWorkspaceBackends();
+  delete target.spec.template.spec.containers[0].ports[0].protocol;
+  delete replicaSet.spec.template.spec.containers[0].ports[0].protocol;
   pod.spec.containers[0].ports[0].protocol = "TCP";
   const result = await invoke(list);
   assert.equal(result.status, 0, result.stdout + result.stderr);
