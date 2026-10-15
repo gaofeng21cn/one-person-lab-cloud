@@ -34,7 +34,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function exactKeys(value: unknown, keys: string[]) {
+function exactKeys(value: unknown, keys: string[]): value is Record<string, unknown> {
   return isRecord(value) && JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...keys].sort());
 }
 

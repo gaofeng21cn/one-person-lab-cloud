@@ -93,11 +93,12 @@ test("Cloud distribution contract makes same-tag recovery explicit", async () =>
   const contract = JSON.parse(await readFile("packages/contracts/opl-cloud-distribution-contract.json", "utf8"));
   const publication = contract.distribution.publication;
 
-  assert.equal(contract.schemaVersion, 3);
+  assert.equal(contract.schemaVersion, 4);
   assert.equal(publication.promotionMode, "qualified_candidate_digest_without_rebuild");
   assert.deepEqual(publication.requiredEvidence, [
     "candidate",
     "local_qualification",
+    "instance_deployment_verified",
     "instance_qualification_decision",
     "instance_workspace_verified"
   ]);
@@ -180,7 +181,7 @@ test("Candidate promotion gate agrees with the Candidate branch-source rule", as
 
   // Only the Candidate run is source-keyed. Every other evidence run keeps its
   // main-dispatched requirement.
-  for (const authorityFile of ["local-run.json", "instance-decision-run.json", "instance-workspace-run.json"]) {
+  for (const authorityFile of ["local-run.json", "instance-deployment-run.json", "instance-decision-run.json", "instance-workspace-run.json"]) {
     assert.match(
       bashFunctionBody(evidenceScript, calleeOf(evidenceScript, authorityFile)),
       /\.head_branch == "main"/,
@@ -253,4 +254,19 @@ test("Candidate promotion gate refuses every run that is not the promoted source
   // The source SHA comes from the promotion inputs, so a qualified Candidate cannot
   // be promoted at a commit other than the one the publisher released.
   assert.equal(admits(branchSourcedRun, otherSha), false, "the promotion gate must refuse a Candidate whose run commit is not the released ref");
+});
+
+
+test("Release requires independent installation evidence before business qualification", async () => {
+  const release = YAML.parse(await readFile(".github/workflows/release-opl-cloud-image.yml", "utf8"));
+  const installation = release.jobs.admission.steps.find((step: any) => step.id === "installation");
+  assert.equal(release.on.workflow_dispatch.inputs.instance_deployment_verification_run_id?.required, true,
+    "a qualification decision's deployment digest is not an independently validated installation receipt");
+  assert.ok(installation, "installation admission must be distinct from Workspace qualification");
+  assert.match(installation.run, /deployment-verification-receipt\.mjs.*validate/s);
+  assert.match(installation.env.BINDING_VALIDATOR, /cloud-release-installation\.ts$/);
+  assert.doesNotMatch(installation.run, /fresh-workspace-readback/);
+  const commands = release.jobs.admission.steps.map((step: any) => step.run || "").join("\n");
+  assert.match(commands, /qualification-decision\.mjs.*gate/s);
+  assert.match(commands, /fresh-workspace-readback\.mjs.*validate/s);
 });

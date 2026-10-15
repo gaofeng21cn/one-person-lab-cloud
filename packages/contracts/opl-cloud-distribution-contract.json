@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "owner": "OPL Cloud",
   "purpose": "Portable product distribution and instance handoff boundary.",
   "state": "current",
@@ -60,6 +60,7 @@
       "requiredEvidence": [
         "candidate",
         "local_qualification",
+        "instance_deployment_verified",
         "instance_qualification_decision",
         "instance_workspace_verified"
       ],
