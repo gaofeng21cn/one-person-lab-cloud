@@ -112,7 +112,7 @@ test("installation CLI proves Kubernetes ingress and egress semantics without gu
     [null, list => { const deny = structuredClone(policy(list, "workspace")); deny.metadata.name = "additional-deny"; deny.spec.ingress = []; list.items.push(deny); }],
     [null, list => { policy(list, "workspace").spec.ingress[0].ports = [{ port: 8180, endPort: 8189 }]; }],
     [null, list => { policy(list, "workspace").spec.ingress = [{}]; }],
-    [null, list => { policy(list, "workspace").spec.ingress = [{ from: [], ports: [] }]; }],
+    ["rpc_ingress_denied", list => { policy(list, "workspace").spec.ingress = [{ from: [], ports: [] }]; }],
     [null, list => { policy(list, "workspace").spec.ingress[0].from.forEach(peer => { peer.namespaceSelector = { matchLabels: { "kubernetes.io/metadata.name": "installation" } }; }); }],
     [null, list => { policy(list, "workspace").spec.ingress[0].from.forEach(peer => { peer.namespaceSelector = { matchLabels: { environment: "protected" } }; }); list.items.push({ apiVersion: "v1", kind: "Namespace", metadata: { name: "installation", labels: { environment: "protected" } } }); }],
     [null, list => { policy(list, "workspace").spec.ingress[0].from = [{ podSelector: { matchExpressions: [{ key: "unit", operator: "In", values: ["serve", "console-bff", "gateway-integration", "ledger"] }, { key: "blocked", operator: "DoesNotExist" }, { key: "unknown", operator: "NotIn", values: ["blocked"] }] } }]; }]

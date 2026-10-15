@@ -81,8 +81,8 @@ function allows(policy: Resource, direction: "Ingress" | "Egress", remote: Polic
     const peers = rule[peerKey];
     if (peers !== undefined && !Array.isArray(peers) || rule.ports !== undefined && !Array.isArray(rule.ports)) return undefined;
     return and([
-      !peers?.length ? true : or(peers.map((peer: unknown) => peerMatches(peer, policy, remote, resources))),
-      !rule.ports?.length ? true : or(rule.ports.map((entry: unknown) => portMatches(entry, target, port)))
+      peers === undefined ? true : peers.length === 0 ? false : or(peers.map((peer: unknown) => peerMatches(peer, policy, remote, resources))),
+      rule.ports === undefined ? true : rule.ports.length === 0 ? true : or(rule.ports.map((entry: unknown) => portMatches(entry, target, port)))
     ]);
   }));
 }
