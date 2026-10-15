@@ -91,16 +91,11 @@
 
 这张表不授权所有表一次大搬家。每个领域移交有独立写集；未移交能力继续由原Owner负责，真实调用方切换后才退休旧writer。
 
-## 4. 首批实施需同步的正式仓库文档
+## 4. 迁移依赖与证据归属
 
-当前包描述已确认业务目标，不以本轮文档推断各模块实现程度。W01集成负责人须协调以下消费者后由实施变更落地；下列超出本次七份规则文档写集的联动仍待对应Owner交付：
+迁移依赖实际Owner的已版本化契约及真实消费者，不能从规格推断模块已实现。W01在既有contracts module内贯通应用判别联合、来源约束、Build三输入及资源→Serve Reserve→Key的交接；相关Owner同时更新SQL/proto/events、typed callers和边界验证。由原生成器重新生成机器flows及06第17节，生成物不承载另一份手写目标。
 
-1. 在docs/architecture.md及docs/decisions.md、00/01/12同步TKE主线与默认App/Agent双分支、一次确认完整交付；默认App直接RuntimeRelease OCI，Runtime Control仅目录、Fabric仅资源、Serve唯一部署。不新增服务，保留2026-09-17“客户只买资源”为旧Launch历史解释。
-2. docs/implementation-architecture.md仍描述实际已迁移模块，不把目标提前填成现行架构。
-3. docs/status.md写每个来源SHA/测试/迁移证据；docs/roadmap.md记录F功能与未交付的机器契约/消费者、外部API/身份来源证明、Cloud业务资格和Instance部署证据义务。
-4. docs/README.md指向唯一目标/实施/迁移Owner；退休重复当前writer，不保留两套同名“最终架构”。
-5. W01同步02/03、SQL/proto/events和packages/contracts中实际消费者需要的判别联合/来源约束、Build UI正规化、资源先于Serve Reserve/Key的交接；更新Console/BFF、Workspace、Catalog、Runtime Control、Capability/Build、Serve、Fabric、Gateway、Ledger及边界测试。不把inventories整体塞入机器契约。
-6. 同步04/05/07/10/11/13/14及其UI/任务/traceability消费者；再协调generators与机器flows、06第17节的再生成和完整检查。新业务已采用但尚无新wire贯通证据，不复用旧checks报告宣称通过。
+[文档索引](../../README.md)定位唯一规则与实现Owner；[status](../../status.md)保留实际输入版本和证据，[roadmap](../../roadmap.md#workspace-key-and-customer-read-boundaries)跟踪外部API、历史来源证明、契约/消费者及资格采用的开放项。后续迁移变更按各自实际证据更新这些Owner，不复制一份文档同步待办，也不复用旧checks声明新wire已通过。
 
 ## 5. 可执行的逐域迁移程序
 
