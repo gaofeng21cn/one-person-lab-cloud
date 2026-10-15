@@ -128,12 +128,31 @@ func (s *Service) CreateComputeAllocation(ctx context.Context, input ComputeAllo
 		replayed, err := replayComputeAllocationOperation(stored, requestHash)
 		if err == nil && stored.Status == "started" {
 			s.startComputeAllocation(stored, replayed, input.DryRun)
+		} else if err == nil && (stored.Status == "succeeded" || stored.Status == "claim_pending") {
+			s.projectComputeAllocationReplay(replayed)
 		}
 		return replayed, err
 	}
 	input.OperationID = operation.OperationID
 	s.startComputeAllocation(stored, allocation, input.DryRun)
 	return allocation, nil
+}
+
+// A durable terminal operation is authoritative when the in-memory projection
+// still contains only its original provisioning reservation. Do not let replay
+// roll a newer resource state (for example a concurrent deletion) backwards.
+func (s *Service) projectComputeAllocationReplay(replayed ComputeAllocation) {
+	if replayed.ID == "" || (replayed.Status != "running" && replayed.Status != "ready" && replayed.Status != "active" && replayed.Status != "compute_claim_pending") {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, exists := s.computes[replayed.ID]
+	if !exists || current.Status != "provisioning" || current.AccountID != replayed.AccountID || current.WorkspaceID != replayed.WorkspaceID ||
+		current.PackageID != replayed.PackageID || current.NodePoolID != replayed.NodePoolID {
+		return
+	}
+	s.computes[replayed.ID] = cloneComputeAllocation(replayed)
 }
 
 func (s *Service) startComputeAllocation(operation FabricOperation, allocation ComputeAllocation, dryRun bool) {
