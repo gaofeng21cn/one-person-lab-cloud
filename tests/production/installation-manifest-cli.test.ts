@@ -150,6 +150,9 @@ test("installation CLI accepts live replicas only through exact controller and e
     ["live restartable init listener", ({ pod }) => { pod.spec.initContainers = [{ name: "live-sidecar", image: "example.invalid/sidecar:1", restartPolicy: "Always", ports: [{ containerPort: 8184 }] }]; }],
     ["malformed live sidecar ports", ({ pod }) => { pod.spec.containers.push({ name: "live-sidecar", image: "example.invalid/sidecar:1", ports: "invalid" }); }],
     ["malformed live initContainers", ({ pod }) => { pod.spec.initContainers = "invalid"; }],
+    ["drifted live target image", ({ pod }) => { pod.spec.containers[0].image = "example.invalid/foreign:1"; }],
+    ["drifted live target command", ({ pod }) => { pod.spec.containers[0].command = ["/bin/sh", "-c", "exec sleep 3600"]; }],
+    ["drifted live target args", ({ pod }) => { pod.spec.containers[0].args = ["probe-workspace-access"]; }],
     ["missing live target container", ({ pod }) => { pod.spec.containers = [{ name: "other", image: "example.invalid/other:1" }]; }],
     ["wrong endpoint port", ({ endpoints }) => { endpoints.subsets[0].ports[0].port = 9999; }],
     ["wrong slice port", ({ slice }) => { slice.ports[0].port = 9999; }]
@@ -164,6 +167,20 @@ test("installation CLI accepts live replicas only through exact controller and e
   });
 });
 
+
+test("installation CLI admits an upgrade while exact old ReplicaSet backends remain", async () => {
+  const { list, target } = withLiveWorkspaceBackends();
+  target.spec.template.spec.containers[0].image = "example.invalid/new-product:2";
+  const result = await invoke(list);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
+test("installation CLI accepts API defaulted live container fields", async () => {
+  const { list, pod } = withLiveWorkspaceBackends();
+  pod.spec.containers[0].ports[0].protocol = "TCP";
+  const result = await invoke(list);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+});
 
 test("installation CLI refuses empty or incomplete live endpoint inventories", async t => {
   for (const [name, change] of [

@@ -140,7 +140,11 @@ function ownedBackend(resource: Resource, target: Resource, resources: Resource[
   }
   return false;
 }
-function endpointBackend(resource: Resource, service: Resource, target: Resource, targetContainerName: string, servicePort: Resource, port: number, resources: Resource[]): boolean {
+function productArgv(container: Resource, defaultCommand: string[] | undefined): string[] | undefined {
+  return container.command?.length ? [...container.command, ...(container.args ?? [])] :
+    !container.args?.length ? defaultCommand : undefined;
+}
+function endpointBackend(resource: Resource, service: Resource, target: Resource, targetContainer: Resource, servicePort: Resource, port: number, resources: Resource[], defaultCommand: string[]): boolean {
   const provesPort = (ports: unknown): boolean => {
     if (!Array.isArray(ports)) return false;
     const matching = ports.filter(entry => object(entry) && (entry.name ?? "") === (servicePort.name ?? "") && (entry.protocol ?? "TCP") === "TCP");
@@ -157,8 +161,19 @@ function endpointBackend(resource: Resource, service: Resource, target: Resource
         pod.spec.initContainers !== undefined && (!Array.isArray(pod.spec.initContainers) || !pod.spec.initContainers.every(validContainer))) return false;
     const liveContainers = pod.spec.containers;
     const liveInitContainers = pod.spec.initContainers ?? [];
-    const targetName = targetContainerName;
-    if (liveContainers.filter((container: Resource) => container.name === targetName).length !== 1) return false;
+    const targetName = targetContainer.name;
+    const liveTargets = liveContainers.filter((container: Resource) => container.name === targetName);
+    // Prepare may project a new Deployment over still-running old replicas.
+    // Prove each Pod against its own immutable ReplicaSet template; requiring
+    // the new desired image here would prevent a legitimate upgrade preflight.
+    const replicaContainers = controller(pod, "ReplicaSet", resources)?.spec?.template?.spec?.containers;
+    if (!Array.isArray(replicaContainers)) return false;
+    const replicaTargets = replicaContainers.filter((container: unknown) => validContainer(container) && container.name === targetName);
+    if (liveTargets.length !== 1 || replicaTargets.length !== 1 || liveTargets[0].image !== replicaTargets[0].image) return false;
+    const expectedArgv = productArgv(replicaTargets[0], defaultCommand);
+    const liveArgv = productArgv(liveTargets[0], defaultCommand);
+    if (!expectedArgv || !liveArgv || expectedArgv.length !== liveArgv.length ||
+        expectedArgv.some((arg, index) => arg !== liveArgv[index])) return false;
     const competingLiveContainers = [...liveContainers.filter((container: Resource) => container?.name !== targetName),
       ...liveInitContainers.filter((container: Resource) => container?.restartPolicy === "Always")];
     if (competingLiveContainers.some((container: Resource) => (container?.ports ?? []).some((entry: Resource) =>
@@ -339,8 +354,7 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
       topology.processes.some(process => container.command?.[0] === process.binary))
       .map((container: Resource) => container.image)));
   const processContract = (container: Resource) => {
-    const argv = container.command?.length ? [...container.command, ...(container.args ?? [])] :
-      productImages.has(container.image) && !container.args?.length ? topology.image.defaultCommand : undefined;
+    const argv = productArgv(container, productImages.has(container.image) ? topology.image.defaultCommand : undefined);
     return argv && topology.processes.find(process => argv[0] === process.binary &&
       Array.isArray(process.daemonArgs) && argv.length === process.daemonArgs.length + 1 &&
       process.daemonArgs.every((arg, index) => argv[index + 1] === arg));
@@ -474,7 +488,7 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     const endpoints = resources.filter(resource => namespace(resource) === namespace(service) &&
       (resource.kind === "Endpoints" && resource.metadata.name === service.metadata.name ||
        resource.kind === "EndpointSlice" && resource.metadata.labels?.["kubernetes.io/service-name"] === service.metadata.name));
-    if (conflict || endpoints.some(resource => !endpointBackend(resource, service, target.deployment, target.container.name, servicePort, targetPort, resources))) {
+    if (conflict || endpoints.some(resource => !endpointBackend(resource, service, target.deployment, target.container, servicePort, targetPort, resources, topology.image.defaultCommand))) {
       fail("rpc_service_backend_ambiguous"); continue;
     }
     const tokenRef = secretReference(envEntry(caller, edge.tokenEnv));
