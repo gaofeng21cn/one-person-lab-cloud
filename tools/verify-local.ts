@@ -93,6 +93,7 @@ export const databaseFreeGoTestSpecs: readonly DatabaseFreeGoTestSpec[] = Object
   { cwd: "services/control-plane", packages: ["./internal/server"], declaredTests: declaredMoneyChainTests },
   { cwd: "services/fabric", packages: ["./cmd/fabric", "./cmd/opl-tencent-provisioner", "./cmd/opl-node-image-retire", "./internal/http", "./coordination"] },
   { cwd: "services/ledger", packages: ["./cmd/ledger", "./internal/http"] },
+  { cwd: "services/serve", packages: ["./cmd/server"] },
   { cwd: "services/internal/postgresmigrate", packages: ["./..."] },
   // The owner runtime's startup and Operation readback rules hold without a
   // database; its PostgreSQL-gated isolation proof declares the capability it
