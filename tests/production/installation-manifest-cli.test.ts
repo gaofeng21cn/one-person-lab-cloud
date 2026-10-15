@@ -152,6 +152,11 @@ test("installation CLI accepts live replicas only through exact controller and e
     ["duplicate live container name", ({ pod }) => { pod.spec.containers.push(structuredClone(pod.spec.containers[0])); }],
     ["live host network", ({ pod }) => { pod.spec.hostNetwork = true; }],
     ["live host PID namespace", ({ pod }) => { pod.spec.hostPID = true; }],
+    ["live host users setting", ({ pod }) => { pod.spec.hostUsers = false; }],
+    ["live runtime class", ({ pod }) => { pod.spec.runtimeClassName = "untrusted-runtime"; }],
+    ["malformed live host network", ({ pod }) => { pod.spec.hostNetwork = "yes"; }],
+    ["drifted live image pull policy", ({ pod }) => { pod.spec.containers.find((container: any) => container.name === "owner").imagePullPolicy = "Never"; }],
+    ["drifted live termination message path", ({ pod }) => { pod.spec.containers.find((container: any) => container.name === "owner").terminationMessagePath = "/tmp/foreign"; }],
     ["live privileged sidecar", ({ pod }) => { pod.spec.containers.push({ name: "live-sidecar", image: "example.invalid/sidecar:1", securityContext: { privileged: true } }); }],
     ["live host path volume", ({ pod }) => { pod.spec.volumes = [{ name: "escape", hostPath: { path: "/" } }]; }],
     ["missing live containers", ({ pod }) => { delete pod.spec.containers; }],
@@ -183,6 +188,14 @@ test("installation CLI accepts live replicas only through exact controller and e
   const reorderedResult = await invoke(reordered.list);
   assert.equal(reorderedResult.status, 0, reorderedResult.stdout + reorderedResult.stderr);
   assert.equal(reorderedResult.report.communication.edges.length, 46);
+  const injectedServiceAccountVolume = withLiveWorkspaceBackends();
+  injectedServiceAccountVolume.pod.spec.volumes = [{
+    name: "kube-api-access-abc12",
+    projected: { sources: [{ serviceAccountToken: { path: "token" } }] }
+  }];
+  const injectedVolumeResult = await invoke(injectedServiceAccountVolume.list);
+  assert.equal(injectedVolumeResult.status, 0, injectedVolumeResult.stdout + injectedVolumeResult.stderr);
+  assert.equal(injectedVolumeResult.report.communication.edges.length, 46);
 });
 
 

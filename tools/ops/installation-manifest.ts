@@ -153,29 +153,49 @@ function ownedBackend(resource: Resource, target: Resource, resources: Resource[
 function normalizedPodField(spec: Resource, field: string): unknown {
   const value = spec[field];
   if (["hostNetwork", "hostPID", "hostIPC", "shareProcessNamespace"].includes(field)) return value === true;
+  if (field === "hostUsers") return value === undefined ? true : value;
   if (field === "serviceAccountName") return value ?? "default";
   if (field === "restartPolicy") return value ?? "Always";
   if (field === "dnsPolicy") return value ?? "ClusterFirst";
   if (field === "enableServiceLinks") return value === undefined ? true : value;
   if (field === "securityContext" && object(value) && Object.keys(value).length === 0) return undefined;
-  if (field === "volumes" && Array.isArray(value)) return value.filter(volume => object(volume) && !/^kube-api-access-[a-z0-9-]+$/.test(volume.name ?? ""));
+  if (field === "volumes" && Array.isArray(value)) {
+    const filtered = value.filter(volume => !(object(volume) && /^kube-api-access-[a-z0-9-]+$/.test(volume.name ?? "") &&
+      object(volume.projected) && Array.isArray(volume.projected.sources) && volume.projected.sources.some((source: unknown) => object(source) && source.serviceAccountToken !== undefined)));
+    return filtered.length === 0 ? undefined : filtered;
+  }
   return value;
 }
 function samePodSecurityShape(live: Resource, declared: Resource): boolean {
   const fields = [
-    "hostNetwork", "hostPID", "hostIPC", "shareProcessNamespace", "serviceAccountName",
+    "hostNetwork", "hostPID", "hostIPC", "shareProcessNamespace", "hostUsers", "serviceAccountName", "runtimeClassName",
     "automountServiceAccountToken", "securityContext", "volumes", "imagePullSecrets", "hostAliases",
     "dnsConfig", "dnsPolicy", "enableServiceLinks", "restartPolicy"
   ];
+  const booleanFields = ["hostNetwork", "hostPID", "hostIPC", "shareProcessNamespace", "hostUsers", "automountServiceAccountToken", "enableServiceLinks"];
+  if (booleanFields.some(field => [live[field], declared[field]].some(value => value !== undefined && typeof value !== "boolean"))) return false;
   return fields.every(field => deepEqual(normalizedPodField(live, field), normalizedPodField(declared, field)));
 }
 const liveContainerFields = [
   "name", "image", "command", "args", "env", "envFrom", "ports", "securityContext", "volumeMounts",
   "volumeDevices", "lifecycle", "readinessProbe", "livenessProbe", "startupProbe", "resources", "workingDir",
-  "stdin", "stdinOnce", "tty", "restartPolicy"
+  "stdin", "stdinOnce", "tty", "restartPolicy", "imagePullPolicy", "resizePolicy", "terminationMessagePath",
+  "terminationMessagePolicy"
 ];
+function normalizedContainerField(container: Resource, field: string): unknown {
+  const value = container[field];
+  if (field === "imagePullPolicy" && value === undefined) {
+    const image = typeof container.image === "string" ? container.image : "";
+    if (image.includes("@")) return "IfNotPresent";
+    const tag = image.slice(image.lastIndexOf("/") + 1).split("@")[0].split(":")[1];
+    return tag === undefined || tag === "latest" ? "Always" : "IfNotPresent";
+  }
+  if (field === "terminationMessagePath") return value ?? "/dev/termination-log";
+  if (field === "terminationMessagePolicy") return value ?? "File";
+  return value;
+}
 function sameContainerShape(live: Resource, declared: Resource): boolean {
-  return liveContainerFields.every(field => deepEqual(live[field], declared[field]));
+  return liveContainerFields.every(field => deepEqual(normalizedContainerField(live, field), normalizedContainerField(declared, field)));
 }
 function sameContainerList(live: unknown, declared: unknown): boolean {
   if (!Array.isArray(live) || !Array.isArray(declared) || live.length !== declared.length) return false;
