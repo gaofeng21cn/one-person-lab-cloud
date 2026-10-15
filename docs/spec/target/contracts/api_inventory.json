@@ -2207,6 +2207,26 @@
         "workspace.subscription_period_obligations"
       ],
       "operationKind": "cancel_plan_change"
+    },
+    {
+      "path": "/api/v2/workspaces/{workspaceId}/financial-receipts/{receiptId}",
+      "method": "GET",
+      "operationId": "getWorkspaceFinancialReceipt",
+      "features": [
+        "F17"
+      ],
+      "owner": "ledger",
+      "request": null,
+      "response": "WorkspaceFinancialReceipt",
+      "status": 200,
+      "permissions": [
+        "admin",
+        "owner"
+      ],
+      "tables": [
+        "ledger.receipts"
+      ],
+      "operationKind": null
     }
   ],
   "errorCodes": [

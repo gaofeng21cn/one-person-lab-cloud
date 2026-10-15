@@ -83,6 +83,7 @@ var successStatus = map[api.AuthorizationActionEnum]int{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTADMINOPERATIONS:                   200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RECONCILEOPERATION:                    202,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTAUDITEVENTS:                       200,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEFINANCIALRECEIPT:          200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRECEIPTS:                          200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT:                            200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTQUALIFICATIONS:                    200,

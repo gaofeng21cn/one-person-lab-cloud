@@ -4602,15 +4602,17 @@ var GatewayProductService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	LedgerProductService_ListReceipts_FullMethodName       = "/opl.cloud.api.LedgerProductService/ListReceipts"
-	LedgerProductService_GetReceipt_FullMethodName         = "/opl.cloud.api.LedgerProductService/GetReceipt"
-	LedgerProductService_ListQualifications_FullMethodName = "/opl.cloud.api.LedgerProductService/ListQualifications"
+	LedgerProductService_GetWorkspaceFinancialReceipt_FullMethodName = "/opl.cloud.api.LedgerProductService/GetWorkspaceFinancialReceipt"
+	LedgerProductService_ListReceipts_FullMethodName                 = "/opl.cloud.api.LedgerProductService/ListReceipts"
+	LedgerProductService_GetReceipt_FullMethodName                   = "/opl.cloud.api.LedgerProductService/GetReceipt"
+	LedgerProductService_ListQualifications_FullMethodName           = "/opl.cloud.api.LedgerProductService/ListQualifications"
 )
 
 // LedgerProductServiceClient is the client API for LedgerProductService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type LedgerProductServiceClient interface {
+	GetWorkspaceFinancialReceipt(ctx context.Context, in *GetWorkspaceFinancialReceiptRpcRequest, opts ...grpc.CallOption) (*WorkspaceFinancialReceipt, error)
 	ListReceipts(ctx context.Context, in *ListReceiptsRpcRequest, opts ...grpc.CallOption) (*ReceiptPage, error)
 	GetReceipt(ctx context.Context, in *GetReceiptRpcRequest, opts ...grpc.CallOption) (*Receipt, error)
 	ListQualifications(ctx context.Context, in *ListQualificationsRpcRequest, opts ...grpc.CallOption) (*QualificationPage, error)
@@ -4622,6 +4624,16 @@ type ledgerProductServiceClient struct {
 
 func NewLedgerProductServiceClient(cc grpc.ClientConnInterface) LedgerProductServiceClient {
 	return &ledgerProductServiceClient{cc}
+}
+
+func (c *ledgerProductServiceClient) GetWorkspaceFinancialReceipt(ctx context.Context, in *GetWorkspaceFinancialReceiptRpcRequest, opts ...grpc.CallOption) (*WorkspaceFinancialReceipt, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WorkspaceFinancialReceipt)
+	err := c.cc.Invoke(ctx, LedgerProductService_GetWorkspaceFinancialReceipt_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *ledgerProductServiceClient) ListReceipts(ctx context.Context, in *ListReceiptsRpcRequest, opts ...grpc.CallOption) (*ReceiptPage, error) {
@@ -4658,6 +4670,7 @@ func (c *ledgerProductServiceClient) ListQualifications(ctx context.Context, in 
 // All implementations must embed UnimplementedLedgerProductServiceServer
 // for forward compatibility.
 type LedgerProductServiceServer interface {
+	GetWorkspaceFinancialReceipt(context.Context, *GetWorkspaceFinancialReceiptRpcRequest) (*WorkspaceFinancialReceipt, error)
 	ListReceipts(context.Context, *ListReceiptsRpcRequest) (*ReceiptPage, error)
 	GetReceipt(context.Context, *GetReceiptRpcRequest) (*Receipt, error)
 	ListQualifications(context.Context, *ListQualificationsRpcRequest) (*QualificationPage, error)
@@ -4671,6 +4684,9 @@ type LedgerProductServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedLedgerProductServiceServer struct{}
 
+func (UnimplementedLedgerProductServiceServer) GetWorkspaceFinancialReceipt(context.Context, *GetWorkspaceFinancialReceiptRpcRequest) (*WorkspaceFinancialReceipt, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetWorkspaceFinancialReceipt not implemented")
+}
 func (UnimplementedLedgerProductServiceServer) ListReceipts(context.Context, *ListReceiptsRpcRequest) (*ReceiptPage, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListReceipts not implemented")
 }
@@ -4699,6 +4715,24 @@ func RegisterLedgerProductServiceServer(s grpc.ServiceRegistrar, srv LedgerProdu
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&LedgerProductService_ServiceDesc, srv)
+}
+
+func _LedgerProductService_GetWorkspaceFinancialReceipt_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetWorkspaceFinancialReceiptRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerProductServiceServer).GetWorkspaceFinancialReceipt(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerProductService_GetWorkspaceFinancialReceipt_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerProductServiceServer).GetWorkspaceFinancialReceipt(ctx, req.(*GetWorkspaceFinancialReceiptRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _LedgerProductService_ListReceipts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -4762,6 +4796,10 @@ var LedgerProductService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "opl.cloud.api.LedgerProductService",
 	HandlerType: (*LedgerProductServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetWorkspaceFinancialReceipt",
+			Handler:    _LedgerProductService_GetWorkspaceFinancialReceipt_Handler,
+		},
 		{
 			MethodName: "ListReceipts",
 			Handler:    _LedgerProductService_ListReceipts_Handler,

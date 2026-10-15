@@ -3930,6 +3930,41 @@ paths:
         required: false
         schema:
           $ref: '#/components/schemas/OpaqueId'
+  /api/v2/workspaces/{workspaceId}/financial-receipts/{receiptId}:
+    get:
+      operationId: getWorkspaceFinancialReceipt
+      summary: Read the original monetary receipt for a team Workspace
+      tags: [ledger]
+      x-feature-id: [F17]
+      x-owner: ledger
+      x-permission: [admin, owner]
+      x-tables: [ledger.receipts]
+      parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - name: receiptId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      responses:
+        '200':
+          description: Original financial receipt; excludes private execution and actor evidence.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceFinancialReceipt'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
   /api/v2/admin/receipts:
     get:
       operationId: listReceipts
@@ -9572,6 +9607,23 @@ components:
         outcome: tenant.audit_events.outcome
         requestId: tenant.audit_events.request_id
         createdAt: tenant.audit_events.created_at
+    WorkspaceFinancialReceipt:
+      type: object
+      additionalProperties: false
+      properties:
+        workspaceId:
+          $ref: '#/components/schemas/OpaqueId'
+        receipt:
+          $ref: '#/components/schemas/Receipt'
+        walletOperation:
+          $ref: '#/components/schemas/WalletOperation'
+        quote:
+          $ref: '#/components/schemas/Quote'
+        evidenceDigest:
+          $ref: '#/components/schemas/Digest'
+      required: [workspaceId, receipt, walletOperation, quote, evidenceDigest]
+      x-owner: ledger
+      x-table: ledger.receipts
     Receipt:
       type: object
       additionalProperties: false

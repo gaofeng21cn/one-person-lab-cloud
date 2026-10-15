@@ -463,7 +463,9 @@
     "OPL_BFF_ADDR",
     "OPL_PUBLIC_URL",
     "OPL_CONTROL_PLANE_URL",
-    "OPL_CONTROL_PLANE_TOKEN"
+    "OPL_CONTROL_PLANE_TOKEN",
+    "OPL_LEDGER_URL",
+    "OPL_LEDGER_TOKEN"
    ],
    "registers": [
     "Console BFF REST surface"
@@ -920,6 +922,13 @@
     "tokenEnv": "OPL_CLOUD_IDENTITY_TOKEN",
     "activation": "configured",
     "activationEnv": "OPL_CONTROL_PLANE_BFF_TOKEN"
+   },
+   {
+    "caller": "console_bff",
+    "target": "ledger",
+    "addressEnv": "OPL_LEDGER_URL",
+    "tokenEnv": "OPL_LEDGER_TOKEN",
+    "activation": "configured"
    }
   ],
   "evidence": [

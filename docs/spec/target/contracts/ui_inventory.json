@@ -22247,7 +22247,8 @@
         "listAuditEvents",
         "listReceipts",
         "getReceipt",
-        "listQualifications"
+        "listQualifications",
+        "getWorkspaceFinancialReceipt"
       ],
       "roles": [
         "platform_admin"
@@ -22290,7 +22291,12 @@
         "Receipt.outcome",
         "Receipt.owner",
         "Receipt.sourceSha",
-        "Receipt.workflowRunId"
+        "Receipt.workflowRunId",
+        "WorkspaceFinancialReceipt.workspaceId",
+        "WorkspaceFinancialReceipt.receipt",
+        "WorkspaceFinancialReceipt.walletOperation",
+        "WorkspaceFinancialReceipt.quote",
+        "WorkspaceFinancialReceipt.evidenceDigest"
       ],
       "displayRequirements": "owner+operationId、资源身份、阶段/观察结果/错误requestId、审计actor与时间、Candidate源SHA/镜像digest/资格receipt、每层证据状态。无凭据/私网地址。",
       "interaction": "运维页面读取owner输出，不在BFF实现第二操作注册表。管理员只对API明示可重试/核对的操作提供动作，费用或真实资源动作仍归受保护Instance工作流。源码静态检查、Candidate构建、Instance部署和同digest发布分栏，不能用绿灯相互替代。F16历史迁移以原标识/账务义务/部署绑定在此及F09读回，不新增隐式重新购买按钮。",
