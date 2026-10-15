@@ -2289,6 +2289,7 @@ service GatewayProductService {
 }
 
 service LedgerProductService {
+ rpc GetWorkspaceFinancialReceipt(GetWorkspaceFinancialReceiptRpcRequest) returns (WorkspaceFinancialReceipt);
  rpc ListReceipts(ListReceiptsRpcRequest) returns (ReceiptPage);
  rpc GetReceipt(GetReceiptRpcRequest) returns (Receipt);
  rpc ListQualifications(ListQualificationsRpcRequest) returns (QualificationPage);
@@ -3257,6 +3258,7 @@ AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES = 153;
  AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY = 154;
  AUTHORIZATION_ACTION_ENUM_GETSELFUSEREXTERNALBINDING = 155;
  AUTHORIZATION_ACTION_ENUM_GETWORKSPACETRANSACTIONTREND = 156;
+ AUTHORIZATION_ACTION_ENUM_GETWORKSPACEFINANCIALRECEIPT = 157;
 }
 
 enum ServiceIdentityEnum {
@@ -4354,3 +4356,6 @@ message GetWorkspaceTransactionTrendRpcRequest {
  CallContext context = 1;
  string workspace_id = 2;
 }
+
+message GetWorkspaceFinancialReceiptRpcRequest { CallContext context = 1; string workspace_id = 2; string receipt_id = 3; }
+message WorkspaceFinancialReceipt { string workspace_id = 1; Receipt receipt = 2; WalletOperation wallet_operation = 3; Quote quote = 4; string evidence_digest = 5; }

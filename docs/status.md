@@ -31,6 +31,23 @@ all matching rows rather than the displayed page. Requested and unknown amounts
 stay separate from confirmed charges/refunds. Local PostgreSQL, BFF and browser
 checks prove source behavior; no installed data or business settlement was read.
 
+## Team Original Financial Receipt Reads (2026-10-16)
+
+The Workspace transaction detail now reads the original funded-charge Receipt,
+WalletOperation and accepted Quote from Ledger through its typed customer
+financial projection. Ledger rechecks the live Tenant owner/admin session and
+matches Tenant, Workspace, receipt and charge in its existing store. It returns
+no private committing actor or execution evidence; the original full-evidence
+reader retains its actor fence. An observation event or external payment
+reference is not a Ledger receipt and returns unavailable rather than fabricated
+detail. Refund-specific receipt production is not added by this read path.
+
+Isolated PostgreSQL and real local gRPC checks cover original large integer
+amounts, current-team access, privacy-redacted history, revocation and cross-scope
+refusal. Browser checks use API fixtures. The portable graph declares BFF to
+Ledger; Instance must adopt matching endpoint, token, peer and network wiring.
+These checks do not prove installed receipts, production settlement or rollout.
+
 ## Product Communication Installation Admission (2026-10-16)
 
 The portable topology now declares the required owner communication graph and

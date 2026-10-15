@@ -36,7 +36,7 @@ api=yaml.safe_load((root/'docs/spec/target/03_api_contract_complete.yaml').read_
 # 'bff' is admitted so the audience_overrides below can name the workspace
 # audience the Console's two administrative-operation reads actually carry;
 # session-only and route-resolved reads are exempted and never become rows.
-owners={'capability','build','tenant','resource_catalog','serve','workspace','gateway','runtime_control','bff'}
+owners={'capability','build','tenant','resource_catalog','serve','workspace','gateway','runtime_control','bff','ledger'}
 # Runtime Control policy rows live in this table because CloudIdentity is the one
 # authorization owner; the x-owner below is the audience the decision names.
 runtime={'listRuntimeVersions','registerRuntimeVersion','setRuntimeVersionStatus','getBuildRuntimePolicy','setBuildRuntimePolicy'}

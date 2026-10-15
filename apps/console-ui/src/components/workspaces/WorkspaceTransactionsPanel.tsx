@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import type { AuthSession } from "../../api/dtos.ts";
 import type { ApiError } from "../../api/console-api.ts";
-import { getWorkspaceTransactions, getWorkspaceTransactionTrend, type WorkspaceTransactionTrend, type WorkspaceTransactionPage } from "../../api/workspace-transactions-api.ts";
+import { getWorkspaceTransactions, getWorkspaceTransactionTrend, getWorkspaceFinancialReceipt, type WorkspaceFinancialReceipt, type WorkspaceTransaction, type WorkspaceTransactionTrend, type WorkspaceTransactionPage } from "../../api/workspace-transactions-api.ts";
 import { formatWorkspaceTransactionAmount } from "../../app/workspace-experience-model.ts";
 import { formatDate } from "../../console-model.ts";
 import { Alert, Button } from "../ui/index.ts";
@@ -42,7 +42,7 @@ export function WorkspaceTransactionsPanel({ session, workspaceId }: { session: 
     <div className="panel-title"><h2>团队交易记录</h2>{allowed ? <Button size="sm" variant="outline" onClick={() => setRevision((value) => value + 1)}>刷新交易</Button> : null}</div>
     {allowed ? <WorkspaceTransactionTrendView session={session} workspaceId={workspaceId} revision={revision} /> : null}
     {!allowed ? <p>团队交易仅向本团队管理员和所有者开放。</p> : current?.error ? <Alert color="warning" title="交易记录暂不可用" description={current.error} /> : !current?.page ? <p role="status">正在读取交易记录…</p> : <>
-      <p>按记录创建时间排列；未确认交易仍需核实，不能视为已扣款或已退款。详情包含原交易字段和收据编号，完整原始收据仍需提交人的读取权限。</p>
+      <p>按记录创建时间排列；未确认交易仍需核实，不能视为已扣款或已退款。有收据的交易可进一步读取原始财务详情；尚无收据时会明确提示。</p>
       {current.page.items.length === 0 ? <p>暂无交易记录。</p> : <div className="table-wrap"><table><thead><tr><th>记录时间</th><th>类型</th><th>金额（美元）</th><th>状态</th><th>详情</th></tr></thead><tbody>
         {current.page.items.map((item) => <tr key={item.id}><td>{formatDate(item.createdAt, true)}</td><td>{kindLabels[item.kind]}</td><td>{formatWorkspaceTransactionAmount(item.amountUSDMicros)}</td><td>{statusLabels[item.status]}</td><td><details><summary>查看交易详情</summary><dl className="data-list">
           <div><dt>交易编号</dt><dd>{item.id}</dd></div>
@@ -54,7 +54,7 @@ export function WorkspaceTransactionsPanel({ session, workspaceId }: { session: 
           {item.receiptId ? <div><dt>收据编号</dt><dd>{item.receiptId}</dd></div> : null}
           {item.coverageStart && item.coverageEnd ? <div><dt>对应费用期间</dt><dd>{formatDate(item.coverageStart, true)} 至 {formatDate(item.coverageEnd, true)}</dd></div> : null}
           {item.planChangeId ? <div><dt>方案变更编号</dt><dd>{item.planChangeId}</dd></div> : null}
-        </dl></details></td></tr>)}
+        </dl>{item.receiptId ? <WorkspaceFinancialReceiptView session={session} workspaceId={workspaceId} transaction={item} /> : null}</details></td></tr>)}
       </tbody></table></div>}
       <div className="workspace-actions">
         {cursor ? <Button onClick={() => setQuery({ session, workspaceId, cursor: "" })} variant="outline">返回第一页</Button> : null}
@@ -86,4 +86,31 @@ function WorkspaceTransactionTrendView({ session, workspaceId, revision }: { ses
       <p>本窗口创建、等待确认的交易：扣款 {formatWorkspaceTransactionAmount(current.value.requestedChargeUSDMicros)}；退款 {formatWorkspaceTransactionAmount(current.value.requestedRefundUSDMicros)}。以上金额均未计入已确认统计。</p>
     </>}
   </section>;
+}
+
+function WorkspaceFinancialReceiptView({ session, workspaceId, transaction }: { session: AuthSession | null; workspaceId: string; transaction: WorkspaceTransaction }) {
+  const [requested, setRequested] = useState(false);
+  const [state, setState] = useState<{ session: AuthSession | null; workspaceId: string; transaction: WorkspaceTransaction; value?: WorkspaceFinancialReceipt; error?: string }>();
+  const current = state?.session === session && state.workspaceId === workspaceId && state.transaction === transaction ? state : undefined;
+  useEffect(() => {
+    if (!requested) return;
+    const controller = new AbortController();
+    const scope = { session, workspaceId, transaction };
+    getWorkspaceFinancialReceipt(workspaceId, transaction, controller.signal).then((value) => {
+      if (!controller.signal.aborted) setState({ ...scope, value });
+    }).catch((error: ApiError) => {
+      if (!controller.signal.aborted) setState({ ...scope, error: error.status === 404 ? "此交易尚无可读取的原始财务收据。" : error.status === 403 ? "当前账号无权读取此收据。" : "原始财务收据暂不可用，请稍后重试。" });
+    });
+    return () => controller.abort();
+  }, [requested, session, workspaceId, transaction]);
+  if (!requested) return <Button size="sm" variant="outline" onClick={() => setRequested(true)}>读取原始财务收据</Button>;
+  if (current?.error) return <p role="alert">{current.error}</p>;
+  if (!current?.value) return <p role="status">正在读取原始财务收据…</p>;
+  const value = current.value;
+  return <section aria-label="原始财务收据"><dl className="data-list">
+    <div><dt>收据时间</dt><dd>{formatDate(value.receipt.createdAt, true)}</dd></div>
+    <div><dt>原报价编号</dt><dd>{value.quote.id}</dd></div>
+    <div><dt>原报价金额（美元）</dt><dd>{formatWorkspaceTransactionAmount(value.quote.totalUSDMicros)}</dd></div>
+    <div><dt>原始说明</dt><dd>{value.receipt.evidenceSummary}</dd></div>
+  </dl><ul>{value.quote.lineItems.map((line, index) => <li key={index}>{({ compute: "计算资源", storage: "存储资源" } as Record<string, string>)[line.kind] || line.kind}：{formatWorkspaceTransactionAmount(line.amountUSDMicros)} 美元</li>)}</ul></section>;
 }

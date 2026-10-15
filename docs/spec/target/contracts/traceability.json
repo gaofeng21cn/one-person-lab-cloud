@@ -4356,6 +4356,7 @@
       "operationIds": [
         "getOperation",
         "getReceipt",
+        "getWorkspaceFinancialReceipt",
         "listAdminOperations",
         "listAuditEvents",
         "listQualifications",
@@ -4400,7 +4401,12 @@
         "Receipt.outcome",
         "Receipt.owner",
         "Receipt.sourceSha",
-        "Receipt.workflowRunId"
+        "Receipt.workflowRunId",
+        "WorkspaceFinancialReceipt.workspaceId",
+        "WorkspaceFinancialReceipt.receipt",
+        "WorkspaceFinancialReceipt.walletOperation",
+        "WorkspaceFinancialReceipt.quote",
+        "WorkspaceFinancialReceipt.evidenceDigest"
       ],
       "tables": [
         "build.build_artifacts",

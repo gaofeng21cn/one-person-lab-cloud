@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "d74984bf3943e30dd5063c187a0cbe6fa4a93bc2",
+  "sourceSHA": "358a2517d4bbb7f6c04ec6511108a211faa6174e",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -623,6 +623,7 @@
       "state": "not_implemented",
       "apiPrimary": [
         "getReceipt",
+        "getWorkspaceFinancialReceipt",
         "listQualifications",
         "listReceipts"
       ],
@@ -633,6 +634,7 @@
         "ledger.reconciliations"
       ],
       "rpcImplements": [
+        "LedgerProductService.GetWorkspaceFinancialReceipt",
         "LedgerProductService.ListReceipts",
         "LedgerProductService.GetReceipt",
         "LedgerProductService.ListQualifications",
@@ -1325,6 +1327,7 @@
         "getSelfUserExternalBinding",
         "getSession",
         "getTenant",
+        "getWorkspaceFinancialReceipt",
         "inviteMember",
         "listAdminOperations",
         "listAuditEvents",
@@ -2280,6 +2283,7 @@
         "getTenant",
         "getTenantAssetCustody",
         "getTenantLifecycleOperation",
+        "getWorkspaceFinancialReceipt",
         "listAdminOperations",
         "listAuditEvents",
         "listComputePlans",
@@ -3311,6 +3315,9 @@
     ],
     "GatewayProductService.ListModels": [
       "W04"
+    ],
+    "LedgerProductService.GetWorkspaceFinancialReceipt": [
+      "W05"
     ],
     "LedgerProductService.ListReceipts": [
       "W05"

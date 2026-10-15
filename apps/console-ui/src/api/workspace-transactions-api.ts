@@ -99,3 +99,23 @@ export function decodeWorkspaceTransactionTrend(value: unknown, workspaceId: str
 export async function getWorkspaceTransactionTrend(workspaceId: string, signal: AbortSignal): Promise<WorkspaceTransactionTrend> {
   return decodeWorkspaceTransactionTrend(await getJson<unknown>(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/transactions/trend`, { signal }), workspaceId);
 }
+
+export interface WorkspaceFinancialReceipt {
+  workspaceId: string;
+  receipt: { id: string; kind: string; owner: string; outcome: string; evidenceSummary: string; createdAt: string };
+  walletOperation: WorkspaceTransaction;
+  quote: { id: string; totalUSDMicros: string; lineItems: { kind: string; amountUSDMicros: string }[] };
+  evidenceDigest: string;
+}
+
+export async function getWorkspaceFinancialReceipt(workspaceId: string, transaction: WorkspaceTransaction, signal: AbortSignal): Promise<WorkspaceFinancialReceipt> {
+  const raw = await getJson<WorkspaceFinancialReceipt>(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/financial-receipts/${encodeURIComponent(transaction.receiptId || "")}`, { signal });
+  if (raw?.workspaceId !== workspaceId || raw.receipt?.id !== transaction.receiptId || raw.receipt?.kind !== "wallet_action"
+    || raw.receipt.outcome !== "confirmed" || typeof raw.receipt.evidenceSummary !== "string" || !Number.isFinite(Date.parse(raw.receipt.createdAt))
+    || raw.walletOperation?.id !== transaction.id || raw.walletOperation.workspaceId !== workspaceId || raw.walletOperation.receiptId !== transaction.receiptId
+    || raw.walletOperation.amountUSDMicros !== transaction.amountUSDMicros || raw.walletOperation.status !== "confirmed"
+    || !raw.quote?.id || raw.quote.totalUSDMicros !== transaction.amountUSDMicros || !Array.isArray(raw.quote.lineItems)
+    || raw.quote.lineItems.some((line) => !line || typeof line.kind !== "string" || !validTrendAmount(line.amountUSDMicros))
+    || !/^sha256:[0-9a-f]{64}$/.test(raw.evidenceDigest)) throw new Error("invalid_workspace_financial_receipt");
+  return raw;
+}

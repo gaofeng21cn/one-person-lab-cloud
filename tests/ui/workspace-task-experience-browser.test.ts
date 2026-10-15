@@ -1973,3 +1973,52 @@ test("Cloud Workspace transactions preserve exact money, roles, paging and navig
     await demo.close();
   }
 });
+
+test("Cloud team financial receipts show original amounts and reject late navigation results", { timeout: 90_000 }, async () => {
+  const demo = await startCloudConsoleDemo();
+  const browser = await launchBrowser({ headless: true });
+  const held = deferred();
+  const release = deferred();
+  let hold = false;
+  try {
+    const page = await browser.newPage();
+    const workspace = (id: string) => ({ id, name: `Team ${id}`, capabilityVersionId: "cap-1", computePlanId: "compute-1", storagePlanId: "storage-1", deliveryModel: "agent_saas", status: "active", resourceReadiness: "ready", applicationAvailability: "available", createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z", version: "1" });
+    const transaction = { id: "charge-1", workspaceId: "ws-a", kind: "charge", status: "confirmed", amountUSDMicros: "9007199254740993", receiptId: "receipt-1", createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-02T00:00:00Z" };
+    await page.route("**/api/v2/**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === "/api/v2/auth/session") return route.fulfill({ json: { actorId: "user-customer", tenantId: "tenant-1", role: "admin", displayName: "Team admin", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
+      if (path === "/api/v2/workspaces") return route.fulfill({ json: { items: [workspace("ws-a"), workspace("ws-b")] } });
+      if (path === "/api/v2/workspaces/ws-a" || path === "/api/v2/workspaces/ws-b") return route.fulfill({ json: workspace(path.endsWith("ws-a") ? "ws-a" : "ws-b") });
+      if (path.endsWith("/transactions")) return route.fulfill({ json: { items: path.includes("ws-a") ? [transaction] : [] } });
+      if (path === "/api/v2/workspaces/ws-a/financial-receipts/receipt-1") {
+        assert.equal(route.request().method(), "GET");
+        if (hold) { held.resolve(); await release.promise; }
+        return route.fulfill({ json: { workspaceId: "ws-a", receipt: { id: "receipt-1", kind: "wallet_action", owner: "workspace", outcome: "confirmed", createdAt: "2026-10-02T00:00:00Z", evidenceSummary: "Original monetary receipt" }, walletOperation: transaction, quote: { id: "quote-original", totalUSDMicros: transaction.amountUSDMicros, lineItems: [{ kind: "compute", amountUSDMicros: transaction.amountUSDMicros }] }, evidenceDigest: `sha256:${"a".repeat(64)}` } }).catch(() => undefined);
+      }
+      return route.fulfill({ status: 503, json: { code: "DEPENDENCY_UNAVAILABLE", message: "not part of this fixture" } });
+    });
+    await loginCloudFixture(page, demo.origin);
+    await page.goto(`${demo.origin}/console/workspaces/ws-a`, { waitUntil: "domcontentloaded" });
+    const panel = page.getByRole("region", { name: "工作空间交易记录" });
+    await panel.getByText("查看交易详情", { exact: true }).click();
+    await panel.getByRole("button", { name: "读取原始财务收据" }).click();
+    const receipt = panel.getByRole("region", { name: "原始财务收据" });
+    await receipt.getByText("quote-original", { exact: true }).waitFor();
+    await receipt.getByText("$9,007,199,254.740993", { exact: true }).waitFor();
+    await receipt.getByText("Original monetary receipt", { exact: true }).waitFor();
+    hold = true;
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await panel.getByText("查看交易详情", { exact: true }).click();
+    await panel.getByRole("button", { name: "读取原始财务收据" }).click();
+    await held.promise;
+    await page.evaluate(() => { history.pushState({}, "", "/console/workspaces/ws-b"); window.dispatchEvent(new PopStateEvent("popstate")); });
+    await panel.getByText("暂无交易记录。", { exact: true }).waitFor();
+    release.resolve();
+    assert.equal(await panel.getByText("quote-original", { exact: true }).count(), 0);
+    assert.equal(await panel.getByRole("region", { name: "原始财务收据" }).count(), 0);
+  } finally {
+    release.resolve();
+    await browser.close();
+    await demo.close();
+  }
+});
