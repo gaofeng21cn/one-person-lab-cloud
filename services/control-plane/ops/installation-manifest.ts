@@ -87,12 +87,18 @@ export function validateInstallationManifest(manifest: any, bindings: any, secre
       mapped.set(service, { deployment: deployment!, container, namespace: ns });
     }
     // A mapped subset is permitted, but cannot hide a migrated caller present in
-    // the installation merely by omitting its binding.
+    // the installation merely by omitting its binding. Shell wrappers that name a
+    // Product binary are rejected because this static seam cannot prove their
+    // effective executable, arguments or inherited environment.
     for (const r of topology.communicationRequirements as Requirement[]) {
       const binary = processByName.get(r.caller)!.binary;
-      const callers = items.filter(i => i.kind === "Deployment").flatMap(i => (i.spec?.template?.spec?.containers ?? []).map((c: any) => ({ i, c }))).filter(({ c }) => c.command?.[0] === binary);
+      const containers = items.filter(i => i.kind === "Deployment").flatMap(i => (i.spec?.template?.spec?.containers ?? []).map((c: any) => ({ i, c })));
+      const callers = containers.filter(({ c }) => c.command?.[0] === binary);
+      const wrappedCallers = containers.filter(({ c }) => Array.isArray(c.command) && c.command[0] !== binary &&
+        c.command.some((part: unknown) => typeof part === "string" && part.includes(binary)) ||
+        Array.isArray(c.args) && c.args.some((part: unknown) => typeof part === "string" && part.includes(binary)));
       const bound = mapped.get(r.caller);
-      if (callers.length !== (bound ? 1 : 0)) fail(r.id, "caller_binding");
+      if (wrappedCallers.length > 0 || callers.length !== (bound ? 1 : 0)) fail(r.id, "caller_binding");
     }
     const secretText = (ref: any, ns: string): string => {
       if (!record(ref) || typeof ref.name !== "string" || typeof ref.key !== "string" || ref.optional === true) throw new Error("secret_reference");
@@ -130,10 +136,15 @@ export function validateInstallationManifest(manifest: any, bindings: any, secre
       if (!e) throw new Error("env_missing");
       if (e.valueFrom && Object.hasOwn(e, "value")) throw new Error("env_invalid");
       if (typeof e.value === "string" && e.value.trim() && !e.value.includes("$(")) return e.value;
-      const ref = e.valueFrom?.configMapKeyRef;
-      if (ref && !ref.optional) {
-        const data = get("ConfigMap", ref.name, ns)?.data?.[ref.key];
+      const configMapRef = e.valueFrom?.configMapKeyRef;
+      if (configMapRef && !configMapRef.optional) {
+        const data = get("ConfigMap", configMapRef.name, ns)?.data?.[configMapRef.key];
         if (typeof data === "string" && data.trim() && !data.includes("$(")) return data;
+      }
+      const secretRef = e.valueFrom?.secretKeyRef;
+      if (secretRef && !secretRef.optional) {
+        const data = secretText(secretRef, ns).trim();
+        if (data && !data.includes("$(")) return data;
       }
       throw new Error("env_value_invalid");
     };
@@ -195,16 +206,19 @@ export function validateInstallationManifest(manifest: any, bindings: any, secre
             })));
             if (!portMatches) return false;
             const peers = rule[direction === "Ingress" ? "from" : "to"];
-            if (peers === undefined || (Array.isArray(peers) && peers.length === 0)) return true;
-            if (!Array.isArray(peers)) throw new Error("network_policy_invalid");
+            if (peers === undefined) return true;
+            if (!Array.isArray(peers) || peers.length === 0) return false;
             return peers.some((peer: any) => {
               // IP blocks cannot prove a workload-selector relation before Pod
               // IP assignment; this admission seam requires namespace/pod peers.
               if (!record(peer) || peer.ipBlock) return false;
               if (!peer.namespaceSelector && !peer.podSelector) return true;
               if (peer.namespaceSelector) {
-                const ns = get("Namespace", remote.namespace, namespace);
-                if (!selected(peer.namespaceSelector, { ...ns?.metadata?.labels, "kubernetes.io/metadata.name": remote.namespace })) return false;
+                const namespaceObject = items.find((item) => item.kind === "Namespace" && item.metadata?.name === remote.namespace);
+                if (!namespaceObject || !selected(peer.namespaceSelector, {
+                  ...(namespaceObject.metadata?.labels ?? {}),
+                  "kubernetes.io/metadata.name": remote.namespace,
+                })) return false;
               } else if (local.namespace !== remote.namespace) return false;
               return !peer.podSelector || selected(peer.podSelector, remote.deployment.spec.template.metadata?.labels ?? {});
             });

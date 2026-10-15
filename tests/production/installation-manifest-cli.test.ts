@@ -104,6 +104,9 @@ test("installation CLI resolves ConfigMap envFrom and Kubernetes env precedence"
   c.envFrom = [{ configMapRef: { name: "wiring" } }];
   v.manifest.items.push({ kind: "ConfigMap", metadata: { name: "wiring" }, data: { OPL_WORKSPACE_ADDR: "workspace.synthetic.svc.cluster.local:8184" } });
   assert.equal((await cli(v)).code, 0);
+  c.envFrom = [{ secretRef: { name: "wiring-secret" } }];
+  v.manifest.items.push({ kind: "Secret", metadata: { name: "wiring-secret" }, stringData: { OPL_WORKSPACE_ADDR: "workspace.synthetic.svc.cluster.local:8184" } });
+  assert.equal((await cli(v)).code, 0);
   c.env.push({ name: "OPL_WORKSPACE_ADDR", value: ":8184" });
   assert.equal((await cli(v)).code, 1);
 });
@@ -115,7 +118,7 @@ test("installation CLI rejects unknown binding processes rather than skipping re
   assert.equal((await cli(v)).code, 1);
 });
 
-for (const scenario of ["additive", "empty-rule", "named-port", "range", "namespace-denied", "wrong-port", "shared-service-selector", "hidden-caller"] as const) {
+for (const scenario of ["additive", "empty-rule", "named-port", "range", "namespace-denied", "unknown-namespace-label", "wrong-port", "shared-service-selector", "hidden-caller"] as const) {
   test(`installation CLI applies Kubernetes ${scenario} semantics`, async () => {
     const v = installation();
     const policy = v.manifest.items.find(i => i.metadata.name === "serve-workspace");
@@ -125,10 +128,12 @@ for (const scenario of ["additive", "empty-rule", "named-port", "range", "namesp
     if (scenario === "named-port") policy.spec.ingress[0].ports = [{ port: "rpc" }];
     if (scenario === "range") policy.spec.ingress[0].ports = [{ port: 8180, endPort: 8190 }];
     if (scenario === "namespace-denied") policy.spec.ingress[0].from = [{ namespaceSelector: { matchLabels: { "kubernetes.io/metadata.name": "another" } } }];
+    if (scenario === "unknown-namespace-label") policy.spec.ingress[0].from = [{ namespaceSelector: { matchExpressions: [{ key: "environment", operator: "DoesNotExist" }] } }];
     if (scenario === "wrong-port") policy.spec.ingress[0].ports = [{ port: 8183 }];
     if (scenario === "shared-service-selector") v.manifest.items.find(i => i.kind === "Deployment" && i.metadata.name === "build").spec.template.metadata.labels.component = "workspace";
     if (scenario === "hidden-caller") delete v.bindings.processes.serve;
-    const expected = ["namespace-denied", "wrong-port", "shared-service-selector", "hidden-caller"].includes(scenario) ? 1 : 0;
+    if (scenario === "hidden-caller") container(v, "build").command = ["/bin/sh", "-c", "exec /usr/local/bin/opl-build"];
+    const expected = ["namespace-denied", "unknown-namespace-label", "wrong-port", "shared-service-selector", "hidden-caller", "empty-rule"].includes(scenario) ? 1 : 0;
     assert.equal((await cli(v)).code, expected);
   });
 }
