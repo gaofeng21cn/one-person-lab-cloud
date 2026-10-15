@@ -194,6 +194,68 @@ func waitForStartedComputeOperation(t *testing.T, store OperationStore, resource
 	t.Fatalf("missing started compute operation %s", resourceID)
 }
 
+type delayedComputeReplayStore struct {
+	ComputePoolStore
+	captured chan struct{}
+	release  chan struct{}
+}
+
+func (s *delayedComputeReplayStore) ClaimComputePoolRuntime(ctx context.Context, operation FabricOperation) (FabricOperation, bool, error) {
+	stored, claimed, err := s.ComputePoolStore.ClaimComputePoolRuntime(ctx, operation)
+	if err == nil && !claimed && stored.Status == "started" {
+		close(s.captured)
+		<-s.release
+	}
+	return stored, claimed, err
+}
+
+func TestComputeAllocationStaleStartedReplayCannotRollBackCompletedProjection(t *testing.T) {
+	store := NewMemoryOperationStore()
+	provider := newSerializedPoolProvider("workspace-alpha")
+	service := NewServiceWithOperationStore(provider, store)
+	delayed := &delayedComputeReplayStore{ComputePoolStore: store, captured: make(chan struct{}), release: make(chan struct{})}
+	service.computePool = delayed
+	configureFastComputeAllocationPolling(service, 2*time.Second)
+	input := ComputeAllocationInput{AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", PackageID: "basic", NodePoolID: "np-basic", IdempotencyKey: "compute-stale-replay"}
+	created, err := service.CreateComputeAllocation(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-provider.firstHeadCall:
+	case <-time.After(time.Second):
+		t.Fatal("compute did not reach provider")
+	}
+
+	replayed := make(chan error, 1)
+	go func() {
+		_, replayErr := service.CreateComputeAllocation(context.Background(), input)
+		replayed <- replayErr
+	}()
+	select {
+	case <-delayed.captured:
+	case <-time.After(time.Second):
+		t.Fatal("replay did not capture the started operation")
+	}
+
+	provider.allowHeadCompletion()
+	waitForOperation(t, service, "create_compute_allocation", "compute_allocation", created.ID, "succeeded")
+	waitForComputeReconcileIdle(t, service, created.ID)
+	before, ok := service.GetComputeAllocation(context.Background(), created.ID)
+	if !ok || before.Status != "running" || before.MachineName == "" || len(before.CostTags) == 0 {
+		t.Fatalf("completed compute projection = %#v", before)
+	}
+	close(delayed.release)
+	if err := <-replayed; err != nil {
+		t.Fatal(err)
+	}
+	waitForComputeReconcileIdle(t, service, created.ID)
+	after, ok := service.GetComputeAllocation(context.Background(), created.ID)
+	if !ok || !reflect.DeepEqual(after, before) {
+		t.Fatalf("stale replay changed completed compute: before=%#v after=%#v", before, after)
+	}
+}
+
 func TestComputeAllocationSerializesDifferentWorkspacesInOneNodePool(t *testing.T) {
 	store := NewMemoryOperationStore()
 	provider := newSerializedPoolProvider("workspace-alpha")
