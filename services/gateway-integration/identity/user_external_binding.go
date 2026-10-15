@@ -210,13 +210,10 @@ func (s *Service) bindingReadback(b UserExternalBinding) (*api.UserExternalBindi
 		CreatedAt: timestamppb.New(b.CreatedAt), UpdatedAt: timestamppb.New(b.UpdatedAt)}, nil
 }
 
-// GetSelfUserExternalBinding resolves only the User behind a live Cloud session.
-// The retained owner uses this same persisted proof for original-record reads;
-// permission to resolve a User grants no identity mutation or target-User read.
+// GetSelfUserExternalBinding resolves the complete destination behind a live BFF session.
 func (s *Service) GetSelfUserExternalBinding(ctx context.Context, r *api.GetSelfUserExternalBindingRequest) (*api.UserExternalBindingReadback, error) {
-	caller, ok := ownerservice.PeerOwner(ctx)
-	if !ok || (caller != owneridentity.ConsoleBFF && caller != owneridentity.ControlPlane) {
-		return nil, status.Error(codes.PermissionDenied, "only Console BFF or the retained owner may resolve the live User")
+	if err := peer(ctx, owneridentity.ConsoleBFF); err != nil {
+		return nil, err
 	}
 	session, _, _, err := s.session(ctx, r.GetContext().GetSessionId())
 	if err != nil {
@@ -230,6 +227,32 @@ func (s *Service) GetSelfUserExternalBinding(ctx context.Context, r *api.GetSelf
 		return nil, err
 	}
 	return s.bindingReadback(b)
+}
+
+// GetSelfUserIdentity proves only the live User and its verified external subject.
+// The retained owner cannot select a target User, mutate identity, or obtain an
+// OCI destination through this read. Durable binding revocation is checked anew.
+func (s *Service) GetSelfUserIdentity(ctx context.Context, r *api.GetSelfUserIdentityRequest) (*api.UserIdentityReadback, error) {
+	if err := peer(ctx, owneridentity.ControlPlane); err != nil {
+		return nil, err
+	}
+	session, _, _, err := s.session(ctx, r.GetContext().GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	if r.GetContext().GetActorId() != "" && r.GetContext().GetActorId() != session.ActorId {
+		return nil, denied()
+	}
+	b, err := s.userBinding(ctx, session.ActorId)
+	if err != nil {
+		return nil, err
+	}
+	return &api.UserIdentityReadback{
+		ActorId: b.ActorID, Sub2ApiUserId: b.Sub2APIUserID,
+		Status:                  api.UserExternalBindingReadbackStatusEnum_USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_ACTIVE,
+		Verification:            api.UserExternalBindingReadbackVerificationEnum_USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_CONFIRMED,
+		VerificationEvidenceRef: b.ExternalIdentityRef, VerifiedAt: timestamppb.New(b.VerifiedAt.Time),
+	}, nil
 }
 
 // ReadUserExternalIdentity is the Build owner's read. The target must match the

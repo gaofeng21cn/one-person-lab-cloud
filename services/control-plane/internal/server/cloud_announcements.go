@@ -126,7 +126,7 @@ func (app *controlPlaneServer) cloudAnnouncementHandler(markRead bool) http.Hand
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
-		proof, err := source.gateway.GetSelfUserExternalBinding(ctx, &api.GetSelfUserExternalBindingRequest{Context: &api.CallContext{SessionId: proto.String(ref)}})
+		proof, err := source.gateway.GetSelfUserIdentity(ctx, &api.GetSelfUserIdentityRequest{Context: &api.CallContext{SessionId: proto.String(ref)}})
 		if err != nil {
 			writeCloudAnnouncementProofError(w, err)
 			return
@@ -160,7 +160,7 @@ var errAnnouncementLineage = errors.New("announcement_identity_lineage_invalid")
 
 type announcementIdentity struct{ cloudUserID, legacyUserID string }
 
-func (app *controlPlaneServer) cloudAnnouncementIdentity(ctx context.Context, proof *api.UserExternalBindingReadback) (announcementIdentity, error) {
+func (app *controlPlaneServer) cloudAnnouncementIdentity(ctx context.Context, proof *api.UserIdentityReadback) (announcementIdentity, error) {
 	if proof == nil || proof.GetActorId() == "" || proof.GetActorId() != strings.TrimSpace(proof.GetActorId()) ||
 		proof.GetStatus() != api.UserExternalBindingReadbackStatusEnum_USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_ACTIVE ||
 		proof.GetVerification() != api.UserExternalBindingReadbackVerificationEnum_USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_CONFIRMED {

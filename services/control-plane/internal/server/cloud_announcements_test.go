@@ -65,12 +65,12 @@ const cloudAnnouncementFixtureIdentityToken = "cloud-identity-isolated-fixture-8
 type announcementGatewayFixture struct {
 	api.UnimplementedGatewayCoordinationServer
 	mu       sync.Mutex
-	bindings map[string]*api.UserExternalBindingReadback
+	bindings map[string]*api.UserIdentityReadback
 	failures map[string]codes.Code
 	calls    int
 }
 
-func (g *announcementGatewayFixture) GetSelfUserExternalBinding(ctx context.Context, r *api.GetSelfUserExternalBindingRequest) (*api.UserExternalBindingReadback, error) {
+func (g *announcementGatewayFixture) GetSelfUserIdentity(ctx context.Context, r *api.GetSelfUserIdentityRequest) (*api.UserIdentityReadback, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.calls++
@@ -89,14 +89,14 @@ func (g *announcementGatewayFixture) GetSelfUserExternalBinding(ctx context.Cont
 	if binding == nil {
 		return nil, status.Error(codes.Unauthenticated, "fixture session expired or unknown")
 	}
-	return proto.Clone(binding).(*api.UserExternalBindingReadback), nil
+	return proto.Clone(binding).(*api.UserIdentityReadback), nil
 }
 
 func (g *announcementGatewayFixture) bind(raw, actor, subject string) string {
 	ref := owneridentity.SessionReference(raw)
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	g.bindings[ref] = &api.UserExternalBindingReadback{ActorId: actor, Sub2ApiUserId: subject,
+	g.bindings[ref] = &api.UserIdentityReadback{ActorId: actor, Sub2ApiUserId: subject,
 		Status:                  api.UserExternalBindingReadbackStatusEnum_USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_ACTIVE,
 		Verification:            api.UserExternalBindingReadbackVerificationEnum_USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_CONFIRMED,
 		VerificationEvidenceRef: "sub2api:user:" + subject, VerifiedAt: timestamppb.Now()}
@@ -122,7 +122,7 @@ func newCloudAnnouncementHTTPFixture(t *testing.T, store StateStore) *cloudAnnou
 	if err != nil {
 		t.Fatal(err)
 	}
-	gateway := &announcementGatewayFixture{bindings: map[string]*api.UserExternalBindingReadback{}, failures: map[string]codes.Code{}}
+	gateway := &announcementGatewayFixture{bindings: map[string]*api.UserIdentityReadback{}, failures: map[string]codes.Code{}}
 	grpcServer := grpc.NewServer()
 	api.RegisterGatewayCoordinationServer(grpcServer, gateway)
 	go func() { _ = grpcServer.Serve(listener) }()
@@ -625,16 +625,16 @@ func TestCloudAnnouncementsOwnerHTTPPersistenceFailureIsUnavailable(t *testing.T
 func TestCloudAnnouncementsOwnerHTTPRejectsInvalidBindingProof(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
-		mutate func(*api.UserExternalBindingReadback)
+		mutate func(*api.UserIdentityReadback)
 	}{
-		{"empty actor", func(b *api.UserExternalBindingReadback) { b.ActorId = "" }},
-		{"empty subject", func(b *api.UserExternalBindingReadback) { b.Sub2ApiUserId = "" }},
-		{"invalid subject", func(b *api.UserExternalBindingReadback) { b.Sub2ApiUserId = "not-an-id" }},
-		{"ambiguous numeric subject", func(b *api.UserExternalBindingReadback) { b.Sub2ApiUserId = "0901" }},
-		{"inactive", func(b *api.UserExternalBindingReadback) {
+		{"empty actor", func(b *api.UserIdentityReadback) { b.ActorId = "" }},
+		{"empty subject", func(b *api.UserIdentityReadback) { b.Sub2ApiUserId = "" }},
+		{"invalid subject", func(b *api.UserIdentityReadback) { b.Sub2ApiUserId = "not-an-id" }},
+		{"ambiguous numeric subject", func(b *api.UserIdentityReadback) { b.Sub2ApiUserId = "0901" }},
+		{"inactive", func(b *api.UserIdentityReadback) {
 			b.Status = api.UserExternalBindingReadbackStatusEnum_USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_UNSPECIFIED
 		}},
-		{"unverified", func(b *api.UserExternalBindingReadback) {
+		{"unverified", func(b *api.UserIdentityReadback) {
 			b.Verification = api.UserExternalBindingReadbackVerificationEnum_USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_UNSPECIFIED
 		}},
 	} {
