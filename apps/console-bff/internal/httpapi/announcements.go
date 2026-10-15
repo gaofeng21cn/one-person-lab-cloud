@@ -39,8 +39,8 @@ func (s *Server) listAnnouncements(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			value, e := strconv.Atoi(values[0])
-			if e != nil || value < 1 || (key == "pageSize" && value > 100) {
-				writePublisherError(w, r, 400, "invalid_pagination", "positive page and pageSize up to 100 are required")
+			if e != nil || value < 1 || (key == "pageSize" && value > contracts.AnnouncementMaxPageSize) {
+				writePublisherError(w, r, 400, "invalid_pagination", "positive page and pageSize up to 50 are required")
 				return
 			}
 			*target = value

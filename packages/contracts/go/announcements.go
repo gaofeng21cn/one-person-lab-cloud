@@ -5,6 +5,15 @@ package contracts
 // actor, Tenant or retained-session assertion.
 const CloudSessionHeader = "x-opl-cloud-session"
 
+const (
+	AnnouncementMaxPageSize   = 50
+	AnnouncementMaxTitleRunes = 160
+	AnnouncementMaxBodyRunes  = 20_000
+	// JSON may escape one accepted rune as six ASCII bytes. Include per-record
+	// identity/timestamp/envelope overhead, retaining a finite response budget.
+	AnnouncementMaxResponseBytes = AnnouncementMaxPageSize*((AnnouncementMaxTitleRunes+AnnouncementMaxBodyRunes)*6+2048) + 4096
+)
+
 // Announcement remains a Control Plane-owned publication. Cloud and retained
 // Console readers consume the same publication and acknowledgement records.
 type Announcement struct {

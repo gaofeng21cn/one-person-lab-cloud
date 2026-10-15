@@ -83,3 +83,23 @@ func TestAnnouncementOwnerRedirectDoesNotForwardCredentials(t *testing.T) {
 		t.Fatalf("redirect=%v reached=%v", err, reached)
 	}
 }
+
+func TestAnnouncementReaderAcceptsLargestValidPage(t *testing.T) {
+	items := make([]contracts.Announcement, contracts.AnnouncementMaxPageSize)
+	for i := range items {
+		items[i] = contracts.Announcement{ID: "notice", Title: strings.Repeat("界", contracts.AnnouncementMaxTitleRunes), Body: strings.Repeat("界", contracts.AnnouncementMaxBodyRunes)}
+	}
+	owner := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(contracts.AnnouncementSource{Source: "control-plane", Status: "available", Available: true, Data: &contracts.AnnouncementPage{Items: items, Total: len(items), Page: 1, PageSize: len(items)}})
+	}))
+	defer owner.Close()
+	reader, err := newControlPlaneReader(owner.URL, strings.Repeat("a", 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &Clients{controlPlane: reader}
+	out, err := c.ListAnnouncements(context.Background(), "reference", 1, len(items))
+	if err != nil || out == nil || out.Data == nil || len(out.Data.Items) != len(items) || out.Data.Items[0].Body != items[0].Body {
+		t.Fatalf("valid full page rejected: %v", err)
+	}
+}
