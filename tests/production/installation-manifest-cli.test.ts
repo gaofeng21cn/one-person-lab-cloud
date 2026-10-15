@@ -371,3 +371,31 @@ test("installation CLI always declares the Product minimum token length for the 
   assert.equal(invalid.status, 1);
   assert.deepEqual(invalid.report.communication.security, { tokenMinimumLength: 32 });
 });
+
+
+test("installation CLI retains the current Control Plane CloudIdentity caller from the default image command", async () => {
+  const list = workedInstallation();
+  const image = container(list, "serve").image;
+  list.items.push({ apiVersion: "apps/v1", kind: "Deployment", metadata: { name: "retained-http", namespace: "installation" }, spec: {
+    template: { metadata: { labels: { unit: "retained-http" } }, spec: { containers: [{ name: "control-plane", image,
+      env: [
+        { name: "OPL_CONTROL_PLANE_BFF_TOKEN", valueFrom: { secretKeyRef: { name: "http-auth", key: "inbound" } } },
+        { name: "OPL_CLOUD_IDENTITY_URL", value: "gateway-integration-rpc:9187" },
+        { name: "OPL_CLOUD_IDENTITY_TOKEN", valueFrom: { secretKeyRef: { name: "http-auth", key: "outbound" } } },
+      ] }] } }
+  } });
+  policy(list, "gateway-integration").spec.ingress[0].from.push({ podSelector: { matchLabels: { unit: "retained-http" } } });
+  const result = await invoke(list);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(result.report.communication.edges.find(e => e.caller === "control_plane"), {
+    caller: "control_plane", target: "tenant", addressEnv: "OPL_CLOUD_IDENTITY_URL", tokenEnv: "OPL_CLOUD_IDENTITY_TOKEN",
+    callerDeployment: "retained-http", targetDeployment: "unit-gateway-integration", port: 8187,
+    tokenRef: { name: "http-auth", key: "outbound" }, peerRef: { name: "gateway-integration-admission", key: "peers" },
+    ingressPolicies: ["gateway-integration-rpc"], egressPolicies: [],
+  });
+  const retained = list.items.find(item => item.metadata.name === "retained-http").spec.template.spec.containers[0];
+  retained.env = retained.env.filter(e => !["OPL_CLOUD_IDENTITY_URL", "OPL_CLOUD_IDENTITY_TOKEN"].includes(e.name));
+  const invalid = await invoke(list);
+  assert.equal(invalid.status, 1);
+  assert.ok(invalid.report.errors.some(e => e.code === "rpc_address_required" && e.caller === "control_plane"));
+});

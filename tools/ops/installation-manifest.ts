@@ -15,7 +15,7 @@ export type ProcessContract = {
   service: string; binary: string; transportPrincipal?: string;
   addressEnv: string; defaultAddress: string; rpcAddressEnv?: string; defaultRPCAddress?: string; peerTokensEnv?: string; rpcEnabledByEnv?: string;
 };
-export type EdgeContract = { caller: string; target: string; addressEnv: string; tokenEnv: string; activation: "required" | "configured" };
+export type EdgeContract = { caller: string; target: string; addressEnv: string; tokenEnv: string; activation: "required" | "configured"; activationEnv?: string };
 export type InstallationTopology = { image: { defaultCommand: string[] }; processes: ProcessContract[]; communication: { schemaVersion: number; edges: EdgeContract[]; security: InstallationSecurity } };
 type Resource = Record<string, any>;
 function object(value: unknown): value is Resource {
@@ -139,12 +139,18 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     resourceKeys.add(key);
   }
   const deployments = resources.filter(resource => resource.kind === "Deployment");
-  const productImages = new Set<string>();
+  const productImages = new Set<string>(deployments.flatMap(deployment =>
+    deployment.spec.template.spec.containers.filter((container: Resource) =>
+      topology.processes.some(process => container.command?.[0] === process.binary))
+      .map((container: Resource) => container.image)));
+  const processContract = (container: Resource) => topology.processes.find(process =>
+    container.command?.[0] === process.binary || container.command === undefined && container.args === undefined &&
+      productImages.has(container.image) && process.binary === topology.image.defaultCommand[0]);
   const recognized = new Set<Resource>();
   const productNamespaces = new Set<string>();
   for (const deployment of deployments) {
     for (const container of deployment.spec.template.spec.containers) {
-      const contract = topology.processes.find(process => container.command?.[0] === process.binary);
+      const contract = processContract(container);
       if (!contract) continue;
       recognized.add(container);
       productImages.add(container.image);
@@ -154,6 +160,7 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
       const names = new Set([contract.addressEnv, contract.rpcAddressEnv, contract.peerTokensEnv, contract.rpcEnabledByEnv].filter((name): name is string => Boolean(name)));
       for (const edge of topology.communication.edges.filter(edge => edge.caller === contract.transportPrincipal)) {
         names.add(edge.addressEnv); names.add(edge.tokenEnv);
+        if (edge.activationEnv) names.add(edge.activationEnv);
       }
       const resolved = effectiveEnv(deployment, container, names, resources);
       if (resolved.error) return failure(resolved.error);
@@ -182,7 +189,8 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     const caller = installed.get(edge.caller);
     if (!caller) continue;
     const address = envEntry(caller, edge.addressEnv);
-    if (edge.activation === "configured" && !configured(address) && !configured(envEntry(caller, edge.tokenEnv))) continue;
+    if (edge.activation === "configured" && !configured(address) && !configured(envEntry(caller, edge.tokenEnv)) &&
+        !(edge.activationEnv && configured(envEntry(caller, edge.activationEnv)))) continue;
     const fail = (code: string) => report.errors.push({ code, service: caller.contract.service,
       caller: edge.caller, target: edge.target, addressEnv: edge.addressEnv, tokenEnv: edge.tokenEnv });
     if (!address || !configured(address)) { fail("rpc_address_required"); continue; }

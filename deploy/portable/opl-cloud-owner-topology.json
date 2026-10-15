@@ -435,7 +435,8 @@
    "notes": [
     "Migration source, not a permanent second writer; it also serves the Console static bundle.",
     "Cloud announcement reads use the authenticated BFF-only typed HTTP boundary; Control Plane revalidates its Cloud session with Gateway under the control_plane transport principal and retains publication/ACK persistence."
-   ]
+   ],
+   "transportPrincipal": "control_plane"
   },
   {
    "service": "console-bff",
@@ -911,6 +912,14 @@
     "addressEnv": "OPL_CLOUD_IDENTITY_URL",
     "tokenEnv": "OPL_CLOUD_IDENTITY_TOKEN",
     "activation": "configured"
+   },
+   {
+    "caller": "control_plane",
+    "target": "tenant",
+    "addressEnv": "OPL_CLOUD_IDENTITY_URL",
+    "tokenEnv": "OPL_CLOUD_IDENTITY_TOKEN",
+    "activation": "configured",
+    "activationEnv": "OPL_CONTROL_PLANE_BFF_TOKEN"
    }
   ],
   "evidence": [
@@ -927,7 +936,8 @@
    "services/fabric/coordination/process.go",
    "services/ledger/eventconsumer/configure.go",
    "packages/contracts/go/owneridentity/transport.go",
-   "packages/contracts/go/owneridentity/owneridentity.go: MinimumTokenLength"
+   "packages/contracts/go/owneridentity/owneridentity.go: MinimumTokenLength",
+   "services/control-plane/internal/server/cloud_announcements.go"
   ],
   "security": {
    "tokenMinimumLength": 32
