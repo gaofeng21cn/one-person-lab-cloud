@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import YAML from "yaml";
 
@@ -23,13 +26,8 @@ async function protectedResourceFacts() {
   return names;
 }
 
-// The Tencent provider validates some facts when it builds the provider and
-// reports the rest from its own readiness. Both lists are the owner's, so they
-// are extracted from its source rather than copied here.
-
-// The provider-owned tests above cover runtime storage, zone and live-mutation
-// inputs. This helper covers the provisioner startup and NodePool bootstrap
-// inputs whose source lives in the standalone Go process.
+// The provisioner owns startup and NodePool bootstrap requirements separately
+// from the provider constructor and readiness requirements below.
 async function tencentProvisionerBootstrapFacts() {
   const source = await readFile("services/fabric/cmd/opl-tencent-provisioner/main.go", "utf8");
   const names = (body) => [...body.matchAll(/"([A-Z][A-Z0-9_]*)"/g)].map((match) => match[1]);
@@ -55,6 +53,31 @@ async function tencentProviderRequiredFacts() {
   const facts = [...new Set([...validated, ...reported])];
   assert.ok(facts.length >= 9, `Tencent provider must require its installation facts, saw ${facts.join(",")}`);
   return facts;
+}
+
+async function prepareManagedTKEComposeFixture(root) {
+  const environment = await readFile("deploy/portable/opl-cloud.env.example", "utf8");
+  await Promise.all([
+    copyFile("compose.yaml", join(root, "compose.yaml")),
+    copyFile("deploy/portable/compose.fabric-tencent-tke.yaml", join(root, "compose.fabric-tencent-tke.yaml")),
+    copyFile("deploy/portable/compose.deployment-managed-tke.yaml", join(root, "compose.deployment-managed-tke.yaml")),
+    writeFile(join(root, "opl-cloud.env"), environment.replace(/^OPL_WORKSPACE_IMAGE_RELEASES_JSON=.*$/m, "OPL_WORKSPACE_IMAGE_RELEASES_JSON={\"releases\":[]}"))
+  ]);
+}
+
+function composeConfig(root, envFile, ...args) {
+  return spawnSync("docker", [
+    "compose", "--env-file", envFile,
+    "-f", "compose.yaml",
+    "-f", "compose.deployment-managed-tke.yaml",
+    "-f", "compose.fabric-tencent-tke.yaml",
+    "config", ...args
+  ], {
+    cwd: root,
+    encoding: "utf8",
+    timeout: 30_000,
+    env: { PATH: process.env.PATH, HOME: process.env.HOME }
+  });
 }
 
 test("portable managed-TKE Fabric overlay forwards every protected-resource fact its guard reads", async () => {
@@ -122,15 +145,66 @@ test("base Compose forwards the application-origin domain the Control Plane and 
 test("managed-TKE deployment explicitly enables the Workspace progression workers", async () => {
   const base = YAML.parse(await readFile("compose.yaml", "utf8"));
   const overlay = YAML.parse(await readFile("deploy/portable/compose.deployment-managed-tke.yaml", "utf8"));
+  const overlayEnvironment = overlay.services["control-plane"].environment;
   const environment = {
     ...base.services["control-plane"].environment,
-    ...overlay.services["control-plane"].environment
+    ...overlayEnvironment
   };
   for (const name of [
     "OPL_WORKSPACE_LAUNCH_WORKER_ENABLED",
     "OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED",
     "OPL_MONTHLY_BILLING_WORKER_ENABLED"
   ]) {
+    assert.equal(overlayEnvironment[name], "1", `${name} must be declared by the managed-TKE deployment overlay`);
     assert.equal(environment[name], "1", `${name} must be enabled by the managed-TKE deployment overlay`);
+  }
+});
+
+test("managed-TKE portable bundle resolves the runtime inputs and fails closed when they are missing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "opl-cloud-managed-tke-"));
+  try {
+    await prepareManagedTKEComposeFixture(root);
+    const resolved = composeConfig(root, "opl-cloud.env", "--format", "json");
+    assert.equal(resolved.error, undefined);
+    assert.equal(resolved.status, 0, [resolved.stdout, resolved.stderr].filter(Boolean).join("\n"));
+    const services = JSON.parse(resolved.stdout).services;
+    const fabricEnvironment = services.fabric.environment;
+    const controlPlaneEnvironment = services["control-plane"].environment;
+    const inputs = {
+      TENCENTCLOUD_SECRET_ID: "<replace-with-tencent-secret-id>",
+      TENCENTCLOUD_SECRET_KEY: "<replace-with-tencent-secret-key>",
+      OPL_TENCENT_REGION: "<replace-with-tencent-region>",
+      TENCENT_DEPLOY_CLUSTER_ID: "<replace-with-tke-cluster-id>",
+      TENCENT_CVM_SUBNET_ID: "<replace-with-tencent-cvm-subnet-id>",
+      TENCENT_CVM_SECURITY_GROUP_IDS: "<replace-with-tencent-cvm-security-group-ids>",
+      OPL_WORKSPACE_NODE_IMAGE_GC_HIGH_THRESHOLD_PERCENT: "85",
+      OPL_WORKSPACE_NODE_IMAGE_GC_LOW_THRESHOLD_PERCENT: "70"
+    };
+    for (const [name, value] of Object.entries(inputs)) {
+      assert.equal(fabricEnvironment[name], value, `${name} must reach Fabric unchanged`);
+    }
+    assert.equal(fabricEnvironment.TENCENTCLOUD_REGION, inputs.OPL_TENCENT_REGION);
+    for (const [serviceName, service] of Object.entries(services)) {
+      if (serviceName === "fabric") continue;
+      assert.ok(!("TENCENTCLOUD_SECRET_ID" in service.environment), `${serviceName} must not receive provider credentials`);
+      assert.ok(!("TENCENTCLOUD_SECRET_KEY" in service.environment), `${serviceName} must not receive provider credentials`);
+    }
+    assert.equal(controlPlaneEnvironment.OPL_WORKSPACE_LAUNCH_WORKER_ENABLED, "1");
+    assert.equal(controlPlaneEnvironment.OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED, "1");
+    assert.equal(controlPlaneEnvironment.OPL_MONTHLY_BILLING_WORKER_ENABLED, "1");
+
+    const environment = await readFile(join(root, "opl-cloud.env"), "utf8");
+    for (const name of Object.keys(inputs)) {
+      for (const replacement of ["", `${name}=\n`]) {
+        const missingPath = join(root, "opl-cloud.missing.env");
+        await writeFile(missingPath, environment.replace(new RegExp(`^${name}=.*\\n`, "m"), replacement), { mode: 0o600 });
+        const missing = composeConfig(root, "opl-cloud.missing.env", "--quiet");
+        assert.equal(missing.error, undefined);
+        assert.notEqual(missing.status, 0, `${name} must fail Compose resolution when missing or empty`);
+        assert.match(missing.stderr, new RegExp(name));
+      }
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
