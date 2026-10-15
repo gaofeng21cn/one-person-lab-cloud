@@ -208,7 +208,9 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     }
     const backends = deployments.filter(deployment => namespace(deployment) === namespace(service) &&
       labelsMatch(selector, deployment.spec.template.metadata?.labels ?? {}));
-    if (backends.length !== 1 || backends[0] !== target.deployment ||
+    const directPods = resources.filter(resource => resource.kind === "Pod" && namespace(resource) === namespace(service) &&
+      labelsMatch(selector, resource.metadata.labels ?? {}));
+    if (directPods.length > 0 || backends.length !== 1 || backends[0] !== target.deployment ||
         target.deployment.spec.template.spec.containers.some((container: Resource) => container !== target.container &&
           (container.ports ?? []).some((port: Resource) => (port.protocol ?? "TCP") === "TCP" &&
             (port.name === service.spec.ports?.find((entry: Resource) => entry.port === parsed.port)?.targetPort)))) {
