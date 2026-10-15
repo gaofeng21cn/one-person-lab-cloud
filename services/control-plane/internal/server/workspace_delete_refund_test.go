@@ -58,17 +58,36 @@ func TestWorkspaceDeleteRefundDispatchesOnceWithFullAuthoritativeReadback(t *tes
 		t.Fatalf("platform refunds=%#v", sub2API.refunds)
 	}
 	refund := sub2API.refunds[0]
-	fulfilled := time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC)
-	expected, err := contracts.PlatformWorkspaceDeleteRefundMicros(52_580_000, fulfilled, time.Now().UTC())
+	record, found, err := fixture.server.(*controlPlaneHTTPHandler).app.workspaceDeleteRefundRecord(context.Background(), "ws-alpha")
+	if err != nil || !found {
+		t.Fatalf("refund record=%#v found=%v err=%v", record, found, err)
+	}
+	fulfilled := fixture.billingPeriodStart
+	if fulfilled.IsZero() {
+		t.Fatal("refund fixture did not record its active billing period")
+	}
+	deletion := mustWorkspaceDeleteOperation(t, fixture)
+	deletionReceipt, receiptFound := ledger.recorded[deletion.DeletionReceiptID]
+	if !receiptFound {
+		t.Fatalf("deletion receipt=%q was not recorded: %#v", deletion.DeletionReceiptID, ledger.recorded)
+	}
+	deleted, err := time.Parse(time.RFC3339Nano, deletionReceipt.CreatedAt)
+	if err != nil {
+		t.Fatalf("deletion receipt timestamp=%q: %v", deletionReceipt.CreatedAt, err)
+	}
+	if record.DeletedAt != deletionReceipt.CreatedAt {
+		t.Fatalf("refund deletion timestamp=%q does not match receipt=%q", record.DeletedAt, deletionReceipt.CreatedAt)
+	}
+	expected, err := contracts.PlatformWorkspaceDeleteRefundMicros(52_580_000, fulfilled, deleted)
 	if err != nil || refund.RefundUSDMicros != expected || refund.UserID != 41 {
-		t.Fatalf("refund=%#v expected=%d err=%v", refund, expected, err)
+		t.Fatalf("refund=%#v expected=%d err=%v fulfilled=%s deleted=%s", refund, expected, err, fulfilled, deleted)
 	}
 	if refund.Code != walletAdjustmentRedeemCode(workspaceDeleteRefundWalletOperationID(workspaceDeleteOperationID("ws-alpha"))) {
 		t.Fatalf("refund code=%q is not the deterministic operation code", refund.Code)
 	}
 
-	record, found, err := fixture.server.(*controlPlaneHTTPHandler).app.workspaceDeleteRefundRecord(context.Background(), "ws-alpha")
-	if err != nil || !found || record.Status != workspaceDeleteRefundStatusSucceeded || record.ReasonCode != "" ||
+	if record.Status != workspaceDeleteRefundStatusSucceeded || record.ReasonCode != "" ||
+		record.ResourceFulfilledAt != fulfilled.Format(time.RFC3339Nano) ||
 		record.PolicyVersion != contracts.WorkspaceRefundPolicyVersion || record.OriginalChargeUSDMicros != 52_580_000 ||
 		record.RefundUSDMicros != expected || record.OriginalChargeCode != "opl:workspace-purchase-alpha" ||
 		record.LaunchOperationID != "workspace-launch-alpha" || record.WalletAdjustmentOperationID == "" || record.RefundReceiptID == "" ||
