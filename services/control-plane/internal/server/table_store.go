@@ -187,6 +187,37 @@ func announcementAudit(mutation announcementMutation, before, after map[string]a
 	return audit
 }
 
+// Only the current verified Cloud actor and the reciprocal original-owner User
+// are aliases. No account, Tenant, email or caller-selected User participates.
+func announcementReadReferences(cloudUserID, legacyUserID string) (canonical, alias string) {
+	if !strings.HasPrefix(cloudUserID, "cloud-user:") || cloudUserID == "cloud-user:" {
+		return "", ""
+	}
+	if legacyUserID == "" {
+		return cloudUserID, ""
+	}
+	if strings.HasPrefix(legacyUserID, "cloud-user:") {
+		return "", ""
+	}
+	return legacyUserID, cloudUserID
+}
+
+func mergedAnnouncementRead(announcementID, userID, readAt string, rows []map[string]any) (map[string]any, error) {
+	earliest := readAt
+	var earliestTime time.Time
+	for _, row := range rows {
+		stamp := stringValue(row["readAt"])
+		parsed, ok := optionalAnnouncementTime(stamp)
+		if !ok || parsed.IsZero() {
+			return nil, errors.New("invalid_announcement_read_timestamp")
+		}
+		if earliestTime.IsZero() || parsed.Before(earliestTime) {
+			earliest, earliestTime = stamp, parsed
+		}
+	}
+	return map[string]any{"id": announcementReadID(announcementID, userID), "announcementId": announcementID, "userId": userID, "readAt": earliest, "createdAt": earliest, "updatedAt": readAt}, nil
+}
+
 func announcementReadID(announcementID, userID string) string {
 	return "announcement-read-" + stableID(announcementID, userID)[:18]
 }

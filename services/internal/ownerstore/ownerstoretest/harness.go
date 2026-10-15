@@ -16,6 +16,7 @@ import (
 	"hash/fnv"
 	"net/url"
 	"strings"
+	"sync"
 
 	_ "github.com/lib/pq"
 
@@ -77,6 +78,10 @@ type Harness struct {
 	// RuntimeDSN connects as the runtime login that holds only the writer grant.
 	RuntimeDSN string
 	admin      *sql.Conn
+	// Returning the dedicated connection does not close its owning pool.
+	adminPool *sql.DB
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // neighborSchema is a second schema in the same database, owned by a role this
@@ -111,7 +116,7 @@ func Setup(ctx context.Context, config Config) (*Harness, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("lock isolated %s database: %w", config.Owner, err)
 	}
-	harness := &Harness{Config: config, admin: connection}
+	harness := &Harness{Config: config, admin: connection, adminPool: db}
 	if err := harness.provision(ctx); err != nil {
 		_ = harness.Close(context.Background())
 		return nil, err
@@ -220,20 +225,34 @@ func (h *Harness) dropDatabase(ctx context.Context) error {
 // Close drops the isolated database and releases the lock. The roles stay because
 // they are shared with any concurrent run of the same owner suite.
 func (h *Harness) Close(ctx context.Context) error {
-	if h == nil || h.admin == nil {
+	if h == nil {
 		return nil
 	}
-	dropErr := h.dropDatabase(ctx)
-	if _, err := h.admin.ExecContext(ctx, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1`, otherDatabase(h.Config.Database)); err == nil {
-		_, _ = h.admin.ExecContext(ctx, `DROP DATABASE IF EXISTS `+quote(otherDatabase(h.Config.Database)))
-	}
-	if _, err := h.admin.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, advisoryKey(h.Config.Database)); err != nil && dropErr == nil {
-		dropErr = err
-	}
-	if err := h.admin.Close(); err != nil && dropErr == nil {
-		dropErr = err
-	}
-	return dropErr
+	h.closeOnce.Do(func() {
+		// A failed database drop or unlock must still release the dedicated
+		// connection and its pool, which also releases session advisory locks.
+		defer func() {
+			if h.adminPool != nil {
+				if err := h.adminPool.Close(); err != nil && h.closeErr == nil {
+					h.closeErr = err
+				}
+			}
+		}()
+		if h.admin == nil {
+			return
+		}
+		h.closeErr = h.dropDatabase(ctx)
+		if _, err := h.admin.ExecContext(ctx, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1`, otherDatabase(h.Config.Database)); err == nil {
+			_, _ = h.admin.ExecContext(ctx, `DROP DATABASE IF EXISTS `+quote(otherDatabase(h.Config.Database)))
+		}
+		if _, err := h.admin.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, advisoryKey(h.Config.Database)); err != nil && h.closeErr == nil {
+			h.closeErr = err
+		}
+		if err := h.admin.Close(); err != nil && h.closeErr == nil {
+			h.closeErr = err
+		}
+	})
+	return h.closeErr
 }
 
 // Install runs the owner's real migration entrypoint through the schema owner role,

@@ -46,7 +46,20 @@ func (h *controlPlaneHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	h.next.ServeHTTP(w, r)
 }
 
+// Close releases the optional CloudIdentity transport after HTTP shutdown.
+func (h *controlPlaneHTTPHandler) Close() error { return h.app.cloudAnnouncements.Close() }
+
 func NewPersistentServer(service *controlplane.Service, store StateStore) (http.Handler, error) {
+	source, err := cloudAnnouncementSourceFromEnv(os.Getenv)
+	if err != nil {
+		return nil, err
+	}
+	initialized := false
+	defer func() {
+		if !initialized {
+			_ = source.Close()
+		}
+	}()
 	app, err := newControlPlaneAppWithStore(store)
 	if err != nil {
 		return nil, err
@@ -56,6 +69,7 @@ func NewPersistentServer(service *controlplane.Service, store StateStore) (http.
 		return nil, err
 	}
 	app.deployment = profile
+	app.cloudAnnouncements = source
 	if err := app.ensureDeploymentIdentity(context.Background(), service); err != nil {
 		return nil, err
 	}
@@ -89,6 +103,7 @@ func NewPersistentServer(service *controlplane.Service, store StateStore) (http.
 	registerAnnouncementRoutes(mux, app)
 	registerAdminRoutes(mux, app, service)
 	registerProviderAcceptanceRoutes(mux, app, service)
+	initialized = true
 	return &controlPlaneHTTPHandler{app: app, next: mux, service: service}, nil
 }
 

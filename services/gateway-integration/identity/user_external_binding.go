@@ -210,10 +210,13 @@ func (s *Service) bindingReadback(b UserExternalBinding) (*api.UserExternalBindi
 		CreatedAt: timestamppb.New(b.CreatedAt), UpdatedAt: timestamppb.New(b.UpdatedAt)}, nil
 }
 
-// GetSelfUserExternalBinding resolves only the User behind the live BFF session.
+// GetSelfUserExternalBinding resolves only the User behind a live Cloud session.
+// The retained owner uses this same persisted proof for original-record reads;
+// permission to resolve a User grants no identity mutation or target-User read.
 func (s *Service) GetSelfUserExternalBinding(ctx context.Context, r *api.GetSelfUserExternalBindingRequest) (*api.UserExternalBindingReadback, error) {
-	if err := peer(ctx, owneridentity.ConsoleBFF); err != nil {
-		return nil, err
+	caller, ok := ownerservice.PeerOwner(ctx)
+	if !ok || (caller != owneridentity.ConsoleBFF && caller != owneridentity.ControlPlane) {
+		return nil, status.Error(codes.PermissionDenied, "only Console BFF or the retained owner may resolve the live User")
 	}
 	session, _, _, err := s.session(ctx, r.GetContext().GetSessionId())
 	if err != nil {

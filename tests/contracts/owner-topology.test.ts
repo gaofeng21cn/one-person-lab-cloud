@@ -427,9 +427,12 @@ async function transportPrincipalByEnvPrefix(names: Map<string, string>): Promis
 // processPrincipal names the transport identity one process presents on every
 // outbound owner call: the owner identity it loads its own configuration with,
 // or the Console BFF identity, which is a transport principal and not an owner.
-// A process that opens no owner connection (the legacy Control Plane) has none.
+// The retained Control Plane is also a transport principal, not a target owner.
 async function processPrincipal(names: Map<string, string>, consoleBFF: string): Promise<Map<string, string>> {
   const principals = new Map<string, string>();
+  const transport = await readFile("packages/contracts/go/owneridentity/transport.go", "utf8");
+  const controlPlane = transport.match(/^const ControlPlane Service = "([a-z_]+)"$/m);
+  assert.ok(controlPlane, "the retained reader needs its actual transport identity");
   for (const [service, directory] of ownerProcessDirectories) {
     for (const file of await goFiles(directory)) {
       const source = await readFile(file, "utf8");
@@ -437,6 +440,7 @@ async function processPrincipal(names: Map<string, string>, consoleBFF: string):
         principals.set(service, names.get(match[1]) as string);
       }
       if (/DialOptions\(\s*owneridentity\.ConsoleBFF\s*,/.test(source)) principals.set(service, consoleBFF);
+      if (/DialOptions\(\s*owneridentity\.ControlPlane\s*,/.test(source)) principals.set(service, controlPlane[1]);
     }
   }
   assert.ok(principals.get("gateway-integration") === "tenant",
@@ -467,6 +471,12 @@ function dialTargetsFromSource(source: string, byPrefix: Map<string, string>): S
     for (const match of source.matchAll(/"OPL_([A-Z_0-9]+)_(?:ADDR|URL)"/g)) {
       const owner = byPrefix.get(match[1]) ?? byPrefix.get(match[1].replace(/_COORDINATION$/, ""));
       if (owner) targets.add(owner);
+    }
+    // Typed targets remain authoritative when a shared address environment name
+    // (for example CloudIdentity) does not spell the target owner's name.
+    for (const match of source.matchAll(/DialOptions\([^,]+,\s*owneridentity\.(\w+)\.Service\(\)/g)) {
+      const target = byPrefix.get(`Owner${match[1]}`);
+      if (target) targets.add(target);
     }
     // A process that composes the owner environment name from the owner it is
     // looping over names no address literal to find, so the owner set it loops

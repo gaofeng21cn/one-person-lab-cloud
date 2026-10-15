@@ -396,3 +396,30 @@ func TestUserExternalBindingLoginCollisionDoesNotAllocateAlternateDestination(t 
 		t.Fatal("collision changed first User binding")
 	}
 }
+
+// The retained reader resolves the actual persisted external mapping through the
+// same live session authority. It receives no target-User or mutation privilege.
+func TestRetainedOwnerResolvesOnlyLiveSessionBinding(t *testing.T) {
+	s, tenant, address := bindingSystem(t)
+	call := bindingUserLogin(t, tenant, "testcloud4@medopl.com")
+	retained := bindingClient(t, address, owneridentity.ControlPlane)
+	binding, err := retained.GetSelfUserExternalBinding(t.Context(), &api.GetSelfUserExternalBindingRequest{Context: &api.CallContext{SessionId: call.SessionId}})
+	if err != nil || binding.GetActorId() != call.ActorId || binding.GetSub2ApiUserId() != "201" {
+		t.Fatalf("self binding=%v err=%v", binding, err)
+	}
+	_, err = retained.GetSelfUserExternalBinding(t.Context(), &api.GetSelfUserExternalBindingRequest{Context: &api.CallContext{SessionId: call.SessionId, ActorId: "202"}})
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("forged actor err=%v", err)
+	}
+	if _, err = s.DB.ExecContext(t.Context(), `UPDATE tenant.sessions SET revoked_at=now() WHERE id=$1`, call.GetSessionId()); err != nil {
+		t.Fatal(err)
+	}
+	_, err = retained.GetSelfUserExternalBinding(t.Context(), &api.GetSelfUserExternalBindingRequest{Context: &api.CallContext{SessionId: call.SessionId}})
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("revoked session err=%v", err)
+	}
+	_, err = retained.BindUserExternalIdentity(t.Context(), &api.UserExternalBindingCommand{Context: call, ActorId: call.ActorId})
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("retained owner identity mutation err=%v", err)
+	}
+}
