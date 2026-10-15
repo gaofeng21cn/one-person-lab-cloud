@@ -303,7 +303,7 @@
     "RepositoryBinding"
    ],
    "notes": [
-    "CloudIdentity and Gateway Integration are the same process and the same data owner."
+    "CloudIdentity/Tenant and Gateway Integration share one process, but remain distinct database and writer owners. DATABASE_URL opens Tenant; OPL_GATEWAY_DATABASE_URL opens Gateway. Without the latter, the Gateway product and coordination surfaces are not registered."
    ]
   },
   {
