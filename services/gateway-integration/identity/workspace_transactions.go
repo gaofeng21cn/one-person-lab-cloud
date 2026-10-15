@@ -125,10 +125,12 @@ func (s *Service) GetWorkspaceTransactionTrend(ctx context.Context, r *api.GetWo
 	}
 	rows, err := s.GatewayStore.db.QueryContext(ctx, `
 		WITH refund_totals AS (
-			SELECT original_wallet_operation_id, sum(amount_usd_micros)::bigint AS total_refund_usd_micros
-			FROM gateway.wallet_operations
-			WHERE kind='refund' AND status IN ('requested','unknown','confirmed') AND original_wallet_operation_id IS NOT NULL
-			GROUP BY original_wallet_operation_id
+			SELECT r.original_wallet_operation_id, sum(r.amount_usd_micros)::bigint AS total_refund_usd_micros
+			FROM gateway.wallet_operations r
+			JOIN gateway.wallet_operations original ON original.id=r.original_wallet_operation_id
+			WHERE r.kind='refund' AND r.status IN ('requested','unknown','confirmed')
+				AND r.tenant_id=original.tenant_id AND r.workspace_id=original.workspace_id
+			GROUP BY r.original_wallet_operation_id
 		), normalized AS (
 			SELECT w.*,
 				CASE
