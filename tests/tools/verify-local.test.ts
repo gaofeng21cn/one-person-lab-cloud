@@ -1261,3 +1261,13 @@ test('locked dependency boundary',()=>{
   assert.equal(unapproved.status, "blocked");
   assert.match(unapproved.reason || "", /approved locked/);
 });
+
+
+test("PR source gate executes installation CLI admission and the native Serve probe suite", async () => {
+  const scripts = JSON.parse(await readFile("package.json", "utf8")).scripts;
+  assert.match(scripts["test:source"], /(?:^|\s)tests\/production\/installation-manifest-cli\.test\.ts(?:\s|$)/);
+  const lane = databaseFreeGoTestSpecs.find(spec => spec.cwd === "services/serve" && spec.packages.includes("./cmd/server"));
+  assert.ok(lane, "Serve probe behavior must execute, not just compile, in actual PR verification");
+  const step = localVerificationSteps.find(step => step.cwd === "services/serve" && step.evidence === "go-coverage");
+  assert.deepEqual(step?.args, ["test", "-count=1", "-json", "./cmd/server"]);
+});

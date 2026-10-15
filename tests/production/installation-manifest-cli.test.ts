@@ -399,3 +399,173 @@ test("installation CLI retains the current Control Plane CloudIdentity caller fr
   assert.equal(invalid.status, 1);
   assert.ok(invalid.report.errors.some(e => e.code === "rpc_address_required" && e.caller === "control_plane"));
 });
+
+
+test("installation CLI proves the complete daemon argv before admitting a Product process", async t => {
+  for (const [name, command, args] of [
+    ["probe in args", ["/usr/local/bin/opl-serve"], ["probe-workspace-access"]],
+    ["probe in command", ["/usr/local/bin/opl-serve", "probe-workspace-access"], undefined],
+    ["probe split across command and args", ["/usr/local/bin/opl-serve", "probe-workspace-access"], ["extra"]],
+    ["unproven daemon args", ["/usr/local/bin/opl-serve"], ["unknown-mode"]],
+    ["args-only probe cannot prove an inherited entrypoint", undefined, ["probe-workspace-access"]],
+  ] as const) await t.test(name, async () => {
+    const list = workedInstallation();
+    const serve = container(list, "serve");
+    serve.command = command; serve.args = args;
+    const result = await invoke(list);
+    assert.equal(result.status, 1, result.stdout);
+    assert.ok(result.report.errors.some(error => error.code === "installation_process_unproven"));
+    assert.deepEqual(result.report.communication.edges, []);
+  });
+  for (const [name, command, args] of [
+    ["explicit empty args", ["/usr/local/bin/opl-serve"], []],
+    ["image default with explicit empty args", undefined, []],
+    ["empty Kubernetes command uses image CMD", [], []],
+  ] as const) await t.test(name, async () => {
+    const list = workedInstallation();
+    const selected = container(list, name.startsWith("image default") || name.includes("image CMD") ? "console-bff" : "serve");
+    selected.command = command; selected.args = args;
+    if (name.startsWith("image default") || name.includes("image CMD")) {
+      selected.env = [];
+    }
+    const result = await invoke(list);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.ok(result.report.communication.edges.some(edge => edge.caller === "serve"));
+  });
+});
+
+test("installation CLI follows Ledger raw activation and Fabric trimmed activation independently of listener defaults", async t => {
+  for (const [owner, activationEnv, raw, enabled] of [
+    ["ledger", "OPL_LEDGER_ADDR", " ", true],
+    ["ledger", "OPL_LEDGER_ADDR", "\t\n", true],
+    ["ledger", "OPL_LEDGER_ADDR", "", false],
+    ["fabric", "OPL_FABRIC_DATABASE_URL", " ", false],
+    ["fabric", "OPL_FABRIC_DATABASE_URL", "\t\n", false],
+    ["fabric", "OPL_FABRIC_DATABASE_URL", "", false],
+    ["fabric", "OPL_FABRIC_DATABASE_URL", "configured", true],
+    ["fabric", "OPL_FABRIC_DATABASE_URL", "\u0085", false],
+    ["fabric", "OPL_FABRIC_DATABASE_URL", "\uFEFF", true],
+  ] as const) await t.test(`${owner} ${JSON.stringify(raw)} enabled=${enabled}`, async () => {
+    const list = workedInstallation();
+    const unit = deployment(list, owner);
+    const process = container(list, owner);
+    list.items = [unit];
+    process.env = [{ name: activationEnv, value: raw }, { name: "OPL_CLOUD_IDENTITY_URL", value: "missing:8187" }];
+    const result = await invoke(list);
+    assert.equal(result.status, enabled ? 1 : 0, result.stdout + result.stderr);
+    if (enabled) assert.ok(result.report.errors.some(error => error.code === "rpc_target_missing" && error.caller === owner));
+    assert.deepEqual(result.report.communication.edges, []);
+  });
+  for (const whitespace of [" ", "\u0085"]) await t.test(`Ledger ${JSON.stringify(whitespace)} selects its runtime default listener`, async () => {
+    const list = workedInstallation();
+    container(list, "ledger").env.find(entry => entry.name === "OPL_LEDGER_ADDR").value = whitespace;
+    list.items.find(item => item.kind === "Service" && item.metadata.name === "ledger-rpc").spec.ports[0].targetPort = 8186;
+    container(list, "ledger").ports[0].containerPort = 8186;
+    const result = await invoke(list);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(result.report.communication.edges.length, 46);
+    assert.ok(result.report.communication.edges.filter(edge => edge.target === "ledger").every(edge => edge.port === 8186));
+  });
+});
+
+test("installation CLI refuses shared Pod wildcard listener collisions for numeric and named targetPorts", async t => {
+  for (const targetPort of ["numeric", "named"] as const) {
+    for (const [left, right] of [[":8186", ":8186"], ["0.0.0.0:8186", ":8186"], ["[::]:8186", "0.0.0.0:8186"], ["", " "]] as const) {
+      await t.test(`${targetPort} ${JSON.stringify([left, right])}`, async () => {
+        const list = workedInstallation();
+        const catalog = deployment(list, "resource-catalog"), ledger = deployment(list, "ledger");
+        const catalogContainer = container(list, "resource-catalog"), ledgerContainer = container(list, "ledger");
+        catalogContainer.env.find(entry => entry.name === "OPL_RESOURCE_CATALOG_ADDR").value = left;
+        ledgerContainer.env.find(entry => entry.name === "OPL_LEDGER_ADDR").value = right;
+        catalogContainer.name = "catalog"; ledgerContainer.name = "ledger";
+        catalogContainer.ports[0] = { name: "catalog-rpc", containerPort: 8186 };
+        ledgerContainer.ports[0] = { name: "ledger-rpc", containerPort: 8186 };
+        catalog.spec.template.spec.containers.push(ledgerContainer);
+        list.items = list.items.filter(item => item !== ledger);
+        for (const service of ["resource-catalog", "ledger"]) {
+          const svc = list.items.find(item => item.kind === "Service" && item.metadata.name === `${service}-rpc`);
+          svc.spec.selector = structuredClone(catalog.spec.template.metadata.labels);
+          svc.spec.ports[0].targetPort = targetPort === "numeric" ? 8186 : service === "ledger" ? "ledger-rpc" : "catalog-rpc";
+        }
+        for (const item of list.items.filter(item => item.kind === "NetworkPolicy")) item.spec = { podSelector: {}, policyTypes: ["Ingress"], ingress: [{}] };
+        const result = await invoke(list);
+        assert.equal(result.status, 1, result.stdout);
+        assert.ok(result.report.errors.some(error => error.code === "installation_listener_conflict"), result.stdout);
+        assert.deepEqual(result.report.communication.edges, []);
+      });
+    }
+  }
+  await t.test("distinct listeners in a shared Pod remain admissible", async () => {
+    const list = workedInstallation();
+    const serve = deployment(list, "serve"), workspace = deployment(list, "workspace");
+    container(list, "serve").name = "serve"; container(list, "workspace").name = "workspace";
+    container(list, "serve").ports[0].name = "serve-rpc";
+    container(list, "workspace").ports[0].name = "workspace-rpc";
+    serve.spec.template.spec.containers.push(container(list, "workspace"));
+    list.items = list.items.filter(item => item !== workspace);
+    for (const [owner, port] of [["serve", 8185], ["workspace", 8184]] as const) {
+      const svc = list.items.find(item => item.kind === "Service" && item.metadata.name === `${owner}-rpc`);
+      svc.spec.selector = structuredClone(serve.spec.template.metadata.labels);
+      svc.spec.ports[0].targetPort = port;
+    }
+    for (const item of list.items.filter(item => item.kind === "NetworkPolicy")) item.spec = { podSelector: {}, policyTypes: ["Ingress"], ingress: [{}] };
+    const result = await invoke(list);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(result.report.communication.edges.length, 46);
+  });
+});
+
+test("installation CLI proves Service uniqueness across declared Pods and every native Pod producer", async t => {
+  for (const kind of ["Pod", "StatefulSet", "DaemonSet", "ReplicaSet", "ReplicationController", "Job", "CronJob"]) {
+    for (const labels of ["matching", "different", "missing", "invalid", "unknown-template"] as const) await t.test(`${kind} ${labels}`, async () => {
+      const list = workedInstallation();
+      const target = deployment(list, "workspace");
+      const template = structuredClone(target.spec.template);
+      if (labels === "different") template.metadata.labels = { unit: "unrelated" };
+      if (labels === "missing") delete template.metadata.labels;
+      if (labels === "invalid") template.metadata.labels = "unproven";
+      const extra: any = { apiVersion: kind === "Pod" || kind === "ReplicationController" ? "v1" : ["Job", "CronJob"].includes(kind) ? "batch/v1" : "apps/v1", kind,
+        metadata: { name: "additional-backend", namespace: "installation" } };
+      if (kind === "Pod") { extra.metadata = { ...extra.metadata, ...template.metadata }; extra.spec = template.spec; }
+      else if (kind === "CronJob") extra.spec = { jobTemplate: { spec: { template } } };
+      else extra.spec = { template };
+      if (labels === "unknown-template") {
+        if (kind === "Pod") extra.metadata.labels = 123;
+        else if (kind === "CronJob") delete extra.spec.jobTemplate;
+        else delete extra.spec.template;
+      }
+      list.items.push(extra);
+      const result = await invoke(list);
+      const rejected = labels === "matching" || labels === "invalid" || labels === "unknown-template";
+      assert.equal(result.status, rejected ? 1 : 0, result.stdout + result.stderr);
+      if (rejected) {
+        assert.ok(result.report.errors.some(error => ["rpc_service_backend_ambiguous", "rpc_service_backend_unproven", "installation_manifest_shape_invalid"].includes(error.code)), result.stdout);
+        assert.deepEqual(result.report.communication.edges, []);
+      } else assert.equal(result.report.communication.edges.length, 46);
+    });
+  }
+  await t.test("Pod ownership metadata does not prove a declared second backend", async () => {
+    const list = workedInstallation();
+    const target = deployment(list, "workspace");
+    list.items.push({ apiVersion: "v1", kind: "Pod", metadata: { name: "owned-pod", namespace: "installation", labels: structuredClone(target.spec.template.metadata.labels),
+      ownerReferences: [{ apiVersion: "apps/v1", kind: "Deployment", name: target.metadata.name, uid: "unverified" }] }, spec: structuredClone(target.spec.template.spec) });
+    const result = await invoke(list);
+    assert.equal(result.status, 1, result.stdout);
+    assert.ok(result.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+  });
+});
+
+
+test("installation CLI refuses unknown Pod-producing APIs with a sanitized proof failure", async t => {
+  for (const apiVersion of ["custom.example.invalid/v1", "apps/v99", "constructor", "__proto__", "toString"]) await t.test(apiVersion, async () => {
+    const list = workedInstallation();
+    list.items.push({ apiVersion, kind: "UnknownPodProducer", metadata: { name: "unproven-producer", namespace: "installation" },
+      spec: { template: structuredClone(deployment(list, "workspace").spec.template) } });
+    const result = await invoke(list);
+    assert.equal(result.status, 1);
+    assert.equal(result.stderr, "installation_manifest_invalid\n");
+    assert.equal(result.report?.ok, false);
+    assert.ok(result.report.errors.some(error => error.code === "rpc_service_backend_unproven"));
+    assert.deepEqual(result.report.communication.edges, []);
+  });
+});

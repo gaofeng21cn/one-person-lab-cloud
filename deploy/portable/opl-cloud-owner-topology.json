@@ -79,7 +79,14 @@
    "notes": [
     "Package/WebUI/build-result catalog owner. OPL_CAPABILITY_STORAGE_KIND selects the object store; the COS_* set is required only for the object-store kind."
    ],
-   "transportPrincipal": "capability"
+   "transportPrincipal": "capability",
+   "daemonArgs": [],
+   "additionalListeners": [
+    {
+     "addressEnv": "OPL_CAPABILITY_OBJECT_LISTEN_ADDR",
+     "valueSemantics": "raw"
+    }
+   ]
   },
   {
    "service": "build",
@@ -111,7 +118,8 @@
    "notes": [
     "Runs the admitted BuildKit build; OPL_BUILD_BUILDER and OPL_BUILD_WORKDIR are installation facts for the build host."
    ],
-   "transportPrincipal": "build"
+   "transportPrincipal": "build",
+   "daemonArgs": []
   },
   {
    "service": "runtime-control",
@@ -136,7 +144,8 @@
    "notes": [
     "Owns Runtime Release admission and immutable release readback. It never owns a running instance."
    ],
-   "transportPrincipal": "runtime_control"
+   "transportPrincipal": "runtime_control",
+   "daemonArgs": []
   },
   {
    "service": "workspace",
@@ -166,7 +175,8 @@
    "notes": [
     "Owns the accepted order and resource intent; it persists no second current-deployment pointer."
    ],
-   "transportPrincipal": "workspace"
+   "transportPrincipal": "workspace",
+   "daemonArgs": []
   },
   {
    "service": "serve",
@@ -223,7 +233,8 @@
     "Serve owns application execution. A TKE installation declares its namespace, kubeconfig Secret reference, image-pull Secret, credential seed, the ingress peers allowed to reach a Workspace application, and the same protected-compute facts Fabric's provider is bounded by; Serve then applies, observes, scales and retires the workload itself.",
     "OPL_FABRIC_APPLICATION_URL with its service token and capability key remains only for the provider whose in-process executor has not moved yet. An installation that declares both OPL_K8S_NAMESPACE and OPL_FABRIC_APPLICATION_URL is refused at startup, because that would be two writers for one workload."
    ],
-   "transportPrincipal": "serve"
+   "transportPrincipal": "serve",
+   "daemonArgs": []
   },
   {
    "service": "resource-catalog",
@@ -246,7 +257,8 @@
     "CatalogCoordination"
    ],
    "notes": [],
-   "transportPrincipal": "resource_catalog"
+   "transportPrincipal": "resource_catalog",
+   "daemonArgs": []
   },
   {
    "service": "ledger",
@@ -277,7 +289,16 @@
     "OPL_POSTGRES_TESTS only selects the isolated database harness; production never sets it."
    ],
    "transportPrincipal": "ledger",
-   "rpcEnabledByEnv": "OPL_LEDGER_ADDR"
+   "rpcEnabledByEnv": "OPL_LEDGER_ADDR",
+   "daemonArgs": [],
+   "rpcEnabledByEnvSemantics": "raw-nonempty",
+   "additionalListeners": [
+    {
+     "addressEnv": "LEDGER_ADDR",
+     "defaultAddress": ":8081",
+     "valueSemantics": "raw"
+    }
+   ]
   },
   {
    "service": "gateway-integration",
@@ -316,7 +337,8 @@
    "notes": [
     "CloudIdentity/Tenant and Gateway Integration share one process, but remain distinct database and writer owners. DATABASE_URL opens Tenant; OPL_GATEWAY_DATABASE_URL opens Gateway. Without the latter, the Gateway product and coordination surfaces are not registered."
    ],
-   "transportPrincipal": "tenant"
+   "transportPrincipal": "tenant",
+   "daemonArgs": []
   },
   {
    "service": "fabric",
@@ -381,7 +403,9 @@
    "defaultRPCAddress": ":8187",
    "rpcDatabaseEnv": "OPL_FABRIC_DATABASE_URL",
    "transportPrincipal": "fabric",
-   "rpcEnabledByEnv": "OPL_FABRIC_DATABASE_URL"
+   "rpcEnabledByEnv": "OPL_FABRIC_DATABASE_URL",
+   "daemonArgs": [],
+   "rpcEnabledByEnvSemantics": "trimmed-nonempty"
   },
   {
    "service": "control-plane",
@@ -436,7 +460,9 @@
     "Migration source, not a permanent second writer; it also serves the Console static bundle.",
     "Cloud announcement reads use the authenticated BFF-only typed HTTP boundary; Control Plane revalidates its Cloud session with Gateway under the control_plane transport principal and retains publication/ACK persistence."
    ],
-   "transportPrincipal": "control_plane"
+   "transportPrincipal": "control_plane",
+   "daemonArgs": [],
+   "addressPortEnv": "PORT"
   },
   {
    "service": "console-bff",
@@ -471,7 +497,8 @@
    "notes": [
     "The BFF owns no business data and holds no database. It reaches each owner through OPL_<OWNER>_URL/OPL_<OWNER>_TOKEN, while an owner process listens on OPL_<OWNER>_ADDR and admits callers through OPL_<OWNER>_PEER_TOKENS: an installation must set both spellings for the same target."
    ],
-   "transportPrincipal": "console_bff"
+   "transportPrincipal": "console_bff",
+   "daemonArgs": []
   }
  ],
  "consoleBundle": {
@@ -581,8 +608,8 @@
   "schemaVersion": 1,
   "scope": "Current owner gRPC transports only; retained signed HTTP and object-store transports are separate contracts.",
   "principals": "caller and target are transport principals. gateway resolves to tenant in the gateway-integration deployment unit; console_bff is a transport principal, not a business owner.",
-  "activation": "required edges apply when the caller RPC surface is installed. configured edges apply only when their address or token has a non-empty explicit env entry. rpcEnabledByEnv disables an optional RPC surface when absent or explicitly empty. An unrelated env/optionalEnv entry is never made mandatory by this contract.",
-  "deploymentIdentity": "A container command[0] must equal the process binary exactly. Deployment names and labels are installation facts, never service-name heuristics.",
+  "activation": "required edges apply when the caller RPC surface is installed. configured edges apply only when their address or token has a non-empty explicit env entry. rpcEnabledByEnvSemantics declares the native optional RPC activation: Ledger uses raw-nonempty; Fabric uses trimmed-nonempty with Go strings.TrimSpace Unicode whitespace. Listener defaulting is separate from activation. An unrelated env/optionalEnv entry is never made mandatory by this contract.",
+  "deploymentIdentity": "An explicit Kubernetes command plus args must exactly match the process binary followed by daemonArgs. Absent/empty command and args use defaultCommand only for a proven Product image. An args-only override cannot prove the inherited image entrypoint. Probe and unsupported argv cannot prove a daemon. Deployment names and labels are installation facts, never service-name heuristics.",
   "edges": [
    {
     "caller": "capability",
