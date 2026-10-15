@@ -16587,7 +16587,8 @@
         "listWorkspaceTransactions",
         "getWallet",
         "getSubscription",
-        "updateRenewalSettings"
+        "updateRenewalSettings",
+        "getWorkspaceTransactionTrend"
       ],
       "roles": [
         "owner",
@@ -16736,7 +16737,17 @@
         "Workspace.status",
         "Workspace.storagePlanId",
         "Workspace.updatedAt",
-        "Workspace.version"
+        "Workspace.version",
+        "WorkspaceTransactionTrend.periodEnd",
+        "WorkspaceTransactionTrend.periodStart",
+        "WorkspaceTransactionTrend.requestedChargeUSDMicros",
+        "WorkspaceTransactionTrend.requestedRefundUSDMicros",
+        "WorkspaceTransactionTrend.unknownChargeUSDMicros",
+        "WorkspaceTransactionTrend.unknownRefundUSDMicros",
+        "WorkspaceTransactionTrend.workspaceId",
+        "WorkspaceTransactionTrendDay.confirmedChargeUSDMicros",
+        "WorkspaceTransactionTrendDay.confirmedRefundUSDMicros",
+        "WorkspaceTransactionTrendDay.date"
       ],
       "displayRequirements": "当前计费周期/到期时间、续费Operation、钱包读取状态、资源/应用条件、保留政策及支付确认结果。没有合法快照不显示硬编码保留天数。",
       "interaction": "续费同一周期唯一义务，人工点击与worker命中同一键。新周期1个月；旧legacy历史期数原样展示。余额不足不推进周期；provider续期未确认不显示新到期已生效。",
@@ -17541,6 +17552,36 @@
         ],
         "Workspace.version": [
           "getWorkspace"
+        ],
+        "WorkspaceTransactionTrend.workspaceId": [
+          "getWorkspaceTransactionTrend"
+        ],
+        "WorkspaceTransactionTrend.periodStart": [
+          "getWorkspaceTransactionTrend"
+        ],
+        "WorkspaceTransactionTrend.periodEnd": [
+          "getWorkspaceTransactionTrend"
+        ],
+        "WorkspaceTransactionTrend.unknownChargeUSDMicros": [
+          "getWorkspaceTransactionTrend"
+        ],
+        "WorkspaceTransactionTrend.unknownRefundUSDMicros": [
+          "getWorkspaceTransactionTrend"
+        ],
+        "WorkspaceTransactionTrend.requestedChargeUSDMicros": [
+          "getWorkspaceTransactionTrend"
+        ],
+        "WorkspaceTransactionTrend.requestedRefundUSDMicros": [
+          "getWorkspaceTransactionTrend"
+        ],
+        "WorkspaceTransactionTrendDay.date": [
+          "getWorkspaceTransactionTrend"
+        ],
+        "WorkspaceTransactionTrendDay.confirmedChargeUSDMicros": [
+          "getWorkspaceTransactionTrend"
+        ],
+        "WorkspaceTransactionTrendDay.confirmedRefundUSDMicros": [
+          "getWorkspaceTransactionTrend"
         ]
       },
       "inputFields": [
@@ -17709,11 +17750,28 @@
             "F12"
           ],
           "owner": "workspace"
+        },
+        {
+          "path": "/api/v2/workspaces/{workspaceId}/transactions/trend",
+          "method": "GET",
+          "operationId": "getWorkspaceTransactionTrend",
+          "features": [
+            "F12"
+          ],
+          "owner": "gateway",
+          "request": null,
+          "response": "WorkspaceTransactionTrend",
+          "status": 200,
+          "permissions": [
+            "admin",
+            "owner"
+          ]
         }
       ],
       "protocolFields": [
         "WalletOperationPage.items",
-        "WalletOperationPage.nextCursor"
+        "WalletOperationPage.nextCursor",
+        "WorkspaceTransactionTrend.days"
       ],
       "ux": {
         "layout": "费用/订阅与工作区账单tab均展示完整周期、续费模式、授权状态、原义务和续费结果；交易在单独tab。",

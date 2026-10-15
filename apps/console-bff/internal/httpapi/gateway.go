@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"net/http"
+	"net/url"
+	"strconv"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -15,6 +17,29 @@ import (
 // launch journey consumes. The BFF holds no wallet or model state of its own; the
 // Gateway owner performs authorization and returns its own live readback.
 func (s *Server) registerGatewayRoutes(mux *http.ServeMux, gateway api.GatewayProductServiceClient) {
+	s.publisherRoute(mux, "GET /api/v2/workspaces/{workspaceId}/transactions/trend", owneridentity.Gateway, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACETRANSACTIONTREND, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, "workspaceId", nil, func(r *http.Request, c *api.CallContext, _ proto.Message) (proto.Message, error) {
+		return gateway.GetWorkspaceTransactionTrend(r.Context(), &api.GetWorkspaceTransactionTrendRpcRequest{Context: c, WorkspaceId: r.PathValue("workspaceId")})
+	})
+	s.publisherRoute(mux, "GET /api/v2/workspaces/{workspaceId}/transactions", owneridentity.Gateway, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTWORKSPACETRANSACTIONS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, "workspaceId", nil, func(r *http.Request, c *api.CallContext, _ proto.Message) (proto.Message, error) {
+		query, err := url.ParseQuery(r.URL.RawQuery)
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, "invalid query parameters")
+		}
+		if len(query["cursor"]) > 1 || len(query["limit"]) > 1 {
+			return nil, status.Error(codes.InvalidArgument, "pagination parameters must not repeat")
+		}
+		var limit *int32
+		if values, present := query["limit"]; present {
+			value, err := strconv.ParseInt(values[0], 10, 32)
+			if err != nil || value < 1 || value > 100 {
+				return nil, status.Error(codes.InvalidArgument, "limit must be between 1 and 100")
+			}
+			limit = proto.Int32(int32(value))
+		}
+		return gateway.ListWorkspaceTransactions(r.Context(), &api.ListWorkspaceTransactionsRpcRequest{
+			Context: c, WorkspaceId: r.PathValue("workspaceId"), QueryCursor: optionalQuery(r, "cursor"), QueryLimit: limit,
+		})
+	})
 	mux.HandleFunc("GET /api/v2/auth/external-bindings", func(w http.ResponseWriter, r *http.Request) {
 		publisherRequestID(r)
 		w.Header().Set("Cache-Control", "no-store")

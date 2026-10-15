@@ -4120,16 +4120,17 @@ var ServeProductService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	GatewayProductService_ListWorkspaceTransactions_FullMethodName = "/opl.cloud.api.GatewayProductService/ListWorkspaceTransactions"
-	GatewayProductService_GetWallet_FullMethodName                 = "/opl.cloud.api.GatewayProductService/GetWallet"
-	GatewayProductService_ListUsage_FullMethodName                 = "/opl.cloud.api.GatewayProductService/ListUsage"
-	GatewayProductService_GetUsageSummary_FullMethodName           = "/opl.cloud.api.GatewayProductService/GetUsageSummary"
-	GatewayProductService_ListGatewayKeys_FullMethodName           = "/opl.cloud.api.GatewayProductService/ListGatewayKeys"
-	GatewayProductService_CreateGatewayKey_FullMethodName          = "/opl.cloud.api.GatewayProductService/CreateGatewayKey"
-	GatewayProductService_RevealGatewayKey_FullMethodName          = "/opl.cloud.api.GatewayProductService/RevealGatewayKey"
-	GatewayProductService_RevokeGatewayKey_FullMethodName          = "/opl.cloud.api.GatewayProductService/RevokeGatewayKey"
-	GatewayProductService_ListRechargeRecords_FullMethodName       = "/opl.cloud.api.GatewayProductService/ListRechargeRecords"
-	GatewayProductService_ListModels_FullMethodName                = "/opl.cloud.api.GatewayProductService/ListModels"
+	GatewayProductService_ListWorkspaceTransactions_FullMethodName    = "/opl.cloud.api.GatewayProductService/ListWorkspaceTransactions"
+	GatewayProductService_GetWorkspaceTransactionTrend_FullMethodName = "/opl.cloud.api.GatewayProductService/GetWorkspaceTransactionTrend"
+	GatewayProductService_GetWallet_FullMethodName                    = "/opl.cloud.api.GatewayProductService/GetWallet"
+	GatewayProductService_ListUsage_FullMethodName                    = "/opl.cloud.api.GatewayProductService/ListUsage"
+	GatewayProductService_GetUsageSummary_FullMethodName              = "/opl.cloud.api.GatewayProductService/GetUsageSummary"
+	GatewayProductService_ListGatewayKeys_FullMethodName              = "/opl.cloud.api.GatewayProductService/ListGatewayKeys"
+	GatewayProductService_CreateGatewayKey_FullMethodName             = "/opl.cloud.api.GatewayProductService/CreateGatewayKey"
+	GatewayProductService_RevealGatewayKey_FullMethodName             = "/opl.cloud.api.GatewayProductService/RevealGatewayKey"
+	GatewayProductService_RevokeGatewayKey_FullMethodName             = "/opl.cloud.api.GatewayProductService/RevokeGatewayKey"
+	GatewayProductService_ListRechargeRecords_FullMethodName          = "/opl.cloud.api.GatewayProductService/ListRechargeRecords"
+	GatewayProductService_ListModels_FullMethodName                   = "/opl.cloud.api.GatewayProductService/ListModels"
 )
 
 // GatewayProductServiceClient is the client API for GatewayProductService service.
@@ -4137,6 +4138,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type GatewayProductServiceClient interface {
 	ListWorkspaceTransactions(ctx context.Context, in *ListWorkspaceTransactionsRpcRequest, opts ...grpc.CallOption) (*WalletOperationPage, error)
+	GetWorkspaceTransactionTrend(ctx context.Context, in *GetWorkspaceTransactionTrendRpcRequest, opts ...grpc.CallOption) (*WorkspaceTransactionTrend, error)
 	GetWallet(ctx context.Context, in *GetWalletRpcRequest, opts ...grpc.CallOption) (*Wallet, error)
 	ListUsage(ctx context.Context, in *ListUsageRpcRequest, opts ...grpc.CallOption) (*UsagePage, error)
 	GetUsageSummary(ctx context.Context, in *GetUsageSummaryRpcRequest, opts ...grpc.CallOption) (*UsageSummary, error)
@@ -4160,6 +4162,16 @@ func (c *gatewayProductServiceClient) ListWorkspaceTransactions(ctx context.Cont
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(WalletOperationPage)
 	err := c.cc.Invoke(ctx, GatewayProductService_ListWorkspaceTransactions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gatewayProductServiceClient) GetWorkspaceTransactionTrend(ctx context.Context, in *GetWorkspaceTransactionTrendRpcRequest, opts ...grpc.CallOption) (*WorkspaceTransactionTrend, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WorkspaceTransactionTrend)
+	err := c.cc.Invoke(ctx, GatewayProductService_GetWorkspaceTransactionTrend_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -4261,6 +4273,7 @@ func (c *gatewayProductServiceClient) ListModels(ctx context.Context, in *ListMo
 // for forward compatibility.
 type GatewayProductServiceServer interface {
 	ListWorkspaceTransactions(context.Context, *ListWorkspaceTransactionsRpcRequest) (*WalletOperationPage, error)
+	GetWorkspaceTransactionTrend(context.Context, *GetWorkspaceTransactionTrendRpcRequest) (*WorkspaceTransactionTrend, error)
 	GetWallet(context.Context, *GetWalletRpcRequest) (*Wallet, error)
 	ListUsage(context.Context, *ListUsageRpcRequest) (*UsagePage, error)
 	GetUsageSummary(context.Context, *GetUsageSummaryRpcRequest) (*UsageSummary, error)
@@ -4282,6 +4295,9 @@ type UnimplementedGatewayProductServiceServer struct{}
 
 func (UnimplementedGatewayProductServiceServer) ListWorkspaceTransactions(context.Context, *ListWorkspaceTransactionsRpcRequest) (*WalletOperationPage, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListWorkspaceTransactions not implemented")
+}
+func (UnimplementedGatewayProductServiceServer) GetWorkspaceTransactionTrend(context.Context, *GetWorkspaceTransactionTrendRpcRequest) (*WorkspaceTransactionTrend, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetWorkspaceTransactionTrend not implemented")
 }
 func (UnimplementedGatewayProductServiceServer) GetWallet(context.Context, *GetWalletRpcRequest) (*Wallet, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetWallet not implemented")
@@ -4345,6 +4361,24 @@ func _GatewayProductService_ListWorkspaceTransactions_Handler(srv interface{}, c
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(GatewayProductServiceServer).ListWorkspaceTransactions(ctx, req.(*ListWorkspaceTransactionsRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GatewayProductService_GetWorkspaceTransactionTrend_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetWorkspaceTransactionTrendRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayProductServiceServer).GetWorkspaceTransactionTrend(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayProductService_GetWorkspaceTransactionTrend_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayProductServiceServer).GetWorkspaceTransactionTrend(ctx, req.(*GetWorkspaceTransactionTrendRpcRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -4521,6 +4555,10 @@ var GatewayProductService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListWorkspaceTransactions",
 			Handler:    _GatewayProductService_ListWorkspaceTransactions_Handler,
+		},
+		{
+			MethodName: "GetWorkspaceTransactionTrend",
+			Handler:    _GatewayProductService_GetWorkspaceTransactionTrend_Handler,
 		},
 		{
 			MethodName: "GetWallet",

@@ -62,6 +62,7 @@ var successStatus = map[api.AuthorizationActionEnum]int{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETSUBSCRIPTION:                       200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEDELETION:                  200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTWORKSPACETRANSACTIONS:             200,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACETRANSACTIONTREND:          200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATION:                          200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET:                             200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTUSAGE:                             200,

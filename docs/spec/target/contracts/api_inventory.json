@@ -1109,6 +1109,26 @@
       "operationKind": null
     },
     {
+      "path": "/api/v2/workspaces/{workspaceId}/transactions/trend",
+      "method": "GET",
+      "operationId": "getWorkspaceTransactionTrend",
+      "features": [
+        "F12"
+      ],
+      "owner": "gateway",
+      "request": null,
+      "response": "WorkspaceTransactionTrend",
+      "status": 200,
+      "permissions": [
+        "admin",
+        "owner"
+      ],
+      "tables": [
+        "gateway.wallet_operations"
+      ],
+      "operationKind": null
+    },
+    {
       "path": "/api/v2/operations/{owner}/{operationId}",
       "method": "GET",
       "operationId": "getOperation",

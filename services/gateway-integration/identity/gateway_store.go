@@ -157,6 +157,9 @@ type WalletRecord struct {
 	RefundEntitlementRef string
 	ErrorCode            string
 	Purpose              string
+	PlanChangeID         string
+	CoverageStart        time.Time
+	CoverageEnd          time.Time
 	ConfirmedAt          time.Time
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
@@ -176,7 +179,7 @@ func (s *GatewayStore) ReadWalletOperationByBusinessKey(ctx context.Context, key
 const walletSelect = `SELECT id, tenant_id, COALESCE(workspace_id,''), wallet_binding_id, kind, status, amount_usd_micros,
 	COALESCE(original_wallet_operation_id,''), business_idempotency_key, request_fingerprint,
 	COALESCE(external_reference,''), COALESCE(receipt_id,''), COALESCE(refund_entitlement_ref,''), COALESCE(error_code,''),
-	COALESCE(purpose,''), confirmed_at, created_at, updated_at
+	COALESCE(purpose,''), confirmed_at, created_at, updated_at, COALESCE(plan_change_id,''), coverage_start, coverage_end
 	FROM gateway.wallet_operations`
 
 type rowScanner interface{ Scan(...any) error }
@@ -184,9 +187,10 @@ type rowScanner interface{ Scan(...any) error }
 func (s *GatewayStore) scanWallet(ctx context.Context, row rowScanner) (WalletRecord, error) {
 	var record WalletRecord
 	var confirmed sql.NullTime
+	var coverageStart, coverageEnd sql.NullTime
 	err := row.Scan(&record.ID, &record.TenantID, &record.WorkspaceID, &record.WalletBindingID, &record.Kind, &record.Status, &record.AmountUSDMicros,
 		&record.OriginalOperationID, &record.BusinessKey, &record.RequestFingerprint, &record.ExternalReference, &record.ReceiptID,
-		&record.RefundEntitlementRef, &record.ErrorCode, &record.Purpose, &confirmed, &record.CreatedAt, &record.UpdatedAt)
+		&record.RefundEntitlementRef, &record.ErrorCode, &record.Purpose, &confirmed, &record.CreatedAt, &record.UpdatedAt, &record.PlanChangeID, &coverageStart, &coverageEnd)
 	if errors.Is(err, sql.ErrNoRows) {
 		return WalletRecord{}, ErrGatewayWalletUnknown
 	}
@@ -195,6 +199,12 @@ func (s *GatewayStore) scanWallet(ctx context.Context, row rowScanner) (WalletRe
 	}
 	if confirmed.Valid {
 		record.ConfirmedAt = confirmed.Time
+	}
+	if coverageStart.Valid {
+		record.CoverageStart = coverageStart.Time
+	}
+	if coverageEnd.Valid {
+		record.CoverageEnd = coverageEnd.Time
 	}
 	return record, nil
 }
@@ -293,6 +303,19 @@ func WalletOperationMessage(record WalletRecord) *api.WalletOperation {
 	}
 	if record.OriginalOperationID != "" {
 		out.OriginalChargeOperationId = &record.OriginalOperationID
+	}
+	if record.PlanChangeID != "" {
+		out.PlanChangeId = &record.PlanChangeID
+	}
+	if !record.CoverageStart.IsZero() {
+		out.CoverageStart = stampOf(record.CoverageStart)
+		milliseconds := record.CoverageStart.UnixMilli()
+		out.CoverageStartMilliseconds = &milliseconds
+	}
+	if !record.CoverageEnd.IsZero() {
+		out.CoverageEnd = stampOf(record.CoverageEnd)
+		milliseconds := record.CoverageEnd.UnixMilli()
+		out.CoverageEndMilliseconds = &milliseconds
 	}
 	if record.Purpose != "" {
 		if purpose, ok := api.WalletOperationPurposeEnum_value["WALLET_OPERATION_PURPOSE_ENUM_"+strings.ToUpper(record.Purpose)]; ok {

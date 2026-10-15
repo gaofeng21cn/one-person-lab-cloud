@@ -2836,6 +2836,50 @@ paths:
         schema: *id003
       - *id001
       - *id002
+  /api/v2/workspaces/{workspaceId}/transactions/trend:
+    get:
+      operationId: getWorkspaceTransactionTrend
+      summary: getWorkspaceTransactionTrend
+      tags:
+      - gateway
+      x-feature-id:
+      - F12
+      x-owner: gateway
+      x-permission:
+      - admin
+      - owner
+      x-tables:
+      - gateway.wallet_operations
+      responses:
+        '200':
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceTransactionTrend'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+      parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema: *id003
   /api/v2/operations/{owner}/{operationId}:
     get:
       operationId: getOperation
@@ -9931,6 +9975,57 @@ components:
       required:
       - items
       description: createdAt DESC,id DESC；nextCursor缺省表示最后一页。
+    WorkspaceTransactionTrendDay:
+      type: object
+      additionalProperties: false
+      properties:
+        date:
+          type: string
+          format: date
+        confirmedChargeUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        confirmedRefundUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+      required:
+      - date
+      - confirmedChargeUSDMicros
+      - confirmedRefundUSDMicros
+    WorkspaceTransactionTrend:
+      type: object
+      additionalProperties: false
+      description: 最近14个UTC自然日（包含今日至本次读回时间）。已确认扣退款按原confirmed_at归日；unknown和requested按created_at在同一窗口内分别列示，绝不计入已结算。原记录金额按int64聚合，溢出拒绝返回，不取浮点、不使用分页小计。
+      properties:
+        workspaceId:
+          $ref: '#/components/schemas/OpaqueId'
+        periodStart:
+          type: string
+          format: date-time
+        periodEnd:
+          type: string
+          format: date-time
+        days:
+          type: array
+          minItems: 14
+          maxItems: 14
+          items:
+            $ref: '#/components/schemas/WorkspaceTransactionTrendDay'
+        unknownChargeUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        unknownRefundUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        requestedChargeUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        requestedRefundUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+      required:
+      - workspaceId
+      - periodStart
+      - periodEnd
+      - days
+      - unknownChargeUSDMicros
+      - unknownRefundUSDMicros
+      - requestedChargeUSDMicros
+      - requestedRefundUSDMicros
     WalletOperationPage:
       type: object
       additionalProperties: false
@@ -11021,6 +11116,7 @@ components:
       - listUsage
       - listWebuiVersions
       - listWorkspaceTransactions
+      - getWorkspaceTransactionTrend
       - listWorkspaces
       - login
       - logout

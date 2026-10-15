@@ -667,3 +667,32 @@ test("Workspace model identity never borrows closeout from another command or Wo
   }
   assert.equal(workspaceModelConfigurationIssue(configuration({ operationId: undefined }), modelCloseoutOperation), "", "launch application evidence cannot prove a later command was applied");
 });
+
+// Financial history keeps micros as decimal strings through the reader and
+// presentation, and refuses records belonging to a different Workspace.
+import { decodeWorkspaceTransactions, decodeWorkspaceTransactionTrend } from "../../apps/console-ui/src/api/workspace-transactions-api.ts";
+import { formatWorkspaceTransactionAmount } from "../../apps/console-ui/src/app/workspace-experience-model.ts";
+
+test("workspace transaction amounts and identities preserve owner facts", () => {
+  const record = { id: "refund-1", workspaceId: "ws-1", kind: "refund", status: "unknown", amountUSDMicros: "9007199254740993", createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-02T00:00:00Z", originalChargeOperationId: "charge-1" };
+  assert.deepEqual(decodeWorkspaceTransactions({ items: [record], nextCursor: "next" }, "ws-1"), { items: [record], nextCursor: "next" });
+  assert.equal(formatWorkspaceTransactionAmount(record.amountUSDMicros), "$9,007,199,254.740993");
+  assert.equal(formatWorkspaceTransactionAmount("1"), "$0.000001");
+  assert.equal(formatWorkspaceTransactionAmount("1000000"), "$1.00");
+  assert.equal(formatWorkspaceTransactionAmount("9223372036854775807"), "$9,223,372,036,854.775807");
+  for (const changed of [{ workspaceId: "ws-other" }, { amountUSDMicros: 9007199254740993 }, { amountUSDMicros: "9223372036854775808" }, { amountUSDMicros: "-1" }, { status: "succeeded" }, { createdAt: "unknown" }]) {
+    assert.throws(() => decodeWorkspaceTransactions({ items: [{ ...record, ...changed }] }, "ws-1"));
+  }
+  assert.throws(() => decodeWorkspaceTransactions({ items: [record, record] }, "ws-1"));
+  assert.deepEqual(decodeWorkspaceTransactions({ items: [] }, "deleted-workspace"), { items: [] });
+});
+
+
+test("workspace trend requires one complete UTC window and exact original money", () => {
+  const trend = { workspaceId: "ws-1", periodStart: "2026-10-03T00:00:00Z", periodEnd: "2026-10-16T12:00:00Z", days: Array.from({ length: 14 }, (_, index) => ({ date: new Date(Date.parse("2026-10-03T00:00:00Z") + index * 86400000).toISOString().slice(0, 10), confirmedChargeUSDMicros: "9007199254740993", confirmedRefundUSDMicros: "0" })), unknownChargeUSDMicros: "7", unknownRefundUSDMicros: "3", requestedChargeUSDMicros: "11", requestedRefundUSDMicros: "2" };
+  assert.deepEqual(decodeWorkspaceTransactionTrend(trend, "ws-1"), trend);
+  assert.equal(formatWorkspaceTransactionAmount("0"), "$0.00");
+  for (const changed of [{ workspaceId: "other" }, { days: trend.days.slice(1) }, { days: [trend.days[1], ...trend.days.slice(1)] }, { unknownChargeUSDMicros: 7 }, { periodEnd: "2026-10-17T00:00:00Z" }, { unknownRefundUSDMicros: "9223372036854775808" }]) {
+    assert.throws(() => decodeWorkspaceTransactionTrend({ ...trend, ...changed }, "ws-1"));
+  }
+});

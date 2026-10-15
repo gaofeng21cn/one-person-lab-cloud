@@ -562,3 +562,13 @@ export function presentWorkspaceApplicationBinding(binding: string | undefined, 
       return { known: false, label: "待确认" };
   }
 }
+
+// Preserve every USD micro in financial history, including amounts beyond the
+// JavaScript safe integer range. Ordinary price cards may round to cents.
+export function formatWorkspaceTransactionAmount(micros: string): string {
+  if (!/^(0|[1-9]\d{0,18})$/.test(micros) || BigInt(micros) > 9223372036854775807n) return "-";
+  const value = BigInt(micros);
+  const whole = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value / 1_000_000n);
+  const fraction = String(value % 1_000_000n).padStart(6, "0").replace(/0+$/, "").padEnd(2, "0");
+  return `$${whole}.${fraction}`;
+}
