@@ -195,6 +195,14 @@ test("installation CLI accepts API defaulted live container fields", async () =>
   assert.equal(result.status, 0, result.stdout + result.stderr);
 });
 
+test("installation CLI accepts structurally valid Kubernetes admission additions", async () => {
+  const { list, pod } = withLiveWorkspaceBackends();
+  pod.spec.imagePullSecrets = [{ name: "registry-auth" }];
+  pod.spec.containers[0].resources = { limits: { cpu: "1" }, requests: { cpu: "100m" } };
+  const result = await invoke(list);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
 test("installation CLI binds live init identity and canonical projected ServiceAccount volume", async () => {
   const ordered = withLiveWorkspaceBackends();
   const initA = { name: "init-a", image: "example.invalid/init-a:1" };
@@ -267,11 +275,26 @@ test("installation CLI rejects unserviceable supplied live endpoints", async () 
   assert.equal(malformedSliceAddressResult.status, 1);
   assert.ok(malformedSliceAddressResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
 
+  const malformedUnreadySlice = withLiveWorkspaceBackends();
+  malformedUnreadySlice.list.items = malformedUnreadySlice.list.items.filter(item => item !== malformedUnreadySlice.endpoints);
+  malformedUnreadySlice.slice.endpoints.push({ addresses: ["2001:db8::1"], targetRef: { ...malformedUnreadySlice.slice.endpoints[0].targetRef, uid: "wrong-pod" }, conditions: { ready: false } });
+  const malformedUnreadySliceResult = await invoke(malformedUnreadySlice.list);
+  assert.equal(malformedUnreadySliceResult.status, 1);
+  assert.ok(malformedUnreadySliceResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+
   const malformedEndpoints = withLiveWorkspaceBackends();
   malformedEndpoints.endpoints.subsets[0].notReadyAddresses = "invalid";
   const malformedEndpointsResult = await invoke(malformedEndpoints.list);
   assert.equal(malformedEndpointsResult.status, 1);
   assert.ok(malformedEndpointsResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+
+  const malformedUnreadyEndpoints = withLiveWorkspaceBackends();
+  malformedUnreadyEndpoints.endpoints.subsets[0].notReadyAddresses = [{
+    ip: "192.0.2.1", targetRef: { ...malformedUnreadyEndpoints.endpoints.subsets[0].addresses[0].targetRef, uid: "wrong-pod" }
+  }];
+  const malformedUnreadyEndpointsResult = await invoke(malformedUnreadyEndpoints.list);
+  assert.equal(malformedUnreadyEndpointsResult.status, 1);
+  assert.ok(malformedUnreadyEndpointsResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
 });
 
 test("installation CLI refuses empty or incomplete live endpoint inventories", async t => {

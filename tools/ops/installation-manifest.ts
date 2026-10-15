@@ -221,7 +221,11 @@ function samePodSecurityShape(live: Resource, declared: Resource): boolean {
   if (stringFields.some(field => [live[field], declared[field]].some(value => value !== undefined && typeof value !== "string"))) return false;
   if ([live.securityContext, declared.securityContext].some(value => value !== undefined && !object(value))) return false;
   if (live.ephemeralContainers !== undefined && (!Array.isArray(live.ephemeralContainers) || live.ephemeralContainers.length > 0)) return false;
-  return fields.every(field => deepEqual(normalizedPodField(live, field), normalizedPodField(declared, field)));
+  return fields.every(field => {
+    if (field === "imagePullSecrets" && declared[field] === undefined && live[field] !== undefined)
+      return validImagePullSecrets(live[field]);
+    return deepEqual(normalizedPodField(live, field), normalizedPodField(declared, field));
+  });
 }
 const liveContainerFields = [
   "name", "image", "command", "args", "env", "envFrom", "ports", "securityContext", "volumeMounts",
@@ -248,8 +252,20 @@ function normalizedContainerField(container: Resource, field: string): unknown {
   if (field === "terminationMessagePolicy") return value ?? "File";
   return value;
 }
+function validImagePullSecrets(value: unknown): boolean {
+  return Array.isArray(value) && value.every(entry => object(entry) && typeof entry.name === "string" &&
+    entry.name.length > 0 && Object.keys(entry).every(key => key === "name"));
+}
+function validResourceRequirements(value: unknown): boolean {
+  return object(value) && Object.keys(value).every(key => ["limits", "requests"].includes(key)) &&
+    ["limits", "requests"].every(key => value[key] === undefined || stringMap(value[key]));
+}
 function sameContainerShape(live: Resource, declared: Resource): boolean {
-  return liveContainerFields.every(field => deepEqual(normalizedContainerField(live, field), normalizedContainerField(declared, field)));
+  return liveContainerFields.every(field => {
+    if (field === "resources" && declared[field] === undefined && live[field] !== undefined)
+      return validResourceRequirements(live[field]);
+    return deepEqual(normalizedContainerField(live, field), normalizedContainerField(declared, field));
+  });
 }
 function sameContainerList(live: unknown, declared: unknown, ordered = false): boolean {
   if (!Array.isArray(live) || !Array.isArray(declared) || live.length !== declared.length) return false;
@@ -362,9 +378,10 @@ function endpointBackend(resource: Resource, service: Resource, target: Resource
       Array.isArray(resource.endpoints) && resource.endpoints.length > 0 && (() => {
         const states = resource.endpoints.map((endpoint: unknown) => endpointServiceability(endpoint, service));
         if (states.some(state => state === undefined)) return false;
+        if (!resource.endpoints.every((endpoint: unknown) =>
+          object(endpoint) && provesPort(resource.ports) && provesPod(endpoint.targetRef, endpoint.addresses, resource.addressType))) return false;
         const serviceable = resource.endpoints.filter((_: unknown, index: number) => states[index] === "serviceable");
-        return serviceable.length > 0 && serviceable.every((endpoint: unknown) =>
-          object(endpoint) && provesPort(resource.ports) && provesPod(endpoint.targetRef, endpoint.addresses, resource.addressType));
+        return serviceable.length > 0;
       })();
   }
   // The legacy Endpoints controller does not attach a Service ownerReference.
@@ -378,8 +395,9 @@ function endpointBackend(resource: Resource, service: Resource, target: Resource
     const notReadyAddresses = subset.notReadyAddresses ?? [];
     const readyEntries = addresses;
     const notReadyEntries = servicePublishesNotReady(service) ? notReadyAddresses ?? [] : [];
+    const allEntries = [...readyEntries, ...notReadyAddresses];
     const entries = readyEntries.length > 0 || notReadyEntries.length > 0 ? [...readyEntries, ...notReadyEntries] : undefined;
-    return entries !== undefined && entries.length > 0 && entries.every(entry =>
+    return entries !== undefined && entries.length > 0 && allEntries.every(entry =>
       object(entry) && provesPort(subset.ports) && provesPod(entry.targetRef, [entry.ip]));
   });
 }
