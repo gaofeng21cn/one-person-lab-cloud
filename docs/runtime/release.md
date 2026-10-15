@@ -96,7 +96,14 @@ it does not create a Product Release.
 
 After candidate qualification succeeds, an allowlisted Cloud Release publisher
 supplies the exact canonical SHA and the Candidate, Local qualification,
-Instance qualification-decision, and `workspace_verified` run IDs. Admission
+Instance deployment-verification, qualification-decision, and `workspace_verified`
+run IDs. Installation verification is admitted independently from product
+qualification: the exact producing Instance revision validates its native
+`deployment_verified` receipt; Cloud binds its raw-byte digest, workflow run,
+Candidate source/index/amd64 digest, Workspace image and provider scope to the
+qualification decision. The sealed release manifest and attestation retain a
+separate `installation` record. A successful rollout alone cannot satisfy the
+remaining native qualification or Workspace gates. Admission
 validates their run/artifact provenance, native receipts, release assets,
 checksums, Product tree, and index/platform digests. All evidence must bind the
 same Cloud Candidate while retaining its owner-specific Workspace image and
