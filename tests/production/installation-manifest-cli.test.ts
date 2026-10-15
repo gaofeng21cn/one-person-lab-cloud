@@ -138,8 +138,22 @@ test("installation CLI accepts live replicas only through exact controller and e
     ["stale endpoint Pod UID", ({ endpoints }) => { endpoints.subsets[0].addresses[0].targetRef.uid = "replaced-pod"; }],
     ["wrong endpoint namespace", ({ endpoints }) => { endpoints.subsets[0].addresses[0].targetRef.namespace = "other"; }],
     ["forged endpoint address", ({ endpoints }) => { endpoints.subsets[0].addresses[0].ip = "192.0.2.99"; }],
+    ["invalid endpoint address", ({ endpoints }) => { endpoints.subsets[0].addresses[0].ip = "not-an-ip"; }],
     ["forged slice address", ({ slice }) => { slice.endpoints[0].addresses[0] = "2001:db8::99"; }],
+    ["wrong slice address family", ({ slice }) => { slice.addressType = "IPv4"; }],
+    ["reordered primary Pod IP", ({ pod }) => { pod.status.podIPs.reverse(); }],
+    ["contradictory Pod IP list", ({ pod }) => { pod.status.podIP = "192.0.2.99"; }],
+    ["missing live containers", ({ pod }) => { delete pod.spec.containers; }],
+    ["malformed Pod IP list", ({ pod }) => { pod.status.podIPs = [null]; }],
     ["stale slice Service UID", ({ service }) => { service.metadata.uid = "replaced-service"; }],
+    ["live sidecar listener", ({ pod }) => { pod.spec.containers.push({ name: "live-sidecar", image: "example.invalid/sidecar:1", ports: [{ containerPort: 8184 }] }); }],
+    ["live restartable init listener", ({ pod }) => { pod.spec.initContainers = [{ name: "live-sidecar", image: "example.invalid/sidecar:1", restartPolicy: "Always", ports: [{ containerPort: 8184 }] }]; }],
+    ["malformed live sidecar ports", ({ pod }) => { pod.spec.containers.push({ name: "live-sidecar", image: "example.invalid/sidecar:1", ports: "invalid" }); }],
+    ["malformed live initContainers", ({ pod }) => { pod.spec.initContainers = "invalid"; }],
+    ["drifted live target image", ({ pod }) => { pod.spec.containers[0].image = "example.invalid/foreign:1"; }],
+    ["drifted live target command", ({ pod }) => { pod.spec.containers[0].command = ["/bin/sh", "-c", "exec sleep 3600"]; }],
+    ["drifted live target args", ({ pod }) => { pod.spec.containers[0].args = ["probe-workspace-access"]; }],
+    ["missing live target container", ({ pod }) => { pod.spec.containers = [{ name: "other", image: "example.invalid/other:1" }]; }],
     ["wrong endpoint port", ({ endpoints }) => { endpoints.subsets[0].ports[0].port = 9999; }],
     ["wrong slice port", ({ slice }) => { slice.ports[0].port = 9999; }]
   ];
@@ -153,6 +167,67 @@ test("installation CLI accepts live replicas only through exact controller and e
   });
 });
 
+
+test("installation CLI admits an upgrade while exact old ReplicaSet backends remain", async () => {
+  const { list, target } = withLiveWorkspaceBackends();
+  target.spec.template.spec.containers[0].image = "example.invalid/new-product:2";
+  const result = await invoke(list);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
+test("installation CLI accepts API defaulted live container fields", async () => {
+  const { list, target, replicaSet, pod } = withLiveWorkspaceBackends();
+  delete target.spec.template.spec.containers[0].ports[0].protocol;
+  delete replicaSet.spec.template.spec.containers[0].ports[0].protocol;
+  pod.spec.containers[0].ports[0].protocol = "TCP";
+  const result = await invoke(list);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
+test("installation CLI refuses empty or incomplete live endpoint inventories", async t => {
+  for (const [name, change] of [
+    ["empty Endpoints", (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.endpoints.subsets = []; }],
+    ["missing Endpoints subsets", (live: ReturnType<typeof withLiveWorkspaceBackends>) => { delete live.endpoints.subsets; }],
+    ["empty EndpointSlice", (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.slice.endpoints = []; }],
+  ] as const) await t.test(name, async () => {
+    const live = withLiveWorkspaceBackends();
+    change(live);
+    const result = await invoke(live.list);
+    assert.equal(result.status, 1, result.stdout);
+    assert.ok(result.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+    assert.deepEqual(result.report.communication.edges, []);
+  });
+});
+
+test("installation CLI rejects malformed initContainers through its consumable error report", async t => {
+  for (const value of ["invalid", [null], [{ name: "sidecar" }]]) await t.test(JSON.stringify(value), async () => {
+    const list = workedInstallation();
+    deployment(list, "workspace").spec.template.spec.initContainers = value;
+    const result = await invoke(list);
+    assert.equal(result.status, 1);
+    assert.equal(result.stderr, "installation_manifest_invalid\n");
+    assert.deepEqual(result.report, {
+      ok: false, errors: [{ code: "installation_manifest_shape_invalid" }],
+      communication: { edges: [], security: { tokenMinimumLength: 32 } }
+    });
+  });
+});
+
+test("installation CLI ignores standard non-workload resources in a complete namespace inventory", async t => {
+  for (const [apiVersion, kind] of [
+    ["coordination.k8s.io/v1", "Lease"],
+    ["events.k8s.io/v1", "Event"],
+    ["apps/v1", "ControllerRevision"],
+    ["metrics.k8s.io/v1beta1", "PodMetrics"],
+    ["certificates.k8s.io/v1", "CertificateSigningRequest"],
+  ] as const) await t.test(`${apiVersion}/${kind}`, async () => {
+    const live = withLiveWorkspaceBackends();
+    live.list.items.push({ apiVersion, kind, metadata: { name: `unrelated-${kind.toLowerCase()}`, namespace: "installation" } });
+    const result = await invoke(live.list);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(result.report.communication.edges.length, 46);
+  });
+});
 
 test("installation CLI rejects malformed inputs with a sanitized consumable report", async () => {
   for (const manifest of [null, {}, { kind: "List", items: [] }, { apiVersion: "v1", kind: "List", items: "bad" },
@@ -633,6 +708,28 @@ test("installation CLI refuses shared Pod wildcard listener collisions for numer
   });
 });
 
+test("installation CLI requires Capability object listener when the topology has no default", async () => {
+  const list = workedInstallation();
+  const process = container(list, "capability");
+  process.env = process.env.filter(entry => entry.name !== "OPL_CAPABILITY_OBJECT_LISTEN_ADDR");
+  const result = await invoke(list);
+  assert.equal(result.status, 1, result.stdout);
+  assert.ok(result.report.errors.some(error => error.code === "installation_listener_unproven"));
+  assert.deepEqual(result.report.communication.edges, []);
+});
+
+test("installation CLI refuses malformed explicit additional listeners", async t => {
+  for (const value of ["garbage", { valueFrom: { secretKeyRef: { name: "serve-access", key: "address" } } }]) await t.test(JSON.stringify(value), async () => {
+    const list = workedInstallation();
+    const access = { name: "OPL_SERVE_ACCESS_ADDR", ...(typeof value === "string" ? { value } : value) };
+    container(list, "serve").env.push(access);
+    const result = await invoke(list);
+    assert.equal(result.status, 1, result.stdout);
+    assert.ok(result.report.errors.some(error => error.code === "installation_listener_unproven"));
+    assert.deepEqual(result.report.communication.edges, []);
+  });
+});
+
 test("installation CLI proves Serve access entry listener separately from its owner RPC", async t => {
   for (const accessAddress of [":8185", "\u0085:8185\u0085"]) await t.test(`Serve access and RPC collide: ${JSON.stringify(accessAddress)}`, async () => {
     const list = workedInstallation();
@@ -804,4 +901,20 @@ test("installation CLI supplies Product-resolved Service identity for configured
     { name: "ledger-rpc", namespace: "installation" });
   assert.deepEqual(result.report.communication.edges.find(e => e.caller === "serve" && e.target === "workspace").serviceRef,
     { name: "workspace-rpc", namespace: "installation" });
+});
+
+// An arbitrary sidecar does not acquire Product listener semantics from an env name.
+test("installation CLI does not infer unknown sidecar listeners from environment names", async t => {
+  for (const init of [false, true]) await t.test(init ? "restartable init" : "sidecar", async () => {
+    const list = workedInstallation();
+    const pod = deployment(list, "capability").spec.template.spec;
+    const sidecar = { name: "non-listening-helper", image: "example.invalid/helper:1",
+      command: ["/bin/sh", "-c", "exec sleep 3600"],
+      env: [{ name: "OPL_CAPABILITY_OBJECT_LISTEN_ADDR", value: ":8191" }] };
+    if (init) pod.initContainers = [{ ...sidecar, restartPolicy: "Always" }];
+    else pod.containers.push(sidecar);
+    const result = await invoke(list);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(result.report.communication.edges.length, 46);
+  });
 });
