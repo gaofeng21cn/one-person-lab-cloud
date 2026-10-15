@@ -192,7 +192,11 @@ test("installation CLI accepts live replicas only through exact controller and e
   const injectedServiceAccountVolume = withLiveWorkspaceBackends();
   injectedServiceAccountVolume.pod.spec.volumes = [{
     name: "kube-api-access-abc12",
-    projected: { sources: [{ serviceAccountToken: { path: "token" } }] }
+    projected: { sources: [
+      { serviceAccountToken: { expirationSeconds: 3607, path: "token" } },
+      { configMap: { name: "kube-root-ca.crt", items: [{ key: "ca.crt", path: "ca.crt" }] } },
+      { downwardAPI: { items: [{ fieldRef: { apiVersion: "v1", fieldPath: "metadata.namespace" }, path: "namespace" }] } }
+    ] }
   }];
   const injectedVolumeResult = await invoke(injectedServiceAccountVolume.list);
   assert.equal(injectedVolumeResult.status, 0, injectedVolumeResult.stdout + injectedVolumeResult.stderr);
@@ -235,6 +239,7 @@ test("installation CLI rejects live endpoints that are not serviceable", async t
   for (const [name, change] of [
     ["EndpointSlice ready=false", (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.slice.endpoints[0].conditions = { ready: false }; }],
     ["EndpointSlice serving=false", (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.slice.endpoints[0].conditions = { serving: false }; }],
+    ["EndpointSlice terminating", (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.slice.endpoints[0].conditions = { ready: true, serving: true, terminating: true }; }],
     ["Endpoints notReadyAddresses", (live: ReturnType<typeof withLiveWorkspaceBackends>) => {
       live.endpoints.subsets[0].notReadyAddresses = live.endpoints.subsets[0].addresses;
       delete live.endpoints.subsets[0].addresses;

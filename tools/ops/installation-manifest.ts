@@ -155,22 +155,24 @@ function autoServiceAccountVolume(volume: unknown): boolean {
       Object.keys(volume).some(key => !["name", "projected"].includes(key)) || !object(volume.projected) ||
       Object.keys(volume.projected).some(key => !["sources", "defaultMode"].includes(key)) || !Array.isArray(volume.projected.sources)) return false;
   const sources = volume.projected.sources;
-  return sources.some((source: unknown) => object(source) && object(source.serviceAccountToken)) && sources.every((source: unknown) => {
-    if (!object(source) || Object.keys(source).length !== 1) return false;
-    if (source.serviceAccountToken !== undefined) {
-      return object(source.serviceAccountToken) && typeof source.serviceAccountToken.path === "string" &&
-        Object.keys(source.serviceAccountToken).every(key => ["audience", "expirationSeconds", "path"].includes(key));
-    }
-    if (source.configMap !== undefined) {
-      return object(source.configMap) && source.configMap.name === "kube-root-ca.crt" &&
-        Object.keys(source.configMap).every(key => ["name", "items", "optional"].includes(key));
-    }
-    if (source.downwardAPI !== undefined) {
-      return object(source.downwardAPI) && Array.isArray(source.downwardAPI.items) && source.downwardAPI.items.every((item: unknown) =>
-        object(item) && item.path === "namespace" && object(item.fieldRef) && item.fieldRef.fieldPath === "metadata.namespace");
-    }
-    return false;
-  });
+  if (sources.length !== 3) return false;
+  const token = sources.find((source: unknown) => object(source) && Object.hasOwn(source, "serviceAccountToken"));
+  const ca = sources.find((source: unknown) => object(source) && Object.hasOwn(source, "configMap"));
+  const namespace = sources.find((source: unknown) => object(source) && Object.hasOwn(source, "downwardAPI"));
+  if (!token || !ca || !namespace || new Set([token, ca, namespace]).size !== 3 ||
+      Object.keys(token).length !== 1 || Object.keys(ca).length !== 1 || Object.keys(namespace).length !== 1) return false;
+  const tokenSpec = token.serviceAccountToken;
+  const caSpec = ca.configMap;
+  const namespaceSpec = namespace.downwardAPI;
+  return object(tokenSpec) && tokenSpec.path === "token" &&
+    Object.keys(tokenSpec).every(key => ["audience", "expirationSeconds", "path"].includes(key)) &&
+    (tokenSpec.audience === undefined || typeof tokenSpec.audience === "string") &&
+    (tokenSpec.expirationSeconds === undefined || Number.isSafeInteger(tokenSpec.expirationSeconds) && tokenSpec.expirationSeconds > 0) &&
+    object(caSpec) && caSpec.name === "kube-root-ca.crt" && Array.isArray(caSpec.items) && caSpec.items.length === 1 &&
+    object(caSpec.items[0]) && caSpec.items[0].key === "ca.crt" && caSpec.items[0].path === "ca.crt" &&
+    object(namespaceSpec) && Array.isArray(namespaceSpec.items) && namespaceSpec.items.length === 1 &&
+    object(namespaceSpec.items[0]) && namespaceSpec.items[0].path === "namespace" && object(namespaceSpec.items[0].fieldRef) &&
+    namespaceSpec.items[0].fieldRef.apiVersion === "v1" && namespaceSpec.items[0].fieldRef.fieldPath === "metadata.namespace";
 }
 function normalizedPodField(spec: Resource, field: string): unknown {
   const value = spec[field];
@@ -245,7 +247,7 @@ function endpointIsServiceable(endpoint: Resource, service: Resource): boolean {
       ["ready", "serving", "terminating"].some(key => conditions[key] !== undefined && typeof conditions[key] !== "boolean")) return false;
   if (conditions.ready === false && !servicePublishesNotReady(service)) return false;
   if (conditions.serving === false) return false;
-  if (conditions.terminating === true && conditions.serving !== true) return false;
+  if (conditions.terminating === true) return false;
   return true;
 }
 function endpointBackend(resource: Resource, service: Resource, target: InstalledProcess, servicePort: Resource, port: number, resources: Resource[], topology: InstallationTopology): boolean {
