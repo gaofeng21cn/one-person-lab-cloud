@@ -482,6 +482,13 @@ func (s *Service) ReadComputeDestroyStatus(ctx context.Context, allocationID str
 	if reader == nil {
 		return ComputeAllocation{}, fmt.Errorf("compute_destroy_status_readback_unavailable")
 	}
+	if existing.Provider == "tencent-tke" && len(existing.CostTags) == 0 {
+		var err error
+		existing, err = s.computeDestroyStatusOwnershipInput(ctx, existing)
+		if err != nil {
+			return existing, err
+		}
+	}
 	readback, err := reader.ReadComputeDestroyStatus(ctx, cloneComputeAllocation(existing))
 	if err != nil {
 		return readback, err
@@ -499,6 +506,41 @@ func (s *Service) ReadComputeDestroyStatus(ctx context.Context, allocationID str
 	readback.ObservedAt = s.now().Format(time.RFC3339Nano)
 	readback.ReadbackID = stableID("compute-destroy-readback", allocationID, readback.ObservedAt)
 	return readback, nil
+}
+
+// Read-only ownership reconstruction requires the unique original Launch and
+// exact stable identity. Current ownership cannot override canonical conflicts.
+func (s *Service) computeDestroyStatusOwnershipInput(ctx context.Context, existing ComputeAllocation) (ComputeAllocation, error) {
+	records, err := s.operationHistory.List(ctx)
+	if err != nil {
+		return existing, computeReadbackFailure("compute_readback_launch_unavailable")
+	}
+	stages := newWorkspaceLaunchDeleteStageSet()
+	for _, operation := range records {
+		candidate, workspaceID, resourceID, isCandidate, valid := canonicalWorkspaceLaunchDeleteStage(operation, "ensure_compute_allocation")
+		if isCandidate {
+			stages.add(workspaceID, resourceID, candidate, valid)
+		}
+	}
+	original, found := stages.canonical(existing.WorkspaceID)
+	if !found || original.resourceID != existing.ID {
+		return existing, computeReadbackFailure("compute_readback_launch_unavailable")
+	}
+	if !sameWorkspaceLaunchComputeTagIdentity(existing, original.compute) {
+		return existing, computeReadbackFailure("compute_readback_launch_mismatch")
+	}
+	var state struct {
+		Ownership *MachineOwnership `json:"ownership,omitempty"`
+	}
+	if json.Unmarshal(original.record.ProviderState, &state) != nil {
+		return existing, computeReadbackFailure("compute_readback_launch_mismatch")
+	}
+	// A present but rejected original ownership is conflicting evidence. Only an
+	// absent original projection can be reconstructed from the current claim.
+	if state.Ownership != nil && *state.Ownership != (MachineOwnership{}) {
+		return existing, computeReadbackFailure("compute_readback_launch_mismatch")
+	}
+	return s.computeOwnershipReadbackInput(ctx, existing)
 }
 
 // validTencentComputeDestroyRetryEvidence bounds a retryable readback: a provider

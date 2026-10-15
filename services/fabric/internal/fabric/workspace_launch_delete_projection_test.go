@@ -599,7 +599,8 @@ func TestRetainedLaunchComputeTagsRejectConflictingEvidence(t *testing.T) {
 				service.computes[compute.ID] = current
 			}
 			_, err := service.ReadComputeDestroyStatus(context.Background(), compute.ID)
-			if err == nil || err.Error() != "compute_allocation_destroy_identity_required" || calls != 0 {
+			var failure computeReadbackFailure
+			if !errors.As(err, &failure) || calls != 0 {
 				t.Fatalf("conflicting evidence reached provider: err=%v calls=%d", err, calls)
 			}
 		})
@@ -685,7 +686,8 @@ func TestRetainedLaunchComputeTagsRequireUniqueOriginalStage(t *testing.T) {
 			}
 			service := NewServiceWithOperationStore(provider, store)
 			_, err := service.ReadComputeDestroyStatus(context.Background(), compute.ID)
-			if err == nil || err.Error() != "compute_allocation_destroy_identity_required" || calls != 0 {
+			const want computeReadbackFailure = "compute_readback_launch_unavailable"
+			if !errors.Is(err, want) || calls != 0 {
 				t.Fatalf("unproven original stage reached provider: err=%v calls=%d", err, calls)
 			}
 		})
