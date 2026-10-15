@@ -9,16 +9,25 @@ artifacts, and owner-admitted product releases.
 - medopl production operations and `.com` domain bindings: private
   `gaofeng21cn/opl-instance-medopl` repository
 
-Production credentials, provider resources, approval gates, rollout, rollback,
-and receipts must remain with the selected instance owner.
+Installation credentials, deployment approval gates, rollout, deployment rollback
+and deployment receipts remain with the selected instance owner. Customer
+operations and business qualification retain their product owners and require
+separately bounded protected authorization.
 
-Medopl-specific production, acceptance, recovery, canary, rollback, and
-approval/evidence tools are owned by `opl-instance-medopl` and are executed from
-its run-scoped `main` checkout. Cloud retains only the product runtime,
-provider-neutral contracts, reusable adapters, and portable candidate/release
-assets. The Cloud checkout supplied to an Instance workflow is the immutable
-product source identified by `product_sha`; it is not the source of an instance
-operation.
+Medopl-specific deployment, installation acceptance, deployment recovery,
+service-health canary, rollback and deployment-evidence tools belong to
+`opl-instance-medopl` and run from its scoped `main` checkout. Customer business
+operations and business qualification belong to Cloud's existing product owners,
+as defined by [the current decision](../decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads).
+Deployment and product qualification must bind the same immutable Candidate.
+
+The current publication mechanism below still consumes Instance-owned launch/use
+and qualification artifacts. Moving their ownership and protected execution is
+an [open migration](../roadmap.md#workspace-key-and-customer-read-boundaries),
+not an implemented release path. Keep the current schemas, provenance validation
+and admission checks until producers and consumers migrate together. This
+runbook does not authorize dispatching customer business operations, and a local
+checkout does not gain production-network access from the target decision.
 
 ## Product Release Admission
 
@@ -76,8 +85,10 @@ fixture construction never rebuilds the Cloud image. Fixture acceptance does
 not establish a production application or live Sub2API acceptance.
 `opl-instance-medopl` independently binds the same Candidate SHA and digest,
 deploys through Instance `main` with its explicit `.com` domains, Tencent/TKE
-Provider Profile and immutable Workspace image, performs the required rollout
-and product acceptance, and returns an Instance owner-authoritative receipt. A
+Provider Profile and immutable Workspace image. The existing qualification
+mechanism combines rollout and product acceptance in Instance artifacts; it has
+not yet adopted the separated ownership above. The current release consumer
+still requires those owner-authoritative receipts. A
 failed or unknown result on either path returns the release unit to development;
 it does not create a Product Release.
 

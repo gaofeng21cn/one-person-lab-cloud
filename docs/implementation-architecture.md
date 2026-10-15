@@ -293,6 +293,13 @@ and are not an identity branch of the shared reader. Neither caller moves
 balance authority: the BFF holds no wallet state of its own and returns the
 Gateway owner's readback.
 
+The following table describes current source, not implementation of the
+[October 15 product decision](decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads).
+Its lifecycle, personal/history/announcement reads and protected qualification
+migration remain [open adoption work](roadmap.md#workspace-key-and-customer-read-boundaries).
+No route, schema, generated permission or publication validator changes merely
+because that target has been accepted.
+
 The current identity and writer boundary is:
 
 | Fact | Current owner and caller | Retained boundary |

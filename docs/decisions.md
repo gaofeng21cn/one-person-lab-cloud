@@ -4,6 +4,76 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-10-15: Workspace Key Lifecycle And Cloud Customer Reads
+
+This decision records product intent. It does not establish that the required
+Sub2API APIs, migrated readers, installed Candidate or production acceptance
+exist. Current implementation and evidence remain in their existing owners.
+
+Workspace owns the authorized business lifecycle of its managed API key.
+Closing a Workspace requests deactivation of that exact key through Gateway
+Integration and Sub2API; authorized recovery re-enables the original key under
+the existing entitlement, resource and security constraints. These commands do
+not disable Sub2API itself, its User, its wallet or another Workspace's keys.
+Existing Workspaces adopt this rule after the original ownership is verified.
+Deployment alone does not authorize bulk key mutation. Runtime replacement or
+temporary application quiescence does not itself close a Workspace.
+
+An ordinary model update preserves the same external key and updates only the
+approved model scope. It does not issue a replacement key or revoke a
+predecessor. Workspace retains its applied-version CAS; Gateway owns model
+permissions; Fabric retains exact Secret binding/readback and one active binding
+per runtime purpose; Serve confirms the applied application configuration.
+External key identity, Gateway binding identity and Fabric Secret version are
+distinct facts. If scope changed but application apply is refused, the original
+operation must reconcile the same key's approved scope with the actual applied
+configuration through authoritative owner readback before declaring success or
+allowing dependent changes. It may restore the last applied approved scope or
+confirm the original target as applied; it must not widen scope or issue a new
+key to conceal failure. Unknown compensation remains unresolved. Separately
+authorized security revocation remains separate.
+
+Sub2API remains the key and wallet authority. Its owner must supply the required
+service-authorized disable, enable, state readback and in-place model-scope
+capabilities. No guessed administrative endpoint, user impersonation or direct
+database write substitutes for that contract. Unknown or refused state remains
+visible under the original operation identity; deleting a Secret does not prove
+key deactivation. Resource deletion, key closeout and settlement are separate
+facts. Existing purchase, refund and retained-history obligations are preserved.
+
+The default wallet and Token usage belong to the logged-in CloudIdentity User
+through that User's verified Sub2API binding. Tenant owner and admin may read
+that Tenant's bills and settlements; membership does not transfer personal
+wallet or historical Account ownership. Cloud also presents an owner's own
+historical bills after the original data owner proves the historical
+User/Account/purchase entitlement. Original amounts, dates, payer, refund limits
+and deleted-Workspace history remain unchanged. A Tenant admin does not thereby
+obtain access to the owner's personal legacy history.
+
+Active announcements are available to every valid authenticated Cloud User,
+without requiring Tenant membership. This does not authorize anonymous access.
+The existing announcement owner retains publication and acknowledgement
+persistence. A proven same User may inherit historical acknowledgements with
+their original read timestamps; email or Tenant membership alone is not proof.
+
+Instance deploys and updates Cloud, manages installation configuration and
+protected Secret references, checks installed artifact identity and service
+health, and owns deployment rollback and deployment receipts. Customer business
+operations and business qualification use Cloud's existing product owners and
+protected product execution. Deployment does not submit customer purchases,
+renewals, deletion, refunds or managed-key changes. Deployment and business
+qualification retain distinct evidence bound to the same immutable Candidate;
+publication must still validate actual qualification and authorized provenance.
+This decision does not authorize a desktop production connection or live effects.
+
+This supersedes the unresolved product-authority scope of the 2026-10-14 key
+revocation decision, the ordinary-model-update key replacement/revocation scope
+of the 2026-10-01 Secret replacement decision, and the retained-active-key and
+unmodified-Sub2API constraints of the 2026-09-10 decision where they conflict.
+Their historical implementation observations and unrelated financial safeguards
+remain valid. It narrows Instance acceptance/receipt ownership to deployment;
+actual product qualification remains required and belongs to Cloud.
+
 ## 2026-10-15: CloudIdentity User Owns External Bindings
 
 CloudIdentity User and Cloud Tenant remain distinct concepts. Opaque `actor_id`
@@ -49,6 +119,10 @@ receipts, settlements or announcements, or claim implementation acceptance or
 Instance qualification.
 
 ## 2026-10-14: Workspace-Managed Key Revocation Authority Is Undecided
+
+> The 2026-10-15 Workspace Key Lifecycle And Cloud Customer Reads decision
+> supersedes the conflicting scope below. The earlier implementation and
+> historical evidence are retained; new external capability is not implied.
 
 The Gateway can issue a Workspace-managed key through one approved Sub2API
 service route. It cannot revoke one: no approved revocation route exists in the
@@ -338,6 +412,10 @@ Gateway owner, weakening the non-null schema invariant, or introducing a global
 workflow/event-bus authority.
 
 ### 2026-10-01: Fabric Owns Explicit Secret Binding Replacement
+
+> The 2026-10-15 Workspace Key Lifecycle And Cloud Customer Reads decision
+> supersedes the conflicting scope below. The earlier implementation and
+> historical evidence are retained; new external capability is not implied.
 
 `FabricCoordination.BindSecret` remains the initial-bind and same-request replay
 operation. It must not silently replace a different Secret: a retry with the same
@@ -765,6 +843,10 @@ migration; the open outcomes are in
 [the roadmap](roadmap.md#workspace-application-decoupling).
 
 ## 2026-09-10: Integrate The Unmodified Gateway Through Its Native APIs
+
+> The 2026-10-15 Workspace Key Lifecycle And Cloud Customer Reads decision
+> supersedes the conflicting scope below. The earlier implementation and
+> historical evidence are retained; new external capability is not implied.
 
 Cloud integrates official Sub2API 0.2.4 without modifying Gateway source, images,
 database schema, or settings. Workspace deletion and failed-Launch closeout

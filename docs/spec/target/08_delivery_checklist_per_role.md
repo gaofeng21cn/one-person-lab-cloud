@@ -2,7 +2,7 @@
 
 > 本文把全部F01–F17转成可验证交付，不引入额外签字/固定评审轮次。职责按Owner明确，无需为了“具名”虚构团队成员。
 >
-> **2026-09-29业务决定已采用，新的wire待W01贯通**：`tencent-tke`首链，新客户一次确认后后台完整部署；未选Agent/WebUI即批准`opl-app + nativeUI`。应用判别联合、Agent必需三输入与异步交接按06；不是实现或生产可用声明。03/SQL/proto/events/机器flows仍须W01成套贯通；06第17节保留迁移前wire baseline，本轮不重新生成。W01集成负责人同步并验证后才能给出相应层的新链通过结论。
+> **2026-09-29业务决定已采用，新的wire待W01贯通**：`tencent-tke`首链，新客户一次确认后后台完整部署；未选Agent/WebUI即批准`opl-app + nativeUI`。应用判别联合、Agent必需三输入与异步交接按06；不是实现或生产可用声明。03/SQL/proto/events/机器flows仍须W01成套贯通；06第17节保留迁移前wire baseline，本轮不重新生成。W01集成负责人同步并验证后才能给出相应层的新链通过结论。生命周期与客户读权以[2026-10-15 生命周期与客户读权限决定](../../decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads)为权威；现有机器契约/消费者升级仍未交付，由[roadmap](../../roadmap.md#workspace-key-and-customer-read-boundaries)记录，旧检查仍绑定其原输入。
 
 ## 1. “不用二次对齐”的具体含义
 
@@ -37,17 +37,17 @@ v2.21–v2.25是规划阶段标签，不代表这些版本已经发布。以下�
 | P2 Workspace交付（v2.22） | F07/F08/F09/F10 | P0+approved RuntimeRelease/发布合同、Gateway授权/原单、TKE资源/Serve、必要Ledger证据；Agent分支另依赖P1或已有获准Agent制品 | 先默认App一次确认可打开，再Agent同链；两分支更新不重购/不破坏数据 |
 | P3 商业/生命周期（v2.23） | F11/F12/F13/F14/F15 | P2+批准报价/退款/续费策略 | 周期不重复扣费，删除/退款分开、Tenant资产保留/权限闭合 |
 | P4 旧路径迁移（v2.24） | F16批次切换 | P0试迁移+P1-P3能力与反例 | 每批单writer、历史不丢、已购资源沿用、回滚可验证 |
-| P5 生产资格（v2.25） | F17/全链真实质量 | 同一精确Candidate、Instance授权环境 | Local/Instance真实证据齐全，按已授权流程发布同字节 |
+| P5 生产资格（v2.25） | F17/全链真实质量 | 同一精确Candidate、Cloud业务资格与Instance部署各自受保护入口 | Local、Cloud业务资格与Instance部署证据齐全，按已授权流程发布同字节 |
 
 ### 验收分三层，不混首链与完整发布
 
 | 层 | 范围/必要前置 | 接受证据 | 不作为本层前置 / 不证明 |
 |---|---|---|---|
-| TKE首条业务链 | `tencent-tke`批准profile；F01、RuntimeRelease准入/套餐报价、F07/F08/F09；默认`opl_app(runtimeVersionId)`+nativeUI一次确认 | 精确Candidate；Workspace原Operation→原单→Fabric资源→Serve Reserve→Key/Secret→Serve应用/访问；真实nativeUI/模型探针与必要收据。关闭浏览器、重启/丢ACK仍继续同一义务 | 不以自定义Package上传/Build、独立WebUI或Local provider全链完成为前置；不宣称F01–F17全交付或可正式发布 |
+| TKE首条业务链 | `tencent-tke`批准profile；F01、RuntimeRelease准入/套餐报价、F07/F08/F09；默认`opl_app(runtimeVersionId)`+nativeUI一次确认 | 精确Candidate；Workspace原Operation→原单→Fabric资源→Serve Reserve→Key/Secret→Serve应用/访问；真实nativeUI/消息回答、Gateway用量/扣费对账与必要收据。关闭浏览器、重启/丢ACK仍继续同一义务 | 不以自定义Package上传/Build、独立WebUI、Cloud选模型/改模型接口或Local provider全链完成为前置；不宣称F01–F17全交付或可正式发布 |
 | Local回归 | 相同应用选择/Saga/Owner契约在合格Linux Local-Docker执行；默认App与Package+Runtime+独立WebUI的Agent两种组合、重放/unknown/生命周期反例 | 固定Candidate的Local证据；资金使用明确隔离authority fixture，不产生真钱副作用 | 不替代TKE采购/存储/网络/访问readback，不改变TKE主线；可按独立写集并行，不要求先Local通过才开始TKE首链工作 |
-| 完整产品/发布资格 | 默认App、官方/自定义Agent、两种Build UI、F07–F13生命周期及其余F范围、F16既有对象义务；适用的Local与Instance验证均齐 | 同一精确Candidate SHA/digest的Local/Instance资格、回滚/迁移证据；获得授权后同字节晋级Release | TKE首链成功或静态wire通过均不能代替全量资格；不因先做TKE而豁免Local回归 |
+| 完整产品/发布资格 | 默认App、官方/自定义Agent、两种Build UI、F07–F13生命周期及其余F范围、F16既有对象义务；适用的Local、Cloud业务资格与Instance部署验证均齐 | 同一精确Candidate SHA/digest的Local、Cloud业务资格、Instance部署及各自回滚/迁移证据；获得授权后同字节晋级Release | TKE首链成功或静态wire通过均不能代替全量资格；不因先做TKE而豁免Local回归 |
 
-TKE真实费用/采购/销毁和生产readback仍只能在另行明确授权、费用/资源范围受限的Instance保护流程内完成；本轮文档不执行、不授权这些动作。Cloud不能dispatch Instance部署，完整发布仍由已授权发布者执行。
+TKE真实费用/采购/销毁及业务readback须另有明确授权和费用/资源范围，经Cloud owners受保护入口执行；Instance只负责安装部署、配置/Secrets、health、安装回滚及部署证据，部署不能触发客户业务命令。本机不得直连生产。精确Candidate、来源/actor授权、回滚及同字节发布要求保留；W17等来源的现行Instance验收生成结果仍属于原实现证据；相关生产者、release admission及证据消费者待迁移，不能改称新边界已实现或删除当前检查来宣称通过。Cloud不能dispatch Instance部署，完整发布仍由已授权发布者执行。
 
 P4生产切换在后面，不意味着P0-P3可以不考虑旧数据；ID、receipt、quote、provisioning形态从P0就必须兼容已有义务。全部Cloud开发都在同一`opl-cloud`仓库内，按01的独立module/进程映射逐个落实；没有必要同时建完所有空服务再验证首条链。
 
@@ -55,7 +55,7 @@ P4生产切换在后面，不意味着P0-P3可以不考虑旧数据；ID、recei
 
 | Owner | 必须完成的行为 | 边界测试重点 |
 |---|---|---|
-| Identity/Gateway Integration | Gateway委托认证；Tenant/成员/钱包主体映射；Key；原单资金读回 | 成员无钱包越权、一次性Code、unknown不重放、无密码/Key落库 |
+| Identity/Gateway Integration | Gateway委托认证；User与Tenant付款主体分离；managed key生命周期/scope；原单资金读回 | 无Tenant个人读权、精确原external key停用/恢复与scope读回、一次性Code、unknown不重放、无明文Key落库 |
 | Capability | 上传/Package与Capability版本/claim；独立WebUI批准；注册Inbox | 上传摘要真实验证、同事件唯一版本、共享digest引用删除 |
 | Build | 仅Agent固定Package/Runtime/独立WebUI三项精确输入；接受前校验并冻结；构建/推送/注册 | 三个真实claim、独立WebUI精确approved版本、发布合同、丢ACK恢复、原任务不覆盖；默认App不进Build |
 | Resource Catalog | 套餐/价格版本、精确quote、AcceptQuote | 相同quote只接受一个operation，过期/输入变更拒绝 |
@@ -79,7 +79,7 @@ P4生产切换在后面，不意味着P0-P3可以不考虑旧数据；ID、recei
 | I05 | Fabric/Serve | TKE优先；Fabric资源/resize/绑定readback，Serve部署/模型/路由/retirement；Runtime Control仅目录 | Fabric部署OCI/切流量、Runtime Control管实例、Local fixture冒充TKE资格 |
 | I06 | 全部owner | typed gRPC/Outbox Inbox及schema权限 | NATS/HTTP描述混用，无事务发布 |
 | I07 | Catalog/Workspace | 创建/续费/resize/delete准确报价/政策snapshot | 工程师自己发明退款比例或用最新价格改历史 |
-| I08 | 各数据Owner/Instance | 09字段映射、未决义务、写屏障与回滚演练 | 全表复制后删旧库/永久双写 |
+| I08 | 各数据Owner；Instance仅安装部署 | 09字段映射、未决义务、写屏障与数据回滚演练由Cloud Owner负责 | 全表复制后删旧库/永久双写、部署脚本执行客户业务 |
 
 以上是每个功能实施验收的一部分；文档已给语义，当前代码未具备不等于方案可忽略。对应功能未完成前，不把相关入口宣传为可用。
 
@@ -101,6 +101,9 @@ P4生产切换在后面，不意味着P0-P3可以不考虑旧数据；ID、recei
 12. 第三方Runtime：通过显式合约可部署；不支持能力在准入拒绝，不选用官方Runtime替代。
 13. 两分支逐一跑F09模型、F10更新/回滚、F11变配、F12续费/到期恢复、F13删除/退款：Serve唯一写实例/current/access，原数据/单据/Key义务不变；默认App缺CapabilityVersion不被跳过或判legacy。
 14. 06异步矩阵逐交接注入丢ACK/owner重启：原durableOperation/effectID查回，无第二采购/Key/切换/退款；Ledger不可用不重做副作用、不驱动命令，不要求每轮poll收据。
+15. managed key：关闭/暂停须停用，符合原权益/资源/安全条件后授权恢复原external key；历史对象核实来源后同验，部署不批量改key。模型更新同key、approved scope不扩权；注入scope A→B已确认但Serve拒绝B，证明原Operation最终恢复A或确认B已实际应用，未收敛前不报成功、不接受依赖变更，保留CAS/Fabric/Serve边界。#869只在所选Release声明模型配置或资格显式验证该分支时构成该链依赖，不是默认App首链硬前置。
+16. 客户读权：无Tenant本人钱包/Token；Tenant费用/结算owner/admin允许、member拒绝及跨User/Tenant拒绝；原账户owner凭证明读legacy原账与已删Workspace历史，admin不自动继承；所有有效登录User可读公告，同人legacy ACK及重复ACK保留原时间。走真实Console/BFF/Owner边界验证会话过期、CSRF、两用户隔离与不可用不同于空结果。
+17. 部署与业务资格：安装同一Candidate只产生部署/config/health/安装rollback证据，不发客户命令；Cloud owners另经受保护入口完成该Candidate业务资格。健康检查或部署成功不能代替业务验收。
 
 ## 7. 验证层级与证据
 
@@ -112,7 +115,8 @@ P4生产切换在后面，不意味着P0-P3可以不考虑旧数据；ID、recei
 | 跨服务集成 | PostgreSQL+真实服务HTTP/gRPC，明确外部依赖测试边界 | 消息/事务/身份/错误链 | 真钱扣退款/生产资源 |
 | 浏览器 | Console→真实BFF→owner→应用 | 表单/进度/刷新/权限/静态资产/SSE | 自动成为生产发布资格 |
 | Local资格 | 干净合格Linux Local-Docker、固定Candidate | 本provider运行/存储/生命周期 | Tencent与实际Instance部署 |
-| Instance资格 | 保护runner、原Candidate digest、实际owner readback/新receipt | 指定实例/时间/输入的采用 | 其他版本/环境普遍可用 |
+| Instance部署 | Instance保护runner、原Candidate digest、配置/health/安装回滚readback及部署receipt | 指定实例/时间的安装采用 | 客户业务成功或业务资格 |
+| Cloud业务资格 | Cloud owners受保护入口、同一已安装Candidate、客户授权及实际Owner readback/receipt | 指定输入/时间的真实业务结果及资格 | 其他版本/环境、额外钱/资源动作授权 |
 
 源码实施按仓库规则先focused，再verify:local；跨模块/数据库/provider结构用verify:local:full。测试失败必须记录，不以“通常没问题”跳过。规格文档变更执行相应一致性检查，不以无关产品构建冒充文档验证；后续实现再按实际写集执行上述源码验证。
 
@@ -125,9 +129,9 @@ P4生产切换在后面，不意味着P0-P3可以不考虑旧数据；ID、recei
 
 ## 9. 本轮交付与后续实现的分界
 
-本轮交付仅06/08/09的SSOT时序、验收分层和旧对象迁移口径：默认App/Agent设计已采用，不等待产品再次确认；W01新wire、真实消费者、UI投影与完整一致性验证仍未完成。本轮不修改03/SQL/proto/events/机器flows/generators，也不更新旧checks报告为通过。历史R项/静态检查或pending_user为空不能代表此次新链已贯通，更不是业务代码包或全量交付。
+默认App/Agent、生命周期、客户读权及部署/业务资格的目标已确定；对应wire、真实消费者、UI投影与完整一致性验证仍须逐Owner落实。验收引用具体输入与实际输出，不把历史R项、静态检查或pending_user为空当作实现或上线证明。开放项与Owner由[roadmap](../../roadmap.md#workspace-key-and-customer-read-boundaries)唯一跟踪。
 
-实际开发完成需要：代码/迁移/文档同变更、owner与边界测试、浏览器真实功能证据、适用的Local/Instance回执。没有这些，不能把本包的“可开发”称为“已交付生产”。
+实际开发完成需要：代码/迁移/文档同变更、owner与边界测试、浏览器真实功能证据、适用的Local、Cloud业务资格与Instance部署回执。没有这些，不能把本包的“可开发”称为“已交付生产”。
 
 ## 10. 全量交接的角色签收，不让大家各补一套定义
 
@@ -146,4 +150,4 @@ P4生产切换在后面，不意味着P0-P3可以不考虑旧数据；ID、recei
 
 每个实施任务从14领取W编号；F编号、operationId、表及RPC直接引用冻结规格。进入任务前确认对应source/write set和依赖；完成时交代码、focused结果、真实caller证据和本层未验证项。每个PR保持一个可验收能力的切换，不强制额外worktree/审批轮次，不一次重写所有Owner。
 
-W00收齐目标与迁移口径；W01在现有contracts module落实协议、固定工具/schema hash并验证消费者，不止生成成功；W02按01在同仓库逐域建立模块、进程及数据库隔离，不创建领域GitHub仓库。实际开始/验收依赖以14为准，不因此重复添加审批门槛。TKE默认App首链以W15/W17所需最小交付/访问能力为终点，不依赖W09构建默认制品；W09提供Agent构建纵向链，再接同一W15/W17。14中准确前置须由W01集成负责人同步；W19–W21完成生命周期；W25/W30负责试迁移与真实切换；W27–W31负责候选/资格/同字节发布，不能让Cloud代替Instance执行生产工作。
+W00收齐目标与迁移口径；W01在现有contracts module落实协议、固定工具/schema hash并验证消费者，不止生成成功；W02按01在同仓库逐域建立模块、进程及数据库隔离，不创建领域GitHub仓库。实际开始/验收依赖以14为准，不因此重复添加审批门槛。TKE默认App首链以W15/W17所需最小交付/访问能力为终点，不依赖W09构建默认制品；W09提供Agent构建纵向链，再接同一W15/W17。14中准确前置须由W01集成负责人同步；W19–W21完成生命周期；W25/W30负责试迁移与真实切换；W27–W31负责候选/资格/同字节发布，Instance负责安装部署；Cloud owners负责受保护业务与业务资格，不能以部署检查替代客户业务验收。

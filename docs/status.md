@@ -17,6 +17,21 @@ Instance installation, or a Product Release. The target boundary is in
 [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Product Rule Adoption Boundary (2026-10-15)
+
+The [Workspace key and customer-read decision](decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads)
+records accepted intent, not a new source or runtime pass. At the inspected
+`881d5a2abeab590598ed1d47252bfa886522a613` source baseline, key issuance exists,
+the production issuer still refuses revocation, and model updates still use
+create/rebind/predecessor closeout. Reversible key control and same-key scope
+updates remain unimplemented. Cloud wallet/account usage already have BFF
+readers; fee/settlement, announcement/ACK and remaining Gateway readers retain
+the boundaries mapped in [implementation architecture](implementation-architecture.md).
+This decision does not change existing generated permissions or release evidence
+validation. Their adoption and authenticated exact-Candidate acceptance remain
+[open outcomes](roadmap.md#workspace-key-and-customer-read-boundaries). Earlier
+evidence below retains its original source, scope and observation date.
+
 ## Local Qualification Repairs (2026-10-13)
 
 PostgreSQL scratch-root recovery and optional Workspace-fixture construction

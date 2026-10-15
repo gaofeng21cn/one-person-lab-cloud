@@ -32,7 +32,8 @@ The reusable Cloud product has two application combinations:
   compatible independent WebUI, fixed into one immutable OCI.
 
 Workspace owns identity, entitlement, resource intent and model-configuration
-intent. Gateway Integration owns managed-key issuance and revocation. Fabric
+intent. Gateway Integration coordinates issuance, lifecycle disable/enable and
+approved same-key model permissions through Sub2API. Fabric
 owns provider resources and Secret bindings. Serve owns application deployment,
 readiness, route and runtime apply/readback. Ledger records evidence. Control
 Plane remains only where a real caller has not yet moved.
@@ -59,7 +60,9 @@ requires its original recipe/format contracts and has separate acceptance.
 Consume the existing Ingress repair, Candidate and binding receipts at their actual
 evidence layers. First implement only the affected admission/launch/UI seams, then
 integrate an exact branch SHA and build a Candidate if Cloud bytes changed. The
-Instance owner adopts the exact schema digest and qualifies those bytes. Finally
+Instance owner adopts the exact schema digest and proves deployment of those
+bytes; Cloud's product owners retain business qualification. The current
+protected execution and release-evidence migration is tracked below. Finally
 resume the original operation and verify ready URL, App login, one real answer,
 original order/charge and Gateway/Ledger readback under the existing authorization
 limits. Unchanged checks are reused; changed boundaries receive focused tests. Do
@@ -74,7 +77,7 @@ a deployed Candidate or final business PASS.
 | Priority | Outcome | Cloud owner | Current state | Completion evidence |
 | --- | --- | --- | --- | --- |
 | P0 | Move live model-configuration callers to Workspace/Gateway/Fabric/Serve | Workspace, Console BFF/UI, Control Plane migration | Owner-separated source path is implemented; the BFF/UI model-configuration routes already read and write through the Workspace owner, so the first completion clause is met and this row stays open only for the old writer's remaining callers and owner/browser acceptance | BFF/UI uses the Workspace owner for read/write, old writer has no configured caller, owner and browser tests pass |
-| P0 | Complete live managed-key issuer and delegation | Gateway Integration plus Sub2API | Cloud coordination, scope-resolution and Secret-delivery source paths are implemented against the fixed service-issuance seam; the live Sub2API service route, its Instance secret wiring and a service revocation path are not yet qualified. Cloud has no approved revocation endpoint and records each refusal as a queryable attempt, and that refusal now reaches the customer as `needs_attention` on a configuration whose reload was already confirmed, rather than as a completed `applied` change or as a configuration that was never applied; no key is retired by this path | Isolated real Sub2API service issuer, caller identity and key/usage readback; no raw key in Cloud persistence or receipts |
+| P0 | Complete live managed-key issuer and delegation | Gateway Integration plus Sub2API | Cloud coordination, scope-resolution and Secret-delivery source paths are implemented against the fixed service-issuance seam; the live Sub2API service route, its Instance secret wiring and a service revocation path are not yet qualified. Cloud has no approved revocation endpoint and records each refusal as a queryable attempt, and that refusal now reaches the customer as `needs_attention` on a configuration whose reload was already confirmed, rather than as a completed `applied` change or as a configuration that was never applied; no key is retired by this path | Approved service issuance plus lifecycle disable/enable and same-key scope/readback; real caller isolation and key/usage evidence. The detailed adoption outcome below replaces predecessor revocation as the model-update target; no raw key in persistence or receipts |
 | P0 | Finish Serve typed application execution and route activation | Serve; Instance owns ingress/DNS/TLS | Source route owner and model apply/readback exist; initial dependency progression and Workspace retirement intent have owner and executor boundary tests; owner-local conditional route CAS is implemented; typed Fabric application RPC and installation-level Ingress/route-object CAS remain | Typed execution contract, conditional route CAS, real TKE Service/readiness/access request and lost-response recovery |
 | P0 | Close the Workspace deletion through the Ledger receipt to the refund | Workspace and Ledger | Ledger now admits the confirmed-deletion provider-action receipt into its own non-financial writer and resolves it back through `ReadReceiptByReference`, so the structural refusal that blocked the closure is gone at source over real gRPC and PostgreSQL. Workspace now limits consecutive unconfirmed automatic passes of one deletion step to twelve, then leaves the operation at needs_attention with its original unknown/rejected observation; a newly authorized acknowledged delete replay resumes that same operation. After a pending Fabric read it replays the frozen original DeleteResources command, because ReadResources alone cannot advance Fabric. Isolated PostgreSQL tests cover the actual Workspace worker/caller with synthetic owner clients; the full Workspace-to-real-Ledger-to-Gateway closure and provider adoption remain unproven | One owner-authoritative end-to-end deletion that reaches the confirmed refund against the recorded absence receipt; source retry/recovery bounds are delivered, not production absence or refund acceptance |
 | P0 | Repair the Resource Catalog refund policy list encoding defect | Resource Catalog | `scanRefundPolicy` normalized neither separator when it mapped the stored hyphenated algorithm, so the required `algorithm` property silently became the unspecified member and the public encoder refused the administrator list page once a row existed; the source is repaired and the focused list-read test over a stored hyphenated algorithm passes, while the repaired source has reached the verified `78dbe9b4` Instance Candidate but the administrator list page still needs a fresh owner-authoritative readback | [defect source check](evidence/source-checks/2026-10-08-refund-policy-list-enum-encoding-defect.json); [repair source check](evidence/source-checks/2026-10-09-refund-policy-algorithm-enum-encoding.json); the administrator refund policy list reads back at 200 on a Candidate built from the repaired source |
@@ -86,6 +89,26 @@ a deployed Candidate or final business PASS.
 | P1 | Backup, restore, alert and data-exit contracts | Cloud owners; Instance operates them | Owner boundaries are described; production schedules and receivers are external | Isolated restore identity/readback, stable active/recovered signals, stop-purchase boundary and export/delete receipts |
 | P1 | MAP domain contracts and evaluation gate | MAP medical domain owner/Instance | Cloud logical Connect boundary is documented; no clinical domain or qualified MAP adapter/backend combination is claimed | MAP task/adapter contract, selected OPL Connect backend, approved data classes, source/evidence model, human review states, evaluation set, release gate and institution acceptance; no medical-specific Cloud adapter is required |
 | P2 | Customer-operated payment, multi-user Workspace, HA/GPU and broader provider profiles | Product and Instance owners | Deliberately outside the current beta cut | Separate product decision, owner and qualification evidence before admission |
+
+## Workspace Key And Customer Read Boundaries
+
+The [October 15 decision](decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads)
+settles product intent. Its adoption is open: this documentation change does not
+supply external APIs, change generated permissions, migrate historical identities
+or qualify a deployed Candidate. Existing API/protobuf schemas and release
+validators describe their still-consumed implementation boundary; upgrade them
+with their real callers, tests and evidence producers rather than relabeling
+prose as a delivered interface.
+
+| Outcome | Owner | Remaining adoption and acceptance |
+| --- | --- | --- |
+| Workspace-managed Key lifecycle (#821, #868) | Workspace and Gateway Integration; Sub2API external authority | Supply approved service disable/enable/state readback; wire actual closure and authorized recovery to the exact original key. Include proven historical ownership, retries, response loss and unrelated-key controls; resource absence does not prove key state. |
+| Same-key model updates (#869) | Workspace, Gateway Integration, Fabric and Serve | Replace the current create/rebind/predecessor-revoke update path and consumed contract together. Confirm approved permissions and actual application configuration under the original operation; a refused apply after scope change must converge without new keys or wider scope. Preserve CAS and Secret-binding invariants. This lane is not a default-App first-launch prerequisite. |
+| Personal and Tenant financial reads (#840, #870) | Gateway Integration and retained financial owner; Console BFF/UI | Keep wallet/Token reads on the logged-in User. Tenant owner/admin read Tenant bills; original owners read proven historical bills without automatic admin inheritance. Deliver the typed reader and original User/Account/purchase authority, preserve amounts and refund obligations, and prove cross-user/role denials. |
+| Announcements and historical ACKs (#840, #871) | Existing announcement owner, CloudIdentity and Console BFF/UI | Serve all valid authenticated Users without a Tenant prerequisite; inherit ACKs only through a proven same-User link, retaining original read times and isolation. Deliver the real typed boundary and callers, not a second writer. |
+| Remaining retained Gateway reads (#840) | Gateway Integration and Console BFF/UI | Keys list/detail, per-Key usage/summary, groups, endpoint and balance history still have retained callers outside #870/#871. Reproduce each actual authenticated caller and switch it with its required owner contract; do not treat recharge records as complete balance history or claim the parent is fully covered. |
+| Deployment and business-evidence separation (#872) | Cloud release/product owners and Instance deployment owner | Keep Instance deployment-only. Implement a separately protected Cloud business qualification entry and migrate actual receipt producers, schemas, provenance validators and release consumers together. Keep current admission checks until replacement evidence is executable; do not grant desktop production access. |
+| Exact-Candidate customer acceptance (#856, #873) | Cloud product qualification owners; Instance supplies deployment readback | Bind one Candidate to authenticated reads, real application login/response, original-operation recovery and applicable key lifecycle/resource/financial evidence. Any real spend, purchase, deletion or refund needs separate bounded authorization. Deployment health, source and fixtures are separate evidence layers. |
 
 ## Development Governance Migration (2026-10-13)
 

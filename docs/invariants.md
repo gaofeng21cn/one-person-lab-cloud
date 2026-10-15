@@ -20,7 +20,9 @@ current implementation documentation.
 - Sub2API owns customer identity credentials, API Keys, Usage, and the spendable
   wallet balance.
 - An instance repository owns its domains, provider profile, production
-  environment, Secrets, deployment, rollback, acceptance, and receipts.
+  environment, Secrets, deployment, deployment rollback, installation acceptance
+  and deployment receipts. Cloud's product owners retain customer operations
+  and business qualification with separately protected execution and evidence.
 - Each authoritative fact has one writer. Other modules consume it through a
   typed public contract or an owner readback.
 
@@ -52,8 +54,9 @@ current implementation documentation.
 - A Workspace Gateway Key is persisted only by the selected secret owner.
   Business operations and Ledger retain references, not the raw Key.
 - Gateway Integration is the sole writer of `gateway.key_bindings` and the
-  only owner allowed to issue, allowlist or revoke a Workspace-managed Gateway
-  key. Workspace may persist only the returned opaque binding id on its model
+  only Cloud owner allowed to coordinate issuance, approved model permissions,
+  lifecycle disable/enable and separately authorized security revocation for a
+  Workspace-managed Gateway key through Sub2API. Workspace may persist only the returned opaque binding id on its model
   configuration; it may not mint, reconstruct or substitute that id.
 - A model-configuration version is not accepted without a confirmed Gateway
   binding and a confirmed runtime Secret-binding readback. Serve receives the
@@ -132,9 +135,12 @@ resource-only provisioning and selected-application behavior follow the
   readback before another write is considered.
 - Workspace deletion removes owned Runtime, Secret, attachment, storage,
   and compute state through Fabric before removing the Workspace projection.
-  Gateway Keys may remain; neither deletion nor failed-Launch closeout requires
-  their deletion, disabled state, or permanent revocation. Delete and refund
-  remain distinct operations: only complete, fresh, identity-bound absence
+  Workspace closure also requests deactivation of its exact proven managed key;
+  resource absence and Secret removal do not prove that state. Authorized
+  recovery re-enables the original key under the existing entitlement, resource
+  and security constraints. Verified historical Workspaces adopt the same rule;
+  deployment alone does not authorize bulk mutation. Unknown or refused key
+  state remains visible. Delete and refund remain distinct operations: only complete, fresh, identity-bound absence
   evidence plus the Ledger deletion receipt permits automatic hourly refund
   dispatch through the existing original-charge reservation and wallet owner.
 - Unpaid expiry denies new access, ends existing proxied access, and stops the
@@ -232,10 +238,17 @@ implementation and remaining gaps are reported separately in status/roadmap.
   Secret for an already active runtime purpose must use the explicit Fabric
   `RebindSecret` operation with the expected predecessor binding; Fabric never
   permits two active bindings for the same runtime purpose.
-- A predecessor Gateway key remains valid until the replacement Secret and new
-  Runtime model version are confirmed by Fabric and Serve. Gateway revocation
-  and Fabric binding retirement are separate owner actions; unknown replacement
-  or compensation blocks subsequent side effects until readback.
+- Ordinary model updates preserve the same external Gateway key and only its
+  approved model scope. They do not issue a new key and revoke a predecessor.
+  Gateway permission readback, Fabric Secret readback, Serve applied-version
+  confirmation and Workspace CAS remain required. If scope changed but apply
+  is refused, the same operation must reconcile the same key's approved scope
+  with the actual applied configuration before success or dependent changes:
+  restore the last applied approved scope or confirm the original target through
+  owner readback. Unknown replacement or compensation remains unresolved;
+  scope widening or issuing a new key cannot conceal the failure. A separate
+  authorized Secret replacement does not conflate key identity with Secret
+  version or waive Fabric's one-active-binding invariant.
 - Retained data bindings are stable across ordinary image updates and are
   independent of tag/digest/attempt identity. Tencent application persistence
   uses Workspace-owned CBS via explicit mounts; container layers and tmpfs are
@@ -265,6 +278,15 @@ implementation and remaining gaps are reported separately in status/roadmap.
 
 ## Console
 
+- Default wallet and Token usage reads use the logged-in User's own verified
+  Sub2API binding, without changing the original purchase payer or obligations.
+- Tenant owner and admin may read their Tenant's bills and settlements. An
+  owner's own historical bills require proof from the original data owner;
+  Tenant roles do not grant another User's personal historical records.
+- Every valid authenticated Cloud User may read active announcements without
+  Tenant membership. Proven same-User historical acknowledgements may be
+  inherited with original read timestamps and user isolation. Publication and
+  ACK persistence retain their existing owner; anonymous access is not granted.
 - Console presents current owner-backed account, wallet, Workspace, Usage,
   receipt, and failure facts.
 - Independent sources load independently. A failed source does not erase valid
@@ -279,8 +301,12 @@ implementation and remaining gaps are reported separately in status/roadmap.
 
 ## Release And Production
 
-- Cloud publishes portable product artifacts. The instance owner deploys and
-  qualifies an immutable Cloud candidate in its own protected environment.
+- Cloud publishes portable product artifacts. The instance owner deploys an
+  immutable Cloud Candidate and proves installation identity and health in its
+  protected environment. Cloud's existing product owners separately qualify
+  customer business behavior against the same Candidate through an authorized
+  protected entry. Deploying Cloud does not execute customer business commands.
+  Release admission retains actual qualification and provenance checks.
 - Publication and deployment bind exact source commits, image digests, caller
   authority, and owner readback. A build or test result proves only its own
   layer.

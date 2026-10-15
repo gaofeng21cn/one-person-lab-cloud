@@ -1,6 +1,6 @@
 # 04 前端功能与交互交接
 
-> 这是前端工程规格，UI布局/可点击原型见11。已落规格的接口/DTO权威为03，机读映射在`contracts/ui_inventory.json`；它们不等于运行时支持证明。下述应用/WebUI选择为**2026-09-29已采用、待W01贯通的合同迁移**，产品决定见[12](12_product_spec.md)，迁移与验收见[14](14_implementation_work_packages.md)。03已经记录批准的迁移义务；SQL/proto及真实消费者未贯通前不能声称当前API接受新字段。本文件不复制长int64正则，也不把全部技术DTO塞进客户页面。
+> 这是前端工程规格，UI布局/可点击原型见11。已落规格的接口/DTO权威为03，机读映射在`contracts/ui_inventory.json`；它们不等于运行时支持证明。下述应用/WebUI选择为**2026-09-29已采用、待W01贯通的合同迁移**，产品决定见[12](12_product_spec.md)，迁移与验收见[14](14_implementation_work_packages.md)。03已经记录批准的迁移义务；SQL/proto及真实消费者未贯通前不能声称当前API接受新字段。本文件不复制长int64正则，也不把全部技术DTO塞进客户页面。生命周期与客户读权限以[2026-10-15 生命周期与客户读权限决定](../../decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads)为权威；下述投影不宣称现有03/inventory或运行接口已完成迁移。
 
 ## 1. 框架、导航与真实来源
 
@@ -40,7 +40,7 @@
 | 目录下架 | 明确tombstone，不再可新部署 | 宣称物理OCI字节已清理 |
 | Tenant恢复 | reenable原停用与restore已删除分开；逐项子操作 | Tenant active即全部应用可用、复活已删资源 |
 
-`ownerOperation`指所属Owner的持久操作引用，不是新全局工作流。客户页面仅通过BFF/所属Owner读取本Tenant、本对象授权的receipt结果投影；03现有getReceipt/listReceipts是platform_admin端点，不得直接供F05/F08调用或为此扩大权限，W01须贯通客户证据投影。浏览器已知operationId时刷新/返回只GET；后端任务独立继续。初次接受响应丢失且ID未知时，原端点必须以持久唯一键+请求hash支持同key同body取回原已接受响应；这不是新的购买/构建意图，更不授权下游重复扣款。若接口尚不具备该保证，标unknown并先在拥有方补齐，不假定存在新的只读lookup端点或用换key补缺。receipt缺失只由所属Owner恢复证据写入，UI重读证据，不重做业务副作用。
+`ownerOperation`指所属Owner的持久操作引用，不是新全局工作流。客户页面仅通过BFF/所属Owner读取当前User或适用Tenant、本对象授权的receipt结果投影；03现有getReceipt/listReceipts是platform_admin端点，不得直接供F05/F08调用或为此扩大权限，W01须贯通客户证据投影。浏览器已知operationId时刷新/返回只GET；后端任务独立继续。初次接受响应丢失且ID未知时，原端点必须以持久唯一键+请求hash支持同key同body取回原已接受响应；这不是新的购买/构建意图，更不授权下游重复扣款。若接口尚不具备该保证，标unknown并先在拥有方补齐，不假定存在新的只读lookup端点或用换key补缺。receipt缺失只由所属Owner恢复证据写入，UI重读证据，不重做业务副作用。
 
 needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示；外部unknown不是failed。D17按13的已批准规则；原型示例金额不是实际Catalog定价。没有3秒自动跳转或固定完成时间。
 
@@ -57,7 +57,7 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 |---|---|
 | 布局/优先级 | 登录页单列；登录后的个人身份在顶部账户菜单，成员表在设置/成员。主区先显示当前活动Tenant与个人角色，内部身份ID只在管理诊断层。 |
 | 控件/标注 | 用户名、密码输入；显式登录/退出；成员角色选择、邀请状态、独立撤销邀请按钮。普通成员只读，最后owner的移除/降级由服务端拒绝。 |
-| 步骤/业务链 | getLoginContext后提交同源登录；成功先getSession再进入原安全站内目标。无Tenant的受邀身份只显示接受邀请。邀请、角色变更和移除各自确认对象，不共享钱包密码。 |
+| 步骤/业务链 | getLoginContext后提交同源登录；成功先getSession再进入原安全站内目标。无Tenant的有效登录User仍可读本人钱包/Token与当前公告；受邀身份另显示接受邀请，Tenant功能单独校验成员关系。邀请、角色变更和移除各自确认对象，不共享钱包密码。 |
 | 返回/草稿/刷新 | 密码/CSRF不进入持久草稿。登录失败保留用户名、清除密码；会话失效保留安全returnTo，不自动重发业务写入。退出清理身份缓存与单次Key。 |
 | 失败/权限/不可用 | 会话读取失败独立显示；成员列表失败不退出有效会话。跨Tenant对象404；失去平台权限不能靠旧页面提交。邀请失效给出重新邀请而非自动注册。 |
 | 窄屏/焦点 | 登录控件单列；成员卡先身份/角色/状态，低频动作进更多菜单。账户菜单和移动导航互斥，关闭回到打开按钮。 |
@@ -76,7 +76,9 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 | 开通Tenant | `createTenant` / `CreateTenantRequest` | `CreateTenantRequest.name`、`CreateTenantRequest.billingSub2apiUserId`、`CreateTenantRequest.ownerGatewaySubjectId`；权限 platform_admin；核对已有Gateway owner身份与账单主体；跨域受理后跟踪Operation |
 | 绑定账单主体 | `bindTenantWallet` / `BindTenantWalletRequest` | `BindTenantWalletRequest.billingSub2apiUserId`、`BindTenantWalletRequest.expectedBindingVersion`；权限 platform_admin；核对expectedBindingVersion及Gateway委托权限，不允许自报余额 |
 
-成功：自己的Gateway身份成功登录，个人身份与Tenant钱包主体清楚分开；成员进入被授权的活动Tenant。
+成功：自己的Gateway身份成功登录，个人身份与Tenant付款主体清楚分开；成员进入被授权的活动Tenant，个人读权不因无Tenant被拒绝。
+
+当前公告向所有有效Cloud登录User展示并支持ACK，无Tenant/角色前提；Owner证明同人后显示继承的legacy ACK及原时间，重复ACK不刷新时间。legacy同人来源尚未核实时仅标继承结果待核实，不阻止当前公告读取；源读取失败显示不可用，不伪造未读或新ACK历史；read/ACK边界及真实caller仍待交付，不在本规则变更中命名新API。
 
 失败：登录失败显示统一身份校验失败，不透露账户是否存在；Tenant不可访问时显示原因与允许的管理读回，不能沿用旧权限。
 
@@ -298,7 +300,7 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 |---|---|
 | 布局/优先级 | 工作区列表是名称、资源/应用两态、完整周期、打开/详情。详情内概览、模型、部署历史、账单周期、危险操作分tab；主操作Open优先。 |
 | 控件/标注 | 搜索/cursor分页、打开、模型select+保存；模型配置同时显示目标version与appliedVersion。只有当前授权访问结果提供URL，客户端不拼地址。 应用登录信息按钮只给owner，且必须当前应用支持并实际ready；普通成员用应用自己的账户登录。 |
-| 步骤/业务链 | getWorkspaceAccess重新准入后打开，应用保留自己的登录。更新模型带expectedVersion；已生效版本仅由owner的configuration读回单独判定，读回中appliedVersion等于version即显示为已生效。未完成的收尾单独以状态徽章呈现，不因此扣留已生效版本。仍在运行的Operation与owner从未应答的Operation各自上报自身不确定性，且不得撤回读回已确认的版本。运行时未确认的版本一律不显示为已生效。 |
+| 步骤/业务链 | getWorkspaceAccess重新准入后打开，应用保留自己的登录。更新模型带expectedVersion，保留同一external key并仅更新approved scope。Serve已确认的实际appliedVersion如实展示；Gateway scope与实际配置尚未一致时仍显示原Operation待收敛，不显示整体成功，并禁用依赖该变更的后续修改。scope已改而Serve失败的收敛按06第7节执行，刷新只读原Operation，不重新提交。 |
 | 返回/草稿/刷新 | 列表筛选可保存；模型未提交选择离页提示并可丢弃。已提交用原Operation恢复，不重新保存；切换Tenant清除旧配置草稿。 应用username/password只留在显式单次对话框，关闭立即清除DOM与内存。 |
 | 失败/权限/不可用 | 部分源失败单独禁用对应动作，不隐藏有效资源事实。expired/suspended不同于deleted；没有选中应用的旧资源显示待部署。 拟模型/应用若不兼容scheduled目标资源，变更前返回SCHEDULED_PLAN_APPLICATION_CONFLICT，先取消可取消计划再改；兼容变更不因scheduled而一律锁死。 |
 | 窄屏/焦点 | 列表转结果优先卡；打开按钮先于筛选。模型错误内联；多tab可横向局部滚动，不出现整页横向滚动。 |
@@ -311,7 +313,7 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 | 更新模型配置 | `updateWorkspaceModels` / `UpdateWorkspaceModelsRequest` | `UpdateWorkspaceModelsRequest.expectedVersion`、`UpdateWorkspaceModelsRequest.selections`；权限 admin/owner；模型在允许目录且Workspace生命周期允许更新 |
 | 显示应用登录信息 | `revealWorkspaceApplicationCredentials` | 无body输入；对象和前置取当前Owner读回；权限 owner；仅Workspace owner且WorkspaceAccess.applicationCredentialsAvailable=true；单次private/no-store显示username/password；关闭/离页清除，不返回session_secret或Gateway Key |
 
-成功：打开的是当前选中部署，不是最初Launch的历史Runtime；模型配置可确认实际加载。
+成功：打开的是当前选中部署，不是最初Launch的历史Runtime；原external key的批准scope与实际加载模型一致。
 
 失败：运行不可用时不展示可点击“已运行”；访问拒绝有具体文案。配置保存但reload未确认显示分阶段结果。
 
@@ -379,10 +381,10 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 
 | 交接面 | 确定行为 |
 |---|---|
-| 布局/优先级 | 费用/订阅与工作区账单tab均展示完整周期、续费模式、授权状态、原义务和续费结果；交易在单独tab。 |
+| 布局/优先级 | Tenant费用/结算只向本Tenant owner/admin展示，member拒绝；费用/订阅与工作区账单tab均展示完整周期、续费模式、授权状态、原义务和续费结果；交易在单独tab。经证明的历史账单仅向原账户owner本人按原读权展示，Tenant admin不自动继承；原记录/金额/时间及已删Workspace历史保留。 |
 | 控件/标注 | 手动续费、读取续费设置；automatic单独同意、撤销/改manual通过明确API而非本地开关。 |
 | 步骤/业务链 | 续费同一周期唯一义务，人工点击与worker命中同一键。新周期1个月；旧legacy历史期数原样展示。余额不足不推进周期；provider续期未确认不显示新到期已生效。 Quote.periodStart固定原paidThrough，periodEnd为nextBillingMonth(paidThrough,billingAnchorDay)。确认页展示完整起止与实际剩余可用时间；now>=periodEnd返回RENEWAL_PERIOD_ELAPSED，不改成恢复后新整月。 存在scheduled降配时下一期报价绑定该计划目标价，手动/自动/边界worker共享唯一nextPeriodStart义务，不先扣旧价。提前付目标下一期也必须等原E才降资源；取消自动续费不删除计划，缺授权在E等待付款。 |
-| 返回/草稿/刷新 | 充值不自动宣称恢复；刷新读取subscription与原续费operation。对自动续费授权变更确认后必须读回生效。 |
+| 返回/草稿/刷新 | 到期/关闭须分别显示managed key停用、应用停止/访问关闭的读回；授权恢复原external key按06第10节，充值不自动宣称恢复；刷新读取subscription与原续费operation。对自动续费授权变更确认后必须读回生效。 |
 | 失败/权限/不可用 | 显示到期停止与资源实际存在性；删除后的资源不能续费复活。资金unknown只核对原单，不能再发一笔同周期扣费。 已超原续费窗口明确区别于余额不足；需要明确新建或Owner处理，不暗中补购。 |
 | 窄屏/焦点 | 完整起止时间上下排版；当前模式与关闭自动续费动作在同区域，不藏在长条款底部。 |
 
@@ -407,7 +409,7 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 
 | 交接面 | 确定行为 |
 |---|---|
-| 布局/优先级 | 删除在独立危险区。确认先对象/运行资源/数据范围，再原退款保留条款，最后名称输入与销毁确认。结果页资源销毁和退款两块并列。 |
+| 布局/优先级 | 删除在独立危险区。确认先对象/运行资源/数据范围，再原退款保留条款，最后名称输入与销毁确认。结果页managed key停用、资源销毁和退款结果分别展示。 |
 | 控件/标注 | confirmationName必须准确；acknowledgeDataDestruction未勾选不可提交。quoted链接原Quote；legacy_import显示原purchase与原条款，不造Quote。 |
 | 步骤/业务链 | 先getSubscription核对原政策，deleteWorkspace受理后追getWorkspaceDeletion和独立wallet operation。只有absence和原单资格确认才进入允许退款，环境deleted不代表退款confirmed。 删除原子取消尚未执行的scheduled计划；已发出资金/资源动作先收敛，不一边resize一边destroy。基础单保留原720小时删除政策；成功升级补差按自身quoteT..E剩余覆盖向下取整，原单分别去重读回；升级确定失败补偿是原补差全退，不套720。 |
 | 返回/草稿/刷新 | 不保存危险确认输入。刷新只恢复已受理Operation，不重复DELETE；任何未知结果保留原命令身份。 |
@@ -435,7 +437,7 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 |---|---|
 | 布局/优先级 | Gateway内服务信息、用量、API Key子页；费用内订阅、交易；平台充值记录只读。Token使用和Workspace月费不能揉成同一个未说明金额。 |
 | 控件/标注 | Key名称/允许模型/到期；创建、显式reveal、撤销独立动作，托管Key转工作区管理。用量按Key与周期筛选。 |
-| 步骤/业务链 | 余额/用量读取来自Gateway，错误不当0。Key单次no-store响应在模态内存，关闭/离页/退出清除；列表只指纹。撤销需明确影响与Owner读回。 |
+| 步骤/业务链 | 默认余额/Token用量读取登录User本人，无需Tenant，不替换成Tenant付款主体；来自Gateway，错误不当0。Key单次no-store响应在模态内存，关闭/离页/退出清除；列表只指纹。撤销需明确影响与Owner读回。 |
 | 返回/草稿/刷新 | 不持久存任何Key值。丢失创建响应先取回原结果引用，再在Gateway允许时显式reveal，不能盲建第二Key。 |
 | 失败/权限/不可用 | Key reveal能力不可用明确拒绝；托管Key不能通过普通入口操作。充值accepted不等于到账，真实充值不在本原型执行。 |
 | 窄屏/焦点 | 先Key身份/状态/模型/限额，低频动作更多菜单；一次性Secret可换行和复制，关闭后DOM清除。 |
@@ -517,7 +519,7 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 | 交接面 | 确定行为 |
 |---|---|
 | 布局/优先级 | 平台操作与审计按owner/对象过滤；资格页并排源码、Candidate、Instance、Release四层证据，不用一个总绿灯。 |
-| 控件/标注 | 复制安全requestId、读回原Operation、查看不可变receipt/制品身份；高后果动作引向已有Instance保护流程，不在BFF加执行器。 |
+| 控件/标注 | 复制安全requestId、读回原Operation、查看不可变receipt/制品身份；业务核验引向Cloud owners受保护入口；安装部署/配置/health/安装回滚及部署证据归Instance，不在BFF加执行器、不从本机直连生产。 |
 | 步骤/业务链 | reconcile仅核对/继续原义务，由Owner裁决，不能强制状态为succeeded。完整digest和源SHA需一致，正式发布提升同已合格字节。 |
 | 返回/草稿/刷新 | 管理筛选可保存，敏感凭据/私网地址不进入URL或浏览器。刷新保留原owner+operationId，不创建新管理任务。 |
 | 失败/权限/不可用 | 未取得某层证据就显示未取得，不能用源码测试代替Instance运行；未知资金/资源结果给独立读回。 |
@@ -553,4 +555,4 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 - F04–F09自选路径：覆盖唯一Build形态Package+精确Runtime+独立approved WebUI三输入；三项精确版本穿过Build manifest、CapabilityVersion、Quote、部署、receipt及真实页面，不存在保留Runtime内置UI的Agent分支。
 - 非法/竞争：只选Package不选独立WebUI、只选独立WebUI不选Package、在默认App上叠加独立WebUI均在UI禁用、服务端拒绝；目录撤销、默认策略变化或报价失效不静默替换已选版本。
 - 丢响应/刷新/重启：原ownerOperation与receipt可定位；已知Operation后浏览器只读；首次响应丢失严格按第2节取回原身份，后端不重复构建、扣费或采购。资源ready、应用未ready、receipt未确认和unknown分别展示；两分支均经Serve实时访问准入，失败不fallback。
-- TKE证据须串起准确provider profile、批准套餐及预付月付原单、Fabric资源读回、所选OCI、Serve运行/路由/凭据验证、Ledger receipt与浏览器结果；不得用Local-Docker通过替代`tencent-tke`通过。采用同一Candidate SHA/digest的Instance资格由`opl-instance-medopl`受保护流程执行并出具证据，Cloud本地不访问生产，也不从普通E2E购买/删除真实CVM/CBS或执行真实收费。
+- TKE证据须串起准确provider profile、批准套餐及预付月付原单、Fabric资源读回、所选OCI、Serve运行/路由/凭据验证、Ledger receipt与浏览器结果；不得用Local-Docker通过替代`tencent-tke`通过。同一Candidate SHA/digest的安装部署证据由`opl-instance-medopl`出具，客户业务资格由Cloud owners受保护入口执行并留证；保留来源/actor授权与回滚检查，现有release证据消费者须同步升级。Cloud本地不直连生产，也不从普通E2E购买/删除真实CVM/CBS或执行真实收费。

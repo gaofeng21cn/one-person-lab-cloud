@@ -16,8 +16,11 @@ release mechanisms. A domain is not a separate GitHub repository.
 - `packages/contracts` owns only machine-readable facts that have a current
   cross-module, public-interface, security, integrity, or irreversible-side-
   effect consumer.
-- `opl-instance-medopl` owns the medopl domains, provider profile, production
-  environment and Secrets, deployment, rollback, acceptance, and receipts.
+- `opl-instance-medopl` owns medopl installation configuration, production
+  environment and Secrets, deployment, installation rollback and deployment
+  receipts. Product-operation and qualification ownership follows
+  [the current decision](docs/decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads);
+  unfinished execution/evidence migration stays in `docs/roadmap.md`.
 
 `opl-cloud` is the product's package, image, service, namespace, and runner name.
 The current repository identity is `gaofeng21cn/one-person-lab-cloud`, as declared
@@ -170,8 +173,11 @@ wiring. This does not establish that all Codex sessions are restricted.
 
 ## Documentation
 
-Follow the hierarchy in `docs/README.md`. Lower layers may implement or report
-an upper-layer decision; they do not redefine it.
+Use [the documentation index](docs/README.md#entrypoints-and-consumers) to locate
+canonical owners and their consumers. This file owns agent execution rules and
+required entrypoints, not product specifications or a second documentation tree.
+Lower layers may implement or report an upper-layer decision; they do not
+redefine it.
 
 Keep active documentation limited to current truth, open gaps, and reusable
 operations. Completed plans, freezes, task checklists, shell transcripts, and
@@ -186,51 +192,16 @@ absent.
 
 ## Module Ownership
 
-The target architecture is the domain-separated Agent SaaS architecture adopted
-in [docs/decisions.md](docs/decisions.md) on 2026-09-22 and specified by the
-target architecture development specification under
-[docs/spec/target](docs/spec/target/00_master_index.md). The target domains are
-`tenant` (CloudIdentity), `capability`, `build`, `workspace`,
-`runtime_control`, `resource_catalog`, `gateway` (Gateway Integration),
-`fabric`, and `ledger`, surfaced through `apps/console-ui` and a Console BFF.
-Each domain owns its own data and writes; cross-owner references use opaque
-identifiers only. The canonical in-repository directory and deployment-unit map
-is [Repository And Instance Topology](docs/architecture.md#repository-and-instance-topology).
+Before changing a module, read the target
+[repository and deployment-unit map](docs/architecture.md#repository-and-instance-topology),
+the [target owner matrix](docs/spec/target/01_domain_ownership_matrix.md#2-领域分工与内部lane),
+and the [current source and request map](docs/implementation-architecture.md).
+Use those owners to identify data writers, callers and retained migration paths;
+do not maintain a second module inventory or current routing map here.
 
-The current implementation has both extracted owner processes and retained
-Control Plane callers. [Implementation architecture](docs/implementation-architecture.md)
-owns their source paths and request map; the target work packages own remaining
-migration and qualification outcomes.
-
-| Module | Owns |
-| --- | --- |
-| `apps/console-ui` | Presentation; migrated cloud surfaces call Console BFF, while retained callers use Control Plane APIs |
-| `apps/console-bff` | Same-origin browser REST, session security and typed owner aggregation; no business persistence |
-| `services/gateway-integration` | CloudIdentity/Tenant and Gateway integration, with distinct data owners in one deployment unit |
-| `services/capability`, `services/build`, `services/runtime-control` | Package/catalog facts, immutable OCI build facts, approved Runtime Release references respectively |
-| `services/workspace`, `services/resource-catalog`, `services/serve` | Workspace business operations, approved plans/pricing policies, application delivery/readiness/access respectively |
-| `services/control-plane` | Retained sessions, account policy, Workspace lifecycle, settlement coordination and customer DTOs until their callers migrate |
-| `services/fabric` | Provider-neutral compute, storage, attachment, Secret binding, Runtime facts, provider adapters |
-| `services/ledger` | Receipts, evidence, retention, reconciliation, opaque provenance |
-| `services/internal` | Policy-free infrastructure shared by at least two current services |
-
-- Under the target architecture, each business service has an independent Go
-  module and process inside this repository. Each data owner has its own
-  PostgreSQL database and roles. CloudIdentity (`tenant`) and Gateway Integration
-  (`gateway`) are distinct data owners in the same Gateway Integration module
-  and deployment unit; neither each domain name nor each proto service creates
-  another process. Extracted owners use typed gRPC/protobuf; migrated cloud
-  Console surfaces use the BFF REST API. Retained Control Plane, Fabric, and Ledger
-  callers keep their current module, process, and typed HTTP boundaries.
 - Control Plane is a migration source, not a permanent second writer alongside
   the extracted services. Move a capability and its real callers together, then
   retire its old write path while preserving historical obligations.
-- Console's `cloud` identity uses `apps/console-bff` for authentication,
-  Workspace, Publisher, delivery and wallet/model-catalog reads; other
-  unmigrated Gateway/Billing panels still use Control Plane APIs. `legacy` retains its current
-  Control Plane authentication and Workspace APIs. The identity is baked into
-  the image and declared by its label and installation topology, not changed at
-  runtime.
 - Keep one shared contracts Go module at `packages/contracts/go/go.mod`. W01
   places production proto sources in `packages/contracts/proto/` and generated
   Go bindings under the existing contracts module, not another module. Internal
@@ -287,7 +258,10 @@ require a production environment to build the product.
 During pre-1.0, build a replaceable candidate from an exact Cloud SHA and image
 digest on a branch admitted by the Candidate workflow. Formal publication still
 requires that exact source to be merged into canonical `main`. The instance owner
-deploys and qualifies that candidate in its protected environment. A formal Product Release promotes the same qualified
+deploys that Candidate and proves installation identity and health in its
+protected environment. Cloud product owners retain business qualification;
+current release-evidence migration is an explicit roadmap gap, not permission
+to remove admission checks. A formal Product Release promotes the same qualified
 bytes without a rebuild.
 
 Candidate construction and local development do not authorize formal
@@ -316,8 +290,12 @@ authorize publication.
 
 ## High-Consequence Boundaries
 
-- Production-private endpoints, clusters, databases, and services are accessed
-  only through `opl-instance-medopl` protected workflows and authorized runners.
+- The current permitted access path for production-private endpoints, clusters,
+  databases and services is `opl-instance-medopl` protected workflows and
+  authorized runners. This is the existing access boundary, not ownership of
+  customer business operations. A Cloud-owned protected business-qualification
+  entry and its evidence consumers must be implemented before that entry is
+  used; the target decision grants no new access or dispatch permission.
 - The local development machine must never access the production private
   network directly; this repository must not dispatch Instance deployment.
 - Sub2API remains the spendable-wallet and Gateway backend authority.
@@ -370,10 +348,12 @@ host-owned execution receipts. Deployment and qualification retain their
 required owner receipts. Failed or unavailable verification records the attempted
 action and reason rather than implying pass.
 
-Cloud owns source evidence and roadmap state. Instance owns immutable
-Candidate, launch/use, deployment, rollback and provider qualification receipts
-under its `receipts/` surface; use its current validators and schemas instead of
-copying an Instance receipt format into this file. Bind applicable source SHA,
+Cloud owns source evidence, roadmap state and product business qualification.
+Instance owns installation, deployment and deployment-rollback evidence. Current
+launch/use and qualification receipt producers and release consumers have not
+yet migrated to that target; preserve their existing schemas and checks until
+both owners implement the migration in the same change. Do not copy receipt
+formats into this file. Bind applicable source SHA,
 image digests, timestamps, workflow provenance and actual focused readback.
 Append a new receipt for a new action and never overwrite a prior receipt.
 Receipts contain no credentials, raw Keys, customer data or private addresses.
