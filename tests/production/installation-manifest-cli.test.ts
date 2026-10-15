@@ -141,6 +141,9 @@ test("installation CLI accepts live replicas only through exact controller and e
     ["invalid endpoint address", ({ endpoints }) => { endpoints.subsets[0].addresses[0].ip = "not-an-ip"; }],
     ["forged slice address", ({ slice }) => { slice.endpoints[0].addresses[0] = "2001:db8::99"; }],
     ["wrong slice address family", ({ slice }) => { slice.addressType = "IPv4"; }],
+    ["reordered primary Pod IP", ({ pod }) => { pod.status.podIPs.reverse(); }],
+    ["contradictory Pod IP list", ({ pod }) => { pod.status.podIP = "192.0.2.99"; }],
+    ["missing live containers", ({ pod }) => { delete pod.spec.containers; }],
     ["malformed Pod IP list", ({ pod }) => { pod.status.podIPs = [null]; }],
     ["stale slice Service UID", ({ service }) => { service.metadata.uid = "replaced-service"; }],
     ["live sidecar listener", ({ pod }) => { pod.spec.containers.push({ name: "live-sidecar", image: "example.invalid/sidecar:1", ports: [{ containerPort: 8184 }] }); }],
@@ -879,4 +882,20 @@ test("installation CLI supplies Product-resolved Service identity for configured
     { name: "ledger-rpc", namespace: "installation" });
   assert.deepEqual(result.report.communication.edges.find(e => e.caller === "serve" && e.target === "workspace").serviceRef,
     { name: "workspace-rpc", namespace: "installation" });
+});
+
+// An arbitrary sidecar does not acquire Product listener semantics from an env name.
+test("installation CLI does not infer unknown sidecar listeners from environment names", async t => {
+  for (const init of [false, true]) await t.test(init ? "restartable init" : "sidecar", async () => {
+    const list = workedInstallation();
+    const pod = deployment(list, "capability").spec.template.spec;
+    const sidecar = { name: "non-listening-helper", image: "example.invalid/helper:1",
+      command: ["/bin/sh", "-c", "exec sleep 3600"],
+      env: [{ name: "OPL_CAPABILITY_OBJECT_LISTEN_ADDR", value: ":8191" }] };
+    if (init) pod.initContainers = [{ ...sidecar, restartPolicy: "Always" }];
+    else pod.containers.push(sidecar);
+    const result = await invoke(list);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(result.report.communication.edges.length, 46);
+  });
 });

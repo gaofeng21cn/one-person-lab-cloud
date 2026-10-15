@@ -166,7 +166,8 @@ function endpointBackend(resource: Resource, service: Resource, target: Resource
     const podIP = pod.status?.podIP;
     if (typeof podIP !== "string" || isIP(podIP) === 0) return false;
     const podIPs = pod.status?.podIPs;
-    if (podIPs !== undefined && (!Array.isArray(podIPs) || podIPs.some((entry: unknown) => !object(entry) || typeof entry.ip !== "string" || isIP(entry.ip) === 0))) return false;
+    if (podIPs !== undefined && (!Array.isArray(podIPs) || podIPs.some((entry: unknown) => !object(entry) || typeof entry.ip !== "string" || isIP(entry.ip) === 0) ||
+        podIPs[0]?.ip !== podIP)) return false;
     const ips = new Set([podIP, ...(podIPs ?? []).map((entry: Resource) => entry.ip)]);
     const expectedFamily = addressType === "IPv4" ? 4 : addressType === "IPv6" ? 6 : undefined;
     return addresses.every(address => typeof address === "string" && isIP(address) !== 0 &&
