@@ -14,6 +14,7 @@ import type { GatewayAccountReadController } from "./console-controller-types.ts
 import { cloudIdentity } from "./console-identity.ts";
 import {
   GATEWAY_BALANCE_HISTORY_PAGE_SIZE,
+  accountUsageSourceTag,
   applyGatewayAccountReadCompletion,
   beginGatewayAccountReadProjection,
   createGatewayAccountReadRequestScope,
@@ -52,7 +53,9 @@ type ProjectionGenerations = Record<GatewayAccountReadProjectionKind, number>;
 // otherwise the scope guard rejects the failure and the customer never sees that
 // the read is unavailable.
 function unavailableSourceTag(kind: GatewayAccountReadProjectionKind): string {
-  return kind === "wallet" ? walletSourceTag(cloudIdentity) : sub2apiAccountReadSourceTag;
+  if (kind === "wallet") return walletSourceTag(cloudIdentity);
+  if (kind === "accountUsage") return accountUsageSourceTag(cloudIdentity);
+  return sub2apiAccountReadSourceTag;
 }
 
 const createProjectionGenerations = (): ProjectionGenerations => ({

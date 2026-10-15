@@ -95,6 +95,14 @@ func gatewayProductSystem(t *testing.T) (api.GatewayProductServiceClient, api.Te
 				return
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"items": []map[string]any{{"key": "sk-caller", "status": "active"}}}})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/admin/usage/stats":
+			if r.Header.Get("Authorization") != "Bearer directory-token" || r.URL.Query().Get("user_id") != "101" || r.URL.Query().Get("timezone") != "Asia/Shanghai" || r.URL.Query().Get("start_date") == "" || r.URL.Query().Get("end_date") == "" {
+				w.WriteHeader(400)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{
+				"total_requests": 17, "total_input_tokens": 170, "total_output_tokens": 34, "total_tokens": 204, "total_actual_cost": "0.1250019",
+			}})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
 			if r.Header.Get("Authorization") != "Bearer sk-caller" {
 				w.WriteHeader(401)
@@ -158,6 +166,21 @@ func TestGatewayProductReadsUseTheRealOwnerAndSerializeTheContractSpelling(t *te
 		t.Fatalf("wallet wire=%s", walletJSON)
 	}
 
+	usage, err := gatewayClient.GetUsageSummary(t.Context(), &api.GetUsageSummaryRpcRequest{Context: &api.CallContext{SessionId: proto.String(ref)}, Period: "month"})
+	if err != nil {
+		t.Fatalf("GetUsageSummary: %v", err)
+	}
+	if usage.GetTotalRequests() != 17 || usage.GetTotalInputTokens() != 170 || usage.GetTotalOutputTokens() != 34 || usage.GetTotalTokens() != 204 || usage.GetTotalActualCostUsdMicros() != 125001 {
+		t.Fatalf("usage=%v", usage)
+	}
+	usageJSON, err := publicjson.Marshal(usage)
+	if err != nil {
+		t.Fatalf("marshal usage: %v", err)
+	}
+	if !strings.Contains(string(usageJSON), `"totalActualCostUSDMicros":"125001"`) || !strings.Contains(string(usageJSON), `"totalRequests":"17"`) {
+		t.Fatalf("usage wire=%s", usageJSON)
+	}
+
 	page, err := gatewayClient.ListModels(t.Context(), &api.ListModelsRpcRequest{Context: &api.CallContext{SessionId: proto.String(ref)}})
 	if err != nil {
 		t.Fatalf("ListModels: %v", err)
@@ -190,6 +213,9 @@ func TestGatewayProductReadsRequireAuthorizedEndpoints(t *testing.T) {
 	if _, err := service.ListModels(context.Background(), &api.ListModelsRpcRequest{Context: &api.CallContext{SessionId: proto.String(ref)}}); err == nil {
 		t.Fatal("an unauthenticated in-process call reached ListModels")
 	}
+	if _, err := service.GetUsageSummary(context.Background(), &api.GetUsageSummaryRpcRequest{Context: &api.CallContext{SessionId: proto.String(ref)}, Period: "month"}); err == nil {
+		t.Fatal("an unauthenticated in-process call reached GetUsageSummary")
+	}
 
 	// The generated policy grants the member read and denies it the admin-only
 	// wallet read.
@@ -198,6 +224,12 @@ func TestGatewayProductReadsRequireAuthorizedEndpoints(t *testing.T) {
 	allowed := &api.AuthorizationRequest{Scope: scope, ActorId: "101", SessionId: proto.String(ref), AudienceOwner: api.OwnerEnum_OWNER_ENUM_GATEWAY, Action: api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTMODELS, Resource: &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG}, RequestId: "request"}
 	if _, err := service.AuthorizeAction(peerCtx, allowed); err != nil {
 		t.Fatalf("member ListModels was denied: %v", err)
+	}
+	usageAllowed := proto.Clone(allowed).(*api.AuthorizationRequest)
+	usageAllowed.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY
+	usageAllowed.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT}
+	if _, err := service.AuthorizeAction(peerCtx, usageAllowed); err != nil {
+		t.Fatalf("member GetUsageSummary was denied: %v", err)
 	}
 	denied := proto.Clone(allowed).(*api.AuthorizationRequest)
 	denied.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET

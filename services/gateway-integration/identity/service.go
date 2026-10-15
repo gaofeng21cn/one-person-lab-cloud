@@ -324,6 +324,32 @@ func (s *Service) GetWallet(ctx context.Context, r *api.GetWalletRpcRequest) (*a
 	}, nil
 }
 
+// GetUsageSummary reads the caller's usage totals from Sub2API through the Gateway owner.
+// The BFF never aggregates or fabricates usage facts.
+func (s *Service) GetUsageSummary(ctx context.Context, r *api.GetUsageSummaryRpcRequest) (*api.UsageSummary, error) {
+	if err := peer(ctx, owneridentity.ConsoleBFF); err != nil {
+		return nil, err
+	}
+	if r == nil || r.GetContext() == nil || r.GetContext().GetSessionId() == "" {
+		return nil, status.Error(codes.Unauthenticated, "active Cloud session required")
+	}
+	out, _, _, err := s.session(ctx, r.GetContext().GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	stats, err := s.Gateway.UsageStats(ctx, out.GetActorId(), r.GetPeriod())
+	if err != nil {
+		return nil, err
+	}
+	return &api.UsageSummary{
+		TotalRequests:            stats.TotalRequests,
+		TotalInputTokens:         stats.TotalInputTokens,
+		TotalOutputTokens:        stats.TotalOutputTokens,
+		TotalTokens:              stats.TotalTokens,
+		TotalActualCostUsdMicros: stats.TotalActualCostUSDMicros,
+	}, nil
+}
+
 // ListModels reads the caller's own Codex model catalog from the Gateway owner.
 // The catalog is read with the caller's active Gateway API key and carries no
 // token price; a missing key or unresolvable catalog fails closed rather than

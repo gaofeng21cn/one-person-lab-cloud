@@ -265,21 +265,23 @@ surfaces. The Dockerfile defaults to `legacy` and labels the built digest with
 | `cloud` | Authentication, Workspace, Publisher and delivery use same-origin Console BFF `/api/v2/*`, CloudIdentity session and owner authorization | Workspace owner list/detail, composed resource/delivery/access facts; no retained Control Plane Workspace read or maintenance fallback |
 | `legacy` | Retained Control Plane authentication and Workspace `/api/*` | Existing Control Plane Workspace rows, lifecycle and Runtime projections |
 
-The shared Gateway wallet read follows the baked Console identity; the other
-shared readers stay retained. A cloud build requests the same-origin Console
-BFF `/api/v2/wallet`, which authorizes the call and returns the Gateway owner's
-own readback. The shared reader in
+The shared Gateway wallet and account-usage reads follow the baked Console
+identity; the other shared readers stay retained. A cloud build requests the
+same-origin Console BFF `/api/v2/wallet` and `/api/v2/usage/summary`, which
+authorize the calls and return the Gateway owner's own readbacks. The shared
+readers in
 `apps/console-ui/src/api/console-read-api.ts` selects that route from
 `VITE_CONSOLE_IDENTITY`. A legacy build keeps requesting the retained Control
 Plane `/api/gateway/wallet`, which projects the Sub2API answer it already
 returned. The projection's owner tag follows the same identity, so a wallet
-response commits only under the identity that requested it.
+response commits only under the identity that requested it. The account-usage
+projection applies the same owner guard and names the Gateway source for cloud
+responses; legacy responses keep the retained Sub2API source.
 
-Gateway Key, per-Key Usage, account usage, balance history and endpoint reads,
-Billing, announcement and operator panels keep their retained `/api/*` adapters
-in either build; only the wallet read changed route. Cloud identity does not
-redirect those callers to BFF, and their API availability and authorization
-remain deployment requirements.
+Gateway Key, per-Key Usage, balance history and endpoint reads, Billing,
+announcement and operator panels keep their retained `/api/*` adapters in either
+build. Cloud identity does not redirect those callers to BFF, and their API
+availability and authorization remain deployment requirements.
 
 The launch flow's wallet and catalog reads are a separate caller in
 `apps/console-ui/src/api/workspaces-api.ts`; they already targeted the BFF route

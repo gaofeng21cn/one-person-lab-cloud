@@ -20,6 +20,15 @@ func (s *Server) registerGatewayRoutes(mux *http.ServeMux, gateway api.GatewayPr
 		}
 		return gateway.GetWallet(r.Context(), &api.GetWalletRpcRequest{Context: c})
 	})
+	s.publisherRoute(mux, "GET /api/v2/usage/summary", owneridentity.Gateway, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", nil, func(r *http.Request, c *api.CallContext, _ proto.Message) (proto.Message, error) {
+		if gateway == nil {
+			return nil, status.Error(codes.Unavailable, "gateway owner is not configured")
+		}
+		return gateway.GetUsageSummary(r.Context(), &api.GetUsageSummaryRpcRequest{
+			Context: c,
+			Period:  r.URL.Query().Get("period"),
+		})
+	})
 }
 
 // registerModelCatalogRoute serves the Gateway-owned model catalog. It is
@@ -57,8 +66,8 @@ func (s *Server) registerWalletBindingRoute(mux *http.ServeMux) {
 	})
 }
 
-// NewGatewayReadHandler exposes only the Gateway-owned product reads (wallet and
-// model catalog) over the BFF's authenticated boundary. It exists so a caller
+// NewGatewayReadHandler exposes only the Gateway-owned product reads (wallet,
+// usage summary and model catalog) over the BFF's authenticated boundary. It exists so a caller
 // outside apps/console-bff, which cannot reach the internal package, can still
 // drive the real route guard, authorization precondition and serialization.
 func NewGatewayReadHandler(gateway api.GatewayProductServiceClient, identity IdentityReader) http.Handler {

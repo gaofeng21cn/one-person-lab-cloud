@@ -18844,6 +18844,7 @@
       ],
       "operationIds": [
         "getWallet",
+        "getUsageSummary",
         "listUsage",
         "listGatewayKeys",
         "createGatewayKey",
@@ -18911,7 +18912,12 @@
         "WalletOperation.receiptId",
         "WalletOperation.status",
         "WalletOperation.updatedAt",
-        "WalletOperation.workspaceId"
+        "WalletOperation.workspaceId",
+        "UsageSummary.totalActualCostUSDMicros",
+        "UsageSummary.totalInputTokens",
+        "UsageSummary.totalOutputTokens",
+        "UsageSummary.totalRequests",
+        "UsageSummary.totalTokens"
       ],
       "displayRequirements": "钱包主体、可用余额、source/status/fetchedAt、Token用量与模型费用、Workspace交易另列、Key名称/指纹/状态/用途，管理员充值操作与权威交易读回。",
       "interaction": "个人身份与Tenant账单主体分区显示；Gateway钱包与Token费用来自Gateway，Workspace套餐来自Cloud报价，两者不拼成第二账本。Key明文只在显式创建/reveal单次no-store响应的内存对话框中出现，关闭/离页/退出清除；仅当前授权用户可复制。撤销Key需确认影响，系统托管Workspace Key不允许走普通Key手动操作。 本期平台管理员只读listRechargeRecords，真实充值由Gateway现有授权边界执行；UI不提供不存在的Cloud充值提交按钮。",
@@ -19045,7 +19051,12 @@
         "WalletOperation.receiptId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "WalletOperation.status": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "WalletOperation.updatedAt": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
-        "WalletOperation.workspaceId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success"
+        "WalletOperation.workspaceId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
+        "UsageSummary.totalActualCostUSDMicros": "readonly Gateway usage owner fact; reject missing or malformed values rather than displaying zero",
+        "UsageSummary.totalInputTokens": "readonly Gateway usage owner fact; reject missing or malformed values rather than displaying zero",
+        "UsageSummary.totalOutputTokens": "readonly Gateway usage owner fact; reject missing or malformed values rather than displaying zero",
+        "UsageSummary.totalRequests": "readonly Gateway usage owner fact; reject missing or malformed values rather than displaying zero",
+        "UsageSummary.totalTokens": "readonly Gateway usage owner fact; reject missing or malformed values rather than displaying zero"
       },
       "fieldSources": {
         "GatewayKey.createdAt": [
@@ -19246,6 +19257,21 @@
         "WalletOperation.workspaceId": [
           "listWorkspaceTransactions",
           "listRechargeRecords"
+        ],
+        "UsageSummary.totalActualCostUSDMicros": [
+          "getUsageSummary"
+        ],
+        "UsageSummary.totalInputTokens": [
+          "getUsageSummary"
+        ],
+        "UsageSummary.totalOutputTokens": [
+          "getUsageSummary"
+        ],
+        "UsageSummary.totalRequests": [
+          "getUsageSummary"
+        ],
+        "UsageSummary.totalTokens": [
+          "getUsageSummary"
         ]
       },
       "inputFields": [
@@ -19264,6 +19290,21 @@
           "permissions": [
             "admin",
             "owner"
+          ],
+          "features": [
+            "F14"
+          ],
+          "owner": "gateway"
+        },
+        {
+          "operationId": "getUsageSummary",
+          "path": "/api/v2/usage/summary",
+          "method": "GET",
+          "request": null,
+          "response": "UsageSummary",
+          "status": 200,
+          "permissions": [
+            "member"
           ],
           "features": [
             "F14"
