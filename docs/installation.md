@@ -202,6 +202,11 @@ Instance owner supplies the domain, provider profile, immutable Workspace image
 catalog, production Secrets, deployment, rollback, and receipts. Only after the
 same Candidate bytes pass the required Local and Instance qualification may an
 authorized publisher promote those bytes without rebuilding them.
+The [October 15 ownership decision](decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads)
+separates Instance installation evidence from Cloud-owned product qualification.
+The current receipt producers and release validators have not yet migrated;
+[release operations](runtime/release.md) describes their enforced mechanism.
+Installing Cloud does not authorize customer business operations.
 
 No public successor currently contains this format. For current source
 development and qualification, use the repository-owned tooling and

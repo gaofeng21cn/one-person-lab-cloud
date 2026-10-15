@@ -9,9 +9,13 @@ deploy a concrete customer instance.
 
 `opl-instance-medopl` is the separate owner for the medopl instance profile. It
 explicitly binds the `.com` domains, Tencent/TKE profile, immutable Workspace
-image, production configuration and Secrets, deployment, verification,
-rollback, and receipts while consuming an immutable OPL Cloud product SHA and
-image digest. Cloud source must not provide those instance defaults.
+image, production configuration and Secrets, deployment, installation health,
+deployment rollback and receipts while consuming an immutable OPL Cloud product
+SHA and image digest. Cloud source must not provide those instance defaults.
+Customer operations and business qualification follow the existing product
+owners; [the roadmap](docs/roadmap.md#workspace-key-and-customer-read-boundaries)
+tracks the protected entry and release-evidence migration. Current publication
+checks remain enforced until their producers and consumers migrate together.
 
 Current implementation facts belong to
 [implementation-architecture.md](docs/implementation-architecture.md) and

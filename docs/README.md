@@ -25,6 +25,28 @@ owner changes, the same change must reconcile affected invariants, current
 implementation docs, module docs, status and roadmap. A lower projection that
 cannot yet follow is an explicit roadmap gap, not a competing SSOT.
 
+## Entrypoints And Consumers
+
+- Root READMEs introduce the product and route readers here; this index maps
+  questions to existing owners and does not repeat their business rules.
+- [`AGENTS.md`](../AGENTS.md) contains agent execution constraints, required
+  reading and verification entrypoints. [`DEV_GUIDE.md`](../DEV_GUIDE.md) owns
+  developer commands; neither is a second product specification.
+- Product intent and rationale belong in architecture/decisions; detailed target
+  behavior belongs under `spec/target/`. Current source behavior belongs in
+  implementation references, evidence in status, and unfinished outcomes in
+  roadmap. Runtime procedures describe executable mechanisms and identify target
+  changes their current producers and consumers do not yet support.
+- [Contract inputs and generated consumers](../packages/contracts/README.md)
+  and [release admission](./runtime/release.md) retain their current owners.
+  A prose decision alone does not update an API, permission table, receipt
+  validator or publication gate. Navigation is a reading entrypoint; automatic
+  consumption requires an identified loader, generator, service or workflow.
+- Issues and PRs carry bounded implementation work and verification. Questionnaires,
+  review transcripts and task-specific plans do not become active documentation
+  or another index. Use the existing [lifecycle policy](./policies/docs-lifecycle-policy.md)
+  before adding or moving a document.
+
 ## Authority Rules
 
 - OPL family topology is owned outside this repository. Framework and Studio

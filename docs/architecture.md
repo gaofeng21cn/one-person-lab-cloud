@@ -186,7 +186,12 @@ binaries, services, namespaces, environment variables and runner labels.
 An instance repository materializes one installation without copying product or
 runtime code. It owns non-secret domains, provider selection, region and
 resource profile, the enabled subset of Cloud-defined plans, image pins, secret
-references, and deployment receipts. Resource Catalog owns extracted plans and
+references, and deployment receipts. Installation checks establish the deployed
+Cloud artifact and service health. Customer operations and business qualification
+belong to the existing Cloud product owners, with separately authorized protected
+execution and exact-Candidate evidence. Instance deployment does not perform
+customer purchases, renewal, deletion, refund or managed-key mutation.
+Resource Catalog owns extracted plans and
 versioned price policies; Control Plane retains its legacy price catalog. An
 Instance cannot override either owner's accepted pricing facts. An instance may run on
 a hosted cloud or a supported Linux Docker host. macOS may run the
@@ -440,24 +445,34 @@ for a default App; neither happens automatically.
 
 Model configuration follows the same owner separation. Workspace owns the
 accepted selections, configuration version and the opaque
-`gateway_key_binding_id`; Gateway Integration owns managed-key issuance,
-model allowlists, secret-delivery references and revocation; Fabric owns the
+`gateway_key_binding_id`; Gateway Integration owns managed-key issuance, approved
+model permissions, lifecycle state and secret-delivery references; Fabric owns
 Secret binding/readback; Serve owns publisher apply/readback and runtime
-readiness. `WorkspaceProductService.UpdateWorkspaceModels` must first obtain a
-confirmed `ManagedKeyBinding` from `GatewayCoordination.CreateManagedKey`, then
-bind the returned Secret reference through `FabricCoordination.BindSecret`, and
-only then call Serve with an internal `RuntimeManagedKeyBinding`. Serve never
-mints a Gateway key and no caller-supplied binding is trusted. The applied
-Workspace version advances only after Serve reports the application-read
-version through the owner-local operation/CAS path. For a later configuration that
-changes the managed key, Workspace uses Fabric's explicit `RebindSecret` with the
-expected current binding identity. Fabric confirms the replacement and preserves
-the one-active-binding invariant; Serve then applies and reads back the new
-publisher configuration. The predecessor Gateway key is revoked only after that
-readback, and Fabric binding retirement is recorded separately from Gateway key
-revocation. A rejected or unknown replacement keeps the predecessor key and
-blocks further side effects until the original operation or compensation is read
-back.
+readiness. Initial configuration obtains the Workspace's confirmed managed key,
+binds its approved Secret reference and applies the declared runtime interface.
+An ordinary model update preserves the same external key and updates its
+approved model scope through Gateway and Sub2API. It must not create a
+replacement key and revoke a predecessor as its normal update path. Serve
+confirms the actual application configuration before Workspace advances its
+applied version through the owner-local operation/CAS path. Fabric retains
+exact Secret readback, explicit replacement for a genuinely different Secret,
+and one active binding per runtime purpose. External key identity, opaque
+Gateway binding identity and Fabric Secret version must not be conflated.
+If Gateway confirms a scope change but Serve refuses the target apply, the
+original operation must reconcile the same key's approved scope with the actual
+application configuration: restore the last applied approved scope or confirm
+the original target as applied through owner readback. Until confirmed, it must
+not report success or allow dependent changes. Unknown owner or compensation
+results retain the original operation and block dependent effects. No scope
+union or replacement key may conceal a failed update.
+
+Workspace closure requests deactivation of only its proven managed key;
+authorized recovery re-enables the original key under existing entitlement,
+resource and security constraints. Verified historical Workspaces adopt the same
+rule; deployment does not trigger bulk mutation. Runtime replacement and
+application quiescence alone do not close a Workspace. Sub2API must provide the
+approved service capability and authoritative state readback. Resource deletion,
+key closeout and settlement remain separate facts with original obligations.
 
 The historical `resource_only` Launch retains its existing purchase obligations
 and completion criteria. It is not the default App product and is not silently

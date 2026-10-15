@@ -2,7 +2,7 @@
 
 > 每条功能链对应00的F编号；API/DTO在03，字段/约束在02，UI在04。本文不再复制另一套DTO/状态枚举。
 >
-> **业务已采用，新的wire仍待W01贯通**：2026-09-29确认`tencent-tke`为首条交付主线；新客户一次确认后由后台完成部署，不选Package/独立WebUI即批准默认`opl-app`及其发布者声明的内置UI。第1–16节明确此次业务时序，不宣称当前API、SQL、proto、events、机器flows或运行时代码已实现。**第17节原样保留为W01迁移前wire baseline**：其中仅Capability输入、Runtime Control实例/Secret caller、Fabric部署/路由等残留不是新业务授权；须由W01集成负责人协调W01及真实消费者后再生成，不能用其静态通过证明新业务已贯通。
+> **业务已采用，新的wire仍待W01贯通**：2026-09-29确认`tencent-tke`为首条交付主线；新客户一次确认后由后台完成部署，不选Package/独立WebUI即批准默认`opl-app`及其发布者声明的内置UI。第1–16节明确此次业务时序，不宣称当前API、SQL、proto、events、机器flows或运行时代码已实现。**第17节保留现有wire baseline，F09旧链仍待契约与消费者迁移**：其中仅Capability输入、Runtime Control实例/Secret caller、Fabric部署/路由等残留不是新业务授权；须由W01集成负责人协调W01及真实消费者后再生成，不能用其静态通过证明新业务已贯通。生命周期与客户读权限按[2026-10-15 生命周期与客户读权限决定](../../decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads)执行；目标决定不改变现有机器契约/生成器/源实现，未交付项由[roadmap](../../roadmap.md#workspace-key-and-customer-read-boundaries)记录。
 
 ## 1. 全部写操作的共同执行语义
 
@@ -20,7 +20,7 @@ Operation取消只在尚未发出不可逆动作且Owner确认可取消时允许
 
 ### 登录与授权
 
-BFF获得同源登录上下文/CSRF → 将用户凭据短暂委托Gateway认证 → 读取Gateway用户身份 → Gateway Integration查Cloud成员/Tenant角色 → 建立HttpOnly会话。密码不落库不发事件不记日志；退出销毁会话并取消该浏览器轮询，不停止已接受后端任务。
+BFF获得同源登录上下文/CSRF → 将用户凭据短暂委托Gateway认证 → 读取Gateway用户身份 → 建立HttpOnly会话；Tenant业务再核验Cloud成员/Tenant角色，个人钱包/Token和当前公告不以Tenant成员关系为前置。密码不落库不发事件不记日志；退出销毁会话并取消该浏览器轮询，不停止已接受后端任务。
 
 Tenant Admin可管理本Tenant成员/Namespace；平台管理员可创建Tenant、绑定wallet主体和批准目录。普通成员可按明确package权限查看/协作，不因Package成员身份获得Build、购买或钱包操作权限。一个用户初期最多一个active Tenant。
 
@@ -112,7 +112,7 @@ UI查询Operation/Build：展示“可部署”，链接新版本
 | Workspace→Gateway Key | Gateway durableOperation、原create/bind effectID；按操作与Key ID读回 | Key绑定/安全审计按契约持证，交付证据仅引用指纹/版本 | 查原Key与绑定；需要正文时仅授权Secret运行边界获取 | 模型/用途/实例绑定及Secret引用一致 | 确定拒绝停部署；unknown不盲建第二Key |
 | Serve→Fabric Secret绑定 | Fabric binding operation/effectID；资源/实例/Secret版本读回 | 必要绑定证据并入交付证据；无Secret正文 | 原binding读回并继续相同版本，不重发新凭据 | 合同声明的确切绑定可供Serve运行边界使用 | 绑定不符拒绝；unknown不启动未经确认配置 |
 | Workspace→Serve Deploy/更新/模型（F08–F10） | Serve durableOperation；deploy/reload effectID、实例/配置版本；Serve runtime adapter实际读回 | 必要部署/配置生效证据；不为每轮health/poll建收据 | 原动作查询applied digest/configuration version，原epoch恢复 | 合同、镜像、持久数据、模型生效版本及应用健康相符 | 确定失败按兼容规则收尾；unknown保留最后确认事实，禁止报ready |
-| Serve→Serve Access切换/回滚（F08/F10） | Serve switch operation/effectID；expected route generation/epoch；Serve access-binding readback | 选中/切换或回滚完成证据；独立记录经Instance入口的真实请求验收 | 原switch读回后完成同一Serve本地CAS；不发新switch抢占unknown | Serve唯一route binding、current Deployment与readiness一致；TKE请求到达该binding目标 | 旧epoch/generation拒绝；unknown阻止后续切换；Ingress配置和Serve DB不形成双writer |
+| Serve→Serve Access切换/回滚（F08/F10） | Serve switch operation/effectID；expected route generation/epoch；Serve access-binding readback | 选中/切换或回滚完成证据；独立记录经Cloud受保护入口的真实请求验收 | 原switch读回后完成同一Serve本地CAS；不发新switch抢占unknown | Serve唯一route binding、current Deployment与readiness一致；TKE请求到达该binding目标 | 旧epoch/generation拒绝；unknown阻止后续切换；Ingress配置和Serve DB不形成双writer |
 | Workspace→Serve暂停/恢复（F11/F12/F15） | Serve durableOperation及stop/start effectID；原实例/资源/授权周期读回 | 必要生命周期转换证据，不把停用字段当停机证明 | 原动作/实例读回；不创建替代资源或续费单 | 访问关闭/运行停止，或原资源上应用与访问实际恢复 | 确定不具恢复能力明示；unknown不报已暂停/恢复 |
 | Workspace→Serve Retire（F13/closeout） | Serve retirement operation/effectID；原deployment/runtime/access读回 | retirement/访问关闭证据，关联后续删除 | 查原route撤销/stop动作；先封入口再停止并确认absence | 不再有当前可访问/运行实例及有效注入使用者 | unknown不得把资源/Workspace标已删或提前退款 |
 | Workspace→Fabric释放（F13/closeout） | Fabric delete operation及逐项effectID；Secret binding/attachment/volume/compute/network精确读回 | 资源删除/absence证据，绑定原资源身份 | 原provider delete ID读回；执行依赖顺序，不凭列表缺项重试采购 | Serve已退役；绑定/指定资源absence，保留义务明确 | 部分失败逐项保留；unknown不宣称完整删除 |
@@ -133,7 +133,7 @@ W05必须逐条将上表义务映射到真实事件/ReceiptKind、producer身份
 - 扣款已确认且后续可恢复：原Operation继续，不重新收费；客户关页不影响。任何unknown先按矩阵原身份读回，不自动反向操作。
 - 确定无法交付才进入有授权的closeout：Serve关闭访问/退役实例（仅reserve则释放原预留）、Fabric释放Secret绑定→挂载→按依赖释放存储/计算/网络；每步确切absence与必要Ledger证据确认后，按原单政策单独退款。
 - 资源尚未交付不等于无采购；部分资源/Key/数据义务必须保留。任一资源或资金unknown，Operation保持awaiting_confirmation或needs_attention，不假称failed/已删/已退。
-- Key归Gateway；删除注入物不等于撤销原Key。Key留存与显式撤销沿原义务，不能将撤销暗加为退款前置。
+- Key归Gateway；删除注入物不等于停用外部Key。Workspace关闭/暂停及删除收尾中的managed key停用须独立读回，不能影响个人/其他Workspace的Key；不可逆撤销不替代可逆停用，也不暗加为原退款政策的前置。
 
 ## 7. F09：详情、访问与配置更新
 
@@ -141,7 +141,11 @@ W05必须逐条将上表义务映射到真实事件/ReceiptKind、producer身份
 
 “打开”仅在当前绑定、授权与实时ready满足时返回accessUrl；服务端仍逐请求鉴权。应用使用自己的origin/cookies，平台session/service token不得传入应用。404/502/静态资产/SSE断流按实际错误呈现，不能用SPA首页替代资源响应。
 
-模型配置更新对默认App和Agent都只接受其冻结发布合同声明的模型字段与expectedConfigurationVersion；Workspace校验权益/目标授权并持久化模型选择意图/配置版本，串行发起变更；Serve接收该版本，持久reload动作并通过发布者声明接口执行、读回实际applied version，随后CAS记录运行生效事实。Workspace不复制Serve实例状态，Serve不另写一份Workspace模型意图。Runtime Control不写实例配置，Fabric不执行reload；未声明可执行模型接口时拒绝Cloud模型修改命令，不伪造接口或生效证据。2026-10-10首条Tencent/TKE默认App上线切片不要求Cloud Console选模型/改模型，不因缺少此接口拒绝该独立App的部署准入；仍须真实应用登录、消息回答、Gateway用量/扣费和Ledger对账。已声明的模型能力与自定义Agent既有消费要求不减弱。失败保留最后确认配置，不在UI乐观显示未生效模型。任意应用业务配置不进入Cloud数据库，应用数据/完整config仍由Runtime持久卷和发布者schema拥有。
+模型配置更新对默认App和Agent都只接受其冻结发布合同声明的模型字段与expectedConfigurationVersion；Workspace校验权益/目标授权并以版本CAS持久化模型选择意图/配置版本，串行发起变更；Serve接收该版本，持久reload动作并通过发布者声明接口执行、读回实际applied version，随后CAS记录运行生效事实。Workspace不复制Serve实例状态，Serve不另写一份Workspace模型意图。Runtime Control不写实例配置，Fabric不执行reload；未声明可执行模型接口时拒绝Cloud模型修改命令，不伪造接口或生效证据。2026-10-10首条Tencent/TKE默认App上线切片不要求Cloud Console选模型/改模型，不因缺少此接口拒绝该独立App的部署准入；仍须真实应用登录、消息回答、Gateway用量/扣费和Ledger对账。已声明的模型能力与自定义Agent既有消费要求不减弱。
+
+模型更新在原external key上更新approved scope，不走新发key/撤销前驱链；命令必须绑定原授权外部subject、Workspace和确切external key，binding generation或确定性名称不是key身份证明。Gateway确认scope A→B而Serve拒绝apply B、实际仍为A时，原Operation必须恢复原批准scope A，或确认原目标B实际已应用，使同key授权与权威实际配置一致。未收敛前不报成功、不接受依赖该变更的后续变更；仅Workspace CAS不足，不扩大为A∪B、不发第二key、不另建替代Operation。Fabric仍独占Secret binding/version读回，Serve仍独占配置生效事实，不能只回退Workspace意图。应用变更不得意外停用在用key；拒绝/unknown保留原动作并权威读回。
+
+任意应用业务配置不进入Cloud数据库，应用数据/完整config仍由Runtime持久卷和发布者schema拥有。
 
 ## 8. F10：版本更新/回滚
 
@@ -184,7 +188,7 @@ Gateway确切扣费确认后，Fabric执行必要provider续期并读回；默�
 
 自动续费必须有显式renewalMode/consent快照，关闭仅影响尚未接受的新周期；不得因用户退出登录撤销已经确认的财务义务。迁移原订阅模式和授权，不统一改为手动。
 
-余额不足：不发起采购/续期，显示到期时间和补款入口；到期时Workspace按计费边界持久暂停义务，由Serve关闭访问/停止运行并读回，Workspace保存suspended及原因；Runtime Control不参与启停。充值不自动宣称恢复；客户或明确授权的自动续费策略重新提交同一周期义务，确认资源仍可用后恢复。
+余额不足：不发起采购/续期，显示到期时间和补款入口；到期时Workspace按计费边界持久暂停义务，由Gateway停用该Workspace managed key、Serve关闭访问/停止运行，各自权威读回后Workspace保存suspended及原因；Runtime Control不参与启停。关闭/暂停同规则。授权恢复须满足原权益、原资源及安全条件，重新启用原external key并确认应用/访问；不换key、不重购、不重复扣费/退款。临时应用排空/停机、Runtime替换、超时、资源等待或未确认观察本身不等于Workspace关闭，不授权停key。充值不自动宣称恢复；客户或明确授权的自动续费策略重新提交同一周期义务，确认资源仍可用后恢复。
 
 不能承诺固定CBS可恢复期：只有实际资源仍在且授权可用时才恢复。已销毁则告知必须新建，不把Tenant十五天恢复当数据恢复承诺。
 
@@ -208,11 +212,11 @@ refundUSDMicros = floor(originalPlatformChargeUSDMicros * refundHours / 720)
 
 原单金额>0、结束时间严格晚于开始时间；退款不得超过原单剩余可退金额；计算使用不溢出的整数乘除。当前付费周期是续费支付的，原单绑定该续费而不是永远绑定首次购买。此平台退款不冒充腾讯实际退款；供应商退款需要自己的权威证据。新产品若批准新政策必须新版本，历史沿用原policyVersion。
 
-Key删除由F14独立授权；不为了删Workspace擅自撤销用户保留的Gateway Key。普通CI不能执行上述真实销毁/退款。
+Workspace删除须由Gateway确认该managed key停用，与Serve退役、Fabric资源absence、原单结算分别留证；个人及其他Workspace的Key不受影响。不可逆Key删除/撤销仍需独立授权，不替代停用义务，不改变上述原退款政策。普通CI不能执行上述真实销毁/退款。
 
 ## 12. F14：钱包、Key与用量
 
-所有可花费余额/Key/Token用量由Gateway Integration通过Sub2API读回。Cloud只保存交易操作身份、授权、观察结果和Ledger关联，不对余额加减维护第二钱包。
+默认钱包/Token以有效会话的User为主体，无需Tenant；Tenant工作区费用/结算允许本Tenant owner/admin、拒绝member。已证明legacy账单仅向原账户owner本人按原读权提供，不随Tenant admin角色继承；身份来源与历史保留见09第3节。所有可花费余额/Key/Token用量由Gateway Integration通过Sub2API读回。Cloud只保存交易操作身份、授权、观察结果和Ledger关联，不对余额加减维护第二钱包。
 
 Key创建/reveal单次返回明文且no-store；之后列表只指纹/模型组/状态。创建后的response丢失先查原操作，再显式reveal，不能盲建第二Key。撤销是独立幂等操作，必须读回Gateway失效。
 
@@ -232,7 +236,9 @@ active/suspended→deleting：平台管理员确认影响清单；冻结新购/B
 
 ## 14. F16/F17：迁移与运维
 
-按09的M0–M5只迁移冻结来源清单中的旧账户、resource_only/retained full Launch、已部署应用和未决资金/删除义务；旧schema/provider IDs/原Code/receipt身份不能重造。新默认opl_app走F07/F08完整交付，不进入F16、不标legacy_resource_only。旧裸资源第一次显式部署可选择获准默认App或Agent，但沿原资源/账期，不重购；旧已部署App保留真实来源，不为套用新默认而重分类。Instance运行变更另有授权和不可变回执。
+按09的M0–M5只迁移冻结来源清单中的旧账户、resource_only/retained full Launch、已部署应用和未决资金/删除义务；旧schema/provider IDs/原Code/receipt身份不能重造。新默认opl_app走F07/F08完整交付，不进入F16、不标legacy_resource_only。旧裸资源第一次显式部署可选择获准默认App或Agent，但沿原资源/账期，不重购；旧已部署App保留真实来源，不为套用新默认而重分类。历史managed key生命周期核实原Workspace/key/subject及保留义务后按F12/F13执行，部署不批量变更。Instance只产生安装部署/配置/health/安装回滚及部署证据；业务和业务资格走Cloud owners受保护入口，本机不得直连生产。
+
+当前公告read/ACK沿原数据Owner，经有效Cloud会话授权，无Tenant条件；同人来源核实后继承legacy ACK及原时间，重复ACK保留该时间，不新建平行ACK writer。缺失的typed reader/身份来源证明仍待交付，不能由邮箱或共享Tenant代替。
 
 管理员操作页显示精确stage、observationResult、lastObservedAt、errorCode、requestId、关联资源/原单/脱敏证据；允许动作由owner根据状态授权。只读列表不带原始Secret/provider payload。管理员“重试”只能继续同一义务或创建明确新意图，不能强制改为成功。
 
@@ -258,7 +264,7 @@ active/suspended→deleting：平台管理员确认影响清单；冻结新购/B
 | 拒绝/未知 | 明确拒绝、已执行丢响应、晚到worker分别怎样读回/重放/停止 |
 | 终点 | 成功条件或有证据的失败收尾，原单、资源、数据义务无丢失 |
 
-`contracts/domain_flows.json`及第17节目前只绑定W01迁移前的RPC/REST/Owner表基线；既有检查器能验证该基线的引用/类型，不代表此次应用判别联合、UI正规化、resource→Serve Reserve→Key顺序与新handoff已落wire。W01集成负责人须在W01同步03/SQL/proto/events、真实caller及生成器/机器flows后再生成此索引并验证；本轮保持后半区逐字节不变，不新建工作流引擎。
+`contracts/domain_flows.json`及第17节目前只绑定W01迁移前的RPC/REST/Owner表基线；既有检查器能验证该基线的引用/类型，不代表此次应用判别联合、UI正规化、resource→Serve Reserve→Key顺序与新handoff已落wire。W01集成负责人须在W01同步03/SQL/proto/events、真实caller及生成器/机器flows后再生成此索引并验证；同Key模型更新须在#869中迁移真实契约、消费者及生成器，再重新生成后半区。第17节保留现有wire基线，尤其F09的CreateManagedKey/Secret replacement/predecessor revoke链不是已批准的正常模型更新目标；当前未迁移事实不重新定义第7节的目标，不新建工作流引擎。
 
 ## 17. 实际Domain协议逐链索引
 
