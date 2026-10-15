@@ -34,6 +34,16 @@ export function installationFailure(code: string, security: InstallationSecurity
 function stringMap(value: unknown): boolean {
   return object(value) && Object.values(value).every(entry => typeof entry === "string");
 }
+function validContainer(value: unknown): value is Resource {
+  return object(value) && typeof value.name === "string" && typeof value.image === "string" &&
+    (value.command === undefined || Array.isArray(value.command) && value.command.every((arg: unknown) => typeof arg === "string")) &&
+    (value.args === undefined || Array.isArray(value.args) && value.args.every((arg: unknown) => typeof arg === "string")) &&
+    (value.envFrom === undefined || Array.isArray(value.envFrom)) &&
+    (value.env === undefined || Array.isArray(value.env) && value.env.every((entry: unknown) => object(entry) &&
+      typeof entry.name === "string" && (entry.value === undefined || typeof entry.value === "string") &&
+      (entry.valueFrom === undefined || object(entry.valueFrom)) && !(entry.value !== undefined && entry.valueFrom !== undefined))) &&
+    (value.ports === undefined || Array.isArray(value.ports) && value.ports.every((entry: unknown) => object(entry) && validPort(entry.containerPort)));
+}
 function validList(value: unknown): value is Resource {
   if (!object(value) || value.apiVersion !== "v1" || value.kind !== "List" || !Array.isArray(value.items) || value.items.length === 0) return false;
   return value.items.every((resource: unknown) => {
@@ -48,15 +58,9 @@ function validList(value: unknown): value is Resource {
     return resource.apiVersion === "apps/v1" && object(resource.spec?.template?.spec) &&
       (resource.spec.template.metadata?.labels === undefined || stringMap(resource.spec.template.metadata.labels)) &&
       Array.isArray(resource.spec.template.spec.containers) && resource.spec.template.spec.containers.length > 0 &&
-      resource.spec.template.spec.containers.every((container: unknown) => object(container) &&
-        typeof container.name === "string" && typeof container.image === "string" &&
-        (container.command === undefined || Array.isArray(container.command) && container.command.every((arg: unknown) => typeof arg === "string")) &&
-        (container.args === undefined || Array.isArray(container.args) && container.args.every((arg: unknown) => typeof arg === "string")) &&
-        (container.envFrom === undefined || Array.isArray(container.envFrom)) &&
-        (container.env === undefined || Array.isArray(container.env) && container.env.every((entry: unknown) => object(entry) &&
-          typeof entry.name === "string" && (entry.value === undefined || typeof entry.value === "string") &&
-          (entry.valueFrom === undefined || object(entry.valueFrom)) && !(entry.value !== undefined && entry.valueFrom !== undefined))) &&
-        (container.ports === undefined || Array.isArray(container.ports) && container.ports.every((entry: unknown) => object(entry) && validPort(entry.containerPort))));
+      resource.spec.template.spec.containers.every(validContainer) &&
+      (resource.spec.template.spec.initContainers === undefined ||
+        Array.isArray(resource.spec.template.spec.initContainers) && resource.spec.template.spec.initContainers.every(validContainer));
   });
 }
 type InstalledProcess = { contract: ProcessContract; deployment: Resource; container: Resource; env: Map<string, Resource> };
@@ -136,32 +140,53 @@ function ownedBackend(resource: Resource, target: Resource, resources: Resource[
   }
   return false;
 }
-function endpointBackend(resource: Resource, service: Resource, target: Resource, servicePort: Resource, port: number, resources: Resource[]): boolean {
+function endpointBackend(resource: Resource, service: Resource, target: Resource, targetContainerName: string, servicePort: Resource, port: number, resources: Resource[]): boolean {
   const provesPort = (ports: unknown): boolean => {
     if (!Array.isArray(ports)) return false;
     const matching = ports.filter(entry => object(entry) && (entry.name ?? "") === (servicePort.name ?? "") && (entry.protocol ?? "TCP") === "TCP");
     return matching.length === 1 && matching[0].port === port;
   };
-  const provesPod = (ref: unknown, addresses: unknown): boolean => {
+  const provesPod = (ref: unknown, addresses: unknown, addressType?: "IPv4" | "IPv6"): boolean => {
     if (!object(ref) || ref.kind !== "Pod" || ref.apiVersion !== undefined && ref.apiVersion !== "v1" ||
         typeof ref.uid !== "string" || !ref.uid || (ref.namespace ?? namespace(service)) !== namespace(service) ||
         !Array.isArray(addresses) || addresses.length === 0) return false;
     const pod = resources.find(candidate => candidate.kind === "Pod" && candidate.apiVersion === "v1" &&
       namespace(candidate) === namespace(service) && candidate.metadata.name === ref.name && candidate.metadata.uid === ref.uid);
     if (!pod || !ownedBackend(pod, target, resources) || !labelsMatch(service.spec.selector, pod.metadata.labels ?? {})) return false;
-    const ips = new Set([pod.status?.podIP, ...(Array.isArray(pod.status?.podIPs) ? pod.status.podIPs.map((entry: Resource) => entry.ip) : [])]);
-    return addresses.every(address => typeof address === "string" && ips.has(address));
+    const liveContainers = Array.isArray(pod.spec?.containers) ? pod.spec.containers : [];
+    const liveInitContainers = Array.isArray(pod.spec?.initContainers) ? pod.spec.initContainers : [];
+    const targetName = targetContainerName;
+    const competingLiveContainers = [...liveContainers.filter((container: Resource) => container?.name !== targetName),
+      ...liveInitContainers.filter((container: Resource) => container?.restartPolicy === "Always")];
+    if (competingLiveContainers.some((container: Resource) => (container?.ports ?? []).some((entry: Resource) =>
+      (entry?.protocol ?? "TCP") === "TCP" && entry?.containerPort === port))) return false;
+    const podIP = pod.status?.podIP;
+    if (typeof podIP !== "string" || isIP(podIP) === 0) return false;
+    const podIPs = pod.status?.podIPs;
+    if (podIPs !== undefined && (!Array.isArray(podIPs) || podIPs.some((entry: unknown) => !object(entry) || typeof entry.ip !== "string" || isIP(entry.ip) === 0))) return false;
+    const ips = new Set([podIP, ...(podIPs ?? []).map((entry: Resource) => entry.ip)]);
+    const expectedFamily = addressType === "IPv4" ? 4 : addressType === "IPv6" ? 6 : undefined;
+    return addresses.every(address => typeof address === "string" && isIP(address) !== 0 &&
+      (expectedFamily === undefined || isIP(address) === expectedFamily) && ips.has(address));
   };
   if (resource.kind === "EndpointSlice") {
     return resource.apiVersion === "discovery.k8s.io/v1" && controller(resource, "Service", resources) === service &&
-      Array.isArray(resource.endpoints) && resource.endpoints.every((endpoint: unknown) =>
-        object(endpoint) && provesPort(resource.ports) && provesPod(endpoint.targetRef, endpoint.addresses));
+      (resource.addressType === "IPv4" || resource.addressType === "IPv6") &&
+      Array.isArray(resource.endpoints) && resource.endpoints.length > 0 && resource.endpoints.every((endpoint: unknown) =>
+        object(endpoint) && provesPort(resource.ports) && provesPod(endpoint.targetRef, endpoint.addresses, resource.addressType));
   }
   // The legacy Endpoints controller does not attach a Service ownerReference.
   // Its exact Service name plus every Pod UID and address must still agree.
-  return resource.apiVersion === "v1" && (resource.subsets === undefined || Array.isArray(resource.subsets) &&
-    resource.subsets.every((subset: unknown) => object(subset) && [subset.addresses, subset.notReadyAddresses].every(entries =>
-      entries === undefined || Array.isArray(entries) && entries.every(entry => object(entry) && provesPort(subset.ports) && provesPod(entry.targetRef, [entry.ip])))));
+  if (resource.apiVersion !== "v1" || !Array.isArray(resource.subsets) || resource.subsets.length === 0) return false;
+  return resource.subsets.every((subset: unknown) => {
+    if (!object(subset)) return false;
+    const addresses = subset.addresses === undefined ? [] : Array.isArray(subset.addresses) ? subset.addresses : undefined;
+    const notReadyAddresses = subset.notReadyAddresses === undefined ? [] :
+      Array.isArray(subset.notReadyAddresses) ? subset.notReadyAddresses : undefined;
+    const entries = addresses && notReadyAddresses ? [...addresses, ...notReadyAddresses] : undefined;
+    return entries !== undefined && entries.length > 0 && entries.every(entry =>
+      object(entry) && provesPort(subset.ports) && provesPod(entry.targetRef, [entry.ip]));
+  });
 }
 function parseServiceAddress(raw: unknown, callerNamespace: string): { name: string; namespace: string; port: number } | undefined {
   if (typeof raw !== "string") return;
@@ -189,8 +214,15 @@ function backendLabels(resource: Resource): Resource | null | undefined {
     // These APIs do not create application Pods. Unknown APIs are deliberately
     // not classified by labels, resource names, or the shape of a spec.
     const nonProducers: Record<string, string[]> = {
-      v1: ["Namespace", "Service", "ConfigMap", "Secret", "ServiceAccount", "PersistentVolumeClaim", "PersistentVolume", "Endpoints", "PodTemplate", "ResourceQuota", "LimitRange", "Event"],
+      v1: ["Namespace", "Node", "Service", "ConfigMap", "Secret", "ServiceAccount", "PersistentVolumeClaim", "PersistentVolume", "Endpoints", "PodTemplate", "ResourceQuota", "LimitRange", "Event"],
+      "admissionregistration.k8s.io/v1": ["MutatingWebhookConfiguration", "ValidatingWebhookConfiguration"],
+      "apiextensions.k8s.io/v1": ["CustomResourceDefinition"],
+      "apps/v1": ["ControllerRevision"],
+      "certificates.k8s.io/v1": ["CertificateSigningRequest"],
+      "coordination.k8s.io/v1": ["Lease"],
+      "events.k8s.io/v1": ["Event"],
       "networking.k8s.io/v1": ["NetworkPolicy", "Ingress", "IngressClass"],
+      "metrics.k8s.io/v1beta1": ["PodMetrics", "NodeMetrics"],
       "rbac.authorization.k8s.io/v1": ["Role", "RoleBinding", "ClusterRole", "ClusterRoleBinding"],
       "storage.k8s.io/v1": ["StorageClass", "CSIDriver", "CSINode", "CSIStorageCapacity", "VolumeAttachment"],
       "policy/v1": ["PodDisruptionBudget"],
@@ -258,15 +290,18 @@ function podListenerError(processes: InstalledProcess[]): string | undefined {
     if (contract.rpcAddressEnv || rpcEnabled(process)) addresses.push(listenerAddress(process, contract.addressEnv, contract.defaultAddress,
       contract.kind === "ownerservice", contract.addressPortEnv));
     if (contract.rpcAddressEnv && rpcEnabled(process)) addresses.push(rpcListenerAddress(process));
-    for (const listener of contract.additionalListeners ?? []) {
-      if (envEntry(process, listener.addressEnv) || listener.defaultAddress !== undefined)
-        addresses.push(listenerAddress(process, listener.addressEnv, listener.defaultAddress, listener.valueSemantics === "trimmed"));
-    }
-    for (const address of addresses) {
-      const binding = listenerBinding(address);
-      // Single-process non-RPC bind validation remains the runtime's concern;
-      // co-located processes require every declared bind to be resolved.
-      if (!binding) { if (processes.length > 1) return "installation_listener_unproven"; continue; }
+    const additionalListeners = (contract.additionalListeners ?? []).map(listener => ({
+        address: listenerAddress(process, listener.addressEnv, listener.defaultAddress, listener.valueSemantics === "trimmed"),
+        required: true
+      }));
+    for (const address of addresses.map(address => ({ address, required: false })).concat(additionalListeners)) {
+      const binding = listenerBinding(address.address);
+      // Explicit Product listeners are part of the static admission contract;
+      // unresolved or malformed values cannot be treated as absent.
+      if (!binding) {
+        if (address.required || processes.length > 1) return "installation_listener_unproven";
+        continue;
+      }
       if (bindings.some(other => other.port === binding.port && (other.wildcard || binding.wildcard || other.host === binding.host)))
         return "installation_listener_conflict";
       bindings.push(binding);
@@ -435,7 +470,7 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     const endpoints = resources.filter(resource => namespace(resource) === namespace(service) &&
       (resource.kind === "Endpoints" && resource.metadata.name === service.metadata.name ||
        resource.kind === "EndpointSlice" && resource.metadata.labels?.["kubernetes.io/service-name"] === service.metadata.name));
-    if (conflict || endpoints.some(resource => !endpointBackend(resource, service, target.deployment, servicePort, targetPort, resources))) {
+    if (conflict || endpoints.some(resource => !endpointBackend(resource, service, target.deployment, target.container.name, servicePort, targetPort, resources))) {
       fail("rpc_service_backend_ambiguous"); continue;
     }
     const tokenRef = secretReference(envEntry(caller, edge.tokenEnv));

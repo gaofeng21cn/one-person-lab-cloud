@@ -34,6 +34,7 @@ export function workedInstallation() {
   const items: any[] = [];
   for (const [service, principal, port, listenEnv, peerEnv] of units) {
     const env: any[] = [{ name: listenEnv, value: `:${port}` }];
+    if (principal === "capability") env.push({ name: "OPL_CAPABILITY_OBJECT_LISTEN_ADDR", value: ":8191" });
     if (peerEnv) env.push({ name: peerEnv, valueFrom: { secretKeyRef: { name: `${service}-admission`, key: "peers" } } });
     if (principal === "fabric") env.push({ name: "OPL_FABRIC_DATABASE_URL", valueFrom: { secretKeyRef: { name: "fabric-db", key: "dsn" } } });
     for (const [target, addressEnv, tokenEnv] of calls[principal]) {
