@@ -608,3 +608,46 @@ func TestProviderFactsObservationDoesNotReclassifyRetainedValidation(t *testing.
 		})
 	}
 }
+
+func TestComputeProviderFactsPreserveFixedNodePoolReadbackFailures(t *testing.T) {
+	const (
+		sdkFailure       = "tencent_describe_node_pool_failed"
+		invalidResponse  = "tencent_node_pool_readback_response_invalid"
+		emptyOrAmbiguous = "tencent_node_pool_readback_empty_or_ambiguous"
+		identityMismatch = "tencent_node_pool_readback_id_mismatch"
+	)
+	for _, code := range []string{sdkFailure, invalidResponse, emptyOrAmbiguous, identityMismatch} {
+		t.Run(code, func(t *testing.T) {
+			allocation := canonicalTencentComputeDestroyFixture()
+			provider := NewTencentProvider()
+			calls := 0
+			provider.provision = func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
+				if request.Action != "sync_compute_allocation" || request.Pool.ID != allocation.PoolID || request.Pool.NodePoolID != allocation.NodePoolID {
+					t.Fatal("provider read replaced retained binding or attempted mutation")
+				}
+				calls++
+				return provisionerResponse{OK: false, ErrorCode: code, Message: code, MutationCount: 0}, nil
+			}
+			service := NewService(provider)
+			service.computes[allocation.ID] = cloneComputeAllocation(allocation)
+			batch, err := service.ProviderFactsBatch(context.Background(), ProviderFactsBatchInput{Items: []ProviderFactInput{{
+				AccountID: allocation.AccountID, WorkspaceID: allocation.WorkspaceID, ResourceType: "compute", ResourceID: allocation.ID,
+			}}})
+			if err != nil || len(batch.Items) != 1 {
+				t.Fatalf("batch=%#v err=%v", batch, err)
+			}
+			fact := batch.Items[0]
+			projected, _, _ := strings.Cut(fact.ErrorCode, ":")
+			if fact.Available || projected != code || calls != 1 || fact.Observation != nil && fact.Observation.Available {
+				t.Fatalf("readback failure was lost or accepted: %#v calls=%d", fact, calls)
+			}
+			if !reflect.DeepEqual(service.computes[allocation.ID], allocation) {
+				t.Fatal("provider-facts read persisted allocation changes")
+			}
+			operations, err := service.ListOperations(context.Background())
+			if err != nil || len(operations) != 0 {
+				t.Fatal("provider-facts read changed operation journal")
+			}
+		})
+	}
+}

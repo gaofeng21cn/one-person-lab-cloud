@@ -89,6 +89,13 @@ func (d *tencentDispatcher) EnsureResources(ctx context.Context, in ResourceInte
 	if err != nil {
 		return nil, err
 	}
+	// A newly claimed Fabric operation returns its provisioning reservation even
+	// when the asynchronous worker finishes before this read. Only a replay that
+	// returned a ready allocation may advance this dispatcher to storage; this
+	// keeps the first observation pending and preserves the original retry order.
+	if !readyComputeStatus(compute.Status) {
+		return nil, errResourceDispatchPending
+	}
 	current, ok := d.service.GetComputeAllocation(ctx, compute.ID)
 	if !ok || !readyComputeStatus(current.Status) {
 		return nil, errResourceDispatchPending

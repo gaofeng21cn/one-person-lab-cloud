@@ -128,12 +128,31 @@ func (s *Service) CreateComputeAllocation(ctx context.Context, input ComputeAllo
 		replayed, err := replayComputeAllocationOperation(stored, requestHash)
 		if err == nil && stored.Status == "started" {
 			s.startComputeAllocation(stored, replayed, input.DryRun)
+		} else if err == nil && (stored.Status == "succeeded" || stored.Status == "claim_pending") {
+			s.projectComputeAllocationReplay(replayed)
 		}
 		return replayed, err
 	}
 	input.OperationID = operation.OperationID
 	s.startComputeAllocation(stored, allocation, input.DryRun)
 	return allocation, nil
+}
+
+// A durable terminal operation is authoritative when the in-memory projection
+// still contains only its original provisioning reservation. Do not let replay
+// roll a newer resource state (for example a concurrent deletion) backwards.
+func (s *Service) projectComputeAllocationReplay(replayed ComputeAllocation) {
+	if replayed.ID == "" || (replayed.Status != "running" && replayed.Status != "ready" && replayed.Status != "active" && replayed.Status != "compute_claim_pending") {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, exists := s.computes[replayed.ID]
+	if !exists || current.Status != "provisioning" || current.AccountID != replayed.AccountID || current.WorkspaceID != replayed.WorkspaceID ||
+		current.PackageID != replayed.PackageID || current.NodePoolID != replayed.NodePoolID {
+		return
+	}
+	s.computes[replayed.ID] = cloneComputeAllocation(replayed)
 }
 
 func (s *Service) startComputeAllocation(operation FabricOperation, allocation ComputeAllocation, dryRun bool) {
@@ -482,6 +501,13 @@ func (s *Service) ReadComputeDestroyStatus(ctx context.Context, allocationID str
 	if reader == nil {
 		return ComputeAllocation{}, fmt.Errorf("compute_destroy_status_readback_unavailable")
 	}
+	if existing.Provider == "tencent-tke" && len(existing.CostTags) == 0 {
+		var err error
+		existing, err = s.computeDestroyStatusOwnershipInput(ctx, existing)
+		if err != nil {
+			return existing, err
+		}
+	}
 	readback, err := reader.ReadComputeDestroyStatus(ctx, cloneComputeAllocation(existing))
 	if err != nil {
 		return readback, err
@@ -499,6 +525,41 @@ func (s *Service) ReadComputeDestroyStatus(ctx context.Context, allocationID str
 	readback.ObservedAt = s.now().Format(time.RFC3339Nano)
 	readback.ReadbackID = stableID("compute-destroy-readback", allocationID, readback.ObservedAt)
 	return readback, nil
+}
+
+// Read-only ownership reconstruction requires the unique original Launch and
+// exact stable identity. Current ownership cannot override canonical conflicts.
+func (s *Service) computeDestroyStatusOwnershipInput(ctx context.Context, existing ComputeAllocation) (ComputeAllocation, error) {
+	records, err := s.operationHistory.List(ctx)
+	if err != nil {
+		return existing, computeReadbackFailure("compute_readback_launch_unavailable")
+	}
+	stages := newWorkspaceLaunchDeleteStageSet()
+	for _, operation := range records {
+		candidate, workspaceID, resourceID, isCandidate, valid := canonicalWorkspaceLaunchDeleteStage(operation, "ensure_compute_allocation")
+		if isCandidate {
+			stages.add(workspaceID, resourceID, candidate, valid)
+		}
+	}
+	original, found := stages.canonical(existing.WorkspaceID)
+	if !found || original.resourceID != existing.ID {
+		return existing, computeReadbackFailure("compute_readback_launch_unavailable")
+	}
+	if !sameWorkspaceLaunchComputeTagIdentity(existing, original.compute) {
+		return existing, computeReadbackFailure("compute_readback_launch_mismatch")
+	}
+	var state struct {
+		Ownership *MachineOwnership `json:"ownership,omitempty"`
+	}
+	if json.Unmarshal(original.record.ProviderState, &state) != nil {
+		return existing, computeReadbackFailure("compute_readback_launch_mismatch")
+	}
+	// A present but rejected original ownership is conflicting evidence. Only an
+	// absent original projection can be reconstructed from the current claim.
+	if state.Ownership != nil && *state.Ownership != (MachineOwnership{}) {
+		return existing, computeReadbackFailure("compute_readback_launch_mismatch")
+	}
+	return s.computeOwnershipReadbackInput(ctx, existing)
 }
 
 // validTencentComputeDestroyRetryEvidence bounds a retryable readback: a provider

@@ -1043,19 +1043,40 @@ func (p *TencentProvider) admitTencentComputeDestroy(_ context.Context, allocati
 	return allocation, nil
 }
 
-func validTencentComputeDestroyIdentityFacts(allocation ComputeAllocation) bool {
+// One predicate owner serves both the unchanged mutation guard and the bounded
+// diagnostics for read-only admission. Values never enter the error code.
+func tencentComputeDestroyIdentityFailure(allocation ComputeAllocation) computeReadbackFailure {
 	instanceID := firstNonEmpty(allocation.InstanceID, allocation.CVMInstanceID)
-	return strings.TrimSpace(allocation.ID) != "" && strings.TrimSpace(allocation.AccountID) != "" &&
-		strings.TrimSpace(allocation.WorkspaceID) != "" && strings.TrimSpace(allocation.PackageID) != "" && allocation.Provider == "tencent-tke" &&
-		strings.TrimSpace(allocation.PoolID) != "" && strings.TrimSpace(allocation.NodePoolID) != "" && strings.TrimSpace(allocation.MachineName) != "" &&
-		strings.TrimSpace(allocation.NodeName) != "" && strings.TrimSpace(allocation.PrivateIP) != "" && strings.TrimSpace(instanceID) != "" &&
-		(allocation.InstanceID == "" || allocation.CVMInstanceID == "" || allocation.InstanceID == allocation.CVMInstanceID) &&
-		strings.TrimSpace(allocation.InstanceType) != "" && allocation.ProviderData["instanceType"] == allocation.InstanceType &&
-		strings.TrimSpace(allocation.Zone) != "" && allocation.ProviderData["zone"] == allocation.Zone &&
-		strings.TrimSpace(allocation.ProviderData["clusterId"]) != "" && strings.TrimSpace(allocation.ProviderData["region"]) != "" &&
-		allocation.CostTags["opl_account_id"] == allocation.AccountID && allocation.CostTags["opl_workspace_id"] == allocation.WorkspaceID &&
-		allocation.CostTags["opl_resource_id"] == allocation.ID && strings.TrimSpace(allocation.CostTags["opl_operation_id"]) != "" &&
-		validTencentComputeMachineApplicabilityIdentity(allocation)
+	for _, check := range []struct {
+		valid bool
+		code  computeReadbackFailure
+	}{
+		{strings.TrimSpace(allocation.ID) != "", "compute_readback_identity_resource"},
+		{strings.TrimSpace(allocation.AccountID) != "", "compute_readback_identity_account"},
+		{strings.TrimSpace(allocation.WorkspaceID) != "", "compute_readback_identity_workspace"},
+		{strings.TrimSpace(allocation.PackageID) != "", "compute_readback_identity_package"},
+		{allocation.Provider == "tencent-tke", "compute_readback_identity_provider"},
+		{strings.TrimSpace(allocation.PoolID) != "", "compute_readback_identity_pool"},
+		{strings.TrimSpace(allocation.NodePoolID) != "", "compute_readback_identity_node_pool"},
+		{strings.TrimSpace(allocation.MachineName) != "", "compute_readback_identity_machine"},
+		{strings.TrimSpace(allocation.NodeName) != "", "compute_readback_identity_node"},
+		{strings.TrimSpace(allocation.PrivateIP) != "", "compute_readback_identity_private_ip"},
+		{strings.TrimSpace(instanceID) != "" && (allocation.InstanceID == "" || allocation.CVMInstanceID == "" || allocation.InstanceID == allocation.CVMInstanceID), "compute_readback_identity_instance"},
+		{strings.TrimSpace(allocation.InstanceType) != "" && allocation.ProviderData["instanceType"] == allocation.InstanceType, "compute_readback_identity_instance_type"},
+		{strings.TrimSpace(allocation.Zone) != "" && allocation.ProviderData["zone"] == allocation.Zone, "compute_readback_identity_zone"},
+		{strings.TrimSpace(allocation.ProviderData["clusterId"]) != "", "compute_readback_identity_cluster"},
+		{strings.TrimSpace(allocation.ProviderData["region"]) != "", "compute_readback_identity_region"},
+		{allocation.CostTags["opl_account_id"] == allocation.AccountID, "compute_readback_identity_account_tag"},
+		{allocation.CostTags["opl_workspace_id"] == allocation.WorkspaceID, "compute_readback_identity_workspace_tag"},
+		{allocation.CostTags["opl_resource_id"] == allocation.ID, "compute_readback_identity_resource_tag"},
+		{strings.TrimSpace(allocation.CostTags["opl_operation_id"]) != "", "compute_readback_identity_operation_tag"},
+		{validTencentComputeMachineApplicabilityIdentity(allocation), "compute_readback_identity_machine_type"},
+	} {
+		if !check.valid {
+			return check.code
+		}
+	}
+	return ""
 }
 
 func validTencentComputeMachineApplicabilityIdentity(allocation ComputeAllocation) bool {
@@ -1072,9 +1093,22 @@ func validTencentComputeMachineApplicabilityIdentity(allocation ComputeAllocatio
 }
 
 func validTencentComputeDestroyStableIdentity(allocation ComputeAllocation) bool {
+	return tencentComputeDestroyStableIdentityFailure(allocation) == ""
+}
+
+func tencentComputeDestroyStableIdentityFailure(allocation ComputeAllocation) computeReadbackFailure {
+	if failure := tencentComputeDestroyIdentityFailure(allocation); failure != "" {
+		return failure
+	}
 	cpu, cpuErr := strconv.Atoi(strings.TrimSpace(allocation.ProviderData["cpu"]))
+	if cpuErr != nil || cpu <= 0 {
+		return "compute_readback_identity_cpu"
+	}
 	memoryGB, memoryErr := strconv.Atoi(strings.TrimSpace(allocation.ProviderData["memoryGb"]))
-	return validTencentComputeDestroyIdentityFacts(allocation) && cpuErr == nil && memoryErr == nil && cpu > 0 && memoryGB > 0
+	if memoryErr != nil || memoryGB <= 0 {
+		return "compute_readback_identity_memory"
+	}
+	return ""
 }
 
 func validTencentComputeSyncAbsenceResponse(response provisionerResponse, expected ComputeAllocation) bool {
@@ -1147,8 +1181,8 @@ func tencentComputeDestroyRetryState(allocation ComputeAllocation) string {
 }
 
 func (p *TencentProvider) ReadComputeDestroyStatus(ctx context.Context, allocation ComputeAllocation) (ComputeAllocation, error) {
-	if !validTencentComputeDestroyStableIdentity(allocation) {
-		return allocation, fmt.Errorf("compute_allocation_destroy_identity_required")
+	if failure := tencentComputeDestroyStableIdentityFailure(allocation); failure != "" {
+		return allocation, failure
 	}
 	cpu, _ := strconv.ParseUint(allocation.ProviderData["cpu"], 10, 64)
 	memoryGB, _ := strconv.ParseUint(allocation.ProviderData["memoryGb"], 10, 64)

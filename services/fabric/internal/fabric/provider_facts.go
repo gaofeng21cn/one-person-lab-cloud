@@ -225,18 +225,52 @@ func (s *Service) workspaceComputeRuntimeBinding(ctx context.Context, provider p
 	return &contracts.WorkspaceComputeRuntimeBinding{Status: status}
 }
 
+// computeReadbackFailure contains only fixed, non-secret owner diagnostics.
+type computeReadbackFailure string
+
+func (failure computeReadbackFailure) Error() string { return string(failure) }
+
 func (s *Service) computeProviderFactInput(ctx context.Context, compute ComputeAllocation) ComputeAllocation {
+	projected, _ := s.computeOwnershipReadbackInput(ctx, compute)
+	return projected
+}
+
+// The current ownership store is authoritative for its claim. Reconstruct only
+// an entirely missing local tag projection; never replace existing tags.
+func (s *Service) computeOwnershipReadbackInput(ctx context.Context, compute ComputeAllocation) (ComputeAllocation, error) {
 	if compute.Provider != "tencent-tke" || len(compute.CostTags) != 0 {
-		return compute
+		return compute, nil
 	}
 	ownership, err := s.machineOwnership.MachineOwnership(ctx, compute.ID)
-	instanceID := firstNonEmpty(compute.InstanceID, compute.CVMInstanceID)
-	if err != nil || ownership.Status != "active" || ownership.ID == "" || ownership.ClaimedAt.IsZero() ||
-		ownership.ResourceID != compute.ID || ownership.AccountID != compute.AccountID || ownership.WorkspaceID != compute.WorkspaceID ||
-		ownership.PackageID != compute.PackageID || ownership.NodePoolID != compute.NodePoolID || ownership.MachineID != compute.MachineName ||
-		ownership.InstanceID != instanceID || ownership.NodeName != compute.NodeName {
-		return compute
+	if errors.Is(err, ErrMachineOwnershipNotFound) {
+		return compute, computeReadbackFailure("compute_readback_ownership_missing")
+	}
+	if err != nil {
+		return compute, computeReadbackFailure("compute_readback_ownership_unavailable")
+	}
+	if ownership.Status != "active" {
+		return compute, computeReadbackFailure("compute_readback_ownership_inactive")
+	}
+	if ownership.ID == "" || ownership.ClaimedAt.IsZero() {
+		return compute, computeReadbackFailure("compute_readback_ownership_invalid")
+	}
+	for _, check := range []struct {
+		matched bool
+		code    computeReadbackFailure
+	}{
+		{ownership.ResourceID == compute.ID, "compute_readback_ownership_resource"},
+		{ownership.AccountID == compute.AccountID, "compute_readback_ownership_account"},
+		{ownership.WorkspaceID == compute.WorkspaceID, "compute_readback_ownership_workspace"},
+		{ownership.PackageID == compute.PackageID, "compute_readback_ownership_package"},
+		{ownership.NodePoolID == compute.NodePoolID, "compute_readback_ownership_node_pool"},
+		{ownership.MachineID == compute.MachineName, "compute_readback_ownership_machine"},
+		{ownership.InstanceID == firstNonEmpty(compute.InstanceID, compute.CVMInstanceID), "compute_readback_ownership_instance"},
+		{ownership.NodeName == compute.NodeName, "compute_readback_ownership_node"},
+	} {
+		if !check.matched {
+			return compute, check.code
+		}
 	}
 	compute.CostTags = oplCostTags(compute.AccountID, compute.WorkspaceID, compute.ID, ownership.ID)
-	return compute
+	return compute, nil
 }

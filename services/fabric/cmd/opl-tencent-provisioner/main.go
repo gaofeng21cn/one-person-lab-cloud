@@ -3152,8 +3152,14 @@ func computeClaimDescribeReason(err error) string {
 	if err == nil {
 		return "provider_describe"
 	}
+	// Preserve this gate's existing rejection reasons through the readback wrapper.
+	var readbackErr *nodePoolReadbackError
+	if errors.As(err, &readbackErr) && readbackErr.cause != nil {
+		err = readbackErr.cause
+	}
 	value := strings.ToLower(err.Error())
-	if sdkErr, ok := err.(*tcerrors.TencentCloudSDKError); ok {
+	var sdkErr *tcerrors.TencentCloudSDKError
+	if errors.As(err, &sdkErr) && sdkErr != nil {
 		value += " " + strings.ToLower(sdkErr.Code)
 	}
 	for _, marker := range []string{"authfailure", "unauthorized", "forbidden", "permission", "accessdenied", "invalidcredential", "secretid"} {
@@ -3906,7 +3912,9 @@ func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[str
 	pool, poolRequestID, err := client.describeNativeNodePool(request.Pool.NodePoolId)
 	if err != nil {
 		response := sdkErrorResponse("tencent_describe_node_pool_failed", err)
-		response.ProviderRequestId = poolRequestID
+		if poolRequestID != "" {
+			response.ProviderRequestId = poolRequestID
+		}
 		return response
 	}
 	if failure := readbackNodePoolFailure(pool, request, poolRequestID); failure != nil {
@@ -4636,6 +4644,25 @@ func (client *tencentSDKClient) describeNativeTkeClusterInstanceByMachineName(ma
 	return matched, requestID, nil
 }
 
+type nodePoolReadbackErrorCode string
+
+const (
+	nodePoolReadbackSDKFailed        nodePoolReadbackErrorCode = "tencent_describe_node_pool_failed"
+	nodePoolReadbackResponseInvalid  nodePoolReadbackErrorCode = "tencent_node_pool_readback_response_invalid"
+	nodePoolReadbackEmptyOrAmbiguous nodePoolReadbackErrorCode = "tencent_node_pool_readback_empty_or_ambiguous"
+	nodePoolReadbackIDMismatch       nodePoolReadbackErrorCode = "tencent_node_pool_readback_id_mismatch"
+)
+
+// Keep provider diagnostics out of the fixed classification while retaining the
+// cause for SDK evidence and existing mutation admission checks.
+type nodePoolReadbackError struct {
+	code  nodePoolReadbackErrorCode
+	cause error
+}
+
+func (err *nodePoolReadbackError) Error() string { return string(err.code) }
+func (err *nodePoolReadbackError) Unwrap() error { return err.cause }
+
 func (client *tencentSDKClient) describeNativeNodePool(nodePoolId string) (*tke2022.NodePool, string, error) {
 	describeRequest := tke2022.NewDescribeNodePoolsRequest()
 	describeRequest.ClusterId = common.StringPtr(client.clusterId)
@@ -4645,16 +4672,23 @@ func (client *tencentSDKClient) describeNativeNodePool(nodePoolId string) (*tke2
 	}
 	describeResponse, err := client.nativeTkeClient.DescribeNodePools(describeRequest)
 	if err != nil {
-		return nil, "", err
+		return nil, "", &nodePoolReadbackError{code: nodePoolReadbackSDKFailed, cause: err}
 	}
 	if describeResponse == nil || describeResponse.Response == nil {
-		return nil, "", fmt.Errorf("Tencent TKE DescribeNodePools response is missing")
+		return nil, "", &nodePoolReadbackError{code: nodePoolReadbackResponseInvalid}
 	}
 	requestID := stringValue(describeResponse.Response.RequestId)
-	if describeResponse.Response.TotalCount == nil || *describeResponse.Response.TotalCount != 1 ||
-		len(describeResponse.Response.NodePools) != 1 || describeResponse.Response.NodePools[0] == nil ||
-		stringValue(describeResponse.Response.NodePools[0].NodePoolId) != nodePoolId {
-		return nil, requestID, fmt.Errorf("node pool not found or ambiguous: %s", nodePoolId)
+	if describeResponse.Response.TotalCount == nil {
+		return nil, requestID, &nodePoolReadbackError{code: nodePoolReadbackResponseInvalid}
+	}
+	if *describeResponse.Response.TotalCount != 1 || len(describeResponse.Response.NodePools) != 1 {
+		return nil, requestID, &nodePoolReadbackError{code: nodePoolReadbackEmptyOrAmbiguous}
+	}
+	if describeResponse.Response.NodePools[0] == nil {
+		return nil, requestID, &nodePoolReadbackError{code: nodePoolReadbackResponseInvalid}
+	}
+	if stringValue(describeResponse.Response.NodePools[0].NodePoolId) != nodePoolId {
+		return nil, requestID, &nodePoolReadbackError{code: nodePoolReadbackIDMismatch}
 	}
 	return describeResponse.Response.NodePools[0], requestID, nil
 }
@@ -6459,17 +6493,29 @@ func firstString(values []*string) string {
 }
 
 func sdkErrorResponse(code string, err error) Response {
+	message := err.Error()
+	var readbackErr *nodePoolReadbackError
+	if errors.As(err, &readbackErr) {
+		code = string(readbackErr.code)
+		message = readbackErr.Error()
+	}
 	response := Response{
 		Ok:        false,
 		ErrorCode: code,
-		Message:   err.Error(),
+		Message:   message,
 		Retryable: true,
 		ProviderData: map[string]string{
 			"providerErrorCode":    code,
-			"providerErrorMessage": err.Error(),
+			"providerErrorMessage": message,
 		},
 	}
-	if sdkErr, ok := err.(*tcerrors.TencentCloudSDKError); ok {
+	if readbackErr != nil {
+		if providerCode := safeTencentProviderErrorCode(err); providerCode != "" {
+			response.ProviderData["providerErrorCode"] = providerCode
+		}
+	}
+	var sdkErr *tcerrors.TencentCloudSDKError
+	if errors.As(err, &sdkErr) && sdkErr != nil {
 		response.ProviderRequestId = sdkErr.RequestId
 		response.ProviderData["providerErrorRequestId"] = sdkErr.RequestId
 	}
