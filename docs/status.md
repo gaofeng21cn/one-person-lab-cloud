@@ -17,6 +17,29 @@ Instance installation, or a Product Release. The target boundary is in
 [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Team Workspace Transaction Reads (2026-10-16)
+
+Cloud now exposes the Gateway's original Workspace charge/refund records through
+the BFF and Workspace detail page. The live session's Tenant and owner/admin role
+bind every query; members and other Tenants cannot read the records. Retiring a
+wallet binding or deleting a Workspace does not erase its financial history.
+The detail view preserves original amounts, statuses, references, plan-change
+and coverage fields. It is not a complete Ledger receipt reader.
+
+The owner's independent 14-UTC-day trend uses original confirmation time, across
+all matching rows rather than the displayed page. Requested and unknown amounts
+stay separate from confirmed charges/refunds. Local PostgreSQL, BFF and browser
+checks prove source behavior; no installed data or business settlement was read.
+
+## Personal Gateway Read Authorization (2026-10-16)
+
+The BFF's existing wallet and usage-summary routes now authorize the live User
+independently of Tenant membership or role. Their Gateway owner still resolves
+the durable User-to-Sub2API identity on every read. A member and a User without
+a Tenant may read only their own balance and usage; Tenant payment subjects,
+fee/settlement readers and legacy records are separate. Source checks do not
+establish installed authenticated acceptance.
+
 ## Product Rule Adoption Boundary (2026-10-15)
 
 The [Workspace key and customer-read decision](decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads)

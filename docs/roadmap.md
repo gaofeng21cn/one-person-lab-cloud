@@ -44,6 +44,15 @@ source qualification profile. The target is not complete until a user can open
 the confirmed application route and the exact bytes, owner facts and receipts
 can be read back.
 
+## Team Financial Read Delivery (2026-10-16)
+
+The Gateway/BFF transaction list, detail and 14-UTC-day settlement trend are
+implemented for team owners/admins. Original wallet records remain the source;
+there is no new wallet or relaxation of Ledger's actor fence. The UI preserves
+unknown/requested states and exact amounts. Exact-Candidate installed access and
+real historical-data reconciliation remain in the customer acceptance outcome;
+source and fixture evidence do not close that outcome.
+
 ## Priority Outcomes
 
 ### First Tencent/TKE Default App Launch (2026-10-10)

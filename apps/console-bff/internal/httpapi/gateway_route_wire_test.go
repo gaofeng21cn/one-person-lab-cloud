@@ -303,3 +303,44 @@ func TestSelfExternalBindingsTravelThroughBFFWire(t *testing.T) {
 		t.Fatalf("anonymous status=%d reached owner=%v", response.Code, owner.bindingRequest != nil)
 	}
 }
+
+func TestPersonalGatewayRoutesPreserveNoTenantSession(t *testing.T) {
+	for _, row := range []struct {
+		path   string
+		action api.AuthorizationActionEnum
+	}{
+		{"/api/v2/wallet", api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET},
+		{"/api/v2/usage/summary?period=month", api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY},
+	} {
+		t.Run(row.path, func(t *testing.T) {
+			owner := &gatewayOwnerServer{}
+			client := dialGatewayOwner(t, owner)
+			identity := allowedIdentity()
+			identity.session.TenantId = nil
+			identity.decision.Scope = &api.AuthorizationScope{Scope: &api.AuthorizationScope_Platform{Platform: &api.PlatformScope{}}}
+			identity.decision.Action = row.action
+			identity.decision.AudienceOwner = api.OwnerEnum_OWNER_ENUM_GATEWAY
+			identity.decision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT}
+			response := httptest.NewRecorder()
+			request := sessionRequest(http.MethodGet, row.path)
+			request.Header.Set("x-opl-actor", "other-user")
+			request.Header.Set("x-opl-tenant", "other-tenant")
+			NewServer(client, identity).Handler().ServeHTTP(response, request)
+			if response.Code != http.StatusOK {
+				t.Fatalf("personal read=%d %s", response.Code, response.Body.String())
+			}
+			var call *api.CallContext
+			if owner.walletRequest != nil {
+				call = owner.walletRequest.Context
+			} else if owner.usageRequest != nil {
+				call = owner.usageRequest.Context
+			}
+			if call == nil || call.ActorId != "actor-1" || call.Scope.GetPlatform() == nil || call.GetSessionId() != owneridentity.SessionReference("session-1") {
+				t.Fatalf("wrong caller=%v", call)
+			}
+			if len(identity.requests) != 1 || identity.requests[0].Resource.GetId() != "" {
+				t.Fatal("personal read selected a Tenant")
+			}
+		})
+	}
+}
