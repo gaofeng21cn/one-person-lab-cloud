@@ -37,8 +37,12 @@ func newControlPlaneReader(raw, token string) (*controlPlaneReader, error) {
 }
 
 func (c *controlPlaneReader) request(ctx context.Context, session, method, path, key string, out any) error {
+	return c.requestWithLimit(ctx, session, method, path, key, out, 1<<20)
+}
+
+func (c *controlPlaneReader) requestWithLimit(ctx context.Context, session, method, path, key string, out any, maxBytes int64) error {
 	if c == nil {
-		return status.Error(codes.Unavailable, "announcement owner is not configured")
+		return status.Error(codes.Unavailable, "retained owner is not configured")
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, nil)
 	if err != nil {
@@ -53,7 +57,7 @@ func (c *controlPlaneReader) request(ctx context.Context, session, method, path,
 	}
 	response, err := c.http.Do(req)
 	if err != nil {
-		return status.Error(codes.Unavailable, "announcement owner is unavailable")
+		return status.Error(codes.Unavailable, "retained owner is unavailable")
 	}
 	defer response.Body.Close()
 	switch response.StatusCode {
@@ -61,19 +65,19 @@ func (c *controlPlaneReader) request(ctx context.Context, session, method, path,
 	case http.StatusUnauthorized:
 		return status.Error(codes.Unauthenticated, "Cloud session or owner identity rejected")
 	case http.StatusForbidden:
-		return status.Error(codes.PermissionDenied, "announcement access denied")
+		return status.Error(codes.PermissionDenied, "original owner access denied")
 	case http.StatusNotFound:
-		return status.Error(codes.NotFound, "announcement is not active")
+		return status.Error(codes.NotFound, "original owner record not found")
 	case http.StatusBadRequest:
-		return status.Error(codes.InvalidArgument, "invalid announcement request")
+		return status.Error(codes.InvalidArgument, "invalid original owner request")
 	case http.StatusConflict:
-		return status.Error(codes.FailedPrecondition, "original announcement identity is unresolved")
+		return status.Error(codes.FailedPrecondition, "original owner identity is unresolved")
 	default:
-		return status.Error(codes.Unavailable, "announcement owner is unavailable")
+		return status.Error(codes.Unavailable, "retained owner is unavailable")
 	}
-	raw, err := io.ReadAll(io.LimitReader(response.Body, (1<<20)+1))
-	if err != nil || len(raw) > 1<<20 || json.Unmarshal(raw, out) != nil {
-		return status.Error(codes.DataLoss, "invalid announcement owner response")
+	raw, err := io.ReadAll(io.LimitReader(response.Body, maxBytes+1))
+	if err != nil || int64(len(raw)) > maxBytes || json.Unmarshal(raw, out) != nil {
+		return status.Error(codes.DataLoss, "invalid retained owner response")
 	}
 	return nil
 }
@@ -81,7 +85,7 @@ func (c *controlPlaneReader) request(ctx context.Context, session, method, path,
 func (c *Clients) ListAnnouncements(ctx context.Context, session string, page, pageSize int) (*contracts.AnnouncementSource, error) {
 	out := &contracts.AnnouncementSource{}
 	path := "/internal/cloud/announcements?" + url.Values{"page": {strconv.Itoa(page)}, "pageSize": {strconv.Itoa(pageSize)}}.Encode()
-	if err := c.controlPlane.request(ctx, session, http.MethodGet, path, "", out); err != nil {
+	if err := c.controlPlane.requestWithLimit(ctx, session, http.MethodGet, path, "", out, contracts.AnnouncementMaxResponseBytes); err != nil {
 		return nil, err
 	}
 	return out, nil

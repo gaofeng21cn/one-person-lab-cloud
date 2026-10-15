@@ -143,3 +143,12 @@ func TestAnnouncementCloudGuardsAndUnavailableOwner(t *testing.T) {
 		t.Fatalf("expired=%d owner calls=%d", response.Code, calls)
 	}
 }
+
+func TestAnnouncementPageSizeMatchesOriginalOwner(t *testing.T) {
+	handler := NewServer(nil, allowedIdentity()).Handler()
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, sessionRequest("GET", "/api/v2/announcements?pageSize=51"))
+	if w.Code != 400 {
+		t.Fatalf("owner rejects above 50, BFF returned %d: %s", w.Code, w.Body.String())
+	}
+}

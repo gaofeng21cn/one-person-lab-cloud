@@ -41,6 +41,30 @@ validation. Their adoption and authenticated exact-Candidate acceptance remain
 [open outcomes](roadmap.md#workspace-key-and-customer-read-boundaries). Earlier
 evidence below retains its original source, scope and observation date.
 
+## Personal Historical Billing Source Repair (2026-10-16)
+
+The Cloud Console now reads personal original-account bill lists, receipt detail
+and Workspace net-settlement trends through `/api/v2/legacy-billing/*`. The BFF
+passes only the live session reference to the original Control Plane owner,
+which rechecks Gateway identity proof and its unique reciprocal Account/User
+lineage. It reuses the existing financial projections and original Ledger reader;
+no second financial writer, Account mapping, settlement algorithm or Tenant-admin
+inheritance is introduced. A deleted Workspace does not erase its original bill.
+The UI identifies personal historical bills and explicitly says Tenant bills are
+not yet exposed.
+
+Local owner tests exercise real HTTP/gRPC plus Memory, SQLite and isolated
+PostgreSQL; they cover original refund amounts/timestamps, pagination, deleted
+Workspace history, wrong-owner responses, unknown settlement, revoked bindings,
+expired sessions and rejected Account/Tenant selectors. BFF transport checks
+preserve integer amounts and unknown settlement facts and reject unavailable
+owners. These checks prove source/fixture behavior, not installed authentication
+or actual historical identity linkage. Tenant fee/settlement reads, other Gateway
+reads and exact-Candidate installed acceptance remain open. The same retained-reader
+repair also aligns announcement page size with the original owner (50) and raises
+the list response budget to the bounded maximum of 50 accepted 20,000-rune notices;
+the previous 1 MiB cap could reject a valid full page. ACK retains its smaller cap.
+
 ## Cloud Announcement Source Repair (2026-10-15)
 
 The #871 source change switches the Cloud Console's list/ACK caller to the BFF,
@@ -461,3 +485,13 @@ The medical platform described in
 [medical-agent-platform.md](medical-agent-platform.md) is a target boundary and
 gap analysis. No clinical workflow, patient-data production use or medical
 quality claim is made by this Cloud source snapshot.
+
+### Personal balance-history and endpoint source repair (2026-10-16)
+
+The Cloud Console routes its own balance-adjustment history and public Gateway
+endpoint through the session-bound BFF and retained Sub2API reader. The original
+owner projection and pagination are reused; the fresh verified User binding
+selects the subject without requiring a legacy Account or Tenant. Exact decimal
+strings and unavailable results are preserved. This is adjustment history, not
+a claim that every type of API usage or financial settlement is represented.
+Installed authentication and external provider completeness remain unproved.
