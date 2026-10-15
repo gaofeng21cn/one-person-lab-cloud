@@ -153,6 +153,10 @@ test("installation CLI accepts live replicas only through exact controller and e
     ["drifted live target image", ({ pod }) => { pod.spec.containers[0].image = "example.invalid/foreign:1"; }],
     ["drifted live target command", ({ pod }) => { pod.spec.containers[0].command = ["/bin/sh", "-c", "exec sleep 3600"]; }],
     ["drifted live target args", ({ pod }) => { pod.spec.containers[0].args = ["probe-workspace-access"]; }],
+    ["live host network", ({ pod }) => { pod.spec.hostNetwork = true; }],
+    ["live host PID namespace", ({ pod }) => { pod.spec.hostPID = true; }],
+    ["live runtime class", ({ pod }) => { pod.spec.runtimeClassName = "untrusted-runtime"; }],
+    ["live ephemeral container", ({ pod }) => { pod.spec.ephemeralContainers = [{ name: "debugger", image: "example.invalid/debugger:1" }]; }],
     ["missing live target container", ({ pod }) => { pod.spec.containers = [{ name: "other", image: "example.invalid/other:1" }]; }],
     ["wrong endpoint port", ({ endpoints }) => { endpoints.subsets[0].ports[0].port = 9999; }],
     ["wrong slice port", ({ slice }) => { slice.ports[0].port = 9999; }]
@@ -182,6 +186,47 @@ test("installation CLI accepts API defaulted live container fields", async () =>
   pod.spec.containers[0].ports[0].protocol = "TCP";
   const result = await invoke(list);
   assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
+test("installation CLI binds live init identity and canonical projected ServiceAccount volume", async () => {
+  const ordered = withLiveWorkspaceBackends();
+  const initA = { name: "init-a", image: "example.invalid/init-a:1" };
+  const initB = { name: "init-b", image: "example.invalid/init-b:1" };
+  ordered.replicaSet.spec.template.spec.initContainers = [initA, initB];
+  ordered.pod.spec.initContainers = [initB, initA];
+  assert.equal((await invoke(ordered.list)).status, 1);
+
+  const duplicate = withLiveWorkspaceBackends();
+  const duplicateInit = { name: "owner", image: "example.invalid/init:1" };
+  duplicate.replicaSet.spec.template.spec.initContainers = [duplicateInit];
+  duplicate.pod.spec.initContainers = [duplicateInit];
+  assert.equal((await invoke(duplicate.list)).status, 1);
+
+  const injected = withLiveWorkspaceBackends();
+  injected.pod.spec.volumes = [{ name: "kube-api-access-abc12", projected: { sources: [
+    { serviceAccountToken: { expirationSeconds: 3607, path: "token" } },
+    { configMap: { name: "kube-root-ca.crt", items: [{ key: "ca.crt", path: "ca.crt" }] } },
+    { downwardAPI: { items: [{ fieldRef: { apiVersion: "v1", fieldPath: "metadata.namespace" }, path: "namespace" }] } }
+  ] } }];
+  assert.equal((await invoke(injected.list)).status, 0);
+  const forged = withLiveWorkspaceBackends();
+  forged.pod.spec.volumes = [{ name: "kube-api-access-abc12", projected: { sources: [
+    { serviceAccountToken: { path: "evil" } }, { secret: { name: "foreign" } }
+  ] } }];
+  assert.equal((await invoke(forged.list)).status, 1);
+});
+
+test("installation CLI rejects unserviceable supplied live endpoints", async () => {
+  for (const change of [
+    (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.slice.endpoints[0].conditions = { ready: false }; },
+    (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.slice.endpoints[0].conditions = { serving: false }; },
+    (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.slice.endpoints[0].conditions = { ready: true, serving: true, terminating: true }; },
+    (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.endpoints.subsets[0].notReadyAddresses = live.endpoints.subsets[0].addresses; delete live.endpoints.subsets[0].addresses; },
+  ]) {
+    const live = withLiveWorkspaceBackends();
+    change(live);
+    assert.equal((await invoke(live.list)).status, 1);
+  }
 });
 
 test("installation CLI refuses empty or incomplete live endpoint inventories", async t => {
