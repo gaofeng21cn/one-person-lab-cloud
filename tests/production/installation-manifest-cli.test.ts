@@ -515,6 +515,42 @@ test("installation CLI refuses shared Pod wildcard listener collisions for numer
   });
 });
 
+test("installation CLI proves Serve access entry listener separately from its owner RPC", async t => {
+  for (const accessAddress of [":8185", "\u0085:8185\u0085"]) await t.test(`Serve access and RPC collide: ${JSON.stringify(accessAddress)}`, async () => {
+    const list = workedInstallation();
+    container(list, "serve").env.push({ name: "OPL_SERVE_ACCESS_ADDR", value: accessAddress });
+    const result = await invoke(list);
+    assert.equal(result.status, 1, result.stdout);
+    assert.ok(result.report.errors.some(error => error.code === "installation_listener_conflict"), result.stdout);
+    assert.deepEqual(result.report.communication.edges, []);
+  });
+  for (const accessAddress of [undefined, "\u0085", ":8189"]) await t.test(`Serve access with a shared Pod: ${JSON.stringify(accessAddress)}`, async () => {
+    const list = workedInstallation();
+    const serve = deployment(list, "serve"), workspace = deployment(list, "workspace");
+    const serveProcess = container(list, "serve"), workspaceProcess = container(list, "workspace");
+    serveProcess.name = "serve"; workspaceProcess.name = "workspace";
+    serveProcess.ports[0].name = "serve-rpc";
+    workspaceProcess.ports[0] = { name: "workspace-rpc", containerPort: 8188 };
+    workspaceProcess.env.find(entry => entry.name === "OPL_WORKSPACE_ADDR").value = ":8188";
+    if (accessAddress !== undefined) serveProcess.env.push({ name: "OPL_SERVE_ACCESS_ADDR", value: accessAddress });
+    serve.spec.template.spec.containers.push(workspaceProcess);
+    list.items = list.items.filter(item => item !== workspace);
+    for (const [owner, port] of [["serve", 8185], ["workspace", 8188]] as const) {
+      const svc = list.items.find(item => item.kind === "Service" && item.metadata.name === `${owner}-rpc`);
+      svc.spec.selector = structuredClone(serve.spec.template.metadata.labels);
+      svc.spec.ports[0].targetPort = port;
+    }
+    for (const item of list.items.filter(item => item.kind === "NetworkPolicy")) item.spec = { podSelector: {}, policyTypes: ["Ingress"], ingress: [{}] };
+    const result = await invoke(list);
+    const collides = accessAddress !== ":8189";
+    assert.equal(result.status, collides ? 1 : 0, result.stdout + result.stderr);
+    if (collides) {
+      assert.ok(result.report.errors.some(error => error.code === "installation_listener_conflict"), result.stdout);
+      assert.deepEqual(result.report.communication.edges, []);
+    } else assert.equal(result.report.communication.edges.length, 46);
+  });
+});
+
 test("installation CLI proves Service uniqueness across declared Pods and every native Pod producer", async t => {
   for (const kind of ["Pod", "StatefulSet", "DaemonSet", "ReplicaSet", "ReplicationController", "Job", "CronJob"]) {
     for (const labels of ["matching", "different", "missing", "invalid", "unknown-template"] as const) await t.test(`${kind} ${labels}`, async () => {

@@ -234,7 +234,14 @@
     "OPL_FABRIC_APPLICATION_URL with its service token and capability key remains only for the provider whose in-process executor has not moved yet. An installation that declares both OPL_K8S_NAMESPACE and OPL_FABRIC_APPLICATION_URL is refused at startup, because that would be two writers for one workload."
    ],
    "transportPrincipal": "serve",
-   "daemonArgs": []
+   "daemonArgs": [],
+   "additionalListeners": [
+    {
+     "addressEnv": "OPL_SERVE_ACCESS_ADDR",
+     "defaultAddress": ":8188",
+     "valueSemantics": "trimmed"
+    }
+   ]
   },
   {
    "service": "resource-catalog",
