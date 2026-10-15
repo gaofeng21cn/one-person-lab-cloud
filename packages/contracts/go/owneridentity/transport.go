@@ -17,8 +17,12 @@ type Service string
 
 const ConsoleBFF Service = "console_bff"
 
+// ControlPlane is the retained process, not an additional target data owner.
+// It revalidates CloudIdentity before serving its original customer records.
+const ControlPlane Service = "control_plane"
+
 func (s Service) String() string { return string(s) }
-func (s Service) Valid() bool    { return s == ConsoleBFF || Owner(s).Valid() }
+func (s Service) Valid() bool    { return s == ConsoleBFF || s == ControlPlane || Owner(s).Valid() }
 func (o Owner) Service() Service { return Service(o) }
 
 // DeploymentUnitTransportPrincipal resolves the transport principal of the

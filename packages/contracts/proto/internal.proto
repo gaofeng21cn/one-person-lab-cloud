@@ -2404,6 +2404,18 @@ message UserExternalBindingCommand {
 message UserExternalBindingReadRequest { CallContext context = 1; string actor_id = 2; }
 // Resolve the User from the live session; no target actor or destination is accepted.
 message GetSelfUserExternalBindingRequest { CallContext context = 1; }
+// Identity proof for retained original-owner reads. OCI readiness is a separate
+// qualification and is deliberately absent from this contract.
+message GetSelfUserIdentityRequest { CallContext context = 1; }
+message UserIdentityReadback {
+ string actor_id = 1;
+ string sub2api_user_id = 2;
+ UserExternalBindingReadbackStatusEnum status = 3;
+ UserExternalBindingReadbackVerificationEnum verification = 4;
+ string verification_evidence_ref = 5;
+ google.protobuf.Timestamp verified_at = 6;
+}
+
 enum UserExternalBindingReadbackStatusEnum {
  USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_UNSPECIFIED = 0;
  USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_ACTIVE = 1;
@@ -2435,6 +2447,7 @@ message ManagedKeyCommand { CallContext context = 1; string workspace_id = 2; re
 message ManagedKeyBinding { string key_binding_id = 1; string fingerprint = 2; string secret_delivery_reference = 3; string workspace_id = 4; string target_runtime_instance_id = 5; google.protobuf.Timestamp expires_at = 6; }
 message ManagedKeyRevoke { CallContext context = 1; string key_binding_id = 2; string workspace_id = 3; }
 service GatewayCoordination {
+ rpc GetSelfUserIdentity(GetSelfUserIdentityRequest) returns (UserIdentityReadback);
  rpc GetSelfUserExternalBinding(GetSelfUserExternalBindingRequest) returns (UserExternalBindingReadback);
  rpc BindUserExternalIdentity(UserExternalBindingCommand) returns (UserExternalBindingReadback);
  rpc ReadUserExternalIdentity(UserExternalBindingReadRequest) returns (UserExternalBindingReadback);

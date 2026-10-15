@@ -664,6 +664,75 @@ func (s *postgresEntStateStore) MarkAnnouncementRead(ctx context.Context, announ
 	return row, nil
 }
 
+func (s *postgresEntStateStore) MarkCloudAnnouncementRead(ctx context.Context, announcementID, cloudUserID, legacyUserID, readAt string) (map[string]any, error) {
+	canonical, alias := announcementReadReferences(cloudUserID, legacyUserID)
+	return s.markAnnouncementReadAliases(ctx, announcementID, canonical, alias, readAt)
+}
+
+// Publication mutations use this same announcement row lock, so an existing
+// ACK can never bypass withdrawal/window checks. Canonical and exact alias
+// references are folded atomically, preserving the original earliest read_at.
+func (s *postgresEntStateStore) markAnnouncementReadAliases(ctx context.Context, announcementID, userID, aliasUserID, readAt string) (map[string]any, error) {
+	readTime, ok := optionalAnnouncementTime(readAt)
+	if announcementID == "" || userID == "" || !ok || readTime.IsZero() {
+		return nil, errAnnouncementNotActive
+	}
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	client := tx.Client()
+	publication, err := client.Announcement.Query().Where(announcement.IDEQ(announcementID), lockRowForUpdate).Only(ctx)
+	if controlplaneent.IsNotFound(err) {
+		return nil, errAnnouncementNotActive
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !announcementIsActive(announcementRecordFromEnt(publication), time.Now().UTC()) {
+		return nil, errAnnouncementNotActive
+	}
+	refs := []string{userID}
+	if aliasUserID != "" {
+		refs = append(refs, aliasUserID)
+	}
+	existing, err := client.AnnouncementRead.Query().Where(announcementread.AnnouncementIDEQ(announcementID), announcementread.UserIDIn(refs...)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]map[string]any, 0, len(existing))
+	var canonical *controlplaneent.AnnouncementRead
+	for _, entity := range existing {
+		rows = append(rows, announcementReadRecordFromEnt(entity))
+		if entity.UserID == userID {
+			canonical = entity
+		}
+	}
+	row, err := mergedAnnouncementRead(announcementID, userID, readAt, rows)
+	if err != nil {
+		return nil, err
+	}
+	if canonical != nil {
+		if canonical.ReadAt != stringValue(row["readAt"]) {
+			if _, err := client.AnnouncementRead.UpdateOneID(canonical.ID).SetReadAt(stringValue(row["readAt"])).Save(ctx); err != nil {
+				return nil, err
+			}
+		}
+	} else if err := saveRecord(ctx, stringValue(row["id"]), row, client.AnnouncementRead.Create(), announcementReadEntFields); err != nil {
+		return nil, err
+	}
+	if aliasUserID != "" {
+		if _, err := client.AnnouncementRead.Delete().Where(announcementread.AnnouncementIDEQ(announcementID), announcementread.UserIDEQ(aliasUserID)).Exec(ctx); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return row, nil
+}
+
 func announcementRecordFromEnt(entity *controlplaneent.Announcement) map[string]any {
 	if entity == nil {
 		return nil

@@ -160,6 +160,21 @@ func (s *postgresEntStateStore) GetAccount(ctx context.Context, id string) (map[
 	return recordFromEnt(entity, accountEntFields), true, nil
 }
 
+// Only is intentional: ambiguous persisted lineage must fail closed.
+func (s *postgresEntStateStore) GetAccountBySub2APIUserID(ctx context.Context, subjectID int64) (map[string]any, bool, error) {
+	entity, err := s.client.Account.Query().Where(account.Sub2apiUserIDEQ(subjectID)).Only(ctx)
+	if controlplaneent.IsNotFound(err) {
+		return nil, false, nil
+	}
+	if controlplaneent.IsNotSingular(err) {
+		return nil, false, errSub2APIAccountMappingConflict
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return recordFromEnt(entity, accountEntFields), true, nil
+}
+
 func (s *postgresEntStateStore) PageAccounts(ctx context.Context, page tablePageQuery) (tablePage, error) {
 	query := s.client.Account.Query()
 	total, err := query.Clone().Count(ctx)

@@ -22,6 +22,7 @@ import "context"
 type IdentityStore interface {
 	ListAccounts(ctx context.Context, accountID string) ([]map[string]any, error)
 	GetAccount(ctx context.Context, id string) (map[string]any, bool, error)
+	GetAccountBySub2APIUserID(ctx context.Context, subjectID int64) (map[string]any, bool, error)
 	PageAccounts(ctx context.Context, query tablePageQuery) (tablePage, error)
 	CountAccountStatuses(ctx context.Context) (map[string]int, error)
 	SaveAccount(ctx context.Context, row map[string]any) error

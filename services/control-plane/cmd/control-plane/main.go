@@ -1,14 +1,18 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"opl-cloud/services/control-plane/internal/clients"
@@ -17,24 +21,30 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	addr := controlPlaneAddr()
 	ledgerURL := os.Getenv("LEDGER_URL")
 	fabricURL := os.Getenv("FABRIC_URL")
 	outboundTokens, err := internalServiceTokensFromEnv(os.Getenv)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	fabricCapabilityKey, err := fabricCapabilityKeyFromEnv(os.Getenv, outboundTokens.Fabric)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	ledgerCapabilityKey, err := ledgerCapabilityKeyFromEnv(os.Getenv, outboundTokens.Ledger)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	sub2APIConfig, err := sub2APIConfigFromEnv(os.Getenv)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	var sub2API clients.Sub2APIClient
 	if sub2APIConfig.BaseURL != "" {
@@ -54,7 +64,7 @@ func main() {
 		}
 		sub2API, err = clients.NewSub2APIHTTPClient(sub2APIConfig, httpClient)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
 
@@ -65,16 +75,38 @@ func main() {
 	)
 	store, err := controlserver.StateStoreFromEnv()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	handler, err := controlserver.NewPersistentServer(service, store)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
+	if closer, ok := handler.(io.Closer); ok {
+		defer closer.Close()
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	server := newHTTPServer(addr, handler)
+	done := make(chan struct{})
+	shutdownDone := make(chan struct{})
+	defer func() { close(done); <-shutdownDone }()
+	go func() {
+		defer close(shutdownDone)
+		select {
+		case <-ctx.Done():
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := server.Shutdown(shutdownCtx); err != nil {
+				_ = server.Close()
+			}
+		case <-done:
+		}
+	}()
 	log.Printf("control-plane listening on %s", addr)
-	if err := newHTTPServer(addr, handler).ListenAndServe(); err != nil {
-		log.Fatal(err)
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
 	}
+	return nil
 }
 
 func ledgerCapabilityKeyFromEnv(getenv func(string) string, ledgerTransportToken string) (string, error) {

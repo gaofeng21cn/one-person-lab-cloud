@@ -5981,6 +5981,7 @@ var WorkspaceAdmission_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
+	GatewayCoordination_GetSelfUserIdentity_FullMethodName        = "/opl.cloud.api.GatewayCoordination/GetSelfUserIdentity"
 	GatewayCoordination_GetSelfUserExternalBinding_FullMethodName = "/opl.cloud.api.GatewayCoordination/GetSelfUserExternalBinding"
 	GatewayCoordination_BindUserExternalIdentity_FullMethodName   = "/opl.cloud.api.GatewayCoordination/BindUserExternalIdentity"
 	GatewayCoordination_ReadUserExternalIdentity_FullMethodName   = "/opl.cloud.api.GatewayCoordination/ReadUserExternalIdentity"
@@ -5996,6 +5997,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type GatewayCoordinationClient interface {
+	GetSelfUserIdentity(ctx context.Context, in *GetSelfUserIdentityRequest, opts ...grpc.CallOption) (*UserIdentityReadback, error)
 	GetSelfUserExternalBinding(ctx context.Context, in *GetSelfUserExternalBindingRequest, opts ...grpc.CallOption) (*UserExternalBindingReadback, error)
 	BindUserExternalIdentity(ctx context.Context, in *UserExternalBindingCommand, opts ...grpc.CallOption) (*UserExternalBindingReadback, error)
 	ReadUserExternalIdentity(ctx context.Context, in *UserExternalBindingReadRequest, opts ...grpc.CallOption) (*UserExternalBindingReadback, error)
@@ -6013,6 +6015,16 @@ type gatewayCoordinationClient struct {
 
 func NewGatewayCoordinationClient(cc grpc.ClientConnInterface) GatewayCoordinationClient {
 	return &gatewayCoordinationClient{cc}
+}
+
+func (c *gatewayCoordinationClient) GetSelfUserIdentity(ctx context.Context, in *GetSelfUserIdentityRequest, opts ...grpc.CallOption) (*UserIdentityReadback, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UserIdentityReadback)
+	err := c.cc.Invoke(ctx, GatewayCoordination_GetSelfUserIdentity_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *gatewayCoordinationClient) GetSelfUserExternalBinding(ctx context.Context, in *GetSelfUserExternalBindingRequest, opts ...grpc.CallOption) (*UserExternalBindingReadback, error) {
@@ -6109,6 +6121,7 @@ func (c *gatewayCoordinationClient) RevokeManagedKey(ctx context.Context, in *Ma
 // All implementations must embed UnimplementedGatewayCoordinationServer
 // for forward compatibility.
 type GatewayCoordinationServer interface {
+	GetSelfUserIdentity(context.Context, *GetSelfUserIdentityRequest) (*UserIdentityReadback, error)
 	GetSelfUserExternalBinding(context.Context, *GetSelfUserExternalBindingRequest) (*UserExternalBindingReadback, error)
 	BindUserExternalIdentity(context.Context, *UserExternalBindingCommand) (*UserExternalBindingReadback, error)
 	ReadUserExternalIdentity(context.Context, *UserExternalBindingReadRequest) (*UserExternalBindingReadback, error)
@@ -6128,6 +6141,9 @@ type GatewayCoordinationServer interface {
 // pointer dereference when methods are called.
 type UnimplementedGatewayCoordinationServer struct{}
 
+func (UnimplementedGatewayCoordinationServer) GetSelfUserIdentity(context.Context, *GetSelfUserIdentityRequest) (*UserIdentityReadback, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetSelfUserIdentity not implemented")
+}
 func (UnimplementedGatewayCoordinationServer) GetSelfUserExternalBinding(context.Context, *GetSelfUserExternalBindingRequest) (*UserExternalBindingReadback, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSelfUserExternalBinding not implemented")
 }
@@ -6174,6 +6190,24 @@ func RegisterGatewayCoordinationServer(s grpc.ServiceRegistrar, srv GatewayCoord
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&GatewayCoordination_ServiceDesc, srv)
+}
+
+func _GatewayCoordination_GetSelfUserIdentity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSelfUserIdentityRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayCoordinationServer).GetSelfUserIdentity(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayCoordination_GetSelfUserIdentity_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayCoordinationServer).GetSelfUserIdentity(ctx, req.(*GetSelfUserIdentityRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _GatewayCoordination_GetSelfUserExternalBinding_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -6345,6 +6379,10 @@ var GatewayCoordination_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "opl.cloud.api.GatewayCoordination",
 	HandlerType: (*GatewayCoordinationServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetSelfUserIdentity",
+			Handler:    _GatewayCoordination_GetSelfUserIdentity_Handler,
+		},
 		{
 			MethodName: "GetSelfUserExternalBinding",
 			Handler:    _GatewayCoordination_GetSelfUserExternalBinding_Handler,

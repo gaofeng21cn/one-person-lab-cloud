@@ -51,7 +51,10 @@ and deleted-Workspace history remain unchanged. A Tenant admin does not thereby
 obtain access to the owner's personal legacy history.
 
 Active announcements are available to every valid authenticated Cloud User,
-without requiring Tenant membership. This does not authorize anonymous access.
+without requiring Tenant membership or a configured OCI destination. Gateway
+provides a session-bound identity-only proof to the retained owner; complete
+external-binding and Build reads keep their destination verification gates.
+This does not authorize anonymous access.
 The existing announcement owner retains publication and acknowledgement
 persistence. A proven same User may inherit historical acknowledgements with
 their original read timestamps; email or Tenant membership alone is not proof.
