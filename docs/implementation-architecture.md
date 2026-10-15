@@ -312,55 +312,49 @@ surfaces. The Dockerfile defaults to `legacy` and labels the built digest with
 | `cloud` | Authentication, Workspace, Publisher and delivery use same-origin Console BFF `/api/v2/*`, CloudIdentity session and owner authorization | Workspace owner list/detail, composed resource/delivery/access facts; no retained Control Plane Workspace read or maintenance fallback |
 | `legacy` | Retained Control Plane authentication and Workspace `/api/*` | Existing Control Plane Workspace rows, lifecycle and Runtime projections |
 
-The shared Gateway wallet and account-usage reads follow the baked Console
-identity; the other shared readers stay retained. A cloud build requests the
-same-origin Console BFF `/api/v2/wallet` and `/api/v2/usage/summary`, which
-authorize the calls and return the Gateway owner's own readbacks. The shared
-readers in
-`apps/console-ui/src/api/console-read-api.ts` selects that route from
-`VITE_CONSOLE_IDENTITY`. A legacy build keeps requesting the retained Control
-Plane `/api/gateway/wallet`, which projects the Sub2API answer it already
-returned. The projection's owner tag follows the same identity, so a wallet
-response commits only under the identity that requested it. The account-usage
-projection applies the same owner guard and names the Gateway source for cloud
-responses; legacy responses keep the retained Sub2API source.
+The shared readers in `apps/console-ui/src/api/console-read-api.ts` select
+owners from the baked `VITE_CONSOLE_IDENTITY`; a CloudIdentity cookie is never
+translated into a retained Account cookie. Cloud builds now use session-bound
+BFF routes for personal wallet/account usage, balance-adjustment history,
+Gateway endpoint, proven original-owner billing and announcements. Legacy
+builds keep their existing Control Plane adapters. The projection's owner tag
+and request identity must match before a response can become visible.
 
-Gateway Key, per-Key Usage, balance history and endpoint reads, Billing,
-announcement and operator panels keep their retained `/api/*` adapters in either
-build. Cloud identity does not redirect those callers to BFF, and their API
-availability and authorization remain deployment requirements.
+The launch flow has its own wallet/catalog caller in
+`apps/console-ui/src/api/workspaces-api.ts`. Neither caller moves balance
+authority: Sub2API remains the wallet owner. Team Workspace transactions use a
+separate Gateway/BFF reader bound to the live session's Tenant and owner/admin
+role; they are not the personal history reader or a replacement Ledger.
 
-The launch flow's wallet and catalog reads are a separate caller in
-`apps/console-ui/src/api/workspaces-api.ts`; they already targeted the BFF route
-and are not an identity branch of the shared reader. Neither caller moves
-balance authority: the BFF holds no wallet state of its own and returns the
-Gateway owner's readback.
-
-The following table describes current source, not implementation of the
-[October 15 product decision](decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads).
-Its lifecycle, personal/history/announcement reads and protected qualification
-migration remain [open adoption work](roadmap.md#workspace-key-and-customer-read-boundaries).
-No route, schema, generated permission or publication validator changes merely
-because that target has been accepted.
+Key list/detail, per-Key usage and available-group callers still use retained
+`/api/gateway/*` adapters, which require a delegated Sub2API user credential.
+CloudIdentity deliberately does not store that login credential. Its configured
+administrative directory identity is not a user-session substitute. Official
+Sub2API has an administrative user-key list and usage APIs, but the available-
+groups decision also consumes active subscriptions, exclusive/public-group
+rules and user-specific rates. Migrating this panel requires an actual bounded
+owner read contract, without copying those entitlement decisions into Cloud.
+Operator panels and legacy Workspace maintenance also keep their retained
+Account authorization.
 
 The current identity and writer boundary is:
 
 | Fact | Current owner and caller | Retained boundary |
 | --- | --- | --- |
 | Cloud session, Tenant membership and authorization | Tenant database in `gateway-integration`; Console BFF and owner authorization clients | Control Plane sessions resolve their own Account mapping; a Tenant ID is not a retained Account ID |
-| Wallet and account usage | Sub2API truth, projected by Gateway through the BFF for cloud identity | Legacy builds keep the Control Plane projection; neither projection creates a second wallet writer |
-| Managed key binding and revocation attempt | Gateway database in the same process, configured by `OPL_GATEWAY_DATABASE_URL`; Workspace drives model-update closeout | Sub2API owns the external key. The production issuer refuses revocation without an approved service contract; a recorded attempt does not retire a key |
+| Personal wallet and account usage | Sub2API truth, projected by Gateway through the BFF for the live logged-in User, including Users without a Tenant | Legacy builds keep the Control Plane projection; Tenant roles do not expose another person's wallet |
+| Managed key binding and revocation attempt | Gateway database in the same process, configured by `OPL_GATEWAY_DATABASE_URL`; Workspace drives model-update closeout | Sub2API owns the external key. Approved disable/enable/state and same-key model contracts remain unfinished; a recorded attempt does not retire a key |
 | Application deployment and access for cloud Workspace | Workspace admits the order; Serve writes deployment, current selection and access facts; Fabric writes infrastructure facts | Retained Control Plane launch/application routes still serve legacy Workspace rows and must not be used as maintenance fallbacks for a cloud Workspace |
-| Billing receipts and Workspace settlements | Retained Control Plane reads Ledger evidence and its original Account/purchase bindings | No CloudIdentity fee/settlement reader is registered by the current BFF. Migrating it requires an authorized original binding, not substitution of a Tenant ID |
-| Announcements and read acknowledgements | Retained Control Plane publication and Account/session mapping | No CloudIdentity announcement reader or acknowledgement writer is registered by the current BFF |
+| Personal historical bills | BFF calls the retained original data owner with a fresh CloudIdentity proof; that owner verifies the reciprocal active User/Account mapping and original order ownership | Historical amounts, receipts, settlement states and deleted-Workspace history are preserved. Tenant admin status does not inherit personal-history access |
+| Team Workspace transactions | Gateway reads original charge/refund records through BFF under the current Tenant owner/admin role, including retired bindings and deleted-Workspace history | Original receipt references and confirmed/requested/unknown states are preserved; this is not a complete Ledger receipt-detail reader |
+| Personal balance history and Gateway endpoint | Session-bound BFF calls the retained provider adapter using the proven logged-in User | Missing upstream data is unavailable, never a successful empty balance history |
+| Announcements and read acknowledgements | BFF calls the retained publication/ACK owner with live identity proof; proven historical ACKs retain their original timestamps | No Tenant membership or OCI destination is required for personal announcements; installation still needs the independent transport material |
 
-The two databases in `gateway-integration` have separate migrations, connection
-pools and writers even though the transport principal and deployment unit are
-shared. Enabling a process or routing `/api/` alongside `/api/v2/` does not
-translate identities or complete a retained-data migration. The retained
-billing, announcement and Workspace-maintenance gaps remain in the
-[roadmap](roadmap.md); this map describes their current callers rather than
-admitting a second writer or an administrative impersonation bridge.
+The Tenant and Gateway databases have separate migrations, connection pools and
+writers even though they share a transport principal and deployment unit. A
+second wallet, identity store or billing writer is not introduced. These are
+source facts; current exact-Candidate installation and authenticated customer
+acceptance remain in the [roadmap](roadmap.md#workspace-key-and-customer-read-boundaries).
 
 The cloud detail exposes the owner's lifecycle, resource readiness, application
 availability, period end and access URL. Workspace-owner renewal, deletion,

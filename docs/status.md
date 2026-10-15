@@ -31,6 +31,26 @@ all matching rows rather than the displayed page. Requested and unknown amounts
 stay separate from confirmed charges/refunds. Local PostgreSQL, BFF and browser
 checks prove source behavior; no installed data or business settlement was read.
 
+## Product Communication Installation Admission (2026-10-16)
+
+The portable topology now declares the required owner communication graph and
+deployment transport principals. The public installation CLI consumes one
+rendered Kubernetes List and checks effective address bindings, target Service
+and listener, nonoptional token/peer references and provable additive
+NetworkPolicy paths in both directions. It refuses opaque or ambiguous facts
+with sanitized errors and no executable edges. This is a static installation
+check; it does not read Secret contents or certify live TLS or loaded peers.
+
+The existing Serve executable also exposes `probe-workspace-access` before
+normal database startup. It makes one bounded authenticated mTLS read for a
+fresh synthetic Workspace UUID and accepts only the owner's CLOSED response.
+It creates no Workspace and proves no customer entitlement or application
+execution. Instance must consume the exact selected Candidate checkout,
+validate protected existing material, and select the actual running Candidate
+Pod. An older Candidate cannot acquire the new CLI or probe by checking out a
+later source revision. [Installation](installation.md) owns the public interface;
+actual installation and business acceptance remain external evidence.
+
 ## Personal Gateway Read Authorization (2026-10-16)
 
 The BFF's existing wallet and usage-summary routes now authorize the live User
