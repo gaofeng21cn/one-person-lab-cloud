@@ -196,6 +196,14 @@ test("installation CLI accepts live replicas only through exact controller and e
   const injectedVolumeResult = await invoke(injectedServiceAccountVolume.list);
   assert.equal(injectedVolumeResult.status, 0, injectedVolumeResult.stdout + injectedVolumeResult.stderr);
   assert.equal(injectedVolumeResult.report.communication.edges.length, 46);
+  const forgedServiceAccountVolume = withLiveWorkspaceBackends();
+  forgedServiceAccountVolume.pod.spec.volumes = [{
+    name: "kube-api-access-abc12",
+    projected: { sources: [{ serviceAccountToken: { path: "token" } }, { secret: { name: "foreign" } }] }
+  }];
+  const forgedVolumeResult = await invoke(forgedServiceAccountVolume.list);
+  assert.equal(forgedVolumeResult.status, 1, forgedVolumeResult.stdout);
+  assert.ok(forgedVolumeResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
 });
 
 

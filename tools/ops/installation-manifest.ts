@@ -150,6 +150,18 @@ function ownedBackend(resource: Resource, target: Resource, resources: Resource[
   }
   return false;
 }
+function autoServiceAccountVolume(volume: unknown): boolean {
+  if (!object(volume) || typeof volume.name !== "string" || !/^kube-api-access-[a-z0-9-]+$/.test(volume.name) ||
+      !object(volume.projected) || !Array.isArray(volume.projected.sources)) return false;
+  const sources = volume.projected.sources;
+  return sources.some((source: unknown) => object(source) && object(source.serviceAccountToken)) && sources.every((source: unknown) => {
+    if (!object(source)) return false;
+    if (source.serviceAccountToken !== undefined) return object(source.serviceAccountToken);
+    if (source.configMap !== undefined) return object(source.configMap) && source.configMap.name === "kube-root-ca.crt";
+    if (source.downwardAPI !== undefined) return object(source.downwardAPI);
+    return false;
+  });
+}
 function normalizedPodField(spec: Resource, field: string): unknown {
   const value = spec[field];
   if (["hostNetwork", "hostPID", "hostIPC", "shareProcessNamespace"].includes(field)) return value === true;
@@ -160,8 +172,7 @@ function normalizedPodField(spec: Resource, field: string): unknown {
   if (field === "enableServiceLinks") return value === undefined ? true : value;
   if (field === "securityContext" && object(value) && Object.keys(value).length === 0) return undefined;
   if (field === "volumes" && Array.isArray(value)) {
-    const filtered = value.filter(volume => !(object(volume) && /^kube-api-access-[a-z0-9-]+$/.test(volume.name ?? "") &&
-      object(volume.projected) && Array.isArray(volume.projected.sources) && volume.projected.sources.some((source: unknown) => object(source) && source.serviceAccountToken !== undefined)));
+    const filtered = value.filter(volume => !autoServiceAccountVolume(volume));
     return filtered.length === 0 ? undefined : filtered;
   }
   return value;
@@ -173,7 +184,10 @@ function samePodSecurityShape(live: Resource, declared: Resource): boolean {
     "dnsConfig", "dnsPolicy", "enableServiceLinks", "restartPolicy"
   ];
   const booleanFields = ["hostNetwork", "hostPID", "hostIPC", "shareProcessNamespace", "hostUsers", "automountServiceAccountToken", "enableServiceLinks"];
+  const stringFields = ["serviceAccountName", "runtimeClassName", "restartPolicy", "dnsPolicy"];
   if (booleanFields.some(field => [live[field], declared[field]].some(value => value !== undefined && typeof value !== "boolean"))) return false;
+  if (stringFields.some(field => [live[field], declared[field]].some(value => value !== undefined && typeof value !== "string"))) return false;
+  if ([live.securityContext, declared.securityContext].some(value => value !== undefined && !object(value))) return false;
   return fields.every(field => deepEqual(normalizedPodField(live, field), normalizedPodField(declared, field)));
 }
 const liveContainerFields = [
