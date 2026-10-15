@@ -9,8 +9,10 @@ artifacts, and owner-admitted product releases.
 - medopl production operations and `.com` domain bindings: private
   `gaofeng21cn/opl-instance-medopl` repository
 
-Production credentials, provider resources, approval gates, rollout, rollback,
-and receipts must remain with the selected instance owner.
+Installation credentials, deployment approval gates, rollout, deployment rollback
+and deployment receipts remain with the selected instance owner. Customer
+operations and business qualification retain their product owners and require
+separately bounded protected authorization.
 
 Medopl-specific deployment, installation acceptance, deployment recovery,
 service-health canary, rollback and deployment-evidence tools belong to
