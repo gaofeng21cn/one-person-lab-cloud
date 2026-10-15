@@ -1132,3 +1132,10 @@ remain unchanged. Confirmation still comes from a subsequent absence readback,
 and Ledger receipt/refund gates still follow it. These are source behavior facts;
 isolated PostgreSQL worker tests with synthetic owners do not prove provider
 absence, a real Gateway refund, deployment or Instance acceptance.
+
+
+Personal wallet and usage-summary authorization is bound to the live Cloud User,
+including Users without a Tenant and members. The BFF still requests the exact
+session-bound authorization decision; the Gateway reads the User's persisted
+Sub2API mapping. Tenant payment subjects and financial record permissions remain
+separate. This source capability does not prove installed authenticated behavior.
