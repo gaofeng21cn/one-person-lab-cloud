@@ -27,9 +27,14 @@ func (s *PostgresStore) WorkspaceFinancialReceipt(ctx context.Context, tenantID,
 		return nil, err
 	}
 	evidence := record.Evidence
-	if record.TenantID != tenantID || record.WorkspaceID != workspaceID || evidence.GetReceipt().GetId() != receiptID ||
-		evidence.GetWalletOperation().GetReceiptId() != receiptID || evidence.GetWalletOperation().GetWorkspaceId() != workspaceID ||
-		evidence.GetQuoteAcceptance().GetWorkspaceId() != workspaceID || evidence.GetQuoteAcceptance().GetQuote() == nil || evidence.GetEvidenceDigest() == "" {
+	receipt := evidence.GetReceipt()
+	wallet := evidence.GetWalletOperation()
+	quoteAcceptance := evidence.GetQuoteAcceptance()
+	quote := quoteAcceptance.GetQuote()
+	if record.TenantID != tenantID || record.WorkspaceID != workspaceID || receipt == nil || wallet == nil || quoteAcceptance == nil || quote == nil ||
+		receipt.GetId() != receiptID || receipt.GetKind() != api.ReceiptKindEnum_RECEIPT_KIND_ENUM_WALLET_ACTION || receipt.GetOwner() != api.OwnerEnum_OWNER_ENUM_WORKSPACE || receipt.GetOutcome() != api.ReceiptOutcomeEnum_RECEIPT_OUTCOME_ENUM_CONFIRMED ||
+		wallet.GetId() == "" || wallet.GetReceiptId() != receiptID || wallet.GetWorkspaceId() != workspaceID || wallet.GetKind() != api.WalletOperationKindEnum_WALLET_OPERATION_KIND_ENUM_CHARGE || wallet.GetStatus() != api.WalletOperationStatusEnum_WALLET_OPERATION_STATUS_ENUM_CONFIRMED ||
+		quoteAcceptance.GetWorkspaceId() != workspaceID || quote.GetWorkspaceId() != "" && quote.GetWorkspaceId() != workspaceID || quote.GetStatus() != api.QuoteStatusEnum_QUOTE_STATUS_ENUM_ACCEPTED || quote.GetTotalUsdMicros() <= 0 || wallet.GetAmountUsdMicros() != quote.GetTotalUsdMicros() || evidence.GetEvidenceDigest() == "" {
 		return nil, ErrInvalidReceiptInput
 	}
 	return &api.WorkspaceFinancialReceipt{
