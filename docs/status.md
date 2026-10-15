@@ -57,6 +57,10 @@ and listener, nonoptional token/peer references and provable additive
 NetworkPolicy paths in both directions. It refuses opaque or ambiguous facts
 with sanitized errors and no executable edges. This is a static installation
 check; it does not read Secret contents or certify live TLS or loaded peers.
+Service recognition also checks exact long-running argv and conflicting listeners.
+Supplied live backends require controller/Pod/Service UID, address and port
+agreement; matching labels alone do not prove ownership. The installation and
+production-manifest behavior suites now run in the regular source CI entry.
 
 The existing Serve executable also exposes `probe-workspace-access` before
 normal database startup. It makes one bounded authenticated mTLS read for a

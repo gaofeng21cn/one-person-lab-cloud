@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { communicationPolicyProof } from "./installation-network-policy.ts";
 
 // Product installation admission. Business communication requirements are read
@@ -6,16 +7,18 @@ export type SecretRef = { name: string; key: string };
 export type CommunicationEdge = {
   caller: string; target: string; addressEnv: string; tokenEnv: string;
   callerDeployment: string; targetDeployment: string; port: number;
-  tokenRef: SecretRef; peerRef: SecretRef; ingressPolicies: string[]; egressPolicies: string[];
+  tokenRef: SecretRef; peerRef: SecretRef; serviceRef: { name: string; namespace: string }; ingressPolicies: string[]; egressPolicies: string[];
 };
 export type InstallationError = { code: string; service?: string; caller?: string; target?: string; addressEnv?: string; tokenEnv?: string };
 export type InstallationSecurity = { tokenMinimumLength: number };
 export type InstallationReport = { ok: boolean; errors: InstallationError[]; communication: { edges: CommunicationEdge[]; security: InstallationSecurity | null } };
 export type ProcessContract = {
-  service: string; binary: string; transportPrincipal?: string;
+  service: string; kind: string; binary: string; daemonArgs: string[]; transportPrincipal?: string;
+  rpcEnabledByEnvSemantics?: "raw-nonempty" | "trimmed-nonempty";
+  addressPortEnv?: string; additionalListeners?: { addressEnv: string; defaultAddress?: string; valueSemantics: "raw" | "trimmed" }[];
   addressEnv: string; defaultAddress: string; rpcAddressEnv?: string; defaultRPCAddress?: string; peerTokensEnv?: string; rpcEnabledByEnv?: string;
 };
-export type EdgeContract = { caller: string; target: string; addressEnv: string; tokenEnv: string; activation: "required" | "configured"; activationEnv?: string };
+export type EdgeContract = { caller: string; target: string; addressEnv: string; tokenEnv: string; activation: "required" | "configured"; activationEnv?: string; configuredAddressSemantics?: "raw-nonempty" | "trimmed-nonempty" };
 export type InstallationTopology = { image: { defaultCommand: string[] }; processes: ProcessContract[]; communication: { schemaVersion: number; edges: EdgeContract[]; security: InstallationSecurity } };
 type Resource = Record<string, any>;
 function object(value: unknown): value is Resource {
@@ -93,8 +96,9 @@ function effectiveEnv(deployment: Resource, container: Resource, names: Set<stri
 function envEntry(process: InstalledProcess, name: string) {
   return process.env.get(name);
 }
-function configured(entry: Resource | undefined) {
-  return entry !== undefined && (entry.valueFrom !== undefined || (typeof entry.value === "string" && entry.value.trim() !== ""));
+function configured(entry: Resource | undefined, semantics: "raw-nonempty" | "trimmed-nonempty") {
+  return entry !== undefined && (entry.valueFrom !== undefined || typeof entry.value === "string" &&
+    (semantics === "raw-nonempty" ? entry.value : trimRuntimeSpace(entry.value)) !== "");
 }
 
 function secretReference(entry: Resource | undefined): SecretRef | undefined {
@@ -111,6 +115,54 @@ function validPort(value: unknown): value is number { return Number.isInteger(va
 function labelsMatch(selector: Resource, labels: Resource) {
   return Object.entries(selector).every(([key, value]) => typeof value === "string" && Object.hasOwn(labels, key) && labels[key] === value);
 }
+function controller(resource: Resource, kind: string, resources: Resource[]): Resource | undefined {
+  const refs = resource.metadata.ownerReferences;
+  if (!Array.isArray(refs)) return;
+  const owners = refs.filter(ref => object(ref) && ref.controller === true);
+  if (owners.length !== 1 || owners[0].kind !== kind || typeof owners[0].uid !== "string" || !owners[0].uid) return;
+  const ref = owners[0];
+  return resources.find(candidate => candidate.kind === kind && candidate.apiVersion === ref.apiVersion &&
+    namespace(candidate) === namespace(resource) && candidate.metadata.name === ref.name && candidate.metadata.uid === ref.uid);
+}
+// A live Deployment's generated replicas are not independent Service producers.
+// Names or selectors alone do not establish this relationship; every hop must
+// resolve the Kubernetes controller reference to the exact object UID.
+function ownedBackend(resource: Resource, target: Resource, resources: Resource[]): boolean {
+  if (resource === target) return true;
+  if (resource.kind === "ReplicaSet") return controller(resource, "Deployment", resources) === target;
+  if (resource.kind === "Pod") {
+    const replicaSet = controller(resource, "ReplicaSet", resources);
+    return replicaSet !== undefined && controller(replicaSet, "Deployment", resources) === target;
+  }
+  return false;
+}
+function endpointBackend(resource: Resource, service: Resource, target: Resource, servicePort: Resource, port: number, resources: Resource[]): boolean {
+  const provesPort = (ports: unknown): boolean => {
+    if (!Array.isArray(ports)) return false;
+    const matching = ports.filter(entry => object(entry) && (entry.name ?? "") === (servicePort.name ?? "") && (entry.protocol ?? "TCP") === "TCP");
+    return matching.length === 1 && matching[0].port === port;
+  };
+  const provesPod = (ref: unknown, addresses: unknown): boolean => {
+    if (!object(ref) || ref.kind !== "Pod" || ref.apiVersion !== undefined && ref.apiVersion !== "v1" ||
+        typeof ref.uid !== "string" || !ref.uid || (ref.namespace ?? namespace(service)) !== namespace(service) ||
+        !Array.isArray(addresses) || addresses.length === 0) return false;
+    const pod = resources.find(candidate => candidate.kind === "Pod" && candidate.apiVersion === "v1" &&
+      namespace(candidate) === namespace(service) && candidate.metadata.name === ref.name && candidate.metadata.uid === ref.uid);
+    if (!pod || !ownedBackend(pod, target, resources) || !labelsMatch(service.spec.selector, pod.metadata.labels ?? {})) return false;
+    const ips = new Set([pod.status?.podIP, ...(Array.isArray(pod.status?.podIPs) ? pod.status.podIPs.map((entry: Resource) => entry.ip) : [])]);
+    return addresses.every(address => typeof address === "string" && ips.has(address));
+  };
+  if (resource.kind === "EndpointSlice") {
+    return resource.apiVersion === "discovery.k8s.io/v1" && controller(resource, "Service", resources) === service &&
+      Array.isArray(resource.endpoints) && resource.endpoints.every((endpoint: unknown) =>
+        object(endpoint) && provesPort(resource.ports) && provesPod(endpoint.targetRef, endpoint.addresses));
+  }
+  // The legacy Endpoints controller does not attach a Service ownerReference.
+  // Its exact Service name plus every Pod UID and address must still agree.
+  return resource.apiVersion === "v1" && (resource.subsets === undefined || Array.isArray(resource.subsets) &&
+    resource.subsets.every((subset: unknown) => object(subset) && [subset.addresses, subset.notReadyAddresses].every(entries =>
+      entries === undefined || Array.isArray(entries) && entries.every(entry => object(entry) && provesPort(subset.ports) && provesPod(entry.targetRef, [entry.ip])))));
+}
 function parseServiceAddress(raw: unknown, callerNamespace: string): { name: string; namespace: string; port: number } | undefined {
   if (typeof raw !== "string") return;
   const address = /^(?:dns:\/\/\/)?([a-z0-9](?:[-a-z0-9.]*[a-z0-9])?):([0-9]+)$/.exec(raw);
@@ -124,10 +176,114 @@ function parseServiceAddress(raw: unknown, callerNamespace: string): { name: str
   return { name: parts[0], namespace: parts[1] ?? callerNamespace, port: Number(address[2]) };
 }
 
+// Native producers are interpreted by API identity and their exact Pod-template
+// path. Missing/malformed matching facts never establish a unique backend.
+function backendLabels(resource: Resource): Resource | null | undefined {
+  let metadata: unknown;
+  if (resource.apiVersion === "v1" && resource.kind === "Pod") metadata = resource.metadata;
+  else if (resource.apiVersion === "apps/v1" && ["Deployment", "StatefulSet", "DaemonSet", "ReplicaSet"].includes(resource.kind) ||
+           resource.apiVersion === "v1" && resource.kind === "ReplicationController" ||
+           resource.apiVersion === "batch/v1" && resource.kind === "Job") metadata = resource.spec?.template?.metadata;
+  else if (resource.apiVersion === "batch/v1" && resource.kind === "CronJob") metadata = resource.spec?.jobTemplate?.spec?.template?.metadata;
+  else {
+    // These APIs do not create application Pods. Unknown APIs are deliberately
+    // not classified by labels, resource names, or the shape of a spec.
+    const nonProducers: Record<string, string[]> = {
+      v1: ["Namespace", "Service", "ConfigMap", "Secret", "ServiceAccount", "PersistentVolumeClaim", "PersistentVolume", "Endpoints", "PodTemplate", "ResourceQuota", "LimitRange", "Event"],
+      "networking.k8s.io/v1": ["NetworkPolicy", "Ingress", "IngressClass"],
+      "rbac.authorization.k8s.io/v1": ["Role", "RoleBinding", "ClusterRole", "ClusterRoleBinding"],
+      "storage.k8s.io/v1": ["StorageClass", "CSIDriver", "CSINode", "CSIStorageCapacity", "VolumeAttachment"],
+      "policy/v1": ["PodDisruptionBudget"],
+      "autoscaling/v1": ["HorizontalPodAutoscaler"],
+      "autoscaling/v2": ["HorizontalPodAutoscaler"],
+      "discovery.k8s.io/v1": ["EndpointSlice"],
+      "cloud.tencent.com/v1alpha1": ["TkeServiceConfig"],
+    };
+    return Object.hasOwn(nonProducers, resource.apiVersion) && nonProducers[resource.apiVersion].includes(resource.kind) ? null : undefined;
+  }
+  if (metadata === undefined) {
+    // PodTemplate metadata is optional; a present template without metadata has
+    // known empty labels, whereas an absent template has unknown facts.
+    const template = resource.kind === "CronJob" ? resource.spec?.jobTemplate?.spec?.template : resource.spec?.template;
+    return object(template) ? {} : undefined;
+  }
+  if (!object(metadata) || metadata.labels !== undefined && !stringMap(metadata.labels)) return;
+  return metadata.labels ?? {};
+}
+// Go strings.TrimSpace uses Unicode White_Space, which includes NEL (U+0085)
+// and excludes BOM (U+FEFF); JavaScript trim() has the opposite behavior.
+function trimRuntimeSpace(value: string): string {
+  return value.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, "");
+}
+function rpcEnabled(process: InstalledProcess): boolean {
+  const { contract } = process;
+  if (!contract.rpcEnabledByEnv) return true;
+  const entry = envEntry(process, contract.rpcEnabledByEnv);
+  // An unresolved Secret must never hide a potentially active RPC caller.
+  if (entry?.valueFrom !== undefined) return true;
+  if (typeof entry?.value !== "string") return false;
+  return contract.rpcEnabledByEnvSemantics === "raw-nonempty" ? entry.value !== "" : trimRuntimeSpace(entry.value) !== "";
+}
+function listenerAddress(process: InstalledProcess, name: string, defaultAddress: string | undefined, trim: boolean, portEnv?: string): string | undefined {
+  const entry = envEntry(process, name);
+  if (entry?.valueFrom !== undefined) return;
+  const value = typeof entry?.value === "string" ? trim ? trimRuntimeSpace(entry.value) : entry.value : "";
+  if (value !== "") return value;
+  if (portEnv) {
+    const port = envEntry(process, portEnv);
+    if (port?.valueFrom !== undefined) return;
+    if (typeof port?.value === "string" && port.value !== "") return `:${port.value}`;
+  }
+  return defaultAddress;
+}
+function rpcListenerAddress(process: InstalledProcess): string | undefined {
+  const { contract } = process;
+  return listenerAddress(process, contract.rpcAddressEnv ?? contract.addressEnv,
+    contract.rpcAddressEnv ? contract.defaultRPCAddress : contract.defaultAddress, contract.rpcAddressEnv !== undefined || contract.kind === "ownerservice");
+}
+type ListenerBinding = { host: string; port: number; wildcard: boolean };
+function listenerBinding(address: string | undefined): ListenerBinding | undefined {
+  const match = typeof address === "string" && /^(\[[0-9a-fA-F:.]+\]|[0-9.]*):([0-9]+)$/.exec(address);
+  if (!match || !validPort(Number(match[2]))) return;
+  const rawHost = match[1].startsWith("[") ? match[1].slice(1, -1) : match[1];
+  if (rawHost !== "" && !isIP(rawHost)) return;
+  const host = rawHost.includes(":") ? new URL(`http://[${rawHost}]`).hostname : rawHost;
+  return { host, port: Number(match[2]), wildcard: ["", "0.0.0.0", "[::]"].includes(host) };
+}
+function podListenerError(processes: InstalledProcess[]): string | undefined {
+  const bindings: ListenerBinding[] = [];
+  for (const process of processes) {
+    const { contract } = process;
+    const addresses: (string | undefined)[] = [];
+    if (contract.rpcAddressEnv || rpcEnabled(process)) addresses.push(listenerAddress(process, contract.addressEnv, contract.defaultAddress,
+      contract.kind === "ownerservice", contract.addressPortEnv));
+    if (contract.rpcAddressEnv && rpcEnabled(process)) addresses.push(rpcListenerAddress(process));
+    for (const listener of contract.additionalListeners ?? []) {
+      if (envEntry(process, listener.addressEnv) || listener.defaultAddress !== undefined)
+        addresses.push(listenerAddress(process, listener.addressEnv, listener.defaultAddress, listener.valueSemantics === "trimmed"));
+    }
+    for (const address of addresses) {
+      const binding = listenerBinding(address);
+      // Single-process non-RPC bind validation remains the runtime's concern;
+      // co-located processes require every declared bind to be resolved.
+      if (!binding) { if (processes.length > 1) return "installation_listener_unproven"; continue; }
+      if (bindings.some(other => other.port === binding.port && (other.wildcard || binding.wildcard || other.host === binding.host)))
+        return "installation_listener_conflict";
+      bindings.push(binding);
+    }
+  }
+}
+
 export function validateInstallationManifest(manifest: unknown, topology: InstallationTopology): InstallationReport {
   const security = installationSecurity(topology);
   if (!security) return installationFailure("installation_topology_security_invalid");
   const failure = (code: string) => installationFailure(code, security);
+  if (topology.processes.some(process => !Array.isArray(process.daemonArgs) || process.daemonArgs.some(arg => typeof arg !== "string") ||
+      process.rpcEnabledByEnv && !["raw-nonempty", "trimmed-nonempty"].includes(process.rpcEnabledByEnvSemantics!)))
+    return failure("installation_topology_process_invalid");
+  if (topology.communication.edges.some(edge => edge.activation === "configured" &&
+      !["raw-nonempty", "trimmed-nonempty"].includes(edge.configuredAddressSemantics!)))
+    return failure("installation_topology_edge_invalid");
   if (!validList(manifest)) return failure("installation_manifest_shape_invalid");
   const report: InstallationReport = { ok: true, errors: [], communication: { edges: [], security } };
   const resources: Resource[] = manifest.items;
@@ -143,10 +299,16 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     deployment.spec.template.spec.containers.filter((container: Resource) =>
       topology.processes.some(process => container.command?.[0] === process.binary))
       .map((container: Resource) => container.image)));
-  const processContract = (container: Resource) => topology.processes.find(process =>
-    container.command?.[0] === process.binary || container.command === undefined && container.args === undefined &&
-      productImages.has(container.image) && process.binary === topology.image.defaultCommand[0]);
+  const processContract = (container: Resource) => {
+    const argv = container.command?.length ? [...container.command, ...(container.args ?? [])] :
+      productImages.has(container.image) && !container.args?.length ? topology.image.defaultCommand : undefined;
+    return argv && topology.processes.find(process => argv[0] === process.binary &&
+      Array.isArray(process.daemonArgs) && argv.length === process.daemonArgs.length + 1 &&
+      process.daemonArgs.every((arg, index) => argv[index + 1] === arg));
+  };
+  const podProcesses = new Map<Resource, InstalledProcess[]>();
   const recognized = new Set<Resource>();
+  const processes = new Map<Resource, InstalledProcess>();
   const productNamespaces = new Set<string>();
   for (const deployment of deployments) {
     for (const container of deployment.spec.template.spec.containers) {
@@ -155,9 +317,9 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
       recognized.add(container);
       productImages.add(container.image);
       productNamespaces.add(namespace(deployment));
-      if (!contract.transportPrincipal) continue;
       if (deployment.spec.template.spec.hostNetwork === true) return failure("installation_pod_network_unsupported");
-      const names = new Set([contract.addressEnv, contract.rpcAddressEnv, contract.peerTokensEnv, contract.rpcEnabledByEnv].filter((name): name is string => Boolean(name)));
+      const names = new Set([contract.addressEnv, contract.rpcAddressEnv, contract.peerTokensEnv, contract.rpcEnabledByEnv, contract.addressPortEnv,
+        ...(contract.additionalListeners ?? []).map(listener => listener.addressEnv)].filter((name): name is string => Boolean(name)));
       for (const edge of topology.communication.edges.filter(edge => edge.caller === contract.transportPrincipal)) {
         names.add(edge.addressEnv); names.add(edge.tokenEnv);
         if (edge.activationEnv) names.add(edge.activationEnv);
@@ -165,36 +327,42 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
       const resolved = effectiveEnv(deployment, container, names, resources);
       if (resolved.error) return failure(resolved.error);
       const process = { contract, deployment, container, env: resolved.env };
-      if (contract.rpcEnabledByEnv && !configured(envEntry(process, contract.rpcEnabledByEnv))) continue;
+      processes.set(container, process);
+      const siblings = podProcesses.get(deployment) ?? [];
+      siblings.push(process); podProcesses.set(deployment, siblings);
+      if (!contract.transportPrincipal || !rpcEnabled(process)) continue;
       if (installed.has(contract.transportPrincipal!)) return failure("installation_process_ambiguous");
       installed.set(contract.transportPrincipal!, process);
     }
   }
-  if (recognized.size === 0) return failure("installation_process_missing");
-  if (productNamespaces.size !== 1) return failure("installation_namespace_unsupported");
   for (const deployment of deployments) {
     for (const container of deployment.spec.template.spec.containers) {
       if (productImages.has(container.image) && !recognized.has(container)) {
-        const defaultProcess = topology.processes.find(process => process.binary === topology.image.defaultCommand[0]);
-        if (container.command === undefined && container.args === undefined && defaultProcess && !defaultProcess.transportPrincipal) {
-          productNamespaces.add(namespace(deployment));
-          continue;
-        }
         return failure("installation_process_unproven");
       }
     }
   }
+  if (recognized.size === 0) return failure("installation_process_missing");
   if (productNamespaces.size !== 1) return failure("installation_namespace_unsupported");
+  for (const processes of podProcesses.values()) {
+    const error = podListenerError(processes);
+    if (error) return failure(error);
+  }
   for (const edge of topology.communication.edges) {
     const caller = installed.get(edge.caller);
     if (!caller) continue;
     const address = envEntry(caller, edge.addressEnv);
-    if (edge.activation === "configured" && !configured(address) && !configured(envEntry(caller, edge.tokenEnv)) &&
-        !(edge.activationEnv && configured(envEntry(caller, edge.activationEnv)))) continue;
+    const addressSemantics = edge.activation === "configured" ? edge.configuredAddressSemantics! : "trimmed-nonempty";
+    // Native address activation varies per caller; tokens and the extra
+    // activation variable use Go TrimSpace. Keep address-or-token admission.
+    if (edge.activation === "configured" && !configured(address, addressSemantics) && !configured(envEntry(caller, edge.tokenEnv), "trimmed-nonempty") &&
+        !(edge.activationEnv && configured(envEntry(caller, edge.activationEnv), "trimmed-nonempty"))) continue;
     const fail = (code: string) => report.errors.push({ code, service: caller.contract.service,
       caller: edge.caller, target: edge.target, addressEnv: edge.addressEnv, tokenEnv: edge.tokenEnv });
-    if (!address || !configured(address)) { fail("rpc_address_required"); continue; }
-    const parsed = parseServiceAddress(address.value, namespace(caller.deployment));
+    if (!address || !configured(address, addressSemantics)) { fail("rpc_address_required"); continue; }
+    const addressValue = edge.activation === "configured" && addressSemantics === "trimmed-nonempty" && typeof address.value === "string"
+      ? trimRuntimeSpace(address.value) : address.value;
+    const parsed = parseServiceAddress(addressValue, namespace(caller.deployment));
     if (!parsed) { fail("rpc_address_invalid"); continue; }
     const target = installed.get(edge.target);
     if (!target) { fail("rpc_target_missing"); continue; }
@@ -206,12 +374,16 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
         !labelsMatch(selector, target.deployment.spec.template.metadata?.labels ?? {})) {
       fail("rpc_service_target_mismatch"); continue;
     }
-    const backends = deployments.filter(deployment => namespace(deployment) === namespace(service) &&
-      labelsMatch(selector, deployment.spec.template.metadata?.labels ?? {}));
-    if (backends.length !== 1 || backends[0] !== target.deployment ||
-        target.deployment.spec.template.spec.containers.some((container: Resource) => container !== target.container &&
-          (container.ports ?? []).some((port: Resource) => (port.protocol ?? "TCP") === "TCP" &&
-            (port.name === service.spec.ports?.find((entry: Resource) => entry.port === parsed.port)?.targetPort)))) {
+    const backends: Resource[] = [];
+    let backendUnproven = false;
+    for (const resource of resources) {
+      if (namespace(resource) !== namespace(service)) continue;
+      const labels = backendLabels(resource);
+      if (labels === undefined) backendUnproven = true;
+      else if (labels !== null && labelsMatch(selector, labels)) backends.push(resource);
+    }
+    if (backendUnproven) { fail("rpc_service_backend_unproven"); continue; }
+    if (backends.some(backend => !ownedBackend(backend, target.deployment, resources))) {
       fail("rpc_service_backend_ambiguous"); continue;
     }
     const matching = Array.isArray(service.spec.ports) ? service.spec.ports.filter((entry: Resource) => entry?.port === parsed.port && (entry.protocol ?? "TCP") === "TCP") : [];
@@ -219,19 +391,53 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     const servicePort = matching[0];
     let targetPort = servicePort.targetPort ?? servicePort.port;
     if (typeof targetPort === "string") {
-      const ports = (target.container.ports ?? []).filter((entry: Resource) => entry?.name === targetPort && (entry.protocol ?? "TCP") === "TCP");
-      if (ports.length !== 1) { fail("rpc_target_port_invalid"); continue; }
+      const ports = target.deployment.spec.template.spec.containers.flatMap((container: Resource) =>
+        (container.ports ?? []).filter((entry: Resource) => entry?.name === targetPort && (entry.protocol ?? "TCP") === "TCP")
+          .map((entry: Resource) => ({ ...entry, container })));
+      if (ports.length !== 1 || ports[0].container !== target.container) { fail("rpc_target_port_invalid"); continue; }
       targetPort = ports[0].containerPort;
     }
     if (!validPort(targetPort)) { fail("rpc_target_port_invalid"); continue; }
-    const listenerEntry = envEntry(target, target.contract.rpcAddressEnv ?? target.contract.addressEnv);
-    // This is ownerservice.LoadConfig's declared runtime behavior, not a repair
-    // of an explicit invalid binding. Unresolved valueFrom never selects a default.
-    const listener = listenerEntry?.valueFrom ? undefined :
-      typeof listenerEntry?.value === "string" && listenerEntry.value.trim() !== "" ? listenerEntry.value.trim() :
-      target.contract.rpcAddressEnv ? target.contract.defaultRPCAddress : target.contract.defaultAddress;
+    // Listener defaulting follows native configuration independently of the
+    // optional RPC activation rule; unresolved values cannot select a default.
+    const listener = rpcListenerAddress(target);
     const listenMatch = typeof listener === "string" && /^(?:|0\.0\.0\.0|\[::\]):([0-9]+)$/.exec(listener);
     if (!listenMatch || Number(listenMatch[1]) !== targetPort) { fail("rpc_target_listener_invalid"); continue; }
+    const pod = target.deployment.spec.template.spec;
+    const competitors = [...pod.containers, ...(pod.initContainers ?? []).filter((container: Resource) => container.restartPolicy === "Always")];
+    const otherListener = target.contract.rpcAddressEnv ? listenerAddress(target, target.contract.addressEnv, target.contract.defaultAddress, target.contract.kind === "ownerservice", target.contract.addressPortEnv) : null;
+    let conflict = otherListener === undefined || otherListener !== null && Number(/:([0-9]+)$/.exec(otherListener)?.[1]) === targetPort;
+    for (const container of competitors) {
+      if (container === target.container) continue;
+      if ((container.ports ?? []).some((port: Resource) => (port.protocol ?? "TCP") === "TCP" &&
+          (port.containerPort === targetPort || typeof servicePort.targetPort === "string" && port.name === servicePort.targetPort))) {
+        conflict = true; break;
+      }
+      const contract = processContract(container);
+      if (!contract) continue;
+      const resolved = processes.get(container) ?? (() => {
+        const result = effectiveEnv(target.deployment, container,
+          new Set([contract.addressEnv, contract.rpcAddressEnv, contract.rpcEnabledByEnv, contract.addressPortEnv, ...(contract.additionalListeners ?? []).map(listener => listener.addressEnv)].filter((name): name is string => Boolean(name))), resources);
+        return result.error ? undefined : { contract, deployment: target.deployment, container, env: result.env };
+      })();
+      if (!resolved) { conflict = true; break; }
+      const addresses: (string | undefined)[] = [];
+      const enabled = rpcEnabled(resolved);
+      if (contract.rpcAddressEnv || enabled) addresses.push(listenerAddress(resolved, contract.addressEnv, contract.defaultAddress, contract.kind === "ownerservice", contract.addressPortEnv));
+      if (contract.rpcAddressEnv && enabled) addresses.push(rpcListenerAddress(resolved));
+      for (const listener of contract.additionalListeners ?? []) {
+        if (envEntry(resolved, listener.addressEnv) || listener.defaultAddress !== undefined) addresses.push(listenerAddress(resolved, listener.addressEnv, listener.defaultAddress, listener.valueSemantics === "trimmed"));
+      }
+      if (addresses.some(address => address === undefined || Number(/:([0-9]+)$/.exec(address)?.[1]) === targetPort)) {
+        conflict = true; break;
+      }
+    }
+    const endpoints = resources.filter(resource => namespace(resource) === namespace(service) &&
+      (resource.kind === "Endpoints" && resource.metadata.name === service.metadata.name ||
+       resource.kind === "EndpointSlice" && resource.metadata.labels?.["kubernetes.io/service-name"] === service.metadata.name));
+    if (conflict || endpoints.some(resource => !endpointBackend(resource, service, target.deployment, servicePort, targetPort, resources))) {
+      fail("rpc_service_backend_ambiguous"); continue;
+    }
     const tokenRef = secretReference(envEntry(caller, edge.tokenEnv));
     if (!tokenRef) { fail("rpc_token_ref_invalid"); continue; }
     const peerRef = secretReference(envEntry(target, target.contract.peerTokensEnv!));
@@ -241,7 +447,8 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     report.communication.edges.push({
       caller: edge.caller, target: edge.target, addressEnv: edge.addressEnv, tokenEnv: edge.tokenEnv,
       callerDeployment: caller.deployment.metadata.name, targetDeployment: target.deployment.metadata.name, port: targetPort,
-      tokenRef, peerRef, ingressPolicies: policies.ingressPolicies, egressPolicies: policies.egressPolicies
+      tokenRef, peerRef, serviceRef: { name: service.metadata.name, namespace: namespace(service) },
+      ingressPolicies: policies.ingressPolicies, egressPolicies: policies.egressPolicies
     });
   }
   report.ok = report.errors.length === 0;
