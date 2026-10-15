@@ -23,43 +23,7 @@ func registerBillingRoutes(mux *http.ServeMux, app *controlPlaneServer, service 
 			writeError(w, http.StatusUnauthorized, "not_authenticated")
 			return
 		}
-		accountID := stringValue(user["accountId"])
-		limit := 50
-		if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
-			parsed, err := strconv.Atoi(raw)
-			if err != nil || parsed < 1 || parsed > 100 {
-				writeError(w, http.StatusBadRequest, "invalid_billing_receipt_limit")
-				return
-			}
-			limit = parsed
-		}
-		page, err := service.BillingReceipts(r.Context(), clients.ReceiptQuery{AccountID: accountID, TypePrefix: "billing.", IncludeType: "gateway.wallet_adjustment.v1", IncludeExecutionKind: "business_refund", Cursor: r.URL.Query().Get("cursor"), Limit: limit})
-		if err != nil {
-			writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
-			return
-		}
-		receipts := make([]any, 0, len(page.Receipts))
-		for _, receipt := range page.Receipts {
-			if receipt.AccountID != accountID {
-				writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
-				return
-			}
-			if !strings.HasPrefix(receipt.Type, "billing.") && (receipt.Type != "gateway.wallet_adjustment.v1" || receipt.Execution["kind"] != "business_refund") {
-				writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
-				return
-			}
-			projected, ok := app.projectCustomerBillingReceipt(r.Context(), receipt)
-			if !ok {
-				writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
-				return
-			}
-			receipts = append(receipts, projected)
-		}
-		status := "available"
-		if len(receipts) == 0 {
-			status = "empty"
-		}
-		writeSourceEnvelope(w, http.StatusOK, "ledger", status, map[string]any{"receipts": receipts, "nextCursor": page.NextCursor, "hasMore": page.HasMore})
+		app.listBillingReceiptsForAccount(w, r, service, stringValue(user["accountId"]))
 	}))
 	mux.HandleFunc("GET /api/billing/receipts/{id}", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
 		user, ok := app.sessionUserContext(r)
@@ -67,38 +31,7 @@ func registerBillingRoutes(mux *http.ServeMux, app *controlPlaneServer, service 
 			writeError(w, http.StatusUnauthorized, "not_authenticated")
 			return
 		}
-		accountID := stringValue(user["accountId"])
-		receiptID := strings.TrimSpace(r.PathValue("id"))
-		receipt, err := service.BillingReceiptForAccount(r.Context(), accountID, "", receiptID)
-		if err != nil {
-			writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
-			return
-		}
-		if receipt.ReceiptID != receiptID {
-			writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
-			return
-		}
-		if receipt.AccountID != accountID {
-			writeError(w, http.StatusNotFound, "billing_receipt_not_found")
-			return
-		}
-		var projected map[string]any
-		var projectedOK bool
-		switch receipt.Type {
-		case "workspace.created":
-			projected, projectedOK = projectWorkspaceCreatedReceipt(receipt)
-		case "workspace.deleted.v1":
-			// The Workspace deletion status publishes this receipt id to its owner, so
-			// the owner must be able to retrieve exactly that receipt.
-			projected, projectedOK = projectWorkspaceDeletedReceipt(receipt)
-		default:
-			projected, projectedOK = app.projectCustomerBillingReceipt(r.Context(), receipt)
-		}
-		if !projectedOK {
-			writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
-			return
-		}
-		writeSourceEnvelope(w, http.StatusOK, "ledger", "available", projected)
+		app.getBillingReceiptForAccount(w, r, service, stringValue(user["accountId"]))
 	}))
 	mux.HandleFunc("GET /api/billing/workspace-settlements", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
 		user, ok := app.sessionUserContext(r)
@@ -106,34 +39,9 @@ func registerBillingRoutes(mux *http.ServeMux, app *controlPlaneServer, service 
 			writeError(w, http.StatusUnauthorized, "not_authenticated")
 			return
 		}
-		accountID := stringValue(user["accountId"])
-		trend, err := app.projectWorkspaceSettlementTrend(r.Context(), service, accountID, time.Now())
-		if err != nil {
-			writeSourceEnvelope(w, http.StatusBadGateway, "control_plane", "unavailable", nil)
-			return
-		}
-		days := make([]any, 0, len(trend.days))
-		for _, day := range trend.days {
-			days = append(days, map[string]any{
-				"date": day.date, "chargedUsdMicros": day.chargedUSDMicros, "refundedUsdMicros": day.refundedUSDMicros,
-				"netUsdMicros": day.chargedUSDMicros - day.refundedUSDMicros, "chargeCount": day.chargeCount, "refundCount": day.refundCount,
-			})
-		}
-		status := "available"
-		// A window with nothing in scope is genuinely empty; a window whose
-		// movements happen to net to zero is not.
-		if trend.settledCount == 0 && trend.unconfirmedCount == 0 && trend.inFlightCount == 0 && trend.unattributedCount == 0 {
-			status = "empty"
-		}
-		writeSourceEnvelope(w, http.StatusOK, "control_plane", status, map[string]any{
-			"timezone": workspaceSettlementTrendTimezone, "asOf": trend.asOf.Format(time.RFC3339Nano),
-			"windowStart": trend.windowStart.Format(time.RFC3339), "windowEnd": trend.windowEnd.Format(time.RFC3339),
-			"days": days, "chargedUsdMicros": trend.chargedUSDMicros, "refundedUsdMicros": trend.refundedUSDMicros, "netUsdMicros": trend.netUSDMicros(),
-			"settledCount": trend.settledCount, "inFlightCount": trend.inFlightCount, "unconfirmedCount": trend.unconfirmedCount,
-			"unattributedCount": trend.unattributedCount, "outOfWindowCount": trend.outOfWindowCount,
-			"complete": trend.unconfirmedCount == 0,
-		})
+		app.workspaceSettlementTrendForAccount(w, r, service, stringValue(user["accountId"]))
 	}))
+	app.registerCloudLegacyBillingRoutes(mux, service)
 	mux.HandleFunc("POST /api/billing/reconciliation", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		input := decodeJSON(r)
 		if !confirmed(input, "confirm") {
@@ -463,4 +371,106 @@ func requiredNonNegativeInteger(input map[string]any, key string) (int64, bool) 
 		return 0, false
 	}
 	return result, result >= 0
+}
+
+func (app *controlPlaneServer) listBillingReceiptsForAccount(w http.ResponseWriter, r *http.Request, service *controlplane.Service, accountID string) {
+	limit := 50
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 100 {
+			writeError(w, http.StatusBadRequest, "invalid_billing_receipt_limit")
+			return
+		}
+		limit = parsed
+	}
+	page, err := service.BillingReceipts(r.Context(), clients.ReceiptQuery{AccountID: accountID, TypePrefix: "billing.", IncludeType: "gateway.wallet_adjustment.v1", IncludeExecutionKind: "business_refund", Cursor: r.URL.Query().Get("cursor"), Limit: limit})
+	if err != nil {
+		writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
+		return
+	}
+	receipts := make([]any, 0, len(page.Receipts))
+	for _, receipt := range page.Receipts {
+		if receipt.AccountID != accountID {
+			writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
+			return
+		}
+		if !strings.HasPrefix(receipt.Type, "billing.") && (receipt.Type != "gateway.wallet_adjustment.v1" || receipt.Execution["kind"] != "business_refund") {
+			writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
+			return
+		}
+		projected, ok := app.projectCustomerBillingReceipt(r.Context(), receipt)
+		if !ok {
+			writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
+			return
+		}
+		receipts = append(receipts, projected)
+	}
+	status := "available"
+	if len(receipts) == 0 {
+		status = "empty"
+	}
+	writeSourceEnvelope(w, http.StatusOK, "ledger", status, map[string]any{"receipts": receipts, "nextCursor": page.NextCursor, "hasMore": page.HasMore})
+}
+
+func (app *controlPlaneServer) getBillingReceiptForAccount(w http.ResponseWriter, r *http.Request, service *controlplane.Service, accountID string) {
+	receiptID := strings.TrimSpace(r.PathValue("id"))
+	receipt, err := service.BillingReceiptForAccount(r.Context(), accountID, "", receiptID)
+	if err != nil {
+		writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
+		return
+	}
+	if receipt.ReceiptID != receiptID {
+		writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
+		return
+	}
+	if receipt.AccountID != accountID {
+		writeError(w, http.StatusNotFound, "billing_receipt_not_found")
+		return
+	}
+	var projected map[string]any
+	var projectedOK bool
+	switch receipt.Type {
+	case "workspace.created":
+		projected, projectedOK = projectWorkspaceCreatedReceipt(receipt)
+	case "workspace.deleted.v1":
+		// The Workspace deletion status publishes this receipt id to its owner, so
+		// the owner must be able to retrieve exactly that receipt.
+		projected, projectedOK = projectWorkspaceDeletedReceipt(receipt)
+	default:
+		projected, projectedOK = app.projectCustomerBillingReceipt(r.Context(), receipt)
+	}
+	if !projectedOK {
+		writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
+		return
+	}
+	writeSourceEnvelope(w, http.StatusOK, "ledger", "available", projected)
+}
+
+func (app *controlPlaneServer) workspaceSettlementTrendForAccount(w http.ResponseWriter, r *http.Request, service *controlplane.Service, accountID string) {
+	trend, err := app.projectWorkspaceSettlementTrend(r.Context(), service, accountID, time.Now())
+	if err != nil {
+		writeSourceEnvelope(w, http.StatusBadGateway, "control_plane", "unavailable", nil)
+		return
+	}
+	days := make([]any, 0, len(trend.days))
+	for _, day := range trend.days {
+		days = append(days, map[string]any{
+			"date": day.date, "chargedUsdMicros": day.chargedUSDMicros, "refundedUsdMicros": day.refundedUSDMicros,
+			"netUsdMicros": day.chargedUSDMicros - day.refundedUSDMicros, "chargeCount": day.chargeCount, "refundCount": day.refundCount,
+		})
+	}
+	status := "available"
+	// A window with nothing in scope is genuinely empty; a window whose
+	// movements happen to net to zero is not.
+	if trend.settledCount == 0 && trend.unconfirmedCount == 0 && trend.inFlightCount == 0 && trend.unattributedCount == 0 {
+		status = "empty"
+	}
+	writeSourceEnvelope(w, http.StatusOK, "control_plane", status, map[string]any{
+		"timezone": workspaceSettlementTrendTimezone, "asOf": trend.asOf.Format(time.RFC3339Nano),
+		"windowStart": trend.windowStart.Format(time.RFC3339), "windowEnd": trend.windowEnd.Format(time.RFC3339),
+		"days": days, "chargedUsdMicros": trend.chargedUSDMicros, "refundedUsdMicros": trend.refundedUSDMicros, "netUsdMicros": trend.netUSDMicros(),
+		"settledCount": trend.settledCount, "inFlightCount": trend.inFlightCount, "unconfirmedCount": trend.unconfirmedCount,
+		"unattributedCount": trend.unattributedCount, "outOfWindowCount": trend.outOfWindowCount,
+		"complete": trend.unconfirmedCount == 0,
+	})
 }

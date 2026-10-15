@@ -131,7 +131,12 @@ Browser Console
        -> retained Control Plane typed HTTP /internal/cloud/announcements
        -> Gateway live session + persisted external binding proof
        -> original publication and ACK store
-  -> shared Gateway/Billing and other unmigrated panels, legacy Workspace:
+  -> personal historical billing:
+       same-origin Console BFF /api/v2/legacy-billing/*
+       -> retained Control Plane /internal/cloud/legacy-billing/*
+       -> Gateway session proof and original Account/owner User linkage
+       -> original Ledger receipts and Control Plane settlement projection
+  -> remaining Gateway and other unmigrated panels, legacy Workspace:
        retained Control Plane /api/*
        -> Sub2API management API: balance, Key/usage, original debit/refund
        -> typed Fabric/Ledger HTTP APIs: retained resource and receipt obligations
@@ -159,6 +164,16 @@ configuration, identity proof or an unavailable dependency is an explicit failur
 the BFF-to-Control-Plane token and Control Plane's CloudIdentity peer/certificate
 requirements. This source path does not prove an installed Candidate uses that
 wiring; [status](status.md) and [roadmap](roadmap.md) retain that acceptance boundary.
+
+Personal historical billing uses the same live identity proof and reciprocal
+original Account/User lineage. Its list, detail and trend handlers reuse the
+original financial owner projections; they never substitute a Tenant ID or payer
+for an Account, recalculate settlement from receipt totals, or modify an order.
+The typed HTTP DTOs retain original amounts, timestamps, pagination and unknown
+settlement state. A missing historical Account is an explicit not-found result,
+not a successful empty financial history. The Console labels this scope as
+personal history. Tenant Workspace fee/settlement readers remain a separate
+undelivered capability; Tenant administrators receive no legacy-history access.
 
 Sub2API is external and remains the only spendable-balance, API-key, routing,
 and request-usage owner. The repository reads those records on demand and does

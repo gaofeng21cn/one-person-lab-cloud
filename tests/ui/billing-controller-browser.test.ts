@@ -846,3 +846,43 @@ test("Overview trend reads only the owner projection, not receipts or paging", {
     await demo.close();
   }
 });
+
+// Cloud history is personal original-account data, never a Tenant-admin view.
+test("Cloud billing uses session-bound history routes and labels the original scope", { timeout: 60_000 }, async () => {
+  const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
+  process.env.VITE_CONSOLE_IDENTITY = "cloud";
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await launchBrowser({ headless: true });
+  const original = receipt("original-history", "deleted-original-workspace");
+  const retained: string[] = [];
+  const reads: string[] = [];
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await page.route("**/api/**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (!path.startsWith("/api/")) return route.continue();
+      if (path.startsWith("/api/billing/")) retained.push(path);
+      if (path === "/api/v2/auth/session") return fulfill(route, {
+        actorId: "cloud-owner-without-tenant", displayName: "Original owner", permissions: [],
+        csrfToken: "cloud-csrf", expiresAt: "2099-01-01T00:00:00Z"
+      });
+      if (path.startsWith("/api/v2/legacy-billing/")) reads.push(path);
+      if (path === "/api/v2/legacy-billing/receipts") return fulfill(route, receiptSource([original]));
+      if (path === "/api/v2/legacy-billing/receipts/original-history") return fulfill(route, detailSource(original));
+      return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ code: "isolated_owner_unavailable" }) });
+    });
+    await page.goto(`${demo.origin}/console/billing`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("radio", { name: "个人历史账单", exact: true }).click();
+    await page.getByRole("heading", { name: "个人历史账单", exact: true }).waitFor({ state: "visible" });
+    await page.getByText("本人旧账户的原始记录；团队账单尚未开放", { exact: true }).waitFor({ state: "visible" });
+    await page.locator(".billing-table-desktop").getByRole("button", { name: "查看", exact: true }).click();
+    await page.getByRole("heading", { name: "收据详情", exact: true }).waitFor({ state: "visible" });
+    assert.ok(reads.includes("/api/v2/legacy-billing/receipts/original-history"));
+    assert.deepEqual(retained, []);
+  } finally {
+    await browser.close();
+    await demo.close();
+    if (previousIdentity === undefined) delete process.env.VITE_CONSOLE_IDENTITY;
+    else process.env.VITE_CONSOLE_IDENTITY = previousIdentity;
+  }
+});

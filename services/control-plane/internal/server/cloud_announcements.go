@@ -78,31 +78,6 @@ func singleCloudHeader(r *http.Request, name string) (string, bool) {
 func (app *controlPlaneServer) cloudAnnouncementHandler(markRead bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "private, no-store")
-		source := app.cloudAnnouncements
-		if source == nil {
-			writeSourceEnvelope(w, http.StatusServiceUnavailable, "control-plane", "unavailable", nil)
-			return
-		}
-		owner, ownerOK := singleCloudHeader(r, owneridentity.PeerHeader)
-		token, tokenOK := singleCloudHeader(r, owneridentity.TokenHeader)
-		if !ownerOK || owner != owneridentity.ConsoleBFF.String() || !tokenOK || subtle.ConstantTimeCompare([]byte(token), []byte(source.token)) != 1 {
-			writeError(w, http.StatusUnauthorized, "invalid_owner_identity")
-			return
-		}
-		ref, refOK := singleCloudHeader(r, contracts.CloudSessionHeader)
-		if !refOK || !validCloudSessionReference(ref) {
-			writeError(w, http.StatusUnauthorized, "reauthentication_required")
-			return
-		}
-		// No identity selector is part of this boundary. The session proof alone
-		// selects its User; query/body cannot redirect the original-owner lookup.
-		for key := range r.Header {
-			lower := strings.ToLower(key)
-			if strings.HasPrefix(lower, "x-opl-") && lower != owneridentity.PeerHeader && lower != owneridentity.TokenHeader && lower != contracts.CloudSessionHeader {
-				writeError(w, http.StatusBadRequest, "invalid_announcement_identity_selector")
-				return
-			}
-		}
 		query, queryErr := url.ParseQuery(r.URL.RawQuery)
 		if queryErr != nil {
 			writeError(w, http.StatusBadRequest, "invalid_pagination")
@@ -126,14 +101,13 @@ func (app *controlPlaneServer) cloudAnnouncementHandler(markRead bool) http.Hand
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
-		proof, err := source.gateway.GetSelfUserIdentity(ctx, &api.GetSelfUserIdentityRequest{Context: &api.CallContext{SessionId: proto.String(ref)}})
-		if err != nil {
-			writeCloudAnnouncementProofError(w, err)
+		proof, ok := app.cloudSessionProof(w, r.WithContext(ctx))
+		if !ok {
 			return
 		}
-		identity, err := app.cloudAnnouncementIdentity(ctx, proof)
+		identity, err := app.cloudUserLineage(ctx, proof)
 		if err != nil {
-			if errors.Is(err, errAnnouncementLineage) {
+			if errors.Is(err, errCloudUserLineage) {
 				writeError(w, http.StatusConflict, "announcement_identity_lineage_invalid")
 			} else {
 				writeSourceEnvelope(w, http.StatusServiceUnavailable, "control-plane", "unavailable", nil)
@@ -156,27 +130,27 @@ func validCloudSessionReference(ref string) bool {
 	return err == nil
 }
 
-var errAnnouncementLineage = errors.New("announcement_identity_lineage_invalid")
+var errCloudUserLineage = errors.New("announcement_identity_lineage_invalid")
 
-type announcementIdentity struct{ cloudUserID, legacyUserID string }
+type cloudUserIdentity struct{ cloudUserID, legacyUserID, legacyAccountID string }
 
-func (app *controlPlaneServer) cloudAnnouncementIdentity(ctx context.Context, proof *api.UserIdentityReadback) (announcementIdentity, error) {
+func (app *controlPlaneServer) cloudUserLineage(ctx context.Context, proof *api.UserIdentityReadback) (cloudUserIdentity, error) {
 	if proof == nil || proof.GetActorId() == "" || proof.GetActorId() != strings.TrimSpace(proof.GetActorId()) ||
 		proof.GetStatus() != api.UserExternalBindingReadbackStatusEnum_USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_ACTIVE ||
 		proof.GetVerification() != api.UserExternalBindingReadbackVerificationEnum_USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_CONFIRMED {
-		return announcementIdentity{}, errAnnouncementLineage
+		return cloudUserIdentity{}, errCloudUserLineage
 	}
 	subject, err := strconv.ParseInt(proof.GetSub2ApiUserId(), 10, 64)
 	if err != nil || subject <= 0 || strconv.FormatInt(subject, 10) != proof.GetSub2ApiUserId() {
-		return announcementIdentity{}, errAnnouncementLineage
+		return cloudUserIdentity{}, errCloudUserLineage
 	}
-	identity := announcementIdentity{cloudUserID: "cloud-user:" + proof.GetActorId()}
+	identity := cloudUserIdentity{cloudUserID: "cloud-user:" + proof.GetActorId()}
 	account, found, err := app.tables.GetAccountBySub2APIUserID(ctx, subject)
 	if errors.Is(err, errSub2APIAccountMappingConflict) {
-		return announcementIdentity{}, errAnnouncementLineage
+		return cloudUserIdentity{}, errCloudUserLineage
 	}
 	if err != nil {
-		return announcementIdentity{}, err
+		return cloudUserIdentity{}, err
 	}
 	if !found {
 		return identity, nil
@@ -186,17 +160,18 @@ func (app *controlPlaneServer) cloudAnnouncementIdentity(ctx context.Context, pr
 	mappedSubject, valid := positiveIntegerField(account, "sub2apiUserId")
 	ownerID := stringValue(account["ownerUserId"])
 	if !valid || mappedSubject != subject || ownerID == "" || strings.HasPrefix(ownerID, "cloud-user:") || stringValue(account["id"]) == "" || stringValue(account["status"]) != "active" {
-		return announcementIdentity{}, errAnnouncementLineage
+		return cloudUserIdentity{}, errCloudUserLineage
 	}
 	user, userFound, err := app.tables.GetUser(ctx, ownerID)
 	if err != nil {
-		return announcementIdentity{}, err
+		return cloudUserIdentity{}, err
 	}
 	if !userFound || stringValue(user["id"]) != ownerID || stringValue(user["accountId"]) != stringValue(account["id"]) ||
 		stringValue(user["status"]) != "active" || stringValue(user["disabledAt"]) != "" || stringValue(user["deletedAt"]) != "" {
-		return announcementIdentity{}, errAnnouncementLineage
+		return cloudUserIdentity{}, errCloudUserLineage
 	}
 	identity.legacyUserID = ownerID
+	identity.legacyAccountID = stringValue(account["id"])
 	return identity, nil
 }
 
@@ -211,7 +186,7 @@ func writeCloudAnnouncementProofError(w http.ResponseWriter, err error) {
 	}
 }
 
-func (app *controlPlaneServer) listCloudAnnouncements(w http.ResponseWriter, r *http.Request, identity announcementIdentity) {
+func (app *controlPlaneServer) listCloudAnnouncements(w http.ResponseWriter, r *http.Request, identity cloudUserIdentity) {
 	page, pageSize, ok := operatorPagination(w, r)
 	if !ok {
 		return
@@ -247,7 +222,7 @@ func (app *controlPlaneServer) listCloudAnnouncements(w http.ResponseWriter, r *
 	writeAnnouncementPage(w, page, pageSize, items, latestAnnouncementUpdatedAt(rows))
 }
 
-func (app *controlPlaneServer) markCloudAnnouncementRead(w http.ResponseWriter, r *http.Request, identity announcementIdentity) {
+func (app *controlPlaneServer) markCloudAnnouncementRead(w http.ResponseWriter, r *http.Request, identity cloudUserIdentity) {
 	row, err := app.tables.MarkCloudAnnouncementRead(r.Context(), strings.TrimSpace(r.PathValue("announcementId")), identity.cloudUserID, identity.legacyUserID, time.Now().UTC().Format(time.RFC3339Nano))
 	if errors.Is(err, errAnnouncementNotActive) {
 		writeError(w, http.StatusNotFound, "announcement_not_active")
@@ -258,4 +233,37 @@ func (app *controlPlaneServer) markCloudAnnouncementRead(w http.ResponseWriter, 
 		return
 	}
 	writeJSON(w, http.StatusOK, AnnouncementReadDTO{AnnouncementID: stringValue(row["announcementId"]), ReadAt: stringValue(row["readAt"])})
+}
+
+func (app *controlPlaneServer) cloudSessionProof(w http.ResponseWriter, r *http.Request) (*api.UserIdentityReadback, bool) {
+	source := app.cloudAnnouncements
+	if source == nil {
+		writeSourceEnvelope(w, http.StatusServiceUnavailable, "control-plane", "unavailable", nil)
+		return nil, false
+	}
+	owner, ownerOK := singleCloudHeader(r, owneridentity.PeerHeader)
+	token, tokenOK := singleCloudHeader(r, owneridentity.TokenHeader)
+	if !ownerOK || owner != owneridentity.ConsoleBFF.String() || !tokenOK || subtle.ConstantTimeCompare([]byte(token), []byte(source.token)) != 1 {
+		writeError(w, http.StatusUnauthorized, "invalid_owner_identity")
+		return nil, false
+	}
+	ref, refOK := singleCloudHeader(r, contracts.CloudSessionHeader)
+	if !refOK || !validCloudSessionReference(ref) {
+		writeError(w, http.StatusUnauthorized, "reauthentication_required")
+		return nil, false
+	}
+	// Only the original session selects a User. Browser identity headers are never accepted.
+	for key := range r.Header {
+		lower := strings.ToLower(key)
+		if strings.HasPrefix(lower, "x-opl-") && lower != owneridentity.PeerHeader && lower != owneridentity.TokenHeader && lower != contracts.CloudSessionHeader {
+			writeError(w, http.StatusBadRequest, "invalid_cloud_identity_selector")
+			return nil, false
+		}
+	}
+	proof, err := source.gateway.GetSelfUserIdentity(r.Context(), &api.GetSelfUserIdentityRequest{Context: &api.CallContext{SessionId: proto.String(ref)}})
+	if err != nil {
+		writeCloudAnnouncementProofError(w, err)
+		return nil, false
+	}
+	return proof, true
 }

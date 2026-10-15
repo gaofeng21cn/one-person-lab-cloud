@@ -22,6 +22,7 @@ import (
 
 // Server serves the Console BFF REST surface over typed owner reads.
 type Server struct {
+	legacyBilling  LegacyBillingReader
 	announcements  AnnouncementReader
 	reader         OwnerReader
 	identity       IdentityReader
@@ -50,6 +51,9 @@ type OwnerReader interface {
 // and authorization preconditions are resolved through.
 func NewServer(reader OwnerReader, identity IdentityReader) *Server {
 	s := &Server{reader: reader, identity: identity}
+	if b, ok := reader.(LegacyBillingReader); ok {
+		s.legacyBilling = b
+	}
 	if a, ok := reader.(AnnouncementReader); ok {
 		s.announcements = a
 	}
@@ -96,6 +100,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	s.registerAuthRoutes(mux)
 	s.registerAnnouncementRoutes(mux)
+	s.registerLegacyBillingRoutes(mux)
 	s.registerPublisherRoutes(mux)
 	s.registerMemberRoutes(mux)
 	s.registerCatalogRoutes(mux, s.catalog)

@@ -241,16 +241,16 @@ export function getGatewayAccountUsageSummary(period: GatewayUsagePeriod = "mont
 export function getBillingReceipts(cursor = "", limit = 20, signal?: AbortSignal): Promise<SourceEnvelope<BillingReceiptPage>> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (cursor) params.set("cursor", cursor);
-  return sourceGet<BillingReceiptPage>(`/api/billing/receipts?${params}`, signal);
+  return sourceGet<BillingReceiptPage>(`${cloudIdentity ? "/api/v2/legacy-billing" : "/api/billing"}/receipts?${params}`, signal);
 }
 
 /** Reads the owner's confirmed Workspace wallet movements for its fixed window. */
 export function getWorkspaceSettlementTrend(signal?: AbortSignal): Promise<SourceEnvelope<WorkspaceSettlementTrend>> {
-  return sourceGet<WorkspaceSettlementTrend>("/api/billing/workspace-settlements", signal);
+  return sourceGet<WorkspaceSettlementTrend>(cloudIdentity ? "/api/v2/legacy-billing/workspace-settlements" : "/api/billing/workspace-settlements", signal);
 }
 
 export function getBillingReceipt(receiptId: string, signal?: AbortSignal): Promise<SourceEnvelope<BillingReceipt>> {
-  return sourceGet<BillingReceipt>(`/api/billing/receipts/${encodeURIComponent(receiptId)}`, signal);
+  return sourceGet<BillingReceipt>(`${cloudIdentity ? "/api/v2/legacy-billing" : "/api/billing"}/receipts/${encodeURIComponent(receiptId)}`, signal);
 }
 
 export function getAnnouncements(page = 1, pageSize = 20, signal?: AbortSignal): Promise<SourceEnvelope<AnnouncementPageDTO>> {

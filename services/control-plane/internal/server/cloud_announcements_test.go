@@ -116,7 +116,7 @@ type cloudAnnouncementHTTPFixture struct {
 	store   StateStore
 }
 
-func newCloudAnnouncementHTTPFixture(t *testing.T, store StateStore) *cloudAnnouncementHTTPFixture {
+func newCloudAnnouncementHTTPFixture(t *testing.T, store StateStore, services ...*controlplane.Service) *cloudAnnouncementHTTPFixture {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -132,7 +132,11 @@ func newCloudAnnouncementHTTPFixture(t *testing.T, store StateStore) *cloudAnnou
 	t.Setenv("OPL_CLOUD_IDENTITY_TOKEN", cloudAnnouncementFixtureIdentityToken)
 	t.Setenv("OPL_GRPC_INSECURE_LOCAL", "1")
 	t.Setenv("NODE_ENV", "test")
-	handler, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, &fakeFabricClient{}, &testSub2APIClient{balance: 1_000_000, charges: map[string]int64{}}), store)
+	service := controlplane.NewService(fakeLedgerClient{}, &fakeFabricClient{}, &testSub2APIClient{balance: 1_000_000, charges: map[string]int64{}})
+	if len(services) > 0 {
+		service = services[0]
+	}
+	handler, err := NewPersistentServer(service, store)
 	if err != nil {
 		t.Fatal(err)
 	}
