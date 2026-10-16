@@ -67,6 +67,11 @@ var successStatus = map[api.AuthorizationActionEnum]int{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET:                             200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTUSAGE:                             200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY:                       200,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYKEYS:               200,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPERSONALGATEWAYKEY:                 200,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYGROUPS:             200,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYKEYUSAGE:           200,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPERSONALGATEWAYKEYUSAGESUMMARY:     200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTGATEWAYKEYS:                       200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEGATEWAYKEY:                      201,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVEALGATEWAYKEY:                      200,
@@ -123,6 +128,7 @@ var successStatus = map[api.AuthorizationActionEnum]int{
 
 // errorStatus is the canonical public status for an owner-supplied business error.
 var errorStatus = map[api.ErrorCodeEnum]int{
+	api.ErrorCodeEnum_ERROR_CODE_ENUM_REAUTHENTICATION_REQUIRED:           401,
 	api.ErrorCodeEnum_ERROR_CODE_ENUM_VALIDATION_FAILED:                   422,
 	api.ErrorCodeEnum_ERROR_CODE_ENUM_UNAUTHENTICATED:                     401,
 	api.ErrorCodeEnum_ERROR_CODE_ENUM_FORBIDDEN:                           403,

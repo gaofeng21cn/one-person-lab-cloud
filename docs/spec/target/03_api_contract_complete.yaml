@@ -3089,6 +3089,286 @@ paths:
           - today
           - week
           - month
+  /api/v2/gateway/keys:
+    get:
+      operationId: listPersonalGatewayKeys
+      summary: listPersonalGatewayKeys
+      tags:
+      - gateway
+      x-feature-id:
+      - F14
+      x-owner: gateway
+      x-permission:
+      - authenticated
+      description: Reads only the current CloudIdentity User through its verified Sub2API binding and process-local
+        delegated credential. No Tenant role, target User selector, raw Key or token is accepted. Missing, expired
+        or rejected delegated credentials return REAUTHENTICATION_REQUIRED without revoking the ordinary Cloud session.
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+          default: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      - name: search
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 100
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - active
+          - disabled
+          - quota_exhausted
+          - expired
+      - name: groupId
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^(0|[1-9][0-9]*)$
+      - name: sortBy
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - name
+          - id
+          - currentConcurrency
+          - expiresAt
+          - status
+          - lastUsedAt
+          - createdAt
+          default: createdAt
+      - name: sortOrder
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - asc
+          - desc
+          default: desc
+      responses:
+        '200':
+          description: Current User readback.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonalGatewayKeyPage'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v2/gateway/keys/{keyId}:
+    get:
+      operationId: getPersonalGatewayKey
+      summary: getPersonalGatewayKey
+      tags:
+      - gateway
+      x-feature-id:
+      - F14
+      x-owner: gateway
+      x-permission:
+      - authenticated
+      description: Reads only the current CloudIdentity User through its verified Sub2API binding and process-local
+        delegated credential. No Tenant role, target User selector, raw Key or token is accepted. Missing, expired
+        or rejected delegated credentials return REAUTHENTICATION_REQUIRED without revoking the ordinary Cloud session.
+      parameters:
+      - name: keyId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      responses:
+        '200':
+          description: Current User readback.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonalGatewayKey'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v2/gateway/groups:
+    get:
+      operationId: listPersonalGatewayGroups
+      summary: listPersonalGatewayGroups
+      tags:
+      - gateway
+      x-feature-id:
+      - F14
+      x-owner: gateway
+      x-permission:
+      - authenticated
+      description: Reads only the current CloudIdentity User through its verified Sub2API binding and process-local
+        delegated credential. No Tenant role, target User selector, raw Key or token is accepted. Missing, expired
+        or rejected delegated credentials return REAUTHENTICATION_REQUIRED without revoking the ordinary Cloud session.
+      parameters: []
+      responses:
+        '200':
+          description: Current User readback.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonalGatewayGroupPage'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v2/gateway/keys/{keyId}/usage:
+    get:
+      operationId: listPersonalGatewayKeyUsage
+      summary: listPersonalGatewayKeyUsage
+      tags:
+      - gateway
+      x-feature-id:
+      - F14
+      x-owner: gateway
+      x-permission:
+      - authenticated
+      description: Reads only the current CloudIdentity User through its verified Sub2API binding and process-local
+        delegated credential. No Tenant role, target User selector, raw Key or token is accepted. Missing, expired
+        or rejected delegated credentials return REAUTHENTICATION_REQUIRED without revoking the ordinary Cloud session.
+      parameters:
+      - name: keyId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+          default: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      - name: period
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - today
+          - week
+          - month
+      responses:
+        '200':
+          description: Current User readback.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonalGatewayKeyUsagePage'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v2/gateway/keys/{keyId}/usage-summary:
+    get:
+      operationId: getPersonalGatewayKeyUsageSummary
+      summary: getPersonalGatewayKeyUsageSummary
+      tags:
+      - gateway
+      x-feature-id:
+      - F14
+      x-owner: gateway
+      x-permission:
+      - authenticated
+      description: Reads only the current CloudIdentity User through its verified Sub2API binding and process-local
+        delegated credential. No Tenant role, target User selector, raw Key or token is accepted. Missing, expired
+        or rejected delegated credentials return REAUTHENTICATION_REQUIRED without revoking the ordinary Cloud session.
+      parameters:
+      - name: keyId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - name: period
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - today
+          - week
+          - month
+      responses:
+        '200':
+          description: Current User readback.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageSummary'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
   /api/v2/gateway-keys:
     get:
       operationId: listGatewayKeys
@@ -5782,6 +6062,7 @@ components:
       - REFUND_ORIGINAL_CHARGE_CONFLICT
       - FUTURE_PERIOD_COMMITTED
       - SCHEDULED_PLAN_APPLICATION_CONFLICT
+      - REAUTHENTICATION_REQUIRED
     Owner:
       type: string
       enum:
@@ -9477,6 +9758,231 @@ components:
       - totalTokens
       - totalActualCostUSDMicros
       x-owner: gateway
+    PersonalGatewayKey:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        name:
+          type: string
+        groupId:
+          type: string
+        status:
+          type: string
+          enum:
+          - active
+          - disabled
+          - quota_exhausted
+          - expired
+        kind:
+          type: string
+          enum:
+          - general
+          - workspace
+        manageable:
+          type: boolean
+          description: False for the read-only Cloud personal Key surface.
+        deletable:
+          type: boolean
+          description: False for the read-only Cloud personal Key surface.
+        ipWhitelist:
+          type: array
+          items:
+            type: string
+        ipBlacklist:
+          type: array
+          items:
+            type: string
+        quotaUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        quotaUsedUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        rateLimit5hUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        rateLimit1dUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        rateLimit7dUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        usage5hUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        usage1dUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        usage7dUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        currentConcurrency:
+          type: integer
+          minimum: 0
+        lastUsedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        lastUsedIp:
+          type: string
+      required:
+      - id
+      - name
+      - status
+      - kind
+      - manageable
+      - deletable
+      - ipWhitelist
+      - ipBlacklist
+      - quotaUSDMicros
+      - quotaUsedUSDMicros
+      - rateLimit5hUSDMicros
+      - rateLimit1dUSDMicros
+      - rateLimit7dUSDMicros
+      - usage5hUSDMicros
+      - usage1dUSDMicros
+      - usage7dUSDMicros
+      - currentConcurrency
+      description: A redacted native Sub2API Key belonging to the signed-in User; no Tenant membership is required.
+        Not a Tenant-managed binding DTO.
+    PersonalGatewayKeyPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PersonalGatewayKey'
+        total:
+          $ref: '#/components/schemas/NonnegativeInt64'
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+        pages:
+          type: integer
+          minimum: 1
+      required:
+      - items
+      - total
+      - page
+      - pageSize
+      - pages
+    PersonalGatewayGroup:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        name:
+          type: string
+        description:
+          type: string
+        platform:
+          type: string
+        rateMultiplier:
+          type: number
+          minimum: 0
+        subscriptionType:
+          type: string
+        status:
+          type: string
+      required:
+      - id
+      - name
+      - description
+      - platform
+      - rateMultiplier
+      - subscriptionType
+      - status
+    PersonalGatewayGroupPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PersonalGatewayGroup'
+        total:
+          type: integer
+          minimum: 0
+      required:
+      - items
+      - total
+    PersonalGatewayKeyUsage:
+      type: object
+      additionalProperties: false
+      properties:
+        apiKeyId:
+          type: string
+        requestId:
+          type: string
+        model:
+          type: string
+        inboundEndpoint:
+          type: string
+        requestType:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        inputTokens:
+          $ref: '#/components/schemas/NonnegativeInt64'
+        outputTokens:
+          $ref: '#/components/schemas/NonnegativeInt64'
+        cacheCreationTokens:
+          $ref: '#/components/schemas/NonnegativeInt64'
+        cacheReadTokens:
+          $ref: '#/components/schemas/NonnegativeInt64'
+        actualCostUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        durationMs:
+          $ref: '#/components/schemas/NonnegativeInt64'
+        firstTokenMs:
+          $ref: '#/components/schemas/NonnegativeInt64'
+      required:
+      - apiKeyId
+      - requestId
+      - model
+      - inboundEndpoint
+      - requestType
+      - createdAt
+      - inputTokens
+      - outputTokens
+      - cacheCreationTokens
+      - cacheReadTokens
+      - actualCostUSDMicros
+    PersonalGatewayKeyUsagePage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PersonalGatewayKeyUsage'
+        total:
+          $ref: '#/components/schemas/NonnegativeInt64'
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+        pages:
+          type: integer
+          minimum: 1
+      required:
+      - items
+      - total
+      - page
+      - pageSize
+      - pages
     GatewayKey:
       type: object
       additionalProperties: false
@@ -11228,6 +11734,11 @@ components:
       - restoreAfterResourceChange
       - debitScheduledPeriod
       - readPlanChangeFailure
+      - listPersonalGatewayKeys
+      - getPersonalGatewayKey
+      - listPersonalGatewayGroups
+      - listPersonalGatewayKeyUsage
+      - getPersonalGatewayKeyUsageSummary
     ServiceIdentity:
       type: string
       enum:
@@ -13032,6 +13543,10 @@ x-external-capability-boundaries:
   access. Instance protected workflows own those effects.
 - No Console endpoint dispatches Product Release or Instance deployment.
 x-error-http-status:
+  REAUTHENTICATION_REQUIRED:
+    httpStatus: 401
+    asyncOperationErrorAllowed: false
+    description: Delegated personal Key access requires a new login; the Cloud session remains valid.
   VALIDATION_FAILED:
     httpStatus: 422
     asyncOperationErrorAllowed: true
