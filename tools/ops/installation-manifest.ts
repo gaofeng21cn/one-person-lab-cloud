@@ -212,6 +212,25 @@ function admissionFieldAbsent(value: unknown, field: string): boolean {
   return value === undefined || field === "imagePullSecrets" && Array.isArray(value) && value.length === 0 ||
     field === "resources" && object(value) && Object.keys(value).length === 0;
 }
+function samePodTolerations(live: unknown, declared: unknown): boolean {
+  const actual = live === undefined ? [] : live;
+  const template = declared === undefined ? [] : declared;
+  if (!Array.isArray(actual) || !Array.isArray(template) || actual.length < template.length ||
+      template.some((entry, index) => !object(entry) || !deepEqual(entry, actual[index]))) return false;
+  // DefaultTolerationSeconds appends these Pod-only tolerations, unless the
+  // template already covers the key/effect. The timeout is cluster-configured.
+  const additions = new Set<string>();
+  return actual.slice(template.length).every(entry => {
+    if (!object(entry) || !["node.kubernetes.io/not-ready", "node.kubernetes.io/unreachable"].includes(entry.key) ||
+        entry.operator !== "Exists" || entry.effect !== "NoExecute" ||
+        entry.value !== undefined && entry.value !== "" || !Number.isSafeInteger(entry.tolerationSeconds) ||
+        Object.keys(entry).some(key => !["key", "operator", "effect", "value", "tolerationSeconds"].includes(key)) ||
+        additions.has(entry.key) || template.some(toleration =>
+          (toleration.key === entry.key || !toleration.key) && (!toleration.effect || toleration.effect === "NoExecute"))) return false;
+    additions.add(entry.key);
+    return true;
+  });
+}
 function samePodSecurityShape(live: Resource, declared: Resource): boolean {
   const fields = [
     "hostNetwork", "hostPID", "hostIPC", "shareProcessNamespace", "hostUsers", "serviceAccountName", "runtimeClassName",
@@ -227,6 +246,7 @@ function samePodSecurityShape(live: Resource, declared: Resource): boolean {
   if ([live.securityContext, declared.securityContext].some(value => value !== undefined && !object(value))) return false;
   if (live.ephemeralContainers !== undefined && (!Array.isArray(live.ephemeralContainers) || live.ephemeralContainers.length > 0)) return false;
   return fields.every(field => {
+    if (field === "tolerations") return samePodTolerations(live[field], declared[field]);
     if (field === "imagePullSecrets" && admissionFieldAbsent(declared[field], field) && live[field] !== undefined)
       return validImagePullSecrets(live[field]);
     return deepEqual(normalizedPodField(live, field), normalizedPodField(declared, field));
@@ -304,7 +324,7 @@ function endpointServiceability(endpoint: unknown, service: Resource): "servicea
       conditions?.ready === false && !servicePublishesNotReady(service)) return "unserviceable";
   return "serviceable";
 }
-function endpointBackend(resource: Resource, service: Resource, target: Resource, targetContainer: Resource, servicePort: Resource, port: number, resources: Resource[], defaultCommand: string[], topology: InstallationTopology,
+function endpointBackend(resource: Resource, service: Resource, target: Resource, targetContainer: Resource, servicePort: Resource, port: number, resources: Resource[], defaultCommand: string[],
   processContract: (container: Resource) => ProcessContract | undefined): boolean {
   const provesPort = (ports: unknown): boolean => {
     if (!Array.isArray(ports)) return false;
@@ -338,14 +358,8 @@ function endpointBackend(resource: Resource, service: Resource, target: Resource
     const liveArgv = productArgv(liveTargets[0], defaultCommand);
     if (!expectedArgv || !liveArgv || expectedArgv.length !== liveArgv.length ||
         expectedArgv.some((arg, index) => arg !== liveArgv[index])) return false;
-    const listenerEnvNames = new Set(topology.processes.flatMap(process => [process.addressEnv, process.rpcAddressEnv, process.rpcEnabledByEnv,
-      ...(process.additionalListeners ?? []).map(listener => listener.addressEnv)].filter((name): name is string => Boolean(name))));
     const competingLiveContainers = [...liveContainers.filter((container: Resource) => container?.name !== targetName),
       ...liveInitContainers.filter((container: Resource) => container?.restartPolicy === "Always")];
-    if (competingLiveContainers.some((container: Resource) => {
-      const resolved = effectiveEnv(target.deployment, container, listenerEnvNames, resources);
-      return resolved.error !== undefined || [...resolved.env.keys()].some(name => listenerEnvNames.has(name));
-    })) return false;
     for (const container of competingLiveContainers) {
       if ((container.ports ?? []).some((entry: Resource) => (entry.protocol ?? "TCP") === "TCP" &&
           (entry.containerPort === port || typeof servicePort.targetPort === "string" && entry.name === servicePort.targetPort))) return false;
@@ -688,7 +702,7 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     const endpoints = resources.filter(resource => namespace(resource) === namespace(service) &&
       (resource.kind === "Endpoints" && resource.metadata.name === service.metadata.name ||
        resource.kind === "EndpointSlice" && resource.metadata.labels?.["kubernetes.io/service-name"] === service.metadata.name));
-    if (conflict || endpoints.some(resource => !endpointBackend(resource, service, target.deployment, target.container, servicePort, targetPort, resources, topology.image.defaultCommand, topology, processContract))) {
+    if (conflict || endpoints.some(resource => !endpointBackend(resource, service, target.deployment, target.container, servicePort, targetPort, resources, topology.image.defaultCommand, processContract))) {
       fail("rpc_service_backend_ambiguous"); continue;
     }
     const tokenRef = secretReference(envEntry(caller, edge.tokenEnv));

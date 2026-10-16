@@ -211,6 +211,68 @@ test("installation CLI accepts structurally valid Kubernetes admission additions
   assert.equal(explicitEmptyResult.status, 0, explicitEmptyResult.stdout + explicitEmptyResult.stderr);
 });
 
+test("installation CLI distinguishes default Pod tolerations from template drift", async t => {
+  const defaults = (seconds: number) => ["not-ready", "unreachable"].map(key => ({
+    key: `node.kubernetes.io/${key}`, operator: "Exists", effect: "NoExecute", tolerationSeconds: seconds
+  }));
+  for (const seconds of [300, 60]) await t.test(`cluster default ${seconds}s`, async () => {
+    const { list, pod } = withLiveWorkspaceBackends();
+    pod.spec.tolerations = defaults(seconds);
+    const result = await invoke(list);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  });
+  await t.test("retains an explicit template toleration", async () => {
+    const { list, pod, replicaSet } = withLiveWorkspaceBackends();
+    const explicit = { key: "dedicated", operator: "Equal", value: "cloud", effect: "NoSchedule" };
+    replicaSet.spec.template.spec.tolerations = [explicit];
+    pod.spec.tolerations = [structuredClone(explicit), ...defaults(300)];
+    const result = await invoke(list);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  });
+  const cases: [string, (fixture: ReturnType<typeof withLiveWorkspaceBackends>) => void][] = [
+    ["malformed tolerations", ({ pod }) => { pod.spec.tolerations = null; }],
+    ["unknown addition", ({ pod }) => { pod.spec.tolerations.push({ key: "dedicated", operator: "Exists", effect: "NoSchedule" }); }],
+    ["indefinite default", ({ pod }) => { delete pod.spec.tolerations[0].tolerationSeconds; }],
+    ["duplicate default", ({ pod }) => { pod.spec.tolerations.push(structuredClone(pod.spec.tolerations[0])); }],
+    ["changed explicit timeout", ({ pod, replicaSet }) => {
+      replicaSet.spec.template.spec.tolerations = [defaults(30)[0]];
+      pod.spec.tolerations[0].tolerationSeconds = 600;
+    }],
+    ["default appended despite explicit wildcard", ({ pod, replicaSet }) => {
+      const wildcard = { operator: "Exists", effect: "NoExecute" };
+      replicaSet.spec.template.spec.tolerations = [wildcard];
+      pod.spec.tolerations.unshift(structuredClone(wildcard));
+    }]
+  ];
+  for (const [name, change] of cases) await t.test(name, async () => {
+    const fixture = withLiveWorkspaceBackends();
+    fixture.pod.spec.tolerations = defaults(300);
+    change(fixture);
+    const result = await invoke(fixture.list);
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.ok(result.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+  });
+});
+
+test("installation CLI admits non-listening live helpers with Product address variables", async t => {
+  for (const init of [false, true]) await t.test(init ? "restartable init" : "sidecar", async () => {
+    const { list, pod, replicaSet } = withLiveWorkspaceBackends();
+    const helper = { name: "non-listening-helper", image: "example.invalid/helper:1",
+      command: ["/bin/sh", "-c", "exec sleep 3600"], env: [{ name: "OPL_WORKSPACE_ADDR", value: ":8184" }],
+      ...(init ? { restartPolicy: "Always" } : {}) };
+    if (init) {
+      pod.spec.initContainers = [structuredClone(helper)];
+      replicaSet.spec.template.spec.initContainers = [helper];
+    } else {
+      pod.spec.containers.push(structuredClone(helper));
+      replicaSet.spec.template.spec.containers.push(helper);
+    }
+    const result = await invoke(list);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(result.report.communication.edges.length, 46);
+  });
+});
+
 test("installation CLI binds live init identity and canonical projected ServiceAccount volume", async () => {
   const ordered = withLiveWorkspaceBackends();
   const initA = { name: "init-a", image: "example.invalid/init-a:1" };
