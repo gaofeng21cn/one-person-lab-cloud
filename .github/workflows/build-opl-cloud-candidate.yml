@@ -20,13 +20,17 @@ jobs:
     # The Candidate is a replaceable input, not a formal Release. It may be built
     # from the exact commit of any branch (for example the serial integration
     # branch before its work lands on canonical main), so the job does not pin the
-    # dispatched ref to main. The publication trust boundary is unchanged: only the
-    # repository owner may dispatch, and the Release workflow still runs from main.
+    # dispatched ref to main. Dispatch is limited to the repository's write-access
+    # collaborators, which is what workflow_dispatch already requires, and the run
+    # must stay self-attributed: the account that triggered it is the account
+    # GitHub attributes it to. The publication gate already admits a write-access
+    # collaborator, so an owner-only build here refused the only evidence producer
+    # such a dispatcher could reach. The Release workflow still runs from main.
     # Promotion is decided by .github/workflows/release-opl-cloud-image.yml: it admits
     # this run by its recorded source SHA and artifact digest and requires that commit
     # to be reachable from canonical main. A contract test fails when the two
     # workflows disagree about which branches may produce a promotable Candidate.
-    if: ${{ github.ref_type == 'branch' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner }}
+    if: ${{ github.ref_type == 'branch' && github.actor == github.triggering_actor }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:

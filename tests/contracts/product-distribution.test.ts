@@ -201,6 +201,35 @@ test("Candidate promotion gate agrees with the Candidate branch-source rule", as
   assert.match(readbackScript, /\.head_branch == "main"/);
 });
 
+test("Candidate build admits a write-access dispatcher instead of only the repository owner", async () => {
+  const build = YAML.parse(await readFile(".github/workflows/build-opl-cloud-candidate.yml", "utf8"));
+  const buildGuard = String(build.jobs.candidate.if);
+
+  // The Candidate build was the only evidence producer no write-access collaborator
+  // could reach: it demanded github.repository_owner while the publication gate in
+  // release-opl-cloud-image.yml already admits RenDeHuang. That refused every
+  // build-from-a-pushed-branch path the promotion contract above assumes, so the
+  // protected launch in #856 could never obtain a promotable Candidate.
+  assert.doesNotMatch(
+    buildGuard,
+    /github\.repository_owner/,
+    "the Candidate build must not be owner-only; publication already admits a write-access collaborator"
+  );
+
+  // Dropping the owner predicate must not admit a delegated dispatch: the account
+  // that triggered the run must still be the account GitHub attributes it to.
+  assert.match(
+    buildGuard,
+    /github\.actor == github\.triggering_actor/,
+    "the Candidate build must still refuse a delegated dispatch"
+  );
+
+  // Unchanged: any branch may be built, and only a commit reachable from canonical
+  // main may be promoted. Neither invariant lives in this guard.
+  assert.match(buildGuard, /github\.ref_type == 'branch'/);
+  assert.doesNotMatch(buildGuard, /refs\/heads\/main/);
+});
+
 test("Candidate promotion gate refuses every run that is not the promoted source commit", async (t) => {
   const release = YAML.parse(await readFile(".github/workflows/release-opl-cloud-image.yml", "utf8"));
   const gate = candidatePredicate(release);

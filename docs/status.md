@@ -406,9 +406,10 @@ into production.
 
 The current source is not a Candidate or a Product Release.
 
-- Candidate construction requires an owner-dispatched workflow against an exact
-  Cloud SHA and a complete portable asset/image manifest. The current preconditions
-  are recorded in [candidate/Instance preconditions](evidence/source-checks/2026-09-30-tke-serial-candidate-instance-preconditions.json).
+- Candidate construction requires a self-attributed workflow dispatch by a
+  write-access collaborator against an exact Cloud SHA and a complete portable
+  asset/image manifest. The current preconditions are recorded in
+  [candidate/Instance preconditions](evidence/source-checks/2026-09-30-tke-serial-candidate-instance-preconditions.json).
 - The Instance owner must install the declared owner topology, configure
   protected secrets and provider facts, deploy the exact Candidate, and return
   runtime, route and billing readback.
