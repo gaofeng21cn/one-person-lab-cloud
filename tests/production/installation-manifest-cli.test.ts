@@ -113,6 +113,12 @@ test("installation CLI classifies live backend proof failures by boundary", asyn
   const listenerUnprovenResult = await invoke(listenerUnproven);
   assert.equal(listenerUnprovenResult.status, 1, listenerUnprovenResult.stdout);
   assert.ok(listenerUnprovenResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous" && error.reasonCode === "listener_unproven"), listenerUnprovenResult.stdout);
+
+  const listenerMalformed = workedInstallation();
+  container(listenerMalformed, "fabric").env.push({ name: "FABRIC_ADDR", value: "not-an-address" });
+  const listenerMalformedResult = await invoke(listenerMalformed);
+  assert.equal(listenerMalformedResult.status, 1, listenerMalformedResult.stdout);
+  assert.ok(listenerMalformedResult.report.errors.some(error => error.code === "installation_listener_unproven"), listenerMalformedResult.stdout);
 });
 
 test("installation CLI rejects other declared Service backend producers", async t => {

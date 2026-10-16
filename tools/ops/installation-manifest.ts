@@ -532,7 +532,7 @@ function podListenerError(processes: InstalledProcess[]): string | undefined {
       // Explicit Product listeners are part of the static admission contract;
       // unresolved or malformed values cannot be treated as absent.
       if (!binding) {
-        if (address.required || processes.length > 1) return "installation_listener_unproven";
+        if (address.required || processes.length > 1 || typeof address.address === "string" && address.address !== "") return "installation_listener_unproven";
         continue;
       }
       if (bindings.some(other => other.port === binding.port && (other.wildcard || binding.wildcard || other.host === binding.host)))
@@ -673,8 +673,9 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     const pod = target.deployment.spec.template.spec;
     const competitors = [...pod.containers, ...(pod.initContainers ?? []).filter((container: Resource) => container.restartPolicy === "Always")];
     const otherListener = target.contract.rpcAddressEnv ? listenerAddress(target, target.contract.addressEnv, target.contract.defaultAddress, target.contract.kind === "ownerservice", target.contract.addressPortEnv) : null;
-    let listenerUnproven = otherListener === undefined;
-    let conflict = otherListener !== undefined && otherListener !== null && Number(/:([0-9]+)$/.exec(otherListener)?.[1]) === targetPort;
+    const otherBinding = otherListener === null || otherListener === undefined ? undefined : listenerBinding(otherListener);
+    let listenerUnproven = otherListener === undefined || otherBinding === undefined && otherListener !== null;
+    let conflict = otherBinding !== undefined && otherBinding.port === targetPort;
     for (const container of competitors) {
       if (container === target.container) continue;
       if ((container.ports ?? []).some((port: Resource) => (port.protocol ?? "TCP") === "TCP" &&
@@ -696,10 +697,11 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
       for (const listener of contract.additionalListeners ?? []) {
         if (envEntry(resolved, listener.addressEnv) || listener.defaultAddress !== undefined) addresses.push(listenerAddress(resolved, listener.addressEnv, listener.defaultAddress, listener.valueSemantics === "trimmed"));
       }
-      if (addresses.some(address => address === undefined)) {
+      const bindings = addresses.map(address => address === undefined ? undefined : listenerBinding(address));
+      if (bindings.some(binding => binding === undefined)) {
         listenerUnproven = true; break;
       }
-      if (addresses.some(address => Number(/:([0-9]+)$/.exec(address)?.[1]) === targetPort)) {
+      if (bindings.some(binding => binding.port === targetPort)) {
         conflict = true; break;
       }
     }
