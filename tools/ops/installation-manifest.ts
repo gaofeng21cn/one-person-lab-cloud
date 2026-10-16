@@ -501,6 +501,14 @@ function listenerAddress(process: InstalledProcess, name: string, defaultAddress
   }
   return defaultAddress;
 }
+function listenerConfigured(process: InstalledProcess, name: string, trim: boolean, portEnv?: string): boolean {
+  const entry = envEntry(process, name);
+  if (entry?.valueFrom !== undefined) return true;
+  if (typeof entry?.value === "string" && (trim ? trimRuntimeSpace(entry.value) : entry.value) !== "") return true;
+  if (!portEnv) return false;
+  const port = envEntry(process, portEnv);
+  return port?.valueFrom !== undefined || typeof port?.value === "string" && port.value !== "";
+}
 function rpcListenerAddress(process: InstalledProcess): string | undefined {
   const { contract } = process;
   return listenerAddress(process, contract.rpcAddressEnv ?? contract.addressEnv,
@@ -519,20 +527,26 @@ function podListenerError(processes: InstalledProcess[]): string | undefined {
   const bindings: ListenerBinding[] = [];
   for (const process of processes) {
     const { contract } = process;
-    const addresses: (string | undefined)[] = [];
-    if (contract.rpcAddressEnv || rpcEnabled(process)) addresses.push(listenerAddress(process, contract.addressEnv, contract.defaultAddress,
-      contract.kind === "ownerservice", contract.addressPortEnv));
-    if (contract.rpcAddressEnv && rpcEnabled(process)) addresses.push(rpcListenerAddress(process));
+    const addresses: { address: string | undefined; explicit: boolean; required: boolean; deferUnproven: boolean }[] = [];
+    if (contract.rpcAddressEnv || rpcEnabled(process)) addresses.push({
+      address: listenerAddress(process, contract.addressEnv, contract.defaultAddress, contract.kind === "ownerservice", contract.addressPortEnv),
+      explicit: listenerConfigured(process, contract.addressEnv, contract.kind === "ownerservice", contract.addressPortEnv), required: false,
+      deferUnproven: Boolean(contract.rpcAddressEnv && rpcEnabled(process))
+    });
+    if (contract.rpcAddressEnv) addresses.push({
+      address: rpcListenerAddress(process),
+      explicit: listenerConfigured(process, contract.rpcAddressEnv, true), required: false, deferUnproven: false
+    });
     const additionalListeners = (contract.additionalListeners ?? []).map(listener => ({
         address: listenerAddress(process, listener.addressEnv, listener.defaultAddress, listener.valueSemantics === "trimmed"),
-        required: true
+        explicit: listenerConfigured(process, listener.addressEnv, listener.valueSemantics === "trimmed"), required: true, deferUnproven: false
       }));
-    for (const address of addresses.map(address => ({ address, required: false })).concat(additionalListeners)) {
+    for (const address of addresses.concat(additionalListeners)) {
       const binding = listenerBinding(address.address);
       // Explicit Product listeners are part of the static admission contract;
       // unresolved or malformed values cannot be treated as absent.
       if (!binding) {
-        if (address.required || processes.length > 1 || typeof address.address === "string" && address.address !== "") return "installation_listener_unproven";
+        if (address.required || address.explicit && !address.deferUnproven || processes.length > 1) return "installation_listener_unproven";
         continue;
       }
       if (bindings.some(other => other.port === binding.port && (other.wildcard || binding.wildcard || other.host === binding.host)))

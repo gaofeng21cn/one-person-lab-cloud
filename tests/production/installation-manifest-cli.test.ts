@@ -115,10 +115,20 @@ test("installation CLI classifies live backend proof failures by boundary", asyn
   assert.ok(listenerUnprovenResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous" && error.reasonCode === "listener_unproven"), listenerUnprovenResult.stdout);
 
   const listenerMalformed = workedInstallation();
-  container(listenerMalformed, "fabric").env.push({ name: "FABRIC_ADDR", value: "not-an-address" });
+  container(listenerMalformed, "workspace").env = container(listenerMalformed, "workspace").env.map(entry =>
+    entry.name === "OPL_WORKSPACE_ADDR" ? { name: entry.name, value: "not-an-address" } : entry);
   const listenerMalformedResult = await invoke(listenerMalformed);
   assert.equal(listenerMalformedResult.status, 1, listenerMalformedResult.stdout);
   assert.ok(listenerMalformedResult.report.errors.some(error => error.code === "installation_listener_unproven"), listenerMalformedResult.stdout);
+
+  const isolatedSecretListener = workedInstallation();
+  isolatedSecretListener.items = isolatedSecretListener.items.filter(item => item.kind === "Deployment" && item.metadata.name === "unit-fabric");
+  container(isolatedSecretListener, "fabric").env = container(isolatedSecretListener, "fabric").env
+    .filter(entry => entry.name !== "OPL_FABRIC_DATABASE_URL")
+    .map(entry => entry.name === "OPL_FABRIC_ADDR" ? { name: entry.name, valueFrom: { secretKeyRef: { name: "opaque", key: "FABRIC_ADDR" } } } : entry);
+  const isolatedSecretListenerResult = await invoke(isolatedSecretListener);
+  assert.equal(isolatedSecretListenerResult.status, 1, isolatedSecretListenerResult.stdout);
+  assert.ok(isolatedSecretListenerResult.report.errors.some(error => error.code === "installation_listener_unproven"), isolatedSecretListenerResult.stdout);
 });
 
 test("installation CLI rejects other declared Service backend producers", async t => {
