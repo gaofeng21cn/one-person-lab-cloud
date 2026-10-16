@@ -202,6 +202,39 @@ test("Candidate promotion gate agrees with the Candidate branch-source rule", as
   assert.match(readbackScript, /\.head_branch == "main"/);
 });
 
+test("Candidate build admits a write-access dispatcher instead of only the repository owner", async () => {
+  const build = YAML.parse(await readFile(".github/workflows/build-opl-cloud-candidate.yml", "utf8"));
+  const buildGuard = String(build.jobs.candidate.if);
+
+  // The Candidate build was the only evidence producer no write-access collaborator
+  // could reach: it demanded github.repository_owner while the publication gate in
+  // release-opl-cloud-image.yml already admits RenDeHuang. That refused every
+  // build-from-a-pushed-branch path the promotion contract above assumes, so the
+  // protected launch in #856 could never obtain a promotable Candidate.
+  assert.doesNotMatch(
+    buildGuard,
+    /github\.repository_owner/,
+    "the Candidate build must not be owner-only; publication already admits a write-access collaborator"
+  );
+
+  // Dropping the owner predicate must not become an actor allowlist of its own.
+  // Naming an actor here would pass both assertions above while refusing the
+  // collaborator this change exists to admit, so the guard has to compare the actor
+  // to nothing but the triggering actor.
+  assert.doesNotMatch(
+    buildGuard,
+    /github\.actor\s*(==|!=)\s*(github\.repository_owner|'[^']+')/,
+    "the Candidate build must not single out an actor; only the release gate may allowlist one"
+  );
+
+  // Positive statement of the same invariant: for every actor, including one that
+  // is not the repository owner, this guard reduces to the ref check. Asserting the
+  // absence of the owner predicate alone would also pass a guard that hard-codes an
+  // account name, which is the failure this test exists to prevent.
+  assert.match(buildGuard, /github\.ref_type == 'branch'/);
+  assert.doesNotMatch(buildGuard, /refs\/heads\/main/);
+});
+
 test("Candidate promotion gate refuses every run that is not the promoted source commit", async (t) => {
   const release = YAML.parse(await readFile(".github/workflows/release-opl-cloud-image.yml", "utf8"));
   const gate = candidatePredicate(release);

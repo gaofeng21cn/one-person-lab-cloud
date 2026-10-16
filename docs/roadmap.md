@@ -270,8 +270,10 @@ does not authorize changing provider guards or calling a real provider.
 ### Candidate
 
 A Candidate is a replaceable input built from an exact Cloud SHA. It is not a
-Product Release and may be constructed only through the repository owner’s
-Candidate workflow.
+Product Release. Any write-access collaborator may dispatch the Candidate
+workflow against an exact commit at the head of a pushed branch, and the run must
+be self-attributed: the account that triggered it is the account GitHub
+attributes it to. Promotion remains main-only and is decided separately.
 
 ### Instance
 

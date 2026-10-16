@@ -275,6 +275,15 @@ workflow from `main`, and the original publisher must remain the triggering
 actor. Development, CI, qualification retries, and instance-only work do not
 authorize publication.
 
+Building a Candidate and publishing one are separate authorities. Any
+write-access collaborator may dispatch `build-opl-cloud-candidate.yml` against the
+exact commit at the head of a pushed branch, and that run must stay
+self-attributed. Producing a replaceable Candidate is therefore wider than
+publishing it: the build guard names no actor, while the Release guard keeps the
+allowlist above and still requires the source commit to be reachable from `main`.
+A build guard that names an actor is a boundary defect, and
+`tools/validate-product-boundary.mjs` fails it.
+
 ## Verification
 
 - Run focused checks first with `npm run verify:local:focused -- --base <verified-base-ref>`. The command selects checks from the explicit Git change scope; it never guesses the base. Declare existing owner behavior targets with repeated `--test <file>` when no current test changed; missing targets are refused rather than falling back to full tests or treating typecheck as behavior evidence. Generated checks use the existing generator input/output inventory, E2E classification uses the existing browser suite inventory, and Go changes run tests for the affected packages. Focused test evidence requires actual executed tests with zero failures, skips or TODOs; it is not host acceptance or proof of complete downstream coverage.
