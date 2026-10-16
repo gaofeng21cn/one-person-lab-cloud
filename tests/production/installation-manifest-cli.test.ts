@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { validateInstallationManifest } from "../../tools/ops/installation-manifest.ts";
 import { container, deployment, policy, workedInstallation } from "./fixtures/installation.ts";
 
 const cli = fileURLToPath(new URL("../../tools/validate-production-manifest.ts", import.meta.url));
@@ -129,6 +130,29 @@ test("installation CLI classifies live backend proof failures by boundary", asyn
   const isolatedSecretListenerResult = await invoke(isolatedSecretListener);
   assert.equal(isolatedSecretListenerResult.status, 1, isolatedSecretListenerResult.stdout);
   assert.ok(isolatedSecretListenerResult.report.errors.some(error => error.code === "installation_listener_unproven"), isolatedSecretListenerResult.stdout);
+});
+
+test("installation manifest does not reserve a disabled optional RPC listener", () => {
+  const topology = {
+    image: { defaultCommand: [] },
+    processes: [
+      { service: "fabric", kind: "http", binary: "/fabric", daemonArgs: [], addressEnv: "FABRIC_ADDR", defaultAddress: ":8082", rpcAddressEnv: "FABRIC_RPC_ADDR", defaultRPCAddress: ":8187", rpcEnabledByEnv: "FABRIC_DB", rpcEnabledByEnvSemantics: "trimmed-nonempty" },
+      { service: "other", kind: "http", binary: "/other", daemonArgs: [], addressEnv: "OTHER_ADDR", defaultAddress: ":8187" }
+    ],
+    communication: { schemaVersion: 1, edges: [], security: { tokenMinimumLength: 32 } }
+  };
+  const manifest = {
+    apiVersion: "v1", kind: "List", items: [{
+      apiVersion: "apps/v1", kind: "Deployment", metadata: { name: "unit", namespace: "installation" }, spec: {
+        template: { metadata: { labels: { unit: "all" } }, spec: { containers: [
+          { name: "fabric", image: "example.invalid/fabric:1", command: ["/fabric"], env: [{ name: "FABRIC_RPC_ADDR", value: ":8187" }, { name: "FABRIC_DB", value: "" }], ports: [{ containerPort: 8082 }] },
+          { name: "other", image: "example.invalid/other:1", command: ["/other"], env: [{ name: "OTHER_ADDR", value: ":8187" }], ports: [{ containerPort: 8187 }] }
+        ] } }
+      }
+    }]
+  };
+  const report = validateInstallationManifest(manifest, topology as any);
+  assert.equal(report.ok, true, JSON.stringify(report));
 });
 
 test("installation CLI rejects other declared Service backend producers", async t => {

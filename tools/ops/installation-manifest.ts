@@ -533,10 +533,12 @@ function podListenerError(processes: InstalledProcess[]): string | undefined {
       explicit: listenerConfigured(process, contract.addressEnv, contract.kind === "ownerservice", contract.addressPortEnv), required: false,
       deferUnproven: Boolean(contract.rpcAddressEnv && rpcEnabled(process))
     });
-    if (contract.rpcAddressEnv) addresses.push({
+    if (contract.rpcAddressEnv && rpcEnabled(process)) addresses.push({
       address: rpcListenerAddress(process),
       explicit: listenerConfigured(process, contract.rpcAddressEnv, true), required: false, deferUnproven: false
     });
+    if (contract.rpcAddressEnv && !rpcEnabled(process) && listenerConfigured(process, contract.rpcAddressEnv, true) &&
+        !listenerBinding(listenerAddress(process, contract.rpcAddressEnv, undefined, true))) return "installation_listener_unproven";
     const additionalListeners = (contract.additionalListeners ?? []).map(listener => ({
         address: listenerAddress(process, listener.addressEnv, listener.defaultAddress, listener.valueSemantics === "trimmed"),
         explicit: listenerConfigured(process, listener.addressEnv, listener.valueSemantics === "trimmed"), required: true, deferUnproven: false
