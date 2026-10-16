@@ -34,6 +34,16 @@ export function installationFailure(code: string, security: InstallationSecurity
 function stringMap(value: unknown): boolean {
   return object(value) && Object.values(value).every(entry => typeof entry === "string");
 }
+function deepEqual(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (left === undefined || right === undefined || left === null || right === null || typeof left !== "object" || typeof right !== "object") return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((entry, index) => deepEqual(entry, right[index]));
+  }
+  if (!object(left) || !object(right)) return false;
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  return [...keys].every(key => deepEqual(left[key], right[key]));
+}
 function validContainer(value: unknown): value is Resource {
   return object(value) && typeof value.name === "string" && typeof value.image === "string" &&
     (value.command === undefined || Array.isArray(value.command) && value.command.every((arg: unknown) => typeof arg === "string")) &&
@@ -43,6 +53,10 @@ function validContainer(value: unknown): value is Resource {
       typeof entry.name === "string" && (entry.value === undefined || typeof entry.value === "string") &&
       (entry.valueFrom === undefined || object(entry.valueFrom)) && !(entry.value !== undefined && entry.valueFrom !== undefined))) &&
     (value.ports === undefined || Array.isArray(value.ports) && value.ports.every((entry: unknown) => object(entry) && validPort(entry.containerPort)));
+}
+function validContainerList(value: unknown, required = false): value is Resource[] {
+  return Array.isArray(value) && (!required || value.length > 0) && value.every(validContainer) &&
+    new Set(value.map(container => container.name)).size === value.length;
 }
 function validList(value: unknown): value is Resource {
   if (!object(value) || value.apiVersion !== "v1" || value.kind !== "List" || !Array.isArray(value.items) || value.items.length === 0) return false;
@@ -55,12 +69,13 @@ function validList(value: unknown): value is Resource {
       (resource.spec.selector === undefined || stringMap(resource.spec.selector)) &&
       (resource.spec.ports === undefined || Array.isArray(resource.spec.ports) && resource.spec.ports.every(object));
     if (resource.kind !== "Deployment") return true;
+    const initContainers = resource.spec?.template?.spec?.initContainers;
+    const containers = resource.spec?.template?.spec?.containers;
     return resource.apiVersion === "apps/v1" && object(resource.spec?.template?.spec) &&
       (resource.spec.template.metadata?.labels === undefined || stringMap(resource.spec.template.metadata.labels)) &&
-      Array.isArray(resource.spec.template.spec.containers) && resource.spec.template.spec.containers.length > 0 &&
-      resource.spec.template.spec.containers.every(validContainer) &&
-      (resource.spec.template.spec.initContainers === undefined ||
-        Array.isArray(resource.spec.template.spec.initContainers) && resource.spec.template.spec.initContainers.every(validContainer));
+      validContainerList(containers, true) &&
+      (initContainers === undefined || validContainerList(initContainers)) &&
+      new Set([...containers, ...(initContainers ?? [])].map(container => container.name)).size === containers.length + (initContainers?.length ?? 0);
   });
 }
 type InstalledProcess = { contract: ProcessContract; deployment: Resource; container: Resource; env: Map<string, Resource> };
@@ -144,7 +159,173 @@ function productArgv(container: Resource, defaultCommand: string[] | undefined):
   return container.command?.length ? [...container.command, ...(container.args ?? [])] :
     !container.args?.length ? defaultCommand : undefined;
 }
-function endpointBackend(resource: Resource, service: Resource, target: Resource, targetContainer: Resource, servicePort: Resource, port: number, resources: Resource[], defaultCommand: string[]): boolean {
+function autoServiceAccountVolume(volume: unknown): boolean {
+  if (!object(volume) || typeof volume.name !== "string" || !/^kube-api-access-[a-z0-9]{5}$/.test(volume.name) ||
+      Object.keys(volume).some(key => !["name", "projected"].includes(key)) || !object(volume.projected) ||
+      Object.keys(volume.projected).some(key => !["sources", "defaultMode"].includes(key)) ||
+      volume.projected.defaultMode !== undefined && volume.projected.defaultMode !== 420 || !Array.isArray(volume.projected.sources)) return false;
+  const sources = volume.projected.sources;
+  if (sources.length !== 3) return false;
+  const token = sources.find((source: unknown) => object(source) && Object.hasOwn(source, "serviceAccountToken"));
+  const ca = sources.find((source: unknown) => object(source) && Object.hasOwn(source, "configMap"));
+  const namespace = sources.find((source: unknown) => object(source) && Object.hasOwn(source, "downwardAPI"));
+  if (!token || !ca || !namespace || new Set([token, ca, namespace]).size !== 3 ||
+      Object.keys(token).length !== 1 || Object.keys(ca).length !== 1 || Object.keys(namespace).length !== 1) return false;
+  const tokenSpec = token.serviceAccountToken;
+  const caSpec = ca.configMap;
+  const namespaceSpec = namespace.downwardAPI;
+  return object(tokenSpec) && tokenSpec.path === "token" &&
+    Object.keys(tokenSpec).every(key => ["audience", "expirationSeconds", "path"].includes(key)) &&
+    (tokenSpec.audience === undefined || typeof tokenSpec.audience === "string") &&
+    (tokenSpec.expirationSeconds === undefined || Number.isSafeInteger(tokenSpec.expirationSeconds) && tokenSpec.expirationSeconds >= 600 && tokenSpec.expirationSeconds <= 86400) &&
+    object(caSpec) && caSpec.name === "kube-root-ca.crt" && (caSpec.optional === undefined || caSpec.optional === false) &&
+    Object.keys(caSpec).every(key => ["name", "items", "optional"].includes(key)) && Array.isArray(caSpec.items) && caSpec.items.length === 1 &&
+    object(caSpec.items[0]) && Object.keys(caSpec.items[0]).every(key => ["key", "path", "mode"].includes(key)) &&
+    caSpec.items[0].key === "ca.crt" && caSpec.items[0].path === "ca.crt" &&
+    object(namespaceSpec) && Object.keys(namespaceSpec).every(key => key === "items") && Array.isArray(namespaceSpec.items) && namespaceSpec.items.length === 1 &&
+    object(namespaceSpec.items[0]) && Object.keys(namespaceSpec.items[0]).every(key => ["path", "fieldRef", "mode"].includes(key)) &&
+    namespaceSpec.items[0].path === "namespace" && object(namespaceSpec.items[0].fieldRef) &&
+    namespaceSpec.items[0].fieldRef.apiVersion === "v1" && namespaceSpec.items[0].fieldRef.fieldPath === "metadata.namespace";
+}
+function normalizedPodField(spec: Resource, field: string): unknown {
+  const value = spec[field];
+  if (["hostNetwork", "hostPID", "hostIPC", "shareProcessNamespace"].includes(field)) return value === true;
+  if (field === "hostUsers") return value === undefined ? true : value;
+  if (field === "serviceAccountName") return value ?? "default";
+  if (field === "restartPolicy") return value ?? "Always";
+  if (field === "dnsPolicy") return value ?? "ClusterFirst";
+  if (field === "enableServiceLinks") return value === undefined ? true : value;
+  if (field === "setHostnameAsFQDN") return value === undefined ? false : value;
+  if (field === "terminationGracePeriodSeconds") return value === undefined ? 30 : value;
+  if (field === "schedulerName") return value ?? "default-scheduler";
+  if (field === "priority") return value === undefined ? 0 : value;
+  if (field === "preemptionPolicy") return value ?? "PreemptLowerPriority";
+  if (field === "securityContext" && object(value) && Object.keys(value).length === 0) return undefined;
+  if (field === "imagePullSecrets" && Array.isArray(value) && value.length === 0) return undefined;
+  if (field === "volumes" && Array.isArray(value)) {
+    const filtered = value.filter(volume => !autoServiceAccountVolume(volume));
+    return filtered.length === 0 ? undefined : filtered;
+  }
+  return value;
+}
+function admissionFieldAbsent(value: unknown, field: string): boolean {
+  return value === undefined || field === "imagePullSecrets" && Array.isArray(value) && value.length === 0 ||
+    field === "resources" && object(value) && Object.keys(value).length === 0;
+}
+function samePodTolerations(live: unknown, declared: unknown): boolean {
+  const actual = live === undefined ? [] : live;
+  const template = declared === undefined ? [] : declared;
+  if (!Array.isArray(actual) || !Array.isArray(template) || actual.length < template.length ||
+      template.some((entry, index) => !object(entry) || !deepEqual(entry, actual[index]))) return false;
+  // DefaultTolerationSeconds appends these Pod-only tolerations, unless the
+  // template already covers the key/effect. The timeout is cluster-configured.
+  const additions = new Set<string>();
+  return actual.slice(template.length).every(entry => {
+    if (!object(entry) || !["node.kubernetes.io/not-ready", "node.kubernetes.io/unreachable"].includes(entry.key) ||
+        entry.operator !== "Exists" || entry.effect !== "NoExecute" ||
+        entry.value !== undefined && entry.value !== "" || !Number.isSafeInteger(entry.tolerationSeconds) ||
+        Object.keys(entry).some(key => !["key", "operator", "effect", "value", "tolerationSeconds"].includes(key)) ||
+        additions.has(entry.key) || template.some(toleration =>
+          (toleration.key === entry.key || !toleration.key) && (!toleration.effect || toleration.effect === "NoExecute"))) return false;
+    additions.add(entry.key);
+    return true;
+  });
+}
+function samePodSecurityShape(live: Resource, declared: Resource): boolean {
+  const fields = [
+    "hostNetwork", "hostPID", "hostIPC", "shareProcessNamespace", "hostUsers", "serviceAccountName", "runtimeClassName",
+    "automountServiceAccountToken", "securityContext", "volumes", "imagePullSecrets", "hostAliases",
+    "dnsConfig", "dnsPolicy", "enableServiceLinks", "restartPolicy", "hostname", "subdomain", "setHostnameAsFQDN",
+    "terminationGracePeriodSeconds", "schedulerName", "priorityClassName", "priority", "preemptionPolicy",
+    "topologySpreadConstraints", "nodeSelector", "affinity", "tolerations"
+  ];
+  const booleanFields = ["hostNetwork", "hostPID", "hostIPC", "shareProcessNamespace", "hostUsers", "automountServiceAccountToken", "enableServiceLinks"];
+  const stringFields = ["serviceAccountName", "runtimeClassName", "restartPolicy", "dnsPolicy"];
+  if (booleanFields.some(field => [live[field], declared[field]].some(value => value !== undefined && typeof value !== "boolean"))) return false;
+  if (stringFields.some(field => [live[field], declared[field]].some(value => value !== undefined && typeof value !== "string"))) return false;
+  if ([live.securityContext, declared.securityContext].some(value => value !== undefined && !object(value))) return false;
+  if (live.ephemeralContainers !== undefined && (!Array.isArray(live.ephemeralContainers) || live.ephemeralContainers.length > 0)) return false;
+  return fields.every(field => {
+    if (field === "tolerations") return samePodTolerations(live[field], declared[field]);
+    if (field === "imagePullSecrets" && admissionFieldAbsent(declared[field], field) && live[field] !== undefined)
+      return validImagePullSecrets(live[field]);
+    return deepEqual(normalizedPodField(live, field), normalizedPodField(declared, field));
+  });
+}
+const liveContainerFields = [
+  "name", "image", "command", "args", "env", "envFrom", "ports", "securityContext", "volumeMounts",
+  "volumeDevices", "lifecycle", "readinessProbe", "livenessProbe", "startupProbe", "resources", "workingDir",
+  "stdin", "stdinOnce", "tty", "restartPolicy", "imagePullPolicy", "resizePolicy", "terminationMessagePath",
+  "terminationMessagePolicy"
+];
+function normalizedContainerField(container: Resource, field: string): unknown {
+  const value = container[field];
+  if (field === "resources" && object(value) && Object.keys(value).length === 0) return undefined;
+  if (field === "volumeMounts" && Array.isArray(value)) {
+    const filtered = value.filter(mount => !(object(mount) && /^kube-api-access-[a-z0-9]{5}$/.test(mount.name ?? "") &&
+      mount.mountPath === "/var/run/secrets/kubernetes.io/serviceaccount" &&
+      Object.keys(mount).every(key => ["name", "mountPath", "readOnly"].includes(key)) && mount.readOnly !== false));
+    return filtered.length === 0 ? undefined : filtered;
+  }
+  if (field === "ports" && Array.isArray(value)) return value.map(port => object(port) ? { ...port, protocol: port.protocol ?? "TCP" } : port);
+  if (field === "imagePullPolicy" && value === undefined) {
+    const image = typeof container.image === "string" ? container.image : "";
+    if (image.includes("@")) return "IfNotPresent";
+    const tag = image.slice(image.lastIndexOf("/") + 1).split(":")[1];
+    return tag === undefined || tag === "latest" ? "Always" : "IfNotPresent";
+  }
+  if (field === "terminationMessagePath") return value ?? "/dev/termination-log";
+  if (field === "terminationMessagePolicy") return value ?? "File";
+  return value;
+}
+function validImagePullSecrets(value: unknown): boolean {
+  return Array.isArray(value) && value.every(entry => object(entry) && typeof entry.name === "string" &&
+    entry.name.length > 0 && Object.keys(entry).every(key => key === "name"));
+}
+function validResourceRequirements(value: unknown): boolean {
+  return object(value) && Object.keys(value).every(key => ["limits", "requests"].includes(key)) &&
+    ["limits", "requests"].every(key => value[key] === undefined || stringMap(value[key]));
+}
+function sameContainerShape(live: Resource, declared: Resource): boolean {
+  return liveContainerFields.every(field => {
+    if (field === "resources" && admissionFieldAbsent(declared[field], field) && live[field] !== undefined)
+      return validResourceRequirements(live[field]);
+    return deepEqual(normalizedContainerField(live, field), normalizedContainerField(declared, field));
+  });
+}
+function sameContainerList(live: unknown, declared: unknown, ordered = false): boolean {
+  if (!Array.isArray(live) || !Array.isArray(declared) || live.length !== declared.length) return false;
+  if (new Set(live.map(container => container.name)).size !== live.length || new Set(declared.map(container => container.name)).size !== declared.length) return false;
+  if (ordered) return live.every((container, index) => object(container) && object(declared[index]) && sameContainerShape(container, declared[index]));
+  const declaredByName = new Map(declared.map(container => [container.name, container]));
+  return live.every(container => object(container) && declaredByName.has(container.name) && sameContainerShape(container, declaredByName.get(container.name)!));
+}
+function sameLivePodShape(pod: Resource, declared: Resource): boolean {
+  if (!validContainerList(pod.spec?.containers, true) || !validContainerList(declared.containers, true) ||
+      pod.spec.initContainers !== undefined && !validContainerList(pod.spec.initContainers) ||
+      declared.initContainers !== undefined && !validContainerList(declared.initContainers)) return false;
+  const liveContainers = [...pod.spec.containers, ...(pod.spec.initContainers ?? [])];
+  const declaredContainers = [...declared.containers, ...(declared.initContainers ?? [])];
+  if (new Set(liveContainers.map(container => container.name)).size !== liveContainers.length ||
+      new Set(declaredContainers.map(container => container.name)).size !== declaredContainers.length) return false;
+  return samePodSecurityShape(pod.spec, declared) && sameContainerList(pod.spec.containers, declared.containers) &&
+    sameContainerList(pod.spec.initContainers ?? [], declared.initContainers ?? [], true);
+}
+function servicePublishesNotReady(service: Resource): boolean {
+  return service.spec?.publishNotReadyAddresses === true;
+}
+function endpointServiceability(endpoint: unknown, service: Resource): "serviceable" | "unserviceable" | undefined {
+  if (!object(endpoint) || !Array.isArray(endpoint.addresses) || endpoint.addresses.length === 0 ||
+      endpoint.addresses.some((address: unknown) => typeof address !== "string" || isIP(address) === 0)) return;
+  const conditions = endpoint.conditions;
+  if (conditions !== undefined && (!object(conditions) || Object.keys(conditions).some(key => !["ready", "serving", "terminating"].includes(key)) ||
+      ["ready", "serving", "terminating"].some(key => conditions[key] !== undefined && typeof conditions[key] !== "boolean"))) return;
+  if (conditions?.serving === false || conditions?.terminating === true ||
+      conditions?.ready === false && !servicePublishesNotReady(service)) return "unserviceable";
+  return "serviceable";
+}
+function endpointBackend(resource: Resource, service: Resource, target: Resource, targetContainer: Resource, servicePort: Resource, port: number, resources: Resource[], defaultCommand: string[],
+  processContract: (container: Resource) => ProcessContract | undefined): boolean {
   const provesPort = (ports: unknown): boolean => {
     if (!Array.isArray(ports)) return false;
     const matching = ports.filter(entry => object(entry) && (entry.name ?? "") === (servicePort.name ?? "") && (entry.protocol ?? "TCP") === "TCP");
@@ -157,8 +338,8 @@ function endpointBackend(resource: Resource, service: Resource, target: Resource
     const pod = resources.find(candidate => candidate.kind === "Pod" && candidate.apiVersion === "v1" &&
       namespace(candidate) === namespace(service) && candidate.metadata.name === ref.name && candidate.metadata.uid === ref.uid);
     if (!pod || !ownedBackend(pod, target, resources) || !labelsMatch(service.spec.selector, pod.metadata.labels ?? {})) return false;
-    if (!Array.isArray(pod.spec?.containers) || pod.spec.containers.length === 0 || !pod.spec.containers.every(validContainer) ||
-        pod.spec.initContainers !== undefined && (!Array.isArray(pod.spec.initContainers) || !pod.spec.initContainers.every(validContainer))) return false;
+    if (!validContainerList(pod.spec?.containers, true) ||
+        pod.spec.initContainers !== undefined && !validContainerList(pod.spec.initContainers)) return false;
     const liveContainers = pod.spec.containers;
     const liveInitContainers = pod.spec.initContainers ?? [];
     const targetName = targetContainer.name;
@@ -166,16 +347,39 @@ function endpointBackend(resource: Resource, service: Resource, target: Resource
     // Prepare may project a new Deployment over still-running old replicas.
     // Prove each Pod against its own immutable ReplicaSet template; requiring
     // the new desired image here would prevent a legitimate upgrade preflight.
-    const replicaContainers = controller(pod, "ReplicaSet", resources)?.spec?.template?.spec?.containers;
-    if (!Array.isArray(replicaContainers)) return false;
+    const replicaSpec = controller(pod, "ReplicaSet", resources)?.spec?.template?.spec;
+    const replicaContainers = replicaSpec?.containers;
+    if (!object(replicaSpec) || !validContainerList(replicaContainers, true) ||
+        replicaSpec.initContainers !== undefined && !validContainerList(replicaSpec.initContainers) ||
+        !sameLivePodShape(pod, replicaSpec)) return false;
     const replicaTargets = replicaContainers.filter((container: unknown) => validContainer(container) && container.name === targetName);
-    if (liveTargets.length !== 1 || replicaTargets.length !== 1 || liveTargets[0].image !== replicaTargets[0].image) return false;
+    if (liveTargets.length !== 1 || replicaTargets.length !== 1 || !sameContainerShape(liveTargets[0], replicaTargets[0])) return false;
     const expectedArgv = productArgv(replicaTargets[0], defaultCommand);
     const liveArgv = productArgv(liveTargets[0], defaultCommand);
     if (!expectedArgv || !liveArgv || expectedArgv.length !== liveArgv.length ||
         expectedArgv.some((arg, index) => arg !== liveArgv[index])) return false;
     const competingLiveContainers = [...liveContainers.filter((container: Resource) => container?.name !== targetName),
       ...liveInitContainers.filter((container: Resource) => container?.restartPolicy === "Always")];
+    for (const container of competingLiveContainers) {
+      if ((container.ports ?? []).some((entry: Resource) => (entry.protocol ?? "TCP") === "TCP" &&
+          (entry.containerPort === port || typeof servicePort.targetPort === "string" && entry.name === servicePort.targetPort))) return false;
+      const contract = processContract(container);
+      if (!contract) continue;
+      const result = effectiveEnv(target.deployment, container,
+        new Set([contract.addressEnv, contract.rpcAddressEnv, contract.rpcEnabledByEnv, contract.addressPortEnv,
+          ...(contract.additionalListeners ?? []).map(listener => listener.addressEnv)].filter((name): name is string => Boolean(name))), resources);
+      if (result.error) return false;
+      const process = { contract, deployment: target.deployment, container, env: result.env };
+      const enabled = rpcEnabled(process);
+      const addresses: (string | undefined)[] = [];
+      if (contract.rpcAddressEnv || enabled) addresses.push(listenerAddress(process, contract.addressEnv, contract.defaultAddress, contract.kind === "ownerservice", contract.addressPortEnv));
+      if (contract.rpcAddressEnv && enabled) addresses.push(rpcListenerAddress(process));
+      for (const listener of contract.additionalListeners ?? []) {
+        if (envEntry(process, listener.addressEnv) || listener.defaultAddress !== undefined)
+          addresses.push(listenerAddress(process, listener.addressEnv, listener.defaultAddress, listener.valueSemantics === "trimmed"));
+      }
+      if (addresses.some(address => address === undefined || Number(/:([0-9]+)$/.exec(address)?.[1]) === port)) return false;
+    }
     if (competingLiveContainers.some((container: Resource) => (container?.ports ?? []).some((entry: Resource) =>
       (entry?.protocol ?? "TCP") === "TCP" && entry?.containerPort === port))) return false;
     const podIP = pod.status?.podIP;
@@ -191,19 +395,29 @@ function endpointBackend(resource: Resource, service: Resource, target: Resource
   if (resource.kind === "EndpointSlice") {
     return resource.apiVersion === "discovery.k8s.io/v1" && controller(resource, "Service", resources) === service &&
       (resource.addressType === "IPv4" || resource.addressType === "IPv6") &&
-      Array.isArray(resource.endpoints) && resource.endpoints.length > 0 && resource.endpoints.every((endpoint: unknown) =>
-        object(endpoint) && provesPort(resource.ports) && provesPod(endpoint.targetRef, endpoint.addresses, resource.addressType));
+      Array.isArray(resource.endpoints) && resource.endpoints.length > 0 && (() => {
+        const states = resource.endpoints.map((endpoint: unknown) => endpointServiceability(endpoint, service));
+        if (states.some(state => state === undefined)) return false;
+        if (!resource.endpoints.every((endpoint: unknown) =>
+          object(endpoint) && provesPort(resource.ports) && provesPod(endpoint.targetRef, endpoint.addresses, resource.addressType))) return false;
+        const serviceable = resource.endpoints.filter((_: unknown, index: number) => states[index] === "serviceable");
+        return serviceable.length > 0;
+      })();
   }
   // The legacy Endpoints controller does not attach a Service ownerReference.
   // Its exact Service name plus every Pod UID and address must still agree.
   if (resource.apiVersion !== "v1" || !Array.isArray(resource.subsets) || resource.subsets.length === 0) return false;
   return resource.subsets.every((subset: unknown) => {
     if (!object(subset)) return false;
-    const addresses = subset.addresses === undefined ? [] : Array.isArray(subset.addresses) ? subset.addresses : undefined;
-    const notReadyAddresses = subset.notReadyAddresses === undefined ? [] :
-      Array.isArray(subset.notReadyAddresses) ? subset.notReadyAddresses : undefined;
-    const entries = addresses && notReadyAddresses ? [...addresses, ...notReadyAddresses] : undefined;
-    return entries !== undefined && entries.length > 0 && entries.every(entry =>
+    if (subset.addresses !== undefined && !Array.isArray(subset.addresses) ||
+        subset.notReadyAddresses !== undefined && !Array.isArray(subset.notReadyAddresses)) return false;
+    const addresses = subset.addresses ?? [];
+    const notReadyAddresses = subset.notReadyAddresses ?? [];
+    const readyEntries = addresses;
+    const notReadyEntries = servicePublishesNotReady(service) ? notReadyAddresses ?? [] : [];
+    const allEntries = [...readyEntries, ...notReadyAddresses];
+    const entries = readyEntries.length > 0 || notReadyEntries.length > 0 ? [...readyEntries, ...notReadyEntries] : undefined;
+    return entries !== undefined && entries.length > 0 && allEntries.every(entry =>
       object(entry) && provesPort(subset.ports) && provesPod(entry.targetRef, [entry.ip]));
   });
 }
@@ -488,7 +702,7 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     const endpoints = resources.filter(resource => namespace(resource) === namespace(service) &&
       (resource.kind === "Endpoints" && resource.metadata.name === service.metadata.name ||
        resource.kind === "EndpointSlice" && resource.metadata.labels?.["kubernetes.io/service-name"] === service.metadata.name));
-    if (conflict || endpoints.some(resource => !endpointBackend(resource, service, target.deployment, target.container, servicePort, targetPort, resources, topology.image.defaultCommand))) {
+    if (conflict || endpoints.some(resource => !endpointBackend(resource, service, target.deployment, target.container, servicePort, targetPort, resources, topology.image.defaultCommand, processContract))) {
       fail("rpc_service_backend_ambiguous"); continue;
     }
     const tokenRef = secretReference(envEntry(caller, edge.tokenEnv));

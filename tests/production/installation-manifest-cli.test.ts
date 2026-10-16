@@ -146,13 +146,24 @@ test("installation CLI accepts live replicas only through exact controller and e
     ["missing live containers", ({ pod }) => { delete pod.spec.containers; }],
     ["malformed Pod IP list", ({ pod }) => { pod.status.podIPs = [null]; }],
     ["stale slice Service UID", ({ service }) => { service.metadata.uid = "replaced-service"; }],
-    ["live sidecar listener", ({ pod }) => { pod.spec.containers.push({ name: "live-sidecar", image: "example.invalid/sidecar:1", ports: [{ containerPort: 8184 }] }); }],
-    ["live restartable init listener", ({ pod }) => { pod.spec.initContainers = [{ name: "live-sidecar", image: "example.invalid/sidecar:1", restartPolicy: "Always", ports: [{ containerPort: 8184 }] }]; }],
+    ["live sidecar listener", ({ pod, replicaSet }) => {
+      const sidecar = { name: "live-sidecar", image: "example.invalid/sidecar:1", ports: [{ containerPort: 8184 }] };
+      pod.spec.containers.push(structuredClone(sidecar)); replicaSet.spec.template.spec.containers.push(sidecar);
+    }],
+    ["live restartable init listener", ({ pod, replicaSet }) => {
+      const init = { name: "live-sidecar", image: "example.invalid/sidecar:1", restartPolicy: "Always", ports: [{ containerPort: 8184 }] };
+      pod.spec.initContainers = [structuredClone(init)]; replicaSet.spec.template.spec.initContainers = [init];
+    }],
     ["malformed live sidecar ports", ({ pod }) => { pod.spec.containers.push({ name: "live-sidecar", image: "example.invalid/sidecar:1", ports: "invalid" }); }],
     ["malformed live initContainers", ({ pod }) => { pod.spec.initContainers = "invalid"; }],
+    ["malformed ReplicaSet containers", ({ replicaSet }) => { replicaSet.spec.template.spec.containers = [null]; }],
     ["drifted live target image", ({ pod }) => { pod.spec.containers[0].image = "example.invalid/foreign:1"; }],
     ["drifted live target command", ({ pod }) => { pod.spec.containers[0].command = ["/bin/sh", "-c", "exec sleep 3600"]; }],
     ["drifted live target args", ({ pod }) => { pod.spec.containers[0].args = ["probe-workspace-access"]; }],
+    ["live host network", ({ pod }) => { pod.spec.hostNetwork = true; }],
+    ["live host PID namespace", ({ pod }) => { pod.spec.hostPID = true; }],
+    ["live runtime class", ({ pod }) => { pod.spec.runtimeClassName = "untrusted-runtime"; }],
+    ["live ephemeral container", ({ pod }) => { pod.spec.ephemeralContainers = [{ name: "debugger", image: "example.invalid/debugger:1" }]; }],
     ["missing live target container", ({ pod }) => { pod.spec.containers = [{ name: "other", image: "example.invalid/other:1" }]; }],
     ["wrong endpoint port", ({ endpoints }) => { endpoints.subsets[0].ports[0].port = 9999; }],
     ["wrong slice port", ({ slice }) => { slice.ports[0].port = 9999; }]
@@ -182,6 +193,178 @@ test("installation CLI accepts API defaulted live container fields", async () =>
   pod.spec.containers[0].ports[0].protocol = "TCP";
   const result = await invoke(list);
   assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
+test("installation CLI accepts structurally valid Kubernetes admission additions", async () => {
+  const { list, pod } = withLiveWorkspaceBackends();
+  pod.spec.imagePullSecrets = [{ name: "registry-auth" }];
+  pod.spec.containers[0].resources = { limits: { cpu: "1" }, requests: { cpu: "100m" } };
+  const result = await invoke(list);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+
+  const explicitEmpty = withLiveWorkspaceBackends();
+  explicitEmpty.replicaSet.spec.template.spec.imagePullSecrets = [];
+  explicitEmpty.replicaSet.spec.template.spec.containers[0].resources = {};
+  explicitEmpty.pod.spec.imagePullSecrets = [{ name: "registry-auth" }];
+  explicitEmpty.pod.spec.containers[0].resources = { limits: { cpu: "1" } };
+  const explicitEmptyResult = await invoke(explicitEmpty.list);
+  assert.equal(explicitEmptyResult.status, 0, explicitEmptyResult.stdout + explicitEmptyResult.stderr);
+});
+
+test("installation CLI distinguishes default Pod tolerations from template drift", async t => {
+  const defaults = (seconds: number) => ["not-ready", "unreachable"].map(key => ({
+    key: `node.kubernetes.io/${key}`, operator: "Exists", effect: "NoExecute", tolerationSeconds: seconds
+  }));
+  for (const seconds of [300, 60]) await t.test(`cluster default ${seconds}s`, async () => {
+    const { list, pod } = withLiveWorkspaceBackends();
+    pod.spec.tolerations = defaults(seconds);
+    const result = await invoke(list);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  });
+  await t.test("retains an explicit template toleration", async () => {
+    const { list, pod, replicaSet } = withLiveWorkspaceBackends();
+    const explicit = { key: "dedicated", operator: "Equal", value: "cloud", effect: "NoSchedule" };
+    replicaSet.spec.template.spec.tolerations = [explicit];
+    pod.spec.tolerations = [structuredClone(explicit), ...defaults(300)];
+    const result = await invoke(list);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  });
+  const cases: [string, (fixture: ReturnType<typeof withLiveWorkspaceBackends>) => void][] = [
+    ["malformed tolerations", ({ pod }) => { pod.spec.tolerations = null; }],
+    ["unknown addition", ({ pod }) => { pod.spec.tolerations.push({ key: "dedicated", operator: "Exists", effect: "NoSchedule" }); }],
+    ["indefinite default", ({ pod }) => { delete pod.spec.tolerations[0].tolerationSeconds; }],
+    ["duplicate default", ({ pod }) => { pod.spec.tolerations.push(structuredClone(pod.spec.tolerations[0])); }],
+    ["changed explicit timeout", ({ pod, replicaSet }) => {
+      replicaSet.spec.template.spec.tolerations = [defaults(30)[0]];
+      pod.spec.tolerations[0].tolerationSeconds = 600;
+    }],
+    ["default appended despite explicit wildcard", ({ pod, replicaSet }) => {
+      const wildcard = { operator: "Exists", effect: "NoExecute" };
+      replicaSet.spec.template.spec.tolerations = [wildcard];
+      pod.spec.tolerations.unshift(structuredClone(wildcard));
+    }]
+  ];
+  for (const [name, change] of cases) await t.test(name, async () => {
+    const fixture = withLiveWorkspaceBackends();
+    fixture.pod.spec.tolerations = defaults(300);
+    change(fixture);
+    const result = await invoke(fixture.list);
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.ok(result.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+  });
+});
+
+test("installation CLI admits non-listening live helpers with Product address variables", async t => {
+  for (const init of [false, true]) await t.test(init ? "restartable init" : "sidecar", async () => {
+    const { list, pod, replicaSet } = withLiveWorkspaceBackends();
+    const helper = { name: "non-listening-helper", image: "example.invalid/helper:1",
+      command: ["/bin/sh", "-c", "exec sleep 3600"], env: [{ name: "OPL_WORKSPACE_ADDR", value: ":8184" }],
+      ...(init ? { restartPolicy: "Always" } : {}) };
+    if (init) {
+      pod.spec.initContainers = [structuredClone(helper)];
+      replicaSet.spec.template.spec.initContainers = [helper];
+    } else {
+      pod.spec.containers.push(structuredClone(helper));
+      replicaSet.spec.template.spec.containers.push(helper);
+    }
+    const result = await invoke(list);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(result.report.communication.edges.length, 46);
+  });
+});
+
+test("installation CLI binds live init identity and canonical projected ServiceAccount volume", async () => {
+  const ordered = withLiveWorkspaceBackends();
+  const initA = { name: "init-a", image: "example.invalid/init-a:1" };
+  const initB = { name: "init-b", image: "example.invalid/init-b:1" };
+  ordered.replicaSet.spec.template.spec.initContainers = [initA, initB];
+  ordered.pod.spec.initContainers = [initB, initA];
+  const orderedResult = await invoke(ordered.list);
+  assert.equal(orderedResult.status, 1);
+  assert.ok(orderedResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+  assert.deepEqual(orderedResult.report.communication.edges, []);
+
+  const duplicate = withLiveWorkspaceBackends();
+  const duplicateInit = { name: "owner", image: "example.invalid/init:1" };
+  duplicate.replicaSet.spec.template.spec.initContainers = [duplicateInit];
+  duplicate.pod.spec.initContainers = [duplicateInit];
+  const duplicateResult = await invoke(duplicate.list);
+  assert.equal(duplicateResult.status, 1);
+  assert.ok(duplicateResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+  assert.deepEqual(duplicateResult.report.communication.edges, []);
+
+  const injected = withLiveWorkspaceBackends();
+  injected.pod.spec.volumes = [{ name: "kube-api-access-abc12", projected: { sources: [
+    { serviceAccountToken: { expirationSeconds: 3607, path: "token" } },
+    { configMap: { name: "kube-root-ca.crt", items: [{ key: "ca.crt", path: "ca.crt" }] } },
+    { downwardAPI: { items: [{ fieldRef: { apiVersion: "v1", fieldPath: "metadata.namespace" }, path: "namespace" }] } }
+  ] } }];
+  injected.pod.spec.containers[0].volumeMounts = [{ name: "kube-api-access-abc12", mountPath: "/var/run/secrets/kubernetes.io/serviceaccount", readOnly: true }];
+  const injectedResult = await invoke(injected.list);
+  assert.equal(injectedResult.status, 0);
+  assert.equal(injectedResult.report.communication.edges.length, 46);
+  const forged = withLiveWorkspaceBackends();
+  forged.pod.spec.volumes = [{ name: "kube-api-access-abc12", projected: { sources: [
+    { serviceAccountToken: { path: "evil" } }, { secret: { name: "foreign" } }
+  ] } }];
+  const forgedResult = await invoke(forged.list);
+  assert.equal(forgedResult.status, 1);
+  assert.ok(forgedResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+  assert.deepEqual(forgedResult.report.communication.edges, []);
+});
+
+test("installation CLI rejects unserviceable supplied live endpoints", async () => {
+  for (const change of [
+    (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.slice.endpoints[0].conditions = { ready: false }; },
+    (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.slice.endpoints[0].conditions = { serving: false }; },
+    (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.slice.endpoints[0].conditions = { ready: true, serving: true, terminating: true }; },
+    (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.endpoints.subsets[0].notReadyAddresses = live.endpoints.subsets[0].addresses; delete live.endpoints.subsets[0].addresses; },
+  ]) {
+    const live = withLiveWorkspaceBackends();
+    change(live);
+    assert.equal((await invoke(live.list)).status, 1);
+  }
+  const mixed = withLiveWorkspaceBackends();
+  mixed.list.items = mixed.list.items.filter(item => item !== mixed.endpoints);
+  mixed.slice.endpoints.push({ addresses: ["2001:db8::1"], targetRef: mixed.slice.endpoints[0].targetRef, conditions: { ready: false } });
+  const mixedResult = await invoke(mixed.list);
+  assert.equal(mixedResult.status, 0);
+  assert.ok(mixedResult.report.communication.edges.some(edge => edge.target === "workspace"));
+
+  const malformedSlice = withLiveWorkspaceBackends();
+  malformedSlice.list.items = malformedSlice.list.items.filter(item => item !== malformedSlice.endpoints);
+  malformedSlice.slice.endpoints.push({ addresses: ["2001:db8::1"], targetRef: malformedSlice.slice.endpoints[0].targetRef, conditions: { ready: "unknown" } });
+  const malformedSliceResult = await invoke(malformedSlice.list);
+  assert.equal(malformedSliceResult.status, 1);
+  assert.ok(malformedSliceResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+
+  const malformedSliceAddress = withLiveWorkspaceBackends();
+  malformedSliceAddress.list.items = malformedSliceAddress.list.items.filter(item => item !== malformedSliceAddress.endpoints);
+  malformedSliceAddress.slice.endpoints.push({ addresses: ["not-an-ip"], targetRef: malformedSliceAddress.slice.endpoints[0].targetRef, conditions: { ready: false } });
+  const malformedSliceAddressResult = await invoke(malformedSliceAddress.list);
+  assert.equal(malformedSliceAddressResult.status, 1);
+  assert.ok(malformedSliceAddressResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+
+  const malformedUnreadySlice = withLiveWorkspaceBackends();
+  malformedUnreadySlice.list.items = malformedUnreadySlice.list.items.filter(item => item !== malformedUnreadySlice.endpoints);
+  malformedUnreadySlice.slice.endpoints.push({ addresses: ["2001:db8::1"], targetRef: { ...malformedUnreadySlice.slice.endpoints[0].targetRef, uid: "wrong-pod" }, conditions: { ready: false } });
+  const malformedUnreadySliceResult = await invoke(malformedUnreadySlice.list);
+  assert.equal(malformedUnreadySliceResult.status, 1);
+  assert.ok(malformedUnreadySliceResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+
+  const malformedEndpoints = withLiveWorkspaceBackends();
+  malformedEndpoints.endpoints.subsets[0].notReadyAddresses = "invalid";
+  const malformedEndpointsResult = await invoke(malformedEndpoints.list);
+  assert.equal(malformedEndpointsResult.status, 1);
+  assert.ok(malformedEndpointsResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+
+  const malformedUnreadyEndpoints = withLiveWorkspaceBackends();
+  malformedUnreadyEndpoints.endpoints.subsets[0].notReadyAddresses = [{
+    ip: "192.0.2.1", targetRef: { ...malformedUnreadyEndpoints.endpoints.subsets[0].addresses[0].targetRef, uid: "wrong-pod" }
+  }];
+  const malformedUnreadyEndpointsResult = await invoke(malformedUnreadyEndpoints.list);
+  assert.equal(malformedUnreadyEndpointsResult.status, 1);
+  assert.ok(malformedUnreadyEndpointsResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
 });
 
 test("installation CLI refuses empty or incomplete live endpoint inventories", async t => {
