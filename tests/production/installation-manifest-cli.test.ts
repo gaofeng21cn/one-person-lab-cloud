@@ -153,6 +153,15 @@ test("installation manifest does not reserve a disabled optional RPC listener", 
   };
   const report = validateInstallationManifest(manifest, topology as any);
   assert.equal(report.ok, true, JSON.stringify(report));
+
+  const invalidHttpListener = structuredClone(manifest);
+  const invalidFabric = invalidHttpListener.items[0].spec.template.spec.containers[0];
+  invalidFabric.env = invalidFabric.env.map(entry => entry.name === "FABRIC_DB" ? { name: entry.name, value: "enabled" } : entry);
+  invalidFabric.env.push({ name: "FABRIC_ADDR", value: "not-an-address" });
+  invalidHttpListener.items[0].spec.template.spec.containers = [invalidFabric];
+  const invalidReport = validateInstallationManifest(invalidHttpListener, topology as any);
+  assert.equal(invalidReport.ok, false, JSON.stringify(invalidReport));
+  assert.ok(invalidReport.errors.some(error => error.code === "installation_listener_unproven"), JSON.stringify(invalidReport));
 });
 
 test("installation CLI rejects other declared Service backend producers", async t => {

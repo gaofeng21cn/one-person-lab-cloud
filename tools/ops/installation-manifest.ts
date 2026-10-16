@@ -523,7 +523,7 @@ function listenerBinding(address: string | undefined): ListenerBinding | undefin
   const host = rawHost.includes(":") ? new URL(`http://[${rawHost}]`).hostname : rawHost;
   return { host, port: Number(match[2]), wildcard: ["", "0.0.0.0", "[::]"].includes(host) };
 }
-function podListenerError(processes: InstalledProcess[]): string | undefined {
+function podListenerError(processes: InstalledProcess[], deferredLegacyListeners: Set<InstalledProcess>): string | undefined {
   const bindings: ListenerBinding[] = [];
   for (const process of processes) {
     const { contract } = process;
@@ -531,7 +531,7 @@ function podListenerError(processes: InstalledProcess[]): string | undefined {
     if (contract.rpcAddressEnv || rpcEnabled(process)) addresses.push({
       address: listenerAddress(process, contract.addressEnv, contract.defaultAddress, contract.kind === "ownerservice", contract.addressPortEnv),
       explicit: listenerConfigured(process, contract.addressEnv, contract.kind === "ownerservice", contract.addressPortEnv), required: false,
-      deferUnproven: Boolean(contract.rpcAddressEnv && rpcEnabled(process))
+      deferUnproven: deferredLegacyListeners.has(process)
     });
     if (contract.rpcAddressEnv && rpcEnabled(process)) addresses.push({
       address: rpcListenerAddress(process),
@@ -627,8 +627,20 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
   }
   if (recognized.size === 0) return failure("installation_process_missing");
   if (productNamespaces.size !== 1) return failure("installation_namespace_unsupported");
+  const deferredLegacyListeners = new Set<InstalledProcess>();
+  for (const edge of topology.communication.edges) {
+    const caller = installed.get(edge.caller);
+    const target = installed.get(edge.target);
+    if (!caller || !target || !target.contract.rpcAddressEnv) continue;
+    const address = envEntry(caller, edge.addressEnv);
+    const addressSemantics = edge.activation === "configured" ? edge.configuredAddressSemantics! : "trimmed-nonempty";
+    if (edge.activation === "configured" && !configured(address, addressSemantics) &&
+        !configured(envEntry(caller, edge.tokenEnv), "trimmed-nonempty") &&
+        !(edge.activationEnv && configured(envEntry(caller, edge.activationEnv), "trimmed-nonempty"))) continue;
+    deferredLegacyListeners.add(target);
+  }
   for (const processes of podProcesses.values()) {
-    const error = podListenerError(processes);
+    const error = podListenerError(processes, deferredLegacyListeners);
     if (error) return failure(error);
   }
   for (const edge of topology.communication.edges) {
