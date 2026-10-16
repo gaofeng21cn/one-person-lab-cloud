@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "owner": "OPL Cloud",
   "purpose": "Portable product distribution and instance handoff boundary.",
   "state": "current",
@@ -61,6 +61,7 @@
         "candidate",
         "local_qualification",
         "instance_deployment_verified",
+        "cloud_customer_reads_verified",
         "instance_qualification_decision",
         "instance_workspace_verified"
       ],
@@ -82,6 +83,15 @@
       "recovery": {
         "sameTagAssetReplacement": true,
         "versionBumpRequiredForPublicationFailure": false
+      },
+      "customerReadback": {
+        "repository": "gaofeng21cn/one-person-lab-cloud",
+        "workflow": ".github/workflows/cloud-business-readback.yml",
+        "environment": "cloud-business-qualification",
+        "scope": "customer_reads",
+        "status": "customer_reads_verified",
+        "installationBinding": "original_instance_receipt_bytes",
+        "replacesFullBusinessQualification": false
       }
     },
     "publicReadback": {

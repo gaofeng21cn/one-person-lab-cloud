@@ -23,6 +23,10 @@ on:
         description: Successful Instance installation identity and health verification for this Candidate.
         required: true
         type: string
+      cloud_customer_readback_run_id:
+        description: Successful protected Cloud Customer Readback run for the same Candidate and installation.
+        required: true
+        type: string
       instance_qualification_decision_run_id:
         description: Successful required=true Instance Qualification Decision run for the same Candidate.
         required: true
@@ -52,6 +56,7 @@ jobs:
       candidate_receipt_digest: ${{ steps.candidate.outputs.candidate_receipt_digest }}
       image_digest: ${{ steps.candidate.outputs.image_digest }}
       installation_receipt_digest: ${{ steps.installation.outputs.receipt_digest }}
+      customer_receipt_digest: ${{ steps.customer.outputs.receipt_digest }}
       product_tree: ${{ steps.candidate.outputs.product_tree }}
       qualification_scope_digest: ${{ steps.instance.outputs.qualification_scope_digest }}
     env:
@@ -63,6 +68,7 @@ jobs:
       CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
       LOCAL_QUALIFICATION_RUN_ID: ${{ inputs.local_qualification_run_id }}
       INSTANCE_DEPLOYMENT_RUN_ID: ${{ inputs.instance_deployment_verification_run_id }}
+      CUSTOMER_RUN_ID: ${{ inputs.cloud_customer_readback_run_id }}
       INSTANCE_DECISION_RUN_ID: ${{ inputs.instance_qualification_decision_run_id }}
       INSTANCE_WORKSPACE_RUN_ID: ${{ inputs.instance_workspace_verification_run_id }}
 
@@ -75,7 +81,7 @@ jobs:
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v0\.[0-9]+\.[0-9]+$ ]]
           [[ "$PRODUCT_SHA" =~ ^[0-9a-f]{40}$ ]]
-          for run_id in "$CANDIDATE_RUN_ID" "$LOCAL_QUALIFICATION_RUN_ID" "$INSTANCE_DEPLOYMENT_RUN_ID" "$INSTANCE_DECISION_RUN_ID" "$INSTANCE_WORKSPACE_RUN_ID"; do
+          for run_id in "$CANDIDATE_RUN_ID" "$LOCAL_QUALIFICATION_RUN_ID" "$INSTANCE_DEPLOYMENT_RUN_ID" "$INSTANCE_DECISION_RUN_ID" "$INSTANCE_WORKSPACE_RUN_ID" "$CUSTOMER_RUN_ID"; do
             [[ "$run_id" =~ ^[1-9][0-9]*$ ]]
           done
           test -n "$INSTANCE_EVIDENCE_TOKEN"
@@ -124,6 +130,12 @@ jobs:
               .head_sha == $product_sha
             ' "$file" >/dev/null
           }
+          GH_TOKEN="$CLOUD_TOKEN" gh api "repos/$PRODUCT_REPOSITORY/actions/runs/$CUSTOMER_RUN_ID" > "$authority/customer-run.json"
+          validate_run "$authority/customer-run.json" "$CUSTOMER_RUN_ID" "$PRODUCT_REPOSITORY" ".github/workflows/cloud-business-readback.yml"
+          customer_attempt="$(jq -r '.run_attempt | tostring' "$authority/customer-run.json")"
+          [[ "$customer_attempt" =~ ^[1-9][0-9]*$ ]]
+          customer_artifact="cloud-customer-readback-$CUSTOMER_RUN_ID-$customer_attempt"
+          GH_TOKEN="$CLOUD_TOKEN" gh api "repos/$PRODUCT_REPOSITORY/actions/runs/$CUSTOMER_RUN_ID/artifacts?per_page=100" > "$authority/customer-artifacts.json"
           validate_candidate_run "$authority/candidate-run.json" "$CANDIDATE_RUN_ID" "$PRODUCT_REPOSITORY" ".github/workflows/build-opl-cloud-candidate.yml"
           validate_run "$authority/local-run.json" "$LOCAL_QUALIFICATION_RUN_ID" "$PRODUCT_REPOSITORY" ".github/workflows/clean-host-qualification.yml"
           validate_run "$authority/instance-deployment-run.json" "$INSTANCE_DEPLOYMENT_RUN_ID" "$INSTANCE_REPOSITORY" ".github/workflows/deployment-verify.yml"
@@ -150,6 +162,7 @@ jobs:
               [.artifacts[] | select(.name == $name and .expired == false and (.workflow_run.id | tostring) == $run_id)] | length == 1
             ' "$file" >/dev/null
           }
+          require_artifact "$authority/customer-artifacts.json" "$customer_artifact" "$CUSTOMER_RUN_ID"
           require_artifact "$authority/candidate-artifacts.json" "$candidate_artifact" "$CANDIDATE_RUN_ID"
           require_artifact "$authority/local-artifacts.json" "$local_artifact" "$LOCAL_QUALIFICATION_RUN_ID"
           require_artifact "$authority/instance-deployment-artifacts.json" "$deployment_artifact" "$INSTANCE_DEPLOYMENT_RUN_ID"
@@ -157,6 +170,8 @@ jobs:
           require_artifact "$authority/instance-workspace-artifacts.json" "$workspace_artifact" "$INSTANCE_WORKSPACE_RUN_ID"
 
           {
+            echo "customer_artifact=$customer_artifact"
+            echo "customer_authority_sha=$(jq -r .head_sha "$authority/customer-run.json")"
             echo "candidate_artifact=$candidate_artifact"
             echo "candidate_run_attempt=$candidate_attempt"
             echo "deployment_authority_sha=$(jq -r .head_sha "$authority/instance-deployment-run.json")"
@@ -172,6 +187,13 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
           path: product-source
+
+      - name: Checkout exact Cloud customer readback validator
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.evidence.outputs.customer_authority_sha }}
+          persist-credentials: false
+          path: customer-authority
 
       - name: Checkout exact Instance installation validator
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -223,6 +245,14 @@ jobs:
           path: evidence/local
           github-token: ${{ github.token }}
           run-id: ${{ inputs.local_qualification_run_id }}
+
+      - name: Download exact Cloud customer readback
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ steps.evidence.outputs.customer_artifact }}
+          path: evidence/customer
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.cloud_customer_readback_run_id }}
 
       - name: Download exact Instance installation verification
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -382,6 +412,34 @@ jobs:
           await appendFile(process.env.GITHUB_OUTPUT, `receipt_digest=${binding.receiptDigest}\nrun_digest=${binding.runDigest}\n`);
           NODE
 
+      - name: Validate protected Cloud customer readback and original installation binding
+        id: customer
+        env:
+          CANDIDATE: ${{ github.workspace }}/evidence/candidate/opl-cloud-candidate.json
+          INSTALLATION_RECEIPT: ${{ github.workspace }}/evidence/instance-deployment/evidence.json
+          CUSTOMER_RECEIPT: ${{ github.workspace }}/evidence/customer/receipt.json
+          CUSTOMER_VALIDATOR: ${{ github.workspace }}/customer-authority/tools/cloud-business-readback.ts
+          EXPECTED_CUSTOMER_SHA: ${{ steps.evidence.outputs.customer_authority_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C customer-authority rev-parse HEAD)" = "$EXPECTED_CUSTOMER_SHA"
+          test "$(find evidence/customer -type f | wc -l | tr -d ' ')" = 1
+          node --input-type=module <<'NODE'
+          import { readFile, appendFile } from 'node:fs/promises';
+          import { pathToFileURL } from 'node:url';
+          const { validateCloudBusinessReadbackBinding } = await import(pathToFileURL(process.env.CUSTOMER_VALIDATOR));
+          const read = async path => JSON.parse(await readFile(path, 'utf8'));
+          const result = validateCloudBusinessReadbackBinding({
+            candidate: await read(process.env.CANDIDATE),
+            installationText: await readFile(process.env.INSTALLATION_RECEIPT, 'utf8'),
+            installationRun: await read(`${process.env.OPL_RELEASE_AUTHORITY}/instance-deployment-run.json`),
+            receiptText: await readFile(process.env.CUSTOMER_RECEIPT, 'utf8'),
+            run: await read(`${process.env.OPL_RELEASE_AUTHORITY}/customer-run.json`),
+          });
+          await appendFile(process.env.GITHUB_OUTPUT, `receipt_digest=${result.receiptDigest}\n`);
+          NODE
+
       - name: Validate Instance decision and workspace qualification
         id: instance
         env:
@@ -464,6 +522,8 @@ jobs:
           AMD64_DIGEST: ${{ steps.candidate.outputs.amd64_digest }}
           ARM64_DIGEST: ${{ steps.candidate.outputs.arm64_digest }}
           LOCAL_RECEIPT_DIGEST: ${{ steps.local.outputs.local_receipt_digest }}
+          CUSTOMER_RECEIPT_DIGEST: ${{ steps.customer.outputs.receipt_digest }}
+          CUSTOMER_AUTHORITY_SHA: ${{ steps.evidence.outputs.customer_authority_sha }}
           DEPLOYMENT_RECEIPT_DIGEST: ${{ steps.installation.outputs.receipt_digest }}
           DEPLOYMENT_RUN_DIGEST: ${{ steps.installation.outputs.run_digest }}
           DEPLOYMENT_AUTHORITY_SHA: ${{ steps.evidence.outputs.deployment_authority_sha }}
@@ -496,6 +556,9 @@ jobs:
             --arg arm64Digest "$ARM64_DIGEST" \
             --arg localRunId "$LOCAL_QUALIFICATION_RUN_ID" \
             --arg localReceiptDigest "$LOCAL_RECEIPT_DIGEST" \
+            --arg customerRunId "$CUSTOMER_RUN_ID" \
+            --arg customerReceiptDigest "$CUSTOMER_RECEIPT_DIGEST" \
+            --arg customerAuthoritySha "$CUSTOMER_AUTHORITY_SHA" \
             --arg instanceRepository "$INSTANCE_REPOSITORY" \
             --arg deploymentRunId "$INSTANCE_DEPLOYMENT_RUN_ID" \
             --arg deploymentRunDigest "$DEPLOYMENT_RUN_DIGEST" \
@@ -510,7 +573,7 @@ jobs:
             --arg workspaceAuthoritySha "$WORKSPACE_AUTHORITY_SHA" \
             --arg qualificationScopeDigest "$QUALIFICATION_SCOPE_DIGEST" '
             {
-              schemaVersion: 2,
+              schemaVersion: 3,
               product: "OPL Cloud",
               productRepository: $repository,
               releaseTag: $tag,
@@ -538,6 +601,13 @@ jobs:
               },
               qualifications: {
                 local: {repository: $repository, workflowRunId: $localRunId, receiptDigest: $localReceiptDigest},
+                customer: {
+                  repository: $repository, workflowRunId: $customerRunId,
+                  receiptDigest: $customerReceiptDigest, authoritySha: $customerAuthoritySha,
+                  status: "customer_reads_verified", scope: "customer_reads",
+                  installationBinding: "receipt_association_only",
+                  publicEndpointCandidateVerified: false, fullBusinessQualification: false
+                },
                 instance: {
                   repository: $instanceRepository,
                   decision: {workflowRunId: $decisionRunId, runDigest: $decisionRunDigest, receiptDigest: $decisionReceiptDigest, authoritySha: $decisionAuthoritySha},
@@ -584,11 +654,12 @@ jobs:
             --arg imageDigest "$IMAGE_DIGEST" \
             --arg localReceiptDigest "$LOCAL_RECEIPT_DIGEST" \
             --arg deploymentReceiptDigest "$DEPLOYMENT_RECEIPT_DIGEST" \
+            --arg customerReceiptDigest "$CUSTOMER_RECEIPT_DIGEST" \
             --arg decisionReceiptDigest "$DECISION_RECEIPT_DIGEST" \
             --arg workspaceReceiptDigest "$WORKSPACE_RECEIPT_DIGEST" \
             --arg qualificationScopeDigest "$QUALIFICATION_SCOPE_DIGEST" '
             {
-              schemaVersion: 2,
+              schemaVersion: 3,
               productRepository: $productRepository,
               workflowSha: $workflowSha,
               workflowRef: $workflowRef,
@@ -599,6 +670,7 @@ jobs:
               installation: {receiptDigest: $deploymentReceiptDigest},
               qualification: {
                 localReceiptDigest: $localReceiptDigest,
+                customerReceiptDigest: $customerReceiptDigest,
                 decisionReceiptDigest: $decisionReceiptDigest,
                 workspaceReceiptDigest: $workspaceReceiptDigest,
                 scopeDigest: $qualificationScopeDigest
@@ -623,7 +695,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for path in evidence instance-deployment-authority instance-decision-authority instance-workspace-authority "$OPL_RELEASE_AUTHORITY"; do
+          for path in evidence customer-authority instance-deployment-authority instance-decision-authority instance-workspace-authority "$OPL_RELEASE_AUTHORITY"; do
             [ -e "$path" ] || continue
             find "$path" -mindepth 1 -delete
             rmdir "$path"
@@ -712,11 +784,19 @@ jobs:
             --arg candidate '${{ needs.admission.outputs.candidate_receipt_digest }}' \
             --arg digest "$EXPECTED_IMAGE_DIGEST" \
             --arg installation '${{ needs.admission.outputs.installation_receipt_digest }}' \
+            --arg customer '${{ needs.admission.outputs.customer_receipt_digest }}' \
             --arg scope '${{ needs.admission.outputs.qualification_scope_digest }}' '
-              .schemaVersion == 2 and .productRepository == $repository and .releaseTag == $tag and
+              .schemaVersion == 3 and .productRepository == $repository and .releaseTag == $tag and
               .source == {sha:$sha,tree:$tree} and .candidate.receiptDigest == $candidate and
               .candidate.image.digest == $digest and
               .installation.status == "deployment_verified" and .installation.receiptDigest == $installation and
+              .qualifications.customer.repository == $repository and
+              .qualifications.customer.receiptDigest == $customer and
+              .qualifications.customer.scope == "customer_reads" and
+              .qualifications.customer.status == "customer_reads_verified" and
+              .qualifications.customer.installationBinding == "receipt_association_only" and
+              .qualifications.customer.publicEndpointCandidateVerified == false and
+              .qualifications.customer.fullBusinessQualification == false and
               .qualifications.instance.scopeDigest == $scope and
               .qualifications.instance.workspace.status == "workspace_verified"
             ' artifacts/publication/release/opl-cloud-release.json >/dev/null

@@ -17,6 +17,48 @@ Instance installation, or a Product Release. The target boundary is in
 [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Cloud Customer Readback Source Wiring (2026-10-16)
+
+Against the task's canonical `main` baseline `e728113f`, this change adds Cloud's protected `customer_reads` producer and its Release consumer.
+[Release operations](runtime/release.md#protected-cloud-customer-reads) owns the
+entry, credentials, admission and receipt-binding procedure. Release manifest
+and provenance advance to schema 3 while Candidate stays at schema 2; release
+admission contract schema 5 adds `cloud_customer_reads_verified` alongside the
+five retained evidence requirements. Local focused verification executes 25 tests with zero failures, skips or TODOs:
+
+```sh
+npm run verify:local:focused -- --base e728113f5608687aecc2f95c9d83cfb6b4ad52ef \
+  --test tests/tools/cloud-business-readback.test.ts \
+  --test tests/tools/cloud-business-workflow.test.ts \
+  --test tests/contracts/product-distribution.test.ts \
+  --test tests/tools/cloud-release-installation.test.ts
+```
+
+The checks cover the real challenge/session/read/logout HTTP path using isolated
+local transports, original Candidate bundle CLI execution, environment-protection
+refusal, truncated-login cleanup, legal large announcement pages and release
+sealing/tamper rejection. A separate strict TypeScript check covers the producer
+and its tests. This is source/fixture evidence, not protected runtime evidence;
+current-revision CI remains a PR obligation.
+
+The task's environment API observation lists only `cloud-release`,
+`github-pages` and `whitepaper-production`; `cloud-business-qualification` does
+not exist in that observation and has not been automatically configured. The
+runner API returned HTTP 403, so runner availability is unknown. No protected
+customer-read producer has run and no `customer_reads_verified` runtime receipt
+is claimed. The receipt explicitly records
+`installationBinding: receipt_association_only` and
+`publicEndpointCandidateVerified: false`: this source does not verify that the
+approved public origin currently serves the referenced Candidate.
+
+#872 remains incomplete. Legacy business, administrator and Fabric evidence
+producers and consumers have not migrated, and full parity has not been
+verified. All existing Instance qualification-decision and Workspace gates stay
+required. Cloud product owners retain business and financial qualification;
+Instance owns installation, deployment, deployment rollback and their receipts.
+The remaining work stays in the
+[roadmap](roadmap.md#workspace-key-and-customer-read-boundaries).
+
 ## Team Workspace Transaction Reads (2026-10-16)
 
 Cloud now exposes the Gateway's original Workspace charge/refund records through
@@ -70,7 +112,8 @@ execution. Instance must consume the exact selected Candidate checkout,
 validate protected existing material, and select the actual running Candidate
 Pod. An older Candidate cannot acquire the new CLI or probe by checking out a
 later source revision. [Installation](installation.md) owns the public interface;
-actual installation and business acceptance remain external evidence.
+actual installation requires Instance evidence, and business acceptance requires
+Cloud product-owner qualification evidence.
 
 ## Personal Gateway Read Authorization (2026-10-16)
 
@@ -245,7 +288,7 @@ run-owned Workspace fixture; this is a valid local harness path. #787 remains
 open for owner disposition of the patrol's separate original launch HTTP 502;
 the exact old-input replay stopped before login or launch at the known cleanup
 failure, so it remains a historical, non-reproducible event. Canonical
-App, live-authority and Instance business acceptance remain separate product
+App, live-authority and Cloud product business acceptance remain separate product
 outcomes, not additional prerequisites for closing that local qualification
 issue. The READY evidence does not qualify the older `d5903d7a` recovery
 Candidate or establish its current Instance state.
@@ -314,7 +357,7 @@ never owns Agent lifecycle, and Ledger never authorizes continuation.
 | Package, WebUI and Capability catalog | Package/version/reference-claim reads and admission are implemented | [runtime capability readback](evidence/source-checks/2026-09-28-runtime-capability-readback-repair.json) | Original external OMA candidate and hosted publication remain unverified |
 | Build and immutable OCI evidence | Build admission, BuildKit/OCI readback and artifact registration are implemented | [package-to-registry readback](evidence/source-checks/2026-09-29-build-package-to-real-registry-readback.json) | A hosted Candidate must prove the real tenant destination and exact publication path |
 | Runtime Control | Approved Runtime Release catalog and compatibility facts are implemented | [exact Runtime local build](evidence/source-checks/2026-09-28-exact-runtime-local-build.json) | Approved production Runtime/native-UI inputs and Instance readback remain open |
-| Resource Catalog and Workspace order | Approved plan, quote, acceptance, Workspace order and owner-local recovery are implemented | [Workspace original-order](evidence/source-checks/2026-09-26-workspace-resource-original-order.json), [refund list encoding defect](evidence/source-checks/2026-10-08-refund-policy-list-enum-encoding-defect.json) | Paid production purchase and provider acceptance are Instance obligations; the administrator refund policy list reader now normalizes the stored hyphenated algorithm onto its wire member ([repair source check](evidence/source-checks/2026-10-09-refund-policy-algorithm-enum-encoding.json)), and the repaired source is included in the verified `78dbe9b4` Instance Candidate; current administrator-page HTTP acceptance still requires its own readback |
+| Resource Catalog and Workspace order | Approved plan, quote, acceptance, Workspace order and owner-local recovery are implemented | [Workspace original-order](evidence/source-checks/2026-09-26-workspace-resource-original-order.json), [refund list encoding defect](evidence/source-checks/2026-10-08-refund-policy-list-enum-encoding-defect.json) | Paid production purchase and provider acceptance require separately authorized Cloud Workspace/Fabric qualification; Instance supplies installation and deployment evidence; the administrator refund policy list reader now normalizes the stored hyphenated algorithm onto its wire member ([repair source check](evidence/source-checks/2026-10-09-refund-policy-algorithm-enum-encoding.json)), and the repaired source is included in the verified `78dbe9b4` Instance Candidate; current administrator-page HTTP acceptance still requires its own readback |
 | Gateway managed key | Gateway Integration owns issuance, allowlist, Secret delivery reference and revocation; Workspace consumes only opaque binding identity. A production issuer now calls the Sub2API owner's service issuance route (`POST /api/v1/service/workspace-keys`) with the deployment's own service token, and an empty declared selection is resolved by that authority into a concrete, bounded model scope that is recorded with the binding and the original command; the raw key is written only through Fabric's approved Secret store (`FabricCoordination.PutManagedSecret`) | [model update owner](evidence/source-checks/2026-10-01-workspace-model-configuration-update-owner.json) | The live Sub2API service route, its Instance secret wiring and a service revocation path remain to be qualified; the owner tests use the HTTP contract fixture, not the live authority. Production revocation remains refused; the refusal is now recorded as a `RevokeManagedKey` attempt with outcome and cause code, without marking the key revoked. Because the owner confirms the reload before it attempts that revocation, a refused revocation leaves a model configuration whose applied version already equals its own; the owner's status derivation reads the operation lifecycle before the configuration and requires a succeeded operation for `applied`, and the Console readback derives application evidence from the owner's applied version alone, so the same readback answers `needs_attention` while the Console reports the configuration as applied with an unsettled closeout instead of a failed configuration ([PR 842](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/842)) |
 | Fabric Secret binding | Serve performs the initial launch handover; authenticated Workspace model updates may bind/rebind through Fabric as well. Both guards retain predecessor and opaque binding/version checks. The current caller fix is [PR 837](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/837) | [Secret rebind](evidence/source-checks/2026-10-01-fabric-secret-rebind-second-configuration.json), [launch handover](evidence/source-checks/workspace-handover-contracts2-20261010-source-contracts-2.json) | Workspace presents a Fabric-confirmed binding to Serve; that source route is admitted. Production mTLS/Secret handover and declared non-Gateway runtime inputs remain separately unqualified |
 | Serve model apply/readback | Serve resolves the frozen publisher contract, applies through the declared interface and records only the application's readback | [Serve model readback](evidence/source-checks/2026-09-30-serve-model-configuration-apply-readback.json) | Console BFF/UI model routes use the Workspace owner; the retained Control Plane routes have separate callers; live TKE execution and route acceptance are open |
@@ -411,7 +454,8 @@ The current source is not a Candidate or a Product Release.
   are recorded in [candidate/Instance preconditions](evidence/source-checks/2026-09-30-tke-serial-candidate-instance-preconditions.json).
 - The Instance owner must install the declared owner topology, configure
   protected secrets and provider facts, deploy the exact Candidate, and return
-  runtime, route and billing readback.
+  installation health, route and deployment readback. Cloud product owners retain
+  business and billing qualification, bound to that same Candidate.
 - The public Product Release remains `v0.1.7`; it predates the current owner
   topology and model-configuration path. A successor Release needs the same
   qualified bytes promoted without a rebuild.
@@ -420,7 +464,9 @@ The current source is not a Candidate or a Product Release.
 
 [installation.md](installation.md) owns the downloadable Release versus source
 Candidate distinction. [opl-instance-medopl](../../opl-instance-medopl) owns
-deployment, rollback, provider qualification and production receipts.
+installation, deployment, deployment rollback and their receipts. Cloud product
+owners retain provider/business qualification and its evidence under separately
+authorized protected execution; the remaining migration is recorded above.
 
 ## Cloud Owner Topology Installation Contract
 

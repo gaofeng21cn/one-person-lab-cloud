@@ -111,15 +111,26 @@ jobs:
             --arg product_sha "$PRODUCT_SHA" \
             --arg workflow_sha "$PUBLICATION_WORKFLOW_SHA" \
             --arg workflow_ref "$PUBLICATION_WORKFLOW_REF" \
-            '.schemaVersion == 2 and .productRepository == $repository and
-             .source.sha == $product_sha' "$manifest" >/dev/null
+            '.schemaVersion == 3 and .productRepository == $repository and
+             .source.sha == $product_sha and
+             .qualifications.customer.repository == $repository and
+             .qualifications.customer.scope == "customer_reads" and
+             .qualifications.customer.status == "customer_reads_verified" and
+             .qualifications.customer.installationBinding == "receipt_association_only" and
+             .qualifications.customer.publicEndpointCandidateVerified == false and
+             .qualifications.customer.fullBusinessQualification == false and
+             (.qualifications.customer.receiptDigest | test("^sha256:[0-9a-f]{64}$")) and
+             .installation.status == "deployment_verified" and
+             .qualifications.instance.workspace.status == "workspace_verified"' "$manifest" >/dev/null
           jq -e \
             --arg repository "$PRODUCT_REPOSITORY" \
             --arg workflow_sha "$PUBLICATION_WORKFLOW_SHA" \
             --arg workflow_ref "$PUBLICATION_WORKFLOW_REF" \
-            '.schemaVersion == 2 and .productRepository == $repository and
-             .workflowSha == $workflow_sha and .workflowRef == $workflow_ref' \
+            '.schemaVersion == 3 and .productRepository == $repository and
+             .workflowSha == $workflow_sha and .workflowRef == $workflow_ref and
+             (.qualification.customerReceiptDigest | test("^sha256:[0-9a-f]{64}$"))' \
             "$provenance" >/dev/null
+          test "$(jq -r .qualifications.customer.receiptDigest "$manifest")" = "$(jq -r .qualification.customerReceiptDigest "$provenance")"
           release_tag="$(jq -r .releaseTag "$manifest")"
           image_digest="$(jq -r .candidate.image.digest "$manifest")"
           [[ "$release_tag" =~ ^v0\.[0-9]+\.[0-9]+$ ]]

@@ -7,6 +7,7 @@ const allowedWorkflows = new Set([
   "build-opl-cloud-candidate.yml",
   "build-opl-cloud-candidate-77e2024a-bridge.yml",
   "clean-host-qualification.yml",
+  "cloud-business-readback.yml",
   "codeql.yml",
   "pull-request-ci.yml",
   "qualification.yml",
@@ -150,7 +151,7 @@ if (candidateContract.schemaVersion !== 2 || candidateReceipt?.schemaVersion !==
     candidateReceipt?.checksumManifest !== "SHA256SUMS") {
   throw new Error("Candidate receipt contract boundary is invalid");
 }
-if (contract.schemaVersion !== 4 || contract.productRepository !== "gaofeng21cn/one-person-lab-cloud" ||
+if (contract.schemaVersion !== 5 || contract.productRepository !== "gaofeng21cn/one-person-lab-cloud" ||
     contract.instanceHandoff?.repository !== "gaofeng21cn/opl-instance-medopl" ||
     contract.candidate?.formalPublication !== false ||
     contract.candidate?.instanceDeployment !== false ||
@@ -169,8 +170,15 @@ if (contract.schemaVersion !== 4 || contract.productRepository !== "gaofeng21cn/
     contract.candidate?.artifactLocator?.artifactNameRunAttemptField !== "provenance.workflowRunAttempt" ||
     contract.distribution?.publication?.promotionMode !== "qualified_candidate_digest_without_rebuild" ||
     JSON.stringify(contract.distribution?.publication?.requiredEvidence) !== JSON.stringify([
-      "candidate", "local_qualification", "instance_deployment_verified", "instance_qualification_decision", "instance_workspace_verified"
+      "candidate", "local_qualification", "instance_deployment_verified", "cloud_customer_reads_verified", "instance_qualification_decision", "instance_workspace_verified"
     ]) ||
+    contract.distribution?.publication?.customerReadback?.repository !== contract.productRepository ||
+    contract.distribution?.publication?.customerReadback?.workflow !== ".github/workflows/cloud-business-readback.yml" ||
+    contract.distribution?.publication?.customerReadback?.environment !== "cloud-business-qualification" ||
+    contract.distribution?.publication?.customerReadback?.scope !== "customer_reads" ||
+    contract.distribution?.publication?.customerReadback?.status !== "customer_reads_verified" ||
+    contract.distribution?.publication?.customerReadback?.installationBinding !== "original_instance_receipt_bytes" ||
+    contract.distribution?.publication?.customerReadback?.replacesFullBusinessQualification !== false ||
     contract.distribution?.publication?.instanceEvidenceReader?.secret !== "OPL_INSTANCE_EVIDENCE_TOKEN" ||
     contract.distribution?.publication?.instanceEvidenceReader?.repository !== "gaofeng21cn/opl-instance-medopl" ||
     JSON.stringify(contract.distribution?.publication?.instanceEvidenceReader?.permissions) !== JSON.stringify(["actions:read", "contents:read"]) ||
