@@ -21,13 +21,17 @@ operations and business qualification belong to Cloud's existing product owners,
 as defined by [the current decision](../decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads).
 Deployment and product qualification must bind the same immutable Candidate.
 
-The current publication mechanism below still consumes Instance-owned launch/use
-and qualification artifacts. Moving their ownership and protected execution is
-an [open migration](../roadmap.md#workspace-key-and-customer-read-boundaries),
-not an implemented release path. Keep the current schemas, provenance validation
-and admission checks until producers and consumers migrate together. This
-runbook does not authorize dispatching customer business operations, and a local
-checkout does not gain production-network access from the target decision.
+The publication source now adds a separately protected Cloud customer-read
+receipt alongside the retained Instance launch/use, qualification-decision and
+Workspace artifacts. This is only the `customer_reads` scope of the
+[open migration](../roadmap.md#workspace-key-and-customer-read-boundaries).
+The legacy business, administrator and Fabric evidence paths remain required
+until full parity is actually verified; their current execution location does
+not transfer product ownership to Instance. This runbook does not authorize
+workflow dispatch or customer business operations, and a local checkout does not
+gain production-network access from the target decision. Current execution
+availability and verification limits are recorded in
+[status](../status.md#cloud-customer-readback-source-wiring-2026-10-16).
 
 ## Product Release Admission
 
@@ -92,18 +96,56 @@ still requires those owner-authoritative receipts. A
 failed or unknown result on either path returns the release unit to development;
 it does not create a Product Release.
 
+### Protected Cloud Customer Reads
+
+The source entry `.github/workflows/cloud-business-readback.yml` has two
+`ubuntu-latest` jobs: `admission`, then `readback`. Dispatch is limited to Cloud
+`main`, the repository owner or `RenDeHuang`, with the original actor matching
+the triggering actor. Before the readback job references
+`cloud-business-qualification`, admission uses GET readback to require that the
+environment already exists, has nonempty required User reviewers restricted to
+the allowed owners, `prevent_self_review: true`, and exactly one custom branch
+policy for `main`. The workflow does not configure or create that environment.
+
+The protected environment supplies `vars.OPL_QUALIFICATION_ORIGIN` and the
+independent customer Secrets `OPL_QUALIFICATION_CUSTOMER_EMAIL` and
+`OPL_QUALIFICATION_CUSTOMER_PASSWORD`. `OPL_INSTANCE_EVIDENCE_TOKEN` is restricted
+to Instance `Actions: read` and `Contents: read` for original evidence and its
+validator source. The exact producing Instance revision first validates the
+native installation receipt; the producer then binds that receipt and run to
+the same Candidate.
+
+`tools/cloud-business-readback.ts` uses only public HTTPS CloudIdentity customer
+login/session, external-bindings, wallet and announcements reads, followed by
+logout and session-revocation checks. The independently approved origin is a
+protected configuration input. Its receipt associates the original installation
+bytes but sets `publicEndpointCandidateVerified: false`; the current public
+customer APIs expose no Candidate identity proof. It cannot replace installation
+or same-runtime business acceptance. Its receipt has scope `customer_reads`
+and status `customer_reads_verified` or `blocked`; it explicitly does not prove
+full business, Workspace lifecycle or Key lifecycle qualification. This entry
+provides no production-private network access or resource/financial mutation
+qualification.
+
 ### Publication
 
 After candidate qualification succeeds, an allowlisted Cloud Release publisher
 supplies the exact canonical SHA and the Candidate, Local qualification,
 Instance deployment-verification, qualification-decision, and `workspace_verified`
-run IDs. Installation verification is admitted independently from product
-qualification: the exact producing Instance revision validates its native
+run IDs, plus the required `cloud_customer_readback_run_id`. The Cloud customer
+receipt consumer validates the receipt, producer source/run provenance, exact
+Candidate identity and original installation receipt hash. Installation
+verification is admitted independently from product qualification: the exact producing Instance revision validates its native
 `deployment_verified` receipt; Cloud binds its raw-byte digest, workflow run,
 Candidate source/index/amd64 digest, Workspace image and provider scope to the
 qualification decision. The sealed release manifest and attestation retain a
-separate `installation` record. A successful rollout alone cannot satisfy the
-remaining native qualification or Workspace gates. Admission
+separate `installation` record and a customer scope chain. Release manifest and
+provenance use `schemaVersion: 3`; the Candidate manifest remains version 2.
+Release admission contract schema 5 adds required
+`cloud_customer_reads_verified` and retains all five previous evidence
+requirements. A customer-read pass does not replace any retained Instance
+qualification-decision or Workspace gate; those gates remain until full parity
+is actually verified. A successful rollout alone cannot satisfy them. Admission
 validates their run/artifact provenance, native receipts, release assets,
 checksums, Product tree, and index/platform digests. All evidence must bind the
 same Cloud Candidate while retaining its owner-specific Workspace image and

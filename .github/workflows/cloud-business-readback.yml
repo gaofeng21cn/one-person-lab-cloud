@@ -1,0 +1,192 @@
+name: Cloud Customer Readback
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Successful exact-source Candidate build run.
+        required: true
+        type: string
+      installation_run_id:
+        description: Successful Instance deployment-verify run for that Candidate.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  admission:
+    if: ${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      # Check before referencing the environment: an absent environment must not
+      # be silently created by the protected job with no reviewer protection.
+      - name: Require existing protected customer execution environment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          environment="$(gh api "repos/$GITHUB_REPOSITORY/environments/cloud-business-qualification")"
+          jq -e '
+            .deployment_branch_policy.custom_branch_policies == true and
+            .deployment_branch_policy.protected_branches == false and
+            any(.protection_rules[]; .type == "required_reviewers" and .prevent_self_review == true and
+              (.reviewers | length) > 0 and
+              all(.reviewers[]; .type == "User" and
+                (.reviewer.login == "gaofeng21cn" or .reviewer.login == "RenDeHuang")))
+          ' <<< "$environment" >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/environments/cloud-business-qualification/deployment-branch-policies" |
+            jq -e '.total_count == 1 and .branch_policies[0].name == "main" and .branch_policies[0].type == "branch"' >/dev/null
+
+  readback:
+    needs: admission
+    if: ${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: cloud-business-qualification
+    permissions:
+      actions: read
+      contents: read
+    env:
+      CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+      INSTALLATION_RUN_ID: ${{ inputs.installation_run_id }}
+      INSTANCE_REPOSITORY: gaofeng21cn/opl-instance-medopl
+    steps:
+      - name: Checkout protected Cloud execution authority
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      - name: Resolve original Candidate and installation artifact provenance
+        id: inputs
+        env:
+          CLOUD_TOKEN: ${{ github.token }}
+          INSTANCE_TOKEN: ${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$INSTALLATION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          mkdir -p "$RUNNER_TEMP/customer-inputs"
+          GH_TOKEN="$CLOUD_TOKEN" gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID" > "$RUNNER_TEMP/customer-inputs/candidate-run.json"
+          GH_TOKEN="$INSTANCE_TOKEN" gh api "repos/$INSTANCE_REPOSITORY/actions/runs/$INSTALLATION_RUN_ID" > "$RUNNER_TEMP/customer-inputs/installation-run.json"
+          jq -e --arg repository "$GITHUB_REPOSITORY" --arg id "$CANDIDATE_RUN_ID" '
+            (.id | tostring) == $id and .repository.full_name == $repository and
+            .path == ".github/workflows/build-opl-cloud-candidate.yml" and .event == "workflow_dispatch" and
+            .status == "completed" and .conclusion == "success" and
+            (.head_sha | test("^[0-9a-f]{40}$")) and (.run_attempt | type == "number" and . >= 1 and floor == .)
+          ' "$RUNNER_TEMP/customer-inputs/candidate-run.json" >/dev/null
+          jq -e --arg repository "$INSTANCE_REPOSITORY" --arg id "$INSTALLATION_RUN_ID" '
+            (.id | tostring) == $id and .repository.full_name == $repository and
+            .path == ".github/workflows/deployment-verify.yml" and .event == "workflow_dispatch" and .head_branch == "main" and
+            .status == "completed" and .conclusion == "success" and (.head_sha | test("^[0-9a-f]{40}$"))
+          ' "$RUNNER_TEMP/customer-inputs/installation-run.json" >/dev/null
+          sha="$(jq -r .head_sha "$RUNNER_TEMP/customer-inputs/candidate-run.json")"
+          attempt="$(jq -r .run_attempt "$RUNNER_TEMP/customer-inputs/candidate-run.json")"
+          candidate_artifact="opl-cloud-candidate-$sha-$attempt"
+          installation_artifact="opl-cloud-deployment-verification-$INSTALLATION_RUN_ID"
+          GH_TOKEN="$CLOUD_TOKEN" gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID/artifacts?per_page=100" |
+            jq -e --arg name "$candidate_artifact" --arg id "$CANDIDATE_RUN_ID" '[.artifacts[] | select(.name == $name and .expired == false and (.workflow_run.id | tostring) == $id)] | length == 1' >/dev/null
+          GH_TOKEN="$INSTANCE_TOKEN" gh api "repos/$INSTANCE_REPOSITORY/actions/runs/$INSTALLATION_RUN_ID/artifacts?per_page=100" |
+            jq -e --arg name "$installation_artifact" --arg id "$INSTALLATION_RUN_ID" '[.artifacts[] | select(.name == $name and .expired == false and (.workflow_run.id | tostring) == $id)] | length == 1' >/dev/null
+          {
+            echo "candidate_artifact=$candidate_artifact"
+            echo "candidate_sha=$sha"
+            echo "installation_artifact=$installation_artifact"
+            echo "installation_sha=$(jq -r .head_sha "$RUNNER_TEMP/customer-inputs/installation-run.json")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact native installation validator
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: gaofeng21cn/opl-instance-medopl
+          ref: ${{ steps.inputs.outputs.installation_sha }}
+          token: ${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}
+          persist-credentials: false
+          path: installation-authority
+
+      - name: Download original Candidate bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ steps.inputs.outputs.candidate_artifact }}
+          path: qualification-inputs/candidate
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.candidate_run_id }}
+
+      - name: Download original Instance installation evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ steps.inputs.outputs.installation_artifact }}
+          path: qualification-inputs/installation
+          github-token: ${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}
+          repository: gaofeng21cn/opl-instance-medopl
+          run-id: ${{ inputs.installation_run_id }}
+
+      - name: Validate original installation and exact Candidate bytes
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ steps.inputs.outputs.candidate_sha }}
+          EXPECTED_INSTALLATION_SHA: ${{ steps.inputs.outputs.installation_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C installation-authority rev-parse HEAD)" = "$EXPECTED_INSTALLATION_SHA"
+          test "$(find qualification-inputs/installation -type f | wc -l | tr -d ' ')" = 1
+          node installation-authority/tools/deployment-verification-receipt.mjs validate --receipt qualification-inputs/installation/evidence.json
+          node tools/cloud-candidate-receipt.ts validate-bundle --bundle qualification-inputs/candidate
+          node --input-type=module <<'NODE'
+          import { readFile } from 'node:fs/promises';
+          const candidate = JSON.parse(await readFile('qualification-inputs/candidate/opl-cloud-candidate.json', 'utf8'));
+          const run = JSON.parse(await readFile(`${process.env.RUNNER_TEMP}/customer-inputs/candidate-run.json`, 'utf8'));
+          if (candidate.product.sha !== process.env.EXPECTED_CANDIDATE_SHA ||
+              candidate.provenance.workflowSha !== run.head_sha ||
+              candidate.provenance.workflowRunId !== String(run.id) ||
+              candidate.provenance.workflowRunAttempt !== String(run.run_attempt)) throw new Error('customer_candidate_run_binding_invalid');
+          NODE
+
+      - name: Read customer product surfaces through CloudIdentity
+        env:
+          OPL_QUALIFICATION_ORIGIN: ${{ vars.OPL_QUALIFICATION_ORIGIN }}
+          OPL_QUALIFICATION_CUSTOMER_EMAIL: ${{ secrets.OPL_QUALIFICATION_CUSTOMER_EMAIL }}
+          OPL_QUALIFICATION_CUSTOMER_PASSWORD: ${{ secrets.OPL_QUALIFICATION_CUSTOMER_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -m 700 qualification-evidence
+          node tools/cloud-business-readback.ts run \
+            --candidate qualification-inputs/candidate/opl-cloud-candidate.json \
+            --installation qualification-inputs/installation/evidence.json \
+            --installation-run "$RUNNER_TEMP/customer-inputs/installation-run.json" \
+            --output qualification-evidence/receipt.json
+
+      - name: Preserve redacted customer readback outcome
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cloud-customer-readback-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qualification-evidence/receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove private input artifacts and validator checkout
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in qualification-inputs installation-authority "$RUNNER_TEMP/customer-inputs"; do
+            if [ -d "$path" ]; then
+              find "$path" -mindepth 1 -delete
+              rmdir "$path"
+            fi
+          done

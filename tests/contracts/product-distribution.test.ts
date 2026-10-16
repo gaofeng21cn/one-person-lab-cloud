@@ -93,12 +93,13 @@ test("Cloud distribution contract makes same-tag recovery explicit", async () =>
   const contract = JSON.parse(await readFile("packages/contracts/opl-cloud-distribution-contract.json", "utf8"));
   const publication = contract.distribution.publication;
 
-  assert.equal(contract.schemaVersion, 4);
+  assert.equal(contract.schemaVersion, 5);
   assert.equal(publication.promotionMode, "qualified_candidate_digest_without_rebuild");
   assert.deepEqual(publication.requiredEvidence, [
     "candidate",
     "local_qualification",
     "instance_deployment_verified",
+    "cloud_customer_reads_verified",
     "instance_qualification_decision",
     "instance_workspace_verified"
   ]);

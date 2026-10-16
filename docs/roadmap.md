@@ -127,7 +127,7 @@ prose as a delivered interface.
 | Personal and Tenant financial reads (#840, #870) | Gateway Integration and retained financial owner; Console BFF/UI | Keep wallet/Token reads on the logged-in User. Tenant owner/admin read Tenant bills; original owners read proven historical bills without automatic admin inheritance. Personal history now has a typed BFF/original-owner list, detail and trend reader with live identity, reciprocal Account/User proof and original-order projections. Local original-history and isolation checks are in [status](status.md#personal-historical-billing-source-repair-2026-10-16). Team transaction list/detail and confirmed charge/refund trend are now implemented through Gateway/BFF under the live Tenant owner/admin role. Ledger now exposes original funded-charge receipt/accepted-quote details under the current Tenant role without exposing private execution evidence. Missing receipt kinds remain explicitly unavailable; no refund receipt is invented from a Gateway reference. Installed exact-Candidate acceptance remains unproved; never derive Tenant financial authority from the personal-history path. |
 | Announcements and historical ACKs (#840, #871) | Existing announcement owner, CloudIdentity and Console BFF/UI | The source now routes Cloud list/ACK through the BFF to the original owner, revalidates live identity, and folds proven historical ACKs with original timestamps. Local owner, PostgreSQL, BFF and browser checks are recorded in [status](status.md#cloud-announcement-source-repair-2026-10-15). Source CI and Instance wiring source are delivered in [Cloud PR 882](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/882) and [Instance PR 505](https://github.com/gaofeng21cn/opl-instance-medopl/pull/505). Remaining: protected peer/token/certificate/topology adoption and authenticated same-Candidate acceptance; #840 retains its other reads. |
 | Remaining retained Gateway reads (#840) | Gateway Integration and Console BFF/UI | Keys list/detail, per-Key usage/summary and groups still require the delegated-user authority not supplied by CloudIdentity. Personal balance-adjustment history and endpoint now use session-bound BFF/owner reads; installed readback remains outstanding. Reproduce each actual authenticated caller and switch it with its required owner contract; do not treat recharge records as complete balance history or claim the parent is fully covered. |
-| Deployment and business-evidence separation (#872) | Cloud release/product owners and Instance deployment owner | Keep Instance deployment-only. Implement a separately protected Cloud business qualification entry and migrate actual receipt producers, schemas, provenance validators and release consumers together. Keep current admission checks until replacement evidence is executable; do not grant desktop production access. |
+| Deployment and business-evidence separation (#872) | Cloud release/product owners and Instance deployment owner | Open: Cloud customer-read producer and Release consumer source wiring has local checks ([status](status.md#cloud-customer-readback-source-wiring-2026-10-16)); it covers only `customer_reads`. Establish and read back `cloud-business-qualification`, independent customer credentials and approved public-origin/Candidate identity binding, then execute the protected producer for the exact Candidate and validated native installation receipt. Migrate the remaining business, administrator and Fabric evidence producers, schemas, provenance validators and release consumers together, and verify full parity before retiring any existing Instance qualification-decision or Workspace gate. Instance retains installation/deployment evidence; Cloud retains business/financial qualification. No protected producer run or overall #872 completion is claimed; desktop production access remains prohibited. |
 | Exact-Candidate customer acceptance (#856, #873) | Cloud product qualification owners; Instance supplies deployment readback | Bind one Candidate to authenticated reads, real application login/response, original-operation recovery and applicable key lifecycle/resource/financial evidence. Any real spend, purchase, deletion or refund needs separate bounded authorization. Deployment health, source and fixtures are separate evidence layers. |
 
 ## Development Governance Migration (2026-10-13)
@@ -275,10 +275,13 @@ Candidate workflow.
 
 ### Instance
 
-The Instance owner supplies protected deployment configuration, installs the
-complete owner topology, performs provider actions and returns runtime,
-billing, route, rollback and medical-environment receipts. Cloud source tests
-cannot certify that state.
+The Instance owner supplies protected installation configuration, installs the
+complete owner topology and returns installation, deployment, service-health,
+route and deployment-rollback evidence. Cloud product owners retain business,
+financial and Fabric provider qualification under separately bounded protected
+authorization, bound to that same Candidate. The remaining execution/evidence
+migration is tracked in #872 above; Cloud source tests cannot certify installed
+state or product business acceptance.
 
 ### Production
 
