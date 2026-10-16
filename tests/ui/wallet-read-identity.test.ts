@@ -167,7 +167,7 @@ test("the usage decoder accepts canonical decimal int64 strings and rejects unsa
     totalInputTokens: 170,
     totalOutputTokens: 34,
     totalTokens: 204,
-    totalActualCostUsdMicros: 125001
+    totalActualCostUsdMicros: "125001"
   });
   for (const invalid of [
     { totalRequests: "-1" },
@@ -176,7 +176,7 @@ test("the usage decoder accepts canonical decimal int64 strings and rejects unsa
     { totalTokens: 9223372036854775807 },
     { totalActualCostUSDMicros: "" }
   ]) {
-    assert.throws(() => decodeGatewayUsageSummaryReadback(readback(invalid)), /invalid_gateway_usage_summary/);
+    assert.throws(() => decodeGatewayUsageSummaryReadback(readback(invalid)), /invalid_gateway_usage_summary|invalid_personal_gateway_money/);
   }
 });
 
@@ -188,4 +188,11 @@ test("the wallet decoder accepts a nonnegative balance including zero", () => {
   for (const invalid of ["-1", "01", "1.5", "", " 1"]) {
     assert.throws(() => decodeGatewayWalletReadback(readback(invalid)), /invalid_gateway_wallet_readback/, `accepted ${invalid}`);
   }
+});
+
+test("Cloud usage summary retains exact legal int64 money while refusing unsafe numeric counts", () => {
+  const readback = { totalRequests: "7", totalInputTokens: "70", totalOutputTokens: "14", totalTokens: "84", totalActualCostUSDMicros: "9223372036854775807" };
+  assert.equal(decodeGatewayUsageSummaryReadback(readback).totalActualCostUsdMicros, "9223372036854775807");
+  assert.equal(decodeGatewayUsageSummaryReadback({ ...readback, totalActualCostUSDMicros: "9007199254740993" }).totalActualCostUsdMicros, "9007199254740993");
+  assert.throws(() => decodeGatewayUsageSummaryReadback({ ...readback, totalRequests: "9007199254740993" }), /invalid_gateway_usage_summary_requests/);
 });

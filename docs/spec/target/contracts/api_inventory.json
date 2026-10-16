@@ -2227,6 +2227,91 @@
         "ledger.receipts"
       ],
       "operationKind": null
+    },
+    {
+      "path": "/api/v2/gateway/keys",
+      "method": "GET",
+      "operationId": "listPersonalGatewayKeys",
+      "features": [
+        "F14"
+      ],
+      "owner": "gateway",
+      "request": null,
+      "response": "PersonalGatewayKeyPage",
+      "status": 200,
+      "permissions": [
+        "authenticated"
+      ],
+      "tables": [],
+      "operationKind": null
+    },
+    {
+      "path": "/api/v2/gateway/keys/{keyId}",
+      "method": "GET",
+      "operationId": "getPersonalGatewayKey",
+      "features": [
+        "F14"
+      ],
+      "owner": "gateway",
+      "request": null,
+      "response": "PersonalGatewayKey",
+      "status": 200,
+      "permissions": [
+        "authenticated"
+      ],
+      "tables": [],
+      "operationKind": null
+    },
+    {
+      "path": "/api/v2/gateway/groups",
+      "method": "GET",
+      "operationId": "listPersonalGatewayGroups",
+      "features": [
+        "F14"
+      ],
+      "owner": "gateway",
+      "request": null,
+      "response": "PersonalGatewayGroupPage",
+      "status": 200,
+      "permissions": [
+        "authenticated"
+      ],
+      "tables": [],
+      "operationKind": null
+    },
+    {
+      "path": "/api/v2/gateway/keys/{keyId}/usage",
+      "method": "GET",
+      "operationId": "listPersonalGatewayKeyUsage",
+      "features": [
+        "F14"
+      ],
+      "owner": "gateway",
+      "request": null,
+      "response": "PersonalGatewayKeyUsagePage",
+      "status": 200,
+      "permissions": [
+        "authenticated"
+      ],
+      "tables": [],
+      "operationKind": null
+    },
+    {
+      "path": "/api/v2/gateway/keys/{keyId}/usage-summary",
+      "method": "GET",
+      "operationId": "getPersonalGatewayKeyUsageSummary",
+      "features": [
+        "F14"
+      ],
+      "owner": "gateway",
+      "request": null,
+      "response": "UsageSummary",
+      "status": 200,
+      "permissions": [
+        "authenticated"
+      ],
+      "tables": [],
+      "operationKind": null
     }
   ],
   "errorCodes": [
@@ -2301,6 +2386,7 @@
     "PLAN_CHANGE_PERIOD_ELAPSED",
     "REFUND_ORIGINAL_CHARGE_CONFLICT",
     "FUTURE_PERIOD_COMMITTED",
-    "SCHEDULED_PLAN_APPLICATION_CONFLICT"
+    "SCHEDULED_PLAN_APPLICATION_CONFLICT",
+    "REAUTHENTICATION_REQUIRED"
   ]
 }

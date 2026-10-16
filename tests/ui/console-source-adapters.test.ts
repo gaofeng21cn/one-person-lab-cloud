@@ -337,3 +337,16 @@ test("Workspace adapters return an authoritative not-found result after total is
     globalThis.fetch = originalFetch;
   }
 });
+
+
+test("Key reauthentication follows typed error codes without interpreting messages", () => {
+  for (const payload of [{ code: "REAUTHENTICATION_REQUIRED" }, { error: "reauthentication_required" }]) {
+    assert.equal(readApi.gatewayKeyReadFailure(Object.assign(new Error("opaque"), { payload })).reasonCode, "REAUTHENTICATION_REQUIRED");
+  }
+  for (const error of [new Error("REAUTHENTICATION_REQUIRED"), Object.assign(new Error("reauthentication_required"), { payload: { code: "UNAUTHENTICATED" } })]) {
+    const result = readApi.gatewayKeyReadFailure(error);
+    assert.equal(result.reasonCode, "sub2api_unavailable");
+    assert.equal(result.source, "sub2api");
+    assert.equal(result.available, false);
+  }
+});

@@ -34,6 +34,7 @@ HTTP/异步范围取03，D17已批准。错误不得触发新费用、假回滚�
 |---|---|---|---|---|
 | `VALIDATION_FAILED` | 422 / 异步 | 公开输入校验；`login`、`createPackage`、`createUpload`、`createQuote`、`createWorkspace` | 输入内容不符合要求，请修改标出的字段。 | 仅按fieldErrors定位；修改后新意图提交 |
 | `UNAUTHENTICATED` | 401 | BFF会话校验；`getSession`、`getTenant`、`getOperation` | 登录状态已失效，请重新登录。 | 清理身份缓存并跳安全站内登录入口；不重发业务命令 |
+| `REAUTHENTICATION_REQUIRED` | 401 | Gateway 个人 Key 读取的委托凭证 | Key 访问凭证已失效，请重新登录。 | 只清理当前 Key 读取数据并提供站内登录入口；普通 Cloud 会话和钱包保持有效，不自动重发命令。 |
 | `FORBIDDEN` | 403 / 异步 | Owner角色/委托授权；`inviteMember`、`deleteWorkspace`、`revealGatewayKey` | 你没有执行此操作的权限。 | 不提供越权重试；联系有权限的管理员 |
 | `NOT_FOUND` | 404 / 异步 | Owner对象查询/归属；`getPackage`、`getWorkspace`、`getBuild`、`getOperation` | 找不到此记录，或你无权访问。 | 返回列表；不透露其他Tenant对象是否存在 |
 | `CSRF_INVALID` | 403 | BFF写请求校验；`login`、`logout`、`createWorkspace` | 安全校验未通过，请重新读取页面后再操作。 | 刷新CSRF上下文，未知提交保留原key |

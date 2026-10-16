@@ -45,6 +45,7 @@ type Service struct {
 	signing       []byte
 	admins        map[string]bool
 	mu            sync.Mutex
+	delegated     map[delegatedCredentialKey]*delegatedCredential
 	// RegistryHost / RegistryNamespace are installation facts used to reserve a
 	// User's application OCI destination. They carry no credential.
 	registryHost      string
@@ -180,7 +181,7 @@ func (s *Service) Login(ctx context.Context, r *api.LoginRpcRequest) (*api.Sessi
 	if e != nil || until < time.Now().Unix() || until > time.Now().Add(6*time.Minute).Unix() || !hmac.Equal([]byte(parts[2]), []byte(s.mac("login:"+parts[0]+"."+parts[1]))) {
 		return nil, denied()
 	}
-	user, _, e := s.Gateway.Login(ctx, r.GetBody().GetUsername(), r.GetBody().GetPassword())
+	user, bearer, delegatedUntil, e := s.Gateway.Login(ctx, r.GetBody().GetUsername(), r.GetBody().GetPassword())
 	if e != nil {
 		return nil, e
 	}
@@ -205,8 +206,8 @@ func (s *Service) Login(ctx context.Context, r *api.LoginRpcRequest) (*api.Sessi
 	expires := time.Now().Add(12 * time.Hour)
 	// The display name is captured here so any replica can answer this session
 	// from the row alone. It is the email the identity owner just returned, not
-	// a secret, and it keeps the member's Gateway credential out of every request
-	// path. A row written by an image that predates the column resolves the name
+	// a secret. Delegated personal reads retain the member credential only in
+	// process memory; ordinary session reads remain independent of that custody. A row written by an image that predates the column resolves the name
 	// from the actor id instead.
 	_, e = s.DB.ExecContext(ctx, `INSERT INTO tenant.sessions(id,session_hash,actor_id,tenant_id,gateway_session_ref,csrf_hash,expires_at,display_name) VALUES($1,$2,$3,$4,$1,$5,$6,$7)`, ref, hash(cookie), actor, tenant, hash(s.mac("csrf:"+cookie)), expires, user.Email)
 	if e != nil {
@@ -220,6 +221,7 @@ func (s *Service) Login(ctx context.Context, r *api.LoginRpcRequest) (*api.Sessi
 	if e = grpc.SetHeader(ctx, metadata.Pairs(owneridentity.SessionCookieHeader, cookie)); e != nil {
 		return nil, e
 	}
+	s.rememberDelegated(ref, actor, bearer, delegatedUntil, expires)
 	return out, nil
 }
 
@@ -231,8 +233,8 @@ func (s *Service) Login(ctx context.Context, r *api.LoginRpcRequest) (*api.Sessi
 // The read authenticates as this service's own configured directory identity rather
 // than as the member credential the login returned. That is what keeps the check
 // cross-replica: the directory credential is a deployment fact every replica holds,
-// so no per-login credential has to be kept in process memory or written into the
-// session table for the check to be possible. Anything the Gateway cannot answer
+// so this check does not depend on the per-login credential custody used by
+// personal Key reads. Nothing secret is written to the session table. Anything the Gateway cannot answer
 // fails closed rather than falling back to the row.
 func (s *Service) activeSubject(ctx context.Context, actor string) error {
 	binding, e := s.userBinding(ctx, actor)
@@ -299,6 +301,7 @@ func (s *Service) Logout(ctx context.Context, r *api.LogoutRpcRequest) (*emptypb
 		return nil, e
 	}
 	ref := r.GetContext().GetSessionId()
+	s.forgetDelegatedSession(ref)
 	if _, _, _, e := s.session(ctx, ref); e != nil {
 		return nil, e
 	}

@@ -297,13 +297,13 @@
 - 个人Key管理与托管Workspace Key边界明确；明文仅授权一次性响应
 - Gateway identity_mappings唯一持有User↔Sub2API User与User↔OCI Destination；GetSelfUserExternalBinding为session-only，CloudIdentity授权但不成为绑定writer；Gateway DB为login/session必需且与Tenant DSN隔离
 
-**主实现API（沿用03的唯一Owner，不是改变数据写权）**：`createGatewayKey`, `getSelfUserExternalBinding`, `getUsageSummary`, `getWallet`, `getWorkspaceTransactionTrend`, `listGatewayKeys`, `listModels`, `listRechargeRecords`, `listUsage`, `listWorkspaceTransactions`, `revealGatewayKey`, `revokeGatewayKey`
+**主实现API（沿用03的唯一Owner，不是改变数据写权）**：`createGatewayKey`, `getPersonalGatewayKey`, `getPersonalGatewayKeyUsageSummary`, `getSelfUserExternalBinding`, `getUsageSummary`, `getWallet`, `getWorkspaceTransactionTrend`, `listGatewayKeys`, `listModels`, `listPersonalGatewayGroups`, `listPersonalGatewayKeyUsage`, `listPersonalGatewayKeys`, `listRechargeRecords`, `listUsage`, `listWorkspaceTransactions`, `revealGatewayKey`, `revokeGatewayKey`
 
-**Session-only API（live session，不生成Tenant role规则）**：`getSelfUserExternalBinding`
+**Session-only API（live session，不生成Tenant role规则）**：`getPersonalGatewayKey`, `getPersonalGatewayKeyUsageSummary`, `getSelfUserExternalBinding`, `listPersonalGatewayGroups`, `listPersonalGatewayKeyUsage`, `listPersonalGatewayKeys`
 
 **主实现表（字段唯一来源02，不在此复制字段定义）**：`gateway.identity_mappings`, `gateway.tenant_wallet_bindings`, `gateway.key_bindings`, `gateway.wallet_operations`
 
-**内部协议实现/协作端口**：`GatewayProductService.ListWorkspaceTransactions`, `GatewayProductService.GetWorkspaceTransactionTrend`, `GatewayProductService.GetWallet`, `GatewayProductService.ListUsage`, `GatewayProductService.GetUsageSummary`, `GatewayProductService.ListGatewayKeys`, `GatewayProductService.CreateGatewayKey`, `GatewayProductService.RevealGatewayKey`, `GatewayProductService.RevokeGatewayKey`, `GatewayProductService.ListRechargeRecords`, `GatewayProductService.ListModels`, `GatewayCoordination.GetSelfUserExternalBinding`, `GatewayCoordination.BindUserExternalIdentity`, `GatewayCoordination.ReadUserExternalIdentity`, `GatewayCoordination.BindWallet`, `GatewayCoordination.Debit`, `GatewayCoordination.Refund`, `GatewayCoordination.ReadWalletAction`, `GatewayCoordination.CreateManagedKey`, `GatewayCoordination.RevokeManagedKey`, `GatewayPlanChangeSettlement.DebitSupplement`, `GatewayPlanChangeSettlement.DebitScheduledPeriod`, `GatewayPlanChangeSettlement.RefundFailure`, `GatewayPlanChangeSettlement.RefundSupplementOnDeletion`
+**内部协议实现/协作端口**：`GatewayProductService.ListPersonalGatewayKeys`, `GatewayProductService.GetPersonalGatewayKey`, `GatewayProductService.ListPersonalGatewayGroups`, `GatewayProductService.ListPersonalGatewayKeyUsage`, `GatewayProductService.GetPersonalGatewayKeyUsageSummary`, `GatewayProductService.ListWorkspaceTransactions`, `GatewayProductService.GetWorkspaceTransactionTrend`, `GatewayProductService.GetWallet`, `GatewayProductService.ListUsage`, `GatewayProductService.GetUsageSummary`, `GatewayProductService.ListGatewayKeys`, `GatewayProductService.CreateGatewayKey`, `GatewayProductService.RevealGatewayKey`, `GatewayProductService.RevokeGatewayKey`, `GatewayProductService.ListRechargeRecords`, `GatewayProductService.ListModels`, `GatewayCoordination.GetSelfUserExternalBinding`, `GatewayCoordination.BindUserExternalIdentity`, `GatewayCoordination.ReadUserExternalIdentity`, `GatewayCoordination.BindWallet`, `GatewayCoordination.Debit`, `GatewayCoordination.Refund`, `GatewayCoordination.ReadWalletAction`, `GatewayCoordination.CreateManagedKey`, `GatewayCoordination.RevokeManagedKey`, `GatewayPlanChangeSettlement.DebitSupplement`, `GatewayPlanChangeSettlement.DebitScheduledPeriod`, `GatewayPlanChangeSettlement.RefundFailure`, `GatewayPlanChangeSettlement.RefundSupplementOnDeletion`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
@@ -613,7 +613,7 @@
 
 **内部协议实现/协作端口**：`WorkspaceProductService.GetOperation`
 
-**前端消费API**：`acceptInvitation`, `bindTenantWallet`, `createTenant`, `getAdminTenant`, `getLoginContext`, `getOperation`, `getReceipt`, `getSelfUserExternalBinding`, `getSession`, `getTenant`, `getWorkspaceFinancialReceipt`, `inviteMember`, `listAdminOperations`, `listAuditEvents`, `listInvitations`, `listMembers`, `listQualifications`, `listReceipts`, `login`, `logout`, `reconcileOperation`, `removeMember`, `revokeInvitation`, `updateMemberRole`
+**前端消费API**：`acceptInvitation`, `bindTenantWallet`, `createTenant`, `getAdminTenant`, `getLoginContext`, `getOperation`, `getPersonalGatewayKey`, `getPersonalGatewayKeyUsageSummary`, `getReceipt`, `getSelfUserExternalBinding`, `getSession`, `getTenant`, `getWorkspaceFinancialReceipt`, `inviteMember`, `listAdminOperations`, `listAuditEvents`, `listInvitations`, `listMembers`, `listPersonalGatewayGroups`, `listPersonalGatewayKeyUsage`, `listPersonalGatewayKeys`, `listQualifications`, `listReceipts`, `login`, `logout`, `reconcileOperation`, `removeMember`, `revokeInvitation`, `updateMemberRole`
 
 **验证**：
 - go -C apps/console-bff test ./...

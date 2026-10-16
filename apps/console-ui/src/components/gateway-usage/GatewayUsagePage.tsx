@@ -9,6 +9,8 @@ import {
 import { useEffect, useId, useState, type FormEvent } from "react";
 
 import type { GatewayUsageController } from "../../app/console-controller-types.ts";
+import { cloudIdentity } from "../../app/console-identity.ts";
+import { GatewayKeyReauthentication } from "../keys/GatewayKeyReauthentication.tsx";
 import { presentGatewayKeyStatus } from "../../app/customer-experience-model.ts";
 import type { GatewayKeySummaryDTO, GatewayUsageItem, GatewayUsagePeriod } from "../../api/dtos.ts";
 import { formatCount, formatDate, formatUsdMicros } from "../../console-model.ts";
@@ -124,6 +126,8 @@ function KeyPicker({ controller, onClose, open }: {
   open: boolean;
 }) {
   const [draft, setDraft] = useState("");
+  const reauthenticationRequired = controller.keys.value?.available === false
+    && controller.keys.value.reasonCode === "REAUTHENTICATION_REQUIRED";
 
   useEffect(() => {
     if (open) setDraft("");
@@ -153,7 +157,7 @@ function KeyPicker({ controller, onClose, open }: {
         <Button disabled={!draft && !controller.keySearch} onClick={clear} type="button" variant="ghost">清除</Button>
       </div>
     </form>
-    {controller.keys.loading ? <div className="source-loading" aria-live="polite"><span className="spinner" />正在读取</div> : <SourceState
+    {controller.keys.loading ? <div className="source-loading" aria-live="polite"><span className="spinner" />正在读取</div> : reauthenticationRequired ? <GatewayKeyReauthentication /> : <SourceState
       empty={controller.keys.value?.status === "empty"}
       emptyDescription={controller.keySearch ? "没有符合当前搜索条件的 API 密钥。" : "当前账户还没有 API 密钥。"}
       emptyTitle={controller.keySearch ? "未找到 API 密钥" : "暂无 API 密钥"}
@@ -191,6 +195,8 @@ function KeyPicker({ controller, onClose, open }: {
 export function GatewayUsagePage({ controller, onCopyRequestId, onOpenKeys }: GatewayUsagePageProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const selectedKey = controller.selection.key;
+  const reauthenticationRequired = controller.selection.status === "reauthentication_required"
+    || [controller.keys.value, controller.usage.value, controller.summary.value].some((value) => value?.available === false && value.reasonCode === "REAUTHENTICATION_REQUIRED");
 
   const openPicker = () => {
     setPickerOpen(true);
@@ -203,6 +209,7 @@ export function GatewayUsagePage({ controller, onCopyRequestId, onOpenKeys }: Ga
   };
 
   const selectionContent = () => {
+    if (controller.selection.status === "reauthentication_required") return null;
     if (controller.selection.status === "confirming") {
       return <div className="source-loading gateway-usage-selection-state" aria-live="polite"><span className="spinner" />正在确认当前 API 密钥</div>;
     }
@@ -213,8 +220,9 @@ export function GatewayUsagePage({ controller, onCopyRequestId, onOpenKeys }: Ga
       return <div className="gateway-usage-selection-state"><Alert color="warning" title="当前 API 密钥已不存在" description="请选择其他 API 密钥后再查看用量。" actions={<Button onClick={openPicker} size="sm" variant="outline">选择 API 密钥</Button>} /></div>;
     }
     if (!selectedKey) {
+      if (reauthenticationRequired) return null;
       if (controller.keys.loading || !controller.keys.value) return <div className="source-loading gateway-usage-selection-state" aria-live="polite"><span className="spinner" />正在读取 API 密钥</div>;
-      if (controller.keys.value.status === "empty") return <div className="source-empty gateway-usage-selection-state"><h3>暂无 API 密钥</h3><p>创建 API 密钥后即可查看用量。</p><Button onClick={onOpenKeys} size="sm" variant="outline">前往 API 密钥</Button></div>;
+      if (controller.keys.value.status === "empty") return <div className="source-empty gateway-usage-selection-state"><h3>暂无 API 密钥</h3><p>{cloudIdentity ? "当前账户暂无 API 密钥，可在 API 密钥页面查看读取状态。" : "创建 API 密钥后即可查看用量。"}</p><Button onClick={onOpenKeys} size="sm" variant="outline">前往 API 密钥</Button></div>;
       return <div className="gateway-usage-selection-state"><SourceState error={controller.keys.error} errorDescription="暂时无法读取 API 密钥，请稍后重试。" onRetry={() => void controller.refresh()} source={controller.keys.value} unavailableDescription="暂时无法读取 API 密钥，请稍后重试。" unavailableTitle="API 密钥暂不可用">{() => null}</SourceState></div>;
     }
 
@@ -235,6 +243,7 @@ export function GatewayUsagePage({ controller, onCopyRequestId, onOpenKeys }: Ga
   };
 
   return <section className="panel gateway-usage-panel" data-slide="C-API-02">
+    {reauthenticationRequired && !pickerOpen ? <GatewayKeyReauthentication /> : null}
     <div className="panel-title gateway-usage-title"><h2>用量</h2><Button aria-label="刷新" disabled={!selectedKey} onClick={() => void controller.refresh()} size="sm" variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div>
     <div className="gateway-usage-toolbar">
       <section aria-label="当前 API 密钥" className="gateway-usage-current-key">
