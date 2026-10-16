@@ -21,7 +21,7 @@
 | F11 立即升级补差与下期降配计划 | /console/workspaces/:workspaceId?tab=plan-changes、/console/workspaces/:workspaceId?tab=plan-changes&planChangeId=:planChangeId | 14 | bff, gateway, resource_catalog, workspace |
 | F12 续费、到期停用与恢复 | /console/billing、/console/workspaces/:workspaceId/billing | 10 | bff, gateway, resource_catalog, workspace |
 | F13 删除Workspace、资源确认与退款 | /console/workspaces/:workspaceId/settings | 7 | bff, gateway, resource_catalog, workspace |
-| F14 钱包、用量、Key及管理员充值记录 | /console/api、/console/api/usage、/console/api/keys、/admin/recharge-records | 10 | gateway |
+| F14 钱包、用量、Key及管理员充值记录 | /console/api、/console/api/usage、/console/api/keys、/admin/recharge-records | 15 | gateway |
 | F15 Tenant停用、删除与窗口内恢复 | /admin/tenants/:tenantId | 12 | bff, tenant |
 | F16 旧资源与应用迁移后的可见状态和采用Agent | /console/workspaces/:workspaceId、/console/workspaces/:workspaceId/adopt | 10 | bff, capability, gateway, serve, workspace |
 | F17 管理员操作、审计与实例资格读回 | /admin/operations、/admin/qualifications | 8 | bff, ledger, tenant |
@@ -744,10 +744,15 @@
 | operationId | 请求 | 请求DTO | 成功响应DTO | 唯一Owner |
 |---|---|---|---|---|
 | `createGatewayKey` | `POST /api/v2/gateway-keys` | CreateGatewayKeyRequest | 201 GatewayKeySecret | gateway |
+| `getPersonalGatewayKey` | `GET /api/v2/gateway/keys/{keyId}` | — | 200 PersonalGatewayKey | gateway |
+| `getPersonalGatewayKeyUsageSummary` | `GET /api/v2/gateway/keys/{keyId}/usage-summary` | — | 200 UsageSummary | gateway |
 | `getSelfUserExternalBinding` | `GET /api/v2/auth/external-bindings` | — | 200 UserExternalBindingReadback | gateway |
 | `getUsageSummary` | `GET /api/v2/usage/summary` | — | 200 UsageSummary | gateway |
 | `getWallet` | `GET /api/v2/wallet` | — | 200 Wallet | gateway |
 | `listGatewayKeys` | `GET /api/v2/gateway-keys` | — | 200 GatewayKeyPage | gateway |
+| `listPersonalGatewayGroups` | `GET /api/v2/gateway/groups` | — | 200 PersonalGatewayGroupPage | gateway |
+| `listPersonalGatewayKeyUsage` | `GET /api/v2/gateway/keys/{keyId}/usage` | — | 200 PersonalGatewayKeyUsagePage | gateway |
+| `listPersonalGatewayKeys` | `GET /api/v2/gateway/keys` | — | 200 PersonalGatewayKeyPage | gateway |
 | `listRechargeRecords` | `GET /api/v2/admin/recharge-records` | — | 200 WalletOperationPage | gateway |
 | `listUsage` | `GET /api/v2/usage` | — | 200 UsagePage | gateway |
 | `listWorkspaceTransactions` | `GET /api/v2/workspaces/{workspaceId}/transactions` | — | 200 WalletOperationPage | gateway |

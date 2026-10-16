@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -58,7 +59,11 @@ func TestLiveGatewayReadThroughBFF(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	var rejectDelegated atomic.Bool
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if personalUsageFixture(t, w, r) {
+			return
+		}
 		envelope := func(payload map[string]any) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": payload})
 		}
@@ -74,8 +79,12 @@ func TestLiveGatewayReadThroughBFF(t *testing.T) {
 				envelope(map[string]any{"access_token": "directory-token", "user": map[string]any{"id": 1, "email": "directory@example.test", "status": "active"}})
 				return
 			}
-			envelope(map[string]any{"access_token": "user-token", "user": map[string]any{"id": 101, "email": "customer@example.test", "status": "active"}})
+			envelope(map[string]any{"access_token": "user-token", "expires_in": 3600, "user": map[string]any{"id": 101, "email": "customer@example.test", "status": "active"}})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/auth/me":
+			if rejectDelegated.Load() || r.Header.Get("Authorization") != "Bearer user-token" {
+				w.WriteHeader(401)
+				return
+			}
 			envelope(map[string]any{"id": 101, "email": "customer@example.test", "status": "active"})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/admin/users/101":
 			envelope(map[string]any{"id": 101, "balance": "12.5", "status": "active"})
@@ -87,6 +96,24 @@ func TestLiveGatewayReadThroughBFF(t *testing.T) {
 				return
 			}
 			envelope(map[string]any{"total_requests": 17, "total_input_tokens": 170, "total_output_tokens": 34, "total_tokens": 204, "total_actual_cost": "0.1250019"})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/keys":
+			if r.Header.Get("Authorization") != "Bearer user-token" {
+				w.WriteHeader(401)
+				return
+			}
+			envelope(map[string]any{"items": []any{personalKeyPayload()}, "total": 1, "page": 1, "page_size": 20, "pages": 1})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/groups/available":
+			if r.Header.Get("Authorization") != "Bearer user-token" {
+				w.WriteHeader(401)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": []any{map[string]any{"id": 4, "name": "Personal group", "platform": "openai", "status": "active", "rate_multiplier": 1.5}}})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/groups/rates":
+			if r.Header.Get("Authorization") != "Bearer user-token" {
+				w.WriteHeader(401)
+				return
+			}
+			envelope(map[string]any{"4": 0})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
 			_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"gpt-5.6-sol"}]}`))
 		default:
@@ -178,6 +205,85 @@ func TestLiveGatewayReadThroughBFF(t *testing.T) {
 		for _, forbidden := range []string{"PricePerMillionTokens", "priceSource"} {
 			if strings.Contains(models.Body.String(), forbidden) {
 				t.Fatalf("model wire leaked %s: %s", forbidden, models.Body.String())
+			}
+		}
+		personalPaths := []struct{ path, fact string }{
+			{"/api/v2/gateway/keys?page=1&pageSize=20", `"quotaUSDMicros":"1000001"`},
+			{"/api/v2/gateway/keys/71", `"kind":"general"`},
+			{"/api/v2/gateway/groups", `"rateMultiplier":0`},
+			{"/api/v2/gateway/keys/71/usage?period=month&page=1&pageSize=20", `"actualCostUSDMicros":"125001"`},
+			{"/api/v2/gateway/keys/71/usage-summary?period=month", `"totalRequests":"1"`},
+		}
+		for _, entry := range personalPaths {
+			response := read(entry.path)
+			for _, secret := range []string{"user-token", "directory-token", "raw-secret-must-never-escape"} {
+				if strings.Contains(response.Body.String(), secret) {
+					t.Fatal("personal BFF response leaked credential")
+				}
+			}
+			if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), entry.fact) {
+				t.Fatalf("personal route %s: status=%d body=%s", entry.path, response.Code, response.Body.String())
+			}
+		}
+		rejectDelegated.Store(true)
+		response := read("/api/v2/gateway/keys/71")
+		if response.Code != http.StatusUnauthorized || !strings.Contains(response.Body.String(), `"code":"REAUTHENTICATION_REQUIRED"`) {
+			t.Fatalf("personal BFF reauthentication: status=%d body=%s", response.Code, response.Body.String())
+		}
+		rejectDelegated.Store(false)
+		for _, entry := range personalPaths {
+			response := read(entry.path)
+			if response.Code != http.StatusUnauthorized || !strings.Contains(response.Body.String(), `"code":"REAUTHENTICATION_REQUIRED"`) {
+				t.Fatalf("discarded credential route %s: status=%d body=%s", entry.path, response.Code, response.Body.String())
+			}
+		}
+		if session, err := reader.Session(ctx, cookie); err != nil || session.GetActorId() != "101" {
+			t.Fatalf("delegated rejection broke Cloud session: %v", err)
+		}
+		if response := read("/api/v2/wallet"); response.Code != http.StatusOK {
+			t.Fatalf("delegated rejection broke wallet: status=%d", response.Code)
+		}
+
+		// A fresh owner replica shares the durable stores but never receives the
+		// login bearer. Only personal Key reads require a fresh login on that replica.
+		replicaGateway, err := identity.NewGatewayWithDirectory(upstream.URL, &identity.GatewayDirectory{Email: "directory@example.test", Password: "password"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		replica, err := identity.New(db, replicaGateway, bytes.Repeat([]byte("s"), 32), nil, time.Hour)
+		if err != nil {
+			t.Fatal(err)
+		}
+		replica.GatewayStore = service.GatewayStore
+		replicaListener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		replicaServer, err := ownerservice.NewServer(ownerservice.Config{Owner: owneridentity.Tenant, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: map[owneridentity.Service]string{owneridentity.ConsoleBFF: token}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = replica.Register(replicaServer); err != nil {
+			t.Fatal(err)
+		}
+		go replicaServer.ServeOn(replicaListener)
+		t.Cleanup(replicaServer.Stop)
+		replicaReader, err := bff.DialGatewayReader(replicaListener.Addr().String(), token, token, owneridentity.TLSConfig{AllowInsecureLocal: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(replicaReader.Close)
+		handler = bff.NewGatewayReadHandler(replicaReader.GatewayClient(), replicaReader.GatewayCoordinationClient(), replicaReader)
+		if session, err := replicaReader.Session(ctx, cookie); err != nil || session.GetActorId() != "101" {
+			t.Fatalf("replica Cloud session unavailable: %v", err)
+		}
+		if response := read("/api/v2/wallet"); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"balanceUSDMicros":"12500000"`) {
+			t.Fatalf("replica wallet unavailable: status=%d", response.Code)
+		}
+		for _, entry := range personalPaths {
+			response := read(entry.path)
+			if response.Code != http.StatusUnauthorized || !strings.Contains(response.Body.String(), `"code":"REAUTHENTICATION_REQUIRED"`) {
+				t.Fatalf("replica personal route %s: status=%d body=%s", entry.path, response.Code, response.Body.String())
 			}
 		}
 		anonymous := httptest.NewRecorder()

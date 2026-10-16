@@ -695,14 +695,14 @@ export interface GatewayKey {
   status: "active" | "disabled" | "quota_exhausted" | "expired";
   ipWhitelist: string[];
   ipBlacklist: string[];
-  quotaUsdMicros: number;
-  quotaUsedUsdMicros: number;
-  rateLimit5hUsdMicros: number;
-  rateLimit1dUsdMicros: number;
-  rateLimit7dUsdMicros: number;
-  usage5hUsdMicros: number;
-  usage1dUsdMicros: number;
-  usage7dUsdMicros: number;
+  quotaUsdMicros: string | number;
+  quotaUsedUsdMicros: string | number;
+  rateLimit5hUsdMicros: string | number;
+  rateLimit1dUsdMicros: string | number;
+  rateLimit7dUsdMicros: string | number;
+  usage5hUsdMicros: string | number;
+  usage1dUsdMicros: string | number;
+  usage7dUsdMicros: string | number;
   currentConcurrency: number;
   lastUsedAt: string | null;
   lastUsedIp: string | null;
@@ -748,7 +748,7 @@ export interface GatewayUsageItem {
   outputTokens: number;
   cacheCreationTokens: number;
   cacheReadTokens: number;
-  actualCostUsdMicros: number;
+  actualCostUsdMicros: string | number;
   durationMs: number | null;
   firstTokenMs: number | null;
 }
@@ -768,7 +768,7 @@ export interface GatewayUsageSummaryDTO {
   totalInputTokens: number;
   totalOutputTokens: number;
   totalTokens: number;
-  totalActualCostUsdMicros: number;
+  totalActualCostUsdMicros: string | number;
 }
 
 export type GatewayAccountUsageSummaryDTO = GatewayUsageSummaryDTO;

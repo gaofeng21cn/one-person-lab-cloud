@@ -21,6 +21,8 @@ import type {
   GatewayKeySecretDTO,
   GatewayKeySummaryDTO,
   GatewayKeyUsagePageDTO,
+  GatewayUsageItem,
+  UnavailableSource,
   GatewayUsageSummaryDTO,
   GatewayWallet,
   GatewayWalletReadbackDTO,
@@ -152,17 +154,88 @@ export function getGatewayWallet(signal?: AbortSignal): Promise<SourceEnvelope<G
   }));
 }
 
+type PersonalGatewayKeyReadback = Omit<GatewayKeySummaryDTO,
+  "quotaUsdMicros" | "quotaUsedUsdMicros" | "rateLimit5hUsdMicros" | "rateLimit1dUsdMicros" | "rateLimit7dUsdMicros" |
+  "usage5hUsdMicros" | "usage1dUsdMicros" | "usage7dUsdMicros" | "groupId" | "lastUsedAt" | "lastUsedIp" | "expiresAt" | "createdAt" | "updatedAt"> & {
+  quotaUSDMicros: string; quotaUsedUSDMicros: string;
+  rateLimit5hUSDMicros: string; rateLimit1dUSDMicros: string; rateLimit7dUSDMicros: string;
+  usage5hUSDMicros: string; usage1dUSDMicros: string; usage7dUSDMicros: string;
+  groupId?: string; lastUsedAt?: string; lastUsedIp?: string;
+  expiresAt?: string; createdAt?: string; updatedAt?: string;
+};
+type PersonalGatewayKeyPageReadback = Omit<GatewayKeyPageDTO, "items" | "total"> & { items: PersonalGatewayKeyReadback[]; total: string };
+type PersonalGatewayUsageReadback = Omit<GatewayUsageItem, "inputTokens" | "outputTokens" | "cacheCreationTokens" | "cacheReadTokens" | "actualCostUsdMicros" | "durationMs" | "firstTokenMs"> & {
+  inputTokens: string; outputTokens: string; cacheCreationTokens: string; cacheReadTokens: string;
+  actualCostUSDMicros: string; durationMs?: string; firstTokenMs?: string;
+};
+type PersonalGatewayKeyUsagePageReadback = Omit<GatewayKeyUsagePageDTO, "items" | "total"> & { items: PersonalGatewayUsageReadback[]; total: string };
+
+function personalGatewayNumber(value: unknown): number {
+  if (typeof value !== "string" || !/^(0|[1-9][0-9]*)$/.test(value)) throw new Error("invalid_personal_gateway_integer");
+  const number = Number(value);
+  if (!Number.isSafeInteger(number)) throw new Error("unsafe_personal_gateway_integer");
+  return number;
+}
+
+function personalGatewayMoney(value: unknown): string {
+  if (typeof value !== "string" || !/^(0|[1-9][0-9]{0,18})$/.test(value) || BigInt(value) > 9223372036854775807n) {
+    throw new Error("invalid_personal_gateway_money");
+  }
+  return value;
+}
+
+function decodePersonalGatewayKey(value: PersonalGatewayKeyReadback): GatewayKeySummaryDTO {
+  return {
+    id: value.id, name: value.name, groupId: value.groupId ?? null, status: value.status, kind: value.kind,
+    manageable: value.manageable, deletable: value.deletable,
+    ipWhitelist: value.ipWhitelist, ipBlacklist: value.ipBlacklist,
+    quotaUsdMicros: personalGatewayMoney(value.quotaUSDMicros), quotaUsedUsdMicros: personalGatewayMoney(value.quotaUsedUSDMicros),
+    rateLimit5hUsdMicros: personalGatewayMoney(value.rateLimit5hUSDMicros),
+    rateLimit1dUsdMicros: personalGatewayMoney(value.rateLimit1dUSDMicros),
+    rateLimit7dUsdMicros: personalGatewayMoney(value.rateLimit7dUSDMicros),
+    usage5hUsdMicros: personalGatewayMoney(value.usage5hUSDMicros), usage1dUsdMicros: personalGatewayMoney(value.usage1dUSDMicros),
+    usage7dUsdMicros: personalGatewayMoney(value.usage7dUSDMicros), currentConcurrency: value.currentConcurrency,
+    lastUsedAt: value.lastUsedAt ?? null, lastUsedIp: value.lastUsedIp ?? null, expiresAt: value.expiresAt ?? null,
+    createdAt: value.createdAt ?? null, updatedAt: value.updatedAt ?? null
+  };
+}
+
+async function personalGatewayGet<Wire, Data>(path: string, decode: (value: Wire) => Data, empty: (data: Data) => boolean, signal?: AbortSignal): Promise<SourceEnvelope<Data>> {
+  const data = decode(await getJson<Wire>(path, { signal }));
+  return { source: "gateway", available: true, status: empty(data) ? "empty" : "available", fetchedAt: new Date().toISOString(), data };
+}
+
+function personalGatewayUnavailable(reasonCode: string): UnavailableSource {
+  return { source: "gateway", available: false, status: "unavailable", fetchedAt: new Date().toISOString(), reasonCode };
+}
+
+export function gatewayKeyReadFailure(error: unknown): UnavailableSource {
+  const payload = (error as ApiError)?.payload as { code?: string; error?: string } | undefined;
+  const reauthentication = (payload?.code ?? payload?.error)?.toUpperCase() === "REAUTHENTICATION_REQUIRED";
+  return { ...personalGatewayUnavailable(reauthentication ? "REAUTHENTICATION_REQUIRED" : cloudIdentity ? "gateway_key_read_unavailable" : "sub2api_unavailable"),
+    source: cloudIdentity ? "gateway" : "sub2api" };
+}
+
 export function getGatewayKeys(query: GatewayKeyListQuery = {}, signal?: AbortSignal): Promise<SourceEnvelope<GatewayKeyPageDTO>> {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
     if (value !== undefined && value !== "") params.set(key, String(value));
   }
   const suffix = params.size > 0 ? `?${params}` : "";
-  return sourceGet<GatewayKeyPageDTO>(`/api/gateway/keys${suffix}`, signal);
+  if (!cloudIdentity) return sourceGet<GatewayKeyPageDTO>(`/api/gateway/keys${suffix}`, signal);
+  return personalGatewayGet(`/api/v2/gateway/keys${suffix}`, (value: PersonalGatewayKeyPageReadback) => ({
+    items: value.items.map(decodePersonalGatewayKey), total: personalGatewayNumber(value.total),
+    page: value.page, pageSize: value.pageSize, pages: value.pages
+  }), (data) => data.items.length === 0, signal);
 }
 
 export function getGatewayGroups(signal?: AbortSignal): Promise<SourceEnvelope<GatewayGroupPageDTO>> {
-  return sourceGet<GatewayGroupPageDTO>("/api/gateway/groups", signal);
+  if (!cloudIdentity) return sourceGet<GatewayGroupPageDTO>("/api/gateway/groups", signal);
+  return personalGatewayGet("/api/v2/gateway/groups", (value: GatewayGroupPageDTO) => ({
+    items: value.items.map(({ id, name, description, platform, rateMultiplier, subscriptionType, status }) => ({
+      id, name, description, platform, rateMultiplier, subscriptionType, status
+    })), total: value.total
+  }), (data) => data.items.length === 0, signal);
 }
 
 export function getGatewayEndpoint(signal?: AbortSignal): Promise<SourceEnvelope<GatewayEndpointDTO>> {
@@ -170,18 +243,22 @@ export function getGatewayEndpoint(signal?: AbortSignal): Promise<SourceEnvelope
 }
 
 export function getGatewayKey(keyId: string, signal?: AbortSignal): Promise<SourceEnvelope<GatewayKeySummaryDTO>> {
-  return sourceGet<GatewayKeySummaryDTO>(`/api/gateway/keys/${encodeURIComponent(keyId)}`, signal);
+  if (!cloudIdentity) return sourceGet<GatewayKeySummaryDTO>(`/api/gateway/keys/${encodeURIComponent(keyId)}`, signal);
+  return personalGatewayGet(`/api/v2/gateway/keys/${encodeURIComponent(keyId)}`, decodePersonalGatewayKey, () => false, signal);
 }
 
 export function createGatewayKey(input: CreateGatewayKeyRequest, csrfToken: string, idempotencyKey: string): Promise<SourceEnvelope<GatewayKeySummaryDTO>> {
+  if (cloudIdentity) return Promise.resolve(personalGatewayUnavailable("gateway_key_capability_unavailable"));
   return sourcePost<GatewayKeySummaryDTO>("/api/gateway/keys", input, csrfToken, idempotencyKey);
 }
 
 export function updateGatewayKey(keyId: string, input: UpdateGatewayKeyRequest, csrfToken: string, idempotencyKey: string): Promise<SourceEnvelope<GatewayKeySummaryDTO>> {
+  if (cloudIdentity) return Promise.resolve(personalGatewayUnavailable("gateway_key_capability_unavailable"));
   return sourcePatch<GatewayKeySummaryDTO>(`/api/gateway/keys/${encodeURIComponent(keyId)}`, input, csrfToken, idempotencyKey);
 }
 
 export function deleteGatewayKey(keyId: string, csrfToken: string, idempotencyKey: string): Promise<SourceEnvelope<OperationStatusDTO>> {
+  if (cloudIdentity) return Promise.resolve(personalGatewayUnavailable("gateway_key_capability_unavailable"));
   return sourceDelete<OperationStatusDTO>(`/api/gateway/keys/${encodeURIComponent(keyId)}`, csrfToken, idempotencyKey);
 }
 
@@ -191,16 +268,30 @@ export function getGatewayBalanceHistory(page = 1, pageSize = 20, signal?: Abort
 }
 
 export function revealGatewayKey(keyId: string, csrfToken: string): Promise<SourceEnvelope<GatewayKeySecretDTO>> {
+  if (cloudIdentity) return Promise.resolve(personalGatewayUnavailable("gateway_key_capability_unavailable"));
   return sourcePost<GatewayKeySecretDTO>(`/api/gateway/keys/${encodeURIComponent(keyId)}/reveal`, {}, csrfToken);
 }
 
 export function getGatewayKeyUsage(keyId: string, page = 1, pageSize = 20, period: GatewayUsagePeriod = "month", signal?: AbortSignal): Promise<SourceEnvelope<GatewayKeyUsagePageDTO>> {
   const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), period });
-  return sourceGet<GatewayKeyUsagePageDTO>(`/api/gateway/keys/${encodeURIComponent(keyId)}/usage?${params}`, signal);
+  if (!cloudIdentity) return sourceGet<GatewayKeyUsagePageDTO>(`/api/gateway/keys/${encodeURIComponent(keyId)}/usage?${params}`, signal);
+  return personalGatewayGet(`/api/v2/gateway/keys/${encodeURIComponent(keyId)}/usage?${params}`, (value: PersonalGatewayKeyUsagePageReadback) => ({
+    items: value.items.map((item) => ({
+      apiKeyId: item.apiKeyId, requestId: item.requestId, createdAt: item.createdAt, model: item.model,
+      inboundEndpoint: item.inboundEndpoint, requestType: item.requestType,
+      inputTokens: personalGatewayNumber(item.inputTokens), outputTokens: personalGatewayNumber(item.outputTokens),
+      cacheCreationTokens: personalGatewayNumber(item.cacheCreationTokens), cacheReadTokens: personalGatewayNumber(item.cacheReadTokens),
+      actualCostUsdMicros: personalGatewayMoney(item.actualCostUSDMicros),
+      durationMs: item.durationMs === undefined ? null : personalGatewayNumber(item.durationMs),
+      firstTokenMs: item.firstTokenMs === undefined ? null : personalGatewayNumber(item.firstTokenMs)
+    })), total: personalGatewayNumber(value.total), page: value.page, pageSize: value.pageSize, pages: value.pages
+  }), (data) => data.items.length === 0, signal);
 }
 
 export function getGatewayKeyUsageSummary(keyId: string, period: GatewayUsagePeriod = "month", signal?: AbortSignal): Promise<SourceEnvelope<GatewayUsageSummaryDTO>> {
-  return sourceGet<GatewayUsageSummaryDTO>(`/api/gateway/keys/${encodeURIComponent(keyId)}/usage-summary?${new URLSearchParams({ period })}`, signal);
+  if (!cloudIdentity) return sourceGet<GatewayUsageSummaryDTO>(`/api/gateway/keys/${encodeURIComponent(keyId)}/usage-summary?${new URLSearchParams({ period })}`, signal);
+  return personalGatewayGet(`/api/v2/gateway/keys/${encodeURIComponent(keyId)}/usage-summary?${new URLSearchParams({ period })}`,
+    decodeGatewayUsageSummaryReadback, () => false, signal);
 }
 
 export function gatewayUsageSummaryRoute(cloud: boolean): "/api/v2/usage/summary" | "/api/gateway/usage-summary" {
@@ -222,7 +313,7 @@ export function decodeGatewayUsageSummaryReadback(value: unknown): GatewayAccoun
     totalInputTokens: decodeGatewayUsageCount(readback.totalInputTokens, "input_tokens"),
     totalOutputTokens: decodeGatewayUsageCount(readback.totalOutputTokens, "output_tokens"),
     totalTokens: decodeGatewayUsageCount(readback.totalTokens, "tokens"),
-    totalActualCostUsdMicros: decodeGatewayUsageCount(readback.totalActualCostUSDMicros, "actual_cost_usd_micros")
+    totalActualCostUsdMicros: personalGatewayMoney(readback.totalActualCostUSDMicros)
   };
 }
 

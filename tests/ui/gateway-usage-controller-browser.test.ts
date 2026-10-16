@@ -1053,3 +1053,313 @@ test("Gateway usage preserves the result-first hierarchy in desktop and mobile v
     await demo.close();
   }
 });
+
+const canonicalKey = {
+    id: "9223372036854775807", name: "Cloud personal Key",
+    status: "active", kind: "general", manageable: false, deletable: false,
+    ipWhitelist: [], ipBlacklist: [], quotaUSDMicros: "1000000", quotaUsedUSDMicros: "34000",
+    rateLimit5hUSDMicros: "1", rateLimit1dUSDMicros: "2", rateLimit7dUSDMicros: "3",
+    usage5hUSDMicros: "4", usage1dUSDMicros: "5", usage7dUSDMicros: "6",
+    currentConcurrency: 2,
+    createdAt: "2026-10-16T00:00:00Z"
+  };
+
+test("Cloud personal Key adapter preserves public money casing and read-only DTO semantics", { timeout: 60_000 }, async () => {
+  const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
+  process.env.VITE_CONSOLE_IDENTITY = "cloud";
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await launchBrowser({ headless: true });
+
+  try {
+    const page = await browser.newPage();
+    const requests: string[] = [];
+    let keyOverrides: Record<string, unknown> = {};
+    let usageOverrides: Record<string, unknown> = {};
+    let total: unknown = "1";
+    let summaryCost: unknown = "7000";
+    await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
+      requests.push(new URL(route.request().url()).pathname);
+      const path = requests.at(-1)!;
+      let response: unknown;
+      if (path === "/api/v2/gateway/keys") response = { items: [{ ...canonicalKey, ...keyOverrides }], total, page: 1, pageSize: 20, pages: 1 };
+      else if (path === `/api/v2/gateway/keys/${canonicalKey.id}`) response = { ...canonicalKey, ...keyOverrides };
+      else if (path === "/api/v2/gateway/groups") response = { items: [{ id: "3", name: "Zero multiplier", description: "", platform: "openai", rateMultiplier: 0, subscriptionType: "standard", status: "active" }], total: 1 };
+      else if (path.endsWith("/usage-summary")) response = { totalRequests: "7", totalInputTokens: "70", totalOutputTokens: "14", totalTokens: "84", totalActualCostUSDMicros: summaryCost };
+      else if (path.endsWith("/usage")) response = { items: [{ apiKeyId: canonicalKey.id, requestId: "cloud-request", model: "test-model", inboundEndpoint: "/v1/responses", requestType: "sync", createdAt: "2026-10-16T00:00:00Z", inputTokens: "10", outputTokens: "2", cacheCreationTokens: "3", cacheReadTokens: "4", actualCostUSDMicros: "5", durationMs: "6", ...usageOverrides }], total, page: 2, pageSize: 10, pages: 2 };
+      await route.fulfill({ status: response ? 200 : 404, contentType: "application/json", body: JSON.stringify(response ?? { error: "unexpected_legacy_key_request" }) });
+    });
+    await page.goto(`${demo.origin}/login`, { waitUntil: "networkidle" });
+    const result = await page.evaluate(async () => {
+      const api = await import("/apps/console-ui/src/api/console-read-api.ts");
+      return api.getGatewayKeys();
+    });
+    assert.equal(result.source, "gateway");
+    assert.equal(result.available, true);
+    if (!result.available) throw new Error("personal_keys_unavailable");
+    assert.deepEqual(result.data, {
+      items: [{ ...key, id: canonicalKey.id, name: canonicalKey.name, manageable: false, deletable: false, quotaUsdMicros: "1000000", quotaUsedUsdMicros: "34000",
+        rateLimit5hUsdMicros: "1", rateLimit1dUsdMicros: "2", rateLimit7dUsdMicros: "3",
+        usage5hUsdMicros: "4", usage1dUsdMicros: "5", usage7dUsdMicros: "6", currentConcurrency: 2,
+        lastUsedAt: null, createdAt: canonicalKey.createdAt, updatedAt: null }],
+      total: 1, page: 1, pageSize: 20, pages: 1
+    });
+    assert.deepEqual(requests, ["/api/v2/gateway/keys"]);
+    const reads = await page.evaluate(async (id) => {
+      const api = await import("/apps/console-ui/src/api/console-read-api.ts");
+      return { key: await api.getGatewayKey(id), groups: await api.getGatewayGroups(),
+        usage: await api.getGatewayKeyUsage(id, 2, 10, "week"), summary: await api.getGatewayKeyUsageSummary(id, "today") };
+    }, canonicalKey.id);
+    assert.equal(reads.key.available && reads.key.data.id, canonicalKey.id);
+    assert.equal(reads.groups.source, "gateway");
+    assert.deepEqual(reads.groups.available && reads.groups.data, { items: [{ id: "3", name: "Zero multiplier", description: "", platform: "openai", rateMultiplier: 0, subscriptionType: "standard", status: "active" }], total: 1 });
+    assert.equal(reads.usage.source, "gateway");
+    assert.deepEqual(reads.usage.available && reads.usage.data, { items: [{ apiKeyId: canonicalKey.id, requestId: "cloud-request", model: "test-model", inboundEndpoint: "/v1/responses", requestType: "sync", createdAt: "2026-10-16T00:00:00Z", inputTokens: 10, outputTokens: 2, cacheCreationTokens: 3, cacheReadTokens: 4, actualCostUsdMicros: "5", durationMs: 6, firstTokenMs: null }], total: 1, page: 2, pageSize: 10, pages: 2 });
+    assert.equal(reads.summary.source, "gateway");
+    assert.deepEqual(reads.summary.available && reads.summary.data, { totalRequests: 7, totalInputTokens: 70, totalOutputTokens: 14, totalTokens: 84, totalActualCostUsdMicros: "7000" });
+    for (const field of ["quotaUSDMicros", "quotaUsedUSDMicros", "rateLimit5hUSDMicros", "rateLimit1dUSDMicros", "rateLimit7dUSDMicros", "usage5hUSDMicros", "usage1dUSDMicros", "usage7dUSDMicros"]) {
+      for (const value of ["01", "-1", "1.5", 1, "9223372036854775808"]) {
+        keyOverrides = { [field]: value };
+        const error = await page.evaluate(async (id) => {
+          const api = await import("/apps/console-ui/src/api/console-read-api.ts");
+          try { await api.getGatewayKey(id); return "accepted"; } catch (error) { return (error as Error).message; }
+        }, canonicalKey.id);
+        assert.match(error, /^invalid_personal_gateway_money$/, `${field} accepted ${value}`);
+      }
+    }
+    for (const value of ["9007199254740993", "9223372036854775807"]) {
+      keyOverrides = { quotaUSDMicros: value, quotaUsedUSDMicros: value, rateLimit5hUSDMicros: value, rateLimit1dUSDMicros: value, rateLimit7dUSDMicros: value, usage5hUSDMicros: value, usage1dUSDMicros: value, usage7dUSDMicros: value };
+      usageOverrides = { actualCostUSDMicros: value };
+      summaryCost = value;
+      const precise = await page.evaluate(async (id) => {
+        const api = await import("/apps/console-ui/src/api/console-read-api.ts");
+        return { key: await api.getGatewayKey(id), usage: await api.getGatewayKeyUsage(id), summary: await api.getGatewayKeyUsageSummary(id) };
+      }, canonicalKey.id);
+      assert.ok(precise.key.available && precise.usage.available && precise.summary.available);
+      for (const field of ["quotaUsdMicros", "quotaUsedUsdMicros", "rateLimit5hUsdMicros", "rateLimit1dUsdMicros", "rateLimit7dUsdMicros", "usage5hUsdMicros", "usage1dUsdMicros", "usage7dUsdMicros"]) assert.equal(precise.key.data[field], value);
+      assert.equal(precise.usage.data.items[0].actualCostUsdMicros, value);
+      assert.equal(precise.summary.data.totalActualCostUsdMicros, value);
+    }
+    keyOverrides = { groupId: undefined, lastUsedAt: undefined, lastUsedIp: undefined, expiresAt: undefined, createdAt: undefined, updatedAt: undefined, key: "must-not-enter-dto" };
+    const optional = await page.evaluate(async (id) => (await import("/apps/console-ui/src/api/console-read-api.ts")).getGatewayKey(id), canonicalKey.id);
+    assert.ok(optional.available);
+    for (const field of ["groupId", "lastUsedAt", "lastUsedIp", "expiresAt", "createdAt", "updatedAt"]) assert.equal(optional.data[field], null);
+    assert.equal("key" in optional.data, false);
+    for (const field of ["inputTokens", "outputTokens", "cacheCreationTokens", "cacheReadTokens", "durationMs", "firstTokenMs"]) {
+      usageOverrides = { [field]: "9007199254740992" };
+      const error = await page.evaluate(async (id) => {
+        const api = await import("/apps/console-ui/src/api/console-read-api.ts");
+        try { await api.getGatewayKeyUsage(id); return "accepted"; } catch (error) { return (error as Error).message; }
+      }, canonicalKey.id);
+      assert.match(error, /unsafe_personal_gateway_integer/, `${field} lost precision`);
+    }
+    usageOverrides = { durationMs: undefined, firstTokenMs: undefined };
+    const optionalUsage = await page.evaluate(async (id) => (await import("/apps/console-ui/src/api/console-read-api.ts")).getGatewayKeyUsage(id), canonicalKey.id);
+    assert.ok(optionalUsage.available);
+    assert.equal(optionalUsage.data.items[0].durationMs, null);
+    assert.equal(optionalUsage.data.items[0].firstTokenMs, null);
+    total = "9007199254740992";
+    const totalErrors = await page.evaluate(async (id) => {
+      const api = await import("/apps/console-ui/src/api/console-read-api.ts");
+      return Promise.all([api.getGatewayKeys(), api.getGatewayKeyUsage(id)].map((read) => read.then(() => "accepted", (error) => error.message)));
+    }, canonicalKey.id);
+    assert.deepEqual(totalErrors, ["unsafe_personal_gateway_integer", "unsafe_personal_gateway_integer"]);
+    const beforeCommands = requests.length;
+    const commands = await page.evaluate(async (id) => {
+      const api = await import("/apps/console-ui/src/api/console-read-api.ts");
+      return Promise.all([api.createGatewayKey({ name: "unsupported", groupId: "3", quotaUsdMicros: 0 }, "csrf", "intent"),
+        api.updateGatewayKey(id, { enabled: false }, "csrf", "intent"), api.deleteGatewayKey(id, "csrf", "intent"), api.revealGatewayKey(id, "csrf")]);
+    }, canonicalKey.id);
+    assert.equal(requests.length, beforeCommands);
+    for (const result of commands) {
+      assert.equal(result.source, "gateway"); assert.equal(result.available, false);
+      assert.equal(!result.available && result.reasonCode, "gateway_key_capability_unavailable");
+    }
+
+  } finally {
+    await browser.close();
+    await demo.close();
+    if (previousIdentity === undefined) delete process.env.VITE_CONSOLE_IDENTITY;
+    else process.env.VITE_CONSOLE_IDENTITY = previousIdentity;
+  }
+});
+
+test("Cloud Key credential reauthentication preserves session and wallet and exposes read-only capability", { timeout: 60_000 }, async () => {
+  const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
+  process.env.VITE_CONSOLE_IDENTITY = "cloud";
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await launchBrowser({ headless: true });
+  try {
+    const page = await browser.newPage();
+    let sessionReads = 0;
+    let requireReauthentication = true;
+    let logoutCalls = 0;
+    const legacyReads: string[] = [];
+    await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+      if (!path.startsWith("/api/v2/")) legacyReads.push(path);
+      if (path === "/api/v2/auth/session") {
+        sessionReads++;
+        return json({ actorId: "personal-user", displayName: "Personal User", csrfToken: "personal-session", permissions: [], expiresAt: "2099-01-01T00:00:00Z" });
+      }
+      if (path === "/api/v2/auth/logout") logoutCalls++;
+      if (path === "/api/v2/wallet") return json({ source: "gateway", status: "available", currency: "USD", balanceUSDMicros: "12500000", fetchedAt: "2026-10-16T00:00:00Z" });
+      if (path === "/api/v2/gateway/keys" || path === "/api/v2/gateway/groups") {
+        if (requireReauthentication) return json({ code: "REAUTHENTICATION_REQUIRED", message: "publisher request could not be completed" }, 401);
+        return path.endsWith("/keys") ? json({ items: [{ ...canonicalKey, quotaUSDMicros: "9223372036854775807", quotaUsedUSDMicros: "9007199254740993" }], total: "1", page: 1, pageSize: 20, pages: 1 }) : json({ items: [], total: 0 });
+      }
+      return json({ code: "DEPENDENCY_UNAVAILABLE" }, 503);
+    });
+    await page.goto(`${demo.origin}/console/api/keys`, { waitUntil: "networkidle" });
+    await page.getByText("API 密钥访问需要重新登录", { exact: true }).waitFor({ state: "visible", timeout: 5000 });
+    const login = page.getByRole("link", { name: "重新登录", exact: true });
+    assert.equal(await login.getAttribute("href"), "/login?redirect=%2Fconsole%2Fapi%2Fkeys");
+    await page.getByText("当前仅支持查看 API 密钥与用量，创建、修改、删除和显示完整密钥暂不可用。", { exact: true }).waitFor();
+    assert.equal(await page.getByRole("button", { name: "创建 API 密钥", exact: true }).count(), 0);
+    const priorSessionReads = sessionReads;
+    const sessionAndWallet = await page.evaluate(async () => {
+      const auth = await import("/apps/console-ui/src/api/auth-api.ts");
+      const api = await import("/apps/console-ui/src/api/console-read-api.ts");
+      return { session: await auth.currentSession(), wallet: await api.getGatewayWallet() };
+    });
+    assert.equal(sessionAndWallet.session?.csrfToken, "personal-session");
+    assert.equal(sessionAndWallet.wallet.available && sessionAndWallet.wallet.data.usdMicros, "12500000");
+    assert.equal(sessionReads, priorSessionReads + 1);
+    assert.equal(logoutCalls, 0);
+    assert.deepEqual(legacyReads, []);
+    requireReauthentication = false;
+    await page.getByRole("button", { name: "刷新 API 密钥", exact: true }).click();
+    await page.locator(".keys-table").getByText(canonicalKey.name, { exact: true }).waitFor();
+    assert.equal(await page.getByText("API 密钥访问需要重新登录", { exact: true }).count(), 0);
+    for (const name of ["显示 API 密钥", "使用说明", "创建 API 密钥", "编辑", "启用", "停用", "重置配额用量", "重置消费限额用量", "删除"]) {
+      assert.equal(await page.getByRole("button", { name, exact: true }).count(), 0, `${name} is unavailable in Cloud`);
+    }
+    await page.locator(".keys-table").getByText("$9,223,372,036,854.78", { exact: true }).waitFor();
+    await page.locator(".keys-table").getByText("已用 $9,007,199,254.74", { exact: true }).waitFor();
+    assert.equal(await page.locator(".keys-table").getByRole("progressbar").getAttribute("value"), "0.09");
+    requireReauthentication = true;
+    await page.getByRole("button", { name: "刷新 API 密钥", exact: true }).click();
+    await login.click();
+    await page.waitForURL(/\/login\?redirect=/);
+    await page.getByLabel("密码", { exact: true }).waitFor();
+  } finally {
+    await browser.close();
+    await demo.close();
+    if (previousIdentity === undefined) delete process.env.VITE_CONSOLE_IDENTITY;
+    else process.env.VITE_CONSOLE_IDENTITY = previousIdentity;
+  }
+});
+
+test("Cloud usage ignores an old session reauthentication response and prompts only for current credentials", { timeout: 90_000 }, async () => {
+  const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
+  process.env.VITE_CONSOLE_IDENTITY = "cloud";
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await launchBrowser({ headless: true });
+  const held = deferred<void>();
+  const release = deferred<void>();
+  let heldReads = 0;
+  let csrfToken = "cloud-session-a";
+  let requireCurrentReauthentication = false;
+  let requireKeyListReauthentication = false;
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
+      const url = new URL(route.request().url());
+      const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+      const session = () => ({ actorId: "personal-user", displayName: "Personal User", permissions: [], csrfToken, expiresAt: "2099-01-01T00:00:00Z" });
+      if (url.pathname === "/api/v2/auth/session") return json(session());
+      if (url.pathname === "/api/v2/auth/context") return json({ csrfToken: "challenge" });
+      if (url.pathname === "/api/v2/auth/login") { csrfToken = "cloud-session-b"; return json(session()); }
+      if (url.pathname === "/api/v2/auth/logout") return route.fulfill({ status: 204 });
+      if (url.pathname === "/api/v2/gateway/keys") {
+        return requireKeyListReauthentication ? json({ code: "REAUTHENTICATION_REQUIRED" }, 401)
+          : json({ items: [canonicalKey], total: "1", page: 1, pageSize: 20, pages: 1 });
+      }
+      if (url.pathname === `/api/v2/gateway/keys/${canonicalKey.id}`) {
+        return requireCurrentReauthentication ? json({ code: "REAUTHENTICATION_REQUIRED" }, 401) : json(canonicalKey);
+      }
+      if (url.pathname.endsWith("/usage") || url.pathname.endsWith("/usage-summary")) {
+        if (url.searchParams.get("period") === "week" && csrfToken === "cloud-session-a") {
+          heldReads++;
+          if (heldReads === 2) held.resolve();
+          await release.promise;
+          return json({ code: "REAUTHENTICATION_REQUIRED" }, 401);
+        }
+        if (requireCurrentReauthentication && url.pathname.endsWith("/usage")) return json({ code: "REAUTHENTICATION_REQUIRED" }, 401);
+        if (url.pathname.endsWith("/usage-summary")) return json({ totalRequests: "7", totalInputTokens: "70", totalOutputTokens: "14", totalTokens: "84", totalActualCostUSDMicros: "9007199254740993" });
+        return json({ items: [{ apiKeyId: canonicalKey.id, requestId: "current-session-request", createdAt: "2026-10-16T00:00:00Z", model: "test-model", inboundEndpoint: "/v1/responses", requestType: "sync", inputTokens: "10", outputTokens: "2", cacheCreationTokens: "0", cacheReadTokens: "0", actualCostUSDMicros: "9223372036854775807", durationMs: "0", firstTokenMs: "0" }], total: "1", page: 1, pageSize: 20, pages: 1 });
+      }
+      return json({ code: "DEPENDENCY_UNAVAILABLE" }, 503);
+    });
+    await page.goto(`${demo.origin}/console/api/usage`, { waitUntil: "networkidle" });
+    await requestEntry(page, "current-session-request").waitFor();
+    assert.equal(await requestEntry(page, "current-session-request").locator(".usage-cost").textContent(), "$9,223,372,036,854.78");
+    await page.locator(".usage-summary-strip").getByText("$9,007,199,254.74", { exact: true }).waitFor();
+    await page.getByRole("radio", { name: "本周", exact: true }).click();
+    await held.promise;
+    await page.locator(".topbar-actions").getByRole("button", { name: "账号信息", exact: true }).click();
+    await page.getByRole("complementary", { name: "账号信息", exact: true }).getByRole("button", { name: "退出登录", exact: true }).click();
+    await page.waitForURL(`${demo.origin}/`);
+    await page.locator(".public-nav").getByRole("button", { name: "登录", exact: true }).click();
+    await page.waitForURL(/\/login$/);
+    await page.getByLabel("邮箱").fill("personal@example.test");
+    await page.getByLabel("密码").fill("session-b-password");
+    await page.getByRole("button", { name: "登录", exact: true }).click();
+    await page.waitForURL(/\/console\/overview$/);
+    await page.locator('a[href="/console/api"]').first().click();
+    await page.getByRole("navigation", { name: "API 服务导航" }).getByRole("link", { name: "用量", exact: true }).click();
+    await requestEntry(page, "current-session-request").waitFor();
+    const oldResponses = [waitForUsageResponse(page, canonicalKey.id, "week", false), waitForUsageResponse(page, canonicalKey.id, "week", true)];
+    release.resolve();
+    await waitForResponsesToSettle(page, oldResponses);
+    assert.equal(await page.getByText("API 密钥访问需要重新登录", { exact: true }).count(), 0);
+    assert.equal(await requestEntry(page, "current-session-request").count(), 1);
+    await requestEntry(page, "current-session-request").getByRole("button", { name: "查看详情", exact: true }).click();
+    assert.equal(await requestEntry(page, "current-session-request").getByText("0 ms", { exact: true }).count(), 2);
+    requireCurrentReauthentication = true;
+    await page.getByRole("radio", { name: "今日", exact: true }).click();
+    await page.getByText("API 密钥访问需要重新登录", { exact: true }).waitFor();
+    assert.equal(await page.getByRole("link", { name: "重新登录", exact: true }).getAttribute("href"), "/login?redirect=%2Fconsole%2Fapi%2Fusage");
+    await page.locator(".usage-summary-strip").getByText("7", { exact: true }).waitFor({ timeout: 3000 });
+    // Detail revalidation uses the same typed credential code when refreshing the selected Key.
+    await page.getByRole("main").getByRole("button", { name: "刷新", exact: true }).click();
+    await page.getByText("API 密钥访问需要重新登录", { exact: true }).waitFor();
+
+    // Usage/detail reauthentication alone must not add a warning to a healthy picker.
+    const pickerTrigger = page.getByRole("button", { name: "更换 API 密钥", exact: true });
+    const picker = page.getByRole("dialog", { name: "选择 API 密钥" });
+    await pickerTrigger.click();
+    await picker.getByRole("button", { name: new RegExp(canonicalKey.name) }).waitFor();
+    assert.equal(await picker.getByRole("link", { name: "重新登录", exact: true }).count(), 0);
+    await page.keyboard.press("Escape");
+    await picker.waitFor({ state: "hidden" });
+    await page.getByText("API 密钥访问需要重新登录", { exact: true }).waitFor();
+
+    // A rejected Key-list read must expose reauthentication inside the focus trap.
+    requireKeyListReauthentication = true;
+    const rejectedKeys = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v2/gateway/keys" && response.status() === 401);
+    await pickerTrigger.click();
+    await waitForResponsesToSettle(page, [rejectedKeys]);
+    const login = picker.getByRole("link", { name: "重新登录", exact: true });
+    assert.equal(await login.count(), 1, "Key picker must contain an actionable reauthentication link");
+    await login.click({ trial: true });
+    assert.equal(await login.getAttribute("href"), "/login?redirect=%2Fconsole%2Fapi%2Fusage");
+    assert.equal(await picker.getByRole("alert").filter({ hasText: "API 密钥访问需要重新登录" }).count(), 1);
+    assert.equal(await page.getByText("API 密钥访问需要重新登录", { exact: true }).count(), 1);
+    assert.equal(await picker.getByText("暂时无法读取 API 密钥，请稍后重试。", { exact: true }).count(), 0);
+    assert.equal(await picker.getByRole("button", { name: "重试", exact: true }).count(), 0);
+    await picker.getByLabel("搜索 API 密钥").click();
+    await page.keyboard.press("Tab");
+    assert.equal(await picker.getByRole("button", { name: "搜索", exact: true }).evaluate((node) => node === document.activeElement), true);
+    await page.keyboard.press("Tab");
+    assert.equal(await login.evaluate((node) => node === document.activeElement), true);
+    await page.keyboard.press("Enter");
+    await page.waitForURL(`${demo.origin}/login?redirect=%2Fconsole%2Fapi%2Fusage`);
+  } finally {
+    release.resolve();
+    await browser.close();
+    await demo.close();
+    if (previousIdentity === undefined) delete process.env.VITE_CONSOLE_IDENTITY;
+    else process.env.VITE_CONSOLE_IDENTITY = previousIdentity;
+  }
+});

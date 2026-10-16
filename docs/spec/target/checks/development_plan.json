@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "358a2517d4bbb7f6c04ec6511108a211faa6174e",
+  "sourceSHA": "e728113f5608687aecc2f95c9d83cfb6b4ad52ef",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -515,12 +515,17 @@
       "state": "not_implemented",
       "apiPrimary": [
         "createGatewayKey",
+        "getPersonalGatewayKey",
+        "getPersonalGatewayKeyUsageSummary",
         "getSelfUserExternalBinding",
         "getUsageSummary",
         "getWallet",
         "getWorkspaceTransactionTrend",
         "listGatewayKeys",
         "listModels",
+        "listPersonalGatewayGroups",
+        "listPersonalGatewayKeyUsage",
+        "listPersonalGatewayKeys",
         "listRechargeRecords",
         "listUsage",
         "listWorkspaceTransactions",
@@ -529,7 +534,12 @@
       ],
       "apiConsumes": [],
       "sessionOnlyOperations": [
-        "getSelfUserExternalBinding"
+        "getPersonalGatewayKey",
+        "getPersonalGatewayKeyUsageSummary",
+        "getSelfUserExternalBinding",
+        "listPersonalGatewayGroups",
+        "listPersonalGatewayKeyUsage",
+        "listPersonalGatewayKeys"
       ],
       "tablesPrimary": [
         "gateway.identity_mappings",
@@ -538,6 +548,11 @@
         "gateway.wallet_operations"
       ],
       "rpcImplements": [
+        "GatewayProductService.ListPersonalGatewayKeys",
+        "GatewayProductService.GetPersonalGatewayKey",
+        "GatewayProductService.ListPersonalGatewayGroups",
+        "GatewayProductService.ListPersonalGatewayKeyUsage",
+        "GatewayProductService.GetPersonalGatewayKeyUsageSummary",
         "GatewayProductService.ListWorkspaceTransactions",
         "GatewayProductService.GetWorkspaceTransactionTrend",
         "GatewayProductService.GetWallet",
@@ -1323,6 +1338,8 @@
         "getAdminTenant",
         "getLoginContext",
         "getOperation",
+        "getPersonalGatewayKey",
+        "getPersonalGatewayKeyUsageSummary",
         "getReceipt",
         "getSelfUserExternalBinding",
         "getSession",
@@ -1333,6 +1350,9 @@
         "listAuditEvents",
         "listInvitations",
         "listMembers",
+        "listPersonalGatewayGroups",
+        "listPersonalGatewayKeyUsage",
+        "listPersonalGatewayKeys",
         "listQualifications",
         "listReceipts",
         "login",
@@ -3282,6 +3302,21 @@
     ],
     "ServeProductService.GetWorkspaceAccess": [
       "W17"
+    ],
+    "GatewayProductService.ListPersonalGatewayKeys": [
+      "W04"
+    ],
+    "GatewayProductService.GetPersonalGatewayKey": [
+      "W04"
+    ],
+    "GatewayProductService.ListPersonalGatewayGroups": [
+      "W04"
+    ],
+    "GatewayProductService.ListPersonalGatewayKeyUsage": [
+      "W04"
+    ],
+    "GatewayProductService.GetPersonalGatewayKeyUsageSummary": [
+      "W04"
     ],
     "GatewayProductService.ListWorkspaceTransactions": [
       "W04"
