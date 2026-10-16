@@ -31,16 +31,22 @@ import (
 type gatewayOwnerServer struct {
 	api.UnimplementedGatewayProductServiceServer
 	api.UnimplementedGatewayCoordinationServer
-	bindingRequest       *api.GetSelfUserExternalBindingRequest
-	bindingResponse      *api.UserExternalBindingReadback
-	bindingErr           error
-	walletRequest        *api.GetWalletRpcRequest
-	usageRequest         *api.GetUsageSummaryRpcRequest
-	modelRequest         *api.ListModelsRpcRequest
-	transactionsRequest  *api.ListWorkspaceTransactionsRpcRequest
-	transactionsResponse *api.WalletOperationPage
-	transactionsErr      error
-	trendRequest         *api.GetWorkspaceTransactionTrendRpcRequest
+	bindingRequest         *api.GetSelfUserExternalBindingRequest
+	bindingResponse        *api.UserExternalBindingReadback
+	bindingErr             error
+	walletRequest          *api.GetWalletRpcRequest
+	usageRequest           *api.GetUsageSummaryRpcRequest
+	modelRequest           *api.ListModelsRpcRequest
+	transactionsRequest    *api.ListWorkspaceTransactionsRpcRequest
+	transactionsResponse   *api.WalletOperationPage
+	transactionsErr        error
+	trendRequest           *api.GetWorkspaceTransactionTrendRpcRequest
+	personalKeysRequest    *api.ListPersonalGatewayKeysRpcRequest
+	personalErr            error
+	personalKeyRequest     *api.GetPersonalGatewayKeyRpcRequest
+	personalGroupRequest   *api.ListPersonalGatewayGroupsRpcRequest
+	personalUsageRequest   *api.ListPersonalGatewayKeyUsageRpcRequest
+	personalSummaryRequest *api.GetPersonalGatewayKeyUsageSummaryRpcRequest
 }
 
 func (s *gatewayOwnerServer) GetWorkspaceTransactionTrend(_ context.Context, r *api.GetWorkspaceTransactionTrendRpcRequest) (*api.WorkspaceTransactionTrend, error) {
@@ -342,5 +348,193 @@ func TestPersonalGatewayRoutesPreserveNoTenantSession(t *testing.T) {
 				t.Fatal("personal read selected a Tenant")
 			}
 		})
+	}
+}
+
+func (s *gatewayOwnerServer) ListPersonalGatewayKeys(_ context.Context, r *api.ListPersonalGatewayKeysRpcRequest) (*api.PersonalGatewayKeyPage, error) {
+	s.personalKeysRequest = r
+	if s.personalErr != nil {
+		return nil, s.personalErr
+	}
+	return &api.PersonalGatewayKeyPage{Items: []*api.PersonalGatewayKey{{Id: "9007199254740993", Name: "personal", Status: api.PersonalGatewayKeyStatusEnum_PERSONAL_GATEWAY_KEY_STATUS_ENUM_ACTIVE, Kind: api.PersonalGatewayKeyKindEnum_PERSONAL_GATEWAY_KEY_KIND_ENUM_GENERAL, QuotaUsdMicros: 9007199254740993, RateLimit5HUsdMicros: 1, Usage1DUsdMicros: 2}}, Total: 1, Page: r.Page, PageSize: r.PageSize, Pages: 1}, nil
+}
+
+func TestPersonalGatewayKeysUseTypedReadRoute(t *testing.T) {
+	owner := &gatewayOwnerServer{}
+	client := dialGatewayOwner(t, owner)
+	identity := allowedIdentity()
+	identity.session.TenantId = nil
+	identity.decision = allowFor("actor-1", "", api.OwnerEnum_OWNER_ENUM_GATEWAY, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYKEYS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "")
+	identity.decision.Resource.Id = nil
+	identity.decision.Scope = &api.AuthorizationScope{Scope: &api.AuthorizationScope_Platform{Platform: &api.PlatformScope{}}}
+	response := httptest.NewRecorder()
+	NewServer(client, identity).Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/gateway/keys"))
+	if response.Code != http.StatusOK {
+		t.Fatalf("personal key route status=%d body=%s", response.Code, response.Body.String())
+	}
+	if owner.personalKeysRequest == nil || owner.personalKeysRequest.Page != 1 || owner.personalKeysRequest.PageSize != 20 || owner.personalKeysRequest.SortBy != "createdAt" || owner.personalKeysRequest.SortOrder != "desc" || owner.personalKeysRequest.Context.GetSessionId() != owneridentity.SessionReference("session-1") {
+		t.Fatalf("request=%v", owner.personalKeysRequest)
+	}
+	for _, fact := range []string{`"quotaUSDMicros":"9007199254740993"`, `"rateLimit5hUSDMicros":"1"`, `"usage1dUSDMicros":"2"`, `"total":"1"`, `"status":"active"`, `"kind":"general"`, `"manageable":false`} {
+		if !strings.Contains(response.Body.String(), fact) {
+			t.Fatalf("missing %s: %s", fact, response.Body.String())
+		}
+	}
+
+}
+
+func (s *gatewayOwnerServer) GetPersonalGatewayKey(_ context.Context, r *api.GetPersonalGatewayKeyRpcRequest) (*api.PersonalGatewayKey, error) {
+	s.personalKeyRequest = r
+	if s.personalErr != nil {
+		return nil, s.personalErr
+	}
+	return &api.PersonalGatewayKey{Id: r.KeyId, Name: "personal", Status: api.PersonalGatewayKeyStatusEnum_PERSONAL_GATEWAY_KEY_STATUS_ENUM_DISABLED, Kind: api.PersonalGatewayKeyKindEnum_PERSONAL_GATEWAY_KEY_KIND_ENUM_WORKSPACE}, nil
+}
+func (s *gatewayOwnerServer) ListPersonalGatewayGroups(_ context.Context, r *api.ListPersonalGatewayGroupsRpcRequest) (*api.PersonalGatewayGroupPage, error) {
+	s.personalGroupRequest = r
+	if s.personalErr != nil {
+		return nil, s.personalErr
+	}
+	return &api.PersonalGatewayGroupPage{Items: []*api.PersonalGatewayGroup{{Id: "3", Name: "zero-rate", RateMultiplier: 0}}, Total: 1}, nil
+}
+func (s *gatewayOwnerServer) ListPersonalGatewayKeyUsage(_ context.Context, r *api.ListPersonalGatewayKeyUsageRpcRequest) (*api.PersonalGatewayKeyUsagePage, error) {
+	s.personalUsageRequest = r
+	if s.personalErr != nil {
+		return nil, s.personalErr
+	}
+	return &api.PersonalGatewayKeyUsagePage{Items: []*api.PersonalGatewayKeyUsage{{ApiKeyId: r.KeyId, RequestId: "personal-request", InputTokens: 9007199254740993, ActualCostUsdMicros: 13, DurationMs: proto.Int64(0), FirstTokenMs: proto.Int64(0)}}, Total: 3, Page: r.Page, PageSize: r.PageSize, Pages: 3}, nil
+}
+func (s *gatewayOwnerServer) GetPersonalGatewayKeyUsageSummary(_ context.Context, r *api.GetPersonalGatewayKeyUsageSummaryRpcRequest) (*api.UsageSummary, error) {
+	s.personalSummaryRequest = r
+	if s.personalErr != nil {
+		return nil, s.personalErr
+	}
+	return &api.UsageSummary{TotalRequests: 7, TotalActualCostUsdMicros: 13}, nil
+}
+
+func TestPersonalGatewayReadsTravelThroughSameSessionWire(t *testing.T) {
+	for _, tenant := range []string{"", "tenant-1"} {
+		t.Run("tenant="+tenant, func(t *testing.T) {
+			owner := &gatewayOwnerServer{}
+			client := dialGatewayOwner(t, owner)
+			cases := []struct {
+				path    string
+				action  api.AuthorizationActionEnum
+				fact    string
+				request func() proto.Message
+			}{
+				{"/api/v2/gateway/keys?page=2&pageSize=1&search=Case+Sensitive&status=expired&groupId=0&sortBy=currentConcurrency&sortOrder=asc", api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYKEYS, `"quotaUSDMicros":"9007199254740993"`, func() proto.Message { return owner.personalKeysRequest }},
+				{"/api/v2/gateway/keys/9223372036854775807", api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPERSONALGATEWAYKEY, `"kind":"workspace"`, func() proto.Message { return owner.personalKeyRequest }},
+				{"/api/v2/gateway/groups", api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYGROUPS, `"rateMultiplier":0`, func() proto.Message { return owner.personalGroupRequest }},
+				{"/api/v2/gateway/keys/9223372036854775807/usage?page=3&pageSize=1&period=week", api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYKEYUSAGE, `"inputTokens":"9007199254740993"`, func() proto.Message { return owner.personalUsageRequest }},
+				{"/api/v2/gateway/keys/9223372036854775807/usage-summary?period=today", api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPERSONALGATEWAYKEYUSAGESUMMARY, `"totalRequests":"7"`, func() proto.Message { return owner.personalSummaryRequest }},
+			}
+			for _, row := range cases {
+				t.Run(row.path, func(t *testing.T) {
+					identity := allowedIdentity()
+					identity.decision = allowFor("actor-1", tenant, api.OwnerEnum_OWNER_ENUM_GATEWAY, row.action, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, tenant)
+					if tenant == "" {
+						identity.session.TenantId = nil
+						identity.decision.Resource.Id = nil
+						identity.decision.Scope = &api.AuthorizationScope{Scope: &api.AuthorizationScope_Platform{Platform: &api.PlatformScope{}}}
+					}
+					request := sessionRequest(http.MethodGet, row.path)
+					request.Header.Set("X-Actor-ID", "forged-actor")
+					request.Header.Set("X-Tenant-ID", "forged-tenant")
+					response := httptest.NewRecorder()
+					handler := NewServer(client, identity).Handler()
+					handler.ServeHTTP(response, request)
+					if response.Code != 200 || !strings.Contains(response.Body.String(), row.fact) {
+						t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+					}
+					call := row.request().(interface{ GetContext() *api.CallContext }).GetContext()
+					if call.GetSessionId() != owneridentity.SessionReference("session-1") || call.ActorId != "actor-1" || call.Scope.GetTenant().GetTenantId() != tenant {
+						t.Fatalf("caller=%v", call)
+					}
+					if response.Header().Get("Cache-Control") != "no-store" || response.Header().Get("Set-Cookie") != "" {
+						t.Fatalf("headers=%v", response.Header())
+					}
+					if len(identity.requests) != 1 || identity.requests[0].Resource.GetId() != tenant || identity.requests[0].GetAction() != row.action {
+						t.Fatalf("authorization=%v", identity.requests)
+					}
+					if row.action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYKEYS {
+						actual := owner.personalKeysRequest
+						if actual.Page != 2 || actual.PageSize != 1 || actual.Search != "Case Sensitive" || actual.Status != "expired" || actual.GroupId == nil || *actual.GroupId != "0" || actual.SortBy != "currentConcurrency" || actual.SortOrder != "asc" {
+							t.Fatalf("query=%v", actual)
+						}
+					}
+					if row.action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPERSONALGATEWAYKEY && owner.personalKeyRequest.KeyId != "9223372036854775807" {
+						t.Fatal("key ID changed")
+					}
+					if row.action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYKEYUSAGE {
+						for _, field := range []string{`"durationMs":"0"`, `"firstTokenMs":"0"`, `"actualCostUSDMicros":"13"`} {
+							if !strings.Contains(response.Body.String(), field) {
+								t.Fatalf("wire missing %s: %s", field, response.Body.String())
+							}
+						}
+						actual := owner.personalUsageRequest
+						if actual.KeyId != "9223372036854775807" || actual.Page != 3 || actual.PageSize != 1 || actual.Period != "week" {
+							t.Fatalf("usage=%v", actual)
+						}
+					}
+					if row.action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPERSONALGATEWAYKEYUSAGESUMMARY && (owner.personalSummaryRequest.KeyId != "9223372036854775807" || owner.personalSummaryRequest.Period != "today") {
+						t.Fatalf("summary=%v", owner.personalSummaryRequest)
+					}
+					owner.personalErr = owneridentity.WithErrorCode(status.Error(codes.Unauthenticated, "delegated credential expired"), api.ErrorCodeEnum_ERROR_CODE_ENUM_REAUTHENTICATION_REQUIRED)
+					response = httptest.NewRecorder()
+					handler.ServeHTTP(response, sessionRequest(http.MethodGet, row.path))
+					if response.Code != 401 || !strings.Contains(response.Body.String(), `"code":"REAUTHENTICATION_REQUIRED"`) || response.Header().Get("Set-Cookie") != "" {
+						t.Fatalf("reauth=%d %s", response.Code, response.Body.String())
+					}
+					owner.personalErr = nil
+					// A delegated-credential failure does not revoke this CloudIdentity session or the wallet route.
+					identity.decisions[api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET] = allowFor("actor-1", tenant, api.OwnerEnum_OWNER_ENUM_GATEWAY, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, tenant)
+					identity.decisions[api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET].Resource = identity.decision.Resource
+					identity.decisions[api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET].Scope = identity.decision.Scope
+					response = httptest.NewRecorder()
+					handler.ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/wallet"))
+					if response.Code != 200 {
+						t.Fatalf("wallet after reauth=%d %s", response.Code, response.Body.String())
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestPersonalGatewayReadRejectsQueriesBeforeCallingOwner(t *testing.T) {
+	owner := &gatewayOwnerServer{}
+	client := dialGatewayOwner(t, owner)
+	for _, row := range []struct {
+		base    string
+		action  api.AuthorizationActionEnum
+		queries []string
+	}{
+		{"/api/v2/gateway/keys", api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYKEYS, []string{"actorId=other", "tenantId=other", "userId=other", "page=1&page=2", "pageSize=20&pageSize=20", "search=a&search=b", "status=active&status=disabled", "sortBy=name&sortBy=id", "sortOrder=asc&sortOrder=desc", "groupId=0&groupId=1", "page=", "page=0", "page=1000001", "pageSize=101", "pageSize=1.5", "page=+1", "page=01", "status=", "status=revoked", "sortBy=", "sortBy=secret", "sortOrder=", "sortOrder=invalid", "groupId=", "groupId=01", "groupId=-1", "groupId=9223372036854775808", "search=" + strings.Repeat("界", 101), "bad=%zz"}},
+		{"/api/v2/gateway/keys/key-a", api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPERSONALGATEWAYKEY, []string{"userId=other", "period=today"}},
+		{"/api/v2/gateway/groups", api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYGROUPS, []string{"userId=other", "page=1"}},
+		{"/api/v2/gateway/keys/key-a/usage", api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYKEYUSAGE, []string{"", "period=", "period=year", "period=today&period=month", "period=today&page=0", "period=week&pageSize=101", "period=month&api_key_id=other"}},
+		{"/api/v2/gateway/keys/key-a/usage-summary", api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPERSONALGATEWAYKEYUSAGESUMMARY, []string{"", "period=", "period=year", "period=today&period=week", "period=today&page=1", "period=month&userId=other"}},
+	} {
+		identity := allowedIdentity()
+		identity.decision = allowFor("actor-1", "tenant-1", api.OwnerEnum_OWNER_ENUM_GATEWAY, row.action, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "tenant-1")
+		handler := NewServer(client, identity).Handler()
+		for _, query := range row.queries {
+			t.Run(row.base+"?"+query, func(t *testing.T) {
+				response := httptest.NewRecorder()
+				handler.ServeHTTP(response, sessionRequest(http.MethodGet, row.base+"?"+query))
+				if response.Code != 400 {
+					t.Fatalf("query=%d %s", response.Code, response.Body.String())
+				}
+			})
+		}
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, row.base, nil))
+		if response.Code != 401 {
+			t.Fatalf("anonymous=%d", response.Code)
+		}
+	}
+	if owner.personalKeysRequest != nil || owner.personalKeyRequest != nil || owner.personalGroupRequest != nil || owner.personalUsageRequest != nil || owner.personalSummaryRequest != nil {
+		t.Fatal("invalid query reached Gateway owner")
 	}
 }

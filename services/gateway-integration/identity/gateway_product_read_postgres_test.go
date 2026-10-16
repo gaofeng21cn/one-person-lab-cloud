@@ -31,6 +31,11 @@ import (
 // Unimplemented server.
 func gatewayProductSystem(t *testing.T) (api.GatewayProductServiceClient, api.TenantProductServiceClient, *identity.Service) {
 	t.Helper()
+	return gatewayProductSystemWithUpstream(t, nil)
+}
+
+func gatewayProductSystemWithUpstream(t *testing.T, handle func(http.ResponseWriter, *http.Request) bool) (api.GatewayProductServiceClient, api.TenantProductServiceClient, *identity.Service) {
+	t.Helper()
 	ctx := t.Context()
 	dsn := ownerstoretest.EnsureAdminDSNOrSkip(os.Getenv, t.Skip)
 	h, e := ownerstoretest.Setup(ctx, ownerstoretest.Config{AdminDSN: dsn, Owner: "tenant", Database: "opl_tenant", SchemaOwnerRole: "opl_tenant_owner", WriterRole: "opl_tenant_writer", RuntimeRole: "opl_tenant_runtime"})
@@ -58,8 +63,11 @@ func gatewayProductSystem(t *testing.T) (api.GatewayProductServiceClient, api.Te
 	// user login, the caller's directory identity, the admin balance and API-key
 	// reads, and the OpenAI-compatible model catalog.
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if handle != nil && handle(w, r) {
+			return
+		}
 		identityPayload := func(user identity.GatewayIdentity, token string) {
-			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"access_token": token, "user": user}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"access_token": token, "expires_in": 3600, "user": user}})
 		}
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/auth/login":
@@ -286,7 +294,12 @@ func TestPersonalGatewayAuthorizationDoesNotRequireTenantRole(t *testing.T) {
 				scope = &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: tenantID}}}
 			}
 			peerCtx := ownerservice.WithPeerOwner(t.Context(), owneridentity.ConsoleBFF)
-			for _, action := range []api.AuthorizationActionEnum{api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY} {
+			for _, action := range []api.AuthorizationActionEnum{api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY,
+				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYKEYS,
+				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPERSONALGATEWAYKEY,
+				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYGROUPS,
+				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYKEYUSAGE,
+				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPERSONALGATEWAYKEYUSAGESUMMARY} {
 				request := &api.AuthorizationRequest{Scope: scope, ActorId: "101", SessionId: proto.String(ref), AudienceOwner: api.OwnerEnum_OWNER_ENUM_GATEWAY, Action: action, Resource: &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: proto.String(tenantID)}, RequestId: "personal-" + action.String()}
 				if tenantID == "" {
 					request.Resource.Id = nil

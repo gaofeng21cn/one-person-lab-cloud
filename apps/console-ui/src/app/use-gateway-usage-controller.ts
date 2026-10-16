@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
+  gatewayKeyReadFailure,
   getGatewayKey,
   getGatewayKeys,
   getGatewayKeyUsage,
@@ -21,7 +22,6 @@ interface GatewayUsageDependencies {
   active: boolean;
   currentSession: () => AuthSession | null;
   friendlyError: (error: unknown) => string;
-  unavailableSource: <T>(source: string) => SourceEnvelope<T>;
 }
 
 export interface GatewayUsageCapability extends GatewayUsageController {
@@ -37,14 +37,13 @@ function apiErrorCode(error: unknown) {
   const payload = error && typeof error === "object" && "payload" in error
     ? (error as { payload?: unknown }).payload
     : null;
-  return payload && typeof payload === "object" ? String((payload as { error?: unknown }).error || "") : "";
+  return payload && typeof payload === "object" ? String((payload as { code?: unknown; error?: unknown }).code || (payload as { error?: unknown }).error || "") : "";
 }
 
 export function useGatewayUsageController({
   active,
   currentSession,
-  friendlyError,
-  unavailableSource
+  friendlyError
 }: GatewayUsageDependencies): GatewayUsageCapability {
   const [keys, setKeys] = useState<RemoteState<SourceEnvelope<GatewayKeyPageDTO>>>(emptyRemote);
   const [usage, setUsage] = useState<RemoteState<SourceEnvelope<GatewayKeyUsagePageDTO>>>(emptyRemote);
@@ -135,12 +134,12 @@ export function useGatewayUsageController({
       if (generation !== summaryGeneration.current
         || !usageRequestOwnsScope(userId, csrfToken, keyId, requestedPeriod)) return;
       setSummary({
-        value: unavailableSource("sub2api"),
+        value: gatewayKeyReadFailure(error),
         loading: false,
         error: friendlyError(error)
       });
     }
-  }, [friendlyError, unavailableSource, usageRequestOwnsScope]);
+  }, [friendlyError, usageRequestOwnsScope]);
 
   const loadUsage = useCallback(async (
     session: AuthSession,
@@ -167,12 +166,12 @@ export function useGatewayUsageController({
       if (generation !== usageGeneration.current
         || !usageRequestOwnsScope(userId, csrfToken, keyId, requestedPeriod)) return;
       setUsage({
-        value: unavailableSource("sub2api"),
+        value: gatewayKeyReadFailure(error),
         loading: false,
         error: friendlyError(error)
       });
     }
-  }, [friendlyError, unavailableSource, usageRequestOwnsScope]);
+  }, [friendlyError, usageRequestOwnsScope]);
 
   const loadScope = useCallback(async (
     session: AuthSession,
@@ -206,13 +205,13 @@ export function useGatewayUsageController({
     } catch (error) {
       if (generation !== keysGeneration.current || !requestOwnsScope(userId, csrfToken)) return null;
       setKeys({
-        value: unavailableSource("sub2api"),
+        value: gatewayKeyReadFailure(error),
         loading: false,
         error: friendlyError(error)
       });
       return null;
     }
-  }, [currentSession, friendlyError, requestOwnsScope, unavailableSource]);
+  }, [currentSession, friendlyError, requestOwnsScope]);
 
   const load = useCallback(async () => {
     const session = currentSession();
@@ -252,11 +251,11 @@ export function useGatewayUsageController({
       if (generation !== selectionGeneration.current
         || selectedKeyRef.current?.id !== selectedKey.id
         || !requestOwnsScope(userId, csrfToken)) return;
-      if (apiErrorCode(error) === "gateway_key_not_found") {
+      if (apiErrorCode(error) === "gateway_key_not_found" || apiErrorCode(error) === "NOT_FOUND") {
         clearSelection("missing");
         return;
       }
-      setSelection({ key: selectedKey, status: "unavailable" });
+      setSelection({ key: selectedKey, status: gatewayKeyReadFailure(error).reasonCode === "REAUTHENTICATION_REQUIRED" ? "reauthentication_required" : "unavailable" });
     }
   }, [clearResults, clearSelection, currentSession, loadKeys, loadScope, requestOwnsScope]);
 

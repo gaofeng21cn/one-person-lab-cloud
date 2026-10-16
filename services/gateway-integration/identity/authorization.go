@@ -48,6 +48,23 @@ func operationOwnerAudience(owner api.OwnerEnum) bool {
 	return ok && owner != api.OwnerEnum_OWNER_ENUM_UNSPECIFIED
 }
 
+// personalGatewayAction identifies reads bound to the live User, including a
+// User without a Tenant. The exact audience, resource and scope are still checked.
+func personalGatewayAction(action api.AuthorizationActionEnum) bool {
+	switch action {
+	case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYKEYS,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPERSONALGATEWAYKEY,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYGROUPS,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYKEYUSAGE,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPERSONALGATEWAYKEYUSAGESUMMARY:
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Service) AuthorizeAction(ctx context.Context, r *api.AuthorizationRequest) (*api.AuthorizationDecision, error) {
 	caller, ok := ownerservice.PeerOwner(ctx)
 	if !ok || r.GetActorId() == "" || r.GetRequestId() == "" || r.GetScope() == nil || r.GetResource().GetKind() == 0 || ((r.GetSessionId() == "") == (r.GetAcceptedOperationGrantId() == "")) {
@@ -72,11 +89,11 @@ func (s *Service) AuthorizeAction(ctx context.Context, r *api.AuthorizationReque
 	if session.ActorId != r.ActorId || (r.ExpectedPermissionVersion != nil && r.GetExpectedPermissionVersion() != version) {
 		return nil, denied()
 	}
-	if r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY {
+	if personalGatewayAction(r.Action) {
 		// These are the live User's own Gateway reads, independent of Tenant
 		// membership. Scope/resource still bind this exact session and cannot
 		// select another Tenant, payer or User. Gateway resolves the persisted
-		// User-to-Sub2API binding again before reading either value.
+		// User-to-Sub2API binding again before serving the read.
 		if r.AudienceOwner != api.OwnerEnum_OWNER_ENUM_GATEWAY || r.Resource.GetKind() != api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT || r.Resource.GetId() != session.GetTenantId() || !scopeMatchesSession(session, r.Scope) {
 			return nil, denied()
 		}

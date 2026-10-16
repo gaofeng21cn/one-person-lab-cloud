@@ -17,6 +17,7 @@ import (
 // launch journey consumes. The BFF holds no wallet or model state of its own; the
 // Gateway owner performs authorization and returns its own live readback.
 func (s *Server) registerGatewayRoutes(mux *http.ServeMux, gateway api.GatewayProductServiceClient) {
+	s.registerPersonalGatewayKeyRoutes(mux, gateway)
 	s.publisherRoute(mux, "GET /api/v2/workspaces/{workspaceId}/transactions/trend", owneridentity.Gateway, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACETRANSACTIONTREND, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, "workspaceId", nil, func(r *http.Request, c *api.CallContext, _ proto.Message) (proto.Message, error) {
 		return gateway.GetWorkspaceTransactionTrend(r.Context(), &api.GetWorkspaceTransactionTrendRpcRequest{Context: c, WorkspaceId: r.PathValue("workspaceId")})
 	})

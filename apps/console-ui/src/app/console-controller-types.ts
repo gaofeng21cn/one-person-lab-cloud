@@ -237,7 +237,7 @@ export interface GatewayUsageController {
   summary: RemoteState<SourceEnvelope<GatewayUsageSummaryDTO>>;
   selection: {
     key: GatewayKeySummaryDTO | null;
-    status: "idle" | "ready" | "confirming" | "unavailable" | "missing";
+    status: "idle" | "ready" | "confirming" | "unavailable" | "missing" | "reauthentication_required";
   };
   keySearch: string;
   selectedKeyId: string;

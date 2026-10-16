@@ -465,8 +465,7 @@ export function useConsoleController() {
   const gatewayUsageCapability = useGatewayUsageController({
     active: route?.kind === "customer.api.usage",
     currentSession: () => sessionRef.current,
-    friendlyError,
-    unavailableSource
+    friendlyError
   });
   const gatewayUsage: GatewayUsageController = gatewayUsageCapability;
 

@@ -19,10 +19,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 
 import type { GatewayAccountReadController } from "../../app/console-controller-types.ts";
 import { presentGatewayKeyStatus } from "../../app/customer-experience-model.ts";
-import { unavailableSource } from "../../app/use-console-controller.ts";
 import {
   createGatewayKey,
   deleteGatewayKey,
+  gatewayKeyReadFailure,
   getGatewayGroups,
   getGatewayKey,
   getGatewayKeys,
@@ -40,7 +40,10 @@ import type {
   SourceEnvelope,
   UpdateGatewayKeyRequest
 } from "../../api/dtos.ts";
-import { formatDate, formatUsdMicros } from "../../console-model.ts";
+import { formatWorkspaceBudgetUsdInput as formatUsdInput } from "../../app/workspace-experience-model.ts";
+import { formatDate, formatUsdMicros, parseUsdMicros } from "../../console-model.ts";
+import { cloudIdentity } from "../../app/console-identity.ts";
+import { GatewayKeyReauthentication } from "./GatewayKeyReauthentication.tsx";
 import { SourceState } from "../source/SourceState.tsx";
 import { Alert, Badge, Button, Field, Modal, Select, Tooltip } from "../ui/index.ts";
 
@@ -131,11 +134,11 @@ function isProtectedWorkspaceKey(key: GatewayKeySummaryDTO) {
 }
 
 function canManage(key: GatewayKeySummaryDTO) {
-  return key.manageable && !isProtectedWorkspaceKey(key);
+  return !cloudIdentity && key.manageable && !isProtectedWorkspaceKey(key);
 }
 
 function canDelete(key: GatewayKeySummaryDTO) {
-  return key.deletable && !isProtectedWorkspaceKey(key);
+  return !cloudIdentity && key.deletable && !isProtectedWorkspaceKey(key);
 }
 
 function keyMatchesCreate(key: GatewayKeySummaryDTO, input: CreateGatewayKeyRequest) {
@@ -163,6 +166,14 @@ function keyMatchesUpdate(key: GatewayKeySummaryDTO, input: UpdateGatewayKeyRequ
   if (input.resetQuota && key.quotaUsedUsdMicros !== 0) return false;
   if (input.resetRateLimitUsage && (key.usage5hUsdMicros !== 0 || key.usage1dUsdMicros !== 0 || key.usage7dUsdMicros !== 0)) return false;
   return true;
+}
+
+function keyQuotaProgress(key: GatewayKeySummaryDTO): number | null {
+  const quota = parseUsdMicros(key.quotaUsdMicros);
+  const used = parseUsdMicros(key.quotaUsedUsdMicros);
+  if (quota === null || used === null || quota <= 0n) return null;
+  const basisPoints = used * 10_000n / quota;
+  return Number(basisPoints < 0n ? 0n : basisPoints > 10_000n ? 10_000n : basisPoints) / 100;
 }
 
 function statusColor(status: GatewayKeySummaryDTO["status"]): "success" | "secondary" | "warning" | "danger" {
@@ -238,7 +249,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
       setSource(result);
     } catch (value) {
       if (request !== listGeneration.current || !requestIsCurrent(session, token)) return;
-      setSource(unavailableSource("sub2api"));
+      setSource(gatewayKeyReadFailure(value));
       setError("");
     } finally {
       if (request === listGeneration.current && requestIsCurrent(session, token)) setLoading(false);
@@ -252,7 +263,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
     setReferenceError("");
     const [groupResult] = await Promise.allSettled([getGatewayGroups()]);
     if (!requestIsCurrent(session, token)) return;
-    setGroupsSource(groupResult.status === "fulfilled" ? groupResult.value : unavailableSource("sub2api"));
+    setGroupsSource(groupResult.status === "fulfilled" ? groupResult.value : gatewayKeyReadFailure(groupResult.reason));
     if (groupResult.status === "rejected") {
       setReferenceError("部分 API 配置暂不可用，可刷新后重试");
     }
@@ -319,14 +330,14 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
     setForm({
       name: key.name,
       groupId: key.groupId || "",
-      quotaUsd: String(key.quotaUsdMicros / 1_000_000),
+      quotaUsd: formatUsdInput(String(key.quotaUsdMicros)),
       ipWhitelist: key.ipWhitelist.join("\n"),
       ipBlacklist: key.ipBlacklist.join("\n"),
       expiresInDays: "30",
       expiresAt: key.expiresAt ? key.expiresAt.slice(0, 16) : "",
-      rateLimit5hUsd: String(key.rateLimit5hUsdMicros / 1_000_000),
-      rateLimit1dUsd: String(key.rateLimit1dUsdMicros / 1_000_000),
-      rateLimit7dUsd: String(key.rateLimit7dUsdMicros / 1_000_000)
+      rateLimit5hUsd: formatUsdInput(String(key.rateLimit5hUsdMicros)),
+      rateLimit1dUsd: formatUsdInput(String(key.rateLimit1dUsdMicros)),
+      rateLimit7dUsd: formatUsdInput(String(key.rateLimit7dUsdMicros))
     });
     setDialog("key");
   };
@@ -551,6 +562,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
   );
 
   const renderKeyActions = (key: GatewayKeySummaryDTO, className = "keys-row-actions") => {
+    if (cloudIdentity) return <span>仅支持查看</span>;
     const manageable = canManage(key);
     return (
       <div className={className}>
@@ -679,14 +691,16 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
               <RefreshCw aria-hidden="true" size={16} />
             </Button>
           </Tooltip>
-          <Button color="primary" disabled={!groups.length || !csrfToken} onClick={openCreate} size="sm">
+          {!cloudIdentity ? <Button color="primary" disabled={!groups.length || !csrfToken} onClick={openCreate} size="sm">
             <Plus aria-hidden="true" size={16} />创建 API 密钥
-          </Button>
+          </Button> : null}
         </div>
       </header>
 
+      {cloudIdentity ? <Alert color="info" title="API 密钥仅供查看" description="当前仅支持查看 API 密钥与用量，创建、修改、删除和显示完整密钥暂不可用。" /> : null}
+      {[source, groupsSource].some((value) => value?.available === false && value.reasonCode === "REAUTHENTICATION_REQUIRED") ? <GatewayKeyReauthentication /> : null}
       {referenceError ? <Alert actions={<Button onClick={() => void loadReferenceData()} size="sm" variant="ghost">重试</Button>} color="warning" description={referenceError} title="参考配置部分不可用" /> : null}
-      {groupsSource?.status === "unavailable" ? <Alert color="warning" description="暂时无法读取服务配置，已暂停创建和调整。" title="服务配置暂不可用" /> : null}
+      {groupsSource?.status === "unavailable" ? <Alert color="warning" description={cloudIdentity ? "暂时无法读取服务分组，可刷新后重试。" : "暂时无法读取服务配置，已暂停创建和调整。"} title="服务配置暂不可用" /> : null}
       {endpointSource?.status === "unavailable" ? <Alert color="warning" description="暂时无法读取 API 地址，请稍后重试。" title="API 地址暂不可用" /> : null}
       {source?.status === "unavailable" || groupsSource?.status === "unavailable" || endpointSource?.status === "unavailable" ? <details className="keys-source-technical-details"><summary>技术详情</summary><dl className="data-list"><div><dt>keys source reason</dt><dd><code>{source?.status === "unavailable" ? source.reasonCode : "-"}</code></dd></div><div><dt>groups source reason</dt><dd><code>{groupsSource?.status === "unavailable" ? groupsSource.reasonCode : "-"}</code></dd></div><div><dt>endpoint source reason</dt><dd><code>{endpointSource?.status === "unavailable" ? endpointSource.reasonCode : "-"}</code></dd></div></dl></details> : null}
       {notice ? <Alert color="success" description={notice} title="操作完成" /> : null}
@@ -725,7 +739,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
       <div className="keys-results">
         <SourceState
           empty={source?.status === "empty"}
-          emptyDescription="创建 API 密钥后即可调用服务。"
+          emptyDescription={cloudIdentity ? "当前账户暂无 API 密钥。" : "创建 API 密钥后即可调用服务。"}
           error={error && !source ? error : ""}
           errorDescription="暂时无法读取 API 密钥，请稍后重试。"
           loading={loading}
@@ -741,12 +755,12 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
                 <thead><tr><th>名称</th><th>状态</th><th>总额度 / 已用</th><th>有效期</th><th>最近使用</th><th>操作</th></tr></thead>
                 <tbody>
                   {data.items.map((key) => {
-                    const quotaProgress = key.quotaUsdMicros > 0 ? Math.min(100, Math.max(0, key.quotaUsedUsdMicros / key.quotaUsdMicros * 100)) : null;
+                    const quotaProgress = keyQuotaProgress(key);
                     return (
                       <tr key={key.id}>
                         <td><strong>{key.name}</strong>{renderKeyTechnicalDetails(key)}</td>
                         <td><Badge color={statusColor(key.status)}>{presentGatewayKeyStatus(key.status).label}</Badge></td>
-                        <td><strong>{key.quotaUsdMicros ? formatUsdMicros(key.quotaUsdMicros) : "不限"}</strong><small>已用 {formatUsdMicros(key.quotaUsedUsdMicros)}</small>{quotaProgress !== null ? <progress aria-label={`${key.name} 配额使用进度`} max="100" value={quotaProgress} /> : null}</td>
+                        <td><strong>{parseUsdMicros(key.quotaUsdMicros) === 0n ? "不限" : formatUsdMicros(key.quotaUsdMicros)}</strong><small>已用 {formatUsdMicros(key.quotaUsedUsdMicros)}</small>{quotaProgress !== null ? <progress aria-label={`${key.name} 配额使用进度`} max="100" value={quotaProgress} /> : null}</td>
                         <td>{key.expiresAt ? formatDate(key.expiresAt, true) : "永不过期"}</td>
                         <td><strong>{key.lastUsedAt ? formatDate(key.lastUsedAt, true) : "尚未使用"}</strong></td>
                         <td>{renderKeyActions(key)}</td>
@@ -758,7 +772,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
             </div>
             <div aria-label="API 密钥列表" className="mobile-key-list">
               {data.items.map((key) => {
-                const quotaProgress = key.quotaUsdMicros > 0 ? Math.min(100, Math.max(0, key.quotaUsedUsdMicros / key.quotaUsdMicros * 100)) : null;
+                const quotaProgress = keyQuotaProgress(key);
                 return (
                   <article className="mobile-key-card" key={key.id}>
                     <header className="mobile-key-card__header">
@@ -772,7 +786,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
                     <dl className="mobile-key-card__facts">
                       <div>
                         <dt>总额度 / 已用</dt>
-                        <dd><strong>{key.quotaUsdMicros ? formatUsdMicros(key.quotaUsdMicros) : "不限"}</strong><small>已用 {formatUsdMicros(key.quotaUsedUsdMicros)}</small>{quotaProgress !== null ? <progress aria-label={`${key.name} 配额使用进度`} max="100" value={quotaProgress} /> : null}</dd>
+                        <dd><strong>{parseUsdMicros(key.quotaUsdMicros) === 0n ? "不限" : formatUsdMicros(key.quotaUsdMicros)}</strong><small>已用 {formatUsdMicros(key.quotaUsedUsdMicros)}</small>{quotaProgress !== null ? <progress aria-label={`${key.name} 配额使用进度`} max="100" value={quotaProgress} /> : null}</dd>
                       </div>
                       <div>
                         <dt>过期时间</dt>

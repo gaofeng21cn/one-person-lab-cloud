@@ -4,9 +4,11 @@ package identity
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -205,23 +207,25 @@ func (g *Gateway) request(ctx context.Context, path, token string, body any, out
 	}
 	return nil
 }
-func (g *Gateway) Login(ctx context.Context, user, password string) (GatewayIdentity, string, error) {
+func (g *Gateway) Login(ctx context.Context, user, password string) (GatewayIdentity, string, time.Time, error) {
 	var out struct {
 		AccessToken string          `json:"access_token"`
+		ExpiresIn   json.RawMessage `json:"expires_in"`
 		User        GatewayIdentity `json:"user"`
 	}
 	user = strings.ToLower(strings.TrimSpace(user))
 	if user == "" || password == "" {
-		return out.User, "", status.Error(codes.InvalidArgument, "credentials required")
+		return out.User, "", time.Time{}, status.Error(codes.InvalidArgument, "credentials required")
 	}
+	started := time.Now()
 	err := g.request(ctx, "/api/v1/auth/login", "", map[string]string{"email": user, "password": password, "turnstile_token": ""}, &out)
 	if err != nil {
-		return out.User, "", err
+		return out.User, "", time.Time{}, err
 	}
 	if out.AccessToken == "" || out.User.ID <= 0 || strings.ToLower(out.User.Email) != user || out.User.Status != "active" {
-		return out.User, "", status.Error(codes.Unauthenticated, "Gateway identity rejected")
+		return out.User, "", time.Time{}, status.Error(codes.Unauthenticated, "Gateway identity rejected")
 	}
-	return out.User, out.AccessToken, nil
+	return out.User, out.AccessToken, delegatedExpiry(out.AccessToken, out.ExpiresIn, started), nil
 }
 func (g *Gateway) Read(ctx context.Context, token, actor string) (GatewayIdentity, error) {
 	var out GatewayIdentity
@@ -321,19 +325,25 @@ func (g *Gateway) UsageStats(ctx context.Context, subject, period string) (Gatew
 		"timezone":   {"Asia/Shanghai"},
 		"user_id":    {strconv.FormatInt(id, 10)},
 	}
-	var data struct {
-		TotalRequests     *int64       `json:"total_requests"`
-		TotalInputTokens  *int64       `json:"total_input_tokens"`
-		TotalOutputTokens *int64       `json:"total_output_tokens"`
-		TotalTokens       *int64       `json:"total_tokens"`
-		TotalActualCost   *json.Number `json:"total_actual_cost"`
-	}
+	var data gatewayUsageStatsPayload
 	if err := g.request(ctx, "/api/v1/admin/usage/stats?"+values.Encode(), token, nil, &data); err != nil {
 		if status.Code(err) == codes.Unauthenticated {
 			g.invalidateDirectoryToken()
 		}
 		return GatewayUsageStats{}, err
 	}
+	return data.stats()
+}
+
+type gatewayUsageStatsPayload struct {
+	TotalRequests     *int64       `json:"total_requests"`
+	TotalInputTokens  *int64       `json:"total_input_tokens"`
+	TotalOutputTokens *int64       `json:"total_output_tokens"`
+	TotalTokens       *int64       `json:"total_tokens"`
+	TotalActualCost   *json.Number `json:"total_actual_cost"`
+}
+
+func (data gatewayUsageStatsPayload) stats() (GatewayUsageStats, error) {
 	if data.TotalRequests == nil ||
 		data.TotalInputTokens == nil ||
 		data.TotalOutputTokens == nil ||
@@ -461,4 +471,40 @@ func (g *Gateway) modelRequest(ctx context.Context, path, token string, out any)
 		return status.Error(codes.Unavailable, "invalid Gateway model catalog response")
 	}
 	return nil
+}
+
+// delegatedExpiry admits only lifetimes proven by the authenticated login
+// response. When both expires_in and JWT exp exist, the earlier bound wins.
+// An opaque access token without either proof cannot support delegated reads.
+func delegatedExpiry(token string, raw json.RawMessage, started time.Time) time.Time {
+	var until time.Time
+	if len(raw) > 0 && string(raw) != "null" {
+		var seconds int64
+		if json.Unmarshal(raw, &seconds) != nil || seconds <= 0 || seconds > math.MaxInt64/int64(time.Second) {
+			return time.Time{}
+		}
+		until = started.Add(time.Duration(seconds) * time.Second)
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) == 3 {
+		payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+		if err != nil {
+			return time.Time{}
+		}
+		var claims map[string]json.RawMessage
+		if json.Unmarshal(payload, &claims) != nil {
+			return time.Time{}
+		}
+		if rawExp, ok := claims["exp"]; ok {
+			var exp int64
+			if json.Unmarshal(rawExp, &exp) != nil || exp <= 0 {
+				return time.Time{}
+			}
+			absolute := time.Unix(exp, 0)
+			if until.IsZero() || absolute.Before(until) {
+				until = absolute
+			}
+		}
+	}
+	return until
 }
