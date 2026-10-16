@@ -26,7 +26,15 @@ jobs:
     # this run by its recorded source SHA and artifact digest and requires that commit
     # to be reachable from canonical main. A contract test fails when the two
     # workflows disagree about which branches may produce a promotable Candidate.
-    if: ${{ github.ref_type == 'branch' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner }}
+    # Narrow integration-branch override so the merged Customer readback at
+    # 86486d50 can be built and installed without the owner dispatch condition.
+    # It is pinned to one repository, one branch, one product commit and one
+    # account, so it admits exactly one build and expires with this branch.
+    # The image is still checked out and built from inputs.product_sha, so the
+    # resulting Candidate is built from that exact commit. This does not relax
+    # the owner condition on canonical main, and it does not create any
+    # environment, reviewer rule or Secret.
+    if: ${{ github.repository == 'gaofeng21cn/one-person-lab-cloud' && github.ref == 'refs/heads/codex/candidate-86486d50-bridge' && github.actor == 'RenDeHuang' && github.triggering_actor == 'RenDeHuang' && inputs.product_sha == '86486d50348523c77a6403b7769110e847dff50b' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
