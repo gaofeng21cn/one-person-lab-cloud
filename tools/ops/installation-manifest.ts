@@ -9,7 +9,7 @@ export type CommunicationEdge = {
   callerDeployment: string; targetDeployment: string; port: number;
   tokenRef: SecretRef; peerRef: SecretRef; serviceRef: { name: string; namespace: string }; ingressPolicies: string[]; egressPolicies: string[];
 };
-export type InstallationError = { code: string; service?: string; caller?: string; target?: string; addressEnv?: string; tokenEnv?: string };
+export type InstallationError = { code: string; reasonCode?: string; service?: string; caller?: string; target?: string; addressEnv?: string; tokenEnv?: string };
 export type InstallationSecurity = { tokenMinimumLength: number };
 export type InstallationReport = { ok: boolean; errors: InstallationError[]; communication: { edges: CommunicationEdge[]; security: InstallationSecurity | null } };
 export type ProcessContract = {
@@ -624,7 +624,7 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     // activation variable use Go TrimSpace. Keep address-or-token admission.
     if (edge.activation === "configured" && !configured(address, addressSemantics) && !configured(envEntry(caller, edge.tokenEnv), "trimmed-nonempty") &&
         !(edge.activationEnv && configured(envEntry(caller, edge.activationEnv), "trimmed-nonempty"))) continue;
-    const fail = (code: string) => report.errors.push({ code, service: caller.contract.service,
+    const fail = (code: string, reasonCode?: string) => report.errors.push({ code, ...(reasonCode ? { reasonCode } : {}), service: caller.contract.service,
       caller: edge.caller, target: edge.target, addressEnv: edge.addressEnv, tokenEnv: edge.tokenEnv });
     if (!address || !configured(address, addressSemantics)) { fail("rpc_address_required"); continue; }
     const addressValue = edge.activation === "configured" && addressSemantics === "trimmed-nonempty" && typeof address.value === "string"
@@ -651,7 +651,7 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     }
     if (backendUnproven) { fail("rpc_service_backend_unproven"); continue; }
     if (backends.some(backend => !ownedBackend(backend, target.deployment, resources))) {
-      fail("rpc_service_backend_owner_ambiguous"); continue;
+      fail("rpc_service_backend_ambiguous", "service_backend_owner"); continue;
     }
     const matching = Array.isArray(service.spec.ports) ? service.spec.ports.filter((entry: Resource) => entry?.port === parsed.port && (entry.protocol ?? "TCP") === "TCP") : [];
     if (matching.length !== 1) { fail("rpc_service_port_invalid"); continue; }
@@ -673,7 +673,8 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     const pod = target.deployment.spec.template.spec;
     const competitors = [...pod.containers, ...(pod.initContainers ?? []).filter((container: Resource) => container.restartPolicy === "Always")];
     const otherListener = target.contract.rpcAddressEnv ? listenerAddress(target, target.contract.addressEnv, target.contract.defaultAddress, target.contract.kind === "ownerservice", target.contract.addressPortEnv) : null;
-    let conflict = otherListener === undefined || otherListener !== null && Number(/:([0-9]+)$/.exec(otherListener)?.[1]) === targetPort;
+    let listenerUnproven = otherListener === undefined;
+    let conflict = otherListener !== undefined && otherListener !== null && Number(/:([0-9]+)$/.exec(otherListener)?.[1]) === targetPort;
     for (const container of competitors) {
       if (container === target.container) continue;
       if ((container.ports ?? []).some((port: Resource) => (port.protocol ?? "TCP") === "TCP" &&
@@ -687,7 +688,7 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
           new Set([contract.addressEnv, contract.rpcAddressEnv, contract.rpcEnabledByEnv, contract.addressPortEnv, ...(contract.additionalListeners ?? []).map(listener => listener.addressEnv)].filter((name): name is string => Boolean(name))), resources);
         return result.error ? undefined : { contract, deployment: target.deployment, container, env: result.env };
       })();
-      if (!resolved) { conflict = true; break; }
+      if (!resolved) { listenerUnproven = true; break; }
       const addresses: (string | undefined)[] = [];
       const enabled = rpcEnabled(resolved);
       if (contract.rpcAddressEnv || enabled) addresses.push(listenerAddress(resolved, contract.addressEnv, contract.defaultAddress, contract.kind === "ownerservice", contract.addressPortEnv));
@@ -695,18 +696,24 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
       for (const listener of contract.additionalListeners ?? []) {
         if (envEntry(resolved, listener.addressEnv) || listener.defaultAddress !== undefined) addresses.push(listenerAddress(resolved, listener.addressEnv, listener.defaultAddress, listener.valueSemantics === "trimmed"));
       }
-      if (addresses.some(address => address === undefined || Number(/:([0-9]+)$/.exec(address)?.[1]) === targetPort)) {
+      if (addresses.some(address => address === undefined)) {
+        listenerUnproven = true; break;
+      }
+      if (addresses.some(address => Number(/:([0-9]+)$/.exec(address)?.[1]) === targetPort)) {
         conflict = true; break;
       }
     }
     const endpoints = resources.filter(resource => namespace(resource) === namespace(service) &&
       (resource.kind === "Endpoints" && resource.metadata.name === service.metadata.name ||
        resource.kind === "EndpointSlice" && resource.metadata.labels?.["kubernetes.io/service-name"] === service.metadata.name));
+    if (listenerUnproven) {
+      fail("rpc_service_backend_ambiguous", "listener_unproven"); continue;
+    }
     if (conflict) {
-      fail("installation_listener_conflict"); continue;
+      fail("rpc_service_backend_ambiguous", "listener_conflict"); continue;
     }
     if (endpoints.some(resource => !endpointBackend(resource, service, target.deployment, target.container, servicePort, targetPort, resources, topology.image.defaultCommand, processContract))) {
-      fail("rpc_endpoint_backend_ambiguous"); continue;
+      fail("rpc_service_backend_ambiguous", "endpoint_backend"); continue;
     }
     const tokenRef = secretReference(envEntry(caller, edge.tokenEnv));
     if (!tokenRef) { fail("rpc_token_ref_invalid"); continue; }
