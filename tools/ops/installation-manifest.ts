@@ -501,6 +501,14 @@ function listenerAddress(process: InstalledProcess, name: string, defaultAddress
   }
   return defaultAddress;
 }
+function listenerConfigured(process: InstalledProcess, name: string, trim: boolean, portEnv?: string): boolean {
+  const entry = envEntry(process, name);
+  if (entry?.valueFrom !== undefined) return true;
+  if (typeof entry?.value === "string" && (trim ? trimRuntimeSpace(entry.value) : entry.value) !== "") return true;
+  if (!portEnv) return false;
+  const port = envEntry(process, portEnv);
+  return port?.valueFrom !== undefined || typeof port?.value === "string" && port.value !== "";
+}
 function rpcListenerAddress(process: InstalledProcess): string | undefined {
   const { contract } = process;
   return listenerAddress(process, contract.rpcAddressEnv ?? contract.addressEnv,
@@ -515,24 +523,32 @@ function listenerBinding(address: string | undefined): ListenerBinding | undefin
   const host = rawHost.includes(":") ? new URL(`http://[${rawHost}]`).hostname : rawHost;
   return { host, port: Number(match[2]), wildcard: ["", "0.0.0.0", "[::]"].includes(host) };
 }
-function podListenerError(processes: InstalledProcess[]): string | undefined {
+function podListenerError(processes: InstalledProcess[], deferredLegacyListeners: Set<InstalledProcess>): string | undefined {
   const bindings: ListenerBinding[] = [];
   for (const process of processes) {
     const { contract } = process;
-    const addresses: (string | undefined)[] = [];
-    if (contract.rpcAddressEnv || rpcEnabled(process)) addresses.push(listenerAddress(process, contract.addressEnv, contract.defaultAddress,
-      contract.kind === "ownerservice", contract.addressPortEnv));
-    if (contract.rpcAddressEnv && rpcEnabled(process)) addresses.push(rpcListenerAddress(process));
+    const addresses: { address: string | undefined; explicit: boolean; required: boolean; deferUnproven: boolean }[] = [];
+    if (contract.rpcAddressEnv || rpcEnabled(process)) addresses.push({
+      address: listenerAddress(process, contract.addressEnv, contract.defaultAddress, contract.kind === "ownerservice", contract.addressPortEnv),
+      explicit: listenerConfigured(process, contract.addressEnv, contract.kind === "ownerservice", contract.addressPortEnv), required: false,
+      deferUnproven: deferredLegacyListeners.has(process)
+    });
+    if (contract.rpcAddressEnv && rpcEnabled(process)) addresses.push({
+      address: rpcListenerAddress(process),
+      explicit: listenerConfigured(process, contract.rpcAddressEnv, true), required: false, deferUnproven: false
+    });
+    if (contract.rpcAddressEnv && !rpcEnabled(process) && listenerConfigured(process, contract.rpcAddressEnv, true) &&
+        !listenerBinding(listenerAddress(process, contract.rpcAddressEnv, undefined, true))) return "installation_listener_unproven";
     const additionalListeners = (contract.additionalListeners ?? []).map(listener => ({
         address: listenerAddress(process, listener.addressEnv, listener.defaultAddress, listener.valueSemantics === "trimmed"),
-        required: true
+        explicit: listenerConfigured(process, listener.addressEnv, listener.valueSemantics === "trimmed"), required: true, deferUnproven: false
       }));
-    for (const address of addresses.map(address => ({ address, required: false })).concat(additionalListeners)) {
+    for (const address of addresses.concat(additionalListeners)) {
       const binding = listenerBinding(address.address);
       // Explicit Product listeners are part of the static admission contract;
       // unresolved or malformed values cannot be treated as absent.
       if (!binding) {
-        if (address.required || processes.length > 1) return "installation_listener_unproven";
+        if (address.required || address.explicit && !address.deferUnproven || processes.length > 1) return "installation_listener_unproven";
         continue;
       }
       if (bindings.some(other => other.port === binding.port && (other.wildcard || binding.wildcard || other.host === binding.host)))
@@ -611,8 +627,20 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
   }
   if (recognized.size === 0) return failure("installation_process_missing");
   if (productNamespaces.size !== 1) return failure("installation_namespace_unsupported");
+  const deferredLegacyListeners = new Set<InstalledProcess>();
+  for (const edge of topology.communication.edges) {
+    const caller = installed.get(edge.caller);
+    const target = installed.get(edge.target);
+    if (!caller || !target || !target.contract.rpcAddressEnv) continue;
+    const address = envEntry(caller, edge.addressEnv);
+    const addressSemantics = edge.activation === "configured" ? edge.configuredAddressSemantics! : "trimmed-nonempty";
+    if (edge.activation === "configured" && !configured(address, addressSemantics) &&
+        !configured(envEntry(caller, edge.tokenEnv), "trimmed-nonempty") &&
+        !(edge.activationEnv && configured(envEntry(caller, edge.activationEnv), "trimmed-nonempty"))) continue;
+    deferredLegacyListeners.add(target);
+  }
   for (const processes of podProcesses.values()) {
-    const error = podListenerError(processes);
+    const error = podListenerError(processes, deferredLegacyListeners);
     if (error) return failure(error);
   }
   for (const edge of topology.communication.edges) {
@@ -673,8 +701,9 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     const pod = target.deployment.spec.template.spec;
     const competitors = [...pod.containers, ...(pod.initContainers ?? []).filter((container: Resource) => container.restartPolicy === "Always")];
     const otherListener = target.contract.rpcAddressEnv ? listenerAddress(target, target.contract.addressEnv, target.contract.defaultAddress, target.contract.kind === "ownerservice", target.contract.addressPortEnv) : null;
-    let listenerUnproven = otherListener === undefined;
-    let conflict = otherListener !== undefined && otherListener !== null && Number(/:([0-9]+)$/.exec(otherListener)?.[1]) === targetPort;
+    const otherBinding = otherListener === null || otherListener === undefined ? undefined : listenerBinding(otherListener);
+    let listenerUnproven = otherListener === undefined || otherBinding === undefined && otherListener !== null;
+    let conflict = otherBinding !== undefined && otherBinding.port === targetPort;
     for (const container of competitors) {
       if (container === target.container) continue;
       if ((container.ports ?? []).some((port: Resource) => (port.protocol ?? "TCP") === "TCP" &&
@@ -696,10 +725,11 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
       for (const listener of contract.additionalListeners ?? []) {
         if (envEntry(resolved, listener.addressEnv) || listener.defaultAddress !== undefined) addresses.push(listenerAddress(resolved, listener.addressEnv, listener.defaultAddress, listener.valueSemantics === "trimmed"));
       }
-      if (addresses.some(address => address === undefined)) {
+      const bindings = addresses.map(address => address === undefined ? undefined : listenerBinding(address));
+      if (bindings.some(binding => binding === undefined)) {
         listenerUnproven = true; break;
       }
-      if (addresses.some(address => Number(/:([0-9]+)$/.exec(address)?.[1]) === targetPort)) {
+      if (bindings.some(binding => binding.port === targetPort)) {
         conflict = true; break;
       }
     }

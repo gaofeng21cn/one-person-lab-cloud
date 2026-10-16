@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { validateInstallationManifest } from "../../tools/ops/installation-manifest.ts";
 import { container, deployment, policy, workedInstallation } from "./fixtures/installation.ts";
 
 const cli = fileURLToPath(new URL("../../tools/validate-production-manifest.ts", import.meta.url));
@@ -113,6 +114,54 @@ test("installation CLI classifies live backend proof failures by boundary", asyn
   const listenerUnprovenResult = await invoke(listenerUnproven);
   assert.equal(listenerUnprovenResult.status, 1, listenerUnprovenResult.stdout);
   assert.ok(listenerUnprovenResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous" && error.reasonCode === "listener_unproven"), listenerUnprovenResult.stdout);
+
+  const listenerMalformed = workedInstallation();
+  container(listenerMalformed, "workspace").env = container(listenerMalformed, "workspace").env.map(entry =>
+    entry.name === "OPL_WORKSPACE_ADDR" ? { name: entry.name, value: "not-an-address" } : entry);
+  const listenerMalformedResult = await invoke(listenerMalformed);
+  assert.equal(listenerMalformedResult.status, 1, listenerMalformedResult.stdout);
+  assert.ok(listenerMalformedResult.report.errors.some(error => error.code === "installation_listener_unproven"), listenerMalformedResult.stdout);
+
+  const isolatedSecretListener = workedInstallation();
+  isolatedSecretListener.items = isolatedSecretListener.items.filter(item => item.kind === "Deployment" && item.metadata.name === "unit-fabric");
+  container(isolatedSecretListener, "fabric").env = container(isolatedSecretListener, "fabric").env
+    .filter(entry => entry.name !== "OPL_FABRIC_DATABASE_URL")
+    .map(entry => entry.name === "OPL_FABRIC_ADDR" ? { name: entry.name, valueFrom: { secretKeyRef: { name: "opaque", key: "FABRIC_ADDR" } } } : entry);
+  const isolatedSecretListenerResult = await invoke(isolatedSecretListener);
+  assert.equal(isolatedSecretListenerResult.status, 1, isolatedSecretListenerResult.stdout);
+  assert.ok(isolatedSecretListenerResult.report.errors.some(error => error.code === "installation_listener_unproven"), isolatedSecretListenerResult.stdout);
+});
+
+test("installation manifest does not reserve a disabled optional RPC listener", () => {
+  const topology = {
+    image: { defaultCommand: [] },
+    processes: [
+      { service: "fabric", kind: "http", binary: "/fabric", daemonArgs: [], addressEnv: "FABRIC_ADDR", defaultAddress: ":8082", rpcAddressEnv: "FABRIC_RPC_ADDR", defaultRPCAddress: ":8187", rpcEnabledByEnv: "FABRIC_DB", rpcEnabledByEnvSemantics: "trimmed-nonempty" },
+      { service: "other", kind: "http", binary: "/other", daemonArgs: [], addressEnv: "OTHER_ADDR", defaultAddress: ":8187" }
+    ],
+    communication: { schemaVersion: 1, edges: [], security: { tokenMinimumLength: 32 } }
+  };
+  const manifest = {
+    apiVersion: "v1", kind: "List", items: [{
+      apiVersion: "apps/v1", kind: "Deployment", metadata: { name: "unit", namespace: "installation" }, spec: {
+        template: { metadata: { labels: { unit: "all" } }, spec: { containers: [
+          { name: "fabric", image: "example.invalid/fabric:1", command: ["/fabric"], env: [{ name: "FABRIC_RPC_ADDR", value: ":8187" }, { name: "FABRIC_DB", value: "" }], ports: [{ containerPort: 8082 }] },
+          { name: "other", image: "example.invalid/other:1", command: ["/other"], env: [{ name: "OTHER_ADDR", value: ":8187" }], ports: [{ containerPort: 8187 }] }
+        ] } }
+      }
+    }]
+  };
+  const report = validateInstallationManifest(manifest, topology as any);
+  assert.equal(report.ok, true, JSON.stringify(report));
+
+  const invalidHttpListener = structuredClone(manifest);
+  const invalidFabric = invalidHttpListener.items[0].spec.template.spec.containers[0];
+  invalidFabric.env = invalidFabric.env.map(entry => entry.name === "FABRIC_DB" ? { name: entry.name, value: "enabled" } : entry);
+  invalidFabric.env.push({ name: "FABRIC_ADDR", value: "not-an-address" });
+  invalidHttpListener.items[0].spec.template.spec.containers = [invalidFabric];
+  const invalidReport = validateInstallationManifest(invalidHttpListener, topology as any);
+  assert.equal(invalidReport.ok, false, JSON.stringify(invalidReport));
+  assert.ok(invalidReport.errors.some(error => error.code === "installation_listener_unproven"), JSON.stringify(invalidReport));
 });
 
 test("installation CLI rejects other declared Service backend producers", async t => {
