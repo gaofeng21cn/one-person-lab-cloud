@@ -68,7 +68,7 @@ test("installation CLI rejects competing listeners in one Pod network namespace"
     else pod.containers.push(sidecar);
     const result = await invoke(list);
     assert.equal(result.status, 1, result.stdout);
-    assert.ok(result.report.errors.some(error => ["rpc_service_backend_ambiguous", "rpc_target_port_invalid", "installation_listener_conflict"].includes(error.code)));
+    assert.ok(result.report.errors.some(error => ["rpc_service_backend_owner_ambiguous", "rpc_endpoint_backend_ambiguous", "rpc_target_port_invalid", "installation_listener_conflict"].includes(error.code)));
     assert.deepEqual(result.report.communication.edges, []);
   });
   const list = workedInstallation();
@@ -80,7 +80,33 @@ test("installation CLI rejects competing listeners in one Pod network namespace"
   container(dualListener, "fabric").env.push({ name: "FABRIC_ADDR", value: ":8188" });
   const conflict = await invoke(dualListener);
   assert.equal(conflict.status, 1, conflict.stdout);
-  assert.ok(conflict.report.errors.some(error => ["rpc_service_backend_ambiguous", "rpc_target_port_invalid", "installation_listener_conflict"].includes(error.code)));
+  assert.ok(conflict.report.errors.some(error => ["rpc_service_backend_owner_ambiguous", "rpc_endpoint_backend_ambiguous", "rpc_target_port_invalid", "installation_listener_conflict"].includes(error.code)));
+});
+
+test("installation CLI classifies live backend proof failures by boundary", async () => {
+  const ownerAmbiguous = workedInstallation();
+  const foreign = structuredClone(deployment(ownerAmbiguous, "serve"));
+  foreign.metadata.name = "foreign-backend";
+  foreign.spec.template.metadata.labels = { unit: "workspace" };
+  foreign.spec.template.spec.containers[0].command = ["/bin/foreign-server"];
+  foreign.spec.template.spec.containers[0].image = "foreign.invalid/backend:1";
+  ownerAmbiguous.items.push(foreign);
+  const ownerResult = await invoke(ownerAmbiguous);
+  assert.equal(ownerResult.status, 1, ownerResult.stdout);
+  assert.ok(ownerResult.report.errors.some(error => error.code === "rpc_service_backend_owner_ambiguous"), ownerResult.stdout);
+
+  const endpointAmbiguous = withLiveWorkspaceBackends();
+  endpointAmbiguous.endpoints.subsets[0].addresses[0].ip = "192.0.2.99";
+  const endpointResult = await invoke(endpointAmbiguous.list);
+  assert.equal(endpointResult.status, 1, endpointResult.stdout);
+  assert.ok(endpointResult.report.errors.some(error => error.code === "rpc_endpoint_backend_ambiguous"), endpointResult.stdout);
+
+  const listenerConflict = workedInstallation();
+  const sidecar = { name: "other-listener", image: "example.invalid/sidecar:1", ports: [{ name: "other", containerPort: 8184 }] };
+  deployment(listenerConflict, "workspace").spec.template.spec.containers.push(sidecar);
+  const listenerResult = await invoke(listenerConflict);
+  assert.equal(listenerResult.status, 1, listenerResult.stdout);
+  assert.ok(listenerResult.report.errors.some(error => error.code === "installation_listener_conflict"), listenerResult.stdout);
 });
 
 test("installation CLI rejects other declared Service backend producers", async t => {
@@ -96,7 +122,7 @@ test("installation CLI rejects other declared Service backend producers", async 
       spec: kind === "CronJob" ? { schedule: "* * * * *", jobTemplate: { spec: { template } } } : { template } });
     const result = await invoke(list);
     assert.equal(result.status, 1, result.stdout);
-    assert.ok(result.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+    assert.ok(result.report.errors.some(error => ["rpc_service_backend_owner_ambiguous", "rpc_endpoint_backend_ambiguous"].includes(error.code)));
     assert.deepEqual(result.report.communication.edges, []);
   });
   const list = workedInstallation();
@@ -173,7 +199,7 @@ test("installation CLI accepts live replicas only through exact controller and e
     change(fixture);
     const result = await invoke(fixture.list);
     assert.equal(result.status, 1, result.stdout);
-    assert.ok(result.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+    assert.ok(result.report.errors.some(error => ["rpc_service_backend_owner_ambiguous", "rpc_endpoint_backend_ambiguous"].includes(error.code)));
     assert.deepEqual(result.report.communication.edges, []);
   });
 });
@@ -250,7 +276,7 @@ test("installation CLI distinguishes default Pod tolerations from template drift
     change(fixture);
     const result = await invoke(fixture.list);
     assert.equal(result.status, 1, result.stdout + result.stderr);
-    assert.ok(result.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+    assert.ok(result.report.errors.some(error => ["rpc_service_backend_owner_ambiguous", "rpc_endpoint_backend_ambiguous"].includes(error.code)));
   });
 });
 
@@ -281,7 +307,7 @@ test("installation CLI binds live init identity and canonical projected ServiceA
   ordered.pod.spec.initContainers = [initB, initA];
   const orderedResult = await invoke(ordered.list);
   assert.equal(orderedResult.status, 1);
-  assert.ok(orderedResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+  assert.ok(orderedResult.report.errors.some(error => ["rpc_service_backend_owner_ambiguous", "rpc_endpoint_backend_ambiguous"].includes(error.code)));
   assert.deepEqual(orderedResult.report.communication.edges, []);
 
   const duplicate = withLiveWorkspaceBackends();
@@ -290,7 +316,7 @@ test("installation CLI binds live init identity and canonical projected ServiceA
   duplicate.pod.spec.initContainers = [duplicateInit];
   const duplicateResult = await invoke(duplicate.list);
   assert.equal(duplicateResult.status, 1);
-  assert.ok(duplicateResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+  assert.ok(duplicateResult.report.errors.some(error => ["rpc_service_backend_owner_ambiguous", "rpc_endpoint_backend_ambiguous"].includes(error.code)));
   assert.deepEqual(duplicateResult.report.communication.edges, []);
 
   const injected = withLiveWorkspaceBackends();
@@ -309,7 +335,7 @@ test("installation CLI binds live init identity and canonical projected ServiceA
   ] } }];
   const forgedResult = await invoke(forged.list);
   assert.equal(forgedResult.status, 1);
-  assert.ok(forgedResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+  assert.ok(forgedResult.report.errors.some(error => ["rpc_service_backend_owner_ambiguous", "rpc_endpoint_backend_ambiguous"].includes(error.code)));
   assert.deepEqual(forgedResult.report.communication.edges, []);
 });
 
@@ -336,27 +362,27 @@ test("installation CLI rejects unserviceable supplied live endpoints", async () 
   malformedSlice.slice.endpoints.push({ addresses: ["2001:db8::1"], targetRef: malformedSlice.slice.endpoints[0].targetRef, conditions: { ready: "unknown" } });
   const malformedSliceResult = await invoke(malformedSlice.list);
   assert.equal(malformedSliceResult.status, 1);
-  assert.ok(malformedSliceResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+  assert.ok(malformedSliceResult.report.errors.some(error => ["rpc_service_backend_owner_ambiguous", "rpc_endpoint_backend_ambiguous"].includes(error.code)));
 
   const malformedSliceAddress = withLiveWorkspaceBackends();
   malformedSliceAddress.list.items = malformedSliceAddress.list.items.filter(item => item !== malformedSliceAddress.endpoints);
   malformedSliceAddress.slice.endpoints.push({ addresses: ["not-an-ip"], targetRef: malformedSliceAddress.slice.endpoints[0].targetRef, conditions: { ready: false } });
   const malformedSliceAddressResult = await invoke(malformedSliceAddress.list);
   assert.equal(malformedSliceAddressResult.status, 1);
-  assert.ok(malformedSliceAddressResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+  assert.ok(malformedSliceAddressResult.report.errors.some(error => ["rpc_service_backend_owner_ambiguous", "rpc_endpoint_backend_ambiguous"].includes(error.code)));
 
   const malformedUnreadySlice = withLiveWorkspaceBackends();
   malformedUnreadySlice.list.items = malformedUnreadySlice.list.items.filter(item => item !== malformedUnreadySlice.endpoints);
   malformedUnreadySlice.slice.endpoints.push({ addresses: ["2001:db8::1"], targetRef: { ...malformedUnreadySlice.slice.endpoints[0].targetRef, uid: "wrong-pod" }, conditions: { ready: false } });
   const malformedUnreadySliceResult = await invoke(malformedUnreadySlice.list);
   assert.equal(malformedUnreadySliceResult.status, 1);
-  assert.ok(malformedUnreadySliceResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+  assert.ok(malformedUnreadySliceResult.report.errors.some(error => ["rpc_service_backend_owner_ambiguous", "rpc_endpoint_backend_ambiguous"].includes(error.code)));
 
   const malformedEndpoints = withLiveWorkspaceBackends();
   malformedEndpoints.endpoints.subsets[0].notReadyAddresses = "invalid";
   const malformedEndpointsResult = await invoke(malformedEndpoints.list);
   assert.equal(malformedEndpointsResult.status, 1);
-  assert.ok(malformedEndpointsResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+  assert.ok(malformedEndpointsResult.report.errors.some(error => ["rpc_service_backend_owner_ambiguous", "rpc_endpoint_backend_ambiguous"].includes(error.code)));
 
   const malformedUnreadyEndpoints = withLiveWorkspaceBackends();
   malformedUnreadyEndpoints.endpoints.subsets[0].notReadyAddresses = [{
@@ -364,7 +390,7 @@ test("installation CLI rejects unserviceable supplied live endpoints", async () 
   }];
   const malformedUnreadyEndpointsResult = await invoke(malformedUnreadyEndpoints.list);
   assert.equal(malformedUnreadyEndpointsResult.status, 1);
-  assert.ok(malformedUnreadyEndpointsResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+  assert.ok(malformedUnreadyEndpointsResult.report.errors.some(error => ["rpc_service_backend_owner_ambiguous", "rpc_endpoint_backend_ambiguous"].includes(error.code)));
 });
 
 test("installation CLI refuses empty or incomplete live endpoint inventories", async t => {
@@ -377,7 +403,7 @@ test("installation CLI refuses empty or incomplete live endpoint inventories", a
     change(live);
     const result = await invoke(live.list);
     assert.equal(result.status, 1, result.stdout);
-    assert.ok(result.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+    assert.ok(result.report.errors.some(error => ["rpc_service_backend_owner_ambiguous", "rpc_endpoint_backend_ambiguous"].includes(error.code)));
     assert.deepEqual(result.report.communication.edges, []);
   });
 });
@@ -514,7 +540,7 @@ test("installation CLI rejects ambiguous Kubernetes process, env, Service and na
     ["installation_env_ambiguous", list => { container(list, "serve").env.push({ name: "OPL_WORKSPACE_ADDR", value: "workspace-rpc:9184" }); }],
     ["installation_env_from_unproven", list => { container(list, "serve").envFrom = [{ secretRef: { name: "opaque" } }]; }],
     ["installation_resource_duplicate", list => { list.items.push(structuredClone(policy(list, "workspace"))); }],
-    ["rpc_service_backend_ambiguous", list => { const copy = structuredClone(deployment(list, "serve")); copy.metadata.name = "foreign-backend"; copy.spec.template.metadata.labels = { unit: "workspace" }; copy.spec.template.spec.containers[0].command = ["/bin/foreign-server"]; copy.spec.template.spec.containers[0].image = "foreign.invalid/backend:1"; list.items.push(copy); }],
+    ["rpc_service_backend_owner_ambiguous", list => { const copy = structuredClone(deployment(list, "serve")); copy.metadata.name = "foreign-backend"; copy.spec.template.metadata.labels = { unit: "workspace" }; copy.spec.template.spec.containers[0].command = ["/bin/foreign-server"]; copy.spec.template.spec.containers[0].image = "foreign.invalid/backend:1"; list.items.push(copy); }],
     ["installation_namespace_unsupported", list => { const bff = deployment(list, "console-bff"); bff.metadata.namespace = "other"; container(list, "console-bff").env.filter(entry => entry.name.endsWith("_URL")).forEach(entry => { entry.value = entry.value.replace("-rpc:", "-rpc.installation.svc.cluster.local:"); }); }],
     ["installation_process_unproven", list => { delete container(list, "console-bff").command; container(list, "console-bff").args = ["/bin/unknown"]; }],
     ["installation_pod_network_unsupported", list => { deployment(list, "serve").spec.template.spec.hostNetwork = true; }],
@@ -973,7 +999,7 @@ test("installation CLI proves Service uniqueness across declared Pods and every 
       const rejected = labels === "matching" || labels === "invalid" || labels === "unknown-template";
       assert.equal(result.status, rejected ? 1 : 0, result.stdout + result.stderr);
       if (rejected) {
-        assert.ok(result.report.errors.some(error => ["rpc_service_backend_ambiguous", "rpc_service_backend_unproven", "installation_manifest_shape_invalid"].includes(error.code)), result.stdout);
+        assert.ok(result.report.errors.some(error => ["rpc_service_backend_owner_ambiguous", "rpc_endpoint_backend_ambiguous", "rpc_service_backend_unproven", "installation_manifest_shape_invalid"].includes(error.code)), result.stdout);
         assert.deepEqual(result.report.communication.edges, []);
       } else assert.equal(result.report.communication.edges.length, 46);
     });
@@ -985,7 +1011,7 @@ test("installation CLI proves Service uniqueness across declared Pods and every 
       ownerReferences: [{ apiVersion: "apps/v1", kind: "Deployment", name: target.metadata.name, uid: "unverified" }] }, spec: structuredClone(target.spec.template.spec) });
     const result = await invoke(list);
     assert.equal(result.status, 1, result.stdout);
-    assert.ok(result.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"));
+    assert.ok(result.report.errors.some(error => ["rpc_service_backend_owner_ambiguous", "rpc_endpoint_backend_ambiguous"].includes(error.code)));
   });
 });
 

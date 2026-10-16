@@ -651,7 +651,7 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     }
     if (backendUnproven) { fail("rpc_service_backend_unproven"); continue; }
     if (backends.some(backend => !ownedBackend(backend, target.deployment, resources))) {
-      fail("rpc_service_backend_ambiguous"); continue;
+      fail("rpc_service_backend_owner_ambiguous"); continue;
     }
     const matching = Array.isArray(service.spec.ports) ? service.spec.ports.filter((entry: Resource) => entry?.port === parsed.port && (entry.protocol ?? "TCP") === "TCP") : [];
     if (matching.length !== 1) { fail("rpc_service_port_invalid"); continue; }
@@ -702,8 +702,11 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     const endpoints = resources.filter(resource => namespace(resource) === namespace(service) &&
       (resource.kind === "Endpoints" && resource.metadata.name === service.metadata.name ||
        resource.kind === "EndpointSlice" && resource.metadata.labels?.["kubernetes.io/service-name"] === service.metadata.name));
-    if (conflict || endpoints.some(resource => !endpointBackend(resource, service, target.deployment, target.container, servicePort, targetPort, resources, topology.image.defaultCommand, processContract))) {
-      fail("rpc_service_backend_ambiguous"); continue;
+    if (conflict) {
+      fail("installation_listener_conflict"); continue;
+    }
+    if (endpoints.some(resource => !endpointBackend(resource, service, target.deployment, target.container, servicePort, targetPort, resources, topology.image.defaultCommand, processContract))) {
+      fail("rpc_endpoint_backend_ambiguous"); continue;
     }
     const tokenRef = secretReference(envEntry(caller, edge.tokenEnv));
     if (!tokenRef) { fail("rpc_token_ref_invalid"); continue; }
