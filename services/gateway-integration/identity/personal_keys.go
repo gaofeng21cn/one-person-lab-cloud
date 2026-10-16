@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -234,7 +235,7 @@ func personalPagination(page, size int32) error {
 	}
 	return nil
 }
-func personalPageValid(total int64, page, size, pages int32, count int) bool {
+func personalPageValid(total int64, size, pages int32, count int) bool {
 	if total < 0 {
 		return false
 	}
@@ -245,14 +246,9 @@ func personalPageValid(total int64, page, size, pages int32, count int) bool {
 	if int64(pages) != expectedPages {
 		return false
 	}
-	remaining := total - int64(page-1)*int64(size)
-	if remaining < 0 {
-		remaining = 0
-	}
-	if remaining > int64(size) {
-		remaining = int64(size)
-	}
-	return remaining == int64(count)
+	// Native COUNT and item queries are separate reads, so concurrent changes
+	// can legitimately make total and this page's cardinality disagree.
+	return count <= int(size)
 }
 func (s *Service) ListPersonalGatewayKeys(ctx context.Context, r *api.ListPersonalGatewayKeysRpcRequest) (*api.PersonalGatewayKeyPage, error) {
 	if err := personalPagination(r.GetPage(), r.GetPageSize()); err != nil {
@@ -270,7 +266,7 @@ func (s *Service) ListPersonalGatewayKeys(ctx context.Context, r *api.ListPerson
 	states := map[string]string{"": "", "active": "active", "disabled": "inactive", "quota_exhausted": "quota_exhausted", "expired": "expired"}
 	state, ok := states[r.GetStatus()]
 	search := strings.TrimSpace(r.GetSearch())
-	if !ok || order != "asc" && order != "desc" || len([]rune(search)) > 100 {
+	if !ok || order != "asc" && order != "desc" || !utf8.ValidString(r.GetSearch()) || len(r.GetSearch()) > 100 {
 		return nil, status.Error(codes.InvalidArgument, "invalid key filters")
 	}
 	values := url.Values{"page": {strconv.Itoa(int(r.Page))}, "page_size": {strconv.Itoa(int(r.PageSize))}, "sort_by": {sortBy}, "sort_order": {order}}
@@ -301,7 +297,7 @@ func (s *Service) ListPersonalGatewayKeys(ctx context.Context, r *api.ListPerson
 	if err = s.personalRequest(ctx, credential, "/api/v1/keys?"+values.Encode(), &data); err != nil {
 		return nil, err
 	}
-	if data.Items == nil || data.Page != r.Page || data.PageSize != r.PageSize || !personalPageValid(data.Total, data.Page, data.PageSize, data.Pages, len(data.Items)) {
+	if data.Items == nil || data.Page != r.Page || data.PageSize != r.PageSize || !personalPageValid(data.Total, data.PageSize, data.Pages, len(data.Items)) {
 		return nil, invalidPersonalResponse()
 	}
 	page := &api.PersonalGatewayKeyPage{Items: make([]*api.PersonalGatewayKey, 0, len(data.Items)), Total: data.Total, Page: data.Page, PageSize: data.PageSize, Pages: data.Pages}
@@ -454,7 +450,7 @@ func (s *Service) ListPersonalGatewayKeyUsage(ctx context.Context, r *api.ListPe
 	if err = s.personalRequest(ctx, credential, "/api/v1/usage?"+values.Encode(), &data); err != nil {
 		return nil, err
 	}
-	if data.Items == nil || data.Page != r.Page || data.PageSize != r.PageSize || !personalPageValid(data.Total, data.Page, data.PageSize, data.Pages, len(data.Items)) {
+	if data.Items == nil || data.Page != r.Page || data.PageSize != r.PageSize || !personalPageValid(data.Total, data.PageSize, data.Pages, len(data.Items)) {
 		return nil, invalidPersonalResponse()
 	}
 	out := &api.PersonalGatewayKeyUsagePage{Items: make([]*api.PersonalGatewayKeyUsage, 0, len(data.Items)), Total: data.Total, Page: data.Page, PageSize: data.PageSize, Pages: data.Pages}

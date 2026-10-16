@@ -77,8 +77,8 @@ func (s *Server) registerPersonalGatewayKeyRoutes(mux *http.ServeMux, gateway ap
 			return nil, err
 		}
 		input := &api.ListPersonalGatewayKeysRpcRequest{Context: c, Page: page, PageSize: size, Search: query.Get("search"), Status: query.Get("status"), SortBy: "createdAt", SortOrder: "desc"}
-		if !utf8.ValidString(input.Search) || utf8.RuneCountInString(input.Search) > 100 {
-			return nil, status.Error(codes.InvalidArgument, "search exceeds 100 characters")
+		if !utf8.ValidString(input.Search) || len(input.Search) > 100 {
+			return nil, status.Error(codes.InvalidArgument, "search exceeds 100 UTF-8 bytes")
 		}
 		if values, present := query["status"]; present {
 			switch values[0] {

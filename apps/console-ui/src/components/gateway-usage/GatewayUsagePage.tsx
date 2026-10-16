@@ -126,6 +126,8 @@ function KeyPicker({ controller, onClose, open }: {
   open: boolean;
 }) {
   const [draft, setDraft] = useState("");
+  const reauthenticationRequired = controller.keys.value?.available === false
+    && controller.keys.value.reasonCode === "REAUTHENTICATION_REQUIRED";
 
   useEffect(() => {
     if (open) setDraft("");
@@ -155,7 +157,7 @@ function KeyPicker({ controller, onClose, open }: {
         <Button disabled={!draft && !controller.keySearch} onClick={clear} type="button" variant="ghost">清除</Button>
       </div>
     </form>
-    {controller.keys.loading ? <div className="source-loading" aria-live="polite"><span className="spinner" />正在读取</div> : <SourceState
+    {controller.keys.loading ? <div className="source-loading" aria-live="polite"><span className="spinner" />正在读取</div> : reauthenticationRequired ? <GatewayKeyReauthentication /> : <SourceState
       empty={controller.keys.value?.status === "empty"}
       emptyDescription={controller.keySearch ? "没有符合当前搜索条件的 API 密钥。" : "当前账户还没有 API 密钥。"}
       emptyTitle={controller.keySearch ? "未找到 API 密钥" : "暂无 API 密钥"}
@@ -241,7 +243,7 @@ export function GatewayUsagePage({ controller, onCopyRequestId, onOpenKeys }: Ga
   };
 
   return <section className="panel gateway-usage-panel" data-slide="C-API-02">
-    {reauthenticationRequired ? <GatewayKeyReauthentication /> : null}
+    {reauthenticationRequired && !pickerOpen ? <GatewayKeyReauthentication /> : null}
     <div className="panel-title gateway-usage-title"><h2>用量</h2><Button aria-label="刷新" disabled={!selectedKey} onClick={() => void controller.refresh()} size="sm" variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div>
     <div className="gateway-usage-toolbar">
       <section aria-label="当前 API 密钥" className="gateway-usage-current-key">

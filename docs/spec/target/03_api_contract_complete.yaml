@@ -3126,6 +3126,7 @@ paths:
         schema:
           type: string
           maxLength: 100
+          description: UTF-8 encoded length must not exceed 100 bytes, matching the native user Key search boundary.
       - name: status
         in: query
         required: false

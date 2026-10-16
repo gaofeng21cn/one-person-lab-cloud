@@ -220,6 +220,8 @@ func TestPersonalKeyPaginationPreservesNativeEmptyAndLargePages(t *testing.T) {
 		{"empty-out-of-range", 99, 20, 1, 0, []any{}},
 		{"populated-out-of-range", 99, 20, 1, 1, []any{}},
 		{"large-page-count", 1, 1, 1000001, 1000001, []any{personalKeyPayload()}},
+		{"concurrent-insert-after-count", 1, 20, 1, 0, []any{personalKeyPayload()}},
+		{"concurrent-delete-after-count", 1, 20, 1, 1, []any{}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -377,13 +379,13 @@ func TestPersonalKeyRejectedCredentialsAreDiscardedOnlyForTheirSession(t *testin
 }
 func TestPersonalKeyCredentialExpiresBeforeCloudSession(t *testing.T) {
 	client, tenant, _, _ := personalCredentialSystem(t, "user-token", 3)
-	started := time.Now()
 	raw, _ := login(t, tenant)
+	started := time.Now()
 	call := &api.CallContext{SessionId: proto.String(owneridentity.SessionReference(raw))}
 	if _, err := client.GetPersonalGatewayKey(t.Context(), &api.GetPersonalGatewayKeyRpcRequest{Context: call, KeyId: "71"}); err != nil {
 		t.Fatal(err)
 	}
-	timer := time.NewTimer(time.Until(started.Add(3100 * time.Millisecond)))
+	timer := time.NewTimer(time.Until(started.Add(3 * time.Second)))
 	defer timer.Stop()
 	<-timer.C
 	_, err := client.GetPersonalGatewayKey(t.Context(), &api.GetPersonalGatewayKeyRpcRequest{Context: call, KeyId: "71"})
@@ -496,7 +498,14 @@ func TestPersonalReadsRejectUnownedOrMalformedUpstreamFacts(t *testing.T) {
 			}
 			data = map[string]any{"items": []any{item}, "total": 1, "page": 1, "page_size": 20, "pages": 1}
 			if mode.Load() == 38 {
-				data = map[string]any{"items": []any{item}, "total": 2, "page": 1, "page_size": 20, "pages": 1}
+				data = map[string]any{"items": []any{item}, "total": 2, "page": 1, "page_size": 20, "pages": 2}
+			}
+			if mode.Load() == 39 {
+				items := make([]any, 21)
+				for i := range items {
+					items[i] = personalUsagePayload()
+				}
+				data = map[string]any{"items": items, "total": 21, "page": 1, "page_size": 20, "pages": 2}
 			}
 		case "/api/v1/usage/stats":
 			payload := map[string]any{"total_requests": 1, "total_input_tokens": 17, "total_output_tokens": 3, "total_tokens": 20, "total_actual_cost": "0.125"}
@@ -525,7 +534,7 @@ func TestPersonalReadsRejectUnownedOrMalformedUpstreamFacts(t *testing.T) {
 	}{
 		{"wrong-key-user", 1, "key"}, {"wrong-key-id", 2, "key"}, {"unknown-status", 3, "key"}, {"negative-quota", 4, "key"}, {"missing-rate-limit", 5, "key"}, {"missing-created-at", 6, "key"}, {"negative-concurrency", 7, "key"}, {"overflow-quota", 8, "key"}, {"invalid-group-id", 9, "key"}, {"overflow-concurrency", 10, "key"}, {"invalid-timestamp", 11, "key"},
 		{"duplicate-key-list", 13, "list"}, {"missing-group-rate", 21, "groups"}, {"duplicate-group", 22, "groups"}, {"negative-group-override", 23, "groups"}, {"invalid-group-override-id", 24, "groups"},
-		{"foreign-usage-user", 31, "usage"}, {"foreign-usage-key", 32, "usage"}, {"missing-token-count", 33, "usage"}, {"negative-usage-cost", 34, "usage"}, {"negative-duration", 35, "usage"}, {"negative-first-token", 36, "usage"}, {"missing-usage-time", 37, "usage"}, {"inconsistent-usage-page", 38, "usage"},
+		{"foreign-usage-user", 31, "usage"}, {"foreign-usage-key", 32, "usage"}, {"missing-token-count", 33, "usage"}, {"negative-usage-cost", 34, "usage"}, {"negative-duration", 35, "usage"}, {"negative-first-token", 36, "usage"}, {"missing-usage-time", 37, "usage"}, {"inconsistent-usage-page", 38, "usage"}, {"oversized-usage-page", 39, "usage"},
 		{"missing-summary-count", 41, "summary"}, {"negative-summary-count", 42, "summary"}, {"negative-summary-cost", 43, "summary"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -637,5 +646,48 @@ func TestPersonalCollectionsRequireAuthoritativeArraysAndEnvelope(t *testing.T) 
 				t.Fatalf("valid empty array rejected: %v", err)
 			}
 		})
+	}
+}
+
+// Sub2API performs COUNT and item reads separately; both are authoritative facts
+// from their own read, so concurrent insert/delete need not agree on cardinality.
+func TestPersonalUsagePaginationPreservesConcurrentNativeReadback(t *testing.T) {
+	for _, total := range []int64{0, 2} {
+		t.Run(string(rune('0'+total)), func(t *testing.T) {
+			client, tenant, _ := gatewayProductSystemWithUpstream(t, func(w http.ResponseWriter, r *http.Request) bool {
+				if r.URL.Path != "/api/v1/usage" {
+					return personalUsageFixture(t, w, r)
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"items": []any{personalUsagePayload()}, "total": total, "page": 1, "page_size": 20, "pages": 1}})
+				return true
+			})
+			raw, _ := login(t, tenant)
+			page, err := client.ListPersonalGatewayKeyUsage(t.Context(), &api.ListPersonalGatewayKeyUsageRpcRequest{Context: &api.CallContext{SessionId: proto.String(owneridentity.SessionReference(raw))}, KeyId: "71", Page: 1, PageSize: 20, Period: "month"})
+			if err != nil || page.GetTotal() != total || len(page.GetItems()) != 1 {
+				t.Fatalf("concurrent native usage read changed: page=%v err=%v", page, err)
+			}
+		})
+	}
+}
+
+func TestPersonalKeySearchRespectsNativeUTF8ByteLimit(t *testing.T) {
+	var keyReads atomic.Int32
+	client, tenant, _ := gatewayProductSystemWithUpstream(t, func(w http.ResponseWriter, r *http.Request) bool {
+		if r.URL.Path != "/api/v1/keys" {
+			return false
+		}
+		keyReads.Add(1)
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"items": []any{}, "total": 0, "page": 1, "page_size": 20, "pages": 1}})
+		return true
+	})
+	raw, _ := login(t, tenant)
+	call := &api.CallContext{SessionId: proto.String(owneridentity.SessionReference(raw))}
+	if _, err := client.ListPersonalGatewayKeys(t.Context(), &api.ListPersonalGatewayKeysRpcRequest{Context: call, Page: 1, PageSize: 20, Search: strings.Repeat("界", 33) + "a"}); err != nil {
+		t.Fatalf("legal 100-byte UTF-8 search refused: %v", err)
+	}
+	before := keyReads.Load()
+	_, err := client.ListPersonalGatewayKeys(t.Context(), &api.ListPersonalGatewayKeysRpcRequest{Context: call, Page: 1, PageSize: 20, Search: strings.Repeat("界", 34)})
+	if status.Code(err) != codes.InvalidArgument || keyReads.Load() != before {
+		t.Fatalf("oversize search reached native truncation: code=%v reads=%d before=%d", status.Code(err), keyReads.Load(), before)
 	}
 }

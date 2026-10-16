@@ -1260,6 +1260,7 @@ test("Cloud usage ignores an old session reauthentication response and prompts o
   let heldReads = 0;
   let csrfToken = "cloud-session-a";
   let requireCurrentReauthentication = false;
+  let requireKeyListReauthentication = false;
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
@@ -1270,7 +1271,10 @@ test("Cloud usage ignores an old session reauthentication response and prompts o
       if (url.pathname === "/api/v2/auth/context") return json({ csrfToken: "challenge" });
       if (url.pathname === "/api/v2/auth/login") { csrfToken = "cloud-session-b"; return json(session()); }
       if (url.pathname === "/api/v2/auth/logout") return route.fulfill({ status: 204 });
-      if (url.pathname === "/api/v2/gateway/keys") return json({ items: [canonicalKey], total: "1", page: 1, pageSize: 20, pages: 1 });
+      if (url.pathname === "/api/v2/gateway/keys") {
+        return requireKeyListReauthentication ? json({ code: "REAUTHENTICATION_REQUIRED" }, 401)
+          : json({ items: [canonicalKey], total: "1", page: 1, pageSize: 20, pages: 1 });
+      }
       if (url.pathname === `/api/v2/gateway/keys/${canonicalKey.id}`) {
         return requireCurrentReauthentication ? json({ code: "REAUTHENTICATION_REQUIRED" }, 401) : json(canonicalKey);
       }
@@ -1320,6 +1324,37 @@ test("Cloud usage ignores an old session reauthentication response and prompts o
     // Detail revalidation uses the same typed credential code when refreshing the selected Key.
     await page.getByRole("main").getByRole("button", { name: "刷新", exact: true }).click();
     await page.getByText("API 密钥访问需要重新登录", { exact: true }).waitFor();
+
+    // Usage/detail reauthentication alone must not add a warning to a healthy picker.
+    const pickerTrigger = page.getByRole("button", { name: "更换 API 密钥", exact: true });
+    const picker = page.getByRole("dialog", { name: "选择 API 密钥" });
+    await pickerTrigger.click();
+    await picker.getByRole("button", { name: new RegExp(canonicalKey.name) }).waitFor();
+    assert.equal(await picker.getByRole("link", { name: "重新登录", exact: true }).count(), 0);
+    await page.keyboard.press("Escape");
+    await picker.waitFor({ state: "hidden" });
+    await page.getByText("API 密钥访问需要重新登录", { exact: true }).waitFor();
+
+    // A rejected Key-list read must expose reauthentication inside the focus trap.
+    requireKeyListReauthentication = true;
+    const rejectedKeys = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v2/gateway/keys" && response.status() === 401);
+    await pickerTrigger.click();
+    await waitForResponsesToSettle(page, [rejectedKeys]);
+    const login = picker.getByRole("link", { name: "重新登录", exact: true });
+    assert.equal(await login.count(), 1, "Key picker must contain an actionable reauthentication link");
+    await login.click({ trial: true });
+    assert.equal(await login.getAttribute("href"), "/login?redirect=%2Fconsole%2Fapi%2Fusage");
+    assert.equal(await picker.getByRole("alert").filter({ hasText: "API 密钥访问需要重新登录" }).count(), 1);
+    assert.equal(await page.getByText("API 密钥访问需要重新登录", { exact: true }).count(), 1);
+    assert.equal(await picker.getByText("暂时无法读取 API 密钥，请稍后重试。", { exact: true }).count(), 0);
+    assert.equal(await picker.getByRole("button", { name: "重试", exact: true }).count(), 0);
+    await picker.getByLabel("搜索 API 密钥").click();
+    await page.keyboard.press("Tab");
+    assert.equal(await picker.getByRole("button", { name: "搜索", exact: true }).evaluate((node) => node === document.activeElement), true);
+    await page.keyboard.press("Tab");
+    assert.equal(await login.evaluate((node) => node === document.activeElement), true);
+    await page.keyboard.press("Enter");
+    await page.waitForURL(`${demo.origin}/login?redirect=%2Fconsole%2Fapi%2Fusage`);
   } finally {
     release.resolve();
     await browser.close();
