@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile, chmod, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, chmod, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
@@ -85,6 +85,184 @@ test("Cloud customer workflow limits credentials to protected public product rea
   const installation = workflow.jobs.readback.steps.find((s: any) => s.name === "Checkout exact native installation validator");
   assert.equal(installation.with.ref, "${{ steps.inputs.outputs.installation_sha }}");
   assert.equal(installation.with["persist-credentials"], false);
+});
+
+test("protected business qualification runs only through the shared producer after exact evidence", () => {
+  const readbackJob = workflow.jobs.readback;
+  assert.equal(readbackJob["timeout-minutes"], 45);
+  assert.equal(readbackJob.environment, "cloud-business-qualification");
+  const inputs = workflow.on.workflow_dispatch.inputs;
+  for (const name of [
+    "candidate_receipt_digest",
+    "deployment_binding",
+    "qualification_account_id",
+    "qualification_package_id",
+    "j0_ready_receipt",
+  ]) {
+    assert.equal(inputs[name]?.required, true, name);
+    assert.equal(inputs[name]?.type, "string", name);
+  }
+  assert.equal(inputs.qualification_authority_class?.required, true);
+  assert.equal(inputs.qualification_authority_class?.type, "choice");
+  assert.deepEqual(inputs.qualification_authority_class?.options, ["sandbox", "preproduction"]);
+
+  const materialize = step(readbackJob, "Materialize protected qualification declarations");
+  assert.equal(materialize.id, "declarations");
+  assert.match(materialize.if, /steps\.evidence\.outcome == 'success'/);
+  for (const name of [
+    "OPL_QUALIFICATION_ENVIRONMENT",
+    "OPL_QUALIFICATION_ORIGIN",
+    "OPL_QUALIFICATION_PROVIDER_BOUNDARY",
+    "OPL_QUALIFICATION_CUSTOMER_EMAIL",
+    "OPL_QUALIFICATION_CUSTOMER_PASSWORD",
+    "OPL_INSTANCE_EVIDENCE_TOKEN",
+  ]) {
+    assert.ok(Object.hasOwn(materialize.env || {}, name), name);
+  }
+  assert.match(materialize.run, /external prerequisite absent/);
+  assert.match(materialize.run, /\.candidateReceiptDigest == \$candidate/);
+  assert.match(materialize.run, /\.ownerOrigin == \$origin/);
+  assert.match(materialize.run, /\.fabricProvider == "tencent-tke"/);
+  assert.match(materialize.run, /\.kind == "opl\.workspace-qualification\.j0-ready\.v2"/);
+  assert.match(materialize.run, /\.status == "READY"/);
+  assert.match(materialize.run, /\.failed == 0 and \.skipped == 0/);
+  assert.match(materialize.run, /chmod 600/);
+  assert.match(materialize.run, /stat -c '%a'.*stat -f '%Lp'/);
+  assert.doesNotMatch(materialize.run, /\/api\//);
+
+  const producer = step(readbackJob, "Run protected business qualification through the shared Cloud flow");
+  assert.match(producer.if, /steps\.evidence\.outcome == 'success'/);
+  assert.match(producer.if, /steps\.declarations\.outcome == 'success'/);
+  assert.match(producer.run, /node tools\/protected-business-qualification\.ts run/);
+  for (const declaration of [
+    /--candidate qualification-inputs\/candidate\/opl-cloud-candidate\.json/,
+    /--candidate-digest "\$CANDIDATE_RECEIPT_DIGEST"/,
+    /--installation qualification-inputs\/installation\/evidence\.json/,
+    /--installation-run "\$RUNNER_TEMP\/customer-inputs\/installation-run\.json"/,
+    /--deployment "\$RUNNER_TEMP\/qualification\/deployment\.json"/,
+    /--j0-ready-receipt "\$RUNNER_TEMP\/j0-ready\/receipt\.json"/,
+    /--boundary "\$OPL_QUALIFICATION_PROVIDER_BOUNDARY"/,
+    /--account-id "\$QUALIFICATION_ACCOUNT_ID"/,
+    /--package-id "\$QUALIFICATION_PACKAGE_ID"/,
+    /--authority-class "\$QUALIFICATION_AUTHORITY_CLASS"/,
+    /--output business-qualification-evidence\/receipt\.json/,
+  ]) {
+    assert.match(producer.run, declaration);
+  }
+  assert.doesNotMatch(producer.run, /cloud-business-readback\.ts|deployed-workspace-purchase|workspace-qualification-(?:orchestrator|tencent-tke)\.ts/);
+  for (const name of [
+    "OPL_QUALIFICATION_ENVIRONMENT",
+    "OPL_QUALIFICATION_ORIGIN",
+    "OPL_QUALIFICATION_PROVIDER_BOUNDARY",
+    "OPL_QUALIFICATION_CUSTOMER_EMAIL",
+    "OPL_QUALIFICATION_CUSTOMER_PASSWORD",
+    "OPL_INSTANCE_EVIDENCE_TOKEN",
+  ]) {
+    assert.ok(Object.hasOwn(producer.env || {}, name), name);
+  }
+
+  const businessUpload = step(readbackJob, "Preserve Candidate-bound business qualification receipts");
+  assert.equal(businessUpload.if, "always()");
+  assert.equal(businessUpload.with["if-no-files-found"], "ignore");
+  assert.equal(businessUpload.with.path, "business-qualification-evidence/");
+  assert.match(businessUpload.with.name, /cloud-business-qualification-/);
+
+  const names = readbackJob.steps.map((value: any) => value.name);
+  const evidenceIndex = names.indexOf("Validate original installation and exact Candidate bytes");
+  const materializeIndex = names.indexOf("Materialize protected qualification declarations");
+  const producerIndex = names.indexOf("Run protected business qualification through the shared Cloud flow");
+  assert.ok(evidenceIndex >= 0 && evidenceIndex < materializeIndex && materializeIndex < producerIndex);
+  assert.match(step(readbackJob, "Validate original installation and exact Candidate bytes").run, /deployment-verification-receipt\.mjs validate/);
+  assert.match(step(readbackJob, "Validate original installation and exact Candidate bytes").run, /cloud-candidate-receipt\.ts validate-bundle/);
+  assert.match(step(readbackJob, "Read customer product surfaces through CloudIdentity").run, /cloud-business-readback\.ts run/);
+  const commands = readbackJob.steps.map((value: any) => value.run || "").join("\n");
+  assert.doesNotMatch(commands, /kubectl|kubeconfig|port-forward|workflow run|POSTPAID_BY_HOUR|\/api\/v1\/admin/);
+});
+
+test("the protected declaration gate materializes exact inputs and fails closed when a prerequisite is absent", async () => {
+  const root = await mkdtemp(join(tmpdir(), "opl-declarations-"));
+  try {
+    const candidateSha = "a".repeat(40);
+    const candidateTree = "b".repeat(40);
+    const candidateDigest = digest("c");
+    const j0 = {
+      schemaVersion: 1,
+      kind: "opl.workspace-qualification.j0-ready.v2",
+      status: "READY",
+      source: { sha: candidateSha, tree: candidateTree, clean: true },
+      authority: { mode: "live", class: "sandbox", dedicated: true, confirmed: true },
+      provider: "tencent-tke",
+      failed: 0,
+      skipped: 0,
+    };
+    const deployment = {
+      deploymentMode: "managed_tke",
+      fabricProvider: "tencent-tke",
+      candidateReceiptDigest: candidateDigest,
+      clusterId: "cls-qualification0001",
+      region: "ap-guangzhou",
+      namespace: "tke-qualification",
+      ownerOrigin: "https://cloud.qualification.invalid",
+    };
+    await mkdir(join(root, "qualification-inputs/candidate"), { recursive: true });
+    await mkdir(join(root, "qualification-inputs/installation"), { recursive: true });
+    await writeFile(join(root, "qualification-inputs/candidate/opl-cloud-candidate.json"), JSON.stringify({ product: { sha: candidateSha, tree: candidateTree } }));
+    await writeFile(join(root, "qualification-inputs/installation/evidence.json"), "{}");
+    await writeFile(join(root, "boundary.mjs"), "export function createTencentTkeProviderBoundary() {}\n");
+    const environment = {
+      RUNNER_TEMP: join(root, "runner-temp"),
+      CANDIDATE_RECEIPT_DIGEST: candidateDigest,
+      DEPLOYMENT_BINDING: JSON.stringify(deployment),
+      QUALIFICATION_ACCOUNT_ID: "acct-customer-0001",
+      QUALIFICATION_PACKAGE_ID: "basic",
+      QUALIFICATION_AUTHORITY_CLASS: "sandbox",
+      J0_READY_RECEIPT: JSON.stringify(j0),
+      OPL_QUALIFICATION_ENVIRONMENT: "cloud-business-qualification",
+      OPL_QUALIFICATION_ORIGIN: deployment.ownerOrigin,
+      OPL_QUALIFICATION_PROVIDER_BOUNDARY: join(root, "boundary.mjs"),
+      OPL_QUALIFICATION_CUSTOMER_EMAIL: "customer@qualification.invalid",
+      OPL_QUALIFICATION_CUSTOMER_PASSWORD: "not-a-real-password",
+      OPL_INSTANCE_EVIDENCE_TOKEN: "not-a-real-token",
+    };
+    const command = step(workflow.jobs.readback, "Materialize protected qualification declarations").run;
+    let result = run(command, root, environment);
+    assert.equal(result.status, 0, result.stderr);
+    const deploymentFile = join(environment.RUNNER_TEMP, "qualification/deployment.json");
+    const j0File = join(environment.RUNNER_TEMP, "j0-ready/receipt.json");
+    assert.deepEqual(JSON.parse(await readFile(deploymentFile, "utf8")), deployment);
+    assert.deepEqual(JSON.parse(await readFile(j0File, "utf8")), j0);
+    assert.equal((await stat(j0File)).mode & 0o777, 0o600);
+    for (const name of [
+      "OPL_QUALIFICATION_ENVIRONMENT",
+      "OPL_QUALIFICATION_ORIGIN",
+      "OPL_QUALIFICATION_CUSTOMER_EMAIL",
+      "OPL_QUALIFICATION_CUSTOMER_PASSWORD",
+      "OPL_INSTANCE_EVIDENCE_TOKEN",
+      "OPL_QUALIFICATION_PROVIDER_BOUNDARY",
+    ]) {
+      result = run(command, root, { ...environment, [name]: "" });
+      assert.notEqual(result.status, 0, name);
+      assert.match(result.stderr, new RegExp(`external prerequisite absent: ${name}`), name);
+    }
+    for (const binding of [
+      { ...deployment, ownerOrigin: "https://another.example.invalid" },
+      { ...deployment, candidateReceiptDigest: digest("d") },
+      { ...deployment, fabricProvider: "local-docker" },
+    ]) {
+      result = run(command, root, { ...environment, DEPLOYMENT_BINDING: JSON.stringify(binding) });
+      assert.notEqual(result.status, 0, JSON.stringify(binding));
+    }
+    for (const receipt of [
+      { ...j0, kind: "opl.local-workspace.j0-ready.v1" },
+      { ...j0, source: { ...j0.source, sha: "0".repeat(40) } },
+      { ...j0, failed: 1 },
+    ]) {
+      result = run(command, root, { ...environment, J0_READY_RECEIPT: JSON.stringify(receipt) });
+      assert.notEqual(result.status, 0, JSON.stringify(receipt));
+    }
+    result = run(command, root, { ...environment, J0_READY_RECEIPT: "{" });
+    assert.notEqual(result.status, 0);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("release seals separate Cloud customer and Instance business evidence and refuses tampering", async () => {

@@ -63,6 +63,73 @@ export const QUALIFICATION_ADAPTER_METHODS = Object.freeze([
   "openBusinessScope", "closeBusinessScope", "readDeploymentHealth",
 ]);
 
+/*
+ * The optional purchase seam.
+ *
+ * The default flow above owns the purchase itself because it is the shared
+ * flow for every provider. A protected caller may instead hand over the merged
+ * deployed buyer: the buyer performs the account-digest check and the purchase
+ * through the shared core, and this orchestrator consumes only its bounded
+ * result before continuing with the owner readbacks that produce delivery,
+ * charge and receipt evidence. The seam is optional so Local-Docker and the
+ * existing callers keep the current behavior.
+ */
+export type QualificationPurchaseCaller = Readonly<{
+  http: {
+    request: (...args: any[]) => Promise<any>;
+    json: (...args: any[]) => Promise<any>;
+  };
+  auth: unknown;
+  wait?: (milliseconds: number) => Promise<void>;
+}>;
+
+export type QualificationPurchaseResult = Readonly<{
+  idempotencyKey: string;
+  operationId: string;
+  workspaceId: string;
+  purchaseReceiptId: string;
+  resumed: boolean;
+  amountUsdMicros: string;
+  purchases: number;
+  candidateReceiptDigest: string;
+  product: Readonly<{ resourceType: string; packageId: string; autoRenew: boolean }>;
+}>;
+
+export type QualificationPurchase = Readonly<{
+  run: (caller: QualificationPurchaseCaller) => Promise<QualificationPurchaseResult>;
+}>;
+
+function assertQualificationPurchase(purchase) {
+  if (purchase === undefined) return null;
+  if (!purchase || typeof purchase !== "object" || typeof purchase.run !== "function") {
+    throw adapterError("qualification_purchase_invalid");
+  }
+  return purchase;
+}
+
+function purchasedQualification(value, request, declaredProduct) {
+  const product = value?.product;
+  if (!value || typeof value !== "object" || Array.isArray(value) ||
+      value.candidateReceiptDigest !== request.candidate.receiptDigest ||
+      !hasExactKeys(product, ["resourceType", "packageId", "autoRenew"]) ||
+      product.resourceType !== declaredProduct.resourceType ||
+      product.packageId !== declaredProduct.packageId ||
+      product.autoRenew !== declaredProduct.autoRenew ||
+      typeof value.idempotencyKey !== "string" || !value.idempotencyKey.trim() ||
+      typeof value.operationId !== "string" || !value.operationId.trim() ||
+      typeof value.workspaceId !== "string" || !value.workspaceId.trim() ||
+      typeof value.purchaseReceiptId !== "string" || !value.purchaseReceiptId.trim() ||
+      typeof value.resumed !== "boolean" ||
+      !/^[1-9][0-9]*$/.test(String(value.amountUsdMicros || "")) ||
+      !Number.isSafeInteger(value.purchases) || ![0, 1].includes(value.purchases) ||
+      value.resumed !== (value.purchases === 0) ||
+      value.operationId !== launchOperationId(request.tenant.accountId, value.idempotencyKey) ||
+      value.workspaceId !== launchWorkspaceId(request.tenant.accountId, value.operationId)) {
+    throw adapterError("purchase_receipt_missing");
+  }
+  return value;
+}
+
 const emptyMutations = () => Object.fromEntries(QUALIFICATION_MUTATION_BOUNDS.map((name) => [name, 0]));
 const emptyChecks = () => Object.fromEntries(QUALIFICATION_BUSINESS_CHECKS.map((name) => [name, false]));
 const digestOf = (value) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
@@ -324,7 +391,7 @@ function classifyLaunchFollowFailure(error, { purchaseRecorded }) {
  * looks like a pass to whatever called it. Only a malformed request or a broken
  * adapter throws, because those are programming errors rather than outcomes.
  */
-export async function runWorkspaceQualification({ request, adapter }, { wait } = {}) {
+export async function runWorkspaceQualification({ request, adapter }, { wait, purchase } = {}) {
   // The request is the admission. Only an object this contract built is run: a
   // hand-assembled or copied request has the same fields but no brand, and no
   // check below could tell it from one.
@@ -343,6 +410,7 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
   const declaredScope = qualificationMutationScope(request.scope);
   const declaredProduct = qualificationProduct(request.product);
   assertQualificationAdapter(adapter, request.provider);
+  const purchaseHook = assertQualificationPurchase(purchase);
 
   const startedAt = new Date().toISOString();
   const mutations = emptyMutations();
@@ -392,75 +460,122 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
 
       accounting.walletBeforeUsdMicros = walletMicros((await http.json("/api/gateway/wallet", {}, auth)).payload);
 
-      // The quote policy is the shared one, so it is asked rather than
-      // reimplemented. Its two published refusals mean different things to an
-      // owner and are kept apart here instead of collapsing into one failure.
-      const pricing = (await http.json("/api/pricing/preview", {
-        method: "POST", body: { resourceType: declaredProduct.resourceType, packageId: declaredProduct.packageId },
-      }, auth)).payload;
-      let quote;
-      try {
-        quote = priceWorkspaceLaunch({ pricing, walletUsdMicros: accounting.walletBeforeUsdMicros, packageId: declaredProduct.packageId });
-      } catch (error) {
-        throw adapterError(/wallet cannot fund/i.test(String(error?.message || ""))
-          ? "wallet_cannot_fund"
-          : "quote_invalid");
-      }
-      accounting.quoteUsdMicros = quote;
-      checks.quote_priced = true;
+      let quote = "";
+      let launch: any = null;
 
-      // Ask before issuing. A redelivery finds its own order here and resumes
-      // it; a first delivery finds nothing and issues exactly one command.
-      let launch = await readAdmittedLaunch(http, operation.operationId, operation.workspaceId, auth);
-      if (launch) {
-        operation.resumed = true;
+      if (purchaseHook) {
+        // The protected caller delegates the purchase to the deployed buyer.
+        // That buyer owns the source-envelope account/wallet reads, the
+        // declared-account digest check and the shared purchase core; this
+        // orchestrator consumes only its bounded result and then reads the
+        // order and delivery through the same owner APIs as before. The buyer
+        // has already decided whether this is a first purchase or a replay, so
+        // the result carries the operation identities the rest of the run must
+        // use.
+        const purchased = purchasedQualification(
+          await purchaseHook.run({ http, auth, wait }),
+          request,
+          declaredProduct,
+        );
+        operation.idempotencyKey = purchased.idempotencyKey;
+        operation.operationId = purchased.operationId;
+        operation.workspaceId = purchased.workspaceId;
+        operation.purchaseReceiptId = purchased.purchaseReceiptId;
+        operation.resumed = purchased.resumed;
+        accounting.quoteUsdMicros = purchased.amountUsdMicros;
+        mutations.purchases = purchased.purchases;
+        quote = purchased.amountUsdMicros;
+
+        // The buyer waited for its own order. Read the same order under the
+        // identity it returned so the charge and delivery evidence still comes
+        // from the owner, not from the buyer's receipt.
+        launch = await readAdmittedLaunch(http, operation.operationId, operation.workspaceId, auth);
+        if (!launch) throw adapterError("purchase_receipt_missing");
+        if (launch.status !== "succeeded" || launch.phase !== "succeeded") {
+          try {
+            launch = await waitForLaunch(http, operation.operationId, auth, wait);
+          } catch (error) {
+            throw adapterError(classifyLaunchFollowFailure(error, { purchaseRecorded: true }));
+          }
+        }
+        if (launch.workspaceId !== operation.workspaceId) throw adapterError("launch_identity_mismatch");
+        if (launch.provisioningMode !== "resource_only") throw adapterError("launch_identity_mismatch");
+        if (!String(launch.receiptId || "").trim()) throw adapterError("purchase_receipt_missing");
+        if (String(launch.receiptId) !== operation.purchaseReceiptId) throw adapterError("launch_identity_mismatch");
+
+        checks.quote_priced = true;
+        checks.purchase_issued = true;
+        checks.purchase_receipt_bound = true;
       } else {
+        // The quote policy is the shared one, so it is asked rather than
+        // reimplemented. Its two published refusals mean different things to an
+        // owner and are kept apart here instead of collapsing into one failure.
+        const pricing = (await http.json("/api/pricing/preview", {
+          method: "POST", body: { resourceType: declaredProduct.resourceType, packageId: declaredProduct.packageId },
+        }, auth)).payload;
         try {
-          ({ launch } = await submitWorkspaceLaunch({
-            http, auth, name: qualificationWorkspaceName(operation.operationId), packageId: declaredProduct.packageId,
-            autoRenew: declaredProduct.autoRenew, idempotencyKey: operation.idempotencyKey,
-            expectedOperationId: operation.operationId, expectedWorkspaceId: operation.workspaceId, wait,
-          }));
+          quote = priceWorkspaceLaunch({ pricing, walletUsdMicros: accounting.walletBeforeUsdMicros, packageId: declaredProduct.packageId });
         } catch (error) {
-          // The command may have been accepted and its answer lost. That is not
-          // a second purchase, it is the same order, and the only question left
-          // is whether the platform holds it. It is not a resume either: this
-          // delivery issued the command, so whatever it caused is this run's to
-          // account for.
-          const recovered = await readAdmittedLaunch(http, operation.operationId, operation.workspaceId, auth);
-          if (!recovered) throw adapterError(classifyLaunchFollowFailure(error, { purchaseRecorded: false }));
-          launch = recovered;
+          throw adapterError(/wallet cannot fund/i.test(String(error?.message || ""))
+            ? "wallet_cannot_fund"
+            : "quote_invalid");
         }
-      }
-      mutations.purchases = operation.resumed ? 0 : 1;
-      checks.purchase_issued = true;
+        accounting.quoteUsdMicros = quote;
+        checks.quote_priced = true;
 
-      // A resumed order that is not terminal yet is followed to its own end
-      // under its own identity, rather than read as finished or reissued. The
-      // window is the purchase core's own, so a stuck order stays bounded.
-      if (launch?.status !== "succeeded" || launch?.phase !== "succeeded") {
-        try {
-          launch = await waitForLaunch(http, operation.operationId, auth, wait);
-        } catch (error) {
-          // The order was admitted, so this run already caused a purchase. A
-          // published stopping status is a failure of the product; anything
-          // else means the outcome is unknown with a mutation outstanding.
-          throw adapterError(classifyLaunchFollowFailure(error, { purchaseRecorded: true }));
+        // Ask before issuing. A redelivery finds its own order here and resumes
+        // it; a first delivery finds nothing and issues exactly one command.
+        launch = await readAdmittedLaunch(http, operation.operationId, operation.workspaceId, auth);
+        if (launch) {
+          operation.resumed = true;
+        } else {
+          try {
+            ({ launch } = await submitWorkspaceLaunch({
+              http, auth, name: qualificationWorkspaceName(operation.operationId), packageId: declaredProduct.packageId,
+              autoRenew: declaredProduct.autoRenew, idempotencyKey: operation.idempotencyKey,
+              expectedOperationId: operation.operationId, expectedWorkspaceId: operation.workspaceId, wait,
+            }));
+          } catch (error) {
+            // The command may have been accepted and its answer lost. That is not
+            // a second purchase, it is the same order, and the only question left
+            // is whether the platform holds it. It is not a resume either: this
+            // delivery issued the command, so whatever it caused is this run's to
+            // account for.
+            const recovered = await readAdmittedLaunch(http, operation.operationId, operation.workspaceId, auth);
+            if (!recovered) throw adapterError(classifyLaunchFollowFailure(error, { purchaseRecorded: false }));
+            launch = recovered;
+          }
         }
+        mutations.purchases = operation.resumed ? 0 : 1;
+        checks.purchase_issued = true;
+
+        // A resumed order that is not terminal yet is followed to its own end
+        // under its own identity, rather than read as finished or reissued. The
+        // window is the purchase core's own, so a stuck order stays bounded.
+        if (launch?.status !== "succeeded" || launch?.phase !== "succeeded") {
+          try {
+            launch = await waitForLaunch(http, operation.operationId, auth, wait);
+          } catch (error) {
+            // The order was admitted, so this run already caused a purchase. A
+            // published stopping status is a failure of the product; anything
+            // else means the outcome is unknown with a mutation outstanding.
+            throw adapterError(classifyLaunchFollowFailure(error, { purchaseRecorded: true }));
+          }
+        }
+        // A terminal launch that carries no purchase receipt identity has not
+        // delivered a receipt to bind anything to.
+        if (!String(launch?.receiptId || "").trim()) throw adapterError("purchase_receipt_missing");
+        // The terminal launch has to name the Workspace this run declared. A
+        // launch that ended against another Workspace is another order, not this
+        // run's delivery.
+        if (launch.workspaceId !== operation.workspaceId) throw adapterError("launch_identity_mismatch");
+        // The Launch must be the resource-only purchase this flow accounts for.
+        // Anything else fulfils a different shape, so the exactly-three-resource
+        // receipt rule below would be describing an operation that was not run.
+        if (launch.provisioningMode !== "resource_only") throw adapterError("launch_identity_mismatch");
+        operation.purchaseReceiptId = String(launch.receiptId);
+        checks.purchase_receipt_bound = true;
       }
-      // A terminal launch that carries no purchase receipt identity has not
-      // delivered a receipt to bind anything to.
-      if (!String(launch?.receiptId || "").trim()) throw adapterError("purchase_receipt_missing");
-      // The terminal launch has to name the Workspace this run declared. A
-      // launch that ended against another Workspace is another order, not this
-      // run's delivery.
-      if (launch.workspaceId !== operation.workspaceId) throw adapterError("launch_identity_mismatch");
-      // The Launch must be the resource-only purchase this flow accounts for.
-      // Anything else fulfils a different shape, so the exactly-three-resource
-      // receipt rule below would be describing an operation that was not run.
-      if (launch.provisioningMode !== "resource_only") throw adapterError("launch_identity_mismatch");
-      operation.purchaseReceiptId = String(launch.receiptId);
-      checks.purchase_receipt_bound = true;
 
       // What was billed, and what is running. The Ledger receipt is the charge
       // evidence; the Workspace and Runtime readbacks are what say there is

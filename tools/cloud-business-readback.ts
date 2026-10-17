@@ -73,6 +73,12 @@ function installationIdentity(candidate: unknown, installationText: string, inst
   if (d.candidateReceiptDigest !== receiptDigest || Object.entries(fields).some(([k,v]) => d[k] !== v)) fail();
   return { ...source, receiptDigest: hash(installationText) };
 }
+// The protected business qualification producer consumes the same original
+// Instance deployment evidence. Exporting the binding keeps the exact receipt
+// and run provenance checks in this one validator instead of a second decoder.
+export function validateCloudInstallationIdentity(candidate: unknown, installationText: string, installationRun: unknown) {
+  return installationIdentity(candidate, installationText, installationRun);
+}
 export function validateCloudBusinessReadbackReceipt(value: unknown): CloudBusinessReadbackReceipt {
   const r = exact(value, ["schemaVersion", "kind", "scope", "status", "fullBusinessQualification", "workspaceLifecycleVerified", "keyLifecycleVerified", "installationBinding", "publicEndpointCandidateVerified", "candidate", "installation", "producer", "originDigest", "startedAt", "completedAt", "checks", "errorCode"]);
   const c = exact(r.candidate, ["receiptDigest", "productSha", "productTree", "cloudImageRef", "cloudImageDigest", "cloudImageRevision", "cloudRuntimeChildDigest"]);

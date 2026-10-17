@@ -170,6 +170,21 @@ export function assertDeployedPurchaseRequest(request) {
 }
 
 /*
+ * The platform idempotency identity this entry declares.
+ *
+ * The Candidate is part of the key so a replay for another Candidate addresses
+ * another order; the caller supplies the remaining declared identity. Exported
+ * so the protected caller can derive the same order identity without copying
+ * the format.
+ */
+export function deployedPurchaseIdempotencyKey(candidateReceiptDigest, idempotencyIdentity) {
+  const digest = String(candidateReceiptDigest || "");
+  const identity = String(idempotencyIdentity || "");
+  if (!DIGEST.test(digest) || !IDEMPOTENCY_IDENTITY.test(identity)) throw targetError();
+  return `deployed-workspace:${digest.slice("sha256:".length)}:${identity}`;
+}
+
+/*
  * The declared-identity digest.
  *
  * The Control Plane normalizes an account email before it stores or compares it
@@ -320,8 +335,10 @@ export async function runDeployedWorkspacePurchase(request, caller) {
   // identity. A replay for a different Candidate therefore addresses a different
   // order, so a receipt cannot bind one Candidate to an order admitted for
   // another.
-  const idempotencyKey =
-    `deployed-workspace:${request.candidateReceiptDigest.slice("sha256:".length)}:${request.idempotencyIdentity}`;
+  const idempotencyKey = deployedPurchaseIdempotencyKey(
+    request.candidateReceiptDigest,
+    request.idempotencyIdentity,
+  );
 
   // The session is asked who it is before anything is priced or bought. A
   // transport holding another account costs one read and no money.
