@@ -17,6 +17,44 @@ Instance installation, or a Product Release. The target boundary is in
 [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Protected Business Qualification Source Wiring (2026-10-18)
+
+Against `6065a008` (the head of open PR #940, carrying #937/#942/#940), this
+change adds `tools/protected-business-qualification.ts` and its fixture test, and
+wires the existing protected `cloud-business-readback.yml` workflow to call only
+that producer for the business qualification decision. The producer turns the
+declared Candidate receipt digest, the deployment binding, the account/package
+declarations and the external J0 READY receipt into the shared
+`createQualificationRequest`, runs the shared `runWorkspaceQualification` through
+the `tencent-tke` adapter with the protected Fabric/Instance boundary, and emits
+the shared Candidate-bound receipt. The existing `customer_reads` producer and
+receipt are unchanged; [Release
+operations](runtime/release.md#protected-cloud-business-qualification) owns the
+procedure.
+
+Local focused verification executes 46 tests with zero failures, skips or TODOs:
+
+```sh
+node tools/verify-local.ts --focused --base origin/main \
+  --test tests/tools/cloud-business-readback.test.ts
+```
+
+The checks cover the shared orchestrator/adapter path with a local owner-API
+fixture, Candidate/deployment/installation/J0 validation, absent-prerequisite
+refusal before a provider scope opens, non-settled receipt preservation, replay
+idempotency, the CLI boundary-module load, and the existing workflow/readback
+suites. The shared flow tests carried by the #940 base are also selected by the
+branch diff and pass.
+
+The `cloud-business-qualification` environment, the independent customer
+credentials, `OPL_INSTANCE_EVIDENCE_TOKEN`, the external J0 READY producer and the
+protected TKE boundary are external and absent; the workflow fails closed with
+`external_prerequisite_absent` and no protected run or settled business receipt
+is claimed. #926 remains open. The receipt covers only the declared Workspace
+purchase (`uncovered.businessQualification: false`); it does not admit a release,
+and #928 owns that consumer change. Existing Instance qualification-decision and
+Workspace gates remain required.
+
 ## Cloud Customer Readback Source Wiring (2026-10-16)
 
 Against the task's canonical `main` baseline `e728113f`, this change adds Cloud's protected `customer_reads` producer and its Release consumer.

@@ -1,0 +1,605 @@
+/*
+ * The protected business qualification producer.
+ *
+ * This is the Cloud-owned caller for one protected business qualification. It
+ * does not contain a second business flow: it turns the workflow's declared
+ * Candidate receipt digest, deployment binding, account/product declarations and
+ * external J0 READY receipt into the shared `createQualificationRequest`, runs the
+ * shared `runWorkspaceQualification` through the `tencent-tke` adapter, and
+ * writes the shared Candidate-bound receipt. The account, wallet, quote,
+ * purchase, charge, Workspace and Runtime facts are read by the orchestrator
+ * through the owner APIs; nothing here decodes or reimplements them.
+ *
+ * The provider boundary is not implemented here either. The protected
+ * Fabric/Instance runner supplies one module that owns TKE reachability and the
+ * owner transport. This producer passes the normalized deployment binding and
+ * the protected environment to that module and hands the boundary to the
+ * adapter. An absent boundary, environment, secret or J0 producer is an external
+ * prerequisite, not a qualification result, so this module refuses before it
+ * opens a scope and never writes a fabricated pass.
+ *
+ * A settled receipt is still a statement about the declared Workspace purchase
+ * only. It is not a production, release-admission or full business-qualification
+ * claim; the shared contract records `uncovered.businessQualification: false`
+ * and this producer adds no claim of its own.
+ */
+
+import { createHash } from "node:crypto";
+import { constants } from "node:fs";
+import { lstat, mkdir, open, readFile, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+import { validateCloudInstallationIdentity } from "./cloud-business-readback.ts";
+import { candidateReceiptDigest, validateCloudCandidateReceipt } from "./cloud-candidate-receipt.ts";
+import { runWorkspaceQualification } from "./workspace-qualification-orchestrator.ts";
+import {
+  TENCENT_TKE_PROVIDER,
+  createTencentTkeQualificationAdapter,
+  tencentTkeDeployment,
+  type TencentTkeDeployment,
+  type TencentTkeProviderBoundary,
+} from "./workspace-qualification-tencent-tke.ts";
+import {
+  createJ0ReadyReceiptValidator,
+  createQualificationRequest,
+  hasExactKeys,
+  j0ReadyReceiptError,
+  qualificationProviderProfile,
+  validateBusinessQualificationReceipt,
+} from "./workspace-qualification-contract.ts";
+
+// The one protected environment the workflow may bind. The workflow sets this
+// declaration explicitly; the environment's reviewer protection is enforced by
+// the workflow admission job before this producer runs.
+export const PROTECTED_QUALIFICATION_ENVIRONMENT = "cloud-business-qualification";
+
+// The protected-input names. Values never enter the receipt or a summary.
+export const PROTECTED_ENVIRONMENT_NAME = "OPL_QUALIFICATION_ENVIRONMENT";
+export const PROTECTED_ORIGIN = "OPL_QUALIFICATION_ORIGIN";
+export const PROTECTED_CUSTOMER_EMAIL = "OPL_QUALIFICATION_CUSTOMER_EMAIL";
+export const PROTECTED_CUSTOMER_PASSWORD = "OPL_QUALIFICATION_CUSTOMER_PASSWORD";
+export const PROTECTED_INSTANCE_EVIDENCE_TOKEN = "OPL_INSTANCE_EVIDENCE_TOKEN";
+
+// The protected runner exports this factory. It receives the normalized
+// deployment binding and the protected environment; the adapter supplies the
+// sealed request and operation key on each reachability call.
+export const PROTECTED_BOUNDARY_FACTORY = "createTencentTkeProviderBoundary";
+
+// The protected J0 receipt is a file outside the repository, owned by the runner
+// and mode 0600, exactly like the existing Local-Docker J0 loader. The producer
+// reads it through a no-follow descriptor and validates its source/provider
+// binding before it buys anything.
+export const J0_READY_MAX_BYTES = 1024 * 1024;
+
+// One declared purchase, one charge, no refund, no Workspace deletion and no
+// managed Key. These are the only mutation bounds this producer may declare;
+// they are not a workflow input.
+export const PROTECTED_QUALIFICATION_SCOPE = Object.freeze({
+  purchases: 1,
+  charges: 1,
+  refunds: 0,
+  workspaceDeletions: 0,
+  managedKeys: 0,
+});
+
+const DIGEST = /^sha256:[0-9a-f]{64}$/;
+const DEPLOYMENT_KEYS = [
+  "deploymentMode",
+  "fabricProvider",
+  "candidateReceiptDigest",
+  "clusterId",
+  "region",
+  "namespace",
+  "ownerOrigin",
+] as const;
+const RUN_OPTIONS = [
+  "--candidate",
+  "--candidate-digest",
+  "--installation",
+  "--installation-run",
+  "--deployment",
+  "--j0-ready-receipt",
+  "--boundary",
+  "--account-id",
+  "--package-id",
+  "--authority-class",
+  "--output",
+] as const;
+const AUTHORITY_CLASSES = ["sandbox", "preproduction"] as const;
+
+const EXTERNAL_PREREQUISITE_ABSENT = "external_prerequisite_absent";
+const PROTECTED_QUALIFICATION_INVALID = "protected_business_qualification_invalid";
+const PROTECTED_QUALIFICATION_NOT_SETTLED = "protected_business_qualification_not_settled";
+const PROTECTED_QUALIFICATION_FAILED = "protected_business_qualification_failed";
+
+export type ProtectedEnvironment = Readonly<Record<string, string | undefined>>;
+export type ProtectedAuthorityClass = (typeof AUTHORITY_CLASSES)[number];
+
+export type ProtectedBusinessQualificationInput = Readonly<{
+  candidatePath: string;
+  candidateReceiptDigest: string;
+  installationPath: string;
+  installationRunPath: string;
+  deploymentPath: string;
+  j0ReadyReceiptPath: string;
+  boundaryModulePath: string;
+  accountId: string;
+  packageId: string;
+  authorityClass: ProtectedAuthorityClass;
+  outputPath: string;
+}>;
+
+export type ProtectedBusinessQualificationResult = Readonly<{
+  state: string;
+  reason: string;
+  receipt: Record<string, any>;
+  receiptDigest: string;
+  candidateReceiptDigest: string;
+  installationReceiptDigest: string;
+}>;
+
+export type ProtectedProviderBoundaryFactory = (input: {
+  deployment: TencentTkeDeployment;
+  environment: ProtectedEnvironment;
+}) => TencentTkeProviderBoundary | Promise<TencentTkeProviderBoundary>;
+
+function producerError(code: string, message: string): Error & { code: string } {
+  const error = new Error(message) as Error & { code: string };
+  error.code = code;
+  return error;
+}
+
+function externalPrerequisiteAbsent(name: string): never {
+  throw producerError(EXTERNAL_PREREQUISITE_ABSENT, `external prerequisite absent: ${name}`);
+}
+
+function invalid(message: string): never {
+  throw producerError(PROTECTED_QUALIFICATION_INVALID, message);
+}
+
+function nonEmpty(value: unknown, maxLength = 1024): string {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text && text.length <= maxLength && !/[\u0000-\u001f\u007f]/.test(text) ? text : "";
+}
+
+function protectedOrigin(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    invalid("protected qualification origin is not an absolute URL");
+  }
+  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password ||
+      url.search || url.hash || url.pathname !== "/") {
+    invalid("protected qualification origin is not an exact HTTP(S) origin");
+  }
+  return url.origin;
+}
+
+/*
+ * The protected prerequisite declaration.
+ *
+ * Every named prerequisite is checked before a file is read or a provider is
+ * contacted. The two credential values are required to be present so a missing
+ * protected Secret is a clear failure rather than an empty login; this producer
+ * never uses them itself. The boundary module does, through the environment it
+ * receives. `OPL_INSTANCE_EVIDENCE_TOKEN` is required because the workflow's
+ * deployment-evidence consumption is part of the same protected producer; the
+ * value is never read by this module.
+ */
+export function protectedQualificationPrerequisites(environment: ProtectedEnvironment) {
+  const bound = String(environment[PROTECTED_ENVIRONMENT_NAME] || "").trim();
+  if (bound !== PROTECTED_QUALIFICATION_ENVIRONMENT) externalPrerequisiteAbsent(PROTECTED_ENVIRONMENT_NAME);
+  const originText = String(environment[PROTECTED_ORIGIN] || "");
+  if (!originText.trim()) externalPrerequisiteAbsent(PROTECTED_ORIGIN);
+  const origin = protectedOrigin(originText);
+  if (!nonEmpty(environment[PROTECTED_CUSTOMER_EMAIL])) externalPrerequisiteAbsent(PROTECTED_CUSTOMER_EMAIL);
+  if (!nonEmpty(environment[PROTECTED_CUSTOMER_PASSWORD])) externalPrerequisiteAbsent(PROTECTED_CUSTOMER_PASSWORD);
+  if (!nonEmpty(environment[PROTECTED_INSTANCE_EVIDENCE_TOKEN], 4096)) externalPrerequisiteAbsent(PROTECTED_INSTANCE_EVIDENCE_TOKEN);
+  return Object.freeze({ environment: bound, origin });
+}
+
+async function readRequiredFile(path: string, label: string): Promise<string> {
+  const normalized = String(path || "").trim();
+  if (!normalized) externalPrerequisiteAbsent(label);
+  let info;
+  try {
+    info = await lstat(normalized);
+  } catch {
+    externalPrerequisiteAbsent(label);
+  }
+  if (!info.isFile()) externalPrerequisiteAbsent(label);
+  try {
+    return await readFile(normalized, "utf8");
+  } catch {
+    externalPrerequisiteAbsent(label);
+  }
+}
+
+function parseJson(text: string, message: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    invalid(message);
+  }
+}
+
+/*
+ * The declared Candidate and its receipt digest.
+ *
+ * The Candidate's own validator and digest function define the identity; the
+ * workflow's declared digest is checked against that derived value rather than
+ * trusted. A different bundle therefore cannot be qualified under the declared
+ * Candidate.
+ */
+export async function readProtectedCandidate(path: string, declaredDigest: string) {
+  const normalizedDigest = String(declaredDigest || "").trim();
+  if (!DIGEST.test(normalizedDigest)) invalid("declared Candidate receipt digest is invalid");
+  const text = await readRequiredFile(path, "Candidate receipt");
+  const value = parseJson(text, "Candidate receipt is not valid JSON");
+  let candidate;
+  try {
+    candidate = validateCloudCandidateReceipt(value) as Record<string, any>;
+  } catch {
+    invalid("Candidate receipt is invalid");
+  }
+  const digest = candidateReceiptDigest(candidate);
+  if (digest !== normalizedDigest) invalid("Candidate receipt digest does not match the declared digest");
+  return Object.freeze({ candidate, digest, text });
+}
+
+/*
+ * The approved deployment binding.
+ *
+ * The protected origin is authoritative. A binding that names another origin,
+ * another Candidate, another provider or another deployment shape is refused
+ * here and never reaches the adapter.
+ */
+export async function readProtectedDeployment(path: string, candidateDigest: string, protectedOwnerOrigin: string) {
+  const text = await readRequiredFile(path, "deployment binding");
+  const value = parseJson(text, "deployment binding is not valid JSON");
+  if (!hasExactKeys(value, DEPLOYMENT_KEYS)) invalid("deployment binding has an invalid shape");
+  const binding = value as Record<string, any>;
+  let deployment: TencentTkeDeployment;
+  try {
+    deployment = tencentTkeDeployment(binding) as TencentTkeDeployment;
+  } catch {
+    invalid("deployment binding is invalid");
+  }
+  if (deployment.candidateReceiptDigest !== candidateDigest) invalid("deployment binding names another Candidate");
+  if (deployment.ownerOrigin !== protectedOwnerOrigin) invalid("deployment binding names another owner origin");
+  return deployment;
+}
+
+/*
+ * The original Instance deployment evidence.
+ *
+ * The existing readback binding validator owns the receipt/run association. It
+ * checks the exact Instance workflow, the successful run, the deployment receipt
+ * status and every Candidate identity field. This producer reuses it so the
+ * deployment binding is joined to the same Candidate through the owner's own
+ * evidence, not through a second decoder.
+ */
+export async function readProtectedInstallation(
+  path: string,
+  runPath: string,
+  candidate: unknown,
+  candidateDigest: string,
+) {
+  const text = await readRequiredFile(path, "Instance deployment receipt");
+  const runText = await readRequiredFile(runPath, "Instance deployment run");
+  const run = parseJson(runText, "Instance deployment run is not valid JSON");
+  try {
+    const identity = validateCloudInstallationIdentity(candidate, text, run);
+    if (identity.receiptDigest && typeof identity.receiptDigest === "string" && !DIGEST.test(identity.receiptDigest)) {
+      invalid("Instance deployment receipt digest is invalid");
+    }
+    return Object.freeze({ text, run: run as Record<string, any>, identity });
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === PROTECTED_QUALIFICATION_INVALID) throw error;
+    invalid(`Instance deployment evidence does not bind the declared Candidate ${candidateDigest}`);
+  }
+}
+
+function insideRepository(path: string, repositoryRoot: string): boolean {
+  const rel = relative(repositoryRoot, path);
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
+/*
+ * The external J0 READY producer's receipt.
+ *
+ * This is the same protected-file standard as the existing Local-Docker J0
+ * loader: an absolute path outside the repository, a regular file, mode 0600,
+ * owned by the runner, bounded in size and no-follow. The shared validator then
+ * binds the exact source, provider, authority class and zero failed/skipped
+ * checks. A missing producer output is an external prerequisite; a present but
+ * invalid receipt keeps the contract's own `j0_ready_receipt_invalid` code.
+ */
+export async function loadProtectedJ0ReadyReceipt(path: string, {
+  sourceSha,
+  sourceTree,
+  repositoryRoot,
+}: {
+  sourceSha: string;
+  sourceTree: string;
+  repositoryRoot: string;
+}) {
+  const normalized = String(path || "").trim();
+  if (!normalized) externalPrerequisiteAbsent("J0 READY producer receipt");
+  if (!isAbsolute(normalized)) invalid("J0 READY producer receipt path must be absolute");
+  let handle;
+  try {
+    handle = await open(normalized, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  } catch {
+    externalPrerequisiteAbsent("J0 READY producer receipt");
+  }
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || info.size === 0 || info.size > J0_READY_MAX_BYTES) {
+      invalid("J0 READY producer receipt file is invalid");
+    }
+    if (typeof process.getuid === "function" && info.uid !== process.getuid()) {
+      invalid("J0 READY producer receipt is not owned by the runner");
+    }
+    if ((info.mode & 0o777) !== 0o600) invalid("J0 READY producer receipt mode must be 0600");
+    if (insideRepository(normalized, repositoryRoot)) invalid("J0 READY producer receipt must be outside the repository");
+    const raw = await handle.readFile();
+    let value;
+    try {
+      value = JSON.parse(raw.toString("utf8"));
+    } catch {
+      throw j0ReadyReceiptError();
+    }
+    const profile = qualificationProviderProfile(TENCENT_TKE_PROVIDER);
+    let receipt;
+    try {
+      receipt = createJ0ReadyReceiptValidator(profile)(value, sourceSha, sourceTree);
+    } catch {
+      throw j0ReadyReceiptError();
+    }
+    return receipt;
+  } finally {
+    await handle.close();
+  }
+}
+
+/*
+ * The protected Fabric/Instance boundary module.
+ *
+ * Cloud does not implement TKE reachability. The protected runner supplies one
+ * module exporting the named factory; it receives the normalized deployment and
+ * the protected environment and returns the typed three-operation boundary. A
+ * missing module is an external prerequisite. A module that exists but cannot be
+ * loaded, does not export the factory or returns a malformed boundary is a
+ * producer configuration error, not an absent prerequisite.
+ */
+export async function loadProtectedProviderBoundary(
+  modulePath: string,
+  { deployment, environment }: { deployment: TencentTkeDeployment; environment: ProtectedEnvironment },
+) {
+  const normalized = String(modulePath || "").trim();
+  if (!normalized) externalPrerequisiteAbsent("protected provider boundary module");
+  if (!isAbsolute(normalized)) invalid("protected provider boundary module path must be absolute");
+  let info;
+  try {
+    info = await lstat(normalized);
+  } catch {
+    externalPrerequisiteAbsent("protected provider boundary module");
+  }
+  if (!info.isFile()) externalPrerequisiteAbsent("protected provider boundary module");
+  let imported: Record<string, unknown>;
+  try {
+    imported = await import(pathToFileURL(normalized).href) as Record<string, unknown>;
+  } catch {
+    invalid("protected provider boundary module could not be loaded");
+  }
+  const factory = imported[PROTECTED_BOUNDARY_FACTORY] ?? imported.default;
+  if (typeof factory !== "function") {
+    invalid(`protected provider boundary module must export ${PROTECTED_BOUNDARY_FACTORY}`);
+  }
+  let boundary;
+  try {
+    boundary = await (factory as ProtectedProviderBoundaryFactory)({ deployment, environment });
+  } catch {
+    invalid("protected provider boundary module failed to construct the provider boundary");
+  }
+  if (!boundary || typeof boundary !== "object" || Array.isArray(boundary)) {
+    invalid("protected provider boundary module returned an invalid boundary");
+  }
+  return boundary;
+}
+
+/*
+ * The one request this producer is allowed to build.
+ *
+ * The Candidate's own product identity is the source identity, the authority is
+ * live with the external J0 receipt, the provider is `tencent-tke`, and the
+ * mutation scope is the fixed bound above. The shared contract validates and
+ * brands the request; a hand-assembled object cannot be substituted.
+ */
+export function buildProtectedQualificationRequest({
+  candidate,
+  j0ReadyReceipt,
+  accountId,
+  packageId,
+  authorityClass,
+}: {
+  candidate: any;
+  j0ReadyReceipt: unknown;
+  accountId: string;
+  packageId: string;
+  authorityClass: ProtectedAuthorityClass;
+}) {
+  const product = Object.freeze({ resourceType: "workspace", packageId: String(packageId || "").trim(), autoRenew: false });
+  return createQualificationRequest({
+    candidate,
+    accountId,
+    product,
+    provider: TENCENT_TKE_PROVIDER,
+    scope: PROTECTED_QUALIFICATION_SCOPE,
+    authority: { mode: "live", authorityClass, j0ReadyReceipt },
+    source: { sha: candidate.product.sha, tree: candidate.product.tree, clean: true },
+  });
+}
+
+export async function emitBusinessQualificationReceipt(path: string, text: string) {
+  const normalized = String(path || "").trim();
+  if (!normalized) externalPrerequisiteAbsent("business qualification receipt output path");
+  await mkdir(dirname(normalized), { recursive: true, mode: 0o700 });
+  await writeFile(normalized, text, { mode: 0o600, flag: "wx" });
+}
+
+/*
+ * Run one protected qualification.
+ *
+ * The order is deliberate: protected environment, Candidate, deployment binding,
+ * Instance deployment evidence, J0 producer, request, boundary, then the shared
+ * orchestrator. No provider is contacted before every declaration and every
+ * external receipt has been validated. The receipt is written before the caller
+ * learns whether it settled, so a failed, blocked, unknown or recovery-required
+ * outcome is preserved as an artifact instead of being lost; only an absent
+ * prerequisite or an invalid declaration has no qualification receipt to emit.
+ */
+export async function runProtectedBusinessQualification(
+  input: ProtectedBusinessQualificationInput,
+  dependencies: {
+    environment?: ProtectedEnvironment;
+    boundary?: TencentTkeProviderBoundary;
+    wait?: (milliseconds: number) => Promise<void>;
+  } = {},
+): Promise<ProtectedBusinessQualificationResult> {
+  const environment = dependencies.environment ?? process.env;
+  const protectedEnvironment = protectedQualificationPrerequisites(environment);
+  const candidate = await readProtectedCandidate(input.candidatePath, input.candidateReceiptDigest);
+  const deployment = await readProtectedDeployment(
+    input.deploymentPath,
+    candidate.digest,
+    protectedEnvironment.origin,
+  );
+  const installation = await readProtectedInstallation(
+    input.installationPath,
+    input.installationRunPath,
+    candidate.candidate,
+    candidate.digest,
+  );
+  const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const j0ReadyReceipt = await loadProtectedJ0ReadyReceipt(input.j0ReadyReceiptPath, {
+    sourceSha: candidate.candidate.product.sha,
+    sourceTree: candidate.candidate.product.tree,
+    repositoryRoot,
+  });
+  const request = buildProtectedQualificationRequest({
+    candidate: candidate.candidate,
+    j0ReadyReceipt,
+    accountId: input.accountId,
+    packageId: input.packageId,
+    authorityClass: input.authorityClass,
+  });
+  const boundary = dependencies.boundary ?? await loadProtectedProviderBoundary(input.boundaryModulePath, {
+    deployment,
+    environment,
+  });
+  const adapter = createTencentTkeQualificationAdapter({ deployment, boundary });
+  const result = await runWorkspaceQualification({ request, adapter }, { wait: dependencies.wait });
+  const receipt = validateBusinessQualificationReceipt(result.receipt) as Record<string, any>;
+  const receiptText = `${JSON.stringify(receipt, null, 2)}\n`;
+  await emitBusinessQualificationReceipt(input.outputPath, receiptText);
+  return Object.freeze({
+    state: String(receipt.state),
+    reason: String(receipt.reason),
+    receipt,
+    receiptDigest: `sha256:${createHash("sha256").update(receiptText).digest("hex")}`,
+    candidateReceiptDigest: candidate.digest,
+    installationReceiptDigest: String(installation.identity.receiptDigest),
+  });
+}
+
+export function parseProtectedQualificationArgs(args: readonly string[]): ProtectedBusinessQualificationInput {
+  if (args[0] !== "run") invalid("expected the run command");
+  const options = new Map<string, string>();
+  for (let index = 1; index < args.length; index += 2) {
+    const name = args[index];
+    const value = args[index + 1];
+    if (!(RUN_OPTIONS as readonly string[]).includes(name) || options.has(name) ||
+        typeof value !== "string" || value.trim() === "") {
+      invalid("protected business qualification arguments are invalid");
+    }
+    options.set(name, value);
+  }
+  for (const name of RUN_OPTIONS) {
+    if (!options.has(name)) invalid(`protected business qualification requires ${name}`);
+  }
+  const authorityClass = options.get("--authority-class");
+  if (!(AUTHORITY_CLASSES as readonly string[]).includes(String(authorityClass))) {
+    invalid("authority class must be sandbox or preproduction");
+  }
+  return Object.freeze({
+    candidatePath: options.get("--candidate") as string,
+    candidateReceiptDigest: options.get("--candidate-digest") as string,
+    installationPath: options.get("--installation") as string,
+    installationRunPath: options.get("--installation-run") as string,
+    deploymentPath: options.get("--deployment") as string,
+    j0ReadyReceiptPath: options.get("--j0-ready-receipt") as string,
+    boundaryModulePath: options.get("--boundary") as string,
+    accountId: options.get("--account-id") as string,
+    packageId: options.get("--package-id") as string,
+    authorityClass: authorityClass as ProtectedAuthorityClass,
+    outputPath: options.get("--output") as string,
+  });
+}
+
+export type ProtectedBusinessQualificationSummary = Readonly<{
+  status: string;
+  reason: string;
+  provider: string;
+  scope: string;
+  businessQualification: false;
+  receiptDigest: string;
+  candidateReceiptDigest: string;
+  installationReceiptDigest: string;
+  artifact: "receipt.json";
+}>;
+
+export function protectedBusinessQualificationSummary(
+  result: ProtectedBusinessQualificationResult,
+): ProtectedBusinessQualificationSummary {
+  return Object.freeze({
+    status: result.state,
+    reason: result.reason,
+    provider: String(result.receipt.provider),
+    scope: String(result.receipt.scope),
+    businessQualification: false,
+    receiptDigest: result.receiptDigest,
+    candidateReceiptDigest: result.candidateReceiptDigest,
+    installationReceiptDigest: result.installationReceiptDigest,
+    artifact: "receipt.json",
+  });
+}
+
+export async function main(
+  args: readonly string[] = process.argv.slice(2),
+  environment: ProtectedEnvironment = process.env,
+) {
+  const input = parseProtectedQualificationArgs(args);
+  const result = await runProtectedBusinessQualification(input, { environment });
+  const summary = protectedBusinessQualificationSummary(result);
+  process.stdout.write(`${JSON.stringify(summary)}\n`);
+  if (result.state !== "settled") {
+    throw producerError(
+      PROTECTED_QUALIFICATION_NOT_SETTLED,
+      `protected business qualification is ${result.state}: ${result.reason}`,
+    );
+  }
+  return summary;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error: unknown) => {
+    const code = String((error as { code?: string } | null)?.code || PROTECTED_QUALIFICATION_FAILED);
+    const message = String((error as { message?: string } | null)?.message || "protected business qualification failed");
+    process.stderr.write(`${code}: ${message}\n`);
+    process.exitCode = 1;
+  });
+}
