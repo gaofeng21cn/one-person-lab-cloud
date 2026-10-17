@@ -130,7 +130,7 @@ async function bindAuthenticatedAccount(http, auth, declaredAccountId) {
  * exact application on the exact entry URL. Reading both is what turns "we were
  * charged" into "there is something there to use".
  */
-async function readDeliveredWorkspace(http, auth, workspaceId, applicationOperationId) {
+async function readDeliveredWorkspace(http, auth, workspaceId) {
   const page = ownerData((await http.json("/api/workspaces?page=1&pageSize=20", {}, auth)).payload, "control-plane");
   const workspace = Array.isArray(page?.items) ? page.items.find((candidate) => candidate?.id === workspaceId) : null;
   const application = workspace?.currentApplication;
@@ -146,7 +146,15 @@ async function readDeliveredWorkspace(http, auth, workspaceId, applicationOperat
       !String(runtime?.runtimeId || "").trim() || !String(application.operationId || "").trim()) {
     throw adapterError("runtime_not_ready");
   }
-  return { applicationOperationId: String(application.operationId) };
+  // The platform derives `ready` from the application record alone, so it stays
+  // true while a component is unhealthy. The component list is the only place
+  // that says anything is actually serving, and an empty list says nothing was
+  // observed at all.
+  const components = Array.isArray(runtime?.checks) ? runtime.checks : [];
+  if (components.length === 0 || components.some((component) => component?.ok !== true)) {
+    throw adapterError("runtime_not_ready");
+  }
+  return { entryUrl: String(application.entryUrl), applicationOperationId: String(application.operationId), componentsObserved: components.length };
 }
 
 /*
@@ -187,10 +195,11 @@ async function readPurchaseChargeReceipt(http, auth, { receiptId, workspaceId, a
  * identity names rather than any order this process remembers, so a different
  * machine answering the same qualification reaches the same conclusion.
  *
- * An answer that is not about this Workspace is refused rather than followed.
- * Resuming whatever the platform returned would let one account's order be read
- * as another's, and the run would then bill and report against a Workspace it
- * never declared.
+ * When the platform names a Workspace and it is not this run's, the answer is
+ * refused here rather than followed. When it names none, nothing is refused
+ * here; the terminal launch is bound to the declared Workspace before the run
+ * reports on it, so an answer that never names one cannot carry the run past
+ * that point either.
  */
 async function readAdmittedLaunch(http, operationId, workspaceId, auth) {
   const result = await http.request(`/api/workspace-launches/${encodeURIComponent(operationId)}`, {}, auth);
@@ -232,12 +241,20 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
   if (!request?.operation?.idempotencyKey || !request?.scope || !request?.candidate) {
     throw adapterError("qualification_request_invalid");
   }
+  // The tenant digest is what the receipt publishes and the operation identity
+  // is derived from. Re-derive it from the account id and the Candidate so a
+  // hand-assembled request cannot bind the fence to one account and the receipt
+  // to another.
+  if (request.tenant?.accountDigest !== digestOf(`${request.candidate.receiptDigest}\n${request.tenant?.accountId || ""}`)) {
+    throw adapterError("qualification_request_invalid");
+  }
   assertQualificationAdapter(adapter, request.provider);
 
   const startedAt = new Date().toISOString();
   const mutations = emptyMutations();
   const checks = emptyChecks();
   const accounting = { quoteUsdMicros: null, walletBeforeUsdMicros: null, walletAfterUsdMicros: null, chargeReferenceDigest: "" };
+  const delivery = { workspaceEntryDigest: "", applicationOperationDigest: "", componentsObserved: 0 };
   const operationId = launchOperationId(request.tenant.accountId, request.operation.idempotencyKey);
   const operation = {
     idempotencyKey: request.operation.idempotencyKey,
@@ -261,7 +278,11 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
 
   try {
     if (!terminal) {
-      scope = await adapter.openBusinessScope({ request });
+      try {
+        scope = await adapter.openBusinessScope({ request });
+      } catch {
+        throw adapterError("provider_scope_unavailable");
+      }
       if (!scope || typeof scope.http?.json !== "function" || typeof scope.http?.request !== "function" || !scope.auth) {
         throw adapterError("provider_scope_unavailable");
       }
@@ -305,14 +326,15 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
         } catch (error) {
           // The command may have been accepted and its answer lost. That is not
           // a second purchase, it is the same order, and the only question left
-          // is whether the platform holds it.
+          // is whether the platform holds it. It is not a resume either: this
+          // delivery issued the command, so whatever it caused is this run's to
+          // account for.
           const recovered = await readAdmittedLaunch(http, operation.operationId, operation.workspaceId, auth);
           if (!recovered) throw adapterError(classifyLaunchFollowFailure(error, { purchaseRecorded: false }));
-          operation.resumed = true;
           launch = recovered;
         }
       }
-      mutations.purchases = 1;
+      mutations.purchases = operation.resumed ? 0 : 1;
       checks.purchase_issued = true;
 
       // A resumed order that is not terminal yet is followed to its own end
@@ -345,7 +367,13 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
       checks.charge_receipted = true;
       accounting.chargeReferenceDigest = digestOf(chargeReference);
 
-      await readDeliveredWorkspace(http, auth, operation.workspaceId, launch.receiptId);
+      const delivered = await readDeliveredWorkspace(http, auth, operation.workspaceId);
+      // Digests, not the entry URL or the application operation: the receipt
+      // records that these readbacks happened without carrying the identity of
+      // where the product is served.
+      delivery.workspaceEntryDigest = digestOf(delivered.entryUrl);
+      delivery.applicationOperationDigest = digestOf(delivered.applicationOperationId);
+      delivery.componentsObserved = delivered.componentsObserved;
       checks.workspace_ready = true;
       checks.runtime_ready = true;
 
@@ -360,7 +388,7 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
         // cannot place, which is an unaccounted mutation rather than a
         // mismatch between two numbers that are both known.
         throw adapterError("mutation_unaccounted");
-      } else if (moved === 0n && operation.resumed && checks.purchase_receipt_bound) {
+      } else if (moved === 0n && operation.resumed) {
         // A redelivery of an order that already reached its terminal purchase
         // receipt bought nothing again, so the wallet correctly did not move.
         // That is the same settled purchase observed a second time, and the
@@ -419,6 +447,7 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
     mutations: { declared: { ...request.scope }, observed: mutations },
     checks,
     accounting,
+    delivery,
     cleanup,
     deploymentHealth,
     startedAt,
