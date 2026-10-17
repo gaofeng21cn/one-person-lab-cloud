@@ -363,7 +363,7 @@ function liveAuthorityHistoryFetch({ duplicate = false } = {}) {
 }
 
 test("local qualification accepts exact source and immutable image identities", () => {
-  assert.deepEqual(parseLocalQualificationArgs([
+  assert.deepEqual(parseLocalQualificationArgs(["--storage-size-gb", "10", 
     "--source-sha", sha,
     "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
     "--workspace-image", workspaceReference,
@@ -376,16 +376,17 @@ test("local qualification accepts exact source and immutable image identities", 
     buildSourceImages: false,
     authorityMode: "fixture",
     j0ReadyReceipt: "",
-    sub2apiSecretFile: ""
+    sub2apiSecretFile: "",
+    storageSizeGb: 10
   });
   assert.equal(immutableImageDigest(`ghcr.io/example/cloud@${cloudDigest}`), cloudDigest);
   assert.equal(immutableImageDigest(workspaceDigest), workspaceDigest);
-  assert.throws(() => parseLocalQualificationArgs(["--source-sha", "main"]), /source SHA/);
-  assert.throws(() => parseLocalQualificationArgs([
+  assert.throws(() => parseLocalQualificationArgs(["--storage-size-gb", "10", "--source-sha", "main"]), /source SHA/);
+  assert.throws(() => parseLocalQualificationArgs(["--storage-size-gb", "10", 
     "--source-sha", sha, "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`, "--workspace-image", workspaceReference,
     "--receipt", "/tmp/qualification.json", "--authority-mode", "production"
   ]), /authority mode/);
-  assert.throws(() => parseLocalQualificationArgs([
+  assert.throws(() => parseLocalQualificationArgs(["--storage-size-gb", "10", 
     "--source-sha", sha,
     "--cloud-image", "ghcr.io/example/cloud:latest",
     "--workspace-image", workspaceReference,
@@ -407,7 +408,7 @@ function j0ReadyReceipt(sourceSha = sha, sourceTree = "d".repeat(40)) {
 }
 
 test("live arguments require one external J0 READY receipt", () => {
-  const parsed = parseLocalQualificationArgs([
+  const parsed = parseLocalQualificationArgs(["--storage-size-gb", "10", 
     "--source-sha", sha,
     "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
     "--workspace-image", workspaceReference,
@@ -416,7 +417,7 @@ test("live arguments require one external J0 READY receipt", () => {
     "--j0-ready-receipt", "/tmp/j0-ready.json"
   ]);
   assert.equal(parsed.j0ReadyReceipt, "/tmp/j0-ready.json");
-  assert.throws(() => parseLocalQualificationArgs([
+  assert.throws(() => parseLocalQualificationArgs(["--storage-size-gb", "10", 
     "--source-sha", sha,
     "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
     "--workspace-image", workspaceReference,
@@ -479,7 +480,8 @@ test("top-level live entry rejects J0 source drift before starting the J1 stack 
     buildSourceImages: false,
     authorityMode: "live",
     j0ReadyReceipt: path,
-    sub2apiSecretFile: ""
+    sub2apiSecretFile: "",
+    storageSizeGb: 10
   };
   let stackStarts = 0;
   const dependencies = {
@@ -532,17 +534,17 @@ test("live Sub2API secret file admission is exact and never creates a second env
       qualificationUserEmail: sub2apiSecretValues.OPL_QUALIFICATION_USER_EMAIL,
       qualificationUserPassword: sub2apiSecretValues.OPL_QUALIFICATION_USER_PASSWORD
     });
-    assert.deepEqual(parseLocalQualificationArgs([
+    assert.deepEqual(parseLocalQualificationArgs(["--storage-size-gb", "10", 
       "--source-sha", sha, "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
       "--workspace-image", workspaceReference, "--receipt", "/tmp/qualification.json",
       "--authority-mode", "live", "--j0-ready-receipt", "/tmp/j0-ready.json", "--sub2api-secret-file", path
     ]).sub2apiSecretFile, path);
-    assert.throws(() => parseLocalQualificationArgs([
+    assert.throws(() => parseLocalQualificationArgs(["--storage-size-gb", "10", 
       "--source-sha", sha, "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
       "--workspace-image", workspaceReference, "--receipt", "/tmp/qualification.json",
       "--sub2api-secret-file", path
     ]), /live authority mode/);
-    assert.throws(() => parseLocalQualificationArgs([
+    assert.throws(() => parseLocalQualificationArgs(["--storage-size-gb", "10", 
       "--source-sha", sha, "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
       "--workspace-image", workspaceReference, "--receipt", "/tmp/qualification.json",
       "--authority-mode", "live", "--j0-ready-receipt", "/tmp/j0-ready.json", "--sub2api-secret-file", "relative.yaml"
@@ -965,6 +967,7 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
     totalUsdMicros: "52580000", fulfillment: { computeAllocationId: "compute-historical", storageId: "storage-historical", attachmentId: "attachment-historical" }
   };
   const requests = [];
+  const previewBodies = [];
   const counts = { mappingPosts: 0, workspacePosts: 0, keyCreates: 0, debits: 0, refunds: 0, deletes: 0, restarts: 0 };
   let launchReads = 0;
   let server;
@@ -1008,7 +1011,12 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
       const items = counts.keyCreates ? [historicalKey, { id: keyId, name: keyName, kind: "workspace", status: "active" }] : [historicalKey];
       return send(response, 200, envelope("sub2api", { items, total: items.length, page: 1, pageSize: 100, pages: 1 }));
     }
-    if (method === "POST" && url.pathname === "/api/pricing/preview") return send(response, 200, { resourceType: "workspace", packageId: "basic", currency: "USD", totalChargeUsdMicros: Number(amountUsdMicros) });
+    if (method === "POST" && url.pathname === "/api/pricing/preview") {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      previewBodies.push(JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}"));
+      return send(response, 200, { resourceType: "workspace", packageId: "basic", currency: "USD", totalChargeUsdMicros: Number(amountUsdMicros) });
+    }
     if (method === "POST" && url.pathname === "/api/workspace-launches") {
       counts.workspacePosts += 1; counts.keyCreates += 1; counts.debits += 1;
       return send(response, 202, launch("pending"));
@@ -1055,7 +1063,7 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
     OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: process.env.OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON
   };
   try {
-    const options = parseLocalQualificationArgs([
+    const options = parseLocalQualificationArgs(["--storage-size-gb", "10", 
       "--source-sha", sha, "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
       "--workspace-image", workspaceReference, "--receipt", outputPath,
       "--authority-mode", "live", "--j0-ready-receipt", j0Path
@@ -1074,7 +1082,7 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
       readSourceIdentity: async () => ({ sha, tree: "d".repeat(40), clean: true }),
       runLiveJ1: async ({ j0Ready }) => runLocalWorkspaceJ1HTTPQualification({
         http, adminEmail: "admin@example.test", adminPassword: "admin-password", qualificationEmail: accountEmail, qualificationPassword: accountPassword,
-        accountProvisionKey, launchKey, operationId, workspaceId, workspaceName: "J1", wait: async () => {},
+        accountProvisionKey, launchKey, operationId, workspaceId, workspaceName: "J1", storageSizeGb: 10, wait: async () => {},
         onStage: (stage) => stages.push(stage),
         readRuntime: async ({ runtimeId: observedRuntimeId }) => {
           runtimeReadbacks += 1;
@@ -1142,6 +1150,11 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
       assert.equal(debitReadbacks, 1);
     }
     assert.equal(entryRequests, 1);
+    // The Control Plane refuses a workspace preview without a declared storage
+    // size (pricing.go:215), so a preview that omits one can never be answered.
+    for (const body of previewBodies) {
+      assert.equal(Number.isInteger(body.sizeGb) && body.sizeGb > 0, true, `preview declares a storage size: ${JSON.stringify(body)}`);
+    }
     assert.deepEqual(counts, { mappingPosts: 1, workspacePosts: 1, keyCreates: 1, debits: 1, refunds: 0, deletes: 0, restarts: 0 });
     assert.equal(requests.filter((request) => request.method === "POST" && request.path === "/api/workspace-launches").length, 1);
     assert.equal(requests.some((request) => request.method === "DELETE"), false);
@@ -1176,7 +1189,7 @@ test("canonical J1 HTTP preview cleans a failure before Workspace Create", async
   };
   await assert.rejects(() => runLocalWorkspaceJ1HTTPQualification({
     http, adminEmail: "admin@example.test", adminPassword: "password", qualificationEmail: "customer@example.test", qualificationPassword: "password",
-    accountProvisionKey: "mapping", launchKey: "launch", operationId: "operation", workspaceId: "workspace", workspaceName: "J1",
+    accountProvisionKey: "mapping", launchKey: "launch", operationId: "operation", workspaceId: "workspace", workspaceName: "J1", storageSizeGb: 10,
     readRuntime: async () => ({}), readDebit: async () => ({}), cleanup: async (scope) => { cleanupCalls.push(scope); return { containers: 0, volumes: 0, networks: 0 }; }, receiptBase: {}
   }), /provision response/);
   assert.deepEqual(cleanupCalls, [{ failed: true, launchSubmitted: false, recoveryAuthority: null }]);
@@ -1225,7 +1238,7 @@ test("canonical J1 HTTP preview preserves exact recovery authority after Workspa
   };
   await assert.rejects(() => runLocalWorkspaceJ1HTTPQualification({
     http, adminEmail: "admin@example.test", adminPassword: "password", qualificationEmail: "customer@example.test", qualificationPassword: "password",
-    accountProvisionKey: "mapping", launchKey: "launch", operationId: "operation", workspaceId: "workspace", workspaceName: "J1",
+    accountProvisionKey: "mapping", launchKey: "launch", operationId: "operation", workspaceId: "workspace", workspaceName: "J1", storageSizeGb: 10,
     wait: async () => {}, readRuntime: async () => ({}), readDebit: async () => ({}),
     cleanup: async (scope) => { cleanupCalls.push(scope); return null; }, receiptBase: {}
   }), /manual_review\/debit\/none/);
@@ -1266,7 +1279,7 @@ test("canonical J1 HTTP preview still forbids cleanup when the post-Create owner
   };
   await assert.rejects(() => runLocalWorkspaceJ1HTTPQualification({
     http, adminEmail: "admin@example.test", adminPassword: "password", qualificationEmail: "customer@example.test", qualificationPassword: "password",
-    accountProvisionKey: "mapping", launchKey: "launch", operationId: "operation", workspaceId: "workspace", workspaceName: "J1",
+    accountProvisionKey: "mapping", launchKey: "launch", operationId: "operation", workspaceId: "workspace", workspaceName: "J1", storageSizeGb: 10,
     wait: async () => {}, readRuntime: async () => ({}), readDebit: async () => ({}),
     cleanup: async (scope) => { cleanupCalls.push(scope); return null; }, receiptBase: {}
   }), /response unavailable/);

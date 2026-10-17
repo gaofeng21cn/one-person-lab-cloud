@@ -132,6 +132,7 @@ jobs:
             --cloud-image "$CLOUD_IMAGE_REF" \
             --workspace-image "$WORKSPACE_IMAGE_REF" \
             --authority-mode fixture \
+            --storage-size-gb 10 \
             --receipt "$RUNNER_TEMP/local-workspace-qualification.json"
 
       - name: Upload local qualification receipt

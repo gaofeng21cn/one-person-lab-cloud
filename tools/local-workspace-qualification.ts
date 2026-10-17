@@ -86,7 +86,7 @@ function optionValues(args) {
       buildSourceImages = true;
       continue;
     }
-    if (!["--source-sha", "--cloud-image", "--workspace-image", "--receipt", "--authority-mode", "--j0-ready-receipt", "--sub2api-secret-file"].includes(token)) {
+    if (!["--source-sha", "--cloud-image", "--workspace-image", "--receipt", "--authority-mode", "--j0-ready-receipt", "--sub2api-secret-file", "--storage-size-gb"].includes(token)) {
       throw new Error(`unknown local qualification argument: ${token}`);
     }
     const value = args[index + 1];
@@ -108,7 +108,13 @@ export function parseLocalQualificationArgs(args = process.argv.slice(2)) {
   const authorityMode = String(values.get("--authority-mode") || "fixture").trim();
   const j0ReadyReceipt = String(values.get("--j0-ready-receipt") || "").trim();
   const sub2apiSecretFile = String(values.get("--sub2api-secret-file") || "").trim();
+  const storageSizeGb = String(values.get("--storage-size-gb") || "").trim();
   if (!shaPattern.test(sourceSha)) throw new Error("source SHA must be an exact 40-character lowercase commit");
+  // The Control Plane prices a Workspace launch from a declared storage size and
+  // refuses a preview without one, so this run has to say which size it qualifies.
+  if (!/^[1-9][0-9]{0,4}$/.test(storageSizeGb)) {
+    throw new Error("storage size must be a positive whole number of GiB");
+  }
   if (!receiptPath) throw new Error("receipt path is required");
   if (!buildSourceImages && !immutableImageReference(cloudImage)) throw new Error("immutable cloud image repository@digest is required");
   if (!buildSourceImages && !immutableImageReference(workspaceImage)) throw new Error("immutable workspace image repository@digest is required");
@@ -121,7 +127,7 @@ export function parseLocalQualificationArgs(args = process.argv.slice(2)) {
   if (j0ReadyReceipt && authorityMode !== "live") throw new Error("J0 READY receipt requires live authority mode");
   if (sub2apiSecretFile && authorityMode !== "live") throw new Error("Sub2API secret file requires live authority mode");
   if (sub2apiSecretFile && !isAbsolute(sub2apiSecretFile)) throw new Error("Sub2API secret file path must be absolute");
-  return { sourceSha, cloudImage, workspaceImage, receiptPath, buildSourceImages, authorityMode, j0ReadyReceipt, sub2apiSecretFile };
+  return { sourceSha, cloudImage, workspaceImage, receiptPath, buildSourceImages, authorityMode, j0ReadyReceipt, sub2apiSecretFile, storageSizeGb: Number(storageSizeGb) };
 }
 
 function sub2apiSecretFileError(code) {
@@ -951,7 +957,7 @@ export async function provisionLocalQualificationAccount(http, adminAuth, { emai
 export async function runLocalWorkspaceJ1HTTPQualification(input) {
   const {
     http, adminEmail, adminPassword, qualificationEmail, qualificationPassword, accountProvisionKey,
-    launchKey, operationId, workspaceId, workspaceName, receiptBase, readDebit, readRuntime, cleanup, wait,
+    launchKey, operationId, workspaceId, workspaceName, storageSizeGb, receiptBase, readDebit, readRuntime, cleanup, wait,
     onStage = () => {}
   } = input;
   let cleanupEvidence;
@@ -992,7 +998,7 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
     onStage("pricing_preview");
     const amountUsdMicros = priceWorkspaceLaunch({
       pricing: (await http.json("/api/pricing/preview", {
-        method: "POST", body: { resourceType: "workspace", packageId: "basic" }
+        method: "POST", body: { resourceType: "workspace", packageId: "basic", sizeGb: storageSizeGb }
       }, auth)).payload,
       walletUsdMicros: beforeMicros,
     });
@@ -1628,6 +1634,7 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
         operationId,
         workspaceId,
         workspaceName: `Local qualification ${suffix}`,
+        storageSizeGb: options.storageSizeGb,
         wait: (milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds)),
         onStage: (name) => { stage = name; },
         readRuntime: async ({ accountId: exactAccountId, workspaceId: exactWorkspaceId }) => {
@@ -1722,7 +1729,7 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
     stage = "workspace_launch";
     const amountUsdMicros = priceWorkspaceLaunch({
       pricing: (await http.json("/api/pricing/preview", {
-        method: "POST", body: { resourceType: "workspace", packageId: "basic" }
+        method: "POST", body: { resourceType: "workspace", packageId: "basic", sizeGb: options.storageSizeGb }
       }, auth)).payload,
       walletUsdMicros: beforeMicros,
     });
