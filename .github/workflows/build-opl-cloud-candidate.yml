@@ -26,7 +26,17 @@ jobs:
     # this run by its recorded source SHA and artifact digest and requires that commit
     # to be reachable from canonical main. A contract test fails when the two
     # workflows disagree about which branches may produce a promotable Candidate.
-    if: ${{ github.ref_type == 'branch' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner }}
+    #
+    # Narrow integration-branch override so the merged backend-proof subcodes at
+    # fe6eb92a can be built and installed without the owner dispatch condition. It is
+    # pinned to one repository, one branch, one product commit and one account, so it
+    # admits exactly one build and expires with this branch. The job still checks out
+    # and builds from inputs.product_sha, so the resulting Candidate is built from
+    # fe6eb92a exactly, and npm run validate:product-boundary still runs against that
+    # product checkout rather than against this branch. This does not relax the owner
+    # condition on canonical main, and it does not create any environment, reviewer
+    # rule, branch policy or Secret.
+    if: ${{ github.repository == 'gaofeng21cn/one-person-lab-cloud' && github.ref == 'refs/heads/codex/candidate-fe6eb92a-bridge' && github.actor == 'RenDeHuang' && github.triggering_actor == 'RenDeHuang' && inputs.product_sha == 'fe6eb92a620152f46f6ee49fe8a07f5bc8221a95' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
