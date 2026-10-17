@@ -288,7 +288,9 @@ test("the buyer reads the owner envelope and buys one declared Workspace through
   const preview = platform.calls.find((call) => call.path === "/api/pricing/preview");
   assert.deepEqual(preview.init.body, { resourceType: "workspace", packageId: "pro" });
   const command = platform.calls.find((call) => call.path === "/api/workspace-launches" && call.init.method === "POST");
-  assert.deepEqual(command.init.body, { name: "Declared workspace", packageId: "pro", autoRenew: true });
+  assert.deepEqual(command.init.body, {
+    name: "Declared workspace", packageId: "pro", autoRenew: true, provisioningMode: "full",
+  });
   assert.equal(command.init.headers["idempotency-key"], IDEMPOTENCY_KEY);
   assert.deepEqual(command.auth, AUTH);
   assert.equal(platform.commands(), 1);
