@@ -235,6 +235,20 @@ test("Candidate build admits a write-access dispatcher instead of only the repos
   assert.doesNotMatch(buildGuard, /refs\/heads\/main/);
 });
 
+test("Candidate build binds product_sha to the dispatch-time branch head", async () => {
+  const build = YAML.parse(await readFile(".github/workflows/build-opl-cloud-candidate.yml", "utf8"));
+  const buildGuard = String(build.jobs.candidate.if);
+
+  // A branch ref alone is insufficient: workflow_dispatch exposes the branch
+  // head as github.sha, while product_sha is user input. An ancestor must not
+  // be accepted merely because it can be checked out.
+  assert.match(
+    buildGuard,
+    /github\.sha\s*==\s*inputs\.product_sha/,
+    "the Candidate build must require product_sha to equal the dispatch-time branch head"
+  );
+});
+
 test("Candidate promotion gate refuses every run that is not the promoted source commit", async (t) => {
   const release = YAML.parse(await readFile(".github/workflows/release-opl-cloud-image.yml", "utf8"));
   const gate = candidatePredicate(release);
