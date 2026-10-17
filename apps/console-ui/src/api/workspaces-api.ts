@@ -569,9 +569,9 @@ export async function getWorkspaceDeletion(workspaceId: string): Promise<Workspa
     try {
       value = await getJson<unknown>(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/deletion`);
     } catch (error) {
-      // The Workspace owner answers without a deletion record until it accepts
-      // one; the Console shows the deletion entry point rather than an error.
-      if ((error as ApiError).status === 404) return null;
+      // The BFF normalizes an existing Workspace with no accepted deletion to
+      // `200 null`; a remaining 404 therefore means the Workspace itself was
+      // not found and must stay visible to the caller.
       throw error;
     }
     const deletion = decodeWorkspaceOwnerDeletion(value, workspaceId);
