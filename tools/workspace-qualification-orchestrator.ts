@@ -31,6 +31,7 @@ import {
   QUALIFICATION_MUTATION_BOUNDS,
   QUALIFICATION_TERMINAL_REASONS,
   createQualificationRequest,
+  qualificationWorkspaceName,
   validateBusinessQualificationReceipt,
 } from "./workspace-qualification-contract.ts";
 import {
@@ -186,7 +187,7 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
       } else {
         try {
           ({ launch } = await submitWorkspaceLaunch({
-            http, auth, name: request.product.packageId, packageId: request.product.packageId,
+            http, auth, name: qualificationWorkspaceName(operation.operationId), packageId: request.product.packageId,
             autoRenew: request.product.autoRenew, idempotencyKey: operation.idempotencyKey,
             expectedOperationId: operation.operationId, expectedWorkspaceId: operation.workspaceId, wait,
           }));
@@ -204,7 +205,9 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
       checks.purchase_issued = true;
 
       // A resumed order that is not terminal yet is followed to its own end
-      // under its own identity, rather than read as finished or reissued.
+      // under its own identity, rather than read as finished or reissued. The
+      // window is the purchase core's own, so a stuck order is bounded even
+      // though a lost response may cost one further follow.
       if (launch?.status !== "succeeded" || launch?.phase !== "succeeded") {
         try {
           launch = await waitForLaunch(http, operation.operationId, auth, wait);
@@ -212,10 +215,12 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
           throw adapterError("launch_stopped");
         }
       }
-      if (String(launch?.receiptId || "").trim()) {
-        operation.purchaseReceiptId = String(launch.receiptId);
-        checks.receipt_bound = true;
-      }
+      // A terminal launch that carries no purchase receipt identity has not
+      // delivered a receipt to bind anything to. That is a binding failure
+      // rather than an absent check, and it is reported as one.
+      if (!String(launch?.receiptId || "").trim()) throw adapterError("receipt_binding_mismatch");
+      operation.purchaseReceiptId = String(launch.receiptId);
+      checks.receipt_bound = true;
 
       accounting.walletAfterUsdMicros = walletMicros((await http.json("/api/gateway/wallet", {}, auth)).payload);
       const moved = BigInt(accounting.walletBeforeUsdMicros) - BigInt(accounting.walletAfterUsdMicros);
