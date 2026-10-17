@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -339,10 +340,27 @@ type gatewayAccountingFabric struct {
 	fakeFabricClient
 	mu     sync.Mutex
 	stages map[string]clients.WorkspaceLaunchStageResult
+	// applicationEntryURL is the provider-published web entry this local fake
+	// reports for an application runtime. It is empty unless a caller asks for
+	// a full application delivery, so the resource-only accounting tests keep
+	// the behavior they already assert.
+	applicationEntryURL string
 }
 
 func newGatewayAccountingFabric() *gatewayAccountingFabric {
 	return &gatewayAccountingFabric{stages: map[string]clients.WorkspaceLaunchStageResult{}}
+}
+
+func (f *gatewayAccountingFabric) EnsureWorkspaceApplicationRuntime(ctx context.Context, input clients.WorkspaceApplicationRuntimeInput, idempotencyKey string) (contracts.WorkspaceApplicationRuntimeObservation, error) {
+	observation, err := f.fakeFabricClient.EnsureWorkspaceApplicationRuntime(ctx, input, idempotencyKey)
+	if err == nil && f.applicationEntryURL != "" && observation.Entry == nil {
+		observation.Entry = &contracts.WorkspaceApplicationEntry{URL: f.applicationEntryURL}
+	}
+	return observation, err
+}
+
+func (f *gatewayAccountingFabric) ReadWorkspaceApplicationRuntime(ctx context.Context, input clients.WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
+	return f.EnsureWorkspaceApplicationRuntime(ctx, input, "readback")
 }
 
 func (f *gatewayAccountingFabric) WorkspaceRuntimeStatus(_ context.Context, workspaceID string) (clients.WorkspaceRuntime, error) {
@@ -428,7 +446,10 @@ type gatewayAccountingControlPlane struct {
 	fabric  *gatewayAccountingFabric
 }
 
-func newGatewayAccountingControlPlane(t *testing.T, ledger clients.LedgerClient, sub2API *gatewayAccountingSub2API, accountID, userID string) *gatewayAccountingControlPlane {
+// wrapHandler is optional. A caller that has to observe the owner-API surface
+// the real handler served can install one middleware before the server starts;
+// the Control Plane handler itself stays the one this helper builds.
+func newGatewayAccountingControlPlane(t *testing.T, ledger clients.LedgerClient, sub2API *gatewayAccountingSub2API, accountID, userID string, wrapHandler ...func(http.Handler) http.Handler) *gatewayAccountingControlPlane {
 	t.Helper()
 	t.Setenv("NODE_ENV", "")
 	t.Setenv("OPL_WORKSPACE_LAUNCH_WORKER_ENABLED", "0")
@@ -457,7 +478,11 @@ func newGatewayAccountingControlPlane(t *testing.T, ledger clients.LedgerClient,
 	if !ok {
 		t.Fatalf("Control Plane handler type = %T", handler)
 	}
-	server := httptest.NewTLSServer(handler)
+	var served http.Handler = handler
+	for _, wrap := range wrapHandler {
+		served = wrap(served)
+	}
+	server := httptest.NewTLSServer(served)
 	t.Cleanup(server.Close)
 	return &gatewayAccountingControlPlane{server: server, handler: typed, store: store, fabric: fabric}
 }
