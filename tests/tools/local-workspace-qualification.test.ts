@@ -363,7 +363,7 @@ function liveAuthorityHistoryFetch({ duplicate = false } = {}) {
 }
 
 test("local qualification accepts exact source and immutable image identities", () => {
-  assert.deepEqual(parseLocalQualificationArgs(["--storage-size-gb", "10", 
+  assert.deepEqual(parseLocalQualificationArgs(["--storage-size-gb", "10",
     "--source-sha", sha,
     "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
     "--workspace-image", workspaceReference,
@@ -382,11 +382,11 @@ test("local qualification accepts exact source and immutable image identities", 
   assert.equal(immutableImageDigest(`ghcr.io/example/cloud@${cloudDigest}`), cloudDigest);
   assert.equal(immutableImageDigest(workspaceDigest), workspaceDigest);
   assert.throws(() => parseLocalQualificationArgs(["--storage-size-gb", "10", "--source-sha", "main"]), /source SHA/);
-  assert.throws(() => parseLocalQualificationArgs(["--storage-size-gb", "10", 
+  assert.throws(() => parseLocalQualificationArgs(["--storage-size-gb", "10",
     "--source-sha", sha, "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`, "--workspace-image", workspaceReference,
     "--receipt", "/tmp/qualification.json", "--authority-mode", "production"
   ]), /authority mode/);
-  assert.throws(() => parseLocalQualificationArgs(["--storage-size-gb", "10", 
+  assert.throws(() => parseLocalQualificationArgs(["--storage-size-gb", "10",
     "--source-sha", sha,
     "--cloud-image", "ghcr.io/example/cloud:latest",
     "--workspace-image", workspaceReference,
@@ -408,7 +408,7 @@ function j0ReadyReceipt(sourceSha = sha, sourceTree = "d".repeat(40)) {
 }
 
 test("live arguments require one external J0 READY receipt", () => {
-  const parsed = parseLocalQualificationArgs(["--storage-size-gb", "10", 
+  const parsed = parseLocalQualificationArgs(["--storage-size-gb", "10",
     "--source-sha", sha,
     "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
     "--workspace-image", workspaceReference,
@@ -417,7 +417,7 @@ test("live arguments require one external J0 READY receipt", () => {
     "--j0-ready-receipt", "/tmp/j0-ready.json"
   ]);
   assert.equal(parsed.j0ReadyReceipt, "/tmp/j0-ready.json");
-  assert.throws(() => parseLocalQualificationArgs(["--storage-size-gb", "10", 
+  assert.throws(() => parseLocalQualificationArgs(["--storage-size-gb", "10",
     "--source-sha", sha,
     "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
     "--workspace-image", workspaceReference,
@@ -534,17 +534,17 @@ test("live Sub2API secret file admission is exact and never creates a second env
       qualificationUserEmail: sub2apiSecretValues.OPL_QUALIFICATION_USER_EMAIL,
       qualificationUserPassword: sub2apiSecretValues.OPL_QUALIFICATION_USER_PASSWORD
     });
-    assert.deepEqual(parseLocalQualificationArgs(["--storage-size-gb", "10", 
+    assert.deepEqual(parseLocalQualificationArgs(["--storage-size-gb", "10",
       "--source-sha", sha, "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
       "--workspace-image", workspaceReference, "--receipt", "/tmp/qualification.json",
       "--authority-mode", "live", "--j0-ready-receipt", "/tmp/j0-ready.json", "--sub2api-secret-file", path
     ]).sub2apiSecretFile, path);
-    assert.throws(() => parseLocalQualificationArgs(["--storage-size-gb", "10", 
+    assert.throws(() => parseLocalQualificationArgs(["--storage-size-gb", "10",
       "--source-sha", sha, "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
       "--workspace-image", workspaceReference, "--receipt", "/tmp/qualification.json",
       "--sub2api-secret-file", path
     ]), /live authority mode/);
-    assert.throws(() => parseLocalQualificationArgs(["--storage-size-gb", "10", 
+    assert.throws(() => parseLocalQualificationArgs(["--storage-size-gb", "10",
       "--source-sha", sha, "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
       "--workspace-image", workspaceReference, "--receipt", "/tmp/qualification.json",
       "--authority-mode", "live", "--j0-ready-receipt", "/tmp/j0-ready.json", "--sub2api-secret-file", "relative.yaml"
@@ -1063,7 +1063,7 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
     OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: process.env.OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON
   };
   try {
-    const options = parseLocalQualificationArgs(["--storage-size-gb", "10", 
+    const options = parseLocalQualificationArgs(["--storage-size-gb", "10",
       "--source-sha", sha, "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
       "--workspace-image", workspaceReference, "--receipt", outputPath,
       "--authority-mode", "live", "--j0-ready-receipt", j0Path
