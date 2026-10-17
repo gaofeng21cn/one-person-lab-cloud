@@ -106,7 +106,7 @@ export const QUALIFICATION_BUSINESS_RECEIPT_KIND = "opl.workspace-qualification.
 export const QUALIFICATION_TERMINAL_REASONS = Object.freeze({
   settled: Object.freeze(["none"]),
   blocked: Object.freeze([
-    "live_authority_missing", "provider_scope_unavailable", "wallet_cannot_fund", "scope_bound_exhausted"
+    "provider_scope_unavailable", "wallet_cannot_fund", "scope_bound_exhausted"
   ]),
   failed: Object.freeze([
     "quote_invalid", "launch_stopped", "account_binding_mismatch", "workspace_not_ready", "runtime_not_ready",
@@ -320,7 +320,7 @@ export function createQualificationRequest({ candidate, accountId, product, prov
 
 const RECEIPT_KEYS = [
   "schemaVersion", "kind", "scope", "uncovered", "state", "reason", "provider", "candidate", "source", "tenant", "product",
-  "authority", "operation", "mutations", "checks", "accounting", "cleanup", "deploymentHealth", "startedAt", "completedAt"
+  "authority", "operation", "mutations", "checks", "accounting", "delivery", "cleanup", "deploymentHealth", "startedAt", "completedAt"
 ];
 const CANDIDATE_KEYS = ["receiptDigest", "productSha", "productTree", "cloudImageDigest"];
 const SOURCE_KEYS = ["sha", "tree", "clean"];
@@ -328,6 +328,7 @@ const PRODUCT_KEYS = ["resourceType", "packageId", "autoRenew"];
 const AUTHORITY_KEYS = ["mode", "authorityClass", "j0ReadyDigest"];
 const OPERATION_KEYS = ["idempotencyKey", "operationId", "workspaceId", "purchaseReceiptId", "resumed"];
 const ACCOUNTING_KEYS = ["quoteUsdMicros", "walletBeforeUsdMicros", "walletAfterUsdMicros", "chargeReferenceDigest"];
+const DELIVERY_KEYS = ["workspaceEntryDigest", "applicationOperationDigest", "componentsObserved"];
 const QUALIFICATION_UNCOVERED_KEYS = Object.freeze(Object.keys(QUALIFICATION_UNCOVERED_SCOPE));
 const CLEANUP_KEYS = ["performed", "restored"];
 const DEPLOYMENT_HEALTH = ["healthy", "degraded", "unknown"];
@@ -380,6 +381,7 @@ export function validateBusinessQualificationReceipt(value) {
       Object.entries(QUALIFICATION_UNCOVERED_SCOPE).some(([name, covered]) => value.uncovered[name] !== covered) ||
       !hasExactKeys(value.checks, QUALIFICATION_BUSINESS_CHECKS) ||
       !hasExactKeys(value.accounting, ACCOUNTING_KEYS) ||
+      !hasExactKeys(value.delivery, DELIVERY_KEYS) ||
       !hasExactKeys(value.cleanup, CLEANUP_KEYS) ||
       typeof value.cleanup.performed !== "boolean" || typeof value.cleanup.restored !== "boolean" ||
       !DEPLOYMENT_HEALTH.includes(value.deploymentHealth)) {
@@ -411,26 +413,53 @@ export function validateBusinessQualificationReceipt(value) {
   // it. Without this a receipt could hold a true check beside an empty
   // operation, and a receipt is only as strong as its least supported claim.
   if (value.checks.quote_priced && quote === null) invalidReceipt();
-  if (value.checks.purchase_issued && value.mutations.observed.purchases < 1) invalidReceipt();
+  // A purchase claim is about an order existing under this identity, not about
+  // this delivery having issued the command, so a resume is allowed to report
+  // zero purchases while still holding the order.
+  if (value.checks.purchase_issued &&
+      (!String(value.operation.operationId || "").trim() || !String(value.operation.workspaceId || "").trim())) {
+    invalidReceipt();
+  }
+  // Once an order is in play the two must agree, in both directions. A run that
+  // never issued or resumed one simply reports zero.
+  if (value.mutations.observed.purchases > 1) invalidReceipt();
+  if (value.checks.purchase_issued && value.operation.resumed && value.mutations.observed.purchases !== 0) invalidReceipt();
+  if (value.checks.purchase_issued && !value.operation.resumed && value.mutations.observed.purchases !== 1) invalidReceipt();
   if (value.checks.purchase_receipt_bound && !String(value.operation.purchaseReceiptId || "").trim()) invalidReceipt();
   // A claim about money needs the wallet read on both sides of the run, and a
   // claim about the charge needs the Ledger receipt that names this operation.
   if (value.checks.wallet_confirmed && (before === null || after === null)) invalidReceipt();
   if (value.checks.charge_receipted && value.accounting.chargeReferenceDigest === "") invalidReceipt();
+  // The delivery block and the delivery checks are bound to each other in both
+  // directions: a receipt that claims a ready Workspace and a running Runtime
+  // has to carry the observation that proves it, and one that never got there
+  // must not carry a delivery it did not observe.
+  const delivered = value.checks.workspace_ready && value.checks.runtime_ready;
+  if (delivered
+      ? (!isDigest(value.delivery.workspaceEntryDigest) || !isDigest(value.delivery.applicationOperationDigest) ||
+         !Number.isSafeInteger(value.delivery.componentsObserved) || value.delivery.componentsObserved < 1)
+      : (value.delivery.workspaceEntryDigest !== "" || value.delivery.applicationOperationDigest !== "" ||
+         value.delivery.componentsObserved !== 0)) {
+    invalidReceipt();
+  }
 
   const withinBounds = QUALIFICATION_MUTATION_BOUNDS.every((name) =>
     value.mutations.observed[name] <= value.mutations.declared[name]);
   const everyCheck = QUALIFICATION_BUSINESS_CHECKS.every((name) => value.checks[name]);
   const cleanupProven = value.cleanup.performed && value.cleanup.restored;
   const observed = value.mutations.observed;
-  // A settled purchase is evidenced two honest ways, and the receipt says
-  // which: a delivery that bought it and watched the wallet move, or a
-  // redelivery that resumed its own finished order and watched the wallet
-  // stand still. The second is the idempotency claim, and it is only
-  // reachable when the delivery says it resumed.
+  // A settled purchase is evidenced two honest ways, and the receipt says which.
+  //
+  // The first is a delivery that issued the command, saw the Ledger receipt for
+  // it and watched the wallet move by exactly the quoted amount. The second is
+  // a redelivery that found its own finished order, bought nothing again and
+  // watched the wallet stand still. `resumed` is true only for the second: a
+  // delivery that recovered its own order after a lost answer did issue the
+  // command, and cannot claim the first shape by skipping the money.
   const boughtAndPaid = observed.purchases === 1 && observed.charges === 1 &&
     quote !== null && moved === BigInt(quote);
-  const resumedFinishedOrder = value.operation.resumed && observed.purchases === 1 && observed.charges === 0 && moved === 0n;
+  const resumedFinishedOrder = value.operation.resumed && observed.purchases === 0 &&
+    observed.charges === 0 && moved === 0n;
   const qualified = everyCheck && withinBounds && cleanupProven && observed.refunds === 0 &&
     (boughtAndPaid || resumedFinishedOrder);
   if ((value.state === "settled") !== qualified) invalidReceipt();

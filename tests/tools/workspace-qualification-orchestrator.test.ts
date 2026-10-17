@@ -103,7 +103,8 @@ function controlPlane({ accountId = ACCOUNT_ID, sessionAccountId = ACCOUNT_ID, s
   walletBeforeMicros = "999999999", quoteMicros = QUOTE_MICROS, chargeMicros = null, loseResponseOnce = false,
   losePollResponse = false, launchStatus = "succeeded", noReceiptId = false, noBillingReceipt = false, admitPending = false,
   receiptAmountMicros = null, workspaceOpenable = true, applicationStatus = "ready", runtimeReady = true,
-  runtimeStatus = "running", extraChargeMicros = "0" } = {}) {
+  runtimeStatus = "running", runtimeComponents = [{ name: "console", ok: true }, { name: "gateway", ok: true }],
+  extraChargeMicros = "0" } = {}) {
   const state = { orders: new Map(), byKey: new Map(), posted: 0, charges: [], commands: [], responsesLost: false,
     wallet: walletBeforeMicros, workspaceId: "", polled: 0 };
   const envelope = (data) => ({ source: "sub2api", available: true, status: "available", data });
@@ -143,7 +144,8 @@ function controlPlane({ accountId = ACCOUNT_ID, sessionAccountId = ACCOUNT_ID, s
         return { status: 200, payload: {
           source: "fabric", available: true, status: "available",
           data: { workspaceId: state.workspaceId, ready: runtimeReady, status: runtimeStatus, url: ENTRY_URL,
-            runtimeId: "rt-0123456789abcdef", currentApplication: { operationId: APPLICATION_OPERATION_ID } },
+            runtimeId: "rt-0123456789abcdef", checks: runtimeComponents,
+            currentApplication: { operationId: APPLICATION_OPERATION_ID } },
         } };
       }
       if (/^\/api\/billing\/receipts\/[^/]+$/.test(path)) {
@@ -315,9 +317,9 @@ test("a scope that could not be opened is blocked and never reaches the platform
   const platform = controlPlane();
   const adapter = providerAdapter("local-docker", platform, { failOpen: "cluster unreachable" });
   const { state, receipt } = await run(qualificationRequest("local-docker"), adapter);
-  assert.equal(state, "unknown");
+  assert.equal(state, "blocked", "a scope that cannot be opened is a blocked run, not a failed owner readback");
+  assert.equal(receipt.reason, "provider_scope_unavailable");
   assert.equal(platform.state.posted, 0);
-  assert.ok(["blocked", "unknown"].includes(receipt.state));
 });
 
 test("a request that declared no purchase is refused before the scope is opened", async () => {
@@ -358,8 +360,9 @@ test("a redelivery resumes the original order and buys nothing twice", async () 
   assert.equal(first.receipt.operation.resumed, false);
   assert.equal(second.receipt.operation.operationId, first.receipt.operation.operationId);
   assert.equal(second.receipt.operation.workspaceId, first.receipt.operation.workspaceId);
-  assert.equal(second.receipt.mutations.observed.purchases, 1, "the resumed run reports the one purchase that exists");
-  assert.equal(second.receipt.mutations.observed.charges, 0, "the redelivery charged nothing again");
+  assert.equal(second.receipt.mutations.observed.purchases, 0, "the redelivery bought nothing again");
+  assert.equal(second.receipt.mutations.observed.charges, 0, "and charged nothing again");
+  assert.equal(first.receipt.mutations.observed.purchases, 1, "the first delivery bought it once");
   assert.equal(first.receipt.mutations.observed.charges, 1, "the first delivery paid for it once");
   assert.equal(
     BigInt(second.receipt.accounting.walletBeforeUsdMicros) - BigInt(second.receipt.accounting.walletAfterUsdMicros),
@@ -368,13 +371,31 @@ test("a redelivery resumes the original order and buys nothing twice", async () 
   );
 });
 
-test("a response lost after the platform accepted the command resumes that order and issues no second one", async () => {
+test("a response lost after the platform accepted the command recovers that order and issues no second one", async () => {
   const platform = controlPlane({ loseResponseOnce: true });
   const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+
   assert.equal(state, "settled");
-  assert.equal(receipt.operation.resumed, true);
   assert.equal(platform.state.posted, 1, "the lost answer cost a retry of the read, never a second purchase");
   assert.equal(platform.state.charges.length, 1);
+  assert.equal(receipt.operation.resumed, false,
+    "this delivery issued the command, so recovering its order is not a resume and cannot skip the money");
+  assert.equal(receipt.mutations.observed.purchases, 1);
+  assert.equal(receipt.mutations.observed.charges, 1);
+});
+
+test("a recovered order whose charge has not settled yet is not a settled purchase", async () => {
+  // The order was admitted and its Gateway debit has not landed when the
+  // balance is read. This delivery issued the command, so it cannot report the
+  // shape of a redelivery that bought nothing.
+  const platform = controlPlane({ loseResponseOnce: true, chargeMicros: "0" });
+  const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+
+  assert.notEqual(state, "settled");
+  assert.equal(state, "failed");
+  assert.equal(receipt.reason, "wallet_readback_mismatch");
+  assert.equal(receipt.mutations.observed.purchases, 1, "the purchase was still admitted");
+  assert.equal(receipt.checks.wallet_confirmed, false);
 });
 
 test("a lost response that left no order behind is undetermined, never a pass", async () => {
@@ -704,9 +725,46 @@ test("a settled receipt states the scope it did not establish", async () => {
     "every unestablished step is declared false, so none can be read as implied");
 });
 
-test("a receipt may not claim a scope it cannot prove", () => {
-  assert.throws(() => validateBusinessQualificationReceipt({ kind: "opl.workspace-qualification.purchase.v1" }),
-    { code: "qualification_business_receipt_invalid" });
+test("a settled receipt may not claim a scope or an establishment it cannot prove", async () => {
+  const platform = controlPlane();
+  const { receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+  assert.equal(receipt.scope, "workspace_purchase");
+
+  // Each of these is the settled receipt with one honesty field changed. If the
+  // validator stops reading a field, the receipt that claims it is accepted.
+  const forged = [
+    ["a wider scope", { ...receipt, scope: "workspace_business" }],
+    ["a full qualification", { ...receipt, scope: "workspace_business_qualification" }],
+    ["an application installation", { ...receipt, uncovered: { ...receipt.uncovered, applicationInstallation: true } }],
+    ["a Gateway Key lifecycle", { ...receipt, uncovered: { ...receipt.uncovered, gatewayKeyLifecycle: true } }],
+    ["an owner deletion", { ...receipt, uncovered: { ...receipt.uncovered, ownerDeletion: true } }],
+    ["a dropped uncovered field", { ...receipt, uncovered: { applicationInstallation: false } }],
+    ["an extra uncovered field", { ...receipt, uncovered: { ...receipt.uncovered, somethingElse: false } }],
+  ];
+  for (const [what, value] of forged) {
+    assert.throws(() => validateBusinessQualificationReceipt(value),
+      { code: "qualification_business_receipt_invalid" }, what);
+  }
+});
+
+test("a delivery claim has to carry the observation that proves it", async () => {
+  const platform = controlPlane();
+  const { receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+  assert.equal(receipt.delivery.componentsObserved, 2);
+  assert.match(receipt.delivery.workspaceEntryDigest, /^sha256:[0-9a-f]{64}$/);
+  assert.doesNotMatch(JSON.stringify(receipt.delivery), /https?:\/\//, "the entry URL is recorded as a digest");
+
+  for (const [what, value] of [
+    ["no components observed", { ...receipt, delivery: { ...receipt.delivery, componentsObserved: 0 } }],
+    ["an entry digest that is not one", { ...receipt, delivery: { ...receipt.delivery, workspaceEntryDigest: "" } }],
+    ["delivery evidence on a run that observed none", {
+      ...receipt, checks: { ...receipt.checks, workspace_ready: false },
+      delivery: { workspaceEntryDigest: "", applicationOperationDigest: "", componentsObserved: 0 },
+    }],
+  ]) {
+    assert.throws(() => validateBusinessQualificationReceipt(value),
+      { code: "qualification_business_receipt_invalid" }, what);
+  }
 });
 
 // Finding 4: a lost polling response was reported as a launch the platform had
@@ -753,4 +811,46 @@ test("a lost answer to the command itself, with no order admitted, is undetermin
   assert.equal(state, "unknown");
   assert.equal(receipt.reason, "response_lost");
   assert.equal(receipt.mutations.observed.purchases, 0, "nothing was admitted, so nothing was mutated");
+});
+
+
+// The Runtime's own `ready` is derived by the platform from the application
+// record alone, so a settled receipt has to come from the component list.
+test("a Runtime whose components are unhealthy does not settle even when it reports ready", async () => {
+  for (const components of [
+    [{ name: "console", ok: false }],
+    [{ name: "console", ok: true }, { name: "gateway", ok: false }],
+    [],
+  ]) {
+    const platform = controlPlane({ runtimeComponents: components });
+    const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+    assert.notEqual(state, "settled", JSON.stringify(components));
+    assert.equal(receipt.reason, "runtime_not_ready", JSON.stringify(components));
+    assert.equal(receipt.checks.runtime_ready, false, JSON.stringify(components));
+  }
+});
+
+// An adapter that cannot produce a scope is a blocked run. Reporting it as an
+// unreadable owner would assert an owner readback that was never attempted.
+test("an adapter that cannot open its scope is blocked, and the reason is reachable", async () => {
+  const platform = controlPlane();
+  const adapter = providerAdapter("local-docker", platform, { failOpen: "cluster unreachable" });
+  const { state, receipt } = await run(qualificationRequest("local-docker"), adapter);
+
+  assert.equal(state, "blocked");
+  assert.equal(receipt.reason, "provider_scope_unavailable");
+  assert.ok(QUALIFICATION_TERMINAL_REASONS.blocked.includes(receipt.reason),
+    "the declared reason is one this flow actually emits");
+  assert.equal(platform.state.posted, 0);
+  assert.equal(receipt.checks.account_bound, false, "no owner readback was attempted");
+});
+
+// The tenant digest the receipt publishes has to be the one derived from the
+// account the fence read, or the two can name different accounts.
+test("a hand-assembled request cannot bind the fence to one account and publish another", async () => {
+  const platform = controlPlane();
+  const request = qualificationRequest("local-docker");
+  const forged = { ...request, tenant: { ...request.tenant, accountDigest: `sha256:${"0".repeat(64)}` } };
+  await assert.rejects(run(forged, providerAdapter("local-docker", platform)), { code: "qualification_request_invalid" });
+  assert.equal(platform.state.posted, 0);
 });
