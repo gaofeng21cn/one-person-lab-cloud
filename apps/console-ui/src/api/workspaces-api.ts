@@ -565,15 +565,10 @@ export function projectWorkspaceOwnerDeletion(
 
 export async function getWorkspaceDeletion(workspaceId: string): Promise<WorkspaceDeletionDTO | null> {
   if (cloudIdentity) {
-    let value: unknown;
-    try {
-      value = await getJson<unknown>(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/deletion`);
-    } catch (error) {
-      // The BFF normalizes an existing Workspace with no accepted deletion to
-      // `200 null`; a remaining 404 therefore means the Workspace itself was
-      // not found and must stay visible to the caller.
-      throw error;
-    }
+    // The BFF normalizes an existing Workspace with no accepted deletion to
+    // `200 null`; a remaining 404 therefore means the Workspace itself was
+    // not found and must stay visible to the caller.
+    const value = await getJson<unknown>(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/deletion`);
     const deletion = decodeWorkspaceOwnerDeletion(value, workspaceId);
     return projectWorkspaceOwnerDeletion(deletion, await getWorkspaceOwnerOperation(deletion.operationId));
   }
