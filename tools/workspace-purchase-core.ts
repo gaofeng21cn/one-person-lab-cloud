@@ -23,8 +23,9 @@ import { createHash } from "node:crypto";
  *
  * The sequence is the Control Plane's own: the platform prices the launch and
  * refuses a client that supplies a size or a price, so the command body carries
- * the Workspace name, the declared package and the renewal choice and nothing
- * else. Exactly one command is issued per call, however long the poll runs.
+ * the Workspace name, the declared package, the renewal choice and the
+ * provisioning shape of a new customer Launch and nothing else. Exactly one
+ * command is issued per call, however long the poll runs.
  */
 
 const LAUNCH_POLL_ATTEMPTS = 180;
@@ -108,6 +109,12 @@ export async function waitForLaunch(http, operationId, auth, wait = defaultWait)
  * answer belonging to some other order is refused instead of being polled. The
  * returned receipt identity is what the caller binds its own evidence to; this
  * function records it and never interprets it.
+ *
+ * The command states the provisioning shape every new customer Launch uses:
+ * `full` commits the default OPL application installation beside the
+ * resource Launch. Omitting it is the platform's implicit default today, and
+ * `resource_only` is the retained historical contract that a new Launch must
+ * not send, so the shape is stated rather than left to that default.
  */
 export async function submitWorkspaceLaunch({
   http,
@@ -115,6 +122,7 @@ export async function submitWorkspaceLaunch({
   name,
   packageId = "basic",
   autoRenew = false,
+  provisioningMode = "full",
   idempotencyKey,
   expectedOperationId,
   expectedWorkspaceId,
@@ -122,7 +130,7 @@ export async function submitWorkspaceLaunch({
 }) {
   const initial = (await http.json("/api/workspace-launches", {
     method: "POST", headers: { "idempotency-key": idempotencyKey },
-    body: { name, packageId, autoRenew }
+    body: { name, packageId, autoRenew, provisioningMode }
   }, auth, [202])).payload;
   if (initial?.operationId !== expectedOperationId || initial?.workspaceId !== expectedWorkspaceId) {
     throw new Error("deterministic launch identity is invalid");
