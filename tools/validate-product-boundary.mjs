@@ -70,12 +70,28 @@ if (JSON.stringify(candidateInputs) !== JSON.stringify(["product_sha"]) ||
   throw new Error("Cloud Candidate workflow authority boundary is invalid");
 }
 // The Candidate is a replaceable input, not a formal Release, so it may be built
-// from any branch's exact commit: the guard must admit branch refs and must not
-// pin the dispatched ref to main. The owner actors and the Release workflow's
-// main-only rule remain the publication boundary.
+// from the exact head of any dispatched branch: the guard must admit branch refs,
+// bind product_sha to github.sha, and must not pin the dispatched ref to main. Dispatch is limited to the repository's
+// write-access collaborators, which is what workflow_dispatch already requires,
+// and the run must stay self-attributed: the account that triggered it is the
+// account GitHub attributes it to. The publication boundary does not move. The
+// Release workflow keeps its main-only rule and already admits the same
+// dispatcher, so an owner-only build here refused the only evidence producer
+// that dispatcher could reach.
 const candidateGuard = String(candidateJob?.if ?? "");
-for (const required of ["github.ref_type == 'branch'", "github.actor == github.repository_owner", "github.triggering_actor == github.repository_owner"]) {
+for (const required of ["github.ref_type == 'branch'", "github.sha == inputs.product_sha", "github.actor == github.triggering_actor"]) {
   if (!candidateGuard.includes(required)) throw new Error(`Cloud Candidate guard is missing: ${required}`);
+}
+if (candidateGuard.includes("github.repository_owner")) {
+  throw new Error("Cloud Candidate guard must not be owner-only; publication already admits a write-access collaborator");
+}
+// The build guard must not become an actor allowlist of its own. Only the release
+// gate may name an actor, and naming one here would silently refuse the
+// write-access collaborator this boundary admits while still satisfying the check
+// above. This catches a literal account comparison, which the repository_owner
+// check cannot see.
+if (/github\.actor\s*(==|!=)\s*'[^']+'/.test(candidateGuard)) {
+  throw new Error("Cloud Candidate guard must not name an actor; only the release gate may allowlist one");
 }
 if (candidateGuard.includes("refs/heads/main")) {
   throw new Error("Cloud Candidate guard must not pin the dispatched ref to main");
