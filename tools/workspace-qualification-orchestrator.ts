@@ -129,17 +129,78 @@ async function bindAuthenticatedAccount(http, auth, declaredAccountId) {
 }
 
 /*
- * The Workspace and its Runtime, read from their owners.
+ * The Workspace, its committed application installation and its Runtime.
  *
- * A purchase receipt says what was billed, not what runs. The Workspace owner
- * says the Workspace exists, is openable and has a ready current application;
- * the Fabric runtime readback says a Runtime is actually running behind that
- * exact application on the exact entry URL. Reading both is what turns "we were
- * charged" into "there is something there to use".
+ * A purchase receipt says what was billed, not what runs. The purchase commits
+ * the default application installation beside the resource Launch; the platform
+ * then progresses that installation asynchronously, so a read taken the moment
+ * the Launch reports success would see a paid delivery that is not yet usable.
+ * This module waits for the owner to report the current application ready,
+ * resuming a stalled installation exactly once through the customer's own
+ * continuation command, and only then reads the delivery.
+ *
+ * The Workspace list is paginated: a first page is not the shape of an account
+ * that has bought more than one Workspace, and the Workspace this run bought may
+ * no longer be on it.
  */
+const WORKSPACE_PAGE_SIZE = 20;
+const WORKSPACE_PAGE_LIMIT = 50;
+const APPLICATION_INSTALL_ATTEMPTS = 300;
+const APPLICATION_INSTALL_INTERVAL_MS = 1_000;
+const defaultWait = (milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
+
+async function readWorkspaceOwnerItem(http, auth, workspaceId) {
+  for (let page = 1; page <= WORKSPACE_PAGE_LIMIT; page += 1) {
+    const payload = ownerData((await http.json(
+      `/api/workspaces?page=${page}&pageSize=${WORKSPACE_PAGE_SIZE}`, {}, auth)).payload, "control-plane");
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    const workspace = items.find((candidate) => candidate?.id === workspaceId);
+    if (workspace) return workspace;
+    const total = Number(payload?.total);
+    if (items.length < WORKSPACE_PAGE_SIZE) return null;
+    if (Number.isFinite(total) && total > 0 && page * WORKSPACE_PAGE_SIZE >= total) return null;
+  }
+  return null;
+}
+
+async function waitForWorkspaceApplicationInstallation(http, auth, { workspaceId, operationId, wait }) {
+  const pause = wait || defaultWait;
+  let resumed = false;
+  for (let attempt = 0; attempt < APPLICATION_INSTALL_ATTEMPTS; attempt += 1) {
+    const workspace = await readWorkspaceOwnerItem(http, auth, workspaceId);
+    if (!workspace) throw adapterError("workspace_not_ready");
+    const installation = workspace.applicationInstallation || null;
+    if (workspace.currentApplication?.status === "ready") return;
+    // A stalled credential preparation is resumed exactly once through the
+    // customer's own continuation command. The projection has to name the same
+    // Workspace and the same installation this run observed; a continuation
+    // for something else is not this delivery's.
+    if (installation?.canResume === true && !resumed) {
+      const projection = (await http.json(
+        `/api/workspaces/${encodeURIComponent(workspaceId)}/application-installation/resume`,
+        { method: "POST", headers: { "idempotency-key": `application-resume:${operationId}` }, body: {} },
+        auth, [202],
+      )).payload;
+      if (projection?.workspaceId !== workspaceId ||
+          (projection.applicationInstallation &&
+            (projection.applicationInstallation.operationId !== installation.operationId ||
+              projection.applicationInstallation.applicationId !== installation.applicationId ||
+              projection.applicationInstallation.revision !== installation.revision))) {
+        throw adapterError("workspace_not_ready");
+      }
+      resumed = true;
+      continue;
+    }
+    // An installation the owner parks for review, and will not hand back through
+    // the continuation above, is a product failure rather than a slow delivery.
+    if (installation?.status === "manual_review") throw adapterError("application_installation_manual_review");
+    await pause(APPLICATION_INSTALL_INTERVAL_MS);
+  }
+  throw adapterError("workspace_not_ready");
+}
+
 async function readDeliveredWorkspace(http, auth, workspaceId) {
-  const page = ownerData((await http.json("/api/workspaces?page=1&pageSize=20", {}, auth)).payload, "control-plane");
-  const workspace = Array.isArray(page?.items) ? page.items.find((candidate) => candidate?.id === workspaceId) : null;
+  const workspace = await readWorkspaceOwnerItem(http, auth, workspaceId);
   const application = workspace?.currentApplication;
   if (!workspace || !application || application.status !== "ready" ||
       !String(application.entryUrl || "").trim() || workspace.url !== application.entryUrl || workspace.openable !== true) {
@@ -394,6 +455,10 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
       // launch that ended against another Workspace is another order, not this
       // run's delivery.
       if (launch.workspaceId !== operation.workspaceId) throw adapterError("launch_identity_mismatch");
+      // The Launch must be the resource-only purchase this flow accounts for.
+      // Anything else fulfils a different shape, so the exactly-three-resource
+      // receipt rule below would be describing an operation that was not run.
+      if (launch.provisioningMode !== "resource_only") throw adapterError("launch_identity_mismatch");
       operation.purchaseReceiptId = String(launch.receiptId);
       checks.purchase_receipt_bound = true;
 
@@ -406,6 +471,14 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
       });
       checks.charge_receipted = true;
       accounting.chargeReferenceDigest = digestOf(chargeReference);
+
+      // The purchase commits the default application installation beside the
+      // resource Launch, and the platform progresses it after the Launch reports
+      // success. Reading the Workspace before it finishes would report a paid
+      // delivery as a product failure, so wait for the owner's own readiness.
+      await waitForWorkspaceApplicationInstallation(http, auth, {
+        workspaceId: operation.workspaceId, operationId: operation.operationId, wait,
+      });
 
       const delivered = await readDeliveredWorkspace(http, auth, operation.workspaceId);
       // Digests, not the entry URL or the application operation: the receipt
@@ -448,21 +521,24 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
   } catch (error) {
     terminal = terminalFailure(error);
   } finally {
+    // Deployment health is read before the scope is closed: a closed scope cannot
+    // answer for it, and a health read that fails must not prevent cleanup.
+    //
     // The scope is always closed, including after a failure: the adapter that
     // opened something is the only party that can put it back. An attempt that
     // threw may still have opened something, so the attempt itself is what
     // triggers cleanup, not a returned scope object.
     if (scope || scopeAttempted) {
       try {
-        cleanup = { performed: true, restored: (await adapter.closeBusinessScope({ request }))?.restored === true };
-      } catch {
-        cleanup = { performed: true, restored: false };
-      }
-      try {
         const health = String(await adapter.readDeploymentHealth({ request }) || "");
         if (DEPLOYMENT_HEALTH.includes(health)) deploymentHealth = health;
       } catch {
         deploymentHealth = "unknown";
+      }
+      try {
+        cleanup = { performed: true, restored: (await adapter.closeBusinessScope({ request }))?.restored === true };
+      } catch {
+        cleanup = { performed: true, restored: false };
       }
     }
   }
@@ -473,6 +549,13 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
   if (cleanup.performed && !cleanup.restored && terminal.state !== "recovery-required") {
     terminal = { state: "recovery-required", reason: "cleanup_unproven" };
   }
+
+  // A clock that went backwards must not invalidate evidence about a purchase
+  // that already happened. The contract requires a completed instant at or after
+  // the start; the run cannot have finished before it began, so a backdated
+  // reading is clamped rather than allowed to throw after the money moved.
+  let completedAt = new Date().toISOString();
+  if (Date.parse(completedAt) < Date.parse(startedAt)) completedAt = startedAt;
 
   const evidence = {
     schemaVersion: 1,
@@ -493,7 +576,7 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
     cleanup,
     deploymentHealth,
     startedAt,
-    completedAt: new Date().toISOString(),
+    completedAt,
   };
   let receipt;
   try {
