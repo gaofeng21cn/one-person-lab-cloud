@@ -8,6 +8,11 @@ import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseDocument } from "yaml";
 
+// The purchase sequence is the invariant and is owned by one module. Everything
+// else in this file either composes it or asserts a result, and neither of those
+// belongs to the purchase itself.
+import { submitWorkspaceLaunch, waitForLaunch } from "./workspace-purchase-core.ts";
+
 import {
   collectLocalJ1RecoveryAuthority,
   createLocalJ1RecoveryArtifact,
@@ -718,19 +723,6 @@ export async function login(http, email, password, expectedAccountId = "acct-adm
   return auth;
 }
 
-export async function waitForLaunch(http, operationId, auth, wait = (milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds))) {
-  let launch;
-  for (let attempt = 0; attempt < 180; attempt += 1) {
-    launch = (await http.json(`/api/workspace-launches/${encodeURIComponent(operationId)}`, {}, auth)).payload;
-    if (launch?.status === "succeeded" && launch?.phase === "succeeded") return launch;
-    if (["manual_review", "failed", "refunded"].includes(String(launch?.status || ""))) {
-      throw new Error(`Workspace launch stopped at ${launch.status}/${launch.phase}/${launch.errorCode || "none"}`);
-    }
-    await wait(1000);
-  }
-  throw new Error("Workspace launch did not reach succeeded within 180 seconds");
-}
-
 // The default OPL application installation is committed beside the resource
 // Launch, so the owner reports it as its own pending generation until its
 // Runtime is ready. A stalled credential preparation is resumed exactly once
@@ -1012,15 +1004,15 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
     }
     onStage("workspace_launch");
     launchSubmitted = true;
-    const initial = (await http.json("/api/workspace-launches", {
-      method: "POST", headers: { "idempotency-key": launchKey },
-      body: { name: workspaceName, packageId: "basic", autoRenew: false }
-    }, auth, [202])).payload;
-    if (initial?.operationId !== operationId || initial?.workspaceId !== workspaceId) throw new Error("deterministic launch identity is invalid");
+    // The purchase itself is the shared invariant. What differs across authority
+    // profiles is the quote above it and the evidence below it, so neither moves
+    // into the core. The cleanup scope is recorded here because only this profile
+    // owns an account it has to tear down.
+    const { launch, receiptId } = await submitWorkspaceLaunch({
+      http, auth, name: workspaceName, idempotencyKey: launchKey,
+      expectedOperationId: operationId, expectedWorkspaceId: workspaceId, wait,
+    });
     cleanupScope.workspaceId = workspaceId;
-    const launch = await waitForLaunch(http, operationId, auth, wait);
-    const receiptId = String(launch?.receiptId || "");
-    if (!receiptId) throw new Error("terminal launch receipt identity is missing");
     onStage("application_installation");
     const installation = await waitForWorkspaceApplicationInstallation(http, auth, { workspaceId, operationId, wait });
     const workspaceKey = resolveWorkspaceKey(await readAllGatewayKeys(http, auth), workspaceId);
@@ -1741,14 +1733,10 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
     if (!/^[1-9][0-9]*$/.test(amountUsdMicros) || BigInt(beforeMicros) < BigInt(amountUsdMicros)) {
       throw new Error("qualification quote is invalid or wallet is insufficient");
     }
-    const initial = (await http.json("/api/workspace-launches", {
-      method: "POST", headers: { "idempotency-key": launchKey },
-      body: { name: `Local qualification ${suffix}`, packageId: "basic", autoRenew: false }
-    }, auth, [202])).payload;
-    if (initial?.operationId !== operationId || initial?.workspaceId !== workspaceId) throw new Error("deterministic launch identity is invalid");
-    const launch = await waitForLaunch(http, operationId, auth);
-    const receiptId = String(launch.receiptId || "");
-    if (!receiptId) throw new Error("terminal launch receipt identity is missing");
+    const { receiptId } = await submitWorkspaceLaunch({
+      http, auth, name: `Local qualification ${suffix}`, idempotencyKey: launchKey,
+      expectedOperationId: operationId, expectedWorkspaceId: workspaceId,
+    });
 
     // The resource Launch carries no Runtime of its own: the owner commits the
     // default OPL application installation beside it. Wait for the owner's own
