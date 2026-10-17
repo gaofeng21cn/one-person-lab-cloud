@@ -125,6 +125,18 @@ export function walletReadRoute(cloud: boolean): "/api/v2/wallet" | "/api/gatewa
   return cloud ? "/api/v2/wallet" : "/api/gateway/wallet";
 }
 
+// Personal financial history and announcements follow the same baked identity as
+// the wallet. A cloud build reads the BFF route that carries a live CloudIdentity
+// proof; a retained build keeps the Control Plane projection it authenticated
+// against. Neither decision has a runtime fallback to the other route.
+export function billingReadRoute(cloud: boolean): "/api/v2/legacy-billing" | "/api/billing" {
+  return cloud ? "/api/v2/legacy-billing" : "/api/billing";
+}
+
+export function announcementReadRoute(cloud: boolean): "/api/v2/announcements" | "/api/announcements" {
+  return cloud ? "/api/v2/announcements" : "/api/announcements";
+}
+
 // A valid readback is a nonnegative balance, including the zero a charge leaves
 // behind. Rejecting zero would report an unavailable balance instead of an empty
 // one, so the sufficiency decision belongs at the purchase-before boundary.
@@ -332,31 +344,51 @@ export function getGatewayAccountUsageSummary(period: GatewayUsagePeriod = "mont
 export function getBillingReceipts(cursor = "", limit = 20, signal?: AbortSignal): Promise<SourceEnvelope<BillingReceiptPage>> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (cursor) params.set("cursor", cursor);
-  return sourceGet<BillingReceiptPage>(`${cloudIdentity ? "/api/v2/legacy-billing" : "/api/billing"}/receipts?${params}`, signal);
+  return sourceGet<BillingReceiptPage>(`${billingReadRoute(cloudIdentity)}/receipts?${params}`, signal);
 }
 
 /** Reads the owner's confirmed Workspace wallet movements for its fixed window. */
 export function getWorkspaceSettlementTrend(signal?: AbortSignal): Promise<SourceEnvelope<WorkspaceSettlementTrend>> {
-  return sourceGet<WorkspaceSettlementTrend>(cloudIdentity ? "/api/v2/legacy-billing/workspace-settlements" : "/api/billing/workspace-settlements", signal);
+  return sourceGet<WorkspaceSettlementTrend>(`${billingReadRoute(cloudIdentity)}/workspace-settlements`, signal);
 }
 
 export function getBillingReceipt(receiptId: string, signal?: AbortSignal): Promise<SourceEnvelope<BillingReceipt>> {
-  return sourceGet<BillingReceipt>(`${cloudIdentity ? "/api/v2/legacy-billing" : "/api/billing"}/receipts/${encodeURIComponent(receiptId)}`, signal);
+  return sourceGet<BillingReceipt>(`${billingReadRoute(cloudIdentity)}/receipts/${encodeURIComponent(receiptId)}`, signal);
 }
 
 export function getAnnouncements(page = 1, pageSize = 20, signal?: AbortSignal): Promise<SourceEnvelope<AnnouncementPageDTO>> {
-  return sourceGet<AnnouncementPageDTO>(`${cloudIdentity ? "/api/v2/announcements" : "/api/announcements"}?${new URLSearchParams({ page: String(page), pageSize: String(pageSize) })}`, signal);
+  return sourceGet<AnnouncementPageDTO>(`${announcementReadRoute(cloudIdentity)}?${new URLSearchParams({ page: String(page), pageSize: String(pageSize) })}`, signal);
 }
 
 export function markAnnouncementRead(announcementId: string, csrfToken: string, idempotencyKey: string): Promise<AnnouncementReadDTO> {
-  return postJson<unknown>(`${cloudIdentity ? "/api/v2/announcements" : "/api/announcements"}/${encodeURIComponent(announcementId)}/read`, {}, csrfToken, idempotencyKey).then(decodeDto<AnnouncementReadDTO>);
+  return postJson<unknown>(`${announcementReadRoute(cloudIdentity)}/${encodeURIComponent(announcementId)}/read`, {}, csrfToken, idempotencyKey).then(decodeDto<AnnouncementReadDTO>);
 }
 
-export function getPricingCatalog(): Promise<PricingCatalogResponse> {
+// The retained Control Plane owns the legacy package pricing catalog and its
+// preview. A CloudIdentity session has no retained Account session there, and
+// Cloud has no package-pricing catalog owner yet, so a cloud build refuses this
+// read instead of falling back to a route that answers 401. The cloud launch
+// surface prices through the Resource Catalog quote (`POST /api/v2/quotes`) and
+// the Resource Catalog plan reads, so no price is lost or invented.
+export type PackagePricingReadPlan =
+  | { state: "read"; owner: "control_plane" }
+  | { state: "unavailable"; owner: "resource_catalog"; reasonCode: "pricing_catalog_owner_unavailable" };
+
+export function packagePricingReadPlan(cloud: boolean): PackagePricingReadPlan {
+  return cloud
+    ? { state: "unavailable", owner: "resource_catalog", reasonCode: "pricing_catalog_owner_unavailable" }
+    : { state: "read", owner: "control_plane" };
+}
+
+export function getPricingCatalog(cloud: boolean = cloudIdentity): Promise<PricingCatalogResponse> {
+  const plan = packagePricingReadPlan(cloud);
+  if (plan.state === "unavailable") return Promise.reject(new Error(plan.reasonCode));
   return getJson<unknown>("/api/pricing/catalog").then(decodeDto<PricingCatalogResponse>);
 }
 
-export function previewPricing(input: PricingPreviewRequest, csrfToken: string): Promise<PricingPreviewResponse> {
+export function previewPricing(input: PricingPreviewRequest, csrfToken: string, cloud: boolean = cloudIdentity): Promise<PricingPreviewResponse> {
+  const plan = packagePricingReadPlan(cloud);
+  if (plan.state === "unavailable") return Promise.reject(new Error(plan.reasonCode));
   return postJson<unknown>("/api/pricing/preview", input, csrfToken).then(decodeDto<PricingPreviewResponse>);
 }
 
