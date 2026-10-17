@@ -224,6 +224,23 @@ export function qualificationIdempotencyKey({ candidateReceiptDigest, accountDig
 }
 
 /*
+ * The Workspace name a run declares.
+ *
+ * Derived from the operation identity rather than chosen per provider, so a
+ * redelivery sends the same command body, and so the name never says which host
+ * happened to run the qualification. A name that named Local-Docker would put a
+ * provider into the business command, which is exactly what this seam exists to
+ * keep out of it.
+ */
+export function qualificationWorkspaceName(operationId) {
+  const declared = String(operationId || "").trim();
+  if (!/^workspace-launch-[0-9a-f]{18}$/.test(declared)) {
+    throw qualificationContractError("qualification_operation_identity_invalid");
+  }
+  return `Qualification ${declared.slice("workspace-launch-".length)}`;
+}
+
+/*
  * One request, validated once, before anything is touched.
  *
  * The Candidate is read through the distribution contract's own validator and

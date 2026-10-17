@@ -7,6 +7,7 @@ import {
   QUALIFICATION_TERMINAL_REASONS,
   QUALIFICATION_TERMINAL_STATES,
   qualificationProviderProfile,
+  qualificationWorkspaceName,
   validateBusinessQualificationReceipt,
 } from "../../tools/workspace-qualification-contract.ts";
 import {
@@ -97,8 +98,8 @@ const qualificationRequest = (provider, overrides = {}) => createQualificationRe
  * pass a test the real platform would fail.
  */
 function controlPlane({ accountId = ACCOUNT_ID, walletBeforeMicros = "999999999", quoteMicros = QUOTE_MICROS, chargeMicros = null,
-  loseResponseOnce = false, launchStatus = "succeeded", extraChargeMicros = "0" } = {}) {
-  const state = { orders: new Map(), byKey: new Map(), posted: 0, charges: [], responsesLost: false, wallet: walletBeforeMicros };
+  loseResponseOnce = false, launchStatus = "succeeded", noReceiptId = false, extraChargeMicros = "0" } = {}) {
+  const state = { orders: new Map(), byKey: new Map(), posted: 0, charges: [], commands: [], responsesLost: false, wallet: walletBeforeMicros };
   const envelope = (data) => ({ source: "sub2api", available: true, status: "available", data });
 
   const http = {
@@ -136,11 +137,12 @@ function controlPlane({ accountId = ACCOUNT_ID, walletBeforeMicros = "999999999"
           workspaceId,
           status: launchStatus,
           phase: launchStatus === "succeeded" ? "succeeded" : "debit",
-          receiptId: launchStatus === "succeeded" ? "rcpt_qualification_1" : "",
+          receiptId: launchStatus === "succeeded" && !noReceiptId ? "rcpt_qualification_1" : "",
         };
         state.byKey.set(key, operationId);
         state.orders.set(operationId, admitted);
         state.posted += 1;
+        state.commands.push(init.body);
         state.wallet = String(BigInt(state.wallet) - BigInt(chargeMicros ?? quoteMicros) - BigInt(extraChargeMicros));
         state.charges.push(quoteMicros);
         if (loseResponseOnce && !state.responsesLost) {
@@ -248,6 +250,15 @@ test("a launch the platform stopped is failed, and it is not retried as a new or
   assert.equal(platform.state.posted, 1, "a stopped order is followed, never reissued");
 });
 
+test("a terminal launch that carries no purchase receipt is a binding failure, not a missing check", async () => {
+  const platform = controlPlane({ noReceiptId: true });
+  const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+  assert.equal(state, "failed");
+  assert.equal(receipt.reason, "receipt_binding_mismatch");
+  assert.equal(receipt.checks.receipt_bound, false, "an unbound receipt is not recorded as bound");
+  assert.equal(receipt.operation.purchaseReceiptId, "");
+});
+
 test("a charge the owner readback cannot account for is recovery-required, not a mismatch", async () => {
   const platform = controlPlane({ extraChargeMicros: "100" });
   const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
@@ -340,6 +351,27 @@ test("a lost response that left no order behind is undetermined, never a pass", 
   assert.equal(state, "unknown");
   assert.equal(receipt.reason, "response_lost");
   assert.equal(receipt.scope.observed.purchases, 0);
+});
+
+// The command body is what the platform is asked to act on. It carries the
+// declared product and a name derived from the operation identity, so it never
+// says which provider is running and a redelivery sends the same body.
+test("the purchase command names no provider and is identical on a redelivery", async () => {
+  const platform = controlPlane();
+  const request = qualificationRequest("tencent-tke");
+  const first = await run(request, providerAdapter("tencent-tke", platform));
+  const second = await run(qualificationRequest("tencent-tke"), providerAdapter("tencent-tke", platform));
+
+  assert.equal(platform.state.posted, 1);
+  assert.deepEqual(platform.state.commands, [{
+    name: qualificationWorkspaceName(first.receipt.operation.operationId),
+    packageId: "basic",
+    autoRenew: false,
+  }]);
+  assert.deepEqual(second.receipt.operation.operationId, first.receipt.operation.operationId,
+    "a redelivery addresses the same order, so the command body cannot differ");
+  assert.doesNotMatch(JSON.stringify(platform.state.commands), /tke|tencent|local|docker/i,
+    "a provider identity has no place in the business command");
 });
 
 test("the operation identity is derived from the Candidate, the tenant, the product and the provider", async () => {
