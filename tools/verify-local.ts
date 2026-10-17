@@ -76,11 +76,30 @@ export const declaredMoneyChainTests = Object.freeze([
   "TestGatewayRevealFailsClosed"
 ]);
 
+/**
+ * Declared tests that must actually execute. Unlike declaredMoneyChainTests,
+ * a capability marker may never excuse them: the Gateway reveal family runs
+ * without a database, so "excluded" here means the lane stopped proving it.
+ */
+export const databaseFreeRequiredTests = Object.freeze([
+  "TestGatewayRevealAuditFailureDoesNotReturnKey",
+  "TestGatewayRevealDoesNotLeakAcrossAccounts",
+  "TestGatewayRevealFailsClosed"
+]);
+
 export type DatabaseFreeGoTestSpec = {
   cwd: string;
   packages: string[];
   /** Tests this lane must always execute or explicitly exclude. */
   declaredTests?: readonly string[];
+  /**
+   * The lane must execute at least this many tests. A filter, rename or
+   * truncated package list that shrinks the lane below the floor fails the gate
+   * instead of passing as a smaller, unexplained run.
+   */
+  minimumExecutedTests?: number;
+  /** Declared tests that must execute; a capability marker cannot exclude them. */
+  requiredExecutedTests?: readonly string[];
 };
 
 export const databaseFreeGoTestSpecs: readonly DatabaseFreeGoTestSpec[] = Object.freeze([
@@ -90,7 +109,10 @@ export const databaseFreeGoTestSpecs: readonly DatabaseFreeGoTestSpec[] = Object
   // lives in internal/server, together with PostgreSQL-gated suites. The whole
   // package runs here: the gated suites declare their own capability and are
   // reported as excluded, and the declared money chain below proves it.
-  { cwd: "services/control-plane", packages: ["./internal/server"], declaredTests: declaredMoneyChainTests },
+  // The executed-test floor is the broad-coverage proof this lane used to get
+  // from a duplicated end-to-end meta test: it keeps a filtered or truncated
+  // package run visible at the lane itself, without running the package twice.
+  { cwd: "services/control-plane", packages: ["./internal/server"], declaredTests: declaredMoneyChainTests, minimumExecutedTests: 1001, requiredExecutedTests: databaseFreeRequiredTests },
   { cwd: "services/fabric", packages: ["./cmd/fabric", "./cmd/opl-tencent-provisioner", "./cmd/opl-node-image-retire", "./internal/http", "./coordination"] },
   { cwd: "services/ledger", packages: ["./cmd/ledger", "./internal/http"] },
   { cwd: "services/serve", packages: ["./cmd/server"] },
@@ -110,6 +132,10 @@ type VerificationStep = {
   evidence?: "node" | "go" | "go-coverage";
   /** Tests a database-free lane must execute or explicitly exclude. */
   declaredTests?: readonly string[];
+  /** Minimum executed tests for a lane that also declares a coverage floor. */
+  minimumExecutedTests?: number;
+  /** Declared tests that must execute; a capability marker cannot exclude them. */
+  requiredExecutedTests?: readonly string[];
 };
 
 export const localVerificationSteps: readonly VerificationStep[] = Object.freeze([
@@ -133,7 +159,9 @@ export const localVerificationSteps: readonly VerificationStep[] = Object.freeze
     args: ["test", "-count=1", "-json", ...spec.packages],
     cwd: spec.cwd,
     evidence: "go-coverage" as const,
-    ...(spec.declaredTests ? { declaredTests: spec.declaredTests } : {})
+    ...(spec.declaredTests ? { declaredTests: spec.declaredTests } : {}),
+    ...(spec.minimumExecutedTests ? { minimumExecutedTests: spec.minimumExecutedTests } : {}),
+    ...(spec.requiredExecutedTests ? { requiredExecutedTests: spec.requiredExecutedTests } : {})
   })),
   { name: "Git whitespace", command: "git", args: ["diff", "--check"] }
 ]);
@@ -1080,7 +1108,9 @@ async function runStep(step: VerificationStep) {
   printStep(step.name);
   if (step.evidence === "go-coverage") {
     const coverage = await runDatabaseFreeGoLane(step, stepEnv());
-    process.stderr.write(`${databaseFreeCoverageReport(coverage)}\n`);
+    // Independent Go lanes may overlap, so the lane name is part of the header:
+    // every report in the log stays attributable to exactly one step.
+    process.stderr.write(`${step.name}: ${databaseFreeCoverageReport(coverage)}\n`);
     if (coverage.reason) throw new Error(`${step.name}: ${coverage.reason}`);
     return;
   }
@@ -1275,10 +1305,12 @@ function firstReason(text: string) {
  */
 export function databaseFreeCoverage(
   events: readonly GoTestEvent[],
-  options: { markers?: readonly { capability: string; marker: string }[]; declared?: readonly string[] } = {}
+  options: { markers?: readonly { capability: string; marker: string }[]; declared?: readonly string[]; minimumExecuted?: number; requiredExecuted?: readonly string[] } = {}
 ): DatabaseFreeCoverage {
   const markers = options.markers ?? databaseFreeCapabilityMarkers;
   const declared = options.declared ?? [];
+  const minimumExecuted = options.minimumExecuted ?? 0;
+  const requiredExecuted = options.requiredExecuted ?? [];
   const output = new Map<string, string>();
   const started = new Set<string>();
   const terminal = new Map<string, "pass" | "fail" | "skip">();
@@ -1332,12 +1364,15 @@ export function databaseFreeCoverage(
   const account = (name: string) => executed.includes(name) || excluded.has(name);
   const accounted = declared.filter(account);
   const missing = declared.filter((name) => !account(name));
+  const requiredMissed = requiredExecuted.filter((name) => !executed.includes(name));
   const unexplainedPackages = [...packages].filter(([pkg, action]) => action === "fail" &&
     ![...terminal].some(([id, testAction]) => id.startsWith(`${pkg}\0`) && testAction === "fail"));
   const reason = invalid || started.size !== terminal.size || packages.size === 0 ? "invalid or incomplete Go JSON summary" :
     unexplainedPackages.length ? `Go package failed without a test failure: ${unexplainedPackages.map(([pkg]) => pkg).join(",")}` :
     executed.length === 0 ? "no Go tests executed" :
     failed.length > 0 ? `Go tests failed: ${failed.map((entry) => entry.name).join(",")}` :
+    requiredMissed.length > 0 ? `declared tests did not execute: ${requiredMissed.join(",")}` :
+    executed.length < minimumExecuted ? `only ${executed.length} of the required ${minimumExecuted} tests executed` :
     undeclared.length > 0 ? `tests skipped without a declared capability marker: ${undeclared.map((entry) => `${entry.name} (${entry.reason})`).join("; ")}` :
     missing.length > 0 ? `declared coverage is not accounted for: ${missing.join(",")}` : undefined;
   return {
@@ -1372,7 +1407,11 @@ export function databaseFreeCoverageReport(coverage: DatabaseFreeCoverage) {
  */
 export async function runDatabaseFreeGoLane(step: VerificationStep, env: NodeJS.ProcessEnv = process.env): Promise<DatabaseFreeCoverage> {
   const result = await runProcess(step.command, step.args, { cwd: stepCwd(step), env, capture: true, allowFailure: true });
-  const coverage = databaseFreeCoverage(parseGoTestEvents(result.stdout), { declared: step.declaredTests ?? [] });
+  const coverage = databaseFreeCoverage(parseGoTestEvents(result.stdout), {
+    declared: step.declaredTests ?? [],
+    minimumExecuted: step.minimumExecutedTests ?? 0,
+    requiredExecuted: step.requiredExecutedTests ?? []
+  });
   // A build or invocation failure produces no test events at all; the compiler
   // output is the only evidence, so it becomes the reason instead of a
   // misleading "no tests" verdict.
@@ -1507,13 +1546,59 @@ export function focusedChangeScope(base: string, repositoryRoot = root) {
   return { mergeBase, paths };
 }
 
+/**
+ * Steps that may run with bounded overlap. Only the database-free lanes qualify:
+ * they run after every module compile, so they share a warm Go build cache and
+ * three of them fit a four-core runner (measured 23s -> 20s in CI, 38s -> 15s on
+ * an eight-core host with an identical classified outcome). Overlapping cold
+ * `go test -run ^$` compiles instead oversubscribes the runner (measured
+ * 126s -> 178s in CI), so that group stays sequential.
+ */
+export function isOverlappableStep(step: VerificationStep): boolean {
+  return step.command === "go" && step.evidence === "go-coverage";
+}
+
+export const goStepConcurrency = 3;
+
+/**
+ * Run one batch group with at most `limit` child steps in flight. Steps are
+ * started in the declared order; the first failure rejects the group, so a
+ * failing lane still fails the gate instead of being absorbed by its batch.
+ */
+export async function runBatchedSteps<T>(
+  steps: readonly T[],
+  runStep: (step: T) => Promise<void>,
+  limit = goStepConcurrency
+): Promise<void> {
+  for (let index = 0; index < steps.length; index += limit) {
+    const batch = steps.slice(index, index + limit);
+    const settled = await Promise.allSettled(batch.map((step) => runStep(step)));
+    const failed = settled.find((result): result is PromiseRejectedResult => result.status === "rejected");
+    if (failed) throw failed.reason;
+  }
+}
+
 export async function runVerification(options: { withPostgres?: boolean; focused?: boolean; base?: string; testTargets?: string[] } = {}, dependencies = defaultDependencies) {
   const { withPostgres = false, focused = false, base, testTargets = [] } = options;
   if (focused && withPostgres) throw new Error("cannot combine focused checks with the exhaustive PostgreSQL lane; supply the focused owner database environment explicitly");
   if (focused && !base) throw new Error("focused verification requires --base <ref>");
   const scope = focused ? focusedChangeScope(base!) : undefined;
   const steps = scope ? focusedVerificationSteps(scope.paths, testTargets, scope.mergeBase) : localVerificationSteps;
-  for (const step of steps) await dependencies.runStep(step);
+  // Only the database-free lanes overlap; every other step, including the cold
+  // module compiles, keeps the documented order (see isOverlappableStep).
+  let laneSteps: VerificationStep[] = [];
+  for (const step of steps) {
+    if (isOverlappableStep(step)) {
+      laneSteps.push(step);
+      continue;
+    }
+    if (laneSteps.length > 0) {
+      await runBatchedSteps(laneSteps, dependencies.runStep);
+      laneSteps = [];
+    }
+    await dependencies.runStep(step);
+  }
+  if (laneSteps.length > 0) await runBatchedSteps(laneSteps, dependencies.runStep);
   if (withPostgres) {
     await dependencies.withTemporaryPostgres((env) => dependencies.runPostgresVerification(env));
   }
