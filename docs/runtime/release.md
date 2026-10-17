@@ -32,6 +32,9 @@ workflow dispatch or customer business operations, and a local checkout does not
 gain production-network access from the target decision. Current execution
 availability and verification limits are recorded in
 [status](../status.md#cloud-customer-readback-source-wiring-2026-10-16).
+The current cross-repo classification of the Instance business paths and the
+exact release inputs that must remain until #926/#928 replace them is in the
+[Instance business-path retirement inventory](../implementation/instance-business-retirement-inventory.md).
 
 ## Product Release Admission
 

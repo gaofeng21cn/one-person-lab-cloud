@@ -98,6 +98,7 @@ cannot yet follow is an explicit roadmap gap, not a competing SSOT.
 - [Console experience guide](./product/console-experience-guide.md)
 - [Workspace identity and external SaaS boundary](./workspace-identity-and-external-saas-boundary.md)
 - [Product release operations](./runtime/release.md)
+- [Instance business-path retirement inventory](./implementation/instance-business-retirement-inventory.md)
 - [Console browser lifecycle](./implementation/console.md)
 - [Launch recovery reference](./implementation/workspace-launch-recovery.md)
 - [Workspace Runtime access](./implementation/workspace-runtime-access.md)
