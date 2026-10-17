@@ -161,10 +161,10 @@ test("protected business qualification runs only through the shared producer aft
     assert.ok(Object.hasOwn(producer.env || {}, name), name);
   }
 
-  const businessUpload = step(readbackJob, "Preserve Candidate-bound business qualification receipt");
+  const businessUpload = step(readbackJob, "Preserve Candidate-bound business qualification receipts");
   assert.equal(businessUpload.if, "always()");
   assert.equal(businessUpload.with["if-no-files-found"], "ignore");
-  assert.match(businessUpload.with.path, /business-qualification-evidence\/receipt\.json/);
+  assert.equal(businessUpload.with.path, "business-qualification-evidence/");
   assert.match(businessUpload.with.name, /cloud-business-qualification-/);
 
   const names = readbackJob.steps.map((value: any) => value.name);

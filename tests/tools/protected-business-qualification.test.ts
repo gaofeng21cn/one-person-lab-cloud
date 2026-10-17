@@ -8,6 +8,11 @@ import test from "node:test";
 
 import { candidateReceiptDigest } from "../../tools/cloud-candidate-receipt.ts";
 import {
+  DEPLOYED_PURCHASE_RECEIPT_KIND,
+  deployedAccountIdentityDigest,
+  validateDeployedPurchaseReceipt,
+} from "../../tools/deployed-workspace-purchase.ts";
+import {
   PROTECTED_BOUNDARY_FACTORY,
   PROTECTED_CUSTOMER_EMAIL,
   PROTECTED_CUSTOMER_PASSWORD,
@@ -35,6 +40,7 @@ import {
   validateBusinessQualificationReceipt,
 } from "../../tools/workspace-qualification-contract.ts";
 import {
+  ACCOUNT_EMAIL,
   ACCOUNT_ID,
   CLUSTER_ID,
   NAMESPACE,
@@ -117,6 +123,7 @@ test("the protected representation fails closed when the environment or a secret
   assert.deepEqual(protectedQualificationPrerequisites(valid), {
     environment: PROTECTED_QUALIFICATION_ENVIRONMENT,
     origin: OWNER_ORIGIN,
+    customerEmail: ACCOUNT_EMAIL,
   });
   for (const name of [
     PROTECTED_ENVIRONMENT_NAME,
@@ -515,6 +522,87 @@ test("the producer emits the shared Candidate-bound receipt through the real orc
   }
 });
 
+test("the producer invokes the deployed buyer and preserves its Candidate-bound purchase receipt", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "opl-protected-buyer-"));
+  try {
+    const fixture = await writeFixture(root);
+    const platform = createFixturePlatform();
+    const boundary = createFixtureBoundary(deploymentBinding(fixture.digest), platform);
+    const result = await runProtectedBusinessQualification(input(fixture.paths, fixture.digest), {
+      environment: protectedEnvironment(),
+      boundary,
+      wait: async () => {},
+    });
+    assert.equal(result.state, "settled");
+    assert.ok(result.purchaseReceipt);
+    const purchaseText = await readFile(result.purchaseReceiptPath, "utf8");
+    const purchase = validateDeployedPurchaseReceipt(JSON.parse(purchaseText));
+    assert.equal(purchase.kind, DEPLOYED_PURCHASE_RECEIPT_KIND);
+    assert.equal(purchase.candidate.receiptDigest, fixture.digest);
+    assert.equal(purchase.account.identityDigest, deployedAccountIdentityDigest(ACCOUNT_EMAIL));
+    assert.equal(
+      purchase.operation.idempotencyKey,
+      `deployed-workspace:${fixture.digest.slice("sha256:".length)}:protected-business-qualification`,
+    );
+    assert.equal(purchase.operation.resumed, false);
+    assert.deepEqual(purchase.mutations.observed, { purchases: 1 });
+    assert.equal(purchase.purchase.amountUsdMicros, QUOTE_MICROS);
+    assert.equal(result.receipt.operation.idempotencyKey, purchase.operation.idempotencyKey);
+    assert.equal(result.receipt.operation.operationId, purchase.operation.operationId);
+    assert.equal(result.receipt.operation.workspaceId, purchase.operation.workspaceId);
+    assert.equal(result.receipt.operation.purchaseReceiptId, purchase.operation.purchaseReceiptId);
+    assert.equal(result.receipt.mutations.observed.purchases, 1);
+    assert.equal(result.receipt.checks.purchase_issued, true);
+    assert.equal(result.receipt.checks.purchase_receipt_bound, true);
+    assert.equal(result.purchaseReceiptDigest, `sha256:${createHash("sha256").update(purchaseText).digest("hex")}`);
+    const summary = protectedBusinessQualificationSummary(result);
+    assert.equal(summary.purchaseReceiptDigest, result.purchaseReceiptDigest);
+    assert.equal(summary.purchaseArtifact, "receipt.purchase.json");
+    assert.equal(summary.businessQualification, false);
+    assert.equal(platform.state.purchases, 1);
+    assert.equal(platform.state.charges, 1);
+    assert.ok(platform.state.calls.includes("request:/api/auth/me"), "the buyer read the session account");
+    assert.ok(platform.state.calls.includes("request:/api/gateway/wallet"), "the buyer read the session wallet");
+    assert.equal(platform.state.calls.filter((call) => call === "purchase:issued").length, 1);
+    for (const forbidden of [
+      ACCOUNT_ID, ACCOUNT_EMAIL, OWNER_ORIGIN, CLUSTER_ID, NAMESPACE,
+      "workspace.qualification.invalid", "ap-guangzhou",
+    ]) {
+      assert.doesNotMatch(purchaseText, new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    }
+    assert.doesNotMatch(purchaseText, /password|secret|instance-token/i);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the deployed buyer refuses an account digest the supplied session does not match", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "opl-protected-buyer-mismatch-"));
+  try {
+    const fixture = await writeFixture(root);
+    const platform = createFixturePlatform();
+    const boundary = createFixtureBoundary(deploymentBinding(fixture.digest), platform);
+    const result = await runProtectedBusinessQualification(input(fixture.paths, fixture.digest), {
+      environment: protectedEnvironment({ [PROTECTED_CUSTOMER_EMAIL]: "other@example.invalid" }),
+      boundary,
+      wait: async () => {},
+    });
+    assert.equal(result.state, "failed");
+    assert.equal(result.reason, "account_binding_mismatch");
+    assert.equal(result.purchaseReceipt, null);
+    assert.equal(result.purchaseReceiptDigest, "");
+    const receipt = validateBusinessQualificationReceipt(JSON.parse(await readFile(fixture.paths.outputPath, "utf8")));
+    assert.equal(receipt.state, "failed");
+    assert.equal(receipt.reason, "account_binding_mismatch");
+    assert.equal(platform.state.purchases, 0);
+    assert.equal(platform.state.charges, 0);
+    assert.ok(platform.state.calls.includes("request:/api/auth/me"), "the buyer performed the account check");
+    await assert.rejects(stat(join(root, "evidence", "receipt.purchase.json")), /ENOENT/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a repeated protected delivery resumes the original order and emits the same settled shape", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "opl-protected-replay-"));
   try {
@@ -539,6 +627,17 @@ test("a repeated protected delivery resumes the original order and emits the sam
     assert.equal(platform.state.purchases, 1);
     assert.equal(platform.state.charges, 1);
     assert.equal(platform.state.calls.filter((call) => call === "purchase:issued").length, 1);
+    const firstPurchase = validateDeployedPurchaseReceipt(
+      JSON.parse(await readFile(join(root, "evidence", "first.purchase.json"), "utf8")),
+    );
+    const secondPurchase = validateDeployedPurchaseReceipt(
+      JSON.parse(await readFile(join(root, "evidence", "second.purchase.json"), "utf8")),
+    );
+    assert.equal(firstPurchase.operation.resumed, false);
+    assert.deepEqual(firstPurchase.mutations.observed, { purchases: 1 });
+    assert.equal(secondPurchase.operation.resumed, true);
+    assert.deepEqual(secondPurchase.mutations.observed, { purchases: 0 });
+    assert.equal(second.receipt.operation.idempotencyKey, secondPurchase.operation.idempotencyKey);
     assert.equal((await stat(secondOutput)).mode & 0o777, 0o600);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -568,6 +667,8 @@ test("a non-settled result is preserved as the shared receipt and is never summa
     assert.equal(summary.businessQualification, false);
     assert.equal(platform.state.purchases, 0);
     assert.equal(platform.state.charges, 0);
+    assert.ok(platform.state.calls.includes("request:/api/auth/me"), "the buyer checked the session before pricing");
+    assert.ok(platform.state.calls.includes("request:/api/gateway/wallet"), "the buyer read the wallet before pricing");
     assert.equal(platform.state.calls.filter((call) => call === "boundary:release").length, 1);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -601,6 +702,11 @@ test("the CLI loads the external boundary module and writes the receipt artifact
     const receipt = validateBusinessQualificationReceipt(JSON.parse(await readFile(fixture.paths.outputPath, "utf8")));
     assert.equal(receipt.candidate.receiptDigest, fixture.digest);
     assert.equal(receipt.provider, "tencent-tke");
+    const purchase = validateDeployedPurchaseReceipt(
+      JSON.parse(await readFile(join(root, "evidence", "receipt.purchase.json"), "utf8")),
+    );
+    assert.equal(purchase.candidate.receiptDigest, fixture.digest);
+    assert.equal(purchase.mutations.observed.purchases, 1);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

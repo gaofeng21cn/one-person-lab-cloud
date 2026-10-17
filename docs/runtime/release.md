@@ -157,6 +157,25 @@ builds the request with the shared `createQualificationRequest`, runs the shared
 `runWorkspaceQualification` through the `tencent-tke` adapter, and writes the
 shared `opl.workspace-qualification.purchase.v1` receipt.
 
+The orchestrator's purchase step delegates to the merged deployed buyer,
+`runDeployedWorkspacePurchase`. The producer hands it the authenticated owner
+transport from the opened provider scope and the protected origin, and the
+buyer performs the source-envelope account and wallet reads, the declared
+account email digest check, the shared quote policy and the single purchase or
+replay through the shared purchase core. The buyer's refusal codes are mapped
+onto the shared terminal reasons. The orchestrator consumes the buyer's bounded
+result and continues with the owner charge receipt, Workspace and Runtime
+readbacks, so the deployed buyer is actually exercised rather than copied or
+merely guarded.
+
+The buyer returns its own `opl.deployed-workspace-purchase.v1` receipt. It binds
+the exact Candidate, the declared account identity digest and the observed
+purchase count, and is preserved as `receipt.purchase.json` beside the
+qualification receipt. The orchestrator's operation identity in
+`receipt.json` is the buyer's platform order identity; the qualification request
+remains the admission, and the buyer's receipt remains a purchase record rather
+than a qualification claim.
+
 The protected runner supplies the Fabric/Instance boundary module named by
 `vars.OPL_QUALIFICATION_PROVIDER_BOUNDARY`; the module owns TKE reachability and
 the owner transport and receives the normalized deployment binding and protected
@@ -171,17 +190,18 @@ read`. A missing environment, variable, Secret, J0 receipt or boundary module
 fails closed with `external_prerequisite_absent` before a provider scope opens;
 the workflow does not create any of them.
 
-Only the orchestrator's actual result becomes the receipt state. A settled
-receipt is preserved, and a blocked, failed, unknown or recovery-required
-receipt is preserved before the workflow fails. Deployment health is recorded but
-never moves the business result. The artifact is
-`cloud-business-qualification-<run_id>-<run_attempt>` (`receipt.json`); the
-existing `cloud-customer-readback-<run_id>-<run_attempt>` artifact is unchanged.
-The receipt is Candidate-bound and contains no raw Secret, Key, customer
-identifier, origin, cluster, namespace or entry URL. It covers the declared
-Workspace purchase only: `uncovered.businessQualification` is `false`, and it
-does not admit a release. #928 owns release admission and the remaining legacy
-producer/consumer migration.
+Only the shared orchestrator's actual qualification result becomes the
+qualification receipt state. A settled receipt is preserved, and a blocked,
+failed, unknown or recovery-required receipt is preserved before the workflow
+fails. Deployment health is recorded but never moves the business result. The
+artifact is `cloud-business-qualification-<run_id>-<run_attempt>` and contains
+`receipt.json` plus `receipt.purchase.json` when the buyer reached a receipt;
+the existing `cloud-customer-readback-<run_id>-<run_attempt>` artifact is
+unchanged. Both receipts are Candidate-bound and contain no raw Secret, Key,
+customer identifier, origin, cluster, namespace or entry URL. They cover the
+declared Workspace purchase only: `uncovered.businessQualification` is `false`,
+and they do not admit a release. #928 owns release admission and the remaining
+legacy producer/consumer migration.
 
 This section describes source wiring, not a protected run. The environment,
 Secrets, J0 producer and TKE boundary are external and were absent while this
@@ -237,12 +257,16 @@ Product tree, and index/platform digests. All evidence must bind the same Cloud
 Candidate while retaining its owner-specific Workspace image and Provider
 Profile facts.
 
-**Current external dependency.** The protected producer
-`.github/workflows/cloud-business-qualification.yml` does not exist yet
-(Cloud #926). Until it executes and emits the receipt for the exact Candidate,
-a formal Release cannot satisfy the Cloud business qualification class. This
-source change makes that dependency explicit; it does not claim a real
-qualification, a Release run, or production evidence.
+**Current external dependency.** The #926 producer exists in source
+(`tools/protected-business-qualification.ts`, driven by
+`cloud-business-readback.yml`; see [Protected Cloud Business
+Qualification](#protected-cloud-business-qualification)), but the release
+contract's dedicated `.github/workflows/cloud-business-qualification.yml` entry
+and artifact binding do not exist yet. Until a protected run emits the settled
+receipt for the exact Candidate and the #928 consumer binds that producer
+workflow/artifact, a formal Release cannot satisfy the Cloud business
+qualification class. This source change makes that dependency explicit; it does
+not claim a real qualification, a Release run, or production evidence.
 The repository owner or `RenDeHuang` then explicitly dispatches the Release
 workflow from Cloud `main`; the original actor and current triggering actor must
 match. Publication must promote the exact qualified image bytes and must fail

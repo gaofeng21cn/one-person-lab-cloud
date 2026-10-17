@@ -6,9 +6,13 @@
  * Candidate receipt digest, deployment binding, account/product declarations and
  * external J0 READY receipt into the shared `createQualificationRequest`, runs the
  * shared `runWorkspaceQualification` through the `tencent-tke` adapter, and
- * writes the shared Candidate-bound receipt. The account, wallet, quote,
- * purchase, charge, Workspace and Runtime facts are read by the orchestrator
- * through the owner APIs; nothing here decodes or reimplements them.
+ * writes the shared Candidate-bound receipt. The purchase step delegates to the
+ * merged deployed buyer, `runDeployedWorkspacePurchase`: that buyer owns the
+ * source-envelope account/wallet reads, the declared-account digest check, the
+ * quote and the bounded purchase. The orchestrator consumes the buyer's result
+ * and reads the charge, Workspace and Runtime facts through the owner APIs;
+ * nothing here decodes or reimplements them. The buyer's purchase receipt is
+ * preserved beside the qualification receipt.
  *
  * The provider boundary is not implemented here either. The protected
  * Fabric/Instance runner supplies one module that owns TKE reachability and the
@@ -27,12 +31,22 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, readFile, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { validateCloudInstallationIdentity } from "./cloud-business-readback.ts";
 import { candidateReceiptDigest, validateCloudCandidateReceipt } from "./cloud-candidate-receipt.ts";
-import { runWorkspaceQualification } from "./workspace-qualification-orchestrator.ts";
+import {
+  assertDeployedPurchaseRequest,
+  deployedAccountIdentityDigest,
+  deployedPurchaseIdempotencyKey,
+  runDeployedWorkspacePurchase,
+  validateDeployedPurchaseReceipt,
+} from "./deployed-workspace-purchase.ts";
+import {
+  runWorkspaceQualification,
+  type QualificationPurchaseCaller,
+} from "./workspace-qualification-orchestrator.ts";
 import {
   TENCENT_TKE_PROVIDER,
   createTencentTkeQualificationAdapter,
@@ -46,8 +60,10 @@ import {
   hasExactKeys,
   j0ReadyReceiptError,
   qualificationProviderProfile,
+  qualificationWorkspaceName,
   validateBusinessQualificationReceipt,
 } from "./workspace-qualification-contract.ts";
+import { launchOperationId } from "./workspace-purchase-core.ts";
 
 // The one protected environment the workflow may bind. The workflow sets this
 // declaration explicitly; the environment's reviewer protection is enforced by
@@ -82,6 +98,10 @@ export const PROTECTED_QUALIFICATION_SCOPE = Object.freeze({
   workspaceDeletions: 0,
   managedKeys: 0,
 });
+
+// The buyer's declared identity is stable across replays and Candidate-scoped
+// by the shared buyer key derivation. It is not a customer identifier.
+export const PROTECTED_DEPLOYED_PURCHASE_IDENTITY = "protected-business-qualification";
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const DEPLOYMENT_KEYS = [
@@ -135,6 +155,9 @@ export type ProtectedBusinessQualificationResult = Readonly<{
   reason: string;
   receipt: Record<string, any>;
   receiptDigest: string;
+  purchaseReceipt: Record<string, any> | null;
+  purchaseReceiptDigest: string;
+  purchaseReceiptPath: string;
   candidateReceiptDigest: string;
   installationReceiptDigest: string;
 }>;
@@ -197,7 +220,11 @@ export function protectedQualificationPrerequisites(environment: ProtectedEnviro
   if (!nonEmpty(environment[PROTECTED_CUSTOMER_EMAIL])) externalPrerequisiteAbsent(PROTECTED_CUSTOMER_EMAIL);
   if (!nonEmpty(environment[PROTECTED_CUSTOMER_PASSWORD])) externalPrerequisiteAbsent(PROTECTED_CUSTOMER_PASSWORD);
   if (!nonEmpty(environment[PROTECTED_INSTANCE_EVIDENCE_TOKEN], 4096)) externalPrerequisiteAbsent(PROTECTED_INSTANCE_EVIDENCE_TOKEN);
-  return Object.freeze({ environment: bound, origin });
+  return Object.freeze({
+    environment: bound,
+    origin,
+    customerEmail: String(environment[PROTECTED_CUSTOMER_EMAIL]).trim(),
+  });
 }
 
 async function readRequiredFile(path: string, label: string): Promise<string> {
@@ -444,6 +471,77 @@ export function buildProtectedQualificationRequest({
   });
 }
 
+/*
+ * The buyer request the producer's purchase step declares.
+ *
+ * The buyer owns the source-envelope account/wallet reads, the declared
+ * account email digest, the quote and the purchase sequence. This builder only
+ * names the declarations the protected flow already holds; it does not read an
+ * owner API or perform a purchase. The buyer key is Candidate-scoped, so a
+ * replay for another Candidate cannot address this order.
+ */
+export function buildProtectedDeployedPurchaseRequest({
+  candidateDigest,
+  environment,
+  accountId,
+  packageId,
+}: {
+  candidateDigest: string;
+  environment: { origin: string; customerEmail: string };
+  accountId: string;
+  packageId: string;
+}) {
+  const idempotencyIdentity = PROTECTED_DEPLOYED_PURCHASE_IDENTITY;
+  const idempotencyKey = deployedPurchaseIdempotencyKey(candidateDigest, idempotencyIdentity);
+  const operationId = launchOperationId(accountId, idempotencyKey);
+  const request = {
+    baseURL: environment.origin,
+    authorityClass: "production",
+    candidateReceiptDigest: candidateDigest,
+    accountEmailIdentityDigest: deployedAccountIdentityDigest(environment.customerEmail),
+    packageId,
+    autoRenew: false,
+    idempotencyIdentity,
+    workspaceName: qualificationWorkspaceName(operationId),
+  };
+  assertDeployedPurchaseRequest(request);
+  return Object.freeze(request);
+}
+
+/*
+ * The buyer's refusal is an outcome of the protected purchase step, not an
+ * unclassified crash. Map its typed codes onto the shared orchestrator's
+ * terminal reasons so the qualification receipt keeps the distinction between
+ * a refused identity, an unavailable readback and a lost response.
+ */
+function protectedPurchaseFailure(error): Error {
+  const code = String((error as { code?: string } | null)?.code || "");
+  const message = String((error as { message?: string } | null)?.message || "deployed purchase failed");
+  let mapped = "owner_readback_unavailable";
+  if (code === "deployed_purchase_account_mismatch") mapped = "account_binding_mismatch";
+  else if (code === "deployed_purchase_target_invalid" || code === "deployed_purchase_caller_invalid") {
+    mapped = "provider_scope_unavailable";
+  } else if (code === "deployed_purchase_operation_mismatch" || code === "deployed_purchase_replay_conflict") {
+    mapped = "launch_identity_mismatch";
+  } else if (code === "deployed_purchase_receipt_missing" || code === "deployed_purchase_receipt_invalid") {
+    mapped = "purchase_receipt_missing";
+  } else if (code === "deployed_purchase_quote_unavailable" || code === "deployed_purchase_price_unavailable") {
+    mapped = "quote_invalid";
+  } else if (/wallet cannot fund/i.test(message)) {
+    mapped = "wallet_cannot_fund";
+  }
+  const failure = new Error(`${code || "deployed_purchase_failed"}: ${message}`);
+  (failure as { code?: string }).code = mapped;
+  (failure as { cause?: unknown }).cause = error;
+  return failure;
+}
+
+export function purchaseReceiptPath(outputPath: string): string {
+  const normalized = String(outputPath || "").trim();
+  const extension = extname(normalized) || ".json";
+  return join(dirname(normalized), `${basename(normalized, extname(normalized))}.purchase${extension}`);
+}
+
 export async function emitBusinessQualificationReceipt(path: string, text: string) {
   const normalized = String(path || "").trim();
   if (!normalized) externalPrerequisiteAbsent("business qualification receipt output path");
@@ -497,12 +595,63 @@ export async function runProtectedBusinessQualification(
     packageId: input.packageId,
     authorityClass: input.authorityClass,
   });
+  let deployedPurchaseRequest;
+  try {
+    deployedPurchaseRequest = buildProtectedDeployedPurchaseRequest({
+      candidateDigest: candidate.digest,
+      environment: protectedEnvironment,
+      accountId: input.accountId,
+      packageId: input.packageId,
+    });
+  } catch {
+    invalid("protected deployed purchase declaration is invalid");
+  }
   const boundary = dependencies.boundary ?? await loadProtectedProviderBoundary(input.boundaryModulePath, {
     deployment,
     environment,
   });
   const adapter = createTencentTkeQualificationAdapter({ deployment, boundary });
-  const result = await runWorkspaceQualification({ request, adapter }, { wait: dependencies.wait });
+  let purchaseReceipt: Record<string, any> | null = null;
+  const purchase = Object.freeze({
+    async run(caller: QualificationPurchaseCaller) {
+      let receipt;
+      try {
+        receipt = await runDeployedWorkspacePurchase(deployedPurchaseRequest, {
+          origin: protectedEnvironment.origin,
+          http: caller.http,
+          auth: caller.auth,
+          wait: caller.wait,
+        });
+        validateDeployedPurchaseReceipt(receipt);
+      } catch (error) {
+        throw protectedPurchaseFailure(error);
+      }
+      purchaseReceipt = receipt;
+      return Object.freeze({
+        idempotencyKey: receipt.operation.idempotencyKey,
+        operationId: receipt.operation.operationId,
+        workspaceId: receipt.operation.workspaceId,
+        purchaseReceiptId: receipt.operation.purchaseReceiptId,
+        resumed: receipt.operation.resumed,
+        amountUsdMicros: receipt.purchase.amountUsdMicros,
+        purchases: receipt.mutations.observed.purchases,
+        candidateReceiptDigest: receipt.candidate.receiptDigest,
+        product: Object.freeze({ ...receipt.product }),
+      });
+    },
+  });
+  const result = await runWorkspaceQualification(
+    { request, adapter },
+    { wait: dependencies.wait, purchase },
+  );
+  let purchaseArtifactPath = "";
+  let purchaseArtifactDigest = "";
+  if (purchaseReceipt) {
+    const purchaseText = `${JSON.stringify(purchaseReceipt, null, 2)}\n`;
+    purchaseArtifactPath = purchaseReceiptPath(input.outputPath);
+    purchaseArtifactDigest = `sha256:${createHash("sha256").update(purchaseText).digest("hex")}`;
+    await emitBusinessQualificationReceipt(purchaseArtifactPath, purchaseText);
+  }
   const receipt = validateBusinessQualificationReceipt(result.receipt) as Record<string, any>;
   const receiptText = `${JSON.stringify(receipt, null, 2)}\n`;
   await emitBusinessQualificationReceipt(input.outputPath, receiptText);
@@ -511,6 +660,9 @@ export async function runProtectedBusinessQualification(
     reason: String(receipt.reason),
     receipt,
     receiptDigest: `sha256:${createHash("sha256").update(receiptText).digest("hex")}`,
+    purchaseReceipt,
+    purchaseReceiptDigest: purchaseArtifactDigest,
+    purchaseReceiptPath: purchaseArtifactPath,
     candidateReceiptDigest: candidate.digest,
     installationReceiptDigest: String(installation.identity.receiptDigest),
   });
@@ -557,9 +709,11 @@ export type ProtectedBusinessQualificationSummary = Readonly<{
   scope: string;
   businessQualification: false;
   receiptDigest: string;
+  purchaseReceiptDigest: string;
   candidateReceiptDigest: string;
   installationReceiptDigest: string;
   artifact: "receipt.json";
+  purchaseArtifact: string;
 }>;
 
 export function protectedBusinessQualificationSummary(
@@ -572,9 +726,11 @@ export function protectedBusinessQualificationSummary(
     scope: String(result.receipt.scope),
     businessQualification: false,
     receiptDigest: result.receiptDigest,
+    purchaseReceiptDigest: result.purchaseReceiptDigest,
     candidateReceiptDigest: result.candidateReceiptDigest,
     installationReceiptDigest: result.installationReceiptDigest,
     artifact: "receipt.json",
+    purchaseArtifact: result.purchaseReceiptPath ? basename(result.purchaseReceiptPath) : "",
   });
 }
 

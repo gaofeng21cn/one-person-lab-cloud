@@ -171,10 +171,15 @@ export function createFixturePlatform({ walletMicros = "999999999", quoteMicros 
       state.orders.set(operationId, {
         operationId,
         workspaceId,
+        accountId: ACCOUNT_ID,
+        packageId: String(init.body?.packageId || ""),
+        autoRenew: init.body?.autoRenew === true,
+        name: String(init.body?.name || ""),
         status: "succeeded",
         phase: "succeeded",
         receiptId: `receipt-${operationId.slice(-18)}`,
         provisioningMode: "resource_only",
+        totalChargeUsdMicros: state.quote,
         computeAllocationId: "ca-qualification-0001",
         storageId: "st-qualification-0001",
         attachmentId: "at-qualification-0001",
@@ -239,6 +244,12 @@ export function createFixturePlatform({ walletMicros = "999999999", quoteMicros 
 
   const request = async (path: string, _init: any = {}) => {
     state.calls.push(`request:${path}`);
+    if (path === "/api/auth/me") {
+      return { response: { status: 200 }, payload: envelope({ accountId: ACCOUNT_ID, email: ACCOUNT_EMAIL, role: "owner", status: "active" }) };
+    }
+    if (path === "/api/gateway/wallet") {
+      return { response: { status: 200 }, payload: envelope({ usdMicros: state.wallet }) };
+    }
     if (/^\/api\/workspace-launches\/[^/]+$/.test(path)) {
       const admitted = order(decodeURIComponent(path.split("/").pop() as string));
       return admitted ? { response: { status: 200 }, payload: admitted } : { response: { status: 404 }, payload: null };

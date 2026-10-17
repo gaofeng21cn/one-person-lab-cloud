@@ -19,20 +19,26 @@ Instance installation, or a Product Release. The target boundary is in
 
 ## Protected Business Qualification Source Wiring (2026-10-18)
 
-Against `6065a008` (the head of open PR #940, carrying #937/#942/#940), this
-change adds `tools/protected-business-qualification.ts` and its fixture test, and
-wires the existing protected `cloud-business-readback.yml` workflow to call only
-that producer for the business qualification decision. The producer turns the
+Against `3848b413` (main after #944/#946), this change adds
+`tools/protected-business-qualification.ts` and its fixture tests, and wires the
+existing protected `cloud-business-readback.yml` workflow to call only that
+producer for the business qualification decision. The producer turns the
 declared Candidate receipt digest, the deployment binding, the account/package
 declarations and the external J0 READY receipt into the shared
 `createQualificationRequest`, runs the shared `runWorkspaceQualification` through
 the `tencent-tke` adapter with the protected Fabric/Instance boundary, and emits
-the shared Candidate-bound receipt. The existing `customer_reads` producer and
-receipt are unchanged; [Release
+the shared Candidate-bound receipt. Its purchase step calls the merged deployed
+buyer, `runDeployedWorkspacePurchase`, with the opened owner transport and the
+protected origin; the buyer owns the source-envelope account/wallet reads, the
+declared-account digest check and the bounded purchase, and the orchestrator
+consumes that result before the owner charge/delivery readbacks. The buyer's
+`opl.deployed-workspace-purchase.v1` receipt is preserved beside the
+qualification receipt. The existing `customer_reads` producer and receipt are
+unchanged; [Release
 operations](runtime/release.md#protected-cloud-business-qualification) owns the
 procedure.
 
-Local focused verification executes 46 tests with zero failures, skips or TODOs:
+Local focused verification executes 32 tests with zero failures, skips or TODOs:
 
 ```sh
 node tools/verify-local.ts --focused --base origin/main \
@@ -40,18 +46,19 @@ node tools/verify-local.ts --focused --base origin/main \
 ```
 
 The checks cover the shared orchestrator/adapter path with a local owner-API
-fixture, Candidate/deployment/installation/J0 validation, absent-prerequisite
-refusal before a provider scope opens, non-settled receipt preservation, replay
-idempotency, the CLI boundary-module load, and the existing workflow/readback
-suites. The shared flow tests carried by the #940 base are also selected by the
-branch diff and pass.
+fixture, the producer invoking the real deployed buyer and preserving its
+Candidate-bound receipt, the buyer's account-digest refusal, Candidate/
+deployment/installation/J0 validation, absent-prerequisite refusal before a
+provider scope opens, non-settled receipt preservation, replay idempotency, the
+CLI boundary-module load, and the existing workflow/readback suites. The #940
+adapter tests are on `main` and are not re-selected by this focused diff.
 
 The `cloud-business-qualification` environment, the independent customer
 credentials, `OPL_INSTANCE_EVIDENCE_TOKEN`, the external J0 READY producer and the
 protected TKE boundary are external and absent; the workflow fails closed with
 `external_prerequisite_absent` and no protected run or settled business receipt
-is claimed. #926 remains open. The receipt covers only the declared Workspace
-purchase (`uncovered.businessQualification: false`); it does not admit a release,
+is claimed. #926 remains open. The receipts cover only the declared Workspace
+purchase (`uncovered.businessQualification: false`); they do not admit a release,
 and #928 owns that consumer change. Existing Instance qualification-decision and
 Workspace gates remain required.
 
@@ -121,14 +128,20 @@ It runs the product-boundary validator, the development-tools typecheck, the
 focused contract, workflow, evidence and installation tests, and Git whitespace
 checks.
 
-**The #926 producer is still absent.** `.github/workflows/cloud-business-qualification.yml`
-does not exist, so no protected Cloud business qualification receipt has been
-produced for any Candidate and a Release cannot satisfy the new class. The
+**The #926 producer now exists in source** (`tools/protected-business-qualification.ts`,
+driven by the existing `cloud-business-readback.yml`; see [Protected Business
+Qualification Source Wiring](#protected-business-qualification-source-wiring-2026-10-18)),
+but no protected Cloud business qualification receipt has been produced for any
+Candidate. The release contract's dedicated
+`.github/workflows/cloud-business-qualification.yml` entry still does not exist,
+and the #928 consumer has not yet bound this producer workflow/artifact; a
+Release therefore cannot satisfy the new class until a protected run emits the
+settled receipt and that consumer migration is complete. The
 manifest/provenance sealing, contract and workflow changes are source-only; no
 Release dispatch, protected run or production evidence is claimed. All retained
 Instance qualification-decision, Workspace, deployment and customer-read gates
 stay required. #872 remains incomplete, and #928 stays open until the real
-producer is present.
+protected receipt is admitted.
 
 ## Team Workspace Transaction Reads (2026-10-16)
 
