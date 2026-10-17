@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
-import { submitWorkspaceLaunch } from "../../tools/workspace-purchase-core.ts";
+import { launchOperationId, launchWorkspaceId, submitWorkspaceLaunch } from "../../tools/workspace-purchase-core.ts";
 
 // The purchase sequence is the invariant. It runs against whatever origin the
 // caller hands it, so these tests pin the sequence itself and never a deployment.
@@ -158,4 +159,43 @@ test("an unbounded poll is refused rather than left to run forever", async () =>
     }),
     /did not reach succeeded within 180 seconds/,
   );
+});
+
+// The identifiers are an interop contract with the Control Plane, not an
+// internal detail. These two literals are the platform's own output for the
+// inputs named, derived from the zero-byte-after-every-part rule at
+// services/control-plane/internal/server/app_state.go:502 and the two mint
+// sites at workspace_launch.go:97 and :51. If either side changes, this fails
+// here rather than as a buyer refusing a correct answer.
+test("the derived identities are the ones the Control Plane mints for the same inputs", () => {
+  const accountId = "acct-test";
+  const idempotencyKey = "deployed-workspace:declared-identity";
+  const operationId = launchOperationId(accountId, idempotencyKey);
+  assert.equal(operationId, "workspace-launch-d8e76ea5e172009490");
+  assert.equal(launchWorkspaceId(accountId, operationId), "ws-c3d9e772d4d4708dfa");
+});
+
+test("a missing trailing separator is a different identity, so the rule cannot be approximated", () => {
+  // Joining the parts with separators between them but not after the last one
+  // yields a different operation. That is the exact mistake this pins: it would
+  // make every purchase the platform accepts refusable.
+  const naiveJoin = (parts) => createHash("sha1").update(parts.join("\0")).digest("hex").slice(0, 18);
+  const accountId = "acct-test";
+  const key = "declared-identity";
+  assert.notEqual(
+    launchOperationId(accountId, key),
+    `workspace-launch-${naiveJoin([accountId, key])}`,
+  );
+  assert.notEqual(
+    launchWorkspaceId(accountId, launchOperationId(accountId, key)),
+    `ws-${naiveJoin(["workspace-launch-v2", accountId, launchOperationId(accountId, key)])}`,
+  );
+});
+
+test("the two identities are both eighteen hex characters, because the platform truncates there", () => {
+  for (const accountId of ["acct-a", "acct-test", "acct-" + "x".repeat(40)]) {
+    const operationId = launchOperationId(accountId, "k");
+    assert.equal(operationId.slice("workspace-launch-".length).length, 18);
+    assert.equal(launchWorkspaceId(accountId, operationId).slice("ws-".length).length, 18);
+  }
 });

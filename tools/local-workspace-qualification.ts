@@ -11,7 +11,7 @@ import { parseDocument } from "yaml";
 // The purchase sequence is the invariant and is owned by one module. Everything
 // else in this file either composes it or asserts a result, and neither of those
 // belongs to the purchase itself.
-import { submitWorkspaceLaunch, waitForLaunch } from "./workspace-purchase-core.ts";
+import { priceWorkspaceLaunch, stableID, submitWorkspaceLaunch, waitForLaunch } from "./workspace-purchase-core.ts";
 
 import {
   collectLocalJ1RecoveryAuthority,
@@ -466,14 +466,10 @@ export async function unusedPort() {
   return port;
 }
 
-export function stableID(...parts) {
-  const hash = createHash("sha1");
-  for (const part of parts) {
-    hash.update(String(part));
-    hash.update(Buffer.from([0]));
-  }
-  return hash.digest("hex");
-}
+// The platform's identifier derivation is owned by the purchase core, because a
+// buyer that derived it differently would refuse the platform's own answer. It
+// is re-exported here because this module is where its callers already reach.
+export { stableID };
 
 async function writeJSONAtomic(path, value) {
   await mkdir(dirname(path), { recursive: true });
@@ -994,14 +990,12 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
       readAllBillingReceipts(http, auth)
     ]);
     onStage("pricing_preview");
-    const pricing = (await http.json("/api/pricing/preview", {
-      method: "POST", body: { resourceType: "workspace", packageId: "basic" }
-    }, auth)).payload;
-    const amountUsdMicros = String(pricing?.totalChargeUsdMicros || "");
-    if (pricing?.resourceType !== "workspace" || pricing?.packageId !== "basic" || pricing?.currency !== "USD" ||
-      !/^[1-9][0-9]*$/.test(amountUsdMicros) || BigInt(beforeMicros) < BigInt(amountUsdMicros)) {
-      throw new Error("qualification quote is invalid or wallet is insufficient");
-    }
+    const amountUsdMicros = priceWorkspaceLaunch({
+      pricing: (await http.json("/api/pricing/preview", {
+        method: "POST", body: { resourceType: "workspace", packageId: "basic" }
+      }, auth)).payload,
+      walletUsdMicros: beforeMicros,
+    });
     onStage("workspace_launch");
     launchSubmitted = true;
     // The purchase itself is the shared invariant. What differs across authority
@@ -1726,13 +1720,12 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
     if (!/^[1-9][0-9]*$/.test(beforeMicros)) throw new Error("qualification wallet readback is invalid");
 
     stage = "workspace_launch";
-    const pricing = (await http.json("/api/pricing/preview", {
-      method: "POST", body: { resourceType: "workspace", packageId: "basic" }
-    }, auth)).payload;
-    const amountUsdMicros = String(pricing?.totalChargeUsdMicros || "");
-    if (!/^[1-9][0-9]*$/.test(amountUsdMicros) || BigInt(beforeMicros) < BigInt(amountUsdMicros)) {
-      throw new Error("qualification quote is invalid or wallet is insufficient");
-    }
+    const amountUsdMicros = priceWorkspaceLaunch({
+      pricing: (await http.json("/api/pricing/preview", {
+        method: "POST", body: { resourceType: "workspace", packageId: "basic" }
+      }, auth)).payload,
+      walletUsdMicros: beforeMicros,
+    });
     const { receiptId } = await submitWorkspaceLaunch({
       http, auth, name: `Local qualification ${suffix}`, idempotencyKey: launchKey,
       expectedOperationId: operationId, expectedWorkspaceId: workspaceId,

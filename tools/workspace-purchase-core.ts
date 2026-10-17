@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 /*
  * The Workspace purchase sequence, and nothing else.
  *
@@ -26,8 +28,58 @@ const LAUNCH_POLL_INTERVAL_MS = 1_000;
 const LAUNCH_SUCCEEDED = "succeeded";
 const LAUNCH_SUCCEEDED_STAGE = "succeeded";
 const LAUNCH_STOPPED = ["manual_review", "failed", "refunded"];
+const PRICE_MICROS = /^[1-9][0-9]*$/;
 
 const defaultWait = (milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
+
+/*
+ * The platform's own identifier derivation, byte for byte.
+ *
+ * The Control Plane mints an operation and a Workspace id from a salted-free
+ * SHA-1 over the parts it names, writing a zero byte after every part including
+ * the last, and taking the first eighteen hex characters. A buyer that derived
+ * these differently would refuse the platform's own answer, so this is the one
+ * place the derivation is written and both the local harness and the deployed
+ * entry call it.
+ */
+export function stableID(...parts) {
+  const hash = createHash("sha1");
+  for (const part of parts) {
+    hash.update(String(part));
+    hash.update(Buffer.from([0]));
+  }
+  return hash.digest("hex");
+}
+
+// The identities the platform derives for one declared command. Both are
+// announced before the purchase is issued, so an answer belonging to some other
+// order is refused instead of being followed.
+export const launchOperationId = (accountID, idempotencyKey) => `workspace-launch-${stableID(accountID, idempotencyKey).slice(0, 18)}`;
+export const launchWorkspaceId = (accountID, operationId) => `ws-${stableID("workspace-launch-v2", accountID, operationId).slice(0, 18)}`;
+
+/*
+ * One quote policy for every buyer.
+ *
+ * The platform prices the launch, so a buyer never computes a price; it only has
+ * to decide whether the quote it was handed is a quote for the thing it declared
+ * and whether the wallet can fund it. A quote that does not name the declared
+ * resource, the declared package and USD is not a price this purchase may act
+ * on, and a wallet that cannot answer is not a large balance. Both arms of the
+ * local harness and the deployed entry use this one function, so a purchase can
+ * never mean two different things depending on who made it.
+ */
+export function priceWorkspaceLaunch({ pricing, walletUsdMicros, packageId = "basic" }) {
+  const amountUsdMicros = String(pricing?.totalChargeUsdMicros || "");
+  if (pricing?.resourceType !== "workspace" || pricing?.packageId !== packageId || pricing?.currency !== "USD" ||
+      !PRICE_MICROS.test(amountUsdMicros)) {
+    throw new Error("workspace launch quote is invalid");
+  }
+  const walletMicros = String(walletUsdMicros || "");
+  if (!PRICE_MICROS.test(walletMicros) || BigInt(walletMicros) < BigInt(amountUsdMicros)) {
+    throw new Error("workspace launch wallet cannot fund the quote");
+  }
+  return amountUsdMicros;
+}
 
 // The admitted order followed through its own declared stage order until it
 // reports a terminal success. A bounded window, and an order that never reaches
