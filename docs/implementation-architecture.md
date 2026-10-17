@@ -329,16 +329,16 @@ authority: Sub2API remains the wallet owner. Team Workspace transactions use a
 separate Gateway/BFF reader bound to the live session's Tenant and owner/admin
 role; they are not the personal history reader or a replacement Ledger.
 
-Key list/detail, per-Key usage and available-group callers still use retained
-`/api/gateway/*` adapters, which require a delegated Sub2API user credential.
-CloudIdentity deliberately does not store that login credential. Its configured
-administrative directory identity is not a user-session substitute. Official
-Sub2API has an administrative user-key list and usage APIs, but the available-
-groups decision also consumes active subscriptions, exclusive/public-group
-rules and user-specific rates. Migrating this panel requires an actual bounded
-owner read contract, without copying those entitlement decisions into Cloud.
-Operator panels and legacy Workspace maintenance also keep their retained
-Account authorization.
+Key list/detail, per-Key usage, available-group and personal balance-history and
+endpoint callers now read session-bound BFF routes under the cloud identity; the
+legacy identity keeps the retained `/api/gateway/*` adapters. The Gateway owner
+holds the delegated Sub2API credential for those personal reads, so CloudIdentity
+does not store the Sub2API login credential and its configured administrative
+directory identity is not a user-session substitute. The available-groups
+decision still consumes active subscriptions, exclusive/public-group rules and
+user-specific rates inside the Gateway owner; Console does not copy those
+entitlement decisions. Operator panels and legacy Workspace maintenance keep
+their retained Account authorization.
 
 The current identity and writer boundary is:
 
@@ -352,6 +352,7 @@ The current identity and writer boundary is:
 | Team Workspace transactions | Gateway reads original charge/refund records through BFF under the current Tenant owner/admin role, including retired bindings and deleted-Workspace history | Original receipt references and confirmed/requested/unknown states are preserved. A separate typed Ledger reader returns existing funded-charge Receipt, WalletOperation and accepted Quote under fresh Tenant authorization; private execution evidence keeps its actor fence. Missing receipt kinds return unavailable |
 | Personal balance history and Gateway endpoint | Session-bound BFF calls the retained provider adapter using the proven logged-in User | Missing upstream data is unavailable, never a successful empty balance history |
 | Announcements and read acknowledgements | BFF calls the retained publication/ACK owner with live identity proof; proven historical ACKs retain their original timestamps | No Tenant membership or OCI destination is required for personal announcements; installation still needs the independent transport material |
+| Package pricing catalog and preview | Legacy identity only: retained Control Plane `/api/pricing/*`. A CloudIdentity build records `pricing_catalog_owner_unavailable` and prices through the Resource Catalog plan reads and `POST /api/v2/quotes` | Cloud has no package-pricing catalog owner yet; the retained package routes must never be called from a CloudIdentity session |
 
 The Tenant and Gateway databases have separate migrations, connection pools and
 writers even though they share a transport principal and deployment unit. A

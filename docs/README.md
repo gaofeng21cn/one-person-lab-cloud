@@ -100,6 +100,7 @@ cannot yet follow is an explicit roadmap gap, not a competing SSOT.
 - [Product release operations](./runtime/release.md)
 - [Instance business-path retirement inventory](./implementation/instance-business-retirement-inventory.md)
 - [Console browser lifecycle](./implementation/console.md)
+- [Console customer read inventory (#840)](./implementation/840-console-customer-reads.md)
 - [Launch recovery reference](./implementation/workspace-launch-recovery.md)
 - [Workspace Runtime access](./implementation/workspace-runtime-access.md)
 - [Workspace image lifecycle](./implementation/workspace-images.md)

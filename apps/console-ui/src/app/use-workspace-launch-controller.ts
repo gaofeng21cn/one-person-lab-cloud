@@ -19,7 +19,8 @@ import type {
   RuntimeVersionDTO,
   WorkspaceLaunchResponse
 } from "../api/dtos.ts";
-import { getPricingCatalog, previewPricing } from "../api/console-read-api.ts";
+import { getPricingCatalog, packagePricingReadPlan, previewPricing } from "../api/console-read-api.ts";
+import { cloudIdentity } from "./console-identity.ts";
 import {
   createAgentWorkspace,
   createWorkspaceQuote,
@@ -220,13 +221,25 @@ export function useWorkspaceLaunchController({
     intent.current = null;
   };
 
-  // The Control Plane pricing routes are the authority for the package plans and
-  // for every price shown before confirmation. A package is only offered when the
-  // owner reports a fabric compute pool for it, so a plan can read back as
-  // unavailable and earn no preview. A plan the owner did not price stays
-  // unpriced, and an unread price is reported through catalog.error so the page
-  // says so and offers a retry instead of leaving a dead button unexplained.
+  // The legacy package pricing routes are the authority for the package plans and
+  // for every price shown before confirmation. They require a retained Control
+  // Plane session, so a CloudIdentity build must not call them: Cloud has no
+  // package-pricing catalog owner yet, and the cloud launch surface prices the
+  // same purchase through the Resource Catalog quote instead. The refusal is an
+  // explicit unavailable state, never a fallback to the session the build does
+  // not have. A package is only offered when the owner reports a fabric compute
+  // pool for it, so a plan can read back as unavailable and earn no preview. A
+  // plan the owner did not price stays unpriced, and an unread price is reported
+  // through catalog.error so the page says so and offers a retry instead of
+  // leaving a dead button unexplained.
   const loadPricingCatalog = async (generation: number, activeSession: AuthSession) => {
+    const plan = packagePricingReadPlan(cloudIdentity);
+    if (plan.state === "unavailable") {
+      if (!isRequestCurrent(generation, activeSession.user.id)) return;
+      setCatalog({ value: null, loading: false, error: plan.reasonCode });
+      setPreviews({});
+      return;
+    }
     setCatalog((current) => ({ ...current, loading: true, error: "" }));
     try {
       const priced = await getPricingCatalog();

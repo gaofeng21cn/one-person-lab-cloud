@@ -44,12 +44,20 @@ Missing owner maintenance routes remain a [roadmap gap](../roadmap.md#cloud-iden
 Gateway Account Read's wallet projection follows the same baked identity as the
 reader: a cloud build commits the Gateway owner's envelope, a legacy build the
 retained Sub2API envelope, and the apply guard refuses the other identity's
-answer. Gateway Account Read's account-usage, balance-history and endpoint
-projections, Gateway Usage, Billing, announcement and operator controllers keep
-their retained Control Plane `/api/*` adapters in both identity builds. The
-launch flow's own BFF wallet/catalog read is a separate caller and does not go
-through Gateway Account Read. This composition does not prove that a deployment
-exposes or authorizes all retained APIs for a CloudIdentity session.
+answer. Under the cloud identity, account usage, balance history, the Gateway
+endpoint, personal Keys, groups and per-Key usage also read `/api/v2/*` BFF
+routes; Billing and announcements read the Cloud BFF routes that carry a live
+CloudIdentity proof to the retained original owner. The legacy identity keeps
+the retained Control Plane `/api/*` adapters. The launch flow's own BFF
+wallet/catalog read is a separate caller and does not go through Gateway Account
+Read. The package pricing catalog and preview remain retained-Control-Plane
+only: a CloudIdentity build records the explicit
+`pricing_catalog_owner_unavailable` state before requesting them, and the cloud
+launch surface prices through the Resource Catalog quote instead. The exact
+caller, owner, route and transitional status for every customer read is the
+[Console customer read inventory (#840)](./840-console-customer-reads.md); this
+composition does not prove that a deployment exposes or authorizes any retained
+API for a CloudIdentity session.
 
 A response commits only for its current Session, route, request generation and
 selected identity. Pagination parameters and source identity must match.
