@@ -5,8 +5,10 @@ import {
   deleteWorkspace,
   findWorkspaceInPages,
   getWorkspaceDeletion,
+  readCustomerWorkspaceOwnerDetail,
   workspaceDeleteIdempotencyKey
 } from "../api/workspaces-api.ts";
+import { cloudIdentity } from "./console-identity.ts";
 import {
   isWorkspaceDeleteNotFound,
   resolveWorkspaceDeleteIntent,
@@ -105,7 +107,13 @@ export function useWorkspaceDeleteController({
     csrfToken: string
   ): Promise<boolean> => {
     try {
-      const readback = await findWorkspaceInPages(workspaceId);
+      // The authoritative confirmation is the same owner that accepted the
+      // deletion. A cloud Workspace keeps its owner row at status `deleted`, so
+      // the owner detail read is the confirmation; the legacy list remains the
+      // Control Plane's own absence readback.
+      const readback = cloudIdentity
+        ? await readCustomerWorkspaceOwnerDetail(workspaceId)
+        : await findWorkspaceInPages(workspaceId);
       if (!requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) return false;
       if (!workspaceDeleteReadbackConfirmed(readback)) {
         setIssue("unconfirmed");
@@ -177,7 +185,7 @@ export function useWorkspaceDeleteController({
     setIssue("");
 
     try {
-      const result = await deleteWorkspace(workspaceId, csrfToken, resolved.idempotencyKey);
+      const result = await deleteWorkspace(workspaceId, workspace.name ?? "", csrfToken, resolved.idempotencyKey);
       if (!requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) return;
       if (!result.available) {
         if (intents.current.get(workspaceId) === resolved) intents.current.delete(workspaceId);

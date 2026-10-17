@@ -7,6 +7,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	"opl-cloud/apps/console-bff/internal/clients"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/packages/contracts/go/publicjson"
@@ -103,6 +104,73 @@ func (s *Server) registerWorkspaceRoutes(mux *http.ServeMux, workspace api.Works
 			return
 		}
 		raw, err := publicjson.Marshal(read)
+		if err != nil {
+			writePublisherError(w, r, 502, "invalid_owner_response", "publisher owner returned an invalid response")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(raw)
+	})
+
+	// Deletion is a Workspace-owner operation. The BFF registers the two owner
+	// methods the contract already declares; it never derives progress, refund or
+	// resource facts of its own. The command carries the Workspace's exact name and
+	// the caller's destruction acknowledgement, which the owner refuses unless both
+	// match.
+	s.publisherRoute(mux, "DELETE /api/v2/workspaces/{workspaceId}", owneridentity.Workspace, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEWORKSPACE, kind, "workspaceId", func() proto.Message { return &api.DeleteWorkspaceRequest{} },
+		func(r *http.Request, call *api.CallContext, body proto.Message) (proto.Message, error) {
+			if err := require(); err != nil {
+				return nil, err
+			}
+			return workspace.DeleteWorkspace(r.Context(), &api.DeleteWorkspaceRpcRequest{Context: call, WorkspaceId: r.PathValue("workspaceId"), Body: body.(*api.DeleteWorkspaceRequest)})
+		})
+	// The owner uses NotFound for two different facts: no accepted deletion and
+	// no Workspace. Resolve that distinction through the owner's Workspace read so
+	// Console can render an empty deletion entry point without hiding a bad id.
+	mux.HandleFunc("GET /api/v2/workspaces/{workspaceId}/deletion", func(w http.ResponseWriter, r *http.Request) {
+		publisherRequestID(r)
+		w.Header().Set("Cache-Control", "no-store")
+		caller, err := RequireSession(r.Context(), s.identity, r)
+		if err != nil {
+			writePublisherIdentityError(w, r, err)
+			return
+		}
+		ctx := WithCaller(r.Context(), caller, r.Header.Get(requestIDHeader))
+		workspaceID := r.PathValue("workspaceId")
+		resource := &api.AuthorizationResource{Kind: kind, Id: proto.String(workspaceID)}
+		if err := RequireAuthorizedAction(ctx, s.identity, caller, owneridentity.Workspace,
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEDELETION, resource, r.Header.Get(requestIDHeader)); err != nil {
+			writePublisherIdentityError(w, r, err)
+			return
+		}
+		if err := require(); err != nil {
+			writePublisherError(w, r, 503, "owner_unconfigured", "publisher owner unavailable")
+			return
+		}
+		call := clients.CallContext(ctx)
+		deletion, err := workspace.GetWorkspaceDeletion(ctx, &api.GetWorkspaceDeletionRpcRequest{Context: call, WorkspaceId: workspaceID})
+		if status.Code(err) == codes.NotFound {
+			if err := RequireAuthorizedAction(ctx, s.identity, caller, owneridentity.Workspace,
+				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACE, resource, call.GetRequestId()); err != nil {
+				writePublisherIdentityError(w, r, err)
+				return
+			}
+			_, workspaceErr := workspace.GetWorkspace(ctx, &api.GetWorkspaceRpcRequest{Context: call, WorkspaceId: workspaceID})
+			if workspaceErr != nil {
+				writeOwnerCallFailure(w, r, workspaceErr)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("null"))
+			return
+		}
+		if err != nil {
+			writeOwnerCallFailure(w, r, err)
+			return
+		}
+		raw, err := publicjson.Marshal(deletion)
 		if err != nil {
 			writePublisherError(w, r, 502, "invalid_owner_response", "publisher owner returned an invalid response")
 			return

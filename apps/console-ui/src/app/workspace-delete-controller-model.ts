@@ -19,7 +19,10 @@ export function resolveWorkspaceDeleteIntent(
 export function workspaceDeleteReadbackConfirmed(
   readback: SourceEnvelope<WorkspaceDTO | null>
 ): boolean {
-  return readback.available && readback.data === null;
+  // Absence from the authoritative list and the owner's own `deleted` lifecycle
+  // state are both confirmations. Anything else, including an unavailable
+  // source, is not.
+  return readback.available && (readback.data === null || readback.data.state === "deleted");
 }
 
 export interface WorkspaceDeleteErrorPayload {
@@ -133,7 +136,7 @@ export function presentWorkspaceDelete(operation: WorkspaceDeletionDTO | null): 
     case "blocked":
       return {
         title: "删除已暂停，需要核对",
-        detail: `${reason || "删除遇到身份冲突"}。系统不会继续删除，也不会退款，请联系管理员核对原始开通记录。`,
+        detail: `${reason || "删除遇到未确认的结果"}。系统不会继续删除，也不会退款，请联系管理员核对原始开通记录。`,
         tone: "danger", stageLabel, refundLabel, lastReadbackLabel
       };
     case "retrying":

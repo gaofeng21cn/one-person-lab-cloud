@@ -256,6 +256,20 @@ export interface WorkspaceOwnerOperationDTO {
 
 export interface WorkspaceOwnerPageDTO { items: WorkspaceOwnerDTO[]; nextCursor?: string; }
 
+// The canonical WorkspaceDeletion response the BFF serves for
+// GET /api/v2/workspaces/{workspaceId}/deletion. Each field is the Workspace
+// owner's own accepted deletion and refund fact; it carries no stage, page state,
+// retry schedule or readback time, so Console never invents them.
+export interface WorkspaceOwnerDeletionDTO {
+  workspaceId: string;
+  operationId: string;
+  resourceDeletionStatus: "pending" | "confirmed" | "rejected" | "unknown";
+  dataDeletionStatus: "pending" | "confirmed" | "rejected" | "unknown";
+  refundOperationId?: string;
+  refundStatus: "not_applicable" | "requested" | "confirmed" | "rejected" | "unknown";
+  updatedAt: string;
+}
+
 // The Workspace owner's model configuration: `version` is the persisted intent
 // version, `appliedVersion` only advances after the runtime confirmed a real
 // reload, and the status is the owner's own derivation of the two. Both version
