@@ -42,7 +42,7 @@ const submit = (overrides = {}) => submitWorkspaceLaunch({
   ...overrides,
 });
 
-test("the command body carries the name, the package and the renewal choice and nothing else", async () => {
+test("the command body carries the name, the package, the renewal choice and the provisioning shape and nothing else", async () => {
   const { http, calls } = purchaseHTTP({ launchBody: { operationId: OPERATION_ID, workspaceId: WORKSPACE_ID } });
   await submitWorkspaceLaunch({
     http, auth: AUTH, name: "Declared workspace", packageId: "pro", autoRenew: true,
@@ -50,7 +50,9 @@ test("the command body carries the name, the package and the renewal choice and 
     wait: async () => {},
   });
   const command = calls.find((call) => call.path === "/api/workspace-launches" && call.init.method === "POST");
-  assert.deepEqual(command.init.body, { name: "Declared workspace", packageId: "pro", autoRenew: true });
+  assert.deepEqual(command.init.body, {
+    name: "Declared workspace", packageId: "pro", autoRenew: true, provisioningMode: "full",
+  });
 });
 
 test("the command is keyed by the declared idempotency identity and expects an accepted answer", async () => {
@@ -92,7 +94,9 @@ test("the declared package and the renewal choice are optional and default to wh
     expectedOperationId: OPERATION_ID, expectedWorkspaceId: WORKSPACE_ID, wait: async () => {},
   });
   const command = calls.find((call) => call.path === "/api/workspace-launches" && call.init.method === "POST");
-  assert.deepEqual(command.init.body, { name: "Declared workspace", packageId: "basic", autoRenew: false });
+  assert.deepEqual(command.init.body, {
+    name: "Declared workspace", packageId: "basic", autoRenew: false, provisioningMode: "full",
+  });
 });
 
 test("a terminal success that carries no receipt identity is refused", async () => {

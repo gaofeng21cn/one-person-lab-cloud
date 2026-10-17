@@ -105,9 +105,18 @@ function controlPlane({ accountId = ACCOUNT_ID, sessionAccountId = ACCOUNT_ID, s
   losePollResponse = false, launchStatus = "succeeded", noReceiptId = false, noBillingReceipt = false, admitPending = false,
   receiptAmountMicros = null, workspaceOpenable = true, applicationStatus = "ready", runtimeReady = true,
   runtimeStatus = "running", runtimeComponents = [{ name: "console", ok: true }, { name: "gateway", ok: true }],
-  extraChargeMicros = "0", receipt: receiptOverrides = {}, runtime: runtimeOverrides = {} } = {}) {
+  extraChargeMicros = "0", receipt: receiptOverrides = {}, runtime: runtimeOverrides = {},
+  // The committed default application installation progresses asynchronously
+  // beside the resource Launch. `applicationReadyAfter` is how many owner reads
+  // it takes; `applicationStalled` models the review that only the customer's
+  // own continuation command can move; a status that never becomes ready models
+  // an installation that never finishes.
+  applicationReadyAfter = null, applicationStalled = false, applicationManualReview = false,
+  workspacePage = 1, resumeProjection = null,
+  launchProvisioningMode = "resource_only" } = {}) {
   const state = { orders: new Map(), byKey: new Map(), posted: 0, charges: [], commands: [], responsesLost: false,
-    wallet: walletBeforeMicros, workspaceId: "", operationId: "", polled: 0 };
+    wallet: walletBeforeMicros, workspaceId: "", operationId: "", polled: 0,
+    workspaceReads: 0, workspacePages: [], resumes: 0, resumedAtRead: -1, resumeKeys: [] };
   const envelope = (data) => ({ source: "sub2api", available: true, status: "available", data });
 
   const http = {
@@ -133,12 +142,59 @@ function controlPlane({ accountId = ACCOUNT_ID, sessionAccountId = ACCOUNT_ID, s
         }) };
       }
       if (path.startsWith("/api/workspaces?")) {
+        state.workspaceReads += 1;
+        state.workspacePages.push(path);
+        const page = Number(new URLSearchParams(path.split("?")[1] || "").get("page") || "1");
+        if (page < workspacePage) {
+          // A full page of other Workspaces, so the run has to keep looking
+          // instead of trusting that the first page is the whole account.
+          return { status: 200, payload: {
+            source: "control-plane", available: true, status: "available",
+            data: {
+              items: Array.from({ length: 20 }, (_, index) => ({ id: `ws-filler-${index}`, url: "", openable: false })),
+              total: workspacePage * 20, page, pageSize: 20,
+            },
+          } };
+        }
+        const readyAfter = applicationReadyAfter !== null
+          ? applicationReadyAfter
+          : (applicationStatus === "ready" ? 0 : Infinity);
+        const ready = !applicationManualReview && (
+          applicationStalled
+            ? state.resumes > 0 && state.workspaceReads > state.resumedAtRead + readyAfter
+            : state.workspaceReads > readyAfter
+        );
+        const installationStatus = ready ? "ready"
+          : (applicationManualReview || applicationStalled && state.resumes === 0 ? "manual_review" : "installing");
         return { status: 200, payload: {
           source: "control-plane", available: true, status: "available",
-          data: { items: [{
-            id: state.workspaceId, url: ENTRY_URL, openable: workspaceOpenable,
-            currentApplication: { status: applicationStatus, entryUrl: ENTRY_URL, operationId: APPLICATION_OPERATION_ID },
-          }] },
+          data: {
+            items: [{
+              id: state.workspaceId, url: ready ? ENTRY_URL : "", openable: workspaceOpenable,
+              currentApplication: ready ? { status: "ready", entryUrl: ENTRY_URL, operationId: APPLICATION_OPERATION_ID } : null,
+              applicationInstallation: {
+                status: installationStatus, operationId: "app-install-0123456789abcdef",
+                applicationId: "app-0123456789abcdef", revision: "revision-1",
+                canResume: applicationStalled && state.resumes === 0,
+              },
+            }],
+            total: 1, page, pageSize: 20,
+          },
+        } };
+      }
+      if (/^\/api\/workspaces\/[^/]+\/application-installation\/resume$/.test(path) && init.method === "POST") {
+        state.resumes += 1;
+        state.resumedAtRead = state.workspaceReads;
+        state.resumeKeys.push(init.headers["idempotency-key"]);
+        if (resumeProjection) {
+          return { status: 202, payload: typeof resumeProjection === "function" ? resumeProjection(state) : resumeProjection };
+        }
+        return { status: 202, payload: {
+          workspaceId: state.workspaceId,
+          applicationInstallation: {
+            status: "installing", operationId: "app-install-0123456789abcdef",
+            applicationId: "app-0123456789abcdef", revision: "revision-1", canResume: false,
+          },
         } };
       }
       if (/^\/api\/workspaces\/[^/]+\/runtime-status$/.test(path)) {
@@ -185,6 +241,9 @@ function controlPlane({ accountId = ACCOUNT_ID, sessionAccountId = ACCOUNT_ID, s
         const admitted = {
           operationId,
           workspaceId,
+          // The persisted Launch is the resource purchase; the default
+          // application is a separate committed operation. The readback says so.
+          provisioningMode: launchProvisioningMode,
           status: admitPending ? "running" : launchStatus,
           phase: admitPending ? "runtime" : (launchStatus === "succeeded" ? "succeeded" : "debit"),
           receiptId: !admitPending && launchStatus === "succeeded" && !noReceiptId ? "rcpt_qualification_1" : "",
@@ -446,6 +505,10 @@ test("the purchase command names no provider and is identical on a redelivery", 
     name: qualificationWorkspaceName(first.receipt.operation.operationId),
     packageId: "basic",
     autoRenew: false,
+    // The platform installs the default application beside the resource Launch
+    // only for a new customer Launch, and `resource_only` is the retained
+    // historical contract that must not be sent for one.
+    provisioningMode: "full",
   }]);
   assert.deepEqual(second.receipt.operation.operationId, first.receipt.operation.operationId,
     "a redelivery addresses the same order, so the command body cannot differ");
@@ -914,7 +977,8 @@ test("a resumed order whose original charge lands while this run waits settles h
   const workspaceId = launchWorkspaceId(ACCOUNT_ID, operationId);
   // The earlier delivery admitted the order and its charge has not landed yet.
   const admitted = {
-    operationId, workspaceId, status: "running", phase: "runtime", receiptId: "",
+    operationId, workspaceId, provisioningMode: "resource_only",
+    status: "running", phase: "runtime", receiptId: "",
     computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001",
   };
   platform.state.orders.set(operationId, admitted);
@@ -1100,5 +1164,118 @@ test("an owner envelope that is not from the named source is not an owner readba
     assert.equal(receipt.reason, "owner_readback_unavailable", what);
     assert.equal(receipt.checks.account_bound, accountBound, what);
     assert.equal(receipt.checks.wallet_confirmed, false, what);
+  }
+});
+
+// The purchase commits the default application installation beside the resource
+// Launch, and the Control Plane progresses that installation after the Launch
+// reports success. A run that reads the Workspace the moment the Launch succeeds
+// reports a paid delivery as a product failure; a fake that answers `ready`
+// synchronously cannot show the difference.
+test("the run waits for the committed application installation before reading the delivery", async () => {
+  const platform = controlPlane({ applicationStatus: "installing", applicationReadyAfter: 3 });
+  const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+
+  assert.equal(state, "settled");
+  assert.equal(receipt.checks.workspace_ready, true);
+  assert.ok(platform.state.workspaceReads > 3, "the owner was asked until the installation finished");
+  assert.equal(platform.state.resumes, 0, "an installation that is progressing needs no continuation");
+});
+
+test("a stalled application installation is resumed exactly once through the customer's own command", async () => {
+  const platform = controlPlane({ applicationStatus: "installing", applicationStalled: true, applicationReadyAfter: 1 });
+  const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+
+  assert.equal(state, "settled");
+  assert.equal(platform.state.resumes, 1, "one continuation, however many polls the delivery then needs");
+  assert.deepEqual(platform.state.resumeKeys, [`application-resume:${receipt.operation.operationId}`]);
+});
+
+test("a continuation projection that names another installation does not settle", async () => {
+  const platform = controlPlane({
+    applicationStatus: "installing", applicationStalled: true,
+    resumeProjection: (state) => ({ workspaceId: state.workspaceId, applicationInstallation: {
+      operationId: "app-install-0123456789abcdef", applicationId: "app-ffffffffffffffff", revision: "revision-1",
+    } }),
+  });
+  const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+
+  assert.equal(state, "failed");
+  assert.equal(receipt.reason, "workspace_not_ready");
+  assert.equal(platform.state.resumes, 1, "another installation's continuation is not followed twice");
+});
+
+test("an application installation parked for review is its own product failure", async () => {
+  const platform = controlPlane({ applicationManualReview: true });
+  const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+
+  assert.equal(state, "failed");
+  assert.equal(receipt.reason, "application_installation_manual_review");
+  assert.equal(receipt.checks.workspace_ready, false);
+  assert.equal(receipt.checks.charge_receipted, true, "the charge is still reported honestly");
+  assert.equal(platform.state.posted, 1, "a product failure is not retried as another purchase");
+});
+
+test("an application installation that never becomes ready is not settled", async () => {
+  const platform = controlPlane({ applicationStatus: "installing" });
+  const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+
+  assert.equal(state, "failed");
+  assert.equal(receipt.reason, "workspace_not_ready");
+  assert.equal(receipt.checks.workspace_ready, false);
+  assert.equal(platform.state.posted, 1, "the bounded wait gives up without buying again");
+});
+
+test("the Workspace is found on a later owner page rather than assumed to be on the first", async () => {
+  const platform = controlPlane({ workspacePage: 2 });
+  const { state } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+
+  assert.equal(state, "settled");
+  assert.ok(platform.state.workspacePages.includes("/api/workspaces?page=2&pageSize=20"),
+    "the owner list is paginated until the Workspace this run bought is found");
+});
+
+test("a Launch that is not the resource-only purchase this flow accounts for does not settle", async () => {
+  const platform = controlPlane({ launchProvisioningMode: "full" });
+  const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+
+  assert.equal(state, "failed");
+  assert.equal(receipt.reason, "launch_identity_mismatch");
+  assert.equal(receipt.checks.charge_receipted, false, "the three-resource receipt rule is not applied to another shape");
+});
+
+test("deployment health is read before the scope is closed", async () => {
+  const platform = controlPlane();
+  const adapter = providerAdapter("local-docker", platform);
+  const order = [];
+  adapter.readDeploymentHealth = async () => { order.push("health"); return "healthy"; };
+  adapter.closeBusinessScope = async () => { order.push("close"); return { restored: true }; };
+  const { state } = await run(qualificationRequest("local-docker"), adapter);
+
+  assert.equal(state, "settled");
+  assert.deepEqual(order, ["health", "close"], "a closed scope cannot answer for deployment health");
+});
+
+test("a backward clock cannot invalidate a receipt after the purchase", async () => {
+  const platform = controlPlane();
+  const RealDate = globalThis.Date;
+  const startedAt = "2030-01-01T00:00:00.000Z";
+  const completedAt = "2020-01-01T00:00:00.000Z";
+  const readings = [startedAt, completedAt];
+  let read = 0;
+  globalThis.Date = class extends RealDate {
+    constructor(...args) {
+      if (args.length === 0) super(readings[Math.min(read++, readings.length - 1)]);
+      else super(...args);
+    }
+  };
+  try {
+    const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+    assert.equal(read, 2, "the run read the clock exactly twice");
+    assert.equal(receipt.startedAt, startedAt);
+    assert.equal(receipt.completedAt, startedAt, "a backdated completion is clamped to the start");
+    assert.equal(state, "settled");
+  } finally {
+    globalThis.Date = RealDate;
   }
 });

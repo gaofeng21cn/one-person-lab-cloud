@@ -119,7 +119,7 @@ export const QUALIFICATION_TERMINAL_REASONS = Object.freeze({
   ]),
   failed: Object.freeze([
     "quote_invalid", "launch_stopped", "account_binding_mismatch", "launch_identity_mismatch",
-    "workspace_not_ready", "runtime_not_ready",
+    "workspace_not_ready", "runtime_not_ready", "application_installation_manual_review",
     "charge_receipt_mismatch", "wallet_readback_mismatch", "purchase_receipt_missing"
   ]),
   unknown: Object.freeze(["response_lost", "owner_readback_unavailable"]),
