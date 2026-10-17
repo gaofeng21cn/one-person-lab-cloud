@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "owner": "OPL Cloud",
   "purpose": "Portable product distribution and instance handoff boundary.",
   "state": "current",
@@ -57,14 +57,58 @@
     },
     "publication": {
       "promotionMode": "qualified_candidate_digest_without_rebuild",
-      "requiredEvidence": [
-        "candidate",
-        "local_qualification",
-        "instance_deployment_verified",
-        "cloud_customer_reads_verified",
-        "instance_qualification_decision",
-        "instance_workspace_verified"
-      ],
+      "requiredEvidence": {
+        "candidate": [
+          "candidate"
+        ],
+        "localInstallation": [
+          "local_qualification"
+        ],
+        "cloudBusinessQualification": [
+          "cloud_business_qualification"
+        ],
+        "cloudCustomerReads": [
+          "cloud_customer_reads_verified"
+        ],
+        "instanceDeployment": [
+          "instance_deployment_verified"
+        ],
+        "instanceQualificationDecision": [
+          "instance_qualification_decision"
+        ],
+        "instanceWorkspaceVerification": [
+          "instance_workspace_verified"
+        ]
+      },
+      "cloudBusinessQualification": {
+        "owner": "gaofeng21cn/one-person-lab-cloud",
+        "workflow": ".github/workflows/cloud-business-qualification.yml",
+        "environment": "cloud-business-qualification",
+        "artifact": "cloud-business-qualification",
+        "receipt": "business-qualification.json",
+        "receiptKind": "opl.workspace-qualification.purchase.v1",
+        "requiredTerminalState": "settled",
+        "maximumAgeHours": 720,
+        "binds": [
+          "receiptDigest",
+          "candidateReceiptDigest",
+          "productSha",
+          "productTree",
+          "cloudImageDigest"
+        ]
+      },
+      "instanceDeployment": {
+        "owner": "gaofeng21cn/opl-instance-medopl",
+        "workflow": ".github/workflows/deployment-verify.yml",
+        "receiptStatus": "deployment_verified",
+        "binds": [
+          "receiptDigest",
+          "candidateReceiptDigest",
+          "productSha",
+          "productTree",
+          "cloudImageDigest"
+        ]
+      },
       "instanceEvidenceReader": {
         "secret": "OPL_INSTANCE_EVIDENCE_TOKEN",
         "repository": "gaofeng21cn/opl-instance-medopl",

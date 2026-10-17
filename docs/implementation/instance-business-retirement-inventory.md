@@ -7,9 +7,12 @@ move before those paths can retire?
 State: open migration, not an executed retirement
 Observed: 2026-10-18
 
-- Cloud baseline: `968c702d9fab60115c9a3d96e30651db755081f9` (`main`,
+- Cloud baseline: `6d5e854a` (`main`,
   [Cloud #929](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/929),
   parent [Cloud #872](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/872)).
+  The proposed #928 consumer on `feat/qualification-release-admission` is
+  source-only and is summarized in the release-input table below; it has not
+  executed a Release.
 - Instance baseline: `37141dc9ebbd5acbeedd32e679d3fdc55a9600a4`
   (`feat/launch-cloud-path`, the checked-out
   `/Users/huangrende/Documents/Cloud/opl-instance-medopl` worktree), one commit
@@ -21,11 +24,13 @@ Observed: 2026-10-18
 
 This inventory is a classification and sequencing record. It does not authorize
 workflow dispatch, purchase, deletion, refund, Key mutation, release publication
-or production access. It does not remove or relax any gate. `#926` has not
-produced an executable replacement on Cloud `main`: `tools/workspace-qualification-orchestrator.ts`
-and `tools/deployed-workspace-purchase.ts` are absent from the observed Cloud
-baseline, and Cloud PR #937 is open without a protected qualification receipt
-cited here. The transitional Instance gates therefore stay in force.
+or production access. It does not remove or relax any gate. The shared
+provider-neutral qualification flow and deployed purchase entry are now present
+on Cloud `main` (#937/#942), but the protected #926 producer is still absent:
+no `.github/workflows/cloud-business-qualification.yml` run or protected Cloud
+business qualification receipt exists. The #928 consumer admits that class as a
+separate release requirement in source; it does not claim a real qualification.
+The transitional Instance gates therefore stay in force.
 
 ## Fixed Boundary
 
@@ -206,29 +211,35 @@ open-items section rather than silently treated as settled.
 Nothing in this table may be removed or relaxed until the Cloud replacement is
 executable and validated. The exact order is: #926 producer executable, #928
 consumer validated, then #929 retires the Instance paths and removes their
-inputs. A source-only branch, local fixture or documentation change does not
-satisfy that order.
+inputs. The #928 consumer source is now locally validated (the Cloud business
+class and the Instance deployment class are separate, Candidate-bound
+requirements), but #926 has not produced a protected receipt and no Release has
+executed the consumer. A source-only branch, local fixture or documentation
+change does not satisfy that order.
 
 | Gate | Current implementation | What it admits | Required successor |
 | --- | --- | --- | --- |
-| `instance_workspace_verification_run_id` | `release-opl-cloud-image.yml:34-37` (input), `:73` (env), `:104` (run read), `:143` (workflow check), `:170` (artifact check), `:275-282` (download), `:471` (validator). | The Instance `verify.yml` `post_activation` run and `verify-post-activation` receipt with `workspace_verified`. | A Cloud business qualification run/receipt ID and a Cloud-owned validator. Remove the Instance input and artifact only after #928 admits the Cloud class independently. |
-| `instance_qualification_decision_run_id` | `release-opl-cloud-image.yml:30-33` (input), `:72` (env), `:103` (run read), `:142` (workflow check), `:169` (artifact check), `:266-273` (download), `:463-470` (validator and gate). | The Instance `qualification-decision.yml` decision receipt and its `qualificationRequired` gate. | A Cloud qualification decision/business receipt and a Cloud-owned gate. Remove the Instance input and artifact only after #928. |
+| `cloud_business_qualification_run_id` | #928 consumer on `feat/qualification-release-admission`: `release-opl-cloud-image.yml` input/env, exact Cloud run read, artifact requirement, `evidence/business` download, and `tools/cloud-release-evidence.ts` typed validation. | A protected Cloud producer run emitting the #923 `opl.workspace-qualification.purchase.v1` receipt: exact Candidate receipt digest, source SHA/tree, Cloud image digest, terminal state `settled`, exact receipt bytes and producer provenance. The producer workflow `.github/workflows/cloud-business-qualification.yml` is declared but does not exist yet (#926). | **#926 must implement the protected producer and execute it for the exact Candidate.** Do not claim a real qualification or remove any retained Instance gate until that receipt is actually consumed in a Release. |
+| `instance_workspace_verification_run_id` | `release-opl-cloud-image.yml:34-37` (input), `:73` (env), `:104` (run read), `:143` (workflow check), `:170` (artifact check), `:275-282` (download), `:471` (validator). | The Instance `verify.yml` `post_activation` run and `verify-post-activation` receipt with `workspace_verified`. | A Cloud business qualification run/receipt ID and a Cloud-owned validator. #928 now admits the Cloud class in source; remove the Instance input and artifact only in #929 after the #926 producer and the #928 consumer actually execute for the same Candidate. |
+| `instance_qualification_decision_run_id` | `release-opl-cloud-image.yml:30-33` (input), `:72` (env), `:103` (run read), `:142` (workflow check), `:169` (artifact check), `:266-273` (download), `:463-470` (validator and gate). | The Instance `qualification-decision.yml` decision receipt and its `qualificationRequired` gate. | A Cloud qualification decision/business receipt and a Cloud-owned gate. #928 now admits the Cloud class in source; remove the Instance input and artifact only in #929 after the #926 producer and the #928 consumer actually execute for the same Candidate. |
 | `tools/fresh-workspace-readback.mjs` | Instance tool invoked by `release-opl-cloud-image.yml:471` from the exact Instance workspace authority checkout. | The Instance workspace receipt schema and `workspace_verified` status. | A Cloud business receipt validator. Retire the Instance validator together with `verify.yml`. |
 | `tools/qualification-decision.mjs` | Instance tool invoked by `release-opl-cloud-image.yml:463-470`. | The Instance decision receipt and its Candidate/deployment binding. | A Cloud qualification gate/validator. Retire with `qualification-decision.yml`. |
-| `verify-post-activation` and `opl-cloud-qualification-decision-<run>` artifacts | `release-opl-cloud-image.yml:269` and `:278`; produced by Instance `verify.yml:800` and `qualification-decision.yml:230`. | The two Instance business qualification artifacts. | Cloud business evidence artifacts. Remove the Instance downloads after #928. |
-| `OPL_INSTANCE_EVIDENCE_TOKEN` | `release-opl-cloud-image.yml:262`, `:271`, `:280`; also used for the installation receipt download. | Instance run/artifact reads for installation and (currently) business qualification. | Keep the token limited to `Actions: read` and `Contents: read` for installation/deployment evidence; remove decision/workspace artifact reads. Do not replace it with a broader Instance credential. |
-| `requiredEvidence` in `packages/contracts/opl-cloud-distribution-contract.json` | Lines 60-67 list `candidate`, `local_qualification`, `instance_deployment_verified`, `cloud_customer_reads_verified`, `instance_qualification_decision`, `instance_workspace_verified`. | The release contract's evidence classes. | Replace the two Instance business qualification entries with the Cloud business evidence class after #928. Keep `instance_deployment_verified` and `cloud_customer_reads_verified`. |
-| `tools/validate-product-boundary.mjs` | Lines 188-190 compare the same six evidence names. | The distribution boundary check. | Update with the contract after #928; do not make the check accept either class in place of the other. |
-| `tests/contracts/product-distribution.test.ts` | Lines 74-75 assert the Instance validators; lines 98-105 assert the six evidence names; lines 316-319 assert installation admission does not use `fresh-workspace-readback`. | Contract and gate shape. | Replace with assertions that Cloud business and Instance deployment evidence are separate classes binding the same Candidate. |
-| `release-opl-cloud-public-readback.yml` | Line 124 asserts `.qualifications.instance.workspace.status == "workspace_verified"` in the sealed manifest. | The public readback of the sealed release. | Update the manifest assertion only with the release-manifest schema change after #928. Historical manifests remain historical. |
+| `verify-post-activation` and `opl-cloud-qualification-decision-<run>` artifacts | `release-opl-cloud-image.yml:269` and `:278`; produced by Instance `verify.yml:800` and `qualification-decision.yml:230`. | The two Instance business qualification artifacts. | Cloud business evidence artifacts. The #928 consumer downloads the separate `cloud-business-qualification` artifact and validates it; remove the Instance downloads only in #929 after the #926 producer and #928 consumer execute. |
+| `OPL_INSTANCE_EVIDENCE_TOKEN` | `release-opl-cloud-image.yml:262`, `:271`, `:280`; also used for the installation receipt download. | Instance run/artifact reads for installation and (currently) business qualification. | Keep the token limited to `Actions: read` and `Contents: read` for installation/deployment evidence; remove decision/workspace artifact reads. The #928 Cloud business receipt uses the Cloud token and does not broaden this credential. |
+| `requiredEvidence` in `packages/contracts/opl-cloud-distribution-contract.json` | Contract schema 6 replaces the flat list with typed classes: `candidate`, `localInstallation`, `cloudBusinessQualification`, `cloudCustomerReads`, `instanceDeployment`, `instanceQualificationDecision`, `instanceWorkspaceVerification`. | The release contract's separate evidence classes. | #928 adds the `cloudBusinessQualification` class and keeps every previous evidence name. In #929, retire the two Instance business-qualification entries only after the #926 producer and #928 consumer execute; keep `instance_deployment_verified` and `cloud_customer_reads_verified`. |
+| `tools/validate-product-boundary.mjs` | Asserts the typed `requiredEvidence` classes, the Cloud business producer/receipt/terminal-state contract, the separate Cloud run input, and the two-class admission step; neither class may substitute for the other. | The distribution boundary check. | Keep the class separation; update only with a successor contract. |
+| `tests/contracts/product-distribution.test.ts` | Asserts the typed class contract, the Cloud business input, the distinct installation step, and the `validateReleaseAdmissionEvidence` pair step. | Contract and gate shape. | Keep the two-class assertions; extend only when the producer/consumer contract changes. |
+| `release-opl-cloud-public-readback.yml` | Line 124 asserts `.qualifications.instance.workspace.status == "workspace_verified"` in the sealed manifest. | The public readback of the sealed release. | #928 adds the separate `qualifications.business` record and provenance `evidenceClasses` without changing the manifest `schemaVersion` or the existing readback assertions; historical manifests remain readable. Do not add a readback requirement that would refuse historical releases. |
 | `instance_deployment_verification_run_id` | `release-opl-cloud-image.yml:22-25`, `:70`, `:102`, `:141`, `:168`, `:260-265`. | Independent Instance installation identity and health evidence. | **Keep.** This is the separate deployment class; do not remove it while retiring business qualification. |
 | `cloud_customer_readback_run_id` | `release-opl-cloud-image.yml:26-29`, `:71`, `:84`, `:133-134`, `:165`, `:255`, and the protected `cloud-business-readback.yml` consumer. | Cloud `customer_reads_verified` scope only; the receipt explicitly sets `fullBusinessQualification: false`, `workspaceLifecycleVerified: false` and `keyLifecycleVerified: false` (`tools/cloud-business-readback.ts:27-29`). | Keep as the customer-read class. It is not a substitute for the #926 business qualification producer or the retained installation evidence. |
 
 The current `docs/runtime/release.md` Publication section says the same thing:
 the Instance qualification-decision and Workspace gates remain until full parity
-is actually verified. That sentence must remain true until #928 changes the
-consumer. This inventory does not edit the release workflow, the distribution
-contract, the boundary validator or any test.
+is actually verified. The #928 branch changes the consumer to require the Cloud
+business class separately and keeps every retained Instance gate; the sentence
+stays true until #929 removes those gates. This inventory does not edit the
+release workflow, the distribution contract, the boundary validator or any
+test.
 
 ## Historical And Immutable Evidence
 
@@ -319,21 +330,27 @@ grep -n 'SELECT\|never writes' tools/workspace-operation-attribution.mjs
 ```
 
 ```sh
-cd opl-cloud-retire
-git checkout 968c702d9fab60115c9a3d96e30651db755081f9
+cd opl-cloud-release
+git checkout 6d5e854a
 
-# Exact release inputs and gates
+# Exact release inputs and retained gates on the observed main baseline
 grep -n 'instance_workspace_verification_run_id\|instance_qualification_decision_run_id' .github/workflows/release-opl-cloud-image.yml
 grep -n 'fresh-workspace-readback\|qualification-decision.mjs' .github/workflows/release-opl-cloud-image.yml
 grep -n 'instance_qualification_decision\|instance_workspace_verified\|instance_deployment_verified' packages/contracts/opl-cloud-distribution-contract.json tools/validate-product-boundary.mjs tests/contracts/product-distribution.test.ts
 grep -n 'workspace_verified' .github/workflows/release-opl-cloud-public-readback.yml
 
-# The Cloud replacement is not on this baseline
-test ! -e tools/workspace-qualification-orchestrator.ts
-test ! -e tools/deployed-workspace-purchase.ts
+# The shared qualification flow is present; the protected #926 producer is still absent
+test -e tools/workspace-qualification-orchestrator.ts
+test -e tools/deployed-workspace-purchase.ts
+test ! -e .github/workflows/cloud-business-qualification.yml
 grep -n 'fullBusinessQualification: false\|workspaceLifecycleVerified: false\|keyLifecycleVerified: false' tools/cloud-business-readback.ts
+
+# The #928 branch (not on main) adds the separate Cloud business class
+git show feat/qualification-release-admission:.github/workflows/release-opl-cloud-image.yml | grep -n 'cloud_business_qualification_run_id\|validateReleaseAdmissionEvidence'
+git show feat/qualification-release-admission:packages/contracts/opl-cloud-distribution-contract.json | grep -n 'cloudBusinessQualification\|instanceDeployment'
 ```
 
-The absence checks are expected to succeed at the observed baseline. If they
-fail because the replacement has landed, this inventory's sequencing section is
-stale: re-read #926/#928 before changing any gate.
+The producer-absence check is expected to succeed at the observed main
+baseline, while the #928 consumer exists only on its branch. If the producer
+appears, this inventory's sequencing section is stale: re-read #926/#928 before
+changing any gate.

@@ -61,7 +61,15 @@ async function bindingInput() {
 test("installation binding keeps native installation evidence distinct from business qualification", async () => {
   const input = await bindingInput();
   assert.deepEqual(validateReleaseInstallationBinding(input), {
+    evidenceClass: "instance_deployment", repository: "gaofeng21cn/opl-instance-medopl",
+    workflowRunId: input.deploymentRunId, receiptStatus: "deployment_verified",
     receiptDigest: hash(input.deploymentText), runDigest: input.decision.deploymentVerification.runDigest, authoritySha: instanceSha,
+    identity: {
+      candidateReceiptDigest: candidateReceiptDigest(input.candidate),
+      productSha,
+      productTree: input.candidate.product.tree,
+      cloudImageDigest: input.candidate.cloudImage.indexDigest,
+    },
   });
 });
 
