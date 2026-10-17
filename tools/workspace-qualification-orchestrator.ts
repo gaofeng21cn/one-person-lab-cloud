@@ -26,12 +26,19 @@
  */
 
 import {
+  DEPLOYMENT_HEALTH,
   QUALIFICATION_BUSINESS_CHECKS,
   QUALIFICATION_BUSINESS_RECEIPT_KIND,
+  QUALIFICATION_BUSINESS_SCOPE,
   QUALIFICATION_MUTATION_BOUNDS,
   QUALIFICATION_TERMINAL_REASONS,
   QUALIFICATION_UNCOVERED_SCOPE,
+  assertQualificationRequest,
   createQualificationRequest,
+  hasExactKeys,
+  qualificationMutationScope,
+  qualificationProduct,
+  qualificationTenantScope,
   qualificationWorkspaceName,
   validateBusinessQualificationReceipt,
 } from "./workspace-qualification-contract.ts";
@@ -161,27 +168,41 @@ async function readDeliveredWorkspace(http, auth, workspaceId) {
  * The Ledger receipt for this exact purchase.
  *
  * This, not the wallet balance, is the evidence that a charge happened. The
- * receipt is the owner's record and it names the Workspace, the amount, and the
- * resources the platform says the purchase delivered; the launch it is read
- * against has to agree on the Workspace and on each of those resources. The
- * wallet is then checked against the receipt rather than used to infer it.
+ * receipt is the owner's record and it names the operation that caused it, the
+ * Workspace, the amount, and the resources the platform says the purchase
+ * delivered; the launch it is read against has to agree on the Workspace and on
+ * each of those resources. The wallet is then checked against the receipt rather
+ * than used to infer it.
+ *
+ * The operation binding is what keeps the receipt from being any charge that
+ * happens to share a Workspace and an amount. The Control Plane records the
+ * purchase receipt with `requestId` equal to the launch operation identity and
+ * projects that value into `operationId` (routes_billing.go), while
+ * `<launchOperationId>:purchase-receipt` is the Ledger idempotency key that
+ * creates the receipt and is not part of the projection. A receipt whose
+ * operation id names another launch is another purchase.
  */
-async function readPurchaseChargeReceipt(http, auth, { receiptId, workspaceId, amountUsdMicros, launch }) {
+async function readPurchaseChargeReceipt(http, auth, { receiptId, workspaceId, amountUsdMicros, launch, operationId }) {
   const receipt = ownerData((await http.json(
     `/api/billing/receipts/${encodeURIComponent(receiptId)}`, {}, auth)).payload, "ledger");
   if (receipt?.receiptId !== receiptId || receipt?.workspaceId !== workspaceId ||
+      receipt?.operationId !== operationId ||
       receipt?.type !== "billing.workspace_purchased.v1" || receipt?.status !== "completed" ||
       String(receipt?.totalUsdMicros || "") !== String(amountUsdMicros) ||
       !String(receipt?.chargeReference || "").trim()) {
     throw adapterError("charge_receipt_mismatch");
   }
-  // A resource-only purchase delivers resources and nothing else. A Runtime or a
-  // Workspace Key inside this receipt would mean the platform fulfilled more
-  // than the operation declared, and the run would not know what it paid for.
-  if (receipt?.fulfillment?.runtimeId !== undefined || receipt?.fulfillment?.workspaceApiKeyId !== undefined ||
-      String(receipt?.fulfillment?.computeAllocationId || "") !== String(launch?.computeAllocationId || "") ||
-      String(receipt?.fulfillment?.storageId || "") !== String(launch?.storageId || "") ||
-      String(receipt?.fulfillment?.attachmentId || "") !== String(launch?.attachmentId || "")) {
+  // A resource-only purchase delivers resources and nothing else. The launch has
+  // to name every resource the receipt says was delivered, and the receipt has to
+  // name exactly those three: a Runtime or a Workspace Key inside this receipt
+  // would mean the platform fulfilled more than the operation declared, and the
+  // run would not know what it paid for.
+  const delivered = ["computeAllocationId", "storageId", "attachmentId"];
+  if (!hasExactKeys(receipt?.fulfillment, delivered) ||
+      delivered.some((name) => {
+        const expected = String(launch?.[name] || "").trim();
+        return !expected || String(receipt.fulfillment[name] || "") !== expected;
+      })) {
     throw adapterError("charge_receipt_mismatch");
   }
   return String(receipt.chargeReference);
@@ -206,8 +227,13 @@ async function readAdmittedLaunch(http, operationId, workspaceId, auth) {
   const status = Number(result?.response?.status || 0);
   if (status === 404) return null;
   if (status !== 200 || !result?.payload) throw adapterError("owner_readback_unavailable");
+  // The answer has to be the order that was asked for. A launch that comes back
+  // under another operation identity, or naming another Workspace, is not this
+  // run's order whatever else it says, and following it would attribute another
+  // launch's purchase to this request.
+  if (result.payload.operationId !== operationId) throw adapterError("launch_identity_mismatch");
   if (result.payload.workspaceId !== undefined && result.payload.workspaceId !== workspaceId) {
-    throw adapterError("account_binding_mismatch");
+    throw adapterError("launch_identity_mismatch");
   }
   return result.payload;
 }
@@ -238,16 +264,23 @@ function classifyLaunchFollowFailure(error, { purchaseRecorded }) {
  * adapter throws, because those are programming errors rather than outcomes.
  */
 export async function runWorkspaceQualification({ request, adapter }, { wait } = {}) {
-  if (!request?.operation?.idempotencyKey || !request?.scope || !request?.candidate) {
-    throw adapterError("qualification_request_invalid");
-  }
+  // The request is the admission. Only an object this contract built is run: a
+  // hand-assembled or copied request has the same fields but no brand, and no
+  // check below could tell it from one.
+  assertQualificationRequest(request);
   // The tenant digest is what the receipt publishes and the operation identity
-  // is derived from. Re-derive it from the account id and the Candidate so a
-  // hand-assembled request cannot bind the fence to one account and the receipt
-  // to another.
-  if (request.tenant?.accountDigest !== digestOf(`${request.candidate.receiptDigest}\n${request.tenant?.accountId || ""}`)) {
+  // is derived from. Re-derive it with the contract's own function so the fence,
+  // the published digest and the operation identity cannot name different
+  // accounts.
+  if (qualificationTenantScope(request.tenant.accountId, request.candidate.receiptDigest).accountDigest !==
+      request.tenant.accountDigest) {
     throw adapterError("qualification_request_invalid");
   }
+  // Normalise the declared envelope and product before anything is priced or
+  // bought. A scope that is missing a bound is refused here, not after a
+  // purchase the run could not account for.
+  const declaredScope = qualificationMutationScope(request.scope);
+  const declaredProduct = qualificationProduct(request.product);
   assertQualificationAdapter(adapter, request.provider);
 
   const startedAt = new Date().toISOString();
@@ -265,6 +298,7 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
   };
 
   let scope = null;
+  let scopeAttempted = false;
   let deploymentHealth = "unknown";
   let cleanup = { performed: false, restored: false };
   let terminal;
@@ -272,12 +306,15 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
   // A run already outside the envelope it declared must not begin. The bounds
   // are the request's own admission, checked before anything is issued, so
   // refusing here costs nothing and cannot be reached after a purchase.
-  if (request.scope.purchases < 1 || request.scope.charges < 1) {
+  if (declaredScope.purchases < 1 || declaredScope.charges < 1) {
     terminal = { state: "blocked", reason: "scope_bound_exhausted" };
   }
 
   try {
     if (!terminal) {
+      // Recorded before the attempt: an adapter that throws may still have
+      // opened something, so cleanup has to run even when no scope came back.
+      scopeAttempted = true;
       try {
         scope = await adapter.openBusinessScope({ request });
       } catch {
@@ -298,11 +335,11 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
       // reimplemented. Its two published refusals mean different things to an
       // owner and are kept apart here instead of collapsing into one failure.
       const pricing = (await http.json("/api/pricing/preview", {
-        method: "POST", body: { resourceType: request.product.resourceType, packageId: request.product.packageId },
+        method: "POST", body: { resourceType: declaredProduct.resourceType, packageId: declaredProduct.packageId },
       }, auth)).payload;
       let quote;
       try {
-        quote = priceWorkspaceLaunch({ pricing, walletUsdMicros: accounting.walletBeforeUsdMicros, packageId: request.product.packageId });
+        quote = priceWorkspaceLaunch({ pricing, walletUsdMicros: accounting.walletBeforeUsdMicros, packageId: declaredProduct.packageId });
       } catch (error) {
         throw adapterError(/wallet cannot fund/i.test(String(error?.message || ""))
           ? "wallet_cannot_fund"
@@ -319,8 +356,8 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
       } else {
         try {
           ({ launch } = await submitWorkspaceLaunch({
-            http, auth, name: qualificationWorkspaceName(operation.operationId), packageId: request.product.packageId,
-            autoRenew: request.product.autoRenew, idempotencyKey: operation.idempotencyKey,
+            http, auth, name: qualificationWorkspaceName(operation.operationId), packageId: declaredProduct.packageId,
+            autoRenew: declaredProduct.autoRenew, idempotencyKey: operation.idempotencyKey,
             expectedOperationId: operation.operationId, expectedWorkspaceId: operation.workspaceId, wait,
           }));
         } catch (error) {
@@ -353,7 +390,10 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
       // A terminal launch that carries no purchase receipt identity has not
       // delivered a receipt to bind anything to.
       if (!String(launch?.receiptId || "").trim()) throw adapterError("purchase_receipt_missing");
-      if (launch.workspaceId !== operation.workspaceId) throw adapterError("account_binding_mismatch");
+      // The terminal launch has to name the Workspace this run declared. A
+      // launch that ended against another Workspace is another order, not this
+      // run's delivery.
+      if (launch.workspaceId !== operation.workspaceId) throw adapterError("launch_identity_mismatch");
       operation.purchaseReceiptId = String(launch.receiptId);
       checks.purchase_receipt_bound = true;
 
@@ -362,7 +402,7 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
       // something there to use.
       const chargeReference = await readPurchaseChargeReceipt(http, auth, {
         receiptId: operation.purchaseReceiptId, workspaceId: operation.workspaceId,
-        amountUsdMicros: quote, launch,
+        amountUsdMicros: quote, launch, operationId: operation.operationId,
       });
       checks.charge_receipted = true;
       accounting.chargeReferenceDigest = digestOf(chargeReference);
@@ -399,16 +439,20 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
         throw adapterError("wallet_readback_mismatch");
       }
 
-      terminal = QUALIFICATION_BUSINESS_CHECKS.every((name) => checks[name])
-        ? { state: "settled", reason: "none" }
-        : { state: "failed", reason: "owner_evidence_incomplete" };
+      // Every read this flow needs has now succeeded, so the terminal state is
+      // settled and the contract decides whether the evidence supports it. A
+      // failed state has to name a real check or read failure; there is no
+      // "evidence was incomplete" failure left to invent here.
+      terminal = { state: "settled", reason: "none" };
     }
   } catch (error) {
     terminal = terminalFailure(error);
   } finally {
     // The scope is always closed, including after a failure: the adapter that
-    // opened something is the only party that can put it back.
-    if (scope) {
+    // opened something is the only party that can put it back. An attempt that
+    // threw may still have opened something, so the attempt itself is what
+    // triggers cleanup, not a returned scope object.
+    if (scope || scopeAttempted) {
       try {
         cleanup = { performed: true, restored: (await adapter.closeBusinessScope({ request }))?.restored === true };
       } catch {
@@ -416,7 +460,7 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
       }
       try {
         const health = String(await adapter.readDeploymentHealth({ request }) || "");
-        if (["healthy", "degraded", "unknown"].includes(health)) deploymentHealth = health;
+        if (DEPLOYMENT_HEALTH.includes(health)) deploymentHealth = health;
       } catch {
         deploymentHealth = "unknown";
       }
@@ -430,21 +474,19 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
     terminal = { state: "recovery-required", reason: "cleanup_unproven" };
   }
 
-  const receipt = validateBusinessQualificationReceipt({
+  const evidence = {
     schemaVersion: 1,
     kind: QUALIFICATION_BUSINESS_RECEIPT_KIND,
-    scope: "workspace_purchase",
+    scope: QUALIFICATION_BUSINESS_SCOPE,
     uncovered: { ...QUALIFICATION_UNCOVERED_SCOPE },
-    state: terminal.state,
-    reason: terminal.reason,
     provider: request.provider,
     candidate: request.candidate,
     source: request.source,
     tenant: { accountDigest: request.tenant.accountDigest },
-    product: request.product,
+    product: declaredProduct,
     authority: request.authority,
     operation,
-    mutations: { declared: { ...request.scope }, observed: mutations },
+    mutations: { declared: { ...declaredScope }, observed: mutations },
     checks,
     accounting,
     delivery,
@@ -452,7 +494,23 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
     deploymentHealth,
     startedAt,
     completedAt: new Date().toISOString(),
-  });
+  };
+  let receipt;
+  try {
+    receipt = validateBusinessQualificationReceipt({ ...evidence, state: terminal.state, reason: terminal.reason });
+  } catch (error) {
+    if (error?.code !== "qualification_business_receipt_invalid" || terminal.state !== "settled") throw error;
+    // The last read succeeded, so a purchase may really have happened, but the
+    // contract will not read this evidence as settled. Returning a settled
+    // receipt it rejects, or throwing after a real purchase, would both lose
+    // that fact: the run changed something it cannot account for. The same
+    // evidence is therefore reported under the recovery state. The fallback is
+    // still validated, so malformed evidence throws here, which is a
+    // programming error rather than an outcome.
+    receipt = validateBusinessQualificationReceipt({
+      ...evidence, state: "recovery-required", reason: "mutation_unaccounted",
+    });
+  }
   return { state: receipt.state, reason: receipt.reason, receipt };
 }
 
@@ -467,6 +525,10 @@ export async function runWorkspaceQualification({ request, adapter }, { wait } =
 function terminalFailure(error) {
   const code = String(error?.code || "");
   for (const [state, reasons] of Object.entries(QUALIFICATION_TERMINAL_REASONS)) {
+    // `settled` is not something a thrown error can mean. Skipping it keeps an
+    // unclassified error out of the passing state even when its code happens to
+    // be the passing state's own reason name.
+    if (state === "settled") continue;
     if (reasons.includes(code)) return { state, reason: code };
   }
   return { state: "unknown", reason: "owner_readback_unavailable" };

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  LEGACY_QUALIFICATION_J0_READY_KINDS,
   QUALIFICATION_BUSINESS_CHECKS,
   QUALIFICATION_MUTATION_BOUNDS,
   QUALIFICATION_TERMINAL_REASONS,
@@ -104,9 +105,9 @@ function controlPlane({ accountId = ACCOUNT_ID, sessionAccountId = ACCOUNT_ID, s
   losePollResponse = false, launchStatus = "succeeded", noReceiptId = false, noBillingReceipt = false, admitPending = false,
   receiptAmountMicros = null, workspaceOpenable = true, applicationStatus = "ready", runtimeReady = true,
   runtimeStatus = "running", runtimeComponents = [{ name: "console", ok: true }, { name: "gateway", ok: true }],
-  extraChargeMicros = "0" } = {}) {
+  extraChargeMicros = "0", receipt: receiptOverrides = {}, runtime: runtimeOverrides = {} } = {}) {
   const state = { orders: new Map(), byKey: new Map(), posted: 0, charges: [], commands: [], responsesLost: false,
-    wallet: walletBeforeMicros, workspaceId: "", polled: 0 };
+    wallet: walletBeforeMicros, workspaceId: "", operationId: "", polled: 0 };
   const envelope = (data) => ({ source: "sub2api", available: true, status: "available", data });
 
   const http = {
@@ -145,18 +146,25 @@ function controlPlane({ accountId = ACCOUNT_ID, sessionAccountId = ACCOUNT_ID, s
           source: "fabric", available: true, status: "available",
           data: { workspaceId: state.workspaceId, ready: runtimeReady, status: runtimeStatus, url: ENTRY_URL,
             runtimeId: "rt-0123456789abcdef", checks: runtimeComponents,
-            currentApplication: { operationId: APPLICATION_OPERATION_ID } },
+            currentApplication: { operationId: APPLICATION_OPERATION_ID }, ...runtimeOverrides },
         } };
       }
       if (/^\/api\/billing\/receipts\/[^/]+$/.test(path)) {
         if (noBillingReceipt) throw new Error(`HTTP GET ${path} returned 404`);
         return { status: 200, payload: {
           source: "ledger", available: true, status: "available",
-          data: { receiptId: decodeURIComponent(path.split("/").pop()), workspaceId: state.workspaceId,
+          data: { receiptId: decodeURIComponent(path.split("/").pop()),
+            // The billing projection answers with the receipt's requestId, and
+            // the Control Plane records the purchase receipt under the launch
+            // operation identity. The fake names it the same way rather than
+            // inventing an identity of its own.
+            operationId: state.operationId,
+            workspaceId: state.workspaceId,
             type: "billing.workspace_purchased.v1", status: "completed",
             chargeReference: "opl:workspace-launch:charge:0001",
             totalUsdMicros: receiptAmountMicros ?? quoteMicros,
-            fulfillment: { computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001" } },
+            fulfillment: { computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001" },
+            ...receiptOverrides },
         } };
       }
       if (path === "/api/pricing/preview") {
@@ -185,6 +193,7 @@ function controlPlane({ accountId = ACCOUNT_ID, sessionAccountId = ACCOUNT_ID, s
         state.byKey.set(key, operationId);
         state.orders.set(operationId, admitted);
         state.workspaceId = workspaceId;
+        state.operationId = operationId;
         state.posted += 1;
         state.commands.push(init.body);
         state.wallet = String(BigInt(state.wallet) - BigInt(chargeMicros ?? quoteMicros) - BigInt(extraChargeMicros));
@@ -654,7 +663,8 @@ test("an admitted order naming another Workspace is refused rather than resumed"
   platform.state.orders.set(operationId, { ...platform.state.orders.get(operationId), workspaceId: "ws-ffffffffffffffff" });
   const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
   assert.equal(state, "failed");
-  assert.equal(receipt.reason, "account_binding_mismatch");
+  assert.equal(receipt.reason, "launch_identity_mismatch",
+    "the launch names another Workspace, which is an identity mismatch, not the session account fence");
 });
 
 // Finding 2: a wallet that moved was accepted as proof of a charge.
@@ -853,4 +863,242 @@ test("a hand-assembled request cannot bind the fence to one account and publish 
   const forged = { ...request, tenant: { ...request.tenant, accountDigest: `sha256:${"0".repeat(64)}` } };
   await assert.rejects(run(forged, providerAdapter("local-docker", platform)), { code: "qualification_request_invalid" });
   assert.equal(platform.state.posted, 0);
+});
+
+
+// ---------------------------------------------------------------------------
+// Review fixes. Each test below fails against 14d01c48 for the reason its name
+// states, and each keeps the evidence that closes it.
+// ---------------------------------------------------------------------------
+
+// C1: the Ledger receipt was bound to the Workspace and the amount but not to
+// the operation that caused the charge, so a receipt for another launch sharing
+// both could pay for this one.
+test("a Ledger receipt naming another launch operation does not settle this run", async () => {
+  const platform = controlPlane({
+    receipt: { operationId: "workspace-launch-ffffffffffffffffff" },
+  });
+  const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+
+  assert.equal(state, "failed");
+  assert.equal(receipt.reason, "charge_receipt_mismatch");
+  assert.equal(receipt.checks.charge_receipted, false, "another operation's receipt is not this run's charge");
+  assert.equal(receipt.checks.wallet_confirmed, false, "the balance is not used to infer a receipt that does not bind");
+});
+
+test("a launch readback that answers for another operation identity is refused", async () => {
+  const platform = controlPlane();
+  const request = qualificationRequest("local-docker");
+  const operationId = launchOperationId(ACCOUNT_ID, request.operation.idempotencyKey);
+  const workspaceId = launchWorkspaceId(ACCOUNT_ID, operationId);
+  // The order comes back under a different operation identity while naming this
+  // run's Workspace, so the identity is the only thing wrong with it.
+  platform.http.request = async () => ({
+    response: { status: 200 },
+    payload: { operationId: "workspace-launch-ffffffffffffffffff", workspaceId },
+  });
+  const { state, receipt } = await run(request, providerAdapter("local-docker", platform));
+
+  assert.equal(state, "failed");
+  assert.equal(receipt.reason, "launch_identity_mismatch");
+  assert.equal(platform.state.posted, 0, "an order under another identity is never followed or reissued");
+});
+
+// C2: a redelivery whose order was still open bought nothing itself, but the
+// original charge can land while it waits. Every check was true, yet the
+// contract accepted only two settled shapes and threw after a real purchase.
+test("a resumed order whose original charge lands while this run waits settles honestly", async () => {
+  const platform = controlPlane();
+  const request = qualificationRequest("local-docker");
+  const operationId = launchOperationId(ACCOUNT_ID, request.operation.idempotencyKey);
+  const workspaceId = launchWorkspaceId(ACCOUNT_ID, operationId);
+  // The earlier delivery admitted the order and its charge has not landed yet.
+  const admitted = {
+    operationId, workspaceId, status: "running", phase: "runtime", receiptId: "",
+    computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001",
+  };
+  platform.state.orders.set(operationId, admitted);
+  platform.state.byKey.set(request.operation.idempotencyKey, operationId);
+  platform.state.workspaceId = workspaceId;
+  platform.state.operationId = operationId;
+
+  let charged = false;
+  const wait = async () => {
+    if (charged) return;
+    charged = true;
+    // The original charge lands while this delivery waits, and the order reaches
+    // the same terminal receipt the first delivery would have seen.
+    platform.state.wallet = String(BigInt(platform.state.wallet) - BigInt(QUOTE_MICROS));
+    platform.state.orders.set(operationId, {
+      ...admitted, status: "succeeded", phase: "succeeded", receiptId: "rcpt_qualification_1",
+    });
+  };
+  const { state, receipt } = await run(request, providerAdapter("local-docker", platform), { wait });
+
+  assert.equal(state, "settled", "the purchase really settled and the evidence says so honestly");
+  assert.equal(receipt.operation.resumed, true, "this delivery found the order instead of issuing one");
+  assert.equal(platform.state.posted, 0, "a resumed order is never reissued");
+  assert.equal(receipt.mutations.observed.purchases, 0, "this run bought nothing");
+  assert.equal(receipt.mutations.observed.charges, 1, "the original charge landed while it waited");
+  assert.equal(receipt.checks.wallet_confirmed, true);
+  assert.equal(
+    BigInt(receipt.accounting.walletBeforeUsdMicros) - BigInt(receipt.accounting.walletAfterUsdMicros),
+    BigInt(QUOTE_MICROS),
+    "the wallet moved by exactly the quote",
+  );
+});
+
+// S1: a hand-assembled partial scope skipped the bounds a real request declares
+// and reached the purchase before failing on `undefined < 1`.
+test("a hand-assembled request with a partial scope is refused before anything is posted", async () => {
+  const platform = controlPlane();
+  const request = qualificationRequest("local-docker");
+  const partial = { ...request, scope: { purchases: 1, charges: 1 } };
+  await assert.rejects(run(partial, providerAdapter("local-docker", platform)), { code: "qualification_request_invalid" });
+  assert.equal(platform.state.posted, 0, "nothing is issued for a request the contract did not build");
+});
+
+// S7: a copy has every field of a valid request and none of its admission.
+test("a spread copy of a valid request is refused as an admission", async () => {
+  const platform = controlPlane();
+  const copy = { ...qualificationRequest("local-docker") };
+  await assert.rejects(run(copy, providerAdapter("local-docker", platform)), { code: "qualification_request_invalid" });
+  assert.equal(platform.state.posted, 0);
+});
+
+// S2: an adapter that throws while opening may still have opened something, so
+// cleanup has to run on the attempt rather than on a returned scope.
+test("an adapter that throws while opening its scope still gets one cleanup attempt", async () => {
+  const platform = controlPlane();
+  const adapter = providerAdapter("local-docker", platform, { failOpen: "cluster unreachable" });
+  const { state, receipt } = await run(qualificationRequest("local-docker"), adapter);
+
+  assert.equal(state, "blocked");
+  assert.equal(receipt.reason, "provider_scope_unavailable");
+  assert.equal(adapter.calls.closed, 1, "the adapter that may have opened something is asked to put it back");
+  assert.equal(adapter.calls.healthReads, 1, "deployment health is read on the same attempt");
+  assert.equal(receipt.cleanup.performed, true);
+  assert.equal(platform.state.posted, 0);
+});
+
+// S3: auto-renew would commit a future charge this flow never observes.
+test("an auto-renewing product is refused rather than purchased", () => {
+  assert.throws(() => qualificationRequest("local-docker", {
+    product: { resourceType: "workspace", packageId: "basic", autoRenew: true },
+  }), { code: "qualification_product_invalid" });
+});
+
+// S4: an error is not a result just because its code names the passing reason.
+test("an error whose code is the passing reason name is not a pass", async () => {
+  const platform = controlPlane();
+  const original = platform.http.json.bind(platform.http);
+  platform.http.json = async (path, init, auth, statuses) => {
+    if (path.startsWith("/api/billing/receipts/")) {
+      const error = new Error("receipt read failed");
+      error.code = "none";
+      throw error;
+    }
+    return original(path, init, auth, statuses);
+  };
+  const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+
+  assert.equal(state, "unknown", "an unclassified error is undetermined, never settled");
+  assert.equal(receipt.reason, "owner_readback_unavailable");
+  assert.equal(receipt.checks.account_bound, true, "the read that did succeed is still reported honestly");
+  assert.equal(receipt.checks.charge_receipted, false);
+  assert.equal(receipt.checks.wallet_confirmed, false);
+});
+
+// S5: the receipt's product and authority are part of the admission, so a forged
+// receipt cannot name a product or an authority this flow never declared.
+test("a settled receipt cannot name a product or an authority this flow never declared", async () => {
+  const platform = controlPlane();
+  const { receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+
+  for (const [what, value] of [
+    ["a compute resource", { ...receipt, product: { ...receipt.product, resourceType: "compute" } }],
+    ["a traversing package id", { ...receipt, product: { ...receipt.product, packageId: "../basic" } }],
+    ["an auto-renewing product", { ...receipt, product: { ...receipt.product, autoRenew: true } }],
+    ["a fixture authority class", { ...receipt, authority: { ...receipt.authority, authorityClass: "fixture" } }],
+  ]) {
+    assert.throws(() => validateBusinessQualificationReceipt(value),
+      { code: "qualification_business_receipt_invalid" }, what);
+  }
+});
+
+// S13: the external J0 producer still emits the legacy provider-named kind, so a
+// request may declare it; a preproduction request may not borrow a sandbox one.
+test("a Local-Docker request may accept the legacy J0 kind it declares", async () => {
+  const legacyReceipt = { ...j0ReadyReceipt("local-docker"), kind: LEGACY_QUALIFICATION_J0_READY_KINDS[0] };
+  assert.throws(() => qualificationRequest("local-docker", {
+    authority: { mode: "live", authorityClass: "sandbox", j0ReadyReceipt: legacyReceipt },
+  }), { code: "j0_ready_receipt_invalid" }, "a request that declared no legacy kind still refuses one");
+
+  const platform = controlPlane();
+  const request = qualificationRequest("local-docker", {
+    legacyReceiptKinds: [...LEGACY_QUALIFICATION_J0_READY_KINDS],
+    authority: { mode: "live", authorityClass: "sandbox", j0ReadyReceipt: legacyReceipt },
+  });
+  const { state } = await run(request, providerAdapter("local-docker", platform));
+  assert.equal(state, "settled");
+});
+
+test("a preproduction request cannot be qualified by a sandbox J0 receipt", () => {
+  assert.throws(() => qualificationRequest("local-docker", {
+    authority: { mode: "live", authorityClass: "preproduction", j0ReadyReceipt: j0ReadyReceipt("local-docker") },
+  }), { code: "qualification_authority_invalid" }, "the declared class has to be the class the J0 receipt carries");
+});
+
+// S14: the Runtime readback has to describe this exact application, URL and
+// Workspace, not merely something that is running.
+test("a Runtime readback bound to another application, URL or Workspace does not settle", async () => {
+  for (const runtime of [
+    { workspaceId: "ws-ffffffffffffffff" },
+    { url: "https://another.qualification.invalid/" },
+    { currentApplication: { operationId: "app-op-ffffffffffffffff" } },
+  ]) {
+    const platform = controlPlane({ runtime });
+    const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+    assert.equal(state, "failed", JSON.stringify(runtime));
+    assert.equal(receipt.reason, "runtime_not_ready", JSON.stringify(runtime));
+    assert.equal(receipt.checks.runtime_ready, false, JSON.stringify(runtime));
+  }
+});
+
+test("a Ledger receipt that differs in type, status, Workspace, charge reference or fulfillment does not settle", async () => {
+  for (const ledger of [
+    { type: "billing.workspace_renewed.v1" },
+    { status: "pending" },
+    { workspaceId: "ws-ffffffffffffffff" },
+    { chargeReference: "" },
+    { fulfillment: { computeAllocationId: "ca-0001", storageId: "st-0001" } },
+    { fulfillment: { computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001", runtimeId: "rt-1" } },
+    { fulfillment: { computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-ffff" } },
+  ]) {
+    const platform = controlPlane({ receipt: ledger });
+    const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+    assert.equal(state, "failed", JSON.stringify(ledger));
+    assert.equal(receipt.reason, "charge_receipt_mismatch", JSON.stringify(ledger));
+    assert.equal(receipt.checks.charge_receipted, false, JSON.stringify(ledger));
+  }
+});
+
+test("an owner envelope that is not from the named source is not an owner readback", async () => {
+  for (const [what, override, accountBound] of [
+    ["a wallet from another source", (path) => path === "/api/gateway/wallet"
+      ? { status: 200, payload: { source: "fixture", available: true, status: "available", data: { usdMicros: "999999999" } } }
+      : null, true],
+    ["an identity answer that is not available", (path) => path === "/api/auth/me"
+      ? { status: 200, payload: { source: "sub2api", available: false, status: "unavailable", data: {} } }
+      : null, false],
+  ]) {
+    const platform = controlPlane();
+    const original = platform.http.json.bind(platform.http);
+    platform.http.json = async (path, init, auth, statuses) => override(path) || original(path, init, auth, statuses);
+    const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+    assert.equal(state, "unknown", what);
+    assert.equal(receipt.reason, "owner_readback_unavailable", what);
+    assert.equal(receipt.checks.account_bound, accountBound, what);
+    assert.equal(receipt.checks.wallet_confirmed, false, what);
+  }
 });
