@@ -19,10 +19,13 @@ import (
 
 type workspaceProbe struct {
 	api.WorkspaceProductServiceClient
-	created *api.CreateWorkspaceRpcRequest
-	listed  *api.ListWorkspacesRpcRequest
-	read    *api.GetWorkspaceRpcRequest
-	err     error
+	created      *api.CreateWorkspaceRpcRequest
+	listed       *api.ListWorkspacesRpcRequest
+	read         *api.GetWorkspaceRpcRequest
+	deleted      *api.DeleteWorkspaceRpcRequest
+	readDeletion *api.GetWorkspaceDeletionRpcRequest
+	deletion     *api.WorkspaceDeletion
+	err          error
 }
 
 func (p *workspaceProbe) CreateWorkspace(_ context.Context, r *api.CreateWorkspaceRpcRequest, _ ...grpc.CallOption) (*api.Operation, error) {
@@ -36,6 +39,17 @@ func (p *workspaceProbe) ListWorkspaces(_ context.Context, r *api.ListWorkspaces
 func (p *workspaceProbe) GetWorkspace(_ context.Context, r *api.GetWorkspaceRpcRequest, _ ...grpc.CallOption) (*api.Workspace, error) {
 	p.read = r
 	return &api.Workspace{Id: r.WorkspaceId, Status: api.WorkspaceStatusEnum_WORKSPACE_STATUS_ENUM_PROVISIONING}, p.err
+}
+func (p *workspaceProbe) DeleteWorkspace(_ context.Context, r *api.DeleteWorkspaceRpcRequest, _ ...grpc.CallOption) (*api.Operation, error) {
+	p.deleted = r
+	if p.err != nil {
+		return nil, p.err
+	}
+	return &api.Operation{OperationId: "op-delete-1", ResourceId: "ws-1", Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_WORKSPACE, Kind: api.OperationKindEnum_OPERATION_KIND_ENUM_DELETE_WORKSPACE, Stage: api.OperationStageEnum_OPERATION_STAGE_ENUM_RETIREMENT, Status: api.OperationStatusEnum_OPERATION_STATUS_ENUM_ACCEPTED, RequestId: r.GetContext().GetRequestId(), CreatedAt: timestamppb.Now(), UpdatedAt: timestamppb.Now(), PollAfterSeconds: proto.Int32(3)}, nil
+}
+func (p *workspaceProbe) GetWorkspaceDeletion(_ context.Context, r *api.GetWorkspaceDeletionRpcRequest, _ ...grpc.CallOption) (*api.WorkspaceDeletion, error) {
+	p.readDeletion = r
+	return p.deletion, p.err
 }
 
 type workspaceReader struct {
@@ -148,5 +162,120 @@ func TestWorkspaceReadPaginationAndFailure(t *testing.T) {
 	NewWorkspaceHandler(p, i).ServeHTTP(w, sessionRequest("GET", "/api/v2/workspaces/ws-1"))
 	if w.Code != 404 || p.read.GetWorkspaceId() != "ws-1" {
 		t.Fatalf("readback status=%d request=%v", w.Code, p.read)
+	}
+}
+
+// TestWorkspaceDeletionCommandReachesTheWorkspaceOwner proves the browser DELETE
+// route forwards the caller's exact confirmation and destruction
+// acknowledgement to the Workspace owner and publishes the owner's own accepted
+// operation instead of reporting the deletion as finished.
+func TestWorkspaceDeletionCommandReachesTheWorkspaceOwner(t *testing.T) {
+	p := &workspaceProbe{}
+	i := workspaceIdentity(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEWORKSPACE, "ws-1")
+	r := sessionRequest(http.MethodDelete, "/api/v2/workspaces/ws-1")
+	r.Body = io.NopCloser(strings.NewReader(`{"confirmationName":"Research","acknowledgeDataDestruction":true}`))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("X-CSRF-Token", "csrf-1")
+	r.Header.Set("Idempotency-Key", "delete-workspace-1")
+	w := httptest.NewRecorder()
+	NewWorkspaceHandler(p, i).ServeHTTP(w, r)
+
+	if w.Code != http.StatusAccepted || w.Header().Get("Retry-After") != "3" || w.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("response: %d %v %s", w.Code, w.Header(), w.Body.String())
+	}
+	if p.deleted == nil || p.deleted.GetWorkspaceId() != "ws-1" {
+		t.Fatalf("owner command: %v", p.deleted)
+	}
+	body := p.deleted.GetBody()
+	if body.GetConfirmationName() != "Research" || !body.GetAcknowledgeDataDestruction() {
+		t.Fatalf("owner command body rewritten: %v", body)
+	}
+	call := p.deleted.GetContext()
+	if call.GetActorId() != "actor-1" || call.GetScope().GetTenant().GetTenantId() != "tenant-1" ||
+		call.GetIdempotencyKey() != "delete-workspace-1" || call.GetRequestId() == "" {
+		t.Fatalf("caller not preserved: %v", call)
+	}
+	var response map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response["operationId"] != "op-delete-1" || response["status"] != "accepted" || response["kind"] != "delete_workspace" {
+		t.Fatalf("operation rewritten: %v", response)
+	}
+}
+
+// TestWorkspaceDeletionCommandRequiresTheWriteGuard proves a deletion with no
+// live CSRF token or idempotency key never reaches the Workspace owner.
+func TestWorkspaceDeletionCommandRequiresTheWriteGuard(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(*http.Request)
+		want   int
+	}{
+		{"csrf", func(r *http.Request) { r.Header.Del("X-CSRF-Token") }, 403},
+		{"idempotency", func(r *http.Request) { r.Header.Del("Idempotency-Key") }, 400},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &workspaceProbe{}
+			i := workspaceIdentity(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEWORKSPACE, "ws-1")
+			r := sessionRequest(http.MethodDelete, "/api/v2/workspaces/ws-1")
+			r.Body = io.NopCloser(strings.NewReader(`{"confirmationName":"Research","acknowledgeDataDestruction":true}`))
+			r.Header.Set("Content-Type", "application/json")
+			r.Header.Set("X-CSRF-Token", "csrf-1")
+			r.Header.Set("Idempotency-Key", "delete-workspace-1")
+			tc.mutate(r)
+			w := httptest.NewRecorder()
+			NewWorkspaceHandler(p, i).ServeHTTP(w, r)
+			if w.Code != tc.want || p.deleted != nil {
+				t.Fatalf("status=%d owner=%v body=%s", w.Code, p.deleted, w.Body.String())
+			}
+		})
+	}
+}
+
+// TestWorkspaceDeletionReadbackPreservesTheOwnerFacts proves the GET route
+// publishes the canonical WorkspaceDeletion unchanged, so Console projects the
+// owner's resource, data and refund facts instead of a BFF-invented state.
+func TestWorkspaceDeletionReadbackPreservesTheOwnerFacts(t *testing.T) {
+	p := &workspaceProbe{deletion: &api.WorkspaceDeletion{
+		WorkspaceId:            "ws-1",
+		OperationId:            "op-delete-1",
+		ResourceDeletionStatus: api.WorkspaceDeletionResourceDeletionStatusEnum_WORKSPACE_DELETION_RESOURCE_DELETION_STATUS_ENUM_CONFIRMED,
+		DataDeletionStatus:     api.WorkspaceDeletionDataDeletionStatusEnum_WORKSPACE_DELETION_DATA_DELETION_STATUS_ENUM_CONFIRMED,
+		RefundOperationId:      proto.String("refund-1"),
+		RefundStatus:           api.WorkspaceDeletionRefundStatusEnum_WORKSPACE_DELETION_REFUND_STATUS_ENUM_CONFIRMED,
+		UpdatedAt:              timestamppb.Now(),
+	}}
+	i := workspaceIdentity(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEDELETION, "ws-1")
+	w := httptest.NewRecorder()
+	NewWorkspaceHandler(p, i).ServeHTTP(w, sessionRequest(http.MethodGet, "/api/v2/workspaces/ws-1/deletion"))
+
+	if w.Code != http.StatusOK || w.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("response: %d %v %s", w.Code, w.Header(), w.Body.String())
+	}
+	if p.readDeletion == nil || p.readDeletion.GetWorkspaceId() != "ws-1" {
+		t.Fatalf("owner read: %v", p.readDeletion)
+	}
+	var response map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response["workspaceId"] != "ws-1" || response["operationId"] != "op-delete-1" ||
+		response["resourceDeletionStatus"] != "confirmed" || response["dataDeletionStatus"] != "confirmed" ||
+		response["refundStatus"] != "confirmed" || response["refundOperationId"] != "refund-1" {
+		t.Fatalf("owner facts rewritten: %v", response)
+	}
+}
+
+// TestWorkspaceDeletionReadbackReportsNoAcceptedDeletion proves the owner's
+// not-found answer stays a 404 on the BFF surface; the BFF does not invent an
+// empty deletion record.
+func TestWorkspaceDeletionReadbackReportsNoAcceptedDeletion(t *testing.T) {
+	p := &workspaceProbe{err: status.Error(codes.NotFound, "the Workspace has no accepted deletion")}
+	i := workspaceIdentity(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEDELETION, "ws-1")
+	w := httptest.NewRecorder()
+	NewWorkspaceHandler(p, i).ServeHTTP(w, sessionRequest(http.MethodGet, "/api/v2/workspaces/ws-1/deletion"))
+	if w.Code != http.StatusNotFound || p.readDeletion == nil {
+		t.Fatalf("status=%d owner=%v body=%s", w.Code, p.readDeletion, w.Body.String())
 	}
 }

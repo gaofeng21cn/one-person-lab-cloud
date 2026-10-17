@@ -77,9 +77,10 @@ test("a different Workspace receives a new delete idempotency intent", () => {
   assert.equal(keysCreated, 1);
 });
 
-test("delete succeeds only when the authoritative list confirms absence", () => {
+test("delete succeeds only when the authoritative owner readback confirms absence", () => {
   assert.equal(workspaceDeleteReadbackConfirmed(availableReadback(null)), true);
   assert.equal(workspaceDeleteReadbackConfirmed(availableReadback(workspace)), false);
+  assert.equal(workspaceDeleteReadbackConfirmed(availableReadback({ ...workspace, state: "deleted" })), true);
 
   const unavailable: SourceEnvelope<WorkspaceDTO | null> = {
     source: "control-plane",
@@ -128,6 +129,15 @@ test("a blocked deletion is shown as paused with its stable reason, never as del
   assert.equal(presentation.tone, "danger");
   assert.match(presentation.detail, /身份/);
   assert.doesNotMatch(presentation.title, /已删除/);
+});
+
+test("a blocked deletion without an owner-published reason does not claim a specific cause", () => {
+  const presentation = presentWorkspaceDelete({
+    workspaceId: workspace.id, operationId: "workspace-delete-alpha", status: "manual_review", phase: "retirement"
+  });
+  assert.ok(presentation);
+  assert.equal(presentation.tone, "danger");
+  assert.doesNotMatch(presentation.detail, /身份/);
 });
 
 test("a retrying deletion reports the automatic retry and keeps the refund separate", () => {

@@ -350,3 +350,55 @@ test("Key reauthentication follows typed error codes without interpreting messag
     assert.equal(result.available, false);
   }
 });
+
+test("Workspace owner deletion facts project onto the Console progress model without invented fields", () => {
+  const operation = {
+    operationId: "op-delete-1", owner: "workspace", kind: "delete_workspace", resourceId: "ws-1",
+    status: "succeeded" as const, stage: "succeeded", requestId: "request-1",
+    createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:05Z"
+  };
+  const deletion = {
+    workspaceId: "ws-1", operationId: "op-delete-1",
+    resourceDeletionStatus: "confirmed" as const, dataDeletionStatus: "confirmed" as const,
+    refundOperationId: "refund-1", refundStatus: "confirmed" as const,
+    updatedAt: "2026-10-01T00:00:05Z"
+  };
+
+  const completed = workspaceApi.projectWorkspaceOwnerDeletion(deletion, operation);
+  assert.equal(completed.status, "deleted");
+  assert.equal(completed.pageState, "completed");
+  assert.equal(completed.phase, "succeeded");
+  assert.equal(completed.refundStatus, "succeeded");
+  assert.equal(completed.refundOperationId, "refund-1");
+  assert.equal("stage" in completed, false);
+  assert.equal("lastReadbackAt" in completed, false);
+  assert.equal("nextRetryAt" in completed, false);
+
+  const blocked = workspaceApi.projectWorkspaceOwnerDeletion(
+    { ...deletion, resourceDeletionStatus: "rejected", dataDeletionStatus: "rejected", refundStatus: "not_applicable", refundOperationId: undefined },
+    { ...operation, status: "needs_attention", stage: "storage_deletion" }
+  );
+  assert.equal(blocked.status, "manual_review");
+  assert.equal(blocked.pageState, "blocked");
+  assert.equal(blocked.refundStatus, "not_due");
+
+  const retrying = workspaceApi.projectWorkspaceOwnerDeletion(
+    { ...deletion, resourceDeletionStatus: "unknown", dataDeletionStatus: "unknown", refundStatus: "requested", refundOperationId: undefined },
+    { ...operation, status: "awaiting_confirmation", stage: "refund" }
+  );
+  assert.equal(retrying.status, "pending");
+  assert.equal(retrying.pageState, "retrying");
+  assert.equal(retrying.refundStatus, "pending");
+
+  const unknownRefund = workspaceApi.projectWorkspaceOwnerDeletion(
+    { ...deletion, resourceDeletionStatus: "pending", dataDeletionStatus: "pending", refundStatus: "unknown", refundOperationId: undefined },
+    { ...operation, status: "running", stage: "retirement" }
+  );
+  assert.equal(unknownRefund.status, "pending");
+  assert.equal(unknownRefund.pageState, "waiting");
+  assert.equal("refundStatus" in unknownRefund, false);
+
+  assert.throws(() => workspaceApi.projectWorkspaceOwnerDeletion(
+    deletion, { ...operation, resourceId: "ws-other" }
+  ), /invalid_workspace_deletion_response/);
+});

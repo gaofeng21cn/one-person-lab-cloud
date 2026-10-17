@@ -111,4 +111,24 @@ func (s *Server) registerWorkspaceRoutes(mux *http.ServeMux, workspace api.Works
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(raw)
 	})
+
+	// Deletion is a Workspace-owner operation. The BFF registers the two owner
+	// methods the contract already declares; it never derives progress, refund or
+	// resource facts of its own. The command carries the Workspace's exact name and
+	// the caller's destruction acknowledgement, which the owner refuses unless both
+	// match.
+	s.publisherRoute(mux, "DELETE /api/v2/workspaces/{workspaceId}", owneridentity.Workspace, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEWORKSPACE, kind, "workspaceId", func() proto.Message { return &api.DeleteWorkspaceRequest{} },
+		func(r *http.Request, call *api.CallContext, body proto.Message) (proto.Message, error) {
+			if err := require(); err != nil {
+				return nil, err
+			}
+			return workspace.DeleteWorkspace(r.Context(), &api.DeleteWorkspaceRpcRequest{Context: call, WorkspaceId: r.PathValue("workspaceId"), Body: body.(*api.DeleteWorkspaceRequest)})
+		})
+	s.publisherRoute(mux, "GET /api/v2/workspaces/{workspaceId}/deletion", owneridentity.Workspace, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEDELETION, kind, "workspaceId", nil,
+		func(r *http.Request, call *api.CallContext, _ proto.Message) (proto.Message, error) {
+			if err := require(); err != nil {
+				return nil, err
+			}
+			return workspace.GetWorkspaceDeletion(r.Context(), &api.GetWorkspaceDeletionRpcRequest{Context: call, WorkspaceId: r.PathValue("workspaceId")})
+		})
 }

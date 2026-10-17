@@ -107,7 +107,7 @@ test("Workspace delete adapter sends one typed Control Plane command", async () 
     }), { status: 200, headers: { "content-type": "application/json" } });
   };
 
-  const result = await workspaceApi.deleteWorkspace("workspace / alpha", "csrf-alpha", "delete-once");
+  const result = await workspaceApi.deleteWorkspace("workspace / alpha", "Alpha Workspace", "csrf-alpha", "delete-once");
 
   assert.deepEqual(result, {
     available: true,
@@ -126,7 +126,7 @@ test("Workspace delete adapter reports an unlanded backend route as unavailable"
     headers: { "content-type": "application/json" }
   });
 
-  assert.deepEqual(await workspaceApi.deleteWorkspace("workspace-alpha", "csrf-alpha", "delete-once"), {
+  assert.deepEqual(await workspaceApi.deleteWorkspace("workspace-alpha", "Alpha Workspace", "csrf-alpha", "delete-once"), {
     available: false,
     reasonCode: "workspace_delete_unavailable"
   });
@@ -139,7 +139,7 @@ test("Workspace delete does not relabel an owner not-found response as route una
   });
 
   await assert.rejects(
-    () => workspaceApi.deleteWorkspace("workspace-alpha", "csrf-alpha", "delete-once"),
+    () => workspaceApi.deleteWorkspace("workspace-alpha", "Alpha Workspace", "csrf-alpha", "delete-once"),
     /workspace_not_found/
   );
 });

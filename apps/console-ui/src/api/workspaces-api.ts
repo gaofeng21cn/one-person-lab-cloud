@@ -24,6 +24,7 @@ import type {
 } from "./dtos.ts";
 import type { WorkspaceApplicationInstallationDTO } from "./dtos.ts";
 import { deleteJson, postJson, putJson, getJson, patchJson, type ApiError } from "./console-api.ts";
+import { cloudIdentity } from "../app/console-identity.ts";
 import type {
   CapabilityVersionPageDTO,
   ComputePlanPageDTO,
@@ -33,6 +34,7 @@ import type {
   StoragePlanPageDTO,
   WorkspaceOwnerAccessDTO,
   WorkspaceOwnerDTO,
+  WorkspaceOwnerDeletionDTO,
   WorkspaceOwnerOperationDTO,
   WorkspaceQuoteDTO,
   WorkspaceQuoteRequestDTO
@@ -225,14 +227,27 @@ export async function updateWorkspaceModels(
   return operation;
 }
 
-export async function getWorkspaceOwnerOperation(operationId: string): Promise<WorkspaceOwnerOperationDTO> {
-  const value = await getJson<unknown>(`/api/v2/operations/workspace/${encodeURIComponent(operationId)}`);
+// decodeWorkspaceOwnerOperation validates the canonical public Operation the
+// Workspace owner returns. `operationId` is supplied when the caller already
+// knows the identity it is polling; a command response learns it from the
+// owner's own answer.
+function decodeWorkspaceOwnerOperation(value: unknown, operationId?: string): WorkspaceOwnerOperationDTO {
   if (!value || typeof value !== "object") throw new Error("invalid_workspace_operation_readback");
   const operation = value as WorkspaceOwnerOperationDTO;
-  if (operation.operationId !== operationId || operation.owner !== "workspace" || !operation.status || !operation.stage) {
+  if (typeof operation.operationId !== "string" || !operation.operationId.trim()
+    || operationId !== undefined && operation.operationId !== operationId
+    || operation.owner !== "workspace" || !operation.status || !operation.stage
+    || typeof operation.resourceId !== "string" || typeof operation.kind !== "string") {
     throw new Error("invalid_workspace_operation_readback");
   }
   return operation;
+}
+
+export async function getWorkspaceOwnerOperation(operationId: string): Promise<WorkspaceOwnerOperationDTO> {
+  return decodeWorkspaceOwnerOperation(
+    await getJson<unknown>(`/api/v2/operations/workspace/${encodeURIComponent(operationId)}`),
+    operationId
+  );
 }
 
 export async function getWorkspaceOwner(workspaceId: string): Promise<WorkspaceOwnerDTO> {
@@ -437,11 +452,33 @@ function workspaceDeleteUnavailable(error: ApiError): boolean {
   return payload?.error !== "workspace_not_found";
 }
 
+// The cloud-identity delete command reaches the Workspace owner through the
+// migrated BFF surface. The owner owns the deletion, the refund and the
+// operation; Console forwards the caller's exact Workspace name and explicit
+// data-destruction acknowledgement rather than deciding either itself, then
+// reports the owner's own operation status.
 export async function deleteWorkspace(
   workspaceId: string,
+  workspaceName: string,
   csrfToken: string,
   idempotencyKey: string
 ): Promise<WorkspaceDeleteCommandResult> {
+  if (cloudIdentity) {
+    if (!workspaceName.trim()) throw new Error("workspace_delete_name_required");
+    const operation = decodeWorkspaceOwnerOperation(await deleteJson<unknown>(
+      `/api/v2/workspaces/${encodeURIComponent(workspaceId)}`,
+      csrfToken,
+      idempotencyKey,
+      { confirmationName: workspaceName, acknowledgeDataDestruction: true }
+    ));
+    if (operation.kind !== "delete_workspace" || operation.resourceId !== workspaceId) {
+      throw new Error("invalid_workspace_delete_response");
+    }
+    return {
+      available: true,
+      data: { workspaceId, status: operation.status, operationId: operation.operationId } satisfies WorkspaceDeleteResponse
+    };
+  }
   try {
     const dto = decodeDto<Record<string, unknown>>(await deleteJson<unknown>(
       `/api/workspaces/${encodeURIComponent(workspaceId)}`,
@@ -470,8 +507,76 @@ export async function deleteWorkspace(
 const workspaceDeletionStages = ["runtime_absent", "attachment_absent", "storage_absent", "compute_absent", "workspace_absent", "receipt_recorded"];
 const workspaceDeletionPageStates = ["waiting", "retrying", "blocked", "completed"];
 const workspaceDeleteRefundStates = ["blocked", "pending", "manual_review", "succeeded", "not_due"];
+const workspaceOwnerDeletionFacts = ["pending", "confirmed", "rejected", "unknown"] as const;
+const workspaceOwnerRefundFacts = ["not_applicable", "requested", "confirmed", "rejected", "unknown"] as const;
+const workspaceOwnerDeletionRefundStates: Record<string, WorkspaceDeletionDTO["refundStatus"]> = {
+  not_applicable: "not_due",
+  requested: "pending",
+  confirmed: "succeeded",
+  rejected: "manual_review"
+};
+
+function decodeWorkspaceOwnerDeletion(value: unknown, workspaceId: string): WorkspaceOwnerDeletionDTO {
+  if (!value || typeof value !== "object") throw new Error("invalid_workspace_deletion_response");
+  const deletion = value as WorkspaceOwnerDeletionDTO;
+  if (deletion.workspaceId !== workspaceId || typeof deletion.operationId !== "string" || !deletion.operationId.trim()
+    || !workspaceOwnerDeletionFacts.includes(deletion.resourceDeletionStatus)
+    || !workspaceOwnerDeletionFacts.includes(deletion.dataDeletionStatus)
+    || !workspaceOwnerRefundFacts.includes(deletion.refundStatus)
+    || typeof deletion.updatedAt !== "string" || Number.isNaN(new Date(deletion.updatedAt).getTime())
+    || deletion.refundOperationId !== undefined
+      && (typeof deletion.refundOperationId !== "string" || !deletion.refundOperationId.trim())) {
+    throw new Error("invalid_workspace_deletion_response");
+  }
+  return deletion;
+}
+
+// projectWorkspaceOwnerDeletion maps the Workspace owner's own deletion and
+// operation facts onto the Console presentation model. `status` and `pageState`
+// are deterministic projections of those facts; `phase` is the operation's own
+// stage. The owner publishes no Console stage token, most recent readback time
+// or next-retry schedule, so those fields stay absent instead of being invented.
+export function projectWorkspaceOwnerDeletion(
+  deletion: WorkspaceOwnerDeletionDTO,
+  operation: WorkspaceOwnerOperationDTO
+): WorkspaceDeletionDTO {
+  if (operation.operationId !== deletion.operationId || operation.resourceId !== deletion.workspaceId
+    || operation.kind !== "delete_workspace") {
+    throw new Error("invalid_workspace_deletion_response");
+  }
+  const confirmed = deletion.resourceDeletionStatus === "confirmed" && deletion.dataDeletionStatus === "confirmed";
+  const rejected = deletion.resourceDeletionStatus === "rejected" || deletion.dataDeletionStatus === "rejected";
+  const attention = operation.status === "needs_attention" || operation.status === "failed";
+  const status: WorkspaceDeletionDTO["status"] = confirmed ? "deleted" : rejected || attention ? "manual_review" : "pending";
+  const pageState: WorkspaceDeletionDTO["pageState"] = status === "deleted" ? "completed"
+    : status === "manual_review" ? "blocked"
+      : operation.status === "awaiting_confirmation" ? "retrying" : "waiting";
+  const refundStatus = workspaceOwnerDeletionRefundStates[deletion.refundStatus];
+  return {
+    workspaceId: deletion.workspaceId,
+    operationId: deletion.operationId,
+    status,
+    phase: operation.stage,
+    pageState,
+    ...(refundStatus ? { refundStatus } : {}),
+    ...(deletion.refundOperationId ? { refundOperationId: deletion.refundOperationId } : {})
+  };
+}
 
 export async function getWorkspaceDeletion(workspaceId: string): Promise<WorkspaceDeletionDTO | null> {
+  if (cloudIdentity) {
+    let value: unknown;
+    try {
+      value = await getJson<unknown>(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/deletion`);
+    } catch (error) {
+      // The Workspace owner answers without a deletion record until it accepts
+      // one; the Console shows the deletion entry point rather than an error.
+      if ((error as ApiError).status === 404) return null;
+      throw error;
+    }
+    const deletion = decodeWorkspaceOwnerDeletion(value, workspaceId);
+    return projectWorkspaceOwnerDeletion(deletion, await getWorkspaceOwnerOperation(deletion.operationId));
+  }
   const value = await getJson<unknown>(`/api/workspaces/${encodeURIComponent(workspaceId)}/deletion`);
   if (value === null) return null;
   const dto = decodeDto<WorkspaceDeletionDTO>(value);
@@ -484,8 +589,8 @@ export async function getWorkspaceDeletion(workspaceId: string): Promise<Workspa
   if (dto.refundStatus !== undefined && !workspaceDeleteRefundStates.includes(dto.refundStatus)) throw new Error("invalid_workspace_deletion_response");
   // A published timestamp must be a real time, so a malformed readback time is
   // rejected instead of rendered as a plausible-looking value.
-  for (const value of [dto.lastReadbackAt, dto.nextRetryAt]) {
-    if (value !== undefined && Number.isNaN(new Date(value).getTime())) throw new Error("invalid_workspace_deletion_response");
+  for (const published of [dto.lastReadbackAt, dto.nextRetryAt]) {
+    if (published !== undefined && Number.isNaN(new Date(published).getTime())) throw new Error("invalid_workspace_deletion_response");
   }
   return dto;
 }
