@@ -86,6 +86,15 @@ export function createJ0ReadyReceiptValidator(profile) {
 // scope it did.
 export const QUALIFICATION_BUSINESS_RECEIPT_KIND = "opl.workspace-qualification.purchase.v1";
 
+// The one scope this flow establishes, and therefore the only scope value a
+// receipt of this kind may publish. It is named once so the orchestrator and the
+// validator cannot drift apart.
+export const QUALIFICATION_BUSINESS_SCOPE = "workspace_purchase";
+
+// The deployment health values an adapter may report. They are recorded beside
+// the business result and never allowed to move it.
+export const DEPLOYMENT_HEALTH = Object.freeze(["healthy", "degraded", "unknown"]);
+
 // The terminal result has to say which of these it is. `unknown` and
 // `recovery-required` are not softer forms of `failed`: the first means the run
 // could not determine the outcome, the second means it changed something and
@@ -109,16 +118,22 @@ export const QUALIFICATION_TERMINAL_REASONS = Object.freeze({
     "provider_scope_unavailable", "wallet_cannot_fund", "scope_bound_exhausted"
   ]),
   failed: Object.freeze([
-    "quote_invalid", "launch_stopped", "account_binding_mismatch", "workspace_not_ready", "runtime_not_ready",
-    "charge_receipt_mismatch", "wallet_readback_mismatch", "purchase_receipt_missing", "owner_evidence_incomplete"
+    "quote_invalid", "launch_stopped", "account_binding_mismatch", "launch_identity_mismatch",
+    "workspace_not_ready", "runtime_not_ready",
+    "charge_receipt_mismatch", "wallet_readback_mismatch", "purchase_receipt_missing"
   ]),
   unknown: Object.freeze(["response_lost", "owner_readback_unavailable"]),
   "recovery-required": Object.freeze(["mutation_unaccounted", "cleanup_unproven"])
 });
 
-export const QUALIFICATION_TERMINAL_STATES = Object.freeze([
-  "settled", "blocked", "failed", "unknown", "recovery-required"
-]);
+// The terminal states are exactly the states the reasons above define. Keeping
+// one list derived from the other means a state cannot be added to one and
+// forgotten in the other.
+export const QUALIFICATION_TERMINAL_STATES = Object.freeze(Object.keys(QUALIFICATION_TERMINAL_REASONS));
+
+// A failed state has to name a real check or read failure. There is deliberately
+// no "evidence was incomplete" failure: if every read succeeded the contract,
+// not the orchestrator, decides whether the evidence is settled.
 
 // What a settled receipt must have read, from the owner APIs, before it may say
 // so. Each is a fact about the declared account's own purchase, not about the
@@ -183,9 +198,14 @@ export function qualificationMutationScope(declared = {}) {
  *
  * The account id is what the platform is asked to act on, so it travels in the
  * request. The receipt keeps only the digest, and that digest is scoped to the
- * Candidate: the same customer qualifying two Candidates produces two
- * unrelated digests, so a receipt cannot be used to follow one customer across
- * Candidates, and it cannot be reversed without the Candidate it names.
+ * Candidate: the same customer qualifying two Candidates produces two unrelated
+ * digests, so a receipt cannot be used to follow one customer across Candidates.
+ *
+ * The digest is a stable, Candidate-scoped pseudonym, not an anonymization: a
+ * holder of the Candidate digest can confirm a guessed low-entropy account id by
+ * recomputing it. That is acceptable for this receipt, which is read by the same
+ * owner, and HMAC-ing the digest belongs to the protected qualification entry
+ * rather than here (tracked as a follow-up).
  */
 export function qualificationTenantScope(accountId, candidateReceiptDigest) {
   const account = String(accountId || "").trim();
@@ -210,23 +230,40 @@ export function qualificationProduct({ resourceType = "workspace", packageId = "
     throw qualificationContractError("qualification_product_invalid");
   }
   if (typeof autoRenew !== "boolean") throw qualificationContractError("qualification_product_invalid");
+  // This qualification buys one product once. Auto-renew would commit the
+  // customer to a later charge this run never observes, so it is refused here
+  // rather than purchased and left out of the accounting.
+  if (autoRenew) throw qualificationContractError("qualification_product_invalid");
   return Object.freeze({ resourceType: resource, packageId: product, autoRenew });
 }
+
+// The authority classes a live qualification may declare. The J0 validator in
+// this repository currently confirms only the sandbox class, so a preproduction
+// request has no acceptable J0 receipt yet; that is a refusal rather than a
+// relabelling, and the comparison below keeps the two in step.
+const QUALIFICATION_AUTHORITY_CLASSES = Object.freeze(["sandbox", "preproduction"]);
 
 /*
  * A live business qualification runs under an authority someone else confirmed,
  * and the J0 receipt is that proof. The fixture authority is not a weaker
  * business run, it is a different question, so it is refused here rather than
  * qualified and relabelled later.
+ *
+ * The declared class has to be the class the J0 receipt itself carries. A
+ * preproduction run whose only authority is a sandbox receipt is a different
+ * question again, and accepting it would publish a preproduction authority
+ * backed by sandbox evidence.
  */
 export function qualificationLiveAuthority({ mode, authorityClass, j0ReadyReceipt }, profile, sourceSha, sourceTree) {
   const receipt = createJ0ReadyReceiptValidator(profile)(j0ReadyReceipt, sourceSha, sourceTree);
-  if (mode !== "live" || !["sandbox", "preproduction"].includes(String(authorityClass || ""))) {
+  const declaredClass = String(authorityClass || "");
+  if (mode !== "live" || !QUALIFICATION_AUTHORITY_CLASSES.includes(declaredClass) ||
+      declaredClass !== receipt.authority.class) {
     throw qualificationContractError("qualification_authority_invalid");
   }
   return Object.freeze({
     mode: "live",
-    authorityClass: String(authorityClass),
+    authorityClass: declaredClass,
     j0ReadyDigest: digestOf(canonicalJson(receipt))
   });
 }
@@ -283,8 +320,14 @@ export function qualificationWorkspaceName(operationId) {
  * second place that decides what a Candidate is. The source identity the run
  * declares has to equal that Candidate's: a qualification that ran against
  * different bytes than it names is not evidence about the Candidate at all.
+ *
+ * A provider may also declare the legacy, provider-named J0 kinds it still
+ * accepts. The declaration is per request so one profile can keep a live
+ * producer working without widening every other provider's acceptance.
  */
-export function createQualificationRequest({ candidate, accountId, product, provider, scope, authority, source }) {
+export function createQualificationRequest({
+  candidate, accountId, product, provider, scope, authority, source, legacyReceiptKinds = []
+}) {
   const admitted = validateCloudCandidateReceipt(candidate);
   const receiptDigest = candidateReceiptDigest(admitted);
   const product_ = admitted.product;
@@ -295,8 +338,11 @@ export function createQualificationRequest({ candidate, accountId, product, prov
   }
   const tenant = qualificationTenantScope(accountId, receiptDigest);
   const declaredProduct = qualificationProduct(product);
-  const profile = qualificationProviderProfile(provider);
-  return Object.freeze({
+  const legacy = Array.isArray(legacyReceiptKinds)
+    ? legacyReceiptKinds.filter((kind) => typeof kind === "string" && kind.trim())
+    : [];
+  const profile = qualificationProviderProfile(provider, { legacyReceiptKinds: legacy });
+  const request = Object.freeze({
     candidate: Object.freeze({
       receiptDigest,
       productSha: product_.sha,
@@ -316,6 +362,21 @@ export function createQualificationRequest({ candidate, accountId, product, prov
       })
     })
   });
+  brandedRequests.add(request);
+  return request;
+}
+
+// The requests this contract built, and nothing else. The brand is what lets the
+// orchestrator accept a request as its admission rather than re-checking a shape
+// that a hand-assembled object can imitate: a spread copy has the same fields
+// and no brand.
+const brandedRequests = new WeakSet();
+
+export function assertQualificationRequest(request) {
+  if (!request || typeof request !== "object" || !brandedRequests.has(request)) {
+    throw qualificationContractError("qualification_request_invalid");
+  }
+  return request;
 }
 
 const RECEIPT_KEYS = [
@@ -331,7 +392,6 @@ const ACCOUNTING_KEYS = ["quoteUsdMicros", "walletBeforeUsdMicros", "walletAfter
 const DELIVERY_KEYS = ["workspaceEntryDigest", "applicationOperationDigest", "componentsObserved"];
 const QUALIFICATION_UNCOVERED_KEYS = Object.freeze(Object.keys(QUALIFICATION_UNCOVERED_SCOPE));
 const CLEANUP_KEYS = ["performed", "restored"];
-const DEPLOYMENT_HEALTH = ["healthy", "degraded", "unknown"];
 
 const invalidReceipt = () => { throw qualificationContractError("qualification_business_receipt_invalid"); };
 const micros = (value) => (value === null || microsPattern.test(String(value)) ? value : invalidReceipt());
@@ -347,11 +407,15 @@ const instant = (value) => (typeof value === "string" && /^\d{4}-\d\d-\d\dT\d\d:
  * digest, the purchase only as platform-minted operation identities, and the
  * managed Key not at all, because this flow issues none.
  *
- * `ready` and "not ready" are separated in both directions. A ready receipt
- * carries the complete business evidence; a receipt that is not ready fails at
- * least one of the conditions readiness requires. A run therefore cannot report
- * a failure while holding every piece of evidence a pass needs, and cannot
- * report a pass while withholding one.
+ * `settled` and "not settled" are separated in both directions. A settled
+ * receipt carries the complete business evidence and one of the honest
+ * settlement shapes stated at the end of this function: this delivery bought and
+ * paid for the order, a redelivery found its own finished order and spent
+ * nothing, or a redelivery waited on its open order while the original charge
+ * landed. A receipt that is not settled fails at least one of the conditions
+ * settlement requires. A run therefore cannot report a failure while holding
+ * every piece of evidence a pass needs, and cannot report a pass while
+ * withholding one.
  *
  * Deployment health is recorded beside all of this and enters none of it. A
  * healthy host is not a qualified product, and a qualified product does not
@@ -373,10 +437,11 @@ export function validateBusinessQualificationReceipt(value) {
       !hasExactKeys(value.tenant, ["accountDigest"]) || !isDigest(value.tenant.accountDigest) ||
       !hasExactKeys(value.product, PRODUCT_KEYS) || typeof value.product.autoRenew !== "boolean" ||
       !hasExactKeys(value.authority, AUTHORITY_KEYS) || value.authority.mode !== "live" ||
+      !QUALIFICATION_AUTHORITY_CLASSES.includes(value.authority.authorityClass) ||
       !isDigest(value.authority.j0ReadyDigest) ||
       !hasExactKeys(value.operation, OPERATION_KEYS) || typeof value.operation.resumed !== "boolean" ||
       !hasExactKeys(value.mutations, ["declared", "observed"]) ||
-      value.scope !== "workspace_purchase" ||
+      value.scope !== QUALIFICATION_BUSINESS_SCOPE ||
       !hasExactKeys(value.uncovered, QUALIFICATION_UNCOVERED_KEYS) ||
       Object.entries(QUALIFICATION_UNCOVERED_SCOPE).some(([name, covered]) => value.uncovered[name] !== covered) ||
       !hasExactKeys(value.checks, QUALIFICATION_BUSINESS_CHECKS) ||
@@ -385,6 +450,23 @@ export function validateBusinessQualificationReceipt(value) {
       !hasExactKeys(value.cleanup, CLEANUP_KEYS) ||
       typeof value.cleanup.performed !== "boolean" || typeof value.cleanup.restored !== "boolean" ||
       !DEPLOYMENT_HEALTH.includes(value.deploymentHealth)) {
+    invalidReceipt();
+  }
+
+  // The product has to be one this contract itself accepts, and the receipt must
+  // carry exactly the normalized declaration. Otherwise a receipt could name a
+  // resource type, a package identity or an auto-renew commitment this flow
+  // never declares.
+  let declaredProduct = null;
+  try {
+    declaredProduct = qualificationProduct(value.product);
+  } catch {
+    invalidReceipt();
+  }
+  if (!declaredProduct ||
+      declaredProduct.resourceType !== value.product.resourceType ||
+      declaredProduct.packageId !== value.product.packageId ||
+      declaredProduct.autoRenew !== value.product.autoRenew) {
     invalidReceipt();
   }
 
@@ -448,20 +530,30 @@ export function validateBusinessQualificationReceipt(value) {
   const everyCheck = QUALIFICATION_BUSINESS_CHECKS.every((name) => value.checks[name]);
   const cleanupProven = value.cleanup.performed && value.cleanup.restored;
   const observed = value.mutations.observed;
-  // A settled purchase is evidenced two honest ways, and the receipt says which.
+  // A settled purchase is evidenced three honest ways, and the receipt says
+  // which. All three require every business check and the full mutation
+  // accounting; they differ only in how the money got there.
   //
   // The first is a delivery that issued the command, saw the Ledger receipt for
   // it and watched the wallet move by exactly the quoted amount. The second is
   // a redelivery that found its own finished order, bought nothing again and
-  // watched the wallet stand still. `resumed` is true only for the second: a
-  // delivery that recovered its own order after a lost answer did issue the
-  // command, and cannot claim the first shape by skipping the money.
+  // watched the wallet stand still. `resumed` is true only for the second and
+  // the third: a delivery that recovered its own order after a lost answer did
+  // issue the command, and cannot claim either shape by skipping the money.
+  //
+  // The third is a redelivery whose order was still open when it arrived. The
+  // earlier delivery admitted the order; this run bought nothing; the original
+  // charge landed while it waited; the wallet moved by the quote; and the Ledger
+  // receipt is bound to that same operation. Refusing this shape failed a real
+  // purchase, so it is stated rather than folded into one of the other two.
   const boughtAndPaid = observed.purchases === 1 && observed.charges === 1 &&
     quote !== null && moved === BigInt(quote);
   const resumedFinishedOrder = value.operation.resumed && observed.purchases === 0 &&
     observed.charges === 0 && moved === 0n;
+  const resumedSettledCharge = value.operation.resumed && observed.purchases === 0 &&
+    observed.charges === 1 && quote !== null && moved === BigInt(quote);
   const qualified = everyCheck && withinBounds && cleanupProven && observed.refunds === 0 &&
-    (boughtAndPaid || resumedFinishedOrder);
+    (boughtAndPaid || resumedFinishedOrder || resumedSettledCharge);
   if ((value.state === "settled") !== qualified) invalidReceipt();
   return value;
 }
