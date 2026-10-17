@@ -217,12 +217,15 @@ export function deployedPurchaseRequestFromEnvironment(environment = process.env
  * answer for the target the request declared, and it must expose both the raw
  * request and the JSON helper: the source envelope is read at whatever HTTP
  * status the owner answered with, and the launch poll is the purchase core's.
+ * The optional `now` clock exists so a test can force a backward step; a real
+ * caller omits it and the entry reads the wall clock.
  */
 export function assertDeployedPurchaseCaller(caller, request) {
   if (!caller || typeof caller !== "object" ||
       typeof caller.http?.request !== "function" || typeof caller.http?.json !== "function" ||
       !caller.auth || typeof caller.auth !== "object" ||
-      (caller.wait !== undefined && typeof caller.wait !== "function")) {
+      (caller.wait !== undefined && typeof caller.wait !== "function") ||
+      (caller.now !== undefined && typeof caller.now !== "function")) {
     throw purchaseError("deployed_purchase_caller_invalid", "deployed purchase caller is not provided");
   }
   let origin;
@@ -234,7 +237,7 @@ export function assertDeployedPurchaseCaller(caller, request) {
   if (origin !== assertDeployedPurchaseTarget(request)) {
     throw purchaseError("deployed_purchase_caller_invalid", "deployed purchase caller is not the declared target");
   }
-  return { origin, http: caller.http, auth: caller.auth, wait: caller.wait };
+  return { origin, http: caller.http, auth: caller.auth, wait: caller.wait, now: caller.now };
 }
 
 async function readOwnerEnvelope(http, auth, path, source, fail) {
@@ -304,8 +307,13 @@ function admittedUsdMicros(launch) {
  */
 export async function runDeployedWorkspacePurchase(request, caller) {
   assertDeployedPurchaseRequest(request);
-  const { http, auth, wait } = assertDeployedPurchaseCaller(caller, request);
-  const startedAt = new Date().toISOString();
+  const { http, auth, wait, now } = assertDeployedPurchaseCaller(caller, request);
+  // The receipt orders its two timestamps. A wall clock can step backwards
+  // after a command was accepted, and throwing at that point would lose the
+  // fact that money was spent, so the completion is clamped to the start.
+  const clock = now || (() => new Date());
+  const started = new Date(clock());
+  const startedAt = started.toISOString();
   const packageId = request.packageId;
   const autoRenew = request.autoRenew;
   // The platform key is scoped to the Candidate as well as the declared
@@ -366,7 +374,16 @@ export async function runDeployedWorkspacePurchase(request, caller) {
       // second purchase, it is the same order, and the only question left is
       // whether the platform holds it. It is not a resume either: this delivery
       // issued the command, so whatever it caused is this delivery's to report.
-      const recovered = await readLaunch(http, auth, operationId, workspaceId);
+      let recovered;
+      try {
+        recovered = await readLaunch(http, auth, operationId, workspaceId);
+      } catch (readbackError) {
+        // Both the command answer and the recovery readback failed. Keep the
+        // command error as the cause so the caller can tell a lost response
+        // from a refused or malformed one when it maps the terminal reason.
+        if (readbackError && typeof readbackError === "object") readbackError.cause = error;
+        throw readbackError;
+      }
       if (!recovered) throw error;
       assertSameDeclaredLaunch(recovered, declared);
       launch = await waitForLaunch(http, operationId, auth, wait);
@@ -381,6 +398,9 @@ export async function runDeployedWorkspacePurchase(request, caller) {
     throw purchaseError("deployed_purchase_operation_mismatch", "deployed purchase read an order that is not its own");
   }
 
+  const completed = new Date(clock());
+  const completedAt = completed.getTime() < started.getTime() ? startedAt : completed.toISOString();
+
   return validateDeployedPurchaseReceipt({
     schemaVersion: 1,
     kind: DEPLOYED_PURCHASE_RECEIPT_KIND,
@@ -391,7 +411,7 @@ export async function runDeployedWorkspacePurchase(request, caller) {
     purchase: { amountUsdMicros: admittedUsdMicros(launch) },
     mutations: { declared: { purchases: 1 }, observed: { purchases: resumed ? 0 : 1 } },
     startedAt,
-    completedAt: new Date().toISOString(),
+    completedAt,
   });
 }
 

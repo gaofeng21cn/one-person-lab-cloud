@@ -93,6 +93,7 @@ function deployedPlatform({
   pricing = PRICING,
   order = null,
   loseCommandAnswer = false,
+  failRecoveryRead = false,
 } = {}) {
   const calls = [];
   let current = order ? { ...order } : null;
@@ -104,6 +105,7 @@ function deployedPlatform({
     if (path === "/api/auth/me") return respond(account.status, account.body);
     if (path === "/api/gateway/wallet") return respond(wallet.status, wallet.body);
     if (path === `/api/workspace-launches/${OPERATION_ID}`) {
+      if (current && failRecoveryRead) throw new Error("readback lost after the command");
       return current ? respond(200, current) : respond(404, { error: "workspace_launch_not_found" });
     }
     throw new Error(`unexpected request ${path}`);
@@ -299,6 +301,22 @@ test("the buyer reads the owner envelope and buys one declared Workspace through
   }
 });
 
+test("a backward clock step cannot discard a purchase that already happened", async () => {
+  const platform = deployedPlatform();
+  const times = [
+    new Date("2026-10-18T00:00:10.000Z"),
+    new Date("2026-10-18T00:00:00.000Z"),
+  ];
+  let reads = 0;
+  const now = () => times[Math.min(reads++, times.length - 1)];
+  const receipt = await runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform, { now }));
+
+  assert.equal(platform.commands(), 1, "the purchase was issued and is not reissued");
+  assert.equal(receipt.startedAt, "2026-10-18T00:00:10.000Z");
+  assert.equal(receipt.completedAt, receipt.startedAt);
+  assert.deepEqual(receipt.mutations.observed, { purchases: 1 });
+});
+
 test("an unavailable account readback is refused before the wallet is read or anything is bought", async () => {
   const platform = deployedPlatform({
     account: { status: 500, body: envelope("sub2api", "unavailable") },
@@ -383,6 +401,10 @@ test("the caller must be the declared target and expose the owner readback trans
     }),
     { code: "deployed_purchase_caller_invalid" },
   );
+  await assert.rejects(
+    runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform, { now: "not-a-clock" })),
+    { code: "deployed_purchase_caller_invalid" },
+  );
   assert.equal(platform.calls.length, 0);
 });
 
@@ -414,6 +436,19 @@ test("a lost command answer is recovered as this delivery's own purchase, not re
   assert.equal(receipt.operation.resumed, false);
   assert.deepEqual(receipt.mutations.observed, { purchases: 1 });
   assert.equal(receipt.operation.purchaseReceiptId, PURCHASE_RECEIPT_ID);
+});
+
+test("a failed recovery readback keeps the original command error as its cause", async () => {
+  const platform = deployedPlatform({ loseCommandAnswer: true, failRecoveryRead: true });
+  await assert.rejects(
+    runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform)),
+    (error) => {
+      assert.equal(error.code, "deployed_purchase_launch_readback_unavailable");
+      assert.match(String(error.cause?.message || ""), /connection lost after the command/);
+      return true;
+    },
+  );
+  assert.equal(platform.commands(), 1, "the command is issued once, not retried");
 });
 
 test("a wallet that cannot fund the declared quote is refused before the command is issued", async () => {
