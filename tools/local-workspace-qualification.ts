@@ -11,7 +11,9 @@ import { parseDocument } from "yaml";
 // The purchase sequence is the invariant and is owned by one module. Everything
 // else in this file either composes it or asserts a result, and neither of those
 // belongs to the purchase itself.
-import { submitWorkspaceLaunch, waitForLaunch } from "./workspace-purchase-core.ts";
+import {
+  launchOperationId, launchWorkspaceId, priceWorkspaceLaunch, stableID, submitWorkspaceLaunch, waitForLaunch,
+} from "./workspace-purchase-core.ts";
 
 import {
   collectLocalJ1RecoveryAuthority,
@@ -466,14 +468,10 @@ export async function unusedPort() {
   return port;
 }
 
-export function stableID(...parts) {
-  const hash = createHash("sha1");
-  for (const part of parts) {
-    hash.update(String(part));
-    hash.update(Buffer.from([0]));
-  }
-  return hash.digest("hex");
-}
+// The platform's identifier derivation is owned by the purchase core, because a
+// buyer that derived it differently would refuse the platform's own answer. It
+// is re-exported here because this module is where its callers already reach.
+export { stableID };
 
 async function writeJSONAtomic(path, value) {
   await mkdir(dirname(path), { recursive: true });
@@ -997,17 +995,13 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
     const pricing = (await http.json("/api/pricing/preview", {
       method: "POST", body: { resourceType: "workspace", packageId: "basic" }
     }, auth)).payload;
-    const amountUsdMicros = String(pricing?.totalChargeUsdMicros || "");
-    if (pricing?.resourceType !== "workspace" || pricing?.packageId !== "basic" || pricing?.currency !== "USD" ||
-      !/^[1-9][0-9]*$/.test(amountUsdMicros) || BigInt(beforeMicros) < BigInt(amountUsdMicros)) {
-      throw new Error("qualification quote is invalid or wallet is insufficient");
-    }
+    const amountUsdMicros = priceWorkspaceLaunch({ pricing, walletUsdMicros: beforeMicros });
     onStage("workspace_launch");
     launchSubmitted = true;
-    // The purchase itself is the shared invariant. What differs across authority
-    // profiles is the quote above it and the evidence below it, so neither moves
-    // into the core. The cleanup scope is recorded here because only this profile
-    // owns an account it has to tear down.
+    // The purchase sequence and the quote policy are shared invariants. What
+    // differs across authority profiles is the evidence below this point, and
+    // the cleanup scope, which is recorded here because only this profile owns an
+    // account it has to tear down.
     const { launch, receiptId } = await submitWorkspaceLaunch({
       http, auth, name: workspaceName, idempotencyKey: launchKey,
       expectedOperationId: operationId, expectedWorkspaceId: workspaceId, wait,
@@ -1506,8 +1500,8 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
   const userToken = randomBytes(32).toString("hex");
   const authorityToken = randomBytes(32).toString("hex");
   const launchKey = `local-qualification:${suffix}`;
-  let operationId = `workspace-launch-${stableID(accountId, launchKey).slice(0, 18)}`;
-  let workspaceId = `ws-${stableID("workspace-launch-v2", accountId, operationId).slice(0, 18)}`;
+  let operationId = launchOperationId(accountId, launchKey);
+  let workspaceId = launchWorkspaceId(accountId, operationId);
   let cloudImage = options.cloudImage;
   let workspaceImage = options.workspaceImage;
   let builtTags = [];
@@ -1600,8 +1594,8 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
     ];
     if (options.authorityMode === "live") {
       accountId = `acct-${stableID("account", adminEmail.toLowerCase()).slice(0, 18)}`;
-      operationId = `workspace-launch-${stableID(accountId, launchKey).slice(0, 18)}`;
-      workspaceId = `ws-${stableID("workspace-launch-v2", accountId, operationId).slice(0, 18)}`;
+      operationId = launchOperationId(accountId, launchKey);
+      workspaceId = launchWorkspaceId(accountId, operationId);
     }
     composeEnvironment = qualificationComposeEnvironment(process.env, envEntries);
     const envFileEntries = qualificationEnvFileEntries(envEntries, options);
@@ -1729,10 +1723,7 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
     const pricing = (await http.json("/api/pricing/preview", {
       method: "POST", body: { resourceType: "workspace", packageId: "basic" }
     }, auth)).payload;
-    const amountUsdMicros = String(pricing?.totalChargeUsdMicros || "");
-    if (!/^[1-9][0-9]*$/.test(amountUsdMicros) || BigInt(beforeMicros) < BigInt(amountUsdMicros)) {
-      throw new Error("qualification quote is invalid or wallet is insufficient");
-    }
+    const amountUsdMicros = priceWorkspaceLaunch({ pricing, walletUsdMicros: beforeMicros });
     const { receiptId } = await submitWorkspaceLaunch({
       http, auth, name: `Local qualification ${suffix}`, idempotencyKey: launchKey,
       expectedOperationId: operationId, expectedWorkspaceId: workspaceId,
