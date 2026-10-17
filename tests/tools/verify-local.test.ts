@@ -15,9 +15,11 @@ import {
   databaseFreeCoverage,
   databaseFreeCoverageReport,
   databaseFreeGoTestSpecs,
+  databaseFreeRequiredTests,
   declaredMoneyChainTests,
   goConfigurationEnv,
   goModules,
+  goStepConcurrency,
   isLoopbackOwnerDatabaseDsn,
   localVerificationSteps,
   parseVerifyLocalArgs,
@@ -168,6 +170,41 @@ test("PR validate keeps the exhaustive source gate and dispatches the plan gate 
   await assert.rejects(invoke("0".repeat(40), "0"));
 });
 
+test("PR validate caches the Go toolchain, Python requirements and pinned contract generators", async () => {
+  const workflow = parseYAML(await readFile(".github/workflows/pull-request-ci.yml", "utf8"));
+  const job = workflow.jobs.validate;
+  const steps: Array<{ name: string; with?: Record<string, any> }> = job.steps;
+  const step = (name: string) => {
+    const found = steps.find((candidate) => candidate.name === name);
+    assert.ok(found, `missing ${name} step`);
+    return found!;
+  };
+
+  // Every module the default gate compiles must key the Go cache, so a module
+  // added to the gate cannot silently fall back to a cold module and build cache.
+  const goSetup = step("Set up Go");
+  assert.equal(goSetup.with?.cache, true);
+  assert.equal(goSetup.with?.["go-version"], "1.26.x");
+  const dependencyPaths = String(goSetup.with?.["cache-dependency-path"] ?? "")
+    .split("\n").map((path) => path.trim()).filter(Boolean);
+  for (const module of goModules) {
+    assert.ok(dependencyPaths.includes(`${module}/go.sum`), `${module}/go.sum is missing from the Go cache key`);
+  }
+
+  const pythonSetup = step("Set up Python");
+  assert.equal(pythonSetup.with?.cache, "pip");
+  assert.equal(pythonSetup.with?.["cache-dependency-path"], "docs/spec/target/checks/requirements.txt");
+
+  // The generator cache key must carry both pinned versions through the shared
+  // env values, so a version bump installs fresh binaries instead of restoring
+  // the previous ones.
+  assert.equal(job.env.PROTOC_GEN_GO_VERSION, "1.36.6");
+  assert.equal(job.env.PROTOC_GEN_GO_GRPC_VERSION, "1.5.1");
+  const generatorKey = String(step("Restore contract generator binaries").with?.key ?? "");
+  assert.match(generatorKey, /protoc-gen-go-\$\{\{ env\.PROTOC_GEN_GO_VERSION \}\}/u);
+  assert.match(generatorKey, /protoc-gen-go-grpc-\$\{\{ env\.PROTOC_GEN_GO_GRPC_VERSION \}\}/u);
+});
+
 test("no database-free lane decides coverage by a test name prefix", () => {
   for (const spec of databaseFreeGoTestSpecs) {
     assert.ok(!("run" in spec), `${spec.cwd} still selects tests by name prefix`);
@@ -186,7 +223,16 @@ test("no database-free lane decides coverage by a test name prefix", () => {
   }
   assert.deepEqual(
     databaseFreeGoTestSpecs.filter((spec) => spec.declaredTests),
-    [{ cwd: "services/control-plane", packages: ["./internal/server"], declaredTests: declaredMoneyChainTests }]
+    [{
+      cwd: "services/control-plane",
+      packages: ["./internal/server"],
+      declaredTests: declaredMoneyChainTests,
+      // The executed-test floor and the must-execute list are part of the lane
+      // now: they replaced the duplicated end-to-end run that used to assert
+      // the same breadth and the same Gateway reveal family.
+      minimumExecutedTests: 1001,
+      requiredExecutedTests: databaseFreeRequiredTests
+    }]
   );
 });
 
@@ -292,6 +338,16 @@ test("capability declarations do not mask assertions or unrelated package failur
 });
 
 test("the real database-free lane executes the Gateway reveal family and names its excluded PostgreSQL suites", async (t) => {
+  // This runs the whole control-plane package a second time. The exhaustive gate
+  // already executes the same lane as its own step and now enforces the same
+  // executed-test floor there (minimumExecutedTests), so the duplicate run is an
+  // opt-in end-to-end proof instead of a fixed cost on every run:
+  //   OPL_LANE_E2E=1 node --test tests/tools/verify-local.test.ts
+  // A diagnostic plus return keeps the suite's zero-skip result intact.
+  if (process.env.OPL_LANE_E2E !== "1") {
+    t.diagnostic("duplicate end-to-end lane run skipped; set OPL_LANE_E2E=1 to execute it");
+    return;
+  }
   if (spawnSync("go", ["version"], { encoding: "utf8" }).status !== 0) {
     t.diagnostic("no Go toolchain available; control-plane lane fixture skipped");
     return;
@@ -316,6 +372,39 @@ test("the real database-free lane executes the Gateway reveal family and names i
   assert.equal(excluded?.capability, "isolated-owner-postgres");
   assert.ok(coverage.executed.length > 1000, `only ${coverage.executed.length} tests executed`);
   assert.match(databaseFreeCoverageReport(coverage), /declared=9\/9/);
+});
+
+test("the control-plane lane keeps its executed-test floor without the duplicate run", () => {
+  // The floor replaces the broad-coverage assertion the duplicated end-to-end
+  // run used to make, so it has to hold for the lane that actually runs in CI.
+  const lane = localVerificationSteps.find((step) => step.cwd === "services/control-plane" && step.args.includes("./internal/server"));
+  assert.ok(lane, "the control-plane database-free lane must stay in the default gate");
+  assert.ok((lane!.minimumExecutedTests ?? 0) > 1000, "the lane must keep the more-than-1000 executed-test floor");
+  assert.ok(lane!.declaredTests?.includes("TestGatewayRevealFailsClosed"));
+
+  const narrow = coverageEvents(
+    { Action: "run", Test: "TestGatewayRevealFailsClosed" },
+    { Action: "pass", Test: "TestGatewayRevealFailsClosed" }
+  );
+  assert.equal(databaseFreeCoverage(narrow, { minimumExecuted: 1 }).reason, undefined);
+  // Shrinking coverage is a failure, not a quiet pass.
+  assert.equal(
+    databaseFreeCoverage(narrow, { minimumExecuted: 2 }).reason,
+    "only 1 of the required 2 tests executed"
+  );
+
+  // A capability marker may never excuse a required-executed test: the Gateway
+  // reveal family runs without a database, so "excluded" there means the lane
+  // stopped proving it.
+  assert.ok(lane!.requiredExecutedTests?.includes("TestGatewayRevealFailsClosed"));
+  const excused = databaseFreeCoverage(coverageEvents(
+    { Action: "run", Test: "TestSettlementRoundTrips" },
+    { Action: "pass", Test: "TestSettlementRoundTrips" },
+    { Action: "run", Test: "TestGatewayRevealFailsClosed" },
+    { Action: "output", Test: "TestGatewayRevealFailsClosed", Output: skipDeclared },
+    { Action: "skip", Test: "TestGatewayRevealFailsClosed" }
+  ), { requiredExecuted: ["TestGatewayRevealFailsClosed"] });
+  assert.equal(excused.reason, "declared tests did not execute: TestGatewayRevealFailsClosed");
 });
 
 test("focused verification selects only gates affected by an explicit change set", () => {
@@ -643,6 +732,59 @@ test("full verification adds the temporary PostgreSQL modules after the default 
   await runVerification({ withPostgres: false }, dependencies);
   assert.deepEqual(events, localVerificationSteps.map(step => `step:${step.name}`));
   assert.equal(events.some((event) => event.startsWith("postgres:")), false);
+});
+
+test("the exhaustive gate overlaps only the database-free lanes and keeps every step", async () => {
+  const order: string[] = [];
+  const lanes = new Set(
+    localVerificationSteps.filter((step) => step.evidence === "go-coverage").map((step) => step.name)
+  );
+  let laneInFlight = 0;
+  let lanePeak = 0;
+  let compileInFlight = 0;
+  let compilePeak = 0;
+  const dependencies = {
+    runStep: async (step: (typeof localVerificationSteps)[number]) => {
+      order.push(step.name);
+      const lane = lanes.has(step.name);
+      const compile = step.command === "go" && !lane;
+      if (lane) laneInFlight += 1;
+      if (compile) compileInFlight += 1;
+      lanePeak = Math.max(lanePeak, laneInFlight);
+      compilePeak = Math.max(compilePeak, compileInFlight);
+      if (lane || compile) await new Promise((resolvePromise) => setTimeout(resolvePromise, 5));
+      if (lane) laneInFlight -= 1;
+      if (compile) compileInFlight -= 1;
+    },
+    withTemporaryPostgres: async () => {},
+    runPostgresVerification: async () => {}
+  };
+
+  await runVerification({}, dependencies);
+  // Bounded overlap must not drop, reorder or duplicate a declared step.
+  assert.deepEqual(order, localVerificationSteps.map((step) => step.name));
+  assert.equal(lanePeak, goStepConcurrency);
+  // Cold module compiles oversubscribe a four-core runner (measured 126s -> 178s
+  // in CI), so the compile group stays sequential.
+  assert.equal(compilePeak, 1);
+});
+
+test("one failing database-free lane fails the exhaustive gate instead of being absorbed by its batch", async () => {
+  const failing = "services/ledger database-free tests";
+  const started: string[] = [];
+  const dependencies = {
+    runStep: async (step: (typeof localVerificationSteps)[number]) => {
+      started.push(step.name);
+      if (step.name === failing) throw new Error(`${failing} failed`);
+    },
+    withTemporaryPostgres: async () => {},
+    runPostgresVerification: async () => {}
+  };
+
+  await assert.rejects(runVerification({}, dependencies), /services\/ledger database-free tests failed/u);
+  assert.ok(started.includes(failing));
+  // A failed batch stops the gate before later steps, like the sequential path did.
+  assert.ok(!started.includes("Git whitespace"));
 });
 
 // Use the same temporary-directory/after-cleanup fixture pattern as the existing
