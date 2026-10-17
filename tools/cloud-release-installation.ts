@@ -74,5 +74,19 @@ export function validateReleaseInstallationBinding(input: {
       scope.targetClusterDigest !== runtime.targetClusterDigest || scope.region !== runtime.region) {
     throw new Error("release_installation_qualification_binding_invalid");
   }
-  return { receiptDigest, runDigest, authoritySha: run.head_sha };
+  return {
+    evidenceClass: "instance_deployment",
+    repository: INSTANCE_REPOSITORY,
+    workflowRunId: input.deploymentRunId,
+    receiptDigest,
+    runDigest,
+    authoritySha: String(run.head_sha),
+    receiptStatus: "deployment_verified",
+    identity: {
+      candidateReceiptDigest: String(identity.candidateReceiptDigest),
+      productSha: String(product.sha),
+      productTree: String(product.tree),
+      cloudImageDigest: String(image.indexDigest)
+    }
+  };
 }

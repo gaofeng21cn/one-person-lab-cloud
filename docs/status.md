@@ -59,6 +59,39 @@ Instance owns installation, deployment, deployment rollback and their receipts.
 The remaining work stays in the
 [roadmap](roadmap.md#workspace-key-and-customer-read-boundaries).
 
+## Release Evidence Class Separation (2026-10-18)
+
+Against `main` baseline `6d5e854a`, Cloud release admission now consumes Cloud
+business qualification evidence as its own typed class rather than treating
+`requiredEvidence`/`instance_qualification_decision_run_id` as deployment
+verification. [Release operations](runtime/release.md#publication) owns the
+producer/consumer contract. `tools/cloud-release-evidence.ts` validates the
+shared #923 receipt shape and refuses a receipt whose Candidate receipt digest,
+source SHA/tree, Cloud image digest or producer run does not bind the release
+Candidate, as well as stale, future-dated and non-`settled` receipts. Instance
+deployment remains separate: the exact Instance revision's native
+`deployment_verified` receipt is validated independently. Release admission
+contract schema 6 replaces the flat `requiredEvidence` array with seven typed
+classes and retains all six previous requirements. Local focused verification
+executes 24 tests with zero failures, skips or TODOs:
+
+```sh
+npm run verify:local:focused -- --base 6d5e854a
+```
+
+It runs the product-boundary validator, the development-tools typecheck, the
+focused contract, workflow, evidence and installation tests, and Git whitespace
+checks.
+
+**The #926 producer is still absent.** `.github/workflows/cloud-business-qualification.yml`
+does not exist, so no protected Cloud business qualification receipt has been
+produced for any Candidate and a Release cannot satisfy the new class. The
+manifest/provenance sealing, contract and workflow changes are source-only; no
+Release dispatch, protected run or production evidence is claimed. All retained
+Instance qualification-decision, Workspace, deployment and customer-read gates
+stay required. #872 remains incomplete, and #928 stays open until the real
+producer is present.
+
 ## Team Workspace Transaction Reads (2026-10-16)
 
 Cloud now exposes the Gateway's original Workspace charge/refund records through

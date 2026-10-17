@@ -23,7 +23,10 @@ Deployment and product qualification must bind the same immutable Candidate.
 
 The publication source now adds a separately protected Cloud customer-read
 receipt alongside the retained Instance launch/use, qualification-decision and
-Workspace artifacts. This is only the `customer_reads` scope of the
+Workspace artifacts. It also requires a separate Cloud business qualification
+receipt from the protected #926 producer; that producer is not present yet, so
+formal publication remains blocked on it. This is only the `customer_reads`
+scope of the
 [open migration](../roadmap.md#workspace-key-and-customer-read-boundaries).
 The legacy business, administrator and Fabric evidence paths remain required
 until full parity is actually verified; their current execution location does
@@ -95,7 +98,10 @@ deploys through Instance `main` with its explicit `.com` domains, Tencent/TKE
 Provider Profile and immutable Workspace image. The existing qualification
 mechanism combines rollout and product acceptance in Instance artifacts; it has
 not yet adopted the separated ownership above. The current release consumer
-still requires those owner-authoritative receipts. A
+still requires those owner-authoritative receipts, and separately requires the
+Cloud business qualification receipt described under Publication. A new
+provider-neutral qualification flow and its adapter tests do not by themselves
+produce a protected receipt or satisfy release admission. A
 failed or unknown result on either path returns the release unit to development;
 it does not create a Product Release.
 
@@ -135,24 +141,56 @@ qualification.
 After candidate qualification succeeds, an allowlisted Cloud Release publisher
 supplies the exact canonical SHA and the Candidate, Local qualification,
 Instance deployment-verification, qualification-decision, and `workspace_verified`
-run IDs, plus the required `cloud_customer_readback_run_id`. The Cloud customer
-receipt consumer validates the receipt, producer source/run provenance, exact
-Candidate identity and original installation receipt hash. Installation
-verification is admitted independently from product qualification: the exact producing Instance revision validates its native
-`deployment_verified` receipt; Cloud binds its raw-byte digest, workflow run,
-Candidate source/index/amd64 digest, Workspace image and provider scope to the
-qualification decision. The sealed release manifest and attestation retain a
-separate `installation` record and a customer scope chain. Release manifest and
-provenance use `schemaVersion: 3`; the Candidate manifest remains version 2.
-Release admission contract schema 5 adds required
-`cloud_customer_reads_verified` and retains all five previous evidence
-requirements. A customer-read pass does not replace any retained Instance
-qualification-decision or Workspace gate; those gates remain until full parity
-is actually verified. A successful rollout alone cannot satisfy them. Admission
-validates their run/artifact provenance, native receipts, release assets,
-checksums, Product tree, and index/platform digests. All evidence must bind the
-same Cloud Candidate while retaining its owner-specific Workspace image and
-Provider Profile facts.
+run IDs, plus the required `cloud_customer_readback_run_id` and
+`cloud_business_qualification_run_id`.
+
+Release admission consumes two evidence classes that prove different things,
+and neither may stand in for the other:
+
+- **Cloud business qualification** is the protected Cloud producer's
+  Candidate-bound receipt from the shared provider-neutral qualification
+  contract (`tools/workspace-qualification-contract.ts`). The consumer requires
+  the exact protected producer workflow run from Cloud `main` at the released
+  source SHA, validates the native receipt through that contract, and requires
+  terminal state `settled`. It refuses a receipt whose Candidate receipt
+  digest, source SHA/tree or Cloud image digest does not equal the release
+  Candidate, a receipt outside the bounded freshness window, and any receipt
+  shape that carries an undeclared Secret, Key, customer identifier or private
+  provider identifier. The producer, artifact, receipt kind, terminal state and
+  freshness window are declared in
+  `packages/contracts/opl-cloud-distribution-contract.json`.
+- **Instance deployment** is the exact producing Instance revision's native
+  `deployment_verified` receipt and workflow run. It proves installation
+  identity and health, not customer business qualification. Cloud binds its
+  raw-byte digest, workflow run, Candidate source/index/amd64 digest, Workspace
+  image and provider scope to the qualification decision.
+
+The Candidate, Local installation, Cloud customer-read, Instance
+qualification-decision and Instance `workspace_verified` gates remain separate,
+required evidence. The Cloud customer receipt consumer validates the receipt,
+producer source/run provenance, exact Candidate identity and original
+installation receipt hash. A `customer_reads_verified` pass and a
+`deployment_verified` pass do not replace any retained gate; every retained
+gate stays required until full parity is actually verified.
+
+The sealed release manifest and attestation retain separate `installation`,
+`qualifications.business` and customer scope records, and release provenance
+records the two evidence classes explicitly. Release manifest and provenance
+use `schemaVersion: 3`; the Candidate manifest remains version 2. Release
+admission contract schema 6 replaces the undifferentiated `requiredEvidence`
+list with typed evidence classes and retains all six previous evidence
+requirements plus `cloud_business_qualification`. Admission validates every
+class's run/artifact provenance, native receipts, release assets, checksums,
+Product tree, and index/platform digests. All evidence must bind the same Cloud
+Candidate while retaining its owner-specific Workspace image and Provider
+Profile facts.
+
+**Current external dependency.** The protected producer
+`.github/workflows/cloud-business-qualification.yml` does not exist yet
+(Cloud #926). Until it executes and emits the receipt for the exact Candidate,
+a formal Release cannot satisfy the Cloud business qualification class. This
+source change makes that dependency explicit; it does not claim a real
+qualification, a Release run, or production evidence.
 The repository owner or `RenDeHuang` then explicitly dispatches the Release
 workflow from Cloud `main`; the original actor and current triggering actor must
 match. Publication must promote the exact qualified image bytes and must fail

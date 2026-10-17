@@ -50,6 +50,69 @@ if (releaseCommands.includes("docker buildx build")) {
 for (const required of ["ghcr.io/${{ github.repository }}", "docker buildx imagetools create", "gh release create", "--clobber", "workspace_verified", "compose.yaml"]) {
   if (!release.includes(required)) throw new Error(`Cloud release is missing: ${required}`);
 }
+// Publication requires each evidence class for the question it answers. The
+// Cloud business qualification run is its own input, resolved from the Cloud
+// repository and validated through the typed consumer; it never reuses the
+// Instance deployment, qualification-decision or Workspace runs.
+const releaseInputs = releaseWorkflow.on?.workflow_dispatch?.inputs || {};
+const expectedReleaseInputs = [
+  "version", "ref", "candidate_run_id", "local_qualification_run_id",
+  "instance_deployment_verification_run_id", "cloud_customer_readback_run_id",
+  "cloud_business_qualification_run_id", "instance_qualification_decision_run_id",
+  "instance_workspace_verification_run_id"
+];
+if (JSON.stringify(Object.keys(releaseInputs)) !== JSON.stringify(expectedReleaseInputs) ||
+    expectedReleaseInputs.some((name) => releaseInputs[name]?.required !== true)) {
+  throw new Error("Cloud Release must require every retained gate plus the separate Cloud business qualification run");
+}
+if (releaseAdmission?.env?.CLOUD_BUSINESS_QUALIFICATION_RUN_ID !== "${{ inputs.cloud_business_qualification_run_id }}") {
+  throw new Error("Cloud Release must bind the Cloud business qualification run to its own input");
+}
+const evidenceRun = String((releaseAdmission?.steps || []).find((step) => step.id === "evidence")?.run || "");
+for (const required of [
+  "actions/runs/$CLOUD_BUSINESS_QUALIFICATION_RUN_ID",
+  "business-run.json",
+  '".github/workflows/cloud-business-qualification.yml"',
+  'business_artifact="cloud-business-qualification"',
+  'require_artifact "$authority/business-artifacts.json" "$business_artifact" "$CLOUD_BUSINESS_QUALIFICATION_RUN_ID"'
+]) {
+  if (!evidenceRun.includes(required)) throw new Error(`Cloud Release business evidence resolution is missing: ${required}`);
+}
+const businessDownload = (releaseAdmission?.steps || []).find((step) =>
+  step.name === "Download exact Cloud business qualification");
+if (businessDownload?.with?.name !== "cloud-business-qualification" ||
+    businessDownload?.with?.path !== "evidence/business" ||
+    businessDownload?.with?.["run-id"] !== "${{ inputs.cloud_business_qualification_run_id }}" ||
+    businessDownload?.with?.repository !== undefined ||
+    businessDownload?.with?.["github-token"] !== "${{ github.token }}") {
+  throw new Error("Cloud business qualification must download from the Cloud repository's own run");
+}
+const installationStep = String((releaseAdmission?.steps || []).find((step) => step.id === "installation")?.run || "");
+if (!installationStep.includes('deployment-verification-receipt.mjs" validate')) {
+  throw new Error("Cloud Release must keep native Instance installation validation");
+}
+const evidenceClassStep = (releaseAdmission?.steps || []).find((step) => step.id === "evidence_classes");
+const evidenceClassConfig = [String(evidenceClassStep?.run || ""), ...Object.values(evidenceClassStep?.env || {})].join("\n");
+for (const required of [
+  "cloud-release-evidence.ts",
+  "validateReleaseAdmissionEvidence",
+  "evidence/business/business-qualification.json",
+  "evidence/instance-deployment/evidence.json",
+  "evidence/instance-decision/evidence.json"
+]) {
+  if (!evidenceClassConfig.includes(required)) throw new Error(`Cloud Release typed evidence admission is missing: ${required}`);
+}
+const sealStep = String((releaseAdmission?.steps || []).find((step) => step.id === "release_bundle")?.run || "");
+for (const required of ["evidenceClasses", "cloudBusinessQualification", "instanceDeployment", "BUSINESS_RECEIPT_DIGEST", "BUSINESS_RUN_DIGEST"]) {
+  if (!sealStep.includes(required)) throw new Error(`Cloud Release sealed provenance is missing: ${required}`);
+}
+const publishValidate = String((releasePublish?.steps || []).find((step) => step.name === "Validate exact release bundle")?.run || "");
+for (const required of [
+  "evidenceClasses.cloudBusinessQualification", "evidenceClasses.instanceDeployment",
+  "EXPECTED_BUSINESS_RECEIPT_DIGEST", "EXPECTED_INSTALLATION_RECEIPT_DIGEST"
+]) {
+  if (!publishValidate.includes(required)) throw new Error(`Cloud Release publication must recheck the sealed evidence classes: ${required}`);
+}
 for (const required of ["actions/runs/$run_id/artifacts", "actions/download-artifact", "curl -fsSL", "gh attestation verify", "sha256sum --check --strict SHA256SUMS"]) {
   if (!readback.includes(required) && !readbackCommands.includes(required)) throw new Error(`Cloud public readback is missing: ${required}`);
 }
@@ -149,6 +212,9 @@ if (!/sha256sum\s+-c\s/.test(dockerfile)) {
 const contract = JSON.parse(await readFile(new URL("packages/contracts/opl-cloud-distribution-contract.json", root), "utf8"));
 const candidateContract = JSON.parse(await readFile(new URL("packages/contracts/opl-cloud-candidate-receipt-contract.json", root), "utf8"));
 const candidateReceipt = candidateContract.candidateReceiptV2;
+const requiredEvidence = contract.distribution?.publication?.requiredEvidence || {};
+const requiredEvidenceClasses = Object.keys(requiredEvidence);
+const requiredEvidenceNames = Object.values(requiredEvidence).flat();
 const expectedCandidateAssets = [
   "compose.yaml",
   "compose.deployment-platform-owned.yaml",
@@ -167,7 +233,7 @@ if (candidateContract.schemaVersion !== 2 || candidateReceipt?.schemaVersion !==
     candidateReceipt?.checksumManifest !== "SHA256SUMS") {
   throw new Error("Candidate receipt contract boundary is invalid");
 }
-if (contract.schemaVersion !== 5 || contract.productRepository !== "gaofeng21cn/one-person-lab-cloud" ||
+if (contract.schemaVersion !== 6 || contract.productRepository !== "gaofeng21cn/one-person-lab-cloud" ||
     contract.instanceHandoff?.repository !== "gaofeng21cn/opl-instance-medopl" ||
     contract.candidate?.formalPublication !== false ||
     contract.candidate?.instanceDeployment !== false ||
@@ -185,9 +251,34 @@ if (contract.schemaVersion !== 5 || contract.productRepository !== "gaofeng21cn/
     contract.candidate?.artifactLocator?.artifactNameProductShaField !== "product.sha" ||
     contract.candidate?.artifactLocator?.artifactNameRunAttemptField !== "provenance.workflowRunAttempt" ||
     contract.distribution?.publication?.promotionMode !== "qualified_candidate_digest_without_rebuild" ||
-    JSON.stringify(contract.distribution?.publication?.requiredEvidence) !== JSON.stringify([
-      "candidate", "local_qualification", "instance_deployment_verified", "cloud_customer_reads_verified", "instance_qualification_decision", "instance_workspace_verified"
+    JSON.stringify(requiredEvidenceClasses) !== JSON.stringify([
+      "candidate", "localInstallation", "cloudBusinessQualification", "cloudCustomerReads",
+      "instanceDeployment", "instanceQualificationDecision", "instanceWorkspaceVerification"
     ]) ||
+    JSON.stringify(requiredEvidenceNames) !== JSON.stringify([
+      "candidate", "local_qualification", "cloud_business_qualification", "cloud_customer_reads_verified",
+      "instance_deployment_verified", "instance_qualification_decision", "instance_workspace_verified"
+    ]) ||
+    requiredEvidence.cloudBusinessQualification?.join() !== "cloud_business_qualification" ||
+    requiredEvidence.instanceDeployment?.join() !== "instance_deployment_verified" ||
+    requiredEvidence.instanceWorkspaceVerification?.join() !== "instance_workspace_verified" ||
+    JSON.stringify(contract.distribution?.publication?.cloudBusinessQualification) !== JSON.stringify({
+      owner: contract.productRepository,
+      workflow: ".github/workflows/cloud-business-qualification.yml",
+      environment: "cloud-business-qualification",
+      artifact: "cloud-business-qualification",
+      receipt: "business-qualification.json",
+      receiptKind: "opl.workspace-qualification.purchase.v1",
+      requiredTerminalState: "settled",
+      maximumAgeHours: 720,
+      binds: ["receiptDigest", "candidateReceiptDigest", "productSha", "productTree", "cloudImageDigest"]
+    }) ||
+    JSON.stringify(contract.distribution?.publication?.instanceDeployment) !== JSON.stringify({
+      owner: contract.instanceHandoff?.repository,
+      workflow: ".github/workflows/deployment-verify.yml",
+      receiptStatus: "deployment_verified",
+      binds: ["receiptDigest", "candidateReceiptDigest", "productSha", "productTree", "cloudImageDigest"]
+    }) ||
     contract.distribution?.publication?.customerReadback?.repository !== contract.productRepository ||
     contract.distribution?.publication?.customerReadback?.workflow !== ".github/workflows/cloud-business-readback.yml" ||
     contract.distribution?.publication?.customerReadback?.environment !== "cloud-business-qualification" ||
