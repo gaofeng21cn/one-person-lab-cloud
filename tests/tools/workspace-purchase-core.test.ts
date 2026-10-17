@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
-import { submitWorkspaceLaunch } from "../../tools/workspace-purchase-core.ts";
+import {
+  launchOperationId, launchWorkspaceId, priceWorkspaceLaunch, submitWorkspaceLaunch,
+} from "../../tools/workspace-purchase-core.ts";
 
 // The purchase sequence is the invariant. It runs against whatever origin the
 // caller hands it, so these tests pin the sequence itself and never a deployment.
@@ -158,4 +161,67 @@ test("an unbounded poll is refused rather than left to run forever", async () =>
     }),
     /did not reach succeeded within 180 seconds/,
   );
+});
+// The quote policy is part of the invariant, not of any one buyer. The two
+// authority arms and any deployed buyer have to price a launch by the same
+// rule, or the sequence is shared but its meaning is not.
+test("a quote is priced once, by one policy, whoever asks", () => {
+  const pricing = { resourceType: "workspace", packageId: "pro", currency: "USD", totalChargeUsdMicros: "52580000" };
+  assert.equal(priceWorkspaceLaunch({ pricing, walletUsdMicros: "52580000", packageId: "pro" }), "52580000");
+  assert.equal(priceWorkspaceLaunch({ pricing, walletUsdMicros: "999999999", packageId: "pro" }), "52580000");
+});
+
+test("a quote that does not name the declared thing is refused", () => {
+  const base = { resourceType: "workspace", packageId: "pro", currency: "USD", totalChargeUsdMicros: "52580000" };
+  for (const wrong of [
+    { ...base, resourceType: "gateway" },
+    { ...base, resourceType: "storage" },
+    { ...base, packageId: "basic" },
+    { ...base, currency: "CNY" },
+    { ...base, totalChargeUsdMicros: "0" },
+    { ...base, totalChargeUsdMicros: "-100" },
+    { ...base, totalChargeUsdMicros: "" },
+    { ...base, totalChargeUsdMicros: "52.58" },
+  ]) {
+    assert.throws(() => priceWorkspaceLaunch({ pricing: wrong, walletUsdMicros: "999999999", packageId: "pro" }), /quote/i, JSON.stringify(wrong));
+  }
+});
+
+test("a wallet one micro short is short, and a wallet that cannot answer is not a large balance", () => {
+  const pricing = { resourceType: "workspace", packageId: "basic", currency: "USD", totalChargeUsdMicros: "52580000" };
+  assert.equal(priceWorkspaceLaunch({ pricing, walletUsdMicros: "52580000" }), "52580000");
+  for (const walletUsdMicros of ["52579999", "", "not-a-number", "0"]) {
+    assert.throws(() => priceWorkspaceLaunch({ pricing, walletUsdMicros }), /wallet|quote/i, String(walletUsdMicros));
+  }
+});
+
+// The identifiers are an interop contract with the Control Plane, not an
+// internal detail. These literals are the platform's own output for the inputs
+// named, derived from the zero-byte-after-every-part rule at
+// services/control-plane/internal/server/app_state.go:502 and the two mint
+// sites at workspace_launch.go:97 and :51. If either side changes, this fails
+// here rather than as a buyer refusing a correct answer.
+test("the derived identities are the ones the Control Plane mints for the same inputs", () => {
+  const accountId = "acct-test";
+  const idempotencyKey = "deployed-workspace:declared-identity";
+  const operationId = launchOperationId(accountId, idempotencyKey);
+  assert.equal(operationId, "workspace-launch-d8e76ea5e172009490");
+  assert.equal(launchWorkspaceId(accountId, operationId), "ws-c3d9e772d4d4708dfa");
+});
+
+test("a missing trailing separator is a different identity, so the rule cannot be approximated", () => {
+  const naiveJoin = (parts) => createHash("sha1").update(parts.join("\0")).digest("hex").slice(0, 18);
+  const accountId = "acct-test";
+  const key = "declared-identity";
+  assert.notEqual(launchOperationId(accountId, key), `workspace-launch-${naiveJoin([accountId, key])}`);
+  const operationId = launchOperationId(accountId, key);
+  assert.notEqual(launchWorkspaceId(accountId, operationId), `ws-${naiveJoin(["workspace-launch-v2", accountId, operationId])}`);
+});
+
+test("the two identities are both eighteen hex characters, because the platform truncates there", () => {
+  for (const accountId of ["acct-a", "acct-test", "acct-" + "x".repeat(40)]) {
+    const operationId = launchOperationId(accountId, "k");
+    assert.equal(operationId.slice("workspace-launch-".length).length, 18);
+    assert.equal(launchWorkspaceId(accountId, operationId).slice("ws-".length).length, 18);
+  }
 });
