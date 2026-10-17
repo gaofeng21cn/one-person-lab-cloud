@@ -28,6 +28,8 @@ const SOURCE_TREE = "b".repeat(40);
 const ACCOUNT_ID = "acct-customer-0001";
 const ACCOUNT_EMAIL = "customer@qualification.invalid";
 const QUOTE_MICROS = "52580000";
+const ENTRY_URL = "https://workspace.qualification.invalid/";
+const APPLICATION_OPERATION_ID = "app-op-0123456789abcdef01";
 
 function candidateReceipt(overrides = {}) {
   return {
@@ -97,9 +99,13 @@ const qualificationRequest = (provider, overrides = {}) => createQualificationRe
  * already admitted, exactly as the Control Plane answers it, so the fake cannot
  * pass a test the real platform would fail.
  */
-function controlPlane({ accountId = ACCOUNT_ID, walletBeforeMicros = "999999999", quoteMicros = QUOTE_MICROS, chargeMicros = null,
-  loseResponseOnce = false, launchStatus = "succeeded", noReceiptId = false, extraChargeMicros = "0" } = {}) {
-  const state = { orders: new Map(), byKey: new Map(), posted: 0, charges: [], commands: [], responsesLost: false, wallet: walletBeforeMicros };
+function controlPlane({ accountId = ACCOUNT_ID, sessionAccountId = ACCOUNT_ID, sessionRole = "owner", sessionStatus = "active",
+  walletBeforeMicros = "999999999", quoteMicros = QUOTE_MICROS, chargeMicros = null, loseResponseOnce = false,
+  losePollResponse = false, launchStatus = "succeeded", noReceiptId = false, noBillingReceipt = false, admitPending = false,
+  receiptAmountMicros = null, workspaceOpenable = true, applicationStatus = "ready", runtimeReady = true,
+  runtimeStatus = "running", extraChargeMicros = "0" } = {}) {
+  const state = { orders: new Map(), byKey: new Map(), posted: 0, charges: [], commands: [], responsesLost: false,
+    wallet: walletBeforeMicros, workspaceId: "", polled: 0 };
   const envelope = (data) => ({ source: "sub2api", available: true, status: "available", data });
 
   const http = {
@@ -117,6 +123,40 @@ function controlPlane({ accountId = ACCOUNT_ID, walletBeforeMicros = "999999999"
     },
     async json(path, init = {}, auth = null, statuses = [200]) {
       if (path === "/api/gateway/wallet") return { status: 200, payload: envelope({ usdMicros: state.wallet }) };
+      // The identity fence. A transport holding another account's session
+      // answers honestly here, which is the whole point of asking.
+      if (path === "/api/auth/me") {
+        return { status: 200, payload: envelope({
+          accountId: sessionAccountId, email: ACCOUNT_EMAIL, role: sessionRole, status: sessionStatus, sub2apiUserId: "9001",
+        }) };
+      }
+      if (path.startsWith("/api/workspaces?")) {
+        return { status: 200, payload: {
+          source: "control-plane", available: true, status: "available",
+          data: { items: [{
+            id: state.workspaceId, url: ENTRY_URL, openable: workspaceOpenable,
+            currentApplication: { status: applicationStatus, entryUrl: ENTRY_URL, operationId: APPLICATION_OPERATION_ID },
+          }] },
+        } };
+      }
+      if (/^\/api\/workspaces\/[^/]+\/runtime-status$/.test(path)) {
+        return { status: 200, payload: {
+          source: "fabric", available: true, status: "available",
+          data: { workspaceId: state.workspaceId, ready: runtimeReady, status: runtimeStatus, url: ENTRY_URL,
+            runtimeId: "rt-0123456789abcdef", currentApplication: { operationId: APPLICATION_OPERATION_ID } },
+        } };
+      }
+      if (/^\/api\/billing\/receipts\/[^/]+$/.test(path)) {
+        if (noBillingReceipt) throw new Error(`HTTP GET ${path} returned 404`);
+        return { status: 200, payload: {
+          source: "ledger", available: true, status: "available",
+          data: { receiptId: decodeURIComponent(path.split("/").pop()), workspaceId: state.workspaceId,
+            type: "billing.workspace_purchased.v1", status: "completed",
+            chargeReference: "opl:workspace-launch:charge:0001",
+            totalUsdMicros: receiptAmountMicros ?? quoteMicros,
+            fulfillment: { computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001" } },
+        } };
+      }
       if (path === "/api/pricing/preview") {
         return { status: 200, payload: { resourceType: "workspace", packageId: "basic", currency: "USD", totalChargeUsdMicros: quoteMicros } };
       }
@@ -135,12 +175,14 @@ function controlPlane({ accountId = ACCOUNT_ID, walletBeforeMicros = "999999999"
         const admitted = {
           operationId,
           workspaceId,
-          status: launchStatus,
-          phase: launchStatus === "succeeded" ? "succeeded" : "debit",
-          receiptId: launchStatus === "succeeded" && !noReceiptId ? "rcpt_qualification_1" : "",
+          status: admitPending ? "running" : launchStatus,
+          phase: admitPending ? "runtime" : (launchStatus === "succeeded" ? "succeeded" : "debit"),
+          receiptId: !admitPending && launchStatus === "succeeded" && !noReceiptId ? "rcpt_qualification_1" : "",
+          computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001",
         };
         state.byKey.set(key, operationId);
         state.orders.set(operationId, admitted);
+        state.workspaceId = workspaceId;
         state.posted += 1;
         state.commands.push(init.body);
         state.wallet = String(BigInt(state.wallet) - BigInt(chargeMicros ?? quoteMicros) - BigInt(extraChargeMicros));
@@ -152,6 +194,9 @@ function controlPlane({ accountId = ACCOUNT_ID, walletBeforeMicros = "999999999"
         return { status: 202, payload: { operationId, workspaceId } };
       }
       if (/^\/api\/workspace-launches\/[^/]+$/.test(path)) {
+        // An accepted order that then goes quiet is not a launch the platform
+        // published as stopping; it is a run that cannot say what happened.
+        if (losePollResponse) throw new Error("socket hang up while following the accepted order");
         const wanted = decodeURIComponent(path.split("/").pop());
         const admitted = state.orders.get(wanted);
         if (!admitted) throw new Error(`HTTP GET ${path} returned 404`);
@@ -196,9 +241,9 @@ test("one orchestrator qualifies two providers, and neither adapter decides the 
     assertQualificationAdapter(adapter, provider);
 
     const { state, receipt } = await run(request, adapter);
-    assert.equal(state, "ready", provider);
+    assert.equal(state, "settled", provider);
     assert.equal(receipt.provider, provider);
-    assert.equal(receipt.state, "ready");
+    assert.equal(receipt.state, "settled");
     assert.deepEqual(Object.keys(receipt.checks).sort(), [...QUALIFICATION_BUSINESS_CHECKS].sort());
     assert.ok(QUALIFICATION_BUSINESS_CHECKS.every((name) => receipt.checks[name] === true), provider);
     assert.equal(adapter.calls.closed, 1, "the adapter that opened the scope closes it");
@@ -232,7 +277,7 @@ test("a wallet that cannot fund the quote is blocked, and nothing is purchased",
   assert.equal(receipt.reason, "wallet_cannot_fund");
   assert.ok(QUALIFICATION_TERMINAL_REASONS.blocked.includes(receipt.reason));
   assert.equal(platform.state.posted, 0, "a blocked run issues no command");
-  assert.equal(receipt.scope.observed.purchases, 0);
+  assert.equal(receipt.mutations.observed.purchases, 0);
 });
 
 test("a quote that does not name the declared product is a failure of the product, not a blocked run", async () => {
@@ -254,8 +299,8 @@ test("a terminal launch that carries no purchase receipt is a binding failure, n
   const platform = controlPlane({ noReceiptId: true });
   const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
   assert.equal(state, "failed");
-  assert.equal(receipt.reason, "receipt_binding_mismatch");
-  assert.equal(receipt.checks.receipt_bound, false, "an unbound receipt is not recorded as bound");
+  assert.equal(receipt.reason, "purchase_receipt_missing");
+  assert.equal(receipt.checks.purchase_receipt_bound, false, "an unbound receipt is not recorded as bound");
   assert.equal(receipt.operation.purchaseReceiptId, "");
 });
 
@@ -294,7 +339,7 @@ test("a scope that cannot be proven restored is recovery-required even when the 
   assert.equal(state, "recovery-required");
   assert.equal(receipt.reason, "cleanup_unproven");
   assert.ok(QUALIFICATION_BUSINESS_CHECKS.every((name) => receipt.checks[name]), "the business evidence was complete");
-  assert.notEqual(state, "ready", "complete business evidence is not a ready result while the scope is unproven");
+  assert.notEqual(state, "settled", "complete business evidence is not a settled result while the scope is unproven");
 });
 
 // Replay. The whole point of deriving the operation identity is that a
@@ -305,17 +350,17 @@ test("a redelivery resumes the original order and buys nothing twice", async () 
   const first = await run(request, providerAdapter("local-docker", platform));
   const second = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
 
-  assert.equal(first.state, "ready");
-  assert.equal(second.state, "ready");
+  assert.equal(first.state, "settled");
+  assert.equal(second.state, "settled");
   assert.equal(platform.state.posted, 1, "one admitted order for one declared qualification");
   assert.equal(platform.state.charges.length, 1, "one charge");
   assert.equal(second.receipt.operation.resumed, true);
   assert.equal(first.receipt.operation.resumed, false);
   assert.equal(second.receipt.operation.operationId, first.receipt.operation.operationId);
   assert.equal(second.receipt.operation.workspaceId, first.receipt.operation.workspaceId);
-  assert.equal(second.receipt.scope.observed.purchases, 1, "the resumed run reports the one purchase that exists");
-  assert.equal(second.receipt.scope.observed.charges, 0, "the redelivery charged nothing again");
-  assert.equal(first.receipt.scope.observed.charges, 1, "the first delivery paid for it once");
+  assert.equal(second.receipt.mutations.observed.purchases, 1, "the resumed run reports the one purchase that exists");
+  assert.equal(second.receipt.mutations.observed.charges, 0, "the redelivery charged nothing again");
+  assert.equal(first.receipt.mutations.observed.charges, 1, "the first delivery paid for it once");
   assert.equal(
     BigInt(second.receipt.accounting.walletBeforeUsdMicros) - BigInt(second.receipt.accounting.walletAfterUsdMicros),
     0n,
@@ -326,7 +371,7 @@ test("a redelivery resumes the original order and buys nothing twice", async () 
 test("a response lost after the platform accepted the command resumes that order and issues no second one", async () => {
   const platform = controlPlane({ loseResponseOnce: true });
   const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
-  assert.equal(state, "ready");
+  assert.equal(state, "settled");
   assert.equal(receipt.operation.resumed, true);
   assert.equal(platform.state.posted, 1, "the lost answer cost a retry of the read, never a second purchase");
   assert.equal(platform.state.charges.length, 1);
@@ -342,6 +387,10 @@ test("a lost response that left no order behind is undetermined, never a pass", 
     if (path === "/api/gateway/wallet") {
       return { status: 200, payload: { source: "sub2api", available: true, status: "available", data: { usdMicros: "999999999" } } };
     }
+    if (path === "/api/auth/me") {
+      return { status: 200, payload: { source: "sub2api", available: true, status: "available", data: {
+        accountId: ACCOUNT_ID, role: "owner", status: "active" } } };
+    }
     if (path === "/api/pricing/preview") {
       return { status: 200, payload: { resourceType: "workspace", packageId: "basic", currency: "USD", totalChargeUsdMicros: QUOTE_MICROS } };
     }
@@ -350,7 +399,7 @@ test("a lost response that left no order behind is undetermined, never a pass", 
   const { state, receipt } = await run(request, adapter);
   assert.equal(state, "unknown");
   assert.equal(receipt.reason, "response_lost");
-  assert.equal(receipt.scope.observed.purchases, 0);
+  assert.equal(receipt.mutations.observed.purchases, 0);
 });
 
 // The command body is what the platform is asked to act on. It carries the
@@ -394,9 +443,9 @@ test("deployment health is recorded and never becomes the qualification result",
   const degradedRun = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", degraded, { health: "degraded" }));
   const healthyRun = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", healthy, { health: "healthy" }));
 
-  assert.equal(degradedRun.state, "ready", "a degraded host does not unqualify a proven product");
+  assert.equal(degradedRun.state, "settled", "a degraded host does not unqualify a proven product");
   assert.equal(degradedRun.receipt.deploymentHealth, "degraded");
-  assert.equal(healthyRun.state, "ready");
+  assert.equal(healthyRun.state, "settled");
   assert.equal(healthyRun.receipt.deploymentHealth, "healthy");
 });
 
@@ -474,7 +523,7 @@ test("a ready receipt and a not-ready receipt cannot be swapped", () => {
     assert.throws(() => validateBusinessQualificationReceipt(claimedReady), { code: "qualification_business_receipt_invalid" },
       "a failure claim cannot hold every piece of evidence a pass needs");
 
-    const withheld = { ...receipt, checks: { ...receipt.checks, charge_settled: false } };
+    const withheld = { ...receipt, checks: { ...receipt.checks, wallet_confirmed: false } };
     assert.throws(() => validateBusinessQualificationReceipt(withheld), { code: "qualification_business_receipt_invalid" },
       "a pass claim cannot withhold the charge readback");
 
@@ -491,7 +540,7 @@ test("a ready receipt and a not-ready receipt cannot be swapped", () => {
 test("every declared terminal state is reachable and each carries only its own reasons", async () => {
   const seen = new Map();
   const scenarios = {
-    ready: [controlPlane(), {}],
+    settled: [controlPlane(), {}],
     blocked: [controlPlane({ walletBeforeMicros: "1" }), {}],
     failed: [controlPlane({ launchStatus: "failed" }), {}],
     "recovery-required": [controlPlane(), { restored: false }],
@@ -513,13 +562,13 @@ test("every declared terminal state is reachable and each carries only its own r
 test("the bounded mutation counts are recorded against the declared envelope", async () => {
   const platform = controlPlane();
   const { receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
-  assert.deepEqual(Object.keys(receipt.scope.declared).sort(), [...QUALIFICATION_MUTATION_BOUNDS].sort());
-  assert.deepEqual(Object.keys(receipt.scope.observed).sort(), [...QUALIFICATION_MUTATION_BOUNDS].sort());
-  assert.equal(receipt.scope.observed.purchases, 1);
-  assert.equal(receipt.scope.observed.charges, 1);
-  assert.equal(receipt.scope.observed.refunds, 0);
-  assert.equal(receipt.scope.observed.workspaceDeletions, 0, "this flow issues no deletion");
-  assert.equal(receipt.scope.observed.managedKeys, 0, "this flow issues no managed Key");
+  assert.deepEqual(Object.keys(receipt.mutations.declared).sort(), [...QUALIFICATION_MUTATION_BOUNDS].sort());
+  assert.deepEqual(Object.keys(receipt.mutations.observed).sort(), [...QUALIFICATION_MUTATION_BOUNDS].sort());
+  assert.equal(receipt.mutations.observed.purchases, 1);
+  assert.equal(receipt.mutations.observed.charges, 1);
+  assert.equal(receipt.mutations.observed.refunds, 0);
+  assert.equal(receipt.mutations.observed.workspaceDeletions, 0, "this flow issues no deletion");
+  assert.equal(receipt.mutations.observed.managedKeys, 0, "this flow issues no managed Key");
   assert.equal(receipt.accounting.quoteUsdMicros, QUOTE_MICROS);
   assert.equal(BigInt(receipt.accounting.walletBeforeUsdMicros) - BigInt(receipt.accounting.walletAfterUsdMicros), BigInt(QUOTE_MICROS));
 });
@@ -546,4 +595,162 @@ test("the J0 authority must belong to the provider the request declared", () => 
     authority: { mode: "live", authorityClass: "sandbox", j0ReadyReceipt: j0ReadyReceipt("local-docker") },
   }), { code: "j0_ready_receipt_invalid" });
   assert.equal(qualificationProviderProfile("tencent-tke").provider, "tencent-tke");
+});
+// ---------------------------------------------------------------------------
+// Regressions for the four blocking findings on fe4570c2. Each one fails against
+// that revision for the reason named, and each states the evidence it now needs.
+// ---------------------------------------------------------------------------
+
+// Finding 1: an adapter-supplied transport was trusted to be the declared
+// account. The receipt was settled for whoever the session happened to hold.
+test("a session belonging to another account cannot settle this run", async () => {
+  const platform = controlPlane({ sessionAccountId: "acct-other" });
+  const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+
+  assert.equal(state, "failed");
+  assert.equal(receipt.reason, "account_binding_mismatch");
+  assert.equal(platform.state.posted, 0, "the fence runs before anything is priced or bought");
+  assert.equal(receipt.checks.account_bound, false);
+  assert.equal(receipt.mutations.observed.purchases, 0);
+});
+
+test("the fence refuses a session that is not an active owner", async () => {
+  for (const session of [{ sessionRole: "member" }, { sessionStatus: "suspended" }]) {
+    const platform = controlPlane(session);
+    const { receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+    assert.equal(receipt.reason, "account_binding_mismatch", JSON.stringify(session));
+    assert.equal(platform.state.posted, 0, JSON.stringify(session));
+  }
+});
+
+test("an admitted order naming another Workspace is refused rather than resumed", async () => {
+  const platform = controlPlane();
+  const first = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+  assert.equal(first.state, "settled");
+
+  // The platform answers the probe with an order for a different Workspace.
+  const [operationId] = [...platform.state.orders.keys()];
+  platform.state.orders.set(operationId, { ...platform.state.orders.get(operationId), workspaceId: "ws-ffffffffffffffff" });
+  const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+  assert.equal(state, "failed");
+  assert.equal(receipt.reason, "account_binding_mismatch");
+});
+
+// Finding 2: a wallet that moved was accepted as proof of a charge.
+test("a wallet that moved with no readable Ledger receipt for it does not settle", async () => {
+  const platform = controlPlane({ noBillingReceipt: true });
+  const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+
+  assert.notEqual(state, "settled");
+  assert.equal(state, "unknown", "the owner's record of the charge could not be read at all");
+  assert.equal(receipt.reason, "owner_readback_unavailable");
+  assert.equal(receipt.checks.charge_receipted, false);
+  assert.equal(receipt.checks.wallet_confirmed, false,
+    "the balance is not consulted once the owner's receipt for it is missing");
+  assert.equal(receipt.mutations.observed.purchases, 1, "the purchase really was admitted");
+});
+
+test("a Ledger receipt for a different amount than the quote does not settle", async () => {
+  const platform = controlPlane({ receiptAmountMicros: "1" });
+  const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+  assert.equal(state, "failed");
+  assert.equal(receipt.reason, "charge_receipt_mismatch");
+  assert.equal(receipt.checks.charge_receipted, false);
+});
+
+test("a settled receipt binds its charge to a receipt digest rather than the charge reference", async () => {
+  const platform = controlPlane();
+  const { receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+  assert.match(receipt.accounting.chargeReferenceDigest, /^sha256:[0-9a-f]{64}$/);
+  assert.doesNotMatch(JSON.stringify(receipt), /opl:workspace-launch:charge/,
+    "the charge reference itself stays out of the receipt");
+});
+
+// Finding 3: `ready` was returned without any Workspace, Runtime or Ledger
+// evidence, so a purchase primitive was labelled a qualified product.
+test("a purchase with no ready Workspace behind it does not settle", async () => {
+  for (const broken of [{ applicationStatus: "installing" }, { workspaceOpenable: false }]) {
+    const platform = controlPlane(broken);
+    const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+    assert.equal(state, "failed", JSON.stringify(broken));
+    assert.equal(receipt.reason, "workspace_not_ready", JSON.stringify(broken));
+    assert.equal(receipt.checks.workspace_ready, false);
+  }
+});
+
+test("a purchase with no running Runtime behind it does not settle", async () => {
+  for (const broken of [{ runtimeReady: false }, { runtimeStatus: "provisioning" }]) {
+    const platform = controlPlane(broken);
+    const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+    assert.equal(state, "failed", JSON.stringify(broken));
+    assert.equal(receipt.reason, "runtime_not_ready", JSON.stringify(broken));
+    assert.equal(receipt.checks.runtime_ready, false);
+  }
+});
+
+test("a settled receipt states the scope it did not establish", async () => {
+  const platform = controlPlane();
+  const { receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+  assert.equal(receipt.scope, "workspace_purchase");
+  assert.equal(receipt.businessQualification, undefined);
+  assert.deepEqual(receipt.uncovered, {
+    applicationInstallation: false,
+    gatewayKeyLifecycle: false,
+    keyUsage: false,
+    ownerDeletion: false,
+    businessQualification: false,
+  });
+  assert.equal(Object.values(receipt.uncovered).every((value) => value === false), true,
+    "every unestablished step is declared false, so none can be read as implied");
+});
+
+test("a receipt may not claim a scope it cannot prove", () => {
+  assert.throws(() => validateBusinessQualificationReceipt({ kind: "opl.workspace-qualification.purchase.v1" }),
+    { code: "qualification_business_receipt_invalid" });
+});
+
+// Finding 4: a lost polling response was reported as a launch the platform had
+// stopped, which is a statement about the product this run could not make.
+test("an accepted order whose polling response is lost is not a stopped launch", async () => {
+  // Admitted, charged, and then the platform goes quiet before the order ends.
+  const platform = controlPlane({ admitPending: true, losePollResponse: true });
+  const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+
+  assert.notEqual(state, "failed", "an unknown outcome is not a product failure");
+  assert.equal(state, "recovery-required",
+    "the purchase was admitted, so this run changed something it cannot place");
+  assert.equal(receipt.reason, "mutation_unaccounted");
+  assert.equal(receipt.mutations.observed.purchases, 1, "the mutation did happen");
+  assert.notEqual(receipt.reason, "launch_stopped");
+});
+
+test("a launch the platform itself published as stopped stays a product failure", async () => {
+  const platform = controlPlane({ launchStatus: "failed" });
+  const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+  assert.equal(state, "failed");
+  assert.equal(receipt.reason, "launch_stopped",
+    "the platform published this end, so it is a failure rather than an unknown");
+});
+
+test("a lost answer to the command itself, with no order admitted, is undetermined", async () => {
+  const platform = controlPlane();
+  const adapter = providerAdapter("local-docker", platform);
+  platform.http.request = async () => ({ response: { status: 404 }, payload: null });
+  platform.http.json = async (path) => {
+    if (path === "/api/auth/me") {
+      return { status: 200, payload: { source: "sub2api", available: true, status: "available", data: {
+        accountId: ACCOUNT_ID, role: "owner", status: "active" } } };
+    }
+    if (path === "/api/gateway/wallet") {
+      return { status: 200, payload: { source: "sub2api", available: true, status: "available", data: { usdMicros: "999999999" } } };
+    }
+    if (path === "/api/pricing/preview") {
+      return { status: 200, payload: { resourceType: "workspace", packageId: "basic", currency: "USD", totalChargeUsdMicros: QUOTE_MICROS } };
+    }
+    throw new Error("socket hang up");
+  };
+  const { state, receipt } = await run(qualificationRequest("local-docker"), adapter);
+  assert.equal(state, "unknown");
+  assert.equal(receipt.reason, "response_lost");
+  assert.equal(receipt.mutations.observed.purchases, 0, "nothing was admitted, so nothing was mutated");
 });

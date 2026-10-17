@@ -79,43 +79,78 @@ export function createJ0ReadyReceiptValidator(profile) {
  * cannot come back with two different meanings of the same result.
  */
 
-// Named for the qualification. A business qualification receipt is the Cloud
-// product's own evidence; it joins the Instance deployment receipt only through
-// the immutable Candidate identity, never by merging the two.
-export const QUALIFICATION_BUSINESS_RECEIPT_KIND = "opl.workspace-qualification.business.v1";
+// Named for the qualification step it records, which is the Workspace
+// purchase. It is not the business qualification receipt and does not claim to
+// be: it joins the Instance deployment receipt only through the immutable
+// Candidate identity, and it carries the scope it did not establish beside the
+// scope it did.
+export const QUALIFICATION_BUSINESS_RECEIPT_KIND = "opl.workspace-qualification.purchase.v1";
 
-// A terminal result has to say which of these it is. `unknown` and
+// The terminal result has to say which of these it is. `unknown` and
 // `recovery-required` are not softer forms of `failed`: the first means the run
 // could not determine the outcome, the second means it changed something and
-// cannot prove it put the scope back. Collapsing any two of them would let an
-// unproven run be read as a passed one.
-export const QUALIFICATION_TERMINAL_STATES = Object.freeze([
-  "ready", "blocked", "failed", "unknown", "recovery-required"
-]);
+// cannot prove it put the scope back or place it. Collapsing any two of them
+// would let an unproven run be read as a settled one.
 
 // Every state names exactly the reasons it may be reached by, so a receipt
 // cannot carry one outcome's evidence under another outcome's name.
+//
+// The passing state is `settled`, not `ready`. This flow proves the Workspace
+// purchase: the declared product was priced by the platform, bought once, paid
+// once against a Ledger receipt bound to that exact operation, and delivered a
+// ready Workspace with a running Runtime behind the owner's own readbacks. It
+// does not install the application, issue the Workspace Gateway Key, exercise
+// that Key, or delete the Workspace. A verdict called `ready` on that evidence
+// would read as a qualified customer journey, and no reader of the receipt
+// could tell it apart from one. `settled` says what was actually established.
 export const QUALIFICATION_TERMINAL_REASONS = Object.freeze({
-  ready: Object.freeze(["none"]),
+  settled: Object.freeze(["none"]),
   blocked: Object.freeze([
     "live_authority_missing", "provider_scope_unavailable", "wallet_cannot_fund", "scope_bound_exhausted"
   ]),
   failed: Object.freeze([
-    "quote_invalid", "launch_stopped", "charge_readback_mismatch", "receipt_binding_mismatch", "owner_evidence_incomplete"
+    "quote_invalid", "launch_stopped", "account_binding_mismatch", "workspace_not_ready", "runtime_not_ready",
+    "charge_receipt_mismatch", "wallet_readback_mismatch", "purchase_receipt_missing", "owner_evidence_incomplete"
   ]),
   unknown: Object.freeze(["response_lost", "owner_readback_unavailable"]),
   "recovery-required": Object.freeze(["mutation_unaccounted", "cleanup_unproven"])
 });
 
-// The business checks a ready receipt has to carry. Deployment health is
-// deliberately not one of them: a product can qualify while the host carrying
-// it is degraded, and a healthy host proves nothing about the product.
-export const QUALIFICATION_BUSINESS_CHECKS = Object.freeze([
-  "quote_priced", "purchase_issued", "charge_settled", "receipt_bound"
+export const QUALIFICATION_TERMINAL_STATES = Object.freeze([
+  "settled", "blocked", "failed", "unknown", "recovery-required"
 ]);
 
+// What a settled receipt must have read, from the owner APIs, before it may say
+// so. Each is a fact about the declared account's own purchase, not about the
+// host that carried it.
+//
+// A wallet amount is deliberately not on this list. A balance that moved is not
+// evidence of what moved it: it can fall for a refund, an adjustment or an
+// unrelated charge. The charge is proven by the Ledger receipt that names this
+// operation, this Workspace and this amount, and the wallet is then used only to
+// confirm that receipt against the balance.
+//
+// Deployment health is deliberately not on this list either. A product can be
+// settled while the host carrying it is degraded, and a healthy host proves
+// nothing about the product.
+export const QUALIFICATION_BUSINESS_CHECKS = Object.freeze([
+  "account_bound", "quote_priced", "purchase_issued", "purchase_receipt_bound",
+  "workspace_ready", "runtime_ready", "charge_receipted", "wallet_confirmed"
+]);
+
+// What this flow does not establish, stated on every receipt it returns. These
+// are not gaps in the evidence above; they are separate steps this flow never
+// performs, and a reader must not infer them from a settled receipt.
+export const QUALIFICATION_UNCOVERED_SCOPE = Object.freeze({
+  applicationInstallation: false,
+  gatewayKeyLifecycle: false,
+  keyUsage: false,
+  ownerDeletion: false,
+  businessQualification: false
+});
+
 // What a run may cause. Each bound is declared before anything happens, and a
-// run that caused more than it declared cannot come back ready.
+// run that caused more than it declared cannot come back settled.
 export const QUALIFICATION_MUTATION_BOUNDS = Object.freeze([
   "purchases", "charges", "refunds", "workspaceDeletions", "managedKeys"
 ]);
@@ -284,15 +319,16 @@ export function createQualificationRequest({ candidate, accountId, product, prov
 }
 
 const RECEIPT_KEYS = [
-  "schemaVersion", "kind", "state", "reason", "provider", "candidate", "source", "tenant", "product",
-  "authority", "operation", "scope", "checks", "accounting", "cleanup", "deploymentHealth", "startedAt", "completedAt"
+  "schemaVersion", "kind", "scope", "uncovered", "state", "reason", "provider", "candidate", "source", "tenant", "product",
+  "authority", "operation", "mutations", "checks", "accounting", "cleanup", "deploymentHealth", "startedAt", "completedAt"
 ];
 const CANDIDATE_KEYS = ["receiptDigest", "productSha", "productTree", "cloudImageDigest"];
 const SOURCE_KEYS = ["sha", "tree", "clean"];
 const PRODUCT_KEYS = ["resourceType", "packageId", "autoRenew"];
 const AUTHORITY_KEYS = ["mode", "authorityClass", "j0ReadyDigest"];
 const OPERATION_KEYS = ["idempotencyKey", "operationId", "workspaceId", "purchaseReceiptId", "resumed"];
-const ACCOUNTING_KEYS = ["quoteUsdMicros", "walletBeforeUsdMicros", "walletAfterUsdMicros"];
+const ACCOUNTING_KEYS = ["quoteUsdMicros", "walletBeforeUsdMicros", "walletAfterUsdMicros", "chargeReferenceDigest"];
+const QUALIFICATION_UNCOVERED_KEYS = Object.freeze(Object.keys(QUALIFICATION_UNCOVERED_SCOPE));
 const CLEANUP_KEYS = ["performed", "restored"];
 const DEPLOYMENT_HEALTH = ["healthy", "degraded", "unknown"];
 
@@ -338,7 +374,10 @@ export function validateBusinessQualificationReceipt(value) {
       !hasExactKeys(value.authority, AUTHORITY_KEYS) || value.authority.mode !== "live" ||
       !isDigest(value.authority.j0ReadyDigest) ||
       !hasExactKeys(value.operation, OPERATION_KEYS) || typeof value.operation.resumed !== "boolean" ||
-      !hasExactKeys(value.scope, ["declared", "observed"]) ||
+      !hasExactKeys(value.mutations, ["declared", "observed"]) ||
+      value.scope !== "workspace_purchase" ||
+      !hasExactKeys(value.uncovered, QUALIFICATION_UNCOVERED_KEYS) ||
+      Object.entries(QUALIFICATION_UNCOVERED_SCOPE).some(([name, covered]) => value.uncovered[name] !== covered) ||
       !hasExactKeys(value.checks, QUALIFICATION_BUSINESS_CHECKS) ||
       !hasExactKeys(value.accounting, ACCOUNTING_KEYS) ||
       !hasExactKeys(value.cleanup, CLEANUP_KEYS) ||
@@ -347,7 +386,7 @@ export function validateBusinessQualificationReceipt(value) {
     invalidReceipt();
   }
 
-  for (const bounds of [value.scope.declared, value.scope.observed]) {
+  for (const bounds of [value.mutations.declared, value.mutations.observed]) {
     for (const name of QUALIFICATION_MUTATION_BOUNDS) {
       if (!hasExactKeys(bounds, QUALIFICATION_MUTATION_BOUNDS) || !Number.isSafeInteger(bounds[name]) || bounds[name] < 0) {
         invalidReceipt();
@@ -361,6 +400,9 @@ export function validateBusinessQualificationReceipt(value) {
   const before = micros(value.accounting.walletBeforeUsdMicros);
   const after = micros(value.accounting.walletAfterUsdMicros);
   const moved = before !== null && after !== null ? BigInt(before) - BigInt(after) : null;
+  // An empty charge reference means the run never reached the Ledger receipt,
+  // which is the case for every outcome that stops earlier than that.
+  if (value.accounting.chargeReferenceDigest !== "" && !isDigest(value.accounting.chargeReferenceDigest)) invalidReceipt();
   instant(value.startedAt);
   instant(value.completedAt);
   if (Date.parse(value.completedAt) < Date.parse(value.startedAt)) invalidReceipt();
@@ -369,16 +411,18 @@ export function validateBusinessQualificationReceipt(value) {
   // it. Without this a receipt could hold a true check beside an empty
   // operation, and a receipt is only as strong as its least supported claim.
   if (value.checks.quote_priced && quote === null) invalidReceipt();
-  if (value.checks.purchase_issued && value.scope.observed.purchases < 1) invalidReceipt();
-  if (value.checks.receipt_bound && !String(value.operation.purchaseReceiptId || "").trim()) invalidReceipt();
-  // A settled charge is a claim about money, so the wallet has to have been
-  // read on both sides of the run for the claim to exist at all.
-  if (value.checks.charge_settled && (before === null || after === null)) invalidReceipt();
+  if (value.checks.purchase_issued && value.mutations.observed.purchases < 1) invalidReceipt();
+  if (value.checks.purchase_receipt_bound && !String(value.operation.purchaseReceiptId || "").trim()) invalidReceipt();
+  // A claim about money needs the wallet read on both sides of the run, and a
+  // claim about the charge needs the Ledger receipt that names this operation.
+  if (value.checks.wallet_confirmed && (before === null || after === null)) invalidReceipt();
+  if (value.checks.charge_receipted && value.accounting.chargeReferenceDigest === "") invalidReceipt();
 
-  const withinBounds = QUALIFICATION_MUTATION_BOUNDS.every((name) => value.scope.observed[name] <= value.scope.declared[name]);
+  const withinBounds = QUALIFICATION_MUTATION_BOUNDS.every((name) =>
+    value.mutations.observed[name] <= value.mutations.declared[name]);
   const everyCheck = QUALIFICATION_BUSINESS_CHECKS.every((name) => value.checks[name]);
   const cleanupProven = value.cleanup.performed && value.cleanup.restored;
-  const observed = value.scope.observed;
+  const observed = value.mutations.observed;
   // A settled purchase is evidenced two honest ways, and the receipt says
   // which: a delivery that bought it and watched the wallet move, or a
   // redelivery that resumed its own finished order and watched the wallet
@@ -389,6 +433,6 @@ export function validateBusinessQualificationReceipt(value) {
   const resumedFinishedOrder = value.operation.resumed && observed.purchases === 1 && observed.charges === 0 && moved === 0n;
   const qualified = everyCheck && withinBounds && cleanupProven && observed.refunds === 0 &&
     (boughtAndPaid || resumedFinishedOrder);
-  if ((value.state === "ready") !== qualified) invalidReceipt();
+  if ((value.state === "settled") !== qualified) invalidReceipt();
   return value;
 }
