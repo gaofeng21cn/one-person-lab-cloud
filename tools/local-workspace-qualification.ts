@@ -24,6 +24,19 @@ import {
   noLocalJ1ExternalWrites,
   writeLocalJ1RecoveryArtifact
 } from "./local-workspace-recovery.ts";
+import {
+  LEGACY_QUALIFICATION_J0_READY_KINDS,
+  createJ0ReadyReceiptValidator,
+  j0ReadyReceiptError,
+  qualificationProviderProfile
+} from "./workspace-qualification-contract.ts";
+
+// Local-Docker is the first adapter over the provider-neutral contract. Its
+// identity is declared here rather than asserted inside the validator, which is
+// what lets a second provider reuse the same seam.
+export const LOCAL_DOCKER_QUALIFICATION_PROFILE = qualificationProviderProfile("local-docker", {
+  legacyReceiptKinds: LEGACY_QUALIFICATION_J0_READY_KINDS
+});
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // The Candidate file set this script qualifies: one base Compose file, the
@@ -232,30 +245,7 @@ export function validateQualificationSourceIdentity(before, after, requestedSour
   return after;
 }
 
-function j0ReadyReceiptError() {
-  const error = new Error("j0_ready_receipt_invalid");
-  error.code = "j0_ready_receipt_invalid";
-  return error;
-}
-
-function hasExactKeys(value, keys) {
-  return value && typeof value === "object" && !Array.isArray(value) &&
-    Object.keys(value).sort().join("\0") === [...keys].sort().join("\0");
-}
-
-export function validateJ0ReadyReceipt(value, sourceSha, sourceTree) {
-  if (!hasExactKeys(value, ["schemaVersion", "kind", "status", "source", "authority", "provider", "failed", "skipped"]) ||
-    value.schemaVersion !== 1 || value.kind !== "opl.local-workspace.j0-ready.v1" || value.status !== "READY" ||
-    !hasExactKeys(value.source, ["sha", "tree", "clean"]) ||
-    value.source?.sha !== sourceSha || value.source?.tree !== sourceTree || value.source?.clean !== true ||
-    value.failed !== 0 || value.skipped !== 0 || value.provider !== "local-docker" ||
-    !hasExactKeys(value.authority, ["mode", "class", "dedicated", "confirmed"]) ||
-    value.authority?.mode !== "live" || value.authority?.class !== "sandbox" ||
-    value.authority?.dedicated !== true || value.authority?.confirmed !== true) {
-    throw j0ReadyReceiptError();
-  }
-  return value;
-}
+export const validateJ0ReadyReceipt = createJ0ReadyReceiptValidator(LOCAL_DOCKER_QUALIFICATION_PROFILE);
 
 export async function loadJ0ReadyReceipt(path, sourceSha, sourceTree, { currentUid = typeof process.getuid === "function" ? process.getuid() : null } = {}) {
   const exactPath = resolve(String(path || ""));
@@ -277,7 +267,7 @@ export async function loadJ0ReadyReceipt(path, sourceSha, sourceTree, { currentU
       digest: `sha256:${createHash("sha256").update(raw).digest("hex")}`,
       source: { sha: value.source.sha, tree: value.source.tree, clean: true },
       authority: { mode: "live", class: "sandbox", dedicated: true, confirmed: true },
-      provider: "local-docker",
+      provider: LOCAL_DOCKER_QUALIFICATION_PROFILE.provider,
       failed: 0,
       skipped: 0
     };
@@ -307,7 +297,7 @@ export function validateLocalQualificationReceipt(value) {
   }
   if (value.qualification.authorityMode === "live" && (!digestPattern.test(String(value.j0Ready?.digest || "")) || value.j0Ready?.source?.sha !== value.source.sha ||
     value.j0Ready?.source?.tree !== value.source.tree || value.j0Ready?.source?.clean !== true ||
-    value.j0Ready?.provider !== "local-docker" || value.j0Ready?.authority?.mode !== "live" ||
+    value.j0Ready?.provider !== LOCAL_DOCKER_QUALIFICATION_PROFILE.provider || value.j0Ready?.authority?.mode !== "live" ||
     value.j0Ready?.authority?.class !== "sandbox" || value.j0Ready?.authority?.dedicated !== true ||
     value.j0Ready?.authority?.confirmed !== true || value.j0Ready?.failed !== 0 || value.j0Ready?.skipped !== 0)) {
     throw new Error("live qualification requires the exact J0 READY receipt binding");
