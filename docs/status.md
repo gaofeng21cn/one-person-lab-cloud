@@ -17,6 +17,36 @@ Instance installation, or a Product Release. The target boundary is in
 [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Cloud Customer Readback Usage And Fee Coverage (2026-10-18)
+
+Against `f966aa63`, this change extends the protected `customer_reads` producer
+`tools/cloud-business-readback.ts` so one authenticated CloudIdentity session
+asserts the four customer reads issue #840 names: wallet, usage summary, fee
+records and announcements. The previous checks covered wallet and announcements
+only, so a deployed origin could reject `GET /api/v2/usage/summary?period=month`
+and `GET /api/v2/legacy-billing/receipts?limit=20` with 401 and still receive
+`customer_reads_verified`. A fixture answering 401 on those routes now blocks the
+receipt; the pre-change producer returned `customer_reads_verified` for the same
+fixture. The usage check requires the Gateway owner's canonical non-negative
+int64 strings. The fee-record check requires the `ledger` source envelope or the
+original financial owner's typed not-found for a customer without an original
+Account. The receipt keeps boolean checks only and stores no customer data.
+
+Local focused verification executes 15 tests with zero failures, skips or TODOs:
+
+```sh
+node tools/verify-local.ts --focused --base origin/main \
+  --test tests/tools/cloud-business-readback.test.ts
+```
+
+It also passes the product-boundary and development-tools typecheck steps. This
+is source/fixture evidence. No protected producer ran, no installed origin was
+read, and no `customer_reads_verified` runtime receipt is claimed. The
+transitional owner rows, the missing Cloud package-pricing owner and the
+same-Candidate installed acceptance remain open in
+[the caller inventory](implementation/840-console-customer-reads.md) and
+[the roadmap](roadmap.md#workspace-key-and-customer-read-boundaries).
+
 ## Protected Business Qualification Source Wiring (2026-10-18)
 
 Against `3848b413` (main after #944/#946), this change adds
