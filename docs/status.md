@@ -170,6 +170,63 @@ answers without claiming a disabled key. Remaining: the approved Sub2API service
 disable/enable/state-readback endpoint, an authorized recovery trigger that uses
 `EnableManagedKey`, and a customer-visible closeout readback. #868 remains open.
 
+## Workspace Lifecycle Triggers For The Managed Key (2026-10-18)
+
+Against `79d81a4e` this change gives the extracted Workspace owner the two
+remaining lifecycle triggers and the authorized recovery issue #868 names. The
+owner already stored a `suspended` standing, the confirmed paid period, the
+`subscriptions_expiry` index and the contract's `provider_suspend` and
+`provider_resume` stages, but nothing ever advanced them.
+
+Suspension is committed as this owner's own operation (`suspend_workspace`) and
+closes the entitlement first. A confirmed paid period that ended without a
+confirmed successor, or a Fabric readback that confirms the original resource set
+absent, sets the Workspace status to `suspended`, which the owner's own
+`ReadWorkspaceAccess` already refuses to Serve. Only then does the event ask
+Gateway Integration to disable the exact live binding it resolves from the same
+confirmed records the deletion closeout uses. Recovery (`resume_workspace`) reads
+the Gateway's authoritative state first, re-enables that one binding, and
+restores the Workspace only after the binding is confirmed readable again. That
+last read matters now that a disabled binding refuses the key read every same-key
+model update depends on: a restored Workspace never assumes its credential works. Both
+events run under the original launch's accepted grant and its own tenant scope,
+name one opaque binding, and record `confirmed`, `rejected`, `unknown` or
+`not_applicable` under their own operation identity with the idempotency key
+`<operation>:apply_managed_key_lifecycle`.
+
+The triggers can fire on one Workspace at the same time. They serialize on one
+advisory lock and one open event per kind, so the binding receives one effect. A
+lost answer is settled by reading the Gateway's state before any second command,
+and a revoked binding stays terminal in both directions without a replacement key
+being issued. The production Sub2API adapter still answers `codes.Unimplemented`
+for disable, enable and state readback, so this source records the refusal on the
+event, keeps the Workspace suspended, and never converts that refusal into a
+disabled key; deleting and refunding the same Workspace still completes on its
+own evidence.
+
+Local focused verification at this revision executes 69 package tests (107 with
+subtests) with zero failures, skips or TODOs against the isolated PostgreSQL
+fixture:
+
+```sh
+PATH="$HOME/go/bin:$PATH" OPL_POSTGRES_TESTS=1 \
+  OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=postgres://... \
+  node tools/verify-local.ts --focused --base origin/main
+```
+
+The new PostgreSQL checks drive the real owner transitions: an expired confirmed
+term suspends before the key is named and disables exactly one binding under the
+launch grant; a Fabric-confirmed resource loss suspends through the same route; a
+restored paid term re-enables the same binding and reopens the Workspace only
+after the readback; a lost answer is recovered by reading the authoritative state
+without a second effect; two concurrent triggers produce one event, one step and
+one effect; a revoked binding is neither disabled nor re-enabled and leaves the
+Workspace suspended; and a refused key closeout still allows the Workspace's
+deletion and refund to complete. Remaining: the approved Sub2API
+disable/enable/state-readback endpoint, the retained Control Plane suspension and
+expiry callers that must delegate here instead of writing their own Workspace
+status, and a customer-visible closeout readback. #868 remains open.
+
 ## Cloud Customer Readback Usage And Fee Coverage (2026-10-18)
 
 Against `79fd6d5b`, this change extends the protected `customer_reads` producer
