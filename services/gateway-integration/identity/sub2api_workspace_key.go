@@ -158,6 +158,22 @@ func (i *Sub2APIWorkspaceKeyIssuer) RevokeWorkspaceKey(context.Context, string, 
 	return status.Error(codes.Unimplemented, "no approved Sub2API service revocation endpoint is configured")
 }
 
+// SetWorkspaceKeyState requests one reversible external transition. The approved
+// service route is issuance-only: there is no owner-approved disable or enable
+// endpoint and no approved service identity/permission for one, so this issuer
+// fails closed instead of guessing an administrative or user-JWT route. A
+// missing capability is reported before any external effect.
+func (i *Sub2APIWorkspaceKeyIssuer) SetWorkspaceKeyState(context.Context, string, string, ManagedKeyExternalState) error {
+	return status.Error(codes.Unimplemented, "no approved Sub2API service key disable/enable endpoint is configured")
+}
+
+// ReadWorkspaceKeyState reads one exact external key's state. Without an approved
+// service readback contract, a local binding read is not external evidence, so
+// this issuer reports the missing capability instead of substituting one.
+func (i *Sub2APIWorkspaceKeyIssuer) ReadWorkspaceKeyState(context.Context, string, string) (ManagedKeyExternalState, error) {
+	return "", status.Error(codes.Unimplemented, "no approved Sub2API service key-state readback endpoint is configured")
+}
+
 // sub2apiIssuanceRefusal maps one refusal envelope to the status the owner
 // records. The listed reasons are definite: they were answered before any key
 // effect. An unknown status or reason stays Unavailable so it is never mistaken

@@ -657,6 +657,9 @@ func (s *Service) ReadManagedKey(ctx context.Context, r *api.ManagedKeyReadComma
 	if !key.RevokedAt.IsZero() {
 		return nil, status.Error(codes.FailedPrecondition, "the managed key binding is revoked")
 	}
+	if !key.DisabledAt.IsZero() {
+		return nil, status.Error(codes.FailedPrecondition, "the managed key binding is disabled")
+	}
 	out := &api.ManagedKeyBinding{KeyBindingId: key.ID, Fingerprint: key.Fingerprint, SecretDeliveryReference: key.SecretRef,
 		WorkspaceId: key.WorkspaceID, ModelIds: append([]string(nil), key.ModelIDs...)}
 	if !key.ExpiresAt.IsZero() {

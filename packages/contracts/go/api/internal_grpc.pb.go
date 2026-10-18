@@ -6258,6 +6258,9 @@ const (
 	GatewayCoordination_CreateManagedKey_FullMethodName           = "/opl.cloud.api.GatewayCoordination/CreateManagedKey"
 	GatewayCoordination_ReadManagedKey_FullMethodName             = "/opl.cloud.api.GatewayCoordination/ReadManagedKey"
 	GatewayCoordination_RevokeManagedKey_FullMethodName           = "/opl.cloud.api.GatewayCoordination/RevokeManagedKey"
+	GatewayCoordination_DisableManagedKey_FullMethodName          = "/opl.cloud.api.GatewayCoordination/DisableManagedKey"
+	GatewayCoordination_EnableManagedKey_FullMethodName           = "/opl.cloud.api.GatewayCoordination/EnableManagedKey"
+	GatewayCoordination_ReadManagedKeyLifecycle_FullMethodName    = "/opl.cloud.api.GatewayCoordination/ReadManagedKeyLifecycle"
 )
 
 // GatewayCoordinationClient is the client API for GatewayCoordination service.
@@ -6275,6 +6278,9 @@ type GatewayCoordinationClient interface {
 	CreateManagedKey(ctx context.Context, in *ManagedKeyCommand, opts ...grpc.CallOption) (*ManagedKeyBinding, error)
 	ReadManagedKey(ctx context.Context, in *ManagedKeyReadCommand, opts ...grpc.CallOption) (*ManagedKeyBinding, error)
 	RevokeManagedKey(ctx context.Context, in *ManagedKeyRevoke, opts ...grpc.CallOption) (*Operation, error)
+	DisableManagedKey(ctx context.Context, in *ManagedKeyLifecycleCommand, opts ...grpc.CallOption) (*ManagedKeyLifecycleReadback, error)
+	EnableManagedKey(ctx context.Context, in *ManagedKeyLifecycleCommand, opts ...grpc.CallOption) (*ManagedKeyLifecycleReadback, error)
+	ReadManagedKeyLifecycle(ctx context.Context, in *ManagedKeyLifecycleCommand, opts ...grpc.CallOption) (*ManagedKeyLifecycleReadback, error)
 }
 
 type gatewayCoordinationClient struct {
@@ -6395,6 +6401,36 @@ func (c *gatewayCoordinationClient) RevokeManagedKey(ctx context.Context, in *Ma
 	return out, nil
 }
 
+func (c *gatewayCoordinationClient) DisableManagedKey(ctx context.Context, in *ManagedKeyLifecycleCommand, opts ...grpc.CallOption) (*ManagedKeyLifecycleReadback, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ManagedKeyLifecycleReadback)
+	err := c.cc.Invoke(ctx, GatewayCoordination_DisableManagedKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gatewayCoordinationClient) EnableManagedKey(ctx context.Context, in *ManagedKeyLifecycleCommand, opts ...grpc.CallOption) (*ManagedKeyLifecycleReadback, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ManagedKeyLifecycleReadback)
+	err := c.cc.Invoke(ctx, GatewayCoordination_EnableManagedKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gatewayCoordinationClient) ReadManagedKeyLifecycle(ctx context.Context, in *ManagedKeyLifecycleCommand, opts ...grpc.CallOption) (*ManagedKeyLifecycleReadback, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ManagedKeyLifecycleReadback)
+	err := c.cc.Invoke(ctx, GatewayCoordination_ReadManagedKeyLifecycle_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GatewayCoordinationServer is the server API for GatewayCoordination service.
 // All implementations must embed UnimplementedGatewayCoordinationServer
 // for forward compatibility.
@@ -6410,6 +6446,9 @@ type GatewayCoordinationServer interface {
 	CreateManagedKey(context.Context, *ManagedKeyCommand) (*ManagedKeyBinding, error)
 	ReadManagedKey(context.Context, *ManagedKeyReadCommand) (*ManagedKeyBinding, error)
 	RevokeManagedKey(context.Context, *ManagedKeyRevoke) (*Operation, error)
+	DisableManagedKey(context.Context, *ManagedKeyLifecycleCommand) (*ManagedKeyLifecycleReadback, error)
+	EnableManagedKey(context.Context, *ManagedKeyLifecycleCommand) (*ManagedKeyLifecycleReadback, error)
+	ReadManagedKeyLifecycle(context.Context, *ManagedKeyLifecycleCommand) (*ManagedKeyLifecycleReadback, error)
 	mustEmbedUnimplementedGatewayCoordinationServer()
 }
 
@@ -6452,6 +6491,15 @@ func (UnimplementedGatewayCoordinationServer) ReadManagedKey(context.Context, *M
 }
 func (UnimplementedGatewayCoordinationServer) RevokeManagedKey(context.Context, *ManagedKeyRevoke) (*Operation, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RevokeManagedKey not implemented")
+}
+func (UnimplementedGatewayCoordinationServer) DisableManagedKey(context.Context, *ManagedKeyLifecycleCommand) (*ManagedKeyLifecycleReadback, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DisableManagedKey not implemented")
+}
+func (UnimplementedGatewayCoordinationServer) EnableManagedKey(context.Context, *ManagedKeyLifecycleCommand) (*ManagedKeyLifecycleReadback, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EnableManagedKey not implemented")
+}
+func (UnimplementedGatewayCoordinationServer) ReadManagedKeyLifecycle(context.Context, *ManagedKeyLifecycleCommand) (*ManagedKeyLifecycleReadback, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReadManagedKeyLifecycle not implemented")
 }
 func (UnimplementedGatewayCoordinationServer) mustEmbedUnimplementedGatewayCoordinationServer() {}
 func (UnimplementedGatewayCoordinationServer) testEmbeddedByValue()                             {}
@@ -6672,6 +6720,60 @@ func _GatewayCoordination_RevokeManagedKey_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GatewayCoordination_DisableManagedKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ManagedKeyLifecycleCommand)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayCoordinationServer).DisableManagedKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayCoordination_DisableManagedKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayCoordinationServer).DisableManagedKey(ctx, req.(*ManagedKeyLifecycleCommand))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GatewayCoordination_EnableManagedKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ManagedKeyLifecycleCommand)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayCoordinationServer).EnableManagedKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayCoordination_EnableManagedKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayCoordinationServer).EnableManagedKey(ctx, req.(*ManagedKeyLifecycleCommand))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GatewayCoordination_ReadManagedKeyLifecycle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ManagedKeyLifecycleCommand)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayCoordinationServer).ReadManagedKeyLifecycle(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayCoordination_ReadManagedKeyLifecycle_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayCoordinationServer).ReadManagedKeyLifecycle(ctx, req.(*ManagedKeyLifecycleCommand))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // GatewayCoordination_ServiceDesc is the grpc.ServiceDesc for GatewayCoordination service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -6722,6 +6824,18 @@ var GatewayCoordination_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RevokeManagedKey",
 			Handler:    _GatewayCoordination_RevokeManagedKey_Handler,
+		},
+		{
+			MethodName: "DisableManagedKey",
+			Handler:    _GatewayCoordination_DisableManagedKey_Handler,
+		},
+		{
+			MethodName: "EnableManagedKey",
+			Handler:    _GatewayCoordination_EnableManagedKey_Handler,
+		},
+		{
+			MethodName: "ReadManagedKeyLifecycle",
+			Handler:    _GatewayCoordination_ReadManagedKeyLifecycle_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -2459,6 +2459,20 @@ message ManagedKeyRevoke { CallContext context = 1; string key_binding_id = 2; s
 // Gateway owner answers with the binding's approved model scope and delivery
 // reference, never with the external key or its raw Secret.
 message ManagedKeyReadCommand { CallContext context = 1; string key_binding_id = 2; string workspace_id = 3; }
+// One reversible lifecycle request for the exact Workspace-managed key binding.
+// Disable and enable stay distinct from permanent RevokeManagedKey: a disabled
+// key is re-enabled by its own binding identity, a revoked key never is. The
+// caller names only the opaque binding it already stored; Gateway Integration
+// remains the sole writer of the key's lifecycle state and the only owner that
+// coordinates the external key authority.
+message ManagedKeyLifecycleCommand { CallContext context = 1; string key_binding_id = 2; string workspace_id = 3; }
+// The owner's answer for one lifecycle command or read. `state` is the state the
+// external authority confirmed, never a local intention; `lifecycle_version`
+// advances once per confirmed transition so two answers can be told apart.
+// `outcome` is CONFIRMED only when the exact binding and the exact desired state
+// were read back from that authority.
+message ManagedKeyLifecycleReadback { string key_binding_id = 1; string workspace_id = 2; ManagedKeyLifecycleState state = 3; int64 lifecycle_version = 4; Observation outcome = 5; google.protobuf.Timestamp updated_at = 6; }
+enum ManagedKeyLifecycleState { MANAGED_KEY_LIFECYCLE_STATE_UNSPECIFIED = 0; MANAGED_KEY_LIFECYCLE_STATE_ACTIVE = 1; MANAGED_KEY_LIFECYCLE_STATE_DISABLED = 2; MANAGED_KEY_LIFECYCLE_STATE_REVOKED = 3; }
 service GatewayCoordination {
  rpc GetSelfUserIdentity(GetSelfUserIdentityRequest) returns (UserIdentityReadback);
  rpc GetSelfUserExternalBinding(GetSelfUserExternalBindingRequest) returns (UserExternalBindingReadback);
@@ -2471,6 +2485,9 @@ service GatewayCoordination {
  rpc CreateManagedKey(ManagedKeyCommand) returns (ManagedKeyBinding);
  rpc ReadManagedKey(ManagedKeyReadCommand) returns (ManagedKeyBinding);
  rpc RevokeManagedKey(ManagedKeyRevoke) returns (Operation);
+ rpc DisableManagedKey(ManagedKeyLifecycleCommand) returns (ManagedKeyLifecycleReadback);
+ rpc EnableManagedKey(ManagedKeyLifecycleCommand) returns (ManagedKeyLifecycleReadback);
+ rpc ReadManagedKeyLifecycle(ManagedKeyLifecycleCommand) returns (ManagedKeyLifecycleReadback);
 }
 message ResourcePlanSnapshot { string compute_plan_id = 1; string storage_plan_id = 2; string provider_profile_id = 3; string provider_compute_sku_id = 4; string provider_storage_sku_id = 5; int32 vcpus = 6; int32 memory_mib = 7; int32 capacity_gib = 8; int32 prepaid_months = 9; string provider_capability_version = 10; bool conditional_route_revision_supported = 11; string provider = 12; string region = 13; string billing_mode = 14; }
 message ResourceAdmissionRequest { CallContext context = 1; ResourcePlanSnapshot plan = 2; string workspace_id = 3; string existing_resource_set_id = 4; string purpose = 5; }

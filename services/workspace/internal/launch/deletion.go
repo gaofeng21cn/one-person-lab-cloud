@@ -81,7 +81,18 @@ type deletionResult struct {
 	// requested, confirmed or rejected. It never stands in for the Gateway fact.
 	RefundStatus          string `json:"refundStatus,omitempty"`
 	RefundAmountUSDMicros int64  `json:"refundAmountUsdMicros,omitempty"`
-	DeletedAt             string `json:"deletedAt,omitempty"`
+	// ManagedKeyBindingID is the exact Gateway-managed key binding this deletion
+	// asked its owner to disable. It is the live binding at deletion time, not the
+	// launch-time one, because a preserved key retains the same identity while a
+	// legacy replacement changed it.
+	ManagedKeyBindingID string `json:"managedKeyBindingId,omitempty"`
+	// KeyCloseoutOutcome is this deletion's own record of the closeout request:
+	// confirmed, rejected, unknown or not_applicable. It is a separate fact from
+	// resource deletion and settlement: a refused or unobservable key closeout
+	// never blocks them and is never rewritten as confirmed.
+	KeyCloseoutOutcome string `json:"keyCloseoutOutcome,omitempty"`
+	KeyCloseoutCode    string `json:"keyCloseoutCode,omitempty"`
+	DeletedAt          string `json:"deletedAt,omitempty"`
 }
 
 func decodeDeletion(op ownerstore.Operation) (deletionOrder, deletionResult, error) {
@@ -531,6 +542,9 @@ func (s *Service) resumeDeletion(ctx context.Context, operationID string) error 
 	if err != nil || !absent {
 		return err
 	}
+	if err = s.disableDeletedWorkspaceKey(ctx, op, token, &result); err != nil {
+		return err
+	}
 	receiptID, err := s.recordDeletionReceipt(ctx, op, token, order, &result)
 	if err != nil || receiptID == "" {
 		return err
@@ -774,6 +788,128 @@ func validateResourceDeletion(op ownerstore.Operation, order deletionOrder, dele
 		return status.Error(codes.FailedPrecondition, "Fabric refused the original resource deletion")
 	}
 	return nil
+}
+
+// disableDeletedWorkspaceKey asks the Gateway owner to disable the exact managed
+// key this Workspace still owns. Workspace never disables a key itself: it names
+// the opaque binding and the Gateway is the sole writer of the key's lifecycle
+// state, exactly as it is the sole writer of issuance and revocation.
+//
+// Key closeout is a separate fact from deletion, so this step never blocks the
+// deletion. A refused, unavailable or unconfirmed answer is recorded under this
+// deletion's own operation identity and the Workspace continues to resource
+// deletion and settlement; the recorded outcome stays the only closeout claim.
+func (s *Service) disableDeletedWorkspaceKey(ctx context.Context, op ownerstore.Operation, token string, result *deletionResult) error {
+	const step, stage = "disable_managed_key", "key_closeout"
+	if result.KeyCloseoutOutcome == "confirmed" || result.KeyCloseoutOutcome == "not_applicable" {
+		return nil
+	}
+	if result.ManagedKeyBindingID == "" {
+		bindingID, unresolved, err := s.managedKeyBindingForCloseout(ctx, op.ResourceID)
+		if err != nil {
+			return err
+		}
+		result.ManagedKeyBindingID = bindingID
+		if unresolved {
+			// The live key cannot be named from a confirmed configuration, so no
+			// exact binding can be asked for. This is recorded as unknown instead of
+			// silently skipping a key that may still be live.
+			result.KeyCloseoutOutcome, result.KeyCloseoutCode = "unknown", "KEY_BINDING_UNRESOLVED"
+			return s.checkpointDeletion(ctx, op, token, step, stage, "running", "unknown", "", "KEY_BINDING_UNRESOLVED", result)
+		}
+	}
+	if result.ManagedKeyBindingID == "" {
+		// The Workspace never obtained a managed key (no declared Gateway credential),
+		// so there is nothing to close out.
+		result.KeyCloseoutOutcome = "not_applicable"
+		return s.checkpointDeletion(ctx, op, token, step, stage, "running", "confirmed", "", "", result)
+	}
+	if s.Gateway == nil {
+		result.KeyCloseoutOutcome, result.KeyCloseoutCode = "unknown", "DEPENDENCY_UNAVAILABLE"
+		return s.checkpointDeletion(ctx, op, token, step, stage, "running", "unknown", "", "DEPENDENCY_UNAVAILABLE", result)
+	}
+	request := &api.ManagedKeyLifecycleCommand{Context: continuation(op, result.GrantID, step), KeyBindingId: result.ManagedKeyBindingID, WorkspaceId: op.ResourceID}
+	if err := s.beginStep(ctx, op, token, step, 0, "gateway", stage, request); err != nil {
+		return err
+	}
+	readback, err := s.Gateway.DisableManagedKey(ctx, request)
+	if err != nil {
+		outcome, code := managedKeyCloseoutFailure(err)
+		result.KeyCloseoutOutcome, result.KeyCloseoutCode = outcome, code
+		return s.checkpointDeletion(ctx, op, token, step, stage, "running", outcome, "", code, result)
+	}
+	if readback.GetKeyBindingId() != result.ManagedKeyBindingID ||
+		readback.GetState() != api.ManagedKeyLifecycleState_MANAGED_KEY_LIFECYCLE_STATE_DISABLED ||
+		readback.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED {
+		result.KeyCloseoutOutcome, result.KeyCloseoutCode = "unknown", "KEY_CLOSEOUT_UNCONFIRMED"
+		return s.checkpointDeletion(ctx, op, token, step, stage, "running", "unknown", "", "KEY_CLOSEOUT_UNCONFIRMED", result)
+	}
+	result.KeyCloseoutOutcome, result.KeyCloseoutCode = "confirmed", ""
+	return s.checkpointDeletion(ctx, op, token, step, stage, "running", "confirmed", readback.GetKeyBindingId(), "", result)
+}
+
+// managedKeyCloseoutFailure maps one failed closeout request. A definite refusal
+// means no external effect happened; every other failure is unknown, because a
+// lost answer cannot prove the key was not disabled.
+func managedKeyCloseoutFailure(cause error) (outcome, code string) {
+	switch status.Code(cause) {
+	case codes.InvalidArgument, codes.FailedPrecondition, codes.Unimplemented, codes.PermissionDenied, codes.Unauthenticated, codes.NotFound, codes.AlreadyExists:
+		return "rejected", "KEY_CLOSEOUT_REFUSED"
+	default:
+		return "unknown", "KEY_CLOSEOUT_UNKNOWN"
+	}
+}
+
+// managedKeyBindingForCloseout resolves the exact live managed key binding of one
+// Workspace from this owner's own confirmed records: the latest confirmed model
+// configuration when one exists, otherwise the launch result. An unresolved latest
+// configuration is reported instead of guessing between two keys.
+func (s *Service) managedKeyBindingForCloseout(ctx context.Context, workspaceID string) (string, bool, error) {
+	var raw []byte
+	var observation, operationState string
+	err := s.Store.DB().QueryRowContext(ctx, `SELECT c.runtime_reload_observation,COALESCE(o.result,'{}'::jsonb),o.status
+		FROM workspace.model_configurations c
+		JOIN workspace.operations o ON o.id=c.operation_id
+		WHERE c.workspace_id=$1 ORDER BY c.version DESC LIMIT 1`, workspaceID).Scan(&observation, &raw, &operationState)
+	if err == nil {
+		if observation != "confirmed" || operationState != "succeeded" {
+			return "", true, nil
+		}
+		var result orderResult
+		if json.Unmarshal(raw, &result) != nil {
+			return "", false, status.Error(codes.DataLoss, "stored Workspace model update result is invalid")
+		}
+		if strings.TrimSpace(result.KeyBindingID) != "" {
+			return strings.TrimSpace(result.KeyBindingID), false, nil
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return "", false, dbError(err)
+	}
+	var launchRaw []byte
+	err = s.Store.DB().QueryRowContext(ctx, `SELECT COALESCE(result,'{}'::jsonb) FROM workspace.operations
+		WHERE resource_id=$1 AND kind='create_workspace'
+		ORDER BY created_at DESC, id DESC LIMIT 1`, workspaceID).Scan(&launchRaw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, dbError(err)
+	}
+	var launch orderResult
+	if json.Unmarshal(launchRaw, &launch) != nil {
+		return "", false, status.Error(codes.DataLoss, "stored Workspace launch result is invalid")
+	}
+	if len(launch.KeyBindingID) > 0 {
+		return strings.TrimSpace(launch.KeyBindingID), false, nil
+	}
+	if len(launch.ManagedKeyBinding) == 0 {
+		return "", false, nil
+	}
+	binding := &api.RuntimeManagedKeyBinding{}
+	if protojson.Unmarshal(launch.ManagedKeyBinding, binding) != nil {
+		return "", false, status.Error(codes.DataLoss, "stored launch managed key binding is invalid")
+	}
+	return strings.TrimSpace(binding.GetKeyBindingId()), false, nil
 }
 
 // recordDeletionReceipt records the confirmed deletion evidence in Ledger and

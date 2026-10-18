@@ -47,6 +47,47 @@ current allowlist, and the Gateway scope-update/readback contract the caller-les
 `tools/workspace-model-scope.ts` seam anticipates. Until then a widening request is
 refused rather than satisfied by a replacement key or a wider local claim. #869
 remains open.
+## Workspace Managed-Key Lifecycle Source Wiring (2026-10-18)
+
+Against `f966aa63` this change gives Gateway Integration the Cloud owner route
+for one reversible managed-key transition and makes Workspace closure ask it to
+disable the exact live binding. `DisableManagedKey`, `EnableManagedKey` and
+`ReadManagedKeyLifecycle` name one opaque binding and one Workspace, authorize
+the Workspace caller for `bindManagedSecret`, and write the local
+`gateway.key_bindings.disabled_at`/`lifecycle_version` only from an external
+readback that confirmed the exact key in the exact desired state. A revoked key
+is terminal; a refusal or an unobservable answer leaves the stored binding
+active and reaches the caller unchanged. The production Sub2API adapter still
+refuses disable, enable and state readback as `codes.Unimplemented` because no
+approved service endpoint exists, so this source does not disable a production
+key.
+
+Workspace deletion now resolves the exact live binding from its own confirmed
+launch and model-configuration records, asks the Gateway owner to disable it
+under the deletion's own accepted grant, and records `confirmed`, `rejected`,
+`unknown` or `not_applicable` as a separate key closeout fact. A refused or lost
+answer never blocks resource deletion or settlement and is never rewritten as a
+disabled key. The canonical `delete_workspace` accepted-operation surface now
+carries `bindManagedSecret`, and the Workspace deletion grant requests exactly
+that action.
+
+Local focused verification at this revision executes 586 tests with zero
+failures, skips or TODOs against the isolated PostgreSQL fixture:
+
+```sh
+PATH="$HOME/go/bin:$PATH" OPL_POSTGRES_TESTS=1 \
+  OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=postgres://... \
+  node tools/verify-local.ts --focused --base origin/main
+```
+
+The new PostgreSQL checks drive the real owner transition: disable advances the
+recorded version once, a replay does not repeat the external effect, enable
+restores the same binding, a refused disable and a lost confirming readback both
+leave the binding active, revocation is terminal, and the deletion asks for the
+exact binding, grant and idempotency identity and records refused or unknown
+answers without claiming a disabled key. Remaining: the approved Sub2API service
+disable/enable/state-readback endpoint, an authorized recovery trigger that uses
+`EnableManagedKey`, and a customer-visible closeout readback. #868 remains open.
 
 ## Protected Business Qualification Source Wiring (2026-10-18)
 

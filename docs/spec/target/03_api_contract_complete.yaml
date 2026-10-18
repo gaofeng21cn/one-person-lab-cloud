@@ -14095,6 +14095,7 @@ x-accepted-operation-actions:
   - observeResources
   - readWalletAction
   - refundConfirmedDeletion
+  - bindManagedSecret
   - releaseReference
   - appendReceipt
   reenable_tenant:
