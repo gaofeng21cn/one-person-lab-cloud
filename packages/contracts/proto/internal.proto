@@ -2452,8 +2452,13 @@ message WalletDebitCommand { CallContext context = 1; string workspace_id = 2; s
 message WalletRefundCommand { CallContext context = 1; string workspace_id = 2; string original_wallet_operation_id = 3; string original_external_payment_reference = 4; int64 amount_usd_micros = 5; string refund_policy_version_id = 6; string confirmed_deletion_receipt_id = 7; string subscription_period_id = 8; }
 message WalletReadbackRequest { CallContext context = 1; string wallet_operation_id = 2; string original_idempotency_key = 3; }
 message ManagedKeyCommand { CallContext context = 1; string workspace_id = 2; repeated string model_ids = 3; string target_runtime_instance_id = 4; }
-message ManagedKeyBinding { string key_binding_id = 1; string fingerprint = 2; string secret_delivery_reference = 3; string workspace_id = 4; string target_runtime_instance_id = 5; google.protobuf.Timestamp expires_at = 6; }
+message ManagedKeyBinding { string key_binding_id = 1; string fingerprint = 2; string secret_delivery_reference = 3; string workspace_id = 4; string target_runtime_instance_id = 5; google.protobuf.Timestamp expires_at = 6; repeated string model_ids = 7; }
 message ManagedKeyRevoke { CallContext context = 1; string key_binding_id = 2; string workspace_id = 3; }
+// ManagedKeyReadCommand reads one Workspace-managed key binding by its opaque
+// owner id. The caller names the binding and the workspace it belongs to; the
+// Gateway owner answers with the binding's approved model scope and delivery
+// reference, never with the external key or its raw Secret.
+message ManagedKeyReadCommand { CallContext context = 1; string key_binding_id = 2; string workspace_id = 3; }
 // One reversible lifecycle request for the exact Workspace-managed key binding.
 // Disable and enable stay distinct from permanent RevokeManagedKey: a disabled
 // key is re-enabled by its own binding identity, a revoked key never is. The
@@ -2478,6 +2483,7 @@ service GatewayCoordination {
  rpc Refund(WalletRefundCommand) returns (WalletOperation);
  rpc ReadWalletAction(WalletReadbackRequest) returns (WalletOperation);
  rpc CreateManagedKey(ManagedKeyCommand) returns (ManagedKeyBinding);
+ rpc ReadManagedKey(ManagedKeyReadCommand) returns (ManagedKeyBinding);
  rpc RevokeManagedKey(ManagedKeyRevoke) returns (Operation);
  rpc DisableManagedKey(ManagedKeyLifecycleCommand) returns (ManagedKeyLifecycleReadback);
  rpc EnableManagedKey(ManagedKeyLifecycleCommand) returns (ManagedKeyLifecycleReadback);
