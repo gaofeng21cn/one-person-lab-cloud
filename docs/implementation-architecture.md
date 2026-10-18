@@ -1037,6 +1037,20 @@ alone cannot recover a Workspace. Non-billing customer-owned resources keep
 their existing non-billing access semantics. Provider reclamation remains the
 provider's lifecycle, and no post-expiry data retention is promised.
 
+The extracted Workspace owner records its own suspension, unpaid-expiry and
+authorized-recovery lifecycle events. Each event closes or restores the owner's
+standing first, then names the exact managed key binding it still owns to Gateway
+Integration under the original launch's accepted grant, and records the typed
+`confirmed`/`rejected`/`unknown`/`not_applicable` answer in its own operation and
+`apply_managed_key_lifecycle` saga step. The triggers are this owner's confirmed
+paid-period boundary, a Fabric readback confirming the original resource set
+absent, and a restored confirmed paid term with the original resources present.
+This owner never writes key state, never issues or repurchases a key, and a
+refused or unanswered key answer never blocks deletion, settlement or the
+Workspace's own standing. The retained Control Plane worker paragraphs above
+remain the migration source for provider runtime power and their callers have not
+moved to this owner route yet.
+
 ### Local-Docker Host Capacity Admission
 
 The local-docker Fabric adapter owns host-capacity admission. Control Plane

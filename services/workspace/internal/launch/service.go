@@ -45,6 +45,10 @@ type Service struct {
 	// leaves a paid order awaiting its funding owner instead of inventing a charge.
 	Gateway   api.GatewayCoordinationClient
 	accessNow func() time.Time
+	// providerReconciledAt bounds the provider reconcile: re-reading one
+	// resource set per active Workspace is a provider cost, so the owner asks
+	// Fabric only on this cadence instead of on every worker pass.
+	providerReconciledAt time.Time
 }
 
 func New(db *sql.DB, auth *ownerservice.Authorizer, catalog api.CatalogCoordinationClient, fabric api.FabricCoordinationClient, identity api.CloudIdentityAuthorizationClient) (*Service, error) {
