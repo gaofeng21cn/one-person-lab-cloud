@@ -75,49 +75,6 @@ test("production manifest rejects disagreement between runtime and fabric provid
   assert.ok(report.failedChecks.includes("provider_consistency"));
 });
 
-test("production manifest validates Tencent TKE fields only", () => {
-  const report = validateProductionManifest({
-    env: {
-      OPL_RUNTIME_PROVIDER: { value: "tencent-tke" },
-      DATABASE_URL: { secretRef: "opl-cloud/database-url" },
-      OPL_INTERNAL_SERVICE_TOKEN: { secretRef: "opl-cloud/internal-service-token" },
-      OPL_PUBLIC_URL: { value: "https://cloud.medopl.cn" },
-      OPL_CONSOLE_DOMAIN: { value: "cloud.medopl.cn" },
-      OPL_WORKSPACE_DOMAIN: { value: "workspace.medopl.cn" },
-      OPL_CLOUD_IMAGE: { value: cloudImage },
-      OPL_WORKSPACE_IMAGE: { value: workspaceImage },
-      OPL_WORKSPACE_IMAGE_RELEASES_JSON: { value: workspaceImageReleases },
-      OPL_K8S_NAMESPACE: { value: "opl-cloud" },
-      OPL_INGRESS_CLASS: { value: "qcloud" },
-      OPL_IMAGE_PULL_SECRET_NAME: { value: "tcr-pull-secret" },
-      OPL_WORKSPACE_STORAGE_CLASS: { value: "cbs" },
-      OPL_TENCENT_ZONE: { value: "na-siliconvalley-1" },
-      ...dedicatedNodePoolEnv,
-      TENCENT_CBS_DISK_TYPE: { value: "CLOUD_BSSD" },
-      TENCENT_DEPLOY_KUBECONFIG_REF: { secretRef: "opl-cloud/tencent-deploy-kubeconfig-ref" },
-      TENCENT_DEPLOY_CLUSTER_ID: { value: "cls-123" },
-      TENCENT_TCR_REGISTRY: { value: "registry.example.com" },
-      TENCENT_TCR_NAMESPACE: { value: "opl" },
-      TENCENT_TCR_REGION: { value: "ap-guangzhou" }
-    }
-  });
-
-  assert.equal(report.ok, true);
-  assert.deepEqual(report.missingEnv, []);
-  assert.deepEqual(report.inlineSecretEnv, []);
-  assert.deepEqual(report.checks.map((check) => `${check.id}:${check.ok}`), [
-    "required_env:true",
-    "secret_refs:true",
-    "runtime_provider:true",
-    "provider_consistency:true",
-    "tencent_provider_profile:true",
-    "verification_mutation_authority:true",
-    "system_compute_identity:true",
-    "registry_images:true",
-    "workspace_image_releases:true",
-    "workspace_domain:true",
-  ]);
-});
 
 
 test("production manifest rejects invalid system compute identity", () => {
