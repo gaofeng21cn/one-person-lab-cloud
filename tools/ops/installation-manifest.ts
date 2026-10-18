@@ -480,7 +480,15 @@ function endpointBackendFailure(resource: Resource, service: Resource, target: R
     if (resource.apiVersion !== "discovery.k8s.io/v1" ||
         resource.addressType !== "IPv4" && resource.addressType !== "IPv6") return "endpoint_slice_shape_invalid";
     if (controller(resource, "Service", resources) !== service) return "endpoint_slice_owner_mismatch";
-    if (!Array.isArray(resource.endpoints) || resource.endpoints.length === 0) return "endpoint_no_ready_address";
+    // An EndpointSlice that lists no address delivers no traffic, so it cannot
+    // hand this Service to another workload and it proves nothing about the
+    // target Deployment. Only a listed address carries a proof obligation. An
+    // absent or empty list is admitted because the Deploy that creates the
+    // backends is the only repair for a Service that has none, and refusing it
+    // until those backends exist would make the fault permanent.
+    if (resource.endpoints === undefined) return;
+    if (!Array.isArray(resource.endpoints)) return "endpoint_slice_shape_invalid";
+    if (resource.endpoints.length === 0) return;
     const states = resource.endpoints.map((endpoint: unknown) => endpointServiceability(endpoint, service));
     if (states.some(state => state === undefined)) return "endpoint_address_invalid";
     for (const endpoint of resource.endpoints) {
@@ -490,23 +498,34 @@ function endpointBackendFailure(resource: Resource, service: Resource, target: R
       const podFailureReason = podFailure(endpoint.targetRef, endpoint.addresses, resource.addressType);
       if (podFailureReason) return podFailureReason;
     }
-    const serviceable = resource.endpoints.filter((_: unknown, index: number) => states[index] === "serviceable");
-    return serviceable.length > 0 ? undefined : "endpoint_no_ready_address";
+    // Every listed address proved its Pod, address and port. An endpoint that is
+    // not serviceable receives no traffic either, so "no serviceable endpoint"
+    // is the same published-nothing shape as an empty list, not an ambiguity.
+    return;
   }
   // The legacy Endpoints controller does not attach a Service ownerReference.
   // Its exact Service name plus every Pod UID and address must still agree.
   if (resource.apiVersion !== "v1") return "endpoint_shape_invalid";
-  if (!Array.isArray(resource.subsets) || resource.subsets.length === 0) return "endpoint_no_ready_address";
+  if (resource.subsets === undefined) return;
+  if (!Array.isArray(resource.subsets)) return "endpoint_shape_invalid";
   for (const subset of resource.subsets) {
     if (!object(subset) || subset.addresses !== undefined && !Array.isArray(subset.addresses) ||
         subset.notReadyAddresses !== undefined && !Array.isArray(subset.notReadyAddresses)) return "endpoint_shape_invalid";
-    const addresses = subset.addresses ?? [];
-    const notReadyAddresses = subset.notReadyAddresses ?? [];
-    const readyEntries = addresses;
-    const notReadyEntries = servicePublishesNotReady(service) ? notReadyAddresses ?? [] : [];
-    const allEntries = [...readyEntries, ...notReadyAddresses];
-    const entries = readyEntries.length > 0 || notReadyEntries.length > 0 ? [...readyEntries, ...notReadyEntries] : undefined;
-    if (entries === undefined || entries.length === 0) return "endpoint_no_ready_address";
+  }
+  // An Endpoints object that lists no entry at all — absent or empty subsets,
+  // or every subset carrying empty address arrays — routes nothing and is
+  // admitted for the same reason as an empty EndpointSlice. Listing an entry is
+  // itself the proof obligation, independent of whether the Service currently
+  // publishes it: a notReadyAddresses entry the Service does not publish still
+  // names a Pod, so it must still be resolved against the same Pod, port,
+  // owner chain, template and address proofs. Gating on publication instead of
+  // listing would admit an unpublished entry whose targetRef names a foreign
+  // or absent Pod without proving it.
+  const listed = resource.subsets.some((subset: Resource) =>
+    (subset.addresses ?? []).length > 0 || (subset.notReadyAddresses ?? []).length > 0);
+  if (!listed) return;
+  for (const subset of resource.subsets) {
+    const allEntries = [...(subset.addresses ?? []), ...(subset.notReadyAddresses ?? [])];
     for (const entry of allEntries) {
       if (!object(entry)) return "endpoint_shape_invalid";
       const portFailureReason = portFailure(subset.ports);
