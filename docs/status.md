@@ -61,7 +61,7 @@ disable/enable/state-readback endpoint, an authorized recovery trigger that uses
 
 ## Cloud Customer Readback Usage And Fee Coverage (2026-10-18)
 
-Against `8e330121`, this change extends the protected `customer_reads` producer
+Against `79fd6d5b`, this change extends the protected `customer_reads` producer
 `tools/cloud-business-readback.ts` so one authenticated CloudIdentity session
 asserts the four customer reads issue #840 names: wallet, usage summary, fee
 records and announcements. The previous checks covered wallet and announcements
