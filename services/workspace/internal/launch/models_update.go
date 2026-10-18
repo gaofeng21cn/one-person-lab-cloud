@@ -455,6 +455,11 @@ func (s *Service) activeManagedKeyBindingID(ctx context.Context, workspaceID, la
 // existing allowlist; anything else requires an owner-authorized scope change the
 // Workspace must not perform by minting a wider key.
 func managedKeyScopeMissing(approved, requested []string) []string {
+	// An empty projection means the external Gateway Group is the authoritative
+	// routing and model scope. Cloud has no second allowlist to compare here.
+	if len(approved) == 0 {
+		return nil
+	}
 	covered := make(map[string]bool, len(approved))
 	for _, model := range approved {
 		if model = strings.TrimSpace(model); model != "" {

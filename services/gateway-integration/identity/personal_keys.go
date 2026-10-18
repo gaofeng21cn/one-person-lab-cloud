@@ -100,6 +100,41 @@ func (s *Service) personalCredential(ctx context.Context, call *api.CallContext)
 	}
 	return credential, nil
 }
+
+// delegatedCredentialForSubject resolves a live Gateway bearer for an internal
+// Workspace continuation. The continuation deliberately carries only the
+// accepted durable grant, so this lookup uses the already verified external
+// subject and process-memory login credentials. Multiple Cloud sessions for the
+// same Gateway user are equivalent; a credential is accepted only after a fresh
+// /api/v1/auth/me readback for that exact subject.
+func (s *Service) delegatedCredentialForSubject(ctx context.Context, subject string) (*ManagedKeyDelegation, error) {
+	if _, err := parseGatewaySubject(subject); err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	s.mu.Lock()
+	candidates := make([]*delegatedCredential, 0)
+	for _, credential := range s.delegated {
+		if credential != nil && credential.key.subject == subject && credential.expires.After(now) {
+			candidates = append(candidates, credential)
+		}
+	}
+	s.mu.Unlock()
+	for _, credential := range candidates {
+		bounded, cancel := context.WithDeadline(ctx, credential.expires)
+		_, err := s.Gateway.Read(bounded, credential.bearer, subject)
+		cancel()
+		if !credential.expires.After(time.Now()) || status.Code(err) == codes.Unauthenticated {
+			s.forgetDelegatedSession(credential.key.session)
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		return &ManagedKeyDelegation{Subject: subject, Bearer: credential.bearer, ExpiresAt: credential.expires}, nil
+	}
+	return nil, reauthenticationRequired()
+}
 func (s *Service) personalRequest(ctx context.Context, credential *delegatedCredential, path string, out any) error {
 	s.mu.Lock()
 	current := s.delegated[credential.key] == credential

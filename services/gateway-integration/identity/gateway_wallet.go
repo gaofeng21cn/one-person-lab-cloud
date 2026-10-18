@@ -279,6 +279,10 @@ func gatewayConfirmedAdjustment(item gatewayBalanceRecord, recordType, code stri
 // and returns the raw response body. A non-2xx answer is reported as a typed HTTP
 // error so the money path can distinguish a refusal from an unknown outcome.
 func (g *Gateway) adminRequest(ctx context.Context, path string, body any, token string) ([]byte, error) {
+	return g.requestWithHeaders(ctx, path, body, token, nil)
+}
+
+func (g *Gateway) requestWithHeaders(ctx context.Context, path string, body any, token string, headers map[string]string) ([]byte, error) {
 	var raw []byte
 	method := http.MethodGet
 	if body != nil {
@@ -296,6 +300,9 @@ func (g *Gateway) adminRequest(ctx context.Context, path string, body any, token
 		r.Header.Set("Content-Type", "application/json")
 	}
 	r.Header.Set("Authorization", "Bearer "+token)
+	for name, value := range headers {
+		r.Header.Set(name, value)
+	}
 	res, err := g.client.Do(r)
 	if err != nil {
 		return nil, err

@@ -3,9 +3,6 @@ package identity_test
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
@@ -21,31 +18,30 @@ import (
 	"opl-cloud/services/internal/ownerstore/ownerstoretest"
 )
 
-// revocationAssembly builds the exact issuer the deployed Gateway wires: the
-// production main binds *Sub2APIWorkspaceKeyIssuer to the KeyIssuer field, so a
-// failing revoke is only meaningful against that concrete type. The Sub2API it
-// points at answers the one approved issuance route and refuses every other
-// route, which is how the approved service contract reads today - this Cloud has
-// no revocation endpoint to call.
+// revocationAssembly builds the production Cloud issuer seam used by these
+// lifecycle tests. External Gateway user-key creation is covered by the focused
+// adapter tests; these tests only need a confirmed key before exercising the
+// deliberately unimplemented lifecycle boundary.
 func revocationAssembly(t *testing.T) (identity.ManagedKeyIssuer, *atomic.Int32) {
 	t.Helper()
 	var issuanceCalls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/service/workspace-keys" || r.Method != http.MethodPost {
-			t.Errorf("the gateway contacted an unapproved Sub2API route: %s %s", r.Method, r.URL.Path)
-			http.Error(w, "unapproved route", http.StatusNotFound)
-			return
-		}
-		issuanceCalls.Add(1)
-		json.NewEncoder(w).Encode(map[string]any{"code": 0, "message": "success",
-			"data": map[string]any{"key_id": 4242, "api_key": "sk-managed", "group_id": 9, "model_ids": []string{"model-a"}, "replayed": false}})
-	}))
-	t.Cleanup(server.Close)
-	issuer, err := identity.NewSub2APIWorkspaceKeyIssuer(server.URL, strings.Repeat("s", 32), "workspace-approved")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return issuer, &issuanceCalls
+	return &productionUserKeyIssuer{issuanceCalls: &issuanceCalls}, &issuanceCalls
+}
+
+type productionUserKeyIssuer struct{ issuanceCalls *atomic.Int32 }
+
+func (i *productionUserKeyIssuer) IssueWorkspaceKey(context.Context, identity.ManagedKeyIssueRequest) (identity.ManagedKeyIssueResult, error) {
+	i.issuanceCalls.Add(1)
+	return identity.ManagedKeyIssueResult{Raw: "sk-managed", ExternalKeyID: "4242", GroupID: 9, ModelIDs: []string{"model-a"}}, nil
+}
+func (*productionUserKeyIssuer) RevokeWorkspaceKey(context.Context, string, string) error {
+	return status.Error(codes.Unimplemented, "no approved Gateway user-key revocation operation is configured")
+}
+func (*productionUserKeyIssuer) SetWorkspaceKeyState(context.Context, string, string, identity.ManagedKeyExternalState) error {
+	return status.Error(codes.Unimplemented, "no approved Gateway user-key lifecycle operation is configured")
+}
+func (*productionUserKeyIssuer) ReadWorkspaceKeyState(context.Context, string, string) (identity.ManagedKeyExternalState, error) {
+	return "", status.Error(codes.Unimplemented, "no approved Gateway user-key lifecycle readback is configured")
 }
 
 // scriptedRevokeIssuer records the production refusal but can also script a lost

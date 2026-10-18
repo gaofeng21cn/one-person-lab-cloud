@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strings"
 	"time"
 
@@ -167,8 +168,8 @@ func (s *GatewayStore) InsertConfirmedManagedKeyBinding(ctx context.Context, bin
 // of a second issuance, and the raw value never enters this state. It never
 // overwrites an already-recorded identity or answer.
 func (s *GatewayStore) AdvanceManagedKeyCommandPending(ctx context.Context, reservation ManagedKeyCommandReservation, externalKeyID, fingerprint string, resolvedModelIDs []string) error {
-	if strings.TrimSpace(externalKeyID) == "" || strings.TrimSpace(fingerprint) == "" || len(resolvedModelIDs) == 0 {
-		return errors.New("an observed managed key effect requires its external key id, fingerprint and resolved model scope")
+	if strings.TrimSpace(externalKeyID) == "" || strings.TrimSpace(fingerprint) == "" {
+		return errors.New("an observed managed key effect requires its external key id and fingerprint")
 	}
 	state, err := json.Marshal(managedKeyCommandState{Outcome: "pending", ExternalKeyID: externalKeyID, Fingerprint: fingerprint, ResolvedModelIDs: resolvedModelIDs})
 	if err != nil {
@@ -334,11 +335,25 @@ type ManagedKeyIssueRequest struct {
 	GroupName         string
 	ModelIDs          []string
 	IdempotencyKey    string
+	// Delegation is a process-memory Gateway user credential obtained by the
+	// Cloud login flow. It is never serialized, persisted or returned to a
+	// caller; issuers must use it only for the one external user API command.
+	Delegation *ManagedKeyDelegation
+}
+
+// ManagedKeyDelegation carries the currently verified Gateway user bearer for
+// one mapped external subject. The raw bearer is runtime-only and must never
+// enter a database row, operation body, receipt, log or DTO.
+type ManagedKeyDelegation struct {
+	Subject   string
+	Bearer    string
+	ExpiresAt time.Time
 }
 
 // ManagedKeyIssueResult is the issuer-confirmed identity of one issued key. The
 // raw value is handed straight to the approved Secret store and never persisted
-// in a Gateway table; ModelIDs is the resolved concrete scope, never empty.
+// in a Gateway table. ModelIDs is an optional Cloud projection; an empty list
+// means the external Gateway Group remains the sole effective scope authority.
 type ManagedKeyIssueResult struct {
 	Raw           string
 	ExternalKeyID string
@@ -368,6 +383,30 @@ type ManagedKeyIssuer interface {
 // between them happens in exactly one place, the lifecycle handler, so no local
 // intention can be mistaken for a provider-confirmed state.
 type ManagedKeyExternalState string
+
+const managedKeyResolvedModelLimit = 256
+
+var managedKeyModelIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$`)
+
+// validateResolvedWorkspaceKeyModels validates a Cloud scope projection when an
+// issuer supplies one. The existing Gateway user Key API does not return model
+// ids, so an empty projection is valid and leaves routing to the external Group.
+func validateResolvedWorkspaceKeyModels(modelIDs []string) ([]string, error) {
+	if len(modelIDs) > managedKeyResolvedModelLimit {
+		return nil, errors.New("a resolved model scope is too large")
+	}
+	resolved := make([]string, 0, len(modelIDs))
+	seen := map[string]bool{}
+	for _, id := range modelIDs {
+		trimmed := strings.TrimSpace(id)
+		if !managedKeyModelIDPattern.MatchString(trimmed) || strings.Contains(trimmed, "*") || seen[trimmed] {
+			return nil, errors.New("a resolved model id violates the approved scope shape")
+		}
+		seen[trimmed] = true
+		resolved = append(resolved, trimmed)
+	}
+	return resolved, nil
+}
 
 const (
 	ManagedKeyExternalActive   ManagedKeyExternalState = "active"

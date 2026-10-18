@@ -4,6 +4,85 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-10-18: Gateway External Truth, Cloud Mapping And Workspace Key Rotation
+
+This decision supersedes the conflicting managed-key identity and same-key
+model-update requirements in the 2026-10-15 decision. It does not move the
+Gateway wallet, Key, Group, routing or usage authority into Cloud, and it does
+not claim that the external Gateway contract or deployed readback already
+exists.
+
+`gateway.medopl.com` is the external Gateway authority for the effective facts
+of a Workspace Key, its Group, model access, routing, wallet consumption and
+usage. Cloud may create and manage product-approved Groups by calling Gateway
+management APIs. The effective Group and Key state remains the Gateway fact and
+must be read back from Gateway; Cloud must not maintain a second effective
+Group, Key, wallet or usage authority.
+
+Cloud Gateway Integration owns the mapping and coordination boundary. It maps
+CloudIdentity Users and Workspaces to Gateway subjects, external Key
+identities and opaque Cloud binding identities; records idempotency, operation
+and delivery references; and projects Gateway-owned facts through Cloud APIs.
+A local binding, fingerprint, status or usage projection is not a substitute
+for the external Gateway readback. Cloud may issue an owner-authorized Gateway
+command, but it does not mint or independently define the external Key.
+
+Opening a Workspace requests Gateway to create its Workspace Key and place it
+in the approved default `Codex` Group. The raw Key may cross the one-time
+controlled delivery boundary needed to write the approved Secret/config, but
+it is never returned to Workspace clients or stored in ordinary Cloud tables,
+logs, receipts or DTOs. Cloud stores the external Key identity, Workspace
+mapping, opaque binding identity, fingerprint and Secret delivery reference.
+The Runtime consumes the resulting Gateway endpoint and protected Secret.
+
+Key identity is rotatable. A configuration or application change may reuse the
+current external Key or create a new Gateway Key. A rotation creates or updates
+the new Gateway-side Group/scope, delivers the new Secret, waits for Serve or
+Runtime readback of the new configuration, then updates the Cloud mapping and
+closes the predecessor through the approved Gateway operation when authorized.
+The original operation remains authoritative through response loss or
+uncertain readback; replay must reconcile the original external identity and
+must not create a duplicate Key. Key rotation does not authorize a wider model
+scope, unrelated-Key mutation or a second Cloud authority.
+
+Cloud Console endpoints for Keys, Groups, Wallet, Usage and the public Gateway
+endpoint are projections or commands over this Gateway boundary. Their source
+identity must remain Gateway, and unavailable or conflicting Gateway readback
+must remain visible rather than being replaced with a local empty, cached or
+re-derived answer.
+
+## 2026-10-18: Cloud Login Is The Existing Gateway Credential Boundary
+
+Gateway code and the external Gateway API are not changed for this integration.
+When a user logs in through `cloud.medopl.com`, Gateway Integration authenticates
+that user against the external Gateway and keeps the returned Gateway bearer only
+in process memory, bound to the Cloud session and the verified external subject.
+The Cloud session is the authorization boundary for user-scoped Gateway Key
+operations; a new `/api/v1/service/workspace-keys` service route and a separate
+Cloud service token are not part of the design.
+
+Gateway Integration may use that delegated user credential to call the existing
+Gateway user APIs for the mapped subject, including Key creation, readback and
+rotation. The external Gateway creates and owns the effective Key and Group;
+Cloud records only the external identity, Workspace mapping, operation facts,
+fingerprint and Secret delivery reference. The raw Key crosses directly into the
+approved Secret/config path and never enters ordinary Cloud persistence, logs,
+receipts or DTOs.
+
+The logged-in user credential does not grant administrator authority. Workspace
+opening selects the already approved and user-visible `Codex` Group. Creating or
+changing Group definitions requires an existing Gateway administrator credential
+and the external Gateway's existing admin API; Cloud must not infer that ability
+from Tenant membership or invent a new Group endpoint. If the approved Group is
+unavailable, the operation returns an explicit Gateway readback error.
+
+The retained Control Plane must not call the external Key API directly. Its
+Workspace caller moves through Gateway Integration, which validates the Cloud
+session, actor-to-Gateway mapping and current delegated credential before using
+the existing user-scoped Gateway route. Response loss and retries use the Cloud
+operation identity and Gateway readback; they never mint a second Key merely
+because the first response was lost.
+
 ## 2026-10-15: Workspace Key Lifecycle And Cloud Customer Reads
 
 This decision records product intent. It does not establish that the required
@@ -19,24 +98,24 @@ Existing Workspaces adopt this rule after the original ownership is verified.
 Deployment alone does not authorize bulk key mutation. Runtime replacement or
 temporary application quiescence does not itself close a Workspace.
 
-An ordinary model update preserves the same external key and updates only the
-approved model scope. It does not issue a replacement key or revoke a
-predecessor. Workspace retains its applied-version CAS; Gateway owns model
-permissions; Fabric retains exact Secret binding/readback and one active binding
-per runtime purpose; Serve confirms the applied application configuration.
-External key identity, Gateway binding identity and Fabric Secret version are
-distinct facts. If scope changed but application apply is refused, the original
-operation must reconcile the same key's approved scope with the actual applied
-configuration through authoritative owner readback before declaring success or
-allowing dependent changes. It may restore the last applied approved scope or
-confirm the original target as applied; it must not widen scope or issue a new
-key to conceal failure. Unknown compensation remains unresolved. Separately
-authorized security revocation remains separate.
+A model or application update may preserve the current external Key or
+rotate to a new Key through Gateway. Workspace retains its applied-version CAS;
+Gateway owns effective Group membership and model permissions; Fabric retains
+exact Secret binding/readback; Serve confirms the applied application
+configuration. External Key identity, Gateway binding identity and Fabric
+Secret version are distinct facts. If a rotation or scope change is refused,
+partially applied or uncertain, the original operation must reconcile Gateway,
+Secret and application readback before declaring success or allowing dependent
+changes. It must not widen scope or create an untracked replacement Key to
+conceal failure. Separately authorized security revocation remains separate.
 
 Sub2API remains the key and wallet authority. Its owner must supply the required
-service-authorized disable, enable, state readback and in-place model-scope
-capabilities. No guessed administrative endpoint, user impersonation or direct
-database write substitutes for that contract. Unknown or refused state remains
+service-authorized disable, enable and state readback capabilities, together
+with approved Workspace Key/Group creation, rotation and external readback.
+An in-place model-scope update may be an approved Gateway optimization, but it
+is not a product invariant when safe Key rotation is available. No guessed
+administrative endpoint, user impersonation or direct database write substitutes
+for that contract. Unknown or refused state remains
 visible under the original operation identity; deleting a Secret does not prove
 key deactivation. Resource deletion, key closeout and settlement are separate
 facts. Existing purchase, refund and retained-history obligations are preserved.
@@ -374,45 +453,53 @@ proof that the existing mandatory CapabilityVersion/WebUI fields support it.
 ### Workspace Model Configuration And Gateway Key Binding Owner
 
 Workspace owns the accepted model-configuration intent, its monotonically
-versioned history, and the `gateway_key_binding_id` recorded for each accepted
-configuration. Gateway Integration is the sole owner of Gateway-managed key
-issuance, model allowlists, secret-delivery references and key revocation;
-Workspace never fabricates or edits those facts. Fabric owns the runtime Secret
-binding and its provider readback. Serve owns runtime application of the frozen
-configuration, publisher apply/readback, readiness and the applied-version
-observation; Serve is not a Gateway key issuer.
+versioned history, and the opaque `gateway_key_binding_id` recorded for each
+accepted configuration. Gateway Integration owns the Cloud mapping,
+coordination, idempotency and Secret delivery reference. `gateway.medopl.com`
+owns the effective external Key, Group, model permissions, routing and usage;
+Workspace never fabricates or edits those external facts. Fabric owns the
+Runtime Secret binding and its provider readback. Serve owns runtime
+application of the frozen configuration, publisher apply/readback, readiness
+and the applied-version observation.
 
-The update path is one owner-separated operation:
+The Workspace configuration path is one owner-separated operation:
 
-1. Workspace authorizes the update and validates the new selections against the
-   admitted Workspace/application.
-2. Workspace calls `GatewayCoordination.CreateManagedKey` with the exact model
-   set and target runtime. Gateway returns an opaque `ManagedKeyBinding`; the
-   raw key is never returned to Workspace, persisted in Workspace, or placed in
-   a receipt.
-3. Workspace records the returned binding identity with the new configuration
-   version. The `gateway_key_binding_id` column therefore remains `NOT NULL`;
-   a configuration without a confirmed Gateway binding is not accepted.
-4. The approved Secret reference is bound through `FabricCoordination.BindSecret`
-   and read back. Fabric owns only the Secret binding fact, not application
-   readiness or routing.
-5. Workspace calls `ServeAgentCoordination.ReloadModels` with the opaque
-   `RuntimeManagedKeyBinding` and the expected applied version. Serve applies
-   the publisher contract and records only the version the application reads
-   back.
-6. Workspace advances its applied model-configuration version only after the
-   confirmed Serve readback, using the same operation/CAS and receipt chain.
+1. Workspace authorizes the update and validates the requested selections against
+the admitted Workspace/application.
+2. Gateway Integration asks the external Gateway to reuse the current Key or
+create a new Workspace Key. A new Key is placed in the approved Gateway Group,
+which defaults to `Codex`; Group creation or management is performed through
+Gateway APIs and the effective result is read back from Gateway.
+3. Gateway Integration records the external Key identity and returns only an
+opaque `ManagedKeyBinding` plus the approved Secret delivery reference. The raw
+Key does not enter Workspace persistence, receipts or client responses.
+4. The approved Secret is written or rebound through Fabric and read back. A
+rotation may replace the predecessor binding; it does not require an
+unrelated global workflow or a second Cloud Key authority.
+5. Serve applies the Runtime configuration containing the opaque binding and
+protected Secret reference, then reads back the version and effective
+application configuration.
+6. Workspace advances its applied configuration version only after the
+confirmed Serve readback. A successful rotation updates the current Cloud
+mapping only after the new external identity and Secret/application facts
+converge; predecessor closeout remains a separate Gateway fact.
 
 The public `updateWorkspaceModels` request contains selections and an expected
-version only; clients never choose a Gateway key binding. The binding is an
-internal owner-to-owner fact created by Gateway for that exact configuration.
-Default `opl-app` and Agent plus independent WebUI use this same path whenever
-the runtime declares model configuration; a runtime that declares no such
-publisher interface has no fabricated model-configuration capability.
+version only; clients never choose a Gateway key binding or external Key. A
+retry may resolve to the original Key or the original rotation operation, but
+must never mint a second Key for one accepted command. Default `opl-app` and
+Agent plus independent WebUI use this path whenever their Runtime declares
+model configuration; a Runtime without such a publisher interface has no
+fabricated model-configuration capability.
 
-This decision resolves the previous contract gap without making Serve a second
-Gateway owner, weakening the non-null schema invariant, or introducing a global
-workflow/event-bus authority.
+The Cloud Console Key, Group, Wallet and Usage routes are Gateway projections
+or Gateway commands with Cloud authorization and mapping. Cloud may retain
+opaque mapping and operation facts for recovery, but Gateway readback remains
+the source of truth for the effective external state.
+
+This decision keeps Workspace, Gateway Integration, Fabric and Serve separated
+without making Cloud a second Gateway authority or requiring same-Key updates
+as a product invariant.
 
 ### 2026-10-01: Fabric Owns Explicit Secret Binding Replacement
 

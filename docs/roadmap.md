@@ -48,11 +48,13 @@ The reusable Cloud product has two application combinations:
   compatible independent WebUI, fixed into one immutable OCI.
 
 Workspace owns identity, entitlement, resource intent and model-configuration
-intent. Gateway Integration coordinates issuance, lifecycle disable/enable and
-approved same-key model permissions through Sub2API. Fabric
-owns provider resources and Secret bindings. Serve owns application deployment,
-readiness, route and runtime apply/readback. Ledger records evidence. Control
-Plane remains only where a real caller has not yet moved.
+intent. Gateway Integration coordinates the Cloud-to-Gateway mapping, approved
+Group commands, external Key creation or rotation, lifecycle disable/enable and
+Secret delivery. `gateway.medopl.com`/Sub2API remains the effective authority
+for Key, Group, wallet, routing and usage facts. Fabric owns provider resources
+and Secret bindings. Serve owns application deployment, readiness, route and
+runtime apply/readback. Ledger records evidence. Control Plane remains only
+where a real caller has not yet moved.
 
 The current product target is an exact Cloud Candidate deployed and qualified
 through the managed TKE Instance path, with Local-Docker remaining a supported
@@ -114,7 +116,7 @@ a deployed Candidate or final business PASS.
 | Priority | Outcome | Cloud owner | Current state | Completion evidence |
 | --- | --- | --- | --- | --- |
 | P0 | Move live model-configuration callers to Workspace/Gateway/Fabric/Serve | Workspace, Console BFF/UI, Control Plane migration | Owner-separated source path is implemented; the BFF/UI model-configuration routes already read and write through the Workspace owner, so the first completion clause is met and this row stays open only for the old writer's remaining callers and owner/browser acceptance | BFF/UI uses the Workspace owner for read/write, old writer has no configured caller, owner and browser tests pass |
-| P0 | Complete live managed-key issuer and delegation | Gateway Integration plus Sub2API | Cloud coordination, scope-resolution and Secret-delivery source paths are implemented against the fixed service-issuance seam; the live Sub2API service route, its Instance secret wiring and a service revocation path are not yet qualified. Cloud has no approved revocation endpoint and records each refusal as a queryable attempt, and that refusal now reaches the customer as `needs_attention` on a configuration whose reload was already confirmed, rather than as a completed `applied` change or as a configuration that was never applied; no key is retired by this path | Approved service issuance plus lifecycle disable/enable and same-key scope/readback; real caller isolation and key/usage evidence. The detailed adoption outcome below replaces predecessor revocation as the model-update target; no raw key in persistence or receipts |
+| P0 | Complete live Gateway mapping, Group management and Workspace Key rotation | Gateway Integration plus external Gateway | Cloud now routes Workspace Key creation through the logged-in Gateway user's existing `/api/v1/groups/available` and `/api/v1/keys` APIs, carries the operation idempotency key, stores only external Key identity/fingerprint/Secret reference, and leaves effective routing to the external Group. Group administration, key rotation/lifecycle closeout and deployed external readback remain open. Cloud local tests cover the adapter contract; they do not establish production Gateway state | Prove the deployed Cloud login-to-Gateway mapping, existing `Codex` Group readback, one Workspace Key creation and Secret/config handover, retry replay without a second Key, rotation/old-Key closeout and no raw Key in persistence or receipts |
 | P0 | Finish Serve typed application execution and route activation | Serve; Instance owns ingress/DNS/TLS | Source route owner and model apply/readback exist; initial dependency progression and Workspace retirement intent have owner and executor boundary tests; owner-local conditional route CAS is implemented; typed Fabric application RPC and installation-level Ingress/route-object CAS remain | Typed execution contract, conditional route CAS, real TKE Service/readiness/access request and lost-response recovery |
 | P0 | Close the Workspace deletion through the Ledger receipt to the refund | Workspace and Ledger | Ledger now admits the confirmed-deletion provider-action receipt into its own non-financial writer and resolves it back through `ReadReceiptByReference`, so the structural refusal that blocked the closure is gone at source over real gRPC and PostgreSQL. Workspace now limits consecutive unconfirmed automatic passes of one deletion step to twelve, then leaves the operation at needs_attention with its original unknown/rejected observation; a newly authorized acknowledged delete replay resumes that same operation. After a pending Fabric read it replays the frozen original DeleteResources command, because ReadResources alone cannot advance Fabric. Isolated PostgreSQL tests cover the actual Workspace worker/caller with synthetic owner clients; the full Workspace-to-real-Ledger-to-Gateway closure and provider adoption remain unproven | One owner-authoritative end-to-end deletion that reaches the confirmed refund against the recorded absence receipt; source retry/recovery bounds are delivered, not production absence or refund acceptance |
 | P0 | Repair the Resource Catalog refund policy list encoding defect | Resource Catalog | `scanRefundPolicy` normalized neither separator when it mapped the stored hyphenated algorithm, so the required `algorithm` property silently became the unspecified member and the public encoder refused the administrator list page once a row existed; the source is repaired and the focused list-read test over a stored hyphenated algorithm passes, while the repaired source has reached the verified `78dbe9b4` Instance Candidate but the administrator list page still needs a fresh owner-authoritative readback | [defect source check](evidence/source-checks/2026-10-08-refund-policy-list-enum-encoding-defect.json); [repair source check](evidence/source-checks/2026-10-09-refund-policy-algorithm-enum-encoding.json); the administrator refund policy list reads back at 200 on a Candidate built from the repaired source |
@@ -129,17 +131,43 @@ a deployed Candidate or final business PASS.
 
 ## Workspace Key And Customer Read Boundaries
 
-The [October 15 decision](decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads)
-settles product intent. Each source slice records its own evidence; source adoption
+The [October 18 Gateway external truth and rotation decision](decisions.md#2026-10-18-gateway-external-truth-cloud-mapping-and-workspace-key-rotation)
+settles the current product intent; the October 15 lifecycle decision remains
+historical where it conflicts. Each source slice records its own evidence; source adoption
 does not qualify a deployed Candidate. Existing API/protobuf schemas and release
 validators describe their still-consumed implementation boundary; upgrade them
 with their real callers, tests and evidence producers rather than relabeling
 prose as a delivered interface.
 
+### Gateway 外部契约输入清单（2026-10-18）
+
+Cloud 已确认 Gateway 不改代码；新的 Cloud 实现切片复用登录时取得的
+Gateway 用户凭证和现有 Gateway 用户 API。下面的清单保留为实现验收边界，
+不预先命名不存在的 endpoint、RPC、字段或权限。
+
+| 输入 | 必须确认的事实 | Cloud 后续消费者 |
+| --- | --- | --- |
+| Login credential | Cloud 登录如何获得 Gateway 用户 bearer；它如何绑定 Cloud session、Cloud actor 和 external subject；凭证只保存在进程内并在 session/Gateway TTL 到期时失效 | Gateway Integration user-scoped Key client |
+| Group administration identity | 若需要创建或修改 Group，使用哪个已有 Gateway administrator identity 和现有 admin API；普通用户登录不自动获得该权限 | Gateway Integration Group command；Workspace 开通只要求已有可见的 `Codex` Group |
+| External subject mapping | Cloud User/Workspace 如何对应 Gateway User/subject；创建、查询、归属校验和已存在映射的读回 | Gateway identity mapping、Workspace 开通和重试收敛 |
+| Group command | 如何查询或创建默认 `Codex` Group；Cloud 被允许管理哪些 Group 属性；返回的 Group ID、版本/状态和幂等规则 | Workspace 开通、Group 管理命令和 Gateway 真相投影 |
+| Key creation | 如何为指定 external subject 创建 Workspace Key；请求中的 Workspace、Group、用途、模型范围和幂等身份；成功响应中的 external Key ID、有效 Group/范围和一次性 raw Key 交付边界 | Gateway Integration mapping、Secret delivery 和 Runtime handover |
+| Key readback | 如何按 external Key ID 或原始命令身份读回有效 Key、Group、状态和模型范围；普通读回不得返回 raw Key | Cloud projection、重试、未知结果收敛和 Runtime 验证 |
+| Key rotation | 复用当前 Key 与创建新 Key 的判定；新旧 Key 的交接顺序；旧 Key 的明确收尾动作、授权和读回 | Workspace 配置变更、Secret 替换和 predecessor mapping |
+| Failure semantics | 拒绝、超时、响应丢失、重复命令、部分成功分别如何编码；原始幂等命令如何查询，不得通过重试重复创建 Key | Gateway operation state、Workspace recovery 和审计证据 |
+| Secret delivery | raw Key 是否只在受控 Secret/config 写入响应中出现；谁读取、谁写入、如何确认 fingerprint/version；普通 Cloud DB、日志、receipt、DTO 均不得保存 raw Key | Fabric Secret binding、Serve/Runtime config readback |
+| Usage and routing readback | Key/Group 的有效路由、usage、quota 等事实如何通过 Gateway 读取；不可用或冲突时的错误语义 | `/console/api/keys`、usage、groups 和 Workspace status projection |
+| Version and deployment evidence | 契约对应的 Sub2API commit/image/deployment、启用的 service identity、真实 Gateway readback 和可重复的隔离测试证据 | `docs/status.md`、CI/qualification evidence 和后续 Issue acceptance |
+
+当前源码能证明的是用户 JWT 下的 `/api/v1/keys` CRUD、用户可用 Group
+读取和管理员 Group CRUD；Cloud 复用这些已有路径，不把用户凭证提升为服务
+凭证，也不把本地 binding 当作外部 Key 或 Group 真相。`/api/v1/service/workspace-keys`
+继续视为废弃假设，不进入实现。
+
 | Outcome | Owner | Remaining adoption and acceptance |
 | --- | --- | --- |
-| Workspace-managed Key lifecycle (#821, #868) | Workspace and Gateway Integration; Sub2API external authority | Cloud source now owns the reversible owner route and all three Workspace-side triggers: closure, suspension (unpaid expiry and provider-confirmed resource loss) and authorized recovery: [status](status.md#workspace-managed-key-lifecycle-source-wiring-2026-10-18) and [status](status.md#workspace-lifecycle-triggers-for-the-managed-key-2026-10-18). Remaining: the approved Sub2API service disable/enable/state-readback endpoint, the retained Control Plane callers that must delegate to this owner route, and a customer-visible closeout readback. Include proven historical ownership, retries, response loss and unrelated-key controls; resource absence does not prove key state. |
-| Same-key model updates (#869) | Workspace, Gateway Integration, Fabric and Serve | Cloud source now preserves the exact managed key for a selection already inside its approved scope and refuses an expansion before any effect: [status](status.md#same-key-workspace-model-updates-2026-10-18). Remaining: the approved Sub2API in-place scope update and its Gateway readback, so a scope change converges without a new key or wider local claim. Confirm approved permissions and actual application configuration under the original operation; preserve CAS and Secret-binding invariants. This lane is not a default-App first-launch prerequisite. |
+| Workspace-managed Key lifecycle (#821, #868) | Workspace and Gateway Integration; Sub2API external authority | #868 is closed as not planned for the current delivery scope. The existing Cloud lifecycle source wiring is retained as historical implementation evidence, not as a reason to add Gateway disable/enable/state-readback APIs or migrate callers now. Key rotation and the Workspace opening path remain governed by the current Gateway mapping contract above. |
+| Workspace Key mapping and rotation | Workspace, Gateway Integration, external Gateway, Fabric and Serve | The former same-Key source slice remains historical evidence. The current target allows Key reuse or rotation: Gateway creates or manages the effective Key/Group, Cloud records the opaque mapping, Fabric/Serve deliver and read back the new Secret/config, and Gateway closes the predecessor when authorized. The retained Control Plane Workspace caller still needs migration and the external path needs deployed readback. | One authenticated Workspace opening and one rotation read back the same Gateway-owned facts through Gateway and Cloud, with no duplicate operation, leaked raw Key or local projection treated as external truth. |
 | Personal and Tenant financial reads (#840, #870) | Gateway Integration and retained financial owner; Console BFF/UI | Keep wallet/Token reads on the logged-in User. Tenant owner/admin read Tenant bills; original owners read proven historical bills without automatic admin inheritance. Personal history now has a typed BFF/original-owner list, detail and trend reader with live identity, reciprocal Account/User proof and original-order projections. Local original-history and isolation checks are in [status](status.md#personal-historical-billing-source-repair-2026-10-16). Team transaction list/detail and confirmed charge/refund trend are now implemented through Gateway/BFF under the live Tenant owner/admin role. Ledger now exposes original funded-charge receipt/accepted-quote details under the current Tenant role without exposing private execution evidence. Missing receipt kinds remain explicitly unavailable; no refund receipt is invented from a Gateway reference. Installed exact-Candidate acceptance remains unproved; never derive Tenant financial authority from the personal-history path. |
 | Announcements and historical ACKs (#840, #871) | Existing announcement owner, CloudIdentity and Console BFF/UI | The source now routes Cloud list/ACK through the BFF to the original owner, revalidates live identity, and folds proven historical ACKs with original timestamps. Local owner, PostgreSQL, BFF and browser checks are recorded in [status](status.md#cloud-announcement-source-repair-2026-10-15). Source CI and Instance wiring source are delivered in [Cloud PR 882](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/882) and [Instance PR 505](https://github.com/gaofeng21cn/opl-instance-medopl/pull/505). Remaining: protected peer/token/certificate/topology adoption and authenticated same-Candidate acceptance; #840 retains its other reads. |
 | Remaining retained Gateway reads (#840) | Gateway Integration and Console BFF/UI | Keys list/detail, per-Key usage/summary, groups, personal balance history and endpoint now use session-bound Cloud BFF/Gateway reads with a live CloudIdentity proof; the retained `/api/gateway/*` adapters remain legacy-only, and Gateway custody of the delegated provider credential is still transitional. The legacy package pricing catalog and preview have no Cloud owner yet, so a cloud build refuses them explicitly instead of calling the retained route. The protected `customer_reads` producer now asserts wallet, usage summary, fee records and announcements in one session; no installed run is claimed. Reproduce each actual authenticated caller before changing it; do not treat recharge records as complete balance history or claim the parent is fully covered. The caller/owner inventory is [Console customer read inventory (#840)](implementation/840-console-customer-reads.md). |
@@ -212,12 +240,12 @@ real callers:
       -> Serve execution, readiness and route
       -> Console BFF/UI readback
 
-The current source already preserves the same managed key for an in-scope model
-change, refuses an out-of-scope expansion before any effect, and has Serve
-publisher apply/readback and a stable access owner. The remaining work is caller
-migration, the live Sub2API same-key scope authority, typed execution/route
-activation and protected Instance qualification. The retained Control Plane proxy
-remains a migration source until those callers have moved.
+The current source contains a historical same-Key model-update path, Serve
+publisher apply/readback and a stable access owner. The current product target
+allows Gateway Key reuse or rotation. Remaining work is caller migration to the
+Gateway mapping path, external Gateway Key/Group/rotation readback, typed
+execution/route activation and protected Instance qualification. The retained
+Control Plane proxy remains a migration source until those callers have moved.
 
 The medical platform does not require a medical-specific Cloud adapter service.
 Its institution-system integration follows MAP: a callable Agent owns the

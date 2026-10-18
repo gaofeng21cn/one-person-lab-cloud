@@ -9,10 +9,23 @@ tests, status, and owner readback.
 
 OPL Gateway is the target frontier-AI capability gateway for One Person Lab.
 
-Sub2API is its external backend and the only owner of spendable balance, API
-keys, model routing, and request usage. Cloud integrates those authorities
-through Gateway Integration and retained Control Plane callers; it does not
-create a second Gateway backend or wallet.
+`gateway.medopl.com`/Sub2API is the external Gateway authority for spendable
+balance, API Keys, Groups, model routing, effective configuration and request
+usage. Cloud integrates those facts through Gateway Integration and retained
+Control Plane callers; it does not create a second Gateway backend, wallet,
+Key, Group or usage authority. Cloud may create and manage approved Groups by
+calling Gateway APIs, while Gateway remains the source of the resulting Group
+and Key state.
+
+Gateway Integration is the Cloud mapping and coordination layer. It maps
+CloudIdentity Users and Workspaces to Gateway subjects and external Key
+identities, records opaque bindings and delivery references, and projects
+Gateway-owned facts through Cloud APIs. A Workspace Key is created at the
+external Gateway, normally in the approved default `Codex` Group, and may be
+rotated when configuration or application changes require it. Raw Key material
+crosses only the controlled Secret/config delivery path and never becomes a
+Cloud product record or client DTO.
+
 Its target responsibilities are unified AI API access, credential and provider
 configuration, usage metering, and downstream OPL workflow integration.
 
@@ -48,10 +61,11 @@ pay for directly.
 
 ## Public Surface
 
-This repository contains native Sub2API integration in Gateway Integration and
-the retained Control Plane balance, usage, balance-history, Key and debit/refund
-paths. [Implementation architecture](implementation-architecture.md#request-path)
-owns their current caller boundaries.
+This repository contains native external-Gateway integration in Gateway
+Integration and the retained Control Plane balance, usage, balance-history, Key,
+Group and debit/refund paths. [Implementation architecture](implementation-architecture.md#request-path)
+owns their current caller boundaries. Cloud routes are projections or commands
+against Gateway truth, with Cloud authorization and Workspace/User mapping.
 That code and its tests are not runtime availability evidence. Current
 capability belongs to [status](status.md); the remaining Core gap belongs to the
 [roadmap](roadmap.md).
