@@ -111,10 +111,10 @@ one session: wallet (`GET /api/v2/wallet`), usage summary
 (`GET /api/v2/usage/summary?period=month`), fee records
 (`GET /api/v2/legacy-billing/receipts?limit=20`) and announcements
 (`GET /api/v2/announcements?page=1&pageSize=20`), together with session,
-external bindings, logout and revocation. The fee check accepts either the
-`ledger` source envelope or the original financial owner's typed not-found for a
-customer with no original Account; both answers prove the Cloud route reached the
-owner without a session rejection. This source inventory and its focused
+external bindings, logout and revocation. The fee check requires the `ledger`
+source envelope; a not-found blocks the receipt, because the BFF uses one generic
+owner-not-found both for a customer without an original Account and for a missing
+or older internal route, so it cannot show the fee route works. This source inventory and its focused
 fixtures do not prove a deployment, an authenticated installed readback, or a
 Release.
 

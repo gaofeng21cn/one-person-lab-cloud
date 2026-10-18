@@ -128,9 +128,9 @@ the same Candidate.
 login/session, external-bindings, wallet, usage-summary, fee-record and
 announcements reads, followed by logout and session-revocation checks. The
 wallet and usage reads must carry the Gateway owner's public encoding; the
-fee-record read must answer the `ledger` source envelope or the original
-financial owner's typed not-found for a customer without an original Account, and
-either answer must arrive without a session rejection. The independently
+fee-record read must answer the `ledger` source envelope without a session
+rejection, and a not-found blocks the receipt because the BFF cannot distinguish
+a customer without an original Account from a missing or older internal route. The independently
 approved origin is a protected configuration input. Its receipt associates the original installation
 bytes but sets `publicEndpointCandidateVerified: false`; the current public
 customer APIs expose no Candidate identity proof. It cannot replace installation

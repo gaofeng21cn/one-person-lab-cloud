@@ -19,20 +19,27 @@ Instance installation, or a Product Release. The target boundary is in
 
 ## Cloud Customer Readback Usage And Fee Coverage (2026-10-18)
 
-Against `f966aa63`, this change extends the protected `customer_reads` producer
+Against `8e330121`, this change extends the protected `customer_reads` producer
 `tools/cloud-business-readback.ts` so one authenticated CloudIdentity session
 asserts the four customer reads issue #840 names: wallet, usage summary, fee
 records and announcements. The previous checks covered wallet and announcements
 only, so a deployed origin could reject `GET /api/v2/usage/summary?period=month`
 and `GET /api/v2/legacy-billing/receipts?limit=20` with 401 and still receive
-`customer_reads_verified`. A fixture answering 401 on those routes now blocks the
-receipt; the pre-change producer returned `customer_reads_verified` for the same
-fixture. The usage check requires the Gateway owner's canonical non-negative
-int64 strings. The fee-record check requires the `ledger` source envelope or the
-original financial owner's typed not-found for a customer without an original
-Account. The receipt keeps boolean checks only and stores no customer data.
+`customer_reads_verified`. A fixture that answers a real HTTP 401 on either route
+now blocks the receipt, even when the response body would satisfy that route's
+shape check, so only the status gate can block it; the pre-change producer
+returned `customer_reads_verified` for the same fixture. A separate fixture keeps
+a 200 error body, which fails the shape check rather than the status gate. The
+usage check requires the Gateway owner's canonical non-negative int64 strings.
+The fee-record check requires the `ledger` source envelope; a 404 blocks the
+receipt, because the BFF writes one generic owner-not-found both for a customer
+without an original Account and for a missing or older internal route. A blocked
+receipt is the honest result when the journey's fee page would show an error. The receipt keeps boolean checks only and stores no customer data.
+The receipt `schemaVersion` moves from 1 to 2 because the schema-validated check
+set grows from 7 to 9; a version 1 receipt is refused, and no production
+`customer_reads` receipt exists to invalidate.
 
-Local focused verification executes 15 tests with zero failures, skips or TODOs:
+Local focused verification executes 16 tests with zero failures, skips or TODOs:
 
 ```sh
 node tools/verify-local.ts --focused --base origin/main \

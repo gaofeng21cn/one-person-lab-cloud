@@ -25,8 +25,11 @@ const CHECKS = ["login", "session", "externalBindings", "wallet", "usage", "feeR
 type Check = typeof CHECKS[number];
 type CandidateIdentity = { receiptDigest: string; productSha: string; productTree: string; cloudImageRef: string; cloudImageDigest: string; cloudImageRevision: string; cloudRuntimeChildDigest: string };
 type Authority = { repository: string; authoritySha: string; runId: string; runAttempt: string };
+// Version 2 adds the usage and fee-record checks to the schema-validated check
+// set (7 -> 9). A version 1 receipt is refused rather than reinterpreted: its
+// schema does not prove those two reads, which is the gap version 2 closes.
 export type CloudBusinessReadbackReceipt = {
-  schemaVersion: 1; kind: "opl_cloud_business_readback"; scope: "customer_reads";
+  schemaVersion: 2; kind: "opl_cloud_business_readback"; scope: "customer_reads";
   status: "customer_reads_verified" | "blocked";
   fullBusinessQualification: false; workspaceLifecycleVerified: false; keyLifecycleVerified: false;
   installationBinding: "receipt_association_only"; publicEndpointCandidateVerified: false;
@@ -94,7 +97,7 @@ export function validateCloudBusinessReadbackReceipt(value: unknown): CloudBusin
   const i = exact(r.installation, ["repository", "authoritySha", "runId", "runAttempt", "receiptDigest"]);
   const p = exact(r.producer, ["repository", "authoritySha", "runId", "runAttempt", "workflowPath", "actor", "triggeringActor"]);
   const checks = exact(r.checks, CHECKS);
-  if (r.schemaVersion !== 1 || r.kind !== "opl_cloud_business_readback" || r.scope !== "customer_reads" ||
+  if (r.schemaVersion !== 2 || r.kind !== "opl_cloud_business_readback" || r.scope !== "customer_reads" ||
     !["customer_reads_verified", "blocked"].includes(r.status) || r.fullBusinessQualification !== false ||
     r.workspaceLifecycleVerified !== false || r.keyLifecycleVerified !== false ||
     r.installationBinding !== "receipt_association_only" || r.publicEndpointCandidateVerified !== false || !DIGEST.test(r.originDigest) ||
@@ -174,13 +177,13 @@ export async function runCloudBusinessReadback(input: { candidate: unknown; inst
   try { origin = publicOrigin(env.OPL_QUALIFICATION_ORIGIN || ""); candidate = identity(input.candidate); installation = installationIdentity(input.candidate,input.installationText,input.installationRun); } catch { fail(); }
   const producer = { repository: env.GITHUB_REPOSITORY || "", authoritySha: env.GITHUB_SHA || "", runId: env.GITHUB_RUN_ID || "", runAttempt: env.GITHUB_RUN_ATTEMPT || "", workflowPath: WORKFLOW, actor: env.GITHUB_ACTOR || "", triggeringActor: env.GITHUB_TRIGGERING_ACTOR || "" };
   const checks = Object.fromEntries(CHECKS.map(k => [k,false])) as Record<Check,boolean>;
-  const receipt: CloudBusinessReadbackReceipt = { schemaVersion: 1, kind: "opl_cloud_business_readback", scope: "customer_reads", status: "blocked", fullBusinessQualification: false, workspaceLifecycleVerified: false, keyLifecycleVerified: false, installationBinding: "receipt_association_only", publicEndpointCandidateVerified: false, candidate, installation, producer, originDigest: hash(origin), startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), checks, errorCode: "customer_readback_failed" };
+  const receipt: CloudBusinessReadbackReceipt = { schemaVersion: 2, kind: "opl_cloud_business_readback", scope: "customer_reads", status: "blocked", fullBusinessQualification: false, workspaceLifecycleVerified: false, keyLifecycleVerified: false, installationBinding: "receipt_association_only", publicEndpointCandidateVerified: false, candidate, installation, producer, originDigest: hash(origin), startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), checks, errorCode: "customer_readback_failed" };
   validateCloudBusinessReadbackReceipt(receipt);
   if (!text(env.OPL_QUALIFICATION_CUSTOMER_EMAIL) || !text(env.OPL_QUALIFICATION_CUSTOMER_PASSWORD)) fail();
   const transport = dependencies.fetch || publicFetch;
   const jar = new Map<string,string>();
   let csrf = "";
-  const exchange = async (path: string, method: string, body: unknown, token: string | undefined, accept: readonly number[]) => {
+  const request = async (path: string, method = "GET", body?: unknown, token?: string, expected = 200) => {
     const maxBytes = path.startsWith("/api/v2/announcements?") ? MAX_ANNOUNCEMENT_BYTES : MAX_BYTES;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -197,18 +200,16 @@ export async function runCloudBusinessReadback(input: { candidate: unknown; inst
         const match = /^(opl_login_context|opl_login_csrf|opl_session)=([^;]*)/.exec(cookie);
         if (match) { if (/^[A-Za-z0-9_\-.~%+/=]*$/.test(match[2]) && match[2].length <= 4096) jar.set(match[1],match[2]); else fail(); }
       }
-      if (!accept.includes(response.status) || response.redirected || (response.url && new URL(response.url).origin !== origin)) fail();
+      if (response.status !== expected || response.redirected || (response.url && new URL(response.url).origin !== origin)) fail();
       if (Number(response.headers.get("content-length")) > maxBytes) fail();
-      if (response.status === 204 || response.status === 401) { await response.body?.cancel(); return { status: response.status, body: null }; }
+      if (expected === 204 || expected === 401) { await response.body?.cancel(); return null; }
       const reader = response.body?.getReader(); if (!reader) fail();
       let bytes=0; const chunks: Uint8Array[]=[];
       try { for (;;) { const item=await reader.read(); if (item.done) break; bytes+=item.value.length; if(bytes>maxBytes) fail(); chunks.push(item.value); } } finally { await reader.cancel(); }
       if (!(response.headers.get("content-type") || "").toLowerCase().startsWith("application/json")) fail();
-      return { status: response.status, body: obj(JSON.parse(Buffer.concat(chunks).toString("utf8"))) };
+      return obj(JSON.parse(Buffer.concat(chunks).toString("utf8")));
     })()]); } finally { clearTimeout(timer!); controller.abort(); }
   };
-  const request = async (path: string, method = "GET", body?: unknown, token?: string, expected = 200) =>
-    (await exchange(path, method, body, token, [expected])).body!;
   try {
     const context = (await request("/api/v2/auth/context"))!;
     if (!text(context.csrfToken) || !date(context.expiresAt) || Date.parse(context.expiresAt) <= Date.now() || !jar.get("opl_login_context") || !jar.get("opl_login_csrf")) fail();
@@ -228,33 +229,36 @@ export async function runCloudBusinessReadback(input: { candidate: unknown; inst
     checks.wallet=true;
     // The usage summary is the Gateway owner's own aggregate. The public contract
     // encodes every count and the micro-USD cost as an int64 decimal string, so a
-    // number or a fractional value is a contract break rather than a read.
+    // number or a fractional value is a contract break rather than a read. This
+    // proves the route, the owner encoding and a non-negative aggregate; it does
+    // not prove the totals belong to a particular user beyond the session scope,
+    // and it does not assert that totalTokens equals the sum of the token fields
+    // because the owner does not declare that relation.
     const usage=(await request("/api/v2/usage/summary?period=month"))!;
     for (const field of ["totalRequests","totalInputTokens","totalOutputTokens","totalTokens","totalActualCostUSDMicros"]) {
       if (!int64String(usage[field])) fail();
     }
     checks.usage=true;
     // The fee records stay with the original financial owner behind the Cloud
-    // route. A customer with no original Account has no historical fee records,
-    // and the retained owner answers that typed not-found instead of inventing an
-    // empty bill. Either answer proves the route and owner handshake without a
-    // session rejection; a 401, 403 or transport failure fails this check.
-    const feeReceipts=await exchange("/api/v2/legacy-billing/receipts?limit=20","GET",undefined,undefined,[200,404]);
-    if (feeReceipts.status===404) {
-      if (obj(feeReceipts.body).code!=="NOT_FOUND") fail();
-    } else {
-      const feePage=obj(feeReceipts.body);
-      if (feePage.source!=="ledger" || feePage.available!==true || !["available","empty"].includes(feePage.status) || !date(feePage.fetchedAt)) fail();
-      const data=obj(feePage.data);
-      if (!Array.isArray(data.receipts) || data.receipts.length>20 || typeof data.hasMore!=="boolean" || typeof data.nextCursor!=="string" || (data.hasMore && !data.nextCursor)) fail();
-      const seen=new Set<string>();
-      for (const item of data.receipts) {
-        const receiptRow=obj(item);
-        if (!text(receiptRow.receiptId) || seen.has(receiptRow.receiptId) || !text(receiptRow.type) || !text(receiptRow.status) || (receiptRow.currency!==undefined && receiptRow.currency!=="USD")) fail();
-        seen.add(receiptRow.receiptId);
-        for (const field of ["chargeUsdMicros","totalUsdMicros","refundUsdMicros"]) {
-          if (Object.hasOwn(receiptRow,field) && !signedMicros(receiptRow[field])) fail();
-        }
+    // route, and the read must answer that owner's `ledger` envelope with a
+    // bounded page and canonical micro-USD strings. The check does not prove
+    // completeness or that every projected field (workspaceId, createdAt,
+    // periodStart, ...) is present. A 404 is not accepted as a read: the BFF
+    // writes one generic owner-not-found both for a customer with no original
+    // Account and for a missing or older internal route (its client turns any
+    // owner HTTP 404 into gRPC NotFound), so a 404 cannot show that the fee route
+    // works, and the Console renders it as an error rather than an empty bill.
+    const feePage=obj((await request("/api/v2/legacy-billing/receipts?limit=20"))!);
+    if (feePage.source!=="ledger" || feePage.available!==true || !["available","empty"].includes(feePage.status) || !date(feePage.fetchedAt)) fail();
+    const data=obj(feePage.data);
+    if (!Array.isArray(data.receipts) || data.receipts.length>20 || typeof data.hasMore!=="boolean" || typeof data.nextCursor!=="string" || (data.hasMore && !data.nextCursor)) fail();
+    const seen=new Set<string>();
+    for (const item of data.receipts) {
+      const receiptRow=obj(item);
+      if (!text(receiptRow.receiptId) || seen.has(receiptRow.receiptId) || !text(receiptRow.type) || !text(receiptRow.status) || (receiptRow.currency!==undefined && receiptRow.currency!=="USD")) fail();
+      seen.add(receiptRow.receiptId);
+      for (const field of ["chargeUsdMicros","totalUsdMicros","refundUsdMicros"]) {
+        if (Object.hasOwn(receiptRow,field) && !signedMicros(receiptRow[field])) fail();
       }
     }
     checks.feeReceipts=true;

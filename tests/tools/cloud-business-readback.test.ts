@@ -85,14 +85,17 @@ test("private origins and altered workflow identity fail before networking",asyn
   for(const ip of ["127.0.0.1","10.1.2.3","169.254.169.254","100.64.0.1","::1","::ffff:127.0.0.1","fc00::1","fe80::1","2001:db8::1","2002:7f00:1::1"])assert.equal(isPublicReadbackAddress(ip),false,ip);
   for(const ip of ["8.8.8.8","1.1.1.1","2606:4700:4700::1111"])assert.equal(isPublicReadbackAddress(ip),true,ip);
 });
-test("a session whose usage and fee reads are rejected cannot verify the customer journey",async()=>{
+test("a session rejected with 401 on the usage or fee route cannot verify the customer journey",async()=>{
   // The pre-#840 shape read only wallet and announcements, so a fixture that
   // rejected the usage-summary and fee-record routes with 401 was never called
   // and the producer still claimed customer_reads_verified. Both reads now run in
-  // the same session, so a session rejection blocks the receipt.
-  for(const endpoint of ["/api/v2/usage/summary?period=month","/api/v2/legacy-billing/receipts?limit=20"]){
+  // the same session. Each 401 deliberately carries a body that would satisfy the
+  // route's shape check, so only the status gate can block it: a producer that
+  // parsed a 401 body instead of rejecting the status would verify the journey.
+  const rejectedBody:Record<string,unknown>={"/api/v2/usage/summary?period=month":{totalRequests:"17",totalInputTokens:"170",totalOutputTokens:"34",totalTokens:"204",totalActualCostUSDMicros:"125001"},"/api/v2/legacy-billing/receipts?limit=20":{source:"ledger",status:"available",available:true,fetchedAt:now,data:{receipts:[{receiptId:"receipt-1",type:"billing.workspace.monthly",status:"confirmed",workspaceId:"workspace-1",createdAt:now,currency:"USD",chargeUsdMicros:"12500000"}],nextCursor:"",hasMore:false}}};
+  for(const [endpoint,body] of Object.entries(rejectedBody)){
     const input=await inputs();
-    const n=network({[endpoint]:()=>jsonResponse({code:"UNAUTHENTICATED",message:"session required"})});
+    const n=network({[endpoint]:()=>new Response(JSON.stringify(body),{status:401,headers:{"content-type":"application/json"}})});
     const receipt=await runCloudBusinessReadback(input,{environment:input.environment,fetch:n.fetch});
     assert.equal(receipt.status,"blocked");assert.equal(receipt.errorCode,"customer_readback_failed");
     assert.ok(n.calls.some(v=>v.path===endpoint),endpoint);
@@ -100,15 +103,32 @@ test("a session whose usage and fee reads are rejected cannot verify the custome
     assert.throws(()=>validateCloudBusinessReadbackBinding({...input,receiptText:JSON.stringify(receipt)}));
   }
 });
-test("an explicit no-historical-fee answer proves the fee route without a session rejection",async()=>{
-  const input=await inputs();
-  const n=network({"/api/v2/legacy-billing/receipts?limit=20":()=>new Response(JSON.stringify({code:"NOT_FOUND",message:"publisher request could not be completed",requestId:"request-1"}),{status:404,headers:{"content-type":"application/json"}})});
-  const receipt=await runCloudBusinessReadback(input,{environment:input.environment,fetch:n.fetch});
-  assert.equal(receipt.status,"customer_reads_verified");
-  assert.equal(receipt.checks.feeReceipts,true);
-  // A not-found with a different code is not the original financial owner's answer.
-  const rejected=network({"/api/v2/legacy-billing/receipts?limit=20":()=>new Response(JSON.stringify({code:"SOMETHING_ELSE",message:"m",requestId:"r"}),{status:404,headers:{"content-type":"application/json"}})});
-  assert.equal((await runCloudBusinessReadback(await inputs(),{environment:input.environment,fetch:rejected.fetch})).status,"blocked");
+test("a 200 answer that is not the route's declared shape also blocks the journey",async()=>{
+  // A 200 error body (or any other shape drift) must not be mistaken for a read,
+  // and this case is kept separate from the 401 case so neither gate hides the
+  // other: the status gate is exercised above, the shape gate here.
+  for(const endpoint of ["/api/v2/usage/summary?period=month","/api/v2/legacy-billing/receipts?limit=20"]){
+    const input=await inputs();
+    const n=network({[endpoint]:()=>jsonResponse({code:"UNAUTHENTICATED",message:"session required",requestId:"request-1"})});
+    const receipt=await runCloudBusinessReadback(input,{environment:input.environment,fetch:n.fetch});
+    assert.equal(receipt.status,"blocked");assert.equal(receipt.errorCode,"customer_readback_failed");
+    assert.ok(n.calls.some(v=>v.path===endpoint),endpoint);
+    assert.equal(receipt.checks.logout,true);assert.equal(receipt.checks.sessionRevoked,true);
+  }
+});
+test("a fee-record 404 answer is not a read and blocks the journey",async()=>{
+  // The BFF writes one generic owner-not-found for a customer with no original
+  // Account and for a missing or older internal route, so a 404 cannot prove the
+  // fee route works. Both the BFF's actual fallback code and a bare NOT_FOUND
+  // body must block; the Console would render either as an error.
+  for(const code of ["owner_request_failed","NOT_FOUND"]){
+    const input=await inputs();
+    const n=network({"/api/v2/legacy-billing/receipts?limit=20":()=>new Response(JSON.stringify({code,message:"publisher request could not be completed",requestId:"request-1"}),{status:404,headers:{"content-type":"application/json"}})});
+    const receipt=await runCloudBusinessReadback(input,{environment:input.environment,fetch:n.fetch});
+    assert.equal(receipt.status,"blocked");assert.equal(receipt.errorCode,"customer_readback_failed");
+    assert.equal(receipt.checks.feeReceipts,false);
+    assert.ok(n.calls.some(v=>v.path==="/api/v2/legacy-billing/receipts?limit=20"));
+  }
 });
 test("fee records must come from the ledger owner with canonical money and one identity per row",async()=>{
   for(const body of [
@@ -142,7 +162,7 @@ test("binding refuses wrong run provenance, Candidate identity, installation byt
   for(const patch of [{status:"in_progress"},{conclusion:"failure"},{head_branch:"feature"},{head_sha:"0".repeat(40)},{run_attempt:1},{id:44},{event:"pull_request"},{path:".github/workflows/other.yml"},{repository:{full_name:"someone/fork"}},{actor:{login:"outsider"}},{triggering_actor:{login:"outsider"}}])assert.throws(()=>validateCloudBusinessReadbackBinding({...input,receiptText,run:{...input.run,...patch}}));
   for(const patch of [{head_sha:"0".repeat(40)},{run_attempt:2},{path:".github/workflows/deploy.yml"},{conclusion:"failure"},{repository:{full_name:"someone/fork"}}])assert.throws(()=>validateCloudBusinessReadbackBinding({...input,receiptText,installationRun:{...input.installationRun,...patch}}));
   assert.throws(()=>validateCloudBusinessReadbackBinding({...input,receiptText,installationText:JSON.stringify(JSON.parse(input.installationText),null,2)}));
-  for(const patch of [{publicEndpointCandidateVerified:true},{installationBinding:"same_runtime_verified"},{fullBusinessQualification:true},{scope:"full_business"},{rawBody:"private"},{checks:{...receipt.checks,wallet:false}},{checks:{...receipt.checks,usage:false}},{checks:{...receipt.checks,feeReceipts:false}},{producer:{...receipt.producer,password:"private"}},{errorCode:"private-error"}])assert.throws(()=>validateCloudBusinessReadbackReceipt({...receipt,...patch}));
+  for(const patch of [{schemaVersion:1},{schemaVersion:3},{publicEndpointCandidateVerified:true},{installationBinding:"same_runtime_verified"},{fullBusinessQualification:true},{scope:"full_business"},{rawBody:"private"},{checks:{...receipt.checks,wallet:false}},{checks:{...receipt.checks,usage:false}},{checks:{...receipt.checks,feeReceipts:false}},{producer:{...receipt.producer,password:"private"}},{errorCode:"private-error"}])assert.throws(()=>validateCloudBusinessReadbackReceipt({...receipt,...patch}));
   const installation=JSON.parse(input.installationText);installation.cloudRuntimeChildDigest=digest("e");await assert.rejects(runCloudBusinessReadback({...input,installationText:JSON.stringify(installation)},{environment:input.environment,fetch:n.fetch}));
 });
 
