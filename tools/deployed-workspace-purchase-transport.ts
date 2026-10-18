@@ -44,6 +44,8 @@
  * own receipt validated by its own validator.
  */
 
+import { pathToFileURL } from "node:url";
+
 import { createHTTP, login, sourceData } from "./local-workspace-qualification.ts";
 import {
   deployedAccountIdentityDigest,
@@ -51,7 +53,6 @@ import {
   runDeployedWorkspacePurchase,
   validateDeployedPurchaseReceipt,
 } from "./deployed-workspace-purchase.ts";
-import { priceWorkspaceLaunch } from "./workspace-purchase-core.ts";
 
 // The credential names. They are read from the caller's environment and never
 // written, logged, echoed into a summary or placed in the receipt; the purchase
@@ -68,6 +69,7 @@ export const PURCHASE_ACCOUNT_ID = "OPL_DEPLOYED_PURCHASE_ACCOUNT_ID";
 
 const POSITIVE_MICROS = /^[1-9][0-9]*$/;
 const REQUEST_TIMEOUT_MS = 30_000;
+export const PURCHASE_TRANSPORT_FAILED = "deployed_purchase_transport_failed";
 
 function transportError(code, message) {
   const error = new Error(message);
@@ -138,8 +140,25 @@ export async function quoteDeployedWorkspacePurchase(caller, request) {
   const pricing = (await http.json("/api/pricing/preview", {
     method: "POST", body: { resourceType: "workspace", packageId: request.packageId },
   }, auth)).payload;
-  const amountUsdMicros = priceWorkspaceLaunch({ pricing, walletUsdMicros, packageId: request.packageId });
-  return { amountUsdMicros, walletUsdMicros, accountId, packageId: request.packageId, baseURL: request.baseURL };
+
+  // A quote that does not name the declared thing is refused outright: there is
+  // no number to show, because the number would be about something else.
+  const amountUsdMicros = String(pricing?.totalChargeUsdMicros || "");
+  if (pricing?.resourceType !== "workspace" || pricing?.packageId !== request.packageId ||
+      pricing?.currency !== "USD" || !POSITIVE_MICROS.test(amountUsdMicros)) {
+    throw transportError("deployed_purchase_quote_unavailable", "could not price the declared Workspace");
+  }
+
+  // An unaffordable quote is reported, not thrown. The shared core refuses a
+  // buyer that cannot fund the quote, and the purchase path still does exactly
+  // that; but this command spends nothing, and the operator's next question is
+  // the number itself — whether to top the wallet up or buy a different package
+  // is a decision only they can make. Throwing here would hide the very figure
+  // the decision needs, and it would hide it on the one call that could have
+  // told them.
+  const walletReadable = /^(?:0|[1-9][0-9]*)$/.test(walletUsdMicros);
+  const fundable = walletReadable && BigInt(walletUsdMicros) >= BigInt(amountUsdMicros);
+  return { amountUsdMicros, walletUsdMicros, fundable, accountId, packageId: request.packageId, baseURL: request.baseURL };
 }
 
 /*
@@ -153,6 +172,15 @@ export async function quoteDeployedWorkspacePurchase(caller, request) {
  * refusal here has spent nothing and there is nothing to reconcile.
  */
 function assertAuthorizedAmount(quoted, authorized) {
+  // An unaffordable quote is refused here, before the purchase entry is entered,
+  // so the operator gets the price and the balance rather than the shared core's
+  // refusal from inside a run that had already authenticated and read the order.
+  if (!quoted.fundable) {
+    throw transportError(
+      "deployed_purchase_wallet_cannot_fund",
+      `purchase refused: wallet holds ${quoted.walletUsdMicros} micros and the quote is ${quoted.amountUsdMicros} micros`,
+    );
+  }
   const approved = String(authorized || "").trim();
   if (!POSITIVE_MICROS.test(approved)) {
     throw invalidInput("purchase requires --authorize-amount-usd-micros as an exact micros amount");
@@ -239,6 +267,7 @@ export function deployedPurchaseTransportSummary(result) {
     packageId: result.quote.packageId,
     amountUsdMicros: result.quote.amountUsdMicros,
     walletUsdMicros: result.quote.walletUsdMicros,
+    fundable: result.quote.fundable,
   };
   if (!result.receipt) return summary;
   return {
@@ -267,7 +296,7 @@ export async function main(
   if (result.command === "quote") {
     throw transportError(
       "deployed_purchase_awaiting_authorization",
-      `quote is ${result.quote.amountUsdMicros} micros for account ${result.quote.accountId}; nothing was spent`,
+      `quote is ${result.quote.amountUsdMicros} micros for account ${result.quote.accountId} (wallet ${result.quote.walletUsdMicros}, fundable ${result.quote.fundable}); nothing was spent`,
     );
   }
 }
@@ -281,3 +310,12 @@ async function defaultWriteReceipt(outputPath, receipt) {
 // so the value is visible to a reader of this module; `createHTTP` owns the
 // behaviour.
 export const PURCHASE_REQUEST_TIMEOUT_MS = REQUEST_TIMEOUT_MS;
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error: unknown) => {
+    const code = String((error as { code?: string } | null)?.code || PURCHASE_TRANSPORT_FAILED);
+    const message = String((error as { message?: string } | null)?.message || "deployed purchase transport failed");
+    process.stderr.write(`${code}: ${message}\n`);
+    process.exitCode = 1;
+  });
+}

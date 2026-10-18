@@ -93,6 +93,7 @@ function fakePlatform({
   walletUsdMicros = "999999999",
   me = account(),
   launchStatus = "succeeded",
+  pricingOverrides = {},
 } = {}) {
   const state = { commands: 0, reads: 0, quoteCalls: 0, order: null };
   const price = () => {
@@ -109,7 +110,7 @@ function fakePlatform({
       return ok(envelope("sub2api", { userId: "77", currency: "USD", usdMicros: walletUsdMicros, status: "active" }));
     }
     if (path === "/api/pricing/preview") {
-      return ok({ resourceType: "workspace", packageId: PACKAGE_ID, currency: "USD", totalChargeUsdMicros: price() });
+      return ok({ resourceType: "workspace", packageId: PACKAGE_ID, currency: "USD", totalChargeUsdMicros: price(), ...pricingOverrides });
     }
     if (path === "/api/workspace-launches" && init.method === "POST") {
       state.commands += 1;
@@ -237,6 +238,52 @@ test("the command the entry issues carries the idempotency key the platform deri
     { createHTTP: () => http, login: () => ({ cookie: "session=declared", csrf: "declared-csrf" }) },
   );
   assert.deepEqual(issued, [IDEMPOTENCY_KEY]);
+});
+
+test("an unaffordable quote is reported with its number instead of thrown away", async () => {
+  // The operator's next question is the price itself: top up or buy something
+  // cheaper is their decision, and it cannot be made from an error code.
+  const platform = fakePlatform({ amountUsdMicros: "900000000", walletUsdMicros: "230538276" });
+  const result = await runDeployedPurchaseTransport(QUOTE_INPUT, ENVIRONMENT, transportDependencies(platform));
+  assert.equal(result.quote.amountUsdMicros, "900000000");
+  assert.equal(result.quote.walletUsdMicros, "230538276");
+  assert.equal(result.quote.fundable, false);
+  assert.equal(result.spent, false);
+  assert.equal(platform.state.commands, 0);
+});
+
+test("a quote that does not name the declared package is refused rather than reported", async () => {
+  // A price about something else is not a smaller decision, it is a different
+  // one, so there is no number to show and the caller is told nothing.
+  for (const pricingOverrides of [
+    { resourceType: "storage" },
+    { packageId: "basic" },
+    { currency: "CNY" },
+    { totalChargeUsdMicros: "0" },
+    { totalChargeUsdMicros: "-1" },
+    { totalChargeUsdMicros: "12.50" },
+  ]) {
+    const platform = fakePlatform({ pricingOverrides });
+    await assert.rejects(
+      () => runDeployedPurchaseTransport(QUOTE_INPUT, ENVIRONMENT, transportDependencies(platform)),
+      (error) => error.code === "deployed_purchase_quote_unavailable",
+      `${JSON.stringify(pricingOverrides)} must be refused`,
+    );
+    assert.equal(platform.state.commands, 0);
+  }
+});
+
+test("a purchase against an unaffordable quote is refused and issues no command", async () => {
+  const platform = fakePlatform({ amountUsdMicros: "900000000", walletUsdMicros: "230538276" });
+  await assert.rejects(
+    () => runDeployedPurchaseTransport(
+      { command: "purchase", outputPath: undefined, authorizedAmountUsdMicros: "900000000" },
+      ENVIRONMENT,
+      transportDependencies(platform),
+    ),
+    (error) => error.code === "deployed_purchase_wallet_cannot_fund",
+  );
+  assert.equal(platform.state.commands, 0, "a quote the wallet cannot fund must not be bought");
 });
 
 test("the purchase refuses a credential that is absent rather than defaulting one", async () => {
