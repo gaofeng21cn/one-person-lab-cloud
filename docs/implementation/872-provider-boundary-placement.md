@@ -196,7 +196,7 @@ Artifacts, uploaded by the Instance run:
 
 | Artifact | Contents | Retention | Consumer |
 | --- | --- | --- | --- |
-| `cloud-business-qualification` | `business-qualification.json` (the contract's receipt name), `product-source.json`, and `receipt.purchase.json` when the buyer reached a receipt | 30 days, matching today's Cloud upload (`.github/workflows/cloud-business-readback.yml:295`, `:304`) and the consumer's 720-hour window (`tools/cloud-release-evidence.ts:54`) | Cloud Release admission (§4) |
+| `cloud-business-qualification` | `business-qualification.json` (the contract's receipt name), `product-source.json`, and `business-qualification.purchase.json` when the buyer reached a receipt | 30 days, matching today's Cloud upload (`.github/workflows/cloud-business-readback.yml:295`, `:304`) and the consumer's 720-hour window (`tools/cloud-release-evidence.ts:54`) | Cloud Release admission (§4) |
 | `cloud-customer-readback-<run_id>-<run_attempt>` (after §6) | `receipt.json` | 30 days, matching today's Cloud upload (`.github/workflows/cloud-business-readback.yml:295`) | Cloud Release admission (§4) |
 
 The business artifact name and receipt file are not chosen here: they are the
@@ -206,14 +206,18 @@ the contract wins over the two conflicting writers. The customer-readback
 artifact name stays run-attempt-suffixed because the release workflow's resolver
 owns it (`.github/workflows/release-opl-cloud-image.yml:146`), not the contract.
 The artifact's file set is exact and conditional: `business-qualification.json`
-and `product-source.json` in both cases, plus `receipt.purchase.json` when the
-buyer reached a receipt. §4's `:533` assertion therefore accepts exactly
+and `product-source.json` in both cases, plus
+`business-qualification.purchase.json` when the buyer reached a receipt. The
+purchase sibling is derived from `--output` by `purchaseReceiptPath`
+(`tools/protected-business-qualification.ts:539-543`, called at `:651`), so
+naming the output `business-qualification.json` yields that sibling. §4's `:533`
+assertion therefore accepts exactly
 `{business-qualification.json, product-source.json}` or
-`{business-qualification.json, product-source.json, receipt.purchase.json}` and
-nothing else. The producer's `--output` names `business-qualification.json` in
-the artifact root, so the downloaded path is
-`evidence/business/business-qualification.json` for the consumer at
-`.github/workflows/release-opl-cloud-image.yml:524`.
+`{business-qualification.json, product-source.json,
+business-qualification.purchase.json}` and nothing else. The producer's
+`--output` names `business-qualification.json` in the artifact root, so the
+downloaded path is `evidence/business/business-qualification.json` for the
+consumer at `.github/workflows/release-opl-cloud-image.yml:524`.
 
 Instance receipt policy still applies: produced in the same run as the action,
 redacted, never overwritten (`opl-instance-medopl receipts/README.md:10-16`,
@@ -350,7 +354,8 @@ the contract's exact name and receipt file, and step 7 rewrites
 `docs/runtime/release.md`. The release workflow's "exactly one file" assertion
 (`.github/workflows/release-opl-cloud-image.yml:533`) becomes an exact file-set
 assertion: `business-qualification.json` and `product-source.json` always, plus
-`receipt.purchase.json` when the buyer reached a receipt, and nothing else (§2).
+`business-qualification.purchase.json` when the buyer reached a receipt, and
+nothing else (§2).
 
 The consumer change is not one binding. Option B does not make Cloud the
 deployment authority, but it changes at least five things:
@@ -721,8 +726,8 @@ declaration of account/package/authority class, and an external J0 READY receipt
 for the exact Candidate.
 Verification: the run's job labels, the artifact contents,
 `business-qualification.json` with `state: settled` and `reason: none`,
-`receipt.purchase.json`, and a Cloud release-evidence validation of the
-downloaded bytes. A blocked or failed receipt
+`business-qualification.purchase.json`, and a Cloud release-evidence validation
+of the downloaded bytes. A blocked or failed receipt
 is preserved and reported as such; it does not become a qualification claim.
 
 **Step 6 — Cloud and Instance: customer-reads harness and lane, then one authorized run.**
@@ -734,8 +739,8 @@ and `WORKFLOW` (`:12`) at `:96` and `:111`; `:166` takes the lane's workflow
 path instead of `WORKFLOW`; the receipt `schemaVersion` becomes 2 at `:26`,
 `:88` and `:168`; the CLI at `:242-245` accepts the producer-workflow option and
 replaces the fixed `args.length!==9` check. `tests/tools/cloud-business-readback.test.ts`
-— fixtures at `:18-20` name the Instance producer, and the negative matrix at
-`:86-88` gains the wrong-repository and wrong-workflow-path cases.
+— fixtures at `:18-20` move to the Instance producer, while the existing
+wrong-repository and wrong-workflow-path cases at `:86` still refuse it.
 Files (Instance): new `.github/workflows/cloud-customer-readback.yml` and its
 validator registrations, plus a workflow test.
 The workflow: Instance `main` guard, runner labels, `environment: production`,
@@ -745,7 +750,10 @@ Candidate and installation inputs the Cloud lane uses
 product checkout's `tools/cloud-business-readback.ts run` with
 `--producer-workflow .github/workflows/cloud-customer-readback.yml`, artifact
 upload `cloud-customer-readback-<run_id>-<run_attempt>` containing
-`receipt.json`, cleanup.
+`receipt.json`, cleanup. Ordering: the lane runs the product checkout's tool, so
+a Candidate built from a pre-step-6 product SHA fails at `:169`; the first
+Instance-produced `customer_reads` receipt requires a Candidate built after
+step 6 lands.
 Verification: `npm run verify:local:focused -- --base <verified-base> --test
 tests/tools/cloud-business-readback.test.ts`; then `npm run validate`
 (`opl-instance-medopl package.json:7`) and the new Instance workflow test, then
