@@ -115,13 +115,37 @@ sets the default for ordinary source maintenance:
    requirements. A revision change needs CI for the new revision and renewed
    verification or review wherever the changed inputs affect earlier evidence.
 
-[Pull Request CI](.github/workflows/pull-request-ci.yml) currently runs dependency
-review and `validate`; `validate` executes `npm run verify:local`. It does not run
-a PR-body governance job or invoke `check:pr-body`. Local results and review
-cannot replace that CI execution or authorize a merge, publication or Instance
-operation. The workflow file does not prove remote branch protection is configured.
-Candidate, Instance, money and resource evidence retains its existing owners and
-requirements.
+[Pull Request CI](.github/workflows/pull-request-ci.yml) runs dependency review
+alongside the `source`, `go` and two `browser` shards on independent runners.
+They select groups from the same exhaustive `npm run verify:local` step list;
+the ungrouped local command still executes every step. Browser shards partition
+the existing package-script file inventory through Node's test runner; they keep
+at most three concurrent files per runner and preserve each test's isolated
+fixtures.
+`source` also checks the changed development plan from the explicit PR base/head
+SHAs and checks committed whitespace. The existing `validate` check always
+aggregates every required job and fails on failure, cancellation or skipping.
+`dependency-review` retains its name and severity threshold. Remote branch
+protection must still be read back independently; preserving check names does
+not prove it is configured.
+
+On pushes to `main`, [Warm CI Caches](.github/workflows/warm-ci-caches.yml)
+prepares npm/pip and pinned generator caches, verifies generated contracts and
+runs the Go group to populate its
+module/build cache. Producer and PR consumers share the exact action inputs and
+cache keys. PR merge-ref caches cannot be restored by other PRs, so the trusted
+main run supplies the default-branch cache new PRs can read. This adds main-run
+compute and cache transfer/storage costs; it does not cache passing test results.
+An active main cache producer is allowed to finish during subsequent merges.
+Cache preparation is a separate workflow and does not report a PR source-gate
+result. Pull Request CI retains its PR-only trigger and existing cancellation
+policy. First-run cache reuse and speedups require actual GitHub readback after adoption,
+including a new PR's first run, a subsequent run and a dependency-change run.
+
+There is no PR-body governance job or `check:pr-body` invocation. Local results
+and review cannot replace current-revision CI or authorize a merge, publication
+or Instance operation. Candidate, Instance, money and resource evidence retains
+its existing owners and requirements.
 
 ## Scoped Host And Worker Entry
 
@@ -292,7 +316,7 @@ chain PASS prerequisite; source checks never authorize production effects.
 ## Development Plan Verification
 
 Ordinary exhaustive source checks do not compare the current migration task
-book with generated projections. The existing PR `validate` job uses its explicit
+book with generated projections. The PR `source` job uses its explicit
 base and head SHAs to select the dedicated development-plan freshness check for
 affected target-spec paths. Focused local selection uses the same scope classifier.
 Plan verification tests exercise isolated fresh and stale projections; they do
@@ -347,6 +371,21 @@ The exhaustive source gate remains available for CI or explicit local rehearsal:
 ```bash
 npm run verify:local
 ```
+
+The same step inventory can be executed by group for CI or targeted rehearsal:
+
+```bash
+npm run verify:local -- --group source
+npm run verify:local -- --group go
+npm run verify:local -- --group browser --shard 1/2
+npm run verify:local -- --group browser --shard 2/2
+```
+
+All groups are required for exhaustive evidence, and every browser shard must
+succeed. A single group or shard is not the full gate. Group selection cannot be
+combined with `--focused` or `--with-postgres`; `--shard` is valid only for the
+browser group. The full command and focused change-scope selection remain
+available independently.
 
 The exhaustive gate needs no database. It validates the product boundary, Node
 tests, Console typecheck/lint/build, the current Go module set and Git

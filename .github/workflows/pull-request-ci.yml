@@ -12,9 +12,14 @@ concurrency:
   group: pull-request-ci-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+env:
+  PROTOC_GEN_GO_VERSION: "1.36.6"
+  PROTOC_GEN_GO_GRPC_VERSION: "1.5.1"
+
 jobs:
   dependency_review:
     name: dependency-review
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -23,23 +28,21 @@ jobs:
         with:
           fail-on-severity: moderate
 
-  validate:
-    name: validate
+  source:
+    name: source
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    env:
-      # Single source of truth for the pinned contract generator versions: the
-      # same values key the binary cache and drive the install.
-      PROTOC_GEN_GO_VERSION: "1.36.6"
-      PROTOC_GEN_GO_GRPC_VERSION: "1.5.1"
     steps:
-      - name: Checkout
+      - &checkout
+        name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Set up Node 24
+      - &node
+        name: Set up Node 24
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
@@ -49,24 +52,18 @@ jobs:
         uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
         with:
           python-version: "3.12"
-          # The spec generators are only used by the plan and contract checks,
-          # but the exhaustive gate always needs them; the wheel cache keeps the
-          # install at pinned versions without paying the download each run.
           cache: "pip"
           cache-dependency-path: docs/spec/target/checks/requirements.txt
 
       - name: Install spec generator toolchain
-        run: |
-          python3 -m pip install -r docs/spec/target/checks/requirements.txt
+        run: python3 -m pip install -r docs/spec/target/checks/requirements.txt
 
-      - name: Set up Go
+      - &go
+        name: Set up Go
+        id: go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.x"
-          # The exhaustive gate compiles every module and runs nine database-free
-          # lanes, so a cold module and build cache is the largest avoidable cost
-          # in the critical path (Fabric alone compiled for 41s). The key covers
-          # every module's go.sum: any dependency change still invalidates it.
           cache: true
           cache-dependency-path: |
             apps/console-bff/go.sum
@@ -91,22 +88,19 @@ jobs:
           path: |
             ~/go/bin/protoc-gen-go
             ~/go/bin/protoc-gen-go-grpc
-          # Versioned key: a generator bump must produce a fresh install instead
-          # of reusing binaries the freshness check would reject.
-          key: ${{ runner.os }}-${{ runner.arch }}-contract-generators-protoc-gen-go-${{ env.PROTOC_GEN_GO_VERSION }}-protoc-gen-go-grpc-${{ env.PROTOC_GEN_GO_GRPC_VERSION }}
+          key: ${{ runner.os }}-${{ runner.arch }}-go-${{ steps.go.outputs.go-version }}-contract-generators-protoc-gen-go-${{ env.PROTOC_GEN_GO_VERSION }}-protoc-gen-go-grpc-${{ env.PROTOC_GEN_GO_GRPC_VERSION }}
 
       - name: Install contract generators
         run: |
           go_bin="$(go env GOPATH)/bin"
           if [ -x "$go_bin/protoc-gen-go" ] && [ -x "$go_bin/protoc-gen-go-grpc" ]; then
-            # Restored from the version-keyed cache above; the pinned versions
-            # are still the ones the contract freshness check requires.
             "$go_bin/protoc-gen-go" --version
             "$go_bin/protoc-gen-go-grpc" --version
           else
             go install "google.golang.org/protobuf/cmd/protoc-gen-go@v${PROTOC_GEN_GO_VERSION}"
             go install "google.golang.org/grpc/cmd/protoc-gen-go-grpc@v${PROTOC_GEN_GO_GRPC_VERSION}"
           fi
+          echo "$go_bin" >> "$GITHUB_PATH"
 
       - name: Install OS sandbox for scoped checks
         run: |
@@ -117,14 +111,12 @@ jobs:
           sudo sysctl -w kernel.unprivileged_userns_clone=1 || true
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
 
-      - name: Install dependencies
+      - &dependencies
+        name: Install dependencies
         run: npm ci --no-audit --no-fund
 
       - name: Validate source
-        run: |
-          go_bin="$(go env GOPATH)/bin"
-          echo "$go_bin" >> "$GITHUB_PATH"
-          PATH="$PATH:$go_bin" npm run verify:local
+        run: npm run verify:local -- --group source
 
       - name: Validate changed development plan
         env:
@@ -142,3 +134,53 @@ jobs:
 
       - name: Check diff whitespace
         run: git diff --check "origin/${{ github.base_ref }}...HEAD"
+
+  go:
+    name: go
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - *checkout
+      - *node
+      - *go
+      - *dependencies
+      - name: Validate Go
+        run: npm run verify:local -- --group go
+
+  browser:
+    name: browser (${{ matrix.shard }})
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/2", "2/2"]
+    steps:
+      - *checkout
+      - *node
+      - *dependencies
+      - name: Validate browser shard
+        run: npm run verify:local -- --group browser --shard "${{ matrix.shard }}"
+
+  validate:
+    name: validate
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    needs: [dependency_review, source, go, browser]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every validation job
+        env:
+          REQUIRED_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          node --input-type=module <<'NODE'
+          const results = JSON.parse(process.env.REQUIRED_RESULTS);
+          const required = ['dependency_review', 'source', 'go', 'browser'];
+          const unsuccessful = required.filter(name => results[name]?.result !== 'success');
+          if (unsuccessful.length > 0) {
+            console.error('Required validation jobs did not succeed:', unsuccessful);
+            process.exit(1);
+          }
+          NODE
