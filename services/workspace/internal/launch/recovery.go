@@ -110,14 +110,16 @@ var continuationActions = []api.AuthorizationActionEnum{
 // delete_workspace. A deletion accepted by one administrator therefore runs under
 // that administrator's own grant instead of the original order's. The surface
 // carries the contract-declared resource release (deleteAcceptedResources) and
-// deliberately excludes the launch's provisioning write, so a deletion can never
-// replay resource creation under its own grant.
+// the managed-key closeout (bindManagedSecret), and deliberately excludes the
+// launch's provisioning write, so a deletion can never replay resource creation
+// under its own grant.
 var deletionContinuationActions = []api.AuthorizationActionEnum{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RETIRERUNTIME,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REFUNDCONFIRMEDDELETION,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT,
 }
