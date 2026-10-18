@@ -8,7 +8,7 @@ it runs there, and what happens to the Cloud-hosted producer entry?
 State: decision record; no protected run, qualification receipt or Release is
 claimed
 Observed: 2026-10-18 at `fb4d885f` (`docs/provider-boundary-placement`, base
-`origin/main`)
+`origin/main`); Instance citations read at `6deabc5` (`origin/main`)
 
 This is the placement decision for the producer that
 [#872](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/872) requires.
@@ -16,17 +16,22 @@ It extends [Product release operations](../runtime/release.md#protected-cloud-bu
 and the [Instance business-path retirement inventory](./instance-business-retirement-inventory.md);
 it is not another architecture overview and it does not restate the receipt
 contract. It decides one thing: where the protected provider boundary executes.
-The Cloud side of the split — product, business assertions and the receipt
-schema — is unchanged by this document.
+The product, the business assertions and the receipt schema are unchanged by
+this document. What this placement changes on the Cloud side is the producer
+identity that Cloud already records in its distribution contract, the boundary
+validator that asserts it, and the Release consumer that reads it. §4 names the
+single owner of each and §7 schedules the edits; this document does not become a
+second writer for any of them.
 
 ## The Gap In Current Source
 
 The producer exists and is wired. The one module it loads at runtime does not
 exist in either repository.
 
-- The producer takes `--boundary` as a required option
-  (`tools/protected-business-qualification.ts:116-128`) and requires it to be an
-  **absolute** filesystem path (`:411`). A missing module is an external
+- The producer takes `--boundary` as a required option (listed in `RUN_OPTIONS`
+  at `tools/protected-business-qualification.ts:123`; its requiredness is
+  enforced at `:677-680`, `:683-685`) and requires it to be an **absolute**
+  filesystem path (`:411`). A missing module is an external
   prerequisite (`:410`, `:414-418`); a present module that cannot be loaded, does
   not export the factory or returns a malformed boundary is invalid
   (`:419-437`). The factory name is `createTencentTkeProviderBoundary`
@@ -77,12 +82,13 @@ workflow live in `gaofeng21cn/opl-instance-medopl`, execute on the existing
 `[self-hosted, tencent-cloud, opl-cloud, tke-vpc]` runner under the Instance
 `production` environment, and run the Cloud producer from an exact-SHA Cloud
 product checkout. Cloud keeps the producer source, the qualification contract,
-the assertion logic and the release consumer.
+the assertion logic, the distribution contract that records the producer
+identity, and the release consumer.
 
 | Option | Where the three operations execute | Concrete failure mode or custody problem | Verdict |
 | --- | --- | --- | --- |
 | A: public-HTTP-only boundary | GitHub-hosted runner in the Cloud repository | The owner-API transport and the customer login are reachable over public HTTPS, but `readProviderHealth` must read the provider's own channel (`tools/workspace-qualification-tencent-tke.ts:118-125`). A GitHub-hosted runner has no cluster access, so the operation either reads the business scope instead (a contract violation that lets provider readiness be inferred from the very purchase it is meant to check) or returns `unknown` forever (`:290-300`). Making it real means putting Instance cluster credentials or a private-network path into Cloud, which #872 forbids. It also keeps the customer credential inside a Cloud environment, i.e. the second copy that §5 rejects. | Rejected |
-| C: register the Instance runner into the Cloud repository | The same self-hosted host, but selected by a Cloud workflow | The host carries the Instance production kubeconfig and production Secrets (`opl-instance-medopl .github/workflows/deployment-verify.yml:227-246`). Registering it to Cloud lets Cloud-side workflow definitions — whose change, review and dispatch rules are Cloud's — execute with those credentials, so the Instance secret boundary becomes a function of Cloud repository permissions. It also bypasses every Instance-side control: Instance requires production workflows to run from its own `main` under its own `production` environment (`opl-instance-medopl AGENTS.md:19-22`), and its workflow validator enforces Instance checkout, product-SHA and environment bindings for workflows in that repository only (`tools/validate-workflow-boundary.mjs:371-480`). | Rejected |
+| C: register the Instance runner into the Cloud repository | The same self-hosted host, but selected by a Cloud workflow | The host carries the Instance production kubeconfig and production Secrets (`opl-instance-medopl .github/workflows/deployment-verify.yml:227-246`). Registering it to Cloud lets Cloud-side workflow definitions — whose change, review and dispatch rules are Cloud's — execute with those credentials, so the Instance secret boundary becomes a function of Cloud repository permissions. It also bypasses every Instance-side control: Instance requires production workflows to run from its own `main` under its own `production` environment (`opl-instance-medopl AGENTS.md:19-22`), and its workflow validator enforces Instance checkout, product-SHA and environment bindings for workflows in that repository only (`tools/validate-workflow-boundary.mjs:215-217`, `:371-480`). | Rejected |
 | B: Instance-authorized self-hosted runner | `[self-hosted, tencent-cloud, opl-cloud, tke-vpc]`, inside the Instance repository's own workflow | Provider access, credentials and the runner stay with their current owner; the Cloud producer runs unmodified from an exact product SHA. Cost: two repositories are involved in one evidence chain, so the receipt must carry a product binding that no longer follows from the run's `head_sha` (§4). | Chosen |
 
 Why Option B is not a duplicated implementation:
@@ -100,16 +106,28 @@ producer still derives the Candidate digest, validates the installation
 receipt/run, checks the owner origin, fixes the mutation scope and writes the
 receipt (`tools/protected-business-qualification.ts:552-669`).
 
+This placement does not move qualification ownership. `docs/decisions.md:62-78`
+(the 2026-10-15 decision) owns the durable split: Instance owns deployment,
+installation and its receipts; customer business operations and business
+qualification stay with Cloud's product owners, with separately authorized
+protected execution and exact-Candidate evidence. One sentence there —
+"Cloud's existing product owners and protected product execution" (`:65-66`) —
+can be read as naming the execution host. Option B changes only that host: the
+same Cloud-authored producer runs on the Instance-authorized runner, which is
+the only permitted path to the cluster (`AGENTS.md:302-309`). `docs/decisions.md`
+and `docs/architecture.md:186-193` remain the owners of that split; step 8
+amends their execution clause, and this document does not restate the decision.
+
 ## 2. Who Runs What
 
 | Thing | Host | Exact source and pattern |
 | --- | --- | --- |
 | Protected producer workflow | `gaofeng21cn/opl-instance-medopl`, new `.github/workflows/cloud-business-qualification.yml` | Same name the Cloud release consumer already pins (`tools/cloud-release-evidence.ts:42-47`); modeled on `bootstrap.yml` and `cloud-workspace-launch-readback.yml` |
-| Runner | `[self-hosted, tencent-cloud, opl-cloud, tke-vpc]` | `opl-instance-medopl .github/workflows/bootstrap.yml:21`, `cloud-workspace-launch-readback.yml:78` |
+| Runner | `[self-hosted, tencent-cloud, opl-cloud, tke-vpc]` | `opl-instance-medopl .github/workflows/bootstrap.yml:21`, `cloud-workspace-launch-readback.yml:66` |
 | Protected environment | Instance `production` | `bootstrap.yml:23`, `qualification-decision.yml:56` |
 | Boundary module | Instance `tools/tencent-tke-provider-boundary.mjs` | New; the only caller is the workflow above |
-| Instance-owned tooling | Instance `.opl-instance-checkouts/<run-id>-<attempt>-<job>/` | `bootstrap.yml:123-129`, `cloud-workspace-launch-readback.yml:107-113`; the validator requires this exact run-scoped path (`tools/validate-workflow-boundary.mjs:276-298`) |
-| Cloud producer, contract, adapter, buyer | Cloud at the exact product SHA in `.opl-checkouts/<run-id>-<attempt>-<job>/` | `bootstrap.yml:146-153`, `cloud-workspace-launch-readback.yml:130-137` |
+| Instance-owned tooling | Instance `.opl-instance-checkouts/<run-id>-<attempt>-<job>/` | `bootstrap.yml:123-129`, `cloud-workspace-launch-readback.yml:89-95`; the validator requires this exact run-scoped path (`tools/validate-workflow-boundary.mjs:276-298`) |
+| Cloud producer, contract, adapter, buyer | Cloud at the exact product SHA in `.opl-checkouts/<run-id>-<attempt>-<job>/` | `bootstrap.yml:146-153`, `cloud-workspace-launch-readback.yml:112-119` |
 | Release consumer, receipt validator, docs | Cloud | `docs/runtime/release.md`, `tools/cloud-release-evidence.ts`, `docs/roadmap.md:130` |
 
 Product pinning and re-verification, reusing what exists (no new mechanism):
@@ -117,14 +135,20 @@ Product pinning and re-verification, reusing what exists (no new mechanism):
 1. The dispatch carries the neutral Candidate receipt as base64. The Instance
    tool `tools/candidate-receipt-envelope.mjs admit --receipt-base64-env
    OPL_CANDIDATE_RECEIPT_B64 --output ... --github-env "$GITHUB_ENV"
-   --github-output "$GITHUB_OUTPUT"` (`cloud-workspace-launch-readback.yml:120-128`)
+   --github-output "$GITHUB_OUTPUT"` (`cloud-workspace-launch-readback.yml:102-110`)
    yields `product_sha` and `product_tree`.
 2. The product is checked out by that SHA only: `repository:
    gaofeng21cn/one-person-lab-cloud`, `ref: ${{ steps.candidate.outputs.product_sha }}`,
    `fetch-depth: 1`, `persist-credentials: false`
-   (`cloud-workspace-launch-readback.yml:130-137`). The Instance validator
-   requires exactly this at `tools/validate-workflow-boundary.mjs:444-446` and
-   requires a following "Verify product revision" step (`:331-369`).
+   (`cloud-workspace-launch-readback.yml:112-119`). The Instance validator
+   requires the exact product repository (`tools/validate-workflow-boundary.mjs:433-435`)
+   and the exact Candidate ref with `fetch-depth: 1` (`:444-446`), and requires a
+   following "Verify product revision" step (`:331-369`). It enforces
+   `persist-credentials: false` only for `workspace-image-rollout.yml`'s
+   qualification job (`:436-443`); for every other lane that setting is a
+   convention copied from the existing workflows
+   (`cloud-workspace-launch-readback.yml:118`, `bootstrap.yml:152`), not a
+   validator rule.
 3. The revision is proven, not assumed: `tools/exact-product-source.mjs
    --product-sha "$OPL_PRODUCT_SHA" --expected-product-tree "$OPL_PRODUCT_TREE"
    --evidence ...` pins `git rev-parse HEAD` and the tree
@@ -142,17 +166,18 @@ Product pinning and re-verification, reusing what exists (no new mechanism):
    `${{ github.workspace }}/.opl-instance-checkouts/<run-id>-<attempt>-<job>/tools/tencent-tke-provider-boundary.mjs`.
    The producer re-derives the Candidate digest from the bytes and refuses a
    mismatched declaration (`tools/protected-business-qualification.ts:263-277`).
-6. The installation evidence is the Instance's own receipt: download the
+6. The installation evidence is the Instance's own receipt: the run uploads the
    `opl-cloud-deployment-verification-<installation_run_id>` artifact
-   (`opl-instance-medopl .github/workflows/deployment-verify.yml:455-472`) and
-   the same run's JSON from `gh api repos/$GITHUB_REPOSITORY/actions/runs/<id>`.
+   (`opl-instance-medopl .github/workflows/deployment-verify.yml:464-472`), and
+   the protected lane downloads it plus the same run's JSON from
+   `gh api repos/$GITHUB_REPOSITORY/actions/runs/<id>`.
    The producer binds both to the Candidate through the existing validator
    (`tools/protected-business-qualification.ts:311-330`;
    `tools/cloud-business-readback.ts:65-75`).
 
 The protected inputs move with the lane and are renamed at the step boundary,
 not copied: `vars.OPL_CONSOLE_DOMAIN` (already an Instance variable,
-`cloud-workspace-launch-readback.yml:83`) supplies the owner origin, and the
+`cloud-workspace-launch-readback.yml:71`) supplies the owner origin, and the
 designated customer credential is aliased from the Instance's single Secret
 owner (§5). The J0 READY receipt stays a declared dispatch input materialized to
 a mode-0600 file under `$RUNNER_TEMP`
@@ -163,15 +188,26 @@ Artifacts, uploaded by the Instance run:
 
 | Artifact | Contents | Retention | Consumer |
 | --- | --- | --- | --- |
-| `cloud-business-qualification-<run_id>-<run_attempt>` | `receipt.json`, `receipt.purchase.json` when the buyer reached a receipt, `product-source.json` | 90 days, matching other Instance lanes (`cloud-workspace-launch-readback.yml:182-189`, `deployment-verify.yml:455-472`) | Cloud Release admission (§4) |
-| `cloud-customer-readback-<run_id>-<run_attempt>` (after §6) | `receipt.json` | 90 days | Cloud Release admission |
+| `cloud-business-qualification` | `business-qualification.json` (the contract's receipt name), `product-source.json`, and `receipt.purchase.json` when the buyer reached a receipt | 30 days, matching today's Cloud upload (`.github/workflows/cloud-business-readback.yml:295`, `:304`) and the consumer's 720-hour window (`tools/cloud-release-evidence.ts:54`) | Cloud Release admission (§4) |
+| `cloud-customer-readback-<run_id>-<run_attempt>` (after §6) | `receipt.json` | 30 days, matching today's Cloud upload (`.github/workflows/cloud-business-readback.yml:295`) | Cloud Release admission (§4) |
+
+The business artifact name and receipt file are not chosen here: they are the
+`cloudBusinessQualification` values in
+`packages/contracts/opl-cloud-distribution-contract.json:83-99`, and §4 says why
+the contract wins over the two conflicting writers. The customer-readback
+artifact name stays run-attempt-suffixed because the release workflow's resolver
+owns it (`.github/workflows/release-opl-cloud-image.yml:146`), not the contract.
+The producer's `--output` names `business-qualification.json` in the artifact
+root, with its `receipt.purchase.json` sibling and `product-source.json` beside
+it, so the downloaded path is `evidence/business/business-qualification.json`
+for the consumer at `.github/workflows/release-opl-cloud-image.yml:524`.
 
 Instance receipt policy still applies: produced in the same run as the action,
 redacted, never overwritten (`opl-instance-medopl receipts/README.md:10-16`,
 `:28-31`). Neither repository stores the transient evidence directories; the run
 deletes them at the end, as both current lanes do
 (`.github/workflows/cloud-business-readback.yml:306-317`,
-`cloud-workspace-launch-readback.yml:191-204`).
+`cloud-workspace-launch-readback.yml:179-203`).
 
 ## 3. The Boundary Module Contract
 
@@ -272,24 +308,83 @@ What proves the receipt came from that runner and that product SHA:
 | Receipt integrity: the producer's `receiptDigest` over the exact emitted bytes, and the consumer's digest over the exact downloaded bytes | `tools/protected-business-qualification.ts:662`; `tools/cloud-release-evidence.ts:194-200` |
 | Currency: `settled` with `reason: "none"`, within the 720-hour window, no future timestamp | `tools/cloud-release-evidence.ts:159-161`, `:186-192` |
 
-The product binding is the one real change this placement forces on the consumer.
-Today `validateReleaseBusinessQualification` requires
-`run.head_sha === identity.productSha`
-(`tools/cloud-release-evidence.ts:182`) and the release workflow pins the run to
-the Cloud repository and workflow path (`.github/workflows/release-opl-cloud-image.yml:150`).
-An Instance-hosted run's `head_sha` is the Instance commit, so that equality can
-never hold again; it must be replaced by the `product-source.json` binding above,
-checked from the same artifact and same run, while `run.head_sha` is required
-only to be a 40-hex Instance `main` commit. Keeping `head_sha === productSha`
-"for safety" would make every future production run fail, and dropping the
-product binding entirely would let a run that checked out a different product SHA
-emit an admissible receipt.
+The producer identity already has one machine-readable owner, and this placement
+does not get a second one. `packages/contracts/opl-cloud-distribution-contract.json`
+`distribution.publication.cloudBusinessQualification` (`:83-99`) owns the
+producer's `owner`, `workflow`, `environment`, `artifact` and `receipt`;
+`tools/validate-product-boundary.mjs:265-275` asserts that block and
+`tests/contracts/product-distribution.test.ts:107-117` repeats the same values.
+`tools/cloud-release-evidence.ts:42-47` mirrors the workflow, artifact and
+receipt names in the consumer. Under Option B only two fields move: `owner`
+becomes `gaofeng21cn/opl-instance-medopl` and `environment` becomes `production`.
+The workflow path, the artifact `cloud-business-qualification` and the receipt
+`business-qualification.json` stay, because they describe the evidence, not the
+host. That edit is a contract revision, so `schemaVersion`
+(`packages/contracts/opl-cloud-distribution-contract.json:2`, asserted at
+`tools/validate-product-boundary.mjs:236` and
+`tests/contracts/product-distribution.test.ts:96`) is bumped with it.
+
+Which name wins: the contract wins. The artifact is exactly
+`cloud-business-qualification` and the receipt file is exactly
+`business-qualification.json`. Today the Cloud producer uploads
+`cloud-business-qualification-<run_id>-<run_attempt>` containing `receipt.json`
+(`.github/workflows/cloud-business-readback.yml:301-302`), and
+`docs/runtime/release.md:197-199` documents that name, while the Release
+consumer already requires the contract names
+(`.github/workflows/release-opl-cloud-image.yml:159`, `:274`, `:524`). The
+producer and the release page are the stale writers: the Instance lane uploads
+the contract's exact name and receipt file, and step 7 rewrites
+`docs/runtime/release.md`. The release workflow's "exactly one file" assertion
+(`.github/workflows/release-opl-cloud-image.yml:533`) becomes an exact file-set
+assertion, because `product-source.json` now travels in the same artifact as the
+receipt.
+
+The consumer change is not one binding. Option B does not make Cloud the
+deployment authority, but it changes at least five things:
+
+- The producer identity in the distribution contract, its validator assertion
+  and its contract test, described above.
+- The producer run and artifact resolution in the release workflow: today it
+  reads `business-run.json` and `business-artifacts.json` from
+  `$PRODUCT_REPOSITORY` with `$CLOUD_TOKEN`
+  (`.github/workflows/release-opl-cloud-image.yml:110`, `:166`) and validates the
+  run against that repository (`:150`); both must read from
+  `$INSTANCE_REPOSITORY` with `$INSTANCE_TOKEN`.
+- The business download step: today it has no `repository` and uses
+  `${{ github.token }}` (`:271-277`); it must use the Instance repository and
+  `${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}`, exactly as the three Instance
+  downloads already do (`:279-304`).
+- The artifact and receipt names: the Instance lane must upload the contract's
+  names, and the current producer upload and the release page are corrected or
+  retired.
+- The product binding in `tools/cloud-release-evidence.ts`:
+  `validateReleaseBusinessQualification` requires
+  `run.head_sha === identity.productSha` (`:182`), which can never hold for an
+  Instance-hosted run because that `head_sha` is the Instance `main` commit. It
+  is replaced by the `product-source.json` binding above, checked from the same
+  artifact and same run, while `run.head_sha` is required only to be a 40-hex
+  Instance `main` commit. Keeping the equality "for safety" would make every
+  future production run fail; dropping the product binding entirely would let a
+  run that checked out a different product SHA emit an admissible receipt.
+
+`tools/validate-product-boundary.mjs` is the gate that makes the second, third
+and fourth items executable. It requires the release `evidence` step to contain
+`actions/runs/$CLOUD_BUSINESS_QUALIFICATION_RUN_ID`, `business-run.json`,
+`".github/workflows/cloud-business-qualification.yml"`,
+`business_artifact="cloud-business-qualification"` and the matching
+`require_artifact` line (`:72-80`), and requires the business download step to
+have `name: cloud-business-qualification`, `path: evidence/business`,
+`run-id: ${{ inputs.cloud_business_qualification_run_id }}`,
+`repository === undefined` and `github-token === ${{ github.token }}`
+(`:81-89`). The name and receipt assertions stay; the repository and token
+assertions invert. Step 4 schedules all of this as one reviewable change.
 
 How Cloud consumes it without becoming the deployment authority: the Release
 admission downloads the artifact by run ID from the Instance repository with
 `OPL_INSTANCE_EVIDENCE_TOKEN` and validates it
-(`.github/workflows/release-opl-cloud-image.yml:269-277` is the existing download
-pattern; `:280-305` already downloads Instance evidence this way). Cloud never
+(`.github/workflows/release-opl-cloud-image.yml:271-277` is the business download
+step that gains that repository and token; `:279-304` already downloads the
+three Instance evidence classes this way). Cloud never
 dispatches `deployment-verify.yml`, never holds the kubeconfig, and never calls a
 provider operation. The release promotes bytes that were qualified; it does not
 qualify them (`docs/runtime/release.md:139-210`).
@@ -341,6 +436,15 @@ Three facts make that the only consistent answer.
    Secrets do not exist yet (`docs/status.md:56`). This decision exists so the
    copy is never created.
 
+One decision, not an open question: the qualification purchase spends the
+designated MVP customer account's real money, and the owner has approved that
+spend. The single-owner custody model above is what makes the charge
+attributable to the account the acceptance lanes already read; it does not make
+the spend unbounded. The purchase stays inside `PROTECTED_QUALIFICATION_SCOPE`
+(`tools/protected-business-qualification.ts:94-100`), and §7 step 5 still
+requires the Instance `production` approval, the Cloud product owner's
+declaration and an external J0 READY receipt for the exact Candidate.
+
 Consequently:
 
 - The Instance lane aliases the single owner into the producer's expected names
@@ -359,7 +463,8 @@ Consequently:
   wallet and its own rotation), and it would make the qualified purchase belong
   to an account other than the designated acceptance customer whose Workspace
   the Instance lanes already read
-  (`opl-instance-medopl docs/runtime/workspace-qualification.md:8-12`). It buys
+  (`opl-instance-medopl .github/workflows/package-build-delivery-readback.yml:51-54`,
+  `docs/runtime/operator-workflows.md:123-124`). It buys
   no custody separation that §5's chosen model lacks.
 
 What Cloud still needs under Option B, and what it no longer needs:
@@ -418,12 +523,12 @@ What replaces each part:
 | Customer product reads (`:193-206`) | Instance workflow `cloud-customer-readback.yml` (step 6), same `tools/cloud-business-readback.ts` executed from the product checkout |
 | Declaration materialization and producer run (`:208-286`) | Same steps in the Instance workflow, with `--boundary` naming the Instance module |
 | Artifact uploads (`:288-304`) | Instance artifact uploads (§2) |
-| Private-input cleanup (`:306-317`) | The Instance cleanup pattern (`cloud-workspace-launch-readback.yml:191-204`) |
+| Private-input cleanup (`:306-317`) | The Instance cleanup pattern (`cloud-workspace-launch-readback.yml:179-203`) |
 
 The file is not deleted before both replacements have run for a real Candidate:
 today nothing else produces the `customer_reads` receipt, and the Release
 consumer requires a successful `cloud-business-readback.yml` run on `main`
-(`.github/workflows/release-opl-cloud-image.yml:143`, `:146-177`).
+(`.github/workflows/release-opl-cloud-image.yml:142-147`, `:177`).
 
 ## 7. Ordered Implementation Plan
 
@@ -434,10 +539,11 @@ owner-authorized.
 **Step 1 — Record the decision (Cloud, docs only).**
 Files: `docs/implementation/872-provider-boundary-placement.md` (this document).
 Verification: the diff selects no behavior targets, so no test evidence is
-claimed; every `path:line` citation is checked against the file it names at the
-observed revision. Authorization: none. The `docs/README.md` index line
-lands in step 8, with the state change, so the index never points at a decision
-that is not yet current.
+claimed; every `path:line` citation in this document was opened and checked
+against the file and line it names at the observed revisions (Cloud
+`fb4d885f`, Instance `6deabc5`). Authorization: none. The `docs/README.md` index
+line lands in step 8, with the state change, so the index never points at a
+decision that is not yet current.
 
 **Step 2 — Instance: boundary module and producer lane (no dispatch).**
 Repository: `gaofeng21cn/opl-instance-medopl`.
@@ -445,16 +551,21 @@ Files: new `.github/workflows/cloud-business-qualification.yml`; new
 `tools/tencent-tke-provider-boundary.mjs`; `tools/validate-workflow-boundary.mjs`
 (register the file in `scenarioWorkflowFiles:6-13`, its exact inputs in
 `dispatchInputsByFile:58-99`, and the module in `instanceToolNames:100-153`);
-new `tests/cloud-business-qualification-workflow.test.mjs`; new
-`tests/tencent-tke-provider-boundary.test.mjs`.
+`tests/designated-customer-credential-owner.test.mjs` (add the new lane to
+`CUSTOMER_SESSION_LANES`, `:18-21`; the duplicate-name guard at `:17` only
+forbids `OPL_SPECIAL_CHAIN_ACCOUNT_*`, so a new `OPL_QUALIFICATION_*` alias would
+otherwise be unpoliced); new `tests/cloud-business-qualification-workflow.test.mjs`;
+new `tests/tencent-tke-provider-boundary.test.mjs`.
 The workflow: Instance `main` guard, `[self-hosted, tencent-cloud, opl-cloud,
 tke-vpc]`, `environment: production`, `confirmation` input, run-scoped Instance
 and product checkouts, Candidate admission, `exact-product-source.mjs`,
 `cloud-candidate-receipt.ts validate`/`export-env`, `deployment-verify.yml`
-artifact download, declaration materialization, producer run, artifact upload,
-cleanup. The module: the three operations over the prepared kubeconfig and the
-owner origin, no imports from the Cloud checkout.
-Verification: `npm run validate` (`package.json`: profile plus
+artifact download, declaration materialization, producer run that writes
+`business-qualification.json`, artifact upload under the contract's exact
+`cloud-business-qualification` name, cleanup. The module: the three operations
+over the prepared kubeconfig and the owner origin, no imports from the Cloud
+checkout.
+Verification: `npm run validate` (`package.json:7`: profile plus
 `validate-workflow-boundary.mjs`) and `node --test
 tests/cloud-business-qualification-workflow.test.mjs
 tests/tencent-tke-provider-boundary.test.mjs`; the workflow test asserts the
@@ -481,20 +592,35 @@ J0 and boundary cases (`tests/tools/protected-business-qualification.test.ts:403
 Authorization: none; Cloud product-owner review because a prerequisite contract
 changes.
 
-**Step 4 — Cloud: release consumer accepts the Instance-hosted producer.**
+**Step 4 — Cloud: contract, gate and release consumer accept the Instance producer.**
 Repository: `gaofeng21cn/one-person-lab-cloud`.
-Files: `tools/cloud-release-evidence.ts` (producer `repository` becomes the
-Instance repository at `:42-47`; replace `run.head_sha === identity.productSha`
-at `:182` with the `product-source.json` product binding plus a 40-hex Instance
-`main` `head_sha`; keep the workflow path, terminal state and freshness rules),
-`tests/tools/cloud-release-evidence.test.ts`,
-`tests/tools/cloud-release-installation.test.ts` if it shares fixtures,
-`.github/workflows/release-opl-cloud-image.yml` (`:92` run-id validation, `:150`
-repository and path, `:269-277` download from the Instance repository).
-Verification: focused tests, including a negative case that a run in the Cloud
-repository with the same workflow path is refused, and a negative case that a
-receipt without `product-source.json` is refused. Authorization: none for
-source; release-owner review because this is a production gate.
+Files: `packages/contracts/opl-cloud-distribution-contract.json`
+(`cloudBusinessQualification` at `:83-99`: `owner` becomes the Instance
+repository and `environment` becomes `production`; `schemaVersion` at `:2`;
+`artifact` and `receipt` stay), `tools/validate-product-boundary.mjs` (the
+`cloudBusinessQualification` assertion at `:265-275`, the `schemaVersion`
+assertion at `:236`, and the release evidence and download assertions at
+`:72-89`, which must resolve the run and artifact from the Instance repository
+and token), `tests/contracts/product-distribution.test.ts` (`:96`, `:107-117`),
+`tools/cloud-release-evidence.ts` (producer `repository` becomes the Instance
+repository at `:42-47`; replace `run.head_sha === identity.productSha` at `:182`
+with the `product-source.json` product binding plus a 40-hex Instance `main`
+`head_sha`; keep the workflow path, terminal state and freshness rules),
+`.github/workflows/release-opl-cloud-image.yml` (`:110` and `:166` resolve the
+business run and artifacts from `$INSTANCE_REPOSITORY` with `$INSTANCE_TOKEN`,
+`:150` validates the run against that repository, `:271-277` gains the Instance
+`repository` and `github-token`, `:524` keeps reading
+`business-qualification.json`, and `:533` becomes the exact file-set assertion
+that admits `product-source.json`), `tests/tools/cloud-release-evidence.test.ts`,
+`tests/tools/cloud-release-installation.test.ts` if it shares fixtures.
+Verification: `npm run verify:local:focused -- --base <verified-base> --test
+tests/contracts/product-distribution.test.ts --test
+tests/tools/cloud-release-evidence.test.ts --test
+tests/tools/cloud-release-installation.test.ts`, including a negative case that
+a run in the Cloud repository with the same workflow path is refused, and a
+negative case that a receipt without `product-source.json` is refused.
+Authorization: none for source; release-owner review because this is a
+production gate.
 
 **Step 5 — Owner-authorized: first protected qualification run.**
 Repository: `gaofeng21cn/opl-instance-medopl` (dispatch only, no new files).
@@ -503,9 +629,10 @@ Authorization: **required** — this performs one real Workspace purchase
 needs the Instance `production` environment approval, the Cloud product owner's
 declaration of account/package/authority class, and an external J0 READY receipt
 for the exact Candidate.
-Verification: the run's job labels, the artifact contents, `receipt.json` with
-`state: settled` and `reason: none`, `receipt.purchase.json`, and a Cloud
-release-evidence validation of the downloaded bytes. A blocked or failed receipt
+Verification: the run's job labels, the artifact contents,
+`business-qualification.json` with `state: settled` and `reason: none`,
+`receipt.purchase.json`, and a Cloud release-evidence validation of the
+downloaded bytes. A blocked or failed receipt
 is preserved and reported as such; it does not become a qualification claim.
 
 **Step 6 — Instance: customer-reads lane (no dispatch), then one authorized run.**
@@ -514,16 +641,24 @@ Files: new `.github/workflows/cloud-customer-readback.yml` and its validator
 registrations, plus a workflow test.
 Verification: `npm run validate` and the new workflow test; then one
 owner-authorized run producing `customer_reads_verified` or an explicit
-`blocked` receipt.
+`blocked` receipt. Authorization: none for the workflow source; **required**
+for that one run, because it authenticates as the designated customer in the
+Instance `production` environment and writes a `customer_reads` receipt.
 
 **Step 7 — Cloud: retire `cloud-business-readback.yml` (owner-authorized).**
 Repository: `gaofeng21cn/one-person-lab-cloud`.
 Files: delete `.github/workflows/cloud-business-readback.yml`;
-`.github/workflows/release-opl-cloud-image.yml:26`, `:78-79`, `:142-147`, `:269`
-re-pointed to the Instance runs; `docs/runtime/release.md:108-210` rewritten
-so the credential paragraph no longer names Cloud-held customer Secrets;
-`tools/cloud-business-readback.ts` stays in Cloud and is executed from the
-product checkout by step 6's lane.
+`.github/workflows/release-opl-cloud-image.yml:26`, `:78-79`, `:142-147`,
+`:263-269` re-pointed to the Instance run and repository;
+`packages/contracts/opl-cloud-distribution-contract.json` `customerReadback`
+(`:131-139`) re-pointed to the Instance lane, with the contract `schemaVersion`
+bumped and `tools/validate-product-boundary.mjs` (`allowedWorkflows` at `:6-17`,
+which still lists the retired file at `:10`; the `customerReadback` assertions at
+`:282-288`) and `tests/contracts/product-distribution.test.ts` updated with it;
+`docs/runtime/release.md:108-210` rewritten so the credential paragraph no
+longer names Cloud-held customer Secrets and the artifact and receipt names are
+the contract's; `tools/cloud-business-readback.ts` stays in Cloud and is
+executed from the product checkout by step 6's lane.
 Authorization: **required** — it removes a protected surface and changes release
 inputs; both repository owners must approve.
 Verification: focused consumer tests; after a successful step 5 and step 6 run,
@@ -535,8 +670,12 @@ second copy.
 
 **Step 8 — Closeout documentation.**
 Repositories: both.
-Files: `docs/status.md`, `docs/roadmap.md:130`,
-`docs/runtime/release.md`, `docs/README.md:101-106` (index line),
+Files: `docs/decisions.md:62-78` (the 2026-10-15 decision paragraph, whose
+execution clause names the Instance-authorized runner while Cloud keeps
+qualification ownership), `docs/architecture.md:186-193` (same split; its
+ownership sentence stays and its execution clause names the host),
+`docs/status.md`, `docs/roadmap.md:130`, `docs/runtime/release.md`,
+`docs/README.md:101-106` (index line),
 `opl-instance-medopl docs/runtime/workspace-qualification.md`,
 `opl-instance-medopl receipts/` if an admitted receipt is committed.
 Verification: documentation checks; the #872 outcome is updated only for the
@@ -555,30 +694,23 @@ retained.
 2. **Who may dispatch the lane.** The Cloud gate admits the Cloud repository
    owner or `RenDeHuang` with actor equal to triggering actor
    (`.github/workflows/cloud-business-readback.yml:48`); some Instance lanes are
-   narrower (`cloud-workspace-launch-readback.yml:77` admits only
+   narrower (`cloud-workspace-launch-readback.yml:65` admits only
    `RenDeHuang`). One allowlist must be named for a lane that spends customer
    money, and the design needs to know whether the Cloud product owner's
    declaration is sufficient or a second Instance-side approval is required.
-3. **Whether the qualification purchase may run on the designated MVP customer's
-   real wallet.** §5 selects the single credential owner because it is the only
-   account already stored in the Instance environment, but that makes the
-   qualification a real charge on the designated acceptance customer's balance.
-   If the owner requires a separate funded account instead, it becomes a second
-   designated customer with its own Secret pair in the Instance `production`
-   environment, and §5's credential table changes accordingly.
-4. **The J0 READY producer.** No repository produces it; both the current
+3. **The J0 READY producer.** No repository produces it; both the current
    workflow and this design require an external receipt for the exact Candidate
    (`.github/workflows/cloud-business-readback.yml:38-41`, `:250-259`;
    `docs/runtime/release.md:183-185`). Who runs it, where its mode-0600 file is
    produced, and how its dispatch value is authorized is still open.
-5. **Least privilege between the Cloud producer process and the kubeconfig.**
+4. **Least privilege between the Cloud producer process and the kubeconfig.**
    In Option B one job both runs the Cloud producer and holds a prepared
    kubeconfig. The current lanes already reduce the exposure (a temp directory,
    mode 0600, exported only into the steps that need it,
    `deployment-verify.yml:227-246`), but the owner should decide whether the
    boundary must run in a separate step or job whose environment alone carries
    the kubeconfig, and whether the producer step's environment must exclude it.
-6. **Whether a settled receipt is also committed to
+5. **Whether a settled receipt is also committed to
    `opl-instance-medopl/receipts/`.** Instance policy allows admitted redacted
    repository evidence (`receipts/README.md:10-16`) and the qualification receipt
    contains no credential, Key, customer identifier, origin, cluster or namespace
