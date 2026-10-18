@@ -90,6 +90,14 @@ func (s *managedKeyIssuerStub) RevokeWorkspaceKey(context.Context, string, strin
 	return nil
 }
 
+func (s *managedKeyIssuerStub) SetWorkspaceKeyState(context.Context, string, string, identity.ManagedKeyExternalState) error {
+	return status.Error(codes.Unimplemented, "no approved Sub2API service key disable/enable endpoint is configured")
+}
+
+func (s *managedKeyIssuerStub) ReadWorkspaceKeyState(context.Context, string, string) (identity.ManagedKeyExternalState, error) {
+	return "", status.Error(codes.Unimplemented, "no approved Sub2API service key-state readback endpoint is configured")
+}
+
 func (s *managedKeyIssuerStub) issued() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
