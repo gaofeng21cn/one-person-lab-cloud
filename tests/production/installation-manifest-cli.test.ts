@@ -268,12 +268,6 @@ test("installation CLI names the cause of a rejected live endpoint proof", async
     assert.deepEqual(result.report.errors, []);
   });
   const cases: [string, string, (fixture: ReturnType<typeof withLiveWorkspaceBackends>) => void][] = [
-    ["Service publishes no ready address", "endpoint_no_ready_address", ({ endpoints }) => { endpoints.subsets = []; }],
-    ["Service leaves not-ready addresses unpublished", "endpoint_no_ready_address", ({ endpoints }) => {
-      const entry = endpoints.subsets[0].addresses[0];
-      endpoints.subsets[0].addresses = [];
-      endpoints.subsets[0].notReadyAddresses = [entry];
-    }],
     ["endpoint names a Pod absent from the live read", "endpoint_pod_absent", ({ endpoints }) => {
       endpoints.subsets[0].addresses[0].targetRef.uid = "replaced-pod";
     }],
@@ -512,73 +506,165 @@ test("installation CLI binds live init identity and canonical projected ServiceA
   assert.deepEqual(forgedResult.report.communication.edges, []);
 });
 
-test("installation CLI rejects unserviceable supplied live endpoints", async () => {
-  for (const change of [
-    (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.slice.endpoints[0].conditions = { ready: false }; },
-    (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.slice.endpoints[0].conditions = { serving: false }; },
-    (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.slice.endpoints[0].conditions = { ready: true, serving: true, terminating: true }; },
-    (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.endpoints.subsets[0].notReadyAddresses = live.endpoints.subsets[0].addresses; delete live.endpoints.subsets[0].addresses; },
-  ]) {
+// An endpoint object that publishes no address cannot deliver traffic to any
+// Pod, so it cannot hand the Service to another workload and it proves nothing
+// about the target Deployment. Refusing the Deploy that would create those
+// addresses made an unhealthy Service permanently unrepairable, so every
+// "publishes nothing" shape is admitted. The selector-based ownership proof is
+// unchanged and still fails closed; see "still refuses an address set it cannot
+// prove" below.
+test("installation CLI admits a Service that publishes no address", async t => {
+  const shapes: [string, (live: ReturnType<typeof withLiveWorkspaceBackends>) => void][] = [
+    ["empty Endpoints subsets", live => { live.endpoints.subsets = []; }],
+    ["absent Endpoints subsets", live => { delete live.endpoints.subsets; }],
+    ["subset with addresses: []", live => { live.endpoints.subsets[0].addresses = []; }],
+    ["only not-ready addresses without publishNotReadyAddresses", live => {
+      live.endpoints.subsets[0].notReadyAddresses = live.endpoints.subsets[0].addresses;
+      delete live.endpoints.subsets[0].addresses;
+    }],
+    ["empty EndpointSlice endpoints", live => { live.slice.endpoints = []; }],
+    ["absent EndpointSlice endpoints", live => { delete live.slice.endpoints; }],
+    ["EndpointSlice with no serviceable endpoint", live => { live.slice.endpoints[0].conditions = { ready: false }; }],
+    ["unserviceable EndpointSlice conditions", live => {
+      live.list.items = live.list.items.filter(item => item !== live.endpoints);
+      live.slice.endpoints = [
+        { addresses: ["2001:db8::1"], targetRef: live.slice.endpoints[0].targetRef, conditions: { serving: false } },
+        { addresses: ["2001:db8::1"], targetRef: live.slice.endpoints[0].targetRef, conditions: { ready: true, serving: true, terminating: true } }
+      ];
+    }],
+    ["both endpoint objects empty", live => {
+      live.endpoints.subsets = [];
+      live.slice.endpoints = [];
+    }],
+    ["an empty subset before a publishing subset", live => {
+      live.endpoints.subsets.unshift({ ports: [{ name: "rpc", port: 8184 }] });
+    }]
+  ];
+  for (const [name, change] of shapes) await t.test(name, async () => {
     const live = withLiveWorkspaceBackends();
     change(live);
-    assert.equal((await invoke(live.list)).status, 1);
-  }
-  const mixed = withLiveWorkspaceBackends();
-  mixed.list.items = mixed.list.items.filter(item => item !== mixed.endpoints);
-  mixed.slice.endpoints.push({ addresses: ["2001:db8::1"], targetRef: mixed.slice.endpoints[0].targetRef, conditions: { ready: false } });
-  const mixedResult = await invoke(mixed.list);
-  assert.equal(mixedResult.status, 0);
-  assert.ok(mixedResult.report.communication.edges.some(edge => edge.target === "workspace"));
+    const result = await invoke(live.list);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(result.report.ok, true);
+    assert.deepEqual(result.report.errors, []);
+    assert.equal(result.report.communication.edges.length, 46);
+  });
 
-  const malformedSlice = withLiveWorkspaceBackends();
-  malformedSlice.list.items = malformedSlice.list.items.filter(item => item !== malformedSlice.endpoints);
-  malformedSlice.slice.endpoints.push({ addresses: ["2001:db8::1"], targetRef: malformedSlice.slice.endpoints[0].targetRef, conditions: { ready: "unknown" } });
-  const malformedSliceResult = await invoke(malformedSlice.list);
-  assert.equal(malformedSliceResult.status, 1);
-  assert.ok(malformedSliceResult.report.errors.some(error => ["rpc_service_backend_ambiguous"].includes(error.code)));
+  await t.test("Service that selects no live Pod", async () => {
+    const list = workedInstallation();
+    list.items.push({ apiVersion: "v1", kind: "Endpoints", metadata: { name: "workspace-rpc", namespace: "installation" }, subsets: [] });
+    const result = await invoke(list);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(result.report.ok, true);
+    assert.equal(result.report.communication.edges.length, 46);
+  });
 
-  const malformedSliceAddress = withLiveWorkspaceBackends();
-  malformedSliceAddress.list.items = malformedSliceAddress.list.items.filter(item => item !== malformedSliceAddress.endpoints);
-  malformedSliceAddress.slice.endpoints.push({ addresses: ["not-an-ip"], targetRef: malformedSliceAddress.slice.endpoints[0].targetRef, conditions: { ready: false } });
-  const malformedSliceAddressResult = await invoke(malformedSliceAddress.list);
-  assert.equal(malformedSliceAddressResult.status, 1);
-  assert.ok(malformedSliceAddressResult.report.errors.some(error => ["rpc_service_backend_ambiguous"].includes(error.code)));
-
-  const malformedUnreadySlice = withLiveWorkspaceBackends();
-  malformedUnreadySlice.list.items = malformedUnreadySlice.list.items.filter(item => item !== malformedUnreadySlice.endpoints);
-  malformedUnreadySlice.slice.endpoints.push({ addresses: ["2001:db8::1"], targetRef: { ...malformedUnreadySlice.slice.endpoints[0].targetRef, uid: "wrong-pod" }, conditions: { ready: false } });
-  const malformedUnreadySliceResult = await invoke(malformedUnreadySlice.list);
-  assert.equal(malformedUnreadySliceResult.status, 1);
-  assert.ok(malformedUnreadySliceResult.report.errors.some(error => ["rpc_service_backend_ambiguous"].includes(error.code)));
-
-  const malformedEndpoints = withLiveWorkspaceBackends();
-  malformedEndpoints.endpoints.subsets[0].notReadyAddresses = "invalid";
-  const malformedEndpointsResult = await invoke(malformedEndpoints.list);
-  assert.equal(malformedEndpointsResult.status, 1);
-  assert.ok(malformedEndpointsResult.report.errors.some(error => ["rpc_service_backend_ambiguous"].includes(error.code)));
-
-  const malformedUnreadyEndpoints = withLiveWorkspaceBackends();
-  malformedUnreadyEndpoints.endpoints.subsets[0].notReadyAddresses = [{
-    ip: "192.0.2.1", targetRef: { ...malformedUnreadyEndpoints.endpoints.subsets[0].addresses[0].targetRef, uid: "wrong-pod" }
-  }];
-  const malformedUnreadyEndpointsResult = await invoke(malformedUnreadyEndpoints.list);
-  assert.equal(malformedUnreadyEndpointsResult.status, 1);
-  assert.ok(malformedUnreadyEndpointsResult.report.errors.some(error => ["rpc_service_backend_ambiguous"].includes(error.code)));
+  await t.test("not-ready addresses the Service publishes keep their proof", async () => {
+    const live = withLiveWorkspaceBackends();
+    live.service.spec.publishNotReadyAddresses = true;
+    live.endpoints.subsets[0].notReadyAddresses = live.endpoints.subsets[0].addresses;
+    delete live.endpoints.subsets[0].addresses;
+    const result = await invoke(live.list);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(result.report.communication.edges.length, 46);
+  });
 });
 
-test("installation CLI refuses empty or incomplete live endpoint inventories", async t => {
-  for (const [name, change] of [
-    ["empty Endpoints", (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.endpoints.subsets = []; }],
-    ["missing Endpoints subsets", (live: ReturnType<typeof withLiveWorkspaceBackends>) => { delete live.endpoints.subsets; }],
-    ["empty EndpointSlice", (live: ReturnType<typeof withLiveWorkspaceBackends>) => { live.slice.endpoints = []; }],
-  ] as const) await t.test(name, async () => {
+test("installation CLI still refuses an endpoint address set it cannot prove", async t => {
+  const cases: [string, string, (live: ReturnType<typeof withLiveWorkspaceBackends>) => void][] = [
+    ["published not-ready address names a Pod absent from the live read", "endpoint_pod_absent", live => {
+      live.service.spec.publishNotReadyAddresses = true;
+      const entry = live.endpoints.subsets[0].addresses[0];
+      live.endpoints.subsets[0].addresses = [];
+      live.endpoints.subsets[0].notReadyAddresses = [{ ...entry, targetRef: { ...entry.targetRef, uid: "wrong-pod" } }];
+    }],
+    // The Service does not set publishNotReadyAddresses, so this object publishes
+    // no address and must not be refused as ambiguous. It still lists an entry,
+    // and that entry names a Pod, so the proof still runs and refuses it.
+    ["unpublished not-ready address names a Pod absent from the live read", "endpoint_pod_absent", live => {
+      const entry = live.endpoints.subsets[0].addresses[0];
+      live.endpoints.subsets[0].addresses = [];
+      live.endpoints.subsets[0].notReadyAddresses = [{ ...entry, targetRef: { ...entry.targetRef, uid: "wrong-pod" } }];
+    }],
+    ["unserviceable endpoint names a Pod absent from the live read", "endpoint_pod_absent", live => {
+      live.list.items = live.list.items.filter(item => item !== live.endpoints);
+      live.slice.endpoints.push({ addresses: ["2001:db8::1"], targetRef: { ...live.slice.endpoints[0].targetRef, uid: "wrong-pod" }, conditions: { ready: false } });
+    }],
+    ["endpoint names a Pod absent from the live read", "endpoint_pod_absent", live => {
+      live.endpoints.subsets[0].addresses[0].targetRef.uid = "replaced-pod";
+    }],
+    ["endpoint publishes a different port name", "endpoint_port_mismatch", live => {
+      live.endpoints.subsets[0].ports[0].name = "http";
+    }],
+    ["serviceable endpoint addresses a foreign Pod IP", "endpoint_address_mismatch", live => {
+      live.endpoints.subsets[0].addresses[0].ip = "192.0.2.99";
+    }],
+    ["malformed Endpoints subset", "endpoint_shape_invalid", live => {
+      live.endpoints.subsets[0].notReadyAddresses = "invalid";
+    }],
+    ["malformed EndpointSlice condition", "endpoint_address_invalid", live => {
+      live.list.items = live.list.items.filter(item => item !== live.endpoints);
+      live.slice.endpoints.push({ addresses: ["2001:db8::1"], targetRef: live.slice.endpoints[0].targetRef, conditions: { ready: "unknown" } });
+    }],
+    ["malformed EndpointSlice address", "endpoint_address_invalid", live => {
+      live.list.items = live.list.items.filter(item => item !== live.endpoints);
+      live.slice.endpoints.push({ addresses: ["not-an-ip"], targetRef: live.slice.endpoints[0].targetRef, conditions: { ready: false } });
+    }],
+    ["endpoint Pod is owned by another Deployment", "service_backend_owner", live => {
+      const foreign = structuredClone(deployment(live.list, "serve"));
+      foreign.metadata.name = "foreign-backend";
+      foreign.metadata.uid = "foreign-deployment-uid";
+      foreign.spec.template.metadata.labels = { unit: "foreign" };
+      foreign.spec.template.spec.containers[0].command = ["/bin/foreign-server"];
+      foreign.spec.template.spec.containers[0].image = "foreign.invalid/backend:1";
+      live.list.items.push(foreign);
+      const foreignReplicaSet = structuredClone(live.replicaSet);
+      foreignReplicaSet.metadata.name = "foreign-revision";
+      foreignReplicaSet.metadata.uid = "foreign-replicaset-uid";
+      foreignReplicaSet.metadata.ownerReferences = [{ apiVersion: "apps/v1", kind: "Deployment", name: foreign.metadata.name, uid: foreign.metadata.uid, controller: true }];
+      foreignReplicaSet.spec.template = structuredClone(foreign.spec.template);
+      live.list.items.push(foreignReplicaSet);
+      live.pod.metadata.ownerReferences = [{ apiVersion: "apps/v1", kind: "ReplicaSet", name: foreignReplicaSet.metadata.name, uid: foreignReplicaSet.metadata.uid, controller: true }];
+    }]
+  ];
+  for (const [name, reasonCode, change] of cases) await t.test(name, async () => {
     const live = withLiveWorkspaceBackends();
     change(live);
     const result = await invoke(live.list);
     assert.equal(result.status, 1, result.stdout);
-    assert.ok(result.report.errors.some(error => ["rpc_service_backend_ambiguous"].includes(error.code)));
+    assert.deepEqual([...new Set(result.report.errors.map(error => `${error.code}/${error.reasonCode}`))],
+      [`rpc_service_backend_ambiguous/${reasonCode}`], result.stdout);
     assert.deepEqual(result.report.communication.edges, []);
   });
+
+  await t.test("a foreign workload is refused although the Service publishes no address", async () => {
+    const list = workedInstallation();
+    const foreign = structuredClone(deployment(list, "serve"));
+    foreign.metadata.name = "foreign-backend";
+    foreign.spec.template.metadata.labels = { unit: "workspace" };
+    foreign.spec.template.spec.containers[0].command = ["/bin/foreign-server"];
+    foreign.spec.template.spec.containers[0].image = "foreign.invalid/backend:1";
+    list.items.push(foreign);
+    list.items.push({ apiVersion: "v1", kind: "Endpoints", metadata: { name: "workspace-rpc", namespace: "installation" }, subsets: [] });
+    const result = await invoke(list);
+    assert.equal(result.status, 1, result.stdout);
+    assert.deepEqual([...new Set(result.report.errors.map(error => `${error.code}/${error.reasonCode}`))],
+      ["rpc_service_backend_ambiguous/service_backend_owner"], result.stdout);
+    assert.deepEqual(result.report.communication.edges, []);
+  });
+});
+
+test("installation CLI keeps the Service/Deployment identity guard for a selector-less Service", async () => {
+  // A Service without a selector cannot prove it routes to the target Deployment
+  // at all, so the pre-existing target guard still refuses the edge. This change
+  // owns the endpoint proof, not that identity proof.
+  const live = withLiveWorkspaceBackends();
+  delete live.service.spec.selector;
+  const result = await invoke(live.list);
+  assert.equal(result.status, 1, result.stdout);
+  assert.ok(result.report.errors.some(error => error.code === "rpc_service_target_mismatch"), result.stdout);
+  assert.ok(!result.report.errors.some(error => error.code === "rpc_service_backend_ambiguous"), result.stdout);
+  assert.deepEqual(result.report.communication.edges, []);
 });
 
 test("installation CLI rejects malformed initContainers through its consumable error report", async t => {

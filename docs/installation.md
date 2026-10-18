@@ -267,6 +267,24 @@ EndpointSlice must also belong to the exact Service UID. Unmanaged Pods and othe
 workload producers sharing the Service selector are refused. These are checks
 of supplied declarations and inventory, not an observation of live connectivity.
 
+An endpoint object that publishes no address is admitted, not refused: it cannot
+deliver traffic to any Pod, so it cannot hand the Service to another workload and
+it proves nothing about the target Deployment. This is the state of a Service
+whose Pods are crash-looping, mid-rollout or scaled to zero, and the Deploy that
+creates those Pods is the only repair, so refusing admission until they exist
+would make the fault permanent. A legacy `Endpoints` publishes an address through
+`subsets[].addresses`, or through `subsets[].notReadyAddresses` when the Service
+sets `publishNotReadyAddresses`; an `EndpointSlice` publishes an address through
+an `endpoints[]` entry that is serviceable. When neither holds — empty or absent
+`subsets`/`endpoints`, references that are not ready and not published, or no
+serviceable `EndpointSlice` condition — the endpoint proof has nothing to prove.
+The obligation applies to what the object does publish: every listed `Endpoints`
+entry (including a not-ready entry the Service does not publish) and every
+`EndpointSlice` entry is still resolved against its Pod, and a non-empty set that
+cannot prove its ownership is still refused with the reason codes below. The
+Service selector's own ownership proof is unchanged, so a Service that selects
+another workload's Pods still fails closed even when its endpoint object is empty.
+
 The CLI proves Service selection, the target listener, non-optional Secret
 references, target ingress admission and caller egress admission when egress is
 isolated. It evaluates additive policies, selector conjunction, namespace facts,
@@ -298,7 +316,8 @@ Every error carries a fixed `code`; errors whose cause is not implied by the cod
 also carry a `reasonCode`. The Instance relays that symbol verbatim in its
 rejection receipt, so it is the operator's only description of a refused edge
 when the cluster credential stays on the Instance runner. `rpc_service_backend_ambiguous`
-uses these reason codes:
+uses these reason codes. An endpoint object that publishes no address is not
+reported here; it is admitted, so no symbol names that state:
 
 | `reasonCode` | Operator-facing meaning |
 | --- | --- |
@@ -306,7 +325,6 @@ uses these reason codes:
 | `listener_conflict` | Another process in the target Pod binds the target port. |
 | `service_backend_owner` | A selector-matching workload object is owned by a different live Deployment, or is a workload producer that this Deployment does not own; the Service selects another owner's Pods. |
 | `pod_owner_chain_unproven` | A Pod's ReplicaSet resolves, but that ReplicaSet's Deployment owner reference is stale, missing, ambiguous, or names no live Deployment; the same applies to a selector-matching ReplicaSet backend. Repair the Deployment/ReplicaSet chain, not the Service. A Pod whose ReplicaSet itself cannot be resolved is reported as `endpoint_pod_replicaset_unresolved`. |
-| `endpoint_no_ready_address` | The Service publishes no ready address: its Endpoints subsets are empty, it has only not-ready addresses while `publishNotReadyAddresses` is not set, or its EndpointSlice has no serviceable endpoint. |
 | `endpoint_pod_absent` | An endpoint's `targetRef` names a Pod that is absent from the live read, for example an endpoint left behind by a previous rollout. |
 | `endpoint_port_mismatch` | The endpoint publishes a port whose name or number does not match the Service port the caller addresses. |
 | `endpoint_port_unpublished` | The endpoint object publishes no ports at all. |
