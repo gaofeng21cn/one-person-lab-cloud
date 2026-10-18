@@ -17,6 +17,41 @@ Instance installation, or a Product Release. The target boundary is in
 [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## PR CI Cache Reuse And Parallel Verification (2026-10-18)
+
+The development-tool source change is based on `aba24c9b` (main after #969).
+`tools/verify-local.ts` keeps the exhaustive step inventory and adds explicit
+source, Go and browser group selection. PR CI runs those groups on independent
+runners, partitions the existing browser file inventory into two Node shards,
+and retains `validate` and `dependency-review`. The aggregate refuses failed,
+cancelled, skipped and missing mandatory results. The browser adapter places
+npm-appended shard options before Node's file list; test fixtures exercise the
+actual adapter and prove disjoint, complete file execution and failure
+propagation. Browser test assertions, fixture state and isolation are unchanged.
+
+The separate `Warm CI Caches` workflow runs on main pushes and prepares the same
+npm, pip, Go and generator caches used by PR jobs. PR-only merge-ref caches do
+not become another PR's cache. Generator binaries also bind the resolved Go
+version in their key. An active main producer finishes during subsequent merges;
+cache preparation does not report a PR source-gate result.
+
+Local verification passed the product-boundary check, development-tools
+TypeScript check and 56 focused tests with zero failures, skips or TODOs.
+The actual Go group compiled all 15 declared modules and ran all nine
+existing database-free lanes: 3,797 executed tests and 199 capability-declared
+exclusions retained under the existing accounting rules. A direct comparison
+also preserved all 33 default steps' commands, arguments, order and coverage
+requirements. Both real browser shards passed: 37 and 108 tests, with zero
+failures, skips or TODOs across all 145 tests. Equal file-count shards therefore
+do not imply equal test workloads. Pinned actionlint v1.7.12 validated both
+workflow files, and all workflow shell steps passed Bash syntax checks.
+
+These results establish local source behavior. Current-revision GitHub CI,
+main-cache production, first-run reuse by a new PR, elapsed-time improvement and
+runner cost remain [open runtime evidence](roadmap.md#pr-ci-cache-reuse-and-parallel-verification).
+The change does not establish remote branch protection, Candidate qualification,
+Instance adoption or production readiness.
+
 ## Fabric J0 READY Sandbox Qualification Producer (2026-10-18)
 
 Against `79d81a4e` (main after #957), this change answers #952. Cloud fabric now

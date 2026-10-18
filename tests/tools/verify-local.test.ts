@@ -11,6 +11,8 @@ import { generationInputs, generatedOutputs } from "../../tools/verify-generated
 import { generatedPlanArtifacts } from "../../tools/verify-development-plan.ts";
 
 import {
+  type VerificationStep,
+  verificationGroups,
   databaseFreeCapabilityMarkers,
   databaseFreeCoverage,
   databaseFreeCoverageReport,
@@ -95,12 +97,12 @@ test("dedicated plan verification preserves the target-spec scope and explicit m
 
 test("PR validate keeps the exhaustive source gate and dispatches the plan gate only from explicit committed SHAs", async t => {
   const workflow = parseYAML(await readFile(".github/workflows/pull-request-ci.yml", "utf8"));
-  assert.deepEqual(Object.keys(workflow.jobs).sort(), ["dependency_review", "validate"]);
-  const steps = workflow.jobs.validate.steps;
+  assert.deepEqual(workflow.jobs.validate.needs.slice().sort(), ["browser", "dependency_review", "go", "source"]);
+  const steps = workflow.jobs.source.steps;
   const source = steps.find((step: any) => step.name === "Validate source");
   const plan = steps.find((step: any) => step.name === "Validate changed development plan");
   assert.equal(source.if, undefined);
-  assert.match(source.run, /npm run verify:local\s*$/u);
+  assert.equal(source.run.trim(), "npm run verify:local -- --group source");
   assert.equal(plan.if, undefined);
   assert.equal(plan.env.PR_BASE_SHA, "${{ github.event.pull_request.base.sha }}");
   assert.equal(plan.env.PR_HEAD_SHA, "${{ github.event.pull_request.head.sha }}");
@@ -172,7 +174,7 @@ test("PR validate keeps the exhaustive source gate and dispatches the plan gate 
 
 test("PR validate caches the Go toolchain, Python requirements and pinned contract generators", async () => {
   const workflow = parseYAML(await readFile(".github/workflows/pull-request-ci.yml", "utf8"));
-  const job = workflow.jobs.validate;
+  const job = workflow.jobs.source;
   const steps: Array<{ name: string; with?: Record<string, any> }> = job.steps;
   const step = (name: string) => {
     const found = steps.find((candidate) => candidate.name === name);
@@ -198,11 +200,162 @@ test("PR validate caches the Go toolchain, Python requirements and pinned contra
   // The generator cache key must carry both pinned versions through the shared
   // env values, so a version bump installs fresh binaries instead of restoring
   // the previous ones.
-  assert.equal(job.env.PROTOC_GEN_GO_VERSION, "1.36.6");
-  assert.equal(job.env.PROTOC_GEN_GO_GRPC_VERSION, "1.5.1");
+  assert.equal(workflow.env.PROTOC_GEN_GO_VERSION, "1.36.6");
+  assert.equal(workflow.env.PROTOC_GEN_GO_GRPC_VERSION, "1.5.1");
   const generatorKey = String(step("Restore contract generator binaries").with?.key ?? "");
   assert.match(generatorKey, /protoc-gen-go-\$\{\{ env\.PROTOC_GEN_GO_VERSION \}\}/u);
   assert.match(generatorKey, /protoc-gen-go-grpc-\$\{\{ env\.PROTOC_GEN_GO_GRPC_VERSION \}\}/u);
+});
+
+test("CI groups execute every exhaustive step once and reject invalid selectors before execution", async () => {
+  const seen: VerificationStep[] = [];
+  const dependencies = {
+    runStep: async (step: VerificationStep) => { seen.push(step); },
+    withTemporaryPostgres: async () => { throw new Error("group entered PostgreSQL"); },
+    runPostgresVerification: async () => { throw new Error("group entered PostgreSQL"); }
+  };
+  for (const group of verificationGroups) {
+    assert.deepEqual(parseVerifyLocalArgs(["--group", group]), { withPostgres: false, group });
+    const offset = seen.length;
+    await runVerification({ group }, dependencies);
+    assert.deepEqual(seen.slice(offset), localVerificationSteps.filter(step => step.group === group));
+    assert.ok(seen.length > offset);
+  }
+  assert.equal(seen.length, localVerificationSteps.length);
+  for (const step of localVerificationSteps) assert.equal(seen.filter(candidate => candidate === step).length, 1, step.name);
+  // A misspelled or incompatible selector cannot turn a required job into a
+  // successful invocation that executes no checks.
+  for (const args of [
+    ["--group", "unknown"], ["--group"], ["--group", "go", "--group", "source"],
+    ["--group", "source", "--focused", "--base", "HEAD"], ["--group", "go", "--with-postgres"],
+    ["--group", "source", "--base", "HEAD"], ["--shard", "1/2"],
+    ["--group", "source", "--shard", "1/2"], ["--group", "browser", "--shard"],
+    ["--group", "browser", "--shard", "1/2", "--shard", "2/2"]
+  ]) assert.throws(() => parseVerifyLocalArgs(args), /requires|cannot|once/u, args.join(" "));
+  for (const shard of ["0/2", "1/0", "3/2", "1", "1/2/3", "01/2", "-1/2", "1/9007199254740992"]) {
+    assert.throws(() => parseVerifyLocalArgs(["--group", "browser", "--shard", shard]), /--shard requires/);
+  }
+  const before = seen.length;
+  await assert.rejects(runVerification({ group: "unknown" as any }, dependencies), /--group requires/);
+  await assert.rejects(runVerification({ group: "go", shard: "1/2" }, dependencies), /--shard requires/);
+  await assert.rejects(runVerification({ group: "source", focused: true, base: "HEAD" }, dependencies), /cannot be combined/);
+  assert.equal(seen.length, before);
+  for (const group of verificationGroups) {
+    await assert.rejects(runVerification({ group }, {
+      ...dependencies, runStep: async () => { throw new Error(`${group} failure`); }
+    }), new RegExp(`${group} failure`));
+  }
+});
+
+test("PR jobs keep all verification groups and main alone produces the shared caches", async () => {
+  const workflow = parseYAML(await readFile(".github/workflows/pull-request-ci.yml", "utf8"));
+  assert.deepEqual(workflow.on, { pull_request: { branches: ["main"] } });
+  assert.deepEqual(workflow.permissions, { contents: "read" });
+  assert.deepEqual(Object.keys(workflow.jobs).sort(), ["browser", "dependency_review", "go", "source", "validate"]);
+  assert.equal(workflow.concurrency["cancel-in-progress"], true);
+  assert.equal(workflow.concurrency.group, "pull-request-ci-${{ github.event.pull_request.number }}");
+  for (const name of ["dependency_review", ...verificationGroups]) {
+    assert.equal(workflow.jobs[name].if, "github.event_name == 'pull_request'");
+    assert.equal(workflow.jobs[name]["continue-on-error"], undefined);
+  }
+  const commands = (name: string) => workflow.jobs[name].steps.map((step: any) => step.run || "").join("\n");
+  for (const group of verificationGroups) assert.ok(commands(group).includes(`npm run verify:local -- --group ${group}`));
+  assert.equal(workflow.jobs.browser.strategy["fail-fast"], false);
+  assert.deepEqual(workflow.jobs.browser.strategy.matrix.shard, ["1/2", "2/2"]);
+  assert.match(commands("browser"), /--shard "\$\{\{ matrix\.shard \}\}"/u);
+  const cacheWorkflow = parseYAML(await readFile(".github/workflows/warm-ci-caches.yml", "utf8"));
+  assert.equal(cacheWorkflow.name, "Warm CI Caches");
+  assert.deepEqual(cacheWorkflow.on, { push: { branches: ["main"] } });
+  assert.deepEqual(cacheWorkflow.permissions, { contents: "read" });
+  assert.equal(cacheWorkflow.concurrency["cancel-in-progress"], false);
+  assert.deepEqual(cacheWorkflow.env, workflow.env);
+  const warm = cacheWorkflow.jobs.warm_cache;
+  assert.equal(warm.if, "github.event_name == 'push' && github.ref == 'refs/heads/main'");
+  const warming = warm.steps.map((step: any) => step.run || "").join("\n");
+  assert.ok(warming.includes("npm run verify:local -- --group go"));
+  assert.ok(warming.includes("npm run verify:generated-contracts"));
+  // Producer and consumers use identical action inputs, including Go's resolved
+  // toolchain version in the generator-binary key; their cache scope may differ.
+  for (const name of ["Checkout", "Set up Node 24", "Set up Python", "Install spec generator toolchain", "Set up Go", "Restore contract generator binaries", "Install contract generators", "Install dependencies"]) {
+    assert.deepEqual(warm.steps.find((step: any) => step.name === name), workflow.jobs.source.steps.find((step: any) => step.name === name), name);
+  }
+  for (const name of ["go", "browser"]) {
+    for (const step of workflow.jobs[name].steps.filter((step: any) => step.uses)) {
+      assert.deepEqual(step, workflow.jobs.source.steps.find((candidate: any) => candidate.name === step.name));
+    }
+  }
+  const generators = warm.steps.find((step: any) => step.name === "Restore contract generator binaries");
+  assert.match(generators.with.key, /steps\.go\.outputs\.go-version/u);
+  assert.equal(workflow.jobs.source.steps.find((step: any) => step.name === "Set up Go").id, "go");
+});
+
+test("validate actually refuses failed, cancelled, skipped or missing required results", async () => {
+  const workflow = parseYAML(await readFile(".github/workflows/pull-request-ci.yml", "utf8"));
+  const gate = workflow.jobs.validate;
+  assert.equal(gate.name, "validate");
+  assert.equal(workflow.jobs.dependency_review.name, "dependency-review");
+  assert.equal(gate.if, "${{ always() && github.event_name == 'pull_request' }}");
+  assert.deepEqual(gate.needs.slice().sort(), ["browser", "dependency_review", "go", "source"]);
+  const step = gate.steps.find((candidate: any) => candidate.name === "Require every validation job");
+  assert.equal(step.env.REQUIRED_RESULTS, "${{ toJSON(needs) }}");
+  const run = promisify(execFileCallback);
+  const results = Object.fromEntries(gate.needs.map((name: string) => [name, { result: "success" }]));
+  const invoke = (value: unknown) => run("bash", ["-e", "-c", step.run], {
+    env: { ...process.env, REQUIRED_RESULTS: JSON.stringify(value) }
+  });
+  await invoke(results);
+  for (const name of gate.needs) {
+    const missing = { ...results };
+    delete missing[name];
+    await assert.rejects(invoke(missing), (error: any) => error.code !== 0);
+    for (const result of ["failure", "cancelled", "skipped", "", undefined]) {
+      await assert.rejects(invoke({ ...results, [name]: { result } }), (error: any) => error.code !== 0);
+    }
+  }
+  await assert.rejects(invoke({}), (error: any) => error.code !== 0);
+});
+
+test("real Node sharding runs the entire browser file inventory exactly once", async t => {
+  const directory = await mkdtemp(join(tmpdir(), "opl-browser-shards-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const manifest = JSON.parse(await readFile("package.json", "utf8"));
+  const script = manifest.scripts["test:browser:suite"];
+  const paths: string[] = script.match(/tests\/[^\s"']+\.test\.[cm]?[jt]sx?/gu) || [];
+  assert.ok(paths.length > 0);
+  await writeFile(join(directory, "package.json"), JSON.stringify({
+    type: "module", scripts: { "test:ownership": "node ownership.cjs", "test:browser:suite": script }
+  }));
+  await mkdir(join(directory, "tools"));
+  await writeFile(join(directory, "tools/run-browser-suite.ts"), await readFile("tools/run-browser-suite.ts", "utf8"));
+  const log = join(directory, "executed.jsonl");
+  await writeFile(log, "");
+  await writeFile(join(directory, "ownership.cjs"), `require('node:fs').appendFileSync(${JSON.stringify(log)}, '"ownership"\\n');\n`);
+  for (const path of paths) {
+    await mkdir(dirname(join(directory, path)), { recursive: true });
+    await writeFile(join(directory, path), `import test from 'node:test'; import { appendFileSync } from 'node:fs';\ntest(${JSON.stringify(path)}, () => appendFileSync(${JSON.stringify(log)}, ${JSON.stringify(JSON.stringify(path) + "\n")}));\n`);
+  }
+  const run = promisify(execFileCallback);
+  const workflow = parseYAML(await readFile(".github/workflows/pull-request-ci.yml", "utf8"));
+  // This is a new test runner, not a worker of the enclosing node --test.
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  for (const shard of workflow.jobs.browser.strategy.matrix.shard) {
+    await runVerification(parseVerifyLocalArgs(["--group", "browser", "--shard", shard]), {
+      runStep: async step => { await run(step.command, step.args, { cwd: directory, env }); },
+      withTemporaryPostgres: async () => { throw new Error("browser entered PostgreSQL"); },
+      runPostgresVerification: async () => { throw new Error("browser entered PostgreSQL"); }
+    });
+  }
+  const executed = (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line));
+  assert.equal(executed.filter(path => path === "ownership").length, 2);
+  assert.deepEqual(executed.filter(path => path !== "ownership").sort(), paths.slice().sort());
+  await writeFile(log, "");
+  await run("npm", ["run", "test:browser:suite"], { cwd: directory, env });
+  const full = (await readFile(log, "utf8")).trim().split("\n").map(line => JSON.parse(line));
+  assert.deepEqual(full.filter(path => path !== "ownership").sort(), paths.slice().sort());
+  await writeFile(join(directory, paths[0]), "import test from 'node:test'; test('failure control', () => { throw new Error('browser failure control'); });\n");
+  await assert.rejects(run("npm", ["run", "test:browser:suite"], { cwd: directory, env }), (error: any) => error.code !== 0);
+  await assert.rejects(run("node", ["tools/run-browser-suite.ts"], { cwd: directory, env }), /explicit test files/u);
 });
 
 test("no database-free lane decides coverage by a test name prefix", () => {
@@ -539,8 +692,9 @@ test("Local qualification uses one bounded runner filesystem and explicit privil
   const workflow = parseYAML(await readFile(".github/workflows/qualification.yml", "utf8"));
   const nodeStep = workflow.jobs.node_console.steps.find((item: any) => item.name === "Test Node");
   const packageScripts = JSON.parse(await readFile("package.json", "utf8")).scripts;
-  const browserConcurrency = packageScripts["test:browser:suite"].match(/--test-concurrency=\d+/)?.[0];
-  assert.ok(browserConcurrency);
+  assert.match(packageScripts["test:browser:suite"], /node tools\/run-browser-suite\.ts /u);
+  const browserRunner = await readFile("tools/run-browser-suite.ts", "utf8");
+  assert.match(browserRunner, /"--test-concurrency=3"/u);
   assert.ok(nodeStep.run.includes("npm run test:source"));
   assert.ok(nodeStep.run.includes("npm run test:browser:suite"));
   assert.ok(nodeStep.run.includes("Node SKIP result missing or nonzero"));
@@ -707,7 +861,7 @@ test("full verification adds the temporary PostgreSQL modules after the default 
   const events: string[] = [];
   const env = { OPL_POSTGRES_TESTS: "1" };
   const dependencies = {
-    runStep: async (step: (typeof localVerificationSteps)[number]) => { events.push(`step:${step.name}`); },
+    runStep: async (step: VerificationStep) => { events.push(`step:${step.name}`); },
     withTemporaryPostgres: async (callback: (env: NodeJS.ProcessEnv, fixture: { socketDirectory?: string }) => Promise<unknown>) => {
       events.push("postgres:start");
       try {
@@ -744,7 +898,7 @@ test("the exhaustive gate overlaps only the database-free lanes and keeps every 
   let compileInFlight = 0;
   let compilePeak = 0;
   const dependencies = {
-    runStep: async (step: (typeof localVerificationSteps)[number]) => {
+    runStep: async (step: VerificationStep) => {
       order.push(step.name);
       const lane = lanes.has(step.name);
       const compile = step.command === "go" && !lane;
@@ -773,7 +927,7 @@ test("one failing database-free lane fails the exhaustive gate instead of being 
   const failing = "services/ledger database-free tests";
   const started: string[] = [];
   const dependencies = {
-    runStep: async (step: (typeof localVerificationSteps)[number]) => {
+    runStep: async (step: VerificationStep) => {
       started.push(step.name);
       if (step.name === failing) throw new Error(`${failing} failed`);
     },

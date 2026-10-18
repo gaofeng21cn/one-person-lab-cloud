@@ -124,7 +124,7 @@ export const databaseFreeGoTestSpecs: readonly DatabaseFreeGoTestSpec[] = Object
   { cwd: "services/internal/ownerservice", packages: ["./..."] }
 ]);
 
-type VerificationStep = {
+export type VerificationStep = {
   name: string;
   command: string;
   args: string[];
@@ -138,22 +138,35 @@ type VerificationStep = {
   requiredExecutedTests?: readonly string[];
 };
 
-export const localVerificationSteps: readonly VerificationStep[] = Object.freeze([
-  { name: "product boundary", command: "npm", args: ["run", "validate:product-boundary"] },
-  { name: "Generated contracts freshness", command: "npm", args: ["run", "verify:generated-contracts"] },
-  { name: "Development tools typecheck", command: "npm", args: ["run", "typecheck:development-tools"] },
-  { name: "Node source tests", command: "npm", args: ["run", "test:source"] },
+export const verificationGroups = ["source", "browser", "go"] as const;
+type VerificationGroup = (typeof verificationGroups)[number];
+type LocalVerificationStep = VerificationStep & { group: VerificationGroup };
+type VerificationOptions = {
+  withPostgres?: boolean;
+  focused?: boolean;
+  base?: string;
+  testTargets?: string[];
+  group?: VerificationGroup;
+  shard?: string;
+};
+
+export const localVerificationSteps: readonly LocalVerificationStep[] = Object.freeze([
+  { group: "source", name: "product boundary", command: "npm", args: ["run", "validate:product-boundary"] },
+  { group: "source", name: "Generated contracts freshness", command: "npm", args: ["run", "verify:generated-contracts"] },
+  { group: "source", name: "Development tools typecheck", command: "npm", args: ["run", "typecheck:development-tools"] },
+  { group: "source", name: "Node source tests", command: "npm", args: ["run", "test:source"] },
   // One bounded-concurrency invocation instead of nine sequential ones: each
   // group used to boot its own demo server and Chromium before the next started.
   // The named groups stay available for targeted runs.
-  { name: "Console browser suite", command: "npm", args: ["run", "test:browser:suite"] },
-  { name: "TypeScript typecheck", command: "npm", args: ["run", "typecheck"] },
-  { name: "TypeScript lint", command: "npm", args: ["run", "lint"] },
-  { name: "Console build", command: "npm", args: ["run", "build"] },
+  { group: "browser", name: "Console browser suite", command: "npm", args: ["run", "test:browser:suite"] },
+  { group: "source", name: "TypeScript typecheck", command: "npm", args: ["run", "typecheck"] },
+  { group: "source", name: "TypeScript lint", command: "npm", args: ["run", "lint"] },
+  { group: "source", name: "Console build", command: "npm", args: ["run", "build"] },
   ...goModules.map((cwd) =>
-    ({ name: `${cwd} compile`, command: "go", args: ["test", "-run", "^$", "./..."], cwd })
+    ({ group: "go" as const, name: `${cwd} compile`, command: "go", args: ["test", "-run", "^$", "./..."], cwd })
   ),
   ...databaseFreeGoTestSpecs.map((spec) => ({
+    group: "go" as const,
     name: `${spec.cwd} database-free tests`,
     command: "go",
     args: ["test", "-count=1", "-json", ...spec.packages],
@@ -163,7 +176,7 @@ export const localVerificationSteps: readonly VerificationStep[] = Object.freeze
     ...(spec.minimumExecutedTests ? { minimumExecutedTests: spec.minimumExecutedTests } : {}),
     ...(spec.requiredExecutedTests ? { requiredExecutedTests: spec.requiredExecutedTests } : {})
   })),
-  { name: "Git whitespace", command: "git", args: ["diff", "--check"] }
+  { group: "source", name: "Git whitespace", command: "git", args: ["diff", "--check"] }
 ]);
 
 const developmentToolPaths = ["tools/", "tests/tools/", "AGENTS.md", "DEV_GUIDE.md", "package.json", ".github/"];
@@ -256,10 +269,30 @@ export const postgresVerificationSpecs = Object.freeze([
   { cwd: "services/fabric", timeout: "20m" }
 ]);
 
-export function parseVerifyLocalArgs(args = process.argv.slice(2)) {
+/** Validate selectors for both the CLI and callers of runVerification. */
+function validateVerificationOptions(options: VerificationOptions) {
+  const { focused = false, withPostgres = false, base, testTargets = [], group, shard } = options;
+  if (focused && withPostgres) throw new Error("cannot combine focused checks with the exhaustive PostgreSQL lane; supply the focused owner database environment explicitly");
+  if (focused && !base) throw new Error("focused verification requires --base <ref>");
+  if (!focused && base !== undefined) throw new Error("--base requires --focused");
+  if (!focused && testTargets.length) throw new Error("--test requires --focused");
+  if (group !== undefined && !verificationGroups.includes(group)) throw new Error("--group requires source, browser or go");
+  if (group !== undefined && (focused || withPostgres)) throw new Error("--group cannot be combined with --focused or --with-postgres");
+  if (shard !== undefined) {
+    if (group !== "browser") throw new Error("--shard requires --group browser");
+    const match = /^([1-9][0-9]*)\/([1-9][0-9]*)$/u.exec(shard);
+    if (!match || !Number.isSafeInteger(Number(match[1])) || !Number.isSafeInteger(Number(match[2])) || Number(match[1]) > Number(match[2])) {
+      throw new Error("--shard requires index/total with 1 <= index <= total");
+    }
+  }
+}
+
+export function parseVerifyLocalArgs(args = process.argv.slice(2)): VerificationOptions & { withPostgres: boolean } {
   let withPostgres = false;
   let focused = false;
   let base: string | undefined;
+  let group: VerificationGroup | undefined;
+  let shard: string | undefined;
   const testTargets: string[] = [];
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
@@ -273,27 +306,30 @@ export function parseVerifyLocalArgs(args = process.argv.slice(2)) {
       focused = true;
       continue;
     }
-    if (token === "--test") {
+    if (["--test", "--base", "--group", "--shard"].includes(token)) {
       const value = args[++index];
-      if (!value || value.startsWith("--")) throw new Error("verify-local argument --test requires a file");
-      if (testTargets.includes(value)) throw new Error(`duplicate focused test target: ${value}`);
-      testTargets.push(value);
-      continue;
-    }
-    if (token === "--base") {
-      if (base !== undefined) throw new Error("verify-local argument --base may be provided once");
-      const value = args[++index];
-      if (!value || value.startsWith("--")) throw new Error("verify-local argument --base requires a ref");
-      base = value;
+      if (!value || value.startsWith("--")) throw new Error(`verify-local argument ${token} requires a value`);
+      if (token === "--test") {
+        if (testTargets.includes(value)) throw new Error(`duplicate focused test target: ${value}`);
+        testTargets.push(value);
+      } else if (token === "--base") {
+        if (base !== undefined) throw new Error("verify-local argument --base may be provided once");
+        base = value;
+      } else if (token === "--group") {
+        if (group !== undefined) throw new Error("verify-local argument --group may be provided once");
+        group = value as VerificationGroup;
+      } else {
+        if (shard !== undefined) throw new Error("verify-local argument --shard may be provided once");
+        shard = value;
+      }
       continue;
     }
     throw new Error(`unknown verify-local argument: ${token}`);
   }
-  if (focused && withPostgres) throw new Error("cannot combine focused checks with the exhaustive PostgreSQL lane; supply the focused owner database environment explicitly");
-  if (focused && base === undefined) throw new Error("focused verification requires --base <ref>");
-  if (!focused && base !== undefined) throw new Error("--base requires --focused");
-  if (!focused && testTargets.length) throw new Error("--test requires --focused");
-  return { withPostgres, ...(focused ? { focused: true, base: base! } : {}), ...(testTargets.length ? { testTargets } : {}) };
+  const options = { withPostgres, ...(focused ? { focused: true } : {}), ...(base !== undefined ? { base } : {}),
+    ...(testTargets.length ? { testTargets } : {}), ...(group !== undefined ? { group } : {}), ...(shard !== undefined ? { shard } : {}) };
+  validateVerificationOptions(options);
+  return options;
 }
 
 
@@ -1578,12 +1614,13 @@ export async function runBatchedSteps<T>(
   }
 }
 
-export async function runVerification(options: { withPostgres?: boolean; focused?: boolean; base?: string; testTargets?: string[] } = {}, dependencies = defaultDependencies) {
-  const { withPostgres = false, focused = false, base, testTargets = [] } = options;
-  if (focused && withPostgres) throw new Error("cannot combine focused checks with the exhaustive PostgreSQL lane; supply the focused owner database environment explicitly");
-  if (focused && !base) throw new Error("focused verification requires --base <ref>");
+export async function runVerification(options: VerificationOptions = {}, dependencies = defaultDependencies) {
+  validateVerificationOptions(options);
+  const { withPostgres = false, focused = false, base, testTargets = [], group, shard } = options;
   const scope = focused ? focusedChangeScope(base!) : undefined;
-  const steps = scope ? focusedVerificationSteps(scope.paths, testTargets, scope.mergeBase) : localVerificationSteps;
+  const steps = scope ? focusedVerificationSteps(scope.paths, testTargets, scope.mergeBase) : localVerificationSteps
+    .filter(step => group === undefined || step.group === group)
+    .map(step => shard === undefined ? step : { ...step, args: [...step.args, "--", `--test-shard=${shard}`] });
   // Only the database-free lanes overlap; every other step, including the cold
   // module compiles, keeps the documented order (see isOverlappableStep).
   let laneSteps: VerificationStep[] = [];
@@ -1607,7 +1644,8 @@ export async function runVerification(options: { withPostgres?: boolean; focused
 async function main() {
   const options = parseVerifyLocalArgs();
   await runVerification(options);
-  const label = options.focused ? `Focused local checks against ${options.base}` : "Local verification";
+  const label = options.focused ? `Focused local checks against ${options.base}` : options.group
+    ? `Local verification group ${options.group}${options.shard ? ` shard ${options.shard}` : ""}` : "Local verification";
   process.stdout.write(`\n${label} passed${options.withPostgres ? " with PostgreSQL and Docker integration" : ""}.\n`);
 }
 

@@ -13,7 +13,8 @@ const allowedWorkflows = new Set([
   "qualification.yml",
   "release-opl-cloud-image.yml",
   "release-opl-cloud-public-readback.yml",
-  "whitepaper.yml"
+  "whitepaper.yml",
+  "warm-ci-caches.yml"
 ]);
 
 const workflows = (await readdir(workflowRoot)).filter((name) => name.endsWith(".yml"));
