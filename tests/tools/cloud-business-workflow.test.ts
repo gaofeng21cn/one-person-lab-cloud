@@ -9,6 +9,7 @@ import test from "node:test";
 import YAML from "yaml";
 
 const workflow = YAML.parse(await readFile(".github/workflows/cloud-business-readback.yml", "utf8"));
+const businessWorkflow = YAML.parse(await readFile(".github/workflows/cloud-business-qualification.yml", "utf8"));
 const release = YAML.parse(await readFile(".github/workflows/release-opl-cloud-image.yml", "utf8"));
 const readback = YAML.parse(await readFile(".github/workflows/release-opl-cloud-public-readback.yml", "utf8"));
 const digest = (c: string) => `sha256:${c.repeat(64)}`;
@@ -69,6 +70,7 @@ test("Cloud customer workflow limits credentials to protected public product rea
   assert.equal(workflow.jobs.admission.environment, undefined);
   assert.equal(workflow.jobs.readback.needs, "admission");
   assert.equal(workflow.jobs.readback.environment, "cloud-business-qualification");
+  assert.deepEqual(Object.keys(workflow.on.workflow_dispatch.inputs), ["candidate_run_id", "installation_run_id"]);
   for (const job of Object.values(workflow.jobs) as any[]) {
     assert.equal(job["runs-on"], "ubuntu-latest");
     assert.deepEqual(job.permissions, { actions: "read", contents: "read" });
@@ -80,6 +82,7 @@ test("Cloud customer workflow limits credentials to protected public product rea
   assert.deepEqual(Object.keys(customer.env), ["OPL_QUALIFICATION_ORIGIN", "OPL_QUALIFICATION_CUSTOMER_EMAIL", "OPL_QUALIFICATION_CUSTOMER_PASSWORD"]);
   const commands = workflow.jobs.readback.steps.map((s: any) => s.run || "").join("\n");
   assert.doesNotMatch(commands, /kubectl|kubeconfig|port-forward|workflow run|POSTPAID_BY_HOUR|\/api\/v1\/admin/);
+  assert.doesNotMatch(commands, /protected-business-qualification|workspace-qualification-j0-ready|deployment_binding|qualification_account_id/);
   assert.match(commands, /deployment-verification-receipt\.mjs validate/);
   assert.match(commands, /validate-bundle/);
   const installation = workflow.jobs.readback.steps.find((s: any) => s.name === "Checkout exact native installation validator");
@@ -87,51 +90,55 @@ test("Cloud customer workflow limits credentials to protected public product rea
   assert.equal(installation.with["persist-credentials"], false);
 });
 
-test("protected business qualification runs only through the shared producer after exact evidence", () => {
-  const readbackJob = workflow.jobs.readback;
-  assert.equal(readbackJob["timeout-minutes"], 45);
-  assert.equal(readbackJob.environment, "cloud-business-qualification");
-  const inputs = workflow.on.workflow_dispatch.inputs;
-  for (const name of [
-    "candidate_receipt_digest",
-    "deployment_binding",
-    "qualification_account_id",
-    "qualification_package_id",
-    "j0_ready_receipt",
-  ]) {
+test("protected business qualification owns the J0 producer and only keeps owner declarations as inputs", () => {
+  assert.deepEqual(Object.keys(businessWorkflow.jobs), ["admission", "qualification"]);
+  const qualificationJob = businessWorkflow.jobs.qualification;
+  assert.equal(qualificationJob["timeout-minutes"], 45);
+  assert.equal(qualificationJob.environment, "cloud-business-qualification");
+  const inputs = businessWorkflow.on.workflow_dispatch.inputs;
+  assert.deepEqual(Object.keys(inputs), [
+    "candidate_run_id", "installation_run_id", "deployment_binding",
+    "qualification_account_id", "qualification_package_id",
+  ]);
+  for (const name of ["deployment_binding", "qualification_account_id", "qualification_package_id"]) {
     assert.equal(inputs[name]?.required, true, name);
     assert.equal(inputs[name]?.type, "string", name);
   }
-  assert.equal(inputs.qualification_authority_class?.required, true);
-  assert.equal(inputs.qualification_authority_class?.type, "choice");
-  assert.deepEqual(inputs.qualification_authority_class?.options, ["sandbox", "preproduction"]);
+  assert.equal(inputs.candidate_receipt_digest, undefined);
+  assert.equal(inputs.j0_ready_receipt, undefined);
+  assert.equal(inputs.qualification_authority_class, undefined);
 
-  const materialize = step(readbackJob, "Materialize protected qualification declarations");
+  const materialize = step(qualificationJob, "Materialize protected qualification declarations");
   assert.equal(materialize.id, "declarations");
   assert.match(materialize.if, /steps\.evidence\.outcome == 'success'/);
   for (const name of [
-    "OPL_QUALIFICATION_ENVIRONMENT",
-    "OPL_QUALIFICATION_ORIGIN",
-    "OPL_QUALIFICATION_PROVIDER_BOUNDARY",
-    "OPL_QUALIFICATION_CUSTOMER_EMAIL",
-    "OPL_QUALIFICATION_CUSTOMER_PASSWORD",
-  ]) {
-    assert.ok(Object.hasOwn(materialize.env || {}, name), name);
-  }
-  assert.match(materialize.run, /external prerequisite absent/);
+    "OPL_QUALIFICATION_ENVIRONMENT", "OPL_QUALIFICATION_ORIGIN",
+    "OPL_QUALIFICATION_PROVIDER_BOUNDARY", "CANDIDATE_RECEIPT_DIGEST",
+  ]) assert.ok(Object.hasOwn(materialize.env || {}, name), name);
+  assert.doesNotMatch(materialize.run, /J0_READY_RECEIPT|j0_ready_receipt/);
   assert.match(materialize.run, /\.candidateReceiptDigest == \$candidate/);
   assert.match(materialize.run, /\.ownerOrigin == \$origin/);
   assert.match(materialize.run, /\.fabricProvider == "tencent-tke"/);
-  assert.match(materialize.run, /\.kind == "opl\.workspace-qualification\.j0-ready\.v2"/);
-  assert.match(materialize.run, /\.status == "READY"/);
-  assert.match(materialize.run, /\.failed == 0 and \.skipped == 0/);
+  assert.match(materialize.run, /authorityClass: "sandbox"/);
+  assert.match(materialize.run, /dedicated: true/);
   assert.match(materialize.run, /chmod 600/);
-  assert.match(materialize.run, /stat -c '%a'.*stat -f '%Lp'/);
   assert.doesNotMatch(materialize.run, /\/api\//);
 
-  const producer = step(readbackJob, "Run protected business qualification through the shared Cloud flow");
-  assert.match(producer.if, /steps\.evidence\.outcome == 'success'/);
-  assert.match(producer.if, /steps\.declarations\.outcome == 'success'/);
+  const j0 = step(qualificationJob, "Produce exact-Candidate J0 READY receipt from the fabric sandbox");
+  assert.equal(j0.id, "j0");
+  assert.match(j0.run, /node tools\/workspace-qualification-j0-ready\.ts run/);
+  assert.match(j0.run, /--candidate-digest "\$CANDIDATE_RECEIPT_DIGEST"/);
+  assert.match(j0.run, /--sandbox "\$RUNNER_TEMP\/qualification\/sandbox\.json"/);
+  assert.match(j0.run, /--boundary "\$OPL_QUALIFICATION_PROVIDER_BOUNDARY"/);
+  assert.match(j0.run, /--output "\$RUNNER_TEMP\/j0-ready\/receipt\.json"/);
+  assert.match(j0.run, /stat -c '%a'.*stat -f '%Lp'/);
+  assert.deepEqual(Object.keys(j0.env), [
+    "CANDIDATE_RECEIPT_DIGEST", "OPL_QUALIFICATION_ENVIRONMENT",
+    "OPL_QUALIFICATION_ORIGIN", "OPL_QUALIFICATION_PROVIDER_BOUNDARY",
+  ]);
+
+  const producer = step(qualificationJob, "Run protected business qualification through the shared Cloud flow");
+  assert.match(producer.if, /steps\.j0\.outcome == 'success'/);
   assert.match(producer.run, /node tools\/protected-business-qualification\.ts run/);
   for (const declaration of [
     /--candidate qualification-inputs\/candidate\/opl-cloud-candidate\.json/,
@@ -143,69 +150,47 @@ test("protected business qualification runs only through the shared producer aft
     /--boundary "\$OPL_QUALIFICATION_PROVIDER_BOUNDARY"/,
     /--account-id "\$QUALIFICATION_ACCOUNT_ID"/,
     /--package-id "\$QUALIFICATION_PACKAGE_ID"/,
-    /--authority-class "\$QUALIFICATION_AUTHORITY_CLASS"/,
-    /--output business-qualification-evidence\/receipt\.json/,
-  ]) {
-    assert.match(producer.run, declaration);
-  }
+    /--authority-class sandbox/,
+    /--output business-qualification-evidence\/business-qualification\.json/,
+  ]) assert.match(producer.run, declaration);
   assert.doesNotMatch(producer.run, /cloud-business-readback\.ts|deployed-workspace-purchase|workspace-qualification-(?:orchestrator|tencent-tke)\.ts/);
   for (const name of [
-    "OPL_QUALIFICATION_ENVIRONMENT",
-    "OPL_QUALIFICATION_ORIGIN",
-    "OPL_QUALIFICATION_PROVIDER_BOUNDARY",
-    "OPL_QUALIFICATION_CUSTOMER_EMAIL",
-    "OPL_QUALIFICATION_CUSTOMER_PASSWORD",
-  ]) {
-    assert.ok(Object.hasOwn(producer.env || {}, name), name);
-  }
-  // The producer has no cross-repository read to authorize, so neither the
-  // declaration gate nor the producer step receives the Instance evidence
-  // token. The workflow's own evidence-read steps above still do.
+    "OPL_QUALIFICATION_ENVIRONMENT", "OPL_QUALIFICATION_ORIGIN",
+    "OPL_QUALIFICATION_PROVIDER_BOUNDARY", "OPL_QUALIFICATION_CUSTOMER_EMAIL",
+    "OPL_QUALIFICATION_CUSTOMER_PASSWORD", "CANDIDATE_RECEIPT_DIGEST",
+  ]) assert.ok(Object.hasOwn(producer.env || {}, name), name);
   assert.equal(Object.hasOwn(producer.env || {}, "OPL_INSTANCE_EVIDENCE_TOKEN"), false);
   assert.equal(Object.hasOwn(materialize.env || {}, "OPL_INSTANCE_EVIDENCE_TOKEN"), false);
-  assert.doesNotMatch(materialize.run, /OPL_INSTANCE_EVIDENCE_TOKEN/);
   for (const name of [
     "Resolve original Candidate and installation artifact provenance",
     "Checkout exact native installation validator",
     "Download original Instance installation evidence",
-  ]) {
-    assert.match(JSON.stringify(step(readbackJob, name)), /OPL_INSTANCE_EVIDENCE_TOKEN/, name);
-  }
+  ]) assert.match(JSON.stringify(step(qualificationJob, name)), /OPL_INSTANCE_EVIDENCE_TOKEN/, name);
 
-  const businessUpload = step(readbackJob, "Preserve Candidate-bound business qualification receipts");
+  const businessUpload = step(qualificationJob, "Preserve Candidate-bound business qualification receipts");
   assert.equal(businessUpload.if, "always()");
   assert.equal(businessUpload.with["if-no-files-found"], "ignore");
   assert.equal(businessUpload.with.path, "business-qualification-evidence/");
-  assert.match(businessUpload.with.name, /cloud-business-qualification-/);
-
-  const names = readbackJob.steps.map((value: any) => value.name);
+  assert.equal(businessUpload.with.name, "cloud-business-qualification");
+  const names = qualificationJob.steps.map((value: any) => value.name);
   const evidenceIndex = names.indexOf("Validate original installation and exact Candidate bytes");
   const materializeIndex = names.indexOf("Materialize protected qualification declarations");
+  const j0Index = names.indexOf("Produce exact-Candidate J0 READY receipt from the fabric sandbox");
   const producerIndex = names.indexOf("Run protected business qualification through the shared Cloud flow");
-  assert.ok(evidenceIndex >= 0 && evidenceIndex < materializeIndex && materializeIndex < producerIndex);
-  assert.match(step(readbackJob, "Validate original installation and exact Candidate bytes").run, /deployment-verification-receipt\.mjs validate/);
-  assert.match(step(readbackJob, "Validate original installation and exact Candidate bytes").run, /cloud-candidate-receipt\.ts validate-bundle/);
-  assert.match(step(readbackJob, "Read customer product surfaces through CloudIdentity").run, /cloud-business-readback\.ts run/);
-  const commands = readbackJob.steps.map((value: any) => value.run || "").join("\n");
-  assert.doesNotMatch(commands, /kubectl|kubeconfig|port-forward|workflow run|POSTPAID_BY_HOUR|\/api\/v1\/admin/);
+  assert.ok(evidenceIndex >= 0 && evidenceIndex < materializeIndex && materializeIndex < j0Index && j0Index < producerIndex);
+  assert.match(step(qualificationJob, "Validate original installation and exact Candidate bytes").run, /deployment-verification-receipt\.mjs validate/);
+  assert.match(step(qualificationJob, "Validate original installation and exact Candidate bytes").run, /cloud-candidate-receipt\.ts validate-bundle/);
+  assert.match(step(qualificationJob, "Preserve exact-Candidate J0 receipt with the qualification evidence").run, /j0-ready\/receipt\.json/);
+  const commands = qualificationJob.steps.map((value: any) => value.run || "").join("\n");
+  assert.doesNotMatch(commands, /cloud-business-readback\.ts|kubectl|kubeconfig|port-forward|workflow run|POSTPAID_BY_HOUR|\/api\/v1\/admin/);
 });
 
-test("the protected declaration gate materializes exact inputs and fails closed when a prerequisite is absent", async () => {
+test("the protected declaration gate materializes the exact sandbox declaration and fails closed", async () => {
   const root = await mkdtemp(join(tmpdir(), "opl-declarations-"));
   try {
     const candidateSha = "a".repeat(40);
     const candidateTree = "b".repeat(40);
     const candidateDigest = digest("c");
-    const j0 = {
-      schemaVersion: 1,
-      kind: "opl.workspace-qualification.j0-ready.v2",
-      status: "READY",
-      source: { sha: candidateSha, tree: candidateTree, cloudImageDigest: `sha256:${"e".repeat(64)}`, clean: true },
-      authority: { mode: "live", class: "sandbox", dedicated: true, confirmed: true },
-      provider: "tencent-tke",
-      failed: 0,
-      skipped: 0,
-    };
     const deployment = {
       deploymentMode: "managed_tke",
       fabricProvider: "tencent-tke",
@@ -226,35 +211,30 @@ test("the protected declaration gate materializes exact inputs and fails closed 
       DEPLOYMENT_BINDING: JSON.stringify(deployment),
       QUALIFICATION_ACCOUNT_ID: "acct-customer-0001",
       QUALIFICATION_PACKAGE_ID: "basic",
-      QUALIFICATION_AUTHORITY_CLASS: "sandbox",
-      J0_READY_RECEIPT: JSON.stringify(j0),
       OPL_QUALIFICATION_ENVIRONMENT: "cloud-business-qualification",
       OPL_QUALIFICATION_ORIGIN: deployment.ownerOrigin,
       OPL_QUALIFICATION_PROVIDER_BOUNDARY: join(root, "boundary.mjs"),
-      OPL_QUALIFICATION_CUSTOMER_EMAIL: "customer@qualification.invalid",
-      OPL_QUALIFICATION_CUSTOMER_PASSWORD: "not-a-real-password",
     };
-    const command = step(workflow.jobs.readback, "Materialize protected qualification declarations").run;
+    const command = step(businessWorkflow.jobs.qualification, "Materialize protected qualification declarations").run;
     let result = run(command, root, environment);
     assert.equal(result.status, 0, result.stderr);
     const deploymentFile = join(environment.RUNNER_TEMP, "qualification/deployment.json");
-    const j0File = join(environment.RUNNER_TEMP, "j0-ready/receipt.json");
+    const sandboxFile = join(environment.RUNNER_TEMP, "qualification/sandbox.json");
     assert.deepEqual(JSON.parse(await readFile(deploymentFile, "utf8")), deployment);
-    assert.deepEqual(JSON.parse(await readFile(j0File, "utf8")), j0);
-    assert.equal((await stat(j0File)).mode & 0o777, 0o600);
+    assert.deepEqual(JSON.parse(await readFile(sandboxFile, "utf8")), {
+      schemaVersion: 1, authorityClass: "sandbox", dedicated: true, deployment,
+    });
+    assert.equal((await stat(sandboxFile)).mode & 0o777, 0o600);
     for (const name of [
-      "OPL_QUALIFICATION_ENVIRONMENT",
-      "OPL_QUALIFICATION_ORIGIN",
-      "OPL_QUALIFICATION_CUSTOMER_EMAIL",
-      "OPL_QUALIFICATION_CUSTOMER_PASSWORD",
+      "OPL_QUALIFICATION_ENVIRONMENT", "OPL_QUALIFICATION_ORIGIN",
       "OPL_QUALIFICATION_PROVIDER_BOUNDARY",
     ]) {
       result = run(command, root, { ...environment, [name]: "" });
       assert.notEqual(result.status, 0, name);
       assert.match(result.stderr, new RegExp(`external prerequisite absent: ${name}`), name);
     }
-    // The declaration gate does not require a cross-repository evidence token,
-    // because the producer it feeds has no cross-repository read.
+    result = run(command, root, { ...environment, CANDIDATE_RECEIPT_DIGEST: "" });
+    assert.notEqual(result.status, 0, "candidate digest absent");
     result = run(command, root, { ...environment, OPL_INSTANCE_EVIDENCE_TOKEN: "" });
     assert.equal(result.status, 0, result.stderr);
     for (const binding of [
@@ -265,16 +245,6 @@ test("the protected declaration gate materializes exact inputs and fails closed 
       result = run(command, root, { ...environment, DEPLOYMENT_BINDING: JSON.stringify(binding) });
       assert.notEqual(result.status, 0, JSON.stringify(binding));
     }
-    for (const receipt of [
-      { ...j0, kind: "opl.local-workspace.j0-ready.v1" },
-      { ...j0, source: { ...j0.source, sha: "0".repeat(40) } },
-      { ...j0, failed: 1 },
-    ]) {
-      result = run(command, root, { ...environment, J0_READY_RECEIPT: JSON.stringify(receipt) });
-      assert.notEqual(result.status, 0, JSON.stringify(receipt));
-    }
-    result = run(command, root, { ...environment, J0_READY_RECEIPT: "{" });
-    assert.notEqual(result.status, 0);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

@@ -11,35 +11,6 @@ on:
         description: Successful Instance deployment-verify run for that Candidate.
         required: true
         type: string
-      candidate_receipt_digest:
-        description: Declared sha256 digest of the original Candidate receipt.
-        required: true
-        type: string
-      deployment_binding:
-        description: JSON deployment binding for that Candidate and protected owner origin.
-        required: true
-        type: string
-      qualification_account_id:
-        description: Declared protected customer account id.
-        required: true
-        type: string
-      qualification_package_id:
-        description: Declared Workspace package id.
-        required: true
-        type: string
-      qualification_authority_class:
-        description: Declared live qualification authority class.
-        required: true
-        type: choice
-        default: sandbox
-        options:
-          - sandbox
-          - preproduction
-      j0_ready_receipt:
-        description: External J0 READY producer receipt JSON for the exact Candidate.
-        required: true
-        type: string
-
 permissions:
   contents: read
 
@@ -85,12 +56,6 @@ jobs:
       CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
       INSTALLATION_RUN_ID: ${{ inputs.installation_run_id }}
       INSTANCE_REPOSITORY: gaofeng21cn/opl-instance-medopl
-      CANDIDATE_RECEIPT_DIGEST: ${{ inputs.candidate_receipt_digest }}
-      DEPLOYMENT_BINDING: ${{ inputs.deployment_binding }}
-      QUALIFICATION_ACCOUNT_ID: ${{ inputs.qualification_account_id }}
-      QUALIFICATION_PACKAGE_ID: ${{ inputs.qualification_package_id }}
-      QUALIFICATION_AUTHORITY_CLASS: ${{ inputs.qualification_authority_class }}
-      J0_READY_RECEIPT: ${{ inputs.j0_ready_receipt }}
     steps:
       - name: Checkout protected Cloud execution authority
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -205,88 +170,6 @@ jobs:
             --installation-run "$RUNNER_TEMP/customer-inputs/installation-run.json" \
             --output qualification-evidence/receipt.json
 
-      - name: Materialize protected qualification declarations
-        id: declarations
-        if: ${{ !cancelled() && steps.evidence.outcome == 'success' }}
-        env:
-          OPL_QUALIFICATION_ENVIRONMENT: cloud-business-qualification
-          OPL_QUALIFICATION_ORIGIN: ${{ vars.OPL_QUALIFICATION_ORIGIN }}
-          OPL_QUALIFICATION_PROVIDER_BOUNDARY: ${{ vars.OPL_QUALIFICATION_PROVIDER_BOUNDARY }}
-          OPL_QUALIFICATION_CUSTOMER_EMAIL: ${{ secrets.OPL_QUALIFICATION_CUSTOMER_EMAIL }}
-          OPL_QUALIFICATION_CUSTOMER_PASSWORD: ${{ secrets.OPL_QUALIFICATION_CUSTOMER_PASSWORD }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          umask 077
-          require() {
-            if [ -z "${!1:-}" ]; then
-              printf 'external prerequisite absent: %s\n' "$1" >&2
-              exit 1
-            fi
-          }
-          require OPL_QUALIFICATION_ENVIRONMENT
-          require OPL_QUALIFICATION_ORIGIN
-          require OPL_QUALIFICATION_CUSTOMER_EMAIL
-          require OPL_QUALIFICATION_CUSTOMER_PASSWORD
-          require OPL_QUALIFICATION_PROVIDER_BOUNDARY
-          [[ "$OPL_QUALIFICATION_ENVIRONMENT" == "cloud-business-qualification" ]]
-          [[ "$CANDIDATE_RECEIPT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
-          [[ "$QUALIFICATION_ACCOUNT_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$ ]]
-          [[ "$QUALIFICATION_PACKAGE_ID" =~ ^[a-z0-9][a-z0-9._-]{0,63}$ ]]
-          [[ "$QUALIFICATION_AUTHORITY_CLASS" =~ ^(sandbox|preproduction)$ ]]
-          [[ -f "$OPL_QUALIFICATION_PROVIDER_BOUNDARY" ]]
-          test "$(find qualification-inputs/installation -type f | wc -l | tr -d ' ')" = 1
-          mkdir -p "$RUNNER_TEMP/qualification" "$RUNNER_TEMP/j0-ready"
-          jq -e --arg candidate "$CANDIDATE_RECEIPT_DIGEST" --arg origin "$OPL_QUALIFICATION_ORIGIN" '
-            select(
-              keys == ["candidateReceiptDigest","clusterId","deploymentMode","fabricProvider","namespace","ownerOrigin","region"] and
-              .candidateReceiptDigest == $candidate and
-              .ownerOrigin == $origin and
-              .fabricProvider == "tencent-tke"
-            )
-          ' <<< "$DEPLOYMENT_BINDING" > "$RUNNER_TEMP/qualification/deployment.json"
-          jq -e --arg sha "$(jq -r .product.sha qualification-inputs/candidate/opl-cloud-candidate.json)" \
-            --arg tree "$(jq -r .product.tree qualification-inputs/candidate/opl-cloud-candidate.json)" '
-            select(
-              .kind == "opl.workspace-qualification.j0-ready.v2" and .status == "READY" and
-              .provider == "tencent-tke" and .failed == 0 and .skipped == 0 and
-              .source.sha == $sha and .source.tree == $tree and .source.clean == true
-            )
-          ' <<< "$J0_READY_RECEIPT" > "$RUNNER_TEMP/j0-ready/receipt.json"
-          chmod 600 "$RUNNER_TEMP/qualification/deployment.json" "$RUNNER_TEMP/j0-ready/receipt.json"
-          test "$(stat -c '%a' "$RUNNER_TEMP/j0-ready/receipt.json" 2>/dev/null || stat -f '%Lp' "$RUNNER_TEMP/j0-ready/receipt.json")" = "600"
-
-      # The producer reads only the declarations below. It requires no
-      # cross-repository evidence token: the Instance evidence reads above are
-      # this workflow's own steps, and the producer itself has no cross-repo
-      # read to authorize. OPL_QUALIFICATION_ENVIRONMENT is a protected-context
-      # marker, not a second environment lookup.
-      - name: Run protected business qualification through the shared Cloud flow
-        if: ${{ !cancelled() && steps.evidence.outcome == 'success' && steps.declarations.outcome == 'success' }}
-        env:
-          OPL_QUALIFICATION_ENVIRONMENT: cloud-business-qualification
-          OPL_QUALIFICATION_ORIGIN: ${{ vars.OPL_QUALIFICATION_ORIGIN }}
-          OPL_QUALIFICATION_PROVIDER_BOUNDARY: ${{ vars.OPL_QUALIFICATION_PROVIDER_BOUNDARY }}
-          OPL_QUALIFICATION_CUSTOMER_EMAIL: ${{ secrets.OPL_QUALIFICATION_CUSTOMER_EMAIL }}
-          OPL_QUALIFICATION_CUSTOMER_PASSWORD: ${{ secrets.OPL_QUALIFICATION_CUSTOMER_PASSWORD }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          umask 077
-          mkdir -p business-qualification-evidence
-          node tools/protected-business-qualification.ts run \
-            --candidate qualification-inputs/candidate/opl-cloud-candidate.json \
-            --candidate-digest "$CANDIDATE_RECEIPT_DIGEST" \
-            --installation qualification-inputs/installation/evidence.json \
-            --installation-run "$RUNNER_TEMP/customer-inputs/installation-run.json" \
-            --deployment "$RUNNER_TEMP/qualification/deployment.json" \
-            --j0-ready-receipt "$RUNNER_TEMP/j0-ready/receipt.json" \
-            --boundary "$OPL_QUALIFICATION_PROVIDER_BOUNDARY" \
-            --account-id "$QUALIFICATION_ACCOUNT_ID" \
-            --package-id "$QUALIFICATION_PACKAGE_ID" \
-            --authority-class "$QUALIFICATION_AUTHORITY_CLASS" \
-            --output business-qualification-evidence/receipt.json
-
       - name: Preserve redacted customer readback outcome
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -296,22 +179,12 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Preserve Candidate-bound business qualification receipts
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: cloud-business-qualification-${{ github.run_id }}-${{ github.run_attempt }}
-          path: business-qualification-evidence/
-          if-no-files-found: ignore
-          retention-days: 30
-
       - name: Remove private input artifacts and validator checkout
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          for path in qualification-inputs installation-authority business-qualification-evidence \
-            "$RUNNER_TEMP/customer-inputs" "$RUNNER_TEMP/qualification" "$RUNNER_TEMP/j0-ready"; do
+          for path in qualification-inputs installation-authority "$RUNNER_TEMP/customer-inputs"; do
             if [ -d "$path" ]; then
               find "$path" -mindepth 1 -delete
               rmdir "$path"

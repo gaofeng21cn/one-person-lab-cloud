@@ -7,6 +7,7 @@ const allowedWorkflows = new Set([
   "build-opl-cloud-candidate.yml",
   "build-opl-cloud-candidate-77e2024a-bridge.yml",
   "clean-host-qualification.yml",
+  "cloud-business-qualification.yml",
   "cloud-business-readback.yml",
   "codeql.yml",
   "pull-request-ci.yml",
@@ -30,6 +31,11 @@ const releasePublish = releaseWorkflow.jobs?.publish;
 const readback = await readFile(new URL(".github/workflows/release-opl-cloud-public-readback.yml", root), "utf8");
 const readbackWorkflow = YAML.parse(readback);
 const readbackJob = readbackWorkflow.jobs?.["public-readback"];
+const customerReadback = await readFile(new URL(".github/workflows/cloud-business-readback.yml", root), "utf8");
+const customerReadbackWorkflow = YAML.parse(customerReadback);
+const businessQualification = await readFile(new URL(".github/workflows/cloud-business-qualification.yml", root), "utf8");
+const businessQualificationWorkflow = YAML.parse(businessQualification);
+const businessQualificationJob = businessQualificationWorkflow.jobs?.qualification;
 if (JSON.stringify(Object.keys(releaseWorkflow.jobs || {})) !== JSON.stringify(["admission", "publish"]) ||
     releaseWorkflow.concurrency !== undefined || releaseAdmission?.environment !== undefined || releaseAdmission?.concurrency !== undefined ||
     releasePublish?.environment !== "cloud-release" || releasePublish?.needs !== "admission" ||
@@ -40,11 +46,44 @@ if (JSON.stringify(Object.keys(releaseWorkflow.jobs || {})) !== JSON.stringify([
     readbackWorkflow.on?.workflow_dispatch?.inputs?.publication_run_id?.required !== true ||
     readbackJob?.environment !== undefined || readbackJob?.concurrency !== undefined ||
     readbackJob?.permissions?.contents !== "read" || readbackJob?.permissions?.actions !== "read" ||
-    readbackJob?.permissions?.attestations !== "read") {
+    readbackJob?.permissions?.attestations !== "read" ||
+    JSON.stringify(Object.keys(businessQualificationWorkflow.jobs || {})) !== JSON.stringify(["admission", "qualification"]) ||
+    businessQualificationJob?.environment !== "cloud-business-qualification" ||
+    businessQualificationJob?.needs !== "admission" ||
+    businessQualificationJob?.permissions?.actions !== "read" ||
+    businessQualificationJob?.permissions?.contents !== "read") {
   throw new Error("Cloud Release stage and publication serialization boundary is invalid");
 }
 const releaseCommands = Object.values(releaseWorkflow.jobs || {}).flatMap((job) => job.steps || []).map((step) => step.run || "").join("\n");
 const readbackCommands = (readbackJob?.steps || []).map((step) => step.run || "").join("\n");
+const businessQualificationInputs = businessQualificationWorkflow.on?.workflow_dispatch?.inputs || {};
+if (JSON.stringify(Object.keys(businessQualificationInputs)) !== JSON.stringify([
+  "candidate_run_id", "installation_run_id", "deployment_binding",
+  "qualification_account_id", "qualification_package_id"
+]) ||
+    Object.values(businessQualificationInputs).some((input) => input?.required !== true) ||
+    JSON.stringify(Object.keys(customerReadbackWorkflow.on?.workflow_dispatch?.inputs || {})) !== JSON.stringify([
+      "candidate_run_id", "installation_run_id"
+    ])) {
+  throw new Error("Cloud customer and business workflows must keep separate, minimal dispatch inputs");
+}
+const businessQualificationCommands = (businessQualificationJob?.steps || []).map((step) => step.run || "").join("\n");
+const businessQualificationText = JSON.stringify(businessQualificationWorkflow);
+for (const required of [
+  "workspace-qualification-j0-ready.ts run",
+  "protected-business-qualification.ts run",
+  "--authority-class sandbox",
+  "business-qualification-evidence/business-qualification.json",
+  '"name":"cloud-business-qualification"'
+]) {
+  if (!businessQualificationText.includes(required)) throw new Error(`Cloud business qualification is missing: ${required}`);
+}
+if (businessQualificationCommands.includes("j0_ready_receipt") ||
+    businessQualificationCommands.includes("J0_READY_RECEIPT") ||
+    readbackCommands.includes("protected-business-qualification.ts") ||
+    readbackCommands.includes("workspace-qualification-j0-ready.ts")) {
+  throw new Error("Cloud customer readback must not own business qualification or J0 receipt input");
+}
 if (releaseCommands.includes("docker buildx build")) {
   throw new Error("Cloud Release must promote qualified Candidate bytes without rebuilding them");
 }
