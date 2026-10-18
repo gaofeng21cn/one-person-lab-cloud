@@ -141,12 +141,14 @@ prose as a delivered interface.
 
 ### Gateway 外部契约输入清单（2026-10-18）
 
-Cloud 先向 Gateway/Sub2API owner 收集以下事实，再开始新的 Cloud 实现切片。
-本清单只定义必须拿到的契约输入，不预先命名不存在的 endpoint、RPC、字段或权限。
+Cloud 已确认 Gateway 不改代码；新的 Cloud 实现切片复用登录时取得的
+Gateway 用户凭证和现有 Gateway 用户 API。下面的清单保留为实现验收边界，
+不预先命名不存在的 endpoint、RPC、字段或权限。
 
 | 输入 | 必须确认的事实 | Cloud 后续消费者 |
 | --- | --- | --- |
-| Service identity | 哪个 Gateway service identity 可以代表 Cloud 执行 Workspace 范围的命令；认证方式、凭据边界、受众、允许的 subject 范围和 Group/Key 权限 | Gateway Integration outbound client 和 Instance Secret/config wiring |
+| Login credential | Cloud 登录如何获得 Gateway 用户 bearer；它如何绑定 Cloud session、Cloud actor 和 external subject；凭证只保存在进程内并在 session/Gateway TTL 到期时失效 | Gateway Integration user-scoped Key client |
+| Group administration identity | 若需要创建或修改 Group，使用哪个已有 Gateway administrator identity 和现有 admin API；普通用户登录不自动获得该权限 | Gateway Integration Group command；Workspace 开通只要求已有可见的 `Codex` Group |
 | External subject mapping | Cloud User/Workspace 如何对应 Gateway User/subject；创建、查询、归属校验和已存在映射的读回 | Gateway identity mapping、Workspace 开通和重试收敛 |
 | Group command | 如何查询或创建默认 `Codex` Group；Cloud 被允许管理哪些 Group 属性；返回的 Group ID、版本/状态和幂等规则 | Workspace 开通、Group 管理命令和 Gateway 真相投影 |
 | Key creation | 如何为指定 external subject 创建 Workspace Key；请求中的 Workspace、Group、用途、模型范围和幂等身份；成功响应中的 external Key ID、有效 Group/范围和一次性 raw Key 交付边界 | Gateway Integration mapping、Secret delivery 和 Runtime handover |
@@ -157,10 +159,10 @@ Cloud 先向 Gateway/Sub2API owner 收集以下事实，再开始新的 Cloud �
 | Usage and routing readback | Key/Group 的有效路由、usage、quota 等事实如何通过 Gateway 读取；不可用或冲突时的错误语义 | `/console/api/keys`、usage、groups 和 Workspace status projection |
 | Version and deployment evidence | 契约对应的 Sub2API commit/image/deployment、启用的 service identity、真实 Gateway readback 和可重复的隔离测试证据 | `docs/status.md`、CI/qualification evidence 和后续 Issue acceptance |
 
-当前源码能证明的只是用户 JWT 下的 `/api/v1/keys` CRUD、用户可用 Group
-读取和管理员 Group CRUD；这些路径不等于上述 Workspace service contract。
-在 Gateway owner 给出真实服务身份和命令/读回协议前，Cloud 不新增适配器、
-不把用户凭证提升为服务凭证，也不把本地 binding 当作外部 Key 或 Group 真相。
+当前源码能证明的是用户 JWT 下的 `/api/v1/keys` CRUD、用户可用 Group
+读取和管理员 Group CRUD；Cloud 复用这些已有路径，不把用户凭证提升为服务
+凭证，也不把本地 binding 当作外部 Key 或 Group 真相。`/api/v1/service/workspace-keys`
+继续视为废弃假设，不进入实现。
 
 | Outcome | Owner | Remaining adoption and acceptance |
 | --- | --- | --- |

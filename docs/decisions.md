@@ -51,6 +51,38 @@ identity must remain Gateway, and unavailable or conflicting Gateway readback
 must remain visible rather than being replaced with a local empty, cached or
 re-derived answer.
 
+## 2026-10-18: Cloud Login Is The Existing Gateway Credential Boundary
+
+Gateway code and the external Gateway API are not changed for this integration.
+When a user logs in through `cloud.medopl.com`, Gateway Integration authenticates
+that user against the external Gateway and keeps the returned Gateway bearer only
+in process memory, bound to the Cloud session and the verified external subject.
+The Cloud session is the authorization boundary for user-scoped Gateway Key
+operations; a new `/api/v1/service/workspace-keys` service route and a separate
+Cloud service token are not part of the design.
+
+Gateway Integration may use that delegated user credential to call the existing
+Gateway user APIs for the mapped subject, including Key creation, readback and
+rotation. The external Gateway creates and owns the effective Key and Group;
+Cloud records only the external identity, Workspace mapping, operation facts,
+fingerprint and Secret delivery reference. The raw Key crosses directly into the
+approved Secret/config path and never enters ordinary Cloud persistence, logs,
+receipts or DTOs.
+
+The logged-in user credential does not grant administrator authority. Workspace
+opening selects the already approved and user-visible `Codex` Group. Creating or
+changing Group definitions requires an existing Gateway administrator credential
+and the external Gateway's existing admin API; Cloud must not infer that ability
+from Tenant membership or invent a new Group endpoint. If the approved Group is
+unavailable, the operation returns an explicit Gateway readback error.
+
+The retained Control Plane must not call the external Key API directly. Its
+Workspace caller moves through Gateway Integration, which validates the Cloud
+session, actor-to-Gateway mapping and current delegated credential before using
+the existing user-scoped Gateway route. Response loss and retries use the Cloud
+operation identity and Gateway readback; they never mint a second Key merely
+because the first response was lost.
+
 ## 2026-10-15: Workspace Key Lifecycle And Cloud Customer Reads
 
 This decision records product intent. It does not establish that the required
