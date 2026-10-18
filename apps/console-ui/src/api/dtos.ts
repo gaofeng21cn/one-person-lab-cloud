@@ -1120,14 +1120,6 @@ export interface AnnouncementScheduleRequest {
   endsAt?: string;
 }
 
-export interface ManagementState {
-  users: AuthIdentity[];
-  workspaces: Workspace[];
-  computeAllocations: ResourceFact[];
-  storageVolumes: ResourceFact[];
-  storageAttachments: ResourceFact[];
-}
-
 export interface OperatorOverviewDTO {
   accounts: SourceEnvelope<{ total: number; active: number; disabled: number }>;
   wallet: SourceEnvelope<MoneyDTO>;

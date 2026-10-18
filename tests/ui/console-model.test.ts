@@ -8,8 +8,7 @@ import {
   customerMenu,
   formatCount,
   formatUsdMicros,
-  hasSufficientWorkspaceLaunchBalance,
-  readinessRows
+  hasSufficientWorkspaceLaunchBalance
 } from "../../apps/console-ui/src/console-model.ts";
 
 const staticConsoleRoutes = [
@@ -145,8 +144,4 @@ test("formatters preserve exact money and unavailable facts", () => {
   assert.equal(formatUsdMicros("-9223372036854775808"), "-$9,223,372,036,854.78");
   assert.equal(formatCount(undefined), "-");
   assert.equal(formatUsdMicros(undefined), "-");
-  assert.deepEqual(readinessRows(null, null), [
-    { label: "运行依赖", status: "暂不可用", updatedAt: "-" },
-    { label: "生产依赖", status: "暂不可用", updatedAt: "-" }
-  ]);
 });
