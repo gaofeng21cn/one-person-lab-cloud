@@ -342,6 +342,39 @@ test("an owner readback from another source is not an account readback", async (
   assert.deepEqual(platform.calls.map((call) => call.path), ["/api/auth/me"]);
 });
 
+/*
+ * The preserved first attempt read `payload.accountId` and `payload.usdMicros`
+ * off the source envelope itself. Those routes answer with
+ * `{source, status, available, data}`, so that shape can only find `undefined`.
+ * The bare bodies below are complete values, not missing ones: if the buyer
+ * read them at the top level the account check would pass and the wallet could
+ * fund the quote. They are refused only because they are not the envelope the
+ * owner contract requires, which is the exact defect this pins.
+ */
+test("bare account and wallet bodies are refused by the source envelope contract", async () => {
+  const bareAccount = deployedPlatform({ account: { status: 200, body: ACCOUNT } });
+  await assert.rejects(
+    runDeployedWorkspacePurchase(declaredRequest(), callerFor(bareAccount)),
+    {
+      code: "deployed_purchase_account_unavailable",
+      message: "deployed purchase could not read the declared customer account",
+    },
+  );
+  assert.deepEqual(bareAccount.calls.map((call) => call.path), ["/api/auth/me"]);
+  assert.equal(bareAccount.commands(), 0);
+
+  const bareWallet = deployedPlatform({ wallet: { status: 200, body: WALLET } });
+  await assert.rejects(
+    runDeployedWorkspacePurchase(declaredRequest(), callerFor(bareWallet)),
+    {
+      code: "deployed_purchase_wallet_unavailable",
+      message: "deployed purchase could not read the customer wallet",
+    },
+  );
+  assert.equal(bareWallet.calls.some((call) => call.path === "/api/pricing/preview"), false);
+  assert.equal(bareWallet.commands(), 0);
+});
+
 test("an account readback without an active owner session is refused", async () => {
   for (const data of [
     { ...ACCOUNT, accountId: "" },
