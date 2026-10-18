@@ -21,7 +21,7 @@ jobs:
     if: >-
       ${{
         (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
-        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+        (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch' &&
           github.actor == github.triggering_actor &&
           (github.actor == github.repository_owner || github.actor == 'RenDeHuang'))
       }}

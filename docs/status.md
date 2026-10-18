@@ -17,6 +17,32 @@ Instance installation, or a Product Release. The target boundary is in
 [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Cloud-Owned Producers Admit A Branch Dispatch (2026-10-18)
+
+The Cloud-owned evidence producers no longer pin their own dispatch ref to
+`main`. `cloud-business-qualification.yml` and `cloud-business-readback.yml`
+admit any branch ref (`github.ref_type == 'branch'`) while keeping the
+owner/RenDeHuang actor allowlist and the self-attribution check; their pre-job
+environment readback keeps the reviewer protection but drops the single `main`
+branch policy and now only requires that every declared custom policy is a
+branch policy. `release-opl-cloud-public-readback.yml` manual retry drops the
+same dispatch-ref pin. The release admission split `validate_run` into
+`validate_cloud_run` (Candidate, local, customer readback and Cloud business
+runs: source-keyed, no dispatch-branch pin) and `validate_instance_run` (the
+three Instance-owned runs: still `head_branch == "main"`). `tools/cloud-release-evidence.ts`
+and `tools/cloud-business-readback.ts` dropped their Cloud-producer
+`head_branch == "main"` requirement while keeping the Instance installation run
+main-dispatched. `tools/validate-product-boundary.mjs` now refuses a Cloud
+producer guard that is not a branch dispatch or that pins `refs/heads/main`.
+The Release publication boundary and the Instance deployment evidence remain
+main-only, and the published Product SHA must still be an ancestor of canonical
+`main`.
+
+Local verification passed the product-boundary check, the development-tools
+TypeScript check and 75 focused tests from `origin/main` with zero failures,
+skips or TODOs. This is source evidence; it claims no dispatch, protected run,
+Release or production state.
+
 ## PR CI Cache Reuse And Parallel Verification (2026-10-18)
 
 The development-tool source change is based on `aba24c9b` (main after #969).

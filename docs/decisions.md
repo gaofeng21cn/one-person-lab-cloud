@@ -4,6 +4,32 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-10-18: A Cloud-Owned Producer Dispatches From Any Branch
+
+Candidate construction and every Cloud-owned evidence producer — local
+qualification, protected customer readback and protected business qualification
+— are replaceable inputs, not the formal Product Release. Any write-access
+collaborator may dispatch them against an exact commit at the head of a pushed
+branch, and each run stays self-attributed. Those producers must not pin their
+own dispatch ref to `main`: a `refs/heads/main` guard refuses the very
+branch-dispatched evidence path the Candidate rule already assumes, because a
+`github.ref` comparison on a `workflow_dispatch` evaluates the dispatched ref.
+
+A Cloud-owned producer binds the exact source commit through its own typed
+validator (the Candidate receipt by its bundle digest and source SHA; the
+business and readback receipts by their candidate/source fields) instead of a
+branch name, which is strictly more precise. The protected environment keeps
+its reviewer protection and explicit custom branch policies, but those policies
+are not required to name `main` specifically; GitHub still enforces the refs a
+policy admits.
+
+The formal Release publication boundary and the `opl-instance-medopl`
+deployment evidence remain `main`-only: the Release still pins
+`refs/heads/main`, requires the promoted Product SHA to be an ancestor of
+canonical `main`, and admits only the repository owner or `RenDeHuang` as the
+original publisher. This decision does not change publication authority, the
+Instance deployment rule, or any release-gate evidence class.
+
 ## 2026-10-15: Workspace Key Lifecycle And Cloud Customer Reads
 
 This decision records product intent. It does not establish that the required

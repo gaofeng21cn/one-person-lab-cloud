@@ -108,13 +108,16 @@ it does not create a Product Release.
 ### Protected Cloud Customer Reads
 
 The source entry `.github/workflows/cloud-business-readback.yml` has two
-`ubuntu-latest` jobs: `admission`, then `readback`. Dispatch is limited to Cloud
-`main`, the repository owner or `RenDeHuang`, with the original actor matching
-the triggering actor. Before the readback job references
+`ubuntu-latest` jobs: `admission`, then `readback`. Dispatch is admitted from any
+branch ref, restricted to the repository owner or `RenDeHuang`, with the original
+actor matching the triggering actor. Before the readback job references
 `cloud-business-qualification`, admission uses GET readback to require that the
 environment already exists, has nonempty required User reviewers restricted to
-the allowed owners, `prevent_self_review: true`, and exactly one custom branch
-policy for `main`. The workflow does not configure or create that environment.
+the allowed owners, `prevent_self_review: true`, and at least one custom branch
+policy whose every policy is a branch policy. The environment is deliberately not
+pinned to `main`: the readback is a replaceable evidence input, so a branch
+dispatch must be admitted. The workflow does not configure or create that
+environment.
 
 The protected environment supplies `vars.OPL_QUALIFICATION_ORIGIN` and the
 independent customer Secrets `OPL_QUALIFICATION_CUSTOMER_EMAIL` and

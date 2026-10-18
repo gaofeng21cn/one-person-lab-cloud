@@ -354,7 +354,6 @@ test("release admission refuses business evidence from another run, workflow or 
     { repository: { full_name: instanceRepository } },
     { path: ".github/workflows/release-opl-cloud-image.yml" },
     { event: "push" },
-    { head_branch: "codex/unmerged" },
     { head_sha: "f".repeat(40) },
     { status: "in_progress" },
     { conclusion: "failure" }

@@ -54,6 +54,20 @@ if (JSON.stringify(Object.keys(releaseWorkflow.jobs || {})) !== JSON.stringify([
     businessQualificationJob?.permissions?.contents !== "read") {
   throw new Error("Cloud Release stage and publication serialization boundary is invalid");
 }
+// Cloud-owned evidence producers (Candidate, local, customer readback and
+// protected business qualification) are replaceable inputs, so they must admit
+// a branch dispatch and must not pin themselves to main. Only the Release
+// publication boundary and the Instance-owned deployment runs stay main-only.
+for (const [name, job] of [["cloud-business-qualification/admission", businessQualificationWorkflow.jobs?.admission],
+  ["cloud-business-qualification/qualification", businessQualificationJob],
+  ["cloud-business-readback/admission", customerReadbackWorkflow.jobs?.admission],
+  ["cloud-business-readback/readback", customerReadbackWorkflow.jobs?.readback]]) {
+  const guard = String(job?.if ?? "");
+  if (!guard.includes("github.ref_type == 'branch'") || guard.includes("refs/heads/main")) {
+    throw new Error(`${name} must admit a branch dispatch and must not pin the dispatched ref to main`);
+  }
+}
+
 const releaseCommands = Object.values(releaseWorkflow.jobs || {}).flatMap((job) => job.steps || []).map((step) => step.run || "").join("\n");
 const readbackCommands = (readbackJob?.steps || []).map((step) => step.run || "").join("\n");
 const businessQualificationInputs = businessQualificationWorkflow.on?.workflow_dispatch?.inputs || {};

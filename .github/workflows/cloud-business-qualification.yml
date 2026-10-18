@@ -29,7 +29,7 @@ permissions:
 
 jobs:
   admission:
-    if: ${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang') }}
+    if: ${{ github.ref_type == 'branch' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -37,7 +37,11 @@ jobs:
       contents: read
     steps:
       # Check before referencing the environment: an absent environment must not
-      # be silently created by the protected job with no reviewer protection.
+      # be silently created by the protected job with no reviewer protection. The
+      # producer is a replaceable evidence input, so the environment must carry
+      # reviewer protection and explicit custom branch policies; it must not be
+      # pinned to main, which would refuse every branch dispatch this producer
+      # exists to serve. GitHub itself still enforces which refs a policy admits.
       - name: Require existing protected customer execution environment
         env:
           GH_TOKEN: ${{ github.token }}
@@ -54,11 +58,11 @@ jobs:
                 (.reviewer.login == "gaofeng21cn" or .reviewer.login == "RenDeHuang")))
           ' <<< "$environment" >/dev/null
           gh api "repos/$GITHUB_REPOSITORY/environments/cloud-business-qualification/deployment-branch-policies" |
-            jq -e '.total_count == 1 and .branch_policies[0].name == "main" and .branch_policies[0].type == "branch"' >/dev/null
+            jq -e '.total_count >= 1 and all(.branch_policies[]; .type == "branch")' >/dev/null
 
   qualification:
     needs: admission
-    if: ${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang') }}
+    if: ${{ github.ref_type == 'branch' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: cloud-business-qualification

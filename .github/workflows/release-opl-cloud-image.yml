@@ -112,7 +112,23 @@ jobs:
           GH_TOKEN="$INSTANCE_TOKEN" gh api "repos/$INSTANCE_REPOSITORY/actions/runs/$INSTANCE_DECISION_RUN_ID" > "$authority/instance-decision-run.json"
           GH_TOKEN="$INSTANCE_TOKEN" gh api "repos/$INSTANCE_REPOSITORY/actions/runs/$INSTANCE_WORKSPACE_RUN_ID" > "$authority/instance-workspace-run.json"
 
-          validate_run() {
+          # Cloud-owned evidence producers are replaceable inputs, so this gate
+          # must not pin their dispatch branch to main. Those runs stay bound to
+          # the exact source commit by their own typed validators (the Candidate
+          # run by validate_candidate_run, the business receipt and the local
+          # receipt by their owner contracts), which is strictly more precise
+          # than a branch name. Instance-owned runs remain main-dispatched,
+          # because the Instance repository deploys only from its canonical main.
+          validate_cloud_run() {
+            local file="$1" run_id="$2" repository="$3" workflow="$4"
+            jq -e --arg run_id "$run_id" --arg repository "$repository" --arg workflow "$workflow" '
+              (.id | tostring) == $run_id and .repository.full_name == $repository and
+              .path == $workflow and .event == "workflow_dispatch" and
+              .status == "completed" and .conclusion == "success" and
+              (.head_sha | test("^[0-9a-f]{40}$"))
+            ' "$file" >/dev/null
+          }
+          validate_instance_run() {
             local file="$1" run_id="$2" repository="$3" workflow="$4"
             jq -e --arg run_id "$run_id" --arg repository "$repository" --arg workflow "$workflow" '
               (.id | tostring) == $run_id and .repository.full_name == $repository and
@@ -140,17 +156,17 @@ jobs:
             ' "$file" >/dev/null
           }
           GH_TOKEN="$CLOUD_TOKEN" gh api "repos/$PRODUCT_REPOSITORY/actions/runs/$CUSTOMER_RUN_ID" > "$authority/customer-run.json"
-          validate_run "$authority/customer-run.json" "$CUSTOMER_RUN_ID" "$PRODUCT_REPOSITORY" ".github/workflows/cloud-business-readback.yml"
+          validate_cloud_run "$authority/customer-run.json" "$CUSTOMER_RUN_ID" "$PRODUCT_REPOSITORY" ".github/workflows/cloud-business-readback.yml"
           customer_attempt="$(jq -r '.run_attempt | tostring' "$authority/customer-run.json")"
           [[ "$customer_attempt" =~ ^[1-9][0-9]*$ ]]
           customer_artifact="cloud-customer-readback-$CUSTOMER_RUN_ID-$customer_attempt"
           GH_TOKEN="$CLOUD_TOKEN" gh api "repos/$PRODUCT_REPOSITORY/actions/runs/$CUSTOMER_RUN_ID/artifacts?per_page=100" > "$authority/customer-artifacts.json"
           validate_candidate_run "$authority/candidate-run.json" "$CANDIDATE_RUN_ID" "$PRODUCT_REPOSITORY" ".github/workflows/build-opl-cloud-candidate.yml"
-          validate_run "$authority/local-run.json" "$LOCAL_QUALIFICATION_RUN_ID" "$PRODUCT_REPOSITORY" ".github/workflows/clean-host-qualification.yml"
-          validate_run "$authority/business-run.json" "$CLOUD_BUSINESS_QUALIFICATION_RUN_ID" "$PRODUCT_REPOSITORY" ".github/workflows/cloud-business-qualification.yml"
-          validate_run "$authority/instance-deployment-run.json" "$INSTANCE_DEPLOYMENT_RUN_ID" "$INSTANCE_REPOSITORY" ".github/workflows/deployment-verify.yml"
-          validate_run "$authority/instance-decision-run.json" "$INSTANCE_DECISION_RUN_ID" "$INSTANCE_REPOSITORY" ".github/workflows/qualification-decision.yml"
-          validate_run "$authority/instance-workspace-run.json" "$INSTANCE_WORKSPACE_RUN_ID" "$INSTANCE_REPOSITORY" ".github/workflows/verify.yml"
+          validate_cloud_run "$authority/local-run.json" "$LOCAL_QUALIFICATION_RUN_ID" "$PRODUCT_REPOSITORY" ".github/workflows/clean-host-qualification.yml"
+          validate_cloud_run "$authority/business-run.json" "$CLOUD_BUSINESS_QUALIFICATION_RUN_ID" "$PRODUCT_REPOSITORY" ".github/workflows/cloud-business-qualification.yml"
+          validate_instance_run "$authority/instance-deployment-run.json" "$INSTANCE_DEPLOYMENT_RUN_ID" "$INSTANCE_REPOSITORY" ".github/workflows/deployment-verify.yml"
+          validate_instance_run "$authority/instance-decision-run.json" "$INSTANCE_DECISION_RUN_ID" "$INSTANCE_REPOSITORY" ".github/workflows/qualification-decision.yml"
+          validate_instance_run "$authority/instance-workspace-run.json" "$INSTANCE_WORKSPACE_RUN_ID" "$INSTANCE_REPOSITORY" ".github/workflows/verify.yml"
 
           candidate_attempt="$(jq -r '.run_attempt | tostring' "$authority/candidate-run.json")"
           [[ "$candidate_attempt" =~ ^[1-9][0-9]*$ ]]

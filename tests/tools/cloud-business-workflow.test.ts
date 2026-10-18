@@ -37,7 +37,7 @@ test("customer execution refuses absent or insufficient environment protections"
       protection_rules: [{ type: "required_reviewers", prevent_self_review: true,
         reviewers: [{ type: "User", reviewer: { login: "gaofeng21cn" } }] }],
     };
-    const branches = { total_count: 1, branch_policies: [{ name: "main", type: "branch" }] };
+    const branches = { total_count: 1, branch_policies: [{ name: "main", type: "branch" }] }; // branch policies stay declared, but any branch ref is admitted
     const command = step(workflow.jobs.admission, "Require existing protected customer execution environment").run;
     const env = { PATH: `${root}:${process.env.PATH}`, ENV_FIXTURE: join(root, "environment.json"),
       BRANCH_FIXTURE: join(root, "branches.json"), GITHUB_REPOSITORY: repository };
@@ -56,12 +56,18 @@ test("customer execution refuses absent or insufficient environment protections"
     await writeFile(env.ENV_FIXTURE, JSON.stringify(environment));
     let result = run(command, root, env);
     assert.equal(result.status, 0, result.stderr);
-    for (const policy of [{ name: "*", type: "branch" }, { name: "main", type: "tag" }]) {
-      await writeFile(env.BRANCH_FIXTURE, JSON.stringify({ total_count: 1, branch_policies: [policy] }));
-      assert.notEqual(run(command, root, env).status, 0);
-    }
-    await writeFile(env.BRANCH_FIXTURE, JSON.stringify({ total_count: 2, branch_policies: [...branches.branch_policies, { name: "feature/*", type: "branch" }] }));
+    // A tag policy is not a branch policy and must still be refused.
+    await writeFile(env.BRANCH_FIXTURE, JSON.stringify({ total_count: 1, branch_policies: [{ name: "main", type: "tag" }] }));
     assert.notEqual(run(command, root, env).status, 0);
+    // Any set of branch policies is admitted: the producer is a replaceable
+    // evidence input, so the environment must not be pinned to main.
+    for (const policies of [
+      [{ name: "*", type: "branch" }],
+      [{ name: "main", type: "branch" }, { name: "feature/*", type: "branch" }],
+    ]) {
+      await writeFile(env.BRANCH_FIXTURE, JSON.stringify({ total_count: policies.length, branch_policies: policies }));
+      assert.equal(run(command, root, env).status, 0, result.stderr);
+    }
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -75,7 +81,8 @@ test("Cloud customer workflow limits credentials to protected public product rea
     assert.equal(job["runs-on"], "ubuntu-latest");
     assert.deepEqual(job.permissions, { actions: "read", contents: "read" });
     assert.match(job.if, /github\.actor == github\.triggering_actor/);
-    assert.match(job.if, /refs\/heads\/main/);
+    assert.match(job.if, /github\.ref_type == 'branch'/);
+    assert.doesNotMatch(job.if, /refs\/heads\/main/);
     assert.match(job.if, /github\.actor == github\.repository_owner/);
   }
   const customer = step(workflow.jobs.readback, "Read customer product surfaces through CloudIdentity");

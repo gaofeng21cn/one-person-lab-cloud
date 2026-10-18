@@ -64,10 +64,14 @@ function identity(value: unknown): CandidateIdentity {
     cloudImageRef: image.indexRef, cloudImageDigest: image.indexDigest, cloudImageRevision: image.revision,
     cloudRuntimeChildDigest: image.platforms.find((v: any) => v.platform === "linux/amd64").digest };
 }
-function authority(value: unknown, repository: string, path: string, completed: boolean): Authority {
+function authority(value: unknown, repository: string, path: string, completed: boolean, requireMainBranch: boolean): Authority {
   const r = obj(value);
+  // A Cloud-owned producer is a replaceable evidence input, so its dispatch
+  // branch must not be pinned to main; the receipt binds the exact source commit
+  // instead. An Instance-owned run deploys only from canonical main, so it keeps
+  // the main-dispatched requirement.
   if (obj(r.repository).full_name !== repository || r.path !== path || r.event !== "workflow_dispatch" ||
-    r.head_branch !== "main" || !SHA.test(r.head_sha) || !ID.test(String(r.id)) || !ID.test(String(r.run_attempt)) ||
+    (requireMainBranch && r.head_branch !== "main") || !SHA.test(r.head_sha) || !ID.test(String(r.id)) || !ID.test(String(r.run_attempt)) ||
     (completed && (r.status !== "completed" || r.conclusion !== "success"))) fail();
   return { repository, authoritySha: r.head_sha, runId: String(r.id), runAttempt: String(r.run_attempt) };
 }
@@ -78,7 +82,7 @@ function installationIdentity(candidate: unknown, installationText: string, inst
   let d: Record<string, any>;
   try { d = obj(JSON.parse(installationText)); } catch { fail(); }
   const expected = identity(candidate);
-  const source = authority(installationRun, INSTANCE, ".github/workflows/deployment-verify.yml", true);
+  const source = authority(installationRun, INSTANCE, ".github/workflows/deployment-verify.yml", true, true);
   if (d.schemaVersion !== 2 || d.status !== "deployment_verified" || d.operationMode !== "deployment_verification" ||
       d.environment !== "production" || d.stage !== "complete" || d.errorCode !== "none") fail();
   const { receiptDigest, ...fields } = expected;
@@ -120,7 +124,7 @@ export function validateCloudBusinessReadbackBinding(input: {
   let receipt: CloudBusinessReadbackReceipt;
   try { receipt = validateCloudBusinessReadbackReceipt(JSON.parse(input.receiptText)); } catch { fail(); }
   const installation = installationIdentity(input.candidate, input.installationText, input.installationRun);
-  const run = authority(input.run, CLOUD, WORKFLOW, true), raw = obj(input.run);
+  const run = authority(input.run, CLOUD, WORKFLOW, true, false), raw = obj(input.run);
   if (receipt.status !== "customer_reads_verified" || canonicalJson(receipt.candidate) !== canonicalJson(identity(input.candidate)) ||
     canonicalJson(receipt.installation) !== canonicalJson(installation) ||
     Object.entries(run).some(([k,v]) => obj(receipt.producer)[k] !== v) ||

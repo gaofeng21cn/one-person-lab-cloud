@@ -198,9 +198,20 @@ test("Candidate promotion gate agrees with the Candidate branch-source rule", as
   assert.match(gate, /\.head_sha == \$product_sha/);
   assert.match(gate, /\.conclusion == "success"/);
 
-  // Only the Candidate run is source-keyed. Every other evidence run keeps its
+  // Cloud-owned producers are replaceable evidence inputs, so their runs are
+  // source-keyed rather than branch-pinned: the Candidate run already was, and
+  // the local and business runs now follow it.
+  for (const authorityFile of ["candidate-run.json", "local-run.json", "business-run.json"]) {
+    assert.doesNotMatch(
+      bashFunctionBody(evidenceScript, calleeOf(evidenceScript, authorityFile)),
+      /head_branch/,
+      `${authorityFile} must not pin the producer run to a dispatch branch`
+    );
+  }
+
+  // Instance-owned runs deploy only from canonical main, so they keep the
   // main-dispatched requirement.
-  for (const authorityFile of ["local-run.json", "business-run.json", "instance-deployment-run.json", "instance-decision-run.json", "instance-workspace-run.json"]) {
+  for (const authorityFile of ["instance-deployment-run.json", "instance-decision-run.json", "instance-workspace-run.json"]) {
     assert.match(
       bashFunctionBody(evidenceScript, calleeOf(evidenceScript, authorityFile)),
       /\.head_branch == "main"/,

@@ -172,12 +172,17 @@ export function validateReleaseBusinessQualification(input: {
     evidenceError("cloud_business_qualification_image_invalid");
   }
 
+  // The Cloud business producer is a replaceable evidence input, so this
+  // admission must not pin its dispatch branch to main; the run binds the exact
+  // product source commit instead, which is strictly more precise than a branch
+  // name. Instance deployment evidence stays main-dispatched in
+  // validateReleaseInstallationBinding.
   const run = record(input.run, "cloud_business_qualification_run_invalid");
   const repository = record(run.repository, "cloud_business_qualification_run_invalid");
   if (!RUN_ID.test(input.runId) || String(run.id) !== input.runId ||
       repository.full_name !== CLOUD_BUSINESS_QUALIFICATION_PRODUCER.repository ||
       run.path !== CLOUD_BUSINESS_QUALIFICATION_PRODUCER.workflow ||
-      run.event !== "workflow_dispatch" || run.head_branch !== "main" ||
+      run.event !== "workflow_dispatch" ||
       run.status !== "completed" || run.conclusion !== "success" ||
       !SHA.test(String(run.head_sha || "")) || run.head_sha !== identity.productSha) {
     evidenceError("cloud_business_qualification_run_invalid");
