@@ -139,9 +139,32 @@ validators describe their still-consumed implementation boundary; upgrade them
 with their real callers, tests and evidence producers rather than relabeling
 prose as a delivered interface.
 
+### Gateway 外部契约输入清单（2026-10-18）
+
+Cloud 先向 Gateway/Sub2API owner 收集以下事实，再开始新的 Cloud 实现切片。
+本清单只定义必须拿到的契约输入，不预先命名不存在的 endpoint、RPC、字段或权限。
+
+| 输入 | 必须确认的事实 | Cloud 后续消费者 |
+| --- | --- | --- |
+| Service identity | 哪个 Gateway service identity 可以代表 Cloud 执行 Workspace 范围的命令；认证方式、凭据边界、受众、允许的 subject 范围和 Group/Key 权限 | Gateway Integration outbound client 和 Instance Secret/config wiring |
+| External subject mapping | Cloud User/Workspace 如何对应 Gateway User/subject；创建、查询、归属校验和已存在映射的读回 | Gateway identity mapping、Workspace 开通和重试收敛 |
+| Group command | 如何查询或创建默认 `Codex` Group；Cloud 被允许管理哪些 Group 属性；返回的 Group ID、版本/状态和幂等规则 | Workspace 开通、Group 管理命令和 Gateway 真相投影 |
+| Key creation | 如何为指定 external subject 创建 Workspace Key；请求中的 Workspace、Group、用途、模型范围和幂等身份；成功响应中的 external Key ID、有效 Group/范围和一次性 raw Key 交付边界 | Gateway Integration mapping、Secret delivery 和 Runtime handover |
+| Key readback | 如何按 external Key ID 或原始命令身份读回有效 Key、Group、状态和模型范围；普通读回不得返回 raw Key | Cloud projection、重试、未知结果收敛和 Runtime 验证 |
+| Key rotation | 复用当前 Key 与创建新 Key 的判定；新旧 Key 的交接顺序；旧 Key 的明确收尾动作、授权和读回 | Workspace 配置变更、Secret 替换和 predecessor mapping |
+| Failure semantics | 拒绝、超时、响应丢失、重复命令、部分成功分别如何编码；原始幂等命令如何查询，不得通过重试重复创建 Key | Gateway operation state、Workspace recovery 和审计证据 |
+| Secret delivery | raw Key 是否只在受控 Secret/config 写入响应中出现；谁读取、谁写入、如何确认 fingerprint/version；普通 Cloud DB、日志、receipt、DTO 均不得保存 raw Key | Fabric Secret binding、Serve/Runtime config readback |
+| Usage and routing readback | Key/Group 的有效路由、usage、quota 等事实如何通过 Gateway 读取；不可用或冲突时的错误语义 | `/console/api/keys`、usage、groups 和 Workspace status projection |
+| Version and deployment evidence | 契约对应的 Sub2API commit/image/deployment、启用的 service identity、真实 Gateway readback 和可重复的隔离测试证据 | `docs/status.md`、CI/qualification evidence 和后续 Issue acceptance |
+
+当前源码能证明的只是用户 JWT 下的 `/api/v1/keys` CRUD、用户可用 Group
+读取和管理员 Group CRUD；这些路径不等于上述 Workspace service contract。
+在 Gateway owner 给出真实服务身份和命令/读回协议前，Cloud 不新增适配器、
+不把用户凭证提升为服务凭证，也不把本地 binding 当作外部 Key 或 Group 真相。
+
 | Outcome | Owner | Remaining adoption and acceptance |
 | --- | --- | --- |
-| Workspace-managed Key lifecycle (#821, #868) | Workspace and Gateway Integration; Sub2API external authority | Cloud source now owns the reversible owner route and all three Workspace-side triggers: closure, suspension (unpaid expiry and provider-confirmed resource loss) and authorized recovery: [status](status.md#workspace-managed-key-lifecycle-source-wiring-2026-10-18) and [status](status.md#workspace-lifecycle-triggers-for-the-managed-key-2026-10-18). Remaining: the approved Sub2API service disable/enable/state-readback endpoint, the retained Control Plane callers that must delegate to this owner route, and a customer-visible closeout readback. Include proven historical ownership, retries, response loss and unrelated-key controls; resource absence does not prove key state. |
+| Workspace-managed Key lifecycle (#821, #868) | Workspace and Gateway Integration; Sub2API external authority | #868 is closed as not planned for the current delivery scope. The existing Cloud lifecycle source wiring is retained as historical implementation evidence, not as a reason to add Gateway disable/enable/state-readback APIs or migrate callers now. Key rotation and the Workspace opening path remain governed by the current Gateway mapping contract above. |
 | Workspace Key mapping and rotation | Workspace, Gateway Integration, external Gateway, Fabric and Serve | The former same-Key source slice remains historical evidence. The current target allows Key reuse or rotation: Gateway creates or manages the effective Key/Group, Cloud records the opaque mapping, Fabric/Serve deliver and read back the new Secret/config, and Gateway closes the predecessor when authorized. The retained Control Plane Workspace caller still needs migration and the external path needs deployed readback. | One authenticated Workspace opening and one rotation read back the same Gateway-owned facts through Gateway and Cloud, with no duplicate operation, leaked raw Key or local projection treated as external truth. |
 | Personal and Tenant financial reads (#840, #870) | Gateway Integration and retained financial owner; Console BFF/UI | Keep wallet/Token reads on the logged-in User. Tenant owner/admin read Tenant bills; original owners read proven historical bills without automatic admin inheritance. Personal history now has a typed BFF/original-owner list, detail and trend reader with live identity, reciprocal Account/User proof and original-order projections. Local original-history and isolation checks are in [status](status.md#personal-historical-billing-source-repair-2026-10-16). Team transaction list/detail and confirmed charge/refund trend are now implemented through Gateway/BFF under the live Tenant owner/admin role. Ledger now exposes original funded-charge receipt/accepted-quote details under the current Tenant role without exposing private execution evidence. Missing receipt kinds remain explicitly unavailable; no refund receipt is invented from a Gateway reference. Installed exact-Candidate acceptance remains unproved; never derive Tenant financial authority from the personal-history path. |
 | Announcements and historical ACKs (#840, #871) | Existing announcement owner, CloudIdentity and Console BFF/UI | The source now routes Cloud list/ACK through the BFF to the original owner, revalidates live identity, and folds proven historical ACKs with original timestamps. Local owner, PostgreSQL, BFF and browser checks are recorded in [status](status.md#cloud-announcement-source-repair-2026-10-15). Source CI and Instance wiring source are delivered in [Cloud PR 882](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/882) and [Instance PR 505](https://github.com/gaofeng21cn/opl-instance-medopl/pull/505). Remaining: protected peer/token/certificate/topology adoption and authenticated same-Candidate acceptance; #840 retains its other reads. |
