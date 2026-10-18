@@ -26,7 +26,6 @@ import type {
   GatewayUsageSummaryDTO,
   GatewayWallet,
   GatewayWalletReadbackDTO,
-  ManagementState,
   AnnouncementDraftRequest,
   AnnouncementScheduleRequest,
   BillingReviewResolutionRequest,
@@ -55,7 +54,6 @@ import type {
   PricingCatalogResponse,
   PricingPreviewRequest,
   PricingPreviewResponse,
-  ReadinessFact,
   SourceEnvelope,
   UpdateGatewayKeyRequest
 } from "./dtos.ts";
@@ -542,18 +540,6 @@ export function publishOperatorAnnouncement(announcementId: string, input: Annou
 
 export function withdrawOperatorAnnouncement(announcementId: string, csrfToken: string, idempotencyKey: string): Promise<AnnouncementDTO> {
   return postJson<unknown>(`/api/operator/announcements/${encodeURIComponent(announcementId)}/withdraw`, {}, csrfToken, idempotencyKey).then(decodeDto<AnnouncementDTO>);
-}
-
-export function getManagementState(): Promise<ManagementState> {
-  return getJson<unknown>("/api/management/state").then(decodeDto<ManagementState>);
-}
-
-export function getRuntimeReadiness(): Promise<ReadinessFact> {
-  return getJson<unknown>("/api/runtime/readiness").then(decodeDto<ReadinessFact>);
-}
-
-export function getProductionReadiness(): Promise<ReadinessFact> {
-  return getJson<unknown>("/api/production/readiness").then(decodeDto<ReadinessFact>);
 }
 
 export function admitOperatorApplicationRevision(

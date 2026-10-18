@@ -1,4 +1,3 @@
-import type { ReadinessFact } from "./api/dtos.ts";
 import { cloudIdentity } from "./app/console-identity.ts";
 import type { ConsoleNavigationId, CustomerConsoleRoute } from "./app/console-router.ts";
 
@@ -82,13 +81,4 @@ export function formatDate(value: unknown, includeTime = false): string {
   return new Intl.DateTimeFormat("zh-CN", includeTime
     ? { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }
     : { year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
-}
-
-export function readinessRows(runtime: ReadinessFact | null, production: ReadinessFact | null) {
-  const row = (label: string, value: ReadinessFact | null) => ({
-    label,
-    status: value?.ready === true ? "正常" : value?.ready === false ? "需处理" : "暂不可用",
-    updatedAt: value?.generatedAt || value?.updatedAt || "-"
-  });
-  return [row("运行依赖", runtime), row("生产依赖", production)];
 }
