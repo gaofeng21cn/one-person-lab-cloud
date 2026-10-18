@@ -100,7 +100,7 @@ test("installation CLI classifies live backend proof failures by boundary", asyn
   endpointAmbiguous.endpoints.subsets[0].addresses[0].ip = "192.0.2.99";
   const endpointResult = await invoke(endpointAmbiguous.list);
   assert.equal(endpointResult.status, 1, endpointResult.stdout);
-  assert.ok(endpointResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous" && error.reasonCode === "endpoint_backend"), endpointResult.stdout);
+  assert.ok(endpointResult.report.errors.some(error => error.code === "rpc_service_backend_ambiguous" && error.reasonCode === "endpoint_address_mismatch"), endpointResult.stdout);
 
   const listenerConflict = workedInstallation();
   const sidecar = { name: "other-listener", image: "example.invalid/sidecar:1", ports: [{ name: "other", containerPort: 8184 }] };
@@ -259,6 +259,44 @@ test("installation CLI accepts live replicas only through exact controller and e
   });
 });
 
+test("installation CLI names the cause of a rejected live endpoint proof", async t => {
+  await t.test("consistent control", async () => {
+    const control = withLiveWorkspaceBackends();
+    const result = await invoke(control.list);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(result.report.ok, true);
+    assert.deepEqual(result.report.errors, []);
+  });
+  const cases: [string, string, (fixture: ReturnType<typeof withLiveWorkspaceBackends>) => void][] = [
+    ["Service publishes no ready address", "endpoint_no_ready_address", ({ endpoints }) => { endpoints.subsets = []; }],
+    ["Service leaves not-ready addresses unpublished", "endpoint_no_ready_address", ({ endpoints }) => {
+      const entry = endpoints.subsets[0].addresses[0];
+      endpoints.subsets[0].addresses = [];
+      endpoints.subsets[0].notReadyAddresses = [entry];
+    }],
+    ["endpoint names a Pod absent from the live read", "endpoint_pod_absent", ({ endpoints }) => {
+      endpoints.subsets[0].addresses[0].targetRef.uid = "replaced-pod";
+    }],
+    ["endpoint publishes a different port name", "endpoint_port_mismatch", ({ endpoints }) => {
+      endpoints.subsets[0].ports[0].name = "http";
+    }],
+    ["Pod does not match the Service selector", "endpoint_pod_selector_mismatch", ({ pod }) => {
+      pod.metadata.labels.unit = "foreign";
+    }],
+    ["Pod ownership chain does not reach the target Deployment", "pod_owner_chain_unproven", ({ replicaSet }) => {
+      replicaSet.metadata.ownerReferences[0].uid = "replaced-deployment";
+    }]
+  ];
+  for (const [name, reasonCode, change] of cases) await t.test(name, async () => {
+    const fixture = withLiveWorkspaceBackends();
+    change(fixture);
+    const result = await invoke(fixture.list);
+    assert.equal(result.status, 1, result.stdout);
+    assert.deepEqual([...new Set(result.report.errors.map(error => `${error.code}/${error.reasonCode}`))],
+      [`rpc_service_backend_ambiguous/${reasonCode}`], result.stdout);
+    assert.deepEqual(result.report.communication.edges, []);
+  });
+});
 
 test("installation CLI admits an upgrade while exact old ReplicaSet backends remain", async () => {
   const { list, target } = withLiveWorkspaceBackends();
