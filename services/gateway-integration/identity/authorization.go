@@ -315,16 +315,19 @@ var workspaceLaunchActions = []api.AuthorizationActionEnum{
 // workspaceDeletionActions is the continuation surface of an accepted
 // delete_workspace obligation: retiring the delivered runtime, releasing the
 // accepted resource set, observing the frozen resources, recording the
-// confirmed deletion evidence and settling the original charge. It is a
-// separate group from the launch obligation, so a deletion cannot be issued
-// under a launch grant or carry a launch's effects. The canonical surface
-// deliberately excludes the provisioning write: Fabric authorizes its
-// resource-creation entry points (EnsureResources and its resume) with
-// provisionAcceptedResources, so a deletion grant that carried that write could
-// replay resource creation. The release arrives as the deletion's own
-// contract-declared owner action (deleteAcceptedResources), which Fabric's
-// DeleteResources requires, rather than by widening this grant with the
-// creation write.
+// confirmed deletion evidence, closing out the Workspace-managed key and
+// settling the original charge. It is a separate group from the launch
+// obligation, so a deletion cannot be issued under a launch grant or carry a
+// launch's effects. The canonical surface deliberately excludes the
+// provisioning write: Fabric authorizes its resource-creation entry points
+// (EnsureResources and its resume) with provisionAcceptedResources, so a
+// deletion grant that carried that write could replay resource creation. The
+// release arrives as the deletion's own contract-declared owner action
+// (deleteAcceptedResources), which Fabric's DeleteResources requires, rather
+// than by widening this grant with the creation write. bindManagedSecret is the
+// managed-key coordination action: the deletion names one exact existing
+// binding and Gateway Integration, as the sole key-lifecycle writer, decides
+// whether that key may be disabled. It cannot mint a key or widen its scope.
 var workspaceDeletionActions = []api.AuthorizationActionEnum{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES,
@@ -333,6 +336,7 @@ var workspaceDeletionActions = []api.AuthorizationActionEnum{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REFUNDCONFIRMEDDELETION,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE,
 }
 
