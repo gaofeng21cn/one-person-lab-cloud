@@ -19,37 +19,61 @@ Instance installation, or a Product Release. The target boundary is in
 
 ## PR CI Cache Reuse And Parallel Verification (2026-10-18)
 
-The development-tool source change is based on `aba24c9b` (main after #969).
-`tools/verify-local.ts` keeps the exhaustive step inventory and adds explicit
-source, Go and browser group selection. PR CI runs those groups on independent
-runners, partitions the existing browser file inventory into two Node shards,
-and retains `validate` and `dependency-review`. The aggregate refuses failed,
-cancelled, skipped and missing mandatory results. The browser adapter places
-npm-appended shard options before Node's file list; test fixtures exercise the
-actual adapter and prove disjoint, complete file execution and failure
-propagation. Browser test assertions, fixture state and isolation are unchanged.
+[PR #970](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/970)
+merged as `a055a4a69180595f4d34154d3b8783e139157d6d`. The development-tool
+owner retained the 33-step exhaustive inventory, its coverage requirements,
+`validate` and `dependency-review`, while moving source, Go and two browser
+shards onto independent runners. The aggregate rejects failed, cancelled,
+skipped and missing required results. The browser adapter puts npm-appended
+shard options before Node's file list. Neither test assertions nor fixture
+isolation changed.
 
-The separate `Warm CI Caches` workflow runs on main pushes and prepares the same
-npm, pip, Go and generator caches used by PR jobs. PR-only merge-ref caches do
-not become another PR's cache. Generator binaries also bind the resolved Go
-version in their key. An active main producer finishes during subsequent merges;
-cache preparation does not report a PR source-gate result.
+[Current-revision CI](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/39110262329)
+passed all six checks at `173ace62`: 1,229 source tests, 37 + 108 browser tests,
+and 3,796 executed Go tests on Linux with the existing 199 declared capability
+exclusions. Local focused checks passed 56 tests with no failures, skips or
+TODOs; real local Go and browser groups also passed (3,797 Go tests on macOS).
+Both workflow files passed actionlint v1.7.12 and Bash syntax checks. A single
+reviewer applied the requested review checklist and found no blocking defect;
+independent agent/model passes were intentionally omitted under the user's
+instruction.
 
-Local verification passed the product-boundary check, development-tools
-TypeScript check and 56 focused tests with zero failures, skips or TODOs.
-The actual Go group compiled all 15 declared modules and ran all nine
-existing database-free lanes: 3,797 executed tests and 199 capability-declared
-exclusions retained under the existing accounting rules. A direct comparison
-also preserved all 33 default steps' commands, arguments, order and coverage
-requirements. Both real browser shards passed: 37 and 108 tests, with zero
-failures, skips or TODOs across all 145 tests. Equal file-count shards therefore
-do not imply equal test workloads. Pinned actionlint v1.7.12 validated both
-workflow files, and all workflow shell steps passed Bash syntax checks.
+The cold-cache active critical path was 329 seconds, compared with 503 seconds
+for the previous layout in
+[the adjacent #969 run](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/39106443938).
+Total elapsed time including queueing was 333 versus 570 seconds. This is one
+observation, not a sustained performance percentile. Cumulative job duration
+rose from 506 to 852 seconds; parallelism reduces waiting while using more
+runner time. File-count browser shards remain unbalanced, with 37 versus 108
+tests and 96 versus 302 seconds in their validation steps.
 
-These results establish local source behavior. Current-revision GitHub CI,
-main-cache production, first-run reuse by a new PR, elapsed-time improvement and
-runner cost remain [open runtime evidence](roadmap.md#pr-ci-cache-reuse-and-parallel-verification).
-The change does not establish remote branch protection, Candidate qualification,
+[Main cache producer](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/39110851370)
+passed at merge commit `a055a4a6` in 243 seconds. Cache API readback after
+completion showed four entries under `refs/heads/main`: npm, pip, Go
+module/build cache and pinned contract-generator binaries. The producer logs
+confirm all four saves. The Go cache binds 1.26.9 and the complete go.sum input
+hash; generator binaries bind the resolved Go version and both plugin versions.
+This closes the previously missing default-branch cache producer.
+
+[Evidence PR #971](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/971)
+was created after main warming completed. Its
+[first run](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/39111259842)
+(`41a9a769`, attempt 1) passed all six checks with the same executed source,
+browser and Go coverage as #970. Before that run, the new PR scope contained
+zero caches; source logs restored all four exact main-cache keys, and post-job
+steps did not save duplicate PR caches. This proves first-run cross-PR reuse.
+The Go job fell from 214 to 54 seconds. The active critical path was 382
+seconds (386 including queueing), with 716 cumulative job seconds: the slower
+browser shard took 370 seconds, so the Go reduction does not translate into
+the same whole-workflow reduction. Both observed parallel runs were shorter
+than the adjacent 503-second baseline, but browser timing varies. Subsequent
+revision results are retained in #971's current-revision CI; a new revision
+must pass its own exhaustive run.
+
+Dependency-change executions and sustained timing/runner-cost sampling remain
+[open](roadmap.md#pr-ci-cache-reuse-and-parallel-verification). Main reports
+`protected=true`; detailed branch-protection settings were unavailable to this
+account (404). This change does not establish Candidate qualification,
 Instance adoption or production readiness.
 
 ## Fabric J0 READY Sandbox Qualification Producer (2026-10-18)
