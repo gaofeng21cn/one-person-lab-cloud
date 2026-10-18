@@ -550,10 +550,10 @@ expected producer authority at `:111`, and `:166` builds the producer from
 `env.GITHUB_REPOSITORY` plus `WORKFLOW` before `:169` validates the blocked
 receipt and before any network request. The CLI accepts exactly four options and
 a fixed argument count (`:242-245`). Inside an Instance workflow
-`GITHUB_REPOSITORY` is the Instance repository, so the tool throws
-`cloud_business_readback_invalid` on its first line of work; "the same tool from
-the product checkout" is not executable until the Cloud-owned change below
-lands.
+`GITHUB_REPOSITORY` is the Instance repository, so the receipt validation at
+`:169` fails with `cloud_business_readback_invalid` before any network request;
+"the same tool from the product checkout" is not executable until the
+Cloud-owned change below lands.
 
 Decision: keep the lane on the Instance self-hosted runner and schedule the
 Cloud-owned change. The single-credential-owner invariant
