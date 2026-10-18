@@ -18,12 +18,18 @@ const MAX_BYTES = 1024 * 1024;
 // packages/contracts/go/announcements.go: escaped Unicode must remain legal.
 const MAX_ANNOUNCEMENT_BYTES = 50 * ((160 + 20_000) * 6 + 2048) + 4096;
 const TIMEOUT_MS = 10_000;
-const CHECKS = ["login", "session", "externalBindings", "wallet", "announcements", "logout", "sessionRevoked"] as const;
+// The four customer reads #840 names are asserted in the same session the
+// Console uses: wallet, usage summary, fee records and announcements. Each check
+// proves the Cloud-owned route answered without a session rejection.
+const CHECKS = ["login", "session", "externalBindings", "wallet", "usage", "feeReceipts", "announcements", "logout", "sessionRevoked"] as const;
 type Check = typeof CHECKS[number];
 type CandidateIdentity = { receiptDigest: string; productSha: string; productTree: string; cloudImageRef: string; cloudImageDigest: string; cloudImageRevision: string; cloudRuntimeChildDigest: string };
 type Authority = { repository: string; authoritySha: string; runId: string; runAttempt: string };
+// Version 2 adds the usage and fee-record checks to the schema-validated check
+// set (7 -> 9). A version 1 receipt is refused rather than reinterpreted: its
+// schema does not prove those two reads, which is the gap version 2 closes.
 export type CloudBusinessReadbackReceipt = {
-  schemaVersion: 1; kind: "opl_cloud_business_readback"; scope: "customer_reads";
+  schemaVersion: 2; kind: "opl_cloud_business_readback"; scope: "customer_reads";
   status: "customer_reads_verified" | "blocked";
   fullBusinessQualification: false; workspaceLifecycleVerified: false; keyLifecycleVerified: false;
   installationBinding: "receipt_association_only"; publicEndpointCandidateVerified: false;
@@ -44,6 +50,12 @@ function exact(value: unknown, keys: readonly string[]) {
 }
 const hash = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
 const text = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 1024;
+// int64String accepts only the canonical public encoding of a non-negative int64:
+// a decimal string, never a JSON number that would lose precision above 2^53.
+const int64String = (v: unknown): v is string => typeof v === "string" && /^(0|[1-9][0-9]{0,18})$/.test(v) && BigInt(v) <= 9223372036854775807n;
+// Money fields are micro-USD integers; a stored refund amount is non-negative and
+// a signed projection may carry the sign, so both spellings are accepted.
+const signedMicros = (v: unknown): v is string => typeof v === "string" && /^-?(0|[1-9][0-9]{0,18})$/.test(v) && BigInt(v) <= 9223372036854775807n && BigInt(v) >= -9223372036854775808n;
 const date = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/.test(v) && Number.isFinite(Date.parse(v));
 function identity(value: unknown): CandidateIdentity {
   const candidate = validateCloudCandidateReceipt(value);
@@ -85,7 +97,7 @@ export function validateCloudBusinessReadbackReceipt(value: unknown): CloudBusin
   const i = exact(r.installation, ["repository", "authoritySha", "runId", "runAttempt", "receiptDigest"]);
   const p = exact(r.producer, ["repository", "authoritySha", "runId", "runAttempt", "workflowPath", "actor", "triggeringActor"]);
   const checks = exact(r.checks, CHECKS);
-  if (r.schemaVersion !== 1 || r.kind !== "opl_cloud_business_readback" || r.scope !== "customer_reads" ||
+  if (r.schemaVersion !== 2 || r.kind !== "opl_cloud_business_readback" || r.scope !== "customer_reads" ||
     !["customer_reads_verified", "blocked"].includes(r.status) || r.fullBusinessQualification !== false ||
     r.workspaceLifecycleVerified !== false || r.keyLifecycleVerified !== false ||
     r.installationBinding !== "receipt_association_only" || r.publicEndpointCandidateVerified !== false || !DIGEST.test(r.originDigest) ||
@@ -165,7 +177,7 @@ export async function runCloudBusinessReadback(input: { candidate: unknown; inst
   try { origin = publicOrigin(env.OPL_QUALIFICATION_ORIGIN || ""); candidate = identity(input.candidate); installation = installationIdentity(input.candidate,input.installationText,input.installationRun); } catch { fail(); }
   const producer = { repository: env.GITHUB_REPOSITORY || "", authoritySha: env.GITHUB_SHA || "", runId: env.GITHUB_RUN_ID || "", runAttempt: env.GITHUB_RUN_ATTEMPT || "", workflowPath: WORKFLOW, actor: env.GITHUB_ACTOR || "", triggeringActor: env.GITHUB_TRIGGERING_ACTOR || "" };
   const checks = Object.fromEntries(CHECKS.map(k => [k,false])) as Record<Check,boolean>;
-  const receipt: CloudBusinessReadbackReceipt = { schemaVersion: 1, kind: "opl_cloud_business_readback", scope: "customer_reads", status: "blocked", fullBusinessQualification: false, workspaceLifecycleVerified: false, keyLifecycleVerified: false, installationBinding: "receipt_association_only", publicEndpointCandidateVerified: false, candidate, installation, producer, originDigest: hash(origin), startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), checks, errorCode: "customer_readback_failed" };
+  const receipt: CloudBusinessReadbackReceipt = { schemaVersion: 2, kind: "opl_cloud_business_readback", scope: "customer_reads", status: "blocked", fullBusinessQualification: false, workspaceLifecycleVerified: false, keyLifecycleVerified: false, installationBinding: "receipt_association_only", publicEndpointCandidateVerified: false, candidate, installation, producer, originDigest: hash(origin), startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), checks, errorCode: "customer_readback_failed" };
   validateCloudBusinessReadbackReceipt(receipt);
   if (!text(env.OPL_QUALIFICATION_CUSTOMER_EMAIL) || !text(env.OPL_QUALIFICATION_CUSTOMER_PASSWORD)) fail();
   const transport = dependencies.fetch || publicFetch;
@@ -215,6 +227,41 @@ export async function runCloudBusinessReadback(input: { candidate: unknown; inst
     const wallet=(await request("/api/v2/wallet"))!;
     if(wallet.source!=="gateway" || wallet.status!=="available" || wallet.currency!=="USD" || typeof wallet.balanceUSDMicros!=="string" || !/^(0|[1-9][0-9]{0,18})$/.test(wallet.balanceUSDMicros) || BigInt(wallet.balanceUSDMicros)>9223372036854775807n || !date(wallet.fetchedAt)) fail();
     checks.wallet=true;
+    // The usage summary is the Gateway owner's own aggregate. The public contract
+    // encodes every count and the micro-USD cost as an int64 decimal string, so a
+    // number or a fractional value is a contract break rather than a read. This
+    // proves the route, the owner encoding and a non-negative aggregate; it does
+    // not prove the totals belong to a particular user beyond the session scope,
+    // and it does not assert that totalTokens equals the sum of the token fields
+    // because the owner does not declare that relation.
+    const usage=(await request("/api/v2/usage/summary?period=month"))!;
+    for (const field of ["totalRequests","totalInputTokens","totalOutputTokens","totalTokens","totalActualCostUSDMicros"]) {
+      if (!int64String(usage[field])) fail();
+    }
+    checks.usage=true;
+    // The fee records stay with the original financial owner behind the Cloud
+    // route, and the read must answer that owner's `ledger` envelope with a
+    // bounded page and canonical micro-USD strings. The check does not prove
+    // completeness or that every projected field (workspaceId, createdAt,
+    // periodStart, ...) is present. A 404 is not accepted as a read: the BFF
+    // writes one generic owner-not-found both for a customer with no original
+    // Account and for a missing or older internal route (its client turns any
+    // owner HTTP 404 into gRPC NotFound), so a 404 cannot show that the fee route
+    // works, and the Console renders it as an error rather than an empty bill.
+    const feePage=obj((await request("/api/v2/legacy-billing/receipts?limit=20"))!);
+    if (feePage.source!=="ledger" || feePage.available!==true || !["available","empty"].includes(feePage.status) || !date(feePage.fetchedAt)) fail();
+    const data=obj(feePage.data);
+    if (!Array.isArray(data.receipts) || data.receipts.length>20 || typeof data.hasMore!=="boolean" || typeof data.nextCursor!=="string" || (data.hasMore && !data.nextCursor)) fail();
+    const seen=new Set<string>();
+    for (const item of data.receipts) {
+      const receiptRow=obj(item);
+      if (!text(receiptRow.receiptId) || seen.has(receiptRow.receiptId) || !text(receiptRow.type) || !text(receiptRow.status) || (receiptRow.currency!==undefined && receiptRow.currency!=="USD")) fail();
+      seen.add(receiptRow.receiptId);
+      for (const field of ["chargeUsdMicros","totalUsdMicros","refundUsdMicros"]) {
+        if (Object.hasOwn(receiptRow,field) && !signedMicros(receiptRow[field])) fail();
+      }
+    }
+    checks.feeReceipts=true;
     const announcements=(await request("/api/v2/announcements?page=1&pageSize=20"))!;
     const page=obj(announcements.data);
     if(announcements.source!=="control-plane" || announcements.available!==true || !["available","empty"].includes(announcements.status) || !date(announcements.fetchedAt) || page.page!==1 || page.pageSize!==20 || !Number.isSafeInteger(page.total) || page.total<0 || !Array.isArray(page.items) || page.items.length>20 || page.items.length>page.total || page.items.some((item: unknown) => { const a=obj(item); return !text(a.id) || !text(a.title) || typeof a.body!=="string" || a.status!=="published" || typeof a.read!=="boolean" || !date(a.createdAt) || !date(a.updatedAt); })) fail();

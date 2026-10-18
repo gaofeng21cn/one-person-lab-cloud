@@ -22,8 +22,11 @@ business-qualification receipt keeps its schema and meaning. The
 fields change meaning: `producer.repository` and `producer.workflowPath` name the
 Instance lane instead of the Cloud workflow
 (`tools/cloud-business-readback.ts:26-34`, `:96`), so its `schemaVersion` moves
-from 1 to 2 (`:26`, `:88`, `:168`) and the tool, its tests and the Release
-consumer are scheduled in steps 6-7. What this placement changes on the Cloud
+from 2 to 3 (`:26`, `:88`, `:168`) and the tool, its tests and the Release
+consumer are scheduled in steps 6-7. The receipt is already at version 2 because
+#954 added the usage and fee-record checks to the schema-validated check set, so
+this migration is the second bump rather than the first. Line numbers here and
+below predate #954 and shift with it. What this placement changes on the Cloud
 side is therefore the producer identity recorded in the distribution contract,
 the boundary validator that asserts it, the customer-readback tool, and the
 Release consumer that reads all three. §4 names the single owner of each and §7
@@ -580,8 +583,9 @@ The concrete Cloud change, in step 6:
   `validateCloudBusinessReadbackBinding` (`:105-118`) take the expected producer
   as a parameter, so a Cloud receipt is still accepted where it is the producer
   and an Instance receipt is accepted by the same code.
-- The receipt `schemaVersion` becomes 2 (`:26`, `:88`, `:168`) because two
-  schema-validated fields change meaning; the shape and every other field stay.
+- The receipt `schemaVersion` becomes 3 (`:26`, `:88`, `:168`) because two
+  schema-validated fields change meaning; it is version 2 today after #954, and
+  the shape and every other field stay.
 - The CLI at `:242-245` gains the producer-workflow option and replaces the
   fixed `args.length!==9` check with the option-pair count.
 - `tests/tools/cloud-business-readback.test.ts` moves its fixtures (`:18-20`) to
@@ -736,7 +740,7 @@ until the tool accepts the Instance producer.
 Files (Cloud): `tools/cloud-business-readback.ts` — the receipt and binding
 validators take the expected producer instead of comparing to `CLOUD` (`:10`)
 and `WORKFLOW` (`:12`) at `:96` and `:111`; `:166` takes the lane's workflow
-path instead of `WORKFLOW`; the receipt `schemaVersion` becomes 2 at `:26`,
+path instead of `WORKFLOW`; the receipt `schemaVersion` becomes 3 at `:26`,
 `:88` and `:168`; the CLI at `:242-245` accepts the producer-workflow option and
 replaces the fixed `args.length!==9` check. `tests/tools/cloud-business-readback.test.ts`
 — fixtures at `:18-20` move to the Instance producer, while the existing
