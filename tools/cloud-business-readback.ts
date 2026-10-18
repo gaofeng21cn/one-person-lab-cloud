@@ -18,7 +18,10 @@ const MAX_BYTES = 1024 * 1024;
 // packages/contracts/go/announcements.go: escaped Unicode must remain legal.
 const MAX_ANNOUNCEMENT_BYTES = 50 * ((160 + 20_000) * 6 + 2048) + 4096;
 const TIMEOUT_MS = 10_000;
-const CHECKS = ["login", "session", "externalBindings", "wallet", "announcements", "logout", "sessionRevoked"] as const;
+// The four customer reads #840 names are asserted in the same session the
+// Console uses: wallet, usage summary, fee records and announcements. Each check
+// proves the Cloud-owned route answered without a session rejection.
+const CHECKS = ["login", "session", "externalBindings", "wallet", "usage", "feeReceipts", "announcements", "logout", "sessionRevoked"] as const;
 type Check = typeof CHECKS[number];
 type CandidateIdentity = { receiptDigest: string; productSha: string; productTree: string; cloudImageRef: string; cloudImageDigest: string; cloudImageRevision: string; cloudRuntimeChildDigest: string };
 type Authority = { repository: string; authoritySha: string; runId: string; runAttempt: string };
@@ -44,6 +47,12 @@ function exact(value: unknown, keys: readonly string[]) {
 }
 const hash = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
 const text = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 1024;
+// int64String accepts only the canonical public encoding of a non-negative int64:
+// a decimal string, never a JSON number that would lose precision above 2^53.
+const int64String = (v: unknown): v is string => typeof v === "string" && /^(0|[1-9][0-9]{0,18})$/.test(v) && BigInt(v) <= 9223372036854775807n;
+// Money fields are micro-USD integers; a stored refund amount is non-negative and
+// a signed projection may carry the sign, so both spellings are accepted.
+const signedMicros = (v: unknown): v is string => typeof v === "string" && /^-?(0|[1-9][0-9]{0,18})$/.test(v) && BigInt(v) <= 9223372036854775807n && BigInt(v) >= -9223372036854775808n;
 const date = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/.test(v) && Number.isFinite(Date.parse(v));
 function identity(value: unknown): CandidateIdentity {
   const candidate = validateCloudCandidateReceipt(value);
@@ -171,7 +180,7 @@ export async function runCloudBusinessReadback(input: { candidate: unknown; inst
   const transport = dependencies.fetch || publicFetch;
   const jar = new Map<string,string>();
   let csrf = "";
-  const request = async (path: string, method = "GET", body?: unknown, token?: string, expected = 200) => {
+  const exchange = async (path: string, method: string, body: unknown, token: string | undefined, accept: readonly number[]) => {
     const maxBytes = path.startsWith("/api/v2/announcements?") ? MAX_ANNOUNCEMENT_BYTES : MAX_BYTES;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -188,16 +197,18 @@ export async function runCloudBusinessReadback(input: { candidate: unknown; inst
         const match = /^(opl_login_context|opl_login_csrf|opl_session)=([^;]*)/.exec(cookie);
         if (match) { if (/^[A-Za-z0-9_\-.~%+/=]*$/.test(match[2]) && match[2].length <= 4096) jar.set(match[1],match[2]); else fail(); }
       }
-      if (response.status !== expected || response.redirected || (response.url && new URL(response.url).origin !== origin)) fail();
+      if (!accept.includes(response.status) || response.redirected || (response.url && new URL(response.url).origin !== origin)) fail();
       if (Number(response.headers.get("content-length")) > maxBytes) fail();
-      if (expected === 204 || expected === 401) { await response.body?.cancel(); return null; }
+      if (response.status === 204 || response.status === 401) { await response.body?.cancel(); return { status: response.status, body: null }; }
       const reader = response.body?.getReader(); if (!reader) fail();
       let bytes=0; const chunks: Uint8Array[]=[];
       try { for (;;) { const item=await reader.read(); if (item.done) break; bytes+=item.value.length; if(bytes>maxBytes) fail(); chunks.push(item.value); } } finally { await reader.cancel(); }
       if (!(response.headers.get("content-type") || "").toLowerCase().startsWith("application/json")) fail();
-      return obj(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      return { status: response.status, body: obj(JSON.parse(Buffer.concat(chunks).toString("utf8"))) };
     })()]); } finally { clearTimeout(timer!); controller.abort(); }
   };
+  const request = async (path: string, method = "GET", body?: unknown, token?: string, expected = 200) =>
+    (await exchange(path, method, body, token, [expected])).body!;
   try {
     const context = (await request("/api/v2/auth/context"))!;
     if (!text(context.csrfToken) || !date(context.expiresAt) || Date.parse(context.expiresAt) <= Date.now() || !jar.get("opl_login_context") || !jar.get("opl_login_csrf")) fail();
@@ -215,6 +226,38 @@ export async function runCloudBusinessReadback(input: { candidate: unknown; inst
     const wallet=(await request("/api/v2/wallet"))!;
     if(wallet.source!=="gateway" || wallet.status!=="available" || wallet.currency!=="USD" || typeof wallet.balanceUSDMicros!=="string" || !/^(0|[1-9][0-9]{0,18})$/.test(wallet.balanceUSDMicros) || BigInt(wallet.balanceUSDMicros)>9223372036854775807n || !date(wallet.fetchedAt)) fail();
     checks.wallet=true;
+    // The usage summary is the Gateway owner's own aggregate. The public contract
+    // encodes every count and the micro-USD cost as an int64 decimal string, so a
+    // number or a fractional value is a contract break rather than a read.
+    const usage=(await request("/api/v2/usage/summary?period=month"))!;
+    for (const field of ["totalRequests","totalInputTokens","totalOutputTokens","totalTokens","totalActualCostUSDMicros"]) {
+      if (!int64String(usage[field])) fail();
+    }
+    checks.usage=true;
+    // The fee records stay with the original financial owner behind the Cloud
+    // route. A customer with no original Account has no historical fee records,
+    // and the retained owner answers that typed not-found instead of inventing an
+    // empty bill. Either answer proves the route and owner handshake without a
+    // session rejection; a 401, 403 or transport failure fails this check.
+    const feeReceipts=await exchange("/api/v2/legacy-billing/receipts?limit=20","GET",undefined,undefined,[200,404]);
+    if (feeReceipts.status===404) {
+      if (obj(feeReceipts.body).code!=="NOT_FOUND") fail();
+    } else {
+      const feePage=obj(feeReceipts.body);
+      if (feePage.source!=="ledger" || feePage.available!==true || !["available","empty"].includes(feePage.status) || !date(feePage.fetchedAt)) fail();
+      const data=obj(feePage.data);
+      if (!Array.isArray(data.receipts) || data.receipts.length>20 || typeof data.hasMore!=="boolean" || typeof data.nextCursor!=="string" || (data.hasMore && !data.nextCursor)) fail();
+      const seen=new Set<string>();
+      for (const item of data.receipts) {
+        const receiptRow=obj(item);
+        if (!text(receiptRow.receiptId) || seen.has(receiptRow.receiptId) || !text(receiptRow.type) || !text(receiptRow.status) || (receiptRow.currency!==undefined && receiptRow.currency!=="USD")) fail();
+        seen.add(receiptRow.receiptId);
+        for (const field of ["chargeUsdMicros","totalUsdMicros","refundUsdMicros"]) {
+          if (Object.hasOwn(receiptRow,field) && !signedMicros(receiptRow[field])) fail();
+        }
+      }
+    }
+    checks.feeReceipts=true;
     const announcements=(await request("/api/v2/announcements?page=1&pageSize=20"))!;
     const page=obj(announcements.data);
     if(announcements.source!=="control-plane" || announcements.available!==true || !["available","empty"].includes(announcements.status) || !date(announcements.fetchedAt) || page.page!==1 || page.pageSize!==20 || !Number.isSafeInteger(page.total) || page.total<0 || !Array.isArray(page.items) || page.items.length>20 || page.items.length>page.total || page.items.some((item: unknown) => { const a=obj(item); return !text(a.id) || !text(a.title) || typeof a.body!=="string" || a.status!=="published" || typeof a.read!=="boolean" || !date(a.createdAt) || !date(a.updatedAt); })) fail();

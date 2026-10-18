@@ -106,18 +106,26 @@ closed:
 
 Installed, same-Candidate acceptance and the protected customer-read receipt
 remain open. The current protected `customer_reads` producer
-(`tools/cloud-business-readback.ts`) exercises session, external bindings,
-wallet and announcements; it does not yet assert the usage-summary or fee-receipt
-routes, so those installed reads remain unproven even though their source
-callers are Cloud-owned. This source inventory and its focused fixtures do not
-prove a deployment, an authenticated installed readback, or a Release.
+(`tools/cloud-business-readback.ts`) asserts the four reads this Issue names in
+one session: wallet (`GET /api/v2/wallet`), usage summary
+(`GET /api/v2/usage/summary?period=month`), fee records
+(`GET /api/v2/legacy-billing/receipts?limit=20`) and announcements
+(`GET /api/v2/announcements?page=1&pageSize=20`), together with session,
+external bindings, logout and revocation. The fee check accepts either the
+`ledger` source envelope or the original financial owner's typed not-found for a
+customer with no original Account; both answers prove the Cloud route reached the
+owner without a session rejection. This source inventory and its focused
+fixtures do not prove a deployment, an authenticated installed readback, or a
+Release.
 
 ## Verification
 
 The route and refusal decisions are covered without a live server or browser by
 `tests/ui/cloud-customer-read-routes.test.ts`. The existing controller, billing,
 announcement and launch model tests cover the identity-tagged projections and
-explicit unavailable states. Release evidence remains in
+explicit unavailable states. The acceptance producer's four-read session,
+owner-tag, money-encoding and session-rejection decisions are covered by
+`tests/tools/cloud-business-readback.test.ts`. Release evidence remains in
 [status](../status.md#cloud-customer-readback-source-wiring-2026-10-16), the
 protected procedure in
 [release operations](../runtime/release.md#protected-cloud-customer-reads), and

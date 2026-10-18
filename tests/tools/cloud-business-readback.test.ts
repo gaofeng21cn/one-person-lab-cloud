@@ -11,6 +11,7 @@ import { isPublicReadbackAddress, runCloudBusinessReadback, validateCloudBusines
 const digest=(s:string)=>`sha256:${s.repeat(64)}`;
 const sha="a".repeat(40), instanceSha="f".repeat(40);
 const now=new Date().toISOString(), future=new Date(Date.now()+3600000).toISOString();
+const jsonResponse=(body:unknown)=>new Response(JSON.stringify(body),{headers:{"content-type":"application/json"}});
 async function inputs() {
   const contract=JSON.parse(await readFile("packages/contracts/opl-cloud-candidate-receipt-contract.json","utf8"));
   const candidate={schemaVersion:2,kind:"opl_cloud_candidate",product:{repository:"gaofeng21cn/one-person-lab-cloud",sha,tree:"b".repeat(40)},cloudImage:{repository:"ghcr.io/gaofeng21cn/one-person-lab-cloud",indexRef:`ghcr.io/gaofeng21cn/one-person-lab-cloud@${digest("c")}`,indexDigest:digest("c"),revision:sha,platforms:[{platform:"linux/amd64",digest:digest("d")},{platform:"linux/arm64",digest:digest("e")}]},assets:contract.candidateReceiptV2.portableAssets.map((name:string)=>({name,sha256:"1".repeat(64)})),provenance:{workflowRepository:"gaofeng21cn/one-person-lab-cloud",workflowSha:sha,workflowRunId:"11",workflowRunAttempt:"1"}};
@@ -39,6 +40,8 @@ function network(patch:Record<string,(init:RequestInit)=>Response|Promise<Respon
     if(path==="/api/v2/auth/session")return revoked?new Response(null,{status:401}):json(session);
     if(path==="/api/v2/auth/external-bindings")return json({actorId:session.actorId,sub2apiUserId:"101",registryHost:"registry.example.com",registryNamespace:"namespace",repository:"customer-repository",status:"active",verification:"confirmed"});
     if(path==="/api/v2/wallet")return json({source:"gateway",status:"available",currency:"USD",balanceUSDMicros:"0",fetchedAt:now});
+    if(path==="/api/v2/usage/summary?period=month")return json({totalRequests:"17",totalInputTokens:"170",totalOutputTokens:"34",totalTokens:"204",totalActualCostUSDMicros:"125001"});
+    if(path==="/api/v2/legacy-billing/receipts?limit=20")return json({source:"ledger",status:"available",available:true,fetchedAt:now,data:{receipts:[{receiptId:"receipt-1",type:"billing.workspace.monthly",status:"confirmed",workspaceId:"workspace-1",createdAt:now,currency:"USD",chargeUsdMicros:"12500000"}],nextCursor:"",hasMore:false}});
     if(path==="/api/v2/announcements?page=1&pageSize=20")return json({source:"control-plane",available:true,status:"empty",fetchedAt:now,data:{items:[],page:1,pageSize:20,total:0}});
     if(path==="/api/v2/auth/logout") {assert.equal(init.method,"POST");assert.equal(headers.get("x-csrf-token"),session.csrfToken);revoked=true;return new Response(null,{status:204});}
     throw new Error("unexpected request");
@@ -48,7 +51,8 @@ function network(patch:Record<string,(init:RequestInit)=>Response|Promise<Respon
 test("customer producer executes challenge login and public reads, cleans up and binds exact artifacts",async()=>{
   const input=await inputs(), n=network();const receipt=await runCloudBusinessReadback(input,{environment:input.environment,fetch:n.fetch});
   assert.equal(receipt.status,"customer_reads_verified"); assert.ok(Object.values(receipt.checks).every(v=>v===true));
-  assert.deepEqual(n.calls.map(v=>v.path),["/api/v2/auth/context","/api/v2/auth/login","/api/v2/auth/session","/api/v2/auth/external-bindings","/api/v2/wallet","/api/v2/announcements?page=1&pageSize=20","/api/v2/auth/logout","/api/v2/auth/session"]);
+  assert.equal(receipt.checks.usage,true); assert.equal(receipt.checks.feeReceipts,true);
+  assert.deepEqual(n.calls.map(v=>v.path),["/api/v2/auth/context","/api/v2/auth/login","/api/v2/auth/session","/api/v2/auth/external-bindings","/api/v2/wallet","/api/v2/usage/summary?period=month","/api/v2/legacy-billing/receipts?limit=20","/api/v2/announcements?page=1&pageSize=20","/api/v2/auth/logout","/api/v2/auth/session"]);
   const receiptText=JSON.stringify(receipt)+"\n";
   assert.doesNotMatch(receiptText,/sensitive|Sensitive|password|secret-|customer-repository|101|example\.com/);
   assert.deepEqual(validateCloudBusinessReadbackBinding({...input,receiptText}),{receiptDigest:`sha256:${createHash("sha256").update(receiptText).digest("hex")}`,installationReceiptDigest:receipt.installation.receiptDigest,authoritySha:sha,runId:"33",runAttempt:"2",status:"customer_reads_verified"});
@@ -71,7 +75,7 @@ test("malformed login JSON still revokes issued session, using session readback 
 });
 test("logout failure or a still-live original session blocks successful customer reads",async()=>{
   for(const patch of [{"/api/v2/auth/logout":()=>new Response(null,{status:503})},{"/api/v2/auth/logout":()=>new Response(null,{status:204})}]){
-    const input=await inputs(),n=network(patch);const receipt=await runCloudBusinessReadback(input,{environment:input.environment,fetch:n.fetch});assert.equal(receipt.status,"blocked");assert.equal(receipt.errorCode,"session_cleanup_failed");assert.equal(receipt.checks.announcements,true);
+    const input=await inputs(),n=network(patch);const receipt=await runCloudBusinessReadback(input,{environment:input.environment,fetch:n.fetch});assert.equal(receipt.status,"blocked");assert.equal(receipt.errorCode,"session_cleanup_failed");assert.equal(receipt.checks.usage,true);assert.equal(receipt.checks.feeReceipts,true);assert.equal(receipt.checks.announcements,true);
   }
 });
 test("private origins and altered workflow identity fail before networking",async()=>{
@@ -81,12 +85,64 @@ test("private origins and altered workflow identity fail before networking",asyn
   for(const ip of ["127.0.0.1","10.1.2.3","169.254.169.254","100.64.0.1","::1","::ffff:127.0.0.1","fc00::1","fe80::1","2001:db8::1","2002:7f00:1::1"])assert.equal(isPublicReadbackAddress(ip),false,ip);
   for(const ip of ["8.8.8.8","1.1.1.1","2606:4700:4700::1111"])assert.equal(isPublicReadbackAddress(ip),true,ip);
 });
+test("a session whose usage and fee reads are rejected cannot verify the customer journey",async()=>{
+  // The pre-#840 shape read only wallet and announcements, so a fixture that
+  // rejected the usage-summary and fee-record routes with 401 was never called
+  // and the producer still claimed customer_reads_verified. Both reads now run in
+  // the same session, so a session rejection blocks the receipt.
+  for(const endpoint of ["/api/v2/usage/summary?period=month","/api/v2/legacy-billing/receipts?limit=20"]){
+    const input=await inputs();
+    const n=network({[endpoint]:()=>jsonResponse({code:"UNAUTHENTICATED",message:"session required"})});
+    const receipt=await runCloudBusinessReadback(input,{environment:input.environment,fetch:n.fetch});
+    assert.equal(receipt.status,"blocked");assert.equal(receipt.errorCode,"customer_readback_failed");
+    assert.ok(n.calls.some(v=>v.path===endpoint),endpoint);
+    assert.equal(receipt.checks.logout,true);assert.equal(receipt.checks.sessionRevoked,true);
+    assert.throws(()=>validateCloudBusinessReadbackBinding({...input,receiptText:JSON.stringify(receipt)}));
+  }
+});
+test("an explicit no-historical-fee answer proves the fee route without a session rejection",async()=>{
+  const input=await inputs();
+  const n=network({"/api/v2/legacy-billing/receipts?limit=20":()=>new Response(JSON.stringify({code:"NOT_FOUND",message:"publisher request could not be completed",requestId:"request-1"}),{status:404,headers:{"content-type":"application/json"}})});
+  const receipt=await runCloudBusinessReadback(input,{environment:input.environment,fetch:n.fetch});
+  assert.equal(receipt.status,"customer_reads_verified");
+  assert.equal(receipt.checks.feeReceipts,true);
+  // A not-found with a different code is not the original financial owner's answer.
+  const rejected=network({"/api/v2/legacy-billing/receipts?limit=20":()=>new Response(JSON.stringify({code:"SOMETHING_ELSE",message:"m",requestId:"r"}),{status:404,headers:{"content-type":"application/json"}})});
+  assert.equal((await runCloudBusinessReadback(await inputs(),{environment:input.environment,fetch:rejected.fetch})).status,"blocked");
+});
+test("fee records must come from the ledger owner with canonical money and one identity per row",async()=>{
+  for(const body of [
+    {source:"control_plane",status:"available",available:true,fetchedAt:now,data:{receipts:[],nextCursor:"",hasMore:false}},
+    {source:"ledger",status:"available",available:true,fetchedAt:now,data:{receipts:[{receiptId:"a",type:"billing.workspace.monthly",status:"confirmed"},{receiptId:"a",type:"billing.workspace.monthly",status:"confirmed"}],nextCursor:"",hasMore:false}},
+    {source:"ledger",status:"available",available:true,fetchedAt:now,data:{receipts:[{receiptId:"a",type:"billing.workspace.monthly",status:"confirmed",chargeUsdMicros:12500000}],nextCursor:"",hasMore:false}},
+    {source:"ledger",status:"available",available:true,fetchedAt:now,data:{receipts:[{receiptId:"a",type:"billing.workspace.monthly",status:"confirmed",totalUsdMicros:"9223372036854775808"}],nextCursor:"",hasMore:false}},
+    {source:"ledger",status:"available",available:true,fetchedAt:now,data:{receipts:[],nextCursor:"",hasMore:true}},
+  ]){
+    const input=await inputs(),n=network({"/api/v2/legacy-billing/receipts?limit=20":()=>jsonResponse(body)});
+    const receipt=await runCloudBusinessReadback(input,{environment:input.environment,fetch:n.fetch});
+    assert.equal(receipt.status,"blocked");assert.ok(n.calls.some(v=>v.path==="/api/v2/legacy-billing/receipts?limit=20"));
+  }
+});
+test("the usage summary must carry canonical non-negative int64 strings",async()=>{
+  const usage=(patch:Record<string,unknown>)=>({totalRequests:"17",totalInputTokens:"170",totalOutputTokens:"34",totalTokens:"204",totalActualCostUSDMicros:"125001",...patch});
+  for(const body of [
+    usage({totalRequests:17}),
+    usage({totalActualCostUSDMicros:"1.25"}),
+    usage({totalInputTokens:"017"}),
+    usage({totalOutputTokens:"-1"}),
+    usage({totalTokens:"9223372036854775808"}),
+  ]){
+    const input=await inputs(),n=network({"/api/v2/usage/summary?period=month":()=>jsonResponse(body)});
+    const receipt=await runCloudBusinessReadback(input,{environment:input.environment,fetch:n.fetch});
+    assert.equal(receipt.status,"blocked");assert.ok(n.calls.some(v=>v.path==="/api/v2/usage/summary?period=month"));
+  }
+});
 test("binding refuses wrong run provenance, Candidate identity, installation bytes and receipt claims",async()=>{
   const input=await inputs(),n=network();const receipt=await runCloudBusinessReadback(input,{environment:input.environment,fetch:n.fetch});const receiptText=JSON.stringify(receipt);
   for(const patch of [{status:"in_progress"},{conclusion:"failure"},{head_branch:"feature"},{head_sha:"0".repeat(40)},{run_attempt:1},{id:44},{event:"pull_request"},{path:".github/workflows/other.yml"},{repository:{full_name:"someone/fork"}},{actor:{login:"outsider"}},{triggering_actor:{login:"outsider"}}])assert.throws(()=>validateCloudBusinessReadbackBinding({...input,receiptText,run:{...input.run,...patch}}));
   for(const patch of [{head_sha:"0".repeat(40)},{run_attempt:2},{path:".github/workflows/deploy.yml"},{conclusion:"failure"},{repository:{full_name:"someone/fork"}}])assert.throws(()=>validateCloudBusinessReadbackBinding({...input,receiptText,installationRun:{...input.installationRun,...patch}}));
   assert.throws(()=>validateCloudBusinessReadbackBinding({...input,receiptText,installationText:JSON.stringify(JSON.parse(input.installationText),null,2)}));
-  for(const patch of [{publicEndpointCandidateVerified:true},{installationBinding:"same_runtime_verified"},{fullBusinessQualification:true},{scope:"full_business"},{rawBody:"private"},{checks:{...receipt.checks,wallet:false}},{producer:{...receipt.producer,password:"private"}},{errorCode:"private-error"}])assert.throws(()=>validateCloudBusinessReadbackReceipt({...receipt,...patch}));
+  for(const patch of [{publicEndpointCandidateVerified:true},{installationBinding:"same_runtime_verified"},{fullBusinessQualification:true},{scope:"full_business"},{rawBody:"private"},{checks:{...receipt.checks,wallet:false}},{checks:{...receipt.checks,usage:false}},{checks:{...receipt.checks,feeReceipts:false}},{producer:{...receipt.producer,password:"private"}},{errorCode:"private-error"}])assert.throws(()=>validateCloudBusinessReadbackReceipt({...receipt,...patch}));
   const installation=JSON.parse(input.installationText);installation.cloudRuntimeChildDigest=digest("e");await assert.rejects(runCloudBusinessReadback({...input,installationText:JSON.stringify(installation)},{environment:input.environment,fetch:n.fetch}));
 });
 
@@ -112,7 +168,7 @@ test("producer traverses a real local HTTP server through injected transport",as
       // Preserve the logical public URL: this rewriting is test transport only.
       return new Response(response.status===204?null:await response.arrayBuffer(),{status:response.status,headers:response.headers});
     })});
-    assert.equal(receipt.status,"customer_reads_verified");assert.equal(n.calls.length,8);assert.equal(receipt.publicEndpointCandidateVerified,false);assert.equal(receipt.installationBinding,"receipt_association_only");
+    assert.equal(receipt.status,"customer_reads_verified");assert.equal(n.calls.length,10);assert.equal(receipt.publicEndpointCandidateVerified,false);assert.equal(receipt.installationBinding,"receipt_association_only");
   }finally{await new Promise<void>((resolve,reject)=>server.close(e=>e?reject(e):resolve()));}
 });
 
