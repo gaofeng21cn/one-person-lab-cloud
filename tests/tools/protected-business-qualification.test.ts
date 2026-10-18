@@ -928,6 +928,8 @@ test("the emitted receipt binds the declared Candidate and another Candidate can
       ["product tree", { candidate: { ...result.receipt.candidate, productTree: other.product.tree } }],
       ["image digest", { candidate: { ...result.receipt.candidate, cloudImageDigest: other.cloudImage.indexDigest } }],
       ["source sha", { source: { ...result.receipt.source, sha: other.product.sha } }],
+      ["source tree", { source: { ...result.receipt.source, tree: other.product.tree } }],
+      ["source clean", { source: { ...result.receipt.source, clean: false } }],
       ["provider", { provider: "local-docker" }],
     ] as const) {
       assert.throws(

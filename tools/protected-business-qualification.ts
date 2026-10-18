@@ -769,16 +769,11 @@ export async function runProtectedBusinessQualification(
     { request, adapter },
     { wait: dependencies.wait, purchase },
   );
-  // The receipt is bound to the Candidate and the selected provider before any
-  // artifact is written, so a receipt that names other bytes is refused rather
-  // than persisted next to a purchase it does not describe.
-  const receipt = validateBusinessQualificationReceipt(result.receipt) as Record<string, any>;
-  assertProtectedReceiptBinding(receipt, {
-    candidate: candidate.candidate,
-    candidateDigest: candidate.digest,
-    provider,
-    deployment,
-  });
+  // The buyer's receipt is written first, before the qualification receipt is
+  // validated. It is the only durable evidence that a real charge happened, so a
+  // qualification receipt the contract rejects (or one that fails the Candidate
+  // binding below) must not suppress it. The write order is the same as the
+  // producer had before the binding assertion existed; only the assertion is new.
   let purchaseArtifactPath = "";
   let purchaseArtifactDigest = "";
   if (purchaseReceipt) {
@@ -787,6 +782,16 @@ export async function runProtectedBusinessQualification(
     purchaseArtifactDigest = `sha256:${createHash("sha256").update(purchaseText).digest("hex")}`;
     await emitBusinessQualificationReceipt(purchaseArtifactPath, purchaseText);
   }
+  // The qualification receipt is bound to the Candidate and the selected
+  // provider before it is written, so a receipt that names other bytes is
+  // refused instead of being persisted.
+  const receipt = validateBusinessQualificationReceipt(result.receipt) as Record<string, any>;
+  assertProtectedReceiptBinding(receipt, {
+    candidate: candidate.candidate,
+    candidateDigest: candidate.digest,
+    provider,
+    deployment,
+  });
   const receiptText = `${JSON.stringify(receipt, null, 2)}\n`;
   await emitBusinessQualificationReceipt(input.outputPath, receiptText);
   return Object.freeze({
