@@ -305,7 +305,7 @@ uses these reason codes:
 | `listener_unproven` | Another process in the target Pod may bind the target port and its listener cannot be resolved from the manifest. |
 | `listener_conflict` | Another process in the target Pod binds the target port. |
 | `service_backend_owner` | A selector-matching workload object is owned by a different live Deployment, or is a workload producer that this Deployment does not own; the Service selects another owner's Pods. |
-| `pod_owner_chain_unproven` | A selector-matching or endpoint-named Pod's controller chain does not resolve to the target Deployment: its ReplicaSet or Deployment owner reference is stale, missing, ambiguous, or names no live object. Repair the Pod chain, not the Service. |
+| `pod_owner_chain_unproven` | A Pod's ReplicaSet resolves, but that ReplicaSet's Deployment owner reference is stale, missing, ambiguous, or names no live Deployment; the same applies to a selector-matching ReplicaSet backend. Repair the Deployment/ReplicaSet chain, not the Service. A Pod whose ReplicaSet itself cannot be resolved is reported as `endpoint_pod_replicaset_unresolved`. |
 | `endpoint_no_ready_address` | The Service publishes no ready address: its Endpoints subsets are empty, it has only not-ready addresses while `publishNotReadyAddresses` is not set, or its EndpointSlice has no serviceable endpoint. |
 | `endpoint_pod_absent` | An endpoint's `targetRef` names a Pod that is absent from the live read, for example an endpoint left behind by a previous rollout. |
 | `endpoint_port_mismatch` | The endpoint publishes a port whose name or number does not match the Service port the caller addresses. |
@@ -321,41 +321,21 @@ uses these reason codes:
 | `endpoint_slice_shape_invalid` | An EndpointSlice has an unsupported API version or address type. |
 | `endpoint_shape_invalid` | An Endpoints object or subset has a malformed shape. |
 | `endpoint_pod_shape_unproven` | The endpoint's Pod does not carry valid container declarations. |
-| `endpoint_pod_template_absent` | The Pod's controlling ReplicaSet exists but carries no `spec.template.spec`, so the live Pod cannot be compared with the template that created it. A Pod whose ReplicaSet itself cannot be resolved is reported earlier as `pod_owner_chain_unproven`. |
+| `endpoint_pod_replicaset_unresolved` | The Pod's ReplicaSet controller cannot be resolved (missing, ambiguous, or stale UID), or the resolved ReplicaSet carries no `spec.template.spec`. The proof cannot compare the live Pod with its immutable revision template; this is not a shape mismatch, so repair the Pod/ReplicaSet chain first. |
 | `endpoint_pod_template_containers_invalid` | The ReplicaSet template's `containers` list is missing, empty, malformed, or contains duplicate names. |
 | `endpoint_pod_template_init_containers_invalid` | The ReplicaSet template's `initContainers` list is malformed or contains duplicate names. |
 | `endpoint_pod_container_names_duplicate` | A container name appears twice across the live Pod's or the template's `containers` and `initContainers`, so the live container set is ambiguous. |
-| `endpoint_pod_security_host_network_mismatch` | The live Pod's `hostNetwork` differs from its ReplicaSet template. |
-| `endpoint_pod_security_host_pid_mismatch` | The live Pod's `hostPID` differs from its ReplicaSet template. |
-| `endpoint_pod_security_host_ipc_mismatch` | The live Pod's `hostIPC` differs from its ReplicaSet template. |
-| `endpoint_pod_security_share_process_namespace_mismatch` | The live Pod's `shareProcessNamespace` differs from its ReplicaSet template. |
-| `endpoint_pod_security_host_users_mismatch` | The live Pod's `hostUsers` differs from its ReplicaSet template; an omitted value defaults to `true`. |
-| `endpoint_pod_security_service_account_name_mismatch` | The live Pod's `serviceAccountName` differs from its ReplicaSet template; an omitted value defaults to `default`. |
-| `endpoint_pod_security_runtime_class_name_mismatch` | The live Pod's `runtimeClassName` differs from its ReplicaSet template. |
-| `endpoint_pod_security_automount_service_account_token_mismatch` | The live Pod's `automountServiceAccountToken` differs from its ReplicaSet template. |
-| `endpoint_pod_security_context_mismatch` | The live Pod's `securityContext` differs from its ReplicaSet template, or is not an object. |
-| `endpoint_pod_security_volumes_mismatch` | The live Pod's `volumes` differ from its ReplicaSet template after the projected service-account volume is normalized. |
-| `endpoint_pod_security_image_pull_secrets_mismatch` | The live Pod's `imagePullSecrets` differ from its ReplicaSet template, or are malformed. A template that omits the field may still admit a valid live pull-secret list. |
-| `endpoint_pod_security_host_aliases_mismatch` | The live Pod's `hostAliases` differ from its ReplicaSet template. |
-| `endpoint_pod_security_dns_config_mismatch` | The live Pod's `dnsConfig` differs from its ReplicaSet template. |
-| `endpoint_pod_security_dns_policy_mismatch` | The live Pod's `dnsPolicy` differs from its ReplicaSet template; an omitted value defaults to `ClusterFirst`. |
-| `endpoint_pod_security_enable_service_links_mismatch` | The live Pod's `enableServiceLinks` differs from its ReplicaSet template; an omitted value defaults to `true`. |
-| `endpoint_pod_security_restart_policy_mismatch` | The live Pod's `restartPolicy` differs from its ReplicaSet template; an omitted value defaults to `Always`. |
-| `endpoint_pod_security_hostname_mismatch` | The live Pod's `hostname` differs from its ReplicaSet template. |
-| `endpoint_pod_security_subdomain_mismatch` | The live Pod's `subdomain` differs from its ReplicaSet template. |
-| `endpoint_pod_security_set_hostname_as_fqdn_mismatch` | The live Pod's `setHostnameAsFQDN` differs from its ReplicaSet template; an omitted value defaults to `false`. |
-| `endpoint_pod_security_termination_grace_period_seconds_mismatch` | The live Pod's `terminationGracePeriodSeconds` differs from its ReplicaSet template; an omitted value defaults to `30`. |
-| `endpoint_pod_security_scheduler_name_mismatch` | The live Pod's `schedulerName` differs from its ReplicaSet template; an omitted value defaults to `default-scheduler`. |
-| `endpoint_pod_security_priority_class_name_mismatch` | The live Pod's `priorityClassName` differs from its ReplicaSet template. |
-| `endpoint_pod_security_priority_mismatch` | The live Pod's `priority` differs from its ReplicaSet template; an omitted value defaults to `0`. |
-| `endpoint_pod_security_preemption_policy_mismatch` | The live Pod's `preemptionPolicy` differs from its ReplicaSet template; an omitted value defaults to `PreemptLowerPriority`. |
-| `endpoint_pod_security_topology_spread_constraints_mismatch` | The live Pod's `topologySpreadConstraints` differ from its ReplicaSet template. |
-| `endpoint_pod_security_node_selector_mismatch` | The live Pod's `nodeSelector` differs from its ReplicaSet template. |
-| `endpoint_pod_security_affinity_mismatch` | The live Pod's `affinity` differs from its ReplicaSet template. |
-| `endpoint_pod_security_tolerations_mismatch` | The live Pod's `tolerations` differ from its ReplicaSet template beyond the cluster-default not-ready/unreachable additions. |
-| `endpoint_pod_ephemeral_containers_present` | The live Pod carries an ephemeral container, or a malformed `ephemeralContainers` field, that the ReplicaSet template cannot account for. |
-| `endpoint_pod_container_list_mismatch` | The live `containers` list no longer matches the ReplicaSet template: its count, names, or any container field differs. |
-| `endpoint_pod_init_container_list_mismatch` | The live `initContainers` list no longer matches the ReplicaSet template in order, count, names, or any container field. |
+| `endpoint_pod_security_shape_mismatch` | The live Pod's Pod-level security/identity shape differs from its ReplicaSet template: host namespaces, service account and runtime identity, security context, volumes, DNS and host aliases, scheduling and tolerations, or the other normalized Pod fields. |
+| `endpoint_pod_container_list_mismatch` | The live `containers` list differs from the ReplicaSet template in count or container names. |
+| `endpoint_pod_container_env_mismatch` | A live container's `env` or `envFrom` differs from the ReplicaSet template. |
+| `endpoint_pod_container_security_context_mismatch` | A live container's `securityContext` differs from the ReplicaSet template. |
+| `endpoint_pod_container_image_command_mismatch` | A live container's `image`, `command`, `args`, or `workingDir` differs from the ReplicaSet template. |
+| `endpoint_pod_container_shape_mismatch` | A live container differs from the ReplicaSet template in its remaining container fields, such as ports, resources, probes, mounts, lifecycle, or restart policy. |
+| `endpoint_pod_init_container_list_mismatch` | The live `initContainers` list differs from the ReplicaSet template in order, count, or container names. |
+| `endpoint_pod_init_container_env_mismatch` | A live init container's `env` or `envFrom` differs from the ReplicaSet template. |
+| `endpoint_pod_init_container_security_context_mismatch` | A live init container's `securityContext` differs from the ReplicaSet template. |
+| `endpoint_pod_init_container_image_command_mismatch` | A live init container's `image`, `command`, `args`, or `workingDir` differs from the ReplicaSet template. |
+| `endpoint_pod_init_container_shape_mismatch` | A live init container differs from the ReplicaSet template in its remaining container fields, such as ports, resources, probes, mounts, lifecycle, or restart policy. |
 | `endpoint_pod_container_mismatch` | The live target container does not match the ReplicaSet template's container. |
 | `endpoint_pod_command_mismatch` | The live target container's argv does not match the Product process contract. |
 | `endpoint_pod_port_conflict` | Another live container in the Pod publishes the target port. |

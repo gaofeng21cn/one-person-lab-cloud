@@ -151,6 +151,9 @@ function controller(resource: Resource, kind: string, resources: Resource[]): Re
 // live Deployment has instead lost the Pod ownership chain: the target may be the
 // correct Deployment, so reporting that hop against the Service misdirects the
 // operator. The two causes stay separate symbols because their repairs differ.
+// A Pod whose ReplicaSet itself cannot be resolved is a third cause: the endpoint
+// proof cannot even attempt the template comparison, so it must not be reported
+// as a shape mismatch.
 function backendOwnershipFailure(resource: Resource, target: Resource, resources: Resource[]): string | undefined {
   if (resource === target) return;
   if (resource.kind === "ReplicaSet") {
@@ -160,7 +163,8 @@ function backendOwnershipFailure(resource: Resource, target: Resource, resources
   }
   if (resource.kind === "Pod") {
     const replicaSet = controller(resource, "ReplicaSet", resources);
-    const owner = replicaSet === undefined ? undefined : controller(replicaSet, "Deployment", resources);
+    if (replicaSet === undefined) return "endpoint_pod_replicaset_unresolved";
+    const owner = controller(replicaSet, "Deployment", resources);
     if (owner === target) return;
     return owner === undefined ? "pod_owner_chain_unproven" : "service_backend_owner";
   }
@@ -242,65 +246,29 @@ function samePodTolerations(live: unknown, declared: unknown): boolean {
     return true;
   });
 }
-// Pod-level security and identity fields are independent reasons a live Pod can
-// stop matching its ReplicaSet template. Each one gets its own symbol so the
-// receipt names the field without a cluster read; the conjunction itself is
-// unchanged, so every difference still rejects exactly where it did before.
-const podSecurityFields: readonly { field: string; symbol: string }[] = [
-  { field: "hostNetwork", symbol: "endpoint_pod_security_host_network_mismatch" },
-  { field: "hostPID", symbol: "endpoint_pod_security_host_pid_mismatch" },
-  { field: "hostIPC", symbol: "endpoint_pod_security_host_ipc_mismatch" },
-  { field: "shareProcessNamespace", symbol: "endpoint_pod_security_share_process_namespace_mismatch" },
-  { field: "hostUsers", symbol: "endpoint_pod_security_host_users_mismatch" },
-  { field: "serviceAccountName", symbol: "endpoint_pod_security_service_account_name_mismatch" },
-  { field: "runtimeClassName", symbol: "endpoint_pod_security_runtime_class_name_mismatch" },
-  { field: "automountServiceAccountToken", symbol: "endpoint_pod_security_automount_service_account_token_mismatch" },
-  { field: "securityContext", symbol: "endpoint_pod_security_context_mismatch" },
-  { field: "volumes", symbol: "endpoint_pod_security_volumes_mismatch" },
-  { field: "imagePullSecrets", symbol: "endpoint_pod_security_image_pull_secrets_mismatch" },
-  { field: "hostAliases", symbol: "endpoint_pod_security_host_aliases_mismatch" },
-  { field: "dnsConfig", symbol: "endpoint_pod_security_dns_config_mismatch" },
-  { field: "dnsPolicy", symbol: "endpoint_pod_security_dns_policy_mismatch" },
-  { field: "enableServiceLinks", symbol: "endpoint_pod_security_enable_service_links_mismatch" },
-  { field: "restartPolicy", symbol: "endpoint_pod_security_restart_policy_mismatch" },
-  { field: "hostname", symbol: "endpoint_pod_security_hostname_mismatch" },
-  { field: "subdomain", symbol: "endpoint_pod_security_subdomain_mismatch" },
-  { field: "setHostnameAsFQDN", symbol: "endpoint_pod_security_set_hostname_as_fqdn_mismatch" },
-  { field: "terminationGracePeriodSeconds", symbol: "endpoint_pod_security_termination_grace_period_seconds_mismatch" },
-  { field: "schedulerName", symbol: "endpoint_pod_security_scheduler_name_mismatch" },
-  { field: "priorityClassName", symbol: "endpoint_pod_security_priority_class_name_mismatch" },
-  { field: "priority", symbol: "endpoint_pod_security_priority_mismatch" },
-  { field: "preemptionPolicy", symbol: "endpoint_pod_security_preemption_policy_mismatch" },
-  { field: "topologySpreadConstraints", symbol: "endpoint_pod_security_topology_spread_constraints_mismatch" },
-  { field: "nodeSelector", symbol: "endpoint_pod_security_node_selector_mismatch" },
-  { field: "affinity", symbol: "endpoint_pod_security_affinity_mismatch" },
-  { field: "tolerations", symbol: "endpoint_pod_security_tolerations_mismatch" }
-];
-const podSecurityBooleanFields = new Set(["hostNetwork", "hostPID", "hostIPC", "shareProcessNamespace", "hostUsers", "automountServiceAccountToken", "enableServiceLinks"]);
-const podSecurityStringFields = new Set(["serviceAccountName", "runtimeClassName", "restartPolicy", "dnsPolicy"]);
-function podSecurityShapeFailure(live: Resource, declared: Resource): string | undefined {
-  const invalidBoolean = podSecurityFields.find(entry => podSecurityBooleanFields.has(entry.field) &&
-    [live[entry.field], declared[entry.field]].some(value => value !== undefined && typeof value !== "boolean"));
-  if (invalidBoolean) return invalidBoolean.symbol;
-  const invalidString = podSecurityFields.find(entry => podSecurityStringFields.has(entry.field) &&
-    [live[entry.field], declared[entry.field]].some(value => value !== undefined && typeof value !== "string"));
-  if (invalidString) return invalidString.symbol;
-  if ([live.securityContext, declared.securityContext].some(value => value !== undefined && !object(value)))
-    return "endpoint_pod_security_context_mismatch";
-  if (live.ephemeralContainers !== undefined && (!Array.isArray(live.ephemeralContainers) || live.ephemeralContainers.length > 0))
-    return "endpoint_pod_ephemeral_containers_present";
-  for (const { field, symbol } of podSecurityFields) {
-    if (field === "tolerations") {
-      if (!samePodTolerations(live[field], declared[field])) return symbol;
-      continue;
-    }
-    if (field === "imagePullSecrets" && admissionFieldAbsent(declared[field], field) && live[field] !== undefined) {
-      if (!validImagePullSecrets(live[field])) return symbol;
-      continue;
-    }
-    if (!deepEqual(normalizedPodField(live, field), normalizedPodField(declared, field))) return symbol;
-  }
-  return;
+// The Pod-level security/identity comparison stays one operator-facing cause.
+// Its many normalized fields share one repair: the live Pod no longer derives
+// from its immutable ReplicaSet revision.
+function samePodSecurityShape(live: Resource, declared: Resource): boolean {
+  const fields = [
+    "hostNetwork", "hostPID", "hostIPC", "shareProcessNamespace", "hostUsers", "serviceAccountName", "runtimeClassName",
+    "automountServiceAccountToken", "securityContext", "volumes", "imagePullSecrets", "hostAliases",
+    "dnsConfig", "dnsPolicy", "enableServiceLinks", "restartPolicy", "hostname", "subdomain", "setHostnameAsFQDN",
+    "terminationGracePeriodSeconds", "schedulerName", "priorityClassName", "priority", "preemptionPolicy",
+    "topologySpreadConstraints", "nodeSelector", "affinity", "tolerations"
+  ];
+  const booleanFields = ["hostNetwork", "hostPID", "hostIPC", "shareProcessNamespace", "hostUsers", "automountServiceAccountToken", "enableServiceLinks"];
+  const stringFields = ["serviceAccountName", "runtimeClassName", "restartPolicy", "dnsPolicy"];
+  if (booleanFields.some(field => [live[field], declared[field]].some(value => value !== undefined && typeof value !== "boolean"))) return false;
+  if (stringFields.some(field => [live[field], declared[field]].some(value => value !== undefined && typeof value !== "string"))) return false;
+  if ([live.securityContext, declared.securityContext].some(value => value !== undefined && !object(value))) return false;
+  if (live.ephemeralContainers !== undefined && (!Array.isArray(live.ephemeralContainers) || live.ephemeralContainers.length > 0)) return false;
+  return fields.every(field => {
+    if (field === "tolerations") return samePodTolerations(live[field], declared[field]);
+    if (field === "imagePullSecrets" && admissionFieldAbsent(declared[field], field) && live[field] !== undefined)
+      return validImagePullSecrets(live[field]);
+    return deepEqual(normalizedPodField(live, field), normalizedPodField(declared, field));
+  });
 }
 const liveContainerFields = [
   "name", "image", "command", "args", "env", "envFrom", "ports", "securityContext", "volumeMounts",
@@ -336,19 +304,56 @@ function validResourceRequirements(value: unknown): boolean {
   return object(value) && Object.keys(value).every(key => ["limits", "requests"].includes(key)) &&
     ["limits", "requests"].every(key => value[key] === undefined || stringMap(value[key]));
 }
-function sameContainerShape(live: Resource, declared: Resource): boolean {
-  return liveContainerFields.every(field => {
-    if (field === "resources" && admissionFieldAbsent(declared[field], field) && live[field] !== undefined)
-      return validResourceRequirements(live[field]);
-    return deepEqual(normalizedContainerField(live, field), normalizedContainerField(declared, field));
-  });
+const containerShapeGroups: Record<string, string> = {
+  env: "env",
+  envFrom: "env",
+  securityContext: "security_context",
+  image: "image_command",
+  command: "image_command",
+  args: "image_command",
+  workingDir: "image_command"
+};
+function containerShapeFailure(live: Resource, declared: Resource): string | undefined {
+  for (const field of liveContainerFields) {
+    if (field === "resources" && admissionFieldAbsent(declared[field], field) && live[field] !== undefined) {
+      if (!validResourceRequirements(live[field])) return "shape";
+      continue;
+    }
+    if (!deepEqual(normalizedContainerField(live, field), normalizedContainerField(declared, field)))
+      return containerShapeGroups[field] ?? "shape";
+  }
+  return;
 }
-function sameContainerList(live: unknown, declared: unknown, ordered = false): boolean {
-  if (!Array.isArray(live) || !Array.isArray(declared) || live.length !== declared.length) return false;
-  if (new Set(live.map(container => container.name)).size !== live.length || new Set(declared.map(container => container.name)).size !== declared.length) return false;
-  if (ordered) return live.every((container, index) => object(container) && object(declared[index]) && sameContainerShape(container, declared[index]));
+function sameContainerShape(live: Resource, declared: Resource): boolean {
+  return containerShapeFailure(live, declared) === undefined;
+}
+// Return the operator-facing cause of the first list-level difference instead
+// of collapsing it into the Pod-template mismatch. The field groups distinguish
+// a cluster-injected environment, security context, image/argv change, and the
+// remaining container fields; a count, name, or order difference stays a list
+// mismatch. The accepted set is exactly the former boolean conjunction.
+function containerListFailure(live: unknown, declared: unknown, ordered: boolean, prefix: string): string | undefined {
+  if (!Array.isArray(live) || !Array.isArray(declared) || live.length !== declared.length) return `${prefix}_list_mismatch`;
+  if (new Set(live.map(container => container.name)).size !== live.length ||
+      new Set(declared.map(container => container.name)).size !== declared.length) return `${prefix}_list_mismatch`;
+  if (ordered) {
+    for (let index = 0; index < live.length; index++) {
+      const liveContainer = live[index];
+      const declaredContainer = declared[index];
+      if (!object(liveContainer) || !object(declaredContainer) || liveContainer.name !== declaredContainer.name)
+        return `${prefix}_list_mismatch`;
+      const shapeFailure = containerShapeFailure(liveContainer, declaredContainer);
+      if (shapeFailure) return `${prefix}_${shapeFailure}_mismatch`;
+    }
+    return;
+  }
   const declaredByName = new Map(declared.map(container => [container.name, container]));
-  return live.every(container => object(container) && declaredByName.has(container.name) && sameContainerShape(container, declaredByName.get(container.name)!));
+  for (const container of live) {
+    if (!object(container) || !declaredByName.has(container.name)) return `${prefix}_list_mismatch`;
+    const shapeFailure = containerShapeFailure(container, declaredByName.get(container.name)!);
+    if (shapeFailure) return `${prefix}_${shapeFailure}_mismatch`;
+  }
+  return;
 }
 // The live-Pod comparison returns the operator-facing cause of the first
 // independent sub-check that fails. The sub-checks are the same conjunction as
@@ -364,11 +369,11 @@ function livePodShapeFailure(pod: Resource, declared: Resource): string | undefi
   if (new Set(liveContainers.map(container => container.name)).size !== liveContainers.length ||
       new Set(declaredContainers.map(container => container.name)).size !== declaredContainers.length)
     return "endpoint_pod_container_names_duplicate";
-  const securityFailure = podSecurityShapeFailure(pod.spec, declared);
-  if (securityFailure) return securityFailure;
-  if (!sameContainerList(pod.spec.containers, declared.containers)) return "endpoint_pod_container_list_mismatch";
-  if (!sameContainerList(pod.spec.initContainers ?? [], declared.initContainers ?? [], true))
-    return "endpoint_pod_init_container_list_mismatch";
+  if (!samePodSecurityShape(pod.spec, declared)) return "endpoint_pod_security_shape_mismatch";
+  const containerFailure = containerListFailure(pod.spec.containers, declared.containers, false, "endpoint_pod_container");
+  if (containerFailure) return containerFailure;
+  const initContainerFailure = containerListFailure(pod.spec.initContainers ?? [], declared.initContainers ?? [], true, "endpoint_pod_init_container");
+  if (initContainerFailure) return initContainerFailure;
   return;
 }
 function servicePublishesNotReady(service: Resource): boolean {
@@ -417,7 +422,7 @@ function endpointBackendFailure(resource: Resource, service: Resource, target: R
     // Prove each Pod against its own immutable ReplicaSet template; requiring
     // the new desired image here would prevent a legitimate upgrade preflight.
     const replicaSpec = controller(pod, "ReplicaSet", resources)?.spec?.template?.spec;
-    if (!object(replicaSpec)) return "endpoint_pod_template_absent";
+    if (!object(replicaSpec)) return "endpoint_pod_replicaset_unresolved";
     const replicaContainers = replicaSpec.containers;
     if (!validContainerList(replicaContainers, true)) return "endpoint_pod_template_containers_invalid";
     if (replicaSpec.initContainers !== undefined && !validContainerList(replicaSpec.initContainers))

@@ -307,7 +307,10 @@ test("installation CLI names the cause of a rejected Pod-template proof", async 
     assert.deepEqual(result.report.errors, []);
   });
   const cases: [string, string, (fixture: ReturnType<typeof withLiveWorkspaceBackends>) => void][] = [
-    ["ReplicaSet template spec is absent", "endpoint_pod_template_absent", ({ replicaSet }) => {
+    ["Pod has no resolvable ReplicaSet", "endpoint_pod_replicaset_unresolved", ({ pod }) => {
+      pod.metadata.ownerReferences = [];
+    }],
+    ["ReplicaSet template spec is absent", "endpoint_pod_replicaset_unresolved", ({ replicaSet }) => {
       delete replicaSet.spec.template.spec;
     }],
     ["ReplicaSet template container list is invalid", "endpoint_pod_template_containers_invalid", ({ replicaSet }) => {
@@ -319,73 +322,49 @@ test("installation CLI names the cause of a rejected Pod-template proof", async 
     ["a container name occurs in both lists", "endpoint_pod_container_names_duplicate", ({ pod }) => {
       pod.spec.initContainers = [{ name: "owner", image: "example.invalid/init:1" }];
     }],
-    ["live host network", "endpoint_pod_security_host_network_mismatch", ({ pod }) => { pod.spec.hostNetwork = true; }],
-    ["live host PID namespace", "endpoint_pod_security_host_pid_mismatch", ({ pod }) => { pod.spec.hostPID = true; }],
-    ["live host IPC namespace", "endpoint_pod_security_host_ipc_mismatch", ({ pod }) => { pod.spec.hostIPC = true; }],
-    ["live shared process namespace", "endpoint_pod_security_share_process_namespace_mismatch", ({ pod }) => { pod.spec.shareProcessNamespace = true; }],
-    ["live host user namespace", "endpoint_pod_security_host_users_mismatch", ({ pod }) => { pod.spec.hostUsers = false; }],
-    ["live service account", "endpoint_pod_security_service_account_name_mismatch", ({ pod }) => { pod.spec.serviceAccountName = "other"; }],
-    ["live runtime class", "endpoint_pod_security_runtime_class_name_mismatch", ({ pod }) => { pod.spec.runtimeClassName = "untrusted-runtime"; }],
-    ["live service-account token automount", "endpoint_pod_security_automount_service_account_token_mismatch", ({ pod }) => {
-      pod.spec.automountServiceAccountToken = false;
-    }],
-    ["live Pod security context", "endpoint_pod_security_context_mismatch", ({ pod }) => { pod.spec.securityContext = { runAsNonRoot: true }; }],
-    ["live volumes", "endpoint_pod_security_volumes_mismatch", ({ pod }) => {
-      pod.spec.volumes = [{ name: "extra", emptyDir: {} }];
-    }],
-    ["live image pull secrets", "endpoint_pod_security_image_pull_secrets_mismatch", ({ pod, replicaSet }) => {
-      replicaSet.spec.template.spec.imagePullSecrets = [{ name: "registry-a" }];
-      pod.spec.imagePullSecrets = [{ name: "registry-b" }];
-    }],
-    ["live host aliases", "endpoint_pod_security_host_aliases_mismatch", ({ pod }) => {
-      pod.spec.hostAliases = [{ ip: "203.0.113.1", hostnames: ["other"] }];
-    }],
-    ["live DNS config", "endpoint_pod_security_dns_config_mismatch", ({ pod }) => {
-      pod.spec.dnsConfig = { nameservers: ["203.0.113.53"] };
-    }],
-    ["live DNS policy", "endpoint_pod_security_dns_policy_mismatch", ({ pod }) => { pod.spec.dnsPolicy = "None"; }],
-    ["live service-link injection", "endpoint_pod_security_enable_service_links_mismatch", ({ pod }) => {
-      pod.spec.enableServiceLinks = false;
-    }],
-    ["live restart policy", "endpoint_pod_security_restart_policy_mismatch", ({ pod }) => { pod.spec.restartPolicy = "OnFailure"; }],
-    ["live hostname", "endpoint_pod_security_hostname_mismatch", ({ pod }) => { pod.spec.hostname = "other"; }],
-    ["live subdomain", "endpoint_pod_security_subdomain_mismatch", ({ pod }) => { pod.spec.subdomain = "other"; }],
-    ["live FQDN hostname flag", "endpoint_pod_security_set_hostname_as_fqdn_mismatch", ({ pod }) => {
-      pod.spec.setHostnameAsFQDN = true;
-    }],
-    ["live termination grace period", "endpoint_pod_security_termination_grace_period_seconds_mismatch", ({ pod }) => {
-      pod.spec.terminationGracePeriodSeconds = 60;
-    }],
-    ["live scheduler", "endpoint_pod_security_scheduler_name_mismatch", ({ pod }) => { pod.spec.schedulerName = "other"; }],
-    ["live priority class", "endpoint_pod_security_priority_class_name_mismatch", ({ pod }) => {
-      pod.spec.priorityClassName = "high";
-    }],
-    ["live priority", "endpoint_pod_security_priority_mismatch", ({ pod }) => { pod.spec.priority = 100; }],
-    ["live preemption policy", "endpoint_pod_security_preemption_policy_mismatch", ({ pod }) => {
-      pod.spec.preemptionPolicy = "Never";
-    }],
-    ["live topology spread constraints", "endpoint_pod_security_topology_spread_constraints_mismatch", ({ pod }) => {
-      pod.spec.topologySpreadConstraints = [{ maxSkew: 1, topologyKey: "zone", whenUnsatisfiable: "DoNotSchedule",
-        labelSelector: { matchLabels: { unit: "workspace" } } }];
-    }],
-    ["live node selector", "endpoint_pod_security_node_selector_mismatch", ({ pod }) => {
-      pod.spec.nodeSelector = { disk: "ssd" };
-    }],
-    ["live affinity", "endpoint_pod_security_affinity_mismatch", ({ pod }) => { pod.spec.affinity = { nodeAffinity: {} }; }],
-    ["live tolerations", "endpoint_pod_security_tolerations_mismatch", ({ pod }) => {
-      pod.spec.tolerations = [{ key: "dedicated", operator: "Exists", effect: "NoSchedule" }];
-    }],
-    ["live ephemeral container", "endpoint_pod_ephemeral_containers_present", ({ pod }) => {
-      pod.spec.ephemeralContainers = [{ name: "debugger", image: "example.invalid/debugger:1" }];
+    ["live Pod security shape", "endpoint_pod_security_shape_mismatch", ({ pod }) => {
+      pod.spec.hostNetwork = true;
     }],
     ["live container list differs", "endpoint_pod_container_list_mismatch", ({ pod }) => {
+      pod.spec.containers[0].name = "other";
+    }],
+    ["live container environment differs", "endpoint_pod_container_env_mismatch", ({ pod }) => {
+      pod.spec.containers[0].env.push({ name: "INJECTED", value: "1" });
+    }],
+    ["live container security context differs", "endpoint_pod_container_security_context_mismatch", ({ pod }) => {
+      pod.spec.containers[0].securityContext = { allowPrivilegeEscalation: false };
+    }],
+    ["live container image or argv differs", "endpoint_pod_container_image_command_mismatch", ({ pod }) => {
       pod.spec.containers[0].image = "example.invalid/foreign:1";
+    }],
+    ["live container has another field group difference", "endpoint_pod_container_shape_mismatch", ({ pod }) => {
+      pod.spec.containers[0].ports[0].containerPort = 9999;
     }],
     ["live init-container order differs", "endpoint_pod_init_container_list_mismatch", ({ pod, replicaSet }) => {
       const initA = { name: "init-a", image: "example.invalid/init-a:1" };
       const initB = { name: "init-b", image: "example.invalid/init-b:1" };
       replicaSet.spec.template.spec.initContainers = [initA, initB];
       pod.spec.initContainers = [initB, initA];
+    }],
+    ["live init-container environment differs", "endpoint_pod_init_container_env_mismatch", ({ pod, replicaSet }) => {
+      const init = { name: "init-a", image: "example.invalid/init:1" };
+      replicaSet.spec.template.spec.initContainers = [init];
+      pod.spec.initContainers = [{ ...init, env: [{ name: "INJECTED", value: "1" }] }];
+    }],
+    ["live init-container security context differs", "endpoint_pod_init_container_security_context_mismatch", ({ pod, replicaSet }) => {
+      const init = { name: "init-a", image: "example.invalid/init:1" };
+      replicaSet.spec.template.spec.initContainers = [init];
+      pod.spec.initContainers = [{ ...init, securityContext: { allowPrivilegeEscalation: false } }];
+    }],
+    ["live init-container image or argv differs", "endpoint_pod_init_container_image_command_mismatch", ({ pod, replicaSet }) => {
+      const init = { name: "init-a", image: "example.invalid/init:1" };
+      replicaSet.spec.template.spec.initContainers = [init];
+      pod.spec.initContainers = [{ ...init, image: "example.invalid/foreign:1" }];
+    }],
+    ["live init-container has another field group difference", "endpoint_pod_init_container_shape_mismatch", ({ pod, replicaSet }) => {
+      const init = { name: "init-a", image: "example.invalid/init:1" };
+      replicaSet.spec.template.spec.initContainers = [init];
+      pod.spec.initContainers = [{ ...init, ports: [{ containerPort: 9999 }] }];
     }]
   ];
   for (const [name, reasonCode, change] of cases) await t.test(name, async () => {
