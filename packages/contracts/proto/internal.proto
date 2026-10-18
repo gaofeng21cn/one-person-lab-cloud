@@ -2452,8 +2452,13 @@ message WalletDebitCommand { CallContext context = 1; string workspace_id = 2; s
 message WalletRefundCommand { CallContext context = 1; string workspace_id = 2; string original_wallet_operation_id = 3; string original_external_payment_reference = 4; int64 amount_usd_micros = 5; string refund_policy_version_id = 6; string confirmed_deletion_receipt_id = 7; string subscription_period_id = 8; }
 message WalletReadbackRequest { CallContext context = 1; string wallet_operation_id = 2; string original_idempotency_key = 3; }
 message ManagedKeyCommand { CallContext context = 1; string workspace_id = 2; repeated string model_ids = 3; string target_runtime_instance_id = 4; }
-message ManagedKeyBinding { string key_binding_id = 1; string fingerprint = 2; string secret_delivery_reference = 3; string workspace_id = 4; string target_runtime_instance_id = 5; google.protobuf.Timestamp expires_at = 6; }
+message ManagedKeyBinding { string key_binding_id = 1; string fingerprint = 2; string secret_delivery_reference = 3; string workspace_id = 4; string target_runtime_instance_id = 5; google.protobuf.Timestamp expires_at = 6; repeated string model_ids = 7; }
 message ManagedKeyRevoke { CallContext context = 1; string key_binding_id = 2; string workspace_id = 3; }
+// ManagedKeyReadCommand reads one Workspace-managed key binding by its opaque
+// owner id. The caller names the binding and the workspace it belongs to; the
+// Gateway owner answers with the binding's approved model scope and delivery
+// reference, never with the external key or its raw Secret.
+message ManagedKeyReadCommand { CallContext context = 1; string key_binding_id = 2; string workspace_id = 3; }
 service GatewayCoordination {
  rpc GetSelfUserIdentity(GetSelfUserIdentityRequest) returns (UserIdentityReadback);
  rpc GetSelfUserExternalBinding(GetSelfUserExternalBindingRequest) returns (UserExternalBindingReadback);
@@ -2464,6 +2469,7 @@ service GatewayCoordination {
  rpc Refund(WalletRefundCommand) returns (WalletOperation);
  rpc ReadWalletAction(WalletReadbackRequest) returns (WalletOperation);
  rpc CreateManagedKey(ManagedKeyCommand) returns (ManagedKeyBinding);
+ rpc ReadManagedKey(ManagedKeyReadCommand) returns (ManagedKeyBinding);
  rpc RevokeManagedKey(ManagedKeyRevoke) returns (Operation);
 }
 message ResourcePlanSnapshot { string compute_plan_id = 1; string storage_plan_id = 2; string provider_profile_id = 3; string provider_compute_sku_id = 4; string provider_storage_sku_id = 5; int32 vcpus = 6; int32 memory_mib = 7; int32 capacity_gib = 8; int32 prepaid_months = 9; string provider_capability_version = 10; bool conditional_route_revision_supported = 11; string provider = 12; string region = 13; string billing_mode = 14; }

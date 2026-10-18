@@ -3,11 +3,13 @@ package launch
 // This file owns the Workspace's model-configuration update: the one
 // owner-separated operation that turns an accepted model intent into a
 // confirmed, applied configuration. The owners stay separate on purpose -
-// Workspace authorizes and versions the intent, Gateway issues and allowlists the
-// managed key, Fabric confirms the runtime Secret binding, and Serve applies the
-// publisher contract and reports the version the application itself read back.
-// The applied column therefore advances only from Serve's confirmed readback, and
-// the public request never carries a Gateway key binding.
+// Workspace authorizes and versions the intent, Gateway owns and reads back the
+// managed key and its approved model scope, and Serve performs the runtime Secret
+// handover and reports the version the application itself read back. An ordinary
+// model update keeps the exact same external key; only a separately authorized
+// scope change may widen it. The applied column therefore advances only from
+// Serve's confirmed readback, and the public request never carries a Gateway key
+// binding.
 
 import (
 	"context"
@@ -33,11 +35,13 @@ import (
 
 // UpdateWorkspaceModels applies one accepted model configuration to the
 // Workspace's current runtime. A new configuration version is created for the
-// new selections, the Gateway-managed key for exactly that model set is created
-// and bound into the runtime through Fabric, and Serve applies and reads back the
-// publisher configuration. Only a confirmed readback advances the Workspace's own
-// applied version, so an unanswered or refused reload never presents the
-// requested configuration as the applied one.
+// new selections under the very same Gateway-managed key binding the Workspace
+// already holds: the Gateway owner reads back that binding's approved model
+// scope, and the update is refused before any effect when the selection is not
+// already inside it. Serve alone performs the Secret handover and applies and
+// reads back the publisher configuration. Only a confirmed readback advances the
+// Workspace's own applied version, so an unanswered or refused reload never
+// presents the requested configuration as the applied one.
 func (s *Service) UpdateWorkspaceModels(ctx context.Context, r *api.UpdateWorkspaceModelsRpcRequest) (*api.Operation, error) {
 	c, body := r.GetContext(), r.GetBody()
 	if err := ownerservice.ValidateCallContext(ctx, c); err != nil {
@@ -51,8 +55,8 @@ func (s *Service) UpdateWorkspaceModels(ctx context.Context, r *api.UpdateWorksp
 	if err != nil {
 		return nil, err
 	}
-	if s.Gateway == nil || s.Fabric == nil || s.Serve == nil {
-		return nil, status.Error(codes.Unavailable, "Gateway, Fabric and Serve are required to update a model configuration")
+	if s.Gateway == nil || s.Serve == nil {
+		return nil, status.Error(codes.Unavailable, "Gateway and Serve are required to update a model configuration")
 	}
 	tenant, appliedVersion, err := s.modelConfigurationWorkspace(ctx, workspaceID)
 	if err != nil {
@@ -94,6 +98,11 @@ func (s *Service) UpdateWorkspaceModels(ctx context.Context, r *api.UpdateWorksp
 // declares no installation Gateway credential, so no model configuration can be
 // applied to it.
 const ReasonModelConfigurationUnavailable = "model_configuration_unavailable"
+
+// ReasonManagedKeyScopeExpansionRequired names a selection the Workspace's current
+// managed key is not approved for. Widening a live key is a separately authorized
+// external scope change, so the update is refused instead of minting a wider key.
+const ReasonManagedKeyScopeExpansionRequired = "managed_key_scope_expansion_required"
 
 // validateModelSelections restates and checks one accepted selection set: every
 // slot names exactly one model, and no slot is named twice, so the key Gateway
@@ -178,9 +187,9 @@ type modelLaunch struct {
 	runtimeInstanceID string
 	source            *sourceRecord
 	// keyBindingID is the launch-issued Gateway key binding for a runtime whose
-	// revision declares the installation Gateway credential. The first model
-	// configuration replaces it, so it is the predecessor key the update revokes
-	// once Serve confirms the new version.
+	// revision declares the installation Gateway credential. Later model
+	// configurations preserve this exact key; it is the identity the update reads
+	// back from its owner rather than a predecessor to replace.
 	keyBindingID string
 }
 
@@ -336,63 +345,65 @@ func (s *Service) acceptModelUpdate(ctx context.Context, c *api.CallContext, wor
 }
 
 // runModelUpdate executes the owner-separated sequence for one accepted update and
-// reports the Operation actually established. Every step is recorded against the
-// update operation, and the Workspace's applied version advances only from Serve's
-// confirmed readback.
+// reports the Operation actually established. The Workspace reads back the managed
+// key binding it already holds, refuses a selection the binding is not approved
+// for, records the new configuration under that same binding, and lets Serve
+// perform the Secret handover and the apply. The Workspace's applied version
+// advances only from Serve's confirmed readback.
 func (s *Service) runModelUpdate(ctx context.Context, op ownerstore.Operation, launch modelLaunch, credential contracts.WorkspaceApplicationCredential, selections []*api.ModelSelection, appliedVersion, targetVersion int64) (*api.Operation, error) {
 	modelIDs := make([]string, 0, len(selections))
 	for _, selection := range selections {
 		modelIDs = append(modelIDs, selection.GetModelId())
 	}
-	// Resolve the actual Fabric predecessor before minting another Gateway key.
-	// An unresolved prior replacement must block new side effects until its owner
-	// fact is readable; falling back to an older confirmed binding would make Fabric
-	// reject the next update after a Serve refusal or a lost Workspace closeout.
-	predecessor, err := s.activeModelSecretBindingID(ctx, op.ResourceID)
+	// The key this Workspace already holds is the one the update must preserve. A
+	// prior configuration that was definitely refused changed no key fact, so the
+	// same binding remains usable; an unresolved prior configuration still blocks
+	// new side effects until its owner fact is readable.
+	keyBindingID, err := s.activeManagedKeyBindingID(ctx, op.ResourceID, launch.keyBindingID)
 	if err != nil {
 		return s.failModelUpdate(ctx, op, "configuration", err)
 	}
-	// 1-2. Gateway issues and allowlists the managed key for exactly this model set
-	// and this runtime; the raw key never reaches Workspace.
-	if err := s.advanceModelUpdate(ctx, op, "key"); err != nil {
+	if strings.TrimSpace(keyBindingID) == "" {
+		return s.failModelUpdate(ctx, op, "configuration", status.Errorf(codes.FailedPrecondition, "%s: the Workspace has no Gateway managed key binding to preserve", ReasonModelConfigurationUnavailable))
+	}
+	// 1. The Gateway owner reads back the exact binding and the model scope it is
+	// approved for. The Workspace never mints a replacement for an ordinary model
+	// update, so the external key identity stays the same across configurations.
+	if err = s.advanceModelUpdate(ctx, op, "key"); err != nil {
 		return nil, err
 	}
-	binding, err := s.Gateway.CreateManagedKey(ctx, &api.ManagedKeyCommand{Context: continuation(op, launch.grantID, "create_managed_key"), WorkspaceId: op.ResourceID, ModelIds: modelIDs, TargetRuntimeInstanceId: launch.runtimeInstanceID})
+	binding, err := s.Gateway.ReadManagedKey(ctx, &api.ManagedKeyReadCommand{Context: continuation(op, launch.grantID, "read_managed_key"), KeyBindingId: keyBindingID, WorkspaceId: op.ResourceID})
 	if err != nil {
 		return s.failModelUpdate(ctx, op, "key", err)
 	}
-	if strings.TrimSpace(binding.GetKeyBindingId()) == "" || strings.TrimSpace(binding.GetSecretDeliveryReference()) == "" || strings.TrimSpace(binding.GetFingerprint()) == "" ||
-		binding.GetWorkspaceId() != op.ResourceID || binding.GetTargetRuntimeInstanceId() != launch.runtimeInstanceID || binding.GetSecretDeliveryReference() != contracts.WorkspaceGatewaySecretRef(op.ResourceID) {
-		return s.failModelUpdate(ctx, op, "key", status.Error(codes.DataLoss, "Gateway returned a managed key that differs from the accepted update"))
+	if binding.GetKeyBindingId() != keyBindingID || binding.GetWorkspaceId() != op.ResourceID ||
+		strings.TrimSpace(binding.GetFingerprint()) == "" || strings.TrimSpace(binding.GetSecretDeliveryReference()) == "" ||
+		binding.GetSecretDeliveryReference() != contracts.WorkspaceGatewaySecretRef(op.ResourceID) {
+		return s.failModelUpdate(ctx, op, "key", status.Error(codes.DataLoss, "Gateway returned a managed key binding that differs from the accepted update"))
+	}
+	// 2. The selection must already be inside the key's approved scope. Widening a
+	// live key is a separate owner-authorized scope change that the external key
+	// authority has not exposed yet, so an expansion is refused before the intent is
+	// recorded and never applied under a wider local claim.
+	if missing := managedKeyScopeMissing(binding.GetModelIds(), modelIDs); len(missing) > 0 {
+		return s.failModelUpdate(ctx, op, "key", owneridentity.WithErrorCode(status.Errorf(codes.FailedPrecondition, "%s: managed key %s is not approved for %s", ReasonManagedKeyScopeExpansionRequired, keyBindingID, strings.Join(missing, ",")), api.ErrorCodeEnum_ERROR_CODE_ENUM_MODEL_NOT_ALLOWED))
 	}
 	// 3. The returned binding identity is recorded with the new configuration
-	// version before the Secret is bound, so the configuration's foreign key and the
-	// Gateway fact are one durable intent.
+	// version before Serve is asked to apply it, so the configuration's foreign key
+	// and the Gateway fact are one durable intent naming the same key.
 	configurationID := id("configuration_")
 	if err = s.recordModelConfigurationIntent(ctx, configurationID, op, binding, selections, targetVersion); err != nil {
 		return nil, err
 	}
-	// 4. Fabric binds the approved Secret into the exact runtime and confirms the
-	// version the execution boundary must inject. An unconfirmed binding never
-	// reaches Serve. A runtime that already carries a confirmed Fabric binding for
-	// this purpose is a replacement: the first configuration binds initially, and a
-	// later configuration rebinds against the exact predecessor it recorded. Fabric
-	// never silently replaces a different Secret, so the two operations stay
-	// distinct and the predecessor stays active until the replacement is confirmed.
-	if err = s.advanceModelUpdate(ctx, op, "configuration"); err != nil {
-		return nil, err
-	}
-	secretBindingID, secretVersion, err := s.bindOrRebindModelSecret(ctx, op, launch, credential.Name, predecessor, binding)
-	if err != nil {
-		return s.rejectModelConfiguration(ctx, op, configurationID, "configuration", err)
-	}
-	// 5. Serve applies the publisher contract and reports the version the
-	// application itself read back. The opaque binding travels with the command and
-	// Serve issues no Gateway key of its own.
+	// 4. Serve performs the managed-key handover itself: the command carries only the
+	// Gateway key binding, fingerprint, Secret delivery reference and publisher slot,
+	// never a Fabric-confirmed binding. Serve compares the handover with the exact
+	// predecessor it recorded, confirms the same Secret through Fabric, applies the
+	// publisher contract and reports the version the application itself read back.
 	if err = s.advanceModelUpdate(ctx, op, "reload"); err != nil {
 		return nil, err
 	}
-	reload := &api.RuntimeReloadCommand{Context: continuation(op, launch.grantID, "reload_models"), RuntimeInstanceId: launch.runtimeInstanceID, ExpectedAppliedVersion: appliedVersion, TargetVersion: targetVersion, Selections: selections, ManagedKeyBinding: &api.RuntimeManagedKeyBinding{KeyBindingId: binding.GetKeyBindingId(), SecretDeliveryReference: binding.GetSecretDeliveryReference(), Fingerprint: binding.GetFingerprint(), TargetSlot: credential.Name, SecretBindingId: secretBindingID, SecretVersion: secretVersion}}
+	reload := &api.RuntimeReloadCommand{Context: continuation(op, launch.grantID, "reload_models"), RuntimeInstanceId: launch.runtimeInstanceID, ExpectedAppliedVersion: appliedVersion, TargetVersion: targetVersion, Selections: selections, ManagedKeyBinding: &api.RuntimeManagedKeyBinding{KeyBindingId: binding.GetKeyBindingId(), SecretDeliveryReference: binding.GetSecretDeliveryReference(), Fingerprint: binding.GetFingerprint(), TargetSlot: credential.Name}}
 	reloaded, err := s.Serve.ReloadModels(ctx, reload)
 	if err != nil {
 		return s.rejectModelConfiguration(ctx, op, configurationID, "reload", err)
@@ -400,113 +411,67 @@ func (s *Service) runModelUpdate(ctx context.Context, op ownerstore.Operation, l
 	if reloaded.GetOperationId() == "" || reloaded.GetOwner() != api.OperationOwnerEnum_OPERATION_OWNER_ENUM_SERVE || reloaded.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
 		return s.rejectModelConfiguration(ctx, op, configurationID, "reload", status.Errorf(codes.FailedPrecondition, "%s: Serve did not confirm the applied model configuration", ReasonModelConfigurationUnavailable))
 	}
-	// 6. Only now does the Workspace advance its applied version, in the same
-	// transaction that records the confirmed reload.
-	if err = s.confirmModelConfiguration(ctx, op, configurationID, secretVersion, appliedVersion, targetVersion); err != nil {
-		// Serve confirmed an effect, but Workspace could not commit its matching
-		// applied fact. Keep the original operation uncertain and do not retire
-		// its predecessor key on a refused or unconfirmed owner commit.
+	// 5. Only now does the Workspace advance its applied version, in the same
+	// transaction that records the confirmed reload. The key binding is unchanged,
+	// so there is no predecessor to retire and no missing key fact on a lost commit.
+	if err = s.confirmModelConfiguration(ctx, op, configurationID, binding.GetKeyBindingId(), appliedVersion, targetVersion); err != nil {
 		_, code := modelUpdateFailure(err)
-		return s.finishModelUpdate(ctx, op, "verification", "needs_attention", "unknown", "", code, orderResult{ConfigurationID: configurationID, ConfigurationVersion: targetVersion, KeyBindingID: binding.GetKeyBindingId(), SecretBindingID: secretBindingID, ServeOperationID: reloaded.GetOperationId()})
+		return s.finishModelUpdate(ctx, op, "verification", "needs_attention", "unknown", "", code, orderResult{ConfigurationID: configurationID, ConfigurationVersion: targetVersion, KeyBindingID: binding.GetKeyBindingId(), ServeOperationID: reloaded.GetOperationId()})
 	}
-	// The superseded key is retired after the new one is confirmed, so a
-	// configuration change never leaves the previous generation live.
-	revoked, revokeErr := s.revokeSupersededKey(ctx, op, launch, targetVersion)
-	if revokeErr != nil {
-		_, code := modelUpdateFailure(revokeErr)
-		return s.finishModelUpdate(ctx, op, "verification", "needs_attention", "unknown", "", code, orderResult{ConfigurationID: configurationID, ConfigurationVersion: targetVersion, KeyBindingID: binding.GetKeyBindingId(), SecretBindingID: secretBindingID, ServeOperationID: reloaded.GetOperationId(), RevokedKeyBindingID: revoked})
-	}
-	return s.finishModelUpdate(ctx, op, "succeeded", "succeeded", "confirmed", "", "", orderResult{ConfigurationID: configurationID, ConfigurationVersion: targetVersion, KeyBindingID: binding.GetKeyBindingId(), SecretBindingID: secretBindingID, ServeOperationID: reloaded.GetOperationId(), RevokedKeyBindingID: revoked})
+	return s.finishModelUpdate(ctx, op, "succeeded", "succeeded", "confirmed", "", "", orderResult{ConfigurationID: configurationID, ConfigurationVersion: targetVersion, KeyBindingID: binding.GetKeyBindingId(), ServeOperationID: reloaded.GetOperationId()})
 }
 
-// activeModelSecretBindingID returns the Fabric Secret binding this Workspace's
-// last confirmed model configuration recorded for its runtime. It is the exact
-// predecessor a later configuration must name when it rebinds: the first
-// configuration binds initially, so an absent value means there is nothing to
-// replace. The binding id is the opaque owner readback Workspace stored with the
-// configuration it confirmed, not a value the caller can choose.
-func (s *Service) activeModelSecretBindingID(ctx context.Context, workspaceID string) (string, error) {
+// activeManagedKeyBindingID resolves the Gateway managed key binding this
+// Workspace's model configuration must keep using. A completed confirmed update
+// names the binding it recorded; while no configuration exists the launch binding is
+// the one to preserve. A recorded configuration that is not confirmed may already
+// have changed the runtime, so it blocks new side effects until its owner fact is
+// readable rather than letting the update guess which key is live.
+func (s *Service) activeManagedKeyBindingID(ctx context.Context, workspaceID, launchBindingID string) (string, error) {
 	var raw []byte
-	var observation, operationState string
-	err := s.Store.DB().QueryRowContext(ctx, `SELECT c.runtime_reload_observation,COALESCE(o.result,'{}'::jsonb),o.status
+	var observation, operationState, recorded string
+	err := s.Store.DB().QueryRowContext(ctx, `SELECT c.runtime_reload_observation,COALESCE(o.result,'{}'::jsonb),o.status,c.gateway_key_binding_id
 		FROM workspace.model_configurations c
 		JOIN workspace.operations o ON o.id=c.operation_id
-		WHERE c.workspace_id=$1 ORDER BY c.version DESC LIMIT 1`, workspaceID).Scan(&observation, &raw, &operationState)
-	if err == nil {
-		if observation != "confirmed" || operationState != "succeeded" {
-			return "", status.Error(codes.Unavailable, "the previous model configuration closeout is unresolved")
-		}
-		var result orderResult
-		if json.Unmarshal(raw, &result) != nil {
-			return "", status.Error(codes.DataLoss, "stored Workspace model update result is invalid")
-		}
-		if strings.TrimSpace(result.SecretBindingID) == "" {
-			return "", status.Error(codes.DataLoss, "confirmed model configuration has no recoverable Secret binding")
-		}
-		// Only a completed confirmed configuration supplies the predecessor for new
-		// side effects. Application confirmation alone does not settle key retirement.
-		return strings.TrimSpace(result.SecretBindingID), nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return "", dbError(err)
-	}
-	// No configuration update has ever succeeded, so the active binding is the one
-	// the launch established for the runtime's declared Gateway credential. It is the
-	// predecessor the first model configuration replaces; a launch that bound nothing
-	// (no declared credential) leaves this empty, so the first configuration binds
-	// initially instead of rebinding.
-	var launchRaw []byte
-	err = s.Store.DB().QueryRowContext(ctx, `SELECT COALESCE(result,'{}'::jsonb) FROM workspace.operations
-		WHERE resource_id=$1 AND kind='create_workspace'
-		ORDER BY created_at DESC, id DESC LIMIT 1`, workspaceID).Scan(&launchRaw)
+		WHERE c.workspace_id=$1 ORDER BY c.version DESC LIMIT 1`, workspaceID).Scan(&observation, &raw, &operationState, &recorded)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
+		return strings.TrimSpace(launchBindingID), nil
 	}
 	if err != nil {
 		return "", dbError(err)
 	}
-	var launch orderResult
-	if json.Unmarshal(launchRaw, &launch) != nil {
-		return "", status.Error(codes.DataLoss, "stored Workspace launch result is invalid")
+	recorded = strings.TrimSpace(recorded)
+	if observation != "confirmed" || operationState != "succeeded" {
+		return "", status.Error(codes.Unavailable, "the previous model configuration closeout is unresolved")
 	}
-	if len(launch.ManagedKeyBinding) == 0 {
-		return "", nil
+	if recorded == "" {
+		return "", status.Error(codes.DataLoss, "confirmed model configuration has no recorded Gateway key binding")
 	}
-	binding := &api.RuntimeManagedKeyBinding{}
-	if protojson.Unmarshal(launch.ManagedKeyBinding, binding) != nil {
-		return "", status.Error(codes.DataLoss, "stored launch managed key binding is invalid")
-	}
-	return strings.TrimSpace(binding.GetSecretBindingId()), nil
+	return recorded, nil
 }
 
-// bindOrRebindModelSecret confirms the approved Secret for one model configuration.
-// With no predecessor the first configuration binds initially; with a predecessor
-// the replacement must name that exact Fabric binding so Fabric compares the active
-// binding before it supersedes. Both paths return the confirmed binding identity and
-// version Serve must inject; a replacement reports the predecessor it retired so the
-// update receipt can record it.
-func (s *Service) bindOrRebindModelSecret(ctx context.Context, op ownerstore.Operation, launch modelLaunch, targetSlot, predecessor string, binding *api.ManagedKeyBinding) (string, string, error) {
-	if strings.TrimSpace(predecessor) == "" {
-		bound, err := s.Fabric.BindSecret(ctx, &api.SecretBindingCommand{Context: continuation(op, launch.grantID, "bind_managed_secret"), WorkspaceId: op.ResourceID, RuntimeInstanceId: launch.runtimeInstanceID, KeyBindingId: binding.GetKeyBindingId(), SecretDeliveryReference: binding.GetSecretDeliveryReference(), TargetSlot: targetSlot, Fingerprint: binding.GetFingerprint()})
-		if err != nil {
-			return "", "", err
+// managedKeyScopeMissing reports the requested model ids the approved managed key
+// scope does not cover. An empty result means the update stays inside the key's
+// existing allowlist; anything else requires an owner-authorized scope change the
+// Workspace must not perform by minting a wider key.
+func managedKeyScopeMissing(approved, requested []string) []string {
+	covered := make(map[string]bool, len(approved))
+	for _, model := range approved {
+		if model = strings.TrimSpace(model); model != "" {
+			covered[model] = true
 		}
-		if bound.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED || strings.TrimSpace(bound.GetSecretBindingId()) == "" || strings.TrimSpace(bound.GetVersion()) == "" ||
-			bound.GetFingerprint() != binding.GetFingerprint() || bound.GetRuntimeInstanceId() != launch.runtimeInstanceID {
-			return "", "", status.Error(codes.FailedPrecondition, "Fabric did not confirm the exact Gateway Secret binding")
+	}
+	missing := make([]string, 0)
+	seen := map[string]bool{}
+	for _, model := range requested {
+		model = strings.TrimSpace(model)
+		if model == "" || covered[model] || seen[model] {
+			continue
 		}
-		return bound.GetSecretBindingId(), bound.GetVersion(), nil
+		seen[model] = true
+		missing = append(missing, model)
 	}
-	rebound, err := s.Fabric.RebindSecret(ctx, &api.SecretBindingRebindCommand{Context: continuation(op, launch.grantID, "rebind_managed_secret"), WorkspaceId: op.ResourceID, RuntimeInstanceId: launch.runtimeInstanceID, ExpectedCurrentSecretBindingId: predecessor, KeyBindingId: binding.GetKeyBindingId(), SecretDeliveryReference: binding.GetSecretDeliveryReference(), TargetSlot: targetSlot, Fingerprint: binding.GetFingerprint()})
-	if err != nil {
-		return "", "", err
-	}
-	if rebound.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED || strings.TrimSpace(rebound.GetSecretBindingId()) == "" || strings.TrimSpace(rebound.GetVersion()) == "" ||
-		rebound.GetFingerprint() != binding.GetFingerprint() || rebound.GetRuntimeInstanceId() != launch.runtimeInstanceID ||
-		strings.TrimSpace(rebound.GetPreviousSecretBindingId()) != predecessor {
-		return "", "", status.Error(codes.FailedPrecondition, "Fabric did not confirm the exact Gateway Secret replacement")
-	}
-	return rebound.GetSecretBindingId(), rebound.GetVersion(), nil
+	return missing
 }
 
 // recordModelConfigurationIntent writes the accepted configuration version and the
@@ -527,14 +492,16 @@ func (s *Service) recordModelConfigurationIntent(ctx context.Context, configurat
 // confirmModelConfiguration records the confirmed reload and advances the
 // Workspace's applied model configuration version in one transaction. The
 // compare-and-set requires the version the caller expected, so a configuration
-// that the application did not confirm can never be recorded as applied.
-func (s *Service) confirmModelConfiguration(ctx context.Context, op ownerstore.Operation, configurationID, secretVersion string, expectedAppliedVersion, targetVersion int64) error {
+// that the application did not confirm can never be recorded as applied. The
+// evidence names the Gateway key binding the configuration was applied under,
+// because the Workspace no longer observes a per-configuration Fabric version.
+func (s *Service) confirmModelConfiguration(ctx context.Context, op ownerstore.Operation, configurationID, keyBindingID string, expectedAppliedVersion, targetVersion int64) error {
 	tx, err := s.Store.DB().BeginTx(ctx, nil)
 	if err != nil {
 		return dbError(err)
 	}
 	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, `UPDATE workspace.model_configurations SET runtime_reload_observation='confirmed',verification_evidence_ref=$2,updated_at=now() WHERE id=$1 AND runtime_reload_observation<>'confirmed'`, configurationID, "workspace-model-configuration://"+configurationID+"/"+secretVersion)
+	res, err := tx.ExecContext(ctx, `UPDATE workspace.model_configurations SET runtime_reload_observation='confirmed',verification_evidence_ref=$2,updated_at=now() WHERE id=$1 AND runtime_reload_observation<>'confirmed'`, configurationID, "workspace-model-configuration://"+configurationID+"/"+keyBindingID)
 	if err != nil {
 		return dbError(err)
 	}
@@ -552,29 +519,6 @@ func (s *Service) confirmModelConfiguration(ctx context.Context, op ownerstore.O
 		return dbError(err)
 	}
 	return nil
-}
-
-// revokeSupersededKey retires the Gateway key binding the new configuration
-// replaces. It runs only after the new binding is confirmed, is idempotent at
-// Gateway, and reports the binding it retired so the update receipt names it.
-func (s *Service) revokeSupersededKey(ctx context.Context, op ownerstore.Operation, launch modelLaunch, targetVersion int64) (string, error) {
-	var previous string
-	err := s.Store.DB().QueryRowContext(ctx, `SELECT gateway_key_binding_id FROM workspace.model_configurations
-		WHERE workspace_id=$1 AND version<$2 ORDER BY version DESC LIMIT 1`, op.ResourceID, targetVersion).Scan(&previous)
-	if errors.Is(err, sql.ErrNoRows) {
-		// No prior configuration row exists, so the launch-issued Gateway key is the
-		// predecessor this first configuration replaces.
-		previous = launch.keyBindingID
-	} else if err != nil {
-		return "", dbError(err)
-	}
-	if strings.TrimSpace(previous) == "" {
-		return "", nil
-	}
-	if _, err = s.Gateway.RevokeManagedKey(ctx, &api.ManagedKeyRevoke{Context: continuation(op, launch.grantID, "revoke_superseded_key"), KeyBindingId: previous, WorkspaceId: op.ResourceID}); err != nil {
-		return previous, err
-	}
-	return previous, nil
 }
 
 // advanceModelUpdate records the stage the update reached. The stage vocabulary is

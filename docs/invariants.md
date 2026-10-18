@@ -230,10 +230,13 @@ implementation and remaining gaps are reported separately in status/roadmap.
   intent and advance a confirmed version through the same Workspace operation
   and activation rules. The current binding cannot silently claim an old Secret
   version after its consumers have changed.
-- `UpdateWorkspaceModels` creates the new Gateway binding through the Gateway
-  owner, binds its Secret through the Fabric owner, and advances the Workspace
-  applied version only after Serve's publisher apply/readback confirms the
-  target version. The public request never carries a key-binding id.
+- `UpdateWorkspaceModels` reads back the Workspace's existing Gateway key
+  binding and its approved model scope from the Gateway owner, refuses a
+  selection outside that scope before any effect, records the new configuration
+  under that same binding, and lets Serve perform the Secret handover and the
+  publisher apply/readback. The Workspace applied version advances only after
+  Serve confirms the target version. The public request never carries a
+  key-binding id.
 - `FabricCoordination.BindSecret` is initial-bind/replay only. A different
   Secret for an already active runtime purpose must use the explicit Fabric
   `RebindSecret` operation with the expected predecessor binding; Fabric never

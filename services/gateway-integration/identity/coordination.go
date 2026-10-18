@@ -540,7 +540,7 @@ func (s *Service) managedKeyCommandAnswer(ctx context.Context, reservation Manag
 		return nil, status.Error(codes.DataLoss, "Gateway key binding model scope differs from its original command")
 	}
 	out := &api.ManagedKeyBinding{KeyBindingId: keyBinding.ID, Fingerprint: keyBinding.Fingerprint, SecretDeliveryReference: keyBinding.SecretRef,
-		WorkspaceId: keyBinding.WorkspaceID, TargetRuntimeInstanceId: state.TargetRuntimeInstanceID}
+		WorkspaceId: keyBinding.WorkspaceID, TargetRuntimeInstanceId: state.TargetRuntimeInstanceID, ModelIds: append([]string(nil), keyBinding.ModelIDs...)}
 	if !keyBinding.ExpiresAt.IsZero() {
 		out.ExpiresAt = timestamppb.New(keyBinding.ExpiresAt)
 	}
@@ -616,6 +616,53 @@ func (s *Service) RevokeManagedKey(ctx context.Context, r *api.ManagedKeyRevoke)
 	return &api.Operation{OperationId: key.ID, Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_GATEWAY, Kind: api.OperationKindEnum_OPERATION_KIND_ENUM_REVOKE_KEY,
 		ResourceId: key.ID, Status: api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED, Stage: api.OperationStageEnum_OPERATION_STAGE_ENUM_SUCCEEDED,
 		RequestId: r.GetContext().GetRequestId(), CreatedAt: stampOf(key.CreatedAt), UpdatedAt: stampOf(now)}, nil
+}
+
+// ReadManagedKey reads one Workspace-managed key binding for its owning
+// Workspace. The answer carries the binding's approved model scope and delivery
+// reference so the Workspace can prove that a model change stays inside the
+// key's existing allowlist; it never carries the external key id or the raw
+// Secret. A revoked or non-managed binding is refused rather than presented as
+// usable, because a model update must never be applied under a retired key.
+func (s *Service) ReadManagedKey(ctx context.Context, r *api.ManagedKeyReadCommand) (*api.ManagedKeyBinding, error) {
+	if err := s.coordinationCaller(ctx, owneridentity.Workspace.Service()); err != nil {
+		return nil, err
+	}
+	if s.GatewayStore == nil {
+		return nil, status.Error(codes.Unavailable, "Gateway key persistence is not configured")
+	}
+	if err := ownerservice.ValidateCallContext(ctx, r.GetContext()); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(r.GetKeyBindingId()) == "" || strings.TrimSpace(r.GetWorkspaceId()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "key binding and workspace are required")
+	}
+	tenantID := r.GetContext().GetScope().GetTenant().GetTenantId()
+	if tenantID == "" {
+		return nil, status.Error(codes.PermissionDenied, "a tenant-scoped key operation is required")
+	}
+	if err := s.authorizeManagedKey(ctx, r.GetContext(), tenantID, r.GetWorkspaceId()); err != nil {
+		return nil, err
+	}
+	key, err := s.GatewayStore.ReadManagedKeyBinding(ctx, r.GetKeyBindingId())
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "Gateway key binding not found")
+	}
+	if key.TenantID != tenantID || key.WorkspaceID != r.GetWorkspaceId() {
+		return nil, status.Error(codes.PermissionDenied, "key binding belongs to another tenant or workspace")
+	}
+	if key.Purpose != "workspace_managed" {
+		return nil, status.Error(codes.FailedPrecondition, "the key binding is not a Workspace managed key")
+	}
+	if !key.RevokedAt.IsZero() {
+		return nil, status.Error(codes.FailedPrecondition, "the managed key binding is revoked")
+	}
+	out := &api.ManagedKeyBinding{KeyBindingId: key.ID, Fingerprint: key.Fingerprint, SecretDeliveryReference: key.SecretRef,
+		WorkspaceId: key.WorkspaceID, ModelIds: append([]string(nil), key.ModelIDs...)}
+	if !key.ExpiresAt.IsZero() {
+		out.ExpiresAt = timestamppb.New(key.ExpiresAt)
+	}
+	return out, nil
 }
 
 // revocationFailed records one refused or unconfirmed revocation attempt and
