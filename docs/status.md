@@ -17,6 +17,87 @@ Instance installation, or a Product Release. The target boundary is in
 [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Fabric J0 READY Sandbox Qualification Producer (2026-10-18)
+
+Against `79d81a4e` (main after #957), this change answers #952. Cloud fabric now
+produces the J0 READY receipt the protected business qualification lane requires,
+from a provider sandbox qualification run, instead of reading one from a producer
+outside the protected job.
+
+`tools/workspace-qualification-j0-ready.ts` reads the exact Candidate receipt and
+the declared digest, refuses a digest the Candidate's own bytes do not produce,
+reads the declared fabric sandbox (the same seven-field deployment binding the
+protected lane validates, plus `authorityClass: "sandbox"` and `dedicated: true`),
+and drives the new `runTencentTkeSandboxQualification` in
+`tools/workspace-qualification-tencent-tke.ts` through the boundary module the
+protected lane already loads. The run opens a dedicated workspace scope, checks
+that the owner transport belongs to the deployment, reads the provider's own
+health answer, and releases the scope in every case. `failed` and `skipped` are
+counted from those observed checks; the caller cannot assert them. The boundary
+receives the deployment binding, the derived `opl-j0-sandbox:<sha256>` operation
+identity and a sandbox request of the exact shape
+`{kind: "opl.workspace-qualification.j0-sandbox.v1", candidate: {receiptDigest,
+productSha, productTree, cloudImageDigest}, authority: {mode, class, dedicated}}`,
+so the external module needs one case for that kind beside its protected-lane
+cases.
+
+The emitted `opl.workspace-qualification.j0-ready.v2` receipt carries
+`schemaVersion: 1`, `status` (`READY` only when every check passed),
+`source: {sha, tree, cloudImageDigest, clean}`, `authority: {mode: "live",
+class: "sandbox", dedicated: true, confirmed}`, `provider`, `failed` and
+`skipped`. `confirmed` records that the provider answered the open, the transport
+binding and the release. A v2 receipt is now bound to the exact Candidate through
+`source.cloudImageDigest`: the shared validator refuses a v2 receipt validated
+without its Candidate, or against another Candidate's SHA, tree or image digest.
+The legacy `opl.local-workspace.j0-ready.v1` receipt keeps its `{sha, tree,
+clean}` shape for the profiles that declare it, so the Local-Docker lane is
+unchanged.
+
+Transport remains a file, because the producer and the protected consumer run in
+separate jobs on separate runners and the workflow still delivers protected
+inputs from `$RUNNER_TEMP`. Cloud fabric writes the receipt with the consumer's
+standard: an absolute path outside the repository, `O_CREAT | O_EXCL | O_NOFOLLOW`
+creation at mode `0600`, one descriptor for the bytes, and the contract's 1 MiB
+cap enforced before the write. `loadProtectedJ0ReadyReceipt` re-reads under the
+same checks, now bounded to `J0_READY_MAX_BYTES`, and a well-formed receipt bound
+to another Candidate is refused as `external_prerequisite_absent` while a
+malformed, non-confirmed, non-`sandbox`, non-`live`, non-dedicated or non-zero
+`failed`/`skipped` receipt keeps `j0_ready_receipt_invalid`. The workflow's jq
+gate is unchanged and remains weaker than the loader, which is the authority; no
+workflow, profile, deploy manifest or cluster state is changed.
+
+Local focused verification executes the product-boundary validator, the
+development-tools typecheck and 139 tests with zero failures, skips or TODOs:
+
+```sh
+node tools/verify-local.ts --focused --base origin/main
+```
+
+The run selects
+`tests/tools/cloud-business-workflow.test.ts`,
+`tests/tools/protected-business-qualification.test.ts`,
+`tests/tools/workspace-qualification-contract.test.ts`,
+`tests/tools/workspace-qualification-local-docker.test.ts`,
+`tests/tools/workspace-qualification-orchestrator.test.ts`,
+`tests/tools/workspace-qualification-tencent-tke.test.ts` and
+`tests/tools/workspace-qualification-j0-ready.test.ts`.
+
+The checks cover a produced receipt admitted by the real protected loader, the
+producer CLI loading the boundary module, a failed open or degraded health
+readback staying `BLOCKED`, a produced receipt refused for another Candidate, an
+absent Candidate/sandbox/boundary failing closed without writing a receipt, and
+the writer's overwrite, symlink, repository-boundary and byte-cap refusals.
+
+No real cluster sandbox run has produced this receipt. The tests inject only the
+transport boundary, so the production flow is exercised end to end but no live
+`tencent-tke` sandbox open, health readback or release is claimed. The
+`cloud-business-qualification` environment, the independent customer credentials,
+`OPL_INSTANCE_EVIDENCE_TOKEN`, a configured sandbox boundary module and the
+protected TKE boundary remain external and absent; the protected lane still fails
+closed with `external_prerequisite_absent` until they exist. Handing the produced
+file from the sandbox job to the protected job through the existing dispatch
+input is unchanged. #926 remains open.
+
 ## Same-Key Workspace Model Updates (2026-10-18)
 
 Against `75cec423` an ordinary model-configuration update no longer replaces the
@@ -164,12 +245,15 @@ CLI boundary-module load, and the existing workflow/readback suites. The #940
 adapter tests are on `main` and are not re-selected by this focused diff.
 
 The `cloud-business-qualification` environment, the independent customer
-credentials, `OPL_INSTANCE_EVIDENCE_TOKEN`, the external J0 READY producer and the
-protected TKE boundary are external and absent; the workflow fails closed with
-`external_prerequisite_absent` and no protected run or settled business receipt
-is claimed. #926 remains open. The receipts cover only the declared Workspace
-purchase (`uncovered.businessQualification: false`); they do not admit a release,
-and #928 owns that consumer change. Existing Instance qualification-decision and
+credentials, `OPL_INSTANCE_EVIDENCE_TOKEN` and the protected TKE boundary are
+external and absent; the workflow fails closed with `external_prerequisite_absent`
+and no protected run or settled business receipt is claimed. The external J0
+READY producer named here is now produced in source by fabric
+([fabric producer](#fabric-j0-ready-sandbox-qualification-producer-2026-10-18)),
+but no real sandbox run has produced a receipt yet. #926 remains open. The
+receipts cover only the declared Workspace purchase
+(`uncovered.businessQualification: false`); they do not admit a release, and
+#928 owns that consumer change. Existing Instance qualification-decision and
 Workspace gates remain required.
 
 ## Cloud Customer Readback Source Wiring (2026-10-16)

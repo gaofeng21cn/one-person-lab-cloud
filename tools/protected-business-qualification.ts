@@ -55,9 +55,11 @@ import {
   type TencentTkeProviderBoundary,
 } from "./workspace-qualification-tencent-tke.ts";
 import {
+  QUALIFICATION_J0_READY_MAX_BYTES,
   createJ0ReadyReceiptValidator,
   createQualificationRequest,
   hasExactKeys,
+  j0ReadyReceiptCandidateBinding,
   j0ReadyReceiptError,
   qualificationProviderProfile,
   qualificationWorkspaceName,
@@ -85,8 +87,9 @@ export const PROTECTED_BOUNDARY_FACTORY = "createTencentTkeProviderBoundary";
 // The protected J0 receipt is a file outside the repository, owned by the runner
 // and mode 0600, exactly like the existing Local-Docker J0 loader. The producer
 // reads it through a no-follow descriptor and validates its source/provider
-// binding before it buys anything.
-export const J0_READY_MAX_BYTES = 1024 * 1024;
+// binding before it buys anything. The cap is the contract's, so a producer
+// writing the receipt and this reader cannot state two different limits.
+export const J0_READY_MAX_BYTES = QUALIFICATION_J0_READY_MAX_BYTES;
 
 // One declared purchase, one charge, no refund, no Workspace deletion and no
 // managed Key. These are the only mutation bounds this producer may declare;
@@ -335,22 +338,30 @@ function insideRepository(path: string, repositoryRoot: string): boolean {
 }
 
 /*
- * The external J0 READY producer's receipt.
+ * The J0 READY producer's receipt, as this lane consumes it.
  *
  * This is the same protected-file standard as the existing Local-Docker J0
  * loader: an absolute path outside the repository, a regular file, mode 0600,
- * owned by the runner, bounded in size and no-follow. The shared validator then
- * binds the exact source, provider, authority class and zero failed/skipped
- * checks. A missing producer output is an external prerequisite; a present but
- * invalid receipt keeps the contract's own `j0_ready_receipt_invalid` code.
+ * owned by the runner, no-follow and bounded in size. The cap is enforced again
+ * while the bytes are read, so a file that grows after the stat cannot make this
+ * reader hold more than the contract allows.
+ *
+ * Two refusals are deliberately different. A receipt that cannot be read is an
+ * absent prerequisite. A receipt that is well formed but names another
+ * Candidate is also absent *for this run*: its sandbox qualification is not
+ * evidence about the Candidate being qualified, so `external_prerequisite_absent`
+ * is the honest answer and no provider scope opens. A receipt that is present
+ * and malformed keeps the contract's own `j0_ready_receipt_invalid` code.
  */
 export async function loadProtectedJ0ReadyReceipt(path: string, {
   sourceSha,
   sourceTree,
+  cloudImageDigest,
   repositoryRoot,
 }: {
   sourceSha: string;
   sourceTree: string;
+  cloudImageDigest: string;
   repositoryRoot: string;
 }) {
   const normalized = String(path || "").trim();
@@ -372,17 +383,44 @@ export async function loadProtectedJ0ReadyReceipt(path: string, {
     }
     if ((info.mode & 0o777) !== 0o600) invalid("J0 READY producer receipt mode must be 0600");
     if (insideRepository(normalized, repositoryRoot)) invalid("J0 READY producer receipt must be outside the repository");
-    const raw = await handle.readFile();
+    // One bounded read from the descriptor just opened and stat'ed: no second
+    // path lookup and no unbounded buffer, so the cap above holds for the bytes
+    // actually parsed rather than only for the size that was announced.
+    const buffer = Buffer.alloc(J0_READY_MAX_BYTES + 1);
+    let offset = 0;
+    for (;;) {
+      const { bytesRead } = await handle.read(buffer, offset, buffer.length - offset, offset);
+      if (bytesRead === 0) break;
+      offset += bytesRead;
+      if (offset > J0_READY_MAX_BYTES) invalid("J0 READY producer receipt exceeds the byte cap");
+    }
+    const raw = buffer.subarray(0, offset);
     let value;
     try {
       value = JSON.parse(raw.toString("utf8"));
     } catch {
       throw j0ReadyReceiptError();
     }
+    const expectedCandidate = Object.freeze({
+      productSha: sourceSha,
+      productTree: sourceTree,
+      cloudImageDigest,
+    });
+    // A receipt that names another Candidate is stale for this run. It is
+    // detected before the shape validator so the refusal says "absent for this
+    // Candidate" instead of "invalid". A receipt with no complete binding (for
+    // example a missing or non-digest `cloudImageDigest`) has no Candidate to
+    // compare and falls through to the contract as malformed.
+    const named = j0ReadyReceiptCandidateBinding(value);
+    if (named && (named.productSha !== expectedCandidate.productSha ||
+        named.productTree !== expectedCandidate.productTree ||
+        named.cloudImageDigest !== expectedCandidate.cloudImageDigest)) {
+      externalPrerequisiteAbsent("J0 READY producer receipt for this Candidate");
+    }
     const profile = qualificationProviderProfile(TENCENT_TKE_PROVIDER);
     let receipt;
     try {
-      receipt = createJ0ReadyReceiptValidator(profile)(value, sourceSha, sourceTree);
+      receipt = createJ0ReadyReceiptValidator(profile)(value, sourceSha, sourceTree, expectedCandidate);
     } catch {
       throw j0ReadyReceiptError();
     }
@@ -586,6 +624,7 @@ export async function runProtectedBusinessQualification(
   const j0ReadyReceipt = await loadProtectedJ0ReadyReceipt(input.j0ReadyReceiptPath, {
     sourceSha: candidate.candidate.product.sha,
     sourceTree: candidate.candidate.product.tree,
+    cloudImageDigest: candidate.candidate.cloudImage.indexDigest,
     repositoryRoot,
   });
   const request = buildProtectedQualificationRequest({

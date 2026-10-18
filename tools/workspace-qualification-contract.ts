@@ -29,7 +29,21 @@ export const QUALIFICATION_J0_READY_KIND = "opl.workspace-qualification.j0-ready
 // moving the in-repo schema to the neutral kind breaks no live path.
 export const LEGACY_QUALIFICATION_J0_READY_KINDS = ["opl.local-workspace.j0-ready.v1"];
 
+// The one byte cap the receipt has, stated by the contract rather than by the
+// reader that happens to enforce it. The producer refuses to write more and
+// the consumer refuses to read more, so neither side can widen it alone.
+export const QUALIFICATION_J0_READY_MAX_BYTES = 1024 * 1024;
+
+const digestPattern = /^sha256:[0-9a-f]{64}$/;
+const shaPattern = /^[0-9a-f]{40}$/;
+
 const J0_READY_KEYS = ["schemaVersion", "kind", "status", "source", "authority", "provider", "failed", "skipped"];
+const J0_READY_LEGACY_SOURCE_KEYS = ["sha", "tree", "clean"];
+// A v2 receipt is Candidate-bound: the source identity it already carries plus
+// the Cloud image digest the Candidate was built from. The same source built
+// into another image is another Candidate, so an image digest left out of the
+// receipt would let one Candidate's sandbox run qualify another's bytes.
+const J0_READY_CANDIDATE_SOURCE_KEYS = ["sha", "tree", "cloudImageDigest", "clean"];
 
 export function hasExactKeys(value, keys) {
   return value && typeof value === "object" && !Array.isArray(value) &&
@@ -42,6 +56,25 @@ export function j0ReadyReceiptError() {
   return error;
 }
 
+// The exact Candidate a v2 receipt names, or null when it names none. It is
+// the only place the receipt's Candidate triple is decoded, so the producer,
+// the consumer and the validator cannot read three different triples out of the
+// same bytes.
+export function j0ReadyReceiptCandidateBinding(value) {
+  const source = value?.source;
+  if (value?.kind !== QUALIFICATION_J0_READY_KIND ||
+      !hasExactKeys(source, J0_READY_CANDIDATE_SOURCE_KEYS) ||
+      !shaPattern.test(String(source?.sha || "")) || !shaPattern.test(String(source?.tree || "")) ||
+      !digestPattern.test(String(source?.cloudImageDigest || "")) || source?.clean !== true) {
+    return null;
+  }
+  return Object.freeze({
+    productSha: source.sha,
+    productTree: source.tree,
+    cloudImageDigest: source.cloudImageDigest,
+  });
+}
+
 export function qualificationProviderProfile(provider, { legacyReceiptKinds = [] } = {}) {
   const name = String(provider || "").trim();
   if (!name) throw new Error("qualification provider profile requires a provider identity");
@@ -51,19 +84,39 @@ export function qualificationProviderProfile(provider, { legacyReceiptKinds = []
   });
 }
 
+/*
+ * The J0 READY receipt validator.
+ *
+ * The legacy, provider-named kind keeps the source-only shape it was written
+ * with. The current kind is bound to the exact Candidate: its source identity
+ * names the Cloud image digest as well as the SHA and tree, and the caller must
+ * supply the Candidate it is asking about. Validating a v2 receipt without that
+ * Candidate would accept a receipt for different bytes, so it is refused rather
+ * than checked partially. A caller that cannot supply a Candidate (the
+ * Local-Docker lane, whose live producer still emits the legacy kind) therefore
+ * only ever validates the legacy kind.
+ */
 export function createJ0ReadyReceiptValidator(profile) {
   const { provider, receiptKinds } = qualificationProviderProfile(profile?.provider, {
     legacyReceiptKinds: (profile?.receiptKinds || []).filter((kind) => kind !== QUALIFICATION_J0_READY_KIND)
   });
-  return function validateJ0ReadyReceiptForProfile(value, sourceSha, sourceTree) {
+  return function validateJ0ReadyReceiptForProfile(value, sourceSha, sourceTree, candidate = null) {
+    const candidateBound = value?.kind === QUALIFICATION_J0_READY_KIND;
+    const binding = j0ReadyReceiptCandidateBinding(value);
     if (!hasExactKeys(value, J0_READY_KEYS) ||
       value.schemaVersion !== 1 || !receiptKinds.includes(value.kind) || value.status !== "READY" ||
-      !hasExactKeys(value.source, ["sha", "tree", "clean"]) ||
+      !hasExactKeys(value.source, candidateBound ? J0_READY_CANDIDATE_SOURCE_KEYS : J0_READY_LEGACY_SOURCE_KEYS) ||
       value.source?.sha !== sourceSha || value.source?.tree !== sourceTree || value.source?.clean !== true ||
       value.failed !== 0 || value.skipped !== 0 || value.provider !== provider ||
       !hasExactKeys(value.authority, ["mode", "class", "dedicated", "confirmed"]) ||
       value.authority?.mode !== "live" || value.authority?.class !== "sandbox" ||
-      value.authority?.dedicated !== true || value.authority?.confirmed !== true) {
+      value.authority?.dedicated !== true || value.authority?.confirmed !== true ||
+      (candidateBound && (!binding ||
+        !candidate || !hasExactKeys(candidate, ["productSha", "productTree", "cloudImageDigest"]) ||
+        candidate.productSha !== value.source.sha || candidate.productTree !== value.source.tree ||
+        candidate.productSha !== sourceSha || candidate.productTree !== sourceTree ||
+        candidate.cloudImageDigest !== value.source.cloudImageDigest ||
+        !digestPattern.test(String(candidate.cloudImageDigest || ""))))) {
       throw j0ReadyReceiptError();
     }
     return value;
@@ -170,8 +223,6 @@ export const QUALIFICATION_MUTATION_BOUNDS = Object.freeze([
   "purchases", "charges", "refunds", "workspaceDeletions", "managedKeys"
 ]);
 
-const digestPattern = /^sha256:[0-9a-f]{64}$/;
-const shaPattern = /^[0-9a-f]{40}$/;
 const microsPattern = /^(?:0|[1-9][0-9]*)$/;
 
 function qualificationContractError(code) {
@@ -254,8 +305,8 @@ const QUALIFICATION_AUTHORITY_CLASSES = Object.freeze(["sandbox", "preproduction
  * question again, and accepting it would publish a preproduction authority
  * backed by sandbox evidence.
  */
-export function qualificationLiveAuthority({ mode, authorityClass, j0ReadyReceipt }, profile, sourceSha, sourceTree) {
-  const receipt = createJ0ReadyReceiptValidator(profile)(j0ReadyReceipt, sourceSha, sourceTree);
+export function qualificationLiveAuthority({ mode, authorityClass, j0ReadyReceipt }, profile, sourceSha, sourceTree, candidate = null) {
+  const receipt = createJ0ReadyReceiptValidator(profile)(j0ReadyReceipt, sourceSha, sourceTree, candidate);
   const declaredClass = String(authorityClass || "");
   if (mode !== "live" || !QUALIFICATION_AUTHORITY_CLASSES.includes(declaredClass) ||
       declaredClass !== receipt.authority.class) {
@@ -355,7 +406,11 @@ export function createQualificationRequest({
     provider: profile.provider,
     profile,
     scope: qualificationMutationScope(scope),
-    authority: qualificationLiveAuthority(authority, profile, source.sha, source.tree),
+    authority: qualificationLiveAuthority(authority, profile, source.sha, source.tree, {
+      productSha: product_.sha,
+      productTree: product_.tree,
+      cloudImageDigest: image.indexDigest
+    }),
     operation: Object.freeze({
       idempotencyKey: qualificationIdempotencyKey({
         candidateReceiptDigest: receiptDigest, accountDigest: tenant.accountDigest, product: declaredProduct, provider: profile.provider
