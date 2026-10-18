@@ -305,7 +305,7 @@ uses these reason codes:
 | `listener_unproven` | Another process in the target Pod may bind the target port and its listener cannot be resolved from the manifest. |
 | `listener_conflict` | Another process in the target Pod binds the target port. |
 | `service_backend_owner` | A selector-matching workload object is owned by a different live Deployment, or is a workload producer that this Deployment does not own; the Service selects another owner's Pods. |
-| `pod_owner_chain_unproven` | A selector-matching or endpoint-named Pod's controller chain does not resolve to the target Deployment: its ReplicaSet or Deployment owner reference is stale, missing, ambiguous, or names no live object. Repair the Pod chain, not the Service. |
+| `pod_owner_chain_unproven` | A Pod's ReplicaSet resolves, but that ReplicaSet's Deployment owner reference is stale, missing, ambiguous, or names no live Deployment; the same applies to a selector-matching ReplicaSet backend. Repair the Deployment/ReplicaSet chain, not the Service. A Pod whose ReplicaSet itself cannot be resolved is reported as `endpoint_pod_replicaset_unresolved`. |
 | `endpoint_no_ready_address` | The Service publishes no ready address: its Endpoints subsets are empty, it has only not-ready addresses while `publishNotReadyAddresses` is not set, or its EndpointSlice has no serviceable endpoint. |
 | `endpoint_pod_absent` | An endpoint's `targetRef` names a Pod that is absent from the live read, for example an endpoint left behind by a previous rollout. |
 | `endpoint_port_mismatch` | The endpoint publishes a port whose name or number does not match the Service port the caller addresses. |
@@ -321,7 +321,21 @@ uses these reason codes:
 | `endpoint_slice_shape_invalid` | An EndpointSlice has an unsupported API version or address type. |
 | `endpoint_shape_invalid` | An Endpoints object or subset has a malformed shape. |
 | `endpoint_pod_shape_unproven` | The endpoint's Pod does not carry valid container declarations. |
-| `endpoint_pod_template_mismatch` | The live Pod's shape no longer matches its immutable ReplicaSet template. |
+| `endpoint_pod_replicaset_unresolved` | The Pod's ReplicaSet controller cannot be resolved (missing, ambiguous, or stale UID), or the resolved ReplicaSet carries no `spec.template.spec`. The proof cannot compare the live Pod with its immutable revision template; this is not a shape mismatch, so repair the Pod/ReplicaSet chain first. |
+| `endpoint_pod_template_containers_invalid` | The ReplicaSet template's `containers` list is missing, empty, malformed, or contains duplicate names. |
+| `endpoint_pod_template_init_containers_invalid` | The ReplicaSet template's `initContainers` list is malformed or contains duplicate names. |
+| `endpoint_pod_container_names_duplicate` | A container name appears twice across the live Pod's or the template's `containers` and `initContainers`, so the live container set is ambiguous. |
+| `endpoint_pod_security_shape_mismatch` | The live Pod's Pod-level security/identity shape differs from its ReplicaSet template: host namespaces, service account and runtime identity, security context, volumes, DNS and host aliases, scheduling and tolerations, or the other normalized Pod fields. |
+| `endpoint_pod_container_list_mismatch` | The live `containers` list differs from the ReplicaSet template in count or container names. |
+| `endpoint_pod_container_env_mismatch` | A live container's `env` or `envFrom` differs from the ReplicaSet template. |
+| `endpoint_pod_container_security_context_mismatch` | A live container's `securityContext` differs from the ReplicaSet template. |
+| `endpoint_pod_container_image_command_mismatch` | A live container's `image`, `command`, `args`, or `workingDir` differs from the ReplicaSet template. |
+| `endpoint_pod_container_shape_mismatch` | A live container differs from the ReplicaSet template in its remaining container fields, such as ports, resources, probes, mounts, lifecycle, or restart policy. |
+| `endpoint_pod_init_container_list_mismatch` | The live `initContainers` list differs from the ReplicaSet template in order, count, or container names. |
+| `endpoint_pod_init_container_env_mismatch` | A live init container's `env` or `envFrom` differs from the ReplicaSet template. |
+| `endpoint_pod_init_container_security_context_mismatch` | A live init container's `securityContext` differs from the ReplicaSet template. |
+| `endpoint_pod_init_container_image_command_mismatch` | A live init container's `image`, `command`, `args`, or `workingDir` differs from the ReplicaSet template. |
+| `endpoint_pod_init_container_shape_mismatch` | A live init container differs from the ReplicaSet template in its remaining container fields, such as ports, resources, probes, mounts, lifecycle, or restart policy. |
 | `endpoint_pod_container_mismatch` | The live target container does not match the ReplicaSet template's container. |
 | `endpoint_pod_command_mismatch` | The live target container's argv does not match the Product process contract. |
 | `endpoint_pod_port_conflict` | Another live container in the Pod publishes the target port. |

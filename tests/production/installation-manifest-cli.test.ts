@@ -298,6 +298,86 @@ test("installation CLI names the cause of a rejected live endpoint proof", async
   });
 });
 
+test("installation CLI names the cause of a rejected Pod-template proof", async t => {
+  await t.test("consistent control", async () => {
+    const control = withLiveWorkspaceBackends();
+    const result = await invoke(control.list);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(result.report.ok, true);
+    assert.deepEqual(result.report.errors, []);
+  });
+  const cases: [string, string, (fixture: ReturnType<typeof withLiveWorkspaceBackends>) => void][] = [
+    ["Pod has no resolvable ReplicaSet", "endpoint_pod_replicaset_unresolved", ({ pod }) => {
+      pod.metadata.ownerReferences = [];
+    }],
+    ["ReplicaSet template spec is absent", "endpoint_pod_replicaset_unresolved", ({ replicaSet }) => {
+      delete replicaSet.spec.template.spec;
+    }],
+    ["ReplicaSet template container list is invalid", "endpoint_pod_template_containers_invalid", ({ replicaSet }) => {
+      replicaSet.spec.template.spec.containers = [null];
+    }],
+    ["ReplicaSet template init-container list is invalid", "endpoint_pod_template_init_containers_invalid", ({ replicaSet }) => {
+      replicaSet.spec.template.spec.initContainers = "invalid";
+    }],
+    ["a container name occurs in both lists", "endpoint_pod_container_names_duplicate", ({ pod }) => {
+      pod.spec.initContainers = [{ name: "owner", image: "example.invalid/init:1" }];
+    }],
+    ["live Pod security shape", "endpoint_pod_security_shape_mismatch", ({ pod }) => {
+      pod.spec.hostNetwork = true;
+    }],
+    ["live container list differs", "endpoint_pod_container_list_mismatch", ({ pod }) => {
+      pod.spec.containers[0].name = "other";
+    }],
+    ["live container environment differs", "endpoint_pod_container_env_mismatch", ({ pod }) => {
+      pod.spec.containers[0].env.push({ name: "INJECTED", value: "1" });
+    }],
+    ["live container security context differs", "endpoint_pod_container_security_context_mismatch", ({ pod }) => {
+      pod.spec.containers[0].securityContext = { allowPrivilegeEscalation: false };
+    }],
+    ["live container image or argv differs", "endpoint_pod_container_image_command_mismatch", ({ pod }) => {
+      pod.spec.containers[0].image = "example.invalid/foreign:1";
+    }],
+    ["live container has another field group difference", "endpoint_pod_container_shape_mismatch", ({ pod }) => {
+      pod.spec.containers[0].ports[0].containerPort = 9999;
+    }],
+    ["live init-container order differs", "endpoint_pod_init_container_list_mismatch", ({ pod, replicaSet }) => {
+      const initA = { name: "init-a", image: "example.invalid/init-a:1" };
+      const initB = { name: "init-b", image: "example.invalid/init-b:1" };
+      replicaSet.spec.template.spec.initContainers = [initA, initB];
+      pod.spec.initContainers = [initB, initA];
+    }],
+    ["live init-container environment differs", "endpoint_pod_init_container_env_mismatch", ({ pod, replicaSet }) => {
+      const init = { name: "init-a", image: "example.invalid/init:1" };
+      replicaSet.spec.template.spec.initContainers = [init];
+      pod.spec.initContainers = [{ ...init, env: [{ name: "INJECTED", value: "1" }] }];
+    }],
+    ["live init-container security context differs", "endpoint_pod_init_container_security_context_mismatch", ({ pod, replicaSet }) => {
+      const init = { name: "init-a", image: "example.invalid/init:1" };
+      replicaSet.spec.template.spec.initContainers = [init];
+      pod.spec.initContainers = [{ ...init, securityContext: { allowPrivilegeEscalation: false } }];
+    }],
+    ["live init-container image or argv differs", "endpoint_pod_init_container_image_command_mismatch", ({ pod, replicaSet }) => {
+      const init = { name: "init-a", image: "example.invalid/init:1" };
+      replicaSet.spec.template.spec.initContainers = [init];
+      pod.spec.initContainers = [{ ...init, image: "example.invalid/foreign:1" }];
+    }],
+    ["live init-container has another field group difference", "endpoint_pod_init_container_shape_mismatch", ({ pod, replicaSet }) => {
+      const init = { name: "init-a", image: "example.invalid/init:1" };
+      replicaSet.spec.template.spec.initContainers = [init];
+      pod.spec.initContainers = [{ ...init, ports: [{ containerPort: 9999 }] }];
+    }]
+  ];
+  for (const [name, reasonCode, change] of cases) await t.test(name, async () => {
+    const fixture = withLiveWorkspaceBackends();
+    change(fixture);
+    const result = await invoke(fixture.list);
+    assert.equal(result.status, 1, result.stdout);
+    assert.deepEqual([...new Set(result.report.errors.map(error => `${error.code}/${error.reasonCode}`))],
+      [`rpc_service_backend_ambiguous/${reasonCode}`], result.stdout);
+    assert.deepEqual(result.report.communication.edges, []);
+  });
+});
+
 test("installation CLI admits an upgrade while exact old ReplicaSet backends remain", async () => {
   const { list, target } = withLiveWorkspaceBackends();
   target.spec.template.spec.containers[0].image = "example.invalid/new-product:2";
