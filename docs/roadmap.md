@@ -25,16 +25,17 @@ own layer. It does not close an Instance or production outcome.
 
 ## PR CI Cache Reuse And Parallel Verification
 
-Cloud development tools own this outcome. Source now partitions the existing
-exhaustive checks across source, Go and browser runners and produces reusable
-caches on trusted main pushes; [status](status.md#pr-ci-cache-reuse-and-parallel-verification-2026-10-18)
-records local evidence. Runtime adoption remains open: obtain current-revision
-PR CI, a successful main cache-producing run, then a new PR's first-run cache
-readback. Compare subsequent and dependency-change runs as well, recording
-executed coverage, cache hits, per-shard elapsed time and runner cost. Equal
-file-count shards need not have equal workloads. Local tests and a warm rerun of one PR do not prove cross-PR cache reuse or a speedup. Keep the
-existing required-check names and verify every mandatory job still blocks the
-aggregate on failure, cancellation or skipping.
+Cloud development tools own this outcome. #970 merged the grouped exhaustive
+checks and the separate main cache producer. Current-revision PR CI and the
+first successful main producer are recorded in
+[status](status.md#pr-ci-cache-reuse-and-parallel-verification-2026-10-18).
+New-PR first-run cache consumption remains open; use a genuinely new PR after
+the producer completes. Then compare a subsequent revision and a dependency-change
+run, recording executed coverage, cache hits, per-shard elapsed time and cumulative
+runner duration. The first cold-cache observation shortened the critical path
+while increasing runner duration; unequal browser workloads remain visible.
+A same-PR warm rerun does not prove cross-PR reuse. Keep every mandatory result
+blocking `validate` on failure, cancellation or skipping.
 
 ## Current Target
 
