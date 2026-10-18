@@ -718,7 +718,8 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     }
     if (backendUnproven) { fail("rpc_service_backend_unproven"); continue; }
     const backendFailure = backends.map(backend => backendOwnershipFailure(backend, target.deployment, resources)).find(reason => reason !== undefined);
-    if (backendFailure) { fail("rpc_service_backend_ambiguous", backendFailure); continue; }    const matching = Array.isArray(service.spec.ports) ? service.spec.ports.filter((entry: Resource) => entry?.port === parsed.port && (entry.protocol ?? "TCP") === "TCP") : [];
+    if (backendFailure) { fail("rpc_service_backend_ambiguous", backendFailure); continue; }
+    const matching = Array.isArray(service.spec.ports) ? service.spec.ports.filter((entry: Resource) => entry?.port === parsed.port && (entry.protocol ?? "TCP") === "TCP") : [];
     if (matching.length !== 1) { fail("rpc_service_port_invalid"); continue; }
     const servicePort = matching[0];
     let targetPort = servicePort.targetPort ?? servicePort.port;
