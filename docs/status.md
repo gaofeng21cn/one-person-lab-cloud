@@ -17,6 +17,36 @@ Instance installation, or a Product Release. The target boundary is in
 [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Same-Key Workspace Model Updates (2026-10-18)
+
+Against `75cec423` an ordinary model-configuration update no longer replaces the
+Workspace's managed key. `UpdateWorkspaceModels` reads back the exact key binding
+and the approved model scope from its owner (`GatewayCoordination.ReadManagedKey`,
+`services/gateway-integration/identity/coordination.go:627`), refuses a selection
+outside that scope before recording a configuration, records the new
+configuration under the same binding, and sends Serve only the key binding,
+fingerprint, delivery reference and publisher slot. Serve performs the Secret
+handover and the publisher apply/readback itself, which the merged
+`managedKeyHandoverInput` already required; the previous path handed Serve a
+Fabric-confirmed binding that contract refuses. The Workspace applied version
+still advances only from Serve's confirmed readback through the existing
+compare-and-set.
+
+Evidence: three PostgreSQL checks at the Gateway owner prove the read answers the
+owning Workspace with its approved scope, refuses another Workspace and an unknown
+binding, and refuses a revoked key. Seven PostgreSQL checks at the Workspace owner
+prove the same key is recorded across successive configurations, Serve receives the
+handover without a Fabric binding, a selection outside the approved scope is
+refused with `MODEL_NOT_ALLOWED` before any effect, a foreign binding answer is
+data loss, a refused or lost Serve answer never advances the applied version, and no
+path mints or revokes a key. Both modules' full test suites pass against the
+isolated PostgreSQL fixture.
+
+Remaining: an approved Sub2API in-place scope update for a selection outside the
+current allowlist, and the Gateway scope-update/readback contract the caller-less
+`tools/workspace-model-scope.ts` seam anticipates. Until then a widening request is
+refused rather than satisfied by a replacement key or a wider local claim. #869
+remains open.
 ## Workspace Managed-Key Lifecycle Source Wiring (2026-10-18)
 
 Against `f966aa63` this change gives Gateway Integration the Cloud owner route
