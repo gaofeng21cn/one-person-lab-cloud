@@ -35,28 +35,25 @@ func (s *Service) Run(ctx context.Context) error {
 }
 
 func (s *Service) RunOnce(ctx context.Context) error {
+	// This owner's own lifecycle facts advance on the same pass: a confirmed paid
+	// term that ended, a provider-confirmed loss of the original resources and an
+	// authorized recovery each commit their event here, before the worker below
+	// continues whatever is still open.
+	if err := s.sweepWorkspaceLifecycle(ctx); err != nil {
+		return err
+	}
 	rows, err := s.Store.DB().QueryContext(ctx, `SELECT o.id FROM workspace.operations o
-		WHERE o.kind IN ('create_workspace','delete_workspace') AND o.status IN ('accepted','running','awaiting_confirmation','needs_attention')
-		AND NOT (o.kind='delete_workspace' AND o.status='needs_attention')
+		WHERE o.kind IN ('create_workspace','delete_workspace','suspend_workspace','resume_workspace') AND o.status IN ('accepted','running','awaiting_confirmation','needs_attention')
+		AND NOT (o.kind IN ('delete_workspace','suspend_workspace','resume_workspace') AND o.status='needs_attention')
 		AND (o.worker_lease_until IS NULL OR o.worker_lease_until<now())
 		AND NOT EXISTS (SELECT 1 FROM workspace.saga_steps st WHERE st.operation_id=o.id AND st.next_attempt_at>now())
 		ORDER BY o.updated_at,o.id LIMIT 20`)
 	if err != nil {
 		return dbError(err)
 	}
-	var ids []string
-	for rows.Next() {
-		var value string
-		if err = rows.Scan(&value); err != nil {
-			rows.Close()
-			return dbError(err)
-		}
-		ids = append(ids, value)
-	}
-	err = rows.Err()
-	rows.Close()
+	ids, err := scanIDs(rows)
 	if err != nil {
-		return dbError(err)
+		return err
 	}
 	var failures []error
 	for _, operationID := range ids {
@@ -139,6 +136,10 @@ func (s *Service) Resume(ctx context.Context, operationID string) error {
 	if op.Kind == "delete_workspace" {
 		// A committed deletion resumes through its own ordered cleanup.
 		return s.resumeDeletion(ctx, operationID)
+	}
+	if op.Kind == lifecycleSuspend || op.Kind == lifecycleResume {
+		// A committed suspension or recovery continues its own managed-key step.
+		return s.applyWorkspaceLifecycle(ctx, operationID)
 	}
 	if op.Kind != "create_workspace" {
 		return status.Error(codes.FailedPrecondition, "operation is not a Workspace launch")
