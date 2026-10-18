@@ -468,9 +468,13 @@ Workspace closure requests deactivation of only its proven managed key;
 authorized recovery re-enables the original key under existing entitlement,
 resource and security constraints. Verified historical Workspaces adopt the same
 rule; deployment does not trigger bulk mutation. Runtime replacement and
-application quiescence alone do not close a Workspace. Sub2API must provide the
-approved service capability and authoritative state readback. Resource deletion,
-key closeout and settlement remain separate facts with original obligations.
+application quiescence alone do not close a Workspace. Workspace Key creation
+uses the Gateway user credential obtained by Cloud login and the existing user
+Key/Group APIs; Cloud does not use a Gateway service token or invent a service
+route. The existing user API does not yet provide the approved reversible
+disable/enable readback needed for closeout, so lifecycle closeout remains an
+explicit roadmap gap. Resource deletion, key closeout and settlement remain
+separate facts with original obligations.
 
 The historical `resource_only` Launch retains its existing purchase obligations
 and completion criteria. It is not the default App product and is not silently

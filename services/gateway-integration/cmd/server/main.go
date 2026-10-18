@@ -94,21 +94,20 @@ func main() {
 			return e
 		}
 		s.GatewayStore = store
-		// The managed-key issuance and delivery surface is wired only when the
-		// deployment supplies every approved fact: the Sub2API service endpoint
-		// and its independent service token, the approved Workspace key group,
-		// and the Fabric Secret store peer. A partial configuration leaves the
-		// issuer or the store absent, and the surface fails closed instead of
-		// minting or storing a credential through an unapproved path.
-		rawURL, serviceToken, group := strings.TrimSpace(os.Getenv("OPL_SUB2API_URL")), strings.TrimSpace(os.Getenv("OPL_SUB2API_SERVICE_TOKEN")), strings.TrimSpace(os.Getenv("OPL_GATEWAY_WORKSPACE_KEY_GROUP"))
-		if rawURL != "" && serviceToken != "" && group != "" {
-			issuer, err := identity.NewSub2APIWorkspaceKeyIssuer(rawURL, serviceToken, group)
-			if err != nil {
-				return err
-			}
-			s.KeyIssuer = issuer
-			s.WorkspaceKeyGroup = group
+		// Workspace key issuance uses the Gateway user bearer obtained by the
+		// Cloud login flow. There is no Cloud service token or invented Gateway
+		// service route. The group name is a deployment fact and defaults to the
+		// existing user-visible Codex group.
+		group := strings.TrimSpace(os.Getenv("OPL_GATEWAY_WORKSPACE_KEY_GROUP"))
+		if group == "" {
+			group = "Codex"
 		}
+		issuer, err := identity.NewGatewayWorkspaceKeyIssuer(s.Gateway, group)
+		if err != nil {
+			return err
+		}
+		s.KeyIssuer = issuer
+		s.WorkspaceKeyGroup = group
 		if fabricAddr, fabricToken := strings.TrimSpace(os.Getenv("OPL_FABRIC_ADDR")), strings.TrimSpace(os.Getenv("OPL_FABRIC_TOKEN")); fabricAddr != "" && fabricToken != "" {
 			options, err := config.TLS.DialOptions(owneridentity.Tenant.Service(), owneridentity.Fabric.Service(), fabricToken)
 			if err != nil {

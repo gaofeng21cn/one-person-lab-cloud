@@ -367,10 +367,8 @@ func (s *Service) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand
 	if err := s.authorizeManagedKey(ctx, r.GetContext(), tenantID, r.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
-	// The declared model selection may be empty: the default App names no model
-	// slot, so the approved concrete scope is resolved by the issuance authority
-	// and recorded from its readback. An empty declared list is never treated as
-	// "unrestricted" and never resolved locally.
+	// The declared model selection is forwarded as Workspace intent, while the
+	// external Gateway Group remains the effective routing and permission truth.
 	modelIDs := normalizeManagedKeyModelIDs(r.GetModelIds())
 	call := r.GetContext()
 	if strings.TrimSpace(call.GetIdempotencyKey()) == "" {
@@ -386,6 +384,13 @@ func (s *Service) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, "Gateway wallet binding unavailable")
 	}
+	var delegation *ManagedKeyDelegation
+	if requires, ok := s.KeyIssuer.(interface{ requiresDelegatedCredential() bool }); ok && requires.requiresDelegatedCredential() {
+		delegation, err = s.delegatedCredentialForSubject(ctx, binding.BillingSub2APIUserID)
+		if err != nil {
+			return nil, err
+		}
+	}
 	reservation := ManagedKeyCommandReservation{
 		TenantID: tenantID, ActorID: call.GetActorId(), WorkspaceID: r.GetWorkspaceId(),
 		IdempotencyKey:     call.GetIdempotencyKey(),
@@ -398,14 +403,28 @@ func (s *Service) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, "Gateway key command registration unavailable")
 	}
+	priorState := managedKeyCommandState{}
 	if existing {
-		return s.managedKeyCommandAnswer(ctx, reservation, record, nil)
+		if json.Unmarshal(record.Body, &priorState) != nil || record.ResponseStatus != managedKeyCommandPendingStatus {
+			return s.managedKeyCommandAnswer(ctx, reservation, record, nil)
+		}
+		if retryable, ok := s.KeyIssuer.(interface{ supportsIdempotentRetry() bool }); !ok || !retryable.supportsIdempotentRetry() {
+			return s.managedKeyCommandAnswer(ctx, reservation, record, nil)
+		}
 	}
 	issued, err := s.KeyIssuer.IssueWorkspaceKey(ctx, ManagedKeyIssueRequest{
 		Subject: binding.BillingSub2APIUserID, WorkspaceID: r.GetWorkspaceId(), LaunchOperationID: call.GetIdempotencyKey(),
-		ExactName: workspaceKeyExactName(r.GetWorkspaceId()), GroupName: s.WorkspaceKeyGroup, ModelIDs: modelIDs, IdempotencyKey: call.GetIdempotencyKey(),
+		ExactName: workspaceKeyExactName(r.GetWorkspaceId()), GroupName: s.WorkspaceKeyGroup, ModelIDs: modelIDs, IdempotencyKey: call.GetIdempotencyKey(), Delegation: delegation,
 	})
 	if err != nil {
+		if status.Code(err) == codes.Unauthenticated {
+			// A user bearer can expire after the preflight read. Keep the original
+			// command pending so a fresh Cloud login can replay the same Gateway
+			// idempotency key without minting a second external Key.
+			if retryable, ok := s.KeyIssuer.(interface{ supportsIdempotentRetry() bool }); ok && retryable.supportsIdempotentRetry() {
+				return nil, err
+			}
+		}
 		if !definiteManagedKeyRefusal(err) {
 			// The external effect may or may not exist. The original command stays
 			// pending so a later attempt reads it back instead of issuing a second
@@ -436,13 +455,9 @@ func (s *Service) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand
 		// the bounded contract is never stored as an approved allowlist.
 		return nil, status.Error(codes.Unavailable, "managed key issuance returned an invalid resolved model scope")
 	}
-	// A declared non-empty selection is the exact approved scope: the authority
-	// may neither widen, narrow nor substitute it. A mismatch is refused like an
-	// unusable key identity - the observed key stays unconfirmed and nothing is
-	// recorded, so it is reconciled by its original issue identity instead of
-	// being delivered as approved for a scope the caller never declared. An empty
-	// declared selection keeps the separate approved-scope branch: the authority
-	// resolves the concrete allowlist and only the shape contract above applies.
+	// If an issuer supplies a concrete scope projection, a declared non-empty
+	// selection must still match it. The Gateway user API supplies no such
+	// projection, so its empty result leaves the external Group authoritative.
 	if len(modelIDs) > 0 && !equalDeclaredModelScope(modelIDs, resolvedModelIDs) {
 		return nil, status.Error(codes.Unavailable, "managed key issuance returned a model scope that differs from the declared selection")
 	}
@@ -454,8 +469,12 @@ func (s *Service) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand
 	// The external identity this issuance actually produced is recorded before the
 	// Secret write, so a lost delivery is read back as this one original key
 	// instead of a second issuance.
-	if err = s.GatewayStore.AdvanceManagedKeyCommandPending(ctx, reservation, externalKeyID, fingerprint, resolvedModelIDs); err != nil {
-		return nil, status.Error(codes.Unavailable, "Gateway key command readback unavailable")
+	if priorState.ExternalKeyID == "" {
+		if err = s.GatewayStore.AdvanceManagedKeyCommandPending(ctx, reservation, externalKeyID, fingerprint, resolvedModelIDs); err != nil {
+			return nil, status.Error(codes.Unavailable, "Gateway key command readback unavailable")
+		}
+	} else if priorState.ExternalKeyID != externalKeyID || priorState.Fingerprint != fingerprint {
+		return nil, status.Error(codes.DataLoss, "Gateway replay returned a different observed key identity")
 	}
 	delivery, err := s.SecretStore.PutSecret(ctx, SecretDelivery{
 		TenantID: tenantID, WorkspaceID: r.GetWorkspaceId(), Purpose: "workspace_managed", Fingerprint: fingerprint, Raw: raw,
@@ -536,7 +555,7 @@ func (s *Service) managedKeyCommandAnswer(ctx context.Context, reservation Manag
 		keyBinding.SecretRef != state.SecretRef {
 		return nil, status.Error(codes.DataLoss, "Gateway key binding differs from its original command")
 	}
-	if len(state.ResolvedModelIDs) == 0 || !equalStringSets(keyBinding.ModelIDs, state.ResolvedModelIDs) {
+	if !equalStringSets(keyBinding.ModelIDs, state.ResolvedModelIDs) {
 		return nil, status.Error(codes.DataLoss, "Gateway key binding model scope differs from its original command")
 	}
 	out := &api.ManagedKeyBinding{KeyBindingId: keyBinding.ID, Fingerprint: keyBinding.Fingerprint, SecretDeliveryReference: keyBinding.SecretRef,
