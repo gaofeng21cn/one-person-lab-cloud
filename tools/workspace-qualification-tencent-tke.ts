@@ -397,3 +397,116 @@ export function createTencentTkeQualificationAdapter({ deployment, boundary } = 
 
   return Object.freeze(adapter);
 }
+
+/*
+ * The J0 sandbox reachability qualification.
+ *
+ * A J0 READY receipt is a statement about the provider before any business
+ * question is asked: a dedicated workspace scope can be opened for this exact
+ * Candidate in the declared sandbox, the owner transport it returns belongs to
+ * that deployment, the host carrying it answers healthy on the provider's own
+ * readback, and the scope is put back. Fabric already owns exactly those
+ * operations behind the Fabric/Instance boundary, so this function drives that
+ * boundary instead of starting a second qualification flow. It buys nothing,
+ * reads no business fact, and writes no receipt.
+ *
+ * Every check is recorded as passed, failed or not evaluated. A readback naming
+ * another cluster or namespace, a transport bound to another origin, a health
+ * answer that is not the provider's own `healthy`, or a release that cannot say
+ * the scope is gone all fail. Only a step that could not be reached (an open
+ * that never returned a readback leaves no transport to check) is left
+ * unevaluated, and is counted as skipped rather than folded into a pass or a
+ * failure. `failed` and `skipped` are therefore derived from what the provider
+ * answered, not from the caller's expectation.
+ */
+export const TENCENT_TKE_SANDBOX_CHECKS = Object.freeze([
+  "scope_opened", "transport_bound", "provider_healthy", "scope_released",
+]);
+
+const sandboxOperationKeyPattern = /^opl-j0-sandbox:[0-9a-f]{64}$/;
+
+export type TencentTkeSandboxQualification = Readonly<{
+  checks: Readonly<Record<string, boolean | null>>;
+  failed: number;
+  skipped: number;
+  deploymentHealth: string;
+  startedAt: string;
+  completedAt: string;
+}>;
+
+export async function runTencentTkeSandboxQualification({ deployment, boundary, request, operationKey } = {}) {
+  const binding = tencentTkeDeployment(deployment);
+  const provider = tencentTkeBoundary(boundary);
+  if (!sandboxOperationKeyPattern.test(String(operationKey || ""))) {
+    throw adapterError("tencent_tke_sandbox_identity_invalid");
+  }
+  if (!request || typeof request !== "object" || Array.isArray(request)) {
+    throw adapterError("tencent_tke_sandbox_request_invalid");
+  }
+  const startedAt = new Date().toISOString();
+  const checks: Record<string, boolean | null> = {
+    scope_opened: null,
+    transport_bound: null,
+    provider_healthy: null,
+    scope_released: null,
+  };
+  let deploymentHealthWord = "unknown";
+
+  // The open is attempted once. Its answer decides whether there is a transport
+  // to inspect; a thrown open is a failed check, not a reason to stop before
+  // the release, because the provider may have created the binding anyway.
+  let opened = null;
+  try {
+    opened = exactReadback(
+      await provider.establishReachability({ deployment: binding, request, operationKey }),
+      binding,
+      ["open", "absent", "unknown"],
+    );
+  } catch {
+    opened = null;
+  }
+  checks.scope_opened = opened?.state === "open";
+  if (checks.scope_opened) {
+    checks.transport_bound = ownerTransport(opened.transport, binding) !== null;
+  }
+
+  // Health is asked for while the scope exists, as the business flow does, and
+  // is recorded as its own check rather than as a qualification state.
+  try {
+    deploymentHealthWord = deploymentHealth(
+      await provider.readProviderHealth({ deployment: binding, request }),
+      binding,
+    );
+  } catch {
+    deploymentHealthWord = "unknown";
+  }
+  checks.provider_healthy = deploymentHealthWord === "healthy";
+
+  // The release runs for the attempt even when no usable readback came back:
+  // this is the only party that can ask the provider to put back a binding whose
+  // answer was lost. `released` and `absent` both say nothing is left behind.
+  let released = null;
+  try {
+    released = exactReadback(
+      await provider.releaseReachability({ deployment: binding, request, operationKey }),
+      binding,
+      ["released", "absent", "unknown"],
+    );
+  } catch {
+    released = null;
+  }
+  checks.scope_released = released?.state === "released" || released?.state === "absent";
+
+  let completedAt = new Date().toISOString();
+  if (Date.parse(completedAt) < Date.parse(startedAt)) completedAt = startedAt;
+  const failed = TENCENT_TKE_SANDBOX_CHECKS.filter((name) => checks[name] === false).length;
+  const skipped = TENCENT_TKE_SANDBOX_CHECKS.filter((name) => checks[name] === null).length;
+  return Object.freeze({
+    checks: Object.freeze({ ...checks }),
+    failed,
+    skipped,
+    deploymentHealth: deploymentHealthWord,
+    startedAt,
+    completedAt,
+  });
+}

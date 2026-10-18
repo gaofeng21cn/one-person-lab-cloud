@@ -85,7 +85,7 @@ function j0ReadyReceipt(provider) {
     schemaVersion: 1,
     kind: "opl.workspace-qualification.j0-ready.v2",
     status: "READY",
-    source: { sha: SOURCE_SHA, tree: SOURCE_TREE, clean: true },
+    source: { sha: SOURCE_SHA, tree: SOURCE_TREE, cloudImageDigest: "sha256:" + "1".repeat(64), clean: true },
     authority: { mode: "live", class: "sandbox", dedicated: true, confirmed: true },
     provider,
     failed: 0,

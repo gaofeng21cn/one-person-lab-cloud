@@ -150,13 +150,13 @@ step and receipt; the business producer does not call it, copy its reads or
 replace its result.
 
 The producer receives the declared Candidate receipt digest, the deployment
-binding, the account/package declarations, the live authority class and the
-external J0 READY producer receipt. The workflow materializes the deployment
-binding and J0 receipt under `$RUNNER_TEMP` with mode `0600`; the producer derives
-the Candidate digest from the exact bytes, checks it against the declaration and
-the deployment binding, validates the original installation receipt/run against
-the same Candidate, checks the protected owner origin and the fixed mutation
-scope, and admits only the `tencent-tke` J0 receipt for the exact source. It then
+binding, the account/package declarations, the live authority class and the J0
+READY receipt. The workflow materializes the deployment binding and J0 receipt
+under `$RUNNER_TEMP` with mode `0600`; the producer derives the Candidate digest
+from the exact bytes, checks it against the declaration and the deployment
+binding, validates the original installation receipt/run against the same
+Candidate, checks the protected owner origin and the fixed mutation scope, and
+admits only a `tencent-tke` J0 receipt bound to the exact Candidate. It then
 builds the request with the shared `createQualificationRequest`, runs the shared
 `runWorkspaceQualification` through the `tencent-tke` adapter, and writes the
 shared `opl.workspace-qualification.purchase.v1` receipt.
@@ -180,13 +180,27 @@ qualification receipt. The orchestrator's operation identity in
 remains the admission, and the buyer's receipt remains a purchase record rather
 than a qualification claim.
 
+Cloud fabric produces the J0 READY receipt
+([status](../status.md#fabric-j0-ready-sandbox-qualification-producer-2026-10-18))
+from a provider sandbox qualification run. `tools/workspace-qualification-j0-ready.ts`
+drives `runTencentTkeSandboxQualification` in the `tencent-tke` adapter through the
+same boundary module the protected lane loads: the declared sandbox deployment is
+opened, its owner transport is checked against that deployment, the provider's
+own health readback must answer `healthy`, and the scope is released. The
+resulting `opl.workspace-qualification.j0-ready.v2` receipt is bound to the exact
+Candidate in `source.cloudImageDigest`; the protected loader refuses another
+Candidate's receipt as an absent prerequisite and any non-confirmed,
+non-`sandbox`, non-`live`, non-dedicated or non-zero `failed`/`skipped` receipt as
+invalid. The receipt crosses the job boundary as a file under `$RUNNER_TEMP`,
+created mode `0600` with `O_EXCL | O_NOFOLLOW` and re-read under the same file
+standard and a 1 MiB byte cap. The workflow's jq gate is unchanged and remains
+weaker than the loader, which is the authority.
+
 The protected runner supplies the Fabric/Instance boundary module named by
 `vars.OPL_QUALIFICATION_PROVIDER_BOUNDARY`; the module owns TKE reachability and
 the owner transport and receives the normalized deployment binding and protected
 environment. It is not implemented in Cloud and its credentials do not enter the
-receipt. The external J0 READY producer receipt is required as a dispatch input
-for the exact Candidate; this source does not produce or fake it. The producer
-requires the existing `cloud-business-qualification` environment,
+receipt. The producer requires the existing `cloud-business-qualification` environment,
 `vars.OPL_QUALIFICATION_ORIGIN`, the independent customer Secrets
 `OPL_QUALIFICATION_CUSTOMER_EMAIL`/`OPL_QUALIFICATION_CUSTOMER_PASSWORD`, and
 `OPL_INSTANCE_EVIDENCE_TOKEN` limited to Instance `Actions: read` and `Contents:
@@ -208,9 +222,11 @@ and they do not admit a release. #928 owns release admission and the remaining
 legacy producer/consumer migration.
 
 This section describes source wiring, not a protected run. The environment,
-Secrets, J0 producer and TKE boundary are external and were absent while this
-change was prepared; no protected business qualification ran, no settled receipt
-is claimed, and #926 remains open.
+Secrets, a configured sandbox boundary module and the protected TKE boundary are
+external and absent; no fabric sandbox qualification and no protected business
+qualification ran, no J0 READY receipt has been produced by a real cluster
+sandbox (the tests inject only the transport), no settled receipt is claimed, and
+#926 remains open.
 
 ### Publication
 

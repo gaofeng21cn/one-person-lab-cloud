@@ -192,8 +192,9 @@ not copied: `vars.OPL_CONSOLE_DOMAIN` (already an Instance variable,
 designated customer credential is aliased from the Instance's single Secret
 owner (§5). The J0 READY receipt stays a declared dispatch input materialized to
 a mode-0600 file under `$RUNNER_TEMP`
-(`.github/workflows/cloud-business-readback.yml:250-259`); no repository
-produces it.
+(`.github/workflows/cloud-business-readback.yml:250-259`). Cloud fabric now owns
+the producing code (`tools/workspace-qualification-j0-ready.ts`, #952); a real
+sandbox run that emits the receipt is still outstanding.
 
 Artifacts, uploaded by the Instance run:
 
@@ -464,7 +465,8 @@ already read; it does not make the spend unbounded. The purchase stays inside
 `PROTECTED_QUALIFICATION_SCOPE`
 (`tools/protected-business-qualification.ts:94-100`), and §7 step 5 still
 requires the Instance `production` approval, the Cloud product owner's
-declaration and an external J0 READY receipt for the exact Candidate. The
+declaration and a J0 READY receipt for the exact Candidate, produced by the
+fabric sandbox qualification. The
 owner's approval of the spend is recorded in `docs/decisions.md:62-78` by step
 1, which lands before every execution step; that entry, not this document, is
 the authorization the later steps cite.
@@ -726,8 +728,8 @@ Repository: `gaofeng21cn/opl-instance-medopl` (dispatch only, no new files).
 Authorization: **required** — this performs one real Workspace purchase
 (`tools/protected-business-qualification.ts:94-100`) against the cluster, so it
 needs the Instance `production` environment approval, the Cloud product owner's
-declaration of account/package/authority class, and an external J0 READY receipt
-for the exact Candidate.
+declaration of account/package/authority class, and a fabric-produced J0 READY
+receipt for the exact Candidate.
 Verification: the run's job labels, the artifact contents,
 `business-qualification.json` with `state: settled` and `reason: none`,
 `business-qualification.purchase.json`, and a Cloud release-evidence validation
@@ -832,11 +834,14 @@ retained.
    `RenDeHuang`). One allowlist must be named for a lane that spends customer
    money, and the design needs to know whether the Cloud product owner's
    declaration is sufficient or a second Instance-side approval is required.
-3. **The J0 READY producer.** No repository produces it; both the current
-   workflow and this design require an external receipt for the exact Candidate
-   (`.github/workflows/cloud-business-readback.yml:38-41`, `:250-259`;
-   `docs/runtime/release.md:183-185`). Who runs it, where its mode-0600 file is
-   produced, and how its dispatch value is authorized is still open.
+3. **The J0 READY producer.** #952 decided that Cloud fabric produces it, and
+   `tools/workspace-qualification-j0-ready.ts` now derives it from a provider
+   sandbox qualification run
+   ([status](../status.md#fabric-j0-ready-sandbox-qualification-producer-2026-10-18)).
+   No real sandbox run has produced one, and who dispatches that run, where its
+   mode-0600 file is produced, and how its dispatch value is authorized are still
+   open (`.github/workflows/cloud-business-readback.yml:38-41`, `:250-259`;
+   `docs/runtime/release.md:183-197`).
 4. **Least privilege between the Cloud producer process and the kubeconfig.**
    In Option B one job both runs the Cloud producer and holds a prepared
    kubeconfig. The current lanes already reduce the exposure (a temp directory,
