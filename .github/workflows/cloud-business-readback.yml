@@ -214,7 +214,6 @@ jobs:
           OPL_QUALIFICATION_PROVIDER_BOUNDARY: ${{ vars.OPL_QUALIFICATION_PROVIDER_BOUNDARY }}
           OPL_QUALIFICATION_CUSTOMER_EMAIL: ${{ secrets.OPL_QUALIFICATION_CUSTOMER_EMAIL }}
           OPL_QUALIFICATION_CUSTOMER_PASSWORD: ${{ secrets.OPL_QUALIFICATION_CUSTOMER_PASSWORD }}
-          OPL_INSTANCE_EVIDENCE_TOKEN: ${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -229,7 +228,6 @@ jobs:
           require OPL_QUALIFICATION_ORIGIN
           require OPL_QUALIFICATION_CUSTOMER_EMAIL
           require OPL_QUALIFICATION_CUSTOMER_PASSWORD
-          require OPL_INSTANCE_EVIDENCE_TOKEN
           require OPL_QUALIFICATION_PROVIDER_BOUNDARY
           [[ "$OPL_QUALIFICATION_ENVIRONMENT" == "cloud-business-qualification" ]]
           [[ "$CANDIDATE_RECEIPT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
@@ -258,6 +256,11 @@ jobs:
           chmod 600 "$RUNNER_TEMP/qualification/deployment.json" "$RUNNER_TEMP/j0-ready/receipt.json"
           test "$(stat -c '%a' "$RUNNER_TEMP/j0-ready/receipt.json" 2>/dev/null || stat -f '%Lp' "$RUNNER_TEMP/j0-ready/receipt.json")" = "600"
 
+      # The producer reads only the declarations below. It requires no
+      # cross-repository evidence token: the Instance evidence reads above are
+      # this workflow's own steps, and the producer itself has no cross-repo
+      # read to authorize. OPL_QUALIFICATION_ENVIRONMENT is a protected-context
+      # marker, not a second environment lookup.
       - name: Run protected business qualification through the shared Cloud flow
         if: ${{ !cancelled() && steps.evidence.outcome == 'success' && steps.declarations.outcome == 'success' }}
         env:
@@ -266,7 +269,6 @@ jobs:
           OPL_QUALIFICATION_PROVIDER_BOUNDARY: ${{ vars.OPL_QUALIFICATION_PROVIDER_BOUNDARY }}
           OPL_QUALIFICATION_CUSTOMER_EMAIL: ${{ secrets.OPL_QUALIFICATION_CUSTOMER_EMAIL }}
           OPL_QUALIFICATION_CUSTOMER_PASSWORD: ${{ secrets.OPL_QUALIFICATION_CUSTOMER_PASSWORD }}
-          OPL_INSTANCE_EVIDENCE_TOKEN: ${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail

@@ -92,9 +92,12 @@ No real cluster sandbox run has produced this receipt. The tests inject only the
 transport boundary, so the production flow is exercised end to end but no live
 `tencent-tke` sandbox open, health readback or release is claimed. The
 `cloud-business-qualification` environment, the independent customer credentials,
-`OPL_INSTANCE_EVIDENCE_TOKEN`, a configured sandbox boundary module and the
-protected TKE boundary remain external and absent; the protected lane still fails
-closed with `external_prerequisite_absent` until they exist. Handing the produced
+a configured sandbox boundary module and the protected TKE boundary remain
+external and absent; the protected lane still fails closed with
+`external_prerequisite_absent` until they exist. `OPL_INSTANCE_EVIDENCE_TOKEN` is
+still required by the workflow's own Instance evidence-read steps, but it is not
+a producer prerequisite: a missing token fails earlier, at those evidence steps,
+not as the producer's `external_prerequisite_absent` (#964). Handing the produced
 file from the sandbox job to the protected job through the existing dispatch
 input is unchanged. #926 remains open.
 
@@ -302,9 +305,13 @@ CLI boundary-module load, and the existing workflow/readback suites. The #940
 adapter tests are on `main` and are not re-selected by this focused diff.
 
 The `cloud-business-qualification` environment, the independent customer
-credentials, `OPL_INSTANCE_EVIDENCE_TOKEN` and the protected TKE boundary are
-external and absent; the workflow fails closed with `external_prerequisite_absent`
-and no protected run or settled business receipt is claimed. The external J0
+credentials and the protected TKE boundary are still external and absent, as is
+the Instance evidence behind `OPL_INSTANCE_EVIDENCE_TOKEN`; the workflow fails
+closed before the producer runs when its own Instance evidence reads cannot
+authenticate, and the producer's absent environment marker, origin, customer
+credentials, J0 receipt or boundary module still fails closed with
+`external_prerequisite_absent` (#964). No protected run or settled business
+receipt is claimed. The external J0
 READY producer named here is now produced in source by fabric
 ([fabric producer](#fabric-j0-ready-sandbox-qualification-producer-2026-10-18)),
 but no real sandbox run has produced a receipt yet. #926 remains open. The

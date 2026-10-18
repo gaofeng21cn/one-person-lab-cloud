@@ -126,12 +126,27 @@ export function protectedEnvironment(overrides = {}) {
     OPL_QUALIFICATION_ORIGIN: OWNER_ORIGIN,
     OPL_QUALIFICATION_CUSTOMER_EMAIL: ACCOUNT_EMAIL,
     OPL_QUALIFICATION_CUSTOMER_PASSWORD: "not-a-real-password",
-    OPL_INSTANCE_EVIDENCE_TOKEN: "not-a-real-instance-token",
     ...overrides,
   };
 }
 
-export function createFixturePlatform({ walletMicros = "999999999", quoteMicros = QUOTE_MICROS } = {}) {
+/*
+ * The owner-API fixture.
+ *
+ * Every failure switch below is injected state, not a simulated production
+ * path: the fixture never reaches a network, a cluster or a database. The
+ * switches exist so the producer entry point can be driven through a lost
+ * command answer, an unreadable owner readback and an unapproved managed-key
+ * endpoint without pretending any of them succeeded.
+ */
+export function createFixturePlatform({
+  walletMicros = "999999999",
+  quoteMicros = QUOTE_MICROS,
+  losePurchaseResponse = false,
+  failLaunchReadbackAfterPurchase = false,
+  unavailableRuntimeStatus = false,
+  undeclaredKeyFulfillment = false,
+} = {}) {
   const state = {
     wallet: walletMicros,
     quote: quoteMicros,
@@ -141,15 +156,26 @@ export function createFixturePlatform({ walletMicros = "999999999", quoteMicros 
     operationId: "",
     purchases: 0,
     charges: 0,
+    // The unapproved managed-key lifecycle endpoint, if a code path ever calls
+    // it. The Sub2API contract is issuance-only, so the owner answers with
+    // `codes.Unimplemented`; the producer must never turn that into a success.
+    keyLifecycleCalls: [] as string[],
+    boundaryOperationKeys: [] as string[],
     calls: [] as string[],
   };
   const envelope = (data: unknown, source = "sub2api") => ({
     source, available: true, status: "available", data,
   });
   const order = (operationId: string) => state.orders.get(operationId) ?? null;
+  const keyLifecyclePath = (path: string) =>
+    /managed-?key|workspace-key|gateway\/keys|\/api\/keys?\b/i.test(path);
 
   const json = async (path: string, init: any = {}) => {
     state.calls.push(path);
+    if (keyLifecyclePath(path)) {
+      state.keyLifecycleCalls.push(path);
+      return { status: 501, payload: { code: "Unimplemented", message: "no approved Sub2API service endpoint is configured" } };
+    }
     if (path === "/api/auth/me") {
       return { status: 200, payload: envelope({ accountId: ACCOUNT_ID, email: ACCOUNT_EMAIL, role: "owner", status: "active" }) };
     }
@@ -191,6 +217,9 @@ export function createFixturePlatform({ walletMicros = "999999999", quoteMicros 
       state.charges += 1;
       state.wallet = String(BigInt(state.wallet) - BigInt(state.quote));
       state.calls.push("purchase:issued");
+      // The platform admitted the order and its answer was lost. This is the
+      // response-loss case, not a refused command: the order above exists.
+      if (losePurchaseResponse) throw new Error("workspace launch response lost");
       return { status: 202, payload: { operationId, workspaceId } };
     }
     if (/^\/api\/workspace-launches\/[^/]+$/.test(path)) {
@@ -209,6 +238,11 @@ export function createFixturePlatform({ walletMicros = "999999999", quoteMicros 
       } };
     }
     if (/^\/api\/workspaces\/[^/]+\/runtime-status$/.test(path)) {
+      if (unavailableRuntimeStatus) {
+        return { status: 200, payload: {
+          source: "fabric", available: false, status: "unavailable", data: null,
+        } };
+      }
       return { status: 200, payload: {
         source: "fabric", available: true, status: "available",
         data: {
@@ -238,6 +272,9 @@ export function createFixturePlatform({ walletMicros = "999999999", quoteMicros 
             computeAllocationId: "ca-qualification-0001",
             storageId: "st-qualification-0001",
             attachmentId: "at-qualification-0001",
+            // An undeclared managed Key in the charge receipt. The shared flow
+            // must refuse to read this as the declared purchase.
+            ...(undeclaredKeyFulfillment ? { managedKeyId: "mk-qualification-0001" } : {}),
           },
         },
       } };
@@ -247,6 +284,10 @@ export function createFixturePlatform({ walletMicros = "999999999", quoteMicros 
 
   const request = async (path: string, _init: any = {}) => {
     state.calls.push(`request:${path}`);
+    if (keyLifecyclePath(path)) {
+      state.keyLifecycleCalls.push(path);
+      return { response: { status: 501 }, payload: { code: "Unimplemented", message: "no approved Sub2API service endpoint is configured" } };
+    }
     if (path === "/api/auth/me") {
       return { response: { status: 200 }, payload: envelope({ accountId: ACCOUNT_ID, email: ACCOUNT_EMAIL, role: "owner", status: "active" }) };
     }
@@ -255,6 +296,9 @@ export function createFixturePlatform({ walletMicros = "999999999", quoteMicros 
     }
     if (/^\/api\/workspace-launches\/[^/]+$/.test(path)) {
       const admitted = order(decodeURIComponent(path.split("/").pop() as string));
+      if (admitted && failLaunchReadbackAfterPurchase) {
+        return { response: { status: 500 }, payload: null };
+      }
       return admitted ? { response: { status: 200 }, payload: admitted } : { response: { status: 404 }, payload: null };
     }
     throw new Error(`unexpected request ${path}`);
@@ -263,12 +307,28 @@ export function createFixturePlatform({ walletMicros = "999999999", quoteMicros 
   return { state, http: { json, request } };
 }
 
-export function createFixtureBoundary(deployment: any, platform: ReturnType<typeof createFixturePlatform>): TencentTkeProviderBoundary {
+/*
+ * The fixture provider boundary.
+ *
+ * `open` and `release` select the provider's own answer, so the producer entry
+ * point can be driven through a refused or unobservable scope and through a
+ * release the provider cannot prove, without any of those becoming a business
+ * success.
+ */
+export function createFixtureBoundary(
+  deployment: any,
+  platform: ReturnType<typeof createFixturePlatform>,
+  { open = "open", release = "released" }: { open?: "open" | "unknown"; release?: "released" | "unknown" } = {},
+): TencentTkeProviderBoundary {
   const identity = { provider: "tencent-tke" as const, clusterId: deployment.clusterId, namespace: deployment.namespace };
   return {
     ...identity,
-    async establishReachability() {
+    async establishReachability({ operationKey }: any = {}) {
       platform.state.calls.push("boundary:open");
+      platform.state.boundaryOperationKeys.push(String(operationKey || ""));
+      if (open !== "open") {
+        return { state: "unknown", reason: "no approved provider endpoint is configured", ...identity };
+      }
       return {
         state: "open",
         ...identity,
@@ -277,6 +337,9 @@ export function createFixtureBoundary(deployment: any, platform: ReturnType<type
     },
     async releaseReachability() {
       platform.state.calls.push("boundary:release");
+      if (release !== "released") {
+        return { state: "unknown", reason: "the provider could not prove the scope was released", ...identity };
+      }
       return { state: "released", ...identity };
     },
     async readProviderHealth() {

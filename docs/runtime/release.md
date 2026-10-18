@@ -200,13 +200,17 @@ The protected runner supplies the Fabric/Instance boundary module named by
 `vars.OPL_QUALIFICATION_PROVIDER_BOUNDARY`; the module owns TKE reachability and
 the owner transport and receives the normalized deployment binding and protected
 environment. It is not implemented in Cloud and its credentials do not enter the
-receipt. The producer requires the existing `cloud-business-qualification` environment,
-`vars.OPL_QUALIFICATION_ORIGIN`, the independent customer Secrets
-`OPL_QUALIFICATION_CUSTOMER_EMAIL`/`OPL_QUALIFICATION_CUSTOMER_PASSWORD`, and
-`OPL_INSTANCE_EVIDENCE_TOKEN` limited to Instance `Actions: read` and `Contents:
-read`. A missing environment, variable, Secret, J0 receipt or boundary module
-fails closed with `external_prerequisite_absent` before a provider scope opens;
-the workflow does not create any of them.
+receipt. The producer requires the `cloud-business-qualification` protected-context
+declaration (a marker that the step came from that protected context, not a
+GitHub environment lookup), `vars.OPL_QUALIFICATION_ORIGIN` and the independent
+customer Secrets `OPL_QUALIFICATION_CUSTOMER_EMAIL`/`OPL_QUALIFICATION_CUSTOMER_PASSWORD`.
+It deliberately requires no cross-repository evidence token: it reads only the
+files this workflow materialized and its own J0 receipt, so it has no
+cross-repository read to authorize. The workflow's own Instance evidence-read
+steps keep `OPL_INSTANCE_EVIDENCE_TOKEN` limited to Instance `Actions: read` and
+`Contents: read`. A missing declaration, variable, Secret, J0 receipt or
+boundary module fails closed with `external_prerequisite_absent` before a
+provider scope opens; the workflow does not create any of them.
 
 Only the shared orchestrator's actual qualification result becomes the
 qualification receipt state. A settled receipt is preserved, and a blocked,

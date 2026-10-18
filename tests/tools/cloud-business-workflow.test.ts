@@ -115,7 +115,6 @@ test("protected business qualification runs only through the shared producer aft
     "OPL_QUALIFICATION_PROVIDER_BOUNDARY",
     "OPL_QUALIFICATION_CUSTOMER_EMAIL",
     "OPL_QUALIFICATION_CUSTOMER_PASSWORD",
-    "OPL_INSTANCE_EVIDENCE_TOKEN",
   ]) {
     assert.ok(Object.hasOwn(materialize.env || {}, name), name);
   }
@@ -156,9 +155,21 @@ test("protected business qualification runs only through the shared producer aft
     "OPL_QUALIFICATION_PROVIDER_BOUNDARY",
     "OPL_QUALIFICATION_CUSTOMER_EMAIL",
     "OPL_QUALIFICATION_CUSTOMER_PASSWORD",
-    "OPL_INSTANCE_EVIDENCE_TOKEN",
   ]) {
     assert.ok(Object.hasOwn(producer.env || {}, name), name);
+  }
+  // The producer has no cross-repository read to authorize, so neither the
+  // declaration gate nor the producer step receives the Instance evidence
+  // token. The workflow's own evidence-read steps above still do.
+  assert.equal(Object.hasOwn(producer.env || {}, "OPL_INSTANCE_EVIDENCE_TOKEN"), false);
+  assert.equal(Object.hasOwn(materialize.env || {}, "OPL_INSTANCE_EVIDENCE_TOKEN"), false);
+  assert.doesNotMatch(materialize.run, /OPL_INSTANCE_EVIDENCE_TOKEN/);
+  for (const name of [
+    "Resolve original Candidate and installation artifact provenance",
+    "Checkout exact native installation validator",
+    "Download original Instance installation evidence",
+  ]) {
+    assert.match(JSON.stringify(step(readbackJob, name)), /OPL_INSTANCE_EVIDENCE_TOKEN/, name);
   }
 
   const businessUpload = step(readbackJob, "Preserve Candidate-bound business qualification receipts");
@@ -222,7 +233,6 @@ test("the protected declaration gate materializes exact inputs and fails closed 
       OPL_QUALIFICATION_PROVIDER_BOUNDARY: join(root, "boundary.mjs"),
       OPL_QUALIFICATION_CUSTOMER_EMAIL: "customer@qualification.invalid",
       OPL_QUALIFICATION_CUSTOMER_PASSWORD: "not-a-real-password",
-      OPL_INSTANCE_EVIDENCE_TOKEN: "not-a-real-token",
     };
     const command = step(workflow.jobs.readback, "Materialize protected qualification declarations").run;
     let result = run(command, root, environment);
@@ -237,13 +247,16 @@ test("the protected declaration gate materializes exact inputs and fails closed 
       "OPL_QUALIFICATION_ORIGIN",
       "OPL_QUALIFICATION_CUSTOMER_EMAIL",
       "OPL_QUALIFICATION_CUSTOMER_PASSWORD",
-      "OPL_INSTANCE_EVIDENCE_TOKEN",
       "OPL_QUALIFICATION_PROVIDER_BOUNDARY",
     ]) {
       result = run(command, root, { ...environment, [name]: "" });
       assert.notEqual(result.status, 0, name);
       assert.match(result.stderr, new RegExp(`external prerequisite absent: ${name}`), name);
     }
+    // The declaration gate does not require a cross-repository evidence token,
+    // because the producer it feeds has no cross-repository read.
+    result = run(command, root, { ...environment, OPL_INSTANCE_EVIDENCE_TOKEN: "" });
+    assert.equal(result.status, 0, result.stderr);
     for (const binding of [
       { ...deployment, ownerOrigin: "https://another.example.invalid" },
       { ...deployment, candidateReceiptDigest: digest("d") },

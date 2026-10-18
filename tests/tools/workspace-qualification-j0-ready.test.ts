@@ -191,6 +191,7 @@ test("fabric derives a J0 READY receipt from a sandbox run and the protected loa
       sourceSha: candidate.product.sha,
       sourceTree: candidate.product.tree,
       cloudImageDigest: CLOUD_IMAGE_DIGEST,
+      provider: "tencent-tke",
       repositoryRoot: REPOSITORY_ROOT,
     });
     assert.deepEqual(loaded, result.receipt);
@@ -241,6 +242,7 @@ test("a sandbox run that cannot open or health-check the scope is never emitted 
         sourceSha: blocked.receipt.source.sha,
         sourceTree: blocked.receipt.source.tree,
         cloudImageDigest: CLOUD_IMAGE_DIGEST,
+        provider: "tencent-tke",
         repositoryRoot: REPOSITORY_ROOT,
       }),
       (error: any) => error.code === "j0_ready_receipt_invalid",
@@ -258,6 +260,7 @@ test("a sandbox run that cannot open or health-check the scope is never emitted 
         sourceSha: unhealthy.receipt.source.sha,
         sourceTree: unhealthy.receipt.source.tree,
         cloudImageDigest: CLOUD_IMAGE_DIGEST,
+        provider: "tencent-tke",
         repositoryRoot: REPOSITORY_ROOT,
       }),
       (error: any) => error.code === "j0_ready_receipt_invalid",
@@ -279,6 +282,7 @@ test("a receipt produced for one Candidate is refused when another Candidate ask
         sourceSha: other.product.sha,
         sourceTree: other.product.tree,
         cloudImageDigest: other.cloudImage.indexDigest,
+        provider: "tencent-tke",
         repositoryRoot: REPOSITORY_ROOT,
       }),
       (error: any) => error.code === "external_prerequisite_absent" && /for this Candidate/.test(error.message),
