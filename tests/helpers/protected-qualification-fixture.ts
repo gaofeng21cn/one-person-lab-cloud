@@ -23,6 +23,9 @@ export const CLUSTER_ID = "cls-qualification0001";
 export const REGION = "ap-guangzhou";
 export const NAMESPACE = "tke-qualification";
 export const INSTANCE_SHA = "f".repeat(40);
+// The Candidate's own Cloud image digest. The J0 READY receipt carries it so a
+// sandbox run for the same source but another image is another Candidate.
+export const CLOUD_IMAGE_DIGEST = "sha256:" + "1".repeat(64);
 
 export function candidateReceipt(overrides = {}) {
   return {
@@ -31,8 +34,8 @@ export function candidateReceipt(overrides = {}) {
     product: { repository: "gaofeng21cn/one-person-lab-cloud", sha: SOURCE_SHA, tree: SOURCE_TREE },
     cloudImage: {
       repository: "ghcr.io/gaofeng21cn/one-person-lab-cloud",
-      indexRef: "ghcr.io/gaofeng21cn/one-person-lab-cloud@sha256:" + "1".repeat(64),
-      indexDigest: "sha256:" + "1".repeat(64),
+      indexRef: "ghcr.io/gaofeng21cn/one-person-lab-cloud@" + CLOUD_IMAGE_DIGEST,
+      indexDigest: CLOUD_IMAGE_DIGEST,
       revision: SOURCE_SHA,
       platforms: [
         { platform: "linux/amd64", digest: "sha256:" + "2".repeat(64) },
@@ -97,7 +100,7 @@ export function j0ReadyReceipt(provider = "tencent-tke") {
     schemaVersion: 1,
     kind: "opl.workspace-qualification.j0-ready.v2",
     status: "READY",
-    source: { sha: SOURCE_SHA, tree: SOURCE_TREE, clean: true },
+    source: { sha: SOURCE_SHA, tree: SOURCE_TREE, cloudImageDigest: CLOUD_IMAGE_DIGEST, clean: true },
     authority: { mode: "live", class: "sandbox", dedicated: true, confirmed: true },
     provider,
     failed: 0,

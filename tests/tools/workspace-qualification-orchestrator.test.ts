@@ -73,7 +73,7 @@ function j0ReadyReceipt(provider) {
     schemaVersion: 1,
     kind: "opl.workspace-qualification.j0-ready.v2",
     status: "READY",
-    source: { sha: SOURCE_SHA, tree: SOURCE_TREE, clean: true },
+    source: { sha: SOURCE_SHA, tree: SOURCE_TREE, cloudImageDigest: "sha256:" + "1".repeat(64), clean: true },
     authority: { mode: "live", class: "sandbox", dedicated: true, confirmed: true },
     provider,
     failed: 0,
@@ -596,7 +596,10 @@ test("the same customer under two Candidates gets two unrelated tenant digests",
     authority: {
       mode: "live",
       authorityClass: "sandbox",
-      j0ReadyReceipt: { ...j0ReadyReceipt("local-docker"), source: { sha: secondSha, tree: secondTree, clean: true } },
+      j0ReadyReceipt: {
+        ...j0ReadyReceipt("local-docker"),
+        source: { sha: secondSha, tree: secondTree, cloudImageDigest: "sha256:" + "5".repeat(64), clean: true },
+      },
     },
     source: { sha: secondSha, tree: secondTree, clean: true },
   });
@@ -1093,7 +1096,13 @@ test("a settled receipt cannot name a product or an authority this flow never de
 // S13: the external J0 producer still emits the legacy provider-named kind, so a
 // request may declare it; a preproduction request may not borrow a sandbox one.
 test("a Local-Docker request may accept the legacy J0 kind it declares", async () => {
-  const legacyReceipt = { ...j0ReadyReceipt("local-docker"), kind: LEGACY_QUALIFICATION_J0_READY_KINDS[0] };
+  const legacyReceipt = {
+    ...j0ReadyReceipt("local-docker"),
+    kind: LEGACY_QUALIFICATION_J0_READY_KINDS[0],
+    // The legacy producer predates the Candidate binding, so its receipt
+    // carries the source-only shape.
+    source: { sha: SOURCE_SHA, tree: SOURCE_TREE, clean: true },
+  };
   assert.throws(() => qualificationRequest("local-docker", {
     authority: { mode: "live", authorityClass: "sandbox", j0ReadyReceipt: legacyReceipt },
   }), { code: "j0_ready_receipt_invalid" }, "a request that declared no legacy kind still refuses one");

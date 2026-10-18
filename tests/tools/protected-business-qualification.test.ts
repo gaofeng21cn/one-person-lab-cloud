@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -13,6 +13,7 @@ import {
   validateDeployedPurchaseReceipt,
 } from "../../tools/deployed-workspace-purchase.ts";
 import {
+  J0_READY_MAX_BYTES,
   PROTECTED_BOUNDARY_FACTORY,
   PROTECTED_CUSTOMER_EMAIL,
   PROTECTED_CUSTOMER_PASSWORD,
@@ -42,6 +43,7 @@ import {
 import {
   ACCOUNT_EMAIL,
   ACCOUNT_ID,
+  CLOUD_IMAGE_DIGEST,
   CLUSTER_ID,
   NAMESPACE,
   OWNER_ORIGIN,
@@ -286,51 +288,129 @@ test("the original Instance deployment evidence must bind the exact Candidate an
   }
 });
 
-test("the external J0 receipt is admitted only from the exact protected file and source", async (t) => {
+function loadJ0(path: string) {
+  return loadProtectedJ0ReadyReceipt(path, {
+    sourceSha: j0ReadyReceipt().source.sha,
+    sourceTree: j0ReadyReceipt().source.tree,
+    cloudImageDigest: CLOUD_IMAGE_DIGEST,
+    repositoryRoot: REPOSITORY_ROOT,
+  });
+}
+
+test("the external J0 receipt is admitted only from the exact protected file", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "opl-protected-j0-"));
   try {
     const fixture = await writeFixture(root);
-    const receipt = await loadProtectedJ0ReadyReceipt(fixture.paths.j0ReadyReceiptPath, {
-      sourceSha: fixture.candidate.product.sha,
-      sourceTree: fixture.candidate.product.tree,
-      repositoryRoot: REPOSITORY_ROOT,
-    });
+    const receipt = await loadJ0(fixture.paths.j0ReadyReceiptPath);
     assert.equal(receipt.provider, "tencent-tke");
     assert.equal(receipt.status, "READY");
+    assert.equal(receipt.source.cloudImageDigest, CLOUD_IMAGE_DIGEST);
     await assert.rejects(
-      loadProtectedJ0ReadyReceipt(join(root, "absent.json"), {
-        sourceSha: fixture.candidate.product.sha,
-        sourceTree: fixture.candidate.product.tree,
-        repositoryRoot: REPOSITORY_ROOT,
-      }),
+      loadJ0(join(root, "absent.json")),
       (error: any) => error.code === "external_prerequisite_absent" &&
         /J0 READY producer receipt/.test(error.message),
     );
+    // A symlink is not followed, so it is an absent prerequisite rather than a
+    // receipt read through a path the producer did not create.
+    const link = join(root, "j0-ready-link.json");
+    await symlink(fixture.paths.j0ReadyReceiptPath, link);
+    await assert.rejects(
+      loadJ0(link),
+      (error: any) => error.code === "external_prerequisite_absent",
+    );
     await chmod(fixture.paths.j0ReadyReceiptPath, 0o644);
+    await assert.rejects(
+      loadJ0(fixture.paths.j0ReadyReceiptPath),
+      (error: any) => error.code === "protected_business_qualification_invalid" && /0600/.test(error.message),
+    );
+    await chmod(fixture.paths.j0ReadyReceiptPath, 0o600);
+    // The cap is the contract's, and a file over it is refused before any of it
+    // is parsed.
+    await writeFile(fixture.paths.j0ReadyReceiptPath, "x".repeat(J0_READY_MAX_BYTES + 1), { mode: 0o600 });
+    await chmod(fixture.paths.j0ReadyReceiptPath, 0o600);
+    await assert.rejects(
+      loadJ0(fixture.paths.j0ReadyReceiptPath),
+      (error: any) => error.code === "protected_business_qualification_invalid" && /file is invalid/.test(error.message),
+    );
+    // The same bytes inside the declared repository root are refused: a receipt
+    // the provider checkout could rewrite is not external evidence.
+    await writeFile(fixture.paths.j0ReadyReceiptPath, JSON.stringify(j0ReadyReceipt()), { mode: 0o600 });
+    await chmod(fixture.paths.j0ReadyReceiptPath, 0o600);
     await assert.rejects(
       loadProtectedJ0ReadyReceipt(fixture.paths.j0ReadyReceiptPath, {
         sourceSha: fixture.candidate.product.sha,
         sourceTree: fixture.candidate.product.tree,
-        repositoryRoot: REPOSITORY_ROOT,
+        cloudImageDigest: CLOUD_IMAGE_DIGEST,
+        repositoryRoot: root,
       }),
-      (error: any) => error.code === "protected_business_qualification_invalid" && /0600/.test(error.message),
+      (error: any) => error.code === "protected_business_qualification_invalid" &&
+        /outside the repository/.test(error.message),
     );
-    await chmod(fixture.paths.j0ReadyReceiptPath, 0o600);
-    for (const [patch, expectedCode] of [
-      [{ provider: "local-docker" }, "j0_ready_receipt_invalid"],
-      [{ source: { ...j0ReadyReceipt().source, sha: "0".repeat(40) } }, "j0_ready_receipt_invalid"],
-      [{ authority: { ...j0ReadyReceipt().authority, class: "preproduction" } }, "j0_ready_receipt_invalid"],
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a J0 receipt bound to another Candidate is refused as an absent prerequisite", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "opl-protected-j0-candidate-"));
+  try {
+    const fixture = await writeFixture(root);
+    const receipt = j0ReadyReceipt();
+    for (const [name, patch] of [
+      ["cloud image", { source: { ...receipt.source, cloudImageDigest: "sha256:" + "9".repeat(64) } }],
+      ["product sha", { source: { ...receipt.source, sha: "9".repeat(40) } }],
+      ["product tree", { source: { ...receipt.source, tree: "9".repeat(40) } }],
     ] as const) {
-      await writeFile(fixture.paths.j0ReadyReceiptPath, JSON.stringify({ ...j0ReadyReceipt(), ...patch }), { mode: 0o600 });
+      await writeFile(fixture.paths.j0ReadyReceiptPath, JSON.stringify({ ...receipt, ...patch }), { mode: 0o600 });
       await chmod(fixture.paths.j0ReadyReceiptPath, 0o600);
       await assert.rejects(
-        loadProtectedJ0ReadyReceipt(fixture.paths.j0ReadyReceiptPath, {
-          sourceSha: fixture.candidate.product.sha,
-          sourceTree: fixture.candidate.product.tree,
-          repositoryRoot: REPOSITORY_ROOT,
-        }),
-        (error: any) => error.code === expectedCode,
-        JSON.stringify(patch),
+        loadJ0(fixture.paths.j0ReadyReceiptPath),
+        (error: any) => error.code === "external_prerequisite_absent" &&
+          /for this Candidate/.test(error.message),
+        name,
+      );
+    }
+    // A receipt with no usable Candidate binding is not another Candidate's
+    // receipt; it is malformed and keeps the contract's own code.
+    for (const source of [
+      { sha: receipt.source.sha, tree: receipt.source.tree, clean: true },
+      { ...receipt.source, cloudImageDigest: "not-a-digest" },
+    ]) {
+      await writeFile(fixture.paths.j0ReadyReceiptPath, JSON.stringify({ ...receipt, source }), { mode: 0o600 });
+      await chmod(fixture.paths.j0ReadyReceiptPath, 0o600);
+      await assert.rejects(
+        loadJ0(fixture.paths.j0ReadyReceiptPath),
+        (error: any) => error.code === "j0_ready_receipt_invalid",
+        JSON.stringify(source),
+      );
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a J0 receipt that is not a confirmed sandbox live pass is refused", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "opl-protected-j0-refusal-"));
+  try {
+    const fixture = await writeFixture(root);
+    const receipt = j0ReadyReceipt();
+    for (const [name, patch] of [
+      ["provider", { provider: "local-docker" }],
+      ["authority class", { authority: { ...receipt.authority, class: "preproduction" } }],
+      ["authority mode", { authority: { ...receipt.authority, mode: "fixture" } }],
+      ["dedicated", { authority: { ...receipt.authority, dedicated: false } }],
+      ["confirmed", { authority: { ...receipt.authority, confirmed: false } }],
+      ["failed", { failed: 1 }],
+      ["skipped", { skipped: 1 }],
+      ["status", { status: "BLOCKED" }],
+      ["legacy kind", { kind: "opl.local-workspace.j0-ready.v1" }],
+    ] as const) {
+      await writeFile(fixture.paths.j0ReadyReceiptPath, JSON.stringify({ ...receipt, ...patch }), { mode: 0o600 });
+      await chmod(fixture.paths.j0ReadyReceiptPath, 0o600);
+      await assert.rejects(
+        loadJ0(fixture.paths.j0ReadyReceiptPath),
+        (error: any) => error.code === "j0_ready_receipt_invalid",
+        name,
       );
     }
   } finally {

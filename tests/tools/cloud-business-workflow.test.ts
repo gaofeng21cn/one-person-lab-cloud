@@ -189,7 +189,7 @@ test("the protected declaration gate materializes exact inputs and fails closed 
       schemaVersion: 1,
       kind: "opl.workspace-qualification.j0-ready.v2",
       status: "READY",
-      source: { sha: candidateSha, tree: candidateTree, clean: true },
+      source: { sha: candidateSha, tree: candidateTree, cloudImageDigest: `sha256:${"e".repeat(64)}`, clean: true },
       authority: { mode: "live", class: "sandbox", dedicated: true, confirmed: true },
       provider: "tencent-tke",
       failed: 0,
