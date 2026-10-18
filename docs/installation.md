@@ -292,6 +292,46 @@ addresses, tokens and profiles are omitted. Input errors still include the Produ
 security requirement; an unreadable/invalid Product security contract instead
 returns `security: null`, an error and no edges, which must never be executed.
 
+### Endpoint-proof rejection reason codes
+
+Every error carries a fixed `code`; errors whose cause is not implied by the code
+also carry a `reasonCode`. The Instance relays that symbol verbatim in its
+rejection receipt, so it is the operator's only description of a refused edge
+when the cluster credential stays on the Instance runner. `rpc_service_backend_ambiguous`
+uses these reason codes:
+
+| `reasonCode` | Operator-facing meaning |
+| --- | --- |
+| `listener_unproven` | Another process in the target Pod may bind the target port and its listener cannot be resolved from the manifest. |
+| `listener_conflict` | Another process in the target Pod binds the target port. |
+| `service_backend_owner` | A selector-matching workload object is owned by a different live Deployment, or is a workload producer that this Deployment does not own; the Service selects another owner's Pods. |
+| `pod_owner_chain_unproven` | A selector-matching or endpoint-named Pod's controller chain does not resolve to the target Deployment: its ReplicaSet or Deployment owner reference is stale, missing, ambiguous, or names no live object. Repair the Pod chain, not the Service. |
+| `endpoint_no_ready_address` | The Service publishes no ready address: its Endpoints subsets are empty, it has only not-ready addresses while `publishNotReadyAddresses` is not set, or its EndpointSlice has no serviceable endpoint. |
+| `endpoint_pod_absent` | An endpoint's `targetRef` names a Pod that is absent from the live read, for example an endpoint left behind by a previous rollout. |
+| `endpoint_port_mismatch` | The endpoint publishes a port whose name or number does not match the Service port the caller addresses. |
+| `endpoint_port_unpublished` | The endpoint object publishes no ports at all. |
+| `endpoint_pod_selector_mismatch` | The endpoint's Pod exists but its labels no longer match the Service `selector`. |
+| `endpoint_target_invalid` | The endpoint `targetRef` is not a `v1` Pod reference. |
+| `endpoint_target_unidentified` | The endpoint `targetRef` carries no Pod UID. |
+| `endpoint_target_namespace_mismatch` | The endpoint `targetRef` names a Pod in another namespace. |
+| `endpoint_address_invalid` | An endpoint address is missing, empty or not an IP address. |
+| `endpoint_address_mismatch` | An endpoint address is not one of the Pod's observed `status.podIP`/`podIPs` addresses. |
+| `endpoint_address_family_mismatch` | An EndpointSlice address does not match its declared `addressType`. |
+| `endpoint_slice_owner_mismatch` | An EndpointSlice is not controlled by the exact Service UID. |
+| `endpoint_slice_shape_invalid` | An EndpointSlice has an unsupported API version or address type. |
+| `endpoint_shape_invalid` | An Endpoints object or subset has a malformed shape. |
+| `endpoint_pod_shape_unproven` | The endpoint's Pod does not carry valid container declarations. |
+| `endpoint_pod_template_mismatch` | The live Pod's shape no longer matches its immutable ReplicaSet template. |
+| `endpoint_pod_container_mismatch` | The live target container does not match the ReplicaSet template's container. |
+| `endpoint_pod_command_mismatch` | The live target container's argv does not match the Product process contract. |
+| `endpoint_pod_port_conflict` | Another live container in the Pod publishes the target port. |
+| `endpoint_pod_listener_unproven` | Another live Product process in the Pod may bind the target port and its listener cannot be proven. |
+| `endpoint_pod_ip_absent` | The endpoint's Pod has no valid `status.podIP`. |
+| `endpoint_pod_ip_invalid` | The endpoint's Pod has a malformed `status.podIPs` list. |
+
+A symbol is added only together with its operator-facing meaning here; admission
+itself never branches on which symbol it emits.
+
 ## Local Qualification Fixture
 
 `deploy/portable/compose.local-qualification.yaml` runs the repository-owned
