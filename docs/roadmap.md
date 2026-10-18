@@ -29,13 +29,15 @@ Cloud development tools own this outcome. #970 merged the grouped exhaustive
 checks and the separate main cache producer. Current-revision PR CI and the
 first successful main producer are recorded in
 [status](status.md#pr-ci-cache-reuse-and-parallel-verification-2026-10-18).
-New-PR first-run cache consumption remains open; use a genuinely new PR after
-the producer completes. Then compare a subsequent revision and a dependency-change
-run, recording executed coverage, cache hits, per-shard elapsed time and cumulative
-runner duration. The first cold-cache observation shortened the critical path
-while increasing runner duration; unequal browser workloads remain visible.
-A same-PR warm rerun does not prove cross-PR reuse. Keep every mandatory result
-blocking `validate` on failure, cancellation or skipping.
+#971's first run proved consumption of all four main-cache keys from a new PR
+scope with unchanged executed coverage. Its subsequent revision is bound to
+its current-revision CI. Dependency-change executions and sustained timing/cost
+sampling remain open: record executed coverage, cache hits, per-shard elapsed
+time and cumulative runner duration. The observed parallel runs shortened the
+critical path while increasing runner duration relative to the adjacent
+baseline; unequal browser workloads remain visible. A same-PR warm rerun does
+not replace the new-PR proof. Keep every mandatory result blocking `validate`
+on failure, cancellation or skipping.
 
 ## Current Target
 

@@ -55,10 +55,20 @@ confirm all four saves. The Go cache binds 1.26.9 and the complete go.sum input
 hash; generator binaries bind the resolved Go version and both plugin versions.
 This closes the previously missing default-branch cache producer.
 
-The next documentation-only PR will verify first-run consumption from a new
-PR scope after this producer completed. A warm rerun of #970 is not evidence
-for that outcome. Cross-PR cache reuse and its timing remain unproven until
-that readback completes.
+[Evidence PR #971](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/971)
+was created after main warming completed. Its
+[first run](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/39111259842)
+(`41a9a769`, attempt 1) passed all six checks with the same executed source,
+browser and Go coverage as #970. Before that run, the new PR scope contained
+zero caches; source logs restored all four exact main-cache keys, and post-job
+steps did not save duplicate PR caches. This proves first-run cross-PR reuse.
+The Go job fell from 214 to 54 seconds. The active critical path was 382
+seconds (386 including queueing), with 716 cumulative job seconds: the slower
+browser shard took 370 seconds, so the Go reduction does not translate into
+the same whole-workflow reduction. Both observed parallel runs were shorter
+than the adjacent 503-second baseline, but browser timing varies. Subsequent
+revision results are retained in #971's current-revision CI; a new revision
+must pass its own exhaustive run.
 
 Dependency-change executions and sustained timing/runner-cost sampling remain
 [open](roadmap.md#pr-ci-cache-reuse-and-parallel-verification). Main reports
