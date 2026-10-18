@@ -70,7 +70,16 @@ type ManagedKeyBinding struct {
 	TTL                     time.Duration
 	ExpiresAt               time.Time
 	RevokedAt               time.Time
-	CreatedAt               time.Time
+	// DisabledAt is the moment the external authority confirmed a reversible
+	// disablement of this exact key. It is not revocation: an enabled key clears
+	// it, a revoked key never does.
+	DisabledAt time.Time
+	// LifecycleVersion advances once per confirmed disable/enable transition, so a
+	// reader can distinguish two owner answers for the same binding.
+	LifecycleVersion int64
+	// LifecycleUpdatedAt is when the last confirmed reversible transition happened.
+	LifecycleUpdatedAt time.Time
+	CreatedAt          time.Time
 }
 
 // There is exactly one writer that records a confirmed managed key - the
@@ -190,13 +199,14 @@ func (s *GatewayStore) AdvanceManagedKeyCommandPending(ctx context.Context, rese
 func (s *GatewayStore) ReadManagedKeyBinding(ctx context.Context, id string) (ManagedKeyBinding, error) {
 	var binding ManagedKeyBinding
 	var expires, revoked interface{}
-	var expiresAt, revokedAt *time.Time
+	var expiresAt, revokedAt, disabledAt, lifecycleUpdatedAt *time.Time
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, tenant_id, COALESCE(workspace_id,''), COALESCE(actor_id,''), external_key_id, fingerprint, COALESCE(secret_ref,''),
-			purpose, model_ids, observation_result, expires_at, revoked_at, created_at
+			purpose, model_ids, observation_result, expires_at, revoked_at, disabled_at, lifecycle_version, lifecycle_updated_at, created_at
 		FROM gateway.key_bindings WHERE id = $1`, id).
 		Scan(&binding.ID, &binding.TenantID, &binding.WorkspaceID, &binding.ActorID, &binding.ExternalKeyID, &binding.Fingerprint,
-			&binding.SecretRef, &binding.Purpose, pq.Array(&binding.ModelIDs), &binding.ObservationResult, &expiresAt, &revokedAt, &binding.CreatedAt)
+			&binding.SecretRef, &binding.Purpose, pq.Array(&binding.ModelIDs), &binding.ObservationResult, &expiresAt, &revokedAt, &disabledAt,
+			&binding.LifecycleVersion, &lifecycleUpdatedAt, &binding.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ManagedKeyBinding{}, ErrGatewayWalletUnknown
 	}
@@ -211,6 +221,12 @@ func (s *GatewayStore) ReadManagedKeyBinding(ctx context.Context, id string) (Ma
 	if revokedAt != nil {
 		binding.RevokedAt = *revokedAt
 	}
+	if disabledAt != nil {
+		binding.DisabledAt = *disabledAt
+	}
+	if lifecycleUpdatedAt != nil {
+		binding.LifecycleUpdatedAt = *lifecycleUpdatedAt
+	}
 	return binding, nil
 }
 
@@ -219,6 +235,56 @@ func (s *GatewayStore) MarkManagedKeyRevoked(ctx context.Context, id string) (Ma
 	now := time.Now().UTC()
 	if _, err := s.db.ExecContext(ctx, `UPDATE gateway.key_bindings SET revoked_at = $2, updated_at = $2, observation_result = 'confirmed' WHERE id = $1 AND revoked_at IS NULL`, id, now); err != nil {
 		return ManagedKeyBinding{}, err
+	}
+	return s.ReadManagedKeyBinding(ctx, id)
+}
+
+// MarkManagedKeyDisabled records one externally confirmed disablement. It is
+// monotonic and idempotent: a second disable of an already-disabled binding does
+// not advance the version again, and a revoked binding cannot be revived as
+// merely disabled by this writer.
+func (s *GatewayStore) MarkManagedKeyDisabled(ctx context.Context, id string, confirmedAt time.Time) (ManagedKeyBinding, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE gateway.key_bindings
+		SET disabled_at = $2, lifecycle_version = lifecycle_version + 1, lifecycle_updated_at = $2, updated_at = $2
+		WHERE id = $1 AND disabled_at IS NULL AND revoked_at IS NULL`, id, confirmedAt.UTC())
+	if err != nil {
+		return ManagedKeyBinding{}, err
+	}
+	if rows, rowsErr := res.RowsAffected(); rowsErr != nil {
+		return ManagedKeyBinding{}, rowsErr
+	} else if rows == 0 {
+		binding, readErr := s.ReadManagedKeyBinding(ctx, id)
+		if readErr != nil {
+			return ManagedKeyBinding{}, readErr
+		}
+		if !binding.RevokedAt.IsZero() || binding.DisabledAt.IsZero() {
+			return ManagedKeyBinding{}, ErrManagedKeyLifecycleConflict
+		}
+		return binding, nil
+	}
+	return s.ReadManagedKeyBinding(ctx, id)
+}
+
+// MarkManagedKeyEnabled records one externally confirmed re-enable of the exact
+// same binding. A revoked binding is never re-enabled here.
+func (s *GatewayStore) MarkManagedKeyEnabled(ctx context.Context, id string, confirmedAt time.Time) (ManagedKeyBinding, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE gateway.key_bindings
+		SET disabled_at = NULL, lifecycle_version = lifecycle_version + 1, lifecycle_updated_at = $2, updated_at = $2
+		WHERE id = $1 AND disabled_at IS NOT NULL AND revoked_at IS NULL`, id, confirmedAt.UTC())
+	if err != nil {
+		return ManagedKeyBinding{}, err
+	}
+	if rows, rowsErr := res.RowsAffected(); rowsErr != nil {
+		return ManagedKeyBinding{}, rowsErr
+	} else if rows == 0 {
+		binding, readErr := s.ReadManagedKeyBinding(ctx, id)
+		if readErr != nil {
+			return ManagedKeyBinding{}, readErr
+		}
+		if !binding.RevokedAt.IsZero() || !binding.DisabledAt.IsZero() {
+			return ManagedKeyBinding{}, ErrManagedKeyLifecycleConflict
+		}
+		return binding, nil
 	}
 	return s.ReadManagedKeyBinding(ctx, id)
 }
@@ -281,10 +347,35 @@ type ManagedKeyIssueResult struct {
 	Replayed      bool
 }
 
-// ManagedKeyIssuer mints and retires a Workspace-scoped Gateway key at the
-// external Gateway, returning the raw value only to the caller that immediately
-// hands it to the approved Secret store. A key issuer never persists the raw key.
+// ManagedKeyIssuer mints, retires and reversibly enables a Workspace-scoped
+// Gateway key at the external Gateway, returning the raw value only to the caller
+// that immediately hands it to the approved Secret store. A key issuer never
+// persists the raw key.
+//
+// SetWorkspaceKeyState and ReadWorkspaceKeyState are the reversible lifecycle
+// boundary. They name one exact external key id owned by the bound subject; they
+// can never mint or replace a key. The durable lifecycle state below is written
+// only from their confirmed answer.
 type ManagedKeyIssuer interface {
 	IssueWorkspaceKey(ctx context.Context, request ManagedKeyIssueRequest) (ManagedKeyIssueResult, error)
 	RevokeWorkspaceKey(ctx context.Context, subject, externalKeyID string) error
+	SetWorkspaceKeyState(ctx context.Context, subject, externalKeyID string, state ManagedKeyExternalState) error
+	ReadWorkspaceKeyState(ctx context.Context, subject, externalKeyID string) (ManagedKeyExternalState, error)
 }
+
+// ManagedKeyExternalState is the external authority's own vocabulary for one
+// managed key. It is deliberately a separate type from the Cloud enum: mapping
+// between them happens in exactly one place, the lifecycle handler, so no local
+// intention can be mistaken for a provider-confirmed state.
+type ManagedKeyExternalState string
+
+const (
+	ManagedKeyExternalActive   ManagedKeyExternalState = "active"
+	ManagedKeyExternalDisabled ManagedKeyExternalState = "disabled"
+	ManagedKeyExternalRevoked  ManagedKeyExternalState = "revoked"
+)
+
+// ErrManagedKeyLifecycleConflict reports that the stored binding cannot accept
+// the requested reversible transition: it is already terminal, or it is not in
+// the state the transition starts from. No external effect happened.
+var ErrManagedKeyLifecycleConflict = errors.New("managed key lifecycle conflict")

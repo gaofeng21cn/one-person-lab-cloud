@@ -146,7 +146,10 @@ func workspaceAudience(action api.AuthorizationActionEnum) (api.OwnerEnum, owner
 	case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT:
 		return api.OwnerEnum_OWNER_ENUM_LEDGER, owneridentity.Ledger.Service()
 	case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CHARGEACCEPTEDOBLIGATION, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION,
-		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REFUNDCONFIRMEDDELETION:
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REFUNDCONFIRMEDDELETION,
+		// The managed-key closeout is coordinated by Gateway Integration, the sole
+		// writer of the key's lifecycle state.
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET:
 		return api.OwnerEnum_OWNER_ENUM_GATEWAY, owneridentity.Gateway.Service()
 	default:
 		return api.OwnerEnum_OWNER_ENUM_CAPABILITY, owneridentity.Capability.Service()
@@ -430,6 +433,7 @@ func TestWorkspaceDeletionGrantPostgres(t *testing.T) {
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES,
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION,
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REFUNDCONFIRMEDDELETION,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET,
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT,
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT,
 	}
@@ -439,6 +443,13 @@ func TestWorkspaceDeletionGrantPostgres(t *testing.T) {
 	}
 	if g.AcceptedAction != api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEWORKSPACE || g.ActorId != deletionRequest.ActorId {
 		t.Fatalf("deletion grant lost its own action or actor: %v", g)
+	}
+	// The deletion's grant carries the managed-key closeout at the Gateway
+	// audience, so Workspace can ask its owner to disable the exact key without
+	// holding any wider key authority.
+	closeout := workspaceContinuation(g, api.OwnerEnum_OWNER_ENUM_GATEWAY, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET)
+	if _, err := f.s.AuthorizeAction(ownerservice.WithPeerOwner(t.Context(), owneridentity.Gateway.Service()), closeout); err != nil {
+		t.Fatalf("deletion grant refused its own key closeout: %v", err)
 	}
 	// The deletion carries the contract's own resource-release action at the
 	// Fabric audience, so the release no longer needs the provisioning surface.

@@ -17,6 +17,48 @@ Instance installation, or a Product Release. The target boundary is in
 [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Workspace Managed-Key Lifecycle Source Wiring (2026-10-18)
+
+Against `f966aa63` this change gives Gateway Integration the Cloud owner route
+for one reversible managed-key transition and makes Workspace closure ask it to
+disable the exact live binding. `DisableManagedKey`, `EnableManagedKey` and
+`ReadManagedKeyLifecycle` name one opaque binding and one Workspace, authorize
+the Workspace caller for `bindManagedSecret`, and write the local
+`gateway.key_bindings.disabled_at`/`lifecycle_version` only from an external
+readback that confirmed the exact key in the exact desired state. A revoked key
+is terminal; a refusal or an unobservable answer leaves the stored binding
+active and reaches the caller unchanged. The production Sub2API adapter still
+refuses disable, enable and state readback as `codes.Unimplemented` because no
+approved service endpoint exists, so this source does not disable a production
+key.
+
+Workspace deletion now resolves the exact live binding from its own confirmed
+launch and model-configuration records, asks the Gateway owner to disable it
+under the deletion's own accepted grant, and records `confirmed`, `rejected`,
+`unknown` or `not_applicable` as a separate key closeout fact. A refused or lost
+answer never blocks resource deletion or settlement and is never rewritten as a
+disabled key. The canonical `delete_workspace` accepted-operation surface now
+carries `bindManagedSecret`, and the Workspace deletion grant requests exactly
+that action.
+
+Local focused verification at this revision executes 586 tests with zero
+failures, skips or TODOs against the isolated PostgreSQL fixture:
+
+```sh
+PATH="$HOME/go/bin:$PATH" OPL_POSTGRES_TESTS=1 \
+  OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=postgres://... \
+  node tools/verify-local.ts --focused --base origin/main
+```
+
+The new PostgreSQL checks drive the real owner transition: disable advances the
+recorded version once, a replay does not repeat the external effect, enable
+restores the same binding, a refused disable and a lost confirming readback both
+leave the binding active, revocation is terminal, and the deletion asks for the
+exact binding, grant and idempotency identity and records refused or unknown
+answers without claiming a disabled key. Remaining: the approved Sub2API service
+disable/enable/state-readback endpoint, an authorized recovery trigger that uses
+`EnableManagedKey`, and a customer-visible closeout readback. #868 remains open.
+
 ## Cloud Customer Readback Usage And Fee Coverage (2026-10-18)
 
 Against `8e330121`, this change extends the protected `customer_reads` producer
@@ -34,7 +76,8 @@ usage check requires the Gateway owner's canonical non-negative int64 strings.
 The fee-record check requires the `ledger` source envelope; a 404 blocks the
 receipt, because the BFF writes one generic owner-not-found both for a customer
 without an original Account and for a missing or older internal route. A blocked
-receipt is the honest result when the journey's fee page would show an error. The receipt keeps boolean checks only and stores no customer data.
+receipt is the honest result when the journey's fee page would show an
+error. The receipt keeps boolean checks only and stores no customer data.
 The receipt `schemaVersion` moves from 1 to 2 because the schema-validated check
 set grows from 7 to 9; a version 1 receipt is refused, and no production
 `customer_reads` receipt exists to invalidate.

@@ -162,6 +162,15 @@ type deletionGatewayClient struct {
 	// records the identity they were requested by.
 	reads   int
 	readKey string
+	// The managed-key closeout is a separate Gateway-coordination request. It
+	// records the exact binding the deletion asked for and can be scripted to
+	// refuse or lose its answer, like the real owner route.
+	disableCalls       int
+	disableBindingID   string
+	disableWorkspace   string
+	disableGrant       string
+	disableIdempotency string
+	disableErr         error
 }
 
 func (c *deletionGatewayClient) Refund(_ context.Context, r *api.WalletRefundCommand, _ ...grpc.CallOption) (*api.WalletOperation, error) {
@@ -187,6 +196,24 @@ func (c *deletionGatewayClient) ReadWalletAction(_ context.Context, r *api.Walle
 		return nil, status.Error(codes.InvalidArgument, "readback must name the original refund command")
 	}
 	return &api.WalletOperation{Id: "wallet-op-refund-original", WorkspaceId: proto.String("workspace-original"), Kind: api.WalletOperationKindEnum_WALLET_OPERATION_KIND_ENUM_REFUND, AmountUsdMicros: c.refundAmount, Status: api.WalletOperationStatusEnum_WALLET_OPERATION_STATUS_ENUM_CONFIRMED, CreatedAt: timestamppb.Now()}, nil
+}
+
+// DisableManagedKey answers the key-closeout request with the owner's confirmed
+// readback for the exact binding. A scripted error stands in for the production
+// refusal or a lost answer, so one test can show both are recorded as facts
+// instead of being mistaken for a disabled key.
+func (c *deletionGatewayClient) DisableManagedKey(_ context.Context, r *api.ManagedKeyLifecycleCommand, _ ...grpc.CallOption) (*api.ManagedKeyLifecycleReadback, error) {
+	c.disableCalls++
+	c.disableBindingID = r.GetKeyBindingId()
+	c.disableWorkspace = r.GetWorkspaceId()
+	c.disableGrant = r.GetContext().GetAcceptedOperationGrantId()
+	c.disableIdempotency = r.GetContext().GetIdempotencyKey()
+	if c.disableErr != nil {
+		return nil, c.disableErr
+	}
+	return &api.ManagedKeyLifecycleReadback{KeyBindingId: r.GetKeyBindingId(), WorkspaceId: r.GetWorkspaceId(),
+		State: api.ManagedKeyLifecycleState_MANAGED_KEY_LIFECYCLE_STATE_DISABLED, LifecycleVersion: 1,
+		Outcome: api.Observation_OBSERVATION_CONFIRMED, UpdatedAt: timestamppb.Now()}, nil
 }
 
 func deletionCallContext(tenant string) (*api.CallContext, context.Context) {
@@ -864,5 +891,175 @@ func TestPendingFabricDeletionResumesThroughItsOriginalCaller(t *testing.T) {
 	}
 	if stored.Status != "succeeded" || fabric.deleteCalls != 2 || service.Gateway.(*deletionGatewayClient).refunds != 1 {
 		t.Fatalf("pending deletion status=%s calls=%d refunds=%d", stored.Status, fabric.deleteCalls, service.Gateway.(*deletionGatewayClient).refunds)
+	}
+}
+
+// deletionWorkspaceWithManagedKey seeds the same paid Workspace, then records the
+// confirmed launch-time managed key on its accepted launch result. The deletion
+// therefore has one exact binding it must ask its owner to close out.
+func deletionWorkspaceWithManagedKey(t *testing.T, db *sql.DB) (*Service, *api.CallContext, context.Context, time.Time, int64) {
+	t.Helper()
+	service, call, ctx, periodStart, charge := deletionWorkspace(t, db)
+	var raw []byte
+	if err := db.QueryRowContext(ctx, `SELECT result FROM workspace.operations WHERE id='operation-original'`).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var launch orderResult
+	if err := json.Unmarshal(raw, &launch); err != nil {
+		t.Fatal(err)
+	}
+	launch.KeyBindingID = "gateway-key-original"
+	launch.ManagedKeyBinding = wire(&api.RuntimeManagedKeyBinding{KeyBindingId: "gateway-key-original", SecretBindingId: "secret-binding-original",
+		SecretVersion: "1", SecretDeliveryReference: "secret-reference-original", Fingerprint: "sha256:original-key", TargetSlot: "workspace_gateway_key"})
+	raw, err := json.Marshal(launch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.ExecContext(ctx, `UPDATE workspace.operations SET result=$1 WHERE id='operation-original'`, raw); err != nil {
+		t.Fatal(err)
+	}
+	return service, call, ctx, periodStart, charge
+}
+
+func TestDeleteWorkspaceDisablesTheExactManagedKeyThroughItsOwner(t *testing.T) {
+	db := runtimeDatabase(t)
+	service, call, ctx, _, _ := deletionWorkspaceWithManagedKey(t, db)
+	gateway := service.Gateway.(*deletionGatewayClient)
+	call.IdempotencyKey = "idempotency-deletion-key-1"
+	created, err := service.DeleteWorkspace(ctx, &api.DeleteWorkspaceRpcRequest{Context: call, WorkspaceId: "workspace-original", Body: &api.DeleteWorkspaceRequest{ConfirmationName: "Original workspace", AcknowledgeDataDestruction: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = service.Resume(ctx, created.GetOperationId()); err != nil {
+		t.Fatal(err)
+	}
+	if gateway.disableCalls != 1 || gateway.disableBindingID != "gateway-key-original" || gateway.disableWorkspace != "workspace-original" ||
+		gateway.disableGrant != "grant-deletion-original" || !strings.HasSuffix(gateway.disableIdempotency, ":disable_managed_key") {
+		t.Fatalf("key closeout calls=%d binding=%q workspace=%q grant=%q idempotency=%q", gateway.disableCalls, gateway.disableBindingID, gateway.disableWorkspace, gateway.disableGrant, gateway.disableIdempotency)
+	}
+	// A replay settles the recorded closeout instead of asking the owner again, so a
+	// retried deletion can never disable a second time or name another key.
+	if err = service.Resume(ctx, created.GetOperationId()); err != nil {
+		t.Fatal(err)
+	}
+	if gateway.disableCalls != 1 {
+		t.Fatalf("key closeout re-requested %d times", gateway.disableCalls)
+	}
+	var raw []byte
+	if err = db.QueryRowContext(ctx, `SELECT result FROM workspace.operations WHERE id=$1`, created.GetOperationId()).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var result deletionResult
+	if err = json.Unmarshal(raw, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.ManagedKeyBindingID != "gateway-key-original" || result.KeyCloseoutOutcome != "confirmed" || result.KeyCloseoutCode != "" {
+		t.Fatalf("recorded key closeout=%q binding=%q code=%q", result.KeyCloseoutOutcome, result.ManagedKeyBindingID, result.KeyCloseoutCode)
+	}
+	var observation string
+	if err = db.QueryRowContext(ctx, `SELECT observation_result FROM workspace.saga_steps WHERE operation_id=$1 AND step_key='disable_managed_key'`, created.GetOperationId()).Scan(&observation); err != nil {
+		t.Fatal(err)
+	}
+	if observation != "confirmed" {
+		t.Fatalf("key closeout step observation=%q", observation)
+	}
+}
+
+func TestDeleteWorkspaceRecordsARefusedKeyCloseoutWithoutBlockingDeletion(t *testing.T) {
+	db := runtimeDatabase(t)
+	service, call, ctx, _, _ := deletionWorkspaceWithManagedKey(t, db)
+	gateway := service.Gateway.(*deletionGatewayClient)
+	// This is the current production answer: the external authority exposes no
+	// approved disable endpoint. The key therefore stays live, and the deletion
+	// must say so instead of reporting a disabled key or waiting forever.
+	gateway.disableErr = status.Error(codes.Unimplemented, "no approved Sub2API service key disable/enable endpoint is configured")
+	call.IdempotencyKey = "idempotency-deletion-key-2"
+	created, err := service.DeleteWorkspace(ctx, &api.DeleteWorkspaceRpcRequest{Context: call, WorkspaceId: "workspace-original", Body: &api.DeleteWorkspaceRequest{ConfirmationName: "Original workspace", AcknowledgeDataDestruction: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = service.Resume(ctx, created.GetOperationId()); err != nil {
+		t.Fatal(err)
+	}
+	var workspaceStatus string
+	if err = db.QueryRowContext(ctx, `SELECT status FROM workspace.workspaces WHERE id='workspace-original'`).Scan(&workspaceStatus); err != nil {
+		t.Fatal(err)
+	}
+	if workspaceStatus != "deleted" || gateway.refunds != 1 {
+		t.Fatalf("workspace status=%q refunds=%d, want deletion and settlement to complete", workspaceStatus, gateway.refunds)
+	}
+	var raw []byte
+	if err = db.QueryRowContext(ctx, `SELECT result FROM workspace.operations WHERE id=$1`, created.GetOperationId()).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var result deletionResult
+	if err = json.Unmarshal(raw, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.KeyCloseoutOutcome != "rejected" || result.KeyCloseoutCode != "KEY_CLOSEOUT_REFUSED" || result.KeyCloseoutOutcome == "confirmed" {
+		t.Fatalf("refused closeout recorded as outcome=%q code=%q", result.KeyCloseoutOutcome, result.KeyCloseoutCode)
+	}
+	var observation string
+	if err = db.QueryRowContext(ctx, `SELECT observation_result FROM workspace.saga_steps WHERE operation_id=$1 AND step_key='disable_managed_key'`, created.GetOperationId()).Scan(&observation); err != nil {
+		t.Fatal(err)
+	}
+	if observation != "rejected" {
+		t.Fatalf("refused closeout step observation=%q", observation)
+	}
+}
+
+func TestDeleteWorkspaceRecordsAnUnknownKeyCloseoutWithoutClaimingSuccess(t *testing.T) {
+	db := runtimeDatabase(t)
+	service, call, ctx, _, _ := deletionWorkspaceWithManagedKey(t, db)
+	gateway := service.Gateway.(*deletionGatewayClient)
+	// A lost answer cannot prove the key was not disabled, so it is recorded as
+	// unknown rather than as either a refusal or a confirmed closeout.
+	gateway.disableErr = status.Error(codes.Unavailable, "the Gateway answer was lost")
+	call.IdempotencyKey = "idempotency-deletion-key-3"
+	created, err := service.DeleteWorkspace(ctx, &api.DeleteWorkspaceRpcRequest{Context: call, WorkspaceId: "workspace-original", Body: &api.DeleteWorkspaceRequest{ConfirmationName: "Original workspace", AcknowledgeDataDestruction: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = service.Resume(ctx, created.GetOperationId()); err != nil {
+		t.Fatal(err)
+	}
+	var raw []byte
+	if err = db.QueryRowContext(ctx, `SELECT result FROM workspace.operations WHERE id=$1`, created.GetOperationId()).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var result deletionResult
+	if err = json.Unmarshal(raw, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.KeyCloseoutOutcome != "unknown" || result.KeyCloseoutCode != "KEY_CLOSEOUT_UNKNOWN" {
+		t.Fatalf("unknown closeout recorded as outcome=%q code=%q", result.KeyCloseoutOutcome, result.KeyCloseoutCode)
+	}
+}
+
+func TestDeleteWorkspaceWithoutAManagedKeyRecordsNoCloseout(t *testing.T) {
+	db := runtimeDatabase(t)
+	service, call, ctx, _, _ := deletionWorkspace(t, db)
+	gateway := service.Gateway.(*deletionGatewayClient)
+	call.IdempotencyKey = "idempotency-deletion-key-4"
+	created, err := service.DeleteWorkspace(ctx, &api.DeleteWorkspaceRpcRequest{Context: call, WorkspaceId: "workspace-original", Body: &api.DeleteWorkspaceRequest{ConfirmationName: "Original workspace", AcknowledgeDataDestruction: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = service.Resume(ctx, created.GetOperationId()); err != nil {
+		t.Fatal(err)
+	}
+	if gateway.disableCalls != 0 {
+		t.Fatalf("key closeout requested %d times for a Workspace without a managed key", gateway.disableCalls)
+	}
+	var raw []byte
+	if err = db.QueryRowContext(ctx, `SELECT result FROM workspace.operations WHERE id=$1`, created.GetOperationId()).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var result deletionResult
+	if err = json.Unmarshal(raw, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.KeyCloseoutOutcome != "not_applicable" || result.ManagedKeyBindingID != "" {
+		t.Fatalf("closeout outcome=%q binding=%q, want not_applicable and no binding", result.KeyCloseoutOutcome, result.ManagedKeyBindingID)
 	}
 }

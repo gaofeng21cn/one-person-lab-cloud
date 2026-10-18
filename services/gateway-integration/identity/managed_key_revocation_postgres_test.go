@@ -75,6 +75,14 @@ func (s *scriptedRevokeIssuer) RevokeWorkspaceKey(context.Context, string, strin
 	return result
 }
 
+func (s *scriptedRevokeIssuer) SetWorkspaceKeyState(context.Context, string, string, identity.ManagedKeyExternalState) error {
+	return status.Error(codes.Unimplemented, "no approved Sub2API service key disable/enable endpoint is configured")
+}
+
+func (s *scriptedRevokeIssuer) ReadWorkspaceKeyState(context.Context, string, string) (identity.ManagedKeyExternalState, error) {
+	return "", status.Error(codes.Unimplemented, "no approved Sub2API service key-state readback endpoint is configured")
+}
+
 // recordedAttempts reads this owner's revocation records straight from the table,
 // so the assertions do not depend on the same helper the fix relies on.
 func recordedAttempts(t *testing.T, service *identity.Service) map[string]string {
