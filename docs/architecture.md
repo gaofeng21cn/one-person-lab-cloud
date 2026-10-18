@@ -74,7 +74,7 @@ For Cloud, the authority surfaces are concrete products and services:
 | Fabric | Fabric owns provider-neutral compute/storage/network resource facts, provisioning/binding ports and provider adapters | Agent OCI deployment, Agent runtime readiness and Serve traffic selection are not Fabric facts |
 | Ledger | Cloud Ledger owns Cloud receipts, reconciliation, idempotency, and caller-owned opaque provenance refs | Framework observers and product projections do not become the persistent Cloud Ledger or a review/continuation authority |
 | Remote Companion / OPL Link | `opl-link/service` owns broker, pairing, capacity and provider transport authority | OPL Cloud only hosts Workspace/WebUI delivery and does not own a remote-companion route, provider, persistence or contract |
-| Gateway / Wallet | Gateway Integration projects native Gateway facts and coordinates accepted settlement; Control Plane retains its legacy integration | Sub2API remains the external identity, spendable-wallet, Key, routing and usage authority |
+| Gateway / Wallet | Gateway Integration maps Cloud identity and Workspace operations to the external Gateway, projects Gateway facts, and may manage approved Groups through Gateway APIs; Control Plane retains only explicitly unmigrated callers | `gateway.medopl.com`/Sub2API remains the external identity, spendable-wallet, Key, Group, routing and usage authority; Cloud keeps no second effective truth |
 | Capability / Build / Runtime Control / Serve | Capability owns Agent Packages and WebUI catalog; Build owns OCI build jobs/evidence; Runtime Control owns approved Runtime release versions; Serve owns per-Workspace Agent delivery and API/Embed/Hosted UI access | OPL App/Framework owns Runtime implementation; Fabric owns only infrastructure resources; no parallel Agent Service lifecycle |
 
 This rebaseline keeps the family vocabulary useful without making a Cloud
@@ -134,7 +134,7 @@ and [status](status.md); neither proves Instance installation.
 | --- | --- | --- |
 | `apps/console-ui/` | React/TypeScript application | Presentation; calls Console BFF only |
 | `apps/console-bff/` | Independent Go module and process | Browser REST, server-side session security and DTO aggregation; no business persistence or business Saga |
-| `services/gateway-integration/` | Independent Go module and process | `tenant` / CloudIdentity owns sessions and Tenant authorization; `gateway` owns both User external bindings in `gateway.identity_mappings`; two distinct database/writer owners in one deployment unit; Sub2API remains the external wallet/Gateway authority |
+| `services/gateway-integration/` | Independent Go module and process | `tenant` / CloudIdentity owns sessions and Tenant authorization; `gateway` owns Cloud-to-Gateway mappings, operation/idempotency and Secret delivery references; two distinct database/writer owners in one deployment unit; the external Gateway remains the effective wallet, Key, Group, routing and usage authority |
 | `services/capability/` | Independent Go module and process | `capability`: publishers, Packages, versions and catalog metadata |
 | `services/build/` | Independent Go module and process | `build`: build jobs, immutable input references and artifact evidence |
 | `services/workspace/` | Independent Go module and process | `workspace`: Workspace lifecycle and business Saga |
@@ -444,27 +444,25 @@ Workspace. A Runtime change rebuilds an Agent but selects a new approved release
 for a default App; neither happens automatically.
 
 Model configuration follows the same owner separation. Workspace owns the
-accepted selections, configuration version and the opaque
-`gateway_key_binding_id`; Gateway Integration owns managed-key issuance, approved
-model permissions, lifecycle state and secret-delivery references; Fabric owns
-Secret binding/readback; Serve owns publisher apply/readback and runtime
-readiness. Initial configuration obtains the Workspace's confirmed managed key,
-binds its approved Secret reference and applies the declared runtime interface.
-An ordinary model update preserves the same external key and updates its
-approved model scope through Gateway and Sub2API. It must not create a
-replacement key and revoke a predecessor as its normal update path. Serve
-confirms the actual application configuration before Workspace advances its
-applied version through the owner-local operation/CAS path. Fabric retains
-exact Secret readback, explicit replacement for a genuinely different Secret,
-and one active binding per runtime purpose. External key identity, opaque
-Gateway binding identity and Fabric Secret version must not be conflated.
-If Gateway confirms a scope change but Serve refuses the target apply, the
-original operation must reconcile the same key's approved scope with the actual
-application configuration: restore the last applied approved scope or confirm
-the original target as applied through owner readback. Until confirmed, it must
-not report success or allow dependent changes. Unknown owner or compensation
-results retain the original operation and block dependent effects. No scope
-union or replacement key may conceal a failed update.
+accepted selections, configuration version and opaque `gateway_key_binding_id`.
+Gateway Integration owns Cloud-to-Gateway mapping, command coordination,
+idempotency and Secret delivery references. `gateway.medopl.com` owns the
+effective external Key, Group, model permissions, routing and usage; Cloud may
+create or manage an approved Group only through Gateway APIs and must use
+Gateway readback for the effective result. Fabric owns Secret binding/readback;
+Serve owns publisher apply/readback and runtime readiness.
+
+Initial configuration asks Gateway to create a Workspace Key in the approved
+default `Codex` Group, records the external identity and opaque binding, writes
+the protected Secret/config and applies the declared Runtime interface. A
+later model or application update may reuse the current external Key or rotate
+to a new one. Rotation is successful only after Gateway, Secret and Serve
+readbacks converge; the predecessor is closed through Gateway as a separate
+operation when authorized. External Key identity, opaque Gateway binding
+identity and Fabric Secret version must not be conflated. Unknown owner or
+compensation results retain the original operation and block dependent effects;
+no local projection may invent a Gateway success, widen scope or create a
+duplicate Key.
 
 Workspace closure requests deactivation of only its proven managed key;
 authorized recovery re-enables the original key under existing entitlement,

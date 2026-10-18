@@ -332,13 +332,19 @@ role; they are not the personal history reader or a replacement Ledger.
 Key list/detail, per-Key usage, available-group and personal balance-history and
 endpoint callers now read session-bound BFF routes under the cloud identity; the
 legacy identity keeps the retained `/api/gateway/*` adapters. The Gateway owner
-holds the delegated Sub2API credential for those personal reads, so CloudIdentity
-does not store the Sub2API login credential and its configured administrative
-directory identity is not a user-session substitute. The available-groups
-decision still consumes active subscriptions, exclusive/public-group rules and
-user-specific rates inside the Gateway owner; Console does not copy those
-entitlement decisions. Operator panels and legacy Workspace maintenance keep
-their retained Account authorization.
+holds the delegated external-Gateway credential for those reads and commands,
+so CloudIdentity does not store the provider login credential and its configured
+administrative directory identity is not a user-session substitute. Cloud may
+create or manage approved Groups through Gateway APIs, but the effective Group,
+Key, wallet, routing and usage facts remain external Gateway facts. Console and
+Workspace store only Cloud authorization, opaque mappings, operation identities,
+fingerprints and Secret delivery references. Operator panels and legacy
+Workspace maintenance keep their retained Account authorization.
+
+The Cloud Console API pages for Gateway endpoint, Usage and Keys are projections
+or commands over this same boundary. A successful response must retain the
+Gateway source identity and current external readback; a local binding row or
+cached projection cannot replace an unavailable or conflicting Gateway answer.
 
 The current identity and writer boundary is:
 
@@ -346,7 +352,7 @@ The current identity and writer boundary is:
 | --- | --- | --- |
 | Cloud session, Tenant membership and authorization | Tenant database in `gateway-integration`; Console BFF and owner authorization clients | Control Plane sessions resolve their own Account mapping; a Tenant ID is not a retained Account ID |
 | Personal wallet and account usage | Sub2API truth, projected by Gateway through the BFF for the live logged-in User, including Users without a Tenant | Legacy builds keep the Control Plane projection; Tenant roles do not expose another person's wallet |
-| Managed key binding and revocation attempt | Gateway database in the same process, configured by `OPL_GATEWAY_DATABASE_URL`; Workspace drives model-update closeout | Sub2API owns the external key. Approved disable/enable/state and same-key model contracts remain unfinished; a recorded attempt does not retire a key |
+| Workspace Key and Group mapping, rotation and lifecycle attempt | Gateway database in the same process, configured by `OPL_GATEWAY_DATABASE_URL`; Gateway Integration records Cloud-to-Gateway mappings, idempotency, fingerprints and Secret references while Workspace drives business operations | `gateway.medopl.com`/Sub2API owns effective Key, Group, wallet, routing and usage facts. Cloud may command creation, Group management, rotation and lifecycle transitions through Gateway, but a local record never proves external state |
 | Application deployment and access for cloud Workspace | Workspace admits the order; Serve writes deployment, current selection and access facts; Fabric writes infrastructure facts | Retained Control Plane launch/application routes still serve legacy Workspace rows and must not be used as maintenance fallbacks for a cloud Workspace |
 | Personal historical bills | BFF calls the retained original data owner with a fresh CloudIdentity proof; that owner verifies the reciprocal active User/Account mapping and original order ownership | Historical amounts, receipts, settlement states and deleted-Workspace history are preserved. Tenant admin status does not inherit personal-history access |
 | Team Workspace transactions | Gateway reads original charge/refund records through BFF under the current Tenant owner/admin role, including retired bindings and deleted-Workspace history | Original receipt references and confirmed/requested/unknown states are preserved. A separate typed Ledger reader returns existing funded-charge Receipt, WalletOperation and accepted Quote under fresh Tenant authorization; private execution evidence keeps its actor fence. Missing receipt kinds return unavailable |
@@ -461,9 +467,9 @@ It receives narrow stores/provider capabilities, never the complete Service.
 
 A stage persists its claim before mutation. Exact readback may confirm a
 started or failed stage; continuation may replace a failed claim only under
-its owner-approved same-key policy. A succeeded stage cannot silently change
-resource identity. Readback uses a read-only provider scope; raw Gateway
-credentials never enter the journal.
+its owner-approved identity and rotation policy. A succeeded stage cannot
+silently change resource identity. Readback uses a read-only provider scope;
+raw Gateway credentials never enter the journal.
 
 `workspaceRuntimeReadEngine` separately owns non-secret Runtime reads, persisted
 identity-candidate matching, redaction and observation classification. A running

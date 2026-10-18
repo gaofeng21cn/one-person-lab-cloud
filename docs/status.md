@@ -76,6 +76,29 @@ Dependency-change executions and sustained timing/runner-cost sampling remain
 account (404). This change does not establish Candidate qualification,
 Instance adoption or production readiness.
 
+
+## Gateway External Truth And Cloud Mapping (2026-10-18)
+
+The latest product decision makes `gateway.medopl.com` the effective authority
+for Workspace Keys, Groups, wallet consumption, model routing and usage. Cloud
+Gateway Integration owns the Cloud-to-Gateway mapping, operation/idempotency
+records, fingerprints and Secret delivery references. Cloud may create or
+manage approved Groups and may rotate a Workspace Key through Gateway APIs, but
+its local binding or projection is not external truth. The Workspace opening
+path is Gateway Key creation in the default `Codex` Group, one-time protected
+Secret/config delivery, and Runtime use of the Gateway endpoint.
+
+This documentation change does not claim that the source has completed that
+boundary migration. The retained Control Plane launch path still calls
+`CreateGatewayUserKey` and `UpdateGatewayUserKey` in
+`services/control-plane/internal/server/workspace_launch_account_stages.go`,
+while `services/gateway-integration/identity/coordination.go` contains the
+newer external-service adapter. The next source slice must route Workspace Key
+creation, Group management, rotation and readback through Gateway Integration,
+then update the caller and evidence together. The existing same-Key source
+slice below is historical implementation evidence, not the current product
+invariant.
+
 ## Fabric J0 READY Sandbox Qualification Producer (2026-10-18)
 
 Against `79d81a4e` (main after #957), this change answers #952. Cloud fabric now
@@ -160,10 +183,13 @@ not as the producer's `external_prerequisite_absent` (#964). Handing the produce
 file from the sandbox job to the protected job through the existing dispatch
 input is unchanged. #926 remains open.
 
-## Same-Key Workspace Model Updates (2026-10-18)
+## Historical Same-Key Workspace Model Updates (2026-10-18)
 
-Against `75cec423` an ordinary model-configuration update no longer replaces the
-Workspace's managed key. `UpdateWorkspaceModels` reads back the exact key binding
+Against `75cec423` the source slice implemented a same-Key model-configuration
+update. That behavior was evidence for the former product policy and is now
+superseded by the 2026-10-18 rotation decision; it does not prohibit a new
+Gateway Key when the configuration requires rotation. `UpdateWorkspaceModels`
+reads back the exact key binding
 and the approved model scope from its owner (`GatewayCoordination.ReadManagedKey`,
 `services/gateway-integration/identity/coordination.go:627`), refuses a selection
 outside that scope before recording a configuration, records the new
@@ -185,11 +211,13 @@ data loss, a refused or lost Serve answer never advances the applied version, an
 path mints or revokes a key. Both modules' full test suites pass against the
 isolated PostgreSQL fixture.
 
-Remaining: an approved Sub2API in-place scope update for a selection outside the
-current allowlist, and the Gateway scope-update/readback contract the caller-less
-`tools/workspace-model-scope.ts` seam anticipates. Until then a widening request is
-refused rather than satisfied by a replacement key or a wider local claim. #869
-remains open.
+The remaining source work is no longer an in-place same-Key product
+requirement. It is the Gateway-authoritative mapping and rotation path: create
+or reuse the external Key, deliver the new Secret/config, read back the Runtime
+configuration, update the Cloud mapping and close the predecessor through
+Gateway when authorized. The old `tools/workspace-model-scope.ts` seam and #869
+must be reconciled with that newer decision before they are treated as current
+acceptance criteria.
 ## Workspace Managed-Key Lifecycle Source Wiring (2026-10-18)
 
 Against `f966aa63` this change gives Gateway Integration the Cloud owner route
@@ -525,14 +553,18 @@ a Tenant may read only their own balance and usage; Tenant payment subjects,
 fee/settlement readers and legacy records are separate. Source checks do not
 establish installed authenticated acceptance.
 
-## Product Rule Adoption Boundary (2026-10-15)
+## Historical Product Rule Adoption Boundary (2026-10-15)
 
-The [Workspace key and customer-read decision](decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads)
-records accepted intent, not a new source or runtime pass. At the inspected
-`881d5a2abeab590598ed1d47252bfa886522a613` source baseline, key issuance exists,
-the production issuer still refuses revocation, and model updates still use
-create/rebind/predecessor closeout. Reversible key control and same-key scope
-updates remain unimplemented. Cloud wallet/account usage already have BFF
+The [2026-10-15 Workspace key and customer-read decision](decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads)
+records historical intent, not a new source or runtime pass. The newer
+[2026-10-18 Gateway external truth and rotation decision](decisions.md#2026-10-18-gateway-external-truth-cloud-mapping-and-workspace-key-rotation)
+supersedes its same-Key requirement and clarifies that Gateway Integration is a
+Cloud mapping layer. At the inspected `881d5a2abeab590598ed1d47252bfa886522a613`
+source baseline, external Key creation exists, the production issuer still
+refuses revocation, and the retained Workspace caller still uses the older
+create/rebind/predecessor-closeout path. Reversible key control and the new
+Gateway-authoritative rotation path remain unimplemented. Cloud wallet/account
+usage already have BFF
 readers; fee/settlement, announcement/ACK and remaining Gateway readers retain
 the boundaries mapped in [implementation architecture](implementation-architecture.md).
 This decision does not change existing generated permissions or release evidence
@@ -759,7 +791,7 @@ never owns Agent lifecycle, and Ledger never authorizes continuation.
 | Build and immutable OCI evidence | Build admission, BuildKit/OCI readback and artifact registration are implemented | [package-to-registry readback](evidence/source-checks/2026-09-29-build-package-to-real-registry-readback.json) | A hosted Candidate must prove the real tenant destination and exact publication path |
 | Runtime Control | Approved Runtime Release catalog and compatibility facts are implemented | [exact Runtime local build](evidence/source-checks/2026-09-28-exact-runtime-local-build.json) | Approved production Runtime/native-UI inputs and Instance readback remain open |
 | Resource Catalog and Workspace order | Approved plan, quote, acceptance, Workspace order and owner-local recovery are implemented | [Workspace original-order](evidence/source-checks/2026-09-26-workspace-resource-original-order.json), [refund list encoding defect](evidence/source-checks/2026-10-08-refund-policy-list-enum-encoding-defect.json) | Paid production purchase and provider acceptance require separately authorized Cloud Workspace/Fabric qualification; Instance supplies installation and deployment evidence; the administrator refund policy list reader now normalizes the stored hyphenated algorithm onto its wire member ([repair source check](evidence/source-checks/2026-10-09-refund-policy-algorithm-enum-encoding.json)), and the repaired source is included in the verified `78dbe9b4` Instance Candidate; current administrator-page HTTP acceptance still requires its own readback |
-| Gateway managed key | Gateway Integration owns issuance, allowlist, Secret delivery reference and revocation; Workspace consumes only opaque binding identity. A production issuer now calls the Sub2API owner's service issuance route (`POST /api/v1/service/workspace-keys`) with the deployment's own service token, and an empty declared selection is resolved by that authority into a concrete, bounded model scope that is recorded with the binding and the original command; the raw key is written only through Fabric's approved Secret store (`FabricCoordination.PutManagedSecret`) | [model update owner](evidence/source-checks/2026-10-01-workspace-model-configuration-update-owner.json) | The live Sub2API service route, its Instance secret wiring and a service revocation path remain to be qualified; the owner tests use the HTTP contract fixture, not the live authority. Production revocation remains refused; the refusal is now recorded as a `RevokeManagedKey` attempt with outcome and cause code, without marking the key revoked. Because the owner confirms the reload before it attempts that revocation, a refused revocation leaves a model configuration whose applied version already equals its own; the owner's status derivation reads the operation lifecycle before the configuration and requires a succeeded operation for `applied`, and the Console readback derives application evidence from the owner's applied version alone, so the same readback answers `needs_attention` while the Console reports the configuration as applied with an unsettled closeout instead of a failed configuration ([PR 842](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/842)) |
+| Gateway managed key | Gateway Integration owns Cloud-to-Gateway mapping, allowlist/Group command coordination, Secret delivery reference and lifecycle/rotation operation records; Workspace consumes only opaque binding identity. The external Gateway creates the Workspace Key, applies the approved Group and remains the effective Key, wallet, routing and usage authority. The current production adapter calls the external service-issuance route (`POST /api/v1/service/workspace-keys`) with the deployment's own service token, and an empty declared selection is resolved by that authority into a concrete, bounded model scope that is recorded with the binding and the original command; the raw key is written only through Fabric's approved Secret store (`FabricCoordination.PutManagedSecret`) | [model update owner](evidence/source-checks/2026-10-01-workspace-model-configuration-update-owner.json) | The retained Workspace launch caller, live external Gateway creation/Group/rotation readbacks, Instance Secret wiring and lifecycle closeout remain to be qualified. The owner tests use the HTTP contract fixture, not the live authority. Production revocation remains refused; a local attempt does not prove that the external Key changed. |
 | Fabric Secret binding | Serve performs the initial launch handover; authenticated Workspace model updates may bind/rebind through Fabric as well. Both guards retain predecessor and opaque binding/version checks. The current caller fix is [PR 837](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/837) | [Secret rebind](evidence/source-checks/2026-10-01-fabric-secret-rebind-second-configuration.json), [launch handover](evidence/source-checks/workspace-handover-contracts2-20261010-source-contracts-2.json) | Workspace presents a Fabric-confirmed binding to Serve; that source route is admitted. Production mTLS/Secret handover and declared non-Gateway runtime inputs remain separately unqualified |
 | Serve model apply/readback | Serve resolves the frozen publisher contract, applies through the declared interface and records only the application's readback | [Serve model readback](evidence/source-checks/2026-09-30-serve-model-configuration-apply-readback.json) | Console BFF/UI model routes use the Workspace owner; the retained Control Plane routes have separate callers; live TKE execution and route acceptance are open |
 | Serve delivery and access | Deployment/readiness/access ownership and the stable Instance ingress boundary are implemented in source; initial dependency progression is bounded by existing deployment, runtime and lifecycle facts | [Serve access data plane](evidence/source-checks/2026-10-01-serve-access-data-plane-rebase-on-merged-ssot.json); [PostgreSQL progression boundaries](../services/serve/internal/delivery/dependency_progression_postgres_test.go) and [executor dependency/read boundaries](../services/serve/internal/tkeapply/executor_test.go) | Typed application execution, route activation, DNS/TLS and a real Instance request remain unqualified |

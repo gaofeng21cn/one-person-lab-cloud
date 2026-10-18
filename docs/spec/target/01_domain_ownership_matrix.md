@@ -13,8 +13,8 @@
           ├─ Build：Package+精确Runtime Release+精确独立WebUI三输入 → 不可变OCI（默认App直接用Release）
           ├─ Workspace：Tenant/成员/权益/资源方案/报价与购买Saga
           │    ├─ Resource Catalog：批准资源套餐和价格
-          │    ├─ Gateway Integration：身份/钱包主体/Key/扣退款调用
-          │    │    └─ Sub2API：身份、可消费余额、Key、Token用量
+          │    ├─ Gateway Integration：身份/钱包主体/Key/Group/用量映射与扣退款调用
+          │    │    └─ gateway.medopl.com/Sub2API：身份、可消费余额、Key、Group、路由、Token用量真相
           │    ├─ Fabric：开通/绑定Compute、Storage、Network并权威读回
           │    └─ Serve：将OCI交付到目标Workspace，唯一拥有Agent部署状态
           │         └─ Packaged OPL App/Framework Runtime：实际运行Agent OCI
@@ -38,7 +38,7 @@ Cloud产品仓库负责可移植服务、业务操作及其资格和发布；Ins
 | Workspace | Workspace身份、Tenant成员授权、权益/订阅、资源方案、报价接受、购买/资源/续费/删除/退款Saga；校验Agent交付目标授权，编排managed key期望状态与原Operation收敛 | Workspace/周期义务/业务Operation/steps；不存Agent Deployment/active字段 | BFF/Serve/到期worker/管理员命令 | Agent Package、OCI、Agent部署/运行事实、可消费余额、provider资源事实 |
 | Serve | 按Workspace执行默认App或Agent OCI交付；异步部署/替换/回滚；唯一当前应用、readiness和对外访问路由；API/Embed/Hosted UI | Agent deployments、deploy operations、runtime observations/access bindings及本域事件 | BFF/Workspace/外部消费者 | Package/Runtime版本元数据writer、Workspace权益/成员writer、Fabric资源writer |
 | Fabric | Provider适配；Compute/Storage/Network等资源开通、绑定、资源状态读回；所需资源Secret引用绑定 | provider resource set/resources/attachments/resource actions | Workspace/Serve/受保护operator | Agent OCI部署、Agent Runtime启停/readiness、Serve路由、套餐销售价格、客户余额 |
-| Gateway Integration | CloudIdentity负责session/Tenant成员授权；gateway负责User↔Sub2API User、User↔OCI Destination及原生Gateway适配，协调同一Workspace/external key的状态与approved scope读回 | tenant库保存session/授权；gateway库的`gateway.identity_mappings`唯一保存两个User绑定，另保留钱包/Key原有事实 | BFF/Build/Workspace | 可花费余额缓存、密码、第二套资金流水权威 |
+| Gateway Integration | CloudIdentity负责session/Tenant成员授权；gateway负责User↔Gateway User、User↔OCI Destination及原生Gateway适配，协调Workspace↔external Key/Group映射、创建与轮换、Secret delivery和权威读回 | tenant库保存session/授权；gateway库的`gateway.identity_mappings`保存Cloud↔Gateway绑定，并保存映射、幂等与操作事实；Gateway外部系统保存Key、Group、钱包、路由和用量真相 | BFF/Build/Workspace | 可花费余额缓存、密码、第二套Key/Group/钱包/用量权威 |
 | Resource Catalog | provider-neutral套餐；价格版本；兼容性/可售性；报价生成 | 套餐/价格策略/不可变报价及有效期限 | BFF/Workspace/Fabric preflight读取 | 资源执行、钱包记账、已接受订阅义务writer |
 | Ledger | 类型化receipt验证；append-only保存；索引；对账证据 | Receipt/证据索引/对账报告 | 所有业务owner | provider mutation、业务Saga、付款重试 |
 
@@ -203,7 +203,7 @@ CloudIdentity是本规格已定义的Gateway Integration内Cloud身份/租户子
 
 ## 7. 真实外部接口的交付边界
 
-新租户钱包委托、managed key可逆停用/启用与同key scope更新/readback、无Tenant客户读权限、历史同人证明、报价接受、Runtime config reload、Build Receipt无Workspace类型等能力要么由当前owner接口证实，要么在明确的owner开发项中补齐；在能力未具备前相关命令返回可解释的准入错误，不能把“接口写在本文”当作owner已提供。
+新租户钱包委托、managed key可逆停用/启用与Gateway权威读回、Workspace Key/Group创建与轮换、无Tenant客户读权限、历史同人证明、报价接受、Runtime config reload、Build Receipt无Workspace类型等能力要么由当前owner接口证实，要么在明确的owner开发项中补齐；在能力未具备前相关命令返回可解释的准入错误，不能把“接口写在本文”当作owner已提供。
 
 上述缺失能力仍未交付，须由现有契约与真实消费者共同升级并在[roadmap](../../roadmap.md)记录；本文不命名尚不存在的RPC/字段。缺失的必要能力必须在对应功能验收前完成。不得借用管理员无限权限、二次钱包、假收据、假ready或客户手动执行CLI代替产品功能。
 
