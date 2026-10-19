@@ -570,8 +570,9 @@ entrypoint checks remain. [Instance PR #558](https://github.com/gaofeng21cn/opl-
 merged as `ad4a58909295fd3c690249b9d141aa459229c9c1`. The authorized installation
 scope now uses one full live Product installation report, validates existing
 communication materials, runs the bounded Serve read-only probe, and retains
-runtime identity and health verification. It removes the communication-update
-planner and default PID1/HMAC gates that had no caller. Native schema 2
+runtime identity and health verification. It removes the unused communication-update
+planner and retires per-process PID 1/environment/TLS-file comparisons from default verification.
+Native schema 2
 installation verification has no `loadedPeers` requirement; loaded-process
 attestation is not a remaining installation acceptance gate.
 
