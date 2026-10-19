@@ -295,6 +295,7 @@ test("release seals separate Cloud customer and Instance business evidence and r
       INSTANCE_DEPLOYMENT_RUN_ID: "102", DEPLOYMENT_RUN_DIGEST: digest("2"), DEPLOYMENT_RECEIPT_DIGEST: digest("3"), DEPLOYMENT_AUTHORITY_SHA: sha,
       CUSTOMER_RUN_ID: "105", CUSTOMER_RECEIPT_DIGEST: digest("4"), CUSTOMER_AUTHORITY_SHA: tree,
       CLOUD_BUSINESS_QUALIFICATION_RUN_ID: "107", BUSINESS_RECEIPT_DIGEST: digest("a"), BUSINESS_RUN_DIGEST: digest("b"),
+      BUSINESS_AUTHORITY_SHA: "d".repeat(40),
       BUSINESS_COMPLETED_AT: "2026-10-17T00:05:00Z",
       INSTANCE_DECISION_RUN_ID: "103", DECISION_RUN_DIGEST: digest("5"), DECISION_RECEIPT_DIGEST: digest("6"), DECISION_AUTHORITY_SHA: sha,
       INSTANCE_WORKSPACE_RUN_ID: "104", WORKSPACE_RECEIPT_DIGEST: digest("7"), WORKSPACE_AUTHORITY_SHA: sha, QUALIFICATION_SCOPE_DIGEST: digest("8"),
@@ -311,9 +312,13 @@ test("release seals separate Cloud customer and Instance business evidence and r
     assert.equal(manifest.qualifications.customer.scope, "customer_reads");
     assert.equal(manifest.qualifications.customer.receiptDigest, provenance.qualification.customerReceiptDigest);
     assert.equal(manifest.qualifications.business.receiptDigest, env.BUSINESS_RECEIPT_DIGEST);
+    assert.equal(manifest.qualifications.business.repository, env.INSTANCE_REPOSITORY);
+    assert.equal(manifest.qualifications.business.authoritySha, env.BUSINESS_AUTHORITY_SHA);
     assert.equal(manifest.qualifications.business.terminalState, "settled");
     assert.equal(manifest.qualifications.business.scope, "workspace_purchase");
     assert.equal(provenance.evidenceClasses.cloudBusinessQualification.receiptDigest, env.BUSINESS_RECEIPT_DIGEST);
+    assert.equal(provenance.evidenceClasses.cloudBusinessQualification.repository, env.INSTANCE_REPOSITORY);
+    assert.equal(provenance.evidenceClasses.cloudBusinessQualification.authoritySha, env.BUSINESS_AUTHORITY_SHA);
     assert.equal(provenance.evidenceClasses.cloudBusinessQualification.runDigest, env.BUSINESS_RUN_DIGEST);
     assert.equal(provenance.evidenceClasses.instanceDeployment.receiptDigest, env.DEPLOYMENT_RECEIPT_DIGEST);
     assert.equal(provenance.evidenceClasses.instanceDeployment.status, "deployment_verified");

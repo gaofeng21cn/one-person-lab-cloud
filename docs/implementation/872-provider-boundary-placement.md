@@ -10,6 +10,14 @@ claimed
 Observed: 2026-10-18 at `fb4d885f` (`docs/provider-boundary-placement`, base
 `origin/main`); Instance citations read at `6deabc5` (`origin/main`)
 
+2026-10-19 status: the protected Instance workflow and the Cloud release
+binding described in steps 2-4 are now present in source. Contract schema 7
+names Instance as the execution owner, the release consumer reads the run and
+artifact with the Instance evidence token, and it validates the Instance
+`product-source.json` against the released Cloud SHA/tree. The plan below is
+retained as the decision and recovery record; no protected qualification run or
+Release is claimed.
+
 This is the placement decision for the producer that
 [#872](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/872) requires.
 It extends [Product release operations](../runtime/release.md#protected-cloud-business-qualification)

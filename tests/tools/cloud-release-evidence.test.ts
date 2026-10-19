@@ -118,14 +118,15 @@ async function evidenceInput() {
   };
   const businessRun = {
     id: 7001,
-    repository: { full_name: productRepository },
+    repository: { full_name: instanceRepository },
     path: CLOUD_BUSINESS_QUALIFICATION_PRODUCER.workflow,
     event: "workflow_dispatch",
     head_branch: "main",
     status: "completed",
     conclusion: "success",
-    head_sha: productSha
+    head_sha: instanceSha
   };
+  const productSourceText = `${JSON.stringify({ schemaVersion: 1, productSha, productTree })}\n`;
   const deployment = {
     schemaVersion: 2,
     operationMode: "deployment_verification",
@@ -177,6 +178,7 @@ async function evidenceInput() {
     now,
     cloudBusinessQualification: {
       receiptText: `${JSON.stringify(receipt)}\n`,
+      productSourceText,
       run: businessRun,
       runId: String(businessRun.id)
     },
@@ -208,7 +210,8 @@ test("release admission admits a settled Cloud business receipt beside an Instan
   assert.equal(business.authorityClass, "sandbox");
   assert.equal(business.receiptDigest, hash(input.cloudBusinessQualification.receiptText));
   assert.equal(business.workflowRunId, "7001");
-  assert.equal(business.repository, productRepository);
+  assert.equal(business.repository, instanceRepository);
+  assert.equal(business.authoritySha, instanceSha);
   assert.equal(deployment.receiptDigest, hash(input.instanceDeployment.deploymentText));
   assert.equal(deployment.workflowRunId, "22");
   // The two classes hash different artifacts and prove different things.
@@ -241,6 +244,7 @@ test("release admission refuses a deployment-only bundle that omits the Cloud bu
     () => validateReleaseBusinessQualification({
       candidate: input.candidate,
       receiptText: input.instanceDeployment.deploymentText,
+      productSourceText: input.cloudBusinessQualification.productSourceText as string,
       run: input.instanceDeployment.deploymentRun,
       runId: input.instanceDeployment.deploymentRunId
     }),
@@ -277,6 +281,26 @@ test("release admission refuses a business receipt bound to another image digest
     () => validateReleaseAdmissionEvidence(input),
     /cloud_business_qualification_image_invalid/
   );
+});
+
+test("release admission binds the Instance producer to exact product-source bytes", async () => {
+  const missing = await evidenceInput();
+  delete missing.cloudBusinessQualification.productSourceText;
+  assert.throws(
+    () => validateReleaseAdmissionEvidence(missing),
+    /release_evidence_missing_cloud_business_qualification/
+  );
+
+  for (const [text, code] of [
+    ["not-json\n", /cloud_business_qualification_product_source_invalid/],
+    [`${JSON.stringify({ schemaVersion: 1, productSha, productTree, extra: true })}\n`, /cloud_business_qualification_product_source_invalid/],
+    [`${JSON.stringify({ schemaVersion: 1, productSha: "f".repeat(40), productTree })}\n`, /cloud_business_qualification_candidate_invalid/],
+    [`${JSON.stringify({ schemaVersion: 1, productSha, productTree: "f".repeat(40) })}\n`, /cloud_business_qualification_candidate_invalid/]
+  ] as const) {
+    const input = await evidenceInput();
+    input.cloudBusinessQualification.productSourceText = text;
+    assert.throws(() => validateReleaseAdmissionEvidence(input), code);
+  }
 });
 
 test("release admission refuses stale, future-dated and non-settled business receipts", async () => {
@@ -326,6 +350,7 @@ test("release admission refuses evidence of one class presented in place of the 
       ...input,
       cloudBusinessQualification: {
         receiptText: input.instanceDeployment.deploymentText,
+        productSourceText: input.cloudBusinessQualification.productSourceText,
         run: input.instanceDeployment.deploymentRun,
         runId: input.instanceDeployment.deploymentRunId
       }
@@ -351,11 +376,11 @@ test("release admission refuses business evidence from another run, workflow or 
   const input = await evidenceInput();
   for (const patch of [
     { id: 7002 },
-    { repository: { full_name: instanceRepository } },
+    { repository: { full_name: productRepository } },
     { path: ".github/workflows/release-opl-cloud-image.yml" },
     { event: "push" },
     { head_branch: "codex/unmerged" },
-    { head_sha: "f".repeat(40) },
+    { head_sha: "" },
     { status: "in_progress" },
     { conclusion: "failure" }
   ] as Array<Record<string, unknown>>) {
