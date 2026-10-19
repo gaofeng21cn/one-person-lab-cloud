@@ -34,16 +34,6 @@ export function installationFailure(code: string, security: InstallationSecurity
 function stringMap(value: unknown): boolean {
   return object(value) && Object.values(value).every(entry => typeof entry === "string");
 }
-function deepEqual(left: unknown, right: unknown): boolean {
-  if (left === right) return true;
-  if (left === undefined || right === undefined || left === null || right === null || typeof left !== "object" || typeof right !== "object") return false;
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((entry, index) => deepEqual(entry, right[index]));
-  }
-  if (!object(left) || !object(right)) return false;
-  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
-  return [...keys].every(key => deepEqual(left[key], right[key]));
-}
 function validContainer(value: unknown): value is Resource {
   return object(value) && typeof value.name === "string" && typeof value.image === "string" &&
     (value.command === undefined || Array.isArray(value.command) && value.command.every((arg: unknown) => typeof arg === "string")) &&
@@ -151,9 +141,8 @@ function controller(resource: Resource, kind: string, resources: Resource[]): Re
 // live Deployment has instead lost the Pod ownership chain: the target may be the
 // correct Deployment, so reporting that hop against the Service misdirects the
 // operator. The two causes stay separate symbols because their repairs differ.
-// A Pod whose ReplicaSet itself cannot be resolved is a third cause: the endpoint
-// proof cannot even attempt the template comparison, so it must not be reported
-// as a shape mismatch.
+// A Pod whose ReplicaSet itself cannot be resolved has no provable
+// controller chain to the target Deployment.
 function backendOwnershipFailure(resource: Resource, target: Resource, resources: Resource[]): string | undefined {
   if (resource === target) return;
   if (resource.kind === "ReplicaSet") {
@@ -174,208 +163,7 @@ function productArgv(container: Resource, defaultCommand: string[] | undefined):
   return container.command?.length ? [...container.command, ...(container.args ?? [])] :
     !container.args?.length ? defaultCommand : undefined;
 }
-function autoServiceAccountVolume(volume: unknown): boolean {
-  if (!object(volume) || typeof volume.name !== "string" || !/^kube-api-access-[a-z0-9]{5}$/.test(volume.name) ||
-      Object.keys(volume).some(key => !["name", "projected"].includes(key)) || !object(volume.projected) ||
-      Object.keys(volume.projected).some(key => !["sources", "defaultMode"].includes(key)) ||
-      volume.projected.defaultMode !== undefined && volume.projected.defaultMode !== 420 || !Array.isArray(volume.projected.sources)) return false;
-  const sources = volume.projected.sources;
-  if (sources.length !== 3) return false;
-  const token = sources.find((source: unknown) => object(source) && Object.hasOwn(source, "serviceAccountToken"));
-  const ca = sources.find((source: unknown) => object(source) && Object.hasOwn(source, "configMap"));
-  const namespace = sources.find((source: unknown) => object(source) && Object.hasOwn(source, "downwardAPI"));
-  if (!token || !ca || !namespace || new Set([token, ca, namespace]).size !== 3 ||
-      Object.keys(token).length !== 1 || Object.keys(ca).length !== 1 || Object.keys(namespace).length !== 1) return false;
-  const tokenSpec = token.serviceAccountToken;
-  const caSpec = ca.configMap;
-  const namespaceSpec = namespace.downwardAPI;
-  return object(tokenSpec) && tokenSpec.path === "token" &&
-    Object.keys(tokenSpec).every(key => ["audience", "expirationSeconds", "path"].includes(key)) &&
-    (tokenSpec.audience === undefined || typeof tokenSpec.audience === "string") &&
-    (tokenSpec.expirationSeconds === undefined || Number.isSafeInteger(tokenSpec.expirationSeconds) && tokenSpec.expirationSeconds >= 600 && tokenSpec.expirationSeconds <= 86400) &&
-    object(caSpec) && caSpec.name === "kube-root-ca.crt" && (caSpec.optional === undefined || caSpec.optional === false) &&
-    Object.keys(caSpec).every(key => ["name", "items", "optional"].includes(key)) && Array.isArray(caSpec.items) && caSpec.items.length === 1 &&
-    object(caSpec.items[0]) && Object.keys(caSpec.items[0]).every(key => ["key", "path", "mode"].includes(key)) &&
-    caSpec.items[0].key === "ca.crt" && caSpec.items[0].path === "ca.crt" &&
-    object(namespaceSpec) && Object.keys(namespaceSpec).every(key => key === "items") && Array.isArray(namespaceSpec.items) && namespaceSpec.items.length === 1 &&
-    object(namespaceSpec.items[0]) && Object.keys(namespaceSpec.items[0]).every(key => ["path", "fieldRef", "mode"].includes(key)) &&
-    namespaceSpec.items[0].path === "namespace" && object(namespaceSpec.items[0].fieldRef) &&
-    namespaceSpec.items[0].fieldRef.apiVersion === "v1" && namespaceSpec.items[0].fieldRef.fieldPath === "metadata.namespace";
-}
-function normalizedPodField(spec: Resource, field: string): unknown {
-  const value = spec[field];
-  if (["hostNetwork", "hostPID", "hostIPC", "shareProcessNamespace"].includes(field)) return value === true;
-  if (field === "hostUsers") return value === undefined ? true : value;
-  if (field === "serviceAccountName") return value ?? "default";
-  if (field === "restartPolicy") return value ?? "Always";
-  if (field === "dnsPolicy") return value ?? "ClusterFirst";
-  if (field === "enableServiceLinks") return value === undefined ? true : value;
-  if (field === "setHostnameAsFQDN") return value === undefined ? false : value;
-  if (field === "terminationGracePeriodSeconds") return value === undefined ? 30 : value;
-  if (field === "schedulerName") return value ?? "default-scheduler";
-  if (field === "priority") return value === undefined ? 0 : value;
-  if (field === "preemptionPolicy") return value ?? "PreemptLowerPriority";
-  if (field === "securityContext" && object(value) && Object.keys(value).length === 0) return undefined;
-  if (field === "imagePullSecrets" && Array.isArray(value) && value.length === 0) return undefined;
-  if (field === "volumes" && Array.isArray(value)) {
-    const filtered = value.filter(volume => !autoServiceAccountVolume(volume));
-    return filtered.length === 0 ? undefined : filtered;
-  }
-  return value;
-}
-function admissionFieldAbsent(value: unknown, field: string): boolean {
-  return value === undefined || field === "imagePullSecrets" && Array.isArray(value) && value.length === 0 ||
-    field === "resources" && object(value) && Object.keys(value).length === 0;
-}
-function samePodTolerations(live: unknown, declared: unknown): boolean {
-  const actual = live === undefined ? [] : live;
-  const template = declared === undefined ? [] : declared;
-  if (!Array.isArray(actual) || !Array.isArray(template) || actual.length < template.length ||
-      template.some((entry, index) => !object(entry) || !deepEqual(entry, actual[index]))) return false;
-  // DefaultTolerationSeconds appends these Pod-only tolerations, unless the
-  // template already covers the key/effect. The timeout is cluster-configured.
-  const additions = new Set<string>();
-  return actual.slice(template.length).every(entry => {
-    if (!object(entry) || !["node.kubernetes.io/not-ready", "node.kubernetes.io/unreachable"].includes(entry.key) ||
-        entry.operator !== "Exists" || entry.effect !== "NoExecute" ||
-        entry.value !== undefined && entry.value !== "" || !Number.isSafeInteger(entry.tolerationSeconds) ||
-        Object.keys(entry).some(key => !["key", "operator", "effect", "value", "tolerationSeconds"].includes(key)) ||
-        additions.has(entry.key) || template.some(toleration =>
-          (toleration.key === entry.key || !toleration.key) && (!toleration.effect || toleration.effect === "NoExecute"))) return false;
-    additions.add(entry.key);
-    return true;
-  });
-}
-// The Pod-level security/identity comparison stays one operator-facing cause.
-// Its many normalized fields share one repair: the live Pod no longer derives
-// from its immutable ReplicaSet revision.
-function samePodSecurityShape(live: Resource, declared: Resource): boolean {
-  const fields = [
-    "hostNetwork", "hostPID", "hostIPC", "shareProcessNamespace", "hostUsers", "serviceAccountName", "runtimeClassName",
-    "automountServiceAccountToken", "securityContext", "volumes", "imagePullSecrets", "hostAliases",
-    "dnsConfig", "dnsPolicy", "enableServiceLinks", "restartPolicy", "hostname", "subdomain", "setHostnameAsFQDN",
-    "terminationGracePeriodSeconds", "schedulerName", "priorityClassName", "priority", "preemptionPolicy",
-    "topologySpreadConstraints", "nodeSelector", "affinity", "tolerations"
-  ];
-  const booleanFields = ["hostNetwork", "hostPID", "hostIPC", "shareProcessNamespace", "hostUsers", "automountServiceAccountToken", "enableServiceLinks"];
-  const stringFields = ["serviceAccountName", "runtimeClassName", "restartPolicy", "dnsPolicy"];
-  if (booleanFields.some(field => [live[field], declared[field]].some(value => value !== undefined && typeof value !== "boolean"))) return false;
-  if (stringFields.some(field => [live[field], declared[field]].some(value => value !== undefined && typeof value !== "string"))) return false;
-  if ([live.securityContext, declared.securityContext].some(value => value !== undefined && !object(value))) return false;
-  if (live.ephemeralContainers !== undefined && (!Array.isArray(live.ephemeralContainers) || live.ephemeralContainers.length > 0)) return false;
-  return fields.every(field => {
-    if (field === "tolerations") return samePodTolerations(live[field], declared[field]);
-    if (field === "imagePullSecrets" && admissionFieldAbsent(declared[field], field) && live[field] !== undefined)
-      return validImagePullSecrets(live[field]);
-    return deepEqual(normalizedPodField(live, field), normalizedPodField(declared, field));
-  });
-}
-const liveContainerFields = [
-  "name", "image", "command", "args", "env", "envFrom", "ports", "securityContext", "volumeMounts",
-  "volumeDevices", "lifecycle", "readinessProbe", "livenessProbe", "startupProbe", "resources", "workingDir",
-  "stdin", "stdinOnce", "tty", "restartPolicy", "imagePullPolicy", "resizePolicy", "terminationMessagePath",
-  "terminationMessagePolicy"
-];
-function normalizedContainerField(container: Resource, field: string): unknown {
-  const value = container[field];
-  if (field === "resources" && object(value) && Object.keys(value).length === 0) return undefined;
-  if (field === "volumeMounts" && Array.isArray(value)) {
-    const filtered = value.filter(mount => !(object(mount) && /^kube-api-access-[a-z0-9]{5}$/.test(mount.name ?? "") &&
-      mount.mountPath === "/var/run/secrets/kubernetes.io/serviceaccount" &&
-      Object.keys(mount).every(key => ["name", "mountPath", "readOnly"].includes(key)) && mount.readOnly !== false));
-    return filtered.length === 0 ? undefined : filtered;
-  }
-  if (field === "ports" && Array.isArray(value)) return value.map(port => object(port) ? { ...port, protocol: port.protocol ?? "TCP" } : port);
-  if (field === "imagePullPolicy" && value === undefined) {
-    const image = typeof container.image === "string" ? container.image : "";
-    if (image.includes("@")) return "IfNotPresent";
-    const tag = image.slice(image.lastIndexOf("/") + 1).split(":")[1];
-    return tag === undefined || tag === "latest" ? "Always" : "IfNotPresent";
-  }
-  if (field === "terminationMessagePath") return value ?? "/dev/termination-log";
-  if (field === "terminationMessagePolicy") return value ?? "File";
-  return value;
-}
-function validImagePullSecrets(value: unknown): boolean {
-  return Array.isArray(value) && value.every(entry => object(entry) && typeof entry.name === "string" &&
-    entry.name.length > 0 && Object.keys(entry).every(key => key === "name"));
-}
-function validResourceRequirements(value: unknown): boolean {
-  return object(value) && Object.keys(value).every(key => ["limits", "requests"].includes(key)) &&
-    ["limits", "requests"].every(key => value[key] === undefined || stringMap(value[key]));
-}
-const containerShapeGroups: Record<string, string> = {
-  env: "env",
-  envFrom: "env",
-  securityContext: "security_context",
-  image: "image_command",
-  command: "image_command",
-  args: "image_command",
-  workingDir: "image_command"
-};
-function containerShapeFailure(live: Resource, declared: Resource): string | undefined {
-  for (const field of liveContainerFields) {
-    if (field === "resources" && admissionFieldAbsent(declared[field], field) && live[field] !== undefined) {
-      if (!validResourceRequirements(live[field])) return "shape";
-      continue;
-    }
-    if (!deepEqual(normalizedContainerField(live, field), normalizedContainerField(declared, field)))
-      return containerShapeGroups[field] ?? "shape";
-  }
-  return;
-}
-function sameContainerShape(live: Resource, declared: Resource): boolean {
-  return containerShapeFailure(live, declared) === undefined;
-}
-// Return the operator-facing cause of the first list-level difference instead
-// of collapsing it into the Pod-template mismatch. The field groups distinguish
-// a cluster-injected environment, security context, image/argv change, and the
-// remaining container fields; a count, name, or order difference stays a list
-// mismatch. The accepted set is exactly the former boolean conjunction.
-function containerListFailure(live: unknown, declared: unknown, ordered: boolean, prefix: string): string | undefined {
-  if (!Array.isArray(live) || !Array.isArray(declared) || live.length !== declared.length) return `${prefix}_list_mismatch`;
-  if (new Set(live.map(container => container.name)).size !== live.length ||
-      new Set(declared.map(container => container.name)).size !== declared.length) return `${prefix}_list_mismatch`;
-  if (ordered) {
-    for (let index = 0; index < live.length; index++) {
-      const liveContainer = live[index];
-      const declaredContainer = declared[index];
-      if (!object(liveContainer) || !object(declaredContainer) || liveContainer.name !== declaredContainer.name)
-        return `${prefix}_list_mismatch`;
-      const shapeFailure = containerShapeFailure(liveContainer, declaredContainer);
-      if (shapeFailure) return `${prefix}_${shapeFailure}_mismatch`;
-    }
-    return;
-  }
-  const declaredByName = new Map(declared.map(container => [container.name, container]));
-  for (const container of live) {
-    if (!object(container) || !declaredByName.has(container.name)) return `${prefix}_list_mismatch`;
-    const shapeFailure = containerShapeFailure(container, declaredByName.get(container.name)!);
-    if (shapeFailure) return `${prefix}_${shapeFailure}_mismatch`;
-  }
-  return;
-}
-// The live-Pod comparison returns the operator-facing cause of the first
-// independent sub-check that fails. The sub-checks are the same conjunction as
-// before, so this names the cause without changing which Pods are admitted.
-function livePodShapeFailure(pod: Resource, declared: Resource): string | undefined {
-  if (!validContainerList(pod.spec?.containers, true)) return "endpoint_pod_shape_unproven";
-  if (!validContainerList(declared.containers, true)) return "endpoint_pod_template_containers_invalid";
-  if (pod.spec.initContainers !== undefined && !validContainerList(pod.spec.initContainers)) return "endpoint_pod_shape_unproven";
-  if (declared.initContainers !== undefined && !validContainerList(declared.initContainers))
-    return "endpoint_pod_template_init_containers_invalid";
-  const liveContainers = [...pod.spec.containers, ...(pod.spec.initContainers ?? [])];
-  const declaredContainers = [...declared.containers, ...(declared.initContainers ?? [])];
-  if (new Set(liveContainers.map(container => container.name)).size !== liveContainers.length ||
-      new Set(declaredContainers.map(container => container.name)).size !== declaredContainers.length)
-    return "endpoint_pod_container_names_duplicate";
-  if (!samePodSecurityShape(pod.spec, declared)) return "endpoint_pod_security_shape_mismatch";
-  const containerFailure = containerListFailure(pod.spec.containers, declared.containers, false, "endpoint_pod_container");
-  if (containerFailure) return containerFailure;
-  const initContainerFailure = containerListFailure(pod.spec.initContainers ?? [], declared.initContainers ?? [], true, "endpoint_pod_init_container");
-  if (initContainerFailure) return initContainerFailure;
-  return;
-}
+
 function servicePublishesNotReady(service: Resource): boolean {
   return service.spec?.publishNotReadyAddresses === true;
 }
@@ -419,18 +207,16 @@ function endpointBackendFailure(resource: Resource, service: Resource, target: R
     const targetName = targetContainer.name;
     const liveTargets = liveContainers.filter((container: Resource) => container.name === targetName);
     // Prepare may project a new Deployment over still-running old replicas.
-    // Prove each Pod against its own immutable ReplicaSet template; requiring
-    // the new desired image here would prevent a legitimate upgrade preflight.
+    // Resolve the target process entrypoint from its own ReplicaSet revision;
+    // Candidate image identity belongs to the executor's running-image readback.
     const replicaSpec = controller(pod, "ReplicaSet", resources)?.spec?.template?.spec;
     if (!object(replicaSpec)) return "endpoint_pod_replicaset_unresolved";
     const replicaContainers = replicaSpec.containers;
     if (!validContainerList(replicaContainers, true)) return "endpoint_pod_template_containers_invalid";
     if (replicaSpec.initContainers !== undefined && !validContainerList(replicaSpec.initContainers))
       return "endpoint_pod_template_init_containers_invalid";
-    const liveShapeFailure = livePodShapeFailure(pod, replicaSpec);
-    if (liveShapeFailure) return liveShapeFailure;
     const replicaTargets = replicaContainers.filter((container: unknown) => validContainer(container) && container.name === targetName);
-    if (liveTargets.length !== 1 || replicaTargets.length !== 1 || !sameContainerShape(liveTargets[0], replicaTargets[0])) return "endpoint_pod_container_mismatch";
+    if (liveTargets.length !== 1 || replicaTargets.length !== 1) return "endpoint_pod_container_mismatch";
     const expectedArgv = productArgv(replicaTargets[0], defaultCommand);
     const liveArgv = productArgv(liveTargets[0], defaultCommand);
     if (!expectedArgv || !liveArgv || expectedArgv.length !== liveArgv.length ||

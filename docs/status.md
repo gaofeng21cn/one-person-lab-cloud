@@ -562,6 +562,25 @@ Supplied live backends require controller/Pod/Service UID, address and port
 agreement; matching labels alone do not prove ownership. The installation and
 production-manifest behavior suites now run in the regular source CI entry.
 
+The October 20 source change removes generic live Pod/ReplicaSet template field
+equality and its Kubernetes-defaulting exceptions. Endpoint ownership, addresses,
+ports, target-container identity and revision entrypoint checks remain. The CLI
+does not certify all live Pod configuration; Candidate image identity, required
+loaded communication material and health remain executor observations. The change
+is source-only: deployed Candidate `b038000a0ef5e75fac4c8b2018d4979bc20872a8`
+still contains the previous validator. Instance verification run `39288415841`
+was blocked at installation admission by
+`endpoint_pod_container_shape_mismatch`; later health checks did not complete.
+No new Candidate, deployment or protected verification is claimed by this change.
+
+Local focused verification against `d370e10ab17b4badd6f1f9407fb4b440144fe175`
+passed the product boundary, development-tools typecheck and 425 behavior tests
+with zero failures, skips or TODOs. The explicit extra behavior target was
+`tests/production/production-manifest-cli.test.ts`; the changed installation CLI
+suite was selected from the Git scope. An additional standalone typecheck of
+`tools/ops/installation-manifest.ts` reports TS18048 on `binding` in both the
+modified file and an unmodified copy of that base; it is not a passing check.
+
 The existing Serve executable also exposes `probe-workspace-access` before
 normal database startup. It makes one bounded authenticated mTLS read for a
 fresh synthetic Workspace UUID and accepts only the owner's CLOSED response.

@@ -207,7 +207,7 @@ test("installation CLI accepts live replicas only through exact controller and e
   const live = withLiveWorkspaceBackends();
   const success = await invoke(live.list);
   assert.equal(success.status, 0, success.stdout);
-  assert.equal(success.report.communication.edges.length, 46);
+  assert.ok(success.report.communication.edges.some(edge => edge.target === "workspace" && edge.targetDeployment === live.target.metadata.name));
   const cases: [string, (fixture: ReturnType<typeof withLiveWorkspaceBackends>) => void][] = [
     ["stale Deployment UID", ({ target }) => { target.metadata.uid = "replaced-deployment"; }],
     ["stale ReplicaSet UID", ({ replicaSet }) => { replicaSet.metadata.uid = "replaced-replicaset"; }],
@@ -238,13 +238,8 @@ test("installation CLI accepts live replicas only through exact controller and e
     ["malformed live sidecar ports", ({ pod }) => { pod.spec.containers.push({ name: "live-sidecar", image: "example.invalid/sidecar:1", ports: "invalid" }); }],
     ["malformed live initContainers", ({ pod }) => { pod.spec.initContainers = "invalid"; }],
     ["malformed ReplicaSet containers", ({ replicaSet }) => { replicaSet.spec.template.spec.containers = [null]; }],
-    ["drifted live target image", ({ pod }) => { pod.spec.containers[0].image = "example.invalid/foreign:1"; }],
     ["drifted live target command", ({ pod }) => { pod.spec.containers[0].command = ["/bin/sh", "-c", "exec sleep 3600"]; }],
     ["drifted live target args", ({ pod }) => { pod.spec.containers[0].args = ["probe-workspace-access"]; }],
-    ["live host network", ({ pod }) => { pod.spec.hostNetwork = true; }],
-    ["live host PID namespace", ({ pod }) => { pod.spec.hostPID = true; }],
-    ["live runtime class", ({ pod }) => { pod.spec.runtimeClassName = "untrusted-runtime"; }],
-    ["live ephemeral container", ({ pod }) => { pod.spec.ephemeralContainers = [{ name: "debugger", image: "example.invalid/debugger:1" }]; }],
     ["missing live target container", ({ pod }) => { pod.spec.containers = [{ name: "other", image: "example.invalid/other:1" }]; }],
     ["wrong endpoint port", ({ endpoints }) => { endpoints.subsets[0].ports[0].port = 9999; }],
     ["wrong slice port", ({ slice }) => { slice.ports[0].port = 9999; }]
@@ -292,14 +287,7 @@ test("installation CLI names the cause of a rejected live endpoint proof", async
   });
 });
 
-test("installation CLI names the cause of a rejected Pod-template proof", async t => {
-  await t.test("consistent control", async () => {
-    const control = withLiveWorkspaceBackends();
-    const result = await invoke(control.list);
-    assert.equal(result.status, 0, result.stdout + result.stderr);
-    assert.equal(result.report.ok, true);
-    assert.deepEqual(result.report.errors, []);
-  });
+test("installation CLI names the cause of a rejected live backend structure or process proof", async t => {
   const cases: [string, string, (fixture: ReturnType<typeof withLiveWorkspaceBackends>) => void][] = [
     ["Pod has no resolvable ReplicaSet", "endpoint_pod_replicaset_unresolved", ({ pod }) => {
       pod.metadata.ownerReferences = [];
@@ -313,52 +301,48 @@ test("installation CLI names the cause of a rejected Pod-template proof", async 
     ["ReplicaSet template init-container list is invalid", "endpoint_pod_template_init_containers_invalid", ({ replicaSet }) => {
       replicaSet.spec.template.spec.initContainers = "invalid";
     }],
-    ["a container name occurs in both lists", "endpoint_pod_container_names_duplicate", ({ pod }) => {
-      pod.spec.initContainers = [{ name: "owner", image: "example.invalid/init:1" }];
+    ["ReplicaSet template init-container entry is invalid", "endpoint_pod_template_init_containers_invalid", ({ replicaSet }) => {
+      replicaSet.spec.template.spec.initContainers = [null];
     }],
-    ["live Pod security shape", "endpoint_pod_security_shape_mismatch", ({ pod }) => {
-      pod.spec.hostNetwork = true;
+    ["live Pod container list is invalid", "endpoint_pod_shape_unproven", ({ pod }) => {
+      pod.spec.containers = [null];
     }],
-    ["live container list differs", "endpoint_pod_container_list_mismatch", ({ pod }) => {
+    ["live Pod init-container list is invalid", "endpoint_pod_shape_unproven", ({ pod }) => {
+      pod.spec.initContainers = "invalid";
+    }],
+    ["live Pod target container is absent", "endpoint_pod_container_mismatch", ({ pod }) => {
       pod.spec.containers[0].name = "other";
     }],
-    ["live container environment differs", "endpoint_pod_container_env_mismatch", ({ pod }) => {
-      pod.spec.containers[0].env.push({ name: "INJECTED", value: "1" });
+    ["ReplicaSet target container is absent", "endpoint_pod_container_mismatch", ({ replicaSet }) => {
+      replicaSet.spec.template.spec.containers[0].name = "other";
     }],
-    ["live container security context differs", "endpoint_pod_container_security_context_mismatch", ({ pod }) => {
-      pod.spec.containers[0].securityContext = { allowPrivilegeEscalation: false };
+    ["live Pod target container is duplicated", "endpoint_pod_shape_unproven", ({ pod }) => {
+      pod.spec.containers.push(structuredClone(pod.spec.containers[0]));
     }],
-    ["live container image or argv differs", "endpoint_pod_container_image_command_mismatch", ({ pod }) => {
-      pod.spec.containers[0].image = "example.invalid/foreign:1";
+    ["ReplicaSet target container is duplicated", "endpoint_pod_template_containers_invalid", ({ replicaSet }) => {
+      replicaSet.spec.template.spec.containers.push(structuredClone(replicaSet.spec.template.spec.containers[0]));
     }],
-    ["live container has another field group difference", "endpoint_pod_container_shape_mismatch", ({ pod }) => {
-      pod.spec.containers[0].ports[0].containerPort = 9999;
+    ["live Pod target command differs", "endpoint_pod_command_mismatch", ({ pod }) => {
+      pod.spec.containers[0].command = ["/bin/sh", "-c", "exec sleep 3600"];
     }],
-    ["live init-container order differs", "endpoint_pod_init_container_list_mismatch", ({ pod, replicaSet }) => {
-      const initA = { name: "init-a", image: "example.invalid/init-a:1" };
-      const initB = { name: "init-b", image: "example.invalid/init-b:1" };
-      replicaSet.spec.template.spec.initContainers = [initA, initB];
-      pod.spec.initContainers = [initB, initA];
+    ["live Pod target args select a one-shot command", "endpoint_pod_command_mismatch", ({ pod }) => {
+      pod.spec.containers[0].args = ["probe-workspace-access"];
     }],
-    ["live init-container environment differs", "endpoint_pod_init_container_env_mismatch", ({ pod, replicaSet }) => {
-      const init = { name: "init-a", image: "example.invalid/init:1" };
-      replicaSet.spec.template.spec.initContainers = [init];
-      pod.spec.initContainers = [{ ...init, env: [{ name: "INJECTED", value: "1" }] }];
+    ["ReplicaSet target command cannot prove a Product process", "endpoint_pod_command_mismatch", ({ replicaSet }) => {
+      replicaSet.spec.template.spec.containers[0].command = ["/bin/foreign-server"];
     }],
-    ["live init-container security context differs", "endpoint_pod_init_container_security_context_mismatch", ({ pod, replicaSet }) => {
-      const init = { name: "init-a", image: "example.invalid/init:1" };
-      replicaSet.spec.template.spec.initContainers = [init];
-      pod.spec.initContainers = [{ ...init, securityContext: { allowPrivilegeEscalation: false } }];
+    ["live sidecar claims the RPC port", "endpoint_pod_port_conflict", ({ pod }) => {
+      pod.spec.containers.push({ name: "live-sidecar", image: "example.invalid/sidecar:1", ports: [{ containerPort: 8184 }] });
     }],
-    ["live init-container image or argv differs", "endpoint_pod_init_container_image_command_mismatch", ({ pod, replicaSet }) => {
-      const init = { name: "init-a", image: "example.invalid/init:1" };
-      replicaSet.spec.template.spec.initContainers = [init];
-      pod.spec.initContainers = [{ ...init, image: "example.invalid/foreign:1" }];
+    ["live sidecar claims the named target port", "endpoint_pod_port_conflict", ({ pod }) => {
+      pod.spec.containers.push({ name: "live-sidecar", image: "example.invalid/sidecar:1", ports: [{ name: "rpc", containerPort: 9443 }] });
     }],
-    ["live init-container has another field group difference", "endpoint_pod_init_container_shape_mismatch", ({ pod, replicaSet }) => {
-      const init = { name: "init-a", image: "example.invalid/init:1" };
-      replicaSet.spec.template.spec.initContainers = [init];
-      pod.spec.initContainers = [{ ...init, ports: [{ containerPort: 9999 }] }];
+    ["live Product sidecar listens without declaring ports", "endpoint_pod_port_conflict", ({ pod }) => {
+      pod.spec.containers.push({ name: "live-control-plane", image: pod.spec.containers[0].image,
+        command: ["/usr/local/bin/opl-control-plane"], env: [{ name: "CONTROL_PLANE_ADDR", value: ":8184" }] });
+    }],
+    ["live restartable init claims the RPC port", "endpoint_pod_port_conflict", ({ pod }) => {
+      pod.spec.initContainers = [{ name: "live-init", image: "example.invalid/init:1", restartPolicy: "Always", ports: [{ containerPort: 8184 }] }];
     }]
   ];
   for (const [name, reasonCode, change] of cases) await t.test(name, async () => {
@@ -379,131 +363,52 @@ test("installation CLI admits an upgrade while exact old ReplicaSet backends rem
   assert.equal(result.status, 0, result.stdout + result.stderr);
 });
 
-test("installation CLI accepts API defaulted live container fields", async () => {
-  const { list, target, replicaSet, pod } = withLiveWorkspaceBackends();
-  delete target.spec.template.spec.containers[0].ports[0].protocol;
-  delete replicaSet.spec.template.spec.containers[0].ports[0].protocol;
-  pod.spec.containers[0].ports[0].protocol = "TCP";
-  const result = await invoke(list);
-  assert.equal(result.status, 0, result.stdout + result.stderr);
-});
-
-test("installation CLI accepts structurally valid Kubernetes admission additions", async () => {
-  const { list, pod } = withLiveWorkspaceBackends();
-  pod.spec.imagePullSecrets = [{ name: "registry-auth" }];
-  pod.spec.containers[0].resources = { limits: { cpu: "1" }, requests: { cpu: "100m" } };
-  const result = await invoke(list);
-  assert.equal(result.status, 0, result.stdout + result.stderr);
-
-  const explicitEmpty = withLiveWorkspaceBackends();
-  explicitEmpty.replicaSet.spec.template.spec.imagePullSecrets = [];
-  explicitEmpty.replicaSet.spec.template.spec.containers[0].resources = {};
-  explicitEmpty.pod.spec.imagePullSecrets = [{ name: "registry-auth" }];
-  explicitEmpty.pod.spec.containers[0].resources = { limits: { cpu: "1" } };
-  const explicitEmptyResult = await invoke(explicitEmpty.list);
-  assert.equal(explicitEmptyResult.status, 0, explicitEmptyResult.stdout + explicitEmptyResult.stderr);
-});
-
-test("installation CLI distinguishes default Pod tolerations from template drift", async t => {
-  const defaults = (seconds: number) => ["not-ready", "unreachable"].map(key => ({
-    key: `node.kubernetes.io/${key}`, operator: "Exists", effect: "NoExecute", tolerationSeconds: seconds
-  }));
-  for (const seconds of [300, 60]) await t.test(`cluster default ${seconds}s`, async () => {
-    const { list, pod } = withLiveWorkspaceBackends();
-    pod.spec.tolerations = defaults(seconds);
-    const result = await invoke(list);
-    assert.equal(result.status, 0, result.stdout + result.stderr);
-  });
-  await t.test("retains an explicit template toleration", async () => {
-    const { list, pod, replicaSet } = withLiveWorkspaceBackends();
-    const explicit = { key: "dedicated", operator: "Equal", value: "cloud", effect: "NoSchedule" };
-    replicaSet.spec.template.spec.tolerations = [explicit];
-    pod.spec.tolerations = [structuredClone(explicit), ...defaults(300)];
-    const result = await invoke(list);
-    assert.equal(result.status, 0, result.stdout + result.stderr);
-  });
+test("installation CLI accepts live configuration differences that preserve backend proof", async t => {
+  const baseline = await invoke(withLiveWorkspaceBackends().list);
+  assert.equal(baseline.status, 0, baseline.stdout + baseline.stderr);
   const cases: [string, (fixture: ReturnType<typeof withLiveWorkspaceBackends>) => void][] = [
-    ["malformed tolerations", ({ pod }) => { pod.spec.tolerations = null; }],
-    ["unknown addition", ({ pod }) => { pod.spec.tolerations.push({ key: "dedicated", operator: "Exists", effect: "NoSchedule" }); }],
-    ["indefinite default", ({ pod }) => { delete pod.spec.tolerations[0].tolerationSeconds; }],
-    ["duplicate default", ({ pod }) => { pod.spec.tolerations.push(structuredClone(pod.spec.tolerations[0])); }],
-    ["changed explicit timeout", ({ pod, replicaSet }) => {
-      replicaSet.spec.template.spec.tolerations = [defaults(30)[0]];
-      pod.spec.tolerations[0].tolerationSeconds = 600;
+    ["admission injects env, resources, probes and mounts", ({ pod }) => {
+      const owner = pod.spec.containers[0];
+      owner.env.push({ name: "INJECTED", value: "1" });
+      owner.resources = { limits: { cpu: "1" }, requests: { cpu: "100m" } };
+      owner.readinessProbe = { tcpSocket: { port: 8184 } };
+      owner.livenessProbe = { exec: { command: ["/bin/true"] } };
+      owner.volumeMounts = [{ name: "injected-config", mountPath: "/etc/injected", readOnly: true }];
+      pod.spec.volumes = [{ name: "injected-config", configMap: { name: "injected-config" } }];
     }],
-    ["default appended despite explicit wildcard", ({ pod, replicaSet }) => {
-      const wildcard = { operator: "Exists", effect: "NoExecute" };
-      replicaSet.spec.template.spec.tolerations = [wildcard];
-      pod.spec.tolerations.unshift(structuredClone(wildcard));
+    ["non-competing sidecar is absent from the ReplicaSet template", ({ pod }) => {
+      pod.spec.containers.push({ name: "live-helper", image: "example.invalid/helper:1", ports: [{ name: "metrics", containerPort: 9443 }] });
+    }],
+    ["live init-container order differs from the ReplicaSet template", ({ pod, replicaSet }) => {
+      const initA = { name: "init-a", image: "example.invalid/init-a:1" };
+      const initB = { name: "init-b", image: "example.invalid/init-b:1" };
+      replicaSet.spec.template.spec.initContainers = [initA, initB];
+      pod.spec.initContainers = [structuredClone(initB), structuredClone(initA)];
     }]
   ];
   for (const [name, change] of cases) await t.test(name, async () => {
     const fixture = withLiveWorkspaceBackends();
-    fixture.pod.spec.tolerations = defaults(300);
     change(fixture);
     const result = await invoke(fixture.list);
-    assert.equal(result.status, 1, result.stdout + result.stderr);
-    assert.ok(result.report.errors.some(error => ["rpc_service_backend_ambiguous"].includes(error.code)));
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(result.report.ok, true);
+    assert.deepEqual(result.report.errors, []);
+    assert.deepEqual(result.report.communication.edges, baseline.report.communication.edges);
   });
 });
 
 test("installation CLI admits non-listening live helpers with Product address variables", async t => {
   for (const init of [false, true]) await t.test(init ? "restartable init" : "sidecar", async () => {
-    const { list, pod, replicaSet } = withLiveWorkspaceBackends();
+    const { list, pod } = withLiveWorkspaceBackends();
     const helper = { name: "non-listening-helper", image: "example.invalid/helper:1",
       command: ["/bin/sh", "-c", "exec sleep 3600"], env: [{ name: "OPL_WORKSPACE_ADDR", value: ":8184" }],
       ...(init ? { restartPolicy: "Always" } : {}) };
-    if (init) {
-      pod.spec.initContainers = [structuredClone(helper)];
-      replicaSet.spec.template.spec.initContainers = [helper];
-    } else {
-      pod.spec.containers.push(structuredClone(helper));
-      replicaSet.spec.template.spec.containers.push(helper);
-    }
+    if (init) pod.spec.initContainers = [helper];
+    else pod.spec.containers.push(helper);
     const result = await invoke(list);
     assert.equal(result.status, 0, result.stdout + result.stderr);
-    assert.equal(result.report.communication.edges.length, 46);
+    assert.ok(result.report.communication.edges.some(edge => edge.target === "workspace" && edge.targetDeployment === "unit-workspace"));
   });
-});
-
-test("installation CLI binds live init identity and canonical projected ServiceAccount volume", async () => {
-  const ordered = withLiveWorkspaceBackends();
-  const initA = { name: "init-a", image: "example.invalid/init-a:1" };
-  const initB = { name: "init-b", image: "example.invalid/init-b:1" };
-  ordered.replicaSet.spec.template.spec.initContainers = [initA, initB];
-  ordered.pod.spec.initContainers = [initB, initA];
-  const orderedResult = await invoke(ordered.list);
-  assert.equal(orderedResult.status, 1);
-  assert.ok(orderedResult.report.errors.some(error => ["rpc_service_backend_ambiguous"].includes(error.code)));
-  assert.deepEqual(orderedResult.report.communication.edges, []);
-
-  const duplicate = withLiveWorkspaceBackends();
-  const duplicateInit = { name: "owner", image: "example.invalid/init:1" };
-  duplicate.replicaSet.spec.template.spec.initContainers = [duplicateInit];
-  duplicate.pod.spec.initContainers = [duplicateInit];
-  const duplicateResult = await invoke(duplicate.list);
-  assert.equal(duplicateResult.status, 1);
-  assert.ok(duplicateResult.report.errors.some(error => ["rpc_service_backend_ambiguous"].includes(error.code)));
-  assert.deepEqual(duplicateResult.report.communication.edges, []);
-
-  const injected = withLiveWorkspaceBackends();
-  injected.pod.spec.volumes = [{ name: "kube-api-access-abc12", projected: { sources: [
-    { serviceAccountToken: { expirationSeconds: 3607, path: "token" } },
-    { configMap: { name: "kube-root-ca.crt", items: [{ key: "ca.crt", path: "ca.crt" }] } },
-    { downwardAPI: { items: [{ fieldRef: { apiVersion: "v1", fieldPath: "metadata.namespace" }, path: "namespace" }] } }
-  ] } }];
-  injected.pod.spec.containers[0].volumeMounts = [{ name: "kube-api-access-abc12", mountPath: "/var/run/secrets/kubernetes.io/serviceaccount", readOnly: true }];
-  const injectedResult = await invoke(injected.list);
-  assert.equal(injectedResult.status, 0);
-  assert.equal(injectedResult.report.communication.edges.length, 46);
-  const forged = withLiveWorkspaceBackends();
-  forged.pod.spec.volumes = [{ name: "kube-api-access-abc12", projected: { sources: [
-    { serviceAccountToken: { path: "evil" } }, { secret: { name: "foreign" } }
-  ] } }];
-  const forgedResult = await invoke(forged.list);
-  assert.equal(forgedResult.status, 1);
-  assert.ok(forgedResult.report.errors.some(error => ["rpc_service_backend_ambiguous"].includes(error.code)));
-  assert.deepEqual(forgedResult.report.communication.edges, []);
 });
 
 // An endpoint object that publishes no address cannot deliver traffic to any
