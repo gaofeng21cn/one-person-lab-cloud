@@ -85,6 +85,12 @@ Candidate. Static references and local gRPC tests do not prove production
 installation. This is owned by the Instance installation flow; Cloud business
 qualification and historical resource observation keep their existing owners.
 
+The October 20 removal of generic Pod/ReplicaSet field equality is a source
+change; the deployed `b038000a` Candidate still uses the previous validator.
+Consuming the corrected validator requires a new exact Candidate and Instance
+readback. Preserve the failed verification receipt; local tests do not close
+this installation outcome or establish business qualification.
+
 ### First Tencent/TKE Default App Launch (2026-10-10)
 
 The [October 10 decision](decisions.md#2026-10-10-first-tencenttke-launch-without-cloud-model-configuration)

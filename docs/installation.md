@@ -264,8 +264,14 @@ known Product process. Generated replicas are accepted only through the exact
 Pod-to-ReplicaSet-to-Deployment controller UID chain. Every supplied endpoint
 must identify an owned Pod, its observed address and the target port; an
 EndpointSlice must also belong to the exact Service UID. Unmanaged Pods and other
-workload producers sharing the Service selector are refused. These are checks
-of supplied declarations and inventory, not an observation of live connectivity.
+workload producers sharing the Service selector are refused. The live target
+container must exist uniquely and retain its revision's process entrypoint.
+Other Pod and container fields are not compared for equality with the ReplicaSet
+template: Kubernetes admission may add or change resources, probes, mounts,
+environment entries and scheduling settings. The executor verifies the running
+Candidate's image identity and required process configuration separately. These
+are checks of supplied declarations and inventory, not an observation of live
+connectivity or proof of all live Pod configuration.
 
 An endpoint object that publishes no address is admitted, not refused: it cannot
 deliver traffic to any Pod, so it cannot hand the Service to another workload and
@@ -298,7 +304,7 @@ profile placeholders are not rendered or printed.
 
 This report format supports one Product namespace and one provable Deployment
 per transport principal. Ambiguous Service backends, opaque Secret `envFrom`,
-host networking, arbitrary IP targets and policies whose required namespace/IP
+declared host networking, arbitrary IP targets and policies whose required namespace/IP
 facts cannot be proved are refused. A non-isolated ingress is refused rather than
 reported as protected closure. This is manifest-level communication admission,
 not live CNI enforcement, certificate validity, application health or business
@@ -339,23 +345,11 @@ reported here; it is admitted, so no symbol names that state:
 | `endpoint_slice_shape_invalid` | An EndpointSlice has an unsupported API version or address type. |
 | `endpoint_shape_invalid` | An Endpoints object or subset has a malformed shape. |
 | `endpoint_pod_shape_unproven` | The endpoint's Pod does not carry valid container declarations. |
-| `endpoint_pod_replicaset_unresolved` | The Pod's ReplicaSet controller cannot be resolved (missing, ambiguous, or stale UID), or the resolved ReplicaSet carries no `spec.template.spec`. The proof cannot compare the live Pod with its immutable revision template; this is not a shape mismatch, so repair the Pod/ReplicaSet chain first. |
+| `endpoint_pod_replicaset_unresolved` | The Pod's ReplicaSet controller cannot be resolved (missing, ambiguous, or stale UID), or the resolved ReplicaSet carries no `spec.template.spec`. The proof cannot resolve the process entrypoint from its revision, so repair the Pod/ReplicaSet chain first. |
 | `endpoint_pod_template_containers_invalid` | The ReplicaSet template's `containers` list is missing, empty, malformed, or contains duplicate names. |
 | `endpoint_pod_template_init_containers_invalid` | The ReplicaSet template's `initContainers` list is malformed or contains duplicate names. |
-| `endpoint_pod_container_names_duplicate` | A container name appears twice across the live Pod's or the template's `containers` and `initContainers`, so the live container set is ambiguous. |
-| `endpoint_pod_security_shape_mismatch` | The live Pod's Pod-level security/identity shape differs from its ReplicaSet template: host namespaces, service account and runtime identity, security context, volumes, DNS and host aliases, scheduling and tolerations, or the other normalized Pod fields. |
-| `endpoint_pod_container_list_mismatch` | The live `containers` list differs from the ReplicaSet template in count or container names. |
-| `endpoint_pod_container_env_mismatch` | A live container's `env` or `envFrom` differs from the ReplicaSet template. |
-| `endpoint_pod_container_security_context_mismatch` | A live container's `securityContext` differs from the ReplicaSet template. |
-| `endpoint_pod_container_image_command_mismatch` | A live container's `image`, `command`, `args`, or `workingDir` differs from the ReplicaSet template. |
-| `endpoint_pod_container_shape_mismatch` | A live container differs from the ReplicaSet template in its remaining container fields, such as ports, resources, probes, mounts, lifecycle, or restart policy. |
-| `endpoint_pod_init_container_list_mismatch` | The live `initContainers` list differs from the ReplicaSet template in order, count, or container names. |
-| `endpoint_pod_init_container_env_mismatch` | A live init container's `env` or `envFrom` differs from the ReplicaSet template. |
-| `endpoint_pod_init_container_security_context_mismatch` | A live init container's `securityContext` differs from the ReplicaSet template. |
-| `endpoint_pod_init_container_image_command_mismatch` | A live init container's `image`, `command`, `args`, or `workingDir` differs from the ReplicaSet template. |
-| `endpoint_pod_init_container_shape_mismatch` | A live init container differs from the ReplicaSet template in its remaining container fields, such as ports, resources, probes, mounts, lifecycle, or restart policy. |
-| `endpoint_pod_container_mismatch` | The live target container does not match the ReplicaSet template's container. |
-| `endpoint_pod_command_mismatch` | The live target container's argv does not match the Product process contract. |
+| `endpoint_pod_container_mismatch` | The target container name does not resolve uniquely in both the live Pod and its ReplicaSet template. |
+| `endpoint_pod_command_mismatch` | The live target container's argv is unresolved or differs from its ReplicaSet revision's process entrypoint. |
 | `endpoint_pod_port_conflict` | Another live container in the Pod publishes the target port. |
 | `endpoint_pod_listener_unproven` | Another live Product process in the Pod may bind the target port and its listener cannot be proven. |
 | `endpoint_pod_ip_absent` | The endpoint's Pod has no valid `status.podIP`. |
