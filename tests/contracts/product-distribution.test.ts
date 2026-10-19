@@ -71,6 +71,15 @@ test("Cloud Release promotes an admitted Candidate and isolates public mutation"
   const downloadStep = readback.steps.find((step) => step.uses?.startsWith("actions/download-artifact@"));
   const instanceGate = admission.steps.find((step) => step.id === "instance");
   assert.match(admissionCommands, /cloud-candidate-receipt\.ts validate-bundle/);
+  assert.match(
+    admissionCommands,
+    /GH_TOKEN="\$INSTANCE_TOKEN" gh api "repos\/\$INSTANCE_REPOSITORY\/actions\/runs\/\$CLOUD_BUSINESS_QUALIFICATION_RUN_ID"/,
+  );
+  const businessDownload = admission.steps.find(
+    (step: any) => step.name === "Download exact Cloud business qualification",
+  );
+  assert.equal(businessDownload.with.repository, "gaofeng21cn/opl-instance-medopl");
+  assert.equal(businessDownload.with["github-token"], "${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}");
   assert.match(admissionCommands, /qualification-decision\.mjs.*gate/s);
   assert.match(admissionCommands, /fresh-workspace-readback\.mjs.*validate/s);
   assert.match(instanceGate.run, /--github-output "\$gate_output"/);
@@ -93,7 +102,7 @@ test("Cloud distribution contract makes same-tag recovery explicit", async () =>
   const contract = JSON.parse(await readFile("packages/contracts/opl-cloud-distribution-contract.json", "utf8"));
   const publication = contract.distribution.publication;
 
-  assert.equal(contract.schemaVersion, 6);
+  assert.equal(contract.schemaVersion, 7);
   assert.equal(publication.promotionMode, "qualified_candidate_digest_without_rebuild");
   assert.deepEqual(publication.requiredEvidence, {
     candidate: ["candidate"],
@@ -105,9 +114,9 @@ test("Cloud distribution contract makes same-tag recovery explicit", async () =>
     instanceWorkspaceVerification: ["instance_workspace_verified"]
   });
   assert.deepEqual(publication.cloudBusinessQualification, {
-    owner: "gaofeng21cn/one-person-lab-cloud",
+    owner: "gaofeng21cn/opl-instance-medopl",
     workflow: ".github/workflows/cloud-business-qualification.yml",
-    environment: "cloud-business-qualification",
+    environment: "production",
     artifact: "cloud-business-qualification",
     receipt: "business-qualification.json",
     receiptKind: "opl.workspace-qualification.purchase.v1",

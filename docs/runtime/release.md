@@ -142,12 +142,14 @@ qualification.
 
 ### Protected Cloud Business Qualification
 
-The same protected source entry now also runs
-`tools/protected-business-qualification.ts` for the business qualification
-decision after the original Candidate bundle and the native installation receipt
-have been validated. The existing `customer_reads` producer remains a separate
-step and receipt; the business producer does not call it, copy its reads or
-replace its result.
+The protected Instance entry
+`.github/workflows/cloud-business-qualification.yml` runs the Cloud-owned
+`tools/protected-business-qualification.ts` after the original Candidate bundle,
+the exact product checkout and the native installation receipt have been
+validated. Cloud owns the producer source, receipt schema and release consumer;
+Instance owns the protected `production` environment and provider boundary.
+The existing `customer_reads` producer remains a separate receipt; the business
+producer does not call it, copy its reads or replace its result.
 
 The producer receives the declared Candidate receipt digest, the deployment
 binding, the account/package declarations, the live authority class and the J0
@@ -216,21 +218,26 @@ Only the shared orchestrator's actual qualification result becomes the
 qualification receipt state. A settled receipt is preserved, and a blocked,
 failed, unknown or recovery-required receipt is preserved before the workflow
 fails. Deployment health is recorded but never moves the business result. The
-artifact is `cloud-business-qualification-<run_id>-<run_attempt>` and contains
-`receipt.json` plus `receipt.purchase.json` when the buyer reached a receipt;
-the existing `cloud-customer-readback-<run_id>-<run_attempt>` artifact is
-unchanged. Both receipts are Candidate-bound and contain no raw Secret, Key,
-customer identifier, origin, cluster, namespace or entry URL. They cover the
-declared Workspace purchase only: `uncovered.businessQualification` is `false`,
-and they do not admit a release. #928 owns release admission and the remaining
-legacy producer/consumer migration.
+The Instance run uploads the exact artifact `cloud-business-qualification`. It
+contains `business-qualification.json` and `product-source.json`, plus
+`business-qualification.purchase.json` when the buyer reached a receipt; the
+existing `cloud-customer-readback-<run_id>-<run_attempt>` artifact is unchanged.
+The product-source file binds the exact Cloud product SHA and tree independently
+of the Instance run's own `head_sha`. Release admission resolves this run and
+artifact from the Instance repository with `OPL_INSTANCE_EVIDENCE_TOKEN`, rejects
+another repository or workflow, and validates both receipt files through the
+Cloud-owned typed consumer. Receipts are Candidate-bound and contain no raw
+Secret, Key, customer identifier, origin, cluster, namespace or entry URL. They
+cover the declared Workspace purchase only: `uncovered.businessQualification`
+is `false`, and they do not admit a release by themselves.
 
-This section describes source wiring, not a protected run. The environment,
-Secrets, a configured sandbox boundary module and the protected TKE boundary are
-external and absent; no fabric sandbox qualification and no protected business
-qualification ran, no J0 READY receipt has been produced by a real cluster
-sandbox (the tests inject only the transport), no settled receipt is claimed, and
-#926 remains open.
+This section describes source wiring, not a protected run. No fabric sandbox
+qualification and no protected business qualification run have produced a real
+J0 READY or settled receipt (the tests inject only the transport). #926 remains
+open until the protected environment declares the required account, package,
+origin, customer credentials and provider boundary, a fabric sandbox emits the
+exact-Candidate J0 receipt, and the protected Instance lane emits the settled
+business receipt for the same Candidate.
 
 ### Publication
 
@@ -273,7 +280,7 @@ The sealed release manifest and attestation retain separate `installation`,
 `qualifications.business` and customer scope records, and release provenance
 records the two evidence classes explicitly. Release manifest and provenance
 use `schemaVersion: 3`; the Candidate manifest remains version 2. Release
-admission contract schema 6 replaces the undifferentiated `requiredEvidence`
+admission contract schema 7 replaces the undifferentiated `requiredEvidence`
 list with typed evidence classes and retains all six previous evidence
 requirements plus `cloud_business_qualification`. Admission validates every
 class's run/artifact provenance, native receipts, release assets, checksums,
@@ -282,15 +289,13 @@ Candidate while retaining its owner-specific Workspace image and Provider
 Profile facts.
 
 **Current external dependency.** The #926 producer exists in source
-(`tools/protected-business-qualification.ts`, driven by
-`cloud-business-readback.yml`; see [Protected Cloud Business
-Qualification](#protected-cloud-business-qualification)), but the release
-contract's dedicated `.github/workflows/cloud-business-qualification.yml` entry
-and artifact binding do not exist yet. Until a protected run emits the settled
-receipt for the exact Candidate and the #928 consumer binds that producer
-workflow/artifact, a formal Release cannot satisfy the Cloud business
-qualification class. This source change makes that dependency explicit; it does
-not claim a real qualification, a Release run, or production evidence.
+(`tools/protected-business-qualification.ts`) and the protected Instance entry
+`.github/workflows/cloud-business-qualification.yml` is now bound to Release
+admission. Until that entry executes for the exact Candidate, emits the settled
+receipt and `product-source.json`, and the consumer admits the same artifact, a
+formal Release cannot satisfy the Cloud business qualification class. This
+source change makes that dependency explicit; it does not claim a real
+qualification, a Release run, or production evidence.
 The repository owner or `RenDeHuang` then explicitly dispatches the Release
 workflow from Cloud `main`; the original actor and current triggering actor must
 match. Publication must promote the exact qualified image bytes and must fail

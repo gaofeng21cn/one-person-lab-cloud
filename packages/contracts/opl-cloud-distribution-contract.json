@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 6,
+  "schemaVersion": 7,
   "owner": "OPL Cloud",
   "purpose": "Portable product distribution and instance handoff boundary.",
   "state": "current",
@@ -81,9 +81,9 @@
         ]
       },
       "cloudBusinessQualification": {
-        "owner": "gaofeng21cn/one-person-lab-cloud",
+        "owner": "gaofeng21cn/opl-instance-medopl",
         "workflow": ".github/workflows/cloud-business-qualification.yml",
-        "environment": "cloud-business-qualification",
+        "environment": "production",
         "artifact": "cloud-business-qualification",
         "receipt": "business-qualification.json",
         "receiptKind": "opl.workspace-qualification.purchase.v1",

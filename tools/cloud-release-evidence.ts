@@ -34,16 +34,17 @@ export const RELEASE_EVIDENCE_CLASS = Object.freeze({
 
 export type ReleaseEvidenceClass = (typeof RELEASE_EVIDENCE_CLASS)[keyof typeof RELEASE_EVIDENCE_CLASS];
 
-// The protected Cloud entry that must produce this class. #926 has not
-// implemented it yet, so a formal release cannot currently satisfy the
-// requirement. The consumer names the expected producer instead of accepting
-// any successful Cloud run, so the absent producer is an explicit dependency
-// rather than a silently satisfiable input.
+// Cloud owns the receipt contract and the qualification logic. Instance owns
+// the protected execution because only that repository has the approved
+// production environment, customer session, cluster access and provider
+// boundary. The artifact therefore travels from Instance to Cloud release
+// admission; a same-named workflow in the Cloud repository is not authority.
 export const CLOUD_BUSINESS_QUALIFICATION_PRODUCER = Object.freeze({
-  repository: "gaofeng21cn/one-person-lab-cloud",
+  repository: "gaofeng21cn/opl-instance-medopl",
   workflow: ".github/workflows/cloud-business-qualification.yml",
   artifact: "cloud-business-qualification",
-  receipt: "business-qualification.json"
+  receipt: "business-qualification.json",
+  productSource: "product-source.json"
 });
 
 // A formal release promotes bytes that already passed qualification. The
@@ -98,6 +99,28 @@ function sameIdentity(left: ReleaseCandidateIdentity, right: ReleaseCandidateIde
     left.cloudImageDigest === right.cloudImageDigest;
 }
 
+function validateProductSource(text: string): { productSha: string; productTree: string } {
+  if (typeof text !== "string" || !text.trim()) {
+    evidenceError("cloud_business_qualification_product_source_invalid");
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch (error) {
+    evidenceError("cloud_business_qualification_product_source_invalid", error);
+  }
+  const source = record(value, "cloud_business_qualification_product_source_invalid");
+  if (
+    source.schemaVersion !== 1 ||
+    !SHA.test(String(source.productSha || "")) ||
+    !SHA.test(String(source.productTree || "")) ||
+    Object.keys(source).sort().join() !== "productSha,productTree,schemaVersion"
+  ) {
+    evidenceError("cloud_business_qualification_product_source_invalid");
+  }
+  return { productSha: String(source.productSha), productTree: String(source.productTree) };
+}
+
 export type ReleaseBusinessQualificationEvidence = Readonly<{
   evidenceClass: typeof RELEASE_EVIDENCE_CLASS.CLOUD_BUSINESS_QUALIFICATION;
   repository: string;
@@ -135,6 +158,7 @@ export type ReleaseBusinessQualificationEvidence = Readonly<{
 export function validateReleaseBusinessQualification(input: {
   candidate: unknown;
   receiptText: string;
+  productSourceText: string;
   run: unknown;
   runId: string;
   now?: number;
@@ -172,6 +196,14 @@ export function validateReleaseBusinessQualification(input: {
     evidenceError("cloud_business_qualification_image_invalid");
   }
 
+  const productSource = validateProductSource(input.productSourceText);
+  if (
+    productSource.productSha !== identity.productSha ||
+    productSource.productTree !== identity.productTree
+  ) {
+    evidenceError("cloud_business_qualification_candidate_invalid");
+  }
+
   const run = record(input.run, "cloud_business_qualification_run_invalid");
   const repository = record(run.repository, "cloud_business_qualification_run_invalid");
   if (!RUN_ID.test(input.runId) || String(run.id) !== input.runId ||
@@ -179,7 +211,7 @@ export function validateReleaseBusinessQualification(input: {
       run.path !== CLOUD_BUSINESS_QUALIFICATION_PRODUCER.workflow ||
       run.event !== "workflow_dispatch" || run.head_branch !== "main" ||
       run.status !== "completed" || run.conclusion !== "success" ||
-      !SHA.test(String(run.head_sha || "")) || run.head_sha !== identity.productSha) {
+      !SHA.test(String(run.head_sha || ""))) {
     evidenceError("cloud_business_qualification_run_invalid");
   }
 
@@ -219,6 +251,7 @@ export function validateReleaseAdmissionEvidence(input: {
   candidate: unknown;
   cloudBusinessQualification?: {
     receiptText?: string;
+    productSourceText?: string;
     run?: unknown;
     runId?: string;
   } | null;
@@ -233,6 +266,7 @@ export function validateReleaseAdmissionEvidence(input: {
 }) {
   const business = input.cloudBusinessQualification;
   if (!business || typeof business.receiptText !== "string" || !business.receiptText.trim() ||
+      typeof business.productSourceText !== "string" || !business.productSourceText.trim() ||
       !business.run || !business.runId) {
     evidenceError("release_evidence_missing_cloud_business_qualification");
   }
@@ -246,6 +280,7 @@ export function validateReleaseAdmissionEvidence(input: {
   const businessEvidence = validateReleaseBusinessQualification({
     candidate,
     receiptText: business.receiptText as string,
+    productSourceText: business.productSourceText as string,
     run: business.run,
     runId: business.runId as string,
     now: input.now

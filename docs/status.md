@@ -9,13 +9,34 @@ Baseline evidence date: 2026-10-01
 This page keeps the dated baseline evidence above and explicitly dated source
 updates below. The baseline SHA does not describe the later changes or qualify
 them: each receipt retains its original source, run and environment. The latest
-source review is 2026-10-14 at
-[`9c6d8fe882ace96f2b94d1a4d75afabaef38dca1`](https://github.com/gaofeng21cn/one-person-lab-cloud/tree/9c6d8fe882ace96f2b94d1a4d75afabaef38dca1).
-It answers what the cited evidence proves within its declared scope. It does not describe the target architecture, an
-Instance installation, or a Product Release. The target boundary is in
-[architecture.md](architecture.md), durable decisions are in
-[decisions.md](decisions.md), and open work is in
+source update is 2026-10-19; it answers what the cited source and tests prove
+within their declared scope and does not describe an Instance installation or a
+Product Release. The target boundary is in [architecture.md](architecture.md),
+durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
+
+## Instance-Hosted Business Qualification Consumer Binding (2026-10-19)
+
+Cloud Release admission now consumes the protected business qualification that
+executes in `gaofeng21cn/opl-instance-medopl`. The distribution contract schema
+version is 7: the producer owner is the Instance repository and its protected
+environment is `production`; Cloud still owns the producer implementation,
+receipt contract, terminal-state validation and Release consumer.
+
+Release admission resolves the run and artifact from the Instance repository
+with `OPL_INSTANCE_EVIDENCE_TOKEN`, rather than from a same-named Cloud workflow.
+It requires the exact `cloud-business-qualification` artifact to contain
+`business-qualification.json` and the Instance-produced
+`product-source.json`, plus `business-qualification.purchase.json` only when a
+purchase receipt exists. The source file must contain exactly schema version 1,
+`productSha` and `productTree`, and those values must equal the Candidate being
+released. The business run's own `head_sha` remains Instance `main` authority
+and is no longer incorrectly required to equal the Cloud product SHA.
+
+The focused source and contract checks are recorded with this change. No
+protected Instance qualification run, real J0 receipt, successful deployment,
+settled business receipt, Release or production readback is claimed. #926 remains
+open for that runtime evidence and the exact-Candidate acceptance.
 
 ## PR CI Cache Reuse And Parallel Verification (2026-10-18)
 
@@ -454,6 +475,9 @@ transitional Instance workflow retirement and post-launch customer-read
 coverage remain separate outcomes in #926, #929 and #840.
 
 ## Release Evidence Class Separation (2026-10-18)
+
+Historical source review: schema 7 and the Instance-hosted producer described
+above supersede the workflow location statements in this section.
 
 Against `main` baseline `6d5e854a`, Cloud release admission now consumes Cloud
 business qualification evidence as its own typed class rather than treating
