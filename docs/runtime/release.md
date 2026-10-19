@@ -25,9 +25,9 @@ The publication source now adds a separately protected Cloud customer-read
 receipt alongside the retained Instance launch/use, qualification-decision and
 Workspace artifacts. It also requires a separate Cloud business qualification
 receipt from the protected #926 producer; that producer is not present yet, so
-formal publication remains blocked on it. This is only the `customer_reads`
-scope of the
-[open migration](../roadmap.md#workspace-key-and-customer-read-boundaries).
+formal publication remains blocked on it. This formal Release gate is separate
+from the first-use customer journey tracked by #856, which may record a
+successful deployed revision before formal Candidate qualification.
 The legacy business, administrator and Fabric evidence paths remain required
 until full parity is actually verified; their current execution location does
 not transfer product ownership to Instance. This runbook does not authorize

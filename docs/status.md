@@ -441,13 +441,17 @@ is claimed. The receipt explicitly records
 `publicEndpointCandidateVerified: false`: this source does not verify that the
 approved public origin currently serves the referenced Candidate.
 
-#872 remains incomplete. Legacy business, administrator and Fabric evidence
-producers and consumers have not migrated, and full parity has not been
-verified. All existing Instance qualification-decision and Workspace gates stay
-required. Cloud product owners retain business and financial qualification;
-Instance owns installation, deployment, deployment rollback and their receipts.
-The remaining work stays in the
-[roadmap](roadmap.md#workspace-key-and-customer-read-boundaries).
+#952's source slice is complete and tracked as closed. Its real sandbox
+execution remains part of the formal protected qualification work in #926.
+This source result does not claim a protected run or a formal Release.
+
+The first-use customer journey is tracked separately in #856. A successful
+deployed revision may prove purchase, ready runtime and application use before
+it is selected for formal Candidate Release qualification. Cloud product owners
+retain business and financial qualification; Instance owns installation,
+deployment, deployment rollback and their receipts. Formal Release hardening,
+transitional Instance workflow retirement and post-launch customer-read
+coverage remain separate outcomes in #926, #929 and #840.
 
 ## Release Evidence Class Separation (2026-10-18)
 
@@ -481,12 +485,13 @@ Candidate. The release contract's dedicated
 `.github/workflows/cloud-business-qualification.yml` entry still does not exist,
 and the #928 consumer has not yet bound this producer workflow/artifact; a
 Release therefore cannot satisfy the new class until a protected run emits the
-settled receipt and that consumer migration is complete. The
+settled receipt and that consumer migration is complete. This is a formal
+Release requirement and does not block the first-use customer journey tracked
+by #856. The
 manifest/provenance sealing, contract and workflow changes are source-only; no
-Release dispatch, protected run or production evidence is claimed. All retained
-Instance qualification-decision, Workspace, deployment and customer-read gates
-stay required. #872 remains incomplete, and #928 stays open until the real
-protected receipt is admitted.
+Release dispatch, protected run or production evidence is claimed. Formal
+Release gates remain required for #926. #872 and #928 are closed at their
+respective narrowed first-use/source layers.
 
 ## Team Workspace Transaction Reads (2026-10-16)
 
