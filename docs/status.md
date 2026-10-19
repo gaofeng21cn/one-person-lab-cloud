@@ -562,35 +562,62 @@ Supplied live backends require controller/Pod/Service UID, address and port
 agreement; matching labels alone do not prove ownership. The installation and
 production-manifest behavior suites now run in the regular source CI entry.
 
-The October 20 source change removes generic live Pod/ReplicaSet template field
-equality and its Kubernetes-defaulting exceptions. Endpoint ownership, addresses,
-ports, target-container identity and revision entrypoint checks remain. The CLI
-does not certify all live Pod configuration; Candidate image identity, required
-loaded communication material and health remain executor observations. The change
-is source-only: deployed Candidate `b038000a0ef5e75fac4c8b2018d4979bc20872a8`
-still contains the previous validator. Instance verification run `39288415841`
-was blocked at installation admission by
-`endpoint_pod_container_shape_mismatch`; later health checks did not complete.
-No new Candidate, deployment or protected verification is claimed by this change.
+On October 20 (Asia/Shanghai), [Cloud PR #978](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/978)
+merged as `04c5d579cafe098aa18b103130273bdd95fba411`, removing generic live
+Pod/ReplicaSet template field equality and its Kubernetes-defaulting exceptions.
+Endpoint ownership, addresses, ports, target-container identity and revision
+entrypoint checks remain. [Instance PR #558](https://github.com/gaofeng21cn/opl-instance-medopl/pull/558)
+merged as `ad4a58909295fd3c690249b9d141aa459229c9c1`. The authorized installation
+scope now uses one full live Product installation report, validates existing
+communication materials, runs the bounded Serve read-only probe, and retains
+runtime identity and health verification. It removes the communication-update
+planner and default PID1/HMAC gates that had no caller. Native schema 2
+installation verification has no `loadedPeers` requirement; loaded-process
+attestation is not a remaining installation acceptance gate.
 
-Local focused verification against `d370e10ab17b4badd6f1f9407fb4b440144fe175`
-passed the product boundary, development-tools typecheck and 425 behavior tests
-with zero failures, skips or TODOs. The explicit extra behavior target was
-`tests/production/production-manifest-cli.test.ts`; the changed installation CLI
-suite was selected from the Git scope. An additional standalone typecheck of
-`tools/ops/installation-manifest.ts` reports TS18048 on `binding` in both the
-modified file and an unmodified copy of that base; it is not a passing check.
+The deployed Candidate and both successful runs bind the same immutable identity:
 
-The existing Serve executable also exposes `probe-workspace-access` before
-normal database startup. It makes one bounded authenticated mTLS read for a
-fresh synthetic Workspace UUID and accepts only the owner's CLOSED response.
-It creates no Workspace and proves no customer entitlement or application
-execution. Instance must consume the exact selected Candidate checkout,
-validate protected existing material, and select the actual running Candidate
-Pod. An older Candidate cannot acquire the new CLI or probe by checking out a
-later source revision. [Installation](installation.md) owns the public interface;
-actual installation requires Instance evidence, and business acceptance requires
-Cloud product-owner qualification evidence.
+- Product SHA: `68339a6e4ebea413f2dd1bf641be77b474a1c8ec`.
+- Product tree: `ec37895831160281ee0d758baf0fdccaac52abde`.
+- Cloud image index: `sha256:fecf9d51677501687e58ef4f2a9a27c491f96a0ddc3ed5504350d7640e61fd4b`.
+- Candidate receipt digest: `sha256:f3fbec684fb6016113673cc9053c3ff27703e9626623daa0e8a9c330f4d12f9a`.
+
+[Deploy run `39299387902`, job `118220262846`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/39299387902/job/118220262846)
+succeeded in 80 seconds. Its native schema 6 receipt has `status: succeeded`,
+`stage: complete`, no absent targets, and verified IAM, ConfigMap, owner chains,
+revisions and image IDs. Its `healthVerified: false` remains unchanged; health is
+proved by the subsequent independent verification, not by that deployment receipt.
+Installation admission was accepted with 49 static communication edges. This
+count describes admitted declarations, not 49 executed RPCs.
+
+[Verification run `39299647891`, job `118221160627`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/39299647891/job/118221160627)
+succeeded in 29 seconds. The native deployment-verification schema 2 receipt has
+`status: deployment_verified` and all 12 checks true, including runtime identity,
+rollout, public route and the declared health/readiness checks. The native
+installation-verification schema 2 receipt has `status: succeeded` and all three
+readbacks true: `installation`, `materials` and `serveProbe`. The Serve probe
+returned `authenticated: true` and `workspaceClosed: true` (CLOSED) for a fresh
+synthetic Workspace UUID through a bounded authenticated mTLS read. All mutation
+counts in both verification receipts are zero, and installation cleanup succeeded.
+The probe creates no Workspace and proves no customer entitlement or application
+execution.
+
+[Instance PR #559](https://github.com/gaofeng21cn/opl-instance-medopl/pull/559)
+registers the four unchanged native receipts under `receipts/`:
+
+- `2026-10-20-candidate-68339a6e-deploy-39299387902.json`.
+- `2026-10-20-candidate-68339a6e-admission-39299387902.json`.
+- `2026-10-20-candidate-68339a6e-deployment-verification-39299647891.json`.
+- `2026-10-20-candidate-68339a6e-installation-verification-39299647891.json`.
+
+Historical failure retained: Candidate `b038000a0ef5e75fac4c8b2018d4979bc20872a8`, verification run `39288415841`, blocked at `endpoint_pod_container_shape_mismatch` before health verification.
+
+The installation-consumption outcome is complete within the authorized scope.
+[Installation](installation.md) owns the public Product interface; Instance owns
+the deployment and installation receipts. These runs establish installation and
+runtime identity/health, not a business purchase, Default App or Custom Agent
+acceptance, or formal Product Release. Cloud product-owner business qualification
+and the other open business outcomes retain their existing evidence requirements.
 
 ## Personal Gateway Read Authorization (2026-10-16)
 
