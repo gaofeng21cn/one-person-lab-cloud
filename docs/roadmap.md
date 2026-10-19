@@ -74,23 +74,6 @@ source and fixture evidence do not close that outcome.
 
 ## Priority Outcomes
 
-### Consume Product Communication Admission In Instance
-
-The Product topology, public Kubernetes installation validator and bounded
-Serve-to-Workspace read-only probe are implemented in source. The remaining
-installation outcome is for Instance to consume that interface from the exact
-Candidate checkout, verify actual existing token/peer/TLS material, apply only
-admitted communication changes, and obtain a redacted readback from the running
-Candidate. Static references and local gRPC tests do not prove production
-installation. This is owned by the Instance installation flow; Cloud business
-qualification and historical resource observation keep their existing owners.
-
-The October 20 removal of generic Pod/ReplicaSet field equality is a source
-change; the deployed `b038000a` Candidate still uses the previous validator.
-Consuming the corrected validator requires a new exact Candidate and Instance
-readback. Preserve the failed verification receipt; local tests do not close
-this installation outcome or establish business qualification.
-
 ### First Tencent/TKE Default App Launch (2026-10-10)
 
 The [October 10 decision](decisions.md#2026-10-10-first-tencenttke-launch-without-cloud-model-configuration)
