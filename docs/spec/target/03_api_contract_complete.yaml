@@ -11632,6 +11632,7 @@ components:
       - getPlanChange
       - getQuote
       - getReceipt
+      - getWorkspaceFinancialReceipt
       - getSession
       - getSelfUserExternalBinding
       - getSubscription
@@ -11671,6 +11672,7 @@ components:
       - listRuntimeVersions
       - listStoragePlans
       - listTenants
+      - getUsageSummary
       - listUsage
       - listWebuiVersions
       - listWorkspaceTransactions
