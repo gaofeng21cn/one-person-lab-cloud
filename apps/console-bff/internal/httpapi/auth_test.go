@@ -179,39 +179,77 @@ func TestProjectionFailureLeavesNoSessionCookie(t *testing.T) {
 // authorization input. The BFF forwards only the session identity and scope to
 // CloudIdentity, and an explicit denial stays a denial even though the session
 // carries the unnameable value.
+// A dropped permission must not become a grant, and a named permission must not
+// become one either: CloudIdentity decides every action, and the session's
+// permission list is never consulted for authorization. Asserting only the first
+// half would also pass if the BFF authorized on any non-empty list.
 func TestDroppedPermissionConfersNoAuthorization(t *testing.T) {
-	identity := &fakeLoginIdentity{
-		session: &api.Session{
-			ActorId:     "actor-988",
-			TenantId:    ptr("tenant-988"),
-			Permissions: []api.AuthorizationActionEnum{999},
-			CsrfToken:   "csrf-988",
+	cases := []struct {
+		name        string
+		permissions []api.AuthorizationActionEnum
+		result      api.AuthorizationResult
+		// forbidden is the whole claim: CloudIdentity's decision alone decides,
+		// so an allowed decision must pass authorization whatever the session's
+		// permission list holds, and a denied one must stop the request whatever
+		// it holds. The terminal status past authorization is the owner reader's
+		// business and is not asserted here.
+		forbidden bool
+	}{
+		{
+			name:        "dropped permission, denied decision",
+			permissions: []api.AuthorizationActionEnum{999},
+			result:      api.AuthorizationResult_AUTHORIZATION_RESULT_DENIED,
+			forbidden:   true,
 		},
-		decision: &api.AuthorizationDecision{
-			ActorId:           "actor-988",
-			SessionId:         ptr(owneridentity.SessionReference("session-1")),
-			Scope:             &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-988"}}},
-			PermissionVersion: 1,
-			IssuedAt:          timestamppb.New(time.Now().Add(-time.Minute)),
-			ExpiresAt:         timestamppb.New(time.Now().Add(time.Minute)),
-			Result:            api.AuthorizationResult_AUTHORIZATION_RESULT_DENIED,
-			Issuer:            api.AuthorizationIssuer_AUTHORIZATION_ISSUER_CLOUD_IDENTITY,
-			Action:            api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANT,
-			AudienceOwner:     api.OwnerEnum_OWNER_ENUM_TENANT,
-			Resource:          &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: ptr("tenant-988")},
+		{
+			name:        "dropped permission, allowed decision",
+			permissions: []api.AuthorizationActionEnum{999},
+			result:      api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED,
+			forbidden:   false,
+		},
+		{
+			name:        "named permission, denied decision",
+			permissions: []api.AuthorizationActionEnum{api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANT},
+			result:      api.AuthorizationResult_AUTHORIZATION_RESULT_DENIED,
+			forbidden:   true,
 		},
 	}
-	response := httptest.NewRecorder()
-	NewServer(resolvedReader(), identity).Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/tenant"))
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			identity := &fakeLoginIdentity{
+				session: &api.Session{
+					ActorId:     "actor-988",
+					TenantId:    ptr("tenant-988"),
+					Permissions: tc.permissions,
+					CsrfToken:   "csrf-988",
+				},
+				decision: &api.AuthorizationDecision{
+					ActorId:           "actor-988",
+					SessionId:         ptr(owneridentity.SessionReference("session-1")),
+					Scope:             &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-988"}}},
+					PermissionVersion: 1,
+					IssuedAt:          timestamppb.New(time.Now().Add(-time.Minute)),
+					ExpiresAt:         timestamppb.New(time.Now().Add(time.Minute)),
+					Result:            tc.result,
+					Issuer:            api.AuthorizationIssuer_AUTHORIZATION_ISSUER_CLOUD_IDENTITY,
+					Action:            api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANT,
+					AudienceOwner:     api.OwnerEnum_OWNER_ENUM_TENANT,
+					Resource:          &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: ptr("tenant-988")},
+				},
+			}
+			response := httptest.NewRecorder()
+			NewServer(resolvedReader(), identity).Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/tenant"))
 
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	if len(identity.requests) != 1 {
-		t.Fatalf("authorization requests = %d, want one CloudIdentity decision", len(identity.requests))
-	}
-	request := identity.requests[0]
-	if request.GetActorId() != "actor-988" || request.GetScope().GetTenant().GetTenantId() != "tenant-988" {
-		t.Fatalf("authorization request = %+v, want the session identity and scope", request)
+			if got := response.Code == http.StatusForbidden; got != tc.forbidden {
+				t.Fatalf("forbidden = %v, want %v (status = %d, body = %s)", got, tc.forbidden, response.Code, response.Body.String())
+			}
+			if len(identity.requests) != 1 {
+				t.Fatalf("authorization requests = %d, want exactly one CloudIdentity decision", len(identity.requests))
+			}
+			request := identity.requests[0]
+			if request.GetActorId() != "actor-988" || request.GetScope().GetTenant().GetTenantId() != "tenant-988" {
+				t.Fatalf("authorization request = %+v, want the session identity and scope", request)
+			}
+		})
 	}
 }

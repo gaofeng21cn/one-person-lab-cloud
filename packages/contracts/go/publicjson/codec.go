@@ -23,22 +23,25 @@ type Omission struct {
 	Value   protoreflect.EnumNumber
 }
 
-// Marshal projects m onto the public contract. An enum value the contract
-// cannot name is left out rather than rendered under a protobuf spelling; see
-// MarshalWithOmissions for the values that were left out.
+// Marshal projects m onto the public contract strictly. A value the contract
+// cannot name fails the message, so a contract gap is loud at the caller that
+// produced it. Use MarshalWithOmissions where a stored value outside the
+// contract must not make an otherwise valid response unrepresentable.
 func Marshal(m proto.Message) ([]byte, error) {
-	raw, _, err := MarshalWithOmissions(m)
+	raw, _, err := marshal(m, false)
 	return raw, err
 }
 
-// MarshalWithOmissions is Marshal plus the repeated enum values the public
-// contract does not name. protojson renders an enum value with no declared name
-// as a number, and such a value has no public text. A repeated element is not a
-// required property on its own, so it is omitted and reported instead of
-// failing the whole message: a stored value outside the current contract must
-// not make an otherwise valid response unrepresentable. A required scalar enum
-// still fails, because omitting it would make the response contract-invalid.
+// MarshalWithOmissions is the lenient projection: a repeated enum value the
+// public contract does not name is left out and reported instead of failing the
+// whole message. protojson renders such a value as a number, and a number has no
+// public text. A required scalar enum still fails, because omitting it would
+// make the response contract-invalid. Every named value is kept.
 func MarshalWithOmissions(m proto.Message) ([]byte, []Omission, error) {
+	return marshal(m, true)
+}
+
+func marshal(m proto.Message, lenient bool) ([]byte, []Omission, error) {
 	if m == nil || !m.ProtoReflect().IsValid() {
 		return nil, nil, fmt.Errorf("publisher message is required")
 	}
@@ -53,7 +56,7 @@ func MarshalWithOmissions(m proto.Message) ([]byte, []Omission, error) {
 		return nil, nil, err
 	}
 	var omissions []Omission
-	value, err = convert(value, m.ProtoReflect().Descriptor(), true, m.ProtoReflect(), &omissions)
+	value, err = convert(value, m.ProtoReflect().Descriptor(), true, m.ProtoReflect(), &omissions, lenient)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -73,7 +76,7 @@ func Unmarshal(data []byte, m proto.Message) error {
 	if dec.Decode(new(any)) != io.EOF {
 		return fmt.Errorf("publisher JSON has trailing data")
 	}
-	value, err := convert(value, m.ProtoReflect().Descriptor(), false, nil, nil)
+	value, err := convert(value, m.ProtoReflect().Descriptor(), false, nil, nil, false)
 	if err != nil {
 		return err
 	}
@@ -161,7 +164,7 @@ func enumNumber(fd protoreflect.FieldDescriptor, x any) (protoreflect.EnumNumber
 	return protoreflect.EnumNumber(value), true
 }
 
-func convert(v map[string]any, md protoreflect.MessageDescriptor, toPublic bool, m protoreflect.Message, omissions *[]Omission) (map[string]any, error) {
+func convert(v map[string]any, md protoreflect.MessageDescriptor, toPublic bool, m protoreflect.Message, omissions *[]Omission, lenient bool) (map[string]any, error) {
 	if union(md) {
 		if toPublic {
 			for key, value := range v {
@@ -170,7 +173,7 @@ func convert(v map[string]any, md protoreflect.MessageDescriptor, toPublic bool,
 					fd = fillForUnion(md, key)
 				}
 				if fd != nil && fd.Message() != nil {
-					return convert(value.(map[string]any), fd.Message(), true, m.Get(fd).Message(), omissions)
+					return convert(value.(map[string]any), fd.Message(), true, m.Get(fd).Message(), omissions, lenient)
 				}
 			}
 			return nil, fmt.Errorf("missing %s variant", md.Name())
@@ -180,7 +183,7 @@ func convert(v map[string]any, md protoreflect.MessageDescriptor, toPublic bool,
 			if fd.Message() == nil {
 				continue
 			}
-			candidate, err := convert(v, fd.Message(), false, nil, nil)
+			candidate, err := convert(v, fd.Message(), false, nil, nil, false)
 			if err == nil {
 				return map[string]any{publicName(md, fd): candidate}, nil
 			}
@@ -220,11 +223,24 @@ func convert(v map[string]any, md protoreflect.MessageDescriptor, toPublic bool,
 								return public, nil
 							}
 						}
+						// A declared wire value the contract has no text for keeps the
+						// historical projection: a required property would be
+						// contract-invalid, an optional one is simply not in the public
+						// vocabulary. This is independent of the lenient mode below,
+						// which is about values protojson cannot name at all.
+						if required[md.Name()][outKey] {
+							return nil, fmt.Errorf("required property %s.%s has no public value for %s", md.Name(), outKey, text)
+						}
+						return omitted{}, nil
 					}
-					// The wire value has no published text. A repeated element can be
-					// left out and reported without changing the property's presence; a
-					// required scalar property would make the response contract-invalid,
-					// so that is still an error.
+					// protojson writes an enum value with no declared name as a number.
+					// Strict projection cannot represent it at all; the lenient
+					// projection may leave a repeated element out and report it, because
+					// a stored value outside the current contract must not make an
+					// otherwise valid response unrepresentable.
+					if !lenient {
+						return nil, fmt.Errorf("invalid %s enum", key)
+					}
 					if fd.IsList() {
 						value, named := enumNumber(fd, x)
 						if !named {
@@ -259,7 +275,7 @@ func convert(v map[string]any, md protoreflect.MessageDescriptor, toPublic bool,
 				if !ok {
 					return nil, fmt.Errorf("invalid publisher object %s", key)
 				}
-				return convert(obj, fd.Message(), toPublic, child, omissions)
+				return convert(obj, fd.Message(), toPublic, child, omissions, lenient)
 			}
 			if fd.Kind() == protoreflect.Int64Kind || fd.Kind() == protoreflect.Uint64Kind {
 				// The scalar form is the contract's, not protobuf's. protojson always
