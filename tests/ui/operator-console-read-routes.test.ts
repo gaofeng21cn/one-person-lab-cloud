@@ -88,7 +88,16 @@ test("a retained build keeps the Control Plane operator reads", async () => {
 // two read functions so a future edit cannot quietly restore the retained path.
 test("console-read-api.ts keeps no hardcoded operator read path", () => {
   const source = readFileSync(new URL("../../apps/console-ui/src/api/console-read-api.ts", import.meta.url), "utf8");
+  // operatorHealth, operatorReconciliation and getOperatorRuntimeObservations
+  // remain on the retained owner by this issue's explicit scope, so they are
+  // not part of this scan. Every operator read the BFF serves must be.
   for (const name of [
+    "getOperatorAccounts",
+    "getOperatorOverview",
+    "getOperatorAccountsPage",
+    "getOperatorWorkspaces",
+    "getOperatorWorkspace",
+    "getOperatorWorkspaceRuntimeImagePolicy",
     "getOperatorAnnouncements",
     "getOperatorWorkspaceRuntimeImageReplacementPreview"
   ]) {
