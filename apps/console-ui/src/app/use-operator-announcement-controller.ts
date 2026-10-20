@@ -13,6 +13,7 @@ import type {
   OperatorAnnouncementPageDTO,
   SourceEnvelope
 } from "../api/dtos.ts";
+import { authorizationFailureState } from "./authorization-error.ts";
 import type { OperatorAnnouncementController, RemoteState } from "./console-controller-types.ts";
 import {
   announcementProjectionMatches,
@@ -117,6 +118,11 @@ export function useOperatorAnnouncementController({
       commitProjection(result);
     } catch (error) {
       if (generation !== listGeneration.current || !requestOwnsScope(scope, userId, csrfToken)) return;
+      const authorization = authorizationFailureState(error);
+      if (authorization) {
+        setAnnouncements(authorization);
+        return;
+      }
       setAnnouncements({
         value: unavailableSource("control-plane"),
         loading: false,

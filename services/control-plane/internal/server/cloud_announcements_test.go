@@ -159,6 +159,18 @@ func (response cloudAnnouncementHTTPResponse) cookies() []*http.Cookie {
 
 func (f *cloudAnnouncementHTTPFixture) request(t *testing.T, method, path, ref, body string, mutate ...func(http.Header)) cloudAnnouncementHTTPResponse {
 	t.Helper()
+	response := f.requestRaw(t, method, path, ref, body, mutate...)
+	if response.header.Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("missing private cache policy: %v", response.header)
+	}
+	return response
+}
+
+// requestRaw returns the observed response without enforcing the cache policy,
+// so a regression test can assert the status of an unregistered route before
+// the success-path policy is available.
+func (f *cloudAnnouncementHTTPFixture) requestRaw(t *testing.T, method, path, ref, body string, mutate ...func(http.Header)) cloudAnnouncementHTTPResponse {
+	t.Helper()
 	r, err := http.NewRequest(method, f.server.URL+path, strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
@@ -177,9 +189,6 @@ func (f *cloudAnnouncementHTTPFixture) request(t *testing.T, method, path, ref, 
 	payload, err := io.ReadAll(response.Body)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if response.Header.Get("Cache-Control") != "private, no-store" {
-		t.Fatalf("missing private cache policy: %v", response.Header)
 	}
 	return cloudAnnouncementHTTPResponse{code: response.StatusCode, body: payload, header: response.Header.Clone()}
 }
