@@ -132,6 +132,7 @@ func TestWorkspaceOriginProxyStripsOnlyPlatformCredentials(t *testing.T) {
 	req.Header.Set("X-OPL-CSRF", "csrf")
 	req.Header.Set("X-OPL-CSRF-Token", "csrf-token")
 	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "platform-session"})
+	req.AddCookie(&http.Cookie{Name: consoleSessionCookieName, Value: "console-session"})
 	req.AddCookie(&http.Cookie{Name: "opl_ws_active", Value: "ws-alpha"})
 	req.AddCookie(&http.Cookie{Name: workspaceGatewayRuntimeSessionCookieName("ws-alpha"), Value: "runtime-session"})
 	req.AddCookie(&http.Cookie{Name: "app_session", Value: "application-session"})
@@ -152,6 +153,9 @@ func TestWorkspaceOriginProxyStripsOnlyPlatformCredentials(t *testing.T) {
 	}
 	if len(names) != 1 || names["app_session"] != "application-session" {
 		t.Fatalf("forwarded cookies = %#v", names)
+	}
+	if _, leaked := names[consoleSessionCookieName]; leaked {
+		t.Fatalf("console session cookie reached the application: %#v", names)
 	}
 }
 

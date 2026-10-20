@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	api "opl-cloud/packages/contracts/go/api"
@@ -251,5 +253,125 @@ func TestDroppedPermissionConfersNoAuthorization(t *testing.T) {
 				t.Fatalf("authorization request = %+v, want the session identity and scope", request)
 			}
 		})
+	}
+}
+
+// loginSession is the CloudIdentity session the double issues for the cookie
+// authority tests below. Its CSRF token is the one the browser would receive, so
+// the logout route's same-origin CSRF check can be exercised for real.
+func loginSession() *api.Session {
+	return &api.Session{
+		ActorId:   "actor-987",
+		TenantId:  ptr("tenant-987"),
+		CsrfToken: "csrf-987",
+		ExpiresAt: timestamppb.New(time.Now().Add(time.Hour)),
+	}
+}
+
+// TestLoginSetsOnlyTheBFFSessionCookie is the core acceptance for #987: the BFF
+// writes the CloudIdentity session under its own cookie name and never under
+// Control Plane's opl_session. Two authorities that share one cookie name destroy
+// each other's sessions, so the login must not emit the legacy name at all.
+func TestLoginSetsOnlyTheBFFSessionCookie(t *testing.T) {
+	identity := &fakeLoginIdentity{session: loginSession(), cookie: "session-987"}
+	response := httptest.NewRecorder()
+	NewServer(nil, identity).Handler().ServeHTTP(response, loginRequest("csrf-987"))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	cookie := sessionCookie(response, "opl_console_session")
+	if cookie == nil || cookie.Value != "session-987" {
+		t.Fatalf("login console session cookie = %+v, want the CloudIdentity session under opl_console_session", cookie)
+	}
+	if cookie.Path != "/" || !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteLaxMode || cookie.MaxAge <= 0 {
+		t.Fatalf("console session cookie attributes changed: %+v", cookie)
+	}
+	if legacy := sessionCookie(response, "opl_session"); legacy != nil {
+		t.Fatalf("login also wrote Control Plane's opl_session: %+v", legacy)
+	}
+}
+
+// TestBFFDoesNotAuthenticateFromControlPlaneSessionCookie pins one authority per
+// cookie name. The value is a real session this BFF's own login just issued, but
+// presenting it under Control Plane's opl_session must not authenticate: reading
+// both names is the forbidden compatibility path that keeps the collision alive.
+func TestBFFDoesNotAuthenticateFromControlPlaneSessionCookie(t *testing.T) {
+	identity := &fakeLoginIdentity{session: loginSession(), cookie: "session-987"}
+	server := NewServer(nil, identity).Handler()
+	login := httptest.NewRecorder()
+	server.ServeHTTP(login, loginRequest("csrf-987"))
+	if login.Code != http.StatusOK {
+		t.Fatalf("login status = %d, body = %s", login.Code, login.Body.String())
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v2/auth/session", nil)
+	request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-987"})
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status with a session under opl_session = %d, want 401; body = %s", response.Code, response.Body.String())
+	}
+	if cookies := response.Result().Cookies(); len(cookies) != 0 {
+		t.Fatalf("unauthenticated request wrote cookies: %v", cookies)
+	}
+}
+
+// TestBFFRejectsUnknownSessionCookieWithoutClearing reproduces the production
+// deletion on the BFF side: an unrecognised value in the BFF's own cookie is
+// answered as unauthenticated and nothing deletes the browser's cookie. The BFF
+// never issued that value, so it has no basis for invalidating it, and a failed
+// read must not destroy a credential.
+func TestBFFRejectsUnknownSessionCookieWithoutClearing(t *testing.T) {
+	identity := &fakeLoginIdentity{err: status.Error(codes.Unauthenticated, "unknown session")}
+	server := NewServer(nil, identity).Handler()
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/api/v2/auth/session"},
+		{http.MethodPost, "/api/v2/auth/logout"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			request := httptest.NewRequest(tc.method, tc.path, nil)
+			request.AddCookie(&http.Cookie{Name: "opl_console_session", Value: "this-is-a-foreign-session-token"})
+			response := httptest.NewRecorder()
+			server.ServeHTTP(response, request)
+			if response.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, want 401; body = %s", response.Code, response.Body.String())
+			}
+			if cookie := sessionCookie(response, "opl_console_session"); cookie != nil {
+				t.Fatalf("unknown session value was cleared or replaced: %+v", cookie)
+			}
+			if cookies := response.Result().Cookies(); len(cookies) != 0 {
+				t.Fatalf("unknown session value produced Set-Cookie headers: %v", cookies)
+			}
+		})
+	}
+}
+
+// TestLogoutClearsOnlyTheBFFSessionCookie shows the single place the BFF may
+// delete the browser session: its own logout, after it verified the session and
+// revoked it through CloudIdentity.
+func TestLogoutClearsOnlyTheBFFSessionCookie(t *testing.T) {
+	identity := &fakeLoginIdentity{session: loginSession(), cookie: "session-987"}
+	server := NewServer(nil, identity).Handler()
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v2/auth/logout", nil)
+	request.AddCookie(&http.Cookie{Name: "opl_console_session", Value: "session-987"})
+	request.Header.Set("Origin", "http://"+request.Host)
+	request.Header.Set("X-CSRF-Token", "csrf-987")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	cookie := sessionCookie(response, "opl_console_session")
+	if cookie == nil || cookie.Value != "" || cookie.MaxAge >= 0 {
+		t.Fatalf("logout session cookie = %+v, want an expired opl_console_session", cookie)
+	}
+	if cookie.Path != "/" || !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteLaxMode {
+		t.Fatalf("logout changed console session cookie attributes: %+v", cookie)
+	}
+	if legacy := sessionCookie(response, "opl_session"); legacy != nil {
+		t.Fatalf("logout touched Control Plane's opl_session: %+v", legacy)
 	}
 }

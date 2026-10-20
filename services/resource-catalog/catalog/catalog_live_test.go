@@ -299,7 +299,7 @@ func (s *liveSystem) do(t *testing.T, ctx context.Context, email, method, path, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	request.AddCookie(&http.Cookie{Name: "opl_session", Value: s.cookies[email]})
+	request.AddCookie(&http.Cookie{Name: "opl_console_session", Value: s.cookies[email]})
 	request.Header.Set("x-opl-request-id", "req-"+idempotencyKey)
 	if body != "" {
 		request.Header.Set("Content-Type", "application/json")
@@ -800,7 +800,7 @@ func (s *liveSystem) doProcess(t *testing.T, ctx context.Context, base, email, m
 	if err != nil {
 		t.Fatal(err)
 	}
-	request.AddCookie(&http.Cookie{Name: "opl_session", Value: s.cookies[email]})
+	request.AddCookie(&http.Cookie{Name: "opl_console_session", Value: s.cookies[email]})
 	request.Header.Set("x-opl-request-id", "req-process-"+idempotencyKey)
 	if body != "" {
 		request.Header.Set("Content-Type", "application/json")

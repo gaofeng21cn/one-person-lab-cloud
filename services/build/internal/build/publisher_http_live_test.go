@@ -30,7 +30,7 @@ func newPublisherHTTP(t *testing.T, cap api.CapabilityProductServiceClient, runt
 	}{{"", "", 401}, {identity.cookies["tenant-live"], "wrong", 403}} {
 		req, _ := http.NewRequest("POST", server.URL+"/api/v2/namespaces", bytes.NewBufferString(`{"name":"must-not-create"}`))
 		if test.cookie != "" {
-			req.AddCookie(&http.Cookie{Name: "opl_session", Value: test.cookie})
+			req.AddCookie(&http.Cookie{Name: "opl_console_session", Value: test.cookie})
 		}
 		req.Header.Set("X-CSRF-Token", test.csrf)
 		req.Header.Set("Content-Type", "application/json")
@@ -64,7 +64,7 @@ func publisherRequest(ctx context.Context, base, method, path string, call *api.
 		tid = "platform"
 	}
 	cookie := identity.cookies[tid]
-	req.AddCookie(&http.Cookie{Name: "opl_session", Value: cookie})
+	req.AddCookie(&http.Cookie{Name: "opl_console_session", Value: cookie})
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-CSRF-Token", identity.csrf[tid])
 	req.Header.Set("Idempotency-Key", call.GetIdempotencyKey())
