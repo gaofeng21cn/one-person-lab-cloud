@@ -12,8 +12,12 @@ import (
 )
 
 const (
-	sessionCookieName   = "opl_session"
-	sessionLookupPrefix = "sub2api-sha256:"
+	sessionCookieName = "opl_session"
+	// consoleSessionCookieName is the Console BFF's own session cookie. Control
+	// Plane never reads or writes it; it names it only to strip it from a request
+	// proxied to a workspace application, the same way it strips its own session.
+	consoleSessionCookieName = "opl_console_session"
+	sessionLookupPrefix      = "sub2api-sha256:"
 )
 
 func validatePlaintextPassword(password string) error {

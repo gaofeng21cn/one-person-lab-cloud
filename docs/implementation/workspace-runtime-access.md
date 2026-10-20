@@ -64,7 +64,8 @@ lets a visitor's session survive an update.
 A binding origin belongs entirely to its application. The request is dispatched
 before the management route table, so this server's own routes never answer on
 an application host. Only platform credentials are removed from the forwarded
-request (`opl_session`, `opl_ws_active`, `opl_ws_session_*`, and the `X-OPL-CSRF`
+request (`opl_session`, `opl_console_session`, `opl_ws_active`,
+`opl_ws_session_*`, and the `X-OPL-CSRF`
 headers); the application keeps its own `Authorization` header and cookies. On
 the response side the application may set whatever cookies it needs, but a
 `Domain` attribute is removed so a cookie cannot widen onto a sibling binding or

@@ -1281,7 +1281,11 @@ func stripWorkspaceOriginPlatformCredentials(r *http.Request, _ string) {
 	for _, header := range platformCredentialHeaders {
 		r.Header.Del(header)
 	}
-	for _, name := range []string{sessionCookieName, "opl_ws_active"} {
+	// Both platform session namespaces are dropped. Control Plane's own is
+	// sessionCookieName; the Console BFF keeps its CloudIdentity session under
+	// consoleSessionCookieName, and forwarding that to application code would leak
+	// one authority's credential into another owner's process.
+	for _, name := range []string{sessionCookieName, consoleSessionCookieName, "opl_ws_active"} {
 		if _, err := r.Cookie(name); err != nil {
 			continue
 		}
