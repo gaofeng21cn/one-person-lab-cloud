@@ -171,7 +171,7 @@ func TestLiveGatewayReadThroughBFF(t *testing.T) {
 	} else {
 		read := func(path string) *httptest.ResponseRecorder {
 			request := httptest.NewRequest(http.MethodGet, path, nil)
-			request.AddCookie(&http.Cookie{Name: "opl_session", Value: cookie})
+			request.AddCookie(&http.Cookie{Name: "opl_console_session", Value: cookie})
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, request)
 			return response

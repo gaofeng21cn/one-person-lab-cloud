@@ -5928,7 +5928,7 @@ components:
     SessionCookie:
       type: apiKey
       in: cookie
-      name: opl_session
+      name: opl_console_session
   parameters:
     IdempotencyKey:
       name: Idempotency-Key

@@ -315,7 +315,7 @@ func TestLiveAcceptedWorkspaceResourceReference(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		r.AddCookie(&http.Cookie{Name: "opl_session", Value: cookies[email]})
+		r.AddCookie(&http.Cookie{Name: "opl_console_session", Value: cookies[email]})
 		r.Header.Set("X-CSRF-Token", csrf[email])
 		r.Header.Set("Idempotency-Key", key)
 		r.Header.Set("Content-Type", "application/json")

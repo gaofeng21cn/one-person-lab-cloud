@@ -91,7 +91,7 @@ func bffRequest(t *testing.T, base, method, path, cookie string, headers ...http
 		t.Fatal(err)
 	}
 	if cookie != "" {
-		req.AddCookie(&http.Cookie{Name: "opl_session", Value: cookie})
+		req.AddCookie(&http.Cookie{Name: "opl_console_session", Value: cookie})
 	}
 	req.Header.Set(requestHeaderName, "live-bff-read")
 	for _, values := range headers {

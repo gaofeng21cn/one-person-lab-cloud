@@ -16,10 +16,13 @@ import (
 	"opl-cloud/packages/contracts/go/owneridentity"
 )
 
-// SessionCookieName is the browser session cookie the BFF reads. It is the
-// CloudIdentity session: the BFF never mints a session, validates a password, or
-// stores an identity of its own.
-const SessionCookieName = "opl_session"
+// SessionCookieName is the browser session cookie the BFF sets and reads. It is
+// the CloudIdentity session: the BFF never mints a session, validates a password,
+// or stores an identity of its own. The BFF session is its own authority, so its
+// cookie must not share a name with Control Plane's legacy opl_session: a request
+// reaching that authority would be unable to tell a foreign session from its own
+// expired one and would delete the console session.
+const SessionCookieName = "opl_console_session"
 
 // Caller is the identified browser caller of one BFF request: the CloudIdentity
 // session that authenticated it and the raw session id CloudIdentity can re-check.

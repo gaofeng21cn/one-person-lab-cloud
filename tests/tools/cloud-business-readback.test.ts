@@ -34,9 +34,9 @@ function network(patch:Record<string,(init:RequestInit)=>Response|Promise<Respon
     if(path==="/api/v2/auth/login"){
       assert.equal(init.method,"POST");assert.equal(headers.get("origin"),"https://cloud.example.com");assert.equal(headers.get("x-csrf-token"),"secret-context");assert.ok(headers.get("idempotency-key"));
       assert.match(headers.get("cookie")!,/opl_login_context=challenge/);assert.deepEqual(JSON.parse(init.body as string),{username:"sensitive@example.com",password:"never-output-password"});
-      return json(session,["opl_session=secret-session-cookie; Path=/; HttpOnly; Secure"]);
+      return json(session,["opl_console_session=secret-session-cookie; Path=/; HttpOnly; Secure"]);
     }
-    assert.match(headers.get("cookie")!,/opl_session=secret-session-cookie/);
+    assert.match(headers.get("cookie")!,/opl_console_session=secret-session-cookie/);
     if(path==="/api/v2/auth/session")return revoked?new Response(null,{status:401}):json(session);
     if(path==="/api/v2/auth/external-bindings")return json({actorId:session.actorId,sub2apiUserId:"101",registryHost:"registry.example.com",registryNamespace:"namespace",repository:"customer-repository",status:"active",verification:"confirmed"});
     if(path==="/api/v2/wallet")return json({source:"gateway",status:"available",currency:"USD",balanceUSDMicros:"0",fetchedAt:now});
@@ -70,7 +70,7 @@ test("redirect, oversized and transport failures never leak response or errors a
   }
 });
 test("malformed login JSON still revokes issued session, using session readback for cleanup CSRF",async()=>{
-  const input=await inputs();const n=network({"/api/v2/auth/login":()=>new Response("{",{headers:{"content-type":"application/json","set-cookie":"opl_session=secret-session-cookie; Secure; HttpOnly"}})});
+  const input=await inputs();const n=network({"/api/v2/auth/login":()=>new Response("{",{headers:{"content-type":"application/json","set-cookie":"opl_console_session=secret-session-cookie; Secure; HttpOnly"}})});
   const receipt=await runCloudBusinessReadback(input,{environment:input.environment,fetch:n.fetch});assert.equal(receipt.status,"blocked");assert.equal(receipt.checks.logout,true);assert.equal(receipt.checks.sessionRevoked,true);
 });
 test("logout failure or a still-live original session blocks successful customer reads",async()=>{
@@ -221,7 +221,7 @@ test("production transport captures a login session before a truncated body and 
       const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));
       if (req.url === "/api/v2/auth/login") {
         // The session exists once these headers have reached the client.
-        res.writeHead(200, { "content-type": "application/json", "set-cookie": "opl_session=secret-session-cookie; Secure; HttpOnly", "content-length": "1000" });
+        res.writeHead(200, { "content-type": "application/json", "set-cookie": "opl_console_session=secret-session-cookie; Secure; HttpOnly", "content-length": "1000" });
         res.flushHeaders(); res.write("{"); setImmediate(() => res.destroy()); return;
       }
       const response = await n.fetch(`https://cloud.example.com${req.url}`, { method: req.method,

@@ -304,7 +304,11 @@ func sanitizeAccessRequest(request *http.Request, pathBased bool) {
 	}
 	remaining := make([]string, 0, len(request.Cookies()))
 	for _, cookie := range request.Cookies() {
-		if cookie.Name == "opl_session" || cookie.Name == "opl_ws_active" || strings.HasPrefix(cookie.Name, "opl_ws_session_") {
+		// Both platform session namespaces are stripped: Control Plane's legacy
+		// opl_session and the Console BFF's own opl_console_session. Leaking either
+		// one to a customer application would be worse than the collision this
+		// separation fixes.
+		if cookie.Name == "opl_session" || cookie.Name == "opl_console_session" || cookie.Name == "opl_ws_active" || strings.HasPrefix(cookie.Name, "opl_ws_session_") {
 			continue
 		}
 		remaining = append(remaining, cookie.Name+"="+cookie.Value)

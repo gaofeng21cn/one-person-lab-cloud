@@ -197,7 +197,7 @@ export async function runCloudBusinessReadback(input: { candidate: unknown; inst
       // Capture any issued session before decoding so malformed login JSON still
       // executes the logout cleanup in finally.
       for (const cookie of response.headers.getSetCookie()) {
-        const match = /^(opl_login_context|opl_login_csrf|opl_session)=([^;]*)/.exec(cookie);
+        const match = /^(opl_login_context|opl_login_csrf|opl_console_session)=([^;]*)/.exec(cookie);
         if (match) { if (/^[A-Za-z0-9_\-.~%+/=]*$/.test(match[2]) && match[2].length <= 4096) jar.set(match[1],match[2]); else fail(); }
       }
       if (response.status !== expected || response.redirected || (response.url && new URL(response.url).origin !== origin)) fail();
@@ -215,7 +215,7 @@ export async function runCloudBusinessReadback(input: { candidate: unknown; inst
     if (!text(context.csrfToken) || !date(context.expiresAt) || Date.parse(context.expiresAt) <= Date.now() || !jar.get("opl_login_context") || !jar.get("opl_login_csrf")) fail();
     const session = (await request("/api/v2/auth/login","POST", {username: env.OPL_QUALIFICATION_CUSTOMER_EMAIL,password: env.OPL_QUALIFICATION_CUSTOMER_PASSWORD}, context.csrfToken))!;
     if (text(session.csrfToken)) csrf=session.csrfToken;
-    if (!jar.get("opl_session") || !text(session.actorId) || !csrf || !date(session.expiresAt) || Date.parse(session.expiresAt) <= Date.now()) fail();
+    if (!jar.get("opl_console_session") || !text(session.actorId) || !csrf || !date(session.expiresAt) || Date.parse(session.expiresAt) <= Date.now()) fail();
     checks.login=true;
     const current=(await request("/api/v2/auth/session"))!;
     if (text(current.csrfToken)) csrf=current.csrfToken;
@@ -268,14 +268,14 @@ export async function runCloudBusinessReadback(input: { candidate: unknown; inst
     checks.announcements=true;
   } catch { receipt.errorCode="customer_readback_failed"; }
   finally {
-    if (jar.get("opl_session")) {
+    if (jar.get("opl_console_session")) {
       try {
         if (!csrf) { const current=(await request("/api/v2/auth/session"))!; if(text(current.csrfToken)) csrf=current.csrfToken; }
         if(!csrf) fail();
-        const original=jar.get("opl_session")!;
+        const original=jar.get("opl_console_session")!;
         await request("/api/v2/auth/logout","POST",undefined,csrf,204); checks.logout=true;
         // Check revocation with the original cookie, not an empty browser jar.
-        jar.set("opl_session",original);
+        jar.set("opl_console_session",original);
         await request("/api/v2/auth/session","GET",undefined,undefined,401); checks.sessionRevoked=true;
       } catch { receipt.errorCode="session_cleanup_failed"; }
     }
