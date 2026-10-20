@@ -50,3 +50,48 @@ func (c *Clients) OperatorWorkspaceRuntimeImageReplacementPreview(ctx context.Co
 	}
 	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
 }
+
+func (c *Clients) OperatorHealth(ctx context.Context, session string) ([]byte, error) {
+	path := "/internal/cloud/operator/health"
+	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
+}
+
+func (c *Clients) OperatorRuntimeObservations(ctx context.Context, session string) ([]byte, error) {
+	path := "/internal/cloud/operator/runtime-observations"
+	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
+}
+
+func (c *Clients) OperatorReconciliation(ctx context.Context, session string, page, pageSize int) ([]byte, error) {
+	path := "/internal/cloud/operator/reconciliation?" + url.Values{"page": {strconv.Itoa(page)}, "pageSize": {strconv.Itoa(pageSize)}}.Encode()
+	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
+}
+
+func (c *Clients) OperatorWorkspaceLaunchRecovery(ctx context.Context, session string, operationId string) ([]byte, error) {
+	path := "/internal/cloud/operator/workspace-launches/" + url.PathEscape(operationId) + "/recovery"
+	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
+}
+
+func (c *Clients) OperatorWalletAdjustment(ctx context.Context, session string, operationId string) ([]byte, error) {
+	path := "/internal/cloud/operator/wallet-adjustments/" + url.PathEscape(operationId)
+	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
+}
+
+func (c *Clients) OperatorWorkspaceRuntimeImageReplacement(ctx context.Context, session string, workspaceId, operationId string) ([]byte, error) {
+	path := "/internal/cloud/operator/workspaces/" + url.PathEscape(workspaceId) + "/runtime-image-replacements/" + url.PathEscape(operationId)
+	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
+}
+
+func (c *Clients) OperatorApplicationDeployment(ctx context.Context, session string, operationId string) ([]byte, error) {
+	path := "/internal/cloud/operator/application-deployments/" + url.PathEscape(operationId)
+	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
+}
+
+func (c *Clients) OperatorRegistryRepositories(ctx context.Context, session string, namespace string) ([]byte, error) {
+	path := "/internal/cloud/operator/registry/repositories?" + url.Values{"namespace": {namespace}}.Encode()
+	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
+}
+
+func (c *Clients) OperatorRegistryTags(ctx context.Context, session string, namespace, repository string) ([]byte, error) {
+	path := "/internal/cloud/operator/registry/tags/" + url.PathEscape(namespace) + "/" + url.PathEscape(repository)
+	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
+}

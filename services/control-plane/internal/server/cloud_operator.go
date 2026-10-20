@@ -27,6 +27,16 @@ func (app *controlPlaneServer) registerCloudOperatorRoutes(mux *http.ServeMux, s
 		query map[string]bool
 		read  http.HandlerFunc
 	}{
+
+		{"/internal/cloud/operator/health", nil, func(w http.ResponseWriter, r *http.Request) {
+			writeSourceEnvelope(w, http.StatusOK, "control-plane", "available", app.operatorHealth(r.Context(), service))
+		}},
+		{"/internal/cloud/operator/runtime-observations", nil, func(w http.ResponseWriter, r *http.Request) { app.writeOperatorRuntimeObservations(w, r, service) }},
+		{"/internal/cloud/operator/reconciliation", pagination, app.writeOperatorReconciliation},
+		{"/internal/cloud/operator/workspace-launches/{operationId}/recovery", nil, func(w http.ResponseWriter, r *http.Request) { app.writeOperatorWorkspaceLaunchRecovery(w, r, service) }},
+		{"/internal/cloud/operator/wallet-adjustments/{operationId}", nil, app.getWalletAdjustment},
+		{"/internal/cloud/operator/workspaces/{workspaceId}/runtime-image-replacements/{operationId}", nil, app.getWorkspaceRuntimeImageReplacement},
+		{"/internal/cloud/operator/application-deployments/{operationId}", nil, app.writeOperatorApplicationDeployment},
 		{"/internal/cloud/operator/overview", nil, func(w http.ResponseWriter, r *http.Request) {
 			app.writeOperatorOverview(w, r, service)
 		}},
@@ -49,17 +59,7 @@ func (app *controlPlaneServer) registerCloudOperatorRoutes(mux *http.ServeMux, s
 			app.previewWorkspaceRuntimeImageReplacement(w, r, service)
 		}},
 	} {
-		route := route
-		mux.HandleFunc("GET "+route.path, func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Cache-Control", "private, no-store")
-			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-			defer cancel()
-			r = r.WithContext(ctx)
-			if !app.cloudOperatorProof(w, r, route.query) {
-				return
-			}
-			route.read(w, r)
-		})
+		mux.HandleFunc("GET "+route.path, app.cloudOperatorRead(route.read, route.query))
 	}
 }
 
@@ -87,4 +87,19 @@ func (app *controlPlaneServer) cloudOperatorProof(w http.ResponseWriter, r *http
 		}
 	}
 	return true
+}
+
+// cloudOperatorRead shares the established peer/token/session proof with each
+// retained GET writer. It never enters the legacy browser-session middleware.
+func (app *controlPlaneServer) cloudOperatorRead(read http.HandlerFunc, query map[string]bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "private, no-store")
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		r = r.WithContext(ctx)
+		if !app.cloudOperatorProof(w, r, query) {
+			return
+		}
+		read(w, r)
+	}
 }

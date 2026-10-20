@@ -38,22 +38,7 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 	registerWorkspaceApplicationRecoveryRoutes(mux, app, service)
 	registerWorkspaceRegistryCatalogRoutes(mux, app)
 	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/recovery", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		row, found, err := app.tables.GetRuntimeOperation(r.Context(), strings.TrimSpace(r.PathValue("operationId")))
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "state_read_failed")
-			return
-		}
-		if !found {
-			writeError(w, http.StatusNotFound, "workspace_launch_not_found")
-			return
-		}
-		operation, err := decodeWorkspaceLaunchReconcileOperation(row)
-		if err != nil {
-			writeError(w, http.StatusConflict, errInvalidWorkspaceLaunchOperation.Error())
-			return
-		}
-		w.Header().Set("Cache-Control", "no-store")
-		writeJSON(w, http.StatusOK, app.workspaceLaunchRecovery(r.Context(), service, operation))
+		app.writeOperatorWorkspaceLaunchRecovery(w, r, service)
 	}))
 	mux.HandleFunc("POST /api/operator/workspace-launches/{operationId}/recover", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		key, ok := requiredMutationKey(w, r)
@@ -426,12 +411,7 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 		app.writeOperatorOverview(w, r, service)
 	}))
 	mux.HandleFunc("GET /api/operator/runtime-observations", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		data, err := app.operatorRuntimeObservations(r.Context(), service, time.Now().UTC())
-		if err != nil {
-			writeSourceEnvelope(w, http.StatusBadGateway, "control-plane+fabric", "unavailable", nil)
-			return
-		}
-		writeSourceEnvelope(w, http.StatusOK, "control-plane+fabric", "available", data)
+		app.writeOperatorRuntimeObservations(w, r, service)
 	}))
 	mux.HandleFunc("GET /api/operator/workspaces", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		app.writeOperatorWorkspaces(w, r, service)
@@ -440,16 +420,7 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 		app.writeOperatorWorkspaceDetail(w, r, service)
 	}))
 	mux.HandleFunc("GET /api/operator/reconciliation", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		page, pageSize, ok := operatorPagination(w, r)
-		if !ok {
-			return
-		}
-		data, status, err := app.operatorReconciliationPage(r.Context(), page, pageSize)
-		if err != nil {
-			writeSourceEnvelope(w, http.StatusInternalServerError, "control-plane", "unavailable", nil)
-			return
-		}
-		writeSourceEnvelope(w, http.StatusOK, "control-plane", status, data)
+		app.writeOperatorReconciliation(w, r)
 	}))
 	mux.HandleFunc("GET /api/operator/health", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		writeSourceEnvelope(w, http.StatusOK, "control-plane", "available", app.operatorHealth(r.Context(), service))
@@ -1591,4 +1562,45 @@ func writeBillingReviewResolutionError(w http.ResponseWriter, err error) {
 	default:
 		writeError(w, http.StatusInternalServerError, "state_persist_failed")
 	}
+}
+
+func (app *controlPlaneServer) writeOperatorWorkspaceLaunchRecovery(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
+	row, found, err := app.tables.GetRuntimeOperation(r.Context(), strings.TrimSpace(r.PathValue("operationId")))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "state_read_failed")
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "workspace_launch_not_found")
+		return
+	}
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		writeError(w, http.StatusConflict, errInvalidWorkspaceLaunchOperation.Error())
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, app.workspaceLaunchRecovery(r.Context(), service, operation))
+}
+
+func (app *controlPlaneServer) writeOperatorRuntimeObservations(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
+	data, err := app.operatorRuntimeObservations(r.Context(), service, time.Now().UTC())
+	if err != nil {
+		writeSourceEnvelope(w, http.StatusBadGateway, "control-plane+fabric", "unavailable", nil)
+		return
+	}
+	writeSourceEnvelope(w, http.StatusOK, "control-plane+fabric", "available", data)
+}
+
+func (app *controlPlaneServer) writeOperatorReconciliation(w http.ResponseWriter, r *http.Request) {
+	page, pageSize, ok := operatorPagination(w, r)
+	if !ok {
+		return
+	}
+	data, status, err := app.operatorReconciliationPage(r.Context(), page, pageSize)
+	if err != nil {
+		writeSourceEnvelope(w, http.StatusInternalServerError, "control-plane", "unavailable", nil)
+		return
+	}
+	writeSourceEnvelope(w, http.StatusOK, "control-plane", status, data)
 }

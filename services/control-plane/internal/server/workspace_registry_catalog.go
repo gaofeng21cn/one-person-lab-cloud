@@ -135,7 +135,7 @@ func registerWorkspaceRegistryCatalogRoutes(mux *http.ServeMux, app *controlPlan
 // endpoint; the routes then answer workspace_registry_unconfigured instead of
 // returning a plausible empty catalog.
 func registerWorkspaceRegistryCatalogRoutesWithCatalog(mux *http.ServeMux, app *controlPlaneServer, catalog *workspaceApplicationRegistryCatalog) {
-	mux.HandleFunc("GET /api/operator/registry/repositories", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
+	repositories := func(w http.ResponseWriter, r *http.Request) {
 		if !requireWorkspaceRegistryCatalog(w, catalog) {
 			return
 		}
@@ -146,8 +146,10 @@ func registerWorkspaceRegistryCatalogRoutesWithCatalog(mux *http.ServeMux, app *
 			return
 		}
 		writeJSON(w, http.StatusOK, response)
-	}))
-	mux.HandleFunc("GET /api/operator/registry/tags/{namespace}/{repository}", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
+	}
+	mux.HandleFunc("GET /api/operator/registry/repositories", app.protected(true, repositories))
+	mux.HandleFunc("GET /internal/cloud/operator/registry/repositories", app.cloudOperatorRead(repositories, map[string]bool{"namespace": true}))
+	tags := func(w http.ResponseWriter, r *http.Request) {
 		if !requireWorkspaceRegistryCatalog(w, catalog) {
 			return
 		}
@@ -161,7 +163,9 @@ func registerWorkspaceRegistryCatalogRoutesWithCatalog(mux *http.ServeMux, app *
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"namespace": namespace, "repository": repository, "tags": tags})
-	}))
+	}
+	mux.HandleFunc("GET /api/operator/registry/tags/{namespace}/{repository}", app.protected(true, tags))
+	mux.HandleFunc("GET /internal/cloud/operator/registry/tags/{namespace}/{repository}", app.cloudOperatorRead(tags, nil))
 	mux.HandleFunc("POST /api/operator/registry/resolve", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		if !requireWorkspaceRegistryCatalog(w, catalog) {
 			return

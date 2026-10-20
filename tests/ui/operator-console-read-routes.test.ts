@@ -11,6 +11,15 @@ import {
   getOperatorWorkspaceRuntimeImagePolicy,
   getOperatorWorkspaceRuntimeImageReplacementPreview,
   getOperatorWorkspaces,
+  getOperatorReconciliation,
+  getOperatorHealth,
+  getOperatorRuntimeObservations,
+  getWalletAdjustment,
+  getWorkspaceLaunchRecovery,
+  getOperatorWorkspaceRuntimeImageReplacement,
+  getOperatorWorkspaceApplicationDeployment,
+  listOperatorRegistryRepositories,
+  listOperatorRegistryTags,
   operatorReadRoute
 } from "../../apps/console-ui/src/api/console-read-api.ts";
 import {
@@ -88,9 +97,7 @@ test("a retained build keeps the Control Plane operator reads", async () => {
 // two read functions so a future edit cannot quietly restore the retained path.
 test("console-read-api.ts keeps no hardcoded operator read path", () => {
   const source = readFileSync(new URL("../../apps/console-ui/src/api/console-read-api.ts", import.meta.url), "utf8");
-  // operatorHealth, operatorReconciliation and getOperatorRuntimeObservations
-  // remain on the retained owner by this issue's explicit scope, so they are
-  // not part of this scan. Every operator read the BFF serves must be.
+  // Every live operator GET selects the identity route at build time.
   for (const name of [
     "getOperatorAccounts",
     "getOperatorOverview",
@@ -99,7 +106,16 @@ test("console-read-api.ts keeps no hardcoded operator read path", () => {
     "getOperatorWorkspace",
     "getOperatorWorkspaceRuntimeImagePolicy",
     "getOperatorAnnouncements",
-    "getOperatorWorkspaceRuntimeImageReplacementPreview"
+    "getOperatorWorkspaceRuntimeImageReplacementPreview",
+    "getOperatorReconciliation",
+    "getOperatorHealth",
+    "getOperatorRuntimeObservations",
+    "getWalletAdjustment",
+    "getWorkspaceLaunchRecovery",
+    "getOperatorWorkspaceRuntimeImageReplacement",
+    "getOperatorWorkspaceApplicationDeployment",
+    "listOperatorRegistryRepositories",
+    "listOperatorRegistryTags"
   ]) {
     const start = source.indexOf(`export function ${name}`);
     assert.notEqual(start, -1, `${name} must exist`);
@@ -127,4 +143,28 @@ test("operator authorization failures are not flattened into an unavailable sour
     assert.equal((error as { status?: number }).status, status);
     assert.equal((error as { payload?: unknown }).payload !== undefined, true, "the BFF error body is preserved");
   }
+});
+
+test("remaining operator GET callers use the same CloudIdentity BFF", async () => {
+ const requests: string[] = [];
+ globalThis.fetch = (async (input: RequestInfo | URL) => {
+  const path = String(input); requests.push(path);
+  const body = path.endsWith("/recovery") ? { operationId: "op-1", launchVersion: 1, status: "pending", stage: "accepted", allowedActions: [] } : { status: "available", available: true, source: "control-plane", fetchedAt: "2026-10-21T00:00:00Z", data: {} };
+  return new Response(JSON.stringify(body), {status: 200});
+ }) as typeof fetch;
+ await getOperatorHealth(undefined, true);
+ await getOperatorRuntimeObservations(undefined, true);
+ await getOperatorReconciliation(1, 20, undefined, true);
+ await getWorkspaceLaunchRecovery("op-1", undefined, true);
+ await getWalletAdjustment("op/1", undefined, true);
+ await getOperatorWorkspaceRuntimeImageReplacement("ws/1", "op/1", undefined, true);
+ await getOperatorWorkspaceApplicationDeployment("op/1", undefined, true);
+ await listOperatorRegistryRepositories("namespace", true);
+ await listOperatorRegistryTags("namespace", "repo/1", true);
+ assert.deepEqual(requests, [
+  "/api/v2/operator/health", "/api/v2/operator/runtime-observations", "/api/v2/operator/reconciliation?page=1&pageSize=20",
+  "/api/v2/operator/workspace-launches/op-1/recovery", "/api/v2/operator/wallet-adjustments/op%2F1",
+  "/api/v2/operator/workspaces/ws%2F1/runtime-image-replacements/op%2F1", "/api/v2/operator/application-deployments/op%2F1",
+  "/api/v2/operator/registry/repositories?namespace=namespace", "/api/v2/operator/registry/tags/namespace/repo%2F1"
+ ]);
 });

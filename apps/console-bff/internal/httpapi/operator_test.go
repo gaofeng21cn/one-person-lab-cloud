@@ -38,6 +38,15 @@ func TestOperatorRoutesAuthorizePlatformOperatorBeforeOwnerRead(t *testing.T) {
 		"/internal/cloud/operator/workspace-runtime-image-policy":                     "control-plane",
 		"/internal/cloud/operator/announcements":                                      "control-plane",
 		"/internal/cloud/operator/workspaces/ws-1/runtime-image-replacements/preview": "control-plane+fabric",
+		"/internal/cloud/operator/health":                                             "control-plane",
+		"/internal/cloud/operator/runtime-observations":                               "control-plane+fabric",
+		"/internal/cloud/operator/reconciliation":                                     "control-plane",
+		"/internal/cloud/operator/workspace-launches/op-1/recovery":                   "",
+		"/internal/cloud/operator/wallet-adjustments/op-1":                            "",
+		"/internal/cloud/operator/workspaces/ws-1/runtime-image-replacements/op-1":    "",
+		"/internal/cloud/operator/application-deployments/op-1":                       "",
+		"/internal/cloud/operator/registry/repositories":                              "",
+		"/internal/cloud/operator/registry/tags/namespace/repository":                 "",
 	}
 	var ownerCalls []string
 	owner := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -83,6 +92,15 @@ func TestOperatorRoutesAuthorizePlatformOperatorBeforeOwnerRead(t *testing.T) {
 		"/api/v2/operator/workspace-runtime-image-policy",
 		"/api/v2/operator/announcements?page=1&pageSize=20",
 		"/api/v2/operator/workspaces/ws-1/runtime-image-replacements/preview?" + previewQuery,
+		"/api/v2/operator/health",
+		"/api/v2/operator/runtime-observations",
+		"/api/v2/operator/reconciliation",
+		"/api/v2/operator/workspace-launches/op-1/recovery",
+		"/api/v2/operator/wallet-adjustments/op-1",
+		"/api/v2/operator/workspaces/ws-1/runtime-image-replacements/op-1",
+		"/api/v2/operator/application-deployments/op-1",
+		"/api/v2/operator/registry/repositories",
+		"/api/v2/operator/registry/tags/namespace/repository",
 	} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, sessionRequest(http.MethodGet, route))
@@ -252,6 +270,15 @@ func TestRemainingOperatorReadsRefuseTenantAdministratorWithoutOwnerRead(t *test
 	for _, route := range []string{
 		"/api/v2/operator/announcements",
 		"/api/v2/operator/workspaces/ws-1/runtime-image-replacements/preview",
+		"/api/v2/operator/health",
+		"/api/v2/operator/runtime-observations",
+		"/api/v2/operator/reconciliation",
+		"/api/v2/operator/workspace-launches/op-1/recovery",
+		"/api/v2/operator/wallet-adjustments/op-1",
+		"/api/v2/operator/workspaces/ws-1/runtime-image-replacements/op-1",
+		"/api/v2/operator/application-deployments/op-1",
+		"/api/v2/operator/registry/repositories",
+		"/api/v2/operator/registry/tags/namespace/repository",
 	} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, sessionRequest(http.MethodGet, route))
@@ -265,7 +292,7 @@ func TestRemainingOperatorReadsRefuseTenantAdministratorWithoutOwnerRead(t *test
 	if ownerCalls != 0 {
 		t.Fatalf("owner read before operator refusal: %d", ownerCalls)
 	}
-	if len(identity.requests) != 2 {
+	if len(identity.requests) != 11 {
 		t.Fatalf("operator decisions=%d", len(identity.requests))
 	}
 	for _, request := range identity.requests {
