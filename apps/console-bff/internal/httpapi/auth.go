@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"io"
+	"log"
 	"mime"
 	"net/http"
 	"net/url"
@@ -62,7 +63,7 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 		// authority value; an attacker cannot create a matching authority challenge.
 		h := sha256.Sum256([]byte(out.CsrfToken))
 		setIdentityCookie(w, "opl_login_csrf", hex.EncodeToString(h[:]), 300)
-		authJSON(w, out)
+		authJSON(w, r, out)
 	})
 	mux.HandleFunc("POST /api/v2/auth/login", func(w http.ResponseWriter, r *http.Request) {
 		publisherRequestID(r)
@@ -96,10 +97,18 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 			writePublisherError(w, r, 503, "owner_unconfigured", "CloudIdentity login unavailable")
 			return
 		}
+		projected, e := identityProjection(r, out)
+		if e != nil {
+			writeIdentityProjectionError(w, r)
+			return
+		}
+		// The session cookie is written only after the response body exists, so a
+		// login the browser cannot be told about leaves no session behind.
 		http.SetCookie(w, &http.Cookie{Name: SessionCookieName, Value: cookie, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode, MaxAge: int(time.Until(out.ExpiresAt.AsTime()).Seconds())})
 		setIdentityCookie(w, "opl_login_context", "", -1)
 		setIdentityCookie(w, "opl_login_csrf", "", -1)
-		authJSON(w, out)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(projected)
 	})
 	mux.HandleFunc("POST /api/v2/auth/logout", func(w http.ResponseWriter, r *http.Request) {
 		publisherRequestID(r)
@@ -126,12 +135,40 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 		w.WriteHeader(204)
 	})
 }
-func authJSON(w http.ResponseWriter, m proto.Message) {
-	raw, e := publicjson.Marshal(m)
+
+// identityProjection projects a CloudIdentity message onto the public contract
+// and records what the contract could not name. A dropped value is an observed
+// contract gap, never a grant: it is absent from the body and CloudIdentity still
+// decides every action. The actor id is the only identity fact logged; the
+// password and the session token are never logged.
+func identityProjection(r *http.Request, m proto.Message) ([]byte, error) {
+	raw, omissions, e := publicjson.MarshalWithOmissions(m)
+	actor := ""
+	if session, ok := m.(*api.Session); ok {
+		actor = session.GetActorId()
+	}
+	for _, omission := range omissions {
+		log.Printf("identity projection omitted unnamed enum value message=%s field=%s value=%d actor=%q request=%s", omission.Message, omission.Field, omission.Value, actor, r.Header.Get(requestIDHeader))
+	}
 	if e != nil {
-		http.Error(w, "invalid identity response", 502)
+		log.Printf("identity projection failed message=%s actor=%q request=%s error=%v", m.ProtoReflect().Descriptor().FullName(), actor, r.Header.Get(requestIDHeader), e)
+		return nil, e
+	}
+	return raw, nil
+}
+
+// writeIdentityProjectionError answers a projection failure with the contract's
+// typed error body. The failing field and offending value stay in the pod log.
+func writeIdentityProjectionError(w http.ResponseWriter, r *http.Request) {
+	writePublisherError(w, r, 502, "invalid_identity_projection", "CloudIdentity identity response could not be projected")
+}
+
+func authJSON(w http.ResponseWriter, r *http.Request, m proto.Message) {
+	raw, e := identityProjection(r, m)
+	if e != nil {
+		writeIdentityProjectionError(w, r)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(raw)
+	_, _ = w.Write(raw)
 }

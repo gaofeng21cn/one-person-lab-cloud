@@ -11639,10 +11639,12 @@ components:
       - getTenantAssetCustody
       - getTenantLifecycleOperation
       - getUpload
+      - getUsageSummary
       - getWallet
       - getWorkspace
       - getWorkspaceAccess
       - getWorkspaceDeletion
+      - getWorkspaceFinancialReceipt
       - getWorkspaceModels
       - inviteMember
       - issueAcceptedOperationGrant
