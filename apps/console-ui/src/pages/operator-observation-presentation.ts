@@ -62,6 +62,7 @@ export function workspaceImageStatusMessage(status: NonNullable<OperatorFabricHe
     case "installed_target_matches": return "Workspace 运行镜像与安装目标一致。";
     case "workspace_targets_verified": return "存量 Workspace 与安装默认版本不同；各自固定目标与实际运行镜像已核验。";
     case "no_running_sample": return "暂无可核验的运行 Workspace，安装目标一致性尚未验证。";
+    case "rollout_incomplete": return "Workspace 滚动更新尚未完成：Ready Pod 的 ReplicaSet 仍使用 Deployment 的旧模板。若更新仍在进行请等待；若长时间停滞，请对比 Deployment 当前模板与该 Ready Pod 的 ReplicaSet，并检查新 Pod 未就绪的原因。";
     case "identity_unverified": return "Workspace 镜像身份尚未核验，需要核对固定目标、实际镜像和控制器归属。";
   }
 }

@@ -1516,6 +1516,9 @@ func (app *controlPlaneServer) operatorHealth(ctx context.Context, service *cont
 		if readiness.WorkspaceImageStatus != "" {
 			facts["workspaceImageStatus"] = readiness.WorkspaceImageStatus
 		}
+		if len(readiness.WorkspaceImageUnverifiedWorkspaceIDs) > 0 {
+			facts["workspaceImageUnverifiedWorkspaceIds"] = readiness.WorkspaceImageUnverifiedWorkspaceIDs
+		}
 		result["fabric"] = sourceEnvelope("fabric", "available", facts, "")
 	}
 	if err := service.LedgerReadiness(ctx); err == nil {

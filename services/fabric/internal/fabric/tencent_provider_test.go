@@ -737,6 +737,7 @@ func TestWorkspaceImageReadinessVerifiesEachCurrentTargetBeforeExplainingVersion
 		installed string
 		change    func([]any) []any
 		want      contracts.WorkspaceImageReadinessStatus
+		wantIDs   []string
 	}{
 		{name: "current target is installed default", installed: existing, want: contracts.WorkspaceImageInstalledTargetMatches},
 		{name: "malformed inventory item", change: func(items []any) []any { return append(items, nil) }, want: contracts.WorkspaceImageIdentityUnverified},
@@ -746,39 +747,39 @@ func TestWorkspaceImageReadinessVerifiesEachCurrentTargetBeforeExplainingVersion
 		{name: "image actually differs from its own target", change: func(items []any) []any {
 			items[2].(map[string]any)["status"].(map[string]any)["containerStatuses"].([]any)[0].(map[string]any)["imageID"] = installed
 			return items
-		}, want: contracts.WorkspaceImageIdentityUnverified},
+		}, want: contracts.WorkspaceImageIdentityUnverified, wantIDs: []string{"ws"}},
 		{name: "missing runtime image ID", change: func(items []any) []any {
 			items[2].(map[string]any)["status"].(map[string]any)["containerStatuses"].([]any)[0].(map[string]any)["imageID"] = ""
 			return items
-		}, want: contracts.WorkspaceImageIdentityUnverified},
+		}, want: contracts.WorkspaceImageIdentityUnverified, wantIDs: []string{"ws"}},
 		{name: "mutable target cannot establish version difference", change: func(items []any) []any {
 			items[0].(map[string]any)["spec"].(map[string]any)["template"].(map[string]any)["spec"].(map[string]any)["containers"].([]any)[0].(map[string]any)["image"] = "example/image:latest"
 			return items
-		}, want: contracts.WorkspaceImageIdentityUnverified},
+		}, want: contracts.WorkspaceImageIdentityUnverified, wantIDs: []string{"ws"}},
 		{name: "old Ready Pod cannot prove new generation", change: func(items []any) []any {
 			items[0].(map[string]any)["status"].(map[string]any)["observedGeneration"] = float64(1)
 			return items
-		}, want: contracts.WorkspaceImageIdentityUnverified},
-		{name: "old ReplicaSet template cannot prove current target", change: func(items []any) []any {
+		}, want: contracts.WorkspaceImageIdentityUnverified, wantIDs: []string{"ws"}},
+		{name: "old ReplicaSet template means the rollout has not converged", change: func(items []any) []any {
 			items[1].(map[string]any)["spec"].(map[string]any)["template"] = map[string]any{"spec": map[string]any{"containers": []any{map[string]any{"name": "workspace", "image": installed}}}}
 			return items
-		}, want: contracts.WorkspaceImageIdentityUnverified},
+		}, want: contracts.WorkspaceImageRolloutIncomplete, wantIDs: []string{"ws"}},
 		{name: "Pod spec differs from controller target", change: func(items []any) []any {
 			items[2].(map[string]any)["spec"].(map[string]any)["containers"].([]any)[0].(map[string]any)["image"] = installed
 			return items
-		}, want: contracts.WorkspaceImageIdentityUnverified},
+		}, want: contracts.WorkspaceImageIdentityUnverified, wantIDs: []string{"ws"}},
 		{name: "missing Pod controller", change: func(items []any) []any {
 			delete(items[2].(map[string]any)["metadata"].(map[string]any), "ownerReferences")
 			return items
-		}, want: contracts.WorkspaceImageIdentityUnverified},
-		{name: "missing ReplicaSet", change: func(items []any) []any { return []any{items[0], items[2]} }, want: contracts.WorkspaceImageIdentityUnverified},
-		{name: "missing Deployment", change: func(items []any) []any { return items[1:] }, want: contracts.WorkspaceImageIdentityUnverified},
-		{name: "duplicate object identity", change: func(items []any) []any { return append(items, items[0]) }, want: contracts.WorkspaceImageIdentityUnverified},
+		}, want: contracts.WorkspaceImageIdentityUnverified, wantIDs: []string{"ws"}},
+		{name: "missing ReplicaSet", change: func(items []any) []any { return []any{items[0], items[2]} }, want: contracts.WorkspaceImageIdentityUnverified, wantIDs: []string{"ws"}},
+		{name: "missing Deployment", change: func(items []any) []any { return items[1:] }, want: contracts.WorkspaceImageIdentityUnverified, wantIDs: []string{"ws"}},
+		{name: "duplicate object identity", change: func(items []any) []any { return append(items, items[0]) }, want: contracts.WorkspaceImageIdentityUnverified, wantIDs: []string{"ws"}},
 		{name: "one unverified Workspace prevents verified fleet claim", change: func(items []any) []any {
 			other := fixture("other")
 			other[2].(map[string]any)["status"].(map[string]any)["containerStatuses"].([]any)[0].(map[string]any)["imageID"] = installed
 			return append(items, other...)
-		}, want: contracts.WorkspaceImageIdentityUnverified},
+		}, want: contracts.WorkspaceImageIdentityUnverified, wantIDs: []string{"other"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			items := fixture("ws")
@@ -789,10 +790,31 @@ func TestWorkspaceImageReadinessVerifiesEachCurrentTargetBeforeExplainingVersion
 			if target == "" {
 				target = installed
 			}
-			if got := workspaceImageReadiness(items, target); got != tc.want {
+			got, gotIDs := workspaceImageReadiness(items, target)
+			if got != tc.want {
 				t.Fatalf("status=%s want=%s", got, tc.want)
 			}
+			if !slices.Equal(gotIDs, tc.wantIDs) {
+				t.Fatalf("unverified workspace ids=%#v want=%#v", gotIDs, tc.wantIDs)
+			}
 		})
+	}
+}
+
+func TestWorkspaceImageReadinessReportsEveryUnverifiedWorkspaceInDeterministicOrder(t *testing.T) {
+	installed := "example/image@sha256:" + strings.Repeat("a", 64)
+	items := append(observationWorkload("ws-b", 1, true), observationWorkload("ws-a", 1, true)...)
+	// ws-b is a rollout that has not converged: the Ready Pod's ReplicaSet still
+	// carries the previous template while the Deployment template has moved on.
+	items[1].(map[string]any)["spec"].(map[string]any)["template"] = map[string]any{"spec": map[string]any{"containers": []any{map[string]any{"name": "workspace", "image": installed}}}}
+	// ws-a is an integrity fault: its Ready Pod has no workspace container spec,
+	// so the actual image identity cannot be proven at all.
+	status, ids := workspaceImageReadiness(items, installed)
+	if status != contracts.WorkspaceImageIdentityUnverified {
+		t.Fatalf("status=%s want=%s: an identity fault outranks an incomplete rollout", status, contracts.WorkspaceImageIdentityUnverified)
+	}
+	if want := []string{"ws-a", "ws-b"}; !slices.Equal(ids, want) {
+		t.Fatalf("unverified workspace ids=%#v want=%#v", ids, want)
 	}
 }
 
