@@ -41,12 +41,28 @@ func (c *controlPlaneReader) request(ctx context.Context, session, method, path,
 }
 
 func (c *controlPlaneReader) requestWithLimit(ctx context.Context, session, method, path, key string, out any, maxBytes int64) error {
+	raw, err := c.requestRaw(ctx, session, method, path, key, maxBytes)
+	if err != nil {
+		return err
+	}
+	if json.Unmarshal(raw, out) != nil {
+		return status.Error(codes.DataLoss, "invalid retained owner response")
+	}
+	return nil
+}
+
+// requestRaw returns the owner's response body unchanged. The caller validates
+// the retained envelope it forwards; the BFF never rewrites an owner's facts.
+func (c *controlPlaneReader) requestRaw(ctx context.Context, session, method, path, key string, maxBytes int64) ([]byte, error) {
 	if c == nil {
-		return status.Error(codes.Unavailable, "retained owner is not configured")
+		return nil, status.Error(codes.Unavailable, "retained owner is not configured")
+	}
+	if maxBytes <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "invalid owner read limit")
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, nil)
 	if err != nil {
-		return status.Error(codes.InvalidArgument, "invalid owner request")
+		return nil, status.Error(codes.InvalidArgument, "invalid owner request")
 	}
 	req.Header.Set(owneridentity.PeerHeader, owneridentity.ConsoleBFF.String())
 	req.Header.Set(owneridentity.TokenHeader, c.token)
@@ -57,29 +73,29 @@ func (c *controlPlaneReader) requestWithLimit(ctx context.Context, session, meth
 	}
 	response, err := c.http.Do(req)
 	if err != nil {
-		return status.Error(codes.Unavailable, "retained owner is unavailable")
+		return nil, status.Error(codes.Unavailable, "retained owner is unavailable")
 	}
 	defer response.Body.Close()
 	switch response.StatusCode {
 	case http.StatusOK:
 	case http.StatusUnauthorized:
-		return status.Error(codes.Unauthenticated, "Cloud session or owner identity rejected")
+		return nil, status.Error(codes.Unauthenticated, "Cloud session or owner identity rejected")
 	case http.StatusForbidden:
-		return status.Error(codes.PermissionDenied, "original owner access denied")
+		return nil, status.Error(codes.PermissionDenied, "original owner access denied")
 	case http.StatusNotFound:
-		return status.Error(codes.NotFound, "original owner record not found")
+		return nil, status.Error(codes.NotFound, "original owner record not found")
 	case http.StatusBadRequest:
-		return status.Error(codes.InvalidArgument, "invalid original owner request")
+		return nil, status.Error(codes.InvalidArgument, "invalid original owner request")
 	case http.StatusConflict:
-		return status.Error(codes.FailedPrecondition, "original owner identity is unresolved")
+		return nil, status.Error(codes.FailedPrecondition, "original owner identity is unresolved")
 	default:
-		return status.Error(codes.Unavailable, "retained owner is unavailable")
+		return nil, status.Error(codes.Unavailable, "retained owner is unavailable")
 	}
 	raw, err := io.ReadAll(io.LimitReader(response.Body, maxBytes+1))
-	if err != nil || int64(len(raw)) > maxBytes || json.Unmarshal(raw, out) != nil {
-		return status.Error(codes.DataLoss, "invalid retained owner response")
+	if err != nil || int64(len(raw)) > maxBytes {
+		return nil, status.Error(codes.DataLoss, "invalid retained owner response")
 	}
-	return nil
+	return raw, nil
 }
 
 func (c *Clients) ListAnnouncements(ctx context.Context, session string, page, pageSize int) (*contracts.AnnouncementSource, error) {

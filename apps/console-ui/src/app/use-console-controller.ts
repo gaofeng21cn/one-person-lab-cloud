@@ -13,6 +13,7 @@ import type {
 import {
   getWorkspaceGatewayBudget
 } from "../api/workspaces-api.ts";
+import { authorizationFailureState } from "./authorization-error.ts";
 import { cloudIdentity } from "./console-identity.ts";
 import { parseConsoleRoute, useConsoleRouter, type ConsoleRoute } from "./console-router.ts";
 import type {
@@ -515,7 +516,10 @@ export function useConsoleController() {
       const result = await getOperatorOverview();
       if (isRequestCurrent(generation, activeSession.user.id)) updateSource("operatorOverview", { value: result, loading: false, error: "" });
     } catch (error) {
-      if (isRequestCurrent(generation, activeSession.user.id)) failSource("operatorOverview", error, unavailableSource("control-plane"));
+      if (!isRequestCurrent(generation, activeSession.user.id)) return;
+      const authorization = authorizationFailureState(error);
+      if (authorization) updateSource("operatorOverview", authorization);
+      else failSource("operatorOverview", error, unavailableSource("control-plane"));
     }
   };
 
@@ -525,7 +529,10 @@ export function useConsoleController() {
       const result = await getOperatorReconciliation();
       if (isRequestCurrent(generation, activeSession.user.id)) updateSource("operatorReconciliation", { value: result, loading: false, error: "" });
     } catch (error) {
-      if (isRequestCurrent(generation, activeSession.user.id)) failSource("operatorReconciliation", error, unavailableSource("control-plane"));
+      if (!isRequestCurrent(generation, activeSession.user.id)) return;
+      const authorization = authorizationFailureState(error);
+      if (authorization) updateSource("operatorReconciliation", authorization);
+      else failSource("operatorReconciliation", error, unavailableSource("control-plane"));
     }
   };
 
@@ -535,7 +542,10 @@ export function useConsoleController() {
       const result = await getOperatorHealth();
       if (isRequestCurrent(generation, activeSession.user.id)) updateSource("operatorHealth", { value: result, loading: false, error: "" });
     } catch (error) {
-      if (isRequestCurrent(generation, activeSession.user.id)) failSource("operatorHealth", error, unavailableSource("control-plane"));
+      if (!isRequestCurrent(generation, activeSession.user.id)) return;
+      const authorization = authorizationFailureState(error);
+      if (authorization) updateSource("operatorHealth", authorization);
+      else failSource("operatorHealth", error, unavailableSource("control-plane"));
     }
   };
 

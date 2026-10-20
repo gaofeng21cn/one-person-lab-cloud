@@ -14,6 +14,7 @@ import type {
   ProvisionAccountRequest,
   SourceEnvelope
 } from "../api/dtos.ts";
+import { authorizationFailureState } from "./authorization-error.ts";
 import type { OperatorAccountController, RemoteState } from "./console-controller-types.ts";
 import {
   accountCommandSucceeded,
@@ -134,7 +135,8 @@ export function useOperatorAccountController({
       commitPage(result);
     } catch (error) {
       if (generation !== listGeneration.current || !requestOwnsScope(scope, userId, csrfToken)) return;
-      setAccounts({
+      const authorization = authorizationFailureState(error);
+      setAccounts(authorization ?? {
         value: unavailableSource("control-plane+sub2api"),
         loading: false,
         error: friendlyError(error)

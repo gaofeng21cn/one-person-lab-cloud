@@ -101,6 +101,7 @@ func NewPersistentServer(service *controlplane.Service, store StateStore) (http.
 	registerWorkspaceLaunchRoutes(mux, app, service)
 	registerBillingRoutes(mux, app, service)
 	registerAnnouncementRoutes(mux, app)
+	app.registerCloudOperatorRoutes(mux, service)
 	registerAdminRoutes(mux, app, service)
 	registerProviderAcceptanceRoutes(mux, app, service)
 	initialized = true

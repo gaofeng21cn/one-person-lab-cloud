@@ -148,8 +148,13 @@ func newCloudAnnouncementHTTPFixture(t *testing.T, store StateStore, services ..
 }
 
 type cloudAnnouncementHTTPResponse struct {
-	code int
-	body []byte
+	code   int
+	body   []byte
+	header http.Header
+}
+
+func (response cloudAnnouncementHTTPResponse) cookies() []*http.Cookie {
+	return (&http.Response{Header: response.header}).Cookies()
 }
 
 func (f *cloudAnnouncementHTTPFixture) request(t *testing.T, method, path, ref, body string, mutate ...func(http.Header)) cloudAnnouncementHTTPResponse {
@@ -176,7 +181,7 @@ func (f *cloudAnnouncementHTTPFixture) request(t *testing.T, method, path, ref, 
 	if response.Header.Get("Cache-Control") != "private, no-store" {
 		t.Fatalf("missing private cache policy: %v", response.Header)
 	}
-	return cloudAnnouncementHTTPResponse{code: response.StatusCode, body: payload}
+	return cloudAnnouncementHTTPResponse{code: response.StatusCode, body: payload, header: response.Header.Clone()}
 }
 
 func (response cloudAnnouncementHTTPResponse) page(t *testing.T) *contracts.AnnouncementPage {

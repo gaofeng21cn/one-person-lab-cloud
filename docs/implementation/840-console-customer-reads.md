@@ -53,10 +53,17 @@ and [`console-read-api.ts`](../../apps/console-ui/src/api/console-read-api.ts).
 | Agent delivery view | `AgentDeliveryPanel` | `GET /api/v2/delivery/{workspaceId}` | None | BFF composition of Workspace, Serve, Capability and Build owner facts | Live CloudIdentity proof | No |
 | Legacy Workspace renewal, runtime status, Gateway budget, launch list/detail | Renewal, Fabric Runtime Read, console detail, launch recovery | No cloud caller; cloud detail receives no Control Plane Workspace | Retained `/api/workspaces/*` and `/api/workspace-launches` | Retained Control Plane | Retained Account session | Yes: legacy-only; no cloud caller is allowed to address these routes |
 
-Operator reads (`/api/operator/*`, `/api/management/state`, runtime and production
-readiness) are the administrator surface, not the first-launch customer journey.
-They keep their retained administrator authorization and are outside this
-customer-read inventory.
+The five operator reads (`/api/v2/operator/overview`, `/accounts`, `/workspaces`,
+`/workspaces/{workspaceId}`, `/workspace-runtime-image-policy`) use the same
+build-time route decision through `operatorReadRoute`: the BFF authorizes the
+CloudIdentity platform operator and reads the retained Control Plane owner
+through `/internal/cloud/operator/*`. The platform-operator fact is CloudIdentity's
+existing platform-admin decision for `CREATE PUBLISHER NAMESPACE`; a tenant
+administrator is refused. Other administrator operations (writes, announcements,
+reconciliation, health, runtime observations, registry, launch recovery and image
+replacement) remain on the retained administrator surface and are outside this
+inventory. `/api/management/state`, runtime and production readiness also remain
+retained.
 
 ## Identity Fences
 
@@ -65,8 +72,8 @@ customer-read inventory.
   Account cookie.
 - A customer read selects exactly one route for its baked identity. There is no
   catch-and-retry against the other route when the selected owner is unavailable.
-  `walletReadRoute`, `gatewayUsageSummaryRoute`, `billingReadRoute` and
-  `announcementReadRoute` are the single route decisions.
+  `walletReadRoute`, `gatewayUsageSummaryRoute`, `billingReadRoute`,
+  `announcementReadRoute` and `operatorReadRoute` are the single route decisions.
 - Cloud routes require a live BFF session. Historical billing, announcement and
   personal Gateway reads carry a fresh CloudIdentity proof to the retained
   original owner; that owner verifies the reciprocal mapping before returning

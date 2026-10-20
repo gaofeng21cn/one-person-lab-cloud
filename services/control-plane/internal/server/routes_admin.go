@@ -419,25 +419,11 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 		app.recoverWalletAdjustment(w, r, service)
 	}))
 	mux.HandleFunc("GET /api/operator/accounts", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		page, pageSize, ok := operatorPagination(w, r)
-		if !ok {
-			return
-		}
-		data, status, err := app.operatorAccountPage(r.Context(), service, page, pageSize)
-		if err != nil {
-			writeSourceEnvelope(w, http.StatusBadGateway, "control-plane+sub2api", "unavailable", nil)
-			return
-		}
-		writeSourceEnvelope(w, http.StatusOK, "control-plane+sub2api", status, data)
+		app.writeOperatorAccounts(w, r, service)
 	}))
 	registerAcceptanceBAccountReconcileRoute(mux, app, service)
 	mux.HandleFunc("GET /api/operator/overview", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		data, err := app.operatorOverview(r.Context(), service)
-		if err != nil {
-			writeSourceEnvelope(w, http.StatusBadGateway, "control-plane", "unavailable", nil)
-			return
-		}
-		writeSourceEnvelope(w, http.StatusOK, "control-plane", "available", data)
+		app.writeOperatorOverview(w, r, service)
 	}))
 	mux.HandleFunc("GET /api/operator/runtime-observations", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		data, err := app.operatorRuntimeObservations(r.Context(), service, time.Now().UTC())
@@ -448,28 +434,10 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 		writeSourceEnvelope(w, http.StatusOK, "control-plane+fabric", "available", data)
 	}))
 	mux.HandleFunc("GET /api/operator/workspaces", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		page, pageSize, ok := operatorPagination(w, r)
-		if !ok {
-			return
-		}
-		data, status, err := app.operatorWorkspacePage(r.Context(), service, page, pageSize)
-		if err != nil {
-			writeSourceEnvelope(w, http.StatusInternalServerError, "control-plane+fabric+sub2api", "unavailable", nil)
-			return
-		}
-		writeSourceEnvelope(w, http.StatusOK, "control-plane+fabric+sub2api", status, data)
+		app.writeOperatorWorkspaces(w, r, service)
 	}))
 	mux.HandleFunc("GET /api/operator/workspaces/{workspaceId}", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		data, found, err := app.operatorWorkspaceDetail(r.Context(), service, strings.TrimSpace(r.PathValue("workspaceId")))
-		if err != nil {
-			writeSourceEnvelope(w, http.StatusInternalServerError, "control-plane+fabric+ledger", "unavailable", nil)
-			return
-		}
-		if !found {
-			writeError(w, http.StatusNotFound, "workspace_not_found")
-			return
-		}
-		writeSourceEnvelope(w, http.StatusOK, "control-plane+fabric+ledger", "available", data)
+		app.writeOperatorWorkspaceDetail(w, r, service)
 	}))
 	mux.HandleFunc("GET /api/operator/reconciliation", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		page, pageSize, ok := operatorPagination(w, r)
@@ -688,6 +656,57 @@ func operatorPagination(w http.ResponseWriter, r *http.Request) (int, int, bool)
 		return 0, 0, false
 	}
 	return page, pageSize, true
+}
+
+// The operator read writers below are the single read path for a surface. The
+// retained /api/operator/* route and the BFF-facing /internal/cloud/operator/*
+// route both call them, so the console cannot grow a second projection.
+func (app *controlPlaneServer) writeOperatorAccounts(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
+	page, pageSize, ok := operatorPagination(w, r)
+	if !ok {
+		return
+	}
+	data, status, err := app.operatorAccountPage(r.Context(), service, page, pageSize)
+	if err != nil {
+		writeSourceEnvelope(w, http.StatusBadGateway, "control-plane+sub2api", "unavailable", nil)
+		return
+	}
+	writeSourceEnvelope(w, http.StatusOK, "control-plane+sub2api", status, data)
+}
+
+func (app *controlPlaneServer) writeOperatorOverview(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
+	data, err := app.operatorOverview(r.Context(), service)
+	if err != nil {
+		writeSourceEnvelope(w, http.StatusBadGateway, "control-plane", "unavailable", nil)
+		return
+	}
+	writeSourceEnvelope(w, http.StatusOK, "control-plane", "available", data)
+}
+
+func (app *controlPlaneServer) writeOperatorWorkspaces(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
+	page, pageSize, ok := operatorPagination(w, r)
+	if !ok {
+		return
+	}
+	data, status, err := app.operatorWorkspacePage(r.Context(), service, page, pageSize)
+	if err != nil {
+		writeSourceEnvelope(w, http.StatusInternalServerError, "control-plane+fabric+sub2api", "unavailable", nil)
+		return
+	}
+	writeSourceEnvelope(w, http.StatusOK, "control-plane+fabric+sub2api", status, data)
+}
+
+func (app *controlPlaneServer) writeOperatorWorkspaceDetail(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
+	data, found, err := app.operatorWorkspaceDetail(r.Context(), service, strings.TrimSpace(r.PathValue("workspaceId")))
+	if err != nil {
+		writeSourceEnvelope(w, http.StatusInternalServerError, "control-plane+fabric+ledger", "unavailable", nil)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "workspace_not_found")
+		return
+	}
+	writeSourceEnvelope(w, http.StatusOK, "control-plane+fabric+ledger", "available", data)
 }
 
 func operatorProvisionShapeValid(input map[string]any) bool {
