@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	api "opl-cloud/packages/contracts/go/api"
@@ -89,14 +88,6 @@ func TestSessionProjectionReportsTheDroppedPermissionValue(t *testing.T) {
 // proto3 zero value is the absence of a permission rather than a permission, so
 // the contract publishes no text for it and the projection drops it like any
 // other unnameable value.
-// actionsPendingPublicName lists actions that already route and authorize but
-// whose public name has not landed yet. It is deliberately narrow: a value
-// outside this map fails the test, so the gap cannot quietly grow.
-var actionsPendingPublicName = map[protoreflect.EnumNumber]string{
-	154: "#990 getUsageSummary",
-	157: "#990 getWorkspaceFinancialReceipt",
-}
-
 func TestSessionPermissionEnumValuesHavePublicNames(t *testing.T) {
 	field := (&api.Session{}).ProtoReflect().Descriptor().Fields().ByName("permissions")
 	if field == nil || !field.IsList() || field.Enum() == nil {
@@ -113,10 +104,6 @@ func TestSessionPermissionEnumValuesHavePublicNames(t *testing.T) {
 			continue
 		}
 		if _, named := public[value.Number()]; !named {
-			if issue, pending := actionsPendingPublicName[value.Number()]; pending {
-				t.Logf("%s value %s (%d) is a known contract gap tracked by %s", enum.FullName(), value.Name(), value.Number(), issue)
-				continue
-			}
 			t.Errorf("%s value %s (%d) has no public name in the generated shape table", enum.FullName(), value.Name(), value.Number())
 		}
 	}
