@@ -1019,6 +1019,7 @@ function HealthDiagnostics({ service, serviceKey }: { service: SourceEnvelope<Re
       <span>安装镜像目标一致性：<Badge color={targetsMatch ? "success" : verifiedVersionDifference ? "info" : "warning"}>{targetsMatch ? "全部一致" : verifiedVersionDifference ? "存量版本不同" : "尚未核验完成"}</Badge></span>
       <small>Cloud 运行镜像与安装目标：{facts.cloudImagesReady ? "一致" : "尚未确认一致"}</small>
       {facts.workspaceImageStatus ? <small>{workspaceImageStatusMessage(facts.workspaceImageStatus)}</small> : null}
+      {facts.workspaceImageUnverifiedWorkspaceIds?.length ? <small>未核验 Workspace：{facts.workspaceImageUnverifiedWorkspaceIds.join("、")}</small> : null}
       {facts.failedChecks?.filter((check) => check !== "workspace_image_id" || !facts.workspaceImageStatus).map((check) => <small key={check}>{observationReason(check)}</small>)}
       <small>安装默认与存量目标分别管理；更改默认不会自动升级存量 Workspace。</small>
     </div>;

@@ -67,7 +67,14 @@ const (
 	WorkspaceImageInstalledTargetMatches WorkspaceImageReadinessStatus = "installed_target_matches"
 	WorkspaceImageTargetsVerified        WorkspaceImageReadinessStatus = "workspace_targets_verified"
 	WorkspaceImageNoRunningSample        WorkspaceImageReadinessStatus = "no_running_sample"
-	WorkspaceImageIdentityUnverified     WorkspaceImageReadinessStatus = "identity_unverified"
+	// WorkspaceImageRolloutIncomplete means a Ready Running Workspace Pod was
+	// found, its Pod/ReplicaSet/Deployment chain resolved and agreed on the
+	// Workspace identity, but the Pod's ReplicaSet still carries a template that
+	// differs from the Deployment's current template. The rollout has not
+	// converged: the operator either waits or inspects why the newer Pods are not
+	// Ready. This is not an integrity fault: the chain was proven.
+	WorkspaceImageRolloutIncomplete  WorkspaceImageReadinessStatus = "rollout_incomplete"
+	WorkspaceImageIdentityUnverified WorkspaceImageReadinessStatus = "identity_unverified"
 )
 
 // FabricReadiness keeps service operation separate from strict image qualification.
@@ -79,8 +86,15 @@ type FabricReadiness struct {
 	CloudImagesReady     bool                          `json:"cloudImagesReady"`
 	WorkspaceImagesReady bool                          `json:"workspaceImagesReady"`
 	WorkspaceImageStatus WorkspaceImageReadinessStatus `json:"workspaceImageStatus,omitempty"`
-	ImmutableImagesReady bool                          `json:"immutableImagesReady"`
-	MissingEnv           []string                      `json:"missingEnv"`
-	MissingTools         []string                      `json:"missingTools"`
-	FailedChecks         []string                      `json:"failedChecks"`
+	// WorkspaceImageUnverifiedWorkspaceIDs names the Workspaces whose Ready
+	// Running Pod could not be proven to run its Deployment's current immutable
+	// target. It covers both rollout_incomplete and identity_unverified, is
+	// sorted and unique, and is empty when every sampled Workspace was proven.
+	// It remains bounded by the number of Ready Workspace Pods in the single
+	// inventory read; callers must not treat it as an unbounded audit stream.
+	WorkspaceImageUnverifiedWorkspaceIDs []string `json:"workspaceImageUnverifiedWorkspaceIds,omitempty"`
+	ImmutableImagesReady                 bool     `json:"immutableImagesReady"`
+	MissingEnv                           []string `json:"missingEnv"`
+	MissingTools                         []string `json:"missingTools"`
+	FailedChecks                         []string `json:"failedChecks"`
 }

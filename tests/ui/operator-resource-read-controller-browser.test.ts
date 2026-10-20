@@ -899,11 +899,15 @@ function observedRuntime(): OperatorRuntimeObservationsDTO {
   };
 }
 
-function observedHealth(workspaceImageStatus: OperatorFabricHealthDTO["workspaceImageStatus"] = "workspace_targets_verified", releaseReady = workspaceImageStatus === "installed_target_matches"): OperatorHealthDTO {
+function observedHealth(workspaceImageStatus: OperatorFabricHealthDTO["workspaceImageStatus"] = "workspace_targets_verified", releaseReady = workspaceImageStatus === "installed_target_matches", unverifiedWorkspaceIds: string[] = []): OperatorHealthDTO {
   const { items: _items, ...runtime } = observedRuntime();
   return {
     controlPlane: source({ ready: true }), gateway: source({ ready: true }, "sub2api"), ledger: source({ ready: true }, "ledger"),
-    fabric: source({ ready: true, serviceReady: true, releaseReady, cloudImagesReady: true, workspaceImagesReady: releaseReady, workspaceImageStatus, immutableImagesReady: releaseReady, failedChecks: releaseReady ? [] : ["workspace_image_id"] }, "fabric"),
+    fabric: source({
+      ready: true, serviceReady: true, releaseReady, cloudImagesReady: true, workspaceImagesReady: releaseReady, workspaceImageStatus,
+      ...(unverifiedWorkspaceIds.length ? { workspaceImageUnverifiedWorkspaceIds: unverifiedWorkspaceIds } : {}),
+      immutableImagesReady: releaseReady, failedChecks: releaseReady ? [] : ["workspace_image_id"]
+    }, "fabric"),
     runtime: source(runtime, "control-plane+fabric")
   };
 }
@@ -916,11 +920,12 @@ test("System health separates Fabric service from release and opens a read-only 
   let includeDeleting = false;
   let imageStatus: OperatorFabricHealthDTO["workspaceImageStatus"] = "workspace_targets_verified";
   let strictReleaseReady: boolean | undefined;
+  let unverifiedWorkspaceIds: string[] = [];
   const writes: string[] = [];
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     page.on("request", (request) => { if (request.url().includes("/api/operator/") && request.method() !== "GET") writes.push(request.url()); });
-    await page.route("**/api/operator/health", (route) => fulfill(route, source(observedHealth(imageStatus, strictReleaseReady))));
+    await page.route("**/api/operator/health", (route) => fulfill(route, source(observedHealth(imageStatus, strictReleaseReady, unverifiedWorkspaceIds))));
     await page.route("**/api/operator/runtime-observations", (route) => {
       observationReads += 1;
       const data = observedRuntime();
@@ -965,8 +970,16 @@ test("System health separates Fabric service from release and opens a read-only 
     await fabric.getByRole("button", { name: "刷新 Fabric 资源服务", exact: true }).click();
     await fabric.getByText("Workspace 镜像身份尚未核验，需要核对固定目标、实际镜像和控制器归属。", { exact: true }).waitFor();
     assert.doesNotMatch(await fabric.innerText(), /存量版本不同|全部一致/);
+    imageStatus = "rollout_incomplete";
+    strictReleaseReady = true;
+    unverifiedWorkspaceIds = ["workspace-stuck", "workspace-other"];
+    await fabric.getByRole("button", { name: "刷新 Fabric 资源服务", exact: true }).click();
+    await fabric.getByText("Workspace 滚动更新尚未完成：Ready Pod 的 ReplicaSet 仍使用 Deployment 的旧模板。若更新仍在进行请等待；若长时间停滞，请对比 Deployment 当前模板与该 Ready Pod 的 ReplicaSet，并检查新 Pod 未就绪的原因。", { exact: true }).waitFor();
+    assert.match(await fabric.innerText(), /未核验 Workspace：workspace-stuck、workspace-other/);
+    assert.doesNotMatch(await fabric.innerText(), /存量版本不同|全部一致/);
     imageStatus = "installed_target_matches";
     strictReleaseReady = undefined;
+    unverifiedWorkspaceIds = [];
     await fabric.getByRole("button", { name: "刷新 Fabric 资源服务", exact: true }).click();
     await fabric.getByText("全部一致", { exact: true }).waitFor();
     const runtime = page.locator(".operator-health-table tbody tr").filter({ hasText: "Workspace Runtime 服务" });

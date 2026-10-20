@@ -309,7 +309,7 @@ func TestOperatorRuntimeObservationEndpointIsAdministratorOnly(t *testing.T) {
 type operatorIndependentReadinessFabric struct{ fakeFabricClient }
 
 func (operatorIndependentReadinessFabric) Readiness(context.Context) (contracts.FabricReadiness, error) {
-	return contracts.FabricReadiness{Provider: "local-docker", ServiceReady: true, Ready: false, CloudImagesReady: true, WorkspaceImageStatus: contracts.WorkspaceImageTargetsVerified, FailedChecks: []string{"workspace_image_id"}}, nil
+	return contracts.FabricReadiness{Provider: "local-docker", ServiceReady: true, Ready: false, CloudImagesReady: true, WorkspaceImageStatus: contracts.WorkspaceImageRolloutIncomplete, WorkspaceImageUnverifiedWorkspaceIDs: []string{"ws-stuck"}, FailedChecks: []string{"workspace_image_id"}}, nil
 }
 
 func TestOperatorFabricServiceReadyDoesNotPromoteReleaseReadiness(t *testing.T) {
@@ -319,7 +319,9 @@ func TestOperatorFabricServiceReadyDoesNotPromoteReleaseReadiness(t *testing.T) 
 	}
 	response := requestWithSession(t, server, reservedOperatorSessionForTest(t, server), http.MethodGet, "/api/operator/health", "")
 	fabric := mapField(mapField(mapField(decodeOperatorEnvelope(t, response), "data"), "fabric"), "data")
-	if fabric["ready"] != true || fabric["serviceReady"] != true || fabric["releaseReady"] != false || fabric["workspaceImageStatus"] != string(contracts.WorkspaceImageTargetsVerified) || len(fabric["failedChecks"].([]any)) != 1 {
+	unverifiedIDs, _ := fabric["workspaceImageUnverifiedWorkspaceIds"].([]any)
+	if fabric["ready"] != true || fabric["serviceReady"] != true || fabric["releaseReady"] != false || fabric["workspaceImageStatus"] != string(contracts.WorkspaceImageRolloutIncomplete) ||
+		len(fabric["failedChecks"].([]any)) != 1 || len(unverifiedIDs) != 1 || unverifiedIDs[0] != "ws-stuck" {
 		t.Fatalf("fabric=%#v", fabric)
 	}
 	response = requestWithSession(t, server, reservedOperatorSessionForTest(t, server), http.MethodGet, "/api/production/readiness", "")

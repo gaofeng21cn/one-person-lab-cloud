@@ -732,12 +732,16 @@ Fabric readiness separates `serviceReady` from strict `ready` and retains all
 image qualification fields. Operator service health uses the former and
 exposes the latter as `releaseReady`, labelled installation image-target
 consistency. `workspaceImageStatus` distinguishes matching the installed target,
-verified per-Workspace targets that differ from it, no running sample, and
-unverifiable identity. Verification follows Deployment/ReplicaSet/Pod ownership
-and the current immutable Workspace target. A different installed default does
-not change a retained Workspace target or imply a broken running Workspace.
-`workspace_image_id` names a container image-digest check, not the Workspace
-business ID or a CVM system image. The current Launch preflight propagates a
+verified per-Workspace targets that differ from it, no running sample, an
+incomplete rollout whose Ready Pod still belongs to a ReplicaSet older than the
+Deployment template, and unverifiable identity for a chain that cannot be
+resolved or agrees on nothing. Verification follows Deployment/ReplicaSet/Pod
+ownership and the current immutable Workspace target. A different installed
+default does not change a retained Workspace target or imply a broken running
+Workspace. `workspaceImageUnverifiedWorkspaceIds` names the sorted, unique
+Workspaces behind either unproven state, so one affected Workspace is not
+reported as every Workspace being wrong. `workspace_image_id` names a container
+image-digest check, not the Workspace business ID or a CVM system image. The current Launch preflight propagates a
 Readiness call error but does not gate on its strict `ready` boolean; subsequent
 owner-specific admission and Runtime readback remain separate. Neither
 readiness field proves Tencent balance or authorizes procurement.
