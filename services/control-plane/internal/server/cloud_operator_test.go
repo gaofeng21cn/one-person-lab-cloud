@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/packages/contracts/go/owneridentity"
@@ -55,6 +56,69 @@ func TestCloudOperatorReadsServeTheFiveConsoleSurfaces(t *testing.T) {
 	}
 }
 
+// TestCloudOperatorAnnouncementsShareTheRetainedWriter proves the operator
+// announcement list the console still sent to the retained /api/operator/*
+// route is reachable through the same BFF proof and answers with the same shared
+// writer, page shape and control-plane source name.
+func TestCloudOperatorAnnouncementsShareTheRetainedWriter(t *testing.T) {
+	store := newMemoryTableStore()
+	f := newCloudAnnouncementHTTPFixture(t, store)
+	now := time.Now().UTC()
+	seedCloudAnnouncement(t, store, "notice-active", "published", now.Add(-time.Hour), now.Add(time.Hour))
+	operator := f.gateway.bind("operator-session", "operator-actor", "910")
+
+	announcements := f.requestRaw(t, http.MethodGet, "/internal/cloud/operator/announcements?page=1&pageSize=20", operator, "")
+	if announcements.code != http.StatusOK || !strings.HasPrefix(announcements.header.Get("Content-Type"), "application/json") {
+		t.Fatalf("announcements route status=%d content-type=%q body=%s", announcements.code, announcements.header.Get("Content-Type"), announcements.body)
+	}
+	assertCloudOperatorEnvelope(t, announcements, "control-plane", "available")
+	if announcements.header.Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("announcements cache policy=%v", announcements.header)
+	}
+	if !strings.Contains(string(announcements.body), `"id":"notice-active"`) || !strings.Contains(string(announcements.body), `"total":1`) {
+		t.Fatalf("retained announcement page=%s", announcements.body)
+	}
+	assertNoCookieMutation(t, announcements)
+}
+
+// TestCloudOperatorReplacementPreviewSharesTheRetainedWriter proves the
+// Workspace runtime-image-replacement preview the console still sent to the
+// retained /api/operator/* route is reachable through the same BFF proof and
+// answers with the same shared writer, target selection and
+// control-plane+fabric source name.
+func TestCloudOperatorReplacementPreviewSharesTheRetainedWriter(t *testing.T) {
+	const currentImage = "registry.example/workspace@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	const targetImage = "registry.example/workspace@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	catalog, err := json.Marshal(contracts.WorkspaceImageReleaseCatalog{SchemaVersion: 1, Releases: []contracts.WorkspaceImageRelease{
+		{Version: "current", Image: currentImage},
+		{Version: "target", Image: targetImage},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OPL_WORKSPACE_IMAGE", currentImage)
+	t.Setenv(contracts.WorkspaceImageReleasesEnv, string(catalog))
+	t.Setenv("OPL_WORKSPACE_RUNTIME_IMAGE_REPLACEMENT_WORKER_ENABLED", "0")
+
+	store := newMemoryTableStore()
+	f := newCloudAnnouncementHTTPFixture(t, store, newTestService(fakeLedgerClient{}, &fakeFabricClient{runtimeStatus: clientsWorkspaceRuntimeForReleaseTest(currentImage)}))
+	seedCanonicalRuntimeAccessWorkspaceForTest(t, store, "usr-alpha")
+	operator := f.gateway.bind("operator-session", "operator-actor", "910")
+
+	preview := f.requestRaw(t, http.MethodGet, "/internal/cloud/operator/workspaces/ws-alpha/runtime-image-replacements/preview?replacementImageDigest="+targetImage, operator, "")
+	if preview.code != http.StatusOK || !strings.HasPrefix(preview.header.Get("Content-Type"), "application/json") {
+		t.Fatalf("preview route status=%d content-type=%q body=%s", preview.code, preview.header.Get("Content-Type"), preview.body)
+	}
+	assertCloudOperatorEnvelope(t, preview, "control-plane+fabric", "available")
+	if preview.header.Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("preview cache policy=%v", preview.header)
+	}
+	if !strings.Contains(string(preview.body), `"workspaceId":"ws-alpha"`) || !strings.Contains(string(preview.body), `"targetImageDigest":"`+targetImage+`"`) || !strings.Contains(string(preview.body), `"canReplace":true`) {
+		t.Fatalf("retained replacement preview=%s", preview.body)
+	}
+	assertNoCookieMutation(t, preview)
+}
+
 // TestCloudOperatorReadsRequireTheServiceProofAndNeverTouchCookies pins the
 // boundary: no browser session is read here, an unknown CloudIdentity session is
 // refused, and no response sets or clears a cookie. A rejected read therefore
@@ -81,6 +145,12 @@ func TestCloudOperatorReadsRequireTheServiceProofAndNeverTouchCookies(t *testing
 		{name: "accounts selector", path: "/internal/cloud/operator/accounts?accountId=acct-a", ref: operator, code: http.StatusBadRequest},
 		{name: "accounts duplicate page", path: "/internal/cloud/operator/accounts?page=1&page=2", ref: operator, code: http.StatusBadRequest},
 		{name: "accounts page out of range", path: "/internal/cloud/operator/accounts?page=0", ref: operator, code: http.StatusBadRequest},
+		{name: "announcements duplicate page", path: "/internal/cloud/operator/announcements?page=1&page=2", ref: operator, code: http.StatusBadRequest},
+		{name: "announcements selector", path: "/internal/cloud/operator/announcements?accountId=acct-a", ref: operator, code: http.StatusBadRequest},
+		{name: "preview selector", path: "/internal/cloud/operator/workspaces/ws-alpha/runtime-image-replacements/preview?tenantId=tenant-a", ref: operator, code: http.StatusBadRequest},
+		{name: "preview duplicate digest", path: "/internal/cloud/operator/workspaces/ws-alpha/runtime-image-replacements/preview?replacementImageDigest=a&replacementImageDigest=b", ref: operator, code: http.StatusBadRequest},
+		{name: "preview body", path: "/internal/cloud/operator/workspaces/ws-alpha/runtime-image-replacements/preview", ref: operator, code: http.StatusBadRequest, body: `{}`},
+		{name: "preview unknown session", path: "/internal/cloud/operator/workspaces/ws-alpha/runtime-image-replacements/preview", ref: unknown, code: http.StatusUnauthorized},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var mutate []func(http.Header)

@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { afterEach, test } from "node:test";
 
 import {
   getOperatorAccounts,
   getOperatorAccountsPage,
+  getOperatorAnnouncements,
   getOperatorOverview,
   getOperatorWorkspace,
   getOperatorWorkspaceRuntimeImagePolicy,
+  getOperatorWorkspaceRuntimeImageReplacementPreview,
   getOperatorWorkspaces,
   operatorReadRoute
 } from "../../apps/console-ui/src/api/console-read-api.ts";
@@ -50,6 +53,8 @@ test("operator console reads resolve to the Cloud BFF under CloudIdentity", asyn
   await getOperatorWorkspaces(1, 20, undefined, true);
   await getOperatorWorkspace("ws/1", undefined, true);
   await getOperatorWorkspaceRuntimeImagePolicy(undefined, true);
+  await getOperatorAnnouncements(1, 20, undefined, true);
+  await getOperatorWorkspaceRuntimeImageReplacementPreview("ws/1", undefined, true);
 
   assert.deepEqual(requests, [
     "/api/v2/operator/accounts",
@@ -57,7 +62,9 @@ test("operator console reads resolve to the Cloud BFF under CloudIdentity", asyn
     "/api/v2/operator/accounts?page=2&pageSize=20",
     "/api/v2/operator/workspaces?page=1&pageSize=20",
     "/api/v2/operator/workspaces/ws%2F1",
-    "/api/v2/operator/workspace-runtime-image-policy"
+    "/api/v2/operator/workspace-runtime-image-policy",
+    "/api/v2/operator/announcements?page=1&pageSize=20",
+    "/api/v2/operator/workspaces/ws%2F1/runtime-image-replacements/preview"
   ]);
 });
 
@@ -65,7 +72,42 @@ test("a retained build keeps the Control Plane operator reads", async () => {
   const requests = stubSourceEnvelope();
   await getOperatorOverview(undefined, false);
   await getOperatorAccounts(false);
-  assert.deepEqual(requests, ["/api/operator/overview", "/api/operator/accounts"]);
+  await getOperatorAnnouncements(1, 20, undefined, false);
+  await getOperatorWorkspaceRuntimeImageReplacementPreview("ws/1", undefined, false);
+  assert.deepEqual(requests, [
+    "/api/operator/overview",
+    "/api/operator/accounts",
+    "/api/operator/announcements?page=1&pageSize=20",
+    "/api/operator/workspaces/ws%2F1/runtime-image-replacements/preview"
+  ]);
+});
+
+// #996: the last two operator reads must select the BFF route in a Cloud build.
+// The file may still contain hardcoded POST/PUT operator commands (writes are
+// out of scope), but no read may hardcode /api/operator/. This scans the exact
+// two read functions so a future edit cannot quietly restore the retained path.
+test("console-read-api.ts keeps no hardcoded operator read path", () => {
+  const source = readFileSync(new URL("../../apps/console-ui/src/api/console-read-api.ts", import.meta.url), "utf8");
+  // operatorHealth, operatorReconciliation and getOperatorRuntimeObservations
+  // remain on the retained owner by this issue's explicit scope, so they are
+  // not part of this scan. Every operator read the BFF serves must be.
+  for (const name of [
+    "getOperatorAccounts",
+    "getOperatorOverview",
+    "getOperatorAccountsPage",
+    "getOperatorWorkspaces",
+    "getOperatorWorkspace",
+    "getOperatorWorkspaceRuntimeImagePolicy",
+    "getOperatorAnnouncements",
+    "getOperatorWorkspaceRuntimeImageReplacementPreview"
+  ]) {
+    const start = source.indexOf(`export function ${name}`);
+    assert.notEqual(start, -1, `${name} must exist`);
+    const end = source.indexOf("\nexport ", start + 1);
+    const body = source.slice(start, end === -1 ? undefined : end);
+    assert.doesNotMatch(body, /`\/api\/operator\//, `${name} must not hardcode a retained operator read`);
+    assert.match(body, /operatorReadRoute\(cloud\)/, `${name} must select the build-time operator route`);
+  }
 });
 
 // A refused read is an authorization decision. It must reach the controllers as

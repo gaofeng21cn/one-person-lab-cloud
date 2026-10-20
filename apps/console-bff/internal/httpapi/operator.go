@@ -18,7 +18,7 @@ import (
 	"opl-cloud/packages/contracts/go/owneridentity"
 )
 
-// OperatorReader is the BFF's typed read surface for the five operator console
+// OperatorReader is the BFF's typed read surface for the operator console
 // surfaces. The retained Control Plane owner answers them; the BFF decides only
 // whether the caller is a CloudIdentity platform operator.
 type OperatorReader interface {
@@ -27,6 +27,8 @@ type OperatorReader interface {
 	OperatorWorkspaces(context.Context, string, int, int) ([]byte, error)
 	OperatorWorkspace(context.Context, string, string) ([]byte, error)
 	OperatorWorkspaceRuntimeImagePolicy(context.Context, string) ([]byte, error)
+	OperatorAnnouncements(context.Context, string, int, int) ([]byte, error)
+	OperatorWorkspaceRuntimeImageReplacementPreview(context.Context, string, string, string) ([]byte, error)
 }
 
 const (
@@ -40,7 +42,10 @@ const (
 // operator fact; a tenant administrator is denied it.
 const operatorPrivilegeAction = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEPUBLISHERNAMESPACE
 
-var errInvalidOperatorPage = errors.New("invalid operator pagination")
+var (
+	errInvalidOperatorPage = errors.New("invalid operator pagination")
+	errInvalidOperatorRead = errors.New("invalid operator read")
+)
 
 func (s *Server) registerOperatorRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v2/operator/overview", s.operatorReadHandler("overview", "control-plane"))
@@ -48,6 +53,8 @@ func (s *Server) registerOperatorRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v2/operator/workspaces", s.operatorReadHandler("workspaces", "control-plane+fabric+sub2api"))
 	mux.HandleFunc("GET /api/v2/operator/workspaces/{workspaceId}", s.operatorReadHandler("workspace", "control-plane+fabric+ledger"))
 	mux.HandleFunc("GET /api/v2/operator/workspace-runtime-image-policy", s.operatorReadHandler("policy", "control-plane"))
+	mux.HandleFunc("GET /api/v2/operator/announcements", s.operatorReadHandler("announcements", "control-plane"))
+	mux.HandleFunc("GET /api/v2/operator/workspaces/{workspaceId}/runtime-image-replacements/preview", s.operatorReadHandler("preview", "control-plane+fabric"))
 }
 
 // operatorReadHandler resolves the live CloudIdentity session, requires an
@@ -65,17 +72,30 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 			return
 		}
 		page, pageSize := 1, operatorDefaultPageSize
-		if kind == "accounts" || kind == "workspaces" {
+		replacementImageDigest := ""
+		switch kind {
+		case "accounts", "workspaces", "announcements":
 			if page, pageSize, err = operatorPage(r); err != nil {
 				writePublisherError(w, r, 400, "invalid_pagination", "one page and pageSize are required")
 				return
 			}
-		} else if r.URL.RawQuery != "" || r.ContentLength != 0 {
-			writePublisherError(w, r, 400, "invalid_operator_read", "only the declared operator read is accepted")
-			return
+		case "preview":
+			if r.ContentLength != 0 {
+				writePublisherError(w, r, 400, "invalid_operator_read", "only the declared operator read is accepted")
+				return
+			}
+			if replacementImageDigest, err = operatorReplacementImageDigest(r); err != nil {
+				writePublisherError(w, r, 400, "invalid_operator_read", "only the declared operator read is accepted")
+				return
+			}
+		default:
+			if r.URL.RawQuery != "" || r.ContentLength != 0 {
+				writePublisherError(w, r, 400, "invalid_operator_read", "only the declared operator read is accepted")
+				return
+			}
 		}
 		workspaceID := ""
-		if kind == "workspace" {
+		if kind == "workspace" || kind == "preview" {
 			workspaceID = strings.TrimSpace(r.PathValue("workspaceId"))
 			if workspaceID == "" || workspaceID != r.PathValue("workspaceId") {
 				writePublisherError(w, r, 400, "invalid_workspace_id", "Workspace id is required")
@@ -99,7 +119,7 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 			writePublisherIdentityError(w, r, err)
 			return
 		}
-		raw, err := s.operatorRead(ctx, kind, caller.SessionID, workspaceID, page, pageSize)
+		raw, err := s.operatorRead(ctx, kind, caller.SessionID, workspaceID, replacementImageDigest, page, pageSize)
 		if err != nil {
 			writeOwnerCallFailure(w, r, err)
 			return
@@ -114,7 +134,7 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 	}
 }
 
-func (s *Server) operatorRead(ctx context.Context, kind, session, workspaceID string, page, pageSize int) ([]byte, error) {
+func (s *Server) operatorRead(ctx context.Context, kind, session, workspaceID, replacementImageDigest string, page, pageSize int) ([]byte, error) {
 	switch kind {
 	case "overview":
 		return s.operator.OperatorOverview(ctx, session)
@@ -126,9 +146,34 @@ func (s *Server) operatorRead(ctx context.Context, kind, session, workspaceID st
 		return s.operator.OperatorWorkspace(ctx, session, workspaceID)
 	case "policy":
 		return s.operator.OperatorWorkspaceRuntimeImagePolicy(ctx, session)
+	case "announcements":
+		return s.operator.OperatorAnnouncements(ctx, session, page, pageSize)
+	case "preview":
+		return s.operator.OperatorWorkspaceRuntimeImageReplacementPreview(ctx, session, workspaceID, replacementImageDigest)
 	default:
 		return nil, status.Error(codes.Internal, "unknown operator read")
 	}
+}
+
+// operatorReplacementImageDigest admits only the optional target the retained
+// preview writer itself reads. The image catalog membership decision stays with
+// the owner; the BFF only refuses undeclared selectors.
+func operatorReplacementImageDigest(r *http.Request) (string, error) {
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		return "", errInvalidOperatorRead
+	}
+	digest := ""
+	for key, values := range query {
+		if key != "replacementImageDigest" || len(values) != 1 {
+			return "", errInvalidOperatorRead
+		}
+		digest = values[0]
+		if digest == "" || digest != strings.TrimSpace(digest) || len(digest) > 512 {
+			return "", errInvalidOperatorRead
+		}
+	}
+	return digest, nil
 }
 
 func operatorPage(r *http.Request) (int, int, error) {

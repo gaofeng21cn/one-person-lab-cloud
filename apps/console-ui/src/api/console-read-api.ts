@@ -438,8 +438,8 @@ export function activateOperatorWorkspaceImageRelease(
   ).then(decodeDto<OperatorWorkspaceRuntimeImagePolicyDTO>);
 }
 
-export function getOperatorWorkspaceRuntimeImageReplacementPreview(workspaceId: string, signal?: AbortSignal): Promise<SourceEnvelope<OperatorWorkspaceRuntimeImagePreviewDTO>> {
-  return sourceGet<OperatorWorkspaceRuntimeImagePreviewDTO>(`/api/operator/workspaces/${encodeURIComponent(workspaceId)}/runtime-image-replacements/preview`, signal);
+export function getOperatorWorkspaceRuntimeImageReplacementPreview(workspaceId: string, signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorWorkspaceRuntimeImagePreviewDTO>> {
+  return sourceGet<OperatorWorkspaceRuntimeImagePreviewDTO>(`${operatorReadRoute(cloud)}/workspaces/${encodeURIComponent(workspaceId)}/runtime-image-replacements/preview`, signal);
 }
 
 export function createOperatorWorkspaceRuntimeImageReplacement(
@@ -479,9 +479,9 @@ export function getOperatorRuntimeObservations(signal?: AbortSignal): Promise<So
   return sourceGet<OperatorRuntimeObservationsDTO>("/api/operator/runtime-observations", signal);
 }
 
-export function getOperatorAnnouncements(page = 1, pageSize = 20, signal?: AbortSignal): Promise<SourceEnvelope<OperatorAnnouncementPageDTO>> {
+export function getOperatorAnnouncements(page = 1, pageSize = 20, signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorAnnouncementPageDTO>> {
   const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-  return sourceGet<OperatorAnnouncementPageDTO>(`/api/operator/announcements?${params}`, signal);
+  return sourceGet<OperatorAnnouncementPageDTO>(`${operatorReadRoute(cloud)}/announcements?${params}`, signal);
 }
 
 export function createWalletAdjustment(accountId: string, input: WalletAdjustmentRequest, csrfToken: string, idempotencyKey: string): Promise<WalletAdjustmentOperationDTO> {

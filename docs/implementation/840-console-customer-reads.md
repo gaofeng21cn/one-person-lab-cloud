@@ -53,17 +53,18 @@ and [`console-read-api.ts`](../../apps/console-ui/src/api/console-read-api.ts).
 | Agent delivery view | `AgentDeliveryPanel` | `GET /api/v2/delivery/{workspaceId}` | None | BFF composition of Workspace, Serve, Capability and Build owner facts | Live CloudIdentity proof | No |
 | Legacy Workspace renewal, runtime status, Gateway budget, launch list/detail | Renewal, Fabric Runtime Read, console detail, launch recovery | No cloud caller; cloud detail receives no Control Plane Workspace | Retained `/api/workspaces/*` and `/api/workspace-launches` | Retained Control Plane | Retained Account session | Yes: legacy-only; no cloud caller is allowed to address these routes |
 
-The five operator reads (`/api/v2/operator/overview`, `/accounts`, `/workspaces`,
-`/workspaces/{workspaceId}`, `/workspace-runtime-image-policy`) use the same
+The seven operator reads (`/api/v2/operator/overview`, `/accounts`, `/workspaces`,
+`/workspaces/{workspaceId}`, `/workspace-runtime-image-policy`, `/announcements`,
+`/workspaces/{workspaceId}/runtime-image-replacements/preview`) use the same
 build-time route decision through `operatorReadRoute`: the BFF authorizes the
 CloudIdentity platform operator and reads the retained Control Plane owner
 through `/internal/cloud/operator/*`. The platform-operator fact is CloudIdentity's
 existing platform-admin decision for `CREATE PUBLISHER NAMESPACE`; a tenant
-administrator is refused. Other administrator operations (writes, announcements,
-reconciliation, health, runtime observations, registry, launch recovery and image
-replacement) remain on the retained administrator surface and are outside this
-inventory. `/api/management/state`, runtime and production readiness also remain
-retained.
+administrator is refused. Other administrator operations (writes, reconciliation,
+health, runtime observations, registry, launch recovery and image replacement
+activation/replacement writes) remain on the retained administrator surface and
+are outside this inventory. `/api/management/state`, runtime and production
+readiness also remain retained.
 
 ## Identity Fences
 

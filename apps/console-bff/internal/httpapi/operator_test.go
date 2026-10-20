@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -27,12 +28,16 @@ func TestOperatorRoutesAuthorizePlatformOperatorBeforeOwnerRead(t *testing.T) {
 		session:  &api.Session{ActorId: "operator-1", DisplayName: "Operator", CsrfToken: "csrf-1"},
 		decision: allowOperatorDecision("operator-1"),
 	}
+	const previewDigest = "registry.example/workspace@sha256:abc"
+	previewQuery := "replacementImageDigest=" + url.QueryEscape(previewDigest)
 	paths := map[string]string{
-		"/internal/cloud/operator/overview":                       "control-plane",
-		"/internal/cloud/operator/accounts":                       "control-plane+sub2api",
-		"/internal/cloud/operator/workspaces":                     "control-plane+fabric+sub2api",
-		"/internal/cloud/operator/workspaces/ws-1":                "control-plane+fabric+ledger",
-		"/internal/cloud/operator/workspace-runtime-image-policy": "control-plane",
+		"/internal/cloud/operator/overview":                                           "control-plane",
+		"/internal/cloud/operator/accounts":                                           "control-plane+sub2api",
+		"/internal/cloud/operator/workspaces":                                         "control-plane+fabric+sub2api",
+		"/internal/cloud/operator/workspaces/ws-1":                                    "control-plane+fabric+ledger",
+		"/internal/cloud/operator/workspace-runtime-image-policy":                     "control-plane",
+		"/internal/cloud/operator/announcements":                                      "control-plane",
+		"/internal/cloud/operator/workspaces/ws-1/runtime-image-replacements/preview": "control-plane+fabric",
 	}
 	var ownerCalls []string
 	owner := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -52,6 +57,9 @@ func TestOperatorRoutesAuthorizePlatformOperatorBeforeOwnerRead(t *testing.T) {
 			t.Errorf("unexpected owner path=%s", r.URL.Path)
 			http.NotFound(w, r)
 			return
+		}
+		if r.URL.Path == "/internal/cloud/operator/workspaces/ws-1/runtime-image-replacements/preview" && r.URL.RawQuery != previewQuery {
+			t.Errorf("preview query=%q want %q", r.URL.RawQuery, previewQuery)
 		}
 		ownerCalls = append(ownerCalls, r.URL.Path)
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -73,6 +81,8 @@ func TestOperatorRoutesAuthorizePlatformOperatorBeforeOwnerRead(t *testing.T) {
 		"/api/v2/operator/workspaces?page=1&pageSize=50",
 		"/api/v2/operator/workspaces/ws-1",
 		"/api/v2/operator/workspace-runtime-image-policy",
+		"/api/v2/operator/announcements?page=1&pageSize=20",
+		"/api/v2/operator/workspaces/ws-1/runtime-image-replacements/preview?" + previewQuery,
 	} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, sessionRequest(http.MethodGet, route))
@@ -201,6 +211,10 @@ func TestOperatorRoutesRejectUndeclaredSelectors(t *testing.T) {
 		"/api/v2/operator/accounts?page=1&page=2",
 		"/api/v2/operator/accounts?page=1&pageSize=20&actorId=other",
 		"/api/v2/operator/workspace-runtime-image-policy?workspaceId=ws-other",
+		"/api/v2/operator/announcements?accountId=acct-other",
+		"/api/v2/operator/announcements?page=1&page=2",
+		"/api/v2/operator/workspaces/ws-1/runtime-image-replacements/preview?tenantId=tenant-other",
+		"/api/v2/operator/workspaces/ws-1/runtime-image-replacements/preview?replacementImageDigest=a&replacementImageDigest=b",
 	} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, sessionRequest(http.MethodGet, route))
@@ -210,6 +224,93 @@ func TestOperatorRoutesRejectUndeclaredSelectors(t *testing.T) {
 	}
 	if len(identity.requests) != 0 || ownerCalls != 0 {
 		t.Fatalf("selector reached decision/owner: %d/%d", len(identity.requests), ownerCalls)
+	}
+}
+
+// TestRemainingOperatorReadsRefuseTenantAdministratorWithoutOwnerRead pins the
+// same authorization order for the two surfaces this change migrates: the
+// platform-operator decision is denied before the retained owner is read, and
+// the refusal is an explicit 403, never a source-unavailable envelope.
+func TestRemainingOperatorReadsRefuseTenantAdministratorWithoutOwnerRead(t *testing.T) {
+	const token = "operator-reader-test-token-000005"
+	denied := allowOperatorDecision("tenant-admin-1")
+	denied.Result = api.AuthorizationResult_AUTHORIZATION_RESULT_DENIED
+	identity := &fakeIdentity{
+		session:  &api.Session{ActorId: "tenant-admin-1", TenantId: proto.String("tenant-1"), Role: rolePtr(api.TenantRoleEnum_TENANT_ROLE_ENUM_ADMIN), CsrfToken: "csrf-1"},
+		decision: denied,
+	}
+	var ownerCalls int
+	owner := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { ownerCalls++ }))
+	defer owner.Close()
+	readers, err := clients.Dial(clients.Config{ControlPlaneURL: owner.URL, ControlPlaneToken: token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer readers.Close()
+	handler := NewServer(readers, identity).Handler()
+
+	for _, route := range []string{
+		"/api/v2/operator/announcements",
+		"/api/v2/operator/workspaces/ws-1/runtime-image-replacements/preview",
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, sessionRequest(http.MethodGet, route))
+		if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), `"FORBIDDEN"`) {
+			t.Fatalf("%s status=%d body=%s", route, response.Code, response.Body.String())
+		}
+		if cookies := response.Result().Cookies(); len(cookies) != 0 {
+			t.Fatalf("%s denied read set a cookie: %v", route, cookies)
+		}
+	}
+	if ownerCalls != 0 {
+		t.Fatalf("owner read before operator refusal: %d", ownerCalls)
+	}
+	if len(identity.requests) != 2 {
+		t.Fatalf("operator decisions=%d", len(identity.requests))
+	}
+	for _, request := range identity.requests {
+		if request.GetScope().GetTenant() != nil {
+			t.Fatalf("operator scope must be platform, not the tenant: %v", request)
+		}
+	}
+}
+
+// TestRemainingOperatorReadsUnknownSessionNeverTouchCookies pins the 401
+// boundary for the two migrated surfaces: a missing or unknown CloudIdentity
+// session is refused without clearing opl_console_session.
+func TestRemainingOperatorReadsUnknownSessionNeverTouchCookies(t *testing.T) {
+	const token = "operator-reader-test-token-000006"
+	identity := &fakeIdentity{err: status.Error(codes.Unauthenticated, "expired or unknown session")}
+	var ownerCalls int
+	owner := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { ownerCalls++ }))
+	defer owner.Close()
+	readers, err := clients.Dial(clients.Config{ControlPlaneURL: owner.URL, ControlPlaneToken: token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer readers.Close()
+	handler := NewServer(readers, identity).Handler()
+
+	for _, route := range []string{
+		"/api/v2/operator/announcements",
+		"/api/v2/operator/workspaces/ws-1/runtime-image-replacements/preview",
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, sessionRequest(http.MethodGet, route))
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("%s status=%d body=%s", route, response.Code, response.Body.String())
+		}
+		if cookies := response.Result().Cookies(); len(cookies) != 0 {
+			t.Fatalf("%s unknown session mutated a cookie: %v", route, cookies)
+		}
+		response = httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, route, nil))
+		if response.Code != http.StatusUnauthorized || len(response.Result().Cookies()) != 0 {
+			t.Fatalf("%s missing session status=%d cookies=%v", route, response.Code, response.Result().Cookies())
+		}
+	}
+	if ownerCalls != 0 {
+		t.Fatalf("unknown session reached the owner: %d", ownerCalls)
 	}
 }
 

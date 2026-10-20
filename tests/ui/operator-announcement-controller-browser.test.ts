@@ -420,3 +420,27 @@ test("Operator Announcement session reset holds the stale claim until settlement
     await demo.close();
   }
 });
+
+test("Operator Announcement keeps a forbidden read as an authorization decision", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await launchBrowser({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await page.route("**/api/operator/announcements?*", (route) => fulfill(route, {
+      code: "FORBIDDEN",
+      message: "operator privilege required"
+    }, 403));
+
+    await login(page, demo.origin);
+    await page.goto(`${demo.origin}/admin/announcements`, { waitUntil: "domcontentloaded" });
+
+    // A refused operator read is a server authorization decision. It must not
+    // be flattened into the synthesized unavailable envelope that made the
+    // console look like a dead Control Plane.
+    await page.getByText("没有权限访问运营数据").waitFor({ state: "visible" });
+    assert.equal(await page.getByText("公告暂不可用").count(), 0);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
