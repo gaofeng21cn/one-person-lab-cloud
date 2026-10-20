@@ -63,7 +63,7 @@ func (s *Server) registerGatewayRoutes(mux *http.ServeMux, gateway api.GatewayPr
 			writePublisherError(w, r, 502, "invalid_owner_response", "gateway binding actor differs from the authenticated User")
 			return
 		}
-		authJSON(w, out)
+		authJSON(w, r, out)
 	})
 	s.publisherRoute(mux, "GET /api/v2/wallet", owneridentity.Gateway, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", nil, func(r *http.Request, c *api.CallContext, _ proto.Message) (proto.Message, error) {
 		if gateway == nil {
