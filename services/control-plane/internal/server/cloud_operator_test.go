@@ -56,29 +56,13 @@ func TestCloudOperatorReadsServeTheFiveConsoleSurfaces(t *testing.T) {
 	}
 }
 
-// TestCloudOperatorAnnouncementsAndReplacementPreviewShareTheRetainedWriters
-// proves the two operator reads the console still sent to the retained
-// /api/operator/* routes are reachable through the same BFF proof and answer
-// with the same shared writers. The announcements read keeps the retained
-// control-plane envelope and page shape; the image-replacement preview keeps the
-// retained control-plane+fabric envelope and target selection.
-func TestCloudOperatorAnnouncementsAndReplacementPreviewShareTheRetainedWriters(t *testing.T) {
-	const currentImage = "registry.example/workspace@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	const targetImage = "registry.example/workspace@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	catalog, err := json.Marshal(contracts.WorkspaceImageReleaseCatalog{SchemaVersion: 1, Releases: []contracts.WorkspaceImageRelease{
-		{Version: "current", Image: currentImage},
-		{Version: "target", Image: targetImage},
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("OPL_WORKSPACE_IMAGE", currentImage)
-	t.Setenv(contracts.WorkspaceImageReleasesEnv, string(catalog))
-	t.Setenv("OPL_WORKSPACE_RUNTIME_IMAGE_REPLACEMENT_WORKER_ENABLED", "0")
-
+// TestCloudOperatorAnnouncementsShareTheRetainedWriter proves the operator
+// announcement list the console still sent to the retained /api/operator/*
+// route is reachable through the same BFF proof and answers with the same shared
+// writer, page shape and control-plane source name.
+func TestCloudOperatorAnnouncementsShareTheRetainedWriter(t *testing.T) {
 	store := newMemoryTableStore()
-	f := newCloudAnnouncementHTTPFixture(t, store, newTestService(fakeLedgerClient{}, &fakeFabricClient{runtimeStatus: clientsWorkspaceRuntimeForReleaseTest(currentImage)}))
-	seedCanonicalRuntimeAccessWorkspaceForTest(t, store, "usr-alpha")
+	f := newCloudAnnouncementHTTPFixture(t, store)
 	now := time.Now().UTC()
 	seedCloudAnnouncement(t, store, "notice-active", "published", now.Add(-time.Hour), now.Add(time.Hour))
 	operator := f.gateway.bind("operator-session", "operator-actor", "910")
@@ -95,6 +79,31 @@ func TestCloudOperatorAnnouncementsAndReplacementPreviewShareTheRetainedWriters(
 		t.Fatalf("retained announcement page=%s", announcements.body)
 	}
 	assertNoCookieMutation(t, announcements)
+}
+
+// TestCloudOperatorReplacementPreviewSharesTheRetainedWriter proves the
+// Workspace runtime-image-replacement preview the console still sent to the
+// retained /api/operator/* route is reachable through the same BFF proof and
+// answers with the same shared writer, target selection and
+// control-plane+fabric source name.
+func TestCloudOperatorReplacementPreviewSharesTheRetainedWriter(t *testing.T) {
+	const currentImage = "registry.example/workspace@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	const targetImage = "registry.example/workspace@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	catalog, err := json.Marshal(contracts.WorkspaceImageReleaseCatalog{SchemaVersion: 1, Releases: []contracts.WorkspaceImageRelease{
+		{Version: "current", Image: currentImage},
+		{Version: "target", Image: targetImage},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OPL_WORKSPACE_IMAGE", currentImage)
+	t.Setenv(contracts.WorkspaceImageReleasesEnv, string(catalog))
+	t.Setenv("OPL_WORKSPACE_RUNTIME_IMAGE_REPLACEMENT_WORKER_ENABLED", "0")
+
+	store := newMemoryTableStore()
+	f := newCloudAnnouncementHTTPFixture(t, store, newTestService(fakeLedgerClient{}, &fakeFabricClient{runtimeStatus: clientsWorkspaceRuntimeForReleaseTest(currentImage)}))
+	seedCanonicalRuntimeAccessWorkspaceForTest(t, store, "usr-alpha")
+	operator := f.gateway.bind("operator-session", "operator-actor", "910")
 
 	preview := f.requestRaw(t, http.MethodGet, "/internal/cloud/operator/workspaces/ws-alpha/runtime-image-replacements/preview?replacementImageDigest="+targetImage, operator, "")
 	if preview.code != http.StatusOK || !strings.HasPrefix(preview.header.Get("Content-Type"), "application/json") {
