@@ -458,25 +458,26 @@ export function createOperatorWorkspaceRuntimeImageReplacement(
 export function getOperatorWorkspaceRuntimeImageReplacement(
   workspaceId: string,
   operationId: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  cloud: boolean = cloudIdentity
 ): Promise<WorkspaceRuntimeImageReplacementDTO> {
   return getJson<unknown>(
-    `/api/operator/workspaces/${encodeURIComponent(workspaceId)}/runtime-image-replacements/${encodeURIComponent(operationId)}`,
+    `${operatorReadRoute(cloud)}/workspaces/${encodeURIComponent(workspaceId)}/runtime-image-replacements/${encodeURIComponent(operationId)}`,
     { signal }
   ).then(decodeDto<WorkspaceRuntimeImageReplacementDTO>);
 }
 
-export function getOperatorReconciliation(page = 1, pageSize = 20, signal?: AbortSignal): Promise<SourceEnvelope<OperatorReconciliationPageDTO>> {
+export function getOperatorReconciliation(page = 1, pageSize = 20, signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorReconciliationPageDTO>> {
   const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-  return sourceGet<OperatorReconciliationPageDTO>(`/api/operator/reconciliation?${params}`, signal);
+  return sourceGet<OperatorReconciliationPageDTO>(`${operatorReadRoute(cloud)}/reconciliation?${params}`, signal);
 }
 
-export function getOperatorHealth(signal?: AbortSignal): Promise<SourceEnvelope<OperatorHealthDTO>> {
-  return sourceGet<OperatorHealthDTO>("/api/operator/health", signal);
+export function getOperatorHealth(signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorHealthDTO>> {
+  return sourceGet<OperatorHealthDTO>(`${operatorReadRoute(cloud)}/health`, signal);
 }
 
-export function getOperatorRuntimeObservations(signal?: AbortSignal): Promise<SourceEnvelope<OperatorRuntimeObservationsDTO>> {
-  return sourceGet<OperatorRuntimeObservationsDTO>("/api/operator/runtime-observations", signal);
+export function getOperatorRuntimeObservations(signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorRuntimeObservationsDTO>> {
+  return sourceGet<OperatorRuntimeObservationsDTO>(`${operatorReadRoute(cloud)}/runtime-observations`, signal);
 }
 
 export function getOperatorAnnouncements(page = 1, pageSize = 20, signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorAnnouncementPageDTO>> {
@@ -488,8 +489,8 @@ export function createWalletAdjustment(accountId: string, input: WalletAdjustmen
   return postJson<unknown>(`/api/operator/accounts/${encodeURIComponent(accountId)}/wallet-adjustments`, input, csrfToken, idempotencyKey).then(decodeDto<WalletAdjustmentOperationDTO>);
 }
 
-export function getWalletAdjustment(operationId: string, signal?: AbortSignal): Promise<WalletAdjustmentOperationDTO> {
-  return getJson<unknown>(`/api/operator/wallet-adjustments/${encodeURIComponent(operationId)}`, { signal }).then(decodeDto<WalletAdjustmentOperationDTO>);
+export function getWalletAdjustment(operationId: string, signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<WalletAdjustmentOperationDTO> {
+  return getJson<unknown>(`${operatorReadRoute(cloud)}/wallet-adjustments/${encodeURIComponent(operationId)}`, { signal }).then(decodeDto<WalletAdjustmentOperationDTO>);
 }
 
 export function recoverWalletAdjustment(operationId: string, input: WalletAdjustmentRecoveryRequest, csrfToken: string, idempotencyKey: string): Promise<WalletAdjustmentOperationDTO> {
@@ -525,8 +526,8 @@ function decodeWorkspaceLaunchRecovery(value: unknown, operationId: string): Wor
   return result;
 }
 
-export function getWorkspaceLaunchRecovery(operationId: string, signal?: AbortSignal): Promise<WorkspaceLaunchRecoveryDTO> {
-  return getJson<unknown>(`/api/operator/workspace-launches/${encodeURIComponent(operationId)}/recovery`, { signal })
+export function getWorkspaceLaunchRecovery(operationId: string, signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<WorkspaceLaunchRecoveryDTO> {
+  return getJson<unknown>(`${operatorReadRoute(cloud)}/workspace-launches/${encodeURIComponent(operationId)}/recovery`, { signal })
     .then((value) => decodeWorkspaceLaunchRecovery(value, operationId));
 }
 
@@ -586,8 +587,8 @@ export function createOperatorWorkspaceApplicationDeployment(
   ).then(decodeDto<{ intent: WorkspaceApplicationIntentDTO }>);
 }
 
-export function getOperatorWorkspaceApplicationDeployment(operationId: string, signal?: AbortSignal): Promise<SourceEnvelope<{ status: string; intent: WorkspaceApplicationIntentDTO }>> {
-  return sourceGet<{ status: string; intent: WorkspaceApplicationIntentDTO }>(`/api/operator/application-deployments/${encodeURIComponent(operationId)}`, signal);
+export function getOperatorWorkspaceApplicationDeployment(operationId: string, signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<{ status: string; intent: WorkspaceApplicationIntentDTO }>> {
+  return sourceGet<{ status: string; intent: WorkspaceApplicationIntentDTO }>(`${operatorReadRoute(cloud)}/application-deployments/${encodeURIComponent(operationId)}`, signal);
 }
 
 export function retryOperatorWorkspaceApplicationDeployment(operationId: string, csrfToken: string): Promise<{ intent: WorkspaceApplicationIntentDTO }> {
@@ -622,13 +623,13 @@ export interface WorkspaceRegistryResolutionDTO {
   reference: string;
 }
 
-export function listOperatorRegistryRepositories(namespace: string): Promise<WorkspaceRegistryRepositoryCatalogDTO> {
+export function listOperatorRegistryRepositories(namespace: string, cloud: boolean = cloudIdentity): Promise<WorkspaceRegistryRepositoryCatalogDTO> {
   const query = namespace ? `?namespace=${encodeURIComponent(namespace)}` : "";
-  return getJson<unknown>(`/api/operator/registry/repositories${query}`).then(decodeDto<WorkspaceRegistryRepositoryCatalogDTO>);
+  return getJson<unknown>(`${operatorReadRoute(cloud)}/registry/repositories${query}`).then(decodeDto<WorkspaceRegistryRepositoryCatalogDTO>);
 }
 
-export function listOperatorRegistryTags(namespace: string, repository: string): Promise<{ namespace: string; repository: string; tags: WorkspaceRegistryTagDTO[] }> {
-  return getJson<unknown>(`/api/operator/registry/tags/${encodeURIComponent(namespace)}/${encodeURIComponent(repository)}`)
+export function listOperatorRegistryTags(namespace: string, repository: string, cloud: boolean = cloudIdentity): Promise<{ namespace: string; repository: string; tags: WorkspaceRegistryTagDTO[] }> {
+  return getJson<unknown>(`${operatorReadRoute(cloud)}/registry/tags/${encodeURIComponent(namespace)}/${encodeURIComponent(repository)}`)
     .then(decodeDto<{ namespace: string; repository: string; tags: WorkspaceRegistryTagDTO[] }>);
 }
 

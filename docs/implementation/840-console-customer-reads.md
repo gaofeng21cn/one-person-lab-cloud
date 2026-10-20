@@ -53,18 +53,25 @@ and [`console-read-api.ts`](../../apps/console-ui/src/api/console-read-api.ts).
 | Agent delivery view | `AgentDeliveryPanel` | `GET /api/v2/delivery/{workspaceId}` | None | BFF composition of Workspace, Serve, Capability and Build owner facts | Live CloudIdentity proof | No |
 | Legacy Workspace renewal, runtime status, Gateway budget, launch list/detail | Renewal, Fabric Runtime Read, console detail, launch recovery | No cloud caller; cloud detail receives no Control Plane Workspace | Retained `/api/workspaces/*` and `/api/workspace-launches` | Retained Control Plane | Retained Account session | Yes: legacy-only; no cloud caller is allowed to address these routes |
 
-The seven operator reads (`/api/v2/operator/overview`, `/accounts`, `/workspaces`,
-`/workspaces/{workspaceId}`, `/workspace-runtime-image-policy`, `/announcements`,
-`/workspaces/{workspaceId}/runtime-image-replacements/preview`) use the same
-build-time route decision through `operatorReadRoute`: the BFF authorizes the
-CloudIdentity platform operator and reads the retained Control Plane owner
-through `/internal/cloud/operator/*`. The platform-operator fact is CloudIdentity's
-existing platform-admin decision for `CREATE PUBLISHER NAMESPACE`; a tenant
-administrator is refused. Other administrator operations (writes, reconciliation,
-health, runtime observations, registry, launch recovery and image replacement
-activation/replacement writes) remain on the retained administrator surface and
-are outside this inventory. `/api/management/state`, runtime and production
-readiness also remain retained.
+Every operator GET used by `console-read-api.ts` selects the build-time
+`operatorReadRoute`: overview, accounts, workspaces/detail, image policy/preview
+and replacement result, announcements, health, runtime observations,
+reconciliation, launch recovery, wallet adjustment and application-deployment
+results, and registry repository/tag reads. The BFF requires the live
+CloudIdentity platform-admin decision before calling the retained owner through
+`/internal/cloud/operator/*`; tenant administrators are refused and unknown
+sessions never cause a cookie mutation. The retained build continues to select
+its own authenticated route; there is no runtime fallback.
+
+Control Plane still owns the existing projection, persisted runtime operations
+and registry configuration until an actual owner/caller migration occurs. A BFF
+read does not transfer that authority or remove the retained routes used by
+non-browser callers. Health and account/workspace projections preserve their
+existing per-source unavailable states. A missing Fabric observation, persisted
+row or upstream is never synthesized as healthy data. Administrator writes and
+`/api/management/state`, runtime and production readiness remain on their existing
+surfaces. Installed authenticated acceptance remains in the single Cloud delivery
+[Issue 926](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/926).
 
 ## Identity Fences
 

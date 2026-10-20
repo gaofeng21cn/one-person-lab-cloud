@@ -196,3 +196,39 @@ func assertNoCookieMutation(t *testing.T, response cloudAnnouncementHTTPResponse
 		t.Fatalf("operator read mutated cookies: %v", cookies)
 	}
 }
+
+func TestCloudOperatorSupplementalReadsKeepOwnerAndCookieBoundaries(t *testing.T) {
+	f := newCloudAnnouncementHTTPFixture(t, newMemoryTableStore())
+	operator := f.gateway.bind("operator-session", "operator-actor", "910")
+	for _, tc := range []struct {
+		path string
+		code int
+	}{
+		{"health", http.StatusOK},
+		{"runtime-observations", http.StatusBadGateway},
+		{"reconciliation", http.StatusOK},
+		{"workspace-launches/unknown/recovery", http.StatusNotFound},
+		{"wallet-adjustments/unknown", http.StatusNotFound},
+		{"workspaces/unknown/runtime-image-replacements/unknown", http.StatusNotFound},
+		{"application-deployments/unknown", http.StatusNotFound},
+		{"registry/repositories", http.StatusServiceUnavailable},
+		{"registry/tags/namespace/repository", http.StatusServiceUnavailable},
+	} {
+		path := "/internal/cloud/operator/" + tc.path
+		response := f.request(t, http.MethodGet, path, operator, "")
+		if response.code != tc.code {
+			t.Fatalf("%s code=%d body=%s", path, response.code, response.body)
+		}
+		assertNoCookieMutation(t, response)
+		response = f.request(t, http.MethodGet, path+"?tenantId=other", operator, "")
+		if response.code != http.StatusBadRequest {
+			t.Fatalf("%s accepted identity selector: %d", path, response.code)
+		}
+		assertNoCookieMutation(t, response)
+		response = f.request(t, http.MethodGet, path, owneridentity.SessionReference(strings.Repeat("a", 64)), "")
+		if response.code != http.StatusUnauthorized {
+			t.Fatalf("%s accepted unknown session: %d", path, response.code)
+		}
+		assertNoCookieMutation(t, response)
+	}
+}

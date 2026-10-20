@@ -29,6 +29,15 @@ type OperatorReader interface {
 	OperatorWorkspaceRuntimeImagePolicy(context.Context, string) ([]byte, error)
 	OperatorAnnouncements(context.Context, string, int, int) ([]byte, error)
 	OperatorWorkspaceRuntimeImageReplacementPreview(context.Context, string, string, string) ([]byte, error)
+	OperatorHealth(context.Context, string) ([]byte, error)
+	OperatorRuntimeObservations(context.Context, string) ([]byte, error)
+	OperatorReconciliation(context.Context, string, int, int) ([]byte, error)
+	OperatorWorkspaceLaunchRecovery(context.Context, string, string) ([]byte, error)
+	OperatorWalletAdjustment(context.Context, string, string) ([]byte, error)
+	OperatorWorkspaceRuntimeImageReplacement(context.Context, string, string, string) ([]byte, error)
+	OperatorApplicationDeployment(context.Context, string, string) ([]byte, error)
+	OperatorRegistryRepositories(context.Context, string, string) ([]byte, error)
+	OperatorRegistryTags(context.Context, string, string, string) ([]byte, error)
 }
 
 const (
@@ -55,6 +64,15 @@ func (s *Server) registerOperatorRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v2/operator/workspace-runtime-image-policy", s.operatorReadHandler("policy", "control-plane"))
 	mux.HandleFunc("GET /api/v2/operator/announcements", s.operatorReadHandler("announcements", "control-plane"))
 	mux.HandleFunc("GET /api/v2/operator/workspaces/{workspaceId}/runtime-image-replacements/preview", s.operatorReadHandler("preview", "control-plane+fabric"))
+	mux.HandleFunc("GET /api/v2/operator/health", s.operatorReadHandler("Health", "control-plane"))
+	mux.HandleFunc("GET /api/v2/operator/runtime-observations", s.operatorReadHandler("RuntimeObservations", "control-plane+fabric"))
+	mux.HandleFunc("GET /api/v2/operator/reconciliation", s.operatorReadHandler("Reconciliation", "control-plane"))
+	mux.HandleFunc("GET /api/v2/operator/workspace-launches/{operationId}/recovery", s.operatorReadHandler("WorkspaceLaunchRecovery", ""))
+	mux.HandleFunc("GET /api/v2/operator/wallet-adjustments/{operationId}", s.operatorReadHandler("WalletAdjustment", ""))
+	mux.HandleFunc("GET /api/v2/operator/workspaces/{workspaceId}/runtime-image-replacements/{operationId}", s.operatorReadHandler("WorkspaceRuntimeImageReplacement", ""))
+	mux.HandleFunc("GET /api/v2/operator/application-deployments/{operationId}", s.operatorReadHandler("ApplicationDeployment", ""))
+	mux.HandleFunc("GET /api/v2/operator/registry/repositories", s.operatorReadHandler("RegistryRepositories", ""))
+	mux.HandleFunc("GET /api/v2/operator/registry/tags/{namespace}/{repository}", s.operatorReadHandler("RegistryTags", ""))
 }
 
 // operatorReadHandler resolves the live CloudIdentity session, requires an
@@ -74,10 +92,22 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 		page, pageSize := 1, operatorDefaultPageSize
 		replacementImageDigest := ""
 		switch kind {
-		case "accounts", "workspaces", "announcements":
+		case "accounts", "workspaces", "announcements", "Reconciliation":
 			if page, pageSize, err = operatorPage(r); err != nil {
 				writePublisherError(w, r, 400, "invalid_pagination", "one page and pageSize are required")
 				return
+			}
+		case "RegistryRepositories":
+			query, parseErr := url.ParseQuery(r.URL.RawQuery)
+			if parseErr != nil || r.ContentLength != 0 {
+				writePublisherError(w, r, 400, "invalid_operator_read", "invalid registry selector")
+				return
+			}
+			for key, values := range query {
+				if key != "namespace" || len(values) != 1 {
+					writePublisherError(w, r, 400, "invalid_operator_read", "invalid registry selector")
+					return
+				}
 			}
 		case "preview":
 			if r.ContentLength != 0 {
@@ -119,12 +149,12 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 			writePublisherIdentityError(w, r, err)
 			return
 		}
-		raw, err := s.operatorRead(ctx, kind, caller.SessionID, workspaceID, replacementImageDigest, page, pageSize)
+		raw, err := s.operatorRead(ctx, kind, caller.SessionID, workspaceID, replacementImageDigest, page, pageSize, r)
 		if err != nil {
 			writeOwnerCallFailure(w, r, err)
 			return
 		}
-		if !validOperatorEnvelope(raw, source) {
+		if (source != "" && !validOperatorEnvelope(raw, source)) || (source == "" && !validOperatorObject(raw)) {
 			writePublisherError(w, r, 502, "invalid_owner_response", "invalid operator owner response")
 			return
 		}
@@ -134,7 +164,7 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 	}
 }
 
-func (s *Server) operatorRead(ctx context.Context, kind, session, workspaceID, replacementImageDigest string, page, pageSize int) ([]byte, error) {
+func (s *Server) operatorRead(ctx context.Context, kind, session, workspaceID, replacementImageDigest string, page, pageSize int, r *http.Request) ([]byte, error) {
 	switch kind {
 	case "overview":
 		return s.operator.OperatorOverview(ctx, session)
@@ -150,6 +180,24 @@ func (s *Server) operatorRead(ctx context.Context, kind, session, workspaceID, r
 		return s.operator.OperatorAnnouncements(ctx, session, page, pageSize)
 	case "preview":
 		return s.operator.OperatorWorkspaceRuntimeImageReplacementPreview(ctx, session, workspaceID, replacementImageDigest)
+	case "Health":
+		return s.operator.OperatorHealth(ctx, session)
+	case "RuntimeObservations":
+		return s.operator.OperatorRuntimeObservations(ctx, session)
+	case "Reconciliation":
+		return s.operator.OperatorReconciliation(ctx, session, page, pageSize)
+	case "WorkspaceLaunchRecovery":
+		return s.operator.OperatorWorkspaceLaunchRecovery(ctx, session, r.PathValue("operationId"))
+	case "WalletAdjustment":
+		return s.operator.OperatorWalletAdjustment(ctx, session, r.PathValue("operationId"))
+	case "WorkspaceRuntimeImageReplacement":
+		return s.operator.OperatorWorkspaceRuntimeImageReplacement(ctx, session, r.PathValue("workspaceId"), r.PathValue("operationId"))
+	case "ApplicationDeployment":
+		return s.operator.OperatorApplicationDeployment(ctx, session, r.PathValue("operationId"))
+	case "RegistryRepositories":
+		return s.operator.OperatorRegistryRepositories(ctx, session, r.URL.Query().Get("namespace"))
+	case "RegistryTags":
+		return s.operator.OperatorRegistryTags(ctx, session, r.PathValue("namespace"), r.PathValue("repository"))
 	default:
 		return nil, status.Error(codes.Internal, "unknown operator read")
 	}
@@ -222,4 +270,9 @@ func validOperatorEnvelope(raw []byte, source string) bool {
 	default:
 		return false
 	}
+}
+
+func validOperatorObject(raw []byte) bool {
+	var value map[string]json.RawMessage
+	return json.Unmarshal(raw, &value) == nil && len(value) > 0
 }

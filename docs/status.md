@@ -988,6 +988,19 @@ that an installation runs the complete set.
 
 ## Browser-Facing HTTP Surface And Console Identity
 
+As checked on 2026-10-21, all operator GET callers in `console-read-api.ts`
+select the BFF for CloudIdentity builds, including health, reconciliation,
+Runtime observations, registry and operation-result reads. BFF platform-admin
+checks precede the retained owner's read. The shared owner writers preserve
+per-source availability and their existing not-found/conflict/unavailable outcomes; neither
+identity rejection nor a successful read sets or deletes a browser cookie.
+The focused BFF/owner/UI checks exercise this source path. This does not prove
+an installed operator session, provider health or formal Release admission;
+[Issue 926](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/926)
+retains that bounded acceptance. The Control Plane persistence/aggregation
+migration target remains distinct from this read-path repair.
+
+
 The product image serves one Console origin while the Console calls the
 surfaces declared by the topology contract. The Console identity is baked into
 the image and cannot be changed by deployment configuration. The source

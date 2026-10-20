@@ -717,8 +717,11 @@ the remaining CVM.
 before matching persisted Fabric ownership. Binding claims remain visible for
 unregistered or conflicting objects. Control Plane reconciles this inventory
 against its complete current Workspace set, retained operations and lifecycle intent through
-`GET /api/operator/runtime-observations`; the operator health card uses the same
-query. Running, normal suspension, pending transitions, missing and unmatched
+`GET /internal/cloud/operator/runtime-observations` for the CloudIdentity BFF
+and the retained `GET /api/operator/runtime-observations` for legacy callers;
+the operator health card uses the same query. The BFF owns platform-operator
+authorization and calls the shared retained read writers without creating a
+Control Plane browser session. See the [read inventory](implementation/840-console-customer-reads.md). Running, normal suspension, pending transitions, missing and unmatched
 objects remain distinct. Incomplete discovery cannot prove absence. The older
 physical summary retains `ready + unready = total`; a suspended controller is
 physically unready without necessarily being a business fault.
