@@ -3,7 +3,7 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: monthly
+      interval: weekly
       time: "03:00"
       timezone: Asia/Shanghai
     groups:
@@ -15,7 +15,7 @@ updates:
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: monthly
+      interval: weekly
       time: "03:00"
       timezone: Asia/Shanghai
     groups:
@@ -27,7 +27,7 @@ updates:
   - package-ecosystem: gomod
     directory: /services/control-plane
     schedule:
-      interval: monthly
+      interval: weekly
       time: "03:00"
       timezone: Asia/Shanghai
     groups:
@@ -39,7 +39,7 @@ updates:
   - package-ecosystem: gomod
     directory: /services/fabric
     schedule:
-      interval: monthly
+      interval: weekly
       time: "03:00"
       timezone: Asia/Shanghai
     groups:
@@ -51,7 +51,7 @@ updates:
   - package-ecosystem: gomod
     directory: /services/internal/postgresmigrate
     schedule:
-      interval: monthly
+      interval: weekly
       time: "03:00"
       timezone: Asia/Shanghai
     groups:
@@ -63,7 +63,7 @@ updates:
   - package-ecosystem: gomod
     directory: /services/ledger
     schedule:
-      interval: monthly
+      interval: weekly
       time: "03:00"
       timezone: Asia/Shanghai
     groups:
@@ -75,7 +75,7 @@ updates:
   - package-ecosystem: docker
     directory: /
     schedule:
-      interval: monthly
+      interval: weekly
       time: "03:00"
       timezone: Asia/Shanghai
     open-pull-requests-limit: 1
