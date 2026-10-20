@@ -390,30 +390,39 @@ export function previewPricing(input: PricingPreviewRequest, csrfToken: string, 
   return postJson<unknown>("/api/pricing/preview", input, csrfToken).then(decodeDto<PricingPreviewResponse>);
 }
 
-export function getOperatorAccounts(): Promise<SourceEnvelope<OperatorAccountsData>> {
-  return sourceGet<OperatorAccountsData>("/api/operator/accounts");
+// The operator console reads resolve exactly like the wallet and billing reads:
+// a cloud build asks the BFF, which authorizes the CloudIdentity session as a
+// platform operator; a retained build keeps the Control Plane route it
+// authenticated against. The decision is baked at build time, never a runtime
+// fallback.
+export function operatorReadRoute(cloud: boolean): "/api/v2/operator" | "/api/operator" {
+  return cloud ? "/api/v2/operator" : "/api/operator";
 }
 
-export function getOperatorOverview(signal?: AbortSignal): Promise<SourceEnvelope<OperatorOverviewDTO>> {
-  return sourceGet<OperatorOverviewDTO>("/api/operator/overview", signal);
+export function getOperatorAccounts(cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorAccountsData>> {
+  return sourceGet<OperatorAccountsData>(`${operatorReadRoute(cloud)}/accounts`);
 }
 
-export function getOperatorAccountsPage(page = 1, pageSize = 20, signal?: AbortSignal): Promise<SourceEnvelope<OperatorAccountPageDTO>> {
+export function getOperatorOverview(signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorOverviewDTO>> {
+  return sourceGet<OperatorOverviewDTO>(`${operatorReadRoute(cloud)}/overview`, signal);
+}
+
+export function getOperatorAccountsPage(page = 1, pageSize = 20, signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorAccountPageDTO>> {
   const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-  return sourceGet<OperatorAccountPageDTO>(`/api/operator/accounts?${params}`, signal);
+  return sourceGet<OperatorAccountPageDTO>(`${operatorReadRoute(cloud)}/accounts?${params}`, signal);
 }
 
-export function getOperatorWorkspaces(page = 1, pageSize = 20, signal?: AbortSignal): Promise<SourceEnvelope<OperatorWorkspacePageDTO>> {
+export function getOperatorWorkspaces(page = 1, pageSize = 20, signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorWorkspacePageDTO>> {
   const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-  return sourceGet<OperatorWorkspacePageDTO>(`/api/operator/workspaces?${params}`, signal);
+  return sourceGet<OperatorWorkspacePageDTO>(`${operatorReadRoute(cloud)}/workspaces?${params}`, signal);
 }
 
-export function getOperatorWorkspace(workspaceId: string, signal?: AbortSignal): Promise<SourceEnvelope<OperatorWorkspaceDTO>> {
-  return sourceGet<OperatorWorkspaceDTO>(`/api/operator/workspaces/${encodeURIComponent(workspaceId)}`, signal);
+export function getOperatorWorkspace(workspaceId: string, signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorWorkspaceDTO>> {
+  return sourceGet<OperatorWorkspaceDTO>(`${operatorReadRoute(cloud)}/workspaces/${encodeURIComponent(workspaceId)}`, signal);
 }
 
-export function getOperatorWorkspaceRuntimeImagePolicy(signal?: AbortSignal): Promise<SourceEnvelope<OperatorWorkspaceRuntimeImagePolicyDTO>> {
-  return sourceGet<OperatorWorkspaceRuntimeImagePolicyDTO>("/api/operator/workspace-runtime-image-policy", signal);
+export function getOperatorWorkspaceRuntimeImagePolicy(signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorWorkspaceRuntimeImagePolicyDTO>> {
+  return sourceGet<OperatorWorkspaceRuntimeImagePolicyDTO>(`${operatorReadRoute(cloud)}/workspace-runtime-image-policy`, signal);
 }
 
 export function activateOperatorWorkspaceImageRelease(

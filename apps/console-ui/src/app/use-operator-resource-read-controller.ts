@@ -14,6 +14,7 @@ import type {
   OperatorWorkspaceRuntimeImagePreviewDTO,
   SourceEnvelope
 } from "../api/dtos.ts";
+import { authorizationFailureState } from "./authorization-error.ts";
 import type { OperatorResourceReadController, RemoteState } from "./console-controller-types.ts";
 import {
   applyOperatorResourceCompletion,
@@ -248,6 +249,25 @@ export function useOperatorResourceReadController({
     });
   }, [applyCompletion]);
 
+  // A 401/403 is an authorization decision, not a source outage. Keep it out of
+  // the synthesized unavailable envelope so a missing operator privilege cannot
+  // render as "source unavailable".
+  const failProjection = useCallback((kind: ProjectionKind, message: string) => {
+    setState((current) => {
+      const failed = { value: null, loading: false, error: message };
+      switch (kind) {
+        case "workspaces":
+          return { ...current, workspaces: failed };
+        case "detail":
+          return { ...current, detail: failed };
+        case "imagePolicy":
+          return { ...current, imagePolicy: failed };
+        case "imagePreview":
+          return { ...current, imagePreview: failed };
+      }
+    });
+  }, []);
+
   const sourceMatchesScope = useCallback(<K extends ProjectionKind>(
     kind: K,
     scope: ProjectionScopeMap[K],
@@ -300,6 +320,11 @@ export function useOperatorResourceReadController({
       return result;
     } catch (error) {
       if (!requestOwnsScope(scope, userId, csrfToken)) return null;
+      const authorization = authorizationFailureState(error);
+      if (authorization) {
+        failProjection(kind, authorization.error);
+        return null;
+      }
       commitProjection(
         kind,
         scope,
@@ -308,7 +333,7 @@ export function useOperatorResourceReadController({
       );
       return null;
     }
-  }, [beginProjection, commitProjection, currentSession, friendlyError, requestOwnsScope, sourceMatchesScope, unavailableSource]);
+  }, [beginProjection, commitProjection, currentSession, failProjection, friendlyError, requestOwnsScope, sourceMatchesScope, unavailableSource]);
 
   const loadList = useCallback(async (requestedPage: number) => {
     if (!isValidOperatorResourcePage(requestedPage)) return;

@@ -25,6 +25,7 @@ type Server struct {
 	personalGateway PersonalGatewayReader
 	legacyBilling   LegacyBillingReader
 	announcements   AnnouncementReader
+	operator        OperatorReader
 	reader          OwnerReader
 	identity        IdentityReader
 	capability      api.CapabilityProductServiceClient
@@ -61,6 +62,9 @@ func NewServer(reader OwnerReader, identity IdentityReader) *Server {
 	}
 	if a, ok := reader.(AnnouncementReader); ok {
 		s.announcements = a
+	}
+	if o, ok := reader.(OperatorReader); ok {
+		s.operator = o
 	}
 	if p, ok := reader.(interface {
 		PublisherClients() (api.CapabilityProductServiceClient, api.BuildProductServiceClient)
@@ -110,6 +114,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	s.registerAuthRoutes(mux)
 	s.registerAnnouncementRoutes(mux)
+	s.registerOperatorRoutes(mux)
 	s.registerLegacyBillingRoutes(mux)
 	s.registerPersonalGatewayReadRoutes(mux)
 	s.registerPublisherRoutes(mux)
