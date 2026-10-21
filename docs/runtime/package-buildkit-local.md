@@ -55,6 +55,13 @@ original JSON bytes or replace schema validation.
 
 ## Runnable IBD Build and Workspace handoff
 
+The IBD Local-Docker scope is uploaded Package → real BuildKit OCI digest →
+CapabilityVersion → Workspace/Serve/Fabric Local-Docker → ready route, password
+login and a real Agent response through the authenticated native HTTP API. IBD
+is the feasibility exemplar; this procedure adds no provider or generic WebUI
+chat feature. The [historical Linux evidence](../status.md#linux-custom-agent-owner-qualification-2026-10-21)
+records the bound source inputs, readbacks and qualification limits.
+
 The existing live test accepts a runnable Runtime contract through
 `OPL_BUILD_TEST_RUNTIME_CONTRACT`. The non-secret input used by the successful
 Linux IBD case is retained at
@@ -95,7 +102,10 @@ BuildArtifact JSON, including `confirmed` outcome, without registration grant or
 browser session. A successful export deliberately retains the named Registry;
 the caller owns its later removal and volume cleanup. A failed test removes its
 own Registry. Handoff-only mode omits the publisher browser and later revoked-input
-probe; the default test still executes them.
+probe; the default test still executes them. The Linux consumer imports the
+exact Build/Capability readbacks into its isolated Capability fixture. External
+login and the approved Runtime/WebUI catalog also remain local fixtures; this
+handoff does not establish installed catalog admission or live identity acceptance.
 
 On an isolated Linux amd64 root host with Docker and an empty ext4 project-quota
 mount, the existing Workspace test consumes that file using
@@ -117,11 +127,19 @@ with those variables. The Runtime probe assumes the existing OPL native Headless
 HTTP protocol and exactly one writable `/data` mount; it is not a generic Runtime
 adapter. macOS Docker Desktop cannot replace the required Linux quota host.
 
-Positive checks precede deletion admission. This no-charge order has no paid
-period; DELETE must return 422 and no accepted deletion. Neither that rejection
-nor harness cleanup qualifies business absence, a Ledger deletion receipt or
-refund. Preserve the sanitized Agent IDs/response hash and owner readbacks before
-removing only the caller-owned test Registry/volumes, model data and quota mount.
+The probe logs in through `/api/auth/login`, reads the declared Agent through
+`/api/opl/state?profile=fast`, then sends through native `/api/send-message` using
+the application session and CSRF token. It requires `codex_app_server`, matching
+thread/turn identities, canonical `completed` status and a nonempty reply. This
+is authenticated HTTP API evidence; browser-driven sending is outside this
+closure. Same-Candidate and installed Tencent/TKE acceptance remain separate.
+
+This qualification ends after the positive delivery, login, response and recovery
+checks. Its no-charge order has no paid period. Business deletion, resource
+absence, a Ledger deletion receipt and original-charge refund require separate
+owner execution. Preserve the sanitized Agent IDs/response hash and owner
+readbacks before removing only the caller-owned test Registry/volumes, model
+data and quota mount; harness cleanup is not business deletion evidence.
 
 ## Capability data plane
 

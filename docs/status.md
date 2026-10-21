@@ -40,10 +40,17 @@ open for that runtime evidence and the exact-Candidate acceptance.
 
 ## Linux Custom Agent Owner Qualification (2026-10-21)
 
+PR #1003 is scoped to IBD Local-Docker delivery closure: uploaded Package → real
+BuildKit OCI digest → CapabilityVersion → Workspace/Serve/Fabric Local-Docker →
+ready route, password login and a real Agent response through the authenticated
+native HTTP API. IBD is the feasibility exemplar; a new provider and generic
+WebUI chat redesign are outside this scope.
+
 The executed source base was `070bffa52356dc75f38ec9c5dde66fe61ba36328` plus the
-recorded working-tree inputs. All 1,136 source-manifest files were hash-checked
-against those inputs before PR preparation. This historical execution is not a
-qualification of the successor PR revision. An isolated Linux Docker environment passed
+recorded, broader pre-PR working-tree inputs. All 1,136 source-manifest files were
+hash-checked against those inputs before PR preparation. The Linux run has not
+been repeated for the narrowed successor revision; the historical success below
+does not qualify that revision. An isolated Linux Docker environment passed
 `TestLinuxLocalDockerProjectQuotaEnforcesHardLimit` with no skip, then ran the
 existing `TestLocalFirstApplicationDeploymentQualification` against an empty,
 dedicated ext4 filesystem mounted with `prjquota`. Existing node services were
@@ -52,9 +59,9 @@ outside this qualification's write scope.
 Serve now freezes the platform credential version in its existing runtime action
 snapshot, independently of Gateway Secret generations. Fabric mounts the declared
 password/session files even when the application declares no Gateway credential.
-Focused owner verification passed 83 Serve delivery, 14 TKE executor and 9 Fabric
-tests, with zero failures or skips. These results do not claim the complete local
-source gate or current-revision CI passed.
+Historical focused owner verification passed 83 Serve delivery, 14 TKE executor
+and 9 Fabric tests, with zero failures or skips. These results do not claim the
+complete local source gate, current-revision checks or CI passed.
 
 The first internal Build handoff was refused because its public JSON projection
 omitted the internal observation outcome. Handoff schema 2 uses protobuf JSON for
@@ -81,8 +88,9 @@ its isolated Capability fixture and restored the original OCI manifest/config an
 layer bytes; it did not rebuild on that node. The Workspace, Catalog, Capability,
 Ledger and CloudIdentity handlers, authenticated owner transport, separate owner
 databases, and Fabric/Serve production executables then exercised the new owner
-chain. External login and the approved Runtime/WebUI catalog remain local test
-inputs. The qualification passed in 87.81 seconds with zero failures or skips:
+chain. External login, the approved Runtime/WebUI catalog and the imported
+Build/Capability handoff remain explicit local fixture boundaries. The historical
+qualification passed in 87.81 seconds with zero failures or skips:
 actual container image/labels/data mount matched the admitted OCI and execution;
 BFF deployment/access readbacks, `/readyz`, application password login and the
 authenticated Agent route passed. A real container stop closed application access
@@ -90,7 +98,9 @@ and propagated failure to Workspace. Restarting that container plus Serve and
 Workspace preserved the container, data, original order, deployment and epoch.
 
 The authorized local model configuration was supplied only through ephemeral
-runtime data. The recovered application returned a real `codex_app_server` reply:
+runtime data. Through the authenticated native HTTP `/api/send-message` API,
+using the application login session and CSRF token, the recovered application
+returned a real `codex_app_server` reply:
 thread `01a15aa7-2fd9-7981-8baf-315d796edcdc`, turn
 `01a15aa7-3017-7480-9ebb-9ba72dbd67b3`, canonical status `completed`, 554 bytes,
 response SHA-256 `b7208c2baf202f59d4ba7640cf9fc3d8b27e1385d71a9914f8804d8c13bfa15d`.

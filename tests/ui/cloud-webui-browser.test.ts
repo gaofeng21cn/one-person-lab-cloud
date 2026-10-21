@@ -7,55 +7,36 @@ import { CONSOLE_DEMO_CREDENTIALS, startConsoleDemoServer } from "../../tools/st
 
 const digest = "sha256:" + "a".repeat(64);
 
-function runtimeState(modelReady = true) {
-  return { app_state: { version: "g2", app_state: {
-    schema_version: "opl_app_state.v1",
-    core: { codex: { model_access_ready: modelReady } },
-    agent_packages: { directory: { entries: [{
-      package_id: "local-agent", display_name: "Local Agent", package_role: "standard_agent",
-      readiness: { operational_ready: true },
-      capability_metadata: { required_skill_ids: ["ibd-evidence"] },
-      home_shortcuts: [{ shortcut_id: "ask", route: {
-        route_kind: "agent_package_shortcut", executor: "codex_cli", codex_visible_entry: "$local-agent"
-      } }]
-    }] } }
-  } } };
-}
-
-function runtimeReply(turnId: string, finalMessage: string) {
-  return {
-    executor: "codex_app_server", threadId: "thread-local", turnId, finalMessage,
-    canonicalThread: { id: "thread-local", turns: [{ id: turnId, status: "completed" }] }
-  };
-}
-
-async function startAgentWebuiServer(state = runtimeState()) {
-  const messages: { body: unknown; csrfToken: string | string[] | undefined; response: ServerResponse }[] = [];
-  const requests: string[] = [];
-  const firstMessage = Promise.withResolvers<void>();
-  const secondMessage = Promise.withResolvers<void>();
+test("Cloud Agent keeps the current turn locked until the Runtime completes it", { timeout: 30_000 }, async () => {
+  let events: ServerResponse | undefined;
+  const actions: unknown[] = [];
   const files = new Map(await Promise.all([
     ["/", "index.html", "text/html"],
     ["/app.js", "app.js", "text/javascript"],
-    ["/runtime-api.js", "runtime-api.js", "text/javascript"],
     ["/style.css", "style.css", "text/css"]
   ].map(async ([path, file, type]) => [path, { type, body: await readFile(new URL(`../../webui/cloud-agent/${file}`, import.meta.url)) }] as const)));
   const server = createServer(async (request, response) => {
-    requests.push(`${request.method} ${request.url}`);
     const reply = (body: unknown) => {
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify(body));
     };
-    if (request.method === "GET" && request.url === "/api/auth/user") return reply({ csrfToken: "local-csrf" });
-    if (request.method === "GET" && request.url === "/api/opl/state?profile=fast") return reply(state);
-    if (request.method === "POST" && request.url === "/api/send-message") {
+    if (request.url === "/api/auth/user") return reply({ csrfToken: "local-csrf" });
+    if (request.url === "/api/opl/state?profile=fast") return reply({ app_state: { agent_packages: { directory: { entries: [{
+      package_id: "local-agent", display_name: "Local Agent", package_role: "standard_agent",
+      readiness: { operational_ready: true },
+      available_actions: [{ action_id: "invoke_agent_package_for_current_turn", payload: { package_id: "local-agent" } }]
+    }] } } } });
+    if (request.url === "/api/opl-events") {
+      events = response;
+      response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
+      response.flushHeaders();
+      return;
+    }
+    if (request.url === "/api/opl/action") {
       let body = "";
       for await (const chunk of request) body += chunk;
-      messages.push({ body: JSON.parse(body), csrfToken: request.headers["x-csrf-token"], response });
-      firstMessage.resolve();
-      if (messages.length === 2) secondMessage.resolve();
-      // Keep the HTTP response pending until the test supplies the canonical turn.
-      return;
+      actions.push(JSON.parse(body));
+      return reply({ status: "executed" });
     }
     const file = files.get(request.url || "");
     response.writeHead(file ? 200 : 404, { "content-type": file?.type || "text/plain" });
@@ -64,135 +45,37 @@ async function startAgentWebuiServer(state = runtimeState()) {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   assert.ok(address && typeof address !== "string");
-  return {
-    origin: `http://127.0.0.1:${address.port}`, messages, requests, firstMessage: firstMessage.promise, secondMessage: secondMessage.promise,
-    complete(index: number, body: unknown) {
-      messages[index].response.writeHead(200, { "content-type": "application/json" });
-      messages[index].response.end(JSON.stringify(body));
-    },
-    async close() {
-      server.closeAllConnections();
-      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-    }
-  };
-}
-
-test("Cloud Agent keeps the current turn locked until the Runtime completes it", { timeout: 30_000 }, async () => {
-  const server = await startAgentWebuiServer();
   const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage();
-    await page.goto(`${server.origin}/`);
-    await page.getByText("Runtime ready", { exact: true }).waitFor();
-    assert.ok(server.requests.includes("GET /runtime-api.js"));
+    await page.goto(`http://127.0.0.1:${address.port}/`);
+    await page.getByText("Runtime connected", { exact: true }).waitFor();
     const send = page.getByRole("button", { name: "Send", exact: true });
     const prompt = page.getByLabel("Prompt", { exact: true });
-    const agent = page.getByLabel("Agent", { exact: true });
-    assert.equal(await agent.locator("option").textContent(), "Local Agent");
     await prompt.fill("First task");
-    await send.click();
-    await server.firstMessage;
-    assert.deepEqual(server.messages[0].body, {
-      prompt: "First task",
-      agentSelection: {
-        package_id: "local-agent", shortcut_id: "ask", codex_visible_entry: "$local-agent", required_skill_ids: ["ibd-evidence"]
-      }
-    });
-    assert.equal(server.messages[0].csrfToken, "local-csrf");
-    assert.equal(server.messages[0].response.writableEnded, false);
+    await Promise.all([page.waitForResponse("**/api/opl/action"), send.click()]);
+    // Older code displayed Stop despite having no owner cancellation API.
+    // Clicking it locally unlocked a second request while the first kept running.
+    const stop = page.getByRole("button", { name: "Stop", exact: true });
+    if (await stop.count()) await stop.click();
     assert.equal(await send.isDisabled(), true, "Only Runtime completion may unlock a turn");
     assert.equal(await prompt.isDisabled(), true);
-    assert.equal(await agent.isDisabled(), true);
-    assert.deepEqual(await page.locator(".message.assistant").allTextContents(), ["Waiting for Agent…"]);
-    // Supply a nonempty prompt so an empty field cannot mask an overlap bug.
-    await prompt.evaluate((element: HTMLTextAreaElement) => { element.value = "Overlapping task"; });
     await page.locator("#composer").dispatchEvent("submit");
-    // The in-flight guard must also survive a forced submit with the button enabled.
-    await send.evaluate((element: HTMLButtonElement) => { element.disabled = false; });
-    await page.locator("#composer").dispatchEvent("submit");
-    await send.evaluate((element: HTMLButtonElement) => { element.disabled = true; });
-    assert.deepEqual(await page.locator(".message.user").allTextContents(), ["First task"]);
-    assert.deepEqual(await page.locator(".message.assistant").allTextContents(), ["Waiting for Agent…"]);
-    assert.equal(server.messages.length, 1, "No overlapping Agent message is submitted");
-    const firstResponse = page.waitForResponse("**/api/send-message");
-    server.complete(0, runtimeReply("turn-first", "First answer"));
-    await firstResponse;
+    events?.write(`data: ${JSON.stringify({ method: "item/agentMessage/delta", params: { delta: "First answer" } })}\n\n`);
     await page.getByText("First answer", { exact: true }).waitFor();
-    assert.equal(await send.isEnabled(), true);
-    assert.equal(await prompt.isEnabled(), true);
-    assert.equal(await agent.isEnabled(), true);
+    assert.equal(actions.length, 1, "No overlapping Agent action is submitted");
+    events?.write(`data: ${JSON.stringify({ method: "turn/completed", params: {} })}\n\n`);
+    await page.waitForFunction(() => !(document.querySelector("#send") as HTMLButtonElement).disabled);
     await prompt.fill("Second task");
-    const secondRequest = page.waitForRequest("**/api/send-message");
-    await send.click();
-    const request = await secondRequest;
-    assert.deepEqual(request.postDataJSON(), { prompt: "Second task", threadId: "thread-local" });
-    await server.secondMessage;
-    assert.deepEqual(server.messages[1].body, { prompt: "Second task", threadId: "thread-local" });
-    assert.equal(server.messages[1].csrfToken, "local-csrf");
-    server.complete(1, runtimeReply("turn-second", "Second answer"));
+    await Promise.all([page.waitForResponse("**/api/opl/action"), send.click()]);
+    events?.write(`data: ${JSON.stringify({ method: "item/agentMessage/delta", params: { delta: "Second answer" } })}\n\n`);
     await page.getByText("Second answer", { exact: true }).waitFor();
     assert.deepEqual(await page.locator(".message.assistant").allTextContents(), ["First answer", "Second answer"]);
-    assert.equal(server.messages.length, 2);
-    assert.deepEqual(server.requests.filter((request) => request.startsWith("POST ")), [
-      "POST /api/send-message", "POST /api/send-message"
-    ]);
+    assert.equal(actions.length, 2);
   } finally {
-    await server.close();
     await browser.close();
-  }
-});
-
-test("Cloud Agent with missing model access never sends a message", { timeout: 30_000 }, async () => {
-  const server = await startAgentWebuiServer(runtimeState(false));
-  const browser = await launchBrowser({ headless: true });
-  try {
-    const page = await browser.newPage();
-    await page.goto(`${server.origin}/`);
-    await page.getByText("Model access required", { exact: true }).waitFor();
-    await page.getByText("Agent loaded. Configure model access in the application before sending a prompt.", { exact: true }).waitFor();
-    const prompt = page.getByLabel("Prompt", { exact: true });
-    assert.equal(await page.getByLabel("Agent", { exact: true }).isEnabled(), true);
-    assert.equal(await prompt.isDisabled(), true);
-    assert.equal(await page.getByRole("button", { name: "Send", exact: true }).isDisabled(), true);
-    await prompt.evaluate((element: HTMLTextAreaElement) => { element.value = "Must not be sent"; });
-    await page.locator("#composer").dispatchEvent("submit");
-    assert.equal(await page.locator(".message").count(), 0);
-    assert.equal(server.messages.length, 0);
-    assert.equal(server.requests.some((request) => request.startsWith("POST ")), false);
-  } finally {
-    await server.close();
-    await browser.close();
-  }
-});
-
-test("Cloud Agent rejects a failed canonical turn even when the reply contains an answer", { timeout: 30_000 }, async () => {
-  const server = await startAgentWebuiServer();
-  const browser = await launchBrowser({ headless: true });
-  try {
-    const page = await browser.newPage();
-    await page.goto(`${server.origin}/`);
-    await page.getByText("Runtime ready", { exact: true }).waitFor();
-    await page.getByLabel("Prompt", { exact: true }).fill("Fail this task");
-    await page.getByRole("button", { name: "Send", exact: true }).click();
-    await server.firstMessage;
-    server.complete(0, {
-      ...runtimeReply("turn-failed", "This must not appear as success"),
-      canonicalThread: { id: "thread-local", turns: [
-        { id: "previous-turn", status: "completed" },
-        { id: "turn-failed", status: "failed", error: { message: "Model execution failed" } }
-      ] }
-    });
-    await page.locator(".message.error").getByText("Model execution failed", { exact: true }).waitFor();
-    assert.equal(await page.locator(".message.assistant").count(), 0);
-    assert.equal(await page.getByText("This must not appear as success", { exact: true }).count(), 0);
-    assert.deepEqual(await page.locator(".message.user").allTextContents(), ["Fail this task"]);
-    assert.equal(await page.getByRole("button", { name: "Send", exact: true }).isEnabled(), true);
-    assert.equal(await page.getByLabel("Agent", { exact: true }).isEnabled(), true);
-    assert.equal(await page.getByLabel("Prompt", { exact: true }).isEnabled(), true);
-    assert.equal(server.messages.length, 1);
-  } finally {
-    await server.close();
-    await browser.close();
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
 

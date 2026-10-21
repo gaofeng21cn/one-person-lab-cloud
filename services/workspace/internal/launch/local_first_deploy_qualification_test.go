@@ -461,27 +461,6 @@ func TestLocalFirstApplicationDeploymentQualification(t *testing.T) {
 	if code != 202 || !bytes.Contains(raw, []byte(opID)) {
 		t.Fatalf("idempotent create %d %s", code, raw)
 	}
-	// Only after this profile's positive delivery/access checks (including the
-	// real Agent turn for a Build handoff), exercise deletion admission. It has
-	// neither a successful paid launch nor a subscription period; its refusal is
-	// evidence of that boundary, never deletion/refund success.
-	deleteBody, err := publicjson.Marshal(&api.DeleteWorkspaceRequest{ConfirmationName: "Local first deployment qualification", AcknowledgeDataDestruction: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	code, raw = request(workspaceFront.URL, customer, http.MethodDelete, "/api/v2/workspaces/"+wid, "qualification-delete-unactivated", string(deleteBody))
-	if code != http.StatusUnprocessableEntity {
-		t.Fatalf("unactivated Local order deletion should be refused, HTTP %d", code)
-	}
-	code, raw = request(workspaceFront.URL, customer, http.MethodGet, "/api/v2/workspaces/"+wid+"/deletion", "", "")
-	if code != http.StatusOK || string(bytes.TrimSpace(raw)) != "null" {
-		t.Fatalf("refused deletion must have no accepted deletion readback, HTTP %d", code)
-	}
-	assertPublicAccess(recoveredReady, true, "after-refused-delete-access")
-	deletionEvidence, err := json.Marshal(map[string]any{"timestamp": time.Now().UTC().Format(time.RFC3339Nano), "workspaceId": wid, "billingProfile": "LOCAL_NO_CHARGE", "launchStatus": recoveredOp.Status, "launchStage": recoveredOp.Stage, "deleteHTTPStatus": http.StatusUnprocessableEntity, "acceptedDeletion": false, "deletionReadback": nil, "resourceDeletion": "unexecuted", "ledgerDeletionReceipt": "unexecuted", "refund": "unexecuted", "scope": "business deletion admission refusal; harness cleanup is separate"})
-	if err != nil || os.WriteFile(filepath.Join(bundle, "deletion-admission-"+time.Now().UTC().Format("20060102T150405.000000000Z")+".json"), deletionEvidence, 0600) != nil {
-		t.Fatal("persist deletion admission readback")
-	}
 	for _, check := range []struct {
 		db    *sql.DB
 		query string
@@ -491,8 +470,6 @@ func TestLocalFirstApplicationDeploymentQualification(t *testing.T) {
 		{fabricDB, `SELECT count(*) FROM fabric.resource_sets`, 1}, {serveDB, `SELECT count(*) FROM serve.agent_deployments`, 1}, {serveDB, `SELECT count(*) FROM serve.agent_runtime_instances`, 1},
 		{capabilityDB, `SELECT count(*) FROM capability.reference_claims WHERE claimant_owner='serve' AND purpose='deploy'`, 1},
 		{ledgerDB, `SELECT count(*) FROM evidence_receipts WHERE receipt_type='workspace.local_no_charge.v1'`, 1},
-		{workspaceDB, `SELECT count(*) FROM workspace.operations WHERE kind='delete_workspace'`, 0},
-		{ledgerDB, `SELECT count(*) FROM evidence_receipts WHERE receipt_type='workspace.provider_action.v1'`, 0},
 	} {
 		var got int
 		if err = check.db.QueryRowContext(ctx, check.query).Scan(&got); err != nil || got != check.want {

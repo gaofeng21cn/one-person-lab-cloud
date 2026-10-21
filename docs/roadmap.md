@@ -64,13 +64,16 @@ can be read back.
 
 ## Custom Agent Local Delivery (2026-10-21)
 
-The existing Local-Docker owner chain has passed uploaded IBD Package → real
-BuildKit OCI/CapabilityVersion → Workspace/Serve/Fabric deployment, ready route,
-password login and one canonical completed Agent response. The exact digest,
-source boundary, recovery and cleanup evidence are in
-[status](status.md#linux-custom-agent-owner-qualification-2026-10-21).
+[PR #1003](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1003)
+is limited to the IBD Local-Docker delivery closure: uploaded Package → real
+BuildKit OCI digest → CapabilityVersion → Workspace/Serve/Fabric Local-Docker →
+ready route, password login and a real Agent response through the authenticated
+native HTTP API. IBD is the feasibility exemplar. The exact historical runtime
+evidence and its source/fixture boundaries are owned by
+[status](status.md#linux-custom-agent-owner-qualification-2026-10-21);
 [Issue #1002](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1002)
-tracks the scoped source closure and current-revision review/CI.
+tracks the scoped source closure and current-revision review/CI. Generic WebUI
+chat changes, browser-driven sending and a new provider are outside this scope.
 
 Same-Candidate and installed Tencent/TKE acceptance remain open. The local
 `LOCAL_NO_CHARGE` order did not activate a paid subscription: after positive

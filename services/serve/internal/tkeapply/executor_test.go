@@ -590,14 +590,12 @@ func TestExecutorReadsTheApplicationsOwnCredential(t *testing.T) {
 				if _, err := executor.EnsureWorkspaceApplicationRuntime(context.Background(), input, testPlacement()); err != nil {
 					t.Fatal(err)
 				}
-				if gateway {
-					credentials, err := executor.ReadWorkspaceApplicationRuntimeCredentials(context.Background(), input)
-					if err != nil {
-						t.Fatal(err)
-					}
-					if credentials.WorkspaceID != input.WorkspaceID || credentials.RuntimeID != workspaceApplicationRuntimeID(operation) || credentials.WebUIUsername != "app-admin" || credentials.WebUIPassword != deriveWorkspaceAdminPassword(installation.AdminPasswordSeed, input.WorkspaceID, input.Configuration.CredentialVersion) {
-						t.Fatal("applied password does not match its declared identity and frozen version")
-					}
+				credentials, err := executor.ReadWorkspaceApplicationRuntimeCredentials(context.Background(), input)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if credentials.WorkspaceID != input.WorkspaceID || credentials.RuntimeID != workspaceApplicationRuntimeID(operation) || credentials.WebUIUsername != "app-admin" || credentials.WebUIPassword != deriveWorkspaceAdminPassword(installation.AdminPasswordSeed, input.WorkspaceID, input.Configuration.CredentialVersion) {
+					t.Fatal("applied password does not match its declared identity and frozen version")
 				}
 				secret, err := executor.applicationSecretObject(context.Background(), input)
 				if err != nil {

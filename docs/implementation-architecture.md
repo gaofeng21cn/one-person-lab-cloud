@@ -121,6 +121,15 @@ Complete replacement, TKE execution/route ownership and runtime model apply
 readback remain separate qualification outcomes. Current verification and
 remaining qualification limits are recorded in [status](status.md).
 
+The IBD Local-Docker delivery closure uses an uploaded Package, BuildKit's actual
+OCI digest and its registered CapabilityVersion through the existing
+Workspace/Serve/Fabric path. The live harness checks readiness and password login,
+then calls the authenticated native HTTP `/api/send-message` endpoint with the
+application session and CSRF token to verify a canonical completed Agent response.
+IBD is the feasibility exemplar; this scope adds no provider or generic WebUI chat
+feature. Browser-driven sending is outside this closure. Historical execution and
+current-revision verification remain distinct in [status](status.md).
+
 Control Plane remains the current caller and writer for capabilities not yet
 migrated. Extraction must switch real callers and retire the old write path;
 it must not create a permanent second writer. Production protobuf bindings live
