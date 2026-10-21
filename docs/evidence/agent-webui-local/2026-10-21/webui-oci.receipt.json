@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "scope": "local_BuildKit_independent_WebUI_OCI_export_readback",
+  "confirmed": true,
+  "digest": "sha256:cd4a1662b2731e2cf7ab1a120bda2f40327090ca000100c6b840b81db753d701",
+  "platform": "linux/amd64",
+  "verifiedBlobDigests": [
+    "sha256:cd4a1662b2731e2cf7ab1a120bda2f40327090ca000100c6b840b81db753d701",
+    "sha256:ea69f42db5bf704f4808919526f56f2d9ab81c0a56a894bdb0674584ac586a7f",
+    "sha256:d979cb489a01193f6285d4e6ce1a1a5e53cf11d242a1702c95f3ac1aa3e1db2d"
+  ],
+  "servedSourceHashesMatch": true,
+  "webuiFiles": {
+    "index.html": "sha256:efbbe12873a0db4448e640ab776c6610671ecdadb29703b50f3685201b7b281a",
+    "style.css": "sha256:1c6a484bd88c5ee0ff3feba72ea2026380ee05641d5d989a0f30514f0b35f7fe",
+    "app.js": "sha256:d15d59d99c70572440d71f2adda4f5cffd5cdc4d06efd35e7d4f0dca8a1989ef",
+    "runtime-api.js": "sha256:cc2a8862a48a5efdc03f81968e1527d270d56660559a510afcd4be287ef00fa8"
+  },
+  "archiveSha256": "sha256:dc4cbaeeda70a4a94140bb9fef59ae4c5afa129e93270c3302a94fcefb5d7876",
+  "registryPushed": false,
+  "catalogRegistered": false,
+  "applicationOCIRebuilt": false
+}

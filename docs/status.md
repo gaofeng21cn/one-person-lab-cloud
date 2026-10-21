@@ -38,6 +38,52 @@ protected Instance qualification run, real J0 receipt, successful deployment,
 settled business receipt, Release or production readback is claimed. #926 remains
 open for that runtime evidence and the exact-Candidate acceptance.
 
+## Independent Agent WebUI Local Demo (2026-10-21)
+
+The original isolated demo used source base
+`c4a5587e4601ad0ad2d492995328d11ec8bdecf8` plus the recorded WebUI changes.
+The committed browser verifier was then rerun on PR base
+`250df718611d2932d24b1d79135a3ec5ca5ae72f` plus this scoped change; the intervening
+upstream commit touches only Control Plane activation files. The accepted IBD
+application image remained
+`sha256:c9ec31c24e8bf586a93f66c52c89a21a7ec3b119b3615cc3c71db0350cb5f04a`,
+with the current independent WebUI mounted read-only.
+
+A real Chrome browser used the native login form, discovered IBD and sent two
+messages without response mocks. Both replies confirmed `codex_app_server`,
+matching canonical `completed` turns and exact UI reply equality; the second
+request continued the same thread. The final replay replies were 983 and 39 bytes.
+JavaScript/CSS response bytes matched this checkout. The Runtime's augmented
+HTML and source HTML hashes were recorded separately; the rendered WebUI marker
+was required. No foreign-origin request was attempted in the accepted replay.
+
+The [execution context](evidence/agent-webui-local/2026-10-21/execution-context-final.json)
+binds the exact script/static-file hashes, image, external prerequisites and
+attempts. The [browser receipt](evidence/agent-webui-local/2026-10-21/browser-final.receipt.json),
+[desktop screenshot](evidence/agent-webui-local/2026-10-21/desktop-final.png) and
+[replay procedure](runtime/package-buildkit-local.md#independent-webui-browser-replay)
+are retained in the repository. Focused checks on the explicit PR base passed
+15 model and five browser tests with zero failures, skips or TODOs; the live
+verifier's targeted TypeScript check passed. A cross-origin credential regression
+failed before the verifier repair and passed after it. Its source check does not
+replace current-revision CI.
+
+The [cleanup receipt](evidence/agent-webui-local/2026-10-21/runtime-cleanup-final.receipt.json)
+confirms removal of only this task's container and private model/login/session
+files after positive checks; its SSH forwarding was closed. This is fixture
+cleanup, not Workspace business deletion or refund. The original image remains.
+
+BuildKit also exported the independent linux/amd64 WebUI OCI with manifest
+`sha256:cd4a1662b2731e2cf7ab1a120bda2f40327090ca000100c6b840b81db753d701`.
+The [OCI readback](evidence/agent-webui-local/2026-10-21/webui-oci.receipt.json)
+verifies manifest/config/layer bytes and the four source files. This local
+archive was not registry-published or catalog-approved. The browser run used a
+source mount; it does not prove a rebuilt application OCI, new Workspace order,
+new Cloud Candidate or Tencent-TKE acceptance. The earlier Local-Docker owner
+qualification below retains its original scope. Installed compatible
+Runtime/WebUI inputs and effective Build policy remain required before Tencent
+Agent Build.
+
 ## Linux Custom Agent Owner Qualification (2026-10-21)
 
 The fixed source-scope acceptance baseline is

@@ -1,0 +1,21 @@
+{
+  "scope": "isolated_demo_fixture_cleanup",
+  "positiveBrowserCheckCompletedBeforeCleanup": true,
+  "runtimeImageDigest": "sha256:c9ec31c24e8bf586a93f66c52c89a21a7ec3b119b3615cc3c71db0350cb5f04a",
+  "runtimeImageId": "sha256:c9ec31c24e8bf586a93f66c52c89a21a7ec3b119b3615cc3c71db0350cb5f04a",
+  "containerId": "bc6f2dc63a9ac21654cf9fd3cb0cc4a6952f4004391be5686a508a384704771b",
+  "webuiFiles": {
+    "index.html": "sha256:efbbe12873a0db4448e640ab776c6610671ecdadb29703b50f3685201b7b281a",
+    "style.css": "sha256:1c6a484bd88c5ee0ff3feba72ea2026380ee05641d5d989a0f30514f0b35f7fe",
+    "app.js": "sha256:d15d59d99c70572440d71f2adda4f5cffd5cdc4d06efd35e7d4f0dca8a1989ef",
+    "runtime-api.js": "sha256:cc2a8862a48a5efdc03f81968e1527d270d56660559a510afcd4be287ef00fa8"
+  },
+  "containerAbsent": true,
+  "remotePrivateInputsAbsent": true,
+  "originalImageRemoved": false,
+  "workspaceBusinessDeletion": false,
+  "ledgerRefundClaimed": false,
+  "localPrivateInputsAbsent": true,
+  "taskSshForwardTerminated": true,
+  "timestamp": "2026-10-21T15:06:26.128661+00:00"
+}

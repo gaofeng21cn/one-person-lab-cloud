@@ -141,6 +141,148 @@ owner execution. Preserve the sanitized Agent IDs/response hash and owner
 readbacks before removing only the caller-owned test Registry/volumes, model
 data and quota mount; harness cleanup is not business deletion evidence.
 
+## Independent WebUI browser replay
+
+This is a separate, narrower check than the Workspace owner-chain qualification
+above: native login form → independent WebUI → installed IBD Agent → two
+completed replies on one thread. It mounts this checkout's static files into an
+isolated application. It does not create a Package, BuildJob, CapabilityVersion
+or Workspace and does not validate Tencent, business deletion or refund.
+
+### Baselines and prerequisites
+
+The original demo used source base
+`c4a5587e4601ad0ad2d492995328d11ec8bdecf8` plus the recorded WebUI changes.
+The PR was prepared on
+`250df718611d2932d24b1d79135a3ec5ca5ae72f`; the intervening commit changes only
+Control Plane activation files. The browser replay is bound to actual static
+file hashes, not a claim that a later commit or Candidate was deployed.
+The [retained evidence](../evidence/agent-webui-local/2026-10-21/execution-context-final.json)
+records the browser script, source inputs, application image and evidence limits.
+
+Required: Node 24, `npm ci`, Google Chrome (the existing browser launcher), Docker,
+an isolated native-Headless-compatible application with the IBD Agent installed,
+and an authorized **selected-provider-only** model TOML. Do not supply a whole
+Codex home, authentication store or personal configuration tree. Real model calls
+use that provider's existing account; ordinary CI uses fixtures instead.
+
+The historical application digest is
+`sha256:c9ec31c24e8bf586a93f66c52c89a21a7ec3b119b3615cc3c71db0350cb5f04a`.
+Its recorded repository was a disposable loopback Registry; that is **not** a
+currently published pull URL. Use the retained exact image on the authorized
+Docker host, or produce a new runnable image with the Package/Build procedure
+above and record its actual digest. The external IBD Package and provider
+credentials are prerequisites, not files distributed by this source PR.
+A clone alone reproduces fixture tests, not the external live environment.
+
+### Disposable application
+
+On a development host with the required image already available, set
+`APP_IMAGE` to its exact `repository@sha256:...` reference and `MODEL_CONFIG` to
+the selected-provider-only TOML. The following block uses the historical IBD
+recipe's `/data/codex`, password/session file paths and username. A different
+publisher contract must supply its own declared paths; do not infer them.
+
+```sh
+npm ci
+# Supply these two authorized inputs; neither value is a new platform default.
+# APP_IMAGE=...@sha256:...
+# MODEL_CONFIG=/absolute/private/path/selected-provider.toml
+test -f "$MODEL_CONFIG"
+docker image inspect "$APP_IMAGE" --format '{{json .RepoDigests}}'
+
+demo_dir="$(mktemp -d "${TMPDIR:-/tmp}/opl-ibd-webui.XXXXXX")"
+chmod 700 "$demo_dir"
+mkdir -p "$demo_dir/data/codex" "$demo_dir/secrets"
+cp "$MODEL_CONFIG" "$demo_dir/data/codex/config.toml"
+node --input-type=module - "$demo_dir" <<'JS'
+import fs from "node:fs";
+import crypto from "node:crypto";
+const dir = process.argv[2];
+const password = crypto.randomBytes(36).toString("base64url");
+fs.writeFileSync(`${dir}/secrets/admin-password`, password + "\n", { mode: 0o600 });
+fs.writeFileSync(`${dir}/secrets/session-secret`, crypto.randomBytes(48).toString("base64url") + "\n", { mode: 0o600 });
+fs.writeFileSync(`${dir}/credentials.json`, JSON.stringify({ username: "ibd-local-probe", password }), { mode: 0o600 });
+JS
+chmod 600 "$demo_dir/data/codex/config.toml"
+docker run --rm --network none --user 0 --entrypoint /bin/sh \
+  --mount "type=bind,src=$demo_dir,dst=/demo" "$APP_IMAGE" -ec \
+  'chown -R 1000:1000 /demo/data /demo/secrets; chmod 700 /demo/data /demo/data/codex /demo/secrets'
+
+container_id="$(docker run -d --init --user 1000:1000 --cpus 2 --memory 2g \
+  --label opl.demo.kind=independent-agent-webui -p 127.0.0.1::3000 \
+  --mount "type=bind,src=$demo_dir/data,dst=/data" \
+  --mount "type=bind,src=$PWD/webui/cloud-agent,dst=/web,readonly" \
+  --mount "type=bind,src=$demo_dir/secrets,dst=/run/opl,readonly" \
+  --tmpfs /tmp:rw,nosuid,nodev,mode=0700,uid=1000,gid=1000,size=67108864 \
+  --tmpfs /projects:rw,nosuid,nodev,mode=0700,uid=1000,gid=1000,size=67108864 \
+  "$APP_IMAGE")"
+origin="http://$(docker port "$container_id" 3000/tcp)"
+curl --fail --retry 30 --retry-delay 1 --retry-connrefused "$origin/readyz"
+docker inspect "$container_id" --format '{{.Config.Image}} {{.Image}}'
+
+mkdir -p .gstack/qa-reports
+node tests/live/cloud-agent-webui-browser.ts \
+  --origin "$origin" --credentials-file "$demo_dir/credentials.json" \
+  --package-id ibd-evidence-assistant-v2 \
+  --output ".gstack/qa-reports/ibd-webui-$(date -u +%Y%m%dT%H%M%SZ)"
+```
+
+If Docker is on the authorized isolated Linux host and Chrome is on the
+workstation, copy only this checkout's four static files and the private
+runtime inputs to a unique directory on that host. Forward its loopback port
+using `ssh -N -T -L 127.0.0.1:48731:127.0.0.1:<remote-port> dev@ubuntu-f`, then
+run the same browser command on the workstation with origin
+`http://127.0.0.1:48731` and a local private credentials file for that disposable
+application. The image, source files and credential inputs must be the ones
+actually mounted on that host; a host path is not transferable by naming it.
+
+### Results, artifact and cleanup
+
+The committed `tests/live/cloud-agent-webui-browser.ts` requires the native login
+form, source-identical JavaScript/CSS assets, the exact installed Agent, the native
+CSRF header, canonical completed turns and exact displayed reply equality. The
+second request must continue the first thread. It aborts foreign-origin browser
+requests at Chromium Fetch request stage, including login POST 307/308 hops,
+before password submission. It follows no asset redirects;
+it never mocks a response. The Runtime injects its HTML bootstrap, so the source
+and served HTML hashes are recorded separately and the rendered WebUI marker is
+required. Output is a **new** directory with a sanitized receipt
+and screenshots. It does not record passwords, session/CSRF values or model TOML.
+
+After verification, remove only this run's container, confirm its absence, and
+remove its private directory. Stop the task's SSH forwarding when used. Do the
+same task-scoped cleanup after a failed attempt; a failed run is not acceptance.
+Do not clean up an existing Workspace or classify this as a Ledger/refund action.
+
+```sh
+docker stop --time 10 "$container_id"
+docker rm --volumes "$container_id"
+test -z "$(docker ps -aq --filter id="$container_id")"
+# Delete only the unique private directory created for this action.
+node --input-type=module - "$demo_dir" <<'JS'
+import fs from "node:fs";
+import path from "node:path";
+const dir = process.argv[2];
+if (!path.basename(dir).startsWith("opl-ibd-webui.") || fs.lstatSync(dir).isSymbolicLink()) throw new Error("unexpected demo directory");
+fs.rmSync(dir, { recursive: true });
+JS
+```
+
+To export the standalone WebUI OCI from the same source, use the existing
+Dockerfile and read back the actual output digest:
+
+```sh
+docker buildx build --platform linux/amd64 --network none \
+  --output type=oci,dest=/absolute/new/output/cloud-agent-webui.oci.tar \
+  --metadata-file /absolute/new/output/webui-build-metadata.json webui/cloud-agent
+```
+
+A new build may produce a new digest; retain its actual manifest/config/layer
+readback. A standalone WebUI export is not a rebuilt final Agent OCI, a registry
+push, catalog approval or Cloud Candidate. Changing only the independent WebUI
+and application OCI does not itself require new Cloud service bytes.
+
 ## Capability data plane
 
 The Capability process now requires these explicit settings in addition to its

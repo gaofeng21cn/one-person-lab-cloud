@@ -82,6 +82,24 @@ deletion receipt and original-charge refund still require their original paid
 Workspace and separately authorized owner execution. The test's cleanup closes
 only its disposable fixtures. This outcome adds no provider or deletion bypass.
 
+## Independent Agent WebUI Delivery
+
+The independent WebUI now uses the real Runtime native Agent directory/message
+protocol. Its isolated IBD browser demo passed native login and two real,
+canonical completed turns on one thread; the standalone WebUI OCI was built and
+read back locally. [Status](status.md#independent-agent-webui-local-demo-2026-10-21)
+owns the bound inputs and limits. This is separate from the historical #1003
+HTTP API delivery scope.
+
+Still open: publish the immutable WebUI artifact, admit compatible Package-build
+Runtime/WebUI inputs and their effective owner policy, build the final Agent OCI,
+and validate that exact artifact through the Tencent Workspace/Serve/Fabric lane.
+The existing Instance catalog-admission workflow has no WebUI/Build-policy phase;
+any required protected operation entry belongs to Instance. Reuse the installed
+Cloud Candidate when its product bytes are unchanged. Resource procurement,
+business deletion, Ledger deletion receipt and original-charge refund retain
+their existing authorization and evidence boundaries.
+
 ## Team Financial Read Delivery (2026-10-16)
 
 The Gateway/BFF transaction list, transaction detail and 14-UTC-day confirmed

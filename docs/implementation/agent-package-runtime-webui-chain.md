@@ -64,6 +64,28 @@ authority. Cloud only consumes approved upstream facts.
   never recognizes an OMA/DSH business object.
 - **BFF/Console (W13/W14/W16/W26)**: composition and readback only.
 
+## Independent Agent WebUI
+
+`webui/cloud-agent` is a standalone static artifact. Its existing Dockerfile
+copies the frontend into `/web`; Build consumes that immutable WebUI input and
+the Runtime serves the bundled files. The frontend uses the Runtime's native
+application session and CSRF token, reads the `g2` Agent directory through
+`/api/opl/state?profile=fast`, and sends through `/api/send-message`. First turns
+select the exact installed Agent shortcut; continuation uses the returned thread
+identity. A reply is displayed only after the matching canonical turn confirms
+`completed`. Missing model access keeps sending unavailable. This frontend does
+not call provider APIs or introduce an Agent execution backend.
+
+A changed WebUI creates a new WebUI artifact and application Build output. It
+does not by itself require a new Cloud service Candidate; that Candidate binds
+the installed Cloud product bytes. The independent local browser evidence and
+remaining publication/deployment limits are recorded in
+[status](../status.md#independent-agent-webui-local-demo-2026-10-21).
+The [live replay procedure](../runtime/package-buildkit-local.md#independent-webui-browser-replay)
+uses the committed browser verifier, explicit application/model inputs and a
+fresh evidence directory. Fixture browser tests remain separate from that live
+run and from the Workspace provider lane.
+
 ## Safety gates
 
 - API keys and model secrets travel only as Secret references / a dedicated

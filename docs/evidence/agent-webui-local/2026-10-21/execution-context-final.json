@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "scope": "independent_webui_browser_replay_on_real_isolated_ibd_runtime",
+  "recordedAt": "2026-10-21T15:06:26.134339+00:00",
+  "prBaseSha": "250df718611d2932d24b1d79135a3ec5ca5ae72f",
+  "originalDemoBaseSha": "c4a5587e4601ad0ad2d492995328d11ec8bdecf8",
+  "sourceBinding": "PR base plus the exact file hashes below; no claim that the uncommitted source or a new Candidate was deployed",
+  "sourceFiles": {
+    "webui/cloud-agent/index.html": "sha256:efbbe12873a0db4448e640ab776c6610671ecdadb29703b50f3685201b7b281a",
+    "webui/cloud-agent/style.css": "sha256:1c6a484bd88c5ee0ff3feba72ea2026380ee05641d5d989a0f30514f0b35f7fe",
+    "webui/cloud-agent/app.js": "sha256:d15d59d99c70572440d71f2adda4f5cffd5cdc4d06efd35e7d4f0dca8a1989ef",
+    "webui/cloud-agent/runtime-api.js": "sha256:cc2a8862a48a5efdc03f81968e1527d270d56660559a510afcd4be287ef00fa8",
+    "tests/live/cloud-agent-webui-browser.ts": "sha256:f4255f851d2a19d49ca709aeb26daa39feff6d3ff6cd0227a15ebd8b8860d83f",
+    "tools/launch-browser.ts": "sha256:fbcc8280b21321c7dfb5fbb527f844688c29c873382adb5777eb27ec5bf15f1c"
+  },
+  "runtimeImageDigest": "sha256:c9ec31c24e8bf586a93f66c52c89a21a7ec3b119b3615cc3c71db0350cb5f04a",
+  "runtimeImageAvailability": "Retained image in the authorized isolated Docker host; historical loopback Registry is not a published pull URL. Rebuild using the existing Package Build procedure if the image is unavailable.",
+  "packageInputSha256": "sha256:1befa906cdfb4f343beb0f615df36588a03bda53abefdfd3a90f7a171bba2b19",
+  "runtimeUpstreamDigest": "sha256:8efab2844b52c66bcaa3da05637abc3cbdb0c3b29364718839b121284711de92",
+  "environment": "isolated Linux amd64 Docker application; workstation Chrome through loopback SSH forwarding",
+  "modelConfiguration": "authorized selected provider/model only; supplied in private runtime files and removed after acceptance",
+  "browserCommand": "node tests/live/cloud-agent-webui-browser.ts --origin <loopback-application-origin> --credentials-file <private-json-file> --package-id ibd-evidence-assistant-v2 --output <new-output-directory>",
+  "browserReceiptSha256": "sha256:7d10c9e1d0fa7f257a48e259c77f47d1d08e900d961bcf4bb1d7eeed434bc253",
+  "tests": "Focused model/browser checks are recorded in the PR for its actual revision; this runtime receipt is a separate evidence layer",
+  "attempts": [
+    {
+      "result": "failed",
+      "stage": "served_asset_readback",
+      "reason": "Initial verifier compared Runtime-served HTML to static source; failed before any Agent message"
+    },
+    {
+      "result": "failed_regression",
+      "stage": "synthetic_cross_origin_boundary",
+      "reason": "Page routing allowed foreign-page redirect; expanded regression reproduced it before Chromium Fetch guard repair"
+    },
+    {
+      "result": "passed",
+      "stage": "final_chromium_fetch_guard_two_completed_native_agent_turns",
+      "receipt": "browser-final.receipt.json"
+    }
+  ],
+  "limits": [
+    "Source-mounted WebUI, not newly rebuilt application OCI",
+    "No Package/Build/CapabilityVersion/Workspace/Serve/Fabric owner-chain replay in this action",
+    "No new Cloud Candidate, registry push/catalog admission, Tencent acceptance, business deletion or refund"
+  ],
+  "browserReceipt": "browser-final.receipt.json",
+  "originGuard": "Chromium Fetch request-stage origin check before navigation/credentials and on every redirect hop",
+  "focusedVerification": {
+    "baseSha": "250df718611d2932d24b1d79135a3ec5ca5ae72f",
+    "command": "npm run verify:local:focused -- --base 250df718611d2932d24b1d79135a3ec5ca5ae72f --test tests/ui/cloud-webui-model.test.ts --test tests/ui/cloud-webui-browser.test.ts",
+    "modelTestsPassed": 15,
+    "browserTestsPassed": 5,
+    "failures": 0,
+    "skips": 0,
+    "todos": 0,
+    "exitCode": 0
+  },
+  "verifierTypecheck": "passed: strict NodeNext noEmit with allowJs for the existing Runtime decoder",
+  "securityRegression": {
+    "before": "RED: initial foreign page loaded despite page route guard",
+    "after": "GREEN: initial redirect, cross-origin form, same-origin login POST 307 and 308; foreign GET and POST counts both zero"
+  }
+}

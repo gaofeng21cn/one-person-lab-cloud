@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "scope": "independent_webui_native_login_and_real_agent_conversation",
+  "accepted": true,
+  "timestamp": "2026-10-21T14:57:09.592Z",
+  "packageId": "ibd-evidence-assistant-v2",
+  "nativeLoginHttpStatus": 200,
+  "html": {
+    "sourceSha256": "sha256:efbbe12873a0db4448e640ab776c6610671ecdadb29703b50f3685201b7b281a",
+    "servedSha256": "sha256:3b3d3e527ef3934ac92bfd525899013e10fba00ae14fe308b177ef9eefac078d",
+    "renderedWebuiMarker": true
+  },
+  "webuiFiles": {
+    "app.js": "sha256:d15d59d99c70572440d71f2adda4f5cffd5cdc4d06efd35e7d4f0dca8a1989ef",
+    "runtime-api.js": "sha256:cc2a8862a48a5efdc03f81968e1527d270d56660559a510afcd4be287ef00fa8",
+    "style.css": "sha256:1c6a484bd88c5ee0ff3feba72ea2026380ee05641d5d989a0f30514f0b35f7fe"
+  },
+  "turns": [
+    {
+      "threadId": "01a15ef6-c37f-7471-b259-5656ba6ff3f5",
+      "turnId": "01a15ef6-c3b8-7f61-a999-e1ecc30085d0",
+      "status": "completed",
+      "executor": "codex_app_server",
+      "csrfHeaderPresent": true,
+      "continuation": false,
+      "responseBytes": 983,
+      "responseSha256": "sha256:9088c4ee7efd12c9939530e2bb42dc4227865d7f7df8c976658e7e434bcd07e7"
+    },
+    {
+      "threadId": "01a15ef6-c37f-7471-b259-5656ba6ff3f5",
+      "turnId": "01a15ef7-38cf-7c11-807b-91e1deb5a759",
+      "status": "completed",
+      "executor": "codex_app_server",
+      "csrfHeaderPresent": true,
+      "continuation": true,
+      "responseBytes": 39,
+      "responseSha256": "sha256:bf8b0ed74305ddd44eab1e8561170e1248b5384f94debca3debeb956a65dbfd9"
+    }
+  ],
+  "browserPageErrors": 0,
+  "blockedCrossOriginRequests": 0,
+  "originGuard": "chromium_fetch_request_stage",
+  "networkMocks": false,
+  "limits": [
+    "Caller must independently verify the application's immutable image",
+    "Source-mounted WebUI is not a rebuilt application OCI",
+    "Does not execute Package upload, Build, Workspace, Serve/Fabric orchestration, Tencent operations, business deletion or refund"
+  ]
+}
