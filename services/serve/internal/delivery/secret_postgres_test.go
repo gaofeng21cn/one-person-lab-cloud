@@ -191,7 +191,7 @@ func TestServeDeployPerformsTheFabricSecretHandover(t *testing.T) {
 	// frozen start command: the caller's unconfirmed input is never persisted as a
 	// confirmed fact.
 	var snapshot []byte
-	if err := s.DB.QueryRowContext(ctx, `SELECT input_snapshot FROM serve.agent_runtime_actions WHERE action='start' AND expected_deployment_id=$1`, out.DeploymentId).Scan(&snapshot); err != nil {
+	if err := s.DB.QueryRowContext(ctx, `SELECT input_snapshot->'command' FROM serve.agent_runtime_actions WHERE action='start' AND expected_deployment_id=$1`, out.DeploymentId).Scan(&snapshot); err != nil {
 		t.Fatal(err)
 	}
 	var frozen api.RuntimeDeployCommand
@@ -294,7 +294,7 @@ func TestServeDeployRecoversAfterExecutionLostACK(t *testing.T) {
 	// The frozen start command recorded the Fabric-confirmed binding even though the
 	// execution step failed, so recovery has one original identity to reuse.
 	var snapshot []byte
-	if err := s.DB.QueryRowContext(ctx, `SELECT input_snapshot FROM serve.agent_runtime_actions WHERE action='start' AND expected_deployment_id=$1`, out.DeploymentId).Scan(&snapshot); err != nil {
+	if err := s.DB.QueryRowContext(ctx, `SELECT input_snapshot->'command' FROM serve.agent_runtime_actions WHERE action='start' AND expected_deployment_id=$1`, out.DeploymentId).Scan(&snapshot); err != nil {
 		t.Fatal(err)
 	}
 	var frozen api.RuntimeDeployCommand

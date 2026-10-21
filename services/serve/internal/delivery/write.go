@@ -39,6 +39,9 @@ import (
 type ExecutionTarget struct {
 	Binding   *api.ResourceExecutionBinding
 	Placement *api.ApplicationExecutionPlacement
+	// CredentialVersion is read from Serve's frozen start, using the caller's
+	// transaction when one is active. The execution adapter performs no DB read.
+	CredentialVersion string
 }
 
 // RuntimeAdapter executes the already admitted descriptor through Serve's own
@@ -443,16 +446,43 @@ func recordStartActionTx(ctx context.Context, tx *sql.Tx, r *api.RuntimeDeployCo
 	var prior []byte
 	err := tx.QueryRowContext(ctx, `SELECT input_snapshot FROM serve.agent_runtime_actions WHERE command_id=$1`, key).Scan(&prior)
 	if err == nil {
-		var old api.RuntimeDeployCommand
+		old, version, err := decodeRuntimeStartSnapshot(prior)
 		expected := proto.Clone(r).(*api.RuntimeDeployCommand)
 		expected.Context = nil
-		if protojson.Unmarshal(prior, &old) != nil || !proto.Equal(&old, expected) {
+		if err != nil || !proto.Equal(old, expected) {
 			return status.Error(codes.AlreadyExists, "deployment execution input differs from its original command")
+		}
+		revision, err := deploymentRevision(r)
+		if err != nil {
+			return err
+		}
+		if version == "" && contracts.WorkspaceApplicationRequiresPlatformCredentials(revision) {
+			// These retained non-Gateway starts were refused before execution.
+			// Add their missing owner identity while preserving the exact command.
+			version, err = initialRuntimeCredentialVersionTx(ctx, tx, r)
+			if err != nil {
+				return err
+			}
+			snapshot, err := json.Marshal(runtimeStartSnapshot{Command: deployBytes(r), CredentialVersion: version})
+			if err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_actions SET input_snapshot=$2,updated_at=now() WHERE command_id=$1`, key, snapshot); err != nil {
+				return dbError(err)
+			}
 		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return dbError(err)
 	} else {
-		if _, err = tx.ExecContext(ctx, `INSERT INTO serve.agent_runtime_actions(id,runtime_instance_id,command_id,action,expected_deployment_id,input_snapshot,observation_result) VALUES($1,$2,$1,'start',$3,$4,'unknown')`, key, r.RuntimeInstanceId, r.DeploymentId, deployBytes(r)); err != nil {
+		version, err := initialRuntimeCredentialVersionTx(ctx, tx, r)
+		if err != nil {
+			return err
+		}
+		snapshot, err := json.Marshal(runtimeStartSnapshot{Command: deployBytes(r), CredentialVersion: version})
+		if err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO serve.agent_runtime_actions(id,runtime_instance_id,command_id,action,expected_deployment_id,input_snapshot,observation_result) VALUES($1,$2,$1,'start',$3,$4,'unknown')`, key, r.RuntimeInstanceId, r.DeploymentId, snapshot); err != nil {
 			return dbError(err)
 		}
 	}
@@ -613,8 +643,8 @@ func (s *Service) ReadRuntime(ctx context.Context, r *api.RuntimeReadbackRequest
 	if s.Runtime == nil || s.Resources == nil {
 		return nil, status.Error(codes.Unavailable, "runtime observation dependencies are unavailable")
 	}
-	command := &api.RuntimeDeployCommand{}
-	if protojson.Unmarshal(raw, command) != nil || command.RuntimeInstanceId != r.RuntimeInstanceId || command.DeploymentId != r.DeploymentId {
+	command, _, decodeErr := decodeRuntimeStartSnapshot(raw)
+	if decodeErr != nil || command.RuntimeInstanceId != r.RuntimeInstanceId || command.DeploymentId != r.DeploymentId {
 		return nil, status.Error(codes.DataLoss, "invalid original runtime command")
 	}
 	command.Context = r.Context
@@ -659,12 +689,16 @@ func confirmedBinding(command *api.RuntimeDeployCommand, resources *api.Resource
 // workload onto a node, a prepaid package and a storage claim publishes none, and
 // the executor that schedules owns the refusal, so this confirmation never
 // substitutes or drops a fact.
-func confirmedExecutionTarget(command *api.RuntimeDeployCommand, resources *api.ResourceReadback) (ExecutionTarget, error) {
+func confirmedExecutionTarget(ctx context.Context, q rowQueryer, command *api.RuntimeDeployCommand, resources *api.ResourceReadback) (ExecutionTarget, error) {
 	binding, err := confirmedBinding(command, resources)
 	if err != nil {
 		return ExecutionTarget{}, err
 	}
-	return ExecutionTarget{Binding: binding, Placement: resources.GetApplicationPlacement()}, nil
+	version, err := runtimeCredentialVersion(ctx, q, command)
+	if err != nil {
+		return ExecutionTarget{}, err
+	}
+	return ExecutionTarget{Binding: binding, Placement: resources.GetApplicationPlacement(), CredentialVersion: version}, nil
 }
 
 // reconcileRuntime serializes the complete provider observation and owner commit
@@ -727,7 +761,7 @@ func (s *Service) observeAndFinishDeliveryTx(ctx context.Context, tx *sql.Tx, co
 	if err != nil {
 		return dbError(err)
 	}
-	target, err := confirmedExecutionTarget(command, resources)
+	target, err := confirmedExecutionTarget(ctx, tx, command, resources)
 	if err != nil {
 		return err
 	}

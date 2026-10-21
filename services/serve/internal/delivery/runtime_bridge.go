@@ -340,7 +340,7 @@ func (s *Service) executeRuntimeStep(ctx context.Context, command *api.RuntimeDe
 	if err != nil {
 		return RuntimeObservation{}, err
 	}
-	target, err := confirmedExecutionTarget(command, resources)
+	target, err := confirmedExecutionTarget(ctx, s.DB, command, resources)
 	if err != nil {
 		return RuntimeObservation{}, err
 	}

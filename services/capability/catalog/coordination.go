@@ -327,6 +327,27 @@ func (s *Service) Deliver(ctx context.Context, r *api.DeliverEventRequest) (*api
 	if r.GetAuthenticatedProducer() != "build" || event.GetOwner() != "build" || event.GetEventType() != "build.artifact_confirmed.v1" || event.GetSchemaVersion() != 1 || event.GetEventId() == "" || payload == nil || event.GetAggregateId() != payload.BuildJobId || event.GetScope() != "tenant" {
 		return nil, status.Error(codes.InvalidArgument, "invalid Build artifact event")
 	}
+	// Tenant ownership is this owner's own fact and is checked even for a
+	// duplicate. No mutable Runtime, registry or publisher read is needed to
+	// acknowledge an event this owner already committed.
+	var tenantID string
+	if e := s.DB.QueryRowContext(ctx, `SELECT n.tenant_id FROM capability.namespaces n JOIN capability.packages p ON p.namespace_id=n.id JOIN capability.package_versions v ON v.package_id=p.id WHERE v.id=$1`, payload.PackageVersionId).Scan(&tenantID); e != nil {
+		return nil, dbError(e)
+	}
+	if tenantID != event.TenantId {
+		return nil, status.Error(codes.PermissionDenied, "Build event belongs to another tenant")
+	}
+	inbound := ownerstore.InboundEvent{ID: "in_" + event.EventId, SourceOwner: "build", SourceEventID: event.EventId, EventType: event.EventType, SchemaVersion: 1, AggregateType: "build", AggregateID: payload.BuildJobId, AggregateRevision: event.AggregateVersion, Payload: jsonBytes(payload)}
+	decision, e := s.Store.ReadCommittedInbox(ctx, inbound)
+	if e != nil {
+		return nil, dbError(e)
+	}
+	if decision == ownerstore.InboxConflict {
+		return nil, status.Error(codes.AlreadyExists, "Build event identity conflicts")
+	}
+	if decision == ownerstore.InboxDuplicate {
+		return &api.InboxAck{EventId: event.EventId, Consumer: "capability", Committed: true, Duplicate: true, AppliedAggregateVersion: event.AggregateVersion}, nil
+	}
 	if s.Build == nil {
 		return nil, status.Error(codes.Unavailable, "Build readback unavailable")
 	}
@@ -348,6 +369,10 @@ func (s *Service) Deliver(ctx context.Context, r *api.DeliverEventRequest) (*api
 	if e != nil || digest(descriptor) != payload.DeploymentDescriptorDigest {
 		return nil, status.Error(codes.FailedPrecondition, "Build descriptor bytes differ from digest")
 	}
+	provenance := proto.Clone(readback).(*api.BuildArtifactReadback)
+	provenance.RegistrationContext = nil
+	// Remote owner validation holds no local transaction connection. The lock
+	// and second inbox check serialize only the atomic business commit.
 	tx, e := s.DB.BeginTx(ctx, nil)
 	if e != nil {
 		return nil, dbError(e)
@@ -356,14 +381,7 @@ func (s *Service) Deliver(ctx context.Context, r *api.DeliverEventRequest) (*api
 	if _, e = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, payload.BuildJobId); e != nil {
 		return nil, dbError(e)
 	}
-	var tenantID string
-	if e = tx.QueryRowContext(ctx, `SELECT n.tenant_id FROM capability.namespaces n JOIN capability.packages p ON p.namespace_id=n.id JOIN capability.package_versions v ON v.package_id=p.id WHERE p.id=$1 AND v.id=$2`, readback.Input.PackageId, payload.PackageVersionId).Scan(&tenantID); e != nil {
-		return nil, dbError(e)
-	}
-	if tenantID != event.TenantId {
-		return nil, status.Error(codes.PermissionDenied, "Build event belongs to another tenant")
-	}
-	result, e := s.Store.DeliverInbox(ctx, tx, ownerstore.InboundEvent{ID: "in_" + event.EventId, SourceOwner: "build", SourceEventID: event.EventId, EventType: event.EventType, SchemaVersion: 1, AggregateType: "build", AggregateID: payload.BuildJobId, AggregateRevision: event.AggregateVersion, Payload: jsonBytes(payload)}, time.Now())
+	result, e := s.Store.DeliverInbox(ctx, tx, inbound, time.Now())
 	if e != nil {
 		return nil, dbError(e)
 	}
@@ -372,7 +390,7 @@ func (s *Service) Deliver(ctx context.Context, r *api.DeliverEventRequest) (*api
 	}
 	if result.Applied {
 		versionID := id("capv")
-		_, e = tx.ExecContext(ctx, `INSERT INTO capability.capability_versions(id,package_id,package_version_id,build_job_id,version_label,runtime_version_id,webui_version_id,artifact_repository,artifact_digest,status,model_requirements,data_compatibility,provenance_evidence,provenance,deployment_descriptor,deployment_descriptor_digest,deployment_descriptor_object_ref) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'ready',$10,$11,$12,'build',$13,$14,$15)`, versionID, readback.Input.PackageId, payload.PackageVersionId, payload.BuildJobId, readback.VersionLabel, payload.RuntimeVersionId, payload.WebuiVersionId, readback.Artifact.Repository, payload.ArtifactDigest, jsonBytesList(readback.ModelRequirements), jsonBytes(readback.DataCompatibility), jsonBytes(readback), descriptor, payload.DeploymentDescriptorDigest, readback.DeploymentDescriptorObjectRef)
+		_, e = tx.ExecContext(ctx, `INSERT INTO capability.capability_versions(id,package_id,package_version_id,build_job_id,version_label,runtime_version_id,webui_version_id,artifact_repository,artifact_digest,status,model_requirements,data_compatibility,provenance_evidence,provenance,deployment_descriptor,deployment_descriptor_digest,deployment_descriptor_object_ref) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'ready',$10,$11,$12,'build',$13,$14,$15)`, versionID, readback.Input.PackageId, payload.PackageVersionId, payload.BuildJobId, readback.VersionLabel, payload.RuntimeVersionId, payload.WebuiVersionId, readback.Artifact.Repository, payload.ArtifactDigest, jsonBytesList(readback.ModelRequirements), jsonBytes(readback.DataCompatibility), jsonBytes(provenance), descriptor, payload.DeploymentDescriptorDigest, readback.DeploymentDescriptorObjectRef)
 		if e != nil {
 			return nil, dbError(e)
 		}

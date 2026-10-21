@@ -12,6 +12,7 @@ import (
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/packages/contracts/go/publicjson"
+	"opl-cloud/services/internal/ownerservice"
 	"opl-cloud/services/internal/ownerstore"
 	"strings"
 	"time"
@@ -303,12 +304,31 @@ func (s *Service) ReadArtifact(ctx context.Context, req *api.ReadBuildArtifactRe
 	if err := protojson.Unmarshal(raw, result); err != nil {
 		return nil, databaseError(err)
 	}
+	result.RegistrationContext = nil
 	if result.GetDeploymentDescriptorDigest() == "" || digest(descriptor) != result.GetDeploymentDescriptorDigest() {
 		result.Outcome = api.Observation_OBSERVATION_UNKNOWN
 		return result, nil
 	}
 	if _, err := s.runner.ReadManifest(ctx, result.Artifact.Repository, result.Artifact.Digest, result.Artifact.Platform); err != nil {
 		result.Outcome = api.Observation_OBSERVATION_UNKNOWN
+	}
+	// Registration continues the original accepted Build, independently of the
+	// publisher's browser session. Only Capability receives this authorization;
+	// the immutable artifact provenance and Ledger readback carry no grant.
+	peer, _ := ownerservice.PeerOwner(ctx)
+	if peer == owneridentity.Capability.Service() && result.Outcome == api.Observation_OBSERVATION_CONFIRMED {
+		r, err := s.read(ctx, req.GetBuildJobId())
+		if err != nil {
+			return nil, err
+		}
+		if tenant(req.GetContext()) != r.Tenant {
+			return nil, status.Error(codes.PermissionDenied, "artifact registration belongs to another tenant")
+		}
+		if r.Call.GetAcceptedOperationGrantId() == "" || r.Actor == "" || r.Call.GetActorId() != r.Actor || tenant(r.Call) != r.Tenant {
+			return nil, status.Error(codes.FailedPrecondition, "artifact registration requires the original accepted Build grant")
+		}
+		result.RegistrationContext = &api.CallContext{RequestId: req.GetContext().GetRequestId(), ActorId: r.Actor,
+			Scope: proto.Clone(r.Call.GetScope()).(*api.AuthorizationScope), AcceptedOperationGrantId: proto.String(r.Call.GetAcceptedOperationGrantId())}
 	}
 	return result, nil
 }
@@ -369,6 +389,17 @@ func (s *Service) Deliver(ctx context.Context, req *api.DeliverEventRequest) (*a
 	if event.TenantId != r.Tenant || payload.ArtifactDigest != r.Job.GetArtifactDigest() {
 		return nil, status.Error(codes.FailedPrecondition, "registration does not match Build output")
 	}
+	inbound := ownerstore.InboundEvent{ID: "in_" + event.EventId, SourceOwner: "capability", SourceEventID: event.EventId, EventType: event.EventType, SchemaVersion: 1, AggregateType: "capability_version", AggregateID: event.AggregateId, AggregateRevision: event.AggregateVersion, Payload: wire(payload)}
+	decision, err := s.store.ReadCommittedInbox(ctx, inbound)
+	if err != nil {
+		return nil, databaseError(err)
+	}
+	if decision == ownerstore.InboxConflict {
+		return nil, status.Error(codes.AlreadyExists, "event identity conflict")
+	}
+	if decision == ownerstore.InboxDuplicate {
+		return &api.InboxAck{EventId: event.EventId, Consumer: "build", Committed: true, Duplicate: true, AppliedAggregateVersion: event.AggregateVersion}, nil
+	}
 	version, err := s.versions.GetCapabilityVersion(ctx, &api.GetCapabilityVersionRpcRequest{Context: r.Call, CapabilityVersionId: payload.CapabilityVersionId})
 	if err != nil {
 		return nil, err
@@ -391,7 +422,7 @@ func (s *Service) Deliver(ctx context.Context, req *api.DeliverEventRequest) (*a
 	if _, err = tx.ExecContext(ctx, `SELECT id FROM build.build_jobs WHERE id=$1 FOR UPDATE`, r.Job.Id); err != nil {
 		return nil, databaseError(err)
 	}
-	result, err := s.store.DeliverInbox(ctx, tx, ownerstore.InboundEvent{ID: "in_" + event.EventId, SourceOwner: "capability", SourceEventID: event.EventId, EventType: event.EventType, SchemaVersion: 1, AggregateType: "capability_version", AggregateID: event.AggregateId, AggregateRevision: event.AggregateVersion, Payload: wire(payload)}, time.Now())
+	result, err := s.store.DeliverInbox(ctx, tx, inbound, time.Now())
 	if err != nil {
 		return nil, databaseError(err)
 	}

@@ -6,6 +6,8 @@ import { mkdir, readFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { startConsoleDemoServer } from "../../tools/start-console-demo.ts";
 import { launchBrowser } from "../../tools/launch-browser.ts";
+import type { WorkspaceOwnerOperationDTO } from "../../apps/console-ui/src/api/dtos.ts";
+import type { PackageVersion } from "../../apps/console-ui/src/pages/PublisherPage.tsx";
 
 const bff = process.env.OPL_PUBLISHER_BFF_URL!;
 const zip = process.env.OPL_PUBLISHER_TEST_ZIP!;
@@ -27,7 +29,7 @@ const proxy = createServer(async (incoming, outgoing) => {
   const upstream = request(target, { method: incoming.method, headers: incoming.headers }, (response) => {
     outgoing.writeHead(response.statusCode || 502, response.headers); response.pipe(outgoing);
   });
-  upstream.on("error", () => { outgoing.writeHead(502); outgoing.end(); });
+  upstream.on("error", (error: NodeJS.ErrnoException) => { console.error(`Publisher proxy ${incoming.method} ${target.pathname}: ${error.code || error.message}`); outgoing.writeHead(502); outgoing.end(); });
   incoming.pipe(upstream);
 });
 await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
@@ -35,11 +37,16 @@ const address = proxy.address();
 assert.ok(address && typeof address !== "string");
 const origin = `http://127.0.0.1:${address.port}`;
 const browser = await launchBrowser({ headless: true });
+const authResponses: string[] = [];
 try {
   const context = await browser.newContext({ viewport: { width: 1280, height: 960 } });
   const page = await context.newPage();
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  page.on("response", (response) => {
+    const path = new URL(response.url()).pathname;
+    if (/^\/api\/(?:v2\/)?auth\//.test(path)) authResponses.push(`${response.request().method()} ${path} ${response.status()}`);
+  });
   await page.goto(`${origin}/login`, { waitUntil: "networkidle" });
   await page.getByLabel("邮箱").fill("publisher@example.test");
   await page.getByLabel("密码").fill("isolated-password");
@@ -49,10 +56,35 @@ try {
   await page.getByRole("link", { name: "发布 Package", exact: true }).click();
   await page.waitForURL(/\/console\/publisher$/);
   await page.getByLabel("Package", { exact: true }).selectOption({ label: "live-package" });
+  const packageId = await page.getByLabel("Package", { exact: true }).inputValue();
   await page.getByLabel("版本名称").fill("browser-v1");
   await page.getByLabel("ZIP 文件").setInputFiles(zip);
+  const stages: string[] = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (/^\/api\/v2\/(uploads\/[^/]+\/complete|package-versions\/[^/]+|builds)$/.test(path)) stages.push(`${request.method()} ${path}`);
+  });
+  const completion = page.waitForResponse((response) => response.request().method() === "POST" && /\/api\/v2\/uploads\/[^/]+\/complete$/.test(new URL(response.url()).pathname));
+  const packageReadback = page.waitForResponse((response) => response.request().method() === "GET" && /\/api\/v2\/package-versions\/[^/]+$/.test(new URL(response.url()).pathname));
+  const buildRequest = page.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname === "/api/v2/builds");
   await page.getByRole("button", { name: "上传并构建 / 继续上传", exact: true }).click();
+  const completionResponse = await completion;
+  const operation: WorkspaceOwnerOperationDTO = await completionResponse.json();
+  assert.ok(operation.operationId);
+  assert.equal(operation.owner, "capability");
+  assert.equal(operation.kind, "complete_upload");
+  assert.equal(operation.status, "succeeded");
+  assert.ok(operation.observationResult === undefined || operation.observationResult === "confirmed");
+  const packageVersion: PackageVersion = await (await packageReadback).json();
+  assert.equal(packageVersion.id, operation.resourceId);
+  assert.equal(packageVersion.packageId, packageId);
+  assert.equal(packageVersion.status, "uploaded");
+  assert.equal(packageVersion.versionLabel, "browser-v1");
+  const inputs = (await buildRequest).postDataJSON();
+  assert.equal(inputs.packageVersionId, packageVersion.id);
+  assert.deepEqual(stages, [`POST ${new URL(completionResponse.url()).pathname}`, `GET /api/v2/package-versions/${packageVersion.id}`, "POST /api/v2/builds"]);
   await page.getByRole("heading", { name: "版本已就绪", exact: true }).waitFor({ timeout: 90000 });
+  await page.locator(".publisher-technical-details > summary").click();
   const result = page.getByRole("region", { name: "构建结果" });
   const artifact = await result.getByText(/^sha256:[a-f0-9]{64}$/).textContent();
   assert.match(artifact || "", /^sha256:[a-f0-9]{64}$/);
@@ -71,8 +103,9 @@ try {
   await page.screenshot({ path: `${output}/mobile.png`, fullPage: true });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   assert.deepEqual(errors, []);
-  console.log(`BROWSER_PUBLISHER_OK artifact=${artifact} version=${version}; reload readback preserved`);
+  console.log(`BROWSER_PUBLISHER_OK artifact=${artifact} version=${version}; complete succeeded -> exact uploaded PackageVersion -> Build; reload readback preserved`);
 } catch (error) {
+  console.error("Publisher authentication responses:", authResponses);
   const pages = browser.contexts().flatMap((context) => context.pages());
   if (pages[0]) console.error((await pages[0].locator("body").innerText()).slice(-3000));
   throw error;

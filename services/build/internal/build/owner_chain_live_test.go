@@ -93,7 +93,13 @@ func (c *lostInboxAck) Deliver(ctx context.Context, r *api.DeliverEventRequest, 
 	return ack, err
 }
 
-func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability *capabilitycatalog.Service, capAddr string, runner *Runner, input *api.BuildInputSnapshot, identity *liveIdentity) {
+type liveBuildHandoff struct {
+	CapabilityVersion    *api.CapabilityVersion
+	BuildArtifact        *api.BuildArtifactReadback
+	PackageVersionStatus string
+}
+
+func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability *capabilitycatalog.Service, capAddr string, runner *Runner, input *api.BuildInputSnapshot, identity *liveIdentity) liveBuildHandoff {
 	t.Helper()
 	capWire := api.NewCapabilityProductServiceClient(liveConn(t, capAddr, owneridentity.ConsoleBFF))
 	capClient := &publisherCapabilityClient{CapabilityProductServiceClient: capWire, t: t, base: newPublisherHTTP(t, capWire, nil, nil, identity), identity: identity}
@@ -110,15 +116,11 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 		t.Fatal(err)
 	}
 	// The local WebUI and recipe fixtures use the disposable registry namespace.
-	// When the test consumes the real App Runtime Release, Runtime Control gets a
-	// separate approved namespace for that exact GHCR repository prefix.
+	// A mirrored Runtime shares this namespace. An upstream Runtime outside that
+	// prefix receives its own approved namespace in this isolated catalog.
 	input.WebuiContract.PublisherNamespaceId = publisher.Id
 	runtimePublisher := publisher
-	if ref := os.Getenv("OPL_RUNTIME_IMAGE"); ref != "" {
-		repo, _, ok := strings.Cut(ref, "@")
-		if !ok {
-			t.Fatal("OPL_RUNTIME_IMAGE must be digest-pinned")
-		}
+	if repo := input.RuntimeArtifact.GetRepository(); repo != publisher.RepositoryPrefix && !strings.HasPrefix(repo, publisher.RepositoryPrefix+"/") {
 		runtimePublisher, err = capClient.CreatePublisherNamespace(ctx, &api.CreatePublisherNamespaceRpcRequest{Context: identity.call("runtime-publisher-admit", "platform"), Body: &api.CreatePublisherNamespaceRequest{Name: "app-runtime-publisher", Kind: api.CreatePublisherNamespaceRequestKindEnum_CREATE_PUBLISHER_NAMESPACE_REQUEST_KIND_ENUM_OFFICIAL, RegistryId: "ghcr", RepositoryPrefix: repo, AdmissionReceiptId: "isolated-app-runtime-admission"}})
 		if err != nil {
 			t.Fatal(err)
@@ -173,7 +175,8 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = runtimeClient.SetBuildRuntimePolicy(ctx, &api.SetBuildRuntimePolicyRpcRequest{Context: call("runtime-policy", true), Body: &api.SetBuildRuntimePolicyRequest{RuntimeVersionId: runtime.Id}}); err != nil {
+	policyHTTP := newPublisherHTTP(t, capWire, runtimeClient, nil, identity)
+	if err = publisherRequest(ctx, policyHTTP, "PUT", "/api/v2/admin/catalog/build-policy", call("runtime-policy", true), &api.SetBuildRuntimePolicyRequest{RuntimeVersionId: runtime.Id, DefaultWebuiVersionId: proto.String(webui.Id)}, &api.BuildRuntimePolicy{}, identity); err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("CLOUD_RUNTIME_REGISTERED id=%s artifact=%s contract=%s", runtime.Id, runtime.ArtifactDigest, runtime.PublisherContractDigest)
@@ -269,8 +272,16 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	if err = service.claims(ctx, rec); err != nil {
 		t.Fatal(err)
 	}
+	// Registration must not reserve a local transaction connection while calling
+	// another owner. One connection also exposes a pooled lookup inside that
+	// transaction, which duplicate deliveries could otherwise deadlock in a full
+	// production pool. Exercise only registration delivery at this limit; the
+	// worker deliberately holds a separate lease connection while building.
+	buildPool, capabilityPool := buildDB.Stats().MaxOpenConnections, capability.DB.Stats().MaxOpenConnections
+	buildDB.SetMaxOpenConns(1)
+	capability.DB.SetMaxOpenConns(1)
 	for deadline := time.Now().Add(12 * time.Second); ; {
-		if err = service.RunOnce(ctx); err != nil {
+		if err = service.deliver(ctx); err != nil {
 			t.Fatal(err)
 		}
 		if err = capability.DeliverRegistrations(ctx); err != nil {
@@ -295,6 +306,8 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+	buildDB.SetMaxOpenConns(buildPool)
+	capability.DB.SetMaxOpenConns(capabilityPool)
 	version, err := api.NewCapabilityProductServiceClient(capConn).GetCapabilityVersion(ctx, &api.GetCapabilityVersionRpcRequest{Context: req.Context, CapabilityVersionId: rec.Job.GetResultCapabilityVersionId()})
 	if err != nil {
 		t.Fatal(err)
@@ -312,9 +325,32 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	if !capDrop.lost.Load() || !buildDrop.lost.Load() {
 		t.Fatal("lost acknowledgement scenarios did not execute")
 	}
+	artifactReader := api.NewBuildCoordinationClient(buildCapConn)
+	registration, err := artifactReader.ReadArtifact(ctx, &api.ReadBuildArtifactRequest{BuildJobId: job.Id, Context: req.Context})
+	if err != nil || registration.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED {
+		t.Fatalf("Build owner artifact readback is not confirmed: outcome=%s err=%v", registration.GetOutcome(), err)
+	}
+	t.Logf("BUILD_ARTIFACT_READBACK job=%s receipt=%s outcome=%s artifact=%s@%s", registration.GetBuildJobId(), registration.GetArtifactReceiptId(), registration.GetOutcome(), registration.GetArtifact().GetRepository(), registration.GetArtifact().GetDigest())
+	if registration.GetRegistrationContext().GetAcceptedOperationGrantId() == "" || registration.GetRegistrationContext().GetActorId() != rec.Actor || registration.GetRegistrationContext().GetSessionId() != "" {
+		t.Fatal("original Build continuation missing, actor mismatched or contains a browser session")
+	}
+	foreign := identity.call("foreign-artifact", "another-tenant")
+	if _, err := artifactReader.ReadArtifact(ctx, &api.ReadBuildArtifactRequest{BuildJobId: job.Id, Context: foreign}); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("another tenant received registration authorization: %v", err)
+	}
+	ledgerArtifact, err := api.NewBuildCoordinationClient(liveConn(t, buildAddr, owneridentity.Ledger.Service())).ReadArtifact(ctx, &api.ReadBuildArtifactRequest{BuildJobId: job.Id, Context: req.Context})
+	if err != nil || ledgerArtifact.GetRegistrationContext() != nil {
+		t.Fatalf("Ledger artifact readback failed or contains registration authorization: err=%v", err)
+	}
 	verifyLedgerEvidence(t, ctx, ledgerDB, job.Id, ledgerBuild, ledgerCapability)
 	verifyInterruptedWorker(t, ctx, buildDSN, capAddr, client, service, capability, runner, req)
-	verifyPublisherBrowser(t, ctx, client.base, service, capability, runner, input)
+	if os.Getenv("OPL_BUILD_TEST_HANDOFF_ONLY") != "1" {
+		verifyPublisherBrowser(t, ctx, client.base, service, capability, runner, input)
+	}
+	if os.Getenv("OPL_BUILD_TEST_HANDOFF_ONLY") == "1" {
+		registration.RegistrationContext = nil
+		return liveBuildHandoff{CapabilityVersion: version, BuildArtifact: registration}
+	}
 
 	if _, e := capClient.SetWebuiVersionStatus(ctx, &api.SetWebuiVersionStatusRpcRequest{Context: identity.call("revoke-webui", "platform"), VersionId: webui.Id, Body: &api.CatalogStatusRequest{Status: api.CatalogStatusRequestStatusEnum_CATALOG_STATUS_REQUEST_STATUS_ENUM_REVOKED, Reason: "local negative qualification"}}); e != nil {
 		t.Fatal(e)
@@ -322,6 +358,23 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	if _, e := client.CreateBuild(ctx, &api.CreateBuildRpcRequest{Context: identity.call("revoked-webui-build", "tenant-live"), Body: req.Body}); e == nil {
 		t.Fatal("new Build admitted revoked WebUI")
 	}
-	t.Log("real publisher/WebUI admission: platform role enforced, third-party prefix overlap and foreign image rejected, revoked WebUI blocks new Build")
+	// Both events were committed before their ACKs were lost. A later revocation
+	// must refuse new Builds without making those original deliveries impossible
+	// to acknowledge. Neither consumer needs mutable owner readback for replay.
+	capability.Build = nil
+	service.versions = nil
+	for name, delivery := range map[string]*lostInboxAck{"capability": capDrop, "build": buildDrop} {
+		ack, err := delivery.DomainInboxClient.Deliver(ctx, delivery.last)
+		if err != nil || !ack.GetCommitted() || !ack.GetDuplicate() {
+			t.Fatalf("%s committed-event replay after revocation: ack=%v error=%v", name, ack, err)
+		}
+	}
+	var persistedGrant bool
+	if err = capability.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM capability.capability_versions WHERE provenance_evidence ? 'registrationContext')`).Scan(&persistedGrant); err != nil || persistedGrant {
+		t.Fatalf("registration continuation leaked into durable Capability provenance: present=%v error=%v", persistedGrant, err)
+	}
+	t.Log("real publisher/WebUI admission: platform role enforced, third-party prefix overlap and foreign image rejected, revoked WebUI blocks new Build; original committed ACKs remain recoverable")
 	t.Logf("real owner chain: Runtime API admission, CreateBuild replay, three bound claims, one ready CapabilityVersion; both registration acknowledgements lost and recovered; artifact=%s", version.ArtifactDigest)
+	registration.RegistrationContext = nil
+	return liveBuildHandoff{CapabilityVersion: version, BuildArtifact: registration}
 }

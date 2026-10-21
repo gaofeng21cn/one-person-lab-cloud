@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getJson, postJson } from "../api/console-api.ts";
 import { readEffectiveBuildDefaults, uploadPackagePart, type UploadPermit } from "../api/publisher-api.ts";
+import type { WorkspaceOwnerOperationDTO as Operation } from "../api/dtos.ts";
 import type { EffectiveBuildDefaults } from "../app/cloud-webui-model.ts";
 import { Button } from "../components/ui/index.ts";
 import "./publisher.css";
@@ -12,7 +13,7 @@ type Upload = { id: string; packageVersionId: string; partSizeBytes: number; com
 type UploadWire = { id: string; packageVersionId: string; partSizeBytes: string; completedParts: Array<{ partNumber: number; etag: string; sizeBytes: string; sha256: string }> };
 type Build = { id: string; status: string; stage: string; artifactDigest?: string; resultCapabilityVersionId?: string; packageVersionId?: string; runtimeVersionId?: string; webuiVersionId?: string };
 type Version = { id: string; status: string; artifactDigest: string; deploymentDescriptorDigest: string };
-type PackageVersion = { id: string; status?: string; versionLabel?: string; sha256?: string; sizeBytes?: number };
+export type PackageVersion = { id: string; packageId: string; status: string; versionLabel: string; sha256: string; sizeBytes: string };
 type Selection = { namespaceId: string; namespaceName: string; packageId: string; packageName: string; versionLabel: string; runtimeId: string; webuiId: string };
 type Work = { selection?: Selection; fingerprint: string; key: string; packageId?: string; uploadId?: string; packageVersionId?: string; buildId?: string };
 
@@ -178,7 +179,7 @@ export function PublisherPage() {
       const bytes = await file.arrayBuffer(); const hash = await sha256(bytes);
       const fingerprint = JSON.stringify([namespaceId, namespaceName, packageId, packageName, versionLabel, runtimeId, webuiId, hash]);
       let current = work.current;
-      if (!current || current.fingerprint !== fingerprint) { current = { fingerprint, key: crypto.randomUUID(), selection: { namespaceId, namespaceName, packageId, packageName, versionLabel, runtimeId, webuiId } }; setBuild(null); setVersion(null); }
+      if (!current || current.fingerprint !== fingerprint) { current = { fingerprint, key: crypto.randomUUID(), selection: { namespaceId, namespaceName, packageId, packageName, versionLabel, runtimeId, webuiId } }; setBuild(null); setVersion(null); setPackageVersion(null); }
       save(active, current);
       const command = <T,>(path: string, body: unknown, key: string) => postJson<T>(base + path, body, active.csrfToken, `${current.key}:${key}`, 30_000, abort.signal);
       if (!current.packageId) {
@@ -192,6 +193,7 @@ export function PublisherPage() {
         upload = decodeUpload(await command<UploadWire>(`/packages/${encodeURIComponent(current.packageId)}/uploads`, { versionLabel, fileName: file.name, sizeBytes: String(file.size), sha256: hash }, "upload"));
         current.uploadId = upload.id; current.packageVersionId = upload.packageVersionId; save(active, current);
       }
+      if (!upload.packageVersionId || upload.packageVersionId !== current.packageVersionId) throw new Error("上传会话与本次 Package 版本不一致，未开始构建。");
       const parts: Part[] = [];
       if (!(upload.partSizeBytes > 0)) throw new Error("上传服务没有返回有效分片大小。");
       for (let offset = 0, number = 1; offset < bytes.byteLength; offset += upload.partSizeBytes, number++) {
@@ -204,11 +206,20 @@ export function PublisherPage() {
         const etag = await uploadPackagePart(permit, chunk, checksum, abort.signal);
         parts.push({ partNumber: number, etag, sizeBytes: chunk.byteLength, sha256: checksum });
       }
-      await command(`/uploads/${encodeURIComponent(upload.id)}/complete`, { parts: parts.map((part) => ({ ...part, sizeBytes: String(part.sizeBytes) })) }, "complete");
+      setMessage("正在校验上传结果…");
+      // CompleteUpload currently commits verification and returns its terminal
+      // Operation synchronously. HTTP acceptance alone cannot authorize Build.
+      const completed = await command<Operation>(`/uploads/${encodeURIComponent(upload.id)}/complete`, { parts: parts.map((part) => ({ ...part, sizeBytes: String(part.sizeBytes) })) }, "complete");
+      if (!completed?.operationId || completed.owner !== "capability" || completed.kind !== "complete_upload" || completed.resourceId !== upload.packageVersionId) throw new Error("上传完成操作与本次 Package 版本不一致，未开始构建。");
+      if (completed.status !== "succeeded" || (completed.observationResult !== undefined && completed.observationResult !== "confirmed")) throw new Error("上传尚未确认成功，未开始构建。请检查上传结果后重试。");
+      setMessage("正在读取 Package 上传版本…");
+      const readback = await getJson<PackageVersion>(`${base}/package-versions/${encodeURIComponent(upload.packageVersionId)}`, { signal: abort.signal });
+      if (readback?.id !== upload.packageVersionId || readback.packageId !== current.packageId || readback.versionLabel !== versionLabel || readback.sha256 !== hash || readback.sizeBytes !== String(file.size)) throw new Error("上传版本读回与本次 Package 或文件不一致，未开始构建。");
+      if (readback.status !== "uploaded") throw new Error("Package 版本尚未确认为已上传，未开始构建。");
+      if (abort.signal.aborted) return;
+      setPackageVersion(readback);
       const job = await command<Build>("/builds", { packageVersionId: upload.packageVersionId, runtimeVersionId: runtimeId, webuiVersionId: webuiId }, "build");
       current.buildId = job.id; save(active, current); await readBuild(job.id, abort.signal);
-      const readback = await getJson<PackageVersion>(`${base}/package-versions/${encodeURIComponent(upload.packageVersionId)}`, { signal: abort.signal });
-      if (!abort.signal.aborted) setPackageVersion(readback);
     } catch (e) { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : "发布失败，可重试读取或继续上传。"); }
     finally { if (!abort.signal.aborted) setBusy(false); }
   }

@@ -431,8 +431,10 @@ func verifyTencentApplicationConfiguration(input WorkspaceApplicationRuntimeInpu
 	return len(mounts) == 0 && len(volumes) == 0
 }
 func (p *Executor) ReadWorkspaceApplicationRuntimeCredentials(ctx context.Context, input WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeCredentials, error) {
-	if _, err := workspaceApplicationGatewayBinding(input); err != nil {
-		return contracts.WorkspaceApplicationRuntimeCredentials{}, err
+	if contracts.WorkspaceApplicationCredentialKind(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey) {
+		if _, err := workspaceApplicationGatewayBinding(input); err != nil {
+			return contracts.WorkspaceApplicationRuntimeCredentials{}, err
+		}
 	}
 	secret, err := p.applicationSecretObject(ctx, input)
 	if err != nil {

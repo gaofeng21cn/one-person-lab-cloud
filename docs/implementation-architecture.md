@@ -60,7 +60,15 @@ owner's fact into its delivery truth. All three reads (`ListDeployments`,
 table. `Reserve` allocates the deployment, runtime instance and epoch, verifies
 the exact Capability descriptor and binds a Serve-owned reference claim.
 `Deploy` requires Fabric's confirmed execution binding and uses the existing
-Fabric application adapter through a dedicated Serve identity. `ReadRuntime`
+Fabric application adapter through a dedicated Serve identity. Serve freezes a
+platform credential version in the existing runtime action snapshot. A successor
+inherits that identity only from an activated predecessor of the same application;
+restarts read the frozen version. Execution targets carry that version from the
+current transaction, so the adapter never borrows another database connection
+while a delivery holds the Workspace lock. Password/session delivery follows its declaration
+independently of Gateway; retained Gateway-derived starts preserve their version.
+Fabric mounts only declared credentials and uses the declared admin username.
+`ReadRuntime`
 observes the original persisted command and re-applies it only while an initial,
 never-activated delivery and its runtime are still progressing, with no rejected
 original start or recorded stop or termination intent. Pending reads preserve a
@@ -104,11 +112,23 @@ a Package, BuildJob or CapabilityVersion. On confirmed Local resources,
 Workspace calls Serve Reserve, Deploy and ReadRuntime with that original order.
 Provider readiness and Serve readiness remain independent facts; this slice
 does not create paid periods, fabricate subscriptions or activate Workspace
-entitlement. Local dispatch requires a Linux host with the existing project-quota
+entitlement. A ready Local order remains `awaiting_confirmation` at `activation`;
+customer deletion requires a delivered launch with its original subscription and
+charge evidence. Harness cleanup does not prove business deletion or refund.
+Local dispatch requires a Linux host with the existing project-quota
 preflight; Docker Desktop on a macOS Fabric host does not meet that prerequisite.
 Complete replacement, TKE execution/route ownership and runtime model apply
 readback remain separate qualification outcomes. Current verification and
 remaining qualification limits are recorded in [status](status.md).
+
+The IBD Local-Docker delivery closure uses an uploaded Package, BuildKit's actual
+OCI digest and its registered CapabilityVersion through the existing
+Workspace/Serve/Fabric path. The live harness checks readiness and password login,
+then calls the authenticated native HTTP `/api/send-message` endpoint with the
+application session and CSRF token to verify a canonical completed Agent response.
+IBD is the feasibility exemplar; this scope adds no provider or generic WebUI chat
+feature. Browser-driven sending is outside this closure. Historical execution and
+current-revision verification remain distinct in [status](status.md).
 
 Control Plane remains the current caller and writer for capabilities not yet
 migrated. Extraction must switch real callers and retire the old write path;
@@ -1150,7 +1170,15 @@ CloudIdentity may read the historical `tenant.tenant_repository_bindings`
 through its own store to verify an unambiguous handover and protect reserved
 paths. The old reservations stay read-only. New output selection reads Gateway;
 existing Build `executor_ref` and artifact history retain their original values.
-Build still owns OCI construction, push and digest readback. The source work is
+Build still owns OCI construction, push and digest readback. Console checks the
+successful upload Operation and matching `uploaded` PackageVersion before Build.
+Authenticated Build artifact readback supplies the original accepted continuation
+only to Capability, within its Tenant, for Runtime revalidation. It carries no
+browser session and is removed from durable provenance and Ledger responses.
+Build and Capability acknowledge exact committed inbox duplicates before mutable
+owner reads; new events validate remotely before their short atomic local commit.
+Platform Build-policy continuation permits the required WebUI catalog read without
+adding catalog write permission. The source work is
 under validation; local tests, Candidate adoption and Instance acceptance remain
 separate obligations recorded in [status](status.md) and [roadmap](roadmap.md).
 

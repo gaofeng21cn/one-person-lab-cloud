@@ -91,8 +91,8 @@ func TestManagedKeyCommandResolvesTheDeclaredDefaultScope(t *testing.T) {
 // approved allowlist and the original command stays unresolved without a second
 // issuance.
 func TestManagedKeyCommandRejectsAnUnrecordableResolvedScope(t *testing.T) {
-	overlong := make([]string, 0, 65)
-	for index := 0; index < 65; index++ {
+	overlong := make([]string, 0, 257)
+	for index := 0; index < 257; index++ {
 		overlong = append(overlong, fmt.Sprintf("model-%d", index))
 	}
 	issuer := &managedKeyIssuerStub{}
