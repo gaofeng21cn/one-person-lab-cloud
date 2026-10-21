@@ -207,6 +207,9 @@ func publisherContinuation(d *api.AuthorizationDecision, r *api.AuthorizationReq
 	if d.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEBUILD {
 		return (caller == owneridentity.Capability.Service() && r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESOLVEBUILDINPUT && proto.Equal(d.Resource, r.Resource)) || (caller == owneridentity.RuntimeControl.Service() && r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS && r.Resource.GetId() == "")
 	}
+	if d.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETBUILDRUNTIMEPOLICY && caller == owneridentity.Capability.Service() && r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTWEBUIVERSIONS {
+		return r.Resource.GetKind() == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG && r.Resource.GetId() == ""
+	}
 	return (d.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REGISTERRUNTIMEVERSION || d.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETBUILDRUNTIMEPOLICY) && caller == owneridentity.Capability.Service() && r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPUBLISHERNAMESPACES && r.Resource.GetId() == ""
 }
 func (s *Service) saveDecision(ctx context.Context, r *api.AuthorizationRequest, version int64) (*api.AuthorizationDecision, error) {

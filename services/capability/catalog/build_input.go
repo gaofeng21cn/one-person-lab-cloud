@@ -8,6 +8,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/publicjson"
+	"opl-cloud/services/internal/ownerservice"
 )
 
 // canonicalContractDigest re-derives the identity of one publisher contract from
@@ -176,7 +177,15 @@ func (s *Service) validateFrozenInput(ctx context.Context, event *api.EventEnvel
 	if s.Runtime == nil {
 		return status.Error(codes.Unavailable, "Runtime owner readback is unavailable")
 	}
-	runtime, e := s.runtimeVersion(ctx, eventCall(event), in.GetRuntimeVersionId())
+	registration := readback.GetRegistrationContext()
+	if registration.GetSessionId() != "" || registration.GetAuthorizationContextId() != "" || registration.GetDeadlineAt() != nil ||
+		registration.GetAcceptedOperationGrantId() == "" || !proto.Equal(registration.GetScope(), eventCall(event).GetScope()) {
+		return status.Error(codes.Unauthenticated, "Runtime revalidation requires the original accepted Build continuation")
+	}
+	if e := ownerservice.ValidateCallContext(ctx, registration); e != nil {
+		return e
+	}
+	runtime, e := s.runtimeVersion(ctx, registration, in.GetRuntimeVersionId())
 	if e != nil {
 		return e
 	}

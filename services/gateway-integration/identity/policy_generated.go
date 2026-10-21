@@ -81,7 +81,7 @@ var actions = map[api.AuthorizationActionEnum]actionPolicy{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT:                            {api.OwnerEnum_OWNER_ENUM_LEDGER, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTQUALIFICATIONS:                    {api.OwnerEnum_OWNER_ENUM_LEDGER, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS:                   {api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL, []string{"member"}},
-	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTWEBUIVERSIONS:                     {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"member"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTWEBUIVERSIONS:                     {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"member", "platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTCOMPUTEPLANS:                      {api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG, []string{"member"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTSTORAGEPLANS:                      {api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG, []string{"member"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTMODELS:                            {api.OwnerEnum_OWNER_ENUM_GATEWAY, []string{"member"}},

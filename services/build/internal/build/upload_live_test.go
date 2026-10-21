@@ -32,7 +32,7 @@ import (
 
 // CloudIdentity and Capability run their real handlers and restricted stores.
 // Only external Sub2API identity and existing test membership are fixtures.
-func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byte) (*api.SourceObjectReference, string, string, string, string, *catalog.Service, string, *liveIdentity) {
+func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byte) (*api.SourceObjectReference, string, string, string, string, string, *catalog.Service, string, *liveIdentity) {
 	t.Helper()
 	identity := newLiveIdentity(t, ctx, dsn)
 	h, err := ownerstoretest.Setup(ctx, ownerstoretest.Config{AdminDSN: dsn, Owner: "capability", Database: "opl_capability", SchemaOwnerRole: "opl_capability_owner", WriterRole: "opl_capability_writer", RuntimeRole: "opl_capability_runtime"})
@@ -56,6 +56,16 @@ func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byt
 	schema := []byte(`{"type":"object","required":["name"],"properties":{"name":{"type":"string"}},"additionalProperties":false}`)
 	schemaPath := filepath.Join(root, "schema.json")
 	os.WriteFile(schemaPath, schema, 0600)
+	if configured := strings.TrimSpace(os.Getenv("OPL_CAPABILITY_PACKAGE_SCHEMA_PATH")); configured != "" {
+		schema, err = os.ReadFile(configured)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if digest(schema) != os.Getenv("OPL_CAPABILITY_PACKAGE_SCHEMA_DIGEST") {
+			t.Fatal("configured Package schema does not match its declared digest")
+		}
+		schemaPath = configured
+	}
 	httpServer := httptest.NewUnstartedServer(nil)
 	httpURL := "http://" + httpServer.Listener.Addr().String()
 	partBytes := int64(128)
@@ -202,5 +212,5 @@ func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byt
 		t.Fatal("confirmed object bytes differ")
 	}
 	t.Logf("Capability wire upload complete: %d replayed parts, idempotent completion, corrupt bytes and cross-tenant reads rejected", len(parts))
-	return &api.SourceObjectReference{StorageObjectId: version.Sha256, VersionId: version.Sha256, Sha256: version.Sha256, SizeBytes: version.SizeBytes}, httpURL, token, pkg.Id, version.Id, service, listener.Addr().String(), identity
+	return &api.SourceObjectReference{StorageObjectId: version.Sha256, VersionId: version.Sha256, Sha256: version.Sha256, SizeBytes: version.SizeBytes}, httpURL, token, pkg.Id, version.Id, "uploaded", service, listener.Addr().String(), identity
 }

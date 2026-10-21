@@ -2351,7 +2351,23 @@ service CapabilityCoordination {
  rpc ReleaseReference(ReleaseReferenceRequest) returns (ReferenceClaim);
 }
 message ReadBuildArtifactRequest { CallContext context = 1; string build_job_id = 2; }
-message BuildArtifactReadback { string build_job_id = 1; BuildInputSnapshot input = 2; ArtifactReference artifact = 3; string artifact_receipt_id = 4; string version_label = 5; repeated ModelRequirement model_requirements = 6; DataCompatibility data_compatibility = 7; Observation outcome = 8; DeploymentDescriptor deployment_descriptor = 9; string deployment_descriptor_digest = 10; string deployment_descriptor_object_ref = 11; }
+message BuildArtifactReadback {
+ string build_job_id = 1;
+ BuildInputSnapshot input = 2;
+ ArtifactReference artifact = 3;
+ string artifact_receipt_id = 4;
+ string version_label = 5;
+ repeated ModelRequirement model_requirements = 6;
+ DataCompatibility data_compatibility = 7;
+ Observation outcome = 8;
+ DeploymentDescriptor deployment_descriptor = 9;
+ string deployment_descriptor_digest = 10;
+ string deployment_descriptor_object_ref = 11;
+ // Build supplies only its accepted-operation continuation, without a browser
+ // session, to the authenticated Capability consumer for Runtime revalidation.
+ // This context is not artifact provenance and is omitted from Ledger readback.
+ CallContext registration_context = 12;
+}
 service BuildCoordination { rpc ReadArtifact(ReadBuildArtifactRequest) returns (BuildArtifactReadback); }
 service OwnerOperations { rpc Read(OwnerOperationRequest) returns (Operation); rpc Reconcile(ReconcileOperationRpcRequest) returns (Operation); }
 message PlatformScope {}

@@ -53,6 +53,76 @@ by the existing protobuf generation entrypoint). It serializes owner-created
 public descriptors; it does not claim to reproduce an external publisher's
 original JSON bytes or replace schema validation.
 
+## Runnable IBD Build and Workspace handoff
+
+The existing live test accepts a runnable Runtime contract through
+`OPL_BUILD_TEST_RUNTIME_CONTRACT`. The non-secret input used by the successful
+Linux IBD case is retained at
+`services/build/internal/build/testdata/ibd-runtime-publisher-contract.json`.
+It binds the exact linux/amd64 Runtime, Agent Plugins schema, `carrier` source,
+`/opt/ibd-carrier` target and native manifest installer. Its password/session
+files are consumed through `OPL_WEBUI_PASSWORD_FILE` and
+`OPL_WEBUI_SESSION_SECRET_FILE`. The fixture's frontend/recipe references are
+replaced by the test's pinned frontend and disposable registry recipe; they are
+not a production catalog admission. Runtime publication remains its owner's job.
+
+Run from the repository root with explicit local inputs:
+
+```sh
+OPL_RUNTIME_IMAGE=uswccr.ccs.tencentyun.com/oplcloud/one-person-lab-app@sha256:8efab2844b52c66bcaa3da05637abc3cbdb0c3b29364718839b121284711de92 \
+OPL_BUILD_TEST_PLATFORM=linux/amd64 \
+OPL_BUILD_TEST_RUNTIME_CONTRACT="$PWD/services/build/internal/build/testdata/ibd-runtime-publisher-contract.json" \
+OPL_BUILD_TEST_PACKAGE="$IBD_PACKAGE_ZIP" \
+OPL_CAPABILITY_PACKAGE_SCHEMA_PATH="$AGENT_PLUGINS_SCHEMA_PATH" \
+OPL_CAPABILITY_PACKAGE_SCHEMA_DIGEST=sha256:0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883 \
+OPL_BUILD_TEST_HANDOFF="$BUILD_HANDOFF_PATH" \
+OPL_BUILD_TEST_HANDOFF_ONLY=1 npm run verify:package-to-oci
+```
+
+The successful input ZIP was 219963 bytes, SHA-256
+`1befa906cdfb4f343beb0f615df36588a03bda53abefdfd3a90f7a171bba2b19`;
+it is an external Agent Package, not Cloud-owned source. It contains the carrier
+under `carrier/` and its Agent Plugins manifest at `manifest.json`. Set the four
+path variables above to existing isolated files; the schema bytes must match the
+declared digest. `OPL_BUILD_TEST_FRONTEND` may select another explicit pinned
+frontend; the test otherwise uses its checked-in default. The optional
+`OPL_BUILD_TEST_RUNTIME_LOCAL=1` mirrors a pre-pulled Runtime only if its exact
+manifest digest is preserved. A new action can produce a new OCI; read its actual
+Build handoff rather than copying the historical successful digest.
+
+The schema-2 handoff retains public CapabilityVersion JSON and internal protobuf
+BuildArtifact JSON, including `confirmed` outcome, without registration grant or
+browser session. A successful export deliberately retains the named Registry;
+the caller owns its later removal and volume cleanup. A failed test removes its
+own Registry. Handoff-only mode omits the publisher browser and later revoked-input
+probe; the default test still executes them.
+
+On an isolated Linux amd64 root host with Docker and an empty ext4 project-quota
+mount, the existing Workspace test consumes that file using
+`OPL_LOCAL_FIRST_BUILD_HANDOFF`. Supply `OPL_LOCAL_FIRST_DEPLOY_QUALIFICATION=1`,
+`OPL_POSTGRES_TESTS=1`, `OPL_OWNER_MIGRATION_TEST_ADMIN_DSN` for disposable databases,
+`OPL_TEST_PROJECT_QUOTA_ROOT`, and the existing
+`OPL_QUALIFICATION_SERVE_BINARY` / `OPL_QUALIFICATION_FABRIC_BINARY` overrides for
+executables built from the same source. The handoff Registry and exact image must
+be accessible on that host; moving the harness across hosts requires preserving
+the original manifest, config and layer digests without rebuilding.
+
+Supply only the authorized selected provider/model TOML through
+`OPL_QUALIFICATION_CODEX_CONFIG`. The test writes it into the validated ephemeral
+`/data/codex/config.toml`, then uses the existing stop/start recovery to load it.
+It never mounts the user's home or writes that configuration into the OCI or
+evidence. Run `go -C services/workspace test -tags=livebuild ./internal/launch
+-run '^TestLocalFirstApplicationDeploymentQualification$' -count=1 -timeout=15m -v`
+with those variables. The Runtime probe assumes the existing OPL native Headless
+HTTP protocol and exactly one writable `/data` mount; it is not a generic Runtime
+adapter. macOS Docker Desktop cannot replace the required Linux quota host.
+
+Positive checks precede deletion admission. This no-charge order has no paid
+period; DELETE must return 422 and no accepted deletion. Neither that rejection
+nor harness cleanup qualifies business absence, a Ledger deletion receipt or
+refund. Preserve the sanitized Agent IDs/response hash and owner readbacks before
+removing only the caller-owned test Registry/volumes, model data and quota mount.
+
 ## Capability data plane
 
 The Capability process now requires these explicit settings in addition to its

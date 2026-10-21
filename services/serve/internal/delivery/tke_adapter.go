@@ -135,18 +135,18 @@ func (a *agentExecutionAdapter) runtimeInput(c *api.RuntimeDeployCommand, target
 	if err != nil {
 		return zero, err
 	}
-	// An application that declares a Secret or platform credential must execute
-	// with the exact confirmed binding. A declared Secret with no resolved binding
-	// is refused rather than started un-injected and unable to reach its model.
+	// An application that declares a referenced Secret or Gateway credential
+	// must execute with the exact confirmed binding. A declared Secret with no
+	// resolved binding is refused before execution.
 	if referencedSecretRequired(revision) && len(secretBindings) == 0 {
 		return zero, owneridentity.WithErrorCode(status.Errorf(codes.FailedPrecondition, "%s: Serve holds Secret binding %q and model configuration version %d, but the declared Secret has no confirmed delivery to inject", ReasonCredentialInjectionWireMissing, strings.TrimSpace(c.GetSecretBindingId()), c.GetModelConfigurationVersion()), api.ErrorCodeEnum_ERROR_CODE_ENUM_APP_ACCESS_UNAVAILABLE)
 	}
 	input.SecretBindings = secretBindings
-	// A revision that declares a platform credential carries that credential's
-	// identity so the input names the exact generation it was bound against. The
-	// managed-key binding's confirmed Secret version is that identity.
-	if binding := c.GetManagedKeyBinding(); binding != nil && strings.TrimSpace(binding.GetSecretVersion()) != "" {
-		input.Configuration.CredentialVersion = binding.GetSecretVersion()
+	if contracts.WorkspaceApplicationRequiresPlatformCredentials(revision) {
+		if strings.TrimSpace(target.CredentialVersion) == "" {
+			return zero, status.Error(codes.FailedPrecondition, "runtime credential identity is not frozen")
+		}
+		input.Configuration.CredentialVersion = target.CredentialVersion
 	}
 	input.ConfigurationDigest, err = contracts.WorkspaceApplicationConfigurationDigest(input.Configuration, input.SecretBindings, input.DataBindingID)
 	if err != nil {
@@ -246,9 +246,8 @@ func tkeReadinessEvidence(runtimeOperationID, accessURL, upstream string, observ
 	return fmt.Sprintf("tke-application-readback:%s:%s:sha256:%x", runtimeOperationID, accessURL, sum)
 }
 
-// referencedSecretRequired reports whether the revision declares a Secret or
-// credential the execution boundary must inject. An application that declares
-// none executes with no injection and needs no wire.
+// referencedSecretRequired reports whether an external Secret must be bound.
+// Password/session credentials are derived from Serve's own frozen identity.
 func referencedSecretRequired(revision contracts.WorkspaceApplicationRevision) bool {
 	if len(revision.SecretInputs) > 0 {
 		return true
@@ -258,7 +257,7 @@ func referencedSecretRequired(revision contracts.WorkspaceApplicationRevision) b
 			return true
 		}
 	}
-	return contracts.WorkspaceApplicationRequiresPlatformCredentials(revision)
+	return contracts.WorkspaceApplicationCredentialKind(revision, contracts.WorkspaceApplicationCredentialGatewayKey)
 }
 
 // Lifecycle applies a desired state to the exact runtime through this Serve

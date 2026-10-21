@@ -257,6 +257,9 @@ func TestLocalDockerApplicationSecretEnvCleanup(t *testing.T) {
 
 func TestLocalDockerApplicationCredentialsMountOnlyDeclaredFiles(t *testing.T) {
 	for _, kinds := range [][]string{
+		{contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword},
+		{contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret},
+		{contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword, contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret},
 		{contracts.WorkspaceApplicationCredentialGatewayKey},
 		{contracts.WorkspaceApplicationCredentialGatewayKey, contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword},
 		{contracts.WorkspaceApplicationCredentialGatewayKey, contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret},
@@ -264,27 +267,34 @@ func TestLocalDockerApplicationCredentialsMountOnlyDeclaredFiles(t *testing.T) {
 	} {
 		t.Run(strings.Join(kinds, "+"), func(t *testing.T) {
 			provider, _, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
+			t.Setenv("OPL_AIONUI_ADMIN_PASSWORD_SEED", "declared-credential-fixture-seed")
 			input := applicationRuntimeInput("declared-credentials", applicationRevisionForTest())
 			input.Revision.Execution = applicationTestExecutionIdentity(t)
 			for _, kind := range kinds {
 				credential := contracts.WorkspaceApplicationCredential{Name: kind, Kind: kind, Target: "/run/declared/" + kind}
 				if kind == contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword {
-					credential.Username = "opl"
+					credential.Username = "app-admin"
 				}
 				input.Revision.Credentials = append(input.Revision.Credentials, credential)
 			}
-			const key = "synthetic-declared-credential-key"
-			gateway, err := provider.UpsertGatewaySecret(context.Background(), GatewaySecretInput{
-				AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, WorkspaceAPIKeyID: 7,
-				GatewayAPIKey: key, Fingerprint: "sha256:" + stableSuffix(key),
-			})
-			if err != nil {
-				t.Fatal(err)
+			if contracts.WorkspaceApplicationCredentialKind(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey) {
+				if _, _, err := provider.applicationSecretFiles(input); err == nil {
+					t.Fatal("declared Gateway must still require its binding")
+				}
+				const key = "synthetic-declared-credential-key"
+				gateway, err := provider.UpsertGatewaySecret(context.Background(), GatewaySecretInput{
+					AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, WorkspaceAPIKeyID: 7,
+					GatewayAPIKey: key, Fingerprint: "sha256:" + stableSuffix(key),
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				input.SecretBindings = []contracts.WorkspaceApplicationRuntimeSecretBinding{{
+					Name: contracts.WorkspaceApplicationCredentialGatewayKey, SecretRef: gateway.SecretRef,
+					Version: gateway.Version, Key: localDockerGatewayKeyFile,
+				}}
 			}
-			input.SecretBindings = []contracts.WorkspaceApplicationRuntimeSecretBinding{{
-				Name: contracts.WorkspaceApplicationCredentialGatewayKey, SecretRef: gateway.SecretRef,
-				Version: gateway.Version, Key: localDockerGatewayKeyFile,
-			}}
+
 			input.Configuration.CredentialVersion = "declared-credential-version"
 			if err := provider.applicationCredentialFiles(input, true); err != nil {
 				t.Fatal(err)
@@ -304,6 +314,28 @@ func TestLocalDockerApplicationCredentialsMountOnlyDeclaredFiles(t *testing.T) {
 				if _, err := os.Stat(source); err != nil {
 					t.Fatalf("declared credential file missing: %v", err)
 				}
+				var expected string
+				switch credential.Kind {
+				case contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword:
+					expected = deriveWorkspaceAdminPassword("declared-credential-fixture-seed", input.WorkspaceID, input.Configuration.CredentialVersion)
+				case contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret:
+					expected = deriveWorkspaceSessionSecret("declared-credential-fixture-seed", input.WorkspaceID, input.Configuration.CredentialVersion)
+				}
+				if expected != "" {
+					actual, err := os.ReadFile(source)
+					if err != nil || string(actual) != expected {
+						t.Fatalf("declared credential contents mismatch for %s: %v", credential.Kind, err)
+					}
+				}
+			}
+
+			credentials, err := provider.ReadWorkspaceApplicationRuntimeCredentials(context.Background(), input)
+			if admin, declared := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword); declared {
+				if err != nil || credentials.WebUIUsername != admin.Username || credentials.WebUIPassword != deriveWorkspaceAdminPassword("declared-credential-fixture-seed", input.WorkspaceID, input.Configuration.CredentialVersion) {
+					t.Fatalf("declared password readback mismatch: %v", err)
+				}
+			} else if err == nil || credentials.WebUIUsername != "" || credentials.WebUIPassword != "" {
+				t.Fatalf("undeclared password must not be revealed: %v", err)
 			}
 		})
 	}

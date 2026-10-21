@@ -74,7 +74,10 @@ func (g *gapReadback) ReadArtifact(context.Context, *api.ReadBuildArtifactReques
 	return g.artifact, nil
 }
 
-func (g *gapReadback) ListRuntimeVersions(context.Context, *api.ListRuntimeVersionsRpcRequest, ...grpc.CallOption) (*api.RuntimeVersionPage, error) {
+func (g *gapReadback) ListRuntimeVersions(ctx context.Context, request *api.ListRuntimeVersionsRpcRequest, _ ...grpc.CallOption) (*api.RuntimeVersionPage, error) {
+	if err := ownerservice.ValidateCallContext(ctx, request.GetContext()); err != nil {
+		return nil, err
+	}
 	return &api.RuntimeVersionPage{Items: []*api.RuntimeVersion{g.runtime}}, nil
 }
 
@@ -282,6 +285,9 @@ func (o *gapOwner) gapDeliver(t *testing.T, job string, in *api.BuildInputSnapsh
 		DeploymentDescriptorDigest:    digest(descriptorBytes),
 		DeploymentDescriptorObjectRef: "build-artifact://artifact_" + job + "/descriptor@" + digest(descriptorBytes),
 		DataCompatibility:             &api.DataCompatibility{DataSchemaVersion: "agent-data/v1"},
+		RegistrationContext: &api.CallContext{ActorId: "actor", RequestId: "registration-" + job,
+			AcceptedOperationGrantId: proto.String("grant-" + job),
+			Scope:                    &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-gap"}}}},
 	}
 	if mutate != nil {
 		mutate(readback)

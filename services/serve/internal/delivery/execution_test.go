@@ -3,26 +3,42 @@ package delivery
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	contracts "opl-cloud/packages/contracts/go"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/publicjson"
+	"opl-cloud/services/internal/ownerstore"
+	"opl-cloud/services/internal/ownerstore/ownerstoretest"
 	"opl-cloud/services/serve/internal/tkeapply"
+	"opl-cloud/services/serve/migrations"
 )
 
 const testArtifactDigest = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+
+type executionResources struct {
+	api.FabricCoordinationClient
+	readback *api.ResourceReadback
+}
+
+func (r *executionResources) ReadResources(context.Context, *api.ResourceReadbackRequest, ...grpc.CallOption) (*api.ResourceReadback, error) {
+	return proto.Clone(r.readback).(*api.ResourceReadback), nil
+}
 
 // fakeExecutor stands in for a provider executor and records the exact typed input
 // Serve's own execution produced. It is a seam for the adapter's mapping and
@@ -113,8 +129,13 @@ func executionCommand(t *testing.T) *api.RuntimeDeployCommand {
 }
 
 func executionTargetFixture(command *api.RuntimeDeployCommand) ExecutionTarget {
+	version := "test-owned-credential-version"
+	if binding := command.GetManagedKeyBinding(); binding != nil {
+		version = binding.GetSecretVersion()
+	}
 	return ExecutionTarget{
-		Binding: &api.ResourceExecutionBinding{AccountId: "original-account", ComputeAllocationId: "original-compute", StorageVolumeId: "original-volume", DataAttachmentId: command.DataAttachmentId, DataAttachmentOperationId: "original-attachment-operation"},
+		CredentialVersion: version,
+		Binding:           &api.ResourceExecutionBinding{AccountId: "original-account", ComputeAllocationId: "original-compute", StorageVolumeId: "original-volume", DataAttachmentId: command.DataAttachmentId, DataAttachmentOperationId: "original-attachment-operation"},
 		Placement: &api.ApplicationExecutionPlacement{
 			ComputeNodeName: "node-1", ComputePackageId: "basic", ComputeNodePoolId: "np-basic",
 			ComputeMachineName: "machine-1", ComputeInstanceId: "ins-1", StoragePvcName: "pvc-1",
@@ -256,6 +277,21 @@ func TestAgentExecutionCarriesModelConfigurationAndInjectableSecrets(t *testing.
 		t.Fatalf("declared secret not injected: %+v", fake.input)
 	}
 
+	t.Run("workspace_credentials_without_gateway", func(t *testing.T) {
+		local := executionCommand(t)
+		local.DeploymentDescriptor.ApplicationRevision.Credentials = []*api.WorkspaceApplicationCredential{
+			{Name: "admin-password", Kind: api.WorkspaceApplicationCredentialKindEnum_WORKSPACE_APPLICATION_CREDENTIAL_KIND_ENUM_WORKSPACE_ADMIN_PASSWORD, Target: "/run/secrets/admin-password", Username: proto.String("app-admin")},
+			{Name: "session-secret", Kind: api.WorkspaceApplicationCredentialKindEnum_WORKSPACE_APPLICATION_CREDENTIAL_KIND_ENUM_WORKSPACE_SESSION_SECRET, Target: "/run/secrets/session-secret"},
+		}
+		executor := &fakeExecutor{observation: readyObservation(t, local, nil)}
+		if _, err := executionAdapter(executor, RouteOrigin{}).Start(context.Background(), local, executionTargetFixture(local)); err != nil {
+			t.Fatalf("declared workspace credentials rejected without Gateway: %v", err)
+		}
+		if executor.input.Configuration.CredentialVersion == "" || len(executor.input.SecretBindings) != 0 || local.ManagedKeyBinding != nil {
+			t.Fatal("workspace credentials require an independent owner version without Gateway injection")
+		}
+	})
+
 	unbound := proto.Clone(declared).(*api.RuntimeDeployCommand)
 	unbound.ManagedKeyBinding = nil
 	fake = &fakeExecutor{}
@@ -274,7 +310,7 @@ func TestAgentExecutionCarriesOnlyThePublishedPlacement(t *testing.T) {
 	command := executionCommand(t)
 	target := executionTargetFixture(command)
 	resources := &api.ResourceReadback{ResourceSetId: command.GetResourceSetId(), WorkspaceId: command.GetWorkspaceId(), Outcome: api.Observation_OBSERVATION_CONFIRMED, ExecutionResources: target.Binding, ApplicationPlacement: target.Placement}
-	confirmed, err := confirmedExecutionTarget(command, resources)
+	confirmed, err := confirmedExecutionTarget(context.Background(), nil, command, resources)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +318,7 @@ func TestAgentExecutionCarriesOnlyThePublishedPlacement(t *testing.T) {
 		t.Fatalf("target placement=%v want the published placement %v", confirmed.Placement, target.Placement)
 	}
 	resources.ApplicationPlacement = nil
-	confirmed, err = confirmedExecutionTarget(command, resources)
+	confirmed, err = confirmedExecutionTarget(context.Background(), nil, command, resources)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +349,7 @@ func TestAgentExecutionReachesTheBoundaryOfAProviderWithoutAPlacement(t *testing
 	defer server.Close()
 	target := executionTargetFixture(command)
 	resources := &api.ResourceReadback{ResourceSetId: command.GetResourceSetId(), WorkspaceId: command.GetWorkspaceId(), Outcome: api.Observation_OBSERVATION_CONFIRMED, ExecutionResources: target.Binding}
-	confirmed, err := confirmedExecutionTarget(command, resources)
+	confirmed, err := confirmedExecutionTarget(context.Background(), nil, command, resources)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -569,4 +605,252 @@ func bridgeInput(t *testing.T, command *api.RuntimeDeployCommand) contracts.Work
 		t.Fatal(err)
 	}
 	return input
+}
+
+// This exercises the actual owner migration and start journal, not a process
+// cache: a new database connection and adapter must recover the same generation.
+func TestServeCredentialOwnerLifecycle(t *testing.T) {
+	ctx := context.Background()
+	h, err := ownerstoretest.Setup(ctx, ownerstoretest.Config{
+		AdminDSN: ownerstoretest.EnsureAdminDSNOrSkip(os.Getenv, t.Skip), Owner: "serve", Database: "opl_serve",
+		SchemaOwnerRole: "opl_serve_owner", WriterRole: "opl_serve_writer", RuntimeRole: "opl_serve_runtime",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = h.Close(context.Background()) })
+	source, err := migrations.Source()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Install(ctx, h.OwnerDSN, h.DatabaseName(), source); err != nil {
+		t.Fatal(err)
+	}
+	open := func() *sql.DB {
+		t.Helper()
+		db, err := h.Open(ctx, h.RuntimeDSN, h.DatabaseName())
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = db.Close() })
+		return db
+	}
+	db := open()
+	commandFor := func(workspace, id, app string, gateway bool) *api.RuntimeDeployCommand {
+		command := executionCommand(t)
+		command.WorkspaceId, command.DeploymentId, command.RuntimeInstanceId = workspace, id, "rt_"+id
+		command.DeploymentDescriptor.ApplicationRevision.ApplicationId = app
+		command.DeploymentDescriptor.ApplicationRevision.Version = id
+		command.DeploymentDescriptor.ApplicationRevision.Credentials = []*api.WorkspaceApplicationCredential{
+			{Name: "admin-password", Kind: api.WorkspaceApplicationCredentialKindEnum_WORKSPACE_APPLICATION_CREDENTIAL_KIND_ENUM_WORKSPACE_ADMIN_PASSWORD, Target: "/run/secrets/password", Username: proto.String("app-admin")},
+			{Name: "session-secret", Kind: api.WorkspaceApplicationCredentialKindEnum_WORKSPACE_APPLICATION_CREDENTIAL_KIND_ENUM_WORKSPACE_SESSION_SECRET, Target: "/run/secrets/session"},
+		}
+		if gateway {
+			command.DeploymentDescriptor.ApplicationRevision.Credentials = append(command.DeploymentDescriptor.ApplicationRevision.Credentials,
+				&api.WorkspaceApplicationCredential{Name: "gateway", Kind: api.WorkspaceApplicationCredentialKindEnum_WORKSPACE_APPLICATION_CREDENTIAL_KIND_ENUM_GATEWAY_KEY, Target: "/run/secrets/gateway"})
+			command.ManagedKeyBinding = &api.RuntimeManagedKeyBinding{SecretBindingId: "binding-" + id, SecretVersion: "0123456789abcdef"}
+		}
+		raw, err := publicjson.Marshal(command.DeploymentDescriptor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		command.DeploymentDescriptorDigest = fmt.Sprintf("sha256:%x", sha256.Sum256(raw))
+		return command
+	}
+	seed := func(command *api.RuntimeDeployCommand, previous string) {
+		t.Helper()
+		operation := "operation-" + command.DeploymentId
+		if _, err := db.ExecContext(ctx, `INSERT INTO serve.operations(id,actor_id,kind,resource_id,stage,request_id,accepted_input) VALUES($1,'actor','runtime_deploy',$2,'queued','request','{}')`, operation, command.WorkspaceId); err != nil {
+			t.Fatal(err)
+		}
+		var prior any
+		if previous != "" {
+			prior = previous
+		}
+		if _, err := db.ExecContext(ctx, `INSERT INTO serve.agent_deployments(id,workspace_id,capability_version_id,artifact_digest,reference_claim_id,runtime_instance_id,previous_deployment_id,operation_id,data_compatibility,execution_epoch) VALUES($1,$2,'capability',$3,'claim',$4,$5,$6,'{}',1)`, command.DeploymentId, command.WorkspaceId, command.DeploymentDescriptor.Artifact.Digest, command.RuntimeInstanceId, prior, operation); err != nil {
+			t.Fatal(err)
+		}
+		descriptor, err := publicjson.Marshal(command.DeploymentDescriptor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.ExecContext(ctx, `INSERT INTO serve.agent_runtime_instances(id,workspace_id,deployment_id,artifact_digest,fabric_resource_set_id,data_attachment_contract,execution_epoch,deployment_descriptor,deployment_descriptor_digest,deployment_descriptor_object_ref) VALUES($1,$2,$3,$4,'resources','{}',1,$5,$6,'descriptor')`, command.RuntimeInstanceId, command.WorkspaceId, command.DeploymentId, command.DeploymentDescriptor.Artifact.Digest, descriptor, command.DeploymentDescriptorDigest); err != nil {
+			t.Fatal(err)
+		}
+	}
+	freeze := func(command *api.RuntimeDeployCommand) {
+		t.Helper()
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+		if err := lockWorkspace(ctx, tx, command.WorkspaceId); err != nil {
+			t.Fatal(err)
+		}
+		if err := recordStartActionTx(ctx, tx, command); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	selected := func(command *api.RuntimeDeployCommand) {
+		t.Helper()
+		if _, err := db.ExecContext(ctx, `UPDATE serve.agent_deployments SET status='superseded',activated_at=now() WHERE id=$1`, command.DeploymentId); err != nil {
+			t.Fatal(err)
+		}
+	}
+	apply := func(connection *sql.DB, command *api.RuntimeDeployCommand) contracts.WorkspaceApplicationRuntimeInput {
+		t.Helper()
+		executor := &fakeExecutor{observation: readyObservation(t, command, nil)}
+		adapter := &agentExecutionAdapter{Executor: executor}
+		target := executionTargetFixture(command)
+		target.CredentialVersion, err = runtimeCredentialVersion(ctx, connection, command)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := adapter.Start(ctx, command, target); err != nil {
+			t.Fatalf("start with frozen credentials: %v", err)
+		}
+		if err := contracts.ValidateWorkspaceApplicationRuntimeConfiguration(executor.input); err != nil {
+			t.Fatal(err)
+		}
+		return executor.input
+	}
+	legacyStart := func(command *api.RuntimeDeployCommand) {
+		t.Helper()
+		if _, err := db.ExecContext(ctx, `INSERT INTO serve.agent_runtime_actions(id,runtime_instance_id,command_id,action,expected_deployment_id,input_snapshot,observation_result) VALUES($1,$2,$1,'start',$3,$4,'rejected')`, stableID("start_", command.DeploymentId), command.RuntimeInstanceId, command.DeploymentId, deployBytes(command)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Run("delivery_uses_its_transaction_with_one_pool_connection", func(t *testing.T) {
+		command := commandFor("workspace-one-connection", "single-connection", "knowledge-app", false)
+		command.CapabilityVersionId = "capability"
+		command.Context = &api.CallContext{ActorId: "actor", RequestId: "single-connection", Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant"}}}}
+		seed(command, "")
+		if _, err := db.ExecContext(t.Context(), `UPDATE serve.agent_runtime_instances SET fabric_resource_set_id=$2,data_attachment_contract=jsonb_build_object('attachmentId',$3::text),deployment_descriptor_object_ref=$4 WHERE id=$1`, command.RuntimeInstanceId, command.ResourceSetId, command.DataAttachmentId, command.DeploymentDescriptorObjectRef); err != nil {
+			t.Fatal(err)
+		}
+		freeze(command)
+		store, err := ownerstore.New(db, "serve")
+		if err != nil {
+			t.Fatal(err)
+		}
+		target := executionTargetFixture(command)
+		service := &Service{DB: db, Store: store, Resources: &executionResources{readback: &api.ResourceReadback{ResourceSetId: command.ResourceSetId, WorkspaceId: command.WorkspaceId, Outcome: api.Observation_OBSERVATION_CONFIRMED, ExecutionResources: target.Binding, ApplicationPlacement: target.Placement}}}
+		t.Setenv("OPL_K8S_NAMESPACE", "")
+		t.Setenv("OPL_FABRIC_APPLICATION_URL", "http://127.0.0.1:1")
+		if err := configureAgentExecution(service, RouteOrigin{}); err != nil {
+			t.Fatal(err)
+		}
+		executor := &fakeExecutor{observation: readyObservation(t, command, nil)}
+		service.Runtime.(*agentExecutionAdapter).Executor = executor
+		previousLimit := db.Stats().MaxOpenConnections
+		db.SetMaxOpenConns(1)
+		defer db.SetMaxOpenConns(previousLimit)
+		ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+		defer cancel()
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+		if err := lockWorkspace(ctx, tx, command.WorkspaceId); err != nil {
+			t.Fatal(err)
+		}
+		if err := service.observeAndFinishDeliveryTx(ctx, tx, command, true); err != nil {
+			t.Fatalf("delivery could not use its existing transaction: %v", err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		if executor.calls != 2 || executor.input.Configuration.CredentialVersion == "" {
+			t.Fatal("start and observation did not use the frozen credential identity")
+		}
+		var events int
+		if err := db.QueryRowContext(t.Context(), `SELECT count(*) FROM serve.outbox_events WHERE aggregate_id=$1`, command.DeploymentId).Scan(&events); err != nil || events != 1 {
+			t.Fatalf("delivery did not commit its readiness event: events=%d error=%v", events, err)
+		}
+	})
+	t.Run("first_without_gateway_restart_upgrade_and_reinstall", func(t *testing.T) {
+		first := commandFor("workspace-independent", "independent-first", "knowledge-app", false)
+		seed(first, "")
+		freeze(first)
+		input := apply(db, first)
+		version := input.Configuration.CredentialVersion
+		if version != stableID("credential_", first.WorkspaceId, "knowledge-app", "operation-"+first.DeploymentId) || len(input.SecretBindings) != 0 || first.ManagedKeyBinding != nil {
+			t.Fatal("initial independent credentials were not frozen without Gateway")
+		}
+		var recordedVersion string
+		if err := db.QueryRowContext(ctx, `SELECT input_snapshot->>'credentialVersion' FROM serve.agent_runtime_actions WHERE command_id=$1`, stableID("start_", first.DeploymentId)).Scan(&recordedVersion); err != nil || recordedVersion != version {
+			t.Fatalf("credential version was not persisted: %v", err)
+		}
+		restarted := open()
+		freeze(first)
+		if got := apply(restarted, first); got.ConfigurationDigest != input.ConfigurationDigest {
+			t.Fatal("restart or replay changed the frozen configuration")
+		}
+		selected(first)
+		// A newer candidate of the same application was never selected.
+		candidate := commandFor(first.WorkspaceId, "independent-candidate", "knowledge-app", false)
+		seed(candidate, "")
+		freeze(candidate)
+		upgrade := commandFor(first.WorkspaceId, "independent-upgrade", "knowledge-app", false)
+		seed(upgrade, first.DeploymentId)
+		freeze(upgrade)
+		if got := apply(restarted, upgrade); got.Configuration.CredentialVersion != version {
+			t.Fatal("same application upgrade rotated credentials")
+		}
+		selected(upgrade)
+		other := commandFor(first.WorkspaceId, "independent-other-app", "other-app", false)
+		seed(other, upgrade.DeploymentId)
+		freeze(other)
+		if got := apply(restarted, other); got.Configuration.CredentialVersion == version {
+			t.Fatal("unrelated application inherited credentials")
+		}
+		selected(other)
+		reinstall := commandFor(first.WorkspaceId, "independent-reinstall", "knowledge-app", false)
+		seed(reinstall, other.DeploymentId)
+		freeze(reinstall)
+		if got := apply(open(), reinstall); got.Configuration.CredentialVersion != version {
+			t.Fatal("reinstall lost the selected application lineage")
+		}
+	})
+	t.Run("retained_gateway_password_survives_upgrade_and_binding_change", func(t *testing.T) {
+		first := commandFor("workspace-retained", "retained-first", "knowledge-app", true)
+		seed(first, "")
+		legacyStart(first)
+		selected(first)
+		original := first.GetManagedKeyBinding().GetSecretVersion()
+		if got := apply(open(), first); got.Configuration.CredentialVersion != original {
+			t.Fatal("retained Gateway deployment changed its password generation")
+		}
+		upgrade := commandFor(first.WorkspaceId, "retained-upgrade", "knowledge-app", true)
+		upgrade.ManagedKeyBinding.SecretVersion = "fedcba9876543210"
+		seed(upgrade, first.DeploymentId)
+		freeze(upgrade)
+		input := apply(open(), upgrade)
+		if input.Configuration.CredentialVersion != original || input.SecretBindings[0].Version != upgrade.ManagedKeyBinding.SecretVersion {
+			t.Fatal("password generation and confirmed Gateway binding were conflated")
+		}
+		unbound := proto.Clone(upgrade).(*api.RuntimeDeployCommand)
+		unbound.ManagedKeyBinding = nil
+		executor := &fakeExecutor{}
+		adapter := &agentExecutionAdapter{Executor: executor}
+		if _, err := adapter.Start(ctx, unbound, executionTargetFixture(unbound)); status.Code(err) != codes.FailedPrecondition || executor.calls != 0 {
+			t.Fatal("declared Gateway executed without its binding")
+		}
+	})
+	t.Run("previously_refused_start_acquires_owner_version_on_retry", func(t *testing.T) {
+		command := commandFor("workspace-retry", "retry-first", "knowledge-app", false)
+		seed(command, "")
+		legacyStart(command)
+		freeze(command)
+		first := apply(open(), command)
+		freeze(command)
+		if next := apply(open(), command); next.ConfigurationDigest != first.ConfigurationDigest {
+			t.Fatal("recovered start did not retain its credential identity")
+		}
+	})
 }

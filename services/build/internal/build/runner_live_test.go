@@ -4,6 +4,7 @@ package build
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -21,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
@@ -33,6 +35,9 @@ import (
 // This opt-in test owns disposable loopback-only containers. It never contacts
 // an instance, publishes to a public registry or uses customer resources.
 func TestLivePackageBuildAndRestartReadback(t *testing.T) {
+	if os.Getenv("OPL_BUILD_TEST_HANDOFF_ONLY") == "1" && strings.TrimSpace(os.Getenv("OPL_BUILD_TEST_HANDOFF")) == "" {
+		t.Fatal("OPL_BUILD_TEST_HANDOFF_ONLY=1 requires OPL_BUILD_TEST_HANDOFF")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
 	root := t.TempDir()
@@ -60,6 +65,7 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	regName := "opl-build-test-reg-" + suffix
 	bkName := "opl-build-test-kit-" + suffix
 	registry := "127.0.0.1:" + rp
+	var preserveRegistry atomic.Bool
 	fixturePrefix := registry + "/fixtures"
 	// Build resolves each User's destination from the authenticated owner. The
 	// default harness explicitly binds Users to this disposable registry. An
@@ -69,7 +75,11 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 		t.Setenv("OPL_BUILD_TEST_REGISTRY_HOST", registry)
 	}
 	docker("run", "-d", "--name", regName, "-p", registry+":"+rp, "-p", "127.0.0.1:"+bp+":"+bp, "-e", "REGISTRY_HTTP_ADDR=0.0.0.0:"+rp, "registry:2")
-	t.Cleanup(func() { exec.Command("docker", "rm", "-fv", regName).Run() })
+	t.Cleanup(func() {
+		if !preserveRegistry.Load() {
+			_ = exec.Command("docker", "rm", "-fv", regName).Run()
+		}
+	})
 	cfg := filepath.Join(root, "buildkit.toml")
 	os.WriteFile(cfg, []byte(fmt.Sprintf("[registry.%q]\n  http = true\n", registry)), 0600)
 	docker("run", "-d", "--privileged", "--name", bkName, "--network", "container:"+regName, "--mount", "type=bind,src="+cfg+",dst=/etc/buildkit/buildkitd.toml,readonly", "moby/buildkit:buildx-stable-1", "--addr", "tcp://0.0.0.0:"+bp)
@@ -151,7 +161,22 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	if !ok || !digestPattern.MatchString(frontDigest) {
 		t.Fatal("digest-pinned frontend required")
 	}
-	p := &api.ImagePlatform{Os: api.ImagePlatformOsEnum_IMAGE_PLATFORM_OS_ENUM_LINUX, Architecture: api.ImagePlatformArchitectureEnum_IMAGE_PLATFORM_ARCHITECTURE_ENUM_ARM64}
+	targetPlatform := os.Getenv("OPL_BUILD_TEST_PLATFORM")
+	if targetPlatform == "" {
+		targetPlatform = "linux/arm64"
+	}
+	if strings.TrimSpace(os.Getenv("OPL_BUILD_TEST_HANDOFF")) != "" && strings.TrimSpace(os.Getenv("OPL_RUNTIME_IMAGE")) == "" {
+		t.Fatal("OPL_BUILD_TEST_HANDOFF requires a digest-pinned runnable OPL_RUNTIME_IMAGE; the default scratch fixture cannot serve an Agent response")
+	}
+	platformParts := strings.Split(targetPlatform, "/")
+	if len(platformParts) != 2 || platformParts[0] != "linux" || (platformParts[1] != "amd64" && platformParts[1] != "arm64") {
+		t.Fatal("OPL_BUILD_TEST_PLATFORM must be linux/amd64 or linux/arm64")
+	}
+	architecture := api.ImagePlatformArchitectureEnum_IMAGE_PLATFORM_ARCHITECTURE_ENUM_ARM64
+	if platformParts[1] == "amd64" {
+		architecture = api.ImagePlatformArchitectureEnum_IMAGE_PLATFORM_ARCHITECTURE_ENUM_AMD64
+	}
+	p := &api.ImagePlatform{Os: api.ImagePlatformOsEnum_IMAGE_PLATFORM_OS_ENUM_LINUX, Architecture: architecture}
 	// Fixtures live on the loopback registry, which is reachable only over http.
 	// The immutable output may be written to a real https registry instead, so the
 	// transport is decided per host rather than by one global switch.
@@ -175,16 +200,30 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 		return &api.ArtifactReference{Repository: fixturePrefix + "/" + name, Digest: m.Digest, Platform: p}
 	}
 	var runtime *api.ArtifactReference
+	var upstreamRuntime *api.ArtifactReference
 	if ref := os.Getenv("OPL_RUNTIME_IMAGE"); ref != "" {
 		repo, d, ok := strings.Cut(ref, "@")
 		if !ok || !digestPattern.MatchString(d) {
 			t.Fatal("OPL_RUNTIME_IMAGE must be digest-pinned")
 		}
 		runtime = &api.ArtifactReference{Repository: repo, Digest: d, Platform: p}
+		upstreamRuntime = runtime
+		if os.Getenv("OPL_BUILD_TEST_RUNTIME_LOCAL") == "1" {
+			mirrorRepo := fixturePrefix + "/runtime"
+			docker("tag", ref, mirrorRepo+":source")
+			pushed := docker("push", mirrorRepo+":source")
+			match := regexp.MustCompile(`(?:digest: )(sha256:[a-f0-9]{64})`).FindStringSubmatch(pushed)
+			if len(match) != 2 || match[1] != d {
+				t.Fatal("local Runtime mirror did not preserve the exact upstream manifest digest")
+			}
+			runtime = &api.ArtifactReference{Repository: mirrorRepo, Digest: d, Platform: p}
+			t.Setenv("OPL_RUNTIME_IMAGE", mirrorRepo+"@"+d)
+			t.Logf("RUNTIME_LOCAL_MIRROR source=%s mirror=%s@%s", ref, mirrorRepo, d)
+		}
 	} else {
 		runtime = seed("runtime", "runtime.txt", "approved runtime\n")
 	}
-	webui := buildCloudAgentWebUI(t, docker, fixturePrefix)
+	webui := buildCloudAgentWebUI(t, docker, fixturePrefix, targetPlatform, p)
 	schemaBytes, err := os.ReadFile("../../../../docs/spec/target/contracts/publisher-contract.schema.json")
 	if err != nil {
 		t.Fatal(err)
@@ -195,27 +234,40 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	}
 	runtimeContract := &api.RuntimePublisherContract{}
 	webuiContract := &api.WebuiPublisherContract{}
-	if err = publicjson.Unmarshal(schema.Examples[0], runtimeContract); err != nil {
+	runtimeContractBytes := schema.Examples[0]
+	runtimeContractPath := strings.TrimSpace(os.Getenv("OPL_BUILD_TEST_RUNTIME_CONTRACT"))
+	if runtimeContractPath != "" {
+		runtimeContractBytes, err = os.ReadFile(runtimeContractPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = publicjson.Unmarshal(runtimeContractBytes, runtimeContract); err != nil {
 		t.Fatal(err)
 	}
 	if err = publicjson.Unmarshal(schema.Examples[1], webuiContract); err != nil {
 		t.Fatal(err)
 	}
+	if runtimeContractPath != "" && !proto.Equal(runtimeContract.Image, upstreamRuntime) {
+		t.Fatal("Runtime contract does not bind the selected OPL_RUNTIME_IMAGE and platform")
+	}
 	runtimeContract.Image = runtime
 	webuiContract.Image = webui
 	runtimeContract.ApplicationRevisionTemplate.Image = runtime.Repository + "@" + runtime.Digest
-	runtimeContract.ApplicationRevisionTemplate.Platform = "linux/arm64"
+	runtimeContract.ApplicationRevisionTemplate.Platform = targetPlatform
 	recipeContract := runtimeContract.BuildRecipe
 	recipeContract.Frontend = &api.ArtifactReference{Repository: frontRepo, Digest: frontDigest, Platform: p}
 	recipeContract.OutputPlatform = p
-	packageSourceRoot := "src"
-	if packagePath := os.Getenv("OPL_BUILD_TEST_PACKAGE"); packagePath != "" {
-		packageSourceRoot = "candidate"
+	if runtimeContractPath == "" {
+		packageSourceRoot := "src"
+		if packagePath := os.Getenv("OPL_BUILD_TEST_PACKAGE"); packagePath != "" {
+			packageSourceRoot = "candidate"
+		}
+		recipeContract.PackageInput.SourceRoot = packageSourceRoot
+		recipeContract.PackageInput.TargetPath = "/agent"
+		recipeContract.WebuiInput.SourcePath = "/web"
+		recipeContract.WebuiInput.TargetPath = "/web"
 	}
-	recipeContract.PackageInput.SourceRoot = packageSourceRoot
-	recipeContract.PackageInput.TargetPath = "/agent"
-	recipeContract.WebuiInput.SourcePath = "/web"
-	recipeContract.WebuiInput.TargetPath = "/web"
 	recipeContract.Recipe.Repository = fixturePrefix + "/recipe"
 	input := &api.BuildInputSnapshot{RuntimeVersionId: "runtime-live", WebuiVersionId: "webui-live", RuntimeArtifact: runtime, WebuiArtifact: webui, RuntimeContract: runtimeContract, WebuiContract: webuiContract, RuntimeContractReference: &api.PublisherContractReference{Kind: api.PublisherContractReferenceKindEnum_PUBLISHER_CONTRACT_REFERENCE_KIND_ENUM_RUNTIME}, WebuiContractReference: &api.PublisherContractReference{Kind: api.PublisherContractReferenceKindEnum_PUBLISHER_CONTRACT_REFERENCE_KIND_ENUM_WEBUI}}
 	var pkg []byte
@@ -228,7 +280,7 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 		pkg = packageZIP(t, zipEntry{"manifest.json", `{"name":"live-package"}`, 0644}, zipEntry{"src/payload.txt", "immutable package payload\n", 0644})
 	}
 	dsn := startLivePostgres(t, ctx)
-	object, storageURL, storageToken, packageID, packageVersionID, capability, capabilityAddr, identity := uploadLivePackage(t, ctx, dsn, pkg)
+	object, storageURL, storageToken, packageID, packageVersionID, packageVersionStatus, capability, capabilityAddr, identity := uploadLivePackage(t, ctx, dsn, pkg)
 	input.PackageObject = object
 	r.StorageURL = storageURL
 	r.StorageToken = storageToken
@@ -274,7 +326,19 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("BUILD_INPUT_SNAPSHOT package_object=%s/%s package_sha256=%s runtime=%s@%s webui=%s@%s recipe=%s@%s snapshot=%s", input.PackageObject.StorageObjectId, input.PackageObject.VersionId, input.PackageObject.Sha256, input.RuntimeArtifact.Repository, input.RuntimeArtifact.Digest, input.WebuiArtifact.Repository, input.WebuiArtifact.Digest, input.RuntimeContract.BuildRecipe.Recipe.Repository, input.RuntimeContract.BuildRecipe.Recipe.Digest, input.SnapshotDigest)
-	verifyOwnerChain(t, ctx, dsn, capability, capabilityAddr, r, input, identity)
+	handoff := verifyOwnerChain(t, ctx, dsn, capability, capabilityAddr, r, input, identity)
+	if path := strings.TrimSpace(os.Getenv("OPL_BUILD_TEST_HANDOFF")); path != "" {
+		handoff.PackageVersionStatus = packageVersionStatus
+		writeLiveBuildHandoff(t, path, registry, regName, handoff)
+		preserveRegistry.Store(true)
+		t.Logf("BUILD_HANDOFF path=%s registry=%s container=%s capability=%s artifact=%s@%s descriptor=%s", path, registry, regName, handoff.CapabilityVersion.GetId(), handoff.CapabilityVersion.GetArtifact().GetRepository(), handoff.CapabilityVersion.GetArtifact().GetDigest(), handoff.CapabilityVersion.GetDeploymentDescriptorDigest())
+		if os.Getenv("OPL_BUILD_TEST_HANDOFF_ONLY") == "1" {
+			return
+		}
+	}
+	// Owner admission populated publisher and catalog identities in this fixture.
+	// The independent Runner case freezes those final inputs for its own Build.
+	input.SnapshotDigest = digest(BuildInputDigestBytes(input))
 	jobID := "build_" + strings.Repeat("2", 32)
 	binding, err := api.NewGatewayCoordinationClient(identityConn(t, identity.address, owneridentity.Build.Service())).ReadUserExternalIdentity(ctx, &api.UserExternalBindingReadRequest{Context: identity.call("runner-destination", "tenant-live"), ActorId: "101"})
 	if err != nil {
@@ -296,18 +360,36 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	// Export the composed inputs we assert below. Exporting the entire upstream
 	// Runtime also copies its dependency tree through the host filesystem and can
 	// exhaust the test deadline without adding evidence about these inputs.
-	os.WriteFile(filepath.Join(export, "Dockerfile"), []byte("FROM "+repository+"@"+result.Manifest.Digest+" AS built\nFROM scratch\nCOPY --from=built /agent /agent\nCOPY --from=built /web /web\n"), 0644)
+	os.WriteFile(filepath.Join(export, "Dockerfile"), []byte("FROM "+repository+"@"+result.Manifest.Digest+" AS built\nFROM scratch\nCOPY --from=built "+recipeContract.PackageInput.TargetPath+" /package\nCOPY --from=built "+recipeContract.WebuiInput.TargetPath+" /web\n"), 0644)
 	outDir := filepath.Join(root, "output")
-	bx("build", "--builder", "isolated", "--platform", "linux/arm64", "--output", "type=local,dest="+outDir, export)
-	packageOutput := "agent/payload.txt"
-	wantPackage := "immutable package payload\n"
-	if os.Getenv("OPL_BUILD_TEST_PACKAGE") != "" {
-		packageOutput = "agent/agent/agent-pack.json"
-		wantPackage = ""
+	bx("build", "--builder", "isolated", "--platform", targetPlatform, "--output", "type=local,dest="+outDir, export)
+	archive, e := zip.NewReader(bytes.NewReader(pkg), int64(len(pkg)))
+	if e != nil {
+		t.Fatal(e)
 	}
-	payload, e := os.ReadFile(filepath.Join(outDir, packageOutput))
-	if e != nil || (wantPackage != "" && string(payload) != wantPackage) {
-		t.Fatalf("output package: %q %v", payload, e)
+	prefix := recipeContract.PackageInput.SourceRoot + "/"
+	verifiedFiles := 0
+	for _, file := range archive.File {
+		if file.FileInfo().IsDir() || !strings.HasPrefix(file.Name, prefix) {
+			continue
+		}
+		source, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := io.ReadAll(source)
+		source.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual, err := os.ReadFile(filepath.Join(outDir, "package", filepath.FromSlash(strings.TrimPrefix(file.Name, prefix))))
+		if err != nil || !bytes.Equal(actual, want) {
+			t.Fatalf("output Package file %s differs from uploaded bytes: %v", file.Name, err)
+		}
+		verifiedFiles++
+	}
+	if verifiedFiles == 0 {
+		t.Fatal("selected Package source root contains no verified file")
 	}
 	html, e := os.ReadFile(filepath.Join(outDir, "web/index.html"))
 	if e != nil || !bytes.Contains(html, []byte(`data-opl-cloud-agent-webui="v1"`)) || bytes.Contains(html, []byte("<h1>Cloud WebUI</h1>")) {
@@ -342,25 +424,100 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	verifyPersistedRecovery(t, ctx, &reopened, input, repository, jobID, result.Manifest)
 }
 
-func buildCloudAgentWebUI(t *testing.T, docker func(...string) string, registry string) *api.ArtifactReference {
+func TestLiveBuildHandoffRoundTrip(t *testing.T) {
+	artifact := &api.BuildArtifactReadback{
+		BuildJobId: "build-handoff", ArtifactReceiptId: "artifact-receipt",
+		Outcome:             api.Observation_OBSERVATION_CONFIRMED,
+		RegistrationContext: &api.CallContext{AcceptedOperationGrantId: proto.String("test-grant"), SessionId: proto.String("test-session")},
+	}
+	version := &api.CapabilityVersion{Id: "capability-handoff", Provenance: api.CapabilityVersionProvenanceEnum_CAPABILITY_VERSION_PROVENANCE_ENUM_BUILD, Status: api.CapabilityVersionStatusEnum_CAPABILITY_VERSION_STATUS_ENUM_READY}
+	path := filepath.Join(t.TempDir(), "build-handoff.json")
+	writeLiveBuildHandoff(t, path, "127.0.0.1:5000", "test-registry", liveBuildHandoff{CapabilityVersion: version, BuildArtifact: artifact, PackageVersionStatus: "uploaded"})
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		SchemaVersion     int             `json:"schemaVersion"`
+		CapabilityVersion json.RawMessage `json:"capabilityVersion"`
+		BuildArtifact     json.RawMessage `json:"buildArtifact"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatal(err)
+	}
+	gotArtifact, gotVersion := &api.BuildArtifactReadback{}, &api.CapabilityVersion{}
+	if err := protojson.Unmarshal(payload.BuildArtifact, gotArtifact); err != nil {
+		t.Fatal(err)
+	}
+	if gotArtifact.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED {
+		t.Fatalf("handoff lost typed observation: %s", gotArtifact.GetOutcome())
+	}
+	if payload.SchemaVersion != 2 {
+		t.Fatalf("handoff schema version = %d, want 2", payload.SchemaVersion)
+	}
+	if err := publicjson.Unmarshal(payload.CapabilityVersion, gotVersion); err != nil || !proto.Equal(version, gotVersion) {
+		t.Fatalf("public CapabilityVersion roundtrip failed: %v", err)
+	}
+	wantArtifact := proto.Clone(artifact).(*api.BuildArtifactReadback)
+	wantArtifact.RegistrationContext = nil
+	if !proto.Equal(wantArtifact, gotArtifact) || bytes.Contains(raw, []byte("test-grant")) || bytes.Contains(raw, []byte("test-session")) {
+		t.Fatal("handoff changed artifact facts or leaked registration authorization")
+	}
+	if artifact.GetRegistrationContext().GetAcceptedOperationGrantId() != "test-grant" || artifact.GetRegistrationContext().GetSessionId() != "test-session" {
+		t.Fatal("handoff serialization mutated the source readback")
+	}
+}
+
+func writeLiveBuildHandoff(t *testing.T, path, registry, registryContainer string, handoff liveBuildHandoff) {
+	t.Helper()
+	capabilityVersion, err := publicjson.Marshal(handoff.CapabilityVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Internal observation belongs to the protobuf wire format. Registration
+	// authorization is transient and must never cross this handoff boundary.
+	readback := proto.Clone(handoff.BuildArtifact).(*api.BuildArtifactReadback)
+	readback.RegistrationContext = nil
+	artifact, err := protojson.Marshal(readback)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := struct {
+		SchemaVersion        int             `json:"schemaVersion"`
+		RegistryHost         string          `json:"registryHost"`
+		RegistryContainer    string          `json:"registryContainer"`
+		CapabilityVersion    json.RawMessage `json:"capabilityVersion"`
+		BuildArtifact        json.RawMessage `json:"buildArtifact"`
+		PackageVersionStatus string          `json:"packageVersionStatus"`
+	}{2, registry, registryContainer, capabilityVersion, artifact, handoff.PackageVersionStatus}
+	raw, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(path, append(raw, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func buildCloudAgentWebUI(t *testing.T, docker func(...string) string, registry, targetPlatform string, platform *api.ImagePlatform) *api.ArtifactReference {
 	t.Helper()
 	if ref := os.Getenv("OPL_WEBUI_IMAGE"); ref != "" {
 		repo, d, ok := strings.Cut(ref, "@")
 		if !ok || !digestPattern.MatchString(d) {
 			t.Fatal("OPL_WEBUI_IMAGE must be digest-pinned")
 		}
-		return &api.ArtifactReference{Repository: repo, Digest: d, Platform: &api.ImagePlatform{Os: api.ImagePlatformOsEnum_IMAGE_PLATFORM_OS_ENUM_LINUX, Architecture: api.ImagePlatformArchitectureEnum_IMAGE_PLATFORM_ARCHITECTURE_ENUM_ARM64}}
+		return &api.ArtifactReference{Repository: repo, Digest: d, Platform: platform}
 	}
 	repo := registry + "/cloud-agent-webui"
 	tag := repo + ":source"
 	webuiDir := filepath.Join("..", "..", "..", "..", "webui", "cloud-agent")
-	docker("build", "--platform", "linux/arm64", "--provenance=false", "--sbom=false", "--tag", tag, "-f", filepath.Join(webuiDir, "Dockerfile"), webuiDir)
+	docker("build", "--platform", targetPlatform, "--provenance=false", "--sbom=false", "--tag", tag, "-f", filepath.Join(webuiDir, "Dockerfile"), webuiDir)
 	pushed := docker("push", tag)
 	digestValue := regexp.MustCompile(`(?:digest: )(?P<digest>sha256:[a-f0-9]{64})`).FindStringSubmatch(pushed)
 	if len(digestValue) != 2 {
 		t.Fatalf("Cloud WebUI image push did not return an immutable digest: %s", pushed)
 	}
-	return &api.ArtifactReference{Repository: repo, Digest: digestValue[1], Platform: &api.ImagePlatform{Os: api.ImagePlatformOsEnum_IMAGE_PLATFORM_OS_ENUM_LINUX, Architecture: api.ImagePlatformArchitectureEnum_IMAGE_PLATFORM_ARCHITECTURE_ENUM_ARM64}}
+	return &api.ArtifactReference{Repository: repo, Digest: digestValue[1], Platform: platform}
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

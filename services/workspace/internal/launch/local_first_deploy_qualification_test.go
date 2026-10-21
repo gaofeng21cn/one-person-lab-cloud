@@ -13,6 +13,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -25,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lib/pq"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -50,15 +52,18 @@ import (
 
 const qualificationNodeImage = "node:22-bookworm-slim@sha256:d649c27dae7ba0137b3cef5dd75baa422c08dc3d9e3fc0c23dfb172dc3cc6436"
 
-// This is a real first application delivery on an isolated Linux host. Only the
-// external login backend and the already-admitted Build artifact are fixtures.
-// CloudIdentity, Catalog, Ledger, Capability, Workspace, Serve and Fabric use
-// their real handlers, databases and authenticated transport. Fabric and Serve
-// are the production executables; quota, OCI image, container, mount, HTTP
-// access, failure observation and recovery are actual host operations.
-// It deliberately does not claim BuildKit, Gateway, paid activation or a
-// production deployment. The Build fixture is bound to a real immutable image
-// and the exact executable application entrypoint in its admitted descriptor.
+// This is a real first application delivery on an isolated Linux host. By
+// default, only the external login backend and the admitted Build fixture are
+// fixtures. With OPL_LOCAL_FIRST_BUILD_HANDOFF, the test consumes the exact
+// PackageVersion/Build/CapabilityVersion readback emitted by the live Build
+// owner test and keeps the loopback registry alive for this run. CloudIdentity,
+// Catalog, Ledger, Capability, Workspace, Serve and Fabric use their real
+// handlers, databases and authenticated transport. Fabric and Serve are the
+// production executables; quota, OCI image, container, mount, HTTP access,
+// failure observation and recovery are actual host operations. The handoff
+// mode requires a digest-pinned runnable Runtime Release and validates a real
+// Agent response; it does not claim Gateway, paid activation or production
+// deployment.
 func TestLocalFirstApplicationDeploymentQualification(t *testing.T) {
 	if os.Getenv("OPL_LOCAL_FIRST_DEPLOY_QUALIFICATION") != "1" {
 		t.Skip("opt in with OPL_LOCAL_FIRST_DEPLOY_QUALIFICATION=1 on the isolated Linux qualification host")
@@ -84,17 +89,21 @@ func TestLocalFirstApplicationDeploymentQualification(t *testing.T) {
 		t.Fatalf("real quota filesystem is not mounted: %v %s", err, out)
 	}
 	qDocker(t, ctx, "info", "--format", "{{.ServerVersion}}")
-	platform := strings.TrimSpace(string(qDocker(t, ctx, "image", "inspect", "--format", "{{.Os}}/{{.Architecture}}", qualificationNodeImage)))
-	if platform != "linux/amd64" {
-		t.Fatalf("qualification image platform=%q", platform)
+	handoffPath := strings.TrimSpace(os.Getenv("OPL_LOCAL_FIRST_BUILD_HANDOFF"))
+	platform := "linux/amd64"
+	if handoffPath == "" {
+		observedPlatform := strings.TrimSpace(string(qDocker(t, ctx, "image", "inspect", "--format", "{{.Os}}/{{.Architecture}}", qualificationNodeImage)))
+		if observedPlatform != platform {
+			t.Fatalf("qualification image platform=%q", observedPlatform)
+		}
+		canonicalImage := "node@" + strings.Split(qualificationNodeImage, "@")[1]
+		if string(qDocker(t, ctx, "image", "inspect", "--format", "{{.Id}}", canonicalImage)) != string(qDocker(t, ctx, "image", "inspect", "--format", "{{.Id}}", qualificationNodeImage)) {
+			t.Fatal("canonical application digest does not identify the pre-pulled immutable image")
+		}
 	}
 	dsn := os.Getenv("OPL_OWNER_MIGRATION_TEST_ADMIN_DSN")
 	if dsn == "" || os.Getenv("OPL_POSTGRES_TESTS") != "1" {
 		t.Fatal("isolated PostgreSQL admin DSN and OPL_POSTGRES_TESTS=1 are required")
-	}
-	canonicalImage := "node@" + strings.Split(qualificationNodeImage, "@")[1]
-	if string(qDocker(t, ctx, "image", "inspect", "--format", "{{.Id}}", canonicalImage)) != string(qDocker(t, ctx, "image", "inspect", "--format", "{{.Id}}", qualificationNodeImage)) {
-		t.Fatal("canonical application digest does not identify the pre-pulled immutable image")
 	}
 	legacyDSN := qLegacyDatabase(t, ctx, dsn)
 	identitySource, err := identitymigrations.Source()
@@ -140,7 +149,14 @@ func TestLocalFirstApplicationDeploymentQualification(t *testing.T) {
 		t.Fatal(err)
 	}
 	capabilityDB := liveOwnerDB(t, ctx, dsn, "capability", caps)
-	version := qSeedBuildFixture(t, ctx, capabilityDB, platform)
+	version, realBuild := qSeedBuildFixture(t, ctx, capabilityDB, platform, handoffPath)
+	probeImage := qualificationNodeImage
+	if realBuild {
+		probeImage = version.GetArtifact().GetRepository() + "@" + version.GetArtifact().GetDigest()
+		// The supplied Runtime already carries Node. Verify that exact image can
+		// execute the provider's Node probe before allocating any resources.
+		qDocker(t, ctx, "run", "--rm", "--pull", "never", "--entrypoint", "node", probeImage, "--version")
+	}
 	capOwner := &capability.Service{DB: capabilityDB, Authorize: auth(owneridentity.Capability).Authorize}
 	capa := liveOwnerServer(t, owneridentity.Capability, []owneridentity.Service{owneridentity.Workspace.Service(), owneridentity.Serve.Service()}, capOwner.Register)
 	fs, err := fabricmigrations.Source()
@@ -189,19 +205,24 @@ func TestLocalFirstApplicationDeploymentQualification(t *testing.T) {
 	capConn := liveDial(t, sa, owneridentity.Capability, owneridentity.Serve, livePeerToken)
 	capOwner.ServeCommit = api.NewOwnerCommitReadbackClient(capConn)
 	capOwner.ServeUsage = api.NewClaimUsageReadbackClient(capConn)
-	secretRoot := filepath.Join(bundle, "fixture-secrets")
-	if err = os.Mkdir(secretRoot, 0700); err != nil {
+	secretRoot, err := os.MkdirTemp(bundle, "fixture-secrets-")
+	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(secretRoot); err != nil {
+			t.Errorf("remove isolated application credential store: %v", err)
+		}
+	})
 	const serveToken = "qualification-serve-http-transport-000001"
 	const serveKey = "qualification-serve-http-signature-000001"
 	profile := `{"schemaVersion":1,"profileId":"local/profile","capabilityVersion":"provider/v1","region":"local","accountBindings":[{"tenantId":"tenant-live","accountId":"qualification-account"}],"packages":[{"id":"basic","name":"Basic","available":true,"compute":{"id":"local-basic","server":"2c4g","cpu":2,"memoryGb":4,"diskGb":10,"instanceType":"local-2c4g"},"storage":{"id":"local-storage","sizeGb":10,"quotaPolicy":"linux-project"}}]}`
-	common := map[string]string{"OPL_GRPC_INSECURE_LOCAL": "1", "OPL_POSTGRES_TESTS": "1", "PGSSLMODE": "disable", "OPL_CLOUD_IDENTITY_URL": ia, "OPL_CLOUD_IDENTITY_TOKEN": livePeerToken}
+	common := map[string]string{"OPL_GRPC_INSECURE_LOCAL": "1", "OPL_POSTGRES_TESTS": "1", "PGSSLMODE": "disable", "OPL_CLOUD_IDENTITY_URL": ia, "OPL_CLOUD_IDENTITY_TOKEN": livePeerToken, "OPL_AIONUI_ADMIN_PASSWORD_SEED": "isolated-qualification-application-password-seed"}
 	fabricEnv := qEnv(common, map[string]string{
 		"DATABASE_URL": legacyDSN, "OPL_FABRIC_DATABASE_URL": fabricHarness.OwnerDSN, "FABRIC_ADDR": fh, "OPL_FABRIC_ADDR": fa, "OPL_FABRIC_PROVIDER": "local-docker",
 		"OPL_FABRIC_PEER_TOKENS": qPeers("workspace", "serve"), "OPL_RESOURCE_CATALOG_ADDR": ca, "OPL_RESOURCE_CATALOG_TOKEN": livePeerToken, "OPL_LEDGER_ADDR": listener.Addr().String(), "OPL_LEDGER_TOKEN": livePeerToken,
 		"OPL_INTERNAL_SERVICE_TOKEN": "qualification-control-transport-000001", "OPL_FABRIC_RUNNER_SERVICE_TOKEN": "qualification-runner-transport-000001", "OPL_FABRIC_CAPABILITY_KEY": "qualification-control-signature-000001", "OPL_FABRIC_SERVE_SERVICE_TOKEN": serveToken, "OPL_FABRIC_SERVE_CAPABILITY_KEY": serveKey,
-		"OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT": storageRoot, "OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT": secretRoot, "OPL_FABRIC_LOCAL_DOCKER_HOST": "127.0.0.1", "OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST": "127.0.0.1", "OPL_FABRIC_LOCAL_DOCKER_PROBE_IMAGE": qualificationNodeImage, "OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON": profile,
+		"OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT": storageRoot, "OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT": secretRoot, "OPL_FABRIC_LOCAL_DOCKER_HOST": "127.0.0.1", "OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST": "127.0.0.1", "OPL_FABRIC_LOCAL_DOCKER_PROBE_IMAGE": probeImage, "OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON": profile,
 	})
 	serveEnv := qEnv(common, map[string]string{"DATABASE_URL": serveHarness.OwnerDSN, "OPL_SERVE_ADDR": sa, "OPL_SERVE_PEER_TOKENS": qPeers("workspace", "capability", string(owneridentity.ConsoleBFF)), "OPL_CAPABILITY_ADDR": capa, "OPL_CAPABILITY_TOKEN": livePeerToken, "OPL_FABRIC_COORDINATION_ADDR": fa, "OPL_FABRIC_COORDINATION_TOKEN": livePeerToken, "OPL_FABRIC_APPLICATION_URL": "http://" + fh, "OPL_FABRIC_SERVE_SERVICE_TOKEN": serveToken, "OPL_FABRIC_SERVE_CAPABILITY_KEY": serveKey})
 	fabricProcess := qProcess(t, ctx, fabricBinary, fabricEnv, filepath.Join(bundle, "fabric.log"))
@@ -308,8 +329,13 @@ func TestLocalFirstApplicationDeploymentQualification(t *testing.T) {
 			return
 		}
 		var access api.WorkspaceAccess
-		if code != http.StatusOK || publicjson.Unmarshal(raw, &access) != nil || access.WorkspaceId != wid || access.Url != observed.AccessUrl || access.AuthenticationMode != api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_ANONYMOUS || access.GetApplicationCredentialsAvailable() {
-			t.Fatalf("real BFF access differs from current anonymous application %d %s", code, raw)
+		mode := api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_ANONYMOUS
+		credentials := version.GetDeploymentDescriptor().GetApplicationRevision().GetExposurePolicy() == api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION
+		if credentials {
+			mode = api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_APPLICATION_LOGIN
+		}
+		if code != http.StatusOK || publicjson.Unmarshal(raw, &access) != nil || access.WorkspaceId != wid || access.Url != observed.AccessUrl || access.AuthenticationMode != mode || access.GetApplicationCredentialsAvailable() != credentials {
+			t.Fatalf("real BFF access differs from declared application access %d %s", code, raw)
 		}
 	}
 	// Stop the owner processes before removing only this accepted Workspace's
@@ -322,6 +348,7 @@ func TestLocalFirstApplicationDeploymentQualification(t *testing.T) {
 		var result orderResult
 		var observed api.RuntimeReadback
 		var resumeErr error
+		lastError := ""
 		for time.Now().Before(deadline) {
 			resumeErr = owner.Resume(ctx, opID)
 			var e error
@@ -333,6 +360,10 @@ func TestLocalFirstApplicationDeploymentQualification(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
+			if resumeErr != nil && resumeErr.Error() != lastError {
+				t.Logf("resume at %s: %v", last.Stage, resumeErr)
+				lastError = resumeErr.Error()
+			}
 			observed.Reset()
 			if resumeErr == nil && len(result.RuntimeReadback) > 0 && protojson.Unmarshal(result.RuntimeReadback, &observed) == nil && observed.State == want {
 				return last, result, proto.Clone(&observed).(*api.RuntimeReadback)
@@ -342,7 +373,10 @@ func TestLocalFirstApplicationDeploymentQualification(t *testing.T) {
 			}
 			time.Sleep(250 * time.Millisecond)
 		}
-		t.Fatalf("runtime did not reach %s: operation status=%s stage=%s error=%s state=%s resume=%v", want, last.Status, last.Stage, last.ErrorCode, observed.State, resumeErr)
+		var runtimeError, actionError string
+		_ = serveDB.QueryRowContext(ctx, `SELECT COALESCE(error_code,'') FROM serve.agent_runtime_instances WHERE workspace_id=$1 ORDER BY created_at DESC LIMIT 1`, wid).Scan(&runtimeError)
+		_ = serveDB.QueryRowContext(ctx, `SELECT COALESCE(a.error_code,'') FROM serve.agent_runtime_actions a JOIN serve.agent_runtime_instances r ON r.id=a.runtime_instance_id WHERE r.workspace_id=$1 ORDER BY a.updated_at DESC LIMIT 1`, wid).Scan(&actionError)
+		t.Fatalf("runtime did not reach %s: operation status=%s stage=%s error=%s state=%s runtime_error=%s action_error=%s resume=%v", want, last.Status, last.Stage, last.ErrorCode, observed.State, runtimeError, actionError, resumeErr)
 		return last, result, &observed
 	}
 	op, original, ready := waitState(workspaceOwner, api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY)
@@ -350,10 +384,40 @@ func TestLocalFirstApplicationDeploymentQualification(t *testing.T) {
 		t.Fatalf("runtime readiness does not preserve activation boundary: %s %s %v", op.Status, op.Stage, ready)
 	}
 	assertPublicAccess(ready, true, "first-ready-access")
-	qReadURL(t, ctx, ready.AccessUrl, 1)
-	containerID, mount := qApplication(t, ctx, wid, ready, storageRoot)
-	qDocker(t, ctx, "exec", containerID, "node", "-e", `if(require('fs').readFileSync('/data/starts','utf8')!=='1')process.exit(1)`)
-	t.Logf("first delivery: workspace=%s operation=%s resource_set=%s runtime=%s epoch=%d image=%s url=%s mount=%s", wid, opID, original.ResourceSetID, ready.RuntimeInstanceId, ready.ExecutionEpoch, qualificationNodeImage, ready.AccessUrl, mount)
+	containerID, mount := qApplication(t, ctx, wid, ready, storageRoot, version.GetDeploymentDescriptor().GetApplicationRevision())
+	if realBuild {
+		qReadAgentURL(t, ctx, ready.AccessUrl, containerID, version.GetDeploymentDescriptor().GetApplicationRevision(), false, bundle)
+		// This local model fixture is installed into the validated persistent data
+		// mount, then loaded by the existing stop/start recovery below. It is not
+		// an image layer, Gateway credential, or product configuration claim.
+		config, err := os.ReadFile(os.Getenv("OPL_QUALIFICATION_CODEX_CONFIG"))
+		if err != nil || len(config) == 0 {
+			t.Fatal("real Agent qualification requires OPL_QUALIFICATION_CODEX_CONFIG")
+		}
+		directory := filepath.Join(mount, "codex")
+		if err = os.MkdirAll(directory, 0700); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(directory, "config.toml")
+		if err = os.WriteFile(path, config, 0600); err != nil {
+			t.Fatal("write isolated model configuration")
+		}
+		for _, path := range []string{directory, path} {
+			if err = os.Chown(path, 1000, 1000); err != nil {
+				t.Fatal(err)
+			}
+		}
+	} else {
+		qReadURL(t, ctx, ready.AccessUrl, 1)
+	}
+	if !realBuild {
+		qDocker(t, ctx, "exec", containerID, "node", "-e", `if(require('fs').readFileSync('/data/starts','utf8')!=='1')process.exit(1)`)
+	}
+	image := qualificationNodeImage
+	if realBuild {
+		image = ready.GetArtifact().GetRepository() + "@" + ready.GetArtifact().GetDigest()
+	}
+	t.Logf("first delivery: workspace=%s operation=%s resource_set=%s runtime=%s epoch=%d image=%s url=%s mount=%s", wid, opID, original.ResourceSetID, ready.RuntimeInstanceId, ready.ExecutionEpoch, image, ready.AccessUrl, mount)
 	// A real process failure must be observed all the way back to the accepted
 	// order. Repairing the same fixture container is an explicit host action, not
 	// a claim that Serve has an automatic restart product capability.
@@ -378,8 +442,12 @@ func TestLocalFirstApplicationDeploymentQualification(t *testing.T) {
 		t.Fatal("recovery changed an original order, resource, receipt or runtime identity")
 	}
 	assertPublicAccess(recoveredReady, true, "recovered-access")
-	qReadURL(t, ctx, recoveredReady.AccessUrl, 2)
-	recoveredID, recoveredMount := qApplication(t, ctx, wid, recoveredReady, storageRoot)
+	recoveredID, recoveredMount := qApplication(t, ctx, wid, recoveredReady, storageRoot, version.GetDeploymentDescriptor().GetApplicationRevision())
+	if realBuild {
+		qReadAgentURL(t, ctx, recoveredReady.AccessUrl, recoveredID, version.GetDeploymentDescriptor().GetApplicationRevision(), true, bundle)
+	} else {
+		qReadURL(t, ctx, recoveredReady.AccessUrl, 2)
+	}
 	// Docker may assign a new ephemeral host port when the same container is
 	// started again. The recovered entry must be the current owner readback,
 	// and BFF/HTTP verification above proves that it is live and publishable.
@@ -393,6 +461,27 @@ func TestLocalFirstApplicationDeploymentQualification(t *testing.T) {
 	if code != 202 || !bytes.Contains(raw, []byte(opID)) {
 		t.Fatalf("idempotent create %d %s", code, raw)
 	}
+	// Only after this profile's positive delivery/access checks (including the
+	// real Agent turn for a Build handoff), exercise deletion admission. It has
+	// neither a successful paid launch nor a subscription period; its refusal is
+	// evidence of that boundary, never deletion/refund success.
+	deleteBody, err := publicjson.Marshal(&api.DeleteWorkspaceRequest{ConfirmationName: "Local first deployment qualification", AcknowledgeDataDestruction: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, raw = request(workspaceFront.URL, customer, http.MethodDelete, "/api/v2/workspaces/"+wid, "qualification-delete-unactivated", string(deleteBody))
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("unactivated Local order deletion should be refused, HTTP %d", code)
+	}
+	code, raw = request(workspaceFront.URL, customer, http.MethodGet, "/api/v2/workspaces/"+wid+"/deletion", "", "")
+	if code != http.StatusOK || string(bytes.TrimSpace(raw)) != "null" {
+		t.Fatalf("refused deletion must have no accepted deletion readback, HTTP %d", code)
+	}
+	assertPublicAccess(recoveredReady, true, "after-refused-delete-access")
+	deletionEvidence, err := json.Marshal(map[string]any{"timestamp": time.Now().UTC().Format(time.RFC3339Nano), "workspaceId": wid, "billingProfile": "LOCAL_NO_CHARGE", "launchStatus": recoveredOp.Status, "launchStage": recoveredOp.Stage, "deleteHTTPStatus": http.StatusUnprocessableEntity, "acceptedDeletion": false, "deletionReadback": nil, "resourceDeletion": "unexecuted", "ledgerDeletionReceipt": "unexecuted", "refund": "unexecuted", "scope": "business deletion admission refusal; harness cleanup is separate"})
+	if err != nil || os.WriteFile(filepath.Join(bundle, "deletion-admission-"+time.Now().UTC().Format("20060102T150405.000000000Z")+".json"), deletionEvidence, 0600) != nil {
+		t.Fatal("persist deletion admission readback")
+	}
 	for _, check := range []struct {
 		db    *sql.DB
 		query string
@@ -402,13 +491,19 @@ func TestLocalFirstApplicationDeploymentQualification(t *testing.T) {
 		{fabricDB, `SELECT count(*) FROM fabric.resource_sets`, 1}, {serveDB, `SELECT count(*) FROM serve.agent_deployments`, 1}, {serveDB, `SELECT count(*) FROM serve.agent_runtime_instances`, 1},
 		{capabilityDB, `SELECT count(*) FROM capability.reference_claims WHERE claimant_owner='serve' AND purpose='deploy'`, 1},
 		{ledgerDB, `SELECT count(*) FROM evidence_receipts WHERE receipt_type='workspace.local_no_charge.v1'`, 1},
+		{workspaceDB, `SELECT count(*) FROM workspace.operations WHERE kind='delete_workspace'`, 0},
+		{ledgerDB, `SELECT count(*) FROM evidence_receipts WHERE receipt_type='workspace.provider_action.v1'`, 0},
 	} {
 		var got int
 		if err = check.db.QueryRowContext(ctx, check.query).Scan(&got); err != nil || got != check.want {
 			t.Fatalf("idempotence count got=%d want=%d query=%s err=%v", got, check.want, check.query, err)
 		}
 	}
-	t.Log("qualified: real quota-backed Local resources -> real Serve/Fabric application -> live HTTP; actual container failure observed; same container/data/operation/deployment/epoch recovered after Serve and Workspace restart; one zero-charge receipt and one Serve claim; Build-ready provenance is a fixture; Gateway and paid activation are not qualified")
+	if realBuild {
+		t.Log("qualified: uploaded Package -> real BuildKit OCI and CapabilityVersion handoff -> real quota-backed Local resources -> real Serve/Fabric Agent application -> live HTTP response; actual container failure observed; same container/data/operation/deployment/epoch recovered after Serve and Workspace restart; one zero-charge receipt and one Serve claim; Gateway and paid activation are not qualified")
+	} else {
+		t.Log("qualified: real quota-backed Local resources -> real Serve/Fabric application -> live HTTP; actual container failure observed; same container/data/operation/deployment/epoch recovered after Serve and Workspace restart; one zero-charge receipt and one Serve claim; Build-ready provenance is a fixture; Gateway and paid activation are not qualified")
+	}
 }
 
 func qOwnerProcessDB(t *testing.T, ctx context.Context, dsn, owner string, source ownerstore.MigrationSource) (*ownerstoretest.Harness, *sql.DB) {
@@ -548,6 +643,171 @@ func qReadURL(t *testing.T, ctx context.Context, address string, starts int) {
 		t.Fatalf("actual application HTTP status=%d body=%q err=%v", res.StatusCode, raw, err)
 	}
 }
+func qReadAgentURL(t *testing.T, ctx context.Context, address, containerID string, revision *api.WorkspaceApplicationRevision, send bool, bundle string) {
+	t.Helper()
+	entry, err := url.Parse(address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	origin := entry.Scheme + "://" + entry.Host
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Timeout: 4 * time.Minute, Jar: jar, Transport: &http.Transport{Proxy: nil}}
+	request := func(path string, body any, csrf string, result any) {
+		t.Helper()
+		var data []byte
+		method := http.MethodGet
+		if body != nil {
+			method = http.MethodPost
+			data, err = json.Marshal(body)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		req, e := http.NewRequestWithContext(ctx, method, origin+path, bytes.NewReader(data))
+		if e != nil {
+			t.Fatal(e)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", origin)
+		if csrf != "" {
+			req.Header.Set("X-CSRF-Token", csrf)
+		}
+		res, e := client.Do(req)
+		if e != nil {
+			t.Fatalf("application request %s: %v", path, e)
+		}
+		defer res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("application request %s returned HTTP %d", path, res.StatusCode)
+		}
+		if e = json.NewDecoder(io.LimitReader(res.Body, 8<<20)).Decode(result); e != nil {
+			t.Fatalf("invalid application response %s: %v", path, e)
+		}
+	}
+	var ready struct{ Status string }
+	request("/readyz", nil, "", &ready)
+	if ready.Status != "ready" {
+		t.Fatal("application /readyz did not confirm readiness")
+	}
+	var credential *api.WorkspaceApplicationCredential
+	for _, declared := range revision.GetCredentials() {
+		if declared.GetKind() == api.WorkspaceApplicationCredentialKindEnum_WORKSPACE_APPLICATION_CREDENTIAL_KIND_ENUM_WORKSPACE_ADMIN_PASSWORD {
+			credential = declared
+		}
+	}
+	if credential == nil || credential.GetUsername() == "" || credential.GetTarget() == "" {
+		t.Fatal("Agent login probe requires its declared password credential")
+	}
+	// Read the credential actually mounted into this exact runtime. Keep both
+	// password and session token in memory, outside logs and persisted evidence.
+	password, err := exec.CommandContext(ctx, "docker", "exec", "--user", "0", containerID, "cat", credential.GetTarget()).Output()
+	if err != nil || len(bytes.TrimSpace(password)) == 0 {
+		t.Fatal("read runtime's declared application password")
+	}
+	var login struct {
+		CSRFToken string `json:"csrfToken"`
+	}
+	request("/api/auth/login", map[string]string{"username": credential.GetUsername(), "password": strings.TrimSpace(string(password))}, "", &login)
+	if login.CSRFToken == "" {
+		t.Fatal("application login did not establish a session")
+	}
+	pageRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := client.Do(pageRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pageBody, pageErr := io.ReadAll(io.LimitReader(page.Body, 16<<10))
+	page.Body.Close()
+	if pageErr != nil || page.StatusCode != http.StatusOK || len(bytes.TrimSpace(pageBody)) == 0 {
+		t.Fatal("authenticated application route is unavailable")
+	}
+	var state struct {
+		AppState struct {
+			AppState struct {
+				AgentPackages struct {
+					Directory struct {
+						Entries []struct {
+							PackageID string `json:"package_id"`
+							Readiness struct {
+								OperationalReady bool `json:"operational_ready"`
+								LaunchAllowed    bool `json:"launch_allowed"`
+							} `json:"readiness"`
+							HomeShortcuts []struct {
+								ShortcutID string `json:"shortcut_id"`
+								Route      struct {
+									CodexVisibleEntry string `json:"codex_visible_entry"`
+								} `json:"route"`
+							} `json:"home_shortcuts"`
+							CapabilityMetadata struct {
+								RequiredSkillIDs []string `json:"required_skill_ids"`
+							} `json:"capability_metadata"`
+						} `json:"entries"`
+					} `json:"directory"`
+				} `json:"agent_packages"`
+				Core struct {
+					Codex struct {
+						ModelAccessReady bool `json:"model_access_ready"`
+					} `json:"codex"`
+				} `json:"core"`
+			} `json:"app_state"`
+		} `json:"app_state"`
+	}
+	request("/api/opl/state?profile=fast", nil, "", &state)
+	var selection map[string]any
+	for _, agent := range state.AppState.AppState.AgentPackages.Directory.Entries {
+		if agent.PackageID == revision.GetApplicationId() && agent.Readiness.OperationalReady && agent.Readiness.LaunchAllowed && len(agent.HomeShortcuts) > 0 {
+			shortcut := agent.HomeShortcuts[0]
+			if shortcut.ShortcutID != "" && shortcut.Route.CodexVisibleEntry != "" {
+				selection = map[string]any{"package_id": agent.PackageID, "shortcut_id": shortcut.ShortcutID, "codex_visible_entry": shortcut.Route.CodexVisibleEntry, "required_skill_ids": agent.CapabilityMetadata.RequiredSkillIDs}
+			}
+		}
+	}
+	if selection == nil {
+		t.Fatal("declared Agent is not callable in the authenticated application")
+	}
+	t.Log("application /readyz, password login and declared Agent route verified")
+	if !send {
+		return
+	}
+	if !state.AppState.AppState.Core.Codex.ModelAccessReady {
+		t.Fatal("application model access is not ready after loading the isolated configuration")
+	}
+	var answer struct {
+		Executor        string `json:"executor"`
+		ThreadID        string `json:"threadId"`
+		TurnID          string `json:"turnId"`
+		FinalMessage    string `json:"finalMessage"`
+		CanonicalThread struct {
+			ID    string `json:"id"`
+			Turns []struct {
+				ID     string          `json:"id"`
+				Status string          `json:"status"`
+				Error  json.RawMessage `json:"error"`
+			} `json:"turns"`
+		} `json:"canonicalThread"`
+	}
+	request("/api/send-message", map[string]any{"prompt": "这是 Agent 运行验收，不是医学问诊。请简要说明你的名称、功能和证据使用边界；如果当前没有指南检索证据，请明确说明，勿生成医学建议或假称已检索。", "agentSelection": selection}, login.CSRFToken, &answer)
+	completed := false
+	for _, turn := range answer.CanonicalThread.Turns {
+		if turn.ID == answer.TurnID && turn.Status == "completed" && (len(turn.Error) == 0 || string(turn.Error) == "null") {
+			completed = true
+		}
+	}
+	if answer.Executor != "codex_app_server" || answer.ThreadID == "" || answer.TurnID == "" || answer.CanonicalThread.ID != answer.ThreadID || !completed || strings.TrimSpace(answer.FinalMessage) == "" {
+		t.Fatal("application did not confirm a canonical completed Agent response")
+	}
+	responseHash := sha256.Sum256([]byte(answer.FinalMessage))
+	evidence, err := json.MarshalIndent(map[string]any{"scope": "local_workspace_serve_fabric_agent_response", "image": revision.GetImage(), "timestamp": time.Now().UTC().Format(time.RFC3339Nano), "threadId": answer.ThreadID, "turnId": answer.TurnID, "turnStatus": "completed", "executor": answer.Executor, "agentSelection": selection, "responseBytes": len(answer.FinalMessage), "responseSha256": hex.EncodeToString(responseHash[:])}, "", "  ")
+	path := filepath.Join(bundle, "agent-response-"+time.Now().UTC().Format("20060102T150405.000000000Z")+".json")
+	if err != nil || os.WriteFile(path, evidence, 0600) != nil {
+		t.Fatal("persist sanitized Agent response readback")
+	}
+	t.Logf("real Agent response: thread=%s turn=%s status=completed response_bytes=%d", answer.ThreadID, answer.TurnID, len(answer.FinalMessage))
+}
+
 func qUnavailableURL(t *testing.T, ctx context.Context, address string) {
 	t.Helper()
 	req, err := http.NewRequestWithContext(ctx, "GET", address, nil)
@@ -562,7 +822,7 @@ func qUnavailableURL(t *testing.T, ctx context.Context, address string) {
 		}
 	}
 }
-func qApplication(t *testing.T, ctx context.Context, wid string, r *api.RuntimeReadback, root string) (string, string) {
+func qApplication(t *testing.T, ctx context.Context, wid string, r *api.RuntimeReadback, root string, revision *api.WorkspaceApplicationRevision) (string, string) {
 	t.Helper()
 	ids := strings.Fields(string(qDocker(t, ctx, "container", "ls", "-aq", "--filter", "label=opl.workspace.id="+wid, "--filter", "label=opl.fabric.kind=application_runtime")))
 	if len(ids) != 1 {
@@ -588,8 +848,13 @@ func qApplication(t *testing.T, ctx context.Context, wid string, r *api.RuntimeR
 	if !c.State.Running || c.Config.Image != expectedImage || c.Config.Labels["opl.workspace.id"] != wid || c.Config.Labels["opl.runtime.id"] != contracts.WorkspaceApplicationRuntimeID(r.RuntimeInstanceId) || c.Config.Labels["opl.image.ref"] != expectedImage || c.Config.Labels["opl.account.id"] != "qualification-account" {
 		t.Fatal("actual container identity/image differs from the accepted runtime")
 	}
+	mounts := revision.GetPersistentMounts()
+	if len(mounts) != 1 || mounts[0].GetReadOnly() || mounts[0].GetMountPath() != "/data" {
+		t.Fatal("native qualification requires exactly the declared writable /data mount")
+	}
+	persistentPath := mounts[0].GetMountPath()
 	for _, mount := range c.Mounts {
-		if mount.Destination == "/data" {
+		if mount.Destination == persistentPath {
 			rel, err := filepath.Rel(root, mount.Source)
 			if err != nil || rel == "." || strings.HasPrefix(rel, "..") || mount.Type != "bind" || !mount.RW {
 				t.Fatal("application data is not bound inside the real quota filesystem")
@@ -708,7 +973,153 @@ func qLegacyDatabase(t *testing.T, ctx context.Context, dsn string) string {
 	return legacy.String()
 }
 
-func qSeedBuildFixture(t *testing.T, ctx context.Context, db *sql.DB, platform string) *api.CapabilityVersion {
+func qSeedBuildFixture(t *testing.T, ctx context.Context, db *sql.DB, platform, handoffPath string) (*api.CapabilityVersion, bool) {
+	if handoffPath != "" {
+		return qSeedRealBuildHandoff(t, ctx, db, platform, handoffPath), true
+	}
+	return qSeedFixtureBuild(t, ctx, db, platform), false
+}
+
+type qBuildHandoff struct {
+	SchemaVersion        int             `json:"schemaVersion"`
+	RegistryHost         string          `json:"registryHost"`
+	RegistryContainer    string          `json:"registryContainer"`
+	CapabilityVersion    json.RawMessage `json:"capabilityVersion"`
+	BuildArtifact        json.RawMessage `json:"buildArtifact"`
+	PackageVersionStatus string          `json:"packageVersionStatus"`
+}
+
+func qSeedRealBuildHandoff(t *testing.T, ctx context.Context, db *sql.DB, platform, path string) *api.CapabilityVersion {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var handoff qBuildHandoff
+	if err = json.Unmarshal(raw, &handoff); err != nil || handoff.SchemaVersion != 2 || handoff.RegistryHost == "" || handoff.RegistryContainer == "" {
+		t.Fatalf("invalid Build handoff: %v", err)
+	}
+	version := &api.CapabilityVersion{}
+	artifact := &api.BuildArtifactReadback{}
+	if err = publicjson.Unmarshal(handoff.CapabilityVersion, version); err != nil {
+		t.Fatalf("decode CapabilityVersion handoff: %v", err)
+	}
+	if err = protojson.Unmarshal(handoff.BuildArtifact, artifact); err != nil {
+		t.Fatalf("decode Build artifact handoff: %v", err)
+	}
+	if artifact.GetRegistrationContext() != nil {
+		t.Fatal("Build handoff must not carry registration authorization")
+	}
+	if handoff.PackageVersionStatus != "uploaded" {
+		t.Fatalf("Build handoff PackageVersion status=%q want=uploaded", handoff.PackageVersionStatus)
+	}
+	if version.GetStatus() != api.CapabilityVersionStatusEnum_CAPABILITY_VERSION_STATUS_ENUM_READY ||
+		artifact.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED ||
+		version.GetId() == "" || version.GetBuildJobId() == "" || artifact.GetBuildJobId() != version.GetBuildJobId() ||
+		artifact.GetInput().GetPackageVersionId() == "" || artifact.GetInput().GetPackageObject().GetSha256() == "" ||
+		artifact.GetArtifact().GetRepository() == "" || artifact.GetArtifact().GetDigest() == "" ||
+		version.GetArtifact().GetRepository() != artifact.GetArtifact().GetRepository() || version.GetArtifact().GetDigest() != artifact.GetArtifact().GetDigest() ||
+		version.GetDeploymentDescriptorDigest() != artifact.GetDeploymentDescriptorDigest() {
+		t.Fatal("Build handoff does not carry a confirmed immutable CapabilityVersion")
+	}
+	descriptor := artifact.GetDeploymentDescriptor()
+	if descriptor == nil || descriptor.GetApplicationRevision().GetPlatform() != platform || descriptor.GetApplicationRevision().GetImage() != descriptor.GetArtifact().GetRepository()+"@"+descriptor.GetArtifact().GetDigest() {
+		t.Fatalf("Build handoff platform or application image mismatch: platform=%q image=%q", descriptor.GetApplicationRevision().GetPlatform(), descriptor.GetApplicationRevision().GetImage())
+	}
+	descriptorBytes, err := publicjson.Marshal(descriptor)
+	if err != nil || digestBytes(descriptorBytes) != artifact.GetDeploymentDescriptorDigest() {
+		t.Fatalf("Build handoff descriptor digest mismatch: %v", err)
+	}
+	// The supplying harness owns the registry lifecycle. Consuming an external
+	// handoff never grants permission to remove that registry or its volume.
+	if running := strings.TrimSpace(string(qDocker(t, ctx, "inspect", "-f", "{{.State.Running}}", handoff.RegistryContainer))); running != "true" {
+		t.Fatalf("Build handoff registry is not running: %s", running)
+	}
+	image := artifact.GetArtifact().GetRepository() + "@" + artifact.GetArtifact().GetDigest()
+	if strings.SplitN(artifact.GetArtifact().GetRepository(), "/", 2)[0] != handoff.RegistryHost {
+		t.Fatalf("Build handoff artifact registry=%q does not match live registry=%q", artifact.GetArtifact().GetRepository(), handoff.RegistryHost)
+	}
+	qDocker(t, ctx, "pull", image)
+	if got := strings.TrimSpace(string(qDocker(t, ctx, "image", "inspect", "--format", "{{.Os}}/{{.Architecture}}", image))); got != platform {
+		t.Fatalf("Build handoff image platform=%q want=%q", got, platform)
+	}
+
+	input := artifact.GetInput()
+	packageID, packageVersionID := input.GetPackageId(), input.GetPackageVersionId()
+	if packageID == "" || packageVersionID == "" || input.GetRuntimeVersionId() == "" || input.GetWebuiVersionId() == "" {
+		t.Fatal("Build handoff input is missing the three approved Build references")
+	}
+	webui := input.GetWebuiContract()
+	webuiRef := descriptor.GetWebuiContractReference()
+	if webui == nil || webuiRef == nil || webuiRef.GetPublisherNamespaceId() == "" {
+		t.Fatal("Build handoff is missing the approved WebUI contract reference")
+	}
+	webuiRaw, err := publicjson.Marshal(webui)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifactRaw, err := protojson.Marshal(artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	modelRequirements, err := json.Marshal(version.GetModelRequirements())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataCompatibility, err := publicjson.Marshal(artifact.GetDataCompatibility())
+	if err != nil {
+		t.Fatal(err)
+	}
+	publisherNames := map[string]struct {
+		ref   *api.PublisherContractReference
+		image *api.ArtifactReference
+	}{}
+	publisherNames[webuiRef.GetPublisherNamespaceId()] = struct {
+		ref   *api.PublisherContractReference
+		image *api.ArtifactReference
+	}{webuiRef, webui.GetImage()}
+	if runtimeRef := descriptor.GetRuntimeContractReference(); runtimeRef != nil && runtimeRef.GetPublisherNamespaceId() != "" {
+		publisherNames[runtimeRef.GetPublisherNamespaceId()] = struct {
+			ref   *api.PublisherContractReference
+			image *api.ArtifactReference
+		}{runtimeRef, input.GetRuntimeContract().GetImage()}
+	}
+	execute := func(query string, args ...any) {
+		t.Helper()
+		if _, e := db.ExecContext(ctx, query, args...); e != nil {
+			t.Fatal(e)
+		}
+	}
+	execute(`INSERT INTO capability.namespaces(id,tenant_id,name,kind) VALUES('qualification-ns','tenant-live','build-handoff','tenant_default')`)
+	execute(`INSERT INTO capability.packages(id,namespace_id,name,visibility,created_by) VALUES($1,'qualification-ns','built-agent','private','101')`, packageID)
+	object := input.GetPackageObject()
+	manifest := []byte(`{"name":"live-package"}`)
+	execute(`INSERT INTO capability.package_versions(id,package_id,version_label,status,sha256,size_bytes,object_ref,manifest,created_by,verified_at) VALUES($1,$2,'v1','uploaded',$3,$4,$5,$6,'101',now())`, packageVersionID, packageID, object.GetSha256(), object.GetSizeBytes(), object.GetStorageObjectId()+"/"+object.GetVersionId(), manifest)
+	for id, item := range publisherNames {
+		if item.image == nil || item.image.GetRepository() == "" || item.ref.GetDescriptorDigest() == "" {
+			t.Fatal("Build handoff publisher namespace is incomplete")
+		}
+		repo := item.image.GetRepository()
+		prefix := repo[:strings.LastIndex(repo, "/")]
+		registry := strings.SplitN(repo, "/", 2)[0]
+		kind := "official"
+		if strings.Contains(strings.ToLower(item.ref.GetKind().String()), "third") {
+			kind = "third_party"
+		}
+		execute(`INSERT INTO capability.publisher_namespaces(id,name,kind,registry_id,repository_prefix,admission_receipt_id) VALUES($1,$2,$3,$4,$5,$6)`, id, "handoff-"+id, kind, registry, prefix, "build-handoff-"+id)
+	}
+	webuiImage := webui.GetImage()
+	execute(`INSERT INTO capability.webui_versions(id,name,version_label,artifact_repository,artifact_digest,approved_by,runtime_abi_versions,ui_protocol_version,admission_receipt_id,publisher_namespace_id,publisher_contract_digest,publisher_contract,publisher_contract_object_ref) VALUES($1,'handoff-webui','v1',$2,$3,'103',$4,($5::jsonb->>'uiProtocolVersion'),'build-handoff-webui',$6,$7,$8,$9)`, input.GetWebuiVersionId(), webuiImage.GetRepository(), webuiImage.GetDigest(), pq.Array(webui.GetRuntimeAbiVersions()), webuiRaw, webuiRef.GetPublisherNamespaceId(), webuiRef.GetDescriptorDigest(), webuiRaw, webuiRef.GetDescriptorObjectRef())
+	execute(`INSERT INTO capability.capability_versions(id,package_id,package_version_id,build_job_id,version_label,runtime_version_id,webui_version_id,artifact_repository,artifact_digest,status,model_requirements,data_compatibility,provenance_evidence,provenance,deployment_descriptor,deployment_descriptor_digest,deployment_descriptor_object_ref) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'ready',$10,$11,$12,'build',$13,$14,$15)`, version.GetId(), packageID, packageVersionID, version.GetBuildJobId(), version.GetVersionLabel(), input.GetRuntimeVersionId(), input.GetWebuiVersionId(), artifact.GetArtifact().GetRepository(), artifact.GetArtifact().GetDigest(), modelRequirements, dataCompatibility, artifactRaw, descriptorBytes, artifact.GetDeploymentDescriptorDigest(), artifact.GetDeploymentDescriptorObjectRef())
+	return version
+}
+
+func digestBytes(raw []byte) string {
+	sum := sha256.Sum256(raw)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func qSeedFixtureBuild(t *testing.T, ctx context.Context, db *sql.DB, platform string) *api.CapabilityVersion {
 	t.Helper()
 	parts := strings.Split(qualificationNodeImage, "@")
 	repository, digest := parts[0], parts[1]

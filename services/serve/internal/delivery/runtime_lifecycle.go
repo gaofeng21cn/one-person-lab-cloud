@@ -9,7 +9,6 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/services/internal/ownerstore"
@@ -53,8 +52,8 @@ func (s *Service) persistedRuntimeCommand(ctx context.Context, runtimeID, deploy
 	if err != nil {
 		return nil, dbError(err)
 	}
-	command := &api.RuntimeDeployCommand{}
-	if protojson.Unmarshal(raw, command) != nil || command.GetDeploymentId() != deployment || command.GetRuntimeInstanceId() != runtimeID {
+	command, _, decodeErr := decodeRuntimeStartSnapshot(raw)
+	if decodeErr != nil || command.GetDeploymentId() != deployment || command.GetRuntimeInstanceId() != runtimeID {
 		return nil, status.Error(codes.DataLoss, "stored runtime command is invalid")
 	}
 	_ = workspace
@@ -72,7 +71,7 @@ func (s *Service) confirmedRuntimeTarget(ctx context.Context, command *api.Runti
 	if err != nil {
 		return ExecutionTarget{}, err
 	}
-	return confirmedExecutionTarget(command, resources)
+	return confirmedExecutionTarget(ctx, s.DB, command, resources)
 }
 
 // runtimeLifecycleOperation records one lifecycle action as an owner Operation in

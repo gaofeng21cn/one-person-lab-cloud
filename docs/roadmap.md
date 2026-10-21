@@ -62,6 +62,23 @@ source qualification profile. The target is not complete until a user can open
 the confirmed application route and the exact bytes, owner facts and receipts
 can be read back.
 
+## Custom Agent Local Delivery (2026-10-21)
+
+The existing Local-Docker owner chain has passed uploaded IBD Package → real
+BuildKit OCI/CapabilityVersion → Workspace/Serve/Fabric deployment, ready route,
+password login and one canonical completed Agent response. The exact digest,
+source boundary, recovery and cleanup evidence are in
+[status](status.md#linux-custom-agent-owner-qualification-2026-10-21).
+[Issue #1002](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1002)
+tracks the scoped source closure and current-revision review/CI.
+
+Same-Candidate and installed Tencent/TKE acceptance remain open. The local
+`LOCAL_NO_CHARGE` order did not activate a paid subscription: after positive
+checks, customer deletion was refused with 422. Real resource absence, Ledger
+deletion receipt and original-charge refund still require their original paid
+Workspace and separately authorized owner execution. The test's cleanup closes
+only its disposable fixtures. This outcome adds no provider or deletion bypass.
+
 ## Team Financial Read Delivery (2026-10-16)
 
 The Gateway/BFF transaction list, transaction detail and 14-UTC-day confirmed

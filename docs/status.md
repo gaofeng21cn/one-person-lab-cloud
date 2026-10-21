@@ -38,6 +38,85 @@ protected Instance qualification run, real J0 receipt, successful deployment,
 settled business receipt, Release or production readback is claimed. #926 remains
 open for that runtime evidence and the exact-Candidate acceptance.
 
+## Linux Custom Agent Owner Qualification (2026-10-21)
+
+The executed source base was `070bffa52356dc75f38ec9c5dde66fe61ba36328` plus the
+recorded working-tree inputs. All 1,136 source-manifest files were hash-checked
+against those inputs before PR preparation. This historical execution is not a
+qualification of the successor PR revision. An isolated Linux Docker environment passed
+`TestLinuxLocalDockerProjectQuotaEnforcesHardLimit` with no skip, then ran the
+existing `TestLocalFirstApplicationDeploymentQualification` against an empty,
+dedicated ext4 filesystem mounted with `prjquota`. Existing node services were
+outside this qualification's write scope.
+
+Serve now freezes the platform credential version in its existing runtime action
+snapshot, independently of Gateway Secret generations. Fabric mounts the declared
+password/session files even when the application declares no Gateway credential.
+Focused owner verification passed 83 Serve delivery, 14 TKE executor and 9 Fabric
+tests, with zero failures or skips. These results do not claim the complete local
+source gate or current-revision CI passed.
+
+The first internal Build handoff was refused because its public JSON projection
+omitted the internal observation outcome. Handoff schema 2 uses protobuf JSON for
+that internal readback and carries no registration authorization; its round-trip
+regression and 59 Build owner tests passed. A new actual Build action supplied the
+confirmed readback. Its first Linux application startup then exposed a separate
+Runtime recipe error: the password file was mounted, but native Headless had no
+`OPL_WEBUI_PASSWORD_FILE`. The corrected Runtime-owned recipe explicitly consumes
+`/run/opl/admin-password` and `/run/opl/session-secret` through the native
+`OPL_WEBUI_PASSWORD_FILE` and `OPL_WEBUI_SESSION_SECRET_FILE` interfaces. A further
+real upload/catalog/BuildKit/Registry/Capability/Ledger run passed and produced:
+
+```text
+Package ZIP:          sha256:1befa906cdfb4f343beb0f615df36588a03bda53abefdfd3a90f7a171bba2b19
+BuildJob:             build_a49448f9f133599e865f8cc4f88349d5
+Build artifact receipt: artifact_build_a49448f9f133599e865f8cc4f88349d5
+CapabilityVersion:    capv_3e0d85aded2a63f5f00d60bc3e891e73
+OCI:                  sha256:c9ec31c24e8bf586a93f66c52c89a21a7ec3b119b3615cc3c71db0350cb5f04a
+Deployment descriptor: sha256:ed014902974938a89b41fb16d60ced015ddf02cf27ab61b3bbf8594be3489b7e
+```
+
+The Linux consumer imported the exact immutable Build/Capability readbacks into
+its isolated Capability fixture and restored the original OCI manifest/config and
+layer bytes; it did not rebuild on that node. The Workspace, Catalog, Capability,
+Ledger and CloudIdentity handlers, authenticated owner transport, separate owner
+databases, and Fabric/Serve production executables then exercised the new owner
+chain. External login and the approved Runtime/WebUI catalog remain local test
+inputs. The qualification passed in 87.81 seconds with zero failures or skips:
+actual container image/labels/data mount matched the admitted OCI and execution;
+BFF deployment/access readbacks, `/readyz`, application password login and the
+authenticated Agent route passed. A real container stop closed application access
+and propagated failure to Workspace. Restarting that container plus Serve and
+Workspace preserved the container, data, original order, deployment and epoch.
+
+The authorized local model configuration was supplied only through ephemeral
+runtime data. The recovered application returned a real `codex_app_server` reply:
+thread `01a15aa7-2fd9-7981-8baf-315d796edcdc`, turn
+`01a15aa7-3017-7480-9ebb-9ba72dbd67b3`, canonical status `completed`, 554 bytes,
+response SHA-256 `b7208c2baf202f59d4ba7640cf9fc3d8b27e1385d71a9914f8804d8c13bfa15d`.
+Only identifiers, length and hash were persisted. The synthetic capabilities
+request does not establish guideline retrieval, medical evidence quality,
+browser-driven sending, Gateway model handover or Candidate/Instance adoption.
+
+After all positive checks, the same `LOCAL_NO_CHARGE` order remained
+`awaiting_confirmation` at `activation`, with zero subscriptions. Customer DELETE
+returned HTTP 422; deletion readback was null, with zero accepted deletion
+operations and zero Ledger provider-action deletion receipts. Resources were
+still accessible after that refusal. Thus business deletion, resource absence
+under that deletion, its Ledger receipt and original-charge refund remain
+unexecuted. Harness cleanup is a separate action and cannot close those outcomes.
+
+The subsequent harness cleanup removed all four dedicated node containers (three
+restored registries and the test PostgreSQL), the temporary model configuration,
+the dedicated filesystem mount and directory, and both remaining local Build
+registries and their anonymous volumes. No task containers or loop devices
+remained; pre-existing node container identities were preserved. Image caches
+were retained. Exact-value scanning of the selected model credential across 30
+exported evidence files found zero matches. The successful test log SHA-256 is
+`48be87e0652c6abae117f23117cb65dbafa53f00da63c45e3248b2886d089722`; its bound source manifest SHA-256 is
+`cdcdfcf7dbafef995f44c92ea0b3e4a33edec2524112a46784562d3993d6df70`.
+
+
 ## PR CI Cache Reuse And Parallel Verification (2026-10-18)
 
 [PR #970](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/970)

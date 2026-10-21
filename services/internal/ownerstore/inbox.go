@@ -128,6 +128,28 @@ type InboxResult struct {
 	Reason   string
 }
 
+// ReadCommittedInbox checks an already processed event without a transaction or
+// lock. Owners use it before remote readbacks; a missing result is not admission.
+// DeliverInbox must still recheck the identity in the business transaction.
+func (s *Store) ReadCommittedInbox(ctx context.Context, event InboundEvent) (InboxDecision, error) {
+	if err := event.validate(s.schema); err != nil {
+		return "", err
+	}
+	var existing RecordedIdentity
+	err := s.db.QueryRowContext(ctx, `
+ SELECT event_type, schema_version, aggregate_type, aggregate_id, aggregate_revision, payload_sha256
+ FROM `+s.schema+`.inbox_events
+ WHERE source_owner=$1 AND source_event_id=$2 AND processed_at IS NOT NULL`, event.SourceOwner, event.SourceEventID).
+		Scan(&existing.EventType, &existing.SchemaVersion, &existing.AggregateType, &existing.AggregateID, &existing.AggregateRevision, &existing.PayloadSHA256)
+	if errors.Is(err, sql.ErrNoRows) {
+		return InboxCommit, nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("read %s committed inbox event: %w", s.schema, err)
+	}
+	return DecideInbox(existing, true, event.IdentityOf()), nil
+}
+
 // DeliverInbox records an inbound event in the consumer's own database. The
 // deduplication row, the owner's business change, processed_at, and any follow-up
 // Outbox row belong to the same transaction; this method therefore runs in the

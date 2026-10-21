@@ -32,25 +32,24 @@ func (p *LocalDockerProvider) applicationSecretFiles(input WorkspaceApplicationR
 	if err != nil {
 		return nil, localDockerGatewayMetadata{}, err
 	}
-	gateway, declared := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey)
-	if !declared {
-		return files, localDockerGatewayMetadata{}, nil
-	}
-	binding, err := workspaceApplicationGatewayBinding(input)
-	if err != nil {
-		return nil, localDockerGatewayMetadata{}, err
-	}
-	directory, metadata, err := p.applicationGatewayVersion(binding.SecretRef, binding.Version)
-	if err != nil {
-		return nil, metadata, err
-	}
-	if metadata.AccountID != input.AccountID || metadata.WorkspaceID != input.WorkspaceID || metadata.Version != binding.Version {
-		return nil, metadata, ErrLaunchStageBindingConflict
+	var metadata localDockerGatewayMetadata
+	if gateway, declared := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey); declared {
+		binding, err := workspaceApplicationGatewayBinding(input)
+		if err != nil {
+			return nil, metadata, err
+		}
+		directory, current, err := p.applicationGatewayVersion(binding.SecretRef, binding.Version)
+		if err != nil {
+			return nil, current, err
+		}
+		if current.AccountID != input.AccountID || current.WorkspaceID != input.WorkspaceID || current.Version != binding.Version {
+			return nil, current, ErrLaunchStageBindingConflict
+		}
+		metadata = current
+		files[gateway.Target] = filepath.Join(directory, localDockerGatewayKeyFile)
 	}
 
-	// A Gateway credential does not imply WebUI credentials. Mount only the
-	// revision's declared consumers, at the targets owned by that declaration.
-	files[gateway.Target] = filepath.Join(directory, localDockerGatewayKeyFile)
+	// Derived credentials use their own declared targets, independently of Gateway.
 	credentialPath := filepath.Join(p.gatewaySecretRoot, "application-credentials", applicationRuntimeID(input))
 	if credential, declared := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword); declared {
 		files[credential.Target] = filepath.Join(credentialPath, localDockerWebUIPasswordFile)
@@ -118,6 +117,10 @@ func (p *LocalDockerProvider) verifyApplicationConfiguration(input WorkspaceAppl
 	return p.verifyApplicationDeclaredSecrets(input, container, input.Revision.SecretInputs)
 }
 func (p *LocalDockerProvider) ReadWorkspaceApplicationRuntimeCredentials(ctx context.Context, input WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeCredentials, error) {
+	admin, declared := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword)
+	if !declared {
+		return contracts.WorkspaceApplicationRuntimeCredentials{}, errors.New("workspace_application_credentials_unavailable")
+	}
 	_, _, err := p.applicationSecretFiles(input)
 	if err != nil {
 		return contracts.WorkspaceApplicationRuntimeCredentials{}, err
@@ -129,7 +132,7 @@ func (p *LocalDockerProvider) ReadWorkspaceApplicationRuntimeCredentials(ctx con
 	if err != nil {
 		return contracts.WorkspaceApplicationRuntimeCredentials{}, err
 	}
-	return contracts.WorkspaceApplicationRuntimeCredentials{RuntimeID: applicationRuntimeID(input), WorkspaceID: input.WorkspaceID, WebUIUsername: webuiUsername, WebUIPassword: string(credentials.Password)}, nil
+	return contracts.WorkspaceApplicationRuntimeCredentials{RuntimeID: applicationRuntimeID(input), WorkspaceID: input.WorkspaceID, WebUIUsername: admin.Username, WebUIPassword: string(credentials.Password)}, nil
 }
 
 // Resolve a retained immutable version inside the approved store. Rotating the
@@ -179,8 +182,8 @@ func (p *LocalDockerProvider) applicationGatewayVersion(secretRef, version strin
 }
 
 func applicationWebUICredentials(input WorkspaceApplicationRuntimeInput) (localDockerWebUICredentials, error) {
-	if _, err := workspaceApplicationGatewayBinding(input); err != nil {
-		return localDockerWebUICredentials{}, err
+	if !workspaceApplicationRequiresDerivedCredentials(input.Revision) {
+		return localDockerWebUICredentials{}, errors.New("workspace_application_credentials_unavailable")
 	}
 	seed := strings.TrimSpace(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"))
 	if seed == "" {

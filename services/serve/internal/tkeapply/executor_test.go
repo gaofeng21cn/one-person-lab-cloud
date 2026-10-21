@@ -560,36 +560,58 @@ func TestExecutorLifecycleConfirmsTheAppliedState(t *testing.T) {
 // TestExecutorReadsTheApplicationsOwnCredential proves the platform-derived
 // credential comes from the applied Secret and never from the request.
 func TestExecutorReadsTheApplicationsOwnCredential(t *testing.T) {
-	cluster := newFakeCluster()
-	cluster.store(pvcObject())
-	input := testInput(t)
-	input.Revision.Credentials = []contracts.WorkspaceApplicationCredential{
-		{Name: "admin", Kind: contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword, Target: "/run/secrets/admin", Username: "opl"},
-		{Name: "gateway", Kind: contracts.WorkspaceApplicationCredentialGatewayKey, Target: "/run/secrets/gateway"},
-	}
-	input.Configuration.CredentialVersion = "0123456789abcdef"
-	input.SecretBindings = []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", SecretRef: contracts.WorkspaceGatewaySecretRef(input.WorkspaceID), Version: "0123456789abcdef", Key: contracts.WorkspaceApplicationGatewayKeyField}}
-	digest, err := contracts.WorkspaceApplicationConfigurationDigest(input.Configuration, input.SecretBindings, input.DataBindingID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	input.ConfigurationDigest = digest
-	// The installation's own Workspace Gateway Secret is what the declared platform
-	// credential is bound against; the workload is injected from it, never from a
-	// value in the request.
-	cluster.store(map[string]any{"apiVersion": "v1", "kind": "Secret", "metadata": map[string]any{
-		"name":        contracts.WorkspaceGatewaySecretRef(input.WorkspaceID),
-		"annotations": map[string]any{"oplcloud.cn/account-id": input.AccountID, "oplcloud.cn/workspace-id": input.WorkspaceID, "oplcloud.cn/secret-version": input.SecretBindings[0].Version},
-	}, "data": map[string]any{contracts.WorkspaceApplicationGatewayKeyField: base64.StdEncoding.EncodeToString([]byte("gateway-key-value"))}})
-	executor := testExecutor(cluster, testInstallation(map[string]string{"app": "opl"}))
-	if _, err := executor.EnsureWorkspaceApplicationRuntime(context.Background(), input, testPlacement()); err != nil {
-		t.Fatal(err)
-	}
-	credentials, err := executor.ReadWorkspaceApplicationRuntimeCredentials(context.Background(), input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if credentials.WorkspaceID != input.WorkspaceID || credentials.RuntimeID != workspaceApplicationRuntimeID(input.RuntimeOperationID) || credentials.WebUIUsername != "opl" || credentials.WebUIPassword == "" {
-		t.Fatalf("credentials=%+v", credentials)
+	for _, gateway := range []bool{false, true} {
+		t.Run(fmt.Sprintf("gateway=%t", gateway), func(t *testing.T) {
+			cluster := newFakeCluster()
+			cluster.store(pvcObject())
+			input := testInput(t)
+			input.Revision.Credentials = []contracts.WorkspaceApplicationCredential{
+				{Name: "admin", Kind: contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword, Target: "/run/secrets/admin", Username: "app-admin"},
+				{Name: "session", Kind: contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret, Target: "/run/secrets/session"},
+			}
+			input.Configuration.CredentialVersion = "frozen-application-credential-version"
+			if gateway {
+				input.Revision.Credentials = append(input.Revision.Credentials, contracts.WorkspaceApplicationCredential{Name: "gateway", Kind: contracts.WorkspaceApplicationCredentialGatewayKey, Target: "/run/secrets/gateway"})
+				input.SecretBindings = []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", SecretRef: contracts.WorkspaceGatewaySecretRef(input.WorkspaceID), Version: "0123456789abcdef", Key: contracts.WorkspaceApplicationGatewayKeyField}}
+				cluster.store(map[string]any{"apiVersion": "v1", "kind": "Secret", "metadata": map[string]any{
+					"name":        contracts.WorkspaceGatewaySecretRef(input.WorkspaceID),
+					"annotations": map[string]any{"oplcloud.cn/account-id": input.AccountID, "oplcloud.cn/workspace-id": input.WorkspaceID, "oplcloud.cn/secret-version": input.SecretBindings[0].Version},
+				}, "data": map[string]any{contracts.WorkspaceApplicationGatewayKeyField: base64.StdEncoding.EncodeToString([]byte("gateway-key-value"))}})
+			}
+			var err error
+			input.ConfigurationDigest, err = contracts.WorkspaceApplicationConfigurationDigest(input.Configuration, input.SecretBindings, input.DataBindingID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			installation := testInstallation(map[string]string{"app": "opl"})
+			executor := testExecutor(cluster, installation)
+			for _, operation := range []string{input.RuntimeOperationID, input.RuntimeOperationID + "-upgrade"} {
+				input.RuntimeOperationID = operation
+				if _, err := executor.EnsureWorkspaceApplicationRuntime(context.Background(), input, testPlacement()); err != nil {
+					t.Fatal(err)
+				}
+				if gateway {
+					credentials, err := executor.ReadWorkspaceApplicationRuntimeCredentials(context.Background(), input)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if credentials.WorkspaceID != input.WorkspaceID || credentials.RuntimeID != workspaceApplicationRuntimeID(operation) || credentials.WebUIUsername != "app-admin" || credentials.WebUIPassword != deriveWorkspaceAdminPassword(installation.AdminPasswordSeed, input.WorkspaceID, input.Configuration.CredentialVersion) {
+						t.Fatal("applied password does not match its declared identity and frozen version")
+					}
+				}
+				secret, err := executor.applicationSecretObject(context.Background(), input)
+				if err != nil {
+					t.Fatal(err)
+				}
+				password, err := base64.StdEncoding.DecodeString(stringValue(nested(secret, "data", "admin")))
+				if err != nil || string(password) != deriveWorkspaceAdminPassword(installation.AdminPasswordSeed, input.WorkspaceID, input.Configuration.CredentialVersion) {
+					t.Fatal("applied password changed its frozen identity")
+				}
+				actual, err := base64.StdEncoding.DecodeString(stringValue(nested(secret, "data", "session")))
+				if err != nil || string(actual) != deriveWorkspaceSessionSecret(installation.AdminPasswordSeed, input.WorkspaceID, input.Configuration.CredentialVersion) {
+					t.Fatal("applied session secret changed its frozen identity")
+				}
+			}
+		})
 	}
 }

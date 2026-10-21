@@ -1,0 +1,184 @@
+{
+  "schemaVersion": "opl-publisher-contract/v1",
+  "publisherNamespaceId": "pub_official",
+  "image": {
+    "repository": "uswccr.ccs.tencentyun.com/oplcloud/one-person-lab-app",
+    "digest": "sha256:8efab2844b52c66bcaa3da05637abc3cbdb0c3b29364718839b121284711de92",
+    "platform": {
+      "os": "linux",
+      "architecture": "amd64"
+    }
+  },
+  "kind": "runtime",
+  "runtimeAbiVersion": "opl-runtime/v1",
+  "packageFormatVersions": [
+    "agent-plugins/1.0.0"
+  ],
+  "buildRecipe": {
+    "version": "opl-build-recipe/v1",
+    "frontend": {
+      "repository": "registry.example/builders/dockerfile",
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "platform": {
+        "os": "linux",
+        "architecture": "amd64"
+      }
+    },
+    "recipe": {
+      "repository": "registry.example/official/recipes",
+      "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "mediaType": "application/vnd.opl.build-recipe.v1+tar",
+      "dockerfilePath": "Dockerfile"
+    },
+    "runtimeContextName": "runtime",
+    "packageInput": {
+      "contextName": "agent_package",
+      "formatVersion": "agent-plugins/1.0.0",
+      "sourceRoot": "carrier",
+      "targetPath": "/opt/ibd-carrier",
+      "uid": 1000,
+      "gid": 1000
+    },
+    "webuiInput": {
+      "contextName": "webui",
+      "sourcePath": "/web",
+      "targetPath": "/web",
+      "uid": 1000,
+      "gid": 1000
+    },
+    "networkPolicy": "none",
+    "outputPlatform": {
+      "os": "linux",
+      "architecture": "amd64"
+    },
+    "outputImageCommand": {
+      "entrypoint": [
+        "/usr/local/bin/opl-webui-entrypoint"
+      ],
+      "cmd": [
+        "/bin/sh",
+        "-ec",
+        "export OPL_WEBUI_PASSWORD_FILE=/run/opl/admin-password OPL_WEBUI_SESSION_SECRET_FILE=/run/opl/session-secret; export OPL_HEADLESS_HOST=0.0.0.0 OPL_HEADLESS_PORT=3000 OPL_WEBUI_ROOT=/web OPL_WEBUI_DEPLOYMENT_MODE=local OPL_WEBUI_AUTH_MODE=password OPL_WEBUI_USERNAME=ibd-local-probe OPL_NATIVE_WORKBENCH_READ_ONLY=0; export OPL_OFFICIAL_PROFILE_RESOURCES=; /opt/opl-framework/bin/opl packages install --manifest-url file:///opt/ibd-carrier/opl-package.json --trust-tier third_party_unverified --json && exec node scripts/headless/run.mjs"
+      ]
+    }
+  },
+  "applicationAccess": {
+    "mode": "application",
+    "loginPath": "/api/auth/login",
+    "logoutPath": "/api/auth/logout",
+    "usernameCredentialName": "app-admin"
+  },
+  "data": {
+    "schemaVersion": "agent-data/v1",
+    "upgrade": {
+      "mode": "compatible",
+      "compatibleFromSchemaVersions": [
+        "agent-data/v1"
+      ],
+      "backupRequired": false
+    },
+    "rollback": {
+      "safe": true,
+      "compatibleSchemaVersions": [
+        "agent-data/v1"
+      ]
+    },
+    "mountPolicies": [
+      {
+        "mountName": "workspace-data",
+        "concurrentWritersSupported": false
+      }
+    ]
+  },
+  "applicationRevisionTemplate": {
+    "schemaVersion": 1,
+    "applicationId": "ibd-evidence-assistant-v2",
+    "version": "0.2.0",
+    "platform": "linux/amd64",
+    "image": "uswccr.ccs.tencentyun.com/oplcloud/one-person-lab-app@sha256:8efab2844b52c66bcaa3da05637abc3cbdb0c3b29364718839b121284711de92",
+    "execution": {
+      "userId": 1000,
+      "groupId": 1000,
+      "init": true
+    },
+    "ports": [
+      {
+        "name": "webui",
+        "port": 3000,
+        "protocol": "TCP"
+      }
+    ],
+    "entryPort": "webui",
+    "healthChecks": [
+      {
+        "port": 3000,
+        "path": "/readyz",
+        "initialDelaySeconds": 0
+      }
+    ],
+    "persistentMounts": [
+      {
+        "name": "workspace-data",
+        "mountPath": "/data",
+        "readOnly": false
+      }
+    ],
+    "scratchMounts": [
+      {
+        "name": "tmp",
+        "mountPath": "/tmp",
+        "readOnly": false,
+        "mode": 448,
+        "userId": 1000,
+        "groupId": 1000,
+        "sizeBytes": 67108864
+      },
+      {
+        "name": "projects",
+        "mountPath": "/projects",
+        "readOnly": false,
+        "mode": 448,
+        "userId": 1000,
+        "groupId": 1000,
+        "sizeBytes": 67108864
+      }
+    ],
+    "credentials": [
+      {
+        "name": "app-admin",
+        "kind": "workspace_admin_password",
+        "target": "/run/opl/admin-password",
+        "username": "ibd-local-probe"
+      },
+      {
+        "name": "app-session",
+        "kind": "workspace_session_secret",
+        "target": "/run/opl/session-secret"
+      }
+    ],
+    "exposurePolicy": "application",
+    "compute": {
+      "cpuRequestMilli": 500,
+      "cpuLimitMilli": 2000,
+      "memoryRequestBytes": 268435456,
+      "memoryLimitBytes": 2147483648
+    }
+  },
+  "packageFormatContracts": [
+    {
+      "owner": "framework",
+      "formatVersion": "agent-plugins/1.0.0",
+      "schemaObjectRef": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+      "schemaDigest": "sha256:0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883",
+      "validatorArtifact": {
+        "repository": "uswccr.ccs.tencentyun.com/oplcloud/one-person-lab-app",
+        "digest": "sha256:8efab2844b52c66bcaa3da05637abc3cbdb0c3b29364718839b121284711de92",
+        "platform": {
+          "os": "linux",
+          "architecture": "amd64"
+        }
+      },
+      "admissionReceiptId": "local-config-agent-probe-v2/readback.json"
+    }
+  ]
+}
