@@ -898,6 +898,12 @@ func (c *testSub2APIClient) ResolveOrCreateUser(_ context.Context, email, passwo
 	return identity, nil
 }
 
+func (c *testSub2APIClient) identityCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.identities)
+}
+
 func (c *testSub2APIClient) AuthenticateUser(_ context.Context, email, password string) (clients.Sub2APIUserAuthentication, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
