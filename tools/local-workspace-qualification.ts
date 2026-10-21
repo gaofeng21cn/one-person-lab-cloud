@@ -1714,7 +1714,7 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
       method: "POST", body: { resourceType: "workspace", packageId: "basic" }
     }, auth)).payload;
     const amountUsdMicros = priceWorkspaceLaunch({ pricing, walletUsdMicros: beforeMicros });
-    const { receiptId } = await submitWorkspaceLaunch({
+    const { launch, receiptId } = await submitWorkspaceLaunch({
       http, auth, name: `Local qualification ${suffix}`, idempotencyKey: launchKey,
       expectedOperationId: operationId, expectedWorkspaceId: workspaceId,
     });
