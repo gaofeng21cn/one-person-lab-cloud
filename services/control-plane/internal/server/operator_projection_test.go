@@ -1552,53 +1552,44 @@ func TestOperatorResourceUnavailableFields(t *testing.T) {
 }
 
 func TestOperatorAccountProvisionUsesCanonicalRouteAndTerminology(t *testing.T) {
-	store := newMemoryTableStore()
-	client := newOperatorProjectionClient()
-	server, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, &fakeFabricClient{}, client), store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	operator := reservedOperatorSessionForTest(t, server)
-	response := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/accounts", `{"email":"provision@example.com","password":"CorrectHorseBatteryStaple!","name":"Provision"}`, "provision-account-once")
-	if response.Code != http.StatusCreated {
-		t.Fatalf("canonical provision = %d: %s", response.Code, response.Body.String())
+	f := newCloudAnnouncementHTTPFixture(t, newMemoryTableStore())
+	operator := f.gateway.bind("operator-session", "operator-actor", "910")
+	response := f.request(t, http.MethodPost, "/internal/cloud/operator/accounts", operator, `{"email":"provision@example.com","password":"CorrectHorseBatteryStaple!","name":"Provision"}`, activationHeaders("provision-account-once"))
+	if response.code != http.StatusCreated {
+		t.Fatalf("canonical provision = %d: %s", response.code, response.body)
 	}
 	var body map[string]any
-	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+	if err := json.Unmarshal(response.body, &body); err != nil {
 		t.Fatal(err)
 	}
 	if body["status"] != "succeeded" || !strings.HasPrefix(stringValue(body["operationId"]), "account-provision-") || !strings.HasPrefix(stringValue(body["accountId"]), "acct-") {
 		t.Fatalf("account provision body = %#v", body)
 	}
-	events, err := store.ListAuditEvents(context.Background(), stringValue(body["accountId"]))
+	events, err := f.store.ListAuditEvents(context.Background(), stringValue(body["accountId"]))
 	if err != nil || len(events) != 1 || events[0]["action"] != "account.provision" {
 		t.Fatalf("account provision audit=%#v err=%v", events, err)
 	}
 }
 
 func TestOperatorGatewayOnlyProvisionDisablesWorkspacePurchase(t *testing.T) {
-	store := newMemoryTableStore()
-	client := newOperatorProjectionClient()
-	server, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, &fakeFabricClient{}, client), store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := requestWithMutationKeyForTest(t, server, reservedOperatorSessionForTest(t, server), http.MethodPost, "/api/operator/accounts", `{"email":"gateway-only@example.com","password":"CorrectHorseBatteryStaple!","admission":"gateway_only"}`, "provision-gateway-only")
-	if response.Code != http.StatusCreated {
-		t.Fatalf("gateway-only provision = %d: %s", response.Code, response.Body.String())
+	f := newCloudAnnouncementHTTPFixture(t, newMemoryTableStore())
+	operator := f.gateway.bind("operator-session", "operator-actor", "910")
+	response := f.request(t, http.MethodPost, "/internal/cloud/operator/accounts", operator, `{"email":"gateway-only@example.com","password":"CorrectHorseBatteryStaple!","admission":"gateway_only"}`, activationHeaders("provision-gateway-only"))
+	if response.code != http.StatusCreated {
+		t.Fatalf("gateway-only provision = %d: %s", response.code, response.body)
 	}
 	var body map[string]any
-	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+	if err := json.Unmarshal(response.body, &body); err != nil {
 		t.Fatal(err)
 	}
 	if body["workspacePurchaseEnabled"] != false {
 		t.Fatalf("gateway-only provision response = %#v", body)
 	}
-	account, found, err := store.GetAccount(context.Background(), stringValue(body["accountId"]))
+	account, found, err := f.store.GetAccount(context.Background(), stringValue(body["accountId"]))
 	if err != nil || !found || workspacePurchaseEnabled(account) {
 		t.Fatalf("gateway-only account = %#v found=%v err=%v", account, found, err)
 	}
-	audits, err := store.ListAuditEvents(context.Background(), stringValue(body["accountId"]))
+	audits, err := f.store.ListAuditEvents(context.Background(), stringValue(body["accountId"]))
 	if err != nil || len(audits) != 1 || stringValue(audits[0]["action"]) != "account.provision" || stringValue(mapField(audits[0], "after")["admission"]) != "gateway_only" {
 		t.Fatalf("gateway-only audit = %#v err=%v", audits, err)
 	}

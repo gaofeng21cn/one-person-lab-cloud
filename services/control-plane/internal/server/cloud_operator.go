@@ -62,9 +62,10 @@ func (app *controlPlaneServer) registerCloudOperatorRoutes(mux *http.ServeMux, s
 		mux.HandleFunc("GET "+route.path, app.cloudOperatorRead(route.read, route.query))
 	}
 	// Activation is the one operator command the Console BFF composes with the
-	// Tenant owner. It runs the same writer as the retained browser route; the
-	// BFF proves its peer identity, service token and live CloudIdentity session
-	// and authorizes the platform operator before reaching it.
+	// Tenant owner. It runs the activation writer; the retained browser route is
+	// retired and refuses before any write (#1007). The BFF proves its peer
+	// identity, service token and live CloudIdentity session and authorizes the
+	// platform operator before reaching it.
 	mux.HandleFunc("POST /internal/cloud/operator/accounts", app.cloudOperatorWrite(func(w http.ResponseWriter, r *http.Request) {
 		app.provisionOperatorAccount(w, r, service)
 	}))
