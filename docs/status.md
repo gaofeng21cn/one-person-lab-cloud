@@ -9,7 +9,7 @@ Baseline evidence date: 2026-10-01
 This page keeps the dated baseline evidence above and explicitly dated source
 updates below. The baseline SHA does not describe the later changes or qualify
 them: each receipt retains its original source, run and environment. The latest
-source update is 2026-10-19; it answers what the cited source and tests prove
+source update is 2026-10-21; it answers what the cited source and tests prove
 within their declared scope and does not describe an Instance installation or a
 Product Release. The target boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
@@ -39,6 +39,20 @@ settled business receipt, Release or production readback is claimed. #926 remain
 open for that runtime evidence and the exact-Candidate acceptance.
 
 ## Linux Custom Agent Owner Qualification (2026-10-21)
+
+The fixed source-scope acceptance baseline is
+`c97453f748c3188fb44f207850921b2212e836f6`, reviewed against PR base
+`f203e99604ae7af7d43e1754cd9e03b131da11ca`.
+[Pull Request CI run 39551249083](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/39551249083)
+binds that exact head and passed all six jobs: dependency-review, source, Go,
+both browser shards and validate. Selected local verification passed 39
+Node/browser tests and 197 Go test/subtest events with no failed or skipped
+tests; the browser files were serialized after default focused-wrapper timeout
+attempts, which remain recorded in PR #1003. Tagged Workspace compilation and
+the Build handoff round-trip also passed. These are source-layer results;
+they do not replace the historical Linux qualification below. At this baseline
+readback, PR #1003 was open and unmerged; this SHA is a branch baseline, not
+canonical `main`, a Product Release or an Instance deployment.
 
 PR #1003 is scoped to IBD Local-Docker delivery closure: uploaded Package → real
 BuildKit OCI digest → CapabilityVersion → Workspace/Serve/Fabric Local-Docker →
