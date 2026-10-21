@@ -29,6 +29,33 @@ func NewPublisherHandler(capability api.CapabilityProductServiceClient, runtimeC
 
 type publisherCall func(*http.Request, *api.CallContext, proto.Message) (proto.Message, error)
 
+// requirePublisherWriteGuards applies the one write guard every state-changing
+// route shares: a live session CSRF token, a same-origin request and a bounded
+// idempotency key. GET is the only safe method and carries none of them; a
+// command with no request body still needs the guard, so the discriminator is
+// the method, not the body. The composed operator activation runs the same guard
+// before it reaches any owner.
+func requirePublisherWriteGuards(w http.ResponseWriter, r *http.Request, caller Caller, call *api.CallContext) bool {
+	if r.Method == http.MethodGet {
+		return true
+	}
+	if caller.Session.GetCsrfToken() == "" || subtle.ConstantTimeCompare([]byte(caller.Session.CsrfToken), []byte(r.Header.Get("X-CSRF-Token"))) != 1 {
+		writePublisherError(w, r, 403, "csrf_required", "session CSRF token required")
+		return false
+	}
+	origin, originErr := url.Parse(r.Header.Get("Origin"))
+	if r.Header.Get("Sec-Fetch-Site") == "cross-site" || (r.Header.Get("Origin") != "" && (originErr != nil || origin.Host != r.Host || (origin.Scheme != "https" && origin.Scheme != "http"))) {
+		writePublisherError(w, r, 403, "origin_rejected", "same-origin request required")
+		return false
+	}
+	call.IdempotencyKey = strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if call.IdempotencyKey == "" || len(call.IdempotencyKey) > 256 {
+		writePublisherError(w, r, 400, "idempotency_key_required", "Idempotency-Key is required")
+		return false
+	}
+	return true
+}
+
 func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneridentity.Owner, action api.AuthorizationActionEnum, kind api.AuthorizationResourceKind, resourcePath string, body func() proto.Message, invoke publisherCall) {
 	mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		publisherRequestID(r)
@@ -48,22 +75,8 @@ func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneri
 		// CSRF token, a same-origin request, and an idempotency key. GET is the only
 		// safe method and carries none of them. A command with no request body still
 		// needs the guard, so the discriminator is the method, not the body.
-		write := r.Method != http.MethodGet
-		if write {
-			if caller.Session.GetCsrfToken() == "" || subtle.ConstantTimeCompare([]byte(caller.Session.CsrfToken), []byte(r.Header.Get("X-CSRF-Token"))) != 1 {
-				writePublisherError(w, r, 403, "csrf_required", "session CSRF token required")
-				return
-			}
-			origin, originErr := url.Parse(r.Header.Get("Origin"))
-			if r.Header.Get("Sec-Fetch-Site") == "cross-site" || (r.Header.Get("Origin") != "" && (originErr != nil || origin.Host != r.Host || (origin.Scheme != "https" && origin.Scheme != "http"))) {
-				writePublisherError(w, r, 403, "origin_rejected", "same-origin request required")
-				return
-			}
-			call.IdempotencyKey = strings.TrimSpace(r.Header.Get("Idempotency-Key"))
-			if call.IdempotencyKey == "" || len(call.IdempotencyKey) > 256 {
-				writePublisherError(w, r, 400, "idempotency_key_required", "Idempotency-Key is required")
-				return
-			}
+		if !requirePublisherWriteGuards(w, r, caller, call) {
+			return
 		}
 		var input proto.Message
 		if body != nil {

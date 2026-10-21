@@ -61,6 +61,37 @@ func (app *controlPlaneServer) registerCloudOperatorRoutes(mux *http.ServeMux, s
 	} {
 		mux.HandleFunc("GET "+route.path, app.cloudOperatorRead(route.read, route.query))
 	}
+	// Activation is the one operator command the Console BFF composes with the
+	// Tenant owner. It runs the same writer as the retained browser route; the
+	// BFF proves its peer identity, service token and live CloudIdentity session
+	// and authorizes the platform operator before reaching it.
+	mux.HandleFunc("POST /internal/cloud/operator/accounts", app.cloudOperatorWrite(func(w http.ResponseWriter, r *http.Request) {
+		app.provisionOperatorAccount(w, r, service)
+	}))
+}
+
+// cloudOperatorWrite is the write counterpart of cloudOperatorRead. It shares the
+// same peer/token/session proof, admits no query selector, and leaves the
+// command's own body, CSRF and idempotency validation to the shared writer.
+func (app *controlPlaneServer) cloudOperatorWrite(command http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "private, no-store")
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		r = r.WithContext(ctx)
+		if _, ok := app.cloudSessionProof(w, r); !ok {
+			return
+		}
+		if r.URL.RawQuery != "" {
+			writeError(w, http.StatusBadRequest, "invalid_operator_write")
+			return
+		}
+		if r.ContentLength <= 0 {
+			writeError(w, http.StatusBadRequest, "invalid_operator_write")
+			return
+		}
+		command(w, r)
+	}
 }
 
 // cloudOperatorProof requires the established BFF peer/token/session proof and

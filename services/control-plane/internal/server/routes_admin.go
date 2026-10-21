@@ -426,37 +426,7 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 		writeSourceEnvelope(w, http.StatusOK, "control-plane", "available", app.operatorHealth(r.Context(), service))
 	}))
 	mux.HandleFunc("POST /api/operator/accounts", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		key, ok := requiredMutationKey(w, r)
-		if !ok {
-			return
-		}
-		input := decodeJSON(r)
-		if !operatorProvisionShapeValid(input) {
-			writeError(w, http.StatusBadRequest, "invalid_provision")
-			return
-		}
-		email, err := canonicalEmail(stringValue(input["email"]))
-		if err != nil {
-			writeCreateUserError(w, err)
-			return
-		}
-		accountID := "acct-" + stableID("account", email)[:18]
-		admission := firstNonEmpty(stringValue(input["admission"]), "full_cloud_customer")
-		workspaceEligibility := admission == "full_cloud_customer"
-		user, err := app.createUser(r.Context(), service, map[string]any{
-			"email": email, "password": input["password"], "accountId": accountID, "role": "owner",
-			"workspacePurchaseEnabled": workspaceEligibility,
-		})
-		if err != nil {
-			writeCreateUserError(w, err)
-			return
-		}
-		result := map[string]any{"operationId": "account-provision-" + stableID(key, email)[:18], "accountId": accountID, "status": "succeeded", "workspacePurchaseEnabled": workspaceEligibility}
-		if err := app.appendAuditEvent(r, "account.provision", "account", accountID, accountID, nil, map[string]any{"userId": user["id"], "email": email, "workspacePurchaseEnabled": workspaceEligibility, "admission": admission}, "succeeded"); err != nil {
-			writeError(w, http.StatusInternalServerError, "state_persist_failed")
-			return
-		}
-		writeJSON(w, http.StatusCreated, result)
+		app.provisionOperatorAccount(w, r, service)
 	}))
 	mux.HandleFunc("POST /api/operator/accounts/{accountId}/workspace-purchase-eligibility", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		key, ok := requiredMutationKey(w, r)
@@ -678,6 +648,58 @@ func (app *controlPlaneServer) writeOperatorWorkspaceDetail(w http.ResponseWrite
 		return
 	}
 	writeSourceEnvelope(w, http.StatusOK, "control-plane+fabric+ledger", "available", data)
+}
+
+// provisionOperatorAccount is the one activation writer. The retained browser
+// route and the Console BFF's internal route both run it, so the account and the
+// Gateway user are created exactly once by one implementation. The receipt reads
+// back the Gateway subject the account was bound to: the BFF needs that subject
+// to create the Tenant whose owner it already is.
+func (app *controlPlaneServer) provisionOperatorAccount(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
+	key, ok := requiredMutationKey(w, r)
+	if !ok {
+		return
+	}
+	input := decodeJSON(r)
+	if !operatorProvisionShapeValid(input) {
+		writeError(w, http.StatusBadRequest, "invalid_provision")
+		return
+	}
+	email, err := canonicalEmail(stringValue(input["email"]))
+	if err != nil {
+		writeCreateUserError(w, err)
+		return
+	}
+	accountID := "acct-" + stableID("account", email)[:18]
+	admission := firstNonEmpty(stringValue(input["admission"]), "full_cloud_customer")
+	workspaceEligibility := admission == "full_cloud_customer"
+	user, err := app.createUser(r.Context(), service, map[string]any{
+		"email": email, "password": input["password"], "accountId": accountID, "role": "owner",
+		"workspacePurchaseEnabled": workspaceEligibility,
+	})
+	if err != nil {
+		writeCreateUserError(w, err)
+		return
+	}
+	account, found, err := app.tables.GetAccount(r.Context(), accountID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "state_read_failed")
+		return
+	}
+	sub2apiUserID, mapped := positiveIntegerField(account, "sub2apiUserId")
+	if !found || !mapped {
+		writeError(w, http.StatusInternalServerError, "account_identity_unverified")
+		return
+	}
+	result := map[string]any{
+		"operationId": "account-provision-" + stableID(key, email)[:18], "accountId": accountID,
+		"sub2apiUserId": strconv.FormatInt(sub2apiUserID, 10), "status": "succeeded", "workspacePurchaseEnabled": workspaceEligibility,
+	}
+	if err := app.appendAuditEvent(r, "account.provision", "account", accountID, accountID, nil, map[string]any{"userId": user["id"], "email": email, "sub2apiUserId": sub2apiUserID, "workspacePurchaseEnabled": workspaceEligibility, "admission": admission}, "succeeded"); err != nil {
+		writeError(w, http.StatusInternalServerError, "state_persist_failed")
+		return
+	}
+	writeJSON(w, http.StatusCreated, result)
 }
 
 func operatorProvisionShapeValid(input map[string]any) bool {

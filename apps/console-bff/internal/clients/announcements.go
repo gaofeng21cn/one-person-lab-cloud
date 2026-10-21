@@ -1,6 +1,7 @@
 package clients
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -88,6 +89,52 @@ func (c *controlPlaneReader) requestRaw(ctx context.Context, session, method, pa
 		return nil, status.Error(codes.InvalidArgument, "invalid original owner request")
 	case http.StatusConflict:
 		return nil, status.Error(codes.FailedPrecondition, "original owner identity is unresolved")
+	default:
+		return nil, status.Error(codes.Unavailable, "retained owner is unavailable")
+	}
+	raw, err := io.ReadAll(io.LimitReader(response.Body, maxBytes+1))
+	if err != nil || int64(len(raw)) > maxBytes {
+		return nil, status.Error(codes.DataLoss, "invalid retained owner response")
+	}
+	return raw, nil
+}
+
+// requestJSONBody sends one already-validated JSON command to the retained owner
+// and returns the owner's own receipt. It forwards only the live session
+// reference, the caller's idempotency key and the exact command body; the owner
+// still applies its own session, CSRF and idempotency rules.
+func (c *controlPlaneReader) requestJSONBody(ctx context.Context, session, method, path, key string, body []byte, maxBytes int64) ([]byte, error) {
+	if c == nil {
+		return nil, status.Error(codes.Unavailable, "retained owner is not configured")
+	}
+	if maxBytes <= 0 || len(body) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "invalid owner command")
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.base+path, bytes.NewReader(body))
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid owner command")
+	}
+	req.Header.Set(owneridentity.PeerHeader, owneridentity.ConsoleBFF.String())
+	req.Header.Set(owneridentity.TokenHeader, c.token)
+	req.Header.Set(contracts.CloudSessionHeader, session)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", key)
+	response, err := c.http.Do(req)
+	if err != nil {
+		return nil, status.Error(codes.Unavailable, "retained owner is unavailable")
+	}
+	defer response.Body.Close()
+	switch response.StatusCode {
+	case http.StatusCreated, http.StatusOK:
+	case http.StatusUnauthorized:
+		return nil, status.Error(codes.Unauthenticated, "Cloud session or owner identity rejected")
+	case http.StatusForbidden:
+		return nil, status.Error(codes.PermissionDenied, "original owner access denied")
+	case http.StatusConflict:
+		return nil, status.Error(codes.FailedPrecondition, "original owner identity is unresolved")
+	case http.StatusBadRequest:
+		return nil, status.Error(codes.InvalidArgument, "invalid original owner command")
 	default:
 		return nil, status.Error(codes.Unavailable, "retained owner is unavailable")
 	}

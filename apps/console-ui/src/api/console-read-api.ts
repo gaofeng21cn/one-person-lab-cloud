@@ -399,6 +399,14 @@ export function operatorReadRoute(cloud: boolean): "/api/v2/operator" | "/api/op
   return cloud ? "/api/v2/operator" : "/api/operator";
 }
 
+// Activation is the one operator command the Cloud console composes with the
+// Tenant owner: the BFF route activates the account, admits the Tenant whose
+// owner is that account's Gateway subject, and binds its billing. The legacy
+// build keeps the retained Control Plane route unchanged.
+export function operatorActivationRoute(cloud: boolean): "/api/v2/operator/accounts" | "/api/operator/accounts" {
+  return cloud ? "/api/v2/operator/accounts" : "/api/operator/accounts";
+}
+
 export function getOperatorAccounts(cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorAccountsData>> {
   return sourceGet<OperatorAccountsData>(`${operatorReadRoute(cloud)}/accounts`);
 }
@@ -498,7 +506,7 @@ export function recoverWalletAdjustment(operationId: string, input: WalletAdjust
 }
 
 export function provisionOperatorAccount(input: ProvisionAccountRequest, csrfToken: string, idempotencyKey: string): Promise<OperatorProvisionAccountCommandDTO> {
-  return postJson<unknown>("/api/operator/accounts", input, csrfToken, idempotencyKey).then(decodeDto<OperatorProvisionAccountCommandDTO>);
+  return postJson<unknown>(operatorActivationRoute(cloudIdentity), input, csrfToken, idempotencyKey).then(decodeDto<OperatorProvisionAccountCommandDTO>);
 }
 
 export function disableOperatorAccount(accountId: string, reason: string, csrfToken: string, idempotencyKey: string): Promise<OperatorAccountCommandDTO> {
