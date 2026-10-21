@@ -26,15 +26,18 @@ type Server struct {
 	legacyBilling   LegacyBillingReader
 	announcements   AnnouncementReader
 	operator        OperatorReader
-	reader          OwnerReader
-	identity        IdentityReader
-	capability      api.CapabilityProductServiceClient
-	runtimeControl  api.RuntimeControlProductServiceClient
-	build           api.BuildProductServiceClient
-	tenant          api.TenantProductServiceClient
-	catalog         api.ResourceCatalogProductServiceClient
-	gateway         api.GatewayProductServiceClient
-	ledger          api.LedgerProductServiceClient
+	// operatorProvisioner is the retained owner activation command. It is separate
+	// from the operator reads so activation is composed only when it is configured.
+	operatorProvisioner OperatorProvisioner
+	reader              OwnerReader
+	identity            IdentityReader
+	capability          api.CapabilityProductServiceClient
+	runtimeControl      api.RuntimeControlProductServiceClient
+	build               api.BuildProductServiceClient
+	tenant              api.TenantProductServiceClient
+	catalog             api.ResourceCatalogProductServiceClient
+	gateway             api.GatewayProductServiceClient
+	ledger              api.LedgerProductServiceClient
 	// gatewayCoordination is the Gateway owner's typed settlement surface. The
 	// one administrator wallet binding command reaches it; every other fact the
 	// BFF serves still comes from the product read clients.
@@ -65,6 +68,9 @@ func NewServer(reader OwnerReader, identity IdentityReader) *Server {
 	}
 	if o, ok := reader.(OperatorReader); ok {
 		s.operator = o
+	}
+	if p, ok := reader.(OperatorProvisioner); ok {
+		s.operatorProvisioner = p
 	}
 	if p, ok := reader.(interface {
 		PublisherClients() (api.CapabilityProductServiceClient, api.BuildProductServiceClient)
@@ -115,6 +121,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerAuthRoutes(mux)
 	s.registerAnnouncementRoutes(mux)
 	s.registerOperatorRoutes(mux)
+	s.registerOperatorActivationRoutes(mux)
 	s.registerLegacyBillingRoutes(mux)
 	s.registerPersonalGatewayReadRoutes(mux)
 	s.registerPublisherRoutes(mux)

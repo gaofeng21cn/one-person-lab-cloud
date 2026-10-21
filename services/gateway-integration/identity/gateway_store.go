@@ -119,6 +119,22 @@ func (s *GatewayStore) BindWalletBinding(ctx context.Context, binding WalletBind
 	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM gateway.tenant_wallet_bindings WHERE tenant_id = $1`, binding.TenantID).Scan(&current); err != nil {
 		return WalletBinding{}, err
 	}
+	// Replay of the same command identity: this exact binding already exists and
+	// is still active, so the owner answers with it and writes nothing. A revoked
+	// row means a newer binding replaced it, and the version check below refuses
+	// the stale command instead of resurrecting it.
+	var existing WalletBinding
+	replay := tx.QueryRowContext(ctx, `
+		SELECT id, tenant_id, billing_sub2api_user_id, delegation_ref, verification_evidence_ref, bound_at
+		FROM gateway.tenant_wallet_bindings WHERE id = $1 AND revoked_at IS NULL`, binding.ID)
+	err = replay.Scan(&existing.ID, &existing.TenantID, &existing.BillingSub2APIUserID, &existing.DelegationRef, &existing.VerificationRef, &existing.BoundAt)
+	if err == nil {
+		existing.Version = current
+		return existing, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return WalletBinding{}, err
+	}
 	if current != expectedVersion {
 		return WalletBinding{}, ErrWalletBindingVersionConflict
 	}

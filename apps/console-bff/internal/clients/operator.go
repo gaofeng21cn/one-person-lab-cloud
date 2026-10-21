@@ -95,3 +95,11 @@ func (c *Clients) OperatorRegistryTags(ctx context.Context, session string, name
 	path := "/internal/cloud/operator/registry/tags/" + url.PathEscape(namespace) + "/" + url.PathEscape(repository)
 	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
 }
+
+// OperatorProvisionAccount runs the one activation command on the retained owner
+// through the BFF proof. The BFF forwards the operator's exact command and the
+// caller's idempotency key; the owner keeps its own session, CSRF and duplicate
+// rules, and returns the receipt the BFF reads the Gateway subject from.
+func (c *Clients) OperatorProvisionAccount(ctx context.Context, session, key string, body []byte) ([]byte, error) {
+	return c.controlPlane.requestJSONBody(ctx, session, http.MethodPost, "/internal/cloud/operator/accounts", key, body, operatorReadMaximumBytes)
+}

@@ -52,8 +52,16 @@ func (s *Service) BindWallet(ctx context.Context, r *api.WalletBindingCommand) (
 	if err := s.authorizeWalletBinding(ctx, r.GetContext(), tenantID); err != nil {
 		return nil, err
 	}
+	// The binding identity is the caller's command identity, not the one-shot
+	// authorization receipt: a retried activation that re-derives the same key
+	// reads the binding it already made back instead of attempting a second one.
+	// The receipt remains the delegation evidence stored on that binding.
+	bindingKey := walletBusinessKey(r.GetContext())
+	if bindingKey == "" {
+		bindingKey = r.GetAuthorizationReceiptId()
+	}
 	binding, err := s.GatewayStore.BindWalletBinding(ctx, WalletBinding{
-		ID:                   "wallet-binding-" + shortDigest(tenantID+":"+r.GetBillingSub2ApiUserId()+":"+r.GetAuthorizationReceiptId()),
+		ID:                   "wallet-binding-" + shortDigest(tenantID+":"+r.GetBillingSub2ApiUserId()+":"+bindingKey),
 		TenantID:             tenantID,
 		BillingSub2APIUserID: r.GetBillingSub2ApiUserId(),
 		DelegationRef:        r.GetAuthorizationReceiptId(),

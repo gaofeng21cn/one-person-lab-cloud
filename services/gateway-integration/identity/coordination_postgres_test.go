@@ -383,3 +383,72 @@ func platformCaller(step, cookie string) *api.CallContext {
 func grantedCaller(step, grant string) *api.CallContext {
 	return &api.CallContext{RequestId: "req-" + step, IdempotencyKey: "opl-test:" + step, ActorId: "101", AcceptedOperationGrantId: proto.String(grant), Scope: tenantScope("tenant-coord")}
 }
+
+// TestCreateTenantReplaysTheOriginalOperation proves Tenant admission is keyed by
+// the caller's idempotency key: the same command returns the original Tenant and
+// never admits a second Tenant or a second owner membership. Activation derives
+// that key from the account, so a retried activation converges here.
+func TestCreateTenantReplaysTheOriginalOperation(t *testing.T) {
+	s, tenantDB, cookie, _, _ := coordinationSystem(t, &gatewayWalletStub{})
+	peerCtx := ownerservice.WithPeerOwner(t.Context(), owneridentity.ConsoleBFF)
+
+	first, err := s.CreateTenant(peerCtx, &api.CreateTenantRpcRequest{
+		Context: platformCaller("tenant-admit", cookie),
+		Body:    &api.CreateTenantRequest{Name: "Customer One", OwnerGatewaySubjectId: "77", BillingSub2ApiUserId: "77", OwnerEmail: "customer@example.test"},
+	})
+	if err != nil {
+		t.Fatalf("create tenant: %v", err)
+	}
+	if first.GetResourceId() == "" || first.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
+		t.Fatalf("unexpected tenant operation: %v", first)
+	}
+	replay, err := s.CreateTenant(peerCtx, &api.CreateTenantRpcRequest{
+		Context: platformCaller("tenant-admit", cookie),
+		Body:    &api.CreateTenantRequest{Name: "Customer One", OwnerGatewaySubjectId: "77", BillingSub2ApiUserId: "77", OwnerEmail: "customer@example.test"},
+	})
+	if err != nil {
+		t.Fatalf("replay tenant: %v", err)
+	}
+	if replay.GetResourceId() != first.GetResourceId() || replay.GetOperationId() != first.GetOperationId() {
+		t.Fatalf("replay admitted a second tenant: %v vs %v", replay, first)
+	}
+	var tenants, owners int
+	// The fixture seeds its own tenant-coord row; only the admitted Tenant counts.
+	if err = tenantDB.QueryRowContext(t.Context(), `SELECT count(*) FROM tenant.tenants WHERE id LIKE 'tenant\_%'`).Scan(&tenants); err != nil {
+		t.Fatal(err)
+	}
+	if err = tenantDB.QueryRowContext(t.Context(), `SELECT count(*) FROM tenant.tenant_members WHERE role='owner'`).Scan(&owners); err != nil {
+		t.Fatal(err)
+	}
+	if tenants != 1 || owners != 1 {
+		t.Fatalf("replay persisted tenants=%d owners=%d", tenants, owners)
+	}
+}
+
+// TestBindWalletReplaysTheSameCommandIdentity proves the billing binding is keyed
+// by the caller's command identity: a retried bind returns the binding it already
+// made and never admits a second active binding or a second version.
+func TestBindWalletReplaysTheSameCommandIdentity(t *testing.T) {
+	_, _, cookie, console, _ := coordinationSystem(t, &gatewayWalletStub{})
+	command := &api.WalletBindingCommand{Context: platformCaller("bind-replay", cookie), TargetTenantId: "tenant-coord", BillingSub2ApiUserId: "77", AuthorizationReceiptId: "auth-receipt-replay"}
+
+	first, err := console.BindWallet(t.Context(), command)
+	if err != nil {
+		t.Fatalf("bind wallet: %v", err)
+	}
+	if first.GetBindingVersion() != 1 || first.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED {
+		t.Fatalf("unexpected binding: %v", first)
+	}
+	replay, err := console.BindWallet(t.Context(), command)
+	if err != nil {
+		t.Fatalf("replay bind wallet: %v", err)
+	}
+	if replay.GetBindingVersion() != first.GetBindingVersion() || replay.GetBillingSub2ApiUserId() != "77" {
+		t.Fatalf("replay changed the binding: %v vs %v", replay, first)
+	}
+	// The owner reports the binding version as the Tenant's binding count, so a
+	// second admitted binding would answer version 2 rather than the original 1.
+	if replay.GetBindingVersion() != 1 {
+		t.Fatalf("replay persisted another binding version: %v", replay)
+	}
+}
