@@ -160,6 +160,7 @@ for (const identity of ["legacy", "cloud"] as const) {
           "/api/v2/auth/session": { actorId: "user-customer", tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" },
           "/api/v2/workspaces": { items: [ownerWorkspace] },
           "/api/v2/workspaces/ws-1": ownerWorkspace,
+          "/api/v2/workspaces/ws-1/deletion": null,
           "/api/v2/namespaces": { items: [{ id: "namespace-1", name: "Fixture namespace" }] },
           "/api/v2/packages": { items: [] },
           // Runtime Control projects the one Runtime its effective policy names onto
@@ -1249,6 +1250,7 @@ test("cloud Console reads the customer Workspace from the Workspace owner only",
         "/api/v2/auth/session": { actorId: "user-customer", tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" },
         "/api/v2/workspaces": { items: [ownerWorkspace] },
         "/api/v2/workspaces/ws-owner": ownerWorkspace,
+        "/api/v2/workspaces/ws-owner/deletion": null,
         "/api/v2/delivery/ws-owner": {
           workspaceId: "ws-owner",
           workspace: { owner: "workspace", state: "active", details: {} },
@@ -1563,6 +1565,7 @@ test("a late model configuration readback cannot replace the route that replaced
       const path = new URL(route.request().url()).pathname;
       if (path === "/api/v2/auth/session") return route.fulfill({ json: { actorId: "user-customer", tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
       if (path === "/api/v2/workspaces/ws-models") return route.fulfill({ json: modelsWorkspaceFixture });
+      if (path === "/api/v2/workspaces/ws-models/deletion") return route.fulfill({ json: null });
       if (path === "/api/v2/delivery/ws-models") return route.fulfill({ json: modelsDeliveryFixture });
       if (path === "/api/v2/workspaces/ws-models/models") {
         configurationReads += 1;
@@ -1907,6 +1910,7 @@ test("Cloud Workspace transactions preserve exact money, roles, paging and navig
       if (path === "/api/v2/auth/session") return route.fulfill({ json: { actorId: "user-customer", tenantId: "tenant-1", role, displayName: "Team member", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
       if (path === "/api/v2/workspaces") return route.fulfill({ json: { items: [workspace("ws-a"), workspace("ws-b")] } });
       if (path === "/api/v2/workspaces/ws-a" || path === "/api/v2/workspaces/ws-b") return route.fulfill({ json: workspace(path.endsWith("ws-a") ? "ws-a" : "ws-b") });
+      if (path === "/api/v2/workspaces/ws-a/deletion" || path === "/api/v2/workspaces/ws-b/deletion") return route.fulfill({ json: null });
       if (path.endsWith("/transactions/trend")) {
         if (denied) return route.fulfill({ status: 403, json: { code: "FORBIDDEN", message: "denied" } });
         const workspaceId = path.includes("ws-b") ? "ws-b" : "ws-a";
@@ -1989,6 +1993,7 @@ test("Cloud team financial receipts show original amounts and reject late naviga
       if (path === "/api/v2/auth/session") return route.fulfill({ json: { actorId: "user-customer", tenantId: "tenant-1", role: "admin", displayName: "Team admin", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
       if (path === "/api/v2/workspaces") return route.fulfill({ json: { items: [workspace("ws-a"), workspace("ws-b")] } });
       if (path === "/api/v2/workspaces/ws-a" || path === "/api/v2/workspaces/ws-b") return route.fulfill({ json: workspace(path.endsWith("ws-a") ? "ws-a" : "ws-b") });
+      if (path === "/api/v2/workspaces/ws-a/deletion" || path === "/api/v2/workspaces/ws-b/deletion") return route.fulfill({ json: null });
       if (path.endsWith("/transactions")) return route.fulfill({ json: { items: path.includes("ws-a") ? [transaction] : [] } });
       if (path === "/api/v2/workspaces/ws-a/financial-receipts/receipt-1") {
         assert.equal(route.request().method(), "GET");

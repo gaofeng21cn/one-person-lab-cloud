@@ -294,7 +294,7 @@ export function useConsoleController() {
   });
   const fabricRuntimeRead: FabricRuntimeReadController = fabricRuntimeReadCapability;
   const activeWorkspace = customerWorkspaceRead.activeWorkspace;
-  // The Control Plane's credential, deletion, renewal, application-installation
+  // The Control Plane's credential, renewal, application-installation
   // and budget controllers all act on a Workspace the Control Plane owns. A
   // cloud-identity Workspace belongs to the Workspace owner, so those
   // controllers receive no Workspace under that identity instead of addressing
@@ -329,10 +329,11 @@ export function useConsoleController() {
   });
   const workspaceLaunch: WorkspaceLaunchController = workspaceLaunchCapability;
 
+  // Deletion selects the authenticated Workspace owner through its API adapter.
   const workspaceDeleteCapability = useWorkspaceDeleteController({
     session,
-    workspace: controlPlaneWorkspace,
-    activeWorkspaceId: controlPlaneWorkspaceId,
+    workspace: activeWorkspace,
+    activeWorkspaceId: cloudIdentity && route?.kind !== "customer.workspace-detail" ? "" : activeWorkspaceId,
     currentMutationRequest,
     navigate,
     flash,
