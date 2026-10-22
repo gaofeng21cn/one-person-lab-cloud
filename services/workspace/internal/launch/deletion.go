@@ -194,14 +194,12 @@ func (s *Service) DeleteWorkspace(ctx context.Context, r *api.DeleteWorkspaceRpc
 		WHERE resource_id=$1 AND kind='delete_workspace'
 		ORDER BY CASE WHEN status NOT IN ('succeeded','failed','cancelled') THEN 0 ELSE 1 END, created_at,id LIMIT 1`, workspaceID).Scan(&existingID, &existingState)
 	if err == nil && existingState != "failed" && existingState != "cancelled" {
-		if currentState != "deleted" || existingState == "succeeded" {
-			tx.Rollback()
-			op, err := s.Store.ReadOperation(ctx, existingID)
-			if err != nil {
-				return nil, dbError(err)
-			}
-			return s.replayDeletion(ctx, op)
+		tx.Rollback()
+		op, err := s.Store.ReadOperation(ctx, existingID)
+		if err != nil {
+			return nil, dbError(err)
 		}
+		return s.replayDeletion(ctx, op)
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, dbError(err)
@@ -320,7 +318,9 @@ func (s *Service) freezeDeletion(ctx context.Context, tx *sql.Tx, workspaceID, n
 	var chargeOperation, chargeReceipt sql.NullString
 	err = tx.QueryRowContext(ctx, `SELECT p.id,p.period_start,p.charge_wallet_operation_id,p.charge_receipt_id,p.accepted_quote_snapshot
 		FROM workspace.subscriptions s JOIN workspace.subscription_periods p ON p.subscription_id=s.id
-		WHERE s.workspace_id=$1 ORDER BY p.period_start,p.id LIMIT 1`, workspaceID).Scan(&periodID, &periodStart, &chargeOperation, &chargeReceipt, &raw)
+		WHERE s.workspace_id=$1 AND p.period_start=s.current_period_start AND p.period_end=s.current_period_end
+		AND p.charge_wallet_operation_id IS NOT DISTINCT FROM s.last_charge_wallet_operation_id
+		ORDER BY p.id LIMIT 1`, workspaceID).Scan(&periodID, &periodStart, &chargeOperation, &chargeReceipt, &raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return deletionOrder{}, status.Error(codes.FailedPrecondition, "the Workspace has no confirmed paid period to settle")
 	}
@@ -475,6 +475,14 @@ func deletionOperation(o ownerstore.Operation) (*api.Operation, error) {
 		v := api.OperationObservationResultEnum(observation)
 		out.ObservationResult = &v
 	}
+	if o.ErrorCode != "" {
+		number, ok := api.ErrorCodeEnum_value["ERROR_CODE_ENUM_"+strings.ToUpper(o.ErrorCode)]
+		if !ok || number == 0 {
+			return nil, status.Error(codes.Internal, "stored Workspace deletion error is invalid")
+		}
+		code := api.ErrorCodeEnum(number)
+		out.ErrorCode = &code
+	}
 	if !o.Terminal() {
 		out.PollAfterSeconds = proto.Int32(5)
 	}
@@ -549,6 +557,9 @@ func (s *Service) resumeDeletion(ctx context.Context, operationID string) error 
 	if err != nil || receiptID == "" {
 		return err
 	}
+	if err = s.recordDeletedWorkspace(ctx, op, token, &result); err != nil {
+		return err
+	}
 	if err = s.refundConfirmedDeletion(ctx, op, token, order, &result, receiptID); err != nil {
 		return err
 	}
@@ -621,7 +632,14 @@ func (s *Service) checkpointDeletion(ctx context.Context, op ownerstore.Operatio
 	if err != nil {
 		return status.Error(codes.Internal, "Workspace deletion result cannot be encoded")
 	}
-	return s.checkpointBytes(ctx, op, token, step, stage, state, observation, observation, ownerRef, code, code, raw)
+	operationCode := code
+	switch code {
+	case "KEY_CLOSEOUT_REFUSED":
+		operationCode = "OWNER_CAPABILITY_UNAVAILABLE"
+	case "KEY_BINDING_UNRESOLVED", "KEY_CLOSEOUT_UNKNOWN", "KEY_CLOSEOUT_UNCONFIRMED":
+		operationCode = "DEPENDENCY_UNAVAILABLE"
+	}
+	return s.checkpointBytes(ctx, op, token, step, stage, state, observation, observation, ownerRef, operationCode, code, raw)
 }
 
 // retireDeletedRuntime stops the one runtime this deletion froze. Serve's own
@@ -800,7 +818,7 @@ func validateResourceDeletion(op ownerstore.Operation, order deletionOrder, dele
 // deletion's own operation identity and the Workspace continues to resource
 // deletion and settlement; the recorded outcome stays the only closeout claim.
 func (s *Service) disableDeletedWorkspaceKey(ctx context.Context, op ownerstore.Operation, token string, result *deletionResult) error {
-	const step, stage = "disable_managed_key", "key_closeout"
+	const step, stage = "disable_managed_key", "absence_verification"
 	if result.KeyCloseoutOutcome == "confirmed" || result.KeyCloseoutOutcome == "not_applicable" {
 		return nil
 	}
@@ -1086,10 +1104,14 @@ func (s *Service) settleRefund(ctx context.Context, op ownerstore.Operation, tok
 			return s.failedDeletionCall(ctx, op, token, "refund_confirmed_deletion", "refund", *result, status.Error(codes.DataLoss, "rejected refund names no cause"))
 		}
 		return s.checkpointDeletion(ctx, op, token, "refund_confirmed_deletion", "refund", "needs_attention", "rejected", refunded.GetId(), errorCodeText(refunded.GetErrorCode()), result)
-	default:
+	case api.WalletOperationStatusEnum_WALLET_OPERATION_STATUS_ENUM_REQUESTED:
 		result.RefundStatus = "requested"
-		return s.checkpointDeletion(ctx, op, token, "refund_confirmed_deletion", "refund", "awaiting_confirmation", "unknown", refunded.GetId(), "DEPENDENCY_UNAVAILABLE", result)
+	case api.WalletOperationStatusEnum_WALLET_OPERATION_STATUS_ENUM_UNKNOWN:
+		result.RefundStatus = "unknown"
+	default:
+		return s.failedDeletionCall(ctx, op, token, "refund_confirmed_deletion", "refund", *result, status.Error(codes.DataLoss, "wallet refund has no valid owner outcome"))
 	}
+	return s.checkpointDeletion(ctx, op, token, "refund_confirmed_deletion", "refund", "awaiting_confirmation", "unknown", refunded.GetId(), "DEPENDENCY_UNAVAILABLE", result)
 }
 
 // walletRefundSettled reports whether a wallet answer is terminal for this
@@ -1108,13 +1130,55 @@ func validateWalletRefund(op ownerstore.Operation, amount int64, refunded *api.W
 	return nil
 }
 
-// completeDeletion marks the Workspace deleted only after the resource absence
-// and the refund settlement are both resolved. The operation and the Workspace
-// row are written in one owner transaction, so no reader sees a succeeded
-// deletion whose Workspace is still active.
+// recordDeletedWorkspace commits the confirmed non-financial deletion fact before
+// attempting settlement. The original operation stays recoverable while its
+// independent wallet or key obligation is unresolved.
+func (s *Service) recordDeletedWorkspace(ctx context.Context, op ownerstore.Operation, token string, result *deletionResult) error {
+	deletedAt, err := time.Parse(time.RFC3339Nano, result.DeletedAt)
+	if err != nil {
+		return status.Error(codes.DataLoss, "stored deletion time is invalid")
+	}
+	raw, err := json.Marshal(result)
+	if err != nil {
+		return status.Error(codes.Internal, "Workspace deletion result cannot be encoded")
+	}
+	tx, err := s.Store.DB().BeginTx(ctx, nil)
+	if err != nil {
+		return dbError(err)
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `UPDATE workspace.operations SET result=$3,updated_at=now()
+		WHERE id=$1 AND worker_lease_token=$2 AND worker_lease_until>now() AND status NOT IN ('succeeded','failed','cancelled')`, op.ID, token, raw)
+	if err = fenced(res, err); err != nil {
+		return err
+	}
+	res, err = tx.ExecContext(ctx, `UPDATE workspace.workspaces
+		SET status='deleted',deleted_at=COALESCE(deleted_at,$2),version=version+CASE WHEN status='deleted' THEN 0 ELSE 1 END,updated_at=now()
+		WHERE id=$1 AND status IN ('deleting','deleted')`, op.ResourceID, deletedAt)
+	if err = fenced(res, err); err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		return dbError(err)
+	}
+	return nil
+}
+
+// completeDeletion closes the tracking operation after its remaining obligations
+// settle. The Workspace deletion fact was already committed independently.
 func (s *Service) completeDeletion(ctx context.Context, op ownerstore.Operation, token string, result *deletionResult) error {
+	if result.KeyCloseoutOutcome == "rejected" {
+		return s.checkpointDeletion(ctx, op, token, "disable_managed_key", "absence_verification", "needs_attention", "rejected", result.ManagedKeyBindingID, "OWNER_CAPABILITY_UNAVAILABLE", result)
+	}
 	if result.RefundStatus != "confirmed" && result.RefundStatus != "not_applicable" {
 		return nil
+	}
+	switch result.KeyCloseoutOutcome {
+	case "confirmed", "not_applicable":
+	case "unknown":
+		return s.checkpointDeletion(ctx, op, token, "disable_managed_key", "absence_verification", "awaiting_confirmation", "unknown", result.ManagedKeyBindingID, "DEPENDENCY_UNAVAILABLE", result)
+	default:
+		return status.Error(codes.DataLoss, "Workspace deletion has no managed-key closeout fact")
 	}
 	raw, err := json.Marshal(result)
 	if err != nil {
@@ -1127,10 +1191,6 @@ func (s *Service) completeDeletion(ctx context.Context, op ownerstore.Operation,
 	defer tx.Rollback()
 	res, err := tx.ExecContext(ctx, `UPDATE workspace.operations SET result=$3,status='succeeded',stage='succeeded',observation_result='confirmed',error_code=NULL,updated_at=now(),completed_at=now()
 		WHERE id=$1 AND worker_lease_token=$2 AND worker_lease_until>now() AND status NOT IN ('succeeded','failed','cancelled')`, op.ID, token, raw)
-	if err = fenced(res, err); err != nil {
-		return err
-	}
-	res, err = tx.ExecContext(ctx, `UPDATE workspace.workspaces SET status='deleted',deleted_at=COALESCE(deleted_at,now()),version=version+1,updated_at=now() WHERE id=$1 AND status<>'deleted'`, op.ResourceID)
 	if err = fenced(res, err); err != nil {
 		return err
 	}
