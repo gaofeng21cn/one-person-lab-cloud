@@ -1620,8 +1620,8 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
         workspaceName: `Local qualification ${suffix}`,
         wait: (milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds)),
         onStage: (name) => { stage = name; },
-        readRuntime: async ({ accountId: exactAccountId, workspaceId: exactWorkspaceId }) => {
-          const runtime = await runtimeImageReadback(exactAccountId, exactWorkspaceId, workspaceImage, workspaceInspection.Id);
+        readRuntime: async ({ accountId: exactAccountId, workspaceId: exactWorkspaceId, runtimeId: exactRuntimeId }) => {
+          const runtime = await applicationRuntimeImageReadback(exactAccountId, exactWorkspaceId, workspaceImage, workspaceInspection.Id, exactRuntimeId);
           return { runningDigest: runtime.Image };
         },
         readDebit: async ({ sub2apiUserId, code, amountUsdMicros }) => {
