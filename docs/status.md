@@ -9,7 +9,7 @@ Baseline evidence date: 2026-10-01
 This page keeps the dated baseline evidence above and explicitly dated source
 updates below. The baseline SHA does not describe the later changes or qualify
 them: each receipt retains its original source, run and environment. The latest
-source update is 2026-10-21; it answers what the cited source and tests prove
+source update is 2026-10-22; it answers what the cited source and tests prove
 within their declared scope and does not describe an Instance installation or a
 Product Release. The target boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
@@ -938,9 +938,9 @@ authority is the run-owned fixture. It does not establish live
 Sub2API/Gateway refunds, TKE provider adoption or Instance deployment. Reaching
 the deletion stage required Cloud PR #1010, which restored the `launch` binding
 the restart-continuity block reads; before that change every run stopped at
-`workspace_open`. The same file still carries an undefined
-`runtimeImageReadback` on the live lane, tracked in #1012, so no live-authority
-conclusion follows from this receipt.
+`workspace_open`. The live lane was not executed by these runs; its readback
+binding was repaired separately in PR #1014, so no live-authority conclusion
+follows from this receipt.
 
 The Instance owner separately deployed source `78dbe9b4` / digest `05992806…`
 in Deploy `38425411874`. [Fresh protected verification 38428162906](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/38428162906)
