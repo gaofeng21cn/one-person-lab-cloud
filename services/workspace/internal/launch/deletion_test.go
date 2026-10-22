@@ -230,7 +230,7 @@ func deletionCallContext(tenant string) (*api.CallContext, context.Context) {
 // the deletion can be resolved against real owner rows.
 func deletionWorkspace(t *testing.T, db *sql.DB) (*Service, *api.CallContext, context.Context, time.Time, int64) {
 	t.Helper()
-	ctx := t.Context()
+	call, ctx := deletionCallContext("tenant-original")
 	store, err := ownerstore.New(db, "workspace")
 	if err != nil {
 		t.Fatal(err)
@@ -315,17 +315,29 @@ func TestDeleteWorkspaceRequiresExactConfirmationAndDestructionAck(t *testing.T)
 
 func TestDeleteWorkspaceAcceptsTheOriginalUnfinishedCreateForCloseout(t *testing.T) {
 	db := runtimeDatabase(t)
-	service, call, ctx, _, _ := deletionWorkspace(t, db)
-	if _, err := db.ExecContext(ctx, `UPDATE workspace.workspaces SET status='provisioning' WHERE id='workspace-original'`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.ExecContext(ctx, `UPDATE workspace.operations SET status='awaiting_confirmation',stage='resource_preflight',completed_at=NULL WHERE id='operation-original'`); err != nil {
+	call, ctx := deletionCallContext("tenant-original")
+	store, err := ownerstore.New(db, "workspace")
+	if err != nil {
 		t.Fatal(err)
 	}
 	call.IdempotencyKey = "idempotency-close-original-unfinished-create"
+	_, err = db.ExecContext(ctx, `INSERT INTO workspace.operations(id,tenant_id,actor_id,kind,resource_id,status,stage,request_id,accepted_input,result,observation_result)
+		VALUES('operation-unfinished','tenant-original','actor-original','create_workspace','workspace-unfinished','awaiting_confirmation','resource_preflight','request-original',
+		'{"authorizationContextId":"authorization-original","inputDigest":"sha256:unfinished","request":{}}'::jsonb,'{}'::jsonb,'unknown')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.ExecContext(ctx, `INSERT INTO workspace.workspaces(id,tenant_id,name,status,compute_plan_id,storage_plan_id,active_operation_id,created_by,version)
+		VALUES('workspace-unfinished','tenant-original','Unfinished workspace','provisioning','compute-original','storage-original','operation-unfinished','actor-original',1)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{Store: store, Identity: &deletionIdentity{}, Ledger: &deletionLedgerClient{}, Fabric: &deletionFabricClient{}, Serve: &deletionServeClient{}, Gateway: &deletionGatewayClient{}}
+	service.Auth = ownerservice.NewAuthorizer(owneridentity.Workspace, &modelReadIdentity{})
+	call.IdempotencyKey = "idempotency-close-original-unfinished-create"
 	accepted, err := service.DeleteWorkspace(ctx, &api.DeleteWorkspaceRpcRequest{
-		Context: call, WorkspaceId: "workspace-original",
-		Body: &api.DeleteWorkspaceRequest{ConfirmationName: "Original workspace", AcknowledgeDataDestruction: true},
+		Context: call, WorkspaceId: "workspace-unfinished",
+		Body: &api.DeleteWorkspaceRequest{ConfirmationName: "Unfinished workspace", AcknowledgeDataDestruction: true},
 	})
 	if err != nil {
 		t.Fatalf("accepted unfinished Workspace closeout: %v", err)
