@@ -312,7 +312,7 @@ func (s *Service) freezeDeletion(ctx context.Context, tx *sql.Tx, workspaceID, n
 		if steps != 0 || string(raw) != "{}" {
 			return deletionOrder{}, status.Error(codes.FailedPrecondition, "the unfinished Workspace launch requires owner closeout evidence")
 		}
-		cancelled, err := tx.ExecContext(ctx, `UPDATE workspace.operations SET status='cancelled',stage='reconciliation',observation_result='confirmed',completed_at=now(),updated_at=now()
+		cancelled, err := tx.ExecContext(ctx, `UPDATE workspace.operations SET status='cancelled',stage='reconciliation',observation_result='confirmed',worker_lease_token=NULL,worker_lease_until=NULL,completed_at=now(),updated_at=now()
 			WHERE id=$1 AND status NOT IN ('succeeded','failed','cancelled') AND result='{}'::jsonb
 			AND NOT EXISTS (SELECT 1 FROM workspace.saga_steps WHERE operation_id=$1)`, launchID)
 		if err != nil {

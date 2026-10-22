@@ -346,14 +346,15 @@ func TestDeleteWorkspaceAcceptsTheOriginalUnfinishedCreateForCloseout(t *testing
 		t.Fatalf("closeout did not persist a deletion operation: %v", accepted)
 	}
 	var createStatus, workspaceStatus string
-	if err = db.QueryRowContext(ctx, `SELECT status FROM workspace.operations WHERE id='operation-unfinished'`).Scan(&createStatus); err != nil {
+	var leaseToken sql.NullString
+	if err = db.QueryRowContext(ctx, `SELECT status,worker_lease_token FROM workspace.operations WHERE id='operation-unfinished'`).Scan(&createStatus, &leaseToken); err != nil {
 		t.Fatal(err)
 	}
 	if err = db.QueryRowContext(ctx, `SELECT status FROM workspace.workspaces WHERE id='workspace-unfinished'`).Scan(&workspaceStatus); err != nil {
 		t.Fatal(err)
 	}
-	if createStatus != "cancelled" || workspaceStatus != "deleted" {
-		t.Fatalf("unfinished closeout left create=%q workspace=%q", createStatus, workspaceStatus)
+	if createStatus != "cancelled" || workspaceStatus != "deleted" || leaseToken.Valid {
+		t.Fatalf("unfinished closeout left create=%q workspace=%q lease=%v", createStatus, workspaceStatus, leaseToken)
 	}
 	if err = service.Resume(ctx, "operation-unfinished"); err != nil {
 		t.Fatal(err)
