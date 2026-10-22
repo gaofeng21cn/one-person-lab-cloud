@@ -388,18 +388,25 @@ test("Workspace owner deletion facts project onto the Console progress model wit
     { ...deletion, resourceDeletionStatus: "unknown", dataDeletionStatus: "unknown", refundStatus: "requested", refundOperationId: undefined },
     { ...operation, status: "awaiting_confirmation", stage: "refund", pollAfterSeconds: 30 }
   );
-  assert.equal(retrying.status, "pending");
-  assert.equal(retrying.pageState, "retrying");
+  assert.equal(retrying.status, "manual_review");
+  assert.equal(retrying.pageState, "blocked");
   assert.equal(retrying.refundStatus, "pending");
   assert.equal(retrying.pollAfterSeconds, 30);
 
   const unknownRefund = workspaceApi.projectWorkspaceOwnerDeletion(
-    { ...deletion, resourceDeletionStatus: "pending", dataDeletionStatus: "pending", refundStatus: "unknown", refundOperationId: undefined },
-    { ...operation, status: "running", stage: "retirement", pollAfterSeconds: 5 }
+    { ...deletion, refundStatus: "unknown", refundOperationId: undefined },
+    { ...operation, status: "succeeded", stage: "succeeded" }
   );
-  assert.equal(unknownRefund.status, "pending");
-  assert.equal(unknownRefund.pageState, "waiting");
-  assert.equal("refundStatus" in unknownRefund, false);
+  assert.equal(unknownRefund.status, "deleted");
+  assert.equal(unknownRefund.pageState, "blocked");
+  assert.equal(unknownRefund.refundStatus, "manual_review");
+
+  const cancelled = workspaceApi.projectWorkspaceOwnerDeletion(
+    deletion,
+    { ...operation, status: "cancelled", stage: "refund" }
+  );
+  assert.equal(cancelled.status, "manual_review");
+  assert.equal(cancelled.pageState, "blocked");
 
   assert.throws(() => workspaceApi.projectWorkspaceOwnerDeletion(
     deletion, { ...operation, resourceId: "ws-other" }

@@ -169,23 +169,24 @@ test("Workspace owner deletion separates resource facts from refund and operatio
     operationId: deletion.operationId, owner: "workspace", kind: "delete_workspace", resourceId: deletion.workspaceId,
     status: "awaiting_confirmation", stage: "refund", pollAfterSeconds: 5, requestId: "request-1", createdAt: deletion.updatedAt, updatedAt: deletion.updatedAt
   };
-  const cases: Array<{ refundStatus: WorkspaceOwnerDeletionDTO["refundStatus"]; status: WorkspaceOwnerOperationDTO["status"]; pageState: WorkspaceDeletionDTO["pageState"]; refund: WorkspaceDeletionDTO["refundStatus"] }> = [
-    { refundStatus: "requested", status: "awaiting_confirmation", pageState: "retrying", refund: "pending" },
-    { refundStatus: "unknown", status: "awaiting_confirmation", pageState: "retrying", refund: undefined },
-    { refundStatus: "rejected", status: "needs_attention", pageState: "blocked", refund: "manual_review" },
-    { refundStatus: "not_applicable", status: "running", pageState: "waiting", refund: "not_due" },
-    { refundStatus: "confirmed", status: "succeeded", pageState: "completed", refund: "succeeded" },
-    { refundStatus: "not_applicable", status: "succeeded", pageState: "completed", refund: "not_due" }
+  const cases: Array<{ refundStatus: WorkspaceOwnerDeletionDTO["refundStatus"]; status: WorkspaceOwnerOperationDTO["status"]; expectedStatus: WorkspaceDeletionDTO["status"]; pageState: WorkspaceDeletionDTO["pageState"]; refund: WorkspaceDeletionDTO["refundStatus"] }> = [
+    { refundStatus: "requested", status: "awaiting_confirmation", expectedStatus: "deleted", pageState: "retrying", refund: "pending" },
+    { refundStatus: "unknown", status: "awaiting_confirmation", expectedStatus: "deleted", pageState: "blocked", refund: "manual_review" },
+    { refundStatus: "rejected", status: "needs_attention", expectedStatus: "manual_review", pageState: "blocked", refund: "manual_review" },
+    { refundStatus: "not_applicable", status: "running", expectedStatus: "deleted", pageState: "waiting", refund: "not_due" },
+    { refundStatus: "confirmed", status: "succeeded", expectedStatus: "deleted", pageState: "completed", refund: "succeeded" },
+    { refundStatus: "not_applicable", status: "succeeded", expectedStatus: "deleted", pageState: "completed", refund: "not_due" }
   ];
   for (const scenario of cases) {
     const projected = workspaceApi.projectWorkspaceOwnerDeletion(
       { ...deletion, refundStatus: scenario.refundStatus }, { ...operation, status: scenario.status }
     );
-    assert.equal(projected.status, "deleted", "only resource and data facts determine their absence");
+    assert.equal(projected.status, scenario.expectedStatus, "rejected or failed owner facts require manual review");
     assert.equal(projected.pageState, scenario.pageState, "the original operation determines completion or attention");
     assert.equal(projected.refundStatus, scenario.refund);
   }
   assert.equal(workspaceApi.projectWorkspaceOwnerDeletion({ ...deletion, dataDeletionStatus: "pending" }, operation).status, "pending");
+  assert.equal(workspaceApi.projectWorkspaceOwnerDeletion({ ...deletion, dataDeletionStatus: "unknown" }, operation).status, "manual_review");
 });
 
 test("Workspace delete scopes busy and reuses its intent after a late response", async () => {

@@ -513,7 +513,8 @@ const workspaceOwnerDeletionRefundStates: Record<string, WorkspaceDeletionDTO["r
   not_applicable: "not_due",
   requested: "pending",
   confirmed: "succeeded",
-  rejected: "manual_review"
+  rejected: "manual_review",
+  unknown: "manual_review"
 };
 
 function decodeWorkspaceOwnerDeletion(value: unknown, workspaceId: string): WorkspaceOwnerDeletionDTO {
@@ -550,12 +551,15 @@ export function projectWorkspaceOwnerDeletion(
   if (!terminal && (!Number.isInteger(operation.pollAfterSeconds) || operation.pollAfterSeconds! < 1 || operation.pollAfterSeconds! > 300)) {
     throw new Error("invalid_workspace_operation_readback");
   }
+  const unknown = deletion.resourceDeletionStatus === "unknown" || deletion.dataDeletionStatus === "unknown";
+  const refundUnknown = deletion.refundStatus === "unknown";
   const attention = operation.status === "needs_attention" || operation.status === "failed" || operation.status === "cancelled";
-  const status: WorkspaceDeletionDTO["status"] = confirmed ? "deleted" : rejected || attention ? "manual_review" : "pending";
+  const blocked = rejected || unknown || refundUnknown || attention;
+  const status: WorkspaceDeletionDTO["status"] = confirmed && !attention ? "deleted" : blocked ? "manual_review" : "pending";
   // Resource/data absence can be confirmed while the original refund is still
   // pending. Only the owner's succeeded operation establishes full completion.
-  const pageState: WorkspaceDeletionDTO["pageState"] = confirmed && operation.status === "succeeded" ? "completed"
-    : rejected || attention ? "blocked"
+  const pageState: WorkspaceDeletionDTO["pageState"] = blocked ? "blocked"
+    : confirmed && operation.status === "succeeded" ? "completed"
       : operation.status === "awaiting_confirmation" ? "retrying" : "waiting";
   const refundStatus = workspaceOwnerDeletionRefundStates[deletion.refundStatus];
   return {
