@@ -476,7 +476,17 @@ func deletionOperation(o ownerstore.Operation) (*api.Operation, error) {
 		out.ObservationResult = &v
 	}
 	if o.ErrorCode != "" {
-		number, ok := api.ErrorCodeEnum_value["ERROR_CODE_ENUM_"+strings.ToUpper(o.ErrorCode)]
+		errorCode := o.ErrorCode
+		// These Workspace-local codes were persisted before the shared owner
+		// readback vocabulary was adopted. Keep replaying the original operation
+		// through the current typed contract without rewriting historical rows.
+		switch errorCode {
+		case "KEY_CLOSEOUT_REFUSED":
+			errorCode = "OWNER_CAPABILITY_UNAVAILABLE"
+		case "KEY_BINDING_UNRESOLVED", "KEY_CLOSEOUT_UNKNOWN", "KEY_CLOSEOUT_UNCONFIRMED":
+			errorCode = "DEPENDENCY_UNAVAILABLE"
+		}
+		number, ok := api.ErrorCodeEnum_value["ERROR_CODE_ENUM_"+strings.ToUpper(errorCode)]
 		if !ok || number == 0 {
 			return nil, status.Error(codes.Internal, "stored Workspace deletion error is invalid")
 		}
