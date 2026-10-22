@@ -366,6 +366,51 @@ func TestDeleteWorkspaceAcceptsTheOriginalUnfinishedCreateForCloseout(t *testing
 	}
 }
 
+func TestDeleteWorkspaceDoesNotCloseOutAnUnfinishedLaunchWithOwnerSteps(t *testing.T) {
+	db := runtimeDatabase(t)
+	call, ctx := deletionCallContext("tenant-original")
+	store, err := ownerstore.New(db, "workspace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.ExecContext(ctx, `INSERT INTO workspace.operations(id,tenant_id,actor_id,kind,resource_id,status,stage,request_id,accepted_input,result,observation_result)
+		VALUES('operation-stepped','tenant-original','actor-original','create_workspace','workspace-stepped','awaiting_confirmation','resource_preflight','request-original',
+		'{"authorizationContextId":"authorization-original","inputDigest":"sha256:unfinished","request":{}}'::jsonb,'{}'::jsonb,'unknown')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.ExecContext(ctx, `INSERT INTO workspace.workspaces(id,tenant_id,name,status,compute_plan_id,storage_plan_id,active_operation_id,created_by,version)
+		VALUES('workspace-stepped','tenant-original','Stepped workspace','provisioning','compute-original','storage-original','operation-stepped','actor-original',1)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.ExecContext(ctx, `INSERT INTO workspace.saga_steps(id,operation_id,step_key,sequence,target_owner,command_id,idempotency_key,input_snapshot,observation_result,attempt_count)
+		VALUES('step-original','operation-stepped','accept_quote',1,'resource_catalog','operation-stepped:accept_quote','operation-stepped:accept_quote','{}'::jsonb,'unknown',1)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{Store: store, Identity: &deletionIdentity{}, Ledger: &deletionLedgerClient{}, Fabric: &deletionFabricClient{}, Serve: &deletionServeClient{}, Gateway: &deletionGatewayClient{}}
+	service.Auth = ownerservice.NewAuthorizer(owneridentity.Workspace, &modelReadIdentity{})
+	call.IdempotencyKey = "idempotency-close-stepped-create"
+	_, err = service.DeleteWorkspace(ctx, &api.DeleteWorkspaceRpcRequest{
+		Context: call, WorkspaceId: "workspace-stepped",
+		Body: &api.DeleteWorkspaceRequest{ConfirmationName: "Stepped workspace", AcknowledgeDataDestruction: true},
+	})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("an unfinished order with an owner step must not be guessed absent: %v", err)
+	}
+	var createStatus, workspaceStatus string
+	if err = db.QueryRowContext(ctx, `SELECT status FROM workspace.operations WHERE id='operation-stepped'`).Scan(&createStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.QueryRowContext(ctx, `SELECT status FROM workspace.workspaces WHERE id='workspace-stepped'`).Scan(&workspaceStatus); err != nil {
+		t.Fatal(err)
+	}
+	if createStatus != "awaiting_confirmation" || workspaceStatus != "provisioning" {
+		t.Fatalf("unresolved original changed after refused closeout: create=%q workspace=%q", createStatus, workspaceStatus)
+	}
+}
+
 func TestDeleteWorkspaceRecordsOneOperationBoundToTheOriginalPayment(t *testing.T) {
 	db := runtimeDatabase(t)
 	service, call, ctx, periodStart, totalMicros := deletionWorkspace(t, db)

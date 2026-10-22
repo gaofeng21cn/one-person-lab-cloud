@@ -281,10 +281,9 @@ func (s *Service) replayDeletion(ctx context.Context, op ownerstore.Operation) (
 }
 
 // freezeDeletion binds the exact original execution and payment facts the
-// deletion will act on. The launch must have delivered a runtime and a confirmed
-// resource set, and a paid order must still carry its original confirmed charge;
-// an order whose funding evidence is missing is refused instead of being deleted
-// without a refundable original.
+// deletion will act on. A delivered order must identify its confirmed runtime,
+// resource set and current paid period. An unfinished order is closed here only
+// when its durable operation proves no saga step or side-effect result exists.
 func (s *Service) freezeDeletion(ctx context.Context, tx *sql.Tx, workspaceID, name string, version int64, authorizationContextID string) (deletionOrder, error) {
 	var launchID string
 	var launchStatus string
