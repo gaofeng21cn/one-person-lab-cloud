@@ -13,7 +13,7 @@ function runtimeState(modelReady = true) {
     core: { codex: { model_access_ready: modelReady } },
     agent_packages: { directory: { entries: [{
       package_id: "local-agent", display_name: "Local Agent", package_role: "standard_agent",
-      readiness: { operational_ready: true },
+      readiness: { operational_ready: true, launch_allowed: true },
       capability_metadata: { required_skill_ids: ["ibd-evidence"] },
       home_shortcuts: [{ shortcut_id: "ask", route: {
         route_kind: "agent_package_shortcut", executor: "codex_cli", codex_visible_entry: "$local-agent"

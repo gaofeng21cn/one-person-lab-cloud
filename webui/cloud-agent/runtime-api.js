@@ -6,7 +6,7 @@ export function readRuntimeAgents(value) {
   }
   const choices = [];
   for (const entry of entries) {
-    if (entry.package_role !== "standard_agent" || entry.readiness?.operational_ready !== true) continue;
+    if (entry.package_role !== "standard_agent" || entry.readiness?.operational_ready !== true || entry.readiness?.launch_allowed !== true) continue;
     for (const shortcut of entry.home_shortcuts || []) {
       const route = shortcut.route;
       if (route?.route_kind !== "agent_package_shortcut" || route.executor !== "codex_cli") continue;

@@ -81,7 +81,7 @@ test("publisher reads the exact member policy and refuses a withdrawn WebUI or m
 function agentEntry() {
   return {
     package_id: "ibd-agent", display_name: "IBD Agent", package_role: "standard_agent",
-    readiness: { operational_ready: true },
+    readiness: { operational_ready: true, launch_allowed: true },
     capability_metadata: { required_skill_ids: ["ibd-evidence", "scientific-search"] },
     home_shortcuts: [{ shortcut_id: "ask", route: {
       route_kind: "agent_package_shortcut", executor: "codex_cli", codex_visible_entry: "$ibd-agent"
@@ -146,6 +146,8 @@ test("Runtime Agent decoder admits only operational standard Agents with complet
   const invalidEntries = [
     { ...entry, package_role: "tool" },
     { ...entry, readiness: { operational_ready: false } },
+    { ...entry, readiness: { operational_ready: true, launch_allowed: false } },
+    { ...entry, readiness: { operational_ready: true } },
     { ...entry, readiness: { operational_ready: "true" } },
     { ...entry, readiness: undefined },
     { ...entry, package_id: "" },
