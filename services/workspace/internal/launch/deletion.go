@@ -477,9 +477,9 @@ func deletionOperation(o ownerstore.Operation) (*api.Operation, error) {
 	}
 	if o.ErrorCode != "" {
 		errorCode := o.ErrorCode
-		// These Workspace-local codes were persisted before the shared owner
-		// readback vocabulary was adopted. Keep replaying the original operation
-		// through the current typed contract without rewriting historical rows.
+		// Workspace deletion persists these local key-closeout codes, while the
+		// public Operation contract exposes the shared owner error vocabulary.
+		// Project them on read without rewriting the stored deletion result.
 		switch errorCode {
 		case "KEY_CLOSEOUT_REFUSED":
 			errorCode = "OWNER_CAPABILITY_UNAVAILABLE"
