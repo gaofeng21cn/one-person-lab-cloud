@@ -21,5 +21,5 @@ for _ in range(60):
  time.sleep(.5)
 else:raise RuntimeError('dedicated PostgreSQL not ready')
 port=subprocess.check_output(['docker','port',pg,'5432'],text=True).strip().rsplit(':',1)[1]
-rec={'timestamp':datetime.datetime.now(datetime.timezone.utc).isoformat(),'postgresContainer':pg,'postgresPort':port,'quotaFilesystemMounted':subprocess.run(['mountpoint','-q',str(p/'storage')]).returncode==0,'preexistingPreviewUnchanged':True,'modelConfiguration':'private runtime input, excluded from artifacts'}
+rec={'timestamp':datetime.datetime.now(datetime.timezone.utc).isoformat(),'postgresContainer':pg,'postgresPort':port,'quotaFilesystemMounted':subprocess.run(['mountpoint','-q',str(p/'storage')]).returncode==0,'modelConfiguration':'private runtime input, excluded from artifacts'}
 (p/'evidence/workspace-preflight.json').write_text(json.dumps(rec,indent=2)+'\n');print(json.dumps(rec),flush=True)

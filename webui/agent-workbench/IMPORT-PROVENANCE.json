@@ -140,5 +140,11 @@
   "importAdaptations": {
     "tests/browser.test.ts": "Allow explicit WEBUI_BROWSER_CHANNEL selection for CI Playwright Chromium; preserve system Chrome as the local default. Wait for the second Agent's rendered header before filling its new composer, matching the first Agent's existing synchronization.",
     "README.md": "Document browser selection and distinguish imported source from separately held runtime evidence."
+  },
+  "postImportRepairs": {
+    "App.tsx": "Retain unresolved submission navigation marker across reconnect/reload; require explicit navigation, coalesce canonical SSE reads, resync on open and clear only recovered status-read failures.",
+    "components/workbench/chat/MessageList.tsx": "Disable automatic model Markdown images in completed and partial text; preserve links and native text.",
+    "styles/workbench/chat.css": "Restore the existing global keyboard focus indicator for history search.",
+    "tests/browser.test.ts": "Exercise unknown submission/reload, coalesced events, failed-read recovery, blocked Markdown images and keyboard focus against an isolated native fixture."
   }
 }

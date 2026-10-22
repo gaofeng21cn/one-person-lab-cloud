@@ -48,6 +48,10 @@ preserves canonical thread bindings and requires an authoritative completed turn
 Structured references are empty when the Runtime supplies none. The static OCI
 is a WebUI Build input under `/web`, not an executable Runtime or provider.
 
+The current frontend includes source-level submission recovery, event readback
+and rendering repairs. Those repairs produce different static bytes from the
+historical OCI; source tests do not qualify a new composed deployment.
+
 The dev qualification executed the **unchanged merged #1003 source**
 `3cefc17ea9e065a880039f416721522512ea5215` with the extracted WebUI. It is
 separate from the earlier broader-source qualification below and from this PR's

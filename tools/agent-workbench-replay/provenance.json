@@ -100,9 +100,10 @@
         "sha256": "sha256:950ca8df6c24fb89a54f3d6b3a350125461ba1d3bc0b5610c766c5981c52cef5",
         "bytes": 2106
       },
-      "publicSha256": "sha256:064d6dbffa1a513d79af8b90652a88568dfc57f2e8137d94fb8bea3bdba86617",
+      "publicSha256": "sha256:1cacb0644f5c5854e772dc1a76c41e6bdbd3f2ec69869faabc9787323aa8a90c",
       "publicBytes": 2242,
-      "adaptation": "Parameterize run/model paths; pin compiler and check cached tooling instead of mutable pulls; generate private PostgreSQL password; use explicitly projected static-file input as applicable."
+      "adaptation": "Parameterize run/model paths; pin compiler and check cached tooling instead of mutable pulls; generate private PostgreSQL password; use explicitly projected static-file input as applicable.",
+      "reviewRepair": "Remove the unobserved preexistingPreviewUnchanged assertion; preservation requires the separately captured inventory comparison."
     },
     {
       "path": "operations/run-workspace.py",

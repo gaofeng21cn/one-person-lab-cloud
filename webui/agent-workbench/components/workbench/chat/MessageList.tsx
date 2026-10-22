@@ -32,7 +32,7 @@ function AnswerContent({ result }: { result: ApiTurnResult }) {
   return <>
     {result.claims && result.claims.length > 0 ? <>
       {result.claims.map((claim, index) => <div className="answer-claim" key={index}>
-        <ReactMarkdown>{claim.text}</ReactMarkdown>
+        <ReactMarkdown disallowedElements={["img"]}>{claim.text}</ReactMarkdown>
         {claim.evidence_ids.map((id) => {
           const evidence = evidenceById.get(id);
           return evidence && <button type="button" className="citation-link" key={id}
@@ -40,7 +40,7 @@ function AnswerContent({ result }: { result: ApiTurnResult }) {
             onClick={() => openEvidence(result, id)}>{evidence.citationId ?? result.evidence.indexOf(evidence) + 1}</button>;
         })}
       </div>)}
-    </> : <ReactMarkdown remarkPlugins={[remarkEvidenceCitations(result.evidence)]} components={{
+    </> : <ReactMarkdown disallowedElements={["img"]} remarkPlugins={[remarkEvidenceCitations(result.evidence)]} components={{
       a: ({ href, children }) => {
         const evidence = result.evidence.find((item) => href === `#evidence-${encodeURIComponent(item.id)}`);
         return evidence ? <button type="button" className="citation-link" title={evidence.title}
@@ -49,7 +49,7 @@ function AnswerContent({ result }: { result: ApiTurnResult }) {
           : <a href={href} target="_blank" rel="noreferrer">{children}</a>;
       },
     }}>{result.reply}</ReactMarkdown>}
-    {result.uncertainties?.map((text, index) => <ReactMarkdown key={index}>{text}</ReactMarkdown>)}
+    {result.uncertainties?.map((text, index) => <ReactMarkdown key={index} disallowedElements={["img"]}>{text}</ReactMarkdown>)}
     {result.evidence.length > 0 && <button className="answer-sources-button" type="button" onClick={() => openEvidence(result, result.evidence[0].id)}>
       <BookOpen aria-hidden="true" /><span>{result.evidence.length} 条引用</span>
     </button>}
@@ -59,7 +59,7 @@ function AnswerContent({ result }: { result: ApiTurnResult }) {
 function MarkdownPart() {
   const part = useAuiState((state) => state.part);
   if (part.type !== "text") return null;
-  return <ReactMarkdown>{part.text}</ReactMarkdown>;
+  return <ReactMarkdown disallowedElements={["img"]}>{part.text}</ReactMarkdown>;
 }
 
 function MessageAttachment() {

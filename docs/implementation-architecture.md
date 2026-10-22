@@ -126,8 +126,8 @@ OCI digest and its registered CapabilityVersion through the existing
 Workspace/Serve/Fabric path. The live harness checks readiness and password login,
 then calls the authenticated native HTTP `/api/send-message` endpoint with the
 application session and CSRF token to verify a canonical completed Agent response.
-IBD is the feasibility exemplar; this scope adds no provider or generic WebUI chat
-feature. Browser-driven sending is outside this closure. Historical execution and
+IBD is the feasibility exemplar; that qualification added no provider or generic
+WebUI chat feature. Browser-driven sending is outside that historical closure. Historical execution and
 current-revision verification remain distinct in [status](status.md).
 
 The separately packaged `webui/agent-workbench` is a static React/assistant-ui

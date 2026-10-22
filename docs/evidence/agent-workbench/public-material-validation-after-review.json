@@ -1,0 +1,43 @@
+{
+  "kind": "new_local_public_material_validation_after_review",
+  "recordedAt": "2026-10-22T03:05:25.526410+00:00",
+  "previousValidationSha256": "sha256:737f275487ea09d3a121058501ce7a01cbb9de789aa68c60c96c8ead0db13d60",
+  "historicalEvidenceReexecuted": false,
+  "remoteActionsExecuted": 0,
+  "repair": "Removed unobserved preview-preservation claim; original local verification record remains unchanged.",
+  "checks": {
+    "pythonFilesCompiled": 9,
+    "exactHistoricalInputsPrepared": true,
+    "fullLocalMaterialization": {
+      "kind": "new_local_materialization_check",
+      "historicalSourceSha": "3cefc17ea9e065a880039f416721522512ea5215",
+      "dryRun": false,
+      "verifiedInputFiles": 7,
+      "compiledOperations": 7,
+      "remoteActionsExecuted": 0,
+      "businessReplayExecuted": false
+    },
+    "originalProjectionAndInputChecks": "Unchanged inputs remain bound by the previous record and review captures. No new business execution is claimed."
+  },
+  "checkedMaterialSha256": {
+    "docs/evidence/agent-workbench/build-owner-retry-1.projection.log": "sha256:ad0c8cf8bcc13433ad29d128a64d3f2f3d50384fb788a6bfcdccdc9df0ec4934",
+    "docs/evidence/agent-workbench/dev-delivery.json": "sha256:c1a122e5558d4bbdfbf0d24465beec07e1ce580383fc0558c3e7499520b91974",
+    "docs/evidence/agent-workbench/workspace-test.projection.log": "sha256:7f15c6093410e5c758289f9758bdf1d34052bf14c23650b0df9cd498c03baf2d",
+    "docs/runtime/agent-workbench-dev-replay.md": "sha256:4a2c4f6eeac50ae0b4f8c3100119c672910e773f6edfb5611883b3e0c38cf056",
+    "tools/agent-workbench-replay/inputs/agent-plugins-manifest.schema.json": "sha256:0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883",
+    "tools/agent-workbench-replay/inputs/original-webui-oci.projection.json": "sha256:f1cb6c28486c084bc27be44fd192ceed11b48a9a56a544b73cf825e3bb4f0922",
+    "tools/agent-workbench-replay/inputs/package.public.zip": "sha256:adc0e334a3a6a2f21bdee26954427df98e7085fcb73f9f2d35ce0597512c2e9f",
+    "tools/agent-workbench-replay/inputs/runtime-publisher-contract.json": "sha256:26d3bb4d039b83370c919dce8b0f564d5e0c57a45b552b023e30e1a012d6352f",
+    "tools/agent-workbench-replay/inputs/tooling.json": "sha256:1caa747f20170d4197d5197084d1c9d3e49ab2fb66b9b717ec902398f5c78206",
+    "tools/agent-workbench-replay/materialize-replay.py": "sha256:b926d4b3419a3a4d570985e05959892456be3644d210ca21b549d517f563e0e3",
+    "tools/agent-workbench-replay/operations/compile-remote-retry.py": "sha256:21b4e172898acf05351b60c0e619adaa405086b96dcc1e059807e1607ab9b23b",
+    "tools/agent-workbench-replay/operations/export-final-oci.py": "sha256:6a8efcbc9e147906440e85c3e8f4af5eeceb1931f7f41503ab315f292e4cecfb",
+    "tools/agent-workbench-replay/operations/prepare-build-input.py": "sha256:335ef6057216716324d7936634eae761c01151c5d3f7569b32e8d30e5c1af38d",
+    "tools/agent-workbench-replay/operations/prepare-workspace.py": "sha256:1cacb0644f5c5854e772dc1a76c41e6bdbd3f2ec69869faabc9787323aa8a90c",
+    "tools/agent-workbench-replay/operations/run-build-retry-1.py": "sha256:8f2393ef481088f6740172f86ebbdc6bbe961c7ff71b5b232ee5d0742ebdea71",
+    "tools/agent-workbench-replay/operations/run-workspace.py": "sha256:287f731acf5b3acf499eeaccc922e0cccbc00d9721ce8fc00f6f908f31c73f07",
+    "tools/agent-workbench-replay/operations/verify-final-filesystem.py": "sha256:61ab43b935c8fa5fb09bdf76f8e917322352f2f1470cb87fc50789f0fceb056c",
+    "tools/agent-workbench-replay/prepare-inputs.py": "sha256:c7a3a79e6eb2f7acb942c76595e2fc626530980d74934962c0016070f4992f35",
+    "tools/agent-workbench-replay/provenance.json": "sha256:c7cee298b33bd99a454bb4092d62eea1b91512cfa17ad1e8c97bc36ab72b5f67"
+  }
+}

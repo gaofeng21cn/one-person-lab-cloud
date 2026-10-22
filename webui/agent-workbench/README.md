@@ -54,3 +54,18 @@ docker buildx build --platform linux/amd64 --network none \
 ```
 
 The scratch OCI contains only compiled static files under `/web`. It is an immutable WebUI input consumed by the existing application Build; it is not an independently executable application container. The Runtime supplies HTTP serving, authentication and port/health behavior. Publishing the WebUI to a Registry, catalog admission, composing a final Agent OCI and Tencent delivery are subsequent owner operations, not results of this local extraction.
+
+## Unconfirmed submissions
+
+A send records a nonsecret unresolved-submission marker before the request. A
+confirmed canonical result or explicit input rejection clears it. Reconnecting
+or reloading refreshes the Runtime directory/history while preserving the send
+block when acceptance is unknown. Inspect and explicitly select the Runtime
+conversation, or deliberately start a new conversation, to acknowledge navigation.
+Starting another conversation does not cancel the earlier task or establish
+exactly-once execution. No prompt or credential is stored in the marker.
+
+The historical dev OCI contains the earlier extracted frontend. Source repairs
+in this PR produce new static bytes; the historical receipt does not qualify
+those new bytes as a deployed image. New publication/admission and composed-OCI
+qualification must bind the newly built artifact.
