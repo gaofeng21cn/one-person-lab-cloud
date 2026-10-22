@@ -519,8 +519,8 @@ func TestDeleteWorkspaceWithoutTheWalletAuthorityDoesNotSettleTheCharge(t *testi
 	if readback.GetRefundStatus() != api.WorkspaceDeletionRefundStatusEnum_WORKSPACE_DELETION_REFUND_STATUS_ENUM_UNKNOWN {
 		t.Fatalf("refund status=%v, want unknown without the wallet authority", readback.GetRefundStatus())
 	}
-	if status := workspaceStatus(t, db); status != "deleting" {
-		t.Fatalf("workspace status=%s, want deleting until the refund is settled", status)
+	if status := workspaceStatus(t, db); status != "deleted" {
+		t.Fatalf("workspace status=%s, want deleted independently of the unresolved refund", status)
 	}
 	// The wallet authority, once present, still completes the same deletion from
 	// the identities the operation recorded instead of restarting the chain.
@@ -561,8 +561,8 @@ func TestDeleteWorkspaceReadsBackItsNonTerminalRefundInsteadOfReissuingIt(t *tes
 	if readback.GetRefundStatus() != api.WorkspaceDeletionRefundStatusEnum_WORKSPACE_DELETION_REFUND_STATUS_ENUM_REQUESTED {
 		t.Fatalf("refund status=%v, want the recorded non-terminal request", readback.GetRefundStatus())
 	}
-	if status := workspaceStatus(t, db); status != "deleting" {
-		t.Fatalf("workspace status=%s, want deleting while the refund is unresolved", status)
+	if status := workspaceStatus(t, db); status != "deleted" {
+		t.Fatalf("workspace status=%s, want deleted while the refund is independently unresolved", status)
 	}
 	// The wallet owner recorded the request without a terminal answer. The next
 	// pass resolves it by reading the same action back, never by a second refund.

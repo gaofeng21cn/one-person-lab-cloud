@@ -66,4 +66,22 @@ func TestOperationReadbackRejectsAnUnknownStoredStage(t *testing.T) {
 	}
 }
 
+func TestOperationReadbackProjectsLegacyWorkspaceKeyCloseoutCodes(t *testing.T) {
+	for stored, want := range map[string]api.ErrorCodeEnum{
+		"KEY_CLOSEOUT_REFUSED":     api.ErrorCodeEnum_ERROR_CODE_ENUM_OWNER_CAPABILITY_UNAVAILABLE,
+		"KEY_BINDING_UNRESOLVED":   api.ErrorCodeEnum_ERROR_CODE_ENUM_DEPENDENCY_UNAVAILABLE,
+		"KEY_CLOSEOUT_UNKNOWN":     api.ErrorCodeEnum_ERROR_CODE_ENUM_DEPENDENCY_UNAVAILABLE,
+		"KEY_CLOSEOUT_UNCONFIRMED": api.ErrorCodeEnum_ERROR_CODE_ENUM_DEPENDENCY_UNAVAILABLE,
+	} {
+		operations := &Operations{owner: OwnerWorkspace}
+		got, err := operations.toContract(ownerstore.Operation{ID: "delete-legacy", Kind: "delete_workspace", ResourceID: "workspace-1", Status: "needs_attention", Stage: "absence_verification", ErrorCode: stored})
+		if err != nil {
+			t.Fatalf("stored code %s: %v", stored, err)
+		}
+		if got.GetErrorCode() != want {
+			t.Fatalf("stored code %s projected as %s, want %s", stored, got.GetErrorCode(), want)
+		}
+	}
+}
+
 var _ = errors.Is

@@ -477,8 +477,8 @@ func TestRefusedKeyCloseoutDoesNotBlockDeletionOrRefund(t *testing.T) {
 	if state := lifecycleWorkspaceStatus(t, db, ctx); state != "suspended" {
 		t.Fatalf("workspace status=%q", state)
 	}
-	// Deletion and refund of the same Workspace are independent facts and still
-	// complete while the key closeout is refused.
+	// Resource deletion and refund are independent facts. Their completion does
+	// not discharge the refused managed-key obligation.
 	service.Fabric = &deletionFabricClient{}
 	call.IdempotencyKey = "idempotency-deletion-suspended"
 	if _, err := service.DeleteWorkspace(ctx, &api.DeleteWorkspaceRpcRequest{Context: call, WorkspaceId: "workspace-original",
@@ -486,8 +486,8 @@ func TestRefusedKeyCloseoutDoesNotBlockDeletionOrRefund(t *testing.T) {
 		t.Fatal(err)
 	}
 	deletion, deletionResult := readDeletionOperation(t, db, ctx)
-	if deletion.Status != "succeeded" || deletion.Observation != "confirmed" {
-		t.Fatalf("deletion operation=%+v", deletion)
+	if deletion.Status != "needs_attention" || deletion.Observation != "rejected" {
+		t.Fatalf("deletion must retain its refused key obligation: %+v", deletion)
 	}
 	if deletionResult.KeyCloseoutOutcome != lifecycleRejected || gateway.refunds != 1 {
 		t.Fatalf("deletion key closeout=%q refunds=%d", deletionResult.KeyCloseoutOutcome, gateway.refunds)

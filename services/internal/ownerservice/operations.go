@@ -161,7 +161,7 @@ func (o *Operations) toContract(record ownerstore.Operation) (*api.Operation, er
 		operation.ObservationResult = &observation
 	}
 	if record.ErrorCode != "" {
-		code, err := operationErrorCode(record.ErrorCode)
+		code, err := operationErrorCode(o.owner, record.ErrorCode)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "%s operation %s: %v", o.owner, record.ID, err)
 		}
@@ -215,7 +215,15 @@ func operationObservation(value string) (api.OperationObservationResultEnum, err
 	return api.OperationObservationResultEnum(number), nil
 }
 
-func operationErrorCode(value string) (api.ErrorCodeEnum, error) {
+func operationErrorCode(owner Owner, value string) (api.ErrorCodeEnum, error) {
+	if owner == OwnerWorkspace {
+		switch value {
+		case "KEY_CLOSEOUT_REFUSED":
+			value = "OWNER_CAPABILITY_UNAVAILABLE"
+		case "KEY_BINDING_UNRESOLVED", "KEY_CLOSEOUT_UNKNOWN", "KEY_CLOSEOUT_UNCONFIRMED":
+			value = "DEPENDENCY_UNAVAILABLE"
+		}
+	}
 	number, ok := api.ErrorCodeEnum_value["ERROR_CODE_ENUM_"+strings.ToUpper(strings.TrimSpace(value))]
 	if !ok {
 		return 0, fmt.Errorf("error code %q is not an accepted error code", value)
