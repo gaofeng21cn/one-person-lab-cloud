@@ -37,14 +37,9 @@ A cloud-identity Console reads Workspace list, overview and detail through
 `/api/v2/workspaces` and the Workspace owner; a legacy-identity Console reads
 the retained Control Plane projection. The identity-specific DTO validator
 refuses the other owner's projection in both directions. Cloud access uses the
-owner's returned URL and facts. Its shared deletion controller selects the
-Workspace owner API and original Operation through the baked identity; the root
-passes no cloud Workspace to retained credential, renewal, budget or
-application-installation controllers. A deletion read of `200 null` permits the
-first confirmed DELETE, while an unreadable response blocks it. Resource/data
-absence does not complete the page until the original Operation succeeds and the
-Workspace owner reads back `deleted`; refund remains a separate displayed fact.
-Other missing owner maintenance routes remain a [roadmap gap](../roadmap.md#cloud-identity-customer-workspace-read-2026-09-30).
+owner's returned URL and facts; the root passes no cloud Workspace to retained
+credential, deletion, renewal, budget or application-installation controllers.
+Missing owner maintenance routes remain a [roadmap gap](../roadmap.md#cloud-identity-customer-workspace-read-2026-09-30).
 
 Gateway Account Read's wallet projection follows the same baked identity as the
 reader: a cloud build commits the Gateway owner's envelope, a legacy build the

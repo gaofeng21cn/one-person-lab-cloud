@@ -232,13 +232,11 @@ runtime cause.
 ## Cloud-Identity Customer Workspace Read (2026-09-30)
 
 The cloud Console identity reads Workspaces from the Workspace owner through the
-BFF. Cloud deletion now reaches the Workspace owner and reads the original
-Operation, separate resource absence and refund status; its local source evidence
-is covered by the Workspace deletion owner coupling checks in this change.
-Installed same-Candidate acceptance remains open. Renewal, credential rotation and
-application-installation maintenance still require their owning service and
-BFF/UI projections. The legacy identity remains on the retained Control Plane
-path until its callers move.
+BFF. The remaining gap is the owner-backed maintenance surface: renewal,
+deletion, credential rotation and application-installation actions must be
+implemented by their owning service and then projected by the BFF/UI. The
+legacy identity remains on the retained Control Plane path until its callers
+move.
 
 Evidence: [cloud Console owner read](evidence/source-checks/2026-09-30-cloud-console-workspace-owner-read.json).
 

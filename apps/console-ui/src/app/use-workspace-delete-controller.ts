@@ -86,7 +86,7 @@ export function useWorkspaceDeleteController({
     const awaitingReadback = operation?.status === "pending"
       || cloudIdentity && operation?.status === "deleted" && operation.pageState !== "completed" && operation.pageState !== "blocked";
     if (readback.workspaceId !== activeWorkspaceId || !awaitingReadback || loading || busy || issue) return;
-    const timer = window.setTimeout(() => void refresh(), 2000);
+    const timer = window.setTimeout(() => void refresh(), cloudIdentity ? operation.pollAfterSeconds! * 1000 : 2000);
     return () => window.clearTimeout(timer);
   }, [readback, activeWorkspaceId, loading, busy, issue]);
 

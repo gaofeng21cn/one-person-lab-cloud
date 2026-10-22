@@ -395,6 +395,8 @@ export type WorkspaceDeletionStage =
 export type WorkspaceDeletionPageState = "waiting" | "retrying" | "blocked" | "completed";
 
 export interface WorkspaceDeletionDTO {
+  /** Next read interval published by the current Operation owner. */
+  pollAfterSeconds?: number;
   workspaceId: string;
   operationId: string;
   status: "pending" | "manual_review" | "deleted";

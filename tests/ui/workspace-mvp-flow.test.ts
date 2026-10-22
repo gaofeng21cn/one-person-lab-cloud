@@ -167,7 +167,7 @@ test("Workspace owner deletion separates resource facts from refund and operatio
   };
   const operation: WorkspaceOwnerOperationDTO = {
     operationId: deletion.operationId, owner: "workspace", kind: "delete_workspace", resourceId: deletion.workspaceId,
-    status: "awaiting_confirmation", stage: "refund", requestId: "request-1", createdAt: deletion.updatedAt, updatedAt: deletion.updatedAt
+    status: "awaiting_confirmation", stage: "refund", pollAfterSeconds: 5, requestId: "request-1", createdAt: deletion.updatedAt, updatedAt: deletion.updatedAt
   };
   const cases: Array<{ refundStatus: WorkspaceOwnerDeletionDTO["refundStatus"]; status: WorkspaceOwnerOperationDTO["status"]; pageState: WorkspaceDeletionDTO["pageState"]; refund: WorkspaceDeletionDTO["refundStatus"] }> = [
     { refundStatus: "requested", status: "awaiting_confirmation", pageState: "retrying", refund: "pending" },
@@ -515,7 +515,7 @@ test("Cloud Workspace detail first deletion confirms once and displays the origi
     let holdOwnerReadback = false;
     const operation: WorkspaceOwnerOperationDTO = {
       operationId: "delete-original-cloud", owner: "workspace", kind: "delete_workspace", resourceId: workspace.id,
-      status: "running", stage: "resource_deletion", requestId: "request-cloud-delete",
+      status: "running", stage: "compute_deletion", pollAfterSeconds: 1, requestId: "request-cloud-delete",
       createdAt: workspace.createdAt, updatedAt: workspace.updatedAt
     };
     const requests: string[] = [];
@@ -724,6 +724,52 @@ test("Cloud Workspace detail preserves owner DELETE authorization and requires a
     assert.equal(await page.getByRole("button", { name: "删除工作空间", exact: true }).count(), 0);
     assert.equal(writes, 1, "unauthenticated access must never repeat the command");
     assert.deepEqual(audit, { pageErrors: [], legacyRequests: [], externalRequests: [] });
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("Workspace deletion preserves the owner polling interval and stops terminal polling", () => {
+  const deletion: WorkspaceOwnerDeletionDTO = { workspaceId: "workspace-poll", operationId: "op-poll", resourceDeletionStatus: "pending", dataDeletionStatus: "pending", refundStatus: "unknown", updatedAt: "2026-10-23T00:00:00Z" };
+  const operation: WorkspaceOwnerOperationDTO = { owner: "workspace", operationId: deletion.operationId, resourceId: deletion.workspaceId, kind: "delete_workspace", status: "running", stage: "compute_deletion", requestId: "req", createdAt: deletion.updatedAt, updatedAt: deletion.updatedAt, pollAfterSeconds: 30 };
+  assert.equal(workspaceApi.projectWorkspaceOwnerDeletion(deletion, operation).pollAfterSeconds, 30);
+  assert.equal(workspaceApi.projectWorkspaceOwnerDeletion(deletion, { ...operation, status: "cancelled" }).pollAfterSeconds, undefined);
+  assert.equal(workspaceApi.projectWorkspaceOwnerDeletion(deletion, { ...operation, status: "cancelled" }).pageState, "blocked");
+});
+
+test("Cloud deletion browser waits for the owner schedule and stops after cancellation", { timeout: 60_000 }, async () => {
+  const demo = await startCloudWorkspaceDeleteBrowser();
+  const browser = await launchBrowser({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.clock.install();
+    await page.clock.pauseAt(new Date(Date.now() + 1000));
+    await installCloudWorkspaceDeletePage(page, demo);
+    let reads = 0;
+    let cancelled = false;
+    await page.route(`**/api/v2/workspaces/${demo.workspace.id}/deletion`, route => route.fulfill({ json: {
+      workspaceId: demo.workspace.id, operationId: "op-schedule", resourceDeletionStatus: "pending", dataDeletionStatus: "pending", refundStatus: "unknown", updatedAt: demo.workspace.updatedAt
+    } satisfies WorkspaceOwnerDeletionDTO }));
+    await page.route("**/api/v2/operations/workspace/op-schedule", route => {
+      reads += 1;
+      return route.fulfill({ json: { operationId: "op-schedule", resourceId: demo.workspace.id, owner: "workspace", kind: "delete_workspace", status: cancelled ? "cancelled" : "running", stage: "compute_deletion", requestId: "req-schedule", createdAt: demo.workspace.createdAt, updatedAt: demo.workspace.updatedAt, ...(cancelled ? {} : { pollAfterSeconds: 30 }) } satisfies WorkspaceOwnerOperationDTO });
+    });
+    await page.goto(`${demo.origin}/console/workspaces/${demo.workspace.id}`, { waitUntil: "networkidle" });
+    await page.locator("[data-workspace-delete-progress]").getByText("op-schedule", { exact: true }).waitFor();
+    assert.equal(reads, 1);
+    await page.clock.runFor(29999);
+    await page.evaluate(() => undefined);
+    assert.equal(reads, 1, "the browser must not poll before the owner's 30-second interval");
+    cancelled = true;
+    const response = page.waitForResponse(r => new URL(r.url()).pathname === "/api/v2/operations/workspace/op-schedule");
+    await page.clock.runFor(1);
+    await response;
+    await page.getByRole("heading", { name: "删除已暂停，需要核对", exact: true }).waitFor();
+    assert.equal(reads, 2);
+    await page.clock.runFor(300000);
+    await page.evaluate(() => undefined);
+    assert.equal(reads, 2, "a cancelled operation must stop polling");
   } finally {
     await browser.close();
     await demo.close();

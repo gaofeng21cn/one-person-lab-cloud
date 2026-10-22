@@ -534,8 +534,8 @@ function decodeWorkspaceOwnerDeletion(value: unknown, workspaceId: string): Work
 // projectWorkspaceOwnerDeletion maps the Workspace owner's own deletion and
 // operation facts onto the Console presentation model. `status` and `pageState`
 // are deterministic projections of those facts; `phase` is the operation's own
-// stage. The owner publishes no Console stage token, most recent readback time
-// or next-retry schedule, so those fields stay absent instead of being invented.
+// stage. The owner's polling interval is preserved. Console-specific stage tokens
+// and timestamps stay absent instead of being invented.
 export function projectWorkspaceOwnerDeletion(
   deletion: WorkspaceOwnerDeletionDTO,
   operation: WorkspaceOwnerOperationDTO
@@ -546,7 +546,11 @@ export function projectWorkspaceOwnerDeletion(
   }
   const confirmed = deletion.resourceDeletionStatus === "confirmed" && deletion.dataDeletionStatus === "confirmed";
   const rejected = deletion.resourceDeletionStatus === "rejected" || deletion.dataDeletionStatus === "rejected";
-  const attention = operation.status === "needs_attention" || operation.status === "failed";
+  const terminal = ["succeeded", "failed", "cancelled"].includes(operation.status);
+  if (!terminal && (!Number.isInteger(operation.pollAfterSeconds) || operation.pollAfterSeconds! < 1 || operation.pollAfterSeconds! > 300)) {
+    throw new Error("invalid_workspace_operation_readback");
+  }
+  const attention = operation.status === "needs_attention" || operation.status === "failed" || operation.status === "cancelled";
   const status: WorkspaceDeletionDTO["status"] = confirmed ? "deleted" : rejected || attention ? "manual_review" : "pending";
   // Resource/data absence can be confirmed while the original refund is still
   // pending. Only the owner's succeeded operation establishes full completion.
@@ -560,6 +564,7 @@ export function projectWorkspaceOwnerDeletion(
     status,
     phase: operation.stage,
     pageState,
+    ...(!terminal ? { pollAfterSeconds: operation.pollAfterSeconds } : {}),
     ...(refundStatus ? { refundStatus } : {}),
     ...(deletion.refundOperationId ? { refundOperationId: deletion.refundOperationId } : {})
   };
