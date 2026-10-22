@@ -9,7 +9,7 @@ Baseline evidence date: 2026-10-01
 This page keeps the dated baseline evidence above and explicitly dated source
 updates below. The baseline SHA does not describe the later changes or qualify
 them: each receipt retains its original source, run and environment. The latest
-source update is 2026-10-21; it answers what the cited source and tests prove
+source update is 2026-10-22; it answers what the cited source and tests prove
 within their declared scope and does not describe an Instance installation or a
 Product Release. The target boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
@@ -38,6 +38,59 @@ protected Instance qualification run, real J0 receipt, successful deployment,
 settled business receipt, Release or production readback is claimed. #926 remains
 open for that runtime evidence and the exact-Candidate acceptance.
 
+## Extracted Agent Workbench And Dev Delivery (2026-10-22)
+
+`webui/agent-workbench` contains the original IBD React/assistant-ui three-panel
+frontend extracted as a configurable, domain-neutral static WebUI. Its adapter
+explicitly targets the Runtime-owned native `g2` / `opl_app_state.v1` directory
+and authenticated thread protocol. It selects Agents from that directory,
+preserves canonical thread bindings and requires an authoritative completed turn.
+Structured references are empty when the Runtime supplies none. The static OCI
+is a WebUI Build input under `/web`, not an executable Runtime or provider.
+
+The dev qualification executed the **unchanged merged #1003 source**
+`3cefc17ea9e065a880039f416721522512ea5215` with the extracted WebUI. It is
+separate from the earlier broader-source qualification below and from this PR's
+source checks. The [sanitized evidence projection](evidence/agent-workbench/dev-delivery.json)
+binds original receipt hashes and records the following results:
+
+```text
+PackageVersion:       pv_7362523b02471b0dbb3a9dc2083f53a2 (uploaded)
+BuildJob:             build_42c0f2af68e3a1c3da80f0674400b090
+Build artifact receipt: artifact_build_42c0f2af68e3a1c3da80f0674400b090
+CapabilityVersion:    capv_f7782a7de6496c2b23db2ce1c60638f1 (ready)
+Final OCI:            sha256:77ecf97d73b178993295546998111aa31226ae89c21e5a36b002ffb02a60af0b
+Workspace:            workspace_d40ec7fcfca0b6ac9af71786dab801fc
+RuntimeInstance:      rti_6e1cc70e41afa391a67dbb014e8257fc
+```
+
+`TestLivePackageBuildAndRestartReadback` passed in 151.71 seconds and
+`TestLocalFirstApplicationDeploymentQualification` passed in 80.08 seconds,
+without failures or skips. The Build test exercised upload, BuildKit, Registry
+digest readback and recovery after worker termination without another artifact.
+The Workspace test used production Serve/Fabric executables and verified exact
+image binding, mounts, readiness, BFF deployment/access, password login,
+failure/recovery and one real native HTTP Agent response: executor
+`codex_app_server`, canonical completed turn
+`01a15fc5-3334-7240-b7f9-b2ddb16defc8`, 1,009 bytes, response SHA-256
+`9905b3452f7220f37ab5ced9e810438777eceece330d54517db39da268628bd8`.
+Docker's merged filesystem independently matched four WebUI and 89 carrier
+files. Original WebUI manifest `88790a22…` and registered re-export `e2bbb23b…`
+are different OCI identities; the projection retains both exact digests.
+
+External identity and Runtime/WebUI admission remain fixtures. Build and
+Workspace used separate isolated stores connected by an explicit immutable
+handoff import. This run used `LOCAL_NO_CHARGE` and did not execute customer
+deletion, Ledger deletion receipt or refund. Its harness cleanup removed its
+resources and private model input while preserving existing services. The final
+OCI archive was retained on dev with its checksum; the temporary Registry was
+removed, so its historical image reference is not a currently published image.
+Browser-driven final-OCI sending, Tencent/TKE, exact-Candidate/Instance adoption,
+paid activation and guideline retrieval are unproven by this run. The
+[replay procedure](runtime/agent-workbench-dev-replay.md) distinguishes the
+executed stages from the materializer's dry run and lists required retained
+inputs. Other runs retain their own deletion/financial evidence boundaries.
+
 ## Linux Custom Agent Owner Qualification (2026-10-21)
 
 The fixed source-scope acceptance baseline is
@@ -50,9 +103,10 @@ Node/browser tests and 197 Go test/subtest events with no failed or skipped
 tests; the browser files were serialized after default focused-wrapper timeout
 attempts, which remain recorded in PR #1003. Tagged Workspace compilation and
 the Build handoff round-trip also passed. These are source-layer results;
-they do not replace the historical Linux qualification below. At this baseline
-readback, PR #1003 was open and unmerged; this SHA is a branch baseline, not
-canonical `main`, a Product Release or an Instance deployment.
+they do not replace the historical Linux qualification below. At that baseline
+readback, PR #1003 was open; it subsequently merged as
+`3cefc17ea9e065a880039f416721522512ea5215`. The source-check SHA remains a
+branch baseline, not a Product Release or an Instance deployment.
 
 PR #1003 is scoped to IBD Local-Docker delivery closure: uploaded Package → real
 BuildKit OCI digest → CapabilityVersion → Workspace/Serve/Fabric Local-Docker →

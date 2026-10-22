@@ -1,0 +1,176 @@
+{
+  "kind": "historical_replay_input_provenance",
+  "historicalSourceSha": "3cefc17ea9e065a880039f416721522512ea5215",
+  "cloudSourceArchive": {
+    "sha256": "sha256:a9f5af6fdf05e6d1d89e933e4a50a6fe428acd0d8e056312e637fa418313a492",
+    "bytes": 12676362,
+    "tarSha256": "sha256:240631ef21462e4ddfa701f079c220b10f457ef273e7b7ccbf20d72b53eaaf6f",
+    "recipe": "git archive --format=tar <historicalSourceSha> | gzip -n -6; fail on any hash mismatch"
+  },
+  "package": {
+    "originalSha256": "sha256:1befa906cdfb4f343beb0f615df36588a03bda53abefdfd3a90f7a171bba2b19",
+    "originalBytes": 219963,
+    "publicSha256": "sha256:adc0e334a3a6a2f21bdee26954427df98e7085fcb73f9f2d35ce0597512c2e9f",
+    "publicBytes": 219899,
+    "licenseDeclaration": "Apache-2.0 in ZIP manifest.json; author one-person-lab",
+    "publicToken": "__SOURCE_STATE_ROOT__",
+    "changedEntries": [
+      {
+        "path": "carrier/contracts/opl_agent_package_manifest.json",
+        "originalSha256": "sha256:1fc8a7684a005c96f91ed7b4739cd9550f45e3a51e686b46df72ef7c59cc6eba",
+        "originalBytes": 2532,
+        "publicSha256": "sha256:5c2a86ceb3add03b062dfe6c69585e4c33bf6f9c921ed2a7a1571e6f1ef92d24",
+        "publicBytes": 2498,
+        "replacements": 1
+      },
+      {
+        "path": "carrier/contracts/packaging-provenance.json",
+        "originalSha256": "sha256:287acfa30299e3b05798bce9e0b8e40e172b44c2860c78f3a531ca8eb071bb9e",
+        "originalBytes": 10774,
+        "publicSha256": "sha256:ca942a285f603f2535623e8224e8208c0b647c254bfb45f5e92be0eb0250a594",
+        "publicBytes": 10672,
+        "replacements": 3
+      },
+      {
+        "path": "carrier/plugins/ibd-evidence-assistant-v2/contracts/opl_agent_package_manifest.json",
+        "originalSha256": "sha256:1fc8a7684a005c96f91ed7b4739cd9550f45e3a51e686b46df72ef7c59cc6eba",
+        "originalBytes": 2532,
+        "publicSha256": "sha256:5c2a86ceb3add03b062dfe6c69585e4c33bf6f9c921ed2a7a1571e6f1ef92d24",
+        "publicBytes": 2498,
+        "replacements": 1
+      }
+    ],
+    "reconstruction": "Replace token with operator-supplied original state root, retain ZipInfo/order and DEFLATE level 6, then require original SHA-256. No original path is published."
+  },
+  "externalWebuiOci": {
+    "sha256": "sha256:8bd43515956c7bdd50bc2cdd75ebecb7e36c687200c3001aeb7b76cc9e9405ec",
+    "bytes": 243200,
+    "manifestDigest": "sha256:88790a22db669daa917ccf6a2f1d7650235ebd70f810696ce237e4fc39edcb69",
+    "availability": "Required retained dev input, not published in this change; request exact bytes from artifact custodian. Rebuilding WebUI is a new artifact, not this immutable input."
+  },
+  "operations": [
+    {
+      "path": "operations/compile-remote-retry.py",
+      "original": {
+        "artifact": "dev-bundle/operations/compile-remote-retry.py",
+        "sha256": "sha256:3288c421b418b990ecd2c1657c222db29e28555976aca01aecc664b4b4e05b8a",
+        "bytes": 1515
+      },
+      "publicSha256": "sha256:21b4e172898acf05351b60c0e619adaa405086b96dcc1e059807e1607ab9b23b",
+      "publicBytes": 1598,
+      "adaptation": "Parameterize run/model paths; pin compiler and check cached tooling instead of mutable pulls; generate private PostgreSQL password; use explicitly projected static-file input as applicable."
+    },
+    {
+      "path": "operations/prepare-build-input.py",
+      "original": {
+        "artifact": "dev-bundle/operations/prepare-build-input.py",
+        "sha256": "sha256:9d75d2b0617b53abe83a2a5b5dbdf386d6d49f097be91ebf9758c48557937b6a",
+        "bytes": 2764
+      },
+      "publicSha256": "sha256:335ef6057216716324d7936634eae761c01151c5d3f7569b32e8d30e5c1af38d",
+      "publicBytes": 2915,
+      "adaptation": "Parameterize run/model paths; pin compiler and check cached tooling instead of mutable pulls; generate private PostgreSQL password; use explicitly projected static-file input as applicable."
+    },
+    {
+      "path": "operations/run-build-retry-1.py",
+      "original": {
+        "artifact": "dev-bundle/operations/run-build-retry-1.py",
+        "sha256": "sha256:8144a143d01eb0ded62074b57f434b3fd051efb488085d0f5ed2200e9d47baf6",
+        "bytes": 2164
+      },
+      "publicSha256": "sha256:8f2393ef481088f6740172f86ebbdc6bbe961c7ff71b5b232ee5d0742ebdea71",
+      "publicBytes": 2197,
+      "adaptation": "Parameterize run/model paths; pin compiler and check cached tooling instead of mutable pulls; generate private PostgreSQL password; use explicitly projected static-file input as applicable."
+    },
+    {
+      "path": "operations/export-final-oci.py",
+      "original": {
+        "artifact": "dev-bundle/operations/export-final-oci.py",
+        "sha256": "sha256:aba711e85e3eea6a590125a6c665093100b861f3cefafcb06ea6985b3dd62bb6",
+        "bytes": 4328
+      },
+      "publicSha256": "sha256:6a8efcbc9e147906440e85c3e8f4af5eeceb1931f7f41503ab315f292e4cecfb",
+      "publicBytes": 4364,
+      "adaptation": "Parameterize run/model paths; pin compiler and check cached tooling instead of mutable pulls; generate private PostgreSQL password; use explicitly projected static-file input as applicable."
+    },
+    {
+      "path": "operations/prepare-workspace.py",
+      "original": {
+        "artifact": "dev-bundle/operations/prepare-workspace.py",
+        "sha256": "sha256:950ca8df6c24fb89a54f3d6b3a350125461ba1d3bc0b5610c766c5981c52cef5",
+        "bytes": 2106
+      },
+      "publicSha256": "sha256:064d6dbffa1a513d79af8b90652a88568dfc57f2e8137d94fb8bea3bdba86617",
+      "publicBytes": 2242,
+      "adaptation": "Parameterize run/model paths; pin compiler and check cached tooling instead of mutable pulls; generate private PostgreSQL password; use explicitly projected static-file input as applicable."
+    },
+    {
+      "path": "operations/run-workspace.py",
+      "original": {
+        "artifact": "dev-bundle/operations/run-workspace.py",
+        "sha256": "sha256:256a574532d5a0b58aa67a015f14a9290dc57fb6e9c615785c2598fdcb2e5de0",
+        "bytes": 2395
+      },
+      "publicSha256": "sha256:287f731acf5b3acf499eeaccc922e0cccbc00d9721ce8fc00f6f908f31c73f07",
+      "publicBytes": 2455,
+      "adaptation": "Parameterize run/model paths; pin compiler and check cached tooling instead of mutable pulls; generate private PostgreSQL password; use explicitly projected static-file input as applicable."
+    },
+    {
+      "path": "operations/verify-final-filesystem.py",
+      "original": {
+        "artifact": "dev-bundle/operations/verify-final-filesystem.py",
+        "sha256": "sha256:425a3b0828ed12c3e7551e3e724ca9afe02f6bfa9014774d7c9bc246d6bf60ef",
+        "bytes": 2844
+      },
+      "publicSha256": "sha256:61ab43b935c8fa5fb09bdf76f8e917322352f2f1470cb87fc50789f0fceb056c",
+      "publicBytes": 2880,
+      "adaptation": "Parameterize run/model paths; pin compiler and check cached tooling instead of mutable pulls; generate private PostgreSQL password; use explicitly projected static-file input as applicable."
+    }
+  ],
+  "notPorted": [
+    "cleanup-and-export.py",
+    "restore-tooling-tag.py",
+    "final-export-evidence.py"
+  ],
+  "reasonNotPorted": "Historical cleanup/export assumes shared host inventory, fixed path ancestry, preview identity and credential scanning. Use the bounded cleanup instructions; no original export is fabricated.",
+  "publicInputs": {
+    "tooling.json": {
+      "sha256": "sha256:1caa747f20170d4197d5197084d1c9d3e49ab2fb66b9b717ec902398f5c78206",
+      "bytes": 1398
+    },
+    "runtime-publisher-contract.json": {
+      "sha256": "sha256:26d3bb4d039b83370c919dce8b0f564d5e0c57a45b552b023e30e1a012d6352f",
+      "bytes": 5365
+    },
+    "agent-plugins-manifest.schema.json": {
+      "sha256": "sha256:0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883",
+      "bytes": 1805
+    },
+    "original-webui-oci.projection.json": {
+      "sha256": "sha256:f1cb6c28486c084bc27be44fd192ceed11b48a9a56a544b73cf825e3bb4f0922",
+      "bytes": 1303
+    }
+  },
+  "originalPreparationReferences": [
+    {
+      "artifact": "dev-bundle/REPRODUCE.md",
+      "sha256": "sha256:689bd63a5a33ca5d1ce750c11ff6893f60f12c41d936aad8d23014cc159f9258",
+      "bytes": 8021
+    },
+    {
+      "artifact": "dev-bundle/operations/materialize-replay.py",
+      "sha256": "sha256:63485baa5493ad8a17571d817460269d55c14f31c89b8646e6735c51e86efdbf",
+      "bytes": 4365
+    },
+    {
+      "artifact": "dev-bundle/inputs/input-provenance.json",
+      "sha256": "sha256:2d5187bad5d69040818054eb83a546ee0af241930e1a829c7ba1771a4cb9bbd2",
+      "bytes": 1055
+    },
+    {
+      "artifact": "dev-bundle/evidence/replay-materializer-dry-run.receipt.json",
+      "sha256": "sha256:83216533cd6b14206cccc9d7d316aae528d56af136a1dad6c2fe4c53ee33e301",
+      "bytes": 376
+    }
+  ]
+}

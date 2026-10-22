@@ -1,0 +1,12 @@
+# Adapted replay operation; not a historical receipt. See provenance.json.
+from pathlib import Path
+import subprocess,datetime,json,hashlib,os
+p=Path('__RUN_ROOT__');pre=json.loads((p/'evidence/workspace-preflight.json').read_text())
+env={'PATH':'/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin','HOME':str(p/'home'),'TMPDIR':str(p/'tmp'),'OPL_TEST_PROJECT_QUOTA_ROOT':str(p/'storage'),'OPL_OWNER_MIGRATION_TEST_ADMIN_DSN':'postgres://postgres:'+(p/'private/postgres-password').read_text()+'@127.0.0.1:'+pre['postgresPort']+'/postgres?sslmode=disable','OPL_POSTGRES_TESTS':'1','OPL_LOCAL_FIRST_DEPLOY_QUALIFICATION':'1','PGSSLMODE':'disable','OPL_QUALIFICATION_FABRIC_BINARY':str(p/'fabric'),'OPL_QUALIFICATION_SERVE_BINARY':str(p/'serve'),'OPL_LOCAL_FIRST_BUILD_HANDOFF':str(p/'evidence/build-handoff.json'),'OPL_QUALIFICATION_CODEX_CONFIG':str(p/'private/model-config.toml')}
+args=[str(p/'first-deploy.test'),'-test.run=^TestLocalFirstApplicationDeploymentQualification$','-test.count=1','-test.timeout=15m','-test.v']
+rec={'startedAt':datetime.datetime.now(datetime.timezone.utc).isoformat(),'sourceSha':'3cefc17ea9e065a880039f416721522512ea5215','command':args,'environmentNames':sorted(env),'billingProfile':'LOCAL_NO_CHARGE','buildHandoffSha256':'sha256:'+hashlib.sha256((p/'evidence/build-handoff.json').read_bytes()).hexdigest(),'boundaries':['isolated external login and membership fixture','exact upstream Build and Capability readbacks imported into isolated downstream Capability store','real Workspace Serve Fabric production paths','no paid activation or production deployment']}
+(p/'evidence/workspace-invocation.json').write_text(json.dumps(rec,indent=2)+'\n')
+with (p/'evidence/workspace-test.log').open('w') as log:
+ run=subprocess.run(['sudo','-n','env','-i',*[k+'='+v for k,v in env.items()],*args],cwd=p/'source/services/workspace/internal/launch',stdout=log,stderr=subprocess.STDOUT,timeout=960)
+text=(p/'evidence/workspace-test.log').read_text();rec.update({'completedAt':datetime.datetime.now(datetime.timezone.utc).isoformat(),'exitCode':run.returncode,'passed':run.returncode==0 and '--- PASS: TestLocalFirstApplicationDeploymentQualification' in text and '--- SKIP' not in text and '--- FAIL' not in text,'logSha256':'sha256:'+hashlib.sha256(text.encode()).hexdigest()})
+(p/'evidence/workspace-result.json').write_text(json.dumps(rec,indent=2)+'\n');print(text[-15000:],flush=True);raise SystemExit(run.returncode)

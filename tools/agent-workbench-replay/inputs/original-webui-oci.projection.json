@@ -1,0 +1,28 @@
+{
+  "timestamp": "2026-10-21T17:45:46.274271+00:00",
+  "scope": "standalone_static_webui_oci_export",
+  "ociDigest": "sha256:88790a22db669daa917ccf6a2f1d7650235ebd70f810696ce237e4fc39edcb69",
+  "platformManifestDigest": "sha256:88790a22db669daa917ccf6a2f1d7650235ebd70f810696ce237e4fc39edcb69",
+  "configDigest": "sha256:b8a19009bcee3664ed20657126a0f3742fca2c23ddb2453a407c604f87341169",
+  "platform": "linux/amd64",
+  "staticFiles": {
+    "index.html": "sha256:594ae4ea3ff682d41340305538381f20781b3b37c28a60648e0c2d62f53634fb",
+    "webui-config.json": "sha256:bca0ec2e05f8526a751482124ab3c09625d755b073c30dcaab3848ac4fbe35d5",
+    "assets/index-RX6ZslUt.css": "sha256:4d7b364941e6be00da64ca9b42be150d446f25124d17b6ffd3998d214379f9ac",
+    "assets/index-DtzoKuJT.js": "sha256:1b236d250067d75f3f94f95d635ef136272871d23e854ddfa0efd5e3c580b296"
+  },
+  "layerDigests": [
+    "sha256:8ef6cdc2cb958d364e0152b92f49d6481a1485c295baf4ea71d7f3b97fab7595"
+  ],
+  "layerReadbackMatchesCompiledFiles": true,
+  "registryPublished": false,
+  "catalogAdmitted": false,
+  "finalAgentImageBuilt": false,
+  "projection": {
+    "kind": "sanitized_input_projection",
+    "originalSha256": "sha256:1a3c8418bf267148b591a29485743b289a10269d1a291275f1bad7c231a10b2f",
+    "removedFields": [
+      "remoteDirectory"
+    ]
+  }
+}

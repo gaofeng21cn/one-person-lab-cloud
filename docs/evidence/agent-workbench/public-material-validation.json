@@ -1,0 +1,82 @@
+{
+  "kind": "new_local_public_material_validation",
+  "recordedAt": "2026-10-22T02:24:28.016573+00:00",
+  "historicalSourceSha": "3cefc17ea9e065a880039f416721522512ea5215",
+  "historicalEvidenceReexecuted": false,
+  "remoteActionsExecuted": 0,
+  "qualificationBoundary": "Local validation of projection, input reconstruction and materialization only; no new Build, Workspace, browser, production, money, provider or deletion execution.",
+  "pythonVersion": "3.14.8",
+  "checks": {
+    "originalAcceptanceSummaryHashBindings": 16,
+    "originalJsonFilesVerified": 11,
+    "verbatimJsonPointerSelectionsVerified": 111,
+    "executionLogProjectionsVerified": 2,
+    "logTransformation": "Replace only original run-root bytes with ${RUN_ROOT}; original and projected SHA-256/lengths verified.",
+    "packageZipEntries": 90,
+    "packageUnchangedEntries": 87,
+    "packageChangedEntries": 3,
+    "packageStateRootOccurrencesReplaced": 5,
+    "historicalPackageReconstruction": "byte-for-byte equal to original 219963-byte ZIP",
+    "historicalGitArchiveReconstruction": "git archive --format=tar 3cefc17ea9e065a880039f416721522512ea5215, then gzip -n -6; exact original tar and gzip hashes",
+    "preparedOriginalInputsByteEquality": [
+      "cloud-source.tar.gz",
+      "ibd-evidence-assistant-v2-0.2.0-upload-package.zip",
+      "agent-webui.oci.tar"
+    ],
+    "pythonFilesCompiled": 9,
+    "materializerDryRun": {
+      "verifiedInputs": 7,
+      "compiledOperations": 7,
+      "remoteActionsExecuted": 0
+    },
+    "completeLocalMaterialization": "Passed, including safe source extraction and expected historical Workspace test file presence. No generated operation executed.",
+    "modifiedInputRejection": "Passed: package bytes changed; materializer refused before creating output.",
+    "historicalDirectoryRejection": "Passed before output creation",
+    "publicContentScan": {
+      "files": 20,
+      "entriesIncludingZipMembers": 110,
+      "matches": 0,
+      "patterns": [
+        "personal_path",
+        "private_IP",
+        "common_credential_prefix",
+        "private_host"
+      ],
+      "limitation": "Structural scan and manual inspection, not an exact scan against undisclosed model credentials; no credential source was read."
+    },
+    "relativeDocumentLinksVerified": 7
+  },
+  "attempts": [
+    {
+      "interpreter": "Python 3.9.6",
+      "action": "complete local materialization",
+      "result": "failed: extractall filter argument unavailable below required Python 3.12; explicit version check added"
+    },
+    {
+      "interpreter": "3.14.8",
+      "action": "input reconstruction, compilation, dry-run, complete local materialization and modified-input rejection",
+      "result": "passed"
+    }
+  ],
+  "checkedMaterialSha256": {
+    "docs/evidence/agent-workbench/build-owner-retry-1.projection.log": "sha256:ad0c8cf8bcc13433ad29d128a64d3f2f3d50384fb788a6bfcdccdc9df0ec4934",
+    "docs/evidence/agent-workbench/dev-delivery.json": "sha256:c1a122e5558d4bbdfbf0d24465beec07e1ce580383fc0558c3e7499520b91974",
+    "docs/evidence/agent-workbench/workspace-test.projection.log": "sha256:7f15c6093410e5c758289f9758bdf1d34052bf14c23650b0df9cd498c03baf2d",
+    "docs/runtime/agent-workbench-dev-replay.md": "sha256:4a2c4f6eeac50ae0b4f8c3100119c672910e773f6edfb5611883b3e0c38cf056",
+    "tools/agent-workbench-replay/inputs/agent-plugins-manifest.schema.json": "sha256:0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883",
+    "tools/agent-workbench-replay/inputs/original-webui-oci.projection.json": "sha256:f1cb6c28486c084bc27be44fd192ceed11b48a9a56a544b73cf825e3bb4f0922",
+    "tools/agent-workbench-replay/inputs/package.public.zip": "sha256:adc0e334a3a6a2f21bdee26954427df98e7085fcb73f9f2d35ce0597512c2e9f",
+    "tools/agent-workbench-replay/inputs/runtime-publisher-contract.json": "sha256:26d3bb4d039b83370c919dce8b0f564d5e0c57a45b552b023e30e1a012d6352f",
+    "tools/agent-workbench-replay/inputs/tooling.json": "sha256:1caa747f20170d4197d5197084d1c9d3e49ab2fb66b9b717ec902398f5c78206",
+    "tools/agent-workbench-replay/materialize-replay.py": "sha256:b926d4b3419a3a4d570985e05959892456be3644d210ca21b549d517f563e0e3",
+    "tools/agent-workbench-replay/operations/compile-remote-retry.py": "sha256:21b4e172898acf05351b60c0e619adaa405086b96dcc1e059807e1607ab9b23b",
+    "tools/agent-workbench-replay/operations/export-final-oci.py": "sha256:6a8efcbc9e147906440e85c3e8f4af5eeceb1931f7f41503ab315f292e4cecfb",
+    "tools/agent-workbench-replay/operations/prepare-build-input.py": "sha256:335ef6057216716324d7936634eae761c01151c5d3f7569b32e8d30e5c1af38d",
+    "tools/agent-workbench-replay/operations/prepare-workspace.py": "sha256:064d6dbffa1a513d79af8b90652a88568dfc57f2e8137d94fb8bea3bdba86617",
+    "tools/agent-workbench-replay/operations/run-build-retry-1.py": "sha256:8f2393ef481088f6740172f86ebbdc6bbe961c7ff71b5b232ee5d0742ebdea71",
+    "tools/agent-workbench-replay/operations/run-workspace.py": "sha256:287f731acf5b3acf499eeaccc922e0cccbc00d9721ce8fc00f6f908f31c73f07",
+    "tools/agent-workbench-replay/operations/verify-final-filesystem.py": "sha256:61ab43b935c8fa5fb09bdf76f8e917322352f2f1470cb87fc50789f0fceb056c",
+    "tools/agent-workbench-replay/prepare-inputs.py": "sha256:c7a3a79e6eb2f7acb942c76595e2fc626530980d74934962c0016070f4992f35",
+    "tools/agent-workbench-replay/provenance.json": "sha256:8a65621c6ed78ce9c3f89ab86f181335f6b493bdeb4c034fb4e55c92c0abda3e"
+  }
+}

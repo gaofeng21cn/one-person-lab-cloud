@@ -1,0 +1,36 @@
+{
+  "name": "@opl/agent-webui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "node --test tests/runtime.test.ts tests/http-runtime.test.ts",
+    "test:browser": "node --test tests/browser.test.ts"
+  },
+  "dependencies": {
+    "@assistant-ui/react": "0.15.17",
+    "lucide-react": "1.39.0",
+    "pdfjs-dist": "5.4.624",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-markdown": "10.1.0",
+    "rehype-raw": "7.0.0",
+    "rehype-sanitize": "6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/react": "18.3.24",
+    "@types/react-dom": "18.3.7",
+    "@vitejs/plugin-react": "6.1.1",
+    "playwright": "1.64.1",
+    "typescript": "5.9.2",
+    "vite": "8.2.2"
+  },
+  "description": "Standalone Agent workbench extracted from the original IBD three-panel WebUI",
+  "engines": {
+    "node": ">=24 <25"
+  }
+}

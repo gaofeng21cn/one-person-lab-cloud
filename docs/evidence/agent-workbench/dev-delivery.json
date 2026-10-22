@@ -1,0 +1,469 @@
+{
+  "kind": "sanitized_historical_evidence_projection",
+  "projectionFormat": "JSON Pointer selections with verbatim values; omitted fields are not reproduced. Original hashes identify unavailable original bytes, not these projections.",
+  "historicalSourceSha": "3cefc17ea9e065a880039f416721522512ea5215",
+  "runTime": "2026-10-21 UTC / 2026-10-22 Asia/Shanghai",
+  "sourceRole": "Historical product source, distinct from the source revision of the PR carrying this projection.",
+  "registryAvailability": "Loopback addresses in selected values identify an ephemeral historical Registry removed by harness cleanup; no live publication is claimed.",
+  "evidenceBoundary": "Build and Workspace used separate fixture stores joined by immutable handoff. Native HTTP completed; final-OCI browser send unexecuted.",
+  "deletionBoundary": "Customer deletion and refund unexecuted in this fixed-source run. This does not negate the separate deletion evidence recorded by PR #1013.",
+  "records": [
+    {
+      "original": {
+        "artifact": "dev-bundle/acceptance-summary.json",
+        "sha256": "sha256:c366ff5b109668f02d52d918aaa0b5ddcdb7c65640eb96024a52d8312c1e16d3",
+        "bytes": 5888
+      },
+      "selected": {
+        "/recordedAt": "2026-10-21T18:55:58.284803+00:00",
+        "/scope": "isolated dev forward acceptance; immutable Build handoff imported into downstream Capability fixture",
+        "/sourceSha": "3cefc17ea9e065a880039f416721522512ea5215",
+        "/cloudTrackedSourceChanged": false,
+        "/disposableWebuiBuildInputSubstituted": true,
+        "/package": {
+          "status": "uploaded",
+          "sha256": "sha256:1befa906cdfb4f343beb0f615df36588a03bda53abefdfd3a90f7a171bba2b19",
+          "packageVersionId": "pv_7362523b02471b0dbb3a9dc2083f53a2"
+        },
+        "/build": {
+          "passed": true,
+          "buildJobId": "build_42c0f2af68e3a1c3da80f0674400b090",
+          "artifactReceiptId": "artifact_build_42c0f2af68e3a1c3da80f0674400b090",
+          "capabilityVersionId": "capv_f7782a7de6496c2b23db2ce1c60638f1",
+          "capabilityVersionStatus": "ready",
+          "ociDigest": "sha256:77ecf97d73b178993295546998111aa31226ae89c21e5a36b002ffb02a60af0b",
+          "deploymentDescriptorDigest": "sha256:f33358f3c389634ec0b13a643ed05f9239ea0cc7989458cecc9a574d9eafee59",
+          "originalWebuiOciDigest": "sha256:88790a22db669daa917ccf6a2f1d7650235ebd70f810696ce237e4fc39edcb69",
+          "registeredWebuiOciDigest": "sha256:e2bbb23bb17125cfdccfb1928a005f22b9aef48b28c043a2f642d0b3a427b6f3"
+        },
+        "/workspace/passed": true,
+        "/workspace/workspaceId": "workspace_d40ec7fcfca0b6ac9af71786dab801fc",
+        "/workspace/operationId": "op_c2d3694f2c89fa184d1760fe1e598cc3",
+        "/workspace/runtimeInstanceId": "rti_6e1cc70e41afa391a67dbb014e8257fc",
+        "/workspace/executionEpoch": 1,
+        "/workspace/actualImageDigestMatchesBuild": true,
+        "/workspace/ready": true,
+        "/workspace/bffDeploymentAndAccessReadbacksPassed": true,
+        "/workspace/applicationLoginPassed": true,
+        "/workspace/failureAndRecoveryPassed": true,
+        "/finalFilesystem": {
+          "method": "Docker merged image filesystem readback",
+          "webuiFiles": 4,
+          "carrierFiles": 89,
+          "matched": true
+        },
+        "/cleanup": {
+          "timestamp": "2026-10-21T18:49:40.139848+00:00",
+          "remainingTaskContainers": [],
+          "preexistingContainerIdentitiesPreserved": true,
+          "originalPreviewStillRunning": true,
+          "privateModelInputAbsent": true,
+          "quotaFilesystemAbsent": true,
+          "quotaImageAbsent": true,
+          "temporaryPostgresTagRestored": true
+        },
+        "/businessDeletion": {
+          "execution": "unexecuted by the fixed #1003 source test",
+          "ledgerDeletionReceipt": "unexecuted",
+          "refund": "unexecuted",
+          "billingProfile": "LOCAL_NO_CHARGE",
+          "scope": "harness cleanup is not customer deletion"
+        },
+        "/artifact/archiveSha256": "sha256:d6df82e27113a9c1b8ba632f0d33078ddcccdbfd5faac015d87c6469f0e48edc",
+        "/artifact/archiveBytes": 485120000,
+        "/artifact/temporaryBuildRegistryRemoved": true,
+        "/artifact/imageCacheRetained": true,
+        "/limits": [
+          "External login and Runtime/WebUI catalog admissions remain local fixtures.",
+          "Build and Workspace use separate stores joined by an explicit immutable handoff import.",
+          "This does not establish paid activation, customer deletion, Ledger deletion receipts, refund, Tencent, Instance/Candidate qualification, browser-driven final-OCI sending, Gateway handover or guideline retrieval."
+        ]
+      }
+    },
+    {
+      "original": {
+        "artifact": "dev-bundle/evidence/build-result-retry-1.json",
+        "sha256": "sha256:db59301ff645f3728fb6031b06d5613398ba10f9df316c96335d525e26621a10",
+        "bytes": 1670
+      },
+      "selected": {
+        "/sourceSha": "3cefc17ea9e065a880039f416721522512ea5215",
+        "/startedAt": "2026-10-21T18:35:23.303211+00:00",
+        "/completedAt": "2026-10-21T18:37:58.224049+00:00",
+        "/exitCode": 0,
+        "/passed": true,
+        "/logSha256": "sha256:d53adb62b3b9a71ee7412398798c1b83272ca7f76d87a82d39a4c6bf87883e86",
+        "/boundaries": [
+          "isolated external identity fixture",
+          "local Runtime and WebUI catalog admission",
+          "new disposable loopback Registry",
+          "no production or Candidate qualification"
+        ]
+      }
+    },
+    {
+      "original": {
+        "artifact": "dev-bundle/evidence/build-handoff.json",
+        "sha256": "sha256:d0eab9ff36cd437c997644ee568bea6338fe2603ccf8c3f21141752d82c0c9d1",
+        "bytes": 37178
+      },
+      "selected": {
+        "/schemaVersion": 2,
+        "/registryHost": "127.0.0.1:38183",
+        "/capabilityVersion/id": "capv_f7782a7de6496c2b23db2ce1c60638f1",
+        "/capabilityVersion/artifact": {
+          "digest": "sha256:77ecf97d73b178993295546998111aa31226ae89c21e5a36b002ffb02a60af0b",
+          "platform": {
+            "architecture": "amd64",
+            "os": "linux"
+          },
+          "repository": "127.0.0.1:38183/result/publisher"
+        },
+        "/capabilityVersion/deploymentDescriptorDigest": "sha256:f33358f3c389634ec0b13a643ed05f9239ea0cc7989458cecc9a574d9eafee59",
+        "/capabilityVersion/status": "ready",
+        "/buildArtifact/input/packageObject": {
+          "storageObjectId": "sha256:1befa906cdfb4f343beb0f615df36588a03bda53abefdfd3a90f7a171bba2b19",
+          "versionId": "sha256:1befa906cdfb4f343beb0f615df36588a03bda53abefdfd3a90f7a171bba2b19",
+          "sha256": "sha256:1befa906cdfb4f343beb0f615df36588a03bda53abefdfd3a90f7a171bba2b19",
+          "sizeBytes": "219963"
+        },
+        "/buildArtifact/input/runtimeArtifact": {
+          "repository": "127.0.0.1:38183/fixtures/runtime",
+          "digest": "sha256:8efab2844b52c66bcaa3da05637abc3cbdb0c3b29364718839b121284711de92",
+          "platform": {
+            "os": "IMAGE_PLATFORM_OS_ENUM_LINUX",
+            "architecture": "IMAGE_PLATFORM_ARCHITECTURE_ENUM_AMD64"
+          }
+        },
+        "/buildArtifact/input/webuiArtifact": {
+          "repository": "127.0.0.1:38183/fixtures/cloud-agent-webui",
+          "digest": "sha256:e2bbb23bb17125cfdccfb1928a005f22b9aef48b28c043a2f642d0b3a427b6f3",
+          "platform": {
+            "os": "IMAGE_PLATFORM_OS_ENUM_LINUX",
+            "architecture": "IMAGE_PLATFORM_ARCHITECTURE_ENUM_AMD64"
+          }
+        }
+      }
+    },
+    {
+      "original": {
+        "artifact": "dev-bundle/evidence/workspace-result.json",
+        "sha256": "sha256:d767ab1567445360e645419fb7a05640e2afb672e346dc88cd1ca07fc9346c7d",
+        "bytes": 1322
+      },
+      "selected": {
+        "/sourceSha": "3cefc17ea9e065a880039f416721522512ea5215",
+        "/startedAt": "2026-10-21T18:40:56.733892+00:00",
+        "/completedAt": "2026-10-21T18:42:18.757877+00:00",
+        "/exitCode": 0,
+        "/passed": true,
+        "/logSha256": "sha256:aed2a2d97653c69c369e216d3e25dd2629db05c206edbec50ecb9ec7a4e23bbe",
+        "/buildHandoffSha256": "sha256:d0eab9ff36cd437c997644ee568bea6338fe2603ccf8c3f21141752d82c0c9d1",
+        "/billingProfile": "LOCAL_NO_CHARGE",
+        "/boundaries": [
+          "isolated external login and membership fixture",
+          "exact upstream Build and Capability readbacks imported into isolated downstream Capability store",
+          "real Workspace Serve Fabric production paths",
+          "no paid activation or production deployment"
+        ]
+      }
+    },
+    {
+      "original": {
+        "artifact": "dev-bundle/agent-response-20261021T184209.715345226Z.json",
+        "sha256": "sha256:c7ac75ff2377f8c925216e2f152ecdc87a87bf1747e631a19c4c59e19d5a03ed",
+        "bytes": 759
+      },
+      "selected": {
+        "/agentSelection": {
+          "codex_visible_entry": "ibd-evidence-assistant-v2",
+          "package_id": "ibd-evidence-assistant-v2",
+          "required_skill_ids": [
+            "ibd-evidence-assistant-v2"
+          ],
+          "shortcut_id": "answer-ibd-evidence-question"
+        },
+        "/executor": "codex_app_server",
+        "/image": "127.0.0.1:38183/result/publisher@sha256:77ecf97d73b178993295546998111aa31226ae89c21e5a36b002ffb02a60af0b",
+        "/responseBytes": 1009,
+        "/responseSha256": "9905b3452f7220f37ab5ced9e810438777eceece330d54517db39da268628bd8",
+        "/scope": "local_workspace_serve_fabric_agent_response",
+        "/threadId": "01a15fc5-32f9-77c2-99eb-9b32367dc737",
+        "/timestamp": "2026-10-21T18:42:09.715319738Z",
+        "/turnId": "01a15fc5-3334-7240-b7f9-b2ddb16defc8",
+        "/turnStatus": "completed"
+      }
+    },
+    {
+      "original": {
+        "artifact": "dev-bundle/evidence/final-oci.receipt.json",
+        "sha256": "sha256:b6eeb086a1f0f1b2c6155fd909dac506a1d6117507131551ac1985c02a7c812f",
+        "bytes": 2799
+      },
+      "selected": {
+        "/timestamp": "2026-10-21T18:40:07.655025+00:00",
+        "/ociManifestDigest": "sha256:77ecf97d73b178993295546998111aa31226ae89c21e5a36b002ffb02a60af0b",
+        "/archiveBytes": 485120000,
+        "/archiveSha256": "sha256:d6df82e27113a9c1b8ba632f0d33078ddcccdbfd5faac015d87c6469f0e48edc",
+        "/registeredWebuiDigest": "sha256:e2bbb23bb17125cfdccfb1928a005f22b9aef48b28c043a2f642d0b3a427b6f3",
+        "/originalWebuiManifestDigest": "sha256:88790a22db669daa917ccf6a2f1d7650235ebd70f810696ce237e4fc39edcb69",
+        "/configDigest": "sha256:69df3412e7789075dc9df43fe014eeb596a8c33f7d5b3ec3bd4732ed29ed5dc4",
+        "/layerDigests": [
+          "sha256:56d14e8ac0f63e3493f7ebeff7526ecd2517aebd1260a98cf7b4af110b542115",
+          "sha256:f0400f4b55b0ad346bf6167a1b64a258e4d73db608c457798ce35e4ffeebfaaf",
+          "sha256:d22c69a95cf463f4cb74462bd2899597ce505d82bd4c01ceddf7845e12f13856",
+          "sha256:2cfab517365cfc6b4bd1f8c4cb01754884ef75bc38758b3c41e291c696f019f5",
+          "sha256:a8de9fa052209313d8e45435a8486e29b20eebaa820e2e7f63a7c3c94b4fa567",
+          "sha256:2921ed88cb84df90b68c5896db56ac322d6569a3e561982f85816596ada051f3",
+          "sha256:59fa3f44ffe7ae9ca3381f6295e8077812f51cab984d3b6ee2002c63dab19692",
+          "sha256:e1bd56fa0af3440c906a04d5f6de87833c94bc17af33cacc08c4d7739bd75b4d",
+          "sha256:bae70fdd7953692052f5e493882a12617a98802aee76e03330df44dccc87d38e",
+          "sha256:7111e46c7bf9f4e622a61e32d710cbac135c3fea7030fd7d355fc42501776c73",
+          "sha256:b92ffd88330c4b43dba1de37dcf352981a0897b993de19fcf96227d7c784caaf",
+          "sha256:dfc6bb2aaa9ee61a3e67ec33b344c17035c9d1cf1c721a465d5a6a4670a6c95e",
+          "sha256:70107957d811de895ac5ffe19fd2b0faead8450a01c3df94510c34d512b3d75c",
+          "sha256:ddcb24375010227742a9e92d73dbdfdf81b75dba6006e8657750ddf5588291b2",
+          "sha256:efbca20e37774cf8dbcd14f4e20553698faee407473e0b21cba403e1d5105f69",
+          "sha256:8c04b611f11bd99d1a4495276d6e085b51c1ad017f002a155edc9c5a2b7d2e73",
+          "sha256:e1078384b5ac389a9f6b6c57c3ccf42bcef32c7b54964b24e3ec2201447a92d2",
+          "sha256:704ef1f43bba9f8c1b2ba5cdb1e2ab6417886beb907252607babe2ca878a8b8b",
+          "sha256:1ddb0e820e1447cf5c9173addbd24459c2df1d4ab39aee6153d6a2dd1e006189",
+          "sha256:42c52be4a3831f54c1c500cb88fcdf32413df7e3406ae0c367fbc823240981d4",
+          "sha256:8928d9e8a8a9a52176bc4625a0c4f32f42d54c958d79333ceea81622ed133006",
+          "sha256:585ce829b2b07298cfec922496ecec689e202ae44d9e31c659285675292765fd",
+          "sha256:8438145ad182ee3e6951f64f926b9a3e1adec02e9b11e9535c269e3add5e0a69"
+        ]
+      }
+    },
+    {
+      "original": {
+        "artifact": "dev-bundle/evidence/final-filesystem-readback.receipt.json",
+        "sha256": "sha256:c1d8b2163714fd7e8534b47a37c8d54efef047628137ed32591685c29069e279",
+        "bytes": 15149
+      },
+      "selected": {
+        "/timestamp": "2026-10-21T18:47:21.162345+00:00",
+        "/method": "Docker engine merged image filesystem readback via docker create and docker cp; no layer-union approximation",
+        "/sourceOCIManifestDigest": "sha256:77ecf97d73b178993295546998111aa31226ae89c21e5a36b002ffb02a60af0b",
+        "/noMountsOverrideVerifiedPaths": true,
+        "/finalFilesystemReadbackMatchesInputs": true,
+        "/paths": {
+          "/web": {
+            "verifiedFiles": 4,
+            "fileHashes": {
+              "assets/index-DtzoKuJT.js": "sha256:1b236d250067d75f3f94f95d635ef136272871d23e854ddfa0efd5e3c580b296",
+              "assets/index-RX6ZslUt.css": "sha256:4d7b364941e6be00da64ca9b42be150d446f25124d17b6ffd3998d214379f9ac",
+              "index.html": "sha256:594ae4ea3ff682d41340305538381f20781b3b37c28a60648e0c2d62f53634fb",
+              "webui-config.json": "sha256:bca0ec2e05f8526a751482124ab3c09625d755b073c30dcaab3848ac4fbe35d5"
+            },
+            "allExpectedFilesPresentAndRegular": true
+          },
+          "/opt/ibd-carrier": {
+            "verifiedFiles": 89,
+            "fileHashes": {
+              ".agents/plugins/marketplace.json": "sha256:f46f819b4677b84f5d82ac8c581bc1b3068bba1ae71cd19bae1e83fec8a5c2fc",
+              ".codex-plugin/plugin.json": "sha256:8e7bf064c37a8fe689684964e131caa2c27cb34454211158d36eec4cb7c6f2bc",
+              "README.md": "sha256:3002b32deda1010b0ce5afc3dc558d42cae9607f7f81ec70559c4230f3a11601",
+              "agent/agent-pack.json": "sha256:f67517f4d46620ebdaa7bc52d5416a74be62a50867a03e0422c831dbc54b30d2",
+              "agent/descriptor.json": "sha256:1509934a9bff87052567e8df6afaf5d818d0b5f1cecf1f0260c48f5d500aa84d",
+              "agent/prompts/foundry-quality-roles.md": "sha256:28e6599901caba2f527168e940874adb64dc3e50293966c35602b2371531080b",
+              "agent/quality_gates/foundry-quality-rubric.md": "sha256:02322601b59848af93f9915d24926d7c5761717dab4fbface00125413f6cad56",
+              "agent/stages/manifest.json": "sha256:2b3d5697ee01c5b5934438f590fcf419e5c0de3ff052e6773191d35de848f785",
+              "agent/stages/stage-0001.md": "sha256:22b7d077c798750d46e88c53d49bdca693ff079cec9d8a11730628edffabd49a",
+              "agent/tools/7e3dba206cc0c7ea739a0ad0957008dc1e78722325de538d5bd420c6268fcc77.blob": "sha256:7e3dba206cc0c7ea739a0ad0957008dc1e78722325de538d5bd420c6268fcc77",
+              "agent-blueprint.json": "sha256:4de37909bf26c2a2ba12b2d66182e4e31939ab09f1bc1a49edf614117ac5d92d",
+              "candidate-index.json": "sha256:1279d0927d8642af294718da1f8252042ed36892686c4497f90124c59a651125",
+              "content/knowledge/a88de38769953b4a9e028d23346f726b6802f5faa8ebec758453ca7dd089763e.blob": "sha256:a88de38769953b4a9e028d23346f726b6802f5faa8ebec758453ca7dd089763e",
+              "content/knowledge/df219459df521e4ca389711654557defbf822835adcd57adca121c62ee98fe2c.blob": "sha256:df219459df521e4ca389711654557defbf822835adcd57adca121c62ee98fe2c",
+              "content/knowledge/e4b9470626f0cc7765572856c411d1fc567295978d30f4e2385f5b4e9809f674.blob": "sha256:e4b9470626f0cc7765572856c411d1fc567295978d30f4e2385f5b4e9809f674",
+              "content/prompt/0393a1826c460ded00d33d0cd6f08161c8611278ef8dc7693a28b5f45e2bbb73.blob": "sha256:0393a1826c460ded00d33d0cd6f08161c8611278ef8dc7693a28b5f45e2bbb73",
+              "content/prompt/d2e62c036f32e20c9a93d07fbff5e179c01808629ce14383dce8eb9c82ef2b48.blob": "sha256:d2e62c036f32e20c9a93d07fbff5e179c01808629ce14383dce8eb9c82ef2b48",
+              "content/schema/0cadfec7ea50227ee69e187800acb42652eb8469bee545bf6a253d8656e0eb2f.json": "sha256:0cadfec7ea50227ee69e187800acb42652eb8469bee545bf6a253d8656e0eb2f",
+              "content/schema/1e220d210814ba915c6d5eba8abf94bdc05165e497a12d04d2f2116fe5302284.json": "sha256:1e220d210814ba915c6d5eba8abf94bdc05165e497a12d04d2f2116fe5302284",
+              "content/schema/23be5ca9ff7572cdb577dcec264a82531e7e9949812784dacd1c35ed59ab3538.json": "sha256:23be5ca9ff7572cdb577dcec264a82531e7e9949812784dacd1c35ed59ab3538",
+              "content/schema/296cd9bed1ad0fd4b39103523d93062dc3a276a2addccc10eaa7ad1010f1663e.json": "sha256:296cd9bed1ad0fd4b39103523d93062dc3a276a2addccc10eaa7ad1010f1663e",
+              "content/schema/49266e55efa94c850d7be3591be535a12e31435fbccc9c22cf4c0bbb68dc3998.json": "sha256:49266e55efa94c850d7be3591be535a12e31435fbccc9c22cf4c0bbb68dc3998",
+              "content/schema/9a1a98e1aa00d8381450930b750fb9f68e607dfc8e0b52e8131d45823581b746.json": "sha256:9a1a98e1aa00d8381450930b750fb9f68e607dfc8e0b52e8131d45823581b746",
+              "content/schema/9e9aa2377f888d5b0c5e99724e1d050dd3c2fe0eb6b561b8ea26fde5276f4b54.json": "sha256:9e9aa2377f888d5b0c5e99724e1d050dd3c2fe0eb6b561b8ea26fde5276f4b54",
+              "content/schema/a017ce860b014b158ea8c405ca6e0acde5e9d31fa62c4458ffbd2c6954d5a9e3.json": "sha256:a017ce860b014b158ea8c405ca6e0acde5e9d31fa62c4458ffbd2c6954d5a9e3",
+              "content/schema/b88f5f9ad2ebcc6f81b556b319e65fad5dc1a9657737a268a3bdf3dc1dc0309d.json": "sha256:b88f5f9ad2ebcc6f81b556b319e65fad5dc1a9657737a268a3bdf3dc1dc0309d",
+              "content/schema/bdc6eaf2dc1993adb79670f0a2ddf05a07bf031822b0ae519b30655dda7314bc.json": "sha256:bdc6eaf2dc1993adb79670f0a2ddf05a07bf031822b0ae519b30655dda7314bc",
+              "content/skill/69c933f1677f2d4a47a5add87310fa6e4fcbb21769fb18aa5b7d159590d745f3.blob": "sha256:69c933f1677f2d4a47a5add87310fa6e4fcbb21769fb18aa5b7d159590d745f3",
+              "contracts/action_catalog.json": "sha256:5e14d3c7576fab3b57c347436c8128bd2e6d4e0fcbbae14b0236fe84150f2fe3",
+              "contracts/agent-pack-conformance.json": "sha256:21a34a1524f1079a8e1deaaf142c650e51013ddb23ac147dfc33143db2e6b470",
+              "contracts/artifact_contracts.json": "sha256:5722b913763df866a0677a43e50b2d42037c5a5dd3b27b3222dc77a22693caee",
+              "contracts/authority_policy.json": "sha256:60ceeda05bb99ee84917767801ed92802ab35b46f672b3536b4d2b4a7917a8d4",
+              "contracts/domain_descriptor.json": "sha256:aac1af62536d1b3c3ed39e8105742765cffbb8ffcb0da7b8cedd503064751f48",
+              "contracts/evaluation_spec.json": "sha256:c10d97fafe186b954701075b11ad6ef2026eda6561eb9469f874115c3fffe58b",
+              "contracts/memory_policy.json": "sha256:6f58944b8db627b9c8dab73a4ae6f8339448ac7d149a5caecead7ec96349f202",
+              "contracts/opl_agent_package_manifest.json": "sha256:1fc8a7684a005c96f91ed7b4739cd9550f45e3a51e686b46df72ef7c59cc6eba",
+              "contracts/opl_domain_manifest_registration.json": "sha256:5c4d2c30ef4b5c4dbf7cf952bbcdc7071c3a7a4b7fdd795d176b436c22bedc41",
+              "contracts/owner_receipt_contract.json": "sha256:3c8efe91e79f5898b416a822da177d2cb51e3593d5107216a585273f673b0cd4",
+              "contracts/pack_compiler_input.json": "sha256:afd54dd2f801cdedec8dadd97c58cf9bdf2f9fe831deb4227235272874c4b366",
+              "contracts/packaging-provenance.json": "sha256:287acfa30299e3b05798bce9e0b8e40e172b44c2860c78f3a531ca8eb071bb9e",
+              "contracts/resource-lock.json": "sha256:ec4816de2eff06b3a797fb3e47ea812f0e027c3a953b5fa385cca324a911d6fb",
+              "contracts/stage_quality_cycle_policy.json": "sha256:e8e68f39e0baca89ddd36251911ae22cfd2395e02d962d66e102d607b6de1054",
+              "opl-package.json": "sha256:953209c84cf14304b19eb3f4c5b35afb1e4ed3590420a0666ec6c6c28ab8b20f",
+              "plugin.json": "sha256:8e7bf064c37a8fe689684964e131caa2c27cb34454211158d36eec4cb7c6f2bc",
+              "plugins/ibd-evidence-assistant-v2/.codex-plugin/plugin.json": "sha256:c5eda7006b9a5923604e12310d8b04d1f48d3fd895bf6e5eeab715988fb32fd2",
+              "plugins/ibd-evidence-assistant-v2/agent/agent-pack.json": "sha256:f67517f4d46620ebdaa7bc52d5416a74be62a50867a03e0422c831dbc54b30d2",
+              "plugins/ibd-evidence-assistant-v2/agent/descriptor.json": "sha256:1509934a9bff87052567e8df6afaf5d818d0b5f1cecf1f0260c48f5d500aa84d",
+              "plugins/ibd-evidence-assistant-v2/agent/prompts/foundry-quality-roles.md": "sha256:28e6599901caba2f527168e940874adb64dc3e50293966c35602b2371531080b",
+              "plugins/ibd-evidence-assistant-v2/agent/quality_gates/foundry-quality-rubric.md": "sha256:02322601b59848af93f9915d24926d7c5761717dab4fbface00125413f6cad56",
+              "plugins/ibd-evidence-assistant-v2/agent/stages/manifest.json": "sha256:2b3d5697ee01c5b5934438f590fcf419e5c0de3ff052e6773191d35de848f785",
+              "plugins/ibd-evidence-assistant-v2/agent/stages/stage-0001.md": "sha256:22b7d077c798750d46e88c53d49bdca693ff079cec9d8a11730628edffabd49a",
+              "plugins/ibd-evidence-assistant-v2/agent/tools/7e3dba206cc0c7ea739a0ad0957008dc1e78722325de538d5bd420c6268fcc77.blob": "sha256:7e3dba206cc0c7ea739a0ad0957008dc1e78722325de538d5bd420c6268fcc77",
+              "plugins/ibd-evidence-assistant-v2/agent-blueprint.json": "sha256:4de37909bf26c2a2ba12b2d66182e4e31939ab09f1bc1a49edf614117ac5d92d",
+              "plugins/ibd-evidence-assistant-v2/candidate-index.json": "sha256:1279d0927d8642af294718da1f8252042ed36892686c4497f90124c59a651125",
+              "plugins/ibd-evidence-assistant-v2/content/knowledge/a88de38769953b4a9e028d23346f726b6802f5faa8ebec758453ca7dd089763e.blob": "sha256:a88de38769953b4a9e028d23346f726b6802f5faa8ebec758453ca7dd089763e",
+              "plugins/ibd-evidence-assistant-v2/content/knowledge/df219459df521e4ca389711654557defbf822835adcd57adca121c62ee98fe2c.blob": "sha256:df219459df521e4ca389711654557defbf822835adcd57adca121c62ee98fe2c",
+              "plugins/ibd-evidence-assistant-v2/content/knowledge/e4b9470626f0cc7765572856c411d1fc567295978d30f4e2385f5b4e9809f674.blob": "sha256:e4b9470626f0cc7765572856c411d1fc567295978d30f4e2385f5b4e9809f674",
+              "plugins/ibd-evidence-assistant-v2/content/prompt/0393a1826c460ded00d33d0cd6f08161c8611278ef8dc7693a28b5f45e2bbb73.blob": "sha256:0393a1826c460ded00d33d0cd6f08161c8611278ef8dc7693a28b5f45e2bbb73",
+              "plugins/ibd-evidence-assistant-v2/content/prompt/d2e62c036f32e20c9a93d07fbff5e179c01808629ce14383dce8eb9c82ef2b48.blob": "sha256:d2e62c036f32e20c9a93d07fbff5e179c01808629ce14383dce8eb9c82ef2b48",
+              "plugins/ibd-evidence-assistant-v2/content/schema/0cadfec7ea50227ee69e187800acb42652eb8469bee545bf6a253d8656e0eb2f.json": "sha256:0cadfec7ea50227ee69e187800acb42652eb8469bee545bf6a253d8656e0eb2f",
+              "plugins/ibd-evidence-assistant-v2/content/schema/1e220d210814ba915c6d5eba8abf94bdc05165e497a12d04d2f2116fe5302284.json": "sha256:1e220d210814ba915c6d5eba8abf94bdc05165e497a12d04d2f2116fe5302284",
+              "plugins/ibd-evidence-assistant-v2/content/schema/23be5ca9ff7572cdb577dcec264a82531e7e9949812784dacd1c35ed59ab3538.json": "sha256:23be5ca9ff7572cdb577dcec264a82531e7e9949812784dacd1c35ed59ab3538",
+              "plugins/ibd-evidence-assistant-v2/content/schema/296cd9bed1ad0fd4b39103523d93062dc3a276a2addccc10eaa7ad1010f1663e.json": "sha256:296cd9bed1ad0fd4b39103523d93062dc3a276a2addccc10eaa7ad1010f1663e",
+              "plugins/ibd-evidence-assistant-v2/content/schema/49266e55efa94c850d7be3591be535a12e31435fbccc9c22cf4c0bbb68dc3998.json": "sha256:49266e55efa94c850d7be3591be535a12e31435fbccc9c22cf4c0bbb68dc3998",
+              "plugins/ibd-evidence-assistant-v2/content/schema/9a1a98e1aa00d8381450930b750fb9f68e607dfc8e0b52e8131d45823581b746.json": "sha256:9a1a98e1aa00d8381450930b750fb9f68e607dfc8e0b52e8131d45823581b746",
+              "plugins/ibd-evidence-assistant-v2/content/schema/9e9aa2377f888d5b0c5e99724e1d050dd3c2fe0eb6b561b8ea26fde5276f4b54.json": "sha256:9e9aa2377f888d5b0c5e99724e1d050dd3c2fe0eb6b561b8ea26fde5276f4b54",
+              "plugins/ibd-evidence-assistant-v2/content/schema/a017ce860b014b158ea8c405ca6e0acde5e9d31fa62c4458ffbd2c6954d5a9e3.json": "sha256:a017ce860b014b158ea8c405ca6e0acde5e9d31fa62c4458ffbd2c6954d5a9e3",
+              "plugins/ibd-evidence-assistant-v2/content/schema/b88f5f9ad2ebcc6f81b556b319e65fad5dc1a9657737a268a3bdf3dc1dc0309d.json": "sha256:b88f5f9ad2ebcc6f81b556b319e65fad5dc1a9657737a268a3bdf3dc1dc0309d",
+              "plugins/ibd-evidence-assistant-v2/content/schema/bdc6eaf2dc1993adb79670f0a2ddf05a07bf031822b0ae519b30655dda7314bc.json": "sha256:bdc6eaf2dc1993adb79670f0a2ddf05a07bf031822b0ae519b30655dda7314bc",
+              "plugins/ibd-evidence-assistant-v2/content/skill/69c933f1677f2d4a47a5add87310fa6e4fcbb21769fb18aa5b7d159590d745f3.blob": "sha256:69c933f1677f2d4a47a5add87310fa6e4fcbb21769fb18aa5b7d159590d745f3",
+              "plugins/ibd-evidence-assistant-v2/contracts/action_catalog.json": "sha256:5e14d3c7576fab3b57c347436c8128bd2e6d4e0fcbbae14b0236fe84150f2fe3",
+              "plugins/ibd-evidence-assistant-v2/contracts/agent-pack-conformance.json": "sha256:21a34a1524f1079a8e1deaaf142c650e51013ddb23ac147dfc33143db2e6b470",
+              "plugins/ibd-evidence-assistant-v2/contracts/artifact_contracts.json": "sha256:5722b913763df866a0677a43e50b2d42037c5a5dd3b27b3222dc77a22693caee",
+              "plugins/ibd-evidence-assistant-v2/contracts/authority_policy.json": "sha256:60ceeda05bb99ee84917767801ed92802ab35b46f672b3536b4d2b4a7917a8d4",
+              "plugins/ibd-evidence-assistant-v2/contracts/domain_descriptor.json": "sha256:aac1af62536d1b3c3ed39e8105742765cffbb8ffcb0da7b8cedd503064751f48",
+              "plugins/ibd-evidence-assistant-v2/contracts/evaluation_spec.json": "sha256:c10d97fafe186b954701075b11ad6ef2026eda6561eb9469f874115c3fffe58b",
+              "plugins/ibd-evidence-assistant-v2/contracts/memory_policy.json": "sha256:6f58944b8db627b9c8dab73a4ae6f8339448ac7d149a5caecead7ec96349f202",
+              "plugins/ibd-evidence-assistant-v2/contracts/opl_agent_package_manifest.json": "sha256:1fc8a7684a005c96f91ed7b4739cd9550f45e3a51e686b46df72ef7c59cc6eba",
+              "plugins/ibd-evidence-assistant-v2/contracts/opl_domain_manifest_registration.json": "sha256:5c4d2c30ef4b5c4dbf7cf952bbcdc7071c3a7a4b7fdd795d176b436c22bedc41",
+              "plugins/ibd-evidence-assistant-v2/contracts/owner_receipt_contract.json": "sha256:3c8efe91e79f5898b416a822da177d2cb51e3593d5107216a585273f673b0cd4",
+              "plugins/ibd-evidence-assistant-v2/contracts/pack_compiler_input.json": "sha256:afd54dd2f801cdedec8dadd97c58cf9bdf2f9fe831deb4227235272874c4b366",
+              "plugins/ibd-evidence-assistant-v2/contracts/resource-lock.json": "sha256:ec4816de2eff06b3a797fb3e47ea812f0e027c3a953b5fa385cca324a911d6fb",
+              "plugins/ibd-evidence-assistant-v2/contracts/stage_quality_cycle_policy.json": "sha256:e8e68f39e0baca89ddd36251911ae22cfd2395e02d962d66e102d607b6de1054",
+              "plugins/ibd-evidence-assistant-v2/opl-package.json": "sha256:953209c84cf14304b19eb3f4c5b35afb1e4ed3590420a0666ec6c6c28ab8b20f",
+              "plugins/ibd-evidence-assistant-v2/plugin.json": "sha256:c5eda7006b9a5923604e12310d8b04d1f48d3fd895bf6e5eeab715988fb32fd2",
+              "plugins/ibd-evidence-assistant-v2/runtime/authority_functions/README.md": "sha256:792a46778e42b3f0a85508655a12be049f9bb28d31e92bdd97ec49aaf0fbd660",
+              "plugins/ibd-evidence-assistant-v2/skills/ibd-evidence-assistant-v2/SKILL.md": "sha256:69c933f1677f2d4a47a5add87310fa6e4fcbb21769fb18aa5b7d159590d745f3",
+              "runtime/authority_functions/README.md": "sha256:792a46778e42b3f0a85508655a12be049f9bb28d31e92bdd97ec49aaf0fbd660",
+              "skills/ibd-evidence-assistant-v2/SKILL.md": "sha256:69c933f1677f2d4a47a5add87310fa6e4fcbb21769fb18aa5b7d159590d745f3"
+            },
+            "allExpectedFilesPresentAndRegular": true
+          }
+        },
+        "/supersedesFileContentProofIn": "final-oci.receipt.json; manifest/blob/archive digests from that receipt remain verified"
+      }
+    },
+    {
+      "original": {
+        "artifact": "dev-bundle/evidence/final-cleanup-readback.receipt.json",
+        "sha256": "sha256:4cbb8e8d4a759dcdf777ea4e489ee975c9b1547e56a33ccf9ce6b41fe19cc0e6",
+        "bytes": 313
+      },
+      "selected": {
+        "/timestamp": "2026-10-21T18:49:40.139848+00:00",
+        "/remainingTaskContainers": [],
+        "/preexistingContainerIdentitiesPreserved": true,
+        "/originalPreviewStillRunning": true,
+        "/privateModelInputAbsent": true,
+        "/quotaFilesystemAbsent": true,
+        "/quotaImageAbsent": true,
+        "/temporaryPostgresTagRestored": true
+      }
+    },
+    {
+      "original": {
+        "artifact": "dev-bundle/evidence/tooling-tag-restoration.receipt.json",
+        "sha256": "sha256:5ec014fea2a428eb667e47b2d68da04abcb8709b6eda3392a578ac55e86fc88e",
+        "bytes": 512
+      },
+      "selected": {
+        "/timestamp": "2026-10-21T18:48:08.637515+00:00",
+        "/temporaryTag": "postgres:16",
+        "/initialState": "absent in initial inventory",
+        "/finalState": "absent",
+        "/exitCode": 0,
+        "/originalImageBytesRetained": true,
+        "/preexistingContainerIdentitiesPreserved": true,
+        "/sharedRunningServicesChanged": false
+      }
+    },
+    {
+      "original": {
+        "artifact": "dev-bundle/evidence/final-secret-scan.receipt.json",
+        "sha256": "sha256:00bb5fa5fbf4c10fc8c49f1292daa5707a58a7b26fa4b2dfa6784b02fa616eef",
+        "bytes": 201
+      },
+      "selected": {
+        "/timestamp": "2026-10-21T18:49:40.013482+00:00",
+        "/method": "exact selected model credential scan; identifiers and hashes only exported for Agent response",
+        "/scannedFiles": 54,
+        "/matches": 0
+      }
+    },
+    {
+      "original": {
+        "artifact": "webui-extraction/evidence/delivery.receipt.json",
+        "sha256": "sha256:7b6f19f48601bdc24e0f0b8521898fd76c8e47c7a7a70f29d4775cbf0840e6c3",
+        "bytes": 1774
+      },
+      "selected": {
+        "/recordedAt": "2026-10-21T17:55:54.155339+00:00",
+        "/scope": "extract_original_ibd_webui_generalize_and_package",
+        "/sourceFileSetSha256": "sha256:33d45f322f8f036ae75287bce63e33762512071de0d5c0a0c25e14cee596db42",
+        "/sourceArchiveSha256": "sha256:b6ffdce0096ea06edf6b274335b5cab8911805d383820959abbdd0c943e80ee9",
+        "/webuiOciDigest": "sha256:88790a22db669daa917ccf6a2f1d7650235ebd70f810696ce237e4fc39edcb69",
+        "/canonicalRuntimeImageDigest": "sha256:c9ec31c24e8bf586a93f66c52c89a21a7ec3b119b3615cc3c71db0350cb5f04a",
+        "/unitHttpTestsPassed": 63,
+        "/browserRegressionPassed": true,
+        "/cleanSourceReplayPassed": true,
+        "/liveNativeLoginPassed": true,
+        "/liveCanonicalCompletedTurns": 2,
+        "/servedFilesMatchExportedOci": true,
+        "/registryPublished": false,
+        "/catalogAdmitted": false,
+        "/finalAgentOciBuilt": false,
+        "/tencentQualified": false
+      }
+    }
+  ],
+  "executionLogs": [
+    {
+      "path": "build-owner-retry-1.projection.log",
+      "kind": "sanitized_historical_execution_log_projection",
+      "original": {
+        "artifact": "dev-bundle/evidence/build-owner-retry-1.log",
+        "sha256": "sha256:d53adb62b3b9a71ee7412398798c1b83272ca7f76d87a82d39a4c6bf87883e86",
+        "bytes": 3231
+      },
+      "projectionSha256": "sha256:ad0c8cf8bcc13433ad29d128a64d3f2f3d50384fb788a6bfcdccdc9df0ec4934",
+      "projectionBytes": 3188,
+      "substitution": {
+        "method": "literal UTF-8 byte replacement of the original run root only; every other byte preserved",
+        "replacement": "${RUN_ROOT}",
+        "originalRunRootSha256": "sha256:48f26ed7ea63595a7af4abfddd0a7370d32766867bcf0cc4b7695aaaf262f728",
+        "occurrences": 1
+      }
+    },
+    {
+      "path": "workspace-test.projection.log",
+      "kind": "sanitized_historical_execution_log_projection",
+      "original": {
+        "artifact": "dev-bundle/evidence/workspace-test.log",
+        "sha256": "sha256:aed2a2d97653c69c369e216d3e25dd2629db05c206edbec50ecb9ec7a4e23bbe",
+        "bytes": 1586
+      },
+      "projectionSha256": "sha256:7f15c6093410e5c758289f9758bdf1d34052bf14c23650b0df9cd498c03baf2d",
+      "projectionBytes": 1543,
+      "substitution": {
+        "method": "literal UTF-8 byte replacement of the original run root only; every other byte preserved",
+        "replacement": "${RUN_ROOT}",
+        "originalRunRootSha256": "sha256:48f26ed7ea63595a7af4abfddd0a7370d32766867bcf0cc4b7695aaaf262f728",
+        "occurrences": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "kind": "historical_tooling_projection",
+  "originalSha256": "sha256:4c7b0b87e69bf574bf0d363063ace999342832bef5e34810256633ec9483a885",
+  "compilerVersion": "go version go1.26.8 linux/amd64",
+  "images": {
+    "opl-owners-build:test": {
+      "imageId": "sha256:ba88399f2fd98018292af5c4f65fe924a6cc46698c84570d59294693ce58c562"
+    },
+    "golang:1.27-bookworm": {
+      "imageId": "sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61"
+    },
+    "registry:2": {
+      "imageId": "sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373"
+    },
+    "moby/buildkit:buildx-stable-1": {
+      "imageId": "sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea"
+    },
+    "docker/dockerfile:1": {
+      "imageId": "sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e"
+    },
+    "sha256:301bcb60b8a3ee4ab7e147932723e3abd1cef53516ce5210b39fd9fe5e3602ae": {
+      "imageId": "sha256:301bcb60b8a3ee4ab7e147932723e3abd1cef53516ce5210b39fd9fe5e3602ae"
+    },
+    "uswccr.ccs.tencentyun.com/oplcloud/one-person-lab-app@sha256:8efab2844b52c66bcaa3da05637abc3cbdb0c3b29364718839b121284711de92": {
+      "imageId": "sha256:8efab2844b52c66bcaa3da05637abc3cbdb0c3b29364718839b121284711de92"
+    }
+  },
+  "note": "Local cache identities, not download instructions. Runtime origin naming does not authorize or require Tencent access."
+}

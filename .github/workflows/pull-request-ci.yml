@@ -118,6 +118,13 @@ jobs:
       - name: Validate source
         run: npm run verify:local -- --group source
 
+      - name: Validate Agent Workbench source
+        working-directory: webui/agent-workbench
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+          npm run build
+
       - name: Validate changed development plan
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -163,6 +170,14 @@ jobs:
       - *dependencies
       - name: Validate browser shard
         run: npm run verify:local -- --group browser --shard "${{ matrix.shard }}"
+
+      - name: Validate Agent Workbench browser fixture
+        if: matrix.shard == '1/2'
+        working-directory: webui/agent-workbench
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          npm run test:browser
 
   validate:
     name: validate

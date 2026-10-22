@@ -130,6 +130,17 @@ IBD is the feasibility exemplar; this scope adds no provider or generic WebUI ch
 feature. Browser-driven sending is outside this closure. Historical execution and
 current-revision verification remain distinct in [status](status.md).
 
+The separately packaged `webui/agent-workbench` is a static React/assistant-ui
+frontend extracted from that exemplar. It consumes only the Runtime's native
+`g2` / `opl_app_state.v1` directory, authentication, thread and event APIs; Cloud
+service protocols and provider selection do not change. Its scratch OCI exposes
+`/web` for the existing three-input Build composition. This frontend does not
+own Package admission, models, references, Workspace entitlement or deployment
+state. The Runtime owns login and thread execution. Configuration controls
+branding; Agent availability and bindings come from the authenticated Runtime.
+Its source/build checks and historical dev execution are distinguished in
+[status](status.md#extracted-agent-workbench-and-dev-delivery-2026-10-22).
+
 Control Plane remains the current caller and writer for capabilities not yet
 migrated. Extraction must switch real callers and retire the old write path;
 it must not create a permanent second writer. Production protobuf bindings live

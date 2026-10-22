@@ -1,0 +1,63 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+
+  --medical-bg: #ffffff;
+  --medical-sidebar: #f7f8f8;
+  --medical-surface: #ffffff;
+  --medical-surface-soft: #f1f3f2;
+  --medical-surface-cool: #f4f7f8;
+  --medical-text: #1c2422;
+  --medical-text-muted: #66706d;
+  --medical-text-subtle: #909895;
+  --medical-border: #e0e4e2;
+  --medical-border-strong: #ccd3d0;
+  --medical-primary: #087f5b;
+  --medical-primary-strong: #06684b;
+  --medical-primary-soft: #e7f4ef;
+  --medical-blue: #326d8a;
+  --medical-blue-soft: #eaf2f6;
+  --medical-warning: #a55b00;
+  --medical-warning-soft: #fff4dc;
+  --medical-danger: #b13b3b;
+  --medical-danger-soft: #fdeaea;
+  --medical-shadow: 0 12px 32px rgba(22, 32, 29, 0.1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 320px;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: var(--medical-bg);
+  color: var(--medical-text);
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(50, 109, 138, 0.22);
+  outline-offset: 2px;
+}

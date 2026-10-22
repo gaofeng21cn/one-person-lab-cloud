@@ -1,0 +1,8 @@
+=== RUN   TestLocalFirstApplicationDeploymentQualification
+    local_first_deploy_qualification_test.go:389: application /readyz, password login and declared Agent route verified
+    local_first_deploy_qualification_test.go:420: first delivery: workspace=workspace_d40ec7fcfca0b6ac9af71786dab801fc operation=op_c2d3694f2c89fa184d1760fe1e598cc3 resource_set=rset_7fe14ebd-47e7-4ae6-aae2-df633036ffc8 runtime=rti_6e1cc70e41afa391a67dbb014e8257fc epoch=1 image=127.0.0.1:38183/result/publisher@sha256:77ecf97d73b178993295546998111aa31226ae89c21e5a36b002ffb02a60af0b url=http://127.0.0.1:32787/ mount=${RUN_ROOT}/storage/opl-workspace-7a10fa52a67a2017/data/app-data-6073ed4114da929ca38f84987ac11de2/workspace-data
+    local_first_deploy_qualification_test.go:447: application /readyz, password login and declared Agent route verified
+    local_first_deploy_qualification_test.go:447: real Agent response: thread=01a15fc5-32f9-77c2-99eb-9b32367dc737 turn=01a15fc5-3334-7240-b7f9-b2ddb16defc8 status=completed response_bytes=1009
+    local_first_deploy_qualification_test.go:480: qualified: uploaded Package -> real BuildKit OCI and CapabilityVersion handoff -> real quota-backed Local resources -> real Serve/Fabric Agent application -> live HTTP response; actual container failure observed; same container/data/operation/deployment/epoch recovered after Serve and Workspace restart; one zero-charge receipt and one Serve claim; Gateway and paid activation are not qualified
+--- PASS: TestLocalFirstApplicationDeploymentQualification (80.08s)
+PASS

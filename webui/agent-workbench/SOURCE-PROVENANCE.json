@@ -1,0 +1,33 @@
+{
+  "origin": "original IBD three-panel WebUI",
+  "sourceArchiveName": "build-context.tar.gz",
+  "sourceArchiveSha256": "4d458c82285557490aa99109523876a219d67b90c422005fd9c7f36e2f24d2c0",
+  "originalExtractedFilesSha256": {
+    "App.tsx": "ef01e3036809c72f35a60fbf4fe70fd9a0a2d19cff857fef047e04107cf32ad0",
+    "components/workbench/chat/AgentSetupDialog.tsx": "11978592307e92d968421f05c38e55c8133a2be08cbb02a82474bb9a5934dac3",
+    "components/workbench/chat/ChatStage.tsx": "1a61bf83349b14fc724eab559caaf258e0f3b2ee8677b8f0b3adee83f47da08d",
+    "components/workbench/chat/HistorySidebar.tsx": "1d27a03533b1feb48a4a9515f06d04e0b4628e5800e03ef9a56e3c1f64c28a3b",
+    "components/workbench/chat/InputPanel.tsx": "0a701b323bb3130936275c4a87cd09491f2d458613e5c6bcfbaebb3b98f8d0db",
+    "components/workbench/chat/InsightSidebar.tsx": "2f3ec4eca63f5c56a49b72f91610fd1f1ac757ab9f3a1c1c8669029163f90153",
+    "components/workbench/chat/MessageList.tsx": "1b6776e2c55f0e6abd57284090e82a9ebef032c1389c8ac4f48b95ca20d38c82",
+    "components/workbench/chat/PdfReader.tsx": "8db5927dfaae08c16281bf88d29aa70747f5e796142f48e6a8471473d665cd15",
+    "components/workbench/chat/RunProgress.tsx": "748e07102563ae744d55eba1cde87d16b0ad686406af2aaa541c7f9d57ce53ee",
+    "index.html": "e47cebcb7f73e4200f3618f82d9e48e0d23f8e42c2e14a57047959873c008943",
+    "main.tsx": "ff187beb52da632c6be505e158e6046b3f7ee548e1cf95a12ab5af069215c443",
+    "package-lock.json": "c034144b8f6423b009c56ef7a4b4c4182c74162770eb4aa3d866aa09cadb269b",
+    "package.json": "f3b5e473659d39c99f48bc0eec60d69778de045bb75b9909c49c7d5d6f29fbc1",
+    "routes/workbench/chat.tsx": "120103dc4fb8695ae31a79a3796ce0b1f3a749219bcc6882bf4568ba5b88ce07",
+    "state/workbench/citationMarkdown.ts": "ed4065d9ae52dc65daed2f23966e6bd29371bb75d7844583d373d781c3a8ed56",
+    "state/workbench/evidencePresentation.ts": "f82b137f307f9ff4a39b2bd3e4a835cf445a4b290b8509825040ab68b76ded49",
+    "state/workbench/remoteModelAdapter.ts": "8c5c22a881f2ae5366dc3b142c0d79d6693e2a03fba70de55e99ea22f6893635",
+    "styles/tokens.css": "a56590c00dd6eb8a035850a7e2192bc9906edd6af2cb3da5d45a00a42d602bce",
+    "styles/workbench/chat.css": "25e30874317eec255a7562f4f896f41b4e78fabf3149dcde870169073b1873e6",
+    "tsconfig.app.json": "e716748affbe25eccf0b43e868e9b0cc35d1e10c48f1d4509119744dcd39ebda",
+    "tsconfig.json": "770b4140bbb581e2dfd9ea9946ffc9c75a1d86ba7d2db5f77c83e37cbdf9d808",
+    "tsconfig.node.json": "f08d33457fe4c71b2cd0aac534bf59acd68c769447eb175ef3d471ae12de1a14",
+    "vite-env.d.ts": "65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5",
+    "vite.config.ts": "dd4def0ad629abd939b1b77fb835f4ca9fff7d335801dd50df54f1b02b2ce2cf"
+  },
+  "extractedAt": "2026-10-21T17:16:22.924744+00:00",
+  "originalArchiveUnchanged": true
+}

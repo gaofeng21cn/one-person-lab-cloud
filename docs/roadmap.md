@@ -82,6 +82,23 @@ deletion receipt and original-charge refund still require their original paid
 Workspace and separately authorized owner execution. The test's cleanup closes
 only its disposable fixtures. This outcome adds no provider or deletion bypass.
 
+## Generic Agent Workbench Delivery (2026-10-22)
+
+The extracted `webui/agent-workbench` reuses the native Runtime directory and
+thread APIs as a static independent WebUI input. A dev run on merged #1003
+completed Package upload, real BuildKit/Registry/CapabilityVersion handoff and
+Workspace/Serve/Fabric Local-Docker delivery with that WebUI and a real native
+HTTP Agent response. [Status](status.md#extracted-agent-workbench-and-dev-delivery-2026-10-22)
+owns the exact source, immutable inputs, receipts and fixture limits;
+[replay operations](runtime/agent-workbench-dev-replay.md) retain the procedure.
+This closes the extracted WebUI's dev feasibility check. Browser-driven Agent
+sending from the final composed OCI, durable published WebUI/final-OCI artifact
+availability, an uninterrupted installed catalog and exact-Candidate Tencent/TKE
+acceptance remain open. The run's cleanup is not customer deletion or refund;
+other deletion qualifications retain their own receipts and source bindings.
+No additional upload path, Build implementation or provider is required by this
+frontend extraction.
+
 ## Team Financial Read Delivery (2026-10-16)
 
 The Gateway/BFF transaction list, transaction detail and 14-UTC-day confirmed

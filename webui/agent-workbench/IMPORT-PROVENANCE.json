@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "sourceExtraction": "agent-webui-20261021T171622Z/source",
+  "sourceProvenance": "SOURCE-PROVENANCE.json",
+  "hashAlgorithm": "sha256",
+  "extractedSourceFiles": [
+    {
+      "path": ".dockerignore",
+      "sha256": "a224b0ecf1487d5ad45c5a00b0b02f80ae08778afa23eaa0409fed27267ecbcf"
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "61022f949eb49fe0ee5b774835be844845b3d71d9001f676d9ac82bd433e49a7"
+    },
+    {
+      "path": "App.tsx",
+      "sha256": "4b65ba49c7f4a0a6871a9784c7a3db5936534b230bdf84d5288a48fb8605f5a0"
+    },
+    {
+      "path": "Dockerfile",
+      "sha256": "0e6d39543d5e51c889033195e32c58762037b2d112f30061ab2d5c03d43ed911"
+    },
+    {
+      "path": "README.md",
+      "sha256": "e9fc1c2dc0a48d0eb0479d1f74b43732836ad3c873b39c04941d54bc37be5275"
+    },
+    {
+      "path": "SOURCE-PROVENANCE.json",
+      "sha256": "9dd3348bfb64a1416f8df42f351cc1f7fb0c19ae6ca32f1734e4af90c31ae624"
+    },
+    {
+      "path": "components/workbench/chat/AgentSetupDialog.tsx",
+      "sha256": "b2d5035f988e7634eecc78fea7c319536a39f4ff32a68c75cab43e6326de867f"
+    },
+    {
+      "path": "components/workbench/chat/ChatStage.tsx",
+      "sha256": "740162529301538c91890c5ecb2bbfb517927a169db1e9ef8da94cb30e47ca5e"
+    },
+    {
+      "path": "components/workbench/chat/HistorySidebar.tsx",
+      "sha256": "1d27a03533b1feb48a4a9515f06d04e0b4628e5800e03ef9a56e3c1f64c28a3b"
+    },
+    {
+      "path": "components/workbench/chat/InputPanel.tsx",
+      "sha256": "0d6be4f9d40be282fe95a0f7473854df90bc3b278dfb2c545a5a1a0288ca0eea"
+    },
+    {
+      "path": "components/workbench/chat/InsightSidebar.tsx",
+      "sha256": "adb14f5e2666ac75920d20db238b7cac57a737d915e63fc3dc648eeb460872e6"
+    },
+    {
+      "path": "components/workbench/chat/MessageList.tsx",
+      "sha256": "4164e50b0723209ef49e58c7cb834fd0bd669a1d9ad0664447790f3786966d7f"
+    },
+    {
+      "path": "components/workbench/chat/PdfReader.tsx",
+      "sha256": "8db5927dfaae08c16281bf88d29aa70747f5e796142f48e6a8471473d665cd15"
+    },
+    {
+      "path": "components/workbench/chat/RunProgress.tsx",
+      "sha256": "a1472ca1f6d572f55f775ae02f968e46c94cb237463e4b736d2fc01ea0264567"
+    },
+    {
+      "path": "index.html",
+      "sha256": "e723f4b4ed586056794b8560d8b85d33eda4c1c2bb196791e4b0d18728379621"
+    },
+    {
+      "path": "main.tsx",
+      "sha256": "ff187beb52da632c6be505e158e6046b3f7ee548e1cf95a12ab5af069215c443"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "f704b8e832dd3001efbfdd14a884842079059009e9f8f2b2f3fd4a830ad0c922"
+    },
+    {
+      "path": "package.json",
+      "sha256": "70d58f7064a21c18fe9c3d74d4dc407911090ce6344282421dd679d858444d2f"
+    },
+    {
+      "path": "public/webui-config.json",
+      "sha256": "bca0ec2e05f8526a751482124ab3c09625d755b073c30dcaab3848ac4fbe35d5"
+    },
+    {
+      "path": "routes/workbench/chat.tsx",
+      "sha256": "46ad8c15029f86820184765ea7830966396d46815971e40b5a39b765c659093b"
+    },
+    {
+      "path": "state/workbench/citationMarkdown.ts",
+      "sha256": "ed4065d9ae52dc65daed2f23966e6bd29371bb75d7844583d373d781c3a8ed56"
+    },
+    {
+      "path": "state/workbench/evidencePresentation.ts",
+      "sha256": "f153292f5aac30e6a00ae1b0a50feb928d35be0e0f93f1e6d3a2481023509296"
+    },
+    {
+      "path": "state/workbench/oplNativeRuntime.ts",
+      "sha256": "1b33800e43e5bb6117de49e1149a588cb009c0bc976852128c518c4ac5973bd5"
+    },
+    {
+      "path": "state/workbench/remoteModelAdapter.ts",
+      "sha256": "376f20585bef16dc5d027880433ac5c29009a8618ae3ca5a83b413f4c58be627"
+    },
+    {
+      "path": "styles/tokens.css",
+      "sha256": "a56590c00dd6eb8a035850a7e2192bc9906edd6af2cb3da5d45a00a42d602bce"
+    },
+    {
+      "path": "styles/workbench/chat.css",
+      "sha256": "9579a084625417cf96bb713e5ecf0849f3d2d484cd4134697193b235008f10b8"
+    },
+    {
+      "path": "tests/browser.test.ts",
+      "sha256": "98097b023e8069f1b4d991b0da3a49df3c5fc8a8b9444d7a2bcfeb8a8c722470"
+    },
+    {
+      "path": "tests/http-runtime.test.ts",
+      "sha256": "ac63eb411c0d3b466d39c9d964c1e2518d6daf1b7a799d2fdf9cfb01b145f195"
+    },
+    {
+      "path": "tests/live-runtime.mjs",
+      "sha256": "611624db7b6e857190b5648ffc604f6b7aebd544f3254ff0b584ff6373555fb0"
+    },
+    {
+      "path": "tests/runtime.test.ts",
+      "sha256": "a69afcb61f769a488d1136cfbb92b138e6de50a162c3293c945c40dc557e1b42"
+    },
+    {
+      "path": "tsconfig.json",
+      "sha256": "8573a2c99be523a11ae7aa9385fa42fdb03c76015c00d14f5326ba91ff973dcf"
+    },
+    {
+      "path": "vite-env.d.ts",
+      "sha256": "65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5"
+    },
+    {
+      "path": "vite.config.ts",
+      "sha256": "9df62e64689b61dece3dfebc2dfbff19ec4091c060c1834d433e45a05d900924"
+    }
+  ],
+  "importAdaptations": {
+    "tests/browser.test.ts": "Allow explicit WEBUI_BROWSER_CHANNEL selection for CI Playwright Chromium; preserve system Chrome as the local default. Wait for the second Agent's rendered header before filling its new composer, matching the first Agent's existing synchronization.",
+    "README.md": "Document browser selection and distinguish imported source from separately held runtime evidence."
+  }
+}
