@@ -9,7 +9,7 @@ Baseline evidence date: 2026-10-01
 This page keeps the dated baseline evidence above and explicitly dated source
 updates below. The baseline SHA does not describe the later changes or qualify
 them: each receipt retains its original source, run and environment. The latest
-source update is 2026-10-21; it answers what the cited source and tests prove
+source update is 2026-10-22; it answers what the cited source and tests prove
 within their declared scope and does not describe an Instance installation or a
 Product Release. The target boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
@@ -913,6 +913,34 @@ returned [unchanged, validator-accepted READY evidence](evidence/local-qualifica
 with fixture authority and zero container/volume/network residuals. This newer
 build has local harness evidence; these artifacts do not establish its Instance
 adoption.
+
+The Local-Docker deletion closure now has an owner-authoritative end-to-end
+receipt for source `251713ad6cd8e00dd0d8efb20c2987e1863855b2` (merged to `main`
+as `36a388ca`), Cloud image
+`sha256:be9c23d1dc0951ddcd61addba604865703f5af3da74c3808fc9f8b34fbaf7ba4` and
+Workspace image
+`sha256:555f4d1c811895730513088c526cd0459e1a771a29938510b2abc1f497775eb1`.
+[The receipt](evidence/local-qualification/2026-10-21-local-docker-deletion-251713ad.json)
+records the owner-authorized delete, absence of the Workspace, Runtime and
+Fabric Secret, one `workspace.deleted.v1` Ledger receipt
+(`receipt_1792606059927907227`), the original-charge refund
+(`wallet-adjustment-delete-c41599d55c0bdf6bdc55c5d4`, `52506972` micros bound to
+`workspace-launch-19f930a4fd1e1bfa00`), restart continuity on operation,
+Workspace, Runtime and receipt identity, and zero container/volume/network
+residuals. A [second run](evidence/local-qualification/2026-10-21-local-docker-deletion-251713ad-rerun.json)
+on the same source and images returned READY with different receipt
+(`receipt_1792607750406158464`) and refund
+(`wallet-adjustment-delete-7532b4bc413550e91bbb3ee7`) identities, so the result
+repeats instead of replaying one record.
+
+This was a Local-Docker host run, not a Clean Host workflow run, and its
+authority is the run-owned fixture. It does not establish live
+Sub2API/Gateway refunds, TKE provider adoption or Instance deployment. Reaching
+the deletion stage required Cloud PR #1010, which restored the `launch` binding
+the restart-continuity block reads; before that change every run stopped at
+`workspace_open`. The live lane was not executed by these runs; its readback
+binding was repaired separately in PR #1014, so no live-authority conclusion
+follows from this receipt.
 
 The Instance owner separately deployed source `78dbe9b4` / digest `05992806…`
 in Deploy `38425411874`. [Fresh protected verification 38428162906](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/38428162906)
