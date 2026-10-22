@@ -55,6 +55,7 @@ type deletionOrder struct {
 	OriginalChargeReceiptID         string `json:"originalChargeReceiptId"`
 	OriginalChargeUSDMicros         int64  `json:"originalChargeUsdMicros"`
 	RefundPolicyVersionID           string `json:"refundPolicyVersionId"`
+	UnfulfilledNoSideEffect         bool   `json:"unfulfilledNoSideEffect,omitempty"`
 }
 
 // deletionResult records the exact identities this deletion already obtained from
@@ -286,15 +287,37 @@ func (s *Service) replayDeletion(ctx context.Context, op ownerstore.Operation) (
 // without a refundable original.
 func (s *Service) freezeDeletion(ctx context.Context, tx *sql.Tx, workspaceID, name string, version int64, authorizationContextID string) (deletionOrder, error) {
 	var launchID string
+	var launchStatus string
 	var raw []byte
-	err := tx.QueryRowContext(ctx, `SELECT id,COALESCE(result,'{}'::jsonb) FROM workspace.operations
-		WHERE resource_id=$1 AND kind='create_workspace' AND status='succeeded'
-		ORDER BY created_at DESC,id DESC LIMIT 1`, workspaceID).Scan(&launchID, &raw)
+	err := tx.QueryRowContext(ctx, `SELECT id,status,COALESCE(result,'{}'::jsonb) FROM workspace.operations
+		WHERE resource_id=$1 AND kind='create_workspace'
+		ORDER BY created_at DESC,id DESC LIMIT 1`, workspaceID).Scan(&launchID, &launchStatus, &raw)
 	if errors.Is(err, sql.ErrNoRows) {
-		return deletionOrder{}, status.Error(codes.FailedPrecondition, "the Workspace has no delivered launch to delete")
+		return deletionOrder{}, status.Error(codes.FailedPrecondition, "the Workspace has no accepted launch to close")
 	}
 	if err != nil {
 		return deletionOrder{}, dbError(err)
+	}
+	if launchStatus != "succeeded" {
+		var steps int
+		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM workspace.saga_steps WHERE operation_id=$1`, launchID).Scan(&steps); err != nil {
+			return deletionOrder{}, dbError(err)
+		}
+		if steps != 0 || string(raw) != "{}" {
+			return deletionOrder{}, status.Error(codes.FailedPrecondition, "the unfinished Workspace launch requires owner closeout evidence")
+		}
+		cancelled, err := tx.ExecContext(ctx, `UPDATE workspace.operations SET status='cancelled',stage='reconciliation',observation_result='confirmed',completed_at=now(),updated_at=now()
+			WHERE id=$1 AND status NOT IN ('succeeded','failed','cancelled') AND result='{}'::jsonb
+			AND NOT EXISTS (SELECT 1 FROM workspace.saga_steps WHERE operation_id=$1)`, launchID)
+		if err != nil {
+			return deletionOrder{}, dbError(err)
+		}
+		if count, rowsErr := cancelled.RowsAffected(); rowsErr != nil {
+			return deletionOrder{}, dbError(rowsErr)
+		} else if count != 1 {
+			return deletionOrder{}, status.Error(codes.Aborted, "the unfinished Workspace launch acquired an owner effect while closeout was freezing")
+		}
+		return deletionOrder{AuthorizationContextID: authorizationContextID, WorkspaceName: name, WorkspaceVersion: version, LaunchOperationID: launchID, UnfulfilledNoSideEffect: true, InputDigest: "sha256:" + ownerstore.HashRequestBody([]byte(launchID+":"+workspaceID))}, nil
 	}
 	var launched orderResult
 	if json.Unmarshal(raw, &launched) != nil {
@@ -530,6 +553,9 @@ func (s *Service) resumeDeletion(ctx context.Context, operationID string) error 
 	order, result, err := decodeDeletion(op)
 	if err != nil {
 		return err
+	}
+	if order.UnfulfilledNoSideEffect {
+		return s.completeUnfulfilledDeletion(ctx, op, token, &result)
 	}
 	if err = s.ensureDeletionGrant(ctx, op, token, &result); err != nil {
 		return err
@@ -1131,6 +1157,34 @@ func (s *Service) completeDeletion(ctx context.Context, op ownerstore.Operation,
 		return err
 	}
 	res, err = tx.ExecContext(ctx, `UPDATE workspace.workspaces SET status='deleted',deleted_at=COALESCE(deleted_at,now()),version=version+1,updated_at=now() WHERE id=$1 AND status<>'deleted'`, op.ResourceID)
+	if err = fenced(res, err); err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		return dbError(err)
+	}
+	return nil
+}
+
+func (s *Service) completeUnfulfilledDeletion(ctx context.Context, op ownerstore.Operation, token string, result *deletionResult) error {
+	result.DeletedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	result.RefundStatus = "not_applicable"
+	raw, err := json.Marshal(result)
+	if err != nil {
+		return status.Error(codes.Internal, "Workspace deletion result cannot be encoded")
+	}
+	tx, err := s.Store.DB().BeginTx(ctx, nil)
+	if err != nil {
+		return dbError(err)
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `UPDATE workspace.operations SET result=$3,status='succeeded',stage='succeeded',observation_result='confirmed',updated_at=now(),completed_at=now()
+		WHERE id=$1 AND worker_lease_token=$2 AND worker_lease_until>now() AND status NOT IN ('succeeded','failed','cancelled')`, op.ID, token, raw)
+	if err = fenced(res, err); err != nil {
+		return err
+	}
+	res, err = tx.ExecContext(ctx, `UPDATE workspace.workspaces SET status='deleted',deleted_at=COALESCE(deleted_at,$2),version=version+1,updated_at=now()
+		WHERE id=$1 AND status='deleting'`, op.ResourceID, result.DeletedAt)
 	if err = fenced(res, err); err != nil {
 		return err
 	}

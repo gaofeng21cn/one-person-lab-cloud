@@ -345,6 +345,25 @@ func TestDeleteWorkspaceAcceptsTheOriginalUnfinishedCreateForCloseout(t *testing
 	if accepted.GetOperationId() == "" || accepted.GetKind() != api.OperationKindEnum_OPERATION_KIND_ENUM_DELETE_WORKSPACE {
 		t.Fatalf("closeout did not persist a deletion operation: %v", accepted)
 	}
+	var createStatus, workspaceStatus string
+	if err = db.QueryRowContext(ctx, `SELECT status FROM workspace.operations WHERE id='operation-unfinished'`).Scan(&createStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.QueryRowContext(ctx, `SELECT status FROM workspace.workspaces WHERE id='workspace-unfinished'`).Scan(&workspaceStatus); err != nil {
+		t.Fatal(err)
+	}
+	if createStatus != "cancelled" || workspaceStatus != "deleted" {
+		t.Fatalf("unfinished closeout left create=%q workspace=%q", createStatus, workspaceStatus)
+	}
+	readback, err := service.GetWorkspaceDeletion(ctx, &api.GetWorkspaceDeletionRpcRequest{Context: call, WorkspaceId: "workspace-unfinished"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if readback.GetResourceDeletionStatus() != api.WorkspaceDeletionResourceDeletionStatusEnum_WORKSPACE_DELETION_RESOURCE_DELETION_STATUS_ENUM_CONFIRMED ||
+		readback.GetDataDeletionStatus() != api.WorkspaceDeletionDataDeletionStatusEnum_WORKSPACE_DELETION_DATA_DELETION_STATUS_ENUM_CONFIRMED ||
+		readback.GetRefundStatus() != api.WorkspaceDeletionRefundStatusEnum_WORKSPACE_DELETION_REFUND_STATUS_ENUM_NOT_APPLICABLE {
+		t.Fatalf("no-side-effect closeout readback=%v", readback)
+	}
 }
 
 func TestDeleteWorkspaceRecordsOneOperationBoundToTheOriginalPayment(t *testing.T) {
