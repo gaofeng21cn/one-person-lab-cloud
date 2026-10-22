@@ -285,6 +285,10 @@ func (s *Service) replayDeletion(ctx context.Context, op ownerstore.Operation) (
 // resource set and current paid period. An unfinished order is closed here only
 // when its durable operation proves no saga step or side-effect result exists.
 func (s *Service) freezeDeletion(ctx context.Context, tx *sql.Tx, workspaceID, name string, version int64, authorizationContextID string) (deletionOrder, error) {
+	var workspaceStatus string
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM workspace.workspaces WHERE id=$1 FOR UPDATE`, workspaceID).Scan(&workspaceStatus); err != nil {
+		return deletionOrder{}, dbError(err)
+	}
 	var launchID string
 	var launchStatus string
 	var raw []byte
@@ -298,6 +302,9 @@ func (s *Service) freezeDeletion(ctx context.Context, tx *sql.Tx, workspaceID, n
 		return deletionOrder{}, dbError(err)
 	}
 	if launchStatus != "succeeded" {
+		if workspaceStatus != "provisioning" {
+			return deletionOrder{}, status.Error(codes.FailedPrecondition, "the unfinished Workspace is not in provisioning state")
+		}
 		var steps int
 		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM workspace.saga_steps WHERE operation_id=$1`, launchID).Scan(&steps); err != nil {
 			return deletionOrder{}, dbError(err)

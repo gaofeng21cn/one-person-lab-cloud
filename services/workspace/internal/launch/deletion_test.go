@@ -321,9 +321,9 @@ func TestDeleteWorkspaceAcceptsTheOriginalUnfinishedCreateForCloseout(t *testing
 		t.Fatal(err)
 	}
 	call.IdempotencyKey = "idempotency-close-original-unfinished-create"
-	_, err = db.ExecContext(ctx, `INSERT INTO workspace.operations(id,tenant_id,actor_id,kind,resource_id,status,stage,request_id,accepted_input,result,observation_result)
+	_, err = db.ExecContext(ctx, `INSERT INTO workspace.operations(id,tenant_id,actor_id,kind,resource_id,status,stage,request_id,accepted_input,result,observation_result,worker_lease_token,worker_lease_until)
 		VALUES('operation-unfinished','tenant-original','actor-original','create_workspace','workspace-unfinished','awaiting_confirmation','resource_preflight','request-original',
-		'{"authorizationContextId":"authorization-original","inputDigest":"sha256:unfinished","request":{}}'::jsonb,'{}'::jsonb,'unknown')`)
+		'{"authorizationContextId":"authorization-original","inputDigest":"sha256:unfinished","request":{}}'::jsonb,'{}'::jsonb,'unknown','lease-create-in-flight',now()+interval '60 seconds')`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,6 +354,13 @@ func TestDeleteWorkspaceAcceptsTheOriginalUnfinishedCreateForCloseout(t *testing
 	}
 	if createStatus != "cancelled" || workspaceStatus != "deleted" {
 		t.Fatalf("unfinished closeout left create=%q workspace=%q", createStatus, workspaceStatus)
+	}
+	if err = service.Resume(ctx, "operation-unfinished"); err != nil {
+		t.Fatal(err)
+	}
+	if service.Serve.(*deletionServeClient).stops != 0 || service.Fabric.(*deletionFabricClient).deleteCalls != 0 ||
+		service.Gateway.(*deletionGatewayClient).refunds != 0 {
+		t.Fatal("cancelled create recovery dispatched an owner side effect")
 	}
 	readback, err := service.GetWorkspaceDeletion(ctx, &api.GetWorkspaceDeletionRpcRequest{Context: call, WorkspaceId: "workspace-unfinished"})
 	if err != nil {
