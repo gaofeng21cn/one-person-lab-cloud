@@ -513,7 +513,8 @@ const workspaceOwnerDeletionRefundStates: Record<string, WorkspaceDeletionDTO["r
   not_applicable: "not_due",
   requested: "pending",
   confirmed: "succeeded",
-  rejected: "manual_review"
+  rejected: "manual_review",
+  unknown: "manual_review"
 };
 
 function decodeWorkspaceOwnerDeletion(value: unknown, workspaceId: string): WorkspaceOwnerDeletionDTO {
@@ -534,8 +535,8 @@ function decodeWorkspaceOwnerDeletion(value: unknown, workspaceId: string): Work
 // projectWorkspaceOwnerDeletion maps the Workspace owner's own deletion and
 // operation facts onto the Console presentation model. `status` and `pageState`
 // are deterministic projections of those facts; `phase` is the operation's own
-// stage. The owner publishes no Console stage token, most recent readback time
-// or next-retry schedule, so those fields stay absent instead of being invented.
+// stage. The owner's polling interval is preserved. Console-specific stage tokens
+// and timestamps stay absent instead of being invented.
 export function projectWorkspaceOwnerDeletion(
   deletion: WorkspaceOwnerDeletionDTO,
   operation: WorkspaceOwnerOperationDTO
@@ -546,10 +547,19 @@ export function projectWorkspaceOwnerDeletion(
   }
   const confirmed = deletion.resourceDeletionStatus === "confirmed" && deletion.dataDeletionStatus === "confirmed";
   const rejected = deletion.resourceDeletionStatus === "rejected" || deletion.dataDeletionStatus === "rejected";
-  const attention = operation.status === "needs_attention" || operation.status === "failed";
-  const status: WorkspaceDeletionDTO["status"] = confirmed ? "deleted" : rejected || attention ? "manual_review" : "pending";
-  const pageState: WorkspaceDeletionDTO["pageState"] = status === "deleted" ? "completed"
-    : status === "manual_review" ? "blocked"
+  const terminal = ["succeeded", "failed", "cancelled"].includes(operation.status);
+  if (!terminal && (!Number.isInteger(operation.pollAfterSeconds) || operation.pollAfterSeconds! < 1 || operation.pollAfterSeconds! > 300)) {
+    throw new Error("invalid_workspace_operation_readback");
+  }
+  const unknown = deletion.resourceDeletionStatus === "unknown" || deletion.dataDeletionStatus === "unknown";
+  const refundUnknown = deletion.refundStatus === "unknown";
+  const attention = operation.status === "needs_attention" || operation.status === "failed" || operation.status === "cancelled";
+  const blocked = rejected || unknown || refundUnknown || attention;
+  const status: WorkspaceDeletionDTO["status"] = confirmed && !attention ? "deleted" : blocked ? "manual_review" : "pending";
+  // Resource/data absence can be confirmed while the original refund is still
+  // pending. Only the owner's succeeded operation establishes full completion.
+  const pageState: WorkspaceDeletionDTO["pageState"] = blocked ? "blocked"
+    : confirmed && operation.status === "succeeded" ? "completed"
       : operation.status === "awaiting_confirmation" ? "retrying" : "waiting";
   const refundStatus = workspaceOwnerDeletionRefundStates[deletion.refundStatus];
   return {
@@ -558,6 +568,7 @@ export function projectWorkspaceOwnerDeletion(
     status,
     phase: operation.stage,
     pageState,
+    ...(!terminal ? { pollAfterSeconds: operation.pollAfterSeconds } : {}),
     ...(refundStatus ? { refundStatus } : {}),
     ...(deletion.refundOperationId ? { refundOperationId: deletion.refundOperationId } : {})
   };
@@ -569,6 +580,7 @@ export async function getWorkspaceDeletion(workspaceId: string): Promise<Workspa
     // `200 null`; a remaining 404 therefore means the Workspace itself was
     // not found and must stay visible to the caller.
     const value = await getJson<unknown>(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/deletion`);
+    if (value === null) return null;
     const deletion = decodeWorkspaceOwnerDeletion(value, workspaceId);
     return projectWorkspaceOwnerDeletion(deletion, await getWorkspaceOwnerOperation(deletion.operationId));
   }

@@ -50,6 +50,7 @@ test("verify-local exposes one default gate across Node, builds, and every Go mo
   for (const expected of [
     "product boundary",
     "Generated contracts freshness",
+    "Development tools unbound identifiers",
     "Node source tests",
     "Console browser suite",
     "TypeScript typecheck",
@@ -75,6 +76,7 @@ test("verify-local exposes one default gate across Node, builds, and every Go mo
 test("dedicated plan verification preserves the target-spec scope and explicit migration command", async () => {
   const manifest = JSON.parse(await readFile("package.json", "utf8"));
   assert.equal(manifest.scripts["verify:development-plan"], "node tools/verify-development-plan.ts");
+  assert.equal(manifest.scripts["verify:unbound-identifiers"], "node tools/verify-unbound-identifiers.ts");
   for (const path of [
     ...generatedPlanArtifacts,
     "docs/spec/target/checks/render_development_plan.py",
@@ -580,6 +582,7 @@ test("focused verification selects only gates affected by an explicit change set
     "product boundary",
     "Development plan freshness",
     "Development tools typecheck",
+    "Development tools unbound identifiers",
     "Focused development tests",
     "services/fabric focused Go tests",
     "Git whitespace"
