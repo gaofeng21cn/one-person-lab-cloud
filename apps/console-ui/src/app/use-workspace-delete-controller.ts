@@ -82,7 +82,10 @@ export function useWorkspaceDeleteController({
   }, [activeWorkspaceId, session?.csrfToken, session?.user.id]);
 
   useEffect(() => {
-    if (readback.workspaceId !== activeWorkspaceId || readback.operation?.status !== "pending" || loading || busy || issue) return;
+    const operation = readback.operation;
+    const awaitingReadback = operation?.status === "pending"
+      || cloudIdentity && operation?.status === "deleted" && operation.pageState !== "completed" && operation.pageState !== "blocked";
+    if (readback.workspaceId !== activeWorkspaceId || !awaitingReadback || loading || busy || issue) return;
     const timer = window.setTimeout(() => void refresh(), 2000);
     return () => window.clearTimeout(timer);
   }, [readback, activeWorkspaceId, loading, busy, issue]);
@@ -122,8 +125,12 @@ export function useWorkspaceDeleteController({
       }
       intents.current.delete(workspaceId);
       setIssue("");
-      flash("Workspace 已删除");
-      navigate("/console/workspaces");
+      // Keep the cloud owner's deletion and independent refund readback visible.
+      // Resource completion does not establish the original refund's result.
+      if (!cloudIdentity) {
+        flash("Workspace 已删除");
+        navigate("/console/workspaces");
+      }
       return true;
     } catch {
       if (requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) {
@@ -149,7 +156,9 @@ export function useWorkspaceDeleteController({
       if (!requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) return;
       setReadback({ workspaceId, operation });
       setIssue("");
-      if (operation?.status === "deleted") await confirmReadback(workspaceId, generation, requestStillCurrent, userId, csrfToken);
+      if (operation?.status === "deleted" && (!cloudIdentity || operation.pageState === "completed")) {
+        await confirmReadback(workspaceId, generation, requestStillCurrent, userId, csrfToken);
+      }
     } catch {
       if (requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) {
         setReadback((current) => ({ workspaceId, operation: current.workspaceId === workspaceId ? current.operation : null }));
@@ -168,7 +177,10 @@ export function useWorkspaceDeleteController({
   const deleteCurrentWorkspace = async () => {
     if (!session || !workspace || workspace.id !== activeWorkspaceId || busy || loading
       || readback.workspaceId !== activeWorkspaceId || readback.operation || issue === "unconfirmed") return;
-    if (!window.confirm(`确认删除工作空间“${workspace.name || workspace.id}”？请先自行下载需要的数据。删除后数据无法恢复，关闭页面后仍会继续处理，不会自动退款。`)) return;
+    const refundNotice = cloudIdentity
+      ? "资源删除与退款分别确认；符合原单退款政策时自动处理，退款结果以原单回读为准。"
+      : "删除和退款是独立操作；删除完成不代表退款完成，退款结果以原单回读为准。";
+    if (!window.confirm(`确认删除工作空间“${workspace.name || workspace.id}”？请先自行下载需要的数据。删除后数据无法恢复，关闭页面后仍会继续处理。${refundNotice}`)) return;
 
     const requestStillCurrent = currentMutationRequest();
     const userId = session.user.id;

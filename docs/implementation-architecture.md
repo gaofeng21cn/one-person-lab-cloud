@@ -387,9 +387,12 @@ source facts; current exact-Candidate installation and authenticated customer
 acceptance remain in the [roadmap](roadmap.md#workspace-key-and-customer-read-boundaries).
 
 The cloud detail exposes the owner's lifecycle, resource readiness, application
-availability, period end and access URL. Workspace-owner renewal, deletion,
-credentials and application-installation BFF routes remain unimplemented, so
-their legacy controls receive no cloud Workspace. The
+availability, period end and access URL. Its deletion control uses the Workspace
+owner BFF routes and the original Workspace Operation; `200 null` from the deletion
+read means no accepted intent. Resource/data absence and refund completion are
+separate facts, and polling continues while the original refund is pending.
+Renewal, credentials and application-installation legacy controls still receive
+no cloud Workspace. The
 [browser reference](implementation/console.md) owns query and command state;
 [roadmap](roadmap.md#cloud-identity-customer-workspace-read-2026-09-30) owns the
 missing maintenance outcomes.

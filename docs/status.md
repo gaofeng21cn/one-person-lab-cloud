@@ -15,6 +15,27 @@ Product Release. The target boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+
+## Workspace Deletion Owner Coupling (2026-10-22)
+
+The cloud-identity Console now submits deletion to the Workspace owner and keeps
+its original Operation, resource/data absence and refund readbacks visible as
+separate facts. A `200 null` deletion read means no accepted intent; unreadable
+owner state blocks submission. Resource absence does not become a completed page
+until the original owner Operation succeeds and the Workspace row reads back as
+`deleted`.
+
+The focused browser coverage exercises first submission, idempotency, reload and
+pending refund states, refusal of malformed or unauthorized reads, and protection
+against repeated DELETE commands. The opt-in live Workspace test starts from a
+seeded paid period and uses the real Workspace and Ledger handlers over
+authenticated gRPC and separate PostgreSQL. It checks committed deletion receipt
+readback before Refund, original charge/period binding, pending-refund recovery,
+receipt write/read failures, resource-present and unknown-resource refusal, and
+replay without a second refund. Provider absence, CloudIdentity and external
+wallet settlement remain explicit test boundaries; this is source evidence, not
+same-Candidate or production qualification.
+
 ## Instance-Hosted Business Qualification Consumer Binding (2026-10-19)
 
 Cloud Release admission now consumes the protected business qualification that

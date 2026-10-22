@@ -194,9 +194,9 @@ function WorkspaceTechnicalDetails({ controller, detail, runtime }: {
 
 // The two Console identities read the customer Workspace from two owners, so
 // each one renders the facts its owner actually returns. The cloud identity
-// reads the Workspace owner (name, delivery, readiness, availability, access
-// URL) and its delivery chain; the legacy identity keeps the Control Plane
-// render with plan, renewal, budget and deletion controls.
+// reads the Workspace owner and its delivery chain; deletion uses that same
+// owner through the shared controller. The legacy identity keeps the Control
+// Plane plan, renewal, budget and deletion projections.
 export function WorkspaceDetailPage({ controller }: { controller: WorkspaceDetailController }) {
   return cloudIdentity
     ? <WorkspaceOwnerDetailPage controller={controller} />
@@ -204,6 +204,7 @@ export function WorkspaceDetailPage({ controller }: { controller: WorkspaceDetai
 }
 
 function WorkspaceOwnerDetailPage({ controller }: { controller: WorkspaceDetailController }) {
+  if (controller.workspaceDeletion || controller.workspaceDeleteBusy || controller.workspaceDeletionLoading || controller.workspaceDeleteIssue === "unconfirmed") return <WorkspaceDeletionProgress controller={controller} />;
   const workspaceSource = controller.customerWorkspaceRead.detail.value;
   if (controller.customerWorkspaceRead.detail.loading && !workspaceSource) return <section className="workspace-detail-page"><div className="source-loading" aria-live="polite"><span className="spinner" />正在读取</div></section>;
   if (!workspaceSource) return <section className="workspace-detail-page"><div className="source-loading" aria-live="polite"><span className="spinner" />等待读取</div></section>;
@@ -222,6 +223,7 @@ function WorkspaceOwnerDetailPage({ controller }: { controller: WorkspaceDetailC
       <div className="workspace-detail-content">
         <section className="panel workspace-identity-panel"><div className="workspace-heading"><div><h2>{detail.name || "未命名工作空间"}</h2><div className={`workspace-availability workspace-availability--${lifecycle.known ? lifecycle.kind : "pending"}`}><strong>{lifecycle.label}</strong><span>{accessUrl ? "该工作空间已发布访问入口，可直接打开。" : "访问入口尚未就绪，稍后刷新查看。"}</span></div></div><div className="workspace-entry-actions"><Button color="primary" disabled={!accessUrl} onClick={() => accessUrl && window.open(accessUrl, "_blank", "noopener,noreferrer")}>打开工作空间<ExternalLink aria-hidden size={16} /></Button><Button onClick={() => controller.navigate(`/console/workspaces/${encodeURIComponent(detail.id)}/models`)} variant="outline">模型配置</Button><Button onClick={() => void controller.refreshCurrentPage()} variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div></div><dl className="workspace-primary-facts"><div><dt>交付模式</dt><dd>{presentWorkspaceDeliveryModel(detail.deliveryModel)}</dd></div><div><dt>资源就绪</dt><dd>{detail.resourceReadiness || "暂不可用"}</dd></div><div><dt>应用可用</dt><dd>{detail.applicationAvailability || "暂不可用"}</dd></div><div><dt>权益截止</dt><dd>{formatDate(detail.paidThrough)}</dd></div></dl></section>
         <WorkspaceTransactionsPanel session={controller.session} workspaceId={detail.id} />
+        <WorkspaceDeletePanel controller={controller} />
         <section className="panel workspace-technical-panel"><details className="workspace-technical-details"><summary><span>技术详情</span><ChevronDown aria-hidden size={16} /></summary><div className="workspace-technical-details__body">
           <dl className="data-list">
             <div><dt>Workspace ID</dt><dd><code>{detail.id}</code></dd></div>
@@ -242,43 +244,64 @@ function WorkspaceOwnerDetailPage({ controller }: { controller: WorkspaceDetailC
   );
 }
 
+function WorkspaceDeletePanel({ controller }: { controller: WorkspaceDetailController }) {
+  const refundNotice = cloudIdentity
+    ? "资源删除与退款分别确认；符合原单退款政策时自动处理，退款结果以原单回读为准。"
+    : "删除和退款是独立操作；删除完成不代表退款完成，退款结果以原单回读为准。";
+  return <section className="panel workspace-delete-panel"><div className="workspace-settings-heading"><h3>删除工作空间</h3><p>请先自行下载需要的数据。删除后数据无法恢复，关闭页面后仍会继续处理。{refundNotice}</p></div>{controller.workspaceDeleteIssue === "unavailable" ? <Alert color="warning" indicator={<AlertCircle size={18} />} title="工作空间删除暂不可用" description="当前无法执行删除，请稍后重试。" /> : null}<Button busy={controller.workspaceDeleteBusy} color="danger" disabled={controller.workspaceRenewalBusy || controller.workspaceRenewalRead?.recovery.state === "pending"} onClick={() => void controller.deleteCurrentWorkspace()} variant="outline"><Trash2 aria-hidden size={16} />删除工作空间</Button></section>;
+}
+
+function WorkspaceDeletionProgress({ controller }: { controller: WorkspaceDetailController }) {
+  const deletion = controller.workspaceDeletion;
+  const presentation = presentWorkspaceDelete(deletion);
+  const title = controller.workspaceDeleteBusy ? "正在提交删除请求"
+    : controller.workspaceDeleteIssue === "unconfirmed" ? "删除状态暂不可读"
+    : cloudIdentity && controller.workspaceDeletionLoading && deletion?.pageState === "completed" ? "正在确认工作空间状态"
+    : cloudIdentity && deletion?.status === "deleted" && (deletion.pageState === "waiting" || deletion.pageState === "retrying") ? "资源与数据已删除，操作仍在处理"
+    : presentation ? presentation.title
+    : "正在确认工作空间状态";
+  const description = controller.workspaceDeleteIssue === "unconfirmed" ? "暂时无法确认原删除操作，请刷新状态。请勿重复删除或另行申请退款。"
+    : cloudIdentity && presentation ? deletion?.status === "deleted"
+      ? "资源与数据删除已确认。退款结果以原单回读为准。"
+      : deletion?.status === "manual_review" ? "删除操作需要核对，请刷新原操作状态或联系管理员。资源删除与退款分别确认。"
+        : "删除在后台继续处理，可以关闭页面后再查看。资源删除与退款分别确认。"
+      : presentation ? presentation.detail
+        : "正在读取工作空间是否有未完成的删除操作。";
+  const deleteReasonText = presentWorkspaceDeleteReason(deletion?.reasonCode);
+  const deleteRetryText = deletion?.nextRetryAt ? `将于 ${formatDate(deletion.nextRetryAt)} 自动重试`
+    : deletion?.pageState === "blocked" ? "已暂停，等待管理员核对"
+    : deletion?.pageState === "completed" ? "无需重试"
+    : "等待下一次自动重试";
+  return <section className="workspace-detail-page" data-slide="C-WS-05">
+    <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />工作空间列表</Button>
+    <section className="panel workspace-delete-panel"><h2>{title}</h2><p>{description}</p>
+      <dl className="data-list" data-workspace-delete-progress>
+        {cloudIdentity ? <>
+          <div><dt>删除操作</dt><dd><code>{deletion?.operationId || "-"}</code></dd></div>
+          <div><dt>资源与数据删除</dt><dd>{deletion ? deletion.status === "deleted" ? "已确认" : deletion.status === "manual_review" ? "需要核对" : "待确认" : "尚未确认"}</dd></div>
+        </> : <>
+          <div><dt>删除阶段</dt><dd>{presentation?.stageLabel ?? "-"}</dd></div>
+          <div><dt>稳定原因</dt><dd><code>{deletion?.reasonCode || "-"}</code>{deleteReasonText ? ` ${deleteReasonText}` : ""}</dd></div>
+          <div><dt>最近读回</dt><dd>{presentation?.lastReadbackLabel || "-"}</dd></div>
+          <div><dt>自动重试</dt><dd>{deleteRetryText}</dd></div>
+        </>}
+        <div><dt>退款状态</dt><dd>{presentation?.refundLabel || (cloudIdentity ? "退款状态未知" : "尚未进入退款")}</dd></div>
+        {cloudIdentity ? <>
+          <div><dt>退款操作</dt><dd><code>{deletion?.refundOperationId || "-"}</code></dd></div>
+          <div><dt>原操作阶段</dt><dd><code>{deletion?.phase || "-"}</code></dd></div>
+        </> : <div><dt>删除回执</dt><dd><code>{deletion?.receiptId || "-"}</code></dd></div>}
+      </dl>
+      <Button busy={controller.workspaceDeletionLoading} disabled={controller.workspaceDeleteBusy} onClick={() => void controller.refreshWorkspaceDeletion()} variant="outline">刷新删除状态</Button>
+    </section>
+  </section>;
+}
+
 function ControlPlaneWorkspaceDetailPage({ controller }: { controller: WorkspaceDetailController }) {
   const workspaceRead = controller.customerWorkspaceRead;
   const runtimeRead = controller.fabricRuntimeRead;
   const workspaceSource = workspaceRead.detail.value;
   const runtime = sourceData(runtimeRead.runtime.value);
-  const deletion = controller.workspaceDeletion;
-  if (deletion || controller.workspaceDeleteBusy || controller.workspaceDeletionLoading || controller.workspaceDeleteIssue === "unconfirmed") {
-    const presentation = presentWorkspaceDelete(deletion);
-    const title = controller.workspaceDeleteBusy ? "正在提交删除请求"
-      : controller.workspaceDeleteIssue === "unconfirmed" ? "删除状态暂不可读"
-      : presentation ? presentation.title
-      : "正在确认工作空间状态";
-    const description = controller.workspaceDeleteIssue === "unconfirmed" ? "暂时无法确认原删除操作，请刷新状态。请勿重复删除或另行申请退款。"
-      : presentation ? presentation.detail
-      : "正在读取工作空间是否有未完成的删除操作。";
-    const deleteReasonText = presentWorkspaceDeleteReason(deletion?.reasonCode);
-    const deleteRetryText = deletion?.nextRetryAt ? `将于 ${formatDate(deletion.nextRetryAt)} 自动重试`
-      : deletion?.pageState === "blocked" ? "已暂停，等待管理员核对"
-      : deletion?.pageState === "completed" ? "无需重试"
-      : "等待下一次自动重试";
-    return <section className="workspace-detail-page" data-slide="C-WS-05">
-      <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />工作空间列表</Button>
-      <section className="panel workspace-delete-panel"><h2>{title}</h2><p>{description}</p>
-        {/* Stage, reason, automatic retry and the separate refund status are the
-            platform's published facts. There is no manual completion control. */}
-        <dl className="data-list" data-workspace-delete-progress>
-          <div><dt>删除阶段</dt><dd>{presentation?.stageLabel ?? "-"}</dd></div>
-          <div><dt>稳定原因</dt><dd><code>{deletion?.reasonCode || "-"}</code>{deleteReasonText ? ` ${deleteReasonText}` : ""}</dd></div>
-          <div><dt>最近读回</dt><dd>{presentation?.lastReadbackLabel || "-"}</dd></div>
-          <div><dt>自动重试</dt><dd>{deleteRetryText}</dd></div>
-          <div><dt>退款状态</dt><dd>{presentation?.refundLabel || "尚未进入退款"}</dd></div>
-          <div><dt>删除回执</dt><dd><code>{deletion?.receiptId || "-"}</code></dd></div>
-        </dl>
-        <Button busy={controller.workspaceDeletionLoading} disabled={controller.workspaceDeleteBusy} onClick={() => void controller.refreshWorkspaceDeletion()} variant="outline">刷新删除状态</Button>
-      </section>
-    </section>;
-  }
+  if (controller.workspaceDeletion || controller.workspaceDeleteBusy || controller.workspaceDeletionLoading || controller.workspaceDeleteIssue === "unconfirmed") return <WorkspaceDeletionProgress controller={controller} />;
   if (workspaceRead.detail.loading && !workspaceSource) return <section className="workspace-detail-page"><div className="source-loading" aria-live="polite"><span className="spinner" />正在读取</div></section>;
   if (workspaceSource?.available === false) return <section className="workspace-detail-page">
     <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />工作空间列表</Button>
@@ -326,7 +349,7 @@ function ControlPlaneWorkspaceDetailPage({ controller }: { controller: Workspace
             : renewalPresentation.kind !== "not_applicable" ? <p>请在权益到期前自行从工作空间下载并妥善保存数据。到期后，平台不承担数据保管或恢复责任。</p> : null}
         </section>
         {paidAccess && gateway && currentRuntime ? <section className="panel workspace-settings-panel"><details className="workspace-advanced-details"><summary><span>预算与用量</span><ChevronDown aria-hidden size={16} /></summary><div className="workspace-advanced-details__body"><WorkspaceBudgetPanel controller={controller} /><WorkspaceMaintenancePanel controller={controller} /></div></details></section> : null}
-        <section className="panel workspace-delete-panel"><div className="workspace-settings-heading"><h3>删除工作空间</h3><p>请先自行下载需要的数据。删除后数据无法恢复，关闭页面后仍会继续处理，不会自动退款。</p></div>{controller.workspaceDeleteIssue === "unavailable" ? <Alert color="warning" indicator={<AlertCircle size={18} />} title="工作空间删除暂不可用" description="当前无法执行删除，请稍后重试。" /> : null}<Button busy={controller.workspaceDeleteBusy} color="danger" disabled={controller.workspaceRenewalBusy || controller.workspaceRenewalRead?.recovery.state === "pending"} onClick={() => void controller.deleteCurrentWorkspace()} variant="outline"><Trash2 aria-hidden size={16} />删除工作空间</Button></section>
+        <WorkspaceDeletePanel controller={controller} />
         <section className="panel workspace-technical-panel"><WorkspaceTechnicalDetails controller={controller} detail={detail} runtime={runtime} /></section>
       </div>
     </section>

@@ -548,8 +548,10 @@ export function projectWorkspaceOwnerDeletion(
   const rejected = deletion.resourceDeletionStatus === "rejected" || deletion.dataDeletionStatus === "rejected";
   const attention = operation.status === "needs_attention" || operation.status === "failed";
   const status: WorkspaceDeletionDTO["status"] = confirmed ? "deleted" : rejected || attention ? "manual_review" : "pending";
-  const pageState: WorkspaceDeletionDTO["pageState"] = status === "deleted" ? "completed"
-    : status === "manual_review" ? "blocked"
+  // Resource/data absence can be confirmed while the original refund is still
+  // pending. Only the owner's succeeded operation establishes full completion.
+  const pageState: WorkspaceDeletionDTO["pageState"] = confirmed && operation.status === "succeeded" ? "completed"
+    : rejected || attention ? "blocked"
       : operation.status === "awaiting_confirmation" ? "retrying" : "waiting";
   const refundStatus = workspaceOwnerDeletionRefundStates[deletion.refundStatus];
   return {
@@ -569,6 +571,7 @@ export async function getWorkspaceDeletion(workspaceId: string): Promise<Workspa
     // `200 null`; a remaining 404 therefore means the Workspace itself was
     // not found and must stay visible to the caller.
     const value = await getJson<unknown>(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/deletion`);
+    if (value === null) return null;
     const deletion = decodeWorkspaceOwnerDeletion(value, workspaceId);
     return projectWorkspaceOwnerDeletion(deletion, await getWorkspaceOwnerOperation(deletion.operationId));
   }
