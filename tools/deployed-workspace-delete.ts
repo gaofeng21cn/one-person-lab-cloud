@@ -10,8 +10,8 @@
  *
  * There is no credential here. The protected flow that invokes this entry owns
  * the login and hands over an already-authenticated transport; this entry reads
- * that session's account back through the owner's source envelope and refuses to
- * destroy anything until the readback matches the declared account digest. The
+ * that session's Cloud actor and Tenant back through the session owner and refuses
+ * destruction until they match the declared Cloud identity digest. The
  * caller also declares the exact Candidate the deletion belongs to, and the
  * receipt this entry returns binds that Candidate, that identity and the
  * mutation it caused.
@@ -23,14 +23,12 @@
  * follows the owner's own operation, and reports what the owner published.
  */
 
-import { deployedAccountIdentityDigest } from "./deployed-workspace-purchase.ts";
-import { sourceData } from "./local-workspace-qualification.ts";
+import { createHash } from "node:crypto";
+import type { WorkspaceOwnerDeletionDTO, WorkspaceOwnerOperationDTO } from "../apps/console-ui/src/api/dtos.ts";
 
 export const DEPLOYED_DELETE_RECEIPT_KIND = "opl.deployed-workspace-delete.v1";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
-const WORKSPACE_ID = /^ws-[a-z0-9]{1,64}$/;
-const WORKSPACE_NAME = /^[\x20-\x7e]{1,120}$/;
 const IDEMPOTENCY_IDENTITY = /^[A-Za-z0-9._:-]{1,128}$/;
 const IDEMPOTENCY_KEY = /^deployed-workspace-delete:[0-9a-f]{64}:[A-Za-z0-9._:-]{1,128}$/;
 const TOKEN = /^[a-z0-9_]{1,64}$/;
@@ -38,17 +36,17 @@ const TOKEN = /^[a-z0-9_]{1,64}$/;
 const TARGET_ERROR =
   "deployed delete target must be one https production origin, declared as authorityClass production";
 
-// The owner publishes exactly these deletion states. `pending` is still working,
-// `manual_review` stopped and needs a human, `deleted` is terminal success. A
-// token outside this set is a contract this entry does not understand, so it is
-// refused rather than recorded as if it were one of them.
-const DELETION_STATES = Object.freeze(["pending", "manual_review", "deleted"]);
+const OPERATION_STATES = ["accepted", "running", "awaiting_confirmation", "succeeded", "failed", "needs_attention", "cancelled"];
+const TERMINAL_STATES = ["succeeded", "failed", "cancelled"];
+const STOPPED_STATES = [...TERMINAL_STATES, "needs_attention"];
+const DELETION_FACTS = ["pending", "confirmed", "rejected", "unknown"];
+const REFUND_FACTS = ["not_applicable", "requested", "confirmed", "rejected", "unknown"];
 
 const REQUEST_KEYS = [
   "baseURL",
   "authorityClass",
   "candidateReceiptDigest",
-  "accountEmailIdentityDigest",
+  "cloudIdentityDigest",
   "workspaceId",
   "workspaceName",
   "idempotencyIdentity",
@@ -72,7 +70,6 @@ const MUTATION_KEYS = ["declared", "observed"];
 const DELETION_MUTATION_KEYS = ["deletions"];
 
 const DELETE_POLL_ATTEMPTS = 120;
-const DELETE_POLL_INTERVAL_MS = 1000;
 
 function hasExactKeys(value, keys) {
   return value && typeof value === "object" && !Array.isArray(value) &&
@@ -139,9 +136,9 @@ export function assertDeployedDeleteRequest(request) {
   assertDeployedDeleteTarget(request);
   if (!hasExactKeys(request, REQUEST_KEYS) ||
       !DIGEST.test(String(request?.candidateReceiptDigest || "")) ||
-      !DIGEST.test(String(request?.accountEmailIdentityDigest || "")) ||
-      !WORKSPACE_ID.test(String(request?.workspaceId || "")) ||
-      !WORKSPACE_NAME.test(String(request?.workspaceName || "")) ||
+      !DIGEST.test(String(request?.cloudIdentityDigest || "")) ||
+      typeof request?.workspaceId !== "string" || [...request.workspaceId].length < 1 || [...request.workspaceId].length > 256 ||
+      typeof request?.workspaceName !== "string" || [...request.workspaceName].length < 1 || [...request.workspaceName].length > 256 ||
       !IDEMPOTENCY_IDENTITY.test(String(request?.idempotencyIdentity || "")) ||
       // The owner trims the name before it compares the confirmation, so a
       // declared name with padding could never match and would fail after the
@@ -187,84 +184,67 @@ export function assertDeployedDeleteCaller(caller, request) {
   return { origin, http: caller.http, auth: caller.auth, wait: caller.wait, now: caller.now };
 }
 
-async function readOwnerEnvelope(http, auth, path, source, fail) {
-  let result;
-  try {
-    result = await http.request(path, {}, auth);
-  } catch {
-    throw fail();
-  }
-  try {
-    return sourceData(result?.payload, source);
-  } catch {
-    throw fail();
-  }
+// Bind a protected caller's declared Cloud actor and Tenant without emitting
+// either raw identity, display name, session or credential in the receipt.
+export function deployedCloudIdentityDigest(actorId, tenantId) {
+  if (typeof actorId !== "string" || !actorId.trim() || typeof tenantId !== "string" || !tenantId.trim()) throw accountUnavailable();
+  return `sha256:${createHash("sha256").update(JSON.stringify([actorId, tenantId])).digest("hex")}`;
 }
 
-/*
- * The owner's deletion readback.
- *
- * `null` means the Workspace exists and no deletion was ever accepted, which is
- * the only state in which this entry may issue a command. A 404 means the
- * Workspace itself is gone, and that is reported rather than read as "nothing to
- * do": a Workspace this entry cannot see is not one it can prove it deleted.
- */
-async function readDeletion(http, auth, workspaceId) {
-  let result;
-  try {
-    result = await http.request(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/deletion`, {}, auth);
-  } catch {
-    throw deleteError("deployed_delete_readback_unavailable", "deployed delete could not read the deletion state");
-  }
-  const status = Number(result?.response?.status || 0);
-  if (status === 404) throw workspaceUnavailable();
-  if (status !== 200) {
-    throw deleteError("deployed_delete_readback_unavailable", "deployed delete could not read the deletion state");
-  }
-  const deletion = result?.payload;
-  if (deletion === null || deletion === undefined) return null;
-  if (!deletion || typeof deletion !== "object" ||
-      String(deletion.workspaceId || "") !== workspaceId ||
-      !DELETION_STATES.includes(String(deletion.status || ""))) {
-    throw deleteError("deployed_delete_readback_invalid", "deployed delete read a deletion state it does not understand");
+async function readCloudSession(http, auth) {
+  const result = await http.request("/api/v2/auth/session", {}, auth);
+  const session = result?.payload;
+  if (result?.response?.status !== 200 || !session?.actorId || !session.tenantId || !session.csrfToken
+      || !["owner", "admin"].includes(session.role)) throw accountUnavailable();
+  return session;
+}
+
+async function readDeletion(http, auth, workspaceId): Promise<WorkspaceOwnerDeletionDTO | null> {
+  const result = await http.request(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/deletion`, {}, auth);
+  if (result?.response?.status !== 200) throw workspaceUnavailable();
+  const deletion = result.payload as WorkspaceOwnerDeletionDTO | null;
+  if (deletion === null) return null;
+  if (!deletion || deletion.workspaceId !== workspaceId || !deletion.operationId
+      || !DELETION_FACTS.includes(deletion.resourceDeletionStatus) || !DELETION_FACTS.includes(deletion.dataDeletionStatus)
+      || !REFUND_FACTS.includes(deletion.refundStatus) || !Number.isFinite(Date.parse(deletion.updatedAt))) {
+    throw deleteError("deployed_delete_readback_invalid", "deployed delete read an invalid owner deletion");
   }
   return deletion;
 }
 
+async function readOperation(http, auth, workspaceId, operationId): Promise<WorkspaceOwnerOperationDTO> {
+  const result = await http.request(`/api/v2/operations/workspace/${encodeURIComponent(operationId)}`, {}, auth);
+  const operation = result?.payload as WorkspaceOwnerOperationDTO;
+  if (result?.response?.status !== 200 || !operation || operation.operationId !== operationId
+      || operation.resourceId !== workspaceId || operation.owner !== "workspace" || operation.kind !== "delete_workspace"
+      || !OPERATION_STATES.includes(operation.status) || !TOKEN.test(operation.stage || "")
+      || operation.status === "succeeded" && (operation.stage !== "succeeded" || operation.observationResult !== "confirmed")
+      || ["failed", "needs_attention"].includes(operation.status) && !operation.errorCode
+      || !TERMINAL_STATES.includes(operation.status) && (!Number.isInteger(operation.pollAfterSeconds)
+        || operation.pollAfterSeconds! < 1 || operation.pollAfterSeconds! > 300)) {
+    throw deleteError("deployed_delete_operation_mismatch", "deployed delete read an invalid or unrelated owner operation");
+  }
+  return operation;
+}
+
 async function readWorkspace(http, auth, workspaceId) {
-  let result;
-  try {
-    result = await http.request(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}`, {}, auth);
-  } catch {
-    throw workspaceUnavailable();
-  }
-  const status = Number(result?.response?.status || 0);
-  if (status === 404) return null;
-  if (status !== 200) throw workspaceUnavailable();
-  return result?.payload ?? null;
+  const result = await http.request(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}`, {}, auth);
+  if (result?.response?.status !== 200 || result?.payload?.id !== workspaceId) throw workspaceUnavailable();
+  return result.payload;
 }
 
-async function waitForDeletion(http, auth, workspaceId, wait) {
-  let deletion = null;
+async function waitForDeletion(http, auth, workspaceId, operationId, wait) {
   for (let attempt = 0; attempt < DELETE_POLL_ATTEMPTS; attempt += 1) {
-    deletion = await readDeletion(http, auth, workspaceId);
-    if (!deletion) {
-      throw deleteError("deployed_delete_command_not_accepted", "deployed delete did not find an accepted deletion after issuing one");
+    const deletion = await readDeletion(http, auth, workspaceId);
+    if (!deletion || operationId && deletion.operationId !== operationId) {
+      throw deleteError("deployed_delete_operation_mismatch", "deployed delete could not confirm its accepted operation");
     }
-    if (deletion.status !== "pending") return deletion;
-    await wait(DELETE_POLL_INTERVAL_MS);
+    operationId = deletion.operationId;
+    const operation = await readOperation(http, auth, workspaceId, operationId);
+    if (STOPPED_STATES.includes(operation.status)) return { deletion, operation };
+    await wait(operation.pollAfterSeconds! * 1000);
   }
-  // Still `pending` after the bounded window: the outcome is genuinely unknown,
-  // so this entry reports that rather than inventing a terminal state.
-  throw deleteError(
-    "deployed_delete_timeout",
-    `deployed delete did not reach a terminal state within ${DELETE_POLL_ATTEMPTS} seconds`,
-  );
-}
-
-function deletionStage(deletion) {
-  const stage = String(deletion?.stage || "");
-  return TOKEN.test(stage) ? stage : "";
+  throw deleteError("deployed_delete_timeout", "deployed delete did not reach an owner stopping state in the bounded observation window");
 }
 
 /*
@@ -294,81 +274,50 @@ export async function runDeployedWorkspaceDelete(request, caller) {
     request.idempotencyIdentity,
   );
 
-  // The session is asked who it is before anything is destroyed. A transport
-  // holding another account costs one read and no destruction.
-  const me = await readOwnerEnvelope(http, auth, "/api/auth/me", "sub2api", accountUnavailable);
-  const accountId = String(me?.accountId || "");
-  if (!accountId || me?.role !== "owner" || me?.status !== "active") throw accountUnavailable();
-  const identityDigest = deployedAccountIdentityDigest(me?.email);
-  if (identityDigest !== request.accountEmailIdentityDigest) {
-    throw deleteError("deployed_delete_account_mismatch", "deployed delete account digest does not match the declared customer");
+  const session = await readCloudSession(http, auth);
+  const identityDigest = deployedCloudIdentityDigest(session.actorId, session.tenantId);
+  if (identityDigest !== request.cloudIdentityDigest) {
+    throw deleteError("deployed_delete_account_mismatch", "deployed delete Cloud identity does not match the declared customer");
   }
-
-  // The Workspace must be visible to this session before it is destroyed, and it
-  // must be the one the caller named. Destroying a Workspace this entry could not
-  // read first would be destroying something it cannot describe.
   const workspace = await readWorkspace(http, auth, workspaceId);
-  if (!workspace) throw workspaceUnavailable();
-  const observedAccount = String(workspace?.accountId || workspace?.ownerAccountId || "");
-  if (observedAccount && observedAccount !== accountId) {
-    throw deleteError("deployed_delete_workspace_mismatch", "deployed delete read a Workspace owned by another account");
-  }
-  if (String(workspace?.name || "") !== request.workspaceName) {
+  if (workspace.name !== request.workspaceName) {
     throw deleteError("deployed_delete_workspace_mismatch", "deployed delete Workspace name does not match the declared confirmation");
   }
-
   let deletion = await readDeletion(http, auth, workspaceId);
-  let resumed = false;
-
-  if (deletion) {
-    // A deletion was already accepted. Issuing a second command would be a second
-    // mutation for one declared intent, so this delivery follows the existing one
-    // and reports that it caused nothing.
-    resumed = true;
-    if (deletion.status === "pending") deletion = await waitForDeletion(http, auth, workspaceId, wait);
-  } else {
+  const resumed = deletion !== null;
+  let acceptedId = deletion?.operationId;
+  if (!deletion) {
     let issued;
     try {
       issued = await http.json(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}`, {
         method: "DELETE",
-        headers: { "idempotency-key": idempotencyKey },
-        body: {
-          confirmationName: request.workspaceName,
-          acknowledgeDataDestruction: true,
-        },
-      }, auth, [200, 202]);
+        headers: { "idempotency-key": idempotencyKey, "x-csrf-token": session.csrfToken },
+        body: { confirmationName: request.workspaceName, acknowledgeDataDestruction: true }
+      }, auth, [202]);
     } catch (error) {
-      // The command may have been accepted with its answer lost. That is not a
-      // second deletion, it is the same one, and the only question left is
-      // whether the owner holds it.
-      let recovered;
-      try {
-        recovered = await readDeletion(http, auth, workspaceId);
-      } catch (readbackError) {
-        if (readbackError && typeof readbackError === "object") readbackError.cause = error;
-        throw readbackError;
+      // A lost answer can only continue an owner-recorded intent; never issue
+      // another mutation or substitute another operation identity.
+      deletion = await readDeletion(http, auth, workspaceId);
+      if (!deletion) throw error;
+      acceptedId = deletion.operationId;
+    }
+    if (issued) {
+      const accepted = issued.payload;
+      if (accepted?.owner !== "workspace" || accepted.kind !== "delete_workspace" || accepted.resourceId !== workspaceId || !accepted.operationId) {
+        throw deleteError("deployed_delete_operation_mismatch", "deployed delete received an unrelated command response");
       }
-      if (!recovered) throw error;
-      issued = null;
+      acceptedId = accepted.operationId;
     }
-    const accepted = issued?.payload;
-    if (accepted && typeof accepted === "object" &&
-        accepted.kind !== undefined && String(accepted.kind) !== "delete_workspace") {
-      throw deleteError("deployed_delete_operation_mismatch", "deployed delete read an operation that is not a Workspace deletion");
-    }
-    deletion = await waitForDeletion(http, auth, workspaceId, wait);
   }
-
-  const status = String(deletion.status || "");
-  // The owner publishes `deleted` only after its own residual readback, so the
-  // absence is asked again here rather than inferred from the status alone.
-  const after = status === "deleted" ? await readWorkspace(http, auth, workspaceId) : workspace;
-  const workspaceAbsent = status === "deleted" && after === null;
-  if (status === "deleted" && !workspaceAbsent) {
-    throw deleteError(
-      "deployed_delete_residual_workspace",
-      "deployed delete reported a deleted Workspace that the owner still serves",
-    );
+  const observed = await waitForDeletion(http, auth, workspaceId, acceptedId, wait || (ms => new Promise(resolve => setTimeout(resolve, ms))));
+  deletion = observed.deletion;
+  const operation = observed.operation;
+  const after = await readWorkspace(http, auth, workspaceId);
+  // This is the owner's confirmed deletion fact, not physical row absence or an
+  // independent provider/route probe. The retained deleted row is expected.
+  const workspaceAbsent = after.status === "deleted" && deletion.resourceDeletionStatus === "confirmed" && deletion.dataDeletionStatus === "confirmed";
+  if (operation.status === "succeeded" && !workspaceAbsent) {
+    throw deleteError("deployed_delete_residual_workspace", "deployed delete succeeded without owner-confirmed resource and Workspace deletion");
   }
 
   const completed = new Date(clock());
@@ -382,8 +331,8 @@ export async function runDeployedWorkspaceDelete(request, caller) {
     operation: {
       idempotencyKey,
       operationId: String(deletion.operationId || ""),
-      status,
-      stage: deletionStage(deletion),
+      status: operation.status,
+      stage: operation.stage,
       resumed,
     },
     deletion: {
@@ -406,9 +355,10 @@ export async function runDeployedWorkspaceDelete(request, caller) {
  * balance, a raw account identifier or the Workspace name out of it: there is no
  * field for one.
  *
- * `workspaceAbsent` is tied to the published state in both directions: a receipt
- * may claim absence only for a `deleted` deletion, and a `deleted` deletion must
- * have proven absence. `resumed` and the observed count are tied the same way,
+ * `workspaceAbsent` records the owner deletion facts and retained tombstone.
+ * A succeeded operation must have that confirmation; other outcomes may still
+ * have confirmed resource absence and an independently unresolved obligation.
+ * `resumed` and the observed count are tied the same way,
  * so a delivery cannot claim to have caused nothing while reporting a fresh
  * command.
  */
@@ -424,7 +374,7 @@ export function validateDeployedDeleteReceipt(value) {
         `deployed-workspace-delete:${String(value.candidate.receiptDigest || "").slice("sha256:".length)}:`
       ) ||
       !String(value.operation.operationId || "").trim() ||
-      !DELETION_STATES.includes(status) ||
+      !OPERATION_STATES.includes(status) ||
       typeof value.operation.stage !== "string" ||
       (value.operation.stage !== "" && !TOKEN.test(value.operation.stage)) ||
       typeof value.operation.resumed !== "boolean" ||
@@ -433,7 +383,7 @@ export function validateDeployedDeleteReceipt(value) {
       (value.deletion.refundStatus !== null &&
         (typeof value.deletion.refundStatus !== "string" || !TOKEN.test(value.deletion.refundStatus))) ||
       (value.deletion.refundOperationId !== null && typeof value.deletion.refundOperationId !== "string") ||
-      value.deletion.workspaceAbsent !== (status === "deleted") ||
+      status === "succeeded" && !value.deletion.workspaceAbsent ||
       !hasExactKeys(value.mutations, MUTATION_KEYS) ||
       !hasExactKeys(value.mutations.declared, DELETION_MUTATION_KEYS) ||
       !hasExactKeys(value.mutations.observed, DELETION_MUTATION_KEYS) ||

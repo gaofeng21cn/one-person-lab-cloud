@@ -1,238 +1,182 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deployedAccountIdentityDigest } from "../../tools/deployed-workspace-purchase.ts";
+import type { WorkspaceOwnerDeletionDTO, WorkspaceOwnerOperationDTO, WorkspaceOwnerDTO } from "../../apps/console-ui/src/api/dtos.ts";
 import {
-  assertDeployedDeleteRequest,
-  assertDeployedDeleteTarget,
-  deployedDeleteIdempotencyKey,
-  runDeployedWorkspaceDelete,
-  validateDeployedDeleteReceipt
+  assertDeployedDeleteRequest, assertDeployedDeleteTarget, deployedCloudIdentityDigest,
+  deployedDeleteIdempotencyKey, runDeployedWorkspaceDelete, validateDeployedDeleteReceipt
 } from "../../tools/deployed-workspace-delete.ts";
 
-const EMAIL = "owner@example.test";
 const CANDIDATE = `sha256:${"a".repeat(64)}`;
-const WORKSPACE_ID = "ws-75e18d83e13db76332";
+const WORKSPACE_ID = "workspace_298869134c959a28727aec8d5b4c3c44";
 const WORKSPACE_NAME = "customer workspace";
-const BASE_URL = "https://cloud.medopl.com";
-
+const BASE_URL = "https://workspace.example.test";
+const DATE = "2026-10-23T00:00:00Z";
+const identityDigest = deployedCloudIdentityDigest("actor-1", "tenant-1");
 const request = (overrides = {}) => ({
-  baseURL: BASE_URL,
-  authorityClass: "production",
-  candidateReceiptDigest: CANDIDATE,
-  accountEmailIdentityDigest: deployedAccountIdentityDigest(EMAIL),
-  workspaceId: WORKSPACE_ID,
-  workspaceName: WORKSPACE_NAME,
-  idempotencyIdentity: "run-1",
-  ...overrides
+  baseURL: BASE_URL, authorityClass: "production", candidateReceiptDigest: CANDIDATE,
+  cloudIdentityDigest: identityDigest, workspaceId: WORKSPACE_ID, workspaceName: WORKSPACE_NAME,
+  idempotencyIdentity: "run-1", ...overrides
+});
+const workspace = {
+  id: WORKSPACE_ID, name: WORKSPACE_NAME, status: "active", computePlanId: "compute", storagePlanId: "storage",
+  deliveryModel: "agent_saas", resourceReadiness: "ready", applicationAvailability: "ready", version: "1", createdAt: DATE, updatedAt: DATE
+} satisfies WorkspaceOwnerDTO;
+const deleted = { ...workspace, status: "deleted" } satisfies WorkspaceOwnerDTO;
+const deletion = (overrides: Partial<WorkspaceOwnerDeletionDTO> = {}): WorkspaceOwnerDeletionDTO => ({
+  workspaceId: WORKSPACE_ID, operationId: "op-delete-1", resourceDeletionStatus: "confirmed", dataDeletionStatus: "confirmed",
+  refundStatus: "confirmed", refundOperationId: "wallet-refund-original", updatedAt: DATE, ...overrides
+});
+const operation = (overrides: Partial<WorkspaceOwnerOperationDTO> = {}): WorkspaceOwnerOperationDTO => ({
+  operationId: "op-delete-1", owner: "workspace", kind: "delete_workspace", resourceId: WORKSPACE_ID,
+  status: "succeeded", stage: "succeeded", observationResult: "confirmed", requestId: "request-original", createdAt: DATE, updatedAt: DATE, ...overrides
 });
 
-const account = { accountId: "acct-1", role: "owner", status: "active", email: EMAIL };
-const workspace = { workspaceId: WORKSPACE_ID, name: WORKSPACE_NAME, accountId: "acct-1" };
-const envelope = (data) => ({ source: "sub2api", available: true, status: "available", data });
-
-/*
- * A transport that answers the four routes this entry uses. `deletions` is the
- * sequence the owner publishes on each read, so a test can drive pending ->
- * deleted without a timer.
- */
-function transport({ deletions = [], workspaces = null, deleteAnswer = null } = {}) {
+function transport({ deletions = [null, deletion()], operations = [operation()], workspaces = [workspace, deleted], deleteAnswer = undefined } = {}) {
   const calls = [];
-  const deletionQueue = [...deletions];
-  const workspaceQueue = workspaces ? [...workspaces] : null;
-  let workspaceState = workspace;
+  const waits = [];
+  const dq = [...deletions], oq = [...operations], wq = [...workspaces];
+  const next = q => q.length > 1 ? q.shift() : q[0];
   const http = {
     async request(path) {
       calls.push({ method: "GET", path });
-      if (path === "/api/auth/me") return { payload: envelope(account), response: { status: 200 } };
-      if (path.endsWith("/deletion")) {
-        if (deletionQueue.length > 0) {
-          const next = deletionQueue.length > 1 ? deletionQueue.shift() : deletionQueue[0];
-          return { payload: next, response: { status: 200 } };
-        }
-        return { payload: null, response: { status: 200 } };
-      }
-      if (path.startsWith("/api/v2/workspaces/")) {
-        if (workspaceQueue && workspaceQueue.length > 0) {
-          workspaceState = workspaceQueue.length > 1 ? workspaceQueue.shift() : workspaceQueue[0];
-        }
-        return { payload: workspaceState, response: { status: workspaceState ? 200 : 404 } };
-      }
-      throw new Error(`unexpected request ${path}`);
+      let payload;
+      if (path === "/api/v2/auth/session") payload = { actorId: "actor-1", tenantId: "tenant-1", displayName: "A display name, not an email", role: "owner", csrfToken: "csrf-current", permissions: [], expiresAt: "2099-01-01T00:00:00Z" };
+      else if (path.endsWith("/deletion")) payload = next(dq);
+      else if (path.startsWith("/api/v2/operations/workspace/")) payload = next(oq);
+      else if (path === `/api/v2/workspaces/${WORKSPACE_ID}`) payload = next(wq);
+      else throw new Error(`unexpected route ${path}`);
+      return { payload, response: { status: payload === undefined ? 404 : 200 } };
     },
     async json(path, init) {
       calls.push({ method: init.method, path, body: init.body, headers: init.headers });
-      if (deleteAnswer) return { payload: deleteAnswer, response: { status: 202 } };
-      return {
-        payload: { kind: "delete_workspace", operationId: "op-delete-1", resourceId: WORKSPACE_ID, status: "pending" },
-        response: { status: 202 }
-      };
+      if (deleteAnswer instanceof Error) throw deleteAnswer;
+      return { payload: deleteAnswer || operation({ status: "accepted", stage: "admission", pollAfterSeconds: 30 }), response: { status: 202 } };
     }
   };
-  return { http, calls };
+  return { http, calls, waits, caller: { origin: BASE_URL, http, auth: { cookie: "opaque" }, wait: async ms => waits.push(ms) } };
 }
 
-const caller = (http, overrides = {}) => ({
-  origin: BASE_URL,
-  http,
-  auth: { session: "opaque" },
-  wait: async () => {},
-  ...overrides
-});
-
-test("the deployed delete refuses any target that is not one production origin", () => {
+test("the deployed delete refuses any target that is not one declared production origin", () => {
   assert.equal(assertDeployedDeleteTarget(request()), BASE_URL);
-  for (const baseURL of [
-    "http://cloud.medopl.com",
-    "https://localhost",
-    "https://127.0.0.1",
-    "https://10.1.2.3",
-    "https://192.168.1.5",
-    "https://172.16.0.9",
-    "https://[::1]",
-    "https://cloud.medopl.com/path",
-    "https://cloud.medopl.com/?q=1",
-    "https://user:pass@cloud.medopl.com"
-  ]) {
-    assert.throws(() => assertDeployedDeleteTarget(request({ baseURL })), /production origin/, baseURL);
+  for (const baseURL of ["http://workspace.example.test", "https://localhost", "https://127.0.0.1", "https://10.1.2.3", "https://192.168.1.5", "https://172.16.0.9", "https://[::1]", `${BASE_URL}/path`, `${BASE_URL}/?q=1`, "https://user:pass@workspace.example.test"]) {
+    assert.throws(() => assertDeployedDeleteTarget(request({ baseURL })), /production origin/);
   }
   assert.throws(() => assertDeployedDeleteTarget(request({ authorityClass: "fixture" })), /production origin/);
 });
 
-test("the deployed delete requires every declared input by name", () => {
-  assert.deepEqual(assertDeployedDeleteRequest(request()), request());
-  const { workspaceName: _omitted, ...missingName } = request();
-  assert.throws(() => assertDeployedDeleteRequest(missingName), /production origin/);
-  assert.throws(() => assertDeployedDeleteRequest(request({ workspaceName: " padded " })), /production origin/);
-  assert.throws(() => assertDeployedDeleteRequest(request({ workspaceId: "not-a-workspace" })), /production origin/);
-  assert.throws(() => assertDeployedDeleteRequest(request({ candidateReceiptDigest: "sha256:short" })), /production origin/);
-  assert.throws(() => assertDeployedDeleteRequest(request({ extra: true })), /production origin/);
+test("the deployed delete accepts a current owner Workspace identity and rejects malformed declarations", () => {
+  const input = request();
+  assert.equal(assertDeployedDeleteRequest(input), input);
+  const { workspaceName: _omitted, ...missing } = input;
+  assert.throws(() => assertDeployedDeleteRequest(missing), /production origin/);
+  for (const invalid of [{ workspaceName: " padded " }, { workspaceId: "" }, { candidateReceiptDigest: "sha256:short" }, { extra: true }]) {
+    assert.throws(() => assertDeployedDeleteRequest(request(invalid)), /production origin/);
+  }
 });
 
-test("the deployed delete idempotency identity is scoped to the Candidate", () => {
-  const key = deployedDeleteIdempotencyKey(CANDIDATE, "run-1");
-  assert.equal(key, `deployed-workspace-delete:${"a".repeat(64)}:run-1`);
-  assert.notEqual(key, deployedDeleteIdempotencyKey(`sha256:${"b".repeat(64)}`, "run-1"));
-  assert.throws(() => deployedDeleteIdempotencyKey("sha256:short", "run-1"), /production origin/);
+test("Cloud declaration binds the actor and Tenant instead of a display name or legacy account", () => {
+  assert.notEqual(identityDigest, deployedCloudIdentityDigest("actor-1", "tenant-2"));
+  assert.notEqual(identityDigest, deployedCloudIdentityDigest("actor-2", "tenant-1"));
+  assert.throws(() => deployedCloudIdentityDigest("actor-1", ""));
+  assert.notEqual(deployedDeleteIdempotencyKey(CANDIDATE, "run-1"), deployedDeleteIdempotencyKey(`sha256:${"b".repeat(64)}`, "run-1"));
 });
 
-test("the deployed delete issues one command, follows it to deleted, and proves absence", async () => {
-  const { http, calls } = transport({
-    deletions: [
-      null,
-      { workspaceId: WORKSPACE_ID, operationId: "op-delete-1", status: "pending" },
-      { workspaceId: WORKSPACE_ID, operationId: "op-delete-1", status: "deleted", stage: "compute", refundStatus: "refunded", refundOperationId: "wallet-adjustment-delete-1" }
-    ],
-    workspaces: [workspace, null]
+test("the deployed delete follows the current Cloud owner protocol and tombstone", async () => {
+  const t = transport({
+    deletions: [null, deletion({ resourceDeletionStatus: "pending", dataDeletionStatus: "pending", refundStatus: "requested" }), deletion()],
+    operations: [operation({ status: "running", stage: "compute_deletion", pollAfterSeconds: 30 }), operation()]
   });
-
-  const receipt = await runDeployedWorkspaceDelete(request(), caller(http));
-
-  assert.equal(calls.filter((call) => call.method === "DELETE").length, 1);
-  assert.equal(calls.find((call) => call.method === "DELETE").body.acknowledgeDataDestruction, true);
-  assert.equal(calls.find((call) => call.method === "DELETE").body.confirmationName, WORKSPACE_NAME);
-  assert.equal(receipt.operation.status, "deleted");
-  assert.equal(receipt.operation.stage, "compute");
+  const receipt = await runDeployedWorkspaceDelete(request(), t.caller);
+  assert.equal(receipt.operation.status, "succeeded");
   assert.equal(receipt.deletion.workspaceAbsent, true);
-  assert.equal(receipt.deletion.refundStatus, "refunded");
-  assert.equal(receipt.deletion.refundOperationId, "wallet-adjustment-delete-1");
-  assert.equal(receipt.operation.resumed, false);
+  assert.equal(receipt.deletion.refundOperationId, "wallet-refund-original");
+  assert.deepEqual(t.waits, [30000]);
+  const mutations = t.calls.filter(c => c.method === "DELETE");
+  assert.equal(mutations.length, 1);
+  assert.deepEqual(mutations[0].body, { confirmationName: WORKSPACE_NAME, acknowledgeDataDestruction: true });
+  assert.equal(mutations[0].headers["x-csrf-token"], "csrf-current");
+  assert.equal(t.calls.some(c => c.path === "/api/auth/me"), false);
+  assert.equal(JSON.stringify(receipt).includes(WORKSPACE_NAME), false);
   assert.equal(receipt.mutations.observed.deletions, 1);
-  assert.equal(JSON.stringify(receipt).includes(WORKSPACE_NAME), false, "the receipt carries no Workspace name");
 });
 
-test("the deployed delete resumes an already accepted deletion and destroys nothing again", async () => {
-  const { http, calls } = transport({
-    deletions: [{ workspaceId: WORKSPACE_ID, operationId: "op-delete-1", status: "deleted", stage: "compute" }],
-    workspaces: [workspace, null]
-  });
-
-  const receipt = await runDeployedWorkspaceDelete(request(), caller(http));
-
-  assert.equal(calls.filter((call) => call.method === "DELETE").length, 0, "a resume must not issue a second command");
+test("the deployed delete resumes the original accepted operation without another destruction", async () => {
+  const t = transport({ deletions: [deletion()], workspaces: [deleted] });
+  const receipt = await runDeployedWorkspaceDelete(request(), t.caller);
   assert.equal(receipt.operation.resumed, true);
   assert.equal(receipt.mutations.observed.deletions, 0);
   assert.equal(receipt.deletion.workspaceAbsent, true);
+  assert.equal(t.calls.some(c => c.method === "DELETE"), false);
+  assert.deepEqual(t.waits, []);
 });
 
-test("the deployed delete reports a deletion that stopped for manual review", async () => {
-  const { http } = transport({
-    deletions: [
-      null,
-      { workspaceId: WORKSPACE_ID, operationId: "op-delete-1", status: "pending" },
-      { workspaceId: WORKSPACE_ID, operationId: "op-delete-1", status: "manual_review", stage: "compute" }
-    ]
-  });
-
-  const receipt = await runDeployedWorkspaceDelete(request(), caller(http));
-
-  assert.equal(receipt.operation.status, "manual_review");
-  assert.equal(receipt.deletion.workspaceAbsent, false);
-  assert.equal(receipt.mutations.observed.deletions, 1);
+test("a lost command response follows the recorded intent without issuing another command", async () => {
+  const t = transport({ deleteAnswer: new Error("response lost"), deletions: [null, deletion()] });
+  const receipt = await runDeployedWorkspaceDelete(request(), t.caller);
+  assert.equal(receipt.operation.operationId, "op-delete-1");
+  assert.equal(t.calls.filter(c => c.method === "DELETE").length, 1);
 });
 
-test("the deployed delete refuses a deleted Workspace the owner still serves", async () => {
-  const { http } = transport({
-    deletions: [{ workspaceId: WORKSPACE_ID, operationId: "op-delete-1", status: "deleted", stage: "compute" }],
-    workspaces: [workspace, workspace]
-  });
-
-  await assert.rejects(() => runDeployedWorkspaceDelete(request(), caller(http)), /still serves/);
+test("owner attention preserves confirmed resource absence and independent unknown refund", async () => {
+  const t = transport({ deletions: [deletion({ refundStatus: "unknown" })], operations: [operation({ status: "needs_attention", stage: "refund", pollAfterSeconds: 5, errorCode: "DEPENDENCY_UNAVAILABLE" })], workspaces: [deleted] });
+  const receipt = await runDeployedWorkspaceDelete(request(), t.caller);
+  assert.equal(receipt.operation.status, "needs_attention");
+  assert.equal(receipt.deletion.workspaceAbsent, true);
+  assert.equal(receipt.deletion.refundStatus, "unknown");
+  assert.deepEqual(t.waits, []);
 });
 
-test("the deployed delete refuses a session that is not the declared customer", async () => {
-  const { http } = transport({ deletions: [] });
-  await assert.rejects(
-    () => runDeployedWorkspaceDelete(request({ accountEmailIdentityDigest: `sha256:${"c".repeat(64)}` }), caller(http)),
-    /does not match the declared customer/
-  );
+test("success requires both the owner tombstone and resource and data absence", async () => {
+  for (const options of [{ workspaces: [workspace] }, { deletions: [null, deletion({ dataDeletionStatus: "unknown" })] }]) {
+    const t = transport(options);
+    await assert.rejects(() => runDeployedWorkspaceDelete(request(), t.caller), /without owner-confirmed/);
+  }
 });
 
-test("the deployed delete refuses a Workspace whose name is not the declared confirmation", async () => {
-  const { http } = transport({ deletions: [] });
-  await assert.rejects(
-    () => runDeployedWorkspaceDelete(request({ workspaceName: "another workspace" }), caller(http)),
-    /does not match the declared confirmation/
-  );
+test("the deployed delete refuses a different declared Cloud scope or Workspace name", async () => {
+  for (const overrides of [{ cloudIdentityDigest: `sha256:${"c".repeat(64)}` }, { workspaceName: "another workspace" }]) {
+    const t = transport();
+    await assert.rejects(() => runDeployedWorkspaceDelete(request(overrides), t.caller), /does not match/);
+    assert.equal(t.calls.some(c => c.method === "DELETE"), false);
+  }
 });
 
-test("the deployed delete receipt ties absence, status and mutation count together", () => {
-  const base = {
-    schemaVersion: 1,
-    kind: "opl.deployed-workspace-delete.v1",
-    candidate: { receiptDigest: CANDIDATE },
-    account: { identityDigest: deployedAccountIdentityDigest(EMAIL) },
-    operation: {
-      idempotencyKey: deployedDeleteIdempotencyKey(CANDIDATE, "run-1"),
-      operationId: "op-delete-1",
-      status: "deleted",
-      stage: "compute",
-      resumed: false
-    },
-    deletion: { workspaceAbsent: true, refundStatus: "refunded", refundOperationId: "wallet-adjustment-delete-1" },
-    mutations: { declared: { deletions: 1 }, observed: { deletions: 1 } },
-    startedAt: "2026-10-22T00:00:00.000Z",
-    completedAt: "2026-10-22T00:05:00.000Z"
-  };
+test("deletion readback cannot switch to another operation or consume the legacy deletion shape", async () => {
+  for (const invalid of [deletion({ operationId: "another-op" }), { workspaceId: WORKSPACE_ID, operationId: "op-delete-1", status: "deleted" }]) {
+    const t = transport({ deletions: [null, invalid] });
+    await assert.rejects(() => runDeployedWorkspaceDelete(request(), t.caller), /invalid owner deletion|accepted operation/);
+  }
+});
+
+test("the deployed delete rejects unrelated operations and invalid nonterminal schedules", async () => {
+  for (const overrides of [{ owner: "fabric" }, { resourceId: "another-workspace" }, { kind: "create_workspace" }, { status: "running", pollAfterSeconds: 0 }, { status: "running", pollAfterSeconds: undefined }]) {
+    const t = transport({ operations: [operation(overrides)] });
+    await assert.rejects(() => runDeployedWorkspaceDelete(request(), t.caller), /invalid or unrelated owner operation/);
+  }
+});
+
+test("a missing owner tombstone or inaccessible deletion cannot become confirmed absence", async () => {
+  for (const options of [{ workspaces: [workspace, undefined] }, { deletions: [undefined] }]) {
+    const t = transport(options);
+    await assert.rejects(() => runDeployedWorkspaceDelete(request(), t.caller), /could not read/);
+  }
+});
+
+test("the deployed delete receipt is closed and binds its candidate, result and mutation count", async () => {
+  const t = transport();
+  const base = await runDeployedWorkspaceDelete(request(), t.caller);
   assert.equal(validateDeployedDeleteReceipt(base), base);
+  for (const altered of [{ ...base, deletion: { ...base.deletion, workspaceAbsent: false } }, { ...base, operation: { ...base.operation, resumed: true } }, { ...base, extra: true }, { ...base, operation: { ...base.operation, status: "deleted" } }]) {
+    assert.throws(() => validateDeployedDeleteReceipt(altered), /receipt is invalid/);
+  }
+});
 
-  assert.throws(
-    () => validateDeployedDeleteReceipt({ ...base, deletion: { ...base.deletion, workspaceAbsent: false } }),
-    /receipt is invalid/,
-    "a deleted deletion must prove absence"
-  );
-  assert.throws(
-    () => validateDeployedDeleteReceipt({ ...base, operation: { ...base.operation, status: "manual_review" } }),
-    /receipt is invalid/,
-    "a manual_review receipt must not claim absence"
-  );
-  assert.throws(
-    () => validateDeployedDeleteReceipt({ ...base, operation: { ...base.operation, resumed: true } }),
-    /receipt is invalid/,
-    "resumed must match the observed count"
-  );
-  assert.throws(
-    () => validateDeployedDeleteReceipt({ ...base, extra: 1 }),
-    /receipt is invalid/,
-    "the receipt is closed to unknown keys"
-  );
+test("delete declarations preserve opaque ids and Unicode confirmation names from the contract", () => {
+  const input = request({ workspaceId: "opaque/resource identity", workspaceName: "我的工作环境" });
+  assert.equal(assertDeployedDeleteRequest(input), input);
+});
+
+test("succeeded operation readback must carry the owner confirmed observation", async () => {
+  const t = transport({ operations: [operation({ observationResult: "unknown" })] });
+  await assert.rejects(() => runDeployedWorkspaceDelete(request(), t.caller), /invalid or unrelated owner operation/);
 });
