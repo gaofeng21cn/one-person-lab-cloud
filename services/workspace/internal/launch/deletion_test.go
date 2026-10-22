@@ -313,6 +313,28 @@ func TestDeleteWorkspaceRequiresExactConfirmationAndDestructionAck(t *testing.T)
 	}
 }
 
+func TestDeleteWorkspaceAcceptsTheOriginalUnfinishedCreateForCloseout(t *testing.T) {
+	db := runtimeDatabase(t)
+	service, call, ctx, _, _ := deletionWorkspace(t, db)
+	if _, err := db.ExecContext(ctx, `UPDATE workspace.workspaces SET status='provisioning' WHERE id='workspace-original'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE workspace.operations SET status='awaiting_confirmation',stage='resource_preflight',completed_at=NULL WHERE id='operation-original'`); err != nil {
+		t.Fatal(err)
+	}
+	call.IdempotencyKey = "idempotency-close-original-unfinished-create"
+	accepted, err := service.DeleteWorkspace(ctx, &api.DeleteWorkspaceRpcRequest{
+		Context: call, WorkspaceId: "workspace-original",
+		Body: &api.DeleteWorkspaceRequest{ConfirmationName: "Original workspace", AcknowledgeDataDestruction: true},
+	})
+	if err != nil {
+		t.Fatalf("accepted unfinished Workspace closeout: %v", err)
+	}
+	if accepted.GetOperationId() == "" || accepted.GetKind() != api.OperationKindEnum_OPERATION_KIND_ENUM_DELETE_WORKSPACE {
+		t.Fatalf("closeout did not persist a deletion operation: %v", accepted)
+	}
+}
+
 func TestDeleteWorkspaceRecordsOneOperationBoundToTheOriginalPayment(t *testing.T) {
 	db := runtimeDatabase(t)
 	service, call, ctx, periodStart, totalMicros := deletionWorkspace(t, db)
