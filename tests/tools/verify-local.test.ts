@@ -580,6 +580,7 @@ test("focused verification selects only gates affected by an explicit change set
     "product boundary",
     "Development plan freshness",
     "Development tools typecheck",
+    "Development tools unbound identifiers",
     "Focused development tests",
     "services/fabric focused Go tests",
     "Git whitespace"

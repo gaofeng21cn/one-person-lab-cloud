@@ -154,6 +154,7 @@ export const localVerificationSteps: readonly LocalVerificationStep[] = Object.f
   { group: "source", name: "product boundary", command: "npm", args: ["run", "validate:product-boundary"] },
   { group: "source", name: "Generated contracts freshness", command: "npm", args: ["run", "verify:generated-contracts"] },
   { group: "source", name: "Development tools typecheck", command: "npm", args: ["run", "typecheck:development-tools"] },
+  { group: "source", name: "Development tools unbound identifiers", command: "npm", args: ["run", "verify:unbound-identifiers"] },
   { group: "source", name: "Node source tests", command: "npm", args: ["run", "test:source"] },
   // One bounded-concurrency invocation instead of nine sequential ones: each
   // group used to boot its own demo server and Chromium before the next started.
@@ -205,6 +206,9 @@ export function focusedVerificationSteps(changedPaths: readonly string[], testTa
   steps.push(...developmentPlanVerificationSteps(changedPaths));
   if (anyPath(changedPaths, developmentToolPaths)) {
     add({ name: "Development tools typecheck", command: "npm", args: ["run", "typecheck:development-tools"] });
+  }
+  if (changedPaths.some((path) => /^(?:tools|tests\/tools)\/.*\.ts$/u.test(path))) {
+    add({ name: "Development tools unbound identifiers", command: "npm", args: ["run", "verify:unbound-identifiers"] });
   }
   if (changedPaths.some((path) => /^(?:apps|packages)\/.*\.[cm]?[jt]sx?$/u.test(path))) {
     add({ name: "TypeScript typecheck", command: "npm", args: ["run", "typecheck"] });
