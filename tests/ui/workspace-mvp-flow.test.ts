@@ -750,7 +750,7 @@ test("Cloud deletion browser waits for the owner schedule and stops after cancel
     let reads = 0;
     let cancelled = false;
     await page.route(`**/api/v2/workspaces/${demo.workspace.id}/deletion`, route => route.fulfill({ json: {
-      workspaceId: demo.workspace.id, operationId: "op-schedule", resourceDeletionStatus: "pending", dataDeletionStatus: "pending", refundStatus: "unknown", updatedAt: demo.workspace.updatedAt
+      workspaceId: demo.workspace.id, operationId: "op-schedule", resourceDeletionStatus: "pending", dataDeletionStatus: "pending", refundStatus: "requested", updatedAt: demo.workspace.updatedAt
     } satisfies WorkspaceOwnerDeletionDTO }));
     await page.route("**/api/v2/operations/workspace/op-schedule", route => {
       reads += 1;
