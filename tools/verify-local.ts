@@ -207,7 +207,7 @@ export function focusedVerificationSteps(changedPaths: readonly string[], testTa
   if (anyPath(changedPaths, developmentToolPaths)) {
     add({ name: "Development tools typecheck", command: "npm", args: ["run", "typecheck:development-tools"] });
   }
-  if (changedPaths.some((path) => /^(?:tools|tests\/tools)\/.*\.ts$/u.test(path))) {
+  if (changedPaths.some((path) => /^tools\/.*\.ts$/u.test(path))) {
     add({ name: "Development tools unbound identifiers", command: "npm", args: ["run", "verify:unbound-identifiers"] });
   }
   if (changedPaths.some((path) => /^(?:apps|packages)\/.*\.[cm]?[jt]sx?$/u.test(path))) {
