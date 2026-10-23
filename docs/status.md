@@ -15,6 +15,137 @@ Product Release. The target boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Original-order Closeout Scope (2026-10-23)
+
+Source inspected at `ea999ff044b591cd2ca111a3b08386abb877e89e` confirms that
+Control Plane already exposes retained Workspace DELETE in
+`internal/server/routes_workspace.go` and owns a durable `workspace.delete.v2`
+plus separate original-charge settlement. The Launch route file alone is not
+an inventory of deletion capability. At that inspected base, extracted Workspace
+deletion required a succeeded create, delivered runtime/resource bindings and a
+confirmed subscription period; unfinished native orders were not covered by that
+admission. The native source behavior added below is a separate evidence layer.
+See [implementation boundaries](implementation-architecture.md#original-order-closeout-boundaries).
+
+The following existing Control Plane tests were executed against that source
+with `go test -count=1 -v ./internal/server -run
+'^TestWorkspaceDelete(CompletesExactOwnerChain|RefundDispatchesOnceWithFullAuthoritativeReadback|RefundRecoversLostResponseWithoutSecondDispatch|RefundRefusesEveryIncompleteReadback|ResponseLossAndReceiptOnlyRecovery)$'`:
+five top-level tests and their nine subtests passed with zero failures or skips.
+They exercise the real retained HTTP handler/owner logic with synthetic
+provider, wallet and receipt boundaries. They establish neither installed
+admission for the affected original orders nor real provider absence/refund.
+
+The existing Instance attribution run
+[39658553438](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/39658553438)
+was successful as an Actions run, but its downloaded artifact
+`workspace-operation-attribution-39658553438/receipt.json` reports
+`status=blocked`, `workspace_operation_attribution_operation_not_found`, one
+database read and zero database/provider/Kubernetes writes. It therefore does
+not supply the missing original-order identities or closeout evidence. Its
+observation is dated 2026-10-21 and is not a current observation of the three
+orders. The source inspection itself dispatched no protected workflow, provider mutation
+or financial action. The later protected diagnostic observations are recorded
+separately below.
+
+[Instance PR #578](https://github.com/gaofeng21cn/opl-instance-medopl/pull/578)
+added an exact-Workspace selector to the existing protected diagnostic entry
+and merged as `bf570816e4ccbbc3f08006eb3741669dc0f23cc7`. It recovered the two
+original operation identities below; it did not implement lifecycle closeout.
+The original digest-only input has since read both operations successfully in
+protected runs [39916321892](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/39916321892)
+and [39916660069](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/39916660069),
+observed at 2026-10-23T07:15:35.528Z and 2026-10-23T07:19:37.055Z respectively.
+Both produced valid schema-2 `status=complete` diagnostic receipts with five
+database reads and zero database/provider/Kubernetes writes each. The selector
+has no product caller or remaining role in closeout.
+[Instance PR #579](https://github.com/gaofeng21cn/opl-instance-medopl/pull/579)
+removes its input, resolver, alternate tool branch, tests and operator guidance;
+it retains the original digest-only entry, access guards and receipt schema.
+Its 40 focused attribution/workflow/boundary tests passed with zero failures,
+skips or TODOs; Instance validation passed for 41 workflows and 227 receipts.
+The exact cleanup head `6e4ce78b887117540633e1e52c0b7321e4b6d682` passed
+[CI run 39918223986](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/39918223986):
+1,160 tests passed, zero failed and two existing Product-context cases skipped.
+PR #579 merged on 2026-10-23 as `e8ee04df32142347c2acd801fdcd4da348eb6265`;
+its tree matches the validated head. The merge revision also passed
+[Instance main CI run 39918680069](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/39918680069).
+This changes the Instance diagnostic source, not an installed product lifecycle.
+
+Two protected diagnostic runs from that exact Instance main revision completed
+with valid schema-2 `status=complete` attribution receipts:
+
+| Original operation identity digest | Protected run | Observation time (UTC) |
+| --- | --- | --- |
+| `sha256:7125640204f077c206481b46645140380a014d087be4a2a5c03164550c981dc8` | [39910283784](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/39910283784) | 2026-10-23T06:14:34.157Z |
+| `sha256:84275dd04338964589d7ce27ae3d5cd7027212c84ac25e97fa52c2bf816fd546` | [39910519968](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/39910519968) | 2026-10-23T06:16:53.972Z |
+
+Both original Workspace operations report `awaiting_confirmation` at `runtime`,
+with the recorded failed step `deploy_runtime`, owner `serve`, and
+`DEPENDENCY_UNAVAILABLE`. Their original results contain the Fabric operation,
+resource set/readback, runtime reservation/command and managed-Key binding.
+Their stored runtime readback says `RUNTIME_INSTANCE_STATE_TERMINATED` with
+`OBSERVATION_CONFIRMED`; `runtimeDeployAccepted` is false. Each original saga
+records `wallet_charge` as confirmed and `wallet_action_receipt` as unknown.
+This diagnostic does not independently read the original Gateway wallet charge,
+its amount or refund history, or the Ledger funding receipt.
+
+Gateway's original managed-Key command is confirmed, records an observed
+external Key, targets the recorded reserved runtime and matches the same
+Workspace binding. Both binding projections report neither revoked nor expired;
+the diagnostic does not project external disabled state and therefore proves
+neither effective access nor a completed Key closeout.
+
+The original `ensure_resources` steps record 228,496 and 184,877 attempts;
+`read_runtime` records 50,344 and 50,372 attempts respectively. These are stored
+original-order recovery counters, not mutations performed by these diagnostic
+runs. They reinforce the need to serialize closing intent with create recovery;
+they do not authorize a direct status edit or prove provider absence.
+
+The four immutable artifacts (the two identity-resolution reads and the two
+digest-only reads) are preserved without transformation in the Instance evidence
+merge commit `e8ee04df32142347c2acd801fdcd4da348eb6265` as
+`receipts/2026-10-23-workspace-operation-attribution-<run-id>.json`, using the
+four run IDs above. Each producing validator and Instance redaction validation
+passed. The protected executions performed no database, provider or Kubernetes
+mutations. No deletion, refund, route retirement, fresh provider absence or
+completed order closeout is claimed.
+
+[#1018](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1018) owns the
+remaining original-order records and protected acceptance;
+[#1043](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1043) owns
+the reusable native unfinished-order closeout implementation;
+[the roadmap](roadmap.md#original-order-workspace-closeout-1018) separates those
+outcomes. No business closeout is claimed.
+
+### Native unfinished-order source behavior (2026-10-23)
+
+The working-tree change based on
+`ea999ff044b591cd2ca111a3b08386abb877e89e` extends the existing Workspace DELETE,
+not the retained Control Plane path. The focused owner API tests use real,
+isolated PostgreSQL databases and explicit external-owner/provider fixtures.
+They exercise cancellation while a create response is in flight, original-command
+resolution when IDs were not returned, unstarted/reserved/deployed retirement,
+route removal, late provision/Secret/adapter/observation/Key/charge refusal,
+independent Key uncertainty, original funding receipt recovery, delivered-before-ACK billing,
+unknown charge/refund readback, owner restart and original-wallet settlement.
+Gateway refund reservations share the original charge limit, including unknown
+reservations. The busy-creation guard reports an unconfirmed result without
+consuming the database connection required to finish the earlier effect.
+
+The implementation remains in Workspace, Serve, Fabric, Gateway Integration and
+Ledger's existing typed surfaces. The production proto and its generated target
+snapshot/bindings change together; the development-plan generator updates only
+the consumed proto hash. No new wallet, cleanup service, provider workflow or
+Control Plane caller is introduced. Existing Tencent provider deletion behavior
+was also exercised with isolated provider fixtures; this is separate from native
+peer/provider qualification and actual customer resource absence.
+
+These local source checks do not establish CI for a published head, Candidate
+qualification, installed adoption or a completed #1018 order. The three original
+orders still need protected owner-authoritative closeout acceptance. Retained
+order migration and old-writer retirement follow the new-path qualification and
+caller cutover; no old deletion path is adopted by this change.
+
 ## Account Activation Cutover (2026-10-21; read back 2026-10-23)
 
 [PR #1005](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1005)

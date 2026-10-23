@@ -183,7 +183,7 @@ func (g *deletionLiveWalletBoundary) Refund(ctx context.Context, r *api.WalletRe
 		status = api.WalletOperationStatusEnum_WALLET_OPERATION_STATUS_ENUM_REQUESTED
 	}
 	return &api.WalletOperation{Id: "wallet-refund-boundary", WorkspaceId: proto.String(r.GetWorkspaceId()), Kind: api.WalletOperationKindEnum_WALLET_OPERATION_KIND_ENUM_REFUND,
-		AmountUsdMicros: r.GetAmountUsdMicros(), Status: status, CreatedAt: timestamppb.Now()}, nil
+		OriginalChargeOperationId: proto.String(r.GetOriginalWalletOperationId()), AmountUsdMicros: r.GetAmountUsdMicros(), Status: status, CreatedAt: timestamppb.Now()}, nil
 }
 
 func (g *deletionLiveWalletBoundary) ReadWalletAction(_ context.Context, r *api.WalletReadbackRequest) (*api.WalletOperation, error) {
@@ -194,7 +194,7 @@ func (g *deletionLiveWalletBoundary) ReadWalletAction(_ context.Context, r *api.
 	}
 	g.trace.add("gateway.refund.readback")
 	return &api.WalletOperation{Id: "wallet-refund-boundary", WorkspaceId: proto.String(g.command.WorkspaceId), Kind: api.WalletOperationKindEnum_WALLET_OPERATION_KIND_ENUM_REFUND,
-		AmountUsdMicros: g.command.AmountUsdMicros, Status: api.WalletOperationStatusEnum_WALLET_OPERATION_STATUS_ENUM_CONFIRMED, CreatedAt: timestamppb.Now()}, nil
+		OriginalChargeOperationId: proto.String(g.command.GetOriginalWalletOperationId()), AmountUsdMicros: g.command.AmountUsdMicros, Status: api.WalletOperationStatusEnum_WALLET_OPERATION_STATUS_ENUM_CONFIRMED, CreatedAt: timestamppb.Now()}, nil
 }
 
 func (g *deletionLiveWalletBoundary) refundCommand() *api.WalletRefundCommand {

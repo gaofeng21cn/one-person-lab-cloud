@@ -137,6 +137,9 @@ func (s *Service) EnsureResources(ctx context.Context, r *api.EnsureResourcesCom
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, "fabric:workspace:"+r.WorkspaceId); err != nil {
 		return nil, persistenceError(err)
 	}
+	if err = refuseDeletedProvision(ctx, tx, r.WorkspaceId, tenant); err != nil {
+		return nil, err
+	}
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, "fabric:idem:"+tenant+":"+input.ActorScope+":"+input.IdempotencyKey); err != nil {
 		return nil, persistenceError(err)
 	}

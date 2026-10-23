@@ -26,6 +26,9 @@ func (s *Service) ReadResources(ctx context.Context, r *api.ResourceReadbackRequ
 	if err := ownerservice.ValidateCallContext(ctx, r.GetContext()); err != nil {
 		return nil, err
 	}
+	if r.GetOriginalProvisionIdempotencyKey() != "" {
+		return s.readOriginalResources(ctx, r)
+	}
 	if strings.TrimSpace(r.GetResourceSetId()) == "" && strings.TrimSpace(r.GetResourceActionId()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "resource set or resource action is required")
 	}

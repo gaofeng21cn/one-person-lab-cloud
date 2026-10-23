@@ -43,6 +43,7 @@ type deletionOrder struct {
 	WorkspaceVersion       int64           `json:"workspaceVersion"`
 
 	LaunchOperationID string `json:"launchOperationId"`
+	Unfinished        bool   `json:"unfinished,omitempty"`
 	GrantID           string `json:"grantId"`
 	RuntimeInstanceID string `json:"runtimeInstanceId"`
 	DeploymentID      string `json:"deploymentId"`
@@ -72,6 +73,7 @@ type deletionResult struct {
 	// bound to the actor or the action surface of the original launch.
 	GrantID             string          `json:"grantId,omitempty"`
 	RetirementOperation json.RawMessage `json:"retirementOperation,omitempty"`
+	RuntimeCloseout     json.RawMessage `json:"runtimeCloseout,omitempty"`
 	DeleteOperation     json.RawMessage `json:"deleteOperation,omitempty"`
 	ResourceReadback    json.RawMessage `json:"resourceReadback,omitempty"`
 	DeletionReceipt     json.RawMessage `json:"deletionReceipt,omitempty"`
@@ -222,6 +224,9 @@ func (s *Service) DeleteWorkspace(ctx context.Context, r *api.DeleteWorkspaceRpc
 	if err != nil {
 		return nil, err
 	}
+	if _, err = tx.ExecContext(ctx, `UPDATE workspace.operations SET status='cancelled',stage='cancellation_guard',completed_at=clock_timestamp(),updated_at=clock_timestamp(),worker_lease_token=NULL,worker_lease_until=NULL WHERE id=$1 AND status NOT IN ('succeeded','failed','cancelled')`, order.LaunchOperationID); err != nil {
+		return nil, dbError(err)
+	}
 	order.Request = wire(b)
 	raw, err := json.Marshal(order)
 	if err != nil {
@@ -283,16 +288,29 @@ func (s *Service) replayDeletion(ctx context.Context, op ownerstore.Operation) (
 // an order whose funding evidence is missing is refused instead of being deleted
 // without a refundable original.
 func (s *Service) freezeDeletion(ctx context.Context, tx *sql.Tx, workspaceID, name string, version int64, authorizationContextID string) (deletionOrder, error) {
-	var launchID string
+	var launchID, launchStatus string
+	var originalCount int
 	var raw []byte
-	err := tx.QueryRowContext(ctx, `SELECT id,COALESCE(result,'{}'::jsonb) FROM workspace.operations
-		WHERE resource_id=$1 AND kind='create_workspace' AND status='succeeded'
-		ORDER BY created_at DESC,id DESC LIMIT 1`, workspaceID).Scan(&launchID, &raw)
+	err := tx.QueryRowContext(ctx, `SELECT id,status,COALESCE(result,'{}'::jsonb),COUNT(*) OVER() FROM workspace.operations
+		WHERE resource_id=$1 AND kind='create_workspace'
+		`, workspaceID).Scan(&launchID, &launchStatus, &raw, &originalCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return deletionOrder{}, status.Error(codes.FailedPrecondition, "the Workspace has no delivered launch to delete")
 	}
 	if err != nil {
 		return deletionOrder{}, dbError(err)
+	}
+	if originalCount != 1 {
+		return deletionOrder{}, status.Error(codes.FailedPrecondition, "the original Workspace create is ambiguous")
+	}
+	if launchStatus != ownerstore.OperationSucceeded {
+		var delivered bool
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM workspace.subscriptions WHERE workspace_id=$1)`, workspaceID).Scan(&delivered); err != nil {
+			return deletionOrder{}, dbError(err)
+		}
+		if !delivered {
+			return freezeUnfinishedDeletion(workspaceID, name, version, authorizationContextID, launchID, raw)
+		}
 	}
 	var launched orderResult
 	if json.Unmarshal(raw, &launched) != nil {
@@ -656,6 +674,16 @@ func (s *Service) checkpointDeletion(ctx context.Context, op ownerstore.Operatio
 // operation is the confirmation, and a replay re-reads the recorded operation
 // instead of issuing a second stop.
 func (s *Service) retireDeletedRuntime(ctx context.Context, op ownerstore.Operation, token string, order deletionOrder, result *deletionResult) (bool, error) {
+	if len(result.RuntimeCloseout) > 0 {
+		read := &api.RuntimeReadback{}
+		if protojson.Unmarshal(result.RuntimeCloseout, read) != nil {
+			return false, status.Error(codes.DataLoss, "stored runtime closeout is invalid")
+		}
+		if err := validateClosingRuntime(op, order, read); err != nil {
+			return false, err
+		}
+		order.RuntimeInstanceID, order.DeploymentID = read.GetRuntimeInstanceId(), read.GetDeploymentId()
+	}
 	if len(result.RetirementOperation) > 0 {
 		stored := &api.Operation{}
 		if protojson.Unmarshal(result.RetirementOperation, stored) != nil {
@@ -673,12 +701,27 @@ func (s *Service) retireDeletedRuntime(ctx context.Context, op ownerstore.Operat
 		return false, nil
 	}
 	request := &api.RuntimeStopCommand{Context: continuation(op, result.GrantID, "retire_runtime"), RuntimeInstanceId: order.RuntimeInstanceID, DeploymentId: order.DeploymentID, RetainedDataAttachmentId: order.DataAttachmentID}
+	if order.Unfinished {
+		request.WorkspaceId = op.ResourceID
+		request.OriginalReservationIdempotencyKey = order.LaunchOperationID + ":reserve_runtime"
+	}
 	if err := s.beginStep(ctx, op, token, "retire_runtime", 0, "serve", "retirement", request); err != nil {
 		return false, err
 	}
 	retired, err := s.Serve.Retire(ctx, request)
 	if err != nil {
 		return false, s.failedDeletionCall(ctx, op, token, "retire_runtime", "retirement", *result, err)
+	}
+	if order.Unfinished && order.RuntimeInstanceID == "" {
+		read, readErr := s.Serve.ReadRuntime(ctx, &api.RuntimeReadbackRequest{Context: continuation(op, result.GrantID, "read_retired_runtime"), WorkspaceId: op.ResourceID, OriginalReservationIdempotencyKey: order.LaunchOperationID + ":reserve_runtime"})
+		if readErr != nil {
+			return false, s.failedDeletionCall(ctx, op, token, "retire_runtime", "retirement", *result, readErr)
+		}
+		if err = validateClosingRuntime(op, order, read); err != nil {
+			return false, s.failedDeletionCall(ctx, op, token, "retire_runtime", "retirement", *result, err)
+		}
+		result.RuntimeCloseout = wire(read)
+		order.RuntimeInstanceID, order.DeploymentID = read.GetRuntimeInstanceId(), read.GetDeploymentId()
 	}
 	if err = validateRetirement(op, order, retired); err != nil {
 		return false, s.failedDeletionCall(ctx, op, token, "retire_runtime", "retirement", *result, err)
@@ -694,8 +737,12 @@ func (s *Service) retireDeletedRuntime(ctx context.Context, op ownerstore.Operat
 // and deployment. A different runtime, a different owner or an unconfirmed
 // operation is not this deletion's retirement.
 func validateRetirement(op ownerstore.Operation, order deletionOrder, retired *api.Operation) error {
+	expected := order.RuntimeInstanceID
+	if expected == "" && order.Unfinished {
+		expected = op.ResourceID
+	}
 	if retired.GetOperationId() == "" || retired.GetOwner() != api.OperationOwnerEnum_OPERATION_OWNER_ENUM_SERVE || retired.GetKind() != api.OperationKindEnum_OPERATION_KIND_ENUM_RUNTIME_RETIRE ||
-		retired.GetResourceId() != order.RuntimeInstanceID || retired.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED ||
+		retired.GetResourceId() != expected || retired.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED ||
 		retired.GetObservationResult() != api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_CONFIRMED {
 		return status.Error(codes.DataLoss, "Serve did not confirm the original runtime retirement")
 	}
@@ -706,6 +753,9 @@ func validateRetirement(op ownerstore.Operation, order deletionOrder, retired *a
 // absence from Fabric's own readback. The delete request alone never advances the
 // deletion: only a readback that confirms every original resource absent does.
 func (s *Service) confirmDeletedResources(ctx context.Context, op ownerstore.Operation, token string, order deletionOrder, result *deletionResult) (bool, error) {
+	if order.Unfinished && order.ResourceSetID == "" {
+		return s.confirmOriginalResourceCloseout(ctx, op, token, order, result)
+	}
 	alreadyDispatched := len(result.DeleteOperation) > 0
 	if s.Fabric == nil {
 		return false, s.checkpointDeletion(ctx, op, token, "delete_resources", "attachment_deletion", "awaiting_confirmation", "unknown", "", "DEPENDENCY_UNAVAILABLE", result)
@@ -846,7 +896,11 @@ func (s *Service) disableDeletedWorkspaceKey(ctx context.Context, op ownerstore.
 			return s.checkpointDeletion(ctx, op, token, step, stage, "running", "unknown", "", "KEY_BINDING_UNRESOLVED", result)
 		}
 	}
-	if result.ManagedKeyBindingID == "" {
+	order, _, err := decodeDeletion(op)
+	if err != nil {
+		return err
+	}
+	if result.ManagedKeyBindingID == "" && !order.Unfinished {
 		// The Workspace never obtained a managed key (no declared Gateway credential),
 		// so there is nothing to close out.
 		result.KeyCloseoutOutcome = "not_applicable"
@@ -857,6 +911,9 @@ func (s *Service) disableDeletedWorkspaceKey(ctx context.Context, op ownerstore.
 		return s.checkpointDeletion(ctx, op, token, step, stage, "running", "unknown", "", "DEPENDENCY_UNAVAILABLE", result)
 	}
 	request := &api.ManagedKeyLifecycleCommand{Context: continuation(op, result.GrantID, step), KeyBindingId: result.ManagedKeyBindingID, WorkspaceId: op.ResourceID}
+	if order.Unfinished {
+		request.OriginalCreateIdempotencyKey = order.LaunchOperationID + ":create_managed_key"
+	}
 	if err := s.beginStep(ctx, op, token, step, 0, "gateway", stage, request); err != nil {
 		return err
 	}
@@ -866,12 +923,17 @@ func (s *Service) disableDeletedWorkspaceKey(ctx context.Context, op ownerstore.
 		result.KeyCloseoutOutcome, result.KeyCloseoutCode = outcome, code
 		return s.checkpointDeletion(ctx, op, token, step, stage, "running", outcome, "", code, result)
 	}
-	if readback.GetKeyBindingId() != result.ManagedKeyBindingID ||
+	if order.Unfinished && result.ManagedKeyBindingID == "" && readback.GetWorkspaceId() == op.ResourceID && readback.GetOutcome() == api.Observation_OBSERVATION_CONFIRMED && readback.GetAbsenceConfirmed() && readback.GetKeyBindingId() == "" {
+		result.KeyCloseoutOutcome, result.KeyCloseoutCode = "not_applicable", ""
+		return s.checkpointDeletion(ctx, op, token, step, stage, "running", "confirmed", "", "", result)
+	}
+	if readback.GetWorkspaceId() != op.ResourceID || readback.GetKeyBindingId() == "" || (result.ManagedKeyBindingID != "" && readback.GetKeyBindingId() != result.ManagedKeyBindingID) ||
 		readback.GetState() != api.ManagedKeyLifecycleState_MANAGED_KEY_LIFECYCLE_STATE_DISABLED ||
 		readback.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED {
 		result.KeyCloseoutOutcome, result.KeyCloseoutCode = "unknown", "KEY_CLOSEOUT_UNCONFIRMED"
 		return s.checkpointDeletion(ctx, op, token, step, stage, "running", "unknown", "", "KEY_CLOSEOUT_UNCONFIRMED", result)
 	}
+	result.ManagedKeyBindingID = readback.GetKeyBindingId()
 	result.KeyCloseoutOutcome, result.KeyCloseoutCode = "confirmed", ""
 	return s.checkpointDeletion(ctx, op, token, step, stage, "running", "confirmed", readback.GetKeyBindingId(), "", result)
 }
@@ -1018,6 +1080,12 @@ func (s *Service) refundConfirmedDeletion(ctx context.Context, op ownerstore.Ope
 		// against, so an absent receipt is a state error rather than an entitlement.
 		return status.Error(codes.DataLoss, "Workspace deletion reached settlement without its confirmed deletion receipt")
 	}
+	if order.Unfinished {
+		resolved, err := s.resolveUnfinishedRefund(ctx, op, token, &order, result)
+		if err != nil || !resolved {
+			return err
+		}
+	}
 	if order.OriginalChargeUSDMicros <= 0 {
 		// A Local no-charge order has no original platform charge to settle, so its
 		// deletion has no refund entitlement.
@@ -1033,17 +1101,21 @@ func (s *Service) refundConfirmedDeletion(ctx context.Context, op ownerstore.Ope
 		}
 		return nil
 	}
-	fulfilledAt, err := time.Parse(time.RFC3339Nano, order.PeriodStart)
-	if err != nil {
-		return status.Error(codes.DataLoss, "stored original period start is invalid")
-	}
-	deletedAt, err := time.Parse(time.RFC3339Nano, result.DeletedAt)
-	if err != nil {
-		return status.Error(codes.DataLoss, "stored deletion time is invalid")
-	}
-	amount, err := contracts.PlatformWorkspaceDeleteRefundMicros(order.OriginalChargeUSDMicros, fulfilledAt, deletedAt)
-	if err != nil {
-		return s.failedDeletionCall(ctx, op, token, "refund_confirmed_deletion", "refund", *result, err)
+	amount := order.OriginalChargeUSDMicros
+	var err error
+	if !order.Unfinished || order.PeriodStart != "" {
+		fulfilledAt, parseErr := time.Parse(time.RFC3339Nano, order.PeriodStart)
+		if parseErr != nil {
+			return status.Error(codes.DataLoss, "stored original fulfillment time is invalid")
+		}
+		deletedAt, parseErr := time.Parse(time.RFC3339Nano, result.DeletedAt)
+		if parseErr != nil {
+			return status.Error(codes.DataLoss, "stored deletion time is invalid")
+		}
+		amount, err = contracts.PlatformWorkspaceDeleteRefundMicros(order.OriginalChargeUSDMicros, fulfilledAt, deletedAt)
+		if err != nil {
+			return s.failedDeletionCall(ctx, op, token, "refund_confirmed_deletion", "refund", *result, err)
+		}
 	}
 	if amount == 0 {
 		result.RefundStatus, result.RefundAmountUSDMicros = "not_applicable", 0
@@ -1055,7 +1127,7 @@ func (s *Service) refundConfirmedDeletion(ctx context.Context, op ownerstore.Ope
 		if protojson.Unmarshal(result.WalletRefund, stored) != nil {
 			return status.Error(codes.DataLoss, "stored Workspace refund is invalid")
 		}
-		if err = validateWalletRefund(op, amount, stored); err != nil {
+		if err = validateWalletRefund(op, order.OriginalChargeWalletOperationID, amount, stored); err != nil {
 			return status.Error(codes.DataLoss, "stored Workspace refund does not identify the original settlement")
 		}
 		if len(result.RefundCommand) > 0 {
@@ -1078,7 +1150,7 @@ func (s *Service) refundConfirmedDeletion(ctx context.Context, op ownerstore.Ope
 		if readErr != nil {
 			return s.failedDeletionCall(ctx, op, token, "read_refund_confirmed_deletion", "refund", *result, readErr)
 		}
-		if err = validateWalletRefund(op, amount, observed); err != nil {
+		if err = validateWalletRefund(op, order.OriginalChargeWalletOperationID, amount, observed); err != nil {
 			return s.failedDeletionCall(ctx, op, token, "read_refund_confirmed_deletion", "refund", *result, err)
 		}
 		result.WalletRefund = wire(observed)
@@ -1092,7 +1164,7 @@ func (s *Service) refundConfirmedDeletion(ctx context.Context, op ownerstore.Ope
 	if err != nil {
 		return s.failedDeletionCall(ctx, op, token, "refund_confirmed_deletion", "refund", *result, err)
 	}
-	if err = validateWalletRefund(op, amount, refunded); err != nil {
+	if err = validateWalletRefund(op, order.OriginalChargeWalletOperationID, amount, refunded); err != nil {
 		return s.failedDeletionCall(ctx, op, token, "refund_confirmed_deletion", "refund", *result, err)
 	}
 	result.WalletRefund = wire(refunded)
@@ -1133,8 +1205,8 @@ func walletRefundSettled(status api.WalletOperationStatusEnum) bool {
 
 // validateWalletRefund binds one refund to the original charge amount and this
 // Workspace.
-func validateWalletRefund(op ownerstore.Operation, amount int64, refunded *api.WalletOperation) error {
-	if refunded.GetId() == "" || refunded.GetWorkspaceId() != op.ResourceID || refunded.GetKind() != api.WalletOperationKindEnum_WALLET_OPERATION_KIND_ENUM_REFUND || refunded.GetAmountUsdMicros() != amount {
+func validateWalletRefund(op ownerstore.Operation, originalChargeID string, amount int64, refunded *api.WalletOperation) error {
+	if refunded.GetId() == "" || refunded.GetWorkspaceId() != op.ResourceID || refunded.GetKind() != api.WalletOperationKindEnum_WALLET_OPERATION_KIND_ENUM_REFUND || refunded.GetAmountUsdMicros() != amount || refunded.GetOriginalChargeOperationId() != originalChargeID {
 		return status.Error(codes.DataLoss, "wallet refund does not identify the original deletion settlement")
 	}
 	return nil

@@ -169,6 +169,9 @@ func (s *Service) Reserve(ctx context.Context, r *api.RuntimeReservationCommand)
 	if err = lockWorkspace(ctx, tx, r.WorkspaceId); err != nil {
 		return nil, dbError(err)
 	}
+	if err = refuseClosedWorkspace(ctx, tx, r.GetWorkspaceId()); err != nil {
+		return nil, err
+	}
 	input := ownerstore.IdempotencyInput{ID: stableID("idem_", tid, call.ActorId, call.IdempotencyKey), TenantScope: tid, ActorScope: call.ActorId, OperationName: "ReserveRuntime", IdempotencyKey: call.IdempotencyKey, RequestSHA256: ownerstore.HashRequestBody(reservationBytes(r))}
 	previous, found, err := s.Store.LookupIdempotency(ctx, tx, input)
 	if errors.Is(err, ownerstore.ErrIdempotencyConflict) {
@@ -408,6 +411,9 @@ func (s *Service) validateDeploy(ctx context.Context, r *api.RuntimeDeployComman
 	if err = validateReserved(ctx, tx, r); err != nil {
 		return err
 	}
+	if err = refuseRetiredRuntime(ctx, tx, r.GetRuntimeInstanceId()); err != nil {
+		return err
+	}
 	return s.authorize(ctx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME, r.GetWorkspaceId())
 }
 
@@ -442,6 +448,12 @@ func (s *Service) acceptDeploy(ctx context.Context, r *api.RuntimeDeployCommand)
 // It is shared by the Workspace-driven first delivery and Serve's own
 // replacement, so a switched-to deployment is as recoverable as the first one.
 func recordStartActionTx(ctx context.Context, tx *sql.Tx, r *api.RuntimeDeployCommand) error {
+	if err := refuseClosedWorkspace(ctx, tx, r.GetWorkspaceId()); err != nil {
+		return err
+	}
+	if err := refuseRetiredRuntime(ctx, tx, r.GetRuntimeInstanceId()); err != nil {
+		return err
+	}
 	key := stableID("start_", r.DeploymentId)
 	var prior []byte
 	err := tx.QueryRowContext(ctx, `SELECT input_snapshot FROM serve.agent_runtime_actions WHERE command_id=$1`, key).Scan(&prior)
@@ -625,12 +637,26 @@ func (s *Service) ReadRuntime(ctx context.Context, r *api.RuntimeReadbackRequest
 	if err := requirePeer(ctx, owneridentity.Workspace); err != nil {
 		return nil, err
 	}
+	if r.GetOriginalReservationIdempotencyKey() != "" {
+		return s.readOriginalReservation(ctx, r)
+	}
 	var workspace string
 	if err := s.DB.QueryRowContext(ctx, `SELECT workspace_id FROM serve.agent_runtime_instances WHERE id=$1 AND deployment_id=$2`, r.GetRuntimeInstanceId(), r.GetDeploymentId()).Scan(&workspace); err != nil {
 		return nil, dbError(err)
 	}
-	if err := s.authorize(ctx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME, workspace); err != nil {
+	var retiring bool
+	if err := s.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM serve.agent_runtime_actions WHERE runtime_instance_id=$1 AND action='terminate')`, r.GetRuntimeInstanceId()).Scan(&retiring); err != nil {
+		return nil, dbError(err)
+	}
+	action := api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME
+	if retiring {
+		action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RETIRERUNTIME
+	}
+	if err := s.authorize(ctx, r.GetContext(), action, workspace); err != nil {
 		return nil, err
+	}
+	if retiring {
+		return s.runtimeReadback(ctx, r.GetRuntimeInstanceId(), r.GetDeploymentId())
 	}
 	var raw []byte
 	err := s.DB.QueryRowContext(ctx, `SELECT input_snapshot FROM serve.agent_runtime_actions WHERE command_id=$1`, stableID("start_", r.DeploymentId)).Scan(&raw)
@@ -653,10 +679,14 @@ func (s *Service) ReadRuntime(ctx context.Context, r *api.RuntimeReadbackRequest
 func (s *Service) runtimeReadback(ctx context.Context, runtimeID, deployment string) (*api.RuntimeReadback, error) {
 	var st, url, receipt, digest, ref, workspace string
 	var descriptorRaw []byte
-	var observed sql.NullTime
+	var observed, fulfilled sql.NullTime
+	var retired bool
 	var epoch, version int64
 	err := s.DB.QueryRowContext(ctx, `SELECT workspace_id,status,COALESCE(access_url,''),COALESCE(readiness_evidence_ref,''),deployment_descriptor,deployment_descriptor_digest,deployment_descriptor_object_ref,observed_at,execution_epoch,applied_model_configuration_version FROM serve.agent_runtime_instances WHERE id=$1 AND deployment_id=$2`, runtimeID, deployment).Scan(&workspace, &st, &url, &receipt, &descriptorRaw, &digest, &ref, &observed, &epoch, &version)
 	if err != nil {
+		return nil, dbError(err)
+	}
+	if err = s.DB.QueryRowContext(ctx, `SELECT d.activated_at,EXISTS(SELECT 1 FROM serve.agent_runtime_actions a WHERE a.runtime_instance_id=$1 AND a.action='terminate' AND a.observation_result='confirmed') FROM serve.agent_deployments d WHERE d.id=$2 AND d.runtime_instance_id=$1`, runtimeID, deployment).Scan(&fulfilled, &retired); err != nil {
 		return nil, dbError(err)
 	}
 	descriptor := &api.DeploymentDescriptor{}
@@ -664,6 +694,10 @@ func (s *Service) runtimeReadback(ctx context.Context, runtimeID, deployment str
 		return nil, status.Error(codes.DataLoss, "persisted deployment descriptor is invalid")
 	}
 	out := &api.RuntimeReadback{RuntimeInstanceId: runtimeID, WorkspaceId: workspace, DeploymentId: deployment, State: api.AgentRuntimeObservationState(api.AgentRuntimeObservationState_value["RUNTIME_INSTANCE_STATE_"+strings.ToUpper(st)]), ProcessReady: st == "ready", ApplicationAvailable: st == "ready", Artifact: descriptor.GetArtifact(), AppliedModelConfigurationVersion: version, ReadinessReceiptId: receipt, Outcome: api.Observation_OBSERVATION_UNKNOWN, DeploymentDescriptorDigest: digest, DeploymentDescriptorObjectRef: ref, ExecutionEpoch: epoch}
+	if fulfilled.Valid {
+		out.FirstFulfilledAt = timestamppb.New(fulfilled.Time)
+	}
+	out.NeverDeliveredConfirmed = retired && st == "terminated" && !fulfilled.Valid
 	if observed.Valid {
 		out.ObservedAt = timestamppb.New(observed.Time)
 		out.Outcome = api.Observation_OBSERVATION_CONFIRMED
@@ -714,6 +748,14 @@ func (s *Service) reconcileRuntime(ctx context.Context, command *api.RuntimeDepl
 	if err = lockWorkspace(ctx, tx, command.WorkspaceId); err != nil {
 		return nil, dbError(err)
 	}
+	var retiring bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM serve.agent_runtime_actions WHERE runtime_instance_id=$1 AND action='terminate')`, command.GetRuntimeInstanceId()).Scan(&retiring); err != nil {
+		return nil, dbError(err)
+	}
+	if retiring {
+		tx.Rollback()
+		return s.runtimeReadback(ctx, command.GetRuntimeInstanceId(), command.GetDeploymentId())
+	}
 	if err = validateReserved(ctx, tx, command); err != nil {
 		return nil, err
 	}
@@ -757,6 +799,15 @@ func (s *Service) observeAndFinishDelivery(ctx context.Context, command *api.Run
 // observeAndFinishDeliveryTx executes and observes the command, records the
 // observation and finishes the delivery step inside the caller's transaction.
 func (s *Service) observeAndFinishDeliveryTx(ctx context.Context, tx *sql.Tx, command *api.RuntimeDeployCommand, start bool) error {
+	if start {
+		if err := refuseClosedWorkspace(ctx, tx, command.GetWorkspaceId()); err != nil {
+			return err
+		}
+		if err := refuseRetiredRuntime(ctx, tx, command.GetRuntimeInstanceId()); err != nil {
+			return err
+		}
+	}
+
 	resources, err := s.Resources.ReadResources(ctx, &api.ResourceReadbackRequest{Context: nextOwnerCall(command.Context), ResourceSetId: command.ResourceSetId})
 	if err != nil {
 		return dbError(err)

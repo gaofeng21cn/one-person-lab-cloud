@@ -107,7 +107,7 @@ func (c *lifecycleGatewayClient) Refund(_ context.Context, r *api.WalletRefundCo
 		return nil, status.Error(codes.InvalidArgument, "different original refund")
 	}
 	return &api.WalletOperation{Id: "wallet-op-refund-original", WorkspaceId: proto.String("workspace-original"),
-		Kind: api.WalletOperationKindEnum_WALLET_OPERATION_KIND_ENUM_REFUND, AmountUsdMicros: r.GetAmountUsdMicros(),
+		Kind: api.WalletOperationKindEnum_WALLET_OPERATION_KIND_ENUM_REFUND, OriginalChargeOperationId: proto.String(r.GetOriginalWalletOperationId()), AmountUsdMicros: r.GetAmountUsdMicros(),
 		Status: api.WalletOperationStatusEnum_WALLET_OPERATION_STATUS_ENUM_CONFIRMED, CreatedAt: timestamppb.Now()}, nil
 }
 

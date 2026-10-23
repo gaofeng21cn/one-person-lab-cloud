@@ -1238,6 +1238,23 @@ records the required immutable receipts. An HTTP acknowledgement or receipt
 alone does not create readiness. Exact async handoff, unknown-result recovery and
 receipt completion obligations are defined in target specification 06.
 
+Native Workspace closeout uses the existing Workspace DELETE and its durable
+Operation. Workspace first stops original-create continuation; each downstream
+owner fences its own late creation before confirming absence. A lost resource,
+reservation or Key response is resolved by the original command identity, never
+by guessing an ID or treating an empty Workspace result as absence. Serve retains
+first-delivery evidence through retirement, so delivery before a lost creation
+acknowledgement cannot become an unfulfilled full refund. Gateway retains the
+original wallet and serializes all refund reservations against the original
+confirmed charge; an unknown reservation still consumes its amount. Ledger
+retains the original financial and deletion evidence.
+
+New lifecycle callers use those extracted owners. Retained Control Plane orders
+must carry their original obligations and evidence into an explicit migration
+before the corresponding old writer is retired. Native qualification and caller
+cutover precede that retirement; the retained implementation is not a new
+Workspace closeout path or an alternate current writer.
+
 Serve owns its public access policies; invocation semantics remain in the
 packaged Runtime. The default App's own package/workbench behavior remains App
 and Framework authority, not a new Cloud Package writer.

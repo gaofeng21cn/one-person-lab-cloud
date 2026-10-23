@@ -191,6 +191,9 @@ func recordDeploymentObservation(ctx context.Context, tx *sql.Tx, cmd *api.Runti
 	if err := validateReserved(ctx, tx, cmd); err != nil {
 		return nil, err
 	}
+	if err := refuseRetiredRuntime(ctx, tx, cmd.GetRuntimeInstanceId()); err != nil {
+		return nil, err
+	}
 	var previous sql.NullTime
 	if err := tx.QueryRowContext(ctx, `SELECT observed_at FROM serve.agent_runtime_instances WHERE id=$1 FOR UPDATE`, cmd.GetRuntimeInstanceId()).Scan(&previous); err != nil {
 		return nil, dbError(err)
