@@ -25,7 +25,7 @@ import (
 	contracts "opl-cloud/packages/contracts/go"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/services/internal/protectedresource"
-	"opl-cloud/services/serve/internal/tkeapply"
+	"opl-cloud/services/internal/tkeapply"
 )
 
 // applicationExecutor is Serve's provider-neutral application execution port. The

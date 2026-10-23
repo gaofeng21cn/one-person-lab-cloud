@@ -444,7 +444,7 @@ func TestExecutorImageConflictRemainsReadableAsFailure(t *testing.T) {
 	if _, err := executor.EnsureWorkspaceApplicationRuntime(context.Background(), input, testPlacement()); err != nil {
 		t.Fatal(err)
 	}
-	deployment := cluster.objects["Deployment/"+workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)]
+	deployment := cluster.objects["Deployment/"+ComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)]
 	containers := nested(deployment, "spec", "template", "spec", "containers").([]any)
 	containers[0].(map[string]any)["image"] = "registry.test/app@sha256:" + strings.Repeat("2", 64)
 	readback, err := executor.ReadWorkspaceApplicationRuntime(context.Background(), input)
@@ -517,7 +517,7 @@ func TestExecutorReportsPendingUntilEveryComponentServes(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A scaled-to-zero component is not an available application.
-	name := workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)
+	name := ComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)
 	cluster.scale([]string{"scale", "deployment/" + name, "--replicas=0"})
 	observation, err := executor.ReadWorkspaceApplicationRuntime(context.Background(), input)
 	if err != nil {
@@ -611,5 +611,30 @@ func TestExecutorReadsTheApplicationsOwnCredential(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestExecutorRetainsOwnerBoundaryWithoutRawTransportFallback(t *testing.T) {
+	cluster := newFakeCluster()
+	executor := testExecutor(cluster, testInstallation(map[string]string{"app": "serve"}))
+	boundaryFailure := errors.New("original owner journal unavailable")
+	rawCalls, applyCalls := 0, 0
+	executor.Kubectl = func(context.Context, []string, []byte) ([]byte, error) {
+		rawCalls++
+		return nil, errors.New("raw transport bypass")
+	}
+	executor.RunKubectl = func(ctx context.Context, args []string, stdin []byte, target protectedresource.Target) ([]byte, error) {
+		if args[0] == "apply" {
+			applyCalls++
+			if target.NodeName != testPlacement().ComputeNodeName {
+				t.Fatal("owner boundary lost the confirmed target")
+			}
+			return nil, boundaryFailure
+		}
+		return cluster.kubectl(ctx, args, stdin)
+	}
+	_, err := executor.EnsureWorkspaceApplicationRuntime(context.Background(), testInput(t), testPlacement())
+	if !errors.Is(err, boundaryFailure) || rawCalls != 0 || applyCalls != 1 {
+		t.Fatalf("error=%v raw=%d owner apply=%d", err, rawCalls, applyCalls)
 	}
 }

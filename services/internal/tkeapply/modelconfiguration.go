@@ -248,7 +248,7 @@ func modelConfigurationDestination(input WorkspaceApplicationRuntimeInput, contr
 	if !declared {
 		return "", fmt.Errorf("%w: the application revision declares no port named %q", ErrModelConfigurationUnsupported, contract.PortName)
 	}
-	service := workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)
+	service := ComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)
 	if strings.TrimSpace(service) == "" {
 		return "", fmt.Errorf("%w: the application destination is unresolvable", ErrModelConfigurationUnsupported)
 	}

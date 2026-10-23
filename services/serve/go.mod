@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
-	k8s.io/apimachinery v0.37.0
+	k8s.io/apimachinery v0.37.1 // indirect
 	opl-cloud/packages/contracts/go v0.0.0
 	opl-cloud/services/internal/ownerservice v0.0.0
 	opl-cloud/services/internal/ownerstore v0.0.0-00010101000000-000000000000
@@ -56,3 +56,7 @@ replace opl-cloud/apps/console-bff => ../../apps/console-bff
 replace opl-cloud/services/gateway-integration => ../gateway-integration
 
 replace opl-cloud/services/capability => ../capability
+
+require opl-cloud/services/internal/tkeapply v0.0.0
+
+replace opl-cloud/services/internal/tkeapply => ../internal/tkeapply

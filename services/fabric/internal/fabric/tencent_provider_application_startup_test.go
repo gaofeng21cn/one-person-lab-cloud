@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"opl-cloud/services/internal/tkeapply"
 	"reflect"
 	"strings"
 	"testing"
@@ -20,7 +21,7 @@ func TestTencentApplicationStartupAndResumeFollowReadyDependencies(t *testing.T)
 	}
 	ctx := context.Background()
 	exists := func(name string) bool {
-		return fake.deployments[workspaceApplicationComponentResourceName(input, name)] != nil
+		return fake.deployments[tkeapply.ComponentResourceName(input, name)] != nil
 	}
 	for wave, want := range [][]string{{"database"}, {"database", "api"}, {"database", "api", "main"}} {
 		observation, err := provider.EnsureWorkspaceApplicationRuntime(ctx, input, tencentApplicationCompute(), tencentApplicationVolume())
@@ -54,7 +55,7 @@ func TestTencentApplicationStartupAndResumeFollowReadyDependencies(t *testing.T)
 		t.Fatalf("stop calls=%#v", calls)
 	}
 	for index, name := range []string{"main", "api", "database"} {
-		if calls[index][1] != "deployment/"+workspaceApplicationComponentResourceName(input, name) || calls[index][2] != "--replicas=0" {
+		if calls[index][1] != "deployment/"+tkeapply.ComponentResourceName(input, name) || calls[index][2] != "--replicas=0" {
 			t.Fatalf("stop order=%#v", calls)
 		}
 	}
@@ -70,7 +71,7 @@ func TestTencentApplicationStartupAndResumeFollowReadyDependencies(t *testing.T)
 					expected = 1
 				}
 			}
-			actual := number(nested(fake.deployments[workspaceApplicationComponentResourceName(input, name)], "spec", "replicas"))
+			actual := number(nested(fake.deployments[tkeapply.ComponentResourceName(input, name)], "spec", "replicas"))
 			if actual != float64(expected) {
 				t.Fatalf("resume wave %d %s replicas=%v want %v", wave, name, actual, expected)
 			}
@@ -87,7 +88,7 @@ func TestTencentApplicationStartupAndResumeFollowReadyDependencies(t *testing.T)
 	}
 	expected := []string{}
 	for _, name := range []string{"database", "api", "main"} {
-		expected = append(expected, "deployment/"+workspaceApplicationComponentResourceName(input, name))
+		expected = append(expected, "deployment/"+tkeapply.ComponentResourceName(input, name))
 	}
 	if !reflect.DeepEqual(order, expected) {
 		t.Fatalf("resume order=%#v want %#v", order, expected)
@@ -138,7 +139,7 @@ func TestTencentApplicationScratchSizeIsRenderedAndVerified(t *testing.T) {
 	for _, component := range contracts.WorkspaceApplicationRuntimeComponents(input.Revision) {
 		t.Run(component.Name, func(t *testing.T) {
 			var deployment map[string]any
-			if err := json.Unmarshal(mustJSON(workspaceApplicationComponentDeployment(input, tencentApplicationCompute(), tencentApplicationVolume(), component, nil, "fixture-pvc")), &deployment); err != nil {
+			if err := json.Unmarshal(mustJSON(retainedComponentDeployment(input, tencentApplicationCompute(), tencentApplicationVolume(), component, nil, "fixture-pvc")), &deployment); err != nil {
 				t.Fatal(err)
 			}
 			volumes := nested(deployment, "spec", "template", "spec", "volumes").([]any)
@@ -152,7 +153,7 @@ func TestTencentApplicationScratchSizeIsRenderedAndVerified(t *testing.T) {
 					scratch["sizeLimit"] = expected
 				}
 			}
-			if !verifyTencentApplicationConfiguration(input, component, deployment, "fixture-pvc") {
+			if !tkeapply.VerifyConfiguration(input, component, deployment, "fixture-pvc") {
 				t.Fatal("normalized sizeLimit rejected")
 			}
 			for _, value := range volumes {
@@ -161,7 +162,7 @@ func TestTencentApplicationScratchSizeIsRenderedAndVerified(t *testing.T) {
 					scratch["sizeLimit"] = "4Ki"
 				}
 			}
-			if verifyTencentApplicationConfiguration(input, component, deployment, "fixture-pvc") {
+			if tkeapply.VerifyConfiguration(input, component, deployment, "fixture-pvc") {
 				t.Fatal("changed sizeLimit accepted")
 			}
 		})
@@ -205,7 +206,7 @@ func TestTencentApplicationExecutionIdentityRenderedAndReadBack(t *testing.T) {
 	input.Revision.Dependencies[0].Execution = contracts.WorkspaceApplicationExecution{UserID: &depUser, GroupID: &depGroup}
 	completeTencentApplicationStartup(t, provider, fake, input)
 	for _, component := range contracts.WorkspaceApplicationRuntimeComponents(input.Revision) {
-		deployment := fake.deployments[workspaceApplicationComponentResourceName(input, component.Name)]
+		deployment := fake.deployments[tkeapply.ComponentResourceName(input, component.Name)]
 		security := nested(deployment, "spec", "template", "spec", "securityContext").(map[string]any)
 		user, group := mainUser, mainGroup
 		if component.Role == contracts.WorkspaceApplicationComponentDependency {
@@ -225,7 +226,7 @@ func TestTencentApplicationExecutionIdentityRenderedAndReadBack(t *testing.T) {
 	if err != nil || observed.Status != "ready" {
 		t.Fatalf("observation=%#v err=%v", observed, err)
 	}
-	main := fake.deployments[workspaceApplicationComponentResourceName(input, "main")]
+	main := fake.deployments[tkeapply.ComponentResourceName(input, "main")]
 	nested(main, "spec", "template", "spec", "securityContext").(map[string]any)["runAsUser"] = 10009
 	observed, err = provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
 	if err != nil || observed.Status != "failed" {
@@ -240,10 +241,10 @@ func TestTencentApplicationAdmitsDeclaredExecutionIdentity(t *testing.T) {
 	_, _, input := tencentApplicationRuntimeFixture(t)
 	user, group := int64(10002), int64(10002)
 	input.Revision.Execution = contracts.WorkspaceApplicationExecution{UserID: &user, GroupID: &group}
-	if err := validateTencentApplicationCapabilities(input.Revision); err != nil {
+	if err := tkeapply.ValidateCapabilities(input.Revision); err != nil {
 		t.Fatalf("declared identity=%v", err)
 	}
-	security := workspaceApplicationSecurityContext(input, contracts.WorkspaceApplicationRuntimeComponents(input.Revision)[0])
+	security := tkeapply.SecurityContext(input, contracts.WorkspaceApplicationRuntimeComponents(input.Revision)[0])
 	if security["runAsUser"] != int64(10002) || security["runAsGroup"] != int64(10002) {
 		t.Fatalf("declared identity must reach the container: %#v", security)
 	}
@@ -255,7 +256,7 @@ func TestTencentApplicationDependencyExecProbeKeepsDeclaredCommandAndRejectsDrif
 	input.Revision.Dependencies[0].HealthChecks = []contracts.WorkspaceApplicationDependencyHealthCheck{{Type: "exec", Command: command, InitialDelaySeconds: 10}}
 	component := contracts.WorkspaceApplicationRuntimeComponents(input.Revision)[1]
 	var deployment map[string]any
-	if err := json.Unmarshal(mustJSON(workspaceApplicationComponentDeployment(input, tencentApplicationCompute(), tencentApplicationVolume(), component, nil, "fixture-pvc")), &deployment); err != nil {
+	if err := json.Unmarshal(mustJSON(retainedComponentDeployment(input, tencentApplicationCompute(), tencentApplicationVolume(), component, nil, "fixture-pvc")), &deployment); err != nil {
 		t.Fatal(err)
 	}
 	probe := firstContainerField(deployment, "readinessProbe").(map[string]any)
@@ -268,17 +269,17 @@ func TestTencentApplicationDependencyExecProbeKeepsDeclaredCommandAndRejectsDrif
 			t.Fatalf("argument %d changed: %#v", index, actual)
 		}
 	}
-	if !verifyTencentApplicationConfiguration(input, component, deployment, "fixture-pvc") {
+	if !tkeapply.VerifyConfiguration(input, component, deployment, "fixture-pvc") {
 		t.Fatal("declared exec probe rejected")
 	}
 	actual[2] = "true"
-	if verifyTencentApplicationConfiguration(input, component, deployment, "fixture-pvc") {
+	if tkeapply.VerifyConfiguration(input, component, deployment, "fixture-pvc") {
 		t.Fatal("changed exec probe accepted")
 	}
 	actual[2] = command[2]
 	delete(probe, "exec")
 	probe["tcpSocket"] = map[string]any{"port": 9380}
-	if verifyTencentApplicationConfiguration(input, component, deployment, "fixture-pvc") {
+	if tkeapply.VerifyConfiguration(input, component, deployment, "fixture-pvc") {
 		t.Fatal("exec probe weakened to TCP")
 	}
 }

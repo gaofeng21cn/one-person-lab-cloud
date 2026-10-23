@@ -1245,3 +1245,19 @@ The retained personal Gateway history/endpoint adapter uses the same live-sessio
 identity proof as original-history reads, but requires no legacy Account. The
 Control Plane reuses its Sub2API adjustment-history and configured endpoint
 readers; BFF forwards only the session reference and validated pagination.
+
+### Shared TKE execution implementation (2026-10-23)
+
+`services/internal/tkeapply` owns the policy-free application apply, observation,
+configuration, readiness and lifecycle implementation used by Serve and the
+retained Fabric adapter. Serve remains the new application owner; Fabric retains
+historical application calls until their real callers and obligations migrate.
+The Fabric adapter supplies its exact placement, original credential-provenance
+resolver, resource guard and mutation journal. The shared executor does not own
+or discover another owner's operations, credentials or authorization.
+
+Fabric still needs cluster access for infrastructure/PVC operations. Source
+consolidation neither proves a single installed credential nor authorizes removal
+of historical execution access. Instance must read the original operation/caller
+inventory and enforce the approved credential/RBAC split before retiring a live
+boundary. No cluster mutation or production qualification is part of this change.

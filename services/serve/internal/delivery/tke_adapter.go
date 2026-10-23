@@ -41,7 +41,7 @@ import (
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/packages/contracts/go/publicjson"
-	"opl-cloud/services/serve/internal/tkeapply"
+	"opl-cloud/services/internal/tkeapply"
 )
 
 // ReasonCredentialInjectionWireMissing names the one injection the current

@@ -32,7 +32,7 @@ func TestOverlayApplicationRuntimeDurableOwnerMiss(t *testing.T) {
 	var manifest struct {
 		Items []map[string]any `json:"items"`
 	}
-	if err := json.Unmarshal(workspaceApplicationManifest(input, creator.computes[input.ComputeID], creator.volumes[input.VolumeID]), &manifest); err != nil {
+	if err := json.Unmarshal(retainedManifest(input, creator.computes[input.ComputeID], creator.volumes[input.VolumeID]), &manifest); err != nil {
 		t.Fatal(err)
 	}
 	var deployment map[string]any

@@ -5,6 +5,7 @@ import (
 	"errors"
 	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/internal/protectedresource"
+	"opl-cloud/services/internal/tkeapply"
 	"strconv"
 )
 
@@ -185,7 +186,7 @@ func (p *TencentProvider) WorkspaceApplicationLegacyLifecycle(ctx context.Contex
 	if err != nil {
 		return result, err
 	}
-	if deployment != nil && workspaceApplicationDeploymentImage(deployment) != runtime.ImageID {
+	if deployment != nil && tkeapply.DeploymentImage(deployment) != runtime.ImageID {
 		return result, ErrLaunchStageBindingConflict
 	}
 	if mutate {

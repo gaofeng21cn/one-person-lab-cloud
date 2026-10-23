@@ -21,9 +21,9 @@ func workspaceApplicationComponentConfigInputs(input WorkspaceApplicationRuntime
 	return dependency.ConfigInputs
 }
 
-func verifyApplicationConfigObject(input WorkspaceApplicationRuntimeInput, config map[string]any) bool {
+func VerifyConfigObject(input WorkspaceApplicationRuntimeInput, config map[string]any) bool {
 	if config["kind"] != "ConfigMap" || config["immutable"] != true ||
-		stringValue(nested(config, "metadata", "name")) != workspaceApplicationComponentResourceName(input, "config") ||
+		stringValue(nested(config, "metadata", "name")) != ComponentResourceName(input, "config") ||
 		stringValue(nested(config, "metadata", "labels", "oplcloud.cn/account-id")) != k8sCostLabelValue(input.AccountID) ||
 		stringValue(nested(config, "metadata", "labels", "oplcloud.cn/workspace-id")) != k8sCostLabelValue(input.WorkspaceID) ||
 		stringValue(nested(config, "metadata", "labels", "oplcloud.cn/runtime-id")) != k8sCostLabelValue(applicationRuntimeID(input)) ||
@@ -35,7 +35,7 @@ func verifyApplicationConfigObject(input WorkspaceApplicationRuntimeInput, confi
 }
 
 func (p *Executor) readApplicationConfigObject(ctx context.Context, input WorkspaceApplicationRuntimeInput) (map[string]any, error) {
-	name := workspaceApplicationComponentResourceName(input, "config")
+	name := ComponentResourceName(input, "config")
 	raw, err := p.callKubectl(ctx, []string{"get", "configmap/" + name, "--ignore-not-found", "-o", "json"}, nil, protectedresource.Target{})
 	if err != nil {
 		return nil, err
@@ -44,7 +44,7 @@ func (p *Executor) readApplicationConfigObject(ctx context.Context, input Worksp
 		return nil, ErrResourceAbsent
 	}
 	var config map[string]any
-	if json.Unmarshal(raw, &config) != nil || !verifyApplicationConfigObject(input, config) {
+	if json.Unmarshal(raw, &config) != nil || !VerifyConfigObject(input, config) {
 		return nil, ErrLaunchStageBindingConflict
 	}
 	return config, nil
@@ -60,7 +60,7 @@ func (p *Executor) prepareApplicationConfigFiles(ctx context.Context, input Work
 		return err
 	}
 	config := map[string]any{"apiVersion": "v1", "kind": "ConfigMap", "immutable": true,
-		"metadata": map[string]any{"name": workspaceApplicationComponentResourceName(input, "config"),
+		"metadata": map[string]any{"name": ComponentResourceName(input, "config"),
 			"labels":      map[string]string{"oplcloud.cn/account-id": k8sCostLabelValue(input.AccountID), "oplcloud.cn/workspace-id": k8sCostLabelValue(input.WorkspaceID), "oplcloud.cn/runtime-id": k8sCostLabelValue(applicationRuntimeID(input))},
 			"annotations": map[string]string{"oplcloud.cn/configuration-digest": input.ConfigurationDigest}},
 		"data": input.Configuration.Files}

@@ -3,6 +3,7 @@ package fabric
 import (
 	"context"
 	"errors"
+	"opl-cloud/services/internal/tkeapply"
 	"os"
 	"strings"
 
@@ -70,7 +71,7 @@ func (p *TencentProvider) PreflightWorkspaceApplicationRuntime(ctx context.Conte
 	if err := p.validateInstallationConfig(); err != nil {
 		return err
 	}
-	if err := validateTencentApplicationCapabilities(input.Revision); err != nil {
+	if err := tkeapply.ValidateCapabilities(input.Revision); err != nil {
 		return err
 	}
 	for _, binding := range input.SecretBindings {

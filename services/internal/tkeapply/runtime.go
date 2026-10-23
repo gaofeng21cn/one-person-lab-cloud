@@ -43,7 +43,7 @@ func (p *Executor) EnsureWorkspaceApplicationRuntime(ctx context.Context, input 
 	if err := contracts.ValidateWorkspaceApplicationRevision(input.Revision); err != nil {
 		return contracts.WorkspaceApplicationRuntimeObservation{}, err
 	}
-	if err := validateTencentApplicationCapabilities(input.Revision); err != nil {
+	if err := ValidateCapabilities(input.Revision); err != nil {
 		return contracts.WorkspaceApplicationRuntimeObservation{}, err
 	}
 	existing, err := p.readWorkspaceApplicationResources(ctx, input)
@@ -51,8 +51,8 @@ func (p *Executor) EnsureWorkspaceApplicationRuntime(ctx context.Context, input 
 		return contracts.WorkspaceApplicationRuntimeObservation{}, err
 	}
 	for _, component := range contracts.WorkspaceApplicationRuntimeComponents(input.Revision) {
-		if deployment, ok := existing.deployments[workspaceApplicationComponentResourceName(input, component.Name)]; ok &&
-			workspaceApplicationDeploymentImage(deployment) != component.Image {
+		if deployment, ok := existing.deployments[ComponentResourceName(input, component.Name)]; ok &&
+			DeploymentImage(deployment) != component.Image {
 			return contracts.WorkspaceApplicationRuntimeObservation{}, fmt.Errorf("tencent_application_component_conflict")
 		}
 	}
@@ -64,10 +64,10 @@ func (p *Executor) EnsureWorkspaceApplicationRuntime(ctx context.Context, input 
 	}
 	admitted := map[string]bool{}
 	for _, component := range contracts.WorkspaceApplicationRuntimeComponents(input.Revision) {
-		_, exists := existing.deployments[workspaceApplicationComponentResourceName(input, component.Name)]
+		_, exists := existing.deployments[ComponentResourceName(input, component.Name)]
 		admitted[component.Name] = exists || workspaceApplicationDependenciesReady(input, component.Name, existing)
 	}
-	if _, err := p.callKubectl(ctx, []string{"apply", "-f", "-"}, workspaceApplicationComponentManifest(input, placement, p.Installation, admitted), protectedresource.Target{
+	if _, err := p.callKubectl(ctx, []string{"apply", "-f", "-"}, ComponentManifest(input, placement, p.Installation, admitted), protectedresource.Target{
 		PackageID: placement.ComputePackageID, NodePoolID: placement.ComputeNodePoolID, MachineID: placement.ComputeMachineName, NodeName: placement.ComputeNodeName,
 		CVMID: placement.ComputeInstanceID,
 	}); err != nil {
@@ -148,8 +148,8 @@ func (p *Executor) readWorkspaceApplicationResources(ctx context.Context, input 
 		}
 	}
 	if len(input.Configuration.Files) > 0 {
-		config := resources.auxiliary["ConfigMap:"+workspaceApplicationComponentResourceName(input, "config")]
-		if config != nil && !verifyApplicationConfigObject(input, config) || config == nil && len(resources.deployments) > 0 {
+		config := resources.auxiliary["ConfigMap:"+ComponentResourceName(input, "config")]
+		if config != nil && !VerifyConfigObject(input, config) || config == nil && len(resources.deployments) > 0 {
 			return resources, ErrLaunchStageBindingConflict
 		}
 	}
@@ -157,7 +157,7 @@ func (p *Executor) readWorkspaceApplicationResources(ctx context.Context, input 
 		// Original application policies have owner annotations but no selector
 		// labels. Read the exact original names so absence cannot omit them.
 		for _, component := range []string{"network", "entry-network"} {
-			name := workspaceApplicationComponentResourceName(input, component)
+			name := ComponentResourceName(input, component)
 			raw, err := p.callKubectl(ctx, []string{"get", "networkpolicy/" + name, "--ignore-not-found", "-o", "json"}, nil, protectedresource.Target{})
 			if err != nil {
 				return resources, err
@@ -206,7 +206,7 @@ func workspaceApplicationObservation(input WorkspaceApplicationRuntimeInput, res
 	observed := make([]contracts.WorkspaceApplicationRuntimeComponentState, 0, len(input.Revision.Dependencies)+1)
 	for _, component := range contracts.WorkspaceApplicationRuntimeComponents(input.Revision) {
 		state, lastError := "absent", ""
-		if deployment, found := resources.deployments[workspaceApplicationComponentResourceName(input, component.Name)]; found {
+		if deployment, found := resources.deployments[ComponentResourceName(input, component.Name)]; found {
 			state, lastError = workspaceApplicationComponentStatus(input, component, deployment, resources)
 		}
 		observed = append(observed, contracts.WorkspaceApplicationRuntimeComponentState{
@@ -225,7 +225,7 @@ func workspaceApplicationObservation(input WorkspaceApplicationRuntimeInput, res
 	if observation.Status == "ready" {
 		if entryPort, published := contracts.WorkspaceApplicationEntryPort(input.Revision); published && input.Revision.ExposurePolicy != "cloud_private" {
 			observation.Entry = &contracts.WorkspaceApplicationEntry{
-				ServiceName: workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain),
+				ServiceName: ComponentResourceName(input, contracts.WorkspaceApplicationComponentMain),
 				Port:        entryPort.Port,
 			}
 		}
@@ -237,10 +237,10 @@ func workspaceApplicationComponentStatus(input WorkspaceApplicationRuntimeInput,
 	if component.Role == contracts.WorkspaceApplicationComponentMain && len(input.Revision.HealthChecks) > 1 {
 		return "failed", "tencent_application_health_checks_unsupported"
 	}
-	if !verifyTencentApplicationConfiguration(input, component, deployment, resources.storagePVC) {
+	if !VerifyConfiguration(input, component, deployment, resources.storagePVC) {
 		return "failed", "tencent_application_configuration_mismatch"
 	}
-	if workspaceApplicationDeploymentImage(deployment) != component.Image ||
+	if DeploymentImage(deployment) != component.Image ||
 		stringValue(firstContainerField(deployment, "name")) != "app" ||
 		stringValue(nested(deployment, "metadata", "labels", "oplcloud.cn/runtime-operation-id")) != k8sCostLabelValue(input.RuntimeOperationID) {
 		return "failed", "tencent_application_component_identity_mismatch"
@@ -303,7 +303,7 @@ func workspaceApplicationComponentPorts(revision contracts.WorkspaceApplicationR
 	return ports
 }
 
-func workspaceApplicationComponentResourceName(input WorkspaceApplicationRuntimeInput, componentName string) string {
+func ComponentResourceName(input WorkspaceApplicationRuntimeInput, componentName string) string {
 	if input.SchemaVersion == 0 {
 		switch componentName {
 		case "network":
@@ -318,7 +318,7 @@ func workspaceApplicationComponentResourceName(input WorkspaceApplicationRuntime
 	return k8sName("app-" + stableSuffix(input.RuntimeOperationID, componentName)[:32])
 }
 
-func workspaceApplicationDeploymentImage(deployment map[string]any) string {
+func DeploymentImage(deployment map[string]any) string {
 	containers, _ := nested(deployment, "spec", "template", "spec", "containers").([]any)
 	if len(containers) == 0 {
 		return ""
@@ -329,17 +329,17 @@ func workspaceApplicationDeploymentImage(deployment map[string]any) string {
 	return ""
 }
 
-// workspaceApplicationManifest renders one List document: a Deployment and a
+// Manifest renders one List document: a Deployment and a
 // Service per declared component plus NetworkPolicies scoping the application.
 // The main component's persistent mounts use the workspace CBS PVC and its
 // scratch mounts are memory-backed emptyDirs. Dependencies do not inherit them.
-func workspaceApplicationManifest(input WorkspaceApplicationRuntimeInput, placement Placement, installation Installation) []byte {
-	return workspaceApplicationComponentManifest(input, placement, installation, nil)
+func Manifest(input WorkspaceApplicationRuntimeInput, placement Placement, installation Installation) []byte {
+	return ComponentManifest(input, placement, installation, nil)
 }
 
 // A replay admits only components whose declared predecessors are ready. The
 // existing runtime readback is the only progress state; Read never creates work.
-func workspaceApplicationComponentManifest(input WorkspaceApplicationRuntimeInput, placement Placement, installation Installation, admitted map[string]bool) []byte {
+func ComponentManifest(input WorkspaceApplicationRuntimeInput, placement Placement, installation Installation, admitted map[string]bool) []byte {
 	components := contracts.WorkspaceApplicationRuntimeComponents(input.Revision)
 	tags := oplCostTags(placement.AccountID, input.WorkspaceID, applicationRuntimeID(input), input.RuntimeOperationID)
 	pvcName := placement.StoragePVCName
@@ -350,16 +350,16 @@ func workspaceApplicationComponentManifest(input WorkspaceApplicationRuntimeInpu
 		}
 		items = append(items,
 			workspaceApplicationComponentService(input, placement, component, tags),
-			workspaceApplicationComponentDeployment(input, placement, installation, component, tags, pvcName),
+			ComponentDeployment(input, placement, installation, component, tags, pvcName),
 		)
 	}
-	items = append(items, workspaceApplicationNetworkPolicy(input, installation, tags))
+	items = append(items, NetworkPolicy(input, installation, tags))
 	return mustJSON(map[string]any{"apiVersion": "v1", "kind": "List", "items": items})
 }
 
 func workspaceApplicationDependenciesReady(input WorkspaceApplicationRuntimeInput, name string, resources workspaceApplicationKubernetesResources) bool {
 	for _, dependencyName := range contracts.WorkspaceApplicationComponentDependencies(input.Revision, name) {
-		deployment := resources.deployments[workspaceApplicationComponentResourceName(input, dependencyName)]
+		deployment := resources.deployments[ComponentResourceName(input, dependencyName)]
 		if deployment == nil {
 			return false
 		}
@@ -386,19 +386,19 @@ func workspaceApplicationIdentityLabels(input WorkspaceApplicationRuntimeInput, 
 		"oplcloud.cn/component-name":        k8sCostLabelValue(component.Name),
 		"oplcloud.cn/component-role":        k8sCostLabelValue(component.Role),
 		"app.kubernetes.io/name":            "opl-workspace-application",
-		"app.kubernetes.io/instance":        workspaceApplicationComponentResourceName(input, component.Name),
+		"app.kubernetes.io/instance":        ComponentResourceName(input, component.Name),
 	}, k8sCostLabels(tags))
 }
 
 func workspaceApplicationComponentSelector(input WorkspaceApplicationRuntimeInput, componentName string) map[string]string {
 	return map[string]string{
 		"app.kubernetes.io/name":            "opl-workspace-application",
-		"app.kubernetes.io/instance":        workspaceApplicationComponentResourceName(input, componentName),
+		"app.kubernetes.io/instance":        ComponentResourceName(input, componentName),
 		"oplcloud.cn/compute-allocation-id": k8sCostLabelValue(input.ComputeID),
 	}
 }
 
-func workspaceApplicationComponentDeployment(
+func ComponentDeployment(
 	input WorkspaceApplicationRuntimeInput,
 	placement Placement,
 	installation Installation,
@@ -488,14 +488,14 @@ func workspaceApplicationComponentDeployment(
 			names = append(names, name)
 		}
 		sort.Strings(names)
-		volumes = append(volumes, map[string]any{"name": "application-secrets", "secret": map[string]any{"secretName": workspaceApplicationComponentResourceName(input, "secrets"), "defaultMode": 0440}})
+		volumes = append(volumes, map[string]any{"name": "application-secrets", "secret": map[string]any{"secretName": ComponentResourceName(input, "secrets"), "defaultMode": 0440}})
 		for _, name := range names {
 			volumeMounts = append(volumeMounts, map[string]any{"name": "application-secrets", "mountPath": targets[name], "subPath": name, "readOnly": true})
 		}
 	}
 	configInputs := workspaceApplicationComponentConfigInputs(input, component)
 	if len(configInputs) > 0 {
-		volumes = append(volumes, map[string]any{"name": "application-config", "configMap": map[string]any{"name": workspaceApplicationComponentResourceName(input, "config"), "defaultMode": 0444}})
+		volumes = append(volumes, map[string]any{"name": "application-config", "configMap": map[string]any{"name": ComponentResourceName(input, "config"), "defaultMode": 0444}})
 		for _, config := range configInputs {
 			volumeMounts = append(volumeMounts, map[string]any{"name": "application-config", "mountPath": config.Target, "subPath": config.Name, "readOnly": true})
 		}
@@ -521,9 +521,9 @@ func workspaceApplicationComponentDeployment(
 	if len(volumeMounts) > 0 {
 		container["volumeMounts"] = volumeMounts
 	}
-	securityContext := workspaceApplicationSecurityContext(input, component)
+	securityContext := SecurityContext(input, component)
 	deployment := map[string]any{"apiVersion": "apps/v1", "kind": "Deployment", "metadata": map[string]any{
-		"name": workspaceApplicationComponentResourceName(input, component.Name), "labels": labels, "annotations": mergeStringMaps(tags, map[string]string{"oplcloud.cn/configuration-digest": input.ConfigurationDigest}),
+		"name": ComponentResourceName(input, component.Name), "labels": labels, "annotations": mergeStringMaps(tags, map[string]string{"oplcloud.cn/configuration-digest": input.ConfigurationDigest}),
 	}, "spec": map[string]any{"replicas": 1, "strategy": map[string]any{"type": "Recreate"}, "selector": map[string]any{"matchLabels": selector}, "template": map[string]any{
 		"metadata": map[string]any{"labels": labels}, "spec": map[string]any{
 			"automountServiceAccountToken": false, "dnsPolicy": "ClusterFirst",
@@ -548,7 +548,7 @@ func workspaceApplicationComponentService(
 ) map[string]any {
 	labels := workspaceApplicationIdentityLabels(input, placement, component, tags)
 	service := map[string]any{"apiVersion": "v1", "kind": "Service", "metadata": map[string]any{
-		"name": workspaceApplicationComponentResourceName(input, component.Name), "labels": labels, "annotations": tags,
+		"name": ComponentResourceName(input, component.Name), "labels": labels, "annotations": tags,
 	}, "spec": map[string]any{"type": "ClusterIP", "selector": workspaceApplicationComponentSelector(input, component.Name)}}
 	if component.Role == contracts.WorkspaceApplicationComponentMain && len(input.Revision.Ports) > 0 {
 		ports := []any{}
@@ -564,12 +564,12 @@ func workspaceApplicationComponentService(
 	return service
 }
 
-// workspaceApplicationNetworkPolicy scopes who may reach the application. Its
+// NetworkPolicy scopes who may reach the application. Its
 // ingress names exactly two peers: the installation-declared pods that serve the
 // Workspace application entry (the Serve access data plane, whose labels only the
 // installation knows) and the application's own sibling components. A caller that
 // declares no ingress peer never reaches this function: apply refuses first.
-func workspaceApplicationNetworkPolicy(input WorkspaceApplicationRuntimeInput, installation Installation, tags map[string]string) map[string]any {
+func NetworkPolicy(input WorkspaceApplicationRuntimeInput, installation Installation, tags map[string]string) map[string]any {
 	workspaceSelector := map[string]any{"matchLabels": map[string]any{
 		"oplcloud.cn/workspace-id": k8sCostLabelValue(input.WorkspaceID),
 		"oplcloud.cn/runtime-id":   k8sCostLabelValue(applicationRuntimeID(input)),
@@ -592,7 +592,7 @@ func workspaceApplicationNetworkPolicy(input WorkspaceApplicationRuntimeInput, i
 	ingress = append(ingress, map[string]any{"from": []any{map[string]any{"podSelector": workspaceSelector}}})
 	egress := append(workspaceEgressRules(), map[string]any{"to": []any{map[string]any{"podSelector": workspaceSelector}}})
 	return map[string]any{"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy", "metadata": map[string]any{
-		"name": workspaceApplicationComponentResourceName(input, "network"), "annotations": tags, "labels": mergeStringMaps(k8sCostLabels(tags), map[string]string{"oplcloud.cn/runtime-id": k8sCostLabelValue(applicationRuntimeID(input))}),
+		"name": ComponentResourceName(input, "network"), "annotations": tags, "labels": mergeStringMaps(k8sCostLabels(tags), map[string]string{"oplcloud.cn/runtime-id": k8sCostLabelValue(applicationRuntimeID(input))}),
 	}, "spec": map[string]any{"podSelector": workspaceSelector, "policyTypes": []any{"Ingress", "Egress"}, "ingress": ingress, "egress": egress}}
 }
 

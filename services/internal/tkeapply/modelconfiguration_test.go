@@ -134,7 +134,7 @@ func TestModelConfigurationApplyReadsTheDeclaredVersionBack(t *testing.T) {
 	if readback.AppliedVersion != 2 || len(readback.Selections) != 2 {
 		t.Fatalf("readback=%+v want the applied version the application reported", readback)
 	}
-	service := workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)
+	service := ComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)
 	if len(stub.requests) != 2 {
 		t.Fatalf("requests=%+v want one apply and one readback", stub.requests)
 	}

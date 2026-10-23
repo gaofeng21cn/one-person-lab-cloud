@@ -2,6 +2,7 @@ package fabric
 
 import (
 	"context"
+	"opl-cloud/services/internal/tkeapply"
 	"strings"
 	"testing"
 
@@ -24,7 +25,7 @@ func applicationObservationWorkload(input WorkspaceApplicationRuntimeInput, comp
 	annotations := stringAnyMap(tags)
 	template := map[string]any{"metadata": map[string]any{"labels": labels}, "spec": map[string]any{"containers": []any{map[string]any{"name": "app", "image": "repo.example/apps/main@sha256:" + strings.Repeat("a", 64)}}}}
 	deployment := map[string]any{"kind": "Deployment", "metadata": map[string]any{
-		"uid": "deploy-" + componentName, "name": workspaceApplicationComponentResourceName(input, componentName),
+		"uid": "deploy-" + componentName, "name": tkeapply.ComponentResourceName(input, componentName),
 		"generation": float64(1), "labels": labels, "annotations": annotations,
 	}, "spec": map[string]any{"replicas": float64(1), "template": template}, "status": map[string]any{"observedGeneration": float64(1), "updatedReplicas": float64(1), "readyReplicas": float64(1), "availableReplicas": float64(1)}}
 	return []any{deployment}

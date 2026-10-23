@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"opl-cloud/services/internal/tkeapply"
 	"strconv"
 	"strings"
 	"sync"
@@ -234,7 +235,7 @@ func (f *fakeTencentKubectl) setAllReady() {
 			"kind": "Pod", "metadata": map[string]any{"name": name + "-pod", "uid": "Pod:" + name, "labels": labels,
 				"ownerReferences": []any{map[string]any{"kind": "ReplicaSet", "uid": replicaSetUID, "controller": true}}},
 			"spec": template["spec"], "status": map[string]any{"phase": "Running", "conditions": []any{map[string]any{"type": "Ready", "status": "True"}},
-				"containerStatuses": []any{map[string]any{"name": "app", "ready": true, "imageID": "docker-pullable://" + workspaceApplicationDeploymentImage(deployment)}}},
+				"containerStatuses": []any{map[string]any{"name": "app", "ready": true, "imageID": "docker-pullable://" + tkeapply.DeploymentImage(deployment)}}},
 		}
 	}
 }
@@ -255,7 +256,7 @@ func decodeTencentApplicationListItems(t *testing.T, input WorkspaceApplicationR
 	var list struct {
 		Items []map[string]any `json:"items"`
 	}
-	if err := json.Unmarshal(workspaceApplicationManifest(input, tencentApplicationCompute(), tencentApplicationVolume()), &list); err != nil {
+	if err := json.Unmarshal(retainedManifest(input, tencentApplicationCompute(), tencentApplicationVolume()), &list); err != nil {
 		t.Fatalf("manifest decode: %v", err)
 	}
 	if err := validateApplicationManifestObjects(list.Items); err != nil {
@@ -326,6 +327,7 @@ func tencentApplicationRuntimeFixture(t *testing.T) (*TencentProvider, *fakeTenc
 	t.Helper()
 	setProtectedResourceEnv(t)
 	t.Setenv("OPL_INGRESS_CLASS", "qcloud")
+	t.Setenv("OPL_IMAGE_PULL_SECRET_NAME", "fixture-pull-secret")
 	provider := NewTencentProvider()
 	fake := &fakeTencentKubectl{deployments: map[string]map[string]any{}, resources: map[string]map[string]any{}}
 	provider.kubectl = fake.call
@@ -501,7 +503,7 @@ func TestTencentApplicationRuntimeEntryFollowsExposurePolicy(t *testing.T) {
 	if err != nil || published.Status != "ready" {
 		t.Fatalf("published=%#v err=%v", published, err)
 	}
-	expected := &contracts.WorkspaceApplicationEntry{ServiceName: workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain), Port: 8080}
+	expected := &contracts.WorkspaceApplicationEntry{ServiceName: tkeapply.ComponentResourceName(input, contracts.WorkspaceApplicationComponentMain), Port: 8080}
 	if published.Entry == nil || *published.Entry != *expected {
 		t.Fatalf("entry=%#v want %#v", published.Entry, expected)
 	}
@@ -557,7 +559,7 @@ func TestTencentApplicationRuntimeReadbackRequiresCurrentOwnedReadyImage(t *test
 			if observed, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input); err != nil || observed.Status != "ready" {
 				t.Fatalf("baseline=%#v err=%v", observed, err)
 			}
-			tc.change(fake, workspaceApplicationComponentResourceName(input, "main"))
+			tc.change(fake, tkeapply.ComponentResourceName(input, "main"))
 			observed, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
 			if err != nil || observed.Status != tc.status || observed.Entry != nil {
 				t.Fatalf("readback=%#v err=%v", observed, err)
@@ -597,7 +599,7 @@ func TestTencentApplicationRuntimeManifestDeclaresOnlySelectedEntryPorts(t *test
 	var manifest struct {
 		Items []map[string]any `json:"items"`
 	}
-	if err := json.Unmarshal(workspaceApplicationManifest(input, tencentApplicationCompute(), tencentApplicationVolume()), &manifest); err != nil {
+	if err := json.Unmarshal(retainedManifest(input, tencentApplicationCompute(), tencentApplicationVolume()), &manifest); err != nil {
 		t.Fatal(err)
 	}
 	if err := validateApplicationManifestObjects(manifest.Items); err != nil {
@@ -638,7 +640,7 @@ func TestTencentApplicationRuntimeManifestDeclaresOnlySelectedEntryPorts(t *test
 	}
 	input.Revision.PersistentMounts, input.Revision.ScratchMounts = nil, nil
 	main := contracts.WorkspaceApplicationRuntimeComponents(input.Revision)[0]
-	deployment := workspaceApplicationComponentDeployment(input, tencentApplicationCompute(), tencentApplicationVolume(), main, nil, "unused-pvc")
+	deployment := retainedComponentDeployment(input, tencentApplicationCompute(), tencentApplicationVolume(), main, nil, "unused-pvc")
 	if firstContainerField(deployment, "volumeMounts") != nil || nested(deployment, "spec", "template", "spec", "volumes") != nil {
 		t.Fatal("an application without declared mounts must not acquire a PVC or scratch volume")
 	}
@@ -667,7 +669,7 @@ func TestTencentApplicationRuntimeReadbackRejectsAccountDrift(t *testing.T) {
 				}
 				var object map[string]any
 				if kind == "Deployment" {
-					object = fake.deployments[workspaceApplicationComponentResourceName(input, "main")]
+					object = fake.deployments[tkeapply.ComponentResourceName(input, "main")]
 				} else {
 					for _, resource := range fake.resources {
 						if resource["kind"] == kind {
@@ -765,7 +767,7 @@ func TestTencentApplicationReadbackRejectsActualMountDrift(t *testing.T) {
 			if baseline, err := provider.ReadWorkspaceApplicationRuntime(ctx, input); err != nil || baseline.Status != "ready" {
 				t.Fatalf("baseline state=%s err=%v", baseline.Status, err)
 			}
-			deployment := fake.deployments[workspaceApplicationComponentResourceName(input, "main")]
+			deployment := fake.deployments[tkeapply.ComponentResourceName(input, "main")]
 			mounts := firstContainerField(deployment, "volumeMounts").([]any)
 			volumes := nested(deployment, "spec", "template", "spec", "volumes").([]any)
 			for _, value := range mounts {
@@ -821,7 +823,7 @@ func TestTencentApplicationHistoricalPolicyRequiresExactOwnerAndAbsence(t *testi
 	input.DataBindingID = ""
 	input.ConfigurationDigest = strings.Repeat("c", 64)
 	tags := oplCostTags(input.AccountID, input.WorkspaceID, applicationRuntimeID(input), input.RuntimeOperationID)
-	for _, policy := range []map[string]any{workspaceApplicationNetworkPolicy(input, tags)} {
+	for _, policy := range []map[string]any{retainedNetworkPolicy(input, tags)} {
 		metadata := policy["metadata"].(map[string]any)
 		delete(metadata, "labels") // Exact original policy representation.
 		fake.resources["NetworkPolicy:"+stringValue(metadata["name"])] = applicationObjectCopy(policy)
@@ -830,7 +832,7 @@ func TestTencentApplicationHistoricalPolicyRequiresExactOwnerAndAbsence(t *testi
 	if err != nil || live.State != "pending" {
 		t.Fatalf("unlabelled policies were omitted: state=%s err=%v", live.State, err)
 	}
-	name := workspaceApplicationComponentResourceName(input, "network")
+	name := tkeapply.ComponentResourceName(input, "network")
 	annotations := nested(fake.resources["NetworkPolicy:"+name], "metadata", "annotations").(map[string]any)
 	annotations["opl_account_id"] = "foreign-account"
 	if _, err := provider.SetWorkspaceApplicationRuntimeLifecycle(ctx, input, "absent"); err == nil || len(fake.mutations) != 0 {
@@ -874,7 +876,7 @@ func completeTencentApplicationResume(t *testing.T, provider *TencentProvider, f
 
 func renderedApplicationDeployment(t *testing.T, input WorkspaceApplicationRuntimeInput, name string) map[string]any {
 	t.Helper()
-	encoded := workspaceApplicationComponentManifest(input, tencentApplicationCompute(), tencentApplicationVolume(), nil)
+	encoded := retainedComponentManifest(input, tencentApplicationCompute(), tencentApplicationVolume(), nil)
 	var document struct {
 		Items []map[string]any `json:"items"`
 	}
@@ -912,13 +914,13 @@ func TestTencentApplicationManifestCarriesDeclaredComputeEnvelope(t *testing.T) 
 		Compute: contracts.WorkspaceApplicationCompute{CPURequestMilli: 1000, MemoryRequestBytes: 1 << 30},
 	}}
 
-	main := containerResources(t, renderedApplicationDeployment(t, input, workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)))
+	main := containerResources(t, renderedApplicationDeployment(t, input, tkeapply.ComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)))
 	mainRequests, _ := main["requests"].(map[string]any)
 	mainLimits, _ := main["limits"].(map[string]any)
 	if mainRequests["cpu"] != "500m" || mainRequests["memory"] != "2147483648" || mainLimits["cpu"] != "2000m" || mainLimits["memory"] != "3221225472" {
 		t.Fatalf("main envelope mismatch: %#v", main)
 	}
-	dependency := containerResources(t, renderedApplicationDeployment(t, input, workspaceApplicationComponentResourceName(input, "retrieval")))
+	dependency := containerResources(t, renderedApplicationDeployment(t, input, tkeapply.ComponentResourceName(input, "retrieval")))
 	dependencyRequests, _ := dependency["requests"].(map[string]any)
 	dependencyLimits, _ := dependency["limits"].(map[string]any)
 	if dependencyRequests["cpu"] != "1000m" || dependencyRequests["memory"] != "1073741824" {
@@ -930,7 +932,7 @@ func TestTencentApplicationManifestCarriesDeclaredComputeEnvelope(t *testing.T) 
 
 	input.Revision.Compute = contracts.WorkspaceApplicationCompute{}
 	input.Revision.Dependencies[0].Compute = contracts.WorkspaceApplicationCompute{}
-	if resources := containerResources(t, renderedApplicationDeployment(t, input, workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain))); resources != nil {
+	if resources := containerResources(t, renderedApplicationDeployment(t, input, tkeapply.ComponentResourceName(input, contracts.WorkspaceApplicationComponentMain))); resources != nil {
 		t.Fatalf("an undeclared component must not receive resources: %#v", resources)
 	}
 }
