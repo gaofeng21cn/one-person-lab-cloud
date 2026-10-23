@@ -6,13 +6,14 @@
  * Candidate receipt digest, deployment binding, account/product declarations and
  * external J0 READY receipt into the shared `createQualificationRequest`, runs the
  * shared `runWorkspaceQualification` through the `tencent-tke` adapter, and
- * writes the shared Candidate-bound receipt. The purchase step delegates to the
- * merged deployed buyer, `runDeployedWorkspacePurchase`: that buyer owns the
- * source-envelope account/wallet reads, the declared-account digest check, the
- * quote and the bounded purchase. The orchestrator consumes the buyer's result
- * and reads the charge, Workspace and Runtime facts through the owner APIs;
- * nothing here decodes or reimplements them. The buyer's purchase receipt is
- * preserved beside the qualification receipt.
+ * writes the shared Candidate-bound receipt. The purchase step runs on the
+ * Workspace owner route: the merged deployed buyer resolves the application
+ * selection and the plan pair from the owner's own catalog, asks the owner to
+ * price the declared purchase and admits the order against that quote, and the
+ * owner mints the operation and Workspace identities. The orchestrator consumes
+ * the buyer's bounded result and reads the charge, Workspace and Runtime facts
+ * through the owner APIs; nothing here decodes or reimplements them. The
+ * buyer's purchase receipt is preserved beside the qualification receipt.
  *
  * The provider boundary is not implemented here either. The protected
  * Fabric/Instance runner supplies one module that owns TKE reachability and the
@@ -69,10 +70,9 @@ import {
   j0ReadyReceiptCandidateBinding,
   j0ReadyReceiptError,
   qualificationProviderProfile,
-  qualificationWorkspaceName,
   validateBusinessQualificationReceipt,
 } from "./workspace-qualification-contract.ts";
-import { launchOperationId } from "./workspace-purchase-core.ts";
+import { stableID } from "./workspace-purchase-core.ts";
 
 // The one protected context this producer may bind. The workflow sets this
 // declaration explicitly; the environment's reviewer protection is enforced by
@@ -557,6 +557,14 @@ export function buildProtectedQualificationRequest({
  * names the declarations the protected flow already holds; it does not read an
  * owner API or perform a purchase. The buyer key is Candidate-scoped, so a
  * replay for another Candidate cannot address this order.
+ *
+ * The Workspace name is a function of the declared purchase and not of the run:
+ * the owner takes the name from the command body and the command is idempotent
+ * on that body, so a redelivery has to name the same Workspace or the owner
+ * refuses the replay as a different order. The owner mints the operation and
+ * the Workspace identity, so this name is not one of those and nothing here
+ * derives it from a retained launch identity that the owner route no longer
+ * mints.
  */
 export function buildProtectedDeployedPurchaseRequest({
   candidateDigest,
@@ -571,7 +579,6 @@ export function buildProtectedDeployedPurchaseRequest({
 }) {
   const idempotencyIdentity = PROTECTED_DEPLOYED_PURCHASE_IDENTITY;
   const idempotencyKey = deployedPurchaseIdempotencyKey(candidateDigest, idempotencyIdentity);
-  const operationId = launchOperationId(accountId, idempotencyKey);
   const request = {
     baseURL: environment.origin,
     authorityClass: "production",
@@ -580,7 +587,7 @@ export function buildProtectedDeployedPurchaseRequest({
     packageId,
     autoRenew: false,
     idempotencyIdentity,
-    workspaceName: qualificationWorkspaceName(operationId),
+    workspaceName: `Qualification ${stableID("protected-business-workspace", accountId, idempotencyKey).slice(0, 18)}`,
   };
   assertDeployedPurchaseRequest(request);
   return Object.freeze(request);
@@ -596,14 +603,17 @@ function protectedPurchaseFailure(error): Error {
   const code = String((error as { code?: string } | null)?.code || "");
   const message = String((error as { message?: string } | null)?.message || "deployed purchase failed");
   let mapped = "owner_readback_unavailable";
-  if (code === "deployed_purchase_account_mismatch") mapped = "account_binding_mismatch";
-  else if (code === "deployed_purchase_target_invalid" || code === "deployed_purchase_caller_invalid") {
+  if (code === "deployed_purchase_account_mismatch" || code === "deployed_purchase_account_unavailable") {
+    mapped = "account_binding_mismatch";
+  } else if (code === "deployed_purchase_target_invalid" || code === "deployed_purchase_caller_invalid") {
     mapped = "provider_scope_unavailable";
-  } else if (code === "deployed_purchase_operation_mismatch" || code === "deployed_purchase_replay_conflict") {
+  } else if (code === "deployed_purchase_operation_mismatch" || code === "deployed_purchase_replay_conflict" ||
+    code === "deployed_purchase_retained_order_exists") {
     mapped = "launch_identity_mismatch";
   } else if (code === "deployed_purchase_receipt_missing" || code === "deployed_purchase_receipt_invalid") {
     mapped = "purchase_receipt_missing";
-  } else if (code === "deployed_purchase_quote_unavailable" || code === "deployed_purchase_price_unavailable") {
+  } else if (code === "deployed_purchase_quote_unavailable" || code === "deployed_purchase_price_unavailable" ||
+    code === "deployed_purchase_catalog_unavailable") {
     mapped = "quote_invalid";
   } else if (/wallet cannot fund/i.test(message)) {
     mapped = "wallet_cannot_fund";
@@ -756,11 +766,15 @@ export async function runProtectedBusinessQualification(
         idempotencyKey: receipt.operation.idempotencyKey,
         operationId: receipt.operation.operationId,
         workspaceId: receipt.operation.workspaceId,
-        purchaseReceiptId: receipt.operation.purchaseReceiptId,
+        // The owner mints the order and the Workspace; the Ledger receipt that
+        // proves the charge is read back by the orchestrator against the pair
+        // the owner minted, so the buyer does not carry a receipt identity here.
+        purchaseReceiptId: "",
         resumed: receipt.operation.resumed,
         amountUsdMicros: receipt.purchase.amountUsdMicros,
         purchases: receipt.mutations.observed.purchases,
         candidateReceiptDigest: receipt.candidate.receiptDigest,
+        identitySpace: "workspace_owner",
         product: Object.freeze({ ...receipt.product }),
       });
     },

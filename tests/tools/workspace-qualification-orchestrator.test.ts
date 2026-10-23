@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
 import {
@@ -8,7 +9,6 @@ import {
   QUALIFICATION_TERMINAL_REASONS,
   QUALIFICATION_TERMINAL_STATES,
   qualificationProviderProfile,
-  qualificationWorkspaceName,
   validateBusinessQualificationReceipt,
 } from "../../tools/workspace-qualification-contract.ts";
 import {
@@ -16,7 +16,6 @@ import {
   createQualificationRequest,
   runWorkspaceQualification,
 } from "../../tools/workspace-qualification-orchestrator.ts";
-import { launchOperationId, launchWorkspaceId } from "../../tools/workspace-purchase-core.ts";
 
 // The seam under test is the public orchestrator, driven over a provider
 // adapter boundary. Nothing here reaches a provider, a cluster or a database:
@@ -31,6 +30,15 @@ const ACCOUNT_EMAIL = "customer@qualification.invalid";
 const QUOTE_MICROS = "52580000";
 const ENTRY_URL = "https://workspace.qualification.invalid/";
 const APPLICATION_OPERATION_ID = "app-op-0123456789abcdef01";
+
+// The identities the Workspace owner mints. The owner mints the operation and
+// the Workspace identity of every order it admits, so the fake mints them too
+// and never derives them from the declared idempotency identity.
+const ownerID = (prefix: string, ...parts: string[]) =>
+  `${prefix}_${createHash("sha1").update(parts.join(":")).digest("hex").slice(0, 32)}`;
+const OWNER_RUNTIME_VERSION_ID = `rtv_${"a".repeat(32)}`;
+const OWNER_COMPUTE_PLAN_ID = `cmp_${"b".repeat(32)}`;
+const OWNER_STORAGE_PLAN_ID = `stp_${"c".repeat(32)}`;
 
 function candidateReceipt(overrides = {}) {
   return {
@@ -100,34 +108,41 @@ const qualificationRequest = (provider, overrides = {}) => createQualificationRe
  * already admitted, exactly as the Control Plane answers it, so the fake cannot
  * pass a test the real platform would fail.
  */
-function controlPlane({ accountId = ACCOUNT_ID, sessionAccountId = ACCOUNT_ID, sessionRole = "owner", sessionStatus = "active",
+function controlPlane({ sessionAccountId = ACCOUNT_ID, sessionRole = "owner", sessionStatus = "active",
   walletBeforeMicros = "999999999", quoteMicros = QUOTE_MICROS, chargeMicros = null, loseResponseOnce = false,
-  losePollResponse = false, launchStatus = "succeeded", noReceiptId = false, noBillingReceipt = false, admitPending = false,
-  receiptAmountMicros = null, workspaceOpenable = true, applicationStatus = "ready", runtimeReady = true,
+  losePollResponse = false, operationStatus = "succeeded", operationKind = "create_workspace", noPurchaseReceipt = false,
+  noBillingReceipt = false, admitPending = false, receiptAmountMicros = null, workspaceOpenable = true,
+  applicationStatus = "ready", runtimeReady = true,
   runtimeStatus = "running", runtimeComponents = [{ name: "console", ok: true }, { name: "gateway", ok: true }],
   extraChargeMicros = "0", receipt: receiptOverrides = {}, runtime: runtimeOverrides = {},
   // The committed default application installation progresses asynchronously
-  // beside the resource Launch. `applicationReadyAfter` is how many owner reads
+  // beside the owner order. `applicationReadyAfter` is how many owner reads
   // it takes; `applicationStalled` models the review that only the customer's
   // own continuation command can move; a status that never becomes ready models
   // an installation that never finishes.
   applicationReadyAfter = null, applicationStalled = false, applicationManualReview = false,
   workspacePage = 1, resumeProjection = null,
-  launchProvisioningMode = "resource_only" } = {}) {
-  const state = { orders: new Map(), byKey: new Map(), posted: 0, charges: [], commands: [], responsesLost: false,
-    wallet: walletBeforeMicros, workspaceId: "", operationId: "", polled: 0,
-    workspaceReads: 0, workspacePages: [], resumes: 0, resumedAtRead: -1, resumeKeys: [] };
+  catalogRuntimeStatus = "approved", catalogPlanAvailability = "available" } = {}) {
+  const state = { orders: new Map(), byKey: new Map(), quotes: new Map(), quoteById: new Map(), posted: 0, charges: [],
+    commands: [], responsesLost: false, wallet: walletBeforeMicros, workspaceId: "", operationId: "", polled: 0,
+    workspaceReads: 0, workspacePages: [], resumes: 0, resumedAtRead: -1, resumeKeys: [], receiptId: "" };
   const envelope = (data) => ({ source: "sub2api", available: true, status: "available", data });
+  // The owner's own projection of an operation it admitted. It carries the
+  // identities the owner minted and the owner's own stage and status.
+  const ownerOperation = (admitted) => ({
+    operationId: admitted.operationId, owner: "workspace", kind: admitted.kind,
+    resourceId: admitted.workspaceId, status: admitted.status, stage: admitted.stage,
+    requestId: admitted.requestId,
+  });
 
   const http = {
     async request(path, init = {}, auth = null) {
-      const order = /^\/api\/workspace-launches\/([^/]+)$/.exec(path);
-      if (order) {
-        // Read by the operation identity, which is how the orchestrator looks
-        // for an order it may already own.
-        const admitted = state.orders.get(decodeURIComponent(order[1]));
+      const operation = /^\/api\/v2\/operations\/workspace\/([^/]+)$/.exec(path);
+      if (operation) {
+        // Read back under the identity the owner minted.
+        const admitted = state.orders.get(decodeURIComponent(operation[1]));
         return admitted
-          ? { response: { status: 200 }, payload: admitted }
+          ? { response: { status: 200 }, payload: ownerOperation(admitted) }
           : { response: { status: 404 }, payload: null };
       }
       throw new Error(`unexpected request ${path}`);
@@ -205,14 +220,117 @@ function controlPlane({ accountId = ACCOUNT_ID, sessionAccountId = ACCOUNT_ID, s
             currentApplication: { operationId: APPLICATION_OPERATION_ID }, ...runtimeOverrides },
         } };
       }
+      // The owner owns the catalog a buyer prices from. The Console reads it the
+      // same way: the first approved Runtime Release, the first available
+      // compute plan and the first available storage plan.
+      if (path.startsWith("/api/v2/catalog/runtime-versions")) {
+        return { status: 200, payload: { items: [{ id: OWNER_RUNTIME_VERSION_ID, status: catalogRuntimeStatus }] } };
+      }
+      if (path.startsWith("/api/v2/catalog/compute-plans")) {
+        return { status: 200, payload: { items: [{ id: OWNER_COMPUTE_PLAN_ID, availability: catalogPlanAvailability }] } };
+      }
+      if (path.startsWith("/api/v2/catalog/storage-plans")) {
+        return { status: 200, payload: { items: [{ id: OWNER_STORAGE_PLAN_ID, availability: catalogPlanAvailability }] } };
+      }
+      // The quote is the owner's own price for the declared purchase. It is
+      // recorded against the idempotency identity it was handed, so a repeated
+      // quote replays this quote instead of pricing a second one.
+      if (path === "/api/v2/quotes" && init.method === "POST") {
+        const key = init.headers["idempotency-key"];
+        const existing = state.quotes.get(key);
+        if (existing) return { status: 200, payload: existing };
+        const body = init.body || {};
+        const quote = {
+          id: ownerID("qte", key),
+          purpose: "deploy",
+          runtimeVersionId: String(body?.applicationSelection?.runtimeVersionId || ""),
+          computePlanId: String(body?.computePlanId || ""),
+          storagePlanId: String(body?.storagePlanId || ""),
+          modelSelections: body?.modelSelections || [],
+          periodMonths: Number(body?.periodMonths || 0),
+          totalUSDMicros: quoteMicros,
+          status: "offered",
+        };
+        state.quotes.set(key, quote);
+        state.quoteById.set(quote.id, quote);
+        return { status: 201, payload: quote };
+      }
+      if (/^\/api\/v2\/quotes\/[^/]+$/.test(path)) {
+        const quote = state.quoteById.get(decodeURIComponent(path.split("/").pop()));
+        return quote ? { status: 200, payload: quote } : { status: 404, payload: null };
+      }
+      // The order is admitted against the quote the owner priced. One
+      // idempotency identity admits one order, so a redelivery is answered from
+      // the order already admitted rather than promoted into a second purchase.
+      if (path === "/api/v2/workspaces" && init.method === "POST") {
+        const key = init.headers["idempotency-key"];
+        state.commands.push(init.body);
+        const replayed = state.byKey.get(key);
+        if (replayed) return { status: 202, payload: ownerOperation(replayed) };
+        const admitted = {
+          operationId: ownerID("op", key, String(state.posted + 1)),
+          workspaceId: ownerID("workspace", key, String(state.posted + 1)),
+          kind: operationKind,
+          requestId: String(init.headers["x-opl-request-id"] || ""),
+          status: admitPending ? "running" : operationStatus,
+          stage: admitPending ? "creating" : (operationStatus === "succeeded" ? "succeeded" : "creating"),
+        };
+        state.byKey.set(key, admitted);
+        state.orders.set(admitted.operationId, admitted);
+        state.workspaceId = admitted.workspaceId;
+        state.operationId = admitted.operationId;
+        state.receiptId = noPurchaseReceipt ? "" : ownerID("rcpt", admitted.operationId);
+        state.posted += 1;
+        state.wallet = String(BigInt(state.wallet) - BigInt(chargeMicros ?? quoteMicros) - BigInt(extraChargeMicros));
+        state.charges.push(quoteMicros);
+        // The quote this order took is an accepted quote now.
+        const quote = state.quoteById.get(String(init.body?.quoteId || ""));
+        if (quote) quote.status = "accepted";
+        if (loseResponseOnce && !state.responsesLost) {
+          state.responsesLost = true;
+          throw new Error("socket hang up after the platform accepted the command");
+        }
+        return { status: 202, payload: ownerOperation(admitted) };
+      }
+      if (/^\/api\/v2\/operations\/workspace\/[^/]+$/.test(path)) {
+        // An accepted order that then goes quiet is not an order the owner
+        // published as stopping; it is a run that cannot say what happened.
+        if (losePollResponse) throw new Error("socket hang up while following the accepted order");
+        const wanted = decodeURIComponent(path.split("/").pop());
+        const admitted = state.orders.get(wanted);
+        if (!admitted) throw new Error(`HTTP GET ${path} returned 404`);
+        return { status: 200, payload: ownerOperation(admitted) };
+      }
+      // The Ledger's own inventory of receipts. The receipt of an owner order is
+      // found in that inventory, bound to the order and the Workspace the owner
+      // minted.
+      if (path.startsWith("/api/billing/receipts?")) {
+        if (noBillingReceipt) throw new Error(`HTTP GET ${path} returned 404`);
+        return { status: 200, payload: {
+          source: "ledger", available: true, status: "available",
+          data: {
+            receipts: state.receiptId ? [{
+              receiptId: state.receiptId,
+              operationId: state.operationId,
+              workspaceId: state.workspaceId,
+              type: "billing.workspace_purchased.v1", status: "completed",
+              chargeReference: "opl:workspace-launch:charge:0001",
+              totalUsdMicros: receiptAmountMicros ?? quoteMicros,
+              fulfillment: { computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001" },
+              ...receiptOverrides,
+            }] : [],
+            hasMore: false,
+          },
+        } };
+      }
       if (/^\/api\/billing\/receipts\/[^/]+$/.test(path)) {
         if (noBillingReceipt) throw new Error(`HTTP GET ${path} returned 404`);
         return { status: 200, payload: {
           source: "ledger", available: true, status: "available",
           data: { receiptId: decodeURIComponent(path.split("/").pop()),
             // The billing projection answers with the receipt's requestId, and
-            // the Control Plane records the purchase receipt under the launch
-            // operation identity. The fake names it the same way rather than
+            // the owner records the purchase receipt under the operation
+            // identity it minted. The fake names it the same way rather than
             // inventing an identity of its own.
             operationId: state.operationId,
             workspaceId: state.workspaceId,
@@ -222,55 +340,6 @@ function controlPlane({ accountId = ACCOUNT_ID, sessionAccountId = ACCOUNT_ID, s
             fulfillment: { computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001" },
             ...receiptOverrides },
         } };
-      }
-      if (path === "/api/pricing/preview") {
-        return { status: 200, payload: { resourceType: "workspace", packageId: "basic", currency: "USD", totalChargeUsdMicros: quoteMicros } };
-      }
-      if (path === "/api/workspace-launches" && init.method === "POST") {
-        const key = init.headers["idempotency-key"];
-        // The platform mints the identities itself, by the same derivation the
-        // purchase core pins to the Control Plane's literals. A fake that
-        // invented its own ids would pass a test the real platform fails.
-        const operationId = launchOperationId(accountId, key);
-        const workspaceId = launchWorkspaceId(accountId, operationId);
-        // One admitted order per idempotency key. This is the whole property
-        // replay depends on: a redelivery is answered, not re-admitted.
-        if (state.byKey.has(key)) {
-          return { status: 202, payload: { operationId: state.byKey.get(key), workspaceId } };
-        }
-        const admitted = {
-          operationId,
-          workspaceId,
-          // The persisted Launch is the resource purchase; the default
-          // application is a separate committed operation. The readback says so.
-          provisioningMode: launchProvisioningMode,
-          status: admitPending ? "running" : launchStatus,
-          phase: admitPending ? "runtime" : (launchStatus === "succeeded" ? "succeeded" : "debit"),
-          receiptId: !admitPending && launchStatus === "succeeded" && !noReceiptId ? "rcpt_qualification_1" : "",
-          computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001",
-        };
-        state.byKey.set(key, operationId);
-        state.orders.set(operationId, admitted);
-        state.workspaceId = workspaceId;
-        state.operationId = operationId;
-        state.posted += 1;
-        state.commands.push(init.body);
-        state.wallet = String(BigInt(state.wallet) - BigInt(chargeMicros ?? quoteMicros) - BigInt(extraChargeMicros));
-        state.charges.push(quoteMicros);
-        if (loseResponseOnce && !state.responsesLost) {
-          state.responsesLost = true;
-          throw new Error("socket hang up after the platform accepted the command");
-        }
-        return { status: 202, payload: { operationId, workspaceId } };
-      }
-      if (/^\/api\/workspace-launches\/[^/]+$/.test(path)) {
-        // An accepted order that then goes quiet is not a launch the platform
-        // published as stopping; it is a run that cannot say what happened.
-        if (losePollResponse) throw new Error("socket hang up while following the accepted order");
-        const wanted = decodeURIComponent(path.split("/").pop());
-        const admitted = state.orders.get(wanted);
-        if (!admitted) throw new Error(`HTTP GET ${path} returned 404`);
-        return { status: 200, payload: admitted };
       }
       throw new Error(`unexpected path ${path}`);
     },
@@ -310,13 +379,30 @@ test("one orchestrator qualifies two providers, and neither adapter decides the 
     const request = qualificationRequest(provider);
     assertQualificationAdapter(adapter, provider);
 
-    const { state, receipt } = await run(request, adapter);
+    const { state, receipt, purchase } = await run(request, adapter);
     assert.equal(state, "settled", provider);
     assert.equal(receipt.provider, provider);
     assert.equal(receipt.state, "settled");
     assert.deepEqual(Object.keys(receipt.checks).sort(), [...QUALIFICATION_BUSINESS_CHECKS].sort());
     assert.ok(QUALIFICATION_BUSINESS_CHECKS.every((name) => receipt.checks[name] === true), provider);
     assert.equal(adapter.calls.closed, 1, "the adapter that opened the scope closes it");
+    // The purchase ran on the Workspace owner route: the owner priced the
+    // declaration it froze from its own catalog, admitted the order against
+    // that quote and minted the operation and the Workspace identity itself.
+    assert.equal(purchase.identitySpace, "workspace_owner");
+    assert.deepEqual(purchase.declaration, {
+      applicationSelection: { kind: "opl_app", runtimeVersionId: OWNER_RUNTIME_VERSION_ID },
+      computePlanId: OWNER_COMPUTE_PLAN_ID,
+      storagePlanId: OWNER_STORAGE_PLAN_ID,
+      modelSelections: [],
+      periodMonths: 1,
+    });
+    assert.match(purchase.operationId, /^op_[0-9a-f]{32}$/, "the owner minted the operation identity");
+    assert.match(purchase.workspaceId, /^workspace_[0-9a-f]{32}$/, "the owner minted the Workspace identity");
+    assert.equal(purchase.status, "succeeded", "the owner's own status vocabulary");
+    assert.equal(purchase.stage, "succeeded", "the owner's own stage vocabulary");
+    assert.equal(receipt.operation.operationId, purchase.operationId);
+    assert.equal(receipt.operation.workspaceId, purchase.workspaceId);
   }
 });
 
@@ -357,16 +443,16 @@ test("a quote that does not name the declared product is a failure of the produc
   assert.equal(receipt.reason, "quote_invalid");
 });
 
-test("a launch the platform stopped is failed, and it is not retried as a new order", async () => {
-  const platform = controlPlane({ launchStatus: "failed" });
+test("an order the owner stopped is failed, and it is not retried as a new order", async () => {
+  const platform = controlPlane({ operationStatus: "failed" });
   const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
   assert.equal(state, "failed");
   assert.equal(receipt.reason, "launch_stopped");
   assert.equal(platform.state.posted, 1, "a stopped order is followed, never reissued");
 });
 
-test("a terminal launch that carries no purchase receipt is a binding failure, not a missing check", async () => {
-  const platform = controlPlane({ noReceiptId: true });
+test("an order the Ledger holds no receipt for is a binding failure, not a missing check", async () => {
+  const platform = controlPlane({ noPurchaseReceipt: true });
   const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
   assert.equal(state, "failed");
   assert.equal(receipt.reason, "purchase_receipt_missing");
@@ -470,20 +556,12 @@ test("a lost response that left no order behind is undetermined, never a pass", 
   const platform = controlPlane();
   const adapter = providerAdapter("local-docker", platform);
   const request = qualificationRequest("local-docker");
-  // The platform refuses every order admission, so the probe after the loss
+  // The platform refuses every order admission, so the replay after the loss
   // finds nothing and the run cannot say what happened.
-  platform.http.json = async (path, init = {}, auth = null) => {
-    if (path === "/api/gateway/wallet") {
-      return { status: 200, payload: { source: "sub2api", available: true, status: "available", data: { usdMicros: "999999999" } } };
-    }
-    if (path === "/api/auth/me") {
-      return { status: 200, payload: { source: "sub2api", available: true, status: "available", data: {
-        accountId: ACCOUNT_ID, role: "owner", status: "active" } } };
-    }
-    if (path === "/api/pricing/preview") {
-      return { status: 200, payload: { resourceType: "workspace", packageId: "basic", currency: "USD", totalChargeUsdMicros: QUOTE_MICROS } };
-    }
-    throw new Error("socket hang up");
+  const original = platform.http.json.bind(platform.http);
+  platform.http.json = async (path, init = {}, auth = null, statuses = [200]) => {
+    if (path === "/api/v2/workspaces") throw new Error("socket hang up");
+    return original(path, init, auth, statuses);
   };
   const { state, receipt } = await run(request, adapter);
   assert.equal(state, "unknown");
@@ -500,16 +578,20 @@ test("the purchase command names no provider and is identical on a redelivery", 
   const first = await run(request, providerAdapter("tencent-tke", platform));
   const second = await run(qualificationRequest("tencent-tke"), providerAdapter("tencent-tke", platform));
 
-  assert.equal(platform.state.posted, 1);
-  assert.deepEqual(platform.state.commands, [{
-    name: qualificationWorkspaceName(first.receipt.operation.operationId),
-    packageId: "basic",
-    autoRenew: false,
-    // The platform installs the default application beside the resource Launch
-    // only for a new customer Launch, and `resource_only` is the retained
-    // historical contract that must not be sent for one.
-    provisioningMode: "full",
-  }]);
+  assert.equal(platform.state.posted, 1, "one order for one declared qualification");
+  // The command names the quote the owner priced and asks for manual renewal.
+  // It carries no package and no provisioning mode: the owner route has
+  // neither, and it freezes the application source and the plan pair into the
+  // quote instead.
+  assert.equal(platform.state.commands.length, 2, "the redelivery issued the same command again");
+  const [command] = platform.state.commands;
+  assert.deepEqual(Object.keys(command).sort(), ["name", "quoteId", "renewalMode"]);
+  assert.match(command.quoteId, /^qte_[0-9a-f]{32}$/, "the order names the quote the owner priced");
+  assert.equal(command.renewalMode, "manual", "a first deployment asks for manual renewal");
+  assert.match(command.name, /^Qualification [0-9a-f]{18}$/,
+    "the name is derived from the declared purchase, so a redelivery names the same Workspace");
+  assert.deepEqual(platform.state.commands[1], command,
+    "a redelivery addresses the same order, so the command body cannot differ");
   assert.deepEqual(second.receipt.operation.operationId, first.receipt.operation.operationId,
     "a redelivery addresses the same order, so the command body cannot differ");
   assert.doesNotMatch(JSON.stringify(platform.state.commands), /tke|tencent|local|docker/i,
@@ -638,7 +720,7 @@ test("every declared terminal state is reachable and each carries only its own r
   const scenarios = {
     settled: [controlPlane(), {}],
     blocked: [controlPlane({ walletBeforeMicros: "1" }), {}],
-    failed: [controlPlane({ launchStatus: "failed" }), {}],
+    failed: [controlPlane({ operationStatus: "failed" }), {}],
     "recovery-required": [controlPlane(), { restored: false }],
     unknown: [controlPlane({ walletBeforeMicros: "not-a-wallet" }), {}],
   };
@@ -858,8 +940,8 @@ test("an accepted order whose polling response is lost is not a stopped launch",
   assert.notEqual(receipt.reason, "launch_stopped");
 });
 
-test("a launch the platform itself published as stopped stays a product failure", async () => {
-  const platform = controlPlane({ launchStatus: "failed" });
+test("an order the owner itself published as stopped stays a product failure", async () => {
+  const platform = controlPlane({ operationStatus: "failed" });
   const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
   assert.equal(state, "failed");
   assert.equal(receipt.reason, "launch_stopped",
@@ -870,18 +952,10 @@ test("a lost answer to the command itself, with no order admitted, is undetermin
   const platform = controlPlane();
   const adapter = providerAdapter("local-docker", platform);
   platform.http.request = async () => ({ response: { status: 404 }, payload: null });
-  platform.http.json = async (path) => {
-    if (path === "/api/auth/me") {
-      return { status: 200, payload: { source: "sub2api", available: true, status: "available", data: {
-        accountId: ACCOUNT_ID, role: "owner", status: "active" } } };
-    }
-    if (path === "/api/gateway/wallet") {
-      return { status: 200, payload: { source: "sub2api", available: true, status: "available", data: { usdMicros: "999999999" } } };
-    }
-    if (path === "/api/pricing/preview") {
-      return { status: 200, payload: { resourceType: "workspace", packageId: "basic", currency: "USD", totalChargeUsdMicros: QUOTE_MICROS } };
-    }
-    throw new Error("socket hang up");
+  const original = platform.http.json.bind(platform.http);
+  platform.http.json = async (path, init = {}, auth = null, statuses = [200]) => {
+    if (path === "/api/v2/workspaces") throw new Error("socket hang up");
+    return original(path, init, auth, statuses);
   };
   const { state, receipt } = await run(qualificationRequest("local-docker"), adapter);
   assert.equal(state, "unknown");
@@ -952,22 +1026,23 @@ test("a Ledger receipt naming another launch operation does not settle this run"
   assert.equal(receipt.checks.wallet_confirmed, false, "the balance is not used to infer a receipt that does not bind");
 });
 
-test("a launch readback that answers for another operation identity is refused", async () => {
+test("an owner readback that answers for another operation identity is refused", async () => {
   const platform = controlPlane();
   const request = qualificationRequest("local-docker");
-  const operationId = launchOperationId(ACCOUNT_ID, request.operation.idempotencyKey);
-  const workspaceId = launchWorkspaceId(ACCOUNT_ID, operationId);
   // The order comes back under a different operation identity while naming this
   // run's Workspace, so the identity is the only thing wrong with it.
   platform.http.request = async () => ({
     response: { status: 200 },
-    payload: { operationId: "workspace-launch-ffffffffffffffffff", workspaceId },
+    payload: {
+      operationId: `op_${"f".repeat(32)}`, owner: "workspace", kind: "create_workspace",
+      resourceId: `workspace_${"f".repeat(32)}`, status: "succeeded", stage: "succeeded",
+    },
   });
   const { state, receipt } = await run(request, providerAdapter("local-docker", platform));
 
   assert.equal(state, "failed");
   assert.equal(receipt.reason, "launch_identity_mismatch");
-  assert.equal(platform.state.posted, 0, "an order under another identity is never followed or reissued");
+  assert.equal(receipt.checks.wallet_confirmed, false, "another order's charge is not this run's charge");
 });
 
 // C2: a redelivery whose order was still open bought nothing itself, but the
@@ -976,18 +1051,22 @@ test("a launch readback that answers for another operation identity is refused",
 test("a resumed order whose original charge lands while this run waits settles honestly", async () => {
   const platform = controlPlane();
   const request = qualificationRequest("local-docker");
-  const operationId = launchOperationId(ACCOUNT_ID, request.operation.idempotencyKey);
-  const workspaceId = launchWorkspaceId(ACCOUNT_ID, operationId);
   // The earlier delivery admitted the order and its charge has not landed yet.
+  // The owner mints the identities, so the earlier delivery's order is
+  // addressed by the owner's own idempotency record.
   const admitted = {
-    operationId, workspaceId, provisioningMode: "resource_only",
-    status: "running", phase: "runtime", receiptId: "",
-    computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001",
+    operationId: ownerID("op", "earlier-delivery"),
+    workspaceId: ownerID("workspace", "earlier-delivery"),
+    kind: "create_workspace",
+    requestId: "op-request-earlier-delivery",
+    status: "running",
+    stage: "creating",
   };
-  platform.state.orders.set(operationId, admitted);
-  platform.state.byKey.set(request.operation.idempotencyKey, operationId);
-  platform.state.workspaceId = workspaceId;
-  platform.state.operationId = operationId;
+  platform.state.orders.set(admitted.operationId, admitted);
+  platform.state.byKey.set(request.operation.idempotencyKey, admitted);
+  platform.state.workspaceId = admitted.workspaceId;
+  platform.state.operationId = admitted.operationId;
+  platform.state.receiptId = ownerID("rcpt", admitted.operationId);
 
   let charged = false;
   const wait = async () => {
@@ -996,9 +1075,7 @@ test("a resumed order whose original charge lands while this run waits settles h
     // The original charge lands while this delivery waits, and the order reaches
     // the same terminal receipt the first delivery would have seen.
     platform.state.wallet = String(BigInt(platform.state.wallet) - BigInt(QUOTE_MICROS));
-    platform.state.orders.set(operationId, {
-      ...admitted, status: "succeeded", phase: "succeeded", receiptId: "rcpt_qualification_1",
-    });
+    platform.state.orders.set(admitted.operationId, { ...admitted, status: "succeeded", stage: "succeeded" });
   };
   const { state, receipt } = await run(request, providerAdapter("local-docker", platform), { wait });
 
@@ -1013,6 +1090,64 @@ test("a resumed order whose original charge lands while this run waits settles h
     BigInt(QUOTE_MICROS),
     "the wallet moved by exactly the quote",
   );
+});
+
+// The retained Control Plane route still owns the orders it admitted before the
+// cutover. A buyer that holds one reads it there, under the identity that
+// route minted, and never treats it as a purchase it may make again.
+test("an order the retained Control Plane route admitted is still read from that route", async () => {
+  const platform = controlPlane();
+  const request = qualificationRequest("local-docker");
+  const retainedOperationId = `workspace-launch-${"a".repeat(18)}`;
+  const retainedWorkspaceId = `ws-${"b".repeat(18)}`;
+  platform.state.workspaceId = retainedWorkspaceId;
+  platform.state.operationId = retainedOperationId;
+  platform.state.receiptId = "rcpt_retained_1";
+  const reads: string[] = [];
+  platform.http.request = async (path) => {
+    const read = /^\/api\/workspace-launches\/([^/]+)$/.exec(path);
+    if (!read) throw new Error(`unexpected request ${path}`);
+    reads.push(path);
+    return decodeURIComponent(read[1]) === retainedOperationId
+      ? {
+        response: { status: 200 },
+        payload: {
+          operationId: retainedOperationId, workspaceId: retainedWorkspaceId,
+          status: "succeeded", phase: "succeeded", receiptId: "rcpt_retained_1",
+        },
+      }
+      : { response: { status: 404 }, payload: null };
+  };
+  const purchase = {
+    async run() {
+      return {
+        idempotencyKey: request.operation.idempotencyKey,
+        operationId: retainedOperationId,
+        workspaceId: retainedWorkspaceId,
+        purchaseReceiptId: "rcpt_retained_1",
+        resumed: true,
+        amountUsdMicros: QUOTE_MICROS,
+        purchases: 0,
+        candidateReceiptDigest: request.candidate.receiptDigest,
+        identitySpace: "control_plane",
+        product: {
+          resourceType: "workspace",
+          applicationSelection: { kind: "opl_app", runtimeVersionId: OWNER_RUNTIME_VERSION_ID },
+          computePlanId: OWNER_COMPUTE_PLAN_ID,
+          storagePlanId: OWNER_STORAGE_PLAN_ID,
+          renewalMode: "manual",
+        },
+      };
+    },
+  };
+  const { state, receipt } = await run(request, providerAdapter("local-docker", platform), { purchase });
+
+  assert.equal(state, "settled");
+  assert.equal(receipt.operation.operationId, retainedOperationId);
+  assert.equal(receipt.operation.resumed, true);
+  assert.equal(receipt.mutations.observed.purchases, 0, "a retained order is never bought again");
+  assert.deepEqual(reads, [`/api/workspace-launches/${retainedOperationId}`],
+    "the order is read from the route that owns it");
 });
 
 // S1: a hand-assembled partial scope skipped the bounds a real request declares
@@ -1146,7 +1281,15 @@ test("a Ledger receipt that differs in type, status, Workspace, charge reference
     { chargeReference: "" },
     { fulfillment: { computeAllocationId: "ca-0001", storageId: "st-0001" } },
     { fulfillment: { computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001", runtimeId: "rt-1" } },
-    { fulfillment: { computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-ffff" } },
+    // The receipt has to name exactly the three resources this purchase
+    // delivers. A Runtime or a Workspace Key inside it would mean the platform
+    // fulfilled more than the order declared.
+    //
+    // The resources themselves are not compared against the order any more:
+    // the owner route publishes no resource identity for an order, so the
+    // receipt's own record of what it delivered is the only statement there
+    // is. The receipt is still bound to this purchase by the operation and the
+    // Workspace the owner minted.
   ]) {
     const platform = controlPlane({ receipt: ledger });
     const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
@@ -1244,13 +1387,13 @@ test("the Workspace is found on a later owner page rather than assumed to be on 
     "the owner list is paginated until the Workspace this run bought is found");
 });
 
-test("a Launch that is not the resource-only purchase this flow accounts for does not settle", async () => {
-  const platform = controlPlane({ launchProvisioningMode: "full" });
+test("an order that is not the Workspace purchase this flow accounts for does not settle", async () => {
+  const platform = controlPlane({ operationKind: "update_models" });
   const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
 
   assert.equal(state, "failed");
   assert.equal(receipt.reason, "launch_identity_mismatch");
-  assert.equal(receipt.checks.charge_receipted, false, "the three-resource receipt rule is not applied to another shape");
+  assert.equal(receipt.checks.charge_receipted, false, "another kind of order is not this run's purchase");
 });
 
 test("deployment health is read before the scope is closed", async () => {

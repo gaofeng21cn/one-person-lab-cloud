@@ -40,6 +40,11 @@ async function unusedHostPort() {
   return port;
 }
 
+// The retained Control Plane still owns the identifier rule of the operations
+// it admits, so the acceptance-B probe states the identity that owner derives
+// for its own fresh order. This is the retained route's own rule, not a
+// purchase identity this test derives: the Workspace owner mints the
+// identities of the purchases it admits, and it does not admit this one.
 function stableID(...parts: string[]) {
   const hash = createHash("sha1");
   for (const part of parts) {
@@ -242,6 +247,10 @@ if (enabled) test("portable Compose enforces runtime database and caller isolati
     const probeName = `${project}-control-token-probe`;
     const approvalID = `portable-${randomBytes(6).toString("hex")}`;
     const launchKey = `portable-launch-${randomBytes(6).toString("hex")}`;
+    // The retained Control Plane admits this fresh order under the identity it
+    // derives itself, and its acceptance-B admission refuses an approval that
+    // names another one. The approval therefore states that owner's own
+    // derivation; nothing here mints or predicts an owner identity.
     const operationID = `workspace-launch-${stableID("acct-admin", launchKey).slice(0, 18)}`;
     const cloudDigest = `sha256:${"a".repeat(64)}`;
     const workspaceDigest = `sha256:${"b".repeat(64)}`;

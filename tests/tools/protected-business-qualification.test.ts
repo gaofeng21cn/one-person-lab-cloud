@@ -48,7 +48,10 @@ import {
   CLOUD_IMAGE_DIGEST,
   CLUSTER_ID,
   NAMESPACE,
+  OWNER_COMPUTE_PLAN_ID,
   OWNER_ORIGIN,
+  OWNER_RUNTIME_VERSION_ID,
+  OWNER_STORAGE_PLAN_ID,
   QUOTE_MICROS,
   candidateReceipt,
   createFixtureBoundary,
@@ -663,10 +666,24 @@ test("the producer invokes the deployed buyer and preserves its Candidate-bound 
     assert.equal(purchase.operation.resumed, false);
     assert.deepEqual(purchase.mutations.observed, { purchases: 1 });
     assert.equal(purchase.purchase.amountUsdMicros, QUOTE_MICROS);
+    // The owner mints the operation and the Workspace identity, so the receipt
+    // names the owner's own shapes rather than a derived launch identity.
+    assert.match(purchase.operation.operationId, /^op_[0-9a-f]{32}$/);
+    assert.match(purchase.operation.workspaceId, /^workspace_[0-9a-f]{32}$/);
+    // The purchase names what was actually bought: the application source and
+    // the plan pair the owner priced beside it, under the renewal mode it
+    // admitted.
+    assert.equal(purchase.product.resourceType, "workspace");
+    assert.deepEqual(purchase.product.applicationSelection, { kind: "opl_app", runtimeVersionId: OWNER_RUNTIME_VERSION_ID });
+    assert.equal(purchase.product.computePlanId, OWNER_COMPUTE_PLAN_ID);
+    assert.equal(purchase.product.storagePlanId, OWNER_STORAGE_PLAN_ID);
+    assert.equal(purchase.product.renewalMode, "manual");
     assert.equal(result.receipt.operation.idempotencyKey, purchase.operation.idempotencyKey);
     assert.equal(result.receipt.operation.operationId, purchase.operation.operationId);
     assert.equal(result.receipt.operation.workspaceId, purchase.operation.workspaceId);
-    assert.equal(result.receipt.operation.purchaseReceiptId, purchase.operation.purchaseReceiptId);
+    // The Ledger receipt is the owner's record of the charge, and the
+    // qualification receipt binds it to the order the owner minted.
+    assert.equal(result.receipt.operation.purchaseReceiptId, platform.state.receiptId);
     assert.equal(result.receipt.mutations.observed.purchases, 1);
     assert.equal(result.receipt.checks.purchase_issued, true);
     assert.equal(result.receipt.checks.purchase_receipt_bound, true);
@@ -680,6 +697,16 @@ test("the producer invokes the deployed buyer and preserves its Candidate-bound 
     assert.ok(platform.state.calls.includes("request:/api/auth/me"), "the buyer read the session account");
     assert.ok(platform.state.calls.includes("request:/api/gateway/wallet"), "the buyer read the session wallet");
     assert.equal(platform.state.calls.filter((call) => call === "purchase:issued").length, 1);
+    // The purchase ran on the Workspace owner route: the owner priced a deploy
+    // quote and admitted the order against it. The retained Control Plane route
+    // no longer admits purchases and is not asked to.
+    for (const catalog of ["runtime-versions", "compute-plans", "storage-plans"]) {
+      assert.ok(platform.state.calls.some((call) => call.startsWith(`/api/v2/catalog/${catalog}`)), catalog);
+    }
+    assert.ok(platform.state.calls.includes("/api/v2/quotes"), "the owner priced the declared purchase");
+    assert.ok(platform.state.calls.includes("/api/v2/workspaces"), "the owner admitted the order");
+    assert.equal(platform.state.calls.includes("/api/pricing/preview"), false, "the retained pricing route is not used");
+    assert.equal(platform.state.calls.includes("/api/workspace-launches"), false, "the retained launch route is not used to buy");
     for (const forbidden of [
       ACCOUNT_ID, ACCOUNT_EMAIL, OWNER_ORIGIN, CLUSTER_ID, NAMESPACE,
       "workspace.qualification.invalid", "ap-guangzhou",
@@ -854,24 +881,43 @@ test("the shared qualification flow runs for the provider the deployment binding
       /^opl-qualification:[0-9a-f]{64}\nsha256:[0-9a-f]{64}\nsha256:[0-9a-f]{64}$/,
     );
     // The boundary's transport carried the shared flow's own reads: the tenant
-    // fence, the quote, the purchase, the Ledger charge, the Workspace, the
-    // Runtime and both sides of the wallet.
+    // fence, the owner catalog, the owner's quote and order, the owner
+    // operation, the Ledger charge, the Workspace, the Runtime and both sides
+    // of the wallet.
     const calls = platform.state.calls;
     assert.equal(calls[0], "boundary:open");
     for (const read of [
       "/api/auth/me",
       "/api/gateway/wallet",
       "request:/api/auth/me",
-      "/api/pricing/preview",
-      "/api/workspace-launches",
+      "/api/v2/quotes",
+      "/api/v2/workspaces",
     ]) {
       assert.ok(calls.includes(read), read);
     }
+    for (const catalog of ["runtime-versions", "compute-plans", "storage-plans"]) {
+      assert.ok(calls.some((call) => call.startsWith(`/api/v2/catalog/${catalog}`)), catalog);
+    }
+    // The order is read back from the owner that minted it, under the identity
+    // the owner minted.
+    assert.ok(calls.some((call) => /^\/api\/v2\/operations\/workspace\/op_[0-9a-f]{32}$/.test(call)));
+    assert.ok(calls.some((call) => /^request:\/api\/v2\/operations\/workspace\/op_[0-9a-f]{32}$/.test(call)));
+    // The retained Control Plane route is consulted for the order it may have
+    // admitted before the cutover, and for nothing else. It never admits a
+    // purchase here.
     assert.ok(calls.some((call) => /^request:\/api\/workspace-launches\/workspace-launch-[0-9a-f]{18}$/.test(call)));
-    assert.ok(calls.some((call) => /^\/api\/billing\/receipts\/receipt-/.test(call)));
+    assert.equal(calls.includes("/api/workspace-launches"), false, "the retained route never admits a purchase");
+    assert.equal(calls.includes("/api/pricing/preview"), false, "the retained route never prices a purchase");
+    // The Ledger receipt is found in the Ledger's own inventory and read back
+    // under the identity it holds.
+    assert.ok(calls.some((call) => call.startsWith("/api/billing/receipts?")));
+    assert.ok(calls.some((call) => /^\/api\/billing\/receipts\/rcpt_[0-9a-f]{32}$/.test(call)));
     assert.ok(calls.some((call) => call.startsWith("/api/workspaces?")));
     assert.ok(calls.some((call) => /^\/api\/workspaces\/[^/]+\/runtime-status$/.test(call)));
+    // The wallet is read on both sides of the purchase by the shared flow, and
+    // the buyer reads the account's own wallet through the session transport.
     assert.equal(calls.filter((call) => call === "/api/gateway/wallet").length, 2);
+    assert.equal(calls.filter((call) => call === "request:/api/gateway/wallet").length, 1);
     // Nothing else can select the provider: an unsupported one is refused before
     // any boundary operation, even when the deployment is handed in directly.
     assert.throws(
@@ -988,7 +1034,9 @@ test("a lost answer to the purchase command resumes the original order without a
     assert.equal(result.reason, "none");
     assert.equal(platform.state.purchases, 1);
     assert.equal(platform.state.charges, 1);
-    assert.equal(platform.state.calls.filter((call) => call === "/api/workspace-launches").length, 1);
+    // The order command was issued once and the lost answer was recovered by
+    // the owner's own replay of it, never by a second order.
+    assert.equal(platform.state.calls.filter((call) => call === "/api/v2/workspaces").length, 2);
     assert.equal(platform.state.calls.filter((call) => call === "purchase:issued").length, 1);
     assert.equal(result.receipt.operation.resumed, false);
     assert.equal(result.receipt.mutations.observed.purchases, 1);
@@ -999,7 +1047,10 @@ test("a lost answer to the purchase command resumes the original order without a
     // Both receipts name the one recovered operation, not two.
     assert.equal(result.purchaseReceipt.operation.operationId, result.receipt.operation.operationId);
     assert.equal(result.purchaseReceipt.operation.workspaceId, result.receipt.operation.workspaceId);
-    assert.equal(result.purchaseReceipt.operation.purchaseReceiptId, result.receipt.operation.purchaseReceiptId);
+    // The deployed receipt names the owner-minted order; the Ledger receipt
+    // that proves the charge is bound to it by the qualification receipt.
+    assert.match(result.purchaseReceipt.operation.operationId, /^op_[0-9a-f]{32}$/);
+    assert.equal(result.receipt.operation.purchaseReceiptId, platform.state.receiptId);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -1009,7 +1060,7 @@ test("a lost answer followed by an unreadable owner readback is unknown, never a
   const root = await mkdtemp(join(tmpdir(), "opl-protected-response-lost-unknown-"));
   try {
     const fixture = await writeFixture(root);
-    const platform = createFixturePlatform({ losePurchaseResponse: true, failLaunchReadbackAfterPurchase: true });
+    const platform = createFixturePlatform({ losePurchaseResponse: true, failOwnerReadbackAfterPurchase: true });
     const result = await runProtectedBusinessQualification(input(fixture.paths, fixture.digest), {
       environment: protectedEnvironment(),
       boundary: createFixtureBoundary(deploymentBinding(fixture.digest), platform),

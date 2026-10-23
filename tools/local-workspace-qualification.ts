@@ -12,11 +12,10 @@ import { parseDocument } from "yaml";
 // else in this file either composes it or asserts a result, and neither of those
 // belongs to the purchase itself.
 import {
-  launchOperationId, launchWorkspaceId, priceWorkspaceLaunch, stableID, submitWorkspaceLaunch, waitForLaunch,
+  priceWorkspaceQuote, quoteWorkspaceOrder, stableID, submitWorkspaceOrder, workspaceDeclaration,
 } from "./workspace-purchase-core.ts";
 
 import {
-  collectLocalJ1RecoveryAuthority,
   createLocalJ1RecoveryArtifact,
   createLocalJ1RecoveryReadbackPendingArtifact,
   localJ1CleanupPlan,
@@ -309,13 +308,16 @@ export function validateLocalQualificationReceipt(value) {
     throw new Error("durable owner-separated stores are required");
   }
   const live = value.qualification.authorityMode === "live";
-  const identityKeys = ["accountId", "sub2apiUserId", "launchOperationId", "workspaceId", "runtimeId", "keyId", "debitCode", "purchaseReceiptId"];
+  const identityKeys = [
+    "accountId", "sub2apiUserId", "operationId", "workspaceId", "runtimeId", "keyId", "debitCode", "purchaseReceiptId",
+    "runtimeVersionId", "computePlanId", "storagePlanId"
+  ];
   if (!live) identityKeys.push("deleteOperationId", "deletionReceiptId");
   for (const key of identityKeys) {
     requireString(value.identities?.[key], `identity ${key}`);
   }
   if (value.debit?.count !== 1 || !String(value.debit?.code || "").startsWith("opl:") ||
-    value.debit?.accountId !== value.identities.accountId || value.debit?.code !== value.identities.debitCode || value.debit?.operationId !== value.identities.launchOperationId ||
+    value.debit?.accountId !== value.identities.accountId || value.debit?.code !== value.identities.debitCode || value.debit?.operationId !== value.identities.operationId ||
     value.debit?.workspaceId !== value.identities.workspaceId ||
     String(value.debit?.userId || "") !== String(value.identities.sub2apiUserId) || !/^[1-9][0-9]*$/.test(String(value.debit?.amountUsdMicros || ""))) {
     throw new Error("exact debit evidence is invalid");
@@ -329,12 +331,12 @@ export function validateLocalQualificationReceipt(value) {
       BigInt(value.wallet.afterDeleteUsdMicros) !== BigInt(value.wallet.afterUsdMicros) + BigInt(value.refund?.amountUsdMicros || "0"))) {
     throw new Error("isolated fixture wallet readback does not equal the exact debit and its platform refund");
   }
-  // The purchase receipt binds exactly the resources this resource-only Launch
-  // delivered. The Runtime and the Workspace Key belong to the default
-  // application installation and are bound by its own evidence block.
+  // The purchase receipt binds exactly the resources this Workspace order
+  // delivered. The Runtime and the Workspace Key belong to the application
+  // installation and are bound by its own evidence block.
   if (value.receipt?.count !== 1 || value.receipt?.id !== value.identities.purchaseReceiptId ||
-    value.receipt?.accountId !== value.identities.accountId || value.receipt?.operationId !== value.identities.launchOperationId ||
-    value.receipt?.workspaceId !== value.identities.workspaceId || value.receipt?.provisioningMode !== "resource_only" ||
+    value.receipt?.accountId !== value.identities.accountId || value.receipt?.operationId !== value.identities.operationId ||
+    value.receipt?.workspaceId !== value.identities.workspaceId ||
     value.receipt?.runtimeId !== undefined || value.receipt?.keyId !== undefined ||
     !String(value.receipt?.computeAllocationId || "").trim() || !String(value.receipt?.storageId || "").trim() ||
     !String(value.receipt?.attachmentId || "").trim() ||
@@ -397,8 +399,8 @@ export function validateLocalQualificationReceipt(value) {
     throw new Error("qualification authority write counts are invalid");
   }
   const expectedMutationCounts = live
-    ? { accountProvisionPosts: 1, workspaceLaunchPosts: 1, workspaceDeleteRequests: 0, refundPosts: 0 }
-    : { workspaceLaunchPosts: 1, workspaceDeleteRequests: 1, refundPosts: 0 };
+    ? { accountProvisionPosts: 1, workspaceQuotePosts: 1, workspaceOrderPosts: 1, workspaceDeleteRequests: 0, refundPosts: 0 }
+    : { workspaceQuotePosts: 1, workspaceOrderPosts: 1, workspaceDeleteRequests: 1, refundPosts: 0 };
   if (Object.entries(expectedMutationCounts).some(([key, count]) => value.mutationCounts?.[key] !== count)) {
     throw new Error("qualification mutation counts are invalid");
   }
@@ -408,7 +410,7 @@ export function validateLocalQualificationReceipt(value) {
     !/^wallet-adjustment-delete-[0-9a-f]{24}$/.test(String(value.refund?.walletOperationId || "")) ||
     !String(value.refund?.receiptId || "").trim() || !String(value.refund?.code || "").startsWith("opl:") ||
     String(value.refund?.userId || "") !== String(value.identities.sub2apiUserId) ||
-    value.refund?.relatedOperationId !== value.identities.launchOperationId ||
+    value.refund?.relatedOperationId !== value.identities.operationId ||
     !/^[1-9][0-9]*$/.test(String(value.refund?.amountUsdMicros || "")) ||
     BigInt(value.refund.amountUsdMicros) > BigInt(value.debit.amountUsdMicros)) {
     throw new Error("platform refund for the deleted Workspace is not exactly bound");
@@ -787,15 +789,97 @@ async function consoleReadback(http) {
   if (asset.response.status !== 200 || !asset.text.trim()) throw new Error("Console hashed script is unavailable");
 }
 
-// A Local purchase is a resource Launch: the Control Plane commits the default
-// OPL application installation beside it, and the resource Launch never carries
-// an application URL. The customer entry, the Runtime and the Workspace Key
-// therefore belong to the selected application generation, so the owner
-// readback binds that generation instead of a URL this purchase never had.
+// The owner owns the catalog a buyer prices from, and the Console resolves it
+// the same way: the first approved Runtime Release for the default OPL App, the
+// first available compute plan and the first available storage plan. The pages
+// are read to the end, because a plan that is only offered on a later page is
+// still a plan the owner offers.
+async function readOwnerCatalogItems(http, auth, path, label) {
+  const items = [];
+  const seenCursors = new Set();
+  let cursor = "";
+  for (;;) {
+    const query = cursor ? `?limit=100&cursor=${encodeURIComponent(cursor)}` : "?limit=100";
+    const page = (await http.json(`${path}${query}`, {}, auth)).payload;
+    if (!page || !Array.isArray(page.items)) throw new Error(`local qualification ${label} catalog is invalid`);
+    items.push(...page.items);
+    const next = page.nextCursor;
+    if (next === undefined || next === null || next === "") break;
+    const nextCursor = String(next);
+    if (seenCursors.has(nextCursor)) throw new Error(`local qualification ${label} catalog cursor repeated`);
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
+  }
+  return items;
+}
+
+// What this purchase declares. The owner prices exactly one application source
+// beside the compute and the storage plan, so the declaration names all three
+// and the quote the owner returns is checked against it.
+export async function resolveLocalWorkspaceDeclaration(http, auth) {
+  const [runtimeVersions, computePlans, storagePlans] = await Promise.all([
+    readOwnerCatalogItems(http, auth, "/api/v2/catalog/runtime-versions", "runtime version"),
+    readOwnerCatalogItems(http, auth, "/api/v2/catalog/compute-plans", "compute plan"),
+    readOwnerCatalogItems(http, auth, "/api/v2/catalog/storage-plans", "storage plan")
+  ]);
+  const runtimeVersion = runtimeVersions.find((candidate) => candidate?.status === "approved");
+  const computePlan = computePlans.find((candidate) => candidate?.availability === "available");
+  const storagePlan = storagePlans.find((candidate) => candidate?.availability === "available");
+  if (!runtimeVersion || !computePlan || !storagePlan) {
+    throw new Error("local qualification owner catalog does not offer a purchasable Workspace");
+  }
+  return workspaceDeclaration({
+    applicationSelection: { kind: "opl_app", runtimeVersionId: String(runtimeVersion.id || "") },
+    computePlanId: String(computePlan.id || ""),
+    storagePlanId: String(storagePlan.id || "")
+  });
+}
+
+// Buy one declared Workspace through the owner.
+//
+// The owner records the quote and the order against the buyer's idempotency
+// identity, so a repeated delivery with the same identity and the same request
+// replays the original quote and the original order instead of pricing or
+// buying twice. The harness replays the sequence when an answer is lost,
+// because the identities it has to record are the ones the owner mints and it
+// cannot invent them.
+export async function buyLocalWorkspace({
+  http, auth, name, declaration, walletUsdMicros, idempotencyKey, wait, attempts = 3
+}) {
+  let failure = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    let quote;
+    try {
+      quote = await quoteWorkspaceOrder({ http, auth, declaration, idempotencyKey: `${idempotencyKey}:quote` });
+    } catch (error) {
+      failure = error;
+      continue;
+    }
+    // The owner priced the Workspace, so the buyer never computes a price. It
+    // only confirms that the quote names the declared purchase and that its own
+    // wallet can fund it.
+    const amountUsdMicros = priceWorkspaceQuote({ quote, walletUsdMicros, declaration });
+    try {
+      const order = await submitWorkspaceOrder({ http, auth, name, quote, idempotencyKey, wait });
+      return { quote, amountUsdMicros, ...order };
+    } catch (error) {
+      failure = error;
+    }
+  }
+  throw failure;
+}
+
+// A Local purchase is an owner Workspace order: the owner mints the operation
+// and the Workspace identities, and the retained Control Plane workspace
+// projection still carries the application installation the owner committed
+// beside it. The customer entry, the Runtime and the Workspace Key therefore
+// belong to the selected application generation, so the owner readback binds
+// that generation instead of a URL this purchase never had.
 export async function readWorkspaceEvidence(http, auth, operationId, workspaceId, receiptId) {
-  const launch = (await http.json(`/api/workspace-launches/${encodeURIComponent(operationId)}`, {}, auth)).payload;
-  if (launch?.status !== "succeeded" || launch?.phase !== "succeeded" || launch?.workspaceId !== workspaceId || launch?.receiptId !== receiptId) {
-    throw new Error("Workspace launch continuity readback is invalid");
+  const operation = (await http.json(`/api/v2/operations/workspace/${encodeURIComponent(operationId)}`, {}, auth)).payload;
+  if (operation?.owner !== "workspace" || operation?.kind !== "create_workspace" || operation?.status !== "succeeded" ||
+    operation?.operationId !== operationId || operation?.resourceId !== workspaceId) {
+    throw new Error("Workspace owner operation readback is invalid");
   }
   const page = sourceData((await http.json("/api/workspaces?page=1&pageSize=20", {}, auth)).payload, "control-plane");
   const workspace = page?.items?.find((candidate) => candidate?.id === workspaceId);
@@ -810,18 +894,17 @@ export async function readWorkspaceEvidence(http, auth, operationId, workspaceId
     !String(runtime.runtimeId || "").trim()) {
     throw new Error("Workspace runtime readback is invalid");
   }
-  // The resource-only purchase receipt binds exactly the resources it delivered:
-  // a Runtime and a Workspace Key belong to the installation request, never to
-  // this receipt.
+  // The purchase receipt binds exactly the resources it delivered: a Runtime and
+  // a Workspace Key belong to the installation request, never to this receipt.
+  // The receipt is the Ledger's own record of the purchase, and the owner
+  // operation carries no second copy of the resources it delivered, so the
+  // fulfillment it names is asserted here as the Ledger states it.
   const receipt = sourceData((await http.json(`/api/billing/receipts/${encodeURIComponent(receiptId)}`, {}, auth)).payload, "ledger");
   if (receipt?.receiptId !== receiptId || receipt?.workspaceId !== workspaceId || receipt?.type !== "billing.workspace_purchased.v1" ||
-    receipt?.status !== "completed" || receipt?.fulfillment?.runtimeId !== undefined || receipt?.fulfillment?.workspaceApiKeyId !== undefined ||
-    String(receipt?.fulfillment?.computeAllocationId || "") !== String(launch.computeAllocationId || "") ||
-    String(receipt?.fulfillment?.storageId || "") !== String(launch.storageId || "") ||
-    String(receipt?.fulfillment?.attachmentId || "") !== String(launch.attachmentId || "")) {
+    receipt?.status !== "completed" || receipt?.fulfillment?.runtimeId !== undefined || receipt?.fulfillment?.workspaceApiKeyId !== undefined) {
     throw new Error("Ledger receipt readback is invalid");
   }
-  return { launch, workspace, current, runtime, receipt };
+  return { operation, workspace, current, runtime, receipt };
 }
 
 async function readAllGatewayKeys(http, auth) {
@@ -864,6 +947,19 @@ async function readAllBillingReceipts(http, auth) {
   return receipts;
 }
 
+// The purchase receipt is the Ledger's own record of the purchase, and the
+// Ledger binds it to the Workspace it paid for. The owner mints the Workspace
+// identity, so the receipt for this purchase is the one the Ledger holds for
+// exactly that Workspace, and it is the only one this account may hold.
+export async function readLocalPurchaseReceiptId(http, auth, workspaceId) {
+  const purchases = (await readAllBillingReceipts(http, auth)).filter((candidate) =>
+    candidate?.type === "billing.workspace_purchased.v1" && candidate?.workspaceId === workspaceId);
+  if (purchases.length !== 1 || !String(purchases[0]?.receiptId || "").trim()) {
+    throw new Error("local qualification purchase receipt cardinality is invalid");
+  }
+  return String(purchases[0].receiptId);
+}
+
 export function validateLocalJ1AccountingReadback(input) {
   const {
     operationId, workspaceId, receiptId, runtimeId, keyId, keyName, sub2apiUserId, debitCode, amountUsdMicros,
@@ -898,16 +994,13 @@ export function validateLocalJ1AccountingReadback(input) {
   }
   if (typeof usage?.totalRequests !== "number" || typeof keyUsage?.totalRequests !== "number" ||
     !/^\d+$/.test(afterMicros) ||
-    evidence?.launch?.operationId !== operationId || evidence?.launch?.workspaceId !== workspaceId || evidence?.launch?.receiptId !== receiptId ||
+    evidence?.operation?.operationId !== operationId || evidence?.operation?.resourceId !== workspaceId ||
     evidence?.current?.status !== "ready" || !String(evidence?.current?.entryUrl || "").trim() ||
     evidence?.workspace?.url !== evidence?.current?.entryUrl ||
     evidence?.runtime?.runtimeId !== runtimeId || evidence?.runtime?.currentApplication?.operationId !== evidence?.current?.operationId ||
     evidence?.receipt?.receiptId !== receiptId || evidence?.receipt?.workspaceId !== workspaceId ||
     evidence?.receipt?.chargeReference !== debitCode || String(evidence?.receipt?.totalUsdMicros) !== amountUsdMicros ||
-    evidence?.receipt?.fulfillment?.runtimeId !== undefined || evidence?.receipt?.fulfillment?.workspaceApiKeyId !== undefined ||
-    String(evidence?.receipt?.fulfillment?.computeAllocationId || "") !== String(evidence?.launch?.computeAllocationId || "") ||
-    String(evidence?.receipt?.fulfillment?.storageId || "") !== String(evidence?.launch?.storageId || "") ||
-    String(evidence?.receipt?.fulfillment?.attachmentId || "") !== String(evidence?.launch?.attachmentId || "")) {
+    evidence?.receipt?.fulfillment?.runtimeId !== undefined || evidence?.receipt?.fulfillment?.workspaceApiKeyId !== undefined) {
     throw new Error("local qualification operation accounting binding is invalid");
   }
   return { walletExactDeltaObserved: /^\d+$/.test(beforeMicros) && BigInt(beforeMicros) - BigInt(amountUsdMicros) === BigInt(afterMicros) };
@@ -943,12 +1036,14 @@ export async function provisionLocalQualificationAccount(http, adminAuth, { emai
 export async function runLocalWorkspaceJ1HTTPQualification(input) {
   const {
     http, adminEmail, adminPassword, qualificationEmail, qualificationPassword, accountProvisionKey,
-    launchKey, operationId, workspaceId, workspaceName, receiptBase, readDebit, readRuntime, cleanup, wait,
+    launchKey, workspaceName, receiptBase, readDebit, readRuntime, cleanup, wait,
     onStage = () => {}
   } = input;
   let cleanupEvidence;
   let cleanupScope = {};
-  let launchSubmitted = false;
+  let orderSubmitted = false;
+  let operationId = "";
+  let workspaceId = "";
   let auth = null;
   try {
     onStage("bootstrap_ready");
@@ -981,26 +1076,25 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
       readAllGatewayKeys(http, auth),
       readAllBillingReceipts(http, auth)
     ]);
-    onStage("pricing_preview");
-    const pricing = (await http.json("/api/pricing/preview", {
-      method: "POST", body: { resourceType: "workspace", packageId: "basic" }
-    }, auth)).payload;
-    const amountUsdMicros = priceWorkspaceLaunch({ pricing, walletUsdMicros: beforeMicros });
-    onStage("workspace_launch");
-    launchSubmitted = true;
+    onStage("catalog_resolution");
+    const declaration = await resolveLocalWorkspaceDeclaration(http, auth);
+    onStage("workspace_order");
+    orderSubmitted = true;
     // The purchase sequence and the quote policy are shared invariants. What
     // differs across authority profiles is the evidence below this point, and
     // the cleanup scope, which is recorded here because only this profile owns an
     // account it has to tear down.
-    const { launch, receiptId } = await submitWorkspaceLaunch({
-      http, auth, name: workspaceName, idempotencyKey: launchKey,
-      expectedOperationId: operationId, expectedWorkspaceId: workspaceId, wait,
+    const { amountUsdMicros, operation, operationId: ownerOperationId, workspaceId: ownerWorkspaceId } = await buyLocalWorkspace({
+      http, auth, name: workspaceName, declaration, walletUsdMicros: beforeMicros, idempotencyKey: launchKey, wait,
     });
-    cleanupScope.workspaceId = workspaceId;
+    operationId = ownerOperationId;
+    workspaceId = ownerWorkspaceId;
+    cleanupScope = { ...cleanupScope, operationId, workspaceId };
     onStage("application_installation");
     const installation = await waitForWorkspaceApplicationInstallation(http, auth, { workspaceId, operationId, wait });
     const workspaceKey = resolveWorkspaceKey(await readAllGatewayKeys(http, auth), workspaceId);
     onStage("terminal_readback");
+    const receiptId = await readLocalPurchaseReceiptId(http, auth, workspaceId);
     const evidence = await readWorkspaceEvidence(http, auth, operationId, workspaceId, receiptId);
     if (localApplicationEntryPort(evidence.current.entryUrl) === 0) throw new Error("Workspace application entry is invalid");
     const runtimeImage = await readRuntime({ accountId: provision.accountId, workspaceId, runtimeId: evidence.runtime.runtimeId });
@@ -1034,14 +1128,16 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
         workspace: { ...receiptBase.images.workspace, runningDigest: runtimeImage.runningDigest }
       },
       identities: {
-        accountId: provision.accountId, sub2apiUserId, launchOperationId: operationId, workspaceId,
-        runtimeId: evidence.runtime.runtimeId, keyId, debitCode: debit.code, purchaseReceiptId: receiptId
+        accountId: provision.accountId, sub2apiUserId, operationId, workspaceId,
+        runtimeId: evidence.runtime.runtimeId, keyId, debitCode: debit.code, purchaseReceiptId: receiptId,
+        runtimeVersionId: declaration.applicationSelection.runtimeVersionId,
+        computePlanId: declaration.computePlanId, storagePlanId: declaration.storagePlanId
       },
       debit: { count: 1, accountId: provision.accountId, operationId, workspaceId, code: debit.code, userId: sub2apiUserId, amountUsdMicros },
       wallet: { beforeUsdMicros: beforeMicros, afterUsdMicros: afterMicros, exactDeltaObserved: accounting.walletExactDeltaObserved },
       receipt: {
         count: 1, id: receiptId, accountId: provision.accountId, operationId, workspaceId,
-        provisioningMode: "resource_only", computeAllocationId: String(evidence.receipt.fulfillment?.computeAllocationId || ""),
+        computeAllocationId: String(evidence.receipt.fulfillment?.computeAllocationId || ""),
         storageId: String(evidence.receipt.fulfillment?.storageId || ""), attachmentId: String(evidence.receipt.fulfillment?.attachmentId || ""),
         chargeReference: evidence.receipt.chargeReference, amountUsdMicros: String(evidence.receipt.totalUsdMicros)
       },
@@ -1055,7 +1151,7 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
       deletionReceipt: { count: 0 },
       residuals: cleanupEvidence,
       authorityWriteCounts: { keyCreates: 1, keyDeletes: 0, debits: 1, refunds: 0 },
-      mutationCounts: { accountProvisionPosts: 1, workspaceLaunchPosts: 1, workspaceDeleteRequests: 0, refundPosts: 0 },
+      mutationCounts: { accountProvisionPosts: 1, workspaceQuotePosts: 1, workspaceOrderPosts: 1, workspaceDeleteRequests: 0, refundPosts: 0 },
       refund: { count: 0 },
       usage: { source: "sub2api", status: "available", totalRequests: usage.totalRequests }
     };
@@ -1064,18 +1160,16 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
     onStage("qualification_cleanup");
     cleanupEvidence = await cleanup({ accountId: provision.accountId, workspaceId });
     const receipt = validateLocalQualificationReceipt({ ...receiptCandidate, residuals: cleanupEvidence });
-    return { receipt, auth, provision, launch, evidence, cleanupEvidence };
+    return { receipt, auth, provision, operation, evidence, cleanupEvidence };
   } finally {
     if (cleanupEvidence === undefined) {
-      let recoveryAuthority = null;
-      if (launchSubmitted && auth) {
-        try {
-          recoveryAuthority = await collectLocalJ1RecoveryAuthority({ http, auth, operationId, launchSubmitted });
-        } catch {
-          // The preserved service and PostgreSQL state remain the recovery authority when readback is temporarily unavailable.
-        }
-      }
-      await cleanup({ ...cleanupScope, failed: true, launchSubmitted, recoveryAuthority });
+      // A Workspace bought on the owner route has no retained Control Plane
+      // Launch, so the retained recovery surface has nothing to read, and the
+      // owner operation does not publish the retained per-resource write
+      // counters. The preserved service and PostgreSQL state remain the recovery
+      // authority, and the recovery artifact names the owner-minted identities
+      // the order was admitted under.
+      await cleanup({ ...cleanupScope, failed: true, launchSubmitted: orderSubmitted, recoveryAuthority: null });
     }
   }
 }
@@ -1490,8 +1584,11 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
   const userToken = randomBytes(32).toString("hex");
   const authorityToken = randomBytes(32).toString("hex");
   const launchKey = `local-qualification:${suffix}`;
-  let operationId = launchOperationId(accountId, launchKey);
-  let workspaceId = launchWorkspaceId(accountId, operationId);
+  // The owner mints the operation identity and the Workspace identity of a new
+  // purchase, so the harness does not derive them and waits for the owner to
+  // name them.
+  let operationId = "";
+  let workspaceId = "";
   let cloudImage = options.cloudImage;
   let workspaceImage = options.workspaceImage;
   let builtTags = [];
@@ -1584,8 +1681,6 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
     ];
     if (options.authorityMode === "live") {
       accountId = `acct-${stableID("account", adminEmail.toLowerCase()).slice(0, 18)}`;
-      operationId = launchOperationId(accountId, launchKey);
-      workspaceId = launchWorkspaceId(accountId, operationId);
     }
     composeEnvironment = qualificationComposeEnvironment(process.env, envEntries);
     const envFileEntries = qualificationEnvFileEntries(envEntries, options);
@@ -1615,8 +1710,6 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
         qualificationPassword: adminPassword,
         accountProvisionKey: `local-qualification-account:${stableID(adminEmail.toLowerCase()).slice(0, 24)}`,
         launchKey,
-        operationId,
-        workspaceId,
         workspaceName: `Local qualification ${suffix}`,
         wait: (milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds)),
         onStage: (name) => { stage = name; },
@@ -1659,9 +1752,14 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
                 providerVolumeRefs
               }
             };
+            // The order was admitted under the identities the owner minted, and
+            // the recovery artifact names those identities rather than a
+            // retained launch identity the harness no longer derives.
             const artifact = scope?.recoveryAuthority
               ? createLocalJ1RecoveryArtifact({ ...common, authority })
-              : createLocalJ1RecoveryReadbackPendingArtifact({ ...common, operationId, workspaceId });
+              : createLocalJ1RecoveryReadbackPendingArtifact({
+                ...common, operationId: String(scope?.operationId || ""), workspaceId: String(scope?.workspaceId || "")
+              });
             await writeLocalJ1RecoveryArtifact(recoveryPath, artifact);
             recovery = { status: artifact.status, path: recoveryPath, artifact };
             return null;
@@ -1709,24 +1807,24 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
     const beforeMicros = String(walletBefore?.usdMicros || "");
     if (!/^[1-9][0-9]*$/.test(beforeMicros)) throw new Error("qualification wallet readback is invalid");
 
-    stage = "workspace_launch";
-    const pricing = (await http.json("/api/pricing/preview", {
-      method: "POST", body: { resourceType: "workspace", packageId: "basic" }
-    }, auth)).payload;
-    const amountUsdMicros = priceWorkspaceLaunch({ pricing, walletUsdMicros: beforeMicros });
-    const { launch, receiptId } = await submitWorkspaceLaunch({
-      http, auth, name: `Local qualification ${suffix}`, idempotencyKey: launchKey,
-      expectedOperationId: operationId, expectedWorkspaceId: workspaceId,
+    stage = "catalog_resolution";
+    const declaration = await resolveLocalWorkspaceDeclaration(http, auth);
+    stage = "workspace_order";
+    const { amountUsdMicros, operation, operationId: ownerOperationId, workspaceId: ownerWorkspaceId } = await buyLocalWorkspace({
+      http, auth, name: `Local qualification ${suffix}`, declaration, walletUsdMicros: beforeMicros, idempotencyKey: launchKey,
     });
+    operationId = ownerOperationId;
+    workspaceId = ownerWorkspaceId;
 
-    // The resource Launch carries no Runtime of its own: the owner commits the
-    // default OPL application installation beside it. Wait for the owner's own
-    // ready readback, then bind the Workspace Key the installation created.
+    // The owner order names the application it installs, so the owner commits
+    // the default OPL application installation beside it. Wait for the owner's
+    // own ready readback, then bind the Workspace Key the installation created.
     stage = "application_installation";
     const installation = await waitForWorkspaceApplicationInstallation(http, auth, { workspaceId, operationId });
     const workspaceKey = resolveWorkspaceKey(await readAllGatewayKeys(http, auth), workspaceId);
     const keyId = workspaceKey.id;
     stage = "terminal_readback";
+    const receiptId = await readLocalPurchaseReceiptId(http, auth, workspaceId);
     const evidence = await readWorkspaceEvidence(http, auth, operationId, workspaceId, receiptId);
     if (localApplicationEntryPort(evidence.current.entryUrl) === 0) throw new Error("Workspace application entry is invalid");
     stage = "workspace_open";
@@ -1757,11 +1855,11 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
     const receiptsPage = sourceData((await http.json("/api/billing/receipts?limit=50", {}, auth)).payload, "ledger");
     const receipts = (receiptsPage?.receipts || []).filter((candidate) => candidate?.type === "billing.workspace_purchased.v1");
     const receipt = evidence.receipt;
-    if (receipts.length !== 1 || receipt.chargeReference !== debit.code || String(receipt.totalUsdMicros) !== amountUsdMicros ||
-      receipt.fulfillment?.runtimeId !== undefined || receipt.fulfillment?.workspaceApiKeyId !== undefined ||
-      String(receipt.fulfillment?.computeAllocationId || "") !== String(launch.computeAllocationId || "") ||
-      String(receipt.fulfillment?.storageId || "") !== String(launch.storageId || "") ||
-      String(receipt.fulfillment?.attachmentId || "") !== String(launch.attachmentId || "")) {
+    // The Ledger holds exactly one purchase receipt for this Workspace, and it
+    // is the receipt the owner charged for this order.
+    if (receipts.length !== 1 || receipts[0]?.receiptId !== receipt.receiptId || receipts[0]?.workspaceId !== workspaceId ||
+      receipt.chargeReference !== debit.code || String(receipt.totalUsdMicros) !== amountUsdMicros ||
+      receipt.fulfillment?.runtimeId !== undefined || receipt.fulfillment?.workspaceApiKeyId !== undefined) {
       throw new Error("Ledger receipt exact binding is invalid");
     }
 
@@ -1772,7 +1870,7 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
     const afterRestart = await readWorkspaceEvidence(http, restartedAuth, operationId, workspaceId, receiptId);
     const restart = {
       performed: true,
-      operationStable: afterRestart.launch.operationId === launch.operationId,
+      operationStable: afterRestart.operation.operationId === operation.operationId,
       workspaceStable: afterRestart.workspace.id === evidence.workspace.id,
       runtimeStable: afterRestart.runtime.runtimeId === evidence.runtime.runtimeId,
       receiptStable: afterRestart.receipt.receiptId === receipt.receiptId
@@ -1788,13 +1886,16 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
       onPending: (pending) => { ownerDeletePending = pending; },
       onFailure: (observed) => { ownerDeleteFailure = observed; }
     });
-    // The purchase is resource-only: its v2 Delete binds the Launch and the
-    // Launch Receipt, never the application installation's Runtime or Workspace
-    // Key. Delete performs no Gateway or wallet mutation, so the terminal
-    // response reports both identities as empty and every owned absence it
-    // confirmed.
+    // The purchase names its application, and the retained Delete binds the
+    // purchase receipt it refunded, never the application installation's Runtime
+    // or Workspace Key. Delete performs no Gateway or wallet mutation, so the
+    // terminal response reports both identities as empty and every owned absence
+    // it confirmed. The retained Delete reports the retained Launch it retired,
+    // and a Workspace bought on the owner route has no retained Launch, so that
+    // identity is not this purchase's operation identity and is not compared to
+    // it here.
     if (deletion?.status !== "deleted" || deletion?.accountId !== accountId || String(deletion?.sub2apiUserId) !== String(sub2apiUserId) ||
-      deletion?.launchOperationId !== operationId || deletion?.operationId !== expectedDeleteOperationId || deletion?.launchReceiptId !== receiptId ||
+      deletion?.operationId !== expectedDeleteOperationId || deletion?.launchReceiptId !== receiptId ||
       deletion?.workspaceId !== workspaceId || String(deletion?.runtimeId || "") !== "" || String(deletion?.workspaceApiKeyId ?? "") !== "0" ||
       deletion?.keyStatus !== undefined || !String(deletion?.deletionReceiptId || "").trim() ||
       deletion?.runtimeStatus !== "absent" || deletion?.secretStatus !== "absent") {
@@ -1885,16 +1986,18 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
       processes: { console: "ready", controlPlane: "ready", fabric: "ready", ledger: "ready" },
       stores,
       identities: {
-        accountId, sub2apiUserId, launchOperationId: operationId, deleteOperationId: String(deletion.operationId || ""),
+        accountId, sub2apiUserId, operationId, deleteOperationId: String(deletion.operationId || ""),
         deletionReceiptId: String(deletion.deletionReceiptId || ""), workspaceId,
         runtimeId: evidence.runtime.runtimeId, keyId, debitCode: debit.code,
-        purchaseReceiptId: receiptId
+        purchaseReceiptId: receiptId,
+        runtimeVersionId: declaration.applicationSelection.runtimeVersionId,
+        computePlanId: declaration.computePlanId, storagePlanId: declaration.storagePlanId
       },
       debit: { count: debitCount, accountId, operationId, workspaceId, code: debit.code, userId: String(debit.userId), amountUsdMicros },
       wallet: { beforeUsdMicros: beforeMicros, afterUsdMicros: afterMicros, afterDeleteUsdMicros: afterDeleteMicros },
       receipt: {
         count: 1, id: receipt.receiptId, accountId, operationId, workspaceId: receipt.workspaceId,
-        provisioningMode: "resource_only", computeAllocationId: String(receipt.fulfillment.computeAllocationId || ""),
+        computeAllocationId: String(receipt.fulfillment.computeAllocationId || ""),
         storageId: String(receipt.fulfillment.storageId || ""), attachmentId: String(receipt.fulfillment.attachmentId || ""),
         chargeReference: receipt.chargeReference, amountUsdMicros: String(receipt.totalUsdMicros)
       },
@@ -1918,7 +2021,7 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
       },
       residuals,
       authorityWriteCounts: authorityAfterOwnerDelete?.writeCounts,
-      mutationCounts: { workspaceLaunchPosts: 1, workspaceDeleteRequests: 1, refundPosts: 0 },
+      mutationCounts: { workspaceQuotePosts: 1, workspaceOrderPosts: 1, workspaceDeleteRequests: 1, refundPosts: 0 },
       refund: refundEvidence,
       usage: { source: "sub2api", status: "available", totalRequests: usage.totalRequests },
       qualification: { authorityMode: options.authorityMode, p0Ready: false },

@@ -57,6 +57,24 @@ export const WORKSPACE_OPERATION_ROUTE = "/api/v2/operations/workspace";
 const defaultWait = (milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
 
 /*
+ * A failure that still names the order it belongs to.
+ *
+ * The owner mints the operation identity and the Workspace identity before it
+ * knows whether the delivery will succeed. A delivery that stops afterwards
+ * still left an order behind, and a recovery artifact has to name it. So the
+ * failure carries the identities instead of losing them, and keeps the
+ * original failure as its cause.
+ */
+function orderError(message, { operationId = "", workspaceId = "", quoteId = "" } = {}, cause) {
+  const error = new Error(message);
+  error.operationId = operationId;
+  error.workspaceId = workspaceId;
+  error.quoteId = quoteId;
+  if (cause) error.cause = cause;
+  return error;
+}
+
+/*
  * The Control Plane's own identifier derivation, byte for byte.
  *
  * The retained Control Plane mints an account identifier from a SHA-1 over the
@@ -184,10 +202,11 @@ export async function waitForWorkspaceOrder(http, operationId, auth, wait = defa
     const status = String(operation?.status || "");
     if (status === ORDER_SUCCEEDED) return operation;
     if (ORDER_STOPPED.includes(status)) {
-      throw new Error(`Workspace order stopped at ${status}/${operation?.stage || "none"}/${operation?.errorCode || "none"}`);
+      throw orderError(`Workspace order stopped at ${status}/${operation?.stage || "none"}/${operation?.errorCode || "none"}`,
+        { operationId, workspaceId: String(operation?.resourceId || "") });
     }
     if (!ORDER_IN_FLIGHT.includes(status)) {
-      throw new Error(`Workspace order reported an unknown status ${status}`);
+      throw orderError(`Workspace order reported an unknown status ${status}`, { operationId });
     }
     const seconds = operation?.pollAfterSeconds;
     const delay = Number.isInteger(seconds) && seconds >= ORDER_POLL_MIN_SECONDS && seconds <= ORDER_POLL_MAX_SECONDS
@@ -227,8 +246,16 @@ export async function submitWorkspaceOrder({
   const operationId = String(order?.operationId || "");
   const workspaceId = String(order?.resourceId || "");
   if (!operationId || !workspaceId) {
-    throw new Error("workspace order identity is missing");
+    throw orderError("workspace order identity is missing", { quoteId: String(quote?.id || "") });
   }
-  const operation = await waitForWorkspaceOrder(http, operationId, auth, wait);
-  return { order, operation, operationId, workspaceId };
+  try {
+    const operation = await waitForWorkspaceOrder(http, operationId, auth, wait);
+    return { order, operation, operationId, workspaceId };
+  } catch (error) {
+    // The delivery stopped or could not be read, but the order exists and the
+    // owner minted its identities. A recovery artifact names them, so they
+    // travel with the failure instead of being lost with it.
+    throw orderError(error?.message || "workspace order did not complete",
+      { operationId, workspaceId, quoteId: String(quote?.id || "") }, error);
+  }
 }

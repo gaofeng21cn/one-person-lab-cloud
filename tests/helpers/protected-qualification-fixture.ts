@@ -7,9 +7,10 @@
  * network, cluster or database, and it is not a second production path.
  */
 
+import { createHash } from "node:crypto";
+
 import { candidateReceiptDigest } from "../../tools/cloud-candidate-receipt.ts";
 import type { TencentTkeProviderBoundary } from "../../tools/workspace-qualification-tencent-tke.ts";
-import { launchOperationId, launchWorkspaceId } from "../../tools/workspace-purchase-core.ts";
 
 export const SOURCE_SHA = "a".repeat(40);
 export const SOURCE_TREE = "b".repeat(40);
@@ -26,6 +27,21 @@ export const INSTANCE_SHA = "f".repeat(40);
 // The Candidate's own Cloud image digest. The J0 READY receipt carries it so a
 // sandbox run for the same source but another image is another Candidate.
 export const CLOUD_IMAGE_DIGEST = "sha256:" + "1".repeat(64);
+
+// The catalog the Workspace owner offers. The buyer resolves its declaration
+// from these the way the Console does: the first approved Runtime Release and
+// the first available compute and storage plan. The owners mint their catalog
+// identifiers in one shape: a lowercase prefix, an underscore and sixteen
+// random bytes in hex.
+export const OWNER_RUNTIME_VERSION_ID = `rtv_${"a".repeat(32)}`;
+export const OWNER_COMPUTE_PLAN_ID = `cmp_${"b".repeat(32)}`;
+export const OWNER_STORAGE_PLAN_ID = `stp_${"c".repeat(32)}`;
+
+// The identities the owner mints. The fixture never derives them from the
+// declared idempotency identity: the owner mints the operation and the
+// Workspace, and the buyer reads them back.
+const ownerID = (prefix: string, ...parts: string[]) =>
+  `${prefix}_${createHash("sha1").update(parts.join(":")).digest("hex").slice(0, 32)}`;
 
 export function candidateReceipt(overrides = {}) {
   return {
@@ -143,19 +159,27 @@ export function createFixturePlatform({
   walletMicros = "999999999",
   quoteMicros = QUOTE_MICROS,
   losePurchaseResponse = false,
-  failLaunchReadbackAfterPurchase = false,
+  failOwnerReadbackAfterPurchase = false,
+  retainedOrderExists = false,
   unavailableRuntimeStatus = false,
   undeclaredKeyFulfillment = false,
 } = {}) {
   const state = {
     wallet: walletMicros,
     quote: quoteMicros,
+    // The owner's own records: the orders it admitted and the quotes it
+    // priced, each addressed by the idempotency identity it was handed.
     orders: new Map<string, any>(),
-    byKey: new Map<string, string>(),
+    byKey: new Map<string, any>(),
+    quotes: new Map<string, any>(),
+    quoteById: new Map<string, any>(),
     workspaceId: "",
     operationId: "",
+    receiptId: "",
     purchases: 0,
     charges: 0,
+    minted: 0,
+    responsesLost: false,
     // The unapproved managed-key lifecycle endpoint, if a code path ever calls
     // it. The Sub2API contract is issuance-only, so the owner answers with
     // `codes.Unimplemented`; the producer must never turn that into a success.
@@ -169,6 +193,38 @@ export function createFixturePlatform({
   const order = (operationId: string) => state.orders.get(operationId) ?? null;
   const keyLifecyclePath = (path: string) =>
     /managed-?key|workspace-key|gateway\/keys|\/api\/keys?\b/i.test(path);
+  // The owner's own projection of an operation it admitted. It carries the
+  // identities the owner minted and nothing the buyer derived.
+  const ownerOperation = (admitted: any) => ({
+    operationId: admitted.operationId,
+    owner: "workspace",
+    kind: "create_workspace",
+    resourceId: admitted.workspaceId,
+    status: admitted.status,
+    stage: admitted.stage,
+    requestId: admitted.requestId,
+    createdAt: admitted.createdAt,
+    updatedAt: admitted.updatedAt,
+  });
+  // The Ledger's own record of the purchase. It names the order that caused
+  // it, the Workspace it paid for and the resources it delivered.
+  const chargeReceipt = (receiptId: string) => ({
+    receiptId,
+    workspaceId: state.workspaceId,
+    operationId: state.operationId,
+    type: "billing.workspace_purchased.v1",
+    status: "completed",
+    chargeReference: "opl:workspace-purchase:charge:0001",
+    totalUsdMicros: state.quote,
+    fulfillment: {
+      computeAllocationId: "ca-qualification-0001",
+      storageId: "st-qualification-0001",
+      attachmentId: "at-qualification-0001",
+      // An undeclared managed Key in the charge receipt. The shared flow
+      // must refuse to read this as the declared purchase.
+      ...(undeclaredKeyFulfillment ? { managedKeyId: "mk-qualification-0001" } : {}),
+    },
+  });
 
   const json = async (path: string, init: any = {}) => {
     state.calls.push(path);
@@ -182,49 +238,111 @@ export function createFixturePlatform({
     if (path === "/api/gateway/wallet") {
       return { status: 200, payload: envelope({ usdMicros: state.wallet }) };
     }
-    if (path === "/api/pricing/preview") {
-      return { status: 200, payload: { resourceType: "workspace", packageId: "basic", currency: "USD", totalChargeUsdMicros: state.quote } };
+    // The owner owns the catalog a buyer prices from. The Console reads it the
+    // same way: the first approved Runtime Release, the first available
+    // compute plan and the first available storage plan.
+    if (path.startsWith("/api/v2/catalog/runtime-versions")) {
+      return { status: 200, payload: { items: [{ id: OWNER_RUNTIME_VERSION_ID, name: "Qualification Runtime", status: "approved" }] } };
     }
-    if (path === "/api/workspace-launches" && init.method === "POST") {
+    if (path.startsWith("/api/v2/catalog/compute-plans")) {
+      return { status: 200, payload: { items: [{ id: OWNER_COMPUTE_PLAN_ID, name: "Qualification Compute", availability: "available" }] } };
+    }
+    if (path.startsWith("/api/v2/catalog/storage-plans")) {
+      return { status: 200, payload: { items: [{ id: OWNER_STORAGE_PLAN_ID, name: "Qualification Storage", availability: "available" }] } };
+    }
+    // The quote is the owner's own price for the declared purchase. It is
+    // recorded against the idempotency identity it was handed, so a repeated
+    // quote replays this quote instead of pricing a second one.
+    if (path === "/api/v2/quotes" && init.method === "POST") {
       const key = String(init.headers?.["idempotency-key"] || "");
-      const operationId = launchOperationId(ACCOUNT_ID, key);
-      const workspaceId = launchWorkspaceId(ACCOUNT_ID, operationId);
+      const existing = state.quotes.get(key);
+      if (existing) {
+        state.calls.push("quote:replayed");
+        return { status: 200, payload: existing };
+      }
+      const body = init.body || {};
+      const quote = {
+        id: ownerID("qte", key),
+        purpose: "deploy",
+        runtimeVersionId: String(body?.applicationSelection?.runtimeVersionId || ""),
+        computePlanId: String(body?.computePlanId || ""),
+        storagePlanId: String(body?.storagePlanId || ""),
+        modelSelections: body?.modelSelections || [],
+        periodMonths: Number(body?.periodMonths || 0),
+        totalUSDMicros: state.quote,
+        // An offered quote has no order yet. The order takes it, and an
+        // accepted quote is one an order already took.
+        status: "offered",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        expiresAt: "2026-01-01T01:00:00.000Z",
+      };
+      state.quotes.set(key, quote);
+      state.quoteById.set(quote.id, quote);
+      state.calls.push("quote:issued");
+      return { status: 201, payload: quote };
+    }
+    if (/^\/api\/v2\/quotes\/[^/]+$/.test(path)) {
+      const quote = state.quoteById.get(decodeURIComponent(path.split("/").pop() as string));
+      return quote ? { status: 200, payload: quote } : { status: 404, payload: null };
+    }
+    // The order is admitted against the quote the owner priced. An idempotency
+    // identity admits one order, so a redelivery is answered from the order
+    // already admitted rather than promoted into a second purchase.
+    if (path === "/api/v2/workspaces" && init.method === "POST") {
+      const key = String(init.headers?.["idempotency-key"] || "");
       const existing = state.byKey.get(key);
       if (existing) {
         state.calls.push("purchase:resumed");
-        return { status: 202, payload: { operationId: existing, workspaceId } };
+        return { status: 202, payload: ownerOperation(order(existing)) };
       }
-      state.byKey.set(key, operationId);
-      state.operationId = operationId;
-      state.workspaceId = workspaceId;
-      state.orders.set(operationId, {
-        operationId,
-        workspaceId,
-        accountId: ACCOUNT_ID,
-        packageId: String(init.body?.packageId || ""),
-        autoRenew: init.body?.autoRenew === true,
-        name: String(init.body?.name || ""),
+      state.minted += 1;
+      const admitted = {
+        operationId: ownerID("op", key, String(state.minted)),
+        workspaceId: ownerID("workspace", key, String(state.minted)),
+        requestId: String(init.headers?.["x-opl-request-id"] || ""),
         status: "succeeded",
-        phase: "succeeded",
-        receiptId: `receipt-${operationId.slice(-18)}`,
-        provisioningMode: "resource_only",
-        totalChargeUsdMicros: state.quote,
-        computeAllocationId: "ca-qualification-0001",
-        storageId: "st-qualification-0001",
-        attachmentId: "at-qualification-0001",
-      });
+        stage: "succeeded",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:01.000Z",
+      };
+      state.byKey.set(key, admitted.operationId);
+      state.orders.set(admitted.operationId, admitted);
+      state.operationId = admitted.operationId;
+      state.workspaceId = admitted.workspaceId;
+      state.receiptId = ownerID("rcpt", admitted.operationId);
       state.purchases += 1;
       state.charges += 1;
       state.wallet = String(BigInt(state.wallet) - BigInt(state.quote));
+      // The quote this order took is an accepted quote now.
+      const quote = state.quoteById.get(String(init.body?.quoteId || ""));
+      if (quote) quote.status = "accepted";
       state.calls.push("purchase:issued");
       // The platform admitted the order and its answer was lost. This is the
-      // response-loss case, not a refused command: the order above exists.
-      if (losePurchaseResponse) throw new Error("workspace launch response lost");
-      return { status: 202, payload: { operationId, workspaceId } };
+      // response-loss case, not a refused command: the order above exists. The
+      // answer is lost once, so the recovery reads the order the owner already
+      // admitted instead of a second purchase.
+      if (losePurchaseResponse && !state.responsesLost) {
+        state.responsesLost = true;
+        throw new Error("workspace order response lost");
+      }
+      return { status: 202, payload: ownerOperation(admitted) };
     }
-    if (/^\/api\/workspace-launches\/[^/]+$/.test(path)) {
+    if (/^\/api\/v2\/operations\/workspace\/[^/]+$/.test(path)) {
       const admitted = order(decodeURIComponent(path.split("/").pop() as string));
-      return admitted ? { status: 200, payload: admitted } : { status: 404, payload: null };
+      if (!admitted) return { status: 404, payload: null };
+      if (failOwnerReadbackAfterPurchase) return { status: 500, payload: null };
+      return { status: 200, payload: ownerOperation(admitted) };
+    }
+    // The retained route no longer admits purchases. The orders it admitted
+    // before the cutover are still there and still belong to the account that
+    // bought them, so a buyer has to be able to see that one exists.
+    if (/^\/api\/workspace-launches\/[^/]+$/.test(path)) {
+      if (!retainedOrderExists) return { status: 404, payload: null };
+      const operationId = decodeURIComponent(path.split("/").pop() as string);
+      return { status: 200, payload: {
+        operationId, workspaceId: "workspace-retained-0001", status: "succeeded", phase: "succeeded",
+        receiptId: "rcpt-retained-0001", provisioningMode: "resource_only",
+      } };
     }
     if (path.startsWith("/api/workspaces?")) {
       return { status: 200, payload: {
@@ -256,27 +374,20 @@ export function createFixturePlatform({
         },
       } };
     }
+    // The Ledger's own inventory of receipts. The receipt of an owner order is
+    // found in that inventory, bound to the order and the Workspace the owner
+    // minted.
+    if (path.startsWith("/api/billing/receipts?")) {
+      return { status: 200, payload: {
+        source: "ledger", available: true, status: "available",
+        data: { receipts: state.receiptId ? [chargeReceipt(state.receiptId)] : [], hasMore: false },
+      } };
+    }
     if (/^\/api\/billing\/receipts\/[^/]+$/.test(path)) {
       const receiptId = decodeURIComponent(path.split("/").pop() as string);
       return { status: 200, payload: {
         source: "ledger", available: true, status: "available",
-        data: {
-          receiptId,
-          workspaceId: state.workspaceId,
-          operationId: state.operationId,
-          type: "billing.workspace_purchased.v1",
-          status: "completed",
-          chargeReference: "opl:workspace-launch:charge:0001",
-          totalUsdMicros: state.quote,
-          fulfillment: {
-            computeAllocationId: "ca-qualification-0001",
-            storageId: "st-qualification-0001",
-            attachmentId: "at-qualification-0001",
-            // An undeclared managed Key in the charge receipt. The shared flow
-            // must refuse to read this as the declared purchase.
-            ...(undeclaredKeyFulfillment ? { managedKeyId: "mk-qualification-0001" } : {}),
-          },
-        },
+        data: chargeReceipt(receiptId),
       } };
     }
     throw new Error(`unexpected request ${path}`);
@@ -294,12 +405,19 @@ export function createFixturePlatform({
     if (path === "/api/gateway/wallet") {
       return { response: { status: 200 }, payload: envelope({ usdMicros: state.wallet }) };
     }
-    if (/^\/api\/workspace-launches\/[^/]+$/.test(path)) {
+    if (/^\/api\/v2\/operations\/workspace\/[^/]+$/.test(path)) {
       const admitted = order(decodeURIComponent(path.split("/").pop() as string));
-      if (admitted && failLaunchReadbackAfterPurchase) {
-        return { response: { status: 500 }, payload: null };
-      }
-      return admitted ? { response: { status: 200 }, payload: admitted } : { response: { status: 404 }, payload: null };
+      if (!admitted) return { response: { status: 404 }, payload: null };
+      if (failOwnerReadbackAfterPurchase) return { response: { status: 500 }, payload: null };
+      return { response: { status: 200 }, payload: ownerOperation(admitted) };
+    }
+    if (/^\/api\/workspace-launches\/[^/]+$/.test(path)) {
+      if (!retainedOrderExists) return { response: { status: 404 }, payload: null };
+      const operationId = decodeURIComponent(path.split("/").pop() as string);
+      return { response: { status: 200 }, payload: {
+        operationId, workspaceId: "workspace-retained-0001", status: "succeeded", phase: "succeeded",
+        receiptId: "rcpt-retained-0001", provisioningMode: "resource_only",
+      } };
     }
     throw new Error(`unexpected request ${path}`);
   };

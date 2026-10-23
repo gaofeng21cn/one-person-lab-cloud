@@ -661,7 +661,7 @@ test("Local J1 accounting allows unrelated history and rejects duplicate operati
     history: { items: [{ valueUsdMicros: "-1000000", status: "used" }] },
     debit: { count: 1, code: debitCode, userId: "41", amountUsdMicros },
     evidence: {
-      launch: { operationId, workspaceId, receiptId, computeAllocationId: "compute-current", storageId: "storage-current", attachmentId: "attachment-current" },
+      operation: { owner: "workspace", kind: "create_workspace", operationId, resourceId: workspaceId, status: "succeeded" },
       current: { status: "ready", entryUrl, operationId: applicationOperationId },
       workspace: { url: entryUrl },
       runtime: { runtimeId, currentApplication: { operationId: applicationOperationId } },
@@ -696,15 +696,16 @@ test("READY receipt binds the exact durable and accounting evidence", () => {
     processes: { console: "ready", controlPlane: "ready", fabric: "ready", ledger: "ready" },
     stores: { controlPlane: "durable", fabric: "durable", ledger: "durable", ownerSeparated: true },
     identities: {
-      accountId: "acct-admin", sub2apiUserId: "41", launchOperationId: "workspace-launch-alpha",
+      accountId: "acct-admin", sub2apiUserId: "41", operationId: "workspace-operation-alpha",
       deleteOperationId: "workspace-delete-alpha", deletionReceiptId: "receipt-delete", workspaceId: "ws-alpha",
-      runtimeId: "rt-alpha", keyId: "71", debitCode: "opl:qualification-alpha", purchaseReceiptId: "receipt-alpha"
+      runtimeId: "rt-alpha", keyId: "71", debitCode: "opl:qualification-alpha", purchaseReceiptId: "receipt-alpha",
+      runtimeVersionId: "rv-alpha", computePlanId: "cp-alpha", storagePlanId: "sp-alpha"
     },
-    debit: { count: 1, accountId: "acct-admin", operationId: "workspace-launch-alpha", workspaceId: "ws-alpha", code: "opl:qualification-alpha", userId: "41", amountUsdMicros: "52580000" },
+    debit: { count: 1, accountId: "acct-admin", operationId: "workspace-operation-alpha", workspaceId: "ws-alpha", code: "opl:qualification-alpha", userId: "41", amountUsdMicros: "52580000" },
     wallet: { beforeUsdMicros: "100000000", afterUsdMicros: "47420000", afterDeleteUsdMicros: "99926972" },
     receipt: {
-      count: 1, id: "receipt-alpha", accountId: "acct-admin", operationId: "workspace-launch-alpha", workspaceId: "ws-alpha",
-      provisioningMode: "resource_only", computeAllocationId: "compute-alpha", storageId: "storage-alpha", attachmentId: "attachment-alpha",
+      count: 1, id: "receipt-alpha", accountId: "acct-admin", operationId: "workspace-operation-alpha", workspaceId: "ws-alpha",
+      computeAllocationId: "compute-alpha", storageId: "storage-alpha", attachmentId: "attachment-alpha",
       chargeReference: "opl:qualification-alpha", amountUsdMicros: "52580000"
     },
     application: {
@@ -735,13 +736,13 @@ test("READY receipt binds the exact durable and accounting evidence", () => {
     },
     residuals: { containers: 0, volumes: 0, networks: 0 },
     authorityWriteCounts: { keyCreates: 1, keyDeletes: 0, debits: 1, refunds: 1 },
-    mutationCounts: { workspaceLaunchPosts: 1, workspaceDeleteRequests: 1, refundPosts: 0 },
+    mutationCounts: { workspaceQuotePosts: 1, workspaceOrderPosts: 1, workspaceDeleteRequests: 1, refundPosts: 0 },
     // The deletion closeout's platform refund: the wallet operation derives from
     // the Delete operation, refunds the charge that paid for the period, and is
     // recorded by its own Ledger receipt.
     refund: {
       count: 1, walletOperationId: `wallet-adjustment-delete-${"a".repeat(24)}`, receiptId: "receipt-refund",
-      amountUsdMicros: "52506972", code: "opl:qualification-refund", userId: "41", relatedOperationId: "workspace-launch-alpha"
+      amountUsdMicros: "52506972", code: "opl:qualification-refund", userId: "41", relatedOperationId: "workspace-operation-alpha"
     },
     usage: { source: "sub2api", status: "available", totalRequests: 0 },
     qualification: { authorityMode: "fixture", p0Ready: false },
@@ -784,7 +785,7 @@ test("READY receipt binds the exact durable and accounting evidence", () => {
   assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, authorityWriteCounts: { ...fixtureReceipt.authorityWriteCounts, debits: 2 } }), /authority write counts/);
   assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, authorityWriteCounts: { ...fixtureReceipt.authorityWriteCounts, refunds: 0 } }), /authority write counts/);
   assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, refund: { ...fixtureReceipt.refund, count: 0 } }), /platform refund/);
-  assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, refund: { ...fixtureReceipt.refund, relatedOperationId: "workspace-launch-other" } }), /platform refund/);
+  assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, refund: { ...fixtureReceipt.refund, relatedOperationId: "workspace-operation-other" } }), /platform refund/);
   assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, refund: { ...fixtureReceipt.refund, walletOperationId: "wallet-adjustment-delete-short" } }), /platform refund/);
   assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, refund: { ...fixtureReceipt.refund, code: "refund-without-owner-prefix" } }), /platform refund/);
   assert.throws(() => validateLocalQualificationReceipt({ ...fixtureReceipt, refund: { ...fixtureReceipt.refund, amountUsdMicros: "52580001" } }), /platform refund/);
@@ -947,8 +948,13 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
   const accountId = `acct-${stableID("account", accountEmail).slice(0, 18)}`;
   const accountOperationId = `account-provision-${stableID(accountProvisionKey, accountEmail).slice(0, 18)}`;
   const launchKey = "local-qualification:j1";
-  const operationId = `workspace-launch-${stableID(accountId, launchKey).slice(0, 18)}`;
-  const workspaceId = `ws-${stableID("workspace-launch-v2", accountId, operationId).slice(0, 18)}`;
+  // The owner mints the operation identity and the Workspace identity of a new
+  // purchase, so the fixture never derives them.
+  const operationId = "workspace-operation-j1";
+  const workspaceId = "ws-owner-j1";
+  const runtimeVersionId = "rv-j1";
+  const computePlanId = "cp-j1";
+  const storagePlanId = "sp-j1";
   const receiptId = "receipt-j1";
   const runtimeId = "runtime-j1";
   const applicationOperationId = "workspace-application-deploy-j1";
@@ -965,17 +971,23 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
     totalUsdMicros: "52580000", fulfillment: { computeAllocationId: "compute-historical", storageId: "storage-historical", attachmentId: "attachment-historical" }
   };
   const requests = [];
-  const counts = { mappingPosts: 0, workspacePosts: 0, keyCreates: 0, debits: 0, refunds: 0, deletes: 0, restarts: 0 };
-  let launchReads = 0;
+  const ownerCommands = [];
+  const counts = { mappingPosts: 0, quotePosts: 0, workspacePosts: 0, keyCreates: 0, debits: 0, refunds: 0, deletes: 0, restarts: 0 };
+  let ownerReads = 0;
   let server;
   const envelope = (source, data, status = "available") => ({ source, available: true, status, data });
   const send = (response, status, payload, headers = {}) => {
     response.writeHead(status, { "content-type": "application/json", ...headers });
     response.end(JSON.stringify(payload));
   };
-  const launch = (status = "succeeded") => ({
-    operationId, workspaceId, status, phase: status, receiptId,
-    computeAllocationId: "compute-j1", storageId: "storage-j1", attachmentId: "attachment-j1"
+  const readBody = (request) => new Promise((resolvePromise) => {
+    let text = "";
+    request.on("data", (chunk) => { text += chunk; });
+    request.on("end", () => resolvePromise(text ? JSON.parse(text) : null));
+  });
+  const ownerOperation = (status = "succeeded") => ({
+    operationId, owner: "workspace", kind: "create_workspace", resourceId: workspaceId, status,
+    stage: status === "succeeded" ? "succeeded" : "creating", requestId: "request-j1"
   });
   const currentApplication = () => ({
     operationId: applicationOperationId, applicationId: "opl-app", revision: "revision-j1", status: "ready", entryUrl: entryURL
@@ -1008,14 +1020,31 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
       const items = counts.keyCreates ? [historicalKey, { id: keyId, name: keyName, kind: "workspace", status: "active" }] : [historicalKey];
       return send(response, 200, envelope("sub2api", { items, total: items.length, page: 1, pageSize: 100, pages: 1 }));
     }
-    if (method === "POST" && url.pathname === "/api/pricing/preview") return send(response, 200, { resourceType: "workspace", packageId: "basic", currency: "USD", totalChargeUsdMicros: Number(amountUsdMicros) });
-    if (method === "POST" && url.pathname === "/api/workspace-launches") {
-      counts.workspacePosts += 1; counts.keyCreates += 1; counts.debits += 1;
-      return send(response, 202, launch("pending"));
+    if (method === "GET" && url.pathname === "/api/v2/catalog/runtime-versions") {
+      return send(response, 200, { items: [{ id: "rv-deprecated", status: "deprecated" }, { id: runtimeVersionId, status: "approved" }] });
     }
-    if (method === "GET" && url.pathname === `/api/workspace-launches/${operationId}`) {
-      launchReads += 1;
-      return send(response, 200, launch(launchReads === 1 ? "pending" : "succeeded"));
+    if (method === "GET" && url.pathname === "/api/v2/catalog/compute-plans") {
+      return send(response, 200, { items: [{ id: "cp-retired", availability: "retired" }, { id: computePlanId, availability: "available" }] });
+    }
+    if (method === "GET" && url.pathname === "/api/v2/catalog/storage-plans") {
+      return send(response, 200, { items: [{ id: storagePlanId, availability: "available" }] });
+    }
+    if (method === "POST" && url.pathname === "/api/v2/quotes") {
+      counts.quotePosts += 1;
+      ownerCommands.push({ path: url.pathname, idempotencyKey: request.headers["idempotency-key"], body: await readBody(request) });
+      return send(response, 201, {
+        id: "quote-j1", purpose: "deploy", runtimeVersionId, computePlanId, storagePlanId,
+        modelSelections: [], periodMonths: 1, totalUSDMicros: amountUsdMicros, status: "offered"
+      });
+    }
+    if (method === "POST" && url.pathname === "/api/v2/workspaces") {
+      counts.workspacePosts += 1; counts.keyCreates += 1; counts.debits += 1;
+      ownerCommands.push({ path: url.pathname, idempotencyKey: request.headers["idempotency-key"], body: await readBody(request) });
+      return send(response, 202, ownerOperation("accepted"));
+    }
+    if (method === "GET" && url.pathname === `/api/v2/operations/workspace/${operationId}`) {
+      ownerReads += 1;
+      return send(response, 200, ownerOperation(ownerReads === 1 ? "accepted" : "succeeded"));
     }
     if (method === "GET" && url.pathname === "/api/workspaces") return send(response, 200, envelope("control-plane", { items: [{ id: workspaceId, url: entryURL, openable: true, currentApplication: currentApplication() }], total: 1, page: 1, pageSize: 20 }));
     if (method === "GET" && url.pathname === `/api/workspaces/${workspaceId}/runtime-status`) return send(response, 200, envelope("fabric", { workspaceId, runtimeId, ready: true, status: "running", url: entryURL, currentApplication: currentApplication() }));
@@ -1074,7 +1103,7 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
       readSourceIdentity: async () => ({ sha, tree: "d".repeat(40), clean: true }),
       runLiveJ1: async ({ j0Ready }) => runLocalWorkspaceJ1HTTPQualification({
         http, adminEmail: "admin@example.test", adminPassword: "admin-password", qualificationEmail: accountEmail, qualificationPassword: accountPassword,
-        accountProvisionKey, launchKey, operationId, workspaceId, workspaceName: "J1", wait: async () => {},
+        accountProvisionKey, launchKey, workspaceName: "J1", wait: async () => {},
         onStage: (stage) => stages.push(stage),
         readRuntime: async ({ runtimeId: observedRuntimeId }) => {
           runtimeReadbacks += 1;
@@ -1104,7 +1133,7 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
         assert.equal(redactedError(error), scenario.error);
         return true;
       });
-      assert.deepEqual(stages, ["bootstrap_ready", "admin_login", "account_provision", "qualification_login", "wallet_usage_baseline", "pricing_preview", "workspace_launch", "application_installation", "terminal_readback", "workspace_open"]);
+      assert.deepEqual(stages, ["bootstrap_ready", "admin_login", "account_provision", "qualification_login", "wallet_usage_baseline", "catalog_resolution", "workspace_order", "application_installation", "terminal_readback", "workspace_open"]);
       assert.equal(runtimeReadbacks, 1);
       assert.equal(debitReadbacks, 0);
       assert.equal(cleanupCalls.length, 1);
@@ -1136,14 +1165,38 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
       const writtenReceipt = JSON.parse(await readFile(outputPath, "utf8"));
       assert.equal(writtenReceipt.j0Ready.digest, result.j0Ready.digest);
       assert.deepEqual(writtenReceipt.j0Ready.source, { sha, tree: "d".repeat(40), clean: true });
-      assert.deepEqual(stages, ["bootstrap_ready", "admin_login", "account_provision", "qualification_login", "wallet_usage_baseline", "pricing_preview", "workspace_launch", "application_installation", "terminal_readback", "workspace_open", "accounting_readback", "receipt_validation", "qualification_cleanup"]);
+      // The recorded identities are the ones the owner minted for this purchase.
+      assert.equal(writtenReceipt.identities.operationId, operationId);
+      assert.equal(writtenReceipt.identities.workspaceId, workspaceId);
+      assert.equal(writtenReceipt.identities.runtimeVersionId, runtimeVersionId);
+      assert.equal(writtenReceipt.identities.computePlanId, computePlanId);
+      assert.equal(writtenReceipt.identities.storagePlanId, storagePlanId);
+      assert.equal(writtenReceipt.receipt.operationId, operationId);
+      assert.equal(writtenReceipt.debit.operationId, operationId);
+      assert.deepEqual(stages, ["bootstrap_ready", "admin_login", "account_provision", "qualification_login", "wallet_usage_baseline", "catalog_resolution", "workspace_order", "application_installation", "terminal_readback", "workspace_open", "accounting_readback", "receipt_validation", "qualification_cleanup"]);
       assert.deepEqual(cleanupCalls, [{ accountId, workspaceId }]);
       assert.equal(runtimeReadbacks, 1);
       assert.equal(debitReadbacks, 1);
     }
     assert.equal(entryRequests, 1);
-    assert.deepEqual(counts, { mappingPosts: 1, workspacePosts: 1, keyCreates: 1, debits: 1, refunds: 0, deletes: 0, restarts: 0 });
-    assert.equal(requests.filter((request) => request.method === "POST" && request.path === "/api/workspace-launches").length, 1);
+    assert.deepEqual(counts, { mappingPosts: 1, quotePosts: 1, workspacePosts: 1, keyCreates: 1, debits: 1, refunds: 0, deletes: 0, restarts: 0 });
+    // The buyer declares the application and the plan pair it buys, and the
+    // owner prices and admits exactly that declaration.
+    assert.deepEqual(ownerCommands.map((command) => command.path), ["/api/v2/quotes", "/api/v2/workspaces"]);
+    assert.deepEqual(ownerCommands[0].body, {
+      purpose: "deploy",
+      applicationSelection: { kind: "opl_app", runtimeVersionId },
+      computePlanId, storagePlanId, modelSelections: [], periodMonths: 1
+    });
+    assert.deepEqual(ownerCommands[1].body, { name: "J1", quoteId: "quote-j1", renewalMode: "manual" });
+    // The buyer's own idempotency identity is stable across the two commands,
+    // so a repeated delivery replays the same quote and the same order.
+    assert.equal(ownerCommands[0].idempotencyKey, `${launchKey}:quote`);
+    assert.equal(ownerCommands[1].idempotencyKey, launchKey);
+    assert.equal(requests.filter((request) => request.method === "POST" && request.path === "/api/v2/workspaces").length, 1);
+    assert.equal(requests.filter((request) => request.method === "POST" && request.path === "/api/v2/quotes").length, 1);
+    assert.equal(requests.filter((request) => request.method === "GET" && request.path === `/api/v2/operations/workspace/${operationId}`).length >= 1, true);
+    assert.equal(requests.some((request) => request.path === "/api/workspace-launches"), false);
     assert.equal(requests.some((request) => request.method === "DELETE"), false);
     assert.equal(requests.some((request) => request.path.includes("refund")), false);
   } finally {
@@ -1158,7 +1211,7 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
 });
 }
 
-test("canonical J1 HTTP preview cleans a failure before Workspace Create", async () => {
+test("canonical J1 HTTP preview cleans a failure before the owner Workspace order", async () => {
   const cleanupCalls = [];
   const http = {
     json: async (path) => {
@@ -1176,33 +1229,22 @@ test("canonical J1 HTTP preview cleans a failure before Workspace Create", async
   };
   await assert.rejects(() => runLocalWorkspaceJ1HTTPQualification({
     http, adminEmail: "admin@example.test", adminPassword: "password", qualificationEmail: "customer@example.test", qualificationPassword: "password",
-    accountProvisionKey: "mapping", launchKey: "launch", operationId: "operation", workspaceId: "workspace", workspaceName: "J1",
+    accountProvisionKey: "mapping", launchKey: "launch", workspaceName: "J1",
     readRuntime: async () => ({}), readDebit: async () => ({}), cleanup: async (scope) => { cleanupCalls.push(scope); return { containers: 0, volumes: 0, networks: 0 }; }, receiptBase: {}
   }), /provision response/);
   assert.deepEqual(cleanupCalls, [{ failed: true, launchSubmitted: false, recoveryAuthority: null }]);
   assert.throws(() => sourceData({ source: "control-plane+sub2api", available: true, status: "conflict", data: {} }, "control-plane+sub2api"), /unavailable/);
 });
 
-test("canonical J1 HTTP preview preserves exact recovery authority after Workspace Create submission", async () => {
+test("canonical J1 HTTP preview preserves the recovery scope after an owner Workspace order submission", async () => {
   const accountId = `acct-${stableID("account", "customer@example.test").slice(0, 18)}`;
   const provisionOperationId = `account-provision-${stableID("mapping", "customer@example.test").slice(0, 18)}`;
   const cleanupCalls = [];
-  const launch = {
-    operationId: "operation", workspaceId: "workspace", schemaVersion: 3, version: 7,
-    status: "manual_review", stage: "debit", phase: "debit",
-    continuationAttemptBudgets: Object.fromEntries([
-      "key", "debit", "ensure_compute_allocation", "storage", "attachment", "secret", "runtime", "activation", "receipt"
-    ].map((stage) => [stage, {
-      attempted: stage === "key" || stage === "debit" ? 1 : 0,
-      confirmed: stage === "key" ? 1 : 0,
-      unknown: stage === "debit" ? 1 : 0,
-      max: 1,
-      status: stage === "key" ? "confirmed" : stage === "debit" ? "unknown" : "",
-      idempotencyKey: stage === "key" ? "key-write" : stage === "debit" ? "debit-write" : "",
-      pendingReadbacks: 0,
-      maxPendingReadbacks: 3
-    }]))
-  };
+  // The owner mints the operation identity and the Workspace identity, so the
+  // fixture states them instead of deriving them.
+  const operationId = "workspace-operation-owner";
+  const workspaceId = "ws-owner-minted";
+  const ownerCommands = [];
   const http = {
     request: async (path) => path === "/"
       ? { response: { status: 200 }, text: '<div id="root"><script src="/app.js"></script></div>' }
@@ -1217,31 +1259,47 @@ test("canonical J1 HTTP preview preserves exact recovery authority after Workspa
       if (path === "/api/gateway/usage-summary?period=month") return { payload: { source: "sub2api", available: true, status: "available", data: { totalRequests: 0 } } };
       if (path === "/api/gateway/keys?page=1&pageSize=100") return { payload: { source: "sub2api", available: true, status: "available", data: { items: [], total: 0, page: 1, pageSize: 100, pages: 1 } } };
       if (path === "/api/billing/receipts?limit=100") return { payload: { source: "ledger", available: true, status: "available", data: { receipts: [], hasMore: false } } };
-      if (path === "/api/pricing/preview") return { payload: { resourceType: "workspace", packageId: "basic", currency: "USD", totalChargeUsdMicros: "52580000" } };
-      if (path === "/api/workspace-launches" && init.method === "POST") return { payload: { operationId: "operation", workspaceId: "workspace" } };
-      if (path === "/api/workspace-launches/operation") return { payload: launch };
+      if (path.startsWith("/api/v2/catalog/runtime-versions")) return { payload: { items: [{ id: "rv-owner", status: "approved" }] } };
+      if (path.startsWith("/api/v2/catalog/compute-plans")) return { payload: { items: [{ id: "cp-owner", availability: "available" }] } };
+      if (path.startsWith("/api/v2/catalog/storage-plans")) return { payload: { items: [{ id: "sp-owner", availability: "available" }] } };
+      if (path === "/api/v2/quotes") {
+        ownerCommands.push({ path, idempotencyKey: init.headers["idempotency-key"] });
+        return { payload: { id: "quote-owner", purpose: "deploy", runtimeVersionId: "rv-owner", computePlanId: "cp-owner", storagePlanId: "sp-owner", modelSelections: [], periodMonths: 1, totalUSDMicros: "52580000", status: "offered" } };
+      }
+      if (path === "/api/v2/workspaces" && init.method === "POST") {
+        ownerCommands.push({ path, idempotencyKey: init.headers["idempotency-key"] });
+        return { payload: { operationId, owner: "workspace", kind: "create_workspace", resourceId: workspaceId, status: "accepted", stage: "creating" } };
+      }
+      if (path === `/api/v2/operations/workspace/${operationId}`) {
+        return { payload: { operationId, owner: "workspace", kind: "create_workspace", resourceId: workspaceId, status: "succeeded", stage: "succeeded" } };
+      }
+      if (path.startsWith("/api/workspaces?")) return { payload: { source: "control-plane", available: true, status: "available", data: { items: [], total: 0, page: 1, pageSize: 20 } } };
       throw new Error(`unexpected request ${path}`);
     }
   };
   await assert.rejects(() => runLocalWorkspaceJ1HTTPQualification({
     http, adminEmail: "admin@example.test", adminPassword: "password", qualificationEmail: "customer@example.test", qualificationPassword: "password",
-    accountProvisionKey: "mapping", launchKey: "launch", operationId: "operation", workspaceId: "workspace", workspaceName: "J1",
+    accountProvisionKey: "mapping", launchKey: "launch", workspaceName: "J1",
     wait: async () => {}, readRuntime: async () => ({}), readDebit: async () => ({}),
     cleanup: async (scope) => { cleanupCalls.push(scope); return null; }, receiptBase: {}
-  }), /manual_review\/debit\/none/);
+  }), /Workspace owner readback is invalid/);
   assert.equal(cleanupCalls.length, 1);
   assert.equal(cleanupCalls[0].failed, true);
   assert.equal(cleanupCalls[0].launchSubmitted, true);
-  assert.equal(cleanupCalls[0].recoveryAuthority.status, "manual_review");
-  assert.deepEqual(cleanupCalls[0].recoveryAuthority.externalWrites.debits, { attempted: 1, confirmed: 0, unknown: 1 });
-  const serializedAuthority = JSON.stringify(cleanupCalls[0].recoveryAuthority);
-  for (const forbidden of ['"operationId":"operation"', '"workspaceId":"workspace"', "key-write", "debit-write"]) {
-    assert.equal(serializedAuthority.includes(forbidden), false, forbidden);
-  }
+  // The recovery scope names the identities the owner minted for this purchase.
+  assert.equal(cleanupCalls[0].operationId, operationId);
+  assert.equal(cleanupCalls[0].workspaceId, workspaceId);
+  // The owner operation does not publish the retained per-resource write
+  // counters, so the preserved stack remains the recovery authority.
+  assert.equal(cleanupCalls[0].recoveryAuthority, null);
+  // The purchase went to the owner and was admitted exactly once.
+  assert.deepEqual(ownerCommands.map((command) => command.path), ["/api/v2/quotes", "/api/v2/workspaces"]);
+  assert.deepEqual(ownerCommands.map((command) => command.idempotencyKey), ["launch:quote", "launch"]);
 });
 
 test("canonical J1 HTTP preview still forbids cleanup when the post-Create owner readback is unavailable", async () => {
   let submitted = false;
+  const ownerCommands = [];
   const cleanupCalls = [];
   const accountId = `acct-${stableID("account", "customer@example.test").slice(0, 18)}`;
   const http = {
@@ -1258,19 +1316,33 @@ test("canonical J1 HTTP preview still forbids cleanup when the post-Create owner
       if (path === "/api/gateway/usage-summary?period=month") return { payload: { source: "sub2api", available: true, status: "available", data: { totalRequests: 0 } } };
       if (path === "/api/gateway/keys?page=1&pageSize=100") return { payload: { source: "sub2api", available: true, status: "available", data: { items: [], total: 0, page: 1, pageSize: 100, pages: 1 } } };
       if (path === "/api/billing/receipts?limit=100") return { payload: { source: "ledger", available: true, status: "available", data: { receipts: [], hasMore: false } } };
-      if (path === "/api/pricing/preview") return { payload: { resourceType: "workspace", packageId: "basic", currency: "USD", totalChargeUsdMicros: "52580000" } };
-      if (path === "/api/workspace-launches" && init.method === "POST") { submitted = true; throw new Error("response unavailable"); }
-      if (path === "/api/workspace-launches/operation" && submitted) throw new Error("owner readback unavailable");
+      if (path.startsWith("/api/v2/catalog/runtime-versions")) return { payload: { items: [{ id: "rv-owner", status: "approved" }] } };
+      if (path.startsWith("/api/v2/catalog/compute-plans")) return { payload: { items: [{ id: "cp-owner", availability: "available" }] } };
+      if (path.startsWith("/api/v2/catalog/storage-plans")) return { payload: { items: [{ id: "sp-owner", availability: "available" }] } };
+      if (path === "/api/v2/quotes") {
+        ownerCommands.push({ path, idempotencyKey: init.headers["idempotency-key"] });
+        return { payload: { id: "quote-owner", purpose: "deploy", runtimeVersionId: "rv-owner", computePlanId: "cp-owner", storagePlanId: "sp-owner", modelSelections: [], periodMonths: 1, totalUSDMicros: "52580000", status: "offered" } };
+      }
+      if (path === "/api/v2/workspaces" && init.method === "POST") {
+        submitted = true;
+        ownerCommands.push({ path, idempotencyKey: init.headers["idempotency-key"] });
+        throw new Error("response unavailable");
+      }
+      if (path.startsWith("/api/v2/operations/workspace/") && submitted) throw new Error("owner readback unavailable");
       throw new Error(`unexpected request ${path}`);
     }
   };
   await assert.rejects(() => runLocalWorkspaceJ1HTTPQualification({
     http, adminEmail: "admin@example.test", adminPassword: "password", qualificationEmail: "customer@example.test", qualificationPassword: "password",
-    accountProvisionKey: "mapping", launchKey: "launch", operationId: "operation", workspaceId: "workspace", workspaceName: "J1",
+    accountProvisionKey: "mapping", launchKey: "launch", workspaceName: "J1",
     wait: async () => {}, readRuntime: async () => ({}), readDebit: async () => ({}),
     cleanup: async (scope) => { cleanupCalls.push(scope); return null; }, receiptBase: {}
   }), /response unavailable/);
   assert.deepEqual(cleanupCalls, [{ accountId, failed: true, launchSubmitted: true, recoveryAuthority: null }]);
+  // The order answer was lost, so the harness re-issues the same order under
+  // the same idempotency identity instead of buying a second Workspace.
+  assert.deepEqual(ownerCommands.filter((command) => command.path === "/api/v2/workspaces").map((command) => command.idempotencyKey), ["launch", "launch", "launch"]);
+  assert.deepEqual(ownerCommands.filter((command) => command.path === "/api/v2/quotes").map((command) => command.idempotencyKey), ["launch:quote", "launch:quote", "launch:quote"]);
 });
 
 test("live authority configuration fails closed before Docker and writes a redacted receipt", async () => {

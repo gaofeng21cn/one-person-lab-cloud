@@ -204,6 +204,23 @@ test("a status the owner never published is refused rather than read as an end",
   );
 });
 
+test("a delivery that stops still names the order the owner minted", async () => {
+  const failure = await submit({ http: ownerHTTP({ pollSequence: [{ status: "failed", stage: "runtime", errorCode: "workspace_runtime_not_ready" }] }).http })
+    .then(() => null, (error) => error);
+  assert.ok(failure, "a stopped delivery rejects");
+  assert.equal(failure.operationId, OPERATION_ID);
+  assert.equal(failure.workspaceId, WORKSPACE_ID);
+  assert.equal(failure.quoteId, QUOTE_ID);
+  assert.match(failure.message, /Workspace order stopped at failed/);
+});
+
+test("a failure keeps the original failure as its cause", async () => {
+  const failure = await submit({ http: ownerHTTP({ pollSequence: [{ status: "failed", stage: "runtime" }] }).http })
+    .then(() => null, (error) => error);
+  assert.ok(failure?.cause, "the original failure is kept as the cause");
+  assert.match(failure.cause.message, /Workspace order stopped at failed/);
+});
+
 test("a delivery still in progress is polled rather than read as an end", async () => {
   let waited = 0;
   const { http, calls } = ownerHTTP({
