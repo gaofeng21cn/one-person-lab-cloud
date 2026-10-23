@@ -360,7 +360,9 @@ func commitRouteSwitchTx(ctx context.Context, tx *sql.Tx, plan routeSwitchPlan) 
 	}
 	previousTarget, target := binding.TargetExecutionResource, binding.TargetExecutionResource
 	targetRuntimeInstance, targetDeployment := binding.TargetRuntimeInstance, binding.TargetDeployment
-	if plan.actionKind != "fence" {
+	if plan.actionKind == "retire" {
+		target, targetRuntimeInstance, targetDeployment = sql.NullString{}, sql.NullString{}, sql.NullString{}
+	} else if plan.actionKind != "fence" {
 		target = sql.NullString{String: plan.target, Valid: true}
 		targetRuntimeInstance = sql.NullString{String: plan.targetRuntimeInstanceID, Valid: plan.targetRuntimeInstanceID != ""}
 		targetDeployment = sql.NullString{String: plan.targetDeploymentID, Valid: plan.targetDeploymentID != ""}
@@ -452,7 +454,7 @@ func routeEvidenceRef(switchID string) string { return "serve-route-receipt://" 
 // ready with the presented readiness receipt, and its epoch must already be
 // covered by a confirmed fence.
 func validateRouteTarget(ctx context.Context, tx *sql.Tx, plan routeSwitchPlan) error {
-	if plan.actionKind == "fence" {
+	if plan.actionKind == "fence" || plan.actionKind == "retire" {
 		return nil
 	}
 	if plan.targetDeploymentID == "" {

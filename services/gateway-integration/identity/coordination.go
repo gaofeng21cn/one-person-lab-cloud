@@ -114,6 +114,19 @@ func (s *Service) ReadWalletAction(ctx context.Context, r *api.WalletReadbackReq
 	if err := ownerservice.ValidateCallContext(ctx, r.GetContext()); err != nil {
 		return nil, err
 	}
+	if r.GetConfirmClosedAbsence() {
+		tenant := r.GetContext().GetScope().GetTenant().GetTenantId()
+		if tenant == "" || r.GetWorkspaceId() == "" || r.GetOriginalIdempotencyKey() == "" || r.GetWalletOperationId() != "" {
+			return nil, status.Error(codes.InvalidArgument, "original Workspace charge identity required")
+		}
+		if err := s.authorizeWalletRead(ctx, r.GetContext(), WalletRecord{TenantID: tenant, WorkspaceID: r.GetWorkspaceId()}); err != nil {
+			return nil, err
+		}
+		closed, err := s.GatewayStore.workspaceKeyClosing(ctx, tenant, r.GetWorkspaceId())
+		if err != nil || !closed {
+			return nil, status.Error(codes.Unavailable, "Workspace creation is not confirmed fenced")
+		}
+	}
 	var record WalletRecord
 	var err error
 	switch {
@@ -125,10 +138,22 @@ func (s *Service) ReadWalletAction(ctx context.Context, r *api.WalletReadbackReq
 		return nil, status.Error(codes.InvalidArgument, "a wallet operation id or original idempotency key is required")
 	}
 	if err == ErrGatewayWalletUnknown {
+		if r.GetConfirmClosedAbsence() {
+			var otherCharge bool
+			if readErr := s.GatewayStore.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM gateway.wallet_operations WHERE tenant_id=$1 AND workspace_id=$2 AND kind='charge')`, r.GetContext().GetScope().GetTenant().GetTenantId(), r.GetWorkspaceId()).Scan(&otherCharge); readErr != nil {
+				return nil, status.Error(codes.Unavailable, "original Workspace charge readback unavailable")
+			}
+			if otherCharge {
+				return nil, status.Error(codes.FailedPrecondition, "Workspace has a charge outside this original command")
+			}
+		}
 		return nil, status.Error(codes.NotFound, "wallet operation not found")
 	}
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, "Gateway wallet readback unavailable")
+	}
+	if r.GetConfirmClosedAbsence() && (record.WorkspaceID != r.GetWorkspaceId() || record.TenantID != r.GetContext().GetScope().GetTenant().GetTenantId() || record.Kind != "charge") {
+		return nil, status.Error(codes.FailedPrecondition, "original Workspace charge identity differs")
 	}
 	if err := s.authorizeWalletRead(ctx, r.GetContext(), record); err != nil {
 		return nil, err
@@ -141,7 +166,7 @@ func (s *Service) ReadWalletAction(ctx context.Context, r *api.WalletReadbackReq
 	if record.Status == "confirmed" || record.Status == "rejected" {
 		return WalletOperationMessage(record), nil
 	}
-	binding, err := s.GatewayStore.ReadActiveWalletBinding(ctx, record.TenantID)
+	binding, err := s.GatewayStore.ReadWalletBinding(ctx, record.WalletBindingID)
 	if err != nil {
 		return WalletOperationMessage(record), nil
 	}
@@ -189,7 +214,37 @@ func (s *Service) walletAction(ctx context.Context, req walletActionRequest) (*a
 	if err := s.authorizeWalletWrite(ctx, req.call, req.kind, tenantID, req.workspaceID); err != nil {
 		return nil, err
 	}
-	binding, err := s.GatewayStore.ReadActiveWalletBinding(ctx, tenantID)
+	if req.kind == "charge" {
+		guard, guardErr := s.GatewayStore.guardWorkspaceKey(ctx, tenantID, req.workspaceID)
+		if guardErr != nil {
+			return nil, status.Error(codes.Unavailable, "Workspace charge guard unavailable")
+		}
+		defer guard.Rollback()
+		if err := s.authorizeWalletWrite(ctx, req.call, req.kind, tenantID, req.workspaceID); err != nil {
+			return nil, err
+		}
+		closing, readErr := s.GatewayStore.workspaceKeyClosing(ctx, tenantID, req.workspaceID)
+		if readErr != nil {
+			return nil, status.Error(codes.Unavailable, "Workspace closeout readback unavailable")
+		}
+		if closing {
+			return nil, status.Error(codes.FailedPrecondition, "Workspace charging is closed")
+		}
+	}
+	var binding WalletBinding
+	var err error
+	if req.kind == "refund" {
+		original, readErr := s.GatewayStore.ReadWalletOperation(ctx, req.original)
+		if readErr == ErrGatewayWalletUnknown || (readErr == nil && (original.TenantID != tenantID || original.WorkspaceID != req.workspaceID)) {
+			return nil, status.Error(codes.FailedPrecondition, "refund does not identify the original charge")
+		}
+		if readErr != nil {
+			return nil, status.Error(codes.Unavailable, "original charge readback unavailable")
+		}
+		binding, err = s.GatewayStore.ReadWalletBinding(ctx, original.WalletBindingID)
+	} else {
+		binding, err = s.GatewayStore.ReadActiveWalletBinding(ctx, tenantID)
+	}
 	if err == ErrWalletBindingAbsent {
 		return nil, status.Error(codes.FailedPrecondition, "the tenant has no active wallet binding")
 	}
@@ -214,6 +269,12 @@ func (s *Service) walletAction(ctx context.Context, req walletActionRequest) (*a
 	}
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, "Gateway wallet reservation unavailable")
+	}
+	if binding.ID != record.WalletBindingID {
+		binding, err = s.GatewayStore.ReadWalletBinding(ctx, record.WalletBindingID)
+		if err != nil {
+			return nil, status.Error(codes.Unavailable, "original wallet binding unavailable")
+		}
 	}
 	// A terminal answer is the owner's recorded authoritative readback and is
 	// never re-derived. A non-terminal answer - the original answer was not
@@ -374,6 +435,21 @@ func (s *Service) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand
 	}
 	if err := s.authorizeManagedKey(ctx, r.GetContext(), tenantID, r.GetWorkspaceId()); err != nil {
 		return nil, err
+	}
+	guard, err := s.GatewayStore.guardWorkspaceKey(ctx, tenantID, r.GetWorkspaceId())
+	if err != nil {
+		return nil, status.Error(codes.Unavailable, "Workspace key guard unavailable")
+	}
+	defer guard.Rollback()
+	if err := s.authorizeManagedKey(ctx, r.GetContext(), tenantID, r.GetWorkspaceId()); err != nil {
+		return nil, err
+	}
+	closing, err := s.GatewayStore.workspaceKeyClosing(ctx, tenantID, r.GetWorkspaceId())
+	if err != nil {
+		return nil, status.Error(codes.Unavailable, "Workspace key closeout readback unavailable")
+	}
+	if closing {
+		return nil, status.Error(codes.FailedPrecondition, "Workspace key issuance is closed")
 	}
 	// The declared model selection is forwarded as Workspace intent, while the
 	// external Gateway Group remains the effective routing and permission truth.

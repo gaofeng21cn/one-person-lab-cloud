@@ -2466,7 +2466,11 @@ message WalletBindingCommand { CallContext context = 1; string target_tenant_id 
 message WalletBindingReadback { string tenant_id = 1; string billing_sub2api_user_id = 2; int64 binding_version = 3; Observation outcome = 4; string authorization_receipt_id = 5; }
 message WalletDebitCommand { CallContext context = 1; string workspace_id = 2; string obligation_id = 3; string quote_acceptance_id = 4; int64 amount_usd_micros = 5; string currency = 6; string subscription_period_id = 7; }
 message WalletRefundCommand { CallContext context = 1; string workspace_id = 2; string original_wallet_operation_id = 3; string original_external_payment_reference = 4; int64 amount_usd_micros = 5; string refund_policy_version_id = 6; string confirmed_deletion_receipt_id = 7; string subscription_period_id = 8; }
-message WalletReadbackRequest { CallContext context = 1; string wallet_operation_id = 2; string original_idempotency_key = 3; }
+message WalletReadbackRequest { CallContext context = 1; string wallet_operation_id = 2; string original_idempotency_key = 3;
+ // Read-only: require the existing Workspace creation fence. NOT_FOUND then
+ // confirms this original charge was never dispatched; no record is synthesized.
+ bool confirm_closed_absence = 4; string workspace_id = 5;
+}
 message ManagedKeyCommand { CallContext context = 1; string workspace_id = 2; repeated string model_ids = 3; string target_runtime_instance_id = 4; }
 message ManagedKeyBinding { string key_binding_id = 1; string fingerprint = 2; string secret_delivery_reference = 3; string workspace_id = 4; string target_runtime_instance_id = 5; google.protobuf.Timestamp expires_at = 6; repeated string model_ids = 7; }
 message ManagedKeyRevoke { CallContext context = 1; string key_binding_id = 2; string workspace_id = 3; }
@@ -2481,13 +2485,16 @@ message ManagedKeyReadCommand { CallContext context = 1; string key_binding_id =
 // caller names only the opaque binding it already stored; Gateway Integration
 // remains the sole writer of the key's lifecycle state and the only owner that
 // coordinates the external key authority.
-message ManagedKeyLifecycleCommand { CallContext context = 1; string key_binding_id = 2; string workspace_id = 3; }
+message ManagedKeyLifecycleCommand { CallContext context = 1; string key_binding_id = 2; string workspace_id = 3;
+ // Deletion freezes issuance and resolves the original command even after ACK loss.
+ string original_create_idempotency_key = 4;
+}
 // The owner's answer for one lifecycle command or read. `state` is the state the
 // external authority confirmed, never a local intention; `lifecycle_version`
 // advances once per confirmed transition so two answers can be told apart.
 // `outcome` is CONFIRMED only when the exact binding and the exact desired state
 // were read back from that authority.
-message ManagedKeyLifecycleReadback { string key_binding_id = 1; string workspace_id = 2; ManagedKeyLifecycleState state = 3; int64 lifecycle_version = 4; Observation outcome = 5; google.protobuf.Timestamp updated_at = 6; }
+message ManagedKeyLifecycleReadback { string key_binding_id = 1; string workspace_id = 2; ManagedKeyLifecycleState state = 3; int64 lifecycle_version = 4; Observation outcome = 5; google.protobuf.Timestamp updated_at = 6; bool absence_confirmed = 7; }
 enum ManagedKeyLifecycleState { MANAGED_KEY_LIFECYCLE_STATE_UNSPECIFIED = 0; MANAGED_KEY_LIFECYCLE_STATE_ACTIVE = 1; MANAGED_KEY_LIFECYCLE_STATE_DISABLED = 2; MANAGED_KEY_LIFECYCLE_STATE_REVOKED = 3; }
 service GatewayCoordination {
  rpc GetSelfUserIdentity(GetSelfUserIdentityRequest) returns (UserIdentityReadback);
@@ -2508,10 +2515,13 @@ service GatewayCoordination {
 message ResourcePlanSnapshot { string compute_plan_id = 1; string storage_plan_id = 2; string provider_profile_id = 3; string provider_compute_sku_id = 4; string provider_storage_sku_id = 5; int32 vcpus = 6; int32 memory_mib = 7; int32 capacity_gib = 8; int32 prepaid_months = 9; string provider_capability_version = 10; bool conditional_route_revision_supported = 11; string provider = 12; string region = 13; string billing_mode = 14; }
 message ResourceAdmissionRequest { CallContext context = 1; ResourcePlanSnapshot plan = 2; string workspace_id = 3; string existing_resource_set_id = 4; string purpose = 5; }
 message EnsureResourcesCommand { CallContext context = 1; string workspace_id = 2; string obligation_id = 3; ResourcePlanSnapshot plan = 4; string confirmed_charge_receipt_id = 5; string instance_authorization_reference = 6; QuoteAcceptance quote_acceptance = 7; }
-message MutateResourcesCommand { CallContext context = 1; string workspace_id = 2; string resource_set_id = 3; string expected_resource_version = 4; string instance_authorization_reference = 5; }
+message MutateResourcesCommand { CallContext context = 1; string workspace_id = 2; string resource_set_id = 3; string expected_resource_version = 4; string instance_authorization_reference = 5;
+ // Close the exact original EnsureResources command when its response was lost.
+ string original_provision_idempotency_key = 6;
+}
 message ResizeResourcesCommand { CallContext context = 1; string workspace_id = 2; string resource_set_id = 3; string expected_resource_version = 4; ResourcePlanSnapshot target = 5; string quote_acceptance_id = 6; PlanChangeFundingEvidence funding_evidence = 7; string instance_authorization_reference = 8; string plan_change_id = 9; string transition_id = 10; int64 execution_epoch = 11; ProviderPlanChangeExecutionPlanReference execution_plan = 12; }
 message RenewResourcesCommand { CallContext context = 1; string workspace_id = 2; string resource_set_id = 3; string subscription_period_id = 4; int32 prepaid_months = 5; string confirmed_charge_receipt_id = 6; string instance_authorization_reference = 7; }
-message ResourceReadbackRequest { CallContext context = 1; string resource_set_id = 2; string resource_action_id = 3; }
+message ResourceReadbackRequest { CallContext context = 1; string resource_set_id = 2; string resource_action_id = 3; string workspace_id = 4; string original_provision_idempotency_key = 5; }
 message ResourceFact { string id = 1; string kind = 2; string opaque_provider_reference = 3; string state = 4; string receipt_id = 5; }
 // Execution bindings exist only after the Fabric adapter confirms actual resources.
 message ResourceExecutionBinding { string compute_allocation_id = 1; string storage_volume_id = 2; string data_attachment_id = 3; string data_attachment_operation_id = 4; string account_id = 5; }
@@ -2569,14 +2579,19 @@ message RuntimeReservation { string runtime_instance_id = 1; string workspace_id
 enum AgentRuntimeObservationState { RUNTIME_INSTANCE_STATE_UNSPECIFIED = 0; RUNTIME_INSTANCE_STATE_PENDING = 1; RUNTIME_INSTANCE_STATE_STARTING = 2; RUNTIME_INSTANCE_STATE_READY = 3; RUNTIME_INSTANCE_STATE_STOPPED = 4; RUNTIME_INSTANCE_STATE_FAILED = 5; RUNTIME_INSTANCE_STATE_TERMINATING = 6; RUNTIME_INSTANCE_STATE_TERMINATED = 7; }
 message RuntimeManagedKeyBinding { string key_binding_id = 1; string secret_delivery_reference = 2; string fingerprint = 3; string target_slot = 4; string secret_binding_id = 5; string secret_version = 6; }
 message RuntimeDeployCommand { CallContext context = 1; string workspace_id = 2; string deployment_id = 3; string capability_version_id = 4; DeploymentDescriptor deployment_descriptor = 5; string resource_set_id = 6; string data_attachment_id = 7; string secret_binding_id = 8; int64 model_configuration_version = 9; repeated ModelSelection model_selections = 10; DataCompatibility data_compatibility = 11; string runtime_instance_id = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; WorkspaceApplicationSelection application_selection = 16; RuntimeManagedKeyBinding managed_key_binding = 17; }
-message RuntimeReadbackRequest { CallContext context = 1; string runtime_instance_id = 2; string deployment_id = 3; }
-message RuntimeReadback { string runtime_instance_id = 1; string workspace_id = 2; string deployment_id = 3; AgentRuntimeObservationState state = 4; bool process_ready = 5; bool application_available = 6; bool credential_injection_verified = 7; ArtifactReference artifact = 8; int64 applied_model_configuration_version = 9; string readiness_receipt_id = 10; Observation outcome = 11; google.protobuf.Timestamp observed_at = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; WorkspaceApplicationEntry application_entry = 16; string access_url = 17; }
+message RuntimeReadbackRequest { CallContext context = 1; string runtime_instance_id = 2; string deployment_id = 3; string workspace_id = 4; string original_reservation_idempotency_key = 5; }
+message RuntimeReadback { string runtime_instance_id = 1; string workspace_id = 2; string deployment_id = 3; AgentRuntimeObservationState state = 4; bool process_ready = 5; bool application_available = 6; bool credential_injection_verified = 7; ArtifactReference artifact = 8; int64 applied_model_configuration_version = 9; string readiness_receipt_id = 10; Observation outcome = 11; google.protobuf.Timestamp observed_at = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; WorkspaceApplicationEntry application_entry = 16; string access_url = 17;
+ // Immutable Serve fulfillment evidence, retained through runtime retirement.
+ google.protobuf.Timestamp first_fulfilled_at = 18;
+ // Confirmed only after retirement fenced all starts and no delivery was committed.
+ bool never_delivered_confirmed = 19;
+}
 // The managed key binding is an opaque Gateway/Fabric owner readback. It is
 // supplied only by Workspace after Gateway CreateManagedKey and Fabric
 // BindSecret; public update callers never choose or construct it. Serve applies
 // the publisher contract but never issues or revokes the Gateway key.
 message RuntimeReloadCommand { CallContext context = 1; string runtime_instance_id = 2; int64 expected_applied_version = 3; int64 target_version = 4; repeated ModelSelection selections = 5; RuntimeManagedKeyBinding managed_key_binding = 6; }
-message RuntimeStopCommand { CallContext context = 1; string runtime_instance_id = 2; string deployment_id = 3; string retained_data_attachment_id = 4; }
+message RuntimeStopCommand { CallContext context = 1; string runtime_instance_id = 2; string deployment_id = 3; string retained_data_attachment_id = 4; string workspace_id = 5; string original_reservation_idempotency_key = 6; }
 service ServeAgentCoordination {
  rpc Reserve(RuntimeReservationCommand) returns (RuntimeReservation);
  rpc Deploy(RuntimeDeployCommand) returns (RuntimeReadback);

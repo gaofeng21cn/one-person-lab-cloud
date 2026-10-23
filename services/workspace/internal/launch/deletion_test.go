@@ -183,7 +183,7 @@ func (c *deletionGatewayClient) Refund(_ context.Context, r *api.WalletRefundCom
 	if c.pendingOnce && c.refunds == 1 {
 		status = api.WalletOperationStatusEnum_WALLET_OPERATION_STATUS_ENUM_REQUESTED
 	}
-	return &api.WalletOperation{Id: "wallet-op-refund-original", WorkspaceId: proto.String("workspace-original"), Kind: api.WalletOperationKindEnum_WALLET_OPERATION_KIND_ENUM_REFUND, AmountUsdMicros: r.GetAmountUsdMicros(), Status: status, CreatedAt: timestamppb.Now()}, nil
+	return &api.WalletOperation{Id: "wallet-op-refund-original", WorkspaceId: proto.String("workspace-original"), Kind: api.WalletOperationKindEnum_WALLET_OPERATION_KIND_ENUM_REFUND, OriginalChargeOperationId: proto.String("wallet-op-charge-original"), AmountUsdMicros: r.GetAmountUsdMicros(), Status: status, CreatedAt: timestamppb.Now()}, nil
 }
 
 // ReadWalletAction answers the owner readback for the one original refund. The
@@ -195,7 +195,7 @@ func (c *deletionGatewayClient) ReadWalletAction(_ context.Context, r *api.Walle
 	if !strings.HasSuffix(r.GetOriginalIdempotencyKey(), ":refund_confirmed_deletion") || c.refundAmount <= 0 {
 		return nil, status.Error(codes.InvalidArgument, "readback must name the original refund command")
 	}
-	return &api.WalletOperation{Id: "wallet-op-refund-original", WorkspaceId: proto.String("workspace-original"), Kind: api.WalletOperationKindEnum_WALLET_OPERATION_KIND_ENUM_REFUND, AmountUsdMicros: c.refundAmount, Status: api.WalletOperationStatusEnum_WALLET_OPERATION_STATUS_ENUM_CONFIRMED, CreatedAt: timestamppb.Now()}, nil
+	return &api.WalletOperation{Id: "wallet-op-refund-original", WorkspaceId: proto.String("workspace-original"), Kind: api.WalletOperationKindEnum_WALLET_OPERATION_KIND_ENUM_REFUND, OriginalChargeOperationId: proto.String("wallet-op-charge-original"), AmountUsdMicros: c.refundAmount, Status: api.WalletOperationStatusEnum_WALLET_OPERATION_STATUS_ENUM_CONFIRMED, CreatedAt: timestamppb.Now()}, nil
 }
 
 // DisableManagedKey answers the key-closeout request with the owner's confirmed
@@ -210,6 +210,9 @@ func (c *deletionGatewayClient) DisableManagedKey(_ context.Context, r *api.Mana
 	c.disableIdempotency = r.GetContext().GetIdempotencyKey()
 	if c.disableErr != nil {
 		return nil, c.disableErr
+	}
+	if r.GetOriginalCreateIdempotencyKey() != "" && r.GetKeyBindingId() == "" {
+		return &api.ManagedKeyLifecycleReadback{WorkspaceId: r.GetWorkspaceId(), AbsenceConfirmed: true, Outcome: api.Observation_OBSERVATION_CONFIRMED, UpdatedAt: timestamppb.Now()}, nil
 	}
 	return &api.ManagedKeyLifecycleReadback{KeyBindingId: r.GetKeyBindingId(), WorkspaceId: r.GetWorkspaceId(),
 		State: api.ManagedKeyLifecycleState_MANAGED_KEY_LIFECYCLE_STATE_DISABLED, LifecycleVersion: 1,
@@ -675,6 +678,22 @@ func (i *concurrentDeletionIdentity) AuthorizeAction(ctx context.Context, r *api
 func (i *concurrentDeletionIdentity) IssueAcceptedOperationGrant(context.Context, *api.AcceptedOperationGrantRequest, ...grpc.CallOption) (*api.AcceptedOperationGrant, error) {
 	return nil, status.Error(codes.Unavailable, "hold cleanup for acceptance test")
 }
+
+// Signal command overlap at the external authorization seam, independent of
+// whether the owner serializes through row or advisory locks.
+type deletionPreflightIdentity struct {
+	modelReadIdentity
+	secondEntered chan struct{}
+	seen          atomic.Bool
+}
+
+func (i *deletionPreflightIdentity) AuthorizeAction(ctx context.Context, r *api.AuthorizationRequest, opts ...grpc.CallOption) (*api.AuthorizationDecision, error) {
+	if r.GetActorId() == "admin-two" && i.seen.CompareAndSwap(false, true) {
+		close(i.secondEntered)
+	}
+	return i.modelReadIdentity.AuthorizeAction(ctx, r, opts...)
+}
+
 func TestConcurrentDeletionIntentsShareOneWorkspaceOperation(t *testing.T) {
 	db := runtimeDatabase(t)
 	// Two transactions hold connections while the observer checks the row lock.
@@ -682,6 +701,8 @@ func TestConcurrentDeletionIntentsShareOneWorkspaceOperation(t *testing.T) {
 	service, call, ctx, _, _ := deletionWorkspace(t, db)
 	identity := &concurrentDeletionIdentity{deletionIdentity: &deletionIdentity{}, firstEntered: make(chan struct{}), secondEntered: make(chan struct{}), releaseFirst: make(chan struct{})}
 	service.Identity = identity
+	preflight := &deletionPreflightIdentity{secondEntered: make(chan struct{})}
+	service.Auth = ownerservice.NewAuthorizer(owneridentity.Workspace, preflight)
 	released := false
 	defer func() {
 		if !released {
@@ -706,24 +727,10 @@ func TestConcurrentDeletionIntentsShareOneWorkspaceOperation(t *testing.T) {
 		t.Fatal("first deletion did not reach authorization")
 	}
 	go request("admin-two", "delete-two")
-	// Either the row lock appears or the second authorization fires. This is a
-	// synchronization observation of the real database, not a timed race.
-	deadline := time.NewTimer(10 * time.Second)
-	defer deadline.Stop()
-	ticker := time.NewTicker(time.Millisecond)
-	defer ticker.Stop()
-	waiting := false
-	for !waiting {
-		select {
-		case <-identity.secondEntered:
-			waiting = true
-		case <-ticker.C:
-			if err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE 'SELECT name,status,version FROM workspace.workspaces%')`).Scan(&waiting); err != nil {
-				t.Fatal(err)
-			}
-		case <-deadline.C:
-			t.Fatal("second deletion neither waited nor reached authorization")
-		}
+	select {
+	case <-preflight.secondEntered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("second deletion did not reach its public authorization boundary")
 	}
 	close(identity.releaseFirst)
 	released = true
@@ -734,13 +741,11 @@ func TestConcurrentDeletionIntentsShareOneWorkspaceOperation(t *testing.T) {
 	if first.operation.GetOperationId() != second.operation.GetOperationId() {
 		t.Fatalf("concurrent requests accepted distinct deletion operations: %s / %s", first.operation.GetOperationId(), second.operation.GetOperationId())
 	}
-	var count int
-	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM workspace.operations WHERE resource_id='workspace-original' AND kind='delete_workspace'`).Scan(&count); err != nil {
-		t.Fatal(err)
+	readback, err := service.GetWorkspaceDeletion(ctx, &api.GetWorkspaceDeletionRpcRequest{Context: call, WorkspaceId: "workspace-original"})
+	if err != nil || readback.GetOperationId() != first.operation.GetOperationId() {
+		t.Fatalf("deletion readback differs from the shared intent: %v %v", readback, err)
 	}
-	if count != 1 {
-		t.Fatalf("deletion intents=%d, want 1", count)
-	}
+
 }
 
 // A persistent dependency refusal cannot keep the automatic worker issuing

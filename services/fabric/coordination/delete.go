@@ -49,6 +49,9 @@ func (s *Service) DeleteResources(ctx context.Context, r *api.MutateResourcesCom
 	if err := ownerservice.ValidateCallContext(ctx, r.GetContext()); err != nil {
 		return nil, err
 	}
+	if r.GetResourceSetId() == "" && r.GetOriginalProvisionIdempotencyKey() != "" {
+		return s.deleteOriginalResources(ctx, r)
+	}
 	if strings.TrimSpace(r.GetWorkspaceId()) == "" || strings.TrimSpace(r.GetResourceSetId()) == "" || strings.TrimSpace(r.GetContext().GetIdempotencyKey()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "workspace, resource set and idempotency key are required")
 	}

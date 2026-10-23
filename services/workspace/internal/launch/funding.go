@@ -135,7 +135,7 @@ func (s *Service) finishWalletCharge(ctx context.Context, op ownerstore.Operatio
 	switch charged.GetStatus() {
 	case api.WalletOperationStatusEnum_WALLET_OPERATION_STATUS_ENUM_CONFIRMED:
 		if charged.GetReceiptId() == "" || charged.GetCreatedAt() == nil || charged.CreatedAt.CheckValid() != nil {
-		return "", false, s.failedCall(ctx, op, token, "wallet_charge", "resource_preflight", *result, status.Error(codes.DataLoss, "confirmed wallet charge has no receipt evidence"))
+			return "", false, s.failedCall(ctx, op, token, "wallet_charge", "resource_preflight", *result, status.Error(codes.DataLoss, "confirmed wallet charge has no receipt evidence"))
 		}
 		// A confirmed Gateway charge is not yet the Ledger funding proof Fabric
 		// consumes. Append the owner-authoritative WALLET_ACTION receipt that binds
@@ -170,6 +170,18 @@ func (s *Service) finishWalletCharge(ctx context.Context, op ownerstore.Operatio
 	}
 }
 
+func walletActionReceiptRequest(op ownerstore.Operation, grant string, accepted *api.QuoteAcceptance, charged *api.WalletOperation) (*api.AppendReceiptRequest, error) {
+	commit, err := evidence(op)
+	if err != nil {
+		return nil, err
+	}
+	return &api.AppendReceiptRequest{
+		Context:        continuation(op, grant, "wallet_action_receipt"),
+		Receipt:        &api.Receipt{Kind: api.ReceiptKindEnum_RECEIPT_KIND_ENUM_WALLET_ACTION, Owner: api.OwnerEnum_OWNER_ENUM_WORKSPACE, OperationId: proto.String(op.ID), Outcome: api.ReceiptOutcomeEnum_RECEIPT_OUTCOME_ENUM_CONFIRMED, EvidenceSummary: "Gateway wallet charge confirmed for the original paid Workspace order."},
+		EvidenceDigest: accepted.SnapshotDigest, OwnerEvidenceReference: op.ID, QuoteAcceptance: accepted, OwnerCommitEvidence: commit, WalletOperation: charged,
+	}, nil
+}
+
 // walletActionReceipt records the confirmed charge in the Ledger as the WALLET_ACTION
 // receipt that funds this original obligation. The Ledger re-reads the accepted
 // Catalog quote, the Workspace commit and the Gateway wallet operation, so a
@@ -183,14 +195,9 @@ func (s *Service) walletActionReceipt(ctx context.Context, op ownerstore.Operati
 		}
 		return stored.Receipt, nil
 	}
-	commit, err := evidence(op)
+	request, err := walletActionReceiptRequest(op, result.GrantID, accepted, charged)
 	if err != nil {
 		return nil, err
-	}
-	request := &api.AppendReceiptRequest{
-		Context:        continuation(op, result.GrantID, "wallet_action_receipt"),
-		Receipt:        &api.Receipt{Kind: api.ReceiptKindEnum_RECEIPT_KIND_ENUM_WALLET_ACTION, Owner: api.OwnerEnum_OWNER_ENUM_WORKSPACE, OperationId: proto.String(op.ID), Outcome: api.ReceiptOutcomeEnum_RECEIPT_OUTCOME_ENUM_CONFIRMED, EvidenceSummary: "Gateway wallet charge confirmed for the original paid Workspace order."},
-		EvidenceDigest: accepted.SnapshotDigest, OwnerEvidenceReference: op.ID, QuoteAcceptance: accepted, OwnerCommitEvidence: commit, WalletOperation: charged,
 	}
 	if err = s.beginStep(ctx, op, token, "wallet_action_receipt", 3, "ledger", "receipt", request); err != nil {
 		return nil, err

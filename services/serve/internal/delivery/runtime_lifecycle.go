@@ -94,6 +94,7 @@ func (s *Service) runtimeLifecycleOperation(ctx context.Context, deploy *persist
 	defer func() { _ = tx.Rollback() }()
 	accepted, _ := json.Marshal(map[string]any{"runtimeInstanceId": runtimeID, "deploymentId": deploy.command.GetDeploymentId(), "action": kind, "identity": identity})
 	if _, err = s.Store.CreateOperation(ctx, tx, ownerstore.OperationInput{ID: opID, TenantID: deploy.tenantID, ActorID: deploy.actorID, Kind: kind, ResourceID: runtimeID, Stage: strings.ToLower(stage), RequestID: deploy.requestID, AcceptedInput: accepted}); err != nil {
+		tx.Rollback()
 		// The action identity is already recorded. It is this caller's own
 		// operation only when it names the same runtime, kind and request.
 		existing, readErr := s.Store.ReadOperation(ctx, opID)

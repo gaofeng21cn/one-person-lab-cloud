@@ -1213,6 +1213,52 @@ Workspaces inside their confirmed subscription period; Serve refuses missing,
 unverified or unreadable verdicts before reading a route. This source change
 does not activate Local no-charge terms or certify production peer wiring.
 
+### Original-order closeout boundaries
+
+The retained Control Plane exposes `DELETE /api/workspaces/{workspaceId}` in
+`internal/server/routes_workspace.go`, not in the Launch route file. It owns
+the existing durable `workspace.delete.v2` and separate original-charge refund
+operation described above. The absence of DELETE in `/api/workspace-launches`
+does not establish the absence of retained Workspace deletion. Whether a
+particular installed order can enter that path still depends on its original
+Launch, identity, receipt and resource bindings and the installed revision.
+
+The extracted Workspace service accepts unfinished original orders through the
+same `DeleteWorkspace` command. The closing intent and original-create
+cancellation commit together under the Workspace row lock, revoking its worker
+lease. A late response cannot checkpoint or activate the cancelled create;
+downstream owners resolve and fence already-dispatched effects. Serve retires
+the exact reserved delivery, fences later Deploy/adapter starts, clears the
+published route through its existing conditional route writer, and retains
+first-fulfilled or confirmed-never-delivered readback. An original reservation
+that has not arrived is closed in Serve's own command journal; a different live
+delivery never becomes absence.
+
+Fabric uses its existing resource deletion dispatcher for both `local-docker`
+and `tencent-tke`. Provision, Secret delivery and Secret binding are fenced by
+its Workspace lock and persisted delete intent. The original Ensure command
+resolves a lost resource-set response. Only Fabric can confirm that no original
+intent reached its owner; an existing set under an unresolved command or partial
+provider evidence remains unconfirmed. Provider-specific cleanup stays behind
+the existing Fabric adapter and does not become Workspace orchestration.
+
+Gateway's existing command journal fences Workspace Key creation, Key enablement
+and charges during unfinished closeout. Disable resolves the original Key command
+when Workspace did not persist its binding; an unknown external issuance remains
+unknown. The fenced original-charge read is read-only: `NOT_FOUND` is authoritative
+absence only with `confirm_closed_absence` and the existing creation fence.
+Confirmed refunds reserve against one locked original confirmed charge, including
+requested/unknown reservations, and use that charge's immutable wallet binding.
+Workspace computes its existing platform entitlement, recovers a missing original
+Ledger charge receipt through the original append identity, and uses the same
+original refund command/readback across response loss or restart. Private Ledger
+funding reads retain the original accepted grant; effects use the closing grant.
+No subscription period is fabricated for an undelivered order.
+
+These are source behaviors. Native peer/provider qualification, original retained
+order migration, installed adoption and the three original-order closeouts remain
+separate [roadmap obligations](roadmap.md#original-order-workspace-closeout-1018).
+
 ### Extracted Workspace deletion recovery
 
 The extracted Workspace service persists consecutive unconfirmed passes per

@@ -11,7 +11,7 @@
     "contracts/api_inventory.json": "69ef26b8457ad8e6dc637f2264240e644ca1de475d7ab0cabd4dab0cb9f8dee6",
     "contracts/db_inventory.json": "044eed0e2683d2438f765edc351ee20fab059466dd9816be580ba8af53ad9ac8",
     "contracts/ui_inventory.json": "6258a5b4b32fcc9c5d54594cb72ba8dc0310177b5d1e1bf219bd2d8a13aa2fca",
-    "contracts/internal.proto": "ded7e955817bf9062a1a892b607ca76129bccae1fe40465c267d6caa8998acb1"
+    "contracts/internal.proto": "1208f59193d92c27c0fa32fd1d707865a73e4163b2af1c7a2cb40d2fa54acdae"
   },
   "sourceRoots": {
     "cloud": ".",

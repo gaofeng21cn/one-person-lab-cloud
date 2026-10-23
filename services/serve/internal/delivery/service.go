@@ -328,20 +328,22 @@ func dbError(err error) error {
 // records: the Operation that created the delivery carries the tenant. A
 // Workspace Serve has never delivered has no tenant here, so a tenant-scoped
 // caller cannot claim it.
-func (s *Service) workspaceTenant(ctx context.Context, workspaceID string) (string, bool, error) {
+func workspaceTenantAt(ctx context.Context, q rowQueryer, workspaceID string) (string, bool, error) {
 	var tenant sql.NullString
-	err := s.DB.QueryRowContext(ctx, `
-		SELECT o.tenant_id
-		FROM serve.agent_deployments d
-		JOIN serve.operations o ON o.id = d.operation_id
-		WHERE d.workspace_id = $1 AND o.tenant_id IS NOT NULL
-		ORDER BY d.created_at DESC, d.id DESC
-		LIMIT 1`, workspaceID).Scan(&tenant)
+	var count int
+	err := q.QueryRowContext(ctx, `
+		SELECT tenant_id,COUNT(*) OVER() FROM (
+		 SELECT o.tenant_id FROM serve.agent_deployments d JOIN serve.operations o ON o.id=d.operation_id WHERE d.workspace_id=$1 AND o.tenant_id IS NOT NULL
+		 UNION SELECT tenant_id FROM serve.operations WHERE kind='runtime_retire' AND resource_id=$1 AND tenant_id IS NOT NULL
+		) owners`, workspaceID).Scan(&tenant, &count)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", false, nil
 	}
 	if err != nil {
 		return "", false, err
+	}
+	if count != 1 {
+		return "", false, status.Error(codes.DataLoss, "Workspace delivery ownership is ambiguous")
 	}
 	return tenant.String, true, nil
 }
@@ -372,6 +374,10 @@ func (s *Service) authorizeRead(ctx context.Context, call *api.CallContext, acti
 // refuseUndelivered makes a tenant-scoped read of a Workspace with no delivery
 // record the same refusal as a read of another tenant's Workspace.
 func (s *Service) authorizeWorkspace(ctx context.Context, call *api.CallContext, action api.AuthorizationActionEnum, workspaceID string, refuseUndelivered bool) error {
+	return s.authorizeWorkspaceAt(ctx, s.DB, call, action, workspaceID, refuseUndelivered)
+}
+
+func (s *Service) authorizeWorkspaceAt(ctx context.Context, q rowQueryer, call *api.CallContext, action api.AuthorizationActionEnum, workspaceID string, refuseUndelivered bool) error {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if call == nil || workspaceID == "" {
 		return status.Error(codes.InvalidArgument, "authenticated call context and workspace are required")
@@ -379,7 +385,7 @@ func (s *Service) authorizeWorkspace(ctx context.Context, call *api.CallContext,
 	if err := ownerservice.ValidateCallContext(ctx, call); err != nil {
 		return err
 	}
-	tenant, known, err := s.workspaceTenant(ctx, workspaceID)
+	tenant, known, err := workspaceTenantAt(ctx, q, workspaceID)
 	if err != nil {
 		return dbError(err)
 	}

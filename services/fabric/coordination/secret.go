@@ -56,6 +56,9 @@ func (s *Service) BindSecret(ctx context.Context, r *api.SecretBindingCommand) (
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, "fabric:workspace:"+r.WorkspaceId); err != nil {
 		return nil, persistenceError(err)
 	}
+	if err = refuseDeletedProvision(ctx, tx, r.GetWorkspaceId(), tenant); err != nil {
+		return nil, err
+	}
 	// Re-check authorization at the write boundary, after any lock wait.
 	if err = s.authorizeWorkspace(ctx, r.GetContext(), r.WorkspaceId, tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET); err != nil {
 		return nil, err

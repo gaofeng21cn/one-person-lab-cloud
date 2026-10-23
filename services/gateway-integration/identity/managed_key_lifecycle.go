@@ -29,12 +29,31 @@ import (
 // RevokeManagedKey: the key remains owned by the same binding and can be enabled
 // again, while a revoked key is terminal.
 func (s *Service) DisableManagedKey(ctx context.Context, r *api.ManagedKeyLifecycleCommand) (*api.ManagedKeyLifecycleReadback, error) {
+	if r.GetOriginalCreateIdempotencyKey() != "" {
+		return s.closeWorkspaceManagedKey(ctx, r)
+	}
 	return s.setManagedKeyLifecycle(ctx, r, api.ManagedKeyLifecycleState_MANAGED_KEY_LIFECYCLE_STATE_DISABLED)
 }
 
 // EnableManagedKey restores the exact same bound key. It never issues or
 // substitutes a key and never revives a revoked one.
 func (s *Service) EnableManagedKey(ctx context.Context, r *api.ManagedKeyLifecycleCommand) (*api.ManagedKeyLifecycleReadback, error) {
+	binding, _, err := s.managedKeyLifecycleBinding(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	guard, err := s.GatewayStore.guardWorkspaceKey(ctx, binding.TenantID, binding.WorkspaceID)
+	if err != nil {
+		return nil, status.Error(codes.Unavailable, "Workspace key guard unavailable")
+	}
+	defer guard.Rollback()
+	closing, err := s.GatewayStore.workspaceKeyClosing(ctx, binding.TenantID, binding.WorkspaceID)
+	if err != nil {
+		return nil, status.Error(codes.Unavailable, "Workspace closeout readback unavailable")
+	}
+	if closing {
+		return nil, status.Error(codes.FailedPrecondition, "Workspace Key enablement is closed")
+	}
 	return s.setManagedKeyLifecycle(ctx, r, api.ManagedKeyLifecycleState_MANAGED_KEY_LIFECYCLE_STATE_ACTIVE)
 }
 
