@@ -1,0 +1,700 @@
+# The local v2 owner topology.
+#
+# deploy/portable/opl-cloud-owner-topology.json is the Cloud-owned declaration
+# of the owner processes an installation runs. This file wires that declaration
+# into one runnable local installation: every declared process, its own
+# database, its own listen address, its peer allowlist and the same-origin
+# entry the Console needs.
+#
+# What this file is
+#   - One PostgreSQL with one database per owner and the role pair the owner's
+#     own DDL expects: a schema owner role (opl_<owner>_owner) that connects
+#     and a writer role (opl_<owner>_writer) that the owner grants its writes
+#     to. No owner can read another owner's tables.
+#   - The eleven declared processes: capability, build, runtime-control,
+#     workspace, serve, resource-catalog, gateway-integration (the CloudIdentity
+#     and Gateway deployment unit), ledger, fabric, control-plane and the
+#     Console BFF.
+#   - One nginx same-origin entry. The Console is served from one origin and
+#     calls two browser-facing surfaces, so /api/v2/ is resolved to the Console
+#     BFF and /api/ is resolved to the retained Control Plane history path.
+#     The v2 path never falls back to the retained Control Plane. The same
+#     origin also carries Capability's object data plane and the local Sub2API
+#     authority, because the tenant's Gateway adapter admits an unencrypted
+#     endpoint only on loopback.
+#
+# What this file is not
+#   - It is not a production deployment. The mTLS material, the peer tokens and
+#     the database passwords are installation facts supplied through the
+#     environment, exactly as deploy/portable/opl-cloud.env.example declares
+#     them. deploy/portable/local-v2-pki.sh generates the local material.
+#   - It does not provision anything. The Local-Docker Fabric provider, the
+#     Build owner, the Serve execution boundary and the approved catalog plans
+#     stay outside this file.
+#
+# Volumes and existing data
+#   - This project owns the volume opl-cloud-local-v2-postgres. It is separate
+#     from the base installation's volume, so this file never reads, rebuilds or
+#     drops another installation's data.
+#   - The database initialization script only runs against an empty PostgreSQL
+#     data directory, which is the PostgreSQL image's own rule. An existing
+#     volume keeps its data and its roles; a role this file adds later is
+#     created by the operator, not by this file. Recreating the volume is an
+#     explicit `docker compose -p opl-cloud-local-v2 down -v`, never an
+#     implicit step of an ordinary start.
+#
+# Readiness
+#   - PostgreSQL, the Ledger and the local Sub2API authority carry a container
+#     health check. PostgreSQL's check connects to every owner database with
+#     that owner's own role, the Ledger's check is its own /readyz, and the
+#     authority's check is its own /healthz. The owner processes answer the
+#     gRPC health service and report SERVING only after their own database,
+#     their CloudIdentity authority and their product groups are ready; a
+#     liveness probe is never read as that.
+#   - The route provider carries a liveness check only. It answers /healthz
+#     without an upstream, so a healthy route provider never reports an owner
+#     that is still starting as ready, and never fails because one is.
+#
+# Usage
+#   docker compose -f deploy/portable/compose.local-v2.yaml config
+#   docker compose -f deploy/portable/compose.local-v2.yaml up -d
+name: opl-cloud-local-v2
+
+x-opl-v2-image: &opl-v2-image ${OPL_CLOUD_IMAGE:?Set OPL_CLOUD_IMAGE to the product image digest}
+
+x-opl-v2-common: &opl-v2-common
+  image: *opl-v2-image
+  restart: unless-stopped
+  init: true
+  # The owner processes read their mTLS private key and write the Capability
+  # object store. The local PKI directory is 0700 with 0600 keys, so the
+  # processes run as root inside the container to read it. A production
+  # installation distributes its certificates from its own Secret store instead.
+  user: root
+  networks: [opl-cloud-local-v2]
+  environment: &opl-v2-environment
+    NODE_ENV: production
+    PGSSLMODE: disable
+    OPL_GRPC_CA_FILE: /pki/ca.crt
+    # Every owner reaches CloudIdentity authorization through the tenant
+    # deployment unit. The tenant itself leaves this unset: it is the
+    # authority, and a configured address would make it dial itself.
+    OPL_CLOUD_IDENTITY_URL: tenant:8187
+    OPL_CLOUD_IDENTITY_TOKEN: ${OPL_CLOUD_IDENTITY_TOKEN:?Set OPL_CLOUD_IDENTITY_TOKEN to the tenant peer token}
+    SSL_CERT_FILE: /pki/ca.crt
+
+x-opl-v2-pki: &opl-v2-pki
+  - type: bind
+    source: ${OPL_LOCAL_V2_PKI_DIR:?Set OPL_LOCAL_V2_PKI_DIR to the directory local-v2-pki.sh wrote}
+    target: /pki
+    read_only: true
+
+services:
+  postgres:
+    image: postgres:16.8-bookworm@sha256:301bcb60b8a3ee4ab7e147932723e3abd1cef53516ce5210b39fd9fe5e3602ae
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${OPL_POSTGRES_ADMIN_PASSWORD:?Set OPL_POSTGRES_ADMIN_PASSWORD}
+      POSTGRES_DB: postgres
+      OPL_CONTROL_PLANE_DATABASE_PASSWORD: ${OPL_CONTROL_PLANE_DATABASE_PASSWORD:?Set OPL_CONTROL_PLANE_DATABASE_PASSWORD}
+      OPL_FABRIC_DATABASE_PASSWORD: ${OPL_FABRIC_DATABASE_PASSWORD:?Set OPL_FABRIC_DATABASE_PASSWORD}
+      OPL_LEDGER_DATABASE_PASSWORD: ${OPL_LEDGER_DATABASE_PASSWORD:?Set OPL_LEDGER_DATABASE_PASSWORD}
+      OPL_CAPABILITY_DATABASE_PASSWORD: ${OPL_CAPABILITY_DATABASE_PASSWORD:?Set OPL_CAPABILITY_DATABASE_PASSWORD}
+      OPL_BUILD_DATABASE_PASSWORD: ${OPL_BUILD_DATABASE_PASSWORD:?Set OPL_BUILD_DATABASE_PASSWORD}
+      OPL_RUNTIME_CONTROL_DATABASE_PASSWORD: ${OPL_RUNTIME_CONTROL_DATABASE_PASSWORD:?Set OPL_RUNTIME_CONTROL_DATABASE_PASSWORD}
+      OPL_WORKSPACE_DATABASE_PASSWORD: ${OPL_WORKSPACE_DATABASE_PASSWORD:?Set OPL_WORKSPACE_DATABASE_PASSWORD}
+      OPL_SERVE_DATABASE_PASSWORD: ${OPL_SERVE_DATABASE_PASSWORD:?Set OPL_SERVE_DATABASE_PASSWORD}
+      OPL_RESOURCE_CATALOG_DATABASE_PASSWORD: ${OPL_RESOURCE_CATALOG_DATABASE_PASSWORD:?Set OPL_RESOURCE_CATALOG_DATABASE_PASSWORD}
+      OPL_TENANT_DATABASE_PASSWORD: ${OPL_TENANT_DATABASE_PASSWORD:?Set OPL_TENANT_DATABASE_PASSWORD}
+      OPL_GATEWAY_DATABASE_PASSWORD: ${OPL_GATEWAY_DATABASE_PASSWORD:?Set OPL_GATEWAY_DATABASE_PASSWORD}
+    configs:
+      - source: opl-local-v2-postgres-init
+        target: /docker-entrypoint-initdb.d/10-opl-local-v2-databases.sh
+        mode: 0555
+    volumes:
+      - opl-cloud-local-v2-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          PGPASSWORD="$$OPL_CONTROL_PLANE_DATABASE_PASSWORD" psql -h 127.0.0.1 -U opl_control_plane -d opl_control_plane -Atqc 'select 1' >/dev/null &&
+          PGPASSWORD="$$OPL_FABRIC_DATABASE_PASSWORD" psql -h 127.0.0.1 -U opl_fabric_owner -d opl_fabric -Atqc 'select 1' >/dev/null &&
+          PGPASSWORD="$$OPL_LEDGER_DATABASE_PASSWORD" psql -h 127.0.0.1 -U opl_ledger -d opl_ledger -Atqc 'select 1' >/dev/null &&
+          PGPASSWORD="$$OPL_CAPABILITY_DATABASE_PASSWORD" psql -h 127.0.0.1 -U opl_capability_owner -d opl_capability -Atqc 'select 1' >/dev/null &&
+          PGPASSWORD="$$OPL_BUILD_DATABASE_PASSWORD" psql -h 127.0.0.1 -U opl_build_owner -d opl_build -Atqc 'select 1' >/dev/null &&
+          PGPASSWORD="$$OPL_RUNTIME_CONTROL_DATABASE_PASSWORD" psql -h 127.0.0.1 -U opl_runtime_control_owner -d opl_runtime_control -Atqc 'select 1' >/dev/null &&
+          PGPASSWORD="$$OPL_WORKSPACE_DATABASE_PASSWORD" psql -h 127.0.0.1 -U opl_workspace_owner -d opl_workspace -Atqc 'select 1' >/dev/null &&
+          PGPASSWORD="$$OPL_SERVE_DATABASE_PASSWORD" psql -h 127.0.0.1 -U opl_serve_owner -d opl_serve -Atqc 'select 1' >/dev/null &&
+          PGPASSWORD="$$OPL_RESOURCE_CATALOG_DATABASE_PASSWORD" psql -h 127.0.0.1 -U opl_resource_catalog_owner -d opl_resource_catalog -Atqc 'select 1' >/dev/null &&
+          PGPASSWORD="$$OPL_TENANT_DATABASE_PASSWORD" psql -h 127.0.0.1 -U opl_tenant_owner -d opl_tenant -Atqc 'select 1' >/dev/null &&
+          PGPASSWORD="$$OPL_GATEWAY_DATABASE_PASSWORD" psql -h 127.0.0.1 -U opl_gateway_owner -d opl_gateway -Atqc 'select 1' >/dev/null
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      opl-cloud-local-v2:
+        ipv4_address: ${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}
+
+  # The local Sub2API authority. The tenant's Gateway directory and the
+  # retained Control Plane authenticate against it, so the Cloud login in this
+  # topology is a real CloudIdentity login and not a stub.
+  sub2api-authority:
+    image: *opl-v2-image
+    command: ["node", "--experimental-strip-types", "/qualification/local-sub2api-authority-fixture.ts"]
+    user: root
+    restart: unless-stopped
+    environment:
+      OPL_QUALIFICATION_PORT: "8080"
+      OPL_QUALIFICATION_AUTHORITY_TOKEN: ${OPL_QUALIFICATION_AUTHORITY_TOKEN:?Set OPL_QUALIFICATION_AUTHORITY_TOKEN}
+      OPL_QUALIFICATION_USER_EMAIL: ${OPL_QUALIFICATION_USER_EMAIL:?Set OPL_QUALIFICATION_USER_EMAIL}
+      OPL_QUALIFICATION_USER_PASSWORD: ${OPL_QUALIFICATION_USER_PASSWORD:?Set OPL_QUALIFICATION_USER_PASSWORD}
+      OPL_QUALIFICATION_USER_TOKEN: ${OPL_QUALIFICATION_USER_TOKEN:?Set OPL_QUALIFICATION_USER_TOKEN}
+      OPL_QUALIFICATION_INITIAL_USD_MICROS: ${OPL_QUALIFICATION_INITIAL_USD_MICROS:-1000000000}
+      OPL_QUALIFICATION_STATE_PATH: /qualification-state/state.json
+    volumes:
+      - type: bind
+        source: ../../tools/local-sub2api-authority-fixture.ts
+        target: /qualification/local-sub2api-authority-fixture.ts
+        read_only: true
+      - opl-cloud-local-v2-qualification-sub2api:/qualification-state
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks: [opl-cloud-local-v2]
+
+  # The Gateway Integration deployment unit. It carries the CloudIdentity and
+  # the Gateway owners in one process and keeps them in two databases: the
+  # Tenant database holds the CloudIdentity sessions and grants, and the
+  # Gateway database holds the user bindings and the wallet facade.
+  tenant:
+    <<: *opl-v2-common
+    command: ["/usr/local/bin/opl-gateway-integration"]
+    environment:
+      <<: *opl-v2-environment
+      DATABASE_URL: postgresql://opl_tenant_owner:${OPL_TENANT_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_tenant?sslmode=disable
+      OPL_GATEWAY_DATABASE_URL: postgresql://opl_gateway_owner:${OPL_GATEWAY_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_gateway?sslmode=disable
+      OPL_TENANT_ADDR: ":8187"
+      OPL_TENANT_PEER_TOKENS: ${OPL_TENANT_PEER_TOKENS:?Set OPL_TENANT_PEER_TOKENS}
+      # The tenant is the CloudIdentity authority. It resolves authorization
+      # from its own store, so an address here would make it dial itself.
+      OPL_CLOUD_IDENTITY_URL: ""
+      OPL_CLOUD_IDENTITY_TOKEN: ${OPL_CLOUD_IDENTITY_TOKEN}
+      OPL_SUB2API_URL: ${OPL_LOCAL_V2_SUB2API_URL:?Set OPL_LOCAL_V2_SUB2API_URL to the origin the Sub2API authority is reachable on}
+      OPL_GATEWAY_WORKSPACE_KEY_GROUP: ${OPL_GATEWAY_WORKSPACE_KEY_GROUP:-Codex}
+      OPL_GATEWAY_DIRECTORY_EMAIL: ${OPL_QUALIFICATION_USER_EMAIL}
+      OPL_GATEWAY_DIRECTORY_PASSWORD: ${OPL_QUALIFICATION_USER_PASSWORD}
+      OPL_SESSION_SIGNING_KEY: ${OPL_SESSION_SIGNING_KEY:?Set OPL_SESSION_SIGNING_KEY}
+      OPL_INVITATION_TTL: ${OPL_INVITATION_TTL:-168h}
+      OPL_PLATFORM_ADMIN_SUBJECTS: ${OPL_PLATFORM_ADMIN_SUBJECTS:?Set OPL_PLATFORM_ADMIN_SUBJECTS}
+      # The installation's registry is one fact: the tenant derives every
+      # Tenant repository name from it, and the Build owner publishes into it.
+      # The tenant refuses to admit a Tenant until both halves are declared.
+      OPL_WORKSPACE_REGISTRY_HOST: ${OPL_WORKSPACE_REGISTRY_HOST:-registry.local-v2.test}
+      OPL_WORKSPACE_REGISTRY_NAMESPACE: ${OPL_WORKSPACE_REGISTRY_NAMESPACE:-opl}
+      OPL_FABRIC_ADDR: fabric:8188
+      OPL_FABRIC_TOKEN: ${OPL_FABRIC_TOKEN}
+      OPL_BUILD_ADDR: build:8182
+      OPL_BUILD_TOKEN: ${OPL_BUILD_TOKEN}
+      OPL_WORKSPACE_ADDR: workspace:8184
+      OPL_WORKSPACE_TOKEN: ${OPL_WORKSPACE_TOKEN}
+      OPL_GRPC_CERT_FILE: /pki/tenant.crt
+      OPL_GRPC_KEY_FILE: /pki/tenant.key
+    volumes: *opl-v2-pki
+    depends_on:
+      postgres:
+        condition: service_healthy
+      sub2api-authority:
+        condition: service_healthy
+      # The tenant's Gateway directory reads the local Sub2API authority
+      # through the route provider, because the Gateway adapter admits an
+      # unencrypted endpoint only on loopback.
+      cloud-local-v2:
+        condition: service_healthy
+
+  # The Resource Catalog owner. It publishes the provider plans and prices the
+  # quote; the installation's approved provider profile is the envelope every
+  # published plan belongs to.
+  resource-catalog:
+    <<: *opl-v2-common
+    command: ["/usr/local/bin/opl-resource-catalog"]
+    environment:
+      <<: *opl-v2-environment
+      DATABASE_URL: postgresql://opl_resource_catalog_owner:${OPL_RESOURCE_CATALOG_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_resource_catalog?sslmode=disable
+      OPL_RESOURCE_CATALOG_ADDR: ":8186"
+      OPL_RESOURCE_CATALOG_PEER_TOKENS: ${OPL_RESOURCE_CATALOG_PEER_TOKENS:?Set OPL_RESOURCE_CATALOG_PEER_TOKENS}
+      OPL_RESOURCE_CATALOG_PROFILE_JSON: ${OPL_RESOURCE_CATALOG_PROFILE_JSON:?Set OPL_RESOURCE_CATALOG_PROFILE_JSON}
+      OPL_LEDGER_ADDR: ledger:8189
+      OPL_LEDGER_TOKEN: ${OPL_LEDGER_TOKEN}
+      OPL_GRPC_CERT_FILE: /pki/resource_catalog.crt
+      OPL_GRPC_KEY_FILE: /pki/resource_catalog.key
+    volumes: *opl-v2-pki
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # The Ledger owner. It records receipts, evidence and opaque provenance, and
+  # it keeps the retained HTTP surface the Control Plane and Fabric read.
+  ledger:
+    <<: *opl-v2-common
+    command: ["/usr/local/bin/opl-ledger"]
+    environment:
+      <<: *opl-v2-environment
+      DATABASE_URL: postgresql://opl_ledger:${OPL_LEDGER_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_ledger?sslmode=disable
+      # The typed owner surface and the retained HTTP surface listen separately.
+      OPL_LEDGER_ADDR: ":8189"
+      LEDGER_ADDR: ":8081"
+      OPL_LEDGER_PEER_TOKENS: ${OPL_LEDGER_PEER_TOKENS:?Set OPL_LEDGER_PEER_TOKENS}
+      OPL_INTERNAL_SERVICE_TOKEN: ${OPL_INTERNAL_SERVICE_TOKEN:?Set OPL_INTERNAL_SERVICE_TOKEN}
+      OPL_LEDGER_CAPABILITY_KEY: ${OPL_LEDGER_CAPABILITY_KEY:?Set OPL_LEDGER_CAPABILITY_KEY}
+      OPL_GRPC_CERT_FILE: /pki/ledger.crt
+      OPL_GRPC_KEY_FILE: /pki/ledger.key
+    volumes: *opl-v2-pki
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8081/readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # The Capability owner. It owns the Package, WebUI and build-result catalog
+  # and the immutable object store the Build owner reads.
+  capability:
+    <<: *opl-v2-common
+    command: ["/usr/local/bin/opl-capability"]
+    environment:
+      <<: *opl-v2-environment
+      DATABASE_URL: postgresql://opl_capability_owner:${OPL_CAPABILITY_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_capability?sslmode=disable
+      OPL_CAPABILITY_ADDR: ":8181"
+      OPL_CAPABILITY_PEER_TOKENS: ${OPL_CAPABILITY_PEER_TOKENS:?Set OPL_CAPABILITY_PEER_TOKENS}
+      OPL_CAPABILITY_STORAGE_KIND: local
+      OPL_CAPABILITY_OBJECT_LISTEN_ADDR: ":8191"
+      # The signed upload permits point at the browser's origin. The Build
+      # owner reads the same objects through the same origin by its own name.
+      OPL_CAPABILITY_OBJECT_URL: ${OPL_LOCAL_V2_CAPABILITY_OBJECT_URL:?Set OPL_LOCAL_V2_CAPABILITY_OBJECT_URL}
+      OPL_CAPABILITY_OBJECT_TOKEN: ${OPL_CAPABILITY_OBJECT_TOKEN:?Set OPL_CAPABILITY_OBJECT_TOKEN}
+      OPL_CAPABILITY_OBJECT_SIGNING_KEY: ${OPL_CAPABILITY_OBJECT_SIGNING_KEY:?Set OPL_CAPABILITY_OBJECT_SIGNING_KEY}
+      OPL_CAPABILITY_OBJECT_ROOT: /var/lib/opl/objects
+      # The approved Agent Plugins schema. The file is the published schema,
+      # not a placeholder: its digest is pinned to the published bytes.
+      OPL_CAPABILITY_PACKAGE_SCHEMA_PATH: /contracts/agent-plugins-1.0.0-plugin.schema.json
+      OPL_CAPABILITY_PACKAGE_SCHEMA_DIGEST: ${OPL_LOCAL_V2_PACKAGE_SCHEMA_DIGEST:?Set OPL_LOCAL_V2_PACKAGE_SCHEMA_DIGEST}
+      # The publisher contract schema ships in the product image.
+      OPL_PUBLISHER_SCHEMA_PATH: /app/contracts/publisher-contract.schema.json
+      OPL_PUBLISHER_SCHEMA_DIGEST: ${OPL_LOCAL_V2_PUBLISHER_SCHEMA_DIGEST:?Set OPL_LOCAL_V2_PUBLISHER_SCHEMA_DIGEST}
+      OPL_BUILD_ADDR: build:8182
+      OPL_BUILD_TOKEN: ${OPL_BUILD_TOKEN}
+      OPL_LEDGER_ADDR: ledger:8189
+      OPL_LEDGER_TOKEN: ${OPL_LEDGER_TOKEN}
+      OPL_RUNTIME_CONTROL_ADDR: runtime-control:8183
+      OPL_RUNTIME_CONTROL_TOKEN: ${OPL_RUNTIME_CONTROL_TOKEN}
+      OPL_SERVE_ADDR: serve:8185
+      OPL_SERVE_TOKEN: ${OPL_SERVE_TOKEN}
+      OPL_GRPC_CERT_FILE: /pki/capability.crt
+      OPL_GRPC_KEY_FILE: /pki/capability.key
+    volumes:
+      - type: bind
+        source: ${OPL_LOCAL_V2_PACKAGE_SCHEMA_PATH:?Set OPL_LOCAL_V2_PACKAGE_SCHEMA_PATH to the published Agent Plugins schema}
+        target: /contracts/agent-plugins-1.0.0-plugin.schema.json
+        read_only: true
+      - opl-cloud-local-v2-objects:/var/lib/opl/objects
+      - type: bind
+        source: ${OPL_LOCAL_V2_PKI_DIR}
+        target: /pki
+        read_only: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # The Build owner. It runs the admitted BuildKit build. This installation
+  # declares the builder it would use and the registry it would publish to;
+  # no build runs until a builder and a registry are attached to it.
+  build:
+    <<: *opl-v2-common
+    command: ["/usr/local/bin/opl-build"]
+    environment:
+      <<: *opl-v2-environment
+      DATABASE_URL: postgresql://opl_build_owner:${OPL_BUILD_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_build?sslmode=disable
+      OPL_BUILD_ADDR: ":8182"
+      OPL_BUILD_PEER_TOKENS: ${OPL_BUILD_PEER_TOKENS:?Set OPL_BUILD_PEER_TOKENS}
+      OPL_BUILD_BUILDER: ${OPL_BUILD_BUILDER:-opl-buildkit-local}
+      OPL_BUILD_WORKDIR: /var/lib/opl/build
+      OPL_BUILD_DOCKER_CONFIG: /var/lib/opl/build/docker
+      OPL_BUILD_REGISTRY_PREFIX: ${OPL_BUILD_REGISTRY_PREFIX:-${OPL_WORKSPACE_REGISTRY_HOST:-registry.local-v2.test}/${OPL_WORKSPACE_REGISTRY_NAMESPACE:-opl}}
+      OPL_BUILD_REGISTRY_TOKEN: ${OPL_BUILD_REGISTRY_TOKEN:?Set OPL_BUILD_REGISTRY_TOKEN}
+      OPL_CAPABILITY_ADDR: capability:8181
+      OPL_CAPABILITY_TOKEN: ${OPL_CAPABILITY_TOKEN}
+      OPL_CAPABILITY_OBJECT_URL: ${OPL_LOCAL_V2_CAPABILITY_OBJECT_INTERNAL_URL:?Set OPL_LOCAL_V2_CAPABILITY_OBJECT_INTERNAL_URL}
+      OPL_CAPABILITY_OBJECT_TOKEN: ${OPL_CAPABILITY_OBJECT_TOKEN}
+      OPL_LEDGER_ADDR: ledger:8189
+      OPL_LEDGER_TOKEN: ${OPL_LEDGER_TOKEN}
+      OPL_TENANT_TOKEN: ${OPL_CLOUD_IDENTITY_TOKEN}
+      OPL_GRPC_CERT_FILE: /pki/build.crt
+      OPL_GRPC_KEY_FILE: /pki/build.key
+    volumes:
+      - opl-cloud-local-v2-build:/var/lib/opl/build
+      - type: bind
+        source: ${OPL_LOCAL_V2_PKI_DIR}
+        target: /pki
+        read_only: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # The Runtime Control owner. It admits immutable Runtime Releases and owns
+  # the release readback; it never owns a running instance.
+  runtime-control:
+    <<: *opl-v2-common
+    command: ["/usr/local/bin/opl-runtime-control"]
+    environment:
+      <<: *opl-v2-environment
+      DATABASE_URL: postgresql://opl_runtime_control_owner:${OPL_RUNTIME_CONTROL_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_runtime_control?sslmode=disable
+      OPL_RUNTIME_CONTROL_ADDR: ":8183"
+      OPL_RUNTIME_CONTROL_PEER_TOKENS: ${OPL_RUNTIME_CONTROL_PEER_TOKENS:?Set OPL_RUNTIME_CONTROL_PEER_TOKENS}
+      OPL_RUNTIME_PUBLISHER_SCHEMA_PATH: /app/contracts/publisher-contract.schema.json
+      OPL_RUNTIME_PUBLISHER_SCHEMA_DIGEST: ${OPL_LOCAL_V2_PUBLISHER_SCHEMA_DIGEST}
+      OPL_CAPABILITY_ADDR: capability:8181
+      OPL_CAPABILITY_TOKEN: ${OPL_CAPABILITY_TOKEN}
+      OPL_GRPC_CERT_FILE: /pki/runtime_control.crt
+      OPL_GRPC_KEY_FILE: /pki/runtime_control.key
+    volumes: *opl-v2-pki
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # The Workspace owner. It owns the accepted order, the entitlement and the
+  # resource intent, and it persists no second current-deployment pointer.
+  workspace:
+    <<: *opl-v2-common
+    command: ["/usr/local/bin/opl-workspace"]
+    environment:
+      <<: *opl-v2-environment
+      DATABASE_URL: postgresql://opl_workspace_owner:${OPL_WORKSPACE_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_workspace?sslmode=disable
+      OPL_WORKSPACE_ADDR: ":8184"
+      OPL_WORKSPACE_PEER_TOKENS: ${OPL_WORKSPACE_PEER_TOKENS:?Set OPL_WORKSPACE_PEER_TOKENS}
+      OPL_RESOURCE_CATALOG_ADDR: resource-catalog:8186
+      OPL_RESOURCE_CATALOG_TOKEN: ${OPL_RESOURCE_CATALOG_TOKEN}
+      OPL_FABRIC_ADDR: fabric:8188
+      OPL_FABRIC_TOKEN: ${OPL_FABRIC_TOKEN}
+      OPL_LEDGER_ADDR: ledger:8189
+      OPL_LEDGER_TOKEN: ${OPL_LEDGER_TOKEN}
+      OPL_CAPABILITY_ADDR: capability:8181
+      OPL_CAPABILITY_TOKEN: ${OPL_CAPABILITY_TOKEN}
+      OPL_RUNTIME_CONTROL_ADDR: runtime-control:8183
+      OPL_RUNTIME_CONTROL_TOKEN: ${OPL_RUNTIME_CONTROL_TOKEN}
+      OPL_SERVE_ADDR: serve:8185
+      OPL_SERVE_TOKEN: ${OPL_SERVE_TOKEN}
+      OPL_GATEWAY_ADDR: tenant:8187
+      OPL_GATEWAY_TOKEN: ${OPL_CLOUD_IDENTITY_TOKEN}
+      OPL_GRPC_CERT_FILE: /pki/workspace.crt
+      OPL_GRPC_KEY_FILE: /pki/workspace.key
+    volumes: *opl-v2-pki
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # The Serve owner. It is the only writer of the deployment, readiness and
+  # access facts, and it serves the Workspace application entry itself.
+  serve:
+    <<: *opl-v2-common
+    command: ["/usr/local/bin/opl-serve"]
+    environment:
+      <<: *opl-v2-environment
+      DATABASE_URL: postgresql://opl_serve_owner:${OPL_SERVE_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_serve?sslmode=disable
+      OPL_SERVE_ADDR: ":8185"
+      # The application entry Serve serves itself. It differs from the owner
+      # surface above.
+      OPL_SERVE_ACCESS_ADDR: ":8192"
+      OPL_SERVE_PEER_TOKENS: ${OPL_SERVE_PEER_TOKENS:?Set OPL_SERVE_PEER_TOKENS}
+      OPL_CAPABILITY_ADDR: capability:8181
+      OPL_CAPABILITY_TOKEN: ${OPL_CAPABILITY_TOKEN}
+      OPL_RUNTIME_CONTROL_ADDR: runtime-control:8183
+      OPL_RUNTIME_CONTROL_TOKEN: ${OPL_RUNTIME_CONTROL_TOKEN}
+      OPL_FABRIC_COORDINATION_ADDR: fabric:8188
+      OPL_FABRIC_COORDINATION_TOKEN: ${OPL_FABRIC_TOKEN}
+      OPL_FABRIC_SERVE_SERVICE_TOKEN: ${OPL_FABRIC_SERVE_SERVICE_TOKEN:?Set OPL_FABRIC_SERVE_SERVICE_TOKEN}
+      OPL_FABRIC_SERVE_CAPABILITY_KEY: ${OPL_FABRIC_SERVE_CAPABILITY_KEY:?Set OPL_FABRIC_SERVE_CAPABILITY_KEY}
+      OPL_GATEWAY_ADDR: tenant:8187
+      OPL_GATEWAY_TOKEN: ${OPL_CLOUD_IDENTITY_TOKEN}
+      OPL_LEDGER_ADDR: ledger:8189
+      OPL_LEDGER_TOKEN: ${OPL_LEDGER_TOKEN}
+      OPL_WORKSPACE_ADDR: workspace:8184
+      OPL_WORKSPACE_TOKEN: ${OPL_WORKSPACE_TOKEN}
+      OPL_PUBLIC_URL: ${OPL_LOCAL_V2_PUBLIC_URL:?Set OPL_LOCAL_V2_PUBLIC_URL}
+      OPL_WORKSPACE_DOMAIN: ${OPL_WORKSPACE_DOMAIN:?Set OPL_WORKSPACE_DOMAIN}
+      OPL_WORKSPACE_APPLICATION_DOMAIN: ${OPL_WORKSPACE_APPLICATION_DOMAIN:-}
+      OPL_AIONUI_ADMIN_PASSWORD_SEED: ${OPL_AIONUI_ADMIN_PASSWORD_SEED:?Set OPL_AIONUI_ADMIN_PASSWORD_SEED}
+      # This installation declares no execution boundary. A deployment that
+      # declared both a Kubernetes namespace and the retained application URL
+      # would have two writers for one workload, so neither is set here and the
+      # delivery step fails closed instead of borrowing another owner's access.
+      OPL_K8S_NAMESPACE: ""
+      OPL_FABRIC_APPLICATION_URL: ""
+      OPL_WORKSPACE_APPLICATION_INGRESS_PEERS: ${OPL_WORKSPACE_APPLICATION_INGRESS_PEERS:-}
+      OPL_GRPC_CERT_FILE: /pki/serve.crt
+      OPL_GRPC_KEY_FILE: /pki/serve.key
+    volumes: *opl-v2-pki
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # The Fabric owner. It owns infrastructure resource mutation and readback
+  # only. The Local-Docker provider is this installation's declared provider.
+  fabric:
+    <<: *opl-v2-common
+    command: ["/usr/local/bin/opl-fabric"]
+    environment:
+      <<: *opl-v2-environment
+      DATABASE_URL: postgresql://opl_fabric_owner:${OPL_FABRIC_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_fabric?sslmode=disable
+      # The typed owner surface runs over its own database, separately from the
+      # retained operation store above.
+      OPL_FABRIC_DATABASE_URL: postgresql://opl_fabric_owner:${OPL_FABRIC_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_fabric?sslmode=disable
+      FABRIC_ADDR: ":8082"
+      OPL_FABRIC_ADDR: ":8188"
+      OPL_FABRIC_PEER_TOKENS: ${OPL_FABRIC_PEER_TOKENS:?Set OPL_FABRIC_PEER_TOKENS}
+      OPL_FABRIC_PROVIDER: local-docker
+      OPL_INTERNAL_SERVICE_TOKEN: ${OPL_INTERNAL_SERVICE_TOKEN}
+      OPL_FABRIC_RUNNER_SERVICE_TOKEN: ${OPL_FABRIC_RUNNER_SERVICE_TOKEN:?Set OPL_FABRIC_RUNNER_SERVICE_TOKEN}
+      OPL_FABRIC_CAPABILITY_KEY: ${OPL_FABRIC_CAPABILITY_KEY:?Set OPL_FABRIC_CAPABILITY_KEY}
+      OPL_FABRIC_SERVE_SERVICE_TOKEN: ${OPL_FABRIC_SERVE_SERVICE_TOKEN}
+      OPL_FABRIC_SERVE_CAPABILITY_KEY: ${OPL_FABRIC_SERVE_CAPABILITY_KEY}
+      OPL_AIONUI_ADMIN_PASSWORD_SEED: ${OPL_AIONUI_ADMIN_PASSWORD_SEED}
+      OPL_CLOUD_IMAGE: ${OPL_CLOUD_IMAGE}
+      OPL_WORKSPACE_IMAGE: ${OPL_WORKSPACE_IMAGE:?Set OPL_WORKSPACE_IMAGE to the approved Workspace image digest}
+      OPL_WORKSPACE_DOMAIN: ${OPL_WORKSPACE_DOMAIN}
+      OPL_LEDGER_ADDR: ledger:8189
+      OPL_LEDGER_TOKEN: ${OPL_LEDGER_TOKEN}
+      OPL_RESOURCE_CATALOG_ADDR: resource-catalog:8186
+      OPL_RESOURCE_CATALOG_TOKEN: ${OPL_RESOURCE_CATALOG_TOKEN}
+      OPL_FABRIC_LOCAL_DOCKER_HOST: ${OPL_FABRIC_LOCAL_DOCKER_HOST:-127.0.0.1}
+      OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST: ${OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST:-127.0.0.1}
+      OPL_FABRIC_LOCAL_DOCKER_PROBE_IMAGE: ${OPL_CLOUD_IMAGE}
+      OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER: ${OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER:-opl-cloud-local-v2-control-plane-1}
+      OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: /var/lib/opl/fabric/storage
+      OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT: /var/lib/opl/fabric/secret
+      OPL_FABRIC_LOCAL_DOCKER_ALLOW_UNBOUNDED_SWAP: ${OPL_FABRIC_LOCAL_DOCKER_ALLOW_UNBOUNDED_SWAP:-0}
+      OPL_GRPC_CERT_FILE: /pki/fabric.crt
+      OPL_GRPC_KEY_FILE: /pki/fabric.key
+    volumes:
+      - opl-cloud-local-v2-fabric:/var/lib/opl/fabric
+      - type: bind
+        source: ${OPL_LOCAL_V2_PKI_DIR}
+        target: /pki
+        read_only: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # The retained Control Plane. It is the migration source and the process
+  # that serves the Console bundle, so the same origin keeps a stable address
+  # for it while the v2 surface takes over the new work.
+  control-plane:
+    <<: *opl-v2-common
+    command: ["/usr/local/bin/opl-control-plane"]
+    environment:
+      <<: *opl-v2-environment
+      DATABASE_URL: postgresql://opl_control_plane:${OPL_CONTROL_PLANE_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_control_plane?sslmode=disable
+      CONTROL_PLANE_ADDR: ":8787"
+      PORT: "8787"
+      LEDGER_URL: http://ledger:8081
+      FABRIC_URL: http://fabric:8082
+      OPL_INTERNAL_SERVICE_TOKEN: ${OPL_INTERNAL_SERVICE_TOKEN}
+      OPL_FABRIC_PROVIDER: local-docker
+      OPL_FABRIC_SERVICE_TOKEN: ${OPL_FABRIC_SERVICE_TOKEN:?Set OPL_FABRIC_SERVICE_TOKEN}
+      OPL_FABRIC_CAPABILITY_KEY: ${OPL_FABRIC_CAPABILITY_KEY}
+      OPL_LEDGER_SERVICE_TOKEN: ${OPL_LEDGER_SERVICE_TOKEN:?Set OPL_LEDGER_SERVICE_TOKEN}
+      OPL_LEDGER_CAPABILITY_KEY: ${OPL_LEDGER_CAPABILITY_KEY}
+      OPL_PUBLIC_URL: ${OPL_LOCAL_V2_PUBLIC_URL}
+      OPL_WORKSPACE_DOMAIN: ${OPL_WORKSPACE_DOMAIN}
+      OPL_WORKSPACE_APPLICATION_DOMAIN: ${OPL_WORKSPACE_APPLICATION_DOMAIN:-}
+      OPL_CONSOLE_DIST_DIR: /app/dist
+      OPL_DEPLOYMENT_MODE: customer_owned
+      OPL_SUB2API_BASE_URL: ${OPL_LOCAL_V2_SUB2API_URL}
+      OPL_SUB2API_USER_EMAIL: ${OPL_QUALIFICATION_USER_EMAIL}
+      OPL_SUB2API_USER_PASSWORD: ${OPL_QUALIFICATION_USER_PASSWORD}
+      OPL_SUB2API_REQUEST_TIMEOUT_MS: ${OPL_SUB2API_REQUEST_TIMEOUT_MS:-5000}
+      OPL_AIONUI_ADMIN_PASSWORD_SEED: ${OPL_AIONUI_ADMIN_PASSWORD_SEED}
+      OPL_CLOUD_IMAGE: ${OPL_CLOUD_IMAGE}
+      OPL_WORKSPACE_IMAGE: ${OPL_WORKSPACE_IMAGE}
+      OPL_RELEASE_SHA: ${OPL_LOCAL_V2_RELEASE_SHA:?Set OPL_LOCAL_V2_RELEASE_SHA to the product revision this image was built from}
+      OPL_CONTROL_PLANE_BFF_TOKEN: ${OPL_CONTROL_PLANE_TOKEN:?Set OPL_CONTROL_PLANE_TOKEN}
+      OPL_GRPC_CERT_FILE: /pki/control_plane.crt
+      OPL_GRPC_KEY_FILE: /pki/control_plane.key
+    volumes: *opl-v2-pki
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # The Control Plane authenticates its Sub2API user at startup, and it
+      # reaches the authority through this route provider. The route provider
+      # does not wait for the Control Plane, so the two start in this order and
+      # not in a cycle.
+      cloud-local-v2:
+        condition: service_healthy
+
+  # The Console BFF. It owns no business data and holds no database. Every
+  # value it serves comes from the owner that wrote it.
+  console-bff:
+    <<: *opl-v2-common
+    command: ["/usr/local/bin/opl-console-bff"]
+    environment:
+      <<: *opl-v2-environment
+      OPL_BFF_ADDR: ":8190"
+      OPL_PUBLIC_URL: ${OPL_LOCAL_V2_PUBLIC_URL}
+      OPL_CAPABILITY_URL: capability:8181
+      OPL_CAPABILITY_TOKEN: ${OPL_CAPABILITY_TOKEN}
+      OPL_RUNTIME_CONTROL_URL: runtime-control:8183
+      OPL_RUNTIME_CONTROL_TOKEN: ${OPL_RUNTIME_CONTROL_TOKEN}
+      OPL_BUILD_URL: build:8182
+      OPL_BUILD_TOKEN: ${OPL_BUILD_TOKEN}
+      OPL_WORKSPACE_URL: workspace:8184
+      OPL_WORKSPACE_TOKEN: ${OPL_WORKSPACE_TOKEN}
+      OPL_SERVE_URL: serve:8185
+      OPL_SERVE_TOKEN: ${OPL_SERVE_TOKEN}
+      OPL_RESOURCE_CATALOG_URL: resource-catalog:8186
+      OPL_RESOURCE_CATALOG_TOKEN: ${OPL_RESOURCE_CATALOG_TOKEN}
+      OPL_GATEWAY_URL: tenant:8187
+      OPL_GATEWAY_TOKEN: ${OPL_CLOUD_IDENTITY_TOKEN}
+      OPL_LEDGER_URL: ledger:8189
+      OPL_LEDGER_TOKEN: ${OPL_LEDGER_TOKEN}
+      OPL_CONTROL_PLANE_URL: http://control-plane:8787
+      OPL_CONTROL_PLANE_TOKEN: ${OPL_CONTROL_PLANE_TOKEN}
+      OPL_GRPC_CERT_FILE: /pki/console_bff.crt
+      OPL_GRPC_KEY_FILE: /pki/console_bff.key
+    volumes: *opl-v2-pki
+    depends_on:
+      tenant:
+        condition: service_started
+
+  # The same-origin entry. The Console is served from one origin and calls two
+  # browser-facing surfaces, so /api/v2/ is resolved to the Console BFF here
+  # and never to the retained Control Plane.
+  cloud-local-v2:
+    image: nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${OPL_LOCAL_V2_PROXY_PORT:-8443}:8443"
+    volumes:
+      - type: bind
+        source: ./local-v2-proxy.nginx.conf
+        target: /etc/nginx/conf.d/default.conf
+        read_only: true
+      - type: bind
+        source: ${OPL_LOCAL_V2_PKI_DIR}
+        target: /pki
+        read_only: true
+    healthcheck:
+      test: ["CMD", "wget", "--no-check-certificate", "--quiet", "--output-document", "/dev/null", "https://127.0.0.1:8443/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      # The route provider waits for the authority it routes to, and for
+      # nothing else. The processes it routes to wait for it: the retained
+      # Control Plane authenticates against the authority through this origin
+      # at startup, so a provider that waited for the Control Plane would
+      # deadlock against it.
+      sub2api-authority:
+        condition: service_healthy
+    networks: [opl-cloud-local-v2]
+
+volumes:
+  opl-cloud-local-v2-postgres:
+  opl-cloud-local-v2-objects:
+  opl-cloud-local-v2-build:
+  opl-cloud-local-v2-fabric:
+  opl-cloud-local-v2-qualification-sub2api:
+
+networks:
+  opl-cloud-local-v2:
+    ipam:
+      config:
+        - subnet: ${OPL_LOCAL_V2_SUBNET:-172.31.0.0/24}
+
+configs:
+  opl-local-v2-postgres-init:
+    content: |
+      #!/bin/sh
+      set -eu
+
+      # Every owner in this topology owns one database and one schema. The
+      # owner's own DDL creates the schema under a schema owner role and grants
+      # its writes to a writer role, so this initialization creates both roles
+      # and lets the owner's migration install the schema. The owner process
+      # connects as the schema owner, because an owner installs its own
+      # migrations at startup.
+      owners="capability build runtime_control workspace serve resource_catalog fabric tenant gateway"
+
+      require_password() {
+        if [ "$${#2}" -lt 32 ]; then
+          echo "PostgreSQL password for $$1 must contain at least 32 characters" >&2
+          exit 1
+        fi
+      }
+      require_password postgres "$$POSTGRES_PASSWORD"
+      require_password opl_control_plane "$$OPL_CONTROL_PLANE_DATABASE_PASSWORD"
+      require_password opl_fabric "$$OPL_FABRIC_DATABASE_PASSWORD"
+      require_password opl_ledger "$$OPL_LEDGER_DATABASE_PASSWORD"
+      require_password opl_capability "$$OPL_CAPABILITY_DATABASE_PASSWORD"
+      require_password opl_build "$$OPL_BUILD_DATABASE_PASSWORD"
+      require_password opl_runtime_control "$$OPL_RUNTIME_CONTROL_DATABASE_PASSWORD"
+      require_password opl_workspace "$$OPL_WORKSPACE_DATABASE_PASSWORD"
+      require_password opl_serve "$$OPL_SERVE_DATABASE_PASSWORD"
+      require_password opl_resource_catalog "$$OPL_RESOURCE_CATALOG_DATABASE_PASSWORD"
+      require_password opl_tenant "$$OPL_TENANT_DATABASE_PASSWORD"
+      require_password opl_gateway "$$OPL_GATEWAY_DATABASE_PASSWORD"
+
+      duplicates="$$(printf '%s\n' \
+        "$$POSTGRES_PASSWORD" \
+        "$$OPL_CONTROL_PLANE_DATABASE_PASSWORD" \
+        "$$OPL_FABRIC_DATABASE_PASSWORD" \
+        "$$OPL_LEDGER_DATABASE_PASSWORD" \
+        "$$OPL_CAPABILITY_DATABASE_PASSWORD" \
+        "$$OPL_BUILD_DATABASE_PASSWORD" \
+        "$$OPL_RUNTIME_CONTROL_DATABASE_PASSWORD" \
+        "$$OPL_WORKSPACE_DATABASE_PASSWORD" \
+        "$$OPL_SERVE_DATABASE_PASSWORD" \
+        "$$OPL_RESOURCE_CATALOG_DATABASE_PASSWORD" \
+        "$$OPL_TENANT_DATABASE_PASSWORD" \
+        "$$OPL_GATEWAY_DATABASE_PASSWORD" | sort | uniq -d)"
+      if [ -n "$$duplicates" ]; then
+        echo "PostgreSQL passwords must be distinct, and this installation reuses one" >&2
+        exit 1
+      fi
+
+      sql="$$(mktemp)"
+      : >"$$sql"
+
+      for owner in $$owners; do
+        upper="$$(printf '%s' "$$owner" | tr 'a-z' 'A-Z')"
+        eval "password=\$${OPL_$${upper}_DATABASE_PASSWORD}"
+        # The password reaches PostgreSQL as a SQL literal. format's %L quotes
+        # it, and the literal is escaped first so an unusual character cannot
+        # end it early.
+        escaped="$$(printf '%s' "$$password" | sed "s/'/''/g")"
+        printf "SELECT format('CREATE ROLE opl_%s_owner LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD %%L', '%s') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'opl_%s_owner') \\gexec\n" "$$owner" "$$escaped" "$$owner" >>"$$sql"
+        printf "SELECT format('CREATE ROLE opl_%s_writer NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION', '') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'opl_%s_writer') \\gexec\n" "$$owner" "$$owner" >>"$$sql"
+        printf "GRANT opl_%s_writer TO opl_%s_owner WITH ADMIN OPTION;\n" "$$owner" "$$owner" >>"$$sql"
+        printf "SELECT 'CREATE DATABASE opl_%s OWNER opl_%s_owner' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'opl_%s') \\gexec\n" "$$owner" "$$owner" "$$owner" >>"$$sql"
+        printf "REVOKE ALL ON DATABASE opl_%s FROM PUBLIC;\n" "$$owner" >>"$$sql"
+        printf "GRANT CONNECT ON DATABASE opl_%s TO opl_%s_writer;\n" "$$owner" "$$owner" >>"$$sql"
+      done
+
+      # The Ledger and the retained Control Plane keep the flat login role their
+      # own DDL expects. They own no owner schema and no writer boundary.
+      for owner in ledger control_plane; do
+        upper="$$(printf '%s' "$$owner" | tr 'a-z' 'A-Z')"
+        eval "password=\$${OPL_$${upper}_DATABASE_PASSWORD}"
+        escaped="$$(printf '%s' "$$password" | sed "s/'/''/g")"
+        printf "SELECT format('CREATE ROLE opl_%s LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD %%L', '%s') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'opl_%s') \\gexec\n" "$$owner" "$$escaped" "$$owner" >>"$$sql"
+        printf "SELECT 'CREATE DATABASE opl_%s OWNER opl_%s' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'opl_%s') \\gexec\n" "$$owner" "$$owner" "$$owner" >>"$$sql"
+        printf "REVOKE ALL ON DATABASE opl_%s FROM PUBLIC;\n" "$$owner" >>"$$sql"
+      done
+
+      psql --set=ON_ERROR_STOP=1 \
+        --username "$$POSTGRES_USER" \
+        --dbname "$$POSTGRES_DB" \
+        -f "$$sql"
