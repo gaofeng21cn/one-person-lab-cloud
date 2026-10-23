@@ -14,15 +14,18 @@
  * business transport and the ability to close what it opened; the flow below is
  * what both providers run.
  *
- * Replay is handled by derivation rather than by stored state. The operation
- * identity is a function of the Candidate, the tenant, the product and the
- * provider, so a redelivery of the same qualification addresses the same launch
- * order the first delivery created. Before issuing anything the orchestrator
- * asks the platform what it already knows about that order: if the order is
- * there it is resumed, not reissued. A response lost after the platform accepted
- * a command is the same case seen once more and is answered the same way. No
- * path here issues a second purchase, and so none creates a second Workspace,
- * charge, refund or managed Key.
+ * Replay is handled by the owner's own idempotency record rather than by stored
+ * state. The declared idempotency identity is a function of the Candidate, the
+ * tenant, the product and the provider, so a redelivery of the same
+ * qualification addresses the same order the first delivery created: the owner
+ * prices the quote again under the same identity and admits the order again
+ * under the same identity, and it replays the original order rather than
+ * admitting a second one. The owner mints the operation and Workspace
+ * identities, so this module never derives them; it announces the request that
+ * is buying and reads the owner's own answer. A response lost after the owner
+ * accepted a command is the same case seen once more and is answered the same
+ * way. No path here issues a second purchase, and so none creates a second
+ * Workspace, charge, refund or managed Key.
  */
 
 import {
@@ -39,13 +42,14 @@ import {
   qualificationMutationScope,
   qualificationProduct,
   qualificationTenantScope,
-  qualificationWorkspaceName,
   validateBusinessQualificationReceipt,
 } from "./workspace-qualification-contract.ts";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
-  launchOperationId, launchWorkspaceId, priceWorkspaceLaunch, submitWorkspaceLaunch, waitForLaunch,
+  announceRequest, findDeclaredCatalogEntry, listOwnerCatalogPages, normalizedAccountEmail,
+  priceWorkspaceQuote, quoteWorkspaceOrder, stableID, submitWorkspaceOrder,
+  workspaceDeclaration, WORKSPACE_OPERATION_ROUTE, WORKSPACE_ORDER_ROUTE,
 } from "./workspace-purchase-core.ts";
 
 /*
@@ -67,12 +71,17 @@ export const QUALIFICATION_ADAPTER_METHODS = Object.freeze([
  * The optional purchase seam.
  *
  * The default flow above owns the purchase itself because it is the shared
- * flow for every provider. A protected caller may instead hand over the merged
- * deployed buyer: the buyer performs the account-digest check and the purchase
- * through the shared core, and this orchestrator consumes only its bounded
- * result before continuing with the owner readbacks that produce delivery,
- * charge and receipt evidence. The seam is optional so Local-Docker and the
- * existing callers keep the current behavior.
+ * flow for every provider. A protected caller may instead hand over a buyer of
+ * its own: the buyer performs the account-digest check and the purchase
+ * through the shared owner-route core, and this orchestrator consumes only its
+ * bounded result before continuing with the owner readbacks that produce
+ * delivery, charge and receipt evidence. The seam is optional so Local-Docker
+ * and the existing callers keep the current behavior.
+ *
+ * The result names the identity space the order lives in. An order bought on
+ * the Workspace owner route is read back from the owner, and a retained Control
+ * Plane operation is still read and recovered through its own owner, so the
+ * readback dispatches on the recorded space rather than on a global URL.
  */
 export type QualificationPurchaseCaller = Readonly<{
   http: {
@@ -83,6 +92,8 @@ export type QualificationPurchaseCaller = Readonly<{
   wait?: (milliseconds: number) => Promise<void>;
 }>;
 
+export const QUALIFICATION_IDENTITY_SPACES = Object.freeze(["workspace_owner", "control_plane"]);
+
 export type QualificationPurchaseResult = Readonly<{
   idempotencyKey: string;
   operationId: string;
@@ -92,7 +103,14 @@ export type QualificationPurchaseResult = Readonly<{
   amountUsdMicros: string;
   purchases: number;
   candidateReceiptDigest: string;
-  product: Readonly<{ resourceType: string; packageId: string; autoRenew: boolean }>;
+  identitySpace: string;
+  product: Readonly<{
+    resourceType: string;
+    applicationSelection: Readonly<{ kind: string; runtimeVersionId: string }>;
+    computePlanId: string;
+    storagePlanId: string;
+    renewalMode: string;
+  }>;
 }>;
 
 export type QualificationPurchase = Readonly<{
@@ -109,22 +127,34 @@ function assertQualificationPurchase(purchase) {
 
 function purchasedQualification(value, request, declaredProduct) {
   const product = value?.product;
+  // The identities are the ones the owner minted, so there is nothing here to
+  // re-derive and compare against: the owner readback below is what proves
+  // that this operation is this order's.
+  //
+  // The purchase names what it bought the way the owner route states it: a
+  // Workspace, the application source and plan pair the owner priced beside
+  // it, and the renewal mode it admitted. The owner route has no package, so
+  // the declared package cannot be compared here; the renewal mode is what
+  // says whether this run bought the period it declared.
   if (!value || typeof value !== "object" || Array.isArray(value) ||
       value.candidateReceiptDigest !== request.candidate.receiptDigest ||
-      !hasExactKeys(product, ["resourceType", "packageId", "autoRenew"]) ||
+      !hasExactKeys(product, ["resourceType", "applicationSelection", "computePlanId", "storagePlanId", "renewalMode"]) ||
+      !hasExactKeys(product.applicationSelection, ["kind", "runtimeVersionId"]) ||
       product.resourceType !== declaredProduct.resourceType ||
-      product.packageId !== declaredProduct.packageId ||
-      product.autoRenew !== declaredProduct.autoRenew ||
+      product.applicationSelection.kind !== declaredProduct.applicationSelection.kind ||
+      product.applicationSelection.runtimeVersionId !== declaredProduct.applicationSelection.runtimeVersionId ||
+      product.computePlanId !== declaredProduct.computePlanId ||
+      product.storagePlanId !== declaredProduct.storagePlanId ||
+      product.renewalMode !== (declaredProduct.autoRenew === true ? "automatic" : "manual") ||
       typeof value.idempotencyKey !== "string" || !value.idempotencyKey.trim() ||
       typeof value.operationId !== "string" || !value.operationId.trim() ||
       typeof value.workspaceId !== "string" || !value.workspaceId.trim() ||
-      typeof value.purchaseReceiptId !== "string" || !value.purchaseReceiptId.trim() ||
+      typeof value.purchaseReceiptId !== "string" ||
       typeof value.resumed !== "boolean" ||
+      !QUALIFICATION_IDENTITY_SPACES.includes(String(value.identitySpace || "")) ||
       !/^[1-9][0-9]*$/.test(String(value.amountUsdMicros || "")) ||
       !Number.isSafeInteger(value.purchases) || ![0, 1].includes(value.purchases) ||
-      value.resumed !== (value.purchases === 0) ||
-      value.operationId !== launchOperationId(request.tenant.accountId, value.idempotencyKey) ||
-      value.workspaceId !== launchWorkspaceId(request.tenant.accountId, value.operationId)) {
+      value.resumed !== (value.purchases === 0)) {
     throw adapterError("purchase_receipt_missing");
   }
   return value;
@@ -168,10 +198,268 @@ function ownerData(payload, expectedSource = "sub2api") {
   return payload.data;
 }
 
+/*
+ * The wallet, read from the Gateway owner under the owner session.
+ *
+ * The owner route reads the balance under the session's own authorization, so
+ * it is the balance the owner would spend. The retained Control Plane
+ * projection answers for a different authority and a different session, and a
+ * qualification that accounted its charges against it would be accounting
+ * against a balance that is not the one the owner spends.
+ */
 function walletMicros(payload) {
-  const value = String(ownerData(payload)?.usdMicros || "");
+  const readback = payload || {};
+  if (readback.source !== "gateway" || readback.status !== "available" || readback.currency !== "USD") {
+    throw adapterError("owner_readback_unavailable");
+  }
+  const value = String(readback.balanceUSDMicros || "");
   if (!/^(?:0|[1-9][0-9]*)$/.test(value)) throw adapterError("owner_readback_unavailable");
   return value;
+}
+
+/*
+ * The Workspace owner route.
+ *
+ * A new purchase is priced and bought by the Workspace owner: the owner freezes
+ * exactly one application source beside the compute and storage plan in a
+ * deploy quote, admits the order against that quote, and mints the operation
+ * and Workspace identities itself. A buyer that derived either identity would
+ * be reproducing an interop contract the owner no longer has, and it would have
+ * to refuse a correct answer whenever the owner changed how it mints one.
+ *
+ * The catalog is read to confirm the declared selection is one the owner still
+ * offers: an approved Runtime Release for the default OPL App, and an available
+ * compute and storage plan. The catalog is not searched for a default, because a
+ * buyer that took the first approved release and the first available plans
+ * would buy something nobody chose.
+ */
+const RUNTIME_VERSION_ROUTE = "/api/v2/catalog/runtime-versions";
+const COMPUTE_PLAN_ROUTE = "/api/v2/catalog/compute-plans";
+const STORAGE_PLAN_ROUTE = "/api/v2/catalog/storage-plans";
+// The owner records the request that admitted an order on the operation it
+// mints, so the buyer announces its own request identity on the command.
+const ORDER_REQUEST_ID_HEADER = "x-opl-request-id";
+
+async function readDeclaredCatalogEntry(http, auth, route, id, available) {
+  let items = null;
+  try {
+    items = await listOwnerCatalogPages(http, auth, route);
+  } catch {
+    throw adapterError("owner_readback_unavailable");
+  }
+  const entry = findDeclaredCatalogEntry(items, id);
+  // A catalog that does not offer the declared plan is not a price this run may
+  // act on.
+  if (!entry || !available(entry)) throw adapterError("quote_invalid");
+  return entry;
+}
+
+export type OwnerPurchaseDeclaration = Readonly<{
+  applicationSelection: Readonly<{ kind: string; runtimeVersionId: string }>;
+  computePlanId: string;
+  storagePlanId: string;
+  modelSelections: ReadonlyArray<Readonly<{ slot: string; modelId: string }>>;
+  periodMonths: number;
+}>;
+
+async function declareOwnerPurchase(http, auth, declared): Promise<OwnerPurchaseDeclaration> {
+  const runtimeVersionId = String(declared?.applicationSelection?.runtimeVersionId || "");
+  const computePlanId = String(declared?.computePlanId || "");
+  const storagePlanId = String(declared?.storagePlanId || "");
+  await readDeclaredCatalogEntry(http, auth, RUNTIME_VERSION_ROUTE, runtimeVersionId, (item) => item?.status === "approved");
+  await readDeclaredCatalogEntry(http, auth, COMPUTE_PLAN_ROUTE, computePlanId, (item) => item?.availability === "available");
+  await readDeclaredCatalogEntry(http, auth, STORAGE_PLAN_ROUTE, storagePlanId, (item) => item?.availability === "available");
+  try {
+    return workspaceDeclaration({
+      applicationSelection: { kind: "opl_app", runtimeVersionId },
+      computePlanId,
+      storagePlanId,
+      modelSelections: [],
+      periodMonths: 1,
+    }) as OwnerPurchaseDeclaration;
+  } catch {
+    throw adapterError("quote_invalid");
+  }
+}
+
+/*
+ * The Workspace name this run buys under.
+ *
+ * The owner takes the name from the command body, and the command is idempotent
+ * on that body, so the name has to be a function of the declared purchase
+ * rather than of the run: a redelivery has to name the same Workspace or the
+ * owner refuses the replay as a different order. It is not an identity the
+ * platform minted; the owner mints those.
+ */
+function qualificationPurchaseName(idempotencyKey) {
+  return `Qualification ${stableID("qualification-workspace", idempotencyKey).slice(0, 18)}`;
+}
+
+/*
+ * The request that is buying.
+ *
+ * The owner records the request that admitted an order on the operation it
+ * mints, so a redelivery can tell its own order from the one it is replaying:
+ * the operation names the request that created it. The buyer therefore
+ * announces its own request identity on the order command, and a replayed order
+ * answers with the request that created it rather than with this one. Nothing
+ * here derives an identity the platform owns.
+ */
+
+/*
+ * The owner's own answer about the order it admitted.
+ *
+ * The answer has to be the order that was asked for. An operation that comes
+ * back under another identity, or naming another Workspace, is not this run's
+ * order whatever else it says, and following it would attribute another
+ * purchase to this request.
+ */
+async function readOwnerWorkspaceOperation(http, operationId, workspaceId, auth) {
+  let result = null;
+  try {
+    result = await http.request(`${WORKSPACE_OPERATION_ROUTE}/${encodeURIComponent(operationId)}`, {}, auth);
+  } catch {
+    throw adapterError("owner_readback_unavailable");
+  }
+  const status = Number(result?.response?.status || 0);
+  if (status === 404) return null;
+  if (status !== 200 || !result?.payload) throw adapterError("owner_readback_unavailable");
+  const operation = result.payload;
+  if (operation.operationId !== operationId || operation.owner !== "workspace" ||
+      operation.kind !== "create_workspace" || operation.resourceId !== workspaceId) {
+    throw adapterError("launch_identity_mismatch");
+  }
+  return operation;
+}
+
+/*
+ * A polling failure is not one thing.
+ *
+ * The purchase core publishes two different refusals and they mean opposite
+ * things to an owner: an order that reached a status the owner itself
+ * published as stopping has failed, while an order that was accepted and then
+ * went quiet has not. The second is the case where this run already caused a
+ * mutation and cannot say what became of it, so it must not be reported as a
+ * failure of the product, and must not be reported as success either.
+ */
+function classifyOwnerOrderFailure(error, { purchaseRecorded }) {
+  const message = String(error?.message || "");
+  if (/Workspace order stopped at/.test(message)) return "launch_stopped";
+  // The owner published an operation that is not the order this command
+  // admitted. The evidence does not bind to this purchase, so the run failed
+  // rather than ending with an outcome nobody can account for.
+  if (/workspace order readback is not this order/i.test(message)) return "launch_identity_mismatch";
+  if (/Workspace order did not reach succeeded/.test(message)) return "mutation_unaccounted";
+  return purchaseRecorded ? "mutation_unaccounted" : "response_lost";
+}
+
+export type OwnerPurchase = Readonly<{
+  idempotencyKey: string;
+  quoteId: string;
+  operationId: string;
+  workspaceId: string;
+  amountUsdMicros: string;
+  resumed: boolean;
+  purchases: number;
+  identitySpace: string;
+  declaration: OwnerPurchaseDeclaration | null;
+  status: string;
+  stage: string;
+}>;
+
+/*
+ * Buy one Workspace through the Workspace owner.
+ *
+ * The quote is priced by the owner under the declared idempotency identity, so
+ * a redelivery replays the same quote, and the order is admitted against that
+ * quote under the same identity, so a redelivery replays the same order
+ * instead of creating a second purchase. The owner mints the operation and the
+ * Workspace identity, and the evidence is bound to them.
+ */
+export async function buyWorkspaceOnOwnerRoute({
+  http,
+  auth,
+  idempotencyKey,
+  walletUsdMicros,
+  wait,
+  requestId,
+  declared,
+}: {
+  http: { request: (...args: any[]) => Promise<any>; json: (...args: any[]) => Promise<any> };
+  auth: unknown;
+  idempotencyKey: string;
+  walletUsdMicros: string;
+  wait?: (milliseconds: number) => Promise<void>;
+  requestId?: string;
+  declared?: { applicationSelection?: { runtimeVersionId?: string }; computePlanId?: string; storagePlanId?: string };
+}): Promise<OwnerPurchase> {
+  const declaration = await declareOwnerPurchase(http, auth, declared);
+  let quote = null;
+  try {
+    quote = await quoteWorkspaceOrder({ http, auth, declaration, idempotencyKey });
+  } catch (error) {
+    throw adapterError(/cannot fund/i.test(String(error?.message || "")) ? "wallet_cannot_fund" : "quote_invalid");
+  }
+  let amountUsdMicros = "";
+  try {
+    amountUsdMicros = priceWorkspaceQuote({ quote, walletUsdMicros, declaration });
+  } catch (error) {
+    throw adapterError(/cannot fund/i.test(String(error?.message || "")) ? "wallet_cannot_fund" : "quote_invalid");
+  }
+  // The request identity is announced once and used for every attempt of this
+  // order, so a lost answer is recovered by the same request rather than by a
+  // second one.
+  const request = String(requestId || randomUUID());
+  const name = qualificationPurchaseName(idempotencyKey);
+  const transport = announceRequest(http, request);
+  let order = null;
+  try {
+    order = await submitWorkspaceOrder({
+      http: transport, auth, name, quote, idempotencyKey, wait,
+    });
+  } catch (error) {
+    // The command may have been accepted and its answer lost. That is not a
+    // second purchase, it is the same order, and the only question left is
+    // whether the owner holds it. The same command under the same idempotency
+    // identity replays that order rather than admitting another one.
+    try {
+      order = await submitWorkspaceOrder({
+        http: transport, auth, name, quote, idempotencyKey, wait,
+      });
+    } catch {
+      const failure = adapterError(classifyOwnerOrderFailure(error, { purchaseRecorded: transport.admitted.order }));
+      // The order may have been admitted even though the run could not follow
+      // it to its end. The mutation is this run's to report.
+      (failure as { purchases?: number }).purchases = transport.admitted.mine ? 1 : 0;
+      throw failure;
+    }
+  }
+  const operation = order.operation || {};
+  if (operation.owner !== "workspace" || operation.kind !== "create_workspace" ||
+      operation.resourceId !== order.workspaceId) {
+    throw adapterError("launch_identity_mismatch");
+  }
+  // The order is read back under the identity the owner minted, so the
+  // evidence names the owner's own answer rather than the command's.
+  const readback = await readOwnerWorkspaceOperation(http, order.operationId, order.workspaceId, auth);
+  if (!readback) throw adapterError("purchase_receipt_missing");
+  // The operation names the request that created it. An operation that names
+  // another request was admitted by an earlier delivery, so this delivery
+  // resumed it and bought nothing again.
+  const resumed = String(order.order?.requestId || "") !== request;
+  return {
+    idempotencyKey,
+    quoteId: String(quote.id || ""),
+    operationId: order.operationId,
+    workspaceId: order.workspaceId,
+    amountUsdMicros,
+    resumed,
+    purchases: resumed ? 0 : 1,
+    identitySpace: "workspace_owner",
+    declaration,
+    status: String(readback.status || operation.status || ""),
+    stage: String(readback.stage || operation.stage || ""),
+  };
 }
 
 /*
@@ -190,6 +478,19 @@ function walletMicros(payload) {
 async function bindAuthenticatedAccount(http, auth, declaredAccountId) {
   const me = ownerData((await http.json("/api/auth/me", {}, auth)).payload);
   if (me?.accountId !== declaredAccountId || me?.role !== "owner" || me?.status !== "active") {
+    throw adapterError("account_binding_mismatch");
+  }
+  // The owner route authorizes every command against a CloudIdentity session,
+  // and the identity owner publishes which customer that session belongs to. Its
+  // actor is the Gateway user id and its display name is the Gateway email, so
+  // they are the same two facts the Control Plane session answered with. A run
+  // that could not show them to be one customer would be buying for an account
+  // it never checked.
+  const session = (await http.json("/api/v2/auth/session", {}, auth)).payload;
+  const ownerEmail = normalizedAccountEmail(session?.displayName);
+  const accountEmail = normalizedAccountEmail(me?.email);
+  if (!ownerEmail || !accountEmail || ownerEmail !== accountEmail ||
+      String(session?.actorId || "") !== String(me?.sub2apiUserId || "")) {
     throw adapterError("account_binding_mismatch");
   }
   return true;
@@ -298,19 +599,51 @@ async function readDeliveredWorkspace(http, auth, workspaceId) {
  * This, not the wallet balance, is the evidence that a charge happened. The
  * receipt is the owner's record and it names the operation that caused it, the
  * Workspace, the amount, and the resources the platform says the purchase
- * delivered; the launch it is read against has to agree on the Workspace and on
- * each of those resources. The wallet is then checked against the receipt rather
- * than used to infer it.
- *
- * The operation binding is what keeps the receipt from being any charge that
- * happens to share a Workspace and an amount. The Control Plane records the
- * purchase receipt with `requestId` equal to the launch operation identity and
- * projects that value into `operationId` (routes_billing.go), while
- * `<launchOperationId>:purchase-receipt` is the Ledger idempotency key that
- * creates the receipt and is not part of the projection. A receipt whose
- * operation id names another launch is another purchase.
+ * delivered. The order is now admitted by the Workspace owner, so the receipt
+ * is no longer reachable through a launch identity this run would have derived:
+ * it is found by the pair the owner minted. The retained Control Plane billing
+ * read is asked for this account's receipts and the receipt that names this
+ * operation and this Workspace is this purchase's.
  */
-async function readPurchaseChargeReceipt(http, auth, { receiptId, workspaceId, amountUsdMicros, launch, operationId }) {
+const BILLING_RECEIPT_PAGE_SIZE = 100;
+const BILLING_RECEIPT_PAGE_LIMIT = 50;
+
+async function findPurchaseChargeReceipt(http, auth, { workspaceId, operationId }) {
+  const found = [];
+  let cursor = "";
+  for (let page = 0; page < BILLING_RECEIPT_PAGE_LIMIT; page += 1) {
+    const query = cursor
+      ? `?limit=${BILLING_RECEIPT_PAGE_SIZE}&cursor=${encodeURIComponent(cursor)}`
+      : `?limit=${BILLING_RECEIPT_PAGE_SIZE}`;
+    const payload = ownerData((await http.json(`/api/billing/receipts${query}`, {}, auth)).payload, "ledger");
+    const receipts = Array.isArray(payload?.receipts) ? payload.receipts : [];
+    for (const receipt of receipts) {
+      // The receipt names its purchase by the Workspace it paid for or by the
+      // order that caused it. Either one makes this receipt the candidate for
+      // this purchase, and the read below is what says whether it really is:
+      // a receipt that names another order is found and then refused, rather
+      // than being passed over for another one that happens to fit.
+      if (receipt?.workspaceId === workspaceId || receipt?.operationId === operationId) found.push(receipt);
+    }
+    const next = String(payload?.nextCursor || "");
+    if (payload?.hasMore !== true || !next) break;
+    cursor = next;
+  }
+  return found;
+}
+
+async function readPurchaseChargeReceipt(http, auth, { workspaceId, operationId, amountUsdMicros, expectedReceiptId }) {
+  const found = await findPurchaseChargeReceipt(http, auth, { workspaceId, operationId });
+  // A receipt that names this order is the only evidence that this order was
+  // charged, and more than one of them is not an answer this run can read.
+  if (found.length === 0) throw adapterError("purchase_receipt_missing");
+  if (found.length > 1) throw adapterError("charge_receipt_mismatch");
+  const receiptId = String(found[0]?.receiptId || "");
+  // A buyer that already holds a receipt identity for this order has to be
+  // holding this one.
+  if (String(expectedReceiptId || "").trim() && String(expectedReceiptId) !== receiptId) {
+    throw adapterError("launch_identity_mismatch");
+  }
   const receipt = ownerData((await http.json(
     `/api/billing/receipts/${encodeURIComponent(receiptId)}`, {}, auth)).payload, "ledger");
   if (receipt?.receiptId !== receiptId || receipt?.workspaceId !== workspaceId ||
@@ -320,35 +653,30 @@ async function readPurchaseChargeReceipt(http, auth, { receiptId, workspaceId, a
       !String(receipt?.chargeReference || "").trim()) {
     throw adapterError("charge_receipt_mismatch");
   }
-  // A resource-only purchase delivers resources and nothing else. The launch has
-  // to name every resource the receipt says was delivered, and the receipt has to
-  // name exactly those three: a Runtime or a Workspace Key inside this receipt
-  // would mean the platform fulfilled more than the operation declared, and the
-  // run would not know what it paid for.
+  // A resource-only purchase delivers resources and nothing else. The receipt
+  // has to name exactly those three resources: a Runtime or a Workspace Key
+  // inside this receipt would mean the platform fulfilled more than the
+  // operation declared, and the run would not know what it paid for.
   const delivered = ["computeAllocationId", "storageId", "attachmentId"];
   if (!hasExactKeys(receipt?.fulfillment, delivered) ||
-      delivered.some((name) => {
-        const expected = String(launch?.[name] || "").trim();
-        return !expected || String(receipt.fulfillment[name] || "") !== expected;
-      })) {
+      delivered.some((name) => !String(receipt.fulfillment[name] || "").trim())) {
     throw adapterError("charge_receipt_mismatch");
   }
-  return String(receipt.chargeReference);
+  return { chargeReference: String(receipt.chargeReference), receiptId };
 }
 
 /*
- * What does the platform already know about this order?
+ * The retained Control Plane order, for an operation that already exists.
  *
- * This is the whole of the replay answer. It is asked before the first command
- * and again after a lost response, and it reads the order the deterministic
- * identity names rather than any order this process remembers, so a different
- * machine answering the same qualification reaches the same conclusion.
+ * A new purchase is admitted by the Workspace owner and is read back from the
+ * owner. An order that the retained Control Plane admitted before the cutover
+ * keeps its own identity and its own owner, so it is still readable and still
+ * recoverable through the route that created it. The readback dispatches on the
+ * identity space the order was recorded in rather than on a global URL, and the
+ * original order identity is never rewritten.
  *
  * When the platform names a Workspace and it is not this run's, the answer is
- * refused here rather than followed. When it names none, nothing is refused
- * here; the terminal launch is bound to the declared Workspace before the run
- * reports on it, so an answer that never names one cannot carry the run past
- * that point either.
+ * refused here rather than followed.
  */
 async function readAdmittedLaunch(http, operationId, workspaceId, auth) {
   const result = await http.request(`/api/workspace-launches/${encodeURIComponent(operationId)}`, {}, auth);
@@ -367,19 +695,55 @@ async function readAdmittedLaunch(http, operationId, workspaceId, auth) {
 }
 
 /*
- * A polling failure is not one thing.
+ * Following a retained Control Plane order to its own end.
  *
- * The purchase core publishes two different refusals and they mean opposite
- * things to an owner: a launch that reached a status the platform itself
- * published as stopping has failed, while an order that was accepted and then
- * went quiet has not. The second is the case where this run already caused a
- * mutation and cannot say what became of it, so it must not be reported as a
- * failure of the product, and must not be reported as success either.
+ * The retained route is read, never written: an operation that already exists
+ * is followed under its own identity rather than read as finished or
+ * reissued. The window is bounded, so an order that never reaches a terminal
+ * state is a refusal rather than an infinite poll.
  */
-function classifyLaunchFollowFailure(error, { purchaseRecorded }) {
-  const message = String(error?.message || "");
-  if (/Workspace launch stopped at/.test(message)) return "launch_stopped";
-  return purchaseRecorded ? "mutation_unaccounted" : "response_lost";
+const RETAINED_ORDER_POLL_ATTEMPTS = 180;
+const RETAINED_ORDER_POLL_INTERVAL_MS = 1_000;
+const RETAINED_ORDER_STOPPED = ["manual_review", "failed", "refunded"];
+
+async function followRetainedOrder(http, operationId, workspaceId, auth, wait) {
+  const pause = wait || defaultWait;
+  for (let attempt = 0; attempt < RETAINED_ORDER_POLL_ATTEMPTS; attempt += 1) {
+    const launch = await readAdmittedLaunch(http, operationId, workspaceId, auth);
+    if (!launch) throw adapterError("purchase_receipt_missing");
+    if (launch.status === "succeeded" && launch.phase === "succeeded") return launch;
+    if (RETAINED_ORDER_STOPPED.includes(String(launch.status || ""))) {
+      throw adapterError("launch_stopped");
+    }
+    await pause(RETAINED_ORDER_POLL_INTERVAL_MS);
+  }
+  throw adapterError("mutation_unaccounted");
+}
+
+/*
+ * The order this run bought, read from the owner that owns it.
+ *
+ * An owner-route order is read from the Workspace owner, which reports the
+ * owner's own vocabulary: a terminal success is `succeeded`, a stop is
+ * `needs_attention`, `failed` or `cancelled`, and the rest are still in flight.
+ * A retained Control Plane order is read from its own owner and reports the
+ * Control Plane's own phase and status.
+ */
+async function readPurchaseOperation(http, { operationId, workspaceId, identitySpace }, auth, wait) {
+  if (identitySpace === "control_plane") {
+    const launch = await followRetainedOrder(http, operationId, workspaceId, auth, wait);
+    return {
+      status: String(launch.status || ""),
+      stage: String(launch.phase || ""),
+      receiptId: String(launch.receiptId || ""),
+    };
+  }
+  const operation = await readOwnerWorkspaceOperation(http, operationId, workspaceId, auth);
+  if (!operation) return null;
+  if (operation.status !== "succeeded") {
+    throw adapterError("launch_stopped");
+  }
+  return { status: String(operation.status || ""), stage: String(operation.stage || ""), receiptId: "" };
 }
 
 /*
@@ -417,14 +781,17 @@ export async function runWorkspaceQualification({ request, adapter }, { wait, pu
   const checks = emptyChecks();
   const accounting = { quoteUsdMicros: null, walletBeforeUsdMicros: null, walletAfterUsdMicros: null, chargeReferenceDigest: "" };
   const delivery = { workspaceEntryDigest: "", applicationOperationDigest: "", componentsObserved: 0 };
-  const operationId = launchOperationId(request.tenant.accountId, request.operation.idempotencyKey);
   const operation = {
     idempotencyKey: request.operation.idempotencyKey,
-    operationId,
-    workspaceId: launchWorkspaceId(request.tenant.accountId, operationId),
+    operationId: "",
+    workspaceId: "",
     purchaseReceiptId: "",
     resumed: false,
   };
+  // The purchase evidence this run gathered, kept beside the receipt so a
+  // caller that writes its own purchase artifact does not have to re-derive
+  // anything the owner already said.
+  let purchaseEvidence: OwnerPurchase | null = null;
 
   let scope = null;
   let scopeAttempted = false;
@@ -458,20 +825,18 @@ export async function runWorkspaceQualification({ request, adapter }, { wait, pu
       // transport holding someone else's session costs one read and no money.
       checks.account_bound = await bindAuthenticatedAccount(http, auth, request.tenant.accountId);
 
-      accounting.walletBeforeUsdMicros = walletMicros((await http.json("/api/gateway/wallet", {}, auth)).payload);
+      accounting.walletBeforeUsdMicros = walletMicros((await http.json("/api/v2/wallet", {}, auth)).payload);
 
       let quote = "";
-      let launch: any = null;
+      let identitySpace = "workspace_owner";
 
       if (purchaseHook) {
-        // The protected caller delegates the purchase to the deployed buyer.
-        // That buyer owns the source-envelope account/wallet reads, the
-        // declared-account digest check and the shared purchase core; this
-        // orchestrator consumes only its bounded result and then reads the
-        // order and delivery through the same owner APIs as before. The buyer
+        // The protected caller hands over a buyer of its own. That buyer owns the
+        // declared-account check and the purchase through the shared owner-route
+        // core; this orchestrator consumes only its bounded result and then reads
+        // the order and delivery through the same owner APIs as before. The buyer
         // has already decided whether this is a first purchase or a replay, so
-        // the result carries the operation identities the rest of the run must
-        // use.
+        // the result carries the identities the rest of the run must use.
         const purchased = purchasedQualification(
           await purchaseHook.run({ http, auth, wait }),
           request,
@@ -482,110 +847,84 @@ export async function runWorkspaceQualification({ request, adapter }, { wait, pu
         operation.workspaceId = purchased.workspaceId;
         operation.purchaseReceiptId = purchased.purchaseReceiptId;
         operation.resumed = purchased.resumed;
+        identitySpace = purchased.identitySpace;
         accounting.quoteUsdMicros = purchased.amountUsdMicros;
         mutations.purchases = purchased.purchases;
         quote = purchased.amountUsdMicros;
 
         // The buyer waited for its own order. Read the same order under the
-        // identity it returned so the charge and delivery evidence still comes
-        // from the owner, not from the buyer's receipt.
-        launch = await readAdmittedLaunch(http, operation.operationId, operation.workspaceId, auth);
-        if (!launch) throw adapterError("purchase_receipt_missing");
-        if (launch.status !== "succeeded" || launch.phase !== "succeeded") {
-          try {
-            launch = await waitForLaunch(http, operation.operationId, auth, wait);
-          } catch (error) {
-            throw adapterError(classifyLaunchFollowFailure(error, { purchaseRecorded: true }));
-          }
-        }
-        if (launch.workspaceId !== operation.workspaceId) throw adapterError("launch_identity_mismatch");
-        if (launch.provisioningMode !== "resource_only") throw adapterError("launch_identity_mismatch");
-        if (!String(launch.receiptId || "").trim()) throw adapterError("purchase_receipt_missing");
-        if (String(launch.receiptId) !== operation.purchaseReceiptId) throw adapterError("launch_identity_mismatch");
+        // identity it returned, from the owner that owns that identity space,
+        // so the charge and delivery evidence still comes from an owner rather
+        // than from the buyer's receipt.
+        const owned = await readPurchaseOperation(http, {
+          operationId: operation.operationId, workspaceId: operation.workspaceId, identitySpace,
+        }, auth, wait);
+        if (!owned) throw adapterError("purchase_receipt_missing");
+        purchaseEvidence = {
+          idempotencyKey: operation.idempotencyKey,
+          quoteId: "",
+          operationId: operation.operationId,
+          workspaceId: operation.workspaceId,
+          amountUsdMicros: quote,
+          resumed: operation.resumed,
+          purchases: mutations.purchases,
+          identitySpace,
+          declaration: null,
+          status: owned.status,
+          stage: owned.stage,
+        };
 
         checks.quote_priced = true;
         checks.purchase_issued = true;
-        checks.purchase_receipt_bound = true;
       } else {
-        // The quote policy is the shared one, so it is asked rather than
-        // reimplemented. Its two published refusals mean different things to an
-        // owner and are kept apart here instead of collapsing into one failure.
-        const pricing = (await http.json("/api/pricing/preview", {
-          method: "POST", body: { resourceType: declaredProduct.resourceType, packageId: declaredProduct.packageId },
-        }, auth)).payload;
+        // The Workspace owner prices and admits the order. The catalog is read
+        // the way the Console reads it and the declaration is frozen into the
+        // quote, so the owner prices exactly what this run asked for. The owner
+        // mints the operation and the Workspace identity; this run binds its
+        // evidence to them.
+        let purchased;
         try {
-          quote = priceWorkspaceLaunch({ pricing, walletUsdMicros: accounting.walletBeforeUsdMicros, packageId: declaredProduct.packageId });
+          purchased = await buyWorkspaceOnOwnerRoute({
+            http,
+            auth,
+            idempotencyKey: operation.idempotencyKey,
+            walletUsdMicros: accounting.walletBeforeUsdMicros,
+            wait,
+            declared: declaredProduct,
+          });
         } catch (error) {
-          throw adapterError(/wallet cannot fund/i.test(String(error?.message || ""))
-            ? "wallet_cannot_fund"
-            : "quote_invalid");
+          // An order that was admitted and then went quiet is a mutation this
+          // run caused, and the receipt has to say so even though the run could
+          // not follow the order to its end.
+          const admitted = Number((error as { purchases?: number } | null)?.purchases ?? 0);
+          if (Number.isInteger(admitted) && admitted > 0) mutations.purchases = admitted;
+          throw error;
         }
+        operation.operationId = purchased.operationId;
+        operation.workspaceId = purchased.workspaceId;
+        operation.resumed = purchased.resumed;
+        quote = purchased.amountUsdMicros;
         accounting.quoteUsdMicros = quote;
         checks.quote_priced = true;
-
-        // Ask before issuing. A redelivery finds its own order here and resumes
-        // it; a first delivery finds nothing and issues exactly one command.
-        launch = await readAdmittedLaunch(http, operation.operationId, operation.workspaceId, auth);
-        if (launch) {
-          operation.resumed = true;
-        } else {
-          try {
-            ({ launch } = await submitWorkspaceLaunch({
-              http, auth, name: qualificationWorkspaceName(operation.operationId), packageId: declaredProduct.packageId,
-              autoRenew: declaredProduct.autoRenew, idempotencyKey: operation.idempotencyKey,
-              expectedOperationId: operation.operationId, expectedWorkspaceId: operation.workspaceId, wait,
-            }));
-          } catch (error) {
-            // The command may have been accepted and its answer lost. That is not
-            // a second purchase, it is the same order, and the only question left
-            // is whether the platform holds it. It is not a resume either: this
-            // delivery issued the command, so whatever it caused is this run's to
-            // account for.
-            const recovered = await readAdmittedLaunch(http, operation.operationId, operation.workspaceId, auth);
-            if (!recovered) throw adapterError(classifyLaunchFollowFailure(error, { purchaseRecorded: false }));
-            launch = recovered;
-          }
-        }
-        mutations.purchases = operation.resumed ? 0 : 1;
+        mutations.purchases = purchased.purchases;
         checks.purchase_issued = true;
-
-        // A resumed order that is not terminal yet is followed to its own end
-        // under its own identity, rather than read as finished or reissued. The
-        // window is the purchase core's own, so a stuck order stays bounded.
-        if (launch?.status !== "succeeded" || launch?.phase !== "succeeded") {
-          try {
-            launch = await waitForLaunch(http, operation.operationId, auth, wait);
-          } catch (error) {
-            // The order was admitted, so this run already caused a purchase. A
-            // published stopping status is a failure of the product; anything
-            // else means the outcome is unknown with a mutation outstanding.
-            throw adapterError(classifyLaunchFollowFailure(error, { purchaseRecorded: true }));
-          }
-        }
-        // A terminal launch that carries no purchase receipt identity has not
-        // delivered a receipt to bind anything to.
-        if (!String(launch?.receiptId || "").trim()) throw adapterError("purchase_receipt_missing");
-        // The terminal launch has to name the Workspace this run declared. A
-        // launch that ended against another Workspace is another order, not this
-        // run's delivery.
-        if (launch.workspaceId !== operation.workspaceId) throw adapterError("launch_identity_mismatch");
-        // The Launch must be the resource-only purchase this flow accounts for.
-        // Anything else fulfils a different shape, so the exactly-three-resource
-        // receipt rule below would be describing an operation that was not run.
-        if (launch.provisioningMode !== "resource_only") throw adapterError("launch_identity_mismatch");
-        operation.purchaseReceiptId = String(launch.receiptId);
-        checks.purchase_receipt_bound = true;
+        purchaseEvidence = purchased;
       }
 
       // What was billed, and what is running. The Ledger receipt is the charge
       // evidence; the Workspace and Runtime readbacks are what say there is
-      // something there to use.
-      const chargeReference = await readPurchaseChargeReceipt(http, auth, {
-        receiptId: operation.purchaseReceiptId, workspaceId: operation.workspaceId,
-        amountUsdMicros: quote, launch, operationId: operation.operationId,
+      // something there to use. The receipt is bound to the operation and the
+      // Workspace the owner minted, so it cannot be another purchase's charge.
+      const charge = await readPurchaseChargeReceipt(http, auth, {
+        workspaceId: operation.workspaceId,
+        operationId: operation.operationId,
+        amountUsdMicros: quote,
+        expectedReceiptId: operation.purchaseReceiptId,
       });
+      operation.purchaseReceiptId = charge.receiptId;
+      checks.purchase_receipt_bound = true;
       checks.charge_receipted = true;
-      accounting.chargeReferenceDigest = digestOf(chargeReference);
+      accounting.chargeReferenceDigest = digestOf(charge.chargeReference);
 
       // The purchase commits the default application installation beside the
       // resource Launch, and the platform progresses it after the Launch reports
@@ -605,7 +944,7 @@ export async function runWorkspaceQualification({ request, adapter }, { wait, pu
       checks.workspace_ready = true;
       checks.runtime_ready = true;
 
-      accounting.walletAfterUsdMicros = walletMicros((await http.json("/api/gateway/wallet", {}, auth)).payload);
+      accounting.walletAfterUsdMicros = walletMicros((await http.json("/api/v2/wallet", {}, auth)).payload);
       const moved = BigInt(accounting.walletBeforeUsdMicros) - BigInt(accounting.walletAfterUsdMicros);
       if (moved === BigInt(quote)) {
         mutations.charges = 1;
@@ -709,7 +1048,7 @@ export async function runWorkspaceQualification({ request, adapter }, { wait, pu
       ...evidence, state: "recovery-required", reason: "mutation_unaccounted",
     });
   }
-  return { state: receipt.state, reason: receipt.reason, receipt };
+  return { state: receipt.state, reason: receipt.reason, receipt, purchase: purchaseEvidence };
 }
 
 /*

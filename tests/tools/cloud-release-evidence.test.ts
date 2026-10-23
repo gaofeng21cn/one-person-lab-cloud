@@ -77,7 +77,13 @@ async function evidenceInput() {
     },
     source: { sha: productSha, tree: productTree, clean: true },
     tenant: { accountDigest: digest("3") },
-    product: { resourceType: "workspace", packageId: "basic", autoRenew: false },
+    product: {
+      resourceType: "workspace",
+      applicationSelection: { kind: "opl_app", runtimeVersionId: "rtv_releaseevidence0000000000000000001" },
+      computePlanId: "cmp_releaseevidence0000000000000000001",
+      storagePlanId: "stp_releaseevidence0000000000000000001",
+      autoRenew: false,
+    },
     authority: { mode: "live", authorityClass: "sandbox", j0ReadyDigest: digest("4") },
     operation: {
       idempotencyKey: "opl-qualification:abc",
