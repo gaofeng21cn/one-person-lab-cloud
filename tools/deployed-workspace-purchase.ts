@@ -590,6 +590,24 @@ export async function runDeployedWorkspacePurchase(request, caller) {
   const completed = new Date(clock());
   const completedAt = completed.getTime() < started.getTime() ? startedAt : completed.toISOString();
 
+  /*
+   * The receipt names what was actually bought, and that is the owner-resolved
+   * application source and plan pair, not the declared package.
+   *
+   * The declared `packageId` is a Sub2API wallet package. The Workspace owner
+   * route has no package concept: it prices a compute plan, a storage plan and
+   * one application source, and it publishes the plan pair. So the declared
+   * package does not select anything here, and it is deliberately not written
+   * into the receipt either, because a receipt that showed a declared package
+   * beside a resolved plan pair would read as a promise the purchase did not
+   * make. The operator's control on this route is the exact amount they
+   * authorise against the owner's frozen quote.
+   *
+   * The declared package stays on the request because it is part of this
+   * tool's published request contract, and it is still validated, so a caller
+   * that sends a malformed one is refused rather than silently accepted.
+   */
+
   return validateDeployedPurchaseReceipt({
     schemaVersion: 1,
     kind: DEPLOYED_PURCHASE_RECEIPT_KIND,
