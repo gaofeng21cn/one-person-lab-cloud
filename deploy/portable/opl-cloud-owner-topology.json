@@ -515,7 +515,7 @@
    "cloud",
    "legacy"
   ],
-  "default": "legacy",
+  "default": "cloud",
   "bakedAt": "image_build",
   "imageLabel": "opl.cloud.console-identity",
   "identitySelects": {

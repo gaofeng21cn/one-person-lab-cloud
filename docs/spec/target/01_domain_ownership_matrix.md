@@ -119,8 +119,8 @@ opl-cloud/                         # 唯一Cloud产品GitHub仓库
 
 ### 3.3 共享契约与同提交消费
 
-- W01采用现有`packages/contracts/go`共享module，生成代码落`packages/contracts/go/v226`；不新增`packages/contracts/v226/go.mod`，也不为每个领域复制一份契约module。
-- 规格`contracts/internal.proto`及其中字段是协议权威，产品协议落在`packages/contracts/proto/internal.proto`。原proto的`go_package`使用规格逻辑名；生成流程用固定的protobuf import mapping（`M`参数或等价生成配置）将其映射到`opl-cloud/packages/contracts/go/v226`，不手改生成结果、不为目录调整改消息字段或既有规格字节。
+- W01采用现有`packages/contracts/go`共享module，生成代码落`packages/contracts/go/api`；不新增`packages/contracts/v226/go.mod`，也不为每个领域复制一份契约module。
+- `packages/contracts/proto/internal.proto`与`events.json`是唯一可编辑协议源；本目录同名文件由现有生成入口派生为字节一致快照。Go bindings和public JSON读取生产源，包名与go_package沿用已运行的api协议，不另建v226协议。
 - 同仓库消费者通过当前module关系使用同一checkout契约；契约、生成代码、消费者及边界测试随同一个Cloud commit交付。锁定生成工具/运行库版本并记录schema hash；不另造跨仓契约发布或独立tag消费流程。外部Owner继续按其真实契约版本与资格要求验证。
 - 必要的消费者`go.mod`/`go.sum`更新属于W01写集。记录实际依赖链和验证结果，不把必要更新当无关噪声；也不无依据升级、强压传递依赖或用兼容字段迁就旧测试。
 - contracts只承载有当前跨Owner消费者的wire/data-integrity事实；不得放领域编排、ORM实体、钱包/价格决策、服务实现或平行领域模型。新增服务模块是既定领域拆分，新增共享业务模块不是本次决定。

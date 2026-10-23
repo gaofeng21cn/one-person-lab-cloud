@@ -12,7 +12,8 @@ domain-separated Agent SaaS architecture. The durable decision that adopts it is
 - Entry point: [00_master_index.md](./target/00_master_index.md)
 - Product main description: [12_product_spec.md](./target/12_product_spec.md)
 - Implementation work packages: [14_implementation_work_packages.md](./target/14_implementation_work_packages.md)
-- Machine contracts: [`target/contracts/`](./target/contracts)
+- Production wire/event sources: [`packages/contracts/proto/`](../../packages/contracts/proto/)
+- Other target contracts and generated wire/event snapshots: [`target/contracts/`](./target/contracts)
 - Verification receipts: [`target/checks/`](./target/checks)
 
 ### Evidence Layer
@@ -35,9 +36,12 @@ This copy was frozen when the target architecture was adopted:
 - Cloud source SHA the specification read as its migration start point:
   `50520e27a6b9a630eefdc2df7da3e5ec498d28a0`
 - Upstream provenance: `gaofeng21cn/one-person-lab-cloud` at that SHA
-- Specification self-check counts: 17 features, 89 typed flow steps, 108 REST
-  operations, 96 tables, 172 internal RPCs, 32 work packages
+- Current specification counts are computed by `target/checks/validate_spec.py`
+  and `target/checks/validate_development_plan.py`; dated receipts retain their
+  original counts.
 
 The specification ships its own `checks/validate_*.py` scripts and recorded
 receipts under `target/checks/runs/`. Re-run them with the versions pinned in
 `target/checks/requirements.txt`.
+
+The development plan is a structural target plan, with `not_evaluated` implementation state. Its input hashes are checked by `npm run verify:development-plan`. Implementation evidence belongs in `docs/status.md`, current executable outcomes in GitHub Issues and `docs/roadmap.md`. The plan is not an active task ledger.

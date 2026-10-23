@@ -1,7 +1,7 @@
 # 14 完整开发执行任务书
 
 > 目标：把已定稿F01–F17变成可直接分工实施的工作包。主Owner为Cloud架构/各领域负责人；产品/字段/协议Owner仍是00–13，本文件不重新定义它们。
-> 本文件是执行规格，不是进度账本；not_implemented仅表示本生成器不认证实施完成。实际完成情况以docs/status.md与Owner证据为准，不代表已创建目录、跑通服务、迁移或发布。
+> 本文件是执行规格，不是进度账本；not_evaluated表示本规划不评估实现状态。实际完成情况以docs/status.md与Owner证据为准，不代表已创建目录、跑通服务、迁移或发布。
 > 每个任务列真实来源、拟创建写集、依赖、前后端产物及验收。原任务记录/失败验证保留历史，不用百分比冒充交付。
 
 ## 1. 完整方案的层次与交付
@@ -156,7 +156,7 @@
 - 沿用packages/contracts/go/go.mod；W01核对已运行api协议与旧v226规划的精确差异后统一生产/规格/生成消费者，不机械改包名、不另建module或并行协议副本
 - 必要消费者go.mod/go.sum调整属于契约写集：记录实际依赖链与选定版本，不为旧测试或保持diff不变增加兼容字段、强压依赖或另建模块
 - 先贯通03 x-approved-wire-migration与02第0节：应用来源判别联合、Agent必选独立WebUI、descriptor provenance、claims、Quote/Serve持久化与真实消费者同版交付
-- 同步Gateway UserExternalBinding三个RPC与规格、保留Tenant reservation只读历史及旧Build executor、明确api/v226生成映射；修Runtime REST owner和per-owner Operation路由，不复制第二套合同
+- 同步Gateway UserExternalBinding三个RPC与规格、保留Tenant reservation只读历史及旧Build executor、沿用api生产包映射；修Runtime REST owner和per-owner Operation路由，不复制第二套合同
 - 默认App不得伪造Package/Build/CapabilityVersion/Build receipt；Agent必须保留Package/Runtime/独立WebUI三个真实输入及claim
 
 **验证**：
@@ -303,7 +303,7 @@
 
 **主实现表（字段唯一来源02，不在此复制字段定义）**：`gateway.identity_mappings`, `gateway.tenant_wallet_bindings`, `gateway.key_bindings`, `gateway.wallet_operations`
 
-**内部协议实现/协作端口**：`GatewayProductService.ListPersonalGatewayKeys`, `GatewayProductService.GetPersonalGatewayKey`, `GatewayProductService.ListPersonalGatewayGroups`, `GatewayProductService.ListPersonalGatewayKeyUsage`, `GatewayProductService.GetPersonalGatewayKeyUsageSummary`, `GatewayProductService.ListWorkspaceTransactions`, `GatewayProductService.GetWorkspaceTransactionTrend`, `GatewayProductService.GetWallet`, `GatewayProductService.ListUsage`, `GatewayProductService.GetUsageSummary`, `GatewayProductService.ListGatewayKeys`, `GatewayProductService.CreateGatewayKey`, `GatewayProductService.RevealGatewayKey`, `GatewayProductService.RevokeGatewayKey`, `GatewayProductService.ListRechargeRecords`, `GatewayProductService.ListModels`, `GatewayCoordination.GetSelfUserExternalBinding`, `GatewayCoordination.BindUserExternalIdentity`, `GatewayCoordination.ReadUserExternalIdentity`, `GatewayCoordination.BindWallet`, `GatewayCoordination.Debit`, `GatewayCoordination.Refund`, `GatewayCoordination.ReadWalletAction`, `GatewayCoordination.CreateManagedKey`, `GatewayCoordination.RevokeManagedKey`, `GatewayPlanChangeSettlement.DebitSupplement`, `GatewayPlanChangeSettlement.DebitScheduledPeriod`, `GatewayPlanChangeSettlement.RefundFailure`, `GatewayPlanChangeSettlement.RefundSupplementOnDeletion`
+**内部协议实现/协作端口**：`GatewayProductService.ListPersonalGatewayKeys`, `GatewayProductService.GetPersonalGatewayKey`, `GatewayProductService.ListPersonalGatewayGroups`, `GatewayProductService.ListPersonalGatewayKeyUsage`, `GatewayProductService.GetPersonalGatewayKeyUsageSummary`, `GatewayProductService.ListWorkspaceTransactions`, `GatewayProductService.GetWorkspaceTransactionTrend`, `GatewayProductService.GetWallet`, `GatewayProductService.ListUsage`, `GatewayProductService.GetUsageSummary`, `GatewayProductService.ListGatewayKeys`, `GatewayProductService.CreateGatewayKey`, `GatewayProductService.RevealGatewayKey`, `GatewayProductService.RevokeGatewayKey`, `GatewayProductService.ListRechargeRecords`, `GatewayProductService.ListModels`, `GatewayCoordination.GetSelfUserIdentity`, `GatewayCoordination.GetSelfUserExternalBinding`, `GatewayCoordination.BindUserExternalIdentity`, `GatewayCoordination.ReadUserExternalIdentity`, `GatewayCoordination.BindWallet`, `GatewayCoordination.Debit`, `GatewayCoordination.Refund`, `GatewayCoordination.ReadWalletAction`, `GatewayCoordination.CreateManagedKey`, `GatewayCoordination.ReadManagedKey`, `GatewayCoordination.RevokeManagedKey`, `GatewayCoordination.DisableManagedKey`, `GatewayCoordination.EnableManagedKey`, `GatewayCoordination.ReadManagedKeyLifecycle`, `GatewayPlanChangeSettlement.DebitSupplement`, `GatewayPlanChangeSettlement.DebitScheduledPeriod`, `GatewayPlanChangeSettlement.RefundFailure`, `GatewayPlanChangeSettlement.RefundSupplementOnDeletion`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder

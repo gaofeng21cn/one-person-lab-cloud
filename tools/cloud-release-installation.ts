@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { candidateReceiptDigest, validateCloudCandidateReceipt } from "./cloud-candidate-receipt.ts";
+import { candidateInstallationIdentity } from "./cloud-candidate-receipt.ts";
 
 const INSTANCE_REPOSITORY = "gaofeng21cn/opl-instance-medopl";
 const SHA = /^[a-f0-9]{40}$/;
@@ -27,14 +27,10 @@ export function validateReleaseInstallationBinding(input: {
   deploymentRunId: string;
   decision: unknown;
 }) {
-  const candidate = validateCloudCandidateReceipt(input.candidate);
-  const product = record(candidate.product);
-  const image = record(candidate.cloudImage);
+  const { cloudRuntimeChildDigest, ...identity } = candidateInstallationIdentity(input.candidate);
   const deployment = record(input.deployment);
   const run = record(input.deploymentRun);
   const decision = record(input.decision);
-  const platforms = image.platforms as Array<Record<string, unknown>>;
-  const amd64 = record(platforms.find((entry) => entry.platform === "linux/amd64"));
   if (!RUN_ID.test(input.deploymentRunId) || String(run.id) !== input.deploymentRunId ||
       record(run.repository).full_name !== INSTANCE_REPOSITORY || run.path !== ".github/workflows/deployment-verify.yml" ||
       run.event !== "workflow_dispatch" || run.head_branch !== "main" || run.status !== "completed" ||
@@ -46,18 +42,10 @@ export function validateReleaseInstallationBinding(input: {
   if (JSON.stringify(JSON.parse(input.deploymentText)) !== JSON.stringify(deployment)) {
     throw new Error("release_installation_bytes_invalid");
   }
-  const identity = {
-    candidateReceiptDigest: candidateReceiptDigest(candidate),
-    productSha: product.sha,
-    productTree: product.tree,
-    cloudImageRef: image.indexRef,
-    cloudImageDigest: image.indexDigest,
-    cloudImageRevision: image.revision,
-  };
   if (deployment.status !== "deployment_verified" || deployment.operationMode !== "deployment_verification" ||
       deployment.environment !== "production" || deployment.stage !== "complete" || deployment.errorCode !== "none" ||
       Object.entries(identity).some(([key, value]) => deployment[key] !== value || decision[key] !== value) ||
-      deployment.cloudRuntimeChildDigest !== amd64.digest) {
+      deployment.cloudRuntimeChildDigest !== cloudRuntimeChildDigest) {
     throw new Error("release_installation_candidate_invalid");
   }
   const receiptDigest = digest(input.deploymentText);
@@ -84,9 +72,9 @@ export function validateReleaseInstallationBinding(input: {
     receiptStatus: "deployment_verified",
     identity: {
       candidateReceiptDigest: String(identity.candidateReceiptDigest),
-      productSha: String(product.sha),
-      productTree: String(product.tree),
-      cloudImageDigest: String(image.indexDigest)
+      productSha: identity.productSha,
+      productTree: identity.productTree,
+      cloudImageDigest: identity.cloudImageDigest
     }
   };
 }

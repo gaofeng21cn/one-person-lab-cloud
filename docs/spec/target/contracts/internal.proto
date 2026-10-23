@@ -1,6 +1,6 @@
 syntax = "proto3";
-package opl.cloud.v226;
-option go_package = "opl.cloud/contracts/v226;v226";
+package opl.cloud.api;
+option go_package = "opl-cloud/packages/contracts/go/api;api";
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/empty.proto";
 // Target contract, not current runtime evidence. Internal services authenticate mTLS
@@ -86,6 +86,10 @@ message CreateTenantRequest {
  string name = 1;
  string billing_sub2api_user_id = 2;
  string owner_gateway_subject_id = 3;
+ // Verified owner email used only as the initial Tenant repository-name
+ // candidate. The Tenant identity stays the returned Tenant id; a rename never
+ // moves the existing binding.
+ string owner_email = 4;
 }
 
 message BindTenantWalletRequest {
@@ -498,8 +502,10 @@ message ModelSelection {
 }
 
 // WorkspaceApplicationSelection is the explicit, immutable application source the
-// customer chooses before a quote. kind is a required discriminator: a decoder
-// rejects a mixed selection, a missing/unspecified kind, or a kind that disagrees
+// customer chooses before a quote. The default OPL App selects an approved
+// Runtime Release and never carries a CapabilityVersion; a built Agent selects a
+// CapabilityVersion. kind is a required discriminator: a decoder rejects a mixed
+// selection (both ids set), a missing/unspecified kind, or a kind that disagrees
 // with the id it carries. A selection is never an implicit default.
 message WorkspaceApplicationSelection {
  WorkspaceApplicationSelectionKindEnum kind = 1;
@@ -511,6 +517,9 @@ message QuoteRequest {
  // Discriminator/required validation follows the matching OpenAPI schema; reject invalid variants.
  QuoteRequestPurposeEnum purpose = 1;
  optional string workspace_id = 2;
+ // capability_version_id is the agent branch selection. For the default OPL App
+ // the caller presents application_selection.runtime_version_id instead; the two
+ // are mutually exclusive and a deploy with neither is rejected.
  optional string capability_version_id = 3;
  string compute_plan_id = 4;
  string storage_plan_id = 5;
@@ -556,6 +565,8 @@ message Quote {
  PlanChangeCalculation plan_change_calculation = 23;
  optional string scheduled_plan_change_id = 24;
  QuoteRuntimeReadbackRequirementEnum runtime_readback_requirement = 25;
+ // runtime_version_id is set only for the default OPL App selection; it names the
+ // exact approved Runtime Release whose immutable OCI the quote froze.
  optional string runtime_version_id = 26;
 }
 
@@ -577,6 +588,8 @@ message Workspace {
  google.protobuf.Timestamp updated_at = 14;
  WorkspaceDeliveryModelEnum delivery_model = 15;
  int64 version = 16;
+ // runtime_version_id names the accepted default OPL App Runtime Release when the
+ // accepted application source is the default App; it is empty for a built Agent.
  optional string runtime_version_id = 17;
 }
 
@@ -1086,6 +1099,10 @@ message DeploymentDescriptor {
  DeploymentDescriptorProvenanceEnum provenance = 9;
  optional string legacy_application_revision_id = 10;
  WorkspaceApplicationRevision application_revision = 11;
+ // application_selection preserves the explicit immutable application source the
+ // customer accepted. It is required for the RUNTIME_RELEASE provenance (default
+ // OPL App) and for the BUILD provenance (built Agent); it is absent only for the
+ // retained legacy provenance.
  WorkspaceApplicationSelection application_selection = 12;
 }
 
@@ -2334,7 +2351,23 @@ service CapabilityCoordination {
  rpc ReleaseReference(ReleaseReferenceRequest) returns (ReferenceClaim);
 }
 message ReadBuildArtifactRequest { CallContext context = 1; string build_job_id = 2; }
-message BuildArtifactReadback { string build_job_id = 1; BuildInputSnapshot input = 2; ArtifactReference artifact = 3; string artifact_receipt_id = 4; string version_label = 5; repeated ModelRequirement model_requirements = 6; DataCompatibility data_compatibility = 7; Observation outcome = 8; DeploymentDescriptor deployment_descriptor = 9; string deployment_descriptor_digest = 10; string deployment_descriptor_object_ref = 11; }
+message BuildArtifactReadback {
+ string build_job_id = 1;
+ BuildInputSnapshot input = 2;
+ ArtifactReference artifact = 3;
+ string artifact_receipt_id = 4;
+ string version_label = 5;
+ repeated ModelRequirement model_requirements = 6;
+ DataCompatibility data_compatibility = 7;
+ Observation outcome = 8;
+ DeploymentDescriptor deployment_descriptor = 9;
+ string deployment_descriptor_digest = 10;
+ string deployment_descriptor_object_ref = 11;
+ // Build supplies only its accepted-operation continuation, without a browser
+ // session, to the authenticated Capability consumer for Runtime revalidation.
+ // This context is not artifact provenance and is omitted from Ledger readback.
+ CallContext registration_context = 12;
+}
 service BuildCoordination { rpc ReadArtifact(ReadBuildArtifactRequest) returns (BuildArtifactReadback); }
 service OwnerOperations { rpc Read(OwnerOperationRequest) returns (Operation); rpc Reconcile(ReconcileOperationRpcRequest) returns (Operation); }
 message PlatformScope {}
@@ -2395,6 +2428,26 @@ message UserExternalBindingCommand {
 message UserExternalBindingReadRequest { CallContext context = 1; string actor_id = 2; }
 // Resolve the User from the live session; no target actor or destination is accepted.
 message GetSelfUserExternalBindingRequest { CallContext context = 1; }
+// Identity proof for retained original-owner reads. OCI readiness is a separate
+// qualification and is deliberately absent from this contract.
+message GetSelfUserIdentityRequest { CallContext context = 1; }
+message UserIdentityReadback {
+ string actor_id = 1;
+ string sub2api_user_id = 2;
+ UserExternalBindingReadbackStatusEnum status = 3;
+ UserExternalBindingReadbackVerificationEnum verification = 4;
+ string verification_evidence_ref = 5;
+ google.protobuf.Timestamp verified_at = 6;
+}
+
+enum UserExternalBindingReadbackStatusEnum {
+ USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_UNSPECIFIED = 0;
+ USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_ACTIVE = 1;
+}
+enum UserExternalBindingReadbackVerificationEnum {
+ USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_UNSPECIFIED = 0;
+ USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_CONFIRMED = 1;
+}
 message UserExternalBindingReadback {
  string actor_id = 1;
  string sub2api_user_id = 2;
@@ -2409,24 +2462,35 @@ message UserExternalBindingReadback {
  google.protobuf.Timestamp updated_at = 11;
  google.protobuf.Timestamp destination_verified_at = 12;
 }
-enum UserExternalBindingReadbackStatusEnum {
- USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_UNSPECIFIED = 0;
- USER_EXTERNAL_BINDING_READBACK_STATUS_ENUM_ACTIVE = 1;
-}
-enum UserExternalBindingReadbackVerificationEnum {
- USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_UNSPECIFIED = 0;
- USER_EXTERNAL_BINDING_READBACK_VERIFICATION_ENUM_CONFIRMED = 1;
-}
-
 message WalletBindingCommand { CallContext context = 1; string target_tenant_id = 2; string billing_sub2api_user_id = 3; int64 expected_binding_version = 4; string authorization_receipt_id = 5; }
 message WalletBindingReadback { string tenant_id = 1; string billing_sub2api_user_id = 2; int64 binding_version = 3; Observation outcome = 4; string authorization_receipt_id = 5; }
 message WalletDebitCommand { CallContext context = 1; string workspace_id = 2; string obligation_id = 3; string quote_acceptance_id = 4; int64 amount_usd_micros = 5; string currency = 6; string subscription_period_id = 7; }
 message WalletRefundCommand { CallContext context = 1; string workspace_id = 2; string original_wallet_operation_id = 3; string original_external_payment_reference = 4; int64 amount_usd_micros = 5; string refund_policy_version_id = 6; string confirmed_deletion_receipt_id = 7; string subscription_period_id = 8; }
 message WalletReadbackRequest { CallContext context = 1; string wallet_operation_id = 2; string original_idempotency_key = 3; }
 message ManagedKeyCommand { CallContext context = 1; string workspace_id = 2; repeated string model_ids = 3; string target_runtime_instance_id = 4; }
-message ManagedKeyBinding { string key_binding_id = 1; string fingerprint = 2; string secret_delivery_reference = 3; string workspace_id = 4; string target_runtime_instance_id = 5; google.protobuf.Timestamp expires_at = 6; }
+message ManagedKeyBinding { string key_binding_id = 1; string fingerprint = 2; string secret_delivery_reference = 3; string workspace_id = 4; string target_runtime_instance_id = 5; google.protobuf.Timestamp expires_at = 6; repeated string model_ids = 7; }
 message ManagedKeyRevoke { CallContext context = 1; string key_binding_id = 2; string workspace_id = 3; }
+// ManagedKeyReadCommand reads one Workspace-managed key binding by its opaque
+// owner id. The caller names the binding and the workspace it belongs to; the
+// Gateway owner answers with the binding's approved model scope and delivery
+// reference, never with the external key or its raw Secret.
+message ManagedKeyReadCommand { CallContext context = 1; string key_binding_id = 2; string workspace_id = 3; }
+// One reversible lifecycle request for the exact Workspace-managed key binding.
+// Disable and enable stay distinct from permanent RevokeManagedKey: a disabled
+// key is re-enabled by its own binding identity, a revoked key never is. The
+// caller names only the opaque binding it already stored; Gateway Integration
+// remains the sole writer of the key's lifecycle state and the only owner that
+// coordinates the external key authority.
+message ManagedKeyLifecycleCommand { CallContext context = 1; string key_binding_id = 2; string workspace_id = 3; }
+// The owner's answer for one lifecycle command or read. `state` is the state the
+// external authority confirmed, never a local intention; `lifecycle_version`
+// advances once per confirmed transition so two answers can be told apart.
+// `outcome` is CONFIRMED only when the exact binding and the exact desired state
+// were read back from that authority.
+message ManagedKeyLifecycleReadback { string key_binding_id = 1; string workspace_id = 2; ManagedKeyLifecycleState state = 3; int64 lifecycle_version = 4; Observation outcome = 5; google.protobuf.Timestamp updated_at = 6; }
+enum ManagedKeyLifecycleState { MANAGED_KEY_LIFECYCLE_STATE_UNSPECIFIED = 0; MANAGED_KEY_LIFECYCLE_STATE_ACTIVE = 1; MANAGED_KEY_LIFECYCLE_STATE_DISABLED = 2; MANAGED_KEY_LIFECYCLE_STATE_REVOKED = 3; }
 service GatewayCoordination {
+ rpc GetSelfUserIdentity(GetSelfUserIdentityRequest) returns (UserIdentityReadback);
  rpc GetSelfUserExternalBinding(GetSelfUserExternalBindingRequest) returns (UserExternalBindingReadback);
  rpc BindUserExternalIdentity(UserExternalBindingCommand) returns (UserExternalBindingReadback);
  rpc ReadUserExternalIdentity(UserExternalBindingReadRequest) returns (UserExternalBindingReadback);
@@ -2435,7 +2499,11 @@ service GatewayCoordination {
  rpc Refund(WalletRefundCommand) returns (WalletOperation);
  rpc ReadWalletAction(WalletReadbackRequest) returns (WalletOperation);
  rpc CreateManagedKey(ManagedKeyCommand) returns (ManagedKeyBinding);
+ rpc ReadManagedKey(ManagedKeyReadCommand) returns (ManagedKeyBinding);
  rpc RevokeManagedKey(ManagedKeyRevoke) returns (Operation);
+ rpc DisableManagedKey(ManagedKeyLifecycleCommand) returns (ManagedKeyLifecycleReadback);
+ rpc EnableManagedKey(ManagedKeyLifecycleCommand) returns (ManagedKeyLifecycleReadback);
+ rpc ReadManagedKeyLifecycle(ManagedKeyLifecycleCommand) returns (ManagedKeyLifecycleReadback);
 }
 message ResourcePlanSnapshot { string compute_plan_id = 1; string storage_plan_id = 2; string provider_profile_id = 3; string provider_compute_sku_id = 4; string provider_storage_sku_id = 5; int32 vcpus = 6; int32 memory_mib = 7; int32 capacity_gib = 8; int32 prepaid_months = 9; string provider_capability_version = 10; bool conditional_route_revision_supported = 11; string provider = 12; string region = 13; string billing_mode = 14; }
 message ResourceAdmissionRequest { CallContext context = 1; ResourcePlanSnapshot plan = 2; string workspace_id = 3; string existing_resource_set_id = 4; string purpose = 5; }
@@ -2447,7 +2515,15 @@ message ResourceReadbackRequest { CallContext context = 1; string resource_set_i
 message ResourceFact { string id = 1; string kind = 2; string opaque_provider_reference = 3; string state = 4; string receipt_id = 5; }
 // Execution bindings exist only after the Fabric adapter confirms actual resources.
 message ResourceExecutionBinding { string compute_allocation_id = 1; string storage_volume_id = 2; string data_attachment_id = 3; string data_attachment_operation_id = 4; string account_id = 5; }
-message ResourceReadback { string resource_set_id = 1; string workspace_id = 2; string resource_version = 3; Observation outcome = 4; repeated ResourceFact resources = 5; bool absence_confirmed = 6; string deletion_receipt_id = 7; google.protobuf.Timestamp observed_at = 8; string error_code = 9; ResourceExecutionBinding execution_resources = 10; }
+message ResourceReadback { string resource_set_id = 1; string workspace_id = 2; string resource_version = 3; Observation outcome = 4; repeated ResourceFact resources = 5; bool absence_confirmed = 6; string deletion_receipt_id = 7; google.protobuf.Timestamp observed_at = 8; string error_code = 9; ResourceExecutionBinding execution_resources = 10; ApplicationExecutionPlacement application_placement = 11; }
+// ApplicationExecutionPlacement is Fabric's read-time projection of the
+// infrastructure placement a confirmed resource set actually landed on: the exact
+// node, prepaid package, prepaid node pool, machine identity and the prepaid
+// storage claim name. It is a readback of the same provider mutation that produced
+// the execution binding and never a second resource authority, and the workload
+// executor schedules the Workspace application onto it instead of re-deriving a
+// node, a package or a storage name from a caller claim.
+message ApplicationExecutionPlacement { string compute_node_name = 1; string compute_package_id = 2; string compute_node_pool_id = 3; string compute_machine_name = 4; string compute_instance_id = 5; string storage_pvc_name = 6; }
 message SecretBindingCommand { CallContext context = 1; string workspace_id = 2; string runtime_instance_id = 3; string key_binding_id = 4; string secret_delivery_reference = 5; string target_slot = 6; string fingerprint = 7; }
 message SecretBindingReadback { string secret_binding_id = 1; string runtime_instance_id = 2; string fingerprint = 3; Observation outcome = 4; string receipt_id = 5; string version = 6; }
 // RebindSecret is the explicit replacement path for a changed Gateway Secret.
@@ -2518,24 +2594,56 @@ service ServeRuntimeAdapter {
  rpc ReloadRuntime(RuntimeReloadCommand) returns (Operation);
  rpc ObserveRuntime(RuntimeReadbackRequest) returns (RuntimeReadback);
 }
-// The revision is owned by Serve's access binding, not an external router.
+// RouteAbsence states that the caller read the Workspace's Serve-owned access
+// binding and found no confirmed route at all.
 message RouteAbsence {}
+// RouteRevisionPrecondition is the route revision the caller read from the
+// Workspace's Serve-owned access binding before presenting a switch. Serve owns
+// the route object, so it compares the presented condition against its own
+// binding: exact_revision is the revision of the binding's last confirmed route,
+// and require_absent is only truthful at route generation zero. A caller can
+// therefore never advance a route it did not read, and no external router
+// revision is involved.
 message RouteRevisionPrecondition { oneof condition { string exact_revision = 1; RouteAbsence require_absent = 2; } }
 message FenceRouteEpochCommand { CallContext context = 1; string workspace_id = 2; string operation_id = 3; int64 execution_epoch = 4; int64 expected_route_generation = 5; RouteRevisionPrecondition revision_precondition = 6; }
 message RouteActivateCommand { CallContext context = 1; string workspace_id = 2; string operation_id = 3; int64 execution_epoch = 4; int64 expected_route_generation = 5; RouteRevisionPrecondition revision_precondition = 6; string target_execution_resource_id = 7; string target_runtime_instance_id = 8; string target_deployment_id = 9; string confirmed_readiness_receipt_id = 10; }
 message RouteObserveRequest { CallContext context = 1; string workspace_id = 2; optional string switch_id = 3; }
 message RouteRollbackCommand { CallContext context = 1; string workspace_id = 2; string original_switch_id = 3; string operation_id = 4; int64 execution_epoch = 5; int64 expected_route_generation = 6; RouteRevisionPrecondition revision_precondition = 7; string target_execution_resource_id = 8; string target_runtime_instance_id = 9; string target_deployment_id = 10; string compatibility_receipt_id = 11; }
+// RouteReadback is Serve's own route fact. switch_id is both the switch identity
+// and the identity a reader resumes from, so no second command identity is
+// carried; route_revision is the revision the confirmed switch wrote.
 message RouteReadback { string workspace_id = 1; string switch_id = 2; Observation observation = 3; int64 current_generation = 4; int64 accepted_execution_epoch = 5; optional string target_execution_resource_id = 6; optional string target_runtime_instance_id = 7; optional string target_deployment_id = 8; string route_revision = 9; optional string route_receipt_id = 11; google.protobuf.Timestamp observed_at = 12; optional ErrorCodeEnum error_code = 13; reserved 10; }
-// Serve's access binding is the only route object. A switch is identified by its
-// row id (switch_id); the binding's last confirmed route_revision is the local
-// conditional version. Fence advances accepted epoch/revision, preserving the
-// target/generation. Activate/rollback require the accepted epoch, exact
-// generation/revision, ready target and original intent; generation advances once
-// with the selected deployment in one Serve transaction. First use requires
-// generation zero and verified binding absence, never an external absence receipt.
-// Unknown switches block new actions; lost ACK resumes the original switch_id.
-// Instance's stable Ingress delivers traffic to Serve's binding reader without
-// per-Workspace mutations. Workspace authorizes but does not write selection.
+// Serve owns the Workspace route. serve.access_bindings is the authoritative
+// current route and serve.access_switches records every conditional transition of
+// it; there is no external router, so the conditional revision compared here is
+// the binding's own last confirmed route revision (route_revision), never a
+// provider token. Instance DNS/TLS/Ingress is a stable hop to Serve's access
+// entry and is not a per-Workspace route writer.
+// Serve allocates execution_epoch and persists the delivery intent in one local
+// Serve transaction. FenceRouteEpoch advances the binding's accepted epoch and
+// route revision while leaving its target and route generation unchanged, so a
+// stale epoch can never advance the route; merely allocating a new epoch is NOT a
+// fence.
+// A binding has at most one unresolved switch (requested or unknown). It exists
+// only when a writer was interrupted between recording and confirming, it blocks
+// every new switch for that binding, and it is resumed by reading back its
+// original switch_id. No later switch may preempt it and no expected revision can
+// lift the block.
+// The first route requires revision_precondition.require_absent at generation
+// zero, so the caller must have read the binding and found no confirmed route;
+// an existing route requires exact_revision from a confirmed readback. Activate
+// and rollback require the current accepted epoch plus the exact expected
+// revision and generation, and success advances the route generation by exactly
+// one. Serve's local conditional update refuses a stale epoch or an unmatched
+// revision, so a late request can never move the route.
+// Serve commits the current deployment and the route generation/epoch in the same
+// owner transaction as the confirmed switch, then emits selection evidence.
+// Workspace supplies authorization and opaque target facts; it does not store or
+// commit a deployment pointer. A lost response is resolved by observing the
+// original switch identity, never by allocating a new activation. A failed
+// selection CAS leaves the Serve intent needs_attention: authoritative readback,
+// then complete the original commit or explicitly fence+rollback. Never
+// last-writer-wins.
 service ServeAccessControl {
  rpc FenceRouteEpoch(FenceRouteEpochCommand) returns (RouteReadback);
  rpc ActivateRoute(RouteActivateCommand) returns (RouteReadback);
@@ -2558,6 +2666,16 @@ message LocalNoChargeReceiptEvidence { Receipt receipt = 1; QuoteAcceptance quot
 // the Gateway wallet operation that moved the money, and the Workspace owner
 // commit that accepted the obligation. It names a receipt, never a raw key.
 message WalletActionReceiptEvidence { Receipt receipt = 1; QuoteAcceptance quote_acceptance = 2; WalletOperation wallet_operation = 3; OwnerCommitEvidence owner_commit_evidence = 4; string evidence_digest = 5; }
+// ProviderActionReceiptEvidence is the owner-authoritative absence proof the
+// Ledger records for a confirmed Workspace provider action, such as a deletion
+// whose runtime and provider resources are both gone. It binds the confirmed
+// receipt to the Workspace owner commit that accepted the action and to the
+// digest of the input that commit froze; the Workspace identity is the commit's
+// own resource id, not an accepted quote. It carries no quote acceptance and no
+// wallet operation on purpose: an absence fact is not a funding fact, so it can
+// never be satisfied by, or stand in for, either funded evidence type. It names
+// a receipt, never a raw key.
+message ProviderActionReceiptEvidence { Receipt receipt = 1; OwnerCommitEvidence owner_commit_evidence = 2; string evidence_digest = 3; }
 service LedgerCoordination {
  rpc AppendReceipt(AppendReceiptRequest) returns (Receipt);
  rpc ReadReceiptByReference(GetReceiptByReferenceRequest) returns (Receipt);
@@ -3538,6 +3656,12 @@ enum QuoteLineKindEnum {
  QUOTE_LINE_KIND_ENUM_ADJUSTMENT_CREDIT = 4;
 }
 
+enum WorkspaceApplicationSelectionKindEnum {
+ WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_UNSPECIFIED = 0;
+ WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP = 1;
+ WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_AGENT = 2;
+}
+
 enum QuotePurposeEnum {
  QUOTE_PURPOSE_ENUM_UNSPECIFIED = 0;
  QUOTE_PURPOSE_ENUM_DEPLOY = 1;
@@ -3883,13 +4007,10 @@ enum DeploymentDescriptorProvenanceEnum {
  DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_UNSPECIFIED = 0;
  DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_BUILD = 1;
  DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_LEGACY_APPLICATION = 2;
+ // DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_RUNTIME_RELEASE is the default OPL App:
+ // an approved Runtime Release's immutable OCI with no Build, Package or
+ // CapabilityVersion.
  DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_RUNTIME_RELEASE = 3;
-}
-
-enum WorkspaceApplicationSelectionKindEnum {
- WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_UNSPECIFIED = 0;
- WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP = 1;
- WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_AGENT = 2;
 }
 
 enum PublisherNamespaceKindEnum {

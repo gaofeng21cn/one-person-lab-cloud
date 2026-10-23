@@ -1,3 +1,4 @@
+import * as operatorApi from "../../apps/console-ui/src/api/console-read-api.ts";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { afterEach, test } from "node:test";
@@ -167,4 +168,49 @@ test("remaining operator GET callers use the same CloudIdentity BFF", async () =
   "/api/v2/operator/workspaces/ws%2F1/runtime-image-replacements/op%2F1", "/api/v2/operator/application-deployments/op%2F1",
   "/api/v2/operator/registry/repositories?namespace=namespace", "/api/v2/operator/registry/tags/namespace/repo%2F1"
  ]);
+});
+
+const operatorCommands: Array<[string, string, (cloud: boolean) => Promise<unknown>]> = [
+  ["image release", "/workspace-image-release-activations", cloud => operatorApi.activateOperatorWorkspaceImageRelease("r", 1, "reason", "csrf", "key", cloud)],
+  ["image replacement", "/workspaces/ws/runtime-image-replacements", cloud => operatorApi.createOperatorWorkspaceRuntimeImageReplacement("ws", "digest", "reason", "csrf", "key", cloud)],
+  ["wallet adjustment", "/accounts/acct/wallet-adjustments", cloud => operatorApi.createWalletAdjustment("acct", {} as never, "csrf", "key", cloud)],
+  ["wallet recovery", "/wallet-adjustments/op/recover", cloud => operatorApi.recoverWalletAdjustment("op", {} as never, "csrf", "key", cloud)],
+  ["disable account", "/accounts/acct/disable", cloud => operatorApi.disableOperatorAccount("acct", "reason", "csrf", "key", cloud)],
+  ["eligibility", "/accounts/acct/workspace-purchase-eligibility", cloud => operatorApi.setOperatorWorkspacePurchaseEligibility("acct", false, "reason", "csrf", "key", cloud)],
+  ["billing review", "/billing-reviews/workspace/ws/resolve", cloud => operatorApi.resolveBillingReview("workspace", "ws", {} as never, "csrf", "key", cloud)],
+  ["launch recovery", "/workspace-launches/op/recover", cloud => operatorApi.recoverWorkspaceLaunch("op", {} as never, "csrf", "key", cloud)],
+  ["announcement create", "/announcements", cloud => operatorApi.createOperatorAnnouncement({} as never, "csrf", "key", cloud)],
+  ["announcement update", "/announcements/a", cloud => operatorApi.updateOperatorAnnouncement("a", {} as never, "csrf", "key", cloud)],
+  ["announcement publish", "/announcements/a/publish", cloud => operatorApi.publishOperatorAnnouncement("a", {} as never, "csrf", "key", cloud)],
+  ["announcement withdraw", "/announcements/a/withdraw", cloud => operatorApi.withdrawOperatorAnnouncement("a", "csrf", "key", cloud)],
+  ["application admission", "/application-revisions", cloud => operatorApi.admitOperatorApplicationRevision({}, "csrf", "key", cloud)],
+  ["application deployment", "/application-deployments", cloud => operatorApi.createOperatorWorkspaceApplicationDeployment("ws", "app", "rev", {} as never, "csrf", "key", [], undefined, cloud)],
+  ["application retry", "/application-deployments/op/retry", cloud => operatorApi.retryOperatorWorkspaceApplicationDeployment("op", "csrf", cloud)],
+  ["registry resolution", "/registry/resolve", cloud => operatorApi.resolveOperatorRegistryImage("ns", "repo", "tag", "csrf", "key", cloud)]
+];
+
+for (const [name, path, invoke] of operatorCommands) {
+  test(`${name} refuses Cloud before fetch and preserves its legacy command`, async () => {
+    const calls: string[] = [];
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      calls.push(String(url));
+      return new Response(JSON.stringify({ operationId: "op", launchVersion: 1, status: "manual_review", stage: "closeout", allowedActions: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+    await assert.rejects(async () => invoke(true), /operator_write_unavailable/);
+    assert.deepEqual(calls, []);
+    await invoke(false);
+    assert.deepEqual(calls, [`/api/operator${path}`]);
+  });
+}
+
+test("activation uses its Cloud BFF owner and refuses the retired legacy route", async () => {
+  const calls: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    calls.push(String(url));
+    return new Response("{}", { status: 201, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  await assert.rejects(async () => operatorApi.provisionOperatorAccount({} as never, "csrf", "key", false), /activation_moved/);
+  assert.deepEqual(calls, []);
+  await operatorApi.provisionOperatorAccount({} as never, "csrf", "key", true);
+  assert.deepEqual(calls, ["/api/v2/operator/accounts"]);
 });

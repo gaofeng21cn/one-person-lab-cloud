@@ -18,7 +18,6 @@ export const generationInputs = [
   `${proto}/generate_event_identity.py`,
   `${proto}/internal.proto`,
   `${proto}/events.json`,
-  `${target}/contracts/internal.proto`,
   `${target}/contracts/publisher-contract.schema.json`,
   `${target}/03_api_contract_complete.yaml`,
   `${identity}/generate_policy.py`
@@ -30,11 +29,13 @@ export const generatedOutputs = [
   `${go}/publicjson/shape_generated.go`,
   `${go}/event_identity.go`,
   `${identity}/policy_generated.go`,
-  `${bff}/status_generated.go`
+  `${bff}/status_generated.go`,
+  `${target}/contracts/internal.proto`,
+  `${target}/contracts/events.json`
 ] as const;
 
 export const uncoveredGeneration = [
-  "events.json: source contract, NOT regenerated; only its generated event identities are checked. Production/target parity and W01 migration completeness are not freshness checks."
+  "events.json: production source contract, NOT regenerated; generated event identities and byte-identical target snapshots are checked. Runtime and deployment acceptance are separate."
 ] as const;
 
 export type GenerationCommand = { command: string; args: string[]; cwd: string };

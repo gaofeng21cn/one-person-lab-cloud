@@ -163,6 +163,22 @@ export async function validateCandidateBundle(directory: string): Promise<Record
   }
 }
 
+// Shared Candidate identity carried by native installation evidence. Callers
+// retain their own receipt-version, run-authority and qualification decisions.
+export function candidateInstallationIdentity(value: unknown) {
+  const candidate = validateCloudCandidateReceipt(value);
+  const product = candidate.product as Record<string, unknown>;
+  const image = candidate.cloudImage as Record<string, unknown>;
+  const platforms = image.platforms as Array<Record<string, unknown>>;
+  return {
+    candidateReceiptDigest: candidateReceiptDigest(candidate),
+    productSha: String(product.sha), productTree: String(product.tree),
+    cloudImageRef: String(image.indexRef), cloudImageDigest: String(image.indexDigest),
+    cloudImageRevision: String(image.revision),
+    cloudRuntimeChildDigest: String(platforms.find(entry => entry.platform === "linux/amd64")!.digest)
+  };
+}
+
 function option(args: string[], name: string) {
   const indexes = args.flatMap((value, index) => value === name ? [index] : []);
   if (indexes.length !== 1 || !args[indexes[0] + 1] || args[indexes[0] + 1].startsWith("--")) {

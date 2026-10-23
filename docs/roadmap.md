@@ -72,7 +72,7 @@ native HTTP API. IBD is the feasibility exemplar. The exact historical runtime
 evidence and its source/fixture boundaries are owned by
 [status](status.md#linux-custom-agent-owner-qualification-2026-10-21);
 [Issue #1002](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1002)
-tracks the scoped source closure and current-revision review/CI. Generic WebUI
+records the scoped source closure and its historical review/CI. Generic WebUI
 chat changes, browser-driven sending and a new provider are outside this scope.
 
 Same-Candidate and installed Tencent/TKE acceptance remain open. The local
@@ -173,25 +173,31 @@ Gateway 用户凭证和现有 Gateway 用户 API。下面的清单保留为实�
 凭证，也不把本地 binding 当作外部 Key 或 Group 真相。`/api/v1/service/workspace-keys`
 继续视为废弃假设，不进入实现。
 
-| Outcome | Owner | Remaining adoption and acceptance |
-| --- | --- | --- |
-| Workspace-managed Key lifecycle (#821, #868) | Workspace and Gateway Integration; Sub2API external authority | #868 is closed as not planned for the current delivery scope. The existing Cloud lifecycle source wiring is retained as historical implementation evidence, not as a reason to add Gateway disable/enable/state-readback APIs or migrate callers now. Key rotation and the Workspace opening path remain governed by the current Gateway mapping contract above. |
-| Workspace Key mapping and rotation | Workspace, Gateway Integration, external Gateway, Fabric and Serve | The former same-Key source slice remains historical evidence. The current target allows Key reuse or rotation: Gateway creates or manages the effective Key/Group, Cloud records the opaque mapping, Fabric/Serve deliver and read back the new Secret/config, and Gateway closes the predecessor when authorized. The retained Control Plane Workspace caller still needs migration and the external path needs deployed readback. | One authenticated Workspace opening and one rotation read back the same Gateway-owned facts through Gateway and Cloud, with no duplicate operation, leaked raw Key or local projection treated as external truth. |
-| Personal and Tenant financial reads (#840, #870) | Gateway Integration and retained financial owner; Console BFF/UI | Keep wallet/Token reads on the logged-in User. Tenant owner/admin read Tenant bills; original owners read proven historical bills without automatic admin inheritance. Personal history now has a typed BFF/original-owner list, detail and trend reader with live identity, reciprocal Account/User proof and original-order projections. Local original-history and isolation checks are in [status](status.md#personal-historical-billing-source-repair-2026-10-16). Team transaction list/detail and confirmed charge/refund trend are now implemented through Gateway/BFF under the live Tenant owner/admin role. Ledger now exposes original funded-charge receipt/accepted-quote details under the current Tenant role without exposing private execution evidence. Missing receipt kinds remain explicitly unavailable; no refund receipt is invented from a Gateway reference. Installed exact-Candidate acceptance remains unproved; never derive Tenant financial authority from the personal-history path. |
-| Announcements and historical ACKs (#840, #871) | Existing announcement owner, CloudIdentity and Console BFF/UI | The source now routes Cloud list/ACK through the BFF to the original owner, revalidates live identity, and folds proven historical ACKs with original timestamps. Local owner, PostgreSQL, BFF and browser checks are recorded in [status](status.md#cloud-announcement-source-repair-2026-10-15). Source CI and Instance wiring source are delivered in [Cloud PR 882](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/882) and [Instance PR 505](https://github.com/gaofeng21cn/opl-instance-medopl/pull/505). Remaining: protected peer/token/certificate/topology adoption and authenticated same-Candidate acceptance; #840 retains its other reads. |
-| Remaining retained Gateway reads (#840) | Gateway Integration and Console BFF/UI | Keys list/detail, per-Key usage/summary, groups, personal balance history and endpoint now use session-bound Cloud BFF/Gateway reads with a live CloudIdentity proof; the retained `/api/gateway/*` adapters remain legacy-only, and Gateway custody of the delegated provider credential is still transitional. The legacy package pricing catalog and preview have no Cloud owner yet, so a cloud build refuses them explicitly instead of calling the retained route. The protected `customer_reads` producer now asserts wallet, usage summary, fee records and announcements in one session; no installed run is claimed. Reproduce each actual authenticated caller before changing it; do not treat recharge records as complete balance history or claim the parent is fully covered. The caller/owner inventory is [Console customer read inventory (#840)](implementation/840-console-customer-reads.md). |
-| First managed-TKE customer journey (#856) | Cloud product owners; Instance supplies deployment readback | The first-use outcome is separate from formal Product Release qualification. Prove one deployed revision can authenticate the designated customer, complete the authorized Workspace opening, reach a ready runtime, return one real application response, preserve operation identity across response loss/retry, and reconcile the original order, charge and Gateway/Ledger facts. A successful first-use revision may be recorded before it is selected for formal Release. |
-| Formal protected qualification and Release admission (#926, #928) | Cloud release/product owners; Instance supplies the protected execution and deployment evidence | Post-first-use hardening. The Cloud-owned producer, fabric J0 prerequisite and typed release consumer now bind the protected Instance workflow and its exact artifact; schema 7 reads the run with the Instance evidence token and validates `product-source.json` against the released Cloud source ([status](status.md#instance-hosted-business-qualification-consumer-binding-2026-10-19)). The remaining work is the declared protected environment inputs, a real sandbox J0 receipt, the settled exact-Candidate business receipt and formal Release readback. This does not block #856. |
-| Transitional Instance business workflows (#517) | Cloud and Instance owners | Post-first-use architecture cleanup. The current 42-workflow inventory classifies 15 transitional Cloud business-authority paths, 27 retained Instance paths and the protected qualification executor; retire callers only after their successors execute while preserving deployment, rollback, Secret custody and read-only installed-state evidence. This does not block #856. |
-| Cloud customer-read coverage (#840) | Gateway Integration, retained owners and Console BFF/UI | Post-launch product-read completeness. Finish the remaining caller inventory, identity/persistence ownership and protected readback for the selected customer-read surfaces. This does not block #856. |
+The former adoption table referenced completed or withdrawn Issues. It is
+retired as a current work list: [#840](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/840),
+[#856](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/856),
+[#926](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/926), and
+[#928](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/928) retain their
+original source evidence and closure reasons. The Instance retirement proposal
+was [Instance Issue #517](https://github.com/gaofeng21cn/opl-instance-medopl/issues/517),
+not Cloud PR #517. Closing those targets did not prove installed financial,
+provider or formal Release acceptance. New exact failures are assessed against
+the current owner and caller instead of automatically restoring a historical
+acceptance duty.
+
+Current Workspace create/delete convergence is tracked by
+[#1027](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1027) for original-owner
+closeout and [#1028](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1028)
+for new-purchase caller cutover. Activation and operator command routing are
+tracked by [#1031](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1031)
+and [#1032](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1032).
 
 ## Development Governance Migration (2026-10-13)
 
 Cloud development tooling owns adoption of the
 [ordinary source development decision](decisions.md#2026-10-13-ordinary-source-development-uses-git-scope-and-current-ci).
 Local changes reconcile host admission, verification selection, CI and
-contributor instructions with the adopted default. Their current-revision CI
-and merge are still pending. Ordinary PRs
+contributor instructions with the adopted default. The source entry points and CI are implemented. Ordinary PRs
 use actual local results and current-revision CI without a separate source-check
 JSON, and independent agents may perform their technical review; high-consequence
 operations retain owner review and authorization.
@@ -218,8 +224,7 @@ passed Clean Host `38420381927`, including owner DELETE, Ledger evidence and
 zero resource residuals. The original, validator-accepted READY receipt is
 preserved in [status](status.md#verified-clean-host-qualification).
 
-#787 remains open for owner disposition of the patrol's separate original launch
-HTTP 502. The current immutable-Candidate/run-owned-fixture path is delivered
+The historical #787 investigation recorded a separate original launch HTTP 502. The current immutable-Candidate/run-owned-fixture path is delivered
 and has valid READY evidence. The exact old-input replay reached the known
 pre-launch cleanup failure before login or launch, so it cannot identify the
 historical owner or stage. The current immutable-Candidate/run-owned-fixture path is delivered and has valid

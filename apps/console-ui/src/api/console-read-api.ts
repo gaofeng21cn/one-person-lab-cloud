@@ -399,12 +399,18 @@ export function operatorReadRoute(cloud: boolean): "/api/v2/operator" | "/api/op
   return cloud ? "/api/v2/operator" : "/api/operator";
 }
 
-// Activation is the one operator command the Cloud console composes with the
-// Tenant owner: the BFF route activates the account, admits the Tenant whose
-// owner is that account's Gateway subject, and binds its billing. The legacy
-// build keeps the retained Control Plane route unchanged.
-export function operatorActivationRoute(cloud: boolean): "/api/v2/operator/accounts" | "/api/operator/accounts" {
-  return cloud ? "/api/v2/operator/accounts" : "/api/operator/accounts";
+// Only activation has a Cloud BFF command owner. Other retained operator
+// commands remain available to the legacy identity; a Cloud session must never
+// be sent to those state-changing Control Plane routes.
+export function operatorWriteRoute(cloud: boolean, path: string): string {
+  if (!path.startsWith("/") || path.startsWith("//")) throw new Error("operator_write_path_invalid");
+  if (cloud) throw new Error("operator_write_unavailable");
+  return `/api/operator${path}`;
+}
+
+export function operatorActivationRoute(cloud: boolean): "/api/v2/operator/accounts" {
+  if (!cloud) throw new Error("activation_moved");
+  return "/api/v2/operator/accounts";
 }
 
 export function getOperatorAccounts(cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorAccountsData>> {
@@ -438,10 +444,9 @@ export function activateOperatorWorkspaceImageRelease(
   expectedRevision: number,
   reason: string,
   csrfToken: string,
-  idempotencyKey: string
-): Promise<OperatorWorkspaceRuntimeImagePolicyDTO> {
+  idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperatorWorkspaceRuntimeImagePolicyDTO> {
   return postJson<unknown>(
-    "/api/operator/workspace-image-release-activations",
+    operatorWriteRoute(cloud, "/workspace-image-release-activations"),
     { releaseVersion, expectedRevision, reason }, csrfToken, idempotencyKey
   ).then(decodeDto<OperatorWorkspaceRuntimeImagePolicyDTO>);
 }
@@ -455,10 +460,9 @@ export function createOperatorWorkspaceRuntimeImageReplacement(
   replacementImageDigest: string,
   reason: string,
   csrfToken: string,
-  idempotencyKey: string
-): Promise<WorkspaceRuntimeImageReplacementDTO> {
+  idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<WorkspaceRuntimeImageReplacementDTO> {
   return postJson<unknown>(
-    `/api/operator/workspaces/${encodeURIComponent(workspaceId)}/runtime-image-replacements`,
+    operatorWriteRoute(cloud, `/workspaces/${encodeURIComponent(workspaceId)}/runtime-image-replacements`),
     { replacementImageDigest, reason }, csrfToken, idempotencyKey
   ).then(decodeDto<WorkspaceRuntimeImageReplacementDTO>);
 }
@@ -493,32 +497,32 @@ export function getOperatorAnnouncements(page = 1, pageSize = 20, signal?: Abort
   return sourceGet<OperatorAnnouncementPageDTO>(`${operatorReadRoute(cloud)}/announcements?${params}`, signal);
 }
 
-export function createWalletAdjustment(accountId: string, input: WalletAdjustmentRequest, csrfToken: string, idempotencyKey: string): Promise<WalletAdjustmentOperationDTO> {
-  return postJson<unknown>(`/api/operator/accounts/${encodeURIComponent(accountId)}/wallet-adjustments`, input, csrfToken, idempotencyKey).then(decodeDto<WalletAdjustmentOperationDTO>);
+export function createWalletAdjustment(accountId: string, input: WalletAdjustmentRequest, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<WalletAdjustmentOperationDTO> {
+  return postJson<unknown>(operatorWriteRoute(cloud, `/accounts/${encodeURIComponent(accountId)}/wallet-adjustments`), input, csrfToken, idempotencyKey).then(decodeDto<WalletAdjustmentOperationDTO>);
 }
 
 export function getWalletAdjustment(operationId: string, signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<WalletAdjustmentOperationDTO> {
   return getJson<unknown>(`${operatorReadRoute(cloud)}/wallet-adjustments/${encodeURIComponent(operationId)}`, { signal }).then(decodeDto<WalletAdjustmentOperationDTO>);
 }
 
-export function recoverWalletAdjustment(operationId: string, input: WalletAdjustmentRecoveryRequest, csrfToken: string, idempotencyKey: string): Promise<WalletAdjustmentOperationDTO> {
-  return postJson<unknown>(`/api/operator/wallet-adjustments/${encodeURIComponent(operationId)}/recover`, input, csrfToken, idempotencyKey).then(decodeDto<WalletAdjustmentOperationDTO>);
+export function recoverWalletAdjustment(operationId: string, input: WalletAdjustmentRecoveryRequest, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<WalletAdjustmentOperationDTO> {
+  return postJson<unknown>(operatorWriteRoute(cloud, `/wallet-adjustments/${encodeURIComponent(operationId)}/recover`), input, csrfToken, idempotencyKey).then(decodeDto<WalletAdjustmentOperationDTO>);
 }
 
-export function provisionOperatorAccount(input: ProvisionAccountRequest, csrfToken: string, idempotencyKey: string): Promise<OperatorProvisionAccountCommandDTO> {
-  return postJson<unknown>(operatorActivationRoute(cloudIdentity), input, csrfToken, idempotencyKey).then(decodeDto<OperatorProvisionAccountCommandDTO>);
+export function provisionOperatorAccount(input: ProvisionAccountRequest, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperatorProvisionAccountCommandDTO> {
+  return postJson<unknown>(operatorActivationRoute(cloud), input, csrfToken, idempotencyKey).then(decodeDto<OperatorProvisionAccountCommandDTO>);
 }
 
-export function disableOperatorAccount(accountId: string, reason: string, csrfToken: string, idempotencyKey: string): Promise<OperatorAccountCommandDTO> {
-  return postJson<unknown>(`/api/operator/accounts/${encodeURIComponent(accountId)}/disable`, { confirmationAccountId: accountId, reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorAccountCommandDTO>);
+export function disableOperatorAccount(accountId: string, reason: string, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperatorAccountCommandDTO> {
+  return postJson<unknown>(operatorWriteRoute(cloud, `/accounts/${encodeURIComponent(accountId)}/disable`), { confirmationAccountId: accountId, reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorAccountCommandDTO>);
 }
 
-export function setOperatorWorkspacePurchaseEligibility(accountId: string, enabled: boolean, reason: string, csrfToken: string, idempotencyKey: string): Promise<OperatorWorkspacePurchaseEligibilityCommandDTO> {
-  return postJson<unknown>(`/api/operator/accounts/${encodeURIComponent(accountId)}/workspace-purchase-eligibility`, { confirmationAccountId: accountId, enabled, reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorWorkspacePurchaseEligibilityCommandDTO>);
+export function setOperatorWorkspacePurchaseEligibility(accountId: string, enabled: boolean, reason: string, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperatorWorkspacePurchaseEligibilityCommandDTO> {
+  return postJson<unknown>(operatorWriteRoute(cloud, `/accounts/${encodeURIComponent(accountId)}/workspace-purchase-eligibility`), { confirmationAccountId: accountId, enabled, reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorWorkspacePurchaseEligibilityCommandDTO>);
 }
 
-export function resolveBillingReview(resourceType: string, resourceId: string, input: BillingReviewResolutionRequest, csrfToken: string, idempotencyKey: string): Promise<OperationStatusDTO> {
-  return postJson<unknown>(`/api/operator/billing-reviews/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}/resolve`, input, csrfToken, idempotencyKey).then(decodeDto<OperationStatusDTO>);
+export function resolveBillingReview(resourceType: string, resourceId: string, input: BillingReviewResolutionRequest, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperationStatusDTO> {
+  return postJson<unknown>(operatorWriteRoute(cloud, `/billing-reviews/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}/resolve`), input, csrfToken, idempotencyKey).then(decodeDto<OperationStatusDTO>);
 }
 
 function decodeWorkspaceLaunchRecovery(value: unknown, operationId: string): WorkspaceLaunchRecoveryDTO {
@@ -539,34 +543,33 @@ export function getWorkspaceLaunchRecovery(operationId: string, signal?: AbortSi
     .then((value) => decodeWorkspaceLaunchRecovery(value, operationId));
 }
 
-export function recoverWorkspaceLaunch(operationId: string, input: WorkspaceLaunchRecoveryRequest, csrfToken: string, idempotencyKey: string): Promise<WorkspaceLaunchRecoveryDTO> {
-  return postJson<unknown>(`/api/operator/workspace-launches/${encodeURIComponent(operationId)}/recover`, input, csrfToken, idempotencyKey)
+export function recoverWorkspaceLaunch(operationId: string, input: WorkspaceLaunchRecoveryRequest, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<WorkspaceLaunchRecoveryDTO> {
+  return postJson<unknown>(operatorWriteRoute(cloud, `/workspace-launches/${encodeURIComponent(operationId)}/recover`), input, csrfToken, idempotencyKey)
     .then((value) => decodeWorkspaceLaunchRecovery(value, operationId));
 }
 
-export function createOperatorAnnouncement(input: AnnouncementDraftRequest, csrfToken: string, idempotencyKey: string): Promise<AnnouncementDTO> {
-  return postJson<unknown>("/api/operator/announcements", input, csrfToken, idempotencyKey).then(decodeDto<AnnouncementDTO>);
+export function createOperatorAnnouncement(input: AnnouncementDraftRequest, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<AnnouncementDTO> {
+  return postJson<unknown>(operatorWriteRoute(cloud, "/announcements"), input, csrfToken, idempotencyKey).then(decodeDto<AnnouncementDTO>);
 }
 
-export function updateOperatorAnnouncement(announcementId: string, input: AnnouncementDraftRequest, csrfToken: string, idempotencyKey: string): Promise<AnnouncementDTO> {
-  return putJson<unknown>(`/api/operator/announcements/${encodeURIComponent(announcementId)}`, input, csrfToken, idempotencyKey).then(decodeDto<AnnouncementDTO>);
+export function updateOperatorAnnouncement(announcementId: string, input: AnnouncementDraftRequest, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<AnnouncementDTO> {
+  return putJson<unknown>(operatorWriteRoute(cloud, `/announcements/${encodeURIComponent(announcementId)}`), input, csrfToken, idempotencyKey).then(decodeDto<AnnouncementDTO>);
 }
 
-export function publishOperatorAnnouncement(announcementId: string, input: AnnouncementScheduleRequest, csrfToken: string, idempotencyKey: string): Promise<AnnouncementDTO> {
-  return postJson<unknown>(`/api/operator/announcements/${encodeURIComponent(announcementId)}/publish`, input, csrfToken, idempotencyKey).then(decodeDto<AnnouncementDTO>);
+export function publishOperatorAnnouncement(announcementId: string, input: AnnouncementScheduleRequest, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<AnnouncementDTO> {
+  return postJson<unknown>(operatorWriteRoute(cloud, `/announcements/${encodeURIComponent(announcementId)}/publish`), input, csrfToken, idempotencyKey).then(decodeDto<AnnouncementDTO>);
 }
 
-export function withdrawOperatorAnnouncement(announcementId: string, csrfToken: string, idempotencyKey: string): Promise<AnnouncementDTO> {
-  return postJson<unknown>(`/api/operator/announcements/${encodeURIComponent(announcementId)}/withdraw`, {}, csrfToken, idempotencyKey).then(decodeDto<AnnouncementDTO>);
+export function withdrawOperatorAnnouncement(announcementId: string, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<AnnouncementDTO> {
+  return postJson<unknown>(operatorWriteRoute(cloud, `/announcements/${encodeURIComponent(announcementId)}/withdraw`), {}, csrfToken, idempotencyKey).then(decodeDto<AnnouncementDTO>);
 }
 
 export function admitOperatorApplicationRevision(
   revision: unknown,
   csrfToken: string,
-  idempotencyKey: string
-): Promise<WorkspaceApplicationRevisionAdmissionDTO> {
+  idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<WorkspaceApplicationRevisionAdmissionDTO> {
   return postJson<unknown>(
-    "/api/operator/application-revisions", revision, csrfToken, idempotencyKey
+    operatorWriteRoute(cloud, "/application-revisions"), revision, csrfToken, idempotencyKey
   ).then(decodeDto<WorkspaceApplicationRevisionAdmissionDTO>);
 }
 
@@ -578,14 +581,13 @@ export function createOperatorWorkspaceApplicationDeployment(
   csrfToken: string,
   idempotencyKey: string,
   secretBindings: WorkspaceApplicationSecretBindingDTO[] = [],
-  revision?: unknown
-): Promise<{ intent: WorkspaceApplicationIntentDTO }> {
+  revision?: unknown, cloud: boolean = cloudIdentity): Promise<{ intent: WorkspaceApplicationIntentDTO }> {
   // An inline revision lets one deployment command carry the image and its run
   // requirements. The Control Plane admits that revision into its single
   // revision owner as part of the same command; sending the publisher
   // description is not a second, separate business step for the operator.
   return postJson<unknown>(
-    "/api/operator/application-deployments",
+    operatorWriteRoute(cloud, "/application-deployments"),
     {
       workspaceId, applicationId, targetRevision, configuration,
       ...(secretBindings.length ? { secretBindings } : {}),
@@ -599,8 +601,8 @@ export function getOperatorWorkspaceApplicationDeployment(operationId: string, s
   return sourceGet<{ status: string; intent: WorkspaceApplicationIntentDTO }>(`${operatorReadRoute(cloud)}/application-deployments/${encodeURIComponent(operationId)}`, signal);
 }
 
-export function retryOperatorWorkspaceApplicationDeployment(operationId: string, csrfToken: string): Promise<{ intent: WorkspaceApplicationIntentDTO }> {
-  return postJson<unknown>(`/api/operator/application-deployments/${encodeURIComponent(operationId)}/retry`, {}, csrfToken, `application-retry:${operationId}`)
+export function retryOperatorWorkspaceApplicationDeployment(operationId: string, csrfToken: string, cloud: boolean = cloudIdentity): Promise<{ intent: WorkspaceApplicationIntentDTO }> {
+  return postJson<unknown>(operatorWriteRoute(cloud, `/application-deployments/${encodeURIComponent(operationId)}/retry`), {}, csrfToken, `application-retry:${operationId}`)
     .then(decodeDto<{ intent: WorkspaceApplicationIntentDTO }>);
 }
 
@@ -646,8 +648,7 @@ export function resolveOperatorRegistryImage(
   repository: string,
   tag: string,
   csrfToken: string,
-  idempotencyKey: string
-): Promise<WorkspaceRegistryResolutionDTO> {
-  return postJson<unknown>("/api/operator/registry/resolve", { namespace, repository, tag }, csrfToken, idempotencyKey)
+  idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<WorkspaceRegistryResolutionDTO> {
+  return postJson<unknown>(operatorWriteRoute(cloud, "/registry/resolve"), { namespace, repository, tag }, csrfToken, idempotencyKey)
     .then(decodeDto<WorkspaceRegistryResolutionDTO>);
 }

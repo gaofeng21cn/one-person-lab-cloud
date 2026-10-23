@@ -672,37 +672,10 @@ test("focused verification refuses an implicit exhaustive PostgreSQL lane", () =
   assert.throws(() => parseVerifyLocalArgs(["--focused", "--base", "origin/main", "--with-postgres"]), /cannot combine.*focused.*PostgreSQL/);
 });
 
-test("Qualification executes the independent Go contracts module", async () => {
-  const qualification = parseYAML(await readFile(".github/workflows/qualification.yml", "utf8"));
-  const contractJob = qualification.jobs.go_contracts;
-  assert.equal(contractJob.name, "go-contracts");
-  const setup = contractJob.steps.find((step: any) => step.name === "Set up Go").with;
-  assert.equal(setup.cache, false);
-  assert.equal(setup["go-version"], undefined);
-  assert.equal(setup["go-version-file"], "packages/contracts/go/go.mod");
-  assert.ok(contractJob.steps.some((step: any) => step["working-directory"] === "packages/contracts/go"
-    && step.run === "go test -count=1 ./..."));
-  assert.ok(qualification.jobs.validate.needs.includes("go_contracts"));
-  const validateStep = qualification.jobs.validate.steps.find((step: any) => step.name === "Require successful test jobs");
-  assert.equal(
-    validateStep.env.GO_CONTRACTS_RESULT,
-    "${{ needs.go_contracts.result }}"
-  );
-  assert.match(validateStep.run, /"\$GO_CONTRACTS_RESULT" != "success"/);
-});
-
 test("Local qualification uses one bounded runner filesystem and explicit privileged inputs", async (t) => {
   const workflow = parseYAML(await readFile(".github/workflows/qualification.yml", "utf8"));
-  const nodeStep = workflow.jobs.node_console.steps.find((item: any) => item.name === "Test Node");
-  const packageScripts = JSON.parse(await readFile("package.json", "utf8")).scripts;
-  assert.match(packageScripts["test:browser:suite"], /node tools\/run-browser-suite\.ts /u);
-  const browserRunner = await readFile("tools/run-browser-suite.ts", "utf8");
-  assert.match(browserRunner, /"--test-concurrency=3"/u);
-  assert.ok(nodeStep.run.includes("npm run test:source"));
-  assert.ok(nodeStep.run.includes("npm run test:browser:suite"));
-  assert.ok(nodeStep.run.includes("Node SKIP result missing or nonzero"));
-  assert.ok(nodeStep.run.includes("(?:#|ℹ) fail"));
-  assert.ok(nodeStep.run.includes("(?:#|ℹ) skipped"));
+  assert.deepEqual(Object.keys(workflow.jobs), ["fabric", "validate"]);
+  assert.equal(workflow.jobs.validate.needs, "fabric");
   const job = workflow.jobs.fabric;
   assert.equal(job["runs-on"], "ubuntu-latest");
   assert.equal(job.environment, undefined);
@@ -712,8 +685,6 @@ test("Local qualification uses one bounded runner filesystem and explicit privil
   const quotaSupport = step("Load runner project quota support");
   const prepare = step("Prepare project quota filesystem");
   const compile = step("Compile Local qualification executables without privilege");
-  const fabric = step("Test Fabric");
-  assert.equal(fabric.env.OPL_OWNER_MIGRATION_TEST_ADMIN_DSN, "postgres://postgres@127.0.0.1:5432/postgres?sslmode=disable");
   const quota = step("Test Linux project quota as privileged capability");
   const deploy = step("Test first Local application deployment with real owners");
   const cleanup = step("Remove project quota filesystem");

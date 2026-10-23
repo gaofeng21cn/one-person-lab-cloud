@@ -20,6 +20,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode, type RefOb
 import type { OperatorAnnouncementController, OperatorResourceReadController, WorkspaceApplicationDeploymentController, WorkspaceImageReleaseController, WorkspaceRuntimeImageReplacementController } from "../app/console-controller-types.ts";
 import type { AdminConsoleRoute } from "../app/console-router.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
+import { cloudIdentity } from "../app/console-identity.ts";
 import { recoverWorkspaceLaunch, getWorkspaceLaunchRecovery } from "../api/console-read-api.ts";
 import { presentWorkspaceLaunchCloseout } from "../app/workspace-experience-model.ts";
 import { presentWorkspaceApplicationIntent } from "../app/workspace-application-deployment-controller-model.ts";
@@ -179,8 +180,8 @@ function AnnouncementList({ announcements, controller }: {
             <div><dt>结束时间</dt><dd>{announcement.endsAt ? formatDate(announcement.endsAt, true) : "未设置"}</dd></div>
           </dl>
           <footer className="table-actions">
-            {["draft", "scheduled"].includes(announcement.status) ? <Button busy={controller.busyAnnouncementIds.includes(announcement.id)} onClick={() => void controller.publish(announcement.id)} size="sm" variant="outline">发布</Button> : null}
-            {announcement.status === "published" ? <Button busy={controller.busyAnnouncementIds.includes(announcement.id)} color="danger" onClick={() => void controller.withdraw(announcement.id)} size="sm" variant="ghost">撤下</Button> : null}
+            {!cloudIdentity && ["draft", "scheduled"].includes(announcement.status) ? <Button busy={controller.busyAnnouncementIds.includes(announcement.id)} onClick={() => void controller.publish(announcement.id)} size="sm" variant="outline">发布</Button> : null}
+            {!cloudIdentity && announcement.status === "published" ? <Button busy={controller.busyAnnouncementIds.includes(announcement.id)} color="danger" onClick={() => void controller.withdraw(announcement.id)} size="sm" variant="ghost">撤下</Button> : null}
           </footer>
         </article>
       ))}
@@ -295,7 +296,7 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
       </SourceState>
 
       <section className="panel" data-slide="A-OV-02">
-        <div className="panel-title"><div><h2>公告管理</h2></div><div className="table-actions"><Button onClick={() => controller.navigate("/admin/announcements")} size="sm" variant="outline">管理全部公告</Button><Button color="primary" onClick={() => setDraftOpen(true)} size="sm"><Plus aria-hidden size={16} />新建草稿</Button></div></div>
+        <div className="panel-title"><div><h2>公告管理</h2></div><div className="table-actions"><Button onClick={() => controller.navigate("/admin/announcements")} size="sm" variant="outline">管理全部公告</Button><Button hidden={cloudIdentity} color="primary" onClick={() => setDraftOpen(true)} size="sm"><Plus aria-hidden size={16} />新建草稿</Button></div></div>
         <SourceState empty={announcements.length === 0} emptyTitle="暂无公告" error={announcementController.announcements.error} loading={announcementController.announcements.loading} onRetry={() => void announcementController.refresh()} source={announcementController.announcements.value} unavailableTitle="公告暂不可用">
           {() => <AnnouncementList announcements={announcements} controller={announcementController} />}
         </SourceState>
@@ -316,7 +317,7 @@ function AnnouncementsPage({ controller }: { controller: ConsoleController }) {
           <div><h2>公告管理</h2><span>{announcements.length ? `${announcements.length} 条` : ""}</span></div>
           <div className="table-actions">
             <Button onClick={() => void announcementController.refresh()} size="sm" variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button>
-            <Button color="primary" onClick={() => setDraftOpen(true)} size="sm"><Plus aria-hidden size={16} />新建草稿</Button>
+            <Button hidden={cloudIdentity} color="primary" onClick={() => setDraftOpen(true)} size="sm"><Plus aria-hidden size={16} />新建草稿</Button>
           </div>
         </div>
         <SourceState empty={announcements.length === 0} emptyTitle="暂无公告" error={announcementController.announcements.error} loading={announcementController.announcements.loading} onRetry={() => void announcementController.refresh()} source={announcementController.announcements.value} unavailableTitle="公告暂不可用">
@@ -356,9 +357,9 @@ function AccountActions({ account, controller, openAccount }: {
   return (
     <div className="operator-card-actions">
       <Button onClick={() => openAccount(account, "detail")} size="sm" variant="ghost">查看账户</Button>
-      <Button onClick={() => openAccount(account, "wallet")} size="sm" variant="outline"><WalletCards aria-hidden size={15} />余额操作</Button>
-      {reservedAdmin
-        ? <span className="account-read-only">保留管理员账户仅查看</span>
+      <Button hidden={cloudIdentity} onClick={() => openAccount(account, "wallet")} size="sm" variant="outline"><WalletCards aria-hidden size={15} />余额操作</Button>
+      {reservedAdmin || cloudIdentity
+        ? <span className="account-read-only">{cloudIdentity ? "账户仅查看" : "保留管理员账户仅查看"}</span>
         : account.status === "active"
           ? <>
             <Button color={account.workspacePurchaseEnabled ? "danger" : "primary"} disabled={busy} onClick={() => void controller.operatorAccounts.setWorkspacePurchaseEligibility(account.accountId, !account.workspacePurchaseEnabled)} size="sm" variant="ghost">
@@ -604,7 +605,7 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
   };
   return (
     <section className="panel" data-slide="A-ACC-01 A-ACC-02 A-ACC-03">
-      <div className="panel-title operator-accounts-panel-title"><div className="operator-accounts-title"><h2>客户与计费账户</h2></div><Button color="primary" onClick={() => setDialog("provision")}><Plus aria-hidden size={16} />开通用户</Button></div>
+      <div className="panel-title operator-accounts-panel-title"><div className="operator-accounts-title"><h2>客户与计费账户</h2></div><Button hidden={!cloudIdentity} color="primary" onClick={() => setDialog("provision")}><Plus aria-hidden size={16} />开通用户</Button></div>
       <SourceState empty={accounts.length === 0} emptyTitle="暂无用户" error={accountController.accounts.error} loading={accountController.accounts.loading} onRetry={() => void accountController.refresh()} source={accountController.accounts.value} unavailableTitle="账户数据暂不可用">
         {(data) => <>
           <div className="table-wrap operator-account-table"><table className="ops-table"><thead><tr><th>用户</th><th>账户映射</th><th>余额</th><th>API 费用</th><th>资源</th><th>状态</th><th>操作</th></tr></thead><tbody>{data.items.map((account) => (
@@ -627,7 +628,7 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
         </>}
       </SourceState>
       <Pagination current={accountController.page} label="账号分页" onChange={(page) => void accountController.changePage(page)} pages={accountController.pages} />
-      <ProvisionAccountModal controller={controller} onClose={() => setDialog("")} open={dialog === "provision"} />
+      {cloudIdentity ? <ProvisionAccountModal controller={controller} onClose={() => setDialog("")} open={dialog === "provision"} /> : <p className="inline-notice">新用户开通请使用 Cloud 控制台。</p>}
       <AccountDetailModal account={dialog === "detail" ? selectedAccount : null} onClose={() => setDialog("")} />
       <WalletAdjustmentModal account={dialog === "wallet" ? selectedAccount : null} controller={controller} onClose={() => setDialog("")} />
     </section>
@@ -755,10 +756,10 @@ function LaunchResultCheck({ controller, operationId, intent }: { controller: Co
     {message ? <p role="status">{message}</p> : null}
     {recovery?.allowedActions.length ? <>
       <Field disabled={busy || pendingIntent} label="核对原因" onChange={(event) => setReason(event.target.value)} value={reason} />
-      {recovery.allowedActions.includes("close_unfulfilled") ? <p>结束未完成的开通后，将确认停止服务并将应退费用退回原账户余额；若工作空间已就绪，将继续完成原开通，不执行退款。</p> : null}
+      {!cloudIdentity && recovery.allowedActions.includes("close_unfulfilled") ? <p>结束未完成的开通后，将确认停止服务并将应退费用退回原账户余额；若工作空间已就绪，将继续完成原开通，不执行退款。</p> : null}
       <div className="page-actions">
-        {recovery.allowedActions.includes("check_result") ? <Button busy={busy && intent.current?.input.action === "check_result"} color="primary" disabled={busy || loading || !reason.trim() || pendingIntent && intent.current?.input.action !== "check_result"} onClick={() => void submitRecovery("check_result")}>重新核对原开通结果</Button> : null}
-        {recovery.allowedActions.includes("close_unfulfilled") ? <Button busy={busy && intent.current?.input.action === "close_unfulfilled"} color="danger" disabled={busy || loading || !reason.trim() || pendingIntent && intent.current?.input.action !== "close_unfulfilled"} onClick={() => void submitRecovery("close_unfulfilled")}>结束未完成开通并退款</Button> : null}
+        {!cloudIdentity && recovery.allowedActions.includes("check_result") ? <Button busy={busy && intent.current?.input.action === "check_result"} color="primary" disabled={busy || loading || !reason.trim() || pendingIntent && intent.current?.input.action !== "check_result"} onClick={() => void submitRecovery("check_result")}>重新核对原开通结果</Button> : null}
+        {!cloudIdentity && recovery.allowedActions.includes("close_unfulfilled") ? <Button busy={busy && intent.current?.input.action === "close_unfulfilled"} color="danger" disabled={busy || loading || !reason.trim() || pendingIntent && intent.current?.input.action !== "close_unfulfilled"} onClick={() => void submitRecovery("close_unfulfilled")}>结束未完成开通并退款</Button> : null}
       </div>
     </> : !loading && recovery ? <p>当前没有服务端允许的核对动作。</p> : null}
   </section>;
@@ -888,8 +889,8 @@ function ResourceDetail({ controller, release, replacement, deployment }: { cont
   return (
     <section className="panel" data-slide="A-RES-02">
       <div className="panel-title"><div><h2>资源详情</h2></div><span>{selected}</span></div>
-      <WorkspaceRuntimeImageRelease controller={controller} release={release} replacement={replacement} />
-      <WorkspaceApplicationDeploymentCard deployment={deployment} selectedWorkspaceId={selected} installation={installation} />
+      {!cloudIdentity ? <WorkspaceRuntimeImageRelease controller={controller} release={release} replacement={replacement} /> : null}
+      {!cloudIdentity ? <WorkspaceApplicationDeploymentCard deployment={deployment} selectedWorkspaceId={selected} installation={installation} /> : null}
       <SourceState error={controller.detail.error} loading={controller.detail.loading} onRetry={() => void controller.refreshWorkspace(selected)} source={controller.detail.value} unavailableTitle="资源详情暂不可用">
         {(detail) => <>
           <dl className="data-list">
@@ -995,7 +996,7 @@ function ResourcesPage({ controller, release, replacement, deployment }: { contr
         </SourceState>
         <Pagination current={controller.page} label="Workspace 分页" onChange={(page) => void controller.changePage(page)} pages={controller.pages} />
       </section>
-      <WorkspaceApplicationRegistration deployment={deployment} />
+      {!cloudIdentity ? <WorkspaceApplicationRegistration deployment={deployment} /> : null}
       <ResourceDetail controller={controller} release={release} replacement={replacement} deployment={deployment} />
     </section>
   );

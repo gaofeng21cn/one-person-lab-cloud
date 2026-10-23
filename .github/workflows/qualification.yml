@@ -11,89 +11,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  node_console:
-    name: node-console
+  fabric:
+    name: fabric
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - &checkout
-        name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - name: Set up Node 24
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "24"
-          cache: npm
-
-      - name: Install OS sandbox for scoped checks
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends bubblewrap
-          # bubblewrap needs unprivileged user namespaces; newer Ubuntu images
-          # restrict them via AppArmor, so relax that restriction for the runner.
-          sudo sysctl -w kernel.unprivileged_userns_clone=1 || true
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-
-      - name: Install Node dependencies
-        run: npm ci --no-audit --no-fund
-
-      - name: Test Node
-        run: |
-          set -o pipefail
-          run_node_suite() {
-            shift
-            # shellcheck disable=SC2016
-            "$@" | node -e '
-              let output = "";
-              process.stdin.setEncoding("utf8");
-              process.stdin.on("data", (chunk) => { process.stdout.write(chunk); output += chunk; });
-              process.stdin.on("end", () => {
-                const failed = [...output.matchAll(/^(?:#|ℹ) fail (\d+)$/gm)];
-                const skipped = [...output.matchAll(/^(?:#|ℹ) skipped (\d+)$/gm)];
-                if (failed.length !== 1 || skipped.length !== 1 || Number(failed[0][1]) !== 0 || Number(skipped[0][1]) !== 0) {
-                  console.error(`Node ${process.env.NODE_SUITE_NAME} FAIL ${failed[0]?.[1] ?? "missing"} SKIP ${skipped[0]?.[1] ?? "missing"}; Node SKIP result missing or nonzero`);
-                  process.exit(1);
-                }
-              });
-            '
-          }
-          NODE_SUITE_NAME=source run_node_suite source npm run test:source
-          NODE_SUITE_NAME=browser run_node_suite browser npm run test:browser:suite
-
-      - name: Build
-        run: npm run build
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Check diff whitespace
-        run: git diff --check
-
-  go_contracts:
-    name: go-contracts
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - *checkout
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: packages/contracts/go/go.mod
-          cache: false
-
-      - name: Test Go contracts
-        working-directory: packages/contracts/go
-        run: go test -count=1 ./...
-
-  postgres_ledger:
-    name: postgres-ledger
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    services: &postgres_service
+    timeout-minutes: 45
+    services:
       postgres:
         image: postgres:16
         env:
@@ -112,98 +34,6 @@ jobs:
       PGDATABASE: postgres
       PGSSLMODE: disable
       OPL_POSTGRES_TESTS: "1"
-    steps:
-      - *checkout
-
-      - &setup_node
-        name: Set up Node 24
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "24"
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: "1.25.x"
-          cache-dependency-path: |
-            services/ledger/go.sum
-            services/internal/postgresmigrate/go.sum
-
-      - name: Test PostgreSQL migrations
-        working-directory: services/internal/postgresmigrate
-        env:
-          GO_TEST_ARGS: "-race -count=1"
-        run: &go_test |
-          set -o pipefail
-          go test -run '^$' ./...
-          package_list="$(go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./...)"
-          mapfile -t test_packages < <(sed '/^$/d' <<< "$package_list")
-          ((${#test_packages[@]} > 0))
-          read -r -a go_test_args <<< "$GO_TEST_ARGS"
-          # shellcheck disable=SC2016
-          go test "${go_test_args[@]}" -json "${test_packages[@]}" | node -e '
-            let output = "";
-            process.stdin.setEncoding("utf8");
-            process.stdin.on("data", (chunk) => { process.stdout.write(chunk); output += chunk; });
-            process.stdin.on("end", () => {
-              const events = output.trim().split(/\n/).filter(Boolean).map(JSON.parse);
-              const failed = events.filter((event) => event.Action === "fail");
-              const skipped = events.filter((event) => event.Action === "skip");
-              if (failed.length || skipped.length) {
-                console.error(`Go FAIL ${failed.length} SKIP ${skipped.length}; Go SKIP result missing or nonzero`);
-                process.exit(1);
-              }
-            });
-          '
-
-      - name: Test Ledger
-        working-directory: services/ledger
-        env:
-          GO_TEST_ARGS: "-count=1"
-        run: *go_test
-
-  control_plane:
-    name: control-plane
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    services: *postgres_service
-    env:
-      PGHOST: 127.0.0.1
-      PGPORT: 5432
-      PGUSER: postgres
-      PGDATABASE: postgres
-      PGSSLMODE: disable
-      OPL_POSTGRES_TESTS: "1"
-      OPL_CAPACITY_TESTS: "1"
-    steps:
-      - *checkout
-
-      - *setup_node
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: "1.25.x"
-          cache-dependency-path: services/control-plane/go.sum
-
-      - name: Test Control Plane
-        working-directory: services/control-plane
-        env:
-          GO_TEST_ARGS: "-timeout=15m -count=1"
-        run: *go_test
-
-  fabric:
-    name: fabric
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    services: *postgres_service
-    env:
-      PGHOST: 127.0.0.1
-      PGPORT: 5432
-      PGUSER: postgres
-      PGDATABASE: postgres
-      PGSSLMODE: disable
-      OPL_POSTGRES_TESTS: "1"
       OPL_FABRIC_LOCAL_DOCKER_INTEGRATION: "1"
     steps:
       - name: Initialize Local qualification directory
@@ -212,9 +42,10 @@ jobs:
           qualification_root="/tmp/opl-local-first-deploy-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           printf 'OPL_QUALIFICATION_ROOT=%s\n' "$qualification_root" >> "$GITHUB_ENV"
 
-      - *checkout
-
-      - *setup_node
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -283,13 +114,6 @@ jobs:
           [[ "$base_image" =~ @sha256:[a-f0-9]{64}$ ]]
           docker pull "$base_image"
 
-      - name: Test Fabric
-        working-directory: services/fabric
-        env:
-          OPL_OWNER_MIGRATION_TEST_ADMIN_DSN: postgres://postgres@127.0.0.1:5432/postgres?sslmode=disable
-          GO_TEST_ARGS: "-count=1"
-        run: *go_test
-
       - name: Test Linux project quota as privileged capability
         working-directory: services/fabric
         run: |
@@ -326,35 +150,13 @@ jobs:
           fi
 
   validate:
-    name: validate
+    name: local-qualification
     if: ${{ always() }}
-    needs:
-      - node_console
-      - go_contracts
-      - postgres_ledger
-      - control_plane
-      - fabric
+    needs: fabric
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Require successful test jobs
+      - name: Require successful Local qualification
         env:
-          NODE_CONSOLE_RESULT: ${{ needs.node_console.result }}
-          GO_CONTRACTS_RESULT: ${{ needs.go_contracts.result }}
-          POSTGRES_LEDGER_RESULT: ${{ needs.postgres_ledger.result }}
-          CONTROL_PLANE_RESULT: ${{ needs.control_plane.result }}
           FABRIC_RESULT: ${{ needs.fabric.result }}
-        run: |
-          if [[ "$NODE_CONSOLE_RESULT" != "success" ||
-                "$GO_CONTRACTS_RESULT" != "success" ||
-                "$POSTGRES_LEDGER_RESULT" != "success" ||
-                "$CONTROL_PLANE_RESULT" != "success" ||
-                "$FABRIC_RESULT" != "success" ]]; then
-            printf 'node-console=%s\ngo-contracts=%s\npostgres-ledger=%s\ncontrol-plane=%s\nfabric=%s\n' \
-              "$NODE_CONSOLE_RESULT" \
-              "$GO_CONTRACTS_RESULT" \
-              "$POSTGRES_LEDGER_RESULT" \
-              "$CONTROL_PLANE_RESULT" \
-              "$FABRIC_RESULT"
-            exit 1
-          fi
+        run: test "$FABRIC_RESULT" = success

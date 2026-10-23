@@ -1,7 +1,18 @@
 {
   "schemaVersion": 1,
-  "status": "plan_only_not_implemented",
-  "sourceSHA": "e728113f5608687aecc2f95c9d83cfb6b4ad52ef",
+  "status": "target_plan_implementation_not_evaluated",
+  "inputSHA256": {
+    "00_master_index.md": "38ec5d7408a7ef8699ecd1390041f9545614156b7a30fef9171d6b07161e5431",
+    "01_domain_ownership_matrix.md": "b5419f4bce24f4c162ed76d0734f8c8d192c4ea153ccd020a76c10d0306cb5e5",
+    "03_api_contract_complete.yaml": "73bec190ab031a3bcd113119b6c7760308ff0548c4e8d2d4c64d8ef010cde9f0",
+    "12_product_spec.md": "8c3a722f4bd65282723ce27d4c037e507677f82b9770fd29faaea959f76f058f",
+    "checks/render_development_plan.py": "505be08b5471bb4eaa85d276deea0396956d3b391956065039a97526b293a7e4",
+    "checks/validate_development_plan.py": "f85a44d155432db3549920d1c9b2d44871182659e8ce62dd1002a1809af88a5d",
+    "contracts/api_inventory.json": "69ef26b8457ad8e6dc637f2264240e644ca1de475d7ab0cabd4dab0cb9f8dee6",
+    "contracts/db_inventory.json": "044eed0e2683d2438f765edc351ee20fab059466dd9816be580ba8af53ad9ac8",
+    "contracts/ui_inventory.json": "6258a5b4b32fcc9c5d54594cb72ba8dc0310177b5d1e1bf219bd2d8a13aa2fca",
+    "contracts/internal.proto": "ded7e955817bf9062a1a892b607ca76129bccae1fe40465c267d6caa8998acb1"
+  },
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -89,7 +100,7 @@
         "同一目标只一个writer，现行实现/目标/Instance事实分层",
         "不重新征求已批准业务决定，不改变用户现有未提交文件"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [],
       "apiConsumes": [],
       "sessionOnlyOperations": [],
@@ -173,7 +184,7 @@
         "沿用packages/contracts/go/go.mod；W01核对已运行api协议与旧v226规划的精确差异后统一生产/规格/生成消费者，不机械改包名、不另建module或并行协议副本",
         "必要消费者go.mod/go.sum调整属于契约写集：记录实际依赖链与选定版本，不为旧测试或保持diff不变增加兼容字段、强压依赖或另建模块",
         "先贯通03 x-approved-wire-migration与02第0节：应用来源判别联合、Agent必选独立WebUI、descriptor provenance、claims、Quote/Serve持久化与真实消费者同版交付",
-        "同步Gateway UserExternalBinding三个RPC与规格、保留Tenant reservation只读历史及旧Build executor、明确api/v226生成映射；修Runtime REST owner和per-owner Operation路由，不复制第二套合同",
+        "同步Gateway UserExternalBinding三个RPC与规格、保留Tenant reservation只读历史及旧Build executor、沿用api生产包映射；修Runtime REST owner和per-owner Operation路由，不复制第二套合同",
         "默认App不得伪造Package/Build/CapabilityVersion/Build receipt；Agent必须保留Package/Runtime/独立WebUI三个真实输入及claim"
       ],
       "verification": [
@@ -186,7 +197,7 @@
         "双方消费者同一契约版本，金额string/int64与source ms精度一致",
         "契约升级在一组可回放变更中完成，不让旧测试驱动兼容字段"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [],
       "apiConsumes": [],
       "sessionOnlyOperations": [],
@@ -294,7 +305,7 @@
         "DB角色只写本域，无跨库FK/JOIN；同一writer无双写",
         "readiness真实暴露依赖不就绪；未知结果不默认成功"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [],
       "apiConsumes": [],
       "sessionOnlyOperations": [],
@@ -408,7 +419,7 @@
         "跨Tenant/伪actor/伪audience/撤权拒绝；session退出不丢原已接受义务",
         "前端不收到服务token，不保存密码，future consent不从role缓存猜"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [
         "acceptInvitation",
         "getLoginContext",
@@ -512,7 +523,7 @@
         "重复/丢响应/余额并发/错原单/错钱包/超额及unknown退款全部用真实decoder验证",
         "不用余额差作为付款证明，不在普通CI触碰真钱"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [
         "createGatewayKey",
         "getPersonalGatewayKey",
@@ -564,6 +575,7 @@
         "GatewayProductService.RevokeGatewayKey",
         "GatewayProductService.ListRechargeRecords",
         "GatewayProductService.ListModels",
+        "GatewayCoordination.GetSelfUserIdentity",
         "GatewayCoordination.GetSelfUserExternalBinding",
         "GatewayCoordination.BindUserExternalIdentity",
         "GatewayCoordination.ReadUserExternalIdentity",
@@ -572,7 +584,11 @@
         "GatewayCoordination.Refund",
         "GatewayCoordination.ReadWalletAction",
         "GatewayCoordination.CreateManagedKey",
+        "GatewayCoordination.ReadManagedKey",
         "GatewayCoordination.RevokeManagedKey",
+        "GatewayCoordination.DisableManagedKey",
+        "GatewayCoordination.EnableManagedKey",
+        "GatewayCoordination.ReadManagedKeyLifecycle",
         "GatewayPlanChangeSettlement.DebitSupplement",
         "GatewayPlanChangeSettlement.DebitScheduledPeriod",
         "GatewayPlanChangeSettlement.RefundFailure",
@@ -635,7 +651,7 @@
         "缺必填/伪Workspace/相同键不同hash/秘密泄露拒绝",
         "append-only/权限/retention真实DB检查；没有运行证据不显示qualified"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [
         "getReceipt",
         "getWorkspaceFinancialReceipt",
@@ -719,7 +735,7 @@
         "无双重取整/浮点/毫秒从PG重算；新购买周期1个月，历史周期不改",
         "管理员准入目录不执行资源采购"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [
         "createComputePlan",
         "createPricePolicyVersion",
@@ -808,7 +824,7 @@
         "完整repository/digest/platform/recipe/revision来源可回读",
         "第三方不能混入官方prefix；无新SSO或固定Runtime路径假设"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [
         "createPublisherNamespace",
         "listPublisherNamespaces",
@@ -889,7 +905,7 @@
         "首包无CapabilityVersion仍可保护Package/Runtime/WebUI输入",
         "路径穿越/错摘要/跨Tenant/过期签名/并发删除/Bind丢响应均覆盖"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [
         "archiveNamespace",
         "archivePackage",
@@ -993,7 +1009,7 @@
         "真实Storage+Registry+BuildKit隔离集成；worker重启、push已成但丢响应、注册ACK丢失",
         "输出digest/descriptor可被后续Runtime读取；不以fixture假Build完成"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [
         "createBuild",
         "deleteCapabilityVersion",
@@ -1084,7 +1100,7 @@
         "相同digest/兼容契约/状态转换与Build引用反例",
         "Runtime目录读回不得被解释为Agent已部署或已运行"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [
         "getBuildRuntimePolicy",
         "listRuntimeVersions",
@@ -1161,7 +1177,7 @@
         "Linux隔离集成：真实volume数据、资源动作丢响应、unknown不重发",
         "资源only路径不伪造Agent readiness，零金额路径无Gateway动作"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [],
       "apiConsumes": [],
       "sessionOnlyOperations": [],
@@ -1237,7 +1253,7 @@
         "SDK请求和原请求读回边界使用typed tests；真正变更仅W29授权Instance验证",
         "不能把SDK RequestId或kubectl接受当资源完成"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [],
       "apiConsumes": [],
       "sessionOnlyOperations": [],
@@ -1327,7 +1343,7 @@
         "BFF不写业务表、不拥有Saga/钱包；未知Owner拒绝不遍历猜测",
         "旧/api与新/api/v2按明确切换，不请求失败再fallback"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [
         "getOperation"
       ],
@@ -1427,7 +1443,7 @@
         "首包与新版本都可用；选择WebUI确实进入产物",
         "不把字段存在、静态原型或传输100%当构建完成"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [],
       "apiConsumes": [
         "archiveNamespace",
@@ -1544,7 +1560,7 @@
         "一个Workspace一次原单、至多一个当前应用；默认App和Agent均以Serve实际可用及必需receipt确认完成，不以资源ready完成",
         "失败收尾/unknown/退款分开展示，拒绝跨Tenant与伪价格"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [
         "createQuote",
         "createWorkspace",
@@ -1635,7 +1651,7 @@
         "按钮条件、错误和场景与04/11完全同词",
         "生产UI不执行价格算法，准确显示最多6位微美元"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [],
       "apiConsumes": [
         "adoptWorkspace",
@@ -1732,7 +1748,7 @@
         "一个确认选中部署，appliedVersion/readiness/access与实际读回一致",
         "没有隐式自动升级、重新购买或第二份Workspace部署真相"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [
         "getDeployment",
         "getWorkspaceAccess",
@@ -1838,7 +1854,7 @@
         "一周期最多一原单；不偷偷从now重新开始一月",
         "关闭自动续费只影响未来未接受义务"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [
         "getSubscription",
         "renewWorkspace",
@@ -1923,7 +1939,7 @@
         "20→40剩半期补10；31天例子19.354839；资源+运行确认才applied",
         "scheduled当前不扣/不减；无下期授权awaiting_payment；future paid/mixed/shrink拒绝清楚"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [
         "cancelPlanChange",
         "getPlanChange",
@@ -2035,7 +2051,7 @@
         "无证据不退款，已删除不等于退款到账",
         "不靠列表未找到或钱包余额差证明结果"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [
         "deleteWorkspace",
         "getWorkspaceDeletion"
@@ -2107,7 +2123,7 @@
         "Tenant权限和各Workspace运行结果分开",
         "没有跨Tenant资源管理和删除后假复活数据"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [
         "bindTenantWallet",
         "createTenant",
@@ -2196,7 +2212,7 @@
         "不把预约持久化当资源已降配；unknown不建议重新付款",
         "取消/删除确认对象范围明确，旧单/新补差不混"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [],
       "apiConsumes": [
         "cancelPlanChange",
@@ -2284,7 +2300,7 @@
         "普通owner无platform_admin权限；无伪JSON表单",
         "缺证据显示未验证，不用文案冒充资格通过"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [],
       "apiConsumes": [
         "bindTenantWallet",
@@ -2393,7 +2409,7 @@
         "运营能知道真实失败点与唯一下一动作",
         "无新全局事件总线/中央workflow/第二lock authority"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [
         "listAdminOperations",
         "listAuditEvents",
@@ -2483,7 +2499,7 @@
         "无假Build/Quote/重购；不做双写或失败时切旧接口",
         "反向不保真就不宣称可回滚，原证据不能覆盖"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [
         "adoptWorkspace"
       ],
@@ -2587,7 +2603,7 @@
         "功能、接口、DB、页面呈现同一结果；原型不替代浏览器真链",
         "每项证据说明实测和未测，不将fixture等同真实钱/provider"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [],
       "apiConsumes": [],
       "sessionOnlyOperations": [],
@@ -2660,7 +2676,7 @@
         "候选集合是不可变单位，任何组件变更必须新Candidate重新适用资格",
         "Release只提升已资格同字节，不rebuild；原发布者权限边界不变"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [],
       "apiConsumes": [],
       "sessionOnlyOperations": [],
@@ -2717,7 +2733,7 @@
         "Local receipt绑定同一候选及provider条件",
         "不买真实Tencent资源、不调用真实客户钱包"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [],
       "apiConsumes": [],
       "sessionOnlyOperations": [],
@@ -2772,7 +2788,7 @@
         "与Local同候选字节；不能以公网404/Pod Running作完整合格",
         "未拿授权或必要凭据则记录未执行，不产生假资格"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [],
       "apiConsumes": [],
       "sessionOnlyOperations": [],
@@ -2831,7 +2847,7 @@
         "不丢原单/Key/数据，零重复收费；未完成批次明确保留",
         "本步骤与Cloud正式发布不同，不从Cloud dispatch实例切换"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [],
       "apiConsumes": [],
       "sessionOnlyOperations": [],
@@ -2889,7 +2905,7 @@
         "只有owner及RenDeHuang符合既有发布权限，original publisher不被替换",
         "产品发布不要求所有客户迁移已完成；但声明的迁移兼容性须有W25/W29证据"
       ],
-      "state": "not_implemented",
+      "state": "not_evaluated",
       "apiPrimary": [],
       "apiConsumes": [],
       "sessionOnlyOperations": [],
@@ -3429,6 +3445,9 @@
     "WorkspaceAdmission.CheckAdmission": [
       "W15"
     ],
+    "GatewayCoordination.GetSelfUserIdentity": [
+      "W04"
+    ],
     "GatewayCoordination.GetSelfUserExternalBinding": [
       "W04"
     ],
@@ -3453,7 +3472,19 @@
     "GatewayCoordination.CreateManagedKey": [
       "W04"
     ],
+    "GatewayCoordination.ReadManagedKey": [
+      "W04"
+    ],
     "GatewayCoordination.RevokeManagedKey": [
+      "W04"
+    ],
+    "GatewayCoordination.DisableManagedKey": [
+      "W04"
+    ],
+    "GatewayCoordination.EnableManagedKey": [
+      "W04"
+    ],
+    "GatewayCoordination.ReadManagedKeyLifecycle": [
       "W04"
     ],
     "FabricCoordination.AdmitResources": [

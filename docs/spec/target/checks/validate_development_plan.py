@@ -52,7 +52,7 @@ for rpc,wids in plan['rpcImplementers'].items():
  for wid in wids:require(wid in W and rpc in W[wid].get('rpcImplements',[]),'RPC task mapping mismatch: '+rpc)
 for wid,w in W.items():
  require(set(w['owners'])<=set(roots),wid+' references an undeclared owner work root')
- require(w['state']=='not_implemented',wid+' incorrectly claims work was implemented')
+ require(w['state']=='not_evaluated',wid+' must not assert implementation progress')
  for k in ['coordinator','owners','features','plannedWritePaths','deliverables','verification','acceptance']:require(bool(w.get(k)),wid+' missing '+k)
  for source in w['existingReadPaths']:
   resolved=resolve_path(source)
