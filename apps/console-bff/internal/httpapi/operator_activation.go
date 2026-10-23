@@ -70,7 +70,7 @@ type activationBindingResult struct {
 type activationInput struct {
 	Email     *string `json:"email"`
 	Password  *string `json:"password"`
-	Name      *string `json:"name"`
+	Name      *string `json:"name,omitempty"`
 	Admission *string `json:"admission"`
 }
 

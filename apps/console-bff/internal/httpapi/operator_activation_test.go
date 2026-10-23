@@ -390,3 +390,32 @@ func TestOperatorActivationUsesTheAccountForTheTenantKey(t *testing.T) {
 		t.Fatalf("tenant key depended on the browser key: %v", keys)
 	}
 }
+
+const activationBodyWithoutName = `{"email":"customer@example.com","password":"CorrectHorseBatteryStaple!","admission":"full_cloud_customer"}`
+
+// TestOperatorActivationForwardsAnAbsentNameAsAbsent proves an omitted browser
+// name is forwarded as an absent field, not as JSON null. The retained owner
+// accepts a missing name (it derives the Tenant name from the email) and rejects
+// a non-string, so re-encoding the canonical body must preserve absence.
+func TestOperatorActivationForwardsAnAbsentNameAsAbsent(t *testing.T) {
+	provision := &activationProvisionProbe{receipt: []byte(`{"operationId":"account-provision-1","accountId":"acct-1","sub2apiUserId":"77","status":"succeeded","workspacePurchaseEnabled":true}`)}
+	tenant := &activationTenantProbe{}
+	handler := activationServer(provision, tenant, &activationBindingProbe{}, activationIdentity()).Handler()
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, activationRequest(activationBodyWithoutName))
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("activation status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var forwarded map[string]json.RawMessage
+	if err := json.Unmarshal(provision.body, &forwarded); err != nil {
+		t.Fatalf("forwarded body %s: %v", provision.body, err)
+	}
+	if raw, exists := forwarded["name"]; exists {
+		t.Fatalf("forwarded body carries name=%s: %s", raw, provision.body)
+	}
+	if tenant.create.GetBody().GetName() != "customer" {
+		t.Fatalf("tenant name=%q body=%+v", tenant.create.GetBody().GetName(), tenant.create.GetBody())
+	}
+}
