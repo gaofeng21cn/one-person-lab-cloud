@@ -21,7 +21,7 @@ import (
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/services/internal/ownerservice"
 	"opl-cloud/services/internal/ownerstore/ownerstoretest"
-	"opl-cloud/services/serve/internal/tkeapply"
+	"opl-cloud/services/internal/tkeapply"
 	"opl-cloud/services/serve/migrations"
 )
 

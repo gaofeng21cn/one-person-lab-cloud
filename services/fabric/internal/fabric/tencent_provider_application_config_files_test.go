@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"opl-cloud/services/internal/tkeapply"
 	"testing"
 
 	contracts "opl-cloud/packages/contracts/go"
@@ -45,8 +46,8 @@ func TestTencentApplicationDependencyConfigAndLifecycle(t *testing.T) {
 		t.Fatalf("observation=%#v err=%v", observed, err)
 	}
 	dependency := contracts.WorkspaceApplicationRuntimeComponents(input.Revision)[1]
-	deployment := fake.deployments[workspaceApplicationComponentResourceName(input, dependency.Name)]
-	if !verifyTencentApplicationConfiguration(input, dependency, deployment, StoragePVCName(tencentApplicationVolume())) {
+	deployment := fake.deployments[tkeapply.ComponentResourceName(input, dependency.Name)]
+	if !tkeapply.VerifyConfiguration(input, dependency, deployment, StoragePVCName(tencentApplicationVolume())) {
 		t.Fatal("declared dependency rejected")
 	}
 	security := nested(deployment, "spec", "template", "spec", "securityContext").(map[string]any)
@@ -58,12 +59,12 @@ func TestTencentApplicationDependencyConfigAndLifecycle(t *testing.T) {
 	if stringValue(nested(security, "seccompProfile", "type")) != "RuntimeDefault" {
 		t.Fatal("dependency seccomp default removed")
 	}
-	main := fake.deployments[workspaceApplicationComponentResourceName(input, "main")]
+	main := fake.deployments[tkeapply.ComponentResourceName(input, "main")]
 	if number(nested(main, "spec", "template", "spec", "securityContext", "runAsUser")) != 10001 {
 		t.Fatal("main identity changed")
 	}
-	configName := "ConfigMap:" + workspaceApplicationComponentResourceName(input, "config")
-	if !verifyApplicationConfigObject(input, fake.resources[configName]) {
+	configName := "ConfigMap:" + tkeapply.ComponentResourceName(input, "config")
+	if !tkeapply.VerifyConfigObject(input, fake.resources[configName]) {
 		t.Fatal("immutable config missing")
 	}
 	result, err := provider.SetWorkspaceApplicationRuntimeLifecycle(context.Background(), input, "absent")
@@ -83,12 +84,12 @@ func TestTencentApplicationDependencyConfigurationRejectsDrift(t *testing.T) {
 		t.Run(change, func(t *testing.T) {
 			_, _, input := tencentConfiguredDependencyInput(t)
 			component := contracts.WorkspaceApplicationRuntimeComponents(input.Revision)[1]
-			raw := workspaceApplicationComponentDeployment(input, tencentApplicationCompute(), tencentApplicationVolume(), component, nil, "fixture-pvc")
+			raw := retainedComponentDeployment(input, tencentApplicationCompute(), tencentApplicationVolume(), component, nil, "fixture-pvc")
 			var deployment map[string]any
 			if err := json.Unmarshal(mustJSON(raw), &deployment); err != nil {
 				t.Fatal(err)
 			}
-			if !verifyTencentApplicationConfiguration(input, component, deployment, "fixture-pvc") {
+			if !tkeapply.VerifyConfiguration(input, component, deployment, "fixture-pvc") {
 				t.Fatal("baseline rejected")
 			}
 			spec := nested(deployment, "spec", "template", "spec").(map[string]any)
@@ -133,7 +134,7 @@ func TestTencentApplicationDependencyConfigurationRejectsDrift(t *testing.T) {
 					volume["configMap"].(map[string]any)["name"] = "foreign"
 				}
 			}
-			if verifyTencentApplicationConfiguration(input, component, deployment, "fixture-pvc") {
+			if tkeapply.VerifyConfiguration(input, component, deployment, "fixture-pvc") {
 				t.Fatalf("accepted %s", change)
 			}
 		})
@@ -147,7 +148,7 @@ func TestTencentApplicationConfigObjectRejectsDrift(t *testing.T) {
 			if err := provider.prepareApplicationConfigFiles(context.Background(), input); err != nil {
 				t.Fatal(err)
 			}
-			config := fake.resources["ConfigMap:"+workspaceApplicationComponentResourceName(input, "config")]
+			config := fake.resources["ConfigMap:"+tkeapply.ComponentResourceName(input, "config")]
 			switch change {
 			case "data":
 				config["data"].(map[string]any)["main-config"] = "changed"
@@ -170,7 +171,7 @@ func TestTencentApplicationConfigCleanupRejectsForeignOwner(t *testing.T) {
 	if err := provider.prepareApplicationConfigFiles(context.Background(), input); err != nil {
 		t.Fatal(err)
 	}
-	config := fake.resources["ConfigMap:"+workspaceApplicationComponentResourceName(input, "config")]
+	config := fake.resources["ConfigMap:"+tkeapply.ComponentResourceName(input, "config")]
 	nested(config, "metadata", "labels").(map[string]any)["oplcloud.cn/runtime-id"] = "foreign"
 	if _, err := provider.SetWorkspaceApplicationRuntimeLifecycle(context.Background(), input, "absent"); !errors.Is(err, ErrLaunchStageBindingConflict) {
 		t.Fatalf("foreign config deletion allowed: %v", err)
@@ -187,7 +188,7 @@ func TestTencentApplicationConfigReadbackRejectsMissingAndChangedContents(t *tes
 			if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
 				t.Fatal(err)
 			}
-			key := "ConfigMap:" + workspaceApplicationComponentResourceName(input, "config")
+			key := "ConfigMap:" + tkeapply.ComponentResourceName(input, "config")
 			if change == "missing" {
 				delete(fake.resources, key)
 			} else {
@@ -203,7 +204,7 @@ func TestTencentApplicationConfigReadbackRejectsMissingAndChangedContents(t *tes
 func TestTencentApplicationDependencyReadbackAllowsKubernetesProbeDefaults(t *testing.T) {
 	_, _, input := tencentConfiguredDependencyInput(t)
 	component := contracts.WorkspaceApplicationRuntimeComponents(input.Revision)[1]
-	raw := workspaceApplicationComponentDeployment(input, tencentApplicationCompute(), tencentApplicationVolume(), component, nil, "fixture-pvc")
+	raw := retainedComponentDeployment(input, tencentApplicationCompute(), tencentApplicationVolume(), component, nil, "fixture-pvc")
 	var deployment map[string]any
 	if err := json.Unmarshal(mustJSON(raw), &deployment); err != nil {
 		t.Fatal(err)
@@ -211,7 +212,7 @@ func TestTencentApplicationDependencyReadbackAllowsKubernetesProbeDefaults(t *te
 	probe := firstContainerField(deployment, "readinessProbe").(map[string]any)
 	probe["timeoutSeconds"], probe["successThreshold"], probe["failureThreshold"] = 1, 1, 3
 	probe["httpGet"].(map[string]any)["scheme"] = "HTTP"
-	if !verifyTencentApplicationConfiguration(input, component, deployment, "fixture-pvc") {
+	if !tkeapply.VerifyConfiguration(input, component, deployment, "fixture-pvc") {
 		t.Fatal("Kubernetes probe defaults rejected")
 	}
 }
@@ -221,11 +222,11 @@ func TestTencentApplicationConfigPrepareReusesExactImmutableObject(t *testing.T)
 	if err := provider.prepareApplicationConfigFiles(context.Background(), input); err != nil {
 		t.Fatal(err)
 	}
-	original := fake.resources["ConfigMap:"+workspaceApplicationComponentResourceName(input, "config")]
+	original := fake.resources["ConfigMap:"+tkeapply.ComponentResourceName(input, "config")]
 	if err := provider.prepareApplicationConfigFiles(context.Background(), input); err != nil {
 		t.Fatalf("identical replay recreated immutable config: %v", err)
 	}
-	if stringValue(nested(original, "metadata", "uid")) != "ConfigMap:"+workspaceApplicationComponentResourceName(input, "config") {
+	if stringValue(nested(original, "metadata", "uid")) != "ConfigMap:"+tkeapply.ComponentResourceName(input, "config") {
 		t.Fatal("immutable object not bound to generation")
 	}
 }

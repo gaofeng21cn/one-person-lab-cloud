@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	contracts "opl-cloud/packages/contracts/go"
+	"opl-cloud/services/internal/tkeapply"
 	"os"
 	"path/filepath"
 	"strings"
@@ -449,7 +450,7 @@ func TestWorkspaceApplicationMigrationPreservesProvenRotatedCredentials(t *testi
 	if err != nil || credentials.WebUIPassword != deriveWorkspaceAdminPassword("migration-synthetic-seed", input.WorkspaceID, rotatedToken) {
 		t.Fatalf("migration did not preserve rotated password: %v", err)
 	}
-	secret := fake.resources["Secret:"+workspaceApplicationComponentResourceName(input, "secrets")]
+	secret := fake.resources["Secret:"+tkeapply.ComponentResourceName(input, "secrets")]
 	sessionCredential, declared := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret)
 	if !declared || stringValue(nested(secret, "data", sessionCredential.Name)) != base64.StdEncoding.EncodeToString([]byte(deriveWorkspaceSessionSecret("migration-synthetic-seed", input.WorkspaceID, rotatedToken))) {
 		t.Fatal("migration did not preserve rotated session secret")

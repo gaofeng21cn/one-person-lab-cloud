@@ -12,6 +12,7 @@ COPY services/internal/postgresmigrate /src/services/internal/postgresmigrate
 # protected-compute guard, so the shared guard module is part of this stage's
 # local replacements.
 COPY services/internal/protectedresource /src/services/internal/protectedresource
+COPY services/internal/tkeapply /src/services/internal/tkeapply
 COPY packages/contracts/go /src/packages/contracts/go
 COPY services/fabric/go.mod services/fabric/go.sum ./
 RUN GOPROXY="$GOPROXY" go mod download

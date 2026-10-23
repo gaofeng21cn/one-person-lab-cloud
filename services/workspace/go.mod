@@ -93,3 +93,7 @@ replace opl-cloud/services/serve => ../serve
 replace opl-cloud/services/internal/protectedresource => ../internal/protectedresource
 
 require opl-cloud/services/internal/protectedresource v0.0.0 // indirect
+
+require opl-cloud/services/internal/tkeapply v0.0.0
+
+replace opl-cloud/services/internal/tkeapply => ../internal/tkeapply

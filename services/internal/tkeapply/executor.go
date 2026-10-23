@@ -11,7 +11,7 @@ import (
 )
 
 // Installation is the installation-owned cluster configuration the workload
-// executor needs. Every field is declared by the installation that deploys Serve;
+// executor needs. Every field is declared by the installation that deploys its owning process;
 // none of them is inferred from a caller, a resource readback or another owner's
 // naming, because the installation is the only authority for its own namespace,
 // its own image-pull Secret and the pods allowed to reach a Workspace
@@ -45,6 +45,12 @@ type Installation struct {
 // installation's single cluster-access boundary and refuses any mutation that
 // targets the installation's own protected compute.
 type Executor struct {
+	// RunKubectl retains an owner adapter's journal and capability boundary. When
+	// absent the injected Kubectl transport is used after the same resource guard.
+	RunKubectl func(context.Context, []string, []byte, protectedresource.Target) ([]byte, error)
+	// CredentialToken resolves legacy credential provenance at its original owner.
+	// A nil resolver retains the strict default with no historical proof.
+	CredentialToken func(context.Context, WorkspaceApplicationRuntimeInput) (string, error)
 	// Kubectl runs one kubectl invocation against the installation cluster. It is
 	// the only way this executor reaches the cluster.
 	Kubectl func(ctx context.Context, args []string, stdin []byte) ([]byte, error)
@@ -111,6 +117,9 @@ func (e *Executor) callKubectl(ctx context.Context, args []string, stdin []byte,
 		if err := e.Guard.Check(target); err != nil {
 			return nil, err
 		}
+	}
+	if e.RunKubectl != nil {
+		return e.RunKubectl(ctx, args, stdin, target)
 	}
 	return e.Kubectl(ctx, args, stdin)
 }

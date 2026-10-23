@@ -18,7 +18,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	api "opl-cloud/packages/contracts/go/api"
-	"opl-cloud/services/serve/internal/tkeapply"
+	"opl-cloud/services/internal/tkeapply"
 )
 
 // ReasonModelConfigurationUnavailable names the one fact a reload needs and the

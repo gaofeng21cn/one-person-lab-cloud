@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"opl-cloud/services/internal/tkeapply"
 	"sort"
 	"time"
 
@@ -173,7 +174,7 @@ func applicationRevisionDeclaresComponent(input WorkspaceApplicationRuntimeInput
 		return false
 	}
 	for _, component := range contracts.WorkspaceApplicationRuntimeComponents(input.Revision) {
-		if component.Name == componentName && workspaceApplicationComponentResourceName(input, componentName) == serviceName {
+		if component.Name == componentName && tkeapply.ComponentResourceName(input, componentName) == serviceName {
 			return true
 		}
 	}

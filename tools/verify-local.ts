@@ -31,6 +31,7 @@ export const goModules = Object.freeze([
   "services/internal/postgresmigrate",
   "services/internal/ownerstore",
   "services/internal/ownerservice",
+  "services/internal/tkeapply",
   "services/capability",
   "services/gateway-integration",
   "services/build",
@@ -121,6 +122,7 @@ export const databaseFreeGoTestSpecs: readonly DatabaseFreeGoTestSpec[] = Object
   // database; its PostgreSQL-gated isolation proof declares the capability it
   // needs and is reported as excluded here instead of being name-filtered out.
   { cwd: "services/internal/protectedresource", packages: ["./..."] },
+  { cwd: "services/internal/tkeapply", packages: ["./..."] },
   { cwd: "services/internal/ownerservice", packages: ["./..."] }
 ]);
 

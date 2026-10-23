@@ -18,14 +18,14 @@ func (p *Executor) ReadWorkspaceApplicationRuntimeLifecycle(ctx context.Context,
 	}
 	observation := workspaceApplicationObservation(input, resources)
 	for i, component := range observation.Components {
-		deployment, exists := resources.deployments[workspaceApplicationComponentResourceName(input, component.Name)]
+		deployment, exists := resources.deployments[ComponentResourceName(input, component.Name)]
 		if !exists {
 			continue
 		}
-		if workspaceApplicationDeploymentImage(deployment) != component.Image || stringValue(nested(deployment, "metadata", "labels", "oplcloud.cn/runtime-operation-id")) != k8sCostLabelValue(input.RuntimeOperationID) {
+		if DeploymentImage(deployment) != component.Image || stringValue(nested(deployment, "metadata", "labels", "oplcloud.cn/runtime-operation-id")) != k8sCostLabelValue(input.RuntimeOperationID) {
 			return WorkspaceApplicationRuntimeLifecycleResult{}, ErrLaunchStageBindingConflict
 		}
-		if !verifyTencentApplicationConfiguration(input, component, deployment, resources.storagePVC) {
+		if !VerifyConfiguration(input, component, deployment, resources.storagePVC) {
 			return WorkspaceApplicationRuntimeLifecycleResult{}, ErrLaunchStageBindingConflict
 		}
 		if number(nested(deployment, "spec", "replicas")) == 0 && number(nested(deployment, "status", "replicas")) == 0 && number(nested(deployment, "status", "observedGeneration")) >= number(nested(deployment, "metadata", "generation")) {
@@ -73,16 +73,16 @@ func (p *Executor) SetWorkspaceApplicationRuntimeLifecycle(ctx context.Context, 
 	if desired == "absent" {
 		targets := []string{"delete"}
 		for _, componentName := range order {
-			name := workspaceApplicationComponentResourceName(input, componentName)
+			name := ComponentResourceName(input, componentName)
 			targets = append(targets, "deployment/"+name, "service/"+name)
 		}
 		if len(input.Configuration.Files) > 0 {
 			if _, err := p.readApplicationConfigObject(ctx, input); err != nil && !errors.Is(err, ErrResourceAbsent) {
 				return WorkspaceApplicationRuntimeLifecycleResult{}, err
 			}
-			targets = append(targets, "configmap/"+workspaceApplicationComponentResourceName(input, "config"))
+			targets = append(targets, "configmap/"+ComponentResourceName(input, "config"))
 		}
-		targets = append(targets, "networkpolicy/"+workspaceApplicationComponentResourceName(input, "network"), "secret/"+workspaceApplicationComponentResourceName(input, "secrets"), "--ignore-not-found=true", "--wait=false")
+		targets = append(targets, "networkpolicy/"+ComponentResourceName(input, "network"), "secret/"+ComponentResourceName(input, "secrets"), "--ignore-not-found=true", "--wait=false")
 		if _, err := p.callKubectl(ctx, targets, nil, protectedresource.Target{}); err != nil {
 			return WorkspaceApplicationRuntimeLifecycleResult{}, err
 		}
@@ -98,7 +98,7 @@ func (p *Executor) SetWorkspaceApplicationRuntimeLifecycle(ctx context.Context, 
 			return WorkspaceApplicationRuntimeLifecycleResult{}, err
 		}
 		for _, componentName := range order {
-			name := workspaceApplicationComponentResourceName(input, componentName)
+			name := ComponentResourceName(input, componentName)
 			deployment, exists := resources.deployments[name]
 			if !exists || number(nested(deployment, "spec", "replicas")) == float64(replicas) {
 				continue

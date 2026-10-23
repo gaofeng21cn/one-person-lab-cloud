@@ -26,7 +26,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	contracts "opl-cloud/packages/contracts/go"
-	"opl-cloud/services/serve/internal/tkeapply"
+	"opl-cloud/services/internal/tkeapply"
 )
 
 type fabricApplicationBridge struct {

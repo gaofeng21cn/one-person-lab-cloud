@@ -27,7 +27,8 @@ services:
       # than inheriting a permissive default.
       RUN_TENCENT_CREATE_RELEASE_EXECUTION: ${RUN_TENCENT_CREATE_RELEASE_EXECUTION:?Set RUN_TENCENT_CREATE_RELEASE_EXECUTION to 1 to authorize live Tencent resource mutations}
       OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON: ${OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON:?Set the deployment-owned Tencent/TKE provider profile JSON}
-      # The Fabric process owns the provisioner credential boundary. These values
+      # Fabric owns infrastructure provisioning and the retained application caller.
+      # Serve owns new application execution. These infrastructure credentials
       # are supplied by the installer secret environment and are never written to
       # the Workspace or Control Plane containers.
       TENCENTCLOUD_SECRET_ID: ${TENCENTCLOUD_SECRET_ID:?Set TENCENTCLOUD_SECRET_ID}
@@ -50,9 +51,10 @@ services:
       TENCENT_CVM_SYSTEM_DISK_TYPE: ${TENCENT_CVM_SYSTEM_DISK_TYPE:?Set TENCENT_CVM_SYSTEM_DISK_TYPE}
       TENCENT_CVM_SYSTEM_DISK_SIZE_GB: ${TENCENT_CVM_SYSTEM_DISK_SIZE_GB:?Set TENCENT_CVM_SYSTEM_DISK_SIZE_GB}
       TENCENT_CBS_DISK_TYPE: ${TENCENT_CBS_DISK_TYPE:?Set TENCENT_CBS_DISK_TYPE}
-    # Fabric is the only process that holds the cluster credentials. The
-    # installer supplies the TKE deploy kubeconfig on the host and this overlay
-    # mounts it read-only at the in-container path the provider is told to use.
+    # This mount belongs to Fabric infrastructure and historical operations.
+    # Serve application execution has its own declared installation boundary;
+    # this overlay does not grant or prove Serve access. The installer
+    # mounts the TKE deploy kubeconfig read-only at the provider path.
     volumes:
       - type: bind
         source: ${TENCENT_DEPLOY_KUBECONFIG_HOST_PATH:?Set the host path of the TKE deploy kubeconfig}
