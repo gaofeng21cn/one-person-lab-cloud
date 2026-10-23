@@ -619,11 +619,47 @@ function responseCookie(headers) {
   return value ? value.split(";", 1)[0] : "";
 }
 
+/*
+ * Every cookie a response set, by name.
+ *
+ * The CloudIdentity login answers with two cookies whose names it owns, and the
+ * login is only accepted when both of them come back on the command that
+ * follows. Reading one cookie out of a joined `set-cookie` header would be a
+ * guess about which one the server meant, so the names are read instead.
+ */
+function responseCookies(headers) {
+  const values = typeof headers.getSetCookie === "function"
+    ? headers.getSetCookie()
+    : [headers.get("set-cookie") || ""];
+  const cookies = new Map();
+  for (const value of values) {
+    // One set-cookie entry is one cookie plus its attributes, so only the pair
+    // before the first separator is the cookie itself.
+    const pair = String(value || "").split(";", 1)[0];
+    const index = pair.indexOf("=");
+    if (index <= 0) continue;
+    const name = pair.slice(0, index).trim();
+    const cookieValue = pair.slice(index + 1).trim();
+    if (!name || !cookieValue) continue;
+    cookies.set(name, `${name}=${cookieValue}`);
+  }
+  return cookies;
+}
+
 export function createHTTP(origin) {
   const request = async (path, init = {}, auth = null) => {
     const headers = new Headers(init.headers || {});
     if (auth?.cookie) headers.set("cookie", auth.cookie);
     if (auth?.csrf) headers.set("x-opl-csrf", auth.csrf);
+    // The owner route refuses a command that does not prove it came from the
+    // origin it is served on, and the Control Plane refuses a login whose
+    // Origin names somewhere else. Both accept the origin this transport was
+    // built for, so every request carries it rather than each caller deciding.
+    headers.set("origin", origin);
+    // The CloudIdentity session carries its own CSRF token under its own header
+    // name. The Control Plane token travels under a different one, so both
+    // authorities' write guards are satisfied by one transport.
+    if (auth?.ownerCsrf) headers.set("x-csrf-token", auth.ownerCsrf);
     const body = init.body === undefined ? undefined : JSON.stringify(init.body);
     if (body !== undefined) headers.set("content-type", "application/json");
     const response = await fetch(`${origin}${path}`, {
@@ -646,7 +682,7 @@ export function createHTTP(origin) {
     }
     return result;
   };
-  return { request, json };
+  return { origin, request, json };
 }
 
 function waitForWorkspaceDeleteSchedule(milliseconds) {
@@ -711,6 +747,90 @@ export async function login(http, email, password, expectedAccountId = "acct-adm
     throw new Error("local qualification login did not establish the expected account session");
   }
   return auth;
+}
+
+/*
+ * The two sessions this qualification holds, together.
+ *
+ * The owner route is authorized by a CloudIdentity session and the retained
+ * Control Plane reads answer for the Control Plane's own session. One credential
+ * establishes both, because the Gateway directory is the authority behind each
+ * of them, but one cookie is not one session: the buyer carries the two cookies
+ * and each authority reads its own.
+ */
+export async function openQualificationSessions(http, email, password, accountId, idempotencyKey) {
+  const controlPlane = await login(http, email, password, accountId);
+  const owner = await cloudIdentityLogin(http, http.origin, email, password, idempotencyKey);
+  if (!owner?.cookie || !owner?.ownerCsrf) {
+    throw new Error("qualification did not establish an owner session");
+  }
+  return {
+    cookie: `${controlPlane.cookie}; ${owner.cookie}`,
+    csrf: controlPlane.csrf,
+    ownerCsrf: owner.ownerCsrf,
+  };
+}
+
+/*
+ * The CloudIdentity session.
+ *
+ * The owner route is reached through the Console BFF, and the BFF answers for a
+ * CloudIdentity session: a cookie of its own name, a session row in the identity
+ * owner's store, and a CSRF token that belongs to that session. The Control
+ * Plane session is a different authority with a different cookie and a different
+ * session store, so a buyer that carried only the Control Plane cookie would be
+ * refused by the owner route for a session it never established.
+ *
+ * The login is the one the browser performs: a login context that carries a
+ * double-submit CSRF challenge, and a command that presents that challenge beside
+ * the challenge cookie. Both challenge cookies are scoped to the auth route, so
+ * they travel with this command and nowhere else.
+ *
+ * The credential is the customer's own. CloudIdentity authenticates it against
+ * the Gateway directory, which is the same authority the Control Plane session
+ * authenticates against, so one credential establishes one customer in two
+ * authorities rather than two identities for one person.
+ *
+ * The session answers with the identity owner's own projection: the actor it
+ * bound, the display name the Gateway directory returned for that actor, the
+ * tenant it belongs to, and the CSRF token the write guards compare against.
+ */
+export async function cloudIdentityLogin(http, origin, username, password, idempotencyKey) {
+  const context = await http.json("/api/v2/auth/context", {}, null, [200]);
+  const challengeCookies = responseCookies(context.response.headers);
+  const challenge = challengeCookies.get("opl_login_context");
+  const csrfCookie = challengeCookies.get("opl_login_csrf");
+  const csrfToken = String(context.payload?.csrfToken || "");
+  if (!challenge || !csrfCookie || !csrfToken) {
+    throw new Error("CloudIdentity login context is unavailable");
+  }
+  const key = String(idempotencyKey || "");
+  if (!key) throw new Error("CloudIdentity login requires an idempotency key");
+  const result = await http.json("/api/v2/auth/login", {
+    method: "POST",
+    headers: {
+      "x-csrf-token": csrfToken,
+      "idempotency-key": key,
+      cookie: `${challenge}; ${csrfCookie}`,
+    },
+    body: { username, password },
+  }, null, [200]);
+  const sessionCookie = responseCookies(result.response.headers).get("opl_console_session");
+  const session = result.payload;
+  if (!sessionCookie || !session?.actorId || !session?.csrfToken) {
+    throw new Error("CloudIdentity login did not establish a session");
+  }
+  return {
+    cookie: sessionCookie,
+    ownerCsrf: String(session.csrfToken),
+    session: {
+      actorId: String(session.actorId),
+      displayName: String(session.displayName || ""),
+      tenantId: String(session.tenantId || ""),
+      csrfToken: String(session.csrfToken),
+      expiresAt: String(session.expiresAt || ""),
+    },
+  };
 }
 
 // The default OPL application installation is committed beside the resource
@@ -816,15 +936,29 @@ async function readOwnerCatalogItems(http, auth, path, label) {
 // What this purchase declares. The owner prices exactly one application source
 // beside the compute and the storage plan, so the declaration names all three
 // and the quote the owner returns is checked against it.
+//
+// This harness has no operator-declared selection, so it only runs against a
+// catalog that offers exactly one purchasable choice of each kind. A catalog
+// that offers several is refused rather than narrowed: picking one of them
+// would be the harness choosing a purchase nobody declared, and a qualification
+// run that buys a different Workspace each time it runs is not evidence about
+// anything.
 export async function resolveLocalWorkspaceDeclaration(http, auth) {
   const [runtimeVersions, computePlans, storagePlans] = await Promise.all([
     readOwnerCatalogItems(http, auth, "/api/v2/catalog/runtime-versions", "runtime version"),
     readOwnerCatalogItems(http, auth, "/api/v2/catalog/compute-plans", "compute plan"),
     readOwnerCatalogItems(http, auth, "/api/v2/catalog/storage-plans", "storage plan")
   ]);
-  const runtimeVersion = runtimeVersions.find((candidate) => candidate?.status === "approved");
-  const computePlan = computePlans.find((candidate) => candidate?.availability === "available");
-  const storagePlan = storagePlans.find((candidate) => candidate?.availability === "available");
+  const onlyPurchasable = (candidates, label) => {
+    const purchasable = candidates.filter((candidate) => candidate?.status === "approved" || candidate?.availability === "available");
+    if (purchasable.length !== 1) {
+      throw new Error(`local qualification owner catalog offers ${purchasable.length} purchasable ${label}s`);
+    }
+    return purchasable[0];
+  };
+  const runtimeVersion = onlyPurchasable(runtimeVersions, "runtime version");
+  const computePlan = onlyPurchasable(computePlans, "compute plan");
+  const storagePlan = onlyPurchasable(storagePlans, "storage plan");
   if (!runtimeVersion || !computePlan || !storagePlan) {
     throw new Error("local qualification owner catalog does not offer a purchasable Workspace");
   }
@@ -1058,7 +1192,7 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
     });
     cleanupScope = { accountId: provision.accountId };
     onStage("qualification_login");
-    auth = await login(http, qualificationEmail, qualificationPassword, provision.accountId);
+    auth = await openQualificationSessions(http, qualificationEmail, qualificationPassword, provision.accountId, `local-qualification-owner:${accountProvisionKey}`);
     const me = sourceData((await http.json("/api/auth/me", {}, auth)).payload, "sub2api");
     const sub2apiUserId = String(me?.sub2apiUserId || "");
     if (me?.accountId !== provision.accountId || me?.email !== qualificationEmail.toLowerCase() || me?.role !== "owner" || me?.status !== "active" ||
@@ -1797,7 +1931,7 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
     } else {
     stage = "console_and_login";
     await consoleReadback(http);
-    auth = await login(http, adminEmail, adminPassword);
+    auth = await openQualificationSessions(http, adminEmail, adminPassword, "acct-admin", `local-workspace-owner:${launchKey}`);
     const me = sourceData((await http.json("/api/auth/me", {}, auth)).payload, "sub2api");
     const sub2apiUserId = String(me?.sub2apiUserId || "");
     if (me?.accountId !== accountId || !/^[1-9][0-9]*$/.test(sub2apiUserId) || me?.status !== "active") {

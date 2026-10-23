@@ -64,6 +64,12 @@ import {
   protectedEnvironment,
 } from "../helpers/protected-qualification-fixture.ts";
 
+// The owner mints the operation and the Workspace identities, and the public
+// contract publishes them as strings without a shape. These assertions hold
+// that the evidence names an identity the owner minted, not one this buyer
+// could have derived, without pinning how the owner spells it.
+const OWNER_MINTED_IDENTITY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+
 const REPOSITORY_ROOT = resolve(".");
 const FIXTURE_HELPER_URL = pathToFileURL(resolve("tests/helpers/protected-qualification-fixture.ts")).href;
 
@@ -142,7 +148,9 @@ function input(paths: Awaited<ReturnType<typeof writeFixture>>["paths"], digest:
     j0ReadyReceiptPath: paths.j0ReadyReceiptPath,
     boundaryModulePath: paths.boundaryModulePath,
     accountId: ACCOUNT_ID,
-    packageId: "basic",
+    runtimeVersionId: OWNER_RUNTIME_VERSION_ID,
+    computePlanId: OWNER_COMPUTE_PLAN_ID,
+    storagePlanId: OWNER_STORAGE_PLAN_ID,
     authorityClass: "sandbox" as const,
     outputPath: paths.outputPath,
   };
@@ -200,7 +208,9 @@ test("the run arguments name every declaration and refuse an unknown, duplicate 
     "--j0-ready-receipt", "/j0-ready.json",
     "--boundary", "/boundary.mjs",
     "--account-id", ACCOUNT_ID,
-    "--package-id", "basic",
+    "--runtime-version-id", OWNER_RUNTIME_VERSION_ID,
+    "--compute-plan-id", OWNER_COMPUTE_PLAN_ID,
+    "--storage-plan-id", OWNER_STORAGE_PLAN_ID,
     "--authority-class", "sandbox",
     "--output", "/receipt.json",
   ];
@@ -463,7 +473,9 @@ test("the shared request carries the exact Candidate, tenant, product, authority
       candidate: fixture.candidate,
       j0ReadyReceipt: j0ReadyReceipt(),
       accountId: ACCOUNT_ID,
-      packageId: "basic",
+      runtimeVersionId: OWNER_RUNTIME_VERSION_ID,
+      computePlanId: OWNER_COMPUTE_PLAN_ID,
+      storagePlanId: OWNER_STORAGE_PLAN_ID,
       authorityClass: "sandbox",
       provider: "tencent-tke",
     });
@@ -475,7 +487,13 @@ test("the shared request carries the exact Candidate, tenant, product, authority
     assert.deepEqual(request.source, { sha: fixture.candidate.product.sha, tree: fixture.candidate.product.tree, clean: true });
     assert.equal(request.tenant.accountId, ACCOUNT_ID);
     assert.match(request.tenant.accountDigest, /^sha256:[0-9a-f]{64}$/);
-    assert.deepEqual(request.product, { resourceType: "workspace", packageId: "basic", autoRenew: false });
+    assert.deepEqual(request.product, {
+      resourceType: "workspace",
+      applicationSelection: { kind: "opl_app", runtimeVersionId: OWNER_RUNTIME_VERSION_ID },
+      computePlanId: OWNER_COMPUTE_PLAN_ID,
+      storagePlanId: OWNER_STORAGE_PLAN_ID,
+      autoRenew: false,
+    });
     assert.deepEqual(request.scope, PROTECTED_QUALIFICATION_SCOPE);
     assert.equal(request.authority.mode, "live");
     assert.equal(request.authority.authorityClass, "sandbox");
@@ -498,7 +516,9 @@ test("the shared request carries the exact Candidate, tenant, product, authority
         candidate: fixture.candidate,
         j0ReadyReceipt: j0ReadyReceipt(),
         accountId: ACCOUNT_ID,
-        packageId: "Not A Package",
+        runtimeVersionId: "Not A Runtime Release",
+        computePlanId: OWNER_COMPUTE_PLAN_ID,
+        storagePlanId: OWNER_STORAGE_PLAN_ID,
         authorityClass: "sandbox",
         provider: "tencent-tke",
       })),
@@ -509,7 +529,9 @@ test("the shared request carries the exact Candidate, tenant, product, authority
         candidate: fixture.candidate,
         j0ReadyReceipt: j0ReadyReceipt("local-docker"),
         accountId: ACCOUNT_ID,
-        packageId: "basic",
+        runtimeVersionId: OWNER_RUNTIME_VERSION_ID,
+        computePlanId: OWNER_COMPUTE_PLAN_ID,
+        storagePlanId: OWNER_STORAGE_PLAN_ID,
         authorityClass: "sandbox",
         provider: "tencent-tke",
       })),
@@ -668,8 +690,8 @@ test("the producer invokes the deployed buyer and preserves its Candidate-bound 
     assert.equal(purchase.purchase.amountUsdMicros, QUOTE_MICROS);
     // The owner mints the operation and the Workspace identity, so the receipt
     // names the owner's own shapes rather than a derived launch identity.
-    assert.match(purchase.operation.operationId, /^op_[0-9a-f]{32}$/);
-    assert.match(purchase.operation.workspaceId, /^workspace_[0-9a-f]{32}$/);
+    assert.match(purchase.operation.operationId, OWNER_MINTED_IDENTITY);
+    assert.match(purchase.operation.workspaceId, OWNER_MINTED_IDENTITY);
     // The purchase names what was actually bought: the application source and
     // the plan pair the owner priced beside it, under the renewal mode it
     // admitted.
@@ -695,7 +717,10 @@ test("the producer invokes the deployed buyer and preserves its Candidate-bound 
     assert.equal(platform.state.purchases, 1);
     assert.equal(platform.state.charges, 1);
     assert.ok(platform.state.calls.includes("request:/api/auth/me"), "the buyer read the session account");
-    assert.ok(platform.state.calls.includes("request:/api/gateway/wallet"), "the buyer read the session wallet");
+    // The wallet is read from the Gateway owner under the owner session, so the
+    // balance it checked the quote against is the balance the owner spends.
+    assert.ok(platform.state.calls.includes("/api/v2/wallet"), "the buyer read the owner wallet");
+    assert.ok(platform.state.calls.includes("/api/v2/auth/session"), "the buyer read the live owner session");
     assert.equal(platform.state.calls.filter((call) => call === "purchase:issued").length, 1);
     // The purchase ran on the Workspace owner route: the owner priced a deploy
     // quote and admitted the order against it. The retained Control Plane route
@@ -811,7 +836,7 @@ test("a non-settled result is preserved as the shared receipt and is never summa
     assert.equal(platform.state.purchases, 0);
     assert.equal(platform.state.charges, 0);
     assert.ok(platform.state.calls.includes("request:/api/auth/me"), "the buyer checked the session before pricing");
-    assert.ok(platform.state.calls.includes("request:/api/gateway/wallet"), "the buyer read the wallet before pricing");
+    assert.ok(platform.state.calls.includes("/api/v2/wallet"), "the buyer read the owner wallet before pricing");
     assert.equal(platform.state.calls.filter((call) => call === "boundary:release").length, 1);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -834,7 +859,9 @@ test("the CLI loads the external boundary module and writes the receipt artifact
       "--j0-ready-receipt", fixture.paths.j0ReadyReceiptPath,
       "--boundary", fixture.paths.boundaryModulePath,
       "--account-id", ACCOUNT_ID,
-      "--package-id", "basic",
+      "--runtime-version-id", OWNER_RUNTIME_VERSION_ID,
+      "--compute-plan-id", OWNER_COMPUTE_PLAN_ID,
+      "--storage-plan-id", OWNER_STORAGE_PLAN_ID,
       "--authority-class", "sandbox",
       "--output", fixture.paths.outputPath,
     ], protectedEnvironment());
@@ -888,7 +915,8 @@ test("the shared qualification flow runs for the provider the deployment binding
     assert.equal(calls[0], "boundary:open");
     for (const read of [
       "/api/auth/me",
-      "/api/gateway/wallet",
+      "/api/v2/auth/session",
+      "/api/v2/wallet",
       "request:/api/auth/me",
       "/api/v2/quotes",
       "/api/v2/workspaces",
@@ -900,8 +928,10 @@ test("the shared qualification flow runs for the provider the deployment binding
     }
     // The order is read back from the owner that minted it, under the identity
     // the owner minted.
-    assert.ok(calls.some((call) => /^\/api\/v2\/operations\/workspace\/op_[0-9a-f]{32}$/.test(call)));
-    assert.ok(calls.some((call) => /^request:\/api\/v2\/operations\/workspace\/op_[0-9a-f]{32}$/.test(call)));
+    const mintedOperationId = String(result.purchaseReceipt?.operation?.operationId || "");
+    assert.ok(mintedOperationId, "the owner minted the operation identity");
+    assert.ok(calls.some((call) => call.endsWith(`/api/v2/operations/workspace/${mintedOperationId}`)));
+    assert.ok(calls.some((call) => call === `request:/api/v2/operations/workspace/${mintedOperationId}`));
     // The retained Control Plane route is consulted for the order it may have
     // admitted before the cutover, and for nothing else. It never admits a
     // purchase here.
@@ -911,13 +941,17 @@ test("the shared qualification flow runs for the provider the deployment binding
     // The Ledger receipt is found in the Ledger's own inventory and read back
     // under the identity it holds.
     assert.ok(calls.some((call) => call.startsWith("/api/billing/receipts?")));
-    assert.ok(calls.some((call) => /^\/api\/billing\/receipts\/rcpt_[0-9a-f]{32}$/.test(call)));
+    // The receipt identity is one the owner minted, and the public contract
+    // publishes it as a string without a shape.
+    assert.ok(calls.some((call) => /^\/api\/billing\/receipts\/[^/]+$/.test(call)));
     assert.ok(calls.some((call) => call.startsWith("/api/workspaces?")));
     assert.ok(calls.some((call) => /^\/api\/workspaces\/[^/]+\/runtime-status$/.test(call)));
     // The wallet is read on both sides of the purchase by the shared flow, and
-    // the buyer reads the account's own wallet through the session transport.
-    assert.equal(calls.filter((call) => call === "/api/gateway/wallet").length, 2);
-    assert.equal(calls.filter((call) => call === "request:/api/gateway/wallet").length, 1);
+    // the buyer reads the same owner's balance once more before it prices. Every
+    // one of them reads the Gateway owner under the owner session, so no
+    // balance is taken from the retained Control Plane projection.
+    assert.equal(calls.filter((call) => call === "/api/v2/wallet").length, 3);
+    assert.equal(calls.filter((call) => call === "/api/gateway/wallet").length, 0);
     // Nothing else can select the provider: an unsupported one is refused before
     // any boundary operation, even when the deployment is handed in directly.
     assert.throws(
@@ -1049,7 +1083,7 @@ test("a lost answer to the purchase command resumes the original order without a
     assert.equal(result.purchaseReceipt.operation.workspaceId, result.receipt.operation.workspaceId);
     // The deployed receipt names the owner-minted order; the Ledger receipt
     // that proves the charge is bound to it by the qualification receipt.
-    assert.match(result.purchaseReceipt.operation.operationId, /^op_[0-9a-f]{32}$/);
+    assert.match(result.purchaseReceipt.operation.operationId, OWNER_MINTED_IDENTITY);
     assert.equal(result.receipt.operation.purchaseReceiptId, platform.state.receiptId);
   } finally {
     await rm(root, { recursive: true, force: true });

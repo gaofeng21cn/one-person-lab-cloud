@@ -47,6 +47,7 @@ import {
 import { createHash, randomUUID } from "node:crypto";
 
 import {
+  announceRequest, findDeclaredCatalogEntry, listOwnerCatalogPages, normalizedAccountEmail,
   priceWorkspaceQuote, quoteWorkspaceOrder, stableID, submitWorkspaceOrder,
   workspaceDeclaration, WORKSPACE_OPERATION_ROUTE, WORKSPACE_ORDER_ROUTE,
 } from "./workspace-purchase-core.ts";
@@ -140,9 +141,11 @@ function purchasedQualification(value, request, declaredProduct) {
       !hasExactKeys(product, ["resourceType", "applicationSelection", "computePlanId", "storagePlanId", "renewalMode"]) ||
       !hasExactKeys(product.applicationSelection, ["kind", "runtimeVersionId"]) ||
       product.resourceType !== declaredProduct.resourceType ||
+      product.applicationSelection.kind !== declaredProduct.applicationSelection.kind ||
+      product.applicationSelection.runtimeVersionId !== declaredProduct.applicationSelection.runtimeVersionId ||
+      product.computePlanId !== declaredProduct.computePlanId ||
+      product.storagePlanId !== declaredProduct.storagePlanId ||
       product.renewalMode !== (declaredProduct.autoRenew === true ? "automatic" : "manual") ||
-      !String(product.computePlanId || "").trim() ||
-      !String(product.storagePlanId || "").trim() ||
       typeof value.idempotencyKey !== "string" || !value.idempotencyKey.trim() ||
       typeof value.operationId !== "string" || !value.operationId.trim() ||
       typeof value.workspaceId !== "string" || !value.workspaceId.trim() ||
@@ -195,8 +198,21 @@ function ownerData(payload, expectedSource = "sub2api") {
   return payload.data;
 }
 
+/*
+ * The wallet, read from the Gateway owner under the owner session.
+ *
+ * The owner route reads the balance under the session's own authorization, so
+ * it is the balance the owner would spend. The retained Control Plane
+ * projection answers for a different authority and a different session, and a
+ * qualification that accounted its charges against it would be accounting
+ * against a balance that is not the one the owner spends.
+ */
 function walletMicros(payload) {
-  const value = String(ownerData(payload)?.usdMicros || "");
+  const readback = payload || {};
+  if (readback.source !== "gateway" || readback.status !== "available" || readback.currency !== "USD") {
+    throw adapterError("owner_readback_unavailable");
+  }
+  const value = String(readback.balanceUSDMicros || "");
   if (!/^(?:0|[1-9][0-9]*)$/.test(value)) throw adapterError("owner_readback_unavailable");
   return value;
 }
@@ -211,11 +227,11 @@ function walletMicros(payload) {
  * be reproducing an interop contract the owner no longer has, and it would have
  * to refuse a correct answer whenever the owner changed how it mints one.
  *
- * The catalog is read the way the Console reads it: the first approved Runtime
- * Release for the default OPL App, and the first available compute and storage
- * plan. The declaration is frozen into the quote, so the owner prices exactly
- * what this run asked for and the quote says which source and which plans it
- * priced.
+ * The catalog is read to confirm the declared selection is one the owner still
+ * offers: an approved Runtime Release for the default OPL App, and an available
+ * compute and storage plan. The catalog is not searched for a default, because a
+ * buyer that took the first approved release and the first available plans
+ * would buy something nobody chose.
  */
 const RUNTIME_VERSION_ROUTE = "/api/v2/catalog/runtime-versions";
 const COMPUTE_PLAN_ROUTE = "/api/v2/catalog/compute-plans";
@@ -224,19 +240,18 @@ const STORAGE_PLAN_ROUTE = "/api/v2/catalog/storage-plans";
 // mints, so the buyer announces its own request identity on the command.
 const ORDER_REQUEST_ID_HEADER = "x-opl-request-id";
 
-async function readOwnerCatalogItem(http, auth, route, available) {
-  let payload = null;
+async function readDeclaredCatalogEntry(http, auth, route, id, available) {
+  let items = null;
   try {
-    payload = (await http.json(route, {}, auth)).payload;
+    items = await listOwnerCatalogPages(http, auth, route);
   } catch {
     throw adapterError("owner_readback_unavailable");
   }
-  const items = Array.isArray(payload?.items) ? payload.items : [];
-  const item = items.find((candidate) => available(candidate));
-  const id = String(item?.id || "").trim();
-  // A catalog that offers no usable plan is not a price this run may act on.
-  if (!id) throw adapterError("quote_invalid");
-  return id;
+  const entry = findDeclaredCatalogEntry(items, id);
+  // A catalog that does not offer the declared plan is not a price this run may
+  // act on.
+  if (!entry || !available(entry)) throw adapterError("quote_invalid");
+  return entry;
 }
 
 export type OwnerPurchaseDeclaration = Readonly<{
@@ -247,10 +262,13 @@ export type OwnerPurchaseDeclaration = Readonly<{
   periodMonths: number;
 }>;
 
-async function declareOwnerPurchase(http, auth): Promise<OwnerPurchaseDeclaration> {
-  const runtimeVersionId = await readOwnerCatalogItem(http, auth, RUNTIME_VERSION_ROUTE, (item) => item?.status === "approved");
-  const computePlanId = await readOwnerCatalogItem(http, auth, COMPUTE_PLAN_ROUTE, (item) => item?.availability === "available");
-  const storagePlanId = await readOwnerCatalogItem(http, auth, STORAGE_PLAN_ROUTE, (item) => item?.availability === "available");
+async function declareOwnerPurchase(http, auth, declared): Promise<OwnerPurchaseDeclaration> {
+  const runtimeVersionId = String(declared?.applicationSelection?.runtimeVersionId || "");
+  const computePlanId = String(declared?.computePlanId || "");
+  const storagePlanId = String(declared?.storagePlanId || "");
+  await readDeclaredCatalogEntry(http, auth, RUNTIME_VERSION_ROUTE, runtimeVersionId, (item) => item?.status === "approved");
+  await readDeclaredCatalogEntry(http, auth, COMPUTE_PLAN_ROUTE, computePlanId, (item) => item?.availability === "available");
+  await readDeclaredCatalogEntry(http, auth, STORAGE_PLAN_ROUTE, storagePlanId, (item) => item?.availability === "available");
   try {
     return workspaceDeclaration({
       applicationSelection: { kind: "opl_app", runtimeVersionId },
@@ -287,31 +305,6 @@ function qualificationPurchaseName(idempotencyKey) {
  * answers with the request that created it rather than with this one. Nothing
  * here derives an identity the platform owns.
  */
-function announceRequest(http, requestId) {
-  // The command's own answer says whether the owner admitted an order. A
-  // command that was admitted and whose answer was lost is not a command that
-  // was refused, and the two have to be told apart: the first is a mutation
-  // this run caused, the second is an outcome this run cannot report.
-  const admitted = { order: false, mine: false };
-  return {
-    ...http,
-    admitted,
-    async json(path, init = {}, auth = null, statuses = [200]) {
-      const result = await http.json(path, {
-        ...init,
-        headers: { ...(init.headers || {}), [ORDER_REQUEST_ID_HEADER]: requestId },
-      }, auth, statuses);
-      if (path === WORKSPACE_ORDER_ROUTE && init?.method === "POST") {
-        admitted.order = Boolean(result?.payload?.operationId);
-        // The operation names the request that created it, so an operation
-        // under this request is this delivery's own purchase and an operation
-        // under another one is a replay.
-        admitted.mine = admitted.order && String(result?.payload?.requestId || "") === requestId;
-      }
-      return result;
-    },
-  };
-}
 
 /*
  * The owner's own answer about the order it admitted.
@@ -352,6 +345,10 @@ async function readOwnerWorkspaceOperation(http, operationId, workspaceId, auth)
 function classifyOwnerOrderFailure(error, { purchaseRecorded }) {
   const message = String(error?.message || "");
   if (/Workspace order stopped at/.test(message)) return "launch_stopped";
+  // The owner published an operation that is not the order this command
+  // admitted. The evidence does not bind to this purchase, so the run failed
+  // rather than ending with an outcome nobody can account for.
+  if (/workspace order readback is not this order/i.test(message)) return "launch_identity_mismatch";
   if (/Workspace order did not reach succeeded/.test(message)) return "mutation_unaccounted";
   return purchaseRecorded ? "mutation_unaccounted" : "response_lost";
 }
@@ -386,6 +383,7 @@ export async function buyWorkspaceOnOwnerRoute({
   walletUsdMicros,
   wait,
   requestId,
+  declared,
 }: {
   http: { request: (...args: any[]) => Promise<any>; json: (...args: any[]) => Promise<any> };
   auth: unknown;
@@ -393,8 +391,9 @@ export async function buyWorkspaceOnOwnerRoute({
   walletUsdMicros: string;
   wait?: (milliseconds: number) => Promise<void>;
   requestId?: string;
+  declared?: { applicationSelection?: { runtimeVersionId?: string }; computePlanId?: string; storagePlanId?: string };
 }): Promise<OwnerPurchase> {
-  const declaration = await declareOwnerPurchase(http, auth);
+  const declaration = await declareOwnerPurchase(http, auth, declared);
   let quote = null;
   try {
     quote = await quoteWorkspaceOrder({ http, auth, declaration, idempotencyKey });
@@ -479,6 +478,19 @@ export async function buyWorkspaceOnOwnerRoute({
 async function bindAuthenticatedAccount(http, auth, declaredAccountId) {
   const me = ownerData((await http.json("/api/auth/me", {}, auth)).payload);
   if (me?.accountId !== declaredAccountId || me?.role !== "owner" || me?.status !== "active") {
+    throw adapterError("account_binding_mismatch");
+  }
+  // The owner route authorizes every command against a CloudIdentity session,
+  // and the identity owner publishes which customer that session belongs to. Its
+  // actor is the Gateway user id and its display name is the Gateway email, so
+  // they are the same two facts the Control Plane session answered with. A run
+  // that could not show them to be one customer would be buying for an account
+  // it never checked.
+  const session = (await http.json("/api/v2/auth/session", {}, auth)).payload;
+  const ownerEmail = normalizedAccountEmail(session?.displayName);
+  const accountEmail = normalizedAccountEmail(me?.email);
+  if (!ownerEmail || !accountEmail || ownerEmail !== accountEmail ||
+      String(session?.actorId || "") !== String(me?.sub2apiUserId || "")) {
     throw adapterError("account_binding_mismatch");
   }
   return true;
@@ -813,7 +825,7 @@ export async function runWorkspaceQualification({ request, adapter }, { wait, pu
       // transport holding someone else's session costs one read and no money.
       checks.account_bound = await bindAuthenticatedAccount(http, auth, request.tenant.accountId);
 
-      accounting.walletBeforeUsdMicros = walletMicros((await http.json("/api/gateway/wallet", {}, auth)).payload);
+      accounting.walletBeforeUsdMicros = walletMicros((await http.json("/api/v2/wallet", {}, auth)).payload);
 
       let quote = "";
       let identitySpace = "workspace_owner";
@@ -878,6 +890,7 @@ export async function runWorkspaceQualification({ request, adapter }, { wait, pu
             idempotencyKey: operation.idempotencyKey,
             walletUsdMicros: accounting.walletBeforeUsdMicros,
             wait,
+            declared: declaredProduct,
           });
         } catch (error) {
           // An order that was admitted and then went quiet is a mutation this
@@ -931,7 +944,7 @@ export async function runWorkspaceQualification({ request, adapter }, { wait, pu
       checks.workspace_ready = true;
       checks.runtime_ready = true;
 
-      accounting.walletAfterUsdMicros = walletMicros((await http.json("/api/gateway/wallet", {}, auth)).payload);
+      accounting.walletAfterUsdMicros = walletMicros((await http.json("/api/v2/wallet", {}, auth)).payload);
       const moved = BigInt(accounting.walletBeforeUsdMicros) - BigInt(accounting.walletAfterUsdMicros);
       if (moved === BigInt(quote)) {
         mutations.charges = 1;

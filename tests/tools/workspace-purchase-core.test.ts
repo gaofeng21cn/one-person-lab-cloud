@@ -185,9 +185,9 @@ test("an answer that carries no owner identity is refused rather than polled", a
 
 test("a delivery that stops for a reason the owner published stops the purchase", async () => {
   for (const stopped of [
-    { status: "failed", stage: "runtime", errorCode: "workspace_runtime_not_ready" },
-    { status: "needs_attention", stage: "attachment", errorCode: "workspace_closeout_unknown" },
-    { status: "cancelled", stage: "debit", errorCode: "monthly_balance_insufficient" },
+    { status: "failed", stage: "runtime", errorCode: "workspace_runtime_not_ready", operationId: OPERATION_ID, resourceId: WORKSPACE_ID },
+    { status: "needs_attention", stage: "attachment", errorCode: "workspace_closeout_unknown", operationId: OPERATION_ID, resourceId: WORKSPACE_ID },
+    { status: "cancelled", stage: "debit", errorCode: "monthly_balance_insufficient", operationId: OPERATION_ID, resourceId: WORKSPACE_ID },
   ]) {
     await assert.rejects(
       submit({ http: ownerHTTP({ pollSequence: [stopped] }).http }),
@@ -199,13 +199,13 @@ test("a delivery that stops for a reason the owner published stops the purchase"
 
 test("a status the owner never published is refused rather than read as an end", async () => {
   await assert.rejects(
-    submit({ http: ownerHTTP({ pollSequence: [{ status: "whatever", stage: "x" }] }).http }),
+    submit({ http: ownerHTTP({ pollSequence: [{ status: "whatever", stage: "x", operationId: OPERATION_ID, resourceId: WORKSPACE_ID }] }).http }),
     /unknown status/,
   );
 });
 
 test("a delivery that stops still names the order the owner minted", async () => {
-  const failure = await submit({ http: ownerHTTP({ pollSequence: [{ status: "failed", stage: "runtime", errorCode: "workspace_runtime_not_ready" }] }).http })
+  const failure = await submit({ http: ownerHTTP({ pollSequence: [{ status: "failed", stage: "runtime", errorCode: "workspace_runtime_not_ready", operationId: OPERATION_ID, resourceId: WORKSPACE_ID }] }).http })
     .then(() => null, (error) => error);
   assert.ok(failure, "a stopped delivery rejects");
   assert.equal(failure.operationId, OPERATION_ID);
@@ -215,7 +215,7 @@ test("a delivery that stops still names the order the owner minted", async () =>
 });
 
 test("a failure keeps the original failure as its cause", async () => {
-  const failure = await submit({ http: ownerHTTP({ pollSequence: [{ status: "failed", stage: "runtime" }] }).http })
+  const failure = await submit({ http: ownerHTTP({ pollSequence: [{ status: "failed", stage: "runtime", operationId: OPERATION_ID, resourceId: WORKSPACE_ID }] }).http })
     .then(() => null, (error) => error);
   assert.ok(failure?.cause, "the original failure is kept as the cause");
   assert.match(failure.cause.message, /Workspace order stopped at failed/);
@@ -224,7 +224,10 @@ test("a failure keeps the original failure as its cause", async () => {
 test("a delivery still in progress is polled rather than read as an end", async () => {
   let waited = 0;
   const { http, calls } = ownerHTTP({
-    pollSequence: [{ status: "accepted", stage: "quote_binding" }, { status: "running", stage: "storage" }],
+    pollSequence: [
+      { status: "accepted", stage: "quote_binding", operationId: OPERATION_ID, resourceId: WORKSPACE_ID },
+      { status: "running", stage: "storage", operationId: OPERATION_ID, resourceId: WORKSPACE_ID },
+    ],
   });
   const result = await submitWorkspaceOrder({
     http, auth: AUTH, name: "Declared workspace", quote: quote(),
@@ -238,7 +241,7 @@ test("a delivery still in progress is polled rather than read as an end", async 
 test("the wait between reads is the interval the owner published", async () => {
   const waited = [];
   const { http } = ownerHTTP({
-    pollSequence: [{ status: "running", stage: "storage", pollAfterSeconds: 7 }],
+    pollSequence: [{ status: "running", stage: "storage", pollAfterSeconds: 7, operationId: OPERATION_ID, resourceId: WORKSPACE_ID }],
   });
   await submitWorkspaceOrder({
     http, auth: AUTH, name: "Declared workspace", quote: quote(),
@@ -251,7 +254,7 @@ test("an interval the owner did not publish falls back to the buyer's own bound"
   for (const pollAfterSeconds of [0, 301, 1.5, undefined]) {
     const waited = [];
     const { http } = ownerHTTP({
-      pollSequence: [{ status: "running", stage: "storage", pollAfterSeconds }],
+      pollSequence: [{ status: "running", stage: "storage", pollAfterSeconds, operationId: OPERATION_ID, resourceId: WORKSPACE_ID }],
     });
     await submitWorkspaceOrder({
       http, auth: AUTH, name: "Declared workspace", quote: quote(),
@@ -263,7 +266,10 @@ test("an interval the owner did not publish falls back to the buyer's own bound"
 
 test("the order is issued exactly once however long the poll runs", async () => {
   const { http, calls } = ownerHTTP({
-    pollSequence: [{ status: "running", stage: "storage" }, { status: "running", stage: "runtime" }],
+    pollSequence: [
+      { status: "running", stage: "storage", operationId: OPERATION_ID, resourceId: WORKSPACE_ID },
+      { status: "running", stage: "runtime", operationId: OPERATION_ID, resourceId: WORKSPACE_ID },
+    ],
   });
   await submitWorkspaceOrder({
     http, auth: AUTH, name: "Declared workspace", quote: quote(),
@@ -274,7 +280,7 @@ test("the order is issued exactly once however long the poll runs", async () => 
 
 test("an unbounded poll is refused rather than left to run forever", async () => {
   const { http } = ownerHTTP({
-    pollSequence: Array.from({ length: 200 }, () => ({ status: "running", stage: "storage" })),
+    pollSequence: Array.from({ length: 200 }, () => ({ status: "running", stage: "storage", operationId: OPERATION_ID, resourceId: WORKSPACE_ID })),
   });
   await assert.rejects(
     submitWorkspaceOrder({
@@ -287,7 +293,7 @@ test("an unbounded poll is refused rather than left to run forever", async () =>
 
 test("the wait is a bounded read of one owner operation", async () => {
   const { http, calls } = ownerHTTP();
-  const operation = await waitForWorkspaceOrder(http, OPERATION_ID, AUTH, async () => {});
+  const operation = await waitForWorkspaceOrder(http, OPERATION_ID, WORKSPACE_ID, AUTH, async () => {});
   assert.equal(operation.status, "succeeded");
   assert.equal(calls.length, 1);
   assert.equal(calls[0].path, `/api/v2/operations/workspace/${OPERATION_ID}`);

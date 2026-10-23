@@ -21,6 +21,12 @@ import {
   tencentTkeDeployment,
 } from "../../tools/workspace-qualification-tencent-tke.ts";
 
+// The owner mints the operation and the Workspace identities, and the public
+// contract publishes them as strings without a shape. These assertions hold
+// that the evidence names an identity the owner minted, not one this buyer
+// could have derived, without pinning how the owner spells it.
+const OWNER_MINTED_IDENTITY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+
 // The adapter is driven through the same public orchestrator entry the
 // Local-Docker flow uses, over a provider boundary reduced to the three
 // reachability operations. Nothing here reaches TKE, a cluster or a database:
@@ -125,7 +131,13 @@ function j0ReadyReceipt(provider) {
 const qualificationRequest = (provider, overrides = {}) => createQualificationRequest({
   candidate: candidateReceipt(),
   accountId: ACCOUNT_ID,
-  product: { resourceType: "workspace", packageId: "basic", autoRenew: false },
+  product: {
+    resourceType: "workspace",
+    applicationSelection: { kind: "opl_app", runtimeVersionId: OWNER_RUNTIME_VERSION_ID },
+    computePlanId: OWNER_COMPUTE_PLAN_ID,
+    storagePlanId: OWNER_STORAGE_PLAN_ID,
+    autoRenew: false,
+  },
   provider,
   scope: { purchases: 1, charges: 1, refunds: 0, workspaceDeletions: 0, managedKeys: 0 },
   authority: { mode: "live", authorityClass: "sandbox", j0ReadyReceipt: j0ReadyReceipt(provider) },
@@ -182,8 +194,29 @@ function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MI
   const ownerAnswer = async (path, init) => {
     if (path === "/api/gateway/wallet") return { status: 200, payload: envelope({ usdMicros: state.wallet }) };
     if (path === "/api/auth/me") {
-      return { status: 200, payload: envelope({ accountId: ACCOUNT_ID, email: ACCOUNT_EMAIL, role: "owner", status: "active" }) };
+      return { status: 200, payload: envelope({
+        accountId: ACCOUNT_ID, email: ACCOUNT_EMAIL, role: "owner", status: "active", sub2apiUserId: "9001",
+      }) };
     }
+    // The live owner session. The identity owner binds the actor it
+    // authenticated to the Gateway user and publishes the Gateway email as the
+    // display name, so this session and the Control Plane session name the same
+    // customer.
+    if (path === "/api/v2/auth/session") {
+      return { status: 200, payload: {
+        actorId: "9001", displayName: ACCOUNT_EMAIL, tenantId: "tenant-qualification",
+        permissions: [], csrfToken: "owner-csrf", expiresAt: "2026-10-18T12:00:00Z",
+      } };
+    }
+    // The wallet the Gateway owner holds, read under the owner session's own
+    // authorization.
+    if (path === "/api/v2/wallet") {
+      return { status: 200, payload: {
+        source: "gateway", status: "available", balanceUSDMicros: state.wallet,
+        currency: "USD", fetchedAt: "2026-10-18T00:00:00Z",
+      } };
+    }
+
     // The owner owns the catalog a buyer prices from, and the Console reads
     // it the same way: the first approved Runtime Release and the first
     // available compute and storage plan. The page is the owner's own.
@@ -456,8 +489,8 @@ test("the TKE adapter satisfies the shared seam and settles the shared flow", as
     "the owner route has no provisioning mode to declare");
   // The identities in the evidence are the ones the owner minted, and the order
   // is read back from the owner that minted them.
-  assert.match(receipt.operation.operationId, /^op_[0-9a-f]{32}$/);
-  assert.match(receipt.operation.workspaceId, /^workspace_[0-9a-f]{32}$/);
+  assert.match(receipt.operation.operationId, OWNER_MINTED_IDENTITY);
+  assert.match(receipt.operation.workspaceId, OWNER_MINTED_IDENTITY);
   assert.equal(receipt.operation.operationId, platform.state.operationId, "the evidence names the owner's own operation");
   assert.equal(receipt.operation.workspaceId, platform.state.workspaceId, "the evidence names the owner's own Workspace");
   assert.equal(
@@ -769,9 +802,9 @@ test("a redelivery resumes the original TKE purchase and buys nothing twice", as
   assert.equal(second.receipt.operation.resumed, true);
   assert.equal(second.receipt.operation.operationId, first.receipt.operation.operationId);
   assert.equal(second.receipt.operation.workspaceId, first.receipt.operation.workspaceId);
-  assert.match(second.receipt.operation.operationId, /^op_[0-9a-f]{32}$/,
+  assert.match(second.receipt.operation.operationId, OWNER_MINTED_IDENTITY,
     "the replayed order keeps the identity the owner minted");
-  assert.match(second.receipt.operation.workspaceId, /^workspace_[0-9a-f]{32}$/,
+  assert.match(second.receipt.operation.workspaceId, OWNER_MINTED_IDENTITY,
     "the replayed order keeps the Workspace identity the owner minted");
   assert.equal(second.receipt.accounting.quoteUsdMicros, QUOTE_MICROS,
     "the replay is priced by the same frozen quote");
@@ -799,8 +832,8 @@ test("a lost answer to the command recovers the admitted order, and a lost owner
     "the retry repeats the same order command");
   assert.equal(recovered.receipt.operation.resumed, false);
   assert.equal(recovered.receipt.mutations.observed.purchases, 1);
-  assert.match(recovered.receipt.operation.operationId, /^op_[0-9a-f]{32}$/);
-  assert.match(recovered.receipt.operation.workspaceId, /^workspace_[0-9a-f]{32}$/);
+  assert.match(recovered.receipt.operation.operationId, OWNER_MINTED_IDENTITY);
+  assert.match(recovered.receipt.operation.workspaceId, OWNER_MINTED_IDENTITY);
 
   const lostPlatform = controlPlane({ noBillingReceipt: true });
   const lost = await run(qualificationRequest(TENCENT_TKE_PROVIDER), adapterFor(

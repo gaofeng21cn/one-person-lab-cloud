@@ -28,20 +28,34 @@ export const INSTANCE_SHA = "f".repeat(40);
 // sandbox run for the same source but another image is another Candidate.
 export const CLOUD_IMAGE_DIGEST = "sha256:" + "1".repeat(64);
 
-// The catalog the Workspace owner offers. The buyer resolves its declaration
-// from these the way the Console does: the first approved Runtime Release and
-// the first available compute and storage plan. The owners mint their catalog
-// identifiers in one shape: a lowercase prefix, an underscore and sixteen
-// random bytes in hex.
+// The catalog the Workspace owner offers. The buyer declares which of these it
+// buys, so the declaration names one of them and the owner confirms it still
+// offers it.
 export const OWNER_RUNTIME_VERSION_ID = `rtv_${"a".repeat(32)}`;
 export const OWNER_COMPUTE_PLAN_ID = `cmp_${"b".repeat(32)}`;
 export const OWNER_STORAGE_PLAN_ID = `stp_${"c".repeat(32)}`;
 
+// The Gateway user the customer account is. The Control Plane session answers
+// with it, and the identity owner's session answers with the same actor, so the
+// two sessions can be shown to belong to one customer.
+export const ACCOUNT_SUB2API_USER_ID = "10001";
+export const ACCOUNT_TENANT_ID = "tenant-customer-0001";
+export const OWNER_CSRF_TOKEN = "owner-csrf-token";
+export const OWNER_SESSION_EXPIRES_AT = "2026-01-01T00:00:00Z";
+
 // The identities the owner mints. The fixture never derives them from the
 // declared idempotency identity: the owner mints the operation and the
 // Workspace, and the buyer reads them back.
-const ownerID = (prefix: string, ...parts: string[]) =>
-  `${prefix}_${createHash("sha1").update(parts.join(":")).digest("hex").slice(0, 32)}`;
+//
+// They are minted in a shape the public contract does not describe, because the
+// contract publishes them as strings and says nothing about their form. A
+// buyer that only accepted one shape would refuse a correct answer whenever
+// the owner changed how it mints one, so the fixture proves the buyer treats
+// them as opaque.
+const ownerID = (prefix: string, ...parts: string[]) => {
+  const digest = createHash("sha256").update(parts.join(":")).digest("hex");
+  return `${prefix}-${digest.slice(0, 8)}-${digest.slice(8, 12)}-${digest.slice(12, 16)}-${digest.slice(16, 28)}`;
+};
 
 export function candidateReceipt(overrides = {}) {
   return {
@@ -233,14 +247,44 @@ export function createFixturePlatform({
       return { status: 501, payload: { code: "Unimplemented", message: "no approved Sub2API service endpoint is configured" } };
     }
     if (path === "/api/auth/me") {
-      return { status: 200, payload: envelope({ accountId: ACCOUNT_ID, email: ACCOUNT_EMAIL, role: "owner", status: "active" }) };
+      return {
+        status: 200,
+        payload: envelope({
+          accountId: ACCOUNT_ID, email: ACCOUNT_EMAIL, role: "owner", status: "active",
+          sub2apiUserId: ACCOUNT_SUB2API_USER_ID,
+        }),
+      };
     }
     if (path === "/api/gateway/wallet") {
       return { status: 200, payload: envelope({ usdMicros: state.wallet }) };
     }
-    // The owner owns the catalog a buyer prices from. The Console reads it the
-    // same way: the first approved Runtime Release, the first available
-    // compute plan and the first available storage plan.
+    // The live owner session. The identity owner binds the actor it
+    // authenticated to the Gateway user and publishes the Gateway email as the
+    // display name, so this session and the Control Plane session name the same
+    // customer.
+    if (path === "/api/v2/auth/session") {
+      return {
+        status: 200,
+        payload: {
+          actorId: ACCOUNT_SUB2API_USER_ID, displayName: ACCOUNT_EMAIL, tenantId: ACCOUNT_TENANT_ID,
+          permissions: [], csrfToken: OWNER_CSRF_TOKEN, expiresAt: OWNER_SESSION_EXPIRES_AT,
+        },
+      };
+    }
+    // The wallet the Gateway owner holds, read under the owner session's own
+    // authorization.
+    if (path === "/api/v2/wallet") {
+      return {
+        status: 200,
+        payload: {
+          source: "gateway", status: "available", balanceUSDMicros: state.wallet,
+          currency: "USD", fetchedAt: OWNER_SESSION_EXPIRES_AT,
+        },
+      };
+    }
+    // The owner owns the catalog a buyer prices from. The buyer declares which
+    // entry it buys, so the catalog offers exactly the entries the declaration
+    // may name.
     if (path.startsWith("/api/v2/catalog/runtime-versions")) {
       return { status: 200, payload: { items: [{ id: OWNER_RUNTIME_VERSION_ID, name: "Qualification Runtime", status: "approved" }] } };
     }
@@ -400,10 +444,34 @@ export function createFixturePlatform({
       return { response: { status: 501 }, payload: { code: "Unimplemented", message: "no approved Sub2API service endpoint is configured" } };
     }
     if (path === "/api/auth/me") {
-      return { response: { status: 200 }, payload: envelope({ accountId: ACCOUNT_ID, email: ACCOUNT_EMAIL, role: "owner", status: "active" }) };
+      return {
+        response: { status: 200 },
+        payload: envelope({
+          accountId: ACCOUNT_ID, email: ACCOUNT_EMAIL, role: "owner", status: "active",
+          sub2apiUserId: ACCOUNT_SUB2API_USER_ID,
+        }),
+      };
     }
     if (path === "/api/gateway/wallet") {
       return { response: { status: 200 }, payload: envelope({ usdMicros: state.wallet }) };
+    }
+    if (path === "/api/v2/auth/session") {
+      return {
+        response: { status: 200 },
+        payload: {
+          actorId: ACCOUNT_SUB2API_USER_ID, displayName: ACCOUNT_EMAIL, tenantId: ACCOUNT_TENANT_ID,
+          permissions: [], csrfToken: OWNER_CSRF_TOKEN, expiresAt: OWNER_SESSION_EXPIRES_AT,
+        },
+      };
+    }
+    if (path === "/api/v2/wallet") {
+      return {
+        response: { status: 200 },
+        payload: {
+          source: "gateway", status: "available", balanceUSDMicros: state.wallet,
+          currency: "USD", fetchedAt: OWNER_SESSION_EXPIRES_AT,
+        },
+      };
     }
     if (/^\/api\/v2\/operations\/workspace\/[^/]+$/.test(path)) {
       const admitted = order(decodeURIComponent(path.split("/").pop() as string));

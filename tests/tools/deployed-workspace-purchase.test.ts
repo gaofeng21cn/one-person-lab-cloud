@@ -32,7 +32,24 @@ const ACCOUNT = {
   email: ACCOUNT_EMAIL,
   status: "active",
 };
-const WALLET = { userId: "77", currency: "USD", usdMicros: "999999999", status: "active" };
+// The wallet the Gateway owner holds, read under the owner session.
+const WALLET = {
+  source: "gateway",
+  status: "available",
+  balanceUSDMicros: "999999999",
+  currency: "USD",
+  fetchedAt: "2026-10-18T00:00:00Z",
+};
+// The live owner session. The identity owner binds the actor it authenticated
+// to the Gateway user and publishes the Gateway email as the display name.
+const OWNER_SESSION = {
+  actorId: "77",
+  displayName: ACCOUNT_EMAIL,
+  tenantId: "tenant-declared",
+  permissions: [],
+  csrfToken: "owner-csrf",
+  expiresAt: "2026-10-18T12:00:00Z",
+};
 const IDENTITY = "declared-identity";
 const IDEMPOTENCY_KEY = `deployed-workspace:${CANDIDATE_HEX}:${IDENTITY}`;
 // The identities the Workspace owner and the catalog owners mint. They are
@@ -43,8 +60,12 @@ const RUNTIME_VERSION_ID = `runtime_${"1".repeat(32)}`;
 const COMPUTE_PLAN_ID = `compute_${"2".repeat(32)}`;
 const STORAGE_PLAN_ID = `storage_${"3".repeat(32)}`;
 const QUOTE_ID = `quote_${"4".repeat(32)}`;
-const OPERATION_ID = `op_${"5".repeat(32)}`;
-const WORKSPACE_ID = `workspace_${"6".repeat(32)}`;
+// The owner mints the operation and the Workspace identities, and the public
+// contract publishes them as strings without a shape. They are pinned here in a
+// shape the contract does not describe, so a buyer that pinned a shape of its
+// own would fail in this file rather than in a customer's receipt.
+const OPERATION_ID = "op-1a2b3c4d-5e6f-7890-abcd-123456789abc";
+const WORKSPACE_ID = "workspace-abcdef01-2345-6789-abcd-ef0123456789";
 const AMOUNT = "52580000";
 // The retained Control Plane launch identity, derived the way the Control
 // Plane derived it. The buyer still reads that route for the orders it
@@ -57,7 +78,9 @@ function declaredRequest(overrides = {}) {
     authorityClass: "production",
     candidateReceiptDigest: CANDIDATE_DIGEST,
     accountEmailIdentityDigest: ACCOUNT_DIGEST,
-    packageId: "pro",
+    applicationSelection: { kind: "opl_app", runtimeVersionId: RUNTIME_VERSION_ID },
+    computePlanId: COMPUTE_PLAN_ID,
+    storagePlanId: STORAGE_PLAN_ID,
     autoRenew: false,
     idempotencyIdentity: IDENTITY,
     workspaceName: "Declared workspace",
@@ -106,6 +129,9 @@ function ownerOperation(overrides = {}) {
     resourceId: WORKSPACE_ID,
     status: "succeeded",
     stage: "succeeded",
+    // The owner stores the request that admitted the order on the operation it
+    // mints and publishes it, so a replay answers with the request that
+    // created the order rather than with the one that asked again.
     requestId: "request-declared",
     createdAt: "2026-10-18T00:00:00Z",
     updatedAt: "2026-10-18T00:00:10Z",
@@ -125,7 +151,8 @@ function ownerOperation(overrides = {}) {
  */
 function deployedPlatform({
   account = { status: 200, body: envelope("sub2api", "available", ACCOUNT) },
-  wallet = { status: 200, body: envelope("sub2api", "available", WALLET) },
+  wallet = { status: 200, body: WALLET },
+  ownerSession = { status: 200, body: OWNER_SESSION },
   retainedLaunch = null,
   runtimeVersions = { items: [{ id: RUNTIME_VERSION_ID, status: "approved" }] },
   computePlans = { items: [{ id: COMPUTE_PLAN_ID, availability: "available" }] },
@@ -144,6 +171,8 @@ function deployedPlatform({
     calls.push({ kind: "request", path, init, auth });
     if (path === "/api/auth/me") return respond(account.status, account.body);
     if (path === "/api/gateway/wallet") return respond(wallet.status, wallet.body);
+    if (path === "/api/v2/auth/session") return respond(ownerSession.status, ownerSession.body);
+    if (path === "/api/v2/wallet") return respond(wallet.status, wallet.body);
     if (path === `/api/workspace-launches/${RETAINED_OPERATION_ID}`) {
       return retainedLaunch ? respond(200, retainedLaunch) : respond(404, { error: "workspace_launch_not_found" });
     }
@@ -153,6 +182,8 @@ function deployedPlatform({
   const json = async (path, init = {}, auth, statuses) => {
     calls.push({ kind: "json", path, init, auth, statuses });
     const method = init.method || "GET";
+    if (path === "/api/v2/auth/session") return respond(ownerSession.status, ownerSession.body);
+    if (path === "/api/v2/wallet") return respond(wallet.status, wallet.body);
     if (path.startsWith("/api/v2/catalog/runtime-versions")) return respond(200, runtimeVersions);
     if (path.startsWith("/api/v2/catalog/compute-plans")) return respond(200, computePlans);
     if (path.startsWith("/api/v2/catalog/storage-plans")) return respond(200, storagePlans);
@@ -171,7 +202,7 @@ function deployedPlatform({
         if (existing.body !== body) throw new Error("idempotency key has different input");
         return respond(202, existing.operation);
       }
-      const operation = ownerOperation();
+      const operation = ownerOperation({ requestId: String(init.headers?.["x-opl-request-id"] || "") });
       orders.set(key, { body, operation });
       quoteAccepted = true;
       if (loseCommandAnswer && commands === 1) throw new Error("connection lost after the command");
@@ -282,7 +313,9 @@ test("the environment reader declares inputs and never a credential", () => {
     OPL_DEPLOYED_PURCHASE_AUTHORITY_CLASS: "production",
     OPL_DEPLOYED_PURCHASE_CANDIDATE_DIGEST: CANDIDATE_DIGEST,
     OPL_DEPLOYED_PURCHASE_ACCOUNT_DIGEST: ACCOUNT_DIGEST,
-    OPL_DEPLOYED_PURCHASE_PACKAGE_ID: "pro",
+    OPL_DEPLOYED_PURCHASE_RUNTIME_VERSION_ID: RUNTIME_VERSION_ID,
+    OPL_DEPLOYED_PURCHASE_COMPUTE_PLAN_ID: COMPUTE_PLAN_ID,
+    OPL_DEPLOYED_PURCHASE_STORAGE_PLAN_ID: STORAGE_PLAN_ID,
     OPL_DEPLOYED_PURCHASE_AUTO_RENEW: "false",
     OPL_DEPLOYED_PURCHASE_IDENTITY: IDENTITY,
     OPL_DEPLOYED_PURCHASE_WORKSPACE_NAME: "Declared workspace",
@@ -349,13 +382,14 @@ test("the buyer reads the owner envelope and buys one declared Workspace through
     platform.calls.map((call) => `${call.kind} ${call.path}${call.init?.method ? ` ${call.init.method}` : ""}`),
     [
       "request /api/auth/me",
+      "json /api/v2/auth/session",
       `request /api/workspace-launches/${RETAINED_OPERATION_ID}`,
       "json /api/v2/catalog/runtime-versions?limit=100",
       "json /api/v2/catalog/compute-plans?limit=100",
       "json /api/v2/catalog/storage-plans?limit=100",
       "json /api/v2/quotes POST",
       `json /api/v2/quotes/${QUOTE_ID}`,
-      "request /api/gateway/wallet",
+      "json /api/v2/wallet",
       "json /api/v2/workspaces POST",
       `json /api/v2/operations/workspace/${OPERATION_ID}`,
     ],
@@ -447,7 +481,7 @@ test("an owner readback from another source is not an account readback", async (
  * fund the quote. They are refused only because they are not the envelope the
  * owner contract requires, which is the exact defect this pins.
  */
-test("bare account and wallet bodies are refused by the source envelope contract", async () => {
+test("a bare account body is refused, and a wallet that is not the owner's own projection is refused too", async () => {
   const bareAccount = deployedPlatform({ account: { status: 200, body: ACCOUNT } });
   await assert.rejects(
     runDeployedWorkspacePurchase(declaredRequest(), callerFor(bareAccount)),
@@ -459,7 +493,13 @@ test("bare account and wallet bodies are refused by the source envelope contract
   assert.deepEqual(bareAccount.calls.map((call) => call.path), ["/api/auth/me"]);
   assert.equal(bareAccount.commands(), 0);
 
-  const bareWallet = deployedPlatform({ wallet: { status: 200, body: WALLET } });
+  // The wallet the Gateway owner holds is a plain owner projection, so a bare
+  // body is the right shape. A body that answers a different authority's
+  // question is not, and a balance this purchase cannot read is a balance it
+  // cannot check the quote against.
+  const bareWallet = deployedPlatform({
+    wallet: { status: 200, body: { source: "gateway", status: "unavailable", balanceUSDMicros: "1", currency: "USD", fetchedAt: "2026-10-18T00:00:00Z" } },
+  });
   await assert.rejects(
     runDeployedWorkspacePurchase(declaredRequest(), callerFor(bareWallet)),
     {
@@ -504,7 +544,7 @@ test("a declared account digest that does not match the session is refused befor
 
 test("an unavailable wallet is refused before the order is issued", async () => {
   const platform = deployedPlatform({
-    wallet: { status: 502, body: envelope("sub2api", "unavailable") },
+    wallet: { status: 502, body: null },
   });
   await assert.rejects(
     runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform)),
@@ -514,13 +554,14 @@ test("an unavailable wallet is refused before the order is issued", async () => 
     platform.calls.map((call) => `${call.kind} ${call.path}`),
     [
       "request /api/auth/me",
+      "json /api/v2/auth/session",
       `request /api/workspace-launches/${RETAINED_OPERATION_ID}`,
       "json /api/v2/catalog/runtime-versions?limit=100",
       "json /api/v2/catalog/compute-plans?limit=100",
       "json /api/v2/catalog/storage-plans?limit=100",
       "json /api/v2/quotes",
       `json /api/v2/quotes/${QUOTE_ID}`,
-      "request /api/gateway/wallet",
+      "json /api/v2/wallet",
     ],
   );
   assert.equal(platform.calls.some((call) => call.path === "/api/v2/workspaces"), false);
@@ -569,6 +610,7 @@ test("a replay of the same declared identity resumes its own order and buys noth
     platform.calls.slice(callsAfterFirst).map((call) => `${call.kind} ${call.path}`),
     [
       "request /api/auth/me",
+      "json /api/v2/auth/session",
       `request /api/workspace-launches/${RETAINED_OPERATION_ID}`,
       "json /api/v2/catalog/runtime-versions?limit=100",
       "json /api/v2/catalog/compute-plans?limit=100",
@@ -612,7 +654,7 @@ test("a failed recovery readback keeps the original command error as its cause",
 
 test("a wallet that cannot fund the declared quote is refused before the order is issued", async () => {
   const platform = deployedPlatform({
-    wallet: { status: 200, body: envelope("sub2api", "available", { ...WALLET, usdMicros: "52579999" }) },
+    wallet: { status: 200, body: { ...WALLET, balanceUSDMicros: "52579999" } },
   });
   await assert.rejects(
     runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform)),
@@ -643,7 +685,7 @@ test("a catalog that cannot name an application source or a plan pair is refused
     const platform = deployedPlatform(options);
     await assert.rejects(
       runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform)),
-      { code: "deployed_purchase_catalog_unavailable" },
+      { code: "deployed_purchase_selection_unavailable" },
       JSON.stringify(options),
     );
     assert.equal(platform.commands(), 0, "no order may be issued without a declaration");
@@ -701,17 +743,21 @@ test("the receipt cannot report a replay that bought and a first delivery that b
     () => validateDeployedPurchaseReceipt({ ...receipt, account: { identityDigest: "not-a-digest" } }),
     { code: "deployed_purchase_receipt_invalid" },
   );
-  // The receipt names the identities the owner minted, so an identity this
-  // buyer could have derived is refused rather than accepted as evidence.
+  // The owner mints the operation, the Workspace and the plan identities, and
+  // the public contract publishes them as strings without a shape. The receipt
+  // therefore refuses an identity that is missing rather than one whose form it
+  // cannot know: the binding that makes an identity trustworthy is the one the
+  // owner published beside it, and that binding is established when the order
+  // is admitted, not by the shape of a string.
   assert.throws(
     () => validateDeployedPurchaseReceipt({
-      ...receipt, operation: { ...receipt.operation, operationId: "workspace-launch-0123456789abcdef01" },
+      ...receipt, operation: { ...receipt.operation, operationId: "" },
     }),
     { code: "deployed_purchase_receipt_invalid" },
   );
   assert.throws(
     () => validateDeployedPurchaseReceipt({
-      ...receipt, product: { ...receipt.product, computePlanId: "basic" },
+      ...receipt, product: { ...receipt.product, computePlanId: "" },
     }),
     { code: "deployed_purchase_receipt_invalid" },
   );

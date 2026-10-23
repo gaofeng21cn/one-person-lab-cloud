@@ -44,13 +44,14 @@
  * own receipt validated by its own validator.
  */
 
+import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
-import { createHTTP, login, sourceData } from "./local-workspace-qualification.ts";
+import { cloudIdentityLogin, createHTTP, login } from "./local-workspace-qualification.ts";
 import {
-  deployedAccountIdentityDigest,
   deployedPurchaseIdempotencyKey,
   deployedPurchaseRequestFromEnvironment,
+  readDeclaredCustomer,
   resolveWorkspaceDeclaration,
   runDeployedWorkspacePurchase,
   validateDeployedPurchaseReceipt,
@@ -100,7 +101,27 @@ function purchaseCredentials(environment) {
 }
 
 /*
+ * The idempotency key the owner login is announced under.
+ *
+ * The owner requires a bounded idempotency key on its login command. The key
+ * names the target and the customer, so it carries no credential and no raw
+ * identifier: it is a digest of the origin and the account the login is for.
+ */
+function purchaseLoginIdempotencyKey(origin, email) {
+  const digest = createHash("sha256").update(`${origin}\n${email}`).digest("hex");
+  return `deployed-workspace-login:${digest}`;
+}
+
+/*
  * Log in and hand back the caller the purchase entry expects.
+ *
+ * There are two authorities to speak to, and they keep separate sessions. The
+ * owner route is reached through the Console BFF and is authorized by a
+ * CloudIdentity session; the retained Control Plane reads answer for the
+ * Control Plane's own session. One credential establishes both, because the
+ * Gateway directory is the authority behind each of them, but one cookie is
+ * not one session: the buyer carries the two cookies and each authority reads
+ * its own.
  *
  * The origin is the declared request's own origin, taken by the entry's own
  * `assertDeployedPurchaseTarget` rather than parsed again here: a transport that
@@ -112,9 +133,31 @@ export async function deployedPurchaseCaller(request, environment = process.env,
   const origin = new URL(String(request.baseURL || "")).origin;
   const create = dependencies.createHTTP || createHTTP;
   const openSession = dependencies.login || login;
+  const openOwnerSession = dependencies.cloudIdentityLogin || cloudIdentityLogin;
   const http = create(origin);
-  const auth = await openSession(http, email, password, accountId);
-  return { origin, http, auth };
+  const controlPlane = await openSession(http, email, password, accountId);
+  const owner = await openOwnerSession(
+    http,
+    origin,
+    email,
+    password,
+    purchaseLoginIdempotencyKey(origin, email),
+  );
+  if (!owner?.cookie || !owner?.ownerCsrf) {
+    throw transportError(
+      "deployed_purchase_transport_failed",
+      "deployed purchase transport did not establish an owner session",
+    );
+  }
+  return {
+    origin,
+    http,
+    auth: {
+      cookie: `${controlPlane.cookie}; ${owner.cookie}`,
+      csrf: controlPlane.csrf,
+      ownerCsrf: owner.ownerCsrf,
+    },
+  };
 }
 
 /*
@@ -122,9 +165,10 @@ export async function deployedPurchaseCaller(request, environment = process.env,
  *
  * This is a preflight of the purchase, not a cheaper version of it, so it
  * repeats the purchase entry's own identity fence: the account is read through
- * the same sub2api source envelope and refused unless its email digest is the
- * declared one. A quote for an account the purchase would have refused is not a
- * useful thing to show an operator before asking them to approve a number.
+ * the same two authorities the purchase uses and refused unless they name the
+ * declared customer. A quote for an account the purchase would have refused is
+ * not a useful thing to show an operator before asking them to approve a
+ * number.
  *
  * It also re-reads the wallet, so the operator sees the balance the purchase
  * would have checked against rather than a price that may be unaffordable.
@@ -141,22 +185,31 @@ export async function quoteDeployedWorkspacePurchase(caller, request) {
       "cannot price a Workspace with automatic renewal: the Workspace owner route admits manual renewal only",
     );
   }
-  const me = sourceData((await http.request("/api/auth/me", {}, auth)).payload, "sub2api");
-  const accountId = String(me?.accountId || "");
-  if (!accountId || me?.role !== "owner" || me?.status !== "active") {
-    throw transportError("deployed_purchase_account_unavailable", "could not read the declared customer account");
+  const { accountId } = await readDeclaredCustomer(http, auth, request);
+
+  // The wallet is read from the Gateway owner under the owner session, so the
+  // balance is the one the owner would spend.
+  const wallet = await http.json("/api/v2/wallet", {}, auth).then((result) => result.payload).catch(() => {
+    throw transportError("deployed_purchase_wallet_unavailable", "could not read the customer wallet");
+  });
+  if (wallet?.source !== "gateway" || wallet?.status !== "available" || wallet?.currency !== "USD") {
+    throw transportError("deployed_purchase_wallet_unavailable", "could not read the customer wallet");
   }
-  if (deployedAccountIdentityDigest(me?.email) !== request.accountEmailIdentityDigest) {
-    throw transportError("deployed_purchase_account_mismatch", "declared customer account digest does not match the session");
+  const walletUsdMicros = String(wallet?.balanceUSDMicros || "");
+  if (!/^(?:0|[1-9][0-9]*)$/.test(walletUsdMicros)) {
+    throw transportError("deployed_purchase_wallet_unavailable", "could not read the customer wallet");
   }
-  const walletUsdMicros = String(sourceData((await http.request("/api/gateway/wallet", {}, auth)).payload, "sub2api")?.usdMicros || "");
 
   // The owner prices the declared purchase. This command asks the owner for the
   // very quote the purchase will buy, under the buyer's own stable idempotency
   // identity, so the number the operator approves is the number the purchase
   // is admitted at, and a repeat of this command replays that quote instead of
   // pricing a second Workspace.
-  const declaration = await resolveWorkspaceDeclaration(http, auth);
+  const declaration = await resolveWorkspaceDeclaration(http, auth, {
+    applicationSelection: request.applicationSelection,
+    computePlanId: request.computePlanId,
+    storagePlanId: request.storagePlanId,
+  });
   const idempotencyKey = deployedPurchaseIdempotencyKey(
     request.candidateReceiptDigest,
     request.idempotencyIdentity,

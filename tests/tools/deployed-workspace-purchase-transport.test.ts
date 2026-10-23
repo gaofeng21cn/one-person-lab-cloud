@@ -43,8 +43,12 @@ const RUNTIME_VERSION_ID = `runtime_${"1".repeat(32)}`;
 const COMPUTE_PLAN_ID = `compute_${"2".repeat(32)}`;
 const STORAGE_PLAN_ID = `storage_${"3".repeat(32)}`;
 const QUOTE_ID = `quote_${"4".repeat(32)}`;
-const OPERATION_ID = `op_${"5".repeat(32)}`;
-const WORKSPACE_ID = `workspace_${"6".repeat(32)}`;
+// The owner mints the operation and the Workspace identities, and the public
+// contract publishes them as strings without a shape. They are pinned here in a
+// shape the contract does not describe, so a buyer that pinned a shape of its
+// own would fail in this file rather than in a customer's receipt.
+const OPERATION_ID = "op-1a2b3c4d-5e6f-7890-abcd-123456789abc";
+const WORKSPACE_ID = "workspace-abcdef01-2345-6789-abcd-ef0123456789";
 
 // The buyer's own idempotency identity, and the retained Control Plane launch
 // identity it derives for the orders that route admitted before the cutover.
@@ -56,7 +60,9 @@ const ENVIRONMENT = {
   OPL_DEPLOYED_PURCHASE_AUTHORITY_CLASS: "production",
   OPL_DEPLOYED_PURCHASE_CANDIDATE_DIGEST: CANDIDATE_DIGEST,
   OPL_DEPLOYED_PURCHASE_ACCOUNT_DIGEST: ACCOUNT_DIGEST,
-  OPL_DEPLOYED_PURCHASE_PACKAGE_ID: "pro",
+  OPL_DEPLOYED_PURCHASE_RUNTIME_VERSION_ID: RUNTIME_VERSION_ID,
+  OPL_DEPLOYED_PURCHASE_COMPUTE_PLAN_ID: COMPUTE_PLAN_ID,
+  OPL_DEPLOYED_PURCHASE_STORAGE_PLAN_ID: STORAGE_PLAN_ID,
   OPL_DEPLOYED_PURCHASE_AUTO_RENEW: "false",
   OPL_DEPLOYED_PURCHASE_IDENTITY: IDENTITY,
   OPL_DEPLOYED_PURCHASE_WORKSPACE_NAME: WORKSPACE_NAME,
@@ -135,6 +141,7 @@ function fakePlatform({
   walletUsdMicros = "999999999",
   me = account(),
   catalog = {},
+  quoteOverrides = {},
   shared = null,
 } = {}) {
   const state = shared || {
@@ -158,6 +165,23 @@ function fakePlatform({
     if (path === "/api/gateway/wallet") {
       return ok(envelope("sub2api", { userId: "77", currency: "USD", usdMicros: walletUsdMicros, status: "active" }));
     }
+    // The live owner session: the identity owner binds the actor it
+    // authenticated to the Gateway user and publishes the Gateway email as the
+    // display name.
+    if (path === "/api/v2/auth/session") {
+      return ok({
+        actorId: String(me.sub2apiUserId || ""), displayName: String(me.email || ""),
+        tenantId: "tenant-declared", permissions: [], csrfToken: "owner-csrf",
+        expiresAt: "2026-10-18T12:00:00Z",
+      });
+    }
+    // The wallet the Gateway owner holds, read under the owner session.
+    if (path === "/api/v2/wallet") {
+      return ok({
+        source: "gateway", status: "available", balanceUSDMicros: walletUsdMicros,
+        currency: "USD", fetchedAt: "2026-10-18T00:00:00Z",
+      });
+    }
     // The retained Control Plane route is read for the orders it admitted
     // before the cutover. It is never a purchase command.
     if (path === `/api/workspace-launches/${RETAINED_OPERATION_ID}`) return notFound();
@@ -166,6 +190,19 @@ function fakePlatform({
 
   const json = async (path, init = {}, auth = null, statuses = [200]) => {
     const method = init.method || "GET";
+    if (path === "/api/v2/auth/session") {
+      return ok({
+        actorId: String(me.sub2apiUserId || ""), displayName: String(me.email || ""),
+        tenantId: "tenant-declared", permissions: [], csrfToken: "owner-csrf",
+        expiresAt: "2026-10-18T12:00:00Z",
+      });
+    }
+    if (path === "/api/v2/wallet") {
+      return ok({
+        source: "gateway", status: "available", balanceUSDMicros: walletUsdMicros,
+        currency: "USD", fetchedAt: "2026-10-18T00:00:00Z",
+      });
+    }
     if (path.startsWith("/api/v2/catalog/runtime-versions")) return ok(runtimeVersions);
     if (path.startsWith("/api/v2/catalog/compute-plans")) return ok(computePlans);
     if (path.startsWith("/api/v2/catalog/storage-plans")) return ok(storagePlans);
@@ -178,7 +215,7 @@ function fakePlatform({
         if (existing.body !== body) throw new Error("idempotency key has different input");
         return ok(existing.quote);
       }
-      const quote = ownerQuote({ totalUSDMicros: amountUsdMicros });
+      const quote = ownerQuote({ totalUSDMicros: amountUsdMicros, ...quoteOverrides });
       state.quotes.set(key, { body, quote });
       return ok(quote);
     }
@@ -197,7 +234,7 @@ function fakePlatform({
         if (existing.body !== body) throw new Error("idempotency key has different input");
         return accepted(existing.operation);
       }
-      const operation = ownerOperation();
+      const operation = ownerOperation({ requestId: String(init.headers?.["x-opl-request-id"] || "") });
       state.orders.set(key, { body, operation });
       state.quoteAccepted = true;
       return accepted(operation);
@@ -211,6 +248,10 @@ function fakePlatform({
 const transportDependencies = (platform) => ({
   createHTTP: () => platform.http,
   login: () => ({ cookie: "session=declared", csrf: "declared-csrf" }),
+  // The owner session is a session of its own: a cookie of its own name and a
+  // CSRF token the write guards compare against. One credential establishes
+  // both sessions, but one cookie is not one session.
+  cloudIdentityLogin: () => ({ cookie: "owner_session=declared", ownerCsrf: "owner-csrf" }),
 });
 
 test("the quote command spends nothing and reports the exact amount", async () => {
@@ -347,7 +388,11 @@ test("the command the entry issues carries the idempotency key the platform repl
   await runDeployedPurchaseTransport(
     { command: "purchase", outputPath: undefined, authorizedAmountUsdMicros: AMOUNT },
     ENVIRONMENT,
-    { createHTTP: () => http, login: () => ({ cookie: "session=declared", csrf: "declared-csrf" }) },
+    {
+      createHTTP: () => http,
+      login: () => ({ cookie: "session=declared", csrf: "declared-csrf" }),
+      cloudIdentityLogin: () => ({ cookie: "owner_session=declared", ownerCsrf: "owner-csrf" }),
+    },
   );
   assert.deepEqual(issued, [{
     key: IDEMPOTENCY_KEY,
@@ -370,15 +415,16 @@ test("an unaffordable quote is reported with its number instead of thrown away",
 test("a quote that does not name the declared purchase is refused rather than reported", async () => {
   // A price about something else is not a smaller decision, it is a different
   // one, so there is no number to show and the caller is told nothing.
-  for (const catalog of [
-    { computePlans: { items: [{ id: `compute_${"8".repeat(32)}`, availability: "available" }] } },
-    { storagePlans: { items: [{ id: `storage_${"8".repeat(32)}`, availability: "available" }] } },
+  for (const quoteOverrides of [
+    { computePlanId: `compute_${"8".repeat(32)}` },
+    { storagePlanId: `storage_${"8".repeat(32)}` },
+    { runtimeVersionId: `runtime_${"8".repeat(32)}` },
   ]) {
-    const platform = fakePlatform({ catalog });
+    const platform = fakePlatform({ quoteOverrides });
     await assert.rejects(
       () => runDeployedPurchaseTransport(QUOTE_INPUT, ENVIRONMENT, transportDependencies(platform)),
       (error) => error.code === "deployed_purchase_quote_unavailable",
-      `${JSON.stringify(catalog)} must be refused`,
+      `${JSON.stringify(quoteOverrides)} must be refused`,
     );
     assert.equal(platform.state.commands, 0);
   }
@@ -394,7 +440,7 @@ test("a catalog that cannot name an application source or a plan pair is refused
     const platform = fakePlatform({ catalog });
     await assert.rejects(
       () => runDeployedPurchaseTransport(QUOTE_INPUT, ENVIRONMENT, transportDependencies(platform)),
-      (error) => error.code === "deployed_purchase_catalog_unavailable",
+      (error) => error.code === "deployed_purchase_selection_unavailable",
       `${JSON.stringify(catalog)} must be refused`,
     );
     assert.equal(platform.state.commands, 0);

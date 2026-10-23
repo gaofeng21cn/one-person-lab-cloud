@@ -20,6 +20,12 @@ import {
 } from "../../tools/workspace-qualification-local-docker.ts";
 import { login as harnessLogin, sourceData } from "../../tools/local-workspace-qualification.ts";
 
+// The catalog the Workspace owner offers. The declaration names the entry it
+// buys, so the catalog has to offer exactly these.
+const OWNER_RUNTIME_VERSION_ID = "rv-qualification";
+const OWNER_COMPUTE_PLAN_ID = "cp-qualification";
+const OWNER_STORAGE_PLAN_ID = "sp-qualification";
+
 // The adapter is driven through the same public orchestrator entry the
 // Tencent-TKE flow uses, over the Compose stack the Local-Docker harness already
 // builds, reduced to an in-memory fake local stack. Nothing here reaches a
@@ -100,7 +106,13 @@ function j0ReadyReceipt(provider) {
 const qualificationRequest = (provider, overrides = {}) => createQualificationRequest({
   candidate: candidateReceipt(),
   accountId: ACCOUNT_ID,
-  product: { resourceType: "workspace", packageId: "basic", autoRenew: false },
+  product: {
+    resourceType: "workspace",
+    applicationSelection: { kind: "opl_app", runtimeVersionId: OWNER_RUNTIME_VERSION_ID },
+    computePlanId: OWNER_COMPUTE_PLAN_ID,
+    storagePlanId: OWNER_STORAGE_PLAN_ID,
+    autoRenew: false,
+  },
   provider,
   scope: { purchases: 1, charges: 1, refunds: 0, workspaceDeletions: 0, managedKeys: 0 },
   authority: { mode: "live", authorityClass: "sandbox", j0ReadyReceipt: j0ReadyReceipt(provider) },
@@ -195,6 +207,24 @@ function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MI
         return result(envelope("sub2api", {
           accountId: ACCOUNT_ID, email: ACCOUNT_EMAIL, role: "owner", status: "active", sub2apiUserId: "9001",
         }));
+      }
+      // The live owner session. The identity owner binds the actor it
+      // authenticated to the Gateway user and publishes the Gateway email as the
+      // display name, so this session and the Control Plane session name the
+      // same customer.
+      if (path === "/api/v2/auth/session") {
+        return result({
+          actorId: "9001", displayName: ACCOUNT_EMAIL, tenantId: "tenant-qualification",
+          permissions: [], csrfToken: "owner-csrf", expiresAt: "2026-10-18T12:00:00Z",
+        });
+      }
+      // The wallet the Gateway owner holds, read under the owner session's own
+      // authorization.
+      if (path === "/api/v2/wallet") {
+        return result({
+          source: "gateway", status: "available", balanceUSDMicros: state.wallet,
+          currency: "USD", fetchedAt: "2026-10-18T00:00:00Z",
+        });
       }
       if (path.startsWith("/api/workspaces?")) {
         return result(envelope("control-plane", {

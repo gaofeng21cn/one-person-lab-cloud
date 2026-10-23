@@ -40,6 +40,30 @@ import {
 } from "../../tools/local-workspace-qualification.ts";
 import { runLocalWorkspaceQualification } from "../../tools/local-workspace-qualification.ts";
 
+// The CloudIdentity login the browser performs. The in-memory fake answers it
+// the way the identity owner does: a login context carrying a double-submit
+// CSRF challenge, and a command that answers with the session it bound.
+const ownerLoginContextHeaders = () => {
+  const headers = new Headers();
+  headers.append("set-cookie", "opl_login_context=challenge; Path=/api/v2/auth");
+  headers.append("set-cookie", "opl_login_csrf=challenge-hash; Path=/api/v2/auth");
+  return headers;
+};
+const ownerSessionHeaders = () => {
+  const headers = new Headers();
+  headers.append("set-cookie", "opl_console_session=owner-session; Path=/");
+  return headers;
+};
+const ownerSessionPayload = {
+  actorId: "41", displayName: "customer@example.test", tenantId: "tenant-j1",
+  permissions: [], csrfToken: "owner-csrf-token", expiresAt: "2026-10-18T12:00:00Z",
+};
+const ownerWalletPayload = {
+  source: "gateway", status: "available", balanceUSDMicros: "1000000000",
+  currency: "USD", fetchedAt: "2026-10-18T00:00:00Z",
+};
+
+
 const sha = "a".repeat(40);
 const cloudDigest = `sha256:${"b".repeat(64)}`;
 const workspaceDigest = `sha256:${"c".repeat(64)}`;
@@ -1014,6 +1038,40 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
       return send(response, 200, envelope("control-plane+sub2api", { items: [{ accountId, email: accountEmail, status: "active", sub2apiUserId: "41" }], total: 1, page: 1, pageSize: 50 }));
     }
     if (method === "GET" && url.pathname === "/api/auth/me") return send(response, 200, envelope("sub2api", { accountId, email: accountEmail, role: "owner", status: "active", sub2apiUserId: "41" }));
+    // The CloudIdentity login the browser performs: a login context that carries
+    // a double-submit CSRF challenge, and a command that presents it beside the
+    // challenge cookie.
+    if (method === "GET" && url.pathname === "/api/v2/auth/context") {
+      return send(response, 200, { csrfToken: "owner-csrf-token" }, {
+        "set-cookie": [
+          "opl_login_context=challenge; Path=/api/v2/auth; HttpOnly",
+          "opl_login_csrf=challenge-hash; Path=/api/v2/auth; HttpOnly",
+        ],
+      });
+    }
+    if (method === "POST" && url.pathname === "/api/v2/auth/login") {
+      const body = await readBody(request);
+      if (body?.username !== accountEmail && body?.username !== "admin@example.test") {
+        return send(response, 401, { error: "invalid_credentials" });
+      }
+      return send(response, 200, {
+        actorId: "41", displayName: accountEmail, tenantId: "tenant-j1",
+        permissions: [], csrfToken: "owner-csrf-token", expiresAt: "2026-10-18T12:00:00Z",
+      }, { "set-cookie": "opl_console_session=owner-session; Path=/; HttpOnly" });
+    }
+    if (method === "GET" && url.pathname === "/api/v2/auth/session") {
+      return send(response, 200, {
+        actorId: "41", displayName: accountEmail, tenantId: "tenant-j1",
+        permissions: [], csrfToken: "owner-csrf-token", expiresAt: "2026-10-18T12:00:00Z",
+      });
+    }
+    // The wallet the Gateway owner holds, read under the owner session.
+    if (method === "GET" && url.pathname === "/api/v2/wallet") {
+      return send(response, 200, {
+        source: "gateway", status: "available", balanceUSDMicros: counts.debits ? "947420000" : "1000000000",
+        currency: "USD", fetchedAt: "2026-10-18T00:00:00Z",
+      });
+    }
     if (method === "GET" && url.pathname === "/api/gateway/wallet") return send(response, 200, envelope("sub2api", { userId: "41", currency: "USD", usdMicros: counts.debits ? "947420000" : "1000000000", status: "active" }));
     if (method === "GET" && url.pathname === "/api/gateway/usage-summary") return send(response, 200, envelope("sub2api", { totalRequests: 0 }));
     if (method === "GET" && url.pathname === "/api/gateway/keys") {
@@ -1252,6 +1310,18 @@ test("canonical J1 HTTP preview preserves the recovery scope after an owner Work
     json: async (path, init = {}) => {
       if (path === "/api/healthz") return { payload: { status: "ok" } };
       if (path === "/api/auth/login") return { response: { headers: new Headers({ "set-cookie": "session=test", "x-opl-csrf-token": "csrf" }) }, payload: { user: { accountId: init.body.email === "customer@example.test" ? accountId : "acct-admin" } } };
+      if (path === "/api/v2/auth/context") {
+        return { response: { headers: ownerLoginContextHeaders() }, payload: { csrfToken: "owner-csrf-token" } };
+      }
+      if (path === "/api/v2/auth/login") {
+        return { response: { headers: ownerSessionHeaders() }, payload: ownerSessionPayload };
+      }
+      if (path === "/api/v2/auth/session") {
+        return { payload: ownerSessionPayload };
+      }
+      if (path === "/api/v2/wallet") {
+        return { payload: ownerWalletPayload };
+      }
       if (path === "/api/operator/accounts" && init.method === "POST") return { payload: { status: "succeeded", accountId, operationId: provisionOperationId } };
       if (path.startsWith("/api/operator/accounts?")) return { payload: { source: "control-plane+sub2api", available: true, status: "available", data: { items: [{ accountId, email: "customer@example.test", status: "active", sub2apiUserId: "41" }], total: 1, page: 1, pageSize: 50 } } };
       if (path === "/api/auth/me") return { payload: { source: "sub2api", available: true, status: "available", data: { accountId, email: "customer@example.test", role: "owner", status: "active", sub2apiUserId: "41" } } };
@@ -1309,6 +1379,18 @@ test("canonical J1 HTTP preview still forbids cleanup when the post-Create owner
     json: async (path, init = {}) => {
       if (path === "/api/healthz") return { payload: { status: "ok" } };
       if (path === "/api/auth/login") return { response: { headers: new Headers({ "set-cookie": "session=test", "x-opl-csrf-token": "csrf" }) }, payload: { user: { accountId: init.body.email === "customer@example.test" ? accountId : "acct-admin" } } };
+      if (path === "/api/v2/auth/context") {
+        return { response: { headers: ownerLoginContextHeaders() }, payload: { csrfToken: "owner-csrf-token" } };
+      }
+      if (path === "/api/v2/auth/login") {
+        return { response: { headers: ownerSessionHeaders() }, payload: ownerSessionPayload };
+      }
+      if (path === "/api/v2/auth/session") {
+        return { payload: ownerSessionPayload };
+      }
+      if (path === "/api/v2/wallet") {
+        return { payload: ownerWalletPayload };
+      }
       if (path === "/api/operator/accounts" && init.method === "POST") return { payload: { status: "succeeded", accountId, operationId: `account-provision-${stableID("mapping", "customer@example.test").slice(0, 18)}` } };
       if (path.startsWith("/api/operator/accounts?")) return { payload: { source: "control-plane+sub2api", available: true, status: "available", data: { items: [{ accountId, email: "customer@example.test", status: "active", sub2apiUserId: "41" }], total: 1, page: 1, pageSize: 50 } } };
       if (path === "/api/auth/me") return { payload: { source: "sub2api", available: true, status: "available", data: { accountId, email: "customer@example.test", role: "owner", status: "active", sub2apiUserId: "41" } } };

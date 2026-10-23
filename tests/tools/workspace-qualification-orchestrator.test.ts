@@ -17,6 +17,12 @@ import {
   runWorkspaceQualification,
 } from "../../tools/workspace-qualification-orchestrator.ts";
 
+// The owner mints the operation and the Workspace identities, and the public
+// contract publishes them as strings without a shape. These assertions hold
+// that the evidence names an identity the owner minted, not one this buyer
+// could have derived, without pinning how the owner spells it.
+const OWNER_MINTED_IDENTITY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+
 // The seam under test is the public orchestrator, driven over a provider
 // adapter boundary. Nothing here reaches a provider, a cluster or a database:
 // the fake Control Plane below is the platform's own owner API shape, and the
@@ -92,7 +98,13 @@ function j0ReadyReceipt(provider) {
 const qualificationRequest = (provider, overrides = {}) => createQualificationRequest({
   candidate: candidateReceipt(),
   accountId: ACCOUNT_ID,
-  product: { resourceType: "workspace", packageId: "basic", autoRenew: false },
+  product: {
+    resourceType: "workspace",
+    applicationSelection: { kind: "opl_app", runtimeVersionId: OWNER_RUNTIME_VERSION_ID },
+    computePlanId: OWNER_COMPUTE_PLAN_ID,
+    storagePlanId: OWNER_STORAGE_PLAN_ID,
+    autoRenew: false,
+  },
   provider,
   scope: { purchases: 1, charges: 1, refunds: 0, workspaceDeletions: 0, managedKeys: 0 },
   authority: { mode: "live", authorityClass: "sandbox", j0ReadyReceipt: j0ReadyReceipt(provider) },
@@ -149,6 +161,24 @@ function controlPlane({ sessionAccountId = ACCOUNT_ID, sessionRole = "owner", se
     },
     async json(path, init = {}, auth = null, statuses = [200]) {
       if (path === "/api/gateway/wallet") return { status: 200, payload: envelope({ usdMicros: state.wallet }) };
+      // The wallet the Gateway owner holds, read under the owner session's own
+      // authorization.
+      if (path === "/api/v2/wallet") {
+        return { status: 200, payload: {
+          source: "gateway", status: "available", balanceUSDMicros: state.wallet,
+          currency: "USD", fetchedAt: "2026-10-18T00:00:00Z",
+        } };
+      }
+      // The live owner session. The identity owner binds the actor it
+      // authenticated to the Gateway user and publishes the Gateway email as the
+      // display name, so this session and the Control Plane session name the
+      // same customer.
+      if (path === "/api/v2/auth/session") {
+        return { status: 200, payload: {
+          actorId: "9001", displayName: ACCOUNT_EMAIL, tenantId: "tenant-orchestrator",
+          permissions: [], csrfToken: "owner-csrf", expiresAt: "2026-10-18T12:00:00Z",
+        } };
+      }
       // The identity fence. A transport holding another account's session
       // answers honestly here, which is the whole point of asking.
       if (path === "/api/auth/me") {
@@ -397,8 +427,8 @@ test("one orchestrator qualifies two providers, and neither adapter decides the 
       modelSelections: [],
       periodMonths: 1,
     });
-    assert.match(purchase.operationId, /^op_[0-9a-f]{32}$/, "the owner minted the operation identity");
-    assert.match(purchase.workspaceId, /^workspace_[0-9a-f]{32}$/, "the owner minted the Workspace identity");
+    assert.match(purchase.operationId, OWNER_MINTED_IDENTITY, "the owner minted the operation identity");
+    assert.match(purchase.workspaceId, OWNER_MINTED_IDENTITY, "the owner minted the Workspace identity");
     assert.equal(purchase.status, "succeeded", "the owner's own status vocabulary");
     assert.equal(purchase.stage, "succeeded", "the owner's own stage vocabulary");
     assert.equal(receipt.operation.operationId, purchase.operationId);
@@ -586,7 +616,7 @@ test("the purchase command names no provider and is identical on a redelivery", 
   assert.equal(platform.state.commands.length, 2, "the redelivery issued the same command again");
   const [command] = platform.state.commands;
   assert.deepEqual(Object.keys(command).sort(), ["name", "quoteId", "renewalMode"]);
-  assert.match(command.quoteId, /^qte_[0-9a-f]{32}$/, "the order names the quote the owner priced");
+  assert.match(command.quoteId, OWNER_MINTED_IDENTITY, "the order names the quote the owner priced");
   assert.equal(command.renewalMode, "manual", "a first deployment asks for manual renewal");
   assert.match(command.name, /^Qualification [0-9a-f]{18}$/,
     "the name is derived from the declared purchase, so a redelivery names the same Workspace");
@@ -605,7 +635,15 @@ test("the operation identity is derived from the Candidate, the tenant, the prod
 
   const otherTenant = qualificationRequest("local-docker", { accountId: "acct-customer-0002" });
   const otherProvider = qualificationRequest("tencent-tke");
-  const otherProduct = qualificationRequest("local-docker", { product: { resourceType: "workspace", packageId: "pro", autoRenew: false } });
+  const otherProduct = qualificationRequest("local-docker", {
+    product: {
+      resourceType: "workspace",
+      applicationSelection: { kind: "opl_app", runtimeVersionId: OWNER_RUNTIME_VERSION_ID },
+      computePlanId: OWNER_COMPUTE_PLAN_ID,
+      storagePlanId: "stp_00000000000000000000000000000000",
+      autoRenew: false,
+    },
+  });
   for (const [label, request] of [["tenant", otherTenant], ["provider", otherProvider], ["product", otherProduct]]) {
     assert.notEqual(request.operation.idempotencyKey, base.operation.idempotencyKey, label);
   }
@@ -672,7 +710,13 @@ test("the same customer under two Candidates gets two unrelated tenant digests",
       },
     }),
     accountId: ACCOUNT_ID,
-    product: { resourceType: "workspace", packageId: "basic", autoRenew: false },
+    product: {
+      resourceType: "workspace",
+      applicationSelection: { kind: "opl_app", runtimeVersionId: OWNER_RUNTIME_VERSION_ID },
+      computePlanId: OWNER_COMPUTE_PLAN_ID,
+      storagePlanId: OWNER_STORAGE_PLAN_ID,
+      autoRenew: false,
+    },
     provider: "local-docker",
     scope: { purchases: 1, charges: 1, refunds: 0, workspaceDeletions: 0, managedKeys: 0 },
     authority: {
@@ -1186,7 +1230,13 @@ test("an adapter that throws while opening its scope still gets one cleanup atte
 // S3: auto-renew would commit a future charge this flow never observes.
 test("an auto-renewing product is refused rather than purchased", () => {
   assert.throws(() => qualificationRequest("local-docker", {
-    product: { resourceType: "workspace", packageId: "basic", autoRenew: true },
+    product: {
+      resourceType: "workspace",
+      applicationSelection: { kind: "opl_app", runtimeVersionId: OWNER_RUNTIME_VERSION_ID },
+      computePlanId: OWNER_COMPUTE_PLAN_ID,
+      storagePlanId: OWNER_STORAGE_PLAN_ID,
+      autoRenew: true,
+    },
   }), { code: "qualification_product_invalid" });
 });
 
@@ -1219,7 +1269,7 @@ test("a settled receipt cannot name a product or an authority this flow never de
 
   for (const [what, value] of [
     ["a compute resource", { ...receipt, product: { ...receipt.product, resourceType: "compute" } }],
-    ["a traversing package id", { ...receipt, product: { ...receipt.product, packageId: "../basic" } }],
+    ["a traversing plan identity", { ...receipt, product: { ...receipt.product, computePlanId: "../basic" } }],
     ["an auto-renewing product", { ...receipt, product: { ...receipt.product, autoRenew: true } }],
     ["a fixture authority class", { ...receipt, authority: { ...receipt.authority, authorityClass: "fixture" } }],
   ]) {
@@ -1301,7 +1351,7 @@ test("a Ledger receipt that differs in type, status, Workspace, charge reference
 
 test("an owner envelope that is not from the named source is not an owner readback", async () => {
   for (const [what, override, accountBound] of [
-    ["a wallet from another source", (path) => path === "/api/gateway/wallet"
+    ["a wallet from another source", (path) => path === "/api/v2/wallet"
       ? { status: 200, payload: { source: "fixture", available: true, status: "available", data: { usdMicros: "999999999" } } }
       : null, true],
     ["an identity answer that is not available", (path) => path === "/api/auth/me"

@@ -137,7 +137,9 @@ const RUN_OPTIONS = [
   "--j0-ready-receipt",
   "--boundary",
   "--account-id",
-  "--package-id",
+  "--runtime-version-id",
+  "--compute-plan-id",
+  "--storage-plan-id",
   "--authority-class",
   "--output",
 ] as const;
@@ -160,7 +162,9 @@ export type ProtectedBusinessQualificationInput = Readonly<{
   j0ReadyReceiptPath: string;
   boundaryModulePath: string;
   accountId: string;
-  packageId: string;
+  runtimeVersionId: string;
+  computePlanId: string;
+  storagePlanId: string;
   authorityClass: ProtectedAuthorityClass;
   outputPath: string;
 }>;
@@ -526,18 +530,31 @@ export function buildProtectedQualificationRequest({
   candidate,
   j0ReadyReceipt,
   accountId,
-  packageId,
+  runtimeVersionId,
+  computePlanId,
+  storagePlanId,
   authorityClass,
   provider,
 }: {
   candidate: any;
   j0ReadyReceipt: unknown;
   accountId: string;
-  packageId: string;
+  runtimeVersionId: string;
+  computePlanId: string;
+  storagePlanId: string;
   authorityClass: ProtectedAuthorityClass;
   provider: string;
 }) {
-  const product = Object.freeze({ resourceType: "workspace", packageId: String(packageId || "").trim(), autoRenew: false });
+  // The owner route has no package. The declaration names the application source
+  // and the plan pair the owner prices, and the owner confirms it still offers
+  // them.
+  const product = Object.freeze({
+    resourceType: "workspace",
+    applicationSelection: Object.freeze({ kind: "opl_app", runtimeVersionId: String(runtimeVersionId || "").trim() }),
+    computePlanId: String(computePlanId || "").trim(),
+    storagePlanId: String(storagePlanId || "").trim(),
+    autoRenew: false,
+  });
   return createQualificationRequest({
     candidate,
     accountId,
@@ -570,12 +587,16 @@ export function buildProtectedDeployedPurchaseRequest({
   candidateDigest,
   environment,
   accountId,
-  packageId,
+  runtimeVersionId,
+  computePlanId,
+  storagePlanId,
 }: {
   candidateDigest: string;
   environment: { origin: string; customerEmail: string };
   accountId: string;
-  packageId: string;
+  runtimeVersionId: string;
+  computePlanId: string;
+  storagePlanId: string;
 }) {
   const idempotencyIdentity = PROTECTED_DEPLOYED_PURCHASE_IDENTITY;
   const idempotencyKey = deployedPurchaseIdempotencyKey(candidateDigest, idempotencyIdentity);
@@ -584,7 +605,9 @@ export function buildProtectedDeployedPurchaseRequest({
     authorityClass: "production",
     candidateReceiptDigest: candidateDigest,
     accountEmailIdentityDigest: deployedAccountIdentityDigest(environment.customerEmail),
-    packageId,
+    applicationSelection: { kind: "opl_app", runtimeVersionId: String(runtimeVersionId || "").trim() },
+    computePlanId: String(computePlanId || "").trim(),
+    storagePlanId: String(storagePlanId || "").trim(),
     autoRenew: false,
     idempotencyIdentity,
     workspaceName: `Qualification ${stableID("protected-business-workspace", accountId, idempotencyKey).slice(0, 18)}`,
@@ -726,7 +749,9 @@ export async function runProtectedBusinessQualification(
     candidate: candidate.candidate,
     j0ReadyReceipt,
     accountId: input.accountId,
-    packageId: input.packageId,
+    runtimeVersionId: input.runtimeVersionId,
+    computePlanId: input.computePlanId,
+    storagePlanId: input.storagePlanId,
     authorityClass: input.authorityClass,
     provider,
   });
@@ -736,7 +761,9 @@ export async function runProtectedBusinessQualification(
       candidateDigest: candidate.digest,
       environment: protectedEnvironment,
       accountId: input.accountId,
-      packageId: input.packageId,
+      runtimeVersionId: input.runtimeVersionId,
+      computePlanId: input.computePlanId,
+      storagePlanId: input.storagePlanId,
     });
   } catch {
     invalid("protected deployed purchase declaration is invalid");
@@ -849,7 +876,9 @@ export function parseProtectedQualificationArgs(args: readonly string[]): Protec
     j0ReadyReceiptPath: options.get("--j0-ready-receipt") as string,
     boundaryModulePath: options.get("--boundary") as string,
     accountId: options.get("--account-id") as string,
-    packageId: options.get("--package-id") as string,
+    runtimeVersionId: options.get("--runtime-version-id") as string,
+    computePlanId: options.get("--compute-plan-id") as string,
+    storagePlanId: options.get("--storage-plan-id") as string,
     authorityClass: authorityClass as ProtectedAuthorityClass,
     outputPath: options.get("--output") as string,
   });

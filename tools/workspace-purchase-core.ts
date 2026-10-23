@@ -54,6 +54,11 @@ export const WORKSPACE_QUOTE_ROUTE = "/api/v2/quotes";
 export const WORKSPACE_ORDER_ROUTE = "/api/v2/workspaces";
 export const WORKSPACE_OPERATION_ROUTE = "/api/v2/operations/workspace";
 
+// The header the owner reads a caller's request identity from. The owner stores
+// it on the operation it mints and publishes it on that operation, so it is the
+// one way a buyer can tell its own order from one an earlier delivery admitted.
+export const ORDER_REQUEST_ID_HEADER = "x-opl-request-id";
+
 const defaultWait = (milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
 
 /*
@@ -140,7 +145,65 @@ export function workspaceDeclaration({
 }
 
 /*
- * Price the declared purchase against the owner's own quote.
+ * The account email, normalized the way the platform normalizes it.
+ *
+ * The platform lowercases and trims an account email before it stores or
+ * compares it, so two authorities that each report the customer's email
+ * produce the same text here. That is how a buyer shows that two sessions
+ * belong to one customer: the normalization is one rule, not two.
+ *
+ * An address that is not usable returns the empty string rather than a digest,
+ * because a digest of an address nobody can check is worse than no answer.
+ */
+export function normalizedAccountEmail(email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  if (!normalized || normalized.length > 320 || !normalized.includes("@")) return "";
+  return normalized;
+}
+
+/*
+ * The owner catalog, read in full.
+ *
+ * The catalog pages by cursor, so every page is read. A cursor that repeats
+ * itself would page forever, so it is refused rather than followed.
+ */
+export async function listOwnerCatalogPages(http, auth, path) {
+  const items = [];
+  const seenCursors = new Set();
+  let cursor = "";
+  do {
+    const query = new URLSearchParams({ limit: "100" });
+    if (cursor) query.set("cursor", cursor);
+    const page = (await http.json(`${path}?${query.toString()}`, {}, auth)).payload;
+    if (!Array.isArray(page?.items)) throw new Error("owner catalog readback is invalid");
+    items.push(...page.items);
+    cursor = page?.nextCursor ? String(page.nextCursor) : "";
+    if (cursor && seenCursors.has(cursor)) throw new Error("owner catalog readback is invalid");
+    if (cursor) seenCursors.add(cursor);
+  } while (cursor);
+  return items;
+}
+
+/*
+ * The one catalog entry a declaration names.
+ *
+ * The catalog publishes identifiers it mints, and the contract publishes them
+ * as strings without a shape, so the entry is found by the identity the
+ * declaration already carries rather than by a shape a buyer guessed.
+ *
+ * The catalog is not searched for a default. A buyer that took the first
+ * approved release and the first available plans would buy something nobody
+ * chose, and two runs of the same declared purchase could buy two different
+ * things.
+ */
+export function findDeclaredCatalogEntry(items, id) {
+  const wanted = String(id || "");
+  if (!wanted) return null;
+  return items.find((candidate) => String(candidate?.id || "") === wanted) || null;
+}
+
+/*
+ * The price of the declared purchase, and whether the wallet can fund it.
  *
  * The owner prices the Workspace, so a buyer never computes a price. It has to
  * decide whether the quote it was handed names the thing it declared and
@@ -148,8 +211,15 @@ export function workspaceDeclaration({
  * application source, the declared plans and the declared period is not a price
  * this purchase may act on, and a wallet that cannot answer is not a large
  * balance.
+ *
+ * The two questions are separate because they are asked at different times. The
+ * quote has to name the declared thing whether or not the money is about to
+ * move: a replay reports the price its order was admitted at, and that price
+ * is only this purchase's price if it names the same thing. The wallet only
+ * matters when money is about to move, because a wallet that has since been
+ * spent is not a reason to refuse to report an order that already exists.
  */
-export function priceWorkspaceQuote({ quote, walletUsdMicros, declaration }) {
+export function quoteAmountUsdMicros({ quote, declaration }) {
   const amountUsdMicros = String(quote?.totalUSDMicros || "");
   const selection = declaration?.applicationSelection || {};
   const sameApplication = selection.kind === "opl_app"
@@ -162,11 +232,20 @@ export function priceWorkspaceQuote({ quote, walletUsdMicros, declaration }) {
       !PRICE_MICROS.test(amountUsdMicros)) {
     throw new Error("workspace quote is invalid");
   }
+  return amountUsdMicros;
+}
+
+export function assertWalletFundsQuote(walletUsdMicros, amountUsdMicros) {
   const walletMicros = String(walletUsdMicros || "");
   if (!PRICE_MICROS.test(walletMicros) || BigInt(walletMicros) < BigInt(amountUsdMicros)) {
     throw new Error("workspace wallet cannot fund the quote");
   }
   return amountUsdMicros;
+}
+
+export function priceWorkspaceQuote({ quote, walletUsdMicros, declaration }) {
+  const amountUsdMicros = quoteAmountUsdMicros({ quote, declaration });
+  return assertWalletFundsQuote(walletUsdMicros, amountUsdMicros);
 }
 
 /*
@@ -189,16 +268,62 @@ export async function quoteWorkspaceOrder({ http, auth, declaration, idempotency
 }
 
 /*
+ * The request identity this delivery announces.
+ *
+ * The owner records the request that admitted an order on the operation it
+ * mints, so a redelivery can tell its own order from the one it is replaying:
+ * the operation names the request that created it. The buyer therefore
+ * announces its own request identity on the order command, and a replayed order
+ * answers with the request that created it rather than with this one. Nothing
+ * here derives an identity the platform owns.
+ *
+ * The wrapper also records whether the command was admitted at all, because a
+ * command that was admitted and whose answer was lost is not a command that was
+ * refused, and the two have to be told apart: the first is a mutation this
+ * delivery caused, the second is an outcome this delivery cannot report.
+ */
+export function announceRequest(http, requestId) {
+  const admitted = { order: false, mine: false };
+  return {
+    ...http,
+    admitted,
+    async json(path, init = {}, auth = null, statuses = [200]) {
+      const result = await http.json(path, {
+        ...init,
+        headers: { ...(init.headers || {}), [ORDER_REQUEST_ID_HEADER]: requestId },
+      }, auth, statuses);
+      if (path === WORKSPACE_ORDER_ROUTE && init?.method === "POST") {
+        admitted.order = Boolean(result?.payload?.operationId);
+        // The operation names the request that created it, so an operation
+        // under this request is this delivery's own purchase and an operation
+        // under another one is a replay.
+        admitted.mine = admitted.order && String(result?.payload?.requestId || "") === requestId;
+      }
+      return result;
+    },
+  };
+}
+
+/*
  * The admitted order followed through its own declared stage order until it
  * reports a terminal success. A bounded window, and an order that never reaches
  * one is a refusal rather than an infinite poll.
  *
  * The owner publishes the interval between reads, so the buyer waits as long as
  * the owner asked and not by its own guess.
+ *
+ * The operation the owner publishes has to be the order the command admitted:
+ * the same operation identity and the same Workspace. A readback that names
+ * another Workspace is not this order, and following it would attribute another
+ * purchase to this delivery.
  */
-export async function waitForWorkspaceOrder(http, operationId, auth, wait = defaultWait) {
+export async function waitForWorkspaceOrder(http, operationId, workspaceId, auth, wait = defaultWait) {
   for (let attempt = 0; attempt < ORDER_POLL_ATTEMPTS; attempt += 1) {
     const operation = (await http.json(`${WORKSPACE_OPERATION_ROUTE}/${encodeURIComponent(operationId)}`, {}, auth)).payload;
+    if (String(operation?.operationId || "") !== operationId ||
+        (workspaceId && String(operation?.resourceId || "") !== workspaceId)) {
+      throw orderError("workspace order readback is not this order", { operationId, workspaceId });
+    }
     const status = String(operation?.status || "");
     if (status === ORDER_SUCCEEDED) return operation;
     if (ORDER_STOPPED.includes(status)) {
@@ -249,7 +374,7 @@ export async function submitWorkspaceOrder({
     throw orderError("workspace order identity is missing", { quoteId: String(quote?.id || "") });
   }
   try {
-    const operation = await waitForWorkspaceOrder(http, operationId, auth, wait);
+    const operation = await waitForWorkspaceOrder(http, operationId, workspaceId, auth, wait);
     return { order, operation, operationId, workspaceId };
   } catch (error) {
     // The delivery stopped or could not be read, but the order exists and the
