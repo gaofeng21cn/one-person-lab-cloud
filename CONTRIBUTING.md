@@ -117,6 +117,15 @@ state machines/DTOs, or
 create a shared package for one caller. If a change truly crosses modules, name
 the owning contract and update both sides and their focused tests together.
 
+## Merge Responsibility
+
+The author merges their own pull request after current-revision CI passes; do not
+merge another author's pull request unless they explicitly ask. Irreversible
+changes — production release, real money, Secrets, data deletion, or a change to
+the release/CI gate itself — need the other maintainer's explicit approval. Keep
+branches short and rebase before merge; coordinate only on the same file, shared
+contract revision, or generated output.
+
 ## Validation
 
 Pull Request CI runs dependency review and a `validate` job that executes
