@@ -270,14 +270,46 @@ export function qualificationTenantScope(accountId, candidateReceiptDigest) {
 }
 
 /*
- * The product combination this run purchases. The platform prices the launch and
- * refuses a client that supplies a size or a price, so the declaration carries
- * only what the platform itself takes as input.
+ * A declared identity.
+ *
+ * The declaration is the buyer's own input, so it may be held to a shape: it
+ * has to be one token, so it cannot carry a path, a separator or a traversal
+ * into anything that later treats it as one. This is not the shape the owner
+ * mints its own identities in — those are opaque — and nothing here says a
+ * minted identity has this form.
  */
-export function qualificationProduct({ resourceType = "workspace", packageId = "basic", autoRenew = false } = {}) {
+const DECLARED_IDENTITY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+
+/*
+ * The product combination this run purchases.
+ *
+ * The owner route prices a compute plan, a storage plan and exactly one
+ * application source, and it refuses a client that supplies a size or a price,
+ * so the declaration carries only what the owner itself takes as input.
+ *
+ * There is no package on this route. A declaration that named one would be
+ * declared and then select nothing, and a receipt that carried one beside the
+ * resolved plan pair would read as a promise the purchase did not make. So the
+ * declaration names the application source and the plan pair, and the owner
+ * confirms it still offers them.
+ */
+export function qualificationProduct({
+  resourceType = "workspace",
+  applicationSelection,
+  computePlanId,
+  storagePlanId,
+  autoRenew = false,
+} = {}) {
   const resource = String(resourceType || "").trim();
-  const product = String(packageId || "").trim();
-  if (resource !== "workspace" || !product || product.length > 64 || !/^[a-z0-9][a-z0-9-]*$/.test(product)) {
+  const selection = applicationSelection || {};
+  const kind = String(selection.kind || "");
+  const runtimeVersionId = String(selection.runtimeVersionId || "").trim();
+  const compute = String(computePlanId || "").trim();
+  const storage = String(storagePlanId || "").trim();
+  if (resource !== "workspace" || kind !== "opl_app" ||
+      !DECLARED_IDENTITY.test(runtimeVersionId) ||
+      !DECLARED_IDENTITY.test(compute) ||
+      !DECLARED_IDENTITY.test(storage)) {
     throw qualificationContractError("qualification_product_invalid");
   }
   if (typeof autoRenew !== "boolean") throw qualificationContractError("qualification_product_invalid");
@@ -285,7 +317,13 @@ export function qualificationProduct({ resourceType = "workspace", packageId = "
   // customer to a later charge this run never observes, so it is refused here
   // rather than purchased and left out of the accounting.
   if (autoRenew) throw qualificationContractError("qualification_product_invalid");
-  return Object.freeze({ resourceType: resource, packageId: product, autoRenew });
+  return Object.freeze({
+    resourceType: resource,
+    applicationSelection: Object.freeze({ kind, runtimeVersionId }),
+    computePlanId: compute,
+    storagePlanId: storage,
+    autoRenew,
+  });
 }
 
 // The authority classes a live qualification may declare. The J0 validator in
@@ -340,27 +378,12 @@ export function qualificationIdempotencyKey({ candidateReceiptDigest, accountDig
     candidateReceiptDigest,
     accountDigest,
     resourceType: declared.resourceType,
-    packageId: declared.packageId,
+    applicationSelection: declared.applicationSelection,
+    computePlanId: declared.computePlanId,
+    storagePlanId: declared.storagePlanId,
     autoRenew: declared.autoRenew,
     provider: name
   })).slice("sha256:".length)}`;
-}
-
-/*
- * The Workspace name a run declares.
- *
- * Derived from the operation identity rather than chosen per provider, so a
- * redelivery sends the same command body, and so the name never says which host
- * happened to run the qualification. A name that named Local-Docker would put a
- * provider into the business command, which is exactly what this seam exists to
- * keep out of it.
- */
-export function qualificationWorkspaceName(operationId) {
-  const declared = String(operationId || "").trim();
-  if (!/^workspace-launch-[0-9a-f]{18}$/.test(declared)) {
-    throw qualificationContractError("qualification_operation_identity_invalid");
-  }
-  return `Qualification ${declared.slice("workspace-launch-".length)}`;
 }
 
 /*
@@ -440,7 +463,7 @@ const RECEIPT_KEYS = [
 ];
 const CANDIDATE_KEYS = ["receiptDigest", "productSha", "productTree", "cloudImageDigest"];
 const SOURCE_KEYS = ["sha", "tree", "clean"];
-const PRODUCT_KEYS = ["resourceType", "packageId", "autoRenew"];
+const PRODUCT_KEYS = ["resourceType", "applicationSelection", "computePlanId", "storagePlanId", "autoRenew"];
 const AUTHORITY_KEYS = ["mode", "authorityClass", "j0ReadyDigest"];
 const OPERATION_KEYS = ["idempotencyKey", "operationId", "workspaceId", "purchaseReceiptId", "resumed"];
 const ACCOUNTING_KEYS = ["quoteUsdMicros", "walletBeforeUsdMicros", "walletAfterUsdMicros", "chargeReferenceDigest"];
@@ -520,7 +543,10 @@ export function validateBusinessQualificationReceipt(value) {
   }
   if (!declaredProduct ||
       declaredProduct.resourceType !== value.product.resourceType ||
-      declaredProduct.packageId !== value.product.packageId ||
+      declaredProduct.applicationSelection.kind !== value.product.applicationSelection?.kind ||
+      declaredProduct.applicationSelection.runtimeVersionId !== value.product.applicationSelection?.runtimeVersionId ||
+      declaredProduct.computePlanId !== value.product.computePlanId ||
+      declaredProduct.storagePlanId !== value.product.storagePlanId ||
       declaredProduct.autoRenew !== value.product.autoRenew) {
     invalidReceipt();
   }

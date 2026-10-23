@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
@@ -19,7 +20,12 @@ import {
   createTencentTkeQualificationAdapter,
   tencentTkeDeployment,
 } from "../../tools/workspace-qualification-tencent-tke.ts";
-import { launchOperationId, launchWorkspaceId } from "../../tools/workspace-purchase-core.ts";
+
+// The owner mints the operation and the Workspace identities, and the public
+// contract publishes them as strings without a shape. These assertions hold
+// that the evidence names an identity the owner minted, not one this buyer
+// could have derived, without pinning how the owner spells it.
+const OWNER_MINTED_IDENTITY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 
 // The adapter is driven through the same public orchestrator entry the
 // Local-Docker flow uses, over a provider boundary reduced to the three
@@ -43,6 +49,35 @@ const DEPLOYMENT = {
   namespace: "tke-qualification",
   ownerOrigin: OWNER_ORIGIN,
 };
+
+// The identities the Workspace owner mints. The owner mints the operation and
+// the Workspace identity of every order it admits, so the fake mints them too
+// and never derives them from the declared idempotency identity.
+const ownerID = (prefix, ...parts) =>
+  `${prefix}_${createHash("sha1").update(parts.join(":")).digest("hex").slice(0, 32)}`;
+
+// The catalog the owner offers. The buyer resolves its declaration from these
+// the way the Console does: the first approved Runtime Release and the first
+// available compute and storage plan.
+const OWNER_RUNTIME_VERSION_ID = `rtv_${"a".repeat(32)}`;
+const OWNER_COMPUTE_PLAN_ID = `cmp_${"b".repeat(32)}`;
+const OWNER_STORAGE_PLAN_ID = `stp_${"c".repeat(32)}`;
+
+/*
+ * The owner's idempotency record is keyed by the identity it was handed and
+ * guarded by the body it was given: a repeated command is a replay only when
+ * it repeats the same command, and an identity reused with another body is a
+ * different purchase that the owner refuses rather than admits.
+ */
+const canonicalJson = (value) => {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value === undefined ? null : value);
+};
+const bodyDigest = (body) => createHash("sha256").update(canonicalJson(body)).digest("hex");
 
 function candidateReceipt(overrides = {}) {
   return {
@@ -96,7 +131,13 @@ function j0ReadyReceipt(provider) {
 const qualificationRequest = (provider, overrides = {}) => createQualificationRequest({
   candidate: candidateReceipt(),
   accountId: ACCOUNT_ID,
-  product: { resourceType: "workspace", packageId: "basic", autoRenew: false },
+  product: {
+    resourceType: "workspace",
+    applicationSelection: { kind: "opl_app", runtimeVersionId: OWNER_RUNTIME_VERSION_ID },
+    computePlanId: OWNER_COMPUTE_PLAN_ID,
+    storagePlanId: OWNER_STORAGE_PLAN_ID,
+    autoRenew: false,
+  },
   provider,
   scope: { purchases: 1, charges: 1, refunds: 0, workspaceDeletions: 0, managedKeys: 0 },
   authority: { mode: "live", authorityClass: "sandbox", j0ReadyReceipt: j0ReadyReceipt(provider) },
@@ -105,105 +146,236 @@ const qualificationRequest = (provider, overrides = {}) => createQualificationRe
 });
 
 /*
- * The platform, reduced to the owner API the purchase flow reads. An
- * idempotency key admits one order, so a redelivery is answered from the order
- * already admitted rather than promoted into a second purchase.
+ * The platform, reduced to the Workspace owner API the purchase flow reads.
+ *
+ * The Workspace owner is the only writer for a new purchase. It prices the
+ * quote, it mints the operation and the Workspace identity, and it keeps the
+ * idempotency record that decides whether a repeated command is a replay of
+ * the same order or a second purchase. The fake below plays that owner: it
+ * mints the identities itself, so the evidence a run produces is bound to
+ * identities this test never derived.
+ *
+ * The retained Control Plane launch route is read, never written. This account
+ * holds no order that route admitted before the cutover, and a purchase command
+ * on it would be a second purchase, so the fake answers its read with nothing
+ * and refuses its write.
  */
 function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MICROS, loseResponseOnce = false,
-  noBillingReceipt = false, launchStatus = "succeeded" } = {}) {
+  noBillingReceipt = false, orderStatus = "succeeded" } = {}) {
   const state = {
-    orders: new Map(), byKey: new Map(), posted: 0, charges: [], commands: [],
-    wallet: walletBeforeMicros, workspaceId: "", operationId: "", responsesLost: false,
+    orders: new Map(), byKey: new Map(), quotes: new Map(), quoteById: new Map(),
+    posted: 0, charges: [], commands: [], calls: [],
+    wallet: walletBeforeMicros, workspaceId: "", operationId: "", receiptId: "", quoteId: "",
+    responsesLost: false,
   };
   const envelope = (data) => ({ source: "sub2api", available: true, status: "available", data });
+  // The owner's own projection of an operation it admitted. It carries the
+  // identities the owner minted and the owner's own stage and status.
+  const ownerOperation = (admitted) => ({
+    operationId: admitted.operationId, owner: "workspace", kind: "create_workspace",
+    resourceId: admitted.workspaceId, status: admitted.status, stage: admitted.stage,
+    requestId: admitted.requestId,
+  });
+  // The Ledger's own record of the purchase. It names the order that caused
+  // it, the Workspace it paid for and the resources it delivered.
+  const chargeReceipt = () => ({
+    receiptId: state.receiptId, workspaceId: state.workspaceId, operationId: state.operationId,
+    type: "billing.workspace_purchased.v1", status: "completed",
+    chargeReference: "opl:workspace-purchase:charge:0001",
+    totalUsdMicros: quoteMicros,
+    fulfillment: { computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001" },
+  });
+  // The retained route still holds the orders it admitted before the cutover.
+  // This account holds none, so its read answers with nothing.
+  const retainedLaunch = () => ({ response: { status: 404 }, payload: null });
+
+  // The owner's own answer to one request. The route decides what the owner
+  // says, and the caller decides which status it is willing to read.
+  const ownerAnswer = async (path, init) => {
+    if (path === "/api/gateway/wallet") return { status: 200, payload: envelope({ usdMicros: state.wallet }) };
+    if (path === "/api/auth/me") {
+      return { status: 200, payload: envelope({
+        accountId: ACCOUNT_ID, email: ACCOUNT_EMAIL, role: "owner", status: "active", sub2apiUserId: "9001",
+      }) };
+    }
+    // The live owner session. The identity owner binds the actor it
+    // authenticated to the Gateway user and publishes the Gateway email as the
+    // display name, so this session and the Control Plane session name the same
+    // customer.
+    if (path === "/api/v2/auth/session") {
+      return { status: 200, payload: {
+        actorId: "9001", displayName: ACCOUNT_EMAIL, tenantId: "tenant-qualification",
+        permissions: [], csrfToken: "owner-csrf", expiresAt: "2026-10-18T12:00:00Z",
+      } };
+    }
+    // The wallet the Gateway owner holds, read under the owner session's own
+    // authorization.
+    if (path === "/api/v2/wallet") {
+      return { status: 200, payload: {
+        source: "gateway", status: "available", balanceUSDMicros: state.wallet,
+        currency: "USD", fetchedAt: "2026-10-18T00:00:00Z",
+      } };
+    }
+
+    // The owner owns the catalog a buyer prices from, and the Console reads
+    // it the same way: the first approved Runtime Release and the first
+    // available compute and storage plan. The page is the owner's own.
+    if (path.startsWith("/api/v2/catalog/runtime-versions")) {
+      return { status: 200, payload: { items: [{ id: OWNER_RUNTIME_VERSION_ID, name: "Qualification Runtime", status: "approved" }] } };
+    }
+    if (path.startsWith("/api/v2/catalog/compute-plans")) {
+      return { status: 200, payload: { items: [{ id: OWNER_COMPUTE_PLAN_ID, name: "Qualification Compute", availability: "available" }] } };
+    }
+    if (path.startsWith("/api/v2/catalog/storage-plans")) {
+      return { status: 200, payload: { items: [{ id: OWNER_STORAGE_PLAN_ID, name: "Qualification Storage", availability: "available" }] } };
+    }
+    // The quote is the owner's own price for the declared purchase. It is
+    // recorded against the idempotency identity it was handed and guarded
+    // by the body it was given, so a repeated quote replays this quote
+    // instead of pricing a second one.
+    if (path === "/api/v2/quotes" && init.method === "POST") {
+      const key = String(init.headers?.["idempotency-key"] || "");
+      const body = init.body || {};
+      const digest = bodyDigest(body);
+      const existing = state.quotes.get(key);
+      if (existing) {
+        if (existing.digest !== digest) throw new Error(`HTTP POST ${path} returned 409`);
+        return { status: 200, payload: existing.quote };
+      }
+      const quote = {
+        id: ownerID("qte", key),
+        purpose: "deploy",
+        runtimeVersionId: String(body?.applicationSelection?.runtimeVersionId || ""),
+        computePlanId: String(body?.computePlanId || ""),
+        storagePlanId: String(body?.storagePlanId || ""),
+        modelSelections: body?.modelSelections || [],
+        periodMonths: Number(body?.periodMonths || 0),
+        totalUSDMicros: quoteMicros,
+        // An offered quote has no order yet. The order takes it, and an
+        // accepted quote is one an order already took.
+        status: "offered",
+      };
+      state.quotes.set(key, { quote, digest });
+      state.quoteById.set(quote.id, quote);
+      state.quoteId = quote.id;
+      return { status: 201, payload: quote };
+    }
+    if (/^\/api\/v2\/quotes\/[^/]+$/.test(path)) {
+      const quote = state.quoteById.get(decodeURIComponent(path.split("/").pop()));
+      return quote ? { status: 200, payload: quote } : { status: 404, payload: null };
+    }
+    // The order is admitted against the quote the owner priced. One
+    // idempotency identity admits one order, and the body it was given
+    // guards it, so a redelivery is answered from the order already
+    // admitted rather than promoted into a second purchase.
+    if (path === "/api/v2/workspaces" && init.method === "POST") {
+      const key = String(init.headers?.["idempotency-key"] || "");
+      const body = init.body || {};
+      const digest = bodyDigest(body);
+      state.commands.push(body);
+      const replayed = state.byKey.get(key);
+      if (replayed) {
+        if (replayed.digest !== digest) throw new Error(`HTTP POST ${path} returned 409`);
+        return { status: 202, payload: ownerOperation(replayed.admitted) };
+      }
+      const admitted = {
+        operationId: ownerID("op", key, String(state.posted + 1)),
+        workspaceId: ownerID("workspace", key, String(state.posted + 1)),
+        // The owner records the request that admitted the order, so a
+        // redelivery can tell its own order from the one it is replaying.
+        requestId: String(init.headers?.["x-opl-request-id"] || ""),
+        status: orderStatus,
+        stage: orderStatus === "succeeded" ? "succeeded" : "creating",
+      };
+      state.byKey.set(key, { admitted, digest });
+      state.orders.set(admitted.operationId, admitted);
+      state.workspaceId = admitted.workspaceId;
+      state.operationId = admitted.operationId;
+      state.receiptId = ownerID("rcpt", admitted.operationId);
+      state.posted += 1;
+      state.wallet = String(BigInt(state.wallet) - BigInt(quoteMicros));
+      state.charges.push(quoteMicros);
+      // The quote this order took is an accepted quote now.
+      const quote = state.quoteById.get(String(body?.quoteId || ""));
+      if (quote) quote.status = "accepted";
+      // The platform admitted the order and its answer was lost. This is
+      // the response-loss case, not a refused command: the order above
+      // exists. The answer is lost once, so the recovery reads the order
+      // the owner already admitted instead of a second purchase.
+      if (loseResponseOnce && !state.responsesLost) {
+        state.responsesLost = true;
+        throw new Error("socket hang up after the platform accepted the command");
+      }
+      return { status: 202, payload: ownerOperation(admitted) };
+    }
+    if (/^\/api\/v2\/operations\/workspace\/[^/]+$/.test(path)) {
+      const admitted = state.orders.get(decodeURIComponent(path.split("/").pop()));
+      if (!admitted) throw new Error(`HTTP GET ${path} returned 404`);
+      return { status: 200, payload: ownerOperation(admitted) };
+    }
+    // The Ledger's own inventory of receipts. The receipt of an owner order
+    // is found in that inventory, bound to the order and the Workspace the
+    // owner minted.
+    if (path.startsWith("/api/billing/receipts?")) {
+      if (noBillingReceipt) throw new Error(`HTTP GET ${path} returned 404`);
+      return { status: 200, payload: {
+        source: "ledger", available: true, status: "available",
+        data: { receipts: state.receiptId ? [chargeReceipt()] : [], hasMore: false },
+      } };
+    }
+    if (/^\/api\/billing\/receipts\/[^/]+$/.test(path)) {
+      if (noBillingReceipt) throw new Error(`HTTP GET ${path} returned 404`);
+      const receiptId = decodeURIComponent(path.split("/").pop());
+      if (receiptId !== state.receiptId) return { status: 404, payload: null };
+      return { status: 200, payload: {
+        source: "ledger", available: true, status: "available",
+        data: chargeReceipt(),
+      } };
+    }
+    // The retained Control Plane projection still holds the Workspace and
+    // the application installation the platform committed beside it.
+    if (path.startsWith("/api/workspaces?")) {
+      return { status: 200, payload: {
+        source: "control-plane", available: true, status: "available",
+        data: { items: [{
+          id: state.workspaceId, url: ENTRY_URL, openable: true,
+          currentApplication: { status: "ready", entryUrl: ENTRY_URL, operationId: APPLICATION_OPERATION_ID },
+        }], total: 1 },
+      } };
+    }
+    if (/^\/api\/workspaces\/[^/]+\/runtime-status$/.test(path)) {
+      return { status: 200, payload: {
+        source: "fabric", available: true, status: "available",
+        data: {
+          workspaceId: state.workspaceId, ready: true, status: "running", url: ENTRY_URL,
+          runtimeId: "rt-0123456789abcdef", checks: [{ name: "console", ok: true }, { name: "gateway", ok: true }],
+          currentApplication: { operationId: APPLICATION_OPERATION_ID },
+        },
+      } };
+    }
+    throw new Error(`unexpected path ${path}`);
+  };
 
   const http = {
-    async request(path) {
-      const match = /^\/api\/workspace-launches\/([^/]+)$/.exec(path);
-      if (match) {
-        const admitted = state.orders.get(decodeURIComponent(match[1]));
+    async request(path, init = {}, auth = null) {
+      state.calls.push({ method: init.method || "GET", path });
+      const operation = /^\/api\/v2\/operations\/workspace\/([^/]+)$/.exec(path);
+      if (operation) {
+        // The order is read back under the identity the owner minted.
+        const admitted = state.orders.get(decodeURIComponent(operation[1]));
         return admitted
-          ? { response: { status: 200 }, payload: admitted }
+          ? { response: { status: 200 }, payload: ownerOperation(admitted) }
           : { response: { status: 404 }, payload: null };
       }
+      if (/^\/api\/workspace-launches\/[^/]+$/.test(path)) return retainedLaunch();
       throw new Error(`unexpected request ${path}`);
     },
-    async json(path, init = {}) {
-      if (path === "/api/gateway/wallet") return { status: 200, payload: envelope({ usdMicros: state.wallet }) };
-      if (path === "/api/auth/me") {
-        return { status: 200, payload: envelope({ accountId: ACCOUNT_ID, email: ACCOUNT_EMAIL, role: "owner", status: "active" }) };
-      }
-      if (path.startsWith("/api/workspaces?")) {
-        return { status: 200, payload: {
-          source: "control-plane", available: true, status: "available",
-          data: { items: [{
-            id: state.workspaceId, url: ENTRY_URL, openable: true,
-            currentApplication: { status: "ready", entryUrl: ENTRY_URL, operationId: APPLICATION_OPERATION_ID },
-          }] },
-        } };
-      }
-      if (/^\/api\/workspaces\/[^/]+\/runtime-status$/.test(path)) {
-        return { status: 200, payload: {
-          source: "fabric", available: true, status: "available",
-          data: {
-            workspaceId: state.workspaceId, ready: true, status: "running", url: ENTRY_URL,
-            runtimeId: "rt-0123456789abcdef", checks: [{ name: "console", ok: true }, { name: "gateway", ok: true }],
-            currentApplication: { operationId: APPLICATION_OPERATION_ID },
-          },
-        } };
-      }
-      if (/^\/api\/billing\/receipts\/[^/]+$/.test(path)) {
-        if (noBillingReceipt) throw new Error(`HTTP GET ${path} returned 404`);
-        return { status: 200, payload: {
-          source: "ledger", available: true, status: "available",
-          data: {
-            receiptId: decodeURIComponent(path.split("/").pop()), workspaceId: state.workspaceId,
-            operationId: state.operationId,
-            type: "billing.workspace_purchased.v1", status: "completed",
-            chargeReference: "opl:workspace-launch:charge:0001", totalUsdMicros: quoteMicros,
-            fulfillment: { computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001" },
-          },
-        } };
-      }
-      if (path === "/api/pricing/preview") {
-        return { status: 200, payload: { resourceType: "workspace", packageId: "basic", currency: "USD", totalChargeUsdMicros: quoteMicros } };
-      }
-      if (path === "/api/workspace-launches" && init.method === "POST") {
-        const key = init.headers["idempotency-key"];
-        const operationId = launchOperationId(ACCOUNT_ID, key);
-        const workspaceId = launchWorkspaceId(ACCOUNT_ID, operationId);
-        if (state.byKey.has(key)) {
-          return { status: 202, payload: { operationId: state.byKey.get(key), workspaceId } };
-        }
-        const admitted = {
-          operationId, workspaceId, status: launchStatus,
-          phase: launchStatus === "succeeded" ? "succeeded" : "debit",
-          // The command asks for the full installation; the persisted Launch is
-          // the resource-only purchase the receipt rule describes.
-          provisioningMode: "resource_only",
-          receiptId: launchStatus === "succeeded" ? "rcpt_qualification_1" : "",
-          computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001",
-        };
-        state.byKey.set(key, operationId);
-        state.orders.set(operationId, admitted);
-        state.workspaceId = workspaceId;
-        state.operationId = operationId;
-        state.posted += 1;
-        state.commands.push(init.body);
-        state.wallet = String(BigInt(state.wallet) - BigInt(quoteMicros));
-        state.charges.push(quoteMicros);
-        if (loseResponseOnce && !state.responsesLost) {
-          state.responsesLost = true;
-          throw new Error("socket hang up after the platform accepted the command");
-        }
-        return { status: 202, payload: { operationId, workspaceId } };
-      }
-      if (/^\/api\/workspace-launches\/[^/]+$/.test(path)) {
-        const admitted = state.orders.get(decodeURIComponent(path.split("/").pop()));
-        if (!admitted) throw new Error(`HTTP GET ${path} returned 404`);
-        return { status: 200, payload: admitted };
-      }
-      throw new Error(`unexpected path ${path}`);
+    async json(path, init = {}, auth = null, statuses = [200]) {
+      state.calls.push({ method: init.method || "GET", path });
+      const answer = await ownerAnswer(path, init);
+      // The owner answers at the status the caller asked for, and no other.
+      if (!statuses.includes(answer.status)) throw new Error(`HTTP ${init.method || "GET"} ${path} returned ${answer.status}`);
+      return answer;
     },
   };
   return { http, state };
@@ -295,7 +467,39 @@ test("the TKE adapter satisfies the shared seam and settles the shared flow", as
   assert.equal(receipt.state, "settled");
   assert.ok(QUALIFICATION_BUSINESS_CHECKS.every((name) => receipt.checks[name] === true));
   assert.equal(platform.state.posted, 1);
-  assert.equal(platform.state.commands[0].provisioningMode, "full", "the command asks for the full installation");
+  // The purchase is issued on the Workspace owner route: the quote it buys
+  // against and the order it admits. The retained launch route is not a
+  // purchase command any more, so no purchase is written there.
+  assert.deepEqual(
+    platform.state.calls.filter((call) => call.method === "POST").map((call) => call.path),
+    ["/api/v2/quotes", "/api/v2/workspaces"],
+    "the quote and the order are issued on the Workspace owner route",
+  );
+  assert.equal(
+    platform.state.calls.some((call) => call.path.startsWith("/api/workspace-launches") && call.method === "POST"),
+    false,
+    "the retained launch route admits no purchase",
+  );
+  // The command names the quote it is buying, and carries nothing else: the
+  // owner route has no provisioning mode to ask for.
+  assert.deepEqual(Object.keys(platform.state.commands[0]).sort(), ["name", "quoteId", "renewalMode"]);
+  assert.equal(platform.state.commands[0].quoteId, platform.state.quoteId, "the command names the quote it is buying");
+  assert.equal(platform.state.commands[0].renewalMode, "manual");
+  assert.equal(Object.hasOwn(platform.state.commands[0], "provisioningMode"), false,
+    "the owner route has no provisioning mode to declare");
+  // The identities in the evidence are the ones the owner minted, and the order
+  // is read back from the owner that minted them.
+  assert.match(receipt.operation.operationId, OWNER_MINTED_IDENTITY);
+  assert.match(receipt.operation.workspaceId, OWNER_MINTED_IDENTITY);
+  assert.equal(receipt.operation.operationId, platform.state.operationId, "the evidence names the owner's own operation");
+  assert.equal(receipt.operation.workspaceId, platform.state.workspaceId, "the evidence names the owner's own Workspace");
+  assert.equal(
+    platform.state.calls.some((call) => call.path === `/api/v2/operations/workspace/${receipt.operation.operationId}`),
+    true,
+    "the order is read back from the owner that minted it",
+  );
+  // The price the evidence reports is the owner's own frozen quote total.
+  assert.equal(receipt.accounting.quoteUsdMicros, QUOTE_MICROS, "the evidence reports the owner's frozen quote total");
   assert.equal(boundary.calls.establish, 1);
   assert.equal(boundary.calls.release, 1, "the boundary that opened the scope closes it");
   assert.equal(boundary.calls.health, 1);
@@ -512,7 +716,7 @@ test("deployment health maps the provider's readiness facts and never moves the 
   assert.equal(degradedRun.state, "settled", "a degraded host does not unqualify a proven product");
   assert.equal(degradedRun.receipt.deploymentHealth, "degraded");
 
-  const failedPlatform = controlPlane({ launchStatus: "failed" });
+  const failedPlatform = controlPlane({ orderStatus: "failed" });
   const failedRun = await run(request, adapterFor(failedPlatform, request, { health: "ready" }));
   assert.equal(failedRun.state, "failed", "a healthy host does not make a failed business run pass");
   assert.equal(failedRun.receipt.deploymentHealth, "healthy");
@@ -590,11 +794,20 @@ test("a redelivery resumes the original TKE purchase and buys nothing twice", as
   assert.equal(second.state, "settled");
   assert.equal(platform.state.posted, 1, "one admitted order for one declared qualification");
   assert.equal(platform.state.charges.length, 1, "one charge");
+  assert.equal(platform.state.commands.length, 2, "the redelivery re-issued the order command");
+  assert.equal(platform.state.commands[1].quoteId, platform.state.commands[0].quoteId,
+    "the replay names the same quote the first delivery bought");
   assert.equal(first.receipt.operation.resumed, false);
   assert.equal(first.receipt.mutations.observed.purchases, 1);
   assert.equal(second.receipt.operation.resumed, true);
   assert.equal(second.receipt.operation.operationId, first.receipt.operation.operationId);
   assert.equal(second.receipt.operation.workspaceId, first.receipt.operation.workspaceId);
+  assert.match(second.receipt.operation.operationId, OWNER_MINTED_IDENTITY,
+    "the replayed order keeps the identity the owner minted");
+  assert.match(second.receipt.operation.workspaceId, OWNER_MINTED_IDENTITY,
+    "the replayed order keeps the Workspace identity the owner minted");
+  assert.equal(second.receipt.accounting.quoteUsdMicros, QUOTE_MICROS,
+    "the replay is priced by the same frozen quote");
   assert.equal(second.receipt.mutations.observed.purchases, 0, "the redelivery bought nothing again");
   assert.equal(second.receipt.mutations.observed.charges, 0, "and charged nothing again");
   assert.equal(second.receipt.mutations.observed.refunds, 0);
@@ -614,8 +827,13 @@ test("a lost answer to the command recovers the admitted order, and a lost owner
   ));
   assert.equal(recovered.state, "settled");
   assert.equal(recoveredPlatform.state.posted, 1, "the lost answer cost a retry of the read, never a second purchase");
+  assert.equal(recoveredPlatform.state.commands.length, 2, "the lost answer was retried once");
+  assert.equal(recoveredPlatform.state.commands[1].quoteId, recoveredPlatform.state.commands[0].quoteId,
+    "the retry repeats the same order command");
   assert.equal(recovered.receipt.operation.resumed, false);
   assert.equal(recovered.receipt.mutations.observed.purchases, 1);
+  assert.match(recovered.receipt.operation.operationId, OWNER_MINTED_IDENTITY);
+  assert.match(recovered.receipt.operation.workspaceId, OWNER_MINTED_IDENTITY);
 
   const lostPlatform = controlPlane({ noBillingReceipt: true });
   const lost = await run(qualificationRequest(TENCENT_TKE_PROVIDER), adapterFor(
@@ -643,7 +861,7 @@ test("the TKE receipt is redacted and claims no business qualification", async (
     ["the session cookie", "opl_session=qualification"],
     ["the CSRF token", "qualification-csrf"],
     ["the entry URL", ENTRY_URL],
-    ["the charge reference", "opl:workspace-launch:charge"],
+    ["the charge reference", "opl:workspace-purchase:charge"],
   ]) {
     assert.equal(serialized.includes(value), false, label);
   }

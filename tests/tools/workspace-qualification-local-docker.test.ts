@@ -19,7 +19,12 @@ import {
   localDockerDeployment,
 } from "../../tools/workspace-qualification-local-docker.ts";
 import { login as harnessLogin, sourceData } from "../../tools/local-workspace-qualification.ts";
-import { launchOperationId, launchWorkspaceId } from "../../tools/workspace-purchase-core.ts";
+
+// The catalog the Workspace owner offers. The declaration names the entry it
+// buys, so the catalog has to offer exactly these.
+const OWNER_RUNTIME_VERSION_ID = "rv-qualification";
+const OWNER_COMPUTE_PLAN_ID = "cp-qualification";
+const OWNER_STORAGE_PLAN_ID = "sp-qualification";
 
 // The adapter is driven through the same public orchestrator entry the
 // Tencent-TKE flow uses, over the Compose stack the Local-Docker harness already
@@ -101,7 +106,13 @@ function j0ReadyReceipt(provider) {
 const qualificationRequest = (provider, overrides = {}) => createQualificationRequest({
   candidate: candidateReceipt(),
   accountId: ACCOUNT_ID,
-  product: { resourceType: "workspace", packageId: "basic", autoRenew: false },
+  product: {
+    resourceType: "workspace",
+    applicationSelection: { kind: "opl_app", runtimeVersionId: OWNER_RUNTIME_VERSION_ID },
+    computePlanId: OWNER_COMPUTE_PLAN_ID,
+    storagePlanId: OWNER_STORAGE_PLAN_ID,
+    autoRenew: false,
+  },
   provider,
   scope: { purchases: 1, charges: 1, refunds: 0, workspaceDeletions: 0, managedKeys: 0 },
   authority: { mode: "live", authorityClass: "sandbox", j0ReadyReceipt: j0ReadyReceipt(provider) },
@@ -133,11 +144,26 @@ function result(payload, { status = 200, headers = {} } = {}) {
  * already admitted rather than promoted into a second purchase.
  */
 function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MICROS, loseResponseOnce = false,
-  noBillingReceipt = false, launchStatus = "succeeded" } = {}) {
+  billingReceiptUnavailable = false, operationStatus = "succeeded" } = {}) {
   const state = {
-    orders: new Map(), byKey: new Map(), posted: 0, charges: [], commands: [],
+    orders: new Map(), byKey: new Map(), posted: 0, charges: [], commands: [], quotes: [],
     wallet: walletBeforeMicros, workspaceId: "", operationId: "", responsesLost: false,
-    pageReads: 0, logins: 0,
+    pageReads: 0, logins: 0, minted: 0, retainedReads: 0, ownerReads: 0,
+  };
+
+  // One shape for the owner operation, so both seams answer the same operation.
+  const ownerOperationPayload = (admitted) => ({
+    operationId: admitted.operationId, owner: "workspace", kind: "create_workspace",
+    resourceId: admitted.workspaceId, status: admitted.status, stage: admitted.stage,
+    requestId: admitted.requestId,
+  });
+
+  // The owner mints the operation identity and the Workspace identity of every
+  // order it admits, so the fixture mints them instead of deriving them.
+  const mintOwnerIdentity = () => {
+    state.minted += 1;
+    const ordinal = String(state.minted).padStart(4, "0");
+    return { operationId: `workspace-operation-${ordinal}`, workspaceId: `ws-owner-${ordinal}` };
   };
 
   const http = {
@@ -150,9 +176,18 @@ function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MI
       }
       const match = /^\/api\/workspace-launches\/([^/]+)$/.exec(path);
       if (match) {
+        state.retainedReads += 1;
         const admitted = state.orders.get(decodeURIComponent(match[1]));
         return admitted
           ? { response: { status: 200 }, payload: admitted }
+          : { response: { status: 404 }, payload: null };
+      }
+      const ownerOperation = /^\/api\/v2\/operations\/workspace\/([^/]+)$/.exec(path);
+      if (ownerOperation) {
+        state.ownerReads += 1;
+        const admitted = state.orders.get(decodeURIComponent(ownerOperation[1]));
+        return admitted
+          ? { response: { status: 200 }, payload: ownerOperationPayload(admitted) }
           : { response: { status: 404 }, payload: null };
       }
       throw new Error(`unexpected request ${path}`);
@@ -173,6 +208,24 @@ function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MI
           accountId: ACCOUNT_ID, email: ACCOUNT_EMAIL, role: "owner", status: "active", sub2apiUserId: "9001",
         }));
       }
+      // The live owner session. The identity owner binds the actor it
+      // authenticated to the Gateway user and publishes the Gateway email as the
+      // display name, so this session and the Control Plane session name the
+      // same customer.
+      if (path === "/api/v2/auth/session") {
+        return result({
+          actorId: "9001", displayName: ACCOUNT_EMAIL, tenantId: "tenant-qualification",
+          permissions: [], csrfToken: "owner-csrf", expiresAt: "2026-10-18T12:00:00Z",
+        });
+      }
+      // The wallet the Gateway owner holds, read under the owner session's own
+      // authorization.
+      if (path === "/api/v2/wallet") {
+        return result({
+          source: "gateway", status: "available", balanceUSDMicros: state.wallet,
+          currency: "USD", fetchedAt: "2026-10-18T00:00:00Z",
+        });
+      }
       if (path.startsWith("/api/workspaces?")) {
         return result(envelope("control-plane", {
           items: [{
@@ -189,8 +242,22 @@ function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MI
           currentApplication: { operationId: APPLICATION_OPERATION_ID },
         }));
       }
+      if (path.startsWith("/api/billing/receipts?")) {
+        // The receipt of an owner order is found in the Ledger's own inventory,
+        // so an unavailable inventory is an unavailable readback.
+        if (billingReceiptUnavailable) throw new Error(`HTTP GET ${path} returned 404`);
+        return result(envelope("ledger", {
+          receipts: [{
+            receiptId: "rcpt_qualification_1", workspaceId: state.workspaceId, operationId: state.operationId,
+            type: "billing.workspace_purchased.v1", status: "completed",
+            chargeReference: "opl:workspace-launch:charge:0001", totalUsdMicros: quoteMicros,
+            fulfillment: { computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001" },
+          }],
+          hasMore: false,
+        }));
+      }
       if (/^\/api\/billing\/receipts\/[^/]+$/.test(path)) {
-        if (noBillingReceipt) throw new Error(`HTTP GET ${path} returned 404`);
+        if (billingReceiptUnavailable) throw new Error(`HTTP GET ${path} returned 404`);
         return result(envelope("ledger", {
           receiptId: decodeURIComponent(path.split("/").pop()), workspaceId: state.workspaceId,
           operationId: state.operationId,
@@ -199,26 +266,45 @@ function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MI
           fulfillment: { computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001" },
         }));
       }
-      if (path === "/api/pricing/preview") {
-        return result({ resourceType: "workspace", packageId: "basic", currency: "USD", totalChargeUsdMicros: quoteMicros });
+      // The owner owns the catalog a buyer prices from. The Console reads it the
+      // same way: the first approved Runtime Release, the first available
+      // compute plan and the first available storage plan.
+      if (path.startsWith("/api/v2/catalog/runtime-versions")) {
+        return result({ items: [{ id: "rv-qualification", status: "approved" }] });
       }
-      if (path === "/api/workspace-launches" && init.method === "POST") {
+      if (path.startsWith("/api/v2/catalog/compute-plans")) {
+        return result({ items: [{ id: "cp-qualification", availability: "available" }] });
+      }
+      if (path.startsWith("/api/v2/catalog/storage-plans")) {
+        return result({ items: [{ id: "sp-qualification", availability: "available" }] });
+      }
+      if (path === "/api/v2/quotes" && init.method === "POST") {
+        state.quotes.push({ body: init.body, idempotencyKey: init.headers["idempotency-key"] });
+        return result({
+          id: "quote_qualification_1", purpose: "deploy", runtimeVersionId: "rv-qualification",
+          computePlanId: "cp-qualification", storagePlanId: "sp-qualification",
+          modelSelections: [], periodMonths: 1, totalUSDMicros: quoteMicros, status: "offered",
+        }, { status: 201 });
+      }
+      if (path === "/api/v2/workspaces" && init.method === "POST") {
         const key = init.headers["idempotency-key"];
-        const operationId = launchOperationId(ACCOUNT_ID, key);
-        const workspaceId = launchWorkspaceId(ACCOUNT_ID, operationId);
+        // An idempotency key admits one order, so a redelivery is answered from
+        // the order already admitted rather than promoted into a second purchase.
         if (state.byKey.has(key)) {
-          return result({ operationId: state.byKey.get(key), workspaceId }, { status: 202 });
+          const replayed = state.byKey.get(key);
+          return result({
+            operationId: replayed.operationId, resourceId: replayed.workspaceId,
+            owner: "workspace", kind: "create_workspace", status: "accepted", stage: "creating",
+            requestId: replayed.requestId,
+          }, { status: 202 });
         }
+        const { operationId, workspaceId } = mintOwnerIdentity();
         const admitted = {
-          operationId, workspaceId, status: launchStatus,
-          phase: launchStatus === "succeeded" ? "succeeded" : "debit",
-          // The command asks for the full installation; the persisted Launch is
-          // the resource-only purchase the receipt rule describes.
-          provisioningMode: "resource_only",
-          receiptId: launchStatus === "succeeded" ? "rcpt_qualification_1" : "",
-          computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001",
+          operationId, workspaceId, requestId: String(init.headers["x-opl-request-id"] || ""),
+          status: operationStatus === "succeeded" ? "succeeded" : operationStatus,
+          stage: operationStatus === "succeeded" ? "succeeded" : "creating",
         };
-        state.byKey.set(key, operationId);
+        state.byKey.set(key, admitted);
         state.orders.set(operationId, admitted);
         state.workspaceId = workspaceId;
         state.operationId = operationId;
@@ -230,12 +316,16 @@ function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MI
           state.responsesLost = true;
           throw new Error("socket hang up after the platform accepted the command");
         }
-        return result({ operationId, workspaceId }, { status: 202 });
+        return result({
+          operationId, resourceId: workspaceId, owner: "workspace", kind: "create_workspace",
+          status: "accepted", stage: "creating", requestId: admitted.requestId,
+        }, { status: 202 });
       }
-      if (/^\/api\/workspace-launches\/[^/]+$/.test(path)) {
+      if (/^\/api\/v2\/operations\/workspace\/[^/]+$/.test(path)) {
+        state.ownerReads += 1;
         const admitted = state.orders.get(decodeURIComponent(path.split("/").pop()));
         if (!admitted) throw new Error(`HTTP GET ${path} returned 404`);
-        return result(admitted);
+        return result(ownerOperationPayload(admitted));
       }
       throw new Error(`unexpected path ${path}`);
     },
@@ -350,8 +440,20 @@ test("the Local-Docker adapter satisfies the shared seam and settles the shared 
   assert.equal(receipt.provider, LOCAL_DOCKER_PROVIDER);
   assert.equal(receipt.state, "settled");
   assert.ok(QUALIFICATION_BUSINESS_CHECKS.every((name) => receipt.checks[name] === true));
-  assert.equal(platform.state.posted, 1);
-  assert.equal(platform.state.commands[0].provisioningMode, "full", "the command asks for the full installation");
+  assert.equal(platform.state.posted, 1, "one owner order for one declared qualification");
+  // The order names the quote the owner priced and asks for manual renewal,
+  // and the quote froze the application selection and the plan pair it prices.
+  assert.equal(platform.state.commands[0].quoteId, "quote_qualification_1", "the order names the quote the owner priced");
+  assert.equal(platform.state.commands[0].renewalMode, "manual", "a first deployment asks for manual renewal");
+  assert.deepEqual(platform.state.quotes[0].body.applicationSelection, { kind: "opl_app", runtimeVersionId: "rv-qualification" });
+  assert.equal(platform.state.quotes[0].body.computePlanId, "cp-qualification");
+  assert.equal(platform.state.quotes[0].body.storagePlanId, "sp-qualification");
+  // The owner mints the operation identity and the Workspace identity of the
+  // purchase, and the order is read back under the identity it minted.
+  assert.ok(platform.state.operationId, "the owner minted the operation identity");
+  assert.ok(platform.state.workspaceId, "the owner minted the Workspace identity");
+  assert.ok(platform.state.ownerReads >= 1, "the owner operation was read back");
+  assert.equal(platform.state.retainedReads, 0, "a new purchase is not read back through the retained launch route");
   assert.equal(boundary.calls.up, 1);
   assert.equal(boundary.calls.login, 1, "the authenticated transport comes from the login flow");
   assert.equal(boundary.calls.down, 1, "the boundary that started the stack closes it");
@@ -616,7 +718,7 @@ test("deployment health maps the provider's own facts and never the page", async
   assert.equal(absentRun.receipt.deploymentHealth, "unknown", "a reachable page is not a healthy stack");
   assert.equal(platform.state.pageReads, 0);
 
-  const failedPlatform = controlPlane({ launchStatus: "failed" });
+  const failedPlatform = controlPlane({ operationStatus: "failed" });
   const failedRun = await run(request, adapterFor(failedPlatform, request, { health: "ready" }));
   assert.equal(failedRun.state, "failed", "a healthy host does not make a failed business run pass");
   assert.equal(failedRun.receipt.deploymentHealth, "healthy");
@@ -723,7 +825,7 @@ test("a lost answer to the command recovers the admitted order, and a lost owner
   assert.equal(recovered.receipt.operation.resumed, false);
   assert.equal(recovered.receipt.mutations.observed.purchases, 1);
 
-  const lostPlatform = controlPlane({ noBillingReceipt: true });
+  const lostPlatform = controlPlane({ billingReceiptUnavailable: true });
   const lost = await run(qualificationRequest(LOCAL_DOCKER_PROVIDER), adapterFor(
     lostPlatform, qualificationRequest(LOCAL_DOCKER_PROVIDER),
   ));

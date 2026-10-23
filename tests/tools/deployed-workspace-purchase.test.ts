@@ -10,7 +10,7 @@ import {
   runDeployedWorkspacePurchase,
   validateDeployedPurchaseReceipt,
 } from "../../tools/deployed-workspace-purchase.ts";
-import { launchOperationId, launchWorkspaceId } from "../../tools/workspace-purchase-core.ts";
+import { stableID } from "../../tools/workspace-purchase-core.ts";
 
 // The deployed entry is the only automated buyer that may reach a real customer.
 // Its guard is deliberately the mirror image of the local harness's: the local
@@ -32,14 +32,45 @@ const ACCOUNT = {
   email: ACCOUNT_EMAIL,
   status: "active",
 };
-const WALLET = { userId: "77", currency: "USD", usdMicros: "999999999", status: "active" };
-const PRICING = { resourceType: "workspace", packageId: "pro", currency: "USD", totalChargeUsdMicros: "52580000" };
-const AUTH = { cookie: "session=declared", csrf: "declared-csrf" };
+// The wallet the Gateway owner holds, read under the owner session.
+const WALLET = {
+  source: "gateway",
+  status: "available",
+  balanceUSDMicros: "999999999",
+  currency: "USD",
+  fetchedAt: "2026-10-18T00:00:00Z",
+};
+// The live owner session. The identity owner binds the actor it authenticated
+// to the Gateway user and publishes the Gateway email as the display name.
+const OWNER_SESSION = {
+  actorId: "77",
+  displayName: ACCOUNT_EMAIL,
+  tenantId: "tenant-declared",
+  permissions: [],
+  csrfToken: "owner-csrf",
+  expiresAt: "2026-10-18T12:00:00Z",
+};
 const IDENTITY = "declared-identity";
 const IDEMPOTENCY_KEY = `deployed-workspace:${CANDIDATE_HEX}:${IDENTITY}`;
-const OPERATION_ID = launchOperationId(ACCOUNT.accountId, IDEMPOTENCY_KEY);
-const WORKSPACE_ID = launchWorkspaceId(ACCOUNT.accountId, OPERATION_ID);
-const PURCHASE_RECEIPT_ID = "rcpt_declared_purchase";
+// The identities the Workspace owner and the catalog owners mint. They are
+// pinned here in their published shape, so a receipt that names a derived
+// identity instead of a minted one fails in this file rather than in a
+// customer's receipt.
+const RUNTIME_VERSION_ID = `runtime_${"1".repeat(32)}`;
+const COMPUTE_PLAN_ID = `compute_${"2".repeat(32)}`;
+const STORAGE_PLAN_ID = `storage_${"3".repeat(32)}`;
+const QUOTE_ID = `quote_${"4".repeat(32)}`;
+// The owner mints the operation and the Workspace identities, and the public
+// contract publishes them as strings without a shape. They are pinned here in a
+// shape the contract does not describe, so a buyer that pinned a shape of its
+// own would fail in this file rather than in a customer's receipt.
+const OPERATION_ID = "op-1a2b3c4d-5e6f-7890-abcd-123456789abc";
+const WORKSPACE_ID = "workspace-abcdef01-2345-6789-abcd-ef0123456789";
+const AMOUNT = "52580000";
+// The retained Control Plane launch identity, derived the way the Control
+// Plane derived it. The buyer still reads that route for the orders it
+// admitted before the cutover.
+const RETAINED_OPERATION_ID = `workspace-launch-${stableID(ACCOUNT.accountId, IDEMPOTENCY_KEY).slice(0, 18)}`;
 
 function declaredRequest(overrides = {}) {
   return {
@@ -47,8 +78,10 @@ function declaredRequest(overrides = {}) {
     authorityClass: "production",
     candidateReceiptDigest: CANDIDATE_DIGEST,
     accountEmailIdentityDigest: ACCOUNT_DIGEST,
-    packageId: "pro",
-    autoRenew: true,
+    applicationSelection: { kind: "opl_app", runtimeVersionId: RUNTIME_VERSION_ID },
+    computePlanId: COMPUTE_PLAN_ID,
+    storagePlanId: STORAGE_PLAN_ID,
+    autoRenew: false,
     idempotencyIdentity: IDENTITY,
     workspaceName: "Declared workspace",
     ...overrides,
@@ -62,75 +95,133 @@ function envelope(source, status, data) {
   return value;
 }
 
-function admittedOrder(overrides = {}) {
+/*
+ * The owner's own quote. It names the application source and the plan pair the
+ * buyer declared, and it is the only price this purchase may act on.
+ */
+function ownerQuote(overrides = {}) {
   return {
-    operationId: OPERATION_ID,
-    workspaceId: WORKSPACE_ID,
-    accountId: ACCOUNT.accountId,
-    name: "Declared workspace",
-    packageId: "pro",
-    sizeGb: 20,
-    autoRenew: true,
-    status: "pending",
-    phase: "key",
-    currency: "USD",
-    totalChargeUsdMicros: 52580000,
-    receiptId: "",
+    id: QUOTE_ID,
+    purpose: "deploy",
+    runtimeVersionId: RUNTIME_VERSION_ID,
+    computePlanId: COMPUTE_PLAN_ID,
+    storagePlanId: STORAGE_PLAN_ID,
+    modelSelections: [],
+    periodMonths: 1,
+    totalUSDMicros: AMOUNT,
+    status: "offered",
+    expiresAt: "2026-10-19T00:00:00Z",
+    createdAt: "2026-10-18T00:00:00Z",
     ...overrides,
   };
 }
 
 /*
- * A platform that answers the way the Control Plane does: the account and the
- * wallet are source envelopes, the quote is a plain body, and the launch is the
- * deterministic order the shared core polls. `commands` counts how many times a
- * purchase command was actually issued, which is the fact a replay must not
- * change.
+ * The owner's own operation. The owner mints the operation identity and the
+ * Workspace identity, so the buyer binds its evidence to what the owner
+ * returned and never to an identity it derived.
+ */
+function ownerOperation(overrides = {}) {
+  return {
+    operationId: OPERATION_ID,
+    owner: "workspace",
+    kind: "create_workspace",
+    resourceId: WORKSPACE_ID,
+    status: "succeeded",
+    stage: "succeeded",
+    // The owner stores the request that admitted the order on the operation it
+    // mints and publishes it, so a replay answers with the request that
+    // created the order rather than with the one that asked again.
+    requestId: "request-declared",
+    createdAt: "2026-10-18T00:00:00Z",
+    updatedAt: "2026-10-18T00:00:10Z",
+    ...overrides,
+  };
+}
+
+/*
+ * A platform that answers the way the Workspace owner does: the account and
+ * the wallet are source envelopes, the catalog is a paged owner read, the quote
+ * and the order are the owner's own resources, and the order command is
+ * idempotent on the buyer's identity the way the owner's record is.
+ *
+ * `orders` is the fact a replay must not change: it holds one order per
+ * idempotency key, and a repeated command under the same key and the same body
+ * replays that order instead of admitting a second one.
  */
 function deployedPlatform({
   account = { status: 200, body: envelope("sub2api", "available", ACCOUNT) },
-  wallet = { status: 200, body: envelope("sub2api", "available", WALLET) },
-  pricing = PRICING,
-  order = null,
+  wallet = { status: 200, body: WALLET },
+  ownerSession = { status: 200, body: OWNER_SESSION },
+  retainedLaunch = null,
+  runtimeVersions = { items: [{ id: RUNTIME_VERSION_ID, status: "approved" }] },
+  computePlans = { items: [{ id: COMPUTE_PLAN_ID, availability: "available" }] },
+  storagePlans = { items: [{ id: STORAGE_PLAN_ID, availability: "available" }] },
+  quote = ownerQuote(),
   loseCommandAnswer = false,
   failRecoveryRead = false,
 } = {}) {
   const calls = [];
-  let current = order ? { ...order } : null;
+  const orders = new Map();
   let commands = 0;
+  let quoteAccepted = false;
   const respond = (status, payload) => ({ response: { status }, payload, text: "" });
 
   const request = async (path, init = {}, auth) => {
     calls.push({ kind: "request", path, init, auth });
     if (path === "/api/auth/me") return respond(account.status, account.body);
     if (path === "/api/gateway/wallet") return respond(wallet.status, wallet.body);
-    if (path === `/api/workspace-launches/${OPERATION_ID}`) {
-      if (current && failRecoveryRead) throw new Error("readback lost after the command");
-      return current ? respond(200, current) : respond(404, { error: "workspace_launch_not_found" });
+    if (path === "/api/v2/auth/session") return respond(ownerSession.status, ownerSession.body);
+    if (path === "/api/v2/wallet") return respond(wallet.status, wallet.body);
+    if (path === `/api/workspace-launches/${RETAINED_OPERATION_ID}`) {
+      return retainedLaunch ? respond(200, retainedLaunch) : respond(404, { error: "workspace_launch_not_found" });
     }
     throw new Error(`unexpected request ${path}`);
   };
 
   const json = async (path, init = {}, auth, statuses) => {
     calls.push({ kind: "json", path, init, auth, statuses });
-    if (path === "/api/pricing/preview") return respond(200, pricing);
-    if (path === "/api/workspace-launches" && init.method === "POST") {
+    const method = init.method || "GET";
+    if (path === "/api/v2/auth/session") return respond(ownerSession.status, ownerSession.body);
+    if (path === "/api/v2/wallet") return respond(wallet.status, wallet.body);
+    if (path.startsWith("/api/v2/catalog/runtime-versions")) return respond(200, runtimeVersions);
+    if (path.startsWith("/api/v2/catalog/compute-plans")) return respond(200, computePlans);
+    if (path.startsWith("/api/v2/catalog/storage-plans")) return respond(200, storagePlans);
+    if (path === "/api/v2/quotes" && method === "POST") return respond(200, quote);
+    if (path === `/api/v2/quotes/${QUOTE_ID}`) {
+      return respond(200, { ...quote, status: quoteAccepted ? "accepted" : "offered" });
+    }
+    if (path === "/api/v2/workspaces" && method === "POST") {
       commands += 1;
-      if (!current) current = admittedOrder();
-      if (loseCommandAnswer && commands === 1) throw new Error("connection lost after the command");
-      return respond(202, current);
-    }
-    if (path === `/api/workspace-launches/${OPERATION_ID}`) {
-      if (!current) throw new Error("unexpected poll");
-      if (current.status !== "succeeded") {
-        current = { ...current, status: "succeeded", phase: "succeeded", receiptId: PURCHASE_RECEIPT_ID };
+      const key = String(init.headers?.["idempotency-key"] || "");
+      const body = JSON.stringify(init.body);
+      const existing = orders.get(key);
+      if (existing) {
+        // The owner's own record: the same identity with the same request
+        // replays the order, and a different request under it is a conflict.
+        if (existing.body !== body) throw new Error("idempotency key has different input");
+        return respond(202, existing.operation);
       }
-      return respond(200, current);
+      const operation = ownerOperation({ requestId: String(init.headers?.["x-opl-request-id"] || "") });
+      orders.set(key, { body, operation });
+      quoteAccepted = true;
+      if (loseCommandAnswer && commands === 1) throw new Error("connection lost after the command");
+      return respond(202, operation);
     }
-    throw new Error(`unexpected json ${init.method || "GET"} ${path}`);
+    if (path === `/api/v2/operations/workspace/${OPERATION_ID}`) {
+      if (failRecoveryRead) throw new Error("readback lost after the command");
+      return respond(200, ownerOperation());
+    }
+    throw new Error(`unexpected json ${method} ${path}`);
   };
 
-  return { calls, request, json, commands: () => commands, order: () => current };
+  return {
+    calls,
+    request,
+    json,
+    commands: () => commands,
+    orders: () => orders,
+  };
 }
 
 function callerFor(platform, overrides = {}) {
@@ -142,6 +233,8 @@ function callerFor(platform, overrides = {}) {
     ...overrides,
   };
 }
+
+const AUTH = { cookie: "session=declared", csrf: "declared-csrf" };
 
 test("the deployed buyer requires production authority", () => {
   assert.doesNotThrow(() => assertDeployedPurchaseTarget({ baseURL: BASE_URL, authorityClass: "production" }));
@@ -194,7 +287,7 @@ test("every declared input is required and nothing else is accepted", () => {
     { storageSizeGb: "20" },
     { customerEmail: ACCOUNT_EMAIL },
     { customerPassword: "customer-password" },
-    { priceUsdMicros: "52580000" },
+    { priceUsdMicros: AMOUNT },
     { testBilling: true },
   ]) {
     assert.throws(
@@ -220,8 +313,10 @@ test("the environment reader declares inputs and never a credential", () => {
     OPL_DEPLOYED_PURCHASE_AUTHORITY_CLASS: "production",
     OPL_DEPLOYED_PURCHASE_CANDIDATE_DIGEST: CANDIDATE_DIGEST,
     OPL_DEPLOYED_PURCHASE_ACCOUNT_DIGEST: ACCOUNT_DIGEST,
-    OPL_DEPLOYED_PURCHASE_PACKAGE_ID: "pro",
-    OPL_DEPLOYED_PURCHASE_AUTO_RENEW: "true",
+    OPL_DEPLOYED_PURCHASE_RUNTIME_VERSION_ID: RUNTIME_VERSION_ID,
+    OPL_DEPLOYED_PURCHASE_COMPUTE_PLAN_ID: COMPUTE_PLAN_ID,
+    OPL_DEPLOYED_PURCHASE_STORAGE_PLAN_ID: STORAGE_PLAN_ID,
+    OPL_DEPLOYED_PURCHASE_AUTO_RENEW: "false",
     OPL_DEPLOYED_PURCHASE_IDENTITY: IDENTITY,
     OPL_DEPLOYED_PURCHASE_WORKSPACE_NAME: "Declared workspace",
     // This entry never reads a customer credential. A workflow that still has
@@ -233,8 +328,8 @@ test("the environment reader declares inputs and never a credential", () => {
   assert.equal("customerEmail" in request, false);
   assert.equal("customerPassword" in request, false);
   assert.equal(deployedPurchaseRequestFromEnvironment({
-    ...environment, OPL_DEPLOYED_PURCHASE_AUTO_RENEW: "false",
-  }).autoRenew, false);
+    ...environment, OPL_DEPLOYED_PURCHASE_AUTO_RENEW: "true",
+  }).autoRenew, true);
   for (const renewal of ["TRUE", "1", "yes", "", "false "]) {
     assert.throws(
       () => deployedPurchaseRequestFromEnvironment({ ...environment, OPL_DEPLOYED_PURCHASE_AUTO_RENEW: renewal }),
@@ -254,7 +349,7 @@ test("the declared identity digest is the normalization the Control Plane applie
   assert.throws(() => deployedAccountIdentityDigest("not-an-email"), { code: "deployed_purchase_account_unavailable" });
 });
 
-test("the buyer reads the owner envelope and buys one declared Workspace through the shared core", async () => {
+test("the buyer reads the owner envelope and buys one declared Workspace through the owner route", async () => {
   const platform = deployedPlatform();
   const receipt = await runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform));
 
@@ -262,15 +357,24 @@ test("the buyer reads the owner envelope and buys one declared Workspace through
   assert.equal(receipt.kind, DEPLOYED_PURCHASE_RECEIPT_KIND);
   assert.deepEqual(receipt.candidate, { receiptDigest: CANDIDATE_DIGEST });
   assert.deepEqual(receipt.account, { identityDigest: ACCOUNT_DIGEST });
-  assert.deepEqual(receipt.product, { resourceType: "workspace", packageId: "pro", autoRenew: true });
+  // The product names what was actually bought: the application source and the
+  // plan pair the owner priced, not a Control Plane package.
+  assert.deepEqual(receipt.product, {
+    resourceType: "workspace",
+    applicationSelection: { kind: "opl_app", runtimeVersionId: RUNTIME_VERSION_ID },
+    computePlanId: COMPUTE_PLAN_ID,
+    storagePlanId: STORAGE_PLAN_ID,
+    renewalMode: "manual",
+  });
+  // The operation and the Workspace identity are the owner's own, minted by the
+  // owner, and the receipt binds the evidence to them.
   assert.deepEqual(receipt.operation, {
     idempotencyKey: IDEMPOTENCY_KEY,
     operationId: OPERATION_ID,
     workspaceId: WORKSPACE_ID,
-    purchaseReceiptId: PURCHASE_RECEIPT_ID,
     resumed: false,
   });
-  assert.deepEqual(receipt.purchase, { amountUsdMicros: "52580000" });
+  assert.deepEqual(receipt.purchase, { amountUsdMicros: AMOUNT });
   assert.deepEqual(receipt.mutations, { declared: { purchases: 1 }, observed: { purchases: 1 } });
   assert.ok(Date.parse(receipt.completedAt) >= Date.parse(receipt.startedAt));
 
@@ -278,22 +382,48 @@ test("the buyer reads the owner envelope and buys one declared Workspace through
     platform.calls.map((call) => `${call.kind} ${call.path}${call.init?.method ? ` ${call.init.method}` : ""}`),
     [
       "request /api/auth/me",
-      `request /api/workspace-launches/${OPERATION_ID}`,
-      "request /api/gateway/wallet",
-      "json /api/pricing/preview POST",
-      "json /api/workspace-launches POST",
-      `json /api/workspace-launches/${OPERATION_ID}`,
+      "json /api/v2/auth/session",
+      `request /api/workspace-launches/${RETAINED_OPERATION_ID}`,
+      "json /api/v2/catalog/runtime-versions?limit=100",
+      "json /api/v2/catalog/compute-plans?limit=100",
+      "json /api/v2/catalog/storage-plans?limit=100",
+      "json /api/v2/quotes POST",
+      `json /api/v2/quotes/${QUOTE_ID}`,
+      "json /api/v2/wallet",
+      "json /api/v2/workspaces POST",
+      `json /api/v2/operations/workspace/${OPERATION_ID}`,
     ],
   );
-  const preview = platform.calls.find((call) => call.path === "/api/pricing/preview");
-  assert.deepEqual(preview.init.body, { resourceType: "workspace", packageId: "pro" });
-  const command = platform.calls.find((call) => call.path === "/api/workspace-launches" && call.init.method === "POST");
+
+  // The retained Control Plane route is read for the orders it admitted before
+  // the cutover. It is never a purchase command.
+  assert.equal(
+    platform.calls.some((call) => call.path === "/api/workspace-launches" && call.init?.method === "POST"),
+    false,
+    "the retained route must never be issued as a purchase command",
+  );
+
+  const quote = platform.calls.find((call) => call.path === "/api/v2/quotes" && call.init.method === "POST");
+  assert.deepEqual(quote.init.body, {
+    purpose: "deploy",
+    applicationSelection: { kind: "opl_app", runtimeVersionId: RUNTIME_VERSION_ID },
+    computePlanId: COMPUTE_PLAN_ID,
+    storagePlanId: STORAGE_PLAN_ID,
+    modelSelections: [],
+    periodMonths: 1,
+  });
+  assert.equal(quote.init.headers["idempotency-key"], IDEMPOTENCY_KEY);
+
+  const command = platform.calls.find((call) => call.path === "/api/v2/workspaces" && call.init.method === "POST");
   assert.deepEqual(command.init.body, {
-    name: "Declared workspace", packageId: "pro", autoRenew: true, provisioningMode: "full",
+    name: "Declared workspace",
+    quoteId: QUOTE_ID,
+    renewalMode: "manual",
   });
   assert.equal(command.init.headers["idempotency-key"], IDEMPOTENCY_KEY);
   assert.deepEqual(command.auth, AUTH);
   assert.equal(platform.commands(), 1);
+  assert.equal(platform.orders().size, 1);
 
   // The receipt is evidence, not a transcript: no raw account, session,
   // balance or origin is in it.
@@ -351,7 +481,7 @@ test("an owner readback from another source is not an account readback", async (
  * fund the quote. They are refused only because they are not the envelope the
  * owner contract requires, which is the exact defect this pins.
  */
-test("bare account and wallet bodies are refused by the source envelope contract", async () => {
+test("a bare account body is refused, and a wallet that is not the owner's own projection is refused too", async () => {
   const bareAccount = deployedPlatform({ account: { status: 200, body: ACCOUNT } });
   await assert.rejects(
     runDeployedWorkspacePurchase(declaredRequest(), callerFor(bareAccount)),
@@ -363,7 +493,13 @@ test("bare account and wallet bodies are refused by the source envelope contract
   assert.deepEqual(bareAccount.calls.map((call) => call.path), ["/api/auth/me"]);
   assert.equal(bareAccount.commands(), 0);
 
-  const bareWallet = deployedPlatform({ wallet: { status: 200, body: WALLET } });
+  // The wallet the Gateway owner holds is a plain owner projection, so a bare
+  // body is the right shape. A body that answers a different authority's
+  // question is not, and a balance this purchase cannot read is a balance it
+  // cannot check the quote against.
+  const bareWallet = deployedPlatform({
+    wallet: { status: 200, body: { source: "gateway", status: "unavailable", balanceUSDMicros: "1", currency: "USD", fetchedAt: "2026-10-18T00:00:00Z" } },
+  });
   await assert.rejects(
     runDeployedWorkspacePurchase(declaredRequest(), callerFor(bareWallet)),
     {
@@ -371,7 +507,9 @@ test("bare account and wallet bodies are refused by the source envelope contract
       message: "deployed purchase could not read the customer wallet",
     },
   );
-  assert.equal(bareWallet.calls.some((call) => call.path === "/api/pricing/preview"), false);
+  // The quote the owner priced costs nothing, so it may exist by now. What must
+  // not exist is an order: the buyer never learned whether it could pay.
+  assert.equal(bareWallet.calls.some((call) => call.path === "/api/v2/workspaces"), false);
   assert.equal(bareWallet.commands(), 0);
 });
 
@@ -404,9 +542,9 @@ test("a declared account digest that does not match the session is refused befor
   assert.equal(platform.commands(), 0);
 });
 
-test("an unavailable wallet is refused before the quote is priced or the command is issued", async () => {
+test("an unavailable wallet is refused before the order is issued", async () => {
   const platform = deployedPlatform({
-    wallet: { status: 502, body: envelope("sub2api", "unavailable") },
+    wallet: { status: 502, body: null },
   });
   await assert.rejects(
     runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform)),
@@ -414,9 +552,19 @@ test("an unavailable wallet is refused before the quote is priced or the command
   );
   assert.deepEqual(
     platform.calls.map((call) => `${call.kind} ${call.path}`),
-    ["request /api/auth/me", `request /api/workspace-launches/${OPERATION_ID}`, "request /api/gateway/wallet"],
+    [
+      "request /api/auth/me",
+      "json /api/v2/auth/session",
+      `request /api/workspace-launches/${RETAINED_OPERATION_ID}`,
+      "json /api/v2/catalog/runtime-versions?limit=100",
+      "json /api/v2/catalog/compute-plans?limit=100",
+      "json /api/v2/catalog/storage-plans?limit=100",
+      "json /api/v2/quotes",
+      `json /api/v2/quotes/${QUOTE_ID}`,
+      "json /api/v2/wallet",
+    ],
   );
-  assert.equal(platform.calls.some((call) => call.path === "/api/pricing/preview"), false);
+  assert.equal(platform.calls.some((call) => call.path === "/api/v2/workspaces"), false);
   assert.equal(platform.commands(), 0);
 });
 
@@ -449,28 +597,46 @@ test("a replay of the same declared identity resumes its own order and buys noth
   const callsAfterFirst = platform.calls.length;
   const second = await runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform));
 
-  assert.equal(platform.commands(), 1, "a replay issues no second purchase command");
+  // The owner mints the operation identity, so the buyer cannot address its
+  // own order without the owner. The repeated command is the owner's own
+  // replay of the order it already holds, and it admits no second purchase.
+  assert.equal(platform.orders().size, 1, "a replay must not admit a second order");
+  assert.equal(platform.commands(), 2, "the command is issued again and the owner replays it");
   assert.deepEqual(second.operation, { ...first.operation, resumed: true });
+  assert.equal(second.operation.operationId, first.operation.operationId);
   assert.deepEqual(second.mutations, { declared: { purchases: 1 }, observed: { purchases: 0 } });
   assert.equal(second.purchase.amountUsdMicros, first.purchase.amountUsdMicros);
   assert.deepEqual(
     platform.calls.slice(callsAfterFirst).map((call) => `${call.kind} ${call.path}`),
     [
       "request /api/auth/me",
-      `request /api/workspace-launches/${OPERATION_ID}`,
-      `json /api/workspace-launches/${OPERATION_ID}`,
+      "json /api/v2/auth/session",
+      `request /api/workspace-launches/${RETAINED_OPERATION_ID}`,
+      "json /api/v2/catalog/runtime-versions?limit=100",
+      "json /api/v2/catalog/compute-plans?limit=100",
+      "json /api/v2/catalog/storage-plans?limit=100",
+      "json /api/v2/quotes",
+      `json /api/v2/quotes/${QUOTE_ID}`,
+      "json /api/v2/workspaces",
+      `json /api/v2/operations/workspace/${OPERATION_ID}`,
     ],
   );
+  // A resumed delivery does not read the wallet again: the money already
+  // moved, and a balance that has since been spent is not a reason to refuse
+  // to report an order that exists.
+  assert.equal(platform.calls.slice(callsAfterFirst).some((call) => call.path === "/api/gateway/wallet"), false);
 });
 
 test("a lost command answer is recovered as this delivery's own purchase, not reissued", async () => {
   const platform = deployedPlatform({ loseCommandAnswer: true });
   const receipt = await runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform));
 
-  assert.equal(platform.commands(), 1, "the command is issued once, not once per readback");
+  assert.equal(platform.orders().size, 1, "the order is admitted once");
+  assert.equal(platform.commands(), 2, "the command is issued again and the owner replays it");
   assert.equal(receipt.operation.resumed, false);
   assert.deepEqual(receipt.mutations.observed, { purchases: 1 });
-  assert.equal(receipt.operation.purchaseReceiptId, PURCHASE_RECEIPT_ID);
+  assert.equal(receipt.operation.operationId, OPERATION_ID);
+  assert.equal(receipt.operation.workspaceId, WORKSPACE_ID);
 });
 
 test("a failed recovery readback keeps the original command error as its cause", async () => {
@@ -478,17 +644,17 @@ test("a failed recovery readback keeps the original command error as its cause",
   await assert.rejects(
     runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform)),
     (error) => {
-      assert.equal(error.code, "deployed_purchase_launch_readback_unavailable");
+      assert.match(String(error.message || ""), /readback lost after the command/);
       assert.match(String(error.cause?.message || ""), /connection lost after the command/);
       return true;
     },
   );
-  assert.equal(platform.commands(), 1, "the command is issued once, not retried");
+  assert.equal(platform.orders().size, 1, "the order is admitted once");
 });
 
-test("a wallet that cannot fund the declared quote is refused before the command is issued", async () => {
+test("a wallet that cannot fund the declared quote is refused before the order is issued", async () => {
   const platform = deployedPlatform({
-    wallet: { status: 200, body: envelope("sub2api", "available", { ...WALLET, usdMicros: "52579999" }) },
+    wallet: { status: 200, body: { ...WALLET, balanceUSDMicros: "52579999" } },
   });
   await assert.rejects(
     runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform)),
@@ -497,12 +663,66 @@ test("a wallet that cannot fund the declared quote is refused before the command
   assert.equal(platform.commands(), 0);
 });
 
-test("a quote that names another package is refused before the command is issued", async () => {
-  const platform = deployedPlatform({ pricing: { ...PRICING, packageId: "basic" } });
+test("a quote that names another plan is refused before the order is issued", async () => {
+  const platform = deployedPlatform({ quote: ownerQuote({ computePlanId: `compute_${"9".repeat(32)}` }) });
   await assert.rejects(
     runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform)),
     /quote is invalid/i,
   );
+  assert.equal(platform.commands(), 0);
+});
+
+test("a catalog that cannot name an application source or a plan pair is refused", async () => {
+  const cases = [
+    { runtimeVersions: { items: [{ id: RUNTIME_VERSION_ID, status: "deprecated" }] } },
+    { runtimeVersions: { items: [] } },
+    { computePlans: { items: [{ id: COMPUTE_PLAN_ID, availability: "unavailable" }] } },
+    { computePlans: { items: [] } },
+    { storagePlans: { items: [{ id: STORAGE_PLAN_ID, availability: "retired" }] } },
+    { storagePlans: { items: [] } },
+  ];
+  for (const options of cases) {
+    const platform = deployedPlatform(options);
+    await assert.rejects(
+      runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform)),
+      { code: "deployed_purchase_selection_unavailable" },
+      JSON.stringify(options),
+    );
+    assert.equal(platform.commands(), 0, "no order may be issued without a declaration");
+  }
+});
+
+test("an automatic renewal is refused loudly rather than bought as a manual one", async () => {
+  const platform = deployedPlatform();
+  await assert.rejects(
+    runDeployedWorkspacePurchase(declaredRequest({ autoRenew: true }), callerFor(platform)),
+    { code: "deployed_purchase_automatic_renewal_unsupported" },
+  );
+  assert.equal(platform.calls.length, 0, "the refusal costs no read and no money");
+  assert.equal(platform.commands(), 0);
+});
+
+test("an order the retained route already admitted is refused rather than bought again", async () => {
+  const platform = deployedPlatform({
+    retainedLaunch: {
+      operationId: RETAINED_OPERATION_ID,
+      workspaceId: `ws-${"7".repeat(18)}`,
+      accountId: ACCOUNT.accountId,
+      name: "Declared workspace",
+      packageId: "pro",
+      autoRenew: false,
+      status: "succeeded",
+      phase: "succeeded",
+      currency: "USD",
+      totalChargeUsdMicros: 52580000,
+      receiptId: "rcpt_declared_purchase",
+    },
+  });
+  await assert.rejects(
+    runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform)),
+    { code: "deployed_purchase_retained_order_exists" },
+  );
+  assert.equal(platform.calls.some((call) => call.path === "/api/v2/workspaces"), false);
   assert.equal(platform.commands(), 0);
 });
 
@@ -521,6 +741,24 @@ test("the receipt cannot report a replay that bought and a first delivery that b
   );
   assert.throws(
     () => validateDeployedPurchaseReceipt({ ...receipt, account: { identityDigest: "not-a-digest" } }),
+    { code: "deployed_purchase_receipt_invalid" },
+  );
+  // The owner mints the operation, the Workspace and the plan identities, and
+  // the public contract publishes them as strings without a shape. The receipt
+  // therefore refuses an identity that is missing rather than one whose form it
+  // cannot know: the binding that makes an identity trustworthy is the one the
+  // owner published beside it, and that binding is established when the order
+  // is admitted, not by the shape of a string.
+  assert.throws(
+    () => validateDeployedPurchaseReceipt({
+      ...receipt, operation: { ...receipt.operation, operationId: "" },
+    }),
+    { code: "deployed_purchase_receipt_invalid" },
+  );
+  assert.throws(
+    () => validateDeployedPurchaseReceipt({
+      ...receipt, product: { ...receipt.product, computePlanId: "" },
+    }),
     { code: "deployed_purchase_receipt_invalid" },
   );
 });
