@@ -42,8 +42,10 @@ type gatewayWalletStub struct {
 	applyThenFail bool
 	// refuseBalance answers the balance POST with a definite 4xx refusal without
 	// touching the wallet, exactly like a pre-dispatch rejection.
-	refuseBalance bool
-	entries       map[string]json.Number
+	refuseBalance  bool
+	entries        map[string]json.Number
+	balanceEntered chan struct{}
+	balanceRelease <-chan struct{}
 }
 
 func (s *gatewayWalletStub) handler() http.Handler {
@@ -53,6 +55,9 @@ func (s *gatewayWalletStub) handler() http.Handler {
 	})
 	mux.HandleFunc("/api/v1/auth/me", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"id": 101, "email": "admin@example.test", "status": "active"}})
+	})
+	mux.HandleFunc("/api/v1/admin/settings", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"affiliate_enabled": false, "affiliate_admin_recharge_enabled": false}})
 	})
 	mux.HandleFunc("/api/v1/admin/users/77", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"id": 77, "email": "billing@example.test", "status": "active"}})
@@ -67,6 +72,14 @@ func (s *gatewayWalletStub) handler() http.Handler {
 		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"id": 101, "email": "admin@example.test", "status": "active"}})
 	})
 	mux.HandleFunc("/api/v1/admin/users/77/balance", func(w http.ResponseWriter, r *http.Request) {
+		if s.balanceEntered != nil {
+			close(s.balanceEntered)
+			select {
+			case <-s.balanceRelease:
+			case <-r.Context().Done():
+				return
+			}
+		}
 		s.mu.Lock()
 		s.adjustments++
 		fail, applyThenFail, refuse := s.failBalance, s.applyThenFail, s.refuseBalance

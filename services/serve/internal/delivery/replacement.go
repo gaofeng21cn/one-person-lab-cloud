@@ -213,6 +213,9 @@ func (s *Service) runReplacement(ctx context.Context, plan replacementPlan) (*ap
 	if err = lockWorkspace(ctx, tx, plan.workspaceID); err != nil {
 		return nil, dbError(err)
 	}
+	if err = refuseClosedWorkspace(ctx, tx, plan.workspaceID); err != nil {
+		return nil, err
+	}
 	operationID := replacementOperationID(plan)
 	replay, err := s.replacementReplay(ctx, operationID, plan.workspaceID)
 	if err != nil {

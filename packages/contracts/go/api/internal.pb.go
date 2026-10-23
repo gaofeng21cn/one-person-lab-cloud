@@ -34949,8 +34949,12 @@ type WalletReadbackRequest struct {
 	Context                *CallContext           `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
 	WalletOperationId      string                 `protobuf:"bytes,2,opt,name=wallet_operation_id,json=walletOperationId,proto3" json:"wallet_operation_id,omitempty"`
 	OriginalIdempotencyKey string                 `protobuf:"bytes,3,opt,name=original_idempotency_key,json=originalIdempotencyKey,proto3" json:"original_idempotency_key,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	// Read-only: require the existing Workspace creation fence. NOT_FOUND then
+	// confirms this original charge was never dispatched; no record is synthesized.
+	ConfirmClosedAbsence bool   `protobuf:"varint,4,opt,name=confirm_closed_absence,json=confirmClosedAbsence,proto3" json:"confirm_closed_absence,omitempty"`
+	WorkspaceId          string `protobuf:"bytes,5,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *WalletReadbackRequest) Reset() {
@@ -35000,6 +35004,20 @@ func (x *WalletReadbackRequest) GetWalletOperationId() string {
 func (x *WalletReadbackRequest) GetOriginalIdempotencyKey() string {
 	if x != nil {
 		return x.OriginalIdempotencyKey
+	}
+	return ""
+}
+
+func (x *WalletReadbackRequest) GetConfirmClosedAbsence() bool {
+	if x != nil {
+		return x.ConfirmClosedAbsence
+	}
+	return false
+}
+
+func (x *WalletReadbackRequest) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
 	}
 	return ""
 }
@@ -35295,12 +35313,14 @@ func (x *ManagedKeyReadCommand) GetWorkspaceId() string {
 // remains the sole writer of the key's lifecycle state and the only owner that
 // coordinates the external key authority.
 type ManagedKeyLifecycleCommand struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Context       *CallContext           `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
-	KeyBindingId  string                 `protobuf:"bytes,2,opt,name=key_binding_id,json=keyBindingId,proto3" json:"key_binding_id,omitempty"`
-	WorkspaceId   string                 `protobuf:"bytes,3,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Context      *CallContext           `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	KeyBindingId string                 `protobuf:"bytes,2,opt,name=key_binding_id,json=keyBindingId,proto3" json:"key_binding_id,omitempty"`
+	WorkspaceId  string                 `protobuf:"bytes,3,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	// Deletion freezes issuance and resolves the original command even after ACK loss.
+	OriginalCreateIdempotencyKey string `protobuf:"bytes,4,opt,name=original_create_idempotency_key,json=originalCreateIdempotencyKey,proto3" json:"original_create_idempotency_key,omitempty"`
+	unknownFields                protoimpl.UnknownFields
+	sizeCache                    protoimpl.SizeCache
 }
 
 func (x *ManagedKeyLifecycleCommand) Reset() {
@@ -35354,6 +35374,13 @@ func (x *ManagedKeyLifecycleCommand) GetWorkspaceId() string {
 	return ""
 }
 
+func (x *ManagedKeyLifecycleCommand) GetOriginalCreateIdempotencyKey() string {
+	if x != nil {
+		return x.OriginalCreateIdempotencyKey
+	}
+	return ""
+}
+
 // The owner's answer for one lifecycle command or read. `state` is the state the
 // external authority confirmed, never a local intention; `lifecycle_version`
 // advances once per confirmed transition so two answers can be told apart.
@@ -35367,6 +35394,7 @@ type ManagedKeyLifecycleReadback struct {
 	LifecycleVersion int64                    `protobuf:"varint,4,opt,name=lifecycle_version,json=lifecycleVersion,proto3" json:"lifecycle_version,omitempty"`
 	Outcome          Observation              `protobuf:"varint,5,opt,name=outcome,proto3,enum=opl.cloud.api.Observation" json:"outcome,omitempty"`
 	UpdatedAt        *timestamppb.Timestamp   `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	AbsenceConfirmed bool                     `protobuf:"varint,7,opt,name=absence_confirmed,json=absenceConfirmed,proto3" json:"absence_confirmed,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -35441,6 +35469,13 @@ func (x *ManagedKeyLifecycleReadback) GetUpdatedAt() *timestamppb.Timestamp {
 		return x.UpdatedAt
 	}
 	return nil
+}
+
+func (x *ManagedKeyLifecycleReadback) GetAbsenceConfirmed() bool {
+	if x != nil {
+		return x.AbsenceConfirmed
+	}
+	return false
 }
 
 type ResourcePlanSnapshot struct {
@@ -35766,8 +35801,10 @@ type MutateResourcesCommand struct {
 	ResourceSetId                  string                 `protobuf:"bytes,3,opt,name=resource_set_id,json=resourceSetId,proto3" json:"resource_set_id,omitempty"`
 	ExpectedResourceVersion        string                 `protobuf:"bytes,4,opt,name=expected_resource_version,json=expectedResourceVersion,proto3" json:"expected_resource_version,omitempty"`
 	InstanceAuthorizationReference string                 `protobuf:"bytes,5,opt,name=instance_authorization_reference,json=instanceAuthorizationReference,proto3" json:"instance_authorization_reference,omitempty"`
-	unknownFields                  protoimpl.UnknownFields
-	sizeCache                      protoimpl.SizeCache
+	// Close the exact original EnsureResources command when its response was lost.
+	OriginalProvisionIdempotencyKey string `protobuf:"bytes,6,opt,name=original_provision_idempotency_key,json=originalProvisionIdempotencyKey,proto3" json:"original_provision_idempotency_key,omitempty"`
+	unknownFields                   protoimpl.UnknownFields
+	sizeCache                       protoimpl.SizeCache
 }
 
 func (x *MutateResourcesCommand) Reset() {
@@ -35831,6 +35868,13 @@ func (x *MutateResourcesCommand) GetExpectedResourceVersion() string {
 func (x *MutateResourcesCommand) GetInstanceAuthorizationReference() string {
 	if x != nil {
 		return x.InstanceAuthorizationReference
+	}
+	return ""
+}
+
+func (x *MutateResourcesCommand) GetOriginalProvisionIdempotencyKey() string {
+	if x != nil {
+		return x.OriginalProvisionIdempotencyKey
 	}
 	return ""
 }
@@ -36060,12 +36104,14 @@ func (x *RenewResourcesCommand) GetInstanceAuthorizationReference() string {
 }
 
 type ResourceReadbackRequest struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Context          *CallContext           `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
-	ResourceSetId    string                 `protobuf:"bytes,2,opt,name=resource_set_id,json=resourceSetId,proto3" json:"resource_set_id,omitempty"`
-	ResourceActionId string                 `protobuf:"bytes,3,opt,name=resource_action_id,json=resourceActionId,proto3" json:"resource_action_id,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state                           protoimpl.MessageState `protogen:"open.v1"`
+	Context                         *CallContext           `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	ResourceSetId                   string                 `protobuf:"bytes,2,opt,name=resource_set_id,json=resourceSetId,proto3" json:"resource_set_id,omitempty"`
+	ResourceActionId                string                 `protobuf:"bytes,3,opt,name=resource_action_id,json=resourceActionId,proto3" json:"resource_action_id,omitempty"`
+	WorkspaceId                     string                 `protobuf:"bytes,4,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	OriginalProvisionIdempotencyKey string                 `protobuf:"bytes,5,opt,name=original_provision_idempotency_key,json=originalProvisionIdempotencyKey,proto3" json:"original_provision_idempotency_key,omitempty"`
+	unknownFields                   protoimpl.UnknownFields
+	sizeCache                       protoimpl.SizeCache
 }
 
 func (x *ResourceReadbackRequest) Reset() {
@@ -36115,6 +36161,20 @@ func (x *ResourceReadbackRequest) GetResourceSetId() string {
 func (x *ResourceReadbackRequest) GetResourceActionId() string {
 	if x != nil {
 		return x.ResourceActionId
+	}
+	return ""
+}
+
+func (x *ResourceReadbackRequest) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
+}
+
+func (x *ResourceReadbackRequest) GetOriginalProvisionIdempotencyKey() string {
+	if x != nil {
+		return x.OriginalProvisionIdempotencyKey
 	}
 	return ""
 }
@@ -37494,12 +37554,14 @@ func (x *RuntimeDeployCommand) GetManagedKeyBinding() *RuntimeManagedKeyBinding 
 }
 
 type RuntimeReadbackRequest struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	Context           *CallContext           `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
-	RuntimeInstanceId string                 `protobuf:"bytes,2,opt,name=runtime_instance_id,json=runtimeInstanceId,proto3" json:"runtime_instance_id,omitempty"`
-	DeploymentId      string                 `protobuf:"bytes,3,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                             protoimpl.MessageState `protogen:"open.v1"`
+	Context                           *CallContext           `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	RuntimeInstanceId                 string                 `protobuf:"bytes,2,opt,name=runtime_instance_id,json=runtimeInstanceId,proto3" json:"runtime_instance_id,omitempty"`
+	DeploymentId                      string                 `protobuf:"bytes,3,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
+	WorkspaceId                       string                 `protobuf:"bytes,4,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	OriginalReservationIdempotencyKey string                 `protobuf:"bytes,5,opt,name=original_reservation_idempotency_key,json=originalReservationIdempotencyKey,proto3" json:"original_reservation_idempotency_key,omitempty"`
+	unknownFields                     protoimpl.UnknownFields
+	sizeCache                         protoimpl.SizeCache
 }
 
 func (x *RuntimeReadbackRequest) Reset() {
@@ -37553,6 +37615,20 @@ func (x *RuntimeReadbackRequest) GetDeploymentId() string {
 	return ""
 }
 
+func (x *RuntimeReadbackRequest) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
+}
+
+func (x *RuntimeReadbackRequest) GetOriginalReservationIdempotencyKey() string {
+	if x != nil {
+		return x.OriginalReservationIdempotencyKey
+	}
+	return ""
+}
+
 type RuntimeReadback struct {
 	state                            protoimpl.MessageState       `protogen:"open.v1"`
 	RuntimeInstanceId                string                       `protobuf:"bytes,1,opt,name=runtime_instance_id,json=runtimeInstanceId,proto3" json:"runtime_instance_id,omitempty"`
@@ -37572,8 +37648,12 @@ type RuntimeReadback struct {
 	DeploymentDescriptorObjectRef    string                       `protobuf:"bytes,15,opt,name=deployment_descriptor_object_ref,json=deploymentDescriptorObjectRef,proto3" json:"deployment_descriptor_object_ref,omitempty"`
 	ApplicationEntry                 *WorkspaceApplicationEntry   `protobuf:"bytes,16,opt,name=application_entry,json=applicationEntry,proto3" json:"application_entry,omitempty"`
 	AccessUrl                        string                       `protobuf:"bytes,17,opt,name=access_url,json=accessUrl,proto3" json:"access_url,omitempty"`
-	unknownFields                    protoimpl.UnknownFields
-	sizeCache                        protoimpl.SizeCache
+	// Immutable Serve fulfillment evidence, retained through runtime retirement.
+	FirstFulfilledAt *timestamppb.Timestamp `protobuf:"bytes,18,opt,name=first_fulfilled_at,json=firstFulfilledAt,proto3" json:"first_fulfilled_at,omitempty"`
+	// Confirmed only after retirement fenced all starts and no delivery was committed.
+	NeverDeliveredConfirmed bool `protobuf:"varint,19,opt,name=never_delivered_confirmed,json=neverDeliveredConfirmed,proto3" json:"never_delivered_confirmed,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *RuntimeReadback) Reset() {
@@ -37725,6 +37805,20 @@ func (x *RuntimeReadback) GetAccessUrl() string {
 	return ""
 }
 
+func (x *RuntimeReadback) GetFirstFulfilledAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.FirstFulfilledAt
+	}
+	return nil
+}
+
+func (x *RuntimeReadback) GetNeverDeliveredConfirmed() bool {
+	if x != nil {
+		return x.NeverDeliveredConfirmed
+	}
+	return false
+}
+
 // The managed key binding is an opaque Gateway/Fabric owner readback. It is
 // supplied only by Workspace after Gateway CreateManagedKey and Fabric
 // BindSecret; public update callers never choose or construct it. Serve applies
@@ -37814,13 +37908,15 @@ func (x *RuntimeReloadCommand) GetManagedKeyBinding() *RuntimeManagedKeyBinding 
 }
 
 type RuntimeStopCommand struct {
-	state                    protoimpl.MessageState `protogen:"open.v1"`
-	Context                  *CallContext           `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
-	RuntimeInstanceId        string                 `protobuf:"bytes,2,opt,name=runtime_instance_id,json=runtimeInstanceId,proto3" json:"runtime_instance_id,omitempty"`
-	DeploymentId             string                 `protobuf:"bytes,3,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
-	RetainedDataAttachmentId string                 `protobuf:"bytes,4,opt,name=retained_data_attachment_id,json=retainedDataAttachmentId,proto3" json:"retained_data_attachment_id,omitempty"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	state                             protoimpl.MessageState `protogen:"open.v1"`
+	Context                           *CallContext           `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	RuntimeInstanceId                 string                 `protobuf:"bytes,2,opt,name=runtime_instance_id,json=runtimeInstanceId,proto3" json:"runtime_instance_id,omitempty"`
+	DeploymentId                      string                 `protobuf:"bytes,3,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
+	RetainedDataAttachmentId          string                 `protobuf:"bytes,4,opt,name=retained_data_attachment_id,json=retainedDataAttachmentId,proto3" json:"retained_data_attachment_id,omitempty"`
+	WorkspaceId                       string                 `protobuf:"bytes,5,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	OriginalReservationIdempotencyKey string                 `protobuf:"bytes,6,opt,name=original_reservation_idempotency_key,json=originalReservationIdempotencyKey,proto3" json:"original_reservation_idempotency_key,omitempty"`
+	unknownFields                     protoimpl.UnknownFields
+	sizeCache                         protoimpl.SizeCache
 }
 
 func (x *RuntimeStopCommand) Reset() {
@@ -37877,6 +37973,20 @@ func (x *RuntimeStopCommand) GetDeploymentId() string {
 func (x *RuntimeStopCommand) GetRetainedDataAttachmentId() string {
 	if x != nil {
 		return x.RetainedDataAttachmentId
+	}
+	return ""
+}
+
+func (x *RuntimeStopCommand) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
+}
+
+func (x *RuntimeStopCommand) GetOriginalReservationIdempotencyKey() string {
+	if x != nil {
+		return x.OriginalReservationIdempotencyKey
 	}
 	return ""
 }
@@ -47452,11 +47562,13 @@ const file_internal_proto_rawDesc = "" +
 	"\x11amount_usd_micros\x18\x05 \x01(\x03R\x0famountUsdMicros\x127\n" +
 	"\x18refund_policy_version_id\x18\x06 \x01(\tR\x15refundPolicyVersionId\x12A\n" +
 	"\x1dconfirmed_deletion_receipt_id\x18\a \x01(\tR\x1aconfirmedDeletionReceiptId\x124\n" +
-	"\x16subscription_period_id\x18\b \x01(\tR\x14subscriptionPeriodId\"\xb7\x01\n" +
+	"\x16subscription_period_id\x18\b \x01(\tR\x14subscriptionPeriodId\"\x90\x02\n" +
 	"\x15WalletReadbackRequest\x124\n" +
 	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12.\n" +
 	"\x13wallet_operation_id\x18\x02 \x01(\tR\x11walletOperationId\x128\n" +
-	"\x18original_idempotency_key\x18\x03 \x01(\tR\x16originalIdempotencyKey\"\xc6\x01\n" +
+	"\x18original_idempotency_key\x18\x03 \x01(\tR\x16originalIdempotencyKey\x124\n" +
+	"\x16confirm_closed_absence\x18\x04 \x01(\bR\x14confirmClosedAbsence\x12!\n" +
+	"\fworkspace_id\x18\x05 \x01(\tR\vworkspaceId\"\xc6\x01\n" +
 	"\x11ManagedKeyCommand\x124\n" +
 	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12!\n" +
 	"\fworkspace_id\x18\x02 \x01(\tR\vworkspaceId\x12\x1b\n" +
@@ -47478,11 +47590,12 @@ const file_internal_proto_rawDesc = "" +
 	"\x15ManagedKeyReadCommand\x124\n" +
 	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12$\n" +
 	"\x0ekey_binding_id\x18\x02 \x01(\tR\fkeyBindingId\x12!\n" +
-	"\fworkspace_id\x18\x03 \x01(\tR\vworkspaceId\"\x9b\x01\n" +
+	"\fworkspace_id\x18\x03 \x01(\tR\vworkspaceId\"\xe2\x01\n" +
 	"\x1aManagedKeyLifecycleCommand\x124\n" +
 	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12$\n" +
 	"\x0ekey_binding_id\x18\x02 \x01(\tR\fkeyBindingId\x12!\n" +
-	"\fworkspace_id\x18\x03 \x01(\tR\vworkspaceId\"\xc3\x02\n" +
+	"\fworkspace_id\x18\x03 \x01(\tR\vworkspaceId\x12E\n" +
+	"\x1foriginal_create_idempotency_key\x18\x04 \x01(\tR\x1coriginalCreateIdempotencyKey\"\xf0\x02\n" +
 	"\x1bManagedKeyLifecycleReadback\x12$\n" +
 	"\x0ekey_binding_id\x18\x01 \x01(\tR\fkeyBindingId\x12!\n" +
 	"\fworkspace_id\x18\x02 \x01(\tR\vworkspaceId\x12=\n" +
@@ -47490,7 +47603,8 @@ const file_internal_proto_rawDesc = "" +
 	"\x11lifecycle_version\x18\x04 \x01(\x03R\x10lifecycleVersion\x124\n" +
 	"\aoutcome\x18\x05 \x01(\x0e2\x1a.opl.cloud.api.ObservationR\aoutcome\x129\n" +
 	"\n" +
-	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xeb\x04\n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12+\n" +
+	"\x11absence_confirmed\x18\a \x01(\bR\x10absenceConfirmed\"\xeb\x04\n" +
 	"\x14ResourcePlanSnapshot\x12&\n" +
 	"\x0fcompute_plan_id\x18\x01 \x01(\tR\rcomputePlanId\x12&\n" +
 	"\x0fstorage_plan_id\x18\x02 \x01(\tR\rstoragePlanId\x12.\n" +
@@ -47521,13 +47635,14 @@ const file_internal_proto_rawDesc = "" +
 	"\x04plan\x18\x04 \x01(\v2#.opl.cloud.api.ResourcePlanSnapshotR\x04plan\x12=\n" +
 	"\x1bconfirmed_charge_receipt_id\x18\x05 \x01(\tR\x18confirmedChargeReceiptId\x12H\n" +
 	" instance_authorization_reference\x18\x06 \x01(\tR\x1einstanceAuthorizationReference\x12I\n" +
-	"\x10quote_acceptance\x18\a \x01(\v2\x1e.opl.cloud.api.QuoteAcceptanceR\x0fquoteAcceptance\"\x9f\x02\n" +
+	"\x10quote_acceptance\x18\a \x01(\v2\x1e.opl.cloud.api.QuoteAcceptanceR\x0fquoteAcceptance\"\xec\x02\n" +
 	"\x16MutateResourcesCommand\x124\n" +
 	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12!\n" +
 	"\fworkspace_id\x18\x02 \x01(\tR\vworkspaceId\x12&\n" +
 	"\x0fresource_set_id\x18\x03 \x01(\tR\rresourceSetId\x12:\n" +
 	"\x19expected_resource_version\x18\x04 \x01(\tR\x17expectedResourceVersion\x12H\n" +
-	" instance_authorization_reference\x18\x05 \x01(\tR\x1einstanceAuthorizationReference\"\xb5\x05\n" +
+	" instance_authorization_reference\x18\x05 \x01(\tR\x1einstanceAuthorizationReference\x12K\n" +
+	"\"original_provision_idempotency_key\x18\x06 \x01(\tR\x1foriginalProvisionIdempotencyKey\"\xb5\x05\n" +
 	"\x16ResizeResourcesCommand\x124\n" +
 	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12!\n" +
 	"\fworkspace_id\x18\x02 \x01(\tR\vworkspaceId\x12&\n" +
@@ -47549,11 +47664,13 @@ const file_internal_proto_rawDesc = "" +
 	"\x16subscription_period_id\x18\x04 \x01(\tR\x14subscriptionPeriodId\x12%\n" +
 	"\x0eprepaid_months\x18\x05 \x01(\x05R\rprepaidMonths\x12=\n" +
 	"\x1bconfirmed_charge_receipt_id\x18\x06 \x01(\tR\x18confirmedChargeReceiptId\x12H\n" +
-	" instance_authorization_reference\x18\a \x01(\tR\x1einstanceAuthorizationReference\"\xa5\x01\n" +
+	" instance_authorization_reference\x18\a \x01(\tR\x1einstanceAuthorizationReference\"\x95\x02\n" +
 	"\x17ResourceReadbackRequest\x124\n" +
 	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12&\n" +
 	"\x0fresource_set_id\x18\x02 \x01(\tR\rresourceSetId\x12,\n" +
-	"\x12resource_action_id\x18\x03 \x01(\tR\x10resourceActionId\"\xa3\x01\n" +
+	"\x12resource_action_id\x18\x03 \x01(\tR\x10resourceActionId\x12!\n" +
+	"\fworkspace_id\x18\x04 \x01(\tR\vworkspaceId\x12K\n" +
+	"\"original_provision_idempotency_key\x18\x05 \x01(\tR\x1foriginalProvisionIdempotencyKey\"\xa3\x01\n" +
 	"\fResourceFact\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12:\n" +
@@ -47686,11 +47803,13 @@ const file_internal_proto_rawDesc = "" +
 	"\x0fexecution_epoch\x18\x0e \x01(\x03R\x0eexecutionEpoch\x12G\n" +
 	" deployment_descriptor_object_ref\x18\x0f \x01(\tR\x1ddeploymentDescriptorObjectRef\x12a\n" +
 	"\x15application_selection\x18\x10 \x01(\v2,.opl.cloud.api.WorkspaceApplicationSelectionR\x14applicationSelection\x12W\n" +
-	"\x13managed_key_binding\x18\x11 \x01(\v2'.opl.cloud.api.RuntimeManagedKeyBindingR\x11managedKeyBinding\"\xa3\x01\n" +
+	"\x13managed_key_binding\x18\x11 \x01(\v2'.opl.cloud.api.RuntimeManagedKeyBindingR\x11managedKeyBinding\"\x97\x02\n" +
 	"\x16RuntimeReadbackRequest\x124\n" +
 	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12.\n" +
 	"\x13runtime_instance_id\x18\x02 \x01(\tR\x11runtimeInstanceId\x12#\n" +
-	"\rdeployment_id\x18\x03 \x01(\tR\fdeploymentId\"\xc6\a\n" +
+	"\rdeployment_id\x18\x03 \x01(\tR\fdeploymentId\x12!\n" +
+	"\fworkspace_id\x18\x04 \x01(\tR\vworkspaceId\x12O\n" +
+	"$original_reservation_idempotency_key\x18\x05 \x01(\tR!originalReservationIdempotencyKey\"\xcc\b\n" +
 	"\x0fRuntimeReadback\x12.\n" +
 	"\x13runtime_instance_id\x18\x01 \x01(\tR\x11runtimeInstanceId\x12!\n" +
 	"\fworkspace_id\x18\x02 \x01(\tR\vworkspaceId\x12#\n" +
@@ -47711,7 +47830,9 @@ const file_internal_proto_rawDesc = "" +
 	" deployment_descriptor_object_ref\x18\x0f \x01(\tR\x1ddeploymentDescriptorObjectRef\x12U\n" +
 	"\x11application_entry\x18\x10 \x01(\v2(.opl.cloud.api.WorkspaceApplicationEntryR\x10applicationEntry\x12\x1d\n" +
 	"\n" +
-	"access_url\x18\x11 \x01(\tR\taccessUrl\"\xf5\x02\n" +
+	"access_url\x18\x11 \x01(\tR\taccessUrl\x12H\n" +
+	"\x12first_fulfilled_at\x18\x12 \x01(\v2\x1a.google.protobuf.TimestampR\x10firstFulfilledAt\x12:\n" +
+	"\x19never_delivered_confirmed\x18\x13 \x01(\bR\x17neverDeliveredConfirmed\"\xf5\x02\n" +
 	"\x14RuntimeReloadCommand\x124\n" +
 	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12.\n" +
 	"\x13runtime_instance_id\x18\x02 \x01(\tR\x11runtimeInstanceId\x128\n" +
@@ -47720,12 +47841,14 @@ const file_internal_proto_rawDesc = "" +
 	"\n" +
 	"selections\x18\x05 \x03(\v2\x1d.opl.cloud.api.ModelSelectionR\n" +
 	"selections\x12W\n" +
-	"\x13managed_key_binding\x18\x06 \x01(\v2'.opl.cloud.api.RuntimeManagedKeyBindingR\x11managedKeyBinding\"\xde\x01\n" +
+	"\x13managed_key_binding\x18\x06 \x01(\v2'.opl.cloud.api.RuntimeManagedKeyBindingR\x11managedKeyBinding\"\xd2\x02\n" +
 	"\x12RuntimeStopCommand\x124\n" +
 	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12.\n" +
 	"\x13runtime_instance_id\x18\x02 \x01(\tR\x11runtimeInstanceId\x12#\n" +
 	"\rdeployment_id\x18\x03 \x01(\tR\fdeploymentId\x12=\n" +
-	"\x1bretained_data_attachment_id\x18\x04 \x01(\tR\x18retainedDataAttachmentId\"\xd1\x01\n" +
+	"\x1bretained_data_attachment_id\x18\x04 \x01(\tR\x18retainedDataAttachmentId\x12!\n" +
+	"\fworkspace_id\x18\x05 \x01(\tR\vworkspaceId\x12O\n" +
+	"$original_reservation_idempotency_key\x18\x06 \x01(\tR!originalReservationIdempotencyKey\"\xd1\x01\n" +
 	"!ReadApplicationCredentialsRequest\x124\n" +
 	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12!\n" +
 	"\fworkspace_id\x18\x02 \x01(\tR\vworkspaceId\x12.\n" +
@@ -51224,547 +51347,548 @@ var file_internal_proto_depIdxs = []int32{
 	0,    // 707: opl.cloud.api.RuntimeReadback.outcome:type_name -> opl.cloud.api.Observation
 	624,  // 708: opl.cloud.api.RuntimeReadback.observed_at:type_name -> google.protobuf.Timestamp
 	346,  // 709: opl.cloud.api.RuntimeReadback.application_entry:type_name -> opl.cloud.api.WorkspaceApplicationEntry
-	191,  // 710: opl.cloud.api.RuntimeReloadCommand.context:type_name -> opl.cloud.api.CallContext
-	244,  // 711: opl.cloud.api.RuntimeReloadCommand.selections:type_name -> opl.cloud.api.ModelSelection
-	539,  // 712: opl.cloud.api.RuntimeReloadCommand.managed_key_binding:type_name -> opl.cloud.api.RuntimeManagedKeyBinding
-	191,  // 713: opl.cloud.api.RuntimeStopCommand.context:type_name -> opl.cloud.api.CallContext
-	191,  // 714: opl.cloud.api.ReadApplicationCredentialsRequest.context:type_name -> opl.cloud.api.CallContext
-	546,  // 715: opl.cloud.api.RouteRevisionPrecondition.require_absent:type_name -> opl.cloud.api.RouteAbsence
-	191,  // 716: opl.cloud.api.FenceRouteEpochCommand.context:type_name -> opl.cloud.api.CallContext
-	547,  // 717: opl.cloud.api.FenceRouteEpochCommand.revision_precondition:type_name -> opl.cloud.api.RouteRevisionPrecondition
-	191,  // 718: opl.cloud.api.RouteActivateCommand.context:type_name -> opl.cloud.api.CallContext
-	547,  // 719: opl.cloud.api.RouteActivateCommand.revision_precondition:type_name -> opl.cloud.api.RouteRevisionPrecondition
-	191,  // 720: opl.cloud.api.RouteObserveRequest.context:type_name -> opl.cloud.api.CallContext
-	191,  // 721: opl.cloud.api.RouteRollbackCommand.context:type_name -> opl.cloud.api.CallContext
-	547,  // 722: opl.cloud.api.RouteRollbackCommand.revision_precondition:type_name -> opl.cloud.api.RouteRevisionPrecondition
-	0,    // 723: opl.cloud.api.RouteReadback.observation:type_name -> opl.cloud.api.Observation
-	624,  // 724: opl.cloud.api.RouteReadback.observed_at:type_name -> google.protobuf.Timestamp
-	15,   // 725: opl.cloud.api.RouteReadback.error_code:type_name -> opl.cloud.api.ErrorCodeEnum
-	191,  // 726: opl.cloud.api.TenantWorkspaceLifecycleCommand.context:type_name -> opl.cloud.api.CallContext
-	341,  // 727: opl.cloud.api.TenantWorkspaceLifecycleReadback.workspace_actions:type_name -> opl.cloud.api.TenantWorkspaceAction
-	0,    // 728: opl.cloud.api.TenantWorkspaceLifecycleReadback.outcome:type_name -> opl.cloud.api.Observation
-	342,  // 729: opl.cloud.api.TenantWorkspaceLifecycleReadback.skipped:type_name -> opl.cloud.api.TenantWorkspaceSkip
-	191,  // 730: opl.cloud.api.ResumeTenantWorkspacesRequest.context:type_name -> opl.cloud.api.CallContext
-	191,  // 731: opl.cloud.api.AppendReceiptRequest.context:type_name -> opl.cloud.api.CallContext
-	268,  // 732: opl.cloud.api.AppendReceiptRequest.receipt:type_name -> opl.cloud.api.Receipt
-	501,  // 733: opl.cloud.api.AppendReceiptRequest.quote_acceptance:type_name -> opl.cloud.api.QuoteAcceptance
-	475,  // 734: opl.cloud.api.AppendReceiptRequest.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
-	261,  // 735: opl.cloud.api.AppendReceiptRequest.wallet_operation:type_name -> opl.cloud.api.WalletOperation
-	191,  // 736: opl.cloud.api.GetReceiptByReferenceRequest.context:type_name -> opl.cloud.api.CallContext
-	268,  // 737: opl.cloud.api.LocalNoChargeReceiptEvidence.receipt:type_name -> opl.cloud.api.Receipt
-	501,  // 738: opl.cloud.api.LocalNoChargeReceiptEvidence.quote_acceptance:type_name -> opl.cloud.api.QuoteAcceptance
-	475,  // 739: opl.cloud.api.LocalNoChargeReceiptEvidence.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
-	268,  // 740: opl.cloud.api.WalletActionReceiptEvidence.receipt:type_name -> opl.cloud.api.Receipt
-	501,  // 741: opl.cloud.api.WalletActionReceiptEvidence.quote_acceptance:type_name -> opl.cloud.api.QuoteAcceptance
-	261,  // 742: opl.cloud.api.WalletActionReceiptEvidence.wallet_operation:type_name -> opl.cloud.api.WalletOperation
-	475,  // 743: opl.cloud.api.WalletActionReceiptEvidence.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
-	268,  // 744: opl.cloud.api.ProviderActionReceiptEvidence.receipt:type_name -> opl.cloud.api.Receipt
-	475,  // 745: opl.cloud.api.ProviderActionReceiptEvidence.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
-	191,  // 746: opl.cloud.api.ReadSubscriptionPlanStateRequest.context:type_name -> opl.cloud.api.CallContext
-	624,  // 747: opl.cloud.api.SubscriptionPlanState.period_start:type_name -> google.protobuf.Timestamp
-	624,  // 748: opl.cloud.api.SubscriptionPlanState.period_end:type_name -> google.protobuf.Timestamp
-	624,  // 749: opl.cloud.api.SubscriptionPlanState.next_period_start:type_name -> google.protobuf.Timestamp
-	624,  // 750: opl.cloud.api.SubscriptionPlanState.next_period_end:type_name -> google.protobuf.Timestamp
-	78,   // 751: opl.cloud.api.SubscriptionPlanState.renewal_mode:type_name -> opl.cloud.api.SubscriptionRenewalModeEnum
-	0,    // 752: opl.cloud.api.SubscriptionPlanState.outcome:type_name -> opl.cloud.api.Observation
-	583,  // 753: opl.cloud.api.SubscriptionPlanState.source_financial_snapshot:type_name -> opl.cloud.api.SourceFinancialSnapshot
-	191,  // 754: opl.cloud.api.ReadPlanChangeRequest.context:type_name -> opl.cloud.api.CallContext
-	191,  // 755: opl.cloud.api.ReadNextPeriodObligationRequest.context:type_name -> opl.cloud.api.CallContext
-	624,  // 756: opl.cloud.api.ReadNextPeriodObligationRequest.period_start:type_name -> google.protobuf.Timestamp
-	624,  // 757: opl.cloud.api.NextPeriodObligation.period_start:type_name -> google.protobuf.Timestamp
-	624,  // 758: opl.cloud.api.NextPeriodObligation.period_end:type_name -> google.protobuf.Timestamp
-	11,   // 759: opl.cloud.api.NextPeriodObligation.status:type_name -> opl.cloud.api.PeriodObligationStatus
-	0,    // 760: opl.cloud.api.NextPeriodObligation.outcome:type_name -> opl.cloud.api.Observation
-	191,  // 761: opl.cloud.api.ReadPlanChangeFailureRequest.context:type_name -> opl.cloud.api.CallContext
-	191,  // 762: opl.cloud.api.PlanTransitionRequest.context:type_name -> opl.cloud.api.CallContext
-	168,  // 763: opl.cloud.api.ApprovedPlanTransition.kind:type_name -> opl.cloud.api.PlanChangeKindEnum
-	520,  // 764: opl.cloud.api.ApprovedPlanTransition.source:type_name -> opl.cloud.api.ResourcePlanSnapshot
-	520,  // 765: opl.cloud.api.ApprovedPlanTransition.target:type_name -> opl.cloud.api.ResourcePlanSnapshot
-	12,   // 766: opl.cloud.api.ApprovedPlanTransition.reversibility:type_name -> opl.cloud.api.TransitionReversibility
-	624,  // 767: opl.cloud.api.ApprovedPlanTransition.observed_at:type_name -> google.protobuf.Timestamp
-	624,  // 768: opl.cloud.api.ApprovedPlanTransition.expires_at:type_name -> google.protobuf.Timestamp
-	0,    // 769: opl.cloud.api.ApprovedPlanTransition.outcome:type_name -> opl.cloud.api.Observation
-	580,  // 770: opl.cloud.api.ApprovedPlanTransition.execution_plan:type_name -> opl.cloud.api.ProviderPlanChangeExecutionPlanReference
-	569,  // 771: opl.cloud.api.PlanChangeFundingEvidence.confirmed_charge:type_name -> opl.cloud.api.ConfirmedPlanChangeCharge
-	570,  // 772: opl.cloud.api.PlanChangeFundingEvidence.zero_amount:type_name -> opl.cloud.api.ZeroAmountPlanChangeEvidence
-	191,  // 773: opl.cloud.api.PlanChangeSupplementChargeCommand.context:type_name -> opl.cloud.api.CallContext
-	624,  // 774: opl.cloud.api.PlanChangeSupplementChargeCommand.coverage_start:type_name -> google.protobuf.Timestamp
-	624,  // 775: opl.cloud.api.PlanChangeSupplementChargeCommand.coverage_end:type_name -> google.protobuf.Timestamp
-	191,  // 776: opl.cloud.api.ScheduledPeriodChargeCommand.context:type_name -> opl.cloud.api.CallContext
-	624,  // 777: opl.cloud.api.ScheduledPeriodChargeCommand.period_start:type_name -> google.protobuf.Timestamp
-	624,  // 778: opl.cloud.api.ScheduledPeriodChargeCommand.period_end:type_name -> google.protobuf.Timestamp
-	191,  // 779: opl.cloud.api.PlanChangeFailureRefundCommand.context:type_name -> opl.cloud.api.CallContext
-	359,  // 780: opl.cloud.api.PlanChangeFailureRefundCommand.evidence:type_name -> opl.cloud.api.SupplementalRefundEvidence
-	191,  // 781: opl.cloud.api.SupplementDeletionRefundCommand.context:type_name -> opl.cloud.api.CallContext
-	359,  // 782: opl.cloud.api.SupplementDeletionRefundCommand.evidence:type_name -> opl.cloud.api.SupplementalRefundEvidence
-	191,  // 783: opl.cloud.api.RestorePlanChangeRuntimeCommand.context:type_name -> opl.cloud.api.CallContext
-	520,  // 784: opl.cloud.api.RestorePlanChangeRuntimeCommand.target:type_name -> opl.cloud.api.ResourcePlanSnapshot
-	542,  // 785: opl.cloud.api.PlanChangeRuntimeReadback.runtime:type_name -> opl.cloud.api.RuntimeReadback
-	529,  // 786: opl.cloud.api.PlanChangeRuntimeReadback.resources:type_name -> opl.cloud.api.ResourceReadback
-	0,    // 787: opl.cloud.api.PlanChangeRuntimeReadback.outcome:type_name -> opl.cloud.api.Observation
-	191,  // 788: opl.cloud.api.AppendPlanChangeReceiptRequest.context:type_name -> opl.cloud.api.CallContext
-	89,   // 789: opl.cloud.api.AppendPlanChangeReceiptRequest.kind:type_name -> opl.cloud.api.ReceiptKindEnum
-	358,  // 790: opl.cloud.api.AppendPlanChangeReceiptRequest.evidence:type_name -> opl.cloud.api.PlanChangeEvidence
-	354,  // 791: opl.cloud.api.AppendPlanChangeReceiptRequest.accepted_calculation:type_name -> opl.cloud.api.PlanChangeCalculation
-	191,  // 792: opl.cloud.api.AppendPlanChangeRefundReceiptRequest.context:type_name -> opl.cloud.api.CallContext
-	89,   // 793: opl.cloud.api.AppendPlanChangeRefundReceiptRequest.kind:type_name -> opl.cloud.api.ReceiptKindEnum
-	359,  // 794: opl.cloud.api.AppendPlanChangeRefundReceiptRequest.evidence:type_name -> opl.cloud.api.SupplementalRefundEvidence
-	261,  // 795: opl.cloud.api.AppendPlanChangeRefundReceiptRequest.wallet_readback:type_name -> opl.cloud.api.WalletOperation
-	13,   // 796: opl.cloud.api.ProviderPlanChangeExecutionPlanReference.strategy:type_name -> opl.cloud.api.PlanChangeExecutionStrategy
-	191,  // 797: opl.cloud.api.ReadProviderExecutionPlanRequest.context:type_name -> opl.cloud.api.CallContext
-	580,  // 798: opl.cloud.api.ReadProviderExecutionPlanRequest.reference:type_name -> opl.cloud.api.ProviderPlanChangeExecutionPlanReference
-	580,  // 799: opl.cloud.api.ProviderPlanChangeExecutionPlan.reference:type_name -> opl.cloud.api.ProviderPlanChangeExecutionPlanReference
-	520,  // 800: opl.cloud.api.ProviderPlanChangeExecutionPlan.source:type_name -> opl.cloud.api.ResourcePlanSnapshot
-	520,  // 801: opl.cloud.api.ProviderPlanChangeExecutionPlan.target:type_name -> opl.cloud.api.ResourcePlanSnapshot
-	14,   // 802: opl.cloud.api.ProviderPlanChangeExecutionPlan.storage_action:type_name -> opl.cloud.api.PlanChangeStorageAction
-	624,  // 803: opl.cloud.api.ProviderPlanChangeExecutionPlan.approved_at:type_name -> google.protobuf.Timestamp
-	624,  // 804: opl.cloud.api.WalletOperationObservedEvent.coverage_start:type_name -> google.protobuf.Timestamp
-	624,  // 805: opl.cloud.api.WalletOperationObservedEvent.coverage_end:type_name -> google.protobuf.Timestamp
-	624,  // 806: opl.cloud.api.WorkspaceDeletionConfirmedEvent.deleted_at:type_name -> google.protobuf.Timestamp
-	624,  // 807: opl.cloud.api.TenantAccessRevokedEvent.restore_until:type_name -> google.protobuf.Timestamp
-	624,  // 808: opl.cloud.api.TenantRestoredEvent.restored_at:type_name -> google.protobuf.Timestamp
-	624,  // 809: opl.cloud.api.CatalogPolicyChangedEvent.valid_from:type_name -> google.protobuf.Timestamp
-	624,  // 810: opl.cloud.api.TenantReenabledEvent.enabled_at:type_name -> google.protobuf.Timestamp
-	624,  // 811: opl.cloud.api.PlanChangeStateChangedEvent.applied_at:type_name -> google.protobuf.Timestamp
-	624,  // 812: opl.cloud.api.PeriodObligationChangedEvent.period_start:type_name -> google.protobuf.Timestamp
-	624,  // 813: opl.cloud.api.PeriodObligationChangedEvent.period_end:type_name -> google.protobuf.Timestamp
-	624,  // 814: opl.cloud.api.EventEnvelope.occurred_at:type_name -> google.protobuf.Timestamp
-	584,  // 815: opl.cloud.api.EventEnvelope.package_uploaded:type_name -> opl.cloud.api.PackageUploadedEvent
-	585,  // 816: opl.cloud.api.EventEnvelope.build_artifact_confirmed:type_name -> opl.cloud.api.BuildArtifactConfirmedEvent
-	586,  // 817: opl.cloud.api.EventEnvelope.capability_version_registered:type_name -> opl.cloud.api.CapabilityVersionRegisteredEvent
-	587,  // 818: opl.cloud.api.EventEnvelope.build_failed:type_name -> opl.cloud.api.BuildFailedEvent
-	588,  // 819: opl.cloud.api.EventEnvelope.wallet_operation_observed:type_name -> opl.cloud.api.WalletOperationObservedEvent
-	589,  // 820: opl.cloud.api.EventEnvelope.resources_observed:type_name -> opl.cloud.api.ResourcesObservedEvent
-	590,  // 821: opl.cloud.api.EventEnvelope.runtime_readiness_observed:type_name -> opl.cloud.api.RuntimeReadinessObservedEvent
-	591,  // 822: opl.cloud.api.EventEnvelope.workspace_state_changed:type_name -> opl.cloud.api.WorkspaceStateChangedEvent
-	592,  // 823: opl.cloud.api.EventEnvelope.workspace_deletion_confirmed:type_name -> opl.cloud.api.WorkspaceDeletionConfirmedEvent
-	593,  // 824: opl.cloud.api.EventEnvelope.tenant_access_revoked:type_name -> opl.cloud.api.TenantAccessRevokedEvent
-	594,  // 825: opl.cloud.api.EventEnvelope.tenant_restored:type_name -> opl.cloud.api.TenantRestoredEvent
-	595,  // 826: opl.cloud.api.EventEnvelope.receipt_recorded:type_name -> opl.cloud.api.ReceiptRecordedEvent
-	596,  // 827: opl.cloud.api.EventEnvelope.catalog_policy_changed:type_name -> opl.cloud.api.CatalogPolicyChangedEvent
-	597,  // 828: opl.cloud.api.EventEnvelope.tenant_reenabled:type_name -> opl.cloud.api.TenantReenabledEvent
-	598,  // 829: opl.cloud.api.EventEnvelope.renewal_settings_changed:type_name -> opl.cloud.api.RenewalSettingsChangedEvent
-	599,  // 830: opl.cloud.api.EventEnvelope.route_observed:type_name -> opl.cloud.api.RouteObservedEvent
-	600,  // 831: opl.cloud.api.EventEnvelope.plan_change_state_changed:type_name -> opl.cloud.api.PlanChangeStateChangedEvent
-	601,  // 832: opl.cloud.api.EventEnvelope.period_obligation_changed:type_name -> opl.cloud.api.PeriodObligationChangedEvent
-	602,  // 833: opl.cloud.api.DeliverEventRequest.event:type_name -> opl.cloud.api.EventEnvelope
-	188,  // 834: opl.cloud.api.WorkspaceAccessDecision.verdict:type_name -> opl.cloud.api.WorkspaceAccessVerdict
-	624,  // 835: opl.cloud.api.WorkspaceTransactionTrend.period_start:type_name -> google.protobuf.Timestamp
-	624,  // 836: opl.cloud.api.WorkspaceTransactionTrend.period_end:type_name -> google.protobuf.Timestamp
-	607,  // 837: opl.cloud.api.WorkspaceTransactionTrend.days:type_name -> opl.cloud.api.WorkspaceTransactionTrendDay
-	191,  // 838: opl.cloud.api.GetWorkspaceTransactionTrendRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	191,  // 839: opl.cloud.api.GetWorkspaceFinancialReceiptRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	268,  // 840: opl.cloud.api.WorkspaceFinancialReceipt.receipt:type_name -> opl.cloud.api.Receipt
-	261,  // 841: opl.cloud.api.WorkspaceFinancialReceipt.wallet_operation:type_name -> opl.cloud.api.WalletOperation
-	248,  // 842: opl.cloud.api.WorkspaceFinancialReceipt.quote:type_name -> opl.cloud.api.Quote
-	189,  // 843: opl.cloud.api.PersonalGatewayKey.status:type_name -> opl.cloud.api.PersonalGatewayKeyStatusEnum
-	190,  // 844: opl.cloud.api.PersonalGatewayKey.kind:type_name -> opl.cloud.api.PersonalGatewayKeyKindEnum
-	624,  // 845: opl.cloud.api.PersonalGatewayKey.last_used_at:type_name -> google.protobuf.Timestamp
-	624,  // 846: opl.cloud.api.PersonalGatewayKey.expires_at:type_name -> google.protobuf.Timestamp
-	624,  // 847: opl.cloud.api.PersonalGatewayKey.created_at:type_name -> google.protobuf.Timestamp
-	624,  // 848: opl.cloud.api.PersonalGatewayKey.updated_at:type_name -> google.protobuf.Timestamp
-	612,  // 849: opl.cloud.api.PersonalGatewayKeyPage.items:type_name -> opl.cloud.api.PersonalGatewayKey
-	614,  // 850: opl.cloud.api.PersonalGatewayGroupPage.items:type_name -> opl.cloud.api.PersonalGatewayGroup
-	624,  // 851: opl.cloud.api.PersonalGatewayKeyUsage.created_at:type_name -> google.protobuf.Timestamp
-	616,  // 852: opl.cloud.api.PersonalGatewayKeyUsagePage.items:type_name -> opl.cloud.api.PersonalGatewayKeyUsage
-	191,  // 853: opl.cloud.api.ListPersonalGatewayKeysRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	191,  // 854: opl.cloud.api.GetPersonalGatewayKeyRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	191,  // 855: opl.cloud.api.ListPersonalGatewayGroupsRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	191,  // 856: opl.cloud.api.ListPersonalGatewayKeyUsageRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	191,  // 857: opl.cloud.api.GetPersonalGatewayKeyUsageSummaryRpcRequest.context:type_name -> opl.cloud.api.CallContext
-	360,  // 858: opl.cloud.api.TenantProductService.GetLoginContext:input_type -> opl.cloud.api.GetLoginContextRpcRequest
-	361,  // 859: opl.cloud.api.TenantProductService.Login:input_type -> opl.cloud.api.LoginRpcRequest
-	362,  // 860: opl.cloud.api.TenantProductService.GetSession:input_type -> opl.cloud.api.GetSessionRpcRequest
-	363,  // 861: opl.cloud.api.TenantProductService.Logout:input_type -> opl.cloud.api.LogoutRpcRequest
-	364,  // 862: opl.cloud.api.TenantProductService.GetTenant:input_type -> opl.cloud.api.GetTenantRpcRequest
-	365,  // 863: opl.cloud.api.TenantProductService.ListMembers:input_type -> opl.cloud.api.ListMembersRpcRequest
-	366,  // 864: opl.cloud.api.TenantProductService.ListInvitations:input_type -> opl.cloud.api.ListInvitationsRpcRequest
-	367,  // 865: opl.cloud.api.TenantProductService.InviteMember:input_type -> opl.cloud.api.InviteMemberRpcRequest
-	368,  // 866: opl.cloud.api.TenantProductService.AcceptInvitation:input_type -> opl.cloud.api.AcceptInvitationRpcRequest
-	369,  // 867: opl.cloud.api.TenantProductService.RevokeInvitation:input_type -> opl.cloud.api.RevokeInvitationRpcRequest
-	370,  // 868: opl.cloud.api.TenantProductService.UpdateMemberRole:input_type -> opl.cloud.api.UpdateMemberRoleRpcRequest
-	371,  // 869: opl.cloud.api.TenantProductService.RemoveMember:input_type -> opl.cloud.api.RemoveMemberRpcRequest
-	423,  // 870: opl.cloud.api.TenantProductService.ListTenants:input_type -> opl.cloud.api.ListTenantsRpcRequest
-	424,  // 871: opl.cloud.api.TenantProductService.CreateTenant:input_type -> opl.cloud.api.CreateTenantRpcRequest
-	425,  // 872: opl.cloud.api.TenantProductService.GetAdminTenant:input_type -> opl.cloud.api.GetAdminTenantRpcRequest
-	426,  // 873: opl.cloud.api.TenantProductService.DeleteTenant:input_type -> opl.cloud.api.DeleteTenantRpcRequest
-	427,  // 874: opl.cloud.api.TenantProductService.BindTenantWallet:input_type -> opl.cloud.api.BindTenantWalletRpcRequest
-	428,  // 875: opl.cloud.api.TenantProductService.SuspendTenant:input_type -> opl.cloud.api.SuspendTenantRpcRequest
-	429,  // 876: opl.cloud.api.TenantProductService.RestoreTenant:input_type -> opl.cloud.api.RestoreTenantRpcRequest
-	430,  // 877: opl.cloud.api.TenantProductService.GetTenantAssetCustody:input_type -> opl.cloud.api.GetTenantAssetCustodyRpcRequest
-	433,  // 878: opl.cloud.api.TenantProductService.ListAuditEvents:input_type -> opl.cloud.api.ListAuditEventsRpcRequest
-	462,  // 879: opl.cloud.api.TenantProductService.ReenableTenant:input_type -> opl.cloud.api.ReenableTenantRpcRequest
-	463,  // 880: opl.cloud.api.TenantProductService.GetTenantLifecycleOperation:input_type -> opl.cloud.api.GetTenantLifecycleOperationRpcRequest
-	372,  // 881: opl.cloud.api.CapabilityProductService.ListNamespaces:input_type -> opl.cloud.api.ListNamespacesRpcRequest
-	373,  // 882: opl.cloud.api.CapabilityProductService.CreateNamespace:input_type -> opl.cloud.api.CreateNamespaceRpcRequest
-	374,  // 883: opl.cloud.api.CapabilityProductService.UpdateNamespace:input_type -> opl.cloud.api.UpdateNamespaceRpcRequest
-	375,  // 884: opl.cloud.api.CapabilityProductService.ArchiveNamespace:input_type -> opl.cloud.api.ArchiveNamespaceRpcRequest
-	376,  // 885: opl.cloud.api.CapabilityProductService.ListPackages:input_type -> opl.cloud.api.ListPackagesRpcRequest
-	377,  // 886: opl.cloud.api.CapabilityProductService.CreatePackage:input_type -> opl.cloud.api.CreatePackageRpcRequest
-	378,  // 887: opl.cloud.api.CapabilityProductService.GetPackage:input_type -> opl.cloud.api.GetPackageRpcRequest
-	379,  // 888: opl.cloud.api.CapabilityProductService.UpdatePackage:input_type -> opl.cloud.api.UpdatePackageRpcRequest
-	380,  // 889: opl.cloud.api.CapabilityProductService.ArchivePackage:input_type -> opl.cloud.api.ArchivePackageRpcRequest
-	381,  // 890: opl.cloud.api.CapabilityProductService.CreateUpload:input_type -> opl.cloud.api.CreateUploadRpcRequest
-	382,  // 891: opl.cloud.api.CapabilityProductService.GetUpload:input_type -> opl.cloud.api.GetUploadRpcRequest
-	383,  // 892: opl.cloud.api.CapabilityProductService.CreateUploadPart:input_type -> opl.cloud.api.CreateUploadPartRpcRequest
-	384,  // 893: opl.cloud.api.CapabilityProductService.CompleteUpload:input_type -> opl.cloud.api.CompleteUploadRpcRequest
-	385,  // 894: opl.cloud.api.CapabilityProductService.ListPackageVersions:input_type -> opl.cloud.api.ListPackageVersionsRpcRequest
-	386,  // 895: opl.cloud.api.CapabilityProductService.GetPackageVersion:input_type -> opl.cloud.api.GetPackageVersionRpcRequest
-	392,  // 896: opl.cloud.api.CapabilityProductService.ListCapabilityVersions:input_type -> opl.cloud.api.ListCapabilityVersionsRpcRequest
-	393,  // 897: opl.cloud.api.CapabilityProductService.GetCapabilityVersion:input_type -> opl.cloud.api.GetCapabilityVersionRpcRequest
-	394,  // 898: opl.cloud.api.CapabilityProductService.DeleteCapabilityVersion:input_type -> opl.cloud.api.DeleteCapabilityVersionRpcRequest
-	395,  // 899: opl.cloud.api.CapabilityProductService.PublishOfficialPackage:input_type -> opl.cloud.api.PublishOfficialPackageRpcRequest
-	438,  // 900: opl.cloud.api.CapabilityProductService.ListWebuiVersions:input_type -> opl.cloud.api.ListWebuiVersionsRpcRequest
-	444,  // 901: opl.cloud.api.CapabilityProductService.RegisterWebuiVersion:input_type -> opl.cloud.api.RegisterWebuiVersionRpcRequest
-	445,  // 902: opl.cloud.api.CapabilityProductService.SetWebuiVersionStatus:input_type -> opl.cloud.api.SetWebuiVersionStatusRpcRequest
-	459,  // 903: opl.cloud.api.CapabilityProductService.ListPublisherNamespaces:input_type -> opl.cloud.api.ListPublisherNamespacesRpcRequest
-	460,  // 904: opl.cloud.api.CapabilityProductService.CreatePublisherNamespace:input_type -> opl.cloud.api.CreatePublisherNamespaceRpcRequest
-	461,  // 905: opl.cloud.api.CapabilityProductService.RevokePublisherNamespace:input_type -> opl.cloud.api.RevokePublisherNamespaceRpcRequest
-	437,  // 906: opl.cloud.api.RuntimeControlProductService.ListRuntimeVersions:input_type -> opl.cloud.api.ListRuntimeVersionsRpcRequest
-	457,  // 907: opl.cloud.api.RuntimeControlProductService.GetBuildRuntimePolicy:input_type -> opl.cloud.api.GetBuildRuntimePolicyRpcRequest
-	458,  // 908: opl.cloud.api.RuntimeControlProductService.SetBuildRuntimePolicy:input_type -> opl.cloud.api.SetBuildRuntimePolicyRpcRequest
-	442,  // 909: opl.cloud.api.RuntimeControlProductService.RegisterRuntimeVersion:input_type -> opl.cloud.api.RegisterRuntimeVersionRpcRequest
-	443,  // 910: opl.cloud.api.RuntimeControlProductService.SetRuntimeVersionStatus:input_type -> opl.cloud.api.SetRuntimeVersionStatusRpcRequest
-	387,  // 911: opl.cloud.api.BuildProductService.CreateBuild:input_type -> opl.cloud.api.CreateBuildRpcRequest
-	388,  // 912: opl.cloud.api.BuildProductService.ListBuilds:input_type -> opl.cloud.api.ListBuildsRpcRequest
-	389,  // 913: opl.cloud.api.BuildProductService.GetBuild:input_type -> opl.cloud.api.GetBuildRpcRequest
-	390,  // 914: opl.cloud.api.BuildProductService.ListBuildLogs:input_type -> opl.cloud.api.ListBuildLogsRpcRequest
-	391,  // 915: opl.cloud.api.BuildProductService.RetryBuild:input_type -> opl.cloud.api.RetryBuildRpcRequest
-	396,  // 916: opl.cloud.api.ResourceCatalogProductService.CreateQuote:input_type -> opl.cloud.api.CreateQuoteRpcRequest
-	397,  // 917: opl.cloud.api.ResourceCatalogProductService.GetQuote:input_type -> opl.cloud.api.GetQuoteRpcRequest
-	439,  // 918: opl.cloud.api.ResourceCatalogProductService.ListComputePlans:input_type -> opl.cloud.api.ListComputePlansRpcRequest
-	440,  // 919: opl.cloud.api.ResourceCatalogProductService.ListStoragePlans:input_type -> opl.cloud.api.ListStoragePlansRpcRequest
-	446,  // 920: opl.cloud.api.ResourceCatalogProductService.CreateComputePlan:input_type -> opl.cloud.api.CreateComputePlanRpcRequest
-	447,  // 921: opl.cloud.api.ResourceCatalogProductService.SetComputePlanAvailability:input_type -> opl.cloud.api.SetComputePlanAvailabilityRpcRequest
-	448,  // 922: opl.cloud.api.ResourceCatalogProductService.CreateStoragePlan:input_type -> opl.cloud.api.CreateStoragePlanRpcRequest
-	449,  // 923: opl.cloud.api.ResourceCatalogProductService.SetStoragePlanAvailability:input_type -> opl.cloud.api.SetStoragePlanAvailabilityRpcRequest
-	450,  // 924: opl.cloud.api.ResourceCatalogProductService.ListPricePolicyVersions:input_type -> opl.cloud.api.ListPricePolicyVersionsRpcRequest
-	451,  // 925: opl.cloud.api.ResourceCatalogProductService.CreatePricePolicyVersion:input_type -> opl.cloud.api.CreatePricePolicyVersionRpcRequest
-	452,  // 926: opl.cloud.api.ResourceCatalogProductService.ListRefundPolicyVersions:input_type -> opl.cloud.api.ListRefundPolicyVersionsRpcRequest
-	453,  // 927: opl.cloud.api.ResourceCatalogProductService.CreateRefundPolicyVersion:input_type -> opl.cloud.api.CreateRefundPolicyVersionRpcRequest
-	454,  // 928: opl.cloud.api.ResourceCatalogProductService.ListRetentionPolicyVersions:input_type -> opl.cloud.api.ListRetentionPolicyVersionsRpcRequest
-	455,  // 929: opl.cloud.api.ResourceCatalogProductService.CreateRetentionPolicyVersion:input_type -> opl.cloud.api.CreateRetentionPolicyVersionRpcRequest
-	398,  // 930: opl.cloud.api.WorkspaceProductService.CreateWorkspace:input_type -> opl.cloud.api.CreateWorkspaceRpcRequest
-	399,  // 931: opl.cloud.api.WorkspaceProductService.ListWorkspaces:input_type -> opl.cloud.api.ListWorkspacesRpcRequest
-	400,  // 932: opl.cloud.api.WorkspaceProductService.GetWorkspace:input_type -> opl.cloud.api.GetWorkspaceRpcRequest
-	401,  // 933: opl.cloud.api.WorkspaceProductService.DeleteWorkspace:input_type -> opl.cloud.api.DeleteWorkspaceRpcRequest
-	403,  // 934: opl.cloud.api.WorkspaceProductService.GetWorkspaceModels:input_type -> opl.cloud.api.GetWorkspaceModelsRpcRequest
-	404,  // 935: opl.cloud.api.WorkspaceProductService.UpdateWorkspaceModels:input_type -> opl.cloud.api.UpdateWorkspaceModelsRpcRequest
-	409,  // 936: opl.cloud.api.WorkspaceProductService.ResizeWorkspace:input_type -> opl.cloud.api.ResizeWorkspaceRpcRequest
-	410,  // 937: opl.cloud.api.WorkspaceProductService.RenewWorkspace:input_type -> opl.cloud.api.RenewWorkspaceRpcRequest
-	411,  // 938: opl.cloud.api.WorkspaceProductService.GetSubscription:input_type -> opl.cloud.api.GetSubscriptionRpcRequest
-	412,  // 939: opl.cloud.api.WorkspaceProductService.GetWorkspaceDeletion:input_type -> opl.cloud.api.GetWorkspaceDeletionRpcRequest
-	414,  // 940: opl.cloud.api.WorkspaceProductService.GetOperation:input_type -> opl.cloud.api.GetOperationRpcRequest
-	431,  // 941: opl.cloud.api.WorkspaceProductService.ListAdminOperations:input_type -> opl.cloud.api.ListAdminOperationsRpcRequest
-	432,  // 942: opl.cloud.api.WorkspaceProductService.ReconcileOperation:input_type -> opl.cloud.api.ReconcileOperationRpcRequest
-	456,  // 943: opl.cloud.api.WorkspaceProductService.AdoptWorkspace:input_type -> opl.cloud.api.AdoptWorkspaceRpcRequest
-	464,  // 944: opl.cloud.api.WorkspaceProductService.UpdateRenewalSettings:input_type -> opl.cloud.api.UpdateRenewalSettingsRpcRequest
-	465,  // 945: opl.cloud.api.WorkspaceProductService.RevealWorkspaceApplicationCredentials:input_type -> opl.cloud.api.RevealWorkspaceApplicationCredentialsRpcRequest
-	466,  // 946: opl.cloud.api.WorkspaceProductService.ListPlanChanges:input_type -> opl.cloud.api.ListPlanChangesRpcRequest
-	467,  // 947: opl.cloud.api.WorkspaceProductService.GetPlanChange:input_type -> opl.cloud.api.GetPlanChangeRpcRequest
-	468,  // 948: opl.cloud.api.WorkspaceProductService.CancelPlanChange:input_type -> opl.cloud.api.CancelPlanChangeRpcRequest
-	405,  // 949: opl.cloud.api.ServeProductService.ListDeployments:input_type -> opl.cloud.api.ListDeploymentsRpcRequest
-	406,  // 950: opl.cloud.api.ServeProductService.GetDeployment:input_type -> opl.cloud.api.GetDeploymentRpcRequest
-	407,  // 951: opl.cloud.api.ServeProductService.UpdateWorkspaceVersion:input_type -> opl.cloud.api.UpdateWorkspaceVersionRpcRequest
-	408,  // 952: opl.cloud.api.ServeProductService.RollbackWorkspace:input_type -> opl.cloud.api.RollbackWorkspaceRpcRequest
-	402,  // 953: opl.cloud.api.ServeProductService.GetWorkspaceAccess:input_type -> opl.cloud.api.GetWorkspaceAccessRpcRequest
-	618,  // 954: opl.cloud.api.GatewayProductService.ListPersonalGatewayKeys:input_type -> opl.cloud.api.ListPersonalGatewayKeysRpcRequest
-	619,  // 955: opl.cloud.api.GatewayProductService.GetPersonalGatewayKey:input_type -> opl.cloud.api.GetPersonalGatewayKeyRpcRequest
-	620,  // 956: opl.cloud.api.GatewayProductService.ListPersonalGatewayGroups:input_type -> opl.cloud.api.ListPersonalGatewayGroupsRpcRequest
-	621,  // 957: opl.cloud.api.GatewayProductService.ListPersonalGatewayKeyUsage:input_type -> opl.cloud.api.ListPersonalGatewayKeyUsageRpcRequest
-	622,  // 958: opl.cloud.api.GatewayProductService.GetPersonalGatewayKeyUsageSummary:input_type -> opl.cloud.api.GetPersonalGatewayKeyUsageSummaryRpcRequest
-	413,  // 959: opl.cloud.api.GatewayProductService.ListWorkspaceTransactions:input_type -> opl.cloud.api.ListWorkspaceTransactionsRpcRequest
-	609,  // 960: opl.cloud.api.GatewayProductService.GetWorkspaceTransactionTrend:input_type -> opl.cloud.api.GetWorkspaceTransactionTrendRpcRequest
-	415,  // 961: opl.cloud.api.GatewayProductService.GetWallet:input_type -> opl.cloud.api.GetWalletRpcRequest
-	416,  // 962: opl.cloud.api.GatewayProductService.ListUsage:input_type -> opl.cloud.api.ListUsageRpcRequest
-	417,  // 963: opl.cloud.api.GatewayProductService.GetUsageSummary:input_type -> opl.cloud.api.GetUsageSummaryRpcRequest
-	418,  // 964: opl.cloud.api.GatewayProductService.ListGatewayKeys:input_type -> opl.cloud.api.ListGatewayKeysRpcRequest
-	419,  // 965: opl.cloud.api.GatewayProductService.CreateGatewayKey:input_type -> opl.cloud.api.CreateGatewayKeyRpcRequest
-	420,  // 966: opl.cloud.api.GatewayProductService.RevealGatewayKey:input_type -> opl.cloud.api.RevealGatewayKeyRpcRequest
-	421,  // 967: opl.cloud.api.GatewayProductService.RevokeGatewayKey:input_type -> opl.cloud.api.RevokeGatewayKeyRpcRequest
-	422,  // 968: opl.cloud.api.GatewayProductService.ListRechargeRecords:input_type -> opl.cloud.api.ListRechargeRecordsRpcRequest
-	441,  // 969: opl.cloud.api.GatewayProductService.ListModels:input_type -> opl.cloud.api.ListModelsRpcRequest
-	610,  // 970: opl.cloud.api.LedgerProductService.GetWorkspaceFinancialReceipt:input_type -> opl.cloud.api.GetWorkspaceFinancialReceiptRpcRequest
-	434,  // 971: opl.cloud.api.LedgerProductService.ListReceipts:input_type -> opl.cloud.api.ListReceiptsRpcRequest
-	435,  // 972: opl.cloud.api.LedgerProductService.GetReceipt:input_type -> opl.cloud.api.GetReceiptRpcRequest
-	436,  // 973: opl.cloud.api.LedgerProductService.ListQualifications:input_type -> opl.cloud.api.ListQualificationsRpcRequest
-	480,  // 974: opl.cloud.api.ClaimUsageReadback.ReadClaimUsage:input_type -> opl.cloud.api.ReadClaimUsageRequest
-	471,  // 975: opl.cloud.api.CapabilityCoordination.ResolveBuildInput:input_type -> opl.cloud.api.BuildInputRequest
-	482,  // 976: opl.cloud.api.CapabilityCoordination.ResolvePublisherContract:input_type -> opl.cloud.api.ResolvePublisherContractRequest
-	474,  // 977: opl.cloud.api.CapabilityCoordination.AcquireReference:input_type -> opl.cloud.api.ReferenceClaimRequest
-	476,  // 978: opl.cloud.api.CapabilityCoordination.BindReference:input_type -> opl.cloud.api.BindReferenceRequest
-	478,  // 979: opl.cloud.api.CapabilityCoordination.ReleaseReference:input_type -> opl.cloud.api.ReleaseReferenceRequest
-	484,  // 980: opl.cloud.api.BuildCoordination.ReadArtifact:input_type -> opl.cloud.api.ReadBuildArtifactRequest
-	469,  // 981: opl.cloud.api.OwnerOperations.Read:input_type -> opl.cloud.api.OwnerOperationRequest
-	432,  // 982: opl.cloud.api.OwnerOperations.Reconcile:input_type -> opl.cloud.api.ReconcileOperationRpcRequest
-	495,  // 983: opl.cloud.api.OwnerCommitReadback.ReadOwnerCommit:input_type -> opl.cloud.api.ReadOwnerCommitRequest
-	496,  // 984: opl.cloud.api.WorkspaceAuthorizationReadback.ReadRenewalConsent:input_type -> opl.cloud.api.ReadRenewalConsentRequest
-	490,  // 985: opl.cloud.api.CloudIdentityAuthorization.AuthorizeAction:input_type -> opl.cloud.api.AuthorizationRequest
-	492,  // 986: opl.cloud.api.CloudIdentityAuthorization.GetAuthorizationContext:input_type -> opl.cloud.api.GetAuthorizationContextRequest
-	493,  // 987: opl.cloud.api.CloudIdentityAuthorization.IssueAcceptedOperationGrant:input_type -> opl.cloud.api.AcceptedOperationGrantRequest
-	500,  // 988: opl.cloud.api.CatalogCoordination.AcceptQuote:input_type -> opl.cloud.api.AcceptQuoteRequest
-	502,  // 989: opl.cloud.api.CatalogCoordination.ReadQuoteResourcePlan:input_type -> opl.cloud.api.QuoteResourcePlanRequest
-	498,  // 990: opl.cloud.api.WorkspaceAdmission.CheckAdmission:input_type -> opl.cloud.api.AdmissionRequest
-	506,  // 991: opl.cloud.api.GatewayCoordination.GetSelfUserIdentity:input_type -> opl.cloud.api.GetSelfUserIdentityRequest
-	505,  // 992: opl.cloud.api.GatewayCoordination.GetSelfUserExternalBinding:input_type -> opl.cloud.api.GetSelfUserExternalBindingRequest
-	503,  // 993: opl.cloud.api.GatewayCoordination.BindUserExternalIdentity:input_type -> opl.cloud.api.UserExternalBindingCommand
-	504,  // 994: opl.cloud.api.GatewayCoordination.ReadUserExternalIdentity:input_type -> opl.cloud.api.UserExternalBindingReadRequest
-	509,  // 995: opl.cloud.api.GatewayCoordination.BindWallet:input_type -> opl.cloud.api.WalletBindingCommand
-	511,  // 996: opl.cloud.api.GatewayCoordination.Debit:input_type -> opl.cloud.api.WalletDebitCommand
-	512,  // 997: opl.cloud.api.GatewayCoordination.Refund:input_type -> opl.cloud.api.WalletRefundCommand
-	513,  // 998: opl.cloud.api.GatewayCoordination.ReadWalletAction:input_type -> opl.cloud.api.WalletReadbackRequest
-	514,  // 999: opl.cloud.api.GatewayCoordination.CreateManagedKey:input_type -> opl.cloud.api.ManagedKeyCommand
-	517,  // 1000: opl.cloud.api.GatewayCoordination.ReadManagedKey:input_type -> opl.cloud.api.ManagedKeyReadCommand
-	516,  // 1001: opl.cloud.api.GatewayCoordination.RevokeManagedKey:input_type -> opl.cloud.api.ManagedKeyRevoke
-	518,  // 1002: opl.cloud.api.GatewayCoordination.DisableManagedKey:input_type -> opl.cloud.api.ManagedKeyLifecycleCommand
-	518,  // 1003: opl.cloud.api.GatewayCoordination.EnableManagedKey:input_type -> opl.cloud.api.ManagedKeyLifecycleCommand
-	518,  // 1004: opl.cloud.api.GatewayCoordination.ReadManagedKeyLifecycle:input_type -> opl.cloud.api.ManagedKeyLifecycleCommand
-	521,  // 1005: opl.cloud.api.FabricCoordination.AdmitResources:input_type -> opl.cloud.api.ResourceAdmissionRequest
-	522,  // 1006: opl.cloud.api.FabricCoordination.EnsureResources:input_type -> opl.cloud.api.EnsureResourcesCommand
-	524,  // 1007: opl.cloud.api.FabricCoordination.ResizeResources:input_type -> opl.cloud.api.ResizeResourcesCommand
-	525,  // 1008: opl.cloud.api.FabricCoordination.RenewResources:input_type -> opl.cloud.api.RenewResourcesCommand
-	523,  // 1009: opl.cloud.api.FabricCoordination.SuspendResources:input_type -> opl.cloud.api.MutateResourcesCommand
-	523,  // 1010: opl.cloud.api.FabricCoordination.ResumeResources:input_type -> opl.cloud.api.MutateResourcesCommand
-	523,  // 1011: opl.cloud.api.FabricCoordination.DeleteResources:input_type -> opl.cloud.api.MutateResourcesCommand
-	526,  // 1012: opl.cloud.api.FabricCoordination.ReadResources:input_type -> opl.cloud.api.ResourceReadbackRequest
-	531,  // 1013: opl.cloud.api.FabricCoordination.BindSecret:input_type -> opl.cloud.api.SecretBindingCommand
-	533,  // 1014: opl.cloud.api.FabricCoordination.RebindSecret:input_type -> opl.cloud.api.SecretBindingRebindCommand
-	535,  // 1015: opl.cloud.api.FabricCoordination.PutManagedSecret:input_type -> opl.cloud.api.ManagedSecretCommand
-	537,  // 1016: opl.cloud.api.ServeAgentCoordination.Reserve:input_type -> opl.cloud.api.RuntimeReservationCommand
-	540,  // 1017: opl.cloud.api.ServeAgentCoordination.Deploy:input_type -> opl.cloud.api.RuntimeDeployCommand
-	543,  // 1018: opl.cloud.api.ServeAgentCoordination.ReloadModels:input_type -> opl.cloud.api.RuntimeReloadCommand
-	541,  // 1019: opl.cloud.api.ServeAgentCoordination.ReadRuntime:input_type -> opl.cloud.api.RuntimeReadbackRequest
-	544,  // 1020: opl.cloud.api.ServeAgentCoordination.Retire:input_type -> opl.cloud.api.RuntimeStopCommand
-	545,  // 1021: opl.cloud.api.ServeRuntimeAdapter.ReadApplicationCredentials:input_type -> opl.cloud.api.ReadApplicationCredentialsRequest
-	540,  // 1022: opl.cloud.api.ServeRuntimeAdapter.StartRuntime:input_type -> opl.cloud.api.RuntimeDeployCommand
-	544,  // 1023: opl.cloud.api.ServeRuntimeAdapter.StopRuntime:input_type -> opl.cloud.api.RuntimeStopCommand
-	543,  // 1024: opl.cloud.api.ServeRuntimeAdapter.ReloadRuntime:input_type -> opl.cloud.api.RuntimeReloadCommand
-	541,  // 1025: opl.cloud.api.ServeRuntimeAdapter.ObserveRuntime:input_type -> opl.cloud.api.RuntimeReadbackRequest
-	548,  // 1026: opl.cloud.api.ServeAccessControl.FenceRouteEpoch:input_type -> opl.cloud.api.FenceRouteEpochCommand
-	549,  // 1027: opl.cloud.api.ServeAccessControl.ActivateRoute:input_type -> opl.cloud.api.RouteActivateCommand
-	550,  // 1028: opl.cloud.api.ServeAccessControl.ObserveRoute:input_type -> opl.cloud.api.RouteObserveRequest
-	551,  // 1029: opl.cloud.api.ServeAccessControl.RollbackRoute:input_type -> opl.cloud.api.RouteRollbackCommand
-	553,  // 1030: opl.cloud.api.TenantWorkspaceCoordination.SuspendTenantWorkspaces:input_type -> opl.cloud.api.TenantWorkspaceLifecycleCommand
-	553,  // 1031: opl.cloud.api.TenantWorkspaceCoordination.DeleteTenantWorkspaces:input_type -> opl.cloud.api.TenantWorkspaceLifecycleCommand
-	555,  // 1032: opl.cloud.api.TenantWorkspaceCoordination.ResumeTenantWorkspaces:input_type -> opl.cloud.api.ResumeTenantWorkspacesRequest
-	556,  // 1033: opl.cloud.api.LedgerCoordination.AppendReceipt:input_type -> opl.cloud.api.AppendReceiptRequest
-	557,  // 1034: opl.cloud.api.LedgerCoordination.ReadReceiptByReference:input_type -> opl.cloud.api.GetReceiptByReferenceRequest
-	557,  // 1035: opl.cloud.api.LedgerCoordination.ReadLocalNoChargeReceipt:input_type -> opl.cloud.api.GetReceiptByReferenceRequest
-	557,  // 1036: opl.cloud.api.LedgerCoordination.ReadWalletActionReceipt:input_type -> opl.cloud.api.GetReceiptByReferenceRequest
-	561,  // 1037: opl.cloud.api.WorkspacePlanChangeReadback.ReadSubscriptionPlanState:input_type -> opl.cloud.api.ReadSubscriptionPlanStateRequest
-	563,  // 1038: opl.cloud.api.WorkspacePlanChangeReadback.ReadPlanChange:input_type -> opl.cloud.api.ReadPlanChangeRequest
-	564,  // 1039: opl.cloud.api.WorkspacePlanChangeReadback.ReadNextPeriodObligation:input_type -> opl.cloud.api.ReadNextPeriodObligationRequest
-	566,  // 1040: opl.cloud.api.WorkspacePlanChangeReadback.ReadPlanChangeFailure:input_type -> opl.cloud.api.ReadPlanChangeFailureRequest
-	567,  // 1041: opl.cloud.api.FabricPlanTransitionReadback.ReadApprovedPlanTransition:input_type -> opl.cloud.api.PlanTransitionRequest
-	581,  // 1042: opl.cloud.api.FabricPlanTransitionReadback.ReadExecutionPlan:input_type -> opl.cloud.api.ReadProviderExecutionPlanRequest
-	572,  // 1043: opl.cloud.api.GatewayPlanChangeSettlement.DebitSupplement:input_type -> opl.cloud.api.PlanChangeSupplementChargeCommand
-	573,  // 1044: opl.cloud.api.GatewayPlanChangeSettlement.DebitScheduledPeriod:input_type -> opl.cloud.api.ScheduledPeriodChargeCommand
-	574,  // 1045: opl.cloud.api.GatewayPlanChangeSettlement.RefundFailure:input_type -> opl.cloud.api.PlanChangeFailureRefundCommand
-	575,  // 1046: opl.cloud.api.GatewayPlanChangeSettlement.RefundSupplementOnDeletion:input_type -> opl.cloud.api.SupplementDeletionRefundCommand
-	576,  // 1047: opl.cloud.api.ServePlanChangeControl.RestoreAfterResourceChange:input_type -> opl.cloud.api.RestorePlanChangeRuntimeCommand
-	578,  // 1048: opl.cloud.api.LedgerPlanChangeEvidence.AppendPlanChangeReceipt:input_type -> opl.cloud.api.AppendPlanChangeReceiptRequest
-	579,  // 1049: opl.cloud.api.LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt:input_type -> opl.cloud.api.AppendPlanChangeRefundReceiptRequest
-	603,  // 1050: opl.cloud.api.DomainInbox.Deliver:input_type -> opl.cloud.api.DeliverEventRequest
-	605,  // 1051: opl.cloud.api.WorkspaceAccessReadback.ReadWorkspaceAccess:input_type -> opl.cloud.api.ReadWorkspaceAccessRequest
-	195,  // 1052: opl.cloud.api.TenantProductService.GetLoginContext:output_type -> opl.cloud.api.LoginContext
-	197,  // 1053: opl.cloud.api.TenantProductService.Login:output_type -> opl.cloud.api.Session
-	197,  // 1054: opl.cloud.api.TenantProductService.GetSession:output_type -> opl.cloud.api.Session
-	625,  // 1055: opl.cloud.api.TenantProductService.Logout:output_type -> google.protobuf.Empty
-	198,  // 1056: opl.cloud.api.TenantProductService.GetTenant:output_type -> opl.cloud.api.Tenant
-	272,  // 1057: opl.cloud.api.TenantProductService.ListMembers:output_type -> opl.cloud.api.MemberPage
-	273,  // 1058: opl.cloud.api.TenantProductService.ListInvitations:output_type -> opl.cloud.api.InvitationPage
-	202,  // 1059: opl.cloud.api.TenantProductService.InviteMember:output_type -> opl.cloud.api.Invitation
-	201,  // 1060: opl.cloud.api.TenantProductService.AcceptInvitation:output_type -> opl.cloud.api.Member
-	202,  // 1061: opl.cloud.api.TenantProductService.RevokeInvitation:output_type -> opl.cloud.api.Invitation
-	201,  // 1062: opl.cloud.api.TenantProductService.UpdateMemberRole:output_type -> opl.cloud.api.Member
-	625,  // 1063: opl.cloud.api.TenantProductService.RemoveMember:output_type -> google.protobuf.Empty
-	294,  // 1064: opl.cloud.api.TenantProductService.ListTenants:output_type -> opl.cloud.api.TenantPage
-	194,  // 1065: opl.cloud.api.TenantProductService.CreateTenant:output_type -> opl.cloud.api.Operation
-	198,  // 1066: opl.cloud.api.TenantProductService.GetAdminTenant:output_type -> opl.cloud.api.Tenant
-	194,  // 1067: opl.cloud.api.TenantProductService.DeleteTenant:output_type -> opl.cloud.api.Operation
-	194,  // 1068: opl.cloud.api.TenantProductService.BindTenantWallet:output_type -> opl.cloud.api.Operation
-	194,  // 1069: opl.cloud.api.TenantProductService.SuspendTenant:output_type -> opl.cloud.api.Operation
-	194,  // 1070: opl.cloud.api.TenantProductService.RestoreTenant:output_type -> opl.cloud.api.Operation
-	207,  // 1071: opl.cloud.api.TenantProductService.GetTenantAssetCustody:output_type -> opl.cloud.api.AssetCustody
-	295,  // 1072: opl.cloud.api.TenantProductService.ListAuditEvents:output_type -> opl.cloud.api.AuditEventPage
-	194,  // 1073: opl.cloud.api.TenantProductService.ReenableTenant:output_type -> opl.cloud.api.Operation
-	343,  // 1074: opl.cloud.api.TenantProductService.GetTenantLifecycleOperation:output_type -> opl.cloud.api.TenantLifecycleProgress
-	274,  // 1075: opl.cloud.api.CapabilityProductService.ListNamespaces:output_type -> opl.cloud.api.NamespacePage
-	208,  // 1076: opl.cloud.api.CapabilityProductService.CreateNamespace:output_type -> opl.cloud.api.Namespace
-	208,  // 1077: opl.cloud.api.CapabilityProductService.UpdateNamespace:output_type -> opl.cloud.api.Namespace
-	208,  // 1078: opl.cloud.api.CapabilityProductService.ArchiveNamespace:output_type -> opl.cloud.api.Namespace
-	275,  // 1079: opl.cloud.api.CapabilityProductService.ListPackages:output_type -> opl.cloud.api.PackagePage
-	210,  // 1080: opl.cloud.api.CapabilityProductService.CreatePackage:output_type -> opl.cloud.api.Package
-	210,  // 1081: opl.cloud.api.CapabilityProductService.GetPackage:output_type -> opl.cloud.api.Package
-	210,  // 1082: opl.cloud.api.CapabilityProductService.UpdatePackage:output_type -> opl.cloud.api.Package
-	210,  // 1083: opl.cloud.api.CapabilityProductService.ArchivePackage:output_type -> opl.cloud.api.Package
-	217,  // 1084: opl.cloud.api.CapabilityProductService.CreateUpload:output_type -> opl.cloud.api.UploadSession
-	217,  // 1085: opl.cloud.api.CapabilityProductService.GetUpload:output_type -> opl.cloud.api.UploadSession
-	219,  // 1086: opl.cloud.api.CapabilityProductService.CreateUploadPart:output_type -> opl.cloud.api.UploadPartAuthorization
-	194,  // 1087: opl.cloud.api.CapabilityProductService.CompleteUpload:output_type -> opl.cloud.api.Operation
-	276,  // 1088: opl.cloud.api.CapabilityProductService.ListPackageVersions:output_type -> opl.cloud.api.PackageVersionPage
-	214,  // 1089: opl.cloud.api.CapabilityProductService.GetPackageVersion:output_type -> opl.cloud.api.PackageVersion
-	277,  // 1090: opl.cloud.api.CapabilityProductService.ListCapabilityVersions:output_type -> opl.cloud.api.CapabilityVersionPage
-	223,  // 1091: opl.cloud.api.CapabilityProductService.GetCapabilityVersion:output_type -> opl.cloud.api.CapabilityVersion
-	194,  // 1092: opl.cloud.api.CapabilityProductService.DeleteCapabilityVersion:output_type -> opl.cloud.api.Operation
-	210,  // 1093: opl.cloud.api.CapabilityProductService.PublishOfficialPackage:output_type -> opl.cloud.api.Package
-	281,  // 1094: opl.cloud.api.CapabilityProductService.ListWebuiVersions:output_type -> opl.cloud.api.WebuiVersionPage
-	228,  // 1095: opl.cloud.api.CapabilityProductService.RegisterWebuiVersion:output_type -> opl.cloud.api.WebuiVersion
-	228,  // 1096: opl.cloud.api.CapabilityProductService.SetWebuiVersionStatus:output_type -> opl.cloud.api.WebuiVersion
-	321,  // 1097: opl.cloud.api.CapabilityProductService.ListPublisherNamespaces:output_type -> opl.cloud.api.PublisherNamespacePage
-	318,  // 1098: opl.cloud.api.CapabilityProductService.CreatePublisherNamespace:output_type -> opl.cloud.api.PublisherNamespace
-	318,  // 1099: opl.cloud.api.CapabilityProductService.RevokePublisherNamespace:output_type -> opl.cloud.api.PublisherNamespace
-	280,  // 1100: opl.cloud.api.RuntimeControlProductService.ListRuntimeVersions:output_type -> opl.cloud.api.RuntimeVersionPage
-	300,  // 1101: opl.cloud.api.RuntimeControlProductService.GetBuildRuntimePolicy:output_type -> opl.cloud.api.BuildRuntimePolicy
-	300,  // 1102: opl.cloud.api.RuntimeControlProductService.SetBuildRuntimePolicy:output_type -> opl.cloud.api.BuildRuntimePolicy
-	227,  // 1103: opl.cloud.api.RuntimeControlProductService.RegisterRuntimeVersion:output_type -> opl.cloud.api.RuntimeVersion
-	227,  // 1104: opl.cloud.api.RuntimeControlProductService.SetRuntimeVersionStatus:output_type -> opl.cloud.api.RuntimeVersion
-	224,  // 1105: opl.cloud.api.BuildProductService.CreateBuild:output_type -> opl.cloud.api.BuildJob
-	278,  // 1106: opl.cloud.api.BuildProductService.ListBuilds:output_type -> opl.cloud.api.BuildJobPage
-	224,  // 1107: opl.cloud.api.BuildProductService.GetBuild:output_type -> opl.cloud.api.BuildJob
-	279,  // 1108: opl.cloud.api.BuildProductService.ListBuildLogs:output_type -> opl.cloud.api.BuildLogPage
-	224,  // 1109: opl.cloud.api.BuildProductService.RetryBuild:output_type -> opl.cloud.api.BuildJob
-	248,  // 1110: opl.cloud.api.ResourceCatalogProductService.CreateQuote:output_type -> opl.cloud.api.Quote
-	248,  // 1111: opl.cloud.api.ResourceCatalogProductService.GetQuote:output_type -> opl.cloud.api.Quote
-	282,  // 1112: opl.cloud.api.ResourceCatalogProductService.ListComputePlans:output_type -> opl.cloud.api.ComputePlanPage
-	283,  // 1113: opl.cloud.api.ResourceCatalogProductService.ListStoragePlans:output_type -> opl.cloud.api.StoragePlanPage
-	232,  // 1114: opl.cloud.api.ResourceCatalogProductService.CreateComputePlan:output_type -> opl.cloud.api.ComputePlan
-	232,  // 1115: opl.cloud.api.ResourceCatalogProductService.SetComputePlanAvailability:output_type -> opl.cloud.api.ComputePlan
-	233,  // 1116: opl.cloud.api.ResourceCatalogProductService.CreateStoragePlan:output_type -> opl.cloud.api.StoragePlan
-	233,  // 1117: opl.cloud.api.ResourceCatalogProductService.SetStoragePlanAvailability:output_type -> opl.cloud.api.StoragePlan
-	284,  // 1118: opl.cloud.api.ResourceCatalogProductService.ListPricePolicyVersions:output_type -> opl.cloud.api.PricePolicyVersionPage
-	237,  // 1119: opl.cloud.api.ResourceCatalogProductService.CreatePricePolicyVersion:output_type -> opl.cloud.api.PricePolicyVersion
-	285,  // 1120: opl.cloud.api.ResourceCatalogProductService.ListRefundPolicyVersions:output_type -> opl.cloud.api.RefundPolicyVersionPage
-	239,  // 1121: opl.cloud.api.ResourceCatalogProductService.CreateRefundPolicyVersion:output_type -> opl.cloud.api.RefundPolicyVersion
-	286,  // 1122: opl.cloud.api.ResourceCatalogProductService.ListRetentionPolicyVersions:output_type -> opl.cloud.api.RetentionPolicyVersionPage
-	241,  // 1123: opl.cloud.api.ResourceCatalogProductService.CreateRetentionPolicyVersion:output_type -> opl.cloud.api.RetentionPolicyVersion
-	194,  // 1124: opl.cloud.api.WorkspaceProductService.CreateWorkspace:output_type -> opl.cloud.api.Operation
-	288,  // 1125: opl.cloud.api.WorkspaceProductService.ListWorkspaces:output_type -> opl.cloud.api.WorkspacePage
-	249,  // 1126: opl.cloud.api.WorkspaceProductService.GetWorkspace:output_type -> opl.cloud.api.Workspace
-	194,  // 1127: opl.cloud.api.WorkspaceProductService.DeleteWorkspace:output_type -> opl.cloud.api.Operation
-	252,  // 1128: opl.cloud.api.WorkspaceProductService.GetWorkspaceModels:output_type -> opl.cloud.api.ModelConfiguration
-	194,  // 1129: opl.cloud.api.WorkspaceProductService.UpdateWorkspaceModels:output_type -> opl.cloud.api.Operation
-	194,  // 1130: opl.cloud.api.WorkspaceProductService.ResizeWorkspace:output_type -> opl.cloud.api.Operation
-	194,  // 1131: opl.cloud.api.WorkspaceProductService.RenewWorkspace:output_type -> opl.cloud.api.Operation
-	260,  // 1132: opl.cloud.api.WorkspaceProductService.GetSubscription:output_type -> opl.cloud.api.Subscription
-	259,  // 1133: opl.cloud.api.WorkspaceProductService.GetWorkspaceDeletion:output_type -> opl.cloud.api.WorkspaceDeletion
-	194,  // 1134: opl.cloud.api.WorkspaceProductService.GetOperation:output_type -> opl.cloud.api.Operation
-	297,  // 1135: opl.cloud.api.WorkspaceProductService.ListAdminOperations:output_type -> opl.cloud.api.AdminOperationPage
-	194,  // 1136: opl.cloud.api.WorkspaceProductService.ReconcileOperation:output_type -> opl.cloud.api.Operation
-	194,  // 1137: opl.cloud.api.WorkspaceProductService.AdoptWorkspace:output_type -> opl.cloud.api.Operation
-	194,  // 1138: opl.cloud.api.WorkspaceProductService.UpdateRenewalSettings:output_type -> opl.cloud.api.Operation
-	348,  // 1139: opl.cloud.api.WorkspaceProductService.RevealWorkspaceApplicationCredentials:output_type -> opl.cloud.api.WorkspaceApplicationCredentials
-	356,  // 1140: opl.cloud.api.WorkspaceProductService.ListPlanChanges:output_type -> opl.cloud.api.PlanChangePage
-	355,  // 1141: opl.cloud.api.WorkspaceProductService.GetPlanChange:output_type -> opl.cloud.api.PlanChange
-	194,  // 1142: opl.cloud.api.WorkspaceProductService.CancelPlanChange:output_type -> opl.cloud.api.Operation
-	289,  // 1143: opl.cloud.api.ServeProductService.ListDeployments:output_type -> opl.cloud.api.DeploymentPage
-	254,  // 1144: opl.cloud.api.ServeProductService.GetDeployment:output_type -> opl.cloud.api.Deployment
-	194,  // 1145: opl.cloud.api.ServeProductService.UpdateWorkspaceVersion:output_type -> opl.cloud.api.Operation
-	194,  // 1146: opl.cloud.api.ServeProductService.RollbackWorkspace:output_type -> opl.cloud.api.Operation
-	251,  // 1147: opl.cloud.api.ServeProductService.GetWorkspaceAccess:output_type -> opl.cloud.api.WorkspaceAccess
-	613,  // 1148: opl.cloud.api.GatewayProductService.ListPersonalGatewayKeys:output_type -> opl.cloud.api.PersonalGatewayKeyPage
-	612,  // 1149: opl.cloud.api.GatewayProductService.GetPersonalGatewayKey:output_type -> opl.cloud.api.PersonalGatewayKey
-	615,  // 1150: opl.cloud.api.GatewayProductService.ListPersonalGatewayGroups:output_type -> opl.cloud.api.PersonalGatewayGroupPage
-	617,  // 1151: opl.cloud.api.GatewayProductService.ListPersonalGatewayKeyUsage:output_type -> opl.cloud.api.PersonalGatewayKeyUsagePage
-	292,  // 1152: opl.cloud.api.GatewayProductService.GetPersonalGatewayKeyUsageSummary:output_type -> opl.cloud.api.UsageSummary
-	290,  // 1153: opl.cloud.api.GatewayProductService.ListWorkspaceTransactions:output_type -> opl.cloud.api.WalletOperationPage
-	608,  // 1154: opl.cloud.api.GatewayProductService.GetWorkspaceTransactionTrend:output_type -> opl.cloud.api.WorkspaceTransactionTrend
-	262,  // 1155: opl.cloud.api.GatewayProductService.GetWallet:output_type -> opl.cloud.api.Wallet
-	291,  // 1156: opl.cloud.api.GatewayProductService.ListUsage:output_type -> opl.cloud.api.UsagePage
-	292,  // 1157: opl.cloud.api.GatewayProductService.GetUsageSummary:output_type -> opl.cloud.api.UsageSummary
-	293,  // 1158: opl.cloud.api.GatewayProductService.ListGatewayKeys:output_type -> opl.cloud.api.GatewayKeyPage
-	266,  // 1159: opl.cloud.api.GatewayProductService.CreateGatewayKey:output_type -> opl.cloud.api.GatewayKeySecret
-	266,  // 1160: opl.cloud.api.GatewayProductService.RevealGatewayKey:output_type -> opl.cloud.api.GatewayKeySecret
-	194,  // 1161: opl.cloud.api.GatewayProductService.RevokeGatewayKey:output_type -> opl.cloud.api.Operation
-	290,  // 1162: opl.cloud.api.GatewayProductService.ListRechargeRecords:output_type -> opl.cloud.api.WalletOperationPage
-	287,  // 1163: opl.cloud.api.GatewayProductService.ListModels:output_type -> opl.cloud.api.ModelPage
-	611,  // 1164: opl.cloud.api.LedgerProductService.GetWorkspaceFinancialReceipt:output_type -> opl.cloud.api.WorkspaceFinancialReceipt
-	296,  // 1165: opl.cloud.api.LedgerProductService.ListReceipts:output_type -> opl.cloud.api.ReceiptPage
-	268,  // 1166: opl.cloud.api.LedgerProductService.GetReceipt:output_type -> opl.cloud.api.Receipt
-	298,  // 1167: opl.cloud.api.LedgerProductService.ListQualifications:output_type -> opl.cloud.api.QualificationPage
-	481,  // 1168: opl.cloud.api.ClaimUsageReadback.ReadClaimUsage:output_type -> opl.cloud.api.ClaimUsageEvidence
-	472,  // 1169: opl.cloud.api.CapabilityCoordination.ResolveBuildInput:output_type -> opl.cloud.api.BuildInputSnapshot
-	483,  // 1170: opl.cloud.api.CapabilityCoordination.ResolvePublisherContract:output_type -> opl.cloud.api.ResolvedPublisherContract
-	479,  // 1171: opl.cloud.api.CapabilityCoordination.AcquireReference:output_type -> opl.cloud.api.ReferenceClaim
-	479,  // 1172: opl.cloud.api.CapabilityCoordination.BindReference:output_type -> opl.cloud.api.ReferenceClaim
-	479,  // 1173: opl.cloud.api.CapabilityCoordination.ReleaseReference:output_type -> opl.cloud.api.ReferenceClaim
-	485,  // 1174: opl.cloud.api.BuildCoordination.ReadArtifact:output_type -> opl.cloud.api.BuildArtifactReadback
-	194,  // 1175: opl.cloud.api.OwnerOperations.Read:output_type -> opl.cloud.api.Operation
-	194,  // 1176: opl.cloud.api.OwnerOperations.Reconcile:output_type -> opl.cloud.api.Operation
-	475,  // 1177: opl.cloud.api.OwnerCommitReadback.ReadOwnerCommit:output_type -> opl.cloud.api.OwnerCommitEvidence
-	497,  // 1178: opl.cloud.api.WorkspaceAuthorizationReadback.ReadRenewalConsent:output_type -> opl.cloud.api.RenewalConsentReadback
-	491,  // 1179: opl.cloud.api.CloudIdentityAuthorization.AuthorizeAction:output_type -> opl.cloud.api.AuthorizationDecision
-	491,  // 1180: opl.cloud.api.CloudIdentityAuthorization.GetAuthorizationContext:output_type -> opl.cloud.api.AuthorizationDecision
-	494,  // 1181: opl.cloud.api.CloudIdentityAuthorization.IssueAcceptedOperationGrant:output_type -> opl.cloud.api.AcceptedOperationGrant
-	501,  // 1182: opl.cloud.api.CatalogCoordination.AcceptQuote:output_type -> opl.cloud.api.QuoteAcceptance
-	501,  // 1183: opl.cloud.api.CatalogCoordination.ReadQuoteResourcePlan:output_type -> opl.cloud.api.QuoteAcceptance
-	499,  // 1184: opl.cloud.api.WorkspaceAdmission.CheckAdmission:output_type -> opl.cloud.api.AdmissionResult
-	507,  // 1185: opl.cloud.api.GatewayCoordination.GetSelfUserIdentity:output_type -> opl.cloud.api.UserIdentityReadback
-	508,  // 1186: opl.cloud.api.GatewayCoordination.GetSelfUserExternalBinding:output_type -> opl.cloud.api.UserExternalBindingReadback
-	508,  // 1187: opl.cloud.api.GatewayCoordination.BindUserExternalIdentity:output_type -> opl.cloud.api.UserExternalBindingReadback
-	508,  // 1188: opl.cloud.api.GatewayCoordination.ReadUserExternalIdentity:output_type -> opl.cloud.api.UserExternalBindingReadback
-	510,  // 1189: opl.cloud.api.GatewayCoordination.BindWallet:output_type -> opl.cloud.api.WalletBindingReadback
-	261,  // 1190: opl.cloud.api.GatewayCoordination.Debit:output_type -> opl.cloud.api.WalletOperation
-	261,  // 1191: opl.cloud.api.GatewayCoordination.Refund:output_type -> opl.cloud.api.WalletOperation
-	261,  // 1192: opl.cloud.api.GatewayCoordination.ReadWalletAction:output_type -> opl.cloud.api.WalletOperation
-	515,  // 1193: opl.cloud.api.GatewayCoordination.CreateManagedKey:output_type -> opl.cloud.api.ManagedKeyBinding
-	515,  // 1194: opl.cloud.api.GatewayCoordination.ReadManagedKey:output_type -> opl.cloud.api.ManagedKeyBinding
-	194,  // 1195: opl.cloud.api.GatewayCoordination.RevokeManagedKey:output_type -> opl.cloud.api.Operation
-	519,  // 1196: opl.cloud.api.GatewayCoordination.DisableManagedKey:output_type -> opl.cloud.api.ManagedKeyLifecycleReadback
-	519,  // 1197: opl.cloud.api.GatewayCoordination.EnableManagedKey:output_type -> opl.cloud.api.ManagedKeyLifecycleReadback
-	519,  // 1198: opl.cloud.api.GatewayCoordination.ReadManagedKeyLifecycle:output_type -> opl.cloud.api.ManagedKeyLifecycleReadback
-	499,  // 1199: opl.cloud.api.FabricCoordination.AdmitResources:output_type -> opl.cloud.api.AdmissionResult
-	194,  // 1200: opl.cloud.api.FabricCoordination.EnsureResources:output_type -> opl.cloud.api.Operation
-	194,  // 1201: opl.cloud.api.FabricCoordination.ResizeResources:output_type -> opl.cloud.api.Operation
-	194,  // 1202: opl.cloud.api.FabricCoordination.RenewResources:output_type -> opl.cloud.api.Operation
-	194,  // 1203: opl.cloud.api.FabricCoordination.SuspendResources:output_type -> opl.cloud.api.Operation
-	194,  // 1204: opl.cloud.api.FabricCoordination.ResumeResources:output_type -> opl.cloud.api.Operation
-	194,  // 1205: opl.cloud.api.FabricCoordination.DeleteResources:output_type -> opl.cloud.api.Operation
-	529,  // 1206: opl.cloud.api.FabricCoordination.ReadResources:output_type -> opl.cloud.api.ResourceReadback
-	532,  // 1207: opl.cloud.api.FabricCoordination.BindSecret:output_type -> opl.cloud.api.SecretBindingReadback
-	534,  // 1208: opl.cloud.api.FabricCoordination.RebindSecret:output_type -> opl.cloud.api.SecretBindingRebindReadback
-	536,  // 1209: opl.cloud.api.FabricCoordination.PutManagedSecret:output_type -> opl.cloud.api.ManagedSecretReadback
-	538,  // 1210: opl.cloud.api.ServeAgentCoordination.Reserve:output_type -> opl.cloud.api.RuntimeReservation
-	542,  // 1211: opl.cloud.api.ServeAgentCoordination.Deploy:output_type -> opl.cloud.api.RuntimeReadback
-	194,  // 1212: opl.cloud.api.ServeAgentCoordination.ReloadModels:output_type -> opl.cloud.api.Operation
-	542,  // 1213: opl.cloud.api.ServeAgentCoordination.ReadRuntime:output_type -> opl.cloud.api.RuntimeReadback
-	194,  // 1214: opl.cloud.api.ServeAgentCoordination.Retire:output_type -> opl.cloud.api.Operation
-	348,  // 1215: opl.cloud.api.ServeRuntimeAdapter.ReadApplicationCredentials:output_type -> opl.cloud.api.WorkspaceApplicationCredentials
-	542,  // 1216: opl.cloud.api.ServeRuntimeAdapter.StartRuntime:output_type -> opl.cloud.api.RuntimeReadback
-	194,  // 1217: opl.cloud.api.ServeRuntimeAdapter.StopRuntime:output_type -> opl.cloud.api.Operation
-	194,  // 1218: opl.cloud.api.ServeRuntimeAdapter.ReloadRuntime:output_type -> opl.cloud.api.Operation
-	542,  // 1219: opl.cloud.api.ServeRuntimeAdapter.ObserveRuntime:output_type -> opl.cloud.api.RuntimeReadback
-	552,  // 1220: opl.cloud.api.ServeAccessControl.FenceRouteEpoch:output_type -> opl.cloud.api.RouteReadback
-	552,  // 1221: opl.cloud.api.ServeAccessControl.ActivateRoute:output_type -> opl.cloud.api.RouteReadback
-	552,  // 1222: opl.cloud.api.ServeAccessControl.ObserveRoute:output_type -> opl.cloud.api.RouteReadback
-	552,  // 1223: opl.cloud.api.ServeAccessControl.RollbackRoute:output_type -> opl.cloud.api.RouteReadback
-	554,  // 1224: opl.cloud.api.TenantWorkspaceCoordination.SuspendTenantWorkspaces:output_type -> opl.cloud.api.TenantWorkspaceLifecycleReadback
-	554,  // 1225: opl.cloud.api.TenantWorkspaceCoordination.DeleteTenantWorkspaces:output_type -> opl.cloud.api.TenantWorkspaceLifecycleReadback
-	554,  // 1226: opl.cloud.api.TenantWorkspaceCoordination.ResumeTenantWorkspaces:output_type -> opl.cloud.api.TenantWorkspaceLifecycleReadback
-	268,  // 1227: opl.cloud.api.LedgerCoordination.AppendReceipt:output_type -> opl.cloud.api.Receipt
-	268,  // 1228: opl.cloud.api.LedgerCoordination.ReadReceiptByReference:output_type -> opl.cloud.api.Receipt
-	558,  // 1229: opl.cloud.api.LedgerCoordination.ReadLocalNoChargeReceipt:output_type -> opl.cloud.api.LocalNoChargeReceiptEvidence
-	559,  // 1230: opl.cloud.api.LedgerCoordination.ReadWalletActionReceipt:output_type -> opl.cloud.api.WalletActionReceiptEvidence
-	562,  // 1231: opl.cloud.api.WorkspacePlanChangeReadback.ReadSubscriptionPlanState:output_type -> opl.cloud.api.SubscriptionPlanState
-	355,  // 1232: opl.cloud.api.WorkspacePlanChangeReadback.ReadPlanChange:output_type -> opl.cloud.api.PlanChange
-	565,  // 1233: opl.cloud.api.WorkspacePlanChangeReadback.ReadNextPeriodObligation:output_type -> opl.cloud.api.NextPeriodObligation
-	358,  // 1234: opl.cloud.api.WorkspacePlanChangeReadback.ReadPlanChangeFailure:output_type -> opl.cloud.api.PlanChangeEvidence
-	568,  // 1235: opl.cloud.api.FabricPlanTransitionReadback.ReadApprovedPlanTransition:output_type -> opl.cloud.api.ApprovedPlanTransition
-	582,  // 1236: opl.cloud.api.FabricPlanTransitionReadback.ReadExecutionPlan:output_type -> opl.cloud.api.ProviderPlanChangeExecutionPlan
-	261,  // 1237: opl.cloud.api.GatewayPlanChangeSettlement.DebitSupplement:output_type -> opl.cloud.api.WalletOperation
-	261,  // 1238: opl.cloud.api.GatewayPlanChangeSettlement.DebitScheduledPeriod:output_type -> opl.cloud.api.WalletOperation
-	261,  // 1239: opl.cloud.api.GatewayPlanChangeSettlement.RefundFailure:output_type -> opl.cloud.api.WalletOperation
-	261,  // 1240: opl.cloud.api.GatewayPlanChangeSettlement.RefundSupplementOnDeletion:output_type -> opl.cloud.api.WalletOperation
-	577,  // 1241: opl.cloud.api.ServePlanChangeControl.RestoreAfterResourceChange:output_type -> opl.cloud.api.PlanChangeRuntimeReadback
-	268,  // 1242: opl.cloud.api.LedgerPlanChangeEvidence.AppendPlanChangeReceipt:output_type -> opl.cloud.api.Receipt
-	268,  // 1243: opl.cloud.api.LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt:output_type -> opl.cloud.api.Receipt
-	604,  // 1244: opl.cloud.api.DomainInbox.Deliver:output_type -> opl.cloud.api.InboxAck
-	606,  // 1245: opl.cloud.api.WorkspaceAccessReadback.ReadWorkspaceAccess:output_type -> opl.cloud.api.WorkspaceAccessDecision
-	1052, // [1052:1246] is the sub-list for method output_type
-	858,  // [858:1052] is the sub-list for method input_type
-	858,  // [858:858] is the sub-list for extension type_name
-	858,  // [858:858] is the sub-list for extension extendee
-	0,    // [0:858] is the sub-list for field type_name
+	624,  // 710: opl.cloud.api.RuntimeReadback.first_fulfilled_at:type_name -> google.protobuf.Timestamp
+	191,  // 711: opl.cloud.api.RuntimeReloadCommand.context:type_name -> opl.cloud.api.CallContext
+	244,  // 712: opl.cloud.api.RuntimeReloadCommand.selections:type_name -> opl.cloud.api.ModelSelection
+	539,  // 713: opl.cloud.api.RuntimeReloadCommand.managed_key_binding:type_name -> opl.cloud.api.RuntimeManagedKeyBinding
+	191,  // 714: opl.cloud.api.RuntimeStopCommand.context:type_name -> opl.cloud.api.CallContext
+	191,  // 715: opl.cloud.api.ReadApplicationCredentialsRequest.context:type_name -> opl.cloud.api.CallContext
+	546,  // 716: opl.cloud.api.RouteRevisionPrecondition.require_absent:type_name -> opl.cloud.api.RouteAbsence
+	191,  // 717: opl.cloud.api.FenceRouteEpochCommand.context:type_name -> opl.cloud.api.CallContext
+	547,  // 718: opl.cloud.api.FenceRouteEpochCommand.revision_precondition:type_name -> opl.cloud.api.RouteRevisionPrecondition
+	191,  // 719: opl.cloud.api.RouteActivateCommand.context:type_name -> opl.cloud.api.CallContext
+	547,  // 720: opl.cloud.api.RouteActivateCommand.revision_precondition:type_name -> opl.cloud.api.RouteRevisionPrecondition
+	191,  // 721: opl.cloud.api.RouteObserveRequest.context:type_name -> opl.cloud.api.CallContext
+	191,  // 722: opl.cloud.api.RouteRollbackCommand.context:type_name -> opl.cloud.api.CallContext
+	547,  // 723: opl.cloud.api.RouteRollbackCommand.revision_precondition:type_name -> opl.cloud.api.RouteRevisionPrecondition
+	0,    // 724: opl.cloud.api.RouteReadback.observation:type_name -> opl.cloud.api.Observation
+	624,  // 725: opl.cloud.api.RouteReadback.observed_at:type_name -> google.protobuf.Timestamp
+	15,   // 726: opl.cloud.api.RouteReadback.error_code:type_name -> opl.cloud.api.ErrorCodeEnum
+	191,  // 727: opl.cloud.api.TenantWorkspaceLifecycleCommand.context:type_name -> opl.cloud.api.CallContext
+	341,  // 728: opl.cloud.api.TenantWorkspaceLifecycleReadback.workspace_actions:type_name -> opl.cloud.api.TenantWorkspaceAction
+	0,    // 729: opl.cloud.api.TenantWorkspaceLifecycleReadback.outcome:type_name -> opl.cloud.api.Observation
+	342,  // 730: opl.cloud.api.TenantWorkspaceLifecycleReadback.skipped:type_name -> opl.cloud.api.TenantWorkspaceSkip
+	191,  // 731: opl.cloud.api.ResumeTenantWorkspacesRequest.context:type_name -> opl.cloud.api.CallContext
+	191,  // 732: opl.cloud.api.AppendReceiptRequest.context:type_name -> opl.cloud.api.CallContext
+	268,  // 733: opl.cloud.api.AppendReceiptRequest.receipt:type_name -> opl.cloud.api.Receipt
+	501,  // 734: opl.cloud.api.AppendReceiptRequest.quote_acceptance:type_name -> opl.cloud.api.QuoteAcceptance
+	475,  // 735: opl.cloud.api.AppendReceiptRequest.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
+	261,  // 736: opl.cloud.api.AppendReceiptRequest.wallet_operation:type_name -> opl.cloud.api.WalletOperation
+	191,  // 737: opl.cloud.api.GetReceiptByReferenceRequest.context:type_name -> opl.cloud.api.CallContext
+	268,  // 738: opl.cloud.api.LocalNoChargeReceiptEvidence.receipt:type_name -> opl.cloud.api.Receipt
+	501,  // 739: opl.cloud.api.LocalNoChargeReceiptEvidence.quote_acceptance:type_name -> opl.cloud.api.QuoteAcceptance
+	475,  // 740: opl.cloud.api.LocalNoChargeReceiptEvidence.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
+	268,  // 741: opl.cloud.api.WalletActionReceiptEvidence.receipt:type_name -> opl.cloud.api.Receipt
+	501,  // 742: opl.cloud.api.WalletActionReceiptEvidence.quote_acceptance:type_name -> opl.cloud.api.QuoteAcceptance
+	261,  // 743: opl.cloud.api.WalletActionReceiptEvidence.wallet_operation:type_name -> opl.cloud.api.WalletOperation
+	475,  // 744: opl.cloud.api.WalletActionReceiptEvidence.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
+	268,  // 745: opl.cloud.api.ProviderActionReceiptEvidence.receipt:type_name -> opl.cloud.api.Receipt
+	475,  // 746: opl.cloud.api.ProviderActionReceiptEvidence.owner_commit_evidence:type_name -> opl.cloud.api.OwnerCommitEvidence
+	191,  // 747: opl.cloud.api.ReadSubscriptionPlanStateRequest.context:type_name -> opl.cloud.api.CallContext
+	624,  // 748: opl.cloud.api.SubscriptionPlanState.period_start:type_name -> google.protobuf.Timestamp
+	624,  // 749: opl.cloud.api.SubscriptionPlanState.period_end:type_name -> google.protobuf.Timestamp
+	624,  // 750: opl.cloud.api.SubscriptionPlanState.next_period_start:type_name -> google.protobuf.Timestamp
+	624,  // 751: opl.cloud.api.SubscriptionPlanState.next_period_end:type_name -> google.protobuf.Timestamp
+	78,   // 752: opl.cloud.api.SubscriptionPlanState.renewal_mode:type_name -> opl.cloud.api.SubscriptionRenewalModeEnum
+	0,    // 753: opl.cloud.api.SubscriptionPlanState.outcome:type_name -> opl.cloud.api.Observation
+	583,  // 754: opl.cloud.api.SubscriptionPlanState.source_financial_snapshot:type_name -> opl.cloud.api.SourceFinancialSnapshot
+	191,  // 755: opl.cloud.api.ReadPlanChangeRequest.context:type_name -> opl.cloud.api.CallContext
+	191,  // 756: opl.cloud.api.ReadNextPeriodObligationRequest.context:type_name -> opl.cloud.api.CallContext
+	624,  // 757: opl.cloud.api.ReadNextPeriodObligationRequest.period_start:type_name -> google.protobuf.Timestamp
+	624,  // 758: opl.cloud.api.NextPeriodObligation.period_start:type_name -> google.protobuf.Timestamp
+	624,  // 759: opl.cloud.api.NextPeriodObligation.period_end:type_name -> google.protobuf.Timestamp
+	11,   // 760: opl.cloud.api.NextPeriodObligation.status:type_name -> opl.cloud.api.PeriodObligationStatus
+	0,    // 761: opl.cloud.api.NextPeriodObligation.outcome:type_name -> opl.cloud.api.Observation
+	191,  // 762: opl.cloud.api.ReadPlanChangeFailureRequest.context:type_name -> opl.cloud.api.CallContext
+	191,  // 763: opl.cloud.api.PlanTransitionRequest.context:type_name -> opl.cloud.api.CallContext
+	168,  // 764: opl.cloud.api.ApprovedPlanTransition.kind:type_name -> opl.cloud.api.PlanChangeKindEnum
+	520,  // 765: opl.cloud.api.ApprovedPlanTransition.source:type_name -> opl.cloud.api.ResourcePlanSnapshot
+	520,  // 766: opl.cloud.api.ApprovedPlanTransition.target:type_name -> opl.cloud.api.ResourcePlanSnapshot
+	12,   // 767: opl.cloud.api.ApprovedPlanTransition.reversibility:type_name -> opl.cloud.api.TransitionReversibility
+	624,  // 768: opl.cloud.api.ApprovedPlanTransition.observed_at:type_name -> google.protobuf.Timestamp
+	624,  // 769: opl.cloud.api.ApprovedPlanTransition.expires_at:type_name -> google.protobuf.Timestamp
+	0,    // 770: opl.cloud.api.ApprovedPlanTransition.outcome:type_name -> opl.cloud.api.Observation
+	580,  // 771: opl.cloud.api.ApprovedPlanTransition.execution_plan:type_name -> opl.cloud.api.ProviderPlanChangeExecutionPlanReference
+	569,  // 772: opl.cloud.api.PlanChangeFundingEvidence.confirmed_charge:type_name -> opl.cloud.api.ConfirmedPlanChangeCharge
+	570,  // 773: opl.cloud.api.PlanChangeFundingEvidence.zero_amount:type_name -> opl.cloud.api.ZeroAmountPlanChangeEvidence
+	191,  // 774: opl.cloud.api.PlanChangeSupplementChargeCommand.context:type_name -> opl.cloud.api.CallContext
+	624,  // 775: opl.cloud.api.PlanChangeSupplementChargeCommand.coverage_start:type_name -> google.protobuf.Timestamp
+	624,  // 776: opl.cloud.api.PlanChangeSupplementChargeCommand.coverage_end:type_name -> google.protobuf.Timestamp
+	191,  // 777: opl.cloud.api.ScheduledPeriodChargeCommand.context:type_name -> opl.cloud.api.CallContext
+	624,  // 778: opl.cloud.api.ScheduledPeriodChargeCommand.period_start:type_name -> google.protobuf.Timestamp
+	624,  // 779: opl.cloud.api.ScheduledPeriodChargeCommand.period_end:type_name -> google.protobuf.Timestamp
+	191,  // 780: opl.cloud.api.PlanChangeFailureRefundCommand.context:type_name -> opl.cloud.api.CallContext
+	359,  // 781: opl.cloud.api.PlanChangeFailureRefundCommand.evidence:type_name -> opl.cloud.api.SupplementalRefundEvidence
+	191,  // 782: opl.cloud.api.SupplementDeletionRefundCommand.context:type_name -> opl.cloud.api.CallContext
+	359,  // 783: opl.cloud.api.SupplementDeletionRefundCommand.evidence:type_name -> opl.cloud.api.SupplementalRefundEvidence
+	191,  // 784: opl.cloud.api.RestorePlanChangeRuntimeCommand.context:type_name -> opl.cloud.api.CallContext
+	520,  // 785: opl.cloud.api.RestorePlanChangeRuntimeCommand.target:type_name -> opl.cloud.api.ResourcePlanSnapshot
+	542,  // 786: opl.cloud.api.PlanChangeRuntimeReadback.runtime:type_name -> opl.cloud.api.RuntimeReadback
+	529,  // 787: opl.cloud.api.PlanChangeRuntimeReadback.resources:type_name -> opl.cloud.api.ResourceReadback
+	0,    // 788: opl.cloud.api.PlanChangeRuntimeReadback.outcome:type_name -> opl.cloud.api.Observation
+	191,  // 789: opl.cloud.api.AppendPlanChangeReceiptRequest.context:type_name -> opl.cloud.api.CallContext
+	89,   // 790: opl.cloud.api.AppendPlanChangeReceiptRequest.kind:type_name -> opl.cloud.api.ReceiptKindEnum
+	358,  // 791: opl.cloud.api.AppendPlanChangeReceiptRequest.evidence:type_name -> opl.cloud.api.PlanChangeEvidence
+	354,  // 792: opl.cloud.api.AppendPlanChangeReceiptRequest.accepted_calculation:type_name -> opl.cloud.api.PlanChangeCalculation
+	191,  // 793: opl.cloud.api.AppendPlanChangeRefundReceiptRequest.context:type_name -> opl.cloud.api.CallContext
+	89,   // 794: opl.cloud.api.AppendPlanChangeRefundReceiptRequest.kind:type_name -> opl.cloud.api.ReceiptKindEnum
+	359,  // 795: opl.cloud.api.AppendPlanChangeRefundReceiptRequest.evidence:type_name -> opl.cloud.api.SupplementalRefundEvidence
+	261,  // 796: opl.cloud.api.AppendPlanChangeRefundReceiptRequest.wallet_readback:type_name -> opl.cloud.api.WalletOperation
+	13,   // 797: opl.cloud.api.ProviderPlanChangeExecutionPlanReference.strategy:type_name -> opl.cloud.api.PlanChangeExecutionStrategy
+	191,  // 798: opl.cloud.api.ReadProviderExecutionPlanRequest.context:type_name -> opl.cloud.api.CallContext
+	580,  // 799: opl.cloud.api.ReadProviderExecutionPlanRequest.reference:type_name -> opl.cloud.api.ProviderPlanChangeExecutionPlanReference
+	580,  // 800: opl.cloud.api.ProviderPlanChangeExecutionPlan.reference:type_name -> opl.cloud.api.ProviderPlanChangeExecutionPlanReference
+	520,  // 801: opl.cloud.api.ProviderPlanChangeExecutionPlan.source:type_name -> opl.cloud.api.ResourcePlanSnapshot
+	520,  // 802: opl.cloud.api.ProviderPlanChangeExecutionPlan.target:type_name -> opl.cloud.api.ResourcePlanSnapshot
+	14,   // 803: opl.cloud.api.ProviderPlanChangeExecutionPlan.storage_action:type_name -> opl.cloud.api.PlanChangeStorageAction
+	624,  // 804: opl.cloud.api.ProviderPlanChangeExecutionPlan.approved_at:type_name -> google.protobuf.Timestamp
+	624,  // 805: opl.cloud.api.WalletOperationObservedEvent.coverage_start:type_name -> google.protobuf.Timestamp
+	624,  // 806: opl.cloud.api.WalletOperationObservedEvent.coverage_end:type_name -> google.protobuf.Timestamp
+	624,  // 807: opl.cloud.api.WorkspaceDeletionConfirmedEvent.deleted_at:type_name -> google.protobuf.Timestamp
+	624,  // 808: opl.cloud.api.TenantAccessRevokedEvent.restore_until:type_name -> google.protobuf.Timestamp
+	624,  // 809: opl.cloud.api.TenantRestoredEvent.restored_at:type_name -> google.protobuf.Timestamp
+	624,  // 810: opl.cloud.api.CatalogPolicyChangedEvent.valid_from:type_name -> google.protobuf.Timestamp
+	624,  // 811: opl.cloud.api.TenantReenabledEvent.enabled_at:type_name -> google.protobuf.Timestamp
+	624,  // 812: opl.cloud.api.PlanChangeStateChangedEvent.applied_at:type_name -> google.protobuf.Timestamp
+	624,  // 813: opl.cloud.api.PeriodObligationChangedEvent.period_start:type_name -> google.protobuf.Timestamp
+	624,  // 814: opl.cloud.api.PeriodObligationChangedEvent.period_end:type_name -> google.protobuf.Timestamp
+	624,  // 815: opl.cloud.api.EventEnvelope.occurred_at:type_name -> google.protobuf.Timestamp
+	584,  // 816: opl.cloud.api.EventEnvelope.package_uploaded:type_name -> opl.cloud.api.PackageUploadedEvent
+	585,  // 817: opl.cloud.api.EventEnvelope.build_artifact_confirmed:type_name -> opl.cloud.api.BuildArtifactConfirmedEvent
+	586,  // 818: opl.cloud.api.EventEnvelope.capability_version_registered:type_name -> opl.cloud.api.CapabilityVersionRegisteredEvent
+	587,  // 819: opl.cloud.api.EventEnvelope.build_failed:type_name -> opl.cloud.api.BuildFailedEvent
+	588,  // 820: opl.cloud.api.EventEnvelope.wallet_operation_observed:type_name -> opl.cloud.api.WalletOperationObservedEvent
+	589,  // 821: opl.cloud.api.EventEnvelope.resources_observed:type_name -> opl.cloud.api.ResourcesObservedEvent
+	590,  // 822: opl.cloud.api.EventEnvelope.runtime_readiness_observed:type_name -> opl.cloud.api.RuntimeReadinessObservedEvent
+	591,  // 823: opl.cloud.api.EventEnvelope.workspace_state_changed:type_name -> opl.cloud.api.WorkspaceStateChangedEvent
+	592,  // 824: opl.cloud.api.EventEnvelope.workspace_deletion_confirmed:type_name -> opl.cloud.api.WorkspaceDeletionConfirmedEvent
+	593,  // 825: opl.cloud.api.EventEnvelope.tenant_access_revoked:type_name -> opl.cloud.api.TenantAccessRevokedEvent
+	594,  // 826: opl.cloud.api.EventEnvelope.tenant_restored:type_name -> opl.cloud.api.TenantRestoredEvent
+	595,  // 827: opl.cloud.api.EventEnvelope.receipt_recorded:type_name -> opl.cloud.api.ReceiptRecordedEvent
+	596,  // 828: opl.cloud.api.EventEnvelope.catalog_policy_changed:type_name -> opl.cloud.api.CatalogPolicyChangedEvent
+	597,  // 829: opl.cloud.api.EventEnvelope.tenant_reenabled:type_name -> opl.cloud.api.TenantReenabledEvent
+	598,  // 830: opl.cloud.api.EventEnvelope.renewal_settings_changed:type_name -> opl.cloud.api.RenewalSettingsChangedEvent
+	599,  // 831: opl.cloud.api.EventEnvelope.route_observed:type_name -> opl.cloud.api.RouteObservedEvent
+	600,  // 832: opl.cloud.api.EventEnvelope.plan_change_state_changed:type_name -> opl.cloud.api.PlanChangeStateChangedEvent
+	601,  // 833: opl.cloud.api.EventEnvelope.period_obligation_changed:type_name -> opl.cloud.api.PeriodObligationChangedEvent
+	602,  // 834: opl.cloud.api.DeliverEventRequest.event:type_name -> opl.cloud.api.EventEnvelope
+	188,  // 835: opl.cloud.api.WorkspaceAccessDecision.verdict:type_name -> opl.cloud.api.WorkspaceAccessVerdict
+	624,  // 836: opl.cloud.api.WorkspaceTransactionTrend.period_start:type_name -> google.protobuf.Timestamp
+	624,  // 837: opl.cloud.api.WorkspaceTransactionTrend.period_end:type_name -> google.protobuf.Timestamp
+	607,  // 838: opl.cloud.api.WorkspaceTransactionTrend.days:type_name -> opl.cloud.api.WorkspaceTransactionTrendDay
+	191,  // 839: opl.cloud.api.GetWorkspaceTransactionTrendRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	191,  // 840: opl.cloud.api.GetWorkspaceFinancialReceiptRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	268,  // 841: opl.cloud.api.WorkspaceFinancialReceipt.receipt:type_name -> opl.cloud.api.Receipt
+	261,  // 842: opl.cloud.api.WorkspaceFinancialReceipt.wallet_operation:type_name -> opl.cloud.api.WalletOperation
+	248,  // 843: opl.cloud.api.WorkspaceFinancialReceipt.quote:type_name -> opl.cloud.api.Quote
+	189,  // 844: opl.cloud.api.PersonalGatewayKey.status:type_name -> opl.cloud.api.PersonalGatewayKeyStatusEnum
+	190,  // 845: opl.cloud.api.PersonalGatewayKey.kind:type_name -> opl.cloud.api.PersonalGatewayKeyKindEnum
+	624,  // 846: opl.cloud.api.PersonalGatewayKey.last_used_at:type_name -> google.protobuf.Timestamp
+	624,  // 847: opl.cloud.api.PersonalGatewayKey.expires_at:type_name -> google.protobuf.Timestamp
+	624,  // 848: opl.cloud.api.PersonalGatewayKey.created_at:type_name -> google.protobuf.Timestamp
+	624,  // 849: opl.cloud.api.PersonalGatewayKey.updated_at:type_name -> google.protobuf.Timestamp
+	612,  // 850: opl.cloud.api.PersonalGatewayKeyPage.items:type_name -> opl.cloud.api.PersonalGatewayKey
+	614,  // 851: opl.cloud.api.PersonalGatewayGroupPage.items:type_name -> opl.cloud.api.PersonalGatewayGroup
+	624,  // 852: opl.cloud.api.PersonalGatewayKeyUsage.created_at:type_name -> google.protobuf.Timestamp
+	616,  // 853: opl.cloud.api.PersonalGatewayKeyUsagePage.items:type_name -> opl.cloud.api.PersonalGatewayKeyUsage
+	191,  // 854: opl.cloud.api.ListPersonalGatewayKeysRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	191,  // 855: opl.cloud.api.GetPersonalGatewayKeyRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	191,  // 856: opl.cloud.api.ListPersonalGatewayGroupsRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	191,  // 857: opl.cloud.api.ListPersonalGatewayKeyUsageRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	191,  // 858: opl.cloud.api.GetPersonalGatewayKeyUsageSummaryRpcRequest.context:type_name -> opl.cloud.api.CallContext
+	360,  // 859: opl.cloud.api.TenantProductService.GetLoginContext:input_type -> opl.cloud.api.GetLoginContextRpcRequest
+	361,  // 860: opl.cloud.api.TenantProductService.Login:input_type -> opl.cloud.api.LoginRpcRequest
+	362,  // 861: opl.cloud.api.TenantProductService.GetSession:input_type -> opl.cloud.api.GetSessionRpcRequest
+	363,  // 862: opl.cloud.api.TenantProductService.Logout:input_type -> opl.cloud.api.LogoutRpcRequest
+	364,  // 863: opl.cloud.api.TenantProductService.GetTenant:input_type -> opl.cloud.api.GetTenantRpcRequest
+	365,  // 864: opl.cloud.api.TenantProductService.ListMembers:input_type -> opl.cloud.api.ListMembersRpcRequest
+	366,  // 865: opl.cloud.api.TenantProductService.ListInvitations:input_type -> opl.cloud.api.ListInvitationsRpcRequest
+	367,  // 866: opl.cloud.api.TenantProductService.InviteMember:input_type -> opl.cloud.api.InviteMemberRpcRequest
+	368,  // 867: opl.cloud.api.TenantProductService.AcceptInvitation:input_type -> opl.cloud.api.AcceptInvitationRpcRequest
+	369,  // 868: opl.cloud.api.TenantProductService.RevokeInvitation:input_type -> opl.cloud.api.RevokeInvitationRpcRequest
+	370,  // 869: opl.cloud.api.TenantProductService.UpdateMemberRole:input_type -> opl.cloud.api.UpdateMemberRoleRpcRequest
+	371,  // 870: opl.cloud.api.TenantProductService.RemoveMember:input_type -> opl.cloud.api.RemoveMemberRpcRequest
+	423,  // 871: opl.cloud.api.TenantProductService.ListTenants:input_type -> opl.cloud.api.ListTenantsRpcRequest
+	424,  // 872: opl.cloud.api.TenantProductService.CreateTenant:input_type -> opl.cloud.api.CreateTenantRpcRequest
+	425,  // 873: opl.cloud.api.TenantProductService.GetAdminTenant:input_type -> opl.cloud.api.GetAdminTenantRpcRequest
+	426,  // 874: opl.cloud.api.TenantProductService.DeleteTenant:input_type -> opl.cloud.api.DeleteTenantRpcRequest
+	427,  // 875: opl.cloud.api.TenantProductService.BindTenantWallet:input_type -> opl.cloud.api.BindTenantWalletRpcRequest
+	428,  // 876: opl.cloud.api.TenantProductService.SuspendTenant:input_type -> opl.cloud.api.SuspendTenantRpcRequest
+	429,  // 877: opl.cloud.api.TenantProductService.RestoreTenant:input_type -> opl.cloud.api.RestoreTenantRpcRequest
+	430,  // 878: opl.cloud.api.TenantProductService.GetTenantAssetCustody:input_type -> opl.cloud.api.GetTenantAssetCustodyRpcRequest
+	433,  // 879: opl.cloud.api.TenantProductService.ListAuditEvents:input_type -> opl.cloud.api.ListAuditEventsRpcRequest
+	462,  // 880: opl.cloud.api.TenantProductService.ReenableTenant:input_type -> opl.cloud.api.ReenableTenantRpcRequest
+	463,  // 881: opl.cloud.api.TenantProductService.GetTenantLifecycleOperation:input_type -> opl.cloud.api.GetTenantLifecycleOperationRpcRequest
+	372,  // 882: opl.cloud.api.CapabilityProductService.ListNamespaces:input_type -> opl.cloud.api.ListNamespacesRpcRequest
+	373,  // 883: opl.cloud.api.CapabilityProductService.CreateNamespace:input_type -> opl.cloud.api.CreateNamespaceRpcRequest
+	374,  // 884: opl.cloud.api.CapabilityProductService.UpdateNamespace:input_type -> opl.cloud.api.UpdateNamespaceRpcRequest
+	375,  // 885: opl.cloud.api.CapabilityProductService.ArchiveNamespace:input_type -> opl.cloud.api.ArchiveNamespaceRpcRequest
+	376,  // 886: opl.cloud.api.CapabilityProductService.ListPackages:input_type -> opl.cloud.api.ListPackagesRpcRequest
+	377,  // 887: opl.cloud.api.CapabilityProductService.CreatePackage:input_type -> opl.cloud.api.CreatePackageRpcRequest
+	378,  // 888: opl.cloud.api.CapabilityProductService.GetPackage:input_type -> opl.cloud.api.GetPackageRpcRequest
+	379,  // 889: opl.cloud.api.CapabilityProductService.UpdatePackage:input_type -> opl.cloud.api.UpdatePackageRpcRequest
+	380,  // 890: opl.cloud.api.CapabilityProductService.ArchivePackage:input_type -> opl.cloud.api.ArchivePackageRpcRequest
+	381,  // 891: opl.cloud.api.CapabilityProductService.CreateUpload:input_type -> opl.cloud.api.CreateUploadRpcRequest
+	382,  // 892: opl.cloud.api.CapabilityProductService.GetUpload:input_type -> opl.cloud.api.GetUploadRpcRequest
+	383,  // 893: opl.cloud.api.CapabilityProductService.CreateUploadPart:input_type -> opl.cloud.api.CreateUploadPartRpcRequest
+	384,  // 894: opl.cloud.api.CapabilityProductService.CompleteUpload:input_type -> opl.cloud.api.CompleteUploadRpcRequest
+	385,  // 895: opl.cloud.api.CapabilityProductService.ListPackageVersions:input_type -> opl.cloud.api.ListPackageVersionsRpcRequest
+	386,  // 896: opl.cloud.api.CapabilityProductService.GetPackageVersion:input_type -> opl.cloud.api.GetPackageVersionRpcRequest
+	392,  // 897: opl.cloud.api.CapabilityProductService.ListCapabilityVersions:input_type -> opl.cloud.api.ListCapabilityVersionsRpcRequest
+	393,  // 898: opl.cloud.api.CapabilityProductService.GetCapabilityVersion:input_type -> opl.cloud.api.GetCapabilityVersionRpcRequest
+	394,  // 899: opl.cloud.api.CapabilityProductService.DeleteCapabilityVersion:input_type -> opl.cloud.api.DeleteCapabilityVersionRpcRequest
+	395,  // 900: opl.cloud.api.CapabilityProductService.PublishOfficialPackage:input_type -> opl.cloud.api.PublishOfficialPackageRpcRequest
+	438,  // 901: opl.cloud.api.CapabilityProductService.ListWebuiVersions:input_type -> opl.cloud.api.ListWebuiVersionsRpcRequest
+	444,  // 902: opl.cloud.api.CapabilityProductService.RegisterWebuiVersion:input_type -> opl.cloud.api.RegisterWebuiVersionRpcRequest
+	445,  // 903: opl.cloud.api.CapabilityProductService.SetWebuiVersionStatus:input_type -> opl.cloud.api.SetWebuiVersionStatusRpcRequest
+	459,  // 904: opl.cloud.api.CapabilityProductService.ListPublisherNamespaces:input_type -> opl.cloud.api.ListPublisherNamespacesRpcRequest
+	460,  // 905: opl.cloud.api.CapabilityProductService.CreatePublisherNamespace:input_type -> opl.cloud.api.CreatePublisherNamespaceRpcRequest
+	461,  // 906: opl.cloud.api.CapabilityProductService.RevokePublisherNamespace:input_type -> opl.cloud.api.RevokePublisherNamespaceRpcRequest
+	437,  // 907: opl.cloud.api.RuntimeControlProductService.ListRuntimeVersions:input_type -> opl.cloud.api.ListRuntimeVersionsRpcRequest
+	457,  // 908: opl.cloud.api.RuntimeControlProductService.GetBuildRuntimePolicy:input_type -> opl.cloud.api.GetBuildRuntimePolicyRpcRequest
+	458,  // 909: opl.cloud.api.RuntimeControlProductService.SetBuildRuntimePolicy:input_type -> opl.cloud.api.SetBuildRuntimePolicyRpcRequest
+	442,  // 910: opl.cloud.api.RuntimeControlProductService.RegisterRuntimeVersion:input_type -> opl.cloud.api.RegisterRuntimeVersionRpcRequest
+	443,  // 911: opl.cloud.api.RuntimeControlProductService.SetRuntimeVersionStatus:input_type -> opl.cloud.api.SetRuntimeVersionStatusRpcRequest
+	387,  // 912: opl.cloud.api.BuildProductService.CreateBuild:input_type -> opl.cloud.api.CreateBuildRpcRequest
+	388,  // 913: opl.cloud.api.BuildProductService.ListBuilds:input_type -> opl.cloud.api.ListBuildsRpcRequest
+	389,  // 914: opl.cloud.api.BuildProductService.GetBuild:input_type -> opl.cloud.api.GetBuildRpcRequest
+	390,  // 915: opl.cloud.api.BuildProductService.ListBuildLogs:input_type -> opl.cloud.api.ListBuildLogsRpcRequest
+	391,  // 916: opl.cloud.api.BuildProductService.RetryBuild:input_type -> opl.cloud.api.RetryBuildRpcRequest
+	396,  // 917: opl.cloud.api.ResourceCatalogProductService.CreateQuote:input_type -> opl.cloud.api.CreateQuoteRpcRequest
+	397,  // 918: opl.cloud.api.ResourceCatalogProductService.GetQuote:input_type -> opl.cloud.api.GetQuoteRpcRequest
+	439,  // 919: opl.cloud.api.ResourceCatalogProductService.ListComputePlans:input_type -> opl.cloud.api.ListComputePlansRpcRequest
+	440,  // 920: opl.cloud.api.ResourceCatalogProductService.ListStoragePlans:input_type -> opl.cloud.api.ListStoragePlansRpcRequest
+	446,  // 921: opl.cloud.api.ResourceCatalogProductService.CreateComputePlan:input_type -> opl.cloud.api.CreateComputePlanRpcRequest
+	447,  // 922: opl.cloud.api.ResourceCatalogProductService.SetComputePlanAvailability:input_type -> opl.cloud.api.SetComputePlanAvailabilityRpcRequest
+	448,  // 923: opl.cloud.api.ResourceCatalogProductService.CreateStoragePlan:input_type -> opl.cloud.api.CreateStoragePlanRpcRequest
+	449,  // 924: opl.cloud.api.ResourceCatalogProductService.SetStoragePlanAvailability:input_type -> opl.cloud.api.SetStoragePlanAvailabilityRpcRequest
+	450,  // 925: opl.cloud.api.ResourceCatalogProductService.ListPricePolicyVersions:input_type -> opl.cloud.api.ListPricePolicyVersionsRpcRequest
+	451,  // 926: opl.cloud.api.ResourceCatalogProductService.CreatePricePolicyVersion:input_type -> opl.cloud.api.CreatePricePolicyVersionRpcRequest
+	452,  // 927: opl.cloud.api.ResourceCatalogProductService.ListRefundPolicyVersions:input_type -> opl.cloud.api.ListRefundPolicyVersionsRpcRequest
+	453,  // 928: opl.cloud.api.ResourceCatalogProductService.CreateRefundPolicyVersion:input_type -> opl.cloud.api.CreateRefundPolicyVersionRpcRequest
+	454,  // 929: opl.cloud.api.ResourceCatalogProductService.ListRetentionPolicyVersions:input_type -> opl.cloud.api.ListRetentionPolicyVersionsRpcRequest
+	455,  // 930: opl.cloud.api.ResourceCatalogProductService.CreateRetentionPolicyVersion:input_type -> opl.cloud.api.CreateRetentionPolicyVersionRpcRequest
+	398,  // 931: opl.cloud.api.WorkspaceProductService.CreateWorkspace:input_type -> opl.cloud.api.CreateWorkspaceRpcRequest
+	399,  // 932: opl.cloud.api.WorkspaceProductService.ListWorkspaces:input_type -> opl.cloud.api.ListWorkspacesRpcRequest
+	400,  // 933: opl.cloud.api.WorkspaceProductService.GetWorkspace:input_type -> opl.cloud.api.GetWorkspaceRpcRequest
+	401,  // 934: opl.cloud.api.WorkspaceProductService.DeleteWorkspace:input_type -> opl.cloud.api.DeleteWorkspaceRpcRequest
+	403,  // 935: opl.cloud.api.WorkspaceProductService.GetWorkspaceModels:input_type -> opl.cloud.api.GetWorkspaceModelsRpcRequest
+	404,  // 936: opl.cloud.api.WorkspaceProductService.UpdateWorkspaceModels:input_type -> opl.cloud.api.UpdateWorkspaceModelsRpcRequest
+	409,  // 937: opl.cloud.api.WorkspaceProductService.ResizeWorkspace:input_type -> opl.cloud.api.ResizeWorkspaceRpcRequest
+	410,  // 938: opl.cloud.api.WorkspaceProductService.RenewWorkspace:input_type -> opl.cloud.api.RenewWorkspaceRpcRequest
+	411,  // 939: opl.cloud.api.WorkspaceProductService.GetSubscription:input_type -> opl.cloud.api.GetSubscriptionRpcRequest
+	412,  // 940: opl.cloud.api.WorkspaceProductService.GetWorkspaceDeletion:input_type -> opl.cloud.api.GetWorkspaceDeletionRpcRequest
+	414,  // 941: opl.cloud.api.WorkspaceProductService.GetOperation:input_type -> opl.cloud.api.GetOperationRpcRequest
+	431,  // 942: opl.cloud.api.WorkspaceProductService.ListAdminOperations:input_type -> opl.cloud.api.ListAdminOperationsRpcRequest
+	432,  // 943: opl.cloud.api.WorkspaceProductService.ReconcileOperation:input_type -> opl.cloud.api.ReconcileOperationRpcRequest
+	456,  // 944: opl.cloud.api.WorkspaceProductService.AdoptWorkspace:input_type -> opl.cloud.api.AdoptWorkspaceRpcRequest
+	464,  // 945: opl.cloud.api.WorkspaceProductService.UpdateRenewalSettings:input_type -> opl.cloud.api.UpdateRenewalSettingsRpcRequest
+	465,  // 946: opl.cloud.api.WorkspaceProductService.RevealWorkspaceApplicationCredentials:input_type -> opl.cloud.api.RevealWorkspaceApplicationCredentialsRpcRequest
+	466,  // 947: opl.cloud.api.WorkspaceProductService.ListPlanChanges:input_type -> opl.cloud.api.ListPlanChangesRpcRequest
+	467,  // 948: opl.cloud.api.WorkspaceProductService.GetPlanChange:input_type -> opl.cloud.api.GetPlanChangeRpcRequest
+	468,  // 949: opl.cloud.api.WorkspaceProductService.CancelPlanChange:input_type -> opl.cloud.api.CancelPlanChangeRpcRequest
+	405,  // 950: opl.cloud.api.ServeProductService.ListDeployments:input_type -> opl.cloud.api.ListDeploymentsRpcRequest
+	406,  // 951: opl.cloud.api.ServeProductService.GetDeployment:input_type -> opl.cloud.api.GetDeploymentRpcRequest
+	407,  // 952: opl.cloud.api.ServeProductService.UpdateWorkspaceVersion:input_type -> opl.cloud.api.UpdateWorkspaceVersionRpcRequest
+	408,  // 953: opl.cloud.api.ServeProductService.RollbackWorkspace:input_type -> opl.cloud.api.RollbackWorkspaceRpcRequest
+	402,  // 954: opl.cloud.api.ServeProductService.GetWorkspaceAccess:input_type -> opl.cloud.api.GetWorkspaceAccessRpcRequest
+	618,  // 955: opl.cloud.api.GatewayProductService.ListPersonalGatewayKeys:input_type -> opl.cloud.api.ListPersonalGatewayKeysRpcRequest
+	619,  // 956: opl.cloud.api.GatewayProductService.GetPersonalGatewayKey:input_type -> opl.cloud.api.GetPersonalGatewayKeyRpcRequest
+	620,  // 957: opl.cloud.api.GatewayProductService.ListPersonalGatewayGroups:input_type -> opl.cloud.api.ListPersonalGatewayGroupsRpcRequest
+	621,  // 958: opl.cloud.api.GatewayProductService.ListPersonalGatewayKeyUsage:input_type -> opl.cloud.api.ListPersonalGatewayKeyUsageRpcRequest
+	622,  // 959: opl.cloud.api.GatewayProductService.GetPersonalGatewayKeyUsageSummary:input_type -> opl.cloud.api.GetPersonalGatewayKeyUsageSummaryRpcRequest
+	413,  // 960: opl.cloud.api.GatewayProductService.ListWorkspaceTransactions:input_type -> opl.cloud.api.ListWorkspaceTransactionsRpcRequest
+	609,  // 961: opl.cloud.api.GatewayProductService.GetWorkspaceTransactionTrend:input_type -> opl.cloud.api.GetWorkspaceTransactionTrendRpcRequest
+	415,  // 962: opl.cloud.api.GatewayProductService.GetWallet:input_type -> opl.cloud.api.GetWalletRpcRequest
+	416,  // 963: opl.cloud.api.GatewayProductService.ListUsage:input_type -> opl.cloud.api.ListUsageRpcRequest
+	417,  // 964: opl.cloud.api.GatewayProductService.GetUsageSummary:input_type -> opl.cloud.api.GetUsageSummaryRpcRequest
+	418,  // 965: opl.cloud.api.GatewayProductService.ListGatewayKeys:input_type -> opl.cloud.api.ListGatewayKeysRpcRequest
+	419,  // 966: opl.cloud.api.GatewayProductService.CreateGatewayKey:input_type -> opl.cloud.api.CreateGatewayKeyRpcRequest
+	420,  // 967: opl.cloud.api.GatewayProductService.RevealGatewayKey:input_type -> opl.cloud.api.RevealGatewayKeyRpcRequest
+	421,  // 968: opl.cloud.api.GatewayProductService.RevokeGatewayKey:input_type -> opl.cloud.api.RevokeGatewayKeyRpcRequest
+	422,  // 969: opl.cloud.api.GatewayProductService.ListRechargeRecords:input_type -> opl.cloud.api.ListRechargeRecordsRpcRequest
+	441,  // 970: opl.cloud.api.GatewayProductService.ListModels:input_type -> opl.cloud.api.ListModelsRpcRequest
+	610,  // 971: opl.cloud.api.LedgerProductService.GetWorkspaceFinancialReceipt:input_type -> opl.cloud.api.GetWorkspaceFinancialReceiptRpcRequest
+	434,  // 972: opl.cloud.api.LedgerProductService.ListReceipts:input_type -> opl.cloud.api.ListReceiptsRpcRequest
+	435,  // 973: opl.cloud.api.LedgerProductService.GetReceipt:input_type -> opl.cloud.api.GetReceiptRpcRequest
+	436,  // 974: opl.cloud.api.LedgerProductService.ListQualifications:input_type -> opl.cloud.api.ListQualificationsRpcRequest
+	480,  // 975: opl.cloud.api.ClaimUsageReadback.ReadClaimUsage:input_type -> opl.cloud.api.ReadClaimUsageRequest
+	471,  // 976: opl.cloud.api.CapabilityCoordination.ResolveBuildInput:input_type -> opl.cloud.api.BuildInputRequest
+	482,  // 977: opl.cloud.api.CapabilityCoordination.ResolvePublisherContract:input_type -> opl.cloud.api.ResolvePublisherContractRequest
+	474,  // 978: opl.cloud.api.CapabilityCoordination.AcquireReference:input_type -> opl.cloud.api.ReferenceClaimRequest
+	476,  // 979: opl.cloud.api.CapabilityCoordination.BindReference:input_type -> opl.cloud.api.BindReferenceRequest
+	478,  // 980: opl.cloud.api.CapabilityCoordination.ReleaseReference:input_type -> opl.cloud.api.ReleaseReferenceRequest
+	484,  // 981: opl.cloud.api.BuildCoordination.ReadArtifact:input_type -> opl.cloud.api.ReadBuildArtifactRequest
+	469,  // 982: opl.cloud.api.OwnerOperations.Read:input_type -> opl.cloud.api.OwnerOperationRequest
+	432,  // 983: opl.cloud.api.OwnerOperations.Reconcile:input_type -> opl.cloud.api.ReconcileOperationRpcRequest
+	495,  // 984: opl.cloud.api.OwnerCommitReadback.ReadOwnerCommit:input_type -> opl.cloud.api.ReadOwnerCommitRequest
+	496,  // 985: opl.cloud.api.WorkspaceAuthorizationReadback.ReadRenewalConsent:input_type -> opl.cloud.api.ReadRenewalConsentRequest
+	490,  // 986: opl.cloud.api.CloudIdentityAuthorization.AuthorizeAction:input_type -> opl.cloud.api.AuthorizationRequest
+	492,  // 987: opl.cloud.api.CloudIdentityAuthorization.GetAuthorizationContext:input_type -> opl.cloud.api.GetAuthorizationContextRequest
+	493,  // 988: opl.cloud.api.CloudIdentityAuthorization.IssueAcceptedOperationGrant:input_type -> opl.cloud.api.AcceptedOperationGrantRequest
+	500,  // 989: opl.cloud.api.CatalogCoordination.AcceptQuote:input_type -> opl.cloud.api.AcceptQuoteRequest
+	502,  // 990: opl.cloud.api.CatalogCoordination.ReadQuoteResourcePlan:input_type -> opl.cloud.api.QuoteResourcePlanRequest
+	498,  // 991: opl.cloud.api.WorkspaceAdmission.CheckAdmission:input_type -> opl.cloud.api.AdmissionRequest
+	506,  // 992: opl.cloud.api.GatewayCoordination.GetSelfUserIdentity:input_type -> opl.cloud.api.GetSelfUserIdentityRequest
+	505,  // 993: opl.cloud.api.GatewayCoordination.GetSelfUserExternalBinding:input_type -> opl.cloud.api.GetSelfUserExternalBindingRequest
+	503,  // 994: opl.cloud.api.GatewayCoordination.BindUserExternalIdentity:input_type -> opl.cloud.api.UserExternalBindingCommand
+	504,  // 995: opl.cloud.api.GatewayCoordination.ReadUserExternalIdentity:input_type -> opl.cloud.api.UserExternalBindingReadRequest
+	509,  // 996: opl.cloud.api.GatewayCoordination.BindWallet:input_type -> opl.cloud.api.WalletBindingCommand
+	511,  // 997: opl.cloud.api.GatewayCoordination.Debit:input_type -> opl.cloud.api.WalletDebitCommand
+	512,  // 998: opl.cloud.api.GatewayCoordination.Refund:input_type -> opl.cloud.api.WalletRefundCommand
+	513,  // 999: opl.cloud.api.GatewayCoordination.ReadWalletAction:input_type -> opl.cloud.api.WalletReadbackRequest
+	514,  // 1000: opl.cloud.api.GatewayCoordination.CreateManagedKey:input_type -> opl.cloud.api.ManagedKeyCommand
+	517,  // 1001: opl.cloud.api.GatewayCoordination.ReadManagedKey:input_type -> opl.cloud.api.ManagedKeyReadCommand
+	516,  // 1002: opl.cloud.api.GatewayCoordination.RevokeManagedKey:input_type -> opl.cloud.api.ManagedKeyRevoke
+	518,  // 1003: opl.cloud.api.GatewayCoordination.DisableManagedKey:input_type -> opl.cloud.api.ManagedKeyLifecycleCommand
+	518,  // 1004: opl.cloud.api.GatewayCoordination.EnableManagedKey:input_type -> opl.cloud.api.ManagedKeyLifecycleCommand
+	518,  // 1005: opl.cloud.api.GatewayCoordination.ReadManagedKeyLifecycle:input_type -> opl.cloud.api.ManagedKeyLifecycleCommand
+	521,  // 1006: opl.cloud.api.FabricCoordination.AdmitResources:input_type -> opl.cloud.api.ResourceAdmissionRequest
+	522,  // 1007: opl.cloud.api.FabricCoordination.EnsureResources:input_type -> opl.cloud.api.EnsureResourcesCommand
+	524,  // 1008: opl.cloud.api.FabricCoordination.ResizeResources:input_type -> opl.cloud.api.ResizeResourcesCommand
+	525,  // 1009: opl.cloud.api.FabricCoordination.RenewResources:input_type -> opl.cloud.api.RenewResourcesCommand
+	523,  // 1010: opl.cloud.api.FabricCoordination.SuspendResources:input_type -> opl.cloud.api.MutateResourcesCommand
+	523,  // 1011: opl.cloud.api.FabricCoordination.ResumeResources:input_type -> opl.cloud.api.MutateResourcesCommand
+	523,  // 1012: opl.cloud.api.FabricCoordination.DeleteResources:input_type -> opl.cloud.api.MutateResourcesCommand
+	526,  // 1013: opl.cloud.api.FabricCoordination.ReadResources:input_type -> opl.cloud.api.ResourceReadbackRequest
+	531,  // 1014: opl.cloud.api.FabricCoordination.BindSecret:input_type -> opl.cloud.api.SecretBindingCommand
+	533,  // 1015: opl.cloud.api.FabricCoordination.RebindSecret:input_type -> opl.cloud.api.SecretBindingRebindCommand
+	535,  // 1016: opl.cloud.api.FabricCoordination.PutManagedSecret:input_type -> opl.cloud.api.ManagedSecretCommand
+	537,  // 1017: opl.cloud.api.ServeAgentCoordination.Reserve:input_type -> opl.cloud.api.RuntimeReservationCommand
+	540,  // 1018: opl.cloud.api.ServeAgentCoordination.Deploy:input_type -> opl.cloud.api.RuntimeDeployCommand
+	543,  // 1019: opl.cloud.api.ServeAgentCoordination.ReloadModels:input_type -> opl.cloud.api.RuntimeReloadCommand
+	541,  // 1020: opl.cloud.api.ServeAgentCoordination.ReadRuntime:input_type -> opl.cloud.api.RuntimeReadbackRequest
+	544,  // 1021: opl.cloud.api.ServeAgentCoordination.Retire:input_type -> opl.cloud.api.RuntimeStopCommand
+	545,  // 1022: opl.cloud.api.ServeRuntimeAdapter.ReadApplicationCredentials:input_type -> opl.cloud.api.ReadApplicationCredentialsRequest
+	540,  // 1023: opl.cloud.api.ServeRuntimeAdapter.StartRuntime:input_type -> opl.cloud.api.RuntimeDeployCommand
+	544,  // 1024: opl.cloud.api.ServeRuntimeAdapter.StopRuntime:input_type -> opl.cloud.api.RuntimeStopCommand
+	543,  // 1025: opl.cloud.api.ServeRuntimeAdapter.ReloadRuntime:input_type -> opl.cloud.api.RuntimeReloadCommand
+	541,  // 1026: opl.cloud.api.ServeRuntimeAdapter.ObserveRuntime:input_type -> opl.cloud.api.RuntimeReadbackRequest
+	548,  // 1027: opl.cloud.api.ServeAccessControl.FenceRouteEpoch:input_type -> opl.cloud.api.FenceRouteEpochCommand
+	549,  // 1028: opl.cloud.api.ServeAccessControl.ActivateRoute:input_type -> opl.cloud.api.RouteActivateCommand
+	550,  // 1029: opl.cloud.api.ServeAccessControl.ObserveRoute:input_type -> opl.cloud.api.RouteObserveRequest
+	551,  // 1030: opl.cloud.api.ServeAccessControl.RollbackRoute:input_type -> opl.cloud.api.RouteRollbackCommand
+	553,  // 1031: opl.cloud.api.TenantWorkspaceCoordination.SuspendTenantWorkspaces:input_type -> opl.cloud.api.TenantWorkspaceLifecycleCommand
+	553,  // 1032: opl.cloud.api.TenantWorkspaceCoordination.DeleteTenantWorkspaces:input_type -> opl.cloud.api.TenantWorkspaceLifecycleCommand
+	555,  // 1033: opl.cloud.api.TenantWorkspaceCoordination.ResumeTenantWorkspaces:input_type -> opl.cloud.api.ResumeTenantWorkspacesRequest
+	556,  // 1034: opl.cloud.api.LedgerCoordination.AppendReceipt:input_type -> opl.cloud.api.AppendReceiptRequest
+	557,  // 1035: opl.cloud.api.LedgerCoordination.ReadReceiptByReference:input_type -> opl.cloud.api.GetReceiptByReferenceRequest
+	557,  // 1036: opl.cloud.api.LedgerCoordination.ReadLocalNoChargeReceipt:input_type -> opl.cloud.api.GetReceiptByReferenceRequest
+	557,  // 1037: opl.cloud.api.LedgerCoordination.ReadWalletActionReceipt:input_type -> opl.cloud.api.GetReceiptByReferenceRequest
+	561,  // 1038: opl.cloud.api.WorkspacePlanChangeReadback.ReadSubscriptionPlanState:input_type -> opl.cloud.api.ReadSubscriptionPlanStateRequest
+	563,  // 1039: opl.cloud.api.WorkspacePlanChangeReadback.ReadPlanChange:input_type -> opl.cloud.api.ReadPlanChangeRequest
+	564,  // 1040: opl.cloud.api.WorkspacePlanChangeReadback.ReadNextPeriodObligation:input_type -> opl.cloud.api.ReadNextPeriodObligationRequest
+	566,  // 1041: opl.cloud.api.WorkspacePlanChangeReadback.ReadPlanChangeFailure:input_type -> opl.cloud.api.ReadPlanChangeFailureRequest
+	567,  // 1042: opl.cloud.api.FabricPlanTransitionReadback.ReadApprovedPlanTransition:input_type -> opl.cloud.api.PlanTransitionRequest
+	581,  // 1043: opl.cloud.api.FabricPlanTransitionReadback.ReadExecutionPlan:input_type -> opl.cloud.api.ReadProviderExecutionPlanRequest
+	572,  // 1044: opl.cloud.api.GatewayPlanChangeSettlement.DebitSupplement:input_type -> opl.cloud.api.PlanChangeSupplementChargeCommand
+	573,  // 1045: opl.cloud.api.GatewayPlanChangeSettlement.DebitScheduledPeriod:input_type -> opl.cloud.api.ScheduledPeriodChargeCommand
+	574,  // 1046: opl.cloud.api.GatewayPlanChangeSettlement.RefundFailure:input_type -> opl.cloud.api.PlanChangeFailureRefundCommand
+	575,  // 1047: opl.cloud.api.GatewayPlanChangeSettlement.RefundSupplementOnDeletion:input_type -> opl.cloud.api.SupplementDeletionRefundCommand
+	576,  // 1048: opl.cloud.api.ServePlanChangeControl.RestoreAfterResourceChange:input_type -> opl.cloud.api.RestorePlanChangeRuntimeCommand
+	578,  // 1049: opl.cloud.api.LedgerPlanChangeEvidence.AppendPlanChangeReceipt:input_type -> opl.cloud.api.AppendPlanChangeReceiptRequest
+	579,  // 1050: opl.cloud.api.LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt:input_type -> opl.cloud.api.AppendPlanChangeRefundReceiptRequest
+	603,  // 1051: opl.cloud.api.DomainInbox.Deliver:input_type -> opl.cloud.api.DeliverEventRequest
+	605,  // 1052: opl.cloud.api.WorkspaceAccessReadback.ReadWorkspaceAccess:input_type -> opl.cloud.api.ReadWorkspaceAccessRequest
+	195,  // 1053: opl.cloud.api.TenantProductService.GetLoginContext:output_type -> opl.cloud.api.LoginContext
+	197,  // 1054: opl.cloud.api.TenantProductService.Login:output_type -> opl.cloud.api.Session
+	197,  // 1055: opl.cloud.api.TenantProductService.GetSession:output_type -> opl.cloud.api.Session
+	625,  // 1056: opl.cloud.api.TenantProductService.Logout:output_type -> google.protobuf.Empty
+	198,  // 1057: opl.cloud.api.TenantProductService.GetTenant:output_type -> opl.cloud.api.Tenant
+	272,  // 1058: opl.cloud.api.TenantProductService.ListMembers:output_type -> opl.cloud.api.MemberPage
+	273,  // 1059: opl.cloud.api.TenantProductService.ListInvitations:output_type -> opl.cloud.api.InvitationPage
+	202,  // 1060: opl.cloud.api.TenantProductService.InviteMember:output_type -> opl.cloud.api.Invitation
+	201,  // 1061: opl.cloud.api.TenantProductService.AcceptInvitation:output_type -> opl.cloud.api.Member
+	202,  // 1062: opl.cloud.api.TenantProductService.RevokeInvitation:output_type -> opl.cloud.api.Invitation
+	201,  // 1063: opl.cloud.api.TenantProductService.UpdateMemberRole:output_type -> opl.cloud.api.Member
+	625,  // 1064: opl.cloud.api.TenantProductService.RemoveMember:output_type -> google.protobuf.Empty
+	294,  // 1065: opl.cloud.api.TenantProductService.ListTenants:output_type -> opl.cloud.api.TenantPage
+	194,  // 1066: opl.cloud.api.TenantProductService.CreateTenant:output_type -> opl.cloud.api.Operation
+	198,  // 1067: opl.cloud.api.TenantProductService.GetAdminTenant:output_type -> opl.cloud.api.Tenant
+	194,  // 1068: opl.cloud.api.TenantProductService.DeleteTenant:output_type -> opl.cloud.api.Operation
+	194,  // 1069: opl.cloud.api.TenantProductService.BindTenantWallet:output_type -> opl.cloud.api.Operation
+	194,  // 1070: opl.cloud.api.TenantProductService.SuspendTenant:output_type -> opl.cloud.api.Operation
+	194,  // 1071: opl.cloud.api.TenantProductService.RestoreTenant:output_type -> opl.cloud.api.Operation
+	207,  // 1072: opl.cloud.api.TenantProductService.GetTenantAssetCustody:output_type -> opl.cloud.api.AssetCustody
+	295,  // 1073: opl.cloud.api.TenantProductService.ListAuditEvents:output_type -> opl.cloud.api.AuditEventPage
+	194,  // 1074: opl.cloud.api.TenantProductService.ReenableTenant:output_type -> opl.cloud.api.Operation
+	343,  // 1075: opl.cloud.api.TenantProductService.GetTenantLifecycleOperation:output_type -> opl.cloud.api.TenantLifecycleProgress
+	274,  // 1076: opl.cloud.api.CapabilityProductService.ListNamespaces:output_type -> opl.cloud.api.NamespacePage
+	208,  // 1077: opl.cloud.api.CapabilityProductService.CreateNamespace:output_type -> opl.cloud.api.Namespace
+	208,  // 1078: opl.cloud.api.CapabilityProductService.UpdateNamespace:output_type -> opl.cloud.api.Namespace
+	208,  // 1079: opl.cloud.api.CapabilityProductService.ArchiveNamespace:output_type -> opl.cloud.api.Namespace
+	275,  // 1080: opl.cloud.api.CapabilityProductService.ListPackages:output_type -> opl.cloud.api.PackagePage
+	210,  // 1081: opl.cloud.api.CapabilityProductService.CreatePackage:output_type -> opl.cloud.api.Package
+	210,  // 1082: opl.cloud.api.CapabilityProductService.GetPackage:output_type -> opl.cloud.api.Package
+	210,  // 1083: opl.cloud.api.CapabilityProductService.UpdatePackage:output_type -> opl.cloud.api.Package
+	210,  // 1084: opl.cloud.api.CapabilityProductService.ArchivePackage:output_type -> opl.cloud.api.Package
+	217,  // 1085: opl.cloud.api.CapabilityProductService.CreateUpload:output_type -> opl.cloud.api.UploadSession
+	217,  // 1086: opl.cloud.api.CapabilityProductService.GetUpload:output_type -> opl.cloud.api.UploadSession
+	219,  // 1087: opl.cloud.api.CapabilityProductService.CreateUploadPart:output_type -> opl.cloud.api.UploadPartAuthorization
+	194,  // 1088: opl.cloud.api.CapabilityProductService.CompleteUpload:output_type -> opl.cloud.api.Operation
+	276,  // 1089: opl.cloud.api.CapabilityProductService.ListPackageVersions:output_type -> opl.cloud.api.PackageVersionPage
+	214,  // 1090: opl.cloud.api.CapabilityProductService.GetPackageVersion:output_type -> opl.cloud.api.PackageVersion
+	277,  // 1091: opl.cloud.api.CapabilityProductService.ListCapabilityVersions:output_type -> opl.cloud.api.CapabilityVersionPage
+	223,  // 1092: opl.cloud.api.CapabilityProductService.GetCapabilityVersion:output_type -> opl.cloud.api.CapabilityVersion
+	194,  // 1093: opl.cloud.api.CapabilityProductService.DeleteCapabilityVersion:output_type -> opl.cloud.api.Operation
+	210,  // 1094: opl.cloud.api.CapabilityProductService.PublishOfficialPackage:output_type -> opl.cloud.api.Package
+	281,  // 1095: opl.cloud.api.CapabilityProductService.ListWebuiVersions:output_type -> opl.cloud.api.WebuiVersionPage
+	228,  // 1096: opl.cloud.api.CapabilityProductService.RegisterWebuiVersion:output_type -> opl.cloud.api.WebuiVersion
+	228,  // 1097: opl.cloud.api.CapabilityProductService.SetWebuiVersionStatus:output_type -> opl.cloud.api.WebuiVersion
+	321,  // 1098: opl.cloud.api.CapabilityProductService.ListPublisherNamespaces:output_type -> opl.cloud.api.PublisherNamespacePage
+	318,  // 1099: opl.cloud.api.CapabilityProductService.CreatePublisherNamespace:output_type -> opl.cloud.api.PublisherNamespace
+	318,  // 1100: opl.cloud.api.CapabilityProductService.RevokePublisherNamespace:output_type -> opl.cloud.api.PublisherNamespace
+	280,  // 1101: opl.cloud.api.RuntimeControlProductService.ListRuntimeVersions:output_type -> opl.cloud.api.RuntimeVersionPage
+	300,  // 1102: opl.cloud.api.RuntimeControlProductService.GetBuildRuntimePolicy:output_type -> opl.cloud.api.BuildRuntimePolicy
+	300,  // 1103: opl.cloud.api.RuntimeControlProductService.SetBuildRuntimePolicy:output_type -> opl.cloud.api.BuildRuntimePolicy
+	227,  // 1104: opl.cloud.api.RuntimeControlProductService.RegisterRuntimeVersion:output_type -> opl.cloud.api.RuntimeVersion
+	227,  // 1105: opl.cloud.api.RuntimeControlProductService.SetRuntimeVersionStatus:output_type -> opl.cloud.api.RuntimeVersion
+	224,  // 1106: opl.cloud.api.BuildProductService.CreateBuild:output_type -> opl.cloud.api.BuildJob
+	278,  // 1107: opl.cloud.api.BuildProductService.ListBuilds:output_type -> opl.cloud.api.BuildJobPage
+	224,  // 1108: opl.cloud.api.BuildProductService.GetBuild:output_type -> opl.cloud.api.BuildJob
+	279,  // 1109: opl.cloud.api.BuildProductService.ListBuildLogs:output_type -> opl.cloud.api.BuildLogPage
+	224,  // 1110: opl.cloud.api.BuildProductService.RetryBuild:output_type -> opl.cloud.api.BuildJob
+	248,  // 1111: opl.cloud.api.ResourceCatalogProductService.CreateQuote:output_type -> opl.cloud.api.Quote
+	248,  // 1112: opl.cloud.api.ResourceCatalogProductService.GetQuote:output_type -> opl.cloud.api.Quote
+	282,  // 1113: opl.cloud.api.ResourceCatalogProductService.ListComputePlans:output_type -> opl.cloud.api.ComputePlanPage
+	283,  // 1114: opl.cloud.api.ResourceCatalogProductService.ListStoragePlans:output_type -> opl.cloud.api.StoragePlanPage
+	232,  // 1115: opl.cloud.api.ResourceCatalogProductService.CreateComputePlan:output_type -> opl.cloud.api.ComputePlan
+	232,  // 1116: opl.cloud.api.ResourceCatalogProductService.SetComputePlanAvailability:output_type -> opl.cloud.api.ComputePlan
+	233,  // 1117: opl.cloud.api.ResourceCatalogProductService.CreateStoragePlan:output_type -> opl.cloud.api.StoragePlan
+	233,  // 1118: opl.cloud.api.ResourceCatalogProductService.SetStoragePlanAvailability:output_type -> opl.cloud.api.StoragePlan
+	284,  // 1119: opl.cloud.api.ResourceCatalogProductService.ListPricePolicyVersions:output_type -> opl.cloud.api.PricePolicyVersionPage
+	237,  // 1120: opl.cloud.api.ResourceCatalogProductService.CreatePricePolicyVersion:output_type -> opl.cloud.api.PricePolicyVersion
+	285,  // 1121: opl.cloud.api.ResourceCatalogProductService.ListRefundPolicyVersions:output_type -> opl.cloud.api.RefundPolicyVersionPage
+	239,  // 1122: opl.cloud.api.ResourceCatalogProductService.CreateRefundPolicyVersion:output_type -> opl.cloud.api.RefundPolicyVersion
+	286,  // 1123: opl.cloud.api.ResourceCatalogProductService.ListRetentionPolicyVersions:output_type -> opl.cloud.api.RetentionPolicyVersionPage
+	241,  // 1124: opl.cloud.api.ResourceCatalogProductService.CreateRetentionPolicyVersion:output_type -> opl.cloud.api.RetentionPolicyVersion
+	194,  // 1125: opl.cloud.api.WorkspaceProductService.CreateWorkspace:output_type -> opl.cloud.api.Operation
+	288,  // 1126: opl.cloud.api.WorkspaceProductService.ListWorkspaces:output_type -> opl.cloud.api.WorkspacePage
+	249,  // 1127: opl.cloud.api.WorkspaceProductService.GetWorkspace:output_type -> opl.cloud.api.Workspace
+	194,  // 1128: opl.cloud.api.WorkspaceProductService.DeleteWorkspace:output_type -> opl.cloud.api.Operation
+	252,  // 1129: opl.cloud.api.WorkspaceProductService.GetWorkspaceModels:output_type -> opl.cloud.api.ModelConfiguration
+	194,  // 1130: opl.cloud.api.WorkspaceProductService.UpdateWorkspaceModels:output_type -> opl.cloud.api.Operation
+	194,  // 1131: opl.cloud.api.WorkspaceProductService.ResizeWorkspace:output_type -> opl.cloud.api.Operation
+	194,  // 1132: opl.cloud.api.WorkspaceProductService.RenewWorkspace:output_type -> opl.cloud.api.Operation
+	260,  // 1133: opl.cloud.api.WorkspaceProductService.GetSubscription:output_type -> opl.cloud.api.Subscription
+	259,  // 1134: opl.cloud.api.WorkspaceProductService.GetWorkspaceDeletion:output_type -> opl.cloud.api.WorkspaceDeletion
+	194,  // 1135: opl.cloud.api.WorkspaceProductService.GetOperation:output_type -> opl.cloud.api.Operation
+	297,  // 1136: opl.cloud.api.WorkspaceProductService.ListAdminOperations:output_type -> opl.cloud.api.AdminOperationPage
+	194,  // 1137: opl.cloud.api.WorkspaceProductService.ReconcileOperation:output_type -> opl.cloud.api.Operation
+	194,  // 1138: opl.cloud.api.WorkspaceProductService.AdoptWorkspace:output_type -> opl.cloud.api.Operation
+	194,  // 1139: opl.cloud.api.WorkspaceProductService.UpdateRenewalSettings:output_type -> opl.cloud.api.Operation
+	348,  // 1140: opl.cloud.api.WorkspaceProductService.RevealWorkspaceApplicationCredentials:output_type -> opl.cloud.api.WorkspaceApplicationCredentials
+	356,  // 1141: opl.cloud.api.WorkspaceProductService.ListPlanChanges:output_type -> opl.cloud.api.PlanChangePage
+	355,  // 1142: opl.cloud.api.WorkspaceProductService.GetPlanChange:output_type -> opl.cloud.api.PlanChange
+	194,  // 1143: opl.cloud.api.WorkspaceProductService.CancelPlanChange:output_type -> opl.cloud.api.Operation
+	289,  // 1144: opl.cloud.api.ServeProductService.ListDeployments:output_type -> opl.cloud.api.DeploymentPage
+	254,  // 1145: opl.cloud.api.ServeProductService.GetDeployment:output_type -> opl.cloud.api.Deployment
+	194,  // 1146: opl.cloud.api.ServeProductService.UpdateWorkspaceVersion:output_type -> opl.cloud.api.Operation
+	194,  // 1147: opl.cloud.api.ServeProductService.RollbackWorkspace:output_type -> opl.cloud.api.Operation
+	251,  // 1148: opl.cloud.api.ServeProductService.GetWorkspaceAccess:output_type -> opl.cloud.api.WorkspaceAccess
+	613,  // 1149: opl.cloud.api.GatewayProductService.ListPersonalGatewayKeys:output_type -> opl.cloud.api.PersonalGatewayKeyPage
+	612,  // 1150: opl.cloud.api.GatewayProductService.GetPersonalGatewayKey:output_type -> opl.cloud.api.PersonalGatewayKey
+	615,  // 1151: opl.cloud.api.GatewayProductService.ListPersonalGatewayGroups:output_type -> opl.cloud.api.PersonalGatewayGroupPage
+	617,  // 1152: opl.cloud.api.GatewayProductService.ListPersonalGatewayKeyUsage:output_type -> opl.cloud.api.PersonalGatewayKeyUsagePage
+	292,  // 1153: opl.cloud.api.GatewayProductService.GetPersonalGatewayKeyUsageSummary:output_type -> opl.cloud.api.UsageSummary
+	290,  // 1154: opl.cloud.api.GatewayProductService.ListWorkspaceTransactions:output_type -> opl.cloud.api.WalletOperationPage
+	608,  // 1155: opl.cloud.api.GatewayProductService.GetWorkspaceTransactionTrend:output_type -> opl.cloud.api.WorkspaceTransactionTrend
+	262,  // 1156: opl.cloud.api.GatewayProductService.GetWallet:output_type -> opl.cloud.api.Wallet
+	291,  // 1157: opl.cloud.api.GatewayProductService.ListUsage:output_type -> opl.cloud.api.UsagePage
+	292,  // 1158: opl.cloud.api.GatewayProductService.GetUsageSummary:output_type -> opl.cloud.api.UsageSummary
+	293,  // 1159: opl.cloud.api.GatewayProductService.ListGatewayKeys:output_type -> opl.cloud.api.GatewayKeyPage
+	266,  // 1160: opl.cloud.api.GatewayProductService.CreateGatewayKey:output_type -> opl.cloud.api.GatewayKeySecret
+	266,  // 1161: opl.cloud.api.GatewayProductService.RevealGatewayKey:output_type -> opl.cloud.api.GatewayKeySecret
+	194,  // 1162: opl.cloud.api.GatewayProductService.RevokeGatewayKey:output_type -> opl.cloud.api.Operation
+	290,  // 1163: opl.cloud.api.GatewayProductService.ListRechargeRecords:output_type -> opl.cloud.api.WalletOperationPage
+	287,  // 1164: opl.cloud.api.GatewayProductService.ListModels:output_type -> opl.cloud.api.ModelPage
+	611,  // 1165: opl.cloud.api.LedgerProductService.GetWorkspaceFinancialReceipt:output_type -> opl.cloud.api.WorkspaceFinancialReceipt
+	296,  // 1166: opl.cloud.api.LedgerProductService.ListReceipts:output_type -> opl.cloud.api.ReceiptPage
+	268,  // 1167: opl.cloud.api.LedgerProductService.GetReceipt:output_type -> opl.cloud.api.Receipt
+	298,  // 1168: opl.cloud.api.LedgerProductService.ListQualifications:output_type -> opl.cloud.api.QualificationPage
+	481,  // 1169: opl.cloud.api.ClaimUsageReadback.ReadClaimUsage:output_type -> opl.cloud.api.ClaimUsageEvidence
+	472,  // 1170: opl.cloud.api.CapabilityCoordination.ResolveBuildInput:output_type -> opl.cloud.api.BuildInputSnapshot
+	483,  // 1171: opl.cloud.api.CapabilityCoordination.ResolvePublisherContract:output_type -> opl.cloud.api.ResolvedPublisherContract
+	479,  // 1172: opl.cloud.api.CapabilityCoordination.AcquireReference:output_type -> opl.cloud.api.ReferenceClaim
+	479,  // 1173: opl.cloud.api.CapabilityCoordination.BindReference:output_type -> opl.cloud.api.ReferenceClaim
+	479,  // 1174: opl.cloud.api.CapabilityCoordination.ReleaseReference:output_type -> opl.cloud.api.ReferenceClaim
+	485,  // 1175: opl.cloud.api.BuildCoordination.ReadArtifact:output_type -> opl.cloud.api.BuildArtifactReadback
+	194,  // 1176: opl.cloud.api.OwnerOperations.Read:output_type -> opl.cloud.api.Operation
+	194,  // 1177: opl.cloud.api.OwnerOperations.Reconcile:output_type -> opl.cloud.api.Operation
+	475,  // 1178: opl.cloud.api.OwnerCommitReadback.ReadOwnerCommit:output_type -> opl.cloud.api.OwnerCommitEvidence
+	497,  // 1179: opl.cloud.api.WorkspaceAuthorizationReadback.ReadRenewalConsent:output_type -> opl.cloud.api.RenewalConsentReadback
+	491,  // 1180: opl.cloud.api.CloudIdentityAuthorization.AuthorizeAction:output_type -> opl.cloud.api.AuthorizationDecision
+	491,  // 1181: opl.cloud.api.CloudIdentityAuthorization.GetAuthorizationContext:output_type -> opl.cloud.api.AuthorizationDecision
+	494,  // 1182: opl.cloud.api.CloudIdentityAuthorization.IssueAcceptedOperationGrant:output_type -> opl.cloud.api.AcceptedOperationGrant
+	501,  // 1183: opl.cloud.api.CatalogCoordination.AcceptQuote:output_type -> opl.cloud.api.QuoteAcceptance
+	501,  // 1184: opl.cloud.api.CatalogCoordination.ReadQuoteResourcePlan:output_type -> opl.cloud.api.QuoteAcceptance
+	499,  // 1185: opl.cloud.api.WorkspaceAdmission.CheckAdmission:output_type -> opl.cloud.api.AdmissionResult
+	507,  // 1186: opl.cloud.api.GatewayCoordination.GetSelfUserIdentity:output_type -> opl.cloud.api.UserIdentityReadback
+	508,  // 1187: opl.cloud.api.GatewayCoordination.GetSelfUserExternalBinding:output_type -> opl.cloud.api.UserExternalBindingReadback
+	508,  // 1188: opl.cloud.api.GatewayCoordination.BindUserExternalIdentity:output_type -> opl.cloud.api.UserExternalBindingReadback
+	508,  // 1189: opl.cloud.api.GatewayCoordination.ReadUserExternalIdentity:output_type -> opl.cloud.api.UserExternalBindingReadback
+	510,  // 1190: opl.cloud.api.GatewayCoordination.BindWallet:output_type -> opl.cloud.api.WalletBindingReadback
+	261,  // 1191: opl.cloud.api.GatewayCoordination.Debit:output_type -> opl.cloud.api.WalletOperation
+	261,  // 1192: opl.cloud.api.GatewayCoordination.Refund:output_type -> opl.cloud.api.WalletOperation
+	261,  // 1193: opl.cloud.api.GatewayCoordination.ReadWalletAction:output_type -> opl.cloud.api.WalletOperation
+	515,  // 1194: opl.cloud.api.GatewayCoordination.CreateManagedKey:output_type -> opl.cloud.api.ManagedKeyBinding
+	515,  // 1195: opl.cloud.api.GatewayCoordination.ReadManagedKey:output_type -> opl.cloud.api.ManagedKeyBinding
+	194,  // 1196: opl.cloud.api.GatewayCoordination.RevokeManagedKey:output_type -> opl.cloud.api.Operation
+	519,  // 1197: opl.cloud.api.GatewayCoordination.DisableManagedKey:output_type -> opl.cloud.api.ManagedKeyLifecycleReadback
+	519,  // 1198: opl.cloud.api.GatewayCoordination.EnableManagedKey:output_type -> opl.cloud.api.ManagedKeyLifecycleReadback
+	519,  // 1199: opl.cloud.api.GatewayCoordination.ReadManagedKeyLifecycle:output_type -> opl.cloud.api.ManagedKeyLifecycleReadback
+	499,  // 1200: opl.cloud.api.FabricCoordination.AdmitResources:output_type -> opl.cloud.api.AdmissionResult
+	194,  // 1201: opl.cloud.api.FabricCoordination.EnsureResources:output_type -> opl.cloud.api.Operation
+	194,  // 1202: opl.cloud.api.FabricCoordination.ResizeResources:output_type -> opl.cloud.api.Operation
+	194,  // 1203: opl.cloud.api.FabricCoordination.RenewResources:output_type -> opl.cloud.api.Operation
+	194,  // 1204: opl.cloud.api.FabricCoordination.SuspendResources:output_type -> opl.cloud.api.Operation
+	194,  // 1205: opl.cloud.api.FabricCoordination.ResumeResources:output_type -> opl.cloud.api.Operation
+	194,  // 1206: opl.cloud.api.FabricCoordination.DeleteResources:output_type -> opl.cloud.api.Operation
+	529,  // 1207: opl.cloud.api.FabricCoordination.ReadResources:output_type -> opl.cloud.api.ResourceReadback
+	532,  // 1208: opl.cloud.api.FabricCoordination.BindSecret:output_type -> opl.cloud.api.SecretBindingReadback
+	534,  // 1209: opl.cloud.api.FabricCoordination.RebindSecret:output_type -> opl.cloud.api.SecretBindingRebindReadback
+	536,  // 1210: opl.cloud.api.FabricCoordination.PutManagedSecret:output_type -> opl.cloud.api.ManagedSecretReadback
+	538,  // 1211: opl.cloud.api.ServeAgentCoordination.Reserve:output_type -> opl.cloud.api.RuntimeReservation
+	542,  // 1212: opl.cloud.api.ServeAgentCoordination.Deploy:output_type -> opl.cloud.api.RuntimeReadback
+	194,  // 1213: opl.cloud.api.ServeAgentCoordination.ReloadModels:output_type -> opl.cloud.api.Operation
+	542,  // 1214: opl.cloud.api.ServeAgentCoordination.ReadRuntime:output_type -> opl.cloud.api.RuntimeReadback
+	194,  // 1215: opl.cloud.api.ServeAgentCoordination.Retire:output_type -> opl.cloud.api.Operation
+	348,  // 1216: opl.cloud.api.ServeRuntimeAdapter.ReadApplicationCredentials:output_type -> opl.cloud.api.WorkspaceApplicationCredentials
+	542,  // 1217: opl.cloud.api.ServeRuntimeAdapter.StartRuntime:output_type -> opl.cloud.api.RuntimeReadback
+	194,  // 1218: opl.cloud.api.ServeRuntimeAdapter.StopRuntime:output_type -> opl.cloud.api.Operation
+	194,  // 1219: opl.cloud.api.ServeRuntimeAdapter.ReloadRuntime:output_type -> opl.cloud.api.Operation
+	542,  // 1220: opl.cloud.api.ServeRuntimeAdapter.ObserveRuntime:output_type -> opl.cloud.api.RuntimeReadback
+	552,  // 1221: opl.cloud.api.ServeAccessControl.FenceRouteEpoch:output_type -> opl.cloud.api.RouteReadback
+	552,  // 1222: opl.cloud.api.ServeAccessControl.ActivateRoute:output_type -> opl.cloud.api.RouteReadback
+	552,  // 1223: opl.cloud.api.ServeAccessControl.ObserveRoute:output_type -> opl.cloud.api.RouteReadback
+	552,  // 1224: opl.cloud.api.ServeAccessControl.RollbackRoute:output_type -> opl.cloud.api.RouteReadback
+	554,  // 1225: opl.cloud.api.TenantWorkspaceCoordination.SuspendTenantWorkspaces:output_type -> opl.cloud.api.TenantWorkspaceLifecycleReadback
+	554,  // 1226: opl.cloud.api.TenantWorkspaceCoordination.DeleteTenantWorkspaces:output_type -> opl.cloud.api.TenantWorkspaceLifecycleReadback
+	554,  // 1227: opl.cloud.api.TenantWorkspaceCoordination.ResumeTenantWorkspaces:output_type -> opl.cloud.api.TenantWorkspaceLifecycleReadback
+	268,  // 1228: opl.cloud.api.LedgerCoordination.AppendReceipt:output_type -> opl.cloud.api.Receipt
+	268,  // 1229: opl.cloud.api.LedgerCoordination.ReadReceiptByReference:output_type -> opl.cloud.api.Receipt
+	558,  // 1230: opl.cloud.api.LedgerCoordination.ReadLocalNoChargeReceipt:output_type -> opl.cloud.api.LocalNoChargeReceiptEvidence
+	559,  // 1231: opl.cloud.api.LedgerCoordination.ReadWalletActionReceipt:output_type -> opl.cloud.api.WalletActionReceiptEvidence
+	562,  // 1232: opl.cloud.api.WorkspacePlanChangeReadback.ReadSubscriptionPlanState:output_type -> opl.cloud.api.SubscriptionPlanState
+	355,  // 1233: opl.cloud.api.WorkspacePlanChangeReadback.ReadPlanChange:output_type -> opl.cloud.api.PlanChange
+	565,  // 1234: opl.cloud.api.WorkspacePlanChangeReadback.ReadNextPeriodObligation:output_type -> opl.cloud.api.NextPeriodObligation
+	358,  // 1235: opl.cloud.api.WorkspacePlanChangeReadback.ReadPlanChangeFailure:output_type -> opl.cloud.api.PlanChangeEvidence
+	568,  // 1236: opl.cloud.api.FabricPlanTransitionReadback.ReadApprovedPlanTransition:output_type -> opl.cloud.api.ApprovedPlanTransition
+	582,  // 1237: opl.cloud.api.FabricPlanTransitionReadback.ReadExecutionPlan:output_type -> opl.cloud.api.ProviderPlanChangeExecutionPlan
+	261,  // 1238: opl.cloud.api.GatewayPlanChangeSettlement.DebitSupplement:output_type -> opl.cloud.api.WalletOperation
+	261,  // 1239: opl.cloud.api.GatewayPlanChangeSettlement.DebitScheduledPeriod:output_type -> opl.cloud.api.WalletOperation
+	261,  // 1240: opl.cloud.api.GatewayPlanChangeSettlement.RefundFailure:output_type -> opl.cloud.api.WalletOperation
+	261,  // 1241: opl.cloud.api.GatewayPlanChangeSettlement.RefundSupplementOnDeletion:output_type -> opl.cloud.api.WalletOperation
+	577,  // 1242: opl.cloud.api.ServePlanChangeControl.RestoreAfterResourceChange:output_type -> opl.cloud.api.PlanChangeRuntimeReadback
+	268,  // 1243: opl.cloud.api.LedgerPlanChangeEvidence.AppendPlanChangeReceipt:output_type -> opl.cloud.api.Receipt
+	268,  // 1244: opl.cloud.api.LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt:output_type -> opl.cloud.api.Receipt
+	604,  // 1245: opl.cloud.api.DomainInbox.Deliver:output_type -> opl.cloud.api.InboxAck
+	606,  // 1246: opl.cloud.api.WorkspaceAccessReadback.ReadWorkspaceAccess:output_type -> opl.cloud.api.WorkspaceAccessDecision
+	1053, // [1053:1247] is the sub-list for method output_type
+	859,  // [859:1053] is the sub-list for method input_type
+	859,  // [859:859] is the sub-list for extension type_name
+	859,  // [859:859] is the sub-list for extension extendee
+	0,    // [0:859] is the sub-list for field type_name
 }
 
 func init() { file_internal_proto_init() }

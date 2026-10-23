@@ -319,7 +319,7 @@ func TestPollHonorsWorkspaceRetirement(t *testing.T) {
 				runtime.lifecycleErr = errors.New("retirement response lost")
 			}
 			s.Runtime = runtime
-			command := &api.RuntimeStopCommand{Context: r.Context, RuntimeInstanceId: reservation.RuntimeInstanceId, DeploymentId: reservation.DeploymentId, RetainedDataAttachmentId: "attachment-retained"}
+			command := &api.RuntimeStopCommand{Context: r.Context, RuntimeInstanceId: reservation.RuntimeInstanceId, DeploymentId: reservation.DeploymentId, RetainedDataAttachmentId: r.GetDataAttachmentId()}
 			retired, retireErr := s.Retire(ctx, command)
 			if confirmed && retireErr != nil {
 				t.Fatalf("retirement did not reach its lifecycle boundary: %v", retireErr)

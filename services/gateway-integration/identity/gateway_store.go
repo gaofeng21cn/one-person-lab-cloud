@@ -94,6 +94,14 @@ func (s *GatewayStore) ReadActiveWalletBinding(ctx context.Context, tenantID str
 	return binding, nil
 }
 
+// ReadWalletBinding resolves the immutable binding of a recorded operation.
+// Revocation changes new spending authority, not the wallet of prior obligations.
+func (s *GatewayStore) ReadWalletBinding(ctx context.Context, id string) (WalletBinding, error) {
+	var binding WalletBinding
+	err := s.db.QueryRowContext(ctx, `SELECT id,tenant_id,billing_sub2api_user_id,delegation_ref,verification_evidence_ref,bound_at FROM gateway.tenant_wallet_bindings WHERE id=$1`, id).Scan(&binding.ID, &binding.TenantID, &binding.BillingSub2APIUserID, &binding.DelegationRef, &binding.VerificationRef, &binding.BoundAt)
+	return binding, err
+}
+
 func (s *GatewayStore) bindingVersion(ctx context.Context, tenantID string) (int64, error) {
 	var count int64
 	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM gateway.tenant_wallet_bindings WHERE tenant_id = $1`, tenantID).Scan(&count); err != nil {
@@ -240,12 +248,32 @@ func (s *GatewayStore) ReserveWalletOperation(ctx context.Context, record Wallet
 	existing, err := s.scanWallet(ctx, tx.QueryRowContext(ctx, walletSelect+` WHERE business_idempotency_key = $1`, record.BusinessKey))
 	switch {
 	case err == nil:
-		if existing.RequestFingerprint != record.RequestFingerprint {
+		if existing.RequestFingerprint != record.RequestFingerprint || existing.TenantID != record.TenantID || existing.WorkspaceID != record.WorkspaceID {
 			return WalletRecord{}, false, ErrGatewayWalletConflict
 		}
 		return existing, true, nil
 	case !errors.Is(err, ErrGatewayWalletUnknown):
 		return WalletRecord{}, false, err
+	}
+	if record.Kind == "refund" {
+		original, readErr := s.scanWallet(ctx, tx.QueryRowContext(ctx, walletSelect+` WHERE id=$1 FOR UPDATE`, record.OriginalOperationID))
+		if errors.Is(readErr, ErrGatewayWalletUnknown) {
+			return WalletRecord{}, false, ErrGatewayWalletConflict
+		}
+		if readErr != nil {
+			return WalletRecord{}, false, readErr
+		}
+		if original.Kind != "charge" || original.Status != "confirmed" || original.TenantID != record.TenantID || original.WorkspaceID != record.WorkspaceID || record.AmountUSDMicros <= 0 {
+			return WalletRecord{}, false, ErrGatewayWalletConflict
+		}
+		var reserved int64
+		if err = tx.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount_usd_micros),0) FROM gateway.wallet_operations WHERE original_wallet_operation_id=$1 AND kind='refund' AND status<>'rejected'`, original.ID).Scan(&reserved); err != nil {
+			return WalletRecord{}, false, err
+		}
+		if record.AmountUSDMicros > original.AmountUSDMicros-reserved {
+			return WalletRecord{}, false, ErrGatewayWalletConflict
+		}
+		record.WalletBindingID = original.WalletBindingID
 	}
 	now := time.Now().UTC()
 	record.Status = "requested"

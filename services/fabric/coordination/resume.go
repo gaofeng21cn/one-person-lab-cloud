@@ -44,6 +44,9 @@ func (s *Service) resume(ctx context.Context, r *api.EnsureResourcesCommand, ope
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, "fabric:workspace:"+r.WorkspaceId); err != nil {
 		return nil, persistenceError(err)
 	}
+	if err = refuseDeletedProvision(ctx, tx, r.WorkspaceId, r.GetContext().GetScope().GetTenant().GetTenantId()); err != nil {
+		return nil, err
+	}
 	var existingStatus string
 	if err = tx.QueryRowContext(ctx, `SELECT status FROM fabric.operations WHERE id=$1 FOR UPDATE`, operationID).Scan(&existingStatus); err != nil {
 		return nil, persistenceError(err)

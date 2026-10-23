@@ -110,21 +110,34 @@ func (s *Service) Retire(ctx context.Context, command *api.RuntimeStopCommand) (
 		return nil, status.Error(codes.Unavailable, "runtime execution adapter is not configured")
 	}
 	runtimeID := strings.TrimSpace(command.GetRuntimeInstanceId())
+	if runtimeID == "" && command.GetOriginalReservationIdempotencyKey() != "" {
+		return s.retireOriginalReservation(ctx, command)
+	}
 	if runtimeID == "" {
 		return nil, status.Error(codes.InvalidArgument, "runtime instance is required")
 	}
-	deploy, err := s.persistedRuntimeCommand(ctx, runtimeID, command.GetDeploymentId())
+	deploy, started, err := s.prepareRuntimeRetirement(ctx, command)
 	if err != nil {
 		return nil, err
 	}
-	target, err := s.confirmedRuntimeTarget(ctx, deploy.command)
-	if err != nil {
-		return nil, err
-	}
+	deploy.command.Context = command.GetContext()
 	if err := s.applyRecordedLifecycle(ctx, deploy, "terminate", map[string]string{"desired": "absent", "retainedDataAttachmentId": command.GetRetainedDataAttachmentId()}, func() error {
+		if err := s.retireRuntimeRoute(ctx, deploy); err != nil {
+			return err
+		}
+		if !started {
+			return nil
+		}
+		target, err := s.confirmedRuntimeTarget(ctx, deploy.command)
+		if err != nil {
+			return err
+		}
 		return s.Runtime.Lifecycle(ctx, deploy.command, target, "absent")
 	}); err != nil {
 		return nil, err
+	}
+	if _, err = s.DB.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET status='terminated',access_url=NULL,observed_at=now(),updated_at=now() WHERE id=$1 AND deployment_id=$2`, runtimeID, deploy.command.GetDeploymentId()); err != nil {
+		return nil, dbError(err)
 	}
 	retired, err := s.runtimeLifecycleOperation(ctx, deploy, "runtime_retire", "retirement", "succeeded")
 	if err != nil {
@@ -132,7 +145,7 @@ func (s *Service) Retire(ctx context.Context, command *api.RuntimeStopCommand) (
 	}
 	// The provider confirmed the runtime is absent, so the retirement itself is an
 	// observed fact. The deletion's evidence is the confirmation, not the request.
-	if _, err = s.DB.ExecContext(ctx, `UPDATE serve.operations SET observation_result='confirmed',updated_at=now() WHERE id=$1`, retired.GetOperationId()); err != nil {
+	if _, err = s.DB.ExecContext(ctx, `UPDATE serve.operations SET status='succeeded',observation_result='confirmed',completed_at=COALESCE(completed_at,now()),updated_at=now() WHERE id=$1`, retired.GetOperationId()); err != nil {
 		return nil, dbError(err)
 	}
 	return s.operationByID(ctx, retired.GetOperationId())
@@ -335,6 +348,22 @@ func (s *Service) executeRuntimeStep(ctx context.Context, command *api.RuntimeDe
 	}
 	if command.GetWorkspaceId() == "" || command.GetResourceSetId() == "" || command.GetDataAttachmentId() == "" {
 		return RuntimeObservation{}, status.Error(codes.InvalidArgument, "workspace, resource set and data attachment are required")
+	}
+	if start {
+		guard, err := s.DB.BeginTx(ctx, nil)
+		if err != nil {
+			return RuntimeObservation{}, dbError(err)
+		}
+		defer guard.Rollback()
+		if err = lockWorkspace(ctx, guard, command.GetWorkspaceId()); err != nil {
+			return RuntimeObservation{}, dbError(err)
+		}
+		if err = refuseClosedWorkspace(ctx, guard, command.GetWorkspaceId()); err != nil {
+			return RuntimeObservation{}, err
+		}
+		if err = refuseRetiredRuntime(ctx, guard, command.GetRuntimeInstanceId()); err != nil {
+			return RuntimeObservation{}, err
+		}
 	}
 	resources, err := s.Resources.ReadResources(ctx, &api.ResourceReadbackRequest{Context: nextOwnerCall(command.GetContext()), ResourceSetId: command.GetResourceSetId()})
 	if err != nil {

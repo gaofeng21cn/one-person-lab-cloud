@@ -64,6 +64,20 @@ func (s *Service) PutManagedSecret(ctx context.Context, r *api.ManagedSecretComm
 	if err := s.authorizeWorkspace(ctx, r.GetContext(), workspace, tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET); err != nil {
 		return nil, err
 	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, persistenceError(err)
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, "fabric:workspace:"+workspace); err != nil {
+		return nil, persistenceError(err)
+	}
+	if err = refuseDeletedProvision(ctx, tx, workspace, tenant); err != nil {
+		return nil, err
+	}
+	if err = s.authorizeWorkspace(ctx, r.GetContext(), workspace, tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET); err != nil {
+		return nil, err
+	}
 	stored, err := s.Dispatcher.PutManagedSecret(ctx, PutManagedSecretIntent{
 		TenantID: tenant, WorkspaceID: workspace, WorkspaceAPIKeyID: r.GetWorkspaceApiKeyId(),
 		SecretRef: r.GetSecretDeliveryReference(), Fingerprint: r.GetFingerprint(), GatewayAPIKey: r.GetGatewayApiKey(),
