@@ -5,7 +5,6 @@ const root = new URL("../", import.meta.url);
 const workflowRoot = new URL(".github/workflows/", root);
 const allowedWorkflows = new Set([
   "build-opl-cloud-candidate.yml",
-  "build-opl-cloud-candidate-77e2024a-bridge.yml",
   "clean-host-qualification.yml",
   "cloud-business-readback.yml",
   "codeql.yml",
@@ -18,6 +17,13 @@ const allowedWorkflows = new Set([
 ]);
 
 const workflows = (await readdir(workflowRoot)).filter((name) => name.endsWith(".yml"));
+// A second build workflow bypassed the Candidate guard once (an actor-pinned,
+// single-branch bridge). Keep exactly one build entry: any additional build must
+// be merged into the canonical Candidate workflow, not added beside it.
+const buildWorkflows = workflows.filter((name) => name.startsWith("build-opl-cloud")).sort();
+if (JSON.stringify(buildWorkflows) !== JSON.stringify(["build-opl-cloud-candidate.yml"])) {
+  throw new Error(`exactly one Cloud build workflow is allowed: ${buildWorkflows.join(",") || "none"}`);
+}
 const unexpectedWorkflows = workflows.filter((name) => !allowedWorkflows.has(name));
 if (unexpectedWorkflows.length > 0) {
   throw new Error(`unexpected Cloud workflow: ${unexpectedWorkflows.join(",")}`);
