@@ -53,6 +53,7 @@ jobs:
             services/internal/ownerservice/go.sum
             services/internal/ownerstore/go.sum
             services/internal/postgresmigrate/go.sum
+            services/internal/tkeapply/go.sum
             services/ledger/go.sum
             services/resource-catalog/go.sum
             services/runtime-control/go.sum
