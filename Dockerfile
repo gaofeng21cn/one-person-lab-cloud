@@ -70,7 +70,7 @@ FROM docker:29.8.1-cli@sha256:018edbc908e08fcc9dbf029c812c34251e9b4719e6f71ca0e5
 FROM --platform=$BUILDPLATFORM node:26-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6dae8aab81a99eb797b3e AS build
 
 WORKDIR /app
-ARG VITE_CONSOLE_IDENTITY=legacy
+ARG VITE_CONSOLE_IDENTITY=cloud
 ENV VITE_CONSOLE_IDENTITY=$VITE_CONSOLE_IDENTITY
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
@@ -88,7 +88,7 @@ ARG TARGETARCH
 # declares the same build argument the build stage uses and labels the image with
 # it, so an installation, a Local qualification, a Candidate or a Release can read
 # which surface this exact digest serves instead of inferring it.
-ARG VITE_CONSOLE_IDENTITY=legacy
+ARG VITE_CONSOLE_IDENTITY=cloud
 ENV NODE_ENV=production
 ENV CONTROL_PLANE_ADDR=:8787
 LABEL opl.cloud.console-identity=$VITE_CONSOLE_IDENTITY

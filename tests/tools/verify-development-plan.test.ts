@@ -271,9 +271,9 @@ test("the default subprocess validates the requested snapshot rather than the ho
   const scratch = mkdtempSync(join(tmpdir(), "opl-plan-validator-"));
   try {
     materializePlanSnapshot(scratch);
-    // This input is used by the real validator, not by the renderer.
+    // The renderer fingerprints this input before the validator reads it.
     rmSync(join(scratch, "docs/spec/target/00_master_index.md"));
-    assert.throws(() => verifyDevelopmentPlan({ root: scratch }), /development plan validation failed:[\s\S]*00_master_index\.md/u);
+    assert.throws(() => verifyDevelopmentPlan({ root: scratch }), /plan renderer failed:[\s\S]*00_master_index\.md/u);
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
@@ -292,7 +292,7 @@ for (const path of ["services/internal/postgresmigrate", "services/runtime-contr
   });
 }
 
-test("default generation in a Git-free snapshot fails before emitting artifacts instead of fabricating provenance", () => {
+test("default generation binds real input bytes in a Git-free snapshot", () => {
   const scratch = mkdtempSync(join(tmpdir(), "opl-plan-provenance-"));
   const out = mkdtempSync(join(tmpdir(), "opl-plan-output-"));
   try {
@@ -303,9 +303,12 @@ test("default generation in a Git-free snapshot fails before emitting artifacts 
       env: { ...process.env, OPL_DEVELOPMENT_PLAN_OUT: out, PYTHONDONTWRITEBYTECODE: "1" },
       encoding: "utf8"
     });
-    assert.equal(rendered.status, 1, rendered.stderr);
-    assert.match(rendered.stderr, /not a git repository/u);
-    assert.deepEqual(readdirSync(out), []);
+    assert.equal(rendered.status, 0, rendered.stderr);
+    const projection = JSON.parse(readFileSync(join(out, "checks/development_plan.json"), "utf8"));
+    assert.equal(projection.sourceSHA, undefined);
+    for (const [input, hash] of Object.entries(projection.inputSHA256)) {
+      assert.equal(hash, createHash("sha256").update(readFileSync(join(scratch, "docs/spec/target", input))).digest("hex"));
+    }
     assert.deepEqual(snapshotState(scratch), before);
   } finally {
     rmSync(scratch, { recursive: true, force: true });
@@ -313,7 +316,7 @@ test("default generation in a Git-free snapshot fails before emitting artifacts 
   }
 });
 
-test("default generation retains an isolated fixture's real Git SHA when launched outside its checkout", () => {
+test("default generation binds identical input provenance regardless of Git checkout or caller directory", () => {
   const scratch = mkdtempSync(join(tmpdir(), "opl-plan-git-fixture-"));
   const out = mkdtempSync(join(tmpdir(), "opl-plan-provenance-output-"));
   try {
@@ -333,7 +336,10 @@ test("default generation retains an isolated fixture's real Git SHA when launche
       encoding: "utf8"
     });
     assert.equal(rendered.status, 0, rendered.stderr);
-    assert.equal(JSON.parse(readFileSync(join(out, "checks/development_plan.json"), "utf8")).sourceSHA, revision.stdout.trim());
+    const projection = JSON.parse(readFileSync(join(out, "checks/development_plan.json"), "utf8"));
+    const expected = JSON.parse(readFileSync(join(scratch, generatedPlanArtifacts[0]), "utf8"));
+    assert.deepEqual(projection.inputSHA256, expected.inputSHA256);
+    assert.equal(projection.sourceSHA, undefined);
     assert.ok(readFileSync(join(out, "14_implementation_work_packages.md")).equals(readFileSync(join(scratch, generatedPlanArtifacts[1]))));
   } finally {
     rmSync(scratch, { recursive: true, force: true });
@@ -414,3 +420,18 @@ test("the plan acceptance runner executes real freshness in an OS-isolated Git-f
     rmSync(scratch, { recursive: true, force: true });
   }
 });
+
+for (const mutation of ["input_hash", "obsolete_source_sha", "implementation_state"]) {
+  test(`planning freshness rejects stale ${mutation}`, (t) => {
+    const scratch = mkdtempSync(join(tmpdir(), "opl-plan-stale-provenance-"));
+    t.after(() => rmSync(scratch, { recursive: true, force: true }));
+    materializePlanSnapshot(scratch);
+    const path = join(scratch, generatedPlanArtifacts[0]);
+    const plan = JSON.parse(readFileSync(path, "utf8"));
+    if (mutation === "input_hash") plan.inputSHA256["contracts/internal.proto"] = "0".repeat(64);
+    if (mutation === "obsolete_source_sha") plan.sourceSHA = "0".repeat(40);
+    if (mutation === "implementation_state") plan.workPackages[0].state = "not_implemented";
+    writeFileSync(path, JSON.stringify(plan, null, 2) + "\n");
+    assert.throws(() => verifyDevelopmentPlan({ root: scratch }), /stale generated plan artifact/u);
+  });
+}

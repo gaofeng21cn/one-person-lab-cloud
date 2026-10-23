@@ -140,6 +140,11 @@ full business, Workspace lifecycle or Key lifecycle qualification. This entry
 provides no production-private network access or resource/financial mutation
 qualification.
 
+The customer workflow emits only `cloud-customer-readback-<run>-<attempt>`,
+consumed by Release admission. It does not invoke the business purchase producer.
+The protected Instance lane below remains the sole workflow producer of business
+qualification evidence; its trust and exact-Candidate gates are unchanged.
+
 ### Protected Cloud Business Qualification
 
 The protected Instance entry

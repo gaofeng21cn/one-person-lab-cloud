@@ -2337,7 +2337,7 @@
         "routeRevision",
         "outcome"
       ],
-      "description": "路由fence/CAS实际读回，Workspace选中提交仍由Workspace owner负责"
+      "description": "Serve本域路由fence/CAS与当前Deployment同库提交并读回；Workspace只拥有授权和业务目标，不写当前选中部署"
     },
     "PlanChangeStateChanged": {
       "type": "object",

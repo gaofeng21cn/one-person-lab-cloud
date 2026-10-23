@@ -39,7 +39,7 @@ import yaml
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 API_SCHEMA = ROOT / "docs/spec/target/03_api_contract_complete.yaml"
 SCHEMA = ROOT / "docs/spec/target/contracts/publisher-contract.schema.json"
-PROTO = ROOT / "docs/spec/target/contracts/internal.proto"
+PROTO = ROOT / "packages/contracts/proto/internal.proto"
 OUTPUT = ROOT / "packages/contracts/go/publicjson/shape_generated.go"
 
 # Public properties whose name and wire field name share a fact but not a

@@ -259,7 +259,10 @@ test("Operator Account suppresses a pending command completion after route exit"
   }
 });
 
-test("Operator Account provision retries response loss with the original normalized intent", { timeout: 60_000 }, async () => {
+test("Operator Account provision retries response loss with the original normalized intent", { timeout: 60_000 }, async (t) => {
+  const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
+  process.env.VITE_CONSOLE_IDENTITY = "cloud";
+  t.after(() => { if (previousIdentity === undefined) delete process.env.VITE_CONSOLE_IDENTITY; else process.env.VITE_CONSOLE_IDENTITY = previousIdentity; });
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await launchBrowser({ headless: true });
   const base = account("acct-base", "base@example.com");
@@ -268,11 +271,11 @@ test("Operator Account provision retries response loss with the original normali
   let commandSucceeded = false;
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    await page.route("**/api/operator/accounts?*", (route) => fulfill(
+    await page.route("**/api/v2/operator/accounts?*", (route) => fulfill(
       route,
       accountPage(commandSucceeded ? [base, provisioned] : [base])
     ));
-    await page.route("**/api/operator/accounts", async (route) => {
+    await page.route("**/api/v2/operator/accounts", async (route) => {
       if (route.request().method() !== "POST") return route.fallback();
       keys.push(route.request().headers()["idempotency-key"] || "");
       const input = route.request().postDataJSON() as { email: string; name?: string; admission?: string };
@@ -293,7 +296,7 @@ test("Operator Account provision retries response loss with the original normali
       await fulfill(route, result);
     });
 
-    await login(page, demo.origin);
+    await page.route("**/api/v2/auth/session", route => fulfill(route, { actorId: "operator", displayName: "Operator", permissions: ["createPublisherNamespace"], csrfToken: "csrf-fixture", expiresAt: "2099-01-01T00:00:00Z" }));
     await openAccounts(page, demo.origin);
     await page.getByRole("button", { name: "开通用户", exact: true }).first().click();
     const dialog = page.getByRole("dialog", { name: "开通用户" });
@@ -315,7 +318,10 @@ test("Operator Account provision retries response loss with the original normali
   }
 });
 
-test("Operator Account keeps a pending provision claimed when its Modal closes and reopens", { timeout: 60_000 }, async () => {
+test("Operator Account keeps a pending provision claimed when its Modal closes and reopens", { timeout: 60_000 }, async (t) => {
+  const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
+  process.env.VITE_CONSOLE_IDENTITY = "cloud";
+  t.after(() => { if (previousIdentity === undefined) delete process.env.VITE_CONSOLE_IDENTITY; else process.env.VITE_CONSOLE_IDENTITY = previousIdentity; });
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await launchBrowser({ headless: true });
   const base = account("acct-provision-claim-base", "provision-claim-base@example.com");
@@ -327,8 +333,8 @@ test("Operator Account keeps a pending provision claimed when its Modal closes a
   let projection = base;
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    await page.route("**/api/operator/accounts?*", (route) => fulfill(route, accountPage([projection])));
-    await page.route("**/api/operator/accounts", async (route) => {
+    await page.route("**/api/v2/operator/accounts?*", (route) => fulfill(route, accountPage([projection])));
+    await page.route("**/api/v2/operator/accounts", async (route) => {
       if (route.request().method() !== "POST") return route.fallback();
       keys.push(route.request().headers()["idempotency-key"] || "");
       if (keys.length === 1) {
@@ -348,7 +354,7 @@ test("Operator Account keeps a pending provision claimed when its Modal closes a
       await fulfill(route, result);
     });
 
-    await login(page, demo.origin);
+    await page.route("**/api/v2/auth/session", route => fulfill(route, { actorId: "operator", displayName: "Operator", permissions: ["createPublisherNamespace"], csrfToken: "csrf-fixture", expiresAt: "2099-01-01T00:00:00Z" }));
     await openAccounts(page, demo.origin);
     await page.getByRole("button", { name: "开通用户", exact: true }).first().click();
     let dialog = page.getByRole("dialog", { name: "开通用户" });
@@ -680,4 +686,51 @@ test("Operator Account session reset discards a stale eligibility intent", { tim
     await browser.close();
     await demo.close();
   }
+});
+
+test("legacy accounts keep reads and hide retired activation", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await launchBrowser({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await login(page, demo.origin);
+    await openAccounts(page, demo.origin);
+    assert.equal(await page.getByRole("button", { name: "开通用户", exact: true }).count(), 0);
+    await page.getByText("新用户开通请使用 Cloud 控制台。", { exact: true }).waitFor();
+  } finally { await browser.close(); await demo.close(); }
+});
+
+test("Cloud operator pages expose reads and activation without retained write controls", { timeout: 60_000 }, async (t) => {
+  const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
+  process.env.VITE_CONSOLE_IDENTITY = "cloud";
+  t.after(() => { if (previousIdentity === undefined) delete process.env.VITE_CONSOLE_IDENTITY; else process.env.VITE_CONSOLE_IDENTITY = previousIdentity; });
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await launchBrowser({ headless: true });
+  try {
+    const page = await browser.newPage();
+    // Authenticate only the isolated fixture. UI identity is the Cloud session
+    // returned below; no production cookie or identity translation is used.
+    await page.request.post(`${demo.origin}/api/auth/login`, { data: CONSOLE_DEMO_CREDENTIALS.admin });
+    const writes: string[] = [];
+    page.on("request", request => {
+      if (request.method() !== "GET" && new URL(request.url()).pathname.startsWith("/api/operator/")) writes.push(request.url());
+    });
+    await page.route("**/api/v2/**", async route => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/v2/auth/session") return fulfill(route, { actorId: "operator", displayName: "Operator", permissions: ["createPublisherNamespace"], csrfToken: "csrf-fixture", expiresAt: "2099-01-01T00:00:00Z" });
+      if (url.pathname.startsWith("/api/v2/operator/")) {
+        const response = await page.request.get(route.request().url().replace("/api/v2/", "/api/"));
+        return route.fulfill({ response });
+      }
+      return fulfill(route, { error: "fixture_read_unavailable" }, 503);
+    });
+    for (const path of ["accounts", "announcements", "billing", "resources"]) {
+      await page.goto(`${demo.origin}/admin/${path}`, { waitUntil: "networkidle" });
+      for (const name of ["余额操作", "授予新购", "撤销新购", "停用", "新建草稿", "发布", "撤下", "结束未完成开通并退款", "解析 digest", "提交准入", "设为新开通默认版本", "更新 / 回滚当前 Workspace"]) {
+        assert.equal(await page.getByRole("button", { name, exact: true }).count(), 0, `${path}: ${name}`);
+      }
+      if (path === "accounts") await page.getByRole("button", { name: "开通用户", exact: true }).waitFor();
+    }
+    assert.deepEqual(writes, []);
+  } finally { await browser.close(); await demo.close(); }
 });

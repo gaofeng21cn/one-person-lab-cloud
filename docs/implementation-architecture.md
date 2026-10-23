@@ -327,13 +327,18 @@ command or an accepted caller for these paths.
 ## Console Source Truth
 
 The image's `VITE_CONSOLE_IDENTITY` selects authentication and migrated browser
-surfaces. The Dockerfile defaults to `legacy` and labels the built digest with
+surfaces. The Dockerfile defaults to `cloud` and labels the built digest with
 `opl.cloud.console-identity`; a deployment cannot change the baked bundle.
 
 | Console identity | Browser surface | Workspace source |
 | --- | --- | --- |
 | `cloud` | Authentication, Workspace, Publisher and delivery use same-origin Console BFF `/api/v2/*`, CloudIdentity session and owner authorization | Workspace owner list/detail, composed resource/delivery/access facts; no retained Control Plane Workspace read or maintenance fallback |
 | `legacy` | Retained Control Plane authentication and Workspace `/api/*` | Existing Control Plane Workspace rows, lifecycle and Runtime projections |
+
+Cloud activation uses `/api/v2/operator/accounts`. Other retained operator commands
+have no BFF command owner yet: the Cloud adapter refuses them before network I/O
+and their write controls are hidden; read projections remain available. The legacy
+image serves historical reads and commands but hides retired account activation.
 
 The shared readers in `apps/console-ui/src/api/console-read-api.ts` select
 owners from the baked `VITE_CONSOLE_IDENTITY`; a CloudIdentity cookie is never

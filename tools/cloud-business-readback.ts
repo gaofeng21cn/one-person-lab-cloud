@@ -5,7 +5,7 @@ import { request as httpsRequest } from "node:https";
 import { BlockList, isIP } from "node:net";
 import { pathToFileURL } from "node:url";
 import { Readable } from "node:stream";
-import { candidateReceiptDigest, canonicalJson, validateCloudCandidateReceipt } from "./cloud-candidate-receipt.ts";
+import { candidateInstallationIdentity, canonicalJson } from "./cloud-candidate-receipt.ts";
 
 const CLOUD = "gaofeng21cn/one-person-lab-cloud";
 const INSTANCE = "gaofeng21cn/opl-instance-medopl";
@@ -58,11 +58,8 @@ const int64String = (v: unknown): v is string => typeof v === "string" && /^(0|[
 const signedMicros = (v: unknown): v is string => typeof v === "string" && /^-?(0|[1-9][0-9]{0,18})$/.test(v) && BigInt(v) <= 9223372036854775807n && BigInt(v) >= -9223372036854775808n;
 const date = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/.test(v) && Number.isFinite(Date.parse(v));
 function identity(value: unknown): CandidateIdentity {
-  const candidate = validateCloudCandidateReceipt(value);
-  const product = obj(candidate.product), image = obj(candidate.cloudImage);
-  return { receiptDigest: candidateReceiptDigest(candidate), productSha: product.sha, productTree: product.tree,
-    cloudImageRef: image.indexRef, cloudImageDigest: image.indexDigest, cloudImageRevision: image.revision,
-    cloudRuntimeChildDigest: image.platforms.find((v: any) => v.platform === "linux/amd64").digest };
+  const { candidateReceiptDigest: receiptDigest, ...fields } = candidateInstallationIdentity(value);
+  return { receiptDigest, ...fields };
 }
 function authority(value: unknown, repository: string, path: string, completed: boolean): Authority {
   const r = obj(value);

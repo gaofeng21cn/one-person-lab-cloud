@@ -699,7 +699,7 @@ The remaining target decisions are:
   Plane is a bounded migration source, not a permanent parallel writer.
 - Shared wire contracts use the existing `packages/contracts/go/go.mod` module:
   proto source belongs in `packages/contracts/proto/`, and generated target architecture Go
-  bindings belong in `packages/contracts/go/v226/`. No independent target architecture Go
+  bindings belong in `packages/contracts/go/api/`. No independent target architecture Go
   module or contracts GitHub repository is introduced. Cloud consumers and
   contracts are revised atomically at one source commit, with schema hashes
   and locked generation tools. Necessary consumer dependency-file changes are

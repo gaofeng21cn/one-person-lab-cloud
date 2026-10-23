@@ -91,3 +91,7 @@ Add or retain a contract field only when:
 
 Tests should exercise the consumer or public behavior. A test that only reads a
 JSON file and repeats its fields does not justify the contract.
+
+### Canonical schema and spec snapshots
+
+Edit `proto/internal.proto` and `proto/events.json` only. The bindings and event-identity chains derive the corresponding files under `docs/spec/target/contracts/`. The public JSON generator reads the production proto; `npm run verify:generated-contracts` regenerates the snapshots in an empty tree and rejects drift in either copy. Serve owns the route fence/CAS and selected deployment; Workspace owns authorization and the business goal.
