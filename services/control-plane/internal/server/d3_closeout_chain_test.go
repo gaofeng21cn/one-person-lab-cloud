@@ -433,7 +433,7 @@ func TestD3CloseoutWithoutDebitDoesNotCreateRefund(t *testing.T) {
 	command := workspaceLaunchUnitCommand()
 	disabled := false
 	command.ResourceBillingEnabled = &disabled
-	op, err := newWorkspaceLaunchReconcileOperation(command)
+	op, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}

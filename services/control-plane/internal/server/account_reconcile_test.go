@@ -260,7 +260,7 @@ func (f *acceptanceBAccountReconcileFixture) reconcile() (acceptanceBAccountReco
 
 func (f *acceptanceBAccountReconcileFixture) storeApprovedLaunch(totalChargeUSDMicros int64) {
 	f.t.Helper()
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchReconcileCreate{
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchReconcileCreate{
 		OperationID: f.approval.Launch.OperationID, RequestHash: "acceptance-b-request-hash", AccountID: f.accountID,
 		OwnerUserID: f.userID, Sub2APIUserID: 41, WorkspaceKeyGroupID: 9, WorkspaceID: f.approval.Launch.WorkspaceID,
 		Name: f.approval.Launch.Name, PackageID: f.approval.Launch.PackageID, StorageGB: f.approval.Launch.SizeGB,

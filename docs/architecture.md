@@ -218,13 +218,17 @@ environment variable and Customer cannot choose a provider.
 | `managed_tke` | `local-docker` | rejected until an owner and operations workflow exist |
 | `platform_owned` | `local-docker` | local qualification only, not a production claim |
 
-Control Plane compares its configured `OPL_FABRIC_PROVIDER` with the provider
-reported by Fabric readiness before new Workspace Launch admission. A mismatch
-is a readiness failure and performs no provider mutation. Existing Launches
-continue to use the Fabric preflight `providerProfileRef` persisted with the
-operation. Where an Instance verification path provides both
-`OPL_RUNTIME_PROVIDER` and `OPL_FABRIC_PROVIDER`, it only verifies that they
-agree; `OPL_RUNTIME_PROVIDER` is not a third Provider.
+The Instance owns the installation's Provider Profile selection; Fabric reports
+its current provider and readiness facts. Control Plane's readiness projection
+reads that provider fact and compares it with its configured
+`OPL_FABRIC_PROVIDER`; a mismatch marks the readiness result failed as
+`provider_consistency_failure` without provider mutation. This read-only check
+is not fresh-purchase admission: a new `POST /api/workspace-launches` key is
+refused at the Launch route fence, and new Workspace purchases belong to the
+Workspace owner route.
+Where an Instance verification path provides both `OPL_RUNTIME_PROVIDER` and
+`OPL_FABRIC_PROVIDER`, it only verifies that they agree;
+`OPL_RUNTIME_PROVIDER` is not a third Provider.
 
 ### Deployment Unit Composition
 
@@ -1037,8 +1041,19 @@ to the [roadmap](roadmap.md).
 For the retained path, one Workspace Launch has one durable Control Plane
 operation and state machine. Extracted Workspace operations use their own
 owner-backed Saga; this retained contract does not become their second writer.
-Create and Resume enter the same Reconciler, but the Reconciler coordinates
-separate physical owners rather than implementing their work:
+Historical read/list preserves the recorded original operation identity and
+persisted result. Ordinary same-key replay returns that recorded operation
+without advancing it; only the retained pending Key or customer-owned
+Key/Secret unknown branch may continue it. Operator-authorized Resume and
+worker reconciliation advance the same original operation through the
+Reconciler. A fresh Create is not a Control Plane entry: a new
+`POST /api/workspace-launches` key is refused at the route fence, and new
+Workspace purchases belong to the Workspace owner route.
+The Reconciler coordinates separate physical owners rather than implementing
+their work. This is a source-level retirement of the fresh-create writer and
+claim path; it does not establish Candidate qualification, Instance deployment,
+a production zero-new-write observation, or completion of retained Launch
+migration:
 
 ```text
 services/control-plane
@@ -1370,9 +1385,13 @@ Plane owns the Cloud Account and the separate `workspacePurchaseEnabled` fact;
 the existence of a remote identity, a local Account, or an existing Workspace
 does not grant new-purchase permission. Operator provisioning explicitly selects
 `full_cloud_customer` or `gateway_only`, and grant/revoke actions are audited.
-The launch route reads this Control Plane fact before any billing or Fabric
-mutation. Revocation affects only future purchases. Account migration must preserve persisted eligibility and audit custody;
-Launch admission reads the Control Plane fact rather than an Instance-specific
-per-account allowlist.
+The retained Launch route no longer reads this fact to admit a fresh Create;
+its historical replay, resume and reconciliation keep their recorded account
+identity. New Workspace purchases belong to the Workspace owner route. Applying
+the current purchase-eligibility fact on that route remains a target obligation
+until its implementation and owner readback exist; this document does not claim
+that migration is complete. Revocation affects only future purchases. Account
+migration must preserve persisted eligibility and audit custody; no owner may
+substitute an Instance-specific per-account allowlist.
 Contract presence, documentation, a successful build or an empty queue does not
 prove Cloud, package, domain or production readiness.

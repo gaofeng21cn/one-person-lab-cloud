@@ -24,7 +24,7 @@ func seedResourceOnlyRenewalLaunch(t *testing.T, store controlPlaneTableStore, w
 	command.AccountID = stringValue(workspace["accountId"])
 	command.OwnerUserID = stringValue(workspace["ownerUserId"])
 	command.WorkspaceID = stringValue(workspace["id"])
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func newResourceOnlyWorkspaceLifecycleFixture(t *testing.T) (workspaceDeleteFixt
 	command := workspaceLaunchResourceOnlyUnitCommand()
 	command.OperationID, command.AccountID, command.OwnerUserID, command.Sub2APIUserID = "workspace-launch-alpha", "acct-alpha", stringValue(fixture.workspace["ownerUserId"]), 41
 	command.WorkspaceID, command.Name = "ws-alpha", "Alpha"
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func TestWorkspaceRenewalRuntimePowerFullModeStillRequiresRuntimeIdentity(t *tes
 	store := newMemoryTableStore()
 	command := workspaceLaunchUnitCommand()
 	command.OperationID, command.AccountID, command.WorkspaceID = "workspace-launch-alpha", "acct-alpha", "ws-alpha"
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -179,7 +179,7 @@ func TestProductionAcceptanceBAdmissionMatchesCanonicalProductApproval(t *testin
 
 func TestProductionAcceptanceBResumeExistingApprovalBindsServerAuthority(t *testing.T) {
 	configureProductionAcceptanceBEnvironment(t)
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +310,7 @@ func TestProductionAcceptanceBResumeExistingRequestModeUsesDedicatedHeadersOnly(
 
 func TestParseProductionAcceptanceBResumeExistingApprovalRejectsDuplicateKeys(t *testing.T) {
 	configureProductionAcceptanceBEnvironment(t)
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -742,7 +742,7 @@ func newWorkspaceDeleteCompletionFixtureWith(t *testing.T, store controlPlaneTab
 	command := workspaceLaunchUnitCommand()
 	command.OperationID, command.AccountID, command.OwnerUserID, command.Sub2APIUserID = "workspace-launch-alpha", "acct-alpha", stringValue(fixture.workspace["ownerUserId"]), 41
 	command.WorkspaceID, command.Name = "ws-alpha", "Alpha"
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}

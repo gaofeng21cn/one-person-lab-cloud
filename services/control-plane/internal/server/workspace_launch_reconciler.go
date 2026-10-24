@@ -314,39 +314,6 @@ type workspaceLaunchReconcileOperation struct {
 	raw                             map[string]json.RawMessage
 }
 
-type workspaceLaunchReconcileCreate struct {
-	DefaultApplicationOperation map[string]any
-	OperationID                 string
-	RequestHash                 string
-	AccountID                   string
-	OwnerUserID                 string
-	Sub2APIUserID               int64
-	WorkspaceKeyGroupID         int64
-	WorkspaceID                 string
-	Name                        string
-	PackageID                   string
-	StorageGB                   int
-	AutoRenew                   bool
-	PriceVersion                string
-	TotalChargeUSDMicros        int64
-	ProviderProfileRef          string
-	PreflightBindingRef         string
-	SpecDigest                  string
-	WorkspaceImageDigest        string
-	PreChargeBalanceMicros      int64
-	AcceptanceBCapacitySlot     bool
-	ResourceBillingEnabled      *bool
-	Mode                        contracts.WorkspaceProvisioningMode
-	CreatedAt                   time.Time
-}
-
-type workspaceLaunchReconcileClaim struct {
-	DefaultApplicationOperation map[string]any
-	AccountID                   string
-	DesiredOperation            map[string]any
-	AcceptanceBCapacitySlot     bool
-}
-
 type workspaceLaunchReconcileCAS struct {
 	OperationID                string
 	ExpectedOperationResult    string
@@ -370,7 +337,6 @@ type workspaceLaunchCanonicalFactRepairCAS struct {
 
 type workspaceLaunchReconcileStore interface {
 	GetRuntimeOperation(context.Context, string) (map[string]any, bool, error)
-	ClaimWorkspaceLaunchReconcile(context.Context, workspaceLaunchReconcileClaim) error
 	PersistWorkspaceLaunchReconcile(context.Context, workspaceLaunchReconcileCAS) error
 }
 
@@ -465,42 +431,6 @@ func (r *WorkspaceLaunchReconciler) clockNow() time.Time {
 		return r.now().UTC()
 	}
 	return time.Now().UTC()
-}
-
-func (r *WorkspaceLaunchReconciler) Create(ctx context.Context, command workspaceLaunchReconcileCreate) (workspaceLaunchReconcileOperation, error) {
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
-	if err != nil {
-		return workspaceLaunchReconcileOperation{}, err
-	}
-	row, err := workspaceLaunchReconcileOperationRow(operation)
-	if err != nil {
-		return workspaceLaunchReconcileOperation{}, err
-	}
-	if err := r.store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{
-		AccountID: command.AccountID, DesiredOperation: row, AcceptanceBCapacitySlot: command.AcceptanceBCapacitySlot, DefaultApplicationOperation: command.DefaultApplicationOperation,
-	}); err != nil {
-		if !errors.Is(err, errWorkspaceLaunchCASConflict) {
-			return workspaceLaunchReconcileOperation{}, err
-		}
-		current, found, readErr := r.store.GetRuntimeOperation(ctx, command.OperationID)
-		if readErr != nil || !found {
-			return workspaceLaunchReconcileOperation{}, err
-		}
-		existing, decodeErr := decodeWorkspaceLaunchReconcileOperation(current)
-		if decodeErr != nil || !workspaceLaunchReconcileSubmissionMatches(existing, command) {
-			return workspaceLaunchReconcileOperation{}, err
-		}
-		if existing.Status == contracts.StatusPending && existing.provisioningMode() != contracts.WorkspaceProvisioningResourceOnly {
-			return r.Reconcile(ctx, command.OperationID)
-		}
-		return existing, nil
-	}
-	// A resource-only request starts at the charge stage. Dispatch it only
-	// from the durable worker, after the request has returned its operation.
-	if operation.provisioningMode() == contracts.WorkspaceProvisioningResourceOnly {
-		return operation, nil
-	}
-	return r.Reconcile(ctx, command.OperationID)
 }
 
 func (r *WorkspaceLaunchReconciler) Reconcile(ctx context.Context, operationID string) (workspaceLaunchReconcileOperation, error) {
@@ -2174,79 +2104,6 @@ func workspaceLaunchReceiptProjectionFor(operation workspaceLaunchReconcileOpera
 	}, nil
 }
 
-func newWorkspaceLaunchReconcileOperation(command workspaceLaunchReconcileCreate) (workspaceLaunchReconcileOperation, error) {
-	if command.CreatedAt.IsZero() {
-		command.CreatedAt = time.Now().UTC()
-	}
-	mode := command.Mode
-	if mode == "" {
-		mode = contracts.WorkspaceProvisioningFull
-	}
-	if err := contracts.ValidateWorkspaceProvisioningMode(mode); err != nil {
-		return workspaceLaunchReconcileOperation{}, errInvalidWorkspaceLaunchOperation
-	}
-	plan, err := contracts.WorkspaceProvisioningStages(mode)
-	if err != nil {
-		return workspaceLaunchReconcileOperation{}, errInvalidWorkspaceLaunchOperation
-	}
-	if strings.TrimSpace(command.OperationID) == "" || strings.TrimSpace(command.RequestHash) == "" || strings.TrimSpace(command.AccountID) == "" ||
-		strings.TrimSpace(command.OwnerUserID) == "" || strings.TrimSpace(command.WorkspaceID) == "" || strings.TrimSpace(command.Name) == "" ||
-		command.Sub2APIUserID <= 0 || strings.TrimSpace(command.PackageID) == "" || command.StorageGB <= 0 ||
-		strings.TrimSpace(command.PriceVersion) == "" || command.TotalChargeUSDMicros < 0 || command.ResourceBillingEnabled != nil && *command.ResourceBillingEnabled && command.TotalChargeUSDMicros <= 0 || strings.TrimSpace(command.ProviderProfileRef) == "" ||
-		strings.TrimSpace(command.PreflightBindingRef) == "" || !workspaceProviderSpecDigestPattern.MatchString(command.SpecDigest) {
-		return workspaceLaunchReconcileOperation{}, errInvalidWorkspaceLaunchOperation
-	}
-	if workspaceLaunchModeRequiresApplicationFacts(mode) && (command.WorkspaceKeyGroupID <= 0 || strings.TrimSpace(command.WorkspaceImageDigest) == "") {
-		return workspaceLaunchReconcileOperation{}, errInvalidWorkspaceLaunchOperation
-	}
-	facts := map[string]any{
-		"schemaVersion":             workspaceLaunchReconcileSchemaVersion,
-		"version":                   1,
-		"stage":                     string(plan[0]),
-		"requestHash":               command.RequestHash,
-		"accountId":                 command.AccountID,
-		"ownerUserId":               command.OwnerUserID,
-		"sub2apiUserId":             command.Sub2APIUserID,
-		"workspaceId":               command.WorkspaceID,
-		"name":                      command.Name,
-		"packageId":                 command.PackageID,
-		"sizeGb":                    command.StorageGB,
-		"autoRenew":                 command.AutoRenew,
-		"priceVersion":              command.PriceVersion,
-		"totalChargeUsdMicros":      command.TotalChargeUSDMicros,
-		"providerProfileRef":        command.ProviderProfileRef,
-		"preflightBindingRef":       command.PreflightBindingRef,
-		"specDigest":                command.SpecDigest,
-		"sub2apiRedeemCode":         monthlyRedeemCode(monthlyEnvironment(), command.OperationID),
-		"preChargeBalanceUsdMicros": command.PreChargeBalanceMicros,
-		"acceptanceBCapacitySlot":   command.AcceptanceBCapacitySlot,
-		"resourceBillingEnabled":    command.ResourceBillingEnabled == nil || *command.ResourceBillingEnabled,
-	}
-	if mode == contracts.WorkspaceProvisioningResourceOnly {
-		facts[workspaceLaunchProvisioningModeFact] = string(mode)
-	} else {
-		facts["workspaceKeyGroupId"] = command.WorkspaceKeyGroupID
-		facts["workspaceImageDigest"] = command.WorkspaceImageDigest
-	}
-	attempts := make(map[contracts.Stage]workspaceLaunchStageAttempt, len(plan)-1)
-	for _, stage := range plan[:len(plan)-1] {
-		attempts[stage] = workspaceLaunchStageAttempt{Max: 1, MaxPendingReadbacks: workspaceLaunchLegacyV3AuthoritativeReadBudget}
-	}
-	facts["attempts"] = attempts
-	facts["observations"] = map[contracts.Stage]workspaceLaunchStageObservation{}
-	rawBytes, err := json.Marshal(facts)
-	if err != nil {
-		return workspaceLaunchReconcileOperation{}, err
-	}
-	row := map[string]any{
-		"id": command.OperationID, "operationId": command.OperationID, "accountId": command.AccountID,
-		"workspaceId": command.WorkspaceID, "resourceId": command.WorkspaceID, "resourceKind": "workspace_launch",
-		"action": workspaceLaunchAction, "status": string(contracts.StatusPending), "result": string(rawBytes),
-		"createdAt": command.CreatedAt.UTC().Format(time.RFC3339Nano),
-	}
-	return decodeWorkspaceLaunchReconcileOperation(row)
-}
-
 func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunchReconcileOperation, error) {
 	result := stringValue(row["result"])
 	var raw map[string]json.RawMessage
@@ -2893,18 +2750,6 @@ func validWorkspaceLaunchResumeAuthorizationConsumedAt(value string) bool {
 	return err == nil && !consumedAt.IsZero()
 }
 
-func workspaceLaunchReconcileSubmissionMatches(operation workspaceLaunchReconcileOperation, command workspaceLaunchReconcileCreate) bool {
-	commandMode := command.Mode
-	if commandMode == "" {
-		commandMode = contracts.WorkspaceProvisioningFull
-	}
-	return operation.ID == command.OperationID && operation.stringFact("requestHash") == command.RequestHash &&
-		operation.provisioningMode() == commandMode &&
-		operation.stringFact("accountId") == command.AccountID && operation.stringFact("ownerUserId") == command.OwnerUserID &&
-		operation.int64Fact("sub2apiUserId") == command.Sub2APIUserID && operation.int64Fact("workspaceKeyGroupId") == command.WorkspaceKeyGroupID &&
-		operation.stringFact("workspaceId") == command.WorkspaceID
-}
-
 func reduceWorkspaceLaunchStageObservation(operation *workspaceLaunchReconcileOperation, observation workspaceLaunchStageObservation) (workspaceLaunchStageObservation, error) {
 	if operation == nil || observation.State != workspaceLaunchStageReady {
 		return workspaceLaunchStageObservation{}, errInvalidWorkspaceLaunchOperation
@@ -2990,11 +2835,6 @@ func workspaceLaunchReconcileIdentityMatches(current, desired map[string]any) bo
 			existing.stringFact("requestHash") == next.stringFact("requestHash") && next.Version == existing.Version+1 && workspaceLaunchCloseoutTransitionMatches(existing.Closeout, next.Closeout)
 	}
 	return false
-}
-
-func workspaceLaunchReconcileAcceptanceSlot(row map[string]any) bool {
-	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
-	return err == nil && operation.boolFact("acceptanceBCapacitySlot")
 }
 
 func workspaceLaunchReconcileResultSummary(operation workspaceLaunchReconcileOperation) string {

@@ -19,7 +19,7 @@ func workspaceLaunchResourceOnlyUnitCommand() workspaceLaunchReconcileCreate {
 }
 
 func TestWorkspaceLaunchResourceOnlyReconcilerCompletesWithoutApplicationFacts(t *testing.T) {
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchResourceOnlyUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchResourceOnlyUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestWorkspaceLaunchResourceOnlyReconcilerCompletesWithoutApplicationFacts(t
 }
 
 func TestWorkspaceLaunchResourceOnlyDecodeRejectsApplicationFacts(t *testing.T) {
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchResourceOnlyUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchResourceOnlyUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestWorkspaceLaunchResourceOnlyDecodeRejectsApplicationFacts(t *testing.T) 
 }
 
 func TestWorkspaceLaunchDecodeRejectsInvalidProvisioningModeFact(t *testing.T) {
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchResourceOnlyUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchResourceOnlyUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,10 +103,10 @@ func TestWorkspaceLaunchDecodeRejectsInvalidProvisioningModeFact(t *testing.T) {
 func TestWorkspaceLaunchFullModeStaysApplicationCoupledByDefault(t *testing.T) {
 	command := workspaceLaunchUnitCommand()
 	command.WorkspaceImageDigest = ""
-	if _, err := newWorkspaceLaunchReconcileOperation(command); !errors.Is(err, errInvalidWorkspaceLaunchOperation) {
+	if _, err := newWorkspaceLaunchFixtureOperation(command); !errors.Is(err, errInvalidWorkspaceLaunchOperation) {
 		t.Fatalf("full-mode command without an image digest error = %v, want %v", err, errInvalidWorkspaceLaunchOperation)
 	}
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestWorkspaceLaunchResourceOnlyDescriptorDriftsRequestHashFromFull(t *testi
 }
 
 func TestWorkspaceLaunchActivationRowResourceOnlyKeepsApplicationBindingEmpty(t *testing.T) {
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchResourceOnlyUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchResourceOnlyUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestWorkspaceLaunchActivationRowResourceOnlyKeepsApplicationBindingEmpty(t 
 
 func TestWorkspaceLaunchReadbackPublishesThePersistedProvisioningMode(t *testing.T) {
 	for _, command := range []workspaceLaunchReconcileCreate{workspaceLaunchUnitCommand(), workspaceLaunchResourceOnlyUnitCommand()} {
-		operation, err := newWorkspaceLaunchReconcileOperation(command)
+		operation, err := newWorkspaceLaunchFixtureOperation(command)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -68,7 +68,7 @@ func (l *workspaceLaunchRepairLedger) ListReceipts(_ context.Context, query clie
 
 func workspaceLaunchRuntimeRepairFixture(t *testing.T) workspaceLaunchReconcileOperation {
 	t.Helper()
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}

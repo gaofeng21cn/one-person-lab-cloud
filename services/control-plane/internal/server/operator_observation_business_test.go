@@ -231,7 +231,7 @@ func TestOperatorRuntimeInventoryKeepsUnmatchedAndDuplicateObjects(t *testing.T)
 
 func TestOperatorRuntimeMissingBeforeLaunchRuntimeStageIsNotMissingMachine(t *testing.T) {
 	command := workspaceLaunchUnitCommand()
-	launch, err := newWorkspaceLaunchReconcileOperation(command)
+	launch, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +248,7 @@ func TestOperatorRuntimeMissingBeforeLaunchRuntimeStageIsNotMissingMachine(t *te
 func TestOperatorRuntimeWithoutWorkspacePreservesRetainedLaunchOwnership(t *testing.T) {
 	store := newMemoryTableStore()
 	command := workspaceLaunchUnitCommand()
-	launch, err := newWorkspaceLaunchReconcileOperation(command)
+	launch, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}
