@@ -249,6 +249,17 @@ services:
       OPL_LEDGER_PEER_TOKENS: ${OPL_LEDGER_PEER_TOKENS:?Set OPL_LEDGER_PEER_TOKENS}
       OPL_INTERNAL_SERVICE_TOKEN: ${OPL_INTERNAL_SERVICE_TOKEN:?Set OPL_INTERNAL_SERVICE_TOKEN}
       OPL_LEDGER_CAPABILITY_KEY: ${OPL_LEDGER_CAPABILITY_KEY:?Set OPL_LEDGER_CAPABILITY_KEY}
+      # The Ledger re-reads the accepted offer, the Workspace commit and the
+      # Gateway charge from their own owners before it stores a receipt. A
+      # missing peer address fails those typed RPCs closed, so the addresses
+      # and the peer tokens are part of this installation's declaration rather
+      # than an optional readback.
+      OPL_RESOURCE_CATALOG_ADDR: resource-catalog:8186
+      OPL_RESOURCE_CATALOG_TOKEN: ${OPL_RESOURCE_CATALOG_TOKEN}
+      OPL_WORKSPACE_ADDR: workspace:8184
+      OPL_WORKSPACE_TOKEN: ${OPL_WORKSPACE_TOKEN}
+      OPL_GATEWAY_ADDR: tenant:8187
+      OPL_GATEWAY_TOKEN: ${OPL_CLOUD_IDENTITY_TOKEN}
       OPL_GRPC_CERT_FILE: /pki/ledger.crt
       OPL_GRPC_KEY_FILE: /pki/ledger.key
     volumes: *opl-v2-pki
@@ -474,13 +485,32 @@ services:
       OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST: ${OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST:-127.0.0.1}
       OPL_FABRIC_LOCAL_DOCKER_PROBE_IMAGE: ${OPL_CLOUD_IMAGE}
       OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER: ${OPL_LOCAL_V2_GATEWAY_CONTAINER:-opl-cloud-local-v2-control-plane}
-      OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: /var/lib/opl/fabric/storage
-      OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT: /var/lib/opl/fabric/secret
+      # The provider creates Workspace containers on the host daemon and
+      # bind-mounts these two roots into them, so the installation declares the
+      # host paths and the same paths are mounted here. A container-private
+      # volume would put the recorded storage beside an empty host directory.
+      OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: ${OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT:?Set OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT to the Workspace storage root on this host}
+      OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT: ${OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT:?Set OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT to the Workspace secret root on this host}
       OPL_FABRIC_LOCAL_DOCKER_ALLOW_UNBOUNDED_SWAP: ${OPL_FABRIC_LOCAL_DOCKER_ALLOW_UNBOUNDED_SWAP:-0}
+      # The one package profile this installation executes, and the immutable
+      # application image references it may run. Fabric refuses startup without
+      # the profile and refuses a deploy whose image is not trusted here.
+      OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: ${OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON:?Set OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON}
+      OPL_FABRIC_LOCAL_DOCKER_TRUSTED_WORKSPACE_IMAGES: ${OPL_FABRIC_LOCAL_DOCKER_TRUSTED_WORKSPACE_IMAGES:?Set OPL_FABRIC_LOCAL_DOCKER_TRUSTED_WORKSPACE_IMAGES}
       OPL_GRPC_CERT_FILE: /pki/fabric.crt
       OPL_GRPC_KEY_FILE: /pki/fabric.key
     volumes:
       - opl-cloud-local-v2-fabric:/var/lib/opl/fabric
+      # The provider drives the host daemon; it has no daemon of its own.
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+      - type: bind
+        source: ${OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT:?Set OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT}
+        target: ${OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT:?Set OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT}
+      - type: bind
+        source: ${OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT:?Set OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT}
+        target: ${OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT:?Set OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT}
       - type: bind
         source: ${OPL_LOCAL_V2_PKI_DIR}
         target: /pki
