@@ -106,6 +106,8 @@ function j0ReadyReceipt(provider) {
 const qualificationRequest = (provider, overrides = {}) => createQualificationRequest({
   candidate: candidateReceipt(),
   accountId: ACCOUNT_ID,
+  tenantId: "tenant-qualification",
+  billingSubjectId: "billing-9001",
   product: {
     resourceType: "workspace",
     applicationSelection: { kind: "opl_app", runtimeVersionId: OWNER_RUNTIME_VERSION_ID },
@@ -143,7 +145,8 @@ function result(payload, { status = 200, headers = {} } = {}) {
  * idempotency key admits one order, so a redelivery is answered from the order
  * already admitted rather than promoted into a second purchase.
  */
-function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MICROS, loseResponseOnce = false,
+function controlPlane({
+  workspaceReadbackUnavailable = false, walletBeforeMicros = "999999999", quoteMicros = QUOTE_MICROS, loseResponseOnce = false,
   billingReceiptUnavailable = false, operationStatus = "succeeded" } = {}) {
   const state = {
     orders: new Map(), byKey: new Map(), posted: 0, charges: [], commands: [], quotes: [],
@@ -190,6 +193,21 @@ function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MI
           ? { response: { status: 200 }, payload: ownerOperationPayload(admitted) }
           : { response: { status: 404 }, payload: null };
       }
+      if (/^\/api\/v2\/workspaces\/[^/]+$/.test(path)) {
+        if (workspaceReadbackUnavailable) return { response: { status: 500 }, payload: null };
+        const workspaceId = decodeURIComponent(path.split("/").pop());
+        if (workspaceId !== state.workspaceId) return { response: { status: 404 }, payload: null };
+        return { response: { status: 200 }, payload: {
+          id: workspaceId, name: "Qualification workspace", status: "running",
+          capabilityVersionId: "capability-0001", applicationAvailability: "available", accessUrl: ENTRY_URL,
+        } };
+      }
+      if (/^\/api\/v2\/workspaces\/[^/]+\/deployments\?limit=100$/.test(path)) {
+        const workspaceId = decodeURIComponent(path.split("/")[4]);
+        return { response: { status: 200 }, payload: { items: [{
+          id: APPLICATION_OPERATION_ID, workspaceId, status: "active", runtimeInstanceId: "rt-0123456789abcdef", capabilityVersionId: "capability-0001",
+        }] } };
+      }
       throw new Error(`unexpected request ${path}`);
     },
     async json(path, init = {}) {
@@ -218,6 +236,9 @@ function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MI
           permissions: [], csrfToken: "owner-csrf", expiresAt: "2026-10-18T12:00:00Z",
         });
       }
+      if (path === "/api/v2/tenant") {
+        return result({ id: "tenant-qualification", name: "Qualification Tenant", status: "active", billingSub2apiUserId: "billing-9001" });
+      }
       // The wallet the Gateway owner holds, read under the owner session's own
       // authorization.
       if (path === "/api/v2/wallet") {
@@ -226,45 +247,39 @@ function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MI
           currency: "USD", fetchedAt: "2026-10-18T00:00:00Z",
         });
       }
-      if (path.startsWith("/api/workspaces?")) {
-        return result(envelope("control-plane", {
-          items: [{
-            id: state.workspaceId, url: ENTRY_URL, openable: true,
-            currentApplication: { status: "ready", entryUrl: ENTRY_URL, operationId: APPLICATION_OPERATION_ID },
-          }],
-          total: 1, page: 1, pageSize: 20,
-        }));
+      if (/^\/api\/v2\/workspaces\/[^/]+$/.test(path)) {
+        const workspaceId = decodeURIComponent(path.split("/").pop());
+        return result({ id: workspaceId, name: "Qualification workspace", status: "running",
+          capabilityVersionId: "capability-0001", applicationAvailability: "available", accessUrl: ENTRY_URL });
       }
-      if (/^\/api\/workspaces\/[^/]+\/runtime-status$/.test(path)) {
-        return result(envelope("fabric", {
-          workspaceId: state.workspaceId, ready: true, status: "running", url: ENTRY_URL,
-          runtimeId: "rt-0123456789abcdef", checks: [{ name: "console", ok: true }, { name: "gateway", ok: true }],
-          currentApplication: { operationId: APPLICATION_OPERATION_ID },
-        }));
+      if (/^\/api\/v2\/workspaces\/[^/]+\/deployments\?limit=100$/.test(path)) {
+        const workspaceId = decodeURIComponent(path.split("/")[4]);
+        return result({ items: [{ id: APPLICATION_OPERATION_ID, workspaceId, status: "active",
+          runtimeInstanceId: "rt-0123456789abcdef" }] });
       }
-      if (path.startsWith("/api/billing/receipts?")) {
-        // The receipt of an owner order is found in the Ledger's own inventory,
-        // so an unavailable inventory is an unavailable readback.
+      if (/^\/api\/v2\/workspaces\/[^/]+\/transactions\?limit=100$/.test(path)) {
+        const workspaceId = decodeURIComponent(path.split("/")[4]);
+        return result({ items: [{
+          id: "wallet-charge-1", workspaceId, kind: "charge", status: "confirmed",
+          amountUSDMicros: quoteMicros, receiptId: "rcpt_qualification_1",
+          externalReference: "native-charge-code", createdAt: "2026-10-18T00:00:05Z",
+          updatedAt: "2026-10-18T00:00:05Z",
+        }] });
+      }
+      if (/^\/api\/v2\/workspaces\/[^/]+\/financial-receipts\/[^/]+$/.test(path)) {
+        const workspaceId = decodeURIComponent(path.split("/")[4]);
+        const receiptId = decodeURIComponent(path.split("/").pop());
         if (billingReceiptUnavailable) throw new Error(`HTTP GET ${path} returned 404`);
-        return result(envelope("ledger", {
-          receipts: [{
-            receiptId: "rcpt_qualification_1", workspaceId: state.workspaceId, operationId: state.operationId,
-            type: "billing.workspace_purchased.v1", status: "completed",
-            chargeReference: "opl:workspace-launch:charge:0001", totalUsdMicros: quoteMicros,
-            fulfillment: { computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001" },
-          }],
-          hasMore: false,
-        }));
-      }
-      if (/^\/api\/billing\/receipts\/[^/]+$/.test(path)) {
-        if (billingReceiptUnavailable) throw new Error(`HTTP GET ${path} returned 404`);
-        return result(envelope("ledger", {
-          receiptId: decodeURIComponent(path.split("/").pop()), workspaceId: state.workspaceId,
-          operationId: state.operationId,
-          type: "billing.workspace_purchased.v1", status: "completed",
-          chargeReference: "opl:workspace-launch:charge:0001", totalUsdMicros: quoteMicros,
-          fulfillment: { computeAllocationId: "ca-0001", storageId: "st-0001", attachmentId: "at-0001" },
-        }));
+        return result({
+          workspaceId,
+          receipt: { id: receiptId, kind: "wallet_action", owner: "workspace", outcome: "confirmed", operationId: state.operationId,
+            evidenceSummary: "confirmed charge", createdAt: "2026-10-18T00:00:05Z" },
+          walletOperation: { id: "wallet-charge-1", workspaceId, kind: "charge", status: "confirmed",
+            amountUSDMicros: quoteMicros, receiptId, externalReference: "native-charge-code",
+            createdAt: "2026-10-18T00:00:05Z", updatedAt: "2026-10-18T00:00:05Z" },
+          quote: { id: "quote_qualification_1", status: "accepted", totalUSDMicros: quoteMicros, lineItems: [] },
+          evidenceDigest: `sha256:${"e".repeat(64)}`,
+        });
       }
       // The owner owns the catalog a buyer prices from. The Console reads it the
       // same way: the first approved Runtime Release, the first available
@@ -285,6 +300,11 @@ function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MI
           computePlanId: "cp-qualification", storagePlanId: "sp-qualification",
           modelSelections: [], periodMonths: 1, totalUSDMicros: quoteMicros, status: "offered",
         }, { status: 201 });
+      }
+      if (/^\/api\/v2\/quotes\/[^/]+$/.test(path)) {
+        return result({ id: "quote_qualification_1", purpose: "deploy", runtimeVersionId: "rv-qualification",
+          computePlanId: "cp-qualification", storagePlanId: "sp-qualification",
+          modelSelections: [], periodMonths: 1, totalUSDMicros: quoteMicros, status: "offered" });
       }
       if (path === "/api/v2/workspaces" && init.method === "POST") {
         const key = init.headers["idempotency-key"];
@@ -808,11 +828,7 @@ test("a redelivery resumes the original Local-Docker purchase and buys nothing t
   assert.equal(second.receipt.mutations.observed.refunds, 0);
   assert.equal(second.receipt.mutations.observed.workspaceDeletions, 0);
   assert.equal(second.receipt.mutations.observed.managedKeys, 0);
-  assert.equal(
-    BigInt(second.receipt.accounting.walletBeforeUsdMicros) - BigInt(second.receipt.accounting.walletAfterUsdMicros),
-    0n,
-    "the replay's wallet stood still",
-  );
+  assert.equal(second.receipt.checks.charge_receipted, true, "the original charge is still the evidence");
 });
 
 test("a lost answer to the command recovers the admitted order, and a lost owner readback stays unknown", async () => {
@@ -825,13 +841,13 @@ test("a lost answer to the command recovers the admitted order, and a lost owner
   assert.equal(recovered.receipt.operation.resumed, false);
   assert.equal(recovered.receipt.mutations.observed.purchases, 1);
 
-  const lostPlatform = controlPlane({ billingReceiptUnavailable: true });
+  const lostPlatform = controlPlane({ workspaceReadbackUnavailable: true });
   const lost = await run(qualificationRequest(LOCAL_DOCKER_PROVIDER), adapterFor(
     lostPlatform, qualificationRequest(LOCAL_DOCKER_PROVIDER),
   ));
   assert.equal(lost.state, "unknown");
   assert.equal(lost.receipt.reason, "owner_readback_unavailable");
-  assert.equal(lost.receipt.checks.charge_receipted, false);
+  assert.equal(lost.receipt.checks.charge_receipted, true, "the charge was read before the delivery readback was lost");
   assert.equal(lost.receipt.mutations.observed.purchases, 1, "the purchase really was admitted");
 });
 

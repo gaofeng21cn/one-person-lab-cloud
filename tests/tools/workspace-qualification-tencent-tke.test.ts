@@ -131,6 +131,8 @@ function j0ReadyReceipt(provider) {
 const qualificationRequest = (provider, overrides = {}) => createQualificationRequest({
   candidate: candidateReceipt(),
   accountId: ACCOUNT_ID,
+  tenantId: "tenant-qualification",
+  billingSubjectId: "billing-9001",
   product: {
     resourceType: "workspace",
     applicationSelection: { kind: "opl_app", runtimeVersionId: OWNER_RUNTIME_VERSION_ID },
@@ -161,7 +163,7 @@ const qualificationRequest = (provider, overrides = {}) => createQualificationRe
  * and refuses its write.
  */
 function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MICROS, loseResponseOnce = false,
-  noBillingReceipt = false, orderStatus = "succeeded" } = {}) {
+  noBillingReceipt = false, orderStatus = "succeeded", workspaceReadbackUnavailable = false } = {}) {
   const state = {
     orders: new Map(), byKey: new Map(), quotes: new Map(), quoteById: new Map(),
     posted: 0, charges: [], commands: [], calls: [],
@@ -207,6 +209,10 @@ function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MI
         actorId: "9001", displayName: ACCOUNT_EMAIL, tenantId: "tenant-qualification",
         permissions: [], csrfToken: "owner-csrf", expiresAt: "2026-10-18T12:00:00Z",
       } };
+    }
+    if (path === "/api/v2/tenant") {
+      return { status: 200, payload: { id: "tenant-qualification", name: "Qualification Tenant",
+        status: "active", billingSub2apiUserId: "billing-9001" } };
     }
     // The wallet the Gateway owner holds, read under the owner session's own
     // authorization.
@@ -313,44 +319,40 @@ function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MI
       if (!admitted) throw new Error(`HTTP GET ${path} returned 404`);
       return { status: 200, payload: ownerOperation(admitted) };
     }
-    // The Ledger's own inventory of receipts. The receipt of an owner order
-    // is found in that inventory, bound to the order and the Workspace the
-    // owner minted.
-    if (path.startsWith("/api/billing/receipts?")) {
-      if (noBillingReceipt) throw new Error(`HTTP GET ${path} returned 404`);
-      return { status: 200, payload: {
-        source: "ledger", available: true, status: "available",
-        data: { receipts: state.receiptId ? [chargeReceipt()] : [], hasMore: false },
-      } };
+    if (/^\/api\/v2\/workspaces\/[^/]+$/.test(path)) {
+      if (workspaceReadbackUnavailable) return { status: 500, payload: null };
+      const workspaceId = decodeURIComponent(path.split("/").pop());
+      return { status: 200, payload: { id: workspaceId, name: "Qualification workspace", status: "running",
+        capabilityVersionId: "capability-0001", applicationAvailability: "available", accessUrl: ENTRY_URL } };
     }
-    if (/^\/api\/billing\/receipts\/[^/]+$/.test(path)) {
+    if (/^\/api\/v2\/workspaces\/[^/]+\/deployments\?limit=100$/.test(path)) {
+      const workspaceId = decodeURIComponent(path.split("/")[4]);
+      return { status: 200, payload: { items: [{ id: APPLICATION_OPERATION_ID, workspaceId,
+        status: "active", runtimeInstanceId: "rt-0123456789abcdef" }] } };
+    }
+    if (/^\/api\/v2\/workspaces\/[^/]+\/transactions\?limit=100$/.test(path)) {
       if (noBillingReceipt) throw new Error(`HTTP GET ${path} returned 404`);
+      const workspaceId = decodeURIComponent(path.split("/")[4]);
+      return { status: 200, payload: { items: state.receiptId ? [{
+        id: "wallet-charge-1", workspaceId, kind: "charge", status: "confirmed",
+        amountUSDMicros: quoteMicros, receiptId: state.receiptId,
+        externalReference: "native-charge-code", createdAt: "2026-10-18T00:00:05Z",
+        updatedAt: "2026-10-18T00:00:05Z",
+      }] : [] } };
+    }
+    if (/^\/api\/v2\/workspaces\/[^/]+\/financial-receipts\/[^/]+$/.test(path)) {
+      if (noBillingReceipt) throw new Error(`HTTP GET ${path} returned 404`);
+      const workspaceId = decodeURIComponent(path.split("/")[4]);
       const receiptId = decodeURIComponent(path.split("/").pop());
-      if (receiptId !== state.receiptId) return { status: 404, payload: null };
       return { status: 200, payload: {
-        source: "ledger", available: true, status: "available",
-        data: chargeReceipt(),
-      } };
-    }
-    // The retained Control Plane projection still holds the Workspace and
-    // the application installation the platform committed beside it.
-    if (path.startsWith("/api/workspaces?")) {
-      return { status: 200, payload: {
-        source: "control-plane", available: true, status: "available",
-        data: { items: [{
-          id: state.workspaceId, url: ENTRY_URL, openable: true,
-          currentApplication: { status: "ready", entryUrl: ENTRY_URL, operationId: APPLICATION_OPERATION_ID },
-        }], total: 1 },
-      } };
-    }
-    if (/^\/api\/workspaces\/[^/]+\/runtime-status$/.test(path)) {
-      return { status: 200, payload: {
-        source: "fabric", available: true, status: "available",
-        data: {
-          workspaceId: state.workspaceId, ready: true, status: "running", url: ENTRY_URL,
-          runtimeId: "rt-0123456789abcdef", checks: [{ name: "console", ok: true }, { name: "gateway", ok: true }],
-          currentApplication: { operationId: APPLICATION_OPERATION_ID },
-        },
+        workspaceId,
+        receipt: { id: receiptId, kind: "wallet_action", owner: "workspace", outcome: "confirmed", operationId: state.operationId,
+          evidenceSummary: "confirmed charge", createdAt: "2026-10-18T00:00:05Z" },
+        walletOperation: { id: "wallet-charge-1", workspaceId, kind: "charge", status: "confirmed",
+          amountUSDMicros: quoteMicros, receiptId, externalReference: "native-charge-code",
+          createdAt: "2026-10-18T00:00:05Z", updatedAt: "2026-10-18T00:00:05Z" },
+        quote: { id: state.quoteId, status: "accepted", totalUSDMicros: quoteMicros, lineItems: [] },
+        evidenceDigest: `sha256:${"e".repeat(64)}`,
       } };
     }
     throw new Error(`unexpected path ${path}`);
@@ -366,6 +368,17 @@ function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MI
         return admitted
           ? { response: { status: 200 }, payload: ownerOperation(admitted) }
           : { response: { status: 404 }, payload: null };
+      }
+      if (/^\/api\/v2\/workspaces\/[^/]+$/.test(path)) {
+        if (workspaceReadbackUnavailable) return { response: { status: 500 }, payload: null };
+        const workspaceId = decodeURIComponent(path.split("/").pop());
+        return { response: { status: 200 }, payload: { id: workspaceId, name: "Qualification workspace",
+          status: "running", capabilityVersionId: "capability-0001", applicationAvailability: "available", accessUrl: ENTRY_URL } };
+      }
+      if (/^\/api\/v2\/workspaces\/[^/]+\/deployments\?limit=100$/.test(path)) {
+        const workspaceId = decodeURIComponent(path.split("/")[4]);
+        return { response: { status: 200 }, payload: { items: [{ id: APPLICATION_OPERATION_ID, workspaceId,
+          status: "active", runtimeInstanceId: "rt-0123456789abcdef" }] } };
       }
       if (/^\/api\/workspace-launches\/[^/]+$/.test(path)) return retainedLaunch();
       throw new Error(`unexpected request ${path}`);
@@ -813,11 +826,7 @@ test("a redelivery resumes the original TKE purchase and buys nothing twice", as
   assert.equal(second.receipt.mutations.observed.refunds, 0);
   assert.equal(second.receipt.mutations.observed.workspaceDeletions, 0);
   assert.equal(second.receipt.mutations.observed.managedKeys, 0);
-  assert.equal(
-    BigInt(second.receipt.accounting.walletBeforeUsdMicros) - BigInt(second.receipt.accounting.walletAfterUsdMicros),
-    0n,
-    "the replay's wallet stood still",
-  );
+  assert.equal(second.receipt.checks.charge_receipted, true, "the original charge is still the evidence");
 });
 
 test("a lost answer to the command recovers the admitted order, and a lost owner readback stays unknown", async () => {
@@ -835,13 +844,13 @@ test("a lost answer to the command recovers the admitted order, and a lost owner
   assert.match(recovered.receipt.operation.operationId, OWNER_MINTED_IDENTITY);
   assert.match(recovered.receipt.operation.workspaceId, OWNER_MINTED_IDENTITY);
 
-  const lostPlatform = controlPlane({ noBillingReceipt: true });
+  const lostPlatform = controlPlane({ workspaceReadbackUnavailable: true });
   const lost = await run(qualificationRequest(TENCENT_TKE_PROVIDER), adapterFor(
     lostPlatform, qualificationRequest(TENCENT_TKE_PROVIDER),
   ));
   assert.equal(lost.state, "unknown");
   assert.equal(lost.receipt.reason, "owner_readback_unavailable");
-  assert.equal(lost.receipt.checks.charge_receipted, false);
+  assert.equal(lost.receipt.checks.charge_receipted, true, "the charge was read before the delivery readback was lost");
   assert.equal(lost.receipt.mutations.observed.purchases, 1, "the purchase really was admitted");
 });
 

@@ -157,8 +157,8 @@ The existing `customer_reads` producer remains a separate receipt; the business
 producer does not call it, copy its reads or replace its result.
 
 The producer receives the declared Candidate receipt digest, the deployment
-binding, the account/package declarations, the live authority class and the J0
-READY receipt. The workflow materializes the deployment binding and J0 receipt
+binding, the account, RuntimeVersion, compute/storage plan declarations, the
+live authority class and the J0 READY receipt. The workflow materializes the deployment binding and J0 receipt
 under `$RUNNER_TEMP` with mode `0600`; the producer derives the Candidate digest
 from the exact bytes, checks it against the declaration and the deployment
 binding, validates the original installation receipt/run against the same
@@ -171,9 +171,11 @@ shared `opl.workspace-qualification.purchase.v1` receipt.
 The orchestrator's purchase step delegates to the merged deployed buyer,
 `runDeployedWorkspacePurchase`. The producer hands it the authenticated owner
 transport from the opened provider scope and the protected origin, and the
-buyer performs the source-envelope account and wallet reads, the declared
-account email digest check, the shared quote policy and the single purchase or
-replay through the shared purchase core. The buyer's refusal codes are mapped
+buyer checks the retained source-envelope customer identity, the live
+CloudIdentity session and the declared Tenant's active billing subject, then
+issues the single native quote/purchase or replays its original command through
+the shared purchase core. Current catalog availability cannot block an already
+accepted order. Personal-wallet deltas do not prove the Tenant payer's charge. The buyer's refusal codes are mapped
 onto the shared terminal reasons. The orchestrator consumes the buyer's bounded
 result and continues with the owner charge receipt, Workspace and Runtime
 readbacks, so the deployed buyer is actually exercised rather than copied or
@@ -211,6 +213,13 @@ receipt. The producer requires the `cloud-business-qualification` protected-cont
 declaration (a marker that the step came from that protected context, not a
 GitHub environment lookup), `vars.OPL_QUALIFICATION_ORIGIN` and the independent
 customer Secrets `OPL_QUALIFICATION_CUSTOMER_EMAIL`/`OPL_QUALIFICATION_CUSTOMER_PASSWORD`.
+It also requires `OPL_QUALIFICATION_TENANT_ID` and
+`OPL_QUALIFICATION_BILLING_SUBJECT_ID`, compared with live owner readback before
+purchase. Its product arguments are `--runtime-version-id`, `--compute-plan-id`
+and `--storage-plan-id`; `--package-id` no longer selects a native Workspace.
+The current Instance workflow still passes that old argument and does not export
+the two declarations. Its owner must migrate and verify the consumer before this
+producer is usable there; see [the remaining qualification work](../roadmap.md#native-v2-qualification-and-cp-retirement-1042).
 It deliberately requires no cross-repository evidence token: it reads only the
 files this workflow materialized and its own J0 receipt, so it has no
 cross-repository read to authorize. The workflow's own Instance evidence-read
@@ -222,7 +231,7 @@ provider scope opens; the workflow does not create any of them.
 Only the shared orchestrator's actual qualification result becomes the
 qualification receipt state. A settled receipt is preserved, and a blocked,
 failed, unknown or recovery-required receipt is preserved before the workflow
-fails. Deployment health is recorded but never moves the business result. The
+fails. Deployment health is recorded but never moves the business result.
 The Instance run uploads the exact artifact `cloud-business-qualification`. It
 contains `business-qualification.json` and `product-source.json`, plus
 `business-qualification.purchase.json` when the buyer reached a receipt; the
@@ -238,11 +247,13 @@ is `false`, and they do not admit a release by themselves.
 
 This section describes source wiring, not a protected run. No fabric sandbox
 qualification and no protected business qualification run have produced a real
-J0 READY or settled receipt (the tests inject only the transport). #926 remains
-open until the protected environment declares the required account, package,
-origin, customer credentials and provider boundary, a fabric sandbox emits the
-exact-Candidate J0 receipt, and the protected Instance lane emits the settled
-business receipt for the same Candidate.
+J0 READY or settled receipt (the tests inject only the transport). The producer
+source from #926 is delivered; its historical issue state does not establish
+protected acceptance. #1042 tracks the current consumer migration and exact-
+Candidate qualification: the protected environment must declare the account,
+Tenant, payer, RuntimeVersion, plans, origin, credentials and provider boundary,
+a fabric sandbox must emit the exact-Candidate J0 receipt, and the Instance lane
+must emit the settled business receipt for that same Candidate.
 
 ### Publication
 

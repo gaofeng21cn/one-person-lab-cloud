@@ -365,3 +365,32 @@ test("a missing trailing separator is a different identity, so the rule cannot b
   const naiveJoin = (parts) => createHash("sha1").update(parts.join("\0")).digest("hex").slice(0, 18);
   assert.notEqual(stableID("account", "customer@example.test"), naiveJoin(["account", "customer@example.test"]));
 });
+
+test("purchase evidence pages Gateway transactions and binds the exact Ledger obligation", async () => {
+  const { readWorkspacePurchaseEvidence } = await import("../../tools/workspace-purchase-core.ts");
+  const charge = { id: "charge-original", workspaceId: WORKSPACE_ID, kind: "charge", status: "confirmed", amountUSDMicros: "52580000", receiptId: "receipt-original" };
+  const financial = {
+    workspaceId: WORKSPACE_ID,
+    receipt: { id: charge.receiptId, kind: "wallet_action", owner: "workspace", outcome: "confirmed", operationId: OPERATION_ID },
+    walletOperation: charge,
+    quote: { id: QUOTE_ID, status: "accepted", totalUSDMicros: charge.amountUSDMicros },
+    evidenceDigest: `sha256:${"a".repeat(64)}`,
+  };
+  const calls = [];
+  const makeHTTP = (changed = financial, second = { items: [charge] }) => ({ async json(path) {
+    calls.push(path);
+    if (path.includes("/financial-receipts/")) return { payload: changed };
+    return { payload: path.includes("cursor=") ? second : { items: [], nextCursor: "page-two" } };
+  } });
+  const binding = { workspaceId: WORKSPACE_ID, operationId: OPERATION_ID, quoteId: QUOTE_ID, amountUsdMicros: "52580000" };
+  assert.equal((await readWorkspacePurchaseEvidence(makeHTTP(), AUTH, binding)).receipt.id, charge.receiptId);
+  assert.ok(calls.some((path) => path.endsWith("?limit=100&cursor=page-two")));
+  for (const changed of [
+    { ...financial, receipt: { ...financial.receipt, operationId: "another-order" } },
+    { ...financial, receipt: { ...financial.receipt, owner: "serve" } },
+    { ...financial, quote: { ...financial.quote, id: "another-quote" } },
+    { ...financial, quote: { ...financial.quote, status: "offered" } },
+  ]) await assert.rejects(() => readWorkspacePurchaseEvidence(makeHTTP(changed), AUTH, binding), /purchase evidence/);
+  await assert.rejects(() => readWorkspacePurchaseEvidence(makeHTTP(financial, { items: [], nextCursor: "page-two" }), AUTH, binding), /cursor/);
+  await assert.rejects(() => readWorkspacePurchaseEvidence(makeHTTP(financial, { items: [charge, { ...charge, id: "duplicate-charge" }] }), AUTH, binding), /purchase evidence/);
+});

@@ -400,7 +400,7 @@ export function qualificationIdempotencyKey({ candidateReceiptDigest, accountDig
  * producer working without widening every other provider's acceptance.
  */
 export function createQualificationRequest({
-  candidate, accountId, product, provider, scope, authority, source, legacyReceiptKinds = []
+  candidate, accountId, tenantId, billingSubjectId, product, provider, scope, authority, source, legacyReceiptKinds = []
 }) {
   const admitted = validateCloudCandidateReceipt(candidate);
   const receiptDigest = candidateReceiptDigest(admitted);
@@ -411,6 +411,14 @@ export function createQualificationRequest({
     throw qualificationContractError("qualification_source_identity_invalid");
   }
   const tenant = qualificationTenantScope(accountId, receiptDigest);
+  if (![tenantId, billingSubjectId].every((id) => typeof id === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(id))) {
+    throw qualificationContractError("qualification_tenant_binding_invalid");
+  }
+  const declaredTenant = Object.freeze({
+    ...tenant,
+    tenantId,
+    billingSubjectId,
+  });
   const declaredProduct = qualificationProduct(product);
   const legacy = Array.isArray(legacyReceiptKinds)
     ? legacyReceiptKinds.filter((kind) => typeof kind === "string" && kind.trim())
@@ -424,7 +432,7 @@ export function createQualificationRequest({
       cloudImageDigest: image.indexDigest
     }),
     source: Object.freeze({ sha: source.sha, tree: source.tree, clean: true }),
-    tenant,
+    tenant: declaredTenant,
     product: declaredProduct,
     provider: profile.provider,
     profile,
@@ -562,6 +570,9 @@ export function validateBusinessQualificationReceipt(value) {
     if (typeof value.checks[name] !== "boolean") invalidReceipt();
   }
   const quote = micros(value.accounting.quoteUsdMicros);
+  // Null means no personal-wallet assertion was made. Retained numeric fields
+  // still must be valid money; removing their checks would accept corrupt
+  // historical receipts as well as the new owner-scoped evidence.
   const before = micros(value.accounting.walletBeforeUsdMicros);
   const after = micros(value.accounting.walletAfterUsdMicros);
   const moved = before !== null && after !== null ? BigInt(before) - BigInt(after) : null;
@@ -589,9 +600,10 @@ export function validateBusinessQualificationReceipt(value) {
   if (value.checks.purchase_issued && value.operation.resumed && value.mutations.observed.purchases !== 0) invalidReceipt();
   if (value.checks.purchase_issued && !value.operation.resumed && value.mutations.observed.purchases !== 1) invalidReceipt();
   if (value.checks.purchase_receipt_bound && !String(value.operation.purchaseReceiptId || "").trim()) invalidReceipt();
-  // A claim about money needs the wallet read on both sides of the run, and a
-  // claim about the charge needs the Ledger receipt that names this operation.
-  if (value.checks.wallet_confirmed && (before === null || after === null)) invalidReceipt();
+  // The charge is evidenced by the Ledger's own WALLET_ACTION receipt, not by
+  // the signed-in User's personal wallet. The wallet fields stay in the shape
+  // for older receipts, but a receipt that names the charge is sufficient.
+  if (value.checks.wallet_confirmed && (!value.checks.charge_receipted || !value.checks.purchase_receipt_bound || quote === null)) invalidReceipt();
   if (value.checks.charge_receipted && value.accounting.chargeReferenceDigest === "") invalidReceipt();
   // The delivery block and the delivery checks are bound to each other in both
   // directions: a receipt that claims a ready Workspace and a running Runtime
@@ -627,12 +639,14 @@ export function validateBusinessQualificationReceipt(value) {
   // charge landed while it waited; the wallet moved by the quote; and the Ledger
   // receipt is bound to that same operation. Refusing this shape failed a real
   // purchase, so it is stated rather than folded into one of the other two.
+  const chargeBound = value.checks.charge_receipted && value.accounting.chargeReferenceDigest !== "" && quote !== null && BigInt(quote) > 0n;
+  const ownerEvidenceOnly = before === null && after === null;
   const boughtAndPaid = observed.purchases === 1 && observed.charges === 1 &&
-    quote !== null && moved === BigInt(quote);
+    quote !== null && chargeBound && (ownerEvidenceOnly || moved === BigInt(quote));
   const resumedFinishedOrder = value.operation.resumed && observed.purchases === 0 &&
-    observed.charges === 0 && moved === 0n;
+    observed.charges === 0 && chargeBound && (ownerEvidenceOnly || moved === 0n);
   const resumedSettledCharge = value.operation.resumed && observed.purchases === 0 &&
-    observed.charges === 1 && quote !== null && moved === BigInt(quote);
+    observed.charges === 1 && quote !== null && chargeBound && moved === BigInt(quote);
   const qualified = everyCheck && withinBounds && cleanupProven && observed.refunds === 0 &&
     (boughtAndPaid || resumedFinishedOrder || resumedSettledCharge);
   if ((value.state === "settled") !== qualified) invalidReceipt();

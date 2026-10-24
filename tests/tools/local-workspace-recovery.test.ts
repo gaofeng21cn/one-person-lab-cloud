@@ -238,3 +238,23 @@ test("readback-unavailable recovery artifact still preserves exact refs and only
   assert.equal(JSON.stringify(artifact).includes(operationId), false);
   assert.equal(JSON.stringify(artifact).includes(workspaceId), false);
 });
+
+test("a lost owner response preserves the exact replay request in the private recovery artifact", async () => {
+  const declaration = {
+    applicationSelection: { kind: "opl_app", runtimeVersionId: "runtime-original" },
+    computePlanId: "compute-original", storagePlanId: "storage-original", periodMonths: 1, modelSelections: [],
+  };
+  const artifact = createLocalJ1RecoveryReadbackPendingArtifact({
+    source, failure: { stage: "workspace_order", errorCode: "local_workspace_qualification_failed" },
+    idempotencyKey: "original-lost-request", quoteId: "quote-original", workspaceName: "Original qualification", declaration,
+    compose: { project: "opl-isolated", recoveryRoot: "/tmp/opl-isolated", fabricSecretRoot: "/tmp/opl-isolated/secrets",
+      postgresVolumeRefs: ["opl-isolated_postgres"], providerVolumeRefs: [] },
+  });
+  assert.equal(artifact.authority.operationIdDigest, null);
+  assert.equal(artifact.authority.workspaceIdDigest, null);
+  assert.equal(artifact.cleanup.performed, false);
+  assert.deepEqual(artifact.replay, {
+    owner: "workspace", idempotencyKey: "original-lost-request", quoteId: "quote-original", operationId: null,
+    workspaceId: null, name: "Original qualification", declaration,
+  });
+});

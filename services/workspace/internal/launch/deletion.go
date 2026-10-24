@@ -412,6 +412,16 @@ func (s *Service) GetWorkspaceDeletion(ctx context.Context, r *api.GetWorkspaceD
 	if json.Unmarshal(raw, &result) != nil {
 		return nil, status.Error(codes.DataLoss, "stored Workspace deletion result is invalid")
 	}
+	if state == "succeeded" && len(result.DeletionReceipt) == 0 {
+		return nil, status.Error(codes.DataLoss, "completed Workspace deletion has no Ledger evidence")
+	}
+	if len(result.DeletionReceipt) > 0 {
+		receipt := &api.Receipt{}
+		if protojson.Unmarshal(result.DeletionReceipt, receipt) != nil || validateDeletionReceipt(ownerstore.Operation{ID: id}, receipt) != nil {
+			return nil, status.Error(codes.DataLoss, "stored deletion receipt does not identify this deletion")
+		}
+		out.DeletionReceipt = receipt
+	}
 	// resourceFact distinguishes a confirmed absence from a resource Fabric
 	// confirmed is still present, and from an unanswered readback. The three are
 	// different customer-visible states, so a present resource never reports as an

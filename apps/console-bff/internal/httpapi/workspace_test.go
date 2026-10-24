@@ -255,6 +255,9 @@ func TestWorkspaceDeletionReadbackPreservesTheOwnerFacts(t *testing.T) {
 		RefundOperationId:      proto.String("refund-1"),
 		RefundStatus:           api.WorkspaceDeletionRefundStatusEnum_WORKSPACE_DELETION_REFUND_STATUS_ENUM_CONFIRMED,
 		UpdatedAt:              timestamppb.Now(),
+		DeletionReceipt: &api.Receipt{Id: "ledger-delete-1", Kind: api.ReceiptKindEnum_RECEIPT_KIND_ENUM_PROVIDER_ACTION,
+			Owner: api.OwnerEnum_OWNER_ENUM_WORKSPACE, OperationId: proto.String("op-delete-1"),
+			Outcome: api.ReceiptOutcomeEnum_RECEIPT_OUTCOME_ENUM_CONFIRMED, CreatedAt: timestamppb.Now()},
 	}}
 	i := workspaceIdentity(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEDELETION, "ws-1")
 	w := httptest.NewRecorder()
@@ -274,6 +277,10 @@ func TestWorkspaceDeletionReadbackPreservesTheOwnerFacts(t *testing.T) {
 		response["resourceDeletionStatus"] != "confirmed" || response["dataDeletionStatus"] != "confirmed" ||
 		response["refundStatus"] != "confirmed" || response["refundOperationId"] != "refund-1" {
 		t.Fatalf("owner facts rewritten: %v", response)
+	}
+	receipt, ok := response["deletionReceipt"].(map[string]any)
+	if !ok || receipt["id"] != "ledger-delete-1" || receipt["operationId"] != "op-delete-1" || receipt["kind"] != "provider_action" {
+		t.Fatalf("owner Ledger evidence lost in BFF: %v", response)
 	}
 }
 

@@ -9384,6 +9384,8 @@ components:
         updatedAt:
           type: string
           format: date-time
+        deletionReceipt:
+          $ref: '#/components/schemas/Receipt'
       required:
       - workspaceId
       - operationId
@@ -9425,6 +9427,12 @@ components:
           kind: derived
           sources: *id043
           rule: 按workspaceId已接受删除Operation及每阶段Owner readback投影；退款独立
+        deletionReceipt:
+          kind: derived
+          sources:
+          - workspace.operations.result
+          - ledger.evidence_receipts
+          rule: Project the exact Ledger receipt read back for this accepted deletion; never mint evidence in Workspace.
     Subscription:
       type: object
       additionalProperties: false

@@ -24,6 +24,15 @@ const ACCOUNT_EMAIL = "customer@example.invalid";
 // Pinned to the literal the Control Plane's normalization produces, so a drift
 // in the digest derivation fails here rather than as a refused purchase.
 const ACCOUNT_DIGEST = "sha256:404c821f1a9a780045f491112906ccb5cf7af27cc81b4ae7e37b4dca35028644";
+const TENANT_ID = "tenant-declared";
+const BILLING_SUBJECT_ID = "billing-subject-88";
+const RECEIPT_ID = "receipt-declared-charge";
+const TENANT = {
+  id: TENANT_ID,
+  name: "Declared Tenant",
+  status: "active",
+  billingSub2apiUserId: BILLING_SUBJECT_ID,
+};
 const ACCOUNT = {
   consoleUserId: "user-declared",
   accountId: "acct-declared",
@@ -78,6 +87,8 @@ function declaredRequest(overrides = {}) {
     authorityClass: "production",
     candidateReceiptDigest: CANDIDATE_DIGEST,
     accountEmailIdentityDigest: ACCOUNT_DIGEST,
+    targetTenantId: TENANT_ID,
+    billingSubjectId: BILLING_SUBJECT_ID,
     applicationSelection: { kind: "opl_app", runtimeVersionId: RUNTIME_VERSION_ID },
     computePlanId: COMPUTE_PLAN_ID,
     storagePlanId: STORAGE_PLAN_ID,
@@ -152,6 +163,7 @@ function ownerOperation(overrides = {}) {
 function deployedPlatform({
   account = { status: 200, body: envelope("sub2api", "available", ACCOUNT) },
   wallet = { status: 200, body: WALLET },
+  tenant = { status: 200, body: TENANT },
   ownerSession = { status: 200, body: OWNER_SESSION },
   retainedLaunch = null,
   runtimeVersions = { items: [{ id: RUNTIME_VERSION_ID, status: "approved" }] },
@@ -160,11 +172,13 @@ function deployedPlatform({
   quote = ownerQuote(),
   loseCommandAnswer = false,
   failRecoveryRead = false,
+  staleQuoteStatus = false,
 } = {}) {
   const calls = [];
   const orders = new Map();
   let commands = 0;
   let quoteAccepted = false;
+  let currentCatalog = { runtimeVersions, computePlans, storagePlans };
   const respond = (status, payload) => ({ response: { status }, payload, text: "" });
 
   const request = async (path, init = {}, auth) => {
@@ -172,6 +186,7 @@ function deployedPlatform({
     if (path === "/api/auth/me") return respond(account.status, account.body);
     if (path === "/api/gateway/wallet") return respond(wallet.status, wallet.body);
     if (path === "/api/v2/auth/session") return respond(ownerSession.status, ownerSession.body);
+    if (path === "/api/v2/tenant") return respond(tenant.status, tenant.body);
     if (path === "/api/v2/wallet") return respond(wallet.status, wallet.body);
     if (path === `/api/workspace-launches/${RETAINED_OPERATION_ID}`) {
       return retainedLaunch ? respond(200, retainedLaunch) : respond(404, { error: "workspace_launch_not_found" });
@@ -183,13 +198,21 @@ function deployedPlatform({
     calls.push({ kind: "json", path, init, auth, statuses });
     const method = init.method || "GET";
     if (path === "/api/v2/auth/session") return respond(ownerSession.status, ownerSession.body);
+    if (path === "/api/v2/tenant") return respond(tenant.status, tenant.body);
     if (path === "/api/v2/wallet") return respond(wallet.status, wallet.body);
-    if (path.startsWith("/api/v2/catalog/runtime-versions")) return respond(200, runtimeVersions);
-    if (path.startsWith("/api/v2/catalog/compute-plans")) return respond(200, computePlans);
-    if (path.startsWith("/api/v2/catalog/storage-plans")) return respond(200, storagePlans);
-    if (path === "/api/v2/quotes" && method === "POST") return respond(200, quote);
+    if (path.startsWith("/api/v2/catalog/runtime-versions")) return respond(200, currentCatalog.runtimeVersions);
+    if (path.startsWith("/api/v2/catalog/compute-plans")) return respond(200, currentCatalog.computePlans);
+    if (path.startsWith("/api/v2/catalog/storage-plans")) return respond(200, currentCatalog.storagePlans);
+    if (path === "/api/v2/quotes" && method === "POST") {
+      if (!quoteAccepted && (!currentCatalog.runtimeVersions.items.some((v) => v.id === RUNTIME_VERSION_ID && v.status === "approved") ||
+        !currentCatalog.computePlans.items.some((v) => v.id === COMPUTE_PLAN_ID && v.availability === "available") ||
+        !currentCatalog.storagePlans.items.some((v) => v.id === STORAGE_PLAN_ID && v.availability === "available"))) {
+        throw new Error("owner refused unavailable selection");
+      }
+      return respond(200, quote);
+    }
     if (path === `/api/v2/quotes/${QUOTE_ID}`) {
-      return respond(200, { ...quote, status: quoteAccepted ? "accepted" : "offered" });
+      return respond(200, { ...quote, status: quoteAccepted && !staleQuoteStatus ? "accepted" : "offered" });
     }
     if (path === "/api/v2/workspaces" && method === "POST") {
       commands += 1;
@@ -212,6 +235,25 @@ function deployedPlatform({
       if (failRecoveryRead) throw new Error("readback lost after the command");
       return respond(200, ownerOperation());
     }
+    if (path === `/api/v2/workspaces/${WORKSPACE_ID}/transactions?limit=100`) {
+      return respond(200, { items: quoteAccepted ? [{
+        id: "wallet-charge-1", workspaceId: WORKSPACE_ID, kind: "charge", status: "confirmed",
+        amountUSDMicros: AMOUNT, receiptId: RECEIPT_ID, externalReference: "native-charge-code",
+        createdAt: "2026-10-18T00:00:05Z", updatedAt: "2026-10-18T00:00:05Z",
+      }] : [] });
+    }
+    if (path === `/api/v2/workspaces/${WORKSPACE_ID}/financial-receipts/${RECEIPT_ID}`) {
+      return respond(200, {
+        workspaceId: WORKSPACE_ID,
+        receipt: { id: RECEIPT_ID, kind: "wallet_action", owner: "workspace", outcome: "confirmed", operationId: OPERATION_ID,
+          evidenceSummary: "confirmed charge", createdAt: "2026-10-18T00:00:05Z" },
+        walletOperation: { id: "wallet-charge-1", workspaceId: WORKSPACE_ID, kind: "charge", status: "confirmed",
+          amountUSDMicros: AMOUNT, receiptId: RECEIPT_ID, externalReference: "native-charge-code",
+          createdAt: "2026-10-18T00:00:05Z", updatedAt: "2026-10-18T00:00:05Z" },
+        quote: { id: QUOTE_ID, status: "accepted", totalUSDMicros: AMOUNT, lineItems: [] },
+        evidenceDigest: `sha256:${"e".repeat(64)}`,
+      });
+    }
     throw new Error(`unexpected json ${method} ${path}`);
   };
 
@@ -221,6 +263,7 @@ function deployedPlatform({
     json,
     commands: () => commands,
     orders: () => orders,
+    setCatalog: (next) => { currentCatalog = next; },
   };
 }
 
@@ -313,6 +356,8 @@ test("the environment reader declares inputs and never a credential", () => {
     OPL_DEPLOYED_PURCHASE_AUTHORITY_CLASS: "production",
     OPL_DEPLOYED_PURCHASE_CANDIDATE_DIGEST: CANDIDATE_DIGEST,
     OPL_DEPLOYED_PURCHASE_ACCOUNT_DIGEST: ACCOUNT_DIGEST,
+    OPL_DEPLOYED_PURCHASE_TENANT_ID: TENANT_ID,
+    OPL_DEPLOYED_PURCHASE_BILLING_SUBJECT_ID: BILLING_SUBJECT_ID,
     OPL_DEPLOYED_PURCHASE_RUNTIME_VERSION_ID: RUNTIME_VERSION_ID,
     OPL_DEPLOYED_PURCHASE_COMPUTE_PLAN_ID: COMPUTE_PLAN_ID,
     OPL_DEPLOYED_PURCHASE_STORAGE_PLAN_ID: STORAGE_PLAN_ID,
@@ -356,6 +401,7 @@ test("the buyer reads the owner envelope and buys one declared Workspace through
   assert.equal(receipt.schemaVersion, 1);
   assert.equal(receipt.kind, DEPLOYED_PURCHASE_RECEIPT_KIND);
   assert.deepEqual(receipt.candidate, { receiptDigest: CANDIDATE_DIGEST });
+  // Existing v1 artifacts keep their original closed shape.
   assert.deepEqual(receipt.account, { identityDigest: ACCOUNT_DIGEST });
   // The product names what was actually bought: the application source and the
   // plan pair the owner priced, not a Control Plane package.
@@ -383,15 +429,14 @@ test("the buyer reads the owner envelope and buys one declared Workspace through
     [
       "request /api/auth/me",
       "json /api/v2/auth/session",
+      "json /api/v2/tenant",
       `request /api/workspace-launches/${RETAINED_OPERATION_ID}`,
-      "json /api/v2/catalog/runtime-versions?limit=100",
-      "json /api/v2/catalog/compute-plans?limit=100",
-      "json /api/v2/catalog/storage-plans?limit=100",
       "json /api/v2/quotes POST",
       `json /api/v2/quotes/${QUOTE_ID}`,
-      "json /api/v2/wallet",
       "json /api/v2/workspaces POST",
       `json /api/v2/operations/workspace/${OPERATION_ID}`,
+      `json /api/v2/workspaces/${WORKSPACE_ID}/transactions?limit=100`,
+      `json /api/v2/workspaces/${WORKSPACE_ID}/financial-receipts/${RECEIPT_ID}`,
     ],
   );
 
@@ -493,24 +538,17 @@ test("a bare account body is refused, and a wallet that is not the owner's own p
   assert.deepEqual(bareAccount.calls.map((call) => call.path), ["/api/auth/me"]);
   assert.equal(bareAccount.commands(), 0);
 
-  // The wallet the Gateway owner holds is a plain owner projection, so a bare
-  // body is the right shape. A body that answers a different authority's
-  // question is not, and a balance this purchase cannot read is a balance it
-  // cannot check the quote against.
-  const bareWallet = deployedPlatform({
-    wallet: { status: 200, body: { source: "gateway", status: "unavailable", balanceUSDMicros: "1", currency: "USD", fetchedAt: "2026-10-18T00:00:00Z" } },
+  // A Tenant without an active billing binding is not a payer, even when the
+  // signed-in User has a personal wallet. The buyer refuses before pricing.
+  const unboundTenant = deployedPlatform({
+    tenant: { status: 200, body: { ...TENANT, status: "suspended" } },
   });
   await assert.rejects(
-    runDeployedWorkspacePurchase(declaredRequest(), callerFor(bareWallet)),
-    {
-      code: "deployed_purchase_wallet_unavailable",
-      message: "deployed purchase could not read the customer wallet",
-    },
+    runDeployedWorkspacePurchase(declaredRequest(), callerFor(unboundTenant)),
+    { code: "deployed_purchase_billing_subject_mismatch" },
   );
-  // The quote the owner priced costs nothing, so it may exist by now. What must
-  // not exist is an order: the buyer never learned whether it could pay.
-  assert.equal(bareWallet.calls.some((call) => call.path === "/api/v2/workspaces"), false);
-  assert.equal(bareWallet.commands(), 0);
+  assert.equal(unboundTenant.calls.some((call) => call.path === "/api/v2/quotes"), false);
+  assert.equal(unboundTenant.commands(), 0);
 });
 
 test("an account readback without an active owner session is refused", async () => {
@@ -542,26 +580,20 @@ test("a declared account digest that does not match the session is refused befor
   assert.equal(platform.commands(), 0);
 });
 
-test("an unavailable wallet is refused before the order is issued", async () => {
+test("an unavailable Tenant billing readback is refused before the order is issued", async () => {
   const platform = deployedPlatform({
-    wallet: { status: 502, body: null },
+    tenant: { status: 502, body: null },
   });
   await assert.rejects(
     runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform)),
-    { code: "deployed_purchase_wallet_unavailable" },
+    { code: "deployed_purchase_billing_subject_mismatch" },
   );
   assert.deepEqual(
     platform.calls.map((call) => `${call.kind} ${call.path}`),
     [
       "request /api/auth/me",
       "json /api/v2/auth/session",
-      `request /api/workspace-launches/${RETAINED_OPERATION_ID}`,
-      "json /api/v2/catalog/runtime-versions?limit=100",
-      "json /api/v2/catalog/compute-plans?limit=100",
-      "json /api/v2/catalog/storage-plans?limit=100",
-      "json /api/v2/quotes",
-      `json /api/v2/quotes/${QUOTE_ID}`,
-      "json /api/v2/wallet",
+      "json /api/v2/tenant",
     ],
   );
   assert.equal(platform.calls.some((call) => call.path === "/api/v2/workspaces"), false);
@@ -611,20 +643,47 @@ test("a replay of the same declared identity resumes its own order and buys noth
     [
       "request /api/auth/me",
       "json /api/v2/auth/session",
+      "json /api/v2/tenant",
       `request /api/workspace-launches/${RETAINED_OPERATION_ID}`,
-      "json /api/v2/catalog/runtime-versions?limit=100",
-      "json /api/v2/catalog/compute-plans?limit=100",
-      "json /api/v2/catalog/storage-plans?limit=100",
       "json /api/v2/quotes",
       `json /api/v2/quotes/${QUOTE_ID}`,
       "json /api/v2/workspaces",
       `json /api/v2/operations/workspace/${OPERATION_ID}`,
+      `json /api/v2/workspaces/${WORKSPACE_ID}/transactions?limit=100`,
+      `json /api/v2/workspaces/${WORKSPACE_ID}/financial-receipts/${RECEIPT_ID}`,
     ],
   );
-  // A resumed delivery does not read the wallet again: the money already
-  // moved, and a balance that has since been spent is not a reason to refuse
-  // to report an order that exists.
-  assert.equal(platform.calls.slice(callsAfterFirst).some((call) => call.path === "/api/gateway/wallet"), false);
+  // A resumed delivery does not read the personal wallet: the Tenant payer's
+  // binding and the Ledger receipt are the evidence, and a personal balance
+  // that has since been spent cannot revoke an order that exists.
+  assert.equal(platform.calls.slice(callsAfterFirst).some((call) => call.path === "/api/v2/wallet"), false);
+  assert.equal(platform.calls.slice(callsAfterFirst).some((call) => call.path.startsWith("/api/v2/catalog/")), false);
+});
+
+test("an admitted order replays while its quote remains offered and the catalog retired", async () => {
+  const platform = deployedPlatform({ staleQuoteStatus: true });
+  const first = await runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform));
+  // The order exists and its quote is frozen. The current catalog no longer
+  // offers the Runtime or the plans, which must not turn recovery into a new
+  // purchase or a refusal.
+  platform.setCatalog({
+    runtimeVersions: { items: [] },
+    computePlans: { items: [] },
+    storagePlans: { items: [] },
+  });
+  const second = await runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform));
+  assert.equal(platform.orders().size, 1);
+  assert.equal(second.operation.operationId, first.operation.operationId);
+  assert.equal(second.operation.resumed, true);
+  assert.deepEqual(second.mutations.observed, { purchases: 0 });
+});
+
+test("the personal wallet is not the Tenant payer and cannot make the purchase pass or fail", async () => {
+  const platform = deployedPlatform({ wallet: { status: 502, body: null } });
+  const receipt = await runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform));
+  assert.equal(receipt.purchase.amountUsdMicros, AMOUNT);
+  assert.equal(platform.calls.some((call) => call.path === `/api/v2/workspaces/${WORKSPACE_ID}/financial-receipts/${RECEIPT_ID}`), true);
+  assert.equal(platform.calls.some((call) => call.path === "/api/v2/wallet"), false);
 });
 
 test("a lost command answer is recovered as this delivery's own purchase, not reissued", async () => {
@@ -652,13 +711,13 @@ test("a failed recovery readback keeps the original command error as its cause",
   assert.equal(platform.orders().size, 1, "the order is admitted once");
 });
 
-test("a wallet that cannot fund the declared quote is refused before the order is issued", async () => {
+test("a Tenant whose billing subject differs from the declared payer is refused before the order is issued", async () => {
   const platform = deployedPlatform({
-    wallet: { status: 200, body: { ...WALLET, balanceUSDMicros: "52579999" } },
+    tenant: { status: 200, body: { ...TENANT, billingSub2apiUserId: "another-payer" } },
   });
   await assert.rejects(
     runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform)),
-    /wallet cannot fund/i,
+    { code: "deployed_purchase_billing_subject_mismatch" },
   );
   assert.equal(platform.commands(), 0);
 });
@@ -685,7 +744,7 @@ test("a catalog that cannot name an application source or a plan pair is refused
     const platform = deployedPlatform(options);
     await assert.rejects(
       runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform)),
-      { code: "deployed_purchase_selection_unavailable" },
+      { code: "deployed_purchase_quote_unavailable" },
       JSON.stringify(options),
     );
     assert.equal(platform.commands(), 0, "no order may be issued without a declaration");

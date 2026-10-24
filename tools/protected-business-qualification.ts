@@ -90,6 +90,12 @@ export const PROTECTED_ENVIRONMENT_NAME = "OPL_QUALIFICATION_ENVIRONMENT";
 export const PROTECTED_ORIGIN = "OPL_QUALIFICATION_ORIGIN";
 export const PROTECTED_CUSTOMER_EMAIL = "OPL_QUALIFICATION_CUSTOMER_EMAIL";
 export const PROTECTED_CUSTOMER_PASSWORD = "OPL_QUALIFICATION_CUSTOMER_PASSWORD";
+// The Tenant and the Gateway subject its active wallet binding names as payer.
+// They are declarations, not facts inferred from the signed-in User: a User who
+// may operate a Tenant is not necessarily the subject that Tenant's wallet
+// charges.
+export const PROTECTED_TENANT_ID = "OPL_QUALIFICATION_TENANT_ID";
+export const PROTECTED_BILLING_SUBJECT_ID = "OPL_QUALIFICATION_BILLING_SUBJECT_ID";
 
 // The protected runner exports this factory. It receives the normalized
 // deployment binding and the protected environment; the adapter supplies the
@@ -243,10 +249,14 @@ export function protectedQualificationPrerequisites(environment: ProtectedEnviro
   const origin = protectedOrigin(originText);
   if (!nonEmpty(environment[PROTECTED_CUSTOMER_EMAIL])) externalPrerequisiteAbsent(PROTECTED_CUSTOMER_EMAIL);
   if (!nonEmpty(environment[PROTECTED_CUSTOMER_PASSWORD])) externalPrerequisiteAbsent(PROTECTED_CUSTOMER_PASSWORD);
+  if (!nonEmpty(environment[PROTECTED_TENANT_ID])) externalPrerequisiteAbsent(PROTECTED_TENANT_ID);
+  if (!nonEmpty(environment[PROTECTED_BILLING_SUBJECT_ID])) externalPrerequisiteAbsent(PROTECTED_BILLING_SUBJECT_ID);
   return Object.freeze({
     environment: bound,
     origin,
     customerEmail: String(environment[PROTECTED_CUSTOMER_EMAIL]).trim(),
+    tenantId: String(environment[PROTECTED_TENANT_ID]).trim(),
+    billingSubjectId: String(environment[PROTECTED_BILLING_SUBJECT_ID]).trim(),
   });
 }
 
@@ -530,6 +540,8 @@ export function buildProtectedQualificationRequest({
   candidate,
   j0ReadyReceipt,
   accountId,
+  tenantId,
+  billingSubjectId,
   runtimeVersionId,
   computePlanId,
   storagePlanId,
@@ -539,6 +551,8 @@ export function buildProtectedQualificationRequest({
   candidate: any;
   j0ReadyReceipt: unknown;
   accountId: string;
+  tenantId: string;
+  billingSubjectId: string;
   runtimeVersionId: string;
   computePlanId: string;
   storagePlanId: string;
@@ -558,6 +572,8 @@ export function buildProtectedQualificationRequest({
   return createQualificationRequest({
     candidate,
     accountId,
+    tenantId,
+    billingSubjectId,
     product,
     provider,
     scope: PROTECTED_QUALIFICATION_SCOPE,
@@ -592,7 +608,7 @@ export function buildProtectedDeployedPurchaseRequest({
   storagePlanId,
 }: {
   candidateDigest: string;
-  environment: { origin: string; customerEmail: string };
+  environment: { origin: string; customerEmail: string; tenantId: string; billingSubjectId: string };
   accountId: string;
   runtimeVersionId: string;
   computePlanId: string;
@@ -605,6 +621,8 @@ export function buildProtectedDeployedPurchaseRequest({
     authorityClass: "production",
     candidateReceiptDigest: candidateDigest,
     accountEmailIdentityDigest: deployedAccountIdentityDigest(environment.customerEmail),
+    targetTenantId: String(environment.tenantId || "").trim(),
+    billingSubjectId: String(environment.billingSubjectId || "").trim(),
     applicationSelection: { kind: "opl_app", runtimeVersionId: String(runtimeVersionId || "").trim() },
     computePlanId: String(computePlanId || "").trim(),
     storagePlanId: String(storagePlanId || "").trim(),
@@ -626,7 +644,7 @@ function protectedPurchaseFailure(error): Error {
   const code = String((error as { code?: string } | null)?.code || "");
   const message = String((error as { message?: string } | null)?.message || "deployed purchase failed");
   let mapped = "owner_readback_unavailable";
-  if (code === "deployed_purchase_account_mismatch" || code === "deployed_purchase_account_unavailable") {
+  if (code === "deployed_purchase_account_mismatch" || code === "deployed_purchase_account_unavailable" || code === "deployed_purchase_billing_subject_mismatch") {
     mapped = "account_binding_mismatch";
   } else if (code === "deployed_purchase_target_invalid" || code === "deployed_purchase_caller_invalid") {
     mapped = "provider_scope_unavailable";
@@ -635,6 +653,8 @@ function protectedPurchaseFailure(error): Error {
     mapped = "launch_identity_mismatch";
   } else if (code === "deployed_purchase_receipt_missing" || code === "deployed_purchase_receipt_invalid") {
     mapped = "purchase_receipt_missing";
+  } else if (code === "deployed_purchase_receipt_mismatch") {
+    mapped = "charge_receipt_mismatch";
   } else if (code === "deployed_purchase_quote_unavailable" || code === "deployed_purchase_price_unavailable" ||
     code === "deployed_purchase_catalog_unavailable") {
     mapped = "quote_invalid";
@@ -644,6 +664,7 @@ function protectedPurchaseFailure(error): Error {
   const failure = new Error(`${code || "deployed_purchase_failed"}: ${message}`);
   (failure as { code?: string }).code = mapped;
   (failure as { cause?: unknown }).cause = error;
+  if (error?.acceptedPurchase) Object.assign(failure, { acceptedPurchase: error.acceptedPurchase });
   return failure;
 }
 
@@ -749,6 +770,8 @@ export async function runProtectedBusinessQualification(
     candidate: candidate.candidate,
     j0ReadyReceipt,
     accountId: input.accountId,
+    tenantId: protectedEnvironment.tenantId,
+    billingSubjectId: protectedEnvironment.billingSubjectId,
     runtimeVersionId: input.runtimeVersionId,
     computePlanId: input.computePlanId,
     storagePlanId: input.storagePlanId,
