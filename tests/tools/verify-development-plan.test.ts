@@ -34,8 +34,9 @@ function materializePlanSnapshot(scratch: string, inputRoot = root) {
   const inputs = [
     "00_master_index.md", "01_domain_ownership_matrix.md", "03_api_contract_complete.yaml", "12_product_spec.md",
     "checks/render_development_plan.py", "checks/validate_development_plan.py",
-    "contracts/api_inventory.json", "contracts/db_inventory.json", "contracts/ui_inventory.json", "contracts/internal.proto"
+    "contracts/api_inventory.json", "contracts/db_inventory.json", "contracts/ui_inventory.json"
   ].map((path) => join(target, path));
+  inputs.push("packages/contracts/proto/internal.proto");
   // Source tests build their own fresh projection from generator inputs. The
   // checked-in task book and plan JSON are exclusively freshness-gate inputs.
   for (const path of [...inputs, "tools/verify-development-plan.ts"]) {
@@ -307,7 +308,8 @@ test("default generation binds real input bytes in a Git-free snapshot", () => {
     const projection = JSON.parse(readFileSync(join(out, "checks/development_plan.json"), "utf8"));
     assert.equal(projection.sourceSHA, undefined);
     for (const [input, hash] of Object.entries(projection.inputSHA256)) {
-      assert.equal(hash, createHash("sha256").update(readFileSync(join(scratch, "docs/spec/target", input))).digest("hex"));
+      const path = input.startsWith("packages/contracts/proto/") ? join(scratch, input) : join(scratch, "docs/spec/target", input);
+      assert.equal(hash, createHash("sha256").update(readFileSync(path)).digest("hex"));
     }
     assert.deepEqual(snapshotState(scratch), before);
   } finally {
@@ -421,6 +423,15 @@ test("the plan acceptance runner executes real freshness in an OS-isolated Git-f
   }
 });
 
+test("a canonical contract change invalidates the checked-in plan projection", (t) => {
+  const scratch = mkdtempSync(join(tmpdir(), "opl-plan-canonical-drift-"));
+  t.after(() => rmSync(scratch, { recursive: true, force: true }));
+  materializePlanSnapshot(scratch);
+  const proto = join(scratch, "packages/contracts/proto/internal.proto");
+  writeFileSync(proto, readFileSync(proto, "utf8") + "\n// canonical input changed\n");
+  assert.throws(() => verifyDevelopmentPlan({ root: scratch }), /stale generated plan artifact/u);
+});
+
 for (const mutation of ["input_hash", "obsolete_source_sha", "implementation_state"]) {
   test(`planning freshness rejects stale ${mutation}`, (t) => {
     const scratch = mkdtempSync(join(tmpdir(), "opl-plan-stale-provenance-"));
@@ -428,7 +439,7 @@ for (const mutation of ["input_hash", "obsolete_source_sha", "implementation_sta
     materializePlanSnapshot(scratch);
     const path = join(scratch, generatedPlanArtifacts[0]);
     const plan = JSON.parse(readFileSync(path, "utf8"));
-    if (mutation === "input_hash") plan.inputSHA256["contracts/internal.proto"] = "0".repeat(64);
+    if (mutation === "input_hash") plan.inputSHA256["packages/contracts/proto/internal.proto"] = "0".repeat(64);
     if (mutation === "obsolete_source_sha") plan.sourceSHA = "0".repeat(40);
     if (mutation === "implementation_state") plan.workPackages[0].state = "not_implemented";
     writeFileSync(path, JSON.stringify(plan, null, 2) + "\n");

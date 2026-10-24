@@ -71,7 +71,7 @@
 | 01_domain_ownership_matrix.md | Owner、单仓库内目录/module/服务边界、真实调用、插件/适配契约 |
 | 02_database_schema_complete.md + contracts/schema.sql | 字段、约束、索引、删除保护和保留；SQL是字段的可执行投影 |
 | 03_api_contract_complete.yaml | 所有客户/管理员REST操作、DTO、权限、错误及幂等 |
-| contracts/internal.proto + contracts/events.json | 内部调用与Outbox事件的机器可检查规格；包含Serve部署、Runtime Release、Capability上传/目录与Fabric资源API的唯一Owner映射 |
+| packages/contracts/proto/internal.proto + packages/contracts/proto/events.json | 内部调用与Outbox事件的机器可检查规格；包含Serve部署、Runtime Release、Capability上传/目录与Fabric资源API的唯一Owner映射 |
 | 04_frontend_interaction_spec.md | 页面/字段/动作/API/状态/错误/文案映射 |
 | 05_build_service_technical_spec.md | 构建执行、不可变输入、隔离、凭据与制品读回 |
 | 06_data_flow_and_state_machine.md | 跨域时序、状态转换、恢复与副作用证据 |
@@ -176,8 +176,8 @@
 
 - ui-prototype/index.html：可点击离线原型，示例数据，不请求实际业务后台；screenshots/为已验证页面。
 - contracts/schema.sql：分Owner数据库的DDL；禁止用一条生产连接直接执行全部分段。
-- contracts/internal.proto：真正跨Domain的typed协议；service分组不等于新部署进程。
-- contracts/events.json：版本事件和指定消费者。
+- packages/contracts/proto/internal.proto：真正跨Domain的typed协议；service分组不等于新部署进程。
+- packages/contracts/proto/events.json：版本事件和指定消费者。
 - contracts/publisher-contract.schema.json：基于现有应用Revision合约的构建/发布描述。
 - contracts/plan-change-policy.json：固定的已批准D17政策，不是新通用策略引擎。
 - contracts/*inventory.json、domain_flows.json、traceability.json：可验证映射；不作为平行的业务writer。
