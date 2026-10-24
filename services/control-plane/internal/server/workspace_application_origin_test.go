@@ -556,7 +556,7 @@ func TestWorkspaceApplicationOriginServesAfterTheApplicationBindsItsOwnKey(t *te
 // defect the operator must see, not something the resource-only exemption may
 // silently absorb.
 func TestWorkspaceLaunchAccessProjectionStillBindsTheKeyForAFullLaunch(t *testing.T) {
-	resourceOnly, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchResourceOnlyUnitCommand())
+	resourceOnly, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchResourceOnlyUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -575,7 +575,7 @@ func TestWorkspaceLaunchAccessProjectionStillBindsTheKeyForAFullLaunch(t *testin
 		t.Fatalf("a resource-only Launch compared a key it does not own: %v", got)
 	}
 
-	full, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	full, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}

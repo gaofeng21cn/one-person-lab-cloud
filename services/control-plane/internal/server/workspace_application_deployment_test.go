@@ -201,7 +201,7 @@ func TestApplicationDeploymentIntentPostgres(t *testing.T) {
 	}
 	command := workspaceLaunchResourceOnlyUnitCommand()
 	command.OperationID, command.AccountID, command.WorkspaceID = "workspace-launch-alpha", "acct-alpha", "ws-alpha"
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +276,7 @@ func seedResourceOnlyActivatedWorkspace(t *testing.T, store controlPlaneTableSto
 	t.Helper()
 	command := workspaceLaunchResourceOnlyUnitCommand()
 	command.OperationID, command.AccountID, command.WorkspaceID = operationID, "acct-alpha", workspaceID
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}

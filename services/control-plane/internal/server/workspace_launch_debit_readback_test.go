@@ -70,7 +70,7 @@ func (s *workspaceLaunchDebitReadbackStub) Charge(_ context.Context, input clien
 }
 
 func TestWorkspaceLaunchDebitAuthoritativeReadbackClassification(t *testing.T) {
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestWorkspaceLaunchDebitAuthoritativeReadbackClassification(t *testing.T) {
 }
 
 func TestWorkspaceLaunchDebitMissingBeforeReservationRemainsAbsent(t *testing.T) {
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestWorkspaceLaunchDebitConvergesWithBoundedReadOnlyContinuation(t *testing
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			operation, err := newWorkspaceLaunchReconcileOperation(command)
+			operation, err := newWorkspaceLaunchFixtureOperation(command)
 			if err != nil {
 				t.Fatal(err)
 			}

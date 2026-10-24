@@ -96,10 +96,6 @@ func (app *controlPlaneServer) workspaceLaunchReconciler(service *controlplane.S
 	})
 }
 
-func (app *controlPlaneServer) createWorkspaceLaunch(ctx context.Context, service *controlplane.Service, credential clients.SessionDelegatedCredential, userID int64, command workspaceLaunchReconcileCreate) (workspaceLaunchReconcileOperation, error) {
-	return app.workspaceLaunchReconciler(service, credential, userID).Create(ctx, command)
-}
-
 func (app *controlPlaneServer) resumeWorkspaceLaunch(ctx context.Context, service *controlplane.Service, operationID string, authorization workspaceLaunchResumeAuthorization) (workspaceLaunchReconcileOperation, error) {
 	row, found, err := app.tables.GetRuntimeOperation(ctx, operationID)
 	if err != nil {

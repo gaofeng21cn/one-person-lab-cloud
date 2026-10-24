@@ -182,19 +182,6 @@ func controlledBasicPilotAdmissionFromEnv() controlledBasicPilotAdmission {
 	return admission
 }
 
-func (admission controlledBasicPilotAdmission) rejectNewLaunch(autoRenew bool) string {
-	if !admission.Configured {
-		return "workspace_launch_admission_invalid"
-	}
-	if autoRenew {
-		return "autoRenew_unavailable"
-	}
-	if !admission.Enabled {
-		return "workspace_launch_admission_disabled"
-	}
-	return ""
-}
-
 func workspacePurchaseEnabled(account map[string]any) bool {
 	return boolValue(account["workspacePurchaseEnabled"])
 }
@@ -603,10 +590,6 @@ func productionAcceptanceBLaunchApproved(rHeader http.Header, approval productio
 		approval.Launch.IdempotencyKey == key &&
 		approval.Launch.Name == name && approval.Launch.PackageID == packageID && approval.Launch.SizeGB == storageGB && approval.Launch.AutoRenew == autoRenew &&
 		packageID == "basic" && storageGB == 10 && !autoRenew
-}
-
-func controlledBasicPilotGlobalInFlightLimit() int {
-	return controlledBasicPilotAdmissionFromEnv().MaxInFlight
 }
 
 func controlledBasicPilotMetrics(ctx context.Context, store controlPlaneTableStore) (map[string]any, error) {

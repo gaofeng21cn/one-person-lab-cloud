@@ -101,7 +101,7 @@ func TestRetainedWorkspaceLaunchFenceDoesNotDependOnReconciliationRead(t *testin
 	}
 }
 
-func TestBillingReconciliationMismatchDoesNotChangeRetainedLaunchFenceAndCleanResumesNewClaim(t *testing.T) {
+func TestBillingReconciliationMismatchDoesNotChangeRetainedLaunchFence(t *testing.T) {
 	fixture := newBillingReconciliationFixture(t)
 	originalHistory := append([]clients.Sub2APIBalanceHistoryEntry(nil), fixture.sub2API.history[41]...)
 	fixture.sub2API.history[41] = fixture.sub2API.history[41][1:]
@@ -123,20 +123,5 @@ func TestBillingReconciliationMismatchDoesNotChangeRetainedLaunchFenceAndCleanRe
 	current, found, err := fixture.store.BillingReconciliation(context.Background())
 	if err != nil || !found || stringValue(current["status"]) != "ok" {
 		t.Fatalf("clean guard readback=%#v found=%v err=%v", current, found, err)
-	}
-
-	command := workspaceLaunchUnitCommand()
-	command.OperationID, command.AccountID, command.OwnerUserID = "guard-resumed-operation", "acct-monthly", "usr-monthly"
-	command.WorkspaceID, command.Sub2APIUserID = "guard-resumed-workspace", 41
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	row, err := workspaceLaunchReconcileOperationRow(operation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := fixture.store.ClaimWorkspaceLaunchReconcile(context.Background(), workspaceLaunchReconcileClaim{AccountID: command.AccountID, DesiredOperation: row}); err != nil {
-		t.Fatalf("fresh clean did not resume new claim: %v", err)
 	}
 }

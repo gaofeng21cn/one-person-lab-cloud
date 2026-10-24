@@ -31,7 +31,7 @@ func TestWorkspaceLaunchTypedSchemaV3RoundTrip(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+			operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -65,7 +65,7 @@ func TestWorkspaceLaunchTypedDecoderRejectsUnknownEnums(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+			operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -97,7 +97,7 @@ func TestWorkspaceLaunchTypedDecoderRejectsCrossFieldDrift(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+			operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -115,7 +115,7 @@ func TestWorkspaceLaunchTypedDecoderRejectsCrossFieldDrift(t *testing.T) {
 }
 
 func TestWorkspaceLaunchTypedStageAdvanceReachesTerminal(t *testing.T) {
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -16,7 +16,6 @@ import (
 
 var (
 	errInvalidWorkspaceLaunchOperation = errors.New("invalid_workspace_launch_operation")
-	errWorkspaceLaunchInProgress       = errors.New("workspace_launch_in_progress")
 	errWorkspaceLaunchCASConflict      = errors.New("workspace_launch_cas_conflict")
 	errWorkspaceCodexGroupUnavailable  = errors.New("apiKey.codexGroupUnavailable")
 )
@@ -119,13 +118,6 @@ func terminalWorkspaceLaunchStatus(status string) bool {
 	}
 }
 
-func workspaceLaunchHasAcceptanceBCapacitySlot(row map[string]any) bool {
-	var result struct {
-		AcceptanceBCapacitySlot bool `json:"acceptanceBCapacitySlot"`
-	}
-	return json.Unmarshal([]byte(stringValue(row["result"])), &result) == nil && result.AcceptanceBCapacitySlot
-}
-
 func workspaceBillingStateMatchesLaunch(workspace, expected map[string]any) bool {
 	currentJSON, currentErr := encodeWorkspaceBillingState(workspace)
 	expectedJSON, expectedErr := encodeWorkspaceBillingState(expected)
@@ -151,7 +143,7 @@ func workspaceLaunchReconcileResponse(operation workspaceLaunchReconcileOperatio
 	response := map[string]any{
 		"operationId": operation.ID, "schemaVersion": operation.SchemaVersion, "version": operation.Version,
 		"provisioningMode": string(operation.provisioningMode()),
-		"status": string(operation.Status), "stage": string(operation.Stage), "phase": string(operation.Stage),
+		"status":           string(operation.Status), "stage": string(operation.Stage), "phase": string(operation.Stage),
 		"accountId": operation.stringFact("accountId"), "workspaceId": operation.stringFact("workspaceId"),
 		"name": operation.stringFact("name"), "packageId": operation.stringFact("packageId"), "sizeGb": operation.intFact("sizeGb"),
 		"autoRenew": operation.boolFact("autoRenew"), "priceVersion": operation.stringFact("priceVersion"),

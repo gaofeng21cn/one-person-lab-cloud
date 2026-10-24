@@ -4,16 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
 	contracts "opl-cloud/packages/contracts/go"
-	controlplaneent "opl-cloud/services/control-plane/ent"
 	"opl-cloud/services/control-plane/internal/clients"
 )
 
@@ -42,7 +37,7 @@ func TestPostgresD3LaunchConcurrentFirstMutationDoesNotParkWinner(t *testing.T) 
 	command := workspaceLaunchUnitCommand()
 	command.OperationID, command.AccountID, command.OwnerUserID = "launch-d3-reserve", "acct-d3-reserve", "usr-d3-reserve"
 	command.WorkspaceID, command.Sub2APIUserID = "ws-d3-reserve", 921
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +46,7 @@ func TestPostgresD3LaunchConcurrentFirstMutationDoesNotParkWinner(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	mustStore(t, store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: command.AccountID, DesiredOperation: row}))
+	mustStore(t, store.SaveRuntimeOperation(ctx, row))
 	adapter := &d3InitialMutationGate{workspaceLaunchUnitAdapter: &workspaceLaunchUnitAdapter{}, started: make(chan struct{}), release: make(chan struct{})}
 	first := make(chan error, 1)
 	go func() {
@@ -165,7 +160,7 @@ func TestD3LaunchSchedulerFiftyAccountsAdvancePastSlowAccount(t *testing.T) {
 		if index%2 == 0 {
 			command.ProviderProfileRef = "local-docker"
 		}
-		operation, err := newWorkspaceLaunchReconcileOperation(command)
+		operation, err := newWorkspaceLaunchFixtureOperation(command)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -246,114 +241,11 @@ func TestD3LaunchSchedulerFiftyAccountsAdvancePastSlowAccount(t *testing.T) {
 	t.Logf("accounts=50 workspaces=50 advanced_while_one_slow=49 stages_per_fast_account=3 execution_limit=%d observed_peak=%d query_pages=%d owner_reads=%d accelerated_tick=20ms elapsed=%s", workspaceLaunchWorkerConcurrency, fabric.peak, len(store.queries), fabric.reads, elapsed)
 }
 
-func TestPostgresD3LaunchFiftyConcurrentAdmissionsIgnoreTerminalHistory(t *testing.T) {
-	t.Setenv(controlledBasicPilotMaxInFlightEnv, "")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	store, db := newPostgresWorkspaceRenewalStoreWithDB(t)
-	claims := make([]workspaceLaunchReconcileClaim, 51)
-	for index := range claims {
-		command := workspaceLaunchUnitCommand()
-		command.OperationID, command.AccountID = fmt.Sprintf("launch-admission-%03d", index), fmt.Sprintf("acct-admission-%03d", index)
-		command.OwnerUserID, command.WorkspaceID = fmt.Sprintf("owner-admission-%03d", index), fmt.Sprintf("ws-admission-%03d", index)
-		command.Sub2APIUserID = int64(1000 + index)
-		account, owner := provisionedAccountRowsFor(command.AccountID, command.OwnerUserID, fmt.Sprintf("d3-admission-%03d@example.com", index), command.Sub2APIUserID)
-		mustStore(t, store.CreateProvisionedAccount(ctx, account, owner))
-		operation, err := newWorkspaceLaunchReconcileOperation(command)
-		if err != nil {
-			t.Fatal(err)
-		}
-		row, err := workspaceLaunchReconcileOperationRow(operation)
-		if err != nil {
-			t.Fatal(err)
-		}
-		claims[index] = workspaceLaunchReconcileClaim{AccountID: command.AccountID, DesiredOperation: row}
-	}
-	history, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
-	if err != nil {
-		t.Fatal(err)
-	}
-	history.Status = contracts.StatusFailed
-	historyRow, err := workspaceLaunchReconcileOperationRow(history)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = db.ExecContext(ctx, `INSERT INTO control_plane_runtime_operations
-		(id, created_at, updated_at, account_id, action, status, result)
-		SELECT 'd3-history-' || n, $1, $1, $2, $3, $4, $5 FROM generate_series(1, 10001) n`,
-		history.CreatedAt, claims[0].AccountID, workspaceLaunchAction, string(history.Status), stringValue(historyRow["result"]))
-	if err != nil {
-		t.Fatal(err)
-	}
-	counter := &capacitySQLCounter{}
-	db.SetMaxOpenConns(controlPlaneMaxOpenDBConnections)
-	measured := &postgresEntStateStore{client: controlplaneent.NewClient(controlplaneent.Driver(dialect.Debug(entsql.OpenDB(dialect.Postgres, db), counter.log)))}
-	results := make(chan error, 50)
-	durations := make(chan time.Duration, 50)
-	start := make(chan struct{})
-	for _, claim := range claims[:50] {
-		go func() {
-			<-start
-			started := time.Now()
-			results <- measured.ClaimWorkspaceLaunchReconcile(ctx, claim)
-			durations <- time.Since(started)
-		}()
-	}
-	started := time.Now()
-	close(start)
-	latencies := make([]time.Duration, 0, 50)
-	for range 50 {
-		if err := <-results; err != nil {
-			t.Fatalf("concurrent admission rejected below configured capacity: %v", err)
-		}
-		latencies = append(latencies, <-durations)
-	}
-	elapsed := time.Since(started)
-	if err := measured.ClaimWorkspaceLaunchReconcile(ctx, claims[50]); !errors.Is(err, errWorkspaceLaunchCapacityReached) {
-		t.Fatalf("51st account exceeded configured cap: %v", err)
-	}
-	if err := measured.ClaimWorkspaceLaunchReconcile(ctx, claims[0]); !errors.Is(err, errWorkspaceLaunchCASConflict) {
-		t.Fatalf("same original order was admitted twice: %v", err)
-	}
-	for _, query := range counter.snapshot() {
-		if strings.Contains(query, `FROM "control_plane_runtime_operations"`) && strings.Contains(query, `"control_plane_runtime_operations"."result"`) {
-			t.Fatalf("admission hydrated runtime history: %s", query)
-		}
-	}
-	query := runtimeOperationQuery{Action: workspaceLaunchAction, ExcludedStatuses: []string{string(contracts.StatusSucceeded), string(contracts.StatusRefunded), string(contracts.StatusFailed)}, Limit: 7}
-	seen := map[string]bool{}
-	pages := 0
-	for {
-		page, err := store.PageRuntimeOperations(ctx, query)
-		if err != nil {
-			t.Fatal(err)
-		}
-		pages++
-		for _, row := range page.Items {
-			id := stringValue(row["id"])
-			if seen[id] || !strings.HasPrefix(id, "launch-admission-") {
-				t.Fatalf("keyset repeated or included terminal history: %s", id)
-			}
-			seen[id] = true
-			query.AfterCreatedAt, _ = parseTimeString(stringValue(row["createdAt"]))
-			query.AfterID = id
-		}
-		if len(page.Items) < query.Limit {
-			break
-		}
-	}
-	if len(seen) != 50 || pages != 8 {
-		t.Fatalf("same-timestamp keyset lost orders: orders=%d pages=%d", len(seen), pages)
-	}
-	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
-	t.Logf("accounts=50 concurrent_submissions=50 admitted=50 rejected_over_cap=1 terminal_history=10001 admission_elapsed=%s p50=%s p95=%s max=%s sql_queries=%d keyset_pages=%d", elapsed, latencies[24], latencies[47], latencies[49], len(counter.snapshot()), pages)
-}
-
 func TestD3LaunchSchedulerRetriesUnavailableProviderOnlyNextRound(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	store := &d3SchedulerStore{memoryTableStore: newMemoryTableStore()}
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
