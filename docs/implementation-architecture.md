@@ -810,6 +810,18 @@ provider-specific mechanics do not add CPU, memory, or disk HTTP routes.
 
 ## Launch Integration
 
+Control Plane's `POST /api/workspace-launches` now admits only replay of an
+existing original operation. A fresh idempotency key returns HTTP 409 with
+`workspace_launch_new_purchase_retired`, owner `workspace` and the v2 quote/
+Workspace routes, before pricing, payment, provider dispatch or persistence.
+Authentication, CSRF, account ownership and existing payload-conflict checks
+remain. Historical list/detail, resume, reconciliation and retained DELETE keep
+their original owner and identities; no Launch or financial table is erased.
+The legacy Console removes fresh/repurchase affordances and does not load the
+native catalog or recover a native locator under its CP session. Cloud keeps
+its native purchase surface. Customer auto-discovery of old Launch operations
+is still an open caller gap; the retained HTTP/operator recovery paths remain.
+
 [Workspace Launch recovery](implementation/workspace-launch-recovery.md) owns
 current stage routes, exact binding, authorization, continuation, replay and
 Runtime image-repair semantics. Control Plane's
@@ -972,9 +984,10 @@ change Gateway settings. Instance qualification reads the same native history
 and exact notes binding and records only the relevant redacted capability facts.
 The Gateway source, image and database remain unmodified.
 
-The deployed Sub2API has no generic hold/capture API. The launch path validates
-the account and quote, runs read-only provider preflight, confirms balance, and
-debits the exact monthly amount before Fabric mutates provider resources. It then
+The deployed Sub2API has no generic hold/capture API. The retained Launch
+reconciler continues only original admitted obligations: their frozen account,
+quote, provider preflight and original debit precede Fabric resource mutations.
+New Launch admission through the CP HTTP route is fenced. It then
 claims every PREPAID CVM/CBS fact and activates the Workspace only after
 readback. A confirmed zero-resource result permits one idempotent refund;
 partial or unknown provider results enter manual review without refund or

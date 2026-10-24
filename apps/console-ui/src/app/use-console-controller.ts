@@ -244,7 +244,7 @@ export function useConsoleController() {
   const activeWorkspaceId = route?.kind === "customer.workspace-detail" || route?.kind === "customer.workspace-models" ? route.workspaceId : "";
   const gatewayAccountReadScope: GatewayAccountReadRouteScope = route?.kind === "customer.overview"
     ? "overview"
-    : route?.kind === "customer.workspace-new"
+    : route?.kind === "customer.workspace-new" && cloudIdentity
       ? "workspace_launch"
       : route?.kind === "customer.api.overview"
         ? "api_overview"

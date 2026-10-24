@@ -1,6 +1,11 @@
 # Workspace Launch Recovery Reference
 
-This reference owns current Launch binding and recovery behavior.
+This reference owns retained Control Plane Launch binding and recovery behavior.
+New purchase intent on `POST /api/workspace-launches` returns HTTP 409
+`workspace_launch_new_purchase_retired` before any business mutation. Existing
+same-key replay, historical list/detail, resume and original settlement continue
+under CP; native purchases use Workspace's v2 quote/order surfaces. The fence
+does not remove historical rows, workers, refunds or the retained DELETE path.
 [The reconciler](../../services/control-plane/internal/server/workspace_launch_reconciler.go)
 and [its focused tests](../../services/control-plane/internal/server/workspace_launch_reconciler_test.go)
 are the current source; production execution remains Instance-owned.
@@ -90,12 +95,11 @@ The Workspace Launch worker is the single background Launch entry. Its keyset
 cursor (`createdAt`, `id`) reads four operations per page and runs at most four
 accounts concurrently. Completion dispatches the next operation in the current
 round; a new round waits for the configured interval, avoiding hot polling.
-The default admission limit is fifty active Launches, independently of the four
-execution slots. Explicit instance settings override admission. These are local
-source bounds, not a claim about Tencent provisioning latency or model capacity.
-PostgreSQL admission uses exact identity/account existence and active counts;
-ordinary purchases do not load all historical Launch payloads. The distinct
-one-use Acceptance B capacity slot retains its historical check.
+These are retained-worker execution bounds, not new-purchase admission or a
+claim about Tencent provisioning latency or model capacity. The former active-
+Launch admission limit and one-use Acceptance B capacity slot cannot bypass the
+HTTP fresh-intent fence. Existing obligations continue through exact original
+operation/account reads.
 
 The first stage dispatch persists its original key and a thirty-second lease
 before invoking the owner. Other workers leave that reservation unchanged while

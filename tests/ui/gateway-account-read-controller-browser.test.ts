@@ -325,7 +325,7 @@ test("Gateway Account Read follows the route plan and leaves one endpoint owner 
 
     await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "domcontentloaded" });
     await page.getByTestId("workspace-launch-retired").waitFor({ state: "visible" });
-    assert.deepEqual(reads, { wallet: 1, accountUsage: 0, balanceHistory: 0, endpoint: 0 });
+    assert.deepEqual(reads, { wallet: 0, accountUsage: 0, balanceHistory: 0, endpoint: 0 });
 
     reads.wallet = 0;
     reads.accountUsage = 0;

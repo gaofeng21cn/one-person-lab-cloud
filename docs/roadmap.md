@@ -203,8 +203,16 @@ session and Tenant authorization, Serve owns deployment/access, Fabric owns
 provider execution/absence, Gateway/Sub2API owns charges, refunds and Keys, and
 Ledger owns evidence. The qualification tools consume these facts. Control Plane
 retains historical orders and financial obligations until their migration is
-proved. New-purchase fencing in #1041 must preserve historical resume and the
-retained DELETE path; it does not authorize blanket route removal.
+proved. The #1041 source fence rejects fresh CP purchase keys before business
+writes and removes the legacy new/repurchase affordances; historical resume and
+the retained DELETE path remain. It does not authorize blanket route removal.
+The current Instance launch readback tool already calls native v2 routes at
+Instance `e8ee04df`; its older local checkout is not a current CP caller.
+#1041 stays open for a complete route/caller inventory, route/caller write
+counters and an observed zero-new-write window. Legacy customer Launch auto-
+discovery also needs its own caller evidence; operator recovery and server
+read/replay/resume are not proof of that browser capability. The separate
+protected business-qualification workflow input migration remains under #1042.
 
 The [source changes](status.md#native-v2-qualification-evidence-2026-10-24) bind
 native charges/deletion/refunds to their original owner operations and preserve
