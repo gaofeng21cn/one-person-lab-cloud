@@ -495,7 +495,7 @@ func TestPostgresWorkspaceLaunchUnknownRuntimeReplaySurvivesReconcilerRestart(t 
 	claim := durable.IdempotentReplayClaims["runtime"]
 	if err != nil || !found || decodeErr != nil || durable.Status != "pending" || durable.Stage != "runtime" ||
 		durable.Attempts["runtime"].Status != "reserved" || durable.Attempts["runtime"].Unknown != 0 ||
-		claim.AuthorizationID != authorization.AuthorizationID || claim.Status != "seeded" || durable.ResumeAuthorizationConsumedAt != "" ||
+		claim.AuthorizationID != authorization.AuthorizationID || claim.Status != "claimed" || durable.ResumeAuthorizationConsumedAt != "" ||
 		adapter.mutations != 0 {
 		t.Fatalf("PostgreSQL Runtime replay crash cut invalid: operation=%s claim=%#v mutations=%d errors=%v/%v",
 			workspaceLaunchReconcileResultSummary(durable), claim, adapter.mutations, err, decodeErr)
@@ -956,7 +956,7 @@ func TestPostgresWorkspaceLaunchReplayClaimSurvivesReconcilerRestartWithoutSkip(
 				t.Fatalf("durable replay claim missing found=%v err=%v", found, err)
 			}
 			durable, err := decodeWorkspaceLaunchReconcileOperation(durableRow)
-			if err != nil || durable.IdempotentReplayClaims[stage].Status != "seeded" || durable.ResumeAuthorizationConsumedAt != "" || adapter.mutations != 0 {
+			if err != nil || durable.IdempotentReplayClaims[stage].Status != "claimed" || durable.ResumeAuthorizationConsumedAt != "" || adapter.mutations != 0 {
 				t.Fatalf("durable crash cut invalid: operation=%s claim=%#v mutations=%d err=%v", workspaceLaunchReconcileResultSummary(durable), durable.IdempotentReplayClaims[stage], adapter.mutations, err)
 			}
 
@@ -1075,7 +1075,7 @@ func TestPostgresWorkspaceLaunchFreshPendingReadClaimSurvivesCrashAndRestart(t *
 	durable, err := decodeWorkspaceLaunchReconcileOperation(durableRow)
 	authorization := durable.FreshContinuationAuthorizations["runtime"]
 	claim2 := durable.ContinuationReadClaims[workspaceLaunchFreshContinuationClaimKey(authorization.AuthorizationID, 2)]
-	if err != nil || durable.Attempts["runtime"].PendingReadbacks != 2 || claim2.Status != "seeded" || adapter.mutationsByStage["runtime"] != 1 {
+	if err != nil || durable.Attempts["runtime"].PendingReadbacks != 2 || claim2.Status != "claimed" || adapter.mutationsByStage["runtime"] != 1 {
 		t.Fatalf("PostgreSQL crash claim not durable: operation=%s claim=%#v mutations=%#v err=%v", workspaceLaunchReconcileResultSummary(durable), claim2, adapter.mutationsByStage, err)
 	}
 
