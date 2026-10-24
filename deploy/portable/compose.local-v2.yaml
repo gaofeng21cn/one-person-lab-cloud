@@ -439,12 +439,13 @@ services:
       OPL_WORKSPACE_DOMAIN: ${OPL_WORKSPACE_DOMAIN:?Set OPL_WORKSPACE_DOMAIN}
       OPL_WORKSPACE_APPLICATION_DOMAIN: ${OPL_WORKSPACE_APPLICATION_DOMAIN:-}
       OPL_AIONUI_ADMIN_PASSWORD_SEED: ${OPL_AIONUI_ADMIN_PASSWORD_SEED:?Set OPL_AIONUI_ADMIN_PASSWORD_SEED}
-      # This installation declares no execution boundary. A deployment that
-      # declared both a Kubernetes namespace and the retained application URL
-      # would have two writers for one workload, so neither is set here and the
-      # delivery step fails closed instead of borrowing another owner's access.
+      # The Local-Docker installation declares exactly one execution boundary:
+      # the Fabric application bridge on this installation's own network. A
+      # deployment that named both a Kubernetes namespace and the application
+      # URL would have two writers for one workload, so the namespace stays
+      # empty and the bridge is the only delivery path.
       OPL_K8S_NAMESPACE: ""
-      OPL_FABRIC_APPLICATION_URL: ""
+      OPL_FABRIC_APPLICATION_URL: "http://fabric:8082"
       OPL_WORKSPACE_APPLICATION_INGRESS_PEERS: ${OPL_WORKSPACE_APPLICATION_INGRESS_PEERS:-}
       OPL_GRPC_CERT_FILE: /pki/serve.crt
       OPL_GRPC_KEY_FILE: /pki/serve.key
@@ -458,6 +459,12 @@ services:
   fabric:
     <<: *opl-v2-common
     command: ["/usr/local/bin/opl-fabric"]
+    # The Local-Docker provider certifies the storage root's project quota with
+    # quotactl, and a quota readback is refused without CAP_SYS_ADMIN inside the
+    # container even when the host mounts the root with prjquota. Nothing else
+    # in this service needs the capability.
+    cap_add:
+      - SYS_ADMIN
     environment:
       <<: *opl-v2-environment
       DATABASE_URL: postgresql://opl_fabric_owner:${OPL_FABRIC_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.29.0.10}:5432/opl_fabric?sslmode=disable

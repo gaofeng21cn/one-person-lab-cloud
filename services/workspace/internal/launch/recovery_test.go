@@ -105,6 +105,37 @@ func TestContinuationPreservesOriginalIdentityWithoutSession(t *testing.T) {
 	}
 }
 
+func TestResourceReadbackConfirmedControlsProviderReplay(t *testing.T) {
+	confirmed := wire(&api.ResourceReadback{
+		WorkspaceId:   "workspace-original",
+		ResourceSetId: "resource-set-original",
+		Outcome:       api.Observation_OBSERVATION_CONFIRMED,
+	})
+	unknown := wire(&api.ResourceReadback{
+		WorkspaceId:   "workspace-original",
+		ResourceSetId: "resource-set-original",
+		Outcome:       api.Observation_OBSERVATION_UNKNOWN,
+	})
+
+	for name, raw := range map[string]json.RawMessage{
+		"missing":   nil,
+		"unknown":   unknown,
+		"malformed": json.RawMessage(`{"resourceSetId":"resource-set-original"}`),
+		"confirmed": confirmed,
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := resourceReadbackConfirmed(raw, "workspace-original", "resource-set-original")
+			if got != (name == "confirmed") {
+				t.Fatalf("resourceReadbackConfirmed(%s)=%v", name, got)
+			}
+		})
+	}
+	if resourceReadbackConfirmed(confirmed, "workspace-other", "resource-set-original") ||
+		resourceReadbackConfirmed(confirmed, "workspace-original", "resource-set-other") {
+		t.Fatal("a readback for a different owner identity was accepted")
+	}
+}
+
 func TestCatalogRejectionIsDistinctFromLostResponse(t *testing.T) {
 	for _, tc := range []struct {
 		step        string

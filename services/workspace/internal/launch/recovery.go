@@ -215,7 +215,12 @@ func (s *Service) Resume(ctx context.Context, operationID string) error {
 	if err = validateAcceptance(op, offer, accepted); err != nil {
 		return err
 	}
-	if result.FabricOperationID == "" || result.ResourceSetID == "" {
+	// Fabric may durably accept the original resource operation while its
+	// provider allocation is still pending. Keep replaying that same operation
+	// until Workspace has an owner readback that proves the exact resource set;
+	// persisting only the Fabric operation id must not strand a launch at
+	// awaiting_confirmation.
+	if result.FabricOperationID == "" || result.ResourceSetID == "" || !resourceReadbackConfirmed(result.ResourceReadback, op.ResourceID, result.ResourceSetID) {
 		if err = s.ensureResources(ctx, op, token, accepted, "", &result); err != nil {
 			return err
 		}
@@ -266,6 +271,19 @@ func (s *Service) Resume(ctx context.Context, operationID string) error {
 	default:
 		return s.checkpoint(ctx, op, token, "read_resources", "readback", "awaiting_confirmation", "unknown", result.ResourceSetID, "DEPENDENCY_UNAVAILABLE", result)
 	}
+}
+
+func resourceReadbackConfirmed(raw json.RawMessage, workspaceID, resourceSetID string) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	readback := &api.ResourceReadback{}
+	if protojson.Unmarshal(raw, readback) != nil {
+		return false
+	}
+	return readback.GetWorkspaceId() == workspaceID &&
+		readback.GetResourceSetId() == resourceSetID &&
+		readback.GetOutcome() == api.Observation_OBSERVATION_CONFIRMED
 }
 
 // A denied continuation cannot start new work, but the bounded grant can still
