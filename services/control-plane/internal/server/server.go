@@ -429,18 +429,6 @@ func withOperatorUserID(input map[string]any, userID string) {
 	}
 }
 
-func withSessionUserContext(input map[string]any, user map[string]any, ok bool) {
-	if !ok {
-		return
-	}
-	if stringValue(input["userId"]) == "" {
-		input["userId"] = stringValue(user["id"])
-	}
-	if stringValue(input["accountId"]) == "" {
-		input["accountId"] = stringValue(user["accountId"])
-	}
-}
-
 func (app *controlPlaneServer) scopedAccountID(w http.ResponseWriter, r *http.Request, input map[string]any) (string, bool) {
 	user, ok := app.sessionUserContext(r)
 	if !ok {

@@ -612,20 +612,6 @@ func uniqueStrings(input []string) []string {
 	return output
 }
 
-func stringSliceField(input map[string]any, key string) []string {
-	raw, ok := input[key].([]any)
-	if !ok {
-		return nil
-	}
-	output := []string{}
-	for _, item := range raw {
-		if value := stringValue(item); value != "" {
-			output = append(output, value)
-		}
-	}
-	return output
-}
-
 func mapContainsAnyID(input map[string]any, ids ...string) bool {
 	for _, id := range ids {
 		if id == "" {

@@ -1409,14 +1409,6 @@ func workspaceResources(plan plan) map[string]any {
 	return map[string]any{"requests": map[string]any{"cpu": fmt.Sprint(requestCPU), "memory": fmt.Sprintf("%dGi", requestMemoryGB)}, "limits": map[string]any{"cpu": fmt.Sprint(plan.CPU), "memory": fmt.Sprintf("%dGi", plan.MemoryGB)}}
 }
 
-func executeProvisioner(ctx context.Context, request provisionerRequest) (provisionerResponse, error) {
-	path := strings.TrimSpace(os.Getenv("OPL_TENCENT_PROVISIONER_BIN"))
-	if path == "" {
-		return provisionerResponse{}, fmt.Errorf("OPL_TENCENT_PROVISIONER_BIN is required")
-	}
-	return executeProvisionerAt(ctx, path, request)
-}
-
 func executeProvisionerAt(ctx context.Context, path string, request provisionerRequest) (provisionerResponse, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
