@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "timestamp": "2026-10-24T10:07:19.244521+00:00",
+  "timestamp": "2026-10-24T12:57:36.984793+00:00",
   "result": "failed",
   "scope": "documentation contracts only; not implementation/runtime/DB execution/Instance qualification",
   "checks": [
@@ -28,7 +28,7 @@
       "name": "isolated_postgresql_execution_receipt",
       "passed": true,
       "details": {
-        "receipt": "checks/runs/cross-domain-20261024T100110.195243Z.json",
+        "receipt": "checks/runs/cross-domain-20261024T125416.383834Z.json",
         "tests": 101,
         "metadata": {
           "actualDatabaseFields": 1434,
@@ -39,7 +39,7 @@
         },
         "scope": "typed REST/protobuf specification adapters -> isolated PostgreSQL -> exact typed/readback projection; provider router and Storage are explicitly named fixtures, not implemented services",
         "cleanup": {
-          "containerName": "opl-spec-semantic-1792836070",
+          "containerName": "opl-spec-semantic-1792846456",
           "containerAbsent": true,
           "stopSucceeded": true,
           "removalReadbackPolls": 2,
@@ -141,8 +141,8 @@
     "checks/db_execution.json": "6552ffb19b7f4c40b45fd625cc0546d30a6840367baa76e7fb27a3b877016254",
     "checks/db_execution_subscription_alignment.json": "89138c6e298ee277d5fafb1950d1fa547f251e48544ae2fdd946bfe0d104f7a3",
     "checks/decision_status.json": "6bf0cbfa6edaacee5c7ff1941ed7d05e7f5e2a3bc355e55f13cd04162eadaee7",
-    "checks/development_plan.json": "5dfb29f8d2b113cddcaf70578729665d889aa387f3e920e04a4c22508dc9657e",
-    "checks/development_plan_validation.json": "e338885b17fb383a2ee999872ea88d21b518ecd532dea7b2ca1b2f37208dfdf7",
+    "checks/development_plan.json": "63e28650a871f68a10d65fdad2ee5bd3af1ed354d7fba9e34086e11ece401e99",
+    "checks/development_plan_validation.json": "6a6f7a75fd92547a8bb56875ccd0102b30f0fe542f40bc8bb3f47a9f35a25653",
     "checks/event_cases.json": "afaacb024bf9c382bcdf97c47024b75bb4c2ba6c6c7a115427af6475cbfeedeb",
     "checks/handoff_contract_semantics.json": "c8acf2a2036fc9300077c1477d1764f7de4f971e1ac037fd69790ce39312b0d1",
     "checks/handoff_readiness.json": "6d8181afa3ab317b0c0565f52007ffd8a760b7639b4852a3b654b4a5c72622cc",
@@ -163,7 +163,7 @@
     "checks/validate_publisher_source.py": "c06d06352e5ca6a60d4bd18d899283cb9aba0e106998b0581fafb44af9f2f1a9",
     "checks/validate_spec.py": "1dfe6572c11810c32e3de73fa24dd6dc41b3b4164b5811f348ab48deedb37790",
     "contracts/api_inventory.json": "69ef26b8457ad8e6dc637f2264240e644ca1de475d7ab0cabd4dab0cb9f8dee6",
-    "contracts/db_inventory.json": "044eed0e2683d2438f765edc351ee20fab059466dd9816be580ba8af53ad9ac8",
+    "contracts/db_inventory.json": "51b760bf0c70e291a69efb7e6300f9d63be2e57da4c8fee0beba017e35f78712",
     "contracts/domain_flows.json": "3b251b7ae8e4e6143986dc85aeffcc91ef2dec83fb7c9d4e29e3a5484033a9bb",
     "contracts/plan-change-policy.json": "d2f9282bf450e2fbcf3f82f706cebccce335db6fdff51d3489ab78ba653698f6",
     "contracts/publisher-contract.schema.json": "176d492a0c0c491ca4e180d9e5d3e04a08ab9c621c4254806658ef529c77b5ef",

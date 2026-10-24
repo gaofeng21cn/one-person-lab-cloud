@@ -9,7 +9,7 @@
     "checks/render_development_plan.py": "aab3485efdd1730888fcb05bf2ea0e8ebe7e4ee0dd36114f0ff6399f57da16c1",
     "checks/validate_development_plan.py": "6a45868772cc5fdc5b82d546503bcd2b7ced99c119e93502afbb3894ed851f2f",
     "contracts/api_inventory.json": "69ef26b8457ad8e6dc637f2264240e644ca1de475d7ab0cabd4dab0cb9f8dee6",
-    "contracts/db_inventory.json": "044eed0e2683d2438f765edc351ee20fab059466dd9816be580ba8af53ad9ac8",
+    "contracts/db_inventory.json": "51b760bf0c70e291a69efb7e6300f9d63be2e57da4c8fee0beba017e35f78712",
     "contracts/ui_inventory.json": "6258a5b4b32fcc9c5d54594cb72ba8dc0310177b5d1e1bf219bd2d8a13aa2fca",
     "packages/contracts/proto/internal.proto": "541169406c27b541dcebb87642d03d5464381b1f813c200df0bb398ca9241386"
   },

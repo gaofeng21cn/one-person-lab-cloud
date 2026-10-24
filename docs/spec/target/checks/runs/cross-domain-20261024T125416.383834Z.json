@@ -1,12 +1,12 @@
 {
   "schemaVersion": "opl-cross-domain-execution/v1",
-  "executedAt": "2026-10-24T10:01:10.195243+00:00",
-  "completedAt": "2026-10-24T10:03:45.565569+00:00",
+  "executedAt": "2026-10-24T12:54:16.383834+00:00",
+  "completedAt": "2026-10-24T12:56:26.619615+00:00",
   "passed": true,
   "sourceHashes": {
     "03_api_contract_complete.yaml": "aa68f221e5d347d03ad61ad23e2b22bd827161e97c62bd02bf405215e3d8b5f5",
     "contracts/schema.sql": "204db68f5c3d67934197eb92562d942c2f61f25604ac3b002d71485fba98d7ca",
-    "contracts/db_inventory.json": "044eed0e2683d2438f765edc351ee20fab059466dd9816be580ba8af53ad9ac8",
+    "contracts/db_inventory.json": "51b760bf0c70e291a69efb7e6300f9d63be2e57da4c8fee0beba017e35f78712",
     "packages/contracts/proto/internal.proto": "541169406c27b541dcebb87642d03d5464381b1f813c200df0bb398ca9241386",
     "contracts/publisher-contract.schema.json": "176d492a0c0c491ca4e180d9e5d3e04a08ab9c621c4254806658ef529c77b5ef",
     "checks/semantics_cases.json": "cf24491813c559b767bbbe118f2625ffee15f9cf1aca9aeaf7f4eae8f76231fc",
@@ -18,7 +18,7 @@
   "sourceHashesAtEnd": {
     "03_api_contract_complete.yaml": "aa68f221e5d347d03ad61ad23e2b22bd827161e97c62bd02bf405215e3d8b5f5",
     "contracts/schema.sql": "204db68f5c3d67934197eb92562d942c2f61f25604ac3b002d71485fba98d7ca",
-    "contracts/db_inventory.json": "044eed0e2683d2438f765edc351ee20fab059466dd9816be580ba8af53ad9ac8",
+    "contracts/db_inventory.json": "51b760bf0c70e291a69efb7e6300f9d63be2e57da4c8fee0beba017e35f78712",
     "packages/contracts/proto/internal.proto": "541169406c27b541dcebb87642d03d5464381b1f813c200df0bb398ca9241386",
     "contracts/publisher-contract.schema.json": "176d492a0c0c491ca4e180d9e5d3e04a08ab9c621c4254806658ef529c77b5ef",
     "checks/semantics_cases.json": "cf24491813c559b767bbbe118f2625ffee15f9cf1aca9aeaf7f4eae8f76231fc",
@@ -1545,7 +1545,7 @@
   },
   "sqlInvocations": 1764,
   "cleanup": {
-    "containerName": "opl-spec-semantic-1792836070",
+    "containerName": "opl-spec-semantic-1792846456",
     "containerAbsent": true,
     "stopSucceeded": true,
     "removalReadbackPolls": 2,
