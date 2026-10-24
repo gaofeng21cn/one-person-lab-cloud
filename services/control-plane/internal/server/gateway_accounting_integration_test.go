@@ -49,13 +49,8 @@ func TestGatewayAccountingAuthoritativeLocalChain(t *testing.T) {
 		process := newGatewayAccountingControlPlane(t, ledger, fixture, "acct-gateway-success", "usr-gateway-success")
 		api := process.login(t, fixture.ownerEmail, gatewayAccountingOwnerPassword)
 
-		launch := api.mustRequest(t, http.MethodPost, "/api/workspace-launches", map[string]any{
-			"name": "Gateway accounting success", "packageId": "basic", "autoRenew": false,
-		}, "gateway-accounting-success", http.StatusAccepted)
-		launchID := stringValue(launch["operationId"])
-		if launchID == "" {
-			t.Fatalf("launch response has no operation identity: %#v", launch)
-		}
+		launch := seedRetainedWorkspaceLaunchWithDefaultApplicationCredentialForTest(t, process.handler, gatewayAccountingCredentialForTest(t, process.handler, api), "acct-gateway-success", "usr-gateway-success", gatewayAccountingSub2APIUserID, "Gateway accounting success", "basic", "gateway-accounting-success", false)
+		launchID := launch.ID
 		operation := runGatewayAccountingLaunch(t, process, launchID, false)
 		if operation.Status != "succeeded" || operation.Stage != "succeeded" {
 			t.Fatalf("launch terminal state = %s/%s", operation.Status, operation.Stage)
@@ -111,10 +106,8 @@ func TestGatewayAccountingAuthoritativeLocalChain(t *testing.T) {
 		process := newGatewayAccountingControlPlane(t, ledger, fixture, "acct-gateway-unknown", "usr-gateway-unknown")
 		api := process.login(t, fixture.ownerEmail, gatewayAccountingOwnerPassword)
 
-		launch := api.mustRequest(t, http.MethodPost, "/api/workspace-launches", map[string]any{
-			"name": "Gateway accounting unknown", "packageId": "basic", "autoRenew": false,
-		}, "gateway-accounting-unknown", http.StatusAccepted)
-		launchID := stringValue(launch["operationId"])
+		launch := seedRetainedWorkspaceLaunchWithDefaultApplicationCredentialForTest(t, process.handler, gatewayAccountingCredentialForTest(t, process.handler, api), "acct-gateway-unknown", "usr-gateway-unknown", gatewayAccountingSub2APIUserID, "Gateway accounting unknown", "basic", "gateway-accounting-unknown", false)
+		launchID := launch.ID
 		operation := runGatewayAccountingLaunch(t, process, launchID, true)
 		if operation.Status != "manual_review" || operation.Stage != "debit" {
 			t.Fatalf("unknown debit terminal state = %s/%s", operation.Status, operation.Stage)
@@ -485,6 +478,25 @@ func newGatewayAccountingControlPlane(t *testing.T, ledger clients.LedgerClient,
 	server := httptest.NewTLSServer(served)
 	t.Cleanup(server.Close)
 	return &gatewayAccountingControlPlane{server: server, handler: typed, store: store, fabric: fabric}
+}
+
+func gatewayAccountingCredentialForTest(t *testing.T, server http.Handler, api *gatewayAccountingAPI) clients.SessionDelegatedCredential {
+	t.Helper()
+	handler, ok := server.(*controlPlaneHTTPHandler)
+	if !ok {
+		t.Fatalf("unexpected control-plane test handler %T", server)
+	}
+	parsed, err := url.Parse(api.baseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, cookie := range api.client.Jar.Cookies(parsed) {
+		if value, found := handler.app.sessionCredentials.Get(sessionLookupKey(cookie.Value)); found {
+			return value
+		}
+	}
+	t.Fatal("missing delegated session credential")
+	return clients.SessionDelegatedCredential{}
 }
 
 func (p *gatewayAccountingControlPlane) login(t *testing.T, email, password string) *gatewayAccountingAPI {

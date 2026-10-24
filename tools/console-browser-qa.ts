@@ -1,8 +1,9 @@
+import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { BrowserContext, Page } from "playwright";
-import type { OperatorRuntimeObservationsDTO, WorkspaceLaunchRecoveryDTO } from "../apps/console-ui/src/api/dtos.ts";
+import type { OperatorRuntimeObservationsDTO, WorkspaceLaunchRecoveryDTO, WorkspaceLaunchRequest, WorkspaceLaunchResponse } from "../apps/console-ui/src/api/dtos.ts";
 import { launchBrowser } from "./launch-browser.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -237,9 +238,15 @@ function billingSettlementTrend() {
   };
 }
 
-function pendingWorkspaceLaunch() {
+type HistoricalWorkspaceLaunch = WorkspaceLaunchResponse & Pick<WorkspaceLaunchRequest, "provisioningMode"> & {
+  idempotencyKey: string;
+  ownerUserId: string;
+};
+
+function pendingWorkspaceLaunch(): HistoricalWorkspaceLaunch {
   return {
     operationId: "launch-fixture-pending", status: "pending", phase: "runtime",
+    idempotencyKey: "historical-launch-fixture", ownerUserId: "user-customer", provisioningMode: "full",
     accountId: "acct-1", name: "Fixture pending Workspace", packageId: "basic", sizeGb: 10,
     autoRenew: false, priceVersion: "pilot-usd-2026-07-v1", currency: "USD",
     totalChargeUsdMicros: 52_580_000, createdAt: NOW, updatedAt: NOW
@@ -312,12 +319,11 @@ export function createConsoleFixtureState({ faultInjection = true, seedDemoData 
     ],
     nextKeyId: 12,
     gatewayWriteResults: new Map(),
-    workspaceLaunchWriteResults: new Map(),
     operatorProvisionWriteResults: new Map(),
     announcementCreateWriteResults: new Map(),
     announcementPublishWriteResults: new Map(),
     announcementWithdrawWriteResults: new Map(),
-    launches: [],
+    launches: [] as HistoricalWorkspaceLaunch[],
     workspaces: [workspace(), workspace("ws-2")],
     workspacePasswords: new Map(Object.entries(WORKSPACE_PASSWORDS)),
     workspaceCredentialVersions: new Map(Object.keys(WORKSPACE_PASSWORDS).map((workspaceId) => [workspaceId, 1])),
@@ -326,13 +332,13 @@ export function createConsoleFixtureState({ faultInjection = true, seedDemoData 
     faultInjection,
     operatorAccounts: [operatorAccount("acct-1", "active"), operatorAccount("acct-2", "disabled")],
     gatewayWrites: new Set(), walletWrites: new Set(), lostGatewayResponses: new Set(), lostWalletResponses: new Set(),
-    workspaceLaunchWrites: new Set(), operatorProvisionWrites: new Set(), announcementCreateWrites: new Set(),
+    operatorProvisionWrites: new Set(), announcementCreateWrites: new Set(),
     announcementPublishWrites: new Set(), announcementWithdrawWrites: new Set(),
-    workspaceLaunchAttempts: new Map(), operatorProvisionAttempts: new Map(), announcementCreateAttempts: new Map(),
+    operatorProvisionAttempts: new Map(), announcementCreateAttempts: new Map(),
     announcementPublishAttempts: new Map(), announcementWithdrawAttempts: new Map(),
-    lostWorkspaceLaunchResponses: new Set(), lostOperatorProvisionResponses: new Set(), lostAnnouncementCreateResponses: new Set(),
+    lostOperatorProvisionResponses: new Set(), lostAnnouncementCreateResponses: new Set(),
     lostAnnouncementPublishResponses: new Set(), lostAnnouncementWithdrawResponses: new Set(),
-    workspaceLaunchReadbacks: new Set(), operatorProvisionReadbacks: new Set(), announcementReadbackStatuses: new Map(),
+    operatorProvisionReadbacks: new Set(), announcementReadbackStatuses: new Map(),
     operatorDisableWrites: new Set(),
     gatewayMutationWrites: new Set(), gatewayActions: [], revealCalls: new Map(), emptyGatewayReadbacks: 0,
     runtimeReads: new Map(), workspaceSecretReads: new Map(), workspacePageReads: [],
@@ -437,9 +443,6 @@ export async function apiFixture(route, state, session = state) {
     const start = (page - 1) * pageSize;
     const items = allWorkspaces.slice(start, start + pageSize);
     state.workspacePageReads.push({ page, pageSize });
-    for (const operation of state.workspaceLaunchWriteResults.values()) {
-      if (items.some((item) => item.id === operation.workspaceId)) state.workspaceLaunchReadbacks.add(operation.workspaceId);
-    }
     return fulfillJson(route, source({ items, total: allWorkspaces.length, page, pageSize }));
   }
   if (path === "/api/workspace-launches" && method === "GET") {
@@ -474,49 +477,40 @@ export async function apiFixture(route, state, session = state) {
     const idempotencyKey = request.headers()["idempotency-key"] || "";
     if (!idempotencyKey) return fulfillJson(route, { error: "idempotency_key_required" }, 400);
     const input = request.postDataJSON();
-    const writeIdentity = `${session.accountId}:${idempotencyKey}`;
-    recordWriteAttempt(state.workspaceLaunchWrites, state.workspaceLaunchAttempts, writeIdentity);
-    let operation = state.workspaceLaunchWriteResults.get(writeIdentity);
-    if (!operation) {
-      const workspaceId = `ws-demo-${state.workspaces.length + 1}`;
-      const plan = input.packageId === "pro" ? "pro" : "basic";
-      const workspaceKeyId = allocateGatewayKeyId(state);
-      state.workspaceKeys.push(gatewayKey(workspaceKeyId, "Workspace Key", {}, {
-        kind: "workspace",
-        ownerAccountId: session.accountId,
-        secret: `sk-fixture-workspace-${workspaceId}-${workspaceKeyId}`
-      }));
-      const created = {
-        id: workspaceId, ownerAccountId: session.accountId, ownerUserId: session.consoleUserId, state: "running",
-        createdAt: NOW, updatedAt: NOW, name: input.name,
-        url: `https://workspace.example.invalid/w/${workspaceId}/`, packageId: plan,
-        storageGb: plan === "pro" ? 100 : 10, autoRenew: false,
-        priceVersion: "pilot-usd-2026-07-v1", currency: "USD",
-        totalUsdMicros: plan === "pro" ? 240_080_000 : 52_580_000,
-        periodStart: NOW, paidThrough: "2026-08-19T12:00:00Z", renewalStatus: "manual",
-        workspaceApiKeyId: workspaceKeyId
-      };
-      state.workspaces.push(created);
-      state.workspacePasswords.set(workspaceId, `fixture-${workspaceId}-workspace-password-v1`);
-      state.workspaceCredentialVersions.set(workspaceId, 1);
-      operation = {
-        operationId: `launch-${workspaceId}`, status: "succeeded", phase: "completed",
-        accountId: session.accountId, workspaceId, name: created.name, packageId: plan,
-        sizeGb: created.storageGb, autoRenew: false, priceVersion: created.priceVersion,
-        currency: "USD", totalChargeUsdMicros: created.totalUsdMicros,
-        url: created.url, receiptId: `receipt-${workspaceId}`, createdAt: NOW, updatedAt: NOW
-      };
-      state.workspaceLaunchWriteResults.set(writeIdentity, operation);
-      state.launches = [
-        ...state.launches.filter((item) => item.accountId !== session.accountId || item.operationId !== operation.operationId),
-        operation
-      ];
+    if (input.accountId !== undefined && input.accountId !== session.accountId) {
+      return fulfillJson(route, { error: "account_scope_forbidden" }, 403);
     }
-    if (state.faultInjection && !state.lostWorkspaceLaunchResponses.has(writeIdentity)) {
-      state.lostWorkspaceLaunchResponses.add(writeIdentity);
-      return route.abort("failed");
+    if (typeof input.name !== "string" || !input.name.trim() || typeof input.packageId !== "string" || !input.packageId.trim()
+      || typeof input.autoRenew !== "boolean" || Object.hasOwn(input, "sizeGb")
+      || (input.provisioningMode !== undefined && !["", "full", "resource_only"].includes(input.provisioningMode))) {
+      return fulfillJson(route, { error: "invalid_pricing_input" }, 400);
     }
-    return fulfillJson(route, operation);
+    if (Object.hasOwn(input, "priceVersion") || Object.hasOwn(input, "totalChargeUsdMicros")) {
+      return fulfillJson(route, { error: "client_pricing_forbidden" }, 400);
+    }
+    const operation = state.launches.find((item) => item.accountId === session.accountId && item.idempotencyKey === idempotencyKey);
+    if (!operation) return fulfillJson(route, {
+      error: "workspace_launch_new_purchase_retired",
+      owner: "workspace",
+      next: ["POST /api/v2/quotes", "POST /api/v2/workspaces"]
+    }, 409);
+    if (operation.ownerUserId !== session.consoleUserId || operation.name !== input.name.trim()
+      || operation.packageId !== input.packageId.trim() || operation.autoRenew !== input.autoRenew
+      || operation.provisioningMode !== (input.provisioningMode || "full")) {
+      return fulfillJson(route, { error: "idempotency_conflict" }, 409);
+    }
+    return fulfillJson(route, operation, 202);
+  }
+  const launchResumeMatch = path.match(/^\/api\/workspace-launches\/([^/]+)\/resume$/);
+  if (launchResumeMatch && method === "POST") {
+    if (!request.headers()["idempotency-key"]) return fulfillJson(route, { error: "idempotency_key_required" }, 400);
+    const operation = state.launches.find((item) => item.operationId === launchResumeMatch[1] && item.accountId === session.accountId);
+    if (!operation) return fulfillJson(route, { error: "workspace_launch_not_found" }, 404);
+    if (operation.ownerUserId !== session.consoleUserId) return fulfillJson(route, { error: "account_scope_forbidden" }, 403);
+    if (operation.status !== "pending" || !["key", "storage", "attachment", "secret", "runtime"].includes(operation.phase)) {
+      return fulfillJson(route, { error: "workspace_launch_not_recoverable" }, 409);
+    }
+    return fulfillJson(route, operation, 202);
   }
   const launchMatch = path.match(/^\/api\/workspace-launches\/([^/]+)$/);
   if (launchMatch && method === "GET") {
@@ -1080,55 +1074,6 @@ async function assertNoViewportOverflow(page) {
   }
 }
 
-async function assertWorkspaceLaunchLayout(page, viewportName) {
-  const layout = await page.locator(".workspace-launch-layout").evaluate((element) => {
-    const summary = element.querySelector(".workspace-order-summary");
-    const style = getComputedStyle(element);
-    return {
-      columns: style.gridTemplateColumns.split(" ").filter(Boolean).length,
-      summaryPosition: summary ? getComputedStyle(summary).position : "missing"
-    };
-  });
-  const expectedColumns = viewportName === "desktop" ? 2 : 1;
-  const expectedSummaryPosition = viewportName === "desktop" ? "sticky" : "static";
-  if (layout.columns !== expectedColumns || layout.summaryPosition !== expectedSummaryPosition) {
-    throw new Error(`console_browser_workspace_launch_layout:${JSON.stringify({ viewportName, expectedColumns, expectedSummaryPosition, ...layout })}`);
-  }
-}
-
-async function assertWorkspacePlanRadios(page, expectedCount) {
-  const radios = await page.locator(".workspace-plan-option [role='radio']").evaluateAll((elements) => elements.map((element) => {
-    const rect = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    return { width: Math.round(rect.width), height: Math.round(rect.height), borderRadius: Math.round(Number.parseFloat(style.borderRadius)), opacity: style.opacity, visibility: style.visibility };
-  }));
-  if (radios.length !== expectedCount || radios.some((radio) => radio.width < 16 || radio.height < 16 || radio.borderRadius < 8 || radio.opacity === "0" || radio.visibility !== "visible")) {
-    throw new Error(`console_browser_workspace_plan_radio_missing:${JSON.stringify(radios)}`);
-  }
-}
-
-async function assertWorkspaceLaunchConfirmation(page, viewportName) {
-  await page.waitForFunction(() => window.scrollY === 0);
-  const diagnostic = await page.locator(".launch-confirm-check").evaluate((element) => {
-    const checkbox = element.querySelector(".console-checkbox");
-    const control = checkbox?.querySelector(":scope > div");
-    const label = control?.querySelector("label");
-    const elementRect = element.getBoundingClientRect();
-    const controlRect = control?.getBoundingClientRect();
-    const labelRect = label?.getBoundingClientRect();
-    return {
-      containerWidth: Math.round(elementRect.width),
-      controlWidth: Math.round(controlRect?.width || 0),
-      labelHeight: Math.round(labelRect?.height || 0),
-      labelWidth: Math.round(labelRect?.width || 0)
-    };
-  });
-  const minimumLabelWidth = viewportName === "desktop" ? 300 : 220;
-  if (diagnostic.controlWidth < diagnostic.containerWidth - 34 || diagnostic.labelWidth < minimumLabelWidth || diagnostic.labelHeight > 44) {
-    throw new Error(`console_browser_workspace_confirmation_layout:${JSON.stringify({ viewportName, minimumLabelWidth, ...diagnostic })}`);
-  }
-}
-
 async function captureFixtureScreenshot(page, screenshotDir, screen, viewportName) {
   if (!screenshotDir) return;
   await mkdir(screenshotDir, { recursive: true });
@@ -1337,36 +1282,41 @@ async function exerciseHighRiskWriteFlows(browser, serverOrigin) {
   try {
     authenticateFixtureSession(state, "customer");
     await page.goto(`${serverOrigin}/console/workspaces/new`, { waitUntil: "networkidle" });
-    await waitForText(page, "核对开通信息");
-    await waitForText(page, "$52.58");
-    await page.getByLabel("工作空间名称").fill("Browser retry Workspace");
-    await page.getByRole("button", { name: "核对开通信息", exact: true }).click();
-    await page.getByRole("heading", { name: "确认开通信息", exact: true }).waitFor({ state: "visible" });
-    await page.getByRole("checkbox", { name: "我确认一次性预付工作空间月度总额并开通", exact: true }).click();
-    const launchButton = page.getByRole("button", { name: "确认预付并开通", exact: true });
-    await launchButton.click();
-    await waitForText(page, "请求失败，请重试");
-    await launchButton.click();
-    await page.waitForURL(/\/console\/workspaces\/ws-demo-\d+$/);
-    const workspaceOperation = [...state.workspaceLaunchWriteResults.values()][0];
-    if (!workspaceOperation?.workspaceId) throw new Error("console_browser_workspace_launch_result_missing");
-    await waitForText(page, "Browser retry Workspace");
-    await assertWorkspaceTechnicalDetails(page, `https://workspace.example.invalid/w/${workspaceOperation.workspaceId}/`);
+    await page.getByTestId("workspace-launch-retired").waitFor({ state: "visible" });
+    const historical = { ...pendingWorkspaceLaunch(), workspaceId: "ws-1" };
+    state.launches = [historical];
+    const readback = await page.evaluate(async (operation) => {
+      const read = async (path, init = {}) => {
+        const response = await fetch(path, init);
+        return { status: response.status, body: await response.json() };
+      };
+      const input: WorkspaceLaunchRequest = {
+        name: operation.name, packageId: operation.packageId, autoRenew: operation.autoRenew, provisioningMode: operation.provisioningMode
+      };
+      return {
+        list: await read("/api/workspace-launches"),
+        detail: await read(`/api/workspace-launches/${operation.operationId}`),
+        replay: await read("/api/workspace-launches", {
+          method: "POST", headers: { "content-type": "application/json", "idempotency-key": operation.idempotencyKey }, body: JSON.stringify(input)
+        }),
+        resume: await read(`/api/workspace-launches/${operation.operationId}/resume`, {
+          method: "POST", headers: { "idempotency-key": "resume-historical-fixture" }
+        })
+      };
+    }, historical);
+    assert.deepEqual(readback.list, { status: 200, body: [historical] });
+    assert.deepEqual(readback.detail, { status: 200, body: historical });
+    assert.deepEqual(readback.replay, { status: 202, body: historical });
+    assert.deepEqual(readback.resume, { status: 202, body: historical });
+    await page.goto(`${serverOrigin}/console/workspaces/ws-1`, { waitUntil: "networkidle" });
+    await waitForText(page, "Pilot Workspace");
+    await assertWorkspaceTechnicalDetails(page, "https://workspace.example.invalid/w/ws-1/");
 
     authenticateFixtureSession(state, "operator");
     await page.goto(`${serverOrigin}/admin/accounts`, { waitUntil: "networkidle" });
     await waitForText(page, "客户与计费账户");
-    await page.getByRole("button", { name: "开通用户", exact: true }).first().click();
-    const provisionDialog = page.getByRole("dialog", { name: "开通用户" });
-    await provisionDialog.getByLabel("登录邮箱").fill("browser-provision@example.com");
-    await provisionDialog.getByLabel("初始密码").fill("browser-provision-password");
-    await provisionDialog.getByLabel("姓名").fill("Browser Provision");
-    const provisionButton = provisionDialog.getByRole("button", { name: "开通用户", exact: true });
-    await provisionButton.click();
-    await waitForText(page, unknownWriteMessage);
-    await provisionButton.click();
-    await waitForText(provisionDialog, "账户映射已完成权威读回");
-    await waitForText(provisionDialog, "browser-provision@example.com");
+    assert.equal(await page.getByRole("button", { name: "开通用户", exact: true }).count(), 0);
+    await waitForText(page, "新用户开通请使用 Cloud 控制台。");
 
     await page.goto(`${serverOrigin}/admin/announcements`, { waitUntil: "networkidle" });
     await waitForText(page, "公告管理");
@@ -1400,8 +1350,6 @@ async function exerciseHighRiskWriteFlows(browser, serverOrigin) {
 
 function highRiskWriteEvidence(state) {
   const writeContracts = [
-    ["workspace_launch", state.workspaceLaunchWrites, state.workspaceLaunchAttempts, state.workspaceLaunchWriteResults, state.lostWorkspaceLaunchResponses],
-    ["operator_provision", state.operatorProvisionWrites, state.operatorProvisionAttempts, state.operatorProvisionWriteResults, state.lostOperatorProvisionResponses],
     ["announcement_create", state.announcementCreateWrites, state.announcementCreateAttempts, state.announcementCreateWriteResults, state.lostAnnouncementCreateResponses],
     ["announcement_publish", state.announcementPublishWrites, state.announcementPublishAttempts, state.announcementPublishWriteResults, state.lostAnnouncementPublishResponses],
     ["announcement_withdraw", state.announcementWithdrawWrites, state.announcementWithdrawAttempts, state.announcementWithdrawWriteResults, state.lostAnnouncementWithdrawResponses]
@@ -1418,31 +1366,25 @@ function highRiskWriteEvidence(state) {
   if (state.consoleErrors.length) throw new Error(`console_browser_high_risk_console_error:${state.consoleErrors.join(",")}`);
   if (state.externalRequests !== 0) throw new Error(`console_browser_high_risk_external_request:${state.externalRequests}`);
 
-  const workspaceOperation = [...state.workspaceLaunchWriteResults.values()][0];
-  const operatorOperation = [...state.operatorProvisionWriteResults.values()][0];
+  assert.equal(state.operatorProvisionWrites.size, 0);
   const announcementId = [...state.announcementCreateWriteResults.values()][0];
   const announcementStatuses = state.announcementReadbackStatuses.get(announcementId) || new Set();
-  const workspaceLaunchAuthoritativeReadback = Boolean(workspaceOperation?.workspaceId
-    && state.workspaceLaunchReadbacks.has(workspaceOperation.workspaceId)
-    && state.runtimeReads.has(workspaceOperation.workspaceId));
-  const operatorProvisionAuthoritativeReadback = Boolean(operatorOperation?.accountId
-    && state.operatorProvisionReadbacks.has(operatorOperation.accountId));
+  const historicalLaunchReadback = state.launches.length === 1 && state.launches[0].workspaceId === "ws-1"
+    && state.runtimeReads.has("ws-1");
   const announcementLifecycle = ["draft", "published", "withdrawn"].every((status) => announcementStatuses.has(status))
     && state.announcements.find((item) => item.id === announcementId)?.status === "withdrawn";
-  if (!workspaceLaunchAuthoritativeReadback || !operatorProvisionAuthoritativeReadback || !announcementLifecycle) {
+  if (!historicalLaunchReadback || !announcementLifecycle) {
     throw new Error("console_browser_high_risk_authoritative_readback_failed");
   }
 
   return {
     highRiskWrites: {
-      workspaceLaunch: state.workspaceLaunchWrites.size,
       operatorProvision: state.operatorProvisionWrites.size,
       announcementCreate: state.announcementCreateWrites.size,
       announcementPublish: state.announcementPublishWrites.size,
       announcementWithdraw: state.announcementWithdrawWrites.size
     },
-    workspaceLaunchAuthoritativeReadback,
-    operatorProvisionAuthoritativeReadback,
+    historicalLaunchReadback,
     announcementLifecycle
   };
 }
@@ -1491,58 +1433,13 @@ export async function runConsoleBrowserQa({
       state.customerRoutes.add("/console/workspaces");
       await assertNoViewportOverflow(page);
       await captureFixtureScreenshot(page, screenshotDir, "workspace-list", name);
-      await page.getByRole("button", { name: "新建工作空间", exact: true }).click();
-      await page.waitForURL(/\/console\/workspaces\/new$/);
-      await waitForText(page, "核对开通信息");
-      if (name === "desktop") await waitForText(page, "$52.58");
-      await waitForText(page, "$240.08");
-      await waitForText(page, "按自然月计费");
+      assert.equal(await page.getByRole("button", { name: "新建工作空间", exact: true }).count(), 0);
+      await page.goto(`${server.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
+      await page.getByTestId("workspace-launch-retired").waitFor({ state: "visible" });
+      assert.equal(await page.getByLabel("工作空间名称", { exact: true }).count(), 0);
       state.customerRoutes.add("/console/workspaces/new");
-      await assertWorkspaceLaunchLayout(page, name);
-      await assertWorkspacePlanRadios(page, name === "mobile" ? 1 : 2);
       await assertNoViewportOverflow(page);
       await captureFixtureScreenshot(page, screenshotDir, "workspace-new", name);
-      const workspaceName = page.getByLabel("工作空间名称");
-      await workspaceName.fill("Fixture review Workspace");
-      if (name === "mobile") {
-        const basicPlan = page.getByRole("radio", { name: /Basic/ });
-        const proPlan = page.getByRole("radio", { name: /Pro/ });
-        if (await basicPlan.count() !== 0) throw new Error("console_browser_unavailable_basic_visible");
-        await workspaceName.focus();
-        await page.keyboard.press("Tab");
-        if (!await proPlan.evaluate((element) => document.activeElement === element)) {
-          throw new Error("console_browser_unavailable_plan_not_keyboard_focusable");
-        }
-        await proPlan.press("Space");
-        if (!await proPlan.isChecked()) {
-          throw new Error("console_browser_unavailable_plan_keyboard_selection_failed");
-        }
-      }
-      await captureFixtureScreenshot(page, screenshotDir, "workspace-new-ready", name);
-      await page.getByRole("button", { name: "核对开通信息", exact: true }).click();
-      await page.getByRole("heading", { name: "确认开通信息", exact: true }).waitFor({ state: "visible" });
-      await assertWorkspaceLaunchLayout(page, name);
-      await assertWorkspaceLaunchConfirmation(page, name);
-      const launchConfirmation = page.getByRole("checkbox", { name: "我确认一次性预付工作空间月度总额并开通", exact: true });
-      await launchConfirmation.click();
-      if (await launchConfirmation.getAttribute("data-state") !== "checked") throw new Error("console_browser_workspace_confirmation_not_checked");
-      if (!await page.getByRole("button", { name: "确认预付并开通", exact: true }).isEnabled()) throw new Error("console_browser_workspace_confirmation_submit_disabled");
-      await page.waitForTimeout(250);
-      await captureFixtureScreenshot(page, screenshotDir, "workspace-confirm", name);
-      state.launches = [pendingWorkspaceLaunch()];
-      await page.goto(`${server.origin}/console/workspaces/new?progress=${name}`, { waitUntil: "networkidle" });
-      await waitForText(page, "正在准备工作空间");
-      await waitForText(page, "启动工作空间");
-      if (await page.getByText("pending", { exact: true }).isVisible()) throw new Error("console_browser_raw_launch_status_visible");
-      if (await page.getByText("runtime", { exact: true }).isVisible()) throw new Error("console_browser_raw_launch_phase_visible");
-      if (await page.locator(".workspace-progress").count()) throw new Error("console_browser_inferred_workspace_progress_present");
-      await assertWorkspaceLaunchLayout(page, name);
-      await assertNoViewportOverflow(page);
-      await captureFixtureScreenshot(page, screenshotDir, "workspace-operation", name);
-      await page.getByText("技术详情", { exact: true }).click();
-      await waitForText(page, "pending");
-      await waitForText(page, "runtime");
-      await assertNoViewportOverflow(page);
       state.launches = [];
       await page.goto(`${server.origin}/console/workspaces?after-progress=${name}`, { waitUntil: "networkidle" });
       await openWorkspaceFromList(page, "Pilot Workspace", "https://workspace.example.invalid/w/ws-1/");

@@ -15,6 +15,35 @@ Product Release. The target boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Retained CP Purchase Fence (2026-10-24)
+
+The source change based on `1efec1bd10b46a7a63e0bcfa353b62f090db28db`
+fences a fresh `POST /api/workspace-launches` key with HTTP 409
+`workspace_launch_new_purchase_retired` before pricing, payment, provider or
+business persistence. Retained same-key replay, read, resume, reconciliation and
+DELETE remain under CP with their original records. Existing account/session,
+CSRF and payload-conflict checks remain; new-purchase eligibility no longer
+blocks the route's historical replay lookup.
+
+The legacy Console removes new/repurchase buttons and no longer loads the native
+purchase catalog or native recovery locator with a CP session. The Cloud native
+entry remains. Its QA fixture now refuses fresh CP purchase intent instead of
+creating fake orders or Keys; historical fixtures are pre-seeded and retain
+read/replay/resume. Two browser suites executed 17 tests with zero failures or
+skips; an obsolete wallet-read expectation was corrected and its route-plan
+probe plus the isolated Cloud-route probe passed, two tests with zero skips.
+The owning route/SQL and focused verification results are retained in the PR.
+These are source/fixture checks, not a deployed zero-new-write observation.
+
+Remote Instance source at `e8ee04df32142347c2acd801fdcd4da348eb6265`
+already uses v2 quotes and Workspace create in
+`tools/cloud-workspace-launch-readback.mjs`. The older local checkout is not a
+current caller inventory. The separate protected business-qualification workflow
+still needs the #1042 input migration. #1041 remains open for a complete caller
+inventory, write counters and a measured zero-new-write interval, plus evidence
+for legacy customer Launch discovery. No historical table, worker obligation,
+original-order acceptance or financial retention is retired by this source cut.
+
 ## Native v2 Qualification Evidence (2026-10-24)
 
 The source change based on `10553a28ee3e2affff7beba9eab9e9e3992150a3`

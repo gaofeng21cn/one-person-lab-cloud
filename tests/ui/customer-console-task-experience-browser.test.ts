@@ -245,7 +245,7 @@ test("customer task pages use customer language and expose task fields", { timeo
       await openCustomerPath(page, demo.origin, "/console/workspaces", ".workspace-list-page");
       await page.getByText("Pilot Workspace", { exact: true }).waitFor({ state: "visible" });
       await page.getByText("Second Workspace", { exact: true }).waitFor({ state: "visible" });
-      await page.getByRole("button", { name: "新建工作空间", exact: true }).waitFor({ state: "visible" });
+      assert.equal(await page.getByRole("button", { name: "新建工作空间", exact: true }).count(), 0);
       await assertCustomerLanguage(page, `${viewport.name}: workspaces`);
       await assertNoHorizontalOverflow(page, `${viewport.name}: workspaces`);
 

@@ -247,6 +247,7 @@ test("expired customers explicitly renew after funding and reopen the original r
       const blockedRecoveries: WorkspaceRenewalReadDTO["recovery"][] = [
         { state: "unavailable", reason: "workspace_renewal_provider_truth_unavailable" },
         { state: "unavailable", reason: "workspace_renewal_manual_review" },
+        { state: "unavailable", reason: "workspace_renewal_period_elapsed" },
         { state: "reclaimed", reason: "workspace_renewal_resources_reclaimed" }
       ];
       for (const recovery of blockedRecoveries) {
@@ -257,9 +258,10 @@ test("expired customers explicitly renew after funding and reopen the original r
         assert.equal(await page.getByRole("button", { name: "打开工作空间", exact: true }).isDisabled(), true);
         assert.equal(await page.getByRole("button", { name: "续费并恢复", exact: true }).count(), 0);
         assert.equal(await page.getByRole("button", { name: "保存预算", exact: true }).count(), 0);
+        assert.equal(await page.getByRole("button", { name: "重新购买", exact: true }).count(), 0);
+        assert.equal((await page.locator(".workspace-plan-panel").innerText()).includes("请重新购买"), false);
         assert.equal(writes, 2);
       }
-      await page.getByRole("button", { name: "重新购买", exact: true }).waitFor({ state: "visible" });
       assert.equal(await page.getByRole("checkbox", { name: "已关闭", exact: true }).count(), 0);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
       assert.deepEqual(pageErrors, []);

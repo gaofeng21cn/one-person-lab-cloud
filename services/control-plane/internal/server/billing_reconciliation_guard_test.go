@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"opl-cloud/services/control-plane/internal/clients"
@@ -84,7 +85,7 @@ func TestMemoryBillingReconciliationAuditConflictRollsBackGuard(t *testing.T) {
 	}
 }
 
-func TestWorkspaceLaunchFailsClosedWhenReconciliationReadFails(t *testing.T) {
+func TestRetainedWorkspaceLaunchFenceDoesNotDependOnReconciliationRead(t *testing.T) {
 	fixture := newBillingReconciliationFixture(t)
 	before, err := fixture.store.ListRuntimeOperations(context.Background())
 	if err != nil {
@@ -92,13 +93,15 @@ func TestWorkspaceLaunchFailsClosedWhenReconciliationReadFails(t *testing.T) {
 	}
 	fixture.store.reconciliationErr = errors.New("reconciliation store unavailable")
 	response := requestWithMutationKeyForTest(t, fixture.server, fixture.member, http.MethodPost, "/api/workspace-launches", `{"name":"Alpha","packageId":"basic","autoRenew":false}`, "guard-read-failure")
-	assertErrorResponse(t, response.Code, response.Body.String(), http.StatusInternalServerError, "state_read_failed")
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), retainedWorkspaceLaunchNewPurchaseRetired) {
+		t.Fatalf("retained new purchase status=%d body=%s", response.Code, response.Body.String())
+	}
 	if len(*fixture.calls) != 0 || len(fixture.sub2API.charges) != 0 || len(fixture.store.runtimeOps) != len(before) {
-		t.Fatalf("guard read failure reached downstream mutation: fabric=%#v charges=%#v operations=%#v", *fixture.calls, fixture.sub2API.charges, fixture.store.runtimeOps)
+		t.Fatalf("retained new purchase reached downstream mutation: fabric=%#v charges=%#v operations=%#v", *fixture.calls, fixture.sub2API.charges, fixture.store.runtimeOps)
 	}
 }
 
-func TestBillingReconciliationMismatchBlocksAndFreshCleanResumesNewClaim(t *testing.T) {
+func TestBillingReconciliationMismatchDoesNotChangeRetainedLaunchFenceAndCleanResumesNewClaim(t *testing.T) {
 	fixture := newBillingReconciliationFixture(t)
 	originalHistory := append([]clients.Sub2APIBalanceHistoryEntry(nil), fixture.sub2API.history[41]...)
 	fixture.sub2API.history[41] = fixture.sub2API.history[41][1:]
@@ -108,7 +111,9 @@ func TestBillingReconciliationMismatchBlocksAndFreshCleanResumesNewClaim(t *test
 		t.Fatalf("mismatch status=%d body=%s", mismatch.Code, mismatch.Body.String())
 	}
 	blocked := requestWithMutationKeyForTest(t, fixture.server, fixture.member, http.MethodPost, "/api/workspace-launches", `{"name":"Blocked","packageId":"basic","autoRenew":false}`, "guard-blocked")
-	assertErrorResponse(t, blocked.Code, blocked.Body.String(), http.StatusConflict, errBillingReconciliationBlocked.Error())
+	if blocked.Code != http.StatusConflict || !strings.Contains(blocked.Body.String(), retainedWorkspaceLaunchNewPurchaseRetired) {
+		t.Fatalf("retained new purchase under mismatch status=%d body=%s", blocked.Code, blocked.Body.String())
+	}
 
 	fixture.sub2API.history[41] = originalHistory
 	clean := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, "/api/billing/reconciliation", `{"confirm":true}`, "guard-clean")

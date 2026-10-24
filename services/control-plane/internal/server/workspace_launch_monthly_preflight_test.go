@@ -273,7 +273,7 @@ func continueWorkspaceLaunchKeyForMonthlyPreflightTest(t *testing.T, server http
 	return reconciler.Reconcile(context.Background(), operationID)
 }
 
-func TestWorkspaceLaunchMissingPurchaseEligibilityFailsClosedBeforeMutation(t *testing.T) {
+func TestRetainedWorkspaceLaunchFenceIgnoresPurchaseEligibilityFlag(t *testing.T) {
 	t.Setenv(controlledBasicPilotEnabledEnv, "1")
 	t.Setenv("OPL_WORKSPACE_LAUNCH_WORKER_ENABLED", "0")
 	server, store, client, _, events := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
@@ -287,26 +287,26 @@ func TestWorkspaceLaunchMissingPurchaseEligibilityFailsClosedBeforeMutation(t *t
 	}
 	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
 	response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches", `{"name":"Missing eligibility","packageId":"basic","autoRenew":false}`, "missing-eligibility")
-	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "workspace_purchase_not_enabled") {
-		t.Fatalf("missing eligibility response = %d: %s", response.Code, response.Body.String())
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), retainedWorkspaceLaunchNewPurchaseRetired) {
+		t.Fatalf("retained new purchase without eligibility flag response = %d: %s", response.Code, response.Body.String())
 	}
 	if len(client.charges) != 0 || len(*events) != 0 {
-		t.Fatalf("missing eligibility crossed mutation boundary: charges=%#v events=%#v", client.charges, *events)
+		t.Fatalf("retained new purchase crossed mutation boundary: charges=%#v events=%#v", client.charges, *events)
 	}
 }
 
-func TestWorkspaceLaunchUsesControlPlaneAccountAuthorityWithoutPilotAllowlist(t *testing.T) {
+func TestRetainedWorkspaceLaunchRefusesNewPurchaseWithoutPilotAllowlist(t *testing.T) {
 	t.Setenv(controlledBasicPilotEnabledEnv, "1")
 	t.Setenv("OPL_CONTROLLED_BASIC_PILOT_ACCOUNT_IDS", "")
 	t.Setenv("OPL_WORKSPACE_LAUNCH_WORKER_ENABLED", "0")
 	server, _, client, _, events := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
 	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
 	response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches", `{"name":"Account authority","packageId":"basic","autoRenew":false}`, "account-authority")
-	if response.Code != http.StatusAccepted {
-		t.Fatalf("account authority response = %d: %s", response.Code, response.Body.String())
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), retainedWorkspaceLaunchNewPurchaseRetired) {
+		t.Fatalf("retained new purchase response = %d: %s", response.Code, response.Body.String())
 	}
-	if len(client.charges) != 0 || !strings.Contains(strings.Join(*events, "\n"), "fabric.workspace.preflight") {
-		t.Fatalf("account authority did not stop before debit while reaching Fabric preflight: charges=%#v events=%#v", client.charges, *events)
+	if len(client.charges) != 0 || len(*events) != 0 {
+		t.Fatalf("retained new purchase crossed a mutation boundary: charges=%#v events=%#v", client.charges, *events)
 	}
 }
 
@@ -332,7 +332,7 @@ func TestControlledPilotAdmissionUsesAccountAndGlobalPolicyNotPackageAllowlist(t
 	}
 }
 
-func TestWorkspaceLaunchAccountAuthorityAdmitsBasicAndPro(t *testing.T) {
+func TestRetainedWorkspaceLaunchRefusesNewPurchaseForEveryPackage(t *testing.T) {
 	t.Setenv(controlledBasicPilotEnabledEnv, "1")
 	t.Setenv("OPL_WORKSPACE_LAUNCH_WORKER_ENABLED", "0")
 
@@ -348,17 +348,17 @@ func TestWorkspaceLaunchAccountAuthorityAdmitsBasicAndPro(t *testing.T) {
 			session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
 			response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches",
 				`{"name":"Offer admission","packageId":"`+offer.packageID+`","autoRenew":false}`, "offer-admission-"+offer.packageID)
-			if response.Code != http.StatusAccepted || strings.Contains(response.Body.String(), "workspace_launch_basic_only") {
-				t.Fatalf("%s exact-balance admission response = %d: %s", offer.packageID, response.Code, response.Body.String())
+			if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), retainedWorkspaceLaunchNewPurchaseRetired) {
+				t.Fatalf("%s retained new purchase response = %d: %s", offer.packageID, response.Code, response.Body.String())
 			}
-			if len(client.charges) != 0 || !strings.Contains(strings.Join(*events, "\n"), "fabric.workspace.preflight") {
-				t.Fatalf("%s crossed debit or missed Fabric preflight: charges=%#v events=%#v", offer.packageID, client.charges, *events)
+			if len(client.charges) != 0 || len(*events) != 0 {
+				t.Fatalf("%s crossed a mutation boundary: charges=%#v events=%#v", offer.packageID, client.charges, *events)
 			}
 		})
 	}
 }
 
-func TestWorkspaceLaunchInsufficientBalanceFailsBeforePersistenceAndDebit(t *testing.T) {
+func TestRetainedWorkspaceLaunchFencePrecedesBalanceAndPersistence(t *testing.T) {
 	t.Setenv(controlledBasicPilotEnabledEnv, "1")
 	t.Setenv("OPL_WORKSPACE_LAUNCH_WORKER_ENABLED", "0")
 	server, store, client, _, events := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
@@ -368,19 +368,19 @@ func TestWorkspaceLaunchInsufficientBalanceFailsBeforePersistenceAndDebit(t *tes
 	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
 	response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches",
 		`{"name":"Insufficient balance","packageId":"basic","autoRenew":false}`, "insufficient-balance")
-	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), errMonthlyInsufficientBalance.Error()) {
-		t.Fatalf("insufficient-balance response = %d: %s", response.Code, response.Body.String())
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), retainedWorkspaceLaunchNewPurchaseRetired) {
+		t.Fatalf("retained new purchase response = %d: %s", response.Code, response.Body.String())
 	}
-	if len(client.charges) != 0 || !strings.Contains(strings.Join(*events, "\n"), "fabric.workspace.preflight") {
-		t.Fatalf("insufficient balance crossed debit or missed read-only preflight: charges=%#v events=%#v", client.charges, *events)
+	if len(client.charges) != 0 || len(*events) != 0 {
+		t.Fatalf("retained new purchase crossed a mutation boundary: charges=%#v events=%#v", client.charges, *events)
 	}
 	operations, err := store.ListRuntimeOperations(context.Background())
 	if err != nil || len(operations) != 0 {
-		t.Fatalf("insufficient balance persisted operation = %#v err=%v", operations, err)
+		t.Fatalf("retained new purchase persisted operation = %#v err=%v", operations, err)
 	}
 }
 
-func TestWorkspaceLaunchUnknownOrUnavailablePackageFailsBeforePreflightAndDebit(t *testing.T) {
+func TestRetainedWorkspaceLaunchFencePrecedesPackagePreflight(t *testing.T) {
 	t.Setenv(controlledBasicPilotEnabledEnv, "1")
 	t.Setenv("OPL_WORKSPACE_LAUNCH_WORKER_ENABLED", "0")
 	for _, tc := range []struct {
@@ -397,11 +397,11 @@ func TestWorkspaceLaunchUnknownOrUnavailablePackageFailsBeforePreflightAndDebit(
 			session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
 			response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches",
 				`{"name":"Unavailable offer","packageId":"`+tc.packageID+`","autoRenew":false}`, "offer-unavailable-"+tc.name)
-			if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), `"error":"package_unavailable"`) {
-				t.Fatalf("%s response = %d: %s", tc.name, response.Code, response.Body.String())
+			if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), retainedWorkspaceLaunchNewPurchaseRetired) {
+				t.Fatalf("%s retained new purchase response = %d: %s", tc.name, response.Code, response.Body.String())
 			}
-			if len(client.charges) != 0 || len(*events) != 1 || (*events)[0] != "fabric.catalog" {
-				t.Fatalf("%s crossed admission boundary: charges=%#v events=%#v", tc.name, client.charges, *events)
+			if len(client.charges) != 0 || len(*events) != 0 {
+				t.Fatalf("%s crossed a mutation boundary: charges=%#v events=%#v", tc.name, client.charges, *events)
 			}
 			operations, err := store.ListRuntimeOperations(context.Background())
 			if err != nil || len(operations) != 0 {
@@ -426,12 +426,7 @@ func TestWorkspaceLaunchMonthlyPreflightFailureBlocksDebitAndFabricMutation(t *t
 			fabric.providerProfileRef = "tencent-tke"
 			session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
 
-			response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches",
-				`{"name":"Monthly preflight failure","packageId":"basic","autoRenew":false}`,
-				"monthly-preflight-"+failureMode)
-			if response.Code != http.StatusAccepted {
-				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-			}
+			seedRetainedWorkspaceLaunchForTest(t, server, "acct-alpha", "usr-alpha", 41, "Monthly preflight failure", "basic", "monthly-preflight-"+failureMode, false)
 			continued, runErr := continueWorkspaceLaunchKeyForMonthlyPreflightTest(t, server, session, "monthly-preflight-"+failureMode)
 			operations, err := queryRuntimeOperations(context.Background(), store, runtimeOperationQuery{Action: "workspace.launch.v2"})
 			if err != nil {
@@ -468,12 +463,7 @@ func TestWorkspaceLaunchLocalDockerProfilePreflightsItsOwnZoneWithoutTheTencentZ
 	server, store, client, fabric, events := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
 	fabric.providerProfileRef = "local-docker"
 	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
-	response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches",
-		`{"name":"Provider-neutral zone","packageId":"basic","autoRenew":false}`,
-		"provider-neutral-zone")
-	if response.Code != http.StatusAccepted {
-		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-	}
+	seedRetainedWorkspaceLaunchForTest(t, server, "acct-alpha", "usr-alpha", 41, "Provider-neutral zone", "basic", "provider-neutral-zone", false)
 	_, runErr := continueWorkspaceLaunchKeyForMonthlyPreflightTest(t, server, session, "provider-neutral-zone")
 	if runErr != nil {
 		t.Fatalf("Local-Docker launch must not require OPL_TENCENT_ZONE: err=%v events=%#v", runErr, *events)
@@ -516,11 +506,7 @@ func TestWorkspaceLaunchUnmappedProviderProfileFailsClosedBeforeDebit(t *testing
 	server, store, client, fabric, events := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
 	fabric.providerProfileRef = "unmapped-provider"
 	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
-	response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches",
-		`{"name":"Unmapped provider zone","packageId":"basic","autoRenew":false}`, "unmapped-provider-zone")
-	if response.Code != http.StatusAccepted {
-		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-	}
+	seedRetainedWorkspaceLaunchForTest(t, server, "acct-alpha", "usr-alpha", 41, "Unmapped provider zone", "basic", "unmapped-provider-zone", false)
 	_, runErr := continueWorkspaceLaunchKeyForMonthlyPreflightTest(t, server, session, "unmapped-provider-zone")
 	if runErr == nil || !errors.Is(runErr, errWorkspaceLaunchMonthlyPreflightInvalid) {
 		t.Fatalf("run launch error=%v, want %v", runErr, errWorkspaceLaunchMonthlyPreflightInvalid)
@@ -557,12 +543,7 @@ func TestWorkspaceLaunchTencentProfileMissingZoneParksReservedDebitWithoutAuthor
 	server, store, client, fabric, events := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
 	fabric.providerProfileRef = "tencent-tke"
 	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
-	response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches",
-		`{"name":"Missing tencent provider zone","packageId":"basic","autoRenew":false}`,
-		"missing-tencent-provider-zone")
-	if response.Code != http.StatusAccepted {
-		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-	}
+	seedRetainedWorkspaceLaunchForTest(t, server, "acct-alpha", "usr-alpha", 41, "Missing tencent provider zone", "basic", "missing-tencent-provider-zone", false)
 	_, runErr := continueWorkspaceLaunchKeyForMonthlyPreflightTest(t, server, session, "missing-tencent-provider-zone")
 
 	if runErr == nil || !errors.Is(runErr, errWorkspaceLaunchMonthlyPreflightInvalid) {
@@ -596,14 +577,9 @@ func TestWorkspaceLaunchMonthlyPreflightRunsBeforeDebitAndProviderStages(t *test
 	server, store, client, fabric, events := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
 	fabric.providerProfileRef = "tencent-tke"
 	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
-	response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches",
-		`{"name":"Monthly preflight success","packageId":"basic","autoRenew":false}`,
-		"monthly-preflight-success")
-	if response.Code != http.StatusAccepted {
-		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-	}
+	seedRetainedWorkspaceLaunchWithDefaultApplicationForTest(t, server, session, "acct-alpha", "usr-alpha", 41, "Monthly preflight success", "basic", "monthly-preflight-success", false)
 	if len(client.charges) != 0 {
-		t.Fatalf("launch route debited before worker: charges=%#v events=%#v", client.charges, *events)
+		t.Fatalf("historical admission debited before worker: charges=%#v events=%#v", client.charges, *events)
 	}
 	if _, err := continueWorkspaceLaunchKeyForMonthlyPreflightTest(t, server, session, "monthly-preflight-success"); err != nil {
 		t.Fatalf("continue launch: %v", err)
@@ -659,11 +635,7 @@ func TestWorkspaceLaunchSameAccountSequentialPurchasesCreateIndependentWorkspace
 
 	complete := func(key, name string) workspaceLaunchReconcileOperation {
 		t.Helper()
-		response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches",
-			`{"name":"`+name+`","packageId":"basic","autoRenew":false}`, key)
-		if response.Code != http.StatusAccepted {
-			t.Fatalf("launch %s status=%d body=%s", key, response.Code, response.Body.String())
-		}
+		seedRetainedWorkspaceLaunchWithDefaultApplicationForTest(t, server, session, "acct-alpha", "usr-alpha", 41, name, "basic", key, false)
 		if _, err := continueWorkspaceLaunchKeyForMonthlyPreflightTest(t, server, session, key); err != nil {
 			t.Fatalf("continue launch %s: %v", key, err)
 		}

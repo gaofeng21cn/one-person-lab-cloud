@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -46,8 +45,8 @@ func TestD2FinanceBusinessChain(t *testing.T) {
 		chain.process.fabric.stages = map[string]clients.WorkspaceLaunchStageResult{}
 		chain.process.fabric.mu.Unlock()
 		customer := chain.process.login(t, chain.remote.sub2api.ownerEmail, gatewayAccountingOwnerPassword)
-		launch := customer.mustRequest(t, http.MethodPost, "/api/workspace-launches", json.RawMessage(`{"name":"Second paid Workspace","packageId":"basic","autoRenew":false}`), "d2-second-purchase", http.StatusAccepted)
-		second := runGatewayAccountingLaunch(t, chain.process, stringValue(launch["operationId"]), false)
+		launch := seedRetainedWorkspaceLaunchWithDefaultApplicationCredentialForTest(t, chain.process.handler, gatewayAccountingCredentialForTest(t, chain.process.handler, customer), chain.accountID, chain.purchase.stringFact("ownerUserId"), chain.purchase.int64Fact("sub2apiUserId"), "Second paid Workspace", "basic", "d2-second-purchase", false)
+		second := runGatewayAccountingLaunch(t, chain.process, launch.ID, false)
 		if second.Status != "succeeded" || second.ID == first.ID || second.stringFact("workspaceId") == first.stringFact("workspaceId") {
 			t.Fatalf("second independent purchase failed: %s", workspaceLaunchReconcileResultSummary(second))
 		}

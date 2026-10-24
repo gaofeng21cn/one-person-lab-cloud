@@ -244,7 +244,7 @@ export function useConsoleController() {
   const activeWorkspaceId = route?.kind === "customer.workspace-detail" || route?.kind === "customer.workspace-models" ? route.workspaceId : "";
   const gatewayAccountReadScope: GatewayAccountReadRouteScope = route?.kind === "customer.overview"
     ? "overview"
-    : route?.kind === "customer.workspace-new"
+    : route?.kind === "customer.workspace-new" && cloudIdentity
       ? "workspace_launch"
       : route?.kind === "customer.api.overview"
         ? "api_overview"
@@ -566,7 +566,9 @@ export function useConsoleController() {
         await Promise.all([customerWorkspaceReadCapability.load(), workspaceLaunchCapability.recover(generation, activeSession)]);
         return;
       case "customer.workspace-new":
-        await Promise.all([gatewayAccountReadCapability.load(), workspaceLaunchCapability.loadCatalog(generation, activeSession), workspaceLaunchCapability.recover(generation, activeSession)]);
+        if (cloudIdentity) {
+          await Promise.all([gatewayAccountReadCapability.load(), workspaceLaunchCapability.loadCatalog(generation, activeSession), workspaceLaunchCapability.recover(generation, activeSession)]);
+        }
         return;
       case "customer.workspace-detail":
         await loadWorkspaceAccess(generation, activeSession, activeRoute.workspaceId);

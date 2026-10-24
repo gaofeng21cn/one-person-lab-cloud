@@ -27,9 +27,8 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-test("Control Plane launch reads owner prices, refuses missing prices and zero balance, then submits the full App shape", { timeout: 90_000 }, async () => {
+test("Retained Control Plane launch entry refuses new purchases and points to the Workspace owner", { timeout: 90_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  demo.state.basicPlanAvailable = true;
   const browser = await launchBrowser({ headless: true });
   try {
     for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
@@ -37,9 +36,7 @@ test("Control Plane launch reads owner prices, refuses missing prices and zero b
       const page = await context.newPage();
       const errors: string[] = [];
       const external: string[] = [];
-      const writes: Array<{ body: unknown; key: string; csrf: string }> = [];
-      let pricesAvailable = false;
-      let balance = "0";
+      const writes: unknown[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
       await context.route("**/*", async (route) => {
         const url = new URL(route.request().url());
@@ -48,14 +45,9 @@ test("Control Plane launch reads owner prices, refuses missing prices and zero b
           return route.abort();
         }
         if (url.pathname === "/@vite/client") return route.fulfill({ contentType: "application/javascript", body: viteClientWithoutHmrTransport });
-        if (url.pathname === "/api/pricing/preview" && !pricesAvailable) return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "price_unavailable" }) });
-        if (url.pathname === "/api/gateway/wallet") return route.fulfill({ contentType: "application/json", body: JSON.stringify({
-          available: true, source: "sub2api", status: "available", fetchedAt: new Date().toISOString(),
-          data: { userId: "customer", currency: "USD", usdMicros: balance, status: "active" }
-        }) });
         if (url.pathname === "/api/workspace-launches" && route.request().method() === "POST") {
-          writes.push({ body: route.request().postDataJSON(), key: route.request().headers()["idempotency-key"] || "", csrf: route.request().headers()["x-opl-csrf"] || "" });
-          return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "fixture_stops_before_resource_creation" }) });
+          writes.push(route.request().postDataJSON());
+          return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "workspace_launch_new_purchase_retired" }) });
         }
         return route.continue();
       });
@@ -64,32 +56,17 @@ test("Control Plane launch reads owner prices, refuses missing prices and zero b
       await page.getByLabel("密码").fill(CONSOLE_DEMO_CREDENTIALS.customer.password);
       await page.getByRole("button", { name: "登录", exact: true }).click();
       await page.waitForURL(/\/console\/overview$/);
+      await page.goto(`${demo.origin}/console/workspaces`, { waitUntil: "networkidle" });
+      await page.locator(".workspace-list-row").first().waitFor({ state: "visible" });
+      assert.equal(await page.getByRole("button", { name: "新建工作空间", exact: true }).count(), 0);
       await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
-      await page.getByLabel("工作空间名称", { exact: true }).fill("Owner priced App");
-      await page.getByText(/以下套餐暂无报价：basic、pro/).waitFor();
-      const review = page.getByRole("button", { name: "核对开通信息" });
-      assert.equal(await review.isDisabled(), true);
-      pricesAvailable = true;
-      await page.getByRole("button", { name: "重试", exact: true }).click();
-      await page.getByText("余额不足，请联系管理员处理。", { exact: true }).waitFor();
-      assert.equal(await review.isDisabled(), true);
+      const retired = page.getByTestId("workspace-launch-retired");
+      await retired.waitFor({ state: "visible" });
+      await retired.getByText("该购买入口已停用", { exact: true }).waitFor();
+      await retired.getByText(/请使用新版 Cloud 控制台购买工作空间/).waitFor();
+      assert.equal(await page.getByLabel("工作空间名称", { exact: true }).count(), 0);
+      assert.equal(await page.getByRole("button", { name: "核对开通信息", exact: true }).count(), 0);
       assert.equal(writes.length, 0);
-      balance = "500000000";
-      await page.reload({ waitUntil: "networkidle" });
-      await page.getByLabel("工作空间名称", { exact: true }).fill("Owner priced App");
-      await review.click();
-      await page.getByRole("heading", { name: "确认开通信息", exact: true }).waitFor();
-      await page.getByText("pilot-usd-2026-07-v1", { exact: true }).waitFor();
-      const submit = page.getByRole("button", { name: "确认预付并开通", exact: true });
-      assert.equal(await submit.isDisabled(), true);
-      await page.getByRole("checkbox", { name: "我确认一次性预付工作空间月度总额并开通", exact: true }).click();
-      const submitted = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/workspace-launches" && response.request().method() === "POST");
-      await submit.click();
-      await submitted;
-      assert.equal(writes.length, 1);
-      assert.deepEqual(writes[0].body, { name: "Owner priced App", packageId: "basic", autoRenew: false, provisioningMode: "full" });
-      assert.ok(writes[0].key);
-      assert.ok(writes[0].csrf);
       assert.deepEqual(errors, []);
       assert.deepEqual(external, []);
       await context.close();
@@ -309,10 +286,11 @@ test("Workspace delete scopes busy and reuses its intent after a late response",
     await page.waitForURL(/\/console\/workspaces$/);
     await page.getByText("Workspace 已删除", { exact: true }).waitFor({ state: "visible" });
     await listRefreshHeld;
-    await page.getByRole("button", { name: "正在读取", exact: true }).waitFor({ state: "visible" });
+    await page.locator(".workspace-list-page").waitFor({ state: "visible" });
+    assert.equal(await page.getByRole("button", { name: "新建工作空间", exact: true }).count(), 0);
     releaseListRefresh?.();
-    await page.getByRole("button", { name: "新建工作空间", exact: true }).waitFor({ state: "visible" });
     await page.locator(".workspace-list-row").filter({ hasText: "Second Workspace" }).waitFor({ state: "visible" });
+    assert.equal(await page.getByRole("button", { name: "新建工作空间", exact: true }).count(), 0);
 
     assert.equal(idempotencyKeys.length, 2);
     assert.match(idempotencyKeys[0], /^workspace-delete:/);

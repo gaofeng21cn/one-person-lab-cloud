@@ -139,10 +139,7 @@ func TestWorkspaceImageReleaseActivationPinsDefaultApplicationToActiveImage(t *t
 	}
 
 	customer := loginForTest(t, server, "customer-owner@opl.local", "CorrectHorseBatteryStaple!")
-	launch := requestWithMutationKeyForTest(t, server, customer, http.MethodPost, "/api/workspace-launches", `{"name":"Rollback Workspace","packageId":"basic","autoRenew":false}`, "workspace-release-launch")
-	if launch.Code != http.StatusAccepted {
-		t.Fatalf("launch status=%d body=%s", launch.Code, launch.Body.String())
-	}
+	seedRetainedWorkspaceLaunchWithDefaultApplicationForTest(t, server, customer, "acct-customer-"+stableID("customer-account", "customer-owner@opl.local")[:18], "usr-customer-"+stableID("customer-user", "customer-owner@opl.local")[:18], 41, "Rollback Workspace", "basic", "workspace-release-launch", false)
 	if len(fabric.preflightInputs) != 1 || fabric.preflightInputs[0].WorkspaceImageDigest != "" {
 		t.Fatalf("preflight inputs=%#v", fabric.preflightInputs)
 	}
