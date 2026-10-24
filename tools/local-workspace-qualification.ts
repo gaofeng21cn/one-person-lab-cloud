@@ -2402,7 +2402,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     const registryHost = repository.includes("/") ? repository.split("/")[0] : repository;
     const registryId = registryHost.split(":")[0];
     const namespaceId = await declareOrRead(http, auth, binding.endpoints.publisherNamespaces, "name", "local-v2-qualification-publisher", {
-      name: "local-v2-qualification-publisher", kind: "OFFICIAL", registryId, repositoryPrefix: repository,
+      name: "local-v2-qualification-publisher", kind: "official", registryId, repositoryPrefix: repository,
       admissionReceiptId: `local-v2-admission:${options.sourceSha}`
     });
     const runtimeVersionId = await declareOrRead(http, auth, binding.endpoints.runtimeVersions, "name", readbacks.application.applicationId, {
