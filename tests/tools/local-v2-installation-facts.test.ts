@@ -87,6 +87,25 @@ test("a variable the topology reads that the installation did not supply is refu
     (error) => error.code === "local_v2_variable_unfilled" && error.message.includes("OPL_CLOUD_IMAGE"));
 });
 
+test("required values reject newline injection and empty placeholders", () => {
+  const newline = suppliedValues();
+  newline.OPL_CLOUD_IMAGE = "image\nOPL_WORKSPACE_IMAGE=spoofed";
+  assert.throws(() => localV2InstallationFacts({ template, compose, values: newline }),
+    (error) => error.code === "local_v2_value_contains_newline");
+
+  const empty = suppliedValues();
+  empty.OPL_CLOUD_IMAGE = "";
+  assert.throws(() => localV2InstallationFacts({ template, compose, values: empty }),
+    (error) => error.code === "local_v2_required_value_empty" && error.message.includes("OPL_CLOUD_IMAGE"));
+});
+
+test("sentinel detection does not reject a legitimate path containing unset", () => {
+  const values = suppliedValues();
+  values.OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT = "/srv/unset-workspaces";
+  const facts = localV2InstallationFacts({ template, compose, values });
+  assert.equal(facts.values.OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT, "/srv/unset-workspaces");
+});
+
 test("a variable the topology reads that the template does not declare is refused", () => {
   const values = suppliedValues();
   const shortTemplate = template.split("\n").filter((line) => !line.startsWith("OPL_CLOUD_IMAGE=")).join("\n");

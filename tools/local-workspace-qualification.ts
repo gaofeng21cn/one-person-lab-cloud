@@ -101,6 +101,20 @@ export const LOCAL_V2_OWNER_STORES = Object.freeze([
   ["opl_serve", "opl_serve_owner"]
 ]);
 
+const LOCAL_V2_OWNER_SCHEMAS = Object.freeze({
+  opl_control_plane: "public",
+  opl_fabric: "fabric",
+  opl_ledger: "public",
+  opl_tenant: "tenant",
+  opl_gateway: "gateway",
+  opl_resource_catalog: "resource_catalog",
+  opl_capability: "capability",
+  opl_build: "build",
+  opl_runtime_control: "runtime_control",
+  opl_workspace: "workspace",
+  opl_serve: "serve"
+});
+
 // The owner processes a v2 qualification reaches through the same origin.
 export const LOCAL_V2_QUALIFICATION_SERVICES = Object.freeze([
   "postgres", "sub2api-authority", "tenant", "resource-catalog", "ledger", "capability",
@@ -128,7 +142,7 @@ const LOCAL_V2_ENDPOINTS = Object.freeze({
   authContext: "/api/v2/auth/context",
   authLogin: "/api/v2/auth/login",
   tenant: "/api/v2/tenant",
-  adminTenants: "/api/v2/admin/tenants",
+  createTenant: "/api/v2/admin/tenants",
   publisherNamespaces: "/api/v2/admin/catalog/publisher-namespaces",
   runtimeVersions: "/api/v2/admin/catalog/runtime-versions",
   computePlans: "/api/v2/admin/catalog/compute-plans",
@@ -717,6 +731,22 @@ export function qualificationComposeEnvironment(baseEnvironment, exactEntries) {
   return environment;
 }
 
+export function assertLocalV2ComposeEnvironment(output, values) {
+  const observed = new Map();
+  for (const line of String(output || "").split(/\r?\n/)) {
+    const separator = line.indexOf("=");
+    if (separator <= 0) continue;
+    observed.set(line.slice(0, separator), line.slice(separator + 1));
+  }
+  const mismatches = Object.entries(values || {})
+    .filter(([name, value]) => observed.get(name) !== String(value))
+    .map(([name]) => name);
+  if (mismatches.length) {
+    throw namedQualificationError("local_v2_compose_environment_mismatch", mismatches.join(", "));
+  }
+  return observed;
+}
+
 // Two Local-Docker facts belong to the installation, not to this script: the
 // quota-enabled Workspace storage root, and the provider profile that lists the
 // packages that root can host. A qualification run that invented either one
@@ -1192,7 +1222,7 @@ async function inspectComposeImage(compose, service) {
   return values[0];
 }
 
-export async function verifyStores(compose, { stores = LEGACY_OWNER_STORES } = {}) {
+export async function verifyStores(compose, { stores = LEGACY_OWNER_STORES, v2 = false } = {}) {
   const names = stores.map(([database]) => `'${database}'`).join(",");
   const query = `select datname || ':' || pg_get_userbyid(datdba) from pg_database where datname in (${names}) order by datname`;
   const rows = (await compose(["exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "postgres", "-Atqc", query])).stdout.trim().split(/\r?\n/);
@@ -1202,14 +1232,28 @@ export async function verifyStores(compose, { stores = LEGACY_OWNER_STORES } = {
   if (JSON.stringify([...rows].sort()) !== JSON.stringify(expected)) throw new Error("PostgreSQL database ownership is not separated");
   const observed = {};
   for (const [database, owner] of stores) {
-    const count = Number((await compose([
+    const schema = v2 ? LOCAL_V2_OWNER_SCHEMAS[database] : "public";
+    const result = (await compose([
       "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", database, "-Atqc",
-      `select count(*) from pg_tables where schemaname='public' and tableowner='${owner}'`
-    ])).stdout.trim());
-    if (!Number.isSafeInteger(count) || count <= 0) throw new Error(`${database} owns no durable tables`);
-    observed[database] = "durable";
+      v2
+        ? `select count(*)::text || ':' || count(*) filter (where tableowner='${owner}')::text from pg_tables where schemaname='${schema}' and tablename <> 'opl_schema_migrations'`
+        : `select count(*) from pg_tables where schemaname='public' and tableowner='${owner}'`
+    ])).stdout.trim();
+    if (v2) {
+      const [totalText, ownedText] = result.split(":");
+      const total = Number(totalText);
+      const owned = Number(ownedText);
+      if (!Number.isSafeInteger(total) || total <= 0 || owned !== total) {
+        throw new Error(`${database} owner schema is missing or not owned by ${owner}`);
+      }
+      observed[database] = { owner, schema, businessTables: total };
+    } else {
+      const count = Number(result);
+      if (!Number.isSafeInteger(count) || count <= 0) throw new Error(`${database} owns no durable tables`);
+      observed[database] = "durable";
+    }
   }
-  return { ...observed, ownerSeparated: true };
+  return v2 ? { ownerStores: observed, ownerSeparated: true } : { ...observed, ownerSeparated: true };
 }
 
 async function consoleReadback(http) {
@@ -2188,7 +2232,8 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
   const binding = qualificationModeBinding(mode);
   const readDeclaration = dependencies.readDeclaration || readLocalV2InstallationDeclaration;
   const createClient = dependencies.createClient || ((origin, settings) => createHTTP(origin, settings));
-  const compose = dependencies.compose || ((args, settings = {}) => runProcess("docker", args, { cwd: root, ...settings }));
+  let composeEnvironment = process.env;
+  const compose = dependencies.compose || ((args, settings = {}) => runProcess("docker", args, { cwd: root, ...settings, env: composeEnvironment }));
   const ownerQuery = dependencies.ownerQuery || null;
   const wait = dependencies.wait || ((milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds)));
   const pollIntervalMs = Number(dependencies.pollIntervalMs || 3000);
@@ -2253,9 +2298,13 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     };
     record("application_contract", "confirmed", { image: contractImage });
     stage = "compose_topology";
+    composeEnvironment = qualificationComposeEnvironment(process.env, Object.entries(values));
     composePrefix = ["compose", "--project-name", String(options.project || "").trim(), "--env-file", declaration.envFile,
       ...binding.composeFiles.flatMap((file) => ["-f", file])];
     if (!String(options.project || "").trim()) throw namedQualificationError("local_v2_project_required", "--project must name the Compose project of the declared installation");
+    const effectiveEnvironment = await compose([...composePrefix, "config", "--environment"]);
+    assertLocalV2ComposeEnvironment(effectiveEnvironment.stdout, values);
+    record("compose_environment", "confirmed", { declared: Object.keys(values).length });
     const up = await compose([...composePrefix, "up", "-d", "--wait", "--wait-timeout", "300"], { allowFailure: true });
     if (up.code !== 0) {
       throw namedQualificationError("local_v2_compose_start_failed", (up.stderr || up.stdout || "docker compose up failed").slice(0, 500));
@@ -2264,9 +2313,9 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     assertWorkspaceQualificationTopology(config, { services: LOCAL_V2_QUALIFICATION_SERVICES });
     readbacks.topology = { services: Object.keys(config.services || {}).sort() };
     record("compose_topology", "confirmed", { services: readbacks.topology.services.length });
-    const stores = await verifyStores((args) => compose([...composePrefix, ...args]), { stores: LOCAL_V2_OWNER_STORES });
+    const stores = await verifyStores((args) => compose([...composePrefix, ...args]), { stores: LOCAL_V2_OWNER_STORES, v2: true });
     readbacks.stores = stores;
-    record("owner_stores", "confirmed", { databases: Object.keys(stores).length - 1 });
+    record("owner_stores", "confirmed", { databases: Object.keys(stores.ownerStores || {}).length });
     const query = ownerQuery || (async (database, sql) => (await compose([
       ...composePrefix, "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", database, "-Atqc", sql
     ])).stdout.trim());
@@ -2280,22 +2329,21 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     stage = "tenant";
     let tenant = (await http.request(binding.endpoints.tenant, {}, auth)).payload;
     if (!tenant?.id) {
-      const created = await http.json(binding.endpoints.adminTenants, {
+      const created = await http.json(binding.endpoints.createTenant, {
         method: "POST",
         headers: { "idempotency-key": `local-v2-tenant:${options.sourceSha}` },
         body: { name: "Local v2 qualification", billingSub2apiUserId: session.session.actorId, ownerGatewaySubjectId: session.session.actorId }
       }, auth, [200, 201, 202]);
-      // The Tenant owner answers with the operation it ran, and that operation
-      // already carries the Tenant it created. The identity is read from the
-      // owner's own answer and then confirmed through the admin readback.
-      const createdTenantId = String(created.payload?.resourceId || "");
+      const createdPayload = created.payload || {};
+      const createdTenantId = String(createdPayload.resourceId || "");
       readbacks.tenantCreation = {
-        operationId: String(created.payload?.operationId || ""),
-        operationStatus: String(created.payload?.status || ""),
+        operationId: String(createdPayload.operationId || ""),
+        operationStatus: String(createdPayload.status || ""),
         tenantId: createdTenantId
       };
-      if (!createdTenantId) {
-        throw namedQualificationError("local_v2_tenant_unavailable", "the Tenant owner created no Tenant for the qualified identity");
+      if (createdPayload.owner !== "tenant" || createdPayload.kind !== "create_tenant" ||
+        !["accepted", "succeeded"].includes(String(createdPayload.status || "")) || !createdTenantId) {
+        throw namedQualificationError("local_v2_tenant_creation_invalid", "the Tenant owner returned no valid create operation");
       }
       // A session binds its Tenant when it is issued, so the session that
       // created the Tenant cannot read it back; the run signs in again and
@@ -2306,15 +2354,13 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       auth.ownerCsrf = rebound.ownerCsrf;
       auth.csrf = rebound.ownerCsrf;
       tenant = (await http.request(binding.endpoints.tenant, {}, auth)).payload;
+      if (String(rebound.session.actorId || "") !== String(session.session.actorId || "") ||
+        String(rebound.session.tenantId || "") !== createdTenantId ||
+        String(tenant?.id || "") !== createdTenantId) {
+        throw namedQualificationError("local_v2_tenant_binding_mismatch", "the rebound CloudIdentity session and Tenant readback disagree with the created Tenant");
+      }
       readbacks.cloudIdentity.tenantId = String(rebound.session.tenantId || "");
       readbacks.cloudIdentity.reboundActorId = String(rebound.session.actorId || "");
-      const declared = (await http.json(`${binding.endpoints.adminTenants}?limit=100`, {}, auth)).payload;
-      readbacks.tenantCreation.adminReadback = (Array.isArray(declared?.items) ? declared.items : [])
-        .some((candidate) => String(candidate?.id || "") === createdTenantId);
-      if (!tenant?.id && !readbacks.tenantCreation.adminReadback) {
-        throw namedQualificationError("local_v2_tenant_unavailable", "the Tenant owner published no Tenant for the qualified identity");
-      }
-      if (!tenant?.id) tenant = { id: createdTenantId, status: "active" };
     }
     if (!tenant?.id) throw namedQualificationError("local_v2_tenant_unavailable", "the Tenant owner published no Tenant for the qualified identity");
     readbacks.tenant = { id: tenant.id, billingSub2apiUserId: String(tenant.billingSub2apiUserId || ""), status: String(tenant.status || "") };
@@ -2349,9 +2395,14 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       return { profile, selected };
     })();
     const repository = readbacks.installation.workspaceImage.split("@")[0];
-    const registryId = repository.includes("/") ? repository.split("/")[0] : repository;
+    // The namespace records the registry the installation publishes to, and the
+    // owner admits it by name: letters, digits, dots, hyphens and underscores.
+    // A registry host that carries a port keeps it in the repository prefix,
+    // which is the field that names the full path.
+    const registryHost = repository.includes("/") ? repository.split("/")[0] : repository;
+    const registryId = registryHost.split(":")[0];
     const namespaceId = await declareOrRead(http, auth, binding.endpoints.publisherNamespaces, "name", "local-v2-qualification-publisher", {
-      name: "local-v2-qualification-publisher", kind: "official", registryId, repositoryPrefix: repository,
+      name: "local-v2-qualification-publisher", kind: "OFFICIAL", registryId, repositoryPrefix: repository,
       admissionReceiptId: `local-v2-admission:${options.sourceSha}`
     });
     const runtimeVersionId = await declareOrRead(http, auth, binding.endpoints.runtimeVersions, "name", readbacks.application.applicationId, {
@@ -2389,13 +2440,28 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       storagePlans: await catalogIds(http, auth, binding.endpoints.catalogStoragePlans)
     };
     record("catalog", "confirmed", { runtimeVersionId, computePlanId, storagePlanId });
+    let catalogProfile;
+    try {
+      catalogProfile = JSON.parse(String(values.OPL_RESOURCE_CATALOG_PROFILE_JSON || ""));
+    } catch {
+      throw namedQualificationError("local_v2_resource_catalog_profile_invalid", "the installation must declare a valid Resource Catalog provider profile");
+    }
+    const provider = String(catalogProfile?.provider || "");
+    const billingMode = String(catalogProfile?.billingMode || "");
+    if (provider !== "local-docker" || billingMode !== "LOCAL_NO_CHARGE") {
+      throw namedQualificationError("local_v2_resource_catalog_profile_invalid", "the local-v2 installation must declare local-docker and LOCAL_NO_CHARGE");
+    }
     stage = "quote";
     const quote = (await http.json(binding.endpoints.quotes, {
       method: "POST", headers: { "idempotency-key": `local-v2-quote:${options.sourceSha}:${workspaceName}` },
       body: { purpose: "deploy", computePlanId, storagePlanId, periodMonths: 1, applicationSelection: { kind: "opl_app", runtimeVersionId } }
     }, auth, [200, 201])).payload;
     if (!quote?.id) throw namedQualificationError("local_v2_quote_invalid", "the Workspace owner returned no quote identity");
-    readbacks.quote = { id: quote.id, totalUSDMicros: String(quote.totalUSDMicros || ""), status: String(quote.status || ""), purpose: quote.purpose, runtimeVersionId: quote.runtimeVersionId };
+    const totalUSDMicros = String(quote.totalUSDMicros ?? "");
+    if (provider !== "local-docker" || billingMode !== "LOCAL_NO_CHARGE" || totalUSDMicros !== "0") {
+      throw namedQualificationError("local_v2_non_local_no_charge_quote", "the Workspace quote is not local-docker LOCAL_NO_CHARGE at zero total");
+    }
+    readbacks.quote = { id: quote.id, provider, billingMode, totalUSDMicros, status: String(quote.status || ""), purpose: quote.purpose, runtimeVersionId: quote.runtimeVersionId };
     record("quote", "confirmed", { quoteId: quote.id, totalUSDMicros: readbacks.quote.totalUSDMicros });
     stage = "order";
     const order = (await http.json(binding.endpoints.workspaces, {

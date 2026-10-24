@@ -8,6 +8,7 @@ import test from "node:test";
 
 import {
   continueWorkspaceDelete,
+  assertLocalV2ComposeEnvironment,
   assertWorkspaceQualificationTopology,
   deleteWorkspaceOnOwnerRoute,
   readWorkspaceRefundReceipt,
@@ -33,6 +34,7 @@ import {
   qualificationPathAllowed,
   RETAINED_LEGACY_ENDPOINT_PREFIXES,
   runLocalV2Qualification,
+  verifyStores,
   localV2ApplicationEntryBoundary,
   localV2QualificationCA,
   localV2QualificationOrigin,
@@ -310,6 +312,31 @@ test("qualification compose uses the runner-owned exact environment", () => {
   assert.equal(environment.PATH, "/usr/bin");
   assert.equal(environment.OPL_WORKSPACE_IMAGE, workspaceReference);
   assert.equal(environment.OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT, exactSecretRoot);
+});
+
+test("local-v2 compose readback rejects a host override", () => {
+  assert.doesNotThrow(() => assertLocalV2ComposeEnvironment("OPL_CLOUD_IMAGE=declared\n", {
+    OPL_CLOUD_IMAGE: "declared"
+  }));
+  assert.throws(() => assertLocalV2ComposeEnvironment("OPL_CLOUD_IMAGE=ambient\n", {
+    OPL_CLOUD_IMAGE: "declared"
+  }), { code: "local_v2_compose_environment_mismatch" });
+});
+
+test("v2 store verification checks the owner schema and returns an explicit owner map", async () => {
+  const calls = [];
+  const compose = async (args) => {
+    calls.push(args);
+    if (args.some((arg) => String(arg).includes("pg_database"))) {
+      return { stdout: LOCAL_V2_OWNER_STORES.map(([database, owner]) => `${database}:${owner}`).join("\n") };
+    }
+    return { stdout: "7:7" };
+  };
+  const result = await verifyStores(compose, { stores: LOCAL_V2_OWNER_STORES, v2: true });
+  assert.equal(result.ownerSeparated, true);
+  assert.equal(result.ownerStores.opl_workspace.schema, "workspace");
+  assert.equal(result.ownerStores.opl_workspace.owner, "opl_workspace_owner");
+  assert.ok(calls.some((args) => args.some((arg) => String(arg).includes("schemaname='workspace'"))));
 });
 
 test("qualification teardown clears the root-owned secret bind mount through Fabric", async () => {
@@ -1808,6 +1835,7 @@ function localV2Fixture() {
     OPL_WORKSPACE_DOMAIN: "ws-qualification.localhost",
     OPL_CLOUD_IMAGE: `opl-cloud-local-v2@sha256:${"e".repeat(64)}`,
     OPL_WORKSPACE_IMAGE: workspaceImage,
+    OPL_RESOURCE_CATALOG_PROFILE_JSON: JSON.stringify({ provider: "local-docker", region: "local", billingMode: "LOCAL_NO_CHARGE", providerCapabilityVersion: "local-docker/v1" }),
     OPL_QUALIFICATION_USER_EMAIL: "local-qualification@example.test",
     OPL_QUALIFICATION_USER_PASSWORD: `Local-${"f".repeat(40)}-Aa1!`,
     OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: JSON.stringify({
@@ -1861,13 +1889,16 @@ function localV2Fixture() {
   };
   const compose = async (args) => {
     if (args[0] === "up") return { code: 0, stdout: "", stderr: "" };
+    if (args.includes("config") && args.includes("--environment")) {
+      return { code: 0, stdout: Object.entries(values).map(([name, value]) => `${name}=${value}`).join("\n") + "\n", stderr: "" };
+    }
     if (args.includes("config")) {
       return { code: 0, stdout: JSON.stringify({ services: Object.fromEntries(LOCAL_V2_QUALIFICATION_SERVICES.map((name) => [name, {}])) }), stderr: "" };
     }
     if (args.some((arg) => String(arg).includes("pg_database"))) {
       return { code: 0, stdout: LOCAL_V2_OWNER_STORES.map(([database, owner]) => `${database}:${owner}`).join("\n"), stderr: "" };
     }
-    if (args.some((arg) => String(arg).includes("pg_tables"))) return { code: 0, stdout: "7", stderr: "" };
+    if (args.some((arg) => String(arg).includes("pg_tables"))) return { code: 0, stdout: "7:7", stderr: "" };
     return { code: 0, stdout: "", stderr: "" };
   };
   return { values, workspaceImage, requests, client, compose };
@@ -1924,6 +1955,7 @@ test("local-v2 qualification collects owner readbacks and reports the host bound
     assert.equal(result.evidence.readbacks.ledger.receipts, 3);
     assert.equal(result.evidence.readbacks.fabric.resourceSets, 3);
     assert.equal(result.evidence.readbacks.stores.ownerSeparated, true);
+    assert.equal(result.evidence.readbacks.stores.ownerStores.opl_workspace.schema, "workspace");
     assert.deepEqual(result.retainedWritersUsed, []);
     assert.equal(result.receiptCompatibility.compatible, false);
     assert.ok(result.receiptCompatibility.missing.length > 0);

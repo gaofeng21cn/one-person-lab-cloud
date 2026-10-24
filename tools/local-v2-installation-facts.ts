@@ -141,7 +141,9 @@ export function localV2RandomSecret(bytes = 32) {
 // anywhere in the value, because a structured value keeps its shape and the
 // sentinel is embedded in it.
 function localV2IsUnfilled(value) {
-  return /(^|[^A-Za-z0-9_-])unset-[a-z0-9_]+/.test(String(value || ""));
+  const text = String(value || "");
+  return /^(?:unset-[a-z0-9_-]+)$/.test(text) ||
+    /(^|[^A-Za-z0-9_\/-])unset-[a-z0-9_-]+(?=$|[^A-Za-z0-9_\/-])/.test(text);
 }
 
 export function localV2InstallationFacts({ template, compose, values = {} } = {}) {
@@ -168,6 +170,9 @@ export function localV2InstallationFacts({ template, compose, values = {} } = {}
   const unresolved = [];
 
   for (const { name, value } of declarations) {
+    if (Object.prototype.hasOwnProperty.call(values, name) && /[\r\n]/.test(String(values[name]))) {
+      throw localV2FactsError("local_v2_value_contains_newline", name);
+    }
     if (name.endsWith("_PEER_TOKENS")) {
       const tokenVariable = localV2TargetTokenVariable(name);
       const token = values[tokenVariable];
@@ -202,6 +207,9 @@ export function localV2InstallationFacts({ template, compose, values = {} } = {}
     }
     if (Object.prototype.hasOwnProperty.call(values, name)) {
       const supplied = String(values[name]);
+      if (value.includes("<") && value.includes(">") && supplied.trim() === "") {
+        throw localV2FactsError("local_v2_required_value_empty", name);
+      }
       resolved.set(name, supplied);
       entries.push([name, supplied]);
       continue;

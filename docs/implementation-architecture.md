@@ -1178,15 +1178,29 @@ readback, and a deleted Workspace may retain its soft-deleted owner record.
 Recovery retains the original replay selectors in a private mode-0600 artifact;
 a public digest alone cannot address an order whose response was lost.
 
-The local driver still selects the retained CP/Fabric/Ledger Compose overlays.
-It now rejects a configuration missing Workspace, BFF, CloudIdentity (`tenant`)
-or Serve before stack startup or customer mutation. The separate local-v2
-installation declaration is not yet wired into this driver or qualified for the
-full owner execution/deletion path. Instance's current protected consumer also
-still passes `--package-id`; it must adopt the producer's RuntimeVersion/compute/
-storage declarations and Tenant/payer inputs before executing the new producer.
-[The roadmap](roadmap.md#native-v2-qualification-and-cp-retirement-1042) owns
-these remaining outcomes.
+The local qualification driver has two explicit boundaries. Its retained
+configuration still selects the CP/Fabric/Ledger Compose overlays and rejects a
+configuration missing Workspace, BFF, CloudIdentity (`tenant`) or Serve before
+stack startup or customer mutation. Its `local-v2` mode instead reads one
+installation-owned declaration, serves the declared CA-backed HTTPS origin,
+checks the declared CloudIdentity/Tenant binding, reads the owner catalog,
+creates a zero-price local quote and Workspace order, and records owner
+readbacks for the operation, Workspace and transactions. The v2 result is a
+`NOT_READY` diagnostic evidence record until the provider and full lifecycle
+readbacks complete; it is not the retained v1 receipt and cannot admit a
+Candidate or Product Release. The driver must also preserve the declared
+installation environment when starting Compose; ambient `OPL_*` values cannot
+silently replace it.
+
+The v2 path is constrained to the declared local-docker, `LOCAL_NO_CHARGE`,
+zero-total flow and must refuse a Tenant or provider binding that the owners do
+not read back. It does not prove Linux project-quota execution, restart and
+recovery, provider absence after deletion, Ledger receipt completeness, or the
+exact original-charge fixture refund. Instance's current protected consumer
+also still passes `--package-id`; it must adopt the producer's
+RuntimeVersion/compute/storage declarations and Tenant/payer inputs before
+executing the new producer. [The roadmap](roadmap.md#native-v2-qualification-and-cp-retirement-1042)
+owns these remaining outcomes.
 
 ## Product Distribution
 
