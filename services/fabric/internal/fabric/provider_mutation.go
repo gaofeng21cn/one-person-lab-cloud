@@ -85,10 +85,6 @@ func (s *Service) providerMutationContext(ctx context.Context, operation FabricO
 	return s.providerOperationContext(ctx, operation, false)
 }
 
-func (s *Service) providerReadContext(ctx context.Context, operation FabricOperation) context.Context {
-	return s.providerOperationContext(ctx, operation, true)
-}
-
 func (s *Service) providerOperationContext(ctx context.Context, operation FabricOperation, readOnly bool) context.Context {
 	return withProviderOperationJournal(
 		ctx,
