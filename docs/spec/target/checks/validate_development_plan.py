@@ -6,6 +6,8 @@ from datetime import datetime,timezone
 from collections import Counter
 import json,hashlib,re,sys,os
 R=Path(__file__).resolve().parents[1]
+CLOUD=R.parents[2]
+def input_path(name): return CLOUD/name if name.startswith('packages/contracts/proto/') else R/name
 plan=json.loads((R/'checks/development_plan.json').read_text())
 api=json.loads((R/'contracts/api_inventory.json').read_text())['operations']
 db=json.loads((R/'contracts/db_inventory.json').read_text())['tables']
@@ -43,7 +45,7 @@ require(consumed==ops,'some REST operations have no frontend consumer task')
 actual_tables={f"{t['schema']}.{t['name']}" for t in db}
 require(set(plan['tablePrimary'])==actual_tables,'DB owner tables not fully assigned')
 for table,wid in plan['tablePrimary'].items():require(wid in W and table in W[wid].get('tablesPrimary',[]),'table task mapping mismatch: '+table)
-proto=(R/'contracts/internal.proto').read_text();rpcs=set()
+proto=(CLOUD/'packages/contracts/proto/internal.proto').read_text();rpcs=set()
 for m in re.finditer(r'service\s+(\w+)\s*\{(.*?)\}',proto,re.S):
  for method in re.findall(r'rpc\s+(\w+)',m[2]):rpcs.add(m[1]+'.'+method)
 require(set(plan['rpcImplementers'])==rpcs,'internal RPC implementation coverage differs')
@@ -157,7 +159,7 @@ require('W29' in W['W31']['startAfter'] and 'W30' not in W['W31']['startAfter'],
 require('08_delivery_checklist_per_role.md' in text or '08' in text,'role acceptance owner absent')
 check_only='--check' in sys.argv[1:]
 now=datetime.now(timezone.utc)
-report={'schemaVersion':1,'timestamp':now.isoformat(),'passed':not errors,'scope':'implementation plan completeness/coverage/dependency verification only; no work package implemented','counts':{'workPackages':len(W),'features':len(features),'restOperations':len(ops),'tables':len(actual_tables),'internalRPCs':len(rpcs),'executionSlices':len(slices)},'sliceWaves':slice_waves,'topologicalOrder':order,'acceptanceDependencyWaves':waves,'errors':errors,'sourceHashes':{name:hashlib.sha256((R/name).read_bytes()).hexdigest() for name in ['00_master_index.md','01_domain_ownership_matrix.md','14_implementation_work_packages.md','checks/development_plan.json','checks/render_development_plan.py','checks/validate_development_plan.py','contracts/api_inventory.json','contracts/db_inventory.json','contracts/ui_inventory.json','contracts/internal.proto','03_api_contract_complete.yaml','12_product_spec.md']}}
+report={'schemaVersion':1,'timestamp':now.isoformat(),'passed':not errors,'scope':'implementation plan completeness/coverage/dependency verification only; no work package implemented','counts':{'workPackages':len(W),'features':len(features),'restOperations':len(ops),'tables':len(actual_tables),'internalRPCs':len(rpcs),'executionSlices':len(slices)},'sliceWaves':slice_waves,'topologicalOrder':order,'acceptanceDependencyWaves':waves,'errors':errors,'sourceHashes':{name:hashlib.sha256(input_path(name).read_bytes()).hexdigest() for name in ['00_master_index.md','01_domain_ownership_matrix.md','14_implementation_work_packages.md','checks/development_plan.json','checks/render_development_plan.py','checks/validate_development_plan.py','contracts/api_inventory.json','contracts/db_inventory.json','contracts/ui_inventory.json','packages/contracts/proto/internal.proto','03_api_contract_complete.yaml','12_product_spec.md']}}
 if check_only:
  # Read-only gate: prove the checked-in projection still matches its live inputs without
  # mutating receipts or the validation snapshot. The trusted host decides where to persist evidence.

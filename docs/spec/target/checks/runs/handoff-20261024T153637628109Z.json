@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-10-24T15:36:37.626473+00:00",
+  "status": "needs_correction",
+  "technicalClosureVerified": false,
+  "approvedPendingContractMigrations": [
+    "2026-09-29-default-opl-app-and-optional-agent"
+  ],
+  "implementationEntry": "W01.application-contracts",
+  "planningEntryReady": true,
+  "pendingUserDecisions": [],
+  "issues": [
+    "current specification checks not passed",
+    "canonical publisher check stale",
+    "UI source changed after verification: 03_api_contract_complete.yaml",
+    "UI source changed after verification: contracts/ui_inventory.json",
+    "UI source changed after verification: 04_frontend_interaction_spec.md",
+    "UI source changed after verification: 07_error_handling_matrix.md",
+    "approved application-selection contract migration has not reached executable schemas/consumers (W01)"
+  ],
+  "scope": "development specification + interactive prototype + isolated contract/DB tests; NOT implemented services or production qualification",
+  "reviewFindings": {
+    "R01": "evidence_failed",
+    "R02": "evidence_failed",
+    "R03": "evidence_failed",
+    "R04": "evidence_failed",
+    "R05": "evidence_failed",
+    "R06": "evidence_failed",
+    "R07": "evidence_failed",
+    "R08": "evidence_failed",
+    "R09": "evidence_failed",
+    "R10": "evidence_failed"
+  },
+  "evidence": {
+    "static": "checks/runs/20261024T153605612442Z.json",
+    "crossDomain": "checks/runs/cross-domain-20261024T125416.383834Z.json",
+    "publisherSource": "checks/runs/publisher-source-20260929T192228595988Z.json",
+    "contractSemantics": "checks/handoff_contract_semantics.json",
+    "d17ContractSemantics": "checks/d17_contract_results.json",
+    "developmentPlan": "checks/development_plan_validation.json",
+    "ui": "checks/ui_prototype_verification.json"
+  },
+  "counts": {
+    "features": 17,
+    "typedFlowSteps": 93,
+    "restOperations": 117,
+    "crossDomainCases": 101,
+    "contractCases": 64,
+    "d17ContractCases": 56,
+    "implementationWorkPackages": 32
+  }
+}

@@ -678,8 +678,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#tenant",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -820,8 +820,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#tenant",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -1643,8 +1643,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#capability",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -2042,8 +2042,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#capability",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -2557,8 +2557,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#capability",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -2992,8 +2992,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#build",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -3105,8 +3105,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#build",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -3835,8 +3835,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#workspace",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": [
         {
@@ -3988,8 +3988,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#workspace",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -4130,8 +4130,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#workspace",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": [
         {
@@ -4329,8 +4329,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#workspace",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": [
         {
@@ -4665,8 +4665,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#runtime_control",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -4815,8 +4815,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#fabric",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -4983,8 +4983,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#fabric",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -5109,8 +5109,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#fabric",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -5242,8 +5242,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#fabric",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -5425,8 +5425,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#fabric",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -5568,8 +5568,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#gateway",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -5682,8 +5682,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#gateway",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -7891,8 +7891,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#ledger",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -8040,8 +8040,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#tenant",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -8171,8 +8171,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#tenant",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -8331,8 +8331,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#tenant",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -8466,8 +8466,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#tenant",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -8615,8 +8615,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#capability",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -8746,8 +8746,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#capability",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -8906,8 +8906,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#capability",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -9041,8 +9041,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#capability",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -9190,8 +9190,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#build",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -9321,8 +9321,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#build",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -9481,8 +9481,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#build",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -9616,8 +9616,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#build",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -9765,8 +9765,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#workspace",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -9896,8 +9896,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#workspace",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -10056,8 +10056,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#workspace",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -10191,8 +10191,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#workspace",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -10340,8 +10340,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#runtime_control",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -10471,8 +10471,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#runtime_control",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -10631,8 +10631,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#runtime_control",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -10766,8 +10766,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#runtime_control",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -10915,8 +10915,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#fabric",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -11046,8 +11046,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#fabric",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -11206,8 +11206,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#fabric",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -11341,8 +11341,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#fabric",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -11490,8 +11490,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#gateway",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -11621,8 +11621,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#gateway",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -11781,8 +11781,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#gateway",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -11916,8 +11916,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#gateway",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -12065,8 +12065,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#resource_catalog",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -12196,8 +12196,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#resource_catalog",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -12356,8 +12356,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#resource_catalog",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -12491,8 +12491,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#resource_catalog",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -12640,8 +12640,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#ledger",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -12771,8 +12771,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#ledger",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -12931,8 +12931,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#ledger",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -13066,8 +13066,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#ledger",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -15301,8 +15301,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#fabric",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": [
         {
@@ -15514,8 +15514,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#fabric",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -16320,8 +16320,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#workspace",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -16497,8 +16497,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#workspace",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -16646,8 +16646,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#runtime_control",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -16777,8 +16777,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#runtime_control",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -16937,8 +16937,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#runtime_control",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },
@@ -17072,8 +17072,8 @@
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#runtime_control",
-        "contracts/internal.proto",
-        "contracts/events.json"
+        "packages/contracts/proto/internal.proto",
+        "packages/contracts/proto/events.json"
       ],
       "postCreateConstraints": []
     },

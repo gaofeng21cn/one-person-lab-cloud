@@ -84,7 +84,7 @@ test("dedicated plan verification preserves the target-spec scope and explicit m
     "docs/spec/target/contracts/api_inventory.json",
     "docs/spec/target/contracts/db_inventory.json",
     "docs/spec/target/contracts/ui_inventory.json",
-    "docs/spec/target/contracts/internal.proto"
+    "packages/contracts/proto/internal.proto"
   ]) {
     assert.deepEqual(developmentPlanVerificationSteps([path]), [
       { name: "Development plan freshness", command: "npm", args: ["run", "verify:development-plan"] }

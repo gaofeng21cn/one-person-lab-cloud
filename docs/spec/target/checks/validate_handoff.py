@@ -4,6 +4,8 @@ from pathlib import Path
 from datetime import datetime,timezone
 import hashlib,json,re,sys,yaml
 root=Path(__file__).resolve().parents[1]
+cloud=root.parents[2]
+def source_path(name): return cloud/name if name.startswith('packages/contracts/proto/') else root/name
 issues=[]
 def need(ok,msg):
  if not ok:issues.append(msg)
@@ -13,9 +15,9 @@ static=read('checks/verification.json');need(static['result']=='passed','current
 sr=read(static['report'])
 for name,digest in sr['artifacts'].items():
  if name.startswith('checks/runs/') or name in ['checks/handoff_readiness.json']:continue
- path=root/name
+ path=source_path(name)
  need(path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest()==digest,'static receipt stale: '+name)
-proto=(root/'contracts/internal.proto').read_text();rpcs={}
+proto=(cloud/'packages/contracts/proto/internal.proto').read_text();rpcs={}
 for m in re.finditer(r'service\s+(\w+)\s*\{(.*?)\}',proto,re.S):
  for n in re.finditer(r'rpc\s+(\w+)\((\w+)\)\s+returns\s*\((\w+)\)',m[2]):rpcs[f'{m[1]}.{n[1]}']=(n[2],n[3])
 api=read('contracts/api_inventory.json');ops={x['operationId'] for x in api['operations']}
@@ -32,7 +34,7 @@ for f in flows:
 cross_paths=sorted((root/'checks/runs').glob('cross-domain-*.json'));need(bool(cross_paths),'no cross-domain receipt')
 cross=json.loads(cross_paths[-1].read_text()) if cross_paths else {}
 need(cross.get('passed') is True and cross.get('sourceUnchangedDuringRun') is True,'cross-domain execution did not pass exact input')
-for name,digest in cross.get('sourceHashes',{}).items():need(hashlib.sha256((root/name).read_bytes()).hexdigest()==digest,'cross-domain source changed: '+name)
+for name,digest in cross.get('sourceHashes',{}).items():need(hashlib.sha256(source_path(name).read_bytes()).hexdigest()==digest,'cross-domain source changed: '+name)
 need(cross.get('cleanup',{}).get('containerAbsent') is True,'DB cleanup not confirmed')
 # Canonical Go source, not only our duplicated schema.
 go_paths=sorted((root/'checks/runs').glob('publisher-source-*.json'));need(bool(go_paths),'no canonical publisher validation')
@@ -61,7 +63,7 @@ if native_paths:
  need(native['policyHash']==hashlib.sha256((root/'contracts/plan-change-policy.json').read_bytes()).hexdigest(),'native D17 check policy binding changed')
 devplan=read('checks/development_plan_validation.json')
 need(devplan['passed'] is True,'development work-package coverage/DAG checks failed')
-for name,digest in devplan['sourceHashes'].items():need(hashlib.sha256((root/name).read_bytes()).hexdigest()==digest,'development plan evidence stale: '+name)
+for name,digest in devplan['sourceHashes'].items():need(hashlib.sha256(source_path(name).read_bytes()).hexdigest()==digest,'development plan evidence stale: '+name)
 decisions=read('checks/decision_status.json')['decisions'];pending=[d['id'] for d in decisions if d['status']!='accepted']
 wire=yaml.safe_load((root/'03_api_contract_complete.yaml').read_text())
 migration=wire.get('x-approved-wire-migration')
