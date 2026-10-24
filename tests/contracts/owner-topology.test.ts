@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
@@ -290,28 +292,47 @@ const ownerProcessDirectories: Array<[string, string]> = [
   ["gateway-integration", "services/gateway-integration"]
 ];
 
-// registeredHttpSurfaces reads every HTTP surface a Cloud process registers,
-// taking only route registration shapes: a method-prefixed route literal, or a
-// path-keyed route table entry. Outbound client URLs carry no method and are
-// therefore not counted.
+// The AST helper reads literal arguments to actual Handle/HandleFunc calls.
+// Computed patterns are outside this source inventory; owner runtime tests
+// remain necessary. Quoted response metadata cannot claim another HTTP owner.
+function registeredLiteralPaths(files: string[]): string[] {
+  return JSON.parse(execFileSync("go", ["run", "services/control-plane/internal/server/testdata/http-surface-scan.go"], {
+    input: JSON.stringify(files), encoding: "utf8", maxBuffer: 4 * 1024 * 1024,
+  })) as string[];
+}
+
 async function registeredHttpSurfaces(): Promise<Map<string, Set<string>>> {
   const byPrefix = new Map<string, Set<string>>();
   for (const [service, directory] of ownerProcessDirectories) {
-    for (const file of await goFiles(directory)) {
-      const source = await readFile(file, "utf8");
-      const paths = new Set<string>();
-      for (const match of source.matchAll(/"(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) (\/[^" ]*)"/g)) paths.add(match[1]);
-      for (const match of source.matchAll(/"(\/[^" ]*)":\s*\{/g)) paths.add(match[1]);
-      for (const registered of paths) {
-        const prefix = surfacePrefix(registered);
-        const owners = byPrefix.get(prefix) ?? new Set<string>();
-        owners.add(service);
-        byPrefix.set(prefix, owners);
-      }
+    for (const registered of registeredLiteralPaths(await goFiles(directory))) {
+      const prefix = surfacePrefix(registered);
+      const owners = byPrefix.get(prefix) ?? new Set<string>();
+      owners.add(service);
+      byPrefix.set(prefix, owners);
     }
   }
   return byPrefix;
 }
+
+test("route inventory distinguishes real registrations from redirects and comments", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "opl-http-surface-"));
+  try {
+    const file = path.join(directory, "routes.go");
+    await writeFile(file, `package fixture
+func routes(mux *http.ServeMux) {
+ // mux.HandleFunc("POST /api/v99/comment", handler)
+ mux.HandleFunc("POST /api/workspace-launches", handler)
+ mux.Handle("GET /api/v2/workspaces", handler)
+ writeJSON(map[string]any{"next": []string{"POST /api/v3/quotes", "POST /api/v3/workspaces"}})
+}
+`);
+    assert.deepEqual(registeredLiteralPaths([file]), ["/api/v2/workspaces", "/api/workspace-launches"]);
+    await writeFile(file, "package fixture\nfunc broken(");
+    assert.throws(() => registeredLiteralPaths([file]), /expected/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 // consoleApiPrefixes reads every API path literal the Console source itself
 // names, at the same surface granularity.
@@ -328,7 +349,7 @@ async function consoleApiPrefixes(): Promise<Set<string>> {
   return prefixes;
 }
 
-test("the declaration names every HTTP surface the Cloud processes register", async () => {
+test("the declaration matches literal HTTP registrations in the Cloud processes", async () => {
   const topology = await loadTopology();
   const registered = await registeredHttpSurfaces();
   assert.ok(registered.size >= 5, `expected the owner HTTP surfaces, saw ${[...registered.keys()].join(",")}`);
