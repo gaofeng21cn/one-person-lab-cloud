@@ -48,7 +48,9 @@
     "dev:approve": "node tools/dev-session.ts approve",
     "dev:run": "node tools/dev-session.ts run",
     "dev:verify": "node tools/dev-session.ts verify",
-    "verify:development-plan": "node tools/verify-development-plan.ts"
+    "verify:development-plan": "node tools/verify-development-plan.ts",
+    "check:budget": "node tools/check-change-budget.ts",
+    "test:budget": "node --test tests/tools/check-change-budget.test.ts"
   },
   "dependencies": {
     "@openai/apps-sdk-ui": "^0.2.2",
