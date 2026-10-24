@@ -54,9 +54,18 @@ The label is an owner decision, not an agent decision.
 
 ## Weekly budget
 
-- **From week 2 (2026-11-02):** net handwritten code must be ≤ 0 per week.
-- **New files:** ≤ 20 per week, measured on `main` every Monday.
+The budget has two phases, because closing the v2 chain is allowed to add code
+while it must not add layers.
+
+- **Closure phase (now until the v2 chain passes end to end):** net handwritten
+  code ≤ +2,000 per week. The current rate is about +14,000 per week; the budget
+  slows it, it does not block the closure.
+- **After closure:** net handwritten code ≤ 0 per week.
+- **New files:** ≤ 20 per week from 2026-11-02, measured on `main` every Monday.
 - **Tests:** may grow only where a behavior test replaces an implementation test.
+- **Defect fixes and the v2 closure are exempt from the weekly budget.** They are
+  not exempt from the freeze list; a new RPC or abstraction still needs the
+  exception label and a reason.
 
 When a week exceeds the budget, the following week is delete-only: only
 net-negative pull requests merge, except for a production defect named in an
@@ -86,7 +95,7 @@ is present.
 
 ## Exit criteria
 
-The brake ends when all hold for three consecutive weeks:
+The brake ends when all hold for three consecutive weeks after the v2 chain passes:
 
 - net handwritten code ≤ 0;
 - binaries ≤ 11;
