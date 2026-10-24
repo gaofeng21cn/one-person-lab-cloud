@@ -21,28 +21,6 @@ func (c *Clients) Tenant(ctx context.Context, call *api.CallContext) (*api.Tenan
 	return c.tenant.GetTenant(ctx, &api.GetTenantRpcRequest{Context: call})
 }
 
-func (c *Clients) Members(ctx context.Context, call *api.CallContext, cursor string) (*api.MemberPage, error) {
-	if c.tenant == nil {
-		return nil, fmt.Errorf("CloudIdentity: %w", ErrUpstreamUnconfigured)
-	}
-	request := &api.ListMembersRpcRequest{Context: call}
-	if cursor != "" {
-		request.QueryCursor = &cursor
-	}
-	return c.tenant.ListMembers(ctx, request)
-}
-
-func (c *Clients) Invitations(ctx context.Context, call *api.CallContext, cursor string) (*api.InvitationPage, error) {
-	if c.tenant == nil {
-		return nil, fmt.Errorf("CloudIdentity: %w", ErrUpstreamUnconfigured)
-	}
-	request := &api.ListInvitationsRpcRequest{Context: call}
-	if cursor != "" {
-		request.QueryCursor = &cursor
-	}
-	return c.tenant.ListInvitations(ctx, request)
-}
-
 func (c *Clients) InviteMember(ctx context.Context, call *api.CallContext, body *api.InviteMemberRequest) (*api.Invitation, error) {
 	if c.tenant == nil {
 		return nil, fmt.Errorf("CloudIdentity: %w", ErrUpstreamUnconfigured)
