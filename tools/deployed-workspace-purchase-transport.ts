@@ -28,7 +28,7 @@
  *
  * What this module does add is the gate the three mechanisms were standing in
  * for. Money is separated from everything else by splitting the run in two. The
- * `quote` command spends nothing: it reads the account, reads the wallet, asks
+ * `quote` command spends nothing: it checks the customer and Tenant payer, asks
  * the Workspace owner for the price of the declared purchase and prints the
  * exact amount. The `purchase` command then requires the operator to pass that
  * exact amount back as `--authorize-amount-usd-micros`. An authorization is
@@ -52,11 +52,10 @@ import {
   deployedPurchaseIdempotencyKey,
   deployedPurchaseRequestFromEnvironment,
   readDeclaredCustomer,
-  resolveWorkspaceDeclaration,
   runDeployedWorkspacePurchase,
   validateDeployedPurchaseReceipt,
 } from "./deployed-workspace-purchase.ts";
-import { priceWorkspaceQuote, quoteWorkspaceOrder } from "./workspace-purchase-core.ts";
+import { quoteAmountUsdMicros, quoteWorkspaceOrder, workspaceDeclaration } from "./workspace-purchase-core.ts";
 
 // The credential names. They are read from the caller's environment and never
 // written, logged, echoed into a summary or placed in the receipt; the purchase
@@ -70,6 +69,12 @@ export const PURCHASE_CUSTOMER_PASSWORD = "OPL_QUALIFICATION_USER_PASSWORD";
 // gets to assert. It is passed to `login` so a session for another account is
 // refused before a single route is read.
 export const PURCHASE_ACCOUNT_ID = "OPL_DEPLOYED_PURCHASE_ACCOUNT_ID";
+// The Tenant and the Gateway subject its active wallet binding names as payer.
+// Both are declarations: the buyer does not infer a payer from an email, a
+// display name or an actor id, and it does not substitute the signed-in User's
+// personal wallet for the Tenant's binding.
+export const PURCHASE_TENANT_ID = "OPL_DEPLOYED_PURCHASE_TENANT_ID";
+export const PURCHASE_BILLING_SUBJECT_ID = "OPL_DEPLOYED_PURCHASE_BILLING_SUBJECT_ID";
 
 const POSITIVE_MICROS = /^[1-9][0-9]*$/;
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -170,8 +175,8 @@ export async function deployedPurchaseCaller(request, environment = process.env,
  * not a useful thing to show an operator before asking them to approve a
  * number.
  *
- * It also re-reads the wallet, so the operator sees the balance the purchase
- * would have checked against rather than a price that may be unaffordable.
+ * The Tenant owner's billing binding selects the payer. Gateway/Workspace
+ * decide charge admission; a personal-wallet balance is not that payer's funds.
  */
 export async function quoteDeployedWorkspacePurchase(caller, request) {
   const { http, auth } = caller;
@@ -185,27 +190,13 @@ export async function quoteDeployedWorkspacePurchase(caller, request) {
       "cannot price a Workspace with automatic renewal: the Workspace owner route admits manual renewal only",
     );
   }
-  const { accountId } = await readDeclaredCustomer(http, auth, request);
+  const { accountId, tenantId, billingSubjectDigest } = await readDeclaredCustomer(http, auth, request);
 
-  // The wallet is read from the Gateway owner under the owner session, so the
-  // balance is the one the owner would spend.
-  const wallet = await http.json("/api/v2/wallet", {}, auth).then((result) => result.payload).catch(() => {
-    throw transportError("deployed_purchase_wallet_unavailable", "could not read the customer wallet");
-  });
-  if (wallet?.source !== "gateway" || wallet?.status !== "available" || wallet?.currency !== "USD") {
-    throw transportError("deployed_purchase_wallet_unavailable", "could not read the customer wallet");
-  }
-  const walletUsdMicros = String(wallet?.balanceUSDMicros || "");
-  if (!/^(?:0|[1-9][0-9]*)$/.test(walletUsdMicros)) {
-    throw transportError("deployed_purchase_wallet_unavailable", "could not read the customer wallet");
-  }
-
-  // The owner prices the declared purchase. This command asks the owner for the
-  // very quote the purchase will buy, under the buyer's own stable idempotency
-  // identity, so the number the operator approves is the number the purchase
-  // is admitted at, and a repeat of this command replays that quote instead of
-  // pricing a second Workspace.
-  const declaration = await resolveWorkspaceDeclaration(http, auth, {
+  // The declaration is the buyer's own input. The owner prices it and freezes
+  // it in the quote; the current catalog is consulted only if this is a first
+  // admission. An accepted quote is the owner's record that the order already
+  // exists, so a retired Runtime or a delisted plan cannot block its recovery.
+  const declaration = workspaceDeclaration({
     applicationSelection: request.applicationSelection,
     computePlanId: request.computePlanId,
     storagePlanId: request.storagePlanId,
@@ -215,39 +206,22 @@ export async function quoteDeployedWorkspacePurchase(caller, request) {
     request.idempotencyIdentity,
   );
   const quote = await quoteWorkspaceOrder({ http, auth, declaration, idempotencyKey });
-
-  // The shared quote policy decides whether the quote names the declared thing
-  // and whether the wallet can fund it. A quote that does not name the declared
-  // thing is refused outright: there is no number to show, because the number
-  // would be about something else.
+  const quoteStatus = String((await http.json(`/api/v2/quotes/${encodeURIComponent(quote.id)}`, {}, auth)).payload?.status || "");
+  if (!["offered", "accepted", "expired"].includes(quoteStatus)) {
+    throw transportError("deployed_purchase_quote_unavailable", "could not read the declared Workspace quote");
+  }
   let amountUsdMicros;
-  let fundable;
   try {
-    amountUsdMicros = priceWorkspaceQuote({ quote, walletUsdMicros, declaration });
-    fundable = true;
-  } catch (error) {
-    // An unaffordable quote is reported, not thrown. The shared core refuses a
-    // buyer that cannot fund the quote, and the purchase path still does
-    // exactly that; but this command spends nothing, and the operator's next
-    // question is the number itself — whether to top the wallet up or buy a
-    // different plan is a decision only they can make. Throwing here would
-    // hide the very figure the decision needs, and it would hide it on the one
-    // call that could have told them.
-    if (!/wallet cannot fund/i.test(String((error as { message?: string } | null)?.message || ""))) {
-      throw transportError("deployed_purchase_quote_unavailable", "could not price the declared Workspace");
-    }
-    fundable = false;
-    amountUsdMicros = String(quote?.totalUSDMicros || "");
-    if (!POSITIVE_MICROS.test(amountUsdMicros)) {
-      throw transportError("deployed_purchase_quote_unavailable", "could not price the declared Workspace");
-    }
+    amountUsdMicros = quoteAmountUsdMicros({ quote, declaration });
+  } catch {
+    throw transportError("deployed_purchase_quote_unavailable", "could not price the declared Workspace");
   }
 
   return {
     amountUsdMicros,
-    walletUsdMicros,
-    fundable,
     accountId,
+    tenantId,
+    billingSubjectDigest,
     baseURL: request.baseURL,
     // The operator approves a number about a product, so the summary names the
     // product the owner will actually sell: the application source and the
@@ -273,15 +247,6 @@ export async function quoteDeployedWorkspacePurchase(caller, request) {
  * refusal here has spent nothing and there is nothing to reconcile.
  */
 function assertAuthorizedAmount(quoted, authorized) {
-  // An unaffordable quote is refused here, before the purchase entry is entered,
-  // so the operator gets the price and the balance rather than the shared core's
-  // refusal from inside a run that had already authenticated and read the order.
-  if (!quoted.fundable) {
-    throw transportError(
-      "deployed_purchase_wallet_cannot_fund",
-      `purchase refused: wallet holds ${quoted.walletUsdMicros} micros and the quote is ${quoted.amountUsdMicros} micros`,
-    );
-  }
   const approved = String(authorized || "").trim();
   if (!POSITIVE_MICROS.test(approved)) {
     throw invalidInput("purchase requires --authorize-amount-usd-micros as an exact micros amount");
@@ -365,10 +330,10 @@ export function deployedPurchaseTransportSummary(result) {
     spent: result.spent,
     baseURL: result.quote.baseURL,
     accountId: result.quote.accountId,
+    tenantId: result.quote.tenantId,
+    billingSubjectDigest: result.quote.billingSubjectDigest,
     product: result.quote.product,
     amountUsdMicros: result.quote.amountUsdMicros,
-    walletUsdMicros: result.quote.walletUsdMicros,
-    fundable: result.quote.fundable,
   };
   if (!result.receipt) return summary;
   return {
@@ -396,7 +361,7 @@ export async function main(
   if (result.command === "quote") {
     throw transportError(
       "deployed_purchase_awaiting_authorization",
-      `quote is ${result.quote.amountUsdMicros} micros for account ${result.quote.accountId} (wallet ${result.quote.walletUsdMicros}, fundable ${result.quote.fundable}); nothing was spent`,
+      `quote is ${result.quote.amountUsdMicros} micros for account ${result.quote.accountId} and Tenant ${result.quote.tenantId}; nothing was spent`,
     );
   }
 }

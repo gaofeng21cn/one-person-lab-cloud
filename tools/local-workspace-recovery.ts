@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { workspaceDeclaration } from "./workspace-purchase-core.ts";
 
 const shaPattern = /^[0-9a-f]{40}$/;
 const recoveryRefPattern = /^[A-Za-z0-9][A-Za-z0-9._/:-]{0,511}$/;
@@ -196,7 +197,7 @@ export function createLocalJ1RecoveryArtifact({ source, failure, authority, comp
   };
 }
 
-export function createLocalJ1RecoveryReadbackPendingArtifact({ source, failure, operationId, workspaceId, compose }) {
+export function createLocalJ1RecoveryReadbackPendingArtifact({ source, failure, operationId, workspaceId, idempotencyKey, quoteId, workspaceName, declaration, compose }) {
   requireExactKeys(source, ["sha", "tree"], "recovery source");
   if (!shaPattern.test(source.sha) || !shaPattern.test(source.tree)) throw new Error("recovery source identity is invalid");
   requireExactKeys(failure, ["stage", "errorCode"], "recovery failure");
@@ -208,15 +209,38 @@ export function createLocalJ1RecoveryReadbackPendingArtifact({ source, failure, 
   const providerVolumeRefs = compose.providerVolumeRefs.map((value) => requireRecoveryRef(value, "provider volume ref"));
   if (postgresVolumeRefs.length === 0) throw new Error("PostgreSQL recovery volume refs are required");
   const unknownWriteCount = () => ({ attempted: null, confirmed: null, unknown: null });
+  // A command whose answer was lost may have been admitted even though the
+  // buyer never saw the owner-minted operation or Workspace identity. The
+  // recovery record then binds the original idempotency identity and says the
+  // owner readback is unknown; it never invents an identity or buys again.
+  const operationIdDigest = String(operationId || "") ? recoveryIdentityDigest(operationId) : null;
+  const workspaceIdDigest = String(workspaceId || "") ? recoveryIdentityDigest(workspaceId) : null;
+  const idempotencyKeyDigest = String(idempotencyKey || "") ? recoveryIdentityDigest(idempotencyKey) : null;
+  if (!operationIdDigest && !idempotencyKeyDigest) throw new Error("recovery identity is required");
+  // This private 0600 recovery artifact must retain replayable selectors when
+  // the owner response was lost. Digests in the public failure summary alone
+  // cannot address the accepted order. These fields contain no credential.
+  let replay;
+  if (idempotencyKeyDigest) {
+    if (!/^[A-Za-z0-9._:-]{1,512}$/.test(String(idempotencyKey)) || typeof workspaceName !== "string" ||
+      !workspaceName.trim() || !declaration || typeof declaration !== "object") {
+      throw new Error("recovery replay inputs are required");
+    }
+    replay = { owner: "workspace", idempotencyKey, quoteId: String(quoteId || "") || null,
+      operationId: String(operationId || "") || null, workspaceId: String(workspaceId || "") || null,
+      name: workspaceName, declaration: workspaceDeclaration(declaration) };
+  }
   return {
     schemaVersion: 1,
     kind: "opl.local-workspace.j1-recovery.v1",
     status: "RECOVERY_READBACK_REQUIRED",
     source: { sha: source.sha, tree: source.tree },
     failure: { stage: failure.stage, errorCode: failure.errorCode },
+    ...(replay ? { replay } : {}),
     authority: {
-      operationIdDigest: recoveryIdentityDigest(operationId),
-      workspaceIdDigest: recoveryIdentityDigest(workspaceId),
+      operationIdDigest,
+      workspaceIdDigest,
+      idempotencyKeyDigest,
       readbackStatus: "unavailable",
       externalWrites: {
         workspaceCreates: unknownWriteCount(),

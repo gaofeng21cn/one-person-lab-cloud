@@ -196,6 +196,43 @@ unmerged #1026 proposal do not establish cancellation or absence. Activation
 and operator command routing follow the remaining callers in #1028; #1031 and
 #1032 retain their historical source changes and closure reasons.
 
+### Native v2 qualification and CP retirement (#1042)
+
+Workspace owns purchase and deletion orchestration; CloudIdentity owns the live
+session and Tenant authorization, Serve owns deployment/access, Fabric owns
+provider execution/absence, Gateway/Sub2API owns charges, refunds and Keys, and
+Ledger owns evidence. The qualification tools consume these facts. Control Plane
+retains historical orders and financial obligations until their migration is
+proved. New-purchase fencing in #1041 must preserve historical resume and the
+retained DELETE path; it does not authorize blanket route removal.
+
+The [source changes](status.md#native-v2-qualification-evidence-2026-10-24) bind
+native charges/deletion/refunds to their original owner operations and preserve
+replay identity. #1042 remains open for the following acceptance outcomes:
+
+- Wire the local qualification driver, environment, owner database checks and
+  restart readback to the complete v2 installation. The retained three-service
+  configuration now refuses before customer mutation. A declaration or login/
+  catalog/quote smoke test is not a completed purchase/deletion qualification.
+- Complete Fabric's Local-Docker execution configuration and gateway identity
+  with Serve's actual access routing. Do not label Control Plane as the native
+  route owner to bypass provider admission. Qualify quote, create, deployment,
+  restart, Workspace DELETE, provider absence, Ledger receipt and exact original-
+  charge fixture refund on the same source and images.
+- Migrate the Instance-owned protected workflow from `--package-id` to the
+  RuntimeVersion/compute/storage declarations, export the declared Tenant and
+  billing subject, and verify its authenticated transport against CloudIdentity
+  and the owning APIs. Preserve Candidate/J0, protected-access and Release
+  admission gates. Cloud source checks do not establish this consumer migration.
+- Remove remaining live Control Plane identity/account and historical-duplicate
+  lookup dependencies only after their original obligations have a proved owner
+  path. Then qualify the same flow on TKE and the separately authorized live
+  Gateway/Sub2API refund boundary before claiming those acceptance layers.
+
+CP retirement requires zero new writes, migrated live callers and static Console
+hosting, and a defined historical archive with owner-approved retention and
+readback. No source-only PR closes #1042 or the original orders in #1018.
+
 ### Original-order Workspace closeout (#1018)
 
 Workspace owns native order closeout; Control Plane retains its historical

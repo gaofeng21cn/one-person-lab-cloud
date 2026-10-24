@@ -364,10 +364,15 @@ export async function submitWorkspaceOrder({
   idempotencyKey,
   wait,
 }) {
-  const order = (await http.json(WORKSPACE_ORDER_ROUTE, {
-    method: "POST", headers: { "idempotency-key": idempotencyKey },
-    body: { name, quoteId: quote.id, renewalMode: "manual" },
-  }, auth, [202])).payload;
+  let order;
+  try {
+    order = (await http.json(WORKSPACE_ORDER_ROUTE, {
+      method: "POST", headers: { "idempotency-key": idempotencyKey },
+      body: { name, quoteId: quote.id, renewalMode: "manual" },
+    }, auth, [202])).payload;
+  } catch (cause) {
+    throw orderError(cause?.message || "workspace order response is unavailable", { quoteId: String(quote.id) }, cause);
+  }
   const operationId = String(order?.operationId || "");
   const workspaceId = String(order?.resourceId || "");
   if (!operationId || !workspaceId) {
@@ -383,4 +388,80 @@ export async function submitWorkspaceOrder({
     throw orderError(error?.message || "workspace order did not complete",
       { operationId, workspaceId, quoteId: String(quote?.id || "") }, error);
   }
+}
+
+// Read every owner page. A partial list cannot establish cardinality, and a
+// repeated cursor or duplicate operation means this is not a coherent readback.
+export async function listWorkspaceTransactions(http, auth, workspaceId) {
+  const items = [];
+  const seenIds = new Set();
+  const seenCursors = new Set();
+  let cursor = "";
+  do {
+    const query = new URLSearchParams({ limit: "100" });
+    if (cursor) query.set("cursor", cursor);
+    const page = (await http.json(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/transactions?${query}`, {}, auth)).payload;
+    if (!Array.isArray(page?.items) || (page.nextCursor !== undefined && typeof page.nextCursor !== "string")) {
+      throw new Error("Workspace transaction page is invalid");
+    }
+    for (const item of page.items) {
+      if (!String(item?.id || "").trim() || item.workspaceId !== workspaceId || seenIds.has(item.id)) {
+        throw new Error("Workspace transaction identity is invalid");
+      }
+      seenIds.add(item.id);
+      items.push(item);
+    }
+    cursor = page.nextCursor || "";
+    if (cursor && seenCursors.has(cursor)) throw new Error("Workspace transaction cursor repeated");
+    if (cursor) seenCursors.add(cursor);
+  } while (cursor);
+  return items;
+}
+
+// Ledger already binds the funded charge to the accepted Workspace obligation.
+// Consumers use that operation identity, never amount equality or wall clocks,
+// to distinguish a purchase from another charge or renewal of the same Workspace.
+export async function readWorkspacePurchaseEvidence(http, auth, {
+  workspaceId, operationId, amountUsdMicros, quoteId = "", expectedReceiptId = "",
+}) {
+  if (!workspaceId || !operationId || !PRICE_MICROS.test(String(amountUsdMicros))) {
+    throw new Error("Workspace purchase evidence binding is missing");
+  }
+  let transactions;
+  try {
+    transactions = await listWorkspaceTransactions(http, auth, workspaceId);
+  } catch (cause) {
+    throw Object.assign(new Error(`Workspace purchase evidence is unavailable: ${cause?.message || "owner read failed"}`, { cause }), { code: "purchase_receipt_missing" });
+  }
+  const charges = transactions.filter((item) => item.kind === "charge" && item.status === "confirmed" &&
+    String(item.receiptId || "").trim());
+  const matches = [];
+  if (charges.length === 0) throw Object.assign(new Error("Workspace purchase evidence is missing"), { code: "purchase_receipt_missing" });
+  for (const charge of charges) {
+    let financial;
+    try {
+      financial = (await http.json(
+        `/api/v2/workspaces/${encodeURIComponent(workspaceId)}/financial-receipts/${encodeURIComponent(charge.receiptId)}`, {}, auth,
+      )).payload;
+    } catch (cause) {
+      throw Object.assign(new Error(`Workspace purchase evidence is unavailable: ${cause?.message || "owner read failed"}`, { cause }), { code: "purchase_receipt_missing" });
+    }
+    if (financial?.receipt?.operationId !== operationId) continue;
+    if (Object.keys(financial).sort().join(",") !== "evidenceDigest,quote,receipt,walletOperation,workspaceId" ||
+      financial.workspaceId !== workspaceId || financial.receipt.id !== charge.receiptId ||
+      (expectedReceiptId && financial.receipt.id !== expectedReceiptId) ||
+      financial.receipt.owner !== "workspace" || financial.receipt.kind !== "wallet_action" || financial.receipt.outcome !== "confirmed" ||
+      financial.walletOperation?.id !== charge.id || financial.walletOperation?.workspaceId !== workspaceId ||
+      financial.walletOperation?.receiptId !== charge.receiptId || financial.walletOperation?.kind !== "charge" ||
+      financial.walletOperation?.status !== "confirmed" ||
+      String(financial.walletOperation?.amountUSDMicros) !== String(amountUsdMicros) || String(charge.amountUSDMicros) !== String(amountUsdMicros) ||
+      !String(financial.quote?.id || "").trim() || financial.quote?.status !== "accepted" ||
+      (quoteId && financial.quote.id !== quoteId) || String(financial.quote?.totalUSDMicros) !== String(amountUsdMicros) ||
+      !/^sha256:[a-f0-9]{64}$/.test(String(financial.evidenceDigest || ""))) {
+      throw new Error("Workspace purchase evidence does not bind this order");
+    }
+    matches.push(financial);
+  }
+  if (matches.length !== 1) throw new Error("Workspace purchase evidence cardinality is invalid");
+  return matches[0];
 }

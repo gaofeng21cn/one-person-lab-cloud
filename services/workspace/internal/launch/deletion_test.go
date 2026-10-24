@@ -394,13 +394,13 @@ func TestDeleteWorkspaceResumeRetiresDeletesRefundsOnceAndReportsReadback(t *tes
 	if serve.stops != 1 || fabric.deleteCalls != 1 || ledger.appends != 1 || gateway.refunds != 1 {
 		t.Fatalf("retire=%d delete=%d receipt=%d refund=%d, want one each", serve.stops, fabric.deleteCalls, ledger.appends, gateway.refunds)
 	}
-	var status string
+	var workspaceStatus string
 	var deletedAt sql.NullTime
-	if err = db.QueryRowContext(ctx, `SELECT status,deleted_at FROM workspace.workspaces WHERE id='workspace-original'`).Scan(&status, &deletedAt); err != nil {
+	if err = db.QueryRowContext(ctx, `SELECT status,deleted_at FROM workspace.workspaces WHERE id='workspace-original'`).Scan(&workspaceStatus, &deletedAt); err != nil {
 		t.Fatal(err)
 	}
-	if status != "deleted" || !deletedAt.Valid {
-		t.Fatalf("workspace status=%s deletedAt=%v", status, deletedAt)
+	if workspaceStatus != "deleted" || !deletedAt.Valid {
+		t.Fatalf("workspace status=%s deletedAt=%v", workspaceStatus, deletedAt)
 	}
 	readback, err := service.GetWorkspaceDeletion(ctx, &api.GetWorkspaceDeletionRpcRequest{Context: call, WorkspaceId: "workspace-original"})
 	if err != nil {
@@ -408,6 +408,9 @@ func TestDeleteWorkspaceResumeRetiresDeletesRefundsOnceAndReportsReadback(t *tes
 	}
 	if readback.GetOperationId() != created.GetOperationId() || readback.GetResourceDeletionStatus() != api.WorkspaceDeletionResourceDeletionStatusEnum_WORKSPACE_DELETION_RESOURCE_DELETION_STATUS_ENUM_CONFIRMED || readback.GetDataDeletionStatus() != api.WorkspaceDeletionDataDeletionStatusEnum_WORKSPACE_DELETION_DATA_DELETION_STATUS_ENUM_CONFIRMED || readback.GetRefundStatus() != api.WorkspaceDeletionRefundStatusEnum_WORKSPACE_DELETION_REFUND_STATUS_ENUM_CONFIRMED || readback.GetRefundOperationId() != "wallet-op-refund-original" {
 		t.Fatalf("deletion readback=%v", readback)
+	}
+	if readback.GetDeletionReceipt() == nil || validateDeletionReceipt(ownerstore.Operation{ID: created.GetOperationId()}, readback.GetDeletionReceipt()) != nil {
+		t.Fatalf("deletion readback lost the original Ledger evidence: %v", readback)
 	}
 	wantRefund, err := contracts.PlatformWorkspaceDeleteRefundMicros(totalMicros, periodStart, deletedAt.Time)
 	if err != nil {
@@ -418,6 +421,14 @@ func TestDeleteWorkspaceResumeRetiresDeletesRefundsOnceAndReportsReadback(t *tes
 	}
 	if gateway.refundAmount != wantRefund {
 		t.Fatalf("refunded %d, want the platform policy amount %d", gateway.refundAmount, wantRefund)
+	}
+	// A stored receipt for another deletion must never become this customer's
+	// evidence just because the operation status still says succeeded.
+	if _, err = db.ExecContext(ctx, `UPDATE workspace.operations SET result=jsonb_set(result,'{deletionReceipt,operationId}',to_jsonb($2::text)) WHERE id=$1`, created.GetOperationId(), "another-deletion"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.GetWorkspaceDeletion(ctx, &api.GetWorkspaceDeletionRpcRequest{Context: call, WorkspaceId: "workspace-original"}); status.Code(err) != codes.DataLoss {
+		t.Fatalf("foreign deletion receipt was published: %v", err)
 	}
 }
 

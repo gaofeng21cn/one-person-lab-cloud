@@ -47,8 +47,8 @@ import {
 import { createHash, randomUUID } from "node:crypto";
 
 import {
-  announceRequest, findDeclaredCatalogEntry, listOwnerCatalogPages, normalizedAccountEmail,
-  priceWorkspaceQuote, quoteWorkspaceOrder, stableID, submitWorkspaceOrder,
+  announceRequest, normalizedAccountEmail,
+  quoteAmountUsdMicros, quoteWorkspaceOrder, readWorkspacePurchaseEvidence, stableID, submitWorkspaceOrder,
   workspaceDeclaration, WORKSPACE_OPERATION_ROUTE, WORKSPACE_ORDER_ROUTE,
 } from "./workspace-purchase-core.ts";
 
@@ -199,25 +199,6 @@ function ownerData(payload, expectedSource = "sub2api") {
 }
 
 /*
- * The wallet, read from the Gateway owner under the owner session.
- *
- * The owner route reads the balance under the session's own authorization, so
- * it is the balance the owner would spend. The retained Control Plane
- * projection answers for a different authority and a different session, and a
- * qualification that accounted its charges against it would be accounting
- * against a balance that is not the one the owner spends.
- */
-function walletMicros(payload) {
-  const readback = payload || {};
-  if (readback.source !== "gateway" || readback.status !== "available" || readback.currency !== "USD") {
-    throw adapterError("owner_readback_unavailable");
-  }
-  const value = String(readback.balanceUSDMicros || "");
-  if (!/^(?:0|[1-9][0-9]*)$/.test(value)) throw adapterError("owner_readback_unavailable");
-  return value;
-}
-
-/*
  * The Workspace owner route.
  *
  * A new purchase is priced and bought by the Workspace owner: the owner freezes
@@ -233,27 +214,6 @@ function walletMicros(payload) {
  * buyer that took the first approved release and the first available plans
  * would buy something nobody chose.
  */
-const RUNTIME_VERSION_ROUTE = "/api/v2/catalog/runtime-versions";
-const COMPUTE_PLAN_ROUTE = "/api/v2/catalog/compute-plans";
-const STORAGE_PLAN_ROUTE = "/api/v2/catalog/storage-plans";
-// The owner records the request that admitted an order on the operation it
-// mints, so the buyer announces its own request identity on the command.
-const ORDER_REQUEST_ID_HEADER = "x-opl-request-id";
-
-async function readDeclaredCatalogEntry(http, auth, route, id, available) {
-  let items = null;
-  try {
-    items = await listOwnerCatalogPages(http, auth, route);
-  } catch {
-    throw adapterError("owner_readback_unavailable");
-  }
-  const entry = findDeclaredCatalogEntry(items, id);
-  // A catalog that does not offer the declared plan is not a price this run may
-  // act on.
-  if (!entry || !available(entry)) throw adapterError("quote_invalid");
-  return entry;
-}
-
 export type OwnerPurchaseDeclaration = Readonly<{
   applicationSelection: Readonly<{ kind: string; runtimeVersionId: string }>;
   computePlanId: string;
@@ -262,13 +222,10 @@ export type OwnerPurchaseDeclaration = Readonly<{
   periodMonths: number;
 }>;
 
-async function declareOwnerPurchase(http, auth, declared): Promise<OwnerPurchaseDeclaration> {
+function declareOwnerPurchaseShape(declared): OwnerPurchaseDeclaration {
   const runtimeVersionId = String(declared?.applicationSelection?.runtimeVersionId || "");
   const computePlanId = String(declared?.computePlanId || "");
   const storagePlanId = String(declared?.storagePlanId || "");
-  await readDeclaredCatalogEntry(http, auth, RUNTIME_VERSION_ROUTE, runtimeVersionId, (item) => item?.status === "approved");
-  await readDeclaredCatalogEntry(http, auth, COMPUTE_PLAN_ROUTE, computePlanId, (item) => item?.availability === "available");
-  await readDeclaredCatalogEntry(http, auth, STORAGE_PLAN_ROUTE, storagePlanId, (item) => item?.availability === "available");
   try {
     return workspaceDeclaration({
       applicationSelection: { kind: "opl_app", runtimeVersionId },
@@ -380,7 +337,6 @@ export async function buyWorkspaceOnOwnerRoute({
   http,
   auth,
   idempotencyKey,
-  walletUsdMicros,
   wait,
   requestId,
   declared,
@@ -388,12 +344,11 @@ export async function buyWorkspaceOnOwnerRoute({
   http: { request: (...args: any[]) => Promise<any>; json: (...args: any[]) => Promise<any> };
   auth: unknown;
   idempotencyKey: string;
-  walletUsdMicros: string;
   wait?: (milliseconds: number) => Promise<void>;
   requestId?: string;
   declared?: { applicationSelection?: { runtimeVersionId?: string }; computePlanId?: string; storagePlanId?: string };
 }): Promise<OwnerPurchase> {
-  const declaration = await declareOwnerPurchase(http, auth, declared);
+  const declaration = declareOwnerPurchaseShape(declared);
   let quote = null;
   try {
     quote = await quoteWorkspaceOrder({ http, auth, declaration, idempotencyKey });
@@ -402,10 +357,16 @@ export async function buyWorkspaceOnOwnerRoute({
   }
   let amountUsdMicros = "";
   try {
-    amountUsdMicros = priceWorkspaceQuote({ quote, walletUsdMicros, declaration });
-  } catch (error) {
-    throw adapterError(/cannot fund/i.test(String(error?.message || "")) ? "wallet_cannot_fund" : "quote_invalid");
+    amountUsdMicros = quoteAmountUsdMicros({ quote, declaration });
+  } catch {
+    throw adapterError("quote_invalid");
   }
+  // An accepted quote means the owner already admitted this order. Its frozen
+  // quote is the owner's record; current catalog availability cannot revoke it.
+  // A first admission still has to name something the owner currently sells.
+  const status = String((await http.json(`/api/v2/quotes/${encodeURIComponent(quote.id)}`, {}, auth)).payload?.status || "");
+  if (!["offered", "accepted", "expired"].includes(status)) throw adapterError("quote_invalid");
+  // Replay/admission is decided by Workspace before any current catalog check.
   // The request identity is announced once and used for every attempt of this
   // order, so a lost answer is recovered by the same request rather than by a
   // second one.
@@ -475,9 +436,9 @@ export async function buyWorkspaceOnOwnerRoute({
  * This runs before the quote, so a mismatched session costs one read and no
  * money.
  */
-async function bindAuthenticatedAccount(http, auth, declaredAccountId) {
+async function bindAuthenticatedAccount(http, auth, request) {
   const me = ownerData((await http.json("/api/auth/me", {}, auth)).payload);
-  if (me?.accountId !== declaredAccountId || me?.role !== "owner" || me?.status !== "active") {
+  if (me?.accountId !== request.tenant.accountId || me?.role !== "owner" || me?.status !== "active") {
     throw adapterError("account_binding_mismatch");
   }
   // The owner route authorizes every command against a CloudIdentity session,
@@ -491,6 +452,22 @@ async function bindAuthenticatedAccount(http, auth, declaredAccountId) {
   const accountEmail = normalizedAccountEmail(me?.email);
   if (!ownerEmail || !accountEmail || ownerEmail !== accountEmail ||
       String(session?.actorId || "") !== String(me?.sub2apiUserId || "")) {
+    throw adapterError("account_binding_mismatch");
+  }
+  // The signed-in User is not necessarily the payer. The Tenant's active wallet
+  // binding names the Gateway subject the owner debits; that binding, not the
+  // User's personal wallet, is the payer this run declares.
+  let tenant;
+  try {
+    tenant = (await http.json("/api/v2/tenant", {}, auth)).payload;
+  } catch {
+    throw adapterError("account_binding_mismatch");
+  }
+  const tenantId = String(tenant?.id || "");
+  const billingSubjectId = String(tenant?.billingSub2apiUserId || "");
+  if (!tenantId || !billingSubjectId || tenant?.status !== "active" ||
+      String(session?.tenantId || "") !== tenantId ||
+      request.tenant.tenantId !== tenantId || request.tenant.billingSubjectId !== billingSubjectId) {
     throw adapterError("account_binding_mismatch");
   }
   return true;
@@ -518,50 +495,32 @@ const APPLICATION_INSTALL_INTERVAL_MS = 1_000;
 const defaultWait = (milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
 
 async function readWorkspaceOwnerItem(http, auth, workspaceId) {
-  for (let page = 1; page <= WORKSPACE_PAGE_LIMIT; page += 1) {
-    const payload = ownerData((await http.json(
-      `/api/workspaces?page=${page}&pageSize=${WORKSPACE_PAGE_SIZE}`, {}, auth)).payload, "control-plane");
-    const items = Array.isArray(payload?.items) ? payload.items : [];
-    const workspace = items.find((candidate) => candidate?.id === workspaceId);
-    if (workspace) return workspace;
-    const total = Number(payload?.total);
-    if (items.length < WORKSPACE_PAGE_SIZE) return null;
-    if (Number.isFinite(total) && total > 0 && page * WORKSPACE_PAGE_SIZE >= total) return null;
+  let result;
+  try {
+    result = await http.request(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}`, {}, auth);
+  } catch {
+    throw adapterError("owner_readback_unavailable");
   }
-  return null;
+  const status = Number(result?.response?.status || 0);
+  if (status === 404) return null;
+  if (status !== 200 || !result?.payload) throw adapterError("owner_readback_unavailable");
+  const workspace = result.payload;
+  if (workspace.id !== workspaceId) throw adapterError("workspace_not_ready");
+  return workspace;
 }
 
-async function waitForWorkspaceApplicationInstallation(http, auth, { workspaceId, operationId, wait }) {
+async function waitForWorkspaceApplicationInstallation(http, auth, { workspaceId, wait }) {
   const pause = wait || defaultWait;
-  let resumed = false;
   for (let attempt = 0; attempt < APPLICATION_INSTALL_ATTEMPTS; attempt += 1) {
     const workspace = await readWorkspaceOwnerItem(http, auth, workspaceId);
     if (!workspace) throw adapterError("workspace_not_ready");
-    const installation = workspace.applicationInstallation || null;
-    if (workspace.currentApplication?.status === "ready") return;
-    // A stalled credential preparation is resumed exactly once through the
-    // customer's own continuation command. The projection has to name the same
-    // Workspace and the same installation this run observed; a continuation
-    // for something else is not this delivery's.
-    if (installation?.canResume === true && !resumed) {
-      const projection = (await http.json(
-        `/api/workspaces/${encodeURIComponent(workspaceId)}/application-installation/resume`,
-        { method: "POST", headers: { "idempotency-key": `application-resume:${operationId}` }, body: {} },
-        auth, [202],
-      )).payload;
-      if (projection?.workspaceId !== workspaceId ||
-          (projection.applicationInstallation &&
-            (projection.applicationInstallation.operationId !== installation.operationId ||
-              projection.applicationInstallation.applicationId !== installation.applicationId ||
-              projection.applicationInstallation.revision !== installation.revision))) {
-        throw adapterError("workspace_not_ready");
-      }
-      resumed = true;
-      continue;
-    }
-    // An installation the owner parks for review, and will not hand back through
-    // the continuation above, is a product failure rather than a slow delivery.
-    if (installation?.status === "manual_review") throw adapterError("application_installation_manual_review");
+    // The BFF's composed Workspace read derives availability from the Serve
+    // owner's current deployment and access. It is the owner's answer, not a
+    // Control Plane projection of a launch that this route never admitted.
+    const availability = String(workspace.applicationAvailability || "");
+    if (availability === "available") return;
+    if (availability === "unavailable") throw adapterError("workspace_not_ready");
+    if (availability !== "pending" && availability !== "unknown") throw adapterError("workspace_not_ready");
     await pause(APPLICATION_INSTALL_INTERVAL_MS);
   }
   throw adapterError("workspace_not_ready");
@@ -569,100 +528,48 @@ async function waitForWorkspaceApplicationInstallation(http, auth, { workspaceId
 
 async function readDeliveredWorkspace(http, auth, workspaceId) {
   const workspace = await readWorkspaceOwnerItem(http, auth, workspaceId);
-  const application = workspace?.currentApplication;
-  if (!workspace || !application || application.status !== "ready" ||
-      !String(application.entryUrl || "").trim() || workspace.url !== application.entryUrl || workspace.openable !== true) {
+  if (!workspace || workspace.applicationAvailability !== "available" ||
+      !String(workspace.accessUrl || "").trim()) {
     throw adapterError("workspace_not_ready");
   }
-  const runtime = ownerData((await http.json(
-    `/api/workspaces/${encodeURIComponent(workspaceId)}/runtime-status`, {}, auth)).payload, "fabric");
-  if (runtime?.workspaceId !== workspaceId || runtime?.ready !== true || runtime?.status !== "running" ||
-      runtime?.url !== application.entryUrl ||
-      runtime?.currentApplication?.operationId !== application.operationId ||
-      !String(runtime?.runtimeId || "").trim() || !String(application.operationId || "").trim()) {
-    throw adapterError("runtime_not_ready");
-  }
-  // The platform derives `ready` from the application record alone, so it stays
-  // true while a component is unhealthy. The component list is the only place
-  // that says anything is actually serving, and an empty list says nothing was
-  // observed at all.
-  const components = Array.isArray(runtime?.checks) ? runtime.checks : [];
-  if (components.length === 0 || components.some((component) => component?.ok !== true)) {
-    throw adapterError("runtime_not_ready");
-  }
-  return { entryUrl: String(application.entryUrl), applicationOperationId: String(application.operationId), componentsObserved: components.length };
+  // The deployment is Serve's own record. The current active deployment names
+  // the Runtime instance this Workspace is actually served from; the composed
+  // Workspace read above names the access entry Serve confirmed for it.
+  const page = (await http.json(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/deployments?limit=100`, {}, auth)).payload;
+  const deployments = Array.isArray(page?.items) ? page.items : [];
+  const active = deployments.find((deployment) => deployment?.status === "active" &&
+    deployment?.workspaceId === workspaceId && String(deployment?.runtimeInstanceId || "").trim());
+  if (!active || !String(active.id || "").trim()) throw adapterError("runtime_not_ready");
+  return {
+    entryUrl: String(workspace.accessUrl),
+    applicationOperationId: String(active.id),
+    componentsObserved: deployments.length,
+  };
 }
 
 /*
  * The Ledger receipt for this exact purchase.
  *
- * This, not the wallet balance, is the evidence that a charge happened. The
- * receipt is the owner's record and it names the operation that caused it, the
- * Workspace, the amount, and the resources the platform says the purchase
- * delivered. The order is now admitted by the Workspace owner, so the receipt
- * is no longer reachable through a launch identity this run would have derived:
- * it is found by the pair the owner minted. The retained Control Plane billing
- * read is asked for this account's receipts and the receipt that names this
- * operation and this Workspace is this purchase's.
+ * The Gateway owner records the WalletOperation and the Ledger owner records the
+ * WALLET_ACTION receipt. The buyer reads the Workspace transaction list and the
+ * typed financial-receipt route, never the retained Control Plane billing
+ * projection: a new owner order is not in that projection, and treating its
+ * absence as a missing charge would report a paid delivery as a failure. The
+ * receipt is found by the Workspace and amount the owner minted and quoted, then
+ * bound to the exact operation, quote and WalletOperation.
  */
-const BILLING_RECEIPT_PAGE_SIZE = 100;
-const BILLING_RECEIPT_PAGE_LIMIT = 50;
-
-async function findPurchaseChargeReceipt(http, auth, { workspaceId, operationId }) {
-  const found = [];
-  let cursor = "";
-  for (let page = 0; page < BILLING_RECEIPT_PAGE_LIMIT; page += 1) {
-    const query = cursor
-      ? `?limit=${BILLING_RECEIPT_PAGE_SIZE}&cursor=${encodeURIComponent(cursor)}`
-      : `?limit=${BILLING_RECEIPT_PAGE_SIZE}`;
-    const payload = ownerData((await http.json(`/api/billing/receipts${query}`, {}, auth)).payload, "ledger");
-    const receipts = Array.isArray(payload?.receipts) ? payload.receipts : [];
-    for (const receipt of receipts) {
-      // The receipt names its purchase by the Workspace it paid for or by the
-      // order that caused it. Either one makes this receipt the candidate for
-      // this purchase, and the read below is what says whether it really is:
-      // a receipt that names another order is found and then refused, rather
-      // than being passed over for another one that happens to fit.
-      if (receipt?.workspaceId === workspaceId || receipt?.operationId === operationId) found.push(receipt);
-    }
-    const next = String(payload?.nextCursor || "");
-    if (payload?.hasMore !== true || !next) break;
-    cursor = next;
+async function readPurchaseChargeReceipt(http, auth, binding) {
+  try {
+    const financial = await readWorkspacePurchaseEvidence(http, auth, binding);
+    return {
+      chargeReference: String(financial.walletOperation.externalReference || financial.walletOperation.id),
+      receiptId: financial.receipt.id,
+    };
+  } catch (cause) {
+    const error = adapterError(cause?.code === "purchase_receipt_missing" ? "purchase_receipt_missing" : "charge_receipt_mismatch");
+    error.cause = cause;
+    throw error;
   }
-  return found;
-}
-
-async function readPurchaseChargeReceipt(http, auth, { workspaceId, operationId, amountUsdMicros, expectedReceiptId }) {
-  const found = await findPurchaseChargeReceipt(http, auth, { workspaceId, operationId });
-  // A receipt that names this order is the only evidence that this order was
-  // charged, and more than one of them is not an answer this run can read.
-  if (found.length === 0) throw adapterError("purchase_receipt_missing");
-  if (found.length > 1) throw adapterError("charge_receipt_mismatch");
-  const receiptId = String(found[0]?.receiptId || "");
-  // A buyer that already holds a receipt identity for this order has to be
-  // holding this one.
-  if (String(expectedReceiptId || "").trim() && String(expectedReceiptId) !== receiptId) {
-    throw adapterError("launch_identity_mismatch");
-  }
-  const receipt = ownerData((await http.json(
-    `/api/billing/receipts/${encodeURIComponent(receiptId)}`, {}, auth)).payload, "ledger");
-  if (receipt?.receiptId !== receiptId || receipt?.workspaceId !== workspaceId ||
-      receipt?.operationId !== operationId ||
-      receipt?.type !== "billing.workspace_purchased.v1" || receipt?.status !== "completed" ||
-      String(receipt?.totalUsdMicros || "") !== String(amountUsdMicros) ||
-      !String(receipt?.chargeReference || "").trim()) {
-    throw adapterError("charge_receipt_mismatch");
-  }
-  // A resource-only purchase delivers resources and nothing else. The receipt
-  // has to name exactly those three resources: a Runtime or a Workspace Key
-  // inside this receipt would mean the platform fulfilled more than the
-  // operation declared, and the run would not know what it paid for.
-  const delivered = ["computeAllocationId", "storageId", "attachmentId"];
-  if (!hasExactKeys(receipt?.fulfillment, delivered) ||
-      delivered.some((name) => !String(receipt.fulfillment[name] || "").trim())) {
-    throw adapterError("charge_receipt_mismatch");
-  }
-  return { chargeReference: String(receipt.chargeReference), receiptId };
 }
 
 /*
@@ -823,9 +730,7 @@ export async function runWorkspaceQualification({ request, adapter }, { wait, pu
 
       // Who am I acting as. Asked before anything is priced or bought, so a
       // transport holding someone else's session costs one read and no money.
-      checks.account_bound = await bindAuthenticatedAccount(http, auth, request.tenant.accountId);
-
-      accounting.walletBeforeUsdMicros = walletMicros((await http.json("/api/v2/wallet", {}, auth)).payload);
+      checks.account_bound = await bindAuthenticatedAccount(http, auth, request);
 
       let quote = "";
       let identitySpace = "workspace_owner";
@@ -888,7 +793,6 @@ export async function runWorkspaceQualification({ request, adapter }, { wait, pu
             http,
             auth,
             idempotencyKey: operation.idempotencyKey,
-            walletUsdMicros: accounting.walletBeforeUsdMicros,
             wait,
             declared: declaredProduct,
           });
@@ -920,10 +824,12 @@ export async function runWorkspaceQualification({ request, adapter }, { wait, pu
         operationId: operation.operationId,
         amountUsdMicros: quote,
         expectedReceiptId: operation.purchaseReceiptId,
+        quoteId: purchaseEvidence.quoteId,
       });
       operation.purchaseReceiptId = charge.receiptId;
       checks.purchase_receipt_bound = true;
       checks.charge_receipted = true;
+      checks.wallet_confirmed = true;
       accounting.chargeReferenceDigest = digestOf(charge.chargeReference);
 
       // The purchase commits the default application installation beside the
@@ -931,7 +837,7 @@ export async function runWorkspaceQualification({ request, adapter }, { wait, pu
       // success. Reading the Workspace before it finishes would report a paid
       // delivery as a product failure, so wait for the owner's own readiness.
       await waitForWorkspaceApplicationInstallation(http, auth, {
-        workspaceId: operation.workspaceId, operationId: operation.operationId, wait,
+        workspaceId: operation.workspaceId, wait,
       });
 
       const delivered = await readDeliveredWorkspace(http, auth, operation.workspaceId);
@@ -944,27 +850,10 @@ export async function runWorkspaceQualification({ request, adapter }, { wait, pu
       checks.workspace_ready = true;
       checks.runtime_ready = true;
 
-      accounting.walletAfterUsdMicros = walletMicros((await http.json("/api/v2/wallet", {}, auth)).payload);
-      const moved = BigInt(accounting.walletBeforeUsdMicros) - BigInt(accounting.walletAfterUsdMicros);
-      if (moved === BigInt(quote)) {
-        mutations.charges = 1;
-        checks.wallet_confirmed = true;
-      } else if (moved > BigInt(quote)) {
-        // The owner readback proves more movement than this run's single
-        // declared purchase accounts for. Something charged that this run
-        // cannot place, which is an unaccounted mutation rather than a
-        // mismatch between two numbers that are both known.
-        throw adapterError("mutation_unaccounted");
-      } else if (moved === 0n && operation.resumed) {
-        // A redelivery of an order that already reached its terminal purchase
-        // receipt bought nothing again, so the wallet correctly did not move.
-        // That is the same settled purchase observed a second time, and the
-        // zero is the evidence that replay cost nothing.
-        mutations.charges = 0;
-        checks.wallet_confirmed = true;
-      } else {
-        throw adapterError("wallet_readback_mismatch");
-      }
+      // This delivery owns the charge only when it admitted the purchase.
+      // A replay observes the original obligation; service wall clocks cannot
+      // establish when another process moved money on its behalf.
+      mutations.charges = operation.resumed ? 0 : 1;
 
       // Every read this flow needs has now succeeded, so the terminal state is
       // settled and the contract decides whether the evidence supports it. A
@@ -973,6 +862,21 @@ export async function runWorkspaceQualification({ request, adapter }, { wait, pu
       terminal = { state: "settled", reason: "none" };
     }
   } catch (error) {
+    const accepted = error?.acceptedPurchase;
+    if (accepted && typeof accepted.idempotencyKey === "string" && accepted.idempotencyKey.trim() &&
+      typeof accepted.operationId === "string" && accepted.operationId.trim() &&
+      typeof accepted.workspaceId === "string" && accepted.workspaceId.trim() &&
+      /^[1-9][0-9]*$/.test(String(accepted.amountUsdMicros)) && typeof accepted.resumed === "boolean" &&
+      accepted.purchases === (accepted.resumed ? 0 : 1)) {
+      operation.idempotencyKey = accepted.idempotencyKey;
+      operation.operationId = accepted.operationId;
+      operation.workspaceId = accepted.workspaceId;
+      operation.resumed = accepted.resumed;
+      accounting.quoteUsdMicros = accepted.amountUsdMicros;
+      mutations.purchases = accepted.purchases;
+      checks.quote_priced = true;
+      checks.purchase_issued = true;
+    }
     terminal = terminalFailure(error);
   } finally {
     // Deployment health is read before the scope is closed: a closed scope cannot

@@ -662,6 +662,9 @@ message WorkspaceDeletion {
  optional string refund_operation_id = 5;
  WorkspaceDeletionRefundStatusEnum refund_status = 6;
  google.protobuf.Timestamp updated_at = 7;
+ // Exact Ledger evidence already recorded by this deletion, without private
+ // continuation grants or provider payloads. Workspace is a read projection.
+ Receipt deletion_receipt = 8;
 }
 
 message Subscription {

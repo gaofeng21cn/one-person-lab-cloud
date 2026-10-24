@@ -9,11 +9,55 @@ Baseline evidence date: 2026-10-01
 This page keeps the dated baseline evidence above and explicitly dated source
 updates below. The baseline SHA does not describe the later changes or qualify
 them: each receipt retains its original source, run and environment. The latest
-source update is 2026-10-23; it answers what the cited source and tests prove
+source update is 2026-10-24; it answers what the cited source and tests prove
 within their declared scope and does not describe an Instance installation or a
 Product Release. The target boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
+
+## Native v2 Qualification Evidence (2026-10-24)
+
+The source change based on `10553a28ee3e2affff7beba9eab9e9e3992150a3`
+repairs the qualification caller cutover from #1042. Purchase evidence now binds
+the original Workspace operation to its accepted quote, Gateway charge and
+Ledger receipt across all transaction pages. Accepted-order replay does not
+repeat current-catalog admission, and failed financial readback retains the
+accepted mutation. The live CloudIdentity Tenant and its billing subject must
+match the declaration; a personal-wallet delta is no longer treated as Tenant
+payment evidence. The existing deployed-purchase v1 receipt shape is preserved.
+
+The native deletion read projects the Ledger receipt already recorded by the
+Workspace worker, rejects a receipt for another operation, and preserves the
+soft-deleted Workspace. Qualification binds the refund to the exact original
+charge and Gateway operation instead of querying a charge-only financial
+receipt endpoint. Lost-response recovery retains replayable original selectors
+in the private recovery artifact. Key closeout requires the same external Key
+identity and inventory with its status changed from active to disabled.
+
+The eleven relevant Node tool suites executed 265 tests with zero failures,
+skips or TODOs. The focused source gate against the explicit base above passed,
+including tools typecheck and generated-contract freshness. Separate owner tests
+using isolated PostgreSQL passed: Workspace launch had 204 tests/subtests and
+BFF HTTP API had 239, with zero failures or skips. A later focused pass against
+`ae812f08` also executed the complete Control Plane server suite, including the
+100/1000-record capacity cases: 2,472 tests/subtests passed with zero failures or
+skips. Its former positive qualification test still declared a package and
+expected native qualification through CP; the actual SQL run exposed that stale
+consumer. It now exercises the real native orchestrator over CP/Ledger HTTP as a
+negative boundary: a CP-only origin fails CloudIdentity binding after two reads,
+with zero orders, charges, refunds, Keys or purchase receipts. Historical
+settlement/recovery tests remain in the same executed suite. This negative
+probe supplies no positive native qualification evidence. Owner peers/provider behavior
+in these tests is synthetic. Verification is retained in the accompanying PR
+and its current-revision CI; these checks are source evidence only.
+
+The local driver still selects the retained CP/Fabric/Ledger Compose overlays;
+its new owner-topology preflight refuses them before startup or customer
+mutation. The current remote Instance workflow still passes `--package-id` and
+does not export the required Tenant/payer declarations. Neither a real v2 local
+quote-to-delete/refund journey nor protected TKE/live Gateway qualification ran
+for this change. #1042, #1041 and #1018 remain open; their distinct acceptance
+outcomes are in [the roadmap](roadmap.md#native-v2-qualification-and-cp-retirement-1042).
 
 ## Original-order Closeout Scope (2026-10-23)
 

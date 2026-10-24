@@ -44,6 +44,8 @@ import {
 } from "../../tools/workspace-qualification-contract.ts";
 import {
   ACCOUNT_EMAIL,
+  ACCOUNT_TENANT_ID,
+  BILLING_SUBJECT_ID,
   ACCOUNT_ID,
   CLOUD_IMAGE_DIGEST,
   CLUSTER_ID,
@@ -162,6 +164,8 @@ test("the protected representation fails closed when the environment or a secret
     environment: PROTECTED_QUALIFICATION_ENVIRONMENT,
     origin: OWNER_ORIGIN,
     customerEmail: ACCOUNT_EMAIL,
+    tenantId: ACCOUNT_TENANT_ID,
+    billingSubjectId: BILLING_SUBJECT_ID,
   });
   for (const name of [
     PROTECTED_ENVIRONMENT_NAME,
@@ -473,6 +477,7 @@ test("the shared request carries the exact Candidate, tenant, product, authority
       candidate: fixture.candidate,
       j0ReadyReceipt: j0ReadyReceipt(),
       accountId: ACCOUNT_ID,
+      tenantId: ACCOUNT_TENANT_ID, billingSubjectId: BILLING_SUBJECT_ID,
       runtimeVersionId: OWNER_RUNTIME_VERSION_ID,
       computePlanId: OWNER_COMPUTE_PLAN_ID,
       storagePlanId: OWNER_STORAGE_PLAN_ID,
@@ -516,6 +521,7 @@ test("the shared request carries the exact Candidate, tenant, product, authority
         candidate: fixture.candidate,
         j0ReadyReceipt: j0ReadyReceipt(),
         accountId: ACCOUNT_ID,
+        tenantId: ACCOUNT_TENANT_ID, billingSubjectId: BILLING_SUBJECT_ID,
         runtimeVersionId: "Not A Runtime Release",
         computePlanId: OWNER_COMPUTE_PLAN_ID,
         storagePlanId: OWNER_STORAGE_PLAN_ID,
@@ -529,6 +535,7 @@ test("the shared request carries the exact Candidate, tenant, product, authority
         candidate: fixture.candidate,
         j0ReadyReceipt: j0ReadyReceipt("local-docker"),
         accountId: ACCOUNT_ID,
+        tenantId: ACCOUNT_TENANT_ID, billingSubjectId: BILLING_SUBJECT_ID,
         runtimeVersionId: OWNER_RUNTIME_VERSION_ID,
         computePlanId: OWNER_COMPUTE_PLAN_ID,
         storagePlanId: OWNER_STORAGE_PLAN_ID,
@@ -717,17 +724,17 @@ test("the producer invokes the deployed buyer and preserves its Candidate-bound 
     assert.equal(platform.state.purchases, 1);
     assert.equal(platform.state.charges, 1);
     assert.ok(platform.state.calls.includes("request:/api/auth/me"), "the buyer read the session account");
-    // The wallet is read from the Gateway owner under the owner session, so the
-    // balance it checked the quote against is the balance the owner spends.
-    assert.ok(platform.state.calls.includes("/api/v2/wallet"), "the buyer read the owner wallet");
+    // The payer is the Tenant binding the buyer declared, not the personal
+    // wallet of the signed-in User.
+    assert.ok(platform.state.calls.includes("/api/v2/tenant"), "the buyer read the Tenant billing subject");
+    assert.equal(platform.state.calls.includes("/api/v2/wallet"), false, "the personal wallet is not the payer");
     assert.ok(platform.state.calls.includes("/api/v2/auth/session"), "the buyer read the live owner session");
     assert.equal(platform.state.calls.filter((call) => call === "purchase:issued").length, 1);
     // The purchase ran on the Workspace owner route: the owner priced a deploy
     // quote and admitted the order against it. The retained Control Plane route
     // no longer admits purchases and is not asked to.
-    for (const catalog of ["runtime-versions", "compute-plans", "storage-plans"]) {
-      assert.ok(platform.state.calls.some((call) => call.startsWith(`/api/v2/catalog/${catalog}`)), catalog);
-    }
+    assert.equal(platform.state.calls.some((call) => call.startsWith("/api/v2/catalog/")), false,
+      "current catalog reads must not gate replay of an accepted order");
     assert.ok(platform.state.calls.includes("/api/v2/quotes"), "the owner priced the declared purchase");
     assert.ok(platform.state.calls.includes("/api/v2/workspaces"), "the owner admitted the order");
     assert.equal(platform.state.calls.includes("/api/pricing/preview"), false, "the retained pricing route is not used");
@@ -816,8 +823,8 @@ test("a non-settled result is preserved as the shared receipt and is never summa
   const root = await mkdtemp(join(tmpdir(), "opl-protected-blocked-"));
   try {
     const fixture = await writeFixture(root);
-    const platform = createFixturePlatform({ walletMicros: "1" });
-    const boundary = createFixtureBoundary(deploymentBinding(fixture.digest), platform);
+    const platform = createFixturePlatform();
+    const boundary = createFixtureBoundary(deploymentBinding(fixture.digest), platform, { open: "unknown" });
     const result = await runProtectedBusinessQualification(input(fixture.paths, fixture.digest), {
       environment: protectedEnvironment(),
       boundary,
@@ -825,18 +832,18 @@ test("a non-settled result is preserved as the shared receipt and is never summa
     });
     assert.notEqual(result.state, "settled");
     assert.equal(result.state, "blocked");
-    assert.equal(result.reason, "wallet_cannot_fund");
+    assert.equal(result.reason, "provider_scope_unavailable");
     const receipt = validateBusinessQualificationReceipt(JSON.parse(await readFile(fixture.paths.outputPath, "utf8")));
     assert.equal(receipt.state, "blocked");
-    assert.equal(receipt.reason, "wallet_cannot_fund");
+    assert.equal(receipt.reason, "provider_scope_unavailable");
     assert.equal(receipt.uncovered.businessQualification, false);
     const summary = protectedBusinessQualificationSummary(result);
     assert.equal(summary.status, "blocked");
     assert.equal(summary.businessQualification, false);
     assert.equal(platform.state.purchases, 0);
     assert.equal(platform.state.charges, 0);
-    assert.ok(platform.state.calls.includes("request:/api/auth/me"), "the buyer checked the session before pricing");
-    assert.ok(platform.state.calls.includes("/api/v2/wallet"), "the buyer read the owner wallet before pricing");
+    assert.deepEqual(platform.state.calls, ["boundary:open", "boundary:health", "boundary:release"],
+      "a refused scope reads no owner projection and prices nothing");
     assert.equal(platform.state.calls.filter((call) => call === "boundary:release").length, 1);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -916,16 +923,15 @@ test("the shared qualification flow runs for the provider the deployment binding
     for (const read of [
       "/api/auth/me",
       "/api/v2/auth/session",
-      "/api/v2/wallet",
+      "/api/v2/tenant",
       "request:/api/auth/me",
       "/api/v2/quotes",
       "/api/v2/workspaces",
     ]) {
       assert.ok(calls.includes(read), read);
     }
-    for (const catalog of ["runtime-versions", "compute-plans", "storage-plans"]) {
-      assert.ok(calls.some((call) => call.startsWith(`/api/v2/catalog/${catalog}`)), catalog);
-    }
+    assert.equal(calls.some((call) => call.startsWith("/api/v2/catalog/")), false,
+      "the owners alone admit current sales and replay accepted obligations");
     // The order is read back from the owner that minted it, under the identity
     // the owner minted.
     const mintedOperationId = String(result.purchaseReceipt?.operation?.operationId || "");
@@ -938,19 +944,16 @@ test("the shared qualification flow runs for the provider the deployment binding
     assert.ok(calls.some((call) => /^request:\/api\/workspace-launches\/workspace-launch-[0-9a-f]{18}$/.test(call)));
     assert.equal(calls.includes("/api/workspace-launches"), false, "the retained route never admits a purchase");
     assert.equal(calls.includes("/api/pricing/preview"), false, "the retained route never prices a purchase");
-    // The Ledger receipt is found in the Ledger's own inventory and read back
-    // under the identity it holds.
-    assert.ok(calls.some((call) => call.startsWith("/api/billing/receipts?")));
-    // The receipt identity is one the owner minted, and the public contract
-    // publishes it as a string without a shape.
-    assert.ok(calls.some((call) => /^\/api\/billing\/receipts\/[^/]+$/.test(call)));
-    assert.ok(calls.some((call) => call.startsWith("/api/workspaces?")));
-    assert.ok(calls.some((call) => /^\/api\/workspaces\/[^/]+\/runtime-status$/.test(call)));
-    // The wallet is read on both sides of the purchase by the shared flow, and
-    // the buyer reads the same owner's balance once more before it prices. Every
-    // one of them reads the Gateway owner under the owner session, so no
-    // balance is taken from the retained Control Plane projection.
-    assert.equal(calls.filter((call) => call === "/api/v2/wallet").length, 3);
+    // The Ledger receipt is found in the Workspace transaction list and read
+    // back from the typed financial-receipt route.
+    assert.ok(calls.some((call) => /^\/api\/v2\/workspaces\/[^/]+\/transactions\?limit=100$/.test(call)));
+    assert.ok(calls.some((call) => /^\/api\/v2\/workspaces\/[^/]+\/financial-receipts\/[^/]+$/.test(call)));
+    assert.ok(calls.some((call) => /^\/api\/v2\/workspaces\/[^/]+$/.test(call)));
+    assert.ok(calls.some((call) => /^\/api\/v2\/workspaces\/[^/]+\/deployments\?limit=100$/.test(call)));
+    // The payer is the declared Tenant billing subject. The personal wallet is
+    // never read, so a balance cannot stand in for the owner's charge evidence.
+    assert.ok(calls.includes("/api/v2/tenant"));
+    assert.equal(calls.filter((call) => call === "/api/v2/wallet").length, 0);
     assert.equal(calls.filter((call) => call === "/api/gateway/wallet").length, 0);
     // Nothing else can select the provider: an unsupported one is refused before
     // any boundary operation, even when the deployment is handed in directly.

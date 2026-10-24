@@ -1136,6 +1136,45 @@ Instance domains and deployment evidence remain in the Instance repository.
 The separate [image lifecycle](implementation/workspace-images.md) reference
 owns activation and image-only replacement of an existing Workspace.
 
+## Workspace Qualification Callers
+
+The deployed buyer, protected business orchestrator and local qualification
+caller use `workspace-purchase-core` for native quotes and Workspace orders.
+Resource Catalog/Workspace own admission; the caller checks the original quote's
+application, plans and amount but does not gate an accepted-order replay on the
+current catalog. A live CloudIdentity session and the Tenant owner's active
+billing binding must match the declared Tenant and payer. The deployed buyer
+still uses retained Control Plane login/account and historical Launch reads to
+identify the original customer and refuse a second purchase of a retained order;
+that dependency remains a migration obligation, not a CloudIdentity authority.
+
+The shared evidence reader follows every Gateway transaction page and binds one
+confirmed charge and Ledger `wallet_action` receipt to the original Workspace
+operation, accepted quote and exact amount. Personal-wallet balance changes are
+not Tenant payment evidence. The published deployed-purchase v1 receipt keeps
+its original shape; these stronger owner checks do not rewrite historical files.
+An accepted purchase remains recorded if its later financial readback fails.
+
+For native deletion, qualification calls Workspace DELETE and then reads the
+same owner's deletion projection. `WorkspaceDeletion.deletionReceipt` projects
+the existing Ledger `provider_action` receipt stored by the deletion worker;
+Workspace checks the original operation and never writes another receipt.
+Gateway's confirmed refund must match the deletion owner's refund operation and
+original charge. The charge-only financial-receipt endpoint is not refund
+readback, and a deleted Workspace may retain its soft-deleted owner record.
+Recovery retains the original replay selectors in a private mode-0600 artifact;
+a public digest alone cannot address an order whose response was lost.
+
+The local driver still selects the retained CP/Fabric/Ledger Compose overlays.
+It now rejects a configuration missing Workspace, BFF, CloudIdentity (`tenant`)
+or Serve before stack startup or customer mutation. The separate local-v2
+installation declaration is not yet wired into this driver or qualified for the
+full owner execution/deletion path. Instance's current protected consumer also
+still passes `--package-id`; it must adopt the producer's RuntimeVersion/compute/
+storage declarations and Tenant/payer inputs before executing the new producer.
+[The roadmap](roadmap.md#native-v2-qualification-and-cp-retirement-1042) owns
+these remaining outcomes.
+
 ## Product Distribution
 
 [Product release operations](runtime/release.md) owns Candidate qualification,

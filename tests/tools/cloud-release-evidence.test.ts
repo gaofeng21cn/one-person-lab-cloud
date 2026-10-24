@@ -335,6 +335,7 @@ test("release admission refuses stale, future-dated and non-settled business rec
       receipt.state = state;
       receipt.reason = reason;
       receipt.checks.quote_priced = false;
+      receipt.checks.wallet_confirmed = false;
       receipt.accounting.quoteUsdMicros = null;
     });
     assert.throws(

@@ -1,29 +1,9 @@
 /*
- * Test-only driver for the AC#8 integration proof.
- *
- * The public seam this file exercises is `runWorkspaceQualification`: the real
- * provider-neutral Cloud qualification orchestrator. The Go test that starts
- * this process owns the other side of the seam:
- *
- *   - the real Control Plane owner HTTP routes (account, wallet, quote,
- *     purchase, charge receipt, Workspace, Runtime) running in-process over
- *     isolated PostgreSQL;
- *   - the real Ledger HTTP owner process, over its own isolated database;
- *   - the local Sub2API authority fixture and an in-process Fabric fake, which
- *     are declared test boundaries and never a production service.
- *
- * The provider adapter below is a declared fake: it supplies only the three
- * reachability operations the orchestrator's adapter boundary allows
- * (`openBusinessScope`, `closeBusinessScope`, `readDeploymentHealth`) and the
- * test-only provider identity the request declares. It cannot answer an
- * account, wallet, quote, purchase, charge, Workspace or Runtime question, so
- * it cannot invent a settled result; every business fact is read by the
- * orchestrator itself from the real owner API over the transport this adapter
- * returns.
- *
- * The Candidate and J0 receipts are synthetic fixtures. This run proves the
- * business seam, not Candidate qualification: no Candidate is built or fetched
- * here, and the result is never published as product qualification evidence.
+ * Real native qualification against the retained CP-only owner-API fixture.
+ * The Go test provides real CP/Ledger HTTP processes over isolated PostgreSQL,
+ * with synthetic Sub2API/Fabric boundaries. The real orchestrator must refuse
+ * the missing CloudIdentity session before any business mutation. Candidate,
+ * J0 and provider reachability are explicit test fixtures, never READY evidence.
  */
 
 import { request as httpRequest } from "node:http";
@@ -190,7 +170,15 @@ async function main() {
   const request = createQualificationRequest({
     candidate: syntheticCandidateReceipt(),
     accountId,
-    product: { resourceType: "workspace", packageId: "basic", autoRenew: false },
+    tenantId: "tenant-owner-api-declared",
+    billingSubjectId: "payer-owner-api-declared",
+    product: {
+      resourceType: "workspace",
+      applicationSelection: { kind: "opl_app", runtimeVersionId: "runtime-owner-api-declared" },
+      computePlanId: "compute-owner-api-declared",
+      storagePlanId: "storage-owner-api-declared",
+      autoRenew: false,
+    },
     provider,
     scope: { purchases: 1, charges: 1, refunds: 0, workspaceDeletions: 0, managedKeys: 0 },
     authority: { mode: "live", authorityClass: "sandbox", j0ReadyReceipt: syntheticJ0ReadyReceipt(provider) },

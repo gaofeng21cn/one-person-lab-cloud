@@ -4,14 +4,14 @@
   "inputSHA256": {
     "00_master_index.md": "38ec5d7408a7ef8699ecd1390041f9545614156b7a30fef9171d6b07161e5431",
     "01_domain_ownership_matrix.md": "b5419f4bce24f4c162ed76d0734f8c8d192c4ea153ccd020a76c10d0306cb5e5",
-    "03_api_contract_complete.yaml": "73bec190ab031a3bcd113119b6c7760308ff0548c4e8d2d4c64d8ef010cde9f0",
+    "03_api_contract_complete.yaml": "aa68f221e5d347d03ad61ad23e2b22bd827161e97c62bd02bf405215e3d8b5f5",
     "12_product_spec.md": "8c3a722f4bd65282723ce27d4c037e507677f82b9770fd29faaea959f76f058f",
     "checks/render_development_plan.py": "505be08b5471bb4eaa85d276deea0396956d3b391956065039a97526b293a7e4",
     "checks/validate_development_plan.py": "f85a44d155432db3549920d1c9b2d44871182659e8ce62dd1002a1809af88a5d",
     "contracts/api_inventory.json": "69ef26b8457ad8e6dc637f2264240e644ca1de475d7ab0cabd4dab0cb9f8dee6",
     "contracts/db_inventory.json": "044eed0e2683d2438f765edc351ee20fab059466dd9816be580ba8af53ad9ac8",
     "contracts/ui_inventory.json": "6258a5b4b32fcc9c5d54594cb72ba8dc0310177b5d1e1bf219bd2d8a13aa2fca",
-    "contracts/internal.proto": "1208f59193d92c27c0fa32fd1d707865a73e4163b2af1c7a2cb40d2fa54acdae"
+    "contracts/internal.proto": "541169406c27b541dcebb87642d03d5464381b1f813c200df0bb398ca9241386"
   },
   "sourceRoots": {
     "cloud": ".",

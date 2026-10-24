@@ -33,6 +33,9 @@ const ACCOUNT_EMAIL = "customer@example.invalid";
 const ACCOUNT_DIGEST = "sha256:404c821f1a9a780045f491112906ccb5cf7af27cc81b4ae7e37b4dca35028644";
 const AMOUNT = "52580000";
 const ACCOUNT_ID = "acct-declared";
+const TENANT_ID = "tenant-declared";
+const BILLING_SUBJECT_ID = "billing-subject-88";
+const RECEIPT_ID = "receipt-declared-charge";
 const IDENTITY = "declared-identity";
 const WORKSPACE_NAME = "Declared workspace";
 
@@ -60,6 +63,8 @@ const ENVIRONMENT = {
   OPL_DEPLOYED_PURCHASE_AUTHORITY_CLASS: "production",
   OPL_DEPLOYED_PURCHASE_CANDIDATE_DIGEST: CANDIDATE_DIGEST,
   OPL_DEPLOYED_PURCHASE_ACCOUNT_DIGEST: ACCOUNT_DIGEST,
+  OPL_DEPLOYED_PURCHASE_TENANT_ID: TENANT_ID,
+  OPL_DEPLOYED_PURCHASE_BILLING_SUBJECT_ID: BILLING_SUBJECT_ID,
   OPL_DEPLOYED_PURCHASE_RUNTIME_VERSION_ID: RUNTIME_VERSION_ID,
   OPL_DEPLOYED_PURCHASE_COMPUTE_PLAN_ID: COMPUTE_PLAN_ID,
   OPL_DEPLOYED_PURCHASE_STORAGE_PLAN_ID: STORAGE_PLAN_ID,
@@ -140,6 +145,7 @@ function fakePlatform({
   amountUsdMicros = AMOUNT,
   walletUsdMicros = "999999999",
   me = account(),
+  tenant = { id: TENANT_ID, name: "Declared Tenant", status: "active", billingSub2apiUserId: BILLING_SUBJECT_ID },
   catalog = {},
   quoteOverrides = {},
   shared = null,
@@ -171,10 +177,11 @@ function fakePlatform({
     if (path === "/api/v2/auth/session") {
       return ok({
         actorId: String(me.sub2apiUserId || ""), displayName: String(me.email || ""),
-        tenantId: "tenant-declared", permissions: [], csrfToken: "owner-csrf",
+        tenantId: TENANT_ID, permissions: [], csrfToken: "owner-csrf",
         expiresAt: "2026-10-18T12:00:00Z",
       });
     }
+    if (path === "/api/v2/tenant") return ok(tenant);
     // The wallet the Gateway owner holds, read under the owner session.
     if (path === "/api/v2/wallet") {
       return ok({
@@ -193,10 +200,11 @@ function fakePlatform({
     if (path === "/api/v2/auth/session") {
       return ok({
         actorId: String(me.sub2apiUserId || ""), displayName: String(me.email || ""),
-        tenantId: "tenant-declared", permissions: [], csrfToken: "owner-csrf",
+        tenantId: TENANT_ID, permissions: [], csrfToken: "owner-csrf",
         expiresAt: "2026-10-18T12:00:00Z",
       });
     }
+    if (path === "/api/v2/tenant") return ok(tenant);
     if (path === "/api/v2/wallet") {
       return ok({
         source: "gateway", status: "available", balanceUSDMicros: walletUsdMicros,
@@ -207,6 +215,11 @@ function fakePlatform({
     if (path.startsWith("/api/v2/catalog/compute-plans")) return ok(computePlans);
     if (path.startsWith("/api/v2/catalog/storage-plans")) return ok(storagePlans);
     if (path === "/api/v2/quotes" && method === "POST") {
+      if (!runtimeVersions.items.some((v) => v.id === RUNTIME_VERSION_ID && v.status === "approved") ||
+        !computePlans.items.some((v) => v.id === COMPUTE_PLAN_ID && v.availability === "available") ||
+        !storagePlans.items.some((v) => v.id === STORAGE_PLAN_ID && v.availability === "available")) {
+        throw Object.assign(new Error("owner refused unavailable selection"), { code: "deployed_purchase_quote_unavailable" });
+      }
       state.quoteCalls += 1;
       const key = String(init.headers?.["idempotency-key"] || "");
       const body = JSON.stringify(init.body);
@@ -240,6 +253,25 @@ function fakePlatform({
       return accepted(operation);
     }
     if (path === `/api/v2/operations/workspace/${OPERATION_ID}`) return ok(ownerOperation());
+    if (path === `/api/v2/workspaces/${WORKSPACE_ID}/transactions?limit=100`) {
+      return ok({ items: state.quoteAccepted ? [{
+        id: "wallet-charge-1", workspaceId: WORKSPACE_ID, kind: "charge", status: "confirmed",
+        amountUSDMicros: amountUsdMicros, receiptId: RECEIPT_ID, externalReference: "native-charge-code",
+        createdAt: "2026-10-18T00:00:05Z", updatedAt: "2026-10-18T00:00:05Z",
+      }] : [] });
+    }
+    if (path === `/api/v2/workspaces/${WORKSPACE_ID}/financial-receipts/${RECEIPT_ID}`) {
+      return ok({
+        workspaceId: WORKSPACE_ID,
+        receipt: { id: RECEIPT_ID, kind: "wallet_action", owner: "workspace", outcome: "confirmed", operationId: OPERATION_ID,
+          evidenceSummary: "confirmed charge", createdAt: "2026-10-18T00:00:05Z" },
+        walletOperation: { id: "wallet-charge-1", workspaceId: WORKSPACE_ID, kind: "charge", status: "confirmed",
+          amountUSDMicros: amountUsdMicros, receiptId: RECEIPT_ID, externalReference: "native-charge-code",
+          createdAt: "2026-10-18T00:00:05Z", updatedAt: "2026-10-18T00:00:05Z" },
+        quote: { id: QUOTE_ID, status: "accepted", totalUSDMicros: amountUsdMicros, lineItems: [] },
+        evidenceDigest: `sha256:${"e".repeat(64)}`,
+      });
+    }
     return notFound();
   };
   return { http: { request, json }, state };
@@ -400,15 +432,13 @@ test("the command the entry issues carries the idempotency key the platform repl
   }]);
 });
 
-test("an unaffordable quote is reported with its number instead of thrown away", async () => {
-  // The operator's next question is the price itself: top up or buy something
-  // cheaper is their decision, and it cannot be made from an error code.
-  const platform = fakePlatform({ amountUsdMicros: "900000000", walletUsdMicros: "230538276" });
-  const result = await runDeployedPurchaseTransport(QUOTE_INPUT, ENVIRONMENT, transportDependencies(platform));
-  assert.equal(result.quote.amountUsdMicros, "900000000");
-  assert.equal(result.quote.walletUsdMicros, "230538276");
-  assert.equal(result.quote.fundable, false);
-  assert.equal(result.spent, false);
+test("a Tenant whose billing subject differs from the declared payer is refused before a price is asked for", async () => {
+  const platform = fakePlatform({ tenant: { id: TENANT_ID, status: "active", billingSub2apiUserId: "another-payer" } });
+  await assert.rejects(
+    () => runDeployedPurchaseTransport(QUOTE_INPUT, ENVIRONMENT, transportDependencies(platform)),
+    (error) => error.code === "deployed_purchase_billing_subject_mismatch",
+  );
+  assert.equal(platform.state.quoteCalls, 0);
   assert.equal(platform.state.commands, 0);
 });
 
@@ -440,24 +470,24 @@ test("a catalog that cannot name an application source or a plan pair is refused
     const platform = fakePlatform({ catalog });
     await assert.rejects(
       () => runDeployedPurchaseTransport(QUOTE_INPUT, ENVIRONMENT, transportDependencies(platform)),
-      (error) => error.code === "deployed_purchase_selection_unavailable",
+      (error) => error.code === "deployed_purchase_quote_unavailable",
       `${JSON.stringify(catalog)} must be refused`,
     );
     assert.equal(platform.state.commands, 0);
   }
 });
 
-test("a purchase against an unaffordable quote is refused and issues no command", async () => {
-  const platform = fakePlatform({ amountUsdMicros: "900000000", walletUsdMicros: "230538276" });
+test("a purchase whose Tenant binding changed after the quote is refused and issues no command", async () => {
+  const platform = fakePlatform({ tenant: { id: TENANT_ID, status: "active", billingSub2apiUserId: "another-payer" } });
   await assert.rejects(
     () => runDeployedPurchaseTransport(
-      { command: "purchase", outputPath: undefined, authorizedAmountUsdMicros: "900000000" },
+      { command: "purchase", outputPath: undefined, authorizedAmountUsdMicros: AMOUNT },
       ENVIRONMENT,
       transportDependencies(platform),
     ),
-    (error) => error.code === "deployed_purchase_wallet_cannot_fund",
+    (error) => error.code === "deployed_purchase_billing_subject_mismatch",
   );
-  assert.equal(platform.state.commands, 0, "a quote the wallet cannot fund must not be bought");
+  assert.equal(platform.state.commands, 0, "a purchase without the declared payer must not be issued");
 });
 
 test("the purchase refuses a credential that is absent rather than defaulting one", async () => {
@@ -490,9 +520,9 @@ test("the summary carries the amount and the identities but no credential", () =
     quote: {
       baseURL: BASE_URL,
       accountId: ACCOUNT_ID,
+      tenantId: TENANT_ID,
+      billingSubjectDigest: `sha256:${"f".repeat(64)}`,
       amountUsdMicros: AMOUNT,
-      walletUsdMicros: "999999999",
-      fundable: true,
       product: {
         resourceType: "workspace",
         applicationSelection: { kind: "opl_app", runtimeVersionId: RUNTIME_VERSION_ID },
@@ -504,7 +534,7 @@ test("the summary carries the amount and the identities but no credential", () =
     receipt: {
       candidate: { receiptDigest: CANDIDATE_DIGEST },
       operation: { operationId: OPERATION_ID, workspaceId: WORKSPACE_ID, resumed: false },
-      purchase: { amountUsdMicros: AMOUNT },
+      purchase: { amountUsdMicros: AMOUNT, receiptId: RECEIPT_ID },
       mutations: { observed: { purchases: 1 } },
     },
   });

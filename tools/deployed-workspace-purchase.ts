@@ -44,12 +44,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { sourceData } from "./local-workspace-qualification.ts";
 import {
   announceRequest,
-  assertWalletFundsQuote,
-  findDeclaredCatalogEntry,
-  listOwnerCatalogPages,
   normalizedAccountEmail,
   quoteAmountUsdMicros,
   quoteWorkspaceOrder,
+  readWorkspacePurchaseEvidence,
   stableID,
   submitWorkspaceOrder,
   workspaceDeclaration,
@@ -59,7 +57,6 @@ const WORKSPACE_NAME = /^[\x20-\x7e]{1,120}$/;
 const IDEMPOTENCY_IDENTITY = /^[A-Za-z0-9._:-]{1,128}$/;
 const IDEMPOTENCY_KEY = /^deployed-workspace:[0-9a-f]{64}:[A-Za-z0-9._:-]{1,128}$/;
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
-const WALLET_MICROS = /^(?:0|[1-9][0-9]*)$/;
 const POSITIVE_MICROS = /^[1-9][0-9]*$/;
 // An identity the owner minted. The public contract publishes these as strings
 // and says nothing about their shape, so a buyer may not pin one: it may only
@@ -100,6 +97,8 @@ const REQUEST_KEYS = [
   "authorityClass",
   "candidateReceiptDigest",
   "accountEmailIdentityDigest",
+  "targetTenantId",
+  "billingSubjectId",
   "applicationSelection",
   "computePlanId",
   "storagePlanId",
@@ -145,14 +144,6 @@ const targetError = () => purchaseError("deployed_purchase_target_invalid", TARG
 const accountUnavailable = () => purchaseError(
   "deployed_purchase_account_unavailable",
   "deployed purchase could not read the declared customer account",
-);
-const walletUnavailable = () => purchaseError(
-  "deployed_purchase_wallet_unavailable",
-  "deployed purchase could not read the customer wallet",
-);
-const catalogUnavailable = () => purchaseError(
-  "deployed_purchase_catalog_unavailable",
-  "deployed purchase could not resolve the owner catalog into a declaration",
 );
 const quoteUnavailable = () => purchaseError(
   "deployed_purchase_quote_unavailable",
@@ -217,6 +208,8 @@ export function assertDeployedPurchaseRequest(request) {
   if (!hasExactKeys(request, REQUEST_KEYS) ||
       !DIGEST.test(String(request?.candidateReceiptDigest || "")) ||
       !DIGEST.test(String(request?.accountEmailIdentityDigest || "")) ||
+      !DECLARED_ID.test(String(request?.targetTenantId || "")) ||
+      !DECLARED_ID.test(String(request?.billingSubjectId || "")) ||
       !DECLARED_ID.test(String(request?.computePlanId || "")) ||
       !DECLARED_ID.test(String(request?.storagePlanId || "")) ||
       typeof request?.autoRenew !== "boolean" ||
@@ -260,6 +253,16 @@ export function deployedAccountIdentityDigest(email) {
   return `sha256:${createHash("sha256").update(normalized).digest("hex")}`;
 }
 
+// The Tenant's billing subject is the Gateway user the Tenant binding names as
+// the payer. It is not the signed-in User's Gateway id: the two can differ, and
+// only the binding is the owner's answer about who pays. The quote summary uses
+// a digest rather than the raw subject.
+export function deployedBillingSubjectDigest(subject) {
+  const value = String(subject || "");
+  if (!DECLARED_ID.test(value)) throw accountUnavailable();
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
 /*
  * The declared inputs a protected workflow may read from its own environment.
  *
@@ -276,6 +279,8 @@ export function deployedPurchaseRequestFromEnvironment(environment = process.env
     authorityClass: String(environment.OPL_DEPLOYED_PURCHASE_AUTHORITY_CLASS || ""),
     candidateReceiptDigest: String(environment.OPL_DEPLOYED_PURCHASE_CANDIDATE_DIGEST || ""),
     accountEmailIdentityDigest: String(environment.OPL_DEPLOYED_PURCHASE_ACCOUNT_DIGEST || ""),
+    targetTenantId: String(environment.OPL_DEPLOYED_PURCHASE_TENANT_ID || ""),
+    billingSubjectId: String(environment.OPL_DEPLOYED_PURCHASE_BILLING_SUBJECT_ID || ""),
     applicationSelection: {
       kind: "opl_app",
       runtimeVersionId: String(environment.OPL_DEPLOYED_PURCHASE_RUNTIME_VERSION_ID || ""),
@@ -336,87 +341,6 @@ async function readOwnerEnvelope(http, auth, path, source, fail) {
 }
 
 /*
- * The declaration this purchase is priced against, checked against the catalog.
- *
- * The owner prices a plan pair beside an application source and knows nothing
- * about a package, so the declaration names exactly what the owner prices. The
- * catalog is read to confirm that the declared selection is one the owner still
- * offers: an approved Runtime Release for the default OPL App, and an available
- * compute and storage plan.
- *
- * The catalog is not searched for a default. A buyer that took the first
- * approved release and the first available plans would buy something nobody
- * chose, and two runs of the same declared purchase could buy two different
- * things. A declared plan the catalog no longer offers is refused here instead
- * of being silently replaced by another one.
- *
- * The catalog pages by cursor, so every page is read. A cursor that repeats
- * itself would page forever, so it is refused rather than followed.
- */
-async function listOwnerCatalog(http, auth, path) {
-  try {
-    return await listOwnerCatalogPages(http, auth, path);
-  } catch {
-    throw catalogUnavailable();
-  }
-}
-
-/*
- * The one catalog entry the declaration names.
- *
- * A declared plan the catalog no longer offers is refused here instead of being
- * silently replaced by another one.
- */
-function declaredCatalogEntry(items, id, available, kind) {
-  const entry = findDeclaredCatalogEntry(items, id);
-  if (!entry) {
-    throw purchaseError(
-      "deployed_purchase_selection_unavailable",
-      `deployed purchase declared a ${kind} the owner catalog does not offer`,
-    );
-  }
-  if (!available(entry)) {
-    throw purchaseError(
-      "deployed_purchase_selection_unavailable",
-      `deployed purchase declared a ${kind} the owner catalog does not currently offer`,
-    );
-  }
-  return entry;
-}
-
-/*
- * The declaration this purchase is priced against.
- *
- * The default OPL App is the application source the deployed buyer buys: it is
- * the one source every customer account can be served, and it names an
- * approved Runtime Release rather than a CapabilityVersion that a built Agent
- * would have to publish first.
- */
-export async function resolveWorkspaceDeclaration(http, auth, declared) {
-  const runtimeVersionId = String(declared?.applicationSelection?.runtimeVersionId || "");
-  const computePlanId = String(declared?.computePlanId || "");
-  const storagePlanId = String(declared?.storagePlanId || "");
-  if (!DECLARED_ID.test(runtimeVersionId) || !DECLARED_ID.test(computePlanId) || !DECLARED_ID.test(storagePlanId)) {
-    throw catalogUnavailable();
-  }
-  const [runtimeVersions, computePlans, storagePlans] = await Promise.all([
-    listOwnerCatalog(http, auth, "/api/v2/catalog/runtime-versions"),
-    listOwnerCatalog(http, auth, "/api/v2/catalog/compute-plans"),
-    listOwnerCatalog(http, auth, "/api/v2/catalog/storage-plans"),
-  ]);
-  declaredCatalogEntry(runtimeVersions, runtimeVersionId, (item) => item?.status === "approved", "runtime release");
-  declaredCatalogEntry(computePlans, computePlanId, (item) => item?.availability === "available", "compute plan");
-  declaredCatalogEntry(storagePlans, storagePlanId, (item) => item?.availability === "available", "storage plan");
-  return workspaceDeclaration({
-    applicationSelection: { kind: "opl_app", runtimeVersionId },
-    computePlanId,
-    storagePlanId,
-    modelSelections: [],
-    periodMonths: 1,
-  });
-}
-
-/*
  * The live owner session, and the customer it belongs to.
  *
  * The owner route authorizes every command against a CloudIdentity session, and
@@ -437,30 +361,6 @@ async function readOwnerSession(http, auth) {
   const displayName = String(session?.displayName || "");
   if (!actorId || !displayName) throw accountUnavailable();
   return { actorId, displayName, tenantId: String(session?.tenantId || "") };
-}
-
-/*
- * The wallet, read from the owner that holds it.
- *
- * The Gateway owner holds the balance, and the owner route reads it under the
- * session's own authorization, so the balance comes from the authority that
- * would charge it. The retained Control Plane projection answers for a
- * different authority and a different session, and a purchase funded against it
- * would be checking a balance that is not the one the owner spends.
- */
-async function readOwnerWallet(http, auth) {
-  let wallet;
-  try {
-    wallet = (await http.json("/api/v2/wallet", {}, auth)).payload;
-  } catch {
-    throw walletUnavailable();
-  }
-  if (wallet?.source !== "gateway" || wallet?.status !== "available" || wallet?.currency !== "USD") {
-    throw walletUnavailable();
-  }
-  const balanceUsdMicros = String(wallet?.balanceUSDMicros || "");
-  if (!WALLET_MICROS.test(balanceUsdMicros)) throw walletUnavailable();
-  return balanceUsdMicros;
 }
 
 /*
@@ -538,6 +438,29 @@ async function readRetainedLaunch(http, auth, operationId) {
 }
 
 /*
+ * The financial evidence for this exact Workspace order, read from the owners
+ * that hold it.
+ *
+ * The Gateway owner records the WalletOperation and the Ledger owner records the
+ * WALLET_ACTION receipt. The buyer reads the transaction list and the typed
+ * financial-receipt route, never the retained Control Plane billing projection:
+ * a new owner order is not in that projection, and treating its absence as a
+ * missing charge would report a paid delivery as a failure. Both reads are
+ * Tenant-scoped by the owners, so they are made under the same live session and
+ * Tenant whose binding was checked above.
+ */
+async function readConfirmedPurchaseReceipt(http, auth, binding) {
+  try {
+    const financial = await readWorkspacePurchaseEvidence(http, auth, binding);
+    return { receiptId: financial.receipt.id, chargeOperationId: financial.walletOperation.id };
+  } catch (cause) {
+    const error = purchaseError(cause?.code === "purchase_receipt_missing" ? "deployed_purchase_receipt_missing" : "deployed_purchase_receipt_mismatch", "deployed purchase could not bind the exact Workspace charge receipt");
+    error.cause = cause;
+    throw error;
+  }
+}
+
+/*
  * The declared customer, proved by both authorities that speak for it.
  *
  * The Control Plane session answers with the Gateway identity it authenticated
@@ -568,7 +491,46 @@ export async function readDeclaredCustomer(http, auth, request) {
       "deployed purchase owner session does not belong to the declared customer",
     );
   }
-  return { accountId, identityDigest, ownerSession };
+  // The signed-in User is not necessarily the payer. The Tenant binding is the
+  // owner's own answer about which Gateway subject pays for this Tenant, and
+  // the session's Tenant must be the one this purchase declared. Comparing the
+  // personal wallet balance here would prove nothing about the payer.
+  const tenant = await readOwnerTenant(http, auth);
+  if (tenant.id !== request.targetTenantId ||
+      tenant.billingSub2apiUserId !== request.billingSubjectId ||
+      tenant.status !== "active" ||
+      ownerSession.tenantId !== tenant.id) {
+    throw purchaseError(
+      "deployed_purchase_billing_subject_mismatch",
+      "deployed purchase Tenant or billing subject does not match the declared payer",
+    );
+  }
+  return {
+    accountId,
+    identityDigest,
+    ownerSession,
+    tenantId: tenant.id,
+    billingSubjectDigest: deployedBillingSubjectDigest(tenant.billingSub2apiUserId),
+  };
+}
+
+// The Tenant the owner says this session acts for, including the Gateway
+// subject its active wallet binding names. The owner is the only authority for
+// this binding; a buyer that inferred it from an email, display name or actor
+// id would be guessing who pays.
+async function readOwnerTenant(http, auth) {
+  let tenant;
+  try {
+    tenant = (await http.json("/api/v2/tenant", {}, auth)).payload;
+  } catch {
+    throw purchaseError("deployed_purchase_billing_subject_mismatch", "deployed purchase could not read the Tenant billing binding");
+  }
+  const id = String(tenant?.id || "");
+  const billingSub2apiUserId = String(tenant?.billingSub2apiUserId || "");
+  if (!DECLARED_ID.test(id) || !DECLARED_ID.test(billingSub2apiUserId)) {
+    throw purchaseError("deployed_purchase_billing_subject_mismatch", "deployed purchase Tenant has no active billing subject");
+  }
+  return { id, billingSub2apiUserId, status: String(tenant?.status || "") };
 }
 
 /*
@@ -641,10 +603,12 @@ export async function runDeployedWorkspacePurchase(request, caller) {
     );
   }
 
-  // The declaration names exactly what the owner prices, and the catalog is read
-  // to confirm the owner still offers it. The receipt names those resolved
-  // identities, so the evidence names what was actually bought.
-  const declaration = await resolveWorkspaceDeclaration(http, auth, {
+  // The declaration names exactly what the owner prices. The shape is built
+  // before the quote because the quote's own idempotency record decides whether
+  // this is a first admission or the recovery of an order that already exists.
+  // Reading the current catalog first would let a retired Runtime or a delisted
+  // plan block recovery of an order the owner already admitted.
+  const declaration = workspaceDeclaration({
     applicationSelection: request.applicationSelection,
     computePlanId: request.computePlanId,
     storagePlanId: request.storagePlanId,
@@ -652,7 +616,8 @@ export async function runDeployedWorkspacePurchase(request, caller) {
 
   // The quote is the owner's own price for the declared purchase. It is
   // recorded against the idempotency identity, so a repeated quote replays
-  // this quote instead of pricing a second one.
+  // this quote instead of pricing a second one, even after the current catalog
+  // stops offering the plans it froze.
   let quote;
   try {
     quote = await quoteWorkspaceOrder({ http, auth, declaration, idempotencyKey });
@@ -662,26 +627,16 @@ export async function runDeployedWorkspacePurchase(request, caller) {
 
   // The quote's own state says whether the owner can still act on this offer,
   // and whether an order has already taken it.
-  const quoteStatus = await quoteState(http, auth, quote.id);
+  await quoteState(http, auth, quote.id);
 
   // The quote has to name the declared thing whether or not money is about to
   // move. A replay reports the price its order was admitted at, and that price
   // is only this purchase's price if it names the same thing.
   const amountUsdMicros = quoteAmountUsdMicros({ quote, declaration });
 
-  if (quoteStatus !== "accepted") {
-    // The money is about to move, so the wallet has to be able to fund it. The
-    // balance is read from the Gateway owner under the owner session, so it is
-    // the balance the owner will spend.
-    //
-    // An accepted quote is the one case where this check does not run: the
-    // order it was priced for was already admitted, the money already moved, and
-    // a wallet that has since been spent is not a reason to refuse to report an
-    // order that exists. The order below is still the owner's own replay, so
-    // nothing is bought a second time.
-    const walletUsdMicros = await readOwnerWallet(http, auth);
-    assertWalletFundsQuote(walletUsdMicros, amountUsdMicros);
-  }
+  // Workspace's idempotency lookup precedes current admission. A quote can
+  // still be offered after an order was accepted; only the owner can decide
+  // whether this command is a replay. Never gate it on today's catalog.
 
   // The request identity this delivery announces. It is fresh for this
   // delivery and stable across this delivery's attempts, so a command whose
@@ -740,26 +695,28 @@ export async function runDeployedWorkspacePurchase(request, caller) {
     throw purchaseError("deployed_purchase_operation_mismatch", "deployed purchase read an order that is not its own");
   }
 
+  // The charge evidence is the owner's own WalletOperation and WALLET_ACTION
+  // receipt, found under the Workspace and amount the owner minted and quoted.
+  // It is not the retained Control Plane billing projection, which only holds
+  // the orders that route admitted.
+  try {
+    await readConfirmedPurchaseReceipt(http, auth, {
+      workspaceId, operationId, amountUsdMicros, quoteId: String(quote.id),
+    });
+  } catch (error) {
+    // A missing/mismatched receipt cannot erase an order already admitted by
+    // Workspace. Carry the actual acceptance so qualification records the
+    // purchase even though its financial evidence failed.
+    error.acceptedPurchase = { idempotencyKey, operationId, workspaceId, amountUsdMicros, resumed, purchases: resumed ? 0 : 1 };
+    throw error;
+  }
+
   const completed = new Date(clock());
   const completedAt = completed.getTime() < started.getTime() ? startedAt : completed.toISOString();
 
-  /*
-   * The receipt names what was actually bought, and that is the owner-resolved
-   * application source and plan pair, not the declared package.
-   *
-   * The declared `packageId` is a Sub2API wallet package. The Workspace owner
-   * route has no package concept: it prices a compute plan, a storage plan and
-   * one application source, and it publishes the plan pair. So the declared
-   * package does not select anything here, and it is deliberately not written
-   * into the receipt either, because a receipt that showed a declared package
-   * beside a resolved plan pair would read as a promise the purchase did not
-   * make. The operator's control on this route is the exact amount they
-   * authorise against the owner's frozen quote.
-   *
-   * The declared package stays on the request because it is part of this
-   * tool's published request contract, and it is still validated, so a caller
-   * that sends a malformed one is refused rather than silently accepted.
-   */
+  // Keep the published v1 receipt shape. The live Tenant/payer declarations
+  // and exact owner charge are checked above; historical purchase artifacts
+  // must not become invalid because this delivery strengthens those checks.
 
   return validateDeployedPurchaseReceipt({
     schemaVersion: 1,

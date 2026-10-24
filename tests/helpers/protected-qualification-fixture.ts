@@ -40,6 +40,7 @@ export const OWNER_STORAGE_PLAN_ID = `stp_${"c".repeat(32)}`;
 // two sessions can be shown to belong to one customer.
 export const ACCOUNT_SUB2API_USER_ID = "10001";
 export const ACCOUNT_TENANT_ID = "tenant-customer-0001";
+export const BILLING_SUBJECT_ID = "billing-10001";
 export const OWNER_CSRF_TOKEN = "owner-csrf-token";
 export const OWNER_SESSION_EXPIRES_AT = "2026-01-01T00:00:00Z";
 
@@ -156,6 +157,8 @@ export function protectedEnvironment(overrides = {}) {
     OPL_QUALIFICATION_ORIGIN: OWNER_ORIGIN,
     OPL_QUALIFICATION_CUSTOMER_EMAIL: ACCOUNT_EMAIL,
     OPL_QUALIFICATION_CUSTOMER_PASSWORD: "not-a-real-password",
+    OPL_QUALIFICATION_TENANT_ID: ACCOUNT_TENANT_ID,
+    OPL_QUALIFICATION_BILLING_SUBJECT_ID: BILLING_SUBJECT_ID,
     ...overrides,
   };
 }
@@ -270,6 +273,12 @@ export function createFixturePlatform({
           permissions: [], csrfToken: OWNER_CSRF_TOKEN, expiresAt: OWNER_SESSION_EXPIRES_AT,
         },
       };
+    }
+    if (path === "/api/v2/tenant") {
+      return { status: 200, payload: {
+        id: ACCOUNT_TENANT_ID, name: "Qualification Tenant", status: "active",
+        billingSub2apiUserId: BILLING_SUBJECT_ID,
+      } };
     }
     // The wallet the Gateway owner holds, read under the owner session's own
     // authorization.
@@ -388,50 +397,62 @@ export function createFixturePlatform({
         receiptId: "rcpt-retained-0001", provisioningMode: "resource_only",
       } };
     }
-    if (path.startsWith("/api/workspaces?")) {
+    // The new order is read from the Workspace, Serve and Ledger owner routes.
+    // The retained Control Plane projections stay empty for a new order: a
+    // fixture that filled them would let a buyer pass by reading the wrong
+    // owner.
+    if (/^\/api\/v2\/workspaces\/[^/]+$/.test(path)) {
+      const workspaceId = decodeURIComponent(path.split("/").pop() as string);
+      if (workspaceId !== state.workspaceId) return { status: 404, payload: null };
       return { status: 200, payload: {
-        source: "control-plane", available: true, status: "available",
-        data: { items: [{
-          id: state.workspaceId,
-          url: ENTRY_URL,
-          openable: true,
-          currentApplication: { status: "ready", entryUrl: ENTRY_URL, operationId: APPLICATION_OPERATION_ID },
-        }], total: 1 },
+        id: workspaceId, name: "Qualification workspace", status: "running",
+        capabilityVersionId: "capability-0001", applicationAvailability: "available", accessUrl: ENTRY_URL,
       } };
     }
-    if (/^\/api\/workspaces\/[^/]+\/runtime-status$/.test(path)) {
-      if (unavailableRuntimeStatus) {
-        return { status: 200, payload: {
-          source: "fabric", available: false, status: "unavailable", data: null,
-        } };
-      }
-      return { status: 200, payload: {
-        source: "fabric", available: true, status: "available",
-        data: {
-          workspaceId: state.workspaceId,
-          ready: true,
-          status: "running",
-          url: ENTRY_URL,
-          runtimeId: "rt-qualification-0001",
-          checks: [{ name: "console", ok: true }, { name: "gateway", ok: true }],
-          currentApplication: { operationId: APPLICATION_OPERATION_ID },
-        },
-      } };
+    if (/^\/api\/v2\/workspaces\/[^/]+\/deployments\?limit=100$/.test(path)) {
+      const workspaceId = decodeURIComponent(path.split("/")[4]);
+      if (unavailableRuntimeStatus) return { status: 200, payload: { items: [] } };
+      return { status: 200, payload: { items: [{
+        id: APPLICATION_OPERATION_ID, workspaceId, status: "active",
+        runtimeInstanceId: "rt-qualification-0001", capabilityVersionId: "capability-0001",
+      }] } };
     }
-    // The Ledger's own inventory of receipts. The receipt of an owner order is
-    // found in that inventory, bound to the order and the Workspace the owner
-    // minted.
-    if (path.startsWith("/api/billing/receipts?")) {
-      return { status: 200, payload: {
-        source: "ledger", available: true, status: "available",
-        data: { receipts: state.receiptId ? [chargeReceipt(state.receiptId)] : [], hasMore: false },
-      } };
+    if (/^\/api\/v2\/workspaces\/[^/]+\/transactions\?limit=100$/.test(path)) {
+      const workspaceId = decodeURIComponent(path.split("/")[4]);
+      const items = state.receiptId ? [{
+        id: "wallet-charge-qualification", workspaceId, kind: "charge", status: "confirmed",
+        amountUSDMicros: state.quote, receiptId: state.receiptId,
+        externalReference: "opl:workspace-purchase:charge:0001",
+        createdAt: "2026-01-01T00:00:01.000Z", updatedAt: "2026-01-01T00:00:01.000Z",
+      }] : [];
+      if (undeclaredKeyFulfillment) items.push({
+        id: "wallet-charge-managed-key", workspaceId, kind: "charge", status: "confirmed",
+        amountUSDMicros: "1000", receiptId: "rcpt-managed-key",
+        externalReference: "opl:managed-key:charge", createdAt: "2026-01-01T00:00:01.000Z",
+        updatedAt: "2026-01-01T00:00:01.000Z",
+      });
+      return { status: 200, payload: { items } };
     }
-    if (/^\/api\/billing\/receipts\/[^/]+$/.test(path)) {
+    if (/^\/api\/v2\/workspaces\/[^/]+\/financial-receipts\/[^/]+$/.test(path)) {
+      const workspaceId = decodeURIComponent(path.split("/")[4]);
       const receiptId = decodeURIComponent(path.split("/").pop() as string);
       return { status: 200, payload: {
-        source: "ledger", available: true, status: "available",
-        data: chargeReceipt(receiptId),
+        workspaceId,
+        ...(undeclaredKeyFulfillment ? { fulfillment: { managedKeyId: "mk-qualification-0001" } } : {}),
+        receipt: { id: receiptId, kind: "wallet_action", owner: "workspace", outcome: "confirmed", operationId: state.operationId,
+          evidenceSummary: "confirmed charge", createdAt: "2026-01-01T00:00:01.000Z" },
+        walletOperation: { id: "wallet-charge-qualification", workspaceId, kind: "charge", status: "confirmed",
+          amountUSDMicros: state.quote, receiptId, externalReference: "opl:workspace-purchase:charge:0001",
+          createdAt: "2026-01-01T00:00:01.000Z", updatedAt: "2026-01-01T00:00:01.000Z" },
+        quote: { id: String(state.quoteById.keys().next().value || ""), status: "accepted", totalUSDMicros: state.quote, lineItems: [] },
+        evidenceDigest: `sha256:${"e".repeat(64)}`,
+      } };
+    }
+    if (path.startsWith("/api/workspaces?") || /^\/api\/workspaces\/[^/]+\/runtime-status$/.test(path) ||
+        path.startsWith("/api/billing/receipts")) {
+      return { status: 200, payload: {
+        source: "control-plane", available: true, status: "available",
+        data: { items: [], receipts: [], hasMore: false },
       } };
     }
     throw new Error(`unexpected request ${path}`);
@@ -464,6 +485,12 @@ export function createFixturePlatform({
         },
       };
     }
+    if (path === "/api/v2/tenant") {
+      return { response: { status: 200 }, payload: {
+        id: ACCOUNT_TENANT_ID, name: "Qualification Tenant", status: "active",
+        billingSub2apiUserId: BILLING_SUBJECT_ID,
+      } };
+    }
     if (path === "/api/v2/wallet") {
       return {
         response: { status: 200 },
@@ -472,6 +499,11 @@ export function createFixturePlatform({
           currency: "USD", fetchedAt: OWNER_SESSION_EXPIRES_AT,
         },
       };
+    }
+    if (/^\/api\/v2\/workspaces\/[^/]+$/.test(path) ||
+        /^\/api\/v2\/workspaces\/[^/]+\/(deployments|transactions|financial-receipts)\b/.test(path)) {
+      const result = await json(path, _init);
+      return { response: { status: result.status }, payload: result.payload };
     }
     if (/^\/api\/v2\/operations\/workspace\/[^/]+$/.test(path)) {
       const admitted = order(decodeURIComponent(path.split("/").pop() as string));
