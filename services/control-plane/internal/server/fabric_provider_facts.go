@@ -71,20 +71,6 @@ func readProviderFact(ctx context.Context, service *controlplane.Service, input 
 	return facts[providerFactKey(input)], nil
 }
 
-func uniqueProviderFactInputs(inputs []clients.ProviderFactInput) []clients.ProviderFactInput {
-	result := make([]clients.ProviderFactInput, 0, len(inputs))
-	seen := make(map[string]struct{}, len(inputs))
-	for _, input := range inputs {
-		key := providerFactKey(input)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		result = append(result, input)
-	}
-	return result
-}
-
 func providerFactEvidence(fact clients.ProviderFact) map[string]any {
 	return structToMap(fact)
 }

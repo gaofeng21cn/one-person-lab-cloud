@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
@@ -329,20 +328,6 @@ func (app *controlPlaneServer) createWorkspaceApplicationDeploymentIntent(
 		return persisted, nil
 	}
 	return intent, nil
-}
-
-func decodeStringList(value any) []string {
-	items, ok := value.([]any)
-	if !ok {
-		return nil
-	}
-	list := make([]string, 0, len(items))
-	for _, item := range items {
-		if text, ok := item.(string); ok && strings.TrimSpace(text) != "" {
-			list = append(list, text)
-		}
-	}
-	return list
 }
 
 func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {

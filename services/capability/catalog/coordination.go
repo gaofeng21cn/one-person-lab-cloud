@@ -293,17 +293,6 @@ func (s *Service) ReleaseReference(ctx context.Context, r *api.ReleaseReferenceR
 	return &api.ReferenceClaim{Id: r.GetClaimId(), Target: targetRef(targetType, targetID), ClaimantOwner: api.OwnerEnum(api.OwnerEnum_value["OWNER_ENUM_"+strings.ToUpper(claimantOwner)]), ClaimantResourceId: claimantResource, State: api.ReferenceClaimState_REFERENCE_CLAIM_STATE_RELEASED, ReleasedAt: timestamppb.Now()}, nil
 }
 
-func referenceKind(kind string) api.AuthorizationResourceKind {
-	switch kind {
-	case "package_version", "runtime_version", "webui_version":
-		return api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION
-	case "capability_version":
-		return api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION
-	default:
-		return api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_UNSPECIFIED
-	}
-}
-
 func targetRef(kind, id string) *api.ReferenceTarget {
 	switch kind {
 	case "package_version":

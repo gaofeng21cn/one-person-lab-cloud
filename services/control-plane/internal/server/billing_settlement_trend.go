@@ -88,9 +88,6 @@ func (t workspaceSettlementTrend) netUSDMicros() int64 {
 
 // A window with no movement, no unresolved fund fact and nothing in flight is a
 // real empty result; a window that merely sums to zero is not.
-func (t workspaceSettlementTrend) hasMovements() bool {
-	return t.settledCount > 0
-}
 
 func (t *workspaceSettlementTrend) record(measurement workspaceSettlementMeasurement) {
 	switch measurement.state {
