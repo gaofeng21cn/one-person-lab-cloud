@@ -1,13 +1,10 @@
 package server
 
 import (
-	"context"
-	"errors"
 	"net/http"
 	"strings"
 
 	contracts "opl-cloud/packages/contracts/go"
-	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
 
@@ -69,11 +66,6 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 			writeError(w, http.StatusForbidden, "account_scope_forbidden")
 			return
 		}
-		if !workspacePurchaseEnabled(account) {
-			writeError(w, http.StatusConflict, "workspace_purchase_not_enabled")
-			return
-		}
-
 		unlock := app.lockResource("workspace-launch", accountID)
 		defer unlock()
 		operationID := workspaceLaunchOperationID(accountID, key)
@@ -130,188 +122,14 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 			app.respondWorkspaceLaunchContinuation(w, r, persisted)
 			return
 		}
-		if autoRenew && !app.deployment.resourceBillingEnabled() {
-			writeError(w, http.StatusConflict, "autoRenew_unavailable")
-			return
-		}
-		active, err := queryRuntimeOperations(r.Context(), app.tables, runtimeOperationQuery{
-			AccountID: accountID, ExcludedStatuses: []string{"succeeded", "refunded", "failed"},
-		})
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "state_read_failed")
-			return
-		}
-		for _, candidate := range active {
-			if isWorkspaceLaunchAction(stringValue(candidate["action"])) {
-				writeError(w, http.StatusConflict, errWorkspaceLaunchInProgress.Error())
-				return
-			}
-		}
-		if _, blocked, err := app.reconciliationBlocksNewWorkspaces(r.Context()); err != nil {
-			writeError(w, http.StatusInternalServerError, "state_read_failed")
-			return
-		} else if blocked {
-			writeError(w, http.StatusConflict, "billing_reconciliation_blocked")
-			return
-		}
-		if _, err := app.fabricReadiness(r.Context(), service); err != nil {
-			if errors.Is(err, errProviderConsistencyFailure) {
-				writeError(w, http.StatusServiceUnavailable, errProviderConsistencyFailure.Error())
-				return
-			}
-			writeUpstreamError(w, err)
-			return
-		}
-		computePools, ok := fabricComputePools(w, r, service)
-		if !ok {
-			return
-		}
-		storageGB, packageAvailable := providerPackageStorageGB(computePools, packageID)
-		if !packageAvailable {
-			writePricingError(w, errPackageUnavailable)
-			return
-		}
-
-		admission := controlledBasicPilotAdmissionFromEnv()
-		code := ""
-		if !app.deployment.customerOwned() {
-			// The route admits renewal intent against the active billing mode;
-			// the provider catalog owns package availability, while global
-			// admission retains the stop switch and capacity policy.
-			code = admission.rejectNewLaunch(false)
-		}
-		acceptanceBApproved := false
-		if code == "workspace_launch_admission_disabled" {
-			approval, configured := parseProductionAcceptanceBApproval()
-			if configured && productionAcceptanceBLaunchApproved(r.Header, approval, accountID, stringValue(user["email"]), name, packageID, storageGB, autoRenew, key) {
-				code, acceptanceBApproved = "", true
-			}
-		}
-		if code != "" {
-			writeError(w, http.StatusConflict, code)
-			return
-		}
-		quote, err := pricingPreviewResponse(map[string]any{"resourceType": "workspace", "packageId": packageID, "sizeGb": storageGB})
-		if err != nil {
-			writePricingError(w, err)
-			return
-		}
-		quote = customerPricingPreviewDTO(quote)
-		quote = app.applyResourceBillingQuote(quote)
-		imageDigest := ""
-		if !resourceOnly {
-			imagePolicy, _, _, policyErr := app.currentWorkspaceImageReleasePolicy(r.Context())
-			if policyErr != nil {
-				writeError(w, http.StatusServiceUnavailable, errWorkspaceImageReleasePolicyUnavailable.Error())
-				return
-			}
-			imageDigest = imagePolicy.ActiveImage
-		}
-		descriptor, err := newWorkspaceLaunchDescriptorWithImage(accountID, ownerUserID, name, packageID, storageGB, autoRenew, stringValue(quote["priceVersion"]), key, "", contracts.WorkspaceProvisioningResourceOnly)
-		if err != nil {
-			writeError(w, http.StatusConflict, "workspace_image_digest_invalid")
-			return
-		}
-		preflightInput := clients.WorkspaceLaunchPreflightInput{
-			SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, LaunchOperationID: descriptor.OperationID,
-			AccountID: accountID, WorkspaceID: descriptor.WorkspaceID, PackageID: packageID, SizeGB: storageGB,
-			WorkspaceImageDigest: "", ProvisioningMode: string(contracts.WorkspaceProvisioningResourceOnly), RequestHash: descriptor.RequestHash,
-		}
-		preflight, err := service.PreflightWorkspaceLaunch(r.Context(), preflightInput)
-		if err != nil {
-			writeUpstreamError(w, err)
-			return
-		}
-		if !workspaceLaunchPreflightConfirmed(preflightInput, preflight) {
-			writeError(w, http.StatusBadGateway, "fabric_workspace_launch_preflight_invalid")
-			return
-		}
-
-		unlockAccount := app.lockResource("account", accountID)
-		defer unlockAccount()
-		credentialUser, sub2APIUserID, credential, ok := app.gatewayUserContext(w, r)
-		if !ok {
-			return
-		}
-		if stringValue(credentialUser["accountId"]) != accountID {
-			writeError(w, http.StatusForbidden, "account_scope_forbidden")
-			return
-		}
-		workspaceKeyGroupID := int64(0)
-		if !resourceOnly {
-			workspaceKeyGroupID, err = workspaceCodexGroupID(r.Context(), service, credential, sub2APIUserID)
-			if err != nil {
-				writeUpstreamError(w, err)
-				return
-			}
-		}
-		totalCharge := int64(numberField(quote, "totalChargeUsdMicros", 0))
-		preChargeBalance := int64(0)
-		if app.deployment.resourceBillingEnabled() {
-			balance, balanceErr := service.Sub2APIBalance(r.Context(), sub2APIUserID)
-			if balanceErr != nil {
-				writeUpstreamError(w, balanceErr)
-				return
-			}
-			if balance.USDMicros < totalCharge {
-				writeError(w, http.StatusConflict, errMonthlyInsufficientBalance.Error())
-				return
-			}
-			preChargeBalance = balance.USDMicros
-		}
-		var defaultOperation map[string]any
-		if !resourceOnly {
-			defaultOperation, err = workspaceDefaultApplicationRow(workspaceDefaultApplicationRequest{SchemaVersion: 1, OperationID: workspaceDefaultApplicationOperationID(descriptor.OperationID), LaunchOperationID: descriptor.OperationID, AccountID: accountID, WorkspaceID: descriptor.WorkspaceID, OwnerUserID: ownerUserID, Sub2APIUserID: sub2APIUserID, WorkspaceKeyGroupID: workspaceKeyGroupID, Revision: defaultOPLApplicationRevision(imageDigest), Phase: "credentials_required"})
-			if err != nil {
-				writeError(w, http.StatusConflict, err.Error())
-				return
-			}
-		}
-		created, err := app.createWorkspaceLaunch(r.Context(), service, credential, sub2APIUserID, workspaceLaunchReconcileCreate{
-			Mode: contracts.WorkspaceProvisioningResourceOnly, DefaultApplicationOperation: defaultOperation,
-			OperationID: descriptor.OperationID, RequestHash: descriptor.RequestHash, AccountID: accountID, OwnerUserID: ownerUserID,
-			Sub2APIUserID: sub2APIUserID, WorkspaceID: descriptor.WorkspaceID,
-			Name: name, PackageID: packageID, StorageGB: storageGB, AutoRenew: autoRenew,
-			PriceVersion: stringValue(quote["priceVersion"]), TotalChargeUSDMicros: totalCharge,
-			ProviderProfileRef: preflight.ProviderProfileRef, PreflightBindingRef: preflight.BindingRef, SpecDigest: preflight.SpecDigest,
-			WorkspaceImageDigest: descriptor.WorkspaceImageDigest, PreChargeBalanceMicros: preChargeBalance, ResourceBillingEnabled: boolPtr(app.deployment.resourceBillingEnabled()),
-			AcceptanceBCapacitySlot: acceptanceBApproved,
-		})
-		if err != nil {
-			switch {
-			case errors.Is(err, errBillingReconciliationBlocked):
-				writeError(w, http.StatusConflict, errBillingReconciliationBlocked.Error())
-			case errors.Is(err, errWorkspaceLaunchCapacityReached):
-				writeError(w, http.StatusConflict, err.Error())
-			case errors.Is(err, errWorkspaceLaunchCASConflict), errors.Is(err, errWorkspaceLaunchInProgress):
-				writeError(w, http.StatusConflict, errIdempotencyConflict.Error())
-			default:
-				writeError(w, http.StatusInternalServerError, "state_persist_failed")
-			}
-			return
-		}
-		if defaultOperation != nil {
-			_ = app.prepareDefaultWorkspaceApplication(r.Context(), service, created.ID, credential, sub2APIUserID)
-			_ = app.runWorkspaceDefaultApplication(r.Context(), service, workspaceDefaultApplicationOperationID(created.ID))
-		}
-		persistedRow, found, err := app.tables.GetRuntimeOperation(r.Context(), created.ID)
-		if err != nil || !found {
-			writeError(w, http.StatusInternalServerError, "state_read_failed")
-			return
-		}
-		body, err := workspaceLaunchResponse(persistedRow)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "state_read_failed")
-			return
-		}
-		if workspaceLaunchWorkerEnabled() && created.Status == contracts.StatusPending {
-			go func() {
-				unlock := app.lockResource("workspace-launch", accountID)
-				defer unlock()
-				_ = app.runWorkspaceLaunch(context.Background(), service, created.ID)
-			}()
-		}
-		writeJSON(w, http.StatusAccepted, body)
+		// This route remains the owner of the Launch obligations it admitted
+		// before the purchase cutover, and the block above replays or continues
+		// exactly those operations. A key with no persisted operation is a new
+		// purchase command. The Workspace owner now prices and admits those
+		// purchases, so refuse here before pricing, payment, provider or
+		// persistence work can create a second writer.
+		writeRetainedWorkspaceLaunchNewPurchaseRetired(w)
+		return
 	}))
 
 	mux.HandleFunc("GET /api/workspace-launches", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
@@ -417,4 +235,18 @@ func (app *controlPlaneServer) respondWorkspaceLaunchContinuation(w http.Respons
 		return
 	}
 	writeJSON(w, http.StatusAccepted, body)
+}
+
+// retainedWorkspaceLaunchNewPurchaseRetired is the stable refusal for a new
+// purchase command on the retained Launch route. The route still replays and
+// continues the operations it admitted before the cutover, but new purchases
+// belong to the Workspace owner.
+const retainedWorkspaceLaunchNewPurchaseRetired = "workspace_launch_new_purchase_retired"
+
+func writeRetainedWorkspaceLaunchNewPurchaseRetired(w http.ResponseWriter) {
+	writeJSON(w, http.StatusConflict, map[string]any{
+		"error": retainedWorkspaceLaunchNewPurchaseRetired,
+		"owner": "workspace",
+		"next":  []string{"POST /api/v2/quotes", "POST /api/v2/workspaces"},
+	})
 }

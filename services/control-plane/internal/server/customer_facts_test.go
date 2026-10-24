@@ -396,7 +396,7 @@ func TestBillingReconciliationTreatsWorkspaceRenewalAsOneCombinedOperation(t *te
 	})
 }
 
-func TestBillingReconciliationMismatchBlocksPurchasesWithoutMutation(t *testing.T) {
+func TestBillingReconciliationMismatchDoesNotChangeRetainedLaunchRefusal(t *testing.T) {
 	tests := []struct {
 		name   string
 		code   string
@@ -428,7 +428,9 @@ func TestBillingReconciliationMismatchBlocksPurchasesWithoutMutation(t *testing.
 			d2AssertOperationException(t, body["report"].(map[string]any), fixture.operations[0].ID, fixture.operations[0].AccountID, fixture.operations[0].WorkspaceID, tc.code)
 
 			blocked := requestWithMutationKeyForTest(t, fixture.server, fixture.member, http.MethodPost, "/api/workspace-launches", `{"name":"Alpha","packageId":"basic","autoRenew":false}`, "blocked-after-reconciliation")
-			assertErrorResponse(t, blocked.Code, blocked.Body.String(), http.StatusConflict, "billing_reconciliation_blocked")
+			if blocked.Code != http.StatusConflict || !strings.Contains(blocked.Body.String(), retainedWorkspaceLaunchNewPurchaseRetired) {
+				t.Fatalf("retained new purchase under mismatch status=%d body=%s", blocked.Code, blocked.Body.String())
+			}
 			assertReconciliationReadOnly(t, fixture)
 		})
 	}

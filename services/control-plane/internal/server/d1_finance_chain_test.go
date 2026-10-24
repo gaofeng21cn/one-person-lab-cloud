@@ -230,10 +230,10 @@ func newD1FinanceChain(t *testing.T, ledger clients.LedgerClient) *d1FinanceChai
 		t.Fatal(err)
 	}
 	owner := chain.process.login(t, chain.remote.sub2api.ownerEmail, gatewayAccountingOwnerPassword)
-	// The launch owner still accepts generic JSON. Feed its real decoder and
-	// obtain all refundable facts by running the actual purchase, not seeding it.
-	launch := owner.mustRequest(t, http.MethodPost, "/api/workspace-launches", json.RawMessage(`{"name":"D1 paid Workspace","packageId":"basic","autoRenew":false}`), "d1-original-purchase", http.StatusAccepted)
-	chain.purchase = runGatewayAccountingLaunch(t, chain.process, stringValue(launch["operationId"]), false)
+	// Seed the historical Launch obligation directly, then run the retained
+	// lifecycle so refundable facts still come from the real owner.
+	launch := seedRetainedWorkspaceLaunchWithDefaultApplicationCredentialForTest(t, chain.process.handler, gatewayAccountingCredentialForTest(t, chain.process.handler, owner), accountID, stringValue(user["id"]), gatewayAccountingSub2APIUserID, "D1 paid Workspace", "basic", "d1-original-purchase", false)
+	chain.purchase = runGatewayAccountingLaunch(t, chain.process, launch.ID, false)
 	if chain.purchase.Status != "succeeded" {
 		t.Fatalf("original purchase failed: %s", workspaceLaunchReconcileResultSummary(chain.purchase))
 	}

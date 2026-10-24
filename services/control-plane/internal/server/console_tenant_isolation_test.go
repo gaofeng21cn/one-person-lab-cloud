@@ -260,7 +260,7 @@ func TestCustomerWorkspaceListContainsOnlySessionTenant(t *testing.T) {
 	}
 }
 
-func TestReconciliationBlockedCustomerMutationsDoNotLeakGlobalProjection(t *testing.T) {
+func TestRetainedLaunchRefusalDoesNotLeakGlobalReconciliationProjection(t *testing.T) {
 	store := newMemoryTableStore()
 	seedTenantMember(t, store, "acct-alpha", "org-alpha", "usr-alpha", "alpha@example.com")
 	row := billingReconciliationRowForTest("global", "mismatch", "private-operator-reason")
@@ -272,8 +272,8 @@ func TestReconciliationBlockedCustomerMutationsDoNotLeakGlobalProjection(t *test
 	}
 	member := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
 	rec := requestWithSession(t, server, member, http.MethodPost, "/api/workspace-launches", `{"name":"Alpha","packageId":"basic","autoRenew":false}`)
-	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"error":"billing_reconciliation_blocked"`) {
-		t.Fatalf("blocked launch status=%d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), retainedWorkspaceLaunchNewPurchaseRetired) {
+		t.Fatalf("retained new purchase status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	for _, secret := range []string{"billingReconciliation", "private-operator-reason", "operator-secret", "cross-tenant-private-report", "messageText", "messageAuthor"} {
 		if strings.Contains(rec.Body.String(), secret) {

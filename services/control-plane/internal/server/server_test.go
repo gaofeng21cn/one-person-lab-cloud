@@ -389,8 +389,8 @@ func TestUnavailablePackageStopsPreviewAndLaunchBeforeExternalCalls(t *testing.T
 		t.Fatalf("Pro preview status=%d body=%s", preview.Code, preview.Body.String())
 	}
 	launch := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches", `{"name":"Pro","packageId":"pro","autoRenew":false}`, "unavailable-pro")
-	if launch.Code != http.StatusConflict || !strings.Contains(launch.Body.String(), `"error":"package_unavailable"`) {
-		t.Fatalf("Pro launch status=%d body=%s", launch.Code, launch.Body.String())
+	if launch.Code != http.StatusConflict || !strings.Contains(launch.Body.String(), retainedWorkspaceLaunchNewPurchaseRetired) {
+		t.Fatalf("retained Pro purchase status=%d body=%s", launch.Code, launch.Body.String())
 	}
 	for _, call := range calls {
 		if call != "fabric.catalog" && call != "fabric.readiness" {
@@ -399,7 +399,7 @@ func TestUnavailablePackageStopsPreviewAndLaunchBeforeExternalCalls(t *testing.T
 	}
 }
 
-func TestCustomerOwnedLaunchAdmissionFollowsProviderPackageAvailability(t *testing.T) {
+func TestRetainedLaunchRefusesNewPurchaseRegardlessOfProviderPackageAvailability(t *testing.T) {
 	t.Setenv("OPL_DEPLOYMENT_MODE", "customer_owned")
 	t.Setenv("OPL_FABRIC_PROVIDER", "local-docker")
 	for _, tc := range []struct {
@@ -431,14 +431,8 @@ func TestCustomerOwnedLaunchAdmissionFollowsProviderPackageAvailability(t *testi
 					server := NewServer(controlplane.NewService(fakeLedgerClient{}, fabric, sub2API))
 					session := loginForTest(t, server, "customer-owner@opl.local", "CorrectHorseBatteryStaple!")
 					response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches", fmt.Sprintf(`{"name":"%s Workspace","packageId":"%s","autoRenew":false}`, launch.packageID, launch.packageID), "profile-"+strings.ReplaceAll(tc.name, " ", "-")+"-"+launch.packageID)
-					if !launch.available {
-						if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), `"error":"package_unavailable"`) {
-							t.Fatalf("unavailable %s status=%d body=%s", launch.packageID, response.Code, response.Body.String())
-						}
-						return
-					}
-					if response.Code != http.StatusAccepted || strings.Contains(response.Body.String(), "workspace_launch_basic_only") {
-						t.Fatalf("available %s status=%d body=%s", launch.packageID, response.Code, response.Body.String())
+					if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), retainedWorkspaceLaunchNewPurchaseRetired) {
+						t.Fatalf("%s retained new purchase status=%d body=%s", launch.packageID, response.Code, response.Body.String())
 					}
 				})
 			}
@@ -1317,12 +1311,11 @@ func (f *mismatchedReadinessFabricClient) Readiness(_ context.Context) (contract
 	return contracts.FabricReadiness{Provider: "tencent-tke", Ready: true, ServiceReady: true, CloudImagesReady: true, WorkspaceImagesReady: true, ImmutableImagesReady: true}, nil
 }
 
-func TestProviderMismatchBlocksWorkspaceLaunchBeforeFabricMutation(t *testing.T) {
+func TestProviderMismatchFailsReadinessWithoutFabricMutation(t *testing.T) {
 	calls := []string{}
 	server := NewServer(newTestService(fakeLedgerClient{}, &mismatchedReadinessFabricClient{fakeFabricClient{calls: &calls}}))
-	session := tenantAdminSessionForTest(t, server)
-	response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches", `{"name":"Mismatch","packageId":"basic","autoRenew":false}`, "provider-mismatch")
-	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), `"error":"provider_consistency_failure"`) {
+	response := requestWithSession(t, server, tenantAdminSessionForTest(t, server), http.MethodGet, "/api/runtime/readiness", "")
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"provider_consistency_failure"`) {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 	if !slices.Equal(calls, []string{"fabric.readiness"}) {

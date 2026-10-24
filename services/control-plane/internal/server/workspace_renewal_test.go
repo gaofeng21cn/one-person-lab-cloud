@@ -166,7 +166,7 @@ func TestWorkspaceAutoRenewEnablePersistsAuthorizationAndReplaysOriginalCommand(
 	}
 }
 
-func TestWorkspaceLaunchAcceptsAndPersistsAutoRenewIntent(t *testing.T) {
+func TestRetainedWorkspaceLaunchReplaysHistoricalAutoRenewIntent(t *testing.T) {
 	t.Setenv(controlledBasicPilotEnabledEnv, "1")
 	t.Setenv(controlledBasicPilotAccountsEnv, "acct-alpha")
 	t.Setenv("OPL_TENCENT_ZONE", "ap-guangzhou-1")
@@ -174,13 +174,14 @@ func TestWorkspaceLaunchAcceptsAndPersistsAutoRenewIntent(t *testing.T) {
 	server, store, _, _, _ := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
 	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
 	key := "workspace-launch-auto-renew"
-	response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches", `{"name":"Auto Renew","packageId":"basic","autoRenew":true}`, key)
+	seedRetainedWorkspaceLaunchForTest(t, server, "acct-alpha", "usr-alpha", 41, "Auto Renew", "basic", key, true)
+	response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches", `{"name":"Auto Renew","packageId":"basic","autoRenew":true,"provisioningMode":"resource_only"}`, key)
 	if response.Code != http.StatusAccepted {
-		t.Fatalf("auto-renew launch status=%d body=%s", response.Code, response.Body.String())
+		t.Fatalf("auto-renew replay status=%d body=%s", response.Code, response.Body.String())
 	}
 	var body map[string]any
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil || body["autoRenew"] != true {
-		t.Fatalf("auto-renew launch response=%#v err=%v", body, err)
+		t.Fatalf("auto-renew replay response=%#v err=%v", body, err)
 	}
 	row, found, err := store.GetRuntimeOperation(context.Background(), workspaceLaunchOperationID("acct-alpha", key))
 	if err != nil || !found {
@@ -192,7 +193,7 @@ func TestWorkspaceLaunchAcceptsAndPersistsAutoRenewIntent(t *testing.T) {
 	}
 }
 
-func TestWorkspaceLaunchRejectsAutoRenewBeforeNonBillingMutation(t *testing.T) {
+func TestRetainedWorkspaceLaunchFencePrecedesAutoRenewAdmission(t *testing.T) {
 	t.Setenv("OPL_WORKSPACE_LAUNCH_WORKER_ENABLED", "0")
 	server, store, client, _, events := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
 	handler, ok := server.(*controlPlaneHTTPHandler)
@@ -202,8 +203,8 @@ func TestWorkspaceLaunchRejectsAutoRenewBeforeNonBillingMutation(t *testing.T) {
 	handler.app.deployment = deploymentProfile{Mode: deploymentCustomerOwned, FabricProvider: fabricLocalDocker}
 	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
 	response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches", `{"name":"No Billing Renewal","packageId":"basic","autoRenew":true}`, "workspace-launch-non-billing-auto-renew")
-	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "autoRenew_unavailable") {
-		t.Fatalf("non-billing auto-renew status=%d body=%s", response.Code, response.Body.String())
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), retainedWorkspaceLaunchNewPurchaseRetired) {
+		t.Fatalf("retained non-billing auto-renew status=%d body=%s", response.Code, response.Body.String())
 	}
 	operations, err := store.ListRuntimeOperations(context.Background())
 	if err != nil {

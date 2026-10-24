@@ -1,8 +1,8 @@
 import {
-  AlertCircle, ArrowRight, ChevronLeft, CircleCheck, CircleX, RefreshCw
+  AlertCircle, ChevronLeft, CircleCheck, CircleX, RefreshCw
 } from "lucide-react";
 import { RadioGroup } from "@openai/apps-sdk-ui/components/RadioGroup";
-import { useEffect, useRef, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import type { WorkspaceLaunchController } from "../../app/console-controller-types.ts";
 import { cloudIdentity } from "../../app/console-identity.ts";
@@ -11,27 +11,8 @@ import type { AgentWorkspaceLaunchController } from "../../app/use-workspace-lau
 import {
   presentWorkspaceApplicationInstallation, presentWorkspaceLaunch, presentWorkspaceLaunchStage, presentWorkspaceQuote
 } from "../../app/workspace-experience-model.ts";
-import {
-  canSubmitWorkspaceLaunch, workspaceLaunchReviewBlocked, workspaceLaunchReviewReadiness, workspaceLaunchUnpricedPackages
-} from "../../app/workspace-launch-controller-model.ts";
-import type { PlanId, PricingPlan } from "../../api/dtos.ts";
-import { Alert, Badge, Button, Checkbox, Field } from "../ui/index.ts";
+import { Alert, Button, Checkbox, Field } from "../ui/index.ts";
 import { formatDate, formatUsdMicros } from "../../console-model.ts";
-import { billingUnitLabel } from "./workspace-shared.tsx";
-
-function PlanOption({ controller, plan }: { controller: WorkspaceLaunchController; plan: PricingPlan }) {
-  const preview = controller.previews[plan.id];
-  const selected = controller.launchPlan === plan.id && plan.available;
-  const unavailablePrice = plan.available ? "报价读取中" : "暂不可用";
-  return (
-    <RadioGroup.Item block className={`workspace-plan-option ${selected ? "selected" : ""} ${plan.available ? "" : "unavailable"}`} disabled={!plan.available} value={plan.id}>
-      <span className="workspace-plan-option__identity"><span><strong>{plan.name}</strong><Badge color={plan.available ? "success" : "secondary"}>{plan.available ? "可售" : "暂不可用"}</Badge></span></span>
-      <span className="workspace-plan-option__fact workspace-plan-option__component"><strong>{preview?.compute ? formatUsdMicros(preview.compute.chargeUsdMicros) : unavailablePrice}</strong><small>计算</small></span>
-      <span className="workspace-plan-option__fact workspace-plan-option__component"><strong>{preview?.storage ? formatUsdMicros(preview.storage.chargeUsdMicros) : unavailablePrice}</strong><small>存储</small></span>
-      <span className="workspace-plan-option__fact workspace-plan-option__total"><strong>{preview ? formatUsdMicros(preview.totalChargeUsdMicros) : unavailablePrice}</strong><small>{preview ? billingUnitLabel(preview.billingUnit) : "月度总额"}</small></span>
-    </RadioGroup.Item>
-  );
-}
 
 function WorkspaceLaunchSteps({ current }: { current: "configure" | "confirm" | "operation" }) {
   const steps = [
@@ -194,7 +175,6 @@ export function WorkspaceLaunchPage({
   if (isAgentLaunchSurface({ ...agentController, cloudIdentity })) {
     return <AgentLaunchPage controller={agentController as AgentWorkspaceLaunchController} onBack={onBack} onRefresh={onRefresh} />;
   }
-  const catalog = controller.catalog.value;
   if (controller.launchOperation) {
     return <section className="workspace-launch-page" data-slide="C-WS-04"><LaunchOperation controller={controller} onBack={onBack} onRefresh={onRefresh} /></section>;
   }
@@ -222,70 +202,15 @@ export function WorkspaceLaunchPage({
   }
 
   return (
-    <section className="workspace-launch-page" data-slide={controller.launchStep === "confirm" ? "C-WS-03" : "C-WS-02"}>
+    <section className="workspace-launch-page" data-slide="C-WS-02" data-testid="workspace-launch-retired">
       <Button className="workspace-launch-back" onClick={onBack} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回工作空间列表</Button>
-      <WorkspaceLaunchSteps current={controller.launchStep} />
-      {controller.launchStep === "configure" ? (
-        <form className="workspace-launch-layout" onSubmit={(event) => { event.preventDefault(); controller.reviewWorkspaceLaunch(); }}>
-          <section className="workspace-launch-config">
-            <header><h2>新建工作空间</h2></header>
-            <Field label="工作空间名称" maxLength={80} onChange={(event) => controller.setLaunchName(event.currentTarget.value)} placeholder="例如：产品研发" required value={controller.launchName} />
-            <fieldset><legend>选择套餐</legend>
-              {controller.catalog.loading && !catalog ? <div className="source-loading"><span className="spinner" />正在读取计划与价格</div> : null}
-              {controller.catalog.error ? <div className="inline-error"><AlertCircle aria-hidden size={16} />{workspaceLaunchUnpricedPackages(controller.catalog.error).length ? `以下套餐暂无报价：${workspaceLaunchUnpricedPackages(controller.catalog.error).join("、")}` : "计划与价格暂不可用"}<Button onClick={() => void onRefresh()} size="sm" variant="ghost">重试</Button></div> : null}
-              {catalog ? <RadioGroup<PlanId> aria-label="工作空间套餐" className="workspace-plan-list" direction="col" name="workspace-plan" onChange={controller.setLaunchPlan} value={controller.launchPlan}>{catalog.packages.filter((plan) => plan.available && (plan.id === "basic" || plan.id === "pro")).map((plan) => <PlanOption controller={controller} key={plan.id} plan={plan} />)}</RadioGroup> : null}
-            </fieldset>
-            {!controller.customerOwned ? <div className="launch-confirm-check"><Checkbox checked={controller.launchAutoRenew} label="自动续费" onChange={controller.setLaunchAutoRenew} /></div> : null}
-          </section>
-          <WorkspaceOrderSummary
-            action={<Button color="primary" disabled={workspaceLaunchReviewBlocked(controller)} type="submit">核对开通信息<ArrowRight aria-hidden size={16} /></Button>}
-            controller={controller}
-          />
-        </form>
-      ) : <WorkspaceLaunchConfirm controller={controller} />}
-    </section>
-  );
-}
-
-function WorkspaceLaunchConfirm({ controller }: { controller: WorkspaceLaunchController }) {
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    headingRef.current?.focus({ preventScroll: true });
-  }, []);
-  const plan = controller.selectedPlan;
-  const preview = plan ? controller.previews[plan.id] : undefined;
-  if (!plan) return <div className="empty-panel">计划与价格暂不可用</div>;
-  const quote = presentWorkspaceQuote({
-    selectedPriceUsdMicros: controller.selectedPrice,
-    customerOwned: controller.customerOwned
-  });
-  return (
-    <div className="workspace-launch-layout">
-      <section className="workspace-launch-review">
-        <header><h2 ref={headingRef} tabIndex={-1}>确认开通信息</h2></header>
-        <dl className="launch-confirm-list">
-          <div><dt>工作空间名称</dt><dd>{controller.launchName.trim()}</dd></div>
-          <div><dt>套餐</dt><dd>{plan.name}</dd></div>
-          <div><dt>价格版本</dt><dd>{preview?.priceVersion || controller.catalog.value?.priceVersion || "暂不可用"}</dd></div>
-          <div><dt>计费周期</dt><dd>{billingUnitLabel(preview?.billingUnit || controller.catalog.value?.billingUnit)}</dd></div>
-          <div><dt>自动续费</dt><dd>{controller.customerOwned ? "不适用" : controller.launchAutoRenew ? "开启" : "关闭"}</dd></div>
-        </dl>
-        {!controller.customerOwned ? <p>请在权益到期前自行从工作空间下载并妥善保存数据。到期后，平台不承担数据保管或恢复责任。</p> : null}
-        <div className="launch-confirm-check"><Checkbox checked={controller.launchConfirmed} label={quote.confirmationLabel} onChange={controller.setLaunchConfirmed} /></div>
-        <footer><Button onClick={() => { controller.setLaunchStep("configure"); controller.setLaunchConfirmed(false); }} variant="outline">返回修改</Button></footer>
-      </section>
-      <WorkspaceOrderSummary
-        action={<Button busy={controller.busy} color="primary" disabled={!quote.canConfirm || !canSubmitWorkspaceLaunch({
-          ...workspaceLaunchReviewReadiness(controller),
-          sessionAvailable: controller.launchSessionAvailable,
-          busy: controller.busy,
-          step: controller.launchStep,
-          confirmed: controller.launchConfirmed
-        })} onClick={() => void controller.submitWorkspaceLaunch()}>{quote.submitLabel}</Button>}
-        controller={controller}
+      <Alert
+        color="warning"
+        indicator={<AlertCircle size={18} />}
+        title="该购买入口已停用"
+        description="新购买已由 Workspace owner 接管：请先调用 POST /api/v2/quotes 获取报价，再调用 POST /api/v2/workspaces 创建 Workspace。此页面仅保留历史开通操作的查看和恢复，不会在这里创建新的 Control Plane 订单。"
       />
-    </div>
+    </section>
   );
 }
 
@@ -308,10 +233,13 @@ export function LaunchOperation({
     : operationPresentation;
   const stagePresentation = presentWorkspaceLaunchStage(operation.phase);
   const resultUnconfirmed = presentation.kind === "unconfirmed";
+  const closedSummary = operation.closeout?.status === "closed" && ["failed", "refunded"].includes(operation.status)
+    ? presentation.summary.replace("可查看费用记录或重新购买。", "如需新购买，请使用 Workspace owner 的 POST /api/v2/quotes 与 POST /api/v2/workspaces。")
+    : presentation.summary;
   const installation = operation.applicationInstallation ? presentWorkspaceApplicationInstallation(operation.applicationInstallation) : null;
   const content = (
     <section className={`launch-operation ${compact ? "launch-operation--compact" : ""}`} data-slide="C-WS-04">
-      <div className="launch-operation-head"><div><h2>{presentation.title}</h2><p>{presentation.summary}</p></div></div>
+      <div className="launch-operation-head"><div><h2>{presentation.title}</h2><p>{closedSummary}</p></div></div>
       {installation ? <Alert color={installation.tone} title={installation.title} description={installation.description} /> : null}
       {!operation.closeout ? <div className="launch-current-phase"><span>当前进度</span><strong>{stagePresentation.label}</strong></div> : null}
       <details className="launch-technical-details">
@@ -347,7 +275,6 @@ export function LaunchOperation({
         {!resultUnconfirmed && operationPresentation.canOpenWorkspace ? <Button color="primary" onClick={() => void controller.openLaunchedWorkspace()}>查看工作空间</Button> : null}
         <Button onClick={() => void (controller.launchPollIssue === "readback" ? controller.openLaunchedWorkspace() : onRefresh())} variant="outline"><RefreshCw aria-hidden size={16} />刷新状态</Button>
         {operation.closeout ? <Button onClick={controller.openLaunchBilling} variant="outline">查看费用</Button> : null}
-        {!resultUnconfirmed && operation.closeout?.status === "closed" && ["failed", "refunded"].includes(operation.status) ? <Button onClick={() => { controller.prepareNewWorkspaceLaunch(); void onRefresh(); }}>重新购买</Button> : null}
         {!resultUnconfirmed && ["failed", "refunded"].includes(operationPresentation.kind) ? <Button onClick={onBack} variant="outline">返回列表</Button> : null}
       </div>
     </section>

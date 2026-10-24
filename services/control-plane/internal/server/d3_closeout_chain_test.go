@@ -159,8 +159,8 @@ func newD3CloseoutChain(t *testing.T) *d3CloseoutChain {
 	account, user := provisionedAccountRowsFor(c.finance.accountID, "usr-d3-"+stableID(t.Name())[:12], c.finance.remote.sub2api.ownerEmail, gatewayAccountingSub2APIUserID)
 	mustStore(t, c.finance.process.store.CreateProvisionedAccount(context.Background(), account, user))
 	owner := c.finance.process.login(t, c.finance.remote.sub2api.ownerEmail, gatewayAccountingOwnerPassword)
-	result := owner.mustRequest(t, http.MethodPost, "/api/workspace-launches", json.RawMessage(`{"name":"D3 original failed Workspace","packageId":"basic","autoRenew":false}`), "d3-closeout-original", http.StatusAccepted)
-	id := stringValue(result["operationId"])
+	result := seedRetainedWorkspaceLaunchWithDefaultApplicationCredentialForTest(t, c.finance.process.handler, gatewayAccountingCredentialForTest(t, c.finance.process.handler, owner), c.finance.accountID, stringValue(user["id"]), gatewayAccountingSub2APIUserID, "D3 original failed Workspace", "basic", "d3-closeout-original", false)
+	id := result.ID
 	for range 12 {
 		_ = c.finance.process.handler.app.runWorkspaceLaunch(context.Background(), c.finance.process.handler.service, id)
 		row, found, err := c.finance.process.store.GetRuntimeOperation(context.Background(), id)
@@ -276,9 +276,12 @@ func TestPostgresD3CloseoutBusinessChain(t *testing.T) {
 				t.Fatal("customer cannot see confirmed closure")
 			}
 			owner := c.finance.process.login(t, c.finance.remote.sub2api.ownerEmail, gatewayAccountingOwnerPassword)
-			repurchase := owner.mustRequest(t, http.MethodPost, "/api/workspace-launches", json.RawMessage(`{"name":"Fresh purchase after original closeout","packageId":"basic","autoRenew":false}`), "repurchase-after-closeout", http.StatusAccepted)
-			if stringValue(repurchase["operationId"]) == op.ID || stringValue(repurchase["operationId"]) == "" {
-				t.Fatal("closed original still holds customer admission")
+			repurchase := owner.mustRequest(t, http.MethodPost, "/api/workspace-launches", json.RawMessage(`{"name":"Fresh purchase after original closeout","packageId":"basic","autoRenew":false}`), "repurchase-after-closeout", http.StatusConflict)
+			if stringValue(repurchase["error"]) != retainedWorkspaceLaunchNewPurchaseRetired {
+				t.Fatalf("fresh purchase after closeout was not retired: %#v", repurchase)
+			}
+			if _, found, err := c.finance.process.store.GetRuntimeOperation(context.Background(), workspaceLaunchOperationID(c.finance.accountID, "repurchase-after-closeout")); err != nil || found {
+				t.Fatalf("retired repurchase persisted an operation: found=%t err=%v", found, err)
 			}
 
 		})

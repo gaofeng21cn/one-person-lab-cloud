@@ -29,8 +29,8 @@ func newD3CloseoutRefundChain(t *testing.T, ledger clients.LedgerClient) *d1Fina
 	account, user := provisionedAccountRowsFor(accountID, "usr-closeout-"+stableID(t.Name())[:12], chain.remote.sub2api.ownerEmail, gatewayAccountingSub2APIUserID)
 	mustStore(t, chain.process.store.CreateProvisionedAccount(context.Background(), account, user))
 	owner := chain.process.login(t, chain.remote.sub2api.ownerEmail, gatewayAccountingOwnerPassword)
-	launch := owner.mustRequest(t, http.MethodPost, "/api/workspace-launches", json.RawMessage(`{"name":"Unfulfilled paid Workspace","packageId":"basic","autoRenew":false}`), "d3-closeout-purchase", http.StatusAccepted)
-	operationID := stringValue(launch["operationId"])
+	launch := seedRetainedWorkspaceLaunchWithDefaultApplicationCredentialForTest(t, chain.process.handler, gatewayAccountingCredentialForTest(t, chain.process.handler, owner), accountID, stringValue(user["id"]), gatewayAccountingSub2APIUserID, "Unfulfilled paid Workspace", "basic", "d3-closeout-purchase", false)
+	operationID := launch.ID
 	reconciler := chain.process.handler.app.workspaceLaunchReconciler(chain.process.handler.service, clients.SessionDelegatedCredential{}, 0)
 	for range 4 {
 		row, found, err := chain.process.store.GetRuntimeOperation(context.Background(), operationID)
