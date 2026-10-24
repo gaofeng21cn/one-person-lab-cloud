@@ -80,13 +80,22 @@ probe supplies no positive native qualification evidence. Owner peers/provider b
 in these tests is synthetic. Verification is retained in the accompanying PR
 and its current-revision CI; these checks are source evidence only.
 
-The local driver still selects the retained CP/Fabric/Ledger Compose overlays;
-its new owner-topology preflight refuses them before startup or customer
-mutation. The current remote Instance workflow still passes `--package-id` and
-does not export the required Tenant/payer declarations. Neither a real v2 local
-quote-to-delete/refund journey nor protected TKE/live Gateway qualification ran
-for this change. #1042, #1041 and #1018 remain open; their distinct acceptance
-outcomes are in [the roadmap](roadmap.md#native-v2-qualification-and-cp-retirement-1042).
+The retained local driver still selects the CP/Fabric/Ledger Compose overlays;
+its owner-topology preflight refuses an incomplete retained configuration before
+startup or customer mutation. The `local-v2` source path now consumes one
+installation-owned declaration, CA-backed HTTPS, CloudIdentity/Tenant readback,
+the owner catalog, a zero-price local quote and Workspace order, and owner
+readbacks for the operation, Workspace and transactions. Its result remains
+`NOT_READY` diagnostic evidence: no complete provider execution, restart or
+recovery, deletion/provider-absence, Ledger receipt or exact original-charge
+fixture refund has been proven. The path is limited to the declared local-docker
+and `LOCAL_NO_CHARGE` boundary and does not create a formal v1 qualification
+receipt or Release admission.
+
+The current remote Instance workflow still passes `--package-id` and does not
+export the required Tenant/payer declarations. No protected TKE/live Gateway
+qualification ran for this change. #1042, #1041 and #1018 remain open; their
+distinct acceptance outcomes are in [the roadmap](roadmap.md#native-v2-qualification-and-cp-retirement-1042).
 
 ## Original-order Closeout Scope (2026-10-23)
 

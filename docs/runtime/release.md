@@ -105,6 +105,15 @@ produce a protected receipt or satisfy release admission. A
 failed or unknown result on either path returns the release unit to development;
 it does not create a Product Release.
 
+The `local-v2` qualification driver provides diagnostic source wiring through
+one installation-owned environment, CA-backed HTTPS, CloudIdentity/Tenant
+readback, owner catalog and zero-price local quote/order facts. Its result
+remains `NOT_READY` diagnostic evidence until complete provider and lifecycle
+readbacks are proven. It is not the retained v1 READY receipt and cannot satisfy
+Candidate qualification or Release admission. Source tests and the current
+local diagnostic do not establish Linux project-quota execution, restart or
+recovery, deletion/refund, or Instance acceptance.
+
 ### Protected Cloud Customer Reads
 
 The source entry `.github/workflows/cloud-business-readback.yml` has two
