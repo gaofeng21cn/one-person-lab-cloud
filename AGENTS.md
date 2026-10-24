@@ -1,376 +1,169 @@
 # OPL Cloud Development Rules
 
-`one-person-lab-cloud` is the single GitHub product repository for OPL Cloud architecture,
-Console/BFF, domain services, contracts, portable distribution, and reusable
-release mechanisms. A domain is not a separate GitHub repository.
+`one-person-lab-cloud` (`gaofeng21cn/one-person-lab-cloud`) is the single Cloud
+product repository. `opl-cloud` is the package, image, service and runner name.
+Instance, Sub2API and Framework remain separate authorities.
 
-## Canonical Owners
+## Scope And Completion
 
-- `docs/README.md` maps documentation topics to their canonical owners.
-- `docs/architecture.md` and `docs/decisions.md` own target architecture and
-  durable decisions.
-- `docs/implementation-architecture.md`, source, schemas, and focused tests own
-  current implementation facts.
-- `docs/status.md` owns current evidence. `docs/roadmap.md` owns open gaps,
-  priority, and acceptance outcomes.
-- `packages/contracts` owns only machine-readable facts that have a current
-  cross-module, public-interface, security, integrity, or irreversible-side-
-  effect consumer.
-- `opl-instance-medopl` owns medopl installation configuration, production
-  environment and Secrets, deployment, installation rollback and deployment
-  receipts. Product-operation and qualification ownership follows
-  [the current decision](docs/decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads);
-  unfinished execution/evidence migration stays in `docs/roadmap.md`.
+- Before editing, identify the outcome, canonical owner, callers, verified Git
+  base, write set and completion evidence; no separate governance form is needed.
+- Complete authorized inspection, implementation and verification autonomously.
+  Ask only when an unresolved decision changes scope, authority or irreversible
+  effects; skills must not add duplicate approvals or mandatory checkpoints.
+- Keep one bounded objective. Include adjacent fixes only when they are needed
+  for that objective's acceptance. Record unrelated findings without starting
+  another Issue, PR review or cleanup task unless the user extends the scope.
+- Finish when the requested outcome and necessary checks are satisfied. Report
+  actual changes, evidence and remaining limitations; a plan or source pass is
+  not completion of a requested runtime outcome.
+- Parallelize independent owner/write sets; serialize overlapping files, shared
+  contracts, canonical `main` and production changes. Bound delegated tasks and
+  close agents after integration. Coordinate existing workspace changes; a new
+  worktree is not an ordinary prerequisite.
+- Follow [the PR flow](DEV_GUIDE.md#ordinary-pull-request-flow) for PR delivery.
+  Keep commit, push, PR, merge, publish and deployment actions within the user's
+  authorization; passing checks or technical review grants no further authority.
+- New GitHub-visible text is English: commits, PRs, Issues, comments and Release
+  notes. Replies to another person's text use that person's language; existing
+  historical text and original quotations retain their language.
 
-`opl-cloud` is the product's package, image, service, namespace, and runner name.
-The current repository identity is `gaofeng21cn/one-person-lab-cloud`, as declared
-by the distribution contract. Archived repositories and Git history are
-provenance, not separate current product writers. Instance,
-Sub2API, and Framework remain separate authorities outside this consolidation.
+## Read For The Current Task
 
-## Reconcile Before Editing
+Use [docs/README.md](docs/README.md#entrypoints-and-consumers) to locate the owner;
+read the relevant sections rather than loading every linked document.
 
-Before implementation, name the objective, primary module owner, canonical
-contract or document owner, real callers, exact write set, and completion
-evidence.
+| Task | Required reference |
+| --- | --- |
+| Change a module or its callers | [Target topology](docs/architecture.md#repository-and-instance-topology), [owner matrix](docs/spec/target/01_domain_ownership_matrix.md#2-领域分工与内部lane), and [current source/request map](docs/implementation-architecture.md) |
+| Change billing, Workspace, Fabric, Ledger, Gateway, deployment or E2E | Owning sections in [architecture](docs/architecture.md), [invariants](docs/invariants.md), and the current [machine contracts](packages/contracts/README.md) |
+| Resolve conflicting intent or evidence | [Decisions](docs/decisions.md), the owning source/contracts, relevant Git history and authoritative readback |
+| Change documentation | [Documentation hierarchy](docs/README.md) and [lifecycle policy](docs/policies/docs-lifecycle-policy.md) |
+| Build a Candidate or handle Release evidence | [Release operations](docs/runtime/release.md) and the current distribution contract |
+| Explicitly controlled delegation or host-tool changes | [Scoped Development Contract](#scoped-development-contract) |
 
-The latest direct user decision sets product intent. Source, tests, documents,
-Candidates, Releases, and runtime readback prove different layers; none of them
-silently upgrades a lower-layer result into a production claim.
+The latest user decision sets intent. Distinguish target, implementation,
+runtime/production evidence, history and unknowns; reconcile conflicts in their
+canonical owner and consumers. Issues, PRs and session claims are inputs.
+Update [status](docs/status.md) and [roadmap](docs/roadmap.md) when evidence or
+acceptance changes; preserve open external obligations. Completed plans and
+transcripts belong in Git history or `docs/history/`.
 
-When current sources disagree:
+## Ownership And Implementation
 
-1. Trace the relevant Git history, callers, contracts, and runtime readback.
-2. Classify each statement as target, current implementation, runtime evidence,
-   production evidence, history, derived, stale, or unknown.
-3. Reconcile the decision in its canonical owner and remove the duplicate
-   current writer in the same change.
-4. Stop only when unresolved authority would change an irreversible production
-   action or the requested terminal outcome.
-
-Issues, PRs, comments, agent sessions, generated docs, and old plans are inputs.
-They do not override the current owner.
-
-## Ordinary Source Development
-
-Follow the [2026-10-13 decision](docs/decisions.md#2026-10-13-ordinary-source-development-uses-git-scope-and-current-ci):
-use an explicit Git change scope, relevant local behavior checks, a pull request
-and actual CI results for its current revision. Canonical module and document
-owners define responsibility. Ordinary changes do not require host admission,
-phase-plan registration, a fixed governance record or a separate source-check
-JSON. Record the problem, resulting behavior, actual verification and risks in
-the PR using [the developer flow](DEV_GUIDE.md#ordinary-pull-request-flow).
-
-An independent agent may perform technical review against the exact source head
-and base. Production, money and resource changes retain owner review and explicit
-authorization. Merge remains subject to the repository's actual branch protection
-and existing merge authorization; review or a local pass grants no permission to
-merge, publish or deploy. These instructions do not prove remote protection is
-configured.
-
-Independent write sets may share the current workspace; coordinate overlapping
-changes. A new worktree or registered host run is not a routine prerequisite.
-
-## Scoped Development Contract
-
-Apply this contract only when a task explicitly selects controlled delegation.
-The following admission, worker, runner and receipt requirements govern that
-admitted host run, not ordinary source development.
-
-The existing phase plan, including the work-package records in
-`docs/spec/target/checks/development_plan.json`, supplies development tasks; it
-is not a permanent owner or task registry. Stable source ownership remains in
-the canonical documents mapped by `docs/README.md`. A plan or execution record
-cannot redefine that ownership or create another business-field authority.
-
-A trusted host admits each run using an authorization record stored outside the
-repository or in ignored runtime storage, protected from worker writes. Admission
-references an existing plan record and its canonical owner, narrows the read/write
-scope, and declares exact stage inputs and a host-controlled runner with no
-arbitrary shell interface. It does not introduce a new business-owner registry,
-task schema, or repository-global current state. Scope expansion requires a new
-host admission, not a worker edit to its plan or authorization. Read permissions
-and acceptance targets are not write permissions. Concurrent workspace changes
-require an explicitly named, host-admitted run on the same baseline and plan:
-`coauthorRuns` names independent collaborators; `requires` names prerequisites
-and their transitive dependency chain. The host verifies their exact write scopes
-and current phase ownership, never authorizes every directory in a plan, and
-never scans unrelated run or business-receipt bodies. Coexistence permission is
-not completion evidence: prerequisites and acceptance still require actual
-verified receipts; stale downstream evidence does not erase its previous edits
-or prevent an upstream owner from repairing its own stage.
-
-Use `npm run dev:tools` and `npm run dev:run` as the host integration entry points;
-CLI arguments are finalized with the tool implementation. The worker interface
-is limited to `dev_context`, `dev_read`, `dev_search`, `dev_write`, `dev_status`
-and `dev_verify`. Status is a readback; verification is an acceptance request to
-the trusted runner, not permission to execute an arbitrary command. There is no
-worker `complete` or `publish` operation. The worker must receive admitted
-context before file operations; reads, searches and writes stay inside that
-scope. Every operation rechecks the current baseline and workspace change scope.
-A failed context refresh or admission check revokes the previous admission; the
-worker cannot continue using context from before the failure. Worker writes
-cannot alter admission, runner policy, run state or receipts.
-Run state advances only from actual execution results, never from a worker's
-completion claim; a failed or blocked result remains failed or blocked.
-
-The host materializes each stage's declared inputs into an isolated snapshot.
-The runner cannot read undeclared repository code dependencies; declare those
-inputs before admission rather than granting a repository mount or shell escape.
-Recovery may reuse a stage only when its exact inputs and bound upstream evidence
-are unchanged. Downstream evidence binds the upstream receipt hashes and actual
-stage input hashes; a change invalidates only the affected stage and its
-dependents. The host appends per-run receipts to host-owned runtime storage,
-protected from worker writes; it never overwrites receipts or
-automatically updates `docs/status.md`, `docs/roadmap.md`, or a global state file.
-Canonical evidence summaries remain explicit owner-maintained changes.
-
-The host's `dev:verify` runs an admitted stage and appends its runtime receipt to
-host-owned storage. If this run needs a repository source-check reference, the
-host may export actual results with
-`node tools/dev-session.ts source-check <host-store> <run-id> <gate-id>` as described in
-[Host Source-Check Reference](DEV_GUIDE.md#host-source-check-reference).
-Export and record validation are optional for this branch of development; they
-are not ordinary PR requirements and never replace current-revision CI.
-Complete stage-input and dependency-hash binding remains in the host receipt.
-Passing behavior evidence requires actual executed tests, a zero exit code and
-zero failures, skips or TODOs; a passing label is not execution evidence.
-
-Enforcement belongs at the trusted host entry, not in a particular model loop.
-The host must require current context before file operations, validate the
-baseline and change scope, and expose only the admitted operations to the
-client. `runRestrictedWorker` is one replaceable reference adapter; an existing
-chat may use the same host-owned entry without adopting that adapter. A chat
-that retains unrestricted shell or filesystem access is not controlled merely
-because these tools are attached. These rules and entry points do not establish
-that all Codex sessions are restricted, that the rewritten interface is enabled,
-or that remote branch protection is configured; those claims require actual host
-and runner evidence.
-
-For changes to these host tools, run their relevant behavior tests and
-development-tools typecheck. Ordinary CI retains the exhaustive source gate;
-plan freshness is selected separately for affected target-spec paths using the
-PR's explicit base and head SHAs. See
-[Development Plan Verification](DEV_GUIDE.md#development-plan-verification).
-Fixture and source-check evidence do not establish product runtime, Candidate
-qualification, Instance deployment or production readiness.
-
-**Process-layer reference.** The generic owner-slice process — the S0–S7 step
-shape, the implementation-vs-recovery/evidence-refresh applicability of RED
-and GREEN, the receipt-reuse rules and the parallel/serial criterion — is
-owned by the process repository `RenDeHuang/opl-development-framework` at
-commit `d995df3aaf6473a2b7714fc868327919bac4bbd4` (skill
-`skills/owner-slice-development/SKILL.md`, checklist
-`skills/owner-slice-development/references/slice-checklist.md`, design
-`docs/design/owner-slice-framework-v1.md`, wiring acceptance
-`docs/design/wiring-acceptance.md`). This document, `DEV_GUIDE.md` and the
-existing host entry retain the Cloud wiring for explicitly controlled delegation.
-The framework's migration-task process is not an ordinary PR prerequisite.
-Citing the framework or attaching its tools restricts nothing by itself;
-restricted adoption needs real admitted-run execution evidence under its
-wiring-acceptance criteria. Use the optional host export when assessing that
-wiring. This does not establish that all Codex sessions are restricted.
-
-## Documentation
-
-Use [the documentation index](docs/README.md#entrypoints-and-consumers) to locate
-canonical owners and their consumers. This file owns agent execution rules and
-required entrypoints, not product specifications or a second documentation tree.
-Lower layers may implement or report an upper-layer decision; they do not
-redefine it.
-
-Keep active documentation limited to current truth, open gaps, and reusable
-operations. Completed plans, freezes, task checklists, shell transcripts, and
-closeout notes belong in Git history or `docs/history/**` when provenance is
-still useful.
-
-Machine contracts contain stable inter-owner facts, not implementation layout,
-query strategy, worker tuning, presentation details, current progress, or a
-catalog of retired alternatives. Tests exercise the owning behavior or current
-consumer instead of restating contract JSON or proving retired files remain
-absent.
-
-## Module Ownership
-
-Before changing a module, read the target
-[repository and deployment-unit map](docs/architecture.md#repository-and-instance-topology),
-the [target owner matrix](docs/spec/target/01_domain_ownership_matrix.md#2-领域分工与内部lane),
-and the [current source and request map](docs/implementation-architecture.md).
-Use those owners to identify data writers, callers and retained migration paths;
-do not maintain a second module inventory or current routing map here.
-
-- Control Plane is a migration source, not a permanent second writer alongside
-  the extracted services. Move a capability and its real callers together, then
-  retire its old write path while preserving historical obligations.
-- Keep one shared contracts Go module at `packages/contracts/go/go.mod`. W01
-  places production proto sources in `packages/contracts/proto/` and generated
-  Go bindings under the existing contracts module, not another module. Internal
-  consumers build from the same Cloud commit, record the schema hash, and lock
-  generator versions. Necessary consumer `go.mod`/`go.sum` updates belong to
-  that contract change; do not add a module solely to avoid those updates.
-- Provider-specific behavior stays behind the owning Fabric adapter.
-- Console does not own persistence, provider calls, billing decisions, or
-  Fabric/Ledger/Sub2API state. Control Plane does not own the wallet, provider
-  resources, or another service's tables. Fabric does not own customer balance
-  or Ledger evidence. Ledger does not own provider mutation or Workspace
-  orchestration.
-- DTOs, reducers, state machines, retry policy, and authority facts have one
-  owner. Other modules use a thin typed client or adapter.
-- A shared module requires at least two current callers and remains policy-free.
-- Cross-module changes update the owning contract, both consumers, and focused
-  boundary tests together.
-
-Development with distinct owners and write sets may proceed in parallel. Changes
-to the same file, one shared contract revision, canonical `main`, or production
-state are serialized.
-
-Cross-service coordination is typed gRPC/protobuf plus owner readback under the
-target architecture, with per-domain PostgreSQL Outbox delivery where a
-reliable event is required; the un-migrated services still coordinate over typed
-HTTP. Do not add a framework, service, shared policy layer, durable workflow
-engine, or global event bus beyond the domains and mechanisms the adopted target
-defines. A new service still needs a current caller, an observed missing
-capability, a bounded migration, and an owner. The target architecture does not
-adopt Spring Modulith, Dapr, Temporal, or a second Cordis runtime.
-
-## Implementation
-
-- Reproduce or trace the real path before fixing a bug. Once the deepest
-  breakpoint and owner are known, repair that owner before expanding tests or
-  process.
-- Prefer the direct path inside the current owner. A new file, abstraction,
-  dependency, state, fallback, compatibility path, workflow, or gate needs a
-  current caller, contract, observed failure, or concrete reachable risk.
-- Improve cohesion inside the existing module before adding a framework or
-  service. Adopt a new runtime or architectural dependency only when a measured
-  missing capability and a focused replacement path justify it.
-- Refactor one live capability at a time, preserve its public behavior and
-  persisted data obligations, switch real callers, then remove the retired path.
-- Keep source, tests, `docs/status.md`, and `docs/roadmap.md` aligned at their
-  respective evidence layers.
-
-## Release And Instance Boundary
-
-Cloud publishes portable GHCR images, GitHub Releases, installation assets, and
-reusable provider adapters. It does not own an instance deployment workflow or
-require a production environment to build the product.
-
-During pre-1.0, build a replaceable candidate from an exact Cloud SHA and image
-digest on a branch admitted by the Candidate workflow. Formal publication still
-requires that exact source to be merged into canonical `main`. The instance owner
-deploys that Candidate and proves installation identity and health in its
-protected environment. Cloud product owners retain business qualification;
-current release-evidence migration is an explicit roadmap gap, not permission
-to remove admission checks. A formal Product Release promotes the same qualified
-bytes without a rebuild.
-
-Candidate construction and local development do not authorize formal
-publication or Instance deployment. The Release workflow admits qualification
-evidence and promotes the existing Candidate digest without rebuilding it.
-Required Local and Instance receipts must bind that exact Candidate; see
-`docs/runtime/release.md` for publication and recovery procedures.
-
-Only the repository owner and `RenDeHuang` may dispatch the manual Cloud Release
-workflow from `main`, and the original publisher must remain the triggering
-actor. Development, CI, qualification retries, and instance-only work do not
-authorize publication.
-
-Building a Candidate and publishing one are separate authorities. Any
-write-access collaborator may dispatch `build-opl-cloud-candidate.yml` against the
-exact commit at the head of a pushed branch, and that run must stay
-self-attributed. Producing a replaceable Candidate is therefore wider than
-publishing it: the build guard names no actor, while the Release guard keeps the
-allowlist above and still requires the source commit to be reachable from `main`.
-A build guard that names an actor is a boundary defect, and
-`tools/validate-product-boundary.mjs` fails it.
-
-## Verification
-
-- Run focused checks first with `npm run verify:local:focused -- --base <verified-base-ref>`. The command selects checks from the explicit Git change scope; it never guesses the base. Declare existing owner behavior targets with repeated `--test <file>` when no current test changed; missing targets are refused rather than falling back to full tests or treating typecheck as behavior evidence. Generated checks use the existing generator input/output inventory, E2E classification uses the existing browser suite inventory, and Go changes run tests for the affected packages. Focused test evidence requires actual executed tests with zero failures, skips or TODOs; it is not host acceptance or proof of complete downstream coverage.
-- `npm run verify:local` is the exhaustive source/CI gate, not a required local precondition for every change. CI keeps this exhaustive gate; local work should not repeat it unless the boundary requires it or the developer explicitly asks.
-- Use `npm run verify:local:full` only for persistence, schema, retained service
-  behavior, cross-module contracts, or structural changes involving PostgreSQL,
-  capacity, or Local-Docker behavior, and only when that boundary is affected.
-- Tests and builds prove their own layer. Instance adoption and production state
-  require owner-authoritative deployment and runtime readback.
-- Before changing billing, Workspace, Fabric, Ledger, Gateway, deployment, or
-  E2E, read the owning architecture/invariant sections and current machine
-  contract, then update the source owner and its evidence projection together.
-
-## High-Consequence Boundaries
-
-- The current permitted access path for production-private endpoints, clusters,
-  databases and services is `opl-instance-medopl` protected workflows and
-  authorized runners. This is the existing access boundary, not ownership of
-  customer business operations. A Cloud-owned protected business-qualification
-  entry and its evidence consumers must be implemented before that entry is
-  used; the target decision grants no new access or dispatch permission.
-- The local development machine must never access the production private
-  network directly; this repository must not dispatch Instance deployment.
-- Sub2API remains the spendable-wallet and Gateway backend authority.
-- Do not create a second wallet, Gateway, package registry, lock, or domain
-  authority in Cloud.
-- Customer and verification compute/storage procurement uses the approved
-  prepaid monthly policy.
-- Never use `POSTPAID_BY_HOUR` for customer or verification CVM/CBS resources.
-- Ordinary CI, release, and E2E are read-only for real customer money and
-  provider resources. Real charges, purchases, renewals, or deletion require a
-  separate explicit authorization and bounded owner workflow.
-- Ordinary CI, release, or E2E must not buy or delete Tencent CVM/CBS resources,
-  charge a real monthly product fee, add a public test-billing mode, or clean up
-  customer resources from verification code.
-- Secrets remain in their approved secret stores and authorized runtime
-  boundaries.
+- Trace the real input-to-owner path before fixing a bug. Repair the deepest
+  failing owner with the smallest complete change and verify the real consumer.
+- Keep one writer per fact. Move a live capability and its callers together;
+  retire the old write path while preserving persisted data and historical
+  obligations. Control Plane is a migration source, not a permanent second writer.
+- Keep DTOs, state machines and retry policy with their owner; consumers use thin
+  typed clients. Provider behavior stays behind Fabric adapters. Cross-owner
+  changes update the owning contract, affected consumers and boundary tests.
+- Keep the single shared Go module at `packages/contracts/go/go.mod`, proto in
+  `packages/contracts/proto/` and generated Go under that module. Consumers use
+  the same Cloud commit, schema hashes and locked tools; update required
+  consumer `go.mod`/`go.sum` with the contract.
+- Shared infrastructure needs two current callers and stays policy-free. New
+  abstractions, dependencies, services or gates need a demonstrated capability
+  gap or reachable failure, a caller and a bounded owner. Follow adopted typed
+  coordination; add no second wallet, Gateway, registry, lock, business authority
+  or orchestration framework.
+- Fix the cause within the current owner. Preserve unknown or failed readback;
+  do not add fallbacks, compatibility branches or weaker assertions to hide it.
 
 <!-- CODEGRAPH_START -->
-## CodeGraph
+## CodeGraph And Context Use
 
-- This repository uses a local `.codegraph/` index; do not commit it.
-- Use CodeGraph for definitions, callers, impact, and paths; use `rg` for literal
-  text.
-- Run `codegraph init .` or `codegraph sync .` when the index is missing or stale.
+- Use the existing `.codegraph/` index for code definitions, callers, impact and
+  covering tests before changing shared symbols; use `rg` for literal text.
+  Refresh the existing index after updating source. Keep it untracked.
+- Read relevant symbols/ranges and reuse them until inputs change. Batch
+  independent reads; retain decisive errors/results rather than full files,
+  repeated diffs or entire logs. Keep diagnostic output in temporary/ignored storage.
+- Use existing wait/watch commands for long checks; avoid model turns merely
+  polling unchanged status. Return compact results with failures visible.
+- Compaction/handoff retains the objective, exact base/head, changed paths,
+  verified results, unresolved failures and next action; continue the task.
 <!-- CODEGRAPH_END -->
 
 <!-- TESTING_RULES_START -->
-## Testing Rules
+## Verification
 
-- Use existing typed owner DTOs and structs for test input and assertions.
-- Shared types belong in `packages/contracts/go/` only when current cross-owner consumers require them; internal test cases do not justify a new shared contract.
-- At a genuinely generic persistence or untrusted JSON boundary, test the real decoder and its rejection behavior without inventing a parallel domain schema.
-- When production types change, update affected tests to the current typed contract.
-- Do NOT add compatibility branches, extra fields, or defensive checks in production code just to make old tests pass.
-- If a type definition changes, update all consumers (including tests) in the same commit.
+Start with the verified base for this change:
 
-## Before Writing Code
+```bash
+npm run verify:local:focused -- --base <verified-base-ref>
+```
 
-- Use `codegraph explore "<symbol>"` to understand blast radius and covering tests before modifying any shared type or function.
-- Run `codegraph index` after pulling latest main to keep the index current.
+- For source behavior changes without changed tests, declare existing owner
+  targets with repeated `--test <file>`. Missing targets are refused. Use current
+  typed DTOs/structs; update affected tests with production type changes.
+- At generic persistence or untrusted JSON boundaries, test the real decoder and
+  rejection behavior. Test owner behavior and real consumers, not duplicate
+  contract JSON or assertions that retired files remain absent.
+- `npm run verify:local` is the exhaustive CI gate. Run it locally only when the
+  affected boundary or requested verification requires it. Use
+  `npm run verify:local:full` for affected persistence, schema, capacity,
+  Local-Docker or retained/cross-service behavior as described in
+  [Pre-Commit Checks](DEV_GUIDE.md#pre-commit-checks).
+- Behavior evidence requires executed tests, zero failures, skips and TODOs;
+  compilation alone is not behavior evidence. Record failed or unavailable
+  checks and their reasons. Re-run affected checks after relevant changes;
+  broaden testing only for new failures or unresolved risks.
+- PR delivery requires actual CI for its current revision. Source checks,
+  fixture/SQL tests, runtime qualification and Instance deployment prove distinct
+  layers; report each only at the layer actually verified.
 <!-- TESTING_RULES_END -->
+
+## High-Consequence Boundaries
+
+- Production-private access stays in `opl-instance-medopl` protected workflows
+  and authorized runners. Never connect the local machine directly to production
+  private networks or dispatch Instance deployment from this repository.
+  A proposed Cloud-owned protected entry grants no access before its actual
+  authorized implementation and evidence consumers exist.
+- Sub2API/Gateway owns spendable balance, effective Keys, Groups, routing and
+  usage. Cloud owns approved mappings and coordination, not a second authority.
+- Ordinary CI, release and E2E are read-only for real money and provider
+  resources. Charges, purchases, renewals and deletion need separate explicit
+  authorization and a bounded owner workflow; verification code must not clean
+  customer resources or add a public test-billing mode.
+- Customer and verification CVM/CBS procurement uses approved prepaid monthly
+  policy. Never use `POSTPAID_BY_HOUR`. Secrets stay in approved secret stores
+  and authorized runtime boundaries.
+
+## Release And Instance Boundary
+
+Cloud publishes a portable product; Instance owns installation configuration,
+Secrets, deployment, rollback and deployment receipts. Before a Candidate or
+Release action, read [release operations](docs/runtime/release.md).
+
+- A write-access collaborator may build a replaceable Candidate from the exact
+  head of its pushed, workflow-admitted branch, self-attributed. The build guard
+  has no actor allowlist; publication has separate authority.
+- Formal Release requires the qualified exact source on canonical `main` and
+  promotes the same Candidate digest without rebuilding. Only the repository
+  owner and `RenDeHuang` may dispatch it; the original publisher stays the actor.
+  Local development, Candidate construction and retries authorize neither
+  formal publication nor Instance deployment.
 
 <!-- RECEIPT_RULES_START -->
 ## Receipt And Evidence Persistence
 
-For ordinary source changes, persist actual local verification in the PR and
-retain CI results for the current revision; no separate source-check JSON is
-required. A commit alone does not prove verification. Admitted host runs retain
-host-owned execution receipts. Deployment and qualification retain their
-required owner receipts. Failed or unavailable verification records the attempted
-action and reason rather than implying pass.
-
-Cloud owns source evidence, roadmap state and product business qualification.
-Instance owns installation, deployment and deployment-rollback evidence. Current
-launch/use and qualification receipt producers and release consumers have not
-yet migrated to that target; preserve their existing schemas and checks until
-both owners implement the migration in the same change. Do not copy receipt
-formats into this file. Bind applicable source SHA,
-image digests, timestamps, workflow provenance and actual focused readback.
-Append a new receipt for a new action and never overwrite a prior receipt.
-Receipts contain no credentials, raw Keys, customer data or private addresses.
-
-When a roadmap outcome completes on the Cloud side, update its state and
-reference the owner evidence in the same change. Required Instance evidence
-remains an explicit external obligation; Cloud-only success cannot mark the
-combined outcome complete.
+Record ordinary local verification in the PR; no separate source-check JSON is
+required. Host runs retain host receipts. Preserve qualification/release schemas
+and checks until producers and consumers migrate together. Bind source SHA,
+image digest, timestamp, workflow provenance and actual owner readback. Append
+receipts; never overwrite attempts or include credentials, raw Keys, customer
+data or private addresses. Cloud owns source/business evidence, Instance owns
+installation/deployment evidence; Cloud-only success leaves Instance obligations open.
 <!-- RECEIPT_RULES_END -->
 
-- GitHub 上自己新建的对外文本用英文书写：commit subject/body、PR 标题与正文、Issue、comment、Release 正文与 Release Notes。产品名、代码标识、路径、命令与原始引用除外。他人写的 Issue、PR 或 comment，无论对方用什么语言，回复沿用对方的语言；历史中已有的非英文 commit 保持原样。
+## Scoped Development Contract
+
+Only when a task explicitly selects controlled delegation, or changes its host
+entry/runner, read and follow the full contract in
+[Scoped Host And Worker Entry](DEV_GUIDE.md#scoped-host-and-worker-entry).
+Ordinary source development does not require host admission, phase-plan
+registration, restricted workers or host receipts. Attaching tools or citing the
+framework alone does not restrict a shell-enabled chat.

@@ -149,16 +149,84 @@ its existing owners and requirements.
 
 ## Scoped Host And Worker Entry
 
-Use this entry only for tasks that explicitly require controlled delegation.
-Its phase-plan, admission and receipt machinery applies to admitted migration
-tasks, not every source change or ordinary PR.
+Use this entry only for tasks that explicitly select controlled delegation, or
+when changing its host entry/runner. The following admission, worker, runner and
+receipt requirements govern admitted runs, not ordinary source changes or PRs.
+This section owns the Cloud host contract and its commands; `AGENTS.md` supplies
+the conditional reading entrypoint.
 
-Follow [Scoped Development Contract](AGENTS.md#scoped-development-contract) for
-per-run admission, restricted worker capabilities, isolated stage inputs and
-append-only execution receipts. The trusted host stores approval and run receipts
-outside the repository or in ignored runtime storage protected from worker
-writes; only the host creates them from admitted scope and actual execution.
-Current commands are:
+### Admission And Worker Operations
+
+The existing phase plan, including work packages in
+`docs/spec/target/checks/development_plan.json`, supplies task inputs. Stable
+source ownership remains in the canonical documents mapped by
+[docs/README.md](docs/README.md); a plan or execution record cannot redefine an
+owner or create a permanent business-owner registry, task schema or global state.
+
+A trusted host admits each run with an authorization record outside the repository
+or in ignored runtime storage protected from worker writes. Admission references
+an existing plan record and canonical owner, narrows the read/write scope and
+declares exact stage inputs and a host-controlled runner with no arbitrary shell
+interface. Scope expansion requires new host admission, not a worker edit to the
+plan or authorization. Read permission and acceptance targets are not write grants.
+
+The worker interface is limited to `dev_context`, `dev_read`, `dev_search`,
+`dev_write`, `dev_status` and `dev_verify`. The worker must receive admitted
+context before file operations; reads, searches and writes stay inside that scope.
+The host refreshes context before every model turn. Every operation rechecks the
+baseline and workspace change scope. A failed refresh or admission check revokes
+the old admission; work cannot resume from stale context and requires a successful
+`dev_context`. Workers cannot alter approval, runner policy, run state or receipts.
+`dev_status` is readback, and `dev_verify` requests execution by the trusted runner;
+there is no worker `complete`, `publish` or arbitrary-command operation. Run state
+advances only from actual execution results; failed or blocked results stay so.
+
+Every admission reads `AGENTS.md`, this guide, `docs/status.md` and
+`docs/roadmap.md`, verifies that the approved base SHA exists and remains an
+ancestor of the checkout, checks Git changes against the host-admitted write
+scopes, and returns all ready gates. Git metadata establishes the change set;
+source and receipts are read only through admitted paths and declared dependencies.
+This is a baseline readback, not a repository-wide source scan.
+
+Concurrent changes in one checkout require explicitly named, host-admitted runs
+on the same base SHA and plan with current phase scopes. `coauthorRuns` names exact
+independent run IDs; `requires` names prerequisite IDs and their transitive chain.
+The host validates exact write scopes, never grants every directory in a plan,
+and never discovers unrelated runs by scanning the host store. Coexistence allows
+authorized changes to remain; it does not satisfy prerequisite receipts or bypass
+checks on writes and acceptance. Stale downstream evidence neither erases its
+previous edits nor prevents an upstream owner repairing its own stage. Disjoint
+checkouts need no coauthor references until integration on an admitted baseline.
+
+### Isolated Inputs And Execution Evidence
+
+The host materializes each stage's declared inputs into an isolated snapshot.
+The runner cannot read undeclared repository dependencies; declare them before
+admission instead of granting a repository mount or shell escape. Receipt reuse
+requires unchanged exact stage inputs and bound upstream evidence. Downstream
+receipts bind actual stage input hashes and upstream receipt hashes; an input or
+bound evidence change invalidates only the affected stage and its dependents.
+Status is computed from those inputs and hashes, not an agent-editable completion
+field. A new session/model can continue a valid run without restarting its stages.
+
+The host appends per-run execution receipts to host-owned storage protected from
+workers; it never overwrites attempts or automatically edits `docs/status.md`,
+`docs/roadmap.md` or a global state file. Canonical summaries are explicit owner
+changes. Passing behavior requires actual executed tests, zero exit code and zero
+failures, skips or TODOs; a passing label alone is not evidence.
+
+Receipt lookup reads only the named development gate's attempt sequence and
+verifies identity, input hashes and bound dependency hashes. It does not enumerate
+business receipt bodies. Source, business qualification and Instance receipts
+retain their existing owners and formats; none proves completion of another layer.
+Fixtures and source checks do not establish runtime, Candidate qualification,
+Instance deployment or production readiness. Preserve accepted owner work and
+production steps; adopting this entry does not justify discarding or rerunning them.
+
+### Host Commands And Adapters
+
+Use `npm run dev:tools` and `npm run dev:run` as host integration entrypoints.
+The current command interface is:
 
 ```bash
 npm run dev:approve -- /absolute/host-approval.json /absolute/host-store
@@ -169,73 +237,45 @@ npm run dev:verify -- /absolute/host-store run-id gate-id
 npm run verify:dev-scope -- /absolute/host-store run-id
 ```
 
-`dev:run` is an optional reference model adapter that launches a separate worker
-with only the six admitted tools. The hard entry contract is the host-owned
-`dev:context`/`dev:tools` path: an existing development client may use that path
-without adopting this adapter. Attaching `dev:tools` to a shell-enabled chat
-does not restrict that chat. The source runner is not an Instance executor and
-does not consume an Instance receipt as source completion. Keep live
-business-chain work in its current owner session; its protected workflows and
-existing receipt validators remain authoritative.
+Enforcement belongs at the trusted host entry, not a model loop.
+`runRestrictedWorker` is one replaceable adapter; `dev:run` launches a separate
+worker with only the six admitted tools. Existing clients may use the host-owned
+`dev:context`/`dev:tools` entry without that adapter. A chat retaining unrestricted
+shell/filesystem access is not controlled merely because these tools are attached.
+These commands and references prove neither universal restricted adoption nor
+remote branch protection; both require actual host/runner or remote evidence.
 
-The generic owner-slice process shape — including the
-implementation-vs-recovery applicability of RED/GREEN, receipt reuse and the
-parallel/serial criterion — is owned by the process repository
-`RenDeHuang/opl-development-framework` at commit
-`d995df3aaf6473a2b7714fc868327919bac4bbd4` (skill
-`skills/owner-slice-development/SKILL.md`, design
-`docs/design/owner-slice-framework-v1.md`, wiring acceptance
-`docs/design/wiring-acceptance.md`); this guide keeps the Cloud wiring for the
-selected host branch. Citing the framework or attaching its tools does not
-restrict a chat; restricted adoption requires actual admitted-run execution
-evidence under the framework's wiring-acceptance criteria. The host export below
-remains available for assessing that wiring. None of these references establishes
+The host's `dev:verify` executes an admitted stage and appends its runtime receipt.
+It does not automatically create a repository source-check record. When a run
+needs that optional reference, use [Host Source-Check Reference](#host-source-check-reference);
+complete stage-input/dependency-hash binding remains in the host receipt. The
+source runner is not an Instance executor. Keep live business-chain work in its
+own authorized session and existing protected workflows/receipt validators.
+
+Changes to host tools require their relevant behavior tests and development-tools
+typecheck. Ordinary CI retains the exhaustive source gate; development-plan
+freshness is selected separately for affected target-spec paths using explicit
+PR base/head SHAs, as described in
+[Development Plan Verification](#development-plan-verification).
+
+### Framework Reference
+
+The generic owner-slice process (S0-S7, implementation versus recovery/evidence
+refresh RED/GREEN applicability, receipt reuse and parallel/serial criteria) is
+owned by `RenDeHuang/opl-development-framework` at commit
+`d995df3aaf6473a2b7714fc868327919bac4bbd4`:
+
+- Skill: `skills/owner-slice-development/SKILL.md`
+- Checklist: `skills/owner-slice-development/references/slice-checklist.md`
+- Design: `docs/design/owner-slice-framework-v1.md`
+- Wiring acceptance: `docs/design/wiring-acceptance.md`
+
+This guide and the existing host entry retain Cloud wiring for explicitly
+controlled runs. The framework's migration-task process is not an ordinary PR
+prerequisite. Citing it or attaching tools restricts nothing by itself; restricted
+adoption requires actual admitted-run evidence under its wiring-acceptance
+criteria. The optional host export can assess that wiring and does not establish
 that all Codex sessions are restricted.
-
-Multiple checkouts are allowed: bind evidence to exact source and input hashes,
-not a directory name or a thread's completion claim. Do not discard ongoing
-owner work or rerun accepted production steps merely to adopt this entry.
-
-The host references an existing phase-plan record and canonical owner, narrows
-scope and declares stage inputs and the runner. A worker requests acceptance
-with `dev_verify` and observes actual results with `dev_status`; it cannot
-complete or publish a run by assertion. The host's `dev:verify` executes the
-admitted stage and appends a runtime receipt to the host store; it does not
-automatically create a PR source-check record. A shell-enabled chat remains
-unrestricted. Run receipts do not automatically write product status or roadmap.
-
-The host refreshes admitted context before every model turn. Status is computed
-from the current declared input hashes and bound predecessor receipt hashes,
-not stored as an agent-editable completion field. A new session or model can
-continue the same run without restarting valid stages; an actual input or bound evidence change
-invalidates only the affected stage and its dependents. A refresh failure stops
-the worker rather than continuing with an old admission.
-
-Every context admission also reads `AGENTS.md`, this guide, `docs/status.md` and
-`docs/roadmap.md`, verifies that the approved base SHA is available and remains
-an ancestor of the checkout, checks the current Git change scope against the
-host-admitted write scopes, and returns the complete set of ready gates. This is a
-baseline readback, not a repository-wide source scan: Git
-metadata establishes the change set, while source and receipts are read only
-through the admitted paths and declared dependencies.
-
-Every file operation rechecks that scope. Failure revokes admission until a
-successful `dev_context`; a read-only path or an acceptance target never grants
-write authority. For a shared checkout, the host lists independent collaborators
-in the optional `coauthorRuns` array of exact run IDs; prerequisite run IDs come
-from `requires`, including its named transitive chain. Each contributor must use
-the same base SHA and plan and retain current host admission and phase scope.
-An unreferenced run is not discovered by scanning the host store. These references
-permit existing authorized changes to coexist, not task completion or a bypass
-of prerequisite receipt checks on writes and acceptance. Disjoint checkouts need
-no coauthor references until their changes are integrated on an admitted baseline.
-
-Receipt lookup reads only the named development gate's attempt sequence and
-verifies its identity, input hashes and bound dependency hashes. It does not
-enumerate and parse business receipt bodies. Development receipts prove source
-checks; business and Instance receipts stay in their existing owner formats and
-qualification paths. Neither
-layer is accepted as evidence of completion of the other.
 
 ### Host Source-Check Reference
 
