@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Regenerate actual contract-derived outputs from their existing source owners.
-# Default: production Go bindings, derived spec snapshots and public JSON.
+# Default: production Go bindings and public JSON.
 # Named chains let freshness run each independently in an empty isolated tree.
 #
 # Pinned tools:
@@ -85,8 +85,6 @@ if [[ "${chain}" == contracts || "${chain}" == bindings || "${chain}" == public-
 fi
 
 if [[ "${chain}" == contracts || "${chain}" == bindings ]]; then
-  mkdir -p "${root}/docs/spec/target/contracts"
-  cp "${here}/internal.proto" "${root}/docs/spec/target/contracts/internal.proto"
   genv="$(dirname "$("${py}" -c 'import grpc_tools,sys;sys.stdout.write(grpc_tools.__file__)')")/_proto"
   gen_go="$(command -v protoc-gen-go)"
   gen_grpc="$(command -v protoc-gen-go-grpc)"
@@ -103,8 +101,6 @@ if [[ "${chain}" == contracts || "${chain}" == public-json ]]; then
   "${py}" "${here}/generate_public_json_shape.py"
 fi
 if [[ "${chain}" == event-identity ]]; then
-  mkdir -p "${root}/docs/spec/target/contracts"
-  cp "${here}/events.json" "${root}/docs/spec/target/contracts/events.json"
   "${py}" "${here}/generate_event_identity.py" "${here}/events.json" "${out}/event_identity.go"
 fi
 if [[ "${chain}" == policy ]]; then

@@ -1,15 +1,15 @@
 {
-  "result": "passed",
-  "timestamp": "2026-10-01T02:43:01.828722+00:00",
-  "report": "checks/runs/20261001T024301828722Z.json",
+  "result": "failed",
+  "timestamp": "2026-10-24T15:36:05.612442+00:00",
+  "report": "checks/runs/20261024T153605612442Z.json",
   "scope": "documentation contracts only; not implementation/runtime/DB execution/Instance qualification",
   "checks": [
     {
       "name": "openapi_and_operation_inventory",
       "passed": true,
       "details": {
-        "operations": 108,
-        "schemas": 179
+        "operations": 117,
+        "schemas": 190
       }
     },
     {
@@ -17,10 +17,10 @@
       "passed": true,
       "details": {
         "databases": 10,
-        "tables": 101,
-        "columns": 1422,
-        "indexes": 163,
-        "sqlStatements": 422,
+        "tables": 102,
+        "columns": 1434,
+        "indexes": 165,
+        "sqlStatements": 426,
         "execution": "parser only; no database connected"
       }
     },
@@ -28,18 +28,18 @@
       "name": "isolated_postgresql_execution_receipt",
       "passed": true,
       "details": {
-        "receipt": "checks/runs/cross-domain-20261001T024000.311330Z.json",
+        "receipt": "checks/runs/cross-domain-20261024T125416.383834Z.json",
         "tests": 101,
         "metadata": {
-          "actualDatabaseFields": 1422,
-          "directMappingsTypeAndEnumChecked": 311,
+          "actualDatabaseFields": 1434,
+          "directMappingsTypeAndEnumChecked": 321,
           "optionalWireFieldMeansOmittedNotNull": true,
           "nonnullableDbMayBeInternalOrDerived": "not inferred from API required alone; legacy cases cover real discriminators",
           "postgresVersion": "PostgreSQL 16.15 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit"
         },
         "scope": "typed REST/protobuf specification adapters -> isolated PostgreSQL -> exact typed/readback projection; provider router and Storage are explicitly named fixtures, not implemented services",
         "cleanup": {
-          "containerName": "opl-spec-semantic-1790822400",
+          "containerName": "opl-spec-semantic-1792846456",
           "containerAbsent": true,
           "stopSucceeded": true,
           "removalReadbackPolls": 2,
@@ -50,10 +50,10 @@
     },
     {
       "name": "api_database_field_sources",
-      "passed": true,
+      "passed": false,
       "details": {
-        "persistedFieldMappings": 311,
-        "derivedFieldMappings": 79
+        "persistedFieldMappings": 321,
+        "derivedFieldMappings": 82
       }
     },
     {
@@ -61,7 +61,7 @@
       "passed": true,
       "details": {
         "features": 17,
-        "uiFieldReferences": 2567,
+        "uiFieldReferences": 2587,
         "actions": 62
       }
     },
@@ -69,7 +69,7 @@
       "name": "error_and_stage_projections",
       "passed": true,
       "details": {
-        "errorCodes": 72,
+        "errorCodes": 73,
         "operationStages": 73
       }
     },
@@ -84,9 +84,9 @@
       "name": "protobuf_compilation",
       "passed": true,
       "details": {
-        "services": 31,
-        "messages": 399,
-        "methods": 176,
+        "services": 32,
+        "messages": 432,
+        "methods": 194,
         "compilerWarnings": ""
       }
     },
@@ -107,5 +107,7 @@
       }
     }
   ],
-  "errors": []
+  "errors": [
+    "derived source column absent: WorkspaceDeletion.deletionReceipt->ledger.evidence_receipts"
+  ]
 }

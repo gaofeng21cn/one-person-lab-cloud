@@ -269,6 +269,22 @@ The tooling, CI and documentation migration is an
 [open outcome](roadmap.md#development-governance-migration-2026-10-13);
 recording the policy does not establish that those integrations already follow it.
 
+## 2026-10-24: Target Readers Use The Canonical Contract Sources
+
+`packages/contracts/proto/internal.proto` and
+`packages/contracts/proto/events.json` are the only editable wire and event
+sources. Target-spec readers, plan input hashes, Go bindings, public JSON and
+event identities read those files directly. The byte-identical
+`docs/spec/target/contracts/internal.proto` and
+`docs/spec/target/contracts/events.json` snapshots are retired and removed; they
+are not a planning copy, fallback or second writer.
+
+`npm run verify:generated-contracts` rejects either retired path in the
+checkout or recreated by a generator, in addition to its normal byte comparison.
+`docs/spec/target/contracts/db_inventory.json` `sourceLineage` entries name the
+canonical paths. Plan provenance may bind canonical inputs outside the target
+directory; this is an approved owner decision, not a temporary exception.
+
 ## 2026-10-10: First Tencent/TKE Launch Without Cloud Model Configuration
 
 The first Tencent/TKE launch slice deploys the approved default OPL App from an

@@ -1035,10 +1035,6 @@ func workspaceSKUInventoryFailure(code string, err error) Response {
 	return Response{Ok: false, ErrorCode: code, Message: message, Retryable: false, MutationCount: 0}
 }
 
-func workspaceSKUShape(request Request) (uint64, uint64, bool) {
-	return request.Pool.CPU, request.Pool.MemoryGB, strings.TrimSpace(request.PackageId) != ""
-}
-
 func workspaceSKUPackage(items []*cvm2017.InstanceTypeQuotaItem, packageID, zone string, cpu, memoryGB uint64) (WorkspaceSKUPackage, error) {
 	result := WorkspaceSKUPackage{PackageID: packageID, CPU: cpu, MemoryGB: memoryGB, Candidates: []WorkspaceSKUCandidate{}}
 	seen := map[string]bool{}
@@ -6383,27 +6379,6 @@ func dryRunSyncComputeAllocation(request Request) Response {
 	}
 }
 
-func findComputeMachine(machines []*tke2022.Machine, allocation ComputeAllocationInput) *tke2022.Machine {
-	machineName := strings.TrimSpace(allocation.MachineName)
-	nodeName := strings.TrimSpace(allocation.NodeName)
-	privateIP := strings.TrimSpace(allocation.PrivateIp)
-	for _, machine := range machines {
-		if machine == nil {
-			continue
-		}
-		if machineName != "" && stringValue(machine.MachineName) == machineName {
-			return machine
-		}
-		if privateIP != "" && stringValue(machine.LanIP) == privateIP {
-			return machine
-		}
-		if nodeName != "" && kubernetesNodeName(machine) == nodeName {
-			return machine
-		}
-	}
-	return nil
-}
-
 func stableSuffix(parts ...string) string {
 	hash := sha1.New()
 	for _, part := range parts {
@@ -6421,13 +6396,6 @@ func missingSpecificEnv(env map[string]string, keys []string) []string {
 		}
 	}
 	return missing
-}
-
-func defaultString(value string, fallback string) string {
-	if strings.TrimSpace(value) == "" {
-		return fallback
-	}
-	return value
 }
 
 func intFromEnv(env map[string]string, key string, fallback int) int {

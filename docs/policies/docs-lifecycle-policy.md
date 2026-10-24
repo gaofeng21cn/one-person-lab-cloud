@@ -52,6 +52,29 @@ Review these boundaries whenever the owning source, public contract, release
 format or product decision changes. No separate recurring audit ledger, keyword
 gate or prescribed document count is needed.
 
+## Evidence Archival
+
+`docs/evidence/**` holds execution receipts, not current documentation. A receipt
+moves to `docs/history/evidence/` only when no live consumer binds it: no
+documentation link, plan or validator input, workflow, tool, recovery procedure,
+release reference, or immutable receipt names its path, hash, receipt identity,
+source revision or upstream evidence.
+
+Age, filename, the absence of a link in `docs/status.md` and the completion of the
+window it verified do not establish that a receipt is unused. Trace the actual
+readers first. When a consumer exists, record the named consumer or the retention
+reason instead of moving the file.
+
+Archival preserves the receipt's bytes, hash, original claims and verification
+timestamp. It never refreshes a timestamp, relabels an old pass as current
+evidence, or rewrites a path recorded inside an immutable receipt or release
+manifest. Receipts bound by a release manifest or by another receipt's recorded
+identity stay in place until that binding is retired by its own owner.
+
+Each archived batch records its provenance purpose in
+`docs/history/evidence/README.md` and follows the organization of the other
+records under `docs/history/`.
+
 ## Downward Reconciliation
 
 An upper-level change must identify affected lower projections. Reconcile them

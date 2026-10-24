@@ -8,13 +8,13 @@
 
 ## 🎯 执行摘要
 
-经过**7层深度扫描**，发现 **0 个真实的 SSOT 冲突**，**2 个需要改进的架构模式**，以及 **5 个设计性差异**（符合预期）。
+经过**7层深度扫描**，发现 **0 个真实的 SSOT 冲突**，审计时记录 **2 个需要改进的架构模式**，以及 **5 个设计性差异**（符合预期）。其中 Proto 双轨制已在后续 canonical 源迁移中收敛；当前仍待改进的是端口号分散定义。
 
 **核心结论:** OPL Cloud 的 SSOT 架构是健康的。没有发现意外的多源真相冲突。
 
 **关键发现：**
 - ✅ **所有核心业务逻辑都有清晰的单一真相源**
-- 🟡 **Protocol Buffers 采用文档-实现双轨制**（需要在 README 中明确说明）
+- ✅ **Protocol Buffers 已收敛为单一 canonical 源**（审计时的双轨制见下文历史说明）
 - 🟡 **端口号存在多处硬编码**（可以提取为常量包）
 - 🟢 **环境变量差异是设计性的**（开发 vs 生产模式）
 - ✅ **TypeScript 类型、Go 常量、Owner 身份均为完美的 SSOT**
@@ -27,7 +27,7 @@
 |-----|---------|-------|------|
 | L1 | 环境变量配置 | 2 主文件 + 18 副本 | 设计性差异 ✅ |
 | L2 | 类型定义 (TS/Go) | 120+ 文件 | 无冲突 ✅ |
-| L3 | Protocol Buffers | **2 个 proto 文件** | 文档-实现双轨 🟡 |
+| L3 | Protocol Buffers | **1 个 canonical proto 源** | 已收敛 ✅（审计时为 2 个） |
 | L4 | 服务端口/URL | 50+ 文件 | 多处硬编码 🟡 |
 | L5 | Owner 身份定义 | 1 个权威源 | 无冲突 ✅ |
 | L6 | Schema 版本 | 30+ 位置 | 分散但一致 ✅ |
@@ -35,9 +35,9 @@
 
 ---
 
-## 🟡 需要澄清的架构模式
+## 🟡 架构模式：已收敛与仍待改进
 
-### 1. **Protocol Buffers 定义 - 文档与实现的双轨制**
+### 1. **Protocol Buffers：审计时的双轨制（已收敛）**
 
 **冲突位置:**
 ```
@@ -126,13 +126,19 @@ docs/spec/target/contracts/internal.proto (最近 10 次提交):
 ...
 ```
 
-**判定:**
-- ✅ **这不是冲突，而是设计性双轨制**
-- `packages/contracts/proto/internal.proto` = **实现合约** (运行时真相源)
-- `docs/spec/target/contracts/internal.proto` = **目标规范** (规划和验证文档)
-- 两者通过 PR 流程**手动同步** (见提交 8aad06d1: "mirror the managed-key contract")
-- **按照 CONTRIBUTING.md 的 SSOT 表**: "Current implementation boundary" 的权威是 "machine contracts, source, tests, and runtime readback"
-- **风险:** 同步可能滞后，但这是**有意的文档-实现分离**，不是无意的重复定义
+**历史判定 (2026-10-13):**
+- 当时两条路径并存，被记录为“文档-实现双轨制”
+- `packages/contracts/proto/internal.proto` 是运行时真相源
+- `docs/spec/target/contracts/internal.proto` 是规划和验证文档
+- 两者通过 PR 流程手动同步 (见提交 8aad06d1: "mirror the managed-key contract")
+
+**当前判定 (已收敛):**
+- `packages/contracts/proto/internal.proto` 与 `packages/contracts/proto/events.json`
+  是唯一可编辑协议源
+- target-spec reader、Go bindings、public JSON 与 event identity 直接读取 canonical 文件
+- `docs/spec/target/contracts/internal.proto` 与 `events.json` 已删除；默认
+  `npm run verify:generated-contracts` 拒绝它们被重新检入或由生成器重建
+- 上述历史差异与同步流程仅用于解释旧提交，不是当前操作指令
 
 ---
 
@@ -335,40 +341,23 @@ docker compose -f compose.yaml \
 #### 1. **明确 Proto 文件的双轨制角色**
 
 **当前状态分析:**
-这是**有意的文档-实现分离**，不是传统的 SSOT 冲突。代码库使用 "spec-then-implement" 开发流程。
+双轨制已按 owner 决定收敛，不再需要 spec/实现双份文件或 mirror/sync 流程。
 
-**选项 A: 接受双轨制，强化文档**
-在 `docs/spec/target/contracts/` 创建 `README.md`:
-```markdown
-# Target Contracts Specification
+**当前做法:**
+- `packages/contracts/proto/internal.proto` 与 `events.json` 是唯一可编辑源
+- `docs/spec/target/checks/` 的 reader 与生成器直接读取 canonical 文件
+- 原 `docs/spec/target/contracts/internal.proto` 与 `events.json` 已删除
+- 默认 `npm run verify:generated-contracts` 同时检查字节漂移与 retired 输出：
+  检入树中不得存在，隔离生成树也不得重建
 
-**角色:** 这是目标规范文档，用于开发规划和 PR 审查。
-
-**权威实现:** `packages/contracts/proto/internal.proto` 是运行时真相源。
-
-**同步流程:**
-1. 新功能先在此目录规划 proto 定义
-2. 实现后手动同步到 `packages/contracts/proto/`
-3. Git 提交信息使用 "mirror" 或 "sync" 标记同步操作
-
-**验证工具:** `tests/tools/verify-development-plan.test.ts`
-```
-
-**选项 B: 自动化同步检查**
+**验证入口:**
 ```bash
-# 在 CI 中添加同步提醒（非强制失败）
-- name: Check proto sync status
-  run: |
-    if ! diff -q packages/contracts/proto/internal.proto docs/spec/target/contracts/internal.proto; then
-      echo "⚠️  Warning: Spec and implementation proto files differ."
-      echo "If this PR changes contracts, remember to mirror to docs/spec/target/contracts/"
-    fi
+npm run verify:generated-contracts
+npm run verify:development-plan
 ```
 
-**选项 C: 迁移到单一源 + 生成文档**
-长期方案：将 `packages/contracts/proto/` 作为唯一源，从中生成文档。
-
-**推荐:** 选项 A (短期) + 选项 C (长期路线图)
+**历史选项:** 本文档早期建议的“保留双轨制并补 README”或“CI 仅提醒同步”
+均不再适用；它们只描述 2026-10-13 的审计时状态。
 
 ---
 
@@ -494,7 +483,7 @@ output/
 
 | 指标 | 当前状态 | 改进后 |
 |-----|---------|-------|
-| Proto 文件数量 | 2 个 (冲突) | 1 个 (权威) |
+| Proto 文件数量 | 1 个 canonical 源（已收敛） | 保持 1 个权威源 |
 | 端口定义位置 | 6+ 个分散位置 | 1 个注册表 + 1 个代码常量包 |
 | 环境变量文档 | 分散在 2 个 .env 文件 | 集中文档 + 使用矩阵 |
 | Port 3000 定义 | 6 处硬编码 | 1 个包常量 |
@@ -507,11 +496,11 @@ output/
 
 在实施改进后，验证以下内容：
 
-- [ ] `packages/contracts/proto/internal.proto` 是唯一的 proto 真相源
+- [x] `packages/contracts/proto/internal.proto` 是唯一的 proto 真相源
 - [ ] `docs/PORT_REGISTRY.md` 文档准确且完整
 - [ ] 所有服务端口都从 `packages/contracts/go/ports` 导入
 - [ ] 所有环境变量都在 `docs/ENVIRONMENT_VARIABLES.md` 中记录
-- [ ] CI 检查 proto 文件没有副本
+- [x] `npm run verify:generated-contracts` 检查 retired target proto/events 快照未被检入或重建
 - [ ] CI 检查环境变量的一致性
 - [ ] `.gitignore` 忽略 output/ 中的配置副本
 

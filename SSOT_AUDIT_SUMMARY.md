@@ -11,7 +11,8 @@
 **OPL Cloud 的 SSOT 架构是健康的。**
 
 - ✅ **0 个真实的 SSOT 冲突**（无意外的多源真相）
-- 🟡 **2 个需要文档澄清的架构模式**
+- ✅ **审计时记录的 Proto 双轨制已收敛**为 `packages/contracts/proto/` 单一源
+- 🟡 **1 个仍待改进的架构模式**（端口号分散定义）
 - 🟢 **5 个设计性差异**（符合预期的多环境/多模式配置）
 
 ---
@@ -22,7 +23,7 @@
 |---------|------|-------|------|
 | **L1 配置管理** | 环境变量、Docker Compose | 27 个文件 | ✅ 设计合理 |
 | **L2 类型系统** | TypeScript/Go 类型定义 | 120+ 文件 | ✅ 完美的单一源 |
-| **L3 接口合约** | Protocol Buffers | 2 个 proto 文件 | 🟡 需要文档说明 |
+| **L3 接口合约** | Protocol Buffers | 1 个 canonical proto 源 | ✅ 已收敛（审计时为 2 个） |
 | **L4 网络端口** | 服务端口和 URL | 50+ 位置 | 🟡 可优化为常量包 |
 | **L5 身份定义** | Owner 身份常量 | 1 个权威源 | ✅ 完美实践 |
 | **L6 Schema 版本** | 领域 schema 版本 | 30+ 位置 | ✅ 领域分离合理 |
@@ -30,24 +31,24 @@
 
 ---
 
-## 🟡 需要澄清的 2 个架构模式
+## 🟡 架构模式：已收敛 1 个，仍待改进 1 个
 
-### 1. Protocol Buffers 双轨制
+### 1. Protocol Buffers 曾有的双轨制（已收敛）
 
-**现状:**
+**当前事实:**
 ```
-packages/contracts/proto/internal.proto (4351 行) ← 实现合约（运行时真相源）
-docs/spec/target/contracts/internal.proto (4270 行) ← 目标规范（规划文档）
+packages/contracts/proto/internal.proto ← 唯一可编辑协议源
+packages/contracts/proto/events.json   ← 唯一可编辑事件源
 ```
 
-**判定:** 这是**有意的文档-实现分离**，采用 "spec-then-implement" 流程。
+目标规范 reader、Go bindings、public JSON 与 event identity 都直接读取上述
+canonical 文件。原 `docs/spec/target/contracts/internal.proto` 与
+`docs/spec/target/contracts/events.json` 是字节一致快照，现已删除；默认
+`npm run verify:generated-contracts` 会拒绝任一 retired 路径被重新检入或由生成器重建。
 
-**风险:** 缺少 README 说明两者的角色和同步流程。
-
-**建议:** 在 `docs/spec/target/contracts/README.md` 中明确说明：
-- 规范文件用于开发规划和 PR 审查
-- 实现文件是运行时权威源
-- 通过 Git commit 手动同步（见提交信息 "mirror"/"sync"）
+**历史判定:** 2026-10-13 审计时两条路径确实并存，当时按“文档-实现双轨制”
+处理。该历史结论不再描述当前 SSOT；不要把 `docs/spec/target/contracts/`
+当作协议副本目录。
 
 ---
 
@@ -102,10 +103,10 @@ services/control-plane/internal/server/workspace_default_application.go
 
 ### 🟡 P1 - 澄清文档 (1-2 天)
 
-1. **创建 `docs/spec/target/contracts/README.md`**
-   - 说明 spec 与实现的关系
-   - 文档同步流程
-   - 预计工作量: 30 分钟
+1. **协议源已收敛（完成）**
+   - `packages/contracts/proto/` 是唯一协议源，target reader 直接读取
+   - 不再维护 `docs/spec/target/contracts/` 下的 proto/events 副本
+   - freshness 由 `tools/verify-generated-contracts.ts` 的 retired-output 检查强制
 
 2. **创建 `docs/PORT_REGISTRY.md`**
    - 记录所有服务端口
@@ -128,9 +129,9 @@ services/control-plane/internal/server/workspace_default_application.go
    - 替换 6 处硬编码
    - 预计工作量: 半天
 
-5. **Proto 同步 CI 检查**
-   - 在 PR CI 中添加同步状态提醒
-   - 预计工作量: 1 小时
+5. **Proto 快照回归检查（完成）**
+   - 默认 `verify:generated-contracts` 拒绝 retired target 快照重新出现
+   - 不再需要 spec/实现双份文件的 mirror/sync 流程
 
 6. **清理 output/ 目录**
    - 添加 .gitignore 规则
@@ -163,7 +164,7 @@ services/control-plane/internal/server/workspace_default_application.go
 
 ### 审计后的结论
 - ✅ 环境变量是设计性差异（开发 vs 生产）
-- ✅ Proto 文件是文档-实现双轨制（需要 README 说明）
+- ✅ Proto/events 已收敛为 `packages/contracts/proto/` 单一源；审计时的双轨制只保留为历史
 - ✅ 端口值一致，但可以集中定义
 
 ---
@@ -174,10 +175,10 @@ services/control-plane/internal/server/workspace_default_application.go
    - 每个领域有明确的数据和逻辑边界
    - 通过 `packages/contracts/` 共享合约，避免循环依赖
 
-2. **采用 spec-then-implement 开发流程**
-   - `docs/spec/target/` 作为规划和审查工具
-   - `packages/contracts/proto/` 作为运行时权威
-   - 两者通过 PR 流程手动同步
+2. **协议契约采用 canonical source + target reader**
+   - `docs/spec/target/` 是规划与验证 owner
+   - `packages/contracts/proto/` 是 proto/events 的唯一可编辑源
+   - target reader 与生成器直接读取 canonical 文件，不再维护字节一致副本
 
 3. **配置分层清晰**
    - 开发环境简化配置（单体 HTTP 模式）
