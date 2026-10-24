@@ -1,7 +1,7 @@
 {
   "result": "failed",
-  "timestamp": "2026-10-24T12:57:36.984793+00:00",
-  "report": "checks/runs/20261024T125736984793Z.json",
+  "timestamp": "2026-10-24T15:36:05.612442+00:00",
+  "report": "checks/runs/20261024T153605612442Z.json",
   "scope": "documentation contracts only; not implementation/runtime/DB execution/Instance qualification",
   "checks": [
     {

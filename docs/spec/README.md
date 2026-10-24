@@ -19,9 +19,11 @@ domain-separated Agent SaaS architecture. The durable decision that adopts it is
 ### Evidence Layer
 
 This specification is a target and planning owner. It is **not** implementation
-or production evidence. Its own self-check reports
-`status: ready_for_implementation`, which means the contract set is internally
-consistent and reviewable; it does not mean any service is implemented.
+or production evidence. The current joined handoff conclusion is in
+[`target/checks/handoff_readiness.json`](./target/checks/handoff_readiness.json):
+it is `needs_correction` while current specification checks or bound evidence
+remain failed or stale. A planning slice may still start from W01; that does not
+make the complete contract set READY or mean any service is implemented.
 
 The specification's verification scope is documentation contracts, an
 interactive prototype, and isolated PostgreSQL contract tests using named

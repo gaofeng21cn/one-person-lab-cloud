@@ -8,6 +8,7 @@ import type { TestContext } from "node:test";
 import {
   generationInputs,
   generatedOutputs,
+  retiredOutputs,
   verifyGeneratedContracts
 } from "../../tools/verify-generated-contracts.ts";
 import type { GenerationCommand, GenerationRunner } from "../../tools/verify-generated-contracts.ts";
@@ -93,6 +94,24 @@ test("freshness covers the existing identity policy and BFF status generator", (
   const result = verifyGeneratedContracts({ root, runner: fakeGeneration });
   assert.equal(result.passed, true, result.errors.join("\n"));
   for (const output of outputs) assert.ok(result.compared.includes(output), `unchecked output: ${output}`);
+});
+
+test("freshness rejects a retired target snapshot restored in the checkout", (t) => {
+  const root = fixture(t);
+  put(root, retiredOutputs[0], "removed RPC or changed ownership\n");
+  const result = verifyGeneratedContracts({ root, runner: fakeGeneration });
+  assert.equal(result.passed, false);
+  assert.ok(result.errors.includes(`obsolete checked-in output: ${retiredOutputs[0]}`));
+});
+
+test("freshness rejects generation that recreates a retired target snapshot", (t) => {
+  const root = fixture(t);
+  const result = verifyGeneratedContracts({ root, runner: (command) => {
+    fakeGeneration(command);
+    if (command.args[1] === "bindings") put(command.cwd, retiredOutputs[1], "snapshot\n");
+  } });
+  assert.equal(result.passed, false);
+  assert.ok(result.errors.includes(`generation recreated retired output: ${retiredOutputs[1]}`));
 });
 
 for (const [input, outputs] of [
