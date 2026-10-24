@@ -218,10 +218,13 @@ The [source changes](status.md#native-v2-qualification-evidence-2026-10-24) bind
 native charges/deletion/refunds to their original owner operations and preserve
 replay identity. #1042 remains open for the following acceptance outcomes:
 
-- Wire the local qualification driver, environment, owner database checks and
-  restart readback to the complete v2 installation. The retained three-service
-  configuration now refuses before customer mutation. A declaration or login/
-  catalog/quote smoke test is not a completed purchase/deletion qualification.
+- Keep the local qualification source wiring aligned with the complete v2
+  installation. `--mode local-v2` now consumes the installation-owned
+  declaration, CA-backed HTTPS, CloudIdentity/Tenant, owner catalog, zero-price
+  local quote/order and owner readbacks, while preserving the legacy receipt
+  projection. Its result is diagnostic `NOT_READY` evidence rather than a v1
+  READY receipt or Release input. A declaration or login/catalog/quote smoke
+  test is not a completed purchase/deletion qualification.
 - Complete Fabric's Local-Docker execution configuration and gateway identity
   with Serve's actual access routing. Do not label Control Plane as the native
   route owner to bypass provider admission. Qualify quote, create, deployment,
