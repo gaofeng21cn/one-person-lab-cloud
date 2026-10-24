@@ -13,7 +13,7 @@ domain-separated Agent SaaS architecture. The durable decision that adopts it is
 - Product main description: [12_product_spec.md](./target/12_product_spec.md)
 - Implementation work packages: [14_implementation_work_packages.md](./target/14_implementation_work_packages.md)
 - Production wire/event sources: [`packages/contracts/proto/`](../../packages/contracts/proto/)
-- Other target contracts and generated wire/event snapshots: [`target/contracts/`](./target/contracts)
+- Other target contracts: [`target/contracts/`](./target/contracts)
 - Verification receipts: [`target/checks/`](./target/checks)
 
 ### Evidence Layer

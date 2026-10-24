@@ -8,6 +8,7 @@ P=Path(__file__).resolve().parents[1]
 # freshness gate can byte-compare without mutating checked-in generated artifacts.
 OUT=Path(os.environ['OPL_DEVELOPMENT_PLAN_OUT']).resolve() if os.environ.get('OPL_DEVELOPMENT_PLAN_OUT') else P
 C=P.parents[2]  # The containing Cloud checkout, never a sibling provenance repository.
+def input_path(name): return C/name if name.startswith('packages/contracts/proto/') else P/name
 HOME=C.parent
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--check',action='store_true',help='Render freshness comparison bytes without Git provenance; requires an isolated output tree.')
@@ -473,7 +474,7 @@ for t in db:
 service_tasks={'ClaimUsageReadback':[8,9,15,17], 'CapabilityCoordination':[7,8,9], 'BuildCoordination':[9], 'OwnerOperations':[2,24], 'OwnerCommitReadback':[2], 'WorkspaceAuthorizationReadback':[18], 'WorkspaceAccessReadback':[18], 'CloudIdentityAuthorization':[3], 'CatalogCoordination':[15], 'WorkspaceAdmission':[15], 'GatewayCoordination':[4], 'FabricCoordination':[11,12], 'ServeAgentCoordination':[17], 'ServeRuntimeAdapter':[17], 'ServeAccessControl':[17], 'TenantWorkspaceCoordination':[21], 'LedgerCoordination':[5], 'DomainInbox':[2,5,9,15,19,21], 'WorkspacePlanChangeReadback':[19], 'FabricPlanTransitionReadback':[11,12], 'GatewayPlanChangeSettlement':[4,19], 'ServePlanChangeControl':[17,19], 'LedgerPlanChangeEvidence':[5,19]}
 method_primary={op['operationId'][0].upper()+op['operationId'][1:]:next(w['id'] for w in W if op['operationId'] in w['apiPrimary']) for op in api}
 rpc_assignments={}
-for m in re.finditer(r'service\s+(\w+)\s*\{(.*?)\}',(P/'contracts/internal.proto').read_text(),re.S):
+for m in re.finditer(r'service\s+(\w+)\s*\{(.*?)\}',(C/'packages/contracts/proto/internal.proto').read_text(),re.S):
  service=m[1]
  for method in re.findall(r'rpc\s+(\w+)',m[2]):
   key=service+'.'+method
@@ -492,8 +493,8 @@ for w in W:
 # Bind this planning projection to its actual inputs, not a self-referential HEAD.
 plan_inputs=['00_master_index.md','01_domain_ownership_matrix.md','03_api_contract_complete.yaml','12_product_spec.md',
  'checks/render_development_plan.py','checks/validate_development_plan.py',
- 'contracts/api_inventory.json','contracts/db_inventory.json','contracts/ui_inventory.json','contracts/internal.proto']
-provenance={'inputSHA256':{path:hashlib.sha256((P/path).read_bytes()).hexdigest() for path in plan_inputs}}
+ 'contracts/api_inventory.json','contracts/db_inventory.json','contracts/ui_inventory.json','packages/contracts/proto/internal.proto']
+provenance={'inputSHA256':{path:hashlib.sha256(input_path(path).read_bytes()).hexdigest() for path in plan_inputs}}
 # Instance declares an external owner; never inspect its filesystem or claim local verification.
 plan={'schemaVersion':1,'status':'target_plan_implementation_not_evaluated',**provenance,'sourceRoots':roots,'sourceRootStatus':{k:('external-owner/unverified' if k=='instance' else ('existing' if (C/Path(v)).exists() else 'planned_not_created')) for k,v in roots.items()},'assignees':'roles/modules are fixed; human names and calendar dates follow actual staffing, not fabricated','workPackages':W,'tablePrimary':table_primary,'rpcImplementers':rpc_assignments,'baselineCommands':baseline,'executionSlices':slices,'windows':windows,'parallelPreparation':parallel_preparation,'serialIntegration':serial_integration,'contractMigration':{'source':'03_api_contract_complete.yaml#x-approved-wire-migration','status':'approved_pending_W01_consumer_migration','entrySlice':'W01.application-contracts'},'rules':{'startDependencies':'finished producer contracts/scaffolding needed to start useful implementation','acceptDependencies':'real producers needed for integrated acceptance; no fixture-only completion','formalReleaseVsInstance':'separate authorized Owners; same qualified bytes; Cloud never dispatches Instance deployment'}}
 (OUT/'checks').mkdir(parents=True,exist_ok=True)

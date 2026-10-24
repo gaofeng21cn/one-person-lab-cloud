@@ -25,11 +25,14 @@ class RepositoryPlacementTests(unittest.TestCase):
             '12_product_spec.md', 'checks/development_plan.json',
             'checks/render_development_plan.py', 'checks/validate_development_plan.py',
             'contracts/api_inventory.json', 'contracts/db_inventory.json',
-            'contracts/ui_inventory.json', 'contracts/internal.proto',
+            'contracts/ui_inventory.json',
         ]:
             target = self.spec / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(SPEC / relative, target)
+        canonical = self.cloud / 'packages/contracts/proto/internal.proto'
+        canonical.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(CLOUD / 'packages/contracts/proto/internal.proto', canonical)
         (self.spec / 'checks/runs').mkdir()
         original = json.loads((SPEC / 'checks/development_plan.json').read_text())
         self.plan = json.loads(json.dumps(original).replace(str(CLOUD), str(self.cloud)))

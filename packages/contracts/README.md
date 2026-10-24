@@ -65,7 +65,7 @@ own the covered output set; this README does not create another field catalog.
 
 Freshness is separate from W01 production/spec parity and consumer migration.
 `events.json` is a source contract, not a regenerated output; checking derived
-event identities does not prove that every source copy agrees. Canonical
+event identities does not prove runtime or deployment acceptance. Canonical
 proto/events/schema sources retain field ownership. Handwritten business fields
 and semantic invariants require their owning consumer tests and are not frozen
 by a checksum. Fixture or source-check evidence is not product runtime or
@@ -92,6 +92,6 @@ Add or retain a contract field only when:
 Tests should exercise the consumer or public behavior. A test that only reads a
 JSON file and repeats its fields does not justify the contract.
 
-### Canonical schema and spec snapshots
+### Canonical schema and spec sources
 
-Edit `proto/internal.proto` and `proto/events.json` only. The bindings and event-identity chains derive the corresponding files under `docs/spec/target/contracts/`. The public JSON generator reads the production proto; `npm run verify:generated-contracts` regenerates the snapshots in an empty tree and rejects drift in either copy. Serve owns the route fence/CAS and selected deployment; Workspace owns authorization and the business goal.
+Edit `proto/internal.proto` and `proto/events.json` only. Go bindings, event identities, public JSON and target-spec readers read these canonical files directly. `npm run verify:generated-contracts` regenerates the covered outputs in an empty tree and rejects drift; normal generation never recreates retired target snapshot paths. Serve owns the route fence/CAS and selected deployment; Workspace owns authorization and the business goal.

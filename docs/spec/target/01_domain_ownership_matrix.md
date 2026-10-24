@@ -120,7 +120,7 @@ opl-cloud/                         # 唯一Cloud产品GitHub仓库
 ### 3.3 共享契约与同提交消费
 
 - W01采用现有`packages/contracts/go`共享module，生成代码落`packages/contracts/go/api`；不新增`packages/contracts/v226/go.mod`，也不为每个领域复制一份契约module。
-- `packages/contracts/proto/internal.proto`与`events.json`是唯一可编辑协议源；本目录同名文件由现有生成入口派生为字节一致快照。Go bindings和public JSON读取生产源，包名与go_package沿用已运行的api协议，不另建v226协议。
+- `packages/contracts/proto/internal.proto`与`events.json`是唯一可编辑协议源。Go bindings、public JSON与target-spec readers直接读取生产源，包名与go_package沿用已运行的api协议，不另建v226协议。
 - 同仓库消费者通过当前module关系使用同一checkout契约；契约、生成代码、消费者及边界测试随同一个Cloud commit交付。锁定生成工具/运行库版本并记录schema hash；不另造跨仓契约发布或独立tag消费流程。外部Owner继续按其真实契约版本与资格要求验证。
 - 必要的消费者`go.mod`/`go.sum`更新属于W01写集。记录实际依赖链和验证结果，不把必要更新当无关噪声；也不无依据升级、强压传递依赖或用兼容字段迁就旧测试。
 - contracts只承载有当前跨Owner消费者的wire/data-integrity事实；不得放领域编排、ORM实体、钱包/价格决策、服务实现或平行领域模型。新增服务模块是既定领域拆分，新增共享业务模块不是本次决定。
@@ -143,7 +143,7 @@ Runtime/WebUI目录必须记录具体可验证contract，而不只给“兼容=t
 
 ### 5.1 同步调用与用户授权
 
-内部唯一wire规格为contracts/internal.proto。所有业务服务使用各自mTLS服务身份；浏览器不能声明内部caller、issuer或权限。服务身份回答“谁在调用”，CloudIdentity授权回答“这个用户/已接受业务义务是否允许此动作”，两者不能互相替代。
+内部唯一wire规格为packages/contracts/proto/internal.proto。所有业务服务使用各自mTLS服务身份；浏览器不能声明内部caller、issuer或权限。服务身份回答“谁在调用”，CloudIdentity授权回答“这个用户/已接受业务义务是否允许此动作”，两者不能互相替代。
 
 CloudIdentity是本规格已定义的Gateway Integration内Cloud身份/租户子模块，不新增身份微服务、不新建密码库、不引入通用权限框架。认证身份来自Sub2API；Tenant/成员授权事实仍由CloudIdentity持有。
 
@@ -190,7 +190,7 @@ CloudIdentity是本规格已定义的Gateway Integration内Cloud身份/租户子
 5. 消费者只接收其订阅事件，因此aggregateVersion允许合法间隙，不要求n+1连续。不可变事实按eventId和业务身份去重；可变投影用aggregateVersion单调CAS防陈旧覆盖；依赖动作必须验证明确前置事实/receipt，未满足保留原事件不执行。投递失败保留原事件和可观察状态，不靠缺版本或扫描业务表“猜一个事件”补救。
 6. 每条事件限定消费者，不能把整个应用状态广播。事件不含Key、密码、客户包内容、完整provider响应或外部凭据。
 
-使用PostgreSQL Outbox+gRPC Inbox满足当前明确链路；没有NATS/全局event bus服务依赖。事件schema和消费者清单见contracts/events.json，跨模块版本变更双方一起更新。
+使用PostgreSQL Outbox+gRPC Inbox满足当前明确链路；没有NATS/全局event bus服务依赖。事件schema和消费者清单见packages/contracts/proto/events.json，跨模块版本变更双方一起更新。
 
 ## 6. 跨域引用与删除不变量
 

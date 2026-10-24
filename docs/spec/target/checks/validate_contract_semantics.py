@@ -6,11 +6,14 @@ from openapi_spec_validator import validate
 from google.protobuf.json_format import ParseDict,ParseError
 import tempfile,subprocess,grpc_tools
 B=Path(__file__).resolve().parents[1]
+CLOUD=B.parents[2]
+PROTO=CLOUD/'packages/contracts/proto/internal.proto'
+EVENTS=CLOUD/'packages/contracts/proto/events.json'
 _tmp=tempfile.TemporaryDirectory(prefix='opl-handoff-proto-')
 _include=Path(grpc_tools.__file__).parent/'_proto'
-subprocess.run([sys.executable,'-m','grpc_tools.protoc',f'-I{B/"contracts"}',f'-I{_include}',f'--python_out={_tmp.name}',str(B/'contracts/internal.proto')],check=True)
+subprocess.run([sys.executable,'-m','grpc_tools.protoc',f'-I{PROTO.parent}',f'-I{_include}',f'--python_out={_tmp.name}',str(PROTO)],check=True)
 sys.path.insert(0,_tmp.name);import internal_pb2 as pb
-api=yaml.safe_load((B/'03_api_contract_complete.yaml').read_text());sc=api['components']['schemas'];pub=json.loads((B/'contracts/publisher-contract.schema.json').read_text());events=json.loads((B/'contracts/events.json').read_text());results=[];resolve=RefResolver.from_schema(api)
+api=yaml.safe_load((B/'03_api_contract_complete.yaml').read_text());sc=api['components']['schemas'];pub=json.loads((B/'contracts/publisher-contract.schema.json').read_text());events=json.loads(EVENTS.read_text());results=[];resolve=RefResolver.from_schema(api)
 def check(name,ok):
  assert ok,name
  results.append({'case':name,'pass':True})

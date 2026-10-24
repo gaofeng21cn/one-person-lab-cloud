@@ -29,13 +29,11 @@ export const generatedOutputs = [
   `${go}/publicjson/shape_generated.go`,
   `${go}/event_identity.go`,
   `${identity}/policy_generated.go`,
-  `${bff}/status_generated.go`,
-  `${target}/contracts/internal.proto`,
-  `${target}/contracts/events.json`
+  `${bff}/status_generated.go`
 ] as const;
 
 export const uncoveredGeneration = [
-  "events.json: production source contract, NOT regenerated; generated event identities and byte-identical target snapshots are checked. Runtime and deployment acceptance are separate."
+  "events.json: production source contract, NOT regenerated; generated event identities are checked. Runtime and deployment acceptance are separate."
 ] as const;
 
 export type GenerationCommand = { command: string; args: string[]; cwd: string };

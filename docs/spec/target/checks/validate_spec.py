@@ -9,6 +9,10 @@ from openapi_schema_validator import OAS30Validator
 from openapi_spec_validator import validate_spec
 from pglast import parser
 ROOT=Path(__file__).resolve().parents[1]
+CLOUD=ROOT.parents[2]
+PROTO=CLOUD/'packages/contracts/proto/internal.proto'
+EVENTS=CLOUD/'packages/contracts/proto/events.json'
+def source_path(name): return CLOUD/name if name.startswith('packages/contracts/proto/') else ROOT/name
 errors,checks=[],[]
 def require(ok,message):
     if not ok: errors.append(message)
@@ -155,10 +159,10 @@ def trace_check():
 
 def proto_check():
     import grpc_tools
-    proto=ROOT/'contracts/internal.proto';require(proto.is_file(),'internal.proto absent')
+    proto=PROTO;require(proto.is_file(),'internal.proto absent')
     with tempfile.TemporaryDirectory(prefix='opl-proto-spec-') as temp:
         include=Path(grpc_tools.__file__).parent/'_proto'
-        r=subprocess.run([sys.executable,'-m','grpc_tools.protoc',f'-I{ROOT/"contracts"}',f'-I{include}',f'--descriptor_set_out={temp}/spec.pb','--include_imports',str(proto)],capture_output=True,text=True)
+        r=subprocess.run([sys.executable,'-m','grpc_tools.protoc',f'-I{PROTO.parent}',f'-I{include}',f'--descriptor_set_out={temp}/spec.pb','--include_imports',str(proto)],capture_output=True,text=True)
         require(r.returncode==0,'protobuf compile failed: '+r.stderr)
         if r.returncode:return
         from google.protobuf.descriptor_pb2 import FileDescriptorSet
@@ -168,7 +172,7 @@ def proto_check():
 
 def events_check():
     from jsonschema.validators import validator_for
-    data=json.loads((ROOT/'contracts/events.json').read_text());validator_for(data).check_schema(data)
+    data=json.loads(EVENTS.read_text());validator_for(data).check_schema(data)
     items=data['oneOf'];require(bool(items),'typed events absent');names=[]
     for item in items:
         name=item['properties']['eventType']['const'];names.append(name)
@@ -198,7 +202,7 @@ def database_execution_receipt():
     require(bool(candidates),'cross-domain database receipt absent')
     receipt=json.loads(candidates[-1].read_text())
     for source,digest in receipt['sourceHashes'].items():
-        require(hashlib.sha256((ROOT/source).read_bytes()).hexdigest()==digest,f'cross-domain executed source hash differs: {source}')
+        require(hashlib.sha256(source_path(source).read_bytes()).hexdigest()==digest,f'cross-domain executed source hash differs: {source}')
     require(receipt['passed'] is True,'latest cross-domain execution receipt failed')
     require(receipt['sourceUnchangedDuringRun'] is True,'contracts drifted during cross-domain validation')
     require(all(c['passed'] for c in receipt['cases']),'cross-domain semantic case failed')
@@ -226,7 +230,9 @@ check('protobuf_compilation',proto_check)
 check('event_payload_schemas',events_check)
 check('contract_positive_negative_cases',semantic_cases)
 now=datetime.now(timezone.utc)
-report=dict(schemaVersion=1,timestamp=now.isoformat(),result='passed' if not errors else 'failed',scope='documentation contracts only; not implementation/runtime/DB execution/Instance qualification',checks=checks,errors=errors,toolVersions={p:importlib.metadata.version(p) for p in ['openapi-spec-validator','grpcio-tools','pglast','PyYAML','jsonschema']},artifacts={str(f.relative_to(ROOT)):hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted(ROOT.rglob('*')) if f.is_file() and 'checks/runs/' not in str(f.relative_to(ROOT)) and f.name not in {'verification.json','.DS_Store'} and '__MACOSX' not in f.parts and '__pycache__' not in f.parts and f.suffix!='.pyc'})
+artifacts={str(f.relative_to(ROOT)):hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted(ROOT.rglob('*')) if f.is_file() and 'checks/runs/' not in str(f.relative_to(ROOT)) and f.name not in {'verification.json','.DS_Store'} and '__MACOSX' not in f.parts and '__pycache__' not in f.parts and f.suffix!='.pyc'}
+for canonical in (PROTO,EVENTS): artifacts[str(canonical.relative_to(CLOUD))]=hashlib.sha256(canonical.read_bytes()).hexdigest()
+report=dict(schemaVersion=1,timestamp=now.isoformat(),result='passed' if not errors else 'failed',scope='documentation contracts only; not implementation/runtime/DB execution/Instance qualification',checks=checks,errors=errors,toolVersions={p:importlib.metadata.version(p) for p in ['openapi-spec-validator','grpcio-tools','pglast','PyYAML','jsonschema']},artifacts=artifacts)
 runs=ROOT/'checks/runs';runs.mkdir(exist_ok=True);path=runs/(now.strftime('%Y%m%dT%H%M%S%fZ')+'.json')
 path.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
 (ROOT/'checks/verification.json').write_text(json.dumps(dict(result=report['result'],timestamp=report['timestamp'],report=str(path.relative_to(ROOT)),scope=report['scope'],checks=checks,errors=errors),ensure_ascii=False,indent=2)+'\n')
