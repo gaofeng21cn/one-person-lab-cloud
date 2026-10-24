@@ -169,14 +169,6 @@ func (s *Service) DeleteGatewayUserKey(ctx context.Context, credential clients.S
 	return client.DeleteUserKey(ctx, credential, userID, keyID)
 }
 
-func (s *Service) DeleteGatewayUserKeyIdempotent(ctx context.Context, credential clients.SessionDelegatedCredential, userID, keyID int64, idempotencyKey string) error {
-	client, ok := s.sub2API.(clients.Sub2APIIdempotentUserKeyDeleteClient)
-	if !ok || strings.TrimSpace(idempotencyKey) == "" {
-		return errors.New("sub2api_idempotent_user_key_delete_unavailable")
-	}
-	return client.DeleteUserKeyIdempotent(ctx, credential, userID, keyID, idempotencyKey)
-}
-
 func (s *Service) Sub2APIUser(ctx context.Context, userID int64) (clients.Sub2APIIdentity, error) {
 	client, ok := s.sub2API.(clients.Sub2APIUserReadClient)
 	if !ok {
@@ -344,13 +336,6 @@ func (s *Service) AdminUserKeyCount(ctx context.Context, userID int64) (int, err
 	return client.AdminUserKeyCount(ctx, userID)
 }
 
-func (s *Service) BillingReceipt(ctx context.Context, receiptID string) (clients.Receipt, error) {
-	if receiptID == "" {
-		return clients.Receipt{}, fmt.Errorf("receipt_id_required")
-	}
-	return s.ledger.Receipt(ctx, receiptID)
-}
-
 func (s *Service) BillingReceiptForAccount(ctx context.Context, accountID, workspaceID, receiptID string) (clients.Receipt, error) {
 	if receiptID == "" || accountID == "" {
 		return clients.Receipt{}, fmt.Errorf("receipt_scope_required")
@@ -473,11 +458,6 @@ func (s *Service) RecordProviderAcceptanceReceipt(ctx context.Context, workspace
 
 func (s *Service) gatewaySecretRef(ctx context.Context, accountID, workspaceID string, userID int64, idempotencyKey string) (string, error) {
 	secret, err := s.SyncWorkspaceGatewaySecret(ctx, accountID, workspaceID, userID, idempotencyKey)
-	return secret.SecretRef, err
-}
-
-func (s *Service) gatewaySecretRefByID(ctx context.Context, accountID, workspaceID string, userID, keyID int64, keyName, idempotencyKey string) (string, error) {
-	secret, err := s.SyncWorkspaceGatewaySecretByID(ctx, accountID, workspaceID, userID, keyID, keyName, idempotencyKey)
 	return secret.SecretRef, err
 }
 
@@ -625,17 +605,4 @@ func (s *Service) RotateWorkspaceCredential(ctx context.Context, input RotateWor
 		return runtime, clients.Receipt{}, err
 	}
 	return runtime, receipt, nil
-}
-
-func workspaceRuntimeState(status string, ready bool) string {
-	if ready {
-		if status == "" {
-			return "running"
-		}
-		return status
-	}
-	if status == "" || status == "running" {
-		return "unready"
-	}
-	return status
 }

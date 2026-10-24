@@ -13,15 +13,17 @@ domain-separated Agent SaaS architecture. The durable decision that adopts it is
 - Product main description: [12_product_spec.md](./target/12_product_spec.md)
 - Implementation work packages: [14_implementation_work_packages.md](./target/14_implementation_work_packages.md)
 - Production wire/event sources: [`packages/contracts/proto/`](../../packages/contracts/proto/)
-- Other target contracts and generated wire/event snapshots: [`target/contracts/`](./target/contracts)
+- Other target contracts: [`target/contracts/`](./target/contracts)
 - Verification receipts: [`target/checks/`](./target/checks)
 
 ### Evidence Layer
 
 This specification is a target and planning owner. It is **not** implementation
-or production evidence. Its own self-check reports
-`status: ready_for_implementation`, which means the contract set is internally
-consistent and reviewable; it does not mean any service is implemented.
+or production evidence. The current joined handoff conclusion is in
+[`target/checks/handoff_readiness.json`](./target/checks/handoff_readiness.json):
+it is `needs_correction` while current specification checks or bound evidence
+remain failed or stale. A planning slice may still start from W01; that does not
+make the complete contract set READY or mean any service is implemented.
 
 The specification's verification scope is documentation contracts, an
 interactive prototype, and isolated PostgreSQL contract tests using named

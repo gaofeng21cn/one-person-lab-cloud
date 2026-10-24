@@ -184,6 +184,7 @@ export const localVerificationSteps: readonly LocalVerificationStep[] = Object.f
 
 const developmentToolPaths = ["tools/", "tests/tools/", "AGENTS.md", "DEV_GUIDE.md", "package.json", ".github/"];
 const generatedContractPaths = ["packages/contracts/proto/", "packages/contracts/go/", "services/gateway-integration/identity/", "apps/console-bff/internal/httpapi/"];
+const developmentPlanInputs = ["packages/contracts/proto/internal.proto"];
 
 function anyPath(paths: readonly string[], prefixes: readonly string[]) {
   return paths.some((path) => prefixes.some((prefix) => path === prefix || (prefix.endsWith("/") && path.startsWith(prefix))));
@@ -191,7 +192,7 @@ function anyPath(paths: readonly string[], prefixes: readonly string[]) {
 
 /** Keep the existing target-spec scope classification separate from the source gate. */
 export function developmentPlanVerificationSteps(changedPaths: readonly string[]): VerificationStep[] {
-  return changedPaths.some((path) => path.startsWith("docs/spec/target/"))
+  return changedPaths.some((path) => path.startsWith("docs/spec/target/") || developmentPlanInputs.includes(path))
     ? [{ name: "Development plan freshness", command: "npm", args: ["run", "verify:development-plan"] }]
     : [];
 }

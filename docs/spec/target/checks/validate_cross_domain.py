@@ -13,7 +13,10 @@ import yaml
 from jsonschema import RefResolver, Draft202012Validator
 from openapi_schema_validator import OAS30Validator
 ROOT=Path(__file__).resolve().parents[1]
-SOURCE_FILES=['03_api_contract_complete.yaml','contracts/schema.sql','contracts/db_inventory.json','contracts/internal.proto','contracts/publisher-contract.schema.json','checks/semantics_cases.json','checks/validate_cross_domain.py','13_plan_change_policy.md','contracts/plan-change-policy.json']
+CLOUD=ROOT.parents[2]
+CONTRACT_PROTO='packages/contracts/proto/internal.proto'
+def source_path(name): return CLOUD/name if name.startswith('packages/contracts/proto/') else ROOT/name
+SOURCE_FILES=['03_api_contract_complete.yaml','contracts/schema.sql','contracts/db_inventory.json',CONTRACT_PROTO,'contracts/publisher-contract.schema.json','checks/semantics_cases.json','checks/validate_cross_domain.py','13_plan_change_policy.md','contracts/plan-change-policy.json']
 API=yaml.safe_load((ROOT/SOURCE_FILES[0]).read_text()); SCHEMAS=API['components']['schemas']
 INVENTORY=json.loads((ROOT/'contracts/db_inventory.json').read_text())
 PUBLISHER=json.loads((ROOT/'contracts/publisher-contract.schema.json').read_text())
@@ -51,7 +54,7 @@ def sql_insert(table,data):
 
 def protocol_module(directory):
  import grpc_tools
- p=subprocess.run([sys.executable,'-m','grpc_tools.protoc','-I',str(ROOT/'contracts'),'-I',str(Path(grpc_tools.__file__).parent/'_proto'),'--python_out='+str(directory),str(ROOT/'contracts/internal.proto')],capture_output=True,text=True)
+ p=subprocess.run([sys.executable,'-m','grpc_tools.protoc','-I',str(CLOUD/'packages/contracts/proto'),'-I',str(Path(grpc_tools.__file__).parent/'_proto'),'--python_out='+str(directory),str(CLOUD/CONTRACT_PROTO)],capture_output=True,text=True)
  if p.returncode:raise RuntimeError('protobuf compile failed: '+p.stderr)
  sys.path.insert(0,str(directory));return importlib.import_module('internal_pb2')
 
@@ -724,7 +727,7 @@ HANDLERS={'plan_change_extended':extended_plan_case,'plan_change':plan_change_ca
 
 def main():
  ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('--output',type=Path);ap.add_argument('--case-prefix',default='',help='Run an explicit ID prefix; receipt marks this subset');ap.add_argument('--image',default='sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb',help='Exact already-present PostgreSQL16 image ID; no pull or tag substitution');args=ap.parse_args()
- sources={p:hashlib.sha256((ROOT/p).read_bytes()).hexdigest() for p in SOURCE_FILES}
+ sources={p:hashlib.sha256(source_path(p).read_bytes()).hexdigest() for p in SOURCE_FILES}
  now=datetime.now(timezone.utc);stamp=now.strftime('%Y%m%dT%H%M%S.%fZ');output=args.output or ROOT/'checks/runs'/('cross-domain-'+stamp+'.json')
  if output.exists():raise RuntimeError('refusing to overwrite prior evidence receipt: '+str(output))
  name='opl-spec-semantic-'+str(int(time.time()))
@@ -759,7 +762,7 @@ def main():
     absent=True;break
    time.sleep(.1)
   cleanup={'containerName':name,'containerAbsent':absent,'stopSucceeded':stop.returncode==0,'removalReadbackPolls':polls,'storage':'tmpfs only; no host mounts/named volumes','network':'none; no host ports'}
- end_sources={p:hashlib.sha256((ROOT/p).read_bytes()).hexdigest() for p in SOURCE_FILES};unchanged=sources==end_sources
+ end_sources={p:hashlib.sha256(source_path(p).read_bytes()).hexdigest() for p in SOURCE_FILES};unchanged=sources==end_sources
  passed=setup_error is None and bool(results) and all(x['passed'] for x in results) and cleanup['containerAbsent'] and unchanged
  receipt={'schemaVersion':'opl-cross-domain-execution/v1','executedAt':now.isoformat(),'completedAt':datetime.now(timezone.utc).isoformat(),'passed':passed,'sourceHashes':sources,'sourceUnchangedDuringRun':unchanged,'sourceHashesAtEnd':end_sources,'image':{'name':args.image,'repoTags':image.get('RepoTags',[]),'id':image['Id'],'repoDigests':image.get('RepoDigests',[])},'metadata':metadata,'setupError':setup_error,'cases':results,'caseSelection':{'prefix':args.case_prefix,'fullSuite':args.case_prefix==''},'sqlInvocations':db.sql_count,'cleanup':cleanup,'scope':'typed REST/protobuf specification adapters -> isolated PostgreSQL -> exact typed/readback projection; provider router and Storage are explicitly named fixtures, not implemented services','notProven':['real service handlers/Saga workers','production or Instance adoption','real Gateway/provider charges or resources','actual implementation/provider/Instance acceptance remain separate from approved D17 specification']}
  output.parent.mkdir(parents=True,exist_ok=True);output.write_text(json.dumps(receipt,ensure_ascii=False,indent=2)+'\n');print('RECEIPT',output);print('RESULT',passed,'CASES',len(results),'SETUP_ERROR',setup_error)

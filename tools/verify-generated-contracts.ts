@@ -29,13 +29,19 @@ export const generatedOutputs = [
   `${go}/publicjson/shape_generated.go`,
   `${go}/event_identity.go`,
   `${identity}/policy_generated.go`,
-  `${bff}/status_generated.go`,
+  `${bff}/status_generated.go`
+] as const;
+
+// Paths retired when target readers moved to the canonical production sources.
+// They are neither generation inputs nor outputs: generation must not recreate
+// them, and a checked-in copy would restore a second contract source.
+export const retiredOutputs = [
   `${target}/contracts/internal.proto`,
   `${target}/contracts/events.json`
 ] as const;
 
 export const uncoveredGeneration = [
-  "events.json: production source contract, NOT regenerated; generated event identities and byte-identical target snapshots are checked. Runtime and deployment acceptance are separate."
+  "events.json: production source contract, NOT regenerated; generated event identities are checked. Runtime and deployment acceptance are separate."
 ] as const;
 
 export type GenerationCommand = { command: string; args: string[]; cwd: string };
@@ -101,6 +107,10 @@ export function verifyGeneratedContracts({
       } catch (error) {
         errors.push(error instanceof Error ? error.message : String(error));
       }
+    }
+    for (const path of retiredOutputs) {
+      if (existsSync(join(root, path))) errors.push(`obsolete checked-in output: ${path}`);
+      if (existsSync(join(temporary, path))) errors.push(`generation recreated retired output: ${path}`);
     }
     const outputs = new Set([...generatedOutputs, ...discoveredOutputs(root), ...discoveredOutputs(temporary)]);
     for (const path of [...outputs].sort()) {

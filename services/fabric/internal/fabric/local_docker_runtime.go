@@ -757,14 +757,6 @@ type localDockerRuntimeCgroupLimits struct {
 	PackageID string
 }
 
-func (p *LocalDockerProvider) runtimeCgroupLimits(packageID string) (localDockerRuntimeCgroupLimits, bool) {
-	item, ok := p.localDockerPackagePlan(packageID)
-	if !ok {
-		return localDockerRuntimeCgroupLimits{}, false
-	}
-	return p.runtimeCgroupLimitsForPlan(packageID, item.Compute)
-}
-
 func (p *LocalDockerProvider) runtimeCgroupLimitsForPlan(packageID string, plan ComputePlan) (localDockerRuntimeCgroupLimits, bool) {
 	if plan.CPU <= 0 || plan.MemoryGB <= 0 {
 		return localDockerRuntimeCgroupLimits{}, false

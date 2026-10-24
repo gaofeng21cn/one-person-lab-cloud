@@ -3,7 +3,8 @@
 from pathlib import Path
 import json,re
 root=Path(__file__).resolve().parents[1]
-proto=(root/'contracts/internal.proto').read_text()
+cloud=root.parents[2]
+proto=(cloud/'packages/contracts/proto/internal.proto').read_text()
 rpcs={}
 for m in re.finditer(r'service\s+(\w+)\s*\{(.*?)\}',proto,re.S):
  for n in re.finditer(r'rpc\s+(\w+)\((\w+)\)\s+returns\s*\((\w+)\)',m[2]):rpcs[f'{m[1]}.{n[1]}']={'request':n[2],'response':n[3]}
