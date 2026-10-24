@@ -107,19 +107,19 @@ func TestContinuationPreservesOriginalIdentityWithoutSession(t *testing.T) {
 
 func TestResourceReadbackConfirmedControlsProviderReplay(t *testing.T) {
 	confirmed := wire(&api.ResourceReadback{
-		WorkspaceId:  "workspace-original",
+		WorkspaceId:   "workspace-original",
 		ResourceSetId: "resource-set-original",
-		Outcome:      api.Observation_OBSERVATION_CONFIRMED,
+		Outcome:       api.Observation_OBSERVATION_CONFIRMED,
 	})
 	unknown := wire(&api.ResourceReadback{
-		WorkspaceId:  "workspace-original",
+		WorkspaceId:   "workspace-original",
 		ResourceSetId: "resource-set-original",
-		Outcome:      api.Observation_OBSERVATION_UNKNOWN,
+		Outcome:       api.Observation_OBSERVATION_UNKNOWN,
 	})
 
 	for name, raw := range map[string]json.RawMessage{
-		"missing": nil,
-		"unknown": unknown,
+		"missing":   nil,
+		"unknown":   unknown,
 		"malformed": json.RawMessage(`{"resourceSetId":"resource-set-original"}`),
 		"confirmed": confirmed,
 	} {
