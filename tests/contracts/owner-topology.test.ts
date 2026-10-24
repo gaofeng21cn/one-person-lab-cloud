@@ -273,6 +273,7 @@ async function sourceFiles(dir: string, extensions: string[]): Promise<string[]>
 // /api/workspaces/... shares /api/ while /api/v2/... does not.
 function surfacePrefix(path: string): string {
   const segments = path.split("/").filter(Boolean);
+  if (segments.length === 0) return "/";
   const version = segments[1] && /^v\d+$/.test(segments[1]) ? `${segments[1]}/` : "";
   return `/${segments[0]}/${version}`;
 }

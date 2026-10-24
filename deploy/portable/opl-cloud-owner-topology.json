@@ -608,6 +608,39 @@
     ],
     "browserFacing": false,
     "evidence": "Control Plane registers /internal/cloud/announcements for the authenticated BFF; the original owner revalidates the Cloud session with Gateway."
+   },
+   {
+    "prefix": "/",
+    "processes": [
+     "control-plane",
+     "serve"
+    ],
+    "browserFacing": false,
+    "evidence": "Control Plane routes_core.go registers the Console static root; Serve delivery/access.go registers the application entry root on its separate HTTP listener. The two registrations use separate HTTP listeners."
+   },
+   {
+    "prefix": "/w/",
+    "processes": [
+     "control-plane"
+    ],
+    "browserFacing": false,
+    "evidence": "services/control-plane/internal/server/routes_core.go registers the retained Workspace proxy prefix /w/."
+   },
+   {
+    "prefix": "/ws/",
+    "processes": [
+     "control-plane"
+    ],
+    "browserFacing": false,
+    "evidence": "services/control-plane/internal/server/routes_core.go registers the retained Workspace root entry /ws."
+   },
+   {
+    "prefix": "/parts/",
+    "processes": [
+     "capability"
+    ],
+    "browserFacing": false,
+    "evidence": "services/capability/catalog/data_plane.go registers the upload data-plane /parts handler."
    }
   ],
   "requirement": "The Console is served from one origin and calls both browser-facing surfaces, so a browser-facing installation routes /api/ to control-plane and /api/v2/ to console-bff on the same public host. An installation that routes only one of them serves a Console whose other half cannot answer."
