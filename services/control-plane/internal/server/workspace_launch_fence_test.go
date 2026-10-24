@@ -159,9 +159,8 @@ func seedRetainedWorkspaceLaunchFixture(
 			t.Fatal(err)
 		}
 	}
-	created, err := handler.app.createWorkspaceLaunch(ctx, handler.service, credential, sub2APIUserID, workspaceLaunchReconcileCreate{
-		DefaultApplicationOperation: defaultOperation,
-		OperationID:                 descriptor.OperationID, RequestHash: descriptor.RequestHash, AccountID: accountID, OwnerUserID: ownerUserID,
+	created, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchReconcileCreate{
+		OperationID: descriptor.OperationID, RequestHash: descriptor.RequestHash, AccountID: accountID, OwnerUserID: ownerUserID,
 		Sub2APIUserID: sub2APIUserID, WorkspaceID: descriptor.WorkspaceID,
 		Name: name, PackageID: packageID, StorageGB: storageGB, AutoRenew: autoRenew,
 		PriceVersion: stringValue(quote["priceVersion"]), TotalChargeUSDMicros: int64(numberField(quote, "totalChargeUsdMicros", 0)),
@@ -171,6 +170,18 @@ func seedRetainedWorkspaceLaunchFixture(
 		Mode:                   mode,
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if defaultOperation != nil {
+		if err := handler.app.tables.SaveRuntimeOperation(ctx, defaultOperation); err != nil {
+			t.Fatal(err)
+		}
+	}
+	row, err := workspaceLaunchReconcileOperationRow(created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.app.tables.SaveRuntimeOperation(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 	if defaultOperation != nil {

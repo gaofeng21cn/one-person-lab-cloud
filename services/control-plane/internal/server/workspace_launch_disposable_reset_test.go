@@ -17,7 +17,7 @@ import (
 
 func disposableResetLaunchRow(t *testing.T) map[string]any {
 	t.Helper()
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchReconcileCreate{
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchReconcileCreate{
 		OperationID: "workspace-launch-disposable", RequestHash: strings.Repeat("a", 64), AccountID: "acct-disposable", OwnerUserID: "usr-disposable",
 		Sub2APIUserID: 51, WorkspaceKeyGroupID: 52, WorkspaceID: "ws-disposable", Name: "Disposable", PackageID: "basic", StorageGB: 10,
 		PriceVersion: "price-v1", TotalChargeUSDMicros: 1000000, ProviderProfileRef: "tencent-tke",
@@ -465,10 +465,6 @@ func (store *disposableResetReadStore) GetRuntimeOperation(_ context.Context, _ 
 	return cloneMap(store.row), true, nil
 }
 
-func (*disposableResetReadStore) ClaimWorkspaceLaunchReconcile(context.Context, workspaceLaunchReconcileClaim) error {
-	return errors.New("unexpected claim")
-}
-
 func (*disposableResetReadStore) PersistWorkspaceLaunchReconcile(context.Context, workspaceLaunchReconcileCAS) error {
 	return errors.New("unexpected persist")
 }
@@ -511,7 +507,7 @@ func mutateDisposableResetEvidence(t *testing.T, raw map[string]json.RawMessage,
 }
 
 func TestDisposableResetMissingAuditAfterDebitReservationRemainsUnknown(t *testing.T) {
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}

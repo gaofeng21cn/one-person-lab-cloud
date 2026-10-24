@@ -200,7 +200,7 @@ func TestWorkspaceLaunchResumeRouteWaitsForOriginalCallerCredential(t *testing.T
 	command.WorkspaceID = "ws-route-resume"
 	command.Name = "Route Resume"
 	client.expectedCreateKey = command.OperationID + ":workspace-key"
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestWorkspaceLaunchResumeRouteWaitsForOriginalCallerCredential(t *testing.T
 	replayCommand.RequestHash = replayDescriptor.RequestHash
 	replayCommand.WorkspaceID = replayDescriptor.WorkspaceID
 	replayCommand.WorkspaceImageDigest = replayDescriptor.WorkspaceImageDigest
-	replayOperation, err := newWorkspaceLaunchReconcileOperation(replayCommand)
+	replayOperation, err := newWorkspaceLaunchFixtureOperation(replayCommand)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -802,7 +802,7 @@ func TestAcceptanceBResumeExistingRoutePersistsApprovalBindingAndConvergesReady(
 		t.Fatal(err)
 	}
 	operator := reservedOperatorSessionForTest(t, server)
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -922,7 +922,7 @@ func TestAcceptanceBResumePrepareRouteRequiresOperatorAndCapability(t *testing.T
 	command := workspaceLaunchUnitCommand()
 	command.AccountID, command.OwnerUserID, command.Sub2APIUserID = "acct-alpha", "usr-alpha", 41
 	command.WorkspaceID = "ws-acceptance-b-prepare-route"
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}

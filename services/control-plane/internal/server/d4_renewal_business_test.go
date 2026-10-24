@@ -465,7 +465,7 @@ func seedD4RenewalRuntime(t *testing.T, store controlPlaneTableStore, workspace 
 	command := workspaceLaunchUnitCommand()
 	command.OperationID, command.AccountID, command.OwnerUserID = "workspace-launch-monthly", stringValue(workspace["accountId"]), stringValue(workspace["ownerUserId"])
 	command.WorkspaceID = stringValue(workspace["id"])
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}

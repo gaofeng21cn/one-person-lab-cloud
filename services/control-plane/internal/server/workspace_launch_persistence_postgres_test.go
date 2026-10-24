@@ -50,7 +50,7 @@ func seedPostgresWorkspaceLaunchFreshTypedPending(
 	command := workspaceLaunchUnitCommand()
 	command.OperationID, command.AccountID, command.OwnerUserID = "workspace-launch-fresh-pending-"+suffix, accountID, ownerID
 	command.WorkspaceID, command.Sub2APIUserID = "ws-fresh-pending-"+suffix, 840
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func seedPostgresWorkspaceLaunchFreshTypedPending(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
+	if err := store.SaveRuntimeOperation(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 	absent := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}}
@@ -72,7 +72,7 @@ func seedPostgresWorkspaceLaunchFreshTypedPending(
 	return store, adapter, seeded
 }
 
-func TestPostgresWorkspaceLaunchClaimPersistAndActivate(t *testing.T) {
+func TestPostgresWorkspaceLaunchPersistAndActivate(t *testing.T) {
 	ctx := context.Background()
 	store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)
 	account, owner := provisionedAccountRowsFor("acct-launch-pg", "usr-launch-pg", "launch-pg@example.com", 41)
@@ -84,24 +84,20 @@ func TestPostgresWorkspaceLaunchClaimPersistAndActivate(t *testing.T) {
 	command.OwnerUserID = "usr-launch-pg"
 	command.Sub2APIUserID = 41
 	command.WorkspaceID = "ws-launch-pg"
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}
-	claimedRow, err := workspaceLaunchReconcileOperationRow(operation)
+	seededRow, err := workspaceLaunchReconcileOperationRow(operation)
 	if err != nil {
 		t.Fatal(err)
 	}
-	claim := workspaceLaunchReconcileClaim{AccountID: command.AccountID, DesiredOperation: claimedRow}
-	if err := store.ClaimWorkspaceLaunchReconcile(ctx, claim); err != nil {
-		t.Fatalf("claim launch: %v", err)
+	if err := store.SaveRuntimeOperation(ctx, seededRow); err != nil {
+		t.Fatalf("seed launch: %v", err)
 	}
 	persisted, found, err := store.GetRuntimeOperation(ctx, command.OperationID)
-	if err != nil || !found || stringValue(persisted["result"]) != stringValue(claimedRow["result"]) {
-		t.Fatalf("claim readback found=%v operation=%#v err=%v", found, persisted, err)
-	}
-	if err := store.ClaimWorkspaceLaunchReconcile(ctx, claim); !errors.Is(err, errWorkspaceLaunchCASConflict) {
-		t.Fatalf("duplicate claim error=%v", err)
+	if err != nil || !found || stringValue(persisted["result"]) != stringValue(seededRow["result"]) {
+		t.Fatalf("seed readback found=%v operation=%#v err=%v", found, persisted, err)
 	}
 
 	desired, err := decodeWorkspaceLaunchReconcileOperation(persisted)
@@ -182,7 +178,7 @@ func TestPostgresWorkspaceLaunchReceiptProjectionCASIsIdempotentAndFailClosed(t 
 	command := workspaceLaunchUnitCommand()
 	command.OperationID, command.AccountID, command.OwnerUserID = "workspace-launch-receipt-pg", "acct-receipt-pg", "usr-receipt-pg"
 	command.WorkspaceID, command.Sub2APIUserID = "ws-receipt-pg", 41
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,11 +197,11 @@ func TestPostgresWorkspaceLaunchReceiptProjectionCASIsIdempotentAndFailClosed(t 
 	if operation.Stage != "succeeded" || operation.Status != "succeeded" || operation.stringFact("receiptId") != "receipt-unit" {
 		t.Fatalf("terminal operation=%s", workspaceLaunchReconcileResultSummary(operation))
 	}
-	claimed, err := workspaceLaunchReconcileOperationRow(operation)
+	seeded, err := workspaceLaunchReconcileOperationRow(operation)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: command.AccountID, DesiredOperation: claimed}); err != nil {
+	if err := store.SaveRuntimeOperation(ctx, seeded); err != nil {
 		t.Fatal(err)
 	}
 
@@ -219,7 +215,7 @@ func TestPostgresWorkspaceLaunchReceiptProjectionCASIsIdempotentAndFailClosed(t 
 		t.Fatal(err)
 	}
 	if err := store.PersistWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileCAS{
-		OperationID: command.OperationID, ExpectedOperationResult: stringValue(claimed["result"]), DesiredOperation: first, WorkspaceReceiptProjection: projection,
+		OperationID: command.OperationID, ExpectedOperationResult: stringValue(seeded["result"]), DesiredOperation: first, WorkspaceReceiptProjection: projection,
 	}); err != nil {
 		t.Fatalf("first projection: %v", err)
 	}
@@ -313,7 +309,7 @@ func TestPostgresWorkspaceLaunchUnknownRuntimeRecoveryPersistsReadyReadOnly(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
+	if err := store.SaveRuntimeOperation(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 
@@ -341,7 +337,7 @@ func TestPostgresWorkspaceLaunchManualReviewAutoRecoveryPersistsRuntimeReadyRead
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
+	if err := store.SaveRuntimeOperation(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 
@@ -379,7 +375,7 @@ func TestPostgresWorkspaceLaunchManualReviewAutoRecoveryPersistsComputeOwnership
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
+	if err := store.SaveRuntimeOperation(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 
@@ -424,7 +420,7 @@ func TestPostgresWorkspaceLaunchManualReviewAutoRecoveryPersistsStorageAbsenceRe
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
+	if err := store.SaveRuntimeOperation(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 
@@ -473,7 +469,7 @@ func TestPostgresWorkspaceLaunchUnknownRuntimeReplaySurvivesReconcilerRestart(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
+	if err := store.SaveRuntimeOperation(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 
@@ -530,7 +526,7 @@ func TestPostgresWorkspaceLaunchUnknownStorageRecoveryPersistsOriginalReplay(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
+	if err := store.SaveRuntimeOperation(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 
@@ -572,7 +568,7 @@ func TestPostgresWorkspaceLaunchFailedStorageReplayPersistsReadyReadOnly(t *test
 	}
 	previous := *operation.ResumeAuthorization
 	claimBefore := operation.IdempotentReplayClaims["storage"]
-	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
+	if err := store.SaveRuntimeOperation(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 
@@ -613,7 +609,7 @@ func TestPostgresWorkspaceLaunchFailedStorageReplayPersistsAuthoritativeAbsentRe
 	}
 	previous := *operation.ResumeAuthorization
 	previousClaim := operation.IdempotentReplayClaims["storage"]
-	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
+	if err := store.SaveRuntimeOperation(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 
@@ -655,7 +651,7 @@ func TestPostgresWorkspaceLaunchRepeatedFailedStorageBindingCanResumeAfterRestar
 		t.Fatal(err)
 	}
 	originalKey := operation.Attempts["storage"].IdempotencyKey
-	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
+	if err := store.SaveRuntimeOperation(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 	unknown := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}}
@@ -721,7 +717,7 @@ func TestPostgresWorkspaceLaunchExhaustedStorageReadyReadPersistsAfterRestart(t 
 	if operation.idempotentReplayAuthorizationCount("storage") != 2 {
 		t.Fatalf("expected two exhausted storage replay authorizations: operation=%s", workspaceLaunchReconcileResultSummary(operation))
 	}
-	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
+	if err := store.SaveRuntimeOperation(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 
@@ -769,7 +765,7 @@ func TestPostgresWorkspaceLaunchExhaustedStorageBindingReplayPersistsAfterRestar
 		t.Fatal(err)
 	}
 	originalKey := operation.Attempts["storage"].IdempotencyKey
-	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
+	if err := store.SaveRuntimeOperation(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 
@@ -816,7 +812,7 @@ func TestPostgresWorkspaceLaunchUnknownComputeResumePersistsOriginalAttemptConti
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
+	if err := store.SaveRuntimeOperation(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 	ownership := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageOwnershipPending}}
@@ -852,7 +848,7 @@ func TestPostgresWorkspaceLaunchUnknownComputeResumePersistsFailedReplayReplacem
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
+	if err := store.SaveRuntimeOperation(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 	ownership := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageOwnershipPending}}
@@ -918,7 +914,7 @@ func TestPostgresWorkspaceLaunchReplayClaimSurvivesReconcilerRestartWithoutSkip(
 			command.OperationID = "workspace-launch-restart-" + suffix
 			command.AccountID, command.OwnerUserID, command.Sub2APIUserID = accountID, ownerID, int64(100+stageIndex)
 			command.WorkspaceID = "ws-launch-restart-" + suffix
-			operation, err := newWorkspaceLaunchReconcileOperation(command)
+			operation, err := newWorkspaceLaunchFixtureOperation(command)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -932,7 +928,7 @@ func TestPostgresWorkspaceLaunchReplayClaimSurvivesReconcilerRestartWithoutSkip(
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: command.AccountID, DesiredOperation: row}); err != nil {
+			if err := store.SaveRuntimeOperation(ctx, row); err != nil {
 				t.Fatal(err)
 			}
 			if stage == "receipt" {
@@ -991,7 +987,7 @@ func TestPostgresWorkspaceLaunchConcurrentReplayResumeAllowsOneWriter(t *testing
 			command.OperationID = "workspace-launch-cas-" + suffix
 			command.AccountID, command.OwnerUserID, command.Sub2APIUserID = accountID, ownerID, int64(200+stageIndex)
 			command.WorkspaceID = "ws-launch-cas-" + suffix
-			operation, err := newWorkspaceLaunchReconcileOperation(command)
+			operation, err := newWorkspaceLaunchFixtureOperation(command)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1005,7 +1001,7 @@ func TestPostgresWorkspaceLaunchConcurrentReplayResumeAllowsOneWriter(t *testing
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: command.AccountID, DesiredOperation: row}); err != nil {
+			if err := store.SaveRuntimeOperation(ctx, row); err != nil {
 				t.Fatal(err)
 			}
 			if stage == "receipt" {
@@ -1148,7 +1144,7 @@ func TestPostgresWorkspaceLaunchLegacyV3MissingFreshContinuationFieldsHasZeroBud
 	command := workspaceLaunchUnitCommand()
 	command.OperationID, command.AccountID, command.OwnerUserID = "workspace-launch-fresh-legacy", "acct-fresh-legacy", "usr-fresh-legacy"
 	command.WorkspaceID, command.Sub2APIUserID = "ws-fresh-legacy", 841
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1162,7 +1158,7 @@ func TestPostgresWorkspaceLaunchLegacyV3MissingFreshContinuationFieldsHasZeroBud
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: command.AccountID, DesiredOperation: row}); err != nil {
+	if err := store.SaveRuntimeOperation(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 	adapter := &workspaceLaunchUnitAdapter{
@@ -1187,7 +1183,7 @@ func TestPostgresWorkspaceLaunchReservedDebitRestartsWithReadOnlyEvidence(t *tes
 			mustStore(t, store.CreateProvisionedAccount(ctx, account, owner))
 			command := workspaceLaunchUnitCommand()
 			command.AccountID, command.OwnerUserID, command.Sub2APIUserID = "acct-debit-restart", "usr-debit-restart", 841
-			operation, err := newWorkspaceLaunchReconcileOperation(command)
+			operation, err := newWorkspaceLaunchFixtureOperation(command)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1201,7 +1197,7 @@ func TestPostgresWorkspaceLaunchReservedDebitRestartsWithReadOnlyEvidence(t *tes
 			if err != nil {
 				t.Fatal(err)
 			}
-			mustStore(t, store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: command.AccountID, DesiredOperation: row}))
+			mustStore(t, store.SaveRuntimeOperation(ctx, row))
 			adapter := &workspaceLaunchUnitAdapter{readyStages: map[string]bool{"debit": auditPresent}, replayableStages: map[string]bool{"debit": true}}
 			restarted := NewWorkspaceLaunchReconciler(store, adapter)
 			restarted.now = func() time.Time { return startedAt.Add(workspaceLaunchIdempotentReplayLease + time.Second) }
