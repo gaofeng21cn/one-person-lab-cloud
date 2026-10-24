@@ -134,7 +134,7 @@ services:
       retries: 20
     networks:
       opl-cloud-local-v2:
-        ipv4_address: ${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}
+        ipv4_address: ${OPL_LOCAL_V2_POSTGRES_HOST:-172.29.0.10}
 
   # The local Sub2API authority. The tenant's Gateway directory and the
   # retained Control Plane authenticate against it, so the Cloud login in this
@@ -174,8 +174,8 @@ services:
     command: ["/usr/local/bin/opl-gateway-integration"]
     environment:
       <<: *opl-v2-environment
-      DATABASE_URL: postgresql://opl_tenant_owner:${OPL_TENANT_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_tenant?sslmode=disable
-      OPL_GATEWAY_DATABASE_URL: postgresql://opl_gateway_owner:${OPL_GATEWAY_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_gateway?sslmode=disable
+      DATABASE_URL: postgresql://opl_tenant_owner:${OPL_TENANT_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.29.0.10}:5432/opl_tenant?sslmode=disable
+      OPL_GATEWAY_DATABASE_URL: postgresql://opl_gateway_owner:${OPL_GATEWAY_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.29.0.10}:5432/opl_gateway?sslmode=disable
       OPL_TENANT_ADDR: ":8187"
       OPL_TENANT_PEER_TOKENS: ${OPL_TENANT_PEER_TOKENS:?Set OPL_TENANT_PEER_TOKENS}
       # The tenant is the CloudIdentity authority. It resolves authorization
@@ -222,7 +222,7 @@ services:
     command: ["/usr/local/bin/opl-resource-catalog"]
     environment:
       <<: *opl-v2-environment
-      DATABASE_URL: postgresql://opl_resource_catalog_owner:${OPL_RESOURCE_CATALOG_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_resource_catalog?sslmode=disable
+      DATABASE_URL: postgresql://opl_resource_catalog_owner:${OPL_RESOURCE_CATALOG_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.29.0.10}:5432/opl_resource_catalog?sslmode=disable
       OPL_RESOURCE_CATALOG_ADDR: ":8186"
       OPL_RESOURCE_CATALOG_PEER_TOKENS: ${OPL_RESOURCE_CATALOG_PEER_TOKENS:?Set OPL_RESOURCE_CATALOG_PEER_TOKENS}
       OPL_RESOURCE_CATALOG_PROFILE_JSON: ${OPL_RESOURCE_CATALOG_PROFILE_JSON:?Set OPL_RESOURCE_CATALOG_PROFILE_JSON}
@@ -242,7 +242,7 @@ services:
     command: ["/usr/local/bin/opl-ledger"]
     environment:
       <<: *opl-v2-environment
-      DATABASE_URL: postgresql://opl_ledger:${OPL_LEDGER_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_ledger?sslmode=disable
+      DATABASE_URL: postgresql://opl_ledger:${OPL_LEDGER_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.29.0.10}:5432/opl_ledger?sslmode=disable
       # The typed owner surface and the retained HTTP surface listen separately.
       OPL_LEDGER_ADDR: ":8189"
       LEDGER_ADDR: ":8081"
@@ -268,7 +268,7 @@ services:
     command: ["/usr/local/bin/opl-capability"]
     environment:
       <<: *opl-v2-environment
-      DATABASE_URL: postgresql://opl_capability_owner:${OPL_CAPABILITY_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_capability?sslmode=disable
+      DATABASE_URL: postgresql://opl_capability_owner:${OPL_CAPABILITY_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.29.0.10}:5432/opl_capability?sslmode=disable
       OPL_CAPABILITY_ADDR: ":8181"
       OPL_CAPABILITY_PEER_TOKENS: ${OPL_CAPABILITY_PEER_TOKENS:?Set OPL_CAPABILITY_PEER_TOKENS}
       OPL_CAPABILITY_STORAGE_KIND: local
@@ -318,7 +318,7 @@ services:
     command: ["/usr/local/bin/opl-build"]
     environment:
       <<: *opl-v2-environment
-      DATABASE_URL: postgresql://opl_build_owner:${OPL_BUILD_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_build?sslmode=disable
+      DATABASE_URL: postgresql://opl_build_owner:${OPL_BUILD_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.29.0.10}:5432/opl_build?sslmode=disable
       OPL_BUILD_ADDR: ":8182"
       OPL_BUILD_PEER_TOKENS: ${OPL_BUILD_PEER_TOKENS:?Set OPL_BUILD_PEER_TOKENS}
       OPL_BUILD_BUILDER: ${OPL_BUILD_BUILDER:-opl-buildkit-local}
@@ -352,7 +352,7 @@ services:
     command: ["/usr/local/bin/opl-runtime-control"]
     environment:
       <<: *opl-v2-environment
-      DATABASE_URL: postgresql://opl_runtime_control_owner:${OPL_RUNTIME_CONTROL_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_runtime_control?sslmode=disable
+      DATABASE_URL: postgresql://opl_runtime_control_owner:${OPL_RUNTIME_CONTROL_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.29.0.10}:5432/opl_runtime_control?sslmode=disable
       OPL_RUNTIME_CONTROL_ADDR: ":8183"
       OPL_RUNTIME_CONTROL_PEER_TOKENS: ${OPL_RUNTIME_CONTROL_PEER_TOKENS:?Set OPL_RUNTIME_CONTROL_PEER_TOKENS}
       OPL_RUNTIME_PUBLISHER_SCHEMA_PATH: /app/contracts/publisher-contract.schema.json
@@ -373,7 +373,7 @@ services:
     command: ["/usr/local/bin/opl-workspace"]
     environment:
       <<: *opl-v2-environment
-      DATABASE_URL: postgresql://opl_workspace_owner:${OPL_WORKSPACE_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_workspace?sslmode=disable
+      DATABASE_URL: postgresql://opl_workspace_owner:${OPL_WORKSPACE_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.29.0.10}:5432/opl_workspace?sslmode=disable
       OPL_WORKSPACE_ADDR: ":8184"
       OPL_WORKSPACE_PEER_TOKENS: ${OPL_WORKSPACE_PEER_TOKENS:?Set OPL_WORKSPACE_PEER_TOKENS}
       OPL_RESOURCE_CATALOG_ADDR: resource-catalog:8186
@@ -404,7 +404,7 @@ services:
     command: ["/usr/local/bin/opl-serve"]
     environment:
       <<: *opl-v2-environment
-      DATABASE_URL: postgresql://opl_serve_owner:${OPL_SERVE_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_serve?sslmode=disable
+      DATABASE_URL: postgresql://opl_serve_owner:${OPL_SERVE_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.29.0.10}:5432/opl_serve?sslmode=disable
       OPL_SERVE_ADDR: ":8185"
       # The application entry Serve serves itself. It differs from the owner
       # surface above.
@@ -449,10 +449,10 @@ services:
     command: ["/usr/local/bin/opl-fabric"]
     environment:
       <<: *opl-v2-environment
-      DATABASE_URL: postgresql://opl_fabric_owner:${OPL_FABRIC_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_fabric?sslmode=disable
+      DATABASE_URL: postgresql://opl_fabric_owner:${OPL_FABRIC_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.29.0.10}:5432/opl_fabric?sslmode=disable
       # The typed owner surface runs over its own database, separately from the
       # retained operation store above.
-      OPL_FABRIC_DATABASE_URL: postgresql://opl_fabric_owner:${OPL_FABRIC_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_fabric?sslmode=disable
+      OPL_FABRIC_DATABASE_URL: postgresql://opl_fabric_owner:${OPL_FABRIC_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.29.0.10}:5432/opl_fabric?sslmode=disable
       FABRIC_ADDR: ":8082"
       OPL_FABRIC_ADDR: ":8188"
       OPL_FABRIC_PEER_TOKENS: ${OPL_FABRIC_PEER_TOKENS:?Set OPL_FABRIC_PEER_TOKENS}
@@ -473,7 +473,7 @@ services:
       OPL_FABRIC_LOCAL_DOCKER_HOST: ${OPL_FABRIC_LOCAL_DOCKER_HOST:-127.0.0.1}
       OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST: ${OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST:-127.0.0.1}
       OPL_FABRIC_LOCAL_DOCKER_PROBE_IMAGE: ${OPL_CLOUD_IMAGE}
-      OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER: ${OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER:-opl-cloud-local-v2-control-plane-1}
+      OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER: ${OPL_LOCAL_V2_GATEWAY_CONTAINER:-opl-cloud-local-v2-control-plane}
       OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: /var/lib/opl/fabric/storage
       OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT: /var/lib/opl/fabric/secret
       OPL_FABRIC_LOCAL_DOCKER_ALLOW_UNBOUNDED_SWAP: ${OPL_FABRIC_LOCAL_DOCKER_ALLOW_UNBOUNDED_SWAP:-0}
@@ -495,9 +495,16 @@ services:
   control-plane:
     <<: *opl-v2-common
     command: ["/usr/local/bin/opl-control-plane"]
+    # The Local-Docker provider reaches a workload through the container it
+    # bridges into that workload's private network, and it names that container
+    # with OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER. Binding the name here
+    # makes that one installation fact authoritative: without it the name is
+    # whatever Compose generates, and an operator who sets the variable
+    # silently points the provider at a container that does not exist.
+    container_name: ${OPL_LOCAL_V2_GATEWAY_CONTAINER:-opl-cloud-local-v2-control-plane}
     environment:
       <<: *opl-v2-environment
-      DATABASE_URL: postgresql://opl_control_plane:${OPL_CONTROL_PLANE_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.31.0.10}:5432/opl_control_plane?sslmode=disable
+      DATABASE_URL: postgresql://opl_control_plane:${OPL_CONTROL_PLANE_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.29.0.10}:5432/opl_control_plane?sslmode=disable
       CONTROL_PLANE_ADDR: ":8787"
       PORT: "8787"
       LEDGER_URL: http://ledger:8081
@@ -612,7 +619,13 @@ networks:
   opl-cloud-local-v2:
     ipam:
       config:
-        - subnet: ${OPL_LOCAL_V2_SUBNET:-172.31.0.0/24}
+        # This installation's own subnet. It is separate from the base
+        # installation's OPL_DOCKER_SUBNET, because Docker refuses two networks
+        # with the same subnet on one host, and a host that runs both
+        # installations would fail to start this one. The default here must
+        # therefore differ from the base installation's default, and an
+        # installation that runs both must keep the two values apart.
+        - subnet: ${OPL_LOCAL_V2_SUBNET:-172.29.0.0/24}
 
 configs:
   opl-local-v2-postgres-init:
