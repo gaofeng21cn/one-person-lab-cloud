@@ -44,7 +44,7 @@ func seedCanonicalRuntimeAccessWorkspaceForTest(t *testing.T, store *memoryTable
 	command := workspaceLaunchUnitCommand()
 	command.OperationID, command.AccountID, command.OwnerUserID = "workspace-launch-alpha", "acct-alpha", ownerID
 	command.WorkspaceID = "ws-alpha"
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}

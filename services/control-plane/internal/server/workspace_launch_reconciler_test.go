@@ -63,16 +63,6 @@ func (s *workspaceLaunchUnitStore) GetRuntimeOperation(_ context.Context, id str
 	return cloneMap(s.row), true, nil
 }
 
-func (s *workspaceLaunchUnitStore) ClaimWorkspaceLaunchReconcile(_ context.Context, claim workspaceLaunchReconcileClaim) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.row != nil {
-		return errWorkspaceLaunchCASConflict
-	}
-	s.row = cloneMap(claim.DesiredOperation)
-	return nil
-}
-
 func (s *workspaceLaunchUnitStore) PersistWorkspaceLaunchReconcile(_ context.Context, update workspaceLaunchReconcileCAS) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -248,7 +238,7 @@ func workspaceLaunchUnitCommand() workspaceLaunchReconcileCreate {
 }
 
 func TestWorkspaceLaunchDecoderClassifiesRejectedPersistedState(t *testing.T) {
-	valid, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	valid, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +298,7 @@ func workspaceLaunchResultMap(t *testing.T, row map[string]any) map[string]any {
 
 func workspaceLaunchManualReviewRow(t *testing.T) map[string]any {
 	t.Helper()
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +312,7 @@ func workspaceLaunchManualReviewRow(t *testing.T) map[string]any {
 
 func workspaceLaunchReservedStageManualReviewRow(t *testing.T, stage contracts.Stage) map[string]any {
 	t.Helper()
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2734,7 +2724,7 @@ func TestWorkspaceLaunchReadOnlyContinuationExtendsPersistedTypedPending(t *test
 func TestWorkspaceLaunchFreshTypedPendingCreatesReadOnlySystemAuthorization(t *testing.T) {
 	for _, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
 		t.Run(string(stage), func(t *testing.T) {
-			operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+			operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -2775,7 +2765,7 @@ func TestWorkspaceLaunchFreshTypedPendingCreatesReadOnlySystemAuthorization(t *t
 
 func workspaceLaunchFreshTypedPendingForTest(t *testing.T, stage contracts.Stage) (*workspaceLaunchUnitStore, *workspaceLaunchUnitAdapter, workspaceLaunchReconcileOperation) {
 	t.Helper()
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2857,7 +2847,7 @@ func TestWorkspaceLaunchFreshTypedPendingExhaustsExactReadBudget(t *testing.T) {
 func TestWorkspaceLaunchFreshLocalDockerRuntimePendingWaitsForColdStartReady(t *testing.T) {
 	command := workspaceLaunchUnitCommand()
 	command.ProviderProfileRef = "local-docker"
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2914,7 +2904,7 @@ func TestWorkspaceLaunchFreshLocalDockerRuntimePendingWaitsForColdStartReady(t *
 func TestWorkspaceLaunchLegacyLocalDockerRuntimeFreshContinuationRemainsReadOnly(t *testing.T) {
 	command := workspaceLaunchUnitCommand()
 	command.ProviderProfileRef = "local-docker"
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2981,7 +2971,7 @@ func TestWorkspaceLaunchLegacyLocalDockerRuntimeFreshContinuationRemainsReadOnly
 func TestWorkspaceLaunchFreshLocalDockerRuntimeExhaustsExactReadBudget(t *testing.T) {
 	command := workspaceLaunchUnitCommand()
 	command.ProviderProfileRef = "local-docker"
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3039,7 +3029,7 @@ func TestWorkspaceLaunchFreshComputePendingClaimsOwnershipWithOneSameKeyReplay(t
 }
 
 func TestWorkspaceLaunchFreshComputePendingDeadlineFailsClosedWithoutOwnerCall(t *testing.T) {
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3070,7 +3060,7 @@ func TestWorkspaceLaunchFreshComputePendingDeadlineFailsClosedWithoutOwnerCall(t
 }
 
 func TestWorkspaceLaunchFreshTypedPendingMutationResponseLossContinuesReadOnly(t *testing.T) {
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3552,7 +3542,7 @@ func TestWorkspaceLaunchRecoveryAtEveryStageContinuesOriginalOperationToSucceede
 }
 
 func TestWorkspaceLaunchReceiptOnlyReplayReachesTerminalWithoutRepeatingPriorStages(t *testing.T) {
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3601,7 +3591,7 @@ func TestWorkspaceLaunchReceiptOnlyReplayReachesTerminalWithoutRepeatingPriorSta
 }
 
 func TestWorkspaceLaunchReceiptProjectionCASIsIdempotentAndFailClosed(t *testing.T) {
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3633,7 +3623,7 @@ func TestWorkspaceLaunchReceiptProjectionCASIsIdempotentAndFailClosed(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ClaimWorkspaceLaunchReconcile(context.Background(), workspaceLaunchReconcileClaim{AccountID: "acct-unit", DesiredOperation: claimed}); err != nil {
+	if err := store.SaveRuntimeOperation(context.Background(), claimed); err != nil {
 		t.Fatal(err)
 	}
 
@@ -3692,13 +3682,7 @@ func TestWorkspaceLaunchReceiptProjectionCASIsIdempotentAndFailClosed(t *testing
 	}
 }
 
-func TestWorkspaceLaunchCreateAndResumeUseReconcile(t *testing.T) {
-	createStore, createAdapter := &workspaceLaunchUnitStore{}, &workspaceLaunchUnitAdapter{}
-	created, err := NewWorkspaceLaunchReconciler(createStore, createAdapter).Create(context.Background(), workspaceLaunchUnitCommand())
-	if err != nil || created.Stage != "debit" || createAdapter.mutations != 1 {
-		t.Fatalf("create operation=%s mutations=%d err=%v", workspaceLaunchReconcileResultSummary(created), createAdapter.mutations, err)
-	}
-
+func TestWorkspaceLaunchResumeUsesReconcile(t *testing.T) {
 	resumeStore, resumeAdapter := &workspaceLaunchUnitStore{row: workspaceLaunchManualReviewRow(t)}, &workspaceLaunchUnitAdapter{}
 	resumed, err := NewWorkspaceLaunchReconciler(resumeStore, resumeAdapter).Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, workspaceLaunchResumeAuthorization{
 		AuthorizationID: "resume-unit", LaunchVersion: 1, AuthorizedStage: "key", AuthorizedBy: "usr-admin",
@@ -3881,7 +3865,7 @@ func TestWorkspaceLaunchResumeAuthorizationsRotateAcrossStages(t *testing.T) {
 }
 
 func TestWorkspaceLaunchResumeAuthorizationReadbackFindsConsumedHistory(t *testing.T) {
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3965,7 +3949,7 @@ func TestWorkspaceLaunchLedgerEvidenceCannotAuthorizeContinuation(t *testing.T) 
 }
 
 func TestWorkspaceLaunchFabricBindingDriftBecomesUnknown(t *testing.T) {
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3980,7 +3964,7 @@ func TestWorkspaceLaunchFabricBindingDriftBecomesUnknown(t *testing.T) {
 }
 
 func TestWorkspaceLaunchFabricComputeOwnershipPendingRemainsTyped(t *testing.T) {
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4004,7 +3988,7 @@ func TestWorkspaceLaunchFabricComputeOwnershipPendingRemainsTyped(t *testing.T) 
 }
 
 func TestWorkspaceLaunchFiveFabricStageCallersUseCanonicalHashPayload(t *testing.T) {
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4167,7 +4151,7 @@ func TestWorkspaceLaunchFabricRequestHashMatchesContractGoldenVectors(t *testing
 }
 
 func TestWorkspaceLaunchFabricReadyWithoutRequiredFactsBecomesUnknown(t *testing.T) {
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4224,7 +4208,7 @@ func workspaceLaunchCanonicalActivationOperation(t *testing.T) workspaceLaunchRe
 	command := workspaceLaunchUnitCommand()
 	command.OperationID, command.AccountID, command.OwnerUserID = "workspace-launch-admin", "acct-admin", "usr-admin"
 	command.WorkspaceID, command.Sub2APIUserID = "ws-admin", 1
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4550,7 +4534,7 @@ func TestWorkspaceLaunchActivationRejectsNonOwnerIdentities(t *testing.T) {
 }
 
 func TestWorkspaceLaunchProjectionMatchesCanonicalCurrentResourceFields(t *testing.T) {
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4630,7 +4614,7 @@ func TestWorkspaceLaunchResumeAuthorizationDigestBindsImmutableAuthorization(t *
 }
 
 func TestWorkspaceLaunchDebitDispatchReservationSurvivesCrashWithoutReplay(t *testing.T) {
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}

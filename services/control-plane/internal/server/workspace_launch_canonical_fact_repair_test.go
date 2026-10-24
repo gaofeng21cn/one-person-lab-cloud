@@ -44,7 +44,7 @@ func canonicalFactRepairAudit(preview workspaceLaunchCanonicalFactRepairPreview,
 
 func historicalWorkspaceLaunchMissingSpecDigest(t *testing.T) map[string]any {
 	t.Helper()
-	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchReconcileCreate{
+	operation, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchReconcileCreate{
 		OperationID: "workspace-launch-repair", RequestHash: strings.Repeat("a", 64), AccountID: "acct-repair", OwnerUserID: "usr-repair",
 		Sub2APIUserID: 41, WorkspaceKeyGroupID: 42, WorkspaceID: "ws-repair", Name: "Repair", PackageID: "basic", StorageGB: 10,
 		PriceVersion: "price-v1", TotalChargeUSDMicros: 1000000, ProviderProfileRef: "tencent-tke",

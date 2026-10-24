@@ -388,7 +388,7 @@ func TestWalletAdjustmentRefundLink(t *testing.T) {
 	command := workspaceLaunchUnitCommand()
 	command.OperationID, command.AccountID, command.OwnerUserID, command.WorkspaceID = "workspace-launch-alpha", "acct-alpha", "usr-alpha", "ws-alpha"
 	command.Sub2APIUserID, command.TotalChargeUSDMicros = 41, 5_000_000
-	purchase, err := newWorkspaceLaunchReconcileOperation(command)
+	purchase, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}
