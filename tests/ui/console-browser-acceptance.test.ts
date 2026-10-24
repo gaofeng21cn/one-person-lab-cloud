@@ -6,6 +6,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import type { WorkspaceLaunchRequest, WorkspaceLaunchResponse } from "../../apps/console-ui/src/api/dtos.ts";
+import { apiFixture, createConsoleFixtureState } from "../../tools/console-browser-qa.ts";
+
 async function runConsoleBrowserQa(options) {
   const harness = await import("../../tools/console-browser-qa.ts");
   return harness.runConsoleBrowserQa(options);
@@ -24,14 +27,12 @@ test("Console browser covers customer and operator journeys at desktop and mobil
   assert.deepEqual(result.sourceStates, ["available", "empty", "unavailable", "error"]);
   assert.deepEqual(result.repeatedWrites, { gatewayKey: 1, walletAdjustment: 1 });
   assert.deepEqual(result.highRiskWrites, {
-    workspaceLaunch: 1,
-    operatorProvision: 1,
+    operatorProvision: 0,
     announcementCreate: 1,
     announcementPublish: 1,
     announcementWithdraw: 1
   });
-  assert.equal(result.workspaceLaunchAuthoritativeReadback, true);
-  assert.equal(result.operatorProvisionAuthoritativeReadback, true);
+  assert.equal(result.historicalLaunchReadback, true);
   assert.equal(result.announcementLifecycle, true);
   assert.equal(result.workspaceNavigation, true);
   assert.equal(result.workspacePagination, true);
@@ -58,6 +59,50 @@ test("Console browser covers customer and operator journeys at desktop and mobil
   await Promise.all(screens.flatMap((screen) => ["desktop", "mobile"].map((viewport) => (
     stat(join(screenshotDir, `fixture-${screen}-${viewport}.png`))
   ))));
+});
+
+test("Console fake refuses new Launch intent without writes and retains original-owner historical read, replay and resume", async () => {
+  const state = createConsoleFixtureState();
+  const session = { authenticated: true, role: "customer", accountId: "acct-1", consoleUserId: "user-customer" };
+  const input: WorkspaceLaunchRequest = { name: "Historical Workspace", packageId: "basic", autoRenew: false, provisioningMode: "full" };
+  const historical: WorkspaceLaunchResponse & WorkspaceLaunchRequest & { idempotencyKey: string; ownerUserId: string } = {
+    ...input, idempotencyKey: "original-key", ownerUserId: "user-customer",
+    operationId: "launch-historical", accountId: "acct-1", workspaceId: "ws-1", status: "pending", phase: "runtime",
+    sizeGb: 10, priceVersion: "pilot-usd-2026-07-v1", currency: "USD", totalChargeUsdMicros: 52_580_000
+  };
+  async function request(path: string, method = "GET", key = "", body: Partial<WorkspaceLaunchRequest> = input) {
+    let result: { status: number; body: unknown } | undefined;
+    await apiFixture({
+      request: () => ({ url: () => `http://127.0.0.1${path}`, method: () => method, headers: () => ({ "idempotency-key": key }), postDataJSON: () => body }),
+      fulfill: async (response) => { result = { status: response.status, body: JSON.parse(response.body) }; },
+      abort: async () => { assert.fail("Launch admission must not inject a lost new-purchase response"); }
+    }, state, session);
+    assert.ok(result);
+    return result;
+  }
+  const fence = {
+    status: 409,
+    body: { error: "workspace_launch_new_purchase_retired", owner: "workspace", next: ["POST /api/v2/quotes", "POST /api/v2/workspaces"] }
+  };
+  const beforeNewIntent = structuredClone(state);
+  assert.deepEqual(await request("/api/workspace-launches", "POST", "fresh-key"), fence);
+  assert.deepEqual(state, beforeNewIntent, "refusal must not allocate a Workspace, Key, operation or any write state");
+
+  state.launches = [historical];
+  const beforeHistory = structuredClone(state);
+  assert.deepEqual(await request("/api/workspace-launches"), { status: 200, body: [historical] });
+  assert.deepEqual(await request("/api/workspace-launches/launch-historical"), { status: 200, body: historical });
+  assert.deepEqual(await request("/api/workspace-launches", "POST", "original-key"), { status: 202, body: historical });
+  assert.deepEqual(await request("/api/workspace-launches/launch-historical/resume", "POST", "resume-key"), { status: 202, body: historical });
+  assert.deepEqual(await request("/api/workspace-launches", "POST", "original-key", { ...input, name: "Different Workspace" }), { status: 409, body: { error: "idempotency_conflict" } });
+  assert.deepEqual(await request("/api/workspace-launches", "POST", "another-key"), fence);
+  session.accountId = "acct-2";
+  session.consoleUserId = "user-other";
+  assert.deepEqual(await request("/api/workspace-launches"), { status: 200, body: [] });
+  assert.deepEqual(await request("/api/workspace-launches/launch-historical"), { status: 404, body: { error: "workspace_launch_not_found" } });
+  assert.deepEqual(await request("/api/workspace-launches/launch-historical/resume", "POST", "resume-key"), { status: 404, body: { error: "workspace_launch_not_found" } });
+  assert.deepEqual(await request("/api/workspace-launches", "POST", "original-key"), fence);
+  assert.deepEqual(state, beforeHistory, "historical fixture requests must retain the pre-seeded identities and resources");
 });
 
 test("Console browser refuses non-fixture network access before startup", async () => {

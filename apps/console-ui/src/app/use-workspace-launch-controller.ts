@@ -365,6 +365,9 @@ export function useWorkspaceLaunchController({
   };
 
   const recover = async (generation: number, activeSession: AuthSession) => {
+    // This locator belongs to native Workspace orders and a CloudIdentity
+    // session. Retained CP orders are read through their own owner surfaces.
+    if (!cloudIdentity) return;
     const raw = sessionStorage.getItem(agentOperationStorageKey);
     if (!raw) { setAgentRecoveryPending(false); return; }
     try {

@@ -208,7 +208,7 @@ export function WorkspaceLaunchPage({
         color="warning"
         indicator={<AlertCircle size={18} />}
         title="该购买入口已停用"
-        description="新购买已由 Workspace owner 接管：请先调用 POST /api/v2/quotes 获取报价，再调用 POST /api/v2/workspaces 创建 Workspace。此页面仅保留历史开通操作的查看和恢复，不会在这里创建新的 Control Plane 订单。"
+        description="请使用新版 Cloud 控制台购买工作空间。历史订单仍由原服务保留，可通过历史工作空间和运维页面查看与核对。"
       />
     </section>
   );
@@ -233,13 +233,10 @@ export function LaunchOperation({
     : operationPresentation;
   const stagePresentation = presentWorkspaceLaunchStage(operation.phase);
   const resultUnconfirmed = presentation.kind === "unconfirmed";
-  const closedSummary = operation.closeout?.status === "closed" && ["failed", "refunded"].includes(operation.status)
-    ? presentation.summary.replace("可查看费用记录或重新购买。", "如需新购买，请使用 Workspace owner 的 POST /api/v2/quotes 与 POST /api/v2/workspaces。")
-    : presentation.summary;
   const installation = operation.applicationInstallation ? presentWorkspaceApplicationInstallation(operation.applicationInstallation) : null;
   const content = (
     <section className={`launch-operation ${compact ? "launch-operation--compact" : ""}`} data-slide="C-WS-04">
-      <div className="launch-operation-head"><div><h2>{presentation.title}</h2><p>{closedSummary}</p></div></div>
+      <div className="launch-operation-head"><div><h2>{presentation.title}</h2><p>{presentation.summary}</p></div></div>
       {installation ? <Alert color={installation.tone} title={installation.title} description={installation.description} /> : null}
       {!operation.closeout ? <div className="launch-current-phase"><span>当前进度</span><strong>{stagePresentation.label}</strong></div> : null}
       <details className="launch-technical-details">

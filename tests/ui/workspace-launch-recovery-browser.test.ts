@@ -185,7 +185,7 @@ test("operators close an unfulfilled order through one retained request and can 
       assert.equal((await modal.innerText()).includes("已退回原账户余额"), false);
       recovery = { ...recovery, launchVersion: 10, status: "refunded", closeout: { status: "closed", refundedUsdMicros: 52_580_000, receiptId: "receipt-closed-original" } };
       await modal.getByRole("button", { name: "刷新允许动作", exact: true }).click();
-      await modal.getByText("已退回原账户余额 $52.58。可查看费用记录或重新购买。", { exact: true }).waitFor();
+      await modal.getByText("已退回原账户余额 $52.58。可查看费用记录。", { exact: true }).waitFor();
       assert.equal(writes.length, 3);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
       assert.deepEqual(pageErrors, []);

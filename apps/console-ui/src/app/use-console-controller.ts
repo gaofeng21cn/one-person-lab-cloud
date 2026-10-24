@@ -566,7 +566,9 @@ export function useConsoleController() {
         await Promise.all([customerWorkspaceReadCapability.load(), workspaceLaunchCapability.recover(generation, activeSession)]);
         return;
       case "customer.workspace-new":
-        await Promise.all([gatewayAccountReadCapability.load(), workspaceLaunchCapability.loadCatalog(generation, activeSession), workspaceLaunchCapability.recover(generation, activeSession)]);
+        if (cloudIdentity) {
+          await Promise.all([gatewayAccountReadCapability.load(), workspaceLaunchCapability.loadCatalog(generation, activeSession), workspaceLaunchCapability.recover(generation, activeSession)]);
+        }
         return;
       case "customer.workspace-detail":
         await loadWorkspaceAccess(generation, activeSession, activeRoute.workspaceId);

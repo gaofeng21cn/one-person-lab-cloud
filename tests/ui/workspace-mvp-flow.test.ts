@@ -56,12 +56,14 @@ test("Retained Control Plane launch entry refuses new purchases and points to th
       await page.getByLabel("密码").fill(CONSOLE_DEMO_CREDENTIALS.customer.password);
       await page.getByRole("button", { name: "登录", exact: true }).click();
       await page.waitForURL(/\/console\/overview$/);
+      await page.goto(`${demo.origin}/console/workspaces`, { waitUntil: "networkidle" });
+      await page.locator(".workspace-list-row").first().waitFor({ state: "visible" });
+      assert.equal(await page.getByRole("button", { name: "新建工作空间", exact: true }).count(), 0);
       await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
       const retired = page.getByTestId("workspace-launch-retired");
       await retired.waitFor({ state: "visible" });
       await retired.getByText("该购买入口已停用", { exact: true }).waitFor();
-      await retired.getByText(/POST \/api\/v2\/quotes/).waitFor();
-      await retired.getByText(/POST \/api\/v2\/workspaces/).waitFor();
+      await retired.getByText(/请使用新版 Cloud 控制台购买工作空间/).waitFor();
       assert.equal(await page.getByLabel("工作空间名称", { exact: true }).count(), 0);
       assert.equal(await page.getByRole("button", { name: "核对开通信息", exact: true }).count(), 0);
       assert.equal(writes.length, 0);
@@ -284,10 +286,11 @@ test("Workspace delete scopes busy and reuses its intent after a late response",
     await page.waitForURL(/\/console\/workspaces$/);
     await page.getByText("Workspace 已删除", { exact: true }).waitFor({ state: "visible" });
     await listRefreshHeld;
-    await page.getByRole("button", { name: "正在读取", exact: true }).waitFor({ state: "visible" });
+    await page.locator(".workspace-list-page").waitFor({ state: "visible" });
+    assert.equal(await page.getByRole("button", { name: "新建工作空间", exact: true }).count(), 0);
     releaseListRefresh?.();
-    await page.getByRole("button", { name: "新建工作空间", exact: true }).waitFor({ state: "visible" });
     await page.locator(".workspace-list-row").filter({ hasText: "Second Workspace" }).waitFor({ state: "visible" });
+    assert.equal(await page.getByRole("button", { name: "新建工作空间", exact: true }).count(), 0);
 
     assert.equal(idempotencyKeys.length, 2);
     assert.match(idempotencyKeys[0], /^workspace-delete:/);

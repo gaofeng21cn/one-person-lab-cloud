@@ -47,7 +47,7 @@ export function presentWorkspaceLaunchCloseout(closeout: WorkspaceLaunchCloseout
     case "recording":
       return { title: "正在记录结案结果", summary: closeout.refundedUsdMicros > 0 ? `已退回原账户余额 ${formatUsdMicros(closeout.refundedUsdMicros)}，正在完成结案记录。` : "正在完成本次开通的结案记录，请稍后查看。" };
     case "closed":
-      return { title: "开通未完成，已结案", summary: launchStatus === "refunded" ? `已退回原账户余额 ${formatUsdMicros(closeout.refundedUsdMicros)}。可查看费用记录或重新购买。` : launchStatus === "failed" ? "本次开通未扣款。可查看费用记录或重新购买。" : "正在确认结案后的订单状态，请稍后刷新。" };
+      return { title: "开通未完成，已结案", summary: launchStatus === "refunded" ? `已退回原账户余额 ${formatUsdMicros(closeout.refundedUsdMicros)}。可查看费用记录。` : launchStatus === "failed" ? "本次开通未扣款。可查看费用记录。" : "正在确认结案后的订单状态，请稍后刷新。" };
     case "fulfilled":
       return { title: launchStatus === "succeeded" ? "工作空间资源已开通" : "正在完成开通记录", summary: launchStatus === "succeeded" ? "原订单的资源已开通，可进入详情查看应用安装与运行状态。" : "资源已就绪，正在完成原订单的开通记录。" };
   }
@@ -397,7 +397,7 @@ export function presentWorkspaceRecovery(recovery: WorkspaceRenewalReadDTO["reco
     case "not_required": return null;
     case "recoverable": return { title: "可以续费恢复", description: "确认续费并完成扣款后，系统将恢复原工作空间。充值本身不会恢复使用。" };
     case "pending": return { title: "正在处理续费恢复", description: "原续费请求正在处理，请勿重复提交。可以关闭页面后再查看；工作空间显示可使用后才能打开。" };
-    case "reclaimed": return { title: "原工作空间无法恢复", description: "原工作空间资源已回收，无法续费恢复。请重新购买工作空间，原数据不提供恢复。" };
+    case "reclaimed": return { title: "原工作空间无法恢复", description: "原工作空间资源已回收，无法续费恢复。原数据不提供恢复。" };
     case "unavailable": {
       const reasons: Record<string, string> = {
         workspace_renewal_insufficient_balance: "余额不足。请补足余额后刷新续费条件；充值不会自动恢复工作空间。",
@@ -405,7 +405,7 @@ export function presentWorkspaceRecovery(recovery: WorkspaceRenewalReadDTO["reco
         workspace_renewal_provider_truth_unavailable: "暂时无法确认原工作空间资源，请稍后刷新续费条件。",
         workspace_renewal_identity_mismatch: "原工作空间的续费条件需要管理员核对，请联系管理员处理。",
         workspace_renewal_manual_review: "原续费结果需要管理员核对，请勿重复付款。",
-        workspace_renewal_period_elapsed: "原续费期间已过，当前无法续费恢复，请重新购买工作空间。",
+        workspace_renewal_period_elapsed: "原续费期间已过，当前无法续费恢复。",
         workspace_delete_in_progress: "工作空间正在删除，不能续费恢复。"
       };
       return { title: "暂时无法续费恢复", description: reasons[recovery.reason] || "暂时无法确认续费恢复条件，请稍后刷新。" };
