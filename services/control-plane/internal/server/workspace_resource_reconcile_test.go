@@ -308,7 +308,7 @@ func TestWorkspaceResourceReconcileDoesNotTreatUnfinishedLaunchAsExternalDeletio
 	fabric.facts[0].Facts.Status = "external_deleted"
 	command := workspaceLaunchUnitCommand()
 	command.OperationID, command.AccountID, command.OwnerUserID, command.WorkspaceID = "workspace-launch-monthly", stringValue(fixture.workspace["accountId"]), stringValue(fixture.workspace["ownerUserId"]), stringValue(fixture.workspace["id"])
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}

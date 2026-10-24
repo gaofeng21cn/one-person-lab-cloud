@@ -1023,10 +1023,16 @@ and readback changes them.
 
 ## 2026-08-11: One Launch Coordinates Separate Physical Owners
 
-A Workspace Launch has one durable Control Plane operation. Create and
-operator-authorized Resume enter the same Reconciler. The operation advances
-through admission, Key and debit coordination, Fabric resource stages,
-activation, and Receipt creation.
+A retained historical Workspace Launch has one durable Control Plane operation.
+Historical read/list preserves that original operation's identity and persisted
+result. Ordinary same-key replay returns the recorded operation without
+advancing it; only the retained pending Key or customer-owned Key/Secret
+unknown branch may continue it. Operator-authorized Resume and worker
+reconciliation advance the original operation through the same Reconciler.
+A fresh Create is no longer a Control Plane entry: new Workspace purchases
+belong to the Workspace owner route. The retained operation still advances
+through its recorded admission, Key and debit
+coordination, Fabric resource stages, activation, and Receipt creation.
 
 Control Plane owns the business cursor, account policy, settlement coordination,
 and customer projection. Fabric owns compute, storage, attachment, Secret

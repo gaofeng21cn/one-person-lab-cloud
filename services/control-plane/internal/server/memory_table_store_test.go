@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/domain/application"
 )
 
@@ -619,63 +618,6 @@ func (s *memoryTableStore) ApplyWorkspaceRenewalIntent(_ context.Context, update
 	if !auditExists {
 		s.auditEvents = append(s.auditEvents, cloneMap(update.AuditEvent))
 	}
-	return nil
-}
-
-func (s *memoryTableStore) ClaimWorkspaceLaunchReconcile(_ context.Context, claim workspaceLaunchReconcileClaim) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.reconciliationErr != nil {
-		return s.reconciliationErr
-	}
-	if s.reconciliation != nil {
-		blocked, err := billingReconciliationBlockState(s.reconciliation)
-		if err != nil {
-			return err
-		}
-		if blocked {
-			return errBillingReconciliationBlocked
-		}
-	}
-	desired, err := decodeWorkspaceLaunchReconcileOperation(claim.DesiredOperation)
-	if err != nil || desired.stringFact("accountId") != claim.AccountID || desired.boolFact("acceptanceBCapacitySlot") != claim.AcceptanceBCapacitySlot || s.accounts[claim.AccountID] == nil {
-		return errWorkspaceLaunchCASConflict
-	}
-	for _, row := range s.runtimeOps {
-		if stringValue(row["id"]) == desired.ID {
-			return errWorkspaceLaunchCASConflict
-		}
-		if stringValue(row["accountId"]) == claim.AccountID && isWorkspaceLaunchAction(stringValue(row["action"])) && !terminalWorkspaceLaunchStatus(stringValue(row["status"])) {
-			return errWorkspaceLaunchInProgress
-		}
-	}
-	inFlight, acceptanceClaims := 0, 0
-	for _, row := range s.runtimeOps {
-		if !isWorkspaceLaunchAction(stringValue(row["action"])) {
-			continue
-		}
-		if workspaceLaunchReconcileAcceptanceSlot(row) || workspaceLaunchHasAcceptanceBCapacitySlot(row) {
-			acceptanceClaims++
-		}
-		if !terminalWorkspaceLaunchStatus(stringValue(row["status"])) {
-			inFlight++
-		}
-	}
-	if claim.AcceptanceBCapacitySlot {
-		if acceptanceClaims >= 1 {
-			return errWorkspaceLaunchCapacityReached
-		}
-	} else if inFlight >= controlledBasicPilotGlobalInFlightLimit() {
-		return errWorkspaceLaunchCapacityReached
-	}
-	if claim.DefaultApplicationOperation != nil {
-		request, err := decodeWorkspaceDefaultApplication(claim.DefaultApplicationOperation)
-		if err != nil || request.AccountID != claim.AccountID || request.WorkspaceID != desired.stringFact("workspaceId") || request.LaunchOperationID != desired.ID || desired.provisioningMode() != contracts.WorkspaceProvisioningResourceOnly {
-			return errWorkspaceLaunchCASConflict
-		}
-		s.runtimeOps = append(s.runtimeOps, cloneMap(claim.DefaultApplicationOperation))
-	}
-	s.runtimeOps = append(s.runtimeOps, cloneMap(claim.DesiredOperation))
 	return nil
 }
 

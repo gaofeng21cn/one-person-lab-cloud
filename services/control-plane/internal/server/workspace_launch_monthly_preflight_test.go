@@ -310,28 +310,6 @@ func TestRetainedWorkspaceLaunchRefusesNewPurchaseWithoutPilotAllowlist(t *testi
 	}
 }
 
-func TestControlledPilotAdmissionUsesAccountAndGlobalPolicyNotPackageAllowlist(t *testing.T) {
-	t.Setenv(controlledBasicPilotEnabledEnv, "1")
-	admission := controlledBasicPilotAdmissionFromEnv()
-	if code := admission.rejectNewLaunch(false); code != "" {
-		t.Fatalf("enabled admission rejected launch: %s", code)
-	}
-	if code := admission.rejectNewLaunch(true); code != "autoRenew_unavailable" {
-		t.Fatalf("auto-renew admission code = %q", code)
-	}
-
-	t.Setenv(controlledBasicPilotEnabledEnv, "0")
-	admission = controlledBasicPilotAdmissionFromEnv()
-	if code := admission.rejectNewLaunch(false); code != "workspace_launch_admission_disabled" {
-		t.Fatalf("stopped admission code = %q", code)
-	}
-
-	t.Setenv(controlledBasicPilotEnabledEnv, "invalid")
-	if code := controlledBasicPilotAdmissionFromEnv().rejectNewLaunch(false); code != "workspace_launch_admission_invalid" {
-		t.Fatalf("invalid admission code = %q", code)
-	}
-}
-
 func TestRetainedWorkspaceLaunchRefusesNewPurchaseForEveryPackage(t *testing.T) {
 	t.Setenv(controlledBasicPilotEnabledEnv, "1")
 	t.Setenv("OPL_WORKSPACE_LAUNCH_WORKER_ENABLED", "0")
@@ -903,7 +881,7 @@ func seedRetainedFullLaunchForMonthlyPreflightTest(t *testing.T, store *memoryTa
 	command.OperationID, command.AccountID, command.OwnerUserID = workspaceLaunchOperationID("acct-alpha", key), "acct-alpha", "usr-alpha"
 	command.WorkspaceID, command.Sub2APIUserID, command.Name = "ws-"+stableID(key)[:18], 41, name
 	command.Mode, command.ProviderProfileRef = contracts.WorkspaceProvisioningFull, profile
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -28,7 +28,7 @@ func TestWorkspaceLaunchGETRedactsDiagnosticCheckDetails(t *testing.T) {
 	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
 	command := workspaceLaunchUnitCommand()
 	command.OperationID, command.AccountID, command.OwnerUserID, command.Sub2APIUserID = "workspace-launch-redacted", "acct-alpha", "usr-alpha", 41
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}

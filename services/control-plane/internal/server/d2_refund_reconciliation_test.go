@@ -96,7 +96,7 @@ func TestD2RefundReconciliationRejectsUnpaidOriginal(t *testing.T) {
 	command.RequestHash = chain.purchase.stringFact("requestHash")
 	command.Mode = chain.purchase.provisioningMode()
 	command.PriceVersion, command.TotalChargeUSDMicros = chain.purchase.stringFact("priceVersion"), chain.purchase.int64Fact("totalChargeUsdMicros")
-	pending, err := newWorkspaceLaunchReconcileOperation(command)
+	pending, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}

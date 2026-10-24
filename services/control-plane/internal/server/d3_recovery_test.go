@@ -25,7 +25,7 @@ func TestPostgresD3LateDebitRecoversOriginalPurchaseAfterRestart(t *testing.T) {
 			command.ProviderProfileRef = profile
 			account, owner := provisionedAccountRowsFor(command.AccountID, command.OwnerUserID, "d3-late@example.com", command.Sub2APIUserID)
 			mustStore(t, store.CreateProvisionedAccount(ctx, account, owner))
-			op, err := newWorkspaceLaunchReconcileOperation(command)
+			op, err := newWorkspaceLaunchFixtureOperation(command)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -34,7 +34,7 @@ func TestPostgresD3LateDebitRecoversOriginalPurchaseAfterRestart(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			mustStore(t, store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: command.AccountID, DesiredOperation: row}))
+			mustStore(t, store.SaveRuntimeOperation(ctx, row))
 			stub := &workspaceLaunchDebitReadbackStub{testSub2APIClient: &testSub2APIClient{charges: map[string]int64{}}, history: map[string]clients.Sub2APIBalanceHistoryEntry{}, balance: clients.Sub2APIBalance{UserID: command.Sub2APIUserID, USDMicros: command.PreChargeBalanceMicros, Status: "active"}}
 			service := controlplane.NewService(fakeLedgerClient{}, &gatewayAccountingFabric{}, stub)
 			adapter := &controlPlaneWorkspaceLaunchStageAdapter{app: &controlPlaneServer{tables: store}, service: service}
@@ -127,7 +127,7 @@ func (s *d3LostQueueResultStore) PersistWorkspaceLaunchReconcile(ctx context.Con
 }
 
 func TestD3ComputeQueueCrossesTypedHTTPAndDispatchesOriginalIdentity(t *testing.T) {
-	op, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	op, err := newWorkspaceLaunchFixtureOperation(workspaceLaunchUnitCommand())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -21,11 +21,15 @@ func d2CustomerRefundOriginal(t *testing.T, renewal bool) map[string]any {
 	}
 	command := workspaceLaunchUnitCommand()
 	command.OperationID, command.AccountID, command.WorkspaceID = "original-order", "acct-alpha", "ws-deleted"
-	reconciler := NewWorkspaceLaunchReconciler(&workspaceLaunchUnitStore{}, &workspaceLaunchUnitAdapter{})
-	operation, err := reconciler.Create(context.Background(), command)
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reconciler := NewWorkspaceLaunchReconciler(&workspaceLaunchUnitStore{row: row}, &workspaceLaunchUnitAdapter{})
 	for range workspaceLaunchReconcileStages {
 		if operation.Status != "pending" {
 			break
@@ -40,7 +44,7 @@ func d2CustomerRefundOriginal(t *testing.T, renewal bool) map[string]any {
 	if operation.Status != "succeeded" {
 		t.Fatalf("original purchase did not complete: %s", operation.Status)
 	}
-	row, err := workspaceLaunchReconcileOperationRow(operation)
+	row, err = workspaceLaunchReconcileOperationRow(operation)
 	if err != nil {
 		t.Fatal(err)
 	}
