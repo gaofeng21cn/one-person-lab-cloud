@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { constants, existsSync } from "node:fs";
+import { constants, existsSync, readFileSync } from "node:fs";
 import { lstat, mkdir, mkdtemp, open, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
+import { request as httpsRequest } from "node:https";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -29,6 +30,10 @@ import {
   j0ReadyReceiptError,
   qualificationProviderProfile
 } from "./workspace-qualification-contract.ts";
+// The installation declaration is one fact with one owner. This driver reads it
+// through the module that derives and validates it against the template and the
+// Compose file, so it never keeps a second variable list of its own.
+import { localV2InstallationFacts } from "./local-v2-installation-facts.ts";
 
 // Local-Docker is the first adapter over the provider-neutral contract. Its
 // identity is declared here rather than asserted inside the validator, which is
@@ -42,6 +47,15 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // deployment overlay, the Fabric provider overlay, and the Local-Workspace
 // overlay. The deployment and Fabric overlays are separate selections that the
 // script fixes to the Local installation it qualifies.
+// The v2 installation is one Compose file: its owners, its proxy, its fixture
+// authority and its PKI are all declared there, so a v2 run starts exactly this
+// file and no retained overlay.
+export const LOCAL_V2_QUALIFICATION_COMPOSE = "deploy/portable/compose.local-v2.yaml";
+
+// The declaration template the installation is validated against: the file that
+// names every variable the Compose file requires.
+export const LOCAL_V2_INSTALLATION_TEMPLATE = "deploy/portable/opl-cloud.env.example";
+
 const baseComposeFiles = [
   "compose.yaml",
   "deploy/portable/compose.deployment-platform-owned.yaml",
@@ -58,6 +72,139 @@ export function localQualificationComposeFiles(authorityMode) {
     ? "deploy/portable/compose.local-qualification.yaml"
     : "deploy/portable/compose.local-qualification-live.yaml";
   return [...baseComposeFiles, qualificationCompose];
+}
+
+// The driver runs one installation mode at a time, and the mode owns which
+// Compose files it starts, which endpoints it may call and which authority it
+// authenticates against. A mode is selected explicitly; nothing below infers
+// one from a partially configured environment, because a run that mixed the v2
+// owners with a retained Control Plane writer would price and charge a purchase
+// in the wrong authority.
+export const QUALIFICATION_MODE_LOCAL_V2 = "local-v2";
+export const QUALIFICATION_MODE_LEGACY_FIXTURE = "legacy-fixture";
+export const QUALIFICATION_MODE_LEGACY_LIVE = "legacy-live";
+
+// Every owner in the v2 installation keeps its own database and role. One
+// database per owner is what makes a receipt, a resource set and an order
+// separately readable, so the v2 run asserts the whole set.
+export const LOCAL_V2_OWNER_STORES = Object.freeze([
+  ["opl_control_plane", "opl_control_plane"],
+  ["opl_fabric", "opl_fabric_owner"],
+  ["opl_ledger", "opl_ledger"],
+  ["opl_tenant", "opl_tenant_owner"],
+  ["opl_gateway", "opl_gateway_owner"],
+  ["opl_resource_catalog", "opl_resource_catalog_owner"],
+  ["opl_capability", "opl_capability_owner"],
+  ["opl_build", "opl_build_owner"],
+  ["opl_runtime_control", "opl_runtime_control_owner"],
+  ["opl_workspace", "opl_workspace_owner"],
+  ["opl_serve", "opl_serve_owner"]
+]);
+
+// The owner processes a v2 qualification reaches through the same origin.
+export const LOCAL_V2_QUALIFICATION_SERVICES = Object.freeze([
+  "postgres", "sub2api-authority", "tenant", "resource-catalog", "ledger", "capability",
+  "build", "runtime-control", "workspace", "serve", "fabric", "control-plane", "console-bff", "cloud-local-v2"
+]);
+
+const LEGACY_OWNER_STORES = Object.freeze([
+  ["opl_control_plane", "opl_control_plane"],
+  ["opl_fabric", "opl_fabric"],
+  ["opl_ledger", "opl_ledger"]
+]);
+
+export const QUALIFICATION_MODES = Object.freeze([
+  QUALIFICATION_MODE_LOCAL_V2, QUALIFICATION_MODE_LEGACY_FIXTURE, QUALIFICATION_MODE_LEGACY_LIVE
+]);
+
+// The retained Control Plane routes. The v2 installation does not serve them,
+// and a v2 run that called one would be writing through the migration source
+// instead of the owner that now owns the fact.
+export const RETAINED_LEGACY_ENDPOINT_PREFIXES = Object.freeze([
+  "/api/auth/", "/api/operator/", "/api/gateway/", "/api/v1/"
+]);
+
+const LOCAL_V2_ENDPOINTS = Object.freeze({
+  authContext: "/api/v2/auth/context",
+  authLogin: "/api/v2/auth/login",
+  tenant: "/api/v2/tenant",
+  adminTenants: "/api/v2/admin/tenants",
+  publisherNamespaces: "/api/v2/admin/catalog/publisher-namespaces",
+  runtimeVersions: "/api/v2/admin/catalog/runtime-versions",
+  computePlans: "/api/v2/admin/catalog/compute-plans",
+  storagePlans: "/api/v2/admin/catalog/storage-plans",
+  retentionPolicies: "/api/v2/admin/catalog/retention-policies",
+  refundPolicies: "/api/v2/admin/catalog/refund-policies",
+  pricePolicies: "/api/v2/admin/catalog/price-policies",
+  catalogRuntimeVersions: "/api/v2/catalog/runtime-versions",
+  catalogComputePlans: "/api/v2/catalog/compute-plans",
+  catalogStoragePlans: "/api/v2/catalog/storage-plans",
+  quotes: "/api/v2/quotes",
+  workspaces: "/api/v2/workspaces",
+  operations: "/api/v2/operations/workspace",
+  wallet: "/api/v2/wallet"
+});
+
+const LEGACY_ENDPOINTS = Object.freeze({
+  login: "/api/auth/login",
+  me: "/api/auth/me",
+  accounts: "/api/operator/accounts",
+  wallet: "/api/gateway/wallet",
+  usageSummary: "/api/gateway/usage-summary",
+  keys: "/api/gateway/keys",
+  balanceHistory: "/api/gateway/balance-history"
+});
+
+// One binding per mode: the routes that mode may call and the Compose files it
+// starts. A caller asks for a mode and receives the whole binding, so no call
+// site chooses an endpoint independently of the mode it selected.
+export function qualificationModeBinding(mode) {
+  if (mode === QUALIFICATION_MODE_LOCAL_V2) {
+    return {
+      mode,
+      composeFiles: [LOCAL_V2_QUALIFICATION_COMPOSE],
+      installationEnvRequired: true,
+      endpoints: LOCAL_V2_ENDPOINTS,
+      allowedPrefixes: ["/api/v2/"],
+      allowedPaths: ["/healthz"],
+      retainedPrefixes: RETAINED_LEGACY_ENDPOINT_PREFIXES
+    };
+  }
+  if (mode === QUALIFICATION_MODE_LEGACY_FIXTURE || mode === QUALIFICATION_MODE_LEGACY_LIVE) {
+    return {
+      mode,
+      composeFiles: localQualificationComposeFiles(mode === QUALIFICATION_MODE_LEGACY_LIVE ? "live" : "fixture"),
+      installationEnvRequired: false,
+      endpoints: LEGACY_ENDPOINTS,
+      allowedPrefixes: ["/api/auth/", "/api/operator/", "/api/gateway/", "/api/healthz", "/"],
+      allowedPaths: [],
+      retainedPrefixes: []
+    };
+  }
+  throw namedQualificationError("local_qualification_mode_invalid", `qualification mode must be one of ${QUALIFICATION_MODES.join(", ")}`);
+}
+
+// Whether a path may be requested in this mode. The v2 installation is checked
+// against its own prefix first, so a retained route is refused as a mode
+// violation rather than surfacing later as an unexpected 404 from an owner that
+// never served it.
+export function qualificationPathAllowed(mode, path) {
+  const requested = String(path || "");
+  const binding = qualificationModeBinding(mode);
+  if (mode === QUALIFICATION_MODE_LOCAL_V2 &&
+    binding.retainedPrefixes.some((prefix) => requested.startsWith(prefix))) {
+    return false;
+  }
+  if (binding.allowedPaths.includes(requested)) return true;
+  return binding.allowedPrefixes.some((prefix) => prefix.endsWith("/") ? requested.startsWith(prefix) : requested === prefix);
+}
+
+function assertQualificationPath(mode, path) {
+  if (!mode || qualificationPathAllowed(mode, path)) return;
+  throw namedQualificationError(
+    "local_v2_retained_endpoint_refused",
+    `${mode} must not request ${String(path || "").split("?")[0]}: it is a retained Control Plane route`
+  );
 }
 const digestPattern = /^sha256:[0-9a-f]{64}$/;
 const shaPattern = /^[0-9a-f]{40}$/;
@@ -100,7 +247,7 @@ function optionValues(args) {
       buildSourceImages = true;
       continue;
     }
-    if (!["--source-sha", "--cloud-image", "--workspace-image", "--receipt", "--authority-mode", "--j0-ready-receipt", "--sub2api-secret-file"].includes(token)) {
+    if (!["--source-sha", "--cloud-image", "--workspace-image", "--receipt", "--authority-mode", "--j0-ready-receipt", "--sub2api-secret-file", "--mode", "--installation-env", "--application-contract", "--project", "--workspace-name"].includes(token)) {
       throw new Error(`unknown local qualification argument: ${token}`);
     }
     const value = args[index + 1];
@@ -115,7 +262,15 @@ function optionValues(args) {
 
 export function parseLocalQualificationArgs(args = process.argv.slice(2)) {
   const { values, buildSourceImages } = optionValues(args);
+  const mode = String(values.get("--mode") || QUALIFICATION_MODE_LEGACY_FIXTURE).trim();
+  if (!QUALIFICATION_MODES.includes(mode)) {
+    throw namedQualificationError("local_qualification_mode_invalid", `qualification mode must be one of ${QUALIFICATION_MODES.join(", ")}`);
+  }
   const sourceSha = String(values.get("--source-sha") || "").trim();
+  const installationEnv = String(values.get("--installation-env") || "").trim();
+  const applicationContract = String(values.get("--application-contract") || "").trim();
+  const project = String(values.get("--project") || "").trim();
+  const workspaceName = String(values.get("--workspace-name") || "").trim();
   const cloudImage = String(values.get("--cloud-image") || "").trim();
   const workspaceImage = String(values.get("--workspace-image") || "").trim();
   const receiptPath = String(values.get("--receipt") || "").trim();
@@ -124,6 +279,19 @@ export function parseLocalQualificationArgs(args = process.argv.slice(2)) {
   const sub2apiSecretFile = String(values.get("--sub2api-secret-file") || "").trim();
   if (!shaPattern.test(sourceSha)) throw new Error("source SHA must be an exact 40-character lowercase commit");
   if (!receiptPath) throw new Error("receipt path is required");
+  if (mode === QUALIFICATION_MODE_LOCAL_V2) {
+    // A v2 run takes its images, secrets, ports and provider facts from the
+    // declared installation and nothing else, so a second spelling of any of
+    // them is refused instead of silently overriding the declaration.
+    if (!installationEnv) throw namedQualificationError("local_v2_installation_env_required", "--installation-env must name the declared installation environment file");
+    if (!isAbsolute(installationEnv)) throw namedQualificationError("local_v2_installation_env_invalid", "--installation-env must be an absolute path");
+    if (!applicationContract) throw namedQualificationError("local_v2_application_contract_required", "--application-contract must name the approved Runtime Publisher Contract file");
+    if (!isAbsolute(applicationContract)) throw namedQualificationError("local_v2_application_contract_invalid", "--application-contract must be an absolute path");
+    if (!project) throw namedQualificationError("local_v2_project_required", "--project must name the Compose project of the declared installation");
+    if (cloudImage || workspaceImage) throw namedQualificationError("local_v2_images_are_declared", "the installation declaration owns OPL_CLOUD_IMAGE and OPL_WORKSPACE_IMAGE");
+    if (buildSourceImages) throw namedQualificationError("local_v2_images_are_declared", "the installation declaration owns OPL_CLOUD_IMAGE and OPL_WORKSPACE_IMAGE");
+    return { mode, sourceSha, receiptPath, installationEnv, applicationContract, project, workspaceName };
+  }
   if (!buildSourceImages && !immutableImageReference(cloudImage)) throw new Error("immutable cloud image repository@digest is required");
   if (!buildSourceImages && !immutableImageReference(workspaceImage)) throw new Error("immutable workspace image repository@digest is required");
   if (buildSourceImages && (cloudImage || workspaceImage)) {
@@ -135,7 +303,15 @@ export function parseLocalQualificationArgs(args = process.argv.slice(2)) {
   if (j0ReadyReceipt && authorityMode !== "live") throw new Error("J0 READY receipt requires live authority mode");
   if (sub2apiSecretFile && authorityMode !== "live") throw new Error("Sub2API secret file requires live authority mode");
   if (sub2apiSecretFile && !isAbsolute(sub2apiSecretFile)) throw new Error("Sub2API secret file path must be absolute");
-  return { sourceSha, cloudImage, workspaceImage, receiptPath, buildSourceImages, authorityMode, j0ReadyReceipt, sub2apiSecretFile };
+  // The mode is one fact: the authority a run bills against decides whether it
+  // is the fixture or the live legacy run, and an explicit --mode that
+  // contradicts it is a configuration error rather than a preference.
+  const derivedMode = authorityMode === "live" ? QUALIFICATION_MODE_LEGACY_LIVE : QUALIFICATION_MODE_LEGACY_FIXTURE;
+  if (values.has("--mode") && mode !== derivedMode) {
+    throw namedQualificationError("local_qualification_mode_conflict",
+      `--mode ${mode} contradicts --authority-mode ${authorityMode}`);
+  }
+  return { mode: derivedMode, sourceSha, cloudImage, workspaceImage, receiptPath, buildSourceImages, authorityMode, j0ReadyReceipt, sub2apiSecretFile };
 }
 
 function sub2apiSecretFileError(code) {
@@ -647,8 +823,53 @@ function responseCookies(headers) {
   return cookies;
 }
 
-export function createHTTP(origin) {
+// The installation serves one HTTPS origin signed by its own CA. A request that
+// trusted the host store instead would either fail or, worse, succeed against a
+// certificate this installation never issued, so the declared CA is the only
+// trust anchor a qualification request uses.
+function caRequest(url, init, headers, body, ca) {
+  return new Promise((resolvePromise, reject) => {
+    const target = new URL(url);
+    const request = httpsRequest({
+      hostname: target.hostname,
+      port: target.port || 443,
+      path: `${target.pathname}${target.search}`,
+      method: init.method || "GET",
+      headers: Object.fromEntries(headers.entries()),
+      ca,
+      servername: target.hostname,
+      signal: AbortSignal.timeout(30_000)
+    }, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("end", () => {
+        const text = Buffer.concat(chunks).toString("utf8");
+        const setCookie = response.headers["set-cookie"] || [];
+        resolvePromise({
+          status: response.statusCode,
+          headers: {
+            get: (name) => {
+              const value = response.headers[String(name).toLowerCase()];
+              return Array.isArray(value) ? value.join(", ") : value ?? null;
+            },
+            getSetCookie: () => setCookie
+          },
+          text: async () => text
+        });
+      });
+    });
+    request.on("error", reject);
+    if (body !== undefined) request.write(body);
+    request.end();
+  });
+}
+
+export function createHTTP(origin, { caFile = "", mode = "" } = {}) {
+  const ca = caFile ? readFileSync(caFile) : null;
   const request = async (path, init = {}, auth = null) => {
+    // The mode refuses a retained route before a socket is opened, so a v2 run
+    // cannot reach a Control Plane writer even if a caller asks for one.
+    assertQualificationPath(mode, path);
     const headers = new Headers(init.headers || {});
     if (auth?.cookie) headers.set("cookie", auth.cookie);
     if (auth?.csrf) headers.set("x-opl-csrf", auth.csrf);
@@ -663,12 +884,15 @@ export function createHTTP(origin) {
     if (auth?.ownerCsrf) headers.set("x-csrf-token", auth.ownerCsrf);
     const body = init.body === undefined ? undefined : JSON.stringify(init.body);
     if (body !== undefined) headers.set("content-type", "application/json");
-    const response = await fetch(`${origin}${path}`, {
-      ...init,
-      headers,
-      body,
-      signal: AbortSignal.timeout(30_000)
-    });
+    const url = `${origin}${path}`;
+    const response = ca
+      ? await caRequest(url, init, headers, body, ca)
+      : await fetch(url, {
+        ...init,
+        headers,
+        body,
+        signal: AbortSignal.timeout(30_000)
+      });
     const text = await response.text();
     let payload = null;
     if (text.trim()) {
@@ -949,8 +1173,8 @@ export async function waitForCompose(compose) {
 // These are the processes used by this caller's v2 requests. The old
 // CP/Fabric/Ledger stack cannot qualify them; refuse before any stack or
 // customer mutation rather than running a purchase against missing owners.
-export function assertWorkspaceQualificationTopology(config) {
-  const missing = ["workspace", "console-bff", "tenant", "serve"].filter((name) => !config?.services?.[name]);
+export function assertWorkspaceQualificationTopology(config, { services = ["workspace", "console-bff", "tenant", "serve"] } = {}) {
+  const missing = services.filter((name) => !config?.services?.[name]);
   if (missing.length) {
     throw Object.assign(new Error(`v2 qualification topology is missing owner services: ${missing.join(", ")}`), {
       code: "local_v2_qualification_topology_missing",
@@ -968,19 +1192,24 @@ async function inspectComposeImage(compose, service) {
   return values[0];
 }
 
-export async function verifyStores(compose) {
-  const query = "select datname || ':' || pg_get_userbyid(datdba) from pg_database where datname in ('opl_control_plane','opl_fabric','opl_ledger') order by datname";
+export async function verifyStores(compose, { stores = LEGACY_OWNER_STORES } = {}) {
+  const names = stores.map(([database]) => `'${database}'`).join(",");
+  const query = `select datname || ':' || pg_get_userbyid(datdba) from pg_database where datname in (${names}) order by datname`;
   const rows = (await compose(["exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "postgres", "-Atqc", query])).stdout.trim().split(/\r?\n/);
-  const expected = ["opl_control_plane:opl_control_plane", "opl_fabric:opl_fabric", "opl_ledger:opl_ledger"];
-  if (JSON.stringify(rows) !== JSON.stringify(expected)) throw new Error("PostgreSQL database ownership is not separated");
-  for (const owner of ["control_plane", "fabric", "ledger"]) {
+  // The query orders by database name, so the expected set is compared in the
+  // same order rather than in declaration order.
+  const expected = stores.map(([database, owner]) => `${database}:${owner}`).sort();
+  if (JSON.stringify([...rows].sort()) !== JSON.stringify(expected)) throw new Error("PostgreSQL database ownership is not separated");
+  const observed = {};
+  for (const [database, owner] of stores) {
     const count = Number((await compose([
-      "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", `opl_${owner}`, "-Atqc",
-      `select count(*) from pg_tables where schemaname='public' and tableowner='opl_${owner}'`
+      "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", database, "-Atqc",
+      `select count(*) from pg_tables where schemaname='public' and tableowner='${owner}'`
     ])).stdout.trim());
-    if (!Number.isSafeInteger(count) || count <= 0) throw new Error(`opl_${owner} owns no durable tables`);
+    if (!Number.isSafeInteger(count) || count <= 0) throw new Error(`${database} owns no durable tables`);
+    observed[database] = "durable";
   }
-  return { controlPlane: "durable", fabric: "durable", ledger: "durable", ownerSeparated: true };
+  return { ...observed, ownerSeparated: true };
 }
 
 async function consoleReadback(http) {
@@ -1690,6 +1919,9 @@ export async function liveAuthorityAdjustmentReadback(baseURL, email, password, 
 }
 
 function receiptCommand(options) {
+  if (options.mode === QUALIFICATION_MODE_LOCAL_V2) {
+    return `npm run qualify:local:workspace -- --mode local-v2 --source-sha ${options.sourceSha} --installation-env ${options.installationEnv} --application-contract ${options.applicationContract} --project ${options.project} --receipt ${options.receiptPath}`;
+  }
   const imageArgs = options.buildSourceImages
     ? "--build-source-images"
     : `--cloud-image ${options.cloudImage} --workspace-image ${options.workspaceImage}`;
@@ -1778,6 +2010,533 @@ export async function finishLocalWorkspaceQualification(state, dependencies = {}
   }
   await writeJSONAtomic(options.receiptPath, finalReceipt);
   return finalReceipt;
+}
+
+// A declared installation environment file is one NAME=value entry per line, in
+// the template's own spelling. Nothing here evaluates a shell, interpolates a
+// variable or accepts a second spelling of a name: the file the operator
+// declares is the file Compose reads.
+export function parseInstallationEnvFile(text) {
+  const values = {};
+  for (const line of String(text ?? "").split(/\r?\n/)) {
+    const entry = line.trim();
+    if (!entry || entry.startsWith("#")) continue;
+    const index = entry.indexOf("=");
+    const name = index > 0 ? entry.slice(0, index).trim() : "";
+    if (!/^[A-Z][A-Z0-9_]*$/.test(name)) {
+      throw namedQualificationError("local_v2_installation_env_invalid", `installation declaration entry is not a NAME=value line: ${entry.slice(0, 80)}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(values, name)) {
+      throw namedQualificationError("local_v2_installation_env_duplicate", `installation declaration names ${name} twice`);
+    }
+    values[name] = entry.slice(index + 1);
+  }
+  return values;
+}
+
+// The installation this run qualifies, read from the declaration the operator
+// wrote and validated against the template and the Compose file the repository
+// ships. Every fact below uses this map, so a qualification run cannot qualify a
+// machine the installation does not describe.
+export async function readLocalV2InstallationDeclaration({
+  envFile,
+  templatePath = join(root, LOCAL_V2_INSTALLATION_TEMPLATE),
+  composePath = join(root, LOCAL_V2_QUALIFICATION_COMPOSE)
+} = {}) {
+  const declaredPath = String(envFile || "").trim();
+  if (!declaredPath) {
+    throw namedQualificationError("local_v2_installation_env_required", "--installation-env must name the declared installation environment file");
+  }
+  if (!isAbsolute(declaredPath)) {
+    throw namedQualificationError("local_v2_installation_env_invalid", "--installation-env must be an absolute path");
+  }
+  const [template, compose, text] = await Promise.all([
+    readFile(templatePath, "utf8"),
+    readFile(composePath, "utf8"),
+    readFile(declaredPath, "utf8")
+  ]);
+  const facts = localV2InstallationFacts({ template, compose, values: parseInstallationEnvFile(text) });
+  return { envFile: declaredPath, values: facts.values, facts };
+}
+
+// The one origin every request in this run is served from, and the CA that
+// signed the certificate it serves.
+export function localV2QualificationOrigin(values) {
+  const declared = String(values?.OPL_LOCAL_V2_PUBLIC_URL || "").trim();
+  let url;
+  try {
+    url = new URL(declared);
+  } catch {
+    throw namedQualificationError("local_v2_public_url_invalid", "OPL_LOCAL_V2_PUBLIC_URL must be the installation's HTTPS origin");
+  }
+  if (url.protocol !== "https:" || url.pathname !== "/" || url.search || url.hash) {
+    throw namedQualificationError("local_v2_public_url_invalid", "OPL_LOCAL_V2_PUBLIC_URL must be one HTTPS origin without a path");
+  }
+  return url.origin;
+}
+
+export function localV2QualificationCA(values) {
+  const directory = String(values?.OPL_LOCAL_V2_PKI_DIR || "").trim();
+  if (!directory || !isAbsolute(directory)) {
+    throw namedQualificationError("local_v2_pki_dir_invalid", "OPL_LOCAL_V2_PKI_DIR must be the absolute PKI directory the topology serves");
+  }
+  return join(directory, "ca.crt");
+}
+
+// The Workspace entry the owner publishes carries no port, so it is only
+// reachable when the installation serves that host on 443. A public origin on
+// another port means the entry URL a customer would be sent to is not served,
+// and that is a boundary this run reports instead of calling the application
+// available.
+export function localV2ApplicationEntryBoundary(entryUrl, publicOrigin) {
+  const entry = String(entryUrl || "").trim();
+  if (!entry) return { ok: true, code: "", detail: "no application entry published yet" };
+  let parsed;
+  try {
+    parsed = new URL(entry);
+  } catch {
+    return { ok: false, code: "local_v2_application_entry_invalid", detail: "the owner published an application entry that is not a URL" };
+  }
+  let origin;
+  try {
+    origin = new URL(String(publicOrigin || ""));
+  } catch {
+    return { ok: false, code: "local_v2_public_url_invalid", detail: "the installation public origin is not a URL" };
+  }
+  const entryPort = parsed.port || (parsed.protocol === "https:" ? "443" : "80");
+  const publicPort = origin.port || (origin.protocol === "https:" ? "443" : "80");
+  // The published entry carries no port, so the only way it is reachable is the
+  // installation serving that host on the port the entry implies.
+  if (entryPort !== publicPort) {
+    return {
+      ok: false,
+      code: "local_v2_application_entry_port_unreachable",
+      detail: `the entry ${parsed.origin} is not the declared origin ${origin.origin}`
+    };
+  }
+  return { ok: true, code: "", detail: `${parsed.origin} is served by the declared origin` };
+}
+
+// The Workspace owner reports a parked saga as a dependency failure; the
+// provider's own reason lives in the Fabric process log, which is the owner's
+// record of why it refused the dispatch. A qualification run reports that reason
+// rather than the generic mapping.
+async function localV2ProviderBoundary(compose, composePrefix, sinceIso, query) {
+  // The Fabric owner records the dispatch it refused under its own operation id,
+  // so the run joins through that record instead of guessing which log line
+  // belongs to this attempt. The provider writes its reason when it retries, on
+  // its own schedule, so the run watches for a bounded window and reports only
+  // what it observed.
+  if (typeof query !== "function") return null;
+  let fabricOperationId = "";
+  try {
+    fabricOperationId = (await query("opl_fabric",
+      `select id from fabric.operations where created_at >= '${String(sinceIso).replace(/'/g, "")}' order by created_at desc limit 1`)).trim();
+  } catch {
+    return null;
+  }
+  if (!fabricOperationId) return null;
+  let container = "";
+  try {
+    container = (await compose([...composePrefix, "ps", "-q", "fabric"])).stdout.trim().split(/\r?\n/)[0] || "";
+  } catch {
+    return null;
+  }
+  if (!container) return null;
+  const sinceEpoch = String(Math.max(0, Math.floor(Date.parse(sinceIso) / 1000)));
+  const deadline = Date.now() + Number(process.env.OPL_LOCAL_V2_PROVIDER_LOG_WAIT_MS || 30_000);
+  let observed = "";
+  while (Date.now() < deadline) {
+    let log = "";
+    try {
+      // The owner writes its own log lines to stderr, and `docker logs` keeps
+      // the two streams apart, so both are read.
+      const output = await runProcess("docker", ["logs", container, "--since", sinceEpoch], { allowFailure: true });
+      log = `${output.stdout}\n${output.stderr}`;
+    } catch {
+      return null;
+    }
+    const lines = log.split(/\r?\n/).filter((line) => line.includes(`operation=${fabricOperationId}`));
+    observed = lines[lines.length - 1] || "";
+    if (/local_docker_[a-z_]+/.test(observed)) break;
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 3000));
+  }
+  const code = (observed.match(/local_docker_[a-z_]+/) || [""])[0];
+  if (!code) return null;
+  return { code, detail: observed.replace(/^\S+\s+\S+\s+/, "").slice(0, 400), line: observed.slice(0, 400) };
+}
+
+function localV2Boundary(operation, workspace) {
+  const code = String(operation?.errorCode || operation?.error?.code || workspace?.errorCode || "").trim();
+  const detail = String(operation?.error?.message || operation?.message || workspace?.error?.message || "").trim();
+  return { code: code || "local_v2_operation_stopped", detail: detail || `the owner stopped the operation at ${String(operation?.stage || "an unnamed stage")}`, stage: String(operation?.stage || "") };
+}
+
+// `awaiting_confirmation` is a parked saga: the owner stopped retrying and is
+// waiting for a human, so a qualification run reads it as the boundary it is
+// instead of polling until the deadline.
+const LOCAL_V2_TERMINAL_OPERATION = new Set(["succeeded", "failed", "cancelled", "needs_attention", "awaiting_confirmation"]);
+
+// The Local v2 qualification: one declared installation, the owner processes it
+// starts, and the owner routes it serves. Every step records the readback it
+// observed, and a step that cannot complete returns the boundary it hit instead
+// of a READY result. The retained receipt shape is deliberately not produced
+// here: it binds Control Plane identities this installation does not have, so
+// this run publishes collected evidence and names what is still missing.
+export async function runLocalV2Qualification(options, dependencies = {}) {
+  const mode = QUALIFICATION_MODE_LOCAL_V2;
+  const binding = qualificationModeBinding(mode);
+  const readDeclaration = dependencies.readDeclaration || readLocalV2InstallationDeclaration;
+  const createClient = dependencies.createClient || ((origin, settings) => createHTTP(origin, settings));
+  const compose = dependencies.compose || ((args, settings = {}) => runProcess("docker", args, { cwd: root, ...settings }));
+  const ownerQuery = dependencies.ownerQuery || null;
+  const wait = dependencies.wait || ((milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds)));
+  const pollIntervalMs = Number(dependencies.pollIntervalMs || 3000);
+  const pollAttempts = Number(dependencies.pollAttempts || 100);
+  const startedAt = new Date().toISOString();
+  const stages = [];
+  const readbacks = {};
+  const record = (stage, status, detail = {}) => { stages.push({ stage, status, observedAt: new Date().toISOString(), ...detail }); };
+  let stage = "installation_preflight";
+  let boundary = null;
+  let failure = null;
+  let composePrefix = [];
+  let sourceTree = "unavailable";
+  try {
+    sourceTree = (await runProcess("git", ["rev-parse", `${options.sourceSha}^{tree}`])).stdout.trim() || sourceTree;
+  } catch {
+    // The requested source is still the identity this run reports.
+  }
+  const workspaceName = String(options.workspaceName || "Local v2 qualification");
+  try {
+    const declaration = await readDeclaration({ envFile: options.installationEnv });
+    const values = declaration.values;
+    const origin = localV2QualificationOrigin(values);
+    const caFile = localV2QualificationCA(values);
+    readbacks.installation = {
+      envFile: declaration.envFile,
+      origin,
+      pkiDir: String(values.OPL_LOCAL_V2_PKI_DIR || ""),
+      proxyPort: String(values.OPL_LOCAL_V2_PROXY_PORT || ""),
+      subnet: String(values.OPL_LOCAL_V2_SUBNET || ""),
+      postgresHost: String(values.OPL_LOCAL_V2_POSTGRES_HOST || ""),
+      workspaceDomain: String(values.OPL_WORKSPACE_DOMAIN || ""),
+      cloudImage: String(values.OPL_CLOUD_IMAGE || ""),
+      workspaceImage: String(values.OPL_WORKSPACE_IMAGE || ""),
+      qualificationEmail: String(values.OPL_QUALIFICATION_USER_EMAIL || ""),
+      undeclaredFacts: [...(declaration.facts.unresolved || [])]
+    };
+    record("installation_preflight", "confirmed", { declared: (declaration.facts.entries || []).length, unresolved: readbacks.installation.undeclaredFacts.length });
+    if (!isAbsolute(String(options.applicationContract || ""))) {
+      throw namedQualificationError("local_v2_application_contract_required", "--application-contract must name the approved Runtime Publisher Contract file");
+    }
+    // The contract file is the Runtime Publisher Contract exactly as the owner
+    // accepts it, so the run posts the declared document rather than composing
+    // one from installation facts.
+    const contract = JSON.parse(await readFile(options.applicationContract, "utf8"));
+    const contractImage = `${contract?.image?.repository || ""}@${contract?.image?.digest || ""}`;
+    if (contractImage !== readbacks.installation.workspaceImage) {
+      throw namedQualificationError(
+        "local_v2_application_contract_image_mismatch",
+        `the declared application contract names ${contractImage}, the installation declares ${readbacks.installation.workspaceImage}`
+      );
+    }
+    const revision = contract?.applicationRevisionTemplate || {};
+    if (!String(revision.applicationId || "") || !String(revision.version || "")) {
+      throw namedQualificationError("local_v2_application_contract_invalid", "the declared application contract names no application id and version");
+    }
+    readbacks.application = {
+      image: contractImage,
+      applicationId: String(revision.applicationId),
+      revision: String(revision.version),
+      exposurePolicy: String(revision.exposurePolicy || "")
+    };
+    record("application_contract", "confirmed", { image: contractImage });
+    stage = "compose_topology";
+    composePrefix = ["compose", "--project-name", String(options.project || "").trim(), "--env-file", declaration.envFile,
+      ...binding.composeFiles.flatMap((file) => ["-f", file])];
+    if (!String(options.project || "").trim()) throw namedQualificationError("local_v2_project_required", "--project must name the Compose project of the declared installation");
+    const up = await compose([...composePrefix, "up", "-d", "--wait", "--wait-timeout", "300"], { allowFailure: true });
+    if (up.code !== 0) {
+      throw namedQualificationError("local_v2_compose_start_failed", (up.stderr || up.stdout || "docker compose up failed").slice(0, 500));
+    }
+    const config = JSON.parse((await compose([...composePrefix, "config", "--format", "json"])).stdout);
+    assertWorkspaceQualificationTopology(config, { services: LOCAL_V2_QUALIFICATION_SERVICES });
+    readbacks.topology = { services: Object.keys(config.services || {}).sort() };
+    record("compose_topology", "confirmed", { services: readbacks.topology.services.length });
+    const stores = await verifyStores((args) => compose([...composePrefix, ...args]), { stores: LOCAL_V2_OWNER_STORES });
+    readbacks.stores = stores;
+    record("owner_stores", "confirmed", { databases: Object.keys(stores).length - 1 });
+    const query = ownerQuery || (async (database, sql) => (await compose([
+      ...composePrefix, "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", database, "-Atqc", sql
+    ])).stdout.trim());
+    stage = "cloud_identity";
+    const http = createClient(origin, { caFile, mode });
+    const session = await cloudIdentityLogin(http, origin, readbacks.installation.qualificationEmail,
+      String(values.OPL_QUALIFICATION_USER_PASSWORD || ""), `local-v2-login:${options.sourceSha}`);
+    const auth = { cookie: session.cookie, ownerCsrf: session.ownerCsrf, csrf: "" };
+    readbacks.cloudIdentity = { actorId: session.session.actorId, displayName: session.session.displayName, tenantId: session.session.tenantId, expiresAt: session.session.expiresAt };
+    record("cloud_identity", "confirmed", { actorId: session.session.actorId });
+    stage = "tenant";
+    let tenant = (await http.request(binding.endpoints.tenant, {}, auth)).payload;
+    if (!tenant?.id) {
+      const created = await http.json(binding.endpoints.adminTenants, {
+        method: "POST",
+        headers: { "idempotency-key": `local-v2-tenant:${options.sourceSha}` },
+        body: { name: "Local v2 qualification", billingSub2apiUserId: session.session.actorId, ownerGatewaySubjectId: session.session.actorId }
+      }, auth, [200, 201, 202]);
+      // The Tenant owner answers with the operation it ran, and that operation
+      // already carries the Tenant it created. The identity is read from the
+      // owner's own answer and then confirmed through the admin readback.
+      const createdTenantId = String(created.payload?.resourceId || "");
+      readbacks.tenantCreation = {
+        operationId: String(created.payload?.operationId || ""),
+        operationStatus: String(created.payload?.status || ""),
+        tenantId: createdTenantId
+      };
+      if (!createdTenantId) {
+        throw namedQualificationError("local_v2_tenant_unavailable", "the Tenant owner created no Tenant for the qualified identity");
+      }
+      // A session binds its Tenant when it is issued, so the session that
+      // created the Tenant cannot read it back; the run signs in again and
+      // confirms the binding the next session actually carries.
+      const rebound = await cloudIdentityLogin(http, origin, readbacks.installation.qualificationEmail,
+        String(values.OPL_QUALIFICATION_USER_PASSWORD || ""), `local-v2-login-rebound:${options.sourceSha}`);
+      auth.cookie = rebound.cookie;
+      auth.ownerCsrf = rebound.ownerCsrf;
+      auth.csrf = rebound.ownerCsrf;
+      tenant = (await http.request(binding.endpoints.tenant, {}, auth)).payload;
+      readbacks.cloudIdentity.tenantId = String(rebound.session.tenantId || "");
+      readbacks.cloudIdentity.reboundActorId = String(rebound.session.actorId || "");
+      const declared = (await http.json(`${binding.endpoints.adminTenants}?limit=100`, {}, auth)).payload;
+      readbacks.tenantCreation.adminReadback = (Array.isArray(declared?.items) ? declared.items : [])
+        .some((candidate) => String(candidate?.id || "") === createdTenantId);
+      if (!tenant?.id && !readbacks.tenantCreation.adminReadback) {
+        throw namedQualificationError("local_v2_tenant_unavailable", "the Tenant owner published no Tenant for the qualified identity");
+      }
+      if (!tenant?.id) tenant = { id: createdTenantId, status: "active" };
+    }
+    if (!tenant?.id) throw namedQualificationError("local_v2_tenant_unavailable", "the Tenant owner published no Tenant for the qualified identity");
+    readbacks.tenant = { id: tenant.id, billingSub2apiUserId: String(tenant.billingSub2apiUserId || ""), status: String(tenant.status || "") };
+    record("tenant", "confirmed", { tenantId: tenant.id });
+    stage = "account_binding";
+    // The provider profile names the Tenant account it executes for. A profile
+    // that binds another Tenant cannot dispatch for this one, so the run reports
+    // the binding the installation must declare instead of failing later inside
+    // the provider with a generic mismatch.
+    const declaredProfile = (() => {
+      try { return JSON.parse(String(values.OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON || "")); } catch { return null; }
+    })();
+    const bindings = Array.isArray(declaredProfile?.accountBindings) ? declaredProfile.accountBindings : [];
+    const accountBinding = bindings.find((candidate) => String(candidate?.tenantId || "") === tenant.id && String(candidate?.accountId || "").trim());
+    if (!accountBinding) {
+      throw namedQualificationError(
+        "local_v2_account_binding_required",
+        `the declared provider profile binds ${JSON.stringify(bindings.map((candidate) => candidate?.tenantId || ""))}, the qualified Tenant is ${tenant.id}; ` +
+        `declare {"tenantId":"${tenant.id}","accountId":"<host account>"} in OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON and re-run`
+      );
+    }
+    readbacks.accountBinding = { tenantId: tenant.id, accountId: String(accountBinding.accountId) };
+    record("account_binding", "confirmed", readbacks.accountBinding);
+    stage = "catalog";
+    const packageProfile = (() => {
+      let profile;
+      try { profile = JSON.parse(String(values.OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON || "")); } catch { profile = null; }
+      const selected = (profile?.packages || []).find((candidate) => candidate?.available !== false);
+      if (!profile?.profileId || !profile?.capabilityVersion || !profile?.region || !selected?.compute?.id || !selected?.storage?.id) {
+        throw namedQualificationError("local_v2_provider_profile_incomplete", "the declared provider profile names no executable package");
+      }
+      return { profile, selected };
+    })();
+    const repository = readbacks.installation.workspaceImage.split("@")[0];
+    const registryId = repository.includes("/") ? repository.split("/")[0] : repository;
+    const namespaceId = await declareOrRead(http, auth, binding.endpoints.publisherNamespaces, "name", "local-v2-qualification-publisher", {
+      name: "local-v2-qualification-publisher", kind: "official", registryId, repositoryPrefix: repository,
+      admissionReceiptId: `local-v2-admission:${options.sourceSha}`
+    });
+    const runtimeVersionId = await declareOrRead(http, auth, binding.endpoints.runtimeVersions, "name", readbacks.application.applicationId, {
+      name: readbacks.application.applicationId, versionLabel: readbacks.application.revision,
+      publisherNamespaceId: namespaceId, admissionReceiptId: `local-v2-admission:${options.sourceSha}`,
+      publisherContract: { ...contract, publisherNamespaceId: namespaceId }
+    }, { readPath: binding.endpoints.catalogRuntimeVersions });
+    const computePlanId = await declareOrRead(http, auth, binding.endpoints.computePlans, "name", "local-v2-compute", {
+      name: "local-v2-compute", vcpus: packageProfile.selected.compute.cpu, memoryMiB: packageProfile.selected.compute.memoryGb * 1024,
+      providerProfileId: packageProfile.profile.profileId, providerSkuId: packageProfile.selected.compute.id,
+      providerCapabilityVersion: packageProfile.profile.capabilityVersion, validFrom: "2026-01-01T00:00:00Z"
+    }, { readPath: binding.endpoints.catalogComputePlans });
+    const storagePlanId = await declareOrRead(http, auth, binding.endpoints.storagePlans, "name", "local-v2-storage", {
+      name: "local-v2-storage", capacityGiB: packageProfile.selected.storage.sizeGb,
+      providerProfileId: packageProfile.profile.profileId, providerSkuId: packageProfile.selected.storage.id,
+      shrinkSupported: false, validFrom: "2026-01-01T00:00:00Z"
+    }, { readPath: binding.endpoints.catalogStoragePlans });
+    const retentionPolicyId = await declareOrRead(http, auth, binding.endpoints.retentionPolicies, "versionLabel", "local-v2-retention", {
+      versionLabel: "local-v2-retention", customerTerms: "The local installation keeps Tenant data until the Workspace is deleted."
+    });
+    const refundPolicyId = await declareOrRead(http, auth, binding.endpoints.refundPolicies, "versionLabel", "local-v2-refund", {
+      versionLabel: "local-v2-refund", algorithm: "workspace-delete-refund-v1", retentionPolicyVersionId: retentionPolicyId,
+      validFrom: "2026-01-01T00:00:00Z", customerTerms: "The local installation charges nothing for this Workspace."
+    });
+    await declareOrRead(http, auth, binding.endpoints.pricePolicies, "versionLabel", "local-v2-price", {
+      versionLabel: "local-v2-price", periodMonths: 1, computeMonthlyUSDMicros: "0", storageMonthlyUSDMicros: "0", productMonthlyUSDMicros: "0",
+      validFrom: "2026-01-01T00:00:00Z", computePlanId, storagePlanId,
+      renewalPolicy: { version: "renewal-policy/v1", trigger: "manual_or_explicitly_consented_automatic", effectiveStart: "previous_paid_through", months: 1, usesAcceptedPriceSnapshot: true },
+      planChangePolicyVersion: "workspace-plan-change-v1"
+    });
+    readbacks.catalog = {
+      publisherNamespaceId: namespaceId, runtimeVersionId, computePlanId, storagePlanId, refundPolicyId,
+      runtimeVersions: await catalogIds(http, auth, binding.endpoints.catalogRuntimeVersions),
+      computePlans: await catalogIds(http, auth, binding.endpoints.catalogComputePlans),
+      storagePlans: await catalogIds(http, auth, binding.endpoints.catalogStoragePlans)
+    };
+    record("catalog", "confirmed", { runtimeVersionId, computePlanId, storagePlanId });
+    stage = "quote";
+    const quote = (await http.json(binding.endpoints.quotes, {
+      method: "POST", headers: { "idempotency-key": `local-v2-quote:${options.sourceSha}:${workspaceName}` },
+      body: { purpose: "deploy", computePlanId, storagePlanId, periodMonths: 1, applicationSelection: { kind: "opl_app", runtimeVersionId } }
+    }, auth, [200, 201])).payload;
+    if (!quote?.id) throw namedQualificationError("local_v2_quote_invalid", "the Workspace owner returned no quote identity");
+    readbacks.quote = { id: quote.id, totalUSDMicros: String(quote.totalUSDMicros || ""), status: String(quote.status || ""), purpose: quote.purpose, runtimeVersionId: quote.runtimeVersionId };
+    record("quote", "confirmed", { quoteId: quote.id, totalUSDMicros: readbacks.quote.totalUSDMicros });
+    stage = "order";
+    const order = (await http.json(binding.endpoints.workspaces, {
+      method: "POST", headers: { "idempotency-key": `local-v2-order:${options.sourceSha}:${workspaceName}` },
+      body: { name: workspaceName, quoteId: quote.id, renewalMode: "manual" }
+    }, auth, [202])).payload;
+    const operationId = String(order?.operationId || "");
+    const workspaceId = String(order?.resourceId || "");
+    if (!operationId || !workspaceId) throw namedQualificationError("local_v2_order_identity_missing", "the Workspace owner returned no operation identity");
+    readbacks.order = { operationId, workspaceId };
+    record("order", "accepted", { operationId, workspaceId });
+    stage = "workspace_operation";
+    let operation = null;
+    for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
+      operation = (await http.json(`${binding.endpoints.operations}/${encodeURIComponent(operationId)}`, {}, auth)).payload;
+      if (LOCAL_V2_TERMINAL_OPERATION.has(String(operation?.status || ""))) break;
+      await wait(pollIntervalMs);
+    }
+    readbacks.operation = { status: String(operation?.status || ""), stage: String(operation?.stage || ""), errorCode: String(operation?.errorCode || "") };
+    record("workspace_operation", readbacks.operation.status === "succeeded" ? "confirmed" : "stopped", readbacks.operation);
+    stage = "workspace_readback";
+    const workspaceRead = await http.request(`${binding.endpoints.workspaces}/${encodeURIComponent(workspaceId)}`, {}, auth);
+    const workspace = workspaceRead.payload || {};
+    readbacks.workspace = {
+      id: String(workspace.id || ""), status: String(workspace.status || ""),
+      applicationAvailability: String(workspace.applicationAvailability || ""), resourceReadiness: String(workspace.resourceReadiness || ""),
+      accessUrl: String(workspace.accessUrl || ""), runtimeVersionId: String(workspace.runtimeVersionId || "")
+    };
+    const transactions = await http.request(`${binding.endpoints.workspaces}/${encodeURIComponent(workspaceId)}/transactions?limit=100`, {}, auth);
+    readbacks.transactions = { status: transactions.response.status, items: Array.isArray(transactions.payload?.items) ? transactions.payload.items.length : 0 };
+    if (typeof query === "function") {
+      readbacks.ledger = { receipts: Number(await query("opl_ledger", "select count(*) from public.evidence_receipts")) };
+      readbacks.fabric = {
+        resourceSets: Number(await query("opl_fabric", "select count(*) from fabric.resource_sets")),
+        operations: Number(await query("opl_fabric", "select count(*) from fabric.operations"))
+      };
+    }
+    record("owner_readback", "confirmed", { workspaceStatus: readbacks.workspace.status, transactions: readbacks.transactions.items });
+    if (operation?.status !== "succeeded") {
+      boundary = localV2Boundary(operation, workspace);
+      stage = "workspace_operation";
+      const provider = await localV2ProviderBoundary(compose, composePrefix, startedAt, query);
+      if (provider?.code) {
+        boundary = { ...boundary, workspaceCode: boundary.code, code: provider.code, detail: provider.detail, providerLog: provider.line };
+      }
+    } else {
+      const entryBoundary = localV2ApplicationEntryBoundary(readbacks.workspace.accessUrl, origin);
+      if (!entryBoundary.ok) {
+        boundary = entryBoundary;
+        stage = "application_entry";
+      }
+    }
+    if (!boundary) {
+      stage = "workspace_delete";
+      const deletion = await deleteWorkspaceOnOwnerRoute(http, auth, {
+        workspaceId, confirmationName: workspaceName,
+        idempotencyKey: `local-v2-delete:${options.sourceSha}:${workspaceName}`, wait
+      });
+      readbacks.deletion = { operationId: String(deletion?.operationId || ""), status: String(deletion?.status || "") };
+      const absent = await http.request(`${binding.endpoints.workspaces}/${encodeURIComponent(workspaceId)}`, {}, auth);
+      readbacks.deletion.workspaceAbsent = absent.response.status === 404;
+      readbacks.deletion.refund = (await http.request(`${binding.endpoints.workspaces}/${encodeURIComponent(workspaceId)}/transactions?limit=100`, {}, auth)).response.status;
+      record("workspace_delete", readbacks.deletion.workspaceAbsent ? "confirmed" : "stopped", readbacks.deletion);
+      if (!readbacks.deletion.workspaceAbsent) {
+        boundary = { code: "local_v2_workspace_absence_unconfirmed", detail: "the Workspace owner still serves the deleted Workspace", stage };
+      }
+    }
+  } catch (error) {
+    failure = error;
+    if (!boundary) boundary = { code: String(error?.code || "local_v2_qualification_incomplete"), detail: String(error?.message || error), stage };
+  }
+  const result = {
+    schemaVersion: 1,
+    status: "NOT_READY",
+    mode,
+    completedAt: new Date().toISOString(),
+    startedAt,
+    source: { sha: String(options.sourceSha || ""), tree: sourceTree },
+    command: receiptCommand(options),
+    stage,
+    errorCode: boundary?.code || "local_v2_qualification_incomplete",
+    error: failure ? redactedError(failure) : { message: boundary?.detail || "the run stopped before a READY result", code: boundary?.code || "" },
+    boundary: boundary ? { code: boundary.code, detail: boundary.detail, stage: boundary.stage || stage } : null,
+    evidence: { mode, stages, readbacks },
+    compose: { project: String(options.project || ""), files: binding.composeFiles, prefix: composePrefix },
+    retainedWritersUsed: [],
+    receiptCompatibility: {
+      compatible: false,
+      missing: [
+        "identities.accountId and identities.sub2apiUserId bound to a retained Control Plane account",
+        "identities.debitCode (opl:<debit>) and identities.keyId",
+        "wallet.beforeUsdMicros/afterUsdMicros/afterDeleteUsdMicros read from the Gateway wallet",
+        "processes.console/controlPlane/fabric/ledger readiness of the retained stack",
+        "receipt.count/id/chargeReference from a retained purchase receipt"
+      ],
+      authorityDecision: "a v2 qualification receipt shape needs its own accepted contract; docs/spec/target/checks is outside this change"
+    },
+    deferred: [...deferredCloudGates]
+  };
+  await writeJSONAtomic(options.receiptPath, result);
+  return result;
+}
+
+// Declare one owner fact, or read the one an earlier run already declared. The
+// owner mints the identity and the run uses it. A collection whose administrator
+// route is write-only is read through the route that lists it, and a replayed
+// declaration that the owner reports as a conflict is read back rather than
+// created twice.
+async function declareOrRead(http, auth, collectionPath, matchKey, matchValue, body, { readPath = collectionPath } = {}) {
+  const list = async () => {
+    const page = (await http.json(`${readPath}?limit=100`, {}, auth)).payload;
+    return Array.isArray(page?.items) ? page.items : [];
+  };
+  const existing = (await list()).find((item) => String(item?.[matchKey] || "") === String(matchValue));
+  if (existing?.id) return String(existing.id);
+  const created = await http.request(collectionPath, {
+    method: "POST",
+    headers: { "idempotency-key": `local-v2-declare:${matchValue}` },
+    body
+  }, auth);
+  const status = created.response.status;
+  if (status === 409) {
+    const declared = (await list()).find((item) => String(item?.[matchKey] || "") === String(matchValue));
+    if (!declared?.id) {
+      throw namedQualificationError("local_v2_declaration_conflict", `the owner reported a conflict for ${matchValue} but lists no such declaration`);
+    }
+    return String(declared.id);
+  }
+  if (status !== 200 && status !== 201) {
+    throw namedQualificationError("local_v2_declaration_failed", `declaring ${matchValue} returned ${status}: ${String(created.text || "").slice(0, 300)}`);
+  }
+  const id = String(created.payload?.id || created.payload?.resourceId || "");
+  if (id) return id;
+  const declared = (await list()).find((item) => String(item?.[matchKey] || "") === String(matchValue));
+  if (!declared?.id) throw namedQualificationError("local_v2_declaration_missing", `the owner published no identity for ${matchValue}`);
+  return String(declared.id);
+}
+
+async function catalogIds(http, auth, path) {
+  const page = (await http.json(`${path}?limit=100`, {}, auth)).payload;
+  return (Array.isArray(page?.items) ? page.items : []).map((item) => String(item?.id || "")).filter(Boolean);
 }
 
 export async function runLocalWorkspaceQualification(options, dependencies = {}) {
@@ -2328,8 +3087,13 @@ async function main() {
   let options;
   try {
     options = parseLocalQualificationArgs();
-    const receipt = await runLocalWorkspaceQualification(options);
+    const receipt = options.mode === QUALIFICATION_MODE_LOCAL_V2
+      ? await runLocalV2Qualification(options)
+      : await runLocalWorkspaceQualification(options);
     process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
+    // A boundary is a real result and never a success: the process exit code
+    // says the qualification is not READY even though evidence was collected.
+    if (receipt?.status !== "READY") process.exitCode = 1;
   } catch (error) {
     if (!options) {
       const rawPathIndex = process.argv.indexOf("--receipt");

@@ -29,6 +29,15 @@ import {
   qualificationEnvFileEntries,
   qualificationComposeEnvironment,
   parseLocalQualificationArgs,
+  qualificationModeBinding,
+  qualificationPathAllowed,
+  RETAINED_LEGACY_ENDPOINT_PREFIXES,
+  runLocalV2Qualification,
+  localV2ApplicationEntryBoundary,
+  localV2QualificationCA,
+  localV2QualificationOrigin,
+  LOCAL_V2_QUALIFICATION_SERVICES,
+  LOCAL_V2_OWNER_STORES,
   redactedError,
   runLocalWorkspaceJ1HTTPQualification,
   sourceData,
@@ -507,6 +516,7 @@ test("local qualification accepts exact source and immutable image identities", 
     "--workspace-image", workspaceReference,
     "--receipt", "/tmp/qualification.json"
   ]), {
+    mode: "legacy-fixture",
     sourceSha: sha,
     cloudImage: `ghcr.io/example/cloud@${cloudDigest}`,
     workspaceImage: workspaceReference,
@@ -554,6 +564,12 @@ test("live arguments require one external J0 READY receipt", () => {
     "--j0-ready-receipt", "/tmp/j0-ready.json"
   ]);
   assert.equal(parsed.j0ReadyReceipt, "/tmp/j0-ready.json");
+  assert.equal(parsed.mode, "legacy-live");
+  assert.throws(() => parseLocalQualificationArgs([
+    "--mode", "legacy-fixture", "--source-sha", sha,
+    "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`, "--workspace-image", workspaceReference,
+    "--receipt", "/tmp/qualification.json", "--authority-mode", "live", "--j0-ready-receipt", "/tmp/j0-ready.json"
+  ]), { code: "local_qualification_mode_conflict" });
   assert.throws(() => parseLocalQualificationArgs([
     "--source-sha", sha,
     "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
@@ -1713,4 +1729,229 @@ test("v2 qualification refuses the old three-service topology before customer mu
   const owners = { workspace: {}, "console-bff": {}, tenant: {}, serve: {} };
   assert.doesNotThrow(() => assertWorkspaceQualificationTopology({ services: owners }));
   assert.throws(() => assertWorkspaceQualificationTopology({ services: { ...owners, tenant: undefined } }), /tenant/);
+});
+
+test("local-v2 mode binds only v2 owner endpoints", () => {
+  const binding = qualificationModeBinding("local-v2");
+  assert.deepEqual(binding.composeFiles, ["deploy/portable/compose.local-v2.yaml"]);
+  assert.equal(binding.installationEnvRequired, true);
+  const endpoints = Object.values(binding.endpoints);
+  assert.ok(endpoints.length >= 15);
+  for (const endpoint of endpoints) assert.match(endpoint, /^\/api\/v2\//);
+  for (const prefix of ["/api/auth/", "/api/operator/", "/api/gateway/", "/api/v1/"]) {
+    assert.equal(endpoints.some((endpoint) => endpoint.startsWith(prefix)), false, `${prefix} must not be a v2 endpoint`);
+    assert.equal(qualificationPathAllowed("local-v2", `${prefix}anything`), false);
+  }
+  assert.equal(qualificationPathAllowed("local-v2", "/api/v2/quotes"), true);
+  assert.equal(qualificationPathAllowed("local-v2", "/api/v2/workspaces/ws_1/transactions"), true);
+  assert.equal(qualificationPathAllowed("local-v2", "/api/v2/operations/workspace/op_1"), true);
+});
+
+test("legacy mode keeps the retained Control Plane endpoints", () => {
+  const binding = qualificationModeBinding("legacy-fixture");
+  assert.deepEqual(binding.composeFiles, localQualificationComposeFiles("fixture"));
+  assert.equal(binding.installationEnvRequired, false);
+  assert.equal(binding.endpoints.login, "/api/auth/login");
+  assert.equal(binding.endpoints.accounts, "/api/operator/accounts");
+  assert.equal(binding.endpoints.wallet, "/api/gateway/wallet");
+  assert.equal(qualificationPathAllowed("legacy-fixture", "/api/auth/login"), true);
+  assert.throws(() => qualificationModeBinding("production"), { code: "local_qualification_mode_invalid" });
+});
+
+test("the local-v2 client refuses a retained endpoint before it opens a socket", async () => {
+  const http = createHTTP("https://127.0.0.1:1", { mode: "local-v2" });
+  await assert.rejects(() => http.request("/api/auth/login", { method: "POST" }), { code: "local_v2_retained_endpoint_refused" });
+  await assert.rejects(() => http.json("/api/operator/accounts"), { code: "local_v2_retained_endpoint_refused" });
+  await assert.rejects(() => http.json("/api/gateway/wallet"), { code: "local_v2_retained_endpoint_refused" });
+  // A legacy client is unchanged: the guard belongs to the mode, not the transport.
+  const legacy = createHTTP("https://127.0.0.1:1");
+  await assert.rejects(() => legacy.request("/api/auth/login", { method: "POST" }), (error) => error.code !== "local_v2_retained_endpoint_refused");
+});
+
+test("the local-v2 application entry must be served by the declared origin", () => {
+  assert.deepEqual(localV2ApplicationEntryBoundary("", "https://localhost:8443"), { ok: true, code: "", detail: "no application entry published yet" });
+  const unreachable = localV2ApplicationEntryBoundary("https://ws.localhost/w/ws_1/", "https://localhost:8443");
+  assert.equal(unreachable.ok, false);
+  assert.equal(unreachable.code, "local_v2_application_entry_port_unreachable");
+  assert.equal(localV2ApplicationEntryBoundary("https://ws.localhost/w/ws_1/", "https://localhost:443").ok, true);
+  assert.equal(localV2ApplicationEntryBoundary("not a url", "https://localhost:443").code, "local_v2_application_entry_invalid");
+});
+
+test("local-v2 arguments require the declared installation and refuse a second image spelling", () => {
+  const sha = "a".repeat(40);
+  assert.throws(() => parseLocalQualificationArgs(["--mode", "local-v2", "--source-sha", sha, "--receipt", "/tmp/r.json"]),
+    { code: "local_v2_installation_env_required" });
+  assert.throws(() => parseLocalQualificationArgs([
+    "--mode", "local-v2", "--source-sha", sha, "--receipt", "/tmp/r.json",
+    "--installation-env", "/tmp/installation.env", "--application-contract", "/tmp/contract.json", "--project", "opl-local-v2",
+    "--cloud-image", `ghcr.io/example/cloud@sha256:${"b".repeat(64)}`
+  ]), { code: "local_v2_images_are_declared" });
+  const parsed = parseLocalQualificationArgs([
+    "--mode", "local-v2", "--source-sha", sha, "--receipt", "/tmp/r.json",
+    "--installation-env", "/tmp/installation.env", "--application-contract", "/tmp/contract.json", "--project", "opl-local-v2"
+  ]);
+  assert.equal(parsed.mode, "local-v2");
+  assert.equal(parsed.installationEnv, "/tmp/installation.env");
+  assert.equal(parsed.applicationContract, "/tmp/contract.json");
+  assert.equal(parsed.project, "opl-local-v2");
+});
+
+function localV2Fixture() {
+  const requests = [];
+  const workspaceImage = `local/opl-workspace-local-v2@sha256:${"d".repeat(64)}`;
+  const values = {
+    OPL_LOCAL_V2_PUBLIC_URL: "https://localhost:18443",
+    OPL_LOCAL_V2_PKI_DIR: "/tmp/opl-local-v2-pki",
+    OPL_LOCAL_V2_PROXY_PORT: "18443",
+    OPL_LOCAL_V2_SUBNET: "172.31.0.0/24",
+    OPL_LOCAL_V2_POSTGRES_HOST: "172.31.0.10",
+    OPL_WORKSPACE_DOMAIN: "ws-qualification.localhost",
+    OPL_CLOUD_IMAGE: `opl-cloud-local-v2@sha256:${"e".repeat(64)}`,
+    OPL_WORKSPACE_IMAGE: workspaceImage,
+    OPL_QUALIFICATION_USER_EMAIL: "local-qualification@example.test",
+    OPL_QUALIFICATION_USER_PASSWORD: `Local-${"f".repeat(40)}-Aa1!`,
+    OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: JSON.stringify({
+      schemaVersion: 1, profileId: "local-docker/local", capabilityVersion: "local-docker/v1", region: "local",
+      accountBindings: [{ tenantId: "tenant_test", accountId: "local-host" }],
+      packages: [{ id: "local-v2-2vcpu-4gib", name: "Local v2", available: true,
+        compute: { id: "local-v2-2vcpu-4gib", server: "configured", cpu: 2, memoryGb: 4, instanceType: "local-v2-2vcpu-4gib" },
+        storage: { id: "local-v2-20gib", sizeGb: 20, quotaPolicy: "linux-project" } }]
+    })
+  };
+  const payload = (method, path) => {
+    const clean = path.split("?")[0];
+    requests.push(`${method} ${clean}`);
+    const ok = (body, status = 200) => ({ response: { status, headers: { get: () => null, getSetCookie: () => [] } }, payload: body, text: JSON.stringify(body) });
+    if (clean === "/api/v2/auth/context") {
+      return { response: { status: 200, headers: { getSetCookie: () => ["opl_login_context=ctx; Path=/", "opl_login_csrf=csrf; Path=/"] } }, payload: { csrfToken: "context-csrf" }, text: "" };
+    }
+    if (clean === "/api/v2/auth/login") {
+      return { response: { status: 200, headers: { getSetCookie: () => ["opl_console_session=session; Path=/"] } }, payload: { actorId: "41", csrfToken: "owner-csrf", displayName: "Local", tenantId: "", expiresAt: "" }, text: "" };
+    }
+    if (clean === "/api/v2/tenant") return ok({ id: "tenant_test", billingSub2apiUserId: "41", status: "active" });
+    if (clean === "/api/v2/admin/catalog/publisher-namespaces") return ok({ items: [{ id: "publisher_test", name: "local-v2-qualification-publisher" }] });
+    if (clean === "/api/v2/admin/catalog/runtime-versions") return ok({ items: [{ id: "runtime_test", name: "local-qualification-app" }] });
+    if (clean === "/api/v2/admin/catalog/compute-plans") return ok({ items: [{ id: "compute_test", name: "local-v2-compute" }] });
+    if (clean === "/api/v2/admin/catalog/storage-plans") return ok({ items: [{ id: "storage_test", name: "local-v2-storage" }] });
+    if (clean === "/api/v2/admin/catalog/retention-policies") return ok({ items: [{ id: "retention_test", versionLabel: "local-v2-retention" }] });
+    if (clean === "/api/v2/admin/catalog/refund-policies") return ok({ items: [{ id: "refund_test", versionLabel: "local-v2-refund" }] });
+    if (clean === "/api/v2/admin/catalog/price-policies") return ok({ items: [{ id: "price_test", versionLabel: "local-v2-price" }] });
+    if (clean.startsWith("/api/v2/catalog/runtime-versions")) return ok({ items: [{ id: "runtime_test", name: "local-qualification-app" }] });
+    if (clean.startsWith("/api/v2/catalog/compute-plans")) return ok({ items: [{ id: "compute_test", name: "local-v2-compute" }] });
+    if (clean.startsWith("/api/v2/catalog/storage-plans")) return ok({ items: [{ id: "storage_test", name: "local-v2-storage" }] });
+    if (clean === "/api/v2/quotes") return ok({ id: "quote_test", status: "accepted", purpose: "deploy", runtimeVersionId: "runtime_test", totalUSDMicros: "0" }, 201);
+    if (clean === "/api/v2/workspaces") return ok({ operationId: "op_test", resourceId: "workspace_test" }, 202);
+    if (clean === "/api/v2/operations/workspace/op_test") {
+      return ok({ status: "needs_attention", stage: "resource_preflight", errorCode: "local_docker_storage_quota_unavailable", error: { message: "storage root must be ext4 or XFS" } });
+    }
+    if (clean === "/api/v2/workspaces/workspace_test") {
+      return ok({ id: "workspace_test", status: "failed", applicationAvailability: "unknown", resourceReadiness: "unknown", accessUrl: "", runtimeVersionId: "runtime_test" });
+    }
+    if (clean.endsWith("/transactions")) return ok({ items: [] });
+    return ok({}, 404);
+  };
+  const client = {
+    origin: values.OPL_LOCAL_V2_PUBLIC_URL,
+    request: async (path, init = {}) => payload(String(init.method || "GET").toUpperCase(), path),
+    json: async (path, init = {}, _auth = null, statuses = [200]) => {
+      const result = payload(String(init.method || "GET").toUpperCase(), path);
+      if (!statuses.includes(result.response.status)) throw new Error(`unexpected ${result.response.status} for ${path}`);
+      return result;
+    }
+  };
+  const compose = async (args) => {
+    if (args[0] === "up") return { code: 0, stdout: "", stderr: "" };
+    if (args.includes("config")) {
+      return { code: 0, stdout: JSON.stringify({ services: Object.fromEntries(LOCAL_V2_QUALIFICATION_SERVICES.map((name) => [name, {}])) }), stderr: "" };
+    }
+    if (args.some((arg) => String(arg).includes("pg_database"))) {
+      return { code: 0, stdout: LOCAL_V2_OWNER_STORES.map(([database, owner]) => `${database}:${owner}`).join("\n"), stderr: "" };
+    }
+    if (args.some((arg) => String(arg).includes("pg_tables"))) return { code: 0, stdout: "7", stderr: "" };
+    return { code: 0, stdout: "", stderr: "" };
+  };
+  return { values, workspaceImage, requests, client, compose };
+}
+
+test("local-v2 qualification collects owner readbacks and reports the host boundary instead of READY", async () => {
+  const fixture = localV2Fixture();
+  const root = await mkdtemp(join(tmpdir(), "opl-local-v2-qualification-"));
+  try {
+    const contractPath = join(root, "contract.json");
+    await writeFile(contractPath, JSON.stringify({
+      schemaVersion: "opl-publisher-contract/v1",
+      publisherNamespaceId: "publisher_test",
+      image: {
+        repository: "local/opl-workspace-local-v2",
+        digest: fixture.workspaceImage.split("@")[1],
+        platform: { os: "linux", architecture: "arm64" }
+      },
+      kind: "runtime",
+      runtimeAbiVersion: "opl-runtime/v1",
+      packageFormatVersions: ["agent-plugins/1.0.0"],
+      applicationAccess: { mode: "anonymous" },
+      applicationRevisionTemplate: {
+        schemaVersion: 1, applicationId: "local-qualification-app", version: "1.0.0",
+        platform: "linux/arm64", image: fixture.workspaceImage, exposurePolicy: "anonymous",
+        ports: [{ name: "webui", port: 3000, protocol: "TCP" }], entryPort: "webui",
+        healthChecks: [{ port: 3000, path: "/" }]
+      }
+    }));
+    const receiptPath = join(root, "receipt.json");
+    const result = await runLocalV2Qualification({
+      sourceSha: "a".repeat(40), receiptPath, installationEnv: join(root, "installation.env"),
+      applicationContract: contractPath, project: "opl-local-v2", workspaceName: "Local v2 qualification"
+    }, {
+      readDeclaration: async () => ({ envFile: join(root, "installation.env"), values: fixture.values, facts: { entries: [], unresolved: [] } }),
+      createClient: () => fixture.client,
+      compose: fixture.compose,
+      ownerQuery: async () => "3",
+      wait: async () => {},
+      pollIntervalMs: 0,
+      pollAttempts: 2
+    });
+    assert.equal(result.status, "NOT_READY");
+    assert.equal(result.mode, "local-v2");
+    assert.equal(result.boundary.code, "local_docker_storage_quota_unavailable", JSON.stringify(result.boundary));
+    assert.equal(result.evidence.readbacks.tenant.id, "tenant_test");
+    assert.equal(result.evidence.readbacks.cloudIdentity.actorId, "41");
+    assert.equal(result.evidence.readbacks.catalog.runtimeVersionId, "runtime_test");
+    assert.equal(result.evidence.readbacks.catalog.computePlanId, "compute_test");
+    assert.equal(result.evidence.readbacks.catalog.storagePlanId, "storage_test");
+    assert.equal(result.evidence.readbacks.quote.totalUSDMicros, "0");
+    assert.equal(result.evidence.readbacks.order.workspaceId, "workspace_test");
+    assert.equal(result.evidence.readbacks.workspace.status, "failed");
+    assert.equal(result.evidence.readbacks.ledger.receipts, 3);
+    assert.equal(result.evidence.readbacks.fabric.resourceSets, 3);
+    assert.equal(result.evidence.readbacks.stores.ownerSeparated, true);
+    assert.deepEqual(result.retainedWritersUsed, []);
+    assert.equal(result.receiptCompatibility.compatible, false);
+    assert.ok(result.receiptCompatibility.missing.length > 0);
+    // A boundary is evidence, never a READY receipt.
+    assert.throws(() => validateLocalQualificationReceipt(result), /READY/);
+    const written = JSON.parse(await readFile(receiptPath, "utf8"));
+    assert.equal(written.status, "NOT_READY");
+    assert.equal(written.boundary.code, "local_docker_storage_quota_unavailable");
+    // Not one retained Control Plane route was requested.
+    for (const request of fixture.requests) {
+      const path = request.split(" ")[1];
+      assert.equal(RETAINED_LEGACY_ENDPOINT_PREFIXES.some((prefix) => path.startsWith(prefix)), false, `${request} is a retained route`);
+    }
+    assert.ok(fixture.requests.includes("POST /api/v2/quotes"));
+    assert.ok(fixture.requests.includes("POST /api/v2/workspaces"));
+    assert.ok(fixture.requests.includes("GET /api/v2/operations/workspace/op_test"));
+    assert.ok(fixture.requests.includes("GET /api/v2/workspaces/workspace_test"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the local-v2 origin and CA come only from the declared installation", () => {
+  assert.equal(localV2QualificationOrigin({ OPL_LOCAL_V2_PUBLIC_URL: "https://localhost:18443" }), "https://localhost:18443");
+  assert.throws(() => localV2QualificationOrigin({ OPL_LOCAL_V2_PUBLIC_URL: "http://localhost:18443" }), { code: "local_v2_public_url_invalid" });
+  assert.throws(() => localV2QualificationOrigin({ OPL_LOCAL_V2_PUBLIC_URL: "https://localhost:18443/api" }), { code: "local_v2_public_url_invalid" });
+  assert.throws(() => localV2QualificationOrigin({}), { code: "local_v2_public_url_invalid" });
+  assert.equal(localV2QualificationCA({ OPL_LOCAL_V2_PKI_DIR: "/tmp/pki" }), "/tmp/pki/ca.crt");
+  assert.throws(() => localV2QualificationCA({ OPL_LOCAL_V2_PKI_DIR: "relative/pki" }), { code: "local_v2_pki_dir_invalid" });
+  assert.throws(() => localV2QualificationCA({}), { code: "local_v2_pki_dir_invalid" });
 });
