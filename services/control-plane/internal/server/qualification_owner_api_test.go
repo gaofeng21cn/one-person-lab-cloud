@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -13,47 +11,23 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 )
 
-const (
-	qualificationOwnerAPIProvider = "qualification-owner-api-fake"
-	// The loopback entry the local Fabric fake publishes for the application
-	// Runtime. The qualification records it as evidence and never connects.
-	qualificationOwnerAPIEntryURL = "http://127.0.0.1:18080/"
-)
+const qualificationOwnerAPIProvider = "qualification-owner-api-fake"
 
-// TestQualificationOwnerAPIBusinessChain is the AC#8 proof of the highest
-// public qualification seam.
-//
-// The seam under test is `runWorkspaceQualification` in
-// tools/workspace-qualification-orchestrator.ts, the real provider-neutral
-// orchestrator. This test runs it for real and gives it the real owner API:
-//
-//   - real Control Plane owner HTTP routes in this process (account, wallet,
-//     quote, purchase, charge receipt, Workspace, Runtime) backed by isolated
-//     PostgreSQL;
-//   - the real Ledger HTTP owner process, on its own isolated database;
-//   - the local Sub2API authority fixture at the HTTP boundary, and the
-//     in-process Fabric fake, which are declared test boundaries rather than a
-//     production service;
-//   - a declared fake provider adapter: it supplies the three reachability
-//     operations of the adapter boundary and cannot answer any business fact.
-//
-// Nothing here reaches a production endpoint, a provider, a cluster, or a real
-// customer. The receipt this run produces is not published as qualification
-// evidence; it proves that the public seam settles against the real owner
-// surface with no production mutation.
-func TestQualificationOwnerAPIBusinessChain(t *testing.T) {
+// TestQualificationRefusesControlPlaneOnlyOwnerAPI exercises the real native
+// orchestrator against retained CP HTTP and Ledger processes over isolated
+// PostgreSQL. CP identity cannot stand in for a CloudIdentity live session.
+// No fake v2 facts, retained purchase or successful qualification is permitted.
+func TestQualificationRefusesControlPlaneOnlyOwnerAPI(t *testing.T) {
 	if controlPlaneTestPostgresBaseURL() == "" {
-		t.Skip("PostgreSQL test gate is not configured: the AC#8 owner-API proof needs the isolated owner database")
+		t.Skip("PostgreSQL test gate is not configured: the owner-API boundary needs the isolated owner database")
 	}
 	nodeBinary, err := exec.LookPath("node")
 	if err != nil {
@@ -65,194 +39,66 @@ func TestQualificationOwnerAPIBusinessChain(t *testing.T) {
 	accountID := "acct-qualification-owner-api-" + stableID(t.Name())[:12]
 	requests := &qualificationOwnerAPIRequestLog{}
 	process := newGatewayAccountingControlPlane(t, ledger, sub2API, accountID, "usr-qualification-owner-api", requests.wrap)
-	// The whole proof stays on loopback: the real Control Plane owner HTTP
-	// surface, the real Ledger HTTP owner and the local Sub2API authority
-	// fixture. A fixture that pointed anywhere else would not be this proof.
 	for _, target := range []string{process.server.URL, sub2API.baseURL} {
 		parsed, err := url.Parse(target)
 		if err != nil || (parsed.Hostname() != "127.0.0.1" && parsed.Hostname() != "::1" && parsed.Hostname() != "localhost") {
 			t.Fatalf("qualification integration fixture is not loopback: %q", target)
 		}
 	}
-	// The local Fabric fake publishes the application entry a Local-Docker
-	// provider would publish. It is a loopback address the qualification reads
-	// as evidence and never dials; no provider is reached by this test.
-	process.fabric.applicationEntryURL = qualificationOwnerAPIEntryURL
 	api := process.login(t, sub2API.ownerEmail, gatewayAccountingOwnerPassword)
 	session := qualificationOwnerAPISessionCookie(t, api)
-	// Everything the qualification itself asks for is recorded after the
-	// fixture's own login, so the two request logs are directly comparable.
 	served := len(requests.snapshot())
-
-	// The purchase and its default application installation advance only when
-	// the deployment's own workers run. The platform the orchestrator talks to
-	// therefore has to make progress while the orchestrator polls, exactly as
-	// the deployed Control Plane does.
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	var worker struct {
-		mu  sync.Mutex
-		err error
-	}
-	go func() {
-		ticker := time.NewTicker(10 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			}
-			err := errors.Join(
-				process.handler.app.runWorkspaceLaunchesOnce(ctx, process.handler.service),
-				process.handler.app.runWorkspaceApplicationDeploymentsOnce(ctx, process.handler.service),
-			)
-			if err != nil {
-				worker.mu.Lock()
-				worker.err = err
-				worker.mu.Unlock()
-			}
-		}
-	}()
-
-	result := qualificationOwnerAPIRun(ctx, t, nodeBinary, process.server.URL, accountID, session, api.csrf, t.TempDir())
+	result := qualificationOwnerAPIRun(context.Background(), t, nodeBinary, process.server.URL, accountID, session, api.csrf, t.TempDir())
 	observed := requests.snapshot()[served:]
-
 	receipt := result.Receipt
-	if result.State != "settled" || result.Reason != "none" || receipt.State != "settled" || receipt.Reason != "none" {
-		worker.mu.Lock()
-		workerErr := worker.err
-		worker.mu.Unlock()
-		t.Fatalf("real orchestrator over the real owner API did not settle: state=%q reason=%q receipt=%s requests=%v non-2xx=%v last worker error=%v",
-			result.State, result.Reason, mustJSON(receipt), result.Requests, result.Responses, workerErr)
+	if result.State != "failed" || result.Reason != "account_binding_mismatch" || receipt.State != result.State || receipt.Reason != result.Reason {
+		t.Fatalf("CP-only origin did not refuse native qualification: state=%q reason=%q receipt=%s responses=%v", result.State, result.Reason, mustJSON(receipt), result.Responses)
 	}
 	if receipt.Kind != "opl.workspace-qualification.purchase.v1" || receipt.Provider != qualificationOwnerAPIProvider {
 		t.Fatalf("receipt kind/provider = %q/%q", receipt.Kind, receipt.Provider)
 	}
-	for _, name := range []string{
-		"account_bound", "quote_priced", "purchase_issued", "purchase_receipt_bound",
-		"workspace_ready", "runtime_ready", "charge_receipted", "wallet_confirmed",
-	} {
-		if !receipt.Checks[name] {
-			t.Fatalf("settled receipt does not carry the %s check: %s", name, mustJSON(receipt.Checks))
+	for name, count := range receipt.Mutations.Observed {
+		if count != 0 {
+			t.Fatalf("refused qualification observed %s=%d", name, count)
 		}
 	}
-	if receipt.Mutations.Declared["purchases"] != 1 || receipt.Mutations.Declared["charges"] != 1 ||
-		receipt.Mutations.Observed["purchases"] != 1 || receipt.Mutations.Observed["charges"] != 1 ||
-		receipt.Mutations.Observed["refunds"] != 0 || receipt.Mutations.Observed["workspaceDeletions"] != 0 ||
-		receipt.Mutations.Observed["managedKeys"] != 0 {
-		t.Fatalf("bounded mutation accounting = declared %v observed %v", receipt.Mutations.Declared, receipt.Mutations.Observed)
-	}
-	if receipt.Operation.Resumed || receipt.Operation.OperationID == "" || receipt.Operation.WorkspaceID == "" ||
-		receipt.Operation.PurchaseReceiptID == "" {
-		t.Fatalf("settled purchase identity incomplete: %+v", receipt.Operation)
-	}
-	if receipt.Accounting.QuoteUSDMicros != strconv.FormatInt(gatewayAccountingChargeMicros, 10) ||
-		receipt.Accounting.WalletBeforeUSDMicros == "" || receipt.Accounting.WalletAfterUSDMicros == "" ||
-		!strings.HasPrefix(receipt.Accounting.ChargeReferenceDigest, "sha256:") {
-		t.Fatalf("settled accounting block = %+v", receipt.Accounting)
-	}
-	if !receipt.Cleanup.Performed || !receipt.Cleanup.Restored || receipt.DeploymentHealth != "healthy" {
-		t.Fatalf("cleanup/health = %+v/%q", receipt.Cleanup, receipt.DeploymentHealth)
-	}
-	if !strings.HasPrefix(receipt.Delivery.WorkspaceEntryDigest, "sha256:") ||
-		!strings.HasPrefix(receipt.Delivery.ApplicationOperationDigest, "sha256:") ||
-		receipt.Delivery.ComponentsObserved < 1 {
-		t.Fatalf("delivery evidence = %+v", receipt.Delivery)
-	}
-
-	// The receipt may carry only platform-minted identities and digests. The
-	// customer identifier, the session and its CSRF token must not leak.
-	encodedReceipt := string(mustJSON(receipt))
-	for _, forbidden := range []string{accountID, sub2API.ownerEmail, session, api.csrf} {
-		if strings.Contains(encodedReceipt, forbidden) {
-			t.Fatalf("receipt carries a raw customer or session identifier %q: %s", forbidden, encodedReceipt)
+	for name, passed := range receipt.Checks {
+		if passed {
+			t.Fatalf("CP-only origin satisfied native check %q", name)
 		}
 	}
-
-	// Every read the orchestrator says it made has to have reached the real
-	// owner route, and the driver's own log has to be the server's log.
+	if receipt.Operation.OperationID != "" || receipt.Operation.WorkspaceID != "" || receipt.Operation.PurchaseReceiptID != "" {
+		t.Fatalf("refused qualification invented owner identities: %+v", receipt.Operation)
+	}
+	if !receipt.Cleanup.Performed || !receipt.Cleanup.Restored {
+		t.Fatalf("refused qualification did not close its adapter scope: %+v", receipt.Cleanup)
+	}
 	if !reflect.DeepEqual(result.Requests, observed) {
-		t.Fatalf("orchestrator request log does not match the owner routes served:\ndriver=%v\nserver=%v", result.Requests, observed)
+		t.Fatalf("driver/server requests differ: driver=%v server=%v", result.Requests, observed)
 	}
-	for _, expected := range []string{
-		"GET /api/auth/me",
-		"GET /api/gateway/wallet",
-		"POST /api/pricing/preview",
-		"POST /api/workspace-launches",
-		"GET /api/workspace-launches/" + receipt.Operation.OperationID,
-		"GET /api/billing/receipts/" + receipt.Operation.PurchaseReceiptID,
-		"GET /api/workspaces",
-		"GET /api/workspaces/" + receipt.Operation.WorkspaceID + "/runtime-status",
-	} {
-		if !qualificationOwnerAPIRequestSeen(observed, expected) {
-			t.Fatalf("owner route %q was not read by the qualification: %v", expected, observed)
+	if !reflect.DeepEqual(observed, []string{"GET /api/auth/me", "GET /api/v2/auth/session"}) {
+		t.Fatalf("native identity refusal did not stop before business reads/writes: %v", observed)
+	}
+	for _, forbidden := range []string{accountID, sub2API.ownerEmail, session, api.csrf} {
+		if strings.Contains(string(mustJSON(receipt)), forbidden) {
+			t.Fatalf("receipt carries a raw customer or session identifier")
 		}
 	}
-	for _, request := range observed {
-		method, path, _ := strings.Cut(request, " ")
-		if method == http.MethodGet || method == http.MethodHead {
-			continue
-		}
-		// The quote read is a POST that changes nothing; the purchase command is
-		// the one mutation this flow may issue. A resume would be an allowed
-		// continuation, but this healthy run must not need one.
-		if path != "/api/pricing/preview" && path != "/api/workspace-launches" {
-			t.Fatalf("qualification issued an unexpected owner mutation: %s", request)
-		}
-	}
-
-	// Bounded counts come from the owner readbacks, not from the receipt.
 	rows, err := queryRuntimeOperations(context.Background(), process.store, runtimeOperationQuery{AccountID: accountID, Action: workspaceLaunchAction})
-	if err != nil || len(rows) != 1 {
-		t.Fatalf("owner launch operations = %d error=%v, want exactly one", len(rows), err)
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("refused qualification created retained operations: rows=%d err=%v", len(rows), err)
 	}
-	launch, err := decodeWorkspaceLaunchReconcileOperation(rows[0])
-	if err != nil || launch.ID != receipt.Operation.OperationID || launch.Status != contracts.StatusSucceeded ||
-		launch.stringFact("workspaceId") != receipt.Operation.WorkspaceID ||
-		launch.stringFact("receiptId") != receipt.Operation.PurchaseReceiptID ||
-		launch.provisioningMode() != contracts.WorkspaceProvisioningResourceOnly {
-		t.Fatalf("owner launch does not match the settled receipt: %+v error=%v", launch, err)
+	workspaces, err := process.store.ListWorkspaces(context.Background(), accountID)
+	if err != nil || len(workspaces) != 0 {
+		t.Fatalf("refused qualification created Workspaces: rows=%d err=%v", len(workspaces), err)
 	}
-	workspace, found, err := process.store.GetWorkspace(context.Background(), receipt.Operation.WorkspaceID)
-	if err != nil || !found || stringValue(workspace["state"]) != "running" ||
-		stringValue(workspace["currentApplicationDeploymentId"]) == "" {
-		t.Fatalf("owner Workspace = %#v found=%t error=%v", workspace, found, err)
-	}
-
 	counts := sub2API.writeCounts(t)
-	if counts.charges != 1 || counts.refunds != 0 || counts.keys != 1 {
-		t.Fatalf("Sub2API authority writes after one settled qualification = %+v, want one debit, no refund and one default-application Key", counts)
+	if counts.charges != 0 || counts.refunds != 0 || counts.keys != 0 {
+		t.Fatalf("refused qualification mutated Sub2API: %+v", counts)
 	}
-	balance, err := sub2API.client.Balance(context.Background(), gatewayAccountingSub2APIUserID)
-	if err != nil || balance.USDMicros != gatewayAccountingInitialMicros-gatewayAccountingChargeMicros {
-		t.Fatalf("Sub2API authority balance = %#v error=%v", balance, err)
-	}
-	if receipt.Accounting.WalletAfterUSDMicros != strconv.FormatInt(balance.USDMicros, 10) {
-		t.Fatalf("receipt wallet-after %q does not match the owner balance %d", receipt.Accounting.WalletAfterUSDMicros, balance.USDMicros)
-	}
-
 	page, err := ledgerList.ListReceipts(context.Background(), clients.ReceiptQuery{AccountID: accountID, TypePrefix: "billing.workspace_purchased.", Limit: 50})
-	if err != nil || len(page.Receipts) != 1 {
-		t.Fatalf("owner purchase receipts = %#v error=%v, want exactly one", page, err)
-	}
-	purchase := page.Receipts[0]
-	if purchase.ReceiptID != receipt.Operation.PurchaseReceiptID || purchase.RequestID != receipt.Operation.OperationID ||
-		purchase.WorkspaceID != receipt.Operation.WorkspaceID || purchase.Type != "billing.workspace_purchased.v1" ||
-		purchase.Status != "completed" ||
-		fmt.Sprint(purchase.Cost["totalUsdMicros"]) != receipt.Accounting.QuoteUSDMicros {
-		t.Fatalf("owner purchase receipt does not bind the settled operation: receiptID=%q requestID=%q workspaceID=%q type=%q status=%q cost=%v; want receiptID=%q requestID=%q workspaceID=%q quote=%q",
-			purchase.ReceiptID, purchase.RequestID, purchase.WorkspaceID, purchase.Type, purchase.Status, purchase.Cost,
-			receipt.Operation.PurchaseReceiptID, receipt.Operation.OperationID, receipt.Operation.WorkspaceID, receipt.Accounting.QuoteUSDMicros)
-	}
-	refunds, err := ledgerList.ListReceipts(context.Background(), clients.ReceiptQuery{AccountID: accountID, TypePrefix: "billing.workspace_refunded.", Limit: 50})
-	if err != nil || len(refunds.Receipts) != 0 {
-		t.Fatalf("settled qualification wrote a refund receipt: %#v error=%v", refunds, err)
-	}
-
-	wallet := gatewayAccountingEnvelopeData(t, api.mustRequest(t, http.MethodGet, "/api/gateway/wallet", nil, "", http.StatusOK))
-	if stringValue(wallet["usdMicros"]) != receipt.Accounting.WalletAfterUSDMicros {
-		t.Fatalf("owner wallet readback = %#v, receipt wallet-after = %q", wallet, receipt.Accounting.WalletAfterUSDMicros)
+	if err != nil || len(page.Receipts) != 0 {
+		t.Fatalf("refused qualification wrote purchase evidence: %#v err=%v", page, err)
 	}
 }
 
@@ -283,15 +129,6 @@ func qualificationOwnerAPIQuerySuffix(resource *url.URL) string {
 		return ""
 	}
 	return "?" + resource.RawQuery
-}
-
-func qualificationOwnerAPIRequestSeen(requests []string, expected string) bool {
-	for _, request := range requests {
-		if request == expected || strings.HasPrefix(request, expected+"?") {
-			return true
-		}
-	}
-	return false
 }
 
 func qualificationOwnerAPISessionCookie(t *testing.T, api *gatewayAccountingAPI) string {

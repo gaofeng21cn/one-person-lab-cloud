@@ -38,7 +38,16 @@ The eleven relevant Node tool suites executed 265 tests with zero failures,
 skips or TODOs. The focused source gate against the explicit base above passed,
 including tools typecheck and generated-contract freshness. Separate owner tests
 using isolated PostgreSQL passed: Workspace launch had 204 tests/subtests and
-BFF HTTP API had 239, with zero failures or skips. Owner peers/provider behavior
+BFF HTTP API had 239, with zero failures or skips. A later focused pass against
+`ae812f08` also executed the complete Control Plane server suite, including the
+100/1000-record capacity cases: 2,472 tests/subtests passed with zero failures or
+skips. Its former positive qualification test still declared a package and
+expected native qualification through CP; the actual SQL run exposed that stale
+consumer. It now exercises the real native orchestrator over CP/Ledger HTTP as a
+negative boundary: a CP-only origin fails CloudIdentity binding after two reads,
+with zero orders, charges, refunds, Keys or purchase receipts. Historical
+settlement/recovery tests remain in the same executed suite. This negative
+probe supplies no positive native qualification evidence. Owner peers/provider behavior
 in these tests is synthetic. Verification is retained in the accompanying PR
 and its current-revision CI; these checks are source evidence only.
 
