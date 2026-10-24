@@ -116,6 +116,14 @@ jobs:
         name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Report the change budget
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags origin "$BASE_REF"
+          node --test tests/tools/check-change-budget.test.ts
+          node tools/check-change-budget.ts --base "origin/$BASE_REF" --summary >> "$GITHUB_STEP_SUMMARY"
+
       - name: Validate source
         run: npm run verify:local -- --group source
 
