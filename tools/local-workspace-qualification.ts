@@ -889,8 +889,9 @@ function caRequest(url, init, headers, body, ca) {
       });
     });
     request.on("error", reject);
-    if (body !== undefined) request.write(body);
-    request.end();
+    // One end() call lets Node set Content-Length for the body. A chunked DELETE
+    // body is legal but the owner's write guard reads it as an empty command.
+    request.end(body);
   });
 }
 
@@ -913,7 +914,12 @@ export function createHTTP(origin, { caFile = "", mode = "" } = {}) {
     // authorities' write guards are satisfied by one transport.
     if (auth?.ownerCsrf) headers.set("x-csrf-token", auth.ownerCsrf);
     const body = init.body === undefined ? undefined : JSON.stringify(init.body);
-    if (body !== undefined) headers.set("content-type", "application/json");
+    if (body !== undefined) {
+      headers.set("content-type", "application/json");
+      // Node does not default a DELETE body to a length, and without it the
+      // request leaves without the body at all. Every command here carries one.
+      headers.set("content-length", String(Buffer.byteLength(body)));
+    }
     const url = `${origin}${path}`;
     const response = ca
       ? await caRequest(url, init, headers, body, ca)
@@ -2545,7 +2551,12 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
         stage = "application_entry";
       }
     }
-    if (!boundary) {
+    // The entry is a topology fact this installation may not provide yet, and the
+    // deletion, absence, ledger and refund obligations do not depend on it. A run
+    // that reached a confirmed launch therefore proves the cleanup path even when
+    // the entry boundary is the earliest failure, and keeps that boundary.
+    if (launchConfirmed) {
+      const launchBoundary = boundary;
       stage = "workspace_delete";
       const deletion = await deleteWorkspaceOnOwnerRoute(http, auth, {
         workspaceId, confirmationName: workspaceName,
@@ -2557,8 +2568,11 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       readbacks.deletion.refund = (await http.request(`${binding.endpoints.workspaces}/${encodeURIComponent(workspaceId)}/transactions?limit=100`, {}, auth)).response.status;
       record("workspace_delete", readbacks.deletion.workspaceAbsent ? "confirmed" : "stopped", readbacks.deletion);
       if (!readbacks.deletion.workspaceAbsent) {
-        boundary = { code: "local_v2_workspace_absence_unconfirmed", detail: "the Workspace owner still serves the deleted Workspace", stage };
+        boundary = launchBoundary || { code: "local_v2_workspace_absence_unconfirmed", detail: "the Workspace owner still serves the deleted Workspace", stage };
+      } else {
+        boundary = launchBoundary;
       }
+      if (boundary?.stage) stage = boundary.stage;
     }
   } catch (error) {
     failure = error;
