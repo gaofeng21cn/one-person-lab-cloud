@@ -132,7 +132,10 @@ test("the owner route mints the delete operation and the harness follows its ide
     workspaceId: "ws-alpha", confirmationName: "Alpha", idempotencyKey: "delete-alpha",
     wait: async (milliseconds) => waits.push(milliseconds)
   });
-  assert.deepEqual(deletion, { operationId: "op_owner_delete", status: "succeeded", stage: "completed", accepted });
+  assert.deepEqual(deletion, {
+    operationId: "op_owner_delete", status: "succeeded", stage: "completed", accepted,
+    lostResponses: 0, lastLoss: ""
+  });
   assert.deepEqual(waits, [1000]);
   assert.deepEqual(calls[0], ["/api/v2/workspaces/ws-alpha", {
     method: "DELETE",
@@ -140,6 +143,29 @@ test("the owner route mints the delete operation and the harness follows its ide
     body: { confirmationName: "Alpha", acknowledgeDataDestruction: true }
   }, { cookie: "opl_session=s" }, [202]]);
   assert.deepEqual(calls[1], ["/api/v2/operations/workspace/op_owner_delete", {}, { cookie: "opl_session=s" }]);
+
+  // A command whose answer was lost is re-sent with the same idempotency key and
+  // reaches the operation the first send minted, so one deletion happens once.
+  const recovered = [];
+  let sends = 0;
+  const replayed = {
+    json: async (path, init = {}, _auth, statuses) => {
+      recovered.push([path, init.headers?.["idempotency-key"], statuses]);
+      if (path.includes("/operations/")) return { payload: succeeded };
+      sends += 1;
+      if (sends === 1) throw new Error("HTTP DELETE returned 502: upstream closed");
+      return { payload: accepted };
+    }
+  };
+  const recoveredDeletion = await deleteWorkspaceOnOwnerRoute(replayed, null, {
+    workspaceId: "ws-alpha", confirmationName: "Alpha", idempotencyKey: "delete-alpha",
+    wait: async () => {}
+  });
+  assert.equal(recoveredDeletion.operationId, "op_owner_delete");
+  assert.equal(recoveredDeletion.lostResponses, 1);
+  assert.match(recoveredDeletion.lastLoss, /502/);
+  assert.deepEqual(recovered.filter((call) => !String(call[0]).includes("/operations/")).map((call) => call[1]),
+    ["delete-alpha", "delete-alpha"]);
 
   const foreign = { json: async () => ({ payload: { ...accepted, resourceId: "ws-other" } }) };
   await assert.rejects(() => deleteWorkspaceOnOwnerRoute(foreign, null, {
