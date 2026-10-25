@@ -2614,13 +2614,21 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       // The same owner set the live chain restarts is restarted here, and every
       // readback is compared with the snapshot taken before it stopped.
       const beforeRestart = {
-        operation: { status: String(operation?.status || ""), stage: String(operation?.stage || "") },
+        // The operation's status advances while its owner keeps working, so the
+        // identity that must survive a restart is the one the owner minted.
+        operation: {
+          operationId: String(operation?.operationId || ""), owner: String(operation?.owner || ""),
+          kind: String(operation?.kind || ""), resourceId: String(operation?.resourceId || ""),
+        },
         workspace: { ...readbacks.workspace },
         receipts: Number(readbacks.ledger?.receipts || 0),
       };
       const restartStarted = Date.now();
-      await compose(["restart", "workspace", "console-bff", "tenant", "serve", "fabric", "ledger"], { capture: false });
-      await waitForCompose(compose);
+      // This caller's compose wrapper takes the raw docker arguments and the
+      // project prefix travels as its own argument list.
+      const composeProject = (args, settings = {}) => compose([...composePrefix, ...args], settings);
+      await composeProject(["restart", "workspace", "console-bff", "tenant", "serve", "fabric", "ledger"], { capture: false });
+      await waitForCompose(composeProject);
       // The session belonged to the process that stopped, so the run signs in
       // again on the same declared customer before it reads anything back. The
       // owner route answers only the CloudIdentity session the BFF issues.
@@ -2641,8 +2649,10 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       readbacks.restart = {
         performed: true,
         seconds: Math.round((Date.now() - restartStarted) / 1000),
-        operationStable: String(afterRestartOperation.payload?.status || "") === beforeRestart.operation.status &&
-          String(afterRestartOperation.payload?.stage || "") === beforeRestart.operation.stage,
+        operationStable: String(afterRestartOperation.payload?.operationId || "") === beforeRestart.operation.operationId &&
+          String(afterRestartOperation.payload?.owner || "") === beforeRestart.operation.owner &&
+          String(afterRestartOperation.payload?.kind || "") === beforeRestart.operation.kind &&
+          String(afterRestartOperation.payload?.resourceId || "") === beforeRestart.operation.resourceId,
         workspaceStable: afterRestartWorkspaceView.id === beforeRestart.workspace.id &&
           afterRestartWorkspaceView.status === beforeRestart.workspace.status &&
           afterRestartWorkspaceView.runtimeVersionId === beforeRestart.workspace.runtimeVersionId,
