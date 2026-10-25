@@ -2255,6 +2255,22 @@ function localV2ConfiguredBudget(dependencyValue, environmentValue, defaultValue
   return localV2Budget(value, options);
 }
 
+async function localV2WithinDeadline(task, deadline) {
+  const remainingMs = deadline - Date.now();
+  if (remainingMs <= 0) throw namedQualificationError("local_v2_poll_budget_exhausted", "the Workspace operation polling deadline expired");
+  let timer;
+  try {
+    return await Promise.race([
+      task,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(namedQualificationError("local_v2_poll_budget_exhausted", "the Workspace operation polling deadline expired")), remainingMs);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function validateLocalV2Replay(operation, operationId, workspaceId) {
   if (operation?.owner !== "workspace" || operation?.kind !== "create_workspace" ||
     operation?.operationId !== operationId || operation?.resourceId !== workspaceId) {
@@ -2288,6 +2304,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
   const recoveryReplays = localV2ConfiguredBudget(dependencies.recoveryReplays, process.env.OPL_LOCAL_V2_RECOVERY_REPLAYS, 3, {
     name: "OPL_LOCAL_V2_RECOVERY_REPLAYS", code: "local_v2_recovery_replays_invalid", minimum: 0, maximum: LOCAL_V2_MAX_RECOVERY_REPLAYS
   });
+  const pollBudgetMs = Math.min(LOCAL_V2_MAX_POLL_DURATION_MS, Math.max(30_000, pollAttempts * pollIntervalMs));
   if (pollAttempts * pollIntervalMs > LOCAL_V2_MAX_POLL_DURATION_MS) {
     throw namedQualificationError("local_v2_poll_budget_invalid", "the combined Workspace polling budget must not exceed 30 minutes");
   }
@@ -2552,8 +2569,11 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     let previousState = "";
     let polls = 0;
     let replays = 0;
+    const pollDeadline = Date.now() + pollBudgetMs;
     while (polls < pollAttempts) {
-      operation = (await http.json(`${binding.endpoints.operations}/${encodeURIComponent(operationId)}`, {}, auth)).payload;
+      operation = (await localV2WithinDeadline(
+        http.json(`${binding.endpoints.operations}/${encodeURIComponent(operationId)}`, {}, auth), pollDeadline
+      )).payload;
       polls += 1;
       if (LOCAL_V2_TERMINAL_OPERATION.has(String(operation?.status || ""))) break;
       const state = `${String(operation?.status || "")}:${String(operation?.stage || "")}`;
@@ -2562,15 +2582,17 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       if (unchanged >= LOCAL_V2_STALLED_POLLS) {
         const parked = String(operation?.status || "") === "awaiting_confirmation" && String(operation?.stage || "") !== "activation";
         if (!parked || replays >= recoveryReplays || polls >= pollAttempts) break;
-        const replay = (await http.json(binding.endpoints.workspaces, {
+        const replay = (await localV2WithinDeadline(http.json(binding.endpoints.workspaces, {
           method: "POST", headers: { "idempotency-key": orderKey }, body: orderBody
-        }, auth, [202])).payload;
+        }, auth, [202]), pollDeadline)).payload;
         validateLocalV2Replay(replay, operationId, workspaceId);
         replays += 1;
         unchanged = 0;
         previousState = "";
       }
-      await wait(pollIntervalMs);
+      const remainingMs = pollDeadline - Date.now();
+      if (remainingMs <= 0) break;
+      await wait(Math.min(pollIntervalMs, remainingMs));
     }
     const activationBoundary = String(operation?.status || "") === "awaiting_confirmation" && String(operation?.stage || "") === "activation";
     const launchCandidate = (String(operation?.status || "") === "succeeded" || activationBoundary) &&
