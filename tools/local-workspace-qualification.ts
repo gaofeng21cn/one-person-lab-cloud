@@ -868,7 +868,10 @@ function caRequest(url, init, headers, body, ca) {
       headers: Object.fromEntries(headers.entries()),
       ca,
       servername: target.hostname,
-      signal: AbortSignal.timeout(30_000)
+      // A deletion command drives the whole retirement chain inside the owner
+      // before it answers, so one transport budget covers one owner command
+      // rather than one read.
+      signal: AbortSignal.timeout(requestTimeoutMs())
     }, (response) => {
       const chunks = [];
       response.on("data", (chunk) => chunks.push(chunk));
@@ -893,6 +896,13 @@ function caRequest(url, init, headers, body, ca) {
     // body is legal but the owner's write guard reads it as an empty command.
     request.end(body);
   });
+}
+
+// requestTimeoutMs is the budget one owner command gets. A read answers at once;
+// a deletion drives the retirement chain inside the owner before it responds.
+function requestTimeoutMs() {
+  const configured = Number(process.env.OPL_LOCAL_V2_REQUEST_TIMEOUT_MS || 0);
+  return configured > 0 ? configured : 120_000;
 }
 
 export function createHTTP(origin, { caFile = "", mode = "" } = {}) {
@@ -927,7 +937,7 @@ export function createHTTP(origin, { caFile = "", mode = "" } = {}) {
         ...init,
         headers,
         body,
-        signal: AbortSignal.timeout(30_000)
+        signal: AbortSignal.timeout(requestTimeoutMs())
       });
     const text = await response.text();
     let payload = null;
@@ -2227,7 +2237,11 @@ function localV2Boundary(operation, workspace) {
 // `runtime` to `activation` after several minutes in that state. The run keeps
 // polling and only reads a park as the boundary when the state stops changing.
 const LOCAL_V2_TERMINAL_OPERATION = new Set(["succeeded", "failed", "cancelled", "needs_attention"]);
-const LOCAL_V2_STALLED_POLLS = 40;
+// A Local no-charge order has no terminal state of its own: the owner records the
+// Serve-confirmed READY runtime at stage `activation` and keeps re-driving that
+// same saga, so a poll can catch the operation mid-cycle at an earlier stage. The
+// boundary is the state the owner reached, not the state the last poll saw.
+const LOCAL_V2_ACTIVATION_STAGE = "activation";
 
 // The Local v2 qualification: one declared installation, the owner processes it
 // starts, and the owner routes it serves. Every step records the readback it
@@ -2488,17 +2502,17 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     record("order", "accepted", { operationId, workspaceId });
     stage = "workspace_operation";
     let operation = null;
-    let unchanged = 0;
-    let previousState = "";
+    let activationReached = null;
     for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
       operation = (await http.json(`${binding.endpoints.operations}/${encodeURIComponent(operationId)}`, {}, auth)).payload;
+      if (String(operation?.status || "") === "awaiting_confirmation" && String(operation?.stage || "") === LOCAL_V2_ACTIVATION_STAGE) {
+        activationReached = operation;
+        break;
+      }
       if (LOCAL_V2_TERMINAL_OPERATION.has(String(operation?.status || ""))) break;
-      const state = `${String(operation?.status || "")}:${String(operation?.stage || "")}`;
-      unchanged = state === previousState ? unchanged + 1 : 0;
-      previousState = state;
-      if (unchanged >= LOCAL_V2_STALLED_POLLS) break;
       await wait(pollIntervalMs);
     }
+    if (activationReached) operation = activationReached;
     // The owner parks a saga at its own boundary, but the order route is
     // idempotent: replaying the original order is the recovery a client has, and
     // it is the same path a lost response takes. A bounded number of replays is
@@ -2520,7 +2534,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     // launch this installation declares, so the qualification reads it as the
     // confirmed launch and continues to the entry, deletion and refund readbacks
     // instead of reporting a parked paid order it will never have.
-    const activationBoundary = String(operation?.status || "") === "awaiting_confirmation" && String(operation?.stage || "") === "activation";
+    const activationBoundary = String(operation?.status || "") === "awaiting_confirmation" && String(operation?.stage || "") === LOCAL_V2_ACTIVATION_STAGE;
     const launchConfirmed = String(operation?.status || "") === "succeeded" || activationBoundary;
     readbacks.operation = {
       status: String(operation?.status || ""), stage: String(operation?.stage || ""),

@@ -539,6 +539,14 @@ services:
     # whatever Compose generates, and an operator who sets the variable
     # silently points the provider at a container that does not exist.
     container_name: ${OPL_LOCAL_V2_GATEWAY_CONTAINER:-opl-cloud-local-v2-control-plane}
+    # The Local-Docker provider re-reads this container's identity before it
+    # destroys a compute allocation: it must still be the Control Plane gateway
+    # of this installation, not a container that merely reuses the name. The
+    # labels are the same two the fabric-local-docker overlay declares, so the
+    # name above and the identity checked below cannot drift apart.
+    labels:
+      opl.fabric.local-docker.gateway: control-plane
+      opl.cloud.fabric-provider: local-docker
     environment:
       <<: *opl-v2-environment
       DATABASE_URL: postgresql://opl_control_plane:${OPL_CONTROL_PLANE_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.29.0.10}:5432/opl_control_plane?sslmode=disable

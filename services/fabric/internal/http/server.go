@@ -819,6 +819,12 @@ func authorizeFabricRequests(next http.Handler, resolver fabricMutationScopeReso
 	})
 }
 
+// serveApplicationRoute is the whole application boundary Serve owns on Fabric:
+// the runtime's own create, its readback, its lifecycle (the start/stop Serve
+// performs) and the WebUI credential read. Every one of those has a Fabric
+// mutation scope of the same shape, so the Serve capability still has to sign the
+// exact workspace, runtime and action; nothing outside this boundary is admitted,
+// and a Serve identity can never buy compute, delete storage or mint a resource.
 func serveApplicationRoute(r *http.Request) bool {
 	if r.Method != http.MethodPost {
 		return false
@@ -827,7 +833,14 @@ func serveApplicationRoute(r *http.Request) bool {
 		return true
 	}
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	return len(parts) == 4 && parts[0] == "fabric" && parts[1] == "workspace-application-runtimes" && parts[2] != "" && parts[3] == "readback"
+	if len(parts) != 4 || parts[0] != "fabric" || parts[1] != "workspace-application-runtimes" || parts[2] == "" {
+		return false
+	}
+	switch parts[3] {
+	case "readback", "lifecycle", "lifecycle-readback", "credentials":
+		return true
+	}
+	return false
 }
 func fabricTransportIdentity(header string, config ServerAuthConfig) string {
 	if config.ServeToken != "" && constantTimeBearerMatch(header, config.ServeToken) {
