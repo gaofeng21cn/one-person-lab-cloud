@@ -11,6 +11,7 @@ execution instructions or runtime evidence. Start from [current documentation](.
 | [Registry retirement](retired-agent-registry.md) | Prevent a second Cloud Package registry from being reintroduced |
 | [Superseded Workspace OCI phase plan](workspace-oci-plan-2026-09-11.md) | Preserve the uncommitted predecessor and prevent contract-only phases or inverted deployment/data dependencies from becoming the active execution plan again |
 | [SSOT audit, 2026-10-13](ssot-audit-2026-10-13/README.md) | Provenance for the single-source-of-truth review that preceded the contract-snapshot removal and the local-v2 installation-fact repair; not current evidence |
+| [Archived evidence receipts](evidence/README.md) | Provenance for source-check receipts whose readers no longer bind them; the index records each batch and the files kept for an original-path binding |
 
 Completed implementation plans, historical test/file lists and visual freezes
 live only in Git history. Their durable rules are absorbed into current
